@@ -3,11 +3,15 @@ import { GuardName, type GuardName as GuardNameType } from '../core/guards.ts'
 /** Opaque identifier for a VRS requirement, formatted as `R<two-digit-number>`. */
 export type RequirementId = `R${number}`
 
-/** Verification level tier, from L1 (planner-only) through L7 (production). */
-export type VerificationLevel = 'L1' | 'L2' | 'L3' | 'L4' | 'L5' | 'L6' | 'L7'
+/** Verification level tier, from L0 (sibling-package pure unit) and L1 (planner-only) through L7 (production downstream composition). */
+export type VerificationLevel = 'L0' | 'L1' | 'L2' | 'L3' | 'L4' | 'L5' | 'L6' | 'L7'
 
-/** Unique scenario identifier; encodes the integration tier and a slug. Guard-only scenarios use the `NDS-GUARD-` prefix. */
-export type ScenarioId = `NDS-L${number}-${string}` | `NDS-GUARD-${string}` | `NDS-LIVE-${string}`
+/** Unique scenario identifier; encodes the integration tier and a slug. L0 covers sibling-package pure-unit tests; guard-only scenarios use the `NDS-GUARD-` prefix. */
+export type ScenarioId =
+  | `NDS-L0-${string}`
+  | `NDS-L${number}-${string}`
+  | `NDS-GUARD-${string}`
+  | `NDS-LIVE-${string}`
 
 /** Traceability metadata attached to a concrete or placeholder scenario: maps it to requirement ids, guard names, and integration tier bounds. */
 export type ScenarioMetadata = {
@@ -68,6 +72,91 @@ export const e2eHarnessScenarios = [
     highestIntegrationLevel: 'L3',
     file: 'src/e2e/cli.e2e.test.ts',
   }),
+  // SM5.2 (CLI-R02 / R49): the one-shot `sync --dry-run` suppression GUARANTEE.
+  // Proven against a REAL file-backed split workspace by snapshotting every
+  // durable surface and asserting byte/row/count invariance plus a fake-gateway
+  // write-call counter at exactly zero. The same fixture under a non-dry-run sync
+  // mutates those surfaces, so the zero-change assertion is non-vacuous.
+  scenario({
+    scenarioId: 'NDS-L4-dry-run-suppression-all-surfaces',
+    title:
+      'one-shot sync --dry-run writes nothing durable to any surface and never asks the gateway to mutate',
+    requirementIds: ['R49'],
+    guards: [],
+    lowestPlannerLevel: 'L3',
+    highestIntegrationLevel: 'L4',
+    file: 'src/e2e/dry-run-suppression.e2e.test.ts',
+  }),
+  // F2 (#775): the bodies-ON falsifiable complement to SM5.2. The all-surfaces
+  // proof runs `--no-materialize-bodies`, so its `pages/v1/<src>/*.nmd` invariant
+  // rests on the unconditional `materializeBodies:false` force rather than a
+  // falsifiable delta. This scenario materializes bodies under `sync --dry-run`
+  // and asserts the `pages/v1/<src>/` dir gains NO `.nmd`, while the SAME path
+  // without `--dry-run` DOES materialize a `.nmd` — making the body-suppression
+  // gate (sync.ts `dryRun → materializeBodies:false`) observably non-vacuous.
+  scenario({
+    scenarioId: 'NDS-L4-dry-run-suppression-nmd-bodies',
+    title:
+      'bodies-on sync --dry-run materializes no .nmd page body while a non-dry control does (falsifiable)',
+    requirementIds: ['R49'],
+    guards: [],
+    lowestPlannerLevel: 'L3',
+    highestIntegrationLevel: 'L4',
+    file: 'src/e2e/dry-run-suppression.e2e.test.ts',
+  }),
+  // SM5.3 (CLI-R02 watch dimension / R49 + R64): `sync --watch --dry-run` runs as
+  // an observe/plan/report loop. Each bounded cycle reports a plan frame while
+  // every loop-level durable effect is suppressed — and, critically, a REAL
+  // concurrent daemon's leased signal is left UNTOUCHED (observer
+  // non-interference). Reuses the SM5.2 `captureWorkspaceSurfaces` harness +
+  // write-call counter; non-vacuity is proven by a non-dry watch cycle moving
+  // the same surfaces.
+  scenario({
+    scenarioId: 'NDS-L5-watch-dry-run-loop',
+    title:
+      'sync --watch --dry-run reports a per-cycle plan frame while writing nothing durable and never fencing a real daemon signal',
+    requirementIds: ['R49', 'R64'],
+    guards: [],
+    lowestPlannerLevel: 'L3',
+    highestIntegrationLevel: 'L5',
+    file: 'src/e2e/watch-dry-run.e2e.test.ts',
+  }),
+  // SM5.4 (CLI-R07 / DAEMON-R07): the watch loop honors the established workspace
+  // authority mode. Over an identical fixture (pending local edit + remote drift):
+  // `remote` (mirror) runs the loop PULL-ONLY — the local-first push pass is gated
+  // off and the gateway is never asked to mutate (`writeCalls === 0`), so local
+  // intent surfaces as pending status, never an outbound write; `local` and
+  // `shared` run the local-first push pass, so the gateway WRITES. This is the
+  // loop-level complement to the planner's per-property `RemoteAuthoritativeDrift`
+  // block, closing the remote-mode lifecycle/create push hole the planner never
+  // covered.
+  scenario({
+    scenarioId: 'NDS-L5-watch-guarantee-by-authority-mode',
+    title:
+      'sync --watch reconciles per established authority mode: remote pulls only with zero gateway writes, local/shared push local outbound',
+    requirementIds: ['R09', 'R10', 'R11', 'R64'],
+    // No guard fires here by design: in `remote` mode the loop gate short-circuits
+    // to pull-only BEFORE the planner runs (so `RemoteAuthoritativeDrift` never
+    // fires), and in `local`/`shared` the write mode is not `remote`. That ordering
+    // — loop gate ahead of the planner block — is the whole point.
+    guards: [],
+    lowestPlannerLevel: 'L3',
+    highestIntegrationLevel: 'L5',
+    file: 'src/e2e/watch-authority-mode.e2e.test.ts',
+  }),
+  // SM5.4 (CLI-R07): a per-run `--mode` on an established `sync --watch` is
+  // rejected — authority mode is workspace-wide and set once by `track`, never
+  // overridden per run.
+  scenario({
+    scenarioId: 'NDS-L4-authority-mode-established-no-override',
+    title:
+      'sync --watch --mode on an established workspace is rejected: authority mode is workspace-wide',
+    requirementIds: ['R28', 'R64'],
+    guards: [],
+    lowestPlannerLevel: 'L2',
+    highestIntegrationLevel: 'L4',
+    file: 'src/e2e/watch-authority-mode.e2e.test.ts',
+  }),
   scenario({
     scenarioId: 'NDS-L5-watch-daemon-local-cycle',
     title: 'local watch daemon preserves pending work across restart and cancellation',
@@ -108,8 +197,12 @@ export const e2eHarnessScenarios = [
     scenarioId: 'NDS-L3-realistic-local-remote-conflict',
     title:
       'pending local property intent survives remote same-property drift as a durable conflict',
+    // `PendingIntentShadowViolation` was previously claimed here, but this test
+    // file never exercises it (the guard is wired on the lifecycle-divergence
+    // path and asserted in `sqlite-storage-contract.e2e.test.ts`). Its genuine
+    // coverage moved to `NDS-L3-lifecycle-divergence-conflict`.
     requirementIds: ['R09', 'R21', 'R24', 'R25', 'R27', 'R61', 'R62'],
-    guards: ['StaleSurfaceBase', 'PendingIntentShadowViolation'],
+    guards: ['StaleSurfaceBase'],
     lowestPlannerLevel: 'L2',
     highestIntegrationLevel: 'L3',
     file: 'src/e2e/realistic-workflows.e2e.test.ts',
@@ -182,7 +275,7 @@ export const e2eHarnessScenarios = [
     scenarioId: 'NDS-L3-conflict-soak-matrix',
     title: 'conflict soak matrix declares same-surface and cross-surface replay scenarios',
     requirementIds: ['R24', 'R25', 'R26', 'R27', 'R61', 'R62'],
-    guards: ['StaleSurfaceBase', 'PendingIntentShadowViolation', 'DeleteVsEdit'],
+    guards: ['StaleSurfaceBase', 'PendingIntentShadowViolation'],
     lowestPlannerLevel: 'L1',
     highestIntegrationLevel: 'L3',
     file: 'docs/vrs/spec.md',
@@ -190,11 +283,14 @@ export const e2eHarnessScenarios = [
   scenario({
     scenarioId: 'NDS-L4-bidi-clean-outbound-after-remote-observation',
     title: 'clean remote observations advance local bases before later SQLite property edits',
+    // `PendingIntentShadowViolation` was previously claimed here too, but this
+    // test exercises clean base advancement, not the lifecycle shadow violation.
+    // Genuine guard coverage lives in `NDS-L3-lifecycle-divergence-conflict`.
     requirementIds: ['R09', 'R10', 'R11', 'R21', 'R23', 'R24', 'R61', 'R62', 'R64', 'R79'],
-    guards: ['StaleSurfaceBase', 'PendingIntentShadowViolation'],
+    guards: ['StaleSurfaceBase'],
     lowestPlannerLevel: 'L2',
     highestIntegrationLevel: 'L4',
-    file: 'docs/vrs/spec.md',
+    file: 'src/e2e/realistic-workflows.e2e.test.ts',
   }),
   scenario({
     scenarioId: 'NDS-L4-bidi-same-property-race-conflict',
@@ -212,13 +308,13 @@ export const e2eHarnessScenarios = [
     guards: [],
     lowestPlannerLevel: 'L2',
     highestIntegrationLevel: 'L4',
-    file: 'docs/vrs/spec.md',
+    file: 'src/e2e/fake-service.e2e.test.ts',
   }),
   scenario({
     scenarioId: 'NDS-L4-bidi-archive-edit-race',
     title: 'row lifecycle and property edit races fail closed without implicit remote trash',
     requirementIds: ['R11', 'R24', 'R25', 'R27', 'R37', 'R39', 'R40', 'R61', 'R62'],
-    guards: ['DeleteVsEdit', 'MoveOutNotDelete'],
+    guards: ['MoveOutNotDelete'],
     lowestPlannerLevel: 'L2',
     highestIntegrationLevel: 'L4',
     file: 'docs/vrs/spec.md',
@@ -240,7 +336,7 @@ export const e2eHarnessScenarios = [
     scenarioId: 'NDS-L5-bidi-watermark-boundary-overlap',
     title: 'incremental polling drains full last-edited-time boundary buckets',
     requirementIds: ['R43', 'R44', 'R47', 'R64', 'R71'],
-    guards: ['CursorSameBucketIncomplete', 'PaginationIncomplete', 'PageTimestampWakeupOnly'],
+    guards: ['CursorSameBucketIncomplete', 'PaginationIncomplete'],
     lowestPlannerLevel: 'L2',
     highestIntegrationLevel: 'L5',
     file: 'docs/vrs/spec.md',
@@ -249,7 +345,7 @@ export const e2eHarnessScenarios = [
     scenarioId: 'NDS-L5-bidi-incremental-absence-not-tombstone',
     title: 'incremental polling omissions never become tombstone evidence',
     requirementIds: ['R36', 'R37', 'R43', 'R44', 'R47', 'R64', 'R71', 'R73'],
-    guards: ['FilteredAbsenceNotProof', 'PaginationIncomplete', 'QueryAbsenceUnclassified'],
+    guards: ['FilteredAbsenceNotProof', 'PaginationIncomplete'],
     lowestPlannerLevel: 'L2',
     highestIntegrationLevel: 'L5',
     file: 'docs/vrs/spec.md',
@@ -258,7 +354,7 @@ export const e2eHarnessScenarios = [
     scenarioId: 'NDS-L5-bidi-relation-pagination-scoped-block',
     title: 'incomplete relation pagination blocks only the affected property surface',
     requirementIds: ['R19', 'R24', 'R27', 'R41', 'R64', 'R71'],
-    guards: ['PropertyValueIncomplete', 'UnavailableRelationTarget'],
+    guards: ['PropertyValueIncomplete'],
     lowestPlannerLevel: 'L2',
     highestIntegrationLevel: 'L5',
     file: 'docs/vrs/spec.md',
@@ -270,7 +366,7 @@ export const e2eHarnessScenarios = [
     guards: ['AmbiguousCommandOutcome', 'OutboxFirstSettlementWins', 'ReadAfterWriteMismatch'],
     lowestPlannerLevel: 'L3',
     highestIntegrationLevel: 'L3',
-    file: 'docs/vrs/spec.md',
+    file: 'src/e2e/fake-service.e2e.test.ts',
   }),
   scenario({
     scenarioId: 'NDS-L4-bidi-conflict-resolution-lifecycle',
@@ -279,16 +375,36 @@ export const e2eHarnessScenarios = [
     guards: ['StaleSurfaceBase'],
     lowestPlannerLevel: 'L2',
     highestIntegrationLevel: 'L4',
-    file: 'docs/vrs/spec.md',
+    file: 'src/e2e/conflict-resolution.e2e.test.ts',
+  }),
+  // Decision 0018 (#775 M2a'-2 / R82 → REPLICA-R12): lifecycle divergence — a
+  // remote restore after a SETTLED local archive — is a first-class CONFLICT, not a
+  // silent last-writer-wins flip. The `PendingIntentShadowViolation` guard is WIRED
+  // in `sync.ts` and asserted here: a `lifecycle` ConflictRaised lands in
+  // `_nds_guard_block` as `PendingIntentShadowViolation`, `_in_trash` is FROZEN at
+  // the settled local target (no silent flip), the freeze is column-scoped, and
+  // `keep-local`/`keep-remote` resolution drives the conflict through the
+  // `resolving` state. This is the guard's genuine coverage (the earlier
+  // `NDS-L3-realistic-local-remote-conflict` claim was an overclaim — that test
+  // never references the guard).
+  scenario({
+    scenarioId: 'NDS-L3-lifecycle-divergence-conflict',
+    title:
+      'remote restore after a settled local archive raises a durable lifecycle conflict (PendingIntentShadowViolation): _in_trash freezes at the local target with no silent flip, and keep-local/keep-remote resolution drives the resolving state',
+    requirementIds: ['R82'],
+    guards: ['PendingIntentShadowViolation'],
+    lowestPlannerLevel: 'L2',
+    highestIntegrationLevel: 'L3',
+    file: 'src/e2e/sqlite-storage-contract.e2e.test.ts',
   }),
   scenario({
     scenarioId: 'NDS-L4-bidi-rebuild-replay-safety',
     title: 'projection rebuild preserves bidi safety facts from the append-only event log',
     requirementIds: ['R06', 'R08', 'R09', 'R10', 'R27', 'R37', 'R62'],
-    guards: ['CheckpointDigestMismatch', 'CompactionUnsafe'],
+    guards: [],
     lowestPlannerLevel: 'L2',
     highestIntegrationLevel: 'L4',
-    file: 'docs/vrs/spec.md',
+    file: 'src/e2e/realistic-workflows.e2e.test.ts',
   }),
   scenario({
     scenarioId: 'NDS-L5-bidi-local-first-slow-pull',
@@ -333,10 +449,10 @@ export const e2eHarnessScenarios = [
     title:
       '#717 scratch nursery row verifies scoped property and body bidi without mutating non-scratch rows',
     requirementIds: ['R23', 'R24', 'R25', 'R52', 'R60', 'R61', 'R63', 'R65', 'R66'],
-    guards: ['StaleSurfaceBase', 'DeleteVsEdit', 'BodyAdapterConflict'],
+    guards: ['StaleSurfaceBase', 'BodyAdapterConflict'],
     lowestPlannerLevel: 'L3',
     highestIntegrationLevel: 'L6',
-    file: 'docs/vrs/spec.md',
+    file: 'src/e2e/live-notion.e2e.test.ts',
   }),
   scenario({
     scenarioId: 'NDS-L5-high-cardinality-fake-soak',
@@ -352,12 +468,7 @@ export const e2eHarnessScenarios = [
     title:
       'property data-type matrix declares writable computed relation file and rollup scenarios',
     requirementIds: ['R16', 'R18', 'R19', 'R20', 'R24', 'R71'],
-    guards: [
-      'ComputedPropertyWrite',
-      'PropertyValueIncomplete',
-      'UnavailableRelationTarget',
-      'ExpiringFileUrl',
-    ],
+    guards: ['PropertyValueIncomplete'],
     lowestPlannerLevel: 'L1',
     highestIntegrationLevel: 'L3',
     file: 'docs/vrs/spec.md',
@@ -625,9 +736,189 @@ export const e2eHarnessScenarios = [
     highestIntegrationLevel: 'L6',
     file: 'src/e2e/live-notion.e2e.test.ts',
   }),
+  scenario({
+    scenarioId: 'NDS-L1-planner-property-write-core-routing',
+    title:
+      'planner routes property edits through the shared PropertyWriteCore: schema-observation, identity, local-convergence, settlement, and remote-authority blocks',
+    requirementIds: ['R18', 'R29'],
+    guards: [
+      'RemoteSchemaRequired',
+      'PropertyIdentityAmbiguous',
+      'StaleRemoteSchema',
+      'LocalSurfaceDisagreement',
+      'RemoteAuthoritativeDrift',
+    ],
+    lowestPlannerLevel: 'L1',
+    highestIntegrationLevel: 'L1',
+    file: 'src/planner/planner.unit.test.ts',
+  }),
+  // Decision 0024 parts 2 + 3 (#775): the planner dispatches the
+  // `ExpiringFileUrl` guard from the desired `files` property value
+  // (`evaluateDesiredFileReferences`). Durability is a property of the URL, not its
+  // source. A Notion-hosted file is canonicalized without an `externalUrl`, so a
+  // missing `externalUrl` is the signed/expiring case (part 2). An OBVIOUSLY-expiring
+  // EXTERNAL URL — an S3 presign (`X-Amz-*`), Azure SAS, or GCS signed URL detected
+  // by `isExpiringExternalUrl` — fails closed alongside it (part 3); a durable
+  // external URL proceeds. The property-write core allows the same value (tag-fit
+  // no-op), so this separate file-reference dispatch is what fails closed.
+  scenario({
+    scenarioId: 'NDS-L1-expiring-file-url-property-write',
+    title:
+      'planner fails closed on a files property write that would store a non-durable URL (Notion-hosted signed, or an obviously-expiring external presigned/SAS/signed URL) as durable identity; a durable external URL proceeds',
+    requirementIds: ['R20', 'R52', 'R59'],
+    guards: ['ExpiringFileUrl'],
+    lowestPlannerLevel: 'L1',
+    highestIntegrationLevel: 'L1',
+    file: 'src/planner/planner.unit.test.ts',
+  }),
+  scenario({
+    scenarioId: 'NDS-L2-pages-clean-break-surface',
+    title:
+      'public SQL surface is the v1 clean-break `pages` view: no `rows` view, no `_local_row_id` column, and `SELECT * FROM rows` fails closed',
+    requirementIds: ['R01', 'R05'],
+    guards: [],
+    lowestPlannerLevel: 'L2',
+    highestIntegrationLevel: 'L2',
+    file: 'src/e2e/sqlite-storage-contract.e2e.test.ts',
+  }),
+  scenario({
+    scenarioId: 'NDS-L0-webhook-payload-decode-fail-closed',
+    title:
+      'webhook payload decode is strictly fail-closed: HMAC mismatch and malformed shape both leave the signal store untouched (zero enqueueSignal calls); no raw payload material appears in rejection reasons',
+    requirementIds: ['R46', 'R47'],
+    guards: [],
+    lowestPlannerLevel: 'L1',
+    highestIntegrationLevel: 'L1',
+    file: 'src/webhook/receiver.unit.test.ts',
+  }),
+  scenario({
+    scenarioId: 'NDS-L0-webhook-decode-helpers',
+    title:
+      'webhook parsing-layer helpers (`src/webhook/notion.ts`): one-time verification-token parse, X-Notion-Signature verify over exact raw bytes (incl. valid-HMAC + malformed-shape cross-product), strict fail-closed payload decode, and forward-compatible normalization that never carries raw payload material into the signal',
+    requirementIds: ['R46', 'R47'],
+    guards: [],
+    lowestPlannerLevel: 'L0',
+    highestIntegrationLevel: 'L0',
+    file: 'src/webhook/notion.unit.test.ts',
+  }),
+  scenario({
+    scenarioId: 'NDS-L5-webhook-hint-fresh-read-coalesce',
+    title:
+      'a webhook-woken daemon cycle performs a full syncOneShot over all pages (not scoped to the hint pageId), proving decision-0008: webhook hints are acceleration signals only, correctness comes from fresh reads before planning',
+    requirementIds: ['R42', 'R46', 'R47'],
+    guards: [],
+    lowestPlannerLevel: 'L3',
+    highestIntegrationLevel: 'L5',
+    file: 'src/e2e/daemon.e2e.test.ts',
+  }),
+  scenario({
+    scenarioId: 'NDS-L5-otel-safe-nested-trace',
+    title:
+      'a full CLI→daemon→daemonPass→syncOneShot→syncPull/syncPush→gateway/fakeGateway→outboxAttempt span tree nests correctly with every `notion.*` span ended, carries asserted trace attributes (processRole, command, cycle, result, enqueuedCommands, outboxQueuedCount, statusState, spanLabel, …), and upholds the SAFE no-payload-leak invariant: no secret/token/workspace_root attribute keys, no secret/token/`op://` or temp-dir-path values, and `spanLabel` length ≤ 39',
+    requirementIds: ['R57', 'R58', 'R59'],
+    guards: [],
+    lowestPlannerLevel: 'L1',
+    highestIntegrationLevel: 'L5',
+    file: 'src/e2e/otel.e2e.test.ts',
+  }),
+  // EFF-R01 / R81 (#775, decision 0025 Half 1): the OBSERVABLE call-count budget.
+  // Counts `notion.api.request` spans (one per LOGICAL request) under the one-shot
+  // sync span and asserts a falsifiable CEILING (<= 5) plus the exact read-endpoint
+  // multiset, so a regression that adds a per-entity read is caught test-side. A
+  // no-change re-sync is asserted to issue zero write operations. This is the
+  // call-count half only; the rate-limit half (throttle-wait, retry signals) lives
+  // in `@overeng/notion-effect-client` and is out of scope here.
+  scenario({
+    scenarioId: 'NDS-L3-api-call-count-budget',
+    title:
+      'a clean one-shot sync issues at most 5 logical Notion API requests with an exact read-endpoint multiset, and a no-change re-sync issues no writes (EFF-R01 observable call-count budget)',
+    requirementIds: ['R81'],
+    guards: [],
+    lowestPlannerLevel: 'L2',
+    highestIntegrationLevel: 'L3',
+    file: 'src/e2e/otel.e2e.test.ts',
+  }),
+  scenario({
+    scenarioId: 'NDS-L2-hidden-control-plane-isolation',
+    title:
+      'control plane is split into `.notion/v1/state.sqlite`: the public `data/v1/<source>.sqlite` exposes only product views + `_nds_replica_*` cache (no `_nds_outbox`/`_nds_guard_block`/`_nds_sync_event`/`_nds_workspace_binding`/etc), both files are standalone-queryable, and CDC edits in the data file drain across the boundary into the state event log and re-project',
+    requirementIds: ['R01', 'R05'],
+    guards: [],
+    lowestPlannerLevel: 'L2',
+    highestIntegrationLevel: 'L2',
+    file: 'src/e2e/sqlite-storage-contract.e2e.test.ts',
+  }),
+  scenario({
+    scenarioId: 'NDS-L3-local-surface-convergence',
+    title:
+      'shared-mode local convergence (R06) reconciles the SQLite `pages` and `.nmd` frontmatter surfaces per stable `(page_id, property_id)`: agreeing values coalesce to one intent, an untouched `.nmd` leaves a SQLite-only edit single-surface, and a divergent scalar property raises a local conflict (in the read-only `conflicts` surface, not a page-adjacent file) and blocks the remote write as `LocalSurfaceDisagreement`, comparing both surfaces through one name-only `convergence_hash` space. Wired into the real CLI `push` path on a tracked workspace and ACTIVE on production data (SM5d): a datasource pull MATERIALIZES the writable frontmatter properties into the pulled `.nmd`, so an unedited pulled page does not false-diverge and a real `.nmd`-vs-SQLite divergence is caught (proven through the real observe→materialize→project→converge pipeline).',
+    requirementIds: ['R06', 'R08'],
+    guards: ['LocalSurfaceDisagreement'],
+    lowestPlannerLevel: 'L1',
+    highestIntegrationLevel: 'L3',
+    file: 'src/e2e/local-convergence-production.e2e.test.ts',
+  }),
+  scenario({
+    scenarioId: 'NDS-L1-linked-view-read-only',
+    title:
+      'a linked view is a read-only projection over a tracked data source: it owns no data file, page dir, schema, or remote-write authority, and a view referencing an untracked `data_source_id` fails closed (R08)',
+    requirementIds: ['R08'],
+    guards: [],
+    lowestPlannerLevel: 'L1',
+    highestIntegrationLevel: 'L1',
+    file: 'src/local/manifest.unit.test.ts',
+  }),
+  // L0 sibling-package pure-unit registry backfill. These tests live in upstream
+  // packages that datasource-sync composes (`@overeng/notion-effect-schema`,
+  // `@overeng/notion-property-write`); the matrix tracks them as L0 (the cheapest
+  // sufficient layer) so the shared property-write/descriptor vocabulary is
+  // traceable from this one registry. The `file` field is a plain string and is
+  // allowed to cross package boundaries; these tests have no scenario self-check.
+  scenario({
+    scenarioId: 'NDS-L0-descriptor-canonical-codec',
+    title:
+      'shared PropertyDescriptor codec fails closed on unknown/missing/malformed fields, produces key-order-stable canonical bytes, and never classifies computed/unsupported types as writable (R14)',
+    requirementIds: ['R09', 'R10', 'R14'],
+    guards: [],
+    lowestPlannerLevel: 'L0',
+    highestIntegrationLevel: 'L0',
+    file: 'packages/@overeng/notion-effect-schema/src/properties/descriptor.unit.test.ts',
+  }),
+  scenario({
+    scenarioId: 'NDS-L0-property-write-core',
+    title:
+      'shared PropertyWriteCore allow/block boundary: clean local and settled-shared proofs allow, and each missing/stale/ambiguous proof fails closed with its named guard',
+    requirementIds: ['R09', 'R10', 'R11', 'R29'],
+    guards: [],
+    lowestPlannerLevel: 'L0',
+    highestIntegrationLevel: 'L0',
+    file: 'packages/@overeng/notion-property-write/src/core.unit.test.ts',
+  }),
+  // L7 downstream composition: the datasource workspace consumes the STANDALONE
+  // `@overeng/notion-md` package through its body adapter — materializing,
+  // pushing, and verifying a NotionMD-backed local body edit over the real
+  // package boundary (not a fake body port).
+  scenario({
+    scenarioId: 'NDS-L7-datasource-workspace-consumes-standalone-nmd',
+    title:
+      'a tracked datasource workspace drives the standalone @overeng/notion-md body adapter end to end: a local .nmd edit is captured, planned against evidence-backed pointer identity, pushed, and settled by read-after-write verification',
+    requirementIds: ['R02', 'R23', 'R24', 'R65', 'R66'],
+    guards: ['BodyAdapterConflict'],
+    lowestPlannerLevel: 'L3',
+    highestIntegrationLevel: 'L7',
+    file: 'src/e2e/body-adapter.e2e.test.ts',
+  }),
 ] as const satisfies ReadonlyArray<ScenarioMetadata>
 
 const guardScenarioIds = {
+  // Shared property-write guard vocabulary (from @overeng/notion-property-write),
+  // routed through the planner's workspace proof provider in 3c-ii. Each is
+  // backed by a concrete planner scenario in `src/planner/planner.unit.test.ts`.
+  RemoteSchemaRequired: 'NDS-L1-planner-property-write-core-routing',
+  PropertyIdentityAmbiguous: 'NDS-L1-planner-property-write-core-routing',
+  StaleRemoteSchema: 'NDS-L1-planner-property-write-core-routing',
+  LocalSurfaceDisagreement: 'NDS-L1-planner-property-write-core-routing',
+  RemoteAuthoritativeDrift: 'NDS-L1-planner-property-write-core-routing',
   ApiVersionUnsupported: 'NDS-GUARD-api-version-unsupported',
   ApiVersionUnverified: 'NDS-GUARD-api-version-unverified',
   ApiVersionCompatibilityMissing: 'NDS-GUARD-api-compatibility-missing',
@@ -639,7 +930,6 @@ const guardScenarioIds = {
   RelatedDataSourceUnshared: 'NDS-GUARD-related-data-source-unshared',
   StaleSurfaceBase: 'NDS-L3-realistic-local-remote-conflict',
   CurrentSurfaceMissing: 'NDS-L3-doctor-guard-state',
-  PageTimestampWakeupOnly: 'NDS-GUARD-page-timestamp-wakeup-only',
   SchemaDriftAffectsIntent: 'NDS-L3-realistic-schema-capability-failure',
   DestructiveSchemaMigrationRequired: 'NDS-L2-schema-destructive-fail-closed',
   OptionDeletionLosesValues: 'NDS-L2-schema-destructive-fail-closed',
@@ -655,15 +945,14 @@ const guardScenarioIds = {
   QueryContractChanged: 'NDS-GUARD-query-contract-changed',
   QueryResultCapExceeded: 'NDS-L2-query-cap-blocks-absence',
   FilteredAbsenceNotProof: 'NDS-L2-filtered-absence-not-proof',
-  LinkedDataSourceUnsupported: 'NDS-GUARD-linked-data-source-unsupported',
   PermissionAmbiguous: 'NDS-L2-permission-ambiguity-fail-closed',
   DeleteVsEdit: 'NDS-GUARD-delete-vs-edit',
   MoveOutNotDelete: 'NDS-L2-membership-lost-restored',
   UnavailableRelationTarget: 'NDS-GUARD-unavailable-relation-target',
-  ExpiringFileUrl: 'NDS-GUARD-expiring-file-url',
+  ExpiringFileUrl: 'NDS-L1-expiring-file-url-property-write',
   ReadAfterWriteMismatch: 'NDS-L3-outbox-invalid-settlement-rejected',
   AmbiguousCommandOutcome: 'NDS-L3-outbox-invalid-settlement-rejected',
-  PendingIntentShadowViolation: 'NDS-L3-realistic-local-remote-conflict',
+  PendingIntentShadowViolation: 'NDS-L3-lifecycle-divergence-conflict',
   BodyAdapterNonBodyMutation: 'NDS-L2-body-adapter-surface-leak',
   FilesystemDeleteAutoTrashBlocked: 'NDS-L4-realistic-filesystem-delete-repair',
   CursorSameBucketIncomplete: 'NDS-L5-daemon-query-cursor-resume',
@@ -673,16 +962,37 @@ const guardScenarioIds = {
   LeaseFenceMismatch: 'NDS-L3-outbox-legacy-running-lease-fence',
   OutboxFirstSettlementWins: 'NDS-L3-outbox-invalid-settlement-rejected',
   CheckpointDigestMismatch: 'NDS-GUARD-checkpoint-digest-mismatch',
-  StoreMigrationBlocked: 'NDS-GUARD-store-migration-blocked',
   QueueBackpressureExceeded: 'NDS-L5-daemon-bounded-outbox-drain',
   RawPayloadRetentionUnsafe: 'NDS-LIVE-skeleton-gated-cleanup-ledger',
+  UnknownWorkspaceNamespace: 'NDS-GUARD-unknown-workspace-namespace',
+  MixedWorkspaceNamespace: 'NDS-GUARD-mixed-workspace-namespace',
 } as const satisfies Record<GuardNameType, ScenarioId>
 
 const vrsRequirementId = (index: number): RequirementId =>
   `R${index.toString().padStart(2, '0')}` as RequirementId
 
-/** Full ordered list of VRS requirement ids from R01 to R73; used to detect unmapped requirements in coverage checks. */
-export const vrsRequirementIds = Array.from({ length: 73 }, (_, index) =>
+/**
+ * Full ordered list of matrix requirement ids from R01 to R82; used to detect
+ * unmapped requirements in coverage checks. The upper bound extends two ids past
+ * the highest id cited by any scenario (R80) to reserve R81/R82 for the two
+ * newest ratified requirements ahead of their implementation scenarios — a
+ * hardcoded `length: 73` previously left R74+ silently un-checked even though
+ * scenarios already cite up to R80. The `invalidScenarioRequirementIdGaps`
+ * legality ceiling stays one above the enumeration (R83) as a typo guard, not an
+ * enumeration target.
+ *
+ * Flat→namespaced mapping for the two newest ratified requirements (#775): the
+ * flat matrix ids and the namespaced requirements.md ids are parallel
+ * enumerations — there is no global mapping table, only per-scenario
+ * `requirementIds` citations and residual reasons (global reconciliation is
+ * deferred to follow-up ledger). For traceability:
+ *   - R81 → EFF-R01 (cross-cutting API resourcefulness & rate-limit discipline)
+ *   - R82 → REPLICA-R12 (archive/restore round-trip reprojection retention)
+ * Both are now mapped by concrete scenarios (R81 by `NDS-L3-api-call-count-budget`,
+ * R82 by `NDS-L3-lifecycle-divergence-conflict`), so neither is an
+ * `unmapped-requirement` residual anymore.
+ */
+export const vrsRequirementIds = Array.from({ length: 82 }, (_, index) =>
   vrsRequirementId(index + 1),
 )
 
@@ -741,13 +1051,6 @@ export const traceabilityResiduals = [
   },
   {
     _tag: 'placeholder-guard-scenario',
-    guard: 'PageTimestampWakeupOnly',
-    scenarioId: 'NDS-GUARD-page-timestamp-wakeup-only',
-    requirementIds: ['R22', 'R43'],
-    reason: 'Timestamp wake-up semantics are daemon-scope and await watch scenario ownership.',
-  },
-  {
-    _tag: 'placeholder-guard-scenario',
     guard: 'QueryAbsenceUnclassified',
     scenarioId: 'NDS-GUARD-query-absence-unclassified',
     requirementIds: ['R36', 'R37'],
@@ -759,13 +1062,6 @@ export const traceabilityResiduals = [
     scenarioId: 'NDS-GUARD-query-contract-changed',
     requirementIds: ['R72', 'R73'],
     reason: 'Query contract drift needs multi-scan checkpoint fixtures.',
-  },
-  {
-    _tag: 'placeholder-guard-scenario',
-    guard: 'LinkedDataSourceUnsupported',
-    scenarioId: 'NDS-GUARD-linked-data-source-unsupported',
-    requirementIds: ['R05', 'R29'],
-    reason: 'Linked data-source behavior needs a representative Notion shape fixture.',
   },
   {
     _tag: 'placeholder-guard-scenario',
@@ -783,13 +1079,6 @@ export const traceabilityResiduals = [
   },
   {
     _tag: 'placeholder-guard-scenario',
-    guard: 'ExpiringFileUrl',
-    scenarioId: 'NDS-GUARD-expiring-file-url',
-    requirementIds: ['R20', 'R52', 'R59'],
-    reason: 'Expiring file URLs are not yet represented in fake property fixtures.',
-  },
-  {
-    _tag: 'placeholder-guard-scenario',
     guard: 'CompactionUnsafe',
     scenarioId: 'NDS-GUARD-compaction-unsafe',
     requirementIds: ['R08', 'R12', 'R62'],
@@ -804,16 +1093,24 @@ export const traceabilityResiduals = [
   },
   {
     _tag: 'placeholder-guard-scenario',
-    guard: 'StoreMigrationBlocked',
-    scenarioId: 'NDS-GUARD-store-migration-blocked',
-    requirementIds: ['R12', 'R62'],
-    reason: 'Store migration blocking is covered by store tests and awaits E2E promotion.',
+    guard: 'UnknownWorkspaceNamespace',
+    scenarioId: 'NDS-GUARD-unknown-workspace-namespace',
+    requirementIds: ['R04', 'R05'],
+    reason:
+      'Unknown workspace namespace fail-closed is covered by manifest unit tests; fake E2E promotion (NDS-L3-versioned-namespace-fail-closed) is pending.',
   },
   {
-    _tag: 'unmapped-requirement',
-    requirementId: 'R01',
-    reason: 'Package boundary is validated by package/export checks rather than fake-service E2E.',
+    _tag: 'placeholder-guard-scenario',
+    guard: 'MixedWorkspaceNamespace',
+    scenarioId: 'NDS-GUARD-mixed-workspace-namespace',
+    requirementIds: ['R04', 'R05'],
+    reason:
+      'Mixed workspace namespace fail-closed is covered by manifest unit tests; fake E2E promotion (NDS-L3-versioned-namespace-fail-closed) is pending.',
   },
+  // Shared property-write guards (3c-i vocabulary compose) are now routed through
+  // the planner's workspace proof provider in 3c-ii and covered by the concrete
+  // `NDS-L1-planner-property-write-core-routing` scenario, so they no longer need
+  // placeholder residuals.
   {
     _tag: 'unmapped-requirement',
     requirementId: 'R03',
@@ -855,11 +1152,9 @@ export const traceabilityResiduals = [
     requirementId: 'R72',
     reason: 'Query contract identity needs multi-scan checkpoint E2E coverage.',
   },
-  {
-    _tag: 'unmapped-requirement',
-    requirementId: 'R49',
-    reason: 'Dry-run plans are CLI/user-command scope.',
-  },
+  // R49 (CLI-R02, dry-run suppression) is now mapped by the concrete
+  // `NDS-L4-dry-run-suppression-all-surfaces` scenario (SM5.2), so it is no
+  // longer an unmapped residual.
   {
     _tag: 'unmapped-requirement',
     requirementId: 'R51',
@@ -880,21 +1175,43 @@ export const traceabilityResiduals = [
     requirementId: 'R56',
     reason: 'Worker optionality is future integration scope.',
   },
+  // R74-R80 are now inside the enumerated range (length bumped to 80 to close the
+  // drift gate). R74/R78/R79/R80 are mapped by concrete scenarios. R75/R76/R77 are
+  // enumeration slots that no current scenario cites; they have no `**RNN` marker
+  // in the cross-cutting requirements.md (which defines only R01-R15 in marker
+  // form), so — like R16-R73 — they are matrix-internal ids whose reconciliation
+  // with requirements.md is tracked as a non-VRS ratification follow-up (#797).
+  // Residual'd here so the gate stays honest rather than silently
+  // un-checking them again.
   {
     _tag: 'unmapped-requirement',
-    requirementId: 'R57',
-    reason: 'Span coverage requires telemetry-specific checks.',
+    requirementId: 'R75',
+    reason:
+      'Matrix enumeration slot with no current scenario citation; pending requirements.md/RNN reconciliation (follow-up ledger).',
   },
   {
     _tag: 'unmapped-requirement',
-    requirementId: 'R58',
-    reason: 'Trace attributes require telemetry-specific checks.',
+    requirementId: 'R76',
+    reason:
+      'Matrix enumeration slot with no current scenario citation; pending requirements.md/RNN reconciliation (follow-up ledger).',
   },
   {
     _tag: 'unmapped-requirement',
-    requirementId: 'R59',
-    reason: 'Safe telemetry requires telemetry-specific checks.',
+    requirementId: 'R77',
+    reason:
+      'Matrix enumeration slot with no current scenario citation; pending requirements.md/RNN reconciliation (follow-up ledger).',
   },
+  // R81 → EFF-R01 (cross-cutting API resourcefulness & rate-limit discipline) is
+  // NO LONGER a residual: the call-count half of decision 0025 is implemented and
+  // R81 is now mapped by the concrete `NDS-L3-api-call-count-budget` scenario
+  // (observable call-count ceilings in `src/e2e/otel.e2e.test.ts`). The rate-limit
+  // half (Half 2, `@overeng/notion-effect-client`) is a separate change.
+  //
+  // R82 → REPLICA-R12 (archive/restore round-trip reprojection retention) is NO
+  // LONGER a residual either: decision 0026 lifecycle divergence (#775 M2a'-2)
+  // landed, so R82 is now mapped by the concrete `NDS-L3-lifecycle-divergence-conflict`
+  // scenario (remote restore after a settled archive raises a durable conflict with
+  // a frozen `_in_trash` in `src/e2e/sqlite-storage-contract.e2e.test.ts`).
 ] as const satisfies ReadonlyArray<TraceabilityResidual>
 
 const concreteScenarioById: ReadonlyMap<ScenarioId, ScenarioMetadata> = new Map(
@@ -1112,7 +1429,7 @@ export const scenarioImplementationGaps = ({
       file: entry.file,
     }))
 
-/** Reports requirement ids within scenarios that fall outside the valid R01–R81 range. */
+/** Reports requirement ids within scenarios that fall outside the valid R01–R83 range. */
 export const invalidScenarioRequirementIdGaps = (
   scenarios: ReadonlyArray<ScenarioMetadata> = e2eHarnessScenarios,
 ): ReadonlyArray<ScenarioCoverageGap> =>
@@ -1123,7 +1440,7 @@ export const invalidScenarioRequirementIdGaps = (
         if (match?.[1] === undefined) return true
 
         const requirementNumber = Number.parseInt(match[1], 10)
-        return requirementNumber < 1 || requirementNumber > 81
+        return requirementNumber < 1 || requirementNumber > 83
       })
       .map((requirementId) => ({
         _tag: 'invalid-scenario-requirement-id',

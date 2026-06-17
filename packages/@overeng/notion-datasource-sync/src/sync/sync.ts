@@ -21,6 +21,7 @@ import {
   NotionGatewayError,
   type NotionGatewayError as NotionGatewayErrorType,
 } from '../core/errors.ts'
+import type { SyncEvent as SyncEventType } from '../core/events.ts'
 import {
   NotionDataSourceGateway,
   PageBodySyncPort,
@@ -28,6 +29,7 @@ import {
 } from '../core/ports.ts'
 import { reportSyncProgress } from '../core/progress.ts'
 import { readOneShotSyncStatus, type OneShotSyncStatus } from '../core/status.ts'
+import type { AuthorityMode } from '../local/manifest.ts'
 import {
   annotateSpan,
   shortSpanId,
@@ -37,11 +39,17 @@ import {
   statusSpanAttributes,
 } from '../observability/observability.ts'
 import {
+  applyConvergenceVerdicts,
+  type PropertyConvergenceVerdict,
+} from '../planner/local-convergence.ts'
+import {
   planIntent,
+  withAuthorityMode,
   type BodyEditIntent,
   type LocalDeleteIntent,
   type PlanDecision,
   type PlannerIntent,
+  type PlannerProjectionSnapshot,
 } from '../planner/planner.ts'
 import { pageLifecycleHash } from '../store/projections.ts'
 import type { NotionSyncStore } from '../store/store.ts'
@@ -94,15 +102,47 @@ export type OneShotPushOptions = {
   readonly leaseDurationMs?: number
   readonly now?: () => Date
   readonly dryRun?: boolean
+  /**
+   * Workspace-wide authority mode (decisions 0015, 0019), threaded onto every
+   * planner property snapshot's `writeMode`. `remote` makes local property edits
+   * drift (`RemoteAuthoritativeDrift`); `local`/`shared` reach the property-write
+   * proof. Absent leaves the planner's `shared` default.
+   */
+  readonly authorityMode?: AuthorityMode
+  /**
+   * SM5c local-convergence property verdicts, overlaid onto every planner
+   * property snapshot's `localConvergence` before planning. A `disagrees` verdict
+   * makes the shared PropertyWriteCore block the write as `LocalSurfaceDisagreement`
+   * (the SQLite `pages` edit and the page's `.nmd` frontmatter diverge). Empty /
+   * absent leaves the planner's `not-applicable` default. Only meaningful in
+   * `shared` mode; the caller computes it via `convergeLocalSurfaces`.
+   */
+  readonly convergenceVerdicts?: ReadonlyArray<PropertyConvergenceVerdict>
 }
 
 /** Combined options for `syncOneShot`, merging pull and push settings into a single pass. */
 export type OneShotSyncOptions = OneShotPullOptions &
   Pick<
     OneShotPushOptions,
-    'localIntents' | 'materializeBodies' | 'maxExecutorSteps' | 'leaseToken' | 'leaseDurationMs'
+    | 'localIntents'
+    | 'materializeBodies'
+    | 'maxExecutorSteps'
+    | 'leaseToken'
+    | 'leaseDurationMs'
+    | 'authorityMode'
   > & {
     readonly deferLocalPlanningUntilAfterPull?: boolean
+    /**
+     * Mirror (`remote`-authority) reconcile: run ONLY the remote→local pull pass
+     * and skip BOTH internal local→remote push passes, so no local intent reaches
+     * the executor or the gateway (SM5.4 / CLI-R07). The watch daemon sets this for
+     * a `remote`-mode workspace; one-shot `sync` never does, so the default
+     * push+pull behavior is preserved. This is the loop-level complement to the
+     * planner's per-write `RemoteAuthoritativeDrift` block — it keeps the daemon's
+     * promise to "follow remote" structurally, instead of relying on every staged
+     * intent being individually refused.
+     */
+    readonly pullOnly?: boolean
   }
 
 /** Options for first establishment from an existing Notion data source into a local workspace. */
@@ -290,6 +330,26 @@ const appendDecision = ({
     }
   }
 }
+
+/**
+ * Empty push result for a mirror (`remote`-authority) reconcile that ran no push
+ * pass; carries the current status so the `OneShotSyncResult` plan frame stays
+ * well-formed. Call it AFTER the pull pass so `status` reflects the appended
+ * pull events (the top-level `syncOneShot` `status` is the authoritative result
+ * field; this `push.status` is a convenience mirror of the same post-pull read).
+ */
+const emptyPushResult = ({
+  store,
+  rootId,
+}: {
+  readonly store: NotionSyncStore
+  readonly rootId: RemoteObservationOptions['rootId']
+}): OneShotPushResult => ({
+  localObservations: 0,
+  plan: { decisions: [], appendedEvents: 0, enqueuedCommands: 0, blocked: 0, conflicts: 0 },
+  executor: { steps: 0, maxStepsReached: false, results: [] },
+  status: readOneShotSyncStatus({ store, rootId }),
+})
 
 const mergePlanSummaries = (summaries: ReadonlyArray<OneShotPlanSummary>): OneShotPlanSummary => ({
   decisions: summaries.flatMap((summary) => summary.decisions),
@@ -519,6 +579,140 @@ const hasLocalWorkspaceChange = ({
   })
 }
 
+/**
+ * Lifecycle-divergence detection for a single observation event (decision 0026).
+ *
+ * For a `RowObserved` with remote trash state `R`, compares against the SETTLED
+ * local lifecycle target `L` (from `store.readSettledLifecycleTarget`, which reads
+ * the settled `TrashPage`/`RestorePage` outbox history — NOT `_nds_row.in_trash`,
+ * whose overloaded writes would manufacture false positives). Returns the events
+ * to append BEFORE the `RowObserved` when they diverge:
+ *
+ * - `L === undefined` (no settled lifecycle intent) → no conflict; benign remote
+ *   trash state applies normally. This covers the initial state and benign remote
+ *   toggles — the false-positive guard.
+ * - `R === L` → benign; the RowObserved applies normally.
+ * - `R !== L` → a lifecycle CONFLICT: emit a `ConflictRaised(lifecycle)` carrying
+ *   `remoteInTrash: R`, plus a `PendingIntentShadowViolation` `GuardBlocked`
+ *   diagnostic ("a remote observation would overwrite a settled local target").
+ *
+ * Non-`RowObserved` events and the no-divergence cases return an empty array.
+ */
+const lifecycleDivergenceEvents = ({
+  store,
+  event,
+  now,
+}: {
+  readonly store: NotionSyncStore
+  readonly event: SyncEventType
+  readonly now?: () => Date
+}): ReadonlyArray<SyncEventType> => {
+  if (event._tag !== 'RowObserved') return []
+
+  const localTarget = store.readSettledLifecycleTarget({
+    rootId: event.rootId,
+    pageId: event.pageId,
+  })
+  if (localTarget === undefined || localTarget === event.inTrash) return []
+
+  const surface = pageSurfaceKey(event.pageId)
+  const localHash = pageLifecycleHash({ pageId: event.pageId, inTrash: localTarget })
+  const remoteHash = pageLifecycleHash({ pageId: event.pageId, inTrash: event.inTrash })
+  const message = `Remote lifecycle observation (in_trash=${event.inTrash}) would overwrite the settled local target (in_trash=${localTarget})`
+
+  return [
+    makeConflictRaisedEvent({
+      rootId: event.rootId,
+      pageId: event.pageId,
+      surface,
+      conflictKind: 'lifecycle',
+      remoteInTrash: event.inTrash,
+      // Lifecycle has no three-way base; the local target hash is a deterministic,
+      // replay-stable base sentinel (not part of the idempotency key).
+      baseHash: localHash,
+      localHash,
+      remoteHash,
+      message,
+      ...(now === undefined ? {} : { now }),
+    }),
+    makeGuardBlockedEvent({
+      rootId: event.rootId,
+      guard: 'PendingIntentShadowViolation',
+      surface,
+      message,
+      ...(now === undefined ? {} : { now }),
+    }),
+  ]
+}
+
+/**
+ * Symmetric lifecycle-divergence detection for a `TombstoneRecorded(remote_trash)`
+ * event (decision 0026, the tombstone direction mirroring `lifecycleDivergenceEvents`).
+ *
+ * A remote-initiated trash arrives as a tombstone (`R = 1`, in_trash), NOT a
+ * `RowObserved` (a trashed page drops out of `data_source.query`). It is compared
+ * against the SETTLED local lifecycle target `L` (via `store.readSettledLifecycleTarget`,
+ * NOT `_nds_row.in_trash`, whose overloaded writes would manufacture false positives):
+ *
+ * - `L === undefined` (no settled lifecycle intent) → no conflict; the tombstone
+ *   applies normally (in_trash = 1). Covers the initial/benign remote trash — the
+ *   false-positive guard.
+ * - `L === true` (settled local TRASH; matches `R = 1`) → benign; no conflict.
+ * - `L === false` (settled local RESTORE) → divergence from `R = 1`: emit a
+ *   `ConflictRaised(lifecycle, remoteInTrash: true)` plus a
+ *   `PendingIntentShadowViolation` `GuardBlocked` diagnostic — the remote trash
+ *   would otherwise silently override the settled local restore (XC-R02).
+ *
+ * Non-`TombstoneRecorded`, non-`remote_trash`, and no-divergence cases return `[]`.
+ */
+const tombstoneLifecycleDivergenceEvents = ({
+  store,
+  event,
+  now,
+}: {
+  readonly store: NotionSyncStore
+  readonly event: SyncEventType
+  readonly now?: () => Date
+}): ReadonlyArray<SyncEventType> => {
+  if (event._tag !== 'TombstoneRecorded' || event.reason !== 'remote_trash') return []
+
+  const localTarget = store.readSettledLifecycleTarget({
+    rootId: event.rootId,
+    pageId: event.pageId,
+  })
+  // Remote trash implies R = in_trash = true; benign when no settled intent or L matches R.
+  if (localTarget === undefined || localTarget === true) return []
+
+  const surface = pageSurfaceKey(event.pageId)
+  const localHash = pageLifecycleHash({ pageId: event.pageId, inTrash: localTarget })
+  const remoteHash = pageLifecycleHash({ pageId: event.pageId, inTrash: true })
+  const message = `Remote trash (in_trash=true) would overwrite the settled local target (in_trash=${localTarget})`
+
+  return [
+    makeConflictRaisedEvent({
+      rootId: event.rootId,
+      pageId: event.pageId,
+      surface,
+      conflictKind: 'lifecycle',
+      remoteInTrash: true,
+      // Lifecycle has no three-way base; the local target hash is a deterministic,
+      // replay-stable base sentinel (not part of the idempotency key).
+      baseHash: localHash,
+      localHash,
+      remoteHash,
+      message,
+      ...(now === undefined ? {} : { now }),
+    }),
+    makeGuardBlockedEvent({
+      rootId: event.rootId,
+      guard: 'PendingIntentShadowViolation',
+      surface,
+      message,
+      ...(now === undefined ? {} : { now }),
+    }),
+  ]
+}
+
 /** Observe the remote data source (API, schema, rows, properties, bodies) and persist the resulting events to the local store. Resumes a partial query scan if a checkpoint cursor exists. */
 export const pullOneShotSync = Effect.fn(spanNames.syncPull)(
   (
@@ -536,14 +730,44 @@ export const pullOneShotSync = Effect.fn(spanNames.syncPull)(
         ...(options.dryRun === undefined ? {} : { dryRun: options.dryRun }),
       })
       yield* reportSyncProgress({ _tag: 'phase', phase: 'pulling' })
+      // Body keep-remote re-materialization (decision 0021). A body pointer whose
+      // `sidecarIdentityProven` was cleared by a keep-remote resolution must be
+      // re-materialized from the remote observation even under the mirror path's
+      // global `materializeBodyArtifacts: false` suppression — keep-remote accepted
+      // the remote body, so the still-diverged local `.nmd` is overwritten.
+      const forceMaterializePageIds = new Set(
+        options.store
+          .readPlannerProjectionSnapshot(options.rootId)
+          .bodies.filter((body) => body.sidecarIdentityProven === false)
+          .map((body) => body.pageId),
+      )
       const observation = yield* observeRemoteDataSource({
         ...options,
         ...(options.dryRun === true ? { materializeBodies: false } : {}),
+        ...(forceMaterializePageIds.size === 0 ? {} : { forceMaterializePageIds }),
         startCursor: options.startCursor ?? resumeCursorForPull(options),
       })
       let appendedEvents = 0
       for (const event of observation.events) {
         if (options.dryRun === true) continue
+        // Lifecycle-divergence detection (decision 0026). A `RowObserved` whose
+        // remote trash state `R` diverges from the SETTLED local lifecycle target
+        // `L` is a conflict, not a silent flip (XC-R02). Detect here — the shared
+        // ingestion seam for one-shot AND watch (both funnel through
+        // `pullOneShotSync`) — and append the `ConflictRaised` (plus the
+        // `PendingIntentShadowViolation` diagnostic) BEFORE the `RowObserved`, so
+        // the open conflict has a LOWER sequence and is visible when the
+        // RowObserved applies during pure full-log replay. Detection is never in
+        // the apply path (projections cannot append events).
+        for (const lifecycleEvent of lifecycleDivergenceEvents({
+          store: options.store,
+          event,
+          ...(options.now === undefined ? {} : { now: options.now }),
+        })) {
+          if (options.store.appendEventWithResult(lifecycleEvent).inserted === true) {
+            appendedEvents += 1
+          }
+        }
         if (options.store.appendEventWithResult(event).inserted === true) {
           appendedEvents += 1
         }
@@ -551,6 +775,23 @@ export const pullOneShotSync = Effect.fn(spanNames.syncPull)(
       const absenceEvents = yield* disappearanceCandidateEvents({ options, observation })
       for (const event of absenceEvents) {
         if (options.dryRun === true) continue
+        // Symmetric lifecycle-divergence detection (decision 0026, tombstone
+        // direction). A `TombstoneRecorded(remote_trash)` whose remote trash
+        // (`R = 1`) diverges from the SETTLED local restore target (`L = 0`) is a
+        // conflict, not a silent flip (XC-R02). Append the `ConflictRaised` (plus
+        // the `PendingIntentShadowViolation` diagnostic) BEFORE the tombstone, so
+        // the open conflict has a LOWER sequence and freezes the tombstone's
+        // `in_trash = 1` write during full-log replay. Mirrors the `RowObserved`
+        // restore-after-archive seam above.
+        for (const lifecycleEvent of tombstoneLifecycleDivergenceEvents({
+          store: options.store,
+          event,
+          ...(options.now === undefined ? {} : { now: options.now }),
+        })) {
+          if (options.store.appendEventWithResult(lifecycleEvent).inserted === true) {
+            appendedEvents += 1
+          }
+        }
         if (options.store.appendEventWithResult(event).inserted === true) {
           appendedEvents += 1
         }
@@ -649,9 +890,31 @@ export const pushOneShotSync = Effect.fn(spanNames.syncPush)(
             (yield* observeLocalWorkspace(options.workspaceRoot)))
       const summaries: OneShotPlanSummary[] = []
 
+      /*
+       * Read the planner snapshot with the authority-mode overlay AND the SM5c
+       * local-convergence property verdicts applied. The convergence verdicts set
+       * `localConvergence` per `(pageId, propertyId)` so a divergent SQLite-vs-`.nmd`
+       * property blocks as `LocalSurfaceDisagreement` through the shared proof core.
+       */
+      const readConvergedSnapshot = (): PlannerProjectionSnapshot => {
+        const withMode = withAuthorityMode({
+          snapshot: options.store.readPlannerProjectionSnapshot(options.rootId),
+          authorityMode: options.authorityMode,
+        })
+        return options.convergenceVerdicts === undefined || options.convergenceVerdicts.length === 0
+          ? withMode
+          : {
+              ...withMode,
+              properties: applyConvergenceVerdicts({
+                properties: withMode.properties,
+                verdicts: options.convergenceVerdicts,
+              }),
+            }
+      }
+
       yield* reportSyncProgress({ _tag: 'phase', phase: 'planning' })
       for (const intent of options.localIntents ?? []) {
-        const snapshot = options.store.readPlannerProjectionSnapshot(options.rootId)
+        const snapshot = readConvergedSnapshot()
         summaries.push(
           appendDecision({
             store: options.store,
@@ -665,7 +928,7 @@ export const pushOneShotSync = Effect.fn(spanNames.syncPush)(
       }
 
       for (const observation of local.observations) {
-        const snapshot = options.store.readPlannerProjectionSnapshot(options.rootId)
+        const snapshot = readConvergedSnapshot()
         const bodySurface = snapshot.bodies.find(
           (candidate) => candidate.pageId === observation.pageId,
         )
@@ -693,6 +956,16 @@ export const pushOneShotSync = Effect.fn(spanNames.syncPush)(
           continue
         }
 
+        /*
+         * The `.nmd` artifact is the SINGLE local body surface and the body ADAPTER
+         * owns it (decision 0021). Body is NOT routed through the property
+         * convergence engine — that was a false symmetry (the engine adds no handling
+         * the adapter does not already do). The adapter (`planLocalChange`) is
+         * authoritative for ALL body semantics: stale-vs-live remote, the safety
+         * contract, and `BodyPushCommand` construction; a body conflict is raised by
+         * the adapter below (`conflictKind: 'body'`) and resolved via keep-local
+         * re-push / keep-remote re-materialize.
+         */
         const baseBodyPointer = bodySurface.pointer
         const bodyPlan = yield* body.planLocalChange({
           _tag: 'BodyLocalChangeInput',
@@ -714,6 +987,10 @@ export const pushOneShotSync = Effect.fn(spanNames.syncPush)(
                     rootId: options.rootId,
                     pageId: observation.pageId,
                     surface: bodySurfaceKey(observation.pageId),
+                    // EVIDENCE digest: the body adapter's `body` conflict is a
+                    // remote-reconciliation output (decision 0021), so it stays in the
+                    // same evidence space as the adapter command and the
+                    // `_nds_body_pointer` projection.
                     baseHash: bodyPointerIdentityDigest(bodyPlan.baseBodyPointer),
                     localHash: bodyPlan.localBodyHash,
                     remoteHash: bodyPlan.remoteBodyHash,
@@ -750,6 +1027,13 @@ export const pushOneShotSync = Effect.fn(spanNames.syncPush)(
           surface: bodySurfaceKey(observation.pageId),
           pageId: observation.pageId,
           command,
+          // EVIDENCE digest: `intent.baseHash` feeds the planner's
+          // `guardStaleSurfaceBase`, which compares it against
+          // `bodySurface.currentHash` — read straight from the `_nds_body_pointer`
+          // projection, which stays on the evidence digest (the adapter's
+          // stale-vs-remote space, decision 0021). Both sides of that guard MUST
+          // share a space; a rendered base here would false-fire `StaleSurfaceBase`
+          // on every evidence-backed pointer.
           baseHash: bodyPointerIdentityDigest(bodyPlan.baseBodyPointer),
           desiredHash: bodyPlan.nextBodyHash,
         }
@@ -758,7 +1042,10 @@ export const pushOneShotSync = Effect.fn(spanNames.syncPush)(
             store: options.store,
             rootId: options.rootId,
             decision: planIntent({
-              snapshot: options.store.readPlannerProjectionSnapshot(options.rootId),
+              snapshot: withAuthorityMode({
+                snapshot: options.store.readPlannerProjectionSnapshot(options.rootId),
+                authorityMode: options.authorityMode,
+              }),
               intent,
             }),
             pageId: observation.pageId,
@@ -839,8 +1126,19 @@ export const syncOneShot = Effect.fn(spanNames.syncOneShot)(
           ? {}
           : { leaseDurationMs: options.leaseDurationMs }),
       })
+      // Mirror (`remote`-authority) reconcile: run pull-only, skipping BOTH push
+      // passes so no local intent — property, lifecycle (archive/restore), OR row
+      // create — is ever planned, enqueued, or executed against the gateway. The
+      // pull pass alone converges remote→local (SM5.4). This is the SINGLE
+      // chokepoint that makes the mirror guarantee uniform across one-shot `sync`
+      // AND the watch daemon: `authorityMode === 'remote'` gates here regardless of
+      // caller, so a remote-mode workspace never pushes even though the planner's
+      // per-property `RemoteAuthoritativeDrift` block never covered the
+      // lifecycle/create paths. The explicit `pullOnly` flag remains for the daemon
+      // (defense-in-depth) and standalone callers without an authority mode.
+      const mirrorPullOnly = options.pullOnly === true || options.authorityMode === 'remote'
       const local =
-        options.materializeBodies === false
+        options.materializeBodies === false || mirrorPullOnly === true
           ? { observations: [] }
           : yield* observeLocalWorkspace(options.workspaceRoot)
       const localWorkspaceChanged = hasLocalWorkspaceChange({
@@ -849,7 +1147,9 @@ export const syncOneShot = Effect.fn(spanNames.syncOneShot)(
         rootId: options.rootId,
       })
       const prePullPush =
-        localWorkspaceChanged === false || options.deferLocalPlanningUntilAfterPull === true
+        mirrorPullOnly === true ||
+        localWorkspaceChanged === false ||
+        options.deferLocalPlanningUntilAfterPull === true
           ? undefined
           : yield* pushOneShotSync({
               ...options,
@@ -860,13 +1160,16 @@ export const syncOneShot = Effect.fn(spanNames.syncOneShot)(
         ...options,
         ...(localWorkspaceChanged === true ? { materializeBodyArtifacts: false } : {}),
       })
-      const pushAfterPull = yield* pushOneShotSync({
-        ...options,
-        localWorkspaceObservation:
-          localWorkspaceChanged === true && options.deferLocalPlanningUntilAfterPull === true
-            ? local
-            : { observations: [] },
-      })
+      const pushAfterPull =
+        mirrorPullOnly === true
+          ? emptyPushResult({ store: options.store, rootId: options.rootId })
+          : yield* pushOneShotSync({
+              ...options,
+              localWorkspaceObservation:
+                localWorkspaceChanged === true && options.deferLocalPlanningUntilAfterPull === true
+                  ? local
+                  : { observations: [] },
+            })
       const push =
         prePullPush === undefined
           ? pushAfterPull

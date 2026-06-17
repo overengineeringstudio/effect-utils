@@ -1,9 +1,11 @@
+import type { FileSystem } from '@effect/platform'
 import { Effect, Schema } from 'effect'
 
 import { descriptorForUtf8, type ContentDescriptor } from '@overeng/content-address'
 import { describeBodyLossyRefusal, type BodyCompleteness } from '@overeng/notion-core'
 import type {
   BodyEvidenceFingerprint,
+  NmdWritablePropertyValue,
   RemoteBodyObservationEvidence,
   Sha256Digest,
 } from '@overeng/notion-effect-client'
@@ -14,8 +16,8 @@ import { parseNmdFile } from './frontmatter.ts'
 import { normalizeMarkdownLineEndings, sha256Digest } from './hash.ts'
 import { NotionMdGateway } from './model.ts'
 import type { PullPageResult } from './model.ts'
+import { trackPage, type TrackResult } from './reconcile.ts'
 import { NmdStateStore } from './state-store.ts'
-import { pullPage, type PullResult } from './sync.ts'
 
 /** Raised when the body-only facade refuses a stale verified operation. */
 export class NotionMdBodyConflictError extends Schema.TaggedError<NotionMdBodyConflictError>()(
@@ -30,6 +32,7 @@ export class NotionMdBodyConflictError extends Schema.TaggedError<NotionMdBodyCo
   },
 ) {}
 
+/** Remote body-only observation with hashes and optional fidelity evidence. */
 export interface NotionMdBodySnapshot {
   readonly pageId: string
   readonly markdown: string
@@ -40,15 +43,19 @@ export interface NotionMdBodySnapshot {
   readonly completeness?: BodyCompleteness
 }
 
+/** Parsed local `.nmd` body observation, including the editable property frontmatter. */
 export interface NotionMdLocalBodySnapshot extends NotionMdBodySnapshot {
   readonly path: string
   readonly fileContentHash: Sha256Digest
+  readonly properties: Readonly<Record<string, NmdWritablePropertyValue>>
 }
 
+/** Result of materializing a remote body through the shared NotionMD track path. */
 export interface NotionMdMaterializedBody extends NotionMdLocalBodySnapshot {
-  readonly pull: PullResult
+  readonly track: TrackResult
 }
 
+/** Remote body replacement result after the write has been re-observed. */
 export interface NotionMdVerifiedRemoteReplaceResult {
   readonly pageId: string
   readonly previousBodyHash: Sha256Digest
@@ -60,6 +67,7 @@ export interface NotionMdVerifiedRemoteReplaceResult {
   readonly completeness?: BodyCompleteness
 }
 
+/** Local body settlement result after a verified remote body push. */
 export interface NotionMdSettledBodyPush {
   readonly pageId: string
   readonly path: string
@@ -188,18 +196,36 @@ export const readLocalBody = (opts: {
         schemaVersion: 1,
       }),
       fileContentHash: sha256Digest(content),
+      properties: parsed.frontmatter.notion_md.properties,
     }
   })
 
-/** Pull a remote page through the existing materialization path and return body hashes. */
+/** Track a remote page as shared local state and return body hashes. */
 export const materializeBody = (opts: {
   readonly pageId: string
   readonly outPath: string
-}): Effect.Effect<NotionMdMaterializedBody, NmdError, NotionMdGateway | NmdStateStore> =>
+  /**
+   * Writable frontmatter properties to embed in the materialized `.nmd`
+   * (visible-name → value). Absent keeps the empty-`properties` behavior, so a
+   * standalone notion-md materialization is byte-unchanged. A datasource caller
+   * supplies its observed writable cells so the pulled `.nmd` carries them, which
+   * is what makes local-surface convergence active in production.
+   */
+  readonly properties?: Readonly<Record<string, NmdWritablePropertyValue>>
+}): Effect.Effect<
+  NotionMdMaterializedBody,
+  NmdError,
+  FileSystem.FileSystem | NotionMdGateway | NmdStateStore
+> =>
   Effect.gen(function* () {
-    const pull = yield* pullPage(opts)
+    const track = yield* trackPage({
+      pageId: opts.pageId,
+      outPath: opts.outPath,
+      source: 'shared',
+      ...(opts.properties === undefined ? {} : { properties: opts.properties }),
+    })
     const local = yield* readLocalBody({ path: opts.outPath })
-    return { ...local, pull }
+    return { ...local, track }
   })
 
 /** Replace remote Markdown body only after proving the caller's remote base is current. */
@@ -299,7 +325,7 @@ export const settleVerifiedBodyPush = (opts: {
 }): Effect.Effect<
   NotionMdSettledBodyPush,
   NmdError | NotionMdBodyConflictError,
-  NotionMdGateway | NmdStateStore
+  FileSystem.FileSystem | NotionMdGateway | NmdStateStore
 > =>
   Effect.gen(function* () {
     const local = yield* readLocalBody({ path: opts.path })
@@ -314,7 +340,11 @@ export const settleVerifiedBodyPush = (opts: {
       })
     }
 
-    const materialized = yield* materializeBody({ pageId: opts.pageId, outPath: opts.path })
+    const materialized = yield* materializeBody({
+      pageId: opts.pageId,
+      outPath: opts.path,
+      properties: local.properties,
+    })
     return {
       pageId: opts.pageId,
       path: opts.path,

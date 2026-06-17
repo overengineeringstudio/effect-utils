@@ -60,13 +60,13 @@ const upstream: Server = createServer((req, res) => {
     res.writeHead(status, { 'content-type': 'application/json', ...headers })
     res.end(body)
   }
-  if (id.startsWith('ok-')) return send(200, JSON.stringify({ id, name: `Widget ${id}` }))
-  if (id.startsWith('garbage-')) return send(200, JSON.stringify({ nope: true }))
-  if (id.startsWith('bad-')) return send(400, JSON.stringify({ error: 'bad request' }))
-  if (id.startsWith('forbidden-')) return send(403, '{}')
-  if (id.startsWith('missing-')) return send(404, '{}')
-  if (id.startsWith('throttled-')) return send(429, '{}', { 'retry-after': '1' })
-  if (id.startsWith('flaky-')) {
+  if (id.startsWith('ok-') === true) return send(200, JSON.stringify({ id, name: `Widget ${id}` }))
+  if (id.startsWith('garbage-') === true) return send(200, JSON.stringify({ nope: true }))
+  if (id.startsWith('bad-') === true) return send(400, JSON.stringify({ error: 'bad request' }))
+  if (id.startsWith('forbidden-') === true) return send(403, '{}')
+  if (id.startsWith('missing-') === true) return send(404, '{}')
+  if (id.startsWith('throttled-') === true) return send(429, '{}', { 'retry-after': '1' })
+  if (id.startsWith('flaky-') === true) {
     return n <= 2
       ? send(429, '{}', { 'retry-after': '1' })
       : send(200, JSON.stringify({ id, name: `Widget ${id}` }))

@@ -149,7 +149,7 @@ describe('determinism layer', () => {
         cur = Object.getPrototypeOf(cur)
       ) {
         for (const key of Object.getOwnPropertyNames(cur)) {
-          if (key === 'constructor' || implOnly.has(key)) continue
+          if (key === 'constructor' || implOnly.has(key) === true) continue
           names.add(key)
         }
       }

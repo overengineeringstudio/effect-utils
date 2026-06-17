@@ -613,6 +613,7 @@ const frontmatterForRemotePage = (page: RemotePageSnapshot): NmdFrontmatterV2 =>
     version: 2,
     api_version: NOTION_API_VERSION,
     object: 'page',
+    source: 'local',
     page_id: page.id,
     url: page.url,
     parent: toParentRef(page),
@@ -888,7 +889,7 @@ const syncTreeLocal = (opts: {
       const path = filePathFor({ root, relPath: page.relPath })
       const remoteForStatus = yield* gateway.pullPage({ pageId })
       /*
-       * Self-heal a missing baseline (fresh clone without `.notion-md/`, or a
+       * Self-heal a missing baseline (fresh checkout without `.notion-md/`, or a
        * root bound only in the file): establish it from the live remote body
        * so the guarded merge has a base. Keyed by page id at the tree root.
        */
@@ -938,8 +939,9 @@ const syncTreeLocal = (opts: {
       /*
        * Route the composed body through the ONE guarded engine. A remote-edit
        * conflict writes `.conflict.roughdraft.md` and surfaces here as
-       * `NmdConflictError`; we record a `conflict` op and continue reconciling
-       * the rest of the tree rather than clobbering or aborting the whole run.
+       * `NmdConflictError`; a destructive body gate block surfaces as
+       * `NmdDestructiveBodyBlockedError`. Both are recorded as `conflict` ops so
+       * the rest of the tree continues reconciling rather than aborting.
        */
       const pushed = yield* pushGuarded({
         local,
@@ -963,6 +965,14 @@ const syncTreeLocal = (opts: {
         Effect.catchTag('NmdConflictError', (error) =>
           Effect.as(
             Effect.logWarning(`notion-md tree conflict on ${page.relPath}: ${error.message}`),
+            { ok: false as const },
+          ),
+        ),
+        Effect.catchTag('NmdDestructiveBodyBlockedError', (error) =>
+          Effect.as(
+            Effect.logWarning(
+              `notion-md tree destructive-body blocked on ${page.relPath}: [${error.guard}] ${error.message}`,
+            ),
             { ok: false as const },
           ),
         ),

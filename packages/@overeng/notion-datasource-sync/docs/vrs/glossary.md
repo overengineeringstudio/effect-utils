@@ -27,6 +27,15 @@ row-membership or deletion authority; projected read-only as `debug_*`.
 
 ## Sync surfaces and identity
 
+**Authority model**:
+The cross-cutting rule for where each fact's authority lives. The integrated
+workspace has one user-facing authority mode (`local`, `remote`, or `shared`);
+inside that mode, authority is still per surface and event based. Notion is fresh
+observed remote state; the SQLite event log is durable local authority for
+accepted local facts; public replica tables are intent-entry/projection surfaces;
+materialization is guarded output.
+_Avoid_: per-source mode, per-surface mode.
+
 **Surface**:
 The smallest independently-hashed unit a write targets — a single property value,
 a page body, or the schema. Conflicts and base hashes are per-surface.
@@ -70,9 +79,9 @@ observations update base/remote authority, not local desired state.
 _Also_: Remote observed state.
 
 **Materialization**:
-Writing observed remote state into local artifacts such as `rows`, sidecars, or
-`.nmd` files. Materialization is not planning and must not erase captured local
-desired state.
+Writing observed remote state into local artifacts such as public `pages`
+projections or `.nmd` files. Materialization is not planning and must not erase
+captured local desired state.
 
 **Guarded materialization**:
 Materialization that first proves the target artifact is unchanged from base,
@@ -80,21 +89,22 @@ is this process's own write, or has had its local content preserved as a
 recoverable intent/conflict.
 
 **Replica**:
-The user-facing `<database-id>.sqlite` file. Public surfaces (`rows`, `schema`,
-`schema_properties`, `changes`, `conflicts`, `sync_status`, `debug_*`) plus
-private `_nds_*` control plane in the same file.
+The user-facing `data/v1/<source>.sqlite` file. Public surfaces (`pages`,
+`schema`, `schema_properties`, `changes`, `conflicts`, `sync_status`, `debug_*`)
+are user API. Hidden `.notion/v1` state owns the private control plane.
 
 **Public intent entry surface**:
-The ergonomic local surface where users express row changes, usually `rows`.
-Entry surfaces are validated and converted; they are not durable authority.
+The ergonomic local surface where users express page/property changes, usually
+`pages`. Entry surfaces are validated and converted; they are not durable
+authority.
 
 **Public intent ledger**:
 The `changes` surface that exposes accepted local intents, planner status, and
 settlement evidence to users.
 
 **Durable local authority**:
-The private append-only `_nds_*` event log that owns accepted local intent,
-outbox state, conflicts, settlements, tombstones, and replay.
+The hidden append-only event log that owns accepted local intent, outbox state,
+conflicts, settlements, tombstones, and replay.
 
 **Write class**:
 Per-property eligibility for direct local writes: `writable`, `computed`
@@ -150,17 +160,17 @@ A planned remote write derived from an accepted **Intent**, executed outside any
 SQLite transaction and settled only after read-after-write verification.
 
 **Archive**:
-A reversible remote trash of a row. Reached via `UPDATE rows SET _in_trash = 1`.
+A reversible remote trash of a page. Reached via `UPDATE pages SET _in_trash = 1`.
 Recoverable; the strongest destructive effect available through the public API.
 _Avoid_: "delete" for this — see below.
 
 **Forget**:
-Drop local tracking of a row with **no remote effect**. CLI-only (`forget`); not
+Drop local tracking of a page with **no remote effect**. CLI-only (`forget`); not
 reachable through SQL.
 _Avoid_: conflating with **Archive**.
 
 **Delete**:
-`DELETE FROM rows` is rejected. It does not map to **Archive**, local **Forget**,
+`DELETE FROM pages` is rejected. It does not map to **Archive**, local **Forget**,
 or permanent deletion. There is no permanent-delete path through the API.
 
 **Tombstone**:

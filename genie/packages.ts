@@ -27,6 +27,7 @@ export const internalPackages = [
   'notion-effect-client',
   'notion-effect-schema',
   'notion-md',
+  'notion-property-write',
   'notion-react',
   'otel-contract',
   'oxc-config',

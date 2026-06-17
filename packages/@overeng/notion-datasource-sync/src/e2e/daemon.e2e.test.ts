@@ -2,7 +2,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 
-import { Effect, Fiber, Schema, Stream, Tracer } from 'effect'
+import { Effect, Fiber, Option, Schema, Stream, Tracer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { bodySafetySnapshot, makeFakePageBodySyncPort } from '../body/adapter.ts'
@@ -29,6 +29,7 @@ import {
   readWatchDaemonState,
   runWatchDaemon,
   runWatchDaemonCycle,
+  WatchDaemonCancelled,
   type WatchDaemonOptions,
 } from '../daemon/watch.ts'
 import { allGatewayCapabilities, makeGatewayError } from '../gateway/gateway.ts'
@@ -54,6 +55,8 @@ import {
   testIds,
 } from '../testing/harness.ts'
 import { scenarioImplementationGaps, type ScenarioId } from '../testing/scenarios.ts'
+import { computeNotionWebhookSignature } from '../webhook/notion.ts'
+import { handleNotionWebhookDelivery } from '../webhook/receiver.ts'
 
 const workspaceRoot = decode({ schema: AbsolutePath, value: '/tmp/notion-ds-sync-daemon' })
 
@@ -79,6 +82,7 @@ const implementedDaemonScenarioIds = new Set<ScenarioId>([
   'NDS-L5-daemon-bounded-outbox-drain',
   'NDS-L5-daemon-repeated-fake-soak',
   'NDS-L5-daemon-mixed-mutation-soak',
+  'NDS-L5-webhook-hint-fresh-read-coalesce',
 ])
 
 const propertyPage = ({
@@ -2328,6 +2332,196 @@ describe('watch daemon surface', () => {
         clean: false,
         status: { state: 'blocked' },
         surface: { guards: [{ guard: expect.any(String) }] },
+      })
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  // SM7.3: wake+fresh-read invariant (NDS-L5-webhook-hint-fresh-read-coalesce)
+  // A webhook signal hints only page-1; the daemon cycle must still pull ALL pages
+  // from the gateway (including page-2) rather than scoping to the hint's pageId.
+  // This is the structural guard against webhook-as-correctness-source (decision 0008).
+  it('runs full syncOneShot when woken by a webhook hint, not scoped to the hinted page', async () => {
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ now: clock.now })
+    // Two-page fixture: page-1 and page-2. Webhook only hints page-1.
+    const gateway = makeFakeGatewayHarness({
+      pages: [
+        pageSnapshot({ pageId: testIds.pageId }),
+        pageSnapshot({
+          pageId: testIds.otherPageId,
+          propertiesHash: hash('properties-b'),
+        }),
+      ],
+      propertyPages: [
+        propertyPage(),
+        propertyPage({ pageId: testIds.otherPageId, itemHash: hash('property-b-base') }),
+      ],
+    })
+    const ports = makeHarnessPorts({
+      bodyPages: [fakeBodyPage(), fakeBodyPage({ pageId: testIds.otherPageId })],
+    })
+    const statePath = `${storeFixture.path}.watch.json`
+    const webhookVerificationToken = 'test-webhook-token'
+    const webhookSignalProvider = decode({ schema: SignalProvider, value: 'notion-webhook' })
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+
+      // Enqueue a webhook signal that only references page-1
+      const rawBody = JSON.stringify({
+        id: 'webhook-evt-1',
+        type: 'page.created',
+        entity: { id: testIds.pageId, type: 'page' },
+        data: { parent: { data_source_id: testIds.dataSourceId } },
+      })
+      handleNotionWebhookDelivery({
+        rawBody,
+        headers: {
+          'x-notion-signature': computeNotionWebhookSignature({
+            rawBody,
+            verificationToken: webhookVerificationToken,
+          }),
+        },
+        rootId: testIds.rootId,
+        store: storeFixture.store,
+        verificationToken: webhookVerificationToken,
+      })
+      expect(storeFixture.store.readSignalStatus(testIds.rootId)).toMatchObject({
+        pending: 1,
+      })
+      const [enqueuedSignal] = storeFixture.store.readSignals(testIds.rootId)
+      expect(enqueuedSignal?.provider).toBe(webhookSignalProvider)
+      expect(enqueuedSignal?.pageId).toBe(testIds.pageId) // hint: page-1 only
+
+      const result = await runWithPorts(
+        runWatchDaemonCycle(daemonOptions({ store: storeFixture.store, statePath, clock })),
+        { gateway: gateway.gateway, body: ports.body, workspace: ports.workspace },
+      )
+
+      // Signal is settled (processed), not pending
+      expect(storeFixture.store.readSignalStatus(testIds.rootId)).toEqual({
+        pending: 0,
+        claimed: 0,
+        processed: 1,
+        failed: 0,
+      })
+      // The cycle ran a FULL query (both pages), not just the hinted page-1.
+      // This is the structural guard: hint informs OTEL attribution, not pull scope.
+      // `pages` = API pagination calls (1 call returned both rows); `rows` = Notion rows observed.
+      expect(result.sync.pull.observation.query).toMatchObject({
+        rows: 2,
+        complete: true,
+      })
+      // Confirm page-2 (not in the webhook hint) is in the projected rows
+      const projectedPageIds = storeFixture.store
+        .readPlannerProjectionSnapshot(testIds.rootId)
+        .rows.map((row) => row.pageId)
+      expect(projectedPageIds).toContain(testIds.otherPageId)
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  // SM7.3: coalescing proof — N wake() calls during one in-flight cycle collapse to one extra cycle
+  it('collapses multiple wake() calls into a single pending wake that fires on the next awaitWake', async () => {
+    const notifier = makeWatchDaemonWakeNotifier()
+
+    // N wake calls with no waiting fiber → each just sets pendingWake = true (idempotent)
+    notifier.wake()
+    notifier.wake()
+    notifier.wake()
+
+    // First awaitWake(>0) with pendingWake=true returns immediately (Effect.void, synchronous).
+    // This consumes the single collapsed flag regardless of how many wake() calls were made.
+    expect(Effect.runSync(notifier.awaitWake(5_000))).toBeUndefined()
+
+    // Fork a second awaitWake — pendingWake is now false so it must register as a waiter and BLOCK.
+    // This is the load-bearing assertion: it proves the 3 wakes collapsed to exactly one consumed flag.
+    const fiber = Effect.runFork(notifier.awaitWake(5_000))
+    // Effect.async registers waiters.add() synchronously on fork, so Fiber.poll is already settled.
+    const pending = await Effect.runPromise(Fiber.poll(fiber))
+    expect(Option.isNone(pending)).toBe(true) // still blocked — pendingWake was fully consumed above
+
+    // A fresh single wake() unblocks the waiting fiber
+    notifier.wake()
+    expect(await Effect.runPromise(Fiber.join(fiber))).toBeUndefined()
+  })
+
+  // SM7.3: AbortSignal mid-cycle with a claimed webhook signal → signal released back to pending
+  it('releases a claimed webhook signal when the cycle is aborted mid-flight', async () => {
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ now: clock.now })
+    const ports = makeHarnessPorts()
+    const statePath = `${storeFixture.path}.watch.json`
+    const controller = new AbortController()
+    const webhookVerificationToken = 'abort-test-token'
+    const inFlight = makeDeferred()
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+
+      // Enqueue a webhook signal so the cycle claims it
+      const rawBody = JSON.stringify({
+        id: 'webhook-evt-abort',
+        type: 'page.updated',
+        entity: { id: testIds.pageId, type: 'page' },
+        data: { parent: { data_source_id: testIds.dataSourceId } },
+      })
+      handleNotionWebhookDelivery({
+        rawBody,
+        headers: {
+          'x-notion-signature': computeNotionWebhookSignature({
+            rawBody,
+            verificationToken: webhookVerificationToken,
+          }),
+        },
+        rootId: testIds.rootId,
+        store: storeFixture.store,
+        verificationToken: webhookVerificationToken,
+      })
+
+      // Gateway that blocks mid-cycle so we can fire abort during the sync
+      const blockingGateway = {
+        ...makeFakeGatewayHarness().gateway,
+        retrieveDataSource: () =>
+          Effect.sync(() => inFlight.resolve()).pipe(Effect.zipRight(Effect.never)),
+      }
+
+      const cycleEffect = runWatchDaemonCycle(
+        daemonOptions({ store: storeFixture.store, statePath, clock, signal: controller.signal }),
+      ).pipe(
+        Effect.provideService(NotionDataSourceGateway, blockingGateway),
+        Effect.provideService(PageBodySyncPort, ports.body),
+        Effect.provideService(LocalWorkspacePort, ports.workspace),
+      )
+
+      const fiber = Effect.runFork(cycleEffect)
+      await withFailsafe(inFlight.promise, 'gateway call did not start')
+      controller.abort()
+
+      const error = await Effect.runPromise(Fiber.join(fiber).pipe(Effect.flip))
+      expect(error).toBeInstanceOf(WatchDaemonCancelled)
+
+      // Signal was claimed during the cycle — must be released back to pending
+      expect(storeFixture.store.readSignalStatus(testIds.rootId)).toEqual({
+        pending: 1,
+        claimed: 0,
+        processed: 0,
+        failed: 0,
       })
     } finally {
       storeFixture.cleanup()

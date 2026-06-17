@@ -1,5 +1,7 @@
 import { Chunk, Effect, Schema, Stream } from 'effect'
 
+import type { NmdWritablePropertyValue } from '@overeng/notion-effect-client'
+
 import {
   dataSourceMetadataSurfaceKey,
   pageSurfaceKey,
@@ -48,6 +50,7 @@ import { reportSyncProgress } from '../core/progress.ts'
 import { readOnlyGatewayCapabilities } from '../gateway/gateway.ts'
 import { bodyPathForRow } from '../local/workspace.ts'
 import { spanAttr, spanAttributes, spanNames } from '../observability/observability.ts'
+import { canonicalValueToNmdWritable } from '../planner/nmd-property-facts.ts'
 import type { OutboxCommandEnvelope, PlannerEvent } from '../planner/planner.ts'
 import { hashStoreBytes } from '../store/projections.ts'
 
@@ -62,6 +65,39 @@ export type SchemaPropertyObservation = {
   readonly configJson?: string | undefined
 }
 
+/**
+ * Project the page's observed cell values into the WRITABLE `.nmd` frontmatter
+ * properties (visible-name → value), filtered to `write_class === 'writable'`
+ * (SM5d). Read-only properties are deliberately excluded — they belong in the
+ * sidecar, not the user-editable frontmatter (preserving the standalone contract).
+ * Returns `undefined` when no writable property has an observed value, so the
+ * materializer keeps the empty-`properties` behavior.
+ */
+const writableFrontmatterProperties = ({
+  schemaProperties,
+  propertyValuesJson,
+}: {
+  readonly schemaProperties: ReadonlyArray<{
+    readonly propertyId: PropertyIdType
+    readonly name: string
+    readonly type: string
+    readonly writeClass: PropertyWriteClass
+  }>
+  readonly propertyValuesJson: Readonly<Record<string, string>> | undefined
+}): Record<string, NmdWritablePropertyValue> | undefined => {
+  if (propertyValuesJson === undefined) return undefined
+  const properties: Record<string, NmdWritablePropertyValue> = {}
+  for (const property of schemaProperties) {
+    if (property.writeClass !== 'writable') continue
+    const valueJson = propertyValuesJson[property.propertyId]
+    if (valueJson === undefined) continue
+    const writable = canonicalValueToNmdWritable({ valueJson, propertyType: property.type })
+    if (writable === undefined) continue // non-scalar / non-materializable
+    properties[property.name] = writable
+  }
+  return Object.keys(properties).length === 0 ? undefined : properties
+}
+
 /** Configuration for `observeRemoteDataSource`: identifies the data source, the query contract, schema properties to fetch per row, and optional body observation/materialization settings. */
 export type RemoteObservationOptions = {
   readonly rootId: SyncRootId
@@ -72,6 +108,12 @@ export type RemoteObservationOptions = {
   readonly requiredCapabilities?: ReadonlyArray<CapabilityName>
   readonly materializeBodies?: boolean
   readonly materializeBodyArtifacts?: boolean
+  /**
+   * Page ids whose body MUST be re-materialized even under the global
+   * `materializeBodyArtifacts: false` suppression — a body keep-remote resolution
+   * (decision 0021) accepts the remote body and re-materializes the `.nmd`.
+   */
+  readonly forceMaterializePageIds?: ReadonlySet<PageIdType>
   readonly rowLimit?: number
   readonly bodyPathForPage?: (pageId: PageIdType) => WorkspaceRelativePath
   readonly startCursor?: QueryCursor | null
@@ -515,6 +557,8 @@ export const makeConflictRaisedEvent = (input: {
     SyncEventType,
     { readonly _tag: 'ConflictRaised' }
   >['conflictKind']
+  /** Remote trash target, recorded for `lifecycle` conflicts so `keep-remote` can reconverge `in_trash` deterministically (decision 0026). */
+  readonly remoteInTrash?: boolean
   readonly message: string
   readonly now?: () => Date
 }): Extract<SyncEventType, { readonly _tag: 'ConflictRaised' }> => {
@@ -536,6 +580,7 @@ export const makeConflictRaisedEvent = (input: {
       conflictKind: input.conflictKind,
       pageId: input.pageId,
       propertyId: input.propertyId,
+      ...(input.remoteInTrash === undefined ? {} : { remoteInTrash: input.remoteInTrash }),
       baseHash: input.baseHash,
       localHash: input.localHash,
       remoteHash: input.remoteHash,
@@ -955,14 +1000,30 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
             bodyPointer === undefined
               ? undefined
               : (options.bodyPathForPage ?? defaultBodyPathForPage)(row.pageId)
+          // SM5d: embed the observed WRITABLE frontmatter properties so the pulled
+          // `.nmd` carries the property surface local-surface convergence reads.
+          const writableProperties = writableFrontmatterProperties({
+            schemaProperties: normalizedSchemaProperties,
+            propertyValuesJson: page.propertyValuesJson,
+          })
+          // The global `materializeBodyArtifacts: false` suppression (the mirror
+          // path sets it when the local workspace changed, to avoid clobbering a
+          // local edit) is OVERRIDDEN per-page for a `forceMaterializePageIds`
+          // entry: a body keep-remote resolution (decision 0021) accepts the remote
+          // body and must re-materialize the `.nmd` even though the local `.nmd`
+          // still diverges. Without this the divergence would persist silently after
+          // keep-remote.
+          const forceMaterialize = options.forceMaterializePageIds?.has(row.pageId) === true
           const materializeResult =
-            bodyPointer === undefined || options.materializeBodyArtifacts === false
+            bodyPointer === undefined ||
+            (options.materializeBodyArtifacts === false && forceMaterialize === false)
               ? undefined
               : yield* workspace.materialize({
                   _tag: 'MaterializePlan',
                   pageId: row.pageId,
                   path: (options.bodyPathForPage ?? defaultBodyPathForPage)(row.pageId),
                   bodyPointer,
+                  ...(writableProperties === undefined ? {} : { writableProperties }),
                 })
 
           if (materializeResult !== undefined) {

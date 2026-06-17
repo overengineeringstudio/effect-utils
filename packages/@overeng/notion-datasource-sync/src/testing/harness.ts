@@ -24,6 +24,7 @@ import {
   TrashPageCommand,
   type BodyLocalChangeInput,
   type CanonicalPropertyValue,
+  type CreatePageCommand,
   type PagePropertyItemPage,
   type PatchDatabaseMetadataCommand,
   type PatchDataSourceMetadataCommand,
@@ -208,6 +209,17 @@ export type FakeGatewayHarness = {
   readonly patchedDatabaseMetadata: ReadonlyArray<PatchDatabaseMetadataCommand>
   readonly trashedPages: ReadonlyArray<TrashPageCommand>
   readonly restoredPages: ReadonlyArray<RestorePageCommand>
+  /**
+   * Total count of WRITE (mutating) gateway operations *attempted* against the
+   * remote — incremented at the boundary for ALL seven mutating ops
+   * (`createPage`, `patchPageProperties`, `patchDataSourceSchema`,
+   * `patchDataSourceMetadata`, `patchDatabaseMetadata`, `trashPage`,
+   * `restorePage`), regardless of whether the underlying call succeeds. Pure
+   * reads never increment it. This is the hard "zero Notion mutation" oracle for
+   * the dry-run suppression proof: `writeCalls() === 0` means the gateway was
+   * never asked to mutate, not merely that no mutation committed.
+   */
+  readonly writeCalls: () => number
 }
 
 /** Separate attempted vs. successful mutation counts for each command type — lets tests assert that commands were attempted but not committed when an error is injected. */
@@ -240,6 +252,14 @@ export const makeFakeGatewayHarness = (input: FakeGatewayInput = {}): FakeGatewa
   const attemptedPatchDatabaseMetadata: PatchDatabaseMetadataCommand[] = []
   const attemptedTrashPages: TrashPageCommand[] = []
   const attemptedRestorePages: RestorePageCommand[] = []
+  // Single boundary counter for ALL mutating gateway ops. Incremented eagerly
+  // (before the underlying call) so a write that is *attempted* but fails still
+  // counts — the dry-run proof must see zero attempts, not merely zero commits.
+  let writeCallCount = 0
+  const countWrite = <A, E>(effect: Effect.Effect<A, E>): Effect.Effect<A, E> =>
+    Effect.sync(() => {
+      writeCallCount += 1
+    }).pipe(Effect.zipRight(effect))
   const dataSource =
     input.dataSource ??
     ({
@@ -330,37 +350,54 @@ export const makeFakeGatewayHarness = (input: FakeGatewayInput = {}): FakeGatewa
     patchedDatabaseMetadata,
     trashedPages,
     restoredPages,
+    writeCalls: () => writeCallCount,
     gateway: {
       ...baseGateway,
+      // `createPage` is a WRITE op the assertion ledger does not separately
+      // track, so it would otherwise bypass `writeCalls`; counted here so every
+      // mutating op contributes to the hard "zero Notion mutation" oracle.
+      createPage: (command: CreatePageCommand) => countWrite(baseGateway.createPage(command)),
       patchPageProperties: (command) =>
-        Effect.sync(() => attemptedPatchPageProperties.push(command)).pipe(
-          Effect.zipRight(baseGateway.patchPageProperties(command)),
-          Effect.tap(() => Effect.sync(() => patchedPageProperties.push(command))),
+        countWrite(
+          Effect.sync(() => attemptedPatchPageProperties.push(command)).pipe(
+            Effect.zipRight(baseGateway.patchPageProperties(command)),
+            Effect.tap(() => Effect.sync(() => patchedPageProperties.push(command))),
+          ),
         ),
       patchDataSourceSchema: (command) =>
-        Effect.sync(() => attemptedPatchDataSourceSchemas.push(command)).pipe(
-          Effect.zipRight(baseGateway.patchDataSourceSchema(command)),
-          Effect.tap(() => Effect.sync(() => patchedDataSourceSchemas.push(command))),
+        countWrite(
+          Effect.sync(() => attemptedPatchDataSourceSchemas.push(command)).pipe(
+            Effect.zipRight(baseGateway.patchDataSourceSchema(command)),
+            Effect.tap(() => Effect.sync(() => patchedDataSourceSchemas.push(command))),
+          ),
         ),
       patchDataSourceMetadata: (command) =>
-        Effect.sync(() => attemptedPatchDataSourceMetadata.push(command)).pipe(
-          Effect.zipRight(baseGateway.patchDataSourceMetadata(command)),
-          Effect.tap(() => Effect.sync(() => patchedDataSourceMetadata.push(command))),
+        countWrite(
+          Effect.sync(() => attemptedPatchDataSourceMetadata.push(command)).pipe(
+            Effect.zipRight(baseGateway.patchDataSourceMetadata(command)),
+            Effect.tap(() => Effect.sync(() => patchedDataSourceMetadata.push(command))),
+          ),
         ),
       patchDatabaseMetadata: (command) =>
-        Effect.sync(() => attemptedPatchDatabaseMetadata.push(command)).pipe(
-          Effect.zipRight(baseGateway.patchDatabaseMetadata(command)),
-          Effect.tap(() => Effect.sync(() => patchedDatabaseMetadata.push(command))),
+        countWrite(
+          Effect.sync(() => attemptedPatchDatabaseMetadata.push(command)).pipe(
+            Effect.zipRight(baseGateway.patchDatabaseMetadata(command)),
+            Effect.tap(() => Effect.sync(() => patchedDatabaseMetadata.push(command))),
+          ),
         ),
       trashPage: (command) =>
-        Effect.sync(() => attemptedTrashPages.push(command)).pipe(
-          Effect.zipRight(baseGateway.trashPage(command)),
-          Effect.tap(() => Effect.sync(() => trashedPages.push(command))),
+        countWrite(
+          Effect.sync(() => attemptedTrashPages.push(command)).pipe(
+            Effect.zipRight(baseGateway.trashPage(command)),
+            Effect.tap(() => Effect.sync(() => trashedPages.push(command))),
+          ),
         ),
       restorePage: (command) =>
-        Effect.sync(() => attemptedRestorePages.push(command)).pipe(
-          Effect.zipRight(baseGateway.restorePage(command)),
-          Effect.tap(() => Effect.sync(() => restoredPages.push(command))),
+        countWrite(
+          Effect.sync(() => attemptedRestorePages.push(command)).pipe(
+            Effect.zipRight(baseGateway.restorePage(command)),
+            Effect.tap(() => Effect.sync(() => restoredPages.push(command))),
+          ),
         ),
     },
   }

@@ -15,10 +15,10 @@ The live gateway adapter is the error-mapping boundary over
 `@overeng/notion-effect-client`. Current client failures are intentionally
 received as `unknown` at this adapter boundary and mapped into
 `NotionGatewayError` with operation context. A stricter typed lower-boundary
-transport/decode/API error contract is a follow-up design and implementation
-target; until then, unknown causes must stay contained at the adapter and must
-not leak into planner/store contracts. The adapter reuses shared Notion ID and
-property schemas where those contracts already exist.
+transport/decode/API error contract is outside the datasource-sync gateway
+surface; unknown causes must stay contained at the adapter and must not leak
+into planner/store contracts. The adapter reuses shared Notion ID and property
+schemas where those contracts already exist.
 
 ```ts
 type NotionDataSourceGateway = {
@@ -94,10 +94,10 @@ The supported Notion contract is `Notion-Version: 2026-03-11`.
 | Concern         | Spec decision                                                                                                             |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | Request version | Every gateway request sends `2026-03-11` and records it in the request span and safe diagnostics.                         |
-| Older versions  | Older versions are unsupported unless an explicit compatibility profile has fake-service coverage and a live smoke proof. |
-| Newer versions  | Newer versions start blocked by `ApiVersionCompatibilityMissing` until decode and live compatibility proofs are added.    |
+| Other versions  | Other versions are unsupported until fake-service coverage and a live smoke proof exist for that exact version.           |
+| Newer versions  | Newer versions start blocked by `ApiVersionProofMissing` until decode and live smoke proofs are added.                    |
 | Trash field     | Canonical lifecycle uses `in_trash`; `archived` is decode drift for supported surfaces.                                   |
-| Meeting notes   | Canonical block/type naming uses `meeting_notes`; `transcription` is decode drift unless a compatibility profile maps it. |
+| Meeting notes   | Canonical block/type naming uses `meeting_notes`; `transcription` is decode drift unless the active API contract maps it. |
 | Block append    | Gateway command shapes use `position`, not `after`.                                                                       |
 
 Decode drift is surface-scoped. An unsupported payload for one property, block, or data-source feature blocks that surface and writes a typed guard state without corrupting unrelated projections.
@@ -116,7 +116,7 @@ query. The membership contract is distinct from the scan window: a
 high-watermark poll is an incremental observation of the same full-replica
 membership, not a different product replica. Product replicas do not expose
 filtered or query-contract establishment. Any internal debug/test query shape
-starts a separate private `_nds_*` checkpoint and must not produce a
+starts a separate hidden checkpoint and must not produce a
 database-ID-named product replica. The query contract hash excludes the moving
 high-watermark so repeated incremental windows update the same checkpoint row
 instead of creating unbounded checkpoint identities.
@@ -136,7 +136,7 @@ Query policy:
 
 The 10,000-result query cap is a hard completeness boundary. Large databases
 must either complete a full scan or stay blocked by `QueryResultCapExceeded`;
-partial replicas are not a supported fallback.
+partial replicas are not supported.
 
 The store-side checkpoint projections (`query_scan_checkpoint`,
 `page_property_checkpoint`) that record these proofs are specified in

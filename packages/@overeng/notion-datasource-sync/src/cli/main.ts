@@ -2,7 +2,7 @@
 
 import { execFile } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { existsSync, mkdirSync, readdirSync } from 'node:fs'
+import { existsSync, mkdirSync } from 'node:fs'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 
@@ -40,8 +40,11 @@ import {
   Hash,
   PageId,
   PropertyId,
+  WorkspaceRelativePath,
   type CapabilityName,
+  type WorkspaceRelativePath as WorkspaceRelativePathType,
 } from '../core/domain.ts'
+import { WorkspaceNamespaceError, WorkspaceNotTracked } from '../core/errors.ts'
 import type {
   BodySyncError,
   LocalStorageError,
@@ -86,7 +89,21 @@ import {
   NotionDataSourceGatewayLive,
   type NotionGatewayClient,
 } from '../gateway/notion.ts'
-import { filesystemLocalWorkspacePortLayer } from '../local/workspace.ts'
+import {
+  dataDirectoryName,
+  dataFilePath,
+  dataFileRelativePath,
+  hiddenStateDirectoryName,
+  loadWorkspaceManifest,
+  manifestPath,
+  pagesDirRelativePath,
+  stateSqlitePath,
+  writeWorkspaceManifestSync,
+  type AuthorityMode,
+  type WorkspaceManifestDataSourceV1,
+  type WorkspaceManifestV1,
+} from '../local/manifest.ts'
+import { bodyPathForRowInDir, filesystemLocalWorkspacePortLayer } from '../local/workspace.ts'
 import {
   annotateSpan,
   otelServiceNameForCliArgv,
@@ -102,6 +119,12 @@ import {
   withSpan,
 } from '../observability/observability.ts'
 import {
+  convergeLocalSurfaces,
+  type LocalIdentity,
+  type PropertyConvergenceVerdict,
+} from '../planner/local-convergence.ts'
+import type { PlannerIntent } from '../planner/planner.ts'
+import {
   forgetPageCommand,
   listUserCommandSurface,
   resolveConflictCommand,
@@ -113,6 +136,7 @@ import {
   applyReplicaConflictResolutions,
   projectReplicaFromSyncStore,
   readPendingReplicaChanges,
+  readReplicaCellBases,
   replicaChangesToPlannerIntents,
   settleReplicaChangesAfterSync,
 } from '../replica/replica.ts'
@@ -122,7 +146,8 @@ import {
   type NotionSyncStore,
   type WorkspaceBindingRow,
 } from '../store/store.ts'
-import { type SchemaPropertyObservation } from '../sync/observation.ts'
+import { buildPropertyConvergenceInputs } from '../sync/local-convergence-inputs.ts'
+import { makeConflictRaisedEvent, type SchemaPropertyObservation } from '../sync/observation.ts'
 import {
   establishFromNotion,
   initOneShotSync,
@@ -153,6 +178,27 @@ const cliVersion = resolveCliVersion({
   buildStamp,
 })
 
+/**
+ * Body path for a page within a tracked source's page directory
+ * (`pages/v1/<name>/<title-slug>--<pageId>.nmd`). The title is synthesized from
+ * the page id at observation time (the row title is not threaded here), matching
+ * the legacy `defaultBodyPathForPage` filename convention but rooted in the
+ * source's `pages_dir`. Falls back to a bare `pages/v1/<name>/page-<id>.nmd` if
+ * the canonical filename is somehow rejected.
+ */
+const bodyPathForPageInSourceDir = ({
+  pagesDir,
+  pageId,
+}: {
+  readonly pagesDir: string
+  readonly pageId: typeof PageId.Type
+}): WorkspaceRelativePathType => {
+  const decision = bodyPathForRowInDir({ pagesDir, title: `page-${pageId}`, pageId })
+  return decision._tag === 'blocked'
+    ? decode({ schema: WorkspaceRelativePath, value: `${pagesDir}/page-${pageId}.nmd` })
+    : decision.path
+}
+
 const remoteObservationContext = (context: CliContext) => ({
   ...(context.requiredCapabilities === undefined
     ? {}
@@ -160,6 +206,15 @@ const remoteObservationContext = (context: CliContext) => ({
   ...(context.materializeBodies === undefined
     ? {}
     : { materializeBodies: context.materializeBodies }),
+  // Tracked workspace: materialize `.nmd` page files under the source's
+  // `pages/v1/<name>` directory (one page directory per source). A standalone
+  // `--sqlite` file has no page directory and keeps the legacy root-level path.
+  ...(context.sourcePagesDir === undefined
+    ? {}
+    : {
+        bodyPathForPage: (pageId: typeof PageId.Type): WorkspaceRelativePathType =>
+          bodyPathForPageInSourceDir({ pagesDir: context.sourcePagesDir!, pageId }),
+      }),
 })
 
 /**
@@ -184,7 +239,7 @@ export type CliCommand =
       readonly watch?: boolean
       readonly statePath?: string
       readonly maxCycles?: number
-      readonly mode?: WatchDaemonMode
+      readonly watchPriority?: WatchDaemonMode
       readonly webhook?: 'none' | 'tailscale' | 'manual'
       readonly webhookRequired?: boolean
       readonly nonInteractive?: boolean
@@ -198,15 +253,43 @@ export type CliCommand =
       readonly limit?: number
     }
   | {
+      /**
+       * `track` is the adoption verb (decision 0004): it adopts a Notion data
+       * source into a workspace and is the canonical workspace-establish command.
+       * It is the ONLY command that accepts `--mode`; the chosen authority mode is
+       * persisted into `notion.workspace.v1.json`. Shares the establish machinery
+       * of `sync-from-notion`.
+       */
+      readonly _tag: 'track'
+      readonly dataSourceId: typeof DataSourceId.Type
+      readonly remoteRef: NotionRemoteRef
+      readonly workspaceRoot: typeof AbsolutePath.Type
+      /** Workspace authority mode persisted to the manifest. Defaults to `shared`. */
+      readonly authorityMode: AuthorityMode
+      readonly dryRun?: boolean
+      readonly limit?: number
+    }
+  | {
       readonly _tag: 'export'
       readonly outputPath: typeof AbsolutePath.Type
       readonly workspaceRoot?: typeof AbsolutePath.Type
-      readonly fromNotion?: {
-        readonly dataSourceId: typeof DataSourceId.Type
-        readonly remoteRef: NotionRemoteRef
-      }
+      /**
+       * `--refresh` re-observes the established binding through
+       * remote-observation/project-only work before exporting (CLI-R02). Export
+       * does not accept a remote id or database URL: it operates on the existing
+       * data file only; `track` is the adoption verb. Refresh requires an
+       * already-bound store.
+       */
+      readonly refresh?: boolean
       readonly format: ReplicaExportFormat
       readonly requireClean?: boolean
+      /**
+       * Dry-run suppresses the export output-file write (CLI-R02): the export
+       * plan and counts are still computed from real reads, but no file is
+       * written. With `--refresh`, the remote re-observation and projection
+       * writes are likewise suppressed (the plan is reported, nothing persists).
+       */
+      readonly dryRun?: boolean
     }
   | { readonly _tag: 'status'; readonly workspaceRoot?: typeof AbsolutePath.Type }
   | { readonly _tag: 'conflicts-list' }
@@ -236,10 +319,37 @@ export type CliCommand =
  */
 export type CliContext = {
   readonly store: NotionSyncStore
+  /**
+   * Path to the control-plane sync store. For a tracked workspace this is the
+   * hidden `.notion/v1/state.sqlite`; for a standalone `--sqlite <file>` it is
+   * that single file (which then also holds the public projection — unified).
+   */
   readonly storePath?: string
+  /**
+   * Path to the public projection / CDC data file (`data/v1/<source>.sqlite`).
+   * Equal to `storePath` in the standalone `--sqlite` case (unified projection),
+   * distinct from it for a tracked workspace (control-plane file split, decision 0020).
+   */
+  readonly replicaPath?: string
   readonly rootId: SyncRootIdType
   readonly dataSourceId: typeof DataSourceId.Type
   readonly workspaceRoot: typeof AbsolutePath.Type
+  /**
+   * Workspace-wide authority mode read from `notion.workspace.v1.json` for a
+   * tracked workspace (decisions 0015, 0019). Threads into the planner's
+   * per-property `writeMode`: `remote` makes local edits drift, `local`/`shared`
+   * reach the property-write proof. Absent for a standalone `--sqlite` file or an
+   * untracked establish run; the planner then keeps its `shared` default.
+   */
+  readonly authorityMode?: AuthorityMode
+  /**
+   * Workspace-relative page directory for the tracked source (`pages/v1/<name>`),
+   * from the manifest. Materialized `.nmd` page files land under here so a tracked
+   * source's Markdown surface lives at `pages/v1/<name>/...` (one page directory
+   * per source). Absent for a standalone `--sqlite` file, which keeps the legacy
+   * workspace-root body path.
+   */
+  readonly sourcePagesDir?: string
   readonly queryContract: QueryContract
   readonly schemaProperties?: ReadonlyArray<SchemaPropertyObservation>
   readonly requiredCapabilities?: ReadonlyArray<CapabilityName>
@@ -254,6 +364,157 @@ export type CliContext = {
   readonly webhookReceiverPort?: number
   readonly webhookReceiverPath?: string
   readonly webhookReceiverStarted?: (status: NotionWebhookReceiverStatus) => void
+  readonly pendingManifestSource?: EstablishManifestSource
+}
+
+type EstablishManifestSource = {
+  readonly workspaceRoot: typeof AbsolutePath.Type
+  readonly name: string
+  readonly dataSourceId: typeof DataSourceId.Type
+  readonly databaseId: string
+  readonly authorityMode?: AuthorityMode
+}
+
+const identityKeyOf = (identity: LocalIdentity): string => {
+  switch (identity.kind) {
+    case 'property':
+      return `property ${identity.pageId} ${identity.propertyId}`
+    case 'body':
+      return `body ${identity.pageId}`
+  }
+}
+
+const intentIdentityKey = (intent: PlannerIntent): string | undefined => {
+  switch (intent._tag) {
+    case 'property-edit':
+      return `property ${intent.pageId} ${intent.propertyId}`
+    case 'body-edit':
+      return `body ${intent.pageId}`
+    default:
+      return undefined
+  }
+}
+
+/**
+ * SM5c shared-mode local convergence (R06). Reconciles the SQLite `pages`
+ * property edits against the page's `.nmd` frontmatter BEFORE remote planning:
+ *
+ * - agreeing surfaces coalesce to the single existing SQLite intent (the `.nmd`
+ *   side carries no intent, so no double-apply) and a `converged` verdict that
+ *   leaves the write unblocked;
+ * - diverging surfaces produce a `disagrees` verdict (returned here and threaded
+ *   into `pushOneShotSync` as `convergenceVerdicts`, where `applyConvergenceVerdicts`
+ *   overlays it onto `PropertySurfaceSnapshot.localConvergence` so the planner
+ *   blocks the property write through the shared proof core as
+ *   `LocalSurfaceDisagreement`) AND a `ConflictRaised` event in the read-only
+ *   `conflicts` view.
+ *
+ * PROPERTY identities are blocked by that planner guard, so their intents are NOT
+ * pre-filtered here — pre-filtering would remove them before planning and the
+ * guard would never fire (the block would silently degrade to a side-channel
+ * intent drop, masked behind `attemptedPatchPageProperties === 0`).
+ *
+ * Scope: only the PROPERTY surface is observed today. BODY identities have no
+ * `localConvergence` proof field, so the engine cannot block them through the
+ * planner; their only block path is the intent-filter retained below. Body facts
+ * are also not yet produced by `buildPropertyConvergenceInputs`, so body
+ * convergence is engine-ready but NOT production-observed — a follow-up (body
+ * materialization is entangled with sidecar identity). Page lifecycle
+ * (archive/restore) is NOT a convergence identity: it reaches the planner through
+ * the CDC `row_archive`/`row_restore` intents, never this engine.
+ *
+ * ACTIVE on production data (SM5d): a datasource pull materializes the writable
+ * frontmatter properties into the pulled `.nmd` (see `observation.ts`
+ * `writableFrontmatterProperties` + `materializeBody`), so `nmdPropertyFacts` reads
+ * a real property surface and this path converges actual pulled pages, not just
+ * hand-authored `.nmd`.
+ *
+ * Runs in `shared` mode ONLY; `local`/`remote` return the intents unchanged with
+ * no verdicts (single-source mirror, `not-applicable`).
+ */
+const runLocalConvergenceForPush = ({
+  context,
+  changes,
+  replicaPath,
+  intents,
+  dryRun,
+}: {
+  readonly context: CliContext
+  readonly changes: readonly { readonly kind: string }[]
+  readonly replicaPath: string
+  readonly intents: ReadonlyArray<PlannerIntent>
+  readonly dryRun?: boolean
+}): {
+  readonly verdicts: ReadonlyArray<PropertyConvergenceVerdict>
+  readonly intents: ReadonlyArray<PlannerIntent>
+} => {
+  if (
+    context.authorityMode !== 'shared' ||
+    context.sourcePagesDir === undefined ||
+    replicaPath === ':memory:'
+  ) {
+    return { verdicts: [], intents }
+  }
+
+  const bases = readReplicaCellBases(replicaPath)
+  const { dataFileEdits, nmdFacts } = buildPropertyConvergenceInputs({
+    workspaceRoot: context.workspaceRoot,
+    pagesDir: context.sourcePagesDir,
+    changes: changes as never,
+    bases,
+  })
+  if (dataFileEdits.length === 0 && nmdFacts.length === 0) {
+    return { verdicts: [], intents }
+  }
+
+  const result = convergeLocalSurfaces({ authorityMode: 'shared', dataFileEdits, nmdFacts })
+  if (result._tag !== 'shared') return { verdicts: [], intents }
+
+  // Raise each local PROPERTY conflict into the read-only `conflicts` view via the
+  // normal ConflictRaised rail (decision 0005 — never a page-adjacent file). Only
+  // PROPERTY conflicts flow here: body is single-surface and adapter-owned
+  // (decision 0021), so the convergence engine is never fed a body fact and never
+  // produces a body conflict on this path.
+  if (dryRun !== true) {
+    for (const outcome of result.outcomes) {
+      if (outcome._tag !== 'local-conflict' || outcome.identity.kind !== 'property') continue
+      const { conflict, identity } = outcome
+      context.store.appendEventWithResult(
+        makeConflictRaisedEvent({
+          rootId: context.rootId,
+          pageId: identity.pageId,
+          propertyId: identity.propertyId,
+          surface: conflict.localSurface,
+          baseHash: conflict.baseHash ?? conflict.localHash ?? conflict.remoteHash!,
+          localHash: conflict.localHash ?? conflict.remoteHash!,
+          remoteHash: conflict.remoteHash ?? conflict.localHash!,
+          conflictKind: 'property',
+          message: conflict.message,
+        }),
+      )
+    }
+  }
+
+  // Diverged PROPERTY identities are blocked by the planner itself: the
+  // `disagrees` verdict overlays `PropertySurfaceSnapshot.localConvergence`
+  // (via `convergenceVerdicts → applyConvergenceVerdicts`), so the shared proof
+  // core blocks the write as `LocalSurfaceDisagreement`. We must NOT pre-filter
+  // those intents here — doing so removes them before planning, so the guard
+  // never fires and the block silently degrades to a side-channel intent drop.
+  //
+  // BODY identities carry no `localConvergence` proof field, so the verdict
+  // cannot block them through the planner. For those the intent drop is the only
+  // block, so we keep filtering them (they are not yet wired through the planner
+  // — see the body convergence follow-up).
+  const blocked = new Set(
+    result.blockedIdentities.filter((identity) => identity.kind !== 'property').map(identityKeyOf),
+  )
+  const filtered = intents.filter((intent) => {
+    const key = intentIdentityKey(intent)
+    return key === undefined || blocked.has(key) === false
+  })
+
+  return { verdicts: result.propertyVerdicts, intents: filtered }
 }
 
 /** Environment variables read by `makeCliRuntimeLayer` to obtain the Notion API token. */
@@ -288,8 +549,16 @@ const defaultSqlitePath = ({
 }): typeof AbsolutePath.Type =>
   decode({
     schema: AbsolutePath,
-    value: join(workspaceRoot, `${databaseId}.sqlite`),
+    value: dataFilePath({ workspaceRoot, name: databaseId }),
   })
+
+/**
+ * Resolves the public projection / CDC data file. For a tracked workspace this
+ * is the data file (distinct from the control-plane store); for a standalone
+ * `--sqlite` file it falls back to the store path (unified). decision 0020.
+ */
+const replicaPathForContext = (context: CliContext): string | undefined =>
+  context.replicaPath ?? context.storePath
 
 const projectReplicaIfWritable = ({
   context,
@@ -299,9 +568,11 @@ const projectReplicaIfWritable = ({
   readonly dryRun?: boolean
 }): void => {
   if (dryRun === true || context.storePath === undefined || context.storePath === ':memory:') return
+  const replicaPath = replicaPathForContext(context)
+  if (replicaPath === undefined || replicaPath === ':memory:') return
   projectReplicaFromSyncStore({
     syncStorePath: context.storePath,
-    replicaPath: context.storePath,
+    replicaPath,
     rootId: context.rootId,
   })
 }
@@ -313,15 +584,16 @@ const statusWithReplicaPending = ({
   readonly context: CliContext
   readonly status: OneShotSyncStatus
 }): OneShotSyncStatus => {
+  const replicaPath = replicaPathForContext(context)
   if (
-    context.storePath === undefined ||
-    context.storePath === ':memory:' ||
-    existsSync(context.storePath) === false
+    replicaPath === undefined ||
+    replicaPath === ':memory:' ||
+    existsSync(replicaPath) === false
   ) {
     return status
   }
 
-  const db = new DatabaseSync(context.storePath, { readOnly: true })
+  const db = new DatabaseSync(replicaPath, { readOnly: true })
   try {
     const row = db
       .prepare(
@@ -570,10 +842,17 @@ const withOptionalCommandOptions = ({
 const withOptionalObservationLimit = (context: CliContext): { readonly rowLimit?: number } =>
   context.rowLimit === undefined ? {} : { rowLimit: context.rowLimit }
 
+const writePendingManifestAfterEstablish = (context: CliContext): void => {
+  if (context.pendingManifestSource !== undefined) {
+    writeEstablishedWorkspaceManifest(context.pendingManifestSource)
+  }
+}
+
+// Watch daemon state is hidden implementation state (R02): it always lives under
+// the versioned `.notion/v1` namespace, never inside the public `data/v1` SQL
+// surface dir alongside the data file.
 const defaultWatchStatePath = (context: CliContext): string =>
-  context.storePath === undefined || context.storePath === ':memory:'
-    ? join(context.workspaceRoot, '.notion-datasource-sync', 'watch.json')
-    : `${context.storePath}.watch.json`
+  join(context.workspaceRoot, hiddenStateDirectoryName, 'watch.json')
 
 const defaultWebhookReceiverPort = 39231
 const defaultWebhookReceiverPathPrefix = '/notion-datasource-sync/webhook/notion'
@@ -646,101 +925,104 @@ const setupWatchWebhook = ({
     })
   }
 
-  return Effect.tryPromise({
-    try: async () => {
-      const wakeNotifier = makeWatchDaemonWakeNotifier()
-      const receiver = await startNotionWebhookReceiver({
-        rootId: context.rootId,
-        store: context.store,
-        ...(context.webhookReceiverHostname === undefined
-          ? {}
-          : { hostname: context.webhookReceiverHostname }),
-        port: context.webhookReceiverPort ?? defaultWebhookReceiverPort,
-        path: context.webhookReceiverPath ?? makeDefaultWebhookReceiverPath(),
-        onSignalEnqueued: () => wakeNotifier.wake(),
-      })
-      context.webhookReceiverStarted?.(receiver)
-
-      if (provider === 'manual') {
-        const manual = makeManualWebhookRelayProvider({
-          publicUrl: receiver.url,
-          localTarget: `${receiver.hostname}:${receiver.port.toString()}`,
-          path: receiver.path,
+  return Effect.flatMap(Effect.runtime<never>(), (effectRuntime) =>
+    Effect.tryPromise({
+      try: async () => {
+        const wakeNotifier = makeWatchDaemonWakeNotifier()
+        const receiver = await startNotionWebhookReceiver({
+          rootId: context.rootId,
+          store: context.store,
+          ...(context.webhookReceiverHostname === undefined
+            ? {}
+            : { hostname: context.webhookReceiverHostname }),
+          port: context.webhookReceiverPort ?? defaultWebhookReceiverPort,
+          path: context.webhookReceiverPath ?? makeDefaultWebhookReceiverPath(),
+          onSignalEnqueued: () => wakeNotifier.wake(),
+          effectRuntime,
         })
-        const exposure = await manual.start()
-        return {
-          status: {
-            _tag: 'WebhookManualStatus',
-            provider: 'manual',
-            state: 'running',
-            message:
-              'Manual webhook receiver is running locally; configure an external relay to deliver Notion webhooks to the callback URL.',
-            receiver,
-            exposure,
-            signals: signalStatus(context),
-          },
-          wakeNotifier,
-          close: () => closeWebhookResources({ receiver, providerStop: manual.stop }),
-        } satisfies ActiveWatchWebhook
-      }
+        context.webhookReceiverStarted?.(receiver)
 
-      const tailscale = makeTailscaleFunnelProvider({
-        localPort: receiver.port,
-        path: receiver.path,
-        run: context.tailscaleProcessRunner ?? defaultTailscaleProcessRunner,
-      })
-      let shouldStopTailscale = false
-      try {
-        const exposure = await tailscale.start()
-        shouldStopTailscale = true
-        return {
-          status: {
-            _tag: 'WebhookTailscaleStatus',
-            provider: 'tailscale',
-            state: 'running',
-            message:
-              'Tailscale Funnel is exposing the local webhook receiver; webhook hints still require reconciliation before planning.',
-            receiver,
-            exposure,
-            signals: signalStatus(context),
-          },
-          wakeNotifier,
-          close: () =>
-            closeWebhookResources({
-              receiver,
-              providerStop: shouldStopTailscale === true ? tailscale.stop : undefined,
-            }),
-        } satisfies ActiveWatchWebhook
-      } catch (cause) {
-        if (cause instanceof CliArgumentError) throw cause
-        if (command.webhookRequired === true) {
-          await closeWebhookResources({ receiver, providerStop: undefined })
-          throw new CliArgumentError({
-            message: 'sync --watch --webhook-required could not start Tailscale Funnel',
+        if (provider === 'manual') {
+          const manual = makeManualWebhookRelayProvider({
+            publicUrl: receiver.url,
+            localTarget: `${receiver.hostname}:${receiver.port.toString()}`,
+            path: receiver.path,
           })
+          const exposure = await manual.start()
+          return {
+            status: {
+              _tag: 'WebhookManualStatus',
+              provider: 'manual',
+              state: 'running',
+              message:
+                'Manual webhook receiver is running locally; configure an external relay to deliver Notion webhooks to the callback URL.',
+              receiver,
+              exposure,
+              signals: signalStatus(context),
+            },
+            wakeNotifier,
+            close: () => closeWebhookResources({ receiver, providerStop: manual.stop }),
+          } satisfies ActiveWatchWebhook
         }
-        return {
-          status: {
-            _tag: 'WebhookTailscaleStatus',
-            provider: 'tailscale',
-            state: 'degraded',
-            message:
-              'Local webhook receiver is running, but Tailscale Funnel could not be started; continuing with polling reconciliation.',
-            receiver,
-            signals: signalStatus(context),
-          },
-          wakeNotifier,
-          close: () => closeWebhookResources({ receiver, providerStop: undefined }),
-        } satisfies ActiveWatchWebhook
-      }
-    },
-    catch: (cause) =>
-      cause instanceof CliArgumentError
-        ? cause
-        : new CliArgumentError({
-            message: 'Unable to initialize sync --watch webhook status',
-          }),
-  })
+
+        const tailscale = makeTailscaleFunnelProvider({
+          localPort: receiver.port,
+          path: receiver.path,
+          run: context.tailscaleProcessRunner ?? defaultTailscaleProcessRunner,
+        })
+        let shouldStopTailscale = false
+        try {
+          const exposure = await tailscale.start()
+          shouldStopTailscale = true
+          return {
+            status: {
+              _tag: 'WebhookTailscaleStatus',
+              provider: 'tailscale',
+              state: 'running',
+              message:
+                'Tailscale Funnel is exposing the local webhook receiver; webhook hints still require reconciliation before planning.',
+              receiver,
+              exposure,
+              signals: signalStatus(context),
+            },
+            wakeNotifier,
+            close: () =>
+              closeWebhookResources({
+                receiver,
+                providerStop: shouldStopTailscale === true ? tailscale.stop : undefined,
+              }),
+          } satisfies ActiveWatchWebhook
+        } catch (cause) {
+          if (cause instanceof CliArgumentError) throw cause
+          if (command.webhookRequired === true) {
+            await closeWebhookResources({ receiver, providerStop: undefined })
+            throw new CliArgumentError({
+              message: 'sync --watch --webhook-required could not start Tailscale Funnel',
+            })
+          }
+          return {
+            status: {
+              _tag: 'WebhookTailscaleStatus',
+              provider: 'tailscale',
+              state: 'degraded',
+              message:
+                'Local webhook receiver is running, but Tailscale Funnel could not be started; continuing with polling reconciliation.',
+              receiver,
+              signals: signalStatus(context),
+            },
+            wakeNotifier,
+            close: () => closeWebhookResources({ receiver, providerStop: undefined }),
+          } satisfies ActiveWatchWebhook
+        }
+      },
+      catch: (cause) =>
+        cause instanceof CliArgumentError
+          ? cause
+          : new CliArgumentError({
+              message: 'Unable to initialize sync --watch webhook status',
+            }),
+    }),
+  )
 }
 
 const envelope = <TResult>({
@@ -833,6 +1115,10 @@ const runCliCommandEffect = ({
         Effect.tap(() => Effect.sync(() => projectReplicaIfWritable({ context }))),
         Effect.map((result) => envelope({ command: command._tag, context, result })),
       )
+    // `track` is the canonical adoption verb; `sync-from-notion` is its legacy
+    // alias. Both route through the same establish machinery. The authority mode
+    // for `track` is persisted by `parseCliContext` into the manifest.
+    case 'track':
     case 'sync-from-notion':
       return establishFromNotion({
         ...context,
@@ -851,36 +1137,63 @@ const runCliCommandEffect = ({
             })
           }),
         ),
+        Effect.tap(() => Effect.sync(() => writePendingManifestAfterEstablish(context))),
         Effect.map((result) => envelope({ command: command._tag, context, result })),
       )
     case 'push':
       return Effect.sync(() => {
-        const replicaPath = context.storePath
+        // CDC + planning intents target the public data file; the event log is
+        // appended through `context.store` (control-plane state.sqlite). decision 0020.
+        const replicaPath = replicaPathForContext(context)
         if (replicaPath === undefined)
-          return { changes: [] as const, intents: [] as const, replicaPath: ':memory:' }
+          return {
+            changes: [] as const,
+            intents: [] as const,
+            verdicts: [] as ReadonlyArray<PropertyConvergenceVerdict>,
+            replicaPath: ':memory:',
+          }
         if (existsSync(replicaPath) === false)
-          return { changes: [] as const, intents: [] as const, replicaPath }
+          return {
+            changes: [] as const,
+            intents: [] as const,
+            verdicts: [] as ReadonlyArray<PropertyConvergenceVerdict>,
+            replicaPath,
+          }
         const changes = readPendingReplicaChanges(replicaPath)
         applyReplicaConflictResolutions({
           changes,
           replicaPath,
           store: context.store,
           rootId: context.rootId,
+          ...(context.authorityMode === undefined ? {} : { authorityMode: context.authorityMode }),
           ...(command.dryRun === undefined ? {} : { dryRun: command.dryRun }),
         })
-        const intents = replicaChangesToPlannerIntents({
+        const plannedIntents = replicaChangesToPlannerIntents({
           changes: changes.filter((change) => change.kind !== 'conflict_resolution'),
           replicaPath,
           ...(command.dryRun === undefined ? {} : { dryRun: command.dryRun }),
         })
-        return { changes, intents, replicaPath }
+        const converged = runLocalConvergenceForPush({
+          context,
+          changes,
+          replicaPath,
+          intents: plannedIntents,
+          ...(command.dryRun === undefined ? {} : { dryRun: command.dryRun }),
+        })
+        return {
+          changes,
+          intents: converged.intents,
+          verdicts: converged.verdicts,
+          replicaPath,
+        }
       }).pipe(
-        Effect.flatMap(({ changes, intents, replicaPath }) =>
+        Effect.flatMap(({ changes, intents, verdicts, replicaPath }) =>
           pushOneShotSync({
             ...context,
             ...withOptionalRuntimeOptions(context),
             ...withOptionalCommandOptions({ command, context }),
             localIntents: intents,
+            ...(verdicts.length === 0 ? {} : { convergenceVerdicts: verdicts }),
           }).pipe(
             Effect.tap((result) =>
               Effect.sync(() =>
@@ -908,14 +1221,13 @@ const runCliCommandEffect = ({
       )
     case 'sync':
       if (command.watch === true) {
-        if (command.dryRun === true) {
-          return Effect.fail(
-            new CliArgumentError({
-              message:
-                'sync --watch does not support --dry-run; run sync --dry-run for a one-shot dry run',
-            }),
-          )
-        }
+        // SM5.3 (CLI-R02): `sync --watch --dry-run` runs the daemon as an
+        // observe/plan/report loop. The `dryRun` flag is threaded into
+        // `runWatchDaemon`, which gates every loop-level durable effect (signal
+        // claim/settle/release, daemon state file, replica settle/project, CDC
+        // writes) and the inner pass (executor gate + materializeBodies:false),
+        // so a dry-run observer never fences a real running daemon's signals or
+        // mutates any surface.
         return setupWatchWebhook({ command, context }).pipe(
           Effect.flatMap((webhook) =>
             runWatchDaemon({
@@ -924,8 +1236,9 @@ const runCliCommandEffect = ({
               ...withOptionalObservationLimit(context),
               statePath: command.statePath ?? defaultWatchStatePath(context),
               ...(command.maxCycles === undefined ? {} : { maxCycles: command.maxCycles }),
-              ...(command.mode === undefined ? {} : { mode: command.mode }),
+              ...(command.watchPriority === undefined ? {} : { mode: command.watchPriority }),
               ...(webhook.wakeNotifier === undefined ? {} : { wakeNotifier: webhook.wakeNotifier }),
+              ...(command.dryRun === undefined ? {} : { dryRun: command.dryRun }),
               ...withOptionalRuntimeOptions(context),
             }).pipe(
               Effect.map((daemon) =>
@@ -963,7 +1276,7 @@ const runCliCommandEffect = ({
         if (binding === undefined) {
           return Effect.fail(
             new CliArgumentError({
-              message: `Workspace ${command.workspaceRoot} has no recorded binding; establish it with sync --from-notion before running sync <workspace-root>`,
+              message: `Workspace ${command.workspaceRoot} has no recorded binding; establish it with track <id-or-url> <workspace-root> before running sync <workspace-root>`,
             }),
           )
         }
@@ -979,7 +1292,9 @@ const runCliCommandEffect = ({
         }
       }
       return Effect.sync(() => {
-        const replicaPath = context.storePath
+        // CDC + planning intents target the public data file; the event log is
+        // appended through `context.store` (control-plane state.sqlite). decision 0020.
+        const replicaPath = replicaPathForContext(context)
         if (replicaPath === undefined)
           return { changes: [] as const, intents: [] as const, replicaPath: ':memory:' }
         if (existsSync(replicaPath) === false)
@@ -990,6 +1305,7 @@ const runCliCommandEffect = ({
           replicaPath,
           store: context.store,
           rootId: context.rootId,
+          ...(context.authorityMode === undefined ? {} : { authorityMode: context.authorityMode }),
           ...(command.dryRun === undefined ? {} : { dryRun: command.dryRun }),
         })
         const intents = replicaChangesToPlannerIntents({
@@ -1033,38 +1349,45 @@ const runCliCommandEffect = ({
         Effect.map((result) => envelope({ command: command._tag, context, result })),
       )
     case 'export': {
+      // `--refresh` re-observes the established binding only (no establish, no
+      // remote ref): export operates on the existing data file (CLI-R02). Under
+      // `--dry-run`, the re-observation and projection are suppressed so the
+      // refresh/export plan is reported without persisting anything.
       const refresh =
-        command.fromNotion === undefined
+        command.refresh !== true
           ? Effect.void
-          : context.store.readWorkspaceBinding(context.rootId) === undefined
-            ? establishFromNotion({
-                ...context,
-                ...remoteObservationContext(context),
-                ...withOptionalObservationLimit(context),
-                dataSourceId: command.fromNotion.dataSourceId,
-                workspaceRoot: context.workspaceRoot,
-              }).pipe(Effect.asVoid)
-            : pullOneShotSync({
-                ...context,
-                ...remoteObservationContext(context),
-                ...withOptionalObservationLimit(context),
-              }).pipe(Effect.asVoid)
+          : pullOneShotSync({
+              ...context,
+              ...remoteObservationContext(context),
+              ...withOptionalObservationLimit(context),
+              ...(command.dryRun === undefined ? {} : { dryRun: command.dryRun }),
+            }).pipe(Effect.asVoid)
 
       return refresh.pipe(
-        Effect.tap(() => Effect.sync(() => projectReplicaIfWritable({ context }))),
+        Effect.tap(() =>
+          Effect.sync(() =>
+            projectReplicaIfWritable({
+              context,
+              ...(command.dryRun === undefined ? {} : { dryRun: command.dryRun }),
+            }),
+          ),
+        ),
         Effect.flatMap(() =>
           Effect.try({
             try: () => {
-              if (context.storePath === undefined || context.storePath === ':memory:') {
+              // Export reads the public projection surface from the data file.
+              const replicaPath = replicaPathForContext(context)
+              if (replicaPath === undefined || replicaPath === ':memory:') {
                 throw new ReplicaExportError('export requires a file-backed SQLite replica')
               }
               return exportReplica({
-                replicaPath: context.storePath,
+                replicaPath,
                 outputPath: command.outputPath,
                 format: command.format,
                 ...(command.requireClean === undefined
                   ? {}
                   : { requireClean: command.requireClean }),
+                ...(command.dryRun === undefined ? {} : { dryRun: command.dryRun }),
               })
             },
             catch: (cause) =>
@@ -1111,19 +1434,28 @@ const runCliCommandEffect = ({
         }),
       )
     case 'conflicts-resolve':
-      return Effect.sync(() =>
-        envelope({
-          command: command._tag,
+      return Effect.sync(() => {
+        const result = resolveConflictCommand({
+          store: context.store,
+          rootId: context.rootId,
+          conflictId: command.conflictId,
+          choice: command.choice,
+          // Authority mode must reach the conflict-resolution planner: a
+          // `keep-local`/`manual` resolution in a `remote`-mode workspace is
+          // refused as `RemoteAuthoritativeDrift` (decisions 0014, 0019).
+          ...(context.authorityMode === undefined ? {} : { authorityMode: context.authorityMode }),
+          ...withOptionalCommandOptions({ command, context }),
+        })
+        // Reproject the public data file so a lifecycle `keep-remote` resolution
+        // (decision 0026) — which reconverges `_nds_row.in_trash` in the apply
+        // path — is immediately reflected in the public `pages._in_trash`,
+        // instead of remaining stale until the next sync.
+        projectReplicaIfWritable({
           context,
-          result: resolveConflictCommand({
-            store: context.store,
-            rootId: context.rootId,
-            conflictId: command.conflictId,
-            choice: command.choice,
-            ...withOptionalCommandOptions({ command, context }),
-          }),
-        }),
-      )
+          ...(command.dryRun === undefined ? {} : { dryRun: command.dryRun }),
+        })
+        return envelope({ command: command._tag, context, result })
+      })
     case 'forget':
       return Effect.sync(() =>
         envelope({
@@ -1266,10 +1598,8 @@ Supported runtime:
   notion db ...            Packaged Node-backed entrypoint from Nix/devenv
 
 Commands:
-  init                    Initialize a local SQLite sync store
-  pull                    Pull remote Notion changes into SQLite
-  push                    Push accepted local SQLite changes to Notion
-  sync                    Run pull and push, or adopt from Notion with --from-notion
+  track                   Adopt a Notion data source into a workspace (the adoption verb)
+  sync                    Reconcile an established workspace, or run the watch daemon with --watch
   export                  Export rows, schema, and sync metadata from SQLite
   status                  Print workspace sync status
   conflicts list          List unresolved conflicts
@@ -1413,18 +1743,58 @@ const positiveIntegerFlag = ({
   })
 }
 
-const watchModeFlag = (flags: Map<string, string | true>): WatchDaemonMode | undefined => {
-  const mode = optionalFlag({ flags, name: 'mode' })
-  if (mode === undefined) return undefined
-  switch (mode) {
+const watchPriorityFlag = (flags: Map<string, string | true>): WatchDaemonMode | undefined => {
+  const priority = optionalFlag({ flags, name: 'watch-priority' })
+  if (priority === undefined) return undefined
+  switch (priority) {
     case 'development':
     case 'normal':
     case 'low-priority':
+      return priority
+    default:
+      throw new CliArgumentError({
+        message: '--watch-priority must be one of: development, normal, low-priority',
+      })
+  }
+}
+
+/**
+ * Parses the authority `--mode` flag accepted ONLY by `track`. The chosen mode
+ * (`local`, `remote`, or `shared`) is persisted workspace-wide in the manifest.
+ *
+ * The default is `remote` (the VRS mirror-adoption default, cli/spec.md): it is
+ * safe-by-default because a Notion-authoritative workspace blocks local property
+ * writes as drift, so an omitted `--mode` cannot accidentally mutate Notion.
+ * `shared` is deliberately NOT the default: its convergence/settlement guards
+ * stay dormant until SM5, so defaulting to it would run with those checks off.
+ * Established commands reject `--mode` entirely (see `rejectPerRunAuthorityMode`).
+ */
+const authorityModeFlag = (flags: Map<string, string | true>): AuthorityMode => {
+  const mode = optionalFlag({ flags, name: 'mode' })
+  if (mode === undefined) return 'remote'
+  switch (mode) {
+    case 'local':
+    case 'remote':
+    case 'shared':
       return mode
     default:
       throw new CliArgumentError({
-        message: '--mode must be one of: development, normal, low-priority',
+        message: '--mode must be one of: local, remote, shared',
       })
+  }
+}
+
+/**
+ * Authority mode is workspace-wide and set only by `track` (decisions 0003,
+ * 0010): established commands reject a per-run `--mode` instead of silently
+ * ignoring it.
+ */
+const rejectPerRunAuthorityMode = (flags: Map<string, string | true>): void => {
+  if (flags.has('mode') === true) {
+    throw new CliArgumentError({
+      message:
+        'authority mode is workspace-wide; set it with `track --mode`; established commands do not accept --mode',
+    })
   }
 }
 
@@ -1535,59 +1905,67 @@ export const parseCliCommand = (argv: ReadonlyArray<string>): CliCommand => {
   const flags = parseFlags(argv)
   const words = parsePositionals(argv)
   const [command, subcommand] = words
+  // Authority `--mode` is accepted ONLY by `track`; every other command rejects
+  // a per-run override before any further parsing (decisions 0015, 0019).
+  if (command !== 'track') rejectPerRunAuthorityMode(flags)
   switch (command) {
-    case 'init':
-      return {
-        _tag: 'init',
-        dataSourceId: decode({
-          schema: DataSourceId,
-          value: requiredFlag({ flags, name: 'data-source-id' }),
-        }),
-        workspaceRoot: decode({
-          schema: AbsolutePath,
-          value: requiredFlag({ flags, name: 'workspace-root' }),
-        }),
-        dryRun: flags.has('dry-run'),
+    case 'track': {
+      const remote = words[1]
+      if (remote === undefined) {
+        throw new CliArgumentError({
+          message: 'track requires a Notion data source or database URL positional argument',
+        })
       }
+      const workspace = words[2]
+      if (workspace === undefined) {
+        throw new CliArgumentError({
+          message: 'track requires a workspace root positional argument',
+        })
+      }
+      if (words.length > 3) {
+        throw new CliArgumentError({
+          message: 'track accepts exactly a remote ref and a workspace root positional argument',
+        })
+      }
+      const limit = optionalLimitFlag(flags)
+      if (limit !== undefined && flags.has('dry-run') === false) {
+        throw new CliArgumentError({
+          message: '--limit is only supported with track --dry-run',
+        })
+      }
+      const remoteRef = parseNotionRemoteRef(remote)
+      return {
+        _tag: 'track',
+        dataSourceId:
+          remoteRef._tag === 'data-source'
+            ? remoteRef.dataSourceId
+            : decode({ schema: DataSourceId, value: remoteRef.databaseId }),
+        remoteRef,
+        workspaceRoot: normalizeAbsolutePath(workspace),
+        authorityMode: authorityModeFlag(flags),
+        dryRun: flags.has('dry-run'),
+        ...(limit === undefined ? {} : { limit }),
+      }
+    }
+    // `init`, `pull`, and `push` are internal reconciliation phases, not public
+    // commands (CLI-R01). The internal functions (`initOneShotSync`,
+    // `pullOneShotSync`, `pushOneShotSync`) remain; `track` and established
+    // `sync` drive them. Reject the public verbs with a clean-break message.
+    case 'init':
     case 'pull':
-      return { _tag: 'pull' }
     case 'push':
-      return { _tag: 'push', dryRun: flags.has('dry-run') }
+      throw new CliArgumentError({
+        message: `${command} is an internal reconciliation phase, not a public command; use \`sync\``,
+      })
     case 'sync': {
-      const fromNotion = optionalFlag({ flags, name: 'from-notion' })
+      // `sync --from-notion` was the legacy adoption alias; adoption is now
+      // `track` (CLI-R01). Reject it with the migration message before any
+      // further parsing.
       if (flags.has('from-notion') === true) {
-        if (fromNotion === undefined) {
-          throw new CliArgumentError({ message: 'Missing value for --from-notion' })
-        }
-        const workspace = words[1]
-        if (workspace === undefined) {
-          throw new CliArgumentError({
-            message: 'sync --from-notion requires a workspace root positional argument',
-          })
-        }
-        if (words.length > 2) {
-          throw new CliArgumentError({
-            message: 'sync --from-notion accepts exactly one workspace root positional argument',
-          })
-        }
-        const limit = optionalLimitFlag(flags)
-        if (limit !== undefined && flags.has('dry-run') === false) {
-          throw new CliArgumentError({
-            message: '--limit is only supported with sync --from-notion --dry-run',
-          })
-        }
-        const remoteRef = parseNotionRemoteRef(fromNotion)
-        return {
-          _tag: 'sync-from-notion',
-          dataSourceId:
-            remoteRef._tag === 'data-source'
-              ? remoteRef.dataSourceId
-              : decode({ schema: DataSourceId, value: remoteRef.databaseId }),
-          remoteRef,
-          workspaceRoot: normalizeAbsolutePath(workspace),
-          dryRun: flags.has('dry-run'),
-          ...(limit === undefined ? {} : { limit }),
-        }
+        throw new CliArgumentError({
+          message:
+            'sync --from-notion has been removed; use `track <id-or-url> <root> --mode <local|remote|shared>` to adopt a Notion data source',
+        })
       }
       if (words.length > 2) {
         throw new CliArgumentError({
@@ -1604,8 +1982,10 @@ export const parseCliCommand = (argv: ReadonlyArray<string>): CliCommand => {
             message: '--max-cycles is only supported with sync --watch',
           })
         }
-        if (flags.has('mode') === true) {
-          throw new CliArgumentError({ message: '--mode is only supported with sync --watch' })
+        if (flags.has('watch-priority') === true) {
+          throw new CliArgumentError({
+            message: '--watch-priority is only supported with sync --watch',
+          })
         }
         if (flags.has('webhook') === true) {
           throw new CliArgumentError({ message: '--webhook is only supported with sync --watch' })
@@ -1623,8 +2003,26 @@ export const parseCliCommand = (argv: ReadonlyArray<string>): CliCommand => {
       }
       const statePath = optionalFlag({ flags, name: 'state' })
       const maxCycles = positiveIntegerFlag({ flags, name: 'max-cycles' })
-      const mode = watchModeFlag(flags)
+      const watchPriority = watchPriorityFlag(flags)
       const webhook = webhookProviderFlag(flags)
+      // CLI-R02: a `sync --watch --dry-run` is a non-interfering observer that
+      // writes NOTHING durable. A webhook receiver, however, enqueues durable
+      // signals on delivery (`handleNotionWebhookDelivery` → `store.enqueueSignal`,
+      // unconditionally — there is no dry-run path in the receiver), so running
+      // one under dry-run would violate the guarantee. Reject at parse time,
+      // before any receiver starts, rather than threading dry-run into the
+      // receiver: a dry-run observer should not run a network receiver at all.
+      if (
+        watch === true &&
+        flags.has('dry-run') === true &&
+        webhook !== undefined &&
+        webhook !== 'none'
+      ) {
+        throw new CliArgumentError({
+          message:
+            'sync --watch --dry-run cannot run a webhook receiver (it would enqueue durable signals); use --webhook none for a dry-run watch',
+        })
+      }
       return {
         _tag: 'sync',
         ...(words[1] === undefined ? {} : { workspaceRoot: normalizeAbsolutePath(words[1]) }),
@@ -1632,7 +2030,7 @@ export const parseCliCommand = (argv: ReadonlyArray<string>): CliCommand => {
         ...(watch === false ? {} : { watch: true }),
         ...(statePath === undefined ? {} : { statePath }),
         ...(maxCycles === undefined ? {} : { maxCycles }),
-        ...(mode === undefined ? {} : { mode }),
+        ...(watchPriority === undefined ? {} : { watchPriority }),
         ...(webhook === undefined ? {} : { webhook }),
         ...(flags.has('webhook-required') === false ? {} : { webhookRequired: true }),
         ...(flags.has('non-interactive') === false ? {} : { nonInteractive: true }),
@@ -1644,34 +2042,27 @@ export const parseCliCommand = (argv: ReadonlyArray<string>): CliCommand => {
           message: 'export accepts at most one workspace root positional argument',
         })
       }
-      const fromNotion = optionalFlag({ flags, name: 'from-notion' })
-      if (flags.has('from-notion') === true && fromNotion === undefined) {
-        throw new CliArgumentError({ message: 'Missing value for --from-notion' })
-      }
-      if (flags.has('dry-run') === true) {
-        throw new CliArgumentError({ message: 'export does not support --dry-run' })
+      // Export does not accept a remote id or database URL (CLI-R02): the
+      // legacy `export --from-notion <ref>` surface is removed. `--refresh` is a
+      // boolean that re-observes the established binding before exporting; use
+      // `track` first to adopt a remote source.
+      if (flags.has('from-notion') === true) {
+        throw new CliArgumentError({
+          message:
+            'export does not accept --from-notion; use `track <id-or-url> <root>` to adopt, then `export --refresh` to re-observe the established binding',
+        })
       }
       if (flags.has('limit') === true || flags.has('max-rows') === true) {
         throw new CliArgumentError({ message: 'export does not support --limit or --max-rows' })
       }
-      const remoteRef = fromNotion === undefined ? undefined : parseNotionRemoteRef(fromNotion)
       return {
         _tag: 'export',
         outputPath: normalizeAbsolutePath(requiredFlag({ flags, name: 'output' })),
         ...(words[1] === undefined ? {} : { workspaceRoot: normalizeAbsolutePath(words[1]) }),
-        ...(remoteRef === undefined
-          ? {}
-          : {
-              fromNotion: {
-                dataSourceId:
-                  remoteRef._tag === 'data-source'
-                    ? remoteRef.dataSourceId
-                    : decode({ schema: DataSourceId, value: remoteRef.databaseId }),
-                remoteRef,
-              },
-            }),
+        ...(flags.has('refresh') === false ? {} : { refresh: true }),
         format: exportFormatFlag(flags),
         ...(flags.has('require-clean') === false ? {} : { requireClean: true }),
+        dryRun: flags.has('dry-run'),
       }
     }
     case 'status':
@@ -1715,18 +2106,40 @@ export const parseCliCommand = (argv: ReadonlyArray<string>): CliCommand => {
   }
   throw new CliArgumentError({
     message:
-      'Expected one of: init, pull, push, sync, export, status, conflicts list, conflicts resolve, forget, restore, doctor',
+      'Expected one of: track, sync, export, status, conflicts list, conflicts resolve, forget, restore, doctor',
   })
 }
 
 type DiscoveredSelfContainedStore = {
+  /** Control-plane store file (`.notion/v1/state.sqlite` for a tracked workspace). */
   readonly storePath: typeof AbsolutePath.Type
+  /**
+   * Public projection / CDC data file (`data/v1/<source>.sqlite`). Distinct from
+   * `storePath` for a tracked workspace; equal to it for a standalone `--sqlite`
+   * file (unified projection). decision 0020.
+   */
+  readonly dataFilePath: typeof AbsolutePath.Type
   readonly rootId: SyncRootIdType
   readonly dataSourceId: typeof DataSourceId.Type
   readonly workspaceRoot: typeof AbsolutePath.Type
+  /**
+   * Workspace-relative page directory for this tracked source (`pages/v1/<name>`,
+   * from the manifest's `data_sources[].pages_dir`). Materialized `.nmd` page
+   * files land under here, one page directory per tracked source (epic R: each
+   * tracked data source owns exactly one data file and one page directory).
+   * Absent for a standalone `--sqlite` file, which has no versioned layout and
+   * keeps the legacy workspace-root body path.
+   */
+  readonly pagesDir?: string
 }
 
-const readSelfContainedBinding = (storePath: string): WorkspaceBindingRow | undefined => {
+const readSelfContainedBinding = ({
+  storePath,
+  rootId,
+}: {
+  readonly storePath: string
+  readonly rootId?: SyncRootIdType
+}): WorkspaceBindingRow | undefined => {
   if (existsSync(storePath) === false) return undefined
   const db = new DatabaseSync(storePath, { readOnly: true })
   try {
@@ -1742,14 +2155,23 @@ const readSelfContainedBinding = (storePath: string): WorkspaceBindingRow | unde
         .get(table)
       if (row === undefined) return undefined
     }
-    const row = db
-      .prepare(
-        `SELECT root_id, data_source_id, database_id, workspace_root, store_identity
-         FROM _nds_workspace_binding
-         ORDER BY updated_at DESC
-         LIMIT 1`,
-      )
-      .get() as Record<string, unknown> | undefined
+    const row =
+      rootId === undefined
+        ? (db
+            .prepare(
+              `SELECT root_id, data_source_id, database_id, workspace_root, store_identity
+               FROM _nds_workspace_binding
+               ORDER BY updated_at DESC
+               LIMIT 1`,
+            )
+            .get() as Record<string, unknown> | undefined)
+        : (db
+            .prepare(
+              `SELECT root_id, data_source_id, database_id, workspace_root, store_identity
+               FROM _nds_workspace_binding
+               WHERE root_id = ?`,
+            )
+            .get(rootId) as Record<string, unknown> | undefined)
     if (row === undefined) return undefined
     return {
       rootId: decode({ schema: SyncRootId, value: row.root_id }),
@@ -1780,53 +2202,89 @@ const readSelfContainedBinding = (storePath: string): WorkspaceBindingRow | unde
   }
 }
 
-const validateSelfContainedSqlite = (storePath: string): void => {
-  const db = new DatabaseSync(storePath, { readOnly: true })
-  try {
-    const requiredObjects = [
-      ['table', '_nds_sync_root'],
-      ['table', '_nds_sync_event'],
-      ['table', '_nds_workspace_binding'],
-      ['table', '_nds_projection_metadata'],
-      ['table', '_nds_api_contract'],
-      ['table', '_nds_body_pointer'],
-      ['table', '_nds_capability'],
-      ['table', '_nds_conflict'],
-      ['table', '_nds_data_source'],
-      ['table', '_nds_guard_block'],
-      ['table', '_nds_outbox'],
-      ['table', '_nds_property_shadow'],
-      ['table', '_nds_query_absence'],
-      ['table', '_nds_query_scan_checkpoint'],
-      ['table', '_nds_row'],
-      ['table', '_nds_schema_property'],
-      ['table', '_nds_tombstone'],
-      ['view', 'rows'],
-      ['view', 'schema'],
-      ['view', 'schema_properties'],
-      ['view', 'changes'],
-      ['view', 'conflicts'],
-      ['view', 'sync_status'],
-      ['trigger', '_nds_rows_update'],
-      ['trigger', '_nds_rows_insert'],
-      ['trigger', '_nds_rows_delete'],
-    ] as const
-    for (const [type, name] of requiredObjects) {
-      const found = db
-        .prepare(`SELECT name FROM sqlite_master WHERE type = ? AND name = ?`)
-        .get(type, name)
-      if (found === undefined) {
-        throw new CliArgumentError({
-          message: `SQLite file ${storePath} is missing required ${type} ${name}; refusing to open`,
-        })
+/**
+ * Fail closed on an established but corrupt store. The control plane lives in
+ * `storePath` (`.notion/v1/state.sqlite` for a tracked workspace) and the public
+ * projection in `dataFilePath` (`data/v1/<source>.sqlite`). For a standalone
+ * `--sqlite` file the two paths coincide and a single file is checked, exactly
+ * as before the control-plane split. decision 0020.
+ */
+const validateSelfContainedSqlite = ({
+  storePath,
+  dataFilePath,
+}: {
+  readonly storePath: string
+  readonly dataFilePath: string
+}): void => {
+  // Control-plane tables (and the CDC triggers) live in the store file.
+  const controlPlaneObjects = [
+    ['table', '_nds_sync_root'],
+    ['table', '_nds_sync_event'],
+    ['table', '_nds_workspace_binding'],
+    ['table', '_nds_projection_metadata'],
+    ['table', '_nds_api_contract'],
+    ['table', '_nds_body_pointer'],
+    ['table', '_nds_capability'],
+    ['table', '_nds_conflict'],
+    ['table', '_nds_data_source'],
+    ['table', '_nds_guard_block'],
+    ['table', '_nds_outbox'],
+    ['table', '_nds_property_shadow'],
+    ['table', '_nds_query_absence'],
+    ['table', '_nds_query_scan_checkpoint'],
+    ['table', '_nds_row'],
+    ['table', '_nds_schema_property'],
+    ['table', '_nds_tombstone'],
+  ] as const
+  // Public views and the CDC write-intent triggers live in the data file.
+  const dataFileObjects = [
+    ['view', 'pages'],
+    ['view', 'schema'],
+    ['view', 'schema_properties'],
+    ['view', 'changes'],
+    ['view', 'conflicts'],
+    ['view', 'sync_status'],
+    ['trigger', '_nds_pages_update'],
+    ['trigger', '_nds_pages_insert'],
+    ['trigger', '_nds_pages_delete'],
+  ] as const
+  const assertObjects = ({
+    path,
+    objects,
+  }: {
+    readonly path: string
+    readonly objects: ReadonlyArray<readonly [string, string]>
+  }): void => {
+    const db = new DatabaseSync(path, { readOnly: true })
+    try {
+      for (const [type, name] of objects) {
+        const found = db
+          .prepare(`SELECT name FROM sqlite_master WHERE type = ? AND name = ?`)
+          .get(type, name)
+        if (found === undefined) {
+          throw new CliArgumentError({
+            message: `SQLite file ${path} is missing required ${type} ${name}; refusing to open`,
+          })
+        }
       }
+    } finally {
+      db.close()
     }
+  }
+  assertObjects({ path: storePath, objects: controlPlaneObjects })
+  assertObjects({ path: dataFilePath, objects: dataFileObjects })
+  // The CDC trigger floor is on the data file (where write-intent triggers live).
+  const db = new DatabaseSync(dataFilePath, { readOnly: true })
+  try {
     const triggerCount = db
       .prepare(`SELECT count(*) AS count FROM sqlite_master WHERE type = 'trigger'`)
       .get() as { readonly count?: unknown } | undefined
-    if (typeof triggerCount?.count !== 'number' || triggerCount.count < 35) {
+    // Floor calibrated to the data file's freshly-projected CDC/write-intent
+    // trigger count (34 post control-plane split, decision 0020): dropping any one
+    // trips this fail-closed guard.
+    if (typeof triggerCount?.count !== 'number' || triggerCount.count < 34) {
       throw new CliArgumentError({
-        message: `SQLite file ${storePath} is missing required datasource-sync triggers; refusing to open`,
+        message: `SQLite file ${dataFilePath} is missing required datasource-sync triggers; refusing to open`,
       })
     }
   } finally {
@@ -1834,43 +2292,247 @@ const validateSelfContainedSqlite = (storePath: string): void => {
   }
 }
 
+/**
+ * Fail closed on a workspace whose namespace is unknown or mixed. Must run
+ * before any local edit is read as write intent. Returns the loaded manifest
+ * result so callers can branch on `tracked` vs `untracked` without reloading.
+ */
+const requireCompatibleWorkspaceNamespace = (workspaceRoot: typeof AbsolutePath.Type) => {
+  const result = loadWorkspaceManifest(workspaceRoot)
+  if (result._tag === 'mixed-namespace') {
+    throw new WorkspaceNamespaceError({
+      guard: 'MixedWorkspaceNamespace',
+      message: `Workspace ${workspaceRoot} mixes namespace versions (${result.offendingPaths.join(', ')}); resolve to a single namespace before running. The system will not migrate or reinterpret artifacts.`,
+    })
+  }
+  if (result._tag === 'unknown-namespace') {
+    throw new WorkspaceNamespaceError({
+      guard: 'UnknownWorkspaceNamespace',
+      message: `Workspace manifest ${result.manifestPath} is not a supported v1 namespace; refusing to open. ${result.reason}`,
+    })
+  }
+  if (result._tag === 'invalid-linked-view') {
+    throw new WorkspaceNamespaceError({
+      guard: 'InvalidLinkedView',
+      message: `Workspace manifest ${result.manifestPath} is inconsistent; refusing to open. ${result.reason}`,
+    })
+  }
+  return result
+}
+
+/**
+ * Writes (or updates) the v1 workspace manifest when an adoption command
+ * (`track`, or the legacy `sync --from-notion`) establishes a tracked source.
+ * Upserts the established source by `data_source_id`. The source `name` reuses
+ * the database ID, so artifacts land at `data/v1/<databaseId>.sqlite` and
+ * `pages/v1/<databaseId>` — the previous single-file location, relocated into
+ * the versioned namespace.
+ *
+ * `authorityMode` is the workspace-wide authority mode. `track --mode` supplies
+ * it explicitly (closing the SM2 M3 gap where adoption could not record a
+ * complete manifest with an authority mode); the legacy `sync --from-notion`
+ * path omits it and preserves any existing manifest mode, defaulting to
+ * `remote` for a fresh workspace.
+ *
+ * Re-tracking is intentional reconfiguration: a second `track --mode <m>` on an
+ * already-tracked workspace OVERWRITES the persisted `authority_mode` with `<m>`
+ * (the legacy establish path, with `authorityMode` omitted, preserves it).
+ */
+const writeEstablishedWorkspaceManifest = (source: EstablishManifestSource): void => {
+  const existing = loadWorkspaceManifest(source.workspaceRoot)
+  const entry: WorkspaceManifestDataSourceV1 = {
+    name: source.name,
+    data_source_id: source.dataSourceId,
+    database_id: source.databaseId,
+    data_file: dataFileRelativePath(source.name),
+    pages_dir: pagesDirRelativePath(source.name),
+  }
+  const priorSources =
+    existing._tag === 'tracked'
+      ? existing.manifest.data_sources.filter(
+          (current) => current.data_source_id !== source.dataSourceId,
+        )
+      : []
+  const manifest: WorkspaceManifestV1 = {
+    namespace_version: 'v1',
+    // Fresh-workspace default is `remote` (safe-by-default: blocks local writes
+    // as drift); an explicit `track --mode` overrides, and an existing manifest's
+    // mode is preserved when the legacy establish path omits `authorityMode`.
+    authority_mode:
+      source.authorityMode ??
+      (existing._tag === 'tracked' ? existing.manifest.authority_mode : 'remote'),
+    data_sources: [...priorSources, entry],
+    ...(existing._tag === 'tracked' && existing.manifest.linked_views !== undefined
+      ? { linked_views: existing.manifest.linked_views }
+      : {}),
+  }
+  writeWorkspaceManifestSync({ workspaceRoot: source.workspaceRoot, manifest })
+}
+
+/**
+ * Resolves the tracked data file for an established workspace from its v1
+ * manifest. The manifest is the location source-of-truth; the binding in the
+ * resolved SQLite file is then verified for integrity.
+ */
 const discoverSelfContainedStore = (
   workspaceRoot: typeof AbsolutePath.Type,
 ): DiscoveredSelfContainedStore => {
-  const explicitSqliteFiles = readdirSync(workspaceRoot)
-    .filter((entry) => entry.endsWith('.sqlite'))
-    .map((entry) => join(workspaceRoot, entry))
-  const matches = explicitSqliteFiles
-    .map((storePath) => ({ storePath, binding: readSelfContainedBinding(storePath) }))
-    .filter(
-      (entry): entry is { readonly storePath: string; readonly binding: WorkspaceBindingRow } =>
-        entry.binding !== undefined,
-    )
-  if (explicitSqliteFiles.length !== matches.length) {
-    throw new CliArgumentError({
-      message: `Found a SQLite file in ${workspaceRoot} with missing or corrupt datasource-sync internals; pass --sqlite <path> after repair`,
+  const result = requireCompatibleWorkspaceNamespace(workspaceRoot)
+  if (result._tag === 'untracked') {
+    throw new WorkspaceNotTracked({
+      message: `No workspace manifest at ${result.manifestPath}; this directory is not a tracked datasource workspace. Run track <database-url> ${workspaceRoot} to establish it.`,
     })
   }
-  if (matches.length !== 1) {
+
+  const sources = result.manifest.data_sources
+  if (sources.length !== 1) {
     throw new CliArgumentError({
       message:
-        matches.length === 0
-          ? `No self-contained datasource-sync SQLite file found in ${workspaceRoot}; run sync --from-notion <database-url> ${workspaceRoot}`
-          : `Multiple datasource-sync SQLite files found in ${workspaceRoot}; pass --sqlite <path>`,
+        sources.length === 0
+          ? `Workspace manifest in ${workspaceRoot} tracks no data sources; run track <database-url> ${workspaceRoot}`
+          : `Workspace manifest in ${workspaceRoot} tracks multiple data sources; pass --sqlite <path>`,
     })
   }
-  const { storePath, binding } = matches[0]!
+
+  const source = sources[0]!
+  const dataFilePath = join(workspaceRoot, source.data_file)
+  const rootId = rootIdForDataSource(source.data_source_id)
+  // The control plane lives in the hidden `.notion/v1/state.sqlite`; the public
+  // data file holds only the projection. The binding moved with the control
+  // plane, so integrity is verified against the state store. decision 0020.
+  const storePath = stateSqlitePath(workspaceRoot)
+  const binding = readSelfContainedBinding({ storePath, rootId })
+  if (binding === undefined) {
+    throw new CliArgumentError({
+      message: `Workspace control-plane store ${storePath} is missing or has corrupt datasource-sync internals; pass --sqlite <path> after repair`,
+    })
+  }
   if (binding.workspaceRoot !== workspaceRoot) {
     throw new CliArgumentError({
       message: `SQLite binding workspace mismatch for ${storePath}; refusing to open it from ${workspaceRoot}`,
     })
   }
+  if (binding.dataSourceId !== source.data_source_id) {
+    throw new CliArgumentError({
+      message: `Workspace control-plane store ${storePath} is bound to ${binding.dataSourceId} but the manifest declares ${source.data_source_id}; refusing to open`,
+    })
+  }
   return {
     storePath: decode({ schema: AbsolutePath, value: storePath }),
-    rootId: binding.rootId,
+    dataFilePath: decode({ schema: AbsolutePath, value: dataFilePath }),
+    rootId,
     dataSourceId: binding.dataSourceId,
     workspaceRoot,
+    pagesDir: source.pages_dir,
   }
+}
+
+const discoverExplicitSplitWorkspaceStore = ({
+  explicitSqlitePath,
+  workspaceRoot,
+}: {
+  readonly explicitSqlitePath: string
+  readonly workspaceRoot: typeof AbsolutePath.Type
+}): DiscoveredSelfContainedStore => {
+  const result = requireCompatibleWorkspaceNamespace(workspaceRoot)
+  if (result._tag === 'untracked') {
+    throw new WorkspaceNotTracked({
+      message: `No workspace manifest at ${result.manifestPath}; this directory is not a tracked datasource workspace. Run track <database-url> ${workspaceRoot} to establish it.`,
+    })
+  }
+
+  const source = result.manifest.data_sources.find(
+    (candidate) =>
+      normalizeAbsolutePath(join(workspaceRoot, candidate.data_file)) === explicitSqlitePath,
+  )
+  if (source === undefined) {
+    throw new CliArgumentError({
+      message: `SQLite file ${explicitSqlitePath} is not declared in workspace manifest ${manifestPath(workspaceRoot)}`,
+    })
+  }
+
+  const storePath = stateSqlitePath(workspaceRoot)
+  const rootId = rootIdForDataSource(source.data_source_id)
+  const binding = readSelfContainedBinding({ storePath, rootId })
+  if (binding === undefined) {
+    throw new CliArgumentError({
+      message: `Workspace control-plane store ${storePath} is missing a binding for ${source.data_source_id}; refusing to open`,
+    })
+  }
+  if (binding.workspaceRoot !== workspaceRoot) {
+    throw new CliArgumentError({
+      message: `SQLite binding workspace mismatch for ${storePath}; refusing to open it from ${workspaceRoot}`,
+    })
+  }
+  if (binding.dataSourceId !== source.data_source_id) {
+    throw new CliArgumentError({
+      message: `Workspace control-plane store ${storePath} root ${rootId} is bound to ${binding.dataSourceId} but the manifest declares ${source.data_source_id}; refusing to open`,
+    })
+  }
+
+  return {
+    storePath: decode({ schema: AbsolutePath, value: storePath }),
+    dataFilePath: decode({ schema: AbsolutePath, value: explicitSqlitePath }),
+    rootId,
+    dataSourceId: binding.dataSourceId,
+    workspaceRoot,
+    pagesDir: source.pages_dir,
+  }
+}
+
+/**
+ * Resolves an explicit `--sqlite <path>` to a control-plane store and a public
+ * data file (decision 0020). Two cases:
+ *
+ * - The file is genuinely self-contained (carries its own control plane and
+ *   binding): unified — both paths are the file, exactly as before the split.
+ * - The file is a tracked workspace's data file (no embedded control plane):
+ *   the control plane lives in the sibling `.notion/v1/state.sqlite`. The
+ *   workspace root is derived from the fixed `<root>/data/v1/<name>.sqlite`
+ *   layout and confirmed against the manifest's `data_file` before routing
+ *   through `discoverSelfContainedStore`, which restores the namespace
+ *   fail-closed path.
+ */
+const resolveExplicitSqliteStore = ({
+  explicitSqlitePath,
+  fallbackWorkspaceRoot,
+}: {
+  readonly explicitSqlitePath: string
+  readonly fallbackWorkspaceRoot?: typeof AbsolutePath.Type
+}): DiscoveredSelfContainedStore => {
+  const binding = readSelfContainedBinding({ storePath: explicitSqlitePath })
+  if (binding !== undefined) {
+    // Self-contained file: control plane + projection live together (unified).
+    const path = decode({ schema: AbsolutePath, value: explicitSqlitePath })
+    return {
+      storePath: path,
+      dataFilePath: path,
+      rootId: binding.rootId,
+      dataSourceId: binding.dataSourceId,
+      workspaceRoot:
+        fallbackWorkspaceRoot ?? decode({ schema: AbsolutePath, value: binding.workspaceRoot }),
+    }
+  }
+  // No embedded control plane: the file may be a split workspace's data file at
+  // `<root>/data/v1/<name>.sqlite`. Derive the workspace root by stripping that
+  // fixed suffix. When the file sits in the versioned data directory, route
+  // through explicit manifest-source selection, which works for multi-source
+  // workspaces and confirms the manifest tracks exactly this data file before
+  // resolving the sibling control-plane store.
+  const candidateRoot = dirname(dirname(dirname(explicitSqlitePath)))
+  const inVersionedDataDir = join(candidateRoot, dataDirectoryName) === dirname(explicitSqlitePath)
+  if (inVersionedDataDir === true) {
+    const workspaceRoot = decode({ schema: AbsolutePath, value: candidateRoot })
+    if (fallbackWorkspaceRoot !== undefined && workspaceRoot !== fallbackWorkspaceRoot) {
+      throw new CliArgumentError({
+        message: `SQLite file ${explicitSqlitePath} is under ${workspaceRoot}, but command workspace root is ${fallbackWorkspaceRoot}`,
+      })
+    }
+    return discoverExplicitSplitWorkspaceStore({ explicitSqlitePath, workspaceRoot })
+  }
+  throw new CliArgumentError({
+    message: `SQLite file ${explicitSqlitePath} is missing datasource-sync internals`,
+  })
 }
 
 const sqlitePathFromFlags = (flags: Map<string, string | true>): string | undefined => {
@@ -1913,151 +2575,111 @@ export const parseCliContext = ({
         '--query-contract-json is not supported by the product CLI; database-ID SQLite files are always full Notion database replicas',
     })
   }
-  if (command._tag === 'sync-from-notion' && explicitSqlitePath !== undefined) {
+  if (
+    (command._tag === 'sync-from-notion' || command._tag === 'track') &&
+    explicitSqlitePath !== undefined
+  ) {
+    const verb = command._tag === 'track' ? 'track' : 'sync --from-notion'
     throw new CliArgumentError({
-      message:
-        'sync --from-notion always creates <workspace>/<database-id>.sqlite; --sqlite is only for established replica commands',
+      message: `${verb} always creates <workspace>/<database-id>.sqlite; --sqlite is only for established replica commands`,
     })
   }
+  // Captured when a workspace-rooted command establishes a tracked source, so
+  // the v1 manifest can be (re)written after the store is opened. `authorityMode`
+  // is carried only by `track --mode`, which sets the workspace-wide mode.
+  let establishManifestSource: EstablishManifestSource | undefined
   const discovered =
-    command._tag === 'sync-from-notion'
+    command._tag === 'sync-from-notion' || command._tag === 'track'
       ? (() => {
           const databaseId =
             command.remoteRef._tag === 'database'
               ? command.remoteRef.databaseId
               : (command.remoteRef.sourceDatabaseId ?? command.dataSourceId)
-          const storePath =
-            explicitSqlitePath ??
-            defaultSqlitePath({ workspaceRoot: command.workspaceRoot, databaseId })
+          // Fail closed on a mixed or unknown namespace before establishing
+          // anything. An absent manifest (untracked) is fine here: we create it.
+          if (commandDryRun !== true) {
+            requireCompatibleWorkspaceNamespace(command.workspaceRoot)
+          }
+          // `track` (and the legacy `sync --from-notion`) always establishes
+          // inside a workspace (--sqlite is rejected above), so the control plane
+          // lives in the hidden state.sqlite and the public projection in the
+          // data file. decision 0020.
+          const dataFile = defaultSqlitePath({ workspaceRoot: command.workspaceRoot, databaseId })
+          const storePath = decode({
+            schema: AbsolutePath,
+            value: stateSqlitePath(command.workspaceRoot),
+          })
           const existingBinding =
             commandDryRun === true || existsSync(storePath) === false
               ? undefined
-              : readSelfContainedBinding(storePath)
+              : readSelfContainedBinding({ storePath })
+          // One `.notion/v1/state.sqlite` holds one binding row per tracked data
+          // source (keyed by the derived `data-source:<id>` root id), so adding a
+          // second source to the same workspace is allowed (VRS multi-source
+          // workspace). The discriminator is the workspace root: every binding in
+          // a given state store shares it, so a mismatch on the latest binding
+          // signals a moved or copied control-plane store and is refused.
           if (
             existingBinding !== undefined &&
-            existingBinding.dataSourceId !== command.dataSourceId
+            existingBinding.workspaceRoot !== command.workspaceRoot
           )
             throw new CliArgumentError({
-              message: `SQLite file is already bound to data source ${existingBinding.dataSourceId}; refusing to establish ${command.dataSourceId}`,
+              message: `Control-plane store at ${storePath} is bound to workspace ${existingBinding.workspaceRoot}; refusing to establish ${command.dataSourceId} under ${command.workspaceRoot}`,
             })
+          if (commandDryRun !== true) {
+            establishManifestSource = {
+              workspaceRoot: command.workspaceRoot,
+              name: databaseId,
+              dataSourceId: decode({ schema: DataSourceId, value: command.dataSourceId }),
+              databaseId,
+              // `track --mode` records the workspace-wide authority mode; the
+              // legacy `sync --from-notion` path preserves the existing mode.
+              ...(command._tag === 'track' ? { authorityMode: command.authorityMode } : {}),
+            }
+          }
           return {
             storePath: commandDryRun === true ? ':memory:' : storePath,
+            dataFilePath: commandDryRun === true ? ':memory:' : dataFile,
             rootId: rootIdForDataSource(command.dataSourceId),
             dataSourceId: command.dataSourceId,
             workspaceRoot: command.workspaceRoot,
+            // Establish/track materializes `.nmd` page files into the source's
+            // page directory (`pages/v1/<name>`); the manifest establish path
+            // writes the same `pages_dir`.
+            pagesDir: pagesDirRelativePath(databaseId),
           }
         })()
-      : command._tag === 'export' && command.fromNotion !== undefined
-        ? (() => {
-            const workspaceRoot = command.workspaceRoot
-            if (workspaceRoot === undefined && explicitSqlitePath === undefined) {
-              throw new CliArgumentError({
-                message: 'export --from-notion requires a workspace root or --sqlite <path>',
-              })
-            }
-            const existingBinding =
-              explicitSqlitePath === undefined
-                ? undefined
-                : readSelfContainedBinding(explicitSqlitePath)
-            if (
-              existingBinding !== undefined &&
-              existingBinding.dataSourceId !== command.fromNotion.dataSourceId
-            ) {
-              throw new CliArgumentError({
-                message: `SQLite file is already bound to data source ${existingBinding.dataSourceId}; refusing to export ${command.fromNotion.dataSourceId}`,
-              })
-            }
-            const resolvedWorkspaceRoot = decode({
-              schema: AbsolutePath,
-              value: workspaceRoot ?? existingBinding?.workspaceRoot,
+      : (command._tag === 'sync' || command._tag === 'status' || command._tag === 'export') &&
+          command.workspaceRoot !== undefined
+        ? explicitSqlitePath === undefined
+          ? discoverSelfContainedStore(command.workspaceRoot)
+          : resolveExplicitSqliteStore({
+              explicitSqlitePath,
+              fallbackWorkspaceRoot: command.workspaceRoot,
             })
-            const databaseId =
-              command.fromNotion.remoteRef._tag === 'database'
-                ? command.fromNotion.remoteRef.databaseId
-                : (command.fromNotion.remoteRef.sourceDatabaseId ?? command.fromNotion.dataSourceId)
-            const storePath =
-              explicitSqlitePath ??
-              defaultSqlitePath({ workspaceRoot: resolvedWorkspaceRoot, databaseId })
-            return {
-              storePath,
-              rootId: rootIdForDataSource(command.fromNotion.dataSourceId),
-              dataSourceId: command.fromNotion.dataSourceId,
-              workspaceRoot: resolvedWorkspaceRoot,
-            }
-          })()
-        : (command._tag === 'sync' || command._tag === 'status') &&
-            command.workspaceRoot !== undefined
-          ? (() => {
-              return explicitSqlitePath === undefined
-                ? discoverSelfContainedStore(command.workspaceRoot)
-                : (() => {
-                    const binding = readSelfContainedBinding(explicitSqlitePath)
-                    if (binding === undefined) {
-                      throw new CliArgumentError({
-                        message: `SQLite file ${explicitSqlitePath} is missing datasource-sync internals`,
-                      })
-                    }
-                    return {
-                      storePath: decode({ schema: AbsolutePath, value: explicitSqlitePath }),
-                      rootId: binding.rootId,
-                      dataSourceId: binding.dataSourceId,
-                      workspaceRoot: command.workspaceRoot,
-                    }
-                  })()
+        : explicitSqlitePath !== undefined && flags.has('root-id') === false
+          ? resolveExplicitSqliteStore({ explicitSqlitePath })
+          : (() => {
+              const storePath = explicitSqlitePath ?? requiredFlag({ flags, name: 'sqlite' })
+              return {
+                storePath,
+                dataFilePath: storePath,
+                rootId: decode({
+                  schema: SyncRootId,
+                  value: requiredFlag({ flags, name: 'root-id' }),
+                }),
+                dataSourceId: decode({
+                  schema: DataSourceId,
+                  value: requiredFlag({ flags, name: 'data-source-id' }),
+                }),
+                workspaceRoot: decode({
+                  schema: AbsolutePath,
+                  value: requiredFlag({ flags, name: 'workspace-root' }),
+                }),
+              }
             })()
-          : command._tag === 'export' && command.workspaceRoot !== undefined
-            ? (() => {
-                return explicitSqlitePath === undefined
-                  ? discoverSelfContainedStore(command.workspaceRoot)
-                  : (() => {
-                      const binding = readSelfContainedBinding(explicitSqlitePath)
-                      if (binding === undefined) {
-                        throw new CliArgumentError({
-                          message: `SQLite file ${explicitSqlitePath} is missing datasource-sync internals`,
-                        })
-                      }
-                      return {
-                        storePath: decode({ schema: AbsolutePath, value: explicitSqlitePath }),
-                        rootId: binding.rootId,
-                        dataSourceId: binding.dataSourceId,
-                        workspaceRoot: command.workspaceRoot,
-                      }
-                    })()
-              })()
-            : explicitSqlitePath !== undefined && flags.has('root-id') === false
-              ? (() => {
-                  const binding = readSelfContainedBinding(explicitSqlitePath)
-                  if (binding === undefined) {
-                    throw new CliArgumentError({
-                      message: `SQLite file ${explicitSqlitePath} is missing datasource-sync internals`,
-                    })
-                  }
-                  return {
-                    storePath: explicitSqlitePath,
-                    rootId: binding.rootId,
-                    dataSourceId: binding.dataSourceId,
-                    workspaceRoot: decode({ schema: AbsolutePath, value: binding.workspaceRoot }),
-                  }
-                })()
-              : (() => {
-                  const storePath = explicitSqlitePath ?? requiredFlag({ flags, name: 'sqlite' })
-                  return {
-                    storePath,
-                    rootId: decode({
-                      schema: SyncRootId,
-                      value: requiredFlag({ flags, name: 'root-id' }),
-                    }),
-                    dataSourceId: decode({
-                      schema: DataSourceId,
-                      value: requiredFlag({ flags, name: 'data-source-id' }),
-                    }),
-                    workspaceRoot: decode({
-                      schema: AbsolutePath,
-                      value: requiredFlag({ flags, name: 'workspace-root' }),
-                    }),
-                  }
-                })()
-  const rowLimit = command._tag === 'sync-from-notion' ? command.limit : undefined
+  const rowLimit =
+    command._tag === 'sync-from-notion' || command._tag === 'track' ? command.limit : undefined
   const baseQueryContract = fullReplicaQueryContract()
   const queryContract =
     rowLimit === undefined
@@ -2076,16 +2698,35 @@ export const parseCliContext = ({
           schema: Schema.Array(SchemaPropertyObservationJson),
           value: requiredFlag({ flags, name: 'schema-properties-json' }),
         }) as ReadonlyArray<SchemaPropertyObservation>)
+  // Fail-closed chokepoint for write-intent commands (`sync`, `sync --watch`,
+  // and `push` — `watch` is a `sync` variant) that resolve a data file via
+  // `--sqlite`. Discovery already guards the workspace-rooted path, but the
+  // `--sqlite` branches read `readPendingReplicaChanges` as write intent without
+  // it; guarding here covers them before any file is opened or mutated. A
+  // genuinely standalone `--sqlite` file (binding not inside a tracked
+  // workspace) is exempt automatically: `requireCompatibleWorkspaceNamespace`
+  // returns `untracked` for a workspace without a manifest instead of throwing.
+  if ((command._tag === 'sync' || command._tag === 'push') && discovered.storePath !== ':memory:') {
+    requireCompatibleWorkspaceNamespace(discovered.workspaceRoot)
+  }
   if (discovered.storePath !== ':memory:') {
     mkdirSync(dirname(discovered.storePath), { recursive: true })
-    if (command._tag !== 'sync-from-notion' && existsSync(discovered.storePath) === true) {
-      validateSelfContainedSqlite(discovered.storePath)
+    mkdirSync(dirname(discovered.dataFilePath), { recursive: true })
+    if (
+      command._tag !== 'sync-from-notion' &&
+      command._tag !== 'track' &&
+      existsSync(discovered.storePath) === true
+    ) {
+      validateSelfContainedSqlite({
+        storePath: discovered.storePath,
+        dataFilePath: discovered.dataFilePath,
+      })
     }
   }
   const store = openNotionSyncStore({ path: discovered.storePath })
   if (
     command._tag !== 'sync-from-notion' &&
-    (command._tag !== 'export' || command.fromNotion === undefined) &&
+    command._tag !== 'track' &&
     discovered.storePath !== ':memory:'
   ) {
     const binding = store.readWorkspaceBinding(discovered.rootId)
@@ -2106,19 +2747,40 @@ export const parseCliContext = ({
     }
   }
 
+  // Read the workspace-wide authority mode from the manifest. For a fresh
+  // establish command, parse only carries the pending manifest entry; the command
+  // writes it after remote establishment succeeds.
+  const manifestResult =
+    discovered.storePath === ':memory:'
+      ? undefined
+      : loadWorkspaceManifest(discovered.workspaceRoot)
+  const authorityMode =
+    establishManifestSource?.authorityMode ??
+    (manifestResult !== undefined && manifestResult._tag === 'tracked'
+      ? manifestResult.manifest.authority_mode
+      : undefined)
+
   return {
     store,
     storePath: discovered.storePath,
+    replicaPath: discovered.dataFilePath,
     rootId: discovered.rootId,
     dataSourceId: discovered.dataSourceId,
     workspaceRoot: discovered.workspaceRoot,
     queryContract,
+    ...('pagesDir' in discovered && discovered.pagesDir !== undefined
+      ? { sourcePagesDir: discovered.pagesDir }
+      : {}),
+    ...(authorityMode === undefined ? {} : { authorityMode }),
     ...(schemaProperties === undefined ? {} : { schemaProperties }),
     ...(requiredCapabilities === undefined ? {} : { requiredCapabilities }),
     ...(flags.has('no-materialize-bodies') === false && commandDryRun !== true
       ? {}
       : { materializeBodies: false }),
     ...(rowLimit === undefined ? {} : { rowLimit }),
+    ...(establishManifestSource === undefined
+      ? {}
+      : { pendingManifestSource: establishManifestSource }),
     ...(maxExecutorSteps === undefined ? {} : { maxExecutorSteps }),
   }
 }
@@ -2173,7 +2835,7 @@ const resolveDatabaseDataSourceId = ({
       () =>
         new CliArgumentError({
           message:
-            'Unable to retrieve the Notion database while resolving --from-notion; verify the integration can access the database, or pass a data source ID directly.',
+            'Unable to retrieve the Notion database while resolving the adoption ref; verify the integration can access the database, or pass a data source ID directly.',
         }),
     ),
     Effect.flatMap((database) => {
@@ -2204,14 +2866,14 @@ export const resolveCliCommandNotionRefs = ({
   readonly command: CliCommand
   readonly options?: CliRuntimeOptions
 }): Effect.Effect<CliCommand, CliArgumentError> => {
+  // Only adoption (`track`, or the legacy `sync-from-notion`) carries a Notion
+  // remote ref to resolve. Export operates on the existing binding and never
+  // accepts a remote id/URL (CLI-R02), so it needs no resolution here.
   const databaseRef =
-    command._tag === 'sync-from-notion' && command.remoteRef._tag === 'database'
+    (command._tag === 'sync-from-notion' || command._tag === 'track') &&
+    command.remoteRef._tag === 'database'
       ? command.remoteRef
-      : command._tag === 'export' &&
-          command.fromNotion !== undefined &&
-          command.fromNotion.remoteRef._tag === 'database'
-        ? command.fromNotion.remoteRef
-        : undefined
+      : undefined
 
   if (databaseRef === undefined) {
     return Effect.succeed(command)
@@ -2220,7 +2882,7 @@ export const resolveCliCommandNotionRefs = ({
   if (client === undefined) {
     return Effect.fail(
       new CliArgumentError({
-        message: `${command._tag === 'export' ? 'export' : 'sync'} --from-notion received a Notion database URL, but no Notion client is configured to resolve its child data source; set NOTION_API_TOKEN/NOTION_TOKEN or pass a data source ID directly.`,
+        message: `${command._tag === 'track' ? 'track' : 'sync'} received a Notion database URL, but no Notion client is configured to resolve its child data source; set NOTION_API_TOKEN/NOTION_TOKEN or pass a data source ID directly.`,
       }),
     )
   }
@@ -2229,29 +2891,15 @@ export const resolveCliCommandNotionRefs = ({
     databaseId,
     client,
   }).pipe(
-    Effect.map((resolved) =>
-      command._tag === 'sync-from-notion'
-        ? {
-            ...command,
-            dataSourceId: resolved.dataSourceId,
-            remoteRef: {
-              _tag: 'data-source' as const,
-              dataSourceId: resolved.dataSourceId,
-              sourceDatabaseId: resolved.databaseId,
-            },
-          }
-        : {
-            ...command,
-            fromNotion: {
-              dataSourceId: resolved.dataSourceId,
-              remoteRef: {
-                _tag: 'data-source' as const,
-                dataSourceId: resolved.dataSourceId,
-                sourceDatabaseId: resolved.databaseId,
-              },
-            },
-          },
-    ),
+    Effect.map((resolved) => ({
+      ...command,
+      dataSourceId: resolved.dataSourceId,
+      remoteRef: {
+        _tag: 'data-source' as const,
+        dataSourceId: resolved.dataSourceId,
+        sourceDatabaseId: resolved.databaseId,
+      },
+    })),
   )
 }
 
@@ -2384,6 +3032,7 @@ export const runCliCommandWithRuntime = ({
   runCliCommand(command, context).pipe(Effect.provide(makeCliRuntimeLayer({ context, options })))
 
 const syncProgressCommandTags = new Set<CliCommand['_tag']>([
+  'track',
   'init',
   'pull',
   'push',

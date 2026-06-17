@@ -5,7 +5,7 @@ Sub-system slice of [spec.md](../../spec.md). Serves [requirements](./requiremen
 Requirement trace: SCHEMA-R01-SCHEMA-R06, SCHEMA-T01.
 
 This slice specifies schema semantics: the change-policy table, the additive
-subset, schema ownership, and the future two-phase plan/apply contract. Schema
+subset, schema ownership, and the promoted two-phase plan/apply contract. Schema
 mutation is not a public workflow in the current CLI; the SQLite file never accepts schema-mutating SQL. The
 read-only schema surfaces (`schema`, `schema_properties`) are specified in
 [../replica-api/spec.md](../replica-api/spec.md), and the schema-affecting
@@ -21,8 +21,8 @@ write path:
 
 - `schema` and `schema_properties` are read-only in the file (see
   [../replica-api/spec.md](../replica-api/spec.md)).
-- `ALTER TABLE rows ...` (DDL) is rejected. SQLite has no DDL triggers, so an
-  `ALTER TABLE rows` interception would need an out-of-band parser and would risk
+- `ALTER TABLE pages ...` (DDL) is rejected. SQLite has no DDL triggers, so an
+  `ALTER TABLE pages` interception would need an out-of-band parser and would risk
   SQL-column vs property-ID divergence.
 - There is no `kind=schema` row in the public `changes` table; schema is not a
   public SQL write intent.
@@ -65,7 +65,7 @@ Schema ownership is explicit per binding:
 
 | Ownership     | Schema write policy                                                                                                           |
 | ------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `userManaged` | Never automatically converge schema. Local schema changes require explicit future migration commands.                         |
+| `userManaged` | Never automatically converge schema. Local schema changes require explicit migration commands.                                |
 | `appOwned`    | Additive convergence may be automatic only when the current schema hash matches the expected base and all schema guards pass. |
 
 Automatic schema convergence is allowed only for `appOwned` sources and only

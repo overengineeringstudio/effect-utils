@@ -12,7 +12,10 @@ import { editorExitCode } from './exit-codes.ts'
  * Map the program `Exit` to the editor-surface exit-code contract (exit-codes.ts).
  * Runs after every scope/finalizer closes, so `edit`'s temp-dir cleanup is safe.
  */
-const editorTeardown = <E, A>(exit: Exit.Exit<E, A>, onExit: (code: number) => void): void => {
+const editorTeardown = (
+  exit: Exit.Exit<unknown, unknown>,
+  onExit: (code: number) => void,
+): void => {
   onExit(editorExitCode(exit))
 }
 
@@ -39,5 +42,7 @@ export const runCliMain = ({
   )
 
 if (import.meta.main) {
-  runCliMain().pipe(NodeRuntime.runMain({ disableErrorReporting: true, teardown: editorTeardown }))
+  NodeRuntime.runMain({ disableErrorReporting: true, teardown: editorTeardown })(
+    runCliMain() as Effect.Effect<void, unknown, never>,
+  )
 }

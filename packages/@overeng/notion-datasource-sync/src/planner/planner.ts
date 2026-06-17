@@ -1,3 +1,5 @@
+import { evaluatePropertyWrite } from '@overeng/notion-property-write'
+
 import type {
   BodyPushCommand,
   CreatePageCommand,
@@ -26,8 +28,6 @@ import {
   guardBodySafety,
   guardCapabilityPreflight,
   guardPathClaimCollision,
-  guardPropertyAvailability,
-  guardPropertyWriteClass,
   guardQueryAbsence,
   guardQueryCompleteness,
   guardSchemaIntentSafety,
@@ -45,6 +45,7 @@ import {
   type SafeDiagnostic,
   type SchemaIntentSafety,
 } from '../core/guards.ts'
+import { evaluateDesiredFileReferences, makeWorkspaceProof } from './property-proof.ts'
 
 /** Planner-visible view of a single property column in the remote data source schema. */
 export type SchemaPropertySurface = {
@@ -53,6 +54,25 @@ export type SchemaPropertySurface = {
   readonly schemaHash: Hash
   readonly configHash: Hash
   readonly writeClass: PropertyWriteClass
+  /**
+   * `false` when the remote data-source schema was not freshly observed for this
+   * write; surfaces as `RemoteSchemaRequired`. Defaults to `true` (a present
+   * schema surface is, by construction, an observation).
+   */
+  readonly remoteSchemaObserved?: boolean
+  /**
+   * `false` when the resolved display name maps ambiguously to more than one
+   * property on the observed schema; surfaces as `PropertyIdentityAmbiguous`.
+   * Defaults to `true`.
+   */
+  readonly displayNameUnambiguous?: boolean
+  /**
+   * The authored whole-schema identity hash to compare against the observed
+   * {@link schemaHash}. When present and differing, surfaces as
+   * `StaleRemoteSchema`. Omitted when no authored whole-schema oracle exists, so
+   * the staleness check honestly skips.
+   */
+  readonly expectedSchemaHash?: Hash
 }
 
 /** Planner-visible data-source metadata surface, independent from property schema. */
@@ -79,8 +99,65 @@ export type PropertySurfaceSnapshot = {
     | {
         readonly intentEventId: SyncEventId
         readonly targetHash: Hash
+        /**
+         * Outbox state of the unsettled prior write. The settlement gate fires
+         * only for genuinely in-flight states ({@link PENDING_INTENT_IN_FLIGHT_STATES});
+         * terminal/non-reclaimable refusals (`blocked` from a pre-write
+         * `StaleSurfaceBase`/`CurrentSurfaceMissing`) never settle and must NOT
+         * poison the cell as a misleading `ReadAfterWriteMismatch`.
+         */
+        readonly state: 'queued' | 'running' | 'retryable' | 'blocked' | 'ambiguous'
       }
     | undefined
+  /*
+   * The three fields below are threaded into the shared property-write proof
+   * (see `makeWorkspaceProof`). All three are populated in production by
+   * `withAuthorityMode`: `writeMode` from the manifest authority mode;
+   * `localConvergence` from the Phase 4 shared-mode local convergence
+   * (`buildPropertyConvergenceInputs` + `convergeLocalSurfaces` +
+   * `applyConvergenceVerdicts` in the CLI push path); and `settlement` from real
+   * outbox read-after-write state — `withAuthorityMode` maps a genuinely in-flight
+   * prior write (`pendingLocal` present with an in-flight `state`, from
+   * `#pendingPropertyIntents`) to `missing` in `shared` mode. So
+   * `RemoteAuthoritativeDrift`, `LocalSurfaceDisagreement`, and
+   * `ReadAfterWriteMismatch` all fire from real production state.
+   */
+  /**
+   * Workspace entrypoint / page-authority signal threaded into the shared
+   * property-write proof. `remote` marks a Notion-authoritative page, against
+   * which the planner refuses a local property mutation as
+   * `RemoteAuthoritativeDrift` BEFORE building a proof. Defaults to `shared`.
+   */
+  readonly writeMode?: 'local' | 'shared' | 'remote'
+  /**
+   * Whether the local SQLite `pages` projection agrees with the materialized
+   * `.nmd` artifact for this page property. `disagrees` surfaces as
+   * `LocalSurfaceDisagreement`. Defaults to `not-applicable`.
+   *
+   * In `shared` mode the Phase 4 local-convergence engine
+   * (`convergeLocalSurfaces` + `applyConvergenceVerdicts`) computes this verdict
+   * by comparing the drained SQLite data-file edits against the decoded `.nmd`
+   * frontmatter desired facts per `(pageId, propertyId)`, wired into the CLI push
+   * path. ACTIVE on production data (SM5d): pulls materialize the writable
+   * frontmatter properties into the `.nmd`, so a real `disagrees` arises from an
+   * actual divergence between a pulled page's `.nmd` and the SQLite projection.
+   * `local`/`remote` mode is always `not-applicable` (single source mirrors the
+   * other).
+   */
+  readonly localConvergence?: 'not-applicable' | 'converged' | 'disagrees'
+  /**
+   * Outbox read-after-write settlement context. In `shared` mode a `missing`
+   * settlement surfaces as `ReadAfterWriteMismatch`. Populated by
+   * `withAuthorityMode` from real outbox state: a genuinely in-flight prior write
+   * for this `(pageId, propertyId)` (`pendingLocal` present with an in-flight
+   * `state` — see {@link PENDING_INTENT_IN_FLIGHT_STATES}) is `missing`; otherwise
+   * `present`. A terminal `blocked` refusal does NOT gate, since the write never
+   * executed and never settles. `local`/`remote` mode carries no read-after-write
+   * requirement and is `not-required`. When the surface omits it (no authority
+   * mode / untracked store) the proof falls back to the non-blocking `present`
+   * default.
+   */
+  readonly settlement?: 'not-required' | 'present' | 'missing'
 }
 
 /** Observed state of a remote row used to check lifecycle guards (trash, move-out) before planning writes or deletes. */
@@ -157,6 +234,87 @@ export type PlannerProjectionSnapshot = {
   readonly localWorkspace: ReadonlyArray<LocalWorkspaceSurfaceSnapshot>
   readonly remoteChanges: ReadonlyArray<ConflictSurface>
 }
+
+/**
+ * Overlays the workspace-wide authority mode (decisions 0015, 0019) onto every
+ * property snapshot's `writeMode`, and derives each property's `settlement`
+ * verdict from real outbox read-after-write state. This is the single chokepoint
+ * applied wherever a `readPlannerProjectionSnapshot` result is handed to
+ * `planIntent`: the manifest authority mode drives property-write authority, not
+ * yet-to-be-built per-page observation. `remote` makes a local property edit drift
+ * (`RemoteAuthoritativeDrift`); `local`/`shared` reach the property-write proof.
+ * `undefined` leaves the snapshot untouched so the planner keeps its `shared`
+ * default (behavior-preserving for standalone/untracked stores).
+ *
+ * Settlement wiring: a property's `pendingLocal` is populated by the store from
+ * `#pendingPropertyIntents`, which selects exactly the outbox `PatchPageProperties`
+ * commands for this `(pageId, propertyId)` that are still unsettled
+ * (`settlement_event_id IS NULL` and state ∈ queued/running/retryable/blocked/
+ * ambiguous) and carries the outbox `state`. The settlement gate fires only for a
+ * GENUINELY IN-FLIGHT prior write — state ∈ {queued, running, retryable, ambiguous}
+ * (see {@link PENDING_INTENT_IN_FLIGHT_STATES}): the write is still being driven
+ * toward settlement, or its verification was ambiguous and will be re-driven, so a
+ * new property write must be gated as `missing` and block via the core's
+ * `ReadAfterWriteMismatch`. A `blocked` state is EXCLUDED: it is a pre-write
+ * `StaleSurfaceBase`/`CurrentSurfaceMissing` refusal — the write never executed,
+ * the claim query never reclaims it, and `settle()` never clears it, so it is a
+ * permanent dead end that never represents a real read-after-write race. Gating on
+ * it would falsely poison the cell; genuine remote drift is handled by the
+ * remoteHash-drift branch below, and a stuck `StaleSurfaceBase` must surface as its
+ * own cause. When no in-flight prior write is pending the prior surface is settled
+ * (or there is nothing to settle), so `present` is the genuinely-safe verdict. The
+ * core's settlement check is mode-blind, so mode-awareness lives HERE:
+ * `local`/`remote` writes carry no read-after-write requirement and map to
+ * `not-required`.
+ *
+ * Every code path that plans a local property write — `pushOneShotSync`, the
+ * `conflicts resolve` command, and the CDC `conflict_resolution` path — MUST route
+ * its snapshot through this helper, or a `remote`-mode workspace silently bypasses
+ * the drift guard.
+ */
+/**
+ * Outbox states whose pending property write is genuinely in-flight — the write
+ * is still being driven toward settlement (or its verification was ambiguous and
+ * will be re-driven). Only these gate a new shared-mode write as `missing`.
+ *
+ * `blocked` is deliberately excluded: it is a pre-write refusal recorded for a
+ * `StaleSurfaceBase`/`CurrentSurfaceMissing` guard — the write never executed,
+ * the claim query never reclaims it, and `settle()` never clears it, so it is a
+ * permanent dead end. Gating on it would poison the cell with a misleading
+ * `ReadAfterWriteMismatch` for a write that never raced anything; genuine drift
+ * is surfaced by the remoteHash-drift branch in {@link planIntent} and a stuck
+ * `StaleSurfaceBase` must surface as its own cause. (`fenced` is likewise
+ * terminal and already excluded upstream by `#pendingPropertyIntents`.)
+ */
+const PENDING_INTENT_IN_FLIGHT_STATES: ReadonlySet<
+  'queued' | 'running' | 'retryable' | 'ambiguous'
+> = new Set(['queued', 'running', 'retryable', 'ambiguous'])
+
+export const withAuthorityMode = ({
+  snapshot,
+  authorityMode,
+}: {
+  readonly snapshot: PlannerProjectionSnapshot
+  readonly authorityMode: 'local' | 'shared' | 'remote' | undefined
+}): PlannerProjectionSnapshot =>
+  authorityMode === undefined
+    ? snapshot
+    : {
+        ...snapshot,
+        properties: snapshot.properties.map((property) => ({
+          ...property,
+          writeMode: authorityMode,
+          settlement:
+            authorityMode === 'shared'
+              ? property.pendingLocal !== undefined &&
+                (PENDING_INTENT_IN_FLIGHT_STATES as ReadonlySet<string>).has(
+                  property.pendingLocal.state,
+                ) === true
+                ? 'missing'
+                : 'present'
+              : 'not-required',
+        })),
+      }
 
 /** Wrapper that pairs a `RemoteWriteCommand` with its sync metadata (surface key, intent event id, preflight guards) for safe outbox enqueuing. */
 export type OutboxCommandEnvelope = {
@@ -585,15 +743,6 @@ const planPropertyEdit = ({
     })
   }
 
-  baseGuards.push(guardPropertyWriteClass({ writeClass: schemaProperty.writeClass }))
-  baseGuards.push(
-    guardSchemaIntentSafety({
-      affectsLocalIntent: schemaProperty.configHash !== intent.expectedPropertyConfigHash,
-      destructiveMigrationRequired: false,
-      optionDeletionLosesValues: false,
-    }),
-  )
-
   if (propertySurface === undefined) {
     return blockDecision({
       guard: 'CurrentSurfaceMissing',
@@ -603,47 +752,104 @@ const planPropertyEdit = ({
     })
   }
 
-  if (propertySurface !== undefined) {
-    baseGuards.push(guardPropertyAvailability({ availability: propertySurface.availability }))
-    if (propertySurface.remoteHash !== intent.baseHash) {
-      if (
-        propertySurface.availability === 'complete' &&
-        propertySurface.pendingLocal?.targetHash === intent.desiredHash &&
-        propertySurface.remoteHash === intent.desiredHash
-      ) {
-        return { _tag: 'AppendEvents', events: [] }
-      }
-      const localSurface: ConflictSurface = {
-        _tag: 'property',
-        pageId: intent.pageId,
-        propertyId: intent.propertyId,
-        baseHash: intent.baseHash,
-        nextHash: intent.desiredHash,
-        surface: intent.surface,
-      }
-      const remoteSurface: ConflictSurface = {
-        _tag: 'property',
-        pageId: intent.pageId,
-        propertyId: intent.propertyId,
-        baseHash: propertySurface.baseHash,
-        nextHash: propertySurface.remoteHash,
-        surface: intent.surface,
-      }
-      const classification = classifyConflict({ local: localSurface, remote: remoteSurface })
-      return classification._tag === 'conflict'
-        ? { _tag: 'OpenConflict', conflict: classification.conflict }
-        : blockDecision({
-            guard: 'StaleSurfaceBase',
-            surface: intent.surface,
-            summary: 'Local intent base hash is stale for the current surface',
-          })
+  /*
+   * A `remote`-authority page is Notion-authoritative: a local property mutation
+   * against it is drift. Refuse it as `RemoteAuthoritativeDrift` BEFORE building a
+   * proof, so no `remote`-mode proof ever reaches the pure core.
+   */
+  if (propertySurface.writeMode === 'remote') {
+    return blockDecision({
+      guard: 'RemoteAuthoritativeDrift',
+      surface: intent.surface,
+      summary:
+        'Refusing local property write: page is remote-authoritative; a local mutation would be drift',
+    })
+  }
+
+  /*
+   * Route the property-write safety invariants (write class, config-drift intent
+   * safety, base completeness, relation availability, local convergence,
+   * settlement) through the shared PropertyWriteCore via the workspace proof
+   * provider, instead of calling the legacy inline guards. The provider projects
+   * the already-observed schema and property surfaces into a proof; the core's
+   * decision is structurally a `GuardDecision`, so it is pushed straight into
+   * `baseGuards` and evaluated by `firstBlocked` below in the same order the
+   * inline guards used to run.
+   *
+   * `expectedSchemaHash` is deliberately omitted (the planner carries no authored
+   * whole-schema oracle, only the observed `schemaHash`), so the core's
+   * StaleRemoteSchema check honestly skips — preserving the legacy behavior, which
+   * never enforced whole-schema staleness here. `mode`/`localConvergence`/
+   * `settlement` default to the non-blocking verdicts when the surface omits them,
+   * so an ordinary shared-mode write produces no new block.
+   */
+  const { proof, desiredWrite } = makeWorkspaceProof({
+    dataSourceId: row.dataSourceId,
+    propertyId: intent.propertyId,
+    desiredValue: intent.command.propertyPatch[intent.propertyId] ?? { _tag: 'empty' },
+    writeClass: schemaProperty.writeClass,
+    observedSchemaHash: schemaProperty.schemaHash,
+    observedConfigHash: schemaProperty.configHash,
+    expectedConfigHash: intent.expectedPropertyConfigHash,
+    availability: propertySurface.availability,
+    ...(schemaProperty.remoteSchemaObserved !== undefined
+      ? { remoteSchemaObserved: schemaProperty.remoteSchemaObserved }
+      : {}),
+    ...(schemaProperty.displayNameUnambiguous !== undefined
+      ? { displayNameUnambiguous: schemaProperty.displayNameUnambiguous }
+      : {}),
+    ...(schemaProperty.expectedSchemaHash !== undefined
+      ? { expectedSchemaHash: schemaProperty.expectedSchemaHash }
+      : {}),
+    ...(propertySurface.writeMode !== undefined ? { mode: propertySurface.writeMode } : {}),
+    ...(propertySurface.localConvergence !== undefined
+      ? { localConvergence: propertySurface.localConvergence }
+      : {}),
+    ...(propertySurface.settlement !== undefined ? { settlement: propertySurface.settlement } : {}),
+  })
+  baseGuards.push(evaluatePropertyWrite(proof, desiredWrite))
+
+  /*
+   * Fail closed on a `files` write that would store a Notion-hosted signed/expiring
+   * URL as durable identity (decision 0024 part 2). The property-write core
+   * allows a `files` value into a `files` column (tag-fit is a no-op), so the
+   * `ExpiringFileUrl` guard is dispatched HERE from the desired file references; an
+   * external durable `externalUrl` proceeds. `firstBlocked` surfaces it in order.
+   */
+  baseGuards.push(evaluateDesiredFileReferences(desiredWrite.value))
+
+  if (propertySurface.remoteHash !== intent.baseHash) {
+    if (
+      propertySurface.availability === 'complete' &&
+      propertySurface.pendingLocal?.targetHash === intent.desiredHash &&
+      propertySurface.remoteHash === intent.desiredHash
+    ) {
+      return { _tag: 'AppendEvents', events: [] }
     }
-    baseGuards.push(
-      guardStaleSurfaceBase({
-        baseHash: intent.baseHash,
-        currentHash: propertySurface.remoteHash,
-      }),
-    )
+    const localSurface: ConflictSurface = {
+      _tag: 'property',
+      pageId: intent.pageId,
+      propertyId: intent.propertyId,
+      baseHash: intent.baseHash,
+      nextHash: intent.desiredHash,
+      surface: intent.surface,
+    }
+    const remoteSurface: ConflictSurface = {
+      _tag: 'property',
+      pageId: intent.pageId,
+      propertyId: intent.propertyId,
+      baseHash: propertySurface.baseHash,
+      nextHash: propertySurface.remoteHash,
+      surface: intent.surface,
+    }
+    const classification = classifyConflict({ local: localSurface, remote: remoteSurface })
+    return classification._tag === 'conflict'
+      ? { _tag: 'OpenConflict', conflict: classification.conflict }
+      : blockDecision({
+          guard: 'StaleSurfaceBase',
+          surface: intent.surface,
+          summary: 'Local intent base hash is stale for the current surface',
+        })
   }
 
   const blockedDecision = firstBlocked({ surface: intent.surface, guards: baseGuards })
@@ -942,6 +1148,21 @@ const planLocalDelete = ({
     if (blockedTombstone !== undefined) {
       return blockedTombstone
     }
+  }
+
+  // A restore must be guarded symmetrically with a trash: restoring a page that
+  // moved out of the tracked source (rather than being genuinely trashed) is not a
+  // legitimate restore and is blocked as `MoveOutNotDelete`. A genuinely-trashed
+  // page (reason `remote_trash`) carries no `movedOut` flag, so it proceeds. The
+  // delete-vs-edit / permission-ambiguous arms do not apply to a restore: the row
+  // is not currently in the query window, so it carries no concurrent remote
+  // edit, and permission ambiguity is a trash-classification concern.
+  if (intent.command._tag === 'RestorePageCommand' && row?.movedOut === true) {
+    return blockDecision({
+      guard: 'MoveOutNotDelete',
+      surface: intent.surface,
+      summary: 'Moved-out page is not a restorable trash',
+    })
   }
 
   if (

@@ -2,6 +2,7 @@ import { Schema } from 'effect'
 
 import { NOTION_API_VERSION } from '@overeng/notion-effect-client'
 import type { PropertyWriteClassType } from '@overeng/notion-effect-schema'
+import { propertyWriteGuardNames } from '@overeng/notion-property-write'
 
 import type { QueryRowsPage } from './commands.ts'
 import type {
@@ -13,21 +14,19 @@ import type {
 } from './domain.ts'
 export type { BodyAdapterMutationSurface, BodySafetySnapshot } from './domain.ts'
 
-/** Exhaustive set of named safety guards; each guard represents a distinct safety check the sync engine may enforce. */
-export const GuardName = Schema.Literal(
+/**
+ * Guard names owned solely by datasource-sync (not part of the shared
+ * `propertyWriteGuardNames` vocabulary). Combined with `propertyWriteGuardNames`
+ * to form the full `GuardName` superset literal.
+ */
+const syncOnlyGuardNames = [
   'ApiVersionUnsupported',
   'ApiVersionUnverified',
   'ApiVersionCompatibilityMissing',
   'DecodeDriftUnsupported',
   'CapabilityPreflightFailed',
-  'UnsupportedRemoteShape',
-  'ComputedPropertyWrite',
-  'PropertyValueIncomplete',
-  'RelatedDataSourceUnshared',
   'StaleSurfaceBase',
   'CurrentSurfaceMissing',
-  'PageTimestampWakeupOnly',
-  'SchemaDriftAffectsIntent',
   'DestructiveSchemaMigrationRequired',
   'OptionDeletionLosesValues',
   'BodyLossyRemote',
@@ -42,13 +41,10 @@ export const GuardName = Schema.Literal(
   'QueryContractChanged',
   'QueryResultCapExceeded',
   'FilteredAbsenceNotProof',
-  'LinkedDataSourceUnsupported',
   'PermissionAmbiguous',
   'DeleteVsEdit',
   'MoveOutNotDelete',
-  'UnavailableRelationTarget',
   'ExpiringFileUrl',
-  'ReadAfterWriteMismatch',
   'AmbiguousCommandOutcome',
   'PendingIntentShadowViolation',
   'BodyAdapterNonBodyMutation',
@@ -60,9 +56,41 @@ export const GuardName = Schema.Literal(
   'LeaseFenceMismatch',
   'OutboxFirstSettlementWins',
   'CheckpointDigestMismatch',
-  'StoreMigrationBlocked',
   'QueueBackpressureExceeded',
   'RawPayloadRetentionUnsafe',
+  'UnknownWorkspaceNamespace',
+  'MixedWorkspaceNamespace',
+] as const
+
+/**
+ * Guard names that are reserved in the domain vocabulary but NOT yet wired into
+ * any planner, gateway, or store path — they have no production dispatch site
+ * and therefore no unit or E2E coverage. They are intentionally excluded from
+ * `GuardName` (and thus from the scenario-traceability self-test, which requires
+ * every `GuardName` literal to have a covering scenario) so the matrix stays
+ * honest: these names are declared-pending-wiring, not covered-pending-promotion.
+ *
+ * Promote a name into `syncOnlyGuardNames` once it is actually emitted by a
+ * guard and has at least one scenario.
+ */
+export const reservedGuardNames = [
+  // Linked (non-collection) data-source shapes are not yet observed or planned.
+  'LinkedDataSourceUnsupported',
+  // Store schema-migration blocking is store-internal and not surfaced as a
+  // planner/gateway guard decision yet.
+  'StoreMigrationBlocked',
+  // Wake-up-only page-timestamp semantics are a future daemon polling concern
+  // with no current dispatch site.
+  'PageTimestampWakeupOnly',
+] as const
+
+/** A guard name reserved in the vocabulary but not yet wired into any code path; see `reservedGuardNames`. */
+export type ReservedGuardName = (typeof reservedGuardNames)[number]
+
+/** Exhaustive set of named safety guards; each guard represents a distinct safety check the sync engine may enforce. */
+export const GuardName = Schema.Literal(
+  ...propertyWriteGuardNames,
+  ...syncOnlyGuardNames,
 ).annotations({ identifier: 'NotionDatasourceSync.GuardName' })
 export type GuardName = typeof GuardName.Type
 

@@ -1,3 +1,5 @@
+import type { FileSystem } from '@effect/platform'
+import { NodeContext } from '@effect/platform-node'
 import { Effect, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
@@ -17,7 +19,7 @@ import {
   replaceRemoteBodyVerified,
   settleVerifiedBodyPush,
 } from './body-facade.ts'
-import { renderNmdFile } from './frontmatter.ts'
+import { parseNmdFile, renderNmdFile } from './frontmatter.ts'
 import { normalizeMarkdownLineEndings, sha256Digest } from './hash.ts'
 import {
   NotionMdGateway,
@@ -42,6 +44,7 @@ const frontmatter = (title: string): NmdFrontmatterV2 => ({
     version: 2,
     api_version: NOTION_API_VERSION,
     object: 'page',
+    source: 'local',
     page_id: pageId,
     url: 'https://notion.so/page',
     parent: { _tag: 'workspace' },
@@ -126,6 +129,7 @@ class FakeStore {
     readBaseSnapshot: () => Effect.dieMessage('unexpected readBaseSnapshot call'),
     writeStorageObject: () => Effect.dieMessage('unexpected writeStorageObject call'),
     validateReferencedObjects: () => Effect.dieMessage('unexpected validateReferencedObjects call'),
+    garbageCollectObjects: () => Effect.dieMessage('unexpected garbageCollectObjects call'),
     writeSyncState: (opts) =>
       Effect.sync(() => {
         this.writeSyncStateCalls.push(opts)
@@ -169,12 +173,13 @@ class FakeGateway {
         this.metadataUpdateCalls.push('properties')
         throw new Error('unexpected metadata update')
       }),
-    retrieveDataSource: () => Effect.dieMessage('unexpected retrieveDataSource'),
     updatePageMetadata: () =>
       Effect.sync(() => {
         this.metadataUpdateCalls.push('metadata')
         throw new Error('unexpected metadata update')
       }),
+    retrieveDataSource: ({ dataSourceId }) =>
+      Effect.succeed({ id: dataSourceId, databaseId: dataSourceId, properties: {} }),
     listChildPages: () => Effect.succeed([]),
     createPage: () =>
       Effect.sync(() => {
@@ -198,10 +203,16 @@ const runWithGateway = <A, E>(effect: Effect.Effect<A, E, NotionMdGateway>, gate
   Effect.runPromise(effect.pipe(Effect.provide(gateway.layer)))
 
 const runWithGatewayAndStore = <A, E>(
-  effect: Effect.Effect<A, E, NotionMdGateway | NmdStateStore>,
+  effect: Effect.Effect<A, E, FileSystem.FileSystem | NotionMdGateway | NmdStateStore>,
   gateway: FakeGateway,
   store: FakeStore,
-) => Effect.runPromise(effect.pipe(Effect.provide(Layer.merge(gateway.layer, store.layer))))
+) =>
+  Effect.runPromise(
+    effect.pipe(
+      Effect.provide(Layer.merge(gateway.layer, store.layer)),
+      Effect.provide(NodeContext.layer),
+    ),
+  )
 
 describe('notion-md body facade', () => {
   it('hashes the parsed body, not frontmatter', async () => {
@@ -216,7 +227,7 @@ describe('notion-md body facade', () => {
     expect(local.bodyHash).not.toBe(sha256Digest(content))
   })
 
-  it('materializes through the existing pullPage write path', async () => {
+  it('materializes through the shared track write path', async () => {
     const gateway = new FakeGateway('Remote body\n')
     const store = new FakeStore()
 
@@ -227,11 +238,12 @@ describe('notion-md body facade', () => {
     )
 
     expect(materialized.bodyHash).toBe(sha256Digest(normalizeMarkdownLineEndings('Remote body\n')))
-    expect(materialized.pull).toMatchObject({ path, pageId, storage: 'self_contained' })
+    expect(materialized.track).toMatchObject({ path, pageId, source: 'shared' })
     expect(store.writeBaseSnapshotCalls).toHaveLength(1)
     expect(store.writeSyncStateCalls).toHaveLength(1)
     expect(store.writeNmdFileCalls).toHaveLength(1)
     expect(store.writeNmdFileCalls[0]?.content).toContain('Remote body')
+    expect(store.writeNmdFileCalls[0]?.content).toContain('"source": "shared"')
   })
 
   it('uses replace_content with allowDeletingContent false for verified remote replacement', async () => {
@@ -273,7 +285,7 @@ describe('notion-md body facade', () => {
     expect(gateway.updateMarkdownCalls).toEqual([])
   })
 
-  it('settles verified push through the existing pullPage materialization path', async () => {
+  it('settles verified push through the shared track materialization path', async () => {
     const body = normalizeMarkdownLineEndings('Pushed body\n')
     const content = renderNmdFile({
       frontmatter: frontmatter('Local title'),
@@ -306,6 +318,35 @@ describe('notion-md body facade', () => {
     expect(store.writeNmdFileCalls[0]?.content).toContain(body)
     expect(gateway.updateMarkdownCalls).toEqual([])
     expect(gateway.metadataUpdateCalls).toEqual([])
+  })
+
+  it('preserves writable frontmatter properties during verified body settlement', async () => {
+    const body = normalizeMarkdownLineEndings('Pushed body\n')
+    const content = renderNmdFile({
+      frontmatter: {
+        ...frontmatter('Local title'),
+        notion_md: {
+          ...frontmatter('Local title').notion_md,
+          properties: { Status: { _tag: 'select', value: 'In progress' } },
+        },
+      },
+      body,
+    })
+    const gateway = new FakeGateway(body)
+    const store = new FakeStore(new Map([[path, content]]))
+
+    await runWithGatewayAndStore(
+      settleVerifiedBodyPush({ pageId, path, expectedLocalBodyHash: sha256Digest(body) }),
+      gateway,
+      store,
+    )
+
+    const written = store.writeNmdFileCalls[0]?.content
+    expect(written).toBeDefined()
+    const parsed = await runWithStore(parseNmdFile({ path, content: written ?? '' }), store)
+    expect(parsed.frontmatter.notion_md.properties).toEqual({
+      Status: { _tag: 'select', value: 'In progress' },
+    })
   })
 
   it('refuses settlement without writing when the local body changed', async () => {

@@ -14,12 +14,15 @@ import {
   type NmdSyncStateV1,
   type NmdWritablePropertyValue,
 } from '@overeng/notion-effect-client'
+import type { PropertyDescriptors } from '@overeng/notion-effect-schema'
 
 import { semanticEquivalent } from './canonical-markdown.ts'
 import {
   NmdCliError,
   NmdConflictError,
+  NmdDestructiveBodyBlockedError,
   NmdFrontmatterError,
+  NmdPropertyWriteBlockedError,
   NmdRemoteBodyLossyError,
   NmdSchemaDriftError,
   type NmdError,
@@ -38,6 +41,7 @@ import {
 } from './model.ts'
 import * as Observability from './observability.ts'
 import { reportNote, reportStageSkip, withStage } from './progress.ts'
+import { makeStandaloneLiveProof } from './property-proof.ts'
 import {
   propertyIdMap,
   readOnlyPropertyNames,
@@ -129,11 +133,13 @@ export interface StatusResult {
   readonly localBodyHash: string
   readonly remoteBodyHash: string
   readonly unresolvedUnknownBlocks: readonly string[]
+  readonly unresolvedFileIds: readonly string[]
 }
 
 /** User-facing safety options for local `.nmd` pushes. */
 export interface PushSafetyOptions {
   readonly force?: boolean
+  readonly dryRun?: boolean
   readonly allowDeletingUnknownBlocks?: boolean
   readonly allowReviewMarkup?: boolean
 }
@@ -341,6 +347,13 @@ const encodePropertyValue = (opts: {
         for (const file of property.value) {
           switch (file._tag) {
             case 'external_url':
+              // Attach the external URL to the property as-is. KNOWN LIMITATION
+              // (v1): the URL can 404 or move and its durability is NOT verified
+              // here — the external analog of a Notion-hosted expiring file URL,
+              // but with no guard in v1. See docs/sync-safety.md "External-URL
+              // Durability". This stays on the property surface: it never becomes
+              // a byte-backed `storage.files` unit, so the media boundary's
+              // inert-by-construction invariant is preserved.
               files.push({ type: 'external', name: file.url, external: { url: file.url } })
               break
             case 'notion_file':
@@ -381,12 +394,102 @@ const encodeWritableProperties = (opts: {
     return Object.fromEntries(entries)
   })
 
+/**
+ * Route each writable property through the shared property-write core when the
+ * page belongs to a Notion data source. This sits AFTER notion-md's existing
+ * writability filter (it only sees properties the engine already intends to
+ * write), so on a green path every property evaluates to `allowed()` and
+ * behavior is unchanged; a blocked verdict surfaces as
+ * {@link NmdPropertyWriteBlockedError} instead of a silent property update.
+ *
+ * Standalone (non-datasource) pages have no `data_source` parent and keep their
+ * current path untouched — the core only governs datasource-scoped writes.
+ */
+const guardDatasourcePropertyWrites = (opts: {
+  readonly path: string
+  readonly pageId: string
+  readonly frontmatter: NmdFrontmatterV2
+  readonly dataSource: NmdDataSourceBinding | null
+}): Effect.Effect<void, NmdPropertyWriteBlockedError | NmdSchemaDriftError, NotionMdGateway> =>
+  Effect.gen(function* () {
+    const notionMd = opts.frontmatter.notion_md
+    if (notionMd.parent._tag !== 'data_source') return
+    const dataSourceId = notionMd.parent.id
+    if (opts.dataSource !== null && opts.dataSource.data_source_id !== dataSourceId) {
+      yield* Observability.annotateAttrs(Observability.pushDecisionAttrs, {
+        decision: 'schema_drift',
+      })
+      return yield* new NmdSchemaDriftError({
+        path: opts.path,
+        page_id: opts.pageId,
+        data_source_id: dataSourceId,
+        message: `Refusing datasource property write for page ${opts.pageId}: sidecar data source ${opts.dataSource.data_source_id} does not match frontmatter parent ${dataSourceId}`,
+      })
+    }
+    /* Re-key the branded-name descriptor map by plain string for lookup. */
+    const descriptors: Record<
+      string,
+      { readonly property_id: string; readonly config_hash: string }
+    > =
+      notionMd.property_descriptors === undefined
+        ? {}
+        : Object.fromEntries(Object.entries(notionMd.property_descriptors))
+
+    for (const [name, property] of Object.entries(notionMd.properties)) {
+      const descriptor = descriptors[name]
+      const decision = yield* makeStandaloneLiveProof({
+        pageId: opts.pageId,
+        dataSourceId,
+        source: notionMd.source,
+        propertyName: name,
+        property,
+        ...(descriptor !== undefined
+          ? {
+              descriptor: {
+                property_id: descriptor.property_id,
+                config_hash: descriptor.config_hash,
+              },
+            }
+          : {}),
+        ...(opts.dataSource !== null ? { expectedSchemaHash: opts.dataSource.schema_hash } : {}),
+      })
+      if (decision._tag === 'blocked') {
+        if (decision.guard === 'StaleRemoteSchema') {
+          yield* Observability.annotateAttrs(Observability.pushDecisionAttrs, {
+            decision: 'schema_drift',
+          })
+          return yield* new NmdSchemaDriftError({
+            path: opts.path,
+            page_id: opts.pageId,
+            data_source_id: dataSourceId,
+            message: `Property write to ${name} blocked by ${decision.guard}: ${decision.message}`,
+          })
+        }
+        return yield* new NmdPropertyWriteBlockedError({
+          page_id: opts.pageId,
+          property_name: name,
+          guard: decision.guard,
+          message: `Property write to ${name} blocked by ${decision.guard}: ${decision.message}`,
+        })
+      }
+    }
+  })
+
 const storageUnknownBlockIds = (storage: NmdStorage): readonly string[] => {
   switch (storage._tag) {
     case 'self_contained':
       return storage.unsupported_blocks.map((block) => block.block_id)
     case 'object_store':
       return storage.unsupported_block_ids
+  }
+}
+
+const storageFileIds = (storage: NmdStorage): readonly string[] => {
+  switch (storage._tag) {
+    case 'self_contained':
+      return storage.files.map((file) => file.id)
+    case 'object_store':
+      return storage.file_ids
   }
 }
 
@@ -440,6 +543,15 @@ const unresolvedUnknownBlockIds = (opts: {
     ...(opts.syncState?.body.unknown_block_ids ?? []),
     ...(opts.syncState === undefined ? [] : storageUnknownBlockIds(opts.syncState.storage)),
     ...(opts.remoteMarkdown?.unknown_block_ids ?? []),
+  ])
+
+const unresolvedFileIds = (opts: {
+  readonly syncState: NmdSyncStateV1 | undefined
+  readonly remoteStorage?: NmdStorage | undefined
+}): readonly string[] =>
+  unique([
+    ...(opts.syncState === undefined ? [] : storageFileIds(opts.syncState.storage)),
+    ...(opts.remoteStorage === undefined ? [] : storageFileIds(opts.remoteStorage)),
   ])
 
 const containsRoughdraftReviewMarkup = (body: string): boolean =>
@@ -516,11 +628,6 @@ ${fence}
 }
 
 /**
- * Build the strict V2 `.nmd` frontmatter envelope for a remote page. Exported
- * for the stateless `cat --frontmatter` envelope dump, which renders the full
- * envelope without writing a `.notion-md/` store (decision 0017).
- */
-/**
  * Capture a `schema_snapshot` of the parent data source for a
  * data-source-backed page (decision 0017, R14). Retrieves the live property
  * schema and projects it to the sidecar `data_source` binding — the base the
@@ -579,32 +686,56 @@ const assertSchemaUnchanged = (opts: {
     })
   })
 
+/**
+ * Build the strict V2 `.nmd` frontmatter envelope for a remote page. Exported
+ * for the stateless `cat --frontmatter` envelope dump, which renders the full
+ * envelope without writing a `.notion-md/` store (decision 0017).
+ */
 export const buildFrontmatterV2 = (opts: {
   readonly page: RemotePageSnapshot
-}): NmdFrontmatterV2 => ({
-  notion_md: {
-    version: 2,
-    api_version: NOTION_API_VERSION,
-    object: 'page',
-    page_id: opts.page.id,
-    url: opts.page.url,
-    parent: toParentRef(opts.page),
-    page: {
-      title: opts.page.title,
-      icon: opts.page.icon,
-      cover: opts.page.cover,
-      in_trash: opts.page.in_trash,
-      is_locked: opts.page.is_locked,
+  /**
+   * Compact non-authoritative property identity hints to embed when the page
+   * belongs to a datasource and schema evidence is available. Omitted for
+   * standalone pages or when the caller has no schema evidence (R10).
+   */
+  readonly descriptors?: PropertyDescriptors
+}): NmdFrontmatterV2 => {
+  const parent = toParentRef(opts.page)
+  /*
+   * Emit descriptors only when the parent is a datasource AND the caller
+   * supplied schema evidence. For standalone/non-datasource pages the field
+   * is omitted entirely so the frontmatter stays clean and round-trip stable.
+   */
+  const property_descriptors =
+    parent._tag === 'data_source' && opts.descriptors !== undefined ? opts.descriptors : undefined
+
+  return {
+    notion_md: {
+      version: 2,
+      api_version: NOTION_API_VERSION,
+      object: 'page',
+      source: 'local',
+      page_id: opts.page.id,
+      url: opts.page.url,
+      parent,
+      page: {
+        title: opts.page.title,
+        icon: opts.page.icon,
+        cover: opts.page.cover,
+        in_trash: opts.page.in_trash,
+        is_locked: opts.page.is_locked,
+      },
+      /*
+       * V2 frontmatter only carries the user-editable writable properties.
+       * Notion echoes back every page property on retrieve, but most are
+       * derived from the data-source schema and the user can't edit them
+       * locally — those land in the sidecar `read_only_properties` instead.
+       */
+      properties: {},
+      ...(property_descriptors !== undefined ? { property_descriptors } : {}),
     },
-    /*
-     * V2 frontmatter only carries the user-editable writable properties.
-     * Notion echoes back every page property on retrieve, but most are
-     * derived from the data-source schema and the user can't edit them
-     * locally — those land in the sidecar `read_only_properties` instead.
-     */
-    properties: {},
-  },
-})
+  }
+}
 
 const buildSyncState = (opts: {
   readonly page: RemotePageSnapshot
@@ -759,7 +890,7 @@ export const pullPage = (
 /**
  * Establish the sidecar base snapshot for a bound page from its live remote
  * body, without clobbering the file's own frontmatter/body. Used to auto-heal a
- * missing sidecar (fresh clone where the gitignored `.notion-md/` is absent, or
+ * missing sidecar (fresh checkout where the gitignored `.notion-md/` is absent, or
  * a page bound outside notion-md) — identity lives in the file, derived state is
  * rebuilt from remote. Idempotent: re-pulls and rewrites the baseline.
  */
@@ -818,7 +949,7 @@ const readNmd = (
     let loaded = yield* store.readSyncStateOptional({ path, pageId })
     if (loaded === undefined) {
       /*
-       * Fresh-clone / externally-bound case: the `.nmd` carries a valid
+       * Fresh-checkout / externally-bound case: the `.nmd` carries a valid
        * `page_id` but the gitignored sidecar is absent. Identity lives in the
        * file; auto-heal by rebuilding the derived baseline from the live remote
        * page, then reconcile normally (idempotent establish-then-reconcile).
@@ -944,6 +1075,10 @@ const statusFromSnapshots = (opts: {
     syncState: opts.local.syncState,
     remoteMarkdown: opts.remote.markdown,
   })
+  const fileIds = unresolvedFileIds({
+    syncState: opts.local.syncState,
+    remoteStorage: opts.remote.storage,
+  })
 
   return {
     path: opts.path,
@@ -958,6 +1093,7 @@ const statusFromSnapshots = (opts: {
     localBodyHash,
     remoteBodyHash,
     unresolvedUnknownBlocks: unknownBlockIds,
+    unresolvedFileIds: fileIds,
   }
 }
 
@@ -1191,23 +1327,61 @@ export const pushGuarded = (opts: {
       allowChildPageBlocks: options.replaceContent === true,
     })
 
-    if (
-      containsRoughdraftReviewMarkup(local.desiredBody) === true &&
-      options.allowReviewMarkup !== true
-    ) {
-      return yield* new NmdConflictError({
-        path,
-        page_id: status.pageId,
-        local_changed: status.localChanged,
-        remote_changed: status.remoteChanged,
-        message:
-          'Local body contains unresolved Roughdraft review markup; refusing push so review state is not sent as Notion content',
-      })
-    }
+    yield* Effect.gen(function* () {
+      if (
+        containsRoughdraftReviewMarkup(local.desiredBody) === true &&
+        options.allowReviewMarkup !== true
+      ) {
+        return yield* new NmdDestructiveBodyBlockedError({
+          page_id: status.pageId,
+          guard: 'ReviewMarkupAsContent',
+          message:
+            'Local body contains unresolved Roughdraft review markup; refusing push so review state is not sent as Notion content',
+          allowFlag: '--allow-review-markup',
+        })
+      }
+    }).pipe(
+      Observability.withOperation(Observability.DestructiveBodySpan, {
+        guard: 'ReviewMarkupAsContent',
+        blockCount: 0,
+        verdict:
+          containsRoughdraftReviewMarkup(local.desiredBody) === true &&
+          options.allowReviewMarkup !== true
+            ? 'blocked'
+            : 'inert',
+      }),
+    )
+
+    yield* Effect.gen(function* () {
+      if (
+        status.localChanged === true &&
+        status.unresolvedUnknownBlocks.length > 0 &&
+        options.allowDeletingUnknownBlocks !== true
+      ) {
+        return yield* new NmdDestructiveBodyBlockedError({
+          page_id: status.pageId,
+          guard: 'UnknownBlockDeletion',
+          message:
+            'Page contains unresolved unknown Notion blocks; refusing push because replace_content can delete them. Pass --allow-delete-unknown-blocks only for explicit destructive intent.',
+          allowFlag: '--allow-delete-unknown-blocks',
+        })
+      }
+    }).pipe(
+      Observability.withOperation(Observability.DestructiveBodySpan, {
+        guard: 'UnknownBlockDeletion',
+        blockCount: status.unresolvedUnknownBlocks.length,
+        verdict:
+          status.localChanged === true &&
+          status.unresolvedUnknownBlocks.length > 0 &&
+          options.allowDeletingUnknownBlocks !== true
+            ? 'blocked'
+            : 'inert',
+      }),
+    )
 
     if (
       status.localChanged === true &&
-      status.unresolvedUnknownBlocks.length > 0 &&
+      status.unresolvedFileIds.length > 0 &&
       options.allowDeletingUnknownBlocks !== true
     ) {
       return yield* new NmdConflictError({
@@ -1216,7 +1390,7 @@ export const pushGuarded = (opts: {
         local_changed: status.localChanged,
         remote_changed: status.remoteChanged,
         message:
-          'Page contains unresolved unknown Notion blocks; refusing push because replace_content can delete them. Pass allowDeletingUnknownBlocks only for explicit destructive intent.',
+          'Page contains unresolved file/media payloads; refusing push because replace_content can delete or orphan them. Pass allowDeletingUnknownBlocks only for explicit destructive intent.',
       })
     }
 
@@ -1230,6 +1404,26 @@ export const pushGuarded = (opts: {
               remoteBody: remoteForStatus.markdown.markdown,
             })
           : undefined
+
+      if (options.dryRun === true) {
+        if (
+          status.localChanged === false &&
+          (status.localPageMetadataChanged === true || status.localPropertiesChanged === true)
+        ) {
+          return { path, pageId: status.pageId, pushed: true, status }
+        }
+        if (mergedBody !== undefined) {
+          return { path, pageId: status.pageId, pushed: true, status }
+        }
+        return yield* new NmdConflictError({
+          path,
+          page_id: status.pageId,
+          local_changed: status.localChanged,
+          remote_changed: status.remoteChanged,
+          conflict_path: roughdraftConflictPath(path),
+          message: 'Remote page changed since the last clean pull; refusing guarded push',
+        })
+      }
 
       if (
         status.localChanged === false &&
@@ -1245,6 +1439,12 @@ export const pushGuarded = (opts: {
           yield* assertSchemaUnchanged({
             path,
             pageId: status.pageId,
+            dataSource: local.syncState.data_source,
+          })
+          yield* guardDatasourcePropertyWrites({
+            path,
+            pageId: status.pageId,
+            frontmatter: local.frontmatter,
             dataSource: local.syncState.data_source,
           })
           yield* gateway.updatePageProperties({
@@ -1301,6 +1501,12 @@ export const pushGuarded = (opts: {
             pageId: status.pageId,
             dataSource: local.syncState.data_source,
           })
+          yield* guardDatasourcePropertyWrites({
+            path,
+            pageId: status.pageId,
+            frontmatter: local.frontmatter,
+            dataSource: local.syncState.data_source,
+          })
           yield* gateway.updatePageProperties({
             pageId: status.pageId,
             properties: yield* encodeWritableProperties({
@@ -1345,6 +1551,10 @@ export const pushGuarded = (opts: {
         conflict_path: conflictPath,
         message: 'Remote page changed since the last clean pull; refusing guarded push',
       })
+    }
+
+    if (options.dryRun === true) {
+      return { path, pageId: status.pageId, pushed: true, status }
     }
 
     if (status.localChanged === true) {
@@ -1410,6 +1620,12 @@ export const pushGuarded = (opts: {
       yield* assertSchemaUnchanged({
         path,
         pageId: status.pageId,
+        dataSource: local.syncState.data_source,
+      })
+      yield* guardDatasourcePropertyWrites({
+        path,
+        pageId: status.pageId,
+        frontmatter: local.frontmatter,
         dataSource: local.syncState.data_source,
       })
       yield* gateway.updatePageProperties({

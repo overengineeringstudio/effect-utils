@@ -3,6 +3,7 @@ import { Effect, Schema, Stream } from 'effect'
 import {
   OtelAttr,
   OtelAttrs,
+  OtelMetric,
   OtelOperation,
   OtelSpan,
   type OtelAttributeValue,
@@ -34,6 +35,7 @@ export const spanNames = {
   syncPush: 'notion.datasource.sync.push',
   syncOneShot: 'notion.datasource.sync.one-shot',
   syncQueryAbsence: 'notion.datasource.sync.query-absence',
+  webhookIntake: 'notion.datasource.webhook.intake',
 } as const
 
 /** Typed map of every OTel span attribute key emitted by this package — use instead of raw strings. */
@@ -87,6 +89,14 @@ export const spanAttr = {
   settlementKind: 'notion.datasource.settlement_kind',
   spanLabel: 'span.label',
   statusState: 'notion.datasource.status.state',
+  /** Wake trigger source for a `daemon.pass` span — `'webhook'` when the cycle was woken by a Notion webhook, `'signal'` for any other non-webhook signal, `'poll'` when no signal was claimed. Annotation-only: never gates what gets read. */
+  wakeSource: 'notion.datasource.wake_source',
+  /** Notion event type string from the incoming webhook payload (e.g. `'page.created'`). */
+  webhookEventType: 'notion.datasource.webhook.event_type',
+  /** Outcome of one webhook delivery attempt: `'enqueued'` (new), `'duplicate'` (already known), `'verification'` (token challenge), or `'rejected'`. */
+  webhookOutcome: 'notion.datasource.webhook.outcome',
+  /** Stable rejection reason when `webhookOutcome === 'rejected'`; never contains raw payload material. */
+  webhookRejectionReason: 'notion.datasource.webhook.rejection_reason',
 } as const
 
 /** Canonical OTel span attribute keys emitted by this package. */
@@ -159,6 +169,10 @@ const SpanAttributesSchema = Schema.Struct({
   [spanAttr.settlementKind]: optionalAttr(spanAttr.settlementKind),
   [spanAttr.spanLabel]: Schema.optional(Schema.String.pipe(OtelAttr.spanLabel())),
   [spanAttr.statusState]: optionalAttr(spanAttr.statusState),
+  [spanAttr.wakeSource]: optionalAttr(spanAttr.wakeSource),
+  [spanAttr.webhookEventType]: optionalAttr(spanAttr.webhookEventType),
+  [spanAttr.webhookOutcome]: optionalAttr(spanAttr.webhookOutcome),
+  [spanAttr.webhookRejectionReason]: optionalAttr(spanAttr.webhookRejectionReason),
 })
 
 /** Schema-backed contract for package-level span attributes keyed by their emitted OTel names. */
@@ -353,3 +367,55 @@ export const otelCorrelationSpanAttributes = (input: {
       input.agentRunId ??
       resourceAttributeValue({ input: input.resourceAttributes, key: spanAttr.agentIterationId }),
   })
+
+/**
+ * The full set of gateway operation names that can label a `notion.api.request`
+ * span / metric, kept in lockstep with `gateway.ts`'s `GatewayOperation` union.
+ *
+ * Bounded cardinality: exactly these 13 logical endpoints, never an id.
+ */
+export const gatewayOperationNames = [
+  'preflightCapabilities',
+  'retrieveDataSource',
+  'queryRows',
+  'retrievePage',
+  'retrievePageProperty',
+  'listDataSourceViews',
+  'patchPageProperties',
+  'createPage',
+  'patchDataSourceSchema',
+  'patchDataSourceMetadata',
+  'patchDatabaseMetadata',
+  'trashPage',
+  'restorePage',
+] as const
+
+/** Operation name labelling a `notion.api.request` — the bounded `operation` metric/span dimension. */
+export type GatewayRequestOperation = (typeof gatewayOperationNames)[number]
+
+/**
+ * Production request-count metric for the call-count budget (EFF-R01, decision
+ * 0017 Half 1). Counts LOGICAL `notion.api.request` calls — one per gateway op
+ * invocation, matching the `notion.api.request` span — labelled only by the
+ * bounded `operation` endpoint (never an id), so a regression that adds a
+ * per-entity read shows up as fleet-visible request growth.
+ */
+export const notionApiRequestsTotal = OtelMetric.counter({
+  name: 'notion_datasource_api_requests_total',
+  description:
+    'Logical Notion API requests issued by the datasource-sync gateway, by operation endpoint.',
+  labels: Schema.Struct({
+    operation: OtelAttr.literal(spanAttr.operation, ...gatewayOperationNames),
+  }),
+})
+
+const notionApiRequestsTotalBridge = OtelMetric.effect.counter(notionApiRequestsTotal)
+
+/**
+ * Increment the logical-request counter for one gateway op invocation. Uses
+ * `trustedIncrement` so a (statically impossible) label encode error becomes a
+ * defect rather than leaking into the gateway methods' error channel.
+ */
+export const incrementNotionApiRequest = (
+  operation: GatewayRequestOperation,
+): Effect.Effect<void> => notionApiRequestsTotalBridge.trustedIncrement({ operation })

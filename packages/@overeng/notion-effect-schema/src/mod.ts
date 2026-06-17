@@ -278,7 +278,7 @@ export {
   UserMention as UserMentionSchema,
 } from './rich-text.ts'
 
-// Canonical property-value shape, write-class taxonomy, and bidirectional codec
+// Canonical property-value shape, write-class taxonomy, descriptors, and codec
 export {
   CanonicalDecodeError,
   CanonicalEncodeError,
@@ -290,6 +290,13 @@ export {
   type CanonicalOptionValueType,
   CanonicalPropertyValue,
   type CanonicalPropertyValueType,
+  canonicalPropertyDescriptorJson,
+  ConfigHash,
+  type ConfigHashType,
+  DataSourceId,
+  type DataSourceIdType,
+  decodePropertyDescriptor,
+  decodePropertyDescriptors,
   encodeCanonicalPatch,
   encodeCanonicalPropertyValue,
   makeCanonicalCodec,
@@ -297,13 +304,21 @@ export {
   type NotionPropertyTypeType,
   PageId,
   type PageIdType,
+  PropertyDescriptor,
+  type PropertyDescriptorType,
+  PropertyDescriptors,
+  type PropertyDescriptorsType,
   PropertyId,
   type PropertyIdType,
+  PropertyIdentityEvidenceSource,
+  type PropertyIdentityEvidenceSourceType,
   PropertyName,
   type PropertyNameType,
   PropertyWriteClass,
   type PropertyWriteClassType,
   propertyWriteClassFromType,
+  SchemaHash,
+  type SchemaHashType,
 } from './properties/mod.ts'
 export type { CanonicalCodecDeps } from './properties/mod.ts'
 
@@ -315,6 +330,19 @@ export {
   toMarkdown,
   toPlainText,
 } from './rich-text-utils.ts'
+
+// Webhook wire schemas
+export {
+  type NotionWebhookData,
+  NotionWebhookData as NotionWebhookDataSchema,
+  type NotionWebhookEntity,
+  NotionWebhookEntity as NotionWebhookEntitySchema,
+  type NotionWebhookParent,
+  NotionWebhookParent as NotionWebhookParentSchema,
+  type NotionWebhookPayload,
+  NotionWebhookPayload as NotionWebhookPayloadSchema,
+  notionWebhookDecodeOptions,
+} from './webhook.ts'
 
 // User schemas
 export {

@@ -19,12 +19,13 @@ trip.
 
 ## The Vision
 
-A Notion data source as a **trusted local SQLite file you query and write**. This
-extends the `.nmd` analogy from page bodies to rows, schema, and lifecycle: where
-`@overeng/notion-md` makes a page body a local file you read and edit, datasource
-sync makes a data source a local `<database-id>.sqlite` you read and edit.
+A Notion data source as a **trusted local SQLite and Markdown workspace you
+query and write**. This extends the `.nmd` analogy from page bodies to data
+source properties, schema, and lifecycle: where `@overeng/notion-md` makes a
+page body a local file you read and edit, datasource sync makes a data source a
+versioned local workspace you read and edit.
 
-- `<database-id>.sqlite` is the local data API. You inspect schema and rows with
+- The data file is the local tabular API. You inspect schema and pages with
   plain SQL and write supported edits there, and the CLI reconciles them against
   Notion.
 - "Trusted" is the load-bearing word: the local file is something you can act on
@@ -34,7 +35,7 @@ sync makes a data source a local `<database-id>.sqlite` you read and edit.
   local file is authoritative for your local intent and the history needed to
   reconcile it.
 - It composes with `@overeng/notion-md` for page bodies, keeping page bodies and
-  data-source rows as distinct but adjacent local surfaces.
+  data-source pages as distinct but adjacent local surfaces.
 
 ## What This Is Not
 
@@ -49,10 +50,10 @@ sync makes a data source a local `<database-id>.sqlite` you read and edit.
 
 ## Success Criteria
 
-1. A coding agent or human can query the local `<database-id>.sqlite` with plain
-   SQL and safely edit supported data — `UPDATE`/`INSERT`/`DELETE` rows,
+1. A coding agent or human can query the local data file with plain SQL and
+   safely edit supported data through `pages` updates/inserts and explicit
    archive/restore — with the CLI reconciling those edits against Notion.
-2. Page bodies and data-source rows stay distinct: `@overeng/notion-md` supplies
+2. Page bodies and data-source pages stay distinct: `@overeng/notion-md` supplies
    page-body files without depending on datasource-sync internals.
 3. A sync never silently loses data: stale, ambiguous, lossy, or unsupported
    writes are refused with a clear reason rather than overwriting state.

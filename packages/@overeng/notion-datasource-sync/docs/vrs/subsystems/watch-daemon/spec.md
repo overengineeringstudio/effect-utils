@@ -52,7 +52,7 @@ flowchart TD
 | outbox retries      | honor Notion retry-after before retry due time                                                      |
 | repair work         | low priority; never blocks settlement of already accepted intents unless store integrity is suspect |
 
-The daemon must process local SQLite CDC from public `rows` on
+The daemon must process local SQLite CDC from public `pages` on
 every cycle before or alongside remote polling. If public SQLite CDC or runnable
 outbox work exists, the daemon performs a local-first guarded push pass before
 the remote pull so outbound latency is not gated by a full table scan
@@ -60,9 +60,32 @@ the remote pull so outbound latency is not gated by a full table scan
 settlement as normal sync (see [../sync-orchestration/spec.md](../sync-orchestration/spec.md)).
 A daemon that only observes Notion remote drift is incomplete: pending local row
 edits, row creates, and lifecycle changes must flow
-through the shared planner, private `_nds_*` outbox, verification, and public
+through the shared planner, hidden outbox, verification, and public
 observability surfaces. Queues are bounded; the daemon honors Notion rate limits
 and surfaces stuck commands (DAEMON-R04).
+
+## Authority Mode And Loop Passes
+
+The established workspace authority mode (`notion.workspace.v1.json`, set once by
+`track`; see [../cli/spec.md](../cli/spec.md) CLI-R07) decides WHAT the loop
+reconciles, orthogonal to `--watch-priority`, which decides only HOW OFTEN it
+cycles. The daemon reads the mode once at start (the same read established `sync`
+uses) and does not accept a per-run `--mode` override.
+
+| Mode              | Local-first push pass | Remote pull pass | Loop promise                                                                                                                    |
+| ----------------- | --------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `remote` (mirror) | gated OFF             | always runs      | Follow remote: local intents surface as pending status/conflict, never an outbound write                                        |
+| `local`           | runs                  | observe-only     | Local-authoritative: push local→remote; remote observation feeds conflict/preflight but does not overwrite accepted local facts |
+| `shared`          | runs                  | runs             | Bidirectional: local push + remote pull + settle                                                                                |
+
+In `remote` mode the reconcile pass runs pull-only: no local intent reaches the
+planner, outbox, executor, or gateway, so the cycle never asks Notion to mutate.
+This is a deliberate, mode-scoped exception to DAEMON-R07's mandatory local-first
+push pass — DAEMON-R07 governs `local` and `shared`; `remote` is a pull-only
+mirror. It is the loop-level complement to the planner's per-property
+`RemoteAuthoritativeDrift` block: that block only refuses individual property
+writes, so it never covered the remote-mode lifecycle/create push paths; the loop
+gate closes that hole structurally.
 
 ## Poll Cursor Rules
 

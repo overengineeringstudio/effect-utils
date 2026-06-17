@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
-import { propertySurfaceKey } from '../core/canonical.ts'
+import { pageSurfaceKey, propertySurfaceKey } from '../core/canonical.ts'
 import { SyncEvent, SyncEventId, type SyncEvent as SyncEventType } from '../core/events.ts'
+import { pageLifecycleHash } from '../store/projections.ts'
 import { makeConflictRaisedEvent } from '../sync/observation.ts'
 import {
   decode,
@@ -57,6 +58,120 @@ const rowObserved = () =>
       inTrash: false,
     },
   })
+
+/**
+ * A lifecycle `ConflictRaised` (decision 0026): no `propertyId`,
+ * `conflictKind: 'lifecycle'`, and a recorded `remoteInTrash`. `L = !remoteInTrash`.
+ */
+const lifecycleConflictEvent = (remoteInTrash: boolean): SyncEventType =>
+  makeConflictRaisedEvent({
+    rootId: testIds.rootId,
+    pageId: testIds.pageId,
+    surface: pageSurfaceKey(testIds.pageId),
+    conflictKind: 'lifecycle',
+    remoteInTrash,
+    baseHash: pageLifecycleHash({ pageId: testIds.pageId, inTrash: !remoteInTrash }),
+    localHash: pageLifecycleHash({ pageId: testIds.pageId, inTrash: !remoteInTrash }),
+    remoteHash: pageLifecycleHash({ pageId: testIds.pageId, inTrash: remoteInTrash }),
+    message: 'Remote lifecycle observation would overwrite the settled local target',
+    now: () => new Date('2026-05-25T00:00:00.000Z'),
+  })
+
+describe('lifecycle conflict resolution (decision 0026)', () => {
+  it('surfaces the lifecycle kind and remoteInTrash through readConflicts', () => {
+    const storeFixture = makeStoreFixture({ mode: 'memory' })
+    try {
+      storeFixture.store.appendEvent(lifecycleConflictEvent(false))
+      expect(storeFixture.store.readConflicts(testIds.rootId)).toMatchObject([
+        { kind: 'lifecycle', pageId: testIds.pageId, propertyId: undefined, remoteInTrash: false },
+      ])
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('keep-local re-asserts the local archive (L=1) via a TrashPage followup, no PatchPageProperties', () => {
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ mode: 'memory', now: clock.now })
+    try {
+      // remoteInTrash=false → L=true (settled archive); keep-local re-archives.
+      const conflict = storeFixture.store.appendEvent(lifecycleConflictEvent(false))
+      const conflictId = decode({ schema: SyncEventId, value: conflict.eventId })
+
+      const result = resolveConflictCommand({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        conflictId,
+        choice: { _tag: 'keep-local', value: propertyPatchValue('ignored') },
+        now: clock.now,
+      })
+
+      expect(result.applied.events).toMatchObject([
+        { _tag: 'ConflictResolved', resolutionChoice: 'keep-local' },
+      ])
+      expect(result.applied.commands).toMatchObject([
+        { command: { _tag: 'TrashPageCommand', pageId: testIds.pageId } },
+      ])
+      // #775 M2a'-2: keep-local on a lifecycle conflict moves to `resolving` (NOT
+      // `resolved`), keeping the freeze active until the re-asserted Trash/Restore
+      // genuinely settles. The F8 settle handler then transitions it to `resolved`.
+      expect(storeFixture.store.readConflicts(testIds.rootId)).toMatchObject([
+        { conflictId: conflict.eventId, state: 'resolving' },
+      ])
+      expect(storeFixture.store.readOutbox(testIds.rootId)).toMatchObject([
+        { commandTag: 'TrashPage' },
+      ])
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('keep-local re-asserts the local restore (L=0) via a RestorePage followup', () => {
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ mode: 'memory', now: clock.now })
+    try {
+      // remoteInTrash=true → L=false (settled restore); keep-local re-restores.
+      const conflict = storeFixture.store.appendEvent(lifecycleConflictEvent(true))
+      const result = resolveConflictCommand({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        conflictId: decode({ schema: SyncEventId, value: conflict.eventId }),
+        choice: { _tag: 'keep-local', value: propertyPatchValue('ignored') },
+        now: clock.now,
+      })
+      expect(result.applied.commands).toMatchObject([
+        { command: { _tag: 'RestorePageCommand', pageId: testIds.pageId } },
+      ])
+      expect(storeFixture.store.readOutbox(testIds.rootId)).toMatchObject([
+        { commandTag: 'RestorePage' },
+      ])
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('keep-remote emits only ConflictResolved(keep-remote) with no followup command', () => {
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ mode: 'memory', now: clock.now })
+    try {
+      const conflict = storeFixture.store.appendEvent(lifecycleConflictEvent(false))
+      const result = resolveConflictCommand({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        conflictId: decode({ schema: SyncEventId, value: conflict.eventId }),
+        choice: { _tag: 'keep-remote' },
+        now: clock.now,
+      })
+      expect(result.applied.events).toMatchObject([
+        { _tag: 'ConflictResolved', resolutionChoice: 'keep-remote' },
+      ])
+      expect(result.applied.commands).toEqual([])
+      expect(storeFixture.store.readOutbox(testIds.rootId)).toEqual([])
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+})
 
 describe('conflict and user command surface', () => {
   it('lists open conflicts in a stable result envelope', () => {

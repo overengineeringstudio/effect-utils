@@ -230,9 +230,14 @@ export const ConflictRaised = Schema.TaggedStruct('ConflictRaised', {
   conflictKind: Schema.optional(
     Schema.Literal(
       'property',
+      // The body adapter's remote-vs-local body conflict. Body is single-surface
+      // and adapter-owned (decision 0021); it is NOT routed through the property
+      // convergence engine. Resolved via keep-local re-push / keep-remote
+      // re-materialize.
       'body',
       'schema',
       'delete-vs-edit',
+      'lifecycle',
       'path',
       'relation',
       'permission',
@@ -240,6 +245,15 @@ export const ConflictRaised = Schema.TaggedStruct('ConflictRaised', {
   ),
   pageId: PageId,
   propertyId: Schema.optional(PropertyId),
+  /**
+   * Remote trash target observed at detection time, recorded ONLY for
+   * `conflictKind: 'lifecycle'`. Lifecycle hashes are one-way
+   * (`pageLifecycleHash`), so a `keep-remote` resolution must flip
+   * `_nds_row.in_trash` to this exact boolean deterministically on replay rather
+   * than try to invert a hash. The local target `L` is recoverable as its
+   * negation (a lifecycle conflict is raised only when `R !== L`).
+   */
+  remoteInTrash: Schema.optional(Schema.Boolean),
   baseHash: Hash,
   localHash: Hash,
   remoteHash: Hash,

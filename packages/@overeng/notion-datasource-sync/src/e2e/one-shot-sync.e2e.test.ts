@@ -15,7 +15,12 @@ import {
 import { LocalWorkspacePort, NotionDataSourceGateway, PageBodySyncPort } from '../core/ports.ts'
 import { readOneShotSyncStatus } from '../core/status.ts'
 import { allGatewayCapabilities } from '../gateway/gateway.ts'
-import { makeFakeLocalWorkspacePort, presentArtifactObservation } from '../local/workspace.ts'
+import { pagesDirRelativePath } from '../local/manifest.ts'
+import {
+  bodyPathForRowInDir,
+  makeFakeLocalWorkspacePort,
+  presentArtifactObservation,
+} from '../local/workspace.ts'
 import { hashStoreBytes } from '../store/projections.ts'
 import { initOneShotSync, pullOneShotSync, pushOneShotSync, syncOneShot } from '../sync/sync.ts'
 import {
@@ -377,6 +382,100 @@ describe('one-shot sync orchestration', () => {
       storeFixture.cleanup()
     }
   })
+
+  // SM4 authority-mode consequence: the workspace-wide authority mode (decisions
+  // 0003, 0010) threads from the manifest into the planner's per-property
+  // `writeMode`. `remote` makes a local property edit drift; `local`/`shared`
+  // reach the property-write proof and enqueue. (Deepened in SM5.)
+  it.each([
+    {
+      mode: 'remote' as const,
+      expectedPlan: { enqueuedCommands: 0, blocked: 1, conflicts: 0 },
+      expectedState: 'blocked' as const,
+    },
+    {
+      mode: 'local' as const,
+      expectedPlan: { enqueuedCommands: 1, blocked: 0, conflicts: 0 },
+      expectedState: 'clean' as const,
+    },
+    {
+      mode: 'shared' as const,
+      expectedPlan: { enqueuedCommands: 1, blocked: 0, conflicts: 0 },
+      expectedState: 'clean' as const,
+    },
+  ])(
+    'authority_mode $mode drives the planner write authority for a local property edit',
+    async ({ mode, expectedPlan, expectedState }) => {
+      const clock = makeFakeClock()
+      const storeFixture = makeStoreFixture({ mode: 'memory', now: clock.now })
+      const gatewayHarness = makeFakeGatewayHarness({ propertyPages: [propertyPage()] })
+      const expectedPropertiesHash = hashStoreBytes(
+        `page-properties\t${testIds.pageId}\t${testIds.commandId}\t${testIds.propertyA}`,
+      )
+
+      try {
+        initOneShotSync({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          now: clock.now,
+        })
+        await runWithPorts(
+          pullOneShotSync({
+            store: storeFixture.store,
+            rootId: testIds.rootId,
+            dataSourceId: testIds.dataSourceId,
+            workspaceRoot,
+            queryContract: defaultQueryContract(),
+            schemaProperties,
+            now: clock.now,
+          }),
+          { gateway: gatewayHarness.gateway },
+        )
+
+        const command = decode({
+          schema: PatchPagePropertiesCommand,
+          value: {
+            _tag: 'PatchPagePropertiesCommand',
+            commandId: testIds.commandId,
+            pageId: testIds.pageId,
+            basePropertiesHash: hash('properties-a'),
+            propertyPatch: { [testIds.propertyA]: propertyPatchValue('Local edit') },
+          },
+        })
+        const push = await runWithPorts(
+          pushOneShotSync({
+            store: storeFixture.store,
+            rootId: testIds.rootId,
+            workspaceRoot,
+            authorityMode: mode,
+            localIntents: [
+              propertyEditIntent({
+                command,
+                baseHash: hash('property-a-base'),
+                desiredHash: expectedPropertiesHash,
+                expectedPropertyConfigHash: hash('config-a'),
+              }),
+            ],
+            now: clock.now,
+          }),
+          { gateway: gatewayHarness.gateway },
+        )
+
+        expect(push.plan).toMatchObject(expectedPlan)
+        expect(push.status.state).toBe(expectedState)
+        if (mode === 'remote') {
+          // A remote-authoritative workspace refuses the local edit as drift.
+          expect(storeFixture.store.readGuardBlocks(testIds.rootId)).toContainEqual(
+            expect.objectContaining({ guard: 'RemoteAuthoritativeDrift' }),
+          )
+        }
+      } finally {
+        storeFixture.cleanup()
+      }
+    },
+  )
 
   it('records query cap incompleteness without advancing absence or tombstone facts', async () => {
     const clock = makeFakeClock()
@@ -982,6 +1081,60 @@ describe('one-shot sync orchestration', () => {
       expect(gatewayHarness.ledger.successfulPatchPageProperties).toEqual([])
       expect(gatewayHarness.ledger.successfulPatchDataSourceSchemas).toEqual([])
       expect(gatewayHarness.ledger.successfulTrashPages).toEqual([])
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('materializes a tracked source body under its pages/v1/<name> directory', async () => {
+    // SM5b: a tracked workspace wires `bodyPathForPage` to the source's
+    // `pages_dir`, so materialized `.nmd` page files land at
+    // `pages/v1/<name>/...` rather than the workspace root. This mirrors the
+    // production CLI wiring (`bodyPathForPageInSourceDir` in `cli/main.ts`).
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ mode: 'memory', now: clock.now })
+    const gatewayHarness = makeFakeGatewayHarness({ propertyPages: [propertyPage()] })
+    const materializedPlans: MaterializePlan[] = []
+    const baseWorkspace = makeFakeLocalWorkspacePort()
+    const workspace = {
+      ...baseWorkspace,
+      materialize: (plan: MaterializePlan) =>
+        baseWorkspace
+          .materialize(plan)
+          .pipe(Effect.tap(() => Effect.sync(() => materializedPlans.push(plan)))),
+    }
+    const body = makeFakePageBodySyncPort({ pages: [fakeBodyPage()] })
+    const pagesDir = pagesDirRelativePath('tasks')
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+      await runWithPorts(
+        pullOneShotSync({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          queryContract: defaultQueryContract(),
+          schemaProperties,
+          bodyPathForPage: (pageId) => {
+            const decision = bodyPathForRowInDir({ pagesDir, title: `page-${pageId}`, pageId })
+            if (decision._tag !== 'allowed') throw new Error('expected allowed body path')
+            return decision.path
+          },
+          now: clock.now,
+        }),
+        { gateway: gatewayHarness.gateway, body, workspace },
+      )
+
+      expect(materializedPlans).toHaveLength(1)
+      expect(materializedPlans[0]?.path).toBe(`pages/v1/tasks/page-${testIds.pageId}--page-1.nmd`)
+      expect(materializedPlans[0]?.path.startsWith('pages/v1/tasks/')).toBe(true)
     } finally {
       storeFixture.cleanup()
     }

@@ -1,4 +1,7 @@
-import { Context, Duration, Effect, Layer, RateLimiter } from 'effect'
+import { Clock, Context, Duration, Effect, Layer, RateLimiter } from 'effect'
+
+import { NotionRateLimitMetricBridges } from './metrics.ts'
+import { annotateNotionRateLimitWaitSpan } from './otel.ts'
 
 /** Options for the optional global Notion request throttle. */
 export interface NotionThrottleOptions {
@@ -38,6 +41,30 @@ export const NotionThrottleLive = (options: NotionThrottleOptions): Layer.Layer<
         interval: Duration.millis(Math.ceil(1000 / options.requestsPerSecond)),
         algorithm: options.algorithm ?? 'token-bucket',
       })
-      return { apply: (effect) => limiter(effect) }
+      /**
+       * Behavior-preserving wait instrumentation (decision 0017 Half 2, #775):
+       * `limiter` still wraps `effect` exactly as before (token accounting and
+       * pacing untouched), but we measure the time blocked acquiring the token —
+       * the genuinely-new rate-limit signal that nothing else captures. `before`
+       * is read OUTSIDE the gate; the inner clock read runs the instant the token
+       * is granted, so `waitMs` is exactly the queue wait. Both reads are
+       * per-invocation locals in the caller's fiber, so concurrent requests each
+       * measure their own wait (the limiter serializes grants). The clock used is
+       * the Effect `Clock`, so the measurement stays deterministic under TestClock.
+       */
+      return {
+        apply: (effect) =>
+          Effect.gen(function* () {
+            const before = yield* Clock.currentTimeMillis
+            return yield* limiter(
+              Effect.gen(function* () {
+                const waitMs = (yield* Clock.currentTimeMillis) - before
+                yield* annotateNotionRateLimitWaitSpan(waitMs)
+                yield* NotionRateLimitMetricBridges.rateLimitWaitMs.trustedRecord({}, waitMs)
+                return yield* effect
+              }),
+            )
+          }),
+      }
     }),
   )

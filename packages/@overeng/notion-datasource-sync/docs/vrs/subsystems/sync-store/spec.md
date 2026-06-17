@@ -6,12 +6,13 @@ Requirement trace: STORE-R01, STORE-R02, STORE-R03, STORE-R04, STORE-R05, STORE-
 
 ## SQLite Store
 
-The private store is embedded in the same `<database-id>.sqlite` file as the
-public replica. All private tables are prefixed `_nds_`; no split store or
-alternate storage-layout mode exists.
+The private store lives under the hidden `.notion/v1` workspace namespace,
+separate from public `data/v1/<source>.sqlite` files. Public data files expose
+the user SQL API; the hidden store owns events, projections, outbox, leases,
+checkpoints, and replay.
 
 ```
-<database-id>.sqlite private store
+.notion/v1/state.sqlite private store
   _nds_sync_root                 local root binding, settings, store identity
   _nds_sync_event                append-only domain events
   _nds_projection_metadata       replay version, digest, schema version
@@ -21,10 +22,10 @@ alternate storage-layout mode exists.
   _nds_property_shadow           per-row/property base/current/local hashes
   _nds_body_pointer              NotionMD-managed body state pointers
   _nds_outbox                    pending/attempted/settled remote commands
-  _nds_conflict_projection       open/resolved/superseded/ignored conflicts
+  _nds_conflict_projection       open/resolved/overridden/ignored conflicts
   _nds_tombstone_projection      trash/move/inaccessible/unknown classifications
   _nds_path_claim                local file path ownership
-  _nds_api_contract_projection   Notion API version and compatibility proof
+  _nds_api_contract_projection   Notion API version and current API proof
   _nds_capability_projection     integration capability preflight results
   _nds_query_scan_checkpoint     query contract, cursor, completeness, high-water mark
   _nds_page_property_checkpoint  complete property-item pagination state
@@ -78,20 +79,20 @@ Checkpoint compaction is forbidden while any outbox command is pending, running,
 
 ## Event Families
 
-| Family                 | Examples                                                                                              | Projection effect                              |
-| ---------------------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| `RemoteObserved`       | schema observed, row observed, row missing candidate, body pointer observed                           | Updates remote-current projections             |
-| `CompatibilityChecked` | API version accepted, capability preflight passed/failed, query contract changed                      | Updates compatibility projections              |
-| `QueryScanRecorded`    | page observed, row cursor advanced, property cursor advanced, scan completed, scan capped/interrupted | Updates query checkpoints                      |
-| `LocalIntentAccepted`  | property edit, body edit pointer, schema migration intent, local delete intent                        | Creates durable local intent                   |
-| `CommandEnqueued`      | patch row, patch schema, trash row, restore row, materialize body                                     | Adds outbox work                               |
-| `CommandAttempted`     | request started, retry scheduled, transient failure, permanent failure, fenced stale attempt          | Updates attempt state                          |
-| `CommandSettled`       | verified success, verified no-op                                                                      | Advances projections and clears pending intent |
-| `ConflictDetected`     | same property, body-body, delete-vs-edit, schema drift, path collision                                | Opens conflict                                 |
-| `ConflictResolved`     | choose local, choose remote, manual value, ignore, forget                                             | Appends resolution and follow-up commands      |
-| `TombstoneClassified`  | trashed, moved-out, moved-between-tracked-sources, inaccessible, unknown                              | Updates tombstone projection                   |
-| `RepairObserved`       | projection drift, orphan object, missing sidecar, stale lease                                         | Drives repair commands                         |
-| `StorageMigrated`      | SQLite schema migration, projection rebuild, checkpoint compaction                                    | Records control-plane evolution                |
+| Family                | Examples                                                                                              | Projection effect                              |
+| --------------------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `RemoteObserved`      | schema observed, row observed, row missing candidate, body pointer observed                           | Updates remote-current projections             |
+| `ApiContractChecked`  | API version accepted, capability preflight passed/failed, query contract changed                      | Updates API contract projections               |
+| `QueryScanRecorded`   | page observed, row cursor advanced, property cursor advanced, scan completed, scan capped/interrupted | Updates query checkpoints                      |
+| `LocalIntentAccepted` | property edit, body edit pointer, schema migration intent, local delete intent                        | Creates durable local intent                   |
+| `CommandEnqueued`     | patch row, patch schema, trash row, restore row, materialize body                                     | Adds outbox work                               |
+| `CommandAttempted`    | request started, retry scheduled, transient failure, permanent failure, fenced stale attempt          | Updates attempt state                          |
+| `CommandSettled`      | verified success, verified no-op                                                                      | Advances projections and clears pending intent |
+| `ConflictDetected`    | same property, body-body, delete-vs-edit, schema drift, path collision                                | Opens conflict                                 |
+| `ConflictResolved`    | choose local, choose remote, manual value, ignore, forget                                             | Appends resolution and follow-up commands      |
+| `TombstoneClassified` | trashed, moved-out, moved-between-tracked-sources, inaccessible, unknown                              | Updates tombstone projection                   |
+| `RepairObserved`      | projection drift, orphan object, missing sidecar, stale lease                                         | Drives repair commands                         |
+| `StorageMigrated`     | SQLite schema migration, projection rebuild, checkpoint compaction                                    | Records control-plane evolution                |
 
 Events are immutable. Projections are disposable and must be rebuildable. Store migrations may create new projection tables or replay events with a new `projector_version`; they must not rewrite old events.
 

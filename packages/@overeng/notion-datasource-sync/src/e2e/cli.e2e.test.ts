@@ -55,6 +55,7 @@ import {
 } from '../core/ports.ts'
 import { makeGatewayError, makeNotionApiContract } from '../gateway/gateway.ts'
 import type { NotionGatewayClient, NotionGatewayPage } from '../gateway/notion.ts'
+import { loadWorkspaceManifest, pagesDirRelativePath } from '../local/manifest.ts'
 import { presentArtifactObservation } from '../local/workspace.ts'
 import { projectReplicaFromSyncStore } from '../replica/replica.ts'
 import { NotionSyncStore, openNotionSyncStore } from '../store/store.ts'
@@ -251,6 +252,7 @@ const context = (input: {
   readonly clock: ReturnType<typeof makeFakeClock>
   readonly maxExecutorSteps?: number
   readonly workspaceRoot?: CliContext['workspaceRoot']
+  readonly sourcePagesDir?: CliContext['sourcePagesDir']
   readonly schemaProperties?: CliContext['schemaProperties']
   readonly requiredCapabilities?: CliContext['requiredCapabilities']
   readonly materializeBodies?: CliContext['materializeBodies']
@@ -264,6 +266,7 @@ const context = (input: {
   rootId: testIds.rootId,
   dataSourceId: testIds.dataSourceId,
   workspaceRoot: input.workspaceRoot ?? workspaceRoot,
+  ...(input.sourcePagesDir === undefined ? {} : { sourcePagesDir: input.sourcePagesDir }),
   queryContract: defaultQueryContract(),
   schemaProperties: input.schemaProperties ?? schemaProperties,
   ...(input.requiredCapabilities === undefined
@@ -352,6 +355,29 @@ const createBoundSqlite = async ({
   })
 }
 
+const establishTrackedWorkspace = async ({
+  workspace,
+  mode = 'shared',
+}: {
+  readonly workspace: typeof AbsolutePath.Type
+  readonly mode?: 'local' | 'remote' | 'shared'
+}): Promise<void> => {
+  const argv = ['track', testIds.dataSourceId, workspace, '--mode', mode, '--no-materialize-bodies']
+  const command = parseCliCommand(argv)
+  const context = parseCliContext({ argv, resolvedCommand: command })
+  try {
+    await Effect.runPromise(
+      runCliCommandWithRuntime({
+        command,
+        context,
+        options: { gateway: makeFakeGatewayHarness({ propertyPages: [propertyPage()] }).gateway },
+      }),
+    )
+  } finally {
+    context.store.close()
+  }
+}
+
 describe('CLI command surface', () => {
   it('prints db runtime version from the shared CLI build stamp contract', async () => {
     const { stdout, stderr } = await execFileAsync(cliPath, ['--version'], {
@@ -392,9 +418,16 @@ describe('CLI command surface', () => {
       timeout: cliTestTimeoutMs,
     })
 
+    expect(stdout).toContain('track')
     expect(stdout).toContain('sync')
     expect(stdout).toContain('status')
     expect(stdout).toContain('conflicts')
+    // The removed reconciliation verbs must not be advertised in completions
+    // (CLI-R01); guards against a descriptor regression re-exposing them.
+    expect(stdout).not.toContain('init')
+    expect(stdout).not.toContain('pull')
+    expect(stdout).not.toContain('push')
+    expect(stdout).not.toContain('from-notion')
     expect(stderr).not.toContain('CliErrorEnvelope')
   })
 
@@ -453,7 +486,7 @@ describe('CLI command surface', () => {
         '--watch',
         '--webhook',
         'none',
-        '--mode',
+        '--watch-priority',
         'development',
         '--non-interactive',
       ]),
@@ -461,7 +494,7 @@ describe('CLI command surface', () => {
       _tag: 'sync',
       dryRun: false,
       watch: true,
-      mode: 'development',
+      watchPriority: 'development',
       webhook: 'none',
       nonInteractive: true,
     })
@@ -490,6 +523,79 @@ describe('CLI command surface', () => {
       webhook: 'manual',
     })
     expect(() => parseCliCommand(['watch', '--state', '/tmp/watch.json'])).toThrow(CliArgumentError)
+  })
+
+  // SM5.3 (CLI-R02): a `sync --watch --dry-run` is a non-interfering observer
+  // that writes NOTHING durable, but a webhook receiver enqueues durable signals
+  // on delivery. Reject the combination at parse time (before any receiver
+  // starts) for both providers; the default `--webhook none` dry-run watch and
+  // an explicit `--webhook none` still parse.
+  it('rejects a webhook receiver under sync --watch --dry-run at parse time', () => {
+    const webhookRejection =
+      'sync --watch --dry-run cannot run a webhook receiver (it would enqueue durable signals); use --webhook none for a dry-run watch'
+    for (const provider of ['manual', 'tailscale'] as const) {
+      expect(() =>
+        parseCliCommand(['sync', '--watch', '--dry-run', '--webhook', provider]),
+      ).toThrow(webhookRejection)
+    }
+    expect(parseCliCommand(['sync', '--watch', '--dry-run'])).toEqual({
+      _tag: 'sync',
+      dryRun: true,
+      watch: true,
+    })
+    expect(parseCliCommand(['sync', '--watch', '--dry-run', '--webhook', 'none'])).toEqual({
+      _tag: 'sync',
+      dryRun: true,
+      watch: true,
+      webhook: 'none',
+    })
+  })
+
+  it('parses track as the adoption verb with a workspace-wide authority --mode', () => {
+    // `track <remote> <workspace>` defaults the authority mode to `remote`
+    // (safe-by-default mirror adoption; VRS cli/spec.md).
+    expect(parseCliCommand(['track', 'data-source-1', '/tmp/notion-workspace'])).toMatchObject({
+      _tag: 'track',
+      dataSourceId: 'data-source-1',
+      remoteRef: { _tag: 'data-source', dataSourceId: 'data-source-1' },
+      workspaceRoot: '/tmp/notion-workspace',
+      authorityMode: 'remote',
+      dryRun: false,
+    })
+    // `track --mode <m>` carries the chosen workspace-wide authority mode.
+    for (const mode of ['local', 'remote', 'shared'] as const) {
+      expect(
+        parseCliCommand(['track', 'data-source-1', '/tmp/notion-workspace', '--mode', mode]),
+      ).toMatchObject({ _tag: 'track', authorityMode: mode })
+    }
+    // An unknown authority mode is rejected.
+    expect(() =>
+      parseCliCommand(['track', 'data-source-1', '/tmp/notion-workspace', '--mode', 'bogus']),
+    ).toThrow('--mode must be one of: local, remote, shared')
+    // Missing positionals fail closed.
+    expect(() => parseCliCommand(['track'])).toThrow(
+      'track requires a Notion data source or database URL',
+    )
+    expect(() => parseCliCommand(['track', 'data-source-1'])).toThrow(
+      'track requires a workspace root',
+    )
+    // `--limit` is dry-run only, mirroring the legacy establish path.
+    expect(() =>
+      parseCliCommand(['track', 'data-source-1', '/tmp/notion-workspace', '--limit', '25']),
+    ).toThrow('--limit is only supported with track --dry-run')
+  })
+
+  it('rejects a per-run --mode on established commands (authority is workspace-wide)', () => {
+    // Authority mode is set once by `track`; every established command refuses a
+    // per-run override (decisions 0015, 0019) instead of silently ignoring it.
+    const rejected = 'authority mode is workspace-wide; set it with `track --mode`'
+    expect(() => parseCliCommand(['sync', '/tmp/ws', '--mode', 'shared'])).toThrow(rejected)
+    expect(() => parseCliCommand(['sync', '--watch', '--mode', 'local'])).toThrow(rejected)
+    expect(() => parseCliCommand(['status', '/tmp/ws', '--mode', 'remote'])).toThrow(rejected)
+    expect(() =>
+      parseCliCommand(['export', '/tmp/ws', '--output', '/tmp/out', '--mode', 'shared']),
+    ).toThrow(rejected)
+    expect(() => parseCliCommand(['doctor', '--mode', 'shared'])).toThrow(rejected)
   })
 
   it(
@@ -625,11 +731,18 @@ describe('CLI command surface', () => {
     ).toThrow('--max-cycles must be a positive integer')
   })
 
+  it('rejects the removed internal reconciliation verbs with clean-break guidance', () => {
+    // `init`/`pull`/`push` are internal reconciliation phases, not public
+    // commands (CLI-R01). The internal functions remain; the public verbs are
+    // a clean-break removal that points operators back at `sync`.
+    for (const verb of ['init', 'pull', 'push'] as const) {
+      expect(() => parseCliCommand([verb, '--dry-run'])).toThrow(
+        `${verb} is an internal reconciliation phase, not a public command; use \`sync\``,
+      )
+    }
+  })
+
   it('parses mutating dry-run flags and explicit unsupported command gaps', () => {
-    expect(parseCliCommand(['push', '--dry-run'])).toEqual({
-      _tag: 'push',
-      dryRun: true,
-    })
     expect(parseCliCommand(['sync', '--dry-run'])).toEqual({
       _tag: 'sync',
       dryRun: true,
@@ -653,45 +766,7 @@ describe('CLI command surface', () => {
     })
   })
 
-  it('parses sync-first establishment and established workspace forms', () => {
-    expect(
-      parseCliCommand([
-        'sync',
-        '--from-notion',
-        '0123456789abcdef0123456789abcdef',
-        '/tmp/notion-workspace',
-      ]),
-    ).toEqual({
-      _tag: 'sync-from-notion',
-      dataSourceId: '01234567-89ab-cdef-0123-456789abcdef',
-      remoteRef: {
-        _tag: 'data-source',
-        dataSourceId: '01234567-89ab-cdef-0123-456789abcdef',
-      },
-      workspaceRoot: '/tmp/notion-workspace',
-      dryRun: false,
-    })
-    expect(
-      parseCliCommand([
-        'sync',
-        '--from-notion',
-        'https://www.notion.so/example/0123456789abcdef0123456789abcdef?v=feedfacefeedfacefeedfacefeedface',
-        '/tmp/notion-workspace',
-        '--dry-run',
-        '--limit',
-        '25',
-      ]),
-    ).toEqual({
-      _tag: 'sync-from-notion',
-      dataSourceId: '01234567-89ab-cdef-0123-456789abcdef',
-      remoteRef: {
-        _tag: 'database',
-        databaseId: '01234567-89ab-cdef-0123-456789abcdef',
-      },
-      workspaceRoot: '/tmp/notion-workspace',
-      dryRun: true,
-      limit: 25,
-    })
+  it('parses established workspace forms and rejects the removed sync --from-notion alias', () => {
     expect(parseCliCommand(['sync', '/tmp/notion-workspace', '--dry-run'])).toEqual({
       _tag: 'sync',
       workspaceRoot: '/tmp/notion-workspace',
@@ -713,22 +788,16 @@ describe('CLI command surface', () => {
       outputPath: '/tmp/export.ndjson',
       format: 'json',
       requireClean: true,
+      dryRun: false,
     })
-    expect(() => parseCliCommand(['sync', '--from-notion'])).toThrow(CliArgumentError)
     expect(() => parseCliCommand(['sync', '/tmp/a', '/tmp/b'])).toThrow(CliArgumentError)
     expect(() => parseCliCommand(['export', '--format', 'csv', '--output', '/tmp/a'])).toThrow(
       CliArgumentError,
     )
+    // Adoption is now `track`; `sync --from-notion` is a clean-break removal.
     expect(() =>
-      parseCliCommand([
-        'sync',
-        '--from-notion',
-        '0123456789abcdef0123456789abcdef',
-        '/tmp/notion-workspace',
-        '--limit',
-        '25',
-      ]),
-    ).toThrow('--limit is only supported with sync --from-notion --dry-run')
+      parseCliCommand(['sync', '--from-notion', '0123456789abcdef0123456789abcdef', '/tmp/ws']),
+    ).toThrow('use `track <id-or-url> <root> --mode <local|remote|shared>`')
   })
 
   it('resolves a Notion database URL to a single child data source before opening context', async () => {
@@ -739,10 +808,11 @@ describe('CLI command surface', () => {
       retrieveDatabase: 0,
     }
     const command = parseCliCommand([
-      'sync',
-      '--from-notion',
+      'track',
       'https://www.notion.so/example/0123456789abcdef0123456789abcdef?v=feedfacefeedfacefeedfacefeedface',
       '/tmp/notion-workspace',
+      '--mode',
+      'remote',
       '--dry-run',
     ])
 
@@ -754,7 +824,7 @@ describe('CLI command surface', () => {
     )
 
     expect(resolved).toMatchObject({
-      _tag: 'sync-from-notion',
+      _tag: 'track',
       dataSourceId: testIds.dataSourceId,
       remoteRef: { _tag: 'data-source', dataSourceId: testIds.dataSourceId },
     })
@@ -770,10 +840,11 @@ describe('CLI command surface', () => {
       retrieveDatabase: 0,
     }
     const command = parseCliCommand([
-      'sync',
-      '--from-notion',
+      'track',
       'https://api.notion.com/v1/data_sources/0123456789abcdef0123456789abcdef',
       '/tmp/notion-workspace',
+      '--mode',
+      'remote',
       '--dry-run',
     ])
 
@@ -786,7 +857,7 @@ describe('CLI command surface', () => {
 
     expect(resolved).toEqual(command)
     expect(resolved).toMatchObject({
-      _tag: 'sync-from-notion',
+      _tag: 'track',
       dataSourceId: '01234567-89ab-cdef-0123-456789abcdef',
       remoteRef: {
         _tag: 'data-source',
@@ -810,10 +881,11 @@ describe('CLI command surface', () => {
         }),
     }
     const command = parseCliCommand([
-      'sync',
-      '--from-notion',
+      'track',
       'https://www.notion.so/example/0123456789abcdef0123456789abcdef',
       '/tmp/notion-workspace',
+      '--mode',
+      'remote',
       '--dry-run',
     ])
 
@@ -831,10 +903,11 @@ describe('CLI command surface', () => {
       retrieveDatabase: () => Effect.fail(new Error('private workspace object')),
     }
     const command = parseCliCommand([
-      'sync',
-      '--from-notion',
+      'track',
       'https://www.notion.so/example/0123456789abcdef0123456789abcdef',
       '/tmp/notion-workspace',
+      '--mode',
+      'remote',
       '--dry-run',
     ])
 
@@ -843,7 +916,7 @@ describe('CLI command surface', () => {
         resolveCliCommandNotionRefs({ command, options: { gatewayClient: client } }),
       ),
     ).rejects.toThrow(
-      'Unable to retrieve the Notion database while resolving --from-notion; verify the integration can access the database, or pass a data source ID directly.',
+      'Unable to retrieve the Notion database while resolving the adoption ref; verify the integration can access the database, or pass a data source ID directly.',
     )
   })
 
@@ -864,10 +937,11 @@ describe('CLI command surface', () => {
         }),
     }
     const command = parseCliCommand([
-      'sync',
-      '--from-notion',
+      'track',
       'https://www.notion.so/example/0123456789abcdef0123456789abcdef',
       '/tmp/notion-workspace',
+      '--mode',
+      'remote',
       '--dry-run',
     ])
 
@@ -917,16 +991,17 @@ describe('CLI command surface', () => {
   it('discovers established workspace config for sync and suggests establishment when missing', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-config-'))
     try {
-      expect(() => parseCliContext({ argv: ['sync', dir] })).toThrow(
-        'No self-contained datasource-sync SQLite file found',
-      )
-      await createBoundSqlite({
-        path: join(dir, `${testIds.databaseId}.sqlite`),
-        workspace: decode({ schema: AbsolutePath, value: dir }),
-      })
+      const workspaceRootDir = decode({ schema: AbsolutePath, value: dir })
+      // Untracked workspace (no v1 manifest) fails closed with tracking guidance
+      // that points at the canonical adoption verb (`track`).
+      expect(() => parseCliContext({ argv: ['sync', dir] })).toThrow(/Run track <database-url>/)
+
+      // Establish through the public adoption command so the manifest and hidden
+      // control-plane binding are created together.
+      await establishTrackedWorkspace({ workspace: workspaceRootDir })
       const ctx = parseCliContext({ argv: ['sync', dir] })
       try {
-        expect(ctx.rootId).toBe(testIds.rootId)
+        expect(ctx.rootId).toBe(`data-source:${testIds.dataSourceId}`)
         expect(ctx.dataSourceId).toBe(testIds.dataSourceId)
         expect(ctx.workspaceRoot).toBe(dir)
       } finally {
@@ -937,6 +1012,125 @@ describe('CLI command surface', () => {
     }
   })
 
+  it('track --mode establishes the workspace and round-trips authority_mode into the manifest', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-track-'))
+    try {
+      // `track --mode shared` establishes the workspace (closing the SM2 M3 gap:
+      // track has the data_source_id to write a complete manifest entry) and
+      // records the workspace-wide authority mode.
+      const command = parseCliCommand([
+        'track',
+        'data-source-1',
+        dir,
+        '--mode',
+        'shared',
+        '--no-materialize-bodies',
+      ])
+      const ctx = parseCliContext({
+        argv: ['track', 'data-source-1', dir, '--no-materialize-bodies'],
+        resolvedCommand: command,
+      })
+      try {
+        expect(ctx.dataSourceId).toBe('data-source-1')
+        expect(ctx.workspaceRoot).toBe(dir)
+        // The selected authority mode is available to the pending establish run...
+        expect(ctx.authorityMode).toBe('shared')
+        // SM5b: the source's page directory is read onto the context too, so the
+        // CLI materializes `.nmd` page files under `pages/v1/<name>/`. This pins
+        // the manifest -> CliContext.sourcePagesDir hop (the on-disk landing is
+        // proven by the real-CLI NotionMD materialization test).
+        expect(ctx.sourcePagesDir).toBe(pagesDirRelativePath('data-source-1'))
+      } finally {
+        ctx.store.close()
+      }
+      // Parsing only prepares the manifest entry; it must not leave a tracked
+      // workspace behind before remote establishment succeeds.
+      expect(loadWorkspaceManifest(decode({ schema: AbsolutePath, value: dir }))._tag).toBe(
+        'untracked',
+      )
+
+      const runCtx = parseCliContext({
+        argv: ['track', 'data-source-1', dir, '--mode', 'shared', '--no-materialize-bodies'],
+        resolvedCommand: command,
+      })
+      try {
+        await Effect.runPromise(
+          runCliCommandWithRuntime({
+            command,
+            context: runCtx,
+            options: {
+              gateway: makeFakeGatewayHarness({ propertyPages: [propertyPage()] }).gateway,
+            },
+          }),
+        )
+      } finally {
+        runCtx.store.close()
+      }
+      // ...and a successful track durably writes notion.workspace.v1.json.
+      const manifest = loadWorkspaceManifest(decode({ schema: AbsolutePath, value: dir }))
+      expect(manifest._tag).toBe('tracked')
+      if (manifest._tag === 'tracked') {
+        expect(manifest.manifest.authority_mode).toBe('shared')
+        expect(manifest.manifest.data_sources).toMatchObject([
+          { data_source_id: 'data-source-1', database_id: 'data-source-1' },
+        ])
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('track --mode local persists the local authority mode', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-track-'))
+    try {
+      const command = parseCliCommand(['track', 'data-source-1', dir, '--mode', 'local'])
+      const ctx = parseCliContext({
+        argv: ['track', 'data-source-1', dir],
+        resolvedCommand: command,
+      })
+      ctx.store.close()
+      await establishTrackedWorkspace({
+        workspace: decode({ schema: AbsolutePath, value: dir }),
+        mode: 'local',
+      })
+      const manifest = loadWorkspaceManifest(decode({ schema: AbsolutePath, value: dir }))
+      expect(manifest._tag === 'tracked' && manifest.manifest.authority_mode).toBe('local')
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('resolves a Notion database URL to a child data source for track', async () => {
+    const calls = {
+      retrieveDataSource: 0,
+      queryDataSource: 0,
+      retrievePage: 0,
+      retrieveDatabase: 0,
+    }
+    const command = parseCliCommand([
+      'track',
+      'https://www.notion.so/example/0123456789abcdef0123456789abcdef?v=feedfacefeedfacefeedfacefeedface',
+      '/tmp/notion-workspace',
+      '--mode',
+      'remote',
+    ])
+
+    const resolved = await Effect.runPromise(
+      resolveCliCommandNotionRefs({
+        command,
+        options: { gatewayClient: makeInjectedNotionClient(calls) },
+      }),
+    )
+
+    expect(resolved).toMatchObject({
+      _tag: 'track',
+      dataSourceId: testIds.dataSourceId,
+      remoteRef: { _tag: 'data-source', dataSourceId: testIds.dataSourceId },
+      authorityMode: 'remote',
+    })
+    expect(calls.retrieveDatabase).toBe(1)
+  })
+
   it.each([
     { argv: ['migrate', 'store'] as const, expected: 'Expected one of:' },
     { argv: ['migrate', 'schema'] as const, expected: 'Expected one of:' },
@@ -945,6 +1139,57 @@ describe('CLI command surface', () => {
     'rejects removed command $argv before opening an explicit SQLite file',
     async ({ argv, expected }) => {
       const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-cli-unsupported-'))
+      const storePath = join(dir, 'store.sqlite')
+      try {
+        await createBoundSqlite({ path: storePath })
+        await expect(
+          execFileAsync(
+            cliPath,
+            [
+              ...argv,
+              '--sqlite',
+              storePath,
+              '--root-id',
+              testIds.rootId,
+              '--data-source-id',
+              testIds.dataSourceId,
+              '--workspace-root',
+              workspaceRoot,
+            ],
+            { cwd: packageDir, timeout: cliTestTimeoutMs },
+          ),
+        ).rejects.toMatchObject({
+          code: 1,
+          stderr: expect.stringContaining(expected),
+        })
+      } finally {
+        await rm(dir, { recursive: true, force: true })
+      }
+    },
+    cliTestTimeoutMs,
+  )
+
+  it.each([
+    {
+      argv: ['init'] as const,
+      expected: 'init is an internal reconciliation phase, not a public command; use `sync`',
+    },
+    {
+      argv: ['pull'] as const,
+      expected: 'pull is an internal reconciliation phase, not a public command; use `sync`',
+    },
+    {
+      argv: ['push'] as const,
+      expected: 'push is an internal reconciliation phase, not a public command; use `sync`',
+    },
+    {
+      argv: ['sync', '--from-notion', 'data-source-1', workspaceRoot] as const,
+      expected: 'sync --from-notion has been removed; use `track',
+    },
+  ])(
+    'exits non-zero with clean-break guidance for the removed verb $argv at the binary entry',
+    async ({ argv, expected }) => {
+      const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-cli-clean-break-'))
       const storePath = join(dir, 'store.sqlite')
       try {
         await createBoundSqlite({ path: storePath })
@@ -1085,7 +1330,7 @@ describe('CLI command surface', () => {
         Effect.runPromise(
           runCliMain({
             argv: [
-              'pull',
+              'sync',
               '--sqlite',
               join(dir, 'store.sqlite'),
               '--root-id',
@@ -1128,7 +1373,7 @@ describe('CLI command surface', () => {
       await Effect.runPromise(
         runCliMain({
           argv: [
-            'pull',
+            'sync',
             '--sqlite',
             sqlitePath,
             '--root-id',
@@ -1147,11 +1392,11 @@ describe('CLI command surface', () => {
 
       expect(JSON.parse(stdout)).toMatchObject({
         _tag: 'CliResultEnvelope',
-        command: 'pull',
+        command: 'sync',
         ok: true,
       })
       expect(stderr).toContain('notion db')
-      expect(stderr).toContain('pull')
+      expect(stderr).toContain('sync')
       expect(stderr).toContain('100%')
     } finally {
       process.stdout.write = originalStdoutWrite
@@ -1302,8 +1547,8 @@ describe('CLI command surface', () => {
       updateMarkdown: () => Effect.die('updateMarkdown should not be called by this test'),
       updatePageProperties: () =>
         Effect.die('updatePageProperties should not be called by this test'),
-      retrieveDataSource: () => Effect.die('retrieveDataSource should not be called by this test'),
       updatePageMetadata: () => Effect.die('updatePageMetadata should not be called by this test'),
+      retrieveDataSource: () => Effect.die('retrieveDataSource should not be called by this test'),
       listChildPages: () => Effect.succeed([]),
       createPage: () => Effect.die('createPage should not be called by this test'),
       movePage: () => Effect.die('movePage should not be called by this test'),
@@ -1318,10 +1563,16 @@ describe('CLI command surface', () => {
         gateway: notionMdGateway,
         stateStore,
       })
+      // SM5b: a tracked workspace carries `sourcePagesDir`, so the production
+      // chain (context.sourcePagesDir -> remoteObservationContext ->
+      // bodyPathForPage -> observeRemoteDataSource -> workspace.materialize)
+      // materializes the `.nmd` under `pages/v1/<name>/` instead of the root.
+      const pagesDir = pagesDirRelativePath(testIds.databaseId)
       const ctx = context({
         store: storeFixture.store,
         clock,
         workspaceRoot: root,
+        sourcePagesDir: pagesDir,
         schemaProperties: [],
       })
 
@@ -1342,16 +1593,16 @@ describe('CLI command surface', () => {
         body,
         workspace,
       })
-      const materialized = await readFile(
-        join(dir, `page-${testIds.pageId}--${testIds.pageId}.nmd`),
-        'utf8',
-      )
+      const materializedPath = join(dir, pagesDir, `page-${testIds.pageId}--${testIds.pageId}.nmd`)
+      const materialized = await readFile(materializedPath, 'utf8')
 
       expect(result).toMatchObject({
         _tag: 'CliResultEnvelope',
         command: 'sync',
         status: { state: 'clean' },
       })
+      // The `.nmd` page file lands under the source's pages/v1/<name> directory.
+      expect(materializedPath).toContain(`pages/v1/${testIds.databaseId}/`)
       expect(materialized).toContain('"page_id": "page-1"')
       expect(materialized).toContain('Real NotionMD CLI body.')
       expect(materialized).not.toContain('notion-datasource-sync body materialization placeholder')
@@ -1387,10 +1638,11 @@ describe('CLI command surface', () => {
       const first = await runWithPorts(
         runCliCommand(
           {
-            _tag: 'sync-from-notion',
+            _tag: 'track',
             dataSourceId: testIds.dataSourceId,
             remoteRef: { _tag: 'data-source', dataSourceId: testIds.dataSourceId },
             workspaceRoot,
+            authorityMode: 'shared',
           },
           ctx,
         ),
@@ -1401,10 +1653,11 @@ describe('CLI command surface', () => {
       const second = await runWithPorts(
         runCliCommand(
           {
-            _tag: 'sync-from-notion',
+            _tag: 'track',
             dataSourceId: testIds.dataSourceId,
             remoteRef: { _tag: 'data-source', dataSourceId: testIds.dataSourceId },
             workspaceRoot,
+            authorityMode: 'shared',
           },
           ctx,
         ),
@@ -1412,7 +1665,7 @@ describe('CLI command surface', () => {
       )
 
       expect(first).toMatchObject({
-        command: 'sync-from-notion',
+        command: 'track',
         result: {
           mode: 'establish-from-notion',
           pushed: false,
@@ -1455,10 +1708,11 @@ describe('CLI command surface', () => {
       const result = await runWithPorts(
         runCliCommand(
           {
-            _tag: 'sync-from-notion',
+            _tag: 'track',
             dataSourceId: testIds.dataSourceId,
             remoteRef: { _tag: 'data-source', dataSourceId: testIds.dataSourceId },
             workspaceRoot,
+            authorityMode: 'shared',
             dryRun: true,
           },
           ctx,
@@ -1519,10 +1773,11 @@ describe('CLI command surface', () => {
       const result = await runWithPorts(
         runCliCommand(
           {
-            _tag: 'sync-from-notion',
+            _tag: 'track',
             dataSourceId: testIds.dataSourceId,
             remoteRef: { _tag: 'data-source', dataSourceId: testIds.dataSourceId },
             workspaceRoot,
+            authorityMode: 'shared',
             dryRun: true,
             limit: 2,
           },
@@ -1566,10 +1821,11 @@ describe('CLI command surface', () => {
         Effect.runPromise(
           runCliCommandWithRuntime({
             command: {
-              _tag: 'sync-from-notion',
+              _tag: 'track',
               dataSourceId: testIds.dataSourceId,
               remoteRef: { _tag: 'data-source', dataSourceId: testIds.dataSourceId },
               workspaceRoot: ctx.workspaceRoot,
+              authorityMode: 'shared',
             },
             context: ctx,
             options: { gatewayClient: makeInjectedNotionClient(calls), body },
@@ -2002,7 +2258,7 @@ describe('CLI command surface', () => {
             _tag: 'sync',
             watch: true,
             webhook: 'manual',
-            mode: 'normal',
+            watchPriority: 'normal',
             statePath: join(dir, 'watch.json'),
             maxCycles: 2,
           },
@@ -2153,7 +2409,7 @@ describe('CLI command surface', () => {
             _tag: 'sync',
             watch: true,
             webhook: 'tailscale',
-            mode: 'normal',
+            watchPriority: 'normal',
             statePath: join(dir, 'watch.json'),
             maxCycles: 2,
           },
@@ -2418,7 +2674,7 @@ describe('CLI command surface', () => {
       const database = new DatabaseSync(sqlitePath)
       try {
         database
-          .prepare(`UPDATE rows SET "Row_prop_a" = ? WHERE _page_id = ?`)
+          .prepare(`UPDATE pages SET "Row_prop_a" = ? WHERE _page_id = ?`)
           .run('CLI push row edit', testIds.pageId)
       } finally {
         database.close()
@@ -2459,7 +2715,7 @@ describe('CLI command surface', () => {
       const database = new DatabaseSync(sqlitePath)
       try {
         database
-          .prepare(`UPDATE rows SET "Row_prop_a" = ? WHERE _page_id = ?`)
+          .prepare(`UPDATE pages SET "Row_prop_a" = ? WHERE _page_id = ?`)
           .run('Pending export edit', testIds.pageId)
       } finally {
         database.close()
@@ -2482,14 +2738,14 @@ describe('CLI command surface', () => {
       expect(result.result).toMatchObject({
         _tag: 'ReplicaExportResult',
         clean: false,
-        counts: { rows: 1, pendingChanges: 1 },
+        counts: { pages: 1, pendingChanges: 1 },
       })
       const lines = (await readFile(outputPath, 'utf8'))
         .trim()
         .split('\n')
         .map((line) => JSON.parse(line))
       expect(lines.map((line) => line.type)).toEqual(
-        expect.arrayContaining(['metadata', 'sync_status', 'schema', 'schema_property', 'row']),
+        expect.arrayContaining(['metadata', 'sync_status', 'schema', 'schema_property', 'page']),
       )
       expect(lines).toContainEqual(
         expect.objectContaining({
@@ -2518,16 +2774,63 @@ describe('CLI command surface', () => {
     }
   }, 30_000)
 
-  it('refreshes export --from-notion by pull only and never invokes remote writes', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-cli-export-refresh-'))
+  // Plain `export --dry-run` (no refresh): this test proves output-file and
+  // output-directory write suppression directly. Projection-write suppression is
+  // proven non-vacuously by the `export --refresh --dry-run` test below: both
+  // paths share the same `projectReplicaIfWritable` dry-run early-return.
+  it('export --dry-run produces the plan but writes no output file or output directory', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-cli-export-dry-run-'))
     const sqlitePath = join(dir, 'store.sqlite')
-    const outputPath = join(dir, 'export.json')
+    // Nested, non-existent output directory: a real run would `mkdirSync` it.
+    // Dry-run must suppress that directory creation too, not just the file.
+    const outputDir = join(dir, 'exports', 'nested')
+    const outputPath = join(outputDir, 'export.ndjson')
     const clock = makeFakeClock()
     let store: NotionSyncStore | undefined
 
     try {
       await createBoundSqlite({ path: sqlitePath })
       store = openNotionSyncStore({ path: sqlitePath, now: clock.now })
+      const result = await runWithPorts(
+        runCliCommand(
+          {
+            _tag: 'export',
+            outputPath: decode({ schema: AbsolutePath, value: outputPath }),
+            format: 'ndjson',
+            dryRun: true,
+          },
+          context({ store, storePath: sqlitePath, clock }),
+        ),
+        { gateway: makeFakeGatewayHarness({ propertyPages: [propertyPage()] }).gateway },
+      )
+
+      // Reads still run: the plan/counts are computed from the real replica.
+      expect(result.command).toBe('export')
+      expect(result.result).toMatchObject({
+        _tag: 'ReplicaExportResult',
+        outputPath,
+        counts: { pages: 1 },
+      })
+      // ...but neither the output file nor its (nested) parent directory is
+      // created — proving `mkdirSync` suppression, not just file absence.
+      await expect(access(outputPath)).rejects.toThrow()
+      await expect(access(outputDir)).rejects.toThrow()
+    } finally {
+      store?.close()
+      await rm(dir, { recursive: true, force: true })
+    }
+  }, 30_000)
+
+  it('export --refresh --dry-run observes remotely but suppresses projection, hidden, and output writes', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-cli-export-refresh-dry-run-'))
+    const sqlitePath = join(dir, 'store.sqlite')
+    const outputPath = join(dir, 'export.ndjson')
+
+    try {
+      await createBoundSqlite({ path: sqlitePath })
+      // Snapshot the unified `--sqlite` store: a suppressed refresh must leave
+      // both the public projection AND the hidden event log byte-identical.
+      const before = await readFile(sqlitePath)
       const calls = { retrieveDataSource: 0, queryDataSource: 0, retrievePage: 0 }
       const client = {
         ...makeInjectedNotionClient(calls),
@@ -2545,24 +2848,91 @@ describe('CLI command surface', () => {
         },
       } satisfies NotionGatewayClient
 
-      await runCliCommandWithRuntime({
-        command: {
-          _tag: 'export',
-          outputPath: decode({ schema: AbsolutePath, value: outputPath }),
-          fromNotion: {
-            dataSourceId: testIds.dataSourceId,
-            remoteRef: { _tag: 'data-source', dataSourceId: testIds.dataSourceId },
-          },
-          format: 'json',
+      const argv = [
+        'export',
+        '--sqlite',
+        sqlitePath,
+        '--refresh',
+        '--dry-run',
+        '--output',
+        outputPath,
+        '--no-materialize-bodies',
+      ] as readonly string[]
+      const command = parseCliCommand(argv)
+      const ctx = parseCliContext({ argv, resolvedCommand: command })
+      try {
+        const result = await runCliCommandWithRuntime({
+          command,
+          context: ctx,
+          options: { gatewayClient: client },
+        }).pipe(Effect.runPromise)
+        expect(result.command).toBe('export')
+      } finally {
+        ctx.store.close()
+      }
+
+      // Real reads still run so the refresh/export plan can be reported — but
+      // never a remote write (the throwing gateway methods above guarantee it).
+      expect(calls.retrieveDataSource).toBeGreaterThan(0)
+      // No projection or hidden write: the store file is byte-for-byte unchanged.
+      expect(await readFile(sqlitePath)).toEqual(before)
+      // No export output written.
+      await expect(access(outputPath)).rejects.toThrow()
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  }, 30_000)
+
+  it('refreshes the established binding via export --refresh by pull only and never invokes remote writes', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-cli-export-refresh-'))
+    const sqlitePath = join(dir, 'store.sqlite')
+    const outputPath = join(dir, 'export.json')
+
+    try {
+      // Drive through argv/`parseCliContext` so the store-resolution path
+      // (resolving the established binding from `--sqlite`, no remote ref) is
+      // actually exercised — `export --refresh` operates on the existing data
+      // file only (CLI-R02).
+      await createBoundSqlite({ path: sqlitePath })
+      const calls = { retrieveDataSource: 0, queryDataSource: 0, retrievePage: 0 }
+      const client = {
+        ...makeInjectedNotionClient(calls),
+        updatePage: () => {
+          throw new Error('export must not update pages')
         },
-        context: context({
-          store,
-          storePath: sqlitePath,
-          clock,
-          materializeBodies: false,
-        }),
-        options: { gatewayClient: client },
-      }).pipe(Effect.runPromise)
+        createPage: () => {
+          throw new Error('export must not create pages')
+        },
+        updateDataSource: () => {
+          throw new Error('export must not update data sources')
+        },
+        updateDatabase: () => {
+          throw new Error('export must not update databases')
+        },
+      } satisfies NotionGatewayClient
+
+      const argv = [
+        'export',
+        '--sqlite',
+        sqlitePath,
+        '--refresh',
+        '--output',
+        outputPath,
+        '--format',
+        'json',
+        '--no-materialize-bodies',
+      ] as readonly string[]
+      const command = parseCliCommand(argv)
+      const ctx = parseCliContext({ argv, resolvedCommand: command })
+      try {
+        await runCliCommandWithRuntime({
+          command,
+          context: ctx,
+          options: { gatewayClient: client },
+        }).pipe(Effect.runPromise)
+      } finally {
+        ctx.store.close()
+      }
 
       expect(calls.retrieveDataSource).toBeGreaterThan(0)
       expect(calls.queryDataSource).toBeGreaterThan(0)
@@ -2573,7 +2943,6 @@ describe('CLI command surface', () => {
       })
       expect(exported).not.toHaveProperty('bodies')
     } finally {
-      store?.close()
       await rm(dir, { recursive: true, force: true })
     }
   }, 30_000)

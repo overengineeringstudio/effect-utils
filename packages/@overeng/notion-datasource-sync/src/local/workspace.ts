@@ -28,6 +28,7 @@ import {
   filesystemWorkspacePageSidecarPath,
   makeFilesystemWorkspaceSidecar,
   metadataDirectoryName,
+  namespaceRootDirectoryName,
   ownWriteSuppressionToken,
   pageSidecarDirectoryName,
   type FilesystemWorkspaceSidecar as FilesystemWorkspaceSidecarType,
@@ -231,6 +232,30 @@ export const bodyPathForRow = ({
 }): WorkspacePathDecision =>
   canonicalizeWorkspaceRelativePath({
     path: `${titleSlug(title)}--${pageId}${policy.bodyExtension}`,
+    policy,
+  })
+
+/**
+ * Derives the body file path for a page UNDER a source's page directory:
+ * `<pagesDir>/<title-slug>--<pageId><extension>`. This is the tracked-workspace
+ * variant of {@link bodyPathForRow} — each tracked source materializes its `.nmd`
+ * page files into its own `pages/v1/<name>` directory rather than at the workspace
+ * root. `pagesDir` is the manifest's `data_sources[].pages_dir` (already a safe,
+ * canonical workspace-relative directory).
+ */
+export const bodyPathForRowInDir = ({
+  pagesDir,
+  title,
+  pageId,
+  policy = defaultPathPolicy,
+}: {
+  readonly pagesDir: string
+  readonly title: string
+  readonly pageId: PageIdType
+  readonly policy?: PathPolicy
+}): WorkspacePathDecision =>
+  canonicalizeWorkspaceRelativePath({
+    path: `${pagesDir}/${titleSlug(title)}--${pageId}${policy.bodyExtension}`,
     policy,
   })
 
@@ -673,9 +698,12 @@ const scanFilesystemWorkspace = async ({
     const observations = await Promise.all(
       entries.map(async (entry): Promise<ReadonlyArray<LocalArtifactObservationType>> => {
         const absolutePath = join(directory, entry.name)
+        // Exclude the entire hidden namespace tree (e.g. `.notion/v1/...`) from
+        // the scan. The namespace root is a single top-level segment, so this
+        // also covers `metadataDirectoryName` (`.notion/v1`) beneath it.
         if (
-          absolutePath === join(root, metadataDirectoryName) ||
-          entry.name === metadataDirectoryName
+          absolutePath === join(root, namespaceRootDirectoryName) ||
+          entry.name === namespaceRootDirectoryName
         ) {
           return []
         }

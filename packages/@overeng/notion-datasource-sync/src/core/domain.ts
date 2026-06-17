@@ -6,8 +6,9 @@ import {
   descriptorForUtf8,
   type ContentDigest as ContentDigestType,
 } from '@overeng/content-address'
-import { NOTION_API_VERSION } from '@overeng/notion-effect-client'
+import { NmdWritablePropertyValueSchema, NOTION_API_VERSION } from '@overeng/notion-effect-client'
 import {
+  DataSourceId as SchemaDataSourceId,
   PageId as SchemaPageId,
   PropertyId as SchemaPropertyId,
   PropertyName as SchemaPropertyName,
@@ -26,11 +27,11 @@ export const ClientVersion = Schema.NonEmptyTrimmedString.pipe(
 )
 export type ClientVersion = typeof ClientVersion.Type
 
-/** Branded Notion database ID used as the primary key for a synced data source. */
-export const DataSourceId = Schema.NonEmptyTrimmedString.pipe(
-  Schema.brand('NotionDatasourceSync.DataSourceId'),
-  Schema.annotations({ identifier: 'NotionDatasourceSync.DataSourceId' }),
-)
+/**
+ * Branded Notion data source ID used as the primary key for a synced data source.
+ * Owned by `@overeng/notion-effect-schema`; aliased here (see {@link PageId}).
+ */
+export const DataSourceId = SchemaDataSourceId
 export type DataSourceId = typeof DataSourceId.Type
 
 /** Branded Notion database/container ID; distinct from a v2 data-source ID. */
@@ -448,6 +449,18 @@ export const MaterializePlan = Schema.TaggedStruct('MaterializePlan', {
   pageId: PageId,
   path: WorkspaceRelativePath,
   bodyPointer: BodyPointer,
+  /**
+   * Observed WRITABLE frontmatter properties to embed in the materialized `.nmd`
+   * (visible-name → value), so the pulled file carries the property surface that
+   * local-surface convergence reads (SM5d). Built by the observation pass from the
+   * page's observed cells, filtered to `write_class === 'writable'`. Absent for a
+   * body-only materialization (e.g. `--no-materialize-bodies` paths or callers
+   * that do not supply schema/cell evidence), which keeps the empty-`properties`
+   * behavior.
+   */
+  writableProperties: Schema.optional(
+    Schema.Record({ key: Schema.String, value: NmdWritablePropertyValueSchema }),
+  ),
 }).annotations({ identifier: 'NotionDatasourceSync.MaterializePlan' })
 export type MaterializePlan = typeof MaterializePlan.Type
 

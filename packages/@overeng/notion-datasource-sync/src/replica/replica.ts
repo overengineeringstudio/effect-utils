@@ -1,5 +1,5 @@
 import { mkdirSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 
 import { Schema } from 'effect'
@@ -31,10 +31,11 @@ import {
   Hash,
   PageId,
   PropertyId,
-  type AbsolutePath,
   WorkspaceRelativePath,
 } from '../core/domain.ts'
 import { IdempotencyKey, SyncEventId, type SyncRootId } from '../core/events.ts'
+import type { AuthorityMode } from '../local/manifest.ts'
+import { convergenceFormHash } from '../planner/nmd-property-facts.ts'
 import type { PlanDecision, PlannerIntent } from '../planner/planner.ts'
 import { resolveConflictCommand } from '../planner/user-commands.ts'
 import { BodyProjectionPayload, hashStoreBytes, pageLifecycleHash } from '../store/projections.ts'
@@ -45,8 +46,6 @@ const decodeBodyProjectionPayloadJson = Schema.decodeUnknownSync(
   Schema.parseJson(BodyProjectionPayload),
 )
 
-/** Default file name for the on-disk SQLite replica inside a workspace. */
-export const replicaFileName = 'notion.sqlite'
 /** Schema version stored in the replica's `PRAGMA user_version`. */
 export const replicaSchemaVersion = 1
 
@@ -113,6 +112,16 @@ export type ApplyReplicaConflictResolutionsOptions = {
   readonly store: NotionSyncStore
   readonly rootId: SyncRootId
   readonly dryRun?: boolean
+  /**
+   * Workspace-wide authority mode (decisions 0015, 0019), forwarded to
+   * `resolveConflictCommand`. Today CDC `conflict_resolution` rows only ever
+   * resolve `keep-remote` (local/manual actions short-circuit as `unsupported`
+   * before planning), and `keep-remote` enqueues no remote write — so no drift
+   * can occur yet. Threading the mode here keeps the CDC path consistent with the
+   * `conflicts resolve` command and fails closed (`RemoteAuthoritativeDrift`) the
+   * moment local/manual CDC resolution becomes executable.
+   */
+  readonly authorityMode?: AuthorityMode
 }
 
 /** Inputs for reconciling planner decisions back into local replica change rows. */
@@ -179,7 +188,7 @@ const decode = <TSchema extends Schema.Schema.AnyNoContext>({
 const quoteIdentifier = (value: string): string => `"${value.replaceAll('"', '""')}"`
 const quoteStringLiteral = (value: string): string => `'${value.replaceAll("'", "''")}'`
 
-const rowsViewName = 'rows'
+const pagesViewName = 'pages'
 const schemaViewName = 'schema'
 const schemaPropertiesViewName = 'schema_properties'
 const changesViewName = 'changes'
@@ -187,12 +196,16 @@ const conflictsViewName = 'conflicts'
 const syncStatusViewName = 'sync_status'
 const pendingReplicaChangeStatusesSql = "'pending', 'queued', 'planned'"
 const pendingReplicaChangesCountSql = `(SELECT count(*) FROM ${quoteIdentifier(changesViewName)} WHERE status IN (${pendingReplicaChangeStatusesSql}))`
-const openReplicaConflictsCountSql = `(SELECT count(*) FROM _nds_replica_conflicts WHERE state = 'open')`
+// `resolving` is a frozen-but-unresolved lifecycle conflict (keep-local awaiting a
+// settled re-assert); it must count as not-clean so the public conflicts_open count
+// and the `conflicted` workspace status reflect it, matching the main store's
+// freeze/compaction/status surfaces (#775 M2a').
+const openReplicaConflictsCountSql = `(SELECT count(*) FROM _nds_replica_conflicts WHERE state IN ('open', 'resolving'))`
 
 const rowsSystemColumns = [
   '_page_id',
   '_data_source_id',
-  '_local_row_id',
+  '_local_page_id',
   '_client_request_key',
   '_origin',
   '_properties_hash',
@@ -344,11 +357,18 @@ const slugForView = (value: string): string => {
   return slug.length === 0 ? 'data_source' : slug
 }
 
-/** Default path for the replica file inside a workspace root. */
-export const defaultReplicaPath = (workspaceRoot: AbsolutePath): string =>
-  join(workspaceRoot, replicaFileName)
-
-const createReplicaSchema = (db: DatabaseSync): void => {
+/**
+ * Install the replica schema + CDC triggers (DROP/CREATE TABLE/VIEW/TRIGGER,
+ * ALTER migrations, backfill INSERTs, and `PRAGMA user_version`).
+ *
+ * Assumes an active write transaction: the caller is responsible for the
+ * surrounding `BEGIN`/`COMMIT`/`ROLLBACK` so the whole schema commits
+ * atomically. The connection-level PRAGMAs that cannot run inside a
+ * transaction (`foreign_keys`, `journal_mode = WAL`) are applied by the
+ * `createReplicaSchema` entry point, not here; only `PRAGMA user_version`
+ * (which commits with the schema) stays inside this DDL.
+ */
+export const createReplicaSchemaInTransaction = (db: DatabaseSync): void => {
   const localChangesSchema = db
     .prepare(
       `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = '_nds_replica_local_changes'`,
@@ -366,6 +386,19 @@ const createReplicaSchema = (db: DatabaseSync): void => {
       !localChangesSchema.sql.includes("'conflict_resolution'"))
   if (needsLocalChangesStatusMigration === true) {
     db.exec(`ALTER TABLE _nds_replica_local_changes RENAME TO _nds_replica_local_changes_legacy;`)
+  }
+
+  // SM5c: add the name-only `convergence_hash` column to a pre-existing replica
+  // (the table is fully DELETE+re-INSERTed on every projection, so a nullable
+  // add backfills on the next projection — no data migration needed).
+  const cellsSchema = db
+    .prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = '_nds_replica_cells'`)
+    .get() as SqlRow | undefined
+  if (
+    typeof cellsSchema?.sql === 'string' &&
+    cellsSchema.sql.includes('convergence_hash') === false
+  ) {
+    db.exec(`ALTER TABLE _nds_replica_cells ADD COLUMN convergence_hash TEXT;`)
   }
 
   db.exec(`
@@ -411,8 +444,6 @@ const createReplicaSchema = (db: DatabaseSync): void => {
     DROP VIEW IF EXISTS ${quoteIdentifier(schemaPropertiesViewName)};
     DROP VIEW IF EXISTS ${quoteIdentifier(schemaViewName)};
 
-    PRAGMA foreign_keys = ON;
-    PRAGMA journal_mode = WAL;
     PRAGMA user_version = ${replicaSchemaVersion.toString()};
 
     CREATE TABLE IF NOT EXISTS _nds_replica_data_sources (
@@ -426,7 +457,12 @@ const createReplicaSchema = (db: DatabaseSync): void => {
       description_plain_text TEXT,
       observed_event_id TEXT NOT NULL,
       observed_at TEXT,
-      updated_at TEXT NOT NULL
+      updated_at TEXT NOT NULL,
+      -- Materialized from the control-plane _nds_workspace_binding at projection
+      -- time so the public schema view stays standalone-queryable once the
+      -- control plane moves to .notion/v1/state.sqlite (DD-A/DD-B, decision 0020).
+      workspace_binding_database_id TEXT,
+      workspace_root TEXT
     );
 
     CREATE TABLE IF NOT EXISTS _nds_replica_databases (
@@ -511,6 +547,12 @@ const createReplicaSchema = (db: DatabaseSync): void => {
       value_boolean INTEGER CHECK (value_boolean IN (0, 1) OR value_boolean IS NULL),
       base_hash TEXT NOT NULL,
       remote_hash TEXT NOT NULL,
+      -- Name-only convergence hash of the observed value (id/color stripped from
+      -- select/status options, cleared number/date folded to empty), so the
+      -- pristine base compares in the SAME space the .nmd frontmatter surface can
+      -- reach. Distinct from remote_hash (the full-canonical remote-write base).
+      -- SM5c local convergence; see convergenceFormHash.
+      convergence_hash TEXT,
       availability TEXT NOT NULL,
       write_class TEXT NOT NULL,
       observed_event_id TEXT NOT NULL,
@@ -824,11 +866,23 @@ const createReplicaSchema = (db: DatabaseSync): void => {
     CREATE TABLE IF NOT EXISTS _nds_replica_sync_status (
       root_id TEXT PRIMARY KEY,
       data_sources INTEGER NOT NULL,
-      rows INTEGER NOT NULL,
+      pages INTEGER NOT NULL,
       cells INTEGER NOT NULL,
       bodies INTEGER NOT NULL,
       conflicts_open INTEGER NOT NULL,
       pending_local_changes INTEGER NOT NULL,
+      -- Control-plane aggregate counts materialized from state.sqlite at
+      -- projection time (DD-B, decision 0020): the sync_status view reads ONLY this
+      -- projection table so the data file never ATTACHes the control plane.
+      pending_outbox INTEGER NOT NULL DEFAULT 0,
+      blocked_outbox INTEGER NOT NULL DEFAULT 0,
+      guard_blocks INTEGER NOT NULL DEFAULT 0,
+      unclassified_tombstones INTEGER NOT NULL DEFAULT 0,
+      unsupported_capabilities INTEGER NOT NULL DEFAULT 0,
+      incomplete_hydration INTEGER NOT NULL DEFAULT 0,
+      -- Resolved workspace root, materialized so the view keeps move-detection
+      -- (pragma_database_list self-join) without joining the control plane.
+      workspace_root TEXT,
       updated_at TEXT NOT NULL
     );
 
@@ -947,9 +1001,9 @@ const createReplicaSchema = (db: DatabaseSync): void => {
       SELECT
         ds.data_source_id,
         ds.root_id,
-        COALESCE(binding.database_id, ds.parent_database_id) AS database_id,
+        COALESCE(ds.workspace_binding_database_id, ds.parent_database_id) AS database_id,
         ds.parent_database_id,
-        binding.workspace_root,
+        ds.workspace_root,
         ds.schema_hash,
         ds.metadata_hash,
         ds.title_plain_text,
@@ -961,10 +1015,7 @@ const createReplicaSchema = (db: DatabaseSync): void => {
           WHEN (SELECT count(*) FROM _nds_replica_data_sources) = 1 THEN 1
           ELSE 0
         END AS is_primary_rows_source
-      FROM _nds_replica_data_sources ds
-      LEFT JOIN _nds_workspace_binding binding
-        ON binding.root_id = ds.root_id
-       AND binding.data_source_id = ds.data_source_id;
+      FROM _nds_replica_data_sources ds;
 
     CREATE VIEW IF NOT EXISTS ${quoteIdentifier(schemaPropertiesViewName)} AS
       SELECT
@@ -1017,7 +1068,7 @@ const createReplicaSchema = (db: DatabaseSync): void => {
         SELECT
           status.root_id,
           status.data_sources,
-          status.rows,
+          status.pages,
           status.cells,
           status.bodies,
           ${openReplicaConflictsCountSql} AS conflicts_open,
@@ -1025,24 +1076,23 @@ const createReplicaSchema = (db: DatabaseSync): void => {
           (SELECT count(*) FROM ${quoteIdentifier(changesViewName)} WHERE status = 'conflict') AS conflicted_local_changes,
           (SELECT count(*) FROM ${quoteIdentifier(changesViewName)} WHERE status = 'unsupported') AS unsupported_local_changes,
           (SELECT count(*) FROM ${quoteIdentifier(changesViewName)} WHERE status = 'needs_reconciliation') AS reconciliation_local_changes,
-          (SELECT count(*) FROM _nds_outbox WHERE root_id = status.root_id AND state IN ('queued', 'running', 'retryable')) AS pending_outbox,
-          (SELECT count(*) FROM _nds_outbox WHERE root_id = status.root_id AND state IN ('blocked', 'fenced', 'ambiguous')) AS blocked_outbox,
-          (SELECT count(*) FROM _nds_guard_block WHERE root_id = status.root_id) AS guard_blocks,
-          (SELECT count(*) FROM _nds_tombstone WHERE root_id = status.root_id AND classification = 'unclassified') AS unclassified_tombstones,
-          (SELECT count(*) FROM _nds_capability WHERE root_id = status.root_id AND supported = 0) AS unsupported_capabilities,
-          (
-            (SELECT count(*) FROM _nds_query_scan_checkpoint WHERE root_id = status.root_id AND complete = 0)
-            + (SELECT count(*) FROM _nds_query_scan_checkpoint WHERE root_id = status.root_id AND capped_at_limit = 1)
-            + (SELECT count(*) FROM _nds_query_scan_checkpoint WHERE root_id = status.root_id AND contract_changed = 1)
-            + (SELECT count(*) FROM _nds_page_property_checkpoint WHERE root_id = status.root_id AND complete = 0)
-          ) AS incomplete_hydration,
+          -- DD-B (decision 0020): control-plane counts are materialized into this
+          -- projection table at projection time; the view never reaches the
+          -- control plane (which now lives in .notion/v1/state.sqlite).
+          status.pending_outbox,
+          status.blocked_outbox,
+          status.guard_blocks,
+          status.unclassified_tombstones,
+          status.unsupported_capabilities,
+          status.incomplete_hydration,
+          status.workspace_root,
           status.updated_at
         FROM _nds_replica_sync_status status
       )
       SELECT
         status.root_id,
         status.data_sources,
-        status.rows,
+        status.pages,
         status.cells,
         status.bodies,
         status.conflicts_open,
@@ -1065,13 +1115,22 @@ const createReplicaSchema = (db: DatabaseSync): void => {
           ELSE 'clean'
         END AS state,
         status.updated_at,
+        -- Move-detection stays a self-join on this file's own main database
+        -- (no ATTACH); workspace_root is the value materialized at projection
+        -- time, so a file relocated AFTER projection still reports moved.
+        -- macOS may expose the same temp path as either /var/... or
+        -- /private/var/... across Node and SQLite, so treat those aliases as
+        -- the same workspace root while preserving moved-copy detection.
         CASE
-          WHEN binding.workspace_root IS NULL THEN 'unbound'
-          WHEN database_list.file LIKE binding.workspace_root || '/%' THEN 'bound'
+          WHEN status.workspace_root IS NULL THEN 'unbound'
+          WHEN instr(database_list.file, status.workspace_root || '/') > 0 THEN 'bound'
+          WHEN status.workspace_root LIKE '/private/var/%'
+            AND instr(database_list.file, substr(status.workspace_root, 9) || '/') > 0 THEN 'bound'
+          WHEN status.workspace_root LIKE '/var/%'
+            AND instr(database_list.file, '/private' || status.workspace_root || '/') > 0 THEN 'bound'
           ELSE 'moved'
         END AS workspace_status
       FROM status_counts status
-      LEFT JOIN _nds_workspace_binding binding ON binding.root_id = status.root_id
       JOIN pragma_database_list AS database_list ON database_list.name = 'main';
 
     CREATE VIEW IF NOT EXISTS debug_data_sources AS
@@ -1997,6 +2056,32 @@ const createReplicaSchema = (db: DatabaseSync): void => {
   `)
 }
 
+/**
+ * Install the replica schema + CDC triggers atomically on a fresh connection.
+ *
+ * Applies the two connection-level PRAGMAs that cannot run inside a transaction
+ * (`foreign_keys`, `journal_mode = WAL`), then runs the full DDL inside a single
+ * `BEGIN IMMEDIATE`/`COMMIT` so the schema, triggers, and `PRAGMA user_version`
+ * stamp commit together — closing the pre-existing non-transactional window
+ * where a crash mid-DDL could leave tables without their CDC triggers. On any
+ * failure the transaction is rolled back and the error rethrown, leaving the
+ * database untouched. Callers that already hold an open write transaction must
+ * use `createReplicaSchemaInTransaction` instead to avoid an illegal nested
+ * `BEGIN`.
+ */
+export const createReplicaSchema = (db: DatabaseSync): void => {
+  db.exec('PRAGMA foreign_keys = ON;')
+  db.exec('PRAGMA journal_mode = WAL;')
+  db.exec('BEGIN IMMEDIATE')
+  try {
+    createReplicaSchemaInTransaction(db)
+    db.exec('COMMIT')
+  } catch (cause) {
+    db.exec('ROLLBACK')
+    throw cause
+  }
+}
+
 const clearProjectedReplicaTables = (db: DatabaseSync): void => {
   db.exec(`
     DROP TRIGGER IF EXISTS _nds_replica_cells_direct_value_update_intent;
@@ -2016,10 +2101,10 @@ const clearProjectedReplicaTables = (db: DatabaseSync): void => {
     DROP TRIGGER IF EXISTS rows_update;
     DROP TRIGGER IF EXISTS rows_insert;
     DROP TRIGGER IF EXISTS rows_delete;
-    DROP TRIGGER IF EXISTS _nds_rows_update;
-    DROP TRIGGER IF EXISTS _nds_rows_insert;
-    DROP TRIGGER IF EXISTS _nds_rows_delete;
-    DROP VIEW IF EXISTS ${quoteIdentifier(rowsViewName)};
+    DROP TRIGGER IF EXISTS _nds_pages_update;
+    DROP TRIGGER IF EXISTS _nds_pages_insert;
+    DROP TRIGGER IF EXISTS _nds_pages_delete;
+    DROP VIEW IF EXISTS ${quoteIdentifier(pagesViewName)};
 
     DELETE FROM _nds_replica_data_sources;
     DELETE FROM _nds_replica_databases;
@@ -2497,7 +2582,7 @@ const rebuildCanonicalRowsSurface = (db: DatabaseSync): void => {
     DROP TRIGGER IF EXISTS rows_update;
     DROP TRIGGER IF EXISTS rows_insert;
     DROP TRIGGER IF EXISTS rows_delete;
-    DROP VIEW IF EXISTS ${quoteIdentifier(rowsViewName)};
+    DROP VIEW IF EXISTS ${quoteIdentifier(pagesViewName)};
     DELETE FROM _nds_replica_property_column_plan;
   `)
 
@@ -2566,12 +2651,12 @@ const rebuildCanonicalRowsSurface = (db: DatabaseSync): void => {
     }),
   )
   db.exec(`
-    CREATE VIEW ${quoteIdentifier(rowsViewName)} AS
+    CREATE VIEW ${quoteIdentifier(pagesViewName)} AS
     SELECT
       ${propertySelects.length === 0 ? '' : `${propertySelects.join(',\n      ')},`}
       r.page_id AS ${quoteIdentifier('_page_id')},
       r.data_source_id AS ${quoteIdentifier('_data_source_id')},
-      r.local_row_id AS ${quoteIdentifier('_local_row_id')},
+      r.local_row_id AS ${quoteIdentifier('_local_page_id')},
       rc.client_request_key AS ${quoteIdentifier('_client_request_key')},
       r.origin AS ${quoteIdentifier('_origin')},
       r.properties_hash AS ${quoteIdentifier('_properties_hash')},
@@ -2593,7 +2678,7 @@ const rebuildCanonicalRowsSurface = (db: DatabaseSync): void => {
     .filter((column) => column !== '_in_trash')
     .map(
       (column) =>
-        `SELECT RAISE(ABORT, 'rows system columns are read-only except _in_trash')
+        `SELECT RAISE(ABORT, 'pages system columns are read-only except _in_trash')
          WHERE ${rowsValueReference({ scope: 'NEW', columnName: column })} IS NOT ${rowsValueReference({ scope: 'OLD', columnName: column })};`,
     )
   const propertyGuards = plannedProperties.map((property) => {
@@ -2602,11 +2687,11 @@ const rebuildCanonicalRowsSurface = (db: DatabaseSync): void => {
     const isWriteSupported = readNumber({ row: property, key: 'is_rows_write_supported' }) === 1
     const changed = `${rowsValueReference({ scope: 'NEW', columnName })} IS NOT ${rowsValueReference({ scope: 'OLD', columnName })}`
     if (isWriteSupported === false) {
-      return `SELECT RAISE(ABORT, 'rows property column is not supported for direct writes')
+      return `SELECT RAISE(ABORT, 'pages property column is not supported for direct writes')
               WHERE ${changed};`
     }
     const configJson = readOptionalString({ row: property, key: 'config_json' })
-    return `SELECT RAISE(ABORT, 'rows property column value is malformed or uses unsupported NULL behavior')
+    return `SELECT RAISE(ABORT, 'pages property column value is malformed or uses unsupported NULL behavior')
             WHERE ${changed} AND NOT (${rowsValueShapePredicate({ columnName, configJson, propertyType })});`
   })
   const propertyUpdates = plannedProperties
@@ -2648,11 +2733,11 @@ const rebuildCanonicalRowsSurface = (db: DatabaseSync): void => {
     const isWriteSupported = readNumber({ row: property, key: 'is_rows_write_supported' }) === 1
     const newValue = rowsValueReference({ scope: 'NEW', columnName })
     if (isWriteSupported === false) {
-      return `SELECT RAISE(ABORT, 'rows INSERT includes a property that is not supported for row-create CDC')
+      return `SELECT RAISE(ABORT, 'pages INSERT includes a property that is not supported for page-create CDC')
               WHERE ${newValue} IS NOT NULL;`
     }
     const configJson = readOptionalString({ row: property, key: 'config_json' })
-    return `SELECT RAISE(ABORT, 'rows INSERT property value is malformed or uses unsupported NULL behavior')
+    return `SELECT RAISE(ABORT, 'pages INSERT property value is malformed or uses unsupported NULL behavior')
             WHERE ${newValue} IS NOT NULL AND NOT (${rowsValueShapePredicate({ columnName, configJson, propertyType })});`
   })
   const insertValueRows = plannedProperties
@@ -2670,14 +2755,14 @@ const rebuildCanonicalRowsSurface = (db: DatabaseSync): void => {
                 END AS value_json`
     })
   db.exec(`
-    CREATE TRIGGER _nds_rows_update
-    INSTEAD OF UPDATE ON ${quoteIdentifier(rowsViewName)}
+    CREATE TRIGGER _nds_pages_update
+    INSTEAD OF UPDATE ON ${quoteIdentifier(pagesViewName)}
     FOR EACH ROW
     BEGIN
-      SELECT RAISE(ABORT, 'rows UPDATE only supports applied remote rows')
+      SELECT RAISE(ABORT, 'pages UPDATE only supports applied remote pages')
       WHERE OLD.${quoteIdentifier('_origin')} != 'remote';
       ${systemGuards.join('\n      ')}
-      SELECT RAISE(ABORT, 'rows._in_trash must be 0 or 1')
+      SELECT RAISE(ABORT, 'pages._in_trash must be 0 or 1')
       WHERE NEW.${quoteIdentifier('_in_trash')} IS NOT OLD.${quoteIdentifier('_in_trash')}
         AND (typeof(NEW.${quoteIdentifier('_in_trash')}) != 'integer' OR NEW.${quoteIdentifier('_in_trash')} NOT IN (0, 1));
       ${propertyGuards.join('\n      ')}
@@ -2688,20 +2773,20 @@ const rebuildCanonicalRowsSurface = (db: DatabaseSync): void => {
       ${propertyUpdates.join('\n      ')}
     END;
 
-    CREATE TRIGGER _nds_rows_insert
-    INSTEAD OF INSERT ON ${quoteIdentifier(rowsViewName)}
+    CREATE TRIGGER _nds_pages_insert
+    INSTEAD OF INSERT ON ${quoteIdentifier(pagesViewName)}
     FOR EACH ROW
     BEGIN
-      SELECT RAISE(ABORT, 'rows INSERT cannot create archived rows')
+      SELECT RAISE(ABORT, 'pages INSERT cannot create archived pages')
       WHERE NEW.${quoteIdentifier('_in_trash')} IS NOT NULL AND NEW.${quoteIdentifier('_in_trash')} != 0;
       ${rowsSystemColumns
         .filter(
           (column) =>
-            !['_page_id', '_local_row_id', '_client_request_key', '_in_trash'].includes(column),
+            !['_page_id', '_local_page_id', '_client_request_key', '_in_trash'].includes(column),
         )
         .map(
           (column) =>
-            `SELECT RAISE(ABORT, 'rows INSERT system columns are generated by the replica')
+            `SELECT RAISE(ABORT, 'pages INSERT system columns are generated by the replica')
              WHERE NEW.${quoteIdentifier(column)} IS NOT NULL;`,
         )
         .join('\n      ')}
@@ -2717,8 +2802,8 @@ const rebuildCanonicalRowsSurface = (db: DatabaseSync): void => {
       SELECT
         'row:create:' || lower(hex(randomblob(8))),
         ${quoteStringLiteral(dataSourceId)},
-        COALESCE(NEW.${quoteIdentifier('_local_row_id')}, NEW.${quoteIdentifier('_page_id')}, 'local:' || lower(hex(randomblob(8)))),
-        COALESCE(NEW.${quoteIdentifier('_client_request_key')}, NEW.${quoteIdentifier('_local_row_id')}, NEW.${quoteIdentifier('_page_id')}, 'client:' || lower(hex(randomblob(8)))),
+        COALESCE(NEW.${quoteIdentifier('_local_page_id')}, NEW.${quoteIdentifier('_page_id')}, 'local:' || lower(hex(randomblob(8)))),
+        COALESCE(NEW.${quoteIdentifier('_client_request_key')}, NEW.${quoteIdentifier('_local_page_id')}, NEW.${quoteIdentifier('_page_id')}, 'client:' || lower(hex(randomblob(8)))),
         COALESCE(
           (
             SELECT json_group_object(property_id, json(value_json))
@@ -2732,11 +2817,11 @@ const rebuildCanonicalRowsSurface = (db: DatabaseSync): void => {
         (SELECT schema_hash FROM _nds_replica_data_sources WHERE data_source_id = ${quoteStringLiteral(dataSourceId)});
     END;
 
-    CREATE TRIGGER _nds_rows_delete
-    INSTEAD OF DELETE ON ${quoteIdentifier(rowsViewName)}
+    CREATE TRIGGER _nds_pages_delete
+    INSTEAD OF DELETE ON ${quoteIdentifier(pagesViewName)}
     FOR EACH ROW
     BEGIN
-      SELECT RAISE(ABORT, 'DELETE FROM rows is intentionally unsupported; update _in_trash for archive CDC');
+      SELECT RAISE(ABORT, 'DELETE FROM pages is intentionally unsupported; update _in_trash for archive CDC');
     END;
   `)
 }
@@ -2788,6 +2873,93 @@ const rebuildGeneratedViews = (db: DatabaseSync): void => {
   rebuildCanonicalRowsSurface(db)
 }
 
+/** Workspace binding materialized from the control plane for the public views. */
+type ProjectionWorkspaceBinding = {
+  readonly dataSourceId: string
+  readonly databaseId: string | undefined
+  readonly workspaceRoot: string
+}
+
+/**
+ * Reads the root's workspace binding from the control-plane store. Returns
+ * `undefined` when the store carries no binding (e.g. a freshly-discovered
+ * source) so the public views fall back to `NULL` columns rather than failing.
+ */
+const readWorkspaceBindingForProjection = ({
+  syncDb,
+  rootId,
+}: {
+  readonly syncDb: DatabaseSync
+  readonly rootId: string
+}): ProjectionWorkspaceBinding | undefined => {
+  const row = syncDb
+    .prepare(
+      `SELECT data_source_id, database_id, workspace_root
+       FROM _nds_workspace_binding
+       WHERE root_id = ?
+       ORDER BY updated_at DESC
+       LIMIT 1`,
+    )
+    .get(rootId) as SqlRow | undefined
+  if (row === undefined) return undefined
+  const workspaceRoot = readOptionalString({ row, key: 'workspace_root' })
+  if (workspaceRoot === undefined) return undefined
+  return {
+    dataSourceId: readString({ row, key: 'data_source_id' }),
+    databaseId: readOptionalString({ row, key: 'database_id' }),
+    workspaceRoot,
+  }
+}
+
+/** Control-plane aggregate counts materialized into `_nds_replica_sync_status`. */
+type ControlPlaneStatusCounts = {
+  readonly pendingOutbox: number
+  readonly blockedOutbox: number
+  readonly guardBlocks: number
+  readonly unclassifiedTombstones: number
+  readonly unsupportedCapabilities: number
+  readonly incompleteHydration: number
+}
+
+/**
+ * Computes the `sync_status` aggregate counts that source from control-plane
+ * tables (DD-B, decision 0020). Run against the sync store (`state.sqlite` once the
+ * control plane is split out) so the data file's `sync_status` view can read
+ * only the materialized projection table.
+ */
+const readControlPlaneStatusCounts = ({
+  syncDb,
+  rootId,
+}: {
+  readonly syncDb: DatabaseSync
+  readonly rootId: string
+}): ControlPlaneStatusCounts => {
+  const row = syncDb
+    .prepare(
+      `SELECT
+         (SELECT count(*) FROM _nds_outbox WHERE root_id = ? AND state IN ('queued', 'running', 'retryable')) AS pending_outbox,
+         (SELECT count(*) FROM _nds_outbox WHERE root_id = ? AND state IN ('blocked', 'fenced', 'ambiguous')) AS blocked_outbox,
+         (SELECT count(*) FROM _nds_guard_block WHERE root_id = ?) AS guard_blocks,
+         (SELECT count(*) FROM _nds_tombstone WHERE root_id = ? AND classification = 'unclassified') AS unclassified_tombstones,
+         (SELECT count(*) FROM _nds_capability WHERE root_id = ? AND supported = 0) AS unsupported_capabilities,
+         (
+           (SELECT count(*) FROM _nds_query_scan_checkpoint WHERE root_id = ? AND complete = 0)
+           + (SELECT count(*) FROM _nds_query_scan_checkpoint WHERE root_id = ? AND capped_at_limit = 1)
+           + (SELECT count(*) FROM _nds_query_scan_checkpoint WHERE root_id = ? AND contract_changed = 1)
+           + (SELECT count(*) FROM _nds_page_property_checkpoint WHERE root_id = ? AND complete = 0)
+         ) AS incomplete_hydration`,
+    )
+    .get(rootId, rootId, rootId, rootId, rootId, rootId, rootId, rootId, rootId) as SqlRow
+  return {
+    pendingOutbox: readNumber({ row, key: 'pending_outbox' }),
+    blockedOutbox: readNumber({ row, key: 'blocked_outbox' }),
+    guardBlocks: readNumber({ row, key: 'guard_blocks' }),
+    unclassifiedTombstones: readNumber({ row, key: 'unclassified_tombstones' }),
+    unsupportedCapabilities: readNumber({ row, key: 'unsupported_capabilities' }),
+    incompleteHydration: readNumber({ row, key: 'incomplete_hydration' }),
+  }
+}
+
 /** Project the sync store's authoritative events into a user-facing SQLite replica. */
 export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): void => {
   mkdirSync(dirname(options.replicaPath), { recursive: true })
@@ -2798,6 +2970,10 @@ export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): voi
     createReplicaSchema(replicaDb)
     const schemaPayloads = latestDataSourcePayloads({ syncDb, rootId: options.rootId })
     const valueJsonByCell = latestPropertyValueJson({ syncDb, rootId: options.rootId })
+    // Materialize the control-plane workspace binding (lives in state.sqlite once
+    // the control plane is split out) so the public `schema`/`sync_status` views
+    // stay standalone-queryable against the data file (DD-A/DD-B, decision 0020).
+    const workspaceBinding = readWorkspaceBindingForProjection({ syncDb, rootId: options.rootId })
     replicaDb.exec('BEGIN IMMEDIATE')
     try {
       clearProjectedReplicaTables(replicaDb)
@@ -2855,12 +3031,18 @@ export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): voi
         .all(options.rootId) as SqlRow[]) {
         const dataSourceId = readString({ row, key: 'data_source_id' })
         const metadataRow = metadata.get(dataSourceId)
+        // The binding is root-keyed; it materializes onto exactly the data source
+        // it names, matching the prior `binding.data_source_id = ds.data_source_id`
+        // join (decision 0020). Other sources in a multi-source root carry no binding.
+        const bindingForSource =
+          workspaceBinding?.dataSourceId === dataSourceId ? workspaceBinding : undefined
         replicaDb
           .prepare(
             `INSERT INTO _nds_replica_data_sources (
                data_source_id, root_id, schema_hash, metadata_hash, metadata_json, title_plain_text,
-               description_plain_text, parent_database_id, observed_event_id, observed_at, updated_at
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+               description_plain_text, parent_database_id, observed_event_id, observed_at, updated_at,
+               workspace_binding_database_id, workspace_root
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           )
           .run(
             dataSourceId,
@@ -2874,6 +3056,8 @@ export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): voi
             readString({ row, key: 'observed_event_id' }),
             readOptionalString({ row, key: 'observed_at' }) ?? null,
             readString({ row, key: 'updated_at' }),
+            bindingForSource?.databaseId ?? null,
+            bindingForSource?.workspaceRoot ?? null,
           )
         if (metadataRow?.parentDatabaseId !== undefined && metadataRow.metadataJson !== undefined) {
           replicaDb
@@ -3050,13 +3234,17 @@ export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): voi
           .get(dataSourceId, propertyId) as SqlRow | undefined
         const valueJson = valueJsonByCell.get(`${pageId}\0${propertyId}`)
         const scalar = scalarColumns(valueJson)
+        // Name-only convergence base (SM5c): the cross-surface comparison space the
+        // `.nmd` frontmatter can also reach (id/color stripped, cleared scalars
+        // folded). Distinct from `remote_hash` (full-canonical remote-write base).
+        const convergenceHashValue = valueJson === undefined ? null : convergenceFormHash(valueJson)
         replicaDb
           .prepare(
             `INSERT INTO _nds_replica_cells (
                data_source_id, page_id, property_id, property_name, property_type, value_json,
-               value_text, value_number, value_boolean, base_hash, remote_hash, availability,
-               write_class, observed_event_id, updated_at
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+               value_text, value_number, value_boolean, base_hash, remote_hash, convergence_hash,
+               availability, write_class, observed_event_id, updated_at
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           )
           .run(
             dataSourceId,
@@ -3074,6 +3262,7 @@ export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): voi
             scalar.boolean ?? null,
             readString({ row, key: 'base_hash' }),
             readString({ row, key: 'remote_hash' }),
+            convergenceHashValue,
             readString({ row, key: 'availability' }),
             property === undefined
               ? 'unsupported'
@@ -3179,32 +3368,51 @@ export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): voi
         .prepare(
           `SELECT
              (SELECT count(*) FROM _nds_replica_data_sources) AS data_sources,
-             (SELECT count(*) FROM _nds_replica_rows) AS rows,
+             (SELECT count(*) FROM _nds_replica_rows) AS replica_rows,
              (SELECT count(*) FROM _nds_replica_cells) AS cells,
              (SELECT count(*) FROM _nds_replica_bodies) AS bodies,
              ${openReplicaConflictsCountSql} AS conflicts_open,
              ${pendingReplicaChangesCountSql} AS pending_local_changes`,
         )
         .get() as SqlRow
+      // DD-B (decision 0020): aggregate counts sourced from control-plane tables are
+      // computed against `syncDb` (state.sqlite) here and materialized into the
+      // projection table, so the public `sync_status` view never reaches across
+      // the file boundary.
+      const controlPlaneCounts = readControlPlaneStatusCounts({
+        syncDb,
+        rootId: options.rootId,
+      })
       replicaDb
         .prepare(
           `INSERT INTO _nds_replica_sync_status (
-             root_id, data_sources, rows, cells, bodies, conflicts_open, pending_local_changes, updated_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+             root_id, data_sources, pages, cells, bodies, conflicts_open, pending_local_changes,
+             pending_outbox, blocked_outbox, guard_blocks, unclassified_tombstones,
+             unsupported_capabilities, incomplete_hydration, workspace_root, updated_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           options.rootId,
           readNumber({ row: counts, key: 'data_sources' }),
-          readNumber({ row: counts, key: 'rows' }),
+          readNumber({ row: counts, key: 'replica_rows' }),
           readNumber({ row: counts, key: 'cells' }),
           readNumber({ row: counts, key: 'bodies' }),
           readNumber({ row: counts, key: 'conflicts_open' }),
           readNumber({ row: counts, key: 'pending_local_changes' }),
+          controlPlaneCounts.pendingOutbox,
+          controlPlaneCounts.blockedOutbox,
+          controlPlaneCounts.guardBlocks,
+          controlPlaneCounts.unclassifiedTombstones,
+          controlPlaneCounts.unsupportedCapabilities,
+          controlPlaneCounts.incompleteHydration,
+          workspaceBinding?.workspaceRoot ?? null,
           now,
         )
 
       rebuildGeneratedViews(replicaDb)
-      createReplicaSchema(replicaDb)
+      // Inside the open projection `BEGIN IMMEDIATE` (above): re-running the full
+      // schema must not issue a nested `BEGIN`, so call the in-transaction form.
+      createReplicaSchemaInTransaction(replicaDb)
       replicaDb.exec('COMMIT')
     } catch (error) {
       replicaDb.exec('ROLLBACK')
@@ -3581,6 +3789,87 @@ export const readPendingReplicaChanges = (replicaPath: string): readonly Replica
   }
 }
 
+/**
+ * Observed-base value for one page property, read from the public data file's
+ * `_nds_replica_cells` projection joined to its schema. Used by SM5c local
+ * convergence to baseline-diff the `.nmd` frontmatter surface: a `.nmd` property
+ * is only a desired fact when its canonical value differs from this base.
+ */
+export type ReplicaCellBase = {
+  readonly pageId: string
+  readonly dataSourceId: string
+  readonly propertyId: string
+  /** Visible property name (the `.nmd` frontmatter key); used for name → id resolution. */
+  readonly propertyName: string
+  readonly propertyType: string
+  /**
+   * Current canonical `value_json` for this cell. NOTE: a local `pages` edit
+   * OVERWRITES this with the desired value, so it is NOT a pristine base — use
+   * {@link remoteHash} for the convergence baseline.
+   */
+  readonly valueJson: string | undefined
+  /**
+   * Hash of the last REMOTE-observed canonical value (full canonical — keeps
+   * select/status option id+color). This is the remote-WRITE base, NOT the
+   * convergence base: it lives in a different space than the name-only `.nmd`
+   * surface. Do not diff the `.nmd` value against this — use {@link convergenceHash}.
+   */
+  readonly remoteHash: string
+  /**
+   * Hash of the last remote-observed value folded into the NAME-ONLY convergence
+   * space (`convergenceFormHash`: option id/color stripped, cleared scalars folded
+   * to `empty`), so it compares like-with-like against a `.nmd` frontmatter value
+   * (which structurally cannot carry id/color). A local `pages` edit does NOT
+   * touch this, so it is the pristine convergence base the `.nmd` surface is
+   * diffed against. `undefined` only for a non-scalar cell with no `value_json`,
+   * which is never convergence-comparable.
+   */
+  readonly convergenceHash: string | undefined
+}
+
+/**
+ * Read the observed per-property base values from the public data file. Returns
+ * one entry per `(page_id, property_id)` cell, carrying the base `value_json` and
+ * the visible property name so the caller can resolve a `.nmd` frontmatter
+ * property (keyed by name) to its stable `property_id`.
+ */
+export const readReplicaCellBases = (replicaPath: string): readonly ReplicaCellBase[] => {
+  const db = new DatabaseSync(replicaPath)
+  try {
+    createReplicaSchema(db)
+    return (
+      db
+        .prepare(
+          `SELECT
+             c.page_id,
+             c.data_source_id,
+             c.property_id,
+             c.value_json,
+             c.remote_hash,
+             c.convergence_hash,
+             p.property_name,
+             p.property_type
+           FROM _nds_replica_cells c
+           JOIN _nds_replica_properties p
+             ON p.data_source_id = c.data_source_id AND p.property_id = c.property_id
+           ORDER BY c.page_id, c.property_id`,
+        )
+        .all() as SqlRow[]
+    ).map((row) => ({
+      pageId: readString({ row, key: 'page_id' }),
+      dataSourceId: readString({ row, key: 'data_source_id' }),
+      propertyId: readString({ row, key: 'property_id' }),
+      propertyName: readString({ row, key: 'property_name' }),
+      propertyType: readString({ row, key: 'property_type' }),
+      valueJson: readOptionalString({ row, key: 'value_json' }),
+      remoteHash: readString({ row, key: 'remote_hash' }),
+      convergenceHash: readOptionalString({ row, key: 'convergence_hash' }),
+    }))
+  } finally {
+    db.close()
+  }
+}
+
 /** Mark a replica change as planned, applied, rejected, or otherwise progressed. */
 export const markReplicaChangeStatus = ({
   replicaPath,
@@ -3697,6 +3986,7 @@ export const applyReplicaConflictResolutions = ({
   store,
   rootId,
   dryRun,
+  authorityMode,
 }: ApplyReplicaConflictResolutionsOptions): void => {
   for (const change of changes) {
     if (change.kind !== 'conflict_resolution') continue
@@ -3747,6 +4037,7 @@ export const applyReplicaConflictResolutions = ({
       rootId,
       conflictId,
       choice,
+      ...(authorityMode === undefined ? {} : { authorityMode }),
       ...(dryRun === undefined ? {} : { dryRun }),
     })
     const guard = result.planned.guards[0]

@@ -12,6 +12,12 @@ export type ReplicaExportOptions = {
   readonly format: ReplicaExportFormat
   readonly requireClean?: boolean
   readonly exportedAt?: string
+  /**
+   * Dry-run preview: read the replica and compute the export plan/counts, but
+   * write no output file and create no output directory (CLI-R02). The returned
+   * result still reports the `outputPath` that a real run would write.
+   */
+  readonly dryRun?: boolean
 }
 
 /** Summary returned after a replica export file is written. */
@@ -23,7 +29,7 @@ export type ReplicaExportResult = {
   readonly format: ReplicaExportFormat
   readonly clean: boolean
   readonly counts: {
-    readonly rows: number
+    readonly pages: number
     readonly schema: number
     readonly schemaProperties: number
     readonly pendingChanges: number
@@ -100,16 +106,16 @@ const readNumber = ({ row, key }: { readonly row: JsonRecord; readonly key: stri
 const stringify = (value: unknown): string =>
   JSON.stringify(value, (_key, nested) => (typeof nested === 'bigint' ? nested.toString() : nested))
 
-/** Export rows, schema, sync status, pending changes, and conflicts from a read-only replica. */
+/** Export pages, schema, sync status, pending changes, and conflicts from a read-only replica. */
 export const exportReplica = (options: ReplicaExportOptions): ReplicaExportResult => {
   const db = new DatabaseSync(options.replicaPath, { readOnly: true })
   try {
     const exportedAt = options.exportedAt ?? new Date().toISOString()
     const syncStatus = readStatus(db)
-    const rows = readRecords({
+    const pages = readRecords({
       db,
-      surface: 'rows',
-      orderBy: `${quoteIdentifier('_data_source_id')}, ${quoteIdentifier('_page_id')}, ${quoteIdentifier('_local_row_id')}`,
+      surface: 'pages',
+      orderBy: `${quoteIdentifier('_data_source_id')}, ${quoteIdentifier('_page_id')}, ${quoteIdentifier('_local_page_id')}`,
     })
     const schema = readRecords({
       db,
@@ -132,7 +138,10 @@ export const exportReplica = (options: ReplicaExportOptions): ReplicaExportResul
       db,
       surface: 'conflicts',
       orderBy: `${quoteIdentifier('updated_at')}, ${quoteIdentifier('conflict_id')}`,
-    }).filter((conflict) => String(conflict.state) === 'open')
+      // Include `resolving` (a frozen, keep-local-pending lifecycle conflict): it is
+      // a live, unresolved conflict that must surface in the export, matching the
+      // conflicts_open count (#775 M2a').
+    }).filter((conflict) => ['open', 'resolving'].includes(String(conflict.state)))
 
     const clean =
       readNumber({ row: syncStatus, key: 'pending_local_changes' }) === 0 &&
@@ -152,12 +161,18 @@ export const exportReplica = (options: ReplicaExportOptions): ReplicaExportResul
       format: options.format,
       clean,
       counts: {
-        rows: rows.length,
+        pages: pages.length,
         schema: schema.length,
         schemaProperties: schemaProperties.length,
         pendingChanges: pendingChanges.length,
         conflicts: conflicts.length,
       },
+    }
+
+    // Dry-run: the plan/counts are computed from the reads above; suppress the
+    // output-file write (and its directory creation) so nothing on disk changes.
+    if (options.dryRun === true) {
+      return result
     }
 
     mkdirSync(dirname(options.outputPath), { recursive: true })
@@ -175,7 +190,7 @@ export const exportReplica = (options: ReplicaExportOptions): ReplicaExportResul
         ...schemaProperties.map((record) => ({ type: 'schema_property', record })),
         ...pendingChanges.map((record) => ({ type: 'pending_change', record })),
         ...conflicts.map((record) => ({ type: 'conflict', record })),
-        ...rows.map((record) => ({ type: 'row', record })),
+        ...pages.map((record) => ({ type: 'page', record })),
       ]
       writeFileSync(options.outputPath, `${lines.map(stringify).join('\n')}\n`)
       return result
@@ -196,7 +211,7 @@ export const exportReplica = (options: ReplicaExportOptions): ReplicaExportResul
         },
         schema,
         schemaProperties,
-        rows,
+        pages,
       })}\n`,
     )
     return result

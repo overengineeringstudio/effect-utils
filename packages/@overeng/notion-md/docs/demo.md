@@ -61,10 +61,10 @@ examples:
 ```sh
 export NOTION_API_TOKEN="secret_..."
 
-notion-md sync <overview-page-id> \
+notion-md track <overview-page-id> \
   packages/@overeng/notion-md/demo/workspace/project/overview.nmd
 
-notion-md sync <weekly-notes-page-id> \
+notion-md track <weekly-notes-page-id> \
   packages/@overeng/notion-md/demo/workspace/project/weekly-notes/2026-05-23.nmd
 ```
 
@@ -86,8 +86,8 @@ frontmatter property writes.
 
 ```sh
 notion-md sync packages/@overeng/notion-md/demo/showcase.nmd
-notion-md sync 369f141b18dc80e4850cff344ad5b48e packages/@overeng/notion-md/demo/showcase.nmd
 ```
 
-Sync from the page id after local writes when you want to commit Notion's
-normalized enhanced Markdown and the new base snapshot.
+Use `notion-md status packages/@overeng/notion-md/demo/showcase.nmd` before and
+after edits when you want to inspect the live decision without mutating the
+fixture.

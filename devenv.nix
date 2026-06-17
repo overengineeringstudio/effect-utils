@@ -124,6 +124,7 @@ let
     "packages/@overeng/notion-effect-client"
     "packages/@overeng/notion-effect-schema"
     "packages/@overeng/notion-md"
+    "packages/@overeng/notion-property-write"
     "packages/@overeng/notion-react"
     "packages/@overeng/otel-contract"
     "packages/@overeng/oxc-config"
@@ -192,6 +193,10 @@ let
     {
       path = "packages/@overeng/notion-md";
       name = "notion-md";
+    }
+    {
+      path = "packages/@overeng/notion-property-write";
+      name = "notion-property-write";
     }
     {
       path = "packages/@overeng/notion-react";

@@ -10,7 +10,7 @@ Follow-up production-readiness work is tracked in
 Start here:
 
 - [Getting Started](./getting-started.md): establish a workspace with
-  `sync --from-notion`, query `<database-id>.sqlite`, create write intents, and
+  `track`, query `<database-id>.sqlite`, create write intents, and
   run established sync.
 - [Canonical SQLite Replica](./canonical-replica.md): the default 1:1
   `<database-id>.sqlite` contract with canonical writable `rows`, `schema`,

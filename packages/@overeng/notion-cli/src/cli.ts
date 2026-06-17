@@ -87,7 +87,10 @@ const makeNotionRootCommand = <
  * back to 1 for any unmapped failure and 0 on success, matching the previous
  * default teardown (Ctrl+C now maps to 130, consistent with `notion-md`).
  */
-const editorTeardown = <E, A>(exit: Exit.Exit<E, A>, onExit: (code: number) => void): void => {
+const editorTeardown = (
+  exit: Exit.Exit<unknown, unknown>,
+  onExit: (code: number) => void,
+): void => {
   onExit(editorExitCode(exit))
 }
 
@@ -119,7 +122,7 @@ const runRootCli = async (argv: ReadonlyArray<string>) => {
     version,
   })
 
-  cli(argv).pipe(
+  const effect = cli(argv).pipe(
     Effect.tapErrorCause((cause) => {
       if (Cause.isInterruptedOnly(cause) === true) {
         return Effect.void
@@ -144,7 +147,9 @@ const runRootCli = async (argv: ReadonlyArray<string>) => {
         makeOtelCliLayer({ serviceName: 'notion-cli' }),
       ),
     ),
-    NodeRuntime.runMain({ disableErrorReporting: true, teardown: editorTeardown }),
+  )
+  NodeRuntime.runMain({ disableErrorReporting: true, teardown: editorTeardown })(
+    effect as Effect.Effect<void, unknown, never>,
   )
 }
 

@@ -1,8 +1,14 @@
+import { Effect, Tracer } from 'effect'
 import { afterEach, describe, expect, it } from 'vitest'
 
+import { spanAttr, spanNames } from '../observability/observability.ts'
 import { makeStoreFixture, testIds } from '../testing/harness.ts'
 import { computeNotionWebhookSignature } from './notion.ts'
-import { startNotionWebhookReceiver, startNotionWebhookReceiverRuntime } from './receiver.ts'
+import {
+  handleNotionWebhookDelivery,
+  startNotionWebhookReceiver,
+  startNotionWebhookReceiverRuntime,
+} from './receiver.ts'
 import type { WebhookRelayProvider } from './tailscale.ts'
 
 const verificationToken = 'receiver-verification-token'
@@ -225,6 +231,112 @@ describe('Notion webhook receiver', () => {
     await runtime.close()
     expect(calls).toEqual([`start:${runtime.receiver.localTarget}:/notion/webhook`, 'stop'])
     expect(runtime.status().receiver.closed).toBe(true)
+  })
+
+  it('leaves the store untouched on signature-mismatch and invalid-payload-shape deliveries', () => {
+    const { store } = makeStoreFixture({ mode: 'memory' })
+    const rootId = testIds.rootId
+
+    const mismatch = handleNotionWebhookDelivery({
+      rawBody: JSON.stringify({ id: 'e1', type: 'page.created' }),
+      headers: { 'x-notion-signature': 'sha256=' + 'a'.repeat(64) },
+      rootId,
+      store,
+      verificationToken: 'token',
+    })
+    expect(mismatch).toEqual({ _tag: 'rejected', reason: 'signature-mismatch' })
+
+    // No verificationToken → HMAC gate skipped → shape decode runs → rejects missing type
+    const badShape = handleNotionWebhookDelivery({
+      rawBody: JSON.stringify({ id: 'e2', missing_type_field: true }),
+      headers: {},
+      rootId,
+      store,
+      verificationToken: undefined,
+    })
+    expect(badShape).toEqual({ _tag: 'rejected', reason: 'invalid-payload-shape' })
+
+    // Both rejections leave signal count at 0
+    expect(store.readSignalStatus(rootId)).toEqual({
+      pending: 0,
+      claimed: 0,
+      processed: 0,
+      failed: 0,
+    })
+  })
+
+  it('emits a webhookIntake span with outcome and event-type attributes when effectRuntime is wired', async () => {
+    const storeFixture = makeStoreFixture({ mode: 'memory' })
+    receiverFixtures.push(storeFixture)
+
+    // Build a minimal recording tracer that captures span names + attributes.
+    const recorded: Array<{ name: string; attributes: Record<string, unknown> }> = []
+    const recordingTracer = Tracer.make({
+      span: (name, _parent, spanContext, links, startTime, kind, options) => {
+        const attributes = new Map<string, unknown>(Object.entries(options?.attributes ?? {}))
+        const entry = { name, attributes: Object.fromEntries(attributes) }
+        recorded.push(entry)
+        return {
+          _tag: 'Span',
+          name,
+          spanId: `test-span-${recorded.length.toString()}`,
+          traceId: 'trace-test',
+          parent: _parent,
+          context: spanContext,
+          status: { _tag: 'Started', startTime },
+          attributes,
+          links,
+          sampled: true,
+          kind,
+          end: () => {},
+          attribute: (key, value) => {
+            attributes.set(key, value)
+            entry.attributes[key] = value
+          },
+          event: () => {},
+          addLinks: () => {},
+        }
+      },
+      context: (f) => f(),
+    })
+
+    // Capture a real Effect runtime that routes spans into the recording tracer.
+    const effectRuntime = await Effect.runPromise(
+      Effect.runtime<never>().pipe(Effect.withTracer(recordingTracer)),
+    )
+
+    const receiver = await startNotionWebhookReceiver({
+      rootId: testIds.rootId,
+      store: storeFixture.store,
+      verificationToken,
+      path: '/notion/webhook',
+      effectRuntime,
+    })
+    receiverFixtures.push({ cleanup: () => receiver.close() })
+
+    const rawBody = JSON.stringify({
+      id: 'event-intake-span',
+      type: 'page.created',
+      entity: { id: testIds.pageId, type: 'page' },
+      data: { parent: { data_source_id: testIds.dataSourceId } },
+    })
+    const response = await fetch(receiver.url, {
+      method: 'POST',
+      body: rawBody,
+      headers: {
+        'content-type': 'application/json',
+        'x-notion-signature': computeNotionWebhookSignature({ rawBody, verificationToken }),
+      },
+    })
+
+    expect(response.status).toBe(200)
+
+    // The intake span must be recorded with outcome and event-type attributes
+    const intakeSpan = recorded.find((s) => s.name === spanNames.webhookIntake)
+    expect(intakeSpan).toBeDefined()
+    expect(intakeSpan?.attributes[spanAttr.spanLabel]).toBe('webhook')
+    expect(intakeSpan?.attributes[spanAttr.webhookOutcome]).toBe('enqueued')
+    expect(intakeSpan?.attributes[spanAttr.webhookEventType]).toBe('page.created')
   })
 
   it('closes the receiver if relay startup fails', async () => {

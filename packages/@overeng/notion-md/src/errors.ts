@@ -1,5 +1,9 @@
 import { Schema } from 'effect'
 
+import { PropertyWriteGuardName } from '@overeng/notion-property-write'
+
+import { DestructiveBodyGuardName, NonBodyGuardName } from './non-body-guards.ts'
+
 /** Raised when a local `.nmd` file is missing or has malformed frontmatter. */
 export class NmdFrontmatterError extends Schema.TaggedError<NmdFrontmatterError>()(
   'NmdFrontmatterError',
@@ -79,6 +83,76 @@ export class NmdSchemaDriftError extends Schema.TaggedError<NmdSchemaDriftError>
     data_source_id: Schema.String,
     path: Schema.optional(Schema.String),
     message: Schema.String,
+  },
+) {}
+
+/**
+ * Raised when the shared property-write core refuses a datasource-scoped
+ * property write. Carries the violated guard name and the page/property it
+ * blocked so the refusal is observable rather than a silent drop.
+ *
+ * Also raised when a `source: 'remote'` page (Notion authoritative) attempts a
+ * local property mutation: the standalone proof provider refuses to mint a
+ * proof, since a local write against a Notion-authoritative page is drift.
+ */
+export class NmdPropertyWriteBlockedError extends Schema.TaggedError<NmdPropertyWriteBlockedError>()(
+  'NmdPropertyWriteBlockedError',
+  {
+    page_id: Schema.String,
+    property_name: Schema.String,
+    /**
+     * The violated property-write guard name. Drawn from the shared
+     * {@link PropertyWriteGuardName} vocabulary, including the provider-emitted
+     * `RemoteAuthoritativeDrift` used for the `source: 'remote'` refusal.
+     */
+    guard: PropertyWriteGuardName,
+    message: Schema.String,
+  },
+) {}
+
+/**
+ * Raised when a non-body write boundary (files/media, comments) refuses a write
+ * that would carry a payload or mutation notion-md cannot perform yet. Carries
+ * the violated {@link NonBodyGuardName} and the offending unit ids so the
+ * refusal is observable rather than a silent drop (R13).
+ */
+export class NmdNonBodyWriteBlockedError extends Schema.TaggedError<NmdNonBodyWriteBlockedError>()(
+  'NmdNonBodyWriteBlockedError',
+  {
+    page_id: Schema.String,
+    /** The violated non-body guard name identifying the missing invariant. */
+    guard: NonBodyGuardName,
+    message: Schema.String,
+    /**
+     * Ids of the units that triggered the block — file unit ids for the
+     * `DurableFile*` guards, comment unit ids for `CommentWriteUnsupported`.
+     * Discriminate by {@link guard}. (Field name predates the comment boundary
+     * and is kept stable for the SM6.1 media call sites.)
+     */
+    fileIds: Schema.Array(Schema.String),
+  },
+) {}
+
+/**
+ * Raised when a destructive body write gate blocks because the required allow
+ * flag was not passed. Carries the named guard identifying which invariant was
+ * violated and the flag that would unblock it, so the refusal is observable in
+ * OTEL, dry-run plans, and JSON output (R13).
+ *
+ * This error is distinct from {@link NmdConflictError} (genuine 3-way edit
+ * conflicts) and {@link NmdNonBodyWriteBlockedError} (files/media/comment write
+ * boundaries): destructive body gates are a separate invariant family, opt-in
+ * via explicit allow flags.
+ */
+export class NmdDestructiveBodyBlockedError extends Schema.TaggedError<NmdDestructiveBodyBlockedError>()(
+  'NmdDestructiveBodyBlockedError',
+  {
+    page_id: Schema.String,
+    /** The violated destructive body guard name. */
+    guard: DestructiveBodyGuardName,
+    message: Schema.String,
+    /** The CLI flag that would unblock this gate. */
+    allowFlag: Schema.String,
   },
 ) {}
 
@@ -167,4 +241,7 @@ export type NmdError =
   | NmdGatewayError
   | NmdRemoteBodyLossyError
   | NmdSchemaDriftError
+  | NmdPropertyWriteBlockedError
+  | NmdNonBodyWriteBlockedError
+  | NmdDestructiveBodyBlockedError
   | NmdCliError

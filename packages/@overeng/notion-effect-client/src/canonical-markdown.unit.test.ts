@@ -58,6 +58,10 @@ describe('canonicalizeBlockMarkdown', () => {
     expect(canonicalizeBlockMarkdown('- a\n\n- b\n\n- c\n')).toBe('- a\n- b\n- c\n')
   })
 
+  it('preserves ordered-list start numbers in the wire body form', () => {
+    expect(canonicalizeBlockMarkdown('2. a\n3. b\n')).toBe('2. a\n3. b\n')
+  })
+
   it('keeps the blank line before a paragraph following a list', () => {
     expect(canonicalizeBlockMarkdown('- a\n\n- b\n\nA paragraph after.\n')).toBe(
       '- a\n- b\n\nA paragraph after.\n',
@@ -81,5 +85,11 @@ describe('canonicalizeBlockMarkdown', () => {
     const once = canonicalizeBlockMarkdown(input)
     expect(canonicalizeBlockMarkdown(once)).toBe(once)
     expect(once).toBe('- a\n- b\n\nAfter.\n')
+  })
+
+  it('serializes GFM autolink literals as idempotent resource links', () => {
+    const once = canonicalizeBlockMarkdown('0@.A')
+    expect(once).toBe('[0@.A](mailto:0@.A)\n')
+    expect(canonicalizeBlockMarkdown(once)).toBe(once)
   })
 })

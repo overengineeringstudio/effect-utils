@@ -1,5 +1,13 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
 
+import { Schema } from 'effect'
+
+import {
+  type NotionWebhookPayload,
+  NotionWebhookPayloadSchema,
+  notionWebhookDecodeOptions,
+} from '@overeng/notion-effect-schema'
+
 /** Lower-case HTTP header name carrying Notion's HMAC-SHA256 webhook signature. */
 export const notionSignatureHeader = 'x-notion-signature'
 
@@ -43,11 +51,11 @@ export type NotionWebhookParseResult =
 /** Stable rejection reasons suitable for status output without including raw payload material. */
 export type NotionWebhookRejectionReason =
   | 'invalid-json'
+  | 'invalid-payload-shape'
   | 'missing-verification-token'
   | 'missing-signature'
   | 'malformed-signature'
   | 'signature-mismatch'
-  | 'missing-event-type'
   | 'missing-event-id'
 
 /** Minimal header lookup shape accepted by webhook helpers and HTTP server adapters. */
@@ -70,58 +78,29 @@ const rawBodyBytes = (rawBody: string | Uint8Array): Uint8Array =>
 const rawBodyText = (rawBody: string | Uint8Array): string =>
   typeof rawBody === 'string' ? rawBody : textDecoder.decode(rawBody)
 
-const parseJsonObject = (
-  rawBody: string | Uint8Array,
-):
-  | { readonly _tag: 'ok'; readonly value: Readonly<Record<string, unknown>> }
-  | {
-      readonly _tag: 'error'
-    } => {
-  try {
-    const parsed = JSON.parse(rawBodyText(rawBody)) as unknown
-    return isRecord(parsed) === true ? { _tag: 'ok', value: parsed } : { _tag: 'error' }
-  } catch {
-    return { _tag: 'error' }
-  }
-}
+/** Decode a raw body string into a JSON value, returning Either. */
+const decodeJson = Schema.decodeUnknownEither(Schema.parseJson())
 
-const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === 'object' && value !== null && Array.isArray(value) === false
+/** Decode a JSON value into `NotionWebhookPayload`, returning Either. */
+const decodePayload = Schema.decodeUnknownEither(
+  NotionWebhookPayloadSchema,
+  notionWebhookDecodeOptions,
+)
 
-const stringField = ({
-  record,
-  key,
-}: {
-  readonly record: Readonly<Record<string, unknown>>
-  readonly key: string
-}): string | undefined =>
-  typeof record[key] === 'string' && record[key].length > 0 ? record[key] : undefined
+/**
+ * One-time verification-token challenge schema (unauthenticated, no signature).
+ * A normal event payload will fail this decode — that is "fall through," not a rejection.
+ */
+const NotionWebhookVerificationStruct = Schema.Struct({
+  // NonEmptyTrimmedString trims then checks: a whitespace-only token (e.g. "   ")
+  // intentionally fails this decode and falls through to the HMAC gate rather than
+  // being treated as a (meaningless) verification challenge.
+  verification_token: Schema.NonEmptyTrimmedString,
+}).annotations({ identifier: 'NotionWebhook.VerificationStruct' })
 
-const numberField = ({
-  record,
-  key,
-}: {
-  readonly record: Readonly<Record<string, unknown>>
-  readonly key: string
-}): number | undefined =>
-  typeof record[key] === 'number' && Number.isFinite(record[key]) === true ? record[key] : undefined
-
-const booleanField = ({
-  record,
-  key,
-}: {
-  readonly record: Readonly<Record<string, unknown>>
-  readonly key: string
-}): boolean | undefined => (typeof record[key] === 'boolean' ? record[key] : undefined)
-
-const recordField = ({
-  record,
-  key,
-}: {
-  readonly record: Readonly<Record<string, unknown>>
-  readonly key: string
-}): Readonly<Record<string, unknown>> | undefined =>
-  isRecord(record[key]) === true ? record[key] : undefined
+const decodeVerification = Schema.decodeUnknownEither(NotionWebhookVerificationStruct, {
+  onExcessProperty: 'preserve',
+})
 
 /** Parse Notion's unauthenticated one-time verification-token request. */
 export const parseNotionWebhookVerification = (
@@ -129,13 +108,16 @@ export const parseNotionWebhookVerification = (
 ):
   | NotionWebhookVerification
   | { readonly _tag: 'NotionWebhookRejected'; readonly reason: NotionWebhookRejectionReason } => {
-  const parsed = parseJsonObject(rawBody)
-  if (parsed._tag === 'error') return { _tag: 'NotionWebhookRejected', reason: 'invalid-json' }
-  const verificationToken = stringField({ record: parsed.value, key: 'verification_token' })
-  if (verificationToken === undefined) {
+  const jsonResult = decodeJson(rawBodyText(rawBody))
+  if (jsonResult._tag === 'Left') return { _tag: 'NotionWebhookRejected', reason: 'invalid-json' }
+  const verResult = decodeVerification(jsonResult.right)
+  if (verResult._tag === 'Left') {
     return { _tag: 'NotionWebhookRejected', reason: 'missing-verification-token' }
   }
-  return { _tag: 'NotionWebhookVerification', verificationToken }
+  return {
+    _tag: 'NotionWebhookVerification',
+    verificationToken: verResult.right.verification_token,
+  }
 }
 
 const headerValue = ({
@@ -213,78 +195,71 @@ export const verifyNotionWebhookSignature = ({
     : { _tag: 'invalid', reason: 'signature-mismatch' }
 }
 
-const entityFromPayload = (
-  payload: Readonly<Record<string, unknown>>,
-): NotionWebhookEntity | undefined => {
-  const entity = recordField({ record: payload, key: 'entity' })
-  if (entity === undefined) return undefined
-  const id = stringField({ record: entity, key: 'id' })
-  const type = stringField({ record: entity, key: 'type' })
-  return id === undefined || type === undefined ? undefined : { id, type }
-}
-
-const parentIds = (payload: Readonly<Record<string, unknown>>) => {
-  const data = recordField({ record: payload, key: 'data' })
-  const parent = data === undefined ? undefined : recordField({ record: data, key: 'parent' })
-  return {
-    dataSourceId:
-      parent === undefined ? undefined : stringField({ record: parent, key: 'data_source_id' }),
-    databaseId:
-      parent === undefined ? undefined : stringField({ record: parent, key: 'database_id' }),
-  }
-}
-
-/** Normalize a Notion event payload into a provider-neutral invalidation signal. */
+/** Map a decoded `NotionWebhookPayload` to nds's provider-neutral invalidation signal. */
 export const normalizeNotionWebhookPayload = (
-  payload: Readonly<Record<string, unknown>>,
+  payload: NotionWebhookPayload,
 ):
   | NotionWebhookSignal
   | { readonly _tag: 'NotionWebhookRejected'; readonly reason: NotionWebhookRejectionReason } => {
-  const eventType = stringField({ record: payload, key: 'type' })
-  if (eventType === undefined)
-    return { _tag: 'NotionWebhookRejected', reason: 'missing-event-type' }
-  const eventId =
-    stringField({ record: payload, key: 'id' }) ?? stringField({ record: payload, key: 'event_id' })
+  const eventId = payload.id ?? payload.event_id
   if (eventId === undefined) return { _tag: 'NotionWebhookRejected', reason: 'missing-event-id' }
 
-  const entity = entityFromPayload(payload)
-  const parent = parentIds(payload)
+  // Reconstruct entity explicitly to drop any excess fields that survived the
+  // onExcessProperty:'preserve' decoder — signal.entity must not carry raw payload material.
+  const rawEntity = payload.entity
+  const entity = rawEntity === undefined ? undefined : { id: rawEntity.id, type: rawEntity.type }
   const entityId = entity?.id
   const entityType = entity?.type
+  const parent = payload.data?.parent
   return {
     _tag: 'NotionWebhookSignal',
     provider: 'notion',
     eventId,
-    eventType,
-    occurredAt:
-      stringField({ record: payload, key: 'timestamp' }) ??
-      stringField({ record: payload, key: 'created_time' }),
-    apiVersion: stringField({ record: payload, key: 'api_version' }),
-    attemptNumber: numberField({ record: payload, key: 'attempt_number' }),
+    eventType: payload.type,
+    occurredAt: payload.timestamp ?? payload.created_time,
+    apiVersion: payload.api_version,
+    attemptNumber: payload.attempt_number,
     entity,
     pageId: entityType === 'page' ? entityId : undefined,
-    dataSourceId: entityType === 'data_source' ? entityId : parent.dataSourceId,
-    databaseId: entityType === 'database' ? entityId : parent.databaseId,
-    subscriptionId: stringField({ record: payload, key: 'subscription_id' }),
-    workspaceId: stringField({ record: payload, key: 'workspace_id' }),
-    integrationId: stringField({ record: payload, key: 'integration_id' }),
-    isAggregated: booleanField({ record: payload, key: 'is_aggregated' }),
+    dataSourceId: entityType === 'data_source' ? entityId : parent?.data_source_id,
+    databaseId: entityType === 'database' ? entityId : parent?.database_id,
+    subscriptionId: payload.subscription_id,
+    workspaceId: payload.workspace_id,
+    integrationId: payload.integration_id,
+    isAggregated: payload.is_aggregated,
   }
 }
 
-/** Parse a complete Notion webhook request, including signature checks when a token exists. */
+/**
+ * Parse a complete Notion webhook request, including signature checks when a token exists.
+ *
+ * Fail-closed ordering:
+ * 1. JSON parse  → 'invalid-json' on failure
+ * 2. Verification-token branch (unauthenticated, no signature required)
+ * 3. HMAC signature gate (strictly before shape decode)
+ * 4. Shape decode via `NotionWebhookPayload` schema → 'invalid-payload-shape' on failure
+ * 5. Normalize decoded payload → 'missing-event-id' if absent
+ */
 export const parseNotionWebhookRequest = ({
   rawBody,
   headers,
   verificationToken,
 }: NotionWebhookRequestInput): NotionWebhookParseResult => {
-  const parsed = parseJsonObject(rawBody)
-  if (parsed._tag === 'error') return { _tag: 'NotionWebhookRejected', reason: 'invalid-json' }
+  // Step 1: JSON parse
+  const jsonResult = decodeJson(rawBodyText(rawBody))
+  if (jsonResult._tag === 'Left') return { _tag: 'NotionWebhookRejected', reason: 'invalid-json' }
+  const jsonValue = jsonResult.right
 
-  if (stringField({ record: parsed.value, key: 'verification_token' }) !== undefined) {
-    return parseNotionWebhookVerification(rawBody)
+  // Step 2: unauthenticated verification-token branch
+  const verResult = decodeVerification(jsonValue)
+  if (verResult._tag === 'Right') {
+    return {
+      _tag: 'NotionWebhookVerification',
+      verificationToken: verResult.right.verification_token,
+    }
   }
 
+  // Step 3: HMAC signature gate (strictly before shape decode)
   if (verificationToken !== undefined) {
     const signature = verifyNotionWebhookSignature({
       rawBody,
@@ -296,6 +271,13 @@ export const parseNotionWebhookRequest = ({
     }
   }
 
-  const signal = normalizeNotionWebhookPayload(parsed.value)
+  // Step 4: shape decode
+  const payloadResult = decodePayload(jsonValue)
+  if (payloadResult._tag === 'Left') {
+    return { _tag: 'NotionWebhookRejected', reason: 'invalid-payload-shape' }
+  }
+
+  // Step 5: normalize
+  const signal = normalizeNotionWebhookPayload(payloadResult.right)
   return signal._tag === 'NotionWebhookRejected' ? signal : { _tag: 'NotionWebhookEvent', signal }
 }

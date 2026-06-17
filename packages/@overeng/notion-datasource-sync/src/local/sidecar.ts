@@ -4,8 +4,8 @@ import { Schema } from 'effect'
 
 import { sha256Hex } from '@overeng/utils'
 
+import type { AbsolutePath } from '../core/domain.ts'
 import {
-  AbsolutePath,
   Hash,
   OwnWriteSuppressionToken,
   PageId,
@@ -25,7 +25,18 @@ const decode = <TSchema extends Schema.Schema.AnyNoContext>({
   readonly value: unknown
 }) => Schema.decodeUnknownSync(schema)(value)
 
-export const metadataDirectoryName = '.notion-datasource-sync'
+/**
+ * Top-level hidden namespace root directory. Used to exclude the entire
+ * implementation-state tree from workspace scans.
+ */
+export const namespaceRootDirectoryName = '.notion'
+
+/**
+ * Hidden implementation-state directory for the v1 namespace. Page sidecars,
+ * path claims, and (in later milestones) the control-plane state file and
+ * object store live under `.notion/v1`.
+ */
+export const metadataDirectoryName = join(namespaceRootDirectoryName, 'v1')
 export const pageSidecarDirectoryName = 'pages'
 
 /**

@@ -176,6 +176,56 @@ export const pushDecisionMarkdownCommandAttrs = OtelAttrs.defineSync(
   }),
 )
 
+/** Span attributes for schema-decoded webhook trigger classification. */
+export const webhookTriggerAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    eventType: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.webhook.event_type' })),
+    surface: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.webhook.surface' })),
+    triggerCount: Schema.NonNegativeInt.pipe(
+      OtelAttr.key({ key: 'notion_md.webhook.trigger_count' }),
+    ),
+  }),
+)
+
+/** Span attributes for a files/media write-boundary classification. */
+export const mediaBoundaryAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    operation: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.media_boundary.operation' })),
+    fileCount: Schema.NonNegativeInt.pipe(
+      OtelAttr.key({ key: 'notion_md.media_boundary.file_count' }),
+    ),
+    verdict: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.media_boundary.verdict' })),
+    guard: Schema.optional(
+      Schema.String.pipe(OtelAttr.key({ key: 'notion_md.media_boundary.guard' })),
+    ),
+  }),
+)
+
+/** Span attributes for a destructive body write gate. */
+export const destructiveBodyAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    guard: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.destructive_body.guard' })),
+    blockCount: Schema.NonNegativeInt.pipe(
+      OtelAttr.key({ key: 'notion_md.destructive_body.block_count' }),
+    ),
+    verdict: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.destructive_body.verdict' })),
+  }),
+)
+
+/** Span attributes for a comment write-boundary classification. */
+export const commentBoundaryAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    operation: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.comment_boundary.operation' })),
+    commentCount: Schema.NonNegativeInt.pipe(
+      OtelAttr.key({ key: 'notion_md.comment_boundary.comment_count' }),
+    ),
+    verdict: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.comment_boundary.verdict' })),
+    guard: Schema.optional(
+      Schema.String.pipe(OtelAttr.key({ key: 'notion_md.comment_boundary.guard' })),
+    ),
+  }),
+)
+
 export const withOperation =
   <S extends Schema.Schema.AnyNoContext>(
     operation: OtelOperationDefinition<S>,
@@ -373,6 +423,75 @@ export const editResultAttrs = OtelAttrs.defineSync(
     ),
   }),
 )
+
+/** Operation span emitted when the files/media write boundary classifies a write. */
+export const MediaBoundarySpan = OtelOperation.define({
+  name: 'notion-md.media-boundary',
+  attributes: mediaBoundaryAttrs,
+  label: ({ operation, verdict }) => `${operation}:${verdict}`,
+})
+
+/** Operation span emitted when the comment write boundary classifies a write. */
+export const CommentBoundarySpan = OtelOperation.define({
+  name: 'notion-md.comment-boundary',
+  attributes: commentBoundaryAttrs,
+  label: ({ operation, verdict }) => `${operation}:${verdict}`,
+})
+
+/** Operation span emitted when a destructive body write gate blocks or allows. */
+export const DestructiveBodySpan = OtelOperation.define({
+  name: 'notion-md.destructive-body',
+  attributes: destructiveBodyAttrs,
+  label: ({ guard, verdict }) => `${guard}:${verdict}`,
+})
+
+/** Span attributes for an object-GC pass (dry-run or live prune). */
+export const objectGcAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    /** Whether this was a plan-only (dry-run) pass — known before GC runs. */
+    dryRun: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.object_gc.dry_run' })),
+    /**
+     * Number of reachable objects — annotated after GC completes.
+     * @see {@link annotateAttrs} called with {@link objectGcResultAttrs}
+     */
+    reachableCount: Schema.optional(
+      Schema.NonNegativeInt.pipe(OtelAttr.key({ key: 'notion_md.object_gc.reachable_count' })),
+    ),
+    /**
+     * Number of removed (or would-be-removed) objects — annotated after GC completes.
+     * @see {@link annotateAttrs} called with {@link objectGcResultAttrs}
+     */
+    removedCount: Schema.optional(
+      Schema.NonNegativeInt.pipe(OtelAttr.key({ key: 'notion_md.object_gc.removed_count' })),
+    ),
+  }),
+)
+
+/** Post-GC result attributes annotated onto the {@link ObjectGcSpan}. */
+export const objectGcResultAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    reachableCount: Schema.NonNegativeInt.pipe(
+      OtelAttr.key({ key: 'notion_md.object_gc.reachable_count' }),
+    ),
+    removedCount: Schema.NonNegativeInt.pipe(
+      OtelAttr.key({ key: 'notion_md.object_gc.removed_count' }),
+    ),
+  }),
+)
+
+/** Operation span emitted when object GC runs (plan-only or live prune). */
+export const ObjectGcSpan = OtelOperation.define({
+  name: 'notion-md.object-gc',
+  attributes: objectGcAttrs,
+  label: ({ dryRun }) => (dryRun ? 'plan' : 'prune'),
+})
+
+/** Operation span emitted when a webhook signal is mapped to watch triggers. */
+export const WebhookTriggerSpan = OtelOperation.define({
+  name: 'notion-md.webhook.trigger',
+  attributes: webhookTriggerAttrs,
+  label: ({ surface, eventType }) => `${surface}:${eventType}`,
+})
 
 export const page = (pageId: string) => GatewayPullPageSpan.encodeSync({ pageId })
 

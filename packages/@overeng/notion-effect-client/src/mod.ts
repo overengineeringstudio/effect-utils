@@ -115,6 +115,8 @@ export type {
   RateLimitInfo,
 } from './internal/http.ts'
 export { NotionHttpTelemetry, notionHttpRouteInfo, parseRateLimitHeaders } from './internal/http.ts'
+// Rate-limit pressure metrics (decision 0017 Half 2)
+export { NotionRateLimitMetrics } from './internal/metrics.ts'
 // Request throttle
 export type { NotionThrottleOptions } from './internal/throttle.ts'
 export { NotionThrottle, NotionThrottleLive } from './internal/throttle.ts'
@@ -143,7 +145,7 @@ export {
   isTodoChecked,
   NotionMarkdown,
 } from './markdown.ts'
-export { canonicalizeBlockMarkdown } from './canonical-markdown.ts'
+export { canonicalizeBlockMarkdown, canonicalizeSemanticMarkdown } from './canonical-markdown.ts'
 export { canonicalizeMediaUrl, canonicalizeMediaUrlsInMarkdown } from './media-url.ts'
 // Notion Markdown local format
 export type {
@@ -156,12 +158,14 @@ export type {
   NmdFrontmatterPayloadClass,
   NmdFrontmatterV1,
   NmdFrontmatterV2,
+  NmdLocalState,
   NmdObjectRef,
   NmdObjectRole,
   NmdPageState,
   NmdParentRef,
   NmdPropertyFileRef,
   NmdPropertyValue,
+  NmdSource,
   NmdStorage,
   NmdSyncStateV1,
   NmdUnsupportedBlockUnit,
@@ -176,7 +180,10 @@ export {
   decodeNmdFrontmatterV2,
   decodeNmdFrontmatterV2Sync,
   decodeNmdSyncStateV1,
+  gateNmdLocalState,
   makeNmdObjectRef,
+  NmdSource as NmdSourceSchema,
+  NmdStatelessnessError,
   NMD_LARGE_STORAGE_BYTES,
   NMD_OBJECT_DIRECTORY,
   NMD_SMALL_STORAGE_BYTES,

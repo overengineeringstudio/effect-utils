@@ -336,8 +336,23 @@ export const NotionMdGatewayLive = Layer.effect(
         ),
       retrieveDataSource: ({ dataSourceId }) =>
         provideHttp(NotionDataSources.retrieve({ dataSourceId })).pipe(
+          /*
+           * `dataSource.properties` is Notion's property-schema map keyed by the
+           * property's DISPLAY NAME; each entry is expected to carry at least
+           * `{ id, name, type }` plus type-specific config (the standalone proof
+           * provider reads only `id`/`name`/`type`). The notion-effect-client
+           * `DataSourceSchema` currently types this map as
+           * `Record<string, unknown>`, so the entry shape is NOT validated at the
+           * client boundary.
+           *
+           * TODO: once the client validates the per-property schema shape, the
+           * provider's `readSchemaProperty` fallback can be tightened — a
+           * malformed entry presently makes the name resolve to zero properties
+           * and surfaces as a misleading `PropertyIdentityAmbiguous` rather than
+           * a schema-shape error.
+           */
           Effect.map((dataSource) => ({
-            dataSourceId: dataSource.id,
+            id: dataSource.id,
             databaseId:
               dataSource.parent.type === 'database_id' ? dataSource.parent.database_id : undefined,
             properties: dataSource.properties,

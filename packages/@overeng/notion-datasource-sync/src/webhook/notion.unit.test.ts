@@ -134,19 +134,100 @@ describe('Notion webhook receiver helpers', () => {
   })
 
   it('accepts future event types without keeping the raw payload in the normalized signal', () => {
-    const signal = normalizeNotionWebhookPayload({
-      id: 'event-future',
-      type: 'workspace.something_added_later',
-      entity: { id: 'workspace-1', type: 'workspace' },
-      raw_secret_like_field: 'do-not-carry-forward',
+    // Route through parseNotionWebhookRequest so the extra unknown field passes the
+    // schema decoder (onExcessProperty:'preserve'), while the normalized signal must
+    // not carry any raw payload material.
+    const result = parseNotionWebhookRequest({
+      rawBody: JSON.stringify({
+        id: 'event-future',
+        type: 'workspace.something_added_later',
+        entity: { id: 'workspace-1', type: 'workspace' },
+        raw_secret_like_field: 'do-not-carry-forward',
+      }),
+      headers: {},
     })
 
-    expect(signal).toMatchObject({
+    expect(result._tag).toBe('NotionWebhookEvent')
+    if (result._tag !== 'NotionWebhookEvent') return
+
+    expect(result.signal).toMatchObject({
       _tag: 'NotionWebhookSignal',
       eventId: 'event-future',
       eventType: 'workspace.something_added_later',
       entity: { id: 'workspace-1', type: 'workspace' },
     })
-    expect(JSON.stringify(signal)).not.toContain('do-not-carry-forward')
+    expect(JSON.stringify(result.signal)).not.toContain('do-not-carry-forward')
+  })
+
+  it('rejects a valid-HMAC request whose payload shape is malformed with invalid-payload-shape', () => {
+    // Cross-product the existing bad-shape and valid-signature coverage: a body
+    // that carries a CORRECT X-Notion-Signature but is missing the required
+    // `type` field must still be rejected for shape — proving the shape decode
+    // runs (and fails closed) AFTER signature verification passes, not only on
+    // the unsigned path.
+    const rawBody = JSON.stringify({ id: 'event-1', entity: { id: 'page-1', type: 'page' } })
+    const signatureHeader = computeNotionWebhookSignature({ rawBody, verificationToken })
+
+    // The signature itself is valid over these exact bytes...
+    expect(verifyNotionWebhookSignature({ rawBody, verificationToken, signatureHeader })).toEqual({
+      _tag: 'valid',
+    })
+
+    // ...yet the request is still rejected for its malformed shape.
+    expect(
+      parseNotionWebhookRequest({
+        rawBody,
+        headers: { 'X-Notion-Signature': signatureHeader },
+        verificationToken,
+      }),
+    ).toEqual({
+      _tag: 'NotionWebhookRejected',
+      reason: 'invalid-payload-shape',
+    })
+  })
+
+  it('rejects malformed JSON with invalid-json reason', () => {
+    expect(parseNotionWebhookRequest({ rawBody: 'not-json', headers: {} })).toEqual({
+      _tag: 'NotionWebhookRejected',
+      reason: 'invalid-json',
+    })
+  })
+
+  it('rejects a payload that is missing the required type field with invalid-payload-shape', () => {
+    const result = parseNotionWebhookRequest({
+      rawBody: JSON.stringify({ id: 'event-1' }),
+      headers: {},
+    })
+    expect(result).toEqual({
+      _tag: 'NotionWebhookRejected',
+      reason: 'invalid-payload-shape',
+    })
+  })
+
+  it('rejects a signature-mismatch request before any shape decode or store write', () => {
+    const rawBody = JSON.stringify({ id: 'event-1', type: 'page.created' })
+    const result = parseNotionWebhookRequest({
+      rawBody,
+      headers: { 'X-Notion-Signature': 'sha256=' + 'a'.repeat(64) },
+      verificationToken,
+    })
+    expect(result).toEqual({ _tag: 'NotionWebhookRejected', reason: 'signature-mismatch' })
+  })
+
+  it('drops unknown nested entity fields so they do not reach the signal or store', () => {
+    const result = parseNotionWebhookRequest({
+      rawBody: JSON.stringify({
+        id: 'event-entity-secret',
+        type: 'page.created',
+        entity: { id: 'page-1', type: 'page', secret_nested_field: 'do-not-carry' },
+      }),
+      headers: {},
+    })
+
+    expect(result._tag).toBe('NotionWebhookEvent')
+    if (result._tag !== 'NotionWebhookEvent') return
+
+    expect(result.signal.entity).toEqual({ id: 'page-1', type: 'page' })
+    expect(JSON.stringify(result.signal)).not.toContain('do-not-carry')
   })
 })

@@ -14,6 +14,7 @@ import {
 } from '../core/domain.ts'
 import {
   bodyPathForRow,
+  bodyPathForRowInDir,
   canonicalizeWorkspaceRelativePath,
   classifyLocalDelete,
   isOwnWriteObservation,
@@ -47,6 +48,15 @@ describe('local workspace contract', () => {
     expect(bodyPathForRow({ title: 'Weekly Notes', pageId })).toEqual({
       _tag: 'allowed',
       path: 'weekly-notes--page-1.nmd',
+    })
+  })
+
+  it('roots the body path under a source page directory (pages/v1/<name>)', () => {
+    expect(
+      bodyPathForRowInDir({ pagesDir: 'pages/v1/tasks', title: 'Weekly Notes', pageId }),
+    ).toEqual({
+      _tag: 'allowed',
+      path: 'pages/v1/tasks/weekly-notes--page-1.nmd',
     })
   })
 

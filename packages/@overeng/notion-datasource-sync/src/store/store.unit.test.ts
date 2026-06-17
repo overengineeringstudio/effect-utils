@@ -496,6 +496,78 @@ describe('Notion sync SQLite store', () => {
     }
   })
 
+  it('migrates a v7 _nds_conflict CHECK to admit the resolving lifecycle state (#775 M2a-2)', () => {
+    const observedAt = '2024-05-01T00:00:00.000Z'
+    const path = tempDatabasePath()
+    // Seed a v7 store whose `_nds_conflict` carries the OLD CHECK (no `resolving`).
+    // `CREATE TABLE IF NOT EXISTS` in the bootstrap DDL would leave this stale
+    // CHECK in place, so the open path must recreate the table.
+    const db = new DatabaseSync(path, { readBigInts: true })
+    try {
+      db.exec(`
+        CREATE TABLE _nds_migration_history (
+          schema_version INTEGER PRIMARY KEY,
+          migration_name TEXT NOT NULL,
+          applied_at TEXT NOT NULL
+        );
+        INSERT INTO _nds_migration_history (schema_version, migration_name, applied_at)
+        VALUES (7, 'body-projection-payload', '${observedAt}');
+        CREATE TABLE _nds_conflict (
+          root_id TEXT NOT NULL,
+          conflict_id TEXT NOT NULL,
+          page_id TEXT,
+          property_id TEXT,
+          state TEXT NOT NULL CHECK (state IN ('open', 'resolved', 'superseded', 'ignored')),
+          base_hash TEXT,
+          local_hash TEXT,
+          remote_hash TEXT,
+          opened_event_id TEXT NOT NULL,
+          resolution_event_id TEXT,
+          updated_at TEXT NOT NULL,
+          PRIMARY KEY (root_id, conflict_id)
+        );
+      `)
+    } finally {
+      db.close()
+    }
+
+    const store = openNotionSyncStore({
+      path,
+      busyTimeoutMs: 2_500,
+      now: () => new Date(observedAt),
+    })
+    store.close()
+
+    const after = new DatabaseSync(path, { readBigInts: true })
+    try {
+      // The recreated table's CHECK now admits `resolving` (the old v7 CHECK
+      // rejected it). A `resolving` write succeeds under the new constraint —
+      // verified with FKs disabled so the assertion isolates the CHECK, not the
+      // unrelated `_nds_sync_root` foreign key.
+      const conflictSql = String(
+        after
+          .prepare(`SELECT sql FROM sqlite_schema WHERE type = 'table' AND name = '_nds_conflict'`)
+          .get()?.sql,
+      )
+      expect(conflictSql).toContain("'resolving'")
+      after.exec('PRAGMA foreign_keys = OFF')
+      expect(() =>
+        after
+          .prepare(
+            `INSERT INTO _nds_conflict (root_id, conflict_id, page_id, state, opened_event_id, updated_at)
+             VALUES ('root', 'c1', 'page-1', 'resolving', 'e1', '${observedAt}')`,
+          )
+          .run(),
+      ).not.toThrow()
+      const latestMigration = after
+        .prepare(`SELECT MAX(schema_version) AS schema_version FROM _nds_migration_history`)
+        .get()
+      expect(Number(latestMigration?.schema_version)).toBe(8)
+    } finally {
+      after.close()
+    }
+  })
+
   it('migrates v6 body pointer projections to projection payload storage', () => {
     const path = tempDatabasePath()
     const db = new DatabaseSync(path, { readBigInts: true })
@@ -545,7 +617,7 @@ describe('Notion sync SQLite store', () => {
 
       expect(bodyColumns).toContain('body_projection_json')
       expect(bodyColumns).not.toContain('safety_json')
-      expect(Number(latestMigration?.schema_version)).toBe(7)
+      expect(Number(latestMigration?.schema_version)).toBe(8)
     } finally {
       after.close()
     }
@@ -1436,6 +1508,7 @@ describe('Notion sync SQLite store', () => {
           pendingLocal: {
             intentEventId: 'intent-property-1',
             targetHash: hash('b'),
+            state: 'queued',
           },
         },
       ])
@@ -1479,6 +1552,7 @@ describe('Notion sync SQLite store', () => {
           pendingLocal: {
             intentEventId: 'intent-property-second',
             targetHash: hash('c'),
+            state: 'queued',
           },
         }),
       ])
@@ -2088,6 +2162,97 @@ describe('Notion sync SQLite store', () => {
           }),
         ]),
       })
+    })
+  })
+
+  // Decision 0018: the `RowObserved` apply freezes `_nds_row.in_trash` ONLY when an
+  // OPEN `lifecycle` conflict exists for the page. The discriminator is the decoded
+  // `conflictKind`, NOT a null `property_id` — a `body` (body-body merge) conflict
+  // also has a null `property_id` and must NOT freeze `in_trash`.
+  const pageConflictRaised = (kind: 'lifecycle' | 'body') =>
+    decode(SyncEvent, {
+      _tag: 'ConflictRaised',
+      ...eventBase({
+        eventId: `conflict-${kind}`,
+        family: 'ConflictDetected',
+        eventType: 'ConflictRaised',
+        idempotencyKey: `conflict:${kind}:page-1`,
+        canonicalJson: '{"message":"divergence"}',
+        surface: 'page:page-1',
+      }),
+      conflictKind: kind,
+      pageId: 'page-1',
+      ...(kind === 'lifecycle' ? { remoteInTrash: false } : {}),
+      baseHash: hash('a'),
+      localHash: hash('b'),
+      remoteHash: hash('c'),
+    })
+
+  it('freezes _nds_row.in_trash while an open lifecycle conflict gates the RowObserved', () => {
+    withStore((store) => {
+      // Settled-archive baseline: a prior observation set in_trash = 1.
+      store.appendEvent(
+        rowObserved({
+          eventId: 'row-active',
+          idempotencyKey: 'row-active',
+          propertiesHash: hash('a1'),
+          inTrash: true,
+        }),
+      )
+      // The lifecycle conflict opens at a LOWER sequence than the gated RowObserved.
+      store.appendEvent(pageConflictRaised('lifecycle'))
+      // A NOVEL propertiesHash → a distinct, non-deduped RowObserved that APPLIES.
+      store.appendEvent(
+        rowObserved({
+          eventId: 'row-restored',
+          idempotencyKey: 'row-restored',
+          propertiesHash: hash('b2'),
+          inTrash: false,
+        }),
+      )
+
+      // in_trash is FROZEN at the settled target (true), not flipped to the
+      // remote-observed false — yet the rest of the row converged (the apply ran).
+      expect(store.readPlannerProjectionSnapshot(rootId).rows).toMatchObject([
+        { pageId: 'page-1', inTrash: true, propertiesHash: hash('b2') },
+      ])
+
+      // Replay determinism: the ConflictRaised precedes the RowObserved, so a full
+      // rebuild reproduces the freeze with no L recomputation in the apply path.
+      store.clearProjectionTables()
+      store.rebuildProjections(rootId)
+      expect(store.readPlannerProjectionSnapshot(rootId).rows).toMatchObject([
+        { pageId: 'page-1', inTrash: true, propertiesHash: hash('b2') },
+      ])
+    })
+  })
+
+  it('does NOT freeze in_trash for an open body-body conflict (the null-property_id discriminator trap)', () => {
+    withStore((store) => {
+      store.appendEvent(
+        rowObserved({
+          eventId: 'row-active',
+          idempotencyKey: 'row-active',
+          propertiesHash: hash('a1'),
+          inTrash: true,
+        }),
+      )
+      // An open body conflict ALSO has a null property_id, but must not freeze
+      // the lifecycle column.
+      store.appendEvent(pageConflictRaised('body'))
+      store.appendEvent(
+        rowObserved({
+          eventId: 'row-restored',
+          idempotencyKey: 'row-restored',
+          propertiesHash: hash('b2'),
+          inTrash: false,
+        }),
+      )
+
+      // in_trash FOLLOWS the remote observation (false): the freeze did not fire.
+      expect(store.readPlannerProjectionSnapshot(rootId).rows).toMatchObject([
+        { pageId: 'page-1', inTrash: false, propertiesHash: hash('b2') },
+      ])
     })
   })
 })
