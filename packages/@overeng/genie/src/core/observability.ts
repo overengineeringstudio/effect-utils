@@ -34,17 +34,23 @@ const trustOtelContract = <A, E, R>(
   ) as Effect.Effect<A, E, R>
 
 const trustedWith =
-  <S extends Schema.Schema.AnyNoContext>(
-    operation: OtelOperationDefinition<S>,
-    attributes: Schema.Schema.Type<S>,
-  ): (<A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>) =>
+  <S extends Schema.Schema.AnyNoContext>({
+    operation,
+    attributes,
+  }: {
+    operation: OtelOperationDefinition<S>
+    attributes: Schema.Schema.Type<S>
+  }): (<A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     trustOtelContract<A, E, R>(operation.with({ attributes, effect }))
 
-const trustedAnnotate = <S extends Schema.Schema.AnyNoContext>(
-  operation: OtelOperationDefinition<S>,
-  attributes: Schema.Schema.Type<S>,
-): Effect.Effect<void> => trustOtelContract<void, never, never>(operation.annotate(attributes))
+const trustedAnnotate = <S extends Schema.Schema.AnyNoContext>({
+  operation,
+  attributes,
+}: {
+  operation: OtelOperationDefinition<S>
+  attributes: Schema.Schema.Type<S>
+}): Effect.Effect<void> => trustOtelContract<void, never, never>(operation.annotate(attributes))
 
 const commandAttrs = OtelAttrs.defineSync(
   Schema.Struct({
@@ -185,7 +191,7 @@ const cliModeOperation = (cliMode: string) =>
 
 /** Wraps an effect in the root `genie/<cliMode>` span; the operation name varies by CLI mode (generate/check/watch/dry-run). */
 export const withCliModeSpan = (cliMode: string) =>
-  trustedWith(cliModeOperation(cliMode), { label: cliMode, cliMode })
+  trustedWith({ operation: cliModeOperation(cliMode), attributes: { label: cliMode, cliMode } })
 
 /** Wraps an effect in the `genie/command` span; optional attributes are omitted (not encoded as undefined) when absent. */
 export const withCommandSpan = ({
@@ -201,12 +207,15 @@ export const withCommandSpan = ({
   dryRun?: boolean
   concurrency?: number
 }) =>
-  trustedWith(commandSpan, {
-    label,
-    cwd,
-    ...(readOnly === undefined ? {} : { readOnly }),
-    ...(dryRun === undefined ? {} : { dryRun }),
-    ...(concurrency === undefined ? {} : { concurrency }),
+  trustedWith({
+    operation: commandSpan,
+    attributes: {
+      label,
+      cwd,
+      ...(readOnly === undefined ? {} : { readOnly }),
+      ...(dryRun === undefined ? {} : { dryRun }),
+      ...(concurrency === undefined ? {} : { concurrency }),
+    },
   })
 
 /** Wraps per-file generation in the `genie/file` span; label defaults to the cwd-relative target path when omitted. */
@@ -225,13 +234,16 @@ export const withFileSpan = ({
   readOnly?: boolean
   dryRun?: boolean
 }) =>
-  trustedWith(fileSpan, {
-    label: label ?? relativePath({ cwd, filePath: targetFilePath }),
-    cwd,
-    genieFilePath,
-    targetFilePath,
-    ...(readOnly === undefined ? {} : { readOnly }),
-    ...(dryRun === undefined ? {} : { dryRun }),
+  trustedWith({
+    operation: fileSpan,
+    attributes: {
+      label: label ?? relativePath({ cwd, filePath: targetFilePath }),
+      cwd,
+      genieFilePath,
+      targetFilePath,
+      ...(readOnly === undefined ? {} : { readOnly }),
+      ...(dryRun === undefined ? {} : { dryRun }),
+    },
   })
 
 /** Wraps a single atomic file write in the `atomicWriteFile` span, labelled by the target's basename. */
@@ -242,14 +254,20 @@ export const withAtomicWriteSpan = ({
   targetFilePath: string
   mode?: number
 }) =>
-  trustedWith(atomicWriteSpan, {
-    label: basename(targetFilePath),
-    targetFilePath,
-    ...(mode === undefined ? {} : { mode }),
+  trustedWith({
+    operation: atomicWriteSpan,
+    attributes: {
+      label: basename(targetFilePath),
+      targetFilePath,
+      ...(mode === undefined ? {} : { mode }),
+    },
   })
 
 /** Pre-applied wrapper for the `genie.registerImportMapResolver` span (no per-call attributes beyond the fixed label). */
-export const withImportMapResolverSpan = trustedWith(importMapResolverSpan, { label: 'import-map' })
+export const withImportMapResolverSpan = trustedWith({
+  operation: importMapResolverSpan,
+  attributes: { label: 'import-map' },
+})
 
 /** Wraps the cross-file validation pass in the `genie/runValidation` span. */
 export const withValidationSpan = ({
@@ -263,12 +281,15 @@ export const withValidationSpan = ({
   fileCount?: number
   preloadedFileCount?: number
 }) =>
-  trustedWith(validationSpan, {
-    label: 'validate',
-    cwd,
-    requirePackageJsonValidate,
-    ...(fileCount === undefined ? {} : { fileCount }),
-    ...(preloadedFileCount === undefined ? {} : { preloadedFileCount }),
+  trustedWith({
+    operation: validationSpan,
+    attributes: {
+      label: 'validate',
+      cwd,
+      requirePackageJsonValidate,
+      ...(fileCount === undefined ? {} : { fileCount }),
+      ...(preloadedFileCount === undefined ? {} : { preloadedFileCount }),
+    },
   })
 
 /** Annotates the current span with `genie/command` attributes (in-place, no child span). */
@@ -285,12 +306,15 @@ export const annotateCommand = ({
   dryRun?: boolean
   concurrency?: number
 }) =>
-  trustedAnnotate(commandSpan, {
-    label,
-    cwd,
-    ...(readOnly === undefined ? {} : { readOnly }),
-    ...(dryRun === undefined ? {} : { dryRun }),
-    ...(concurrency === undefined ? {} : { concurrency }),
+  trustedAnnotate({
+    operation: commandSpan,
+    attributes: {
+      label,
+      cwd,
+      ...(readOnly === undefined ? {} : { readOnly }),
+      ...(dryRun === undefined ? {} : { dryRun }),
+      ...(concurrency === undefined ? {} : { concurrency }),
+    },
   })
 
 /** Annotates the current span with `genie/file` attributes; label defaults to the cwd-relative target path. */
@@ -309,13 +333,16 @@ export const annotateFile = ({
   readOnly?: boolean
   dryRun?: boolean
 }) =>
-  trustedAnnotate(fileSpan, {
-    label: label ?? relativePath({ cwd, filePath: targetFilePath }),
-    cwd,
-    genieFilePath,
-    targetFilePath,
-    ...(readOnly === undefined ? {} : { readOnly }),
-    ...(dryRun === undefined ? {} : { dryRun }),
+  trustedAnnotate({
+    operation: fileSpan,
+    attributes: {
+      label: label ?? relativePath({ cwd, filePath: targetFilePath }),
+      cwd,
+      genieFilePath,
+      targetFilePath,
+      ...(readOnly === undefined ? {} : { readOnly }),
+      ...(dryRun === undefined ? {} : { dryRun }),
+    },
   })
 
 /** Annotates the current span with `genie/runValidation` attributes (in-place). */
@@ -330,17 +357,23 @@ export const annotateValidation = ({
   fileCount?: number
   preloadedFileCount?: number
 }) =>
-  trustedAnnotate(validationSpan, {
-    label: 'validate',
-    cwd,
-    requirePackageJsonValidate,
-    ...(fileCount === undefined ? {} : { fileCount }),
-    ...(preloadedFileCount === undefined ? {} : { preloadedFileCount }),
+  trustedAnnotate({
+    operation: validationSpan,
+    attributes: {
+      label: 'validate',
+      cwd,
+      requirePackageJsonValidate,
+      ...(fileCount === undefined ? {} : { fileCount }),
+      ...(preloadedFileCount === undefined ? {} : { preloadedFileCount }),
+    },
   })
 
 /** Annotates the current span with a single `genie.path` attribute; label defaults to the path's basename. */
 export const annotatePath = ({ label, path }: { label?: string; path: string }) =>
-  trustedAnnotate(pathOperation, { label: label ?? basename(path), path })
+  trustedAnnotate({
+    operation: pathOperation,
+    attributes: { label: label ?? basename(path), path },
+  })
 
 /** Annotates the current span with `genie/target-lock` attributes, labelled by the cwd-relative target path. */
 export const annotateTargetLock = ({
@@ -350,10 +383,13 @@ export const annotateTargetLock = ({
   cwd: string
   targetFilePath: string
 }) =>
-  trustedAnnotate(targetLockOperation, {
-    label: relativePath({ cwd, filePath: targetFilePath }),
-    cwd,
-    targetFilePath,
+  trustedAnnotate({
+    operation: targetLockOperation,
+    attributes: {
+      label: relativePath({ cwd, filePath: targetFilePath }),
+      cwd,
+      targetFilePath,
+    },
   })
 
 /** Annotates the current span with `genie/oxfmt` attributes; `hasConfig` records whether an oxfmt config was resolved. */
@@ -364,8 +400,11 @@ export const annotateOxfmt = ({
   targetFilePath: string
   hasConfig: boolean
 }) =>
-  trustedAnnotate(oxfmtOperation, {
-    label: basename(targetFilePath),
-    targetFilePath,
-    hasConfig,
+  trustedAnnotate({
+    operation: oxfmtOperation,
+    attributes: {
+      label: basename(targetFilePath),
+      targetFilePath,
+      hasConfig,
+    },
   })

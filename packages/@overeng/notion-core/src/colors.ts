@@ -58,19 +58,19 @@ export const NOTICON_COLORS = [
 /** Union of the icon (noticon) palette colors. */
 export type NoticonColor = (typeof NOTICON_COLORS)[number]
 
-const includesLiteral = <TValue extends string>(
-  values: readonly TValue[],
-  value: string,
-): value is TValue => (values as readonly string[]).includes(value)
+const includesLiteral =
+  <TValue extends string>(values: readonly TValue[]) =>
+  (value: string): value is TValue =>
+    (values as readonly string[]).includes(value)
 
 /** Narrowing guard for a value in the full block/text color palette. */
 export const isNotionColor = (value: string): value is NotionColor =>
-  includesLiteral(NOTION_COLORS, value)
+  includesLiteral(NOTION_COLORS)(value)
 
 /** Narrowing guard for a select/multi-select/status option color. */
 export const isSelectColor = (value: string): value is SelectColor =>
-  includesLiteral(SELECT_COLORS, value)
+  includesLiteral(SELECT_COLORS)(value)
 
 /** Narrowing guard for an icon (noticon) palette color. */
 export const isNoticonColor = (value: string): value is NoticonColor =>
-  includesLiteral(NOTICON_COLORS, value)
+  includesLiteral(NOTICON_COLORS)(value)

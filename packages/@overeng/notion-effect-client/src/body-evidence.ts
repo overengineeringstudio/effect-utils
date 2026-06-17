@@ -94,10 +94,13 @@ type BodyEvidenceBlockTree = ReadonlyArray<{
 const decodeEvidence = Schema.decodeUnknownSync(RemoteBodyObservationEvidence)
 const decodeFingerprint = Schema.decodeUnknownSync(BodyEvidenceFingerprint)
 
-const treeEntries = (
-  tree: BodyEvidenceBlockTree,
+const treeEntries = ({
+  tree,
   depth = 0,
-): ReadonlyArray<typeof BlockTreeEntryEvidence.Type> =>
+}: {
+  tree: BodyEvidenceBlockTree
+  depth?: number
+}): ReadonlyArray<typeof BlockTreeEntryEvidence.Type> =>
   tree.flatMap((node) => [
     {
       depth,
@@ -106,7 +109,7 @@ const treeEntries = (
       hasChildren: node.block.has_children,
       inTrash: node.block.in_trash,
     },
-    ...treeEntries(node.children, depth + 1),
+    ...treeEntries({ tree: node.children, depth: depth + 1 }),
   ])
 
 /** Computes the identity fingerprint of an evidence record by hashing its canonical JSON with the volatile `observedAt` stripped. */
@@ -154,7 +157,7 @@ export const makeRemoteBodyObservationEvidence = (opts: {
     }),
     blockTree: descriptorForCanonicalJson({
       schema: BlockTreeEvidence,
-      value: { entries: treeEntries(opts.blockTree) },
+      value: { entries: treeEntries({ tree: opts.blockTree }) },
       schemaVersion: 1,
     }),
     renderedBody: descriptorForUtf8({

@@ -390,8 +390,13 @@ export const renderedBodyDigest = (identity: BodyIdentity): Hash =>
   hashFromContentDigest(identity.rendered.digest)
 
 /** Equality over body identities via their canonical comparison digests (evidence-aware, see `bodyIdentityDigest`). */
-export const bodyIdentityEquals = (left: BodyIdentity, right: BodyIdentity): boolean =>
-  bodyIdentityDigest(left) === bodyIdentityDigest(right)
+export const bodyIdentityEquals = ({
+  left,
+  right,
+}: {
+  left: BodyIdentity
+  right: BodyIdentity
+}): boolean => bodyIdentityDigest(left) === bodyIdentityDigest(right)
 
 /** Canonical comparison digest for the identity carried by a `BodyPointer`. */
 export const bodyPointerIdentityDigest = (pointer: BodyPointer): Hash =>

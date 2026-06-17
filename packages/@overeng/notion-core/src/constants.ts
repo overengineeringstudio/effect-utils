@@ -23,7 +23,7 @@ const notionApiVersionPattern = /^(\d{4})-(\d{2})-(\d{2})$/u
 const isLeapYear = (year: number): boolean =>
   year % 400 === 0 || (year % 4 === 0 && year % 100 !== 0)
 
-const daysInMonth = (year: number, month: number): number | undefined => {
+const daysInMonth = ({ year, month }: { year: number; month: number }): number | undefined => {
   switch (month) {
     case 1:
     case 3:
@@ -58,7 +58,7 @@ export const parseNotionApiVersion = (value: string): ParsedNotionApiVersion | u
   const year = Number(yearText)
   const month = Number(monthText)
   const day = Number(dayText)
-  const maxDay = daysInMonth(year, month)
+  const maxDay = daysInMonth({ year, month })
   if (maxDay === undefined || day < 1 || day > maxDay) return undefined
 
   return { value: value as NotionApiVersion, year, month, day }
@@ -73,7 +73,13 @@ export const isSupportedNotionApiVersion = (value: string): value is typeof NOTI
   value === NOTION_API_VERSION
 
 /** Compare two valid Notion API version strings. Returns undefined when either side is invalid. */
-export const compareNotionApiVersions = (left: string, right: string): -1 | 0 | 1 | undefined => {
+export const compareNotionApiVersions = ({
+  left,
+  right,
+}: {
+  left: string
+  right: string
+}): -1 | 0 | 1 | undefined => {
   const parsedLeft = parseNotionApiVersion(left)
   const parsedRight = parseNotionApiVersion(right)
   if (parsedLeft === undefined || parsedRight === undefined) return undefined

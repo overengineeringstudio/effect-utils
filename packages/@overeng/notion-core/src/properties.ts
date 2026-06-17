@@ -34,18 +34,18 @@ export const PROPERTY_WRITE_CLASSES = ['writable', 'computed', 'unsupported'] as
 /** Union of the property write classes. */
 export type PropertyWriteClass = (typeof PROPERTY_WRITE_CLASSES)[number]
 
-const includesLiteral = <TValue extends string>(
-  values: readonly TValue[],
-  value: string,
-): value is TValue => (values as readonly string[]).includes(value)
+const includesLiteral =
+  <TValue extends string>(values: readonly TValue[]) =>
+  (value: string): value is TValue =>
+    (values as readonly string[]).includes(value)
 
 /** Narrowing guard for a known Notion property type. */
 export const isNotionPropertyType = (value: string): value is NotionPropertyType =>
-  includesLiteral(NOTION_PROPERTY_TYPES, value)
+  includesLiteral(NOTION_PROPERTY_TYPES)(value)
 
 /** Narrowing guard for a known property write class. */
 export const isPropertyWriteClass = (value: string): value is PropertyWriteClass =>
-  includesLiteral(PROPERTY_WRITE_CLASSES, value)
+  includesLiteral(PROPERTY_WRITE_CLASSES)(value)
 
 /**
  * Classify a Notion property type by how it may be written back.
