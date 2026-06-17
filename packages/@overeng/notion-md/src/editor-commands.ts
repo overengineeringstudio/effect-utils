@@ -31,6 +31,7 @@ import {
   CatSpan,
   EditSpan,
   editResultAttrs,
+  EditorSessionSpan,
   PutSpan,
   putResultAttrs,
   withOperation,
@@ -396,7 +397,7 @@ export const editEditorPage = (
       const nmdPath = join(dir, 'page.nmd')
 
       // 1. Pull into the ephemeral session (refuses a lossy page here, exit 3).
-      yield* pullPage({ pageId: opts.pageId, outPath: nmdPath })
+      yield* pullPage({ pageId: opts.pageId, outPath: nmdPath, purpose: 'init' })
 
       // 2. Project the editor buffer (default: # title + body; frontmatter: envelope).
       const original = yield* fs
@@ -408,8 +409,14 @@ export const editEditorPage = (
         .writeFileString(bufferPath, buffer)
         .pipe(Effect.mapError(editorIoError({ pageId: opts.pageId, path: bufferPath })))
 
-      // 3. Launch the editor.
-      const exitCode = yield* runEditor({ filePath: bufferPath })
+      // 3. Launch the editor (spanned so the editor-wait is separable from the
+      // subsequent push under the one `notion-md.edit` root; exit code unchanged).
+      const exitCode = yield* runEditor({ filePath: bufferPath }).pipe(
+        withOperation(EditorSessionSpan, {
+          editor: resolveEditorCommand(),
+          mode: opts.mode,
+        }),
+      )
       if (exitCode !== 0) {
         return yield* new NmdEditorAbortedError({
           page_id: opts.pageId,

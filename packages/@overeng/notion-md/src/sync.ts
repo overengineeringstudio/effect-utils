@@ -31,6 +31,7 @@ import {
   NotionMdGateway,
   type PageMetadataUpdate,
   type PullPageResult,
+  type PullPurpose,
   type RemoteMarkdownSnapshot,
   type RemotePageSnapshot,
   type WritablePageCover,
@@ -100,6 +101,8 @@ export interface LocalState {
 export interface PullOptions {
   readonly pageId: string
   readonly outPath: string
+  /** Trace discriminator for the underlying gateway pull (defaults to `'other'`). */
+  readonly purpose?: PullPurpose
 }
 
 /** Result of writing a pulled Notion page locally. */
@@ -738,7 +741,7 @@ export const pullPage = (
 ): Effect.Effect<PullResult, NmdError, NotionMdGateway | NmdStateStore> =>
   Effect.gen(function* () {
     const gateway = yield* NotionMdGateway
-    const pulled = yield* gateway.pullPage({ pageId: opts.pageId })
+    const pulled = yield* gateway.pullPage({ pageId: opts.pageId, purpose: opts.purpose })
     const storage = pulled.storage ?? emptyStorage()
 
     return yield* writeNmdWithStoragePolicy({
@@ -969,7 +972,7 @@ export const statusPage = (
     yield* assertSinglePageTarget(opts.path)
     const local = yield* readNmd(opts.path)
     const gateway = yield* NotionMdGateway
-    const remote = yield* gateway.pullPage({ pageId: local.pageId })
+    const remote = yield* gateway.pullPage({ pageId: local.pageId, purpose: 'status' })
     return statusFromSnapshots({ path: opts.path, local, remote })
   }).pipe(
     Effect.tap((status) =>
@@ -1023,7 +1026,7 @@ const singlePagePersist = (opts: {
   persist: ({ pushedBody, status, adoptRemoteBody }) =>
     Effect.gen(function* () {
       const gateway = yield* NotionMdGateway
-      const pulled = yield* gateway.pullPage({ pageId: status.pageId })
+      const pulled = yield* gateway.pullPage({ pageId: status.pageId, purpose: 'settle' })
       yield* assertLocalBodyUnchanged({
         path: opts.path,
         pageId: status.pageId,
@@ -1355,7 +1358,7 @@ export const pushGuarded = (opts: {
             path: statePath,
             syncState: local.syncState,
           })
-          const remote = yield* gateway.pullPage({ pageId: status.pageId })
+          const remote = yield* gateway.pullPage({ pageId: status.pageId, purpose: 'preflight' })
           yield* assertRemoteMarkdownComplete({
             operation: 'guarded_push_preflight',
             path,
@@ -1455,7 +1458,7 @@ export const pushPageWithPolicy = (
     const gateway = yield* NotionMdGateway
     const remoteForStatus = yield* withStage(
       { id: 'observe', label: 'observe', doneMessage: 'remote pulled' },
-      gateway.pullPage({ pageId: local.pageId }),
+      gateway.pullPage({ pageId: local.pageId, purpose: 'observe' }),
     )
     return yield* pushGuarded({
       local,

@@ -10,9 +10,27 @@ import {
   type OtelOperationDefinition,
 } from '@overeng/otel-contract'
 
+import type { PullPurpose } from './model.ts'
+
+const pullPurposeSchema: Schema.Literal<
+  ['init', 'status', 'observe', 'preflight', 'settle', 'other']
+> = Schema.Literal('init', 'status', 'observe', 'preflight', 'settle', 'other')
+
 export const pageAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     pageId: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.page_id' })),
+  }),
+)
+
+/**
+ * Pull-span attributes: the page id plus a `purpose` discriminator so the
+ * several back-to-back `gateway.pullPage` round-trips a single edit/push performs
+ * (init/status/observe/preflight/settle) are distinguishable in a trace.
+ */
+export const pagePurposeAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    pageId: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.page_id' })),
+    purpose: pullPurposeSchema.pipe(OtelAttr.key({ key: 'notion_md.pull.purpose' })),
   }),
 )
 
@@ -270,8 +288,8 @@ export const SyncPageSpan = OtelOperation.define({
 
 export const GatewayPullPageSpan = OtelOperation.define({
   name: 'notion-md.gateway.pull-page',
-  attributes: pageAttrs,
-  label: ({ pageId }) => pageId.slice(0, 8),
+  attributes: pagePurposeAttrs,
+  label: ({ purpose, pageId }) => `${purpose}·${pageId.slice(0, 8)}`,
 })
 
 export const GatewayUpdateMarkdownSpan = OtelOperation.define({
@@ -365,6 +383,20 @@ export const EditSpan = OtelOperation.define({
   label: ({ pageId }) => pageId.slice(0, 8),
 })
 
+/**
+ * Span for the interactive editor wait inside `notion-md edit` — the otherwise
+ * dark region between the seed pull and the post-edit push. A leaf child under
+ * `notion-md.edit` so editor-wait vs push-time are separable siblings.
+ */
+export const EditorSessionSpan = OtelOperation.define({
+  name: 'notion-md.editor.session',
+  schema: Schema.Struct({
+    editor: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.editor.command' })),
+    mode: editorModeSchema.pipe(OtelAttr.key({ key: 'notion_md.editor.mode' })),
+  }),
+  label: ({ editor }) => editor,
+})
+
 /** Outcome annotation for a completed `notion-md edit` session. */
 export const editResultAttrs = OtelAttrs.defineSync(
   Schema.Struct({
@@ -374,7 +406,8 @@ export const editResultAttrs = OtelAttrs.defineSync(
   }),
 )
 
-export const page = (pageId: string) => GatewayPullPageSpan.encodeSync({ pageId })
+export const page = (pageId: string, purpose: PullPurpose = 'other') =>
+  GatewayPullPageSpan.encodeSync({ pageId, purpose })
 
 export const parentPage = (parentPageId: string) =>
   GatewayCreatePageSpan.encodeSync({ parentPageId })
