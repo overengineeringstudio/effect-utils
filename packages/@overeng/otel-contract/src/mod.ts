@@ -1262,14 +1262,14 @@ function defineOperation<S extends Schema.Schema.AnyNoContext>(
     ...(options.root === undefined ? {} : { root: options.root }),
   })
 
-  function withOperation<A, E, R>(
+  const withOperation = <A, E, R>(
     call:
       | {
           readonly attributes: Schema.Schema.Type<S>
           readonly effect: Effect.Effect<A, E, R>
         }
       | Schema.Schema.Type<S>,
-  ) {
+  ) => {
     const wrap = (effect: Effect.Effect<A, E, R>) =>
       Effect.gen(function* () {
         const encoded = yield* encode(isEffectOperationCall(call) === true ? call.attributes : call)
@@ -1283,14 +1283,14 @@ function defineOperation<S extends Schema.Schema.AnyNoContext>(
     return isEffectOperationCall(call) === true ? wrap(call.effect) : wrap
   }
 
-  function withRootOperation<A, E, R>(
+  const withRootOperation = <A, E, R>(
     call:
       | {
           readonly attributes: Schema.Schema.Type<S>
           readonly effect: Effect.Effect<A, E, R>
         }
       | Schema.Schema.Type<S>,
-  ) {
+  ) => {
     const wrap = (effect: Effect.Effect<A, E, R>) =>
       Effect.gen(function* () {
         const encoded = yield* encode(isEffectOperationCall(call) === true ? call.attributes : call)
@@ -1304,14 +1304,14 @@ function defineOperation<S extends Schema.Schema.AnyNoContext>(
     return isEffectOperationCall(call) === true ? wrap(call.effect) : wrap
   }
 
-  function withOperationStream<A, E, R>(
+  const withOperationStream = <A, E, R>(
     call:
       | {
           readonly attributes: Schema.Schema.Type<S>
           readonly stream: Stream.Stream<A, E, R>
         }
       | Schema.Schema.Type<S>,
-  ) {
+  ) => {
     const wrap = (stream: Stream.Stream<A, E, R>) =>
       Stream.unwrap(
         Effect.gen(function* () {

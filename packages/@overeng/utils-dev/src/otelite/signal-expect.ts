@@ -271,8 +271,9 @@ const matchesMetricSelector = (metric: MetricRow, selector: MetricSelector): boo
   if (selector.service !== undefined && metric.service !== selector.service) return false
   if (selector.type !== undefined && metric.type !== selector.type) return false
   if (selector.unit !== undefined && metric.unit !== selector.unit) return false
-  if (selector.value !== undefined && !matchesMetricValue(metric, selector.value)) return false
-  if (selector.attrs !== undefined && !matchesAttrs(metric, selector.attrs)) return false
+  if (selector.value !== undefined && matchesMetricValue(metric, selector.value) === false)
+    return false
+  if (selector.attrs !== undefined && matchesAttrs(metric, selector.attrs) === false) return false
   return true
 }
 
@@ -292,7 +293,7 @@ const matchesLogSelector = (log: LogRow, selector: LogSelector): boolean => {
       selector.body instanceof RegExp ? selector.body.test(log.body) : log.body === selector.body
     if (bodyMatches === false) return false
   }
-  if (selector.attrs !== undefined && !matchesAttrs(log, selector.attrs)) return false
+  if (selector.attrs !== undefined && matchesAttrs(log, selector.attrs) === false) return false
   return true
 }
 

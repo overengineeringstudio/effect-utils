@@ -54,7 +54,7 @@ export const freePorts = (count: number): Promise<number[]> => {
       for (const srv of servers) srv.close(() => (--remaining === 0 ? cb() : undefined))
     }
     const fail = (cause: unknown) => {
-      if (settled) return
+      if (settled === true) return
       settled = true
       cleanup(() => reject(cause instanceof Error ? cause : new Error(String(cause))))
     }
@@ -117,7 +117,7 @@ export const withFreePort = async <A>(
       const msg = cause instanceof Error ? cause.message.toLowerCase() : String(cause).toLowerCase()
       const collided =
         isAddrInUse(cause) || msg.includes('eaddrinuse') || msg.includes('address in use')
-      if (!collided) throw cause
+      if (collided === false) throw cause
       /* port collision — retry with a fresh port */
     }
   }

@@ -200,9 +200,10 @@ export const tolerateTreeChildPages = (completeness: BodyCompleteness): BodyComp
     completeness.reasons.includes('not_round_trip_safe_blocks') === true &&
     remainingTypes.some((type) => notRoundTripSafeBlockTypes.has(type)) === false
 
-  const reasons = droppedNotRoundTripSafe
-    ? completeness.reasons.filter((reason) => reason !== 'not_round_trip_safe_blocks')
-    : completeness.reasons
+  const reasons =
+    droppedNotRoundTripSafe === true
+      ? completeness.reasons.filter((reason) => reason !== 'not_round_trip_safe_blocks')
+      : completeness.reasons
 
   return reasons.length === 0
     ? { _tag: 'complete' }

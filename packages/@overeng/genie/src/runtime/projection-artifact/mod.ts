@@ -31,7 +31,7 @@ export type ProjectionJsonArtifactArgs<TData, TProjection extends ProjectionJson
   indentation?: number
 }
 
-function projectionArtifactJson<
+const projectionArtifactJson = <
   const TData,
   const TProjection extends ProjectionJsonObject = TData & ProjectionJsonObject,
 >(
@@ -39,7 +39,7 @@ function projectionArtifactJson<
     ProjectionJsonArtifactArgs<TData, TProjection>,
     ProjectionJsonArtifactArgs<TData, TProjection>
   >,
-): GenieOutput<TData> {
+): GenieOutput<TData> => {
   return createGenieOutput({
     data: args.data,
     stringify: (_ctx) => {
@@ -63,9 +63,9 @@ function projectionArtifactJson<
   })
 }
 
-function projectData<TData, TProjection extends ProjectionJsonObject>(
+const projectData = <TData, TProjection extends ProjectionJsonObject>(
   args: ProjectionJsonArtifactArgs<TData, TProjection>,
-): TProjection {
+): TProjection => {
   return (
     args.project === undefined ? asJsonObject(args.data) : args.project(args.data)
   ) as TProjection
@@ -77,9 +77,9 @@ export const projectionArtifact = {
 } as const
 
 /** Identity helper that pins `TData`/`TProjection` inference for a validator without widening the callback types. */
-export function defineProjectionValidator<TData, TProjection extends ProjectionJsonObject>(
+export const defineProjectionValidator = <TData, TProjection extends ProjectionJsonObject>(
   validator: ProjectionArtifactValidator<TData, TProjection>,
-): ProjectionArtifactValidator<TData, TProjection> {
+): ProjectionArtifactValidator<TData, TProjection> => {
   return validator
 }
 
@@ -112,17 +112,17 @@ export const projectionValidators = {
     }),
 } as const
 
-function withSchemaVersion<TProjection extends ProjectionJsonObject>(
+const withSchemaVersion = <TProjection extends ProjectionJsonObject>(
   projection: TProjection,
   schemaVersion: number,
-): TProjection & { readonly schemaVersion: number } {
+): TProjection & { readonly schemaVersion: number } => {
   return {
     ...projection,
     schemaVersion,
   }
 }
 
-function asJsonObject(value: unknown): ProjectionJsonObject {
+const asJsonObject = (value: unknown): ProjectionJsonObject => {
   if (value === null || Array.isArray(value) === true || typeof value !== 'object') {
     throw new Error('projectionArtifact.json data must project to a JSON object')
   }
@@ -130,7 +130,7 @@ function asJsonObject(value: unknown): ProjectionJsonObject {
   return value as ProjectionJsonObject
 }
 
-function stableJsonValue(value: unknown): unknown {
+const stableJsonValue = (value: unknown): unknown => {
   if (Array.isArray(value) === true) {
     return value.map(stableJsonValue)
   }

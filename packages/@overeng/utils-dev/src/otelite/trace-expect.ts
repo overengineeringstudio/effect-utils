@@ -223,7 +223,7 @@ const matchesSelector = (span: SpanRow, selector: SpanSelector): boolean => {
   if (selector.service !== undefined && span.service !== selector.service) return false
   if (selector.traceId !== undefined && span.trace_id !== selector.traceId) return false
   if (selector.requireLabel === true && span.attrs['span.label'] === undefined) return false
-  if (selector.attrs !== undefined && !matchesAttrs(span, selector.attrs)) return false
+  if (selector.attrs !== undefined && matchesAttrs(span, selector.attrs) === false) return false
   return true
 }
 
