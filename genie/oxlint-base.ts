@@ -246,6 +246,10 @@ export const baseOxlintOverrides = [
       'unicorn/no-array-sort': 'off',
       'unicorn/consistent-function-scoping': 'off',
       'require-yield': 'off',
+      // Sequential awaits in a loop (polling deadlines, ordered setup/assertions)
+      // are idiomatic and correct in tests; parallelizing them is pointless or
+      // wrong. Tests are not throughput-critical, so the advisory is relaxed here.
+      'no-await-in-loop': 'off',
     },
   },
   // Declaration files can use inline import() type annotations
