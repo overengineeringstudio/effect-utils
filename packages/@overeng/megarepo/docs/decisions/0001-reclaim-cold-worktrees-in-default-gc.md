@@ -1,33 +1,33 @@
-# Reclaim cold named-branch worktrees in default GC
+# Cold named-branch reclamation policy
 
 ## Status
 
-accepted (supersedes the original artifact-pruning scope of #771)
-
-## Context
-
-Default `mr store gc` previously protected every `refs/heads/*` and
-`refs/tags/*` worktree, so it could collect only detached commit worktrees. The
-cold population is mostly named branches, while artifact-pruning in-place would
-leave the main accumulation untouched.
+accepted; supersedes artifact-pruning scope for #771
 
 ## Decision
 
-Default `mr store gc` deletes cold named-branch worktrees after all safety gates
-pass. `--all` remains the explicit protection-bypassing mode. Artifact pruning is
-out of scope for this decision.
+Default `mr store gc` may delete cold `refs/heads/*` worktrees. `--all` remains
+the explicit protection-bypassing mode; artifact pruning is out of scope.
 
-The gate order is:
+Eligibility gates, in order:
 
-1. cross-megarepo live-set veto ([0002](0002-cross-megarepo-liveness-veto.md))
-2. staleness = merged or closed PR, never the default branch ([0004](0004-staleness-merged-or-closed-pr.md))
-3. lossless floor plus archive capture ([0003](0003-lossless-capture-via-archive.md))
-4. grace timers and archive retention ([0005](0005-three-reclamation-timers.md))
+1. **Default branch:** never reclaim the repo default branch, read from the bare
+   repository.
+2. **Cross-megarepo liveness:** never delete a worktree present in any registered
+   workspace live set. Before destructive work, reconcile every registered
+   workspace from disk; unreadable workspaces keep last-known paths.
+3. **Staleness:** require GitHub PR state `merged` or `closed`. Open PR, no PR,
+   non-GitHub remote, unavailable `gh`, or resolver failure means keep.
+4. **Lossless floor:** require remote-reachable local commits, no unpushed
+   commits, and no stash. Dirt is not classified; uncommitted and untracked files
+   move with the worktree.
+5. **Timers:** require absence grace (default 14d) and, for merged PRs,
+   post-merge grace (default 7d). Archive retention defaults to 30d. Values are
+   host-overridable via `$STORE/.state/gc-config.json`.
+6. **Capture:** move first to `<repo>/.archive/<name>/`, free the branch ref so
+   `mr apply` can re-materialize, and hard-delete only after retention TTL.
 
-## Consequences
-
-- The policy is conservative because a false positive can lose local work.
-- Deletions must be visible and recoverable in output; `--dry-run --json` is the
-  planning surface.
-- Default-on accepts GitHub/fetch cost; without GitHub access or stale PRs,
-  behavior degrades to keep.
+Continuous absence is persisted in the observation ledger. `--dry-run` must not
+persist observations, and the first real run archives nothing from an empty
+ledger. Reap must scan `.archive/` and re-check cross-megarepo liveness under
+lock.

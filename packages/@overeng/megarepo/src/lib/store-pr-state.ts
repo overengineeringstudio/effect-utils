@@ -1,5 +1,5 @@
 /**
- * Branch -> GitHub PR-state resolver (decision 0005).
+ * Branch -> GitHub PR-state resolver (decision 0001).
  *
  * A worktree's branch having a MERGED (or CLOSED, decision 0009) PR is the
  * primary positive staleness signal. Reliable detection requires GitHub's PR
@@ -50,7 +50,7 @@ export interface PrStateInfo {
   readonly closedAt?: number | undefined
 }
 
-/** The conservative "no evidence" result (decision 0005): keep. */
+/** The conservative "no evidence" result (decision 0001): keep. */
 export const PR_STATE_NONE: PrStateInfo = { state: 'none' }
 
 /**

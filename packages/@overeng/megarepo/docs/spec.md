@@ -632,8 +632,8 @@ mr store gc [--dry-run] [--force] [--all]
 
 ##### Cold named-branch reclamation
 
-> Rationale and trade-offs in `docs/decisions/0001`–`0006`; domain terms in
-> `docs/glossary.md`.
+> Rationale and trade-offs in `docs/decisions/0001`; test contract in
+> `docs/decisions/0006`; domain terms in `docs/glossary.md`.
 
 A named `refs/heads/*` worktree is reclaimed only when it is **cold**, decided by
 layered gates evaluated in this order (each short-circuits to keep):
@@ -641,7 +641,7 @@ layered gates evaluated in this order (each short-circuits to keep):
 0. **Default-branch guard (hard).** A worktree whose ref is its repo's default
    branch (read offline from the bare's `HEAD`) is never reclaimed, independent of
    PR state or liveness — closes the `main`/`master` PR-join false-positive
-   (decision 0004).
+   (decision 0001).
 1. **Cross-megarepo live-set veto (hard).** Present in any registered workspace's
    live set (`collectStoreLiveSet`, store-wide) ⇒ keep. A `repos/` symlink alone
    gives no protection — only a recorded `livePaths` entry does.

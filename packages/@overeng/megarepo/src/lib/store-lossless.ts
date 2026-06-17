@@ -1,5 +1,5 @@
 /**
- * Lossless floor for cold named-branch worktrees (decisions 0001/0003/0004).
+ * Lossless floor for cold named-branch worktrees (decision 0001).
  *
  * A `refs/heads/*` worktree may only be archived/reaped when removing its
  * directory loses NO recoverable work. That floor has three independent parts,
@@ -7,7 +7,7 @@
  *
  * 1. {@link unpushedCommitCount} — commits reachable from the worktree HEAD that
  *    are on NO remote-tracking ref. This is `git -C <bare> rev-list <head>
- *    --not --remotes` (decision 0003), NOT `branch -r --contains`: the worktree
+ *    --not --remotes` (decision 0001), NOT `branch -r --contains`: the worktree
  *    head can be a fresh local commit stacked on a parent that lives on an
  *    unrelated remote ref (the "B1" case). `--not --remotes` walks down and stops
  *    at the first remote-reachable ancestor, so it reports exactly the
