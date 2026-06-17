@@ -18,7 +18,6 @@ const pageId = decode(PageId, 'page-1')
 const propertyId = decode(PropertyId, 'prop-status')
 
 const propertyIdentity: LocalIdentity = { kind: 'property', pageId, propertyId }
-const bodyIdentity: LocalIdentity = { kind: 'body', pageId }
 
 describe('local-surface convergence', () => {
   it('is not-applicable outside shared mode (single-source mirror)', () => {
@@ -99,17 +98,11 @@ describe('local-surface convergence', () => {
     expect(outcome.surface).toBe('nmd')
   })
 
-  it('classifies body divergence as a body conflict with no property verdict', () => {
-    const result = convergeLocalSurfaces({
-      authorityMode: 'shared',
-      dataFileEdits: [{ identity: bodyIdentity, desiredHash: hash('a') }],
-      nmdFacts: [{ identity: bodyIdentity, desiredHash: hash('b') }],
-    })
-    if (result._tag !== 'shared') throw new Error('expected shared')
-    expect(result.conflicts[0]?.kind).toBe('body-body-delegated')
-    expect(result.propertyVerdicts).toHaveLength(0)
-    expect(result.blockedIdentities).toEqual([bodyIdentity])
-  })
+  // Body is intentionally NOT a convergence identity (decision 0013): the `.nmd`
+  // body is single-surface and adapter-owned and never routes through this engine.
+  // The former `body` identity arm built a `body-body-delegated` conflict —
+  // a `conflictKind` `ConflictRaised` no longer admits — so it was removed as a
+  // latent decode footgun (see local-convergence.ts).
 
   it('overlays property verdicts onto planner surfaces, leaving unevaluated surfaces untouched', () => {
     const otherPropertyId = decode(PropertyId, 'prop-other')

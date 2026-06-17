@@ -1013,6 +1013,13 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
           // body and must re-materialize the `.nmd` even though the local `.nmd`
           // still diverges. Without this the divergence would persist silently after
           // keep-remote.
+          //
+          // A forced page is APPROVED to overwrite its dirty `.nmd`: keep-remote was
+          // an explicit user decision to discard the local edit, so the plan carries
+          // `acceptRemoteOverwrite` to bypass the dirty-edit safety guard for this one
+          // page. The forced set is exactly the keep-remote-resolved set (driven by
+          // the dedicated `keepRemoteBodyResolution` marker in `pullOneShotSync`), so
+          // the override stays scoped to approved overwrites only.
           const forceMaterialize = options.forceMaterializePageIds?.has(row.pageId) === true
           const materializeResult =
             bodyPointer === undefined ||
@@ -1024,6 +1031,7 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
                   path: (options.bodyPathForPage ?? defaultBodyPathForPage)(row.pageId),
                   bodyPointer,
                   ...(writableProperties === undefined ? {} : { writableProperties }),
+                  ...(forceMaterialize === true ? { acceptRemoteOverwrite: true } : {}),
                 })
 
           if (materializeResult !== undefined) {

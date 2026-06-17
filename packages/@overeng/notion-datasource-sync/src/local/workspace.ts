@@ -611,6 +611,7 @@ const assertSafeMaterializeTarget = async ({
   targetContentHash,
   sidecars,
   claims,
+  acceptRemoteOverwrite,
 }: {
   readonly absolutePath: string
   readonly relativePath: WorkspaceRelativePathType
@@ -618,6 +619,13 @@ const assertSafeMaterializeTarget = async ({
   readonly targetContentHash: HashType
   readonly sidecars: ReadonlyArray<FilesystemWorkspaceSidecarType>
   readonly claims: ReadonlyArray<FilesystemPathClaim>
+  /**
+   * Approved keep-remote overwrite (decision 0013): bypass ONLY the final
+   * "local edits; repair required" throw so the dirty `.nmd` is legitimately
+   * replaced with the remote body. The structural checks (collision, non-file,
+   * no sidecar/claim identity) still apply — those are not approved overwrites.
+   */
+  readonly acceptRemoteOverwrite: boolean
 }): Promise<void> => {
   const stats = await lstat(absolutePath).catch((cause: unknown) => {
     if (typeof cause === 'object' && cause !== null && 'code' in cause && cause.code === 'ENOENT') {
@@ -666,6 +674,12 @@ const assertSafeMaterializeTarget = async ({
   ) {
     return
   }
+
+  // Approved keep-remote overwrite (decision 0013): the user explicitly chose to
+  // discard the dirty local `.nmd`, so the dirty-edit guard — which prevents
+  // UNINTENDED clobbers — is bypassed for this one approved action. All structural
+  // checks above (collision / non-file / no identity) still ran and passed.
+  if (acceptRemoteOverwrite === true) return
 
   throw localStoreError({
     operation: 'materialize',
@@ -953,6 +967,7 @@ export const makeFilesystemLocalWorkspacePort = ({
           targetContentHash: materializedContentHash,
           sidecars,
           claims,
+          acceptRemoteOverwrite: plan.acceptRemoteOverwrite === true,
         })
         await writeTextFileAtomic({ path: absolutePath, content })
         await writeJsonFile({

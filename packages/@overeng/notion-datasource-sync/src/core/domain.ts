@@ -461,6 +461,17 @@ export const MaterializePlan = Schema.TaggedStruct('MaterializePlan', {
   writableProperties: Schema.optional(
     Schema.Record({ key: Schema.String, value: NmdWritablePropertyValueSchema }),
   ),
+  /**
+   * Approved-overwrite flag for keep-remote body resolution (decision 0013).
+   * When `true`, materialize legitimately OVERWRITES a dirty local `.nmd` with
+   * the remote body, bypassing ONLY the "local edits; repair required" safety
+   * throw. The user EXPLICITLY chose keep-remote to discard the local edit, so
+   * the guard against UNINTENDED clobbers does not apply to this approved action.
+   * The path-collision / non-file / no-sidecar-identity structural checks are
+   * NOT bypassed — those are genuine failures, not approved overwrites. Absent
+   * (the default) keeps the full dirty-edit-preservation guard.
+   */
+  acceptRemoteOverwrite: Schema.optional(Schema.Boolean),
 }).annotations({ identifier: 'NotionDatasourceSync.MaterializePlan' })
 export type MaterializePlan = typeof MaterializePlan.Type
 

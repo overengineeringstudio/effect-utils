@@ -48,10 +48,15 @@ import {
   type NotionDataSourceGatewayShape,
   type PageBodySyncPortShape,
 } from '../core/ports.ts'
-import { makeFakeLocalWorkspacePort, presentArtifactObservation } from '../local/workspace.ts'
+import {
+  makeFakeLocalWorkspacePort,
+  makeFilesystemLocalWorkspacePort,
+  presentArtifactObservation,
+} from '../local/workspace.ts'
 import { resolveConflictCommand } from '../planner/user-commands.ts'
 import { executeOutboxOnce } from '../sync/executor.ts'
 import { initOneShotSync, pullOneShotSync, pushOneShotSync, syncOneShot } from '../sync/sync.ts'
+import { makeTempWorkspace } from '../testing/filesystem.ts'
 import {
   appendPlannedCommand,
   bodyPointer,
@@ -762,6 +767,159 @@ describe('body adapter E2E boundary', () => {
       } finally {
         storeFixture.cleanup()
       }
+    })
+
+    // #775 review BLOCKER + MAJOR (real safety guard, NOT the fake). The fake
+    // `makeFakeLocalWorkspacePort.materialize` skips `assertSafeMaterializeTarget`,
+    // so the keep-remote test above proved nothing about the wedge. These two
+    // scenarios drive the REAL `makeFilesystemLocalWorkspacePort` against a temp
+    // dir with a genuinely DIRTY `.nmd`.
+    describe('real-guard keep-remote body re-materialization (#775 0013)', () => {
+      const realBodyPath = decode({ schema: WorkspaceRelativePath, value: 'page-1.nmd' })
+
+      // Raise the body conflict, dirty the on-disk `.nmd`, and return everything
+      // needed to drive a pull through the REAL filesystem workspace.
+      const setupDirtyWorkspace = async (root: AbsolutePath) => {
+        const fsWorkspace = makeFilesystemLocalWorkspacePort({ root })
+        const remotePointer = bodyPointer(hash('body-remote'))
+        // Materialize the remote body so a real sidecar exists, then append a local
+        // edit so the on-disk content diverges from BOTH the target and the sidecar
+        // `materializedContentHash` — exactly the state `assertSafeMaterializeTarget`
+        // fails closed on.
+        await Effect.runPromise(
+          fsWorkspace
+            .materialize({
+              _tag: 'MaterializePlan',
+              pageId: testIds.pageId,
+              path: realBodyPath,
+              bodyPointer: remotePointer,
+            })
+            .pipe(Effect.provideService(LocalWorkspacePort, fsWorkspace)),
+        )
+        const absoluteBodyPath = join(root, realBodyPath)
+        const cleanContent = await readFile(absoluteBodyPath, 'utf8')
+        const dirtyContent = `${cleanContent}\nlocal edit that keep-remote discards\n`
+        await writeFile(absoluteBodyPath, dirtyContent, 'utf8')
+        return { fsWorkspace, remotePointer, absoluteBodyPath, cleanContent, dirtyContent }
+      }
+
+      const realPullOptions = (
+        store: ReturnType<typeof makeStoreFixture>['store'],
+        root: AbsolutePath,
+      ) => ({
+        store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot: root,
+        queryContract: defaultQueryContract(),
+        schemaProperties: [],
+        now: makeFakeClock().now,
+        bodyPathForPage: () => realBodyPath,
+      })
+
+      it('keep-remote force-materialize OVERWRITES the dirty .nmd through the real guard (no wedge)', async () => {
+        const fixture = await makeTempWorkspace()
+        const { storeFixture, gatewayHarness, conflictId } = await raiseBodyConflict()
+        try {
+          const { fsWorkspace, remotePointer, absoluteBodyPath, dirtyContent } =
+            await setupDirtyWorkspace(fixture.root)
+
+          // keep-remote: discard the local edit and record the dedicated marker.
+          resolveConflictCommand({
+            store: storeFixture.store,
+            rootId: testIds.rootId,
+            conflictId,
+            choice: { _tag: 'keep-remote' },
+            now: makeFakeClock().now,
+          })
+          expect(
+            storeFixture.store
+              .readPlannerProjectionSnapshot(testIds.rootId)
+              .bodies.find((body) => body.pageId === testIds.pageId)?.keepRemoteBodyResolution,
+          ).toBe(true)
+
+          // A suppressed pull (`materializeBodyArtifacts: false`) STILL force-materializes
+          // this marked page and OVERWRITES the dirty `.nmd` — through the REAL
+          // `assertSafeMaterializeTarget`, which would otherwise throw and wedge syncing.
+          const bodyPortForPull = makeHarnessPorts({
+            bodyPages: [fakeBodyPage({ pointer: remotePointer })],
+          }).body
+          await Effect.runPromise(
+            pullOneShotSync({
+              ...realPullOptions(storeFixture.store, fixture.root),
+              materializeBodyArtifacts: false,
+            }).pipe(
+              Effect.provideService(NotionDataSourceGateway, gatewayHarness.gateway),
+              Effect.provideService(PageBodySyncPort, bodyPortForPull),
+              Effect.provideService(LocalWorkspacePort, fsWorkspace),
+            ),
+          )
+
+          // The dirty edit is gone (overwritten with the remote body placeholder)
+          // and the marker cleared, so a SECOND suppressed pull does NOT re-force.
+          const afterFirst = await readFile(absoluteBodyPath, 'utf8')
+          expect(afterFirst).not.toBe(dirtyContent)
+          expect(
+            storeFixture.store
+              .readPlannerProjectionSnapshot(testIds.rootId)
+              .bodies.find((body) => body.pageId === testIds.pageId)?.keepRemoteBodyResolution,
+          ).toBe(false)
+        } finally {
+          await fixture.cleanup()
+          storeFixture.cleanup()
+        }
+      })
+
+      it('routine two suppressed pulls on a dirty page do NOT force-materialize / wedge (dirty-edit preservation)', async () => {
+        const fixture = await makeTempWorkspace()
+        const storeFixture = makeStoreFixture({ mode: 'memory' })
+        const gatewayHarness = makeFakeGatewayHarness()
+        try {
+          initOneShotSync({
+            store: storeFixture.store,
+            rootId: testIds.rootId,
+            dataSourceId: testIds.dataSourceId,
+            workspaceRoot: fixture.root,
+            now: makeFakeClock().now,
+          })
+          const { fsWorkspace, remotePointer, absoluteBodyPath, dirtyContent } =
+            await setupDirtyWorkspace(fixture.root)
+          const bodyPortForPull = makeHarnessPorts({
+            bodyPages: [fakeBodyPage({ pointer: remotePointer })],
+          }).body
+
+          // NO keep-remote resolution → NO `keepRemoteBodyResolution` marker. Two
+          // consecutive suppressed pulls must NOT force-materialize, must NOT throw,
+          // and must PRESERVE the dirty local edit. Before the fix, the second pull
+          // force-materialized every page whose `sidecarIdentityProven` was cleared
+          // by the first suppressed pull — clobbering the dirty `.nmd` (the wedge).
+          const runSuppressedPull = () =>
+            Effect.runPromise(
+              pullOneShotSync({
+                ...realPullOptions(storeFixture.store, fixture.root),
+                materializeBodyArtifacts: false,
+              }).pipe(
+                Effect.provideService(NotionDataSourceGateway, gatewayHarness.gateway),
+                Effect.provideService(PageBodySyncPort, bodyPortForPull),
+                Effect.provideService(LocalWorkspacePort, fsWorkspace),
+              ),
+            )
+
+          await runSuppressedPull()
+          await runSuppressedPull()
+
+          expect(
+            storeFixture.store
+              .readPlannerProjectionSnapshot(testIds.rootId)
+              .bodies.find((body) => body.pageId === testIds.pageId)?.keepRemoteBodyResolution,
+          ).toBe(false)
+          // The local edit survives both suppressed pulls untouched.
+          await expect(readFile(absoluteBodyPath, 'utf8')).resolves.toBe(dirtyContent)
+        } finally {
+          await fixture.cleanup()
+          storeFixture.cleanup()
+        }
+      })
     })
 
     it.each([

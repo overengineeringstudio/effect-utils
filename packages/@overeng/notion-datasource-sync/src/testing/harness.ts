@@ -598,6 +598,7 @@ export const buildPlannerSnapshot = (
       currentHash: hash('body-a'),
       pointer: bodyPointer(hash('body-a')),
       sidecarIdentityProven: true,
+      keepRemoteBodyResolution: false,
       ownWriteMaterializationIds: [],
       safety: bodySafetySnapshot(),
     },

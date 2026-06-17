@@ -318,6 +318,108 @@ describe('filesystem local workspace E2E', () => {
     }
   })
 
+  // #775 decision 0013 keep-remote: an EXPLICIT user decision to discard the
+  // local edit must legitimately overwrite the dirty `.nmd` with the remote body.
+  // This drives the REAL `assertSafeMaterializeTarget` (not the fake, which skips
+  // it entirely) and proves `acceptRemoteOverwrite` bypasses ONLY the dirty-edit
+  // throw — the file IS overwritten and materialize does NOT throw/wedge.
+  it('keep-remote (acceptRemoteOverwrite) overwrites a dirty .nmd with the remote body', async () => {
+    const fixture = await makeTempWorkspace()
+    try {
+      const pageId = testPageId('page-1')
+      const path = testWorkspacePath('weekly-notes--page-1.nmd')
+      const workspace = makeFilesystemLocalWorkspacePort({ root: fixture.root })
+
+      // Establish a materialized body + sidecar, then dirty the file locally.
+      await Effect.runPromise(
+        workspace.materialize({
+          _tag: 'MaterializePlan',
+          pageId,
+          path,
+          bodyPointer: testBodyPointer({ pageId, bodyHash: testHash('body-a') }),
+        }),
+      )
+      const bodyPath = join(fixture.root, path)
+      const cleanBodyA = await readFile(bodyPath, 'utf8')
+      const dirtyContent = `${cleanBodyA}local edit\n`
+      await writeFile(bodyPath, dirtyContent, 'utf8')
+
+      // Sanity: WITHOUT the flag, the dirty file blocks materialize (the wedge the
+      // body keep-remote force-materialize would otherwise hit in production).
+      await expect(
+        Effect.runPromise(
+          Effect.flip(
+            workspace.materialize({
+              _tag: 'MaterializePlan',
+              pageId,
+              path,
+              bodyPointer: testBodyPointer({ pageId, bodyHash: testHash('body-b') }),
+            }),
+          ),
+        ),
+      ).resolves.toMatchObject({
+        operation: 'materialize',
+        message: expect.stringContaining('local edits'),
+      })
+
+      // WITH the approved-overwrite flag, materialize succeeds and the on-disk
+      // `.nmd` is replaced with the freshly materialized remote body (no longer the
+      // dirty content), and no error is thrown.
+      const result = await Effect.runPromise(
+        workspace.materialize({
+          _tag: 'MaterializePlan',
+          pageId,
+          path,
+          bodyPointer: testBodyPointer({ pageId, bodyHash: testHash('body-b') }),
+          acceptRemoteOverwrite: true,
+        }),
+      )
+      expect(result._tag).toBe('MaterializeResult')
+      const overwritten = await readFile(bodyPath, 'utf8')
+      // The dirty local edit is gone AND the body advanced from body-a to body-b
+      // (a fresh remote materialization, not the prior pristine body-a content).
+      expect(overwritten).not.toBe(dirtyContent)
+      expect(overwritten).not.toBe(cleanBodyA)
+      expect(overwritten).toContain(`body_hash: ${result.bodyHash}`)
+    } finally {
+      await fixture.cleanup()
+    }
+  })
+
+  // The approved-overwrite flag is NARROW: it bypasses ONLY the dirty-edit throw,
+  // not the structural guards. A path with no sidecar/claim identity is a genuine
+  // structural failure and must still fail closed even with the flag set.
+  it('acceptRemoteOverwrite does NOT bypass the no-identity structural guard', async () => {
+    const fixture = await makeTempWorkspace()
+    try {
+      const pageId = testPageId('page-1')
+      const path = testWorkspacePath('weekly-notes--page-1.nmd')
+      const workspace = makeFilesystemLocalWorkspacePort({ root: fixture.root })
+      const bodyPath = join(fixture.root, path)
+      // A foreign file at the target path with no sidecar/claim identity.
+      await writeFile(bodyPath, 'unknown local-only body\n', 'utf8')
+
+      await expect(
+        Effect.runPromise(
+          Effect.flip(
+            workspace.materialize({
+              _tag: 'MaterializePlan',
+              pageId,
+              path,
+              bodyPointer: testBodyPointer({ pageId, bodyHash: testHash('body-a') }),
+              acceptRemoteOverwrite: true,
+            }),
+          ),
+        ),
+      ).resolves.toMatchObject({
+        operation: 'materialize',
+        message: expect.stringContaining('no sidecar or claim identity'),
+      })
+    } finally {
+      await fixture.cleanup()
+    }
+  })
+
   it('fails closed when duplicate sidecars claim the same body path', async () => {
     const fixture = await makeTempWorkspace()
     try {

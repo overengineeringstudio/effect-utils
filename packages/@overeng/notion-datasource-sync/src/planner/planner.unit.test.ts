@@ -182,6 +182,7 @@ const snapshot = (
       currentHash: hash('f'),
       pointer: pointer(hash('f')),
       sidecarIdentityProven: true,
+      keepRemoteBodyResolution: false,
       ownWriteMaterializationIds: [],
       safety: bodySafety(),
     },

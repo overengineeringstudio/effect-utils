@@ -1566,6 +1566,7 @@ export class NotionSyncStore {
             currentHash: decodeHash(readString({ row: row, key: 'current_hash' })),
             pointer: payload.pointer,
             sidecarIdentityProven: readBoolean({ row: row, key: 'sidecar_identity_proven' }),
+            keepRemoteBodyResolution: payload.materialization.keepRemoteBodyResolution === true,
             ownWriteMaterializationIds: Schema.decodeSync(
               Schema.parseJson(Schema.Array(Schema.String)),
             )(readString({ row: row, key: 'own_write_materialization_ids_json' })),
@@ -3182,20 +3183,53 @@ CREATE TABLE _nds_conflict (
             // single-surface and adapter-owned: keep-remote accepts the remote body
             // and DROPS the local `.nmd` divergence. There is no engine-owned
             // mergeable value to reconverge in the projection (body is content), so
-            // the intent is recorded by clearing `sidecar_identity_proven` on the
-            // body pointer — the local sidecar is no longer trusted, so the next
-            // pull re-materializes the `.nmd` from the remote observation (a deferred
-            // remote effect, exactly as the lifecycle arm defers its reconvergence).
-            // The conflict is already retired to `resolved` above.
+            // the intent is recorded by (a) clearing `sidecar_identity_proven` (the
+            // local sidecar is no longer trusted) AND (b) setting a DEDICATED
+            // `keepRemoteBodyResolution` marker inside the body projection payload.
+            //
+            // The DEDICATED marker — not `sidecar_identity_proven === false` — is
+            // what drives the next pull's force-materialize (a deferred remote
+            // effect, exactly as the lifecycle arm defers its reconvergence). A
+            // cleared `sidecar_identity_proven` is the ROUTINE post-suppressed-pull
+            // state of EVERY page, so triggering on it would force-overwrite every
+            // dirty `.nmd` on two consecutive suppressed pulls (#775 review MAJOR).
+            // The marker is set ONLY here, for explicitly keep-remote-resolved
+            // pages, and is cleared automatically when the next `RowObserved`
+            // rebuilds the projection payload. The conflict is retired above.
             if (openedEvent._tag === 'ConflictRaised' && openedEvent.conflictKind === 'body') {
-              this.#db
+              const bodyRow = this.#db
                 .prepare(
-                  `UPDATE _nds_body_pointer
-                   SET sidecar_identity_proven = 0,
-                       updated_at = ?
+                  `SELECT body_projection_json
+                   FROM _nds_body_pointer
                    WHERE root_id = ? AND page_id = ?`,
                 )
-                .run(currentIso(this.#now), event.rootId, event.pageId)
+                .get(event.rootId, event.pageId)
+              if (bodyRow !== undefined) {
+                const payload = decodeBodyProjectionPayload(
+                  readString({ row: bodyRow, key: 'body_projection_json' }),
+                )
+                const markedPayload = encodeBodyProjectionPayload({
+                  ...payload,
+                  materialization: {
+                    ...payload.materialization,
+                    keepRemoteBodyResolution: true,
+                  },
+                })
+                this.#db
+                  .prepare(
+                    `UPDATE _nds_body_pointer
+                     SET sidecar_identity_proven = 0,
+                         body_projection_json = ?,
+                         updated_at = ?
+                     WHERE root_id = ? AND page_id = ?`,
+                  )
+                  .run(
+                    stringifyJson(markedPayload),
+                    currentIso(this.#now),
+                    event.rootId,
+                    event.pageId,
+                  )
+              }
             }
           }
         }

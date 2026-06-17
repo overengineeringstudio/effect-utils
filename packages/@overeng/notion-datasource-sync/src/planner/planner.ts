@@ -178,6 +178,14 @@ export type BodyPointerSurfaceSnapshot = {
   readonly currentHash: Hash
   readonly pointer: BodyPointer
   readonly sidecarIdentityProven: boolean
+  /**
+   * Dedicated keep-remote body-resolution intent (decision 0013): the page's
+   * `body` conflict was resolved `keep-remote`, so the next pull must
+   * force-materialize the remote body over the (approved-discarded) dirty
+   * local `.nmd`. Distinct from `sidecarIdentityProven === false`, which is
+   * the routine post-suppressed-pull state and must NOT trigger overwrite.
+   */
+  readonly keepRemoteBodyResolution: boolean
   readonly ownWriteMaterializationIds: ReadonlyArray<string>
   readonly safety: BodySafetySnapshot
 }

@@ -41,17 +41,35 @@ so resolution is NOT a value merge but a re-push (local) / re-materialize
   `BodyPushCommand` against the current body pointer, routed through the planner
   so the normal body-edit guards apply. On settlement the body pointer
   reconverges and the divergence is gone. The conflict moves to `resolved`.
-- **keep-remote** (and `manual`): accept the remote body. Emit
-  `ConflictResolved(keep-remote)`; the store `body` apply arm retires the conflict
-  and records the re-materialization intent by clearing `sidecar_identity_proven`
-  on the body pointer. The intent is CONSUMED on the next pull: `pullOneShotSync`
-  collects every body pointer whose `sidecarIdentityProven` is false and passes
-  them as `forceMaterializePageIds`, which overrides the mirror path's global
-  `materializeBodyArtifacts: false` suppression for exactly those pages — so the
-  still-diverged local `.nmd` IS rewritten from the remote observation rather than
-  the divergence persisting silently. This is a DEFERRED remote effect (it happens
-  on the next pull), exactly as the lifecycle keep-remote arm defers its
-  reconvergence.
+- **keep-remote** (and `manual`): accept the remote body and DISCARD the local
+  edit. Emit `ConflictResolved(keep-remote)`; the store `body` apply arm retires
+  the conflict and records the re-materialization intent on the body pointer by
+  (a) clearing `sidecar_identity_proven` (the local sidecar is no longer trusted)
+  AND (b) setting a DEDICATED `keepRemoteBodyResolution` marker in the body
+  projection payload. The intent is CONSUMED on the next pull: `pullOneShotSync`
+  collects every body pointer carrying the `keepRemoteBodyResolution` marker and
+  passes them as `forceMaterializePageIds`, which overrides the mirror path's
+  global `materializeBodyArtifacts: false` suppression for exactly those pages.
+
+  A `body` conflict ALWAYS has a dirty local `.nmd` by construction (the conflict
+  is only raised when the rendered local body diverges from the observed remote
+  body), so re-materializing it requires OVERWRITING a dirty file. keep-remote is
+  an EXPLICIT user decision to discard that edit, so the forced materialize
+  carries `acceptRemoteOverwrite` on its `MaterializePlan`, which bypasses ONLY
+  the workspace's "local edits; repair required" dirty-edit safety throw (the
+  structural collision / non-file / no-identity guards still apply). The
+  divergence is therefore reset to the remote body rather than the materialize
+  failing closed and WEDGING every subsequent pull. This is a DEFERRED remote
+  effect (it happens on the next pull), exactly as the lifecycle keep-remote arm
+  defers its reconvergence. The marker is cleared automatically once the forced
+  materialize lands and the next `RowObserved` rebuilds the projection without it.
+
+  The trigger is the DEDICATED marker, not `sidecarIdentityProven === false`: a
+  cleared `sidecarIdentityProven` is the routine state of EVERY page after any
+  suppressed (`materializeBodyArtifacts: false`) pull, so triggering on it would
+  force-overwrite every dirty `.nmd` on two consecutive suppressed pulls and break
+  the dirty-edit-preservation contract for pages that were never keep-remote
+  resolved.
 
 This mirrors the lifecycle conflict resolver (decision 0018): a page-keyed,
 null-`propertyId` conflict routed to its own resolver before the property-only
@@ -74,7 +92,17 @@ reconvergence for keep-remote.
 - A `body` conflict (raised by the adapter) is resolvable via keep-local re-push /
   keep-remote re-materialize. The `ConflictResolved` store apply has a `body` arm
   that retires the conflict and, for keep-remote, records the re-materialization
-  intent.
+  intent via the dedicated `keepRemoteBodyResolution` marker and an approved
+  `acceptRemoteOverwrite` materialize that overwrites the dirty `.nmd`. The forced
+  materialize is scoped to exactly the keep-remote-resolved pages, so a routine
+  suppressed pull never clobbers an unresolved dirty page.
+- Workspace-port note: the guard-bearing `makeFilesystemLocalWorkspacePort`
+  (`assertSafeMaterializeTarget`) honors `acceptRemoteOverwrite`, bypassing ONLY
+  the dirty-edit throw for an approved keep-remote overwrite. The live-NotionMD
+  materializing port (`materializeBody` → `trackPage`) overwrites a same-page
+  `.nmd` unconditionally, so the flag is a benign no-op there. The over-broad
+  trigger fix (the dedicated marker) lives in the pull/observation seam, so it
+  is port-independent and applies to both wirings.
 - The lifecycle conflict machinery (decision 0018) and the property convergence
   engine are untouched by this decision.
 

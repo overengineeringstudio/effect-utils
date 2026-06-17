@@ -730,15 +730,26 @@ export const pullOneShotSync = Effect.fn(spanNames.syncPull)(
         ...(options.dryRun === undefined ? {} : { dryRun: options.dryRun }),
       })
       yield* reportSyncProgress({ _tag: 'phase', phase: 'pulling' })
-      // Body keep-remote re-materialization (decision 0013). A body pointer whose
-      // `sidecarIdentityProven` was cleared by a keep-remote resolution must be
-      // re-materialized from the remote observation even under the mirror path's
-      // global `materializeBodyArtifacts: false` suppression — keep-remote accepted
-      // the remote body, so the still-diverged local `.nmd` is overwritten.
+      // Body keep-remote re-materialization (decision 0013). A body pointer
+      // carrying the DEDICATED `keepRemoteBodyResolution` marker — set ONLY when a
+      // `body` conflict was resolved `keep-remote` — must be re-materialized from
+      // the remote observation even under the mirror path's global
+      // `materializeBodyArtifacts: false` suppression. keep-remote was an explicit
+      // user decision to discard the local edit, so the still-diverged local
+      // `.nmd` is overwritten (an approved overwrite that bypasses the dirty-edit
+      // safety guard, via `acceptRemoteOverwrite` on the MaterializePlan).
+      //
+      // The trigger is the dedicated marker, NOT `sidecarIdentityProven === false`:
+      // a cleared `sidecarIdentityProven` is the routine state of every page after
+      // any suppressed pull, so triggering on it would force-overwrite every dirty
+      // `.nmd` on two consecutive suppressed pulls and break the dirty-edit
+      // preservation contract (#775 review MAJOR). The marker clears automatically
+      // once the forced materialize lands and the next `RowObserved` rebuilds the
+      // projection without it.
       const forceMaterializePageIds = new Set(
         options.store
           .readPlannerProjectionSnapshot(options.rootId)
-          .bodies.filter((body) => body.sidecarIdentityProven === false)
+          .bodies.filter((body) => body.keepRemoteBodyResolution === true)
           .map((body) => body.pageId),
       )
       const observation = yield* observeRemoteDataSource({

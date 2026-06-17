@@ -159,6 +159,20 @@ export const BodyProjectionMaterialization = Schema.Struct({
   path: WorkspaceRelativePath,
   sidecarIdentityProven: Schema.Boolean,
   ownWriteMaterializationIds: Schema.Array(Schema.NonEmptyTrimmedString),
+  /**
+   * Dedicated keep-remote body-resolution intent (decision 0013). Set when a
+   * `body` conflict is resolved `keep-remote`: the user EXPLICITLY discarded the
+   * dirty local `.nmd`, so the next pull must force-materialize the remote body
+   * over it (an approved overwrite that bypasses the dirty-edit safety guard).
+   * This is a DEDICATED marker, NOT `sidecarIdentityProven === false`: a cleared
+   * `sidecarIdentityProven` is the ROUTINE state after any suppressed
+   * (`materializeBodyArtifacts: false`) pull, so triggering force-materialize on
+   * it would clobber every dirty page on two consecutive suppressed pulls. The
+   * marker fires ONLY for explicitly keep-remote-resolved pages and is cleared
+   * automatically when the next `RowObserved` rebuilds this projection. Optional
+   * so existing stored projections (which never carry it) decode unchanged.
+   */
+  keepRemoteBodyResolution: Schema.optional(Schema.Boolean),
 }).annotations({ identifier: 'NotionDatasourceSync.BodyProjectionMaterialization' })
 export type BodyProjectionMaterialization = typeof BodyProjectionMaterialization.Type
 

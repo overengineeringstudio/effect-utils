@@ -365,14 +365,8 @@ export type CliContext = {
   readonly webhookReceiverStarted?: (status: NotionWebhookReceiverStatus) => void
 }
 
-const identityKeyOf = (identity: LocalIdentity): string => {
-  switch (identity.kind) {
-    case 'property':
-      return `property ${identity.pageId} ${identity.propertyId}`
-    case 'body':
-      return `body ${identity.pageId}`
-  }
-}
+const identityKeyOf = (identity: LocalIdentity): string =>
+  `property ${identity.pageId} ${identity.propertyId}`
 
 const intentIdentityKey = (intent: PlannerIntent): string | undefined => {
   switch (intent._tag) {

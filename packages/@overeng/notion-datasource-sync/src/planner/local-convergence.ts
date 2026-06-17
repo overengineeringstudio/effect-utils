@@ -55,7 +55,7 @@
  * @module
  */
 
-import { bodySurfaceKey, propertySurfaceKey } from '../core/canonical.ts'
+import { propertySurfaceKey } from '../core/canonical.ts'
 import type { ConflictPayload } from '../core/conflicts.ts'
 import { classifyConflict } from '../core/conflicts.ts'
 import type { Hash, PageId, PropertyId } from '../core/domain.ts'
@@ -63,11 +63,20 @@ import type { Hash, PageId, PropertyId } from '../core/domain.ts'
 /**
  * Stable, content-addressed identity for one logical local surface. Never
  * path- or title-derived (R06): a page is its Notion `page_id`, a property its
- * stable `property_id`, a body its rendered digest, a lifecycle its `page_id`.
+ * stable `property_id`.
+ *
+ * Body is intentionally NOT a convergence identity (decision 0013): the `.nmd`
+ * body is single-surface and adapter-owned, so it never routes through this
+ * cross-surface convergence engine. A former `body` variant constructed a
+ * `body-body-delegated` `ConflictPayload` here, a `conflictKind` that
+ * `ConflictRaised` no longer admits — a latent decode footgun. It is removed
+ * so a future second body surface cannot silently revive that dead path.
  */
-export type LocalIdentity =
-  | { readonly kind: 'property'; readonly pageId: PageId; readonly propertyId: PropertyId }
-  | { readonly kind: 'body'; readonly pageId: PageId }
+export type LocalIdentity = {
+  readonly kind: 'property'
+  readonly pageId: PageId
+  readonly propertyId: PropertyId
+}
 
 /**
  * One drained SQLite data-file edit, projected to its stable identity and the
@@ -159,31 +168,19 @@ export type LocalConvergenceResult = {
   readonly blockedIdentities: ReadonlyArray<LocalIdentity>
 }
 
-const identityKey = (identity: LocalIdentity): string => {
-  switch (identity.kind) {
-    case 'property':
-      return `property:${identity.pageId}:${identity.propertyId}`
-    case 'body':
-      return `body:${identity.pageId}`
-  }
-}
+const identityKey = (identity: LocalIdentity): string =>
+  `property:${identity.pageId}:${identity.propertyId}`
 
-const surfaceKeyForIdentity = (identity: LocalIdentity) => {
-  switch (identity.kind) {
-    case 'property':
-      return propertySurfaceKey({ pageId: identity.pageId, propertyId: identity.propertyId })
-    case 'body':
-      return bodySurfaceKey(identity.pageId)
-  }
-}
+const surfaceKeyForIdentity = (identity: LocalIdentity) =>
+  propertySurfaceKey({ pageId: identity.pageId, propertyId: identity.propertyId })
 
 /**
  * Build the `local` and `remote` {@link import('../core/conflicts.ts').ConflictSurface}s
- * for a divergent identity and classify them. Both inputs are LOCAL surfaces — the
- * SQLite edit is passed as `local`, the `.nmd` fact as `remote` — so the reused
- * `classifyConflict` yields the same-surface conflict kinds (`same-property`,
- * `body-body-delegated`, `delete-vs-edit`) without inventing a parallel
- * classifier.
+ * for a divergent property identity and classify them. Both inputs are LOCAL surfaces —
+ * the SQLite edit is passed as `local`, the `.nmd` fact as `remote` — so the reused
+ * `classifyConflict` yields the same-surface conflict kind (`same-property`) without
+ * inventing a parallel classifier. Body is never a convergence identity (decision
+ * 0013), so it is not handled here.
  */
 const conflictFor = ({
   identity,
@@ -196,70 +193,35 @@ const conflictFor = ({
 }): ConflictPayload => {
   const surface = surfaceKeyForIdentity(identity)
 
-  switch (identity.kind) {
-    case 'property': {
-      const classification = classifyConflict({
-        local: {
-          _tag: 'property',
-          pageId: identity.pageId,
-          propertyId: identity.propertyId,
-          baseHash: sqlite.baseHash ?? sqlite.desiredHash,
-          nextHash: sqlite.desiredHash,
-          surface,
-        },
-        remote: {
-          _tag: 'property',
-          pageId: identity.pageId,
-          propertyId: identity.propertyId,
-          baseHash: nmd.baseHash ?? nmd.desiredHash,
-          nextHash: nmd.desiredHash,
-          surface,
-        },
-      })
-      return classification._tag === 'conflict'
-        ? classification.conflict
-        : {
-            kind: 'same-property',
-            localSurface: surface,
-            remoteSurface: surface,
-            baseHash: sqlite.baseHash,
-            localHash: sqlite.desiredHash,
-            remoteHash: nmd.desiredHash,
-            message: 'Local SQLite and `.nmd` surfaces disagree on the same property',
-          }
-    }
-    case 'body': {
-      const classification = classifyConflict({
-        local: {
-          _tag: 'body',
-          pageId: identity.pageId,
-          baseHash: sqlite.baseHash ?? sqlite.desiredHash,
-          nextHash: sqlite.desiredHash,
-          lossy: false,
-          surface,
-        },
-        remote: {
-          _tag: 'body',
-          pageId: identity.pageId,
-          baseHash: nmd.baseHash ?? nmd.desiredHash,
-          nextHash: nmd.desiredHash,
-          lossy: false,
-          surface,
-        },
-      })
-      return classification._tag === 'conflict'
-        ? classification.conflict
-        : {
-            kind: 'body-body-delegated',
-            localSurface: surface,
-            remoteSurface: surface,
-            baseHash: sqlite.baseHash,
-            localHash: sqlite.desiredHash,
-            remoteHash: nmd.desiredHash,
-            message: 'Local SQLite and `.nmd` surfaces disagree on the page body',
-          }
-    }
-  }
+  const classification = classifyConflict({
+    local: {
+      _tag: 'property',
+      pageId: identity.pageId,
+      propertyId: identity.propertyId,
+      baseHash: sqlite.baseHash ?? sqlite.desiredHash,
+      nextHash: sqlite.desiredHash,
+      surface,
+    },
+    remote: {
+      _tag: 'property',
+      pageId: identity.pageId,
+      propertyId: identity.propertyId,
+      baseHash: nmd.baseHash ?? nmd.desiredHash,
+      nextHash: nmd.desiredHash,
+      surface,
+    },
+  })
+  return classification._tag === 'conflict'
+    ? classification.conflict
+    : {
+        kind: 'same-property',
+        localSurface: surface,
+        remoteSurface: surface,
+        baseHash: sqlite.baseHash,
+        localHash: sqlite.desiredHash,
+        remoteHash: nmd.desiredHash,
+        message: 'Local SQLite and `.nmd` surfaces disagree on the same property',
+      }
 }
 
 const indexByIdentity = <TEdit extends { readonly identity: LocalIdentity }>(
@@ -338,25 +300,21 @@ export const convergeLocalSurfaces = ({
           desiredHash: sqlite.desiredHash,
           baseHash: sqlite.baseHash ?? nmd.baseHash,
         })
-        if (identity.kind === 'property') {
-          propertyVerdicts.push({
-            pageId: identity.pageId,
-            propertyId: identity.propertyId,
-            status: 'converged',
-          })
-        }
+        propertyVerdicts.push({
+          pageId: identity.pageId,
+          propertyId: identity.propertyId,
+          status: 'converged',
+        })
       } else {
         const conflict = conflictFor({ identity, sqlite, nmd })
         outcomes.push({ _tag: 'local-conflict', identity, conflict })
         conflicts.push(conflict)
         blockedIdentities.push(identity)
-        if (identity.kind === 'property') {
-          propertyVerdicts.push({
-            pageId: identity.pageId,
-            propertyId: identity.propertyId,
-            status: 'disagrees',
-          })
-        }
+        propertyVerdicts.push({
+          pageId: identity.pageId,
+          propertyId: identity.propertyId,
+          status: 'disagrees',
+        })
       }
       continue
     }
