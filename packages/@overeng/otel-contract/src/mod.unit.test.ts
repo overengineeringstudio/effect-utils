@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { expectTrace } from '@overeng/utils-dev/otelite'
 
 import {
+  type FleetServiceBinding,
   OtelAttr,
   OtelAttrEncodeError,
   OtelAttrPlanError,
@@ -16,6 +17,8 @@ import {
   OtelSpan,
   OtelSpanName,
   ServiceIdentity,
+  ServiceNameFromParts,
+  serviceIdentityFromBinding,
 } from './mod.ts'
 
 describe('OTEL schema names', () => {
@@ -111,6 +114,73 @@ describe('ServiceIdentity', () => {
     ]) {
       await expect(
         Effect.runPromise(Effect.either(Schema.decodeUnknown(ServiceIdentity)(bad))),
+      ).resolves.toMatchObject({ _tag: 'Left' })
+    }
+  })
+})
+
+describe('ServiceNameFromParts', () => {
+  it('builds `<project>-<role>` and validates it through the OtelServiceName brand', async () => {
+    const name = await Effect.runPromise(
+      Schema.decode(ServiceNameFromParts)({ project: 'my-project', role: 'worker' }),
+    )
+    expect(name).toBe('my-project-worker')
+    // The result is a real OtelServiceName (decodes through the brand unchanged).
+    await expect(Effect.runPromise(Schema.decodeUnknown(OtelServiceName)(name))).resolves.toBe(
+      'my-project-worker',
+    )
+  })
+
+  it('rejects an empty or whitespace part as a decode failure', async () => {
+    // Trailing-hyphen trap: an empty role composes to `"my-project-"`, which the
+    // OtelServiceName pattern alone admits — the part-level validation is what
+    // makes this a failure.
+    for (const bad of [
+      { project: 'my-project', role: '' },
+      { project: 'my-project', role: '   ' },
+      { project: '', role: 'worker' },
+      { project: '  ', role: 'worker' },
+    ]) {
+      await expect(
+        Effect.runPromise(Effect.either(Schema.decode(ServiceNameFromParts)(bad))),
+      ).resolves.toMatchObject({ _tag: 'Left' })
+    }
+  })
+
+  it('rejects a composed name that violates the naming law', async () => {
+    // A leading digit project breaks the brand's `^[A-Za-z]` law once joined.
+    await expect(
+      Effect.runPromise(
+        Effect.either(Schema.decode(ServiceNameFromParts)({ project: '1bad', role: 'worker' })),
+      ),
+    ).resolves.toMatchObject({ _tag: 'Left' })
+  })
+})
+
+describe('serviceIdentityFromBinding', () => {
+  it('assembles a ServiceIdentity that stamps the right service.* attributes', async () => {
+    const binding: FleetServiceBinding = {
+      project: 'my-project',
+      role: 'worker',
+      namespace: 'acme',
+      version: '1.2.3',
+    }
+    const identity = await Effect.runPromise(serviceIdentityFromBinding(binding))
+    expect(identity).toEqual({ name: 'my-project-worker', namespace: 'acme', version: '1.2.3' })
+    // Re-decoding through the struct confirms the result is a valid ServiceIdentity.
+    await expect(
+      Effect.runPromise(Schema.decodeUnknown(ServiceIdentity)(identity)),
+    ).resolves.toEqual(identity)
+  })
+
+  it('fails on a malformed part/namespace/version at the edge', async () => {
+    for (const bad of [
+      { project: 'my-project', role: '', namespace: 'acme', version: '1.0.0' },
+      { project: 'my-project', role: 'worker', namespace: '', version: '1.0.0' },
+      { project: 'my-project', role: 'worker', namespace: 'acme', version: '' },
+    ] satisfies ReadonlyArray<FleetServiceBinding>) {
+      await expect(
+        Effect.runPromise(Effect.either(serviceIdentityFromBinding(bad))),
       ).resolves.toMatchObject({ _tag: 'Left' })
     }
   })

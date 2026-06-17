@@ -118,6 +118,29 @@ every signal:
 `@effect/opentelemetry`: the explicit identity wins on collision, env-only attrs
 are preserved (runtime provenance intact).
 
+### `<project>-<role>` name + fleet-binding seam (R01)
+
+The conventional `service.name` is `` `${project}-${role}` ``, built and validated
+in `@overeng/otel-contract`:
+
+```ts
+ServiceNameFromParts: Schema<OtelServiceName, { project; role }>  // decode at the edge
+serviceIdentityFromBinding(b: FleetServiceBinding): Effect<ServiceIdentity, ParseError>
+```
+
+`ServiceNameFromParts` validates `project`/`role` as plain `NonEmptyTrimmedString`
+THEN decodes the joined string through `OtelServiceName`. Both layers are
+load-bearing: `OtelServiceName`'s pattern admits a trailing hyphen, so an empty
+`role` would compose to `"<project>-"` and pass a single decode — the part-level
+non-empty check closes that trap.
+
+`FleetServiceBinding` is the PUBLIC type-seam: a plain-`string`
+`{ project, role, namespace, version }` interface describing the SHAPE a private
+fleet config supplies. This repo owns the TYPE + constructor; a private repo
+supplies the VALUES. Fields are unbranded on purpose (decode happens at the edge,
+in `serviceIdentityFromBinding`), and the public repo holds zero fleet values. See
+[.decisions/0003-fleet-service-binding-seam.md](./.decisions/0003-fleet-service-binding-seam.md).
+
 ## The `OtelConfig` gate (R11, R12)
 
 ```ts
