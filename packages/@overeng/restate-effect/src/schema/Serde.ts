@@ -72,7 +72,7 @@ export const effectSerde = <A, I>({
    * `VoidKeyword`/`UndefinedKeyword` schema defaults to no content type. */
   const isVoid = schema.ast._tag === 'VoidKeyword' || schema.ast._tag === 'UndefinedKeyword'
   const contentType = Option.flatMap(overrides, (o) => Option.fromNullable(o.contentType)).pipe(
-    Option.getOrElse(() => (isVoid ? undefined : 'application/json')),
+    Option.getOrElse(() => (isVoid === true ? undefined : 'application/json')),
   )
   const jsonSchema = Option.flatMap(overrides, (o) => Option.fromNullable(o.jsonSchema)).pipe(
     Option.getOrElse(() => JSONSchema.make(schema) as object),

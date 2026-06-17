@@ -138,7 +138,7 @@ export const DeliveryLive = RestateWorkflow.implement<typeof DeliveryWf>({
     run: ({ wedge }) =>
       Effect.gen(function* () {
         yield* Delivery.set({ key: 'phase', value: 'delivering' })
-        if (wedge) {
+        if (wedge === true) {
           /* Suspend on a long durable timer until the operator cancels/kills the
            * invocation (or it eventually fires). */
           yield* Restate.sleep({ millis: 600_000, name: 'delivery-backoff' })

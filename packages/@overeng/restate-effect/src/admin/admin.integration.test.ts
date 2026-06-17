@@ -159,7 +159,7 @@ describe.skipIf(!serverAvailable)('restate-effect ./admin management API', () =>
     const cancelDeadline = Date.now() + 30_000
     let cancelled = false
     while (Date.now() < cancelDeadline) {
-      if (await gone()) {
+      if ((await gone()) === true) {
         cancelled = true
         break
       }

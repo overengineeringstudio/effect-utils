@@ -93,7 +93,7 @@ export const NotionWatcher = RestateScheduled.make<typeof WatcherState>({
       yield* Watcher.set({ key: 'cursor', value: page.nextCursor })
       yield* Watcher.set({ key: 'itemsSeen', value: itemsSeen + page.itemCount })
       /* Data-driven stop: the source has no more pages → end the loop cleanly. */
-      return page.done ? { stop: true } : { stop: false }
+      return page.done === true ? { stop: true } : { stop: false }
     }),
 })
 
@@ -328,6 +328,6 @@ export const makeComposedDaemon = (opts: {
         /* Success: advance the cursor + tally; `done` ends the loop cleanly. */
         yield* Composed.set({ key: 'cursor', value: result.nextCursor })
         yield* Composed.set({ key: 'itemsSeen', value: itemsSeen + result.itemCount })
-        return result.done ? { stop: true } : { stop: false }
+        return result.done === true ? { stop: true } : { stop: false }
       }),
   })

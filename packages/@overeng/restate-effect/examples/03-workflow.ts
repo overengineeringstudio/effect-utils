@@ -57,7 +57,10 @@ export const ApprovalLive = RestateWorkflow.implement<typeof ApprovalWf>({
          * an infra failure is a defect there. */
         yield* Status.set({ key: 'status', value: 'pending' })
         const decision = yield* Approval.get('decision') // blocks until resolved
-        yield* Status.set({ key: 'status', value: decision.approved ? 'approved' : 'rejected' })
+        yield* Status.set({
+          key: 'status',
+          value: decision.approved === true ? 'approved' : 'rejected',
+        })
         return decision.approved
       }),
     /* Signals (shared): resolve the durable promise. `reject` drives the

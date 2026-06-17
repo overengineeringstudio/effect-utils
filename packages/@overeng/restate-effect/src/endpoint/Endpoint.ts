@@ -127,7 +127,7 @@ const runEffectHandler =
             service: opts.service,
             handler: opts.handler,
             key,
-            workflowId: isWorkflow ? key : undefined,
+            workflowId: isWorkflow === true ? key : undefined,
             idempotencyKey: readIdempotencyKeyHeader(ctx),
           })
         : undefined
@@ -223,7 +223,7 @@ const mapRetention = ({
       ? { idempotencyRetention: toMillis(retention.idempotency) }
       : {}),
     ...(retention.journal !== undefined ? { journalRetention: toMillis(retention.journal) } : {}),
-    ...(includeWorkflow && retention.workflow !== undefined
+    ...(includeWorkflow === true && retention.workflow !== undefined
       ? { workflowRetention: toMillis(retention.workflow) }
       : {}),
   }

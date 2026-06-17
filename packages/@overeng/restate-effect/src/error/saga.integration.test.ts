@@ -60,7 +60,7 @@ const ChargeLive = RestateService.implement<typeof Charge>({
           yield* Restate.run({ name: 'refund', effect: Effect.succeed('refunded') }).pipe(
             Effect.orDie,
           )
-          return isRestateDefect ? 'compensated' : 'compensated-other'
+          return isRestateDefect === true ? 'compensated' : 'compensated-other'
         }
         return 'charged'
       }),

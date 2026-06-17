@@ -303,7 +303,7 @@ const startServer = async (opts: {
       if (exit !== undefined) return exit
       try {
         const res = await fetch(`${adminUrl}/health`)
-        if (res.ok) break
+        if (res.ok === true) break
       } catch {
         /* not up yet */
       }
@@ -327,7 +327,7 @@ const startServer = async (opts: {
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ query: 'SELECT count(1) FROM sys_invocation' }),
         })
-        if (res.ok) break
+        if (res.ok === true) break
       } catch {
         /* partitions not ready yet */
       }
@@ -922,7 +922,7 @@ export const withRestateServer = <AppR>(opts: {
 
   return {
     setup: async () => {
-      if (!serverAvailable) return
+      if (serverAvailable === false) return
       scope = await Effect.runPromise(Scope.make())
       service = await Effect.runPromise(
         Layer.buildWithScope(built, scope).pipe(

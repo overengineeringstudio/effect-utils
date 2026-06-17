@@ -240,7 +240,10 @@ const _ApproveOk = RestateWorkflow.implement<typeof Approve>({
       Effect.gen(function* () {
         yield* ApproveState.set({ key: 'status', value: 'pending' })
         const decision = yield* Approval.get('decision')
-        yield* ApproveState.set({ key: 'status', value: decision.ok ? 'approved' : 'rejected' })
+        yield* ApproveState.set({
+          key: 'status',
+          value: decision.ok === true ? 'approved' : 'rejected',
+        })
         return decision.ok
       }).pipe(Effect.orDie),
     approve: (d) => Approval.resolve({ name: 'decision', value: d }).pipe(Effect.orDie),
