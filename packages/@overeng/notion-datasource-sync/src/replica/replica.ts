@@ -1,4 +1,4 @@
-import { mkdirSync, realpathSync } from 'node:fs'
+import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 
@@ -151,15 +151,6 @@ const readOptionalString = ({
   if (value === null || value === undefined) return undefined
   if (typeof value !== 'string') throw new Error(`Expected SQLite column ${key} to be a string`)
   return value
-}
-
-/** Resolves an existing workspace root for comparison with SQLite's opened filename. */
-const canonicalWorkspaceRootForReplica = (workspaceRoot: string): string => {
-  try {
-    return realpathSync(workspaceRoot)
-  } catch {
-    return workspaceRoot
-  }
 }
 
 const ensureReplicaColumn = ({
@@ -1127,9 +1118,16 @@ export const createReplicaSchemaInTransaction = (db: DatabaseSync): void => {
         -- Move-detection stays a self-join on this file's own main database
         -- (no ATTACH); workspace_root is the value materialized at projection
         -- time, so a file relocated AFTER projection still reports moved.
+        -- macOS may expose the same temp path as either /var/... or
+        -- /private/var/... across Node and SQLite, so treat those aliases as
+        -- the same workspace root while preserving moved-copy detection.
         CASE
           WHEN status.workspace_root IS NULL THEN 'unbound'
           WHEN database_list.file LIKE status.workspace_root || '/%' THEN 'bound'
+          WHEN status.workspace_root LIKE '/private/var/%'
+            AND database_list.file LIKE substr(status.workspace_root, 9) || '/%' THEN 'bound'
+          WHEN status.workspace_root LIKE '/var/%'
+            AND database_list.file LIKE '/private' || status.workspace_root || '/%' THEN 'bound'
           ELSE 'moved'
         END AS workspace_status
       FROM status_counts status
@@ -3059,9 +3057,7 @@ export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): voi
             readOptionalString({ row, key: 'observed_at' }) ?? null,
             readString({ row, key: 'updated_at' }),
             bindingForSource?.databaseId ?? null,
-            bindingForSource?.workspaceRoot === undefined
-              ? null
-              : canonicalWorkspaceRootForReplica(bindingForSource.workspaceRoot),
+            bindingForSource?.workspaceRoot ?? null,
           )
         if (metadataRow?.parentDatabaseId !== undefined && metadataRow.metadataJson !== undefined) {
           replicaDb
