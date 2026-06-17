@@ -1,4 +1,4 @@
-import { mkdirSync } from 'node:fs'
+import { mkdirSync, realpathSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 
@@ -151,6 +151,15 @@ const readOptionalString = ({
   if (value === null || value === undefined) return undefined
   if (typeof value !== 'string') throw new Error(`Expected SQLite column ${key} to be a string`)
   return value
+}
+
+/** Resolves an existing workspace root for comparison with SQLite's opened filename. */
+const canonicalWorkspaceRootForReplica = (workspaceRoot: string): string => {
+  try {
+    return realpathSync(workspaceRoot)
+  } catch {
+    return workspaceRoot
+  }
 }
 
 const ensureReplicaColumn = ({
@@ -3050,7 +3059,9 @@ export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): voi
             readOptionalString({ row, key: 'observed_at' }) ?? null,
             readString({ row, key: 'updated_at' }),
             bindingForSource?.databaseId ?? null,
-            bindingForSource?.workspaceRoot ?? null,
+            bindingForSource?.workspaceRoot === undefined
+              ? null
+              : canonicalWorkspaceRootForReplica(bindingForSource.workspaceRoot),
           )
         if (metadataRow?.parentDatabaseId !== undefined && metadataRow.metadataJson !== undefined) {
           replicaDb
