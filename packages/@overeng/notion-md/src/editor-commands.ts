@@ -348,6 +348,7 @@ const defaultRunEditor = (opts: {
   Effect.gen(function* () {
     const editor = resolveEditorCommand()
     // Split a possibly-flagged editor command (e.g. `code --wait`) on whitespace.
+    // oxlint-disable-next-line unicorn/prefer-array-find -- tokenizing into ALL non-empty parts (bin + ...args), not finding one element
     const [bin, ...args] = editor.split(/\s+/u).filter((part) => part.length > 0)
     const command = PlatformCommand.make(bin ?? 'vi', ...args, opts.filePath).pipe(
       PlatformCommand.stdin('inherit'),

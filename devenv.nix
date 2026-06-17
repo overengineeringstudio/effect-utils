@@ -399,9 +399,12 @@ in
       genieCoverageDirs = [ "packages" ];
       # Type-aware linting for typescript/no-deprecated rule
       tsconfig = "tsconfig.all.json";
-      # The existing workspace still has warning-class oxlint findings. Keep
-      # lint fatal for errors while warning cleanup remains incremental.
-      denyWarnings = false;
+      # Warning cleanup is complete: every oxlint rule is at zero repo-wide
+      # (swept + key rules promoted to error; non-API surfaces exempted by
+      # override). Lint is now fatal on ANY warning so the gate can never
+      # silently regress — enforced identically in CI and the local pre-commit
+      # gate (both run `lint:check`).
+      denyWarnings = true;
     })
     (taskModules.ts-effect-lsp { })
     # Setup task (auto-runs in enterShell)
