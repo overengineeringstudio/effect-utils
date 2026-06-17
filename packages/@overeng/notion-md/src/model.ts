@@ -133,10 +133,19 @@ export type MarkdownUpdateCommand =
       readonly markdown: string
     }
 
+/**
+ * Why a given `pullPage` round-trip happens. Threaded onto the gateway pull span
+ * (`notion_md.pull.purpose` + the span label) so the otherwise-identical pulls a
+ * single `edit`/push performs (preflight/observe/status/settle/init) are
+ * distinguishable in a trace. Callers that don't care default to `'other'`.
+ */
+export type PullPurpose = 'init' | 'status' | 'observe' | 'preflight' | 'settle' | 'other'
+
 /** Minimal gateway boundary between sync logic and the Notion API. */
 export interface NotionMdGatewayShape {
   readonly pullPage: (opts: {
     readonly pageId: string
+    readonly purpose?: PullPurpose | undefined
   }) => Effect.Effect<PullPageResult, NmdGatewayError>
   readonly updateMarkdown: (opts: {
     readonly pageId: string

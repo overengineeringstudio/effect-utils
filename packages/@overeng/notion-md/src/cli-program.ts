@@ -3,10 +3,13 @@ import { basename, dirname, resolve } from 'node:path'
 import { Args, Command, Options } from '@effect/cli'
 import { FetchHttpClient, FileSystem, Path } from '@effect/platform'
 import { Cause, Console, Duration, Effect, Layer, Option, Queue, Schema, Stream } from 'effect'
+import React from 'react'
 
 import { NotionConfigLive, resolveNotionToken } from '@overeng/notion-effect-client'
 import { parseNotionUuid } from '@overeng/notion-effect-schema'
 import { OtelAttr, OtelAttrs, OtelOperation } from '@overeng/otel-contract'
+import { run } from '@overeng/tui-react'
+import { outputModeLayer, outputOption } from '@overeng/tui-react/node'
 import { resolveCliVersion } from '@overeng/utils/node/cli-version'
 
 import {
@@ -16,6 +19,15 @@ import {
   statusMany,
   syncMany,
 } from './batch.ts'
+import { getEditApp } from './cli-output/edit/app.ts'
+import { EditView } from './cli-output/edit/view.tsx'
+import { progressReporterTui } from './cli-output/progress-bridge.ts'
+import { getPutApp } from './cli-output/put/app.ts'
+import type { PutAction } from './cli-output/put/schema.ts'
+import { PutView } from './cli-output/put/view.tsx'
+import { getSyncApp } from './cli-output/sync/app.ts'
+import { syncErrorAction, syncResultAction, type SyncEngineResult } from './cli-output/sync/map.ts'
+import { SyncView } from './cli-output/sync/view.tsx'
 import {
   catEditorPage,
   editEditorPage,
@@ -23,12 +35,16 @@ import {
   putEditorPage,
   type EditorMode,
 } from './editor-commands.ts'
-import { NmdCliError, NmdTokenMissingError, NmdUnresolvablePageError } from './errors.ts'
+import {
+  NmdCliError,
+  NmdTokenMissingError,
+  NmdUnresolvablePageError,
+  type NmdError,
+} from './errors.ts'
 import { NotionMdGatewayLive } from './live.ts'
 import type { NotionMdGateway } from './model.ts'
 import { annotateAttrs, withOperation } from './observability.ts'
 import { planPath, statusPath, syncPath, targetKind } from './path.ts'
-import { ProgressReporterStderrLines } from './progress.ts'
 import { NmdStateStoreLive, type NmdStateStore } from './state-store.ts'
 import { pullPage, syncPage, type SyncOptions } from './sync.ts'
 import { NOTION_MD_VERSION } from './version.ts'
@@ -487,6 +503,53 @@ const planCommand = Command.make(
   ),
 )
 
+/**
+ * Route a one-shot `sync` engine effect through the tui-react OutputMode seam
+ * (Slice C). Mirrors the `edit`/`put` wiring: the engine emits stages via the
+ * `ProgressReporter` Tag (single-page only — multi-page rows come from the
+ * terminal result), `progressReporterTui` bridges each onto `tui.dispatch`, and
+ * the normalized terminal action carries the outcome into the view. Engine
+ * failures propagate UNCAUGHT so the `runMain` teardown owns the exit code
+ * (single-page `NmdConflictError`→7, others→1); a tree/batch conflict is a
+ * reported per-page outcome (exit 0). The `--watch` path never reaches here.
+ *
+ * IMPORTANT: the `engine` MUST already wrap its Notion-touching call in
+ * `withNotion` per-branch — NOT the whole effect. The pre-flight validations
+ * (`targetKind`, `assertFromRemoteTreeTarget`) run BEFORE token resolution (the
+ * "before resolving Notion credentials" e2e contract), and `withNotion` front-
+ * runs `resolveToken`. So this helper only adds the view bridge + OutputMode
+ * layer, leaving residual `R = FileSystem` for the validation steps.
+ */
+const runSyncOutput = <E>({
+  target,
+  output,
+  engine,
+}: {
+  readonly target: string
+  readonly output: Parameters<typeof outputModeLayer>[0]
+  readonly engine: Effect.Effect<SyncEngineResult, E, FileSystem.FileSystem | Path.Path>
+}) =>
+  run(
+    getSyncApp(),
+    (tui) => {
+      // `getSyncApp` is cached with an empty-target placeholder; seed the real
+      // target first so the context header + summary name it (dispatch is sync +
+      // the reducer is pure, so this lands before the engine's first stage).
+      tui.dispatch({ _tag: 'SetTarget', target })
+      return engine.pipe(
+        Effect.tap((result) => Effect.sync(() => tui.dispatch(syncResultAction(result)))),
+        Effect.tapErrorCause((cause) =>
+          Option.match(Cause.failureOption(cause), {
+            onNone: () => Effect.void,
+            onSome: (error) => Effect.sync(() => tui.dispatch(syncErrorAction(error))),
+          }),
+        ),
+        Effect.provide(progressReporterTui(tui.dispatch)),
+      )
+    },
+    { view: React.createElement(SyncView, { stateAtom: getSyncApp().stateAtom }) },
+  ).pipe(Effect.provide(outputModeLayer(output)))
+
 const syncCommand = Command.make(
   'sync',
   {
@@ -499,6 +562,7 @@ const syncCommand = Command.make(
     root: rootPageOption,
     rootFile: rootFileOption,
     fromRemote: fromRemoteOption,
+    output: outputOption,
     ...pushSafetyOptions,
   },
   ({
@@ -511,6 +575,7 @@ const syncCommand = Command.make(
     root,
     rootFile,
     fromRemote,
+    output,
     ...syncOptions
   }) => {
     const targets = [source]
@@ -544,8 +609,10 @@ const syncCommand = Command.make(
       return commandSpan({
         command: 'sync',
         label: basename(target.value),
-        effect: withNotion(
-          targetKind(target.value).pipe(
+        effect: runSyncOutput({
+          target: target.value,
+          output,
+          engine: targetKind(target.value).pipe(
             Effect.flatMap((kind) =>
               kind === 'directory'
                 ? Effect.fail(
@@ -554,13 +621,15 @@ const syncCommand = Command.make(
                         'Directory tree materialization uses `notion-md sync <dir> --from-remote --root <page-id-or-url>`; the two-argument form is only for single `.nmd` file targets.',
                     }),
                   )
-                : pullPage({ pageId, outPath: target.value }).pipe(
-                    Effect.map((result): unknown => result),
+                : withNotion(
+                    pullPage({ pageId, outPath: target.value }).pipe(
+                      Effect.map((result): SyncEngineResult => result),
+                    ),
                   ),
             ),
           ),
-        ),
-      }).pipe(Effect.flatMap(logJson))
+        }),
+      })
     }
 
     return watch === true
@@ -608,61 +677,75 @@ const syncCommand = Command.make(
       : commandSpan({
           command: 'sync',
           label,
-          effect: parseRootPage(root).pipe(
-            Effect.flatMap((rootPageId) =>
-              fromRemote === true
-                ? assertFromRemoteTreeTarget({ source, recursive, rootPageId }).pipe(
-                    Effect.zipRight(
-                      withNotion(
-                        syncPath({
-                          path: source,
-                          fromRemote: true,
-                          ...syncOptions,
-                          ...(rootPageId === undefined ? {} : { rootPageId }),
-                          ...(Option.isSome(rootFile) === true ? { rootFile: rootFile.value } : {}),
-                        }).pipe(Effect.map((result): unknown => result)),
-                      ),
-                    ),
-                  )
-                : targetKind(source).pipe(
-                    Effect.flatMap((kind) =>
-                      kind === 'directory'
-                        ? withNotion(
+          effect: runSyncOutput({
+            target: source,
+            output,
+            engine: parseRootPage(root).pipe(
+              // Explicit return annotation widens the four engine result shapes
+              // (SyncResult / TreeSyncResult / BatchResult) to `SyncEngineResult`.
+              // `withNotion` wraps only the reconcile call so `assertFromRemoteTreeTarget`
+              // / `targetKind` run BEFORE token resolution (the pre-credentials contract).
+              Effect.flatMap(
+                (
+                  rootPageId,
+                ): Effect.Effect<
+                  SyncEngineResult,
+                  NmdError | NmdTokenMissingError,
+                  FileSystem.FileSystem | Path.Path
+                > =>
+                  fromRemote === true
+                    ? assertFromRemoteTreeTarget({ source, recursive, rootPageId }).pipe(
+                        Effect.zipRight(
+                          withNotion(
                             syncPath({
                               path: source,
-                              recursive,
-                              concurrency,
+                              fromRemote: true,
                               ...syncOptions,
                               ...(rootPageId === undefined ? {} : { rootPageId }),
                               ...(Option.isSome(rootFile) === true
                                 ? { rootFile: rootFile.value }
                                 : {}),
-                            }).pipe(Effect.map((result): unknown => result)),
-                          )
-                        : singleFile.pipe(
-                            Effect.flatMap((isSingleFile) =>
-                              isSingleFile === true
-                                ? withNotion(
-                                    syncPath({
-                                      path: targets[0] ?? '',
-                                      ...syncOptions,
-                                    }).pipe(Effect.map((result): unknown => result)),
-                                  )
-                                : withNotion(
-                                    syncMany({
-                                      ...syncOptions,
-                                      targets,
-                                      recursive,
-                                      concurrency,
-                                    }).pipe(Effect.map((result): unknown => result)),
-                                  ),
-                            ),
+                            }),
                           ),
-                    ),
-                  ),
+                        ),
+                      )
+                    : targetKind(source).pipe(
+                        Effect.flatMap((kind) =>
+                          kind === 'directory'
+                            ? withNotion(
+                                syncPath({
+                                  path: source,
+                                  recursive,
+                                  concurrency,
+                                  ...syncOptions,
+                                  ...(rootPageId === undefined ? {} : { rootPageId }),
+                                  ...(Option.isSome(rootFile) === true
+                                    ? { rootFile: rootFile.value }
+                                    : {}),
+                                }),
+                              )
+                            : singleFile.pipe(
+                                Effect.flatMap((isSingleFile) =>
+                                  isSingleFile === true
+                                    ? withNotion(
+                                        syncPath({ path: targets[0] ?? '', ...syncOptions }),
+                                      )
+                                    : withNotion(
+                                        syncMany({
+                                          ...syncOptions,
+                                          targets,
+                                          recursive,
+                                          concurrency,
+                                        }),
+                                      ),
+                                ),
+                              ),
+                        ),
+                      ),
+              ),
             ),
-          ),
-        }).pipe(Effect.flatMap(logJson))
+          }),
+        })
   },
 ).pipe(
   Command.withDescription(
@@ -741,17 +824,47 @@ const catCommand = Command.make(
   ),
 )
 
+/**
+ * Map a `put` engine failure to the terminal view action. The `_tag` switch is
+ * presentation-only: the same failure also propagates UNCAUGHT to the `runMain`
+ * teardown, which owns the process exit code. `NmdPartialWriteError` (exit 10)
+ * carries which surfaces landed so the view can render the `✗ write-title` row.
+ */
+const putErrorAction = (error: unknown): PutAction => {
+  const tag =
+    typeof error === 'object' && error !== null && '_tag' in error
+      ? (error as { readonly _tag?: unknown })._tag
+      : undefined
+  switch (tag) {
+    case 'NmdPartialWriteError': {
+      const e = error as { readonly body_written?: boolean; readonly title_written?: boolean }
+      return {
+        _tag: 'SetPartial',
+        bodyWritten: e.body_written ?? true,
+        titleWritten: e.title_written ?? false,
+      }
+    }
+    case 'NmdConflictError':
+      return { _tag: 'SetConflict', message: String(error) }
+    default:
+      return { _tag: 'SetError', message: String(error) }
+  }
+}
+
 const putCommand = Command.make(
   'put',
-  { page: pageArg, baseHash: baseHashOption, force: forceOption },
-  ({ page, baseHash, force }) =>
+  { page: pageArg, baseHash: baseHashOption, force: forceOption, output: outputOption },
+  ({ page, baseHash, force, output }) =>
     commandSpan({
       command: 'put',
       label: basename(page),
       effect: resolvePageArg(page).pipe(
         Effect.flatMap((pageId) =>
           force === false && Option.isNone(baseHash) === true
-            ? Effect.fail(
+            ? // Usage error (missing guard): stays OUTSIDE `run` so it never
+              // routes through the staged view — a bad-flags failure is not a
+              // write outcome. The framework maps it on the error channel.
+              Effect.fail(
                 new NmdCliError({
                   message:
                     'put requires either --base-hash <hash> (guarded; capture it from `cat`) or --force (concurrency override).',
@@ -759,20 +872,57 @@ const putCommand = Command.make(
               )
             : readStdin().pipe(
                 Effect.flatMap((buffer) =>
-                  withNotion(
-                    putEditorPage({
-                      pageId,
-                      buffer,
-                      force,
-                      ...(Option.isSome(baseHash) === true
-                        ? { baseHash: baseHash.value as never }
-                        : {}),
-                    }),
-                  ),
+                  /*
+                   * Write path: route the staged write-progress + outcome through
+                   * the tui-react OutputMode seam (Slice C). The engine emits stages
+                   * via the `ProgressReporter` Tag; `progressReporterTui` bridges each
+                   * transition onto `tui.dispatch`. The terminal action carries the
+                   * `PutResult`/failure into the view. Engine failures propagate
+                   * UNCAUGHT (only `tapErrorCause` dispatches a view action), so the
+                   * `runMain` teardown (`editorExitCode`) owns the real exit code
+                   * (Conflict→7, Partial→10, PostPushGate→9, …). The app is built
+                   * lazily inside the handler (no #787 TDZ risk).
+                   */
+                  run(
+                    getPutApp(),
+                    (tui) =>
+                      withNotion(
+                        putEditorPage({
+                          pageId,
+                          buffer,
+                          force,
+                          ...(Option.isSome(baseHash) === true
+                            ? { baseHash: baseHash.value as never }
+                            : {}),
+                        }),
+                      ).pipe(
+                        Effect.tap((result) =>
+                          Effect.sync(() =>
+                            tui.dispatch({
+                              _tag: 'SetResult',
+                              result: {
+                                bodyWritten: result.bodyWritten,
+                                titleWritten: result.titleWritten,
+                                forced: result.forced,
+                                baseHash: result.baseHash,
+                              },
+                            }),
+                          ),
+                        ),
+                        Effect.tapErrorCause((cause) =>
+                          Option.match(Cause.failureOption(cause), {
+                            onNone: () => Effect.void,
+                            onSome: (error) =>
+                              Effect.sync(() => tui.dispatch(putErrorAction(error))),
+                          }),
+                        ),
+                        Effect.provide(progressReporterTui(tui.dispatch)),
+                      ),
+                    { view: React.createElement(PutView, { stateAtom: getPutApp().stateAtom }) },
+                  ).pipe(Effect.provide(outputModeLayer(output))),
                 ),
               ),
         ),
-        Effect.flatMap(logJson),
       ),
     }),
 ).pipe(
@@ -789,8 +939,13 @@ const putCommand = Command.make(
 const makeEditCommand = (name: string) =>
   Command.make(
     name,
-    { page: pageArg, frontmatter: frontmatterOption, readOnly: readOnlyOption },
-    ({ page, frontmatter, readOnly }) => {
+    {
+      page: pageArg,
+      frontmatter: frontmatterOption,
+      readOnly: readOnlyOption,
+      output: outputOption,
+    },
+    ({ page, frontmatter, readOnly, output }) => {
       const mode: EditorMode = frontmatter === true ? 'frontmatter' : 'default'
       return commandSpan({
         command: 'edit',
@@ -801,25 +956,53 @@ const makeEditCommand = (name: string) =>
         effect: resolvePageArg(page).pipe(
           Effect.flatMap((pageId) =>
             readOnly === true
-              ? withNotion(editReadOnlyPage({ pageId, mode })).pipe(
+              ? // Read-only does no push (no stages, no result to render): keep its
+                // existing minimal JSON path so its e2e behavior is unchanged.
+                withNotion(editReadOnlyPage({ pageId, mode })).pipe(
                   Effect.map((result): unknown => result),
+                  Effect.flatMap(logJson),
                 )
-              : withNotion(editEditorPage({ pageId, mode, pageRef: page })).pipe(
-                  Effect.map((result): unknown => result),
-                  /*
-                   * Staged write-path progress (R43–R45, decision 0018): wire the
-                   * live stderr-line reporter ONLY on the `edit` push path, and
-                   * only when stderr is a TTY — a piped/redirected write provides
-                   * nothing (Layer.empty → serviceOption None → silent), keeping
-                   * the path byte-identical and pipe-safe (R44/R45). Constructed
-                   * lazily inside the handler (no TUI graph, no #787 TDZ risk).
-                   */
-                  Effect.provide(
-                    process.stderr.isTTY === true ? ProgressReporterStderrLines : Layer.empty,
-                  ),
-                ),
+              : /*
+                 * Push path: route the staged write-progress + outcome through the
+                 * tui-react OutputMode seam (Slice B). The engine emits stages via
+                 * the `ProgressReporter` Tag; `progressReporterTui` bridges each
+                 * transition onto `tui.dispatch`, and `SetResult` carries the final
+                 * `EditResult` into the terminal view state. Under `run`, the human
+                 * view AND json both go to stdout, switched by `--output` (auto
+                 * detects non-tty → json/log), so a pipe stays clean. The app is
+                 * built lazily inside the handler (no #787 TDZ risk).
+                 */
+                run(
+                  getEditApp(),
+                  (tui) =>
+                    withNotion(editEditorPage({ pageId, mode, pageRef: page })).pipe(
+                      Effect.tap((result) =>
+                        Effect.sync(() =>
+                          tui.dispatch({
+                            _tag: 'SetResult',
+                            result: {
+                              outcome: result.outcome,
+                              ...(result.conflictPath === undefined
+                                ? {}
+                                : { conflictPath: result.conflictPath }),
+                            },
+                          }),
+                        ),
+                      ),
+                      Effect.tapErrorCause((cause) =>
+                        Option.match(Cause.failureOption(cause), {
+                          onNone: () => Effect.void,
+                          onSome: (error) =>
+                            Effect.sync(() =>
+                              tui.dispatch({ _tag: 'SetError', message: String(error) }),
+                            ),
+                        }),
+                      ),
+                      Effect.provide(progressReporterTui(tui.dispatch)),
+                    ),
+                  { view: React.createElement(EditView, { stateAtom: getEditApp().stateAtom }) },
+                ).pipe(Effect.provide(outputModeLayer(output))),
           ),
-          Effect.flatMap(logJson),
         ),
       })
     },

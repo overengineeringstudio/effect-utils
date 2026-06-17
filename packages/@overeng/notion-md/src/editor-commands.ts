@@ -31,11 +31,12 @@ import {
   CatSpan,
   EditSpan,
   editResultAttrs,
+  EditorSessionSpan,
   PutSpan,
   putResultAttrs,
   withOperation,
 } from './observability.ts'
-import { reportNote } from './progress.ts'
+import { reportNote, reportStageSkip, withStage } from './progress.ts'
 import type { NmdStateStore } from './state-store.ts'
 import { buildFrontmatterV2, pullPage, syncPageReplacingBody } from './sync.ts'
 
@@ -201,7 +202,10 @@ export const putEditorPage = (
 
     // Observe the current remote title+body (refuses a lossy page, exit 3) and
     // form the guard base.
-    const current = yield* observeRemoteEditorPage({ pageId: opts.pageId })
+    const current = yield* withStage(
+      { id: 'observe', label: 'observe' },
+      observeRemoteEditorPage({ pageId: opts.pageId }),
+    )
 
     if (opts.force === false) {
       if (opts.baseHash === undefined) {
@@ -232,10 +236,11 @@ export const putEditorPage = (
     // the inner guard and maps to exit 7 (a correct bonus TOCTOU catch). Force:
     // skip the pre-write compare entirely (last-writer-wins, decision 0009) — the
     // verified path would *die* on a concurrent change rather than overwrite.
-    const replaced =
+    const replaced = yield* withStage(
+      { id: 'write-body', label: 'write-body' },
       opts.force === true
-        ? yield* replaceRemoteBodyForced({ pageId: opts.pageId, markdown: doc.body })
-        : yield* replaceRemoteBodyVerified({
+        ? replaceRemoteBodyForced({ pageId: opts.pageId, markdown: doc.body })
+        : replaceRemoteBodyVerified({
             pageId: opts.pageId,
             baseBodyHash: sha256Digest(normalizeMarkdownLineEndings(current.body)),
             markdown: doc.body,
@@ -251,29 +256,37 @@ export const putEditorPage = (
                   message: `Remote body for page ${opts.pageId} changed before verified replace; re-cat and retry, or --force.`,
                 }),
             ),
-          )
+          ),
+    )
 
     // --- Write 2: title (typed page API). A failure here is a partial write. ---
     if (doc.title !== current.title) {
-      yield* gateway
-        .updatePageMetadata({
-          pageId: opts.pageId,
-          metadata: { title: { key: current.titlePropertyKey, value: doc.title } },
-        })
-        .pipe(
-          Effect.mapError(
-            (cause) =>
-              new NmdPartialWriteError({
-                page_id: opts.pageId,
-                body_written: true,
-                title_written: false,
-                message:
-                  `put landed the body write but the title write failed for page ${opts.pageId}; ` +
-                  'the page is in a mixed state with a stale base hash. Re-cat to recover.',
-                cause,
-              }),
+      yield* withStage(
+        { id: 'write-title', label: 'write-title' },
+        gateway
+          .updatePageMetadata({
+            pageId: opts.pageId,
+            metadata: { title: { key: current.titlePropertyKey, value: doc.title } },
+          })
+          .pipe(
+            Effect.mapError(
+              (cause) =>
+                new NmdPartialWriteError({
+                  page_id: opts.pageId,
+                  body_written: true,
+                  title_written: false,
+                  message:
+                    `put landed the body write but the title write failed for page ${opts.pageId}; ` +
+                    'the page is in a mixed state with a stale base hash. Re-cat to recover.',
+                  cause,
+                }),
+            ),
           ),
-        )
+      )
+    } else {
+      // Title unchanged: surface the skipped step so the staged output still
+      // shows a `write-title` row (skipped, not failed).
+      yield* reportStageSkip({ id: 'write-title', label: 'write-title' })
     }
 
     // --- Post-push semantic-equivalence gate (decision 0012; exit 9). ---
@@ -396,7 +409,7 @@ export const editEditorPage = (
       const nmdPath = join(dir, 'page.nmd')
 
       // 1. Pull into the ephemeral session (refuses a lossy page here, exit 3).
-      yield* pullPage({ pageId: opts.pageId, outPath: nmdPath })
+      yield* pullPage({ pageId: opts.pageId, outPath: nmdPath, purpose: 'init' })
 
       // 2. Project the editor buffer (default: # title + body; frontmatter: envelope).
       const original = yield* fs
@@ -408,8 +421,14 @@ export const editEditorPage = (
         .writeFileString(bufferPath, buffer)
         .pipe(Effect.mapError(editorIoError({ pageId: opts.pageId, path: bufferPath })))
 
-      // 3. Launch the editor.
-      const exitCode = yield* runEditor({ filePath: bufferPath })
+      // 3. Launch the editor (spanned so the editor-wait is separable from the
+      // subsequent push under the one `notion-md.edit` root; exit code unchanged).
+      const exitCode = yield* runEditor({ filePath: bufferPath }).pipe(
+        withOperation(EditorSessionSpan, {
+          editor: resolveEditorCommand(),
+          mode: opts.mode,
+        }),
+      )
       if (exitCode !== 0) {
         return yield* new NmdEditorAbortedError({
           page_id: opts.pageId,

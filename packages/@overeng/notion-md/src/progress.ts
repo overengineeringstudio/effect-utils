@@ -89,36 +89,13 @@ export const withStage = <A, E, R>(
     Effect.tapErrorCause(() => reportStageFail(stage)),
   )
 
-/** Write a single line to stderr (no animated control sequences). */
-const writeLine = (line: string): Effect.Effect<void> =>
-  Effect.sync(() => void process.stderr.write(`${line}\n`))
-
-/**
- * Live stderr-line renderer (decision 0018 "static line" rung): tasteful
- * sequential lines, no cursor control. Deliberately NOT the animated
- * `@overeng/tui-react` `TaskList` — `edit` returns from a full-screen editor
- * that owned the TTY, and a mounting TUI would fight the terminal; sequential
- * lines also sidestep the #787 module-load TDZ (no `createTuiApp`). The
- * `ProgressReporter` Tag seam lets the animated `TaskList` Layer drop in later
- * with no engine re-touch.
- */
-export const ProgressReporterStderrLines: Layer.Layer<ProgressReporter> = Layer.succeed(
-  ProgressReporter,
-  {
-    stageActive: (stage) => writeLine(`  · ${stage.label} …`),
-    stageSucceed: (stage) =>
-      writeLine(
-        stage.message === undefined ? `  ✓ ${stage.label}` : `  ✓ ${stage.label}  ${stage.message}`,
-      ),
-    stageSkip: (stage) => writeLine(`  · ${stage.label} (skipped)`),
-    stageFail: (stage) => writeLine(`  ✗ ${stage.label}`),
-    note: (message) => writeLine(`note: ${message}`),
-  } satisfies ProgressReporterShape,
-)
-
 /**
  * Explicit no-op Layer for tests/clarity. (Absence of a Layer already no-ops via
  * `serviceOption`; this just makes the intent provable.)
+ *
+ * The live renderer Layer now lives at the CLI boundary: `cli-output/edit` bridges
+ * the `ProgressReporter` seam onto the tui-react OutputMode app (Slice B),
+ * replacing the previous stderr-line Layer that lived here.
  */
 export const ProgressReporterNoop: Layer.Layer<ProgressReporter> = Layer.succeed(ProgressReporter, {
   stageActive: () => Effect.void,

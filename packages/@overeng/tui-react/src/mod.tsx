@@ -108,6 +108,33 @@ export {
   type TreeChildContentContext,
 } from './components/Tree.tsx'
 
+// =============================================================================
+// CLI Output Kit (/sk-cli-design vocabulary)
+// =============================================================================
+
+export {
+  // Schemas (SSOT for per-command state schemas)
+  Severity,
+  ProblemItem,
+  DetailSection,
+  StatusSymbol,
+  // Presentational components
+  SeverityBadge,
+  type SeverityBadgeProps,
+  ProblemList,
+  type ProblemListProps,
+  DetailSections,
+  type DetailSectionsProps,
+  SummaryLine,
+  type SummaryLineProps,
+  StatusGlyph,
+  type StatusGlyphProps,
+  StageList,
+  type StageListProps,
+  CommandOutput,
+  type CommandOutputProps,
+} from './components/cli-output/mod.ts'
+
 // Internal types (for advanced use)
 export type {
   TuiNode,

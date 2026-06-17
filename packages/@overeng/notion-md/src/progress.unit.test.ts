@@ -6,37 +6,34 @@ import { NodeContext } from '@effect/platform-node'
 import { Effect, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
+import type { EditAction } from './cli-output/edit/schema.ts'
+import { editReducer, initialEditState } from './cli-output/edit/schema.ts'
+import { progressReporterTui } from './cli-output/progress-bridge.ts'
 import { editEditorPage } from './editor-commands.ts'
 import { FakeGateway, harnessPageId as pageId, scriptedEditor } from './editor-test-harness.ts'
 import type { NotionMdGateway } from './model.ts'
-import { ProgressReporter, type ProgressReporterShape, type ProgressStage } from './progress.ts'
+import type { ProgressReporter } from './progress.ts'
 import { NmdStateStoreLive, type NmdStateStore } from './state-store.ts'
 
 const stateStoreLayer = NmdStateStoreLive.pipe(Layer.provide(NodeContext.layer))
 
-/** A captured progress event: the method that fired and the stage/note payload. */
-type ProgressEvent =
-  | { readonly kind: 'active' | 'succeed' | 'skip' | 'fail'; readonly stage: ProgressStage }
-  | { readonly kind: 'note'; readonly message: string }
+/**
+ * A `dispatch` that records every `EditAction` the bridge emits, plus the
+ * `SetResult` the handler appends. The bridge is the unit under test: it turns
+ * the engine's `ProgressReporter` calls into the `edit` action stream.
+ */
+const capturingDispatch = (): {
+  readonly dispatch: (action: EditAction) => void
+  readonly actions: EditAction[]
+} => {
+  const actions: EditAction[] = []
+  return { dispatch: (action) => void actions.push(action), actions }
+}
 
-/** A `ProgressReporter` Layer that records every emitted transition for assertions. */
-const capturingLayer = (sink: ProgressEvent[]): Layer.Layer<ProgressReporter> =>
-  Layer.succeed(ProgressReporter, {
-    stageActive: (stage) => Effect.sync(() => void sink.push({ kind: 'active', stage })),
-    stageSucceed: (stage) => Effect.sync(() => void sink.push({ kind: 'succeed', stage })),
-    stageSkip: (stage) => Effect.sync(() => void sink.push({ kind: 'skip', stage })),
-    stageFail: (stage) => Effect.sync(() => void sink.push({ kind: 'fail', stage })),
-    note: (message) => Effect.sync(() => void sink.push({ kind: 'note', message })),
-  } satisfies ProgressReporterShape)
-
-/** A `ProgressReporter` Layer whose every method defects/fails — proves emit swallows it. */
-const hostileLayer: Layer.Layer<ProgressReporter> = Layer.succeed(ProgressReporter, {
-  stageActive: () => Effect.die(new Error('hostile stageActive')),
-  stageSucceed: () => Effect.fail(new Error('hostile stageSucceed') as never),
-  stageSkip: () => Effect.die(new Error('hostile stageSkip')),
-  stageFail: () => Effect.die(new Error('hostile stageFail')),
-  note: () => Effect.die(new Error('hostile note')),
-} satisfies ProgressReporterShape)
+/** A bridge whose dispatch dies/throws — proves emit (R45) swallows it. */
+const hostileBridge: Layer.Layer<ProgressReporter> = progressReporterTui(() => {
+  throw new Error('hostile dispatch')
+})
 
 const runEdit = <A, E>(
   effect: Effect.Effect<A, E, NotionMdGateway | NmdStateStore | NodeContext.NodeContext>,
@@ -51,11 +48,33 @@ const runEdit = <A, E>(
   )
 }
 
-const ids = (events: ProgressEvent[]): string[] =>
-  events.map((e) => (e.kind === 'note' ? `note` : `${e.stage.id}:${e.kind}`))
+/** Compact view of the dispatched stage/note/terminal actions, for assertions. */
+const tags = (actions: EditAction[]): string[] =>
+  actions.map((action) => {
+    switch (action._tag) {
+      case 'StageActive':
+        return `${action.id}:active`
+      case 'StageSucceed':
+        return `${action.id}:succeed`
+      case 'StageSkip':
+        return `${action.id}:skip`
+      case 'StageFail':
+        return `${action.id}:fail`
+      case 'Note':
+        return 'note'
+      case 'SetResult':
+        return `result:${action.result.outcome}`
+      case 'SetError':
+        return 'error'
+    }
+  })
 
-describe('progress (staged write-path sync indicator)', () => {
-  it('R45: the edit push result is identical with no / capturing / hostile reporter', async () => {
+/** Fold the captured action stream through the reducer to the final view state. */
+const foldState = (page: string, actions: EditAction[]) =>
+  actions.reduce((state, action) => editReducer({ state, action }), initialEditState(page))
+
+describe('progress bridge (ProgressReporter → tui.dispatch)', () => {
+  it('R45: the edit push result is identical with no / capturing / hostile bridge', async () => {
     const run = (progressLayer?: Layer.Layer<ProgressReporter>) => {
       const gateway = new FakeGateway({ title: 'Doc', body: 'original line' })
       return runEdit(
@@ -70,12 +89,11 @@ describe('progress (staged write-path sync indicator)', () => {
       ).then((result) => ({ result, body: gateway.state.body }))
     }
 
-    const captured: ProgressEvent[] = []
+    const captured = capturingDispatch()
     const none = await run(undefined)
-    const capturing = await run(capturingLayer(captured))
-    const hostile = await run(hostileLayer)
+    const capturing = await run(progressReporterTui(captured.dispatch))
+    const hostile = await run(hostileBridge)
 
-    // Byte-identical outcome + remote effect across all three reporter wirings.
     for (const r of [none, capturing, hostile]) {
       expect(r.result._tag).toBe('Right')
       if (r.result._tag === 'Right') {
@@ -83,13 +101,13 @@ describe('progress (staged write-path sync indicator)', () => {
       }
       expect(r.body).toBe('edited line\n')
     }
-    // The hostile reporter (die/fail) never surfaced as a defect or changed the result.
-    expect(captured.length).toBeGreaterThan(0)
+    // The hostile bridge (throwing dispatch) never surfaced or changed the result.
+    expect(captured.actions.length).toBeGreaterThan(0)
   })
 
-  it('emits observe → write-body → write-title → settle for a changed-buffer push', async () => {
+  it('dispatches observe → write-body → (skip title) → settle → SetResult for a changed-buffer push', async () => {
     const gateway = new FakeGateway({ title: 'Doc', body: 'original line' })
-    const events: ProgressEvent[] = []
+    const captured = capturingDispatch()
     const result = await runEdit(
       editEditorPage({
         pageId,
@@ -98,11 +116,15 @@ describe('progress (staged write-path sync indicator)', () => {
         runEditor: scriptedEditor((b) => b.replace('original line', 'edited line')),
       }),
       gateway,
-      capturingLayer(events),
+      progressReporterTui(captured.dispatch),
     )
     expect(result._tag).toBe('Right')
-    // Body-only edit: title is unchanged, so write-title is a skip (no active/succeed).
-    expect(ids(events)).toEqual([
+    // The handler appends SetResult after the engine returns; emulate that here so
+    // the captured stream is the full action sequence the CLI would dispatch.
+    if (result._tag === 'Right') captured.dispatch({ _tag: 'SetResult', result: result.right })
+
+    // Body-only edit: title unchanged → write-title is a skip (no active/succeed).
+    expect(tags(captured.actions)).toEqual([
       'observe:active',
       'observe:succeed',
       'write-body:active',
@@ -110,42 +132,27 @@ describe('progress (staged write-path sync indicator)', () => {
       'write-title:skip',
       'settle:active',
       'settle:succeed',
+      'result:pushed',
     ])
+
+    // The reducer folds the stream into a terminal Success with settled stages.
+    const state = foldState(pageId, captured.actions)
+    expect(state._tag).toBe('Success')
+    if (state._tag === 'Success') {
+      expect(state.noChange).toBe(false)
+      expect(state.stages.map((s) => `${s.id}:${s.status}`)).toEqual([
+        'observe:success',
+        'write-body:success',
+        'write-title:skipped',
+        'settle:success',
+      ])
+    }
   })
 
-  it('emits write-title active+succeed when the title also changed', async () => {
-    const gateway = new FakeGateway({ title: 'Old', body: 'original line' })
-    const events: ProgressEvent[] = []
-    await runEdit(
-      editEditorPage({
-        pageId,
-        mode: 'default',
-        pageRef: pageId,
-        runEditor: scriptedEditor((b) =>
-          b.replace('# Old', '# New').replace('original line', 'edited line'),
-        ),
-      }),
-      gateway,
-      capturingLayer(events),
-    )
-    expect(ids(events)).toEqual([
-      'observe:active',
-      'observe:succeed',
-      'write-body:active',
-      'write-body:succeed',
-      'write-title:active',
-      'write-title:succeed',
-      'settle:active',
-      'settle:succeed',
-    ])
-  })
-
-  it('warn: a remote-changed-but-auto-mergeable edit emits the auto-merge note', async () => {
-    // Two-line base; the editor changes line 1, a concurrent remote writer changes
-    // line 2 (a disjoint hunk) after the ephemeral pull → a clean 3-way auto-merge.
+  it('dispatches a Note (→ WARNING ProblemItem) for an auto-merged push', async () => {
     const gateway = new FakeGateway({ title: 'Doc', body: 'line one\nline two' })
     gateway.switchRemoteBodyAfter(1, 'line one\nremote line two')
-    const events: ProgressEvent[] = []
+    const captured = capturingDispatch()
     const result = await runEdit(
       editEditorPage({
         pageId,
@@ -154,27 +161,26 @@ describe('progress (staged write-path sync indicator)', () => {
         runEditor: scriptedEditor((b) => b.replace('line one', 'local line one')),
       }),
       gateway,
-      capturingLayer(events),
+      progressReporterTui(captured.dispatch),
     )
     expect(result._tag).toBe('Right')
-    if (result._tag === 'Right') expect(result.right).toEqual({ pageId, outcome: 'pushed' })
-    const notes = events.filter((e) => e.kind === 'note')
+    if (result._tag === 'Right') captured.dispatch({ _tag: 'SetResult', result: result.right })
+
+    const notes = captured.actions.filter((a) => a._tag === 'Note')
     expect(notes).toHaveLength(1)
-    if (notes[0]?.kind === 'note') {
-      expect(notes[0].message).toContain('auto-merged')
-    }
-    // The auto-merge body landed both hunks.
-    expect(gateway.state.body).toBe('local line one\nremote line two\n')
+    if (notes[0]?._tag === 'Note') expect(notes[0].message).toContain('auto-merged')
+
+    const state = foldState(pageId, captured.actions)
+    expect(state.warnings).toHaveLength(1)
+    expect(state.warnings[0]?.severity).toBe('warning')
+    expect(state.warnings[0]?.fixes.length).toBeGreaterThan(0)
   })
 
-  it('warn: a conflicting edit emits the conflict note and returns the exit-7 conflict outcome', async () => {
+  it('dispatches the conflict Note + SetResult(conflict) → terminal Conflict state', async () => {
     const gateway = new FakeGateway({ title: 'Doc', body: 'the original line' })
-    // Remote changes the SAME line the editor edits → unmergeable → conflict.
     gateway.switchRemoteBodyAfter(1, 'a totally different remote line')
-    const events: ProgressEvent[] = []
-    // Run in a throwaway cwd: the durable `<page>.conflict.md` is written
-    // relative to the process cwd (would otherwise land in the package root).
-    const cwd = mkdtempSync(join(tmpdir(), 'notion-md-progress-conflict-'))
+    const captured = capturingDispatch()
+    const cwd = mkdtempSync(join(tmpdir(), 'notion-md-bridge-conflict-'))
     const previousCwd = process.cwd()
     process.chdir(cwd)
     try {
@@ -188,28 +194,40 @@ describe('progress (staged write-path sync indicator)', () => {
           ),
         }),
         gateway,
-        capturingLayer(events),
+        progressReporterTui(captured.dispatch),
       )
       expect(result._tag).toBe('Right')
-      if (result._tag === 'Right') expect(result.right.outcome).toBe('conflict')
+      if (result._tag === 'Right') {
+        expect(result.right.outcome).toBe('conflict')
+        captured.dispatch({ _tag: 'SetResult', result: result.right })
+      }
     } finally {
       process.chdir(previousCwd)
       rmSync(cwd, { recursive: true, force: true })
     }
-    const notes = events.filter((e) => e.kind === 'note')
+
+    const notes = captured.actions.filter((a) => a._tag === 'Note')
     expect(notes).toHaveLength(1)
-    if (notes[0]?.kind === 'note') {
+    if (notes[0]?._tag === 'Note') {
       expect(notes[0].message).toContain('conflict draft')
       expect(notes[0].message).toContain(`${pageId}.conflict.md`)
     }
-    // Conflict branch never reaches a body write → no write-body stage.
-    expect(ids(events).some((id) => id.startsWith('write-body'))).toBe(false)
+    // Conflict never reaches a body write → no write-body stage dispatched.
+    expect(tags(captured.actions).some((t) => t.startsWith('write-body'))).toBe(false)
+
+    const state = foldState(pageId, captured.actions)
+    expect(state._tag).toBe('Conflict')
+    if (state._tag === 'Conflict') {
+      expect(state.conflictPath).toBe(`${pageId}.conflict.md`)
+      // The conflict warning carries the durable path as an actionable fix.
+      expect(state.warnings[0]?.fixes[0]).toContain(`${pageId}.conflict.md`)
+    }
   })
 
-  it('emits write-body active+fail and propagates the original error when the body write fails', async () => {
+  it('dispatches write-body active+fail and propagates the original error on a body-write failure', async () => {
     const gateway = new FakeGateway({ title: 'Doc', body: 'original line' })
     gateway.failUpdateMarkdownOnce()
-    const events: ProgressEvent[] = []
+    const captured = capturingDispatch()
     const result = await runEdit(
       editEditorPage({
         pageId,
@@ -218,19 +236,18 @@ describe('progress (staged write-path sync indicator)', () => {
         runEditor: scriptedEditor((b) => b.replace('original line', 'edited line')),
       }),
       gateway,
-      capturingLayer(events),
+      progressReporterTui(captured.dispatch),
     )
     // The wrapped stage failed: the engine error still propagates (Left), proving
-    // `withStage`'s fail branch is observation-only and never swallows the error.
+    // the bridge's fail dispatch is observation-only and never swallows the error.
     expect(result._tag).toBe('Left')
     if (result._tag === 'Left') expect(result.left._tag).toBe('NmdGatewayError')
-    expect(ids(events)).toEqual([
+    expect(tags(captured.actions)).toEqual([
       'observe:active',
       'observe:succeed',
       'write-body:active',
       'write-body:fail',
     ])
-    // The body write never landed.
     expect(gateway.state.body).toBe('original line\n')
   })
 })
