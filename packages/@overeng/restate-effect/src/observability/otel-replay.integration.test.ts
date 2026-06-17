@@ -31,21 +31,29 @@ import { RestateOtel } from './otel.ts'
 const CounterState = { count: Schema.Number } as const
 const Counter = State.for(CounterState)
 
-const CounterObj = RestateObject.contract('otel-replay-counter', {
-  state: CounterState,
-  handlers: {
-    bump: { input: Schema.Void, success: Schema.Number },
+const CounterObj = RestateObject.contract({
+  name: 'otel-replay-counter',
+  def: {
+    state: CounterState,
+    handlers: {
+      bump: { input: Schema.Void, success: Schema.Number },
+    },
   },
 })
 
-const CounterLive = RestateObject.implement<typeof CounterObj>(CounterObj, {
-  bump: () =>
-    Effect.gen(function* () {
-      const delta = yield* Restate.run('delta', Effect.succeed(1)).pipe(Effect.orDie)
-      const next = ((yield* Counter.get('count')) ?? 0) + delta
-      yield* Counter.set('count', next)
-      return next
-    }).pipe(Effect.orDie),
+const CounterLive = RestateObject.implement<typeof CounterObj>({
+  contractValue: CounterObj,
+  impl: {
+    bump: () =>
+      Effect.gen(function* () {
+        const delta = yield* Restate.run({ name: 'delta', effect: Effect.succeed(1) }).pipe(
+          Effect.orDie,
+        )
+        const next = ((yield* Counter.get('count')) ?? 0) + delta
+        yield* Counter.set({ key: 'count', value: next })
+        return next
+      }).pipe(Effect.orDie),
+  },
 })
 
 /* Shared in-memory exporters (read after the invocation). */
@@ -98,7 +106,12 @@ describe.skipIf(!serverAvailable)('OTel exactly-once + reparenting under real re
     it.effect('per-invocation metric fires once; the Effect span reparents the attempt', () =>
       Effect.gen(function* () {
         const harness = yield* RestateTestHarness
-        const result = yield* harness.ingress.objectCall(CounterObj, 'k1', 'bump', undefined)
+        const result = yield* harness.ingress.objectCall({
+          contract: CounterObj,
+          key: 'k1',
+          method: 'bump',
+          input: undefined,
+        })
         expect(result).toBe(1)
 
         /* Let the spans flush + the metric reader export the in-memory points (the

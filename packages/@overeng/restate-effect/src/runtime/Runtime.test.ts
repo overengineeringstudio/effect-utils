@@ -51,7 +51,7 @@ describe('determinism layer', () => {
         const a = yield* Clock.currentTimeMillis
         const b = yield* Clock.currentTimeMillis
         return { a, b }
-      }).pipe(Effect.provide(determinismLayer(ctx, frozenBase))),
+      }).pipe(Effect.provide(determinismLayer({ ctx, frozenBaseMillis: frozenBase }))),
     )
     /* Each async read maps to a fresh journaled ctx.date.now() (calls 1, 2). */
     expect(result.a).toBe(1_700_000_001_000)
@@ -66,7 +66,7 @@ describe('determinism layer', () => {
      * as a retry loop. The prototype-preserving construction keeps `sleep`. */
     const ctx = fakeCtx({ dateBase: 1_700_000_000_000, randValues: [0.5] })
     const frozenBase = await ctx.date.now()
-    const layer = determinismLayer(ctx, frozenBase)
+    const layer = determinismLayer({ ctx, frozenBaseMillis: frozenBase })
     /* The journaled Clock must expose a callable `sleep` (the non-durable
      * in-process timer — NOT remapped to `ctx.sleep`, R18). */
     const sleepIsFn = await Effect.runPromise(
@@ -93,7 +93,7 @@ describe('determinism layer', () => {
           const n1 = clock.unsafeCurrentTimeNanos()
           return { m1, m2, n1 }
         }),
-      ).pipe(Effect.provide(determinismLayer(ctx, frozenBase))),
+      ).pipe(Effect.provide(determinismLayer({ ctx, frozenBaseMillis: frozenBase }))),
     )
     expect(result.m1).toBe(frozenBase)
     expect(result.m2).toBe(frozenBase)
@@ -108,7 +108,7 @@ describe('determinism layer', () => {
       const b = yield* Random.next
       const bool = yield* Random.nextBoolean
       return { a, b, bool }
-    }).pipe(Effect.provide(determinismLayer(ctx, 0)))
+    }).pipe(Effect.provide(determinismLayer({ ctx, frozenBaseMillis: 0 })))
     const result = await Effect.runPromise(program)
     /* Base reads are the journaled ctx.rand.random() values verbatim. */
     expect(result.a).toBe(0.1)
@@ -130,7 +130,9 @@ describe('determinism layer', () => {
      * we have not journaled. */
     const ctx = fakeCtx({ dateBase: 0, randValues: [0.5] })
     const journaled = await Effect.runPromise(
-      Random.randomWith((r) => Effect.succeed(r)).pipe(Effect.provide(determinismLayer(ctx, 0))),
+      Random.randomWith((r) => Effect.succeed(r)).pipe(
+        Effect.provide(determinismLayer({ ctx, frozenBaseMillis: 0 })),
+      ),
     )
     /* PRNG impl details (NOT on the `Random` service interface; carried by the
      * concrete `Random.make` instance but never read by the journaled overrides).
@@ -177,7 +179,9 @@ describe('determinism layer', () => {
     /* 0.42 over [0,10) → floor(0.42 * 10) = 4. */
     const ctx = fakeCtx({ dateBase: 0, randValues: [0.42] })
     const value = await Effect.runPromise(
-      Random.nextIntBetween(0, 10).pipe(Effect.provide(determinismLayer(ctx, 0))),
+      Random.nextIntBetween(0, 10).pipe(
+        Effect.provide(determinismLayer({ ctx, frozenBaseMillis: 0 })),
+      ),
     )
     expect(value).toBe(4)
   })
@@ -190,7 +194,7 @@ describe('determinism layer', () => {
         const r1 = yield* Random.next
         const r2 = yield* Random.next
         return { t, r1, r2 }
-      }).pipe(Effect.provide(determinismLayer(ctx, 1_000)))
+      }).pipe(Effect.provide(determinismLayer({ ctx, frozenBaseMillis: 1_000 })))
     const first = await Effect.runPromise(program(make()))
     const second = await Effect.runPromise(program(make()))
     /* A replayed attempt over the same journal observes identical values. */

@@ -54,17 +54,17 @@ export type Widget = Schema.Schema.Type<typeof Widget>
 export class BadRequest extends Schema.TaggedError<BadRequest>('http/BadRequest')('BadRequest', {
   detail: Schema.String,
 }) {}
-export const BadRequestTerminal = Restate.terminal(BadRequest, { errorCode: 400 })
+export const BadRequestTerminal = Restate.terminal({ self: BadRequest, errorCode: 400 })
 
 /** TERMINAL: not authorized (HTTP 403). */
 export class Forbidden extends Schema.TaggedError<Forbidden>('http/Forbidden')('Forbidden', {}) {}
-export const ForbiddenTerminal = Restate.terminal(Forbidden, { errorCode: 403 })
+export const ForbiddenTerminal = Restate.terminal({ self: Forbidden, errorCode: 403 })
 
 /** TERMINAL: the resource does not exist (HTTP 404). */
 export class NotFound extends Schema.TaggedError<NotFound>('http/NotFound')('NotFound', {
   widgetId: Schema.String,
 }) {}
-export const NotFoundTerminal = Restate.terminal(NotFound, { errorCode: 404 })
+export const NotFoundTerminal = Restate.terminal({ self: NotFound, errorCode: 404 })
 
 /**
  * TERMINAL: the upstream returned 200 but the body did not match `Widget`. Retrying
@@ -75,7 +75,10 @@ export const NotFoundTerminal = Restate.terminal(NotFound, { errorCode: 404 })
 export class MalformedUpstream extends Schema.TaggedError<MalformedUpstream>(
   'http/MalformedUpstream',
 )('MalformedUpstream', { detail: Schema.String }) {}
-export const MalformedUpstreamTerminal = Restate.terminal(MalformedUpstream, { errorCode: 502 })
+export const MalformedUpstreamTerminal = Restate.terminal({
+  self: MalformedUpstream,
+  errorCode: 502,
+})
 
 /**
  * RETRYABLE: a transient upstream failure (HTTP 429 / 5xx / network timeout).
@@ -91,7 +94,8 @@ export class UpstreamUnavailable extends Schema.TaggedError<UpstreamUnavailable>
   status: Schema.Number,
   retryAfterMillis: Schema.Number,
 }) {}
-export const UpstreamUnavailableRetryable = Restate.retryable(UpstreamUnavailable, {
+export const UpstreamUnavailableRetryable = Restate.retryable({
+  self: UpstreamUnavailable,
   /* `e: UpstreamUnavailable` — typed because the class is named. `0` → default backoff. */
   retryAfter: (e: UpstreamUnavailable) => (e.retryAfterMillis > 0 ? e.retryAfterMillis : undefined),
 })
@@ -115,11 +119,15 @@ const isTerminalStatus = (status: number): boolean =>
   status === 400 || status === 403 || status === 404
 
 /** Map a terminal HTTP status to its typed domain error. */
-const terminalError = (
-  status: number,
-  detail: string,
-  widgetId: string,
-): Effect.Effect<never, BadRequest | Forbidden | NotFound> => {
+const terminalError = ({
+  status,
+  detail,
+  widgetId,
+}: {
+  status: number
+  detail: string
+  widgetId: string
+}): Effect.Effect<never, BadRequest | Forbidden | NotFound> => {
   switch (status) {
     case 403:
       return new Forbidden()
@@ -163,11 +171,14 @@ const FetchErrorUnion = Schema.Union(
   UpstreamUnavailableRetryable,
 )
 
-export const WidgetApi = RestateService.contract('widget-api', {
-  /** Idempotent read; transient retries ride Restate's durable STEP retry. */
-  fetch: { input: FetchInput, success: Widget, error: FetchErrorUnion },
-  /** Same union, but a transient surfaces as the caller-visible `retryable` error. */
-  fetchRetryable: { input: FetchInput, success: Widget, error: FetchErrorUnion },
+export const WidgetApi = RestateService.contract({
+  name: 'widget-api',
+  handlers: {
+    /** Idempotent read; transient retries ride Restate's durable STEP retry. */
+    fetch: { input: FetchInput, success: Widget, error: FetchErrorUnion },
+    /** Same union, but a transient surfaces as the caller-visible `retryable` error. */
+    fetchRetryable: { input: FetchInput, success: Widget, error: FetchErrorUnion },
+  },
 })
 
 /**
@@ -185,9 +196,9 @@ type Definitive =
  * application Layer (a `FetchHttpClient.layer` in production / the test). It is
  * provided ONCE at the endpoint and shared by every invocation.
  */
-export const WidgetApiLive = RestateService.implement<typeof WidgetApi, HttpClient.HttpClient>(
-  WidgetApi,
-  {
+export const WidgetApiLive = RestateService.implement<typeof WidgetApi, HttpClient.HttpClient>({
+  contractValue: WidgetApi,
+  impl: {
     /**
      * RECOMMENDED for an idempotent read. The fetch is a JOURNALED `Restate.run`
      * step whose closure carries NO typed failure (`Effect<Definitive>`, #1): a
@@ -206,9 +217,9 @@ export const WidgetApiLive = RestateService.implement<typeof WidgetApi, HttpClie
         const client = yield* HttpClient.HttpClient
         /* The fetch step: commit a definitive outcome, or FAIL on a transient so the
          * step retries (re-fetching). A decode mismatch fails terminally too. */
-        const outcome = yield* Restate.run(
-          `fetch-${widgetId}`,
-          client.execute(HttpClientRequest.get(`${baseUrl}/widgets/${widgetId}`)).pipe(
+        const outcome = yield* Restate.run({
+          name: `fetch-${widgetId}`,
+          effect: client.execute(HttpClientRequest.get(`${baseUrl}/widgets/${widgetId}`)).pipe(
             Effect.flatMap((response): Effect.Effect<Definitive> => {
               const status = response.status
               if (status === 200)
@@ -233,14 +244,18 @@ export const WidgetApiLive = RestateService.implement<typeof WidgetApi, HttpClie
             Effect.catchTag('RequestError', (e) => Effect.die(e)),
             Effect.catchTag('ResponseError', (e) => Effect.die(e)),
           ),
-        )
+        })
         switch (outcome._tag) {
           case 'ok':
             return outcome.widget
           case 'malformed':
             return yield* new MalformedUpstream({ detail: outcome.detail })
           case 'terminal':
-            return yield* terminalError(outcome.status, outcome.detail, widgetId)
+            return yield* terminalError({
+              status: outcome.status,
+              detail: outcome.detail,
+              widgetId,
+            })
         }
       }),
 
@@ -274,7 +289,7 @@ export const WidgetApiLive = RestateService.implement<typeof WidgetApi, HttpClie
         const status = response.status
         if (status === 200) return yield* decodeWidget(response)
         if (isTerminalStatus(status) === true)
-          return yield* terminalError(status, `HTTP ${status}`, widgetId)
+          return yield* terminalError({ status, detail: `HTTP ${status}`, widgetId })
         /* TRANSIENT (429 / 5xx) → the retryable error, `Retry-After` projected. */
         return yield* new UpstreamUnavailable({
           status,
@@ -282,4 +297,4 @@ export const WidgetApiLive = RestateService.implement<typeof WidgetApi, HttpClie
         })
       }),
   },
-)
+})

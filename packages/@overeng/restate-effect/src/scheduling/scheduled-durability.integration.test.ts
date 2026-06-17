@@ -177,13 +177,18 @@ describe.skipIf(!serverAvailable)(
 
     it('SIGKILL mid inter-cycle wait → the loop resumes (cursor climbs past the kill)', async () => {
       const key = 'durab-1'
-      installComposedSource(key, (cursor) => ({
-        nextCursor: cursor + 1,
-        itemCount: 1,
-        done: false,
-      }))
+      installComposedSource({
+        key,
+        behavior: (cursor) => ({
+          nextCursor: cursor + 1,
+          itemCount: 1,
+          done: false,
+        }),
+      })
       await Effect.runPromise(
-        provideIngress(ingressObjectCall(Daemon.contract, key, 'start', undefined)),
+        provideIngress(
+          ingressObjectCall({ contract: Daemon.contract, key, method: 'start', input: undefined }),
+        ),
       )
 
       /* Let a couple cycles run, then capture the cursor. The 1.5s held wake-race means
@@ -211,7 +216,9 @@ describe.skipIf(!serverAvailable)(
       expect(cursorAfter).toBeGreaterThan(cursorBefore)
 
       await Effect.runPromise(
-        provideIngress(ingressObjectSend(Daemon.contract, key, 'stop', undefined)),
+        provideIngress(
+          ingressObjectSend({ contract: Daemon.contract, key, method: 'stop', input: undefined }),
+        ),
       )
     }, 90_000)
   },

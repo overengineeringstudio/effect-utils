@@ -11,7 +11,7 @@ import { effectSerde, ingressSerde, internalSerde } from './Serde.ts'
 describe('effectSerde', () => {
   it('round-trips a plain struct', () => {
     const schema = Schema.Struct({ name: Schema.String, age: Schema.Number })
-    const serde = effectSerde(schema)
+    const serde = effectSerde({ schema })
     const value = { name: 'Sarah', age: 42 }
     const bytes = serde.serialize(value)
     expect(serde.deserialize(bytes)).toStrictEqual(value)
@@ -23,7 +23,7 @@ describe('effectSerde', () => {
     /* Date <-> ISO string: encode produces the wire (`I`) shape, decode
      * reconstructs the rich (`A`) value. */
     const schema = Schema.Struct({ at: Schema.Date })
-    const serde = effectSerde(schema)
+    const serde = effectSerde({ schema })
     const value = { at: new Date('2026-06-08T12:00:00.000Z') }
 
     const bytes = serde.serialize(value)
@@ -38,20 +38,21 @@ describe('effectSerde', () => {
   it('round-trips a branded schema', () => {
     const UserId = Schema.String.pipe(Schema.brand('UserId'))
     const schema = Schema.Struct({ id: UserId })
-    const serde = effectSerde(schema)
+    const serde = effectSerde({ schema })
     const value = { id: Schema.decodeSync(UserId)('u_1') }
     expect(serde.deserialize(serde.serialize(value))).toStrictEqual(value)
   })
 
   it('honors the Restate.serde annotation contentType override', () => {
-    const schema = Restate.serde(Schema.Struct({ n: Schema.Number }), {
-      contentType: 'application/vnd.custom+json',
+    const schema = Restate.serde({
+      self: Schema.Struct({ n: Schema.Number }),
+      options: { contentType: 'application/vnd.custom+json' },
     })
-    expect(effectSerde(schema).contentType).toBe('application/vnd.custom+json')
+    expect(effectSerde({ schema }).contentType).toBe('application/vnd.custom+json')
   })
 
   it('throws TerminalError(400) on a malformed INGRESS input', () => {
-    const serde = ingressSerde(Schema.Struct({ n: Schema.Number }))
+    const serde = ingressSerde({ schema: Schema.Struct({ n: Schema.Number }) })
     const badBytes = new TextEncoder().encode(JSON.stringify({ n: 'not-a-number' }))
     try {
       serde.deserialize(badBytes)
@@ -64,7 +65,7 @@ describe('effectSerde', () => {
 
   it('rethrows a raw defect (not a TerminalError) on a malformed INTERNAL slot', () => {
     /* A corrupt-journal decode failure must NOT become a 400 to the caller. */
-    const serde = internalSerde(Schema.Struct({ n: Schema.Number }))
+    const serde = internalSerde({ schema: Schema.Struct({ n: Schema.Number }) })
     const badBytes = new TextEncoder().encode(JSON.stringify({ n: 'not-a-number' }))
     try {
       serde.deserialize(badBytes)
@@ -77,7 +78,7 @@ describe('effectSerde', () => {
 
 describe('State.for optional field serde (papercut)', () => {
   it('a plain Schema state field passes through normalize unchanged', () => {
-    const serde = effectSerde(normalizeStateSchema(Schema.Number))
+    const serde = effectSerde({ schema: normalizeStateSchema(Schema.Number) })
     expect(serde.deserialize(serde.serialize(42))).toBe(42)
   })
 
@@ -86,7 +87,7 @@ describe('State.for optional field serde (papercut)', () => {
      * value schema is recovered from the PropertySignature AST so the State serde
      * round-trips a present value. (Absent state is read as `undefined` by the
      * State combinator, which never reaches the serde.) */
-    const serde = effectSerde(normalizeStateSchema(Schema.optional(Schema.String)))
+    const serde = effectSerde({ schema: normalizeStateSchema(Schema.optional(Schema.String)) })
     expect(serde.deserialize(serde.serialize('hi'))).toBe('hi')
   })
 })
@@ -109,7 +110,7 @@ describe('effectSerde property round-trips (docs/vrs/09-testing/spec.md §3)', (
     tags: Schema.Array(Schema.String),
   })
   fcIt.prop('round-trips a plain struct', [Plain], ([value]) => {
-    const serde = effectSerde(Plain)
+    const serde = effectSerde({ schema: Plain })
     const eq = Schema.equivalence(Plain)
     expect(eq(serde.deserialize(serde.serialize(value)), value)).toBe(true)
   })
@@ -122,7 +123,7 @@ describe('effectSerde property round-trips (docs/vrs/09-testing/spec.md §3)', (
     score: Schema.BigInt,
   })
   fcIt.prop('round-trips a transformed schema (encoded ≠ decoded)', [Transformed], ([value]) => {
-    const serde = effectSerde(Transformed)
+    const serde = effectSerde({ schema: Transformed })
     const eq = Schema.equivalence(Transformed)
     expect(eq(serde.deserialize(serde.serialize(value)), value)).toBe(true)
   })
@@ -138,7 +139,7 @@ describe('effectSerde property round-trips (docs/vrs/09-testing/spec.md §3)', (
     'round-trips an optional state field value (normalizeStateSchema)',
     [FiniteValue],
     ([value]) => {
-      const serde = effectSerde(OptionalState)
+      const serde = effectSerde({ schema: OptionalState })
       const eq = Schema.equivalence(OptionalState)
       expect(eq(serde.deserialize(serde.serialize(value)), value)).toBe(true)
     },
@@ -159,7 +160,7 @@ describe('effectSerde property round-trips (docs/vrs/09-testing/spec.md §3)', (
     'round-trips the redaction transform by value (encrypt∘decrypt ≡ id)',
     [Redacted],
     ([value]) => {
-      const serde = effectSerde(Redacted, 'internal', { redaction: cipher })
+      const serde = effectSerde({ schema: Redacted, slot: 'internal', redaction: cipher })
       const eq = Schema.equivalence(Redacted)
       expect(eq(serde.deserialize(serde.serialize(value)), value)).toBe(true)
     },

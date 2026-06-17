@@ -34,29 +34,35 @@ const Waiter = State.for(WaiterState)
  * retained and attachable via `result`. */
 const StartInput = Schema.Struct({ runId: Restate.idempotencyKey(Schema.String) })
 
-const WaiterObj = RestateObject.contract('waiter', {
-  state: WaiterState,
-  handlers: {
-    /* Exclusive: create the awakeable, store its id, suspend until resolved. */
-    start: { input: StartInput, success: Payload },
-    /* Shared read-only: read the stored awakeable id (so ingress can resolve it). */
-    awakeableId: { input: Schema.Void, success: Schema.String, shared: true },
+const WaiterObj = RestateObject.contract({
+  name: 'waiter',
+  def: {
+    state: WaiterState,
+    handlers: {
+      /* Exclusive: create the awakeable, store its id, suspend until resolved. */
+      start: { input: StartInput, success: Payload },
+      /* Shared read-only: read the stored awakeable id (so ingress can resolve it). */
+      awakeableId: { input: Schema.Void, success: Schema.String, shared: true },
+    },
   },
 })
 
-const WaiterLive = RestateObject.implement<typeof WaiterObj>(WaiterObj, {
-  start: () =>
-    Effect.gen(function* () {
-      const { id, promise } = yield* Awakeable.make(Payload)
-      yield* Waiter.set('awakeableId', id)
-      /* Suspends here until ingress resolves the awakeable; returns the payload. */
-      return yield* promise
-    }).pipe(Effect.orDie),
-  awakeableId: () =>
-    Waiter.get('awakeableId').pipe(
-      Effect.map((id) => id ?? ''),
-      Effect.orDie,
-    ),
+const WaiterLive = RestateObject.implement<typeof WaiterObj>({
+  contractValue: WaiterObj,
+  impl: {
+    start: () =>
+      Effect.gen(function* () {
+        const { id, promise } = yield* Awakeable.make(Payload)
+        yield* Waiter.set({ key: 'awakeableId', value: id })
+        /* Suspends here until ingress resolves the awakeable; returns the payload. */
+        return yield* promise
+      }).pipe(Effect.orDie),
+    awakeableId: () =>
+      Waiter.get('awakeableId').pipe(
+        Effect.map((id) => id ?? ''),
+        Effect.orDie,
+      ),
+  },
 })
 
 /* One held native server for the suite (collapses the copy-pasted scope/ingress
@@ -76,20 +82,25 @@ describe('restate-effect awakeable round-trip', () => {
       const resumed = await Effect.runPromise(
         Effect.gen(function* () {
           /* Start the suspending handler one-way (idempotency-keyed → output retained). */
-          const send = yield* objectSend(WaiterObj, 'job-1', 'start', { runId: 'job-1' })
+          const send = yield* objectSend({
+            contract: WaiterObj,
+            key: 'job-1',
+            method: 'start',
+            input: { runId: 'job-1' },
+          })
 
           /* Poll the shared query until the awakeable id is registered in State. */
           const awakeableId = yield* pollForId('job-1')
 
           /* Resolve the awakeable from ingress with the typed payload. */
-          yield* ingressResolveAwakeable(
-            Payload,
-            awakeableId as AwakeableId<Schema.Schema.Type<typeof Payload>>,
-            { token: 'resumed-ok' },
-          )
+          yield* ingressResolveAwakeable({
+            schema: Payload,
+            id: awakeableId as AwakeableId<Schema.Schema.Type<typeof Payload>>,
+            payload: { token: 'resumed-ok' },
+          })
 
           /* Attach to the original send's output — the resumed handler return value. */
-          return yield* result(send, Payload)
+          return yield* result({ send, outputSchema: Payload })
         }).pipe(Effect.provide(ingressLayer())),
       )
       expect(resumed).toEqual({ token: 'resumed-ok' })
@@ -101,9 +112,12 @@ describe('restate-effect awakeable round-trip', () => {
 const pollForId = (key: string): Effect.Effect<string, never, RestateIngress> =>
   Effect.gen(function* () {
     for (let attempt = 0; attempt < 50; attempt++) {
-      const id = yield* objectCall(WaiterObj, key, 'awakeableId', undefined).pipe(
-        Effect.catchAll(() => Effect.succeed('')),
-      )
+      const id = yield* objectCall({
+        contract: WaiterObj,
+        key,
+        method: 'awakeableId',
+        input: undefined,
+      }).pipe(Effect.catchAll(() => Effect.succeed('')))
       if (id !== '') return id
       yield* Effect.sleep('100 millis')
     }

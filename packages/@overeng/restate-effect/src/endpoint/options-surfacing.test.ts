@@ -30,37 +30,43 @@ const Greet = Schema.Struct({ name: Schema.String })
 describe('retention annotation → SDK retention options', () => {
   it('maps a Restate.retention annotation on the handler input to SDK retention millis', () => {
     /* `Duration.DurationInput` accepts the `"5 minutes"` etc. string form. */
-    const input = Restate.retention(Greet, { idempotency: '5 minutes', journal: '1 hour' })
-    const impl = RestateService.define(
-      'Retained',
-      { greet: { input, success: Schema.String } },
-      { greet: () => Effect.succeed('hi') },
-    )
-    const def = materialize(impl, Runtime.defaultRuntime)
+    const input = Restate.retention({
+      self: Greet,
+      options: { idempotency: '5 minutes', journal: '1 hour' },
+    })
+    const impl = RestateService.define({
+      name: 'Retained',
+      handlers: { greet: { input, success: Schema.String } },
+      impl: { greet: () => Effect.succeed('hi') },
+    })
+    const def = materialize({ implementation: impl, runtime: Runtime.defaultRuntime })
     const opts = handlerOptionsOf(def, 'greet')
     expect(opts?.idempotencyRetention).toBe(5 * 60 * 1000)
     expect(opts?.journalRetention).toBe(60 * 60 * 1000)
   })
 
   it('lets explicit builder options win over the annotation', () => {
-    const input = Restate.retention(Greet, { journal: '1 hour' })
-    const impl = RestateService.define(
-      'Override',
-      {
+    const input = Restate.retention({ self: Greet, options: { journal: '1 hour' } })
+    const impl = RestateService.define({
+      name: 'Override',
+      handlers: {
         greet: { input, success: Schema.String, options: { journalRetentionMillis: 42 } },
       },
-      { greet: () => Effect.succeed('hi') },
+      impl: { greet: () => Effect.succeed('hi') },
+    })
+    const opts = handlerOptionsOf(
+      materialize({ implementation: impl, runtime: Runtime.defaultRuntime }),
+      'greet',
     )
-    const opts = handlerOptionsOf(materialize(impl, Runtime.defaultRuntime), 'greet')
     expect(opts?.journalRetention).toBe(42)
   })
 })
 
 describe('retry surfacing → SDK RetryPolicy', () => {
   it('maps a typed retryPolicy + timeouts on a handler to the SDK options', () => {
-    const impl = RestateService.define(
-      'Retried',
-      {
+    const impl = RestateService.define({
+      name: 'Retried',
+      handlers: {
         greet: {
           input: Greet,
           success: Schema.String,
@@ -77,9 +83,12 @@ describe('retry surfacing → SDK RetryPolicy', () => {
           },
         },
       },
-      { greet: () => Effect.succeed('hi') },
+      impl: { greet: () => Effect.succeed('hi') },
+    })
+    const opts = handlerOptionsOf(
+      materialize({ implementation: impl, runtime: Runtime.defaultRuntime }),
+      'greet',
     )
-    const opts = handlerOptionsOf(materialize(impl, Runtime.defaultRuntime), 'greet')
     expect(opts?.retryPolicy).toStrictEqual({
       maxAttempts: 5,
       initialInterval: 100,
@@ -93,24 +102,33 @@ describe('retry surfacing → SDK RetryPolicy', () => {
 
   it('maps an asTerminalError hook through to the SDK options', () => {
     const asTerminalError = (): undefined => undefined
-    const impl = RestateService.define(
-      'Mapped',
-      { greet: { input: Greet, success: Schema.String, options: { asTerminalError } } },
-      { greet: () => Effect.succeed('hi') },
+    const impl = RestateService.define({
+      name: 'Mapped',
+      handlers: { greet: { input: Greet, success: Schema.String, options: { asTerminalError } } },
+      impl: { greet: () => Effect.succeed('hi') },
+    })
+    const opts = handlerOptionsOf(
+      materialize({ implementation: impl, runtime: Runtime.defaultRuntime }),
+      'greet',
     )
-    const opts = handlerOptionsOf(materialize(impl, Runtime.defaultRuntime), 'greet')
     expect(opts?.asTerminalError).toBe(asTerminalError)
   })
 
   it('maps a service-level retryPolicy to the definition options', () => {
     /* Service-level options live on the contract (third builder arg). */
-    const contract = RestateService.contract(
-      'ServiceRetry',
-      { greet: { input: Greet, success: Schema.String } },
-      { retryPolicy: { maxAttempts: 2, onMaxAttempts: 'kill' }, journalRetentionMillis: 9000 },
-    )
-    const bound = RestateService.implement(contract, { greet: () => Effect.succeed('hi') })
-    const def = materialize(bound, Runtime.defaultRuntime)
+    const contract = RestateService.contract({
+      name: 'ServiceRetry',
+      handlers: { greet: { input: Greet, success: Schema.String } },
+      options: {
+        retryPolicy: { maxAttempts: 2, onMaxAttempts: 'kill' },
+        journalRetentionMillis: 9000,
+      },
+    })
+    const bound = RestateService.implement({
+      contractValue: contract,
+      impl: { greet: () => Effect.succeed('hi') },
+    })
+    const def = materialize({ implementation: bound, runtime: Runtime.defaultRuntime })
     expect(serviceOptionsOf(def)).toMatchObject({
       retryPolicy: { maxAttempts: 2, onMaxAttempts: 'kill' },
       journalRetention: 9000,
@@ -129,12 +147,16 @@ describe('Restate.run RunOptions → SDK ctx.run options', () => {
       },
     } as unknown as restate.Context
 
-    const program = durableRun('step', Effect.succeed(123), {
-      maxRetryAttempts: 4,
-      maxRetryDurationMillis: 60_000,
-      initialRetryIntervalMillis: 50,
-      maxRetryIntervalMillis: 10_000,
-      retryIntervalFactor: 2,
+    const program = durableRun({
+      name: 'step',
+      effect: Effect.succeed(123),
+      options: {
+        maxRetryAttempts: 4,
+        maxRetryDurationMillis: 60_000,
+        initialRetryIntervalMillis: 50,
+        maxRetryIntervalMillis: 10_000,
+        retryIntervalFactor: 2,
+      },
     }).pipe(Effect.provideService(RestateContext, fakeCtx))
 
     const result = await Effect.runPromise(program)
@@ -157,7 +179,9 @@ describe('Restate.run RunOptions → SDK ctx.run options', () => {
       },
     } as unknown as restate.Context
     await Effect.runPromise(
-      durableRun('step', Effect.succeed(1)).pipe(Effect.provideService(RestateContext, fakeCtx)),
+      durableRun({ name: 'step', effect: Effect.succeed(1) }).pipe(
+        Effect.provideService(RestateContext, fakeCtx),
+      ),
     )
     expect(argc).toBe(2)
   })
@@ -166,11 +190,11 @@ describe('Restate.run RunOptions → SDK ctx.run options', () => {
 describe('redaction cipher resolution at materialize', () => {
   it('threads a RestateRedaction cipher from the runtime context into the handler serdes', () => {
     const Secret = Schema.Struct({ pin: Restate.sensitive(Schema.String) })
-    const impl = RestateService.define(
-      'Vault',
-      { store: { input: Secret, success: Schema.String } },
-      { store: () => Effect.succeed('ok') },
-    )
+    const impl = RestateService.define({
+      name: 'Vault',
+      handlers: { store: { input: Secret, success: Schema.String } },
+      impl: { store: () => Effect.succeed('ok') },
+    })
     /* In production the cipher lives in the application `Layer` (so the served
      * runtime's context carries it); `materialize` resolves it best-effort via
      * `Context.getOption`, decoupled from the handler `AppR`. Mirror that here by
@@ -180,7 +204,7 @@ describe('redaction cipher resolution at materialize', () => {
         Context.add(RestateRedaction, aesGcmCipher(new Uint8Array(32).fill(7))),
       ),
     ) as Runtime.Runtime<never>
-    const opts = handlerOptionsOf(materialize(impl, runtime), 'store')
+    const opts = handlerOptionsOf(materialize({ implementation: impl, runtime: runtime }), 'store')
     const inputSerde = opts?.input as { serialize: (v: unknown) => Uint8Array }
     const wire = JSON.parse(new TextDecoder().decode(inputSerde.serialize({ pin: '1234' }))) as {
       pin: string
@@ -192,34 +216,38 @@ describe('redaction cipher resolution at materialize', () => {
 
 describe('materialize REJECTS misplaced field annotations (decision 0020)', () => {
   it('rejects Restate.idempotencyKey applied to the input STRUCT (wrong AST node)', () => {
-    const impl = RestateService.define(
-      'BadIdemStruct',
-      {
+    const impl = RestateService.define({
+      name: 'BadIdemStruct',
+      handlers: {
         go: {
           input: Restate.idempotencyKey(Schema.Struct({ k: Schema.String })),
           success: Schema.Void,
         },
       },
-      { go: () => Effect.void },
+      impl: { go: () => Effect.void },
+    })
+    expect(() => materialize({ implementation: impl, runtime: Runtime.defaultRuntime })).toThrow(
+      /idempotencyKey.*STRUCT/s,
     )
-    expect(() => materialize(impl, Runtime.defaultRuntime)).toThrow(/idempotencyKey.*STRUCT/s)
   })
 
   it('rejects Restate.sensitive applied to the input STRUCT (wrong AST node)', () => {
-    const impl = RestateService.define(
-      'BadSensitiveStruct',
-      {
+    const impl = RestateService.define({
+      name: 'BadSensitiveStruct',
+      handlers: {
         go: { input: Restate.sensitive(Schema.Struct({ k: Schema.String })), success: Schema.Void },
       },
-      { go: () => Effect.void },
+      impl: { go: () => Effect.void },
+    })
+    expect(() => materialize({ implementation: impl, runtime: Runtime.defaultRuntime })).toThrow(
+      /sensitive.*STRUCT/s,
     )
-    expect(() => materialize(impl, Runtime.defaultRuntime)).toThrow(/sensitive.*STRUCT/s)
   })
 
   it('rejects DUPLICATE idempotency-key fields (ambiguous single source)', () => {
-    const impl = RestateService.define(
-      'DupIdem',
-      {
+    const impl = RestateService.define({
+      name: 'DupIdem',
+      handlers: {
         go: {
           input: Schema.Struct({
             a: Restate.idempotencyKey(Schema.String),
@@ -228,24 +256,26 @@ describe('materialize REJECTS misplaced field annotations (decision 0020)', () =
           success: Schema.Void,
         },
       },
-      { go: () => Effect.void },
-    )
-    expect(() => materialize(impl, Runtime.defaultRuntime)).toThrow(
+      impl: { go: () => Effect.void },
+    })
+    expect(() => materialize({ implementation: impl, runtime: Runtime.defaultRuntime })).toThrow(
       /idempotencyKey.*SINGLE source/s,
     )
   })
 
   it('a correctly-placed field annotation materializes cleanly', () => {
-    const impl = RestateService.define(
-      'GoodPlacement',
-      {
+    const impl = RestateService.define({
+      name: 'GoodPlacement',
+      handlers: {
         go: {
           input: Schema.Struct({ k: Restate.idempotencyKey(Schema.String) }),
           success: Schema.Void,
         },
       },
-      { go: () => Effect.void },
-    )
-    expect(() => materialize(impl, Runtime.defaultRuntime)).not.toThrow()
+      impl: { go: () => Effect.void },
+    })
+    expect(() =>
+      materialize({ implementation: impl, runtime: Runtime.defaultRuntime }),
+    ).not.toThrow()
   })
 })

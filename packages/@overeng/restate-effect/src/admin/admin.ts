@@ -55,7 +55,13 @@ import {
 } from './AdminApi.ts'
 
 /** Wrap a bare admin Promise in an Effect that fails with a typed `AdminFailed` error. */
-const adminCall = <A>(method: string, run: () => Promise<A>): Effect.Effect<A, RestateError> =>
+const adminCall = <A>({
+  method,
+  run,
+}: {
+  method: string
+  run: () => Promise<A>
+}): Effect.Effect<A, RestateError> =>
   Effect.tryPromise({
     try: run,
     catch: (cause) => new RestateError({ reason: 'AdminFailed', method, cause }),
@@ -82,46 +88,47 @@ export interface RestateAdminService {
    * Resume a paused invocation (`PATCH /invocations/{id}/resume`), optionally
    * pinning it to a specific `deployment` id.
    */
-  readonly resume: (
-    invocationId: string,
-    opts?: { readonly deployment?: string },
-  ) => Effect.Effect<void, RestateError>
+  readonly resume: (args: {
+    readonly invocationId: string
+    readonly deployment?: string
+  }) => Effect.Effect<void, RestateError>
   /** Purge a COMPLETED invocation's output + journal (`PATCH /invocations/{id}/purge`). */
   readonly purge: (invocationId: string) => Effect.Effect<void, RestateError>
   /** Purge a COMPLETED invocation's journal only, keeping the result (`PATCH /invocations/{id}/purge-journal`). */
   readonly purgeJournal: (invocationId: string) => Effect.Effect<void, RestateError>
   /** Delete a completed invocation entirely (`DELETE /invocations/{id}`). */
-  readonly delete: (
-    invocationId: string,
-    opts?: { readonly mode?: string },
-  ) => Effect.Effect<void, RestateError>
+  readonly delete: (args: {
+    readonly invocationId: string
+    readonly mode?: string
+  }) => Effect.Effect<void, RestateError>
   /**
    * Restart a completed invocation as a NEW invocation (`PATCH
    * /invocations/{id}/restart-as-new`, admin-api ≥3), returning the new
    * invocation id. `from` restarts from a JOURNAL-PREFIX entry index (replaying up
    * to it); `deployment` pins the new invocation to a deployment.
    */
-  readonly restartAsNew: (
-    invocationId: string,
-    opts?: { readonly from?: number; readonly deployment?: string },
-  ) => Effect.Effect<{ readonly newInvocationId: string }, RestateError>
+  readonly restartAsNew: (args: {
+    readonly invocationId: string
+    readonly from?: number
+    readonly deployment?: string
+  }) => Effect.Effect<{ readonly newInvocationId: string }, RestateError>
 
   /* ── Deployments ─────────────────────────────────────────────────────────── */
 
   /** Register a deployment by handler-endpoint URI (`POST /deployments`, `force` overwrites). */
-  readonly registerDeployment: (
-    uri: string,
-    opts?: { readonly force?: boolean },
-  ) => Effect.Effect<unknown, RestateError>
+  readonly registerDeployment: (args: {
+    readonly uri: string
+    readonly force?: boolean
+  }) => Effect.Effect<unknown, RestateError>
   /** List registered deployments + their services (`GET /deployments`). */
   readonly listDeployments: () => Effect.Effect<unknown, RestateError>
   /** Get one deployment's detail (`GET /deployments/{id}`). */
   readonly getDeployment: (id: string) => Effect.Effect<unknown, RestateError>
   /** Update a deployment's headers / address / role (`PATCH /deployments/{id}`). */
-  readonly updateDeployment: (
-    id: string,
-    body: Readonly<Record<string, unknown>>,
-  ) => Effect.Effect<unknown, RestateError>
+  readonly updateDeployment: (args: {
+    readonly id: string
+    readonly body: Readonly<Record<string, unknown>>
+  }) => Effect.Effect<unknown, RestateError>
 
   /* ── Introspection ───────────────────────────────────────────────────────── */
 
@@ -133,10 +140,10 @@ export interface RestateAdminService {
    * and `Schema.decodeUnknown`. A decode failure surfaces as an `AdminFailed`
    * `RestateError`.
    */
-  readonly query: <A, I>(
-    sql: string,
-    rowSchema: Schema.Schema<A, I>,
-  ) => Effect.Effect<ReadonlyArray<A>, RestateError>
+  readonly query: <A, I>(args: {
+    readonly sql: string
+    readonly rowSchema: Schema.Schema<A, I>
+  }) => Effect.Effect<ReadonlyArray<A>, RestateError>
   /** As {@link query} but returns the RAW untyped rows (no Schema decode). */
   readonly queryRaw: (
     sql: string,
@@ -145,39 +152,81 @@ export interface RestateAdminService {
 
 /* Build a `RestateAdminService` from a bare admin client config. */
 const makeAdmin = (config: AdminClientConfig): RestateAdminService => {
-  const patch = (id: string, verb: InvocationVerb, query?: Readonly<Record<string, string>>) =>
-    adminCall(`admin.${verb}(${id})`, () => barePatchInvocation(config, id, verb, query))
+  const patch = ({
+    id,
+    verb,
+    query,
+  }: {
+    id: string
+    verb: InvocationVerb
+    query?: Readonly<Record<string, string>>
+  }) =>
+    adminCall({
+      method: `admin.${verb}(${id})`,
+      run: () =>
+        barePatchInvocation({
+          config,
+          invocationId: id,
+          verb,
+          ...(query !== undefined ? { query } : {}),
+        }),
+    })
   return {
     adminUrl: config.adminUrl,
-    cancel: (id) => patch(id, 'cancel'),
-    kill: (id) => patch(id, 'kill'),
-    pause: (id) => patch(id, 'pause'),
-    resume: (id, opts) =>
-      patch(
-        id,
-        'resume',
-        opts?.deployment !== undefined ? { deployment: opts.deployment } : undefined,
-      ),
-    purge: (id) => patch(id, 'purge'),
-    purgeJournal: (id) => patch(id, 'purge-journal'),
-    delete: (id, opts) =>
-      adminCall(`admin.delete(${id})`, () => bareDeleteInvocation(config, id, opts?.mode)),
-    restartAsNew: (id, opts) =>
-      adminCall(`admin.restartAsNew(${id})`, () =>
-        bareRestartAsNew(config, id, {
-          ...(opts?.from !== undefined ? { from: String(opts.from) } : {}),
-          ...(opts?.deployment !== undefined ? { deployment: opts.deployment } : {}),
-        }),
-      ).pipe(Effect.map((r) => ({ newInvocationId: r.new_invocation_id }))),
-    registerDeployment: (uri, opts) =>
-      adminCall('admin.registerDeployment', () => bareRegisterDeployment(config, uri, opts)),
-    listDeployments: () => adminCall('admin.listDeployments', () => bareListDeployments(config)),
+    cancel: (id) => patch({ id, verb: 'cancel' }),
+    kill: (id) => patch({ id, verb: 'kill' }),
+    pause: (id) => patch({ id, verb: 'pause' }),
+    resume: ({ invocationId, deployment }) =>
+      patch({
+        id: invocationId,
+        verb: 'resume',
+        ...(deployment !== undefined ? { query: { deployment } } : {}),
+      }),
+    purge: (id) => patch({ id, verb: 'purge' }),
+    purgeJournal: (id) => patch({ id, verb: 'purge-journal' }),
+    delete: ({ invocationId, mode }) =>
+      adminCall({
+        method: `admin.delete(${invocationId})`,
+        run: () =>
+          bareDeleteInvocation({ config, invocationId, ...(mode !== undefined ? { mode } : {}) }),
+      }),
+    restartAsNew: ({ invocationId, from, deployment }) =>
+      adminCall({
+        method: `admin.restartAsNew(${invocationId})`,
+        run: () =>
+          bareRestartAsNew({
+            config,
+            invocationId,
+            query: {
+              ...(from !== undefined ? { from: String(from) } : {}),
+              ...(deployment !== undefined ? { deployment } : {}),
+            },
+          }),
+      }).pipe(Effect.map((r) => ({ newInvocationId: r.new_invocation_id }))),
+    registerDeployment: ({ uri, force }) =>
+      adminCall({
+        method: 'admin.registerDeployment',
+        run: () =>
+          bareRegisterDeployment({
+            config,
+            uri,
+            ...(force !== undefined ? { opts: { force } } : {}),
+          }),
+      }),
+    listDeployments: () =>
+      adminCall({ method: 'admin.listDeployments', run: () => bareListDeployments(config) }),
     getDeployment: (id) =>
-      adminCall(`admin.getDeployment(${id})`, () => bareGetDeployment(config, id)),
-    updateDeployment: (id, body) =>
-      adminCall(`admin.updateDeployment(${id})`, () => bareUpdateDeployment(config, id, body)),
-    query: (sql, rowSchema) =>
-      adminCall('admin.query', () => bareQuery(config, sql)).pipe(
+      adminCall({
+        method: `admin.getDeployment(${id})`,
+        run: () => bareGetDeployment({ config, id }),
+      }),
+    updateDeployment: ({ id, body }) =>
+      adminCall({
+        method: `admin.updateDeployment(${id})`,
+        run: () => bareUpdateDeployment({ config, id, body }),
+      }),
+    query: ({ sql, rowSchema }) =>
+      adminCall({ method: 'admin.query', run: () => bareQuery({ config, sql }) }).pipe(
         Effect.flatMap((rows) =>
           Effect.forEach(rows, (row) =>
             Schema.decodeUnknown(rowSchema)(row).pipe(
@@ -189,7 +238,8 @@ const makeAdmin = (config: AdminClientConfig): RestateAdminService => {
           ),
         ),
       ),
-    queryRaw: (sql) => adminCall('admin.queryRaw', () => bareQuery(config, sql)),
+    queryRaw: (sql) =>
+      adminCall({ method: 'admin.queryRaw', run: () => bareQuery({ config, sql }) }),
   }
 }
 

@@ -60,10 +60,10 @@ describe.skipIf(!serverAvailable)('restate-effect ./admin management API', () =>
     /* A typed introspection round-trip: rows decoded through the caller's Schema.
      * Empty result is fine (no invocations yet) — the point is the decode path. */
     const rows = await runAdmin((admin) =>
-      admin.query(
-        'SELECT id, status FROM sys_invocation LIMIT 5',
-        Schema.Struct({ id: Schema.String, status: Schema.String }),
-      ),
+      admin.query({
+        sql: 'SELECT id, status FROM sys_invocation LIMIT 5',
+        rowSchema: Schema.Struct({ id: Schema.String, status: Schema.String }),
+      }),
     )
     expect(Array.isArray(rows)).toBe(true)
   }, 90_000)
@@ -74,7 +74,12 @@ describe.skipIf(!serverAvailable)('restate-effect ./admin management API', () =>
     await Effect.runPromise(
       held
         .harness()
-        .ingress.objectCall(IncidentObj, key, 'open', 'disk full on dev3')
+        .ingress.objectCall({
+          contract: IncidentObj,
+          key,
+          method: 'open',
+          input: 'disk full on host-01',
+        })
         .pipe(Effect.orDie),
     )
 
@@ -93,7 +98,7 @@ describe.skipIf(!serverAvailable)('restate-effect ./admin management API', () =>
     /* And the typed `stateOf` proxy (same admin /query under the hood) reads the
      * decoded value, confirming the single-writer transition landed. */
     const status = await Effect.runPromise(
-      held.harness().stateOf(IncidentObj, key).get('status').pipe(Effect.orDie),
+      held.harness().stateOf({ contract: IncidentObj, key }).get('status').pipe(Effect.orDie),
     )
     expect(status).toBe('open')
   }, 90_000)
@@ -102,7 +107,10 @@ describe.skipIf(!serverAvailable)('restate-effect ./admin management API', () =>
     const key = `delivery-${Date.now()}`
     /* Submit a delivery that WEDGES (parks on its durable `release` promise). */
     const submission = await Effect.runPromise(
-      held.harness().ingress.workflowSubmit(DeliveryWf, key, { wedge: true }).pipe(Effect.orDie),
+      held
+        .harness()
+        .ingress.workflowSubmit({ contract: DeliveryWf, key, input: { wedge: true } })
+        .pipe(Effect.orDie),
     )
     const invocationId = submission.invocationId
     expect(invocationId).toMatch(/.+/)
@@ -115,7 +123,7 @@ describe.skipIf(!serverAvailable)('restate-effect ./admin management API', () =>
     const activeStatuses = ['running', 'suspended', 'backing-off', 'scheduled']
     const findStuck = async (): Promise<InvocationRow | undefined> => {
       const rows = await runAdmin((admin) =>
-        admin.query(listByServiceSql('delivery'), InvocationRow),
+        admin.query({ sql: listByServiceSql('delivery'), rowSchema: InvocationRow }),
       )
       return rows.find((r) => r.id === invocationId)
     }
@@ -131,7 +139,7 @@ describe.skipIf(!serverAvailable)('restate-effect ./admin management API', () =>
     expect(activeStatuses).toContain(stuck!.status)
     /* The runbook's stuck-delivery query surfaces it (non-terminal ⊃ this one). */
     const stuckList = await runAdmin((admin) =>
-      admin.query(stuckDeliveriesSql('delivery'), InvocationRow),
+      admin.query({ sql: stuckDeliveriesSql('delivery'), rowSchema: InvocationRow }),
     )
     expect(stuckList.some((r) => r.id === invocationId)).toBe(true)
 
@@ -142,7 +150,7 @@ describe.skipIf(!serverAvailable)('restate-effect ./admin management API', () =>
     /* Poll until the invocation is no longer active (cancellation is async). */
     const gone = async (): Promise<boolean> => {
       const rows = await runAdmin((admin) =>
-        admin.query(listByServiceSql('delivery'), InvocationRow),
+        admin.query({ sql: listByServiceSql('delivery'), rowSchema: InvocationRow }),
       )
       const row = rows.find((r) => r.id === invocationId)
       /* Either purged from the live set, or no longer in an active state. */

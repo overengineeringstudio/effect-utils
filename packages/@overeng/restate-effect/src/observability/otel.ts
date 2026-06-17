@@ -390,17 +390,20 @@ const boundaryObserver: BoundaryObserver = (info) => {
  * auto baseline metrics export through).
  *
  * ```ts
- * serve(RestateOtel.withOtel({ services: [GreeterLive], port: 9080 })).pipe(
+ * serve(RestateOtel.withOtel({ opts: { services: [GreeterLive], port: 9080 } })).pipe(
  *   Effect.provide(RestateOtel.layer({ resource: { serviceName: 'greeter' }, exporter, metricExporter })),
  *   Effect.provide(AppLayer),
  *   NodeRuntime.runMain,
  * )
  * ```
  */
-const withOtel = <AppR>(
-  opts: EndpointOptions<AppR>,
-  hookOptions?: Partial<OpenTelemetryHookOptions>,
-): EndpointOptions<AppR> => ({
+const withOtel = <AppR>({
+  opts,
+  hookOptions,
+}: {
+  opts: EndpointOptions<AppR>
+  hookOptions?: Partial<OpenTelemetryHookOptions>
+}): EndpointOptions<AppR> => ({
   ...opts,
   hooks: [...(opts.hooks ?? []), hook(hookOptions)],
   inboundBridge,

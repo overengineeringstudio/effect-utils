@@ -16,9 +16,9 @@
  * it.effect('greet round-trips', () =>
  *   Effect.gen(function* () {
  *     const harness = yield* RestateTestHarness
- *     const result = yield* harness.ingress.call(Greeter, 'greet', { name: 'Sarah' })
+ *     const result = yield* harness.ingress.call({ contract: Greeter, method: 'greet', input: { name: 'Sarah' } })
  *     expect(result.message).toBe('Hello Sarah')
- *     yield* harness.stateOf(Onboard, 'wf-1').set('status', 'pending')
+ *     yield* harness.stateOf({ contract: Onboard, key: 'wf-1' }).set({ key: 'status', value: 'pending' })
  *   }).pipe(
  *     Effect.provide(RestateTestHarness.layer({ services: [GreeterLive], appLayer: AppLayer })),
  *   ),
@@ -133,7 +133,7 @@ export { RestateTestEnv, type RestateTestEnvService } from './TestEnv.ts'
  * ```ts
  * it.effect('polls a durable timer', () =>
  *   Effect.gen(function* () {
- *     yield* harness.ingress.objectCall(Loop, key, 'start', undefined)
+ *     yield* harness.ingress.objectCall({ contract: Loop, key, method: 'start', input: undefined })
  *     yield* liveSleep(200) // real time, NOT virtual
  *     // ... assert the timer fired ...
  *   }),
@@ -342,7 +342,7 @@ const startServer = async (opts: {
       /* Reuse the shared bare admin client (the same one `./admin` lifts) so the
        * harness and the public admin surface never drift on the registration call. */
       try {
-        await adminRegisterDeployment({ adminUrl }, uri, { force: true })
+        await adminRegisterDeployment({ config: { adminUrl }, uri, opts: { force: true } })
       } catch (cause) {
         fail(`deployment registration failed for uri=${uri}: ${String(cause)}`)
       }
@@ -417,10 +417,10 @@ export interface StateProxy<S extends StateSchemas> {
    * ≡ `clear(key)`), matching State's "absent key → undefined" semantics and the
    * in-handler `State.set` (#1).
    */
-  readonly set: <K extends keyof S & string>(
-    key: K,
-    value: StateValueType<S[K]>,
-  ) => Effect.Effect<void, RestateError>
+  readonly set: <K extends keyof S & string>(args: {
+    key: K
+    value: StateValueType<S[K]>
+  }) => Effect.Effect<void, RestateError>
   /** Remove a single State key (read-modify-write of the full key set). */
   readonly clear: <K extends keyof S & string>(key: K) => Effect.Effect<void, RestateError>
   /** Replace the entire State for the key with the given typed record. */
@@ -429,7 +429,7 @@ export interface StateProxy<S extends StateSchemas> {
   }) => Effect.Effect<void, RestateError>
 }
 
-const stateError = (method: string, cause: unknown): RestateError =>
+const stateError = ({ method, cause }: { method: string; cause: unknown }): RestateError =>
   new RestateError({ reason: 'IngressFailed', method, cause })
 
 /* The State read/write helpers now delegate to the shared bare admin client
@@ -438,12 +438,17 @@ const stateError = (method: string, cause: unknown): RestateError =>
 const adminConfigFor = (adminUrl: string): AdminClientConfig => ({ adminUrl })
 
 /** Build a typed `StateProxy` bound to a contract's `state` block + an Admin URL. */
-const makeStateProxy = <S extends StateSchemas>(
-  adminUrl: string,
-  contract: StatefulContract<S>,
-  serviceKey: string,
-  redaction: RedactionCipher | undefined,
-): StateProxy<S> => {
+const makeStateProxy = <S extends StateSchemas>({
+  adminUrl,
+  contract,
+  serviceKey,
+  redaction,
+}: {
+  adminUrl: string
+  contract: StatefulContract<S>
+  serviceKey: string
+  redaction: RedactionCipher | undefined
+}): StateProxy<S> => {
   const schemas = contract.state
   const service = contract.name
   /* The per-key serde is built through the SAME shared contract-invocation policy
@@ -454,27 +459,27 @@ const makeStateProxy = <S extends StateSchemas>(
    * as the handler writes it (no parallel `effectSerde` drift). */
   const serdes = contractSerdeFactory(redaction)
   const serdeFor = <K extends keyof S & string>(key: K) =>
-    serdes.forSchema(
-      normalizeStateSchema(schemas[key]!) as Schema.Schema<unknown, unknown>,
-      'internal',
-    )
+    serdes.forSchema({
+      schema: normalizeStateSchema(schemas[key]!) as Schema.Schema<unknown, unknown>,
+      slot: 'internal',
+    })
 
   const config = adminConfigFor(adminUrl)
   const readAll = (): Effect.Effect<ReadonlyArray<readonly [string, Uint8Array]>, RestateError> =>
     Effect.tryPromise({
       try: () =>
-        adminQueryStateRows(config, service, serviceKey).then((rows) =>
+        adminQueryStateRows({ config, service, serviceKey }).then((rows) =>
           rows.map((r) => [r.key, r.value] as const),
         ),
-      catch: (cause) => stateError(`stateOf(${service}/${serviceKey}).read`, cause),
+      catch: (cause) => stateError({ method: `stateOf(${service}/${serviceKey}).read`, cause }),
     })
 
   const writeAll = (
     entries: ReadonlyArray<readonly [string, Uint8Array]>,
   ): Effect.Effect<void, RestateError> =>
     Effect.tryPromise({
-      try: () => adminPutState(config, service, serviceKey, entries),
-      catch: (cause) => stateError(`stateOf(${service}/${serviceKey}).write`, cause),
+      try: () => adminPutState({ config, service, serviceKey, entries }),
+      catch: (cause) => stateError({ method: `stateOf(${service}/${serviceKey}).write`, cause }),
     })
 
   return {
@@ -485,7 +490,8 @@ const makeStateProxy = <S extends StateSchemas>(
           if (hit === undefined) return Effect.succeed(undefined)
           return Effect.try({
             try: () => serdeFor(key).deserialize(hit[1]) as StateValueType<S[typeof key]>,
-            catch: (cause) => stateError(`stateOf(${service}/${serviceKey}).get(${key})`, cause),
+            catch: (cause) =>
+              stateError({ method: `stateOf(${service}/${serviceKey}).get(${key})`, cause }),
           })
         }),
       ),
@@ -497,11 +503,12 @@ const makeStateProxy = <S extends StateSchemas>(
               Object.fromEntries(
                 rows.map(([k, bytes]) => [k, serdeFor(k as keyof S & string).deserialize(bytes)]),
               ) as { readonly [K in keyof S]?: StateValueType<S[K]> },
-            catch: (cause) => stateError(`stateOf(${service}/${serviceKey}).getAll`, cause),
+            catch: (cause) =>
+              stateError({ method: `stateOf(${service}/${serviceKey}).getAll`, cause }),
           }),
         ),
       ),
-    set: (key, value) =>
+    set: ({ key, value }) =>
       Effect.gen(function* () {
         const existing = yield* readAll()
         const others = existing.filter(([k]) => k !== key)
@@ -514,7 +521,8 @@ const makeStateProxy = <S extends StateSchemas>(
         }
         const encoded = yield* Effect.try({
           try: () => serdeFor(key).serialize(value),
-          catch: (cause) => stateError(`stateOf(${service}/${serviceKey}).set(${key})`, cause),
+          catch: (cause) =>
+            stateError({ method: `stateOf(${service}/${serviceKey}).set(${key})`, cause }),
         })
         yield* writeAll([...others, [key, encoded] as const])
       }),
@@ -530,7 +538,8 @@ const makeStateProxy = <S extends StateSchemas>(
             Object.entries(values)
               .filter(([, v]) => v !== undefined)
               .map(([k, v]) => [k, serdeFor(k as keyof S & string).serialize(v)] as const),
-          catch: (cause) => stateError(`stateOf(${service}/${serviceKey}).setAll`, cause),
+          catch: (cause) =>
+            stateError({ method: `stateOf(${service}/${serviceKey}).setAll`, cause }),
         })
         yield* writeAll(entries)
       }),
@@ -561,10 +570,10 @@ export interface RestateTestHarnessService {
    * `state` block, over the Admin API. Seed pre-conditions and assert
    * post-conditions without going through a handler.
    */
-  readonly stateOf: <S extends StateSchemas>(
-    contract: StatefulContract<S>,
-    key: string,
-  ) => StateProxy<S>
+  readonly stateOf: <S extends StateSchemas>(args: {
+    contract: StatefulContract<S>
+    key: string
+  }) => StateProxy<S>
   /**
    * Serve an ADDITIONAL `services` array on a fresh ephemeral SDK port and register
    * it as a SECOND deployment version against the running server (docs/vrs/09-testing/spec.md §2,
@@ -596,69 +605,75 @@ export interface RestateTestHarnessService {
  * contract change still flows through.
  */
 export interface BoundIngress {
-  readonly call: <C extends Contract<string, HandlerSpecMap>, M extends MethodsOf<C>>(
-    contract: C,
-    method: M,
-    input: InputOf<C, M>,
-  ) => Effect.Effect<SuccessOf<C, M>, RestateError, never>
-  readonly callTyped: <C extends Contract<string, HandlerSpecMap>, M extends MethodsOf<C>>(
-    contract: C,
-    method: M,
-    input: InputOf<C, M>,
-  ) => Effect.Effect<SuccessOf<C, M>, RestateError | ErrorOf<C, M>, never>
-  readonly objectCall: <C extends ObjectContract<string, any, any>, M extends ObjectMethodsOf<C>>(
-    contract: C,
-    key: string,
-    method: M,
-    input: ObjectInputOf<C, M>,
-  ) => Effect.Effect<ObjectSuccessOf<C, M>, RestateError, never>
+  readonly call: <C extends Contract<string, HandlerSpecMap>, M extends MethodsOf<C>>(args: {
+    contract: C
+    method: M
+    input: InputOf<C, M>
+  }) => Effect.Effect<SuccessOf<C, M>, RestateError, never>
+  readonly callTyped: <C extends Contract<string, HandlerSpecMap>, M extends MethodsOf<C>>(args: {
+    contract: C
+    method: M
+    input: InputOf<C, M>
+  }) => Effect.Effect<SuccessOf<C, M>, RestateError | ErrorOf<C, M>, never>
+  readonly objectCall: <
+    C extends ObjectContract<string, any, any>,
+    M extends ObjectMethodsOf<C>,
+  >(args: {
+    contract: C
+    key: string
+    method: M
+    input: ObjectInputOf<C, M>
+  }) => Effect.Effect<ObjectSuccessOf<C, M>, RestateError, never>
   readonly objectCallTyped: <
     C extends ObjectContract<string, any, any>,
     M extends ObjectMethodsOf<C>,
-  >(
-    contract: C,
-    key: string,
-    method: M,
-    input: ObjectInputOf<C, M>,
-  ) => Effect.Effect<ObjectSuccessOf<C, M>, RestateError | ObjectErrorOf<C, M>, never>
-  readonly objectSend: <C extends ObjectContract<string, any, any>, M extends ObjectMethodsOf<C>>(
-    contract: C,
-    key: string,
-    method: M,
-    input: ObjectInputOf<C, M>,
-    opts?: { readonly delayMillis?: number },
-  ) => Effect.Effect<clients.Send, RestateError, never>
-  readonly workflowSubmit: <C extends WorkflowContract<string, any, any, any, any>>(
-    contract: C,
-    key: string,
-    input: WorkflowRunInputOf<C>,
-  ) => Effect.Effect<clients.WorkflowSubmission<WorkflowRunSuccessOf<C>>, RestateError, never>
-  readonly workflowAttach: <C extends WorkflowContract<string, any, any, any, any>>(
-    contract: C,
-    key: string,
-  ) => Effect.Effect<WorkflowRunSuccessOf<C>, RestateError | WorkflowRunErrorOf<C>, never>
-  readonly workflowOutput: <C extends WorkflowContract<string, any, any, any, any>>(
-    contract: C,
-    key: string,
-  ) => Effect.Effect<clients.Output<WorkflowRunSuccessOf<C>>, RestateError, never>
+  >(args: {
+    contract: C
+    key: string
+    method: M
+    input: ObjectInputOf<C, M>
+  }) => Effect.Effect<ObjectSuccessOf<C, M>, RestateError | ObjectErrorOf<C, M>, never>
+  readonly objectSend: <
+    C extends ObjectContract<string, any, any>,
+    M extends ObjectMethodsOf<C>,
+  >(args: {
+    contract: C
+    key: string
+    method: M
+    input: ObjectInputOf<C, M>
+    opts?: { readonly delayMillis?: number }
+  }) => Effect.Effect<clients.Send, RestateError, never>
+  readonly workflowSubmit: <C extends WorkflowContract<string, any, any, any, any>>(args: {
+    contract: C
+    key: string
+    input: WorkflowRunInputOf<C>
+  }) => Effect.Effect<clients.WorkflowSubmission<WorkflowRunSuccessOf<C>>, RestateError, never>
+  readonly workflowAttach: <C extends WorkflowContract<string, any, any, any, any>>(args: {
+    contract: C
+    key: string
+  }) => Effect.Effect<WorkflowRunSuccessOf<C>, RestateError | WorkflowRunErrorOf<C>, never>
+  readonly workflowOutput: <C extends WorkflowContract<string, any, any, any, any>>(args: {
+    contract: C
+    key: string
+  }) => Effect.Effect<clients.Output<WorkflowRunSuccessOf<C>>, RestateError, never>
   readonly workflowCall: <
     C extends WorkflowContract<string, any, any, any, any>,
     M extends WorkflowSignalQueryOf<C>,
-  >(
-    contract: C,
-    key: string,
-    method: M,
-    input: WorkflowSignalInputOf<C, M>,
-  ) => Effect.Effect<WorkflowSignalSuccessOf<C, M>, RestateError, never>
-  readonly result: <T, I>(
-    send: clients.Send<unknown> | clients.WorkflowSubmission<unknown>,
-    outputSchema: Schema.Schema<T, I>,
-  ) => Effect.Effect<T, RestateError, never>
-  readonly resolveAwakeable: <T, I>(
-    schema: Schema.Schema<T, I>,
-    id: AwakeableId<T>,
-    payload: T,
-  ) => Effect.Effect<void, RestateError, never>
+  >(args: {
+    contract: C
+    key: string
+    method: M
+    input: WorkflowSignalInputOf<C, M>
+  }) => Effect.Effect<WorkflowSignalSuccessOf<C, M>, RestateError, never>
+  readonly result: <T, I>(args: {
+    send: clients.Send<unknown> | clients.WorkflowSubmission<unknown>
+    outputSchema: Schema.Schema<T, I>
+  }) => Effect.Effect<T, RestateError, never>
+  readonly resolveAwakeable: <T, I>(args: {
+    schema: Schema.Schema<T, I>
+    id: AwakeableId<T>
+    payload: T
+  }) => Effect.Effect<void, RestateError, never>
 }
 
 /* eslint-enable @typescript-eslint/no-explicit-any */
@@ -728,11 +743,15 @@ export class RestateTestHarness extends Context.Tag('@overeng/restate-effect/Res
          * server-shutdown finalizer (close endpoint → kill server → rm base dir).
          * Reused for the primary deployment AND `registerDeployment` (multi-version,
          * docs/vrs/09-testing/spec.md §2) — each gets its own port + scope-managed endpoint. */
-        const serveAndRegister = <AppR2, RIn2>(
-          services: ReadonlyArray<AnyImplementation<AppR2>>,
-          appLayer: Layer.Layer<AppR2, never, RIn2>,
-          endpointScope: Scope.Scope,
-        ): Effect.Effect<string, RestateError, RIn2> =>
+        const serveAndRegister = <AppR2, RIn2>({
+          services,
+          appLayer,
+          endpointScope,
+        }: {
+          services: ReadonlyArray<AnyImplementation<AppR2>>
+          appLayer: Layer.Layer<AppR2, never, RIn2>
+          endpointScope: Scope.Scope
+        }): Effect.Effect<string, RestateError, RIn2> =>
           Effect.gen(function* () {
             const port = yield* Effect.promise(() => freePort())
             yield* endpointLayer({
@@ -773,7 +792,11 @@ export class RestateTestHarness extends Context.Tag('@overeng/restate-effect/Res
         const memoAppLayer = yield* Layer.memoize(opts.appLayer)
 
         /* 2.+3. Serve + register the primary deployment into the harness scope. */
-        yield* serveAndRegister(opts.services, memoAppLayer, harnessScope)
+        yield* serveAndRegister({
+          services: opts.services,
+          appLayer: memoAppLayer,
+          endpointScope: harnessScope,
+        })
 
         /* Resolve the OPTIONAL `RestateRedaction` cipher from the consumer's
          * `appLayer` — the SAME cipher the served endpoint resolves (decision 0020),
@@ -830,17 +853,22 @@ export class RestateTestHarness extends Context.Tag('@overeng/restate-effect/Res
           ingressUrl: server.ingressUrl,
           adminUrl: server.adminUrl,
           ingress: bound,
-          stateOf: <S extends StateSchemas>(contract: StatefulContract<S>, key: string) =>
-            makeStateProxy(server.adminUrl, contract, key, redaction),
+          stateOf: <S extends StateSchemas>(args: { contract: StatefulContract<S>; key: string }) =>
+            makeStateProxy({
+              adminUrl: server.adminUrl,
+              contract: args.contract,
+              serviceKey: args.key,
+              redaction,
+            }),
           registerDeployment: (<AppR2, RIn2>(deployOpts: {
             readonly services: ReadonlyArray<AnyImplementation<AppR2>>
             readonly appLayer: Layer.Layer<AppR2, never, RIn2>
           }) =>
-            serveAndRegister(
-              deployOpts.services,
-              deployOpts.appLayer,
-              harnessScope,
-            )) as RestateTestHarnessService['registerDeployment'],
+            serveAndRegister({
+              services: deployOpts.services,
+              appLayer: deployOpts.appLayer,
+              endpointScope: harnessScope,
+            })) as RestateTestHarnessService['registerDeployment'],
         }
       }),
     )
@@ -871,7 +899,7 @@ export interface HeldRestateServer {
  * beforeAll(held.setup, 90_000)
  * afterAll(held.teardown, 90_000)
  * // ... in a test:
- * const result = yield* held.harness().ingress.objectCall(Loop, key, 'start', undefined)
+ * const result = yield* held.harness().ingress.objectCall({ contract: Loop, key, method: 'start', input: undefined })
  * ```
  *
  * This is the manual-scope sibling of `RestateTestHarness.layer` (which a suite

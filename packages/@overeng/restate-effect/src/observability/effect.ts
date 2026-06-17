@@ -16,6 +16,6 @@ const trustOtelContract = <A, E, R>(
  * the shared seam every durable combinator/runtime/reschedule step spans through.
  */
 export const withRestateOperation =
-  (name: string, label: string) =>
+  ({ name, label }: { name: string; label: string }) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
     trustOtelContract(effect.pipe(restateOperation(name).with({ label })))

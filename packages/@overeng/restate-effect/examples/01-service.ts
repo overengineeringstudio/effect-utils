@@ -34,29 +34,35 @@ export class EmptyName extends Schema.TaggedError<EmptyName>('example/EmptyName'
 
 /* ── 3. The contract: handler names + their I/O/error Schemas (shareable) ─── */
 
-export const Greeter = RestateService.contract('greeter', {
-  greet: { input: GreetInput, success: GreetSuccess, error: EmptyName },
+export const Greeter = RestateService.contract({
+  name: 'greeter',
+  handlers: {
+    greet: { input: GreetInput, success: GreetSuccess, error: EmptyName },
+  },
 })
 
 /* ── 4. The implementation: bind each handler name to an Effect ───────────── */
 
 /* `AppR` (`Greeting`) is passed EXPLICITLY — it is the residual requirement the
  * application Layer satisfies. The handler `E` channel carries ONLY `EmptyName`. */
-export const GreeterLive = RestateService.implement<typeof Greeter, Greeting>(Greeter, {
-  greet: ({ name }) =>
-    Effect.gen(function* () {
-      if (name === '') return yield* new EmptyName()
-      const { prefix } = yield* Greeting
-      /* A non-deterministic call (a UUID) journaled once by `Restate.run`, so a
-       * replay observes the SAME id. `Restate.run`'s `E` is CLEAN (#1): this
-       * closure declares no domain error, so the `E` stays `EmptyName`-only with no
-       * `orDie` — a durable-step infra failure is a defect classified at the boundary. */
-      const id = yield* Restate.run(
-        'gen-id',
-        Effect.sync(() => crypto.randomUUID()),
-      )
-      return { message: `${prefix} ${name}`, id }
-    }),
+export const GreeterLive = RestateService.implement<typeof Greeter, Greeting>({
+  contractValue: Greeter,
+  impl: {
+    greet: ({ name }) =>
+      Effect.gen(function* () {
+        if (name === '') return yield* new EmptyName()
+        const { prefix } = yield* Greeting
+        /* A non-deterministic call (a UUID) journaled once by `Restate.run`, so a
+         * replay observes the SAME id. `Restate.run`'s `E` is CLEAN (#1): this
+         * closure declares no domain error, so the `E` stays `EmptyName`-only with no
+         * `orDie` — a durable-step infra failure is a defect classified at the boundary. */
+        const id = yield* Restate.run({
+          name: 'gen-id',
+          effect: Effect.sync(() => crypto.randomUUID()),
+        })
+        return { message: `${prefix} ${name}`, id }
+      }),
+  },
 })
 
 /* `GreeterLive` is served by the endpoint `layer`/`serve` (see `04-endpoint.ts`)

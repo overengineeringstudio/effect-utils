@@ -85,13 +85,13 @@ export const NotionWatcher = RestateScheduled.make<typeof WatcherState>({
       const cursor = (yield* Watcher.get('cursor')) ?? 0
       const itemsSeen = (yield* Watcher.get('itemsSeen')) ?? 0
       /* The poll is a BOUNDED durable step: journaled + per-cycle retry in place. */
-      const page = yield* Restate.run(
-        `poll(${key}@${cursor})`,
-        Effect.sync(() => sourceBehavior(cursor)),
-        { maxRetryAttempts: 3, initialRetryIntervalMillis: 50 },
-      )
-      yield* Watcher.set('cursor', page.nextCursor)
-      yield* Watcher.set('itemsSeen', itemsSeen + page.itemCount)
+      const page = yield* Restate.run({
+        name: `poll(${key}@${cursor})`,
+        effect: Effect.sync(() => sourceBehavior(cursor)),
+        options: { maxRetryAttempts: 3, initialRetryIntervalMillis: 50 },
+      })
+      yield* Watcher.set({ key: 'cursor', value: page.nextCursor })
+      yield* Watcher.set({ key: 'itemsSeen', value: itemsSeen + page.itemCount })
       /* Data-driven stop: the source has no more pages → end the loop cleanly. */
       return page.done ? { stop: true } : { stop: false }
     }),
@@ -110,65 +110,72 @@ export const RawWatcherState = {
 
 const Raw = State.for(RawWatcherState)
 
-export const RawWatcherObj = RestateObject.contract('raw-watcher', {
-  state: RawWatcherState,
-  handlers: {
-    /** Arm the loop: set running, fire cycle 0 immediately. */
-    start: { input: Schema.Void, success: Schema.Void },
-    /** Halt the chain: clear the running flag. */
-    stop: { input: Schema.Void, success: Schema.Void },
-    /** Read-only inspection (no write lock). */
-    read: {
-      input: Schema.Void,
-      success: Schema.Struct({ running: Schema.Boolean, cursor: Schema.Number }),
-      shared: true,
+export const RawWatcherObj = RestateObject.contract({
+  name: 'raw-watcher',
+  def: {
+    state: RawWatcherState,
+    handlers: {
+      /** Arm the loop: set running, fire cycle 0 immediately. */
+      start: { input: Schema.Void, success: Schema.Void },
+      /** Halt the chain: clear the running flag. */
+      stop: { input: Schema.Void, success: Schema.Void },
+      /** Read-only inspection (no write lock). */
+      read: {
+        input: Schema.Void,
+        success: Schema.Struct({ running: Schema.Boolean, cursor: Schema.Number }),
+        shared: true,
+      },
+      /** INTERNAL: one cycle — re-arm via a delayed self-send, then return. */
+      cycle: { input: Schema.Void, success: Schema.Void, options: { ingressPrivate: true } },
     },
-    /** INTERNAL: one cycle — re-arm via a delayed self-send, then return. */
-    cycle: { input: Schema.Void, success: Schema.Void, options: { ingressPrivate: true } },
   },
 })
 
-export const RawWatcherLive = RestateObject.implement<typeof RawWatcherObj>(RawWatcherObj, {
-  start: () =>
-    Effect.gen(function* () {
-      yield* Raw.set('running', true)
-      if (((yield* Raw.get('cursor')) ?? undefined) === undefined) yield* Raw.set('cursor', 0)
-      /* Arm cycle 0 immediately (delay 0). A `reschedule` infra failure is a
-       * defect (clean `E`, decision 0003), so `orDie` it — the handler declares no
-       * domain error. */
-      yield* Restate.reschedule({
-        contract: RawWatcherObj,
-        method: 'cycle',
-        input: undefined,
-        delayMillis: 0,
-      }).pipe(Effect.orDie)
-    }),
-  stop: () => Raw.set('running', false),
-  read: () =>
-    Effect.gen(function* () {
-      const running = (yield* Raw.get('running')) ?? false
-      const cursor = (yield* Raw.get('cursor')) ?? 0
-      return { running, cursor }
-    }),
-  cycle: () =>
-    Effect.gen(function* () {
-      /* STOP CONDITION (author-written): not running → no re-arm → chain ends. */
-      const running = (yield* Raw.get('running')) ?? false
-      if (running === false) return
+export const RawWatcherLive = RestateObject.implement<typeof RawWatcherObj>({
+  contractValue: RawWatcherObj,
+  impl: {
+    start: () =>
+      Effect.gen(function* () {
+        yield* Raw.set({ key: 'running', value: true })
+        if (((yield* Raw.get('cursor')) ?? undefined) === undefined)
+          yield* Raw.set({ key: 'cursor', value: 0 })
+        /* Arm cycle 0 immediately (delay 0). A `reschedule` infra failure is a
+         * defect (clean `E`, decision 0003), so `orDie` it — the handler declares no
+         * domain error. */
+        yield* Restate.reschedule({
+          contract: RawWatcherObj,
+          method: 'cycle',
+          input: undefined,
+          delayMillis: 0,
+        }).pipe(Effect.orDie)
+      }),
+    stop: () => Raw.set({ key: 'running', value: false }),
+    read: () =>
+      Effect.gen(function* () {
+        const running = (yield* Raw.get('running')) ?? false
+        const cursor = (yield* Raw.get('cursor')) ?? 0
+        return { running, cursor }
+      }),
+    cycle: () =>
+      Effect.gen(function* () {
+        /* STOP CONDITION (author-written): not running → no re-arm → chain ends. */
+        const running = (yield* Raw.get('running')) ?? false
+        if (running === false) return
 
-      /* SAFE ORDERING: advance + re-arm FIRST (both journaled), THEN do fallible
-       * work — so a re-arm journaled before a failure is still delivered and the
-       * loop survives a failing cycle. (The primitive bakes this in for you.) */
-      const cursor = (yield* Raw.get('cursor')) ?? 0
-      yield* Raw.set('cursor', cursor + 1)
-      yield* Restate.reschedule({
-        contract: RawWatcherObj,
-        method: 'cycle',
-        input: undefined,
-        delayMillis: 200,
-      }).pipe(Effect.orDie)
-      /* ... the actual poll/work would go here (a bounded `Restate.run`) ... */
-    }),
+        /* SAFE ORDERING: advance + re-arm FIRST (both journaled), THEN do fallible
+         * work — so a re-arm journaled before a failure is still delivered and the
+         * loop survives a failing cycle. (The primitive bakes this in for you.) */
+        const cursor = (yield* Raw.get('cursor')) ?? 0
+        yield* Raw.set({ key: 'cursor', value: cursor + 1 })
+        yield* Restate.reschedule({
+          contract: RawWatcherObj,
+          method: 'cycle',
+          input: undefined,
+          delayMillis: 200,
+        }).pipe(Effect.orDie)
+        /* ... the actual poll/work would go here (a bounded `Restate.run`) ... */
+      }),
+  },
 })
 
 /* ════════════════════════════════════════════════════════════════════════
@@ -202,7 +209,13 @@ export type ComposedSourceBehavior = (cursor: number) => ComposedSourceResult
 /* Module-level per-key source registry (a test seam; a real watcher calls the API). */
 const composedSources = new Map<string, ComposedSourceBehavior>()
 /** Install a per-key source behavior (the test seam). */
-export const installComposedSource = (key: string, behavior: ComposedSourceBehavior): void => {
+export const installComposedSource = ({
+  key,
+  behavior,
+}: {
+  key: string
+  behavior: ComposedSourceBehavior
+}): void => {
   composedSources.set(key, behavior)
 }
 /** Reset all installed source behaviors. */
@@ -221,7 +234,8 @@ const defaultComposedSource: ComposedSourceBehavior = (cursor) => ({
 export class RateLimited extends Schema.TaggedError<RateLimited>()('RateLimited', {
   retryAfterMillis: Schema.Number,
 }) {}
-const RateLimitedRetryable = Restate.retryable(RateLimited, {
+const RateLimitedRetryable = Restate.retryable({
+  self: RateLimited,
   retryAfter: (e) => e.retryAfterMillis,
 })
 
@@ -229,7 +243,7 @@ const RateLimitedRetryable = Restate.retryable(RateLimited, {
 export class SourceFailed extends Schema.TaggedError<SourceFailed>()('SourceFailed', {
   message: Schema.String,
 }) {}
-const SourceFailedTerminal = Restate.terminal(SourceFailed)
+const SourceFailedTerminal = Restate.terminal({ self: SourceFailed })
 
 /** The cycle's declared error UNION (a retryable + a terminal member), classified
  * per-member at the loop boundary. */
@@ -250,18 +264,21 @@ const Composed = State.for(ComposedState)
  * durable step carries no typed failure (#1), so the declared 429 / terminal are
  * RETURNED as tagged VALUES (`run`'s `E` is `never`), then `Effect.fail`ed in the
  * cycle BODY so they travel the cycle's typed `E` to the loop's classification. */
-const pollComposedSource = (
-  key: string,
-  cursor: number,
-): Effect.Effect<ComposedSourceResult, never, RestateContext> =>
-  Restate.run(
-    `poll(${key}@${cursor})`,
-    Effect.sync((): ComposedSourceResult => {
+const pollComposedSource = ({
+  key,
+  cursor,
+}: {
+  key: string
+  cursor: number
+}): Effect.Effect<ComposedSourceResult, never, RestateContext> =>
+  Restate.run({
+    name: `poll(${key}@${cursor})`,
+    effect: Effect.sync((): ComposedSourceResult => {
       const behavior = composedSources.get(key) ?? defaultComposedSource
       return behavior(cursor)
     }),
-    { maxRetryAttempts: 1, initialRetryIntervalMillis: 10 },
-  )
+    options: { maxRetryAttempts: 1, initialRetryIntervalMillis: 10 },
+  })
 
 /**
  * Build the composed daemon. `wake` defaults to true (the held-race shape that an
@@ -293,10 +310,10 @@ export const makeComposedDaemon = (opts: {
         /* Record a wake (the prior wait was cut short by the webhook). */
         if (wokenBy !== undefined) {
           const wakeCount = (yield* Composed.get('wakeCount')) ?? 0
-          yield* Composed.set('wakeCount', wakeCount + 1)
+          yield* Composed.set({ key: 'wakeCount', value: wakeCount + 1 })
         }
 
-        const result = yield* pollComposedSource(key, cursor)
+        const result = yield* pollComposedSource({ key, cursor })
 
         /* A 429 → fail with the RETRYABLE typed error (cursor NOT advanced). The
          * loop reads its `retryAfterMillis` projection and re-arms after that floor. */
@@ -309,8 +326,8 @@ export const makeComposedDaemon = (opts: {
         }
 
         /* Success: advance the cursor + tally; `done` ends the loop cleanly. */
-        yield* Composed.set('cursor', result.nextCursor)
-        yield* Composed.set('itemsSeen', itemsSeen + result.itemCount)
+        yield* Composed.set({ key: 'cursor', value: result.nextCursor })
+        yield* Composed.set({ key: 'itemsSeen', value: itemsSeen + result.itemCount })
         return result.done ? { stop: true } : { stop: false }
       }),
   })

@@ -54,26 +54,32 @@ describe('in-memory TestContext', () => {
        * and `State.set(undefined)`/`State.clear` both REMOVE the key — exercised
        * through the REAL `State.*` combinators against the in-memory context. */
       const Cursor = State.for({ highWatermark: Schema.optional(Schema.Number) })
-      const Probe = RestateObject.contract('opt-probe', {
-        state: { highWatermark: Schema.optional(Schema.Number) },
-        handlers: { go: { input: Schema.Void, success: Schema.Void } },
+      const Probe = RestateObject.contract({
+        name: 'opt-probe',
+        def: {
+          state: { highWatermark: Schema.optional(Schema.Number) },
+          handlers: { go: { input: Schema.Void, success: Schema.Void } },
+        },
       })
-      const ProbeLive = RestateObject.implement<typeof Probe>(Probe, {
-        go: () =>
-          Effect.gen(function* () {
-            /* Absent ⇒ undefined. */
-            expect(yield* Cursor.get('highWatermark')).toBeUndefined()
-            /* Present value round-trips through the SAME serde the real handler uses. */
-            yield* Cursor.set('highWatermark', 42)
-            expect(yield* Cursor.get('highWatermark')).toBe(42)
-            /* `set(undefined)` removes the key (the in-memory Map deletes it). */
-            yield* Cursor.set('highWatermark', undefined)
-            expect(yield* Cursor.get('highWatermark')).toBeUndefined()
-            /* `clear` is equivalent. */
-            yield* Cursor.set('highWatermark', 7)
-            yield* Cursor.clear('highWatermark')
-            expect(yield* Cursor.get('highWatermark')).toBeUndefined()
-          }),
+      const ProbeLive = RestateObject.implement<typeof Probe>({
+        contractValue: Probe,
+        impl: {
+          go: () =>
+            Effect.gen(function* () {
+              /* Absent ⇒ undefined. */
+              expect(yield* Cursor.get('highWatermark')).toBeUndefined()
+              /* Present value round-trips through the SAME serde the real handler uses. */
+              yield* Cursor.set({ key: 'highWatermark', value: 42 })
+              expect(yield* Cursor.get('highWatermark')).toBe(42)
+              /* `set(undefined)` removes the key (the in-memory Map deletes it). */
+              yield* Cursor.set({ key: 'highWatermark', value: undefined })
+              expect(yield* Cursor.get('highWatermark')).toBeUndefined()
+              /* `clear` is equivalent. */
+              yield* Cursor.set({ key: 'highWatermark', value: 7 })
+              yield* Cursor.clear('highWatermark')
+              expect(yield* Cursor.get('highWatermark')).toBeUndefined()
+            }),
+        },
       })
       const state = new Map<string, unknown>()
       yield* ProbeLive.impl.go(undefined).pipe(Effect.provide(makeTestContextLayer({ state })))
@@ -86,20 +92,26 @@ describe('in-memory TestContext', () => {
       /* A handler whose `Restate.run` step is observable: it records its result in
        * State. Running it once produces one execution + one journaled value. */
       let executions = 0
-      const StepObj = RestateObject.contract('step-probe', {
-        state: { last: Schema.Number },
-        handlers: { go: { input: Schema.Void, success: Schema.Number } },
+      const StepObj = RestateObject.contract({
+        name: 'step-probe',
+        def: {
+          state: { last: Schema.Number },
+          handlers: { go: { input: Schema.Void, success: Schema.Number } },
+        },
       })
-      const StepLive = RestateObject.implement<typeof StepObj>(StepObj, {
-        go: () =>
-          Effect.gen(function* () {
-            const value = yield* Restate.run(
-              'gen',
-              Effect.sync(() => ++executions),
-            )
-            yield* Effect.succeed(value)
-            return value
-          }),
+      const StepLive = RestateObject.implement<typeof StepObj>({
+        contractValue: StepObj,
+        impl: {
+          go: () =>
+            Effect.gen(function* () {
+              const value = yield* Restate.run({
+                name: 'gen',
+                effect: Effect.sync(() => ++executions),
+              })
+              yield* Effect.succeed(value)
+              return value
+            }),
+        },
       })
       const result = yield* StepLive.impl
         .go(undefined)
@@ -125,20 +137,26 @@ describe('in-memory TestContext', () => {
 
   it('durable sleep no-op + objectKey resolve in-memory', () =>
     Effect.gen(function* () {
-      const KeyObj = RestateObject.contract('key-probe', {
-        state: { n: Schema.Number },
-        handlers: {
-          go: { input: Schema.Void, success: Schema.Struct({ key: Schema.String }) },
+      const KeyObj = RestateObject.contract({
+        name: 'key-probe',
+        def: {
+          state: { n: Schema.Number },
+          handlers: {
+            go: { input: Schema.Void, success: Schema.Struct({ key: Schema.String }) },
+          },
         },
       })
-      const KeyLive = RestateObject.implement<typeof KeyObj>(KeyObj, {
-        go: () =>
-          Effect.gen(function* () {
-            /* A durable timer resolves immediately in-memory (controllable). */
-            yield* Restate.sleep(10_000)
-            const key = yield* Restate.key
-            return { key }
-          }),
+      const KeyLive = RestateObject.implement<typeof KeyObj>({
+        contractValue: KeyObj,
+        impl: {
+          go: () =>
+            Effect.gen(function* () {
+              /* A durable timer resolves immediately in-memory (controllable). */
+              yield* Restate.sleep({ millis: 10_000 })
+              const key = yield* Restate.key
+              return { key }
+            }),
+        },
       })
       const out = yield* KeyLive.impl
         .go(undefined)
