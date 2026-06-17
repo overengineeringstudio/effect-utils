@@ -244,6 +244,16 @@ run_downstream_pure_eval_regression() {
     --override-input effect-utils "path:$WORKSPACE_REAL/repos/effect-utils" \
     "path:$DOWNSTREAM_DIR#checks.$SYSTEM.pure-eval-derived-workspace-root"
 
+  echo "Build: downstream pure-eval profile-dedup regression (standalone effect-utils path)"
+  nix build --no-link --no-write-lock-file \
+    --override-input effect-utils "path:$WORKSPACE_REAL/effect-utils" \
+    "path:$DOWNSTREAM_DIR#checks.$SYSTEM.pure-eval-profile-dedup"
+
+  echo "Build: downstream pure-eval profile-dedup regression (composed repos/effect-utils path)"
+  nix build --no-link --no-write-lock-file \
+    --override-input effect-utils "path:$WORKSPACE_REAL/repos/effect-utils" \
+    "path:$DOWNSTREAM_DIR#checks.$SYSTEM.pure-eval-profile-dedup"
+
   echo "Check: downstream prepared deps use frozen lockfile mode and skip optional native deps"
   local drv
   drv="$(
