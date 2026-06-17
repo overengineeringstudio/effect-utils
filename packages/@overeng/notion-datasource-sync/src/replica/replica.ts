@@ -1123,11 +1123,11 @@ export const createReplicaSchemaInTransaction = (db: DatabaseSync): void => {
         -- the same workspace root while preserving moved-copy detection.
         CASE
           WHEN status.workspace_root IS NULL THEN 'unbound'
-          WHEN database_list.file LIKE status.workspace_root || '/%' THEN 'bound'
+          WHEN instr(database_list.file, status.workspace_root || '/') > 0 THEN 'bound'
           WHEN status.workspace_root LIKE '/private/var/%'
-            AND database_list.file LIKE substr(status.workspace_root, 9) || '/%' THEN 'bound'
+            AND instr(database_list.file, substr(status.workspace_root, 9) || '/') > 0 THEN 'bound'
           WHEN status.workspace_root LIKE '/var/%'
-            AND database_list.file LIKE '/private' || status.workspace_root || '/%' THEN 'bound'
+            AND instr(database_list.file, '/private' || status.workspace_root || '/') > 0 THEN 'bound'
           ELSE 'moved'
         END AS workspace_status
       FROM status_counts status
