@@ -1,7 +1,7 @@
 /**
- * Archive + reap for cold named-branch worktrees (decisions 0004/0007).
+ * Archive + reap for cold named-branch worktrees (decision 0001).
  *
- * `.archive/` is the single recoverable holding area ("trash", decision 0007):
+ * `.archive/` is the single recoverable holding area ("trash", decision 0001):
  * a cold, stale, lossless worktree is MOVED there (recoverable), and archives
  * past a retention TTL are later reaped (hard-deleted) to reclaim disk.
  *

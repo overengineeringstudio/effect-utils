@@ -1,5 +1,5 @@
 /**
- * Integration tests for the lossless floor (U3, decisions 0001/0003/0004).
+ * Integration tests for the lossless floor (U3, decision 0001).
  *
  * These exercise REAL git: a bare repo wired to a separate upstream so it has
  * real `refs/remotes/origin/*`, plus worktrees whose HEADs we drive precisely.

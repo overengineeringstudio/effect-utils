@@ -310,7 +310,7 @@ describe('classifyColdWorktree invariants (property)', () => {
   )
 
   it.prop(
-    'open or no-PR worktrees are always kept (decision 0005)',
+    'open or no-PR worktrees are always kept (decision 0001)',
     [fc.constantFrom<PrStateInfo>({ state: 'open' }, { state: 'none' }), arbLossless, arbColdSince],
     ([prState, lossless, coldSinceMs]) => {
       const decision = classifyColdWorktree({

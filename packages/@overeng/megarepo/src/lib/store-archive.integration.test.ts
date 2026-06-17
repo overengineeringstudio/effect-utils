@@ -1,5 +1,5 @@
 /**
- * Integration tests for archive + reap (U6, decisions 0004/0007).
+ * Integration tests for archive + reap (U6, decision 0001).
  *
  * Exercises REAL git against store-shaped fixtures (`createStoreFixture`):
  * - archiveWorktree moves the worktree under `.archive/` preserving dirty +

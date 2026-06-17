@@ -97,7 +97,7 @@ export const classifyStoreWorktreePolicy = ({
 // =============================================================================
 
 /**
- * Lossless-floor inputs for one worktree (decision 0004, invariant 2).
+ * Lossless-floor inputs for one worktree (decision 0001).
  *
  * `unpushed` is the count of commits reachable from the worktree HEAD but not on
  * any remote (`git rev-list <head> --not --remotes`); `>0` means unrecoverable
@@ -158,7 +158,7 @@ const archive = (reason: ColdWorktreeArchiveReason): ColdWorktreeDecision => ({
  * 4. Never observed cold, or absence-grace not yet elapsed ⇒ keep `absence-grace`
  *    (decision 0008). `coldSinceMs === undefined` is conservative re-arm.
  * 5. `merged` requires `mergedAt`; missing ⇒ keep `defensive`. Within the
- *    post-merge grace window ⇒ keep `post-merge-grace` (decisions 0005/0008).
+ *    post-merge grace window ⇒ keep `post-merge-grace` (decision 0001).
  * 6. Otherwise archive: `merged` or `closed`. CLOSED has NO post-close grace
  *    (decision 0009) — the lossless floor already protects unreachable closed
  *    branches.
@@ -188,7 +188,7 @@ export const classifyColdWorktree = ({
     return keep('live')
   }
 
-  // Gate 2: staleness evidence (decision 0005). Only merged/closed are signals;
+  // Gate 2: staleness evidence (decision 0001). Only merged/closed are signals;
   // open work and "no PR at all" are kept.
   if (prState.state === 'open' || prState.state === 'none') {
     return keep('not-stale')
@@ -206,7 +206,7 @@ export const classifyColdWorktree = ({
     return keep('absence-grace')
   }
 
-  // Gate 5: merged-only post-merge grace (decisions 0005/0008). Missing mergedAt
+  // Gate 5: merged-only post-merge grace (decision 0001). Missing mergedAt
   // is treated defensively (cannot prove the window elapsed).
   if (prState.state === 'merged') {
     if (prState.mergedAt === undefined) {
