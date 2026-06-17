@@ -1,3 +1,4 @@
+/** A Notion ID in canonical dashed-UUID form (8-4-4-4-12), as produced by the parsers here. */
 export type NotionUuid = string
 
 const compactNotionUuidPattern = /^[0-9a-f]{32}$/iu
