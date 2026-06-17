@@ -10,6 +10,7 @@ export const NOTION_DOCS_BASE = 'https://developers.notion.com/reference'
 /** A Notion API version string in the documented YYYY-MM-DD shape. */
 export type NotionApiVersion = `${number}-${number}-${number}`
 
+/** A validated API version split into its numeric date parts (no time-zone dependence). */
 export type ParsedNotionApiVersion = {
   readonly value: NotionApiVersion
   readonly year: number

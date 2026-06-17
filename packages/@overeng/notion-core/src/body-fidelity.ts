@@ -1,3 +1,4 @@
+/** Distinct ways a remote body can fail to round-trip losslessly (R30/R38). */
 export type BodyLossyReason =
   | 'endpoint_truncated'
   | 'unknown_blocks'
@@ -6,6 +7,7 @@ export type BodyLossyReason =
   | 'rendered_markdown_unavailable'
   | 'rendered_markdown_has_unobserved_suffix'
 
+/** Verdict on whether a body round-trips cleanly (`complete`) or is `lossy` with reasons. */
 export type BodyCompleteness =
   | {
       readonly _tag: 'complete'
@@ -26,12 +28,14 @@ export type BodyCompleteness =
       readonly lossyBlockTypes?: readonly string[]
     }
 
+/** Endpoint-rendered Markdown plus the truncation/unknown-block signals from the same pull. */
 export interface MarkdownBodySnapshot {
   readonly markdown: string
   readonly truncated: boolean
   readonly unknownBlockIds: readonly string[]
 }
 
+/** One block observed in the tree, carrying the signals the fidelity check inspects. */
 export interface BlockInventoryEntry {
   readonly id: string
   readonly type: string
@@ -39,6 +43,7 @@ export interface BlockInventoryEntry {
   readonly inTrash: boolean
 }
 
+/** The observed block tree plus optional independently-rendered Markdown for cross-checking. */
 export interface BlockInventory {
   readonly entries: readonly BlockInventoryEntry[]
   /**
@@ -48,6 +53,7 @@ export interface BlockInventory {
   readonly renderedMarkdown?: string
 }
 
+/** Bundled inputs and resulting completeness verdict for one page's body. */
 export interface BodyFidelityObservation {
   readonly markdown: MarkdownBodySnapshot
   readonly inventory: BlockInventory
@@ -125,6 +131,7 @@ const hasUnobservedRenderedSuffix = (opts: {
 
 const unique = <A>(values: readonly A[]): readonly A[] => [...new Set(values)]
 
+/** Derive a {@link BodyCompleteness} verdict from a Markdown snapshot and block inventory. */
 export const classifyBodyCompleteness = (opts: {
   readonly markdown: MarkdownBodySnapshot
   readonly inventory: BlockInventory
@@ -225,6 +232,7 @@ export const describeBodyLossyRefusal = (opts: {
   )
 }
 
+/** Deterministic JSON stringify with sorted object keys, for stable fidelity hashing/diffing. */
 export const stableBodyFidelityStringify = (value: unknown): string => {
   if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null'
   if (Array.isArray(value) === true) return `[${value.map(stableBodyFidelityStringify).join(',')}]`
