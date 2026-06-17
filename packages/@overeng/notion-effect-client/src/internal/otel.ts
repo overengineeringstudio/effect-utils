@@ -142,8 +142,8 @@ export const annotateNotionHttpRateLimitSpan = (input: {
     retryDelayMs: input.retryDelayMs,
     quotaCost: input.attempts,
     rateLimitPresent: isSome,
-    rateLimitRemaining: isSome ? rateLimit.value.remaining : undefined,
-    rateLimitResetAfterMs: isSome ? rateLimit.value.resetAfterSeconds * 1000 : undefined,
+    rateLimitRemaining: isSome === true ? rateLimit.value.remaining : undefined,
+    rateLimitResetAfterMs: isSome === true ? rateLimit.value.resetAfterSeconds * 1000 : undefined,
   })
 }
 
