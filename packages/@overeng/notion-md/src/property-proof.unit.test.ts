@@ -1,6 +1,7 @@
-import { Effect, Layer } from 'effect'
+import { Effect, Layer, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
+import { hashCanonicalJson } from '@overeng/content-address'
 import type { NmdWritablePropertyValue } from '@overeng/notion-effect-client'
 import { evaluatePropertyWrite } from '@overeng/notion-property-write'
 
@@ -31,12 +32,16 @@ const livePageProperties: Record<string, unknown> = {
 
 const selectValue = (value: string | null): NmdWritablePropertyValue => ({ _tag: 'select', value })
 
+const schemaHash = (schema: RemoteDataSourceSchema): string =>
+  hashCanonicalJson(Schema.Unknown, schema.properties)
+
 /** Evaluate a built proof for the `Status` select write, returning the decision. */
 const evaluateStatus = (opts: {
   readonly schema?: RemoteDataSourceSchema
   readonly livePageProperties?: Record<string, unknown>
   readonly property?: NmdWritablePropertyValue
   readonly descriptor?: { readonly property_id: string; readonly config_hash: string }
+  readonly expectedSchemaHash?: string
 }) => {
   const built = buildStandaloneLiveProof({
     pageId,
@@ -46,6 +51,9 @@ const evaluateStatus = (opts: {
     schema: opts.schema ?? statusSchema,
     livePageProperties: opts.livePageProperties ?? livePageProperties,
     ...(opts.descriptor !== undefined ? { descriptor: opts.descriptor } : {}),
+    ...(opts.expectedSchemaHash !== undefined
+      ? { expectedSchemaHash: opts.expectedSchemaHash }
+      : {}),
   })
   expect(built, 'expected the proof builder to resolve the property').toBeDefined()
   return evaluatePropertyWrite(built!.proof, built!.desiredWrite)
@@ -83,7 +91,7 @@ describe('buildStandaloneLiveProof — proof shape', () => {
     expect(built!.proof.identity.propertyId).toBe('prop_status')
   })
 
-  it('omits all unprovable hashes — no schema-hash oracle at the standalone layer', () => {
+  it('observes the live schema hash and omits only unprovable expected/config hashes', () => {
     const sc = buildStandaloneLiveProof({
       pageId,
       dataSourceId,
@@ -92,8 +100,7 @@ describe('buildStandaloneLiveProof — proof shape', () => {
       schema: statusSchema,
       livePageProperties,
     })!.proof.schemaConsistency
-    // No fabrication: the staleness inputs are absent rather than invented.
-    expect(sc.observedSchemaHash).toBeUndefined()
+    expect(sc.observedSchemaHash).toBe(schemaHash(statusSchema))
     expect(sc.observedConfigHash).toBeUndefined()
     expect(sc.expectedSchemaHash).toBeUndefined()
     // No descriptor here, so expectedConfigHash is omitted too.
@@ -111,7 +118,8 @@ describe('buildStandaloneLiveProof — proof shape', () => {
       descriptor: { property_id: 'prop_status', config_hash: configHash },
     })!.proof.schemaConsistency
     expect(sc.expectedConfigHash).toBe(configHash)
-    // Observed side is still omitted, so check 5 (SchemaDriftAffectsIntent) skips.
+    expect(sc.observedSchemaHash).toBe(schemaHash(statusSchema))
+    // Config observed side is still omitted, so check 5 (SchemaDriftAffectsIntent) skips.
     expect(sc.observedConfigHash).toBeUndefined()
     expect(sc.expectedSchemaHash).toBeUndefined()
   })
@@ -122,13 +130,19 @@ describe('evaluatePropertyWrite via standalone provider — allow path', () => {
     expect(evaluateStatus({})).toEqual({ _tag: 'allowed' })
   })
 
-  it('allows a descriptor-bound write — the observed side is omitted so check 5 skips', () => {
+  it('allows a descriptor-bound write — the observed config side is omitted so check 5 skips', () => {
     // A descriptor supplies expectedConfigHash, but the standalone layer has no
     // observedConfigHash to compare it against, so SchemaDriftAffectsIntent
     // honestly skips (no fabricated equality). The write is allowed.
     expect(
       evaluateStatus({ descriptor: { property_id: 'prop_status', config_hash: configHash } }),
     ).toEqual({ _tag: 'allowed' })
+  })
+
+  it('allows when the sidecar schema hash matches the freshly observed live schema', () => {
+    expect(evaluateStatus({ expectedSchemaHash: schemaHash(statusSchema) })).toEqual({
+      _tag: 'allowed',
+    })
   })
 })
 
@@ -170,6 +184,12 @@ describe('evaluatePropertyWrite via standalone provider — block paths', () => 
     const decision = evaluateStatus({ livePageProperties: {} })
     expect(decision._tag).toBe('blocked')
     expect(decision._tag === 'blocked' && decision.guard).toBe('PropertyValueIncomplete')
+  })
+
+  it('blocks StaleRemoteSchema when the sidecar schema hash differs from the live schema', () => {
+    const decision = evaluateStatus({ expectedSchemaHash: `sha256:${'0'.repeat(64)}` })
+    expect(decision._tag).toBe('blocked')
+    expect(decision._tag === 'blocked' && decision.guard).toBe('StaleRemoteSchema')
   })
 
   it('blocks UnavailableRelationTarget is reserved for Phase 8 — relation writes are allowed today', () => {

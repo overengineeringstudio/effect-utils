@@ -92,6 +92,17 @@ export class NmdPropertyWriteBlockedError extends Schema.TaggedError<NmdProperty
   },
 ) {}
 
+/** Raised when the sidecar data-source schema hash no longer matches the live schema. */
+export class NmdSchemaDriftError extends Schema.TaggedError<NmdSchemaDriftError>()(
+  'NmdSchemaDriftError',
+  {
+    path: Schema.String,
+    page_id: Schema.String,
+    data_source_id: Schema.String,
+    message: Schema.String,
+  },
+) {}
+
 /**
  * Raised when a non-body write boundary (files/media, comments) refuses a write
  * that would carry a payload or mutation notion-md cannot perform yet. Carries
@@ -160,6 +171,7 @@ export type NmdError =
   | NmdGatewayError
   | NmdRemoteBodyLossyError
   | NmdPropertyWriteBlockedError
+  | NmdSchemaDriftError
   | NmdNonBodyWriteBlockedError
   | NmdDestructiveBodyBlockedError
   | NmdCliError

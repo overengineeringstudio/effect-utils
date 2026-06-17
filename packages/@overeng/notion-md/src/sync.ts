@@ -5,6 +5,7 @@ import { Effect, Option } from 'effect'
 
 import {
   NOTION_API_VERSION,
+  type NmdDataSourceBinding,
   type NmdFrontmatterV2,
   type NmdObjectRef,
   type NmdParentRef,
@@ -22,6 +23,7 @@ import {
   NmdFrontmatterError,
   NmdPropertyWriteBlockedError,
   NmdRemoteBodyLossyError,
+  NmdSchemaDriftError,
   type NmdError,
 } from './errors.ts'
 import { parseNmdFile, renderNmdFile } from './frontmatter.ts'
@@ -396,13 +398,26 @@ const encodeWritableProperties = (opts: {
  * current path untouched — the core only governs datasource-scoped writes.
  */
 const guardDatasourcePropertyWrites = (opts: {
+  readonly path: string
   readonly pageId: string
   readonly frontmatter: NmdFrontmatterV2
-}): Effect.Effect<void, NmdPropertyWriteBlockedError, NotionMdGateway> =>
+  readonly dataSource: NmdDataSourceBinding | null
+}): Effect.Effect<void, NmdPropertyWriteBlockedError | NmdSchemaDriftError, NotionMdGateway> =>
   Effect.gen(function* () {
     const notionMd = opts.frontmatter.notion_md
     if (notionMd.parent._tag !== 'data_source') return
     const dataSourceId = notionMd.parent.id
+    if (opts.dataSource !== null && opts.dataSource.data_source_id !== dataSourceId) {
+      yield* Observability.annotateAttrs(Observability.pushDecisionAttrs, {
+        decision: 'schema_drift',
+      })
+      return yield* new NmdSchemaDriftError({
+        path: opts.path,
+        page_id: opts.pageId,
+        data_source_id: dataSourceId,
+        message: `Refusing datasource property write for page ${opts.pageId}: sidecar data source ${opts.dataSource.data_source_id} does not match frontmatter parent ${dataSourceId}`,
+      })
+    }
     /* Re-key the branded-name descriptor map by plain string for lookup. */
     const descriptors: Record<
       string,
@@ -428,8 +443,20 @@ const guardDatasourcePropertyWrites = (opts: {
               },
             }
           : {}),
+        ...(opts.dataSource !== null ? { expectedSchemaHash: opts.dataSource.schema_hash } : {}),
       })
       if (decision._tag === 'blocked') {
+        if (decision.guard === 'StaleRemoteSchema') {
+          yield* Observability.annotateAttrs(Observability.pushDecisionAttrs, {
+            decision: 'schema_drift',
+          })
+          return yield* new NmdSchemaDriftError({
+            path: opts.path,
+            page_id: opts.pageId,
+            data_source_id: dataSourceId,
+            message: `Property write to ${name} blocked by ${decision.guard}: ${decision.message}`,
+          })
+        }
         return yield* new NmdPropertyWriteBlockedError({
           page_id: opts.pageId,
           property_name: name,
@@ -1325,8 +1352,10 @@ export const pushGuarded = (opts: {
         }
         if (status.localPropertiesChanged === true) {
           yield* guardDatasourcePropertyWrites({
+            path,
             pageId: status.pageId,
             frontmatter: local.frontmatter,
+            dataSource: local.syncState.data_source,
           })
           yield* gateway.updatePageProperties({
             pageId: status.pageId,
@@ -1372,8 +1401,10 @@ export const pushGuarded = (opts: {
         })
         if (status.localPropertiesChanged === true) {
           yield* guardDatasourcePropertyWrites({
+            path,
             pageId: status.pageId,
             frontmatter: local.frontmatter,
+            dataSource: local.syncState.data_source,
           })
           yield* gateway.updatePageProperties({
             pageId: status.pageId,
@@ -1471,8 +1502,10 @@ export const pushGuarded = (opts: {
     }
     if (status.localPropertiesChanged === true) {
       yield* guardDatasourcePropertyWrites({
+        path,
         pageId: status.pageId,
         frontmatter: local.frontmatter,
+        dataSource: local.syncState.data_source,
       })
       yield* gateway.updatePageProperties({
         pageId: status.pageId,

@@ -24,25 +24,21 @@
  * and `settlement` is `not-required` (no read-after-write settlement record is
  * maintained locally).
  *
- * SCOPE (sub-milestone 3b): schema-staleness and relation-completeness detection
- * are not yet observable at the standalone layer, so the provider fills only
- * what it can prove and OMITS what it cannot. It marks the schema freshly
- * observed (`remoteSchemaObserved: true`) and fills `expectedConfigHash` only
- * from the `.nmd` descriptor's authored `config_hash` when present; it omits
- * `observedSchemaHash`, `observedConfigHash`, and `expectedSchemaHash` entirely
- * rather than fabricating them. Because the core's staleness checks gate on both
- * the observed and expected sides being present, those checks honestly skip — a
- * type-matching writable property is allowed without a false drift block. Full
- * live L6 coverage — observing a *stale* remote schema relative to an
- * independently authored expectation, and proving relation-target completeness
- * against the related data source — lands in Phase 8. See the
- * `TODO(phase-8-live-l6)` markers below.
+ * SCOPE (sub-milestone 3b): whole-schema staleness is observable when the
+ * sidecar carries the data-source binding hash. The provider always computes
+ * `observedSchemaHash` from the freshly re-read live schema using the same
+ * canonical JSON hash primitive as datasource-sync, and threads
+ * `expectedSchemaHash` only when the sidecar supplies it. Config drift and
+ * relation-target completeness are still not observable here, so
+ * `observedConfigHash` remains omitted and relation availability stays
+ * conservative until Phase 8.
  *
  * @module
  */
 
-import { Effect } from 'effect'
+import { Effect, Schema } from 'effect'
 
+import { hashCanonicalJson } from '@overeng/content-address'
 import { isNotionPropertyType } from '@overeng/notion-core'
 import type { NmdWritablePropertyValue, NmdSource } from '@overeng/notion-effect-client'
 import {
@@ -53,6 +49,7 @@ import {
   PageId,
   PropertyId,
   PropertyName,
+  SchemaHash,
   propertyWriteClassFromType,
 } from '@overeng/notion-effect-schema'
 import {
@@ -179,6 +176,8 @@ export interface StandaloneProofInputs {
     readonly property_id: string
     readonly config_hash: string
   }
+  /** Optional whole-schema identity from the sidecar data-source binding. */
+  readonly expectedSchemaHash?: string
 }
 
 /**
@@ -216,28 +215,18 @@ export const buildStandaloneLiveProof = (
   const propertyId = PropertyId.make(resolved.id)
 
   /*
-   * Schema/config staleness is NOT observable from the standalone `.nmd`
-   * entrypoint yet, so the hashes are honestly OMITTED rather than fabricated:
-   *
-   * - `expectedConfigHash` is filled ONLY from the `.nmd` descriptor's authored
-   *   `config_hash` when a descriptor is present (the genuine authored identity);
-   *   it is omitted otherwise.
-   * - `expectedSchemaHash`, `observedSchemaHash`, and `observedConfigHash` are
-   *   omitted entirely. notion-md has no schema-hash oracle, and the descriptor
-   *   carries no whole-schema identity.
-   *
-   * The core's checks 3 (StaleRemoteSchema) and 5 (SchemaDriftAffectsIntent)
-   * gate on BOTH the observed and expected sides being present, so omitting one
-   * side makes the check honestly skip — no false drift, no fabricated equality.
-   *
-   * TODO(phase-8-live-l6): start filling `observedSchemaHash`/`observedConfigHash`
-   * (and `expectedSchemaHash`) from the SHARED datasource-sync hash scheme so
-   * genuine schema/config drift becomes detectable from the local entrypoint.
-   * ALGORITHM-COMPATIBILITY REQUIREMENT: the descriptor's `config_hash` is
-   * produced by datasource-sync's `canonicalHash`/`canonicalizeJson`, NOT the
-   * `sha256Digest`-over-`JSON.stringify` used elsewhere here — the observed side
-   * MUST recompute with that same scheme or the comparison is meaningless.
+   * Whole-schema staleness is observable when the sidecar carries
+   * `data_source.schema_hash`: compare it with the live schema hash computed via
+   * the same content-address canonical JSON primitive that datasource-sync uses.
+   * Config staleness remains only half-observable: the descriptor carries the
+   * authored `config_hash`, but this layer does not yet recompute an observed
+   * per-property config hash, so check 5 still skips honestly.
    */
+  const observedSchemaHash = SchemaHash.make(
+    hashCanonicalJson(Schema.Unknown, inputs.schema.properties),
+  )
+  const expectedSchemaHash =
+    inputs.expectedSchemaHash === undefined ? undefined : SchemaHash.make(inputs.expectedSchemaHash)
   const expectedConfigHash =
     inputs.descriptor !== undefined ? ConfigHash.make(inputs.descriptor.config_hash) : undefined
 
@@ -288,11 +277,8 @@ export const buildStandaloneLiveProof = (
     },
     schemaConsistency: {
       remoteSchemaObserved: true,
-      /*
-       * observedSchemaHash / observedConfigHash / expectedSchemaHash are omitted:
-       * no schema-hash oracle exists at the standalone layer (see the
-       * schema-consistency comment above).
-       */
+      observedSchemaHash,
+      ...(expectedSchemaHash !== undefined ? { expectedSchemaHash } : {}),
       ...(expectedConfigHash !== undefined ? { expectedConfigHash } : {}),
       propertyType,
       writeClass,
@@ -329,6 +315,8 @@ export const makeStandaloneLiveProof = (args: {
   readonly property: NmdWritablePropertyValue
   /** Authored property identity from the `.nmd` descriptor, when present. */
   readonly descriptor?: { readonly property_id: string; readonly config_hash: string }
+  /** Authored whole-schema identity from the sidecar data-source binding, when present. */
+  readonly expectedSchemaHash?: string
 }): Effect.Effect<PropertyWriteGuardDecision, NmdPropertyWriteBlockedError, NotionMdGateway> =>
   Effect.gen(function* () {
     if (args.source === 'remote') {
@@ -352,6 +340,9 @@ export const makeStandaloneLiveProof = (args: {
       schema,
       livePageProperties: page.page.properties,
       ...(args.descriptor !== undefined ? { descriptor: args.descriptor } : {}),
+      ...(args.expectedSchemaHash !== undefined
+        ? { expectedSchemaHash: args.expectedSchemaHash }
+        : {}),
     })
 
     if (built === undefined) {

@@ -19,6 +19,7 @@ import {
   NmdFrontmatterError,
   NmdGatewayError,
   NmdObjectStoreError,
+  NmdSchemaDriftError,
 } from './errors.ts'
 import { parseNmdFile, renderNmdFile } from './frontmatter.ts'
 import { normalizeMarkdownLineEndings, sha256Digest } from './hash.ts'
@@ -38,6 +39,7 @@ const compareStrings = new Intl.Collator().compare
 
 const pageId = '00000000-0000-4000-8000-000000000001'
 const secondPageId = '00000000-0000-4000-8000-000000000011'
+const dataSourceId = '00000000-0000-4000-8000-0000000000d5'
 
 const isPushedSyncEvent = (
   event: unknown,
@@ -1197,6 +1199,67 @@ describe('notion-md e2e prototype', () => {
         property_type: 'unknown',
         value: { checkbox: true },
       })
+    })
+  })
+
+  it('refuses datasource property writes when the sidecar schema hash is stale', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeNotion([
+        {
+          pageId,
+          title: 'Probe',
+          markdown: '# Probe\n\nBody',
+          properties: { Done: { type: 'checkbox', checkbox: false } },
+        },
+      ])
+      fake.dataSourceProperties = {
+        Done: { id: 'prop_done', name: 'Done', type: 'checkbox' },
+      }
+      const path = join(dir, 'probe.nmd')
+
+      await runWithFake(pullPage({ pageId, outPath: path }), fake)
+      const parsed = await parseFile(path)
+      await writeFile(
+        path,
+        renderNmdFile({
+          frontmatter: {
+            notion_md: {
+              ...parsed.frontmatter.notion_md,
+              parent: { _tag: 'data_source', id: dataSourceId },
+              properties: {
+                ...parsed.frontmatter.notion_md.properties,
+                Done: { _tag: 'checkbox', value: true },
+              },
+            },
+          },
+          body: parsed.body,
+        }),
+      )
+      const syncState = await readSyncStateFile(path)
+      await writeFile(
+        syncStatePath({ path, pageId }),
+        JSON.stringify(
+          {
+            ...syncState,
+            data_source: {
+              database_id: secondPageId,
+              data_source_id: dataSourceId,
+              schema_hash: `sha256:${'0'.repeat(64)}`,
+              title_property: 'title',
+              property_ids: { Done: 'prop_done' },
+              read_only_properties: [],
+            },
+          },
+          null,
+          2,
+        ),
+      )
+
+      const result = await runEitherWithFake(pushPage({ path }), fake)
+      expect(result._tag).toBe('Left')
+      if (result._tag !== 'Left') throw new Error('expected left')
+      expect(result.left).toBeInstanceOf(NmdSchemaDriftError)
+      expect(fake.remoteProperties(pageId).Done).toEqual({ type: 'checkbox', checkbox: false })
     })
   })
 

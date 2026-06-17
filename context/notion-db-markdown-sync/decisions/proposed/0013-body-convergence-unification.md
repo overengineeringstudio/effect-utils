@@ -60,12 +60,12 @@ reconvergence for keep-remote.
 
 ## Considered Options
 
-| Option                                          | Result   | Reason                                                                                                                                                                                            |
-| ----------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Route the body surface through the engine       | Rejected | False symmetry: `.nmd` is the only local body surface, so the engine always sees a single body fact and adds no handling the adapter does not already do — dead-weight ceremony plus a latent stuck-state. |
-| Body is single-surface and adapter-owned        | Selected | One authority for the body (the adapter), no inert engine rail, no stuck-state. The engine stays property-only.                                                                                  |
-| Body conflict as an engine value-merge          | Rejected | Body is content, not an engine-mergeable value. There is nothing for the engine to merge.                                                                                                        |
-| Body conflict resolved by re-push / re-materialize | Selected | The principled shape for content: keep-local re-pushes the local body, keep-remote re-materializes from the remote observation. No value merge.                                              |
+| Option                                             | Result   | Reason                                                                                                                                                                                                     |
+| -------------------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Route the body surface through the engine          | Rejected | False symmetry: `.nmd` is the only local body surface, so the engine always sees a single body fact and adds no handling the adapter does not already do — dead-weight ceremony plus a latent stuck-state. |
+| Body is single-surface and adapter-owned           | Selected | One authority for the body (the adapter), no inert engine rail, no stuck-state. The engine stays property-only.                                                                                            |
+| Body conflict as an engine value-merge             | Rejected | Body is content, not an engine-mergeable value. There is nothing for the engine to merge.                                                                                                                  |
+| Body conflict resolved by re-push / re-materialize | Selected | The principled shape for content: keep-local re-pushes the local body, keep-remote re-materializes from the remote observation. No value merge.                                                            |
 
 ## Consequences
 
