@@ -68,7 +68,9 @@ export const ProblemList = ({ items }: ProblemListProps): ReactNode => {
   if (items.length === 0) return null
 
   return stackWithBlankLines(
-    items.map((item) => <ProblemEntry key={`${item.severity}:${item.name}`} item={item} />),
+    items.map((item, index) => (
+      <ProblemEntry key={`${index}:${item.severity}:${item.name}`} item={item} />
+    )),
   )
 }
 
