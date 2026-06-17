@@ -752,17 +752,19 @@ export const e2eHarnessScenarios = [
     highestIntegrationLevel: 'L1',
     file: 'src/planner/planner.unit.test.ts',
   }),
-  // Decision 0016 part 2 (#775 M3b): the planner dispatches the dormant
+  // Decision 0016 parts 2 + 3 (#775): the planner dispatches the dormant
   // `ExpiringFileUrl` guard from the desired `files` property value
-  // (`evaluateDesiredFileReferences`). A `CanonicalFileValue` is durable only with
-  // an `externalUrl`; a Notion-hosted file is canonicalized without one, so a
-  // missing `externalUrl` IS the signed/expiring case — block it, allow external
-  // durable URLs. The property-write core allows the same value (tag-fit no-op), so
-  // this separate file-reference dispatch is what fails closed.
+  // (`evaluateDesiredFileReferences`). Durability is a property of the URL, not its
+  // source. A Notion-hosted file is canonicalized without an `externalUrl`, so a
+  // missing `externalUrl` is the signed/expiring case (part 2). An OBVIOUSLY-expiring
+  // EXTERNAL URL — an S3 presign (`X-Amz-*`), Azure SAS, or GCS signed URL detected
+  // by `isExpiringExternalUrl` — fails closed alongside it (part 3); a durable
+  // external URL proceeds. The property-write core allows the same value (tag-fit
+  // no-op), so this separate file-reference dispatch is what fails closed.
   scenario({
     scenarioId: 'NDS-L1-expiring-file-url-property-write',
     title:
-      'planner fails closed on a files property write that would store a Notion-hosted signed/expiring URL as durable identity; an external durable URL proceeds',
+      'planner fails closed on a files property write that would store a non-durable URL (Notion-hosted signed, or an obviously-expiring external presigned/SAS/signed URL) as durable identity; a durable external URL proceeds',
     requirementIds: ['R20', 'R52', 'R59'],
     guards: ['ExpiringFileUrl'],
     lowestPlannerLevel: 'L1',

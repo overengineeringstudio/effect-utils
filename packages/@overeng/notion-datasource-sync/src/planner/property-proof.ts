@@ -268,28 +268,115 @@ export const makeWorkspaceProof = (
 }
 
 /**
- * Fail closed on a `files` property write that would store a Notion-hosted
- * (signed/expiring) file URL as durable identity (proposed decision 0016 part 2).
+ * The query-string parameter names whose presence is an OBVIOUS presigned/expiry
+ * signature. Matched case-insensitively against the parameter key. Kept
+ * deliberately narrow (clear cloud-provider presign signatures only) so a durable
+ * URL that merely happens to carry benign query params is NOT misclassified as
+ * expiring — see {@link isExpiringExternalUrl}.
+ */
+const AWS_PRESIGN_PARAMS = ['x-amz-signature', 'x-amz-expires', 'x-amz-credential']
+const GCS_PRESIGN_PARAMS = ['x-goog-signature', 'x-goog-expires']
+
+/**
+ * Detect OBVIOUS ephemeral/presigned signatures in an external URL's query string
+ * (proposed decision 0016 part 3 — the durability-not-source upgrade). Durability
+ * is a property of the URL, not of its source: an S3 presigned link, an Azure SAS,
+ * or a GCS signed URL expires just like a Notion-hosted signed link, so it must
+ * fail closed alongside the Notion-hosted case rather than be attached as durable.
  *
- * A `CanonicalFileValue` is durable only when it carries an `externalUrl` — that
- * is the external durable URL projected from the remote `file.external.url`
- * (`@overeng/notion-effect-schema` `canonicalFileFromRemote`). A Notion-HOSTED
- * file is canonicalized to `name` + `identityHash` only: its signed `file.file.url`
- * is intentionally NOT captured, so a missing `externalUrl` IS the "notion-hosted,
- * no stable durable ref" case. Writing such a value back would push a soon-dead
- * signed link as the durable property identity, exactly the case the dormant
- * `ExpiringFileUrl` guard (`core/guards.ts`) names.
+ * Detection is CONSERVATIVE — it only flags clear presign/expiry signatures, to
+ * avoid false-positives on durable URLs that happen to carry benign query params
+ * (e.g. `?utm_source=x`, `?v=2`, a `?token=` API key with no expiry). The patterns
+ * (all matched case-insensitively):
+ *
+ * - AWS S3 presigned: any of `X-Amz-Signature`, `X-Amz-Expires`, `X-Amz-Credential`.
+ * - Azure SAS: `sig` together with an expiry/start window (`se` or `st`) — `sig`
+ *   alone is not enough, since `sig` is too generic to be a clear signature.
+ * - GCS signed: `X-Goog-Signature` or `X-Goog-Expires`.
+ * - Generic presign: `Signature` together with `Expires`.
+ * - Generic expiry: an `Expires` param whose value is a unix timestamp (all digits).
+ * - Generic token+expiry: `token` together with `exp`.
+ *
+ * Parsing is robust: a URL with no query string, or one that fails to parse, is
+ * treated as NOT expiring (durable). A non-parseable URL carries no DETECTABLE
+ * expiring signature — the honest read is "no evidence of expiry" — so it allows
+ * rather than throwing. This mirrors the explicit limitation that non-obvious
+ * non-durability (a plain URL that 404s tomorrow) stays undetectable.
+ */
+export const isExpiringExternalUrl = (url: string): boolean => {
+  let params: URLSearchParams
+  try {
+    /* `URL` handles missing/empty query strings; a malformed URL throws → durable. */
+    params = new URL(url).searchParams
+  } catch {
+    return false
+  }
+
+  /* Lower-case key set for case-insensitive presence checks. */
+  const keys = new Set<string>()
+  for (const key of params.keys()) {
+    keys.add(key.toLowerCase())
+  }
+  const has = (name: string): boolean => keys.has(name.toLowerCase()) === true
+
+  if (AWS_PRESIGN_PARAMS.some((name) => keys.has(name) === true) === true) {
+    return true
+  }
+  if (GCS_PRESIGN_PARAMS.some((name) => keys.has(name) === true) === true) {
+    return true
+  }
+  /* Azure SAS: a signature plus an expiry/start window. */
+  if (has('sig') === true && (has('se') === true || has('st') === true)) {
+    return true
+  }
+  /* Generic presign: a signature paired with an explicit expiry. */
+  if (has('signature') === true && has('expires') === true) {
+    return true
+  }
+  /* Generic expiry: an `Expires` param carrying a bare unix timestamp. */
+  const expires = params.get('Expires') ?? params.get('expires')
+  if (expires !== null && expires !== undefined && /^\d+$/.test(expires) === true) {
+    return true
+  }
+  /* Generic token with an explicit expiry component. */
+  if (has('token') === true && has('exp') === true) {
+    return true
+  }
+
+  return false
+}
+
+/**
+ * Fail closed on a `files` property write that would store a NON-DURABLE file URL
+ * as durable identity (proposed decision 0016 parts 2 + 3).
+ *
+ * Durability is a property of the URL, not of its source. Two cases fail closed:
+ *
+ * - Notion-HOSTED (no `externalUrl`): a `CanonicalFileValue` is canonicalized to
+ *   `name` + `identityHash` only; its signed `file.file.url` is intentionally NOT
+ *   captured, so a missing `externalUrl` IS the "notion-hosted, no stable durable
+ *   ref" case (part 2). The external durable URL is projected from the remote
+ *   `file.external.url` (`@overeng/notion-effect-schema` `canonicalFileFromRemote`).
+ * - External but OBVIOUSLY EXPIRING (`externalUrl` carries a presign/expiry
+ *   signature — S3 `X-Amz-*`, Azure SAS, GCS signed, etc.): the source is external
+ *   but the URL expires, so attaching it as durable would push a soon-dead link
+ *   (part 3). {@link isExpiringExternalUrl} detects the signature.
+ *
+ * Both route through the dormant `ExpiringFileUrl` guard (`core/guards.ts`) rather
+ * than re-deriving block logic: a non-durable URL maps to a snapshot the guard
+ * blocks (`kind: 'notion-hosted'`, `stableRef: undefined`), and a durable external
+ * URL maps to an `external` snapshot the guard allows.
  *
  * The block mirrors the property-encoding fail-closed posture
  * (`canonicalFileFromRemote`'s consumer requires `externalUrl` on EVERY file to
- * encode): block if ANY file lacks `externalUrl`. An empty `files: []` is a CLEAR,
- * not an expiring ref, so it allows. Non-`files` writes carry no file reference
- * and always allow.
+ * encode): block if ANY file is non-durable. An empty `files: []` is a CLEAR, not
+ * an expiring ref, so it allows. Non-`files` writes carry no file reference and
+ * always allow.
  *
  * This is the load-bearing dispatch site for `ExpiringFileUrl`: the planner pushes
- * this decision into `baseGuards` alongside `evaluatePropertyWrite`, so a notion-hosted
- * file write that the property-write core would otherwise allow (a `files` value fits
- * a `files` column) is surfaced as `ExpiringFileUrl` by `firstBlocked`.
+ * this decision into `baseGuards` alongside `evaluatePropertyWrite`, so a file
+ * write that the property-write core would otherwise allow (a `files` value fits a
+ * `files` column) is surfaced as `ExpiringFileUrl` by `firstBlocked`.
  */
 export const evaluateDesiredFileReferences = (
   desiredValue: WorkspaceProofInputs['desiredValue'],
@@ -299,15 +386,19 @@ export const evaluateDesiredFileReferences = (
   }
 
   /*
-   * A non-external (notion-hosted) file lacks a durable `externalUrl`, so the only
-   * stable ref the guard could honor is undefined. Build the snapshot per file and
-   * delegate the verdict to the dormant guard rather than re-deriving block logic.
+   * A file is durable only with an `externalUrl` that carries no expiring
+   * signature. A notion-hosted file (no `externalUrl`) and an obviously-expiring
+   * external URL are both non-durable, so both map to the `notion-hosted` snapshot
+   * the guard blocks. Delegate the verdict to the dormant guard rather than
+   * re-deriving block logic.
    */
   for (const file of desiredValue.files) {
+    const durableExternal =
+      file.externalUrl !== undefined && isExpiringExternalUrl(file.externalUrl) === false
     const snapshot =
-      file.externalUrl === undefined
-        ? { kind: 'notion-hosted' as const, stableRef: undefined, expiresAt: undefined }
-        : { kind: 'external' as const, stableRef: file.externalUrl, expiresAt: undefined }
+      durableExternal === true
+        ? { kind: 'external' as const, stableRef: file.externalUrl, expiresAt: undefined }
+        : { kind: 'notion-hosted' as const, stableRef: undefined, expiresAt: undefined }
     const decision = guardExpiringFileUrl(snapshot)
     if (decision._tag === 'blocked') {
       return decision
