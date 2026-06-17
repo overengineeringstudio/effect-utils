@@ -13,6 +13,7 @@ import {
 const basename = (filePath: string): string =>
   filePath.split(/[\\/]/).findLast((part) => part.length > 0) ?? filePath
 
+/** Span-label-friendly path: cwd-relative with forward slashes, falling back to the basename when outside cwd. */
 export const relativePath = ({ cwd, filePath }: { cwd: string; filePath: string }): string => {
   const relative = path.relative(cwd, filePath).split(path.sep).join('/')
   return relative.length > 0 ? relative : basename(filePath)
@@ -55,7 +56,7 @@ const commandAttrs = OtelAttrs.defineSync(
   }),
 )
 
-export const commandSpan = OtelOperation.define({
+const commandSpan = OtelOperation.define({
   name: 'genie/command',
   attributes: commandAttrs,
   label: ({ label }) => label,
@@ -73,13 +74,13 @@ const fileAttrs = OtelAttrs.defineSync(
   }),
 )
 
-export const fileSpan = OtelOperation.define({
+const fileSpan = OtelOperation.define({
   name: 'genie/file',
   attributes: fileAttrs,
   label: ({ label }) => label,
 })
 
-export const pathAttrs = OtelAttrs.defineSync(
+const pathAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
     path: Schema.String.pipe(OtelAttr.key({ key: 'genie.path' })),
@@ -92,7 +93,7 @@ const pathOperation = OtelOperation.define({
   label: ({ label }) => label,
 })
 
-export const oxfmtAttrs = OtelAttrs.defineSync(
+const oxfmtAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
     targetFilePath: Schema.String.pipe(OtelAttr.key({ key: 'genie.file.target_path' })),
@@ -122,7 +123,7 @@ const validationAttrs = OtelAttrs.defineSync(
   }),
 )
 
-export const validationSpan = OtelOperation.define({
+const validationSpan = OtelOperation.define({
   name: 'genie/runValidation',
   attributes: validationAttrs,
   label: ({ label }) => label,
@@ -136,7 +137,7 @@ const atomicWriteAttrs = OtelAttrs.defineSync(
   }),
 )
 
-export const atomicWriteSpan = OtelOperation.define({
+const atomicWriteSpan = OtelOperation.define({
   name: 'atomicWriteFile',
   attributes: atomicWriteAttrs,
   label: ({ label }) => label,
@@ -148,13 +149,13 @@ const importMapResolverAttrs = OtelAttrs.defineSync(
   }),
 )
 
-export const importMapResolverSpan = OtelOperation.define({
+const importMapResolverSpan = OtelOperation.define({
   name: 'genie.registerImportMapResolver',
   attributes: importMapResolverAttrs,
   label: ({ label }) => label,
 })
 
-export const targetLockAttrs = OtelAttrs.defineSync(
+const targetLockAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
     cwd: Schema.String.pipe(OtelAttr.key({ key: 'genie.cwd' })),
@@ -182,9 +183,11 @@ const cliModeOperation = (cliMode: string) =>
     label: ({ label }) => label,
   })
 
+/** Wraps an effect in the root `genie/<cliMode>` span; the operation name varies by CLI mode (generate/check/watch/dry-run). */
 export const withCliModeSpan = (cliMode: string) =>
   trustedWith(cliModeOperation(cliMode), { label: cliMode, cliMode })
 
+/** Wraps an effect in the `genie/command` span; optional attributes are omitted (not encoded as undefined) when absent. */
 export const withCommandSpan = ({
   label,
   cwd,
@@ -206,6 +209,7 @@ export const withCommandSpan = ({
     ...(concurrency === undefined ? {} : { concurrency }),
   })
 
+/** Wraps per-file generation in the `genie/file` span; label defaults to the cwd-relative target path when omitted. */
 export const withFileSpan = ({
   label,
   cwd,
@@ -230,6 +234,7 @@ export const withFileSpan = ({
     ...(dryRun === undefined ? {} : { dryRun }),
   })
 
+/** Wraps a single atomic file write in the `atomicWriteFile` span, labelled by the target's basename. */
 export const withAtomicWriteSpan = ({
   targetFilePath,
   mode,
@@ -243,8 +248,10 @@ export const withAtomicWriteSpan = ({
     ...(mode === undefined ? {} : { mode }),
   })
 
+/** Pre-applied wrapper for the `genie.registerImportMapResolver` span (no per-call attributes beyond the fixed label). */
 export const withImportMapResolverSpan = trustedWith(importMapResolverSpan, { label: 'import-map' })
 
+/** Wraps the cross-file validation pass in the `genie/runValidation` span. */
 export const withValidationSpan = ({
   cwd,
   requirePackageJsonValidate,
@@ -264,6 +271,7 @@ export const withValidationSpan = ({
     ...(preloadedFileCount === undefined ? {} : { preloadedFileCount }),
   })
 
+/** Annotates the current span with `genie/command` attributes (in-place, no child span). */
 export const annotateCommand = ({
   label,
   cwd,
@@ -285,6 +293,7 @@ export const annotateCommand = ({
     ...(concurrency === undefined ? {} : { concurrency }),
   })
 
+/** Annotates the current span with `genie/file` attributes; label defaults to the cwd-relative target path. */
 export const annotateFile = ({
   label,
   cwd,
@@ -309,6 +318,7 @@ export const annotateFile = ({
     ...(dryRun === undefined ? {} : { dryRun }),
   })
 
+/** Annotates the current span with `genie/runValidation` attributes (in-place). */
 export const annotateValidation = ({
   cwd,
   requirePackageJsonValidate,
@@ -328,9 +338,11 @@ export const annotateValidation = ({
     ...(preloadedFileCount === undefined ? {} : { preloadedFileCount }),
   })
 
+/** Annotates the current span with a single `genie.path` attribute; label defaults to the path's basename. */
 export const annotatePath = ({ label, path }: { label?: string; path: string }) =>
   trustedAnnotate(pathOperation, { label: label ?? basename(path), path })
 
+/** Annotates the current span with `genie/target-lock` attributes, labelled by the cwd-relative target path. */
 export const annotateTargetLock = ({
   cwd,
   targetFilePath,
@@ -344,6 +356,7 @@ export const annotateTargetLock = ({
     targetFilePath,
   })
 
+/** Annotates the current span with `genie/oxfmt` attributes; `hasConfig` records whether an oxfmt config was resolved. */
 export const annotateOxfmt = ({
   targetFilePath,
   hasConfig,

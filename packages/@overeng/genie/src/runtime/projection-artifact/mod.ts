@@ -2,18 +2,22 @@ import { createGenieOutput } from '../core.ts'
 import type { GenieContext, GenieOutput, Strict } from '../mod.ts'
 import type { GenieValidationIssue } from '../validation/mod.ts'
 
+/** The committed JSON shape: a plain key/value object (arrays and primitives at the top level are rejected). */
 export type ProjectionJsonObject = { readonly [key: string]: unknown }
 
+/** Validator input: the typed source data plus the schema-versioned projection that is actually written to disk. */
 export type ProjectionArtifactValidatorArgs<TData, TProjection extends ProjectionJsonObject> = {
   data: TData
   projection: TProjection & { readonly schemaVersion: number }
   ctx: GenieContext
 }
 
+/** Pure validator over a projection; returns issues to surface rather than throwing. */
 export type ProjectionArtifactValidator<TData, TProjection extends ProjectionJsonObject> = (
   args: ProjectionArtifactValidatorArgs<TData, TProjection>,
 ) => readonly GenieValidationIssue[]
 
+/** Configuration for `projectionArtifact.json`: source data, schema version, optional projection and validators. */
 export type ProjectionJsonArtifactArgs<TData, TProjection extends ProjectionJsonObject> = {
   /** Typed source-of-truth data kept available to TS consumers via `.data`. */
   data: TData
@@ -67,16 +71,19 @@ function projectData<TData, TProjection extends ProjectionJsonObject>(
   ) as TProjection
 }
 
+/** Entry point for projection-backed artifacts; `.json` emits stable, schema-versioned JSON while keeping typed `.data`. */
 export const projectionArtifact = {
   json: projectionArtifactJson,
 } as const
 
+/** Identity helper that pins `TData`/`TProjection` inference for a validator without widening the callback types. */
 export function defineProjectionValidator<TData, TProjection extends ProjectionJsonObject>(
   validator: ProjectionArtifactValidator<TData, TProjection>,
 ): ProjectionArtifactValidator<TData, TProjection> {
   return validator
 }
 
+/** Reusable validators over projections; `uniqueValues` flags duplicate values in a derived list. */
 export const projectionValidators = {
   uniqueValues: <TData, TProjection extends ProjectionJsonObject>(args: {
     rule: string
