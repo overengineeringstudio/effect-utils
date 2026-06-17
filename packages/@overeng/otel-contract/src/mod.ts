@@ -17,6 +17,7 @@ import * as AST from 'effect/SchemaAST'
 
 type OtelPrimitive = string | number | boolean
 
+/** Branded OTel attribute key: letter-led, `[A-Za-z0-9_.:-]`, ≤255 chars — the canonical key shape shared by resource and span attributes. */
 export const OtelAttributeKey = Schema.NonEmptyTrimmedString.pipe(
   Schema.maxLength(255),
   Schema.pattern(/^[A-Za-z][A-Za-z0-9_.:-]*$/),
@@ -25,6 +26,7 @@ export const OtelAttributeKey = Schema.NonEmptyTrimmedString.pipe(
 )
 export type OtelAttributeKey = typeof OtelAttributeKey.Type
 
+/** Branded span name: any printable ASCII (`[ -~]`, so spaces/punctuation allowed unlike keys), ≤255 chars. */
 export const OtelSpanName = Schema.NonEmptyTrimmedString.pipe(
   Schema.maxLength(255),
   Schema.pattern(/^[ -~]+$/),
@@ -33,6 +35,7 @@ export const OtelSpanName = Schema.NonEmptyTrimmedString.pipe(
 )
 export type OtelSpanName = typeof OtelSpanName.Type
 
+/** Branded metric name: Prometheus-style, may lead with `_` or `:` (not just a letter), ≤255 chars. */
 export const OtelMetricName = Schema.NonEmptyTrimmedString.pipe(
   Schema.maxLength(255),
   Schema.pattern(/^[A-Za-z_:][A-Za-z0-9_.:-]*$/),
@@ -41,6 +44,7 @@ export const OtelMetricName = Schema.NonEmptyTrimmedString.pipe(
 )
 export type OtelMetricName = typeof OtelMetricName.Type
 
+/** Branded `service.name` resource value: letter-led, `[A-Za-z0-9_.:-]`, ≤255 chars — the telemetry service identity. */
 export const OtelServiceName = Schema.NonEmptyTrimmedString.pipe(
   Schema.maxLength(255),
   Schema.pattern(/^[A-Za-z][A-Za-z0-9_.:-]*$/),
@@ -387,6 +391,7 @@ export interface OtelMetricLabels<S extends Schema.Schema.AnyNoContext> {
   readonly unsafeEncode: (value: Schema.Schema.Type<S>) => OtelAttributeMap
 }
 
+/** The three instrument shapes a metric contract can take; selects which definition/runtime bridge applies. */
 export type OtelMetricInstrumentKind = 'counter' | 'histogram' | 'gauge'
 
 /** Stable metadata for schema-backed metric definitions. */
@@ -422,6 +427,7 @@ export interface OtelMetricDefinition<S extends Schema.Schema.AnyNoContext> {
   ) => Effect.Effect<ReadonlyArray<readonly [string, string]>>
 }
 
+/** Metric definition narrowed to a histogram, adding optional explicit bucket `boundaries`. */
 export interface OtelHistogramDefinition<
   S extends Schema.Schema.AnyNoContext,
 > extends OtelMetricDefinition<S> {
@@ -429,14 +435,18 @@ export interface OtelHistogramDefinition<
   readonly boundaries?: ReadonlyArray<number>
 }
 
+/** Metric definition narrowed to a gauge (instantaneous last-set value, no boundaries). */
 export interface OtelGaugeDefinition<
   S extends Schema.Schema.AnyNoContext,
 > extends OtelMetricDefinition<S> {
   readonly instrument: 'gauge'
 }
 
+/** Alias for the underlying Effect counter runtime that a counter contract drives. */
 export type OtelEffectCounterMetric = Metric.Metric.Counter<number>
+/** Alias for the underlying Effect histogram runtime that a histogram contract drives. */
 export type OtelEffectHistogramMetric = Metric.Metric.Histogram<number>
+/** Alias for the underlying Effect gauge runtime that a gauge contract drives. */
 export type OtelEffectGaugeMetric = Metric.Metric.Gauge<number>
 
 /** Effect Metric runtime bridge for a schema-first counter contract. */
