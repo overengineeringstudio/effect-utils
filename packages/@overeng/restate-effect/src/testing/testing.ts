@@ -663,7 +663,7 @@ export interface BoundIngress {
 
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
-/* The harness service tag. The `layer` factory below is the only constructor. */
+/** The harness service tag. The `layer` factory below is the only constructor. */
 export class RestateTestHarness extends Context.Tag('@overeng/restate-effect/RestateTestHarness')<
   RestateTestHarness,
   RestateTestHarnessService

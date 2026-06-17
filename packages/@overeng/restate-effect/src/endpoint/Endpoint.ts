@@ -657,6 +657,7 @@ export interface EndpointOptions<AppR> {
   readonly identityKeys?: ReadonlyArray<string>
 }
 
+/* eslint-disable @typescript-eslint/no-explicit-any -- the services-tuple AppR extractor */
 /**
  * A scoped `Layer` that binds the given service implementations to an h2c
  * (cleartext HTTP/2 prior-knowledge) server on `opts.port` and serves the
@@ -676,7 +677,6 @@ export interface EndpointOptions<AppR> {
  * `bidirectional` is left UNSET so the SDK negotiates full `BIDI_STREAM` over
  * h2c prior-knowledge (DQ7, docs/vrs/07-endpoint-deploy/spec.md §2).
  */
-/* eslint-disable @typescript-eslint/no-explicit-any -- the services-tuple AppR extractor */
 export const layer = <const S extends ReadonlyArray<AnyImplementation<any>>>(
   opts: Omit<EndpointOptions<AppROf<S>>, 'services'> & { readonly services: S },
 ): Layer.Layer<never, RestateError | ConfigError.ConfigError, AppROf<S>> =>

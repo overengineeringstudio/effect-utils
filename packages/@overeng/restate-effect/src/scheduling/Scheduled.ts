@@ -93,6 +93,7 @@ import { reschedule } from './Reschedule.ts'
  */
 export type OnCycleError = { readonly _tag: 'skipToNext' } | { readonly _tag: 'stopLoop' }
 
+/** Constructors for the {@link OnCycleError} policy values. */
 export const OnCycleError = {
   skipToNext: (): OnCycleError => ({ _tag: 'skipToNext' }),
   stopLoop: (): OnCycleError => ({ _tag: 'stopLoop' }),
@@ -111,6 +112,7 @@ export const OnCycleError = {
  */
 export type Schedule = { readonly _tag: 'fixedDelay'; readonly delayMillis: number }
 
+/** Constructors for the {@link Schedule} shapes (v1 ships `fixedDelay` only). */
 export const Schedule = {
   fixedDelay: (delayMillis: number): Schedule => ({ _tag: 'fixedDelay', delayMillis }),
 } as const
@@ -137,6 +139,7 @@ export type LoopStatusTag = 'idle' | 'running' | 'stopped' | 'failed' | 'complet
  * `reason` is threaded into the NEXT cycle as `wokenBy` (a one-shot signal).
  */
 export const WakePayload = Schema.Struct({ reason: Schema.String })
+/** The decoded {@link WakePayload} value handed to the next cycle as `wokenBy`. */
 export type WakePayload = Schema.Schema.Type<typeof WakePayload>
 
 /* ════════════════════════════════════════════════════════════════════════
@@ -199,6 +202,7 @@ const StatusOutput = Schema.Struct({
   /** The live wake awakeable id (wake mode); omitted when no wait is live. */
   wakeId: Schema.optional(Schema.String),
 })
+/** The decoded {@link StatusOutput} (re-exported from the entry as `ScheduledStatus`). */
 export type StatusOutput = Schema.Schema.Type<typeof StatusOutput>
 
 /* ════════════════════════════════════════════════════════════════════════
@@ -237,6 +241,12 @@ export type CycleEffect<DomainState extends StateSchemas, AppR, CycleE = never> 
   readonly wokenBy?: WakePayload
 }) => Effect.Effect<{ readonly stop?: boolean } | void, RestateError | CycleE, AppR | CycleCaps>
 
+/**
+ * The full `RestateScheduled.make` config: the loop name + domain State, the one
+ * `cycle` effect, the schedule, and the optional stop/error/retry/wake knobs
+ * (decision 0012). `AppR` is the explicit served-app environment; `CycleE` the
+ * cycle's declared domain error.
+ */
 export interface ScheduledConfig<DomainState extends StateSchemas, AppR, CycleE = never> {
   /** The Object name (the materialized service name). */
   readonly name: string
@@ -377,6 +387,12 @@ const retryAfterOf = (thrown: unknown): number | undefined => {
   return typeof ra === 'number' ? ra : undefined
 }
 
+/**
+ * The durable recurring-loop primitive surface (decision 0012, also aliased as
+ * `Restate.pollLoop`): `make` materializes the Virtual Object, with the
+ * {@link Schedule} / {@link OnCycleError} / {@link WakePayload} constructors
+ * bundled alongside.
+ */
 export const RestateScheduled = {
   Schedule,
   OnCycleError,
