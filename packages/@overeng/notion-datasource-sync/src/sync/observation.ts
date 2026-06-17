@@ -108,6 +108,12 @@ export type RemoteObservationOptions = {
   readonly requiredCapabilities?: ReadonlyArray<CapabilityName>
   readonly materializeBodies?: boolean
   readonly materializeBodyArtifacts?: boolean
+  /**
+   * Page ids whose body MUST be re-materialized even under the global
+   * `materializeBodyArtifacts: false` suppression — a body keep-remote resolution
+   * (decision 0013) accepts the remote body and re-materializes the `.nmd`.
+   */
+  readonly forceMaterializePageIds?: ReadonlySet<PageIdType>
   readonly rowLimit?: number
   readonly bodyPathForPage?: (pageId: PageIdType) => WorkspaceRelativePath
   readonly startCursor?: QueryCursor | null
@@ -1000,8 +1006,17 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
             schemaProperties: normalizedSchemaProperties,
             propertyValuesJson: page.propertyValuesJson,
           })
+          // The global `materializeBodyArtifacts: false` suppression (the mirror
+          // path sets it when the local workspace changed, to avoid clobbering a
+          // local edit) is OVERRIDDEN per-page for a `forceMaterializePageIds`
+          // entry: a body keep-remote resolution (decision 0013) accepts the remote
+          // body and must re-materialize the `.nmd` even though the local `.nmd`
+          // still diverges. Without this the divergence would persist silently after
+          // keep-remote.
+          const forceMaterialize = options.forceMaterializePageIds?.has(row.pageId) === true
           const materializeResult =
-            bodyPointer === undefined || options.materializeBodyArtifacts === false
+            bodyPointer === undefined ||
+            (options.materializeBodyArtifacts === false && forceMaterialize === false)
               ? undefined
               : yield* workspace.materialize({
                   _tag: 'MaterializePlan',

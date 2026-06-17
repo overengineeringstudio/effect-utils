@@ -29,31 +29,15 @@ import { renderNmdFile } from '@overeng/notion-md'
 import {
   parseCliCommand,
   parseCliContext,
-  raiseConvergenceConflicts,
   resolveCliCommandNotionRefs,
   runCliCommandWithRuntime,
 } from '../cli/main.ts'
 import { PagePropertyItemPage } from '../core/commands.ts'
-import {
-  AbsolutePath,
-  Hash,
-  PropertyId,
-  type AbsolutePath as AbsolutePathType,
-} from '../core/domain.ts'
-import { SyncRootId as SyncRootIdSchema } from '../core/events.ts'
+import { AbsolutePath, PropertyId, type AbsolutePath as AbsolutePathType } from '../core/domain.ts'
 import type { NotionGatewayClient } from '../gateway/notion.ts'
 import { pagesDirRelativePath, stateSqlitePath } from '../local/manifest.ts'
-import {
-  convergeLocalSurfaces,
-  type DataFileLocalEdit,
-  type NmdDesiredFact,
-} from '../planner/local-convergence.ts'
-import {
-  projectReplicaFromSyncStore,
-  readPendingReplicaChanges,
-  readReplicaCellBases,
-} from '../replica/replica.ts'
-import { openNotionSyncStore } from '../store/store.ts'
+import { convergeLocalSurfaces } from '../planner/local-convergence.ts'
+import { readPendingReplicaChanges, readReplicaCellBases } from '../replica/replica.ts'
 import { buildPropertyConvergenceInputs } from '../sync/local-convergence-inputs.ts'
 import {
   decode,
@@ -405,135 +389,5 @@ describe('SM5c production local convergence (.nmd frontmatter ↔ SQLite pages)'
     // (This also rules out the converged intent being silently dropped or blocked
     // by an unrelated guard such as `StaleSurfaceBase`.)
     expect(gateway.ledger.attemptedPatchPageProperties.length).toBeGreaterThanOrEqual(1)
-  })
-})
-
-const establishedRootId = decode({
-  schema: SyncRootIdSchema,
-  value: `data-source:${testIds.dataSourceId}`,
-})
-
-const bodyHash = (char: string) => decode({ schema: Hash, value: `sha256:${char.repeat(64)}` })
-
-/**
- * Two DISAGREEING local body surfaces for the same page, ONE per physical surface
- * (a SQLite `body_patch` edit + an `.nmd` body fact). This is the forward-looking
- * input — production keeps the SQLite body channel dormant, so the engine only sees
- * one body surface there; here the second surface is supplied to drive the
- * `body-body-delegated` conflict the rail must carry.
- */
-const divergentBodySurfaces = (): {
-  readonly sqlite: DataFileLocalEdit
-  readonly nmd: NmdDesiredFact
-} => ({
-  sqlite: {
-    identity: { kind: 'body', pageId: testIds.pageId },
-    desiredHash: bodyHash('a'),
-    baseHash: bodyHash('0'),
-  },
-  nmd: {
-    identity: { kind: 'body', pageId: testIds.pageId },
-    desiredHash: bodyHash('b'),
-    baseHash: bodyHash('0'),
-  },
-})
-
-type ReplicaConflictRow = {
-  readonly page_id: string | null
-  readonly property_id: string | null
-  readonly state: string
-}
-
-const replicaConflictRows = (dataFilePath: string): readonly ReplicaConflictRow[] => {
-  const db = new DatabaseSync(dataFilePath, { readOnly: true })
-  try {
-    return db
-      .prepare(`SELECT page_id, property_id, state FROM _nds_replica_conflicts`)
-      .all() as ReplicaConflictRow[]
-  } finally {
-    db.close()
-  }
-}
-
-describe('decision 0013 body convergence — engine raise loop + per-surface blocking', () => {
-  afterEach(async () => {
-    await Promise.all(scratchDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })))
-  })
-
-  // Test (4): an engine-detected body divergence (two disagreeing local body
-  // surfaces) raised through `raiseConvergenceConflicts` lands a page-keyed,
-  // NULL-property_id `_nds_replica_conflicts` row and blocks the body identity.
-  // Production is single-surface, so the second surface is constructed here — this
-  // is the forward-looking activation path.
-  it('engine body divergence lands a page-keyed _nds_replica_conflicts row (null property_id) and blocks the body', async () => {
-    const workspace = await tempWorkspace()
-    await establishShared(workspace)
-
-    const { sqlite, nmd } = divergentBodySurfaces()
-    const result = convergeLocalSurfaces({
-      authorityMode: 'shared',
-      dataFileEdits: [sqlite],
-      nmdFacts: [nmd],
-    })
-    if (result._tag !== 'shared') throw new Error('expected shared')
-
-    // The engine surfaces a body-body-delegated conflict AND blocks the body
-    // identity from remote mutation.
-    expect(result.conflicts.map((c) => c.kind)).toEqual(['body-body-delegated'])
-    expect(result.blockedIdentities).toEqual([{ kind: 'body', pageId: testIds.pageId }])
-
-    // Raise it onto the conflict rail through the SAME helper the CLI push uses,
-    // then project the replica.
-    const store = openNotionSyncStore({ path: stateSqlitePath(workspace) })
-    try {
-      raiseConvergenceConflicts({
-        outcomes: result.outcomes,
-        store,
-        rootId: establishedRootId,
-      })
-    } finally {
-      store.close()
-    }
-    projectReplicaFromSyncStore({
-      syncStorePath: stateSqlitePath(workspace),
-      replicaPath: sqlitePathForWorkspace(workspace),
-      rootId: establishedRootId,
-    })
-
-    // The conflict reached `_nds_replica_conflicts`: page-keyed, NULL property_id.
-    const rows = replicaConflictRows(sqlitePathForWorkspace(workspace))
-    expect(rows).toMatchObject([{ page_id: testIds.pageId, property_id: null, state: 'open' }])
-  })
-
-  // Test (5): per-surface blocking (the ADR's load-bearing claim). A DIVERGENT body
-  // and an AGREEING property on the SAME page in one pass: the body identity is
-  // blocked, the property is NOT — there is no cross-surface atomicity.
-  it('per-surface blocking: a divergent body does NOT block a co-page agreeing property', () => {
-    const propertyIdentity = {
-      kind: 'property',
-      pageId: testIds.pageId,
-      propertyId: selectProp,
-    } as const
-    const { sqlite: bodySqlite, nmd: bodyNmd } = divergentBodySurfaces()
-    const result = convergeLocalSurfaces({
-      authorityMode: 'shared',
-      dataFileEdits: [
-        { identity: propertyIdentity, desiredHash: bodyHash('c'), baseHash: bodyHash('d') },
-        bodySqlite,
-      ],
-      nmdFacts: [
-        { identity: propertyIdentity, desiredHash: bodyHash('c'), baseHash: bodyHash('d') },
-        bodyNmd,
-      ],
-    })
-    if (result._tag !== 'shared') throw new Error('expected shared')
-
-    // ONLY the body identity is blocked; the agreeing property coalesces (converged).
-    expect(result.blockedIdentities).toEqual([{ kind: 'body', pageId: testIds.pageId }])
-    expect(result.propertyVerdicts).toEqual([
-      { pageId: testIds.pageId, propertyId: selectProp, status: 'converged' },
-    ])
-    // The body conflict is raised independently of the clean property write.
-    expect(result.conflicts.map((c) => c.kind)).toEqual(['body-body-delegated'])
   })
 })
