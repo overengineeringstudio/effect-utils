@@ -23,6 +23,12 @@ import * as Observability from './observability.ts'
 
 const compareStrings = new Intl.Collator().compare
 
+/** Content-addressed object refs reachable from one sidecar: the body base plus the object-store body (when present). */
+const objectRefs = (syncState: NmdSyncStateV1): readonly NmdObjectRef[] => [
+  syncState.body.base,
+  ...(syncState.storage._tag === 'object_store' ? [syncState.storage.object] : []),
+]
+
 /** Strict schema for overflow `.nmd` storage payloads in the object store. */
 export const NmdStorageObjectV2 = Schema.Struct({
   version: Schema.Literal(2),
@@ -400,11 +406,6 @@ export const NmdStateStoreLive = Layer.effect(
           },
         }),
       )
-
-    const objectRefs = (syncState: NmdSyncStateV1): readonly NmdObjectRef[] => [
-      syncState.body.base,
-      ...(syncState.storage._tag === 'object_store' ? [syncState.storage.object] : []),
-    ]
 
     const reachableObjectPaths = (opts: {
       readonly path: string
