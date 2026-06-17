@@ -58,7 +58,7 @@ pkgs.runCommand "notion-cli"
       --run 'if [ "$#" -gt 1 ] && [ "$1" = db ]; then case "$2" in init|pull|push|sync|export|status|conflicts|forget|restore|doctor) shift; exec ${notionDbRuntime}/bin/notion-db-runtime "$@";; esac; fi'
 
     db_output="$($out/bin/notion db sync --help 2>&1 || true)"
-    if ! printf '%s\n' "$db_output" | grep -q 'Run pull and push, or adopt from Notion with --from-notion'; then
+    if ! printf '%s\n' "$db_output" | grep -q 'Reconcile an established workspace'; then
       printf '%s\n' "$db_output" >&2
       echo "notion db sync smoke test failed" >&2
       exit 1
