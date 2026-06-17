@@ -21,10 +21,16 @@ import {
 } from './batch.ts'
 import { getEditApp } from './cli-output/edit/app.ts'
 import { EditView } from './cli-output/edit/view.tsx'
+import { getPlanApp } from './cli-output/plan/app.ts'
+import { planResultPayload } from './cli-output/plan/map.ts'
+import { PlanView } from './cli-output/plan/view.tsx'
 import { progressReporterTui } from './cli-output/progress-bridge.ts'
 import { getPutApp } from './cli-output/put/app.ts'
 import type { PutAction } from './cli-output/put/schema.ts'
 import { PutView } from './cli-output/put/view.tsx'
+import { getStatusApp } from './cli-output/status/app.ts'
+import { statusResultPayload, type StatusEngineResult } from './cli-output/status/map.ts'
+import { StatusView } from './cli-output/status/view.tsx'
 import { getSyncApp } from './cli-output/sync/app.ts'
 import { syncErrorAction, syncResultAction, type SyncEngineResult } from './cli-output/sync/map.ts'
 import { SyncView } from './cli-output/sync/view.tsx'
@@ -444,21 +450,54 @@ const statusCommand = Command.make(
     targets: nmdTargetsArg,
     recursive: recursiveOption,
     concurrency: concurrencyOption,
+    output: outputOption,
   },
-  ({ targets, recursive, concurrency }) =>
-    commandSpan({
+  ({ targets, recursive, concurrency, output }) => {
+    const label =
+      targets.length === 1 ? basename(targets[0] ?? 'target') : `${targets.length} targets`
+    /** Context-header target: the real path for a single target, else the count. */
+    const headerTarget =
+      targets.length === 1 ? (targets[0] ?? 'target') : `${targets.length} targets`
+    /*
+     * Read-only result: route the engine result through the tui-react OutputMode
+     * seam (Slice C-read). `status` is STAGE-LESS — no `ProgressReporter` bridge,
+     * no live stages. The handler seeds the target, runs the engine, then maps the
+     * polymorphic result (single file / tree / batch) into a precomputed
+     * `{sections, problems, summary}` via `SetResult`. Engine failures propagate
+     * UNCAUGHT (only `tapErrorCause` dispatches a view action), so the `runMain`
+     * teardown owns the real exit code; a drifted/guarded result is exit 0.
+     */
+    return commandSpan({
       command: 'status',
-      label: targets.length === 1 ? basename(targets[0] ?? 'target') : `${targets.length} targets`,
-      effect: withNotion(
-        targets.length === 1
-          ? statusPath({ path: targets[0] ?? '', recursive, concurrency }).pipe(
-              Effect.map((result): unknown => result),
-            )
-          : statusMany({ targets, recursive, concurrency }).pipe(
-              Effect.map((result): unknown => result),
+      label,
+      effect: run(
+        getStatusApp(),
+        (tui) => {
+          tui.dispatch({ _tag: 'SetTarget', target: headerTarget })
+          return withNotion(
+            (targets.length === 1
+              ? statusPath({ path: targets[0] ?? '', recursive, concurrency })
+              : statusMany({ targets, recursive, concurrency })
+            ).pipe(Effect.map((result): StatusEngineResult => result)),
+          ).pipe(
+            Effect.tap((result) =>
+              Effect.sync(() =>
+                tui.dispatch({ _tag: 'SetResult', result: statusResultPayload(result) }),
+              ),
             ),
-      ),
-    }).pipe(Effect.flatMap(logJson)),
+            Effect.tapErrorCause((cause) =>
+              Option.match(Cause.failureOption(cause), {
+                onNone: () => Effect.void,
+                onSome: (error) =>
+                  Effect.sync(() => tui.dispatch({ _tag: 'SetError', message: String(error) })),
+              }),
+            ),
+          )
+        },
+        { view: React.createElement(StatusView, { stateAtom: getStatusApp().stateAtom }) },
+      ).pipe(Effect.provide(outputModeLayer(output))),
+    })
+  },
 ).pipe(Command.withDescription('Compare local .nmd state with the remote Notion page'))
 
 const planCommand = Command.make(
@@ -468,11 +507,17 @@ const planCommand = Command.make(
     root: rootPageOption,
     rootFile: rootFileOption,
     fromRemote: fromRemoteOption,
+    output: outputOption,
   },
-  ({ target, root, rootFile, fromRemote }) =>
+  ({ target, root, rootFile, fromRemote, output }) =>
     commandSpan({
       command: 'plan',
       label: basename(target),
+      // Pre-flight validations (root parse, file-target rejection, from-remote
+      // tree assertion) stay OUTSIDE `run`: a bad-flags failure is a usage error,
+      // NOT a plan result, and the e2e contract requires `plan <file>` to fail
+      // BEFORE token resolution. The framework maps these on the error channel.
+      // Only the engine call routes through the read-only OutputMode seam.
       effect: parseRootPage(root).pipe(
         Effect.flatMap((rootPageId) =>
           targetKind(target).pipe(
@@ -484,19 +529,50 @@ const planCommand = Command.make(
                   : Effect.void,
             ),
             Effect.zipRight(
-              withNotion(
-                planPath({
-                  path: target,
-                  fromRemote,
-                  ...(rootPageId === undefined ? {} : { rootPageId }),
-                  ...(Option.isSome(rootFile) === true ? { rootFile: rootFile.value } : {}),
-                }).pipe(Effect.map((result): unknown => result)),
-              ),
+              /*
+               * Read-only result: route the `TreeSyncResult` diff through the
+               * tui-react OutputMode seam (Slice C-read). STAGE-LESS — no progress
+               * bridge. The handler seeds the target, runs the engine, then maps
+               * the diff into a precomputed `{sections, problems, summary}` via
+               * `SetResult`. Engine failures propagate UNCAUGHT (only
+               * `tapErrorCause` dispatches a view action), so the `runMain`
+               * teardown owns the real exit code; a blocked plan is exit 0.
+               */
+              run(
+                getPlanApp(),
+                (tui) => {
+                  tui.dispatch({ _tag: 'SetTarget', target })
+                  return withNotion(
+                    planPath({
+                      path: target,
+                      fromRemote,
+                      ...(rootPageId === undefined ? {} : { rootPageId }),
+                      ...(Option.isSome(rootFile) === true ? { rootFile: rootFile.value } : {}),
+                    }),
+                  ).pipe(
+                    Effect.tap((result) =>
+                      Effect.sync(() =>
+                        tui.dispatch({ _tag: 'SetResult', result: planResultPayload(result) }),
+                      ),
+                    ),
+                    Effect.tapErrorCause((cause) =>
+                      Option.match(Cause.failureOption(cause), {
+                        onNone: () => Effect.void,
+                        onSome: (error) =>
+                          Effect.sync(() =>
+                            tui.dispatch({ _tag: 'SetError', message: String(error) }),
+                          ),
+                      }),
+                    ),
+                  )
+                },
+                { view: React.createElement(PlanView, { stateAtom: getPlanApp().stateAtom }) },
+              ).pipe(Effect.provide(outputModeLayer(output))),
             ),
           ),
         ),
       ),
-    }).pipe(Effect.flatMap(logJson)),
+    }),
 ).pipe(
   Command.withDescription(
     'Dry-run: print the create/update/move/trash/noop diff for a directory tree without applying',
