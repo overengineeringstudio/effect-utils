@@ -114,6 +114,13 @@ const makeInProcessLayer = (
   )
 }
 
+const endpointEnvValue = (handle: CaptureHandle, endpointVar?: string): string => {
+  if (endpointVar === 'OTEL_EXPORTER_OTLP_TRACES_ENDPOINT') {
+    return otlpTracesUrl(handle.endpoints.http)
+  }
+  return handle.endpoints.http
+}
+
 export class OteliteTestHarness extends Effect.Service<OteliteTestHarness>()(
   '@overeng/utils-dev/otelite/OteliteTestHarness',
   {
@@ -167,8 +174,10 @@ export class OteliteTestHarness extends Effect.Service<OteliteTestHarness>()(
             envSemaphore.withPermits(1)(
               Effect.scoped(
                 scopedEnv({
-                  [envOptions.endpointVar ?? 'OTEL_EXPORTER_OTLP_ENDPOINT']:
-                    captureHandle.endpoints.http,
+                  [envOptions.endpointVar ?? 'OTEL_EXPORTER_OTLP_ENDPOINT']: endpointEnvValue(
+                    captureHandle,
+                    envOptions.endpointVar,
+                  ),
                   [envOptions.serviceNameVar ?? 'OTEL_SERVICE_NAME']: options.serviceName,
                   ...envOptions.extra,
                 }).pipe(Effect.zipRight(effect)),
