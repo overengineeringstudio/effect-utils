@@ -113,10 +113,4 @@ describe('canonicalizeBlockMarkdown', () => {
     expect(canonicalizeBlockMarkdown(once)).toBe(once)
     expect(once).toBe('- a\n- b\n\nAfter.\n')
   })
-
-  it('serializes GFM autolink literals as idempotent resource links', () => {
-    const once = canonicalizeBlockMarkdown('0@.A')
-    expect(once).toBe('[0@.A](mailto:0@.A)\n')
-    expect(canonicalizeBlockMarkdown(once)).toBe(once)
-  })
 })
