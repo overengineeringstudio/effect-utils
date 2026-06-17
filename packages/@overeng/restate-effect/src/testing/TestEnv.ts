@@ -151,7 +151,7 @@ export interface RestateTestEnvService {
   ) => Effect.Effect<void, RestateError>
 }
 
-/* The env service tag. The `mock` / `real` statics below are the only constructors. */
+/** The env service tag. The `mock` / `real` statics below are the only constructors. */
 export class RestateTestEnv extends Context.Tag('@overeng/restate-effect/RestateTestEnv')<
   RestateTestEnv,
   RestateTestEnvService

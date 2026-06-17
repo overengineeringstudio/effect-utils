@@ -31,10 +31,12 @@ import { RestateMetrics } from './contract.ts'
  * that is the retry-pressure signal (retries derive as the `retryable` rate).
  */
 const invocationsTotalBridge = OtelMetric.effect.counter(RestateMetrics.invocationsTotal)
+/** The Effect `Metric` behind `restate_invocations_total` (see the bridge above for the exactly-once semantics). */
 export const invocationsTotal = invocationsTotalBridge.metric
 
 /** Per-invocation DURATION histogram (`restate_invocation_duration_ms`), gated on non-replay. */
 const invocationDurationMsBridge = OtelMetric.effect.histogram(RestateMetrics.invocationDurationMs)
+/** The Effect `Metric` behind `restate_invocation_duration_ms` (real attempt wall-clock, gated on non-replay). */
 export const invocationDurationMs = invocationDurationMsBridge.metric
 
 /**
@@ -45,6 +47,7 @@ export const invocationDurationMs = invocationDurationMsBridge.metric
  * which re-runs the handler body without being a new attempt — is not counted.
  */
 const attemptsTotalBridge = OtelMetric.effect.counter(RestateMetrics.attemptsTotal)
+/** The Effect `Metric` behind `restate_attempts_total` (one per real handler entry; retries derive against it). */
 export const attemptsTotal = attemptsTotalBridge.metric
 
 /**
@@ -56,6 +59,7 @@ export const attemptsTotal = attemptsTotalBridge.metric
  * already carries those) to keep cardinality bounded.
  */
 const durableStepsTotalBridge = OtelMetric.effect.counter(RestateMetrics.durableStepsTotal)
+/** The Effect `Metric` behind `restate_durable_steps_total` (counted exactly once at the `Restate.run` seam). */
 export const durableStepsTotal = durableStepsTotalBridge.metric
 
 /**
@@ -65,6 +69,7 @@ export const durableStepsTotal = durableStepsTotalBridge.metric
  * wait). Captures external-completion latency (e.g. a webhook callback round-trip).
  */
 const awakeableWaitMsBridge = OtelMetric.effect.histogram(RestateMetrics.awakeableWaitMs)
+/** The Effect `Metric` behind `restate_awakeable_wait_ms` (real external-completion wait, gated on non-replay). */
 export const awakeableWaitMs = awakeableWaitMsBridge.metric
 
 /**
@@ -74,6 +79,7 @@ export const awakeableWaitMs = awakeableWaitMsBridge.metric
  * real cycle execution is counted exactly once.
  */
 const pollLoopCyclesTotalBridge = OtelMetric.effect.counter(RestateMetrics.pollLoopCyclesTotal)
+/** The Effect `Metric` behind `restate_poll_loop_cycles_total` (one per real `pollLoop` cycle, gated on non-replay). */
 export const pollLoopCyclesTotal = pollLoopCyclesTotalBridge.metric
 
 /**

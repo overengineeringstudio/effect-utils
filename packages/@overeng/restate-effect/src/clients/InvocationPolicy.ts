@@ -74,6 +74,11 @@ export const contractSerdeFactory = (redaction: RedactionCipher | undefined) => 
   } as const
 }
 
+/**
+ * The redaction-threaded serde factory bound to one ingress connection: builds
+ * the `Restate.sensitive`-aware input/output serde pair for a handler, so every
+ * client call carries field redaction by construction.
+ */
 export type ContractSerdeFactory = ReturnType<typeof contractSerdeFactory>
 
 /**

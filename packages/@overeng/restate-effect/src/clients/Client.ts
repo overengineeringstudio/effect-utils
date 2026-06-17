@@ -52,10 +52,12 @@ export interface RestateIngressService {
   readonly redaction?: RedactionCipher
 }
 
-/* Service to make typed ingress calls against a `restate-server` ingress URL.
+/**
+ * Service to make typed ingress calls against a `restate-server` ingress URL.
  * Build the layer with `RestateIngress.layer({ url, apiKey? })` (or the
  * env-driven `RestateIngress.layerConfig`) and `yield* RestateIngress` (or thread
- * `call` / `callTyped`, which require it in `R`). */
+ * `call` / `callTyped`, which require it in `R`).
+ */
 export class RestateIngress extends Context.Tag('@overeng/restate-effect/RestateIngress')<
   RestateIngress,
   RestateIngressService
