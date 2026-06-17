@@ -287,28 +287,37 @@ export const runWatch = (opts: {
       const pass = (reason: WatchReason) =>
         syncPage(opts.syncOptions).pipe(
           Effect.tap((result) =>
-            annotateAttrs(WatchSyncResultAttrs, {
-              result: result._tag,
-              reason,
+            annotateAttrs({
+              attributes: WatchSyncResultAttrs,
+              value: {
+                result: result._tag,
+                reason,
+              },
             }),
           ),
           Effect.tap((result) => emit({ event: 'sync', reason, result })),
           Effect.tapError((error: unknown) =>
-            annotateAttrs(WatchSyncErrorAttrs, {
-              error: true,
-              errorTag:
-                typeof error === 'object' && error !== null && '_tag' in error
-                  ? String((error as { readonly _tag?: unknown })._tag)
-                  : error instanceof Error
-                    ? error.name
-                    : 'unknown',
+            annotateAttrs({
+              attributes: WatchSyncErrorAttrs,
+              value: {
+                error: true,
+                errorTag:
+                  typeof error === 'object' && error !== null && '_tag' in error
+                    ? String((error as { readonly _tag?: unknown })._tag)
+                    : error instanceof Error
+                      ? error.name
+                      : 'unknown',
+              },
             }),
           ),
-          withOperation(WatchSyncPassSpan, {
-            command: 'sync',
-            watch: true,
-            reason,
-            basename: watchedFile,
+          withOperation({
+            operation: WatchSyncPassSpan,
+            attributes: {
+              command: 'sync',
+              watch: true,
+              reason,
+              basename: watchedFile,
+            },
           }),
           Effect.catchAll((error: unknown) =>
             emit({ event: 'sync_error', reason, error: safeJsonError(error) }),
@@ -350,10 +359,13 @@ export const runWatch = (opts: {
       )
     }),
   ).pipe(
-    withOperation(WatchSpan, {
-      command: 'sync',
-      watch: true,
-      basename: basename(opts.syncOptions.path),
+    withOperation({
+      operation: WatchSpan,
+      attributes: {
+        command: 'sync',
+        watch: true,
+        basename: basename(opts.syncOptions.path),
+      },
     }),
   )
 
@@ -363,9 +375,12 @@ const commandSpan = <A, E, R>(opts: {
   readonly effect: Effect.Effect<A, E, R>
 }): Effect.Effect<A, E, R> =>
   opts.effect.pipe(
-    withOperation(cliCommandSpan(opts.command), {
-      label: opts.label,
-      command: opts.command,
+    withOperation({
+      operation: cliCommandSpan(opts.command),
+      attributes: {
+        label: opts.label,
+        command: opts.command,
+      },
     }),
   )
 

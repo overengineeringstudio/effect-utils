@@ -326,7 +326,7 @@ export const fetch = (args: { repoPath: string; remote?: string; prune?: boolean
     }
     cmdArgs.push(args.remote ?? 'origin')
     yield* runGitCommandWithRetry({ args: cmdArgs, cwd: args.repoPath })
-  }).pipe(Observability.withRepoPathSpan('git/fetch', args.repoPath))
+  }).pipe(Observability.withRepoPathSpan({ name: 'git/fetch', path: args.repoPath }))
 
 /**
  * Checkout a specific ref (branch, tag, or commit)
@@ -433,7 +433,7 @@ export const removeWorktree = (args: { repoPath: string; worktreePath: string; f
 export const pruneWorktrees = (repoPath: string) =>
   runGitCommand({ args: ['worktree', 'prune'], cwd: repoPath }).pipe(
     Effect.asVoid,
-    Observability.withRepoPathSpan('git/worktree-prune', repoPath),
+    Observability.withRepoPathSpan({ name: 'git/worktree-prune', path: repoPath }),
   )
 
 /**
@@ -556,7 +556,7 @@ export const fetchBare = (args: { repoPath: string; remote?: string }) =>
       args: ['fetch', '--tags', '--prune', remote],
       cwd: args.repoPath,
     })
-  }).pipe(Observability.withRepoPathSpan('git/fetch-bare', args.repoPath))
+  }).pipe(Observability.withRepoPathSpan({ name: 'git/fetch-bare', path: args.repoPath }))
 
 /**
  * Get the default branch name from a remote

@@ -90,7 +90,12 @@ export const readObservationLedger = ({
       ),
       Effect.catchAll(() => Effect.succeed({} as GcObservationLedger)),
     )
-  }).pipe(Observability.withLabelSpan('megarepo/store/gc/read-observations', 'gc-observations'))
+  }).pipe(
+    Observability.withLabelSpan({
+      name: 'megarepo/store/gc/read-observations',
+      labelValue: 'gc-observations',
+    }),
+  )
 
 /** Atomically writes the ledger (creating `.state/` if needed). */
 const writeObservationLedger = ({
@@ -113,7 +118,12 @@ const writeObservationLedger = ({
       ledger,
     )
     yield* writeFileAtomic({ path, content: content + '\n' })
-  }).pipe(Observability.withLabelSpan('megarepo/store/gc/write-observations', 'gc-observations'))
+  }).pipe(
+    Observability.withLabelSpan({
+      name: 'megarepo/store/gc/write-observations',
+      labelValue: 'gc-observations',
+    }),
+  )
 
 /**
  * Read-modify-write the ledger for one gc run and return the new state.
@@ -142,7 +152,12 @@ export const recordObservations = ({
     const next = nextObservationLedger({ current, coldPaths, uncleanReconcilePaths, now })
     yield* writeObservationLedger({ storeBasePath, ledger: next })
     return next
-  }).pipe(Observability.withLabelSpan('megarepo/store/gc/record-observations', 'gc-observations'))
+  }).pipe(
+    Observability.withLabelSpan({
+      name: 'megarepo/store/gc/record-observations',
+      labelValue: 'gc-observations',
+    }),
+  )
 
 /** Returns the epoch-ms a path was first seen cold, or `undefined` if not tracked. */
 export const coldSinceMs = ({

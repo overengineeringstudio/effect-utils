@@ -36,17 +36,23 @@ const trustOtelContract = <A, E, R>(
   ) as Effect.Effect<A, E, R>
 
 const trustedWith =
-  <S extends Schema.Schema.AnyNoContext>(
-    operation: OtelOperationDefinition<S>,
-    attributes: Schema.Schema.Type<S>,
-  ): (<A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>) =>
+  <S extends Schema.Schema.AnyNoContext>({
+    operation,
+    attributes,
+  }: {
+    operation: OtelOperationDefinition<S>
+    attributes: Schema.Schema.Type<S>
+  }): (<A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     trustOtelContract<A, E, R>(operation.with({ attributes, effect }))
 
-const trustedAnnotate = <S extends Schema.Schema.AnyNoContext>(
-  operation: OtelOperationDefinition<S>,
-  attributes: Schema.Schema.Type<S>,
-): Effect.Effect<void> => trustOtelContract<void, never, never>(operation.annotate(attributes))
+const trustedAnnotate = <S extends Schema.Schema.AnyNoContext>({
+  operation,
+  attributes,
+}: {
+  operation: OtelOperationDefinition<S>
+  attributes: Schema.Schema.Type<S>
+}): Effect.Effect<void> => trustOtelContract<void, never, never>(operation.annotate(attributes))
 
 const commandAttrs = OtelAttrs.defineSync(
   Schema.Struct({
@@ -219,15 +225,18 @@ export const withCommandSpan = ({
   repo?: string
   root?: boolean
 }) =>
-  trustedWith(commandOperation({ name, root }), {
-    label,
-    command,
-    ...(output === undefined ? {} : { output }),
-    ...(all === undefined ? {} : { all }),
-    ...(dryRun === undefined ? {} : { dryRun }),
-    ...(force === undefined ? {} : { force }),
-    ...(member === undefined ? {} : { member }),
-    ...(repo === undefined ? {} : { repo }),
+  trustedWith({
+    operation: commandOperation({ name, root }),
+    attributes: {
+      label,
+      command,
+      ...(output === undefined ? {} : { output }),
+      ...(all === undefined ? {} : { all }),
+      ...(dryRun === undefined ? {} : { dryRun }),
+      ...(force === undefined ? {} : { force }),
+      ...(member === undefined ? {} : { member }),
+      ...(repo === undefined ? {} : { repo }),
+    },
   })
 
 /** Wrap a sync run in a `megarepo/sync` span labelled by the megarepo root's
@@ -247,14 +256,17 @@ export const withSyncSpan = ({
   all: boolean
   force: boolean
 }) =>
-  trustedWith(syncSpan, {
-    label: shortPath(megarepoRoot),
-    root: megarepoRoot,
-    mode,
-    depth,
-    dryRun,
-    all,
-    force,
+  trustedWith({
+    operation: syncSpan,
+    attributes: {
+      label: shortPath(megarepoRoot),
+      root: megarepoRoot,
+      mode,
+      depth,
+      dryRun,
+      all,
+      force,
+    },
   })
 
 /** Annotate the enclosing span with command attributes after the fact — used
@@ -278,15 +290,18 @@ export const annotateCommand = ({
   member?: string
   repo?: string
 }) =>
-  trustedAnnotate(commandAnnotationOperation, {
-    label,
-    command,
-    ...(output === undefined ? {} : { output }),
-    ...(all === undefined ? {} : { all }),
-    ...(dryRun === undefined ? {} : { dryRun }),
-    ...(force === undefined ? {} : { force }),
-    ...(member === undefined ? {} : { member }),
-    ...(repo === undefined ? {} : { repo }),
+  trustedAnnotate({
+    operation: commandAnnotationOperation,
+    attributes: {
+      label,
+      command,
+      ...(output === undefined ? {} : { output }),
+      ...(all === undefined ? {} : { all }),
+      ...(dryRun === undefined ? {} : { dryRun }),
+      ...(force === undefined ? {} : { force }),
+      ...(member === undefined ? {} : { member }),
+      ...(repo === undefined ? {} : { repo }),
+    },
   })
 
 /** Annotate the enclosing `megarepo/store/gc` span with the run's tallies
@@ -327,14 +342,17 @@ export const withStoreWorktreeSpan = ({
   bareRepoPath?: string
   broken?: boolean
 }) =>
-  trustedWith(storeWorktreeOperation(name), {
-    label: `${shortPath(repo)} ${shortRef({ refType, ref })}`,
-    repo,
-    refType,
-    ref,
-    ...(worktreePath === undefined ? {} : { worktreePath }),
-    ...(bareRepoPath === undefined ? {} : { bareRepoPath }),
-    ...(broken === undefined ? {} : { broken }),
+  trustedWith({
+    operation: storeWorktreeOperation(name),
+    attributes: {
+      label: `${shortPath(repo)} ${shortRef({ refType, ref })}`,
+      repo,
+      refType,
+      ref,
+      ...(worktreePath === undefined ? {} : { worktreePath }),
+      ...(bareRepoPath === undefined ? {} : { bareRepoPath }),
+      ...(broken === undefined ? {} : { broken }),
+    },
   })
 
 /** Wrap an entire `mr store gc` invocation in its root `megarepo/store/gc` span,
@@ -350,12 +368,15 @@ export const withStoreGcSpan = ({
   force: boolean
   all: boolean
 }) =>
-  trustedWith(storeGcOperation, {
-    label: 'gc',
-    policy,
-    dryRun,
-    force,
-    all,
+  trustedWith({
+    operation: storeGcOperation,
+    attributes: {
+      label: 'gc',
+      policy,
+      dryRun,
+      force,
+      all,
+    },
   })
 
 /** Wrap a store-source operation in a `<name>` span labelled by the source's
@@ -375,13 +396,16 @@ export const withStoreSourceSpan = ({
   commit?: string
   porcelain?: boolean
 }) =>
-  trustedWith(storeSourceOperation(name), {
-    label: shortPath(source),
-    source,
-    ...(ref === undefined ? {} : { ref }),
-    ...(base === undefined ? {} : { base }),
-    ...(commit === undefined ? {} : { commit }),
-    ...(porcelain === undefined ? {} : { porcelain }),
+  trustedWith({
+    operation: storeSourceOperation(name),
+    attributes: {
+      label: shortPath(source),
+      source,
+      ...(ref === undefined ? {} : { ref }),
+      ...(base === undefined ? {} : { base }),
+      ...(commit === undefined ? {} : { commit }),
+      ...(porcelain === undefined ? {} : { porcelain }),
+    },
   })
 
 // =============================================================================
@@ -426,20 +450,20 @@ export const withStoreGcPhaseSpan = ({
   worktreeCount?: number
   repoConcurrency?: number
 }) =>
-  trustedWith(
-    OtelOperation.define({
+  trustedWith({
+    operation: OtelOperation.define({
       name: `megarepo/store/gc/${phase}`,
       attributes: storeGcPhaseAttrs,
       label: ({ label }) => label,
     }),
-    {
+    attributes: {
       label: phase,
       phase,
       ...(repoCount === undefined ? {} : { repoCount }),
       ...(worktreeCount === undefined ? {} : { worktreeCount }),
       ...(repoConcurrency === undefined ? {} : { repoConcurrency }),
     },
-  )
+  })
 
 /**
  * Resident-set gauge sampled periodically across a gc run

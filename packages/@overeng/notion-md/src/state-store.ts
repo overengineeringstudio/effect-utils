@@ -292,9 +292,12 @@ export const NmdStateStoreLive = Layer.effect(
             message: `Failed to write ${opts.label} ${opts.path}`,
           }),
         ),
-        Observability.withOperation(Observability.stateFileSpan(opts.operation), {
-          operation: opts.operation,
-          basename: path.basename(opts.path),
+        Observability.withOperation({
+          operation: Observability.stateFileSpan(opts.operation),
+          attributes: {
+            operation: opts.operation,
+            basename: path.basename(opts.path),
+          },
         }),
       )
 
@@ -308,9 +311,12 @@ export const NmdStateStoreLive = Layer.effect(
             message: `Failed to read .nmd file ${opts.path}`,
           }),
         ),
-        Observability.withOperation(Observability.ReadNmdStateSpan, {
-          operation: 'read_nmd',
-          basename: path.basename(opts.path),
+        Observability.withOperation({
+          operation: Observability.ReadNmdStateSpan,
+          attributes: {
+            operation: 'read_nmd',
+            basename: path.basename(opts.path),
+          },
         }),
       )
 
@@ -329,14 +335,20 @@ export const NmdStateStoreLive = Layer.effect(
           content,
           label: '.notion-md object',
         })
-        yield* Observability.annotateAttrs(Observability.objectHashAttrs, {
-          hashPrefix: hash.slice(0, 18),
+        yield* Observability.annotateAttrs({
+          attributes: Observability.objectHashAttrs,
+          value: {
+            hashPrefix: hash.slice(0, 18),
+          },
         })
         return makeNmdObjectRef({ role: opts.role, hash, content })
       }).pipe(
-        Observability.withOperation(Observability.WriteObjectStateSpan, {
-          role: opts.role,
-          basename: path.basename(opts.path),
+        Observability.withOperation({
+          operation: Observability.WriteObjectStateSpan,
+          attributes: {
+            role: opts.role,
+            basename: path.basename(opts.path),
+          },
         }),
       )
 
@@ -367,9 +379,12 @@ export const NmdStateStoreLive = Layer.effect(
         }
         return content
       }).pipe(
-        Observability.withOperation(Observability.ReadObjectStateSpan, {
-          role: opts.object.role,
-          hashPrefix: opts.object.hash.slice(0, 18),
+        Observability.withOperation({
+          operation: Observability.ReadObjectStateSpan,
+          attributes: {
+            role: opts.object.role,
+            hashPrefix: opts.object.hash.slice(0, 18),
+          },
         }),
       )
 

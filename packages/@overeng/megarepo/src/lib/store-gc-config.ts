@@ -88,4 +88,6 @@ export const loadStoreGcConfig = ({
       Effect.catchAll(() => Effect.succeed({} as StoreGcConfigOverride)),
     )
     return mergeStoreGcConfig(override)
-  }).pipe(Observability.withLabelSpan('megarepo/store/gc/load-config', 'gc-config'))
+  }).pipe(
+    Observability.withLabelSpan({ name: 'megarepo/store/gc/load-config', labelValue: 'gc-config' }),
+  )

@@ -183,10 +183,13 @@ export const pushDecisionMarkdownCommandAttrs = OtelAttrs.defineSync(
 
 /** Wrap an effect in an OTEL operation span; an attribute-encode failure is a defect, not a recoverable error. */
 export const withOperation =
-  <S extends Schema.Schema.AnyNoContext>(
-    operation: OtelOperationDefinition<S>,
-    attributes: Schema.Schema.Type<S>,
-  ) =>
+  <S extends Schema.Schema.AnyNoContext>({
+    operation,
+    attributes,
+  }: {
+    operation: OtelOperationDefinition<S>
+    attributes: Schema.Schema.Type<S>
+  }) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
     effect.pipe(
       operation.with(attributes),
@@ -194,10 +197,13 @@ export const withOperation =
     )
 
 /** Annotate the current span with typed attributes; an attribute-encode failure is a defect, not a recoverable error. */
-export const annotateAttrs = <S extends Schema.Schema.AnyNoContext>(
-  attributes: OtelAttrs<S>,
-  value: Schema.Schema.Type<S>,
-): Effect.Effect<void> =>
+export const annotateAttrs = <S extends Schema.Schema.AnyNoContext>({
+  attributes,
+  value,
+}: {
+  attributes: OtelAttrs<S>
+  value: Schema.Schema.Type<S>
+}): Effect.Effect<void> =>
   OtelSpan.annotate({ attributes, value }).pipe(
     Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)),
   )

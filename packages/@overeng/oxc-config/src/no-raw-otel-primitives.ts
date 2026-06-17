@@ -52,7 +52,13 @@ const createTracker = (): EffectImportTracker => ({
 })
 
 /** Track local bindings imported from the root `effect` package. */
-const trackEffectImport = (tracker: EffectImportTracker, node: any): void => {
+const trackEffectImport = ({
+  tracker,
+  node,
+}: {
+  tracker: EffectImportTracker
+  node: any
+}): void => {
   if (node.source?.value !== 'effect') return
 
   for (const specifier of node.specifiers ?? []) {
@@ -90,7 +96,13 @@ const importSpecifierImportedName = (specifier: any): string | undefined => {
   return undefined
 }
 
-const rawOtelCallSource = (tracker: EffectImportTracker, node: any): string | undefined => {
+const rawOtelCallSource = ({
+  tracker,
+  node,
+}: {
+  tracker: EffectImportTracker
+  node: any
+}): string | undefined => {
   const callee = node.callee
 
   if (callee?.type === 'Identifier' && tracker.directRawCalls.has(callee.name) === true) {
@@ -128,16 +140,19 @@ const rawOtelCallSource = (tracker: EffectImportTracker, node: any): string | un
     }
   }
 
-  const namespaceCall = rawOtelNamespaceCallSource(tracker, callee)
+  const namespaceCall = rawOtelNamespaceCallSource({ tracker, callee })
   if (namespaceCall !== undefined) return namespaceCall
 
   return undefined
 }
 
-const rawOtelNamespaceCallSource = (
-  tracker: EffectImportTracker,
-  callee: any,
-): string | undefined => {
+const rawOtelNamespaceCallSource = ({
+  tracker,
+  callee,
+}: {
+  tracker: EffectImportTracker
+  callee: any
+}): string | undefined => {
   const namespaceMember = callee.object
   if (namespaceMember?.type !== 'MemberExpression' || namespaceMember.computed === true) {
     return undefined
@@ -183,11 +198,11 @@ export const noRawOtelPrimitivesRule = {
 
     return {
       ImportDeclaration(node: any) {
-        trackEffectImport(tracker, node)
+        trackEffectImport({ tracker, node })
       },
 
       CallExpression(node: any) {
-        const source = rawOtelCallSource(tracker, node)
+        const source = rawOtelCallSource({ tracker, node })
         if (source === undefined) return
 
         context.report({

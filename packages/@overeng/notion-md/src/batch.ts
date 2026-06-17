@@ -412,11 +412,14 @@ const runBatch = <A>(opts: {
       items: [...resolved.errors, ...preflight.errors, ...operationItems],
     })
   }).pipe(
-    withOperation(batchRunSpan(opts.operation), {
-      command: opts.operation,
-      batch: true,
-      targetCount: opts.targets.length,
-      recursive: opts.recursive === true,
+    withOperation({
+      operation: batchRunSpan(opts.operation),
+      attributes: {
+        command: opts.operation,
+        batch: true,
+        targetCount: opts.targets.length,
+        recursive: opts.recursive === true,
+      },
     }),
   )
 
@@ -597,11 +600,14 @@ export const runBatchWatch = (
       )
     }),
   ).pipe(
-    withOperation(BatchWatchSpan, {
-      command: 'sync',
-      watch: true,
-      batch: true,
-      pathCount: opts.paths.length,
+    withOperation({
+      operation: BatchWatchSpan,
+      attributes: {
+        command: 'sync',
+        watch: true,
+        batch: true,
+        pathCount: opts.paths.length,
+      },
     }),
   )
 

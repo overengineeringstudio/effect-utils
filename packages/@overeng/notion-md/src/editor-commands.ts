@@ -147,7 +147,9 @@ export const catEditorPage = (
       mode: opts.mode,
       ...(projected.baseHash === undefined ? {} : { baseHash: projected.baseHash }),
     }
-  }).pipe(withOperation(CatSpan, { pageId: opts.pageId, mode: opts.mode }))
+  }).pipe(
+    withOperation({ operation: CatSpan, attributes: { pageId: opts.pageId, mode: opts.mode } }),
+  )
 
 // ---------------------------------------------------------------------------
 // put
@@ -296,12 +298,15 @@ export const putEditorPage = (
     }
   }).pipe(
     Effect.tap((result) =>
-      annotateAttrs(putResultAttrs, {
-        bodyWritten: result.bodyWritten,
-        titleWritten: result.titleWritten,
+      annotateAttrs({
+        attributes: putResultAttrs,
+        value: {
+          bodyWritten: result.bodyWritten,
+          titleWritten: result.titleWritten,
+        },
       }),
     ),
-    withOperation(PutSpan, { pageId: opts.pageId, force: opts.force }),
+    withOperation({ operation: PutSpan, attributes: { pageId: opts.pageId, force: opts.force } }),
   )
 
 // ---------------------------------------------------------------------------
@@ -449,13 +454,15 @@ export const editEditorPage = (
       )
     }),
   ).pipe(
-    Effect.tap((result) => annotateAttrs(editResultAttrs, { outcome: result.outcome })),
+    Effect.tap((result) =>
+      annotateAttrs({ attributes: editResultAttrs, value: { outcome: result.outcome } }),
+    ),
     Effect.catchTag('NmdEditorAbortedError', (error) =>
-      annotateAttrs(editResultAttrs, { outcome: 'aborted' }).pipe(
+      annotateAttrs({ attributes: editResultAttrs, value: { outcome: 'aborted' } }).pipe(
         Effect.zipRight(Effect.fail(error)),
       ),
     ),
-    withOperation(EditSpan, { pageId: opts.pageId, mode: opts.mode }),
+    withOperation({ operation: EditSpan, attributes: { pageId: opts.pageId, mode: opts.mode } }),
   )
 
 // ---------------------------------------------------------------------------
@@ -547,8 +554,10 @@ export const editReadOnlyPage = (
       return { pageId: opts.pageId, outcome: 'read-only' as const }
     }),
   ).pipe(
-    Effect.tap((result) => annotateAttrs(editResultAttrs, { outcome: result.outcome })),
-    withOperation(EditSpan, { pageId: opts.pageId, mode: opts.mode }),
+    Effect.tap((result) =>
+      annotateAttrs({ attributes: editResultAttrs, value: { outcome: result.outcome } }),
+    ),
+    withOperation({ operation: EditSpan, attributes: { pageId: opts.pageId, mode: opts.mode } }),
   )
 
 const editorIoError =

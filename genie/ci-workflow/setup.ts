@@ -151,10 +151,13 @@ export const withGitHubAccessTokenEnv = <
   TStep extends {
     env?: Record<string, string>
   },
->(
-  step: TStep,
-  tokenExpression: string,
-): TStep => ({
+>({
+  step,
+  tokenExpression,
+}: {
+  step: TStep
+  tokenExpression: string
+}): TStep => ({
   ...step,
   env: {
     ...step.env,
@@ -205,13 +208,14 @@ export const withPrivateCachixReadAuth = <
     run: string
     env?: Record<string, string>
   },
->(
-  step: TStep,
-  opts: {
-    authTokenExpression: string
-    binaryCaches: readonly NixBinaryCache[]
-  },
-): TStep => {
+>({
+  step,
+  ...opts
+}: {
+  step: TStep
+  authTokenExpression: string
+  binaryCaches: readonly NixBinaryCache[]
+}): TStep => {
   const cacheHosts = cachixHostsFromBinaryCaches(opts.binaryCaches)
   if (cacheHosts.length === 0) {
     return step
@@ -484,8 +488,13 @@ export const pnpmInstallWithDiagnosticsStep = () =>
     ].join('\n'),
   }) as const
 
-const nixCachePrimaryKey = (keyPrefix: string, hashFilesExpression: string) =>
-  `${keyPrefix}-${'${{ runner.os }}'}-${'${{ runner.arch }}'}-${hashFilesExpression}`
+const nixCachePrimaryKey = ({
+  keyPrefix,
+  hashFilesExpression,
+}: {
+  keyPrefix: string
+  hashFilesExpression: string
+}) => `${keyPrefix}-${'${{ runner.os }}'}-${'${{ runner.arch }}'}-${hashFilesExpression}`
 
 /**
  * Restore the shared workspace-local Nix cache before expensive eval/build work.
@@ -511,7 +520,7 @@ export const restoreNixCacheStep = (opts?: {
     uses: 'actions/cache/restore@v4' as const,
     with: {
       path,
-      key: nixCachePrimaryKey(keyPrefix, hashFilesExpression),
+      key: nixCachePrimaryKey({ keyPrefix, hashFilesExpression }),
       'restore-keys': `${keyPrefix}-${'${{ runner.os }}'}-${'${{ runner.arch }}'}-`,
     },
   }

@@ -22,10 +22,13 @@ export type VercelProject = {
   stepsBeforeDeploy?: readonly StepRecord[]
 }
 
-export const vercelDeployStep = (
-  project: { name: string; urlEnvKey?: string },
-  runDevenvTasksBefore: (...tasks: [string, ...string[]]) => string,
-) => {
+export const vercelDeployStep = ({
+  project,
+  runDevenvTasksBefore,
+}: {
+  project: { name: string; urlEnvKey?: string }
+  runDevenvTasksBefore: (...tasks: [string, ...string[]]) => string
+}) => {
   const envSuffix = deployTargetEnvSuffix(project.name)
   const urlEnvKey = project.urlEnvKey ?? `VERCEL_DEPLOY_URL_${envSuffix}`
 
@@ -227,9 +230,9 @@ export const vercelDeployJobs = (opts: {
           ...opts.baseSteps,
           ...(project.stepsBeforeDeploy ?? []),
           opts.deployStepDecorator?.(
-            vercelDeployStep(project, opts.runDevenvTasksBefore),
+            vercelDeployStep({ project, runDevenvTasksBefore: opts.runDevenvTasksBefore }),
             project,
-          ) ?? vercelDeployStep(project, opts.runDevenvTasksBefore),
+          ) ?? vercelDeployStep({ project, runDevenvTasksBefore: opts.runDevenvTasksBefore }),
           ...(opts.extraSteps ?? []),
         ],
       },

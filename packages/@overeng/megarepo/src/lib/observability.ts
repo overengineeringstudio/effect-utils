@@ -27,10 +27,13 @@ const trustOtelContract = <A, E, R>(
   ) as Effect.Effect<A, E, R>
 
 const trustedWith =
-  <S extends Schema.Schema.AnyNoContext>(
-    operation: OtelOperationDefinition<S>,
-    attributes: Schema.Schema.Type<S>,
-  ): (<A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>) =>
+  <S extends Schema.Schema.AnyNoContext>({
+    operation,
+    attributes,
+  }: {
+    operation: OtelOperationDefinition<S>
+    attributes: Schema.Schema.Type<S>
+  }): (<A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     trustOtelContract<A, E, R>(operation.with({ attributes, effect }))
 
@@ -209,20 +212,20 @@ const syncMemberResultAttrs = OtelAttrs.defineSync(
 
 /** Wrap an effect in a `<name>` span carrying only an explicit display label —
  *  the generic span helper for sites with no other structured attributes. */
-export const withLabelSpan = (name: string, labelValue: string) =>
-  trustedWith(labelOperation(name), { label: labelValue })
+export const withLabelSpan = ({ name, labelValue }: { name: string; labelValue: string }) =>
+  trustedWith({ operation: labelOperation(name), attributes: { label: labelValue } })
 
 /** Wrap an effect in a `<name>` span tagged with `megarepo.repo_path`; the label
  *  is the path's basename. */
-export const withRepoPathSpan = (name: string, path: string) =>
-  trustedWith(
-    OtelOperation.define({
+export const withRepoPathSpan = ({ name, path }: { name: string; path: string }) =>
+  trustedWith({
+    operation: OtelOperation.define({
       name,
       attributes: repoPathAttrs,
       label: ({ label }) => label,
     }),
-    { label: basename(path), repoPath: path },
-  )
+    attributes: { label: basename(path), repoPath: path },
+  })
 
 const worktreePathOperation = (name: string) =>
   OtelOperation.define({
@@ -241,7 +244,7 @@ export const withWorktreePathSpan = ({
   readonly name: string
   readonly worktreePath: string
   readonly label?: string
-}) => trustedWith(worktreePathOperation(name), { label, worktreePath })
+}) => trustedWith({ operation: worktreePathOperation(name), attributes: { label, worktreePath } })
 
 const gitCmdOperation = OtelOperation.define({
   name: 'git/cmd',
@@ -259,7 +262,10 @@ export const withGitCmdSpan = ({
   readonly streamed: boolean
 }) => {
   const subcommand = args[0] ?? 'git'
-  return trustedWith(gitCmdOperation, { label: subcommand, subcommand, streamed })
+  return trustedWith({
+    operation: gitCmdOperation,
+    attributes: { label: subcommand, subcommand, streamed },
+  })
 }
 
 /** Annotate the enclosing `git/cmd` span with the (scalar) output size. */
@@ -294,10 +300,13 @@ export const withGitUrlSpan = ({
   readonly url: string
   readonly bare?: boolean
 }) =>
-  trustedWith(gitUrlOperation(name), {
-    label,
-    url,
-    ...(bare === undefined ? {} : { bare }),
+  trustedWith({
+    operation: gitUrlOperation(name),
+    attributes: {
+      label,
+      url,
+      ...(bare === undefined ? {} : { bare }),
+    },
   })
 
 const gitBranchOperation = (name: string) =>
@@ -314,7 +323,7 @@ export const withGitBranchSpan = ({
 }: {
   readonly name: string
   readonly branch: string
-}) => trustedWith(gitBranchOperation(name), { label: branch, branch })
+}) => trustedWith({ operation: gitBranchOperation(name), attributes: { label: branch, branch } })
 
 const gitCommitOperation = (name: string) =>
   OtelOperation.define({
@@ -332,7 +341,7 @@ export const withGitCommitSpan = ({
   readonly name: string
   readonly label: string
   readonly commit: string
-}) => trustedWith(gitCommitOperation(name), { label, commit })
+}) => trustedWith({ operation: gitCommitOperation(name), attributes: { label, commit } })
 
 const workspaceOperation = (name: string) =>
   OtelOperation.define({
@@ -351,7 +360,7 @@ export const withWorkspaceSpan = ({
   readonly name: string
   readonly workspaceRoot: string
   readonly label?: string
-}) => trustedWith(workspaceOperation(name), { label, workspaceRoot })
+}) => trustedWith({ operation: workspaceOperation(name), attributes: { label, workspaceRoot } })
 
 const storeLiveSetOperation = (name: string) =>
   OtelOperation.define({
@@ -373,11 +382,14 @@ export const withStoreLiveSetSpan = ({
   readonly pruneStaleRegistry: boolean
   readonly refreshCurrentWorkspace: boolean
 }) =>
-  trustedWith(storeLiveSetOperation(name), {
-    label: 'store',
-    hasCurrentWorkspace,
-    pruneStaleRegistry,
-    refreshCurrentWorkspace,
+  trustedWith({
+    operation: storeLiveSetOperation(name),
+    attributes: {
+      label: 'store',
+      hasCurrentWorkspace,
+      pruneStaleRegistry,
+      refreshCurrentWorkspace,
+    },
   })
 
 const nixFlakeMetadataOperation = OtelOperation.define({
@@ -397,11 +409,14 @@ export const withNixFlakeMetadataSpan = ({
   readonly repo: string
   readonly rev: string
 }) =>
-  trustedWith(nixFlakeMetadataOperation, {
-    label: `${owner}/${repo}@${rev.slice(0, 8)}`,
-    owner,
-    repo,
-    rev,
+  trustedWith({
+    operation: nixFlakeMetadataOperation,
+    attributes: {
+      label: `${owner}/${repo}@${rev.slice(0, 8)}`,
+      owner,
+      repo,
+      rev,
+    },
   })
 
 const nixLockFileOperation = OtelOperation.define({
@@ -419,10 +434,13 @@ export const withNixLockFileSpan = ({
   readonly lockPath: string
   readonly lockType: string
 }) =>
-  trustedWith(nixLockFileOperation, {
-    label: basename(lockPath),
-    path: lockPath,
-    type: lockType,
+  trustedWith({
+    operation: nixLockFileOperation,
+    attributes: {
+      label: basename(lockPath),
+      path: lockPath,
+      type: lockType,
+    },
   })
 
 const nixLockPathTypeOperation = (name: string) =>
@@ -442,7 +460,11 @@ export const withNixLockPathTypeSpan = ({
   readonly name: string
   readonly path: string
   readonly type: string
-}) => trustedWith(nixLockPathTypeOperation(name), { label: path, path, type })
+}) =>
+  trustedWith({
+    operation: nixLockPathTypeOperation(name),
+    attributes: { label: path, path, type },
+  })
 
 const nixLockPathOperation = (name: string) =>
   OtelOperation.define({
@@ -458,7 +480,7 @@ export const withNixLockPathSpan = ({
 }: {
   readonly name: string
   readonly path: string
-}) => trustedWith(nixLockPathOperation(name), { label: path, path })
+}) => trustedWith({ operation: nixLockPathOperation(name), attributes: { label: path, path } })
 
 const syncMemberCloneOperation = OtelOperation.define({
   name: 'megarepo/sync/member/clone-or-fetch',
@@ -474,7 +496,7 @@ export const withSyncMemberCloneSpan = ({
 }: {
   readonly name: string
   readonly bareExists: boolean
-}) => trustedWith(syncMemberCloneOperation, { label: name, bareExists })
+}) => trustedWith({ operation: syncMemberCloneOperation, attributes: { label: name, bareExists } })
 
 const syncMemberResolveRefOperation = OtelOperation.define({
   name: 'megarepo/sync/member/resolve-ref',
@@ -484,7 +506,7 @@ const syncMemberResolveRefOperation = OtelOperation.define({
 
 /** Wrap ref resolution for a member in a `megarepo/sync/member/resolve-ref` span. */
 export const withSyncMemberResolveRefSpan = (ref: string) =>
-  trustedWith(syncMemberResolveRefOperation, { label: ref, ref })
+  trustedWith({ operation: syncMemberResolveRefOperation, attributes: { label: ref, ref } })
 
 const syncMemberCreateWorktreeOperation = OtelOperation.define({
   name: 'megarepo/sync/member/create-worktree',
@@ -500,7 +522,11 @@ export const withSyncMemberCreateWorktreeSpan = ({
 }: {
   readonly ref: string
   readonly refType: string
-}) => trustedWith(syncMemberCreateWorktreeOperation, { label: ref, ref, refType })
+}) =>
+  trustedWith({
+    operation: syncMemberCreateWorktreeOperation,
+    attributes: { label: ref, ref, refType },
+  })
 
 const syncMemberOperation = OtelOperation.define({
   name: 'megarepo/sync/member',
@@ -516,7 +542,7 @@ export const withSyncMemberSpan = ({
 }: {
   readonly name: string
   readonly source: string
-}) => trustedWith(syncMemberOperation, { label: name, name, source })
+}) => trustedWith({ operation: syncMemberOperation, attributes: { label: name, name, source } })
 
 /** Annotate the enclosing member span with the action actually taken
  *  (clone / fetch / noop / …), so the chosen path is queryable per member. */
@@ -563,7 +589,7 @@ const gitDeleteBranchOperation = OtelOperation.define({
 
 /** Wrap a `git branch -D/-d` effect in a `git/delete-branch` span. */
 export const withGitDeleteBranchSpan = (branch: string) =>
-  trustedWith(gitDeleteBranchOperation, { label: branch, branch })
+  trustedWith({ operation: gitDeleteBranchOperation, attributes: { label: branch, branch } })
 
 const gitDetachWorktreeHeadAttrs = OtelAttrs.defineSync(
   Schema.Struct({
@@ -580,7 +606,10 @@ const gitDetachWorktreeHeadOperation = OtelOperation.define({
 
 /** Wrap a `git checkout --detach` effect in a `git/detach-worktree-head` span. */
 export const withGitDetachWorktreeHeadSpan = (worktreePath: string) =>
-  trustedWith(gitDetachWorktreeHeadOperation, { label: worktreePath, worktreePath })
+  trustedWith({
+    operation: gitDetachWorktreeHeadOperation,
+    attributes: { label: worktreePath, worktreePath },
+  })
 
 const archiveWorktreeAttrs = OtelAttrs.defineSync(
   Schema.Struct({
@@ -603,7 +632,11 @@ export const withArchiveWorktreeSpan = ({
 }: {
   readonly branch: string
   readonly reason: string
-}) => trustedWith(archiveWorktreeOperation, { label: branch, branch, reason })
+}) =>
+  trustedWith({
+    operation: archiveWorktreeOperation,
+    attributes: { label: branch, branch, reason },
+  })
 
 const scanArchivesAttrs = OtelAttrs.defineSync(
   Schema.Struct({
@@ -620,7 +653,10 @@ const scanArchivesOperation = OtelOperation.define({
 
 /** Wrap archive enumeration in a `megarepo/store/gc/scan-archives` span. */
 export const withScanArchivesSpan = (repoRoot: string) =>
-  trustedWith(scanArchivesOperation, { label: 'scan-archives', repoRoot })
+  trustedWith({
+    operation: scanArchivesOperation,
+    attributes: { label: 'scan-archives', repoRoot },
+  })
 
 const reapArchiveAttrs = OtelAttrs.defineSync(
   Schema.Struct({
@@ -637,7 +673,7 @@ const reapArchiveOperation = OtelOperation.define({
 
 /** Wrap an archive hard-delete in a `megarepo/store/gc/reap-archive` span. */
 export const withReapArchiveSpan = (path: string) =>
-  trustedWith(reapArchiveOperation, { label: 'reap-archive', path })
+  trustedWith({ operation: reapArchiveOperation, attributes: { label: 'reap-archive', path } })
 
 const coldReclaimRepoAttrs = OtelAttrs.defineSync(
   Schema.Struct({
@@ -661,10 +697,13 @@ export const withColdReclaimRepoSpan = ({
   readonly repoRelativePath: string
   readonly bareRepoPath: string
 }) =>
-  trustedWith(coldReclaimRepoOperation, {
-    label: repoRelativePath,
-    storeRepo: repoRelativePath,
-    bareRepoPath,
+  trustedWith({
+    operation: coldReclaimRepoOperation,
+    attributes: {
+      label: repoRelativePath,
+      storeRepo: repoRelativePath,
+      bareRepoPath,
+    },
   })
 
 const resolvePrStateAttrs = OtelAttrs.defineSync(
@@ -682,7 +721,7 @@ const resolvePrStateOperation = OtelOperation.define({
 
 /** Wrap a per-branch PR-state lookup in a `megarepo/store/gc/resolve-pr-state` span. */
 export const withResolvePrStateSpan = (branch: string) =>
-  trustedWith(resolvePrStateOperation, { label: 'pr-state', branch })
+  trustedWith({ operation: resolvePrStateOperation, attributes: { label: 'pr-state', branch } })
 
 const unpushedCommitCountAttrs = OtelAttrs.defineSync(
   Schema.Struct({
@@ -699,9 +738,12 @@ const unpushedCommitCountOperation = OtelOperation.define({
 
 /** Wrap the unpushed-commit count in a `megarepo/store/gc/unpushed-commit-count` span. */
 export const withUnpushedCommitCountSpan = (worktreeHead: string) =>
-  trustedWith(unpushedCommitCountOperation, {
-    label: worktreeHead.slice(0, 8),
-    worktreeHead,
+  trustedWith({
+    operation: unpushedCommitCountOperation,
+    attributes: {
+      label: worktreeHead.slice(0, 8),
+      worktreeHead,
+    },
   })
 
 const assessLosslessAttrs = OtelAttrs.defineSync(
@@ -719,4 +761,7 @@ const assessLosslessOperation = OtelOperation.define({
 
 /** Wrap the lossless-floor assessment in a `megarepo/store/gc/assess-lossless` span. */
 export const withAssessLosslessSpan = (worktreePath: string) =>
-  trustedWith(assessLosslessOperation, { label: 'lossless', worktreePath })
+  trustedWith({
+    operation: assessLosslessOperation,
+    attributes: { label: 'lossless', worktreePath },
+  })

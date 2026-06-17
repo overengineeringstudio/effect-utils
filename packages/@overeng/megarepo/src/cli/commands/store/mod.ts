@@ -1578,21 +1578,22 @@ const storeGcCommand = Cli.Command.make(
             // `--dry-run` we compute the would-be ledger WITHOUT persisting (and
             // without the lock) — a planning run must not advance the absence-grace
             // clock and so cause a later real run to archive.
-            const ledger = dryRun
-              ? nextObservationLedger({
-                  current: yield* readObservationLedger({ storeBasePath: store.basePath }),
-                  coldPaths,
-                  uncleanReconcilePaths: [...liveSet.uncleanReconcilePaths],
-                  now,
-                })
-              : yield* storeLock.withWorktreeLock(`${store.basePath}.state/gc-observations`)(
-                  recordObservations({
-                    storeBasePath: store.basePath,
+            const ledger =
+              dryRun === true
+                ? nextObservationLedger({
+                    current: yield* readObservationLedger({ storeBasePath: store.basePath }),
                     coldPaths,
                     uncleanReconcilePaths: [...liveSet.uncleanReconcilePaths],
                     now,
-                  }),
-                )
+                  })
+                : yield* storeLock.withWorktreeLock(`${store.basePath}.state/gc-observations`)(
+                    recordObservations({
+                      storeBasePath: store.basePath,
+                      coldPaths,
+                      uncleanReconcilePaths: [...liveSet.uncleanReconcilePaths],
+                      now,
+                    }),
+                  )
 
             const config = yield* loadStoreGcConfig({ storeBasePath: store.basePath })
 

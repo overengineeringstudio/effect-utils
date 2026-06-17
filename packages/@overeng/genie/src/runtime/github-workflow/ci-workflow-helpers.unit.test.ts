@@ -248,7 +248,7 @@ describe('ci workflow pnpm cache defaults', () => {
     expect(applyMegarepoLockStepSource).toContain('MEGAREPO_SKIP_MEMBERS')
     expect(applyMegarepoLockStepSource).toContain("skipCsv === ''")
     expect(applyMegarepoLockStepSource).toContain(
-      "appendGitHubEnvLine('MEGAREPO_SKIP_MEMBERS', quotedSkipCsv)",
+      "appendGitHubEnvLine({ name: 'MEGAREPO_SKIP_MEMBERS', valueExpression: quotedSkipCsv })",
     )
   })
 
@@ -429,7 +429,9 @@ describe('ci workflow shared auth helpers', () => {
     expect(ciWorkflowSource).toContain('deployStepDecorator?: (')
     expect(ciWorkflowSource).toContain('project: VercelProject')
     expect(vercelDeploySource).toContain('opts.deployStepDecorator?.(')
-    expect(vercelDeploySource).toContain('vercelDeployStep(project, opts.runDevenvTasksBefore)')
+    expect(vercelDeploySource).toContain(
+      'vercelDeployStep({ project, runDevenvTasksBefore: opts.runDevenvTasksBefore })',
+    )
   })
 })
 
@@ -583,7 +585,7 @@ describe('ci workflow devenv perf helpers', () => {
     expect(generatedCiWorkflowYamlSource).not.toMatch(/^concurrency:/m)
     expect(generatedCiWorkflowYamlSource).toContain('concurrency:\n      group:')
     expect(generatedCiWorkflowYamlSource).toContain('}}-typecheck')
-    expect(ciWorkflowSource).toContain('export const ciJobConcurrency = (jobId: string, opts?:')
+    expect(ciWorkflowSource).toContain('export const ciJobConcurrency = ({ jobId, ...opts }:')
     expect(ciWorkflowSource).toContain("opts?.matrix === true ? '-${{ strategy.job-index }}' : ''")
     expect(ciWorkflowSource).toContain('const isMatrixJob = (job: GitHubWorkflowArgs')
     expect(generatedCiWorkflowYamlSource).toContain('}}-test-${{ strategy.job-index }}')
