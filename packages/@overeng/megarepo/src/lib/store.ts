@@ -111,10 +111,19 @@ export class Store extends Context.Tag('megarepo/Store')<Store, MegarepoStore>()
 // =============================================================================
 
 const shouldSkipStoreRootEntry = (entry: string): boolean =>
-  // Dot-dirs are store-internal (`.state`, `.locks`, …). `_`-prefixed dirs are
-  // internal/scratch areas (e.g. `_iso/` holding isolated experiment stores) —
-  // no real host or owner segment starts with `_`, so this never excludes a
-  // member. `tmp` is a conventional scratch dir.
+  // The store root holds member namespaces (`<host>/<owner>/<repo>/`) AND
+  // non-member co-tenant dirs. This is the PRIMARY membership boundary that
+  // separates them, not a temporary backstop:
+  //   - Dot-dirs are store-internal (`.state`, `.locks`, …).
+  //   - `_`-prefixed dirs are co-tenant scratch namespaces — e.g. `_iso/`, where
+  //     external tooling continuously checks out isolated worktrees that share
+  //     the store root. They are NOT members of this store, so the walk must
+  //     never enumerate them (and never descend into their working trees). No
+  //     real host or owner segment starts with `_`, so this never excludes a
+  //     legitimate member.
+  //   - `tmp` is a conventional scratch dir.
+  // The `_`-prefix convention is a stable contract for co-tenants, owned here; a
+  // co-tenant writer that emits `_`-prefixed roots is well-behaved by design.
   entry.startsWith('.') === true || entry.startsWith('_') === true || entry === 'tmp'
 
 // Backstop depth for the store filesystem walks. For the `listRepos` layout walk
