@@ -53,7 +53,10 @@ const ApprovalLive = RestateWorkflow.implement<typeof ApprovalWf>({
       Effect.gen(function* () {
         yield* Status.set({ key: 'status', value: 'pending' })
         const decision = yield* Approval.get('decision')
-        yield* Status.set({ key: 'status', value: decision.approved ? 'approved' : 'rejected' })
+        yield* Status.set({
+          key: 'status',
+          value: decision.approved === true ? 'approved' : 'rejected',
+        })
         return decision.approved
       }).pipe(Effect.orDie),
     /* Signal (shared): resolve the durable promise approved. */

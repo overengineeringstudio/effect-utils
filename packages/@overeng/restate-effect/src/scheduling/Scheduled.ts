@@ -488,7 +488,7 @@ export const RestateScheduled = {
                * `Cause<never>` narrowing is sound under `isInterruptedOnly`. */
               Effect.failCause(cause as Cause.Cause<never>)
             : Effect.succeed(
-                retryable
+                retryable === true
                   ? classifyCycleFailure({ cause, backoffsSoFar })
                   : onError._tag === 'stopLoop'
                     ? ({ _tag: 'failed', error: causeStr(cause) } as CycleOutcome)
@@ -505,7 +505,7 @@ export const RestateScheduled = {
       Effect.gen(function* () {
         const ctx = yield* RestateContext
         const metricOutcome: 'ok' | 'error' | 'stopped' =
-          outcome._tag === 'ok' ? (stops ? 'stopped' : 'ok') : 'error'
+          outcome._tag === 'ok' ? (stops === true ? 'stopped' : 'ok') : 'error'
         yield* emitPollLoopCycle({ ctx, name: config.name, outcome: metricOutcome })
       })
 
@@ -569,7 +569,7 @@ export const RestateScheduled = {
           const backoffsSoFar = (yield* Ctrl.get('retryBackoffs')) ?? 0
 
           /* Count-driven stop BEFORE doing any work. */
-          if (stopByCount(iteration)) {
+          if (stopByCount(iteration) === true) {
             yield* Ctrl.set({ key: 'status', value: 'completed' })
             yield* Ctrl.clear('wakeId')
             return
@@ -577,7 +577,7 @@ export const RestateScheduled = {
 
           const nextIteration = iteration + 1
 
-          if (!wakeOn) {
+          if (wakeOn === false) {
             /* ── NO-WAKE BODY (wedge-free delayed self-send) ─────────────────────
              * SAFE ORDERING: advance the counter AND re-arm the next cycle FIRST
              * (both journaled), THEN run the user's fallible work. A re-arm journaled
@@ -630,7 +630,7 @@ export const RestateScheduled = {
               yield* Ctrl.set({ key: 'status', value: 'completed' })
               return
             }
-            if (stopByCount(nextIteration)) {
+            if (stopByCount(nextIteration) === true) {
               yield* Ctrl.set({ key: 'status', value: 'completed' })
             }
             return
@@ -673,7 +673,7 @@ export const RestateScheduled = {
             yield* Ctrl.clear('wakeId')
             return
           }
-          if (stops) {
+          if (stops === true) {
             yield* Ctrl.set({ key: 'status', value: 'completed' })
             yield* Ctrl.clear('wakeId')
             return

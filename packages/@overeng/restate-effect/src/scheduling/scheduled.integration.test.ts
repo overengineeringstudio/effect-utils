@@ -229,7 +229,7 @@ const waitUntil = async (
 ): Promise<Status> => {
   const deadline = Date.now() + timeoutMs
   let last = await statusOf(scheduled, key)
-  while (!predicate(last) && Date.now() < deadline) {
+  while (predicate(last) === false && Date.now() < deadline) {
     await liveSleep(60)
     last = await statusOf(scheduled, key)
   }

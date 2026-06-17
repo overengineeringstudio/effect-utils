@@ -443,9 +443,9 @@ const devenvPerfProbeLine = (probe: DevenvPerfProbe) => {
     path: probe.path ?? [],
     dimensions: probe.dimensions ?? {},
   })
-  const defaultRepetitions = gatePolicy.enabled ? gatePolicy.minCurrentSamples : 1
+  const defaultRepetitions = gatePolicy.enabled === true ? gatePolicy.minCurrentSamples : 1
   const repetitions = Math.max(1, Math.floor(probe.repetitions ?? defaultRepetitions))
-  const defaultWarmupRepetitions = gatePolicy.enabled && repetitions > 1 ? 1 : 0
+  const defaultWarmupRepetitions = gatePolicy.enabled === true && repetitions > 1 ? 1 : 0
   const warmupRepetitions = Math.max(
     0,
     Math.floor(probe.warmupRepetitions ?? defaultWarmupRepetitions),
@@ -1689,7 +1689,7 @@ export const nixClosureMeasurementSteps = (opts: NixClosureMeasurementsStepsOpti
   const compare = opts.compare ?? true
 
   return [
-    ...(compare
+    ...(compare === true
       ? [
           downloadPreviousGitHubArtifactStep({
             artifactName: baselineArtifactName,
@@ -1716,7 +1716,7 @@ export const nixClosureMeasurementSteps = (opts: NixClosureMeasurementsStepsOpti
         gate: target.gate,
       }),
     ),
-    ...(compare
+    ...(compare === true
       ? [
           compareCiMeasurementsStep({
             currentDir: `${artifactDir}/current`,
@@ -3644,7 +3644,7 @@ export const devenvPerfJob = (opts?: DevenvPerfJobOptions) => {
         preparePinnedDevenvStep,
         validateNixStoreStep,
       ]),
-      ...(compare && baselineArtifactName !== undefined
+      ...(compare === true && baselineArtifactName !== undefined
         ? [
             downloadPreviousGitHubArtifactStep({
               artifactName: baselineArtifactName,
@@ -3661,7 +3661,7 @@ export const devenvPerfJob = (opts?: DevenvPerfJobOptions) => {
         taskProbes: opts?.taskProbes,
         probes: opts?.probes,
       }),
-      ...(compare
+      ...(compare === true
         ? [
             compareCiMeasurementsStep({
               currentDir: artifactDir,

@@ -139,7 +139,7 @@ const backends = [
 
 describe.each(backends)('RestateTestEnv ($kind)', ({ kind, layer }) => {
   /* The real backend needs a native server; the mock is always available. */
-  const describeBackend = kind === 'real' && !serverAvailable ? describe.skip : describe
+  const describeBackend = kind === 'real' && serverAvailable === false ? describe.skip : describe
   describeBackend(kind, () => {
     it.layer(layer(), { timeout: 90_000 })(`same body on the ${kind} backend`, (it) => {
       it.effect('typed success crosses the contract-addressed surface', () =>

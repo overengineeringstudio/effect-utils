@@ -93,7 +93,7 @@ const WaiterLive = RestateObject.implement<typeof Waiter>({
 
 const cancelInvocation = async (adminUrl: string, invocationId: string): Promise<void> => {
   const res = await fetch(`${adminUrl}/invocations/${invocationId}/cancel`, { method: 'PATCH' })
-  if (!res.ok && res.status !== 202 && res.status !== 200) {
+  if (res.ok === false && res.status !== 202 && res.status !== 200) {
     const text = await res.text().catch(() => '')
     throw new Error(`cancel failed (${res.status}) for ${invocationId}: ${text}`)
   }

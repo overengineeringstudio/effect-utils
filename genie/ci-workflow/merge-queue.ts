@@ -123,7 +123,7 @@ export const mergeQueueAdmissionCheckLines = ({
   '    exit 0',
   '  fi',
   '  mq_ci_admitted=false',
-  ...(trustNeedsAdmission
+  ...(trustNeedsAdmission === true
     ? [
         '  if [ -n "${NEEDS_JSON:-}" ] && printf \'%s\\n\' "$NEEDS_JSON" | jq -e \'.["mq-admission"].result == "success"\' >/dev/null; then',
         '    mq_ci_admitted=true',

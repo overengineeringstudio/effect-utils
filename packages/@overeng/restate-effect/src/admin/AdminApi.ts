@@ -68,7 +68,7 @@ const request = async ({
     ...(Object.keys(headers).length > 0 ? { headers } : {}),
     ...(opts?.body !== undefined ? { body: JSON.stringify(opts.body) } : {}),
   })
-  if (!res.ok) {
+  if (res.ok === false) {
     const text = await res.text().catch(() => '')
     throw new AdminHttpError({ method: `${method} ${path}`, status: res.status, body: text })
   }
