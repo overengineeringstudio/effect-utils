@@ -1,11 +1,19 @@
-import { Effect, Layer } from 'effect'
+import { Effect, Exit, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import type { BodyCompleteness } from '@overeng/notion-core'
 
+import { progressReporterTui } from './cli-output/progress-bridge.ts'
+import {
+  type PutAction,
+  initialPutState,
+  putExitCode,
+  putReducer,
+} from './cli-output/put/schema.ts'
 import { catEditorPage, putEditorPage } from './editor-commands.ts'
 import { editorBaseHash } from './editor-surface.ts'
-import { NmdGatewayError } from './errors.ts'
+import { NmdGatewayError, NmdPartialWriteError } from './errors.ts'
+import { editorExitCode } from './exit-codes.ts'
 import { normalizeMarkdownLineEndings } from './hash.ts'
 import {
   NotionMdGateway,
@@ -287,5 +295,75 @@ describe('put', () => {
     )
     expect(result._tag).toBe('Left')
     if (result._tag === 'Left') expect(result.left._tag).toBe('NmdRemoteBodyLossyError')
+  })
+})
+
+/** Fold a captured put action stream through the reducer to the final view state. */
+const foldPutState = (page: string, actions: PutAction[]) =>
+  actions.reduce((state, action) => putReducer({ state, action }), initialPutState(page))
+
+describe('put output (bridge → reducer → state/exit)', () => {
+  it('a partial write folds to the `Partial` state (✗ title row + WARNING fix) and exit 10', async () => {
+    const gateway = new FakeGateway({ title: 'Old', body: 'b' })
+    gateway.failTitleWrite = true
+    const baseHash = editorBaseHash({ title: 'Old', body: 'b\n' })
+    const actions: PutAction[] = []
+    const result = await runWith(
+      putEditorPage({ pageId, buffer: '# New\n\nedited\n', baseHash, force: false }).pipe(
+        Effect.provide(progressReporterTui((action: PutAction) => void actions.push(action))),
+      ),
+      gateway,
+    )
+
+    // The engine fails with the partial-write error; the handler maps it to SetPartial.
+    expect(result._tag).toBe('Left')
+    if (result._tag === 'Left' && result.left._tag === 'NmdPartialWriteError') {
+      actions.push({
+        _tag: 'SetPartial',
+        bodyWritten: result.left.body_written,
+        titleWritten: result.left.title_written,
+      })
+    }
+
+    // The stages show the body landed and the title failed.
+    const tags = actions
+      .filter((a) => a._tag.startsWith('Stage') === true)
+      .map((a) => ('id' in a ? `${a.id}:${a._tag.replace('Stage', '').toLowerCase()}` : a._tag))
+    expect(tags).toEqual([
+      'observe:active',
+      'observe:succeed',
+      'write-body:active',
+      'write-body:succeed',
+      'write-title:active',
+      'write-title:fail',
+    ])
+
+    const state = foldPutState(pageId, actions)
+    expect(state._tag).toBe('Partial')
+    if (state._tag === 'Partial') {
+      expect(state.bodyWritten).toBe(true)
+      expect(state.titleWritten).toBe(false)
+      // The write-title row renders as an error glyph (✗).
+      expect(state.stages.map((s) => `${s.id}:${s.status}`)).toContain('write-title:error')
+      // A WARNING ProblemItem with a `cat`/`put --base-hash` fix is surfaced.
+      expect(state.warnings).toHaveLength(1)
+      expect(state.warnings[0]?.severity).toBe('warning')
+      expect(state.warnings[0]?.fixes.some((f) => f.includes('--base-hash'))).toBe(true)
+    }
+
+    // In-app exit mapper mirrors the teardown's editorExitCode (both 10).
+    expect(putExitCode(state)).toBe(10)
+    expect(
+      editorExitCode(
+        Exit.fail(
+          new NmdPartialWriteError({
+            page_id: pageId,
+            body_written: true,
+            title_written: false,
+            message: 'partial',
+          }),
+        ),
+      ),
+    ).toBe(10)
   })
 })
