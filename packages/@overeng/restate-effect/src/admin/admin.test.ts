@@ -81,7 +81,7 @@ describe('RestateAdmin invocation lifecycle', () => {
   })
 
   it('resume threads the deployment query param', async () => {
-    await run((a) => a.resume('inv_6', { deployment: 'dp_abc' }))
+    await run((a) => a.resume({ invocationId: 'inv_6', deployment: 'dp_abc' }))
     expect(captured[0]!.url).toBe(
       'http://localhost:9070/invocations/inv_6/resume?deployment=dp_abc',
     )
@@ -89,7 +89,9 @@ describe('RestateAdmin invocation lifecycle', () => {
 
   it('restartAsNew threads from + deployment and returns the new id', async () => {
     nextResponse = { status: 200, body: { new_invocation_id: 'inv_new' } }
-    const out = await run((a) => a.restartAsNew('inv_7', { from: 3, deployment: 'dp_x' }))
+    const out = await run((a) =>
+      a.restartAsNew({ invocationId: 'inv_7', from: 3, deployment: 'dp_x' }),
+    )
     expect(out).toStrictEqual({ newInvocationId: 'inv_new' })
     expect(captured[0]!.url).toBe(
       'http://localhost:9070/invocations/inv_7/restart-as-new?from=3&deployment=dp_x',
@@ -97,7 +99,7 @@ describe('RestateAdmin invocation lifecycle', () => {
   })
 
   it('delete → DELETE /invocations/{id}', async () => {
-    await run((a) => a.delete('inv_8'))
+    await run((a) => a.delete({ invocationId: 'inv_8' }))
     expect(`${captured[0]!.method} ${captured[0]!.url}`).toBe(
       'DELETE http://localhost:9070/invocations/inv_8',
     )
@@ -106,10 +108,12 @@ describe('RestateAdmin invocation lifecycle', () => {
 
 describe('RestateAdmin deployments', () => {
   it('register/list/get/update hit the deployment endpoints', async () => {
-    await run((a) => a.registerDeployment('http://localhost:9080', { force: true }))
+    await run((a) => a.registerDeployment({ uri: 'http://localhost:9080', force: true }))
     await run((a) => a.listDeployments())
     await run((a) => a.getDeployment('dp_1'))
-    await run((a) => a.updateDeployment('dp_1', { additional_headers: { 'x-k': 'v' } }))
+    await run((a) =>
+      a.updateDeployment({ id: 'dp_1', body: { additional_headers: { 'x-k': 'v' } } }),
+    )
     expect(captured.map((c) => `${c.method} ${c.url}`)).toEqual([
       'POST http://localhost:9070/deployments',
       'GET http://localhost:9070/deployments',
@@ -129,7 +133,9 @@ describe('RestateAdmin introspection (typed /query)', () => {
       status: 200,
       body: { rows: [{ id: 'inv_1', status: 'running' }] },
     }
-    const rows = await run((a) => a.query('SELECT id, status FROM sys_invocation', Row))
+    const rows = await run((a) =>
+      a.query({ sql: 'SELECT id, status FROM sys_invocation', rowSchema: Row }),
+    )
     expect(rows).toStrictEqual([{ id: 'inv_1', status: 'running' }])
     expect(captured[0]!.method).toBe('POST')
     expect(captured[0]!.url).toBe('http://localhost:9070/query')
@@ -142,7 +148,7 @@ describe('RestateAdmin introspection (typed /query)', () => {
     const exit = await Effect.runPromiseExit(
       Effect.gen(function* () {
         const admin = yield* RestateAdmin
-        return yield* admin.query('SELECT id FROM sys_invocation', Row)
+        return yield* admin.query({ sql: 'SELECT id FROM sys_invocation', rowSchema: Row })
       }).pipe(Effect.provide(RestateAdmin.layer({ adminUrl: 'http://localhost:9070' }))),
     )
     expect(Exit.isFailure(exit)).toBe(true)

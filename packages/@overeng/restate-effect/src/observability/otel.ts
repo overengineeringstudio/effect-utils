@@ -48,7 +48,9 @@ import {
   openTelemetryHook,
   type OpenTelemetryHookOptions,
 } from '@restatedev/restate-sdk-opentelemetry'
-import { Config, type ConfigError, Effect, Layer, Option, type Scope } from 'effect'
+import { Config, type ConfigError, Effect, Layer, Option, Schema, type Scope } from 'effect'
+
+import { OtelServiceName, OtelServiceVersion } from '@overeng/otel-contract'
 
 import { RestateContext } from '../authoring/RestateContext.ts'
 import type { EndpointOptions } from '../endpoint/Endpoint.ts'
@@ -89,14 +91,33 @@ export interface OtelLayerConfig {
   readonly metricExporter?: PushMetricExporter
 }
 
-const toOtelResource = (config: OtelResourceConfig) =>
-  resourceFromAttributes({
-    [ATTR_SERVICE_NAME]: config.serviceName,
-    ...(config.serviceVersion !== undefined
-      ? { [ATTR_SERVICE_VERSION]: config.serviceVersion }
+/**
+ * Decode restate's identity through the shared `@overeng/otel-contract` brands at
+ * the construction edge, so restate's `service.name` / `service.version` obey the
+ * SAME naming law as the CLIs (`makeOtelCliLayer`). `decodeSync` makes a malformed
+ * identity a defect at construction (the composition root) rather than a silent
+ * backend surprise — keeping {@link sharedLayer} a `Layer<never, never, never>`.
+ * Plumbing (`OtelResourceConfig`, {@link layerConfig}) stays raw `string`; this is
+ * the one place the strings become branded.
+ */
+const brandIdentity = (config: OtelResourceConfig) => ({
+  serviceName: Schema.decodeSync(OtelServiceName)(config.serviceName),
+  serviceVersion:
+    config.serviceVersion !== undefined
+      ? Schema.decodeSync(OtelServiceVersion)(config.serviceVersion)
+      : undefined,
+})
+
+const toOtelResource = (config: OtelResourceConfig) => {
+  const identity = brandIdentity(config)
+  return resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: identity.serviceName,
+    ...(identity.serviceVersion !== undefined
+      ? { [ATTR_SERVICE_VERSION]: identity.serviceVersion }
       : {}),
     ...config.attributes,
   })
+}
 
 const resolveProcessor = (config: OtelLayerConfig): SpanProcessor => {
   if (config.spanProcessor !== undefined) return config.spanProcessor
@@ -165,7 +186,16 @@ const sharedLayer = (config: OtelLayerConfig): Layer.Layer<never, never, never> 
   Layer.unwrapScoped(
     acquireProvider(config).pipe(
       Effect.map((provider) => {
-        const resourceLayer = Resource.layer(config.resource)
+        const identity = brandIdentity(config.resource)
+        const resourceLayer = Resource.layer({
+          serviceName: identity.serviceName,
+          ...(identity.serviceVersion !== undefined
+            ? { serviceVersion: identity.serviceVersion }
+            : {}),
+          ...(config.resource.attributes !== undefined
+            ? { attributes: config.resource.attributes }
+            : {}),
+        })
         const tracerLayer = EffectTracer.layer.pipe(
           Layer.provide(Layer.succeed(EffectTracer.OtelTracerProvider, provider)),
         )
@@ -360,17 +390,20 @@ const boundaryObserver: BoundaryObserver = (info) => {
  * auto baseline metrics export through).
  *
  * ```ts
- * serve(RestateOtel.withOtel({ services: [GreeterLive], port: 9080 })).pipe(
+ * serve(RestateOtel.withOtel({ opts: { services: [GreeterLive], port: 9080 } })).pipe(
  *   Effect.provide(RestateOtel.layer({ resource: { serviceName: 'greeter' }, exporter, metricExporter })),
  *   Effect.provide(AppLayer),
  *   NodeRuntime.runMain,
  * )
  * ```
  */
-const withOtel = <AppR>(
-  opts: EndpointOptions<AppR>,
-  hookOptions?: Partial<OpenTelemetryHookOptions>,
-): EndpointOptions<AppR> => ({
+const withOtel = <AppR>({
+  opts,
+  hookOptions,
+}: {
+  opts: EndpointOptions<AppR>
+  hookOptions?: Partial<OpenTelemetryHookOptions>
+}): EndpointOptions<AppR> => ({
   ...opts,
   hooks: [...(opts.hooks ?? []), hook(hookOptions)],
   inboundBridge,

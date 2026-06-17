@@ -89,44 +89,50 @@ export interface RestateTestEnvService {
    * the contract's TYPED declared error alongside `RestateError`, so a domain
    * failure (`EmptyName`) is `catchTag`-recoverable identically on both backends.
    */
-  readonly invokeService: <C extends Contract<string, HandlerSpecMap>, M extends MethodsOf<C>>(
-    contract: C,
-    method: M,
-    input: InputOf<C, M>,
-  ) => Effect.Effect<SuccessOf<C, M>, RestateError | ErrorOf<C, M>>
+  readonly invokeService: <
+    C extends Contract<string, HandlerSpecMap>,
+    M extends MethodsOf<C>,
+  >(args: {
+    contract: C
+    method: M
+    input: InputOf<C, M>
+  }) => Effect.Effect<SuccessOf<C, M>, RestateError | ErrorOf<C, M>>
   /** Request/response call to a keyed Virtual Object handler (typed declared error in `E`). */
-  readonly invokeObject: <C extends ObjectContract<string, any, any>, M extends ObjectMethodsOf<C>>(
-    contract: C,
-    key: string,
-    method: M,
-    input: ObjectInputOf<C, M>,
-  ) => Effect.Effect<ObjectSuccessOf<C, M>, RestateError | ObjectErrorOf<C, M>>
+  readonly invokeObject: <
+    C extends ObjectContract<string, any, any>,
+    M extends ObjectMethodsOf<C>,
+  >(args: {
+    contract: C
+    key: string
+    method: M
+    input: ObjectInputOf<C, M>
+  }) => Effect.Effect<ObjectSuccessOf<C, M>, RestateError | ObjectErrorOf<C, M>>
   /**
    * Submit a Workflow `run` for a workflow id. On the mock this runs the `run`
    * handler in-process to completion (typed declared error in `E`); on the real
    * server it submits one-way and is followed by {@link attachWorkflow} for the
    * result. Use {@link attachWorkflow} for the awaited outcome on both backends.
    */
-  readonly submitWorkflow: <C extends WorkflowContract<string, any, any, any, any>>(
-    contract: C,
-    key: string,
-    input: WorkflowRunInputOf<C>,
-  ) => Effect.Effect<void, RestateError | WorkflowRunErrorOf<C>>
+  readonly submitWorkflow: <C extends WorkflowContract<string, any, any, any, any>>(args: {
+    contract: C
+    key: string
+    input: WorkflowRunInputOf<C>
+  }) => Effect.Effect<void, RestateError | WorkflowRunErrorOf<C>>
   /** Call a Workflow SIGNAL or QUERY handler for a workflow id. */
   readonly signalWorkflow: <
     C extends WorkflowContract<string, any, any, any, any>,
     M extends WorkflowSignalQueryOf<C>,
-  >(
-    contract: C,
-    key: string,
-    method: M,
-    input: WorkflowSignalInputOf<C, M>,
-  ) => Effect.Effect<WorkflowSignalSuccessOf<C, M>, RestateError>
+  >(args: {
+    contract: C
+    key: string
+    method: M
+    input: WorkflowSignalInputOf<C, M>
+  }) => Effect.Effect<WorkflowSignalSuccessOf<C, M>, RestateError>
   /** Attach to a submitted Workflow and await its `run` outcome (typed declared error in `E`). */
-  readonly attachWorkflow: <C extends WorkflowContract<string, any, any, any, any>>(
-    contract: C,
-    key: string,
-  ) => Effect.Effect<WorkflowRunSuccessOf<C>, RestateError | WorkflowRunErrorOf<C>>
+  readonly attachWorkflow: <C extends WorkflowContract<string, any, any, any, any>>(args: {
+    contract: C
+    key: string
+  }) => Effect.Effect<WorkflowRunSuccessOf<C>, RestateError | WorkflowRunErrorOf<C>>
   /**
    * A typed State proxy for one Virtual Object / Workflow key (the SAME
    * {@link StateProxy} the harness exposes): `get` / `getAll` / `set` / `setAll`,
@@ -134,24 +140,24 @@ export interface RestateTestEnvService {
    * assert post-conditions without going through a handler — per-key isolation on
    * both backends.
    */
-  readonly stateOf: <S extends StateSchemas>(
-    contract: StatefulContract<S>,
-    key: string,
-  ) => StateProxy<S>
+  readonly stateOf: <S extends StateSchemas>(args: {
+    contract: StatefulContract<S>
+    key: string
+  }) => StateProxy<S>
   /**
    * Resolve an awakeable from OUTSIDE a handler — the ingress-side completion. On
    * the mock it completes a suspended handler via the env-scoped shared registry
    * (honest — an awakeable is just a promise); on the real server it routes through
    * ingress `resolveAwakeable`.
    */
-  readonly resolveAwakeable: <T, I>(
-    schema: Schema.Schema<T, I>,
-    id: string,
-    payload: T,
-  ) => Effect.Effect<void, RestateError>
+  readonly resolveAwakeable: <T, I>(args: {
+    schema: Schema.Schema<T, I>
+    id: string
+    payload: T
+  }) => Effect.Effect<void, RestateError>
 }
 
-/* The env service tag. The `mock` / `real` statics below are the only constructors. */
+/** The env service tag. The `mock` / `real` statics below are the only constructors. */
 export class RestateTestEnv extends Context.Tag('@overeng/restate-effect/RestateTestEnv')<
   RestateTestEnv,
   RestateTestEnvService
@@ -204,17 +210,17 @@ export class RestateTestEnv extends Context.Tag('@overeng/restate-effect/Restate
  */
 const realEnv = (h: RestateTestHarnessService): RestateTestEnvService => ({
   kind: 'real',
-  invokeService: (contract, method, input) => h.ingress.callTyped(contract, method, input),
-  invokeObject: (contract, key, method, input) =>
-    h.ingress.objectCallTyped(contract, key, method, input),
-  submitWorkflow: (contract, key, input) =>
-    h.ingress.workflowSubmit(contract, key, input).pipe(Effect.asVoid),
-  signalWorkflow: (contract, key, method, input) =>
-    h.ingress.workflowCall(contract, key, method, input),
-  attachWorkflow: (contract, key) => h.ingress.workflowAttach(contract, key),
-  stateOf: (contract, key) => h.stateOf(contract, key),
-  resolveAwakeable: (schema, id, payload) =>
-    h.ingress.resolveAwakeable(schema, id as never, payload),
+  invokeService: ({ contract, method, input }) => h.ingress.callTyped({ contract, method, input }),
+  invokeObject: ({ contract, key, method, input }) =>
+    h.ingress.objectCallTyped({ contract, key, method, input }),
+  submitWorkflow: ({ contract, key, input }) =>
+    h.ingress.workflowSubmit({ contract, key, input }).pipe(Effect.asVoid),
+  signalWorkflow: ({ contract, key, method, input }) =>
+    h.ingress.workflowCall({ contract, key, method, input }),
+  attachWorkflow: ({ contract, key }) => h.ingress.workflowAttach({ contract, key }),
+  stateOf: ({ contract, key }) => h.stateOf({ contract, key }),
+  resolveAwakeable: ({ schema, id, payload }) =>
+    h.ingress.resolveAwakeable({ schema, id: id as never, payload }),
 })
 
 /* ════════════════════════════════════════════════════════════════════════
@@ -239,12 +245,18 @@ const objectHandlerKind = (spec: ObjectHandlerSpec): HandlerMarkers =>
  *   journal/replay/cancellation in-memory) → a `RestateError` DEFECT, mirroring the
  *   boundary terminalizing it (the test sees it as a defect, never a typed error).
  */
-const classifyMockExit = (
-  exit: Exit.Exit<unknown, unknown>,
-  errorSchema: Schema.Schema<unknown, unknown> | undefined,
-): Effect.Effect<unknown, unknown> => {
+const classifyMockExit = ({
+  exit,
+  errorSchema,
+}: {
+  exit: Exit.Exit<unknown, unknown>
+  errorSchema: Schema.Schema<unknown, unknown> | undefined
+}): Effect.Effect<unknown, unknown> => {
   if (Exit.isSuccess(exit) === true) return Effect.succeed(exit.value)
-  const outcome = classifyOutcome(exit.cause, errorSchema)
+  const outcome = classifyOutcome({
+    cause: exit.cause,
+    ...(errorSchema !== undefined ? { errorSchema } : {}),
+  })
   /* A declared domain failure: recover the typed error by round-tripping the
    * ORIGINAL failure value through `errorSchema` (the same decode an ingress caller
    * performs on the terminal body), so the mock and the real backend fail with the
@@ -282,10 +294,13 @@ const classifyMockExit = (
  * handler uses — a seed written here decodes identically inside a handler and
  * vice-versa, exactly as the real harness's Admin-API proxy does on the server.
  */
-const mockStateProxy = <S extends StateSchemas>(
-  contract: StatefulContract<S>,
-  state: Map<string, unknown>,
-): StateProxy<S> => {
+const mockStateProxy = <S extends StateSchemas>({
+  contract,
+  state,
+}: {
+  contract: StatefulContract<S>
+  state: Map<string, unknown>
+}): StateProxy<S> => {
   const schemas = contract.state
   const schemaFor = (key: string) => normalizeStateSchema(schemas[key]!)
   const stateErr = (method: string) => (cause: unknown) =>
@@ -307,7 +322,7 @@ const mockStateProxy = <S extends StateSchemas>(
         ),
         Effect.mapError(stateErr(`stateOf(${contract.name}).getAll`)),
       ),
-    set: (key, value) =>
+    set: ({ key, value }) =>
       /* `set(key, undefined)` on an OPTIONAL field REMOVES the key (≡ `clear`),
        * matching the in-handler `State.set` semantics: an absent key reads back as
        * `undefined`, so the present-value serde is never asked to encode it (#1). */
@@ -354,7 +369,13 @@ const makeMockEnv = <AppR, RIn>(opts: {
     /* 2. Per-key State: `${service}/${key}` → the inner State `Map` (so object /
      * workflow key isolation is free). `stateOf` reads/writes the SAME inner map. */
     const stateMaps = new Map<string, Map<string, unknown>>()
-    const stateMapFor = (service: string, key: string): Map<string, unknown> => {
+    const stateMapFor = ({
+      service,
+      key,
+    }: {
+      service: string
+      key: string
+    }): Map<string, unknown> => {
       const id = `${service}/${key}`
       const existing = stateMaps.get(id)
       if (existing !== undefined) return existing
@@ -415,7 +436,7 @@ const makeMockEnv = <AppR, RIn>(opts: {
         const handle = makeTestContext({
           state:
             params.key !== undefined
-              ? stateMapFor(params.service, params.key)
+              ? stateMapFor({ service: params.service, key: params.key })
               : new Map<string, unknown>(),
           ...(params.key !== undefined ? { key: params.key } : {}),
           handlerKind: params.markers,
@@ -428,94 +449,102 @@ const makeMockEnv = <AppR, RIn>(opts: {
          * boundary grants) + the journaled determinism layer, then run on the
          * captured `Runtime<AppR>` to an Exit and classify it via the SAME
          * `classifyOutcome` the real boundary uses. */
-        const program = provideHandlerCaps(
-          run(params.input).pipe(Effect.provideService(RestateContext, handle.context)),
-          params.markers,
-          params.key,
-        ).pipe(Effect.provide(determinismLayer(handle.context, frozenBaseMillis)))
+        const program = provideHandlerCaps({
+          effect: run(params.input).pipe(Effect.provideService(RestateContext, handle.context)),
+          markers: params.markers,
+          key: params.key,
+        }).pipe(Effect.provide(determinismLayer({ ctx: handle.context, frozenBaseMillis })))
         const exit = yield* Effect.promise(() =>
           Runtime.runPromiseExit(runtime)(program as Effect.Effect<unknown, unknown, AppR>),
         )
-        return yield* classifyMockExit(exit, params.spec.error)
+        return yield* classifyMockExit({ exit, errorSchema: params.spec.error })
       })
 
     return {
       kind: 'mock',
-      invokeService: ((
-        contract: Contract<string, HandlerSpecMap>,
-        method: string,
-        input: unknown,
-      ) =>
+      invokeService: ((args: {
+        contract: Contract<string, HandlerSpecMap>
+        method: string
+        input: unknown
+      }) =>
         invoke({
-          service: contract.name,
-          method,
+          service: args.contract.name,
+          method: args.method,
           key: undefined,
           markers: 'service',
-          spec: contract.handlers[method]!,
-          input,
+          spec: args.contract.handlers[args.method]!,
+          input: args.input,
         })) as RestateTestEnvService['invokeService'],
-      invokeObject: ((
-        contract: ObjectContract<string, any, any>,
-        key: string,
-        method: string,
-        input: unknown,
-      ) =>
+      invokeObject: ((args: {
+        contract: ObjectContract<string, any, any>
+        key: string
+        method: string
+        input: unknown
+      }) =>
         invoke({
-          service: contract.name,
-          method,
-          key,
-          markers: objectHandlerKind(contract.handlers[method] as ObjectHandlerSpec),
-          spec: contract.handlers[method] as HandlerSpec,
-          input,
+          service: args.contract.name,
+          method: args.method,
+          key: args.key,
+          markers: objectHandlerKind(args.contract.handlers[args.method] as ObjectHandlerSpec),
+          spec: args.contract.handlers[args.method] as HandlerSpec,
+          input: args.input,
         })) as RestateTestEnvService['invokeObject'],
-      submitWorkflow: ((
-        contract: WorkflowContract<string, any, any, any, any>,
-        key: string,
-        input: unknown,
-      ) =>
+      submitWorkflow: ((args: {
+        contract: WorkflowContract<string, any, any, any, any>
+        key: string
+        input: unknown
+      }) =>
         invoke({
-          service: contract.name,
+          service: args.contract.name,
           method: 'run',
-          key,
+          key: args.key,
           markers: 'workflowRun',
-          spec: contract.run as HandlerSpec,
-          input,
+          spec: args.contract.run as HandlerSpec,
+          input: args.input,
         }).pipe(Effect.asVoid)) as RestateTestEnvService['submitWorkflow'],
-      signalWorkflow: ((
-        contract: WorkflowContract<string, any, any, any, any>,
-        key: string,
-        method: string,
-        input: unknown,
-      ) =>
+      signalWorkflow: ((args: {
+        contract: WorkflowContract<string, any, any, any, any>
+        key: string
+        method: string
+        input: unknown
+      }) =>
         invoke({
-          service: contract.name,
-          method,
-          key,
+          service: args.contract.name,
+          method: args.method,
+          key: args.key,
           markers: 'workflowShared',
-          spec: (contract.signals[method] ?? contract.queries[method]) as HandlerSpec,
-          input,
+          spec: (args.contract.signals[args.method] ??
+            args.contract.queries[args.method]) as HandlerSpec,
+          input: args.input,
         })) as RestateTestEnvService['signalWorkflow'],
       /* On the mock, `submitWorkflow` already ran `run` to completion in-process, so
        * `attachWorkflow` re-runs the SAME `run` to recover its typed outcome (the
        * handler is deterministic over the seeded State). The real backend awaits the
        * actual durable result. */
-      attachWorkflow: ((contract: WorkflowContract<string, any, any, any, any>, key: string) =>
+      attachWorkflow: ((args: {
+        contract: WorkflowContract<string, any, any, any, any>
+        key: string
+      }) =>
         invoke({
-          service: contract.name,
+          service: args.contract.name,
           method: 'run',
-          key,
+          key: args.key,
           markers: 'workflowRun',
-          spec: contract.run as HandlerSpec,
+          spec: args.contract.run as HandlerSpec,
           input: undefined,
         })) as RestateTestEnvService['attachWorkflow'],
-      stateOf: (<S extends StateSchemas>(contract: StatefulContract<S>, key: string) =>
-        mockStateProxy(
-          contract,
-          stateMapFor(contract.name, key),
-        )) as RestateTestEnvService['stateOf'],
-      resolveAwakeable: ((_schema: Schema.Schema<unknown, unknown>, id: string, payload: unknown) =>
+      stateOf: (<S extends StateSchemas>(args: { contract: StatefulContract<S>; key: string }) =>
+        mockStateProxy({
+          contract: args.contract,
+          state: stateMapFor({ service: args.contract.name, key: args.key }),
+        })) as RestateTestEnvService['stateOf'],
+      resolveAwakeable: ((args: {
+        schema: Schema.Schema<unknown, unknown>
+        id: string
+        payload: unknown
+      }) =>
         Effect.sync(() => {
-          awakeables.pending.get(id)?.resolve(payload)
+          awakeables.pending.get(args.id)?.resolve(args.payload)
         })) as RestateTestEnvService['resolveAwakeable'],
     }
   })

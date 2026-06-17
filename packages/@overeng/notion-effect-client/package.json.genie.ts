@@ -19,7 +19,12 @@ const runtimeDeps = catalog.compose({
     // consumer could fail to provide.
     workspace: [contentAddressPkg, notionCorePkg, notionEffectSchemaPkg, otelContractPkg, utilsPkg],
     external: catalog.pick(
-      'remark-gfm',
+      'mdast-util-gfm-strikethrough',
+      'mdast-util-gfm-table',
+      'mdast-util-gfm-task-list-item',
+      'micromark-extension-gfm-strikethrough',
+      'micromark-extension-gfm-table',
+      'micromark-extension-gfm-task-list-item',
       'remark-parse',
       'remark-stringify',
       'unified',

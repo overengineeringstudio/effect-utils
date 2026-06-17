@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { expectTrace } from '@overeng/utils-dev/otelite'
 
 import {
+  type FleetServiceBinding,
   OtelAttr,
   OtelAttrEncodeError,
   OtelAttrPlanError,
@@ -15,6 +16,9 @@ import {
   OtelServiceName,
   OtelSpan,
   OtelSpanName,
+  ServiceIdentity,
+  ServiceNameFromParts,
+  serviceIdentityFromBinding,
 } from './mod.ts'
 
 describe('OTEL schema names', () => {
@@ -42,7 +46,7 @@ describe('OTEL schema names', () => {
         Effect.either(
           OtelAttrs.define(
             Schema.Struct({
-              value: OtelAttr.string('bad key'),
+              value: OtelAttr.string({ key: 'bad key' }),
             }),
           ),
         ),
@@ -54,7 +58,7 @@ describe('OTEL schema names', () => {
 
     const SpanAttrs = OtelAttrs.defineSync(
       Schema.Struct({
-        label: OtelAttr.string('span.label', { role: 'span.label' }),
+        label: OtelAttr.string({ key: 'span.label', metadata: { role: 'span.label' } }),
       }),
     )
 
@@ -62,7 +66,7 @@ describe('OTEL schema names', () => {
     expect(() =>
       OtelOperation.define({
         name: 'bad\noperation',
-        schema: Schema.Struct({ value: OtelAttr.string('test.value') }),
+        schema: Schema.Struct({ value: OtelAttr.string({ key: 'test.value' }) }),
         label: ({ value }) => value,
       }),
     ).toThrow(OtelAttrPlanError)
@@ -74,6 +78,111 @@ describe('OTEL schema names', () => {
         }),
       }),
     ).toThrow(OtelAttrPlanError)
+  })
+})
+
+describe('ServiceIdentity', () => {
+  it('decodes a valid identity into branded name/namespace/version', async () => {
+    const identity = await Effect.runPromise(
+      Schema.decodeUnknown(ServiceIdentity)({
+        name: 'megarepo',
+        namespace: 'overeng',
+        version: '1.2.3',
+      }),
+    )
+    expect(identity).toEqual({ name: 'megarepo', namespace: 'overeng', version: '1.2.3' })
+  })
+
+  it('rejects an invalid (non-pattern) service name', async () => {
+    await expect(
+      Effect.runPromise(
+        Effect.either(
+          Schema.decodeUnknown(ServiceIdentity)({
+            name: 'bad name',
+            namespace: 'overeng',
+            version: '1.0.0',
+          }),
+        ),
+      ),
+    ).resolves.toMatchObject({ _tag: 'Left' })
+  })
+
+  it('rejects empty namespace/version', async () => {
+    for (const bad of [
+      { name: 'svc', namespace: '', version: '1.0.0' },
+      { name: 'svc', namespace: 'overeng', version: '' },
+    ]) {
+      await expect(
+        Effect.runPromise(Effect.either(Schema.decodeUnknown(ServiceIdentity)(bad))),
+      ).resolves.toMatchObject({ _tag: 'Left' })
+    }
+  })
+})
+
+describe('ServiceNameFromParts', () => {
+  it('builds `<project>-<role>` and validates it through the OtelServiceName brand', async () => {
+    const name = await Effect.runPromise(
+      Schema.decode(ServiceNameFromParts)({ project: 'my-project', role: 'worker' }),
+    )
+    expect(name).toBe('my-project-worker')
+    // The result is a real OtelServiceName (decodes through the brand unchanged).
+    await expect(Effect.runPromise(Schema.decodeUnknown(OtelServiceName)(name))).resolves.toBe(
+      'my-project-worker',
+    )
+  })
+
+  it('rejects an empty or whitespace part as a decode failure', async () => {
+    // Trailing-hyphen trap: an empty role composes to `"my-project-"`, which the
+    // OtelServiceName pattern alone admits — the part-level validation is what
+    // makes this a failure.
+    for (const bad of [
+      { project: 'my-project', role: '' },
+      { project: 'my-project', role: '   ' },
+      { project: '', role: 'worker' },
+      { project: '  ', role: 'worker' },
+    ]) {
+      await expect(
+        Effect.runPromise(Effect.either(Schema.decode(ServiceNameFromParts)(bad))),
+      ).resolves.toMatchObject({ _tag: 'Left' })
+    }
+  })
+
+  it('rejects a composed name that violates the naming law', async () => {
+    // A leading digit project breaks the brand's `^[A-Za-z]` law once joined.
+    await expect(
+      Effect.runPromise(
+        Effect.either(Schema.decode(ServiceNameFromParts)({ project: '1bad', role: 'worker' })),
+      ),
+    ).resolves.toMatchObject({ _tag: 'Left' })
+  })
+})
+
+describe('serviceIdentityFromBinding', () => {
+  it('assembles a ServiceIdentity that stamps the right service.* attributes', async () => {
+    const binding: FleetServiceBinding = {
+      project: 'my-project',
+      role: 'worker',
+      namespace: 'acme',
+      version: '1.2.3',
+    }
+    const identity = await Effect.runPromise(serviceIdentityFromBinding(binding))
+    expect(identity).toEqual({ name: 'my-project-worker', namespace: 'acme', version: '1.2.3' })
+    // Re-decoding through the struct confirms the result is a valid ServiceIdentity.
+    await expect(
+      Effect.runPromise(Schema.decodeUnknown(ServiceIdentity)(identity)),
+    ).resolves.toEqual(identity)
+  })
+
+  it('fails on a malformed part/namespace/version at the edge', async () => {
+    for (const bad of [
+      { project: 'my-project', role: '', namespace: 'acme', version: '1.0.0' },
+      { project: 'my-project', role: 'worker', namespace: '', version: '1.0.0' },
+      { project: 'my-project', role: 'worker', namespace: 'acme', version: '' },
+    ] satisfies ReadonlyArray<FleetServiceBinding>) {
+      await expect(
+        Effect.runPromise(Effect.either(serviceIdentityFromBinding(bad))),
+      ).resolves.toMatchObject({ _tag: 'Left' })
+    }
   })
 })
 
@@ -391,9 +500,12 @@ describe('OtelAttrs', () => {
         Schema.Struct({
           label: Schema.NonEmptyTrimmedString.pipe(OtelAttr.spanLabel()),
           outcome: OtelAttr.literal('op.outcome', 'success', 'retryable', 'terminal'),
-          cacheHit: OtelAttr.boolean('op.cache_hit'),
-          requestId: OtelAttr.string('request.id', { cardinality: 'high' }),
-          payload: OtelAttr.json('op.payload', Schema.Struct({ id: Schema.String })),
+          cacheHit: OtelAttr.boolean({ key: 'op.cache_hit' }),
+          requestId: OtelAttr.string({ key: 'request.id', metadata: { cardinality: 'high' } }),
+          payload: OtelAttr.json({
+            key: 'op.payload',
+            schema: Schema.Struct({ id: Schema.String }),
+          }),
         }),
       ),
     )
@@ -525,8 +637,8 @@ describe('OtelSpan', () => {
     const span = OtelSpan.defineSync({
       name: 'test.stream',
       schema: Schema.Struct({
-        label: OtelAttr.string('span.label', { role: 'span.label' }),
-        count: OtelAttr.number('stream.count'),
+        label: OtelAttr.string({ key: 'span.label', metadata: { role: 'span.label' } }),
+        count: OtelAttr.number({ key: 'stream.count' }),
       }),
     })
 
@@ -546,9 +658,9 @@ describe('OtelOperation', () => {
     const PullPage = OtelOperation.define({
       name: 'notion-md.pull-page',
       schema: Schema.Struct({
-        pageId: OtelAttr.string('notion_md.page_id', { cardinality: 'high' }),
-        basename: OtelAttr.string('notion_md.path.basename'),
-        cacheHit: OtelAttr.boolean('notion_md.cache_hit'),
+        pageId: OtelAttr.string({ key: 'notion_md.page_id', metadata: { cardinality: 'high' } }),
+        basename: OtelAttr.string({ key: 'notion_md.path.basename' }),
+        cacheHit: OtelAttr.boolean({ key: 'notion_md.cache_hit' }),
         outcome: OtelAttr.literal('notion_md.outcome', 'created', 'updated', 'skipped'),
       }),
       label: ({ basename }) => basename,
@@ -617,7 +729,7 @@ describe('OtelOperation', () => {
     const Operation = OtelOperation.define({
       name: 'test.empty-label',
       schema: Schema.Struct({
-        value: OtelAttr.string('test.value'),
+        value: OtelAttr.string({ key: 'test.value' }),
       }),
       label: () => '   ',
     })
@@ -634,7 +746,7 @@ describe('OtelOperation', () => {
     const Operation = OtelOperation.define({
       name: 'test.operation.stream',
       schema: Schema.Struct({
-        value: OtelAttr.string('test.value'),
+        value: OtelAttr.string({ key: 'test.value' }),
       }),
       label: ({ value }) => value,
     })
@@ -666,8 +778,8 @@ describe('OtelMetric', () => {
       description: 'Restate invocations by service, handler, and outcome.',
       unit: '1',
       labels: Schema.Struct({
-        service: OtelAttr.string('restate.service', { cardinality: 'bounded' }),
-        handler: OtelAttr.string('restate.handler', { cardinality: 'bounded' }),
+        service: OtelAttr.string({ key: 'restate.service', metadata: { cardinality: 'bounded' } }),
+        handler: OtelAttr.string({ key: 'restate.handler', metadata: { cardinality: 'bounded' } }),
         outcome: OtelAttr.literal(
           'restate.outcome',
           'success',
@@ -675,7 +787,7 @@ describe('OtelMetric', () => {
           'retryable',
           'cancelled',
         ),
-        cacheHit: OtelAttr.boolean('restate.cache_hit'),
+        cacheHit: OtelAttr.boolean({ key: 'restate.cache_hit' }),
       }),
     })
 
@@ -804,13 +916,94 @@ describe('OtelMetric', () => {
     })
   })
 
+  it('defines gauge metadata without owning runtime emission', () => {
+    const RssBytes = OtelMetric.gauge({
+      name: 'store_gc_rss_bytes',
+      description: 'Resident set size sampled during a run.',
+      unit: 'By',
+      labels: Schema.Struct({
+        operation: OtelAttr.literal('operation', 'gc', 'status'),
+      }),
+    })
+
+    expect(RssBytes).not.toHaveProperty('set')
+    expect(RssBytes.metadata).toMatchObject({
+      kind: 'metric',
+      instrument: 'gauge',
+      name: 'store_gc_rss_bytes',
+      unit: 'By',
+      labelKeys: ['operation'],
+    })
+  })
+
+  it('brands and decodes gauge metric names', async () => {
+    const Gauge = OtelMetric.gauge({
+      name: 'store_gc_rss_bytes',
+      labels: Schema.Struct({
+        operation: OtelAttr.literal('operation', 'gc', 'status'),
+      }),
+    })
+    expect(Gauge.name).toBe('store_gc_rss_bytes')
+    await expect(Effect.runPromise(Schema.decodeUnknown(OtelMetricName)(Gauge.name))).resolves.toBe(
+      'store_gc_rss_bytes',
+    )
+    expect(() => OtelMetric.gauge({ name: ' ', labels: Schema.Struct({}) })).toThrow()
+  })
+
+  it('rejects high-cardinality and unspecified-cardinality gauge labels', () => {
+    expect(() =>
+      OtelMetric.gauge({
+        name: 'bad_gauge',
+        labels: Schema.Struct({
+          path: OtelAttr.string({ key: 'path', metadata: { cardinality: 'high' } }),
+        }),
+      }),
+    ).toThrow(OtelAttrPlanError)
+
+    expect(() =>
+      OtelMetric.gauge({
+        name: 'bad_gauge',
+        labels: Schema.Struct({
+          path: OtelAttr.string({ key: 'path' }),
+        }),
+      }),
+    ).toThrow(OtelAttrPlanError)
+  })
+
+  it('bridges schema-first gauges to tagged Effect metrics that go up and down', async () => {
+    const Gauge = OtelMetric.gauge({
+      name: 'otel_contract_test_bridge_rss_bytes',
+      description: 'Test gauge bridge.',
+      unit: 'By',
+      labels: Schema.Struct({
+        operation: OtelAttr.literal('operation', 'gc', 'status'),
+      }),
+    })
+    const bridge = OtelMetric.effect.gauge(Gauge)
+
+    const snapshotValue = () => {
+      const entry = Metric.unsafeSnapshot(undefined).find((candidate) => {
+        if (candidate.metricKey.name !== 'otel_contract_test_bridge_rss_bytes') return false
+        const tags = Object.fromEntries(candidate.metricKey.tags.map((tag) => [tag.key, tag.value]))
+        return tags.operation === 'gc'
+      })
+      return (entry?.metricState as { readonly value?: number } | undefined)?.value
+    }
+
+    await Effect.runPromise(bridge.set({ labels: { operation: 'gc' }, value: 100 }))
+    expect(snapshotValue()).toBe(100)
+
+    await Effect.runPromise(bridge.trustedSet({ labels: { operation: 'gc' }, value: 25 }))
+    expect(snapshotValue()).toBe(25)
+  })
+
   it('bridges schema-first counters to tagged Effect metrics', async () => {
     const Counter = OtelMetric.counter({
       name: 'otel_contract_test_bridge_counter_total',
       description: 'Test counter bridge.',
       labels: Schema.Struct({
-        service: OtelAttr.string('service', { cardinality: 'bounded' }),
-        cacheHit: OtelAttr.boolean('cache_hit'),
+        service: OtelAttr.string({ key: 'service', metadata: { cardinality: 'bounded' } }),
+        cacheHit: OtelAttr.boolean({ key: 'cache_hit' }),
       }),
     })
     const bridge = OtelMetric.effect.counter(Counter)
@@ -818,7 +1011,7 @@ describe('OtelMetric', () => {
     await Effect.runPromise(
       Effect.all(
         [
-          bridge.incrementBy({ service: 'api', cacheHit: true }, 2),
+          bridge.incrementBy({ labels: { service: 'api', cacheHit: true }, amount: 2 }),
           bridge.trustedIncrement({ service: 'api', cacheHit: true }),
         ],
         { discard: true },
@@ -845,7 +1038,7 @@ describe('OtelMetric', () => {
     })
     const bridge = OtelMetric.effect.histogram(Histogram)
 
-    await Effect.runPromise(bridge.trustedRecord({ route: 'sync' }, 42))
+    await Effect.runPromise(bridge.trustedRecord({ labels: { route: 'sync' }, value: 42 }))
 
     const pair = Metric.unsafeSnapshot(undefined).find((entry) => {
       if (entry.metricKey.name !== 'otel_contract_test_bridge_duration_ms') return false
@@ -859,7 +1052,10 @@ describe('OtelMetric', () => {
     expect(() =>
       OtelMetric.labels(
         Schema.Struct({
-          workflowId: OtelAttr.string('restate.workflow.id', { cardinality: 'high' }),
+          workflowId: OtelAttr.string({
+            key: 'restate.workflow.id',
+            metadata: { cardinality: 'high' },
+          }),
         }),
       ),
     ).toThrow(OtelAttrPlanError)
@@ -867,7 +1063,7 @@ describe('OtelMetric', () => {
     expect(() =>
       OtelMetric.labels(
         Schema.Struct({
-          service: OtelAttr.string('restate.service'),
+          service: OtelAttr.string({ key: 'restate.service' }),
         }),
       ),
     ).toThrow(OtelAttrPlanError)

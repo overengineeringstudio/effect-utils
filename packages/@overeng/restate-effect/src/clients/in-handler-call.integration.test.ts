@@ -19,15 +19,21 @@ import { liveSleep, RestateTestHarness, serverAvailable } from '../testing/testi
 
 /* ── a greeter Service (the request/response peer) ── */
 
-const Greeter = RestateService.contract('ihc-greeter', {
-  greet: {
-    input: Schema.Struct({ name: Schema.String }),
-    success: Schema.Struct({ message: Schema.String }),
+const Greeter = RestateService.contract({
+  name: 'ihc-greeter',
+  handlers: {
+    greet: {
+      input: Schema.Struct({ name: Schema.String }),
+      success: Schema.Struct({ message: Schema.String }),
+    },
   },
 })
 
-const GreeterLive = RestateService.implement<typeof Greeter>(Greeter, {
-  greet: ({ name }) => Effect.succeed({ message: `Hello ${name}` }),
+const GreeterLive = RestateService.implement<typeof Greeter>({
+  contractValue: Greeter,
+  impl: {
+    greet: ({ name }) => Effect.succeed({ message: `Hello ${name}` }),
+  },
 })
 
 /* ── a recorder Object (the one-way `send` target — a keyed, stateful sink) ── */
@@ -35,37 +41,56 @@ const GreeterLive = RestateService.implement<typeof Greeter>(Greeter, {
 const RecorderState = { last: Schema.String } as const
 const Recorder = State.for(RecorderState)
 
-const RecorderObj = RestateObject.contract('ihc-recorder', {
-  state: RecorderState,
-  handlers: {
-    record: { input: Schema.String, success: Schema.Void },
-    last: { input: Schema.Void, success: Schema.String, shared: true },
+const RecorderObj = RestateObject.contract({
+  name: 'ihc-recorder',
+  def: {
+    state: RecorderState,
+    handlers: {
+      record: { input: Schema.String, success: Schema.Void },
+      last: { input: Schema.Void, success: Schema.String, shared: true },
+    },
   },
 })
 
-const RecorderLive = RestateObject.implement<typeof RecorderObj>(RecorderObj, {
-  record: (value) => Recorder.set('last', value),
-  last: () => Recorder.get('last').pipe(Effect.map((v) => v ?? '')),
+const RecorderLive = RestateObject.implement<typeof RecorderObj>({
+  contractValue: RecorderObj,
+  impl: {
+    record: (value) => Recorder.set({ key: 'last', value: value }),
+    last: () => Recorder.get('last').pipe(Effect.map((v) => v ?? '')),
+  },
 })
 
 /* ── the orchestrator: in-handler `call` (req/resp) + `send` (one-way) ── */
 
-const Orchestrator = RestateService.contract('ihc-orchestrator', {
-  start: { input: Schema.String, success: Schema.String },
+const Orchestrator = RestateService.contract({
+  name: 'ihc-orchestrator',
+  handlers: {
+    start: { input: Schema.String, success: Schema.String },
+  },
 })
 
-const OrchestratorLive = RestateService.implement<typeof Orchestrator>(Orchestrator, {
-  start: (name) =>
-    Effect.gen(function* () {
-      /* Request/response to a PEER Service, typed from its contract (durably
-       * journaled — a crash recovers the result from the journal). */
-      const greeting = yield* Restate.call(Greeter, 'greet', { name }).pipe(Effect.orDie)
-      /* One-way send to a keyed Object — fire-and-forget, delivered cross-invocation. */
-      yield* Restate.objectSendClient(RecorderObj, name, 'record', greeting.message).pipe(
-        Effect.orDie,
-      )
-      return greeting.message
-    }),
+const OrchestratorLive = RestateService.implement<typeof Orchestrator>({
+  contractValue: Orchestrator,
+  impl: {
+    start: (name) =>
+      Effect.gen(function* () {
+        /* Request/response to a PEER Service, typed from its contract (durably
+         * journaled — a crash recovers the result from the journal). */
+        const greeting = yield* Restate.call({
+          contract: Greeter,
+          method: 'greet',
+          input: { name },
+        }).pipe(Effect.orDie)
+        /* One-way send to a keyed Object — fire-and-forget, delivered cross-invocation. */
+        yield* Restate.objectSendClient({
+          contract: RecorderObj,
+          key: name,
+          method: 'record',
+          input: greeting.message,
+        }).pipe(Effect.orDie)
+        return greeting.message
+      }),
+  },
 })
 
 const HarnessLayer = RestateTestHarness.layer({
@@ -80,7 +105,11 @@ describe.skipIf(!serverAvailable)('in-handler service→service call / send (rea
       Effect.gen(function* () {
         const harness = yield* RestateTestHarness
         /* The orchestrator calls greeter (req/resp), then one-way-sends to recorder. */
-        const message = yield* harness.ingress.call(Orchestrator, 'start', 'Sarah')
+        const message = yield* harness.ingress.call({
+          contract: Orchestrator,
+          method: 'start',
+          input: 'Sarah',
+        })
         expect(message).toBe('Hello Sarah')
 
         /* The one-way send is async; poll the recorder's shared query until the
@@ -88,7 +117,12 @@ describe.skipIf(!serverAvailable)('in-handler service→service call / send (rea
          * the `it.effect` virtual TestClock). */
         const recorded = yield* Effect.gen(function* () {
           for (let attempt = 0; attempt < 50; attempt++) {
-            const last = yield* harness.ingress.objectCall(RecorderObj, 'Sarah', 'last', undefined)
+            const last = yield* harness.ingress.objectCall({
+              contract: RecorderObj,
+              key: 'Sarah',
+              method: 'last',
+              input: undefined,
+            })
             if (last !== '') return last
             yield* liveSleep(100)
           }

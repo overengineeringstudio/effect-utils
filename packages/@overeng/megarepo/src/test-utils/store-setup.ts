@@ -5,7 +5,7 @@
  */
 
 import { Command, FileSystem } from '@effect/platform'
-import { Effect, Schema } from 'effect'
+import { Effect, Option, Schema } from 'effect'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
@@ -15,6 +15,7 @@ import {
   type LockFile,
   type LockedMember,
   LOCK_FILE_NAME,
+  readLockFile,
   writeLockFile,
 } from '../lib/lock.ts'
 import { refTypeToPathSegment, classifyRef } from '../lib/ref.ts'
@@ -39,6 +40,13 @@ export interface StoreRepoFixture {
   readonly commits?: ReadonlyArray<string>
   /** Whether to make some worktrees dirty */
   readonly dirtyWorktrees?: ReadonlyArray<string>
+  /**
+   * Wire the store bare repo to a separate upstream bare so it has real
+   * `refs/remotes/origin/*` (mirrors `Git.cloneBare` + `fetchBare`). Required to
+   * exercise reachability (`rev-list --not --remotes`) and prune-driven
+   * remote-branch-deletion scenarios.
+   */
+  readonly withRemote?: boolean
 }
 
 /** Result of creating a store fixture */
@@ -49,6 +57,8 @@ export interface StoreFixtureResult {
   readonly worktreePaths: Record<string, AbsoluteDirPath>
   /** Bare repo paths by "host/owner/repo" */
   readonly bareRepoPaths: Record<string, AbsoluteDirPath>
+  /** Upstream bare repo paths by "host/owner/repo" (only for `withRemote` repos) */
+  readonly upstreamRepoPaths: Record<string, AbsoluteDirPath>
 }
 
 // =============================================================================
@@ -67,7 +77,10 @@ const runGitCommand = (cwd: AbsoluteDirPath, ...args: ReadonlyArray<string>) =>
 const initGitRepo = (path: AbsoluteDirPath) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
-    yield* runGitCommand(path, 'init')
+    // `-b main` so the default branch is deterministic regardless of the host's
+    // `init.defaultBranch` (CI git defaults to `master`, which breaks the
+    // `main`-based fixtures and every `refs/remotes/origin/main` assumption).
+    yield* runGitCommand(path, 'init', '-b', 'main')
     const configPath = EffectPath.ops.join(path, EffectPath.unsafe.relativeFile('.git/config'))
     const existing = yield* fs.readFileString(configPath)
     yield* fs.writeFileString(
@@ -103,12 +116,18 @@ export const createStoreFixture = (repos: ReadonlyArray<StoreRepoFixture>) =>
     const fs = yield* FileSystem.FileSystem
 
     // Create temp directory for store
-    const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+    // `realPath` to canonicalize: on macOS the temp dir is under a symlinked
+    // `/var` → `/private/var`, and `git worktree list` reports the realpath, so a
+    // non-canonical store path makes `scanArchives`' prefix match miss every entry.
+    const tmpDir = EffectPath.unsafe.absoluteDir(
+      `${yield* fs.realPath(yield* fs.makeTempDirectoryScoped())}/`,
+    )
     const storePath = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('.megarepo/'))
     yield* fs.makeDirectory(storePath, { recursive: true })
 
     const worktreePaths: Record<string, AbsoluteDirPath> = {}
     const bareRepoPaths: Record<string, AbsoluteDirPath> = {}
+    const upstreamRepoPaths: Record<string, AbsoluteDirPath> = {}
 
     for (const repoFixture of repos) {
       const repoKey = `${repoFixture.host}/${repoFixture.owner}/${repoFixture.repo}`
@@ -126,8 +145,24 @@ export const createStoreFixture = (repos: ReadonlyArray<StoreRepoFixture>) =>
       yield* fs.makeDirectory(bareRepoPath, { recursive: true })
       bareRepoPaths[repoKey] = bareRepoPath
 
-      // Initialize bare repo
-      yield* runGitCommand(bareRepoPath, 'init', '--bare')
+      // Initialize bare repo (`-b main` for a deterministic default branch — see initGitRepo)
+      yield* runGitCommand(bareRepoPath, 'init', '--bare', '-b', 'main')
+
+      // For `withRemote`, the store bare fetches from a separate upstream bare so
+      // it gains real `refs/remotes/origin/*`. The source repo pushes to that
+      // upstream (the true remote); otherwise it pushes to the store bare directly.
+      const withRemote = repoFixture.withRemote === true
+      let pushTargetPath = bareRepoPath
+      if (withRemote === true) {
+        const upstreamPath = EffectPath.ops.join(
+          tmpDir,
+          EffectPath.unsafe.relativeDir(`_upstream/${repoKey}.bare/`),
+        )
+        yield* fs.makeDirectory(upstreamPath, { recursive: true })
+        yield* runGitCommand(upstreamPath, 'init', '--bare', '-b', 'main')
+        upstreamRepoPaths[repoKey] = upstreamPath
+        pushTargetPath = upstreamPath
+      }
 
       // Create a source repo to work with (we need commits to reference)
       const sourceRepoPath = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('_source/'))
@@ -145,19 +180,42 @@ export const createStoreFixture = (repos: ReadonlyArray<StoreRepoFixture>) =>
       // Get the commit SHA
       const commitSha = yield* runGitCommand(sourceRepoPath, 'rev-parse', 'HEAD')
 
-      // Set up bare repo as remote and push
-      yield* runGitCommand(sourceRepoPath, 'remote', 'add', 'origin', bareRepoPath)
+      // Set up remote and push branches
+      yield* runGitCommand(sourceRepoPath, 'remote', 'add', 'origin', pushTargetPath)
       yield* runGitCommand(sourceRepoPath, 'push', '-u', 'origin', 'main').pipe(
         Effect.catchAll(() =>
           // Try master if main fails
           runGitCommand(sourceRepoPath, 'push', '-u', 'origin', 'master'),
         ),
       )
+      // Push any additional branches requested (beyond the default).
+      for (const branch of repoFixture.branches ?? []) {
+        if (branch === 'main' || branch === 'master') continue
+        yield* runGitCommand(sourceRepoPath, 'branch', branch, commitSha).pipe(
+          Effect.catchAll(() => Effect.void),
+        )
+        yield* runGitCommand(sourceRepoPath, 'push', 'origin', branch).pipe(
+          Effect.catchAll(() => Effect.void),
+        )
+      }
 
       // Create tags if requested
       for (const tag of repoFixture.tags ?? []) {
         yield* runGitCommand(sourceRepoPath, 'tag', '--no-sign', tag)
         yield* runGitCommand(sourceRepoPath, 'push', 'origin', tag)
+      }
+
+      // Wire the store bare to the upstream so it gains `refs/remotes/origin/*`
+      // (mirrors Git.cloneBare's refspec + Git.fetchBare).
+      if (withRemote === true) {
+        yield* runGitCommand(bareRepoPath, 'remote', 'add', 'origin', upstreamRepoPaths[repoKey]!)
+        yield* runGitCommand(
+          bareRepoPath,
+          'config',
+          'remote.origin.fetch',
+          '+refs/heads/*:refs/remotes/origin/*',
+        )
+        yield* runGitCommand(bareRepoPath, 'fetch', '--tags', '--prune', 'origin')
       }
 
       // Create refs directory structure
@@ -236,6 +294,7 @@ export const createStoreFixture = (repos: ReadonlyArray<StoreRepoFixture>) =>
       storePath,
       worktreePaths,
       bareRepoPaths,
+      upstreamRepoPaths,
     } satisfies StoreFixtureResult
   })
 
@@ -255,7 +314,12 @@ export const createWorkspaceWithLock = (args: {
     const fs = yield* FileSystem.FileSystem
 
     // Create workspace directory
-    const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+    // `realPath` to canonicalize: on macOS the temp dir is under a symlinked
+    // `/var` → `/private/var`, and `git worktree list` reports the realpath, so a
+    // non-canonical store path makes `scanArchives`' prefix match miss every entry.
+    const tmpDir = EffectPath.unsafe.absoluteDir(
+      `${yield* fs.realPath(yield* fs.makeTempDirectoryScoped())}/`,
+    )
     const workspacePath = EffectPath.ops.join(
       tmpDir,
       EffectPath.unsafe.relativeDir('test-workspace/'),
@@ -315,3 +379,125 @@ export const createWorkspaceWithLock = (args: {
  */
 export const getWorktreeCommit = (worktreePath: AbsoluteDirPath) =>
   runGitCommand(worktreePath, 'rev-parse', 'HEAD')
+
+/**
+ * Repoint a workspace member to a new store target WITHOUT re-registering.
+ *
+ * Models the decision-0010 repin bug: a workspace repins a member (its
+ * `repos/<name>` symlink and lock entry now point at `newTarget`) but runs no
+ * refreshing command, so its liveness record stays stale. The store registry is
+ * deliberately left untouched — only the on-disk truth (symlink + optional lock)
+ * is updated. A reconcile-all must re-derive the new target from disk.
+ */
+export const repinWorkspace = ({
+  workspacePath,
+  memberName,
+  newTarget,
+  lockEntry,
+}: {
+  workspacePath: AbsoluteDirPath
+  memberName: string
+  newTarget: AbsoluteDirPath
+  lockEntry?: { url: string; ref: string; commit: string; pinned?: boolean } | undefined
+}) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+
+    const reposDir = EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeDir('repos/'))
+    yield* fs.makeDirectory(reposDir, { recursive: true })
+    const symlinkPath = EffectPath.ops.join(reposDir, EffectPath.unsafe.relativeFile(memberName))
+    // Replace any existing symlink so the new target is the on-disk truth.
+    yield* fs.remove(symlinkPath, { force: true }).pipe(Effect.catchAll(() => Effect.void))
+    yield* fs.symlink(newTarget.replace(/\/+$/, ''), symlinkPath)
+
+    // Optionally rewrite the lock entry for this member (ref/commit repin),
+    // preserving every other member verbatim.
+    if (lockEntry !== undefined) {
+      const lockPath = EffectPath.ops.join(
+        workspacePath,
+        EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
+      )
+      const existingOpt = yield* readLockFile(lockPath)
+      const members: Record<string, LockedMember> = {}
+      for (const [name, member] of Object.entries(
+        Option.getOrUndefined(existingOpt)?.members ?? {},
+      )) {
+        members[name] = member
+      }
+      members[memberName] = createLockedMember({
+        url: lockEntry.url,
+        ref: lockEntry.ref,
+        commit: lockEntry.commit,
+        ...(lockEntry.pinned !== undefined ? { pinned: lockEntry.pinned } : {}),
+      })
+      const lockFile: LockFile = { version: 1, members }
+      yield* writeLockFile({ lockPath, lockFile })
+    }
+  })
+
+/**
+ * Re-materialize a fixture worktree as a NON-DETACHED `refs/heads/<branch>`
+ * worktree — the exact shape production creates (`createWorktree({createBranch:
+ * false})`), as opposed to the `--detach` worktrees `createStoreFixture`
+ * defaults to. Removes the detached worktree, creates the branch ref, then adds
+ * a worktree that has that branch checked out (so `git branch -D` is refused
+ * until HEAD is detached). Returns the (unchanged) worktree path.
+ */
+export const materializeNonDetachedBranchWorktree = ({
+  bareRepoPath,
+  worktreePath,
+  branch,
+  commit,
+}: {
+  bareRepoPath: AbsoluteDirPath
+  worktreePath: AbsoluteDirPath
+  branch: string
+  commit: string
+}) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    // Drop the detached worktree the fixture created at this path.
+    yield* runGitCommand(bareRepoPath, 'worktree', 'remove', '--force', worktreePath)
+    yield* fs
+      .remove(worktreePath, { recursive: true, force: true })
+      .pipe(Effect.catchAll(() => Effect.void))
+    // Create the branch ref and check it out in a fresh worktree (non-detached).
+    yield* runGitCommand(bareRepoPath, 'branch', branch, commit)
+    yield* runGitCommand(bareRepoPath, 'worktree', 'add', worktreePath, branch)
+    return worktreePath
+  })
+
+/**
+ * Create a valid archive entry (`<repoRoot>/.archive/<branch>--<ISO8601>/`)
+ * registered as a worktree of the bare repo (proper gitlink), for exercising
+ * retention/reap. `archivedAt` controls the trailing timestamp segment used by
+ * the reaper's retention TTL parse.
+ */
+export const createArchiveEntry = ({
+  bareRepoPath,
+  repoRoot,
+  branch,
+  commit,
+  archivedAt,
+}: {
+  bareRepoPath: AbsoluteDirPath
+  repoRoot: AbsoluteDirPath
+  branch: string
+  commit: string
+  archivedAt: Date
+}) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const archiveDir = EffectPath.ops.join(repoRoot, EffectPath.unsafe.relativeDir('.archive/'))
+    yield* fs.makeDirectory(archiveDir, { recursive: true })
+
+    const dirName = `${branch}--${archivedAt.toISOString()}`
+    const archivePath = EffectPath.ops.join(
+      archiveDir,
+      EffectPath.unsafe.relativeDir(`${dirName}/`),
+    )
+    // `worktree add --detach` creates a real gitlink and registers the path in
+    // the bare's worktree list (the same enumeration the reaper scans).
+    yield* runGitCommand(bareRepoPath, 'worktree', 'add', '--detach', archivePath, commit)
+    return { archivePath, dirName }
+  })

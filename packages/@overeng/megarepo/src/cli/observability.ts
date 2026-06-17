@@ -1,22 +1,24 @@
-import path from 'node:path'
-
-import { Effect, Schema } from 'effect'
+import { Duration, Effect, Option, Schema } from 'effect'
 
 import {
   OtelAttr,
   OtelAttrs,
+  OtelMetric,
   OtelOperation,
   OtelSpan,
   type OtelAttrEncodeError,
   type OtelOperationDefinition,
 } from '@overeng/otel-contract'
+import { OtelConfig, sampleResource } from '@overeng/utils/node/otel'
 
 const basename = (value: string): string =>
   value.split('/').findLast((part) => part.length > 0) ?? value
 
-export const shortRef = ({ refType, ref }: { refType: string; ref: string }): string =>
+const shortRef = ({ refType, ref }: { refType: string; ref: string }): string =>
   `${refType}/${ref.length > 24 ? `${ref.slice(0, 12)}...${ref.slice(-8)}` : ref}`
 
+/** Trailing-slash-tolerant basename, used to derive compact span labels from
+ *  filesystem paths (e.g. a worktree dir → its final segment). */
 export const shortPath = (value: string): string => basename(value.replace(/\/+$/, ''))
 
 const trustOtelContract = <A, E, R>(
@@ -34,19 +36,25 @@ const trustOtelContract = <A, E, R>(
   ) as Effect.Effect<A, E, R>
 
 const trustedWith =
-  <S extends Schema.Schema.AnyNoContext>(
-    operation: OtelOperationDefinition<S>,
-    attributes: Schema.Schema.Type<S>,
-  ): (<A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>) =>
+  <S extends Schema.Schema.AnyNoContext>({
+    operation,
+    attributes,
+  }: {
+    operation: OtelOperationDefinition<S>
+    attributes: Schema.Schema.Type<S>
+  }): (<A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     trustOtelContract<A, E, R>(operation.with({ attributes, effect }))
 
-const trustedAnnotate = <S extends Schema.Schema.AnyNoContext>(
-  operation: OtelOperationDefinition<S>,
-  attributes: Schema.Schema.Type<S>,
-): Effect.Effect<void> => trustOtelContract<void, never, never>(operation.annotate(attributes))
+const trustedAnnotate = <S extends Schema.Schema.AnyNoContext>({
+  operation,
+  attributes,
+}: {
+  operation: OtelOperationDefinition<S>
+  attributes: Schema.Schema.Type<S>
+}): Effect.Effect<void> => trustOtelContract<void, never, never>(operation.annotate(attributes))
 
-export const commandAttrs = OtelAttrs.defineSync(
+const commandAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
     command: Schema.NonEmptyString.pipe(OtelAttr.key({ key: 'megarepo.cli.command' })),
@@ -85,13 +93,13 @@ const syncAttrs = OtelAttrs.defineSync(
   }),
 )
 
-export const syncSpan = OtelOperation.define({
+const syncSpan = OtelOperation.define({
   name: 'megarepo/sync',
   attributes: syncAttrs,
   label: ({ label }) => label,
 })
 
-export const storeWorktreeAttrs = OtelAttrs.defineSync(
+const storeWorktreeAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
     repo: Schema.String.pipe(OtelAttr.key({ key: 'megarepo.store.repo' })),
@@ -116,7 +124,7 @@ const storeWorktreeOperation = (name: string) =>
     label: ({ label }) => label,
   })
 
-export const storeGcAttrs = OtelAttrs.defineSync(
+const storeGcAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
     policy: Schema.String.pipe(OtelAttr.key({ key: 'megarepo.store.gc.policy' })),
@@ -133,7 +141,7 @@ const storeGcOperation = OtelOperation.define({
   root: true,
 })
 
-export const storeGcResultAttrs = OtelAttrs.defineSync(
+const storeGcResultAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     rootSetWorkspaceCount: Schema.Number.pipe(
       OtelAttr.key({ key: 'megarepo.store.gc.root_set_workspace_count' }),
@@ -150,22 +158,28 @@ export const storeGcResultAttrs = OtelAttrs.defineSync(
     resultSkippedDirty: Schema.Number.pipe(
       OtelAttr.key({ key: 'megarepo.store.gc.result_skipped_dirty' }),
     ),
+    resultArchived: Schema.Number.pipe(OtelAttr.key({ key: 'megarepo.store.gc.result_archived' })),
+    resultReaped: Schema.Number.pipe(OtelAttr.key({ key: 'megarepo.store.gc.result_reaped' })),
+    resultKept: Schema.Number.pipe(OtelAttr.key({ key: 'megarepo.store.gc.result_kept' })),
     candidateCommits: Schema.Number.pipe(
       OtelAttr.key({ key: 'megarepo.store.gc.candidate_commits' }),
     ),
     candidateNamedRefs: Schema.Number.pipe(
       OtelAttr.key({ key: 'megarepo.store.gc.candidate_named_refs' }),
     ),
+    repoConcurrency: Schema.Number.pipe(
+      OtelAttr.key({ key: 'megarepo.store.gc.repo_concurrency' }),
+    ),
   }),
 )
 
-export const storeGitWorktreeListFailureAttrs = OtelAttrs.defineSync(
+const storeGitWorktreeListFailureAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     failed: Schema.Boolean.pipe(OtelAttr.key({ key: 'megarepo.store.git_worktree_list_failed' })),
   }),
 )
 
-export const storeSourceAttrs = OtelAttrs.defineSync(
+const storeSourceAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
     source: Schema.String.pipe(OtelAttr.key({ key: 'megarepo.store.source' })),
@@ -185,6 +199,9 @@ const storeSourceOperation = (name: string) =>
     label: ({ label }) => label,
   })
 
+/** Wrap a CLI command effect in its top-level `megarepo/cli/<command>` span.
+ *  `root` makes it a trace root (for standalone subcommands); `label` defaults
+ *  to the command name. */
 export const withCommandSpan = ({
   name,
   command,
@@ -208,17 +225,22 @@ export const withCommandSpan = ({
   repo?: string
   root?: boolean
 }) =>
-  trustedWith(commandOperation({ name, root }), {
-    label,
-    command,
-    ...(output === undefined ? {} : { output }),
-    ...(all === undefined ? {} : { all }),
-    ...(dryRun === undefined ? {} : { dryRun }),
-    ...(force === undefined ? {} : { force }),
-    ...(member === undefined ? {} : { member }),
-    ...(repo === undefined ? {} : { repo }),
+  trustedWith({
+    operation: commandOperation({ name, root }),
+    attributes: {
+      label,
+      command,
+      ...(output === undefined ? {} : { output }),
+      ...(all === undefined ? {} : { all }),
+      ...(dryRun === undefined ? {} : { dryRun }),
+      ...(force === undefined ? {} : { force }),
+      ...(member === undefined ? {} : { member }),
+      ...(repo === undefined ? {} : { repo }),
+    },
   })
 
+/** Wrap a sync run in a `megarepo/sync` span labelled by the megarepo root's
+ *  basename, carrying the resolution mode/depth and the dry-run/all/force flags. */
 export const withSyncSpan = ({
   megarepoRoot,
   mode,
@@ -234,16 +256,21 @@ export const withSyncSpan = ({
   all: boolean
   force: boolean
 }) =>
-  trustedWith(syncSpan, {
-    label: shortPath(megarepoRoot),
-    root: megarepoRoot,
-    mode,
-    depth,
-    dryRun,
-    all,
-    force,
+  trustedWith({
+    operation: syncSpan,
+    attributes: {
+      label: shortPath(megarepoRoot),
+      root: megarepoRoot,
+      mode,
+      depth,
+      dryRun,
+      all,
+      force,
+    },
   })
 
+/** Annotate the enclosing span with command attributes after the fact — used
+ *  when the `command`/`output` are only known mid-effect rather than at span open. */
 export const annotateCommand = ({
   label,
   command,
@@ -263,17 +290,22 @@ export const annotateCommand = ({
   member?: string
   repo?: string
 }) =>
-  trustedAnnotate(commandAnnotationOperation, {
-    label,
-    command,
-    ...(output === undefined ? {} : { output }),
-    ...(all === undefined ? {} : { all }),
-    ...(dryRun === undefined ? {} : { dryRun }),
-    ...(force === undefined ? {} : { force }),
-    ...(member === undefined ? {} : { member }),
-    ...(repo === undefined ? {} : { repo }),
+  trustedAnnotate({
+    operation: commandAnnotationOperation,
+    attributes: {
+      label,
+      command,
+      ...(output === undefined ? {} : { output }),
+      ...(all === undefined ? {} : { all }),
+      ...(dryRun === undefined ? {} : { dryRun }),
+      ...(force === undefined ? {} : { force }),
+      ...(member === undefined ? {} : { member }),
+      ...(repo === undefined ? {} : { repo }),
+    },
   })
 
+/** Annotate the enclosing `megarepo/store/gc` span with the run's tallies
+ *  (totals, removed/skipped counts) once the sweep has completed. */
 export const annotateStoreGcResult = (
   value: Schema.Schema.Type<typeof storeGcResultAttrs.schema>,
 ) =>
@@ -281,6 +313,8 @@ export const annotateStoreGcResult = (
     OtelSpan.annotate({ attributes: storeGcResultAttrs, value }),
   )
 
+/** Mark the enclosing span when `git worktree list` failed, so gc runs that fell
+ *  back to a degraded worktree view are queryable in the trace. */
 export const annotateStoreGitWorktreeListFailure = (failed: boolean) =>
   trustOtelContract<void, never, never>(
     OtelSpan.annotate({
@@ -289,6 +323,8 @@ export const annotateStoreGitWorktreeListFailure = (failed: boolean) =>
     }),
   )
 
+/** Wrap a store-worktree operation in a `<name>` span; the label combines the
+ *  repo basename with the short ref (`repo abbrev-ref`). */
 export const withStoreWorktreeSpan = ({
   name,
   repo,
@@ -306,16 +342,21 @@ export const withStoreWorktreeSpan = ({
   bareRepoPath?: string
   broken?: boolean
 }) =>
-  trustedWith(storeWorktreeOperation(name), {
-    label: `${shortPath(repo)} ${shortRef({ refType, ref })}`,
-    repo,
-    refType,
-    ref,
-    ...(worktreePath === undefined ? {} : { worktreePath }),
-    ...(bareRepoPath === undefined ? {} : { bareRepoPath }),
-    ...(broken === undefined ? {} : { broken }),
+  trustedWith({
+    operation: storeWorktreeOperation(name),
+    attributes: {
+      label: `${shortPath(repo)} ${shortRef({ refType, ref })}`,
+      repo,
+      refType,
+      ref,
+      ...(worktreePath === undefined ? {} : { worktreePath }),
+      ...(bareRepoPath === undefined ? {} : { bareRepoPath }),
+      ...(broken === undefined ? {} : { broken }),
+    },
   })
 
+/** Wrap an entire `mr store gc` invocation in its root `megarepo/store/gc` span,
+ *  recording the retention policy and the dry-run/force/all flags. */
 export const withStoreGcSpan = ({
   policy,
   dryRun,
@@ -327,14 +368,19 @@ export const withStoreGcSpan = ({
   force: boolean
   all: boolean
 }) =>
-  trustedWith(storeGcOperation, {
-    label: 'gc',
-    policy,
-    dryRun,
-    force,
-    all,
+  trustedWith({
+    operation: storeGcOperation,
+    attributes: {
+      label: 'gc',
+      policy,
+      dryRun,
+      force,
+      all,
+    },
   })
 
+/** Wrap a store-source operation in a `<name>` span labelled by the source's
+ *  basename, carrying the optional resolved ref/base/commit. */
 export const withStoreSourceSpan = ({
   name,
   source,
@@ -350,60 +396,133 @@ export const withStoreSourceSpan = ({
   commit?: string
   porcelain?: boolean
 }) =>
-  trustedWith(storeSourceOperation(name), {
-    label: shortPath(source),
-    source,
-    ...(ref === undefined ? {} : { ref }),
-    ...(base === undefined ? {} : { base }),
-    ...(commit === undefined ? {} : { commit }),
-    ...(porcelain === undefined ? {} : { porcelain }),
+  trustedWith({
+    operation: storeSourceOperation(name),
+    attributes: {
+      label: shortPath(source),
+      source,
+      ...(ref === undefined ? {} : { ref }),
+      ...(base === undefined ? {} : { base }),
+      ...(commit === undefined ? {} : { commit }),
+      ...(porcelain === undefined ? {} : { porcelain }),
+    },
   })
 
-export const storeWorktree = ({
-  repo,
-  refType,
-  ref,
-  worktreePath,
-  bareRepoPath,
-  broken,
+// =============================================================================
+// Store GC phase spans + RSS gauge (decision 0007: bounded memory + throughput)
+// =============================================================================
+
+/** One of the gc/status pipeline phases, used as the `megarepo/store/gc/<phase>`
+ *  span name suffix. */
+export type StoreGcPhase =
+  | 'collect-liveness'
+  | 'list-repos'
+  | 'collect-worktrees'
+  | 'resolve-pr'
+  | 'cold-reclaim'
+  | 'legacy-sweep'
+
+const storeGcPhaseAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+    phase: Schema.String.pipe(OtelAttr.key({ key: 'megarepo.store.gc.phase' })),
+    repoCount: Schema.optional(
+      Schema.Number.pipe(OtelAttr.key({ key: 'megarepo.store.gc.repo_count' })),
+    ),
+    worktreeCount: Schema.optional(
+      Schema.Number.pipe(OtelAttr.key({ key: 'megarepo.store.gc.worktree_count' })),
+    ),
+    repoConcurrency: Schema.optional(
+      Schema.Number.pipe(OtelAttr.key({ key: 'megarepo.store.gc.repo_concurrency' })),
+    ),
+  }),
+)
+
+/** Wrap a gc phase in a `megarepo/store/gc/<phase>` span with bounded counts. */
+export const withStoreGcPhaseSpan = ({
+  phase,
+  repoCount,
+  worktreeCount,
+  repoConcurrency,
 }: {
-  repo: string
-  refType: string
-  ref: string
-  worktreePath?: string
-  bareRepoPath?: string
-  broken?: boolean
+  phase: StoreGcPhase
+  repoCount?: number
+  worktreeCount?: number
+  repoConcurrency?: number
 }) =>
-  storeWorktreeAttrs.encodeSync({
-    label: `${shortPath(repo)} ${shortRef({ refType, ref })}`,
-    repo,
-    refType,
-    ref,
-    ...(worktreePath === undefined ? {} : { worktreePath }),
-    ...(bareRepoPath === undefined ? {} : { bareRepoPath }),
-    ...(broken === undefined ? {} : { broken }),
+  trustedWith({
+    operation: OtelOperation.define({
+      name: `megarepo/store/gc/${phase}`,
+      attributes: storeGcPhaseAttrs,
+      label: ({ label }) => label,
+    }),
+    attributes: {
+      label: phase,
+      phase,
+      ...(repoCount === undefined ? {} : { repoCount }),
+      ...(worktreeCount === undefined ? {} : { worktreeCount }),
+      ...(repoConcurrency === undefined ? {} : { repoConcurrency }),
+    },
   })
 
-export const storeSource = ({
-  source,
-  ref,
-  base,
-  commit,
-  porcelain,
+/**
+ * Resident-set gauge sampled periodically across a gc run
+ * (`megarepo_store_gc_rss_bytes`). A gauge (not a counter): RSS goes up and down.
+ * `repo_concurrency` is a label so a parameter sweep produces one comparable
+ * series per operating point (decision 0007 — the sweep plots RSS-vs-concurrency).
+ *
+ * Defined through the schema-first contract (`OtelMetric.gauge`) — the sanctioned
+ * path that brands the name + enforces the label cardinality policy — and bridged
+ * to a typed Effect `Metric` via `OtelMetric.effect.gauge`. `trustedSet` encodes
+ * the `repo_concurrency` label through the schema (no raw `MetricLabel`).
+ */
+const storeGcRssGauge = OtelMetric.gauge({
+  name: 'megarepo_store_gc_rss_bytes',
+  description: 'Resident set size (bytes) sampled during mr store gc/status',
+  unit: 'By',
+  labels: Schema.Struct({
+    repoConcurrency: OtelAttr.number({
+      key: 'repo_concurrency',
+      metadata: { cardinality: 'bounded' },
+    }),
+  }),
+})
+
+const storeGcRssGaugeBridge = OtelMetric.effect.gauge(storeGcRssGauge)
+
+/**
+ * Fork a fiber that samples `process.memoryUsage().rss` into
+ * {@link storeGcRssGauge} every `interval` for the lifetime of the enclosing
+ * scope, tagged with `repo_concurrency` so sweep runs are comparable.
+ *
+ * The clock/gate/fork mechanics are owned by the foundation `sampleResource`
+ * primitive: it ticks on a real wall clock and no-ops when telemetry is off. The
+ * `Effect.serviceOption(OtelConfig)` read here only DISCHARGES the primitive's
+ * `OtelConfig` requirement (defaulting to a telemetry-off config when absent) so
+ * the gc command stays runnable without the layer — the gating decision itself
+ * lives inside the primitive, not here.
+ */
+export const sampleStoreGcRss = ({
+  repoConcurrency,
+  interval = Duration.millis(250),
 }: {
-  source: string
-  ref?: string
-  base?: string
-  commit?: string
-  porcelain?: boolean
+  repoConcurrency: number
+  interval?: Duration.Duration
 }) =>
-  storeSourceAttrs.encodeSync({
-    label: shortPath(source),
-    source,
-    ...(ref === undefined ? {} : { ref }),
-    ...(base === undefined ? {} : { base }),
-    ...(commit === undefined ? {} : { commit }),
-    ...(porcelain === undefined ? {} : { porcelain }),
-  })
-
-export const pathLabel = (value: string): string => shortPath(path.normalize(value))
+  Effect.serviceOption(OtelConfig).pipe(
+    Effect.flatMap((config) =>
+      sampleResource({
+        sample: Effect.sync(() => process.memoryUsage().rss).pipe(
+          Effect.flatMap((rss) =>
+            storeGcRssGaugeBridge.trustedSet({ labels: { repoConcurrency }, value: rss }),
+          ),
+        ),
+        interval,
+      }).pipe(
+        Effect.provideService(
+          OtelConfig,
+          Option.getOrElse(config, () => ({ endpoint: Option.none<string>() })),
+        ),
+      ),
+    ),
+  )

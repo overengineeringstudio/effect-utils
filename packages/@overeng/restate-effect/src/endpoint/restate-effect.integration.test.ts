@@ -25,24 +25,30 @@ class EmptyName extends Schema.TaggedError<EmptyName>('test/EmptyName')('EmptyNa
 const GreetInput = Schema.Struct({ name: Schema.String })
 const GreetSuccess = Schema.Struct({ message: Schema.String, id: Schema.String })
 
-const Greeter = RestateService.contract('greeter', {
-  greet: { input: GreetInput, success: GreetSuccess, error: EmptyName },
+const Greeter = RestateService.contract({
+  name: 'greeter',
+  handlers: {
+    greet: { input: GreetInput, success: GreetSuccess, error: EmptyName },
+  },
 })
 
-const GreeterLive = RestateService.implement<typeof Greeter, Greeting>(Greeter, {
-  greet: ({ name }) =>
-    Effect.gen(function* () {
-      if (name === '') return yield* new EmptyName()
-      const prefix = (yield* Greeting).prefix
-      /* A failed durable step is infrastructure-transient → `orDie` so the
-       * wrapper `RestateError` leaves the domain `E` channel (only `EmptyName`)
-       * and the SDK retries it. */
-      const id = yield* Restate.run(
-        'gen-id',
-        Effect.sync(() => crypto.randomUUID()),
-      ).pipe(Effect.orDie)
-      return { message: `${prefix} ${name}`, id }
-    }),
+const GreeterLive = RestateService.implement<typeof Greeter, Greeting>({
+  contractValue: Greeter,
+  impl: {
+    greet: ({ name }) =>
+      Effect.gen(function* () {
+        if (name === '') return yield* new EmptyName()
+        const prefix = (yield* Greeting).prefix
+        /* A failed durable step is infrastructure-transient → `orDie` so the
+         * wrapper `RestateError` leaves the domain `E` channel (only `EmptyName`)
+         * and the SDK retries it. */
+        const id = yield* Restate.run({
+          name: 'gen-id',
+          effect: Effect.sync(() => crypto.randomUUID()),
+        }).pipe(Effect.orDie)
+        return { message: `${prefix} ${name}`, id }
+      }),
+  },
 })
 
 /* ── harness ── */
@@ -61,7 +67,9 @@ describe('restate-effect end-to-end (contract/implement)', () => {
 
   it.skipIf(!serverAvailable)('greet returns the prefixed message + a uuid', async () => {
     const result = await Effect.runPromise(
-      callTyped(Greeter, 'greet', { name: 'Sarah' }).pipe(Effect.provide(ingressLayer())),
+      callTyped({ contract: Greeter, method: 'greet', input: { name: 'Sarah' } }).pipe(
+        Effect.provide(ingressLayer()),
+      ),
     )
     expect(result.message).toBe('Hello Sarah')
     expect(result.id).toMatch(/^[0-9a-f-]{36}$/)
@@ -71,7 +79,7 @@ describe('restate-effect end-to-end (contract/implement)', () => {
     'greet with empty name recovers the typed EmptyName via the decode helper',
     async () => {
       const recovered = await Effect.runPromise(
-        callTyped(Greeter, 'greet', { name: '' }).pipe(
+        callTyped({ contract: Greeter, method: 'greet', input: { name: '' } }).pipe(
           Effect.map(() => 'unexpected-success' as const),
           Effect.catchTag('EmptyName', () => Effect.succeed('recovered-EmptyName' as const)),
           Effect.provide(ingressLayer()),

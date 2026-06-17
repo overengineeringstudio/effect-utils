@@ -51,29 +51,40 @@ export interface ContractSerdes {
  * cipher is threaded in ONE place rather than at each `ingressSerde` call site.
  */
 export const contractSerdeFactory = (redaction: RedactionCipher | undefined) => {
-  const serdeOpts = redaction !== undefined ? { redaction } : undefined
   /** A single redaction-threaded serde for a value schema, at the given slot. */
-  const forSchema = (
-    schema: Schema.Schema<unknown, unknown>,
-    slot: SerdeSlot,
-  ): RestateSerde<unknown> => effectSerde(schema, slot, serdeOpts)
+  const forSchema = ({
+    schema,
+    slot,
+  }: {
+    schema: Schema.Schema<unknown, unknown>
+    slot: SerdeSlot
+  }): RestateSerde<unknown> =>
+    effectSerde({ schema, slot, ...(redaction !== undefined ? { redaction } : {}) })
   return {
     redaction,
     forSchema,
     /** The redaction-threaded input/output serde pair for a handler spec. */
-    forHandler: (
+    forHandler: ({
+      spec,
+      slot,
+    }: {
       spec: {
         readonly input: Schema.Schema<unknown, unknown>
         readonly success: Schema.Schema<unknown, unknown>
-      },
-      slot: SerdeSlot,
-    ): ContractSerdes => ({
-      input: forSchema(spec.input, slot),
-      output: forSchema(spec.success, slot),
+      }
+      slot: SerdeSlot
+    }): ContractSerdes => ({
+      input: forSchema({ schema: spec.input, slot }),
+      output: forSchema({ schema: spec.success, slot }),
     }),
   } as const
 }
 
+/**
+ * The redaction-threaded serde factory bound to one ingress connection: builds
+ * the `Restate.sensitive`-aware input/output serde pair for a handler, so every
+ * client call carries field redaction by construction.
+ */
 export type ContractSerdeFactory = ReturnType<typeof contractSerdeFactory>
 
 /**
@@ -83,10 +94,14 @@ export type ContractSerdeFactory = ReturnType<typeof contractSerdeFactory>
  * Derived in ONE place so Service `call`, Object `call`/`send`, Workflow submit,
  * and the in-handler peer call all extract the key identically.
  */
-export const invocationIdempotencyKey = (
-  inputSchema: Schema.Schema<unknown, unknown>,
-  input: unknown,
-): string | undefined => readIdempotencyKey(inputSchema.ast, input).pipe(Option.getOrUndefined)
+export const invocationIdempotencyKey = ({
+  inputSchema,
+  input,
+}: {
+  inputSchema: Schema.Schema<unknown, unknown>
+  input: unknown
+}): string | undefined =>
+  readIdempotencyKey({ ast: inputSchema.ast, input }).pipe(Option.getOrUndefined)
 
 /**
  * The complete ingress-call opts: the redaction-threaded input/output serdes AND
@@ -100,10 +115,13 @@ export const ingressCallOpts = (params: {
   readonly outputSchema: Schema.Schema<unknown, unknown>
   readonly input: unknown
 }): clients.Opts<unknown, unknown> => {
-  const idempotencyKey = invocationIdempotencyKey(params.inputSchema, params.input)
+  const idempotencyKey = invocationIdempotencyKey({
+    inputSchema: params.inputSchema,
+    input: params.input,
+  })
   return clients.Opts.from({
-    input: params.serdes.forSchema(params.inputSchema, 'ingress'),
-    output: params.serdes.forSchema(params.outputSchema, 'ingress'),
+    input: params.serdes.forSchema({ schema: params.inputSchema, slot: 'ingress' }),
+    output: params.serdes.forSchema({ schema: params.outputSchema, slot: 'ingress' }),
     ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
   })
 }
@@ -120,9 +138,12 @@ export const ingressSendOpts = (params: {
   readonly input: unknown
   readonly delayMillis?: number
 }): clients.SendOpts<unknown> => {
-  const idempotencyKey = invocationIdempotencyKey(params.inputSchema, params.input)
+  const idempotencyKey = invocationIdempotencyKey({
+    inputSchema: params.inputSchema,
+    input: params.input,
+  })
   return clients.SendOpts.from({
-    input: params.serdes.forSchema(params.inputSchema, 'ingress'),
+    input: params.serdes.forSchema({ schema: params.inputSchema, slot: 'ingress' }),
     ...(params.delayMillis !== undefined ? { delay: params.delayMillis } : {}),
     ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
   })

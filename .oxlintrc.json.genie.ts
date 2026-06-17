@@ -28,6 +28,50 @@ export default oxlintConfig({
       files: ['**/genie/src/runtime/**/*.test.ts'],
       rules: { 'overeng/no-external-imports': 'off' },
     },
+    // jsdoc-require-exports is ENFORCED as `error` (base rule, oxlint-base.ts):
+    // every published package `src` export must carry JSDoc. The exemptions here
+    // + the base test/story/config exemptions keep non-API surfaces off.
+    //
+    // config-generation tooling (the `genie/` dirs + `*.genie.ts` generator
+    // sources) and illustrative `examples/` code are not published API, so the
+    // rule is scoped off there. `**/genie/**` also matches the `@overeng/genie`
+    // PACKAGE, which IS published API — the next override re-enables it for that
+    // package's `src` so its surface stays covered (overrides apply in order).
+    {
+      files: ['**/genie/**', '**/*.genie.ts', '**/examples/**'],
+      rules: { 'overeng/jsdoc-require-exports': 'off' },
+    },
+    {
+      files: ['packages/@overeng/genie/src/**'],
+      rules: { 'overeng/jsdoc-require-exports': 'warn' },
+    },
+    // The otelite test-assertion harness is a fluent matcher DSL
+    // (`attr.predicate('label', pred)`, `expectTrace(...).expectOne(...)`) where
+    // positional arguments read idiomatically and an options object would make
+    // every OTEL-test assertion across the repo more verbose. It is already
+    // rawOtel-exempt test-assertion infra (above), so exempt it from named-args
+    // too — the convention governs product API, not the test DSL.
+    {
+      files: ['**/utils-dev/src/otelite/**'],
+      rules: { 'overeng/named-args': 'off' },
+    },
+    // `utils/src/node/otel.ts` is the `./node/otel` subpath entry and
+    // `otel-attrs.ts` a deliberate convenience barrel re-exporting the OTEL
+    // contract for node consumers — intentional entry barrels (like `mod.ts`,
+    // already exempt). The only code "fix" is de-barreling = breaking the public
+    // import surface, so the barrel rule is scoped off for these two files.
+    {
+      files: ['**/utils/src/node/otel.ts', '**/utils/src/node/otel-attrs.ts'],
+      rules: { 'oxc/no-barrel-file': 'off' },
+    },
+    // restate-effect's `./testing` harness has a benign barrel-induced cycle:
+    // `testing.ts` aggregates and re-exports `RestateTestEnv`, which imports the
+    // harness back from `testing.ts`. Test-infra aggregation, not a runtime
+    // import cycle; scope `no-cycle` off here (cf. the kdl port's waiver).
+    {
+      files: ['**/restate-effect/src/testing/**'],
+      rules: { 'import/no-cycle': 'off' },
+    },
     // effect-utils: production code must use schema-backed OTEL contracts instead
     // of raw Effect/Stream span primitives. Keep boundary/runtime/test exceptions
     // narrow and explicit so repo-wide adoption remains mechanically checkable.
@@ -85,6 +129,9 @@ export default oxlintConfig({
       rules: {
         'overeng/no-raw-nondeterminism': 'off',
         'overeng/no-non-durable-wait': 'off',
+        // The testing harness polls the restate-server lifecycle (deadlines,
+        // readiness) with intentionally sequential awaits in a loop.
+        'no-await-in-loop': 'off',
       },
     },
     // effect-utils specific: react-inspector is a fork with its own style

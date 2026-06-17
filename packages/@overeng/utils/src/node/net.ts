@@ -54,7 +54,7 @@ export const freePorts = (count: number): Promise<number[]> => {
       for (const srv of servers) srv.close(() => (--remaining === 0 ? cb() : undefined))
     }
     const fail = (cause: unknown) => {
-      if (settled) return
+      if (settled === true) return
       settled = true
       cleanup(() => reject(cause instanceof Error ? cause : new Error(String(cause))))
     }
@@ -97,22 +97,30 @@ const isAddrInUse = (cause: unknown): boolean =>
  * contains `EADDRINUSE` / `address in use`) when its bind loses the race; any
  * other rejection propagates immediately (it is not a port collision).
  */
-export const withFreePort = async <A>(
-  fn: (port: number) => Promise<A>,
-  opts?: { readonly retries?: number },
-): Promise<A> => {
+export const withFreePort = async <A>({
+  fn,
+  opts,
+}: {
+  readonly fn: (port: number) => Promise<A>
+  readonly opts?: { readonly retries?: number }
+}): Promise<A> => {
   const retries = opts?.retries ?? 5
   let lastErr: unknown
+  // Retry-on-collision: each attempt binds a fresh port and depends on the prior
+  // attempt having failed (EADDRINUSE), so the awaits are intentionally
+  // sequential — parallelizing the retries is nonsensical.
   for (let attempt = 0; attempt <= retries; attempt++) {
+    // oxlint-disable-next-line eslint/no-await-in-loop -- intentional sequential retry (see above)
     const port = await freePort()
     try {
+      // oxlint-disable-next-line eslint/no-await-in-loop -- intentional sequential retry (see above)
       return await fn(port)
     } catch (cause) {
       lastErr = cause
       const msg = cause instanceof Error ? cause.message.toLowerCase() : String(cause).toLowerCase()
       const collided =
         isAddrInUse(cause) || msg.includes('eaddrinuse') || msg.includes('address in use')
-      if (!collided) throw cause
+      if (collided === false) throw cause
       /* port collision — retry with a fresh port */
     }
   }

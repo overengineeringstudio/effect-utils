@@ -330,13 +330,16 @@ const decodeHash = Schema.decodeUnknownSync(Hash)
 const decodeBodyEvidenceFingerprint = Schema.decodeUnknownSync(BodyEvidenceFingerprint)
 const decodeContentDescriptor = Schema.decodeUnknownSync(ContentDescriptor)
 
+/** Reinterprets a content-address digest as a datasource-sync `Hash` (validates the `sha256:` shape, no rehashing). */
 export const hashFromContentDigest = (digest: ContentDigestType | string): Hash =>
   decodeHash(digest)
 
+/** Reinterprets a content-address digest as a `BodyEvidenceFingerprint`, the stable key for evidence-backed body identity. */
 export const bodyEvidenceFingerprintFromContentDigest = (
   digest: ContentDigestType | string,
 ): BodyEvidenceFingerprint => decodeBodyEvidenceFingerprint(digest)
 
+/** Content-addresses rendered markdown as a notion-enhanced-markdown descriptor (digest computed over the bytes). */
 export const bodyDescriptorForMarkdown = (markdown: string): typeof ContentDescriptor.Type =>
   descriptorForUtf8({
     value: markdown,
@@ -345,6 +348,7 @@ export const bodyDescriptorForMarkdown = (markdown: string): typeof ContentDescr
     schemaVersion: 1,
   })
 
+/** Rebuilds a body descriptor from a known digest alone; `byteLength` is 0 since the bytes are absent (digest-only identity). */
 export const bodyDescriptorForDigest = (digest: Hash): typeof ContentDescriptor.Type =>
   decodeContentDescriptor({
     _tag: 'ContentDescriptor',
@@ -355,12 +359,14 @@ export const bodyDescriptorForDigest = (digest: Hash): typeof ContentDescriptor.
     schemaVersion: 1,
   })
 
+/** Builds a `RenderedBodyIdentity` from a descriptor — identity backed only by the rendered bytes, without completeness evidence. */
 export const renderedBodyIdentity = (descriptor: typeof ContentDescriptor.Type): BodyIdentity =>
   RenderedBodyIdentity.make({
     _tag: 'RenderedBodyIdentity',
     rendered: descriptor,
   })
 
+/** Builds an `EvidenceBackedBodyIdentity` pairing rendered bytes with an evidence fingerprint and completeness, so lossy/partial renders stay distinguishable. */
 export const evidenceBackedBodyIdentity = (opts: {
   readonly rendered: typeof ContentDescriptor.Type
   readonly evidenceFingerprint: BodyEvidenceFingerprint
@@ -373,17 +379,26 @@ export const evidenceBackedBodyIdentity = (opts: {
     completeness: opts.completeness,
   })
 
+/** Canonical comparison digest for a body identity: the evidence fingerprint when present, otherwise the rendered digest. */
 export const bodyIdentityDigest = (identity: BodyIdentity): Hash =>
   identity._tag === 'EvidenceBackedBodyIdentity'
     ? hashFromContentDigest(identity.evidenceFingerprint)
     : hashFromContentDigest(identity.rendered.digest)
 
+/** Digest of just the rendered bytes, ignoring evidence — use to detect identical output across differing completeness. */
 export const renderedBodyDigest = (identity: BodyIdentity): Hash =>
   hashFromContentDigest(identity.rendered.digest)
 
-export const bodyIdentityEquals = (left: BodyIdentity, right: BodyIdentity): boolean =>
-  bodyIdentityDigest(left) === bodyIdentityDigest(right)
+/** Equality over body identities via their canonical comparison digests (evidence-aware, see `bodyIdentityDigest`). */
+export const bodyIdentityEquals = ({
+  left,
+  right,
+}: {
+  left: BodyIdentity
+  right: BodyIdentity
+}): boolean => bodyIdentityDigest(left) === bodyIdentityDigest(right)
 
+/** Canonical comparison digest for the identity carried by a `BodyPointer`. */
 export const bodyPointerIdentityDigest = (pointer: BodyPointer): Hash =>
   bodyIdentityDigest(pointer.identity)
 

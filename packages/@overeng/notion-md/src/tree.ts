@@ -1364,9 +1364,12 @@ export const syncTree = (opts: {
     })
     return { _tag: 'tree', root, rootPageId, rootFile, direction: 'local', plan, ops } as const
   }).pipe(
-    withOperation(SyncTreeSpan, {
-      basename: basename(opts.root),
-      plan: opts.plan === true,
-      fromRemote: opts.fromRemote === true,
+    withOperation({
+      operation: SyncTreeSpan,
+      attributes: {
+        basename: basename(opts.root),
+        plan: opts.plan === true,
+        fromRemote: opts.fromRemote === true,
+      },
     }),
   )

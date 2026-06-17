@@ -50,8 +50,13 @@ export const mergeQueueWorkflowOn = (opts: { readonly branches?: readonly string
 
 const githubExpressionStringLiteral = (value: string) => `'${value.replaceAll("'", "''")}'`
 
-const annotationLine = (kind: 'error' | 'notice' | 'warning', message: string) =>
-  `printf '%s\\n' ${shellSingleQuote(`::${kind}::${message}`)}`
+const annotationLine = ({
+  kind,
+  message,
+}: {
+  kind: 'error' | 'notice' | 'warning'
+  message: string
+}) => `printf '%s\\n' ${shellSingleQuote(`::${kind}::${message}`)}`
 
 const defaultMergeQueuePermissions = {
   contents: 'read',
@@ -77,7 +82,7 @@ export const requiredGateCheckName = (name: string) =>
 
 export const skipNonMaterializingPrControlEventLines = (name: string) => [
   `if [ "\${{ ${requiredCiMaterializingEvent} }}" != "true" ]; then`,
-  `  ${annotationLine('notice', `${name} does not publish required evidence for non-materializing PR events.`)}`,
+  `  ${annotationLine({ kind: 'notice', message: `${name} does not publish required evidence for non-materializing PR events.` })}`,
   '  exit 0',
   'fi',
 ]
@@ -119,11 +124,11 @@ export const mergeQueueAdmissionCheckLines = ({
   ...githubApiGetFunctionLines,
   'if [ "${{ github.event_name }}" = "pull_request" ]; then',
   '  if jq -e \'.pull_request.merged == true\' "$GITHUB_EVENT_PATH" >/dev/null; then',
-  `    ${annotationLine('notice', 'Pull request is already merged; treating post-merge label cleanup as non-blocking.')}`,
+  `    ${annotationLine({ kind: 'notice', message: 'Pull request is already merged; treating post-merge label cleanup as non-blocking.' })}`,
   '    exit 0',
   '  fi',
   '  mq_ci_admitted=false',
-  ...(trustNeedsAdmission
+  ...(trustNeedsAdmission === true
     ? [
         '  if [ -n "${NEEDS_JSON:-}" ] && printf \'%s\\n\' "$NEEDS_JSON" | jq -e \'.["mq-admission"].result == "success"\' >/dev/null; then',
         '    mq_ci_admitted=true',
@@ -140,8 +145,8 @@ export const mergeQueueAdmissionCheckLines = ({
   '    mq_ci_admitted=true',
   '  fi',
   '  if [ "$mq_ci_admitted" != true ]; then',
-  `    ${annotationLine('error', failureMessage)}`,
-  `    ${annotationLine('notice', notice)}`,
+  `    ${annotationLine({ kind: 'error', message: failureMessage })}`,
+  `    ${annotationLine({ kind: 'notice', message: notice })}`,
   '    exit 1',
   '  fi',
   'fi',

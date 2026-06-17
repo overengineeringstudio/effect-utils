@@ -43,11 +43,15 @@ const decoder = new TextDecoder()
  * the raw error as a DEFECT for Restate to retry. The default slot is
  * `internal` — use `ingressSerde` / `internalSerde` for an explicit slot.
  */
-export const effectSerde = <A, I>(
-  schema: Schema.Schema<A, I>,
-  slot: SerdeSlot = 'internal',
-  options?: { readonly redaction?: RedactionCipher },
-): RestateSerde<A> => {
+export const effectSerde = <A, I>({
+  schema,
+  slot = 'internal',
+  redaction,
+}: {
+  schema: Schema.Schema<A, I>
+  slot?: SerdeSlot
+  redaction?: RedactionCipher
+}): RestateSerde<A> => {
   /* Field-level redaction (decision 0011, docs/vrs/02-schema-serde/spec.md): for each `sensitive`/
    * `redacted` field (read ONCE on the pre-transform property signatures), wrap
    * the schema's encode/decode with an encrypt-at-encode / decrypt-at-decode
@@ -57,7 +61,7 @@ export const effectSerde = <A, I>(
   const sensitiveFields = findSensitiveFields(schema.ast)
   const { encode, decode } = withRedaction<A>({
     fields: sensitiveFields,
-    cipher: options?.redaction,
+    cipher: redaction,
     encode: Schema.encodeSync(schema),
     decode: Schema.decodeUnknownSync(schema),
   })
@@ -68,7 +72,7 @@ export const effectSerde = <A, I>(
    * `VoidKeyword`/`UndefinedKeyword` schema defaults to no content type. */
   const isVoid = schema.ast._tag === 'VoidKeyword' || schema.ast._tag === 'UndefinedKeyword'
   const contentType = Option.flatMap(overrides, (o) => Option.fromNullable(o.contentType)).pipe(
-    Option.getOrElse(() => (isVoid ? undefined : 'application/json')),
+    Option.getOrElse(() => (isVoid === true ? undefined : 'application/json')),
   )
   const jsonSchema = Option.flatMap(overrides, (o) => Option.fromNullable(o.jsonSchema)).pipe(
     Option.getOrElse(() => JSONSchema.make(schema) as object),
@@ -99,17 +103,25 @@ export const effectSerde = <A, I>(
   }
 }
 
-/** `effectSerde(schema, 'ingress')` — decode failure → `TerminalError(400)`. */
-export const ingressSerde = <A, I>(
-  schema: Schema.Schema<A, I>,
-  options?: { readonly redaction?: RedactionCipher },
-): RestateSerde<A> => effectSerde(schema, 'ingress', options)
+/** `effectSerde({ schema, slot: 'ingress' })` — decode failure → `TerminalError(400)`. */
+export const ingressSerde = <A, I>({
+  schema,
+  redaction,
+}: {
+  schema: Schema.Schema<A, I>
+  redaction?: RedactionCipher
+}): RestateSerde<A> =>
+  effectSerde({ schema, slot: 'ingress', ...(redaction !== undefined ? { redaction } : {}) })
 
-/** `effectSerde(schema, 'internal')` — decode failure → DEFECT (corrupt journal). */
-export const internalSerde = <A, I>(
-  schema: Schema.Schema<A, I>,
-  options?: { readonly redaction?: RedactionCipher },
-): RestateSerde<A> => effectSerde(schema, 'internal', options)
+/** `effectSerde({ schema, slot: 'internal' })` — decode failure → DEFECT (corrupt journal). */
+export const internalSerde = <A, I>({
+  schema,
+  redaction,
+}: {
+  schema: Schema.Schema<A, I>
+  redaction?: RedactionCipher
+}): RestateSerde<A> =>
+  effectSerde({ schema, slot: 'internal', ...(redaction !== undefined ? { redaction } : {}) })
 
 /**
  * Classify a decode failure by slot. An `ingress` failure is a deterministic

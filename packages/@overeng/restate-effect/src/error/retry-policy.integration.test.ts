@@ -28,32 +28,39 @@ import { liveSleep, RestateTestHarness, serverAvailable } from '../testing/testi
 class Throttled extends Schema.TaggedError<Throttled>('retry/Throttled')('Throttled', {
   retryAfterMillis: Schema.Number,
 }) {}
-const ThrottledRetryable = Restate.retryable(Throttled, {
+const ThrottledRetryable = Restate.retryable({
+  self: Throttled,
   retryAfter: (e: Throttled) => e.retryAfterMillis,
 })
 
-const Flaky = RestateService.contract('retry-flaky', {
-  /* A DEFECT (infra) failure — retried by the invoker's default policy, bounded by
-   * the global max-attempts (so `disableRetries` makes it fail-fast). */
-  defect: { input: Schema.Void, success: Schema.Void },
-  /* A `retryable`-annotated domain failure — Restate re-runs the handler. */
-  retryable: { input: Schema.Void, success: Schema.Void, error: ThrottledRetryable },
+const Flaky = RestateService.contract({
+  name: 'retry-flaky',
+  handlers: {
+    /* A DEFECT (infra) failure — retried by the invoker's default policy, bounded by
+     * the global max-attempts (so `disableRetries` makes it fail-fast). */
+    defect: { input: Schema.Void, success: Schema.Void },
+    /* A `retryable`-annotated domain failure — Restate re-runs the handler. */
+    retryable: { input: Schema.Void, success: Schema.Void, error: ThrottledRetryable },
+  },
 })
 
 /* Module-level attempt counters (the endpoint runs in-process); they survive the
  * per-attempt State rollback a failed attempt incurs. */
 const attempts = { defect: 0, retryable: 0 }
-const FlakyLive = RestateService.implement<typeof Flaky>(Flaky, {
-  defect: () =>
-    Effect.gen(function* () {
-      attempts.defect += 1
-      return yield* Effect.die(new Error('infra boom'))
-    }),
-  retryable: () =>
-    Effect.gen(function* () {
-      attempts.retryable += 1
-      return yield* new Throttled({ retryAfterMillis: 10 })
-    }),
+const FlakyLive = RestateService.implement<typeof Flaky>({
+  contractValue: Flaky,
+  impl: {
+    defect: () =>
+      Effect.gen(function* () {
+        attempts.defect += 1
+        return yield* Effect.die(new Error('infra boom'))
+      }),
+    retryable: () =>
+      Effect.gen(function* () {
+        attempts.retryable += 1
+        return yield* new Throttled({ retryAfterMillis: 10 })
+      }),
+  },
 })
 
 const failFastHarness = RestateTestHarness.layer({
@@ -95,7 +102,9 @@ describe.skipIf(!serverAvailable)('disableRetries + retryable surface (real serv
         attempts.defect = 0
         const harness = yield* RestateTestHarness
         /* Forked so the test never blocks on the killed invocation. */
-        yield* harness.ingress.call(Flaky, 'defect', undefined).pipe(Effect.ignore, Effect.fork)
+        yield* harness.ingress
+          .call({ contract: Flaky, method: 'defect', input: undefined })
+          .pipe(Effect.ignore, Effect.fork)
         const total = yield* settled(() => attempts.defect)
         expect(total).toBe(1)
       }),
@@ -107,7 +116,9 @@ describe.skipIf(!serverAvailable)('disableRetries + retryable surface (real serv
       Effect.gen(function* () {
         attempts.defect = 0
         const harness = yield* RestateTestHarness
-        yield* harness.ingress.call(Flaky, 'defect', undefined).pipe(Effect.ignore, Effect.fork)
+        yield* harness.ingress
+          .call({ contract: Flaky, method: 'defect', input: undefined })
+          .pipe(Effect.ignore, Effect.fork)
         expect(yield* climbsPastOne(() => attempts.defect)).toBe(true)
       }),
     )
@@ -116,7 +127,9 @@ describe.skipIf(!serverAvailable)('disableRetries + retryable surface (real serv
       Effect.gen(function* () {
         attempts.retryable = 0
         const harness = yield* RestateTestHarness
-        yield* harness.ingress.call(Flaky, 'retryable', undefined).pipe(Effect.ignore, Effect.fork)
+        yield* harness.ingress
+          .call({ contract: Flaky, method: 'retryable', input: undefined })
+          .pipe(Effect.ignore, Effect.fork)
         expect(yield* climbsPastOne(() => attempts.retryable)).toBe(true)
       }),
     )

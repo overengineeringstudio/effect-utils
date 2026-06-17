@@ -55,39 +55,45 @@ const gateFor = (key: string): Deferred.Deferred<void> => {
 
 /* ── object with a long durable sleep guarded by an acquireRelease finalizer ── */
 
-const Waiter = RestateObject.contract('canceller', {
-  state: {},
-  handlers: {
-    /* Acquire a (fake) resource, suspend on a long durable timer, release on
-     * interruption. A real Restate cancellation aborts the attempt → the bridge
-     * interrupts this fiber at the durable-sleep suspend point → release runs. */
-    wait: { input: Schema.Void, success: Schema.Void },
+const Waiter = RestateObject.contract({
+  name: 'canceller',
+  def: {
+    state: {},
+    handlers: {
+      /* Acquire a (fake) resource, suspend on a long durable timer, release on
+       * interruption. A real Restate cancellation aborts the attempt → the bridge
+       * interrupts this fiber at the durable-sleep suspend point → release runs. */
+      wait: { input: Schema.Void, success: Schema.Void },
+    },
   },
 })
 
-const WaiterLive = RestateObject.implement<typeof Waiter>(Waiter, {
-  wait: () =>
-    Effect.gen(function* () {
-      const key = yield* Restate.key
-      const l = observe(key)
-      l.attempts += 1
-      yield* Effect.acquireRelease(
-        Effect.sync(() => {
-          l.acquired += 1
-          Effect.runSync(Deferred.succeed(gateFor(key), undefined))
-        }),
-        () => Effect.sync(() => void (l.released += 1)),
-      )
-      /* A long durable timer: the invocation suspends here until cancelled. */
-      yield* Restate.sleep(60_000, 'wait-timer')
-    }).pipe(Effect.scoped, Effect.orDie),
+const WaiterLive = RestateObject.implement<typeof Waiter>({
+  contractValue: Waiter,
+  impl: {
+    wait: () =>
+      Effect.gen(function* () {
+        const key = yield* Restate.key
+        const l = observe(key)
+        l.attempts += 1
+        yield* Effect.acquireRelease(
+          Effect.sync(() => {
+            l.acquired += 1
+            Effect.runSync(Deferred.succeed(gateFor(key), undefined))
+          }),
+          () => Effect.sync(() => void (l.released += 1)),
+        )
+        /* A long durable timer: the invocation suspends here until cancelled. */
+        yield* Restate.sleep({ millis: 60_000, name: 'wait-timer' })
+      }).pipe(Effect.scoped, Effect.orDie),
+  },
 })
 
 /* ── admin cancel ── */
 
 const cancelInvocation = async (adminUrl: string, invocationId: string): Promise<void> => {
   const res = await fetch(`${adminUrl}/invocations/${invocationId}/cancel`, { method: 'PATCH' })
-  if (!res.ok && res.status !== 202 && res.status !== 200) {
+  if (res.ok === false && res.status !== 202 && res.status !== 200) {
     const text = await res.text().catch(() => '')
     throw new Error(`cancel failed (${res.status}) for ${invocationId}: ${text}`)
   }
@@ -111,7 +117,9 @@ describe('restate-effect cancellation ↔ interruption', () => {
 
       /* Fire-and-forget the long handler; capture its invocation id. */
       const send = await Effect.runPromise(
-        objectSend(Waiter, key, 'wait', undefined).pipe(Effect.provide(ingressLayer())),
+        objectSend({ contract: Waiter, key, method: 'wait', input: undefined }).pipe(
+          Effect.provide(ingressLayer()),
+        ),
       )
       expect(send.invocationId).toMatch(/.+/)
 

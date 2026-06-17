@@ -23,6 +23,12 @@ import * as Observability from './observability.ts'
 
 const compareStrings = new Intl.Collator().compare
 
+/** Content-addressed object refs reachable from one sidecar: the body base plus the object-store body (when present). */
+const objectRefs = (syncState: NmdSyncStateV1): readonly NmdObjectRef[] => [
+  syncState.body.base,
+  ...(syncState.storage._tag === 'object_store' ? [syncState.storage.object] : []),
+]
+
 /** Strict schema for overflow `.nmd` storage payloads in the object store. */
 export const NmdStorageObjectV2 = Schema.Struct({
   version: Schema.Literal(2),
@@ -43,6 +49,7 @@ export const NmdBaseSnapshotV2 = Schema.Struct({
 
 export type NmdBaseSnapshotV2 = typeof NmdBaseSnapshotV2.Type
 
+/** Result of an object-store GC pass for one sync root: reachable/removed content-addressed object ids, `dryRun` when plan-only. */
 export interface NmdObjectGcResult {
   readonly root: string
   readonly reachable: readonly string[]
@@ -304,9 +311,12 @@ export const NmdStateStoreLive = Layer.effect(
             message: `Failed to write ${opts.label} ${opts.path}`,
           }),
         ),
-        Observability.withOperation(Observability.stateFileSpan(opts.operation), {
-          operation: opts.operation,
-          basename: path.basename(opts.path),
+        Observability.withOperation({
+          operation: Observability.stateFileSpan(opts.operation),
+          attributes: {
+            operation: opts.operation,
+            basename: path.basename(opts.path),
+          },
         }),
       )
 
@@ -320,9 +330,12 @@ export const NmdStateStoreLive = Layer.effect(
             message: `Failed to read .nmd file ${opts.path}`,
           }),
         ),
-        Observability.withOperation(Observability.ReadNmdStateSpan, {
-          operation: 'read_nmd',
-          basename: path.basename(opts.path),
+        Observability.withOperation({
+          operation: Observability.ReadNmdStateSpan,
+          attributes: {
+            operation: 'read_nmd',
+            basename: path.basename(opts.path),
+          },
         }),
       )
 
@@ -341,14 +354,20 @@ export const NmdStateStoreLive = Layer.effect(
           content,
           label: '.notion-md object',
         })
-        yield* Observability.annotateAttrs(Observability.objectHashAttrs, {
-          hashPrefix: hash.slice(0, 18),
+        yield* Observability.annotateAttrs({
+          attributes: Observability.objectHashAttrs,
+          value: {
+            hashPrefix: hash.slice(0, 18),
+          },
         })
         return makeNmdObjectRef({ role: opts.role, hash, content })
       }).pipe(
-        Observability.withOperation(Observability.WriteObjectStateSpan, {
-          role: opts.role,
-          basename: path.basename(opts.path),
+        Observability.withOperation({
+          operation: Observability.WriteObjectStateSpan,
+          attributes: {
+            role: opts.role,
+            basename: path.basename(opts.path),
+          },
         }),
       )
 
@@ -379,16 +398,14 @@ export const NmdStateStoreLive = Layer.effect(
         }
         return content
       }).pipe(
-        Observability.withOperation(Observability.ReadObjectStateSpan, {
-          role: opts.object.role,
-          hashPrefix: opts.object.hash.slice(0, 18),
+        Observability.withOperation({
+          operation: Observability.ReadObjectStateSpan,
+          attributes: {
+            role: opts.object.role,
+            hashPrefix: opts.object.hash.slice(0, 18),
+          },
         }),
       )
-
-    const objectRefs = (syncState: NmdSyncStateV1): readonly NmdObjectRef[] => [
-      syncState.body.base,
-      ...(syncState.storage._tag === 'object_store' ? [syncState.storage.object] : []),
-    ]
 
     const reachableObjectPaths = (opts: {
       readonly path: string

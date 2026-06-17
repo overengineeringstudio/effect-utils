@@ -52,10 +52,12 @@ export interface RestateIngressService {
   readonly redaction?: RedactionCipher
 }
 
-/* Service to make typed ingress calls against a `restate-server` ingress URL.
+/**
+ * Service to make typed ingress calls against a `restate-server` ingress URL.
  * Build the layer with `RestateIngress.layer({ url, apiKey? })` (or the
  * env-driven `RestateIngress.layerConfig`) and `yield* RestateIngress` (or thread
- * `call` / `callTyped`, which require it in `R`). */
+ * `call` / `callTyped`, which require it in `R`).
+ */
 export class RestateIngress extends Context.Tag('@overeng/restate-effect/RestateIngress')<
   RestateIngress,
   RestateIngressService
@@ -155,11 +157,15 @@ const serdesOf = (self: RestateIngressService): ContractSerdeFactory =>
  * auto-decoded here (the raw transport `HttpCallError` surfaces); use
  * `decodeTerminalError` / `callTyped` to recover the typed tagged error.
  */
-export const call = <C extends Contract<string, HandlerSpecMap>, M extends MethodsOf<C>>(
-  contract: C,
-  method: M,
-  input: InputOf<C, M>,
-): Effect.Effect<SuccessOf<C, M>, RestateError, RestateIngress> =>
+export const call = <C extends Contract<string, HandlerSpecMap>, M extends MethodsOf<C>>({
+  contract,
+  method,
+  input,
+}: {
+  contract: C
+  method: M
+  input: InputOf<C, M>
+}): Effect.Effect<SuccessOf<C, M>, RestateError, RestateIngress> =>
   Effect.gen(function* () {
     const self = yield* RestateIngress
     const spec = contract.handlers[method]!
@@ -199,12 +205,18 @@ export const call = <C extends Contract<string, HandlerSpecMap>, M extends Metho
  * `RestateError` propagates unchanged.
  */
 export const decodeTerminalError =
-  <C extends Contract<string, HandlerSpecMap>, M extends MethodsOf<C>>(contract: C, method: M) =>
+  <C extends Contract<string, HandlerSpecMap>, M extends MethodsOf<C>>({
+    contract,
+    method,
+  }: {
+    contract: C
+    method: M
+  }) =>
   <A, R>(
     self: Effect.Effect<A, RestateError, R>,
   ): Effect.Effect<A, RestateError | ErrorOf<C, M>, R> =>
     self.pipe(
-      Effect.catchAll((restateError) => decodeError<C, M, A>(contract, method, restateError)),
+      Effect.catchAll((restateError) => decodeError<C, M, A>({ contract, method, restateError })),
     )
 
 /**
@@ -212,19 +224,31 @@ export const decodeTerminalError =
  * body (R14): `call` followed by `decodeTerminalError`. A caller `catchTag`s the
  * domain error rather than a raw transport error.
  */
-export const callTyped = <C extends Contract<string, HandlerSpecMap>, M extends MethodsOf<C>>(
-  contract: C,
-  method: M,
-  input: InputOf<C, M>,
-): Effect.Effect<SuccessOf<C, M>, RestateError | ErrorOf<C, M>, RestateIngress> =>
-  call(contract, method, input).pipe(decodeTerminalError(contract, method))
+export const callTyped = <C extends Contract<string, HandlerSpecMap>, M extends MethodsOf<C>>({
+  contract,
+  method,
+  input,
+}: {
+  contract: C
+  method: M
+  input: InputOf<C, M>
+}): Effect.Effect<SuccessOf<C, M>, RestateError | ErrorOf<C, M>, RestateIngress> =>
+  call({ contract, method, input }).pipe(decodeTerminalError({ contract, method }))
 
-const decodeError = <C extends Contract<string, HandlerSpecMap>, M extends MethodsOf<C>, A = never>(
-  contract: C,
-  method: M,
-  restateError: RestateError,
-): Effect.Effect<A, RestateError | ErrorOf<C, M>> =>
-  decodeErrorWith<ErrorOf<C, M>, A>(contract.handlers[method]!.error, restateError)
+const decodeError = <
+  C extends Contract<string, HandlerSpecMap>,
+  M extends MethodsOf<C>,
+  A = never,
+>({
+  contract,
+  method,
+  restateError,
+}: {
+  contract: C
+  method: M
+  restateError: RestateError
+}): Effect.Effect<A, RestateError | ErrorOf<C, M>> =>
+  decodeErrorWith<ErrorOf<C, M>, A>({ errorSchema: contract.handlers[method]!.error, restateError })
 
 /**
  * Re-decode a transport `RestateError`'s `TerminalError` body into the declared
@@ -233,10 +257,13 @@ const decodeError = <C extends Contract<string, HandlerSpecMap>, M extends Metho
  * `RestateError` propagates. Schema-driven so Service / Object / Workflow /
  * `result` paths all share it.
  */
-export const decodeErrorWith = <DomE, A = never>(
-  errorSchema: Schema.Schema<DomE, any> | undefined,
-  restateError: RestateError,
-): Effect.Effect<A, RestateError | DomE> => {
+export const decodeErrorWith = <DomE, A = never>({
+  errorSchema,
+  restateError,
+}: {
+  errorSchema: Schema.Schema<DomE, any> | undefined
+  restateError: RestateError
+}): Effect.Effect<A, RestateError | DomE> => {
   const responseText = httpErrorBody(restateError.cause)
   if (errorSchema === undefined || responseText === undefined) {
     return Effect.fail(restateError)
@@ -315,12 +342,17 @@ const httpErrorBody = (cause: unknown): string | undefined =>
 export const objectCall = <
   C extends ObjectContract<string, any, any>,
   M extends ObjectMethodsOf<C>,
->(
-  contract: C,
-  key: string,
-  method: M,
-  input: ObjectInputOf<C, M>,
-): Effect.Effect<ObjectSuccessOf<C, M>, RestateError, RestateIngress> =>
+>({
+  contract,
+  key,
+  method,
+  input,
+}: {
+  contract: C
+  key: string
+  method: M
+  input: ObjectInputOf<C, M>
+}): Effect.Effect<ObjectSuccessOf<C, M>, RestateError, RestateIngress> =>
   Effect.gen(function* () {
     const self = yield* RestateIngress
     const spec = contract.handlers[method] as HandlerSpec
@@ -352,18 +384,23 @@ export const objectCall = <
 export const objectCallTyped = <
   C extends ObjectContract<string, any, any>,
   M extends ObjectMethodsOf<C>,
->(
-  contract: C,
-  key: string,
-  method: M,
-  input: ObjectInputOf<C, M>,
-): Effect.Effect<ObjectSuccessOf<C, M>, RestateError | ObjectErrorOf<C, M>, RestateIngress> =>
-  objectCall(contract, key, method, input).pipe(
+>({
+  contract,
+  key,
+  method,
+  input,
+}: {
+  contract: C
+  key: string
+  method: M
+  input: ObjectInputOf<C, M>
+}): Effect.Effect<ObjectSuccessOf<C, M>, RestateError | ObjectErrorOf<C, M>, RestateIngress> =>
+  objectCall({ contract, key, method, input }).pipe(
     Effect.catchAll((restateError) =>
-      decodeErrorWith<ObjectErrorOf<C, M>, ObjectSuccessOf<C, M>>(
-        (contract.handlers[method] as HandlerSpec).error,
+      decodeErrorWith<ObjectErrorOf<C, M>, ObjectSuccessOf<C, M>>({
+        errorSchema: (contract.handlers[method] as HandlerSpec).error,
         restateError,
-      ),
+      }),
     ),
   )
 
@@ -375,13 +412,19 @@ export const objectCallTyped = <
 export const objectSend = <
   C extends ObjectContract<string, any, any>,
   M extends ObjectMethodsOf<C>,
->(
-  contract: C,
-  key: string,
-  method: M,
-  input: ObjectInputOf<C, M>,
-  opts?: { readonly delayMillis?: number },
-): Effect.Effect<clients.Send, RestateError, RestateIngress> =>
+>({
+  contract,
+  key,
+  method,
+  input,
+  opts,
+}: {
+  contract: C
+  key: string
+  method: M
+  input: ObjectInputOf<C, M>
+  opts?: { readonly delayMillis?: number }
+}): Effect.Effect<clients.Send, RestateError, RestateIngress> =>
   Effect.gen(function* () {
     const self = yield* RestateIngress
     const spec = contract.handlers[method] as HandlerSpec
@@ -417,11 +460,15 @@ export const objectSend = <
 type WorkflowIngressClient = clients.IngressWorkflowClient<Record<string, never>> &
   Record<string, (...args: ReadonlyArray<unknown>) => Promise<unknown>>
 
-const workflowClient = (
-  self: RestateIngressService,
-  contract: WorkflowContract<string, StateSchemas, any, any, any>,
-  key: string,
-): WorkflowIngressClient =>
+const workflowClient = ({
+  self,
+  contract,
+  key,
+}: {
+  self: RestateIngressService
+  contract: WorkflowContract<string, StateSchemas, any, any, any>
+  key: string
+}): WorkflowIngressClient =>
   self.ingress.workflowClient<Record<string, never>>(
     { name: contract.name },
     key,
@@ -433,18 +480,22 @@ const workflowClient = (
  * contract's `payload` serde; the idempotency key defaults to the annotated input
  * field, else the workflow `key`.
  */
-export const workflowSubmit = <C extends WorkflowContract<string, any, any, any, any>>(
-  contract: C,
-  key: string,
-  input: WorkflowRunInputOf<C>,
-): Effect.Effect<
+export const workflowSubmit = <C extends WorkflowContract<string, any, any, any, any>>({
+  contract,
+  key,
+  input,
+}: {
+  contract: C
+  key: string
+  input: WorkflowRunInputOf<C>
+}): Effect.Effect<
   clients.WorkflowSubmission<WorkflowRunSuccessOf<C>>,
   RestateError,
   RestateIngress
 > =>
   Effect.gen(function* () {
     const self = yield* RestateIngress
-    const client = workflowClient(self, contract, key)
+    const client = workflowClient({ self, contract, key })
     return yield* Effect.tryPromise({
       try: () =>
         client.workflowSubmit(
@@ -469,18 +520,21 @@ export const workflowSubmit = <C extends WorkflowContract<string, any, any, any,
  * returning the typed `run` success or — on a terminal failure — the DECODED
  * tagged error (same decode helper as R14).
  */
-export const workflowAttach = <C extends WorkflowContract<string, any, any, any, any>>(
-  contract: C,
-  key: string,
-): Effect.Effect<WorkflowRunSuccessOf<C>, RestateError | WorkflowRunErrorOf<C>, RestateIngress> =>
+export const workflowAttach = <C extends WorkflowContract<string, any, any, any, any>>({
+  contract,
+  key,
+}: {
+  contract: C
+  key: string
+}): Effect.Effect<WorkflowRunSuccessOf<C>, RestateError | WorkflowRunErrorOf<C>, RestateIngress> =>
   Effect.gen(function* () {
     const self = yield* RestateIngress
-    const client = workflowClient(self, contract, key)
+    const client = workflowClient({ self, contract, key })
     return yield* Effect.tryPromise({
       try: () =>
         client.workflowAttach(
           clients.Opts.from({
-            output: serdesOf(self).forSchema(contract.run.success, 'ingress'),
+            output: serdesOf(self).forSchema({ schema: contract.run.success, slot: 'ingress' }),
           }),
         ) as Promise<WorkflowRunSuccessOf<C>>,
       catch: (cause) =>
@@ -492,10 +546,10 @@ export const workflowAttach = <C extends WorkflowContract<string, any, any, any,
     })
   }).pipe(
     Effect.catchAll((restateError) =>
-      decodeErrorWith<WorkflowRunErrorOf<C>, WorkflowRunSuccessOf<C>>(
-        (contract.run as HandlerSpec).error,
+      decodeErrorWith<WorkflowRunErrorOf<C>, WorkflowRunSuccessOf<C>>({
+        errorSchema: (contract.run as HandlerSpec).error,
         restateError,
-      ),
+      }),
     ),
   )
 
@@ -505,18 +559,21 @@ export const workflowAttach = <C extends WorkflowContract<string, any, any, any,
  * error — a failed workflow surfaces the transport error on access; use
  * `workflowAttach` for the typed terminal decode.
  */
-export const workflowOutput = <C extends WorkflowContract<string, any, any, any, any>>(
-  contract: C,
-  key: string,
-): Effect.Effect<clients.Output<WorkflowRunSuccessOf<C>>, RestateError, RestateIngress> =>
+export const workflowOutput = <C extends WorkflowContract<string, any, any, any, any>>({
+  contract,
+  key,
+}: {
+  contract: C
+  key: string
+}): Effect.Effect<clients.Output<WorkflowRunSuccessOf<C>>, RestateError, RestateIngress> =>
   Effect.gen(function* () {
     const self = yield* RestateIngress
-    const client = workflowClient(self, contract, key)
+    const client = workflowClient({ self, contract, key })
     return yield* Effect.tryPromise({
       try: () =>
         client.workflowOutput(
           clients.Opts.from({
-            output: serdesOf(self).forSchema(contract.run.success, 'ingress'),
+            output: serdesOf(self).forSchema({ schema: contract.run.success, slot: 'ingress' }),
           }),
         ) as Promise<clients.Output<WorkflowRunSuccessOf<C>>>,
       catch: (cause) =>
@@ -536,12 +593,17 @@ export const workflowOutput = <C extends WorkflowContract<string, any, any, any,
 export const workflowCall = <
   C extends WorkflowContract<string, any, any, any, any>,
   M extends WorkflowSignalQueryOf<C>,
->(
-  contract: C,
-  key: string,
-  method: M,
-  input: WorkflowSignalInputOf<C, M>,
-): Effect.Effect<WorkflowSignalSuccessOf<C, M>, RestateError, RestateIngress> =>
+>({
+  contract,
+  key,
+  method,
+  input,
+}: {
+  contract: C
+  key: string
+  method: M
+  input: WorkflowSignalInputOf<C, M>
+}): Effect.Effect<WorkflowSignalSuccessOf<C, M>, RestateError, RestateIngress> =>
   Effect.gen(function* () {
     const self = yield* RestateIngress
     const spec = (contract.signals[method] ?? contract.queries[method]) as HandlerSpec
@@ -574,11 +636,15 @@ export const workflowCall = <
  * ════════════════════════════════════════════════════════════════════════ */
 
 /** Resolve an awakeable from ingress with a typed payload (encoded via `schema`). */
-export const resolveAwakeable = <T, I>(
-  schema: Schema.Schema<T, I>,
-  id: AwakeableId<T>,
-  payload: T,
-): Effect.Effect<void, RestateError, RestateIngress> =>
+export const resolveAwakeable = <T, I>({
+  schema,
+  id,
+  payload,
+}: {
+  schema: Schema.Schema<T, I>
+  id: AwakeableId<T>
+  payload: T
+}): Effect.Effect<void, RestateError, RestateIngress> =>
   Effect.gen(function* () {
     const self = yield* RestateIngress
     yield* Effect.tryPromise({
@@ -586,7 +652,10 @@ export const resolveAwakeable = <T, I>(
         self.ingress.resolveAwakeable<T>(
           id,
           payload,
-          serdesOf(self).forSchema(schema as Schema.Schema<unknown, unknown>, 'ingress') as never,
+          serdesOf(self).forSchema({
+            schema: schema as Schema.Schema<unknown, unknown>,
+            slot: 'ingress',
+          }) as never,
         ),
       catch: (cause) =>
         new RestateError({ reason: 'IngressFailed', method: `resolveAwakeable(${id})`, cause }),
@@ -594,10 +663,13 @@ export const resolveAwakeable = <T, I>(
   })
 
 /** Reject an awakeable from ingress (the awaiting handler fails terminally). */
-export const rejectAwakeable = <T>(
-  id: AwakeableId<T>,
-  reason: string,
-): Effect.Effect<void, RestateError, RestateIngress> =>
+export const rejectAwakeable = <T>({
+  id,
+  reason,
+}: {
+  id: AwakeableId<T>
+  reason: string
+}): Effect.Effect<void, RestateError, RestateIngress> =>
   Effect.gen(function* () {
     const self = yield* RestateIngress
     yield* Effect.tryPromise({
@@ -613,22 +685,25 @@ export const rejectAwakeable = <T>(
  * via `outputSchema`. A `TerminalError` body is NOT auto-decoded — wrap with the
  * relevant `*Typed`/`decodeTerminalError` if you need the tagged error.
  */
-export const result = <T, I>(
+export const result = <T, I>({
+  send,
+  outputSchema,
+}: {
   /* The send/submission is an opaque handle — `T` is inferred from `outputSchema`,
    * not the (often `unknown`-typed) `Send` returned by `objectSend`/`send`. */
-  send: clients.Send<unknown> | clients.WorkflowSubmission<unknown>,
-  outputSchema: Schema.Schema<T, I>,
-): Effect.Effect<T, RestateError, RestateIngress> =>
+  send: clients.Send<unknown> | clients.WorkflowSubmission<unknown>
+  outputSchema: Schema.Schema<T, I>
+}): Effect.Effect<T, RestateError, RestateIngress> =>
   Effect.gen(function* () {
     const self = yield* RestateIngress
     return yield* Effect.tryPromise({
       try: () =>
         self.ingress.result<T>(
           send as clients.Send<T>,
-          serdesOf(self).forSchema(
-            outputSchema as Schema.Schema<unknown, unknown>,
-            'ingress',
-          ) as never,
+          serdesOf(self).forSchema({
+            schema: outputSchema as Schema.Schema<unknown, unknown>,
+            slot: 'ingress',
+          }) as never,
         ),
       catch: (cause) => new RestateError({ reason: 'IngressFailed', method: 'result', cause }),
     })
@@ -640,11 +715,15 @@ export const result = <T, I>(
  * ════════════════════════════════════════════════════════════════════════ */
 
 /** In-handler request/response call to a stateless Service handler. */
-export const callService = <C extends Contract<string, HandlerSpecMap>, M extends MethodsOf<C>>(
-  contract: C,
-  method: M,
-  input: InputOf<C, M>,
-): Effect.Effect<SuccessOf<C, M>, never, RestateContext> => {
+export const callService = <C extends Contract<string, HandlerSpecMap>, M extends MethodsOf<C>>({
+  contract,
+  method,
+  input,
+}: {
+  contract: C
+  method: M
+  input: InputOf<C, M>
+}): Effect.Effect<SuccessOf<C, M>, never, RestateContext> => {
   const spec = contract.handlers[method]!
   return inHandlerClients.callRpc<InputOf<C, M>, unknown, SuccessOf<C, M>, unknown>({
     service: contract.name,
@@ -656,12 +735,17 @@ export const callService = <C extends Contract<string, HandlerSpecMap>, M extend
 }
 
 /** In-handler one-way (optionally delayed) send to a stateless Service handler. */
-export const sendService = <C extends Contract<string, HandlerSpecMap>, M extends MethodsOf<C>>(
-  contract: C,
-  method: M,
-  input: InputOf<C, M>,
-  opts?: SendOptions,
-): Effect.Effect<void, RestateError, RestateContext> =>
+export const sendService = <C extends Contract<string, HandlerSpecMap>, M extends MethodsOf<C>>({
+  contract,
+  method,
+  input,
+  opts,
+}: {
+  contract: C
+  method: M
+  input: InputOf<C, M>
+  opts?: SendOptions
+}): Effect.Effect<void, RestateError, RestateContext> =>
   inHandlerClients.sendRpc<InputOf<C, M>, unknown>({
     service: contract.name,
     handler: method,
@@ -678,11 +762,15 @@ export const sendService = <C extends Contract<string, HandlerSpecMap>, M extend
 export const callServiceDescriptor = <
   C extends Contract<string, HandlerSpecMap>,
   M extends MethodsOf<C>,
->(
-  contract: C,
-  method: M,
-  input: InputOf<C, M>,
-): Descriptor<SuccessOf<C, M>> => {
+>({
+  contract,
+  method,
+  input,
+}: {
+  contract: C
+  method: M
+  input: InputOf<C, M>
+}): Descriptor<SuccessOf<C, M>> => {
   const spec = contract.handlers[method]!
   return inHandlerClients.callDescriptor<InputOf<C, M>, unknown, SuccessOf<C, M>, unknown>({
     service: contract.name,
@@ -697,12 +785,17 @@ export const callServiceDescriptor = <
 export const callObject = <
   C extends ObjectContract<string, any, any>,
   M extends ObjectMethodsOf<C>,
->(
-  contract: C,
-  key: string,
-  method: M,
-  input: ObjectInputOf<C, M>,
-): Effect.Effect<ObjectSuccessOf<C, M>, never, RestateContext> => {
+>({
+  contract,
+  key,
+  method,
+  input,
+}: {
+  contract: C
+  key: string
+  method: M
+  input: ObjectInputOf<C, M>
+}): Effect.Effect<ObjectSuccessOf<C, M>, never, RestateContext> => {
   const spec = contract.handlers[method] as HandlerSpec
   return inHandlerClients.callRpc<ObjectInputOf<C, M>, unknown, ObjectSuccessOf<C, M>, unknown>({
     service: contract.name,
@@ -718,12 +811,17 @@ export const callObject = <
 export const callObjectDescriptor = <
   C extends ObjectContract<string, any, any>,
   M extends ObjectMethodsOf<C>,
->(
-  contract: C,
-  key: string,
-  method: M,
-  input: ObjectInputOf<C, M>,
-): Descriptor<ObjectSuccessOf<C, M>> => {
+>({
+  contract,
+  key,
+  method,
+  input,
+}: {
+  contract: C
+  key: string
+  method: M
+  input: ObjectInputOf<C, M>
+}): Descriptor<ObjectSuccessOf<C, M>> => {
   const spec = contract.handlers[method] as HandlerSpec
   return inHandlerClients.callDescriptor<
     ObjectInputOf<C, M>,
@@ -744,13 +842,19 @@ export const callObjectDescriptor = <
 export const sendObject = <
   C extends ObjectContract<string, any, any>,
   M extends ObjectMethodsOf<C>,
->(
-  contract: C,
-  key: string,
-  method: M,
-  input: ObjectInputOf<C, M>,
-  opts?: SendOptions,
-): Effect.Effect<void, RestateError, RestateContext> =>
+>({
+  contract,
+  key,
+  method,
+  input,
+  opts,
+}: {
+  contract: C
+  key: string
+  method: M
+  input: ObjectInputOf<C, M>
+  opts?: SendOptions
+}): Effect.Effect<void, RestateError, RestateContext> =>
   inHandlerClients.sendRpc<ObjectInputOf<C, M>, unknown>({
     service: contract.name,
     handler: method,
@@ -761,12 +865,17 @@ export const sendObject = <
   })
 
 /** In-handler submit (one-way send to `run`) of a Workflow for a workflow ID. */
-export const sendWorkflowRun = <C extends WorkflowContract<string, any, any, any, any>>(
-  contract: C,
-  key: string,
-  input: WorkflowRunInputOf<C>,
-  opts?: SendOptions,
-): Effect.Effect<void, RestateError, RestateContext> =>
+export const sendWorkflowRun = <C extends WorkflowContract<string, any, any, any, any>>({
+  contract,
+  key,
+  input,
+  opts,
+}: {
+  contract: C
+  key: string
+  input: WorkflowRunInputOf<C>
+  opts?: SendOptions
+}): Effect.Effect<void, RestateError, RestateContext> =>
   inHandlerClients.sendRpc<WorkflowRunInputOf<C>, unknown>({
     service: contract.name,
     handler: 'run',
@@ -780,12 +889,17 @@ export const sendWorkflowRun = <C extends WorkflowContract<string, any, any, any
 export const callWorkflowSignal = <
   C extends WorkflowContract<string, any, any, any, any>,
   M extends WorkflowSignalQueryOf<C>,
->(
-  contract: C,
-  key: string,
-  method: M,
-  input: WorkflowSignalInputOf<C, M>,
-): Effect.Effect<WorkflowSignalSuccessOf<C, M>, never, RestateContext> => {
+>({
+  contract,
+  key,
+  method,
+  input,
+}: {
+  contract: C
+  key: string
+  method: M
+  input: WorkflowSignalInputOf<C, M>
+}): Effect.Effect<WorkflowSignalSuccessOf<C, M>, never, RestateContext> => {
   const spec = (contract.signals[method] ?? contract.queries[method]) as HandlerSpec
   return inHandlerClients.callRpc<
     WorkflowSignalInputOf<C, M>,

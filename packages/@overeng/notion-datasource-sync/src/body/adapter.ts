@@ -318,10 +318,10 @@ export const makeFakePageBodySyncPort = ({
           }
 
           if (
-            bodyIdentityEquals(
-              input.baseBodyPointer.identity,
-              page.remoteIdentity ?? page.pointer.identity,
-            ) === false
+            bodyIdentityEquals({
+              left: input.baseBodyPointer.identity,
+              right: page.remoteIdentity ?? page.pointer.identity,
+            }) === false
           ) {
             return conflictFromBlocked({
               page,
@@ -359,10 +359,10 @@ export const makeFakePageBodySyncPort = ({
           }
 
           if (
-            bodyIdentityEquals(
-              command.baseBodyPointer.identity,
-              page.remoteIdentity ?? page.pointer.identity,
-            ) === false
+            bodyIdentityEquals({
+              left: command.baseBodyPointer.identity,
+              right: page.remoteIdentity ?? page.pointer.identity,
+            }) === false
           ) {
             return Effect.fail(
               new BodySyncError({

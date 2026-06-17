@@ -6,7 +6,7 @@
 
 import * as Cli from '@effect/cli'
 import { FileSystem, type Error as PlatformError } from '@effect/platform'
-import { Effect, Option, Schedule, Stream } from 'effect'
+import { Clock, Effect, Option, Schedule, Stream } from 'effect'
 import React from 'react'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
@@ -20,10 +20,40 @@ import {
 } from '../../../lib/config.ts'
 import * as Git from '../../../lib/git.ts'
 import { LOCK_FILE_NAME, readLockFile } from '../../../lib/lock.ts'
+import * as LibObservability from '../../../lib/observability.ts'
 import { classifyRef } from '../../../lib/ref.ts'
+import {
+  archiveRefMismatchWorktree,
+  archiveWorktree,
+  reapArchive,
+  scanArchives,
+} from '../../../lib/store-archive.ts'
+import { loadStoreGcConfig, type StoreGcConfig } from '../../../lib/store-gc-config.ts'
+import {
+  coldSinceMs as coldSinceMsFor,
+  nextObservationLedger,
+  readObservationLedger,
+  recordObservations,
+} from '../../../lib/store-gc-observations.ts'
 import { validateStoreMembers, fixStoreIssues } from '../../../lib/store-hygiene.ts'
-import { collectStoreLiveSet, type StoreLiveSet } from '../../../lib/store-liveness.ts'
+import {
+  collectStoreLiveSet,
+  isPathProtected,
+  type StoreLiveSet,
+} from '../../../lib/store-liveness.ts'
 import { StoreLock } from '../../../lib/store-lock.ts'
+import { assessLossless } from '../../../lib/store-lossless.ts'
+import {
+  makePrStateResolverLayer,
+  PrStateResolver,
+  type PrStateInfo,
+  type PrStateResolverService,
+} from '../../../lib/store-pr-state.ts'
+import {
+  classifyColdWorktree,
+  isNamedRefWorktree,
+  type ColdWorktreeDecision,
+} from '../../../lib/store-worktree-policy.ts'
 import { classifyStoreWorktreePolicy } from '../../../lib/store-worktree-policy.ts'
 import { Store, StoreLayer } from '../../../lib/store.ts'
 import { getCloneUrl } from '../../../lib/sync/mod.ts'
@@ -67,7 +97,24 @@ type GcWorktreeDecision =
       }
     }
 
-const GC_REPO_CONCURRENCY = 1
+/**
+ * Per-repo gc concurrency. Default 4 — the throughput sweet spot proven by the
+ * OTEL sweep (decision 0007): 1→4 is a 2.2× speedup and captures ~76% of the
+ * achievable gain, while 4→8 falls to the run-to-run noise floor and memory
+ * stays flat (whole process tree sub-GB even at 32×). Streaming the subprocess
+ * output (constant per-operation memory) is what makes raising this safe; it is
+ * env-overridable with `MEGAREPO_GC_REPO_CONCURRENCY`. Back-pressure stays
+ * structural (bounded `Stream.mapEffect` concurrency); cross-megarepo safety is
+ * unaffected because reconcile-all + per-worktree locks gate every destructive
+ * step regardless.
+ */
+const GC_REPO_CONCURRENCY_DEFAULT = 4
+const gcRepoConcurrency = (): number => {
+  const raw = process.env['MEGAREPO_GC_REPO_CONCURRENCY']
+  if (raw === undefined) return GC_REPO_CONCURRENCY_DEFAULT
+  const parsed = Number.parseInt(raw, 10)
+  return Number.isInteger(parsed) === true && parsed > 0 ? parsed : GC_REPO_CONCURRENCY_DEFAULT
+}
 const GC_WORKTREE_CONCURRENCY = 1
 const GC_PROGRESS_BATCH_SIZE = 10
 const STORE_REF_TYPES = ['heads', 'tags', 'commits'] as const
@@ -125,7 +172,12 @@ const toStoreGcAction = ({
 }): StoreAction => ({
   _tag: 'SetGc',
   basePath,
-  results: [...results],
+  // Pass the accumulator by reference, not a fresh `[...results]` copy on every
+  // progressive dispatch: the reducer/view treat `results` as read-only and the
+  // array is only ever appended to. The final `-o json` document still carries
+  // the full array (the JSON schema is unchanged); this just removes a per-batch
+  // O(n) copy so progressive dispatch cost stays linear in total work.
+  results,
   dryRun,
   warning,
   showForceHint: !force,
@@ -166,16 +218,37 @@ const classifyGcProtection = ({
     })
   })
 
+/**
+ * True if any ref in `knownRefs` is nested under `prefix` — i.e. `prefix` is an
+ * intermediate namespace directory (e.g. `schickling` for branch `schickling/foo`)
+ * that must be descended into, not treated as a worktree root.
+ */
+const isNamespacePrefix = ({
+  knownRefs,
+  prefix,
+}: {
+  knownRefs: ReadonlySet<string>
+  prefix: string
+}): boolean => {
+  const needle = `${prefix}/`
+  for (const ref of knownRefs) {
+    if (ref.startsWith(needle) === true) return true
+  }
+  return false
+}
+
 const collectStoreWorktrees = ({
   fs,
   refTypePath,
   currentPath,
   refType,
+  knownRefs,
 }: {
   fs: FileSystem.FileSystem
   refTypePath: AbsoluteDirPath
   currentPath: AbsoluteDirPath
   refType: 'heads' | 'tags' | 'commits'
+  knownRefs: ReadonlySet<string>
 }): Effect.Effect<Array<CollectedWorktree>, PlatformError.PlatformError> =>
   Effect.gen(function* () {
     const gitPath = EffectPath.ops.join(currentPath, EffectPath.unsafe.relativeFile('.git'))
@@ -189,6 +262,34 @@ const collectStoreWorktrees = ({
           broken: false,
         },
       ]
+    }
+
+    // Source-of-truth descend guard. WITHOUT this, a broken worktree root (one
+    // whose `.git` is missing after an interrupted `git worktree add` / prune)
+    // makes the walk recurse into its ENTIRE checked-out working tree — every
+    // `node_modules`/`src` leaf becomes a bogus `broken` worktree, exhausting
+    // memory on a real store (OOM). The bare repo's ref set (`knownRefs`) tells
+    // us which directories are worktree roots:
+    //  - `rel` IS a known ref           → worktree root, `.git` missing → ONE
+    //    broken entry; do NOT descend into its working tree.
+    //  - `rel` is a strict prefix of a  → intermediate namespace dir (branch
+    //    known ref                        names contain `/`) → recurse.
+    //  - otherwise                      → orphan dir not on any ref path (deleted
+    //    branch leftover / junk)        → ONE broken entry; do NOT descend.
+    // The walk is thereby bounded to O(refs), never the checked-out file tree.
+    const rel = currentPath.slice(refTypePath.length).replace(/\/$/, '')
+    if (rel !== '') {
+      const isKnownRoot = knownRefs.has(rel)
+      if (isKnownRoot === true || isNamespacePrefix({ knownRefs, prefix: rel }) === false) {
+        return [
+          {
+            ref: rel,
+            refType,
+            path: currentPath,
+            broken: true,
+          },
+        ]
+      }
     }
 
     const entries = yield* fs.readDirectory(currentPath)
@@ -207,20 +308,9 @@ const collectStoreWorktrees = ({
           refTypePath,
           currentPath: entryPath,
           refType,
+          knownRefs,
         })),
       )
-    }
-
-    /** If no worktrees found and this isn't the refType root, it's a broken worktree */
-    if (result.length === 0 && currentPath !== refTypePath) {
-      return [
-        {
-          ref: currentPath.slice(refTypePath.length).replace(/\/$/, ''),
-          refType,
-          path: currentPath,
-          broken: true,
-        },
-      ]
     }
 
     return result
@@ -245,6 +335,15 @@ const collectRepoStoreWorktrees = ({
     const realRefsPrefix = `${realRepoPrefix}/refs/`
     const result: Array<CollectedWorktree> = []
     const seenPaths = new Set<string>()
+    // Authoritative worktree-root names per ref type (the bare's ref set ∪ the
+    // registered worktree list). Used by `collectStoreWorktrees` as the descend
+    // guard so the layout walk never recurses into a broken worktree's working
+    // tree. Seeded from the worktree list below, then unioned with `for-each-ref`.
+    const knownRefsByType: Record<'heads' | 'tags' | 'commits', Set<string>> = {
+      heads: new Set(),
+      tags: new Set(),
+      commits: new Set(),
+    }
 
     // Git's worktree registry can be stale or incomplete after interrupted
     // operations. Use it as a fast hint, then merge in the path layout because
@@ -287,6 +386,7 @@ const collectRepoStoreWorktrees = ({
 
         seenPaths.add(normalizedPath)
         seenPaths.add(`${repoPrefix}/refs/${relativePath}`)
+        knownRefsByType[refType].add(ref)
         result.push({
           ref,
           refType,
@@ -294,6 +394,17 @@ const collectRepoStoreWorktrees = ({
           broken: false,
         })
       }
+    }
+
+    // Union in the bare's ref set — the source of truth for worktree roots, and
+    // the only signal for a broken worktree absent from the registry above.
+    // Cheap (one streamed `for-each-ref` per namespace); failure degrades to the
+    // worktree-list names already collected.
+    for (const namespace of ['heads', 'tags'] as const) {
+      const refNames = yield* Git.listRefShortNames({ bareRepoPath, namespace }).pipe(
+        Effect.catchAll(() => Effect.succeed([] as ReadonlyArray<string>)),
+      )
+      for (const refName of refNames) knownRefsByType[namespace].add(refName)
     }
 
     for (const refType of STORE_REF_TYPES) {
@@ -311,6 +422,7 @@ const collectRepoStoreWorktrees = ({
         refTypePath,
         currentPath: refTypePath,
         refType,
+        knownRefs: knownRefsByType[refType],
       })
 
       for (const worktree of layoutWorktrees) {
@@ -394,6 +506,512 @@ const classifyGcWorktree = ({
     }),
   )
 
+const normalizeStorePath = (path: string): string => path.replace(/\/+$/, '')
+
+/** A named (`refs/heads/*`) worktree paired with the repo it belongs to. */
+interface NamedWorktreeTarget {
+  readonly repoRelativePath: string
+  readonly repoFullPath: AbsoluteDirPath
+  readonly bareRepoPath: AbsoluteDirPath
+  readonly worktree: CollectedWorktree
+}
+
+/**
+ * Build a `StoreGcResult` for a cold-path outcome.
+ *
+ * `reason` is the stable classification tag (live/not-stale/merged/...);
+ * `message` carries free-form detail; `recoverPath` is the `.archive/` location
+ * for an archived worktree.
+ */
+const coldResult = ({
+  target,
+  status,
+  reason,
+  message,
+  recoverPath,
+  pathRef,
+  actualHeadBranch,
+}: {
+  target: NamedWorktreeTarget
+  status: StoreGcResult['status']
+  reason?: string | undefined
+  message?: string | undefined
+  recoverPath?: string | undefined
+  pathRef?: string | undefined
+  actualHeadBranch?: string | undefined
+}): StoreGcResult => ({
+  repo: target.repoRelativePath,
+  ref: target.worktree.ref,
+  refType: target.worktree.refType,
+  path: target.worktree.path,
+  status,
+  ...(reason !== undefined ? { reason } : {}),
+  ...(message !== undefined ? { message } : {}),
+  ...(recoverPath !== undefined ? { recoverPath } : {}),
+  ...(pathRef !== undefined ? { pathRef } : {}),
+  ...(actualHeadBranch !== undefined ? { actualHeadBranch } : {}),
+})
+
+/**
+ * Re-derive a fresh live set under lock for the veto re-check (invariant 1).
+ *
+ * Reconciles every present workspace again so a worktree that became live
+ * between the initial collect and this destructive step is never archived/reaped.
+ * Read-only with respect to the on-disk records here? No — reconcile rewrites
+ * records, so it is serialized by the caller's `withWorktreeLock`.
+ */
+const reReconcileLiveSet = ({
+  store,
+  root,
+  now,
+}: {
+  store: Effect.Effect.Success<typeof Store>
+  root: Option.Option<AbsoluteDirPath>
+  now: number
+}) =>
+  collectStoreLiveSet({
+    store,
+    ...(Option.isSome(root) === true ? { currentWorkspaceRoot: root.value } : {}),
+    refreshCurrentWorkspace: false,
+    pruneStaleRegistry: false,
+    reconcileAllWorkspaces: true,
+    now,
+  })
+
+/**
+ * Cold reclamation for ONE repo's named worktrees (decisions 0001–0010).
+ *
+ * Fetch the bare first (failure ⇒ keep ALL this repo's named worktrees — the
+ * reachability signal would be stale). Then per named worktree: enforce the
+ * actual-HEAD-branch gate (`ref_mismatch` ⇒ keep), resolve PR state adjacent to
+ * classification, assess the lossless floor, and classify. An `archive` decision
+ * runs under `withWorktreeLock` with a FRESH live-set veto re-check immediately
+ * before `archiveWorktree` (archive → verify → free-branch is the helper's job);
+ * any failure leaves the original intact and reports keep+error. Finally scan
+ * `.archive/` and reap entries past the retention TTL, each under lock + veto.
+ *
+ * `now` is the explicit epoch-ms decision clock; `coldSince` is read from the
+ * pre-recorded observation ledger so grace windows are consistent across repos.
+ */
+const coldReclaimRepo = ({
+  store,
+  storeLock,
+  prResolver,
+  root,
+  repoRelativePath,
+  repoFullPath,
+  bareRepoPath,
+  namedWorktrees,
+  liveSet,
+  ledger,
+  config,
+  now,
+  dryRun,
+}: {
+  store: Effect.Effect.Success<typeof Store>
+  storeLock: Effect.Effect.Success<typeof StoreLock>
+  prResolver: PrStateResolverService
+  root: Option.Option<AbsoluteDirPath>
+  repoRelativePath: string
+  repoFullPath: AbsoluteDirPath
+  bareRepoPath: AbsoluteDirPath
+  namedWorktrees: ReadonlyArray<NamedWorktreeTarget>
+  liveSet: StoreLiveSet
+  ledger: Record<string, number>
+  config: StoreGcConfig
+  now: number
+  dryRun: boolean
+}) =>
+  Effect.gen(function* () {
+    const results: StoreGcResult[] = []
+
+    // Fetch --prune so `refs/remotes/*` is fresh (the reachability + PR-prune
+    // signal). A repo whose fetch fails keeps ALL its named worktrees — the
+    // conservative direction (every commit would read as unpushed).
+    //
+    // `--dry-run` must not mutate `.bare`, and `git fetch --prune` rewrites
+    // `refs/remotes/*`, so the fetch is SKIPPED entirely in dry-run. Classification
+    // then runs against the currently-present (last-known) `refs/remotes/*` instead
+    // of a freshly refreshed set; `classify === true` so the preview still proceeds.
+    // The TUI's dry-run banner states that remotes were not refreshed.
+    let classify: boolean
+    if (dryRun === true) {
+      classify = true
+    } else {
+      const fetchResult = yield* Git.fetchBare({ repoPath: bareRepoPath }).pipe(Effect.either)
+      classify = fetchResult._tag === 'Right'
+      if (fetchResult._tag === 'Left') {
+        // Classification needs fresh `refs/remotes/*`, so keep all named worktrees;
+        // do NOT return — archive reaping below is time/veto-based and needs no fetch.
+        const message =
+          fetchResult.left instanceof Error === true
+            ? fetchResult.left.message
+            : String(fetchResult.left)
+        for (const target of namedWorktrees) {
+          results.push(coldResult({ target, status: 'kept', reason: 'fetch-failed', message }))
+        }
+      }
+    }
+
+    // The repo's default branch (e.g. `main`) is NEVER reclaimed, regardless of
+    // PR state or liveness — archiving a dependency's default branch is never
+    // wanted, and common names (`main`/`master`) are prone to PR-join false
+    // positives. Read locally from the bare's HEAD (offline). Only needed when
+    // classifying, i.e. the fetch succeeded (live) or was skipped (dry-run).
+    const defaultBranch =
+      classify === true
+        ? Option.getOrUndefined(yield* Git.getStoreDefaultBranch({ bareRepoPath }))
+        : undefined
+
+    for (const target of namedWorktrees) {
+      if (classify === false) break
+      const { worktree } = target
+      // Only `refs/heads/*` carries a branch identity to reclaim; tags have no
+      // PR/branch to free, so they are always kept by the cold path.
+      if (worktree.refType !== 'heads') {
+        results.push(coldResult({ target, status: 'kept', reason: 'named-tag-ref' }))
+        continue
+      }
+
+      // Default-branch guard (hard keep, before any staleness/liveness logic).
+      if (defaultBranch !== undefined && worktree.ref === defaultBranch) {
+        results.push(coldResult({ target, status: 'kept', reason: 'default-branch' }))
+        continue
+      }
+
+      // Ref-mismatch fork: the store path claims `<ref>` but the worktree HEAD
+      // is on a different branch. The normal cold path is unsafe because it frees
+      // `refs/heads/<ref>`, which is NOT the branch actually checked out. Only a
+      // clean, lossless, absent mismatch takes the separate archive-only path.
+      const headBranch = yield* Git.getCurrentBranch(worktree.path).pipe(
+        Effect.catchAll(() => Effect.succeed(Option.none<string>())),
+      )
+      if (Option.isSome(headBranch) === true && headBranch.value !== worktree.ref) {
+        const actualHeadBranch = headBranch.value
+        const actualBranchPath = EffectPath.ops.join(
+          repoFullPath,
+          EffectPath.unsafe.relativeDir(`refs/heads/${actualHeadBranch}/`),
+        )
+
+        const refMismatchMeta = {
+          pathRef: worktree.ref,
+          actualHeadBranch,
+        }
+        const keepRefMismatch = (message: string) =>
+          coldResult({
+            target,
+            status: 'kept',
+            reason: 'ref_mismatch',
+            message,
+            ...refMismatchMeta,
+          })
+
+        if (defaultBranch !== undefined && actualHeadBranch === defaultBranch) {
+          results.push(keepRefMismatch(`HEAD is default branch '${actualHeadBranch}'`))
+          continue
+        }
+
+        if (
+          isPathProtected({ liveSet, path: worktree.path }) === true ||
+          isPathProtected({ liveSet, path: actualBranchPath }) === true
+        ) {
+          results.push(keepRefMismatch(`HEAD is '${actualHeadBranch}' and path is live`))
+          continue
+        }
+
+        const head = yield* Git.getCurrentCommit(worktree.path).pipe(
+          Effect.map(Option.some),
+          Effect.catchAll(() => Effect.succeed(Option.none<string>())),
+        )
+        if (Option.isNone(head) === true) {
+          results.push(keepRefMismatch(`HEAD is '${actualHeadBranch}' but commit is unreadable`))
+          continue
+        }
+        const worktreeHead = head.value
+
+        const lossless = yield* assessLossless({
+          bareRepoPath,
+          worktreePath: worktree.path,
+          worktreeHead,
+        }).pipe(
+          Effect.map(Option.some),
+          Effect.catchAll(() => Effect.succeed(Option.none<never>())),
+        )
+        if (Option.isNone(lossless) === true) {
+          results.push(keepRefMismatch(`HEAD is '${actualHeadBranch}' but lossless probe failed`))
+          continue
+        }
+        if (lossless.value.dirty === true) {
+          results.push(keepRefMismatch(`HEAD is '${actualHeadBranch}' with dirty worktree`))
+          continue
+        }
+        if (lossless.value.unpushed > 0 || lossless.value.hasStash === true) {
+          results.push(
+            keepRefMismatch(`HEAD is '${actualHeadBranch}' with unrecoverable local work`),
+          )
+          continue
+        }
+        const coldSinceMs = coldSinceMsFor({ ledger, path: worktree.path })
+        if (coldSinceMs === undefined || now - coldSinceMs < config.absenceGraceMs) {
+          results.push(keepRefMismatch(`HEAD is '${actualHeadBranch}' within absence grace`))
+          continue
+        }
+
+        if (dryRun === true) {
+          results.push(
+            coldResult({
+              target,
+              status: 'archived',
+              reason: 'ref_mismatch_clean',
+              ...refMismatchMeta,
+            }),
+          )
+          continue
+        }
+
+        const archiveOutcome = yield* storeLock
+          .withWorktreeLock(worktree.path)(
+            Effect.gen(function* () {
+              const freshLiveSet = yield* reReconcileLiveSet({ store, root, now })
+              if (
+                isPathProtected({ liveSet: freshLiveSet, path: worktree.path }) === true ||
+                isPathProtected({ liveSet: freshLiveSet, path: actualBranchPath }) === true
+              ) {
+                return { _tag: 'kept-live' as const }
+              }
+              const outcome = yield* archiveRefMismatchWorktree({
+                repoRoot: repoFullPath,
+                bareRepoPath,
+                worktreePath: worktree.path,
+                pathRef: worktree.ref,
+                actualHeadBranch,
+                commit: worktreeHead,
+                now,
+              })
+              return {
+                _tag: 'archived' as const,
+                recoverPath: outcome.destPath,
+                warnings: outcome.warnings,
+              }
+            }),
+          )
+          .pipe(
+            Effect.catchAll((error) =>
+              Effect.succeed({
+                _tag: 'error' as const,
+                message: error instanceof Error === true ? error.message : String(error),
+              }),
+            ),
+          )
+
+        if (archiveOutcome._tag === 'kept-live') {
+          results.push(keepRefMismatch(`HEAD is '${actualHeadBranch}' and path is live`))
+        } else if (archiveOutcome._tag === 'error') {
+          results.push(
+            coldResult({
+              target,
+              status: 'error',
+              reason: 'ref_mismatch_clean',
+              message: archiveOutcome.message,
+              ...refMismatchMeta,
+            }),
+          )
+        } else {
+          results.push(
+            coldResult({
+              target,
+              status: 'archived',
+              reason: 'ref_mismatch_clean',
+              recoverPath: archiveOutcome.recoverPath,
+              ...(archiveOutcome.warnings.length > 0
+                ? { message: archiveOutcome.warnings.join('; ') }
+                : {}),
+              ...refMismatchMeta,
+            }),
+          )
+        }
+        continue
+      }
+
+      const prState: PrStateInfo = yield* prResolver
+        .resolve({
+          relativePath: EffectPath.unsafe.relativeDir(target.repoRelativePath),
+          branch: worktree.ref,
+        })
+        .pipe(Observability.withStoreGcPhaseSpan({ phase: 'resolve-pr' }))
+
+      const head = yield* Git.getCurrentCommit(worktree.path).pipe(
+        Effect.map(Option.some),
+        Effect.catchAll(() => Effect.succeed(Option.none<string>())),
+      )
+      if (Option.isNone(head) === true) {
+        results.push(coldResult({ target, status: 'kept', reason: 'unreadable-head' }))
+        continue
+      }
+      const worktreeHead = head.value
+
+      const lossless = yield* assessLossless({
+        bareRepoPath,
+        worktreePath: worktree.path,
+        worktreeHead,
+      }).pipe(
+        Effect.map(Option.some),
+        // A failed lossless probe (e.g. unresolvable head) degrades to keep.
+        Effect.catchAll(() => Effect.succeed(Option.none<never>())),
+      )
+      if (Option.isNone(lossless) === true) {
+        results.push(coldResult({ target, status: 'kept', reason: 'unrecoverable-local-work' }))
+        continue
+      }
+
+      const decision: ColdWorktreeDecision = classifyColdWorktree({
+        worktree: { refType: 'heads', path: worktree.path },
+        liveSet,
+        prState,
+        lossless: lossless.value,
+        coldSinceMs: coldSinceMsFor({ ledger, path: worktree.path }),
+        config,
+        now,
+      })
+
+      if (decision._tag === 'keep') {
+        results.push(coldResult({ target, status: 'kept', reason: decision.reason }))
+        continue
+      }
+
+      // Archive decision: serialize under the worktree lock and re-check the live
+      // veto against a FRESH reconcile immediately before moving (invariant 1).
+      if (dryRun === true) {
+        results.push(coldResult({ target, status: 'archived', reason: decision.reason }))
+        continue
+      }
+
+      const archiveOutcome = yield* storeLock
+        .withWorktreeLock(worktree.path)(
+          Effect.gen(function* () {
+            const freshLiveSet = yield* reReconcileLiveSet({ store, root, now })
+            if (isPathProtected({ liveSet: freshLiveSet, path: worktree.path }) === true) {
+              return { _tag: 'kept-live' as const }
+            }
+            const outcome = yield* archiveWorktree({
+              repoRoot: repoFullPath,
+              bareRepoPath,
+              worktreePath: worktree.path,
+              branch: worktree.ref,
+              commit: worktreeHead,
+              reason: decision.reason,
+              now,
+            })
+            return {
+              _tag: 'archived' as const,
+              recoverPath: outcome.destPath,
+              warnings: outcome.warnings,
+            }
+          }),
+        )
+        .pipe(
+          Effect.catchAll((error) =>
+            Effect.succeed({
+              _tag: 'error' as const,
+              message: error instanceof Error === true ? error.message : String(error),
+            }),
+          ),
+        )
+
+      if (archiveOutcome._tag === 'kept-live') {
+        results.push(coldResult({ target, status: 'kept', reason: 'live' }))
+      } else if (archiveOutcome._tag === 'error') {
+        // Only a PRE-move failure reaches here (post-move steps are best-effort
+        // and reported as warnings, never errors), so the original worktree is
+        // genuinely left intact.
+        results.push(
+          coldResult({
+            target,
+            status: 'error',
+            reason: decision.reason,
+            message: archiveOutcome.message,
+          }),
+        )
+      } else {
+        // The move succeeded: report `archived` + the real `.archive/` recovery
+        // path even if a best-effort post-move step (branch free / README) failed.
+        results.push(
+          coldResult({
+            target,
+            status: 'archived',
+            reason: decision.reason,
+            recoverPath: archiveOutcome.recoverPath,
+            ...(archiveOutcome.warnings.length > 0
+              ? { message: archiveOutcome.warnings.join('; ') }
+              : {}),
+          }),
+        )
+      }
+    }
+
+    // Reap archives past the retention TTL, each under lock + a fresh veto.
+    const archives = yield* scanArchives({ repoRoot: repoFullPath, bareRepoPath }).pipe(
+      Effect.catchAll(() => Effect.succeed([] as never[])),
+    )
+    for (const entry of archives) {
+      if (now - entry.archivedAtMs < config.archiveRetentionMs) continue
+
+      const reapTarget: NamedWorktreeTarget = {
+        repoRelativePath,
+        repoFullPath,
+        bareRepoPath,
+        worktree: {
+          ref: entry.branch,
+          refType: 'heads',
+          path: entry.path,
+          broken: false,
+        },
+      }
+
+      if (dryRun === true) {
+        results.push(coldResult({ target: reapTarget, status: 'reaped', reason: 'retention' }))
+        continue
+      }
+
+      const reapOutcome = yield* storeLock
+        .withWorktreeLock(entry.path)(
+          Effect.gen(function* () {
+            const freshLiveSet = yield* reReconcileLiveSet({ store, root, now })
+            if (isPathProtected({ liveSet: freshLiveSet, path: entry.path }) === true) {
+              return { _tag: 'kept-live' as const }
+            }
+            yield* reapArchive({ bareRepoPath, path: entry.path })
+            return { _tag: 'reaped' as const }
+          }),
+        )
+        .pipe(
+          Effect.catchAll((error) =>
+            Effect.succeed({
+              _tag: 'error' as const,
+              message: error instanceof Error === true ? error.message : String(error),
+            }),
+          ),
+        )
+
+      if (reapOutcome._tag === 'kept-live') {
+        results.push(coldResult({ target: reapTarget, status: 'kept', reason: 'live' }))
+      } else if (reapOutcome._tag === 'error') {
+        results.push(
+          coldResult({
+            target: reapTarget,
+            status: 'error',
+            reason: 'retention',
+            message: reapOutcome.message,
+          }),
+        )
+      } else {
+        results.push(coldResult({ target: reapTarget, status: 'reaped', reason: 'retention' }))
+      }
+    }
+
+    return results
+  }).pipe(LibObservability.withColdReclaimRepoSpan({ repoRelativePath, bareRepoPath }))
+
 /** List repos in the store */
 const storeLsCommand = Cli.Command.make('ls', { output: outputOption }, ({ output }) =>
   Effect.gen(function* () {
@@ -427,11 +1045,13 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
     const fs = yield* FileSystem.FileSystem
 
     const root = yield* findMegarepoRoot(cwd)
+    const now = yield* Clock.currentTimeMillis
     const liveSet = yield* collectStoreLiveSet({
       store,
       ...(Option.isSome(root) === true ? { currentWorkspaceRoot: root.value } : {}),
       pruneStaleRegistry: true,
       refreshCurrentWorkspace: true,
+      now,
     })
 
     // List all repos and analyze worktrees in parallel
@@ -450,32 +1070,14 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
           const refsExists = yield* fs.exists(refsDir)
           if (refsExists === false) return []
 
-          const refTypes = yield* fs.readDirectory(refsDir)
-          const validRefTypes = refTypes.filter(
-            (d): d is 'heads' | 'tags' | 'commits' =>
-              d === 'heads' || d === 'tags' || d === 'commits',
-          )
-
-          const allWorktrees: Array<CollectedWorktree> = []
-
-          for (const refTypeDir of validRefTypes) {
-            const refTypePath = EffectPath.ops.join(
-              refsDir,
-              EffectPath.unsafe.relativeDir(`${refTypeDir}/`),
-            )
-            const refTypeStat = yield* fs
-              .stat(refTypePath)
-              .pipe(Effect.catchAll(() => Effect.succeed(null)))
-            if (refTypeStat?.type !== 'Directory') continue
-
-            const worktrees = yield* collectStoreWorktrees({
-              fs,
-              refTypePath,
-              currentPath: refTypePath,
-              refType: refTypeDir,
-            })
-            allWorktrees.push(...worktrees)
-          }
+          // Reuse the bounded, source-of-truth-guarded collector (same path gc
+          // uses) so a broken worktree never makes the walk enumerate its entire
+          // checked-out working tree (the store-status OOM, same root cause).
+          const allWorktrees = yield* collectRepoStoreWorktrees({
+            fs,
+            repoPath: repo.fullPath,
+            bareRepoPath,
+          })
 
           // Analyze all worktrees for this repo in parallel
           return yield* Effect.all(
@@ -688,6 +1290,7 @@ const storeGcCommand = Cli.Command.make(
       let liveSetForMetrics: StoreLiveSet | undefined
       let gcWarning: { type: 'not_in_megarepo' | 'only_current_megarepo' } | undefined
       let repoCount: number | undefined
+      let repoConcurrencyForMetrics = 1
 
       const processGcDecision = ({
         decision,
@@ -863,17 +1466,38 @@ const storeGcCommand = Cli.Command.make(
             )
           }
 
+          // Single decision clock for the whole run — every grace/retention/
+          // persistence path reads THIS value, never the ambient wall clock again.
+          const now = yield* Clock.currentTimeMillis
+
+          // Resolve the tunable per-repo concurrency ONCE per run so the whole
+          // run uses one consistent operating point (and one span attribute).
+          const repoConcurrency = gcRepoConcurrency()
+          repoConcurrencyForMetrics = repoConcurrency
+
+          // Sample RSS into the `megarepo_store_gc_rss_bytes` gauge across the run
+          // so the OTEL sweep can plot memory vs concurrency. The foundation
+          // `sampleResource` primitive (wrapped by `sampleStoreGcRss`) owns the
+          // gate: it no-ops with zero overhead (no periodic fiber) when telemetry
+          // is off, so no double-gate is needed here.
+          yield* Observability.sampleStoreGcRss({ repoConcurrency })
+
           statusMessage = 'collecting liveness registry'
           if (progressive === true) {
             yield* dispatchGc({ done: false, forceDispatch: true })
           }
           root = yield* findMegarepoRoot(cwd)
+          // Default cold path reconciles EVERY present workspace once (decision
+          // 0010) so a repin that ran no refreshing command is still caught; the
+          // result is threaded everywhere. `--all` keeps its lighter collect.
           const liveSet = yield* collectStoreLiveSet({
             store,
             ...(Option.isSome(root) === true ? { currentWorkspaceRoot: root.value } : {}),
             pruneStaleRegistry: dryRun === false,
             refreshCurrentWorkspace: dryRun === false,
-          })
+            ...(all === false ? { reconcileAllWorkspaces: true } : {}),
+            now,
+          }).pipe(Observability.withStoreGcPhaseSpan({ phase: 'collect-liveness' }))
           liveSetForMetrics = liveSet
 
           gcWarning =
@@ -887,27 +1511,176 @@ const storeGcCommand = Cli.Command.make(
           if (progressive === true) {
             yield* dispatchGc({ done: false, forceDispatch: true })
           }
-          const repos = yield* store.listRepos()
+          const repos = yield* store
+            .listRepos()
+            .pipe(Observability.withStoreGcPhaseSpan({ phase: 'list-repos' }))
           repoCount = repos.length
           statusMessage = 'checking worktrees'
           if (progressive === true) {
             yield* dispatchGc({ done: false, forceDispatch: true })
           }
 
-          yield* Stream.fromIterable(repos).pipe(
+          // Per-repo collected worktrees, computed once so the default cold path
+          // can record observations globally (ledger replaces, not merges) before
+          // any per-repo classification.
+          const repoWorktrees = yield* Effect.all(
+            repos.map((repo) =>
+              Effect.gen(function* () {
+                const bareRepoPath = EffectPath.ops.join(
+                  repo.fullPath,
+                  EffectPath.unsafe.relativeDir('.bare/'),
+                )
+                const worktrees = yield* collectRepoStoreWorktrees({
+                  fs,
+                  repoPath: repo.fullPath,
+                  bareRepoPath,
+                })
+                return { repo, bareRepoPath, worktrees }
+              }),
+            ),
+            { concurrency: repoConcurrency },
+          ).pipe(
+            Observability.withStoreGcPhaseSpan({
+              phase: 'collect-worktrees',
+              repoCount: repos.length,
+              repoConcurrency,
+            }),
+          )
+
+          // Default cold reclamation path (decisions 0001–0010): additive third
+          // path. Named (`refs/heads/*`/`refs/tags/*`) worktrees are owned here;
+          // `--all` removes everything via the legacy stream and skips this.
+          if (all === false) {
+            const namedTargets: Array<NamedWorktreeTarget> = []
+            for (const { repo, bareRepoPath, worktrees } of repoWorktrees) {
+              for (const worktree of worktrees) {
+                if (worktree.broken === true) continue
+                if (isNamedRefWorktree(worktree) === false) continue
+                namedTargets.push({
+                  repoRelativePath: repo.relativePath,
+                  repoFullPath: repo.fullPath,
+                  bareRepoPath,
+                  worktree,
+                })
+              }
+            }
+
+            // Cold = a named worktree absent from the reconciled live set. Record
+            // the FULL cold set ONCE (the ledger is store-global; a per-repo write
+            // would launder other repos' grace). Unclean-reconcile paths re-arm.
+            const coldPaths = namedTargets
+              .filter(
+                (target) => isPathProtected({ liveSet, path: target.worktree.path }) === false,
+              )
+              .map((target) => normalizeStorePath(target.worktree.path))
+            // The ledger read-modify-write is store-global; serialize it under a
+            // stable store-keyed lock so concurrent gc runs don't clobber it. In
+            // `--dry-run` we compute the would-be ledger WITHOUT persisting (and
+            // without the lock) — a planning run must not advance the absence-grace
+            // clock and so cause a later real run to archive.
+            const ledger =
+              dryRun === true
+                ? nextObservationLedger({
+                    current: yield* readObservationLedger({ storeBasePath: store.basePath }),
+                    coldPaths,
+                    uncleanReconcilePaths: [...liveSet.uncleanReconcilePaths],
+                    now,
+                  })
+                : yield* storeLock.withWorktreeLock(`${store.basePath}.state/gc-observations`)(
+                    recordObservations({
+                      storeBasePath: store.basePath,
+                      coldPaths,
+                      uncleanReconcilePaths: [...liveSet.uncleanReconcilePaths],
+                      now,
+                    }),
+                  )
+
+            const config = yield* loadStoreGcConfig({ storeBasePath: store.basePath })
+
+            // Use an injected `PrStateResolver` when present (tests provide a stub
+            // layer); otherwise build the live `gh`-shelling resolver here so the
+            // default `mr store gc` path needs no extra wiring at the CLI edge.
+            const injectedResolver = yield* Effect.serviceOption(PrStateResolver)
+            const prResolver =
+              Option.isSome(injectedResolver) === true
+                ? injectedResolver.value
+                : yield* PrStateResolver.pipe(Effect.provide(makePrStateResolverLayer()))
+
+            statusMessage = 'reclaiming cold worktrees'
+            if (progressive === true) {
+              yield* dispatchGc({ done: false, forceDispatch: true })
+            }
+
+            // Group named targets by repo, then reclaim per repo (concurrency 1 so
+            // a global PR snapshot can never go stale — resolve adjacent instead).
+            yield* Stream.fromIterable(repoWorktrees).pipe(
+              Stream.mapEffect(
+                ({ repo, bareRepoPath }) =>
+                  Effect.gen(function* () {
+                    const repoNamed = namedTargets.filter(
+                      (target) => target.repoRelativePath === repo.relativePath,
+                    )
+                    // Run for EVERY repo even with no current named refs: a repo
+                    // whose branches were all archived still owns past-retention
+                    // archives that `coldReclaimRepo` must scan + reap.
+                    discoveredWorktreeCount += repoNamed.length
+                    activeWorktreeCount += repoNamed.length
+                    if (progressive === true) {
+                      yield* dispatchGc({ done: false, forceDispatch: true })
+                    }
+                    const repoResults = yield* coldReclaimRepo({
+                      store,
+                      storeLock,
+                      prResolver,
+                      root,
+                      repoRelativePath: repo.relativePath,
+                      repoFullPath: repo.fullPath,
+                      bareRepoPath,
+                      namedWorktrees: repoNamed,
+                      liveSet,
+                      ledger,
+                      config,
+                      now,
+                      dryRun,
+                    }).pipe(
+                      Effect.ensuring(
+                        Effect.sync(() => {
+                          activeWorktreeCount -= repoNamed.length
+                        }),
+                      ),
+                    )
+                    for (const result of repoResults) results.push(result)
+                    if (progressive === true) {
+                      yield* dispatchGc({ done: false, forceDispatch: true })
+                    }
+                  }),
+                { concurrency: repoConcurrency, unordered: true },
+              ),
+              Stream.runDrain,
+              Observability.withStoreGcPhaseSpan({
+                phase: 'cold-reclaim',
+                repoCount: repoWorktrees.length,
+                worktreeCount: namedTargets.length,
+                repoConcurrency,
+              }),
+            )
+          }
+
+          yield* Stream.fromIterable(repoWorktrees).pipe(
             Stream.mapEffect(
-              (repo) =>
+              ({ repo, bareRepoPath, worktrees: allWorktrees }) =>
                 Effect.gen(function* () {
                   let removedForRepo = 0
-                  const bareRepoPath = EffectPath.ops.join(
-                    repo.fullPath,
-                    EffectPath.unsafe.relativeDir('.bare/'),
-                  )
-                  const worktrees = yield* collectRepoStoreWorktrees({
-                    fs,
-                    repoPath: repo.fullPath,
-                    bareRepoPath,
-                  })
+                  // Default mode owns named worktrees in the cold path above; the
+                  // legacy stream only handles commit worktrees (and everything in
+                  // `--all` mode).
+                  const worktrees =
+                    all === false
+                      ? allWorktrees.filter(
+                          (worktree) =>
+                            worktree.broken === true || isNamedRefWorktree(worktree) === false,
+                        )
+                      : allWorktrees
 
                   yield* Stream.fromIterable(worktrees).pipe(
                     Stream.mapEffect(
@@ -982,9 +1755,14 @@ const storeGcCommand = Cli.Command.make(
                     ref: Observability.shortPath(repo.relativePath),
                   }),
                 ),
-              { concurrency: GC_REPO_CONCURRENCY, unordered: true },
+              { concurrency: repoConcurrency, unordered: true },
             ),
             Stream.runDrain,
+            Observability.withStoreGcPhaseSpan({
+              phase: 'legacy-sweep',
+              repoCount: repoWorktrees.length,
+              repoConcurrency,
+            }),
           )
 
           statusMessage = undefined
@@ -1035,10 +1813,14 @@ const storeGcCommand = Cli.Command.make(
         resultRemoved: results.filter((result) => result.status === 'removed').length,
         resultSkippedInUse: results.filter((result) => result.status === 'skipped_in_use').length,
         resultSkippedDirty: results.filter((result) => result.status === 'skipped_dirty').length,
+        resultArchived: results.filter((result) => result.status === 'archived').length,
+        resultReaped: results.filter((result) => result.status === 'reaped').length,
+        resultKept: results.filter((result) => result.status === 'kept').length,
         candidateCommits: results.filter((result) => result.refType === 'commits').length,
         candidateNamedRefs: results.filter(
           (result) => result.refType === 'heads' || result.refType === 'tags',
         ).length,
+        repoConcurrency: repoConcurrencyForMetrics,
       })
     }).pipe(
       Effect.provide(StoreLayer),

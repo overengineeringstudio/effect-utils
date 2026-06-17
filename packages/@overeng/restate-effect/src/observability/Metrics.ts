@@ -31,10 +31,12 @@ import { RestateMetrics } from './contract.ts'
  * that is the retry-pressure signal (retries derive as the `retryable` rate).
  */
 const invocationsTotalBridge = OtelMetric.effect.counter(RestateMetrics.invocationsTotal)
+/** The Effect `Metric` behind `restate_invocations_total` (see the bridge above for the exactly-once semantics). */
 export const invocationsTotal = invocationsTotalBridge.metric
 
 /** Per-invocation DURATION histogram (`restate_invocation_duration_ms`), gated on non-replay. */
 const invocationDurationMsBridge = OtelMetric.effect.histogram(RestateMetrics.invocationDurationMs)
+/** The Effect `Metric` behind `restate_invocation_duration_ms` (real attempt wall-clock, gated on non-replay). */
 export const invocationDurationMs = invocationDurationMsBridge.metric
 
 /**
@@ -45,6 +47,7 @@ export const invocationDurationMs = invocationDurationMsBridge.metric
  * which re-runs the handler body without being a new attempt — is not counted.
  */
 const attemptsTotalBridge = OtelMetric.effect.counter(RestateMetrics.attemptsTotal)
+/** The Effect `Metric` behind `restate_attempts_total` (one per real handler entry; retries derive against it). */
 export const attemptsTotal = attemptsTotalBridge.metric
 
 /**
@@ -56,6 +59,7 @@ export const attemptsTotal = attemptsTotalBridge.metric
  * already carries those) to keep cardinality bounded.
  */
 const durableStepsTotalBridge = OtelMetric.effect.counter(RestateMetrics.durableStepsTotal)
+/** The Effect `Metric` behind `restate_durable_steps_total` (counted exactly once at the `Restate.run` seam). */
 export const durableStepsTotal = durableStepsTotalBridge.metric
 
 /**
@@ -65,6 +69,7 @@ export const durableStepsTotal = durableStepsTotalBridge.metric
  * wait). Captures external-completion latency (e.g. a webhook callback round-trip).
  */
 const awakeableWaitMsBridge = OtelMetric.effect.histogram(RestateMetrics.awakeableWaitMs)
+/** The Effect `Metric` behind `restate_awakeable_wait_ms` (real external-completion wait, gated on non-replay). */
 export const awakeableWaitMs = awakeableWaitMsBridge.metric
 
 /**
@@ -74,6 +79,7 @@ export const awakeableWaitMs = awakeableWaitMsBridge.metric
  * real cycle execution is counted exactly once.
  */
 const pollLoopCyclesTotalBridge = OtelMetric.effect.counter(RestateMetrics.pollLoopCyclesTotal)
+/** The Effect `Metric` behind `restate_poll_loop_cycles_total` (one per real `pollLoop` cycle, gated on non-replay). */
 export const pollLoopCyclesTotal = pollLoopCyclesTotalBridge.metric
 
 /**
@@ -104,86 +110,118 @@ export const isProcessing = (ctx: restate.Context): boolean => {
  * metric routes through so a journal replay never double-counts. A no-op (and no
  * `RestateContext` read) when replaying.
  */
-export const emitWhenProcessing = (
-  ctx: restate.Context,
-  emit: Effect.Effect<void>,
-): Effect.Effect<void> => (isProcessing(ctx) === true ? emit : Effect.void)
+export const emitWhenProcessing = ({
+  ctx,
+  emit,
+}: {
+  ctx: restate.Context
+  emit: Effect.Effect<void>
+}): Effect.Effect<void> => (isProcessing(ctx) === true ? emit : Effect.void)
 
 /**
  * Emit the per-invocation outcome counter + duration histogram + the per-attempt
  * counter for ONE real attempt, gated on non-replay. `outcome` is the boundary's
  * final classification label; `durationMs` is the attempt wall-clock.
  */
-export const emitInvocationMetrics = (
-  ctx: restate.Context,
-  args: {
-    readonly service: string
-    readonly handler: string
-    readonly outcome: 'success' | 'terminal' | 'retryable' | 'cancelled'
-    readonly durationMs: number
-  },
-): Effect.Effect<void> => {
-  return emitWhenProcessing(
+export const emitInvocationMetrics = ({
+  ctx,
+  service,
+  handler,
+  outcome,
+  durationMs,
+}: {
+  ctx: restate.Context
+  service: string
+  handler: string
+  outcome: 'success' | 'terminal' | 'retryable' | 'cancelled'
+  durationMs: number
+}): Effect.Effect<void> => {
+  return emitWhenProcessing({
     ctx,
-    Effect.all(
+    emit: Effect.all(
       [
         invocationsTotalBridge.trustedIncrement({
-          service: args.service,
-          handler: args.handler,
-          outcome: args.outcome,
+          service,
+          handler,
+          outcome,
         }),
-        invocationDurationMsBridge.trustedRecord(
-          {
-            service: args.service,
-            handler: args.handler,
-            outcome: args.outcome,
+        invocationDurationMsBridge.trustedRecord({
+          labels: {
+            service,
+            handler,
+            outcome,
           },
-          args.durationMs,
-        ),
+          value: durationMs,
+        }),
       ],
       { discard: true },
     ),
-  )
+  })
 }
 
 /** Emit the per-attempt counter for ONE real handler entry, gated on non-replay. */
-export const emitAttempt = (
-  ctx: restate.Context,
-  args: { readonly service: string; readonly handler: string },
-): Effect.Effect<void> =>
-  emitWhenProcessing(
+export const emitAttempt = ({
+  ctx,
+  service,
+  handler,
+}: {
+  ctx: restate.Context
+  service: string
+  handler: string
+}): Effect.Effect<void> =>
+  emitWhenProcessing({
     ctx,
-    attemptsTotalBridge.trustedIncrement({
-      service: args.service,
-      handler: args.handler,
+    emit: attemptsTotalBridge.trustedIncrement({
+      service,
+      handler,
     }),
-  )
+  })
 
 /** Emit the durable-step counter for ONE real `Restate.run`, gated on non-replay. */
-export const emitDurableStep = (ctx: restate.Context, step: string): Effect.Effect<void> =>
-  emitWhenProcessing(
+export const emitDurableStep = ({
+  ctx,
+  step,
+}: {
+  ctx: restate.Context
+  step: string
+}): Effect.Effect<void> =>
+  emitWhenProcessing({
     ctx,
-    durableStepsTotalBridge.trustedIncrement({
+    emit: durableStepsTotalBridge.trustedIncrement({
       step,
     }),
-  )
+  })
 
 /** Record an awakeable wait latency, gated on non-replay. */
-export const emitAwakeableWait = (ctx: restate.Context, waitMs: number): Effect.Effect<void> =>
-  emitWhenProcessing(ctx, awakeableWaitMsBridge.trustedRecord({}, waitMs))
+export const emitAwakeableWait = ({
+  ctx,
+  waitMs,
+}: {
+  ctx: restate.Context
+  waitMs: number
+}): Effect.Effect<void> =>
+  emitWhenProcessing({
+    ctx,
+    emit: awakeableWaitMsBridge.trustedRecord({ labels: {}, value: waitMs }),
+  })
 
 /** Emit a `pollLoop` cycle outcome counter, gated on non-replay. */
-export const emitPollLoopCycle = (
-  ctx: restate.Context,
-  args: { readonly name: string; readonly outcome: 'ok' | 'error' | 'stopped' },
-): Effect.Effect<void> =>
-  emitWhenProcessing(
+export const emitPollLoopCycle = ({
+  ctx,
+  name,
+  outcome,
+}: {
+  ctx: restate.Context
+  name: string
+  outcome: 'ok' | 'error' | 'stopped'
+}): Effect.Effect<void> =>
+  emitWhenProcessing({
     ctx,
-    pollLoopCyclesTotalBridge.trustedIncrement({
-      name: args.name,
-      outcome: args.outcome,
+    emit: pollLoopCyclesTotalBridge.trustedIncrement({
+      name,
+      outcome,
     }),
-  )
+  })
 
 /** A dynamic span-attribute value accepted by the contract's map annotation helper. */
 type AttributeValue = string | number | boolean
@@ -240,14 +278,18 @@ export const annotateSpan = (
  *
  * ```ts
  * // `apiToken` is `Restate.sensitive(Schema.String)` — it is NEVER stamped.
- * yield* Restate.annotateSpanFrom(InputSchema, decodedInput, ['dataSourceId'])
+ * yield* Restate.annotateSpanFrom({ schema: InputSchema, value: decodedInput, pick: ['dataSourceId'] })
  * ```
  */
-export const annotateSpanFrom = <A, I>(
-  schema: Schema.Schema<A, I>,
-  value: A,
-  pick?: ReadonlyArray<keyof A & string>,
-): Effect.Effect<void> => {
+export const annotateSpanFrom = <A, I>({
+  schema,
+  value,
+  pick,
+}: {
+  schema: Schema.Schema<A, I>
+  value: A
+  pick?: ReadonlyArray<keyof A & string>
+}): Effect.Effect<void> => {
   if (typeof value !== 'object' || value === null) return Effect.void
   const sensitive = new Set<string>(findSensitiveFields(schema.ast))
   const record = value as Record<string, unknown>

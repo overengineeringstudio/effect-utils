@@ -1,3 +1,5 @@
+import { pathToFileURL } from 'node:url'
+
 import * as Cli from '@effect/cli'
 import { FileSystem } from '@effect/platform'
 import { NodeContext } from '@effect/platform-node'
@@ -2480,12 +2482,17 @@ describe('sync error handling', () => {
         )
         yield* fs.makeDirectory(workspacePath, { recursive: true })
         yield* initGitRepo(workspacePath)
+        const missingRemotePath = EffectPath.ops.join(
+          tmpDir,
+          EffectPath.unsafe.relativeDir('missing-remote.git/'),
+        )
 
-        // Create megarepo.json with a non-existent GitHub repo
+        // Create megarepo.json with a missing remote. Use file:// so the clone
+        // failure is deterministic and does not spend the test timeout on
+        // network/auth retries.
         const config: typeof MegarepoConfig.Type = {
           members: {
-            // This repo doesn't exist - should trigger a clone failure
-            'non-existent-repo': 'this-owner-does-not-exist-abc123/this-repo-does-not-exist-xyz789',
+            'non-existent-repo': pathToFileURL(missingRemotePath).href,
           },
         }
         const configContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(

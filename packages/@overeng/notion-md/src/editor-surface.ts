@@ -51,7 +51,7 @@ export interface TitleBodyDocument {
 export const serializeTitleBody = (doc: TitleBodyDocument): string => {
   const body = normalizeMarkdownLineEndings(doc.body)
   const bodyIsEmpty = body === '\n'
-  return bodyIsEmpty ? `# ${doc.title}\n` : `# ${doc.title}\n\n${body}`
+  return bodyIsEmpty === true ? `# ${doc.title}\n` : `# ${doc.title}\n\n${body}`
 }
 
 /**

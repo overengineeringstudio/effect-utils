@@ -84,7 +84,7 @@ export const SensitiveId: unique symbol = id('sensitive') as typeof SensitiveId
 /** Generic `Schema.annotations` wrapper keyed by one of the Restate symbol ids. */
 const annotate =
   <Value>(annotationId: symbol) =>
-  <S extends Schema.Annotable.All>(self: S, value: Value): S =>
+  <S extends Schema.Annotable.All>({ self, value }: { self: S; value: Value }): S =>
     self.annotations({ [annotationId]: value }) as S
 
 /**
@@ -97,13 +97,16 @@ export const Restate = {
    * `errorCode` (e.g. 404/409). Default classification — `toTerminal` falls
    * back to `terminal` + 500 when no annotation is present.
    */
-  terminal: <S extends Schema.Annotable.All>(
-    self: S,
-    options?: { readonly errorCode?: number },
-  ): S =>
-    annotate<ErrorClass>(ErrorClassId)(self, {
-      _tag: 'terminal',
-      errorCode: options?.errorCode ?? 500,
+  terminal: <S extends Schema.Annotable.All>({
+    self,
+    errorCode,
+  }: {
+    self: S
+    errorCode?: number
+  }): S =>
+    annotate<ErrorClass>(ErrorClassId)({
+      self,
+      value: { _tag: 'terminal', errorCode: errorCode ?? 500 },
     }),
 
   /**
@@ -115,24 +118,31 @@ export const Restate = {
    * `idempotencyKey` (decision 0011, #3). The projection is typed against the
    * error's decoded type so the field access is checked.
    */
-  retryable: <S extends Schema.Annotable.All>(
-    self: S,
-    options?: {
-      readonly retryAfter?:
-        | Duration.DurationInput
-        | ((error: Schema.Schema.Type<S>) => Duration.DurationInput | undefined)
-    },
-  ): S =>
-    annotate<ErrorClass>(ErrorClassId)(self, {
-      _tag: 'retryable',
-      ...(options?.retryAfter !== undefined
-        ? { retryAfter: options.retryAfter as RetryAfter }
-        : {}),
+  retryable: <S extends Schema.Annotable.All>({
+    self,
+    retryAfter,
+  }: {
+    self: S
+    retryAfter?:
+      | Duration.DurationInput
+      | ((error: Schema.Schema.Type<S>) => Duration.DurationInput | undefined)
+  }): S =>
+    annotate<ErrorClass>(ErrorClassId)({
+      self,
+      value: {
+        _tag: 'retryable',
+        ...(retryAfter !== undefined ? { retryAfter: retryAfter as RetryAfter } : {}),
+      },
     }),
 
   /** Override the serde `contentType` / `jsonSchema` for a value schema. */
-  serde: <S extends Schema.Annotable.All>(self: S, options: SerdeOptions): S =>
-    annotate<SerdeOptions>(SerdeId)(self, options),
+  serde: <S extends Schema.Annotable.All>({
+    self,
+    options,
+  }: {
+    self: S
+    options: SerdeOptions
+  }): S => annotate<SerdeOptions>(SerdeId)({ self, value: options }),
 
   /**
    * Mark an input-struct FIELD as the idempotency-key source (decision 0011). Its
@@ -141,7 +151,7 @@ export const Restate = {
    * schema (e.g. `Restate.idempotencyKey(Schema.String)`), not the struct.
    */
   idempotencyKey: <S extends Schema.Annotable.All>(self: S): S =>
-    annotate<true>(IdempotencyKeyId)(self, true),
+    annotate<true>(IdempotencyKeyId)({ self, value: true }),
 
   /**
    * Declare retention/timeout facts on a contract or handler I/O schema, mapped
@@ -150,8 +160,13 @@ export const Restate = {
    * to setting the matching builder `options`, but kept WITH the schema so the
    * fact has one home. Builder `options` win when both are present.
    */
-  retention: <S extends Schema.Annotable.All>(self: S, options: RetentionOptions): S =>
-    annotate<RetentionOptions>(RetentionId)(self, options),
+  retention: <S extends Schema.Annotable.All>({
+    self,
+    options,
+  }: {
+    self: S
+    options: RetentionOptions
+  }): S => annotate<RetentionOptions>(RetentionId)({ self, value: options }),
 
   /**
    * Mark a struct FIELD `sensitive` (alias `redacted`): `effectSerde` consumes it
@@ -162,10 +177,11 @@ export const Restate = {
    * wrong node disappears silently.
    */
   sensitive: <S extends Schema.Annotable.All>(self: S): S =>
-    annotate<true>(SensitiveId)(self, true),
+    annotate<true>(SensitiveId)({ self, value: true }),
 
   /** Alias of {@link Restate.sensitive}. */
-  redacted: <S extends Schema.Annotable.All>(self: S): S => annotate<true>(SensitiveId)(self, true),
+  redacted: <S extends Schema.Annotable.All>(self: S): S =>
+    annotate<true>(SensitiveId)({ self, value: true }),
 } as const
 
 /* ── annotation readers ─────────────────────────────────────────────────── */
@@ -183,12 +199,16 @@ export const readErrorClass = (ast: SchemaAST.AST): Option.Option<ErrorClass> =>
  * around a throwing/invalid projection: a bad projection yields `undefined` rather
  * than corrupting the retry path.
  */
-export const readRetryAfterMillis = (
-  retryAfter: RetryAfter | undefined,
-  error: unknown,
-): number | undefined => {
+export const readRetryAfterMillis = ({
+  retryAfter,
+  error,
+}: {
+  retryAfter: RetryAfter | undefined
+  error: unknown
+}): number | undefined => {
   if (retryAfter === undefined) return undefined
-  const value = typeof retryAfter === 'function' ? safeProject(retryAfter, error) : retryAfter
+  const value =
+    typeof retryAfter === 'function' ? safeProject({ project: retryAfter, error }) : retryAfter
   if (value === undefined) return undefined
   try {
     return Duration.toMillis(Duration.decode(value))
@@ -197,10 +217,13 @@ export const readRetryAfterMillis = (
   }
 }
 
-const safeProject = (
-  project: (error: unknown) => Duration.DurationInput | undefined,
-  error: unknown,
-): Duration.DurationInput | undefined => {
+const safeProject = ({
+  project,
+  error,
+}: {
+  project: (error: unknown) => Duration.DurationInput | undefined
+  error: unknown
+}): Duration.DurationInput | undefined => {
   try {
     return project(error)
   } catch {
@@ -239,7 +262,13 @@ export const findIdempotencyKeyField = (ast: SchemaAST.AST): Option.Option<strin
  * field (decision 0011 — the SINGLE source). `None` if the input declares no
  * idempotency-key field, or the field's value is absent/non-string.
  */
-export const readIdempotencyKey = (ast: SchemaAST.AST, input: unknown): Option.Option<string> =>
+export const readIdempotencyKey = ({
+  ast,
+  input,
+}: {
+  ast: SchemaAST.AST
+  input: unknown
+}): Option.Option<string> =>
   findIdempotencyKeyField(ast).pipe(
     Option.flatMap((field) =>
       typeof input === 'object' && input !== null && field in input
@@ -311,10 +340,13 @@ export interface AnnotationViolation {
  * (`contract.handler`) is woven into the message so the diagnostic points at the
  * offending handler.
  */
-export const validateInputAnnotations = (
-  ast: SchemaAST.AST,
-  label: string,
-): ReadonlyArray<AnnotationViolation> => {
+export const validateInputAnnotations = ({
+  ast,
+  label,
+}: {
+  ast: SchemaAST.AST
+  label: string
+}): ReadonlyArray<AnnotationViolation> => {
   const violations: AnnotationViolation[] = []
   const onStruct = structLevelFieldAnnotation(ast)
   if (onStruct.idempotencyKey === true) {

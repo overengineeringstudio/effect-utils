@@ -60,7 +60,11 @@ export const reschedule = <
 }): Effect.Effect<void, RestateError, ObjectKey | RestateContext> =>
   Effect.gen(function* () {
     const key = yield* objectKey
-    yield* sendObject(opts.contract, key, opts.method, opts.input, {
-      delayMillis: opts.delayMillis,
+    yield* sendObject({
+      contract: opts.contract,
+      key,
+      method: opts.method,
+      input: opts.input,
+      opts: { delayMillis: opts.delayMillis },
     })
-  }).pipe(withRestateOperation('restate.reschedule', String(opts.method)))
+  }).pipe(withRestateOperation({ name: 'restate.reschedule', label: String(opts.method) }))

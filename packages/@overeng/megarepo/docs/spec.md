@@ -611,20 +611,98 @@ mr store gc [--dry-run] [--force] [--all]
 
 **Behavior:**
 
-1. Refresh the current workspace liveness record, then read the store-local root set from registered workspaces.
+1. Reconcile every registered workspace's liveness record (re-derive each one's
+   live paths fresh from disk), then read the store-wide live set.
 2. Walk the store to find all `refs/heads/*`, `refs/tags/*`, and `refs/commits/*` worktrees.
-3. Keep named `refs/heads/*` and `refs/tags/*` worktrees by default.
-4. Remove clean `refs/commits/*` worktrees that are not referenced by any workspace root set.
+3. Remove clean `refs/commits/*` worktrees that are not referenced by any workspace live set.
+4. Reclaim **cold** named `refs/heads/*` worktrees (archive, then reap aged
+   archives) — see [Cold named-branch reclamation](#cold-named-branch-reclamation).
+   `refs/tags/*` worktrees are kept by default.
 
 **Options:**
 
 - `--dry-run`: show what would be removed
 - `--force`: remove even dirty worktrees
-- `--all`: also consider named branch and tag worktrees for removal
+- `--all`: also consider named branch and tag worktrees for removal (nuclear mode
+  — bypasses the live set entirely; distinct from cold reclamation, which honors it)
 
-**Safety:** Skips worktrees with uncommitted changes or unpushed commits unless `--force`, and rechecks the root set under the worktree lock before removal.
+**Safety:** Skips worktrees with uncommitted changes or unpushed commits unless `--force`, and rechecks the live set under the worktree lock before removal.
 
 **Scope:** Uses the store-local workspace registry plus the current workspace. Run `mr status` or another registry-refreshing command from active megarepos so their commit worktrees remain rooted.
+
+##### Cold named-branch reclamation
+
+> Rationale and trade-offs in `docs/decisions/0001`; test contract in
+> `docs/decisions/0006`; domain terms in `docs/glossary.md`.
+
+A named `refs/heads/*` worktree is reclaimed only when it is **cold**, decided by
+layered gates evaluated in this order (each short-circuits to keep):
+
+0. **Default-branch guard (hard).** A worktree whose ref is its repo's default
+   branch (read offline from the bare's `HEAD`) is never reclaimed, independent of
+   PR state or liveness — closes the `main`/`master` PR-join false-positive
+   (decision 0001).
+1. **Cross-megarepo live-set veto (hard).** Present in any registered workspace's
+   live set (`collectStoreLiveSet`, store-wide) ⇒ keep. A `repos/` symlink alone
+   gives no protection — only a recorded `livePaths` entry does.
+2. **Ref-mismatch fork.** A worktree whose actual HEAD branch differs from the
+   store path ref normally keeps the historical `ref_mismatch` protection. The
+   only default-GC exception is the clean ref-mismatch archival path from
+   [decision 0008](decisions/0008-ref-mismatch-clean-archive.md): the worktree
+   must pass the default-branch guard and live-set veto for both the path ref and
+   actual branch, have no dirt, no unpushed work, no stash, and satisfy the
+   absence grace. It is archived without checking out either branch or otherwise
+   repairing the mismatch, and the archive metadata records both refs. Dirty,
+   unpushed, stashed, live, default-branch, or ambiguous mismatches remain kept as
+   `ref_mismatch`.
+3. **Staleness.** For worktrees whose actual branch matches the store path ref,
+   the branch's GitHub PR must be **merged or closed** (primary signal; the
+   git-ancestor proxy is unusable because the repos squash-merge). An open PR, no
+   PR, or any resolver/`gh` failure ⇒ keep.
+4. **Lossless floor.** Every local commit must be reachable on a remote
+   (`git rev-list <head> --not --remotes` is empty, after a `fetch --prune`); a
+   non-empty stash or unpushed commits ⇒ keep. A fetch failure for a repo keeps
+   all of that repo's worktrees. Any uncommitted/untracked dirt travels intact
+   with the directory on archive.
+5. **Grace windows (three timers).** Continuously absent from all live sets for
+   the _absence grace_ (default 14d); for merged, also past the _post-merge grace_
+   (default 7d after `mergedAt`) — measured against a persisted observation ledger,
+   not one snapshot. Closed-unmerged has no post-close grace.
+6. **Capture = archive → reap.** A qualifying worktree is `git worktree move`d to
+   `<repo>/.archive/<branch>--<ISO8601>/` (recoverable; reuses the existing
+   worktree-archive convention) and its local `refs/heads/<branch>` ref is freed so
+   `mr apply` can re-materialize it. A ref-mismatch archive is the exception: it
+   moves and detaches the archived worktree, but does not delete either branch ref
+   because the path ref and checked-out branch name carry different evidence. The
+   archive is later **reaped** (hard-deleted) once it ages past the _archive
+   retention TTL_ (default 30d). gc also reaps pre-existing `.archive/` worktrees
+   it would otherwise ignore.
+
+Timer defaults are overridable via `$STORE/.state/gc-config.json`
+(`absenceGraceMs`, `postMergeGraceMs`, `archiveRetentionMs`). Archive and reap
+both re-check the live-set veto under the worktree lock immediately before acting.
+`mr store fix` remains the repair command for ref mismatches; default GC never
+checks out a different branch to make a store path match its actual HEAD.
+
+Before any deletion, gc **reconciles all registered workspaces** (re-derives each
+one's live paths fresh from disk), not just the current workspace, and more `mr`
+commands (`apply`, `sync`, `pull`, `pin`) refresh the liveness record — closing a
+bug where a repinned-but-unre-registered workspace's _live_ worktree could be
+deleted. reconcile-all fails safe: a present-but-unreadable workspace keeps its
+last-known live paths, and grace is not advanced for a workspace that failed a
+clean reconcile.
+
+Provably-lossless and conservative: absence of evidence never licenses deletion;
+worst case is a re-`mr apply` (re-fetch), except the deleted-remote-branch edge
+(a squash-merged branch whose remote ref was pruned is kept by the lossless floor).
+
+**JSON output statuses.** With `--json`, each worktree result carries a `status`
+of `removed`, `archived`, `reaped`, `kept`, `skipped_dirty`, `skipped_in_use`, or
+`error`, plus a stable `reason` tag (`live`, `not-stale`, `unrecoverable-local-work`,
+`absence-grace`, `post-merge-grace`, `merged`, `closed`, `ref_mismatch`,
+`ref_mismatch_clean`, …) and, for `archived`, a `recoverPath` pointing at the
+`.archive/` location. Ref-mismatch clean archives also expose the store path ref
+and actual HEAD branch in machine-readable metadata.
 
 #### `mr store ls`
 

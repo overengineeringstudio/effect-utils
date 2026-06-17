@@ -100,7 +100,7 @@ const setupWorkspace = async (
 ): Promise<{ readonly sqlitePath: string }> => {
   await establishSharedWorkspace(workspace)
   const sqlitePath = dataFilePath({ workspaceRoot: workspace, name: testIds.databaseId })
-  editSelectInSqlite(sqlitePath, 'High')
+  editSelectInSqlite({ sqlitePath, value: 'High' })
   await writePageNmd({
     workspace,
     selectValue: 'High',

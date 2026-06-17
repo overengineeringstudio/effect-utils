@@ -49,18 +49,24 @@ const EchoIn = Schema.Struct({
 })
 const EchoOut = Schema.Struct({ token: Restate.sensitive(Schema.String) })
 
-const Echo = RestateService.contract('cp-echo', {
-  /* `echo` returns the sensitive token (proves response decrypt); the idempotency
-   * key dedupes a retry (proves the Service call carries the key). */
-  echo: { input: EchoIn, success: EchoOut },
+const Echo = RestateService.contract({
+  name: 'cp-echo',
+  handlers: {
+    /* `echo` returns the sensitive token (proves response decrypt); the idempotency
+     * key dedupes a retry (proves the Service call carries the key). */
+    echo: { input: EchoIn, success: EchoOut },
+  },
 })
 
-const EchoLive = RestateService.implement<typeof Echo>(Echo, {
-  echo: ({ token }) =>
-    Effect.sync(() => {
-      serviceInvocations += 1
-      return { token }
-    }),
+const EchoLive = RestateService.implement<typeof Echo>({
+  contractValue: Echo,
+  impl: {
+    echo: ({ token }) =>
+      Effect.sync(() => {
+        serviceInvocations += 1
+        return { token }
+      }),
+  },
 })
 
 /* ── (3) an Object: sensitive field + idempotency-key field + typed terminal error ── */
@@ -75,24 +81,33 @@ const VaultIn = Schema.Struct({
   token: Restate.sensitive(Schema.String),
 })
 
-const Vault = RestateObject.contract('cp-vault', {
-  state: VaultState,
-  handlers: {
-    /* `store` dedupes on the idempotency key and stores the (sensitive) token. */
-    store: { input: VaultIn, success: Schema.Struct({ token: Restate.sensitive(Schema.String) }) },
-    /* `deny` always fails with the typed terminal error (proves terminal decode). */
-    deny: { input: Schema.Void, success: Schema.Void, error: Denied },
+const Vault = RestateObject.contract({
+  name: 'cp-vault',
+  def: {
+    state: VaultState,
+    handlers: {
+      /* `store` dedupes on the idempotency key and stores the (sensitive) token. */
+      store: {
+        input: VaultIn,
+        success: Schema.Struct({ token: Restate.sensitive(Schema.String) }),
+      },
+      /* `deny` always fails with the typed terminal error (proves terminal decode). */
+      deny: { input: Schema.Void, success: Schema.Void, error: Denied },
+    },
   },
 })
 
-const VaultLive = RestateObject.implement<typeof Vault>(Vault, {
-  store: ({ token }) =>
-    Effect.gen(function* () {
-      objectInvocations += 1
-      yield* VaultS.set('token', token)
-      return { token }
-    }),
-  deny: () => Effect.fail(new Denied({ reason: 'nope' })),
+const VaultLive = RestateObject.implement<typeof Vault>({
+  contractValue: Vault,
+  impl: {
+    store: ({ token }) =>
+      Effect.gen(function* () {
+        objectInvocations += 1
+        yield* VaultS.set({ key: 'token', value: token })
+        return { token }
+      }),
+    deny: () => Effect.fail(new Denied({ reason: 'nope' })),
+  },
 })
 
 /* ── (3) a Workflow: sensitive run input/output + attach round-trip ── */
@@ -100,13 +115,19 @@ const VaultLive = RestateObject.implement<typeof Vault>(Vault, {
 const FlowIn = Schema.Struct({ secret: Restate.sensitive(Schema.String) })
 const FlowOut = Schema.Struct({ secret: Restate.sensitive(Schema.String) })
 
-const Flow = RestateWorkflow.contract('cp-flow', {
-  state: {},
-  payload: { input: FlowIn, success: FlowOut },
+const Flow = RestateWorkflow.contract({
+  name: 'cp-flow',
+  def: {
+    state: {},
+    payload: { input: FlowIn, success: FlowOut },
+  },
 })
 
-const FlowLive = RestateWorkflow.implement<typeof Flow>(Flow, {
-  run: ({ secret }) => Effect.succeed({ secret }),
+const FlowLive = RestateWorkflow.implement<typeof Flow>({
+  contractValue: Flow,
+  impl: {
+    run: ({ secret }) => Effect.succeed({ secret }),
+  },
 })
 
 /* A Service whose INPUT is non-sensitive (Void) but whose OUTPUT carries a
@@ -114,11 +135,17 @@ const FlowLive = RestateWorkflow.implement<typeof Flow>(Flow, {
  * response body whose sensitive field is genuine ciphertext-on-the-wire, while
  * the typed `call` decrypts it. Proves both directions of the client serde. */
 const RevealOut = Schema.Struct({ token: Restate.sensitive(Schema.String) })
-const Reveal = RestateService.contract('cp-reveal', {
-  reveal: { input: Schema.Void, success: RevealOut },
+const Reveal = RestateService.contract({
+  name: 'cp-reveal',
+  handlers: {
+    reveal: { input: Schema.Void, success: RevealOut },
+  },
 })
-const RevealLive = RestateService.implement<typeof Reveal>(Reveal, {
-  reveal: () => Effect.succeed({ token: SECRET }),
+const RevealLive = RestateService.implement<typeof Reveal>({
+  contractValue: Reveal,
+  impl: {
+    reveal: () => Effect.succeed({ token: SECRET }),
+  },
 })
 
 const HarnessLayer = RestateTestHarness.layer({
@@ -141,7 +168,11 @@ describe.skipIf(!serverAvailable)('contract-invocation policy at the public entr
     it.effect('P2: Service call round-trips a sensitive field (encrypt + decrypt)', () =>
       Effect.gen(function* () {
         const harness = yield* RestateTestHarness
-        const out = yield* harness.ingress.call(Echo, 'echo', { key: 'r1', token: SECRET })
+        const out = yield* harness.ingress.call({
+          contract: Echo,
+          method: 'echo',
+          input: { key: 'r1', token: SECRET },
+        })
         /* The decoded response is the PLAINTEXT — the client serde decrypted it.
          * Pre-fix this threw `RedactionCipherMissingError` (client had no cipher). */
         expect(out.token).toBe(SECRET)
@@ -153,8 +184,16 @@ describe.skipIf(!serverAvailable)('contract-invocation policy at the public entr
       Effect.gen(function* () {
         const harness = yield* RestateTestHarness
         const before = serviceInvocations
-        yield* harness.ingress.call(Echo, 'echo', { key: 'dedupe-1', token: SECRET })
-        yield* harness.ingress.call(Echo, 'echo', { key: 'dedupe-1', token: SECRET })
+        yield* harness.ingress.call({
+          contract: Echo,
+          method: 'echo',
+          input: { key: 'dedupe-1', token: SECRET },
+        })
+        yield* harness.ingress.call({
+          contract: Echo,
+          method: 'echo',
+          input: { key: 'dedupe-1', token: SECRET },
+        })
         /* Same idempotency key → the handler ran exactly once. Pre-fix the Service
          * `call` carried no key, so the handler ran twice (before+2). */
         expect(serviceInvocations - before).toBe(1)
@@ -174,7 +213,11 @@ describe.skipIf(!serverAvailable)('contract-invocation policy at the public entr
         const wire = JSON.parse(body) as { token: string }
         expect(wire.token).not.toBe(SECRET)
         /* The typed `call` over the SAME handler decrypts the response to plaintext. */
-        const out = yield* harness.ingress.call(Reveal, 'reveal', undefined)
+        const out = yield* harness.ingress.call({
+          contract: Reveal,
+          method: 'reveal',
+          input: undefined,
+        })
         expect(out.token).toBe(SECRET)
       }),
     )
@@ -184,15 +227,25 @@ describe.skipIf(!serverAvailable)('contract-invocation policy at the public entr
       Effect.gen(function* () {
         const harness = yield* RestateTestHarness
         const before = objectInvocations
-        const out = yield* harness.ingress.objectCall(Vault, 'k1', 'store', {
-          key: 'o-dedupe',
-          token: SECRET,
+        const out = yield* harness.ingress.objectCall({
+          contract: Vault,
+          key: 'k1',
+          method: 'store',
+          input: {
+            key: 'o-dedupe',
+            token: SECRET,
+          },
         })
         expect(out.token).toBe(SECRET)
-        yield* harness.ingress.objectCall(Vault, 'k1', 'store', { key: 'o-dedupe', token: SECRET })
+        yield* harness.ingress.objectCall({
+          contract: Vault,
+          key: 'k1',
+          method: 'store',
+          input: { key: 'o-dedupe', token: SECRET },
+        })
         expect(objectInvocations - before).toBe(1)
         /* The seeded State decrypts back to the plaintext via `stateOf` (same policy). */
-        const stored = yield* harness.stateOf(Vault, 'k1').get('token')
+        const stored = yield* harness.stateOf({ contract: Vault, key: 'k1' }).get('token')
         expect(stored).toBe(SECRET)
       }),
     )
@@ -202,7 +255,7 @@ describe.skipIf(!serverAvailable)('contract-invocation policy at the public entr
       Effect.gen(function* () {
         const harness = yield* RestateTestHarness
         const result = yield* harness.ingress
-          .objectCallTyped(Vault, 'k2', 'deny', undefined)
+          .objectCallTyped({ contract: Vault, key: 'k2', method: 'deny', input: undefined })
           .pipe(Effect.flip)
         expect(result).toBeInstanceOf(Denied)
         expect((result as Denied).reason).toBe('nope')
@@ -213,15 +266,20 @@ describe.skipIf(!serverAvailable)('contract-invocation policy at the public entr
     it.effect('Workflow submit + attach round-trips a sensitive run field', () =>
       Effect.gen(function* () {
         const harness = yield* RestateTestHarness
-        yield* harness.ingress.workflowSubmit(Flow, 'wf-1', { secret: SECRET })
+        yield* harness.ingress.workflowSubmit({
+          contract: Flow,
+          key: 'wf-1',
+          input: { secret: SECRET },
+        })
         /* Attach awaits the run output; the sensitive field decrypts via the policy. */
         const out = yield* Effect.gen(function* () {
           for (let attempt = 0; attempt < 50; attempt++) {
-            const peek = yield* harness.ingress.workflowOutput(Flow, 'wf-1')
-            if (peek.ready === true) return yield* harness.ingress.workflowAttach(Flow, 'wf-1')
+            const peek = yield* harness.ingress.workflowOutput({ contract: Flow, key: 'wf-1' })
+            if (peek.ready === true)
+              return yield* harness.ingress.workflowAttach({ contract: Flow, key: 'wf-1' })
             yield* liveSleep(100)
           }
-          return yield* harness.ingress.workflowAttach(Flow, 'wf-1')
+          return yield* harness.ingress.workflowAttach({ contract: Flow, key: 'wf-1' })
         })
         expect(out.secret).toBe(SECRET)
       }),

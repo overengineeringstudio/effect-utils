@@ -504,6 +504,7 @@ const NmdFrontmatterBody = Schema.Struct({
   ),
 )
 
+/** Top-level `.nmd` frontmatter envelope (V2): the single `notion_md` body carrying version/identity/source and the page snapshot. */
 export const NmdFrontmatterV2 = Schema.Struct({
   notion_md: NmdFrontmatterBody,
 }).annotations({ identifier: 'NotionMd.FrontmatterV2' })
@@ -574,6 +575,7 @@ export const decodeNmdSyncStateV1 = Schema.decodeUnknown(NmdSyncStateV1, nmdStri
  */
 type NotionUUIDValue = typeof NotionUUID.Type
 
+/** Resolved local `.nmd` state: the source/sidecar combination classified into a tagged stateless/bound/remote/shared case (R31). */
 export type NmdLocalState =
   | {
       readonly _tag: 'local-unbound'
@@ -627,6 +629,7 @@ const unboundDirectionError = (source: 'remote' | 'shared'): NmdStatelessnessErr
     message: `source: ${source} requires a page_id (only source: local may be unbound)`,
   })
 
+/** Classify a `.nmd` frontmatter + optional sidecar into an {@link NmdLocalState}, or an `NmdStatelessnessError` if source/sidecar disagree (R31). */
 export const gateNmdLocalState = (input: {
   readonly frontmatter: NmdFrontmatterV2
   readonly syncState: NmdSyncStateV1 | undefined

@@ -49,10 +49,13 @@ export type BoundaryErrorClass = 'terminal' | 'retryable' | 'cancelled'
  * unchanged. The encode itself still uses the original schema (the union encodes
  * fine), so only the CLASSIFICATION read is narrowed.
  */
-const resolveErrorMember = (
-  errorSchema: Schema.Schema<any, any>,
-  error: unknown,
-): Schema.Schema<any, any> => {
+const resolveErrorMember = ({
+  errorSchema,
+  error,
+}: {
+  errorSchema: Schema.Schema<any, any>
+  error: unknown
+}): Schema.Schema<any, any> => {
   const ast = errorSchema.ast
   if (ast._tag !== 'Union') return errorSchema
   for (const member of ast.types) {
@@ -82,10 +85,13 @@ const resolveErrorMember = (
  *   so the SDK does NOT retry it.
  * - Anything else (defect) → the squashed cause so the SDK throws it and RETRIES.
  */
-export const classifyOutcome = (
-  cause: Cause.Cause<unknown>,
-  errorSchema?: Schema.Schema<any, any>,
-): BoundaryOutcome => {
+export const classifyOutcome = ({
+  cause,
+  errorSchema,
+}: {
+  cause: Cause.Cause<unknown>
+  errorSchema?: Schema.Schema<any, any>
+}): BoundaryOutcome => {
   /* A Restate suspension (a durable op suspending the attempt) may arrive as a
    * DEFECT (a durable combinator re-throws it verbatim via `Effect.die`, see
    * `awaitDurable`). Re-throw it AS-IS so the SDK suspends/resumes — never
@@ -122,7 +128,7 @@ export const classifyOutcome = (
      * honored rather than read off the un-annotated union node. */
     const classification =
       errorSchema !== undefined
-        ? readErrorClass(resolveErrorMember(errorSchema, error).ast).pipe(
+        ? readErrorClass(resolveErrorMember({ errorSchema, error }).ast).pipe(
             Option.getOrElse(() => undefined),
           )
         : undefined
@@ -135,7 +141,7 @@ export const classifyOutcome = (
       /* Project `retryAfter` from the ACTUAL error instance (#3): a static value
        * is decoded as-is; a projection reads the floor off this very error (e.g. a
        * 429's `e.retryAfterMillis`). */
-      const retryAfter = readRetryAfterMillis(classification.retryAfter, error)
+      const retryAfter = readRetryAfterMillis({ retryAfter: classification.retryAfter, error })
       return {
         _tag: 'retryable',
         errorTag: tag,
@@ -171,11 +177,14 @@ export const classifyOutcome = (
  * unwrap of {@link classifyOutcome}'s `thrown` — kept as a named export for the
  * unit tests and any direct boundary use.
  */
-export const toTerminal = (
-  cause: Cause.Cause<unknown>,
-  errorSchema?: Schema.Schema<any, any>,
-): unknown => {
-  const outcome = classifyOutcome(cause, errorSchema)
+export const toTerminal = ({
+  cause,
+  errorSchema,
+}: {
+  cause: Cause.Cause<unknown>
+  errorSchema?: Schema.Schema<any, any>
+}): unknown => {
+  const outcome = classifyOutcome({ cause, ...(errorSchema !== undefined ? { errorSchema } : {}) })
   return outcome._tag === 'success' ? undefined : outcome.thrown
 }
 
@@ -265,11 +274,15 @@ export type HandlerMarkers =
  * gates type-legality, so an illegal `State.set` in a shared handler is a COMPILE
  * error and the residual `R` collapses to `AppR` at runtime.
  */
-export const provideHandlerCaps = <A, E, R>(
-  effect: Effect.Effect<A, E, R>,
-  markers: HandlerMarkers,
-  key: string | undefined,
-): Effect.Effect<A, E, R> => {
+export const provideHandlerCaps = <A, E, R>({
+  effect,
+  markers,
+  key,
+}: {
+  effect: Effect.Effect<A, E, R>
+  markers: HandlerMarkers
+  key: string | undefined
+}): Effect.Effect<A, E, R> => {
   let provided = effect
   if (markers !== 'service') {
     provided = provided.pipe(

@@ -56,10 +56,13 @@ const trustOtelContract = <A, E, R>(
   effect.pipe(Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)))
 
 const trustedWith =
-  <S extends Schema.Schema.AnyNoContext>(
-    operation: OtelOperationDefinition<S>,
-    attributes: Schema.Schema.Type<S>,
-  ) =>
+  <S extends Schema.Schema.AnyNoContext>({
+    operation,
+    attributes,
+  }: {
+    operation: OtelOperationDefinition<S>
+    attributes: Schema.Schema.Type<S>
+  }) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     trustOtelContract<A, E, R>(operation.with({ attributes, effect }))
 
@@ -81,7 +84,7 @@ export const tryPw = <TA>({
   Effect.tryPromise({
     try: effect,
     catch: (cause) => new PwOpError({ op, cause }),
-  }).pipe(trustedWith(PwOpOperation(op), { label: op, op }))
+  }).pipe(trustedWith({ operation: PwOpOperation(op), attributes: { label: op, op } }))
 
 /**
  * Generic fallback for wrapping any Playwright promise into an Effect.

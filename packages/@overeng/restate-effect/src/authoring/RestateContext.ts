@@ -153,13 +153,13 @@ export type ResultsOf<T extends readonly Descriptor<any>[]> = {
   -readonly [P in keyof T]: T[P] extends Descriptor<infer A> ? A : never
 }
 
-const descriptor = <A>(
-  tag: Descriptor<A>['_tag'],
-  issue: (
-    ctx: restate.Context,
-    redaction: RedactionCipher | undefined,
-  ) => restate.RestatePromise<A>,
-): Descriptor<A> => ({ _tag: tag, issue })
+const descriptor = <A>({
+  tag,
+  issue,
+}: {
+  tag: Descriptor<A>['_tag']
+  issue: (ctx: restate.Context, redaction: RedactionCipher | undefined) => restate.RestatePromise<A>
+}): Descriptor<A> => ({ _tag: tag, issue })
 
 /* ── durable-op rejection handling (cancellation/suspension preservation) ─── */
 
@@ -226,11 +226,15 @@ type DurableRejectMode = 'infra' | 'terminal-reject'
  * cancellation/suspension identically. The opt-in `runExit` form re-surfaces the
  * defect as an observable `Exit` value for compensation/sagas.
  */
-const awaitDurable = <A>(
-  thunk: () => Promise<A>,
-  onError: (cause: unknown) => RestateError,
-  mode: DurableRejectMode = 'infra',
-): Effect.Effect<A, never, never> =>
+const awaitDurable = <A>({
+  thunk,
+  onError,
+  mode = 'infra',
+}: {
+  thunk: () => Promise<A>
+  onError: (cause: unknown) => RestateError
+  mode?: DurableRejectMode
+}): Effect.Effect<A, never, never> =>
   Effect.async<A, never>((resume) => {
     thunk().then(
       (value) => resume(Effect.succeed(value)),
@@ -328,11 +332,15 @@ const mapRunOptions = (o: RunRetryOptions): Record<string, unknown> => ({
  * schema, so a typed durable-step failure round-trips) is a DEFERRED alternative
  * (docs/vrs/spec.md Deferred, decision 0003) — not the v1 contract.
  */
-export const run = <A, R>(
-  name: string,
-  effect: [R] extends [Exclude<R, DurableCaps>] ? Effect.Effect<A, never, R> : never,
-  options?: RunRetryOptions,
-): Effect.Effect<A, never, Exclude<R, DurableCaps> | RestateContext> =>
+export const run = <A, R>({
+  name,
+  effect,
+  options,
+}: {
+  name: string
+  effect: [R] extends [Exclude<R, DurableCaps>] ? Effect.Effect<A, never, R> : never
+  options?: RunRetryOptions
+}): Effect.Effect<A, never, Exclude<R, DurableCaps> | RestateContext> =>
   Effect.gen(function* () {
     const ctx = yield* RestateContext
     const runtime = yield* Effect.runtime<Exclude<R, DurableCaps>>()
@@ -342,19 +350,19 @@ export const run = <A, R>(
      * raw `A` (journaled by the SDK); a defect rejects the step. */
     const inner = effect as Effect.Effect<A, never, Exclude<R, DurableCaps>>
     const action = (): Promise<A> => Runtime.runPromise(runtime)(inner)
-    const result = yield* awaitDurable(
-      () =>
+    const result = yield* awaitDurable({
+      thunk: () =>
         options !== undefined
           ? ctx.run(name, action, mapRunOptions(options) as Parameters<typeof ctx.run<A>>[2])
           : ctx.run(name, action),
-      (cause) => new RestateError({ reason: 'RunFailed', method: `run(${name})`, cause }),
-    )
+      onError: (cause) => new RestateError({ reason: 'RunFailed', method: `run(${name})`, cause }),
+    })
     /* AUTO baseline metric (decision 0014): a durable step executed exactly once.
      * The journaled `ctx.run` body runs on real execution and is skipped on replay,
      * so gating the counter on non-replay makes it exactly-once across attempts. */
-    yield* emitDurableStep(ctx, name)
+    yield* emitDurableStep({ ctx, step: name })
     return result
-  }).pipe(withRestateOperation('restate.run', name))
+  }).pipe(withRestateOperation({ name: 'restate.run', label: name }))
 
 /**
  * Observe a `Restate.run`'s OBSERVED outcome as an `Exit` VALUE instead of failing
@@ -368,18 +376,25 @@ export const run = <A, R>(
  * failure is always a defect/interrupt the caller branches on. The inner step is
  * still journaled exactly once.
  */
-export const runExit = <A, R>(
-  name: string,
-  effect: [R] extends [Exclude<R, DurableCaps>] ? Effect.Effect<A, never, R> : never,
-  options?: RunRetryOptions,
-): Effect.Effect<Exit.Exit<A>, never, Exclude<R, DurableCaps> | RestateContext> =>
-  Effect.exit(run<A, R>(name, effect, options))
+export const runExit = <A, R>({
+  name,
+  effect,
+  options,
+}: {
+  name: string
+  effect: [R] extends [Exclude<R, DurableCaps>] ? Effect.Effect<A, never, R> : never
+  options?: RunRetryOptions
+}): Effect.Effect<Exit.Exit<A>, never, Exclude<R, DurableCaps> | RestateContext> =>
+  Effect.exit(run<A, R>({ name, effect, ...(options !== undefined ? { options } : {}) }))
 
 /** A `run` descriptor for use inside `Restate.all`/`race`/`any`. */
-export const runDescriptor = <A>(
-  name: string,
-  action: (() => Promise<A>) | (() => A),
-): Descriptor<A> => descriptor<A>('run', (ctx) => ctx.run<A>(name, action))
+export const runDescriptor = <A>({
+  name,
+  action,
+}: {
+  name: string
+  action: (() => Promise<A>) | (() => A)
+}): Descriptor<A> => descriptor<A>({ tag: 'run', issue: (ctx) => ctx.run<A>(name, action) })
 
 /**
  * A durable timer backed by `ctx.sleep`. The duration is a lower bound; the
@@ -387,18 +402,30 @@ export const runDescriptor = <A>(
  * timer infra failure is a defect classified at the boundary (#1), never a typed
  * `RestateError`.
  */
-export const sleep = (millis: number, name?: string): Effect.Effect<void, never, RestateContext> =>
+export const sleep = ({
+  millis,
+  name,
+}: {
+  millis: number
+  name?: string
+}): Effect.Effect<void, never, RestateContext> =>
   Effect.gen(function* () {
     const ctx = yield* RestateContext
-    yield* awaitDurable(
-      () => ctx.sleep(millis, name),
-      (cause) => new RestateError({ reason: 'SleepFailed', method: `sleep(${millis})`, cause }),
-    )
-  }).pipe(withRestateOperation('restate.sleep', name ?? `${millis}ms`))
+    yield* awaitDurable({
+      thunk: () => ctx.sleep(millis, name),
+      onError: (cause) =>
+        new RestateError({ reason: 'SleepFailed', method: `sleep(${millis})`, cause }),
+    })
+  }).pipe(withRestateOperation({ name: 'restate.sleep', label: name ?? `${millis}ms` }))
 
 /** A `sleep` descriptor for use inside `Restate.all`/`race`/`any`. */
-export const sleepDescriptor = (millis: number, name?: string): Descriptor<void> =>
-  descriptor('sleep', (ctx) => ctx.sleep(millis, name))
+export const sleepDescriptor = ({
+  millis,
+  name,
+}: {
+  millis: number
+  name?: string
+}): Descriptor<void> => descriptor({ tag: 'sleep', issue: (ctx) => ctx.sleep(millis, name) })
 
 /**
  * A durable timeout: race `effect` against a `ctx.sleep` deadline via
@@ -407,22 +434,26 @@ export const sleepDescriptor = (millis: number, name?: string): Descriptor<void>
  * descriptor issuer — Phase 1 exposes `timeout` over a `run`/`promiseGet`
  * descriptor so the inner op is issued once and bounded.
  */
-export const timeout = <A>(
-  descr: Descriptor<A>,
-  millis: number,
-): Effect.Effect<A | undefined, never, RestateContext> =>
+export const timeout = <A>({
+  descr,
+  millis,
+}: {
+  descr: Descriptor<A>
+  millis: number
+}): Effect.Effect<A | undefined, never, RestateContext> =>
   Effect.gen(function* () {
     const ctx = yield* RestateContext
     const redaction = yield* resolveCallRedaction
-    return yield* awaitDurable(
-      () =>
+    return yield* awaitDurable({
+      thunk: () =>
         descr
           .issue(ctx, redaction)
           .orTimeout(millis)
           .map((value?: A) => value),
-      (cause) => new RestateError({ reason: 'RunFailed', method: `timeout(${millis})`, cause }),
-    )
-  }).pipe(withRestateOperation('restate.timeout', `${millis}ms`))
+      onError: (cause) =>
+        new RestateError({ reason: 'RunFailed', method: `timeout(${millis})`, cause }),
+    })
+  }).pipe(withRestateOperation({ name: 'restate.timeout', label: `${millis}ms` }))
 
 /**
  * Combine durable-op descriptors deterministically. Issues every descriptor
@@ -434,55 +465,58 @@ export const timeout = <A>(
  * decision 0005.
  */
 const combineDescriptors =
-  <Combined>(
-    label: string,
+  <Combined>({
+    label,
+    combine,
+  }: {
+    label: string
     combine: (
       promises: ReadonlyArray<restate.RestatePromise<unknown>>,
-    ) => restate.RestatePromise<Combined>,
-  ) =>
+    ) => restate.RestatePromise<Combined>
+  }) =>
   <const T extends readonly Descriptor<any>[]>(
     descriptors: T,
   ): Effect.Effect<Combined, never, RestateContext> =>
     Effect.gen(function* () {
       const ctx = yield* RestateContext
       const redaction = yield* resolveCallRedaction
-      return yield* awaitDurable(
-        () => combine(descriptors.map((d) => d.issue(ctx, redaction))),
-        (cause) => new RestateError({ reason: 'RunFailed', method: label, cause }),
-      )
-    }).pipe(withRestateOperation(`restate.${label}`, label))
+      return yield* awaitDurable({
+        thunk: () => combine(descriptors.map((d) => d.issue(ctx, redaction))),
+        onError: (cause) => new RestateError({ reason: 'RunFailed', method: label, cause }),
+      })
+    }).pipe(withRestateOperation({ name: `restate.${label}`, label: label }))
 
 /** Await all durable descriptors → result TUPLE (issued in source order). */
 export const all = <const T extends readonly Descriptor<any>[]>(
   descriptors: T,
 ): Effect.Effect<ResultsOf<T>, never, RestateContext> =>
-  combineDescriptors<ResultsOf<T>>(
-    'all',
-    (promises) =>
+  combineDescriptors<ResultsOf<T>>({
+    label: 'all',
+    combine: (promises) =>
       /* The SDK's `all` returns the awaited tuple; the descriptor phantoms make it
        * precise at the call site. */
       restate.RestatePromise.all(promises) as restate.RestatePromise<ResultsOf<T>>,
-  )(descriptors)
+  })(descriptors)
 
 /** Race durable descriptors → first result (union of branch types). */
 export const race = <const T extends readonly Descriptor<any>[]>(
   descriptors: T,
 ): Effect.Effect<ResultsOf<T>[number], never, RestateContext> =>
-  combineDescriptors<ResultsOf<T>[number]>(
-    'race',
-    (promises) =>
+  combineDescriptors<ResultsOf<T>[number]>({
+    label: 'race',
+    combine: (promises) =>
       restate.RestatePromise.race(promises) as restate.RestatePromise<ResultsOf<T>[number]>,
-  )(descriptors)
+  })(descriptors)
 
 /** First SUCCESSFULLY-resolved durable descriptor (union of branch types). */
 export const any = <const T extends readonly Descriptor<any>[]>(
   descriptors: T,
 ): Effect.Effect<ResultsOf<T>[number], never, RestateContext> =>
-  combineDescriptors<ResultsOf<T>[number]>(
-    'any',
-    (promises) =>
+  combineDescriptors<ResultsOf<T>[number]>({
+    label: 'any',
+    combine: (promises) =>
       restate.RestatePromise.any(promises) as restate.RestatePromise<ResultsOf<T>[number]>,
-  )(descriptors)
+  })(descriptors)
 
 /* ── State combinators (capability-gated, key/value typed against `state`) ─ */
 /*
@@ -494,10 +528,13 @@ export const any = <const T extends readonly Descriptor<any>[]>(
  * corrupt-journal defect).
  */
 
-const readState = <S extends StateSchemas, K extends keyof S & string>(
-  schemas: S,
-  key: K,
-): Effect.Effect<StateValueType<S[K]> | undefined, never, StateRead | RestateContext> =>
+const readState = <S extends StateSchemas, K extends keyof S & string>({
+  schemas,
+  key,
+}: {
+  schemas: S
+  key: K
+}): Effect.Effect<StateValueType<S[K]> | undefined, never, StateRead | RestateContext> =>
   Effect.gen(function* () {
     const ctx = yield* RestateContext
     const objectCtx = ctx as restate.ObjectContext
@@ -516,13 +553,17 @@ const readState = <S extends StateSchemas, K extends keyof S & string>(
       ),
       Effect.orDie,
     )
-  }).pipe(withRestateOperation('restate.state.get', key))
+  }).pipe(withRestateOperation({ name: 'restate.state.get', label: key }))
 
-const writeState = <S extends StateSchemas, K extends keyof S & string>(
-  schemas: S,
-  key: K,
-  value: StateValueType<S[K]>,
-): Effect.Effect<void, never, StateWrite | RestateContext> =>
+const writeState = <S extends StateSchemas, K extends keyof S & string>({
+  schemas,
+  key,
+  value,
+}: {
+  schemas: S
+  key: K
+  value: StateValueType<S[K]>
+}): Effect.Effect<void, never, StateWrite | RestateContext> =>
   Effect.gen(function* () {
     const ctx = yield* RestateContext
     const objectCtx = ctx as restate.ObjectContext
@@ -543,7 +584,7 @@ const writeState = <S extends StateSchemas, K extends keyof S & string>(
       Effect.orDie,
     )
     objectCtx.set(key, encoded)
-  }).pipe(withRestateOperation('restate.state.set', key))
+  }).pipe(withRestateOperation({ name: 'restate.state.set', label: key }))
 
 /**
  * Build the typed State combinator family bound to a contract's `state` block.
@@ -552,21 +593,21 @@ const writeState = <S extends StateSchemas, K extends keyof S & string>(
  */
 export const stateFor = <S extends StateSchemas>(schemas: S) =>
   ({
-    get: <K extends keyof S & string>(key: K) => readState(schemas, key),
-    set: <K extends keyof S & string>(key: K, value: StateValueType<S[K]>) =>
-      writeState(schemas, key, value),
+    get: <K extends keyof S & string>(key: K) => readState({ schemas, key }),
+    set: <K extends keyof S & string>({ key, value }: { key: K; value: StateValueType<S[K]> }) =>
+      writeState({ schemas, key, value }),
     clear: <K extends keyof S & string>(
       key: K,
     ): Effect.Effect<void, never, StateWrite | RestateContext> =>
       Effect.gen(function* () {
         const ctx = yield* RestateContext
         ;(ctx as restate.ObjectContext).clear(key)
-      }).pipe(withRestateOperation('restate.state.clear', key)),
+      }).pipe(withRestateOperation({ name: 'restate.state.clear', label: key })),
     clearAll: (): Effect.Effect<void, never, StateWrite | RestateContext> =>
       Effect.gen(function* () {
         const ctx = yield* RestateContext
         ;(ctx as restate.ObjectContext).clearAll()
-      }).pipe(withRestateOperation('restate.state.clearAll', 'clearAll')),
+      }).pipe(withRestateOperation({ name: 'restate.state.clearAll', label: 'clearAll' })),
     stateKeys: (): Effect.Effect<ReadonlyArray<string>, never, StateRead | RestateContext> =>
       Effect.gen(function* () {
         const ctx = yield* RestateContext
@@ -576,7 +617,7 @@ export const stateFor = <S extends StateSchemas>(schemas: S) =>
           catch: (cause) =>
             new RestateError({ reason: 'RunFailed', method: 'State.stateKeys', cause }),
         }).pipe(Effect.orDie)
-      }).pipe(withRestateOperation('restate.state.stateKeys', 'stateKeys')),
+      }).pipe(withRestateOperation({ name: 'restate.state.stateKeys', label: 'stateKeys' })),
   }) as const
 
 /* ── ObjectKey accessor (capability-gated) ───────────────────────────────── */
@@ -590,7 +631,7 @@ export const objectKey: Effect.Effect<string, never, ObjectKey | RestateContext>
     const ctx = yield* RestateContext
     return (ctx as restate.ObjectContext).key
   },
-).pipe(withRestateOperation('restate.objectKey', 'objectKey'))
+).pipe(withRestateOperation({ name: 'restate.objectKey', label: 'objectKey' }))
 
 /* ── Durable promises (Workflow cross-handler signalling) ────────────────── */
 /*
@@ -605,7 +646,8 @@ export const objectKey: Effect.Effect<string, never, ObjectKey | RestateContext>
  * `Restate.race`/`all`/`any`.
  */
 
-const promiseSerde = <T, I>(schema: Schema.Schema<T, I>): restate.Serde<T> => internalSerde(schema)
+const promiseSerde = <T, I>(schema: Schema.Schema<T, I>): restate.Serde<T> =>
+  internalSerde({ schema })
 
 /* A blocking durable-promise `get`, awaited through {@link awaitDurable} (the same
  * seam `run`/`sleep` use) so suspension/cancellation/infra classify identically. An
@@ -613,42 +655,54 @@ const promiseSerde = <T, I>(schema: Schema.Schema<T, I>): restate.Serde<T> => in
  * (not a defect→retry); a `reject` makes the awaiting `get` fail TERMINALLY (R34) —
  * that rejection arrives as a `TerminalError` the boundary terminalizes verbatim; a
  * real infra failure is a defect (clean `E`, #1). */
-const promiseGet = <T, I>(
-  name: string,
-  schema: Schema.Schema<T, I>,
-): Effect.Effect<T, never, DurablePromise | RestateContext> =>
+const promiseGet = <T, I>({
+  name,
+  schema,
+}: {
+  name: string
+  schema: Schema.Schema<T, I>
+}): Effect.Effect<T, never, DurablePromise | RestateContext> =>
   Effect.gen(function* () {
     const ctx = yield* RestateContext
-    return yield* awaitDurable(
-      () => (ctx as restate.WorkflowSharedContext).promise<T>(name, promiseSerde(schema)).get(),
-      (cause) =>
+    return yield* awaitDurable({
+      thunk: () =>
+        (ctx as restate.WorkflowSharedContext).promise<T>(name, promiseSerde(schema)).get(),
+      onError: (cause) =>
         new RestateError({ reason: 'RunFailed', method: `DurablePromise.get(${name})`, cause }),
-      'terminal-reject',
-    )
-  }).pipe(withRestateOperation('restate.promise.get', name))
+      mode: 'terminal-reject',
+    })
+  }).pipe(withRestateOperation({ name: 'restate.promise.get', label: name }))
 
 /* A non-blocking read (`undefined` if unresolved — never suspends), awaited through
  * {@link awaitDurable} so a `reject` classifies TERMINALLY like {@link promiseGet}
  * (the suspension branch is inert here). */
-const promisePeek = <T, I>(
-  name: string,
-  schema: Schema.Schema<T, I>,
-): Effect.Effect<T | undefined, never, DurablePromise | RestateContext> =>
+const promisePeek = <T, I>({
+  name,
+  schema,
+}: {
+  name: string
+  schema: Schema.Schema<T, I>
+}): Effect.Effect<T | undefined, never, DurablePromise | RestateContext> =>
   Effect.gen(function* () {
     const ctx = yield* RestateContext
-    return yield* awaitDurable(
-      () => (ctx as restate.WorkflowSharedContext).promise<T>(name, promiseSerde(schema)).peek(),
-      (cause) =>
+    return yield* awaitDurable({
+      thunk: () =>
+        (ctx as restate.WorkflowSharedContext).promise<T>(name, promiseSerde(schema)).peek(),
+      onError: (cause) =>
         new RestateError({ reason: 'RunFailed', method: `DurablePromise.peek(${name})`, cause }),
-      'terminal-reject',
-    )
-  }).pipe(withRestateOperation('restate.promise.peek', name))
+      mode: 'terminal-reject',
+    })
+  }).pipe(withRestateOperation({ name: 'restate.promise.peek', label: name }))
 
-const promiseResolve = <T, I>(
-  name: string,
-  schema: Schema.Schema<T, I>,
-  value: T,
-): Effect.Effect<void, never, DurablePromise | RestateContext> =>
+const promiseResolve = <T, I>({
+  name,
+  schema,
+  value,
+}: {
+  name: string
+  schema: Schema.Schema<T, I>
+  value: T
+}): Effect.Effect<void, never, DurablePromise | RestateContext> =>
   Effect.gen(function* () {
     const ctx = yield* RestateContext
     yield* Effect.tryPromise({
@@ -659,13 +713,17 @@ const promiseResolve = <T, I>(
       catch: (cause) =>
         new RestateError({ reason: 'RunFailed', method: `DurablePromise.resolve(${name})`, cause }),
     }).pipe(Effect.orDie)
-  }).pipe(withRestateOperation('restate.promise.resolve', name))
+  }).pipe(withRestateOperation({ name: 'restate.promise.resolve', label: name }))
 
-const promiseReject = <T, I>(
-  name: string,
-  schema: Schema.Schema<T, I>,
-  reason: string,
-): Effect.Effect<void, never, DurablePromise | RestateContext> =>
+const promiseReject = <T, I>({
+  name,
+  schema,
+  reason,
+}: {
+  name: string
+  schema: Schema.Schema<T, I>
+  reason: string
+}): Effect.Effect<void, never, DurablePromise | RestateContext> =>
   Effect.gen(function* () {
     const ctx = yield* RestateContext
     yield* Effect.tryPromise({
@@ -676,7 +734,7 @@ const promiseReject = <T, I>(
       catch: (cause) =>
         new RestateError({ reason: 'RunFailed', method: `DurablePromise.reject(${name})`, cause }),
     }).pipe(Effect.orDie)
-  }).pipe(withRestateOperation('restate.promise.reject', name))
+  }).pipe(withRestateOperation({ name: 'restate.promise.reject', label: name }))
 
 /**
  * Build the typed durable-promise combinator family for one payload Schema. Each
@@ -685,14 +743,18 @@ const promiseReject = <T, I>(
  */
 export const durablePromiseFor = <T, I>(schema: Schema.Schema<T, I>) =>
   ({
-    get: (name: string) => promiseGet(name, schema),
-    peek: (name: string) => promisePeek(name, schema),
-    resolve: (name: string, value: T) => promiseResolve(name, schema, value),
-    reject: (name: string, reason: string) => promiseReject(name, schema, reason),
+    get: (name: string) => promiseGet({ name, schema }),
+    peek: (name: string) => promisePeek({ name, schema }),
+    resolve: ({ name, value }: { name: string; value: T }) =>
+      promiseResolve({ name, schema, value }),
+    reject: ({ name, reason }: { name: string; reason: string }) =>
+      promiseReject({ name, schema, reason }),
     getDescriptor: (name: string): Descriptor<T> =>
-      descriptor<T>('promiseGet', (ctx) =>
-        (ctx as restate.WorkflowSharedContext).promise<T>(name, promiseSerde(schema)).get(),
-      ),
+      descriptor<T>({
+        tag: 'promiseGet',
+        issue: (ctx) =>
+          (ctx as restate.WorkflowSharedContext).promise<T>(name, promiseSerde(schema)).get(),
+      }),
   }) as const
 
 /* ── Awakeables (external completion tokens) ─────────────────────────────── */
@@ -743,46 +805,54 @@ export const makeAwakeable = <T, I>(
        * invocation (not a defect→retry); a `reject` arrives as a `TerminalError`
        * the boundary terminalizes verbatim (R33/R34); a real infra failure is a
        * defect (clean `E`, #1). */
-      const value = yield* awaitDurable(
-        () => aw.promise,
-        (cause) => new RestateError({ reason: 'RunFailed', method: 'Awakeable.await', cause }),
-        'terminal-reject',
-      )
+      const value = yield* awaitDurable({
+        thunk: () => aw.promise,
+        onError: (cause) =>
+          new RestateError({ reason: 'RunFailed', method: 'Awakeable.await', cause }),
+        mode: 'terminal-reject',
+      })
       /* AUTO baseline metric (decision 0014): the real external-completion wait.
        * Gated on non-replay — a replay reproduces the journaled completion
        * instantly, so the measured (monotonic) delta is only recorded on a real
        * resolution, never on replay. */
-      yield* emitAwakeableWait(ctx, monotonicMs() - startMs)
+      yield* emitAwakeableWait({ ctx, waitMs: monotonicMs() - startMs })
       return value
-    }).pipe(withRestateOperation('restate.awakeable.await', aw.id))
+    }).pipe(withRestateOperation({ name: 'restate.awakeable.await', label: aw.id }))
     /* The awakeable's completion promise is itself a `RestatePromise`, so it joins
      * the deterministic combinators like any other descriptor — issued in source
      * order, awaited once (decision 0005, #2). It is created ONCE (at `make`), so
      * `issue` just hands the existing promise to the combinator. */
     const descriptor: Descriptor<T> = { _tag: 'awakeable', issue: () => aw.promise }
     return { id: aw.id as AwakeableId<T>, promise, descriptor }
-  }).pipe(withRestateOperation('restate.awakeable.make', 'make'))
+  }).pipe(withRestateOperation({ name: 'restate.awakeable.make', label: 'make' }))
 
 /** Resolve an awakeable in-handler with a typed payload (encoded via `schema`). */
-export const resolveAwakeable = <T, I>(
-  schema: Schema.Schema<T, I>,
-  id: AwakeableId<T>,
-  payload: T,
-): Effect.Effect<void, never, RestateContext> =>
+export const resolveAwakeable = <T, I>({
+  schema,
+  id,
+  payload,
+}: {
+  schema: Schema.Schema<T, I>
+  id: AwakeableId<T>
+  payload: T
+}): Effect.Effect<void, never, RestateContext> =>
   Effect.gen(function* () {
     const ctx = yield* RestateContext
     ctx.resolveAwakeable<T>(id, payload, promiseSerde(schema))
-  }).pipe(withRestateOperation('restate.awakeable.resolve', id))
+  }).pipe(withRestateOperation({ name: 'restate.awakeable.resolve', label: id }))
 
 /** Reject an awakeable in-handler with a reason (the awaiter fails terminally). */
-export const rejectAwakeable = <T>(
-  id: AwakeableId<T>,
-  reason: string,
-): Effect.Effect<void, never, RestateContext> =>
+export const rejectAwakeable = <T>({
+  id,
+  reason,
+}: {
+  id: AwakeableId<T>
+  reason: string
+}): Effect.Effect<void, never, RestateContext> =>
   Effect.gen(function* () {
     const ctx = yield* RestateContext
     ctx.rejectAwakeable(id, reason)
-  }).pipe(withRestateOperation('restate.awakeable.reject', id))
+  }).pipe(withRestateOperation({ name: 'restate.awakeable.reject', label: id }))
 
 /* ── In-handler service-to-service clients ───────────────────────────────── */
 /*
@@ -803,14 +873,17 @@ export const rejectAwakeable = <T>(
  * to the current caller). The cipher is resolved once from the handler's app
  * context (`RestateRedaction`); absent → no cipher (fine unless a sensitive field
  * is present, which then fails loudly). */
-const clientCallSerde = <T, I>(
-  schema: Schema.Schema<T, I>,
-  redaction: RedactionCipher | undefined,
-): restate.Serde<T> =>
-  contractSerdeFactory(redaction).forSchema(
-    schema as Schema.Schema<unknown, unknown>,
-    'internal',
-  ) as restate.Serde<T>
+const clientCallSerde = <T, I>({
+  schema,
+  redaction,
+}: {
+  schema: Schema.Schema<T, I>
+  redaction: RedactionCipher | undefined
+}): restate.Serde<T> =>
+  contractSerdeFactory(redaction).forSchema({
+    schema: schema as Schema.Schema<unknown, unknown>,
+    slot: 'internal',
+  }) as restate.Serde<T>
 
 /** Resolve the optional in-handler redaction cipher from the app context. */
 const resolveCallRedaction: Effect.Effect<RedactionCipher | undefined, never, never> =
@@ -833,10 +906,10 @@ const callRpc = <In, InI, Out, OutI>(opts: {
   Effect.gen(function* () {
     const ctx = yield* RestateContext
     const redaction = yield* resolveCallRedaction
-    const idempotencyKey = invocationIdempotencyKey(
-      opts.inputSchema as Schema.Schema<unknown, unknown>,
-      opts.input,
-    )
+    const idempotencyKey = invocationIdempotencyKey({
+      inputSchema: opts.inputSchema as Schema.Schema<unknown, unknown>,
+      input: opts.input,
+    })
     /* Await the peer-call `InvocationPromise` through the SHARED `awaitDurable`
      * seam (the same seam `run`/`sleep`/`promiseGet`/`all`/`race` use), NOT a plain
      * `Effect.tryPromise`: an in-handler call that has not completed rejects the SDK
@@ -848,26 +921,28 @@ const callRpc = <In, InI, Out, OutI>(opts: {
      * suspension / cancellation / a callee `TerminalError`, so `'terminal-reject'`
      * mode terminalizes a callee terminal failure VERBATIM (R34) and there is no
      * typed failure left — matching the descriptor call path's `never`. */
-    return yield* awaitDurable(
-      () =>
+    return yield* awaitDurable({
+      thunk: () =>
         ctx.genericCall<In, Out>({
           service: opts.service,
           method: opts.handler,
           parameter: opts.input,
           ...(opts.key !== undefined ? { key: opts.key } : {}),
-          inputSerde: clientCallSerde(opts.inputSchema, redaction),
-          outputSerde: clientCallSerde(opts.outputSchema, redaction),
+          inputSerde: clientCallSerde({ schema: opts.inputSchema, redaction }),
+          outputSerde: clientCallSerde({ schema: opts.outputSchema, redaction }),
           ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
         }),
-      (cause) =>
+      onError: (cause) =>
         new RestateError({
           reason: 'IngressFailed',
           method: `call(${opts.service}.${opts.handler})`,
           cause,
         }),
-      'terminal-reject',
-    )
-  }).pipe(withRestateOperation('restate.client.call', `${opts.service}.${opts.handler}`))
+      mode: 'terminal-reject',
+    })
+  }).pipe(
+    withRestateOperation({ name: 'restate.client.call', label: `${opts.service}.${opts.handler}` }),
+  )
 
 const sendRpc = <In, InI>(opts: {
   readonly service: string
@@ -880,10 +955,10 @@ const sendRpc = <In, InI>(opts: {
   Effect.gen(function* () {
     const ctx = yield* RestateContext
     const redaction = yield* resolveCallRedaction
-    const idempotencyKey = invocationIdempotencyKey(
-      opts.inputSchema as Schema.Schema<unknown, unknown>,
-      opts.input,
-    )
+    const idempotencyKey = invocationIdempotencyKey({
+      inputSchema: opts.inputSchema as Schema.Schema<unknown, unknown>,
+      input: opts.input,
+    })
     yield* Effect.try({
       try: () =>
         ctx.genericSend<In>({
@@ -891,7 +966,7 @@ const sendRpc = <In, InI>(opts: {
           method: opts.handler,
           parameter: opts.input,
           ...(opts.key !== undefined ? { key: opts.key } : {}),
-          inputSerde: clientCallSerde(opts.inputSchema, redaction),
+          inputSerde: clientCallSerde({ schema: opts.inputSchema, redaction }),
           ...(opts.delayMillis !== undefined ? { delay: opts.delayMillis } : {}),
           ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
         }),
@@ -902,7 +977,9 @@ const sendRpc = <In, InI>(opts: {
           cause,
         }),
     })
-  }).pipe(withRestateOperation('restate.client.send', `${opts.service}.${opts.handler}`))
+  }).pipe(
+    withRestateOperation({ name: 'restate.client.send', label: `${opts.service}.${opts.handler}` }),
+  )
 
 /**
  * A `call` descriptor: issue an in-handler service-to-service `genericCall` as a
@@ -929,21 +1006,23 @@ const callDescriptor = <In, InI, Out, OutI>(opts: {
   readonly input: In
   readonly key?: string
 }): Descriptor<Out> => {
-  const idempotencyKey = invocationIdempotencyKey(
-    opts.inputSchema as Schema.Schema<unknown, unknown>,
-    opts.input,
-  )
-  return descriptor<Out>('call', (ctx, redaction) =>
-    ctx.genericCall<In, Out>({
-      service: opts.service,
-      method: opts.handler,
-      parameter: opts.input,
-      ...(opts.key !== undefined ? { key: opts.key } : {}),
-      inputSerde: clientCallSerde(opts.inputSchema, redaction),
-      outputSerde: clientCallSerde(opts.outputSchema, redaction),
-      ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
-    }),
-  )
+  const idempotencyKey = invocationIdempotencyKey({
+    inputSchema: opts.inputSchema as Schema.Schema<unknown, unknown>,
+    input: opts.input,
+  })
+  return descriptor<Out>({
+    tag: 'call',
+    issue: (ctx, redaction) =>
+      ctx.genericCall<In, Out>({
+        service: opts.service,
+        method: opts.handler,
+        parameter: opts.input,
+        ...(opts.key !== undefined ? { key: opts.key } : {}),
+        inputSerde: clientCallSerde({ schema: opts.inputSchema, redaction }),
+        outputSerde: clientCallSerde({ schema: opts.outputSchema, redaction }),
+        ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
+      }),
+  })
 }
 
 /** Internal seam used by the typed `Restate.call/send/objectClient/...` surface. */

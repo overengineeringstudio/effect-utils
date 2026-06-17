@@ -77,10 +77,13 @@ const trustOtelContract = <A, E, R>(
   effect.pipe(Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)))
 
 const trustedWith =
-  <S extends Schema.Schema.AnyNoContext>(
-    operation: OtelOperationDefinition<S>,
-    attributes: Schema.Schema.Type<S>,
-  ) =>
+  <S extends Schema.Schema.AnyNoContext>({
+    operation,
+    attributes,
+  }: {
+    operation: OtelOperationDefinition<S>
+    attributes: Schema.Schema.Type<S>
+  }) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     trustOtelContract<A, E, R>(operation.with({ attributes, effect }))
 
@@ -433,13 +436,16 @@ export const cmdCollect = <R = never>(opts: {
       ),
     )
   }).pipe(
-    trustedWith(CmdCollectOperation, {
-      label:
-        Array.isArray(opts.commandInput) === true
-          ? opts.commandInput.filter(isNotUndefined).join(' ')
-          : opts.commandInput,
-      ...(opts.workingDirectory === undefined ? {} : { cwd: opts.workingDirectory }),
-      shell: opts.shell === true,
+    trustedWith({
+      operation: CmdCollectOperation,
+      attributes: {
+        label:
+          Array.isArray(opts.commandInput) === true
+            ? opts.commandInput.filter(isNotUndefined).join(' ')
+            : opts.commandInput,
+        ...(opts.workingDirectory === undefined ? {} : { cwd: opts.workingDirectory }),
+        shell: opts.shell === true,
+      },
     }),
   )
 
@@ -610,11 +616,14 @@ const runWithLogging = ({
       return exitCode
     }),
   ).pipe(
-    trustedWith(CmdLoggingOperation, {
-      label: threadName,
-      cwd,
-      logPath,
-      shell: useShell,
+    trustedWith({
+      operation: CmdLoggingOperation,
+      attributes: {
+        label: threadName,
+        cwd,
+        logPath,
+        shell: useShell,
+      },
     }),
   )
 

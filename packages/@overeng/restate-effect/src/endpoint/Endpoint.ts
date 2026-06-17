@@ -109,6 +109,7 @@ const runEffectHandler =
      * the per-invocation metric (decision 0014). */
     readonly boundaryObserver: BoundaryObserver | undefined
   }) =>
+  // oxlint-disable-next-line overeng/named-args -- the materialized SDK handler: Restate invokes it positionally as (ctx, input)
   async (ctx: restate.Context, input: unknown): Promise<unknown> => {
     /* Seed the per-attempt frozen monotonic base ONCE from journaled time. */
     const frozenBaseMillis = await ctx.date.now()
@@ -126,7 +127,7 @@ const runEffectHandler =
             service: opts.service,
             handler: opts.handler,
             key,
-            workflowId: isWorkflow ? key : undefined,
+            workflowId: isWorkflow === true ? key : undefined,
             idempotencyKey: readIdempotencyKeyHeader(ctx),
           })
         : undefined
@@ -138,20 +139,20 @@ const runEffectHandler =
      * start is a monotonic real-time read — only used on a real (non-replay) emit. */
     const attemptStartMs = monotonicMs()
     Runtime.runSync(opts.runtime)(
-      emitAttempt(ctx, { service: opts.service, handler: opts.handler }),
+      emitAttempt({ ctx, service: opts.service, handler: opts.handler }),
     )
-    const effect = provideHandlerCaps(
-      opts.run(input).pipe(Effect.provideService(RestateContext, ctx)),
-      opts.markers,
-      opts.markers !== 'service' ? (ctx as restate.ObjectContext).key : undefined,
-    )
+    const effect = provideHandlerCaps({
+      effect: opts.run(input).pipe(Effect.provideService(RestateContext, ctx)),
+      markers: opts.markers,
+      key: opts.markers !== 'service' ? (ctx as restate.ObjectContext).key : undefined,
+    })
     /* Bridge the attempt-completed signal to interruption (R31), then provide the
      * journaled Clock/Random (R17) AND the replay-aware logger (decision 0015 —
      * routes `Effect.log*` through `ctx.console`, suppressed on replay) over the
      * handler. The per-invocation layers wrap OUTSIDE the interruption bridge so
      * the forked fiber inherits them. */
-    const bridged = withAttemptInterruption(ctx, effect).pipe(
-      Effect.provide(Layer.merge(determinismLayer(ctx, frozenBaseMillis), loggerLayer(ctx))),
+    const bridged = withAttemptInterruption({ ctx, effect }).pipe(
+      Effect.provide(Layer.merge(determinismLayer({ ctx, frozenBaseMillis }), loggerLayer(ctx))),
     )
     /* Reparent under the OTel attempt span (no-op in the core; `./otel` supplies
      * the transform). Applied last so the active span is read at runtime, inside
@@ -164,7 +165,8 @@ const runEffectHandler =
       outcomeTag: 'success' | 'terminal' | 'retryable' | 'cancelled',
     ): void => {
       Runtime.runSync(opts.runtime)(
-        emitInvocationMetrics(ctx, {
+        emitInvocationMetrics({
+          ctx,
           service: opts.service,
           handler: opts.handler,
           outcome: outcomeTag,
@@ -177,7 +179,10 @@ const runEffectHandler =
       emitInvocation('success')
       return exit.value
     }
-    const outcome = classifyOutcome(exit.cause, opts.errorSchema)
+    const outcome = classifyOutcome({
+      cause: exit.cause,
+      ...(opts.errorSchema !== undefined ? { errorSchema: opts.errorSchema } : {}),
+    })
     onOutcome?.(outcome)
     /* Count a TERMINAL outcome (success/terminal/cancelled — the invocation truly
      * ends) or a retryable failed attempt; `suspended`/`defect` are NOT terminal
@@ -205,17 +210,20 @@ const mapRetryPolicy = (p: RetryPolicyOptions): Record<string, unknown> => ({
 /* Map a `Restate.retention` annotation (decision 0011) to the SDK retention
  * options. `workflow` is dropped unless the construct is a Workflow (the caller
  * decides via `includeWorkflow`). Builder `options` win over the annotation. */
-const mapRetention = (
-  retention: RetentionOptions,
-  includeWorkflow: boolean,
-): Record<string, unknown> => {
+const mapRetention = ({
+  retention,
+  includeWorkflow,
+}: {
+  retention: RetentionOptions
+  includeWorkflow: boolean
+}): Record<string, unknown> => {
   const toMillis = (d: Duration.DurationInput): number => Duration.toMillis(Duration.decode(d))
   return {
     ...(retention.idempotency !== undefined
       ? { idempotencyRetention: toMillis(retention.idempotency) }
       : {}),
     ...(retention.journal !== undefined ? { journalRetention: toMillis(retention.journal) } : {}),
-    ...(includeWorkflow && retention.workflow !== undefined
+    ...(includeWorkflow === true && retention.workflow !== undefined
       ? { workflowRetention: toMillis(retention.workflow) }
       : {}),
   }
@@ -228,24 +236,29 @@ const mapRetention = (
  * `redaction` (resolved from the runtime context at `materialize`) is threaded
  * into the I/O serdes so `sensitive` fields are encrypted on the wire (docs/vrs/02-schema-serde/spec.md §1).
  */
-const handlerOpts = (
+const handlerOpts = ({
+  spec,
+  redaction,
+}: {
   spec: {
     readonly input: Schema.Schema<any, any>
     readonly success: Schema.Schema<any, any>
     readonly options?: HandlerOptions
-  },
-  redaction: RedactionCipher | undefined,
-): Record<string, unknown> => {
+  }
+  redaction: RedactionCipher | undefined
+}): Record<string, unknown> => {
   /* Derive the redaction-threaded I/O serdes through the SHARED contract-invocation
    * policy (decision 0020) — the SAME factory the ingress + in-handler clients use,
    * so a `Restate.sensitive` field is encrypted identically on the served handler's
    * I/O. Handler I/O is a caller-facing boundary → the `ingress` slot. */
-  const { input, output } = contractSerdeFactory(redaction).forHandler(spec, 'ingress')
+  const { input, output } = contractSerdeFactory(redaction).forHandler({ spec, slot: 'ingress' })
   const annotated = readRetention(spec.input.ast).pipe(Option.getOrUndefined)
   return {
     input,
     output,
-    ...(annotated !== undefined ? mapRetention(annotated, false) : {}),
+    ...(annotated !== undefined
+      ? mapRetention({ retention: annotated, includeWorkflow: false })
+      : {}),
     ...mapHandlerOptions(spec.options),
   }
 }
@@ -259,12 +272,15 @@ const handlerOpts = (
  * annotation silently does nothing. Runs once per `materialize*` (cheap — an AST
  * walk over the already-built schemas).
  */
-const validateContractAnnotations = (
-  contractName: string,
-  handlerInputs: ReadonlyArray<readonly [string, Schema.Schema<any, any>]>,
-): void => {
+const validateContractAnnotations = ({
+  contractName,
+  handlerInputs,
+}: {
+  contractName: string
+  handlerInputs: ReadonlyArray<readonly [string, Schema.Schema<any, any>]>
+}): void => {
   const violations = handlerInputs.flatMap(([handler, input]) =>
-    validateInputAnnotations(input.ast, `${contractName}.${handler}`),
+    validateInputAnnotations({ ast: input.ast, label: `${contractName}.${handler}` }),
   )
   if (violations.length > 0) {
     throw new RestateError({
@@ -347,10 +363,13 @@ const serviceHooksOptions = (
 
 /* Merge the wiring's service-level `hooks` into an existing service-options bag
  * (Objects/Workflows already build one from `ServiceLevelOptions`). */
-const withHooks = (
-  serviceOptions: Record<string, unknown> | undefined,
-  wiring?: MaterializeWiring,
-): Record<string, unknown> | undefined => {
+const withHooks = ({
+  serviceOptions,
+  wiring,
+}: {
+  serviceOptions: Record<string, unknown> | undefined
+  wiring?: MaterializeWiring
+}): Record<string, unknown> | undefined => {
   const hooks =
     wiring?.hooks !== undefined && wiring.hooks.length > 0 ? [...wiring.hooks] : undefined
   if (hooks === undefined) return serviceOptions
@@ -367,16 +386,22 @@ const withHooks = (
  * handler bodies (decision 0002). The contract's precise phantom map survives on
  * the public type; only this boundary widens to `any` (invisible to users).
  */
-export const materialize = <AppR>(
-  implementation: ServiceImplementation<Contract<string, HandlerSpecMap>, AppR>,
-  runtime: Runtime.Runtime<AppR>,
-  wiring?: MaterializeWiring,
-): restate.ServiceDefinition<string, unknown> => {
+export const materialize = <AppR>({
+  implementation,
+  runtime,
+  wiring,
+}: {
+  implementation: ServiceImplementation<Contract<string, HandlerSpecMap>, AppR>
+  runtime: Runtime.Runtime<AppR>
+  wiring?: MaterializeWiring
+}): restate.ServiceDefinition<string, unknown> => {
   const { contract, impl } = implementation
-  validateContractAnnotations(
-    contract.name,
-    Object.entries(contract.handlers).map(([n, s]: [string, HandlerSpec]) => [n, s.input] as const),
-  )
+  validateContractAnnotations({
+    contractName: contract.name,
+    handlerInputs: Object.entries(contract.handlers).map(
+      ([n, s]: [string, HandlerSpec]) => [n, s.input] as const,
+    ),
+  })
   const redaction = resolveRedaction(runtime)
   const handlers = Object.fromEntries(
     Object.entries(contract.handlers).map(([name, spec]: [string, HandlerSpec]) => {
@@ -384,7 +409,7 @@ export const materialize = <AppR>(
       return [
         name,
         restate.handlers.handler(
-          handlerOpts(spec, redaction),
+          handlerOpts({ spec, redaction }),
           runEffectHandler({
             service: contract.name,
             handler: name,
@@ -399,7 +424,10 @@ export const materialize = <AppR>(
       ]
     }),
   )
-  const serviceOptions = withHooks(mapServiceOptions(contract.options), wiring)
+  const serviceOptions = withHooks({
+    serviceOptions: mapServiceOptions(contract.options),
+    ...(wiring !== undefined ? { wiring } : {}),
+  })
   return restate.service({
     name: contract.name,
     handlers,
@@ -417,26 +445,30 @@ export const materialize = <AppR>(
  * `ObjectKey + StateRead` only (read-only — a `State.set` there does not
  * typecheck). `AppR` is explicit (decision 0002).
  */
-export const materializeObject = <AppR>(
+export const materializeObject = <AppR>({
+  implementation,
+  runtime,
+  wiring,
+}: {
   implementation: ObjectImplementation<
     ObjectContract<string, StateSchemas, ObjectHandlerSpecMap>,
     AppR
-  >,
-  runtime: Runtime.Runtime<AppR>,
-  wiring?: MaterializeWiring,
-): restate.VirtualObjectDefinition<string, unknown> => {
+  >
+  runtime: Runtime.Runtime<AppR>
+  wiring?: MaterializeWiring
+}): restate.VirtualObjectDefinition<string, unknown> => {
   const { contract, impl } = implementation
-  validateContractAnnotations(
-    contract.name,
-    Object.entries(contract.handlers).map(
+  validateContractAnnotations({
+    contractName: contract.name,
+    handlerInputs: Object.entries(contract.handlers).map(
       ([n, s]: [string, ObjectHandlerSpec]) => [n, s.input] as const,
     ),
-  )
+  })
   const redaction = resolveRedaction(runtime)
   const handlers = Object.fromEntries(
     Object.entries(contract.handlers).map(([name, spec]: [string, ObjectHandlerSpec]) => {
       const run = (impl as Record<string, EffectHandler>)[name]!
-      const opts = handlerOpts(spec, redaction)
+      const opts = handlerOpts({ spec, redaction })
       const handler =
         spec.shared === true
           ? restate.handlers.object.shared(
@@ -468,7 +500,10 @@ export const materializeObject = <AppR>(
       return [name, handler]
     }),
   )
-  const serviceOptions = withHooks(mapServiceOptions(contract.options), wiring)
+  const serviceOptions = withHooks({
+    serviceOptions: mapServiceOptions(contract.options),
+    ...(wiring !== undefined ? { wiring } : {}),
+  })
   return restate.object({
     name: contract.name,
     handlers,
@@ -486,7 +521,11 @@ export const materializeObject = <AppR>(
  * `restate.handlers.workflow.shared(...)` and gets `ObjectKey + StateRead +
  * DurablePromise` (read-only State + durable promises). `AppR` is explicit.
  */
-export const materializeWorkflow = <AppR>(
+export const materializeWorkflow = <AppR>({
+  implementation,
+  runtime,
+  wiring,
+}: {
   implementation: WorkflowImplementation<
     WorkflowContract<
       string,
@@ -496,25 +535,28 @@ export const materializeWorkflow = <AppR>(
       WorkflowHandlerSpecMap
     >,
     AppR
-  >,
-  runtime: Runtime.Runtime<AppR>,
-  wiring?: MaterializeWiring,
-): restate.WorkflowDefinition<string, unknown> => {
+  >
+  runtime: Runtime.Runtime<AppR>
+  wiring?: MaterializeWiring
+}): restate.WorkflowDefinition<string, unknown> => {
   const { contract, impl } = implementation
-  validateContractAnnotations(contract.name, [
-    ['run', contract.run.input] as const,
-    ...Object.entries(contract.signals).map(
-      ([n, s]: [string, WorkflowHandlerSpec]) => [n, s.input] as const,
-    ),
-    ...Object.entries(contract.queries).map(
-      ([n, s]: [string, WorkflowHandlerSpec]) => [n, s.input] as const,
-    ),
-  ])
+  validateContractAnnotations({
+    contractName: contract.name,
+    handlerInputs: [
+      ['run', contract.run.input] as const,
+      ...Object.entries(contract.signals).map(
+        ([n, s]: [string, WorkflowHandlerSpec]) => [n, s.input] as const,
+      ),
+      ...Object.entries(contract.queries).map(
+        ([n, s]: [string, WorkflowHandlerSpec]) => [n, s.input] as const,
+      ),
+    ],
+  })
   const redaction = resolveRedaction(runtime)
   const implMap = impl as Record<string, EffectHandler>
   const runSpec = contract.run
   const runHandler = restate.handlers.workflow.workflow(
-    handlerOpts(runSpec, redaction),
+    handlerOpts({ spec: runSpec, redaction }),
     runEffectHandler({
       service: contract.name,
       handler: 'run',
@@ -530,7 +572,7 @@ export const materializeWorkflow = <AppR>(
     Object.entries(specs).map(([name, spec]: [string, WorkflowHandlerSpec]) => [
       name,
       restate.handlers.workflow.shared(
-        handlerOpts(spec, redaction),
+        handlerOpts({ spec, redaction }),
         runEffectHandler({
           service: contract.name,
           handler: name,
@@ -548,7 +590,10 @@ export const materializeWorkflow = <AppR>(
     ...shared(contract.signals),
     ...shared(contract.queries),
   ])
-  const serviceOptions = withHooks(mapServiceOptions(contract.options), wiring)
+  const serviceOptions = withHooks({
+    serviceOptions: mapServiceOptions(contract.options),
+    ...(wiring !== undefined ? { wiring } : {}),
+  })
   return restate.workflow({
     name: contract.name,
     handlers,
@@ -579,21 +624,33 @@ export type AnyImplementation<AppR> =
     >
 
 /** Dispatch a bound implementation to the right `materialize*` by its `_tag`. */
-export const materializeAny = <AppR>(
-  implementation: AnyImplementation<AppR>,
-  runtime: Runtime.Runtime<AppR>,
-  wiring?: MaterializeWiring,
-):
+export const materializeAny = <AppR>({
+  implementation,
+  runtime,
+  wiring,
+}: {
+  implementation: AnyImplementation<AppR>
+  runtime: Runtime.Runtime<AppR>
+  wiring?: MaterializeWiring
+}):
   | restate.ServiceDefinition<string, unknown>
   | restate.VirtualObjectDefinition<string, unknown>
   | restate.WorkflowDefinition<string, unknown> => {
   switch (implementation._tag) {
     case 'ServiceImplementation':
-      return materialize(implementation, runtime, wiring)
+      return materialize({ implementation, runtime, ...(wiring !== undefined ? { wiring } : {}) })
     case 'ObjectImplementation':
-      return materializeObject(implementation, runtime, wiring)
+      return materializeObject({
+        implementation,
+        runtime,
+        ...(wiring !== undefined ? { wiring } : {}),
+      })
     case 'WorkflowImplementation':
-      return materializeWorkflow(implementation, runtime, wiring)
+      return materializeWorkflow({
+        implementation,
+        runtime,
+        ...(wiring !== undefined ? { wiring } : {}),
+      })
   }
 }
 
@@ -657,6 +714,7 @@ export interface EndpointOptions<AppR> {
   readonly identityKeys?: ReadonlyArray<string>
 }
 
+/* eslint-disable @typescript-eslint/no-explicit-any -- the services-tuple AppR extractor */
 /**
  * A scoped `Layer` that binds the given service implementations to an h2c
  * (cleartext HTTP/2 prior-knowledge) server on `opts.port` and serves the
@@ -676,7 +734,6 @@ export interface EndpointOptions<AppR> {
  * `bidirectional` is left UNSET so the SDK negotiates full `BIDI_STREAM` over
  * h2c prior-knowledge (DQ7, docs/vrs/07-endpoint-deploy/spec.md §2).
  */
-/* eslint-disable @typescript-eslint/no-explicit-any -- the services-tuple AppR extractor */
 export const layer = <const S extends ReadonlyArray<AnyImplementation<any>>>(
   opts: Omit<EndpointOptions<AppROf<S>>, 'services'> & { readonly services: S },
 ): Layer.Layer<never, RestateError | ConfigError.ConfigError, AppROf<S>> =>
@@ -694,7 +751,13 @@ export const layer = <const S extends ReadonlyArray<AnyImplementation<any>>>(
         boundaryObserver: opts.boundaryObserver,
       }
       const fn = createEndpointHandler({
-        services: opts.services.map((s) => materializeAny(s, runtime, wiring)),
+        services: opts.services.map((s) =>
+          materializeAny({
+            implementation: s,
+            runtime,
+            ...(wiring !== undefined ? { wiring } : {}),
+          }),
+        ),
         ...(opts.identityKeys !== undefined ? { identityKeys: [...opts.identityKeys] } : {}),
       })
       const server = http2.createServer(fn as Parameters<typeof http2.createServer>[0])

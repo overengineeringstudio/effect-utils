@@ -57,28 +57,34 @@ const AwWaiter = State.for(AwWaiterState)
  * and attachable via `result` after the parked handler resumes. */
 const AwStartInput = Schema.Struct({ runId: Restate.idempotencyKey(Schema.String) })
 
-const AwObj = RestateObject.contract('suspend-awakeable', {
-  state: AwWaiterState,
-  handlers: {
-    start: { input: AwStartInput, success: AwPayload },
-    awakeableId: { input: Schema.Void, success: Schema.String, shared: true },
+const AwObj = RestateObject.contract({
+  name: 'suspend-awakeable',
+  def: {
+    state: AwWaiterState,
+    handlers: {
+      start: { input: AwStartInput, success: AwPayload },
+      awakeableId: { input: Schema.Void, success: Schema.String, shared: true },
+    },
   },
 })
 
-const AwLive = RestateObject.implement<typeof AwObj>(AwObj, {
-  start: () =>
-    Effect.gen(function* () {
-      const { id, promise } = yield* Awakeable.make(AwPayload)
-      yield* AwWaiter.set('awakeableId', id)
-      /* PARKS here (the runtime forces suspension under `alwaysReplay`) until ingress
-       * resolves the awakeable, then RESUMES with the payload. */
-      return yield* promise
-    }).pipe(Effect.orDie),
-  awakeableId: () =>
-    AwWaiter.get('awakeableId').pipe(
-      Effect.map((id) => id ?? ''),
-      Effect.orDie,
-    ),
+const AwLive = RestateObject.implement<typeof AwObj>({
+  contractValue: AwObj,
+  impl: {
+    start: () =>
+      Effect.gen(function* () {
+        const { id, promise } = yield* Awakeable.make(AwPayload)
+        yield* AwWaiter.set({ key: 'awakeableId', value: id })
+        /* PARKS here (the runtime forces suspension under `alwaysReplay`) until ingress
+         * resolves the awakeable, then RESUMES with the payload. */
+        return yield* promise
+      }).pipe(Effect.orDie),
+    awakeableId: () =>
+      AwWaiter.get('awakeableId').pipe(
+        Effect.map((id) => id ?? ''),
+        Effect.orDie,
+      ),
+  },
 })
 
 /* ── durable-promise suspension + terminal reject: run awaits `get` ───────── */
@@ -93,29 +99,37 @@ const attempts = { run: 0, call: 0 }
 const RunState = { done: Schema.Boolean } as const
 const RunS = State.for(RunState)
 
-const PromiseWf = RestateWorkflow.contract('suspend-promise', {
-  state: RunState,
-  payload: { input: Schema.Void, success: Schema.String },
-  signals: {
-    resolveIt: { input: Schema.String, success: Schema.Void },
-    rejectIt: { input: Schema.String, success: Schema.Void },
+const PromiseWf = RestateWorkflow.contract({
+  name: 'suspend-promise',
+  def: {
+    state: RunState,
+    payload: { input: Schema.Void, success: Schema.String },
+    signals: {
+      resolveIt: { input: Schema.String, success: Schema.Void },
+      rejectIt: { input: Schema.String, success: Schema.Void },
+    },
+    queries: {},
   },
-  queries: {},
 })
 
-const PromiseWfLive = RestateWorkflow.implement<typeof PromiseWf>(PromiseWf, {
-  /* `run`: await the durable `signal` promise. A `resolve` resumes it; a `reject`
-   * makes the `get` fail TERMINALLY (so the `run` ends, NOT retried). The counter
-   * climbs on each REAL (non-replay) entry — a retried defect bumps it past one. */
-  run: () =>
-    Effect.gen(function* () {
-      attempts.run += 1
-      const value = yield* PromiseValue.get('signal')
-      yield* RunS.set('done', true)
-      return value
-    }).pipe(Effect.orDie),
-  resolveIt: (value: string) => PromiseValue.resolve('signal', value).pipe(Effect.orDie),
-  rejectIt: (reason: string) => PromiseValue.reject('signal', reason).pipe(Effect.orDie),
+const PromiseWfLive = RestateWorkflow.implement<typeof PromiseWf>({
+  contractValue: PromiseWf,
+  impl: {
+    /* `run`: await the durable `signal` promise. A `resolve` resumes it; a `reject`
+     * makes the `get` fail TERMINALLY (so the `run` ends, NOT retried). The counter
+     * climbs on each REAL (non-replay) entry — a retried defect bumps it past one. */
+    run: () =>
+      Effect.gen(function* () {
+        attempts.run += 1
+        const value = yield* PromiseValue.get('signal')
+        yield* RunS.set({ key: 'done', value: true })
+        return value
+      }).pipe(Effect.orDie),
+    resolveIt: (value: string) =>
+      PromiseValue.resolve({ name: 'signal', value: value }).pipe(Effect.orDie),
+    rejectIt: (reason: string) =>
+      PromiseValue.reject({ name: 'signal', reason: reason }).pipe(Effect.orDie),
+  },
 })
 
 /* ── in-handler call terminal reject: a caller `Restate.call`s a callee that fails
@@ -125,26 +139,38 @@ const PromiseWfLive = RestateWorkflow.implement<typeof PromiseWf>(PromiseWf, {
  * (the boundary default), so the callee's `boom` fails the invocation terminally. */
 class CalleeRejected extends Schema.TaggedError<CalleeRejected>()('CalleeRejected', {}) {}
 
-const FailingCallee = RestateService.contract('suspend-call-callee', {
-  boom: { input: Schema.Void, success: Schema.Void, error: CalleeRejected },
+const FailingCallee = RestateService.contract({
+  name: 'suspend-call-callee',
+  handlers: {
+    boom: { input: Schema.Void, success: Schema.Void, error: CalleeRejected },
+  },
 })
-const FailingCalleeLive = RestateService.implement<typeof FailingCallee>(FailingCallee, {
-  boom: () => Effect.fail(new CalleeRejected()),
+const FailingCalleeLive = RestateService.implement<typeof FailingCallee>({
+  contractValue: FailingCallee,
+  impl: {
+    boom: () => Effect.fail(new CalleeRejected()),
+  },
 })
 
-const CallCaller = RestateService.contract('suspend-call-caller', {
-  start: { input: Schema.Void, success: Schema.Void },
+const CallCaller = RestateService.contract({
+  name: 'suspend-call-caller',
+  handlers: {
+    start: { input: Schema.Void, success: Schema.Void },
+  },
 })
-const CallCallerLive = RestateService.implement<typeof CallCaller>(CallCaller, {
-  /* The peer call rejects with the callee's `TerminalError`; `callRpc` routes it
-   * through `awaitDurable('terminal-reject')`, so the caller terminalizes VERBATIM
-   * and the `start` ends after ONE attempt. Under the bug the rejection was wrapped
-   * into a `RestateError` DEFECT, which Restate RETRIES — the counter climbs. */
-  start: () =>
-    Effect.gen(function* () {
-      attempts.call += 1
-      yield* Restate.call(FailingCallee, 'boom', undefined)
-    }),
+const CallCallerLive = RestateService.implement<typeof CallCaller>({
+  contractValue: CallCaller,
+  impl: {
+    /* The peer call rejects with the callee's `TerminalError`; `callRpc` routes it
+     * through `awaitDurable('terminal-reject')`, so the caller terminalizes VERBATIM
+     * and the `start` ends after ONE attempt. Under the bug the rejection was wrapped
+     * into a `RestateError` DEFECT, which Restate RETRIES — the counter climbs. */
+    start: () =>
+      Effect.gen(function* () {
+        attempts.call += 1
+        yield* Restate.call({ contract: FailingCallee, method: 'boom', input: undefined })
+      }),
+  },
 })
 
 /* The suspend-and-resume contract harness, combining:
@@ -174,7 +200,7 @@ const pollForAwakeableId = (harness: Harness, key: string): Effect.Effect<string
   Effect.gen(function* () {
     for (let attempt = 0; attempt < 50; attempt++) {
       const id = yield* harness.ingress
-        .objectCall(AwObj, key, 'awakeableId', undefined)
+        .objectCall({ contract: AwObj, key, method: 'awakeableId', input: undefined })
         .pipe(Effect.catchAll(() => Effect.succeed('')))
       if (id !== '') return id
       yield* liveSleep(100)
@@ -199,21 +225,26 @@ describe.skipIf(!serverAvailable)('durable-await classification (real server)', 
         const harness = yield* RestateTestHarness
 
         /* Idempotency-keyed send → output retained for `result`. */
-        const send = yield* harness.ingress.objectSend(AwObj, 'aw-1', 'start', { runId: 'aw-1' })
+        const send = yield* harness.ingress.objectSend({
+          contract: AwObj,
+          key: 'aw-1',
+          method: 'start',
+          input: { runId: 'aw-1' },
+        })
 
         /* Register + park (the await is unresolved when the first attempt reaches it;
          * `alwaysReplay` then forces a real suspension), then resolve after a delay. */
         const awakeableId = yield* pollForAwakeableId(harness, 'aw-1')
         expect(awakeableId).not.toBe('')
         yield* liveSleep(200)
-        yield* ingressResolveAwakeable(
-          AwPayload,
-          awakeableId as AwakeableId<Schema.Schema.Type<typeof AwPayload>>,
-          { token: 'resumed-ok' },
-        ).pipe(Effect.provide(RestateIngress.layer({ url: harness.ingressUrl })))
+        yield* ingressResolveAwakeable({
+          schema: AwPayload,
+          id: awakeableId as AwakeableId<Schema.Schema.Type<typeof AwPayload>>,
+          payload: { token: 'resumed-ok' },
+        }).pipe(Effect.provide(RestateIngress.layer({ url: harness.ingressUrl })))
 
         /* The handler RESUMED across the forced suspension (no retry available). */
-        const resumed = yield* ingressResult(send, AwPayload).pipe(
+        const resumed = yield* ingressResult({ send, outputSchema: AwPayload }).pipe(
           Effect.provide(RestateIngress.layer({ url: harness.ingressUrl })),
         )
         expect(resumed).toEqual({ token: 'resumed-ok' })
@@ -224,14 +255,23 @@ describe.skipIf(!serverAvailable)('durable-await classification (real server)', 
       Effect.gen(function* () {
         const harness = yield* RestateTestHarness
 
-        yield* harness.ingress.workflowSubmit(PromiseWf, 'dp-1', undefined)
+        yield* harness.ingress.workflowSubmit({
+          contract: PromiseWf,
+          key: 'dp-1',
+          input: undefined,
+        })
         /* Let `run` reach the unresolved `get` (parks), THEN resolve after a delay. */
         yield* liveSleep(300)
-        yield* harness.ingress.workflowCall(PromiseWf, 'dp-1', 'resolveIt', 'resumed-value')
+        yield* harness.ingress.workflowCall({
+          contract: PromiseWf,
+          key: 'dp-1',
+          method: 'resolveIt',
+          input: 'resumed-value',
+        })
 
-        const result = yield* harness.ingress.workflowAttach(PromiseWf, 'dp-1')
+        const result = yield* harness.ingress.workflowAttach({ contract: PromiseWf, key: 'dp-1' })
         expect(result).toBe('resumed-value')
-        expect(yield* harness.stateOf(PromiseWf, 'dp-1').get('done')).toBe(true)
+        expect(yield* harness.stateOf({ contract: PromiseWf, key: 'dp-1' }).get('done')).toBe(true)
       }),
     )
   })
@@ -242,7 +282,11 @@ describe.skipIf(!serverAvailable)('durable-await classification (real server)', 
         attempts.run = 0
         const harness = yield* RestateTestHarness
 
-        yield* harness.ingress.workflowSubmit(PromiseWf, 'dp-reject', undefined)
+        yield* harness.ingress.workflowSubmit({
+          contract: PromiseWf,
+          key: 'dp-reject',
+          input: undefined,
+        })
         /* Let `run` reach the unresolved `get` (one real attempt = counter at 1). */
         yield* liveSleep(300)
         expect(attempts.run).toBe(1)
@@ -250,10 +294,17 @@ describe.skipIf(!serverAvailable)('durable-await classification (real server)', 
         /* Reject the durable promise → the `get` fails TERMINALLY: the `run` ends and
          * is NOT retried. Under the bug the reject was a `RestateError` DEFECT, which
          * Restate RETRIES — the counter would climb past one. */
-        yield* harness.ingress.workflowCall(PromiseWf, 'dp-reject', 'rejectIt', 'denied')
+        yield* harness.ingress.workflowCall({
+          contract: PromiseWf,
+          key: 'dp-reject',
+          method: 'rejectIt',
+          input: 'denied',
+        })
 
         /* Attach observes the terminal failure (the `run` did not succeed). */
-        const exit = yield* Effect.exit(harness.ingress.workflowAttach(PromiseWf, 'dp-reject'))
+        const exit = yield* Effect.exit(
+          harness.ingress.workflowAttach({ contract: PromiseWf, key: 'dp-reject' }),
+        )
         expect(exit._tag).toBe('Failure')
 
         /* The decisive falsifier: NO retry fired (a terminal outcome, not a defect). */
@@ -272,7 +323,9 @@ describe.skipIf(!serverAvailable)('durable-await classification (real server)', 
           /* The caller `Restate.call`s a callee that fails TERMINALLY → the call fails
            * the caller. Under the bug the callee `TerminalError` was wrapped into a
            * `RestateError` DEFECT, which Restate RETRIES — the counter would climb. */
-          const exit = yield* Effect.exit(harness.ingress.call(CallCaller, 'start', undefined))
+          const exit = yield* Effect.exit(
+            harness.ingress.call({ contract: CallCaller, method: 'start', input: undefined }),
+          )
           expect(exit._tag).toBe('Failure')
 
           /* The decisive falsifier: the caller ran ONCE and terminalized — no retry. */

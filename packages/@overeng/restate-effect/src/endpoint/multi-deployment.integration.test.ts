@@ -21,15 +21,24 @@ import { RestateTestHarness, serverAvailable } from '../testing/testing.ts'
 
 /* The SAME contract, two IMPLEMENTATIONS — V1 returns `v1-…`, V2 returns `v2-…`.
  * Registering V2 as a second deployment upgrades the service; a new call routes to V2. */
-const Versioned = RestateService.contract('versioned', {
-  whoami: { input: Schema.Void, success: Schema.String },
+const Versioned = RestateService.contract({
+  name: 'versioned',
+  handlers: {
+    whoami: { input: Schema.Void, success: Schema.String },
+  },
 })
 
-const V1 = RestateService.implement<typeof Versioned>(Versioned, {
-  whoami: () => Effect.succeed('v1'),
+const V1 = RestateService.implement<typeof Versioned>({
+  contractValue: Versioned,
+  impl: {
+    whoami: () => Effect.succeed('v1'),
+  },
 })
-const V2 = RestateService.implement<typeof Versioned>(Versioned, {
-  whoami: () => Effect.succeed('v2'),
+const V2 = RestateService.implement<typeof Versioned>({
+  contractValue: Versioned,
+  impl: {
+    whoami: () => Effect.succeed('v2'),
+  },
 })
 
 /** Count the registered deployments via the admin `/deployments` listing. */
@@ -50,7 +59,9 @@ describe.skipIf(!serverAvailable)('multi-deployment version upgrade (real server
         /* V1 is the only deployment initially; a call returns `v1`. */
         const beforeCount = yield* Effect.promise(() => deploymentCount(harness.adminUrl))
         expect(beforeCount).toBe(1)
-        expect(yield* harness.ingress.call(Versioned, 'whoami', undefined)).toBe('v1')
+        expect(
+          yield* harness.ingress.call({ contract: Versioned, method: 'whoami', input: undefined }),
+        ).toBe('v1')
 
         /* Register V2 as a SECOND deployment (a new endpoint version of the same
          * service) — the harness serves it on a fresh ephemeral port + registers it. */
@@ -62,7 +73,9 @@ describe.skipIf(!serverAvailable)('multi-deployment version upgrade (real server
         expect(afterCount).toBe(2)
 
         /* A NEW invocation routes to the LATEST registered version (the upgrade): `v2`. */
-        expect(yield* harness.ingress.call(Versioned, 'whoami', undefined)).toBe('v2')
+        expect(
+          yield* harness.ingress.call({ contract: Versioned, method: 'whoami', input: undefined }),
+        ).toBe('v2')
       }),
     )
   })

@@ -185,6 +185,57 @@ export const exampleGcResults: StoreGcResult[] = [
   },
 ]
 
+/**
+ * Cold named-branch GC outcomes (decisions 0001–0010): a merged branch archived
+ * to `.archive/` with a recovery hint, a stale archive reaped past retention, and
+ * cold-but-kept worktrees (live / unrecoverable-local-work / ref_mismatch).
+ */
+export const exampleColdGcResults: StoreGcResult[] = [
+  {
+    repo: 'github.com/alice/core-lib/',
+    ref: 'feature/merged-pr',
+    refType: 'heads',
+    path: '/Users/dev/.megarepo/github.com/alice/core-lib/refs/heads/feature/merged-pr/',
+    status: 'archived',
+    reason: 'merged',
+    recoverPath:
+      '/Users/dev/.megarepo/github.com/alice/core-lib/.archive/feature/merged-pr--2026-06-11T08:00:00.000Z/',
+  },
+  {
+    repo: 'github.com/alice/core-lib/',
+    ref: 'feature/old-archive',
+    refType: 'heads',
+    path: '/Users/dev/.megarepo/github.com/alice/core-lib/.archive/feature/old-archive--2026-05-01T00:00:00.000Z/',
+    status: 'reaped',
+    reason: 'retention',
+  },
+  {
+    repo: 'github.com/acme-org/dev-tools/',
+    ref: 'feature/unpushed',
+    refType: 'heads',
+    path: '/Users/dev/.megarepo/github.com/acme-org/dev-tools/refs/heads/feature/unpushed/',
+    status: 'kept',
+    reason: 'unrecoverable-local-work',
+  },
+  {
+    repo: 'github.com/acme-org/dev-tools/',
+    ref: 'feature/repinned',
+    refType: 'heads',
+    path: '/Users/dev/.megarepo/github.com/acme-org/dev-tools/refs/heads/feature/repinned/',
+    status: 'kept',
+    reason: 'live',
+  },
+  {
+    repo: 'github.com/acme-org/dev-tools/',
+    ref: 'feature/diverged',
+    refType: 'heads',
+    path: '/Users/dev/.megarepo/github.com/acme-org/dev-tools/refs/heads/feature/diverged/',
+    status: 'kept',
+    reason: 'ref_mismatch',
+    message: "HEAD is 'feature/other'",
+  },
+]
+
 export const createGcState = (opts: {
   results: StoreGcResult[]
   dryRun: boolean

@@ -8,6 +8,7 @@ import {
   Metric,
   MetricBoundaries,
   Option,
+  ParseResult,
   Redacted,
   Schema,
   Stream,
@@ -16,6 +17,7 @@ import * as AST from 'effect/SchemaAST'
 
 type OtelPrimitive = string | number | boolean
 
+/** Branded OTel attribute key: letter-led, `[A-Za-z0-9_.:-]`, ≤255 chars — the canonical key shape shared by resource and span attributes. */
 export const OtelAttributeKey = Schema.NonEmptyTrimmedString.pipe(
   Schema.maxLength(255),
   Schema.pattern(/^[A-Za-z][A-Za-z0-9_.:-]*$/),
@@ -24,6 +26,7 @@ export const OtelAttributeKey = Schema.NonEmptyTrimmedString.pipe(
 )
 export type OtelAttributeKey = typeof OtelAttributeKey.Type
 
+/** Branded span name: any printable ASCII (`[ -~]`, so spaces/punctuation allowed unlike keys), ≤255 chars. */
 export const OtelSpanName = Schema.NonEmptyTrimmedString.pipe(
   Schema.maxLength(255),
   Schema.pattern(/^[ -~]+$/),
@@ -32,6 +35,7 @@ export const OtelSpanName = Schema.NonEmptyTrimmedString.pipe(
 )
 export type OtelSpanName = typeof OtelSpanName.Type
 
+/** Branded metric name: Prometheus-style, may lead with `_` or `:` (not just a letter), ≤255 chars. */
 export const OtelMetricName = Schema.NonEmptyTrimmedString.pipe(
   Schema.maxLength(255),
   Schema.pattern(/^[A-Za-z_:][A-Za-z0-9_.:-]*$/),
@@ -40,6 +44,7 @@ export const OtelMetricName = Schema.NonEmptyTrimmedString.pipe(
 )
 export type OtelMetricName = typeof OtelMetricName.Type
 
+/** Branded `service.name` resource value: letter-led, `[A-Za-z0-9_.:-]`, ≤255 chars — the telemetry service identity. */
 export const OtelServiceName = Schema.NonEmptyTrimmedString.pipe(
   Schema.maxLength(255),
   Schema.pattern(/^[A-Za-z][A-Za-z0-9_.:-]*$/),
@@ -47,6 +52,122 @@ export const OtelServiceName = Schema.NonEmptyTrimmedString.pipe(
   Schema.annotations({ identifier: 'Otel.ServiceName' }),
 )
 export type OtelServiceName = typeof OtelServiceName.Type
+
+/** Resource attribute key `service.namespace` — a logical grouping for related services. */
+export const OtelServiceNamespace = Schema.NonEmptyTrimmedString.pipe(
+  Schema.maxLength(255),
+  Schema.brand('OtelServiceNamespace'),
+  Schema.annotations({ identifier: 'Otel.ServiceNamespace' }),
+)
+export type OtelServiceNamespace = typeof OtelServiceNamespace.Type
+
+/** Resource attribute key `service.version` — the build/release version of the service. */
+export const OtelServiceVersion = Schema.NonEmptyTrimmedString.pipe(
+  Schema.maxLength(255),
+  Schema.brand('OtelServiceVersion'),
+  Schema.annotations({ identifier: 'Otel.ServiceVersion' }),
+)
+export type OtelServiceVersion = typeof OtelServiceVersion.Type
+
+/**
+ * Typed service identity stamped onto the OTLP `Resource` for every signal
+ * (traces, metrics, logs). `name` is validated via the {@link OtelServiceName}
+ * brand so a malformed service name fails at the composition root rather than
+ * silently in a backend.
+ */
+export const ServiceIdentity = Schema.Struct({
+  name: OtelServiceName,
+  namespace: OtelServiceNamespace,
+  version: OtelServiceVersion,
+}).annotations({ identifier: 'Otel.ServiceIdentity' })
+export type ServiceIdentity = typeof ServiceIdentity.Type
+
+/**
+ * Pre-validation parts of the conventional `<project>-<role>` service name. The
+ * parts are plain {@link Schema.NonEmptyTrimmedString} rather than dedicated
+ * brands: that is the LIGHTEST typing that still rejects empty/whitespace parts,
+ * and it is load-bearing for correctness. {@link OtelServiceName}'s pattern
+ * (`^[A-Za-z][A-Za-z0-9_.:-]*$`) admits a TRAILING hyphen, so an empty `role`
+ * would compose to `"<project>-"` and pass a naive single decode of the joined
+ * string. Validating the parts here first closes that trap; the joined string is
+ * then decoded through {@link OtelServiceName} so the leading-letter + charset
+ * naming law (shared with the rest of the contract) still applies.
+ */
+export const ServiceNameParts = Schema.Struct({
+  project: Schema.NonEmptyTrimmedString,
+  role: Schema.NonEmptyTrimmedString,
+}).annotations({ identifier: 'Otel.ServiceNameParts' })
+export type ServiceNameParts = typeof ServiceNameParts.Type
+
+/**
+ * Builds `service.name = `${project}-${role}`` from typed parts, validated end to
+ * end: parts decode through {@link ServiceNameParts} (rejects empty/whitespace),
+ * the joined string decodes through the {@link OtelServiceName} brand (the same
+ * naming law as every other contract name). A malformed part is a decode error at
+ * the composition root, never a backend surprise. Decode it like any other brand:
+ * `Schema.decode(ServiceNameFromParts)({ project, role })`.
+ */
+export const ServiceNameFromParts = Schema.transformOrFail(ServiceNameParts, OtelServiceName, {
+  strict: true,
+  decode: (parts, _options, ast) =>
+    ParseResult.decodeUnknown(OtelServiceName)(`${parts.project}-${parts.role}`).pipe(
+      Effect.mapError(
+        (issue) =>
+          new ParseResult.Type(ast, parts, ParseResult.TreeFormatter.formatIssueSync(issue)),
+      ),
+    ),
+  encode: (name, _options, ast) =>
+    ParseResult.fail(
+      new ParseResult.Forbidden(
+        ast,
+        name,
+        'A composed service name cannot be split back into parts',
+      ),
+    ),
+}).annotations({ identifier: 'Otel.ServiceNameFromParts' })
+
+/**
+ * The SHAPE a private fleet configuration supplies to produce a
+ * {@link ServiceIdentity}. This PUBLIC repo owns the TYPE and the constructor
+ * ({@link serviceIdentityFromBinding}); the private fleet config supplies the
+ * VALUES. Fields are plain pre-validation `string`s on purpose — branding them
+ * here would defeat the decode-at-the-edge story — so the binding is the raw
+ * input the composition root decodes once. This repo contains ZERO fleet values;
+ * a private repo binds against this seam.
+ */
+export interface FleetServiceBinding {
+  /** Logical project the service belongs to (left of the `<project>-<role>` name). */
+  readonly project: string
+  /** Role the process plays within the project (right of the `<project>-<role>` name). */
+  readonly role: string
+  /** `service.namespace` — logical grouping for related services. */
+  readonly namespace: string
+  /** `service.version` — build/release version of the service. */
+  readonly version: string
+}
+
+/**
+ * Assembles a validated {@link ServiceIdentity} from a {@link FleetServiceBinding}:
+ * the `<project>-<role>` name is built + validated via {@link ServiceNameFromParts}
+ * and `namespace`/`version` decode through their brands. Removes the hand-rolled
+ * `Schema.decode(ServiceIdentity)({ name: `${project}-${role}`, … })` at every
+ * composition root. A malformed part/namespace/version is a decode error here, at
+ * the edge.
+ */
+export const serviceIdentityFromBinding = (
+  binding: FleetServiceBinding,
+): Effect.Effect<ServiceIdentity, ParseResult.ParseError> =>
+  Effect.gen(function* () {
+    const name = yield* Schema.decode(ServiceNameFromParts)({
+      project: binding.project,
+      role: binding.role,
+    })
+    return yield* Schema.decode(ServiceIdentity)({
+      name,
+      namespace: binding.namespace,
+      version: binding.version,
+    })
+  })
 
 /** Attribute value shape accepted by Effect's span annotation API and otelite flat rows. */
 export type OtelAttributeValue = OtelPrimitive
@@ -270,7 +391,8 @@ export interface OtelMetricLabels<S extends Schema.Schema.AnyNoContext> {
   readonly unsafeEncode: (value: Schema.Schema.Type<S>) => OtelAttributeMap
 }
 
-export type OtelMetricInstrumentKind = 'counter' | 'histogram'
+/** The three instrument shapes a metric contract can take; selects which definition/runtime bridge applies. */
+export type OtelMetricInstrumentKind = 'counter' | 'histogram' | 'gauge'
 
 /** Stable metadata for schema-backed metric definitions. */
 export interface OtelMetricMetadata {
@@ -305,6 +427,7 @@ export interface OtelMetricDefinition<S extends Schema.Schema.AnyNoContext> {
   ) => Effect.Effect<ReadonlyArray<readonly [string, string]>>
 }
 
+/** Metric definition narrowed to a histogram, adding optional explicit bucket `boundaries`. */
 export interface OtelHistogramDefinition<
   S extends Schema.Schema.AnyNoContext,
 > extends OtelMetricDefinition<S> {
@@ -312,34 +435,62 @@ export interface OtelHistogramDefinition<
   readonly boundaries?: ReadonlyArray<number>
 }
 
+/** Metric definition narrowed to a gauge (instantaneous last-set value, no boundaries). */
+export interface OtelGaugeDefinition<
+  S extends Schema.Schema.AnyNoContext,
+> extends OtelMetricDefinition<S> {
+  readonly instrument: 'gauge'
+}
+
+/** Alias for the underlying Effect counter runtime that a counter contract drives. */
 export type OtelEffectCounterMetric = Metric.Metric.Counter<number>
+/** Alias for the underlying Effect histogram runtime that a histogram contract drives. */
 export type OtelEffectHistogramMetric = Metric.Metric.Histogram<number>
+/** Alias for the underlying Effect gauge runtime that a gauge contract drives. */
+export type OtelEffectGaugeMetric = Metric.Metric.Gauge<number>
 
 /** Effect Metric runtime bridge for a schema-first counter contract. */
 export interface OtelEffectCounter<S extends Schema.Schema.AnyNoContext> {
   readonly definition: OtelMetricDefinition<S>
   readonly metric: OtelEffectCounterMetric
   readonly increment: (labels: Schema.Schema.Type<S>) => Effect.Effect<void, OtelAttrEncodeError>
-  readonly incrementBy: (
-    labels: Schema.Schema.Type<S>,
-    amount: number,
-  ) => Effect.Effect<void, OtelAttrEncodeError>
+  readonly incrementBy: (options: {
+    labels: Schema.Schema.Type<S>
+    amount: number
+  }) => Effect.Effect<void, OtelAttrEncodeError>
   readonly trustedIncrement: (labels: Schema.Schema.Type<S>) => Effect.Effect<void>
-  readonly trustedIncrementBy: (
-    labels: Schema.Schema.Type<S>,
-    amount: number,
-  ) => Effect.Effect<void>
+  readonly trustedIncrementBy: (options: {
+    labels: Schema.Schema.Type<S>
+    amount: number
+  }) => Effect.Effect<void>
 }
 
 /** Effect Metric runtime bridge for a schema-first histogram contract. */
 export interface OtelEffectHistogram<S extends Schema.Schema.AnyNoContext> {
   readonly definition: OtelHistogramDefinition<S>
   readonly metric: OtelEffectHistogramMetric
-  readonly record: (
-    labels: Schema.Schema.Type<S>,
-    value: number,
-  ) => Effect.Effect<void, OtelAttrEncodeError>
-  readonly trustedRecord: (labels: Schema.Schema.Type<S>, value: number) => Effect.Effect<void>
+  readonly record: (options: {
+    labels: Schema.Schema.Type<S>
+    value: number
+  }) => Effect.Effect<void, OtelAttrEncodeError>
+  readonly trustedRecord: (options: {
+    labels: Schema.Schema.Type<S>
+    value: number
+  }) => Effect.Effect<void>
+}
+
+/** Effect Metric runtime bridge for a schema-first gauge contract. */
+export interface OtelEffectGauge<S extends Schema.Schema.AnyNoContext> {
+  readonly definition: OtelGaugeDefinition<S>
+  readonly metric: OtelEffectGaugeMetric
+  readonly set: (options: {
+    labels: Schema.Schema.Type<S>
+    value: number
+  }) => Effect.Effect<void, OtelAttrEncodeError>
+  readonly trustedSet: (options: {
+    labels: Schema.Schema.Type<S>
+    value: number
+  }) => Effect.Effect<void>
 }
 
 const getAttrMetadata = (annotated: AST.Annotated): OtelAttrMetadata | undefined =>
@@ -402,19 +553,28 @@ export const OtelAttr = {
   encode: (encode: OtelAttrEncodePolicy) => withAttrMetadata({ encode }),
   cardinality: (cardinality: NonNullable<OtelAttrMetadata['cardinality']>) =>
     withAttrMetadata({ cardinality }),
-  string: (
-    key: string,
-    metadata: Omit<OtelAttrMetadata, 'key' | 'encode'> = {},
-  ): Schema.Schema<string> => Schema.String.pipe(OtelAttr.key({ ...metadata, key })),
-  boolean: (
-    key: string,
-    metadata: Omit<OtelAttrMetadata, 'key' | 'encode'> = {},
-  ): Schema.Schema<boolean> =>
+  string: ({
+    key,
+    metadata = {},
+  }: {
+    key: string
+    metadata?: Omit<OtelAttrMetadata, 'key' | 'encode'>
+  }): Schema.Schema<string> => Schema.String.pipe(OtelAttr.key({ ...metadata, key })),
+  boolean: ({
+    key,
+    metadata = {},
+  }: {
+    key: string
+    metadata?: Omit<OtelAttrMetadata, 'key' | 'encode'>
+  }): Schema.Schema<boolean> =>
     Schema.Boolean.pipe(OtelAttr.key({ cardinality: 'low', ...metadata, key })),
-  number: (
-    key: string,
-    metadata: Omit<OtelAttrMetadata, 'key' | 'encode'> = {},
-  ): Schema.Schema<number> => Schema.Number.pipe(OtelAttr.key({ ...metadata, key })),
+  number: ({
+    key,
+    metadata = {},
+  }: {
+    key: string
+    metadata?: Omit<OtelAttrMetadata, 'key' | 'encode'>
+  }): Schema.Schema<number> => Schema.Number.pipe(OtelAttr.key({ ...metadata, key })),
   literal: <Literals extends readonly [AST.LiteralValue, ...Array<AST.LiteralValue>]>(
     key: string,
     ...values: Literals
@@ -425,11 +585,15 @@ export const OtelAttr = {
   optional: <S extends Schema.Schema.AnyNoContext>(schema: S) => Schema.optional(schema),
   redacted: (key: string): Schema.Schema<Redacted.Redacted<string>, string, never> =>
     Schema.Redacted(Schema.String).pipe(OtelAttr.key({ key, encode: 'redacted' })),
-  json: <S extends Schema.Schema.AnyNoContext>(
-    key: string,
-    schema: S,
-    metadata: Omit<OtelAttrMetadata, 'key' | 'encode'> = {},
-  ): S => schema.pipe(OtelAttr.key({ ...metadata, key, encode: 'json' })) as S,
+  json: <S extends Schema.Schema.AnyNoContext>({
+    key,
+    schema,
+    metadata = {},
+  }: {
+    key: string
+    schema: S
+    metadata?: Omit<OtelAttrMetadata, 'key' | 'encode'>
+  }): S => schema.pipe(OtelAttr.key({ ...metadata, key, encode: 'json' })) as S,
   drop: <S extends Schema.Schema.AnyNoContext>(schema: S): S =>
     schema.pipe(OtelAttr.encode('drop')) as S,
 } as const
@@ -969,7 +1133,13 @@ const metricLabelsMetadata = <S extends Schema.Schema.AnyNoContext>(
   labelKeys: Array.from(attributes.keys),
 })
 
-const invalidMetricLabel = (field: OtelAttrFieldMetadata, message: string) =>
+const invalidMetricLabel = ({
+  field,
+  message,
+}: {
+  field: OtelAttrFieldMetadata
+  message: string
+}) =>
   new OtelAttrPlanError({
     path: [field.sourceKey],
     message,
@@ -980,16 +1150,22 @@ const assertMetricLabels = <S extends Schema.Schema.AnyNoContext>(
 ): OtelMetricLabels<S> => {
   for (const field of attributes.fields) {
     if (field.encodePolicy === 'drop') {
-      throw invalidMetricLabel(field, `Metric label ${field.attrKey} cannot use a drop encoder`)
+      throw invalidMetricLabel({
+        field,
+        message: `Metric label ${field.attrKey} cannot use a drop encoder`,
+      })
     }
     if (field.cardinality === undefined) {
-      throw invalidMetricLabel(
+      throw invalidMetricLabel({
         field,
-        `Metric label ${field.attrKey} must declare or infer low/bounded cardinality`,
-      )
+        message: `Metric label ${field.attrKey} must declare or infer low/bounded cardinality`,
+      })
     }
     if (field.cardinality === 'high') {
-      throw invalidMetricLabel(field, `Metric label ${field.attrKey} cannot use high cardinality`)
+      throw invalidMetricLabel({
+        field,
+        message: `Metric label ${field.attrKey} cannot use high cardinality`,
+      })
     }
   }
   const metadata = metricLabelsMetadata(attributes)
@@ -1117,14 +1293,14 @@ function defineOperation<S extends Schema.Schema.AnyNoContext>(
     ...(options.root === undefined ? {} : { root: options.root }),
   })
 
-  function withOperation<A, E, R>(
+  const withOperation = <A, E, R>(
     call:
       | {
           readonly attributes: Schema.Schema.Type<S>
           readonly effect: Effect.Effect<A, E, R>
         }
       | Schema.Schema.Type<S>,
-  ) {
+  ) => {
     const wrap = (effect: Effect.Effect<A, E, R>) =>
       Effect.gen(function* () {
         const encoded = yield* encode(isEffectOperationCall(call) === true ? call.attributes : call)
@@ -1138,14 +1314,14 @@ function defineOperation<S extends Schema.Schema.AnyNoContext>(
     return isEffectOperationCall(call) === true ? wrap(call.effect) : wrap
   }
 
-  function withRootOperation<A, E, R>(
+  const withRootOperation = <A, E, R>(
     call:
       | {
           readonly attributes: Schema.Schema.Type<S>
           readonly effect: Effect.Effect<A, E, R>
         }
       | Schema.Schema.Type<S>,
-  ) {
+  ) => {
     const wrap = (effect: Effect.Effect<A, E, R>) =>
       Effect.gen(function* () {
         const encoded = yield* encode(isEffectOperationCall(call) === true ? call.attributes : call)
@@ -1159,14 +1335,14 @@ function defineOperation<S extends Schema.Schema.AnyNoContext>(
     return isEffectOperationCall(call) === true ? wrap(call.effect) : wrap
   }
 
-  function withOperationStream<A, E, R>(
+  const withOperationStream = <A, E, R>(
     call:
       | {
           readonly attributes: Schema.Schema.Type<S>
           readonly stream: Stream.Stream<A, E, R>
         }
       | Schema.Schema.Type<S>,
-  ) {
+  ) => {
     const wrap = (stream: Stream.Stream<A, E, R>) =>
       Stream.unwrap(
         Effect.gen(function* () {
@@ -1300,10 +1476,43 @@ const defineHistogram = <S extends Schema.Schema.AnyNoContext>(options: {
   }
 }
 
-const taggedMetric = <Type, In, Out>(
-  metric: Metric.Metric<Type, In, Out>,
-  tags: ReadonlyArray<readonly [string, string]>,
-): Metric.Metric<Type, In, Out> =>
+const defineGauge = <S extends Schema.Schema.AnyNoContext>(options: {
+  readonly name: string
+  readonly description?: string
+  readonly unit?: string
+  readonly labels: S | OtelMetricLabels<S>
+}): OtelGaugeDefinition<S> => {
+  const name = decodeMetricNameSync(options.name)
+  const labels = metricLabelsFromInput(options.labels)
+  const tagPairs = metricTagPairs(labels.encode)
+  return {
+    instrument: 'gauge',
+    name,
+    ...(options.description === undefined ? {} : { description: options.description }),
+    ...(options.unit === undefined ? {} : { unit: options.unit }),
+    labels,
+    metadata: metricMetadata({
+      instrument: 'gauge',
+      name,
+      ...(options.description === undefined ? {} : { description: options.description }),
+      ...(options.unit === undefined ? {} : { unit: options.unit }),
+      labels,
+    }),
+    encodeLabels: labels.encode,
+    encodeLabelsSync: labels.encodeSync,
+    unsafeEncodeLabels: labels.unsafeEncode,
+    tagPairs,
+    trustedTagPairs: trustedMetricTagPairs(labels.encode),
+  }
+}
+
+const taggedMetric = <Type, In, Out>({
+  metric,
+  tags,
+}: {
+  metric: Metric.Metric<Type, In, Out>
+  tags: ReadonlyArray<readonly [string, string]>
+}): Metric.Metric<Type, In, Out> =>
   tags.reduce<Metric.Metric<Type, In, Out>>(
     (tagged, [key, value]) => Metric.tagged(tagged, key, value),
     metric,
@@ -1327,19 +1536,20 @@ const effectCounter = <S extends Schema.Schema.AnyNoContext>(
     definition.description === undefined
       ? Metric.counter(definition.name)
       : Metric.counter(definition.name, { description: definition.description })
-  const incrementBy = (labels: Schema.Schema.Type<S>, amount: number) =>
+  const incrementBy = ({ labels, amount }: { labels: Schema.Schema.Type<S>; amount: number }) =>
     Effect.gen(function* () {
       const tags = yield* definition.tagPairs(labels)
-      yield* Metric.incrementBy(taggedMetric(metric, tags), amount)
+      yield* Metric.incrementBy(taggedMetric({ metric, tags }), amount)
     })
 
   return {
     definition,
     metric,
-    increment: (labels) => incrementBy(labels, 1),
+    increment: (labels) => incrementBy({ labels, amount: 1 }),
     incrementBy,
-    trustedIncrement: (labels) => trustedMetricEmission(incrementBy(labels, 1)),
-    trustedIncrementBy: (labels, amount) => trustedMetricEmission(incrementBy(labels, amount)),
+    trustedIncrement: (labels) => trustedMetricEmission(incrementBy({ labels, amount: 1 })),
+    trustedIncrementBy: ({ labels, amount }) =>
+      trustedMetricEmission(incrementBy({ labels, amount })),
   }
 }
 
@@ -1351,17 +1561,44 @@ const effectHistogram = <S extends Schema.Schema.AnyNoContext>(
     MetricBoundaries.fromIterable(definition.boundaries ?? []),
     definition.description,
   )
-  const record = (labels: Schema.Schema.Type<S>, value: number) =>
+  const record = ({ labels, value }: { labels: Schema.Schema.Type<S>; value: number }) =>
     Effect.gen(function* () {
       const tags = yield* definition.tagPairs(labels)
-      yield* Metric.update(taggedMetric(metric, tags), value)
+      yield* Metric.update(taggedMetric({ metric, tags }), value)
     })
 
   return {
     definition,
     metric,
     record,
-    trustedRecord: (labels, value) => trustedMetricEmission(record(labels, value)),
+    trustedRecord: ({ labels, value }) => trustedMetricEmission(record({ labels, value })),
+  }
+}
+
+const effectGauge = <S extends Schema.Schema.AnyNoContext>(
+  definition: OtelGaugeDefinition<S>,
+): OtelEffectGauge<S> => {
+  if (definition.instrument !== 'gauge') {
+    throw new OtelAttrPlanError({
+      path: ['instrument'],
+      message: `OtelMetric.effect.gauge requires a gauge definition, got ${definition.instrument}`,
+    })
+  }
+  const metric =
+    definition.description === undefined
+      ? Metric.gauge(definition.name)
+      : Metric.gauge(definition.name, { description: definition.description })
+  const set = ({ labels, value }: { labels: Schema.Schema.Type<S>; value: number }) =>
+    Effect.gen(function* () {
+      const tags = yield* definition.tagPairs(labels)
+      yield* Metric.set(taggedMetric({ metric, tags }), value)
+    })
+
+  return {
+    definition,
+    metric,
+    set,
+    trustedSet: ({ labels, value }) => trustedMetricEmission(set({ labels, value })),
   }
 }
 
@@ -1437,10 +1674,13 @@ export const OtelMetric = {
   labels: defineMetricLabels,
   counter: defineCounter,
   histogram: defineHistogram,
+  gauge: defineGauge,
   defineCounter,
   defineHistogram,
+  defineGauge,
   effect: {
     counter: effectCounter,
     histogram: effectHistogram,
+    gauge: effectGauge,
   },
 } as const

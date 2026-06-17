@@ -290,6 +290,7 @@ const PENDING_INTENT_IN_FLIGHT_STATES: ReadonlySet<
   'queued' | 'running' | 'retryable' | 'ambiguous'
 > = new Set(['queued', 'running', 'retryable', 'ambiguous'])
 
+/** Re-project a planner snapshot under the given authority mode, recomputing each property's settlement verdict (`local`/`remote` leave it unchanged). */
 export const withAuthorityMode = ({
   snapshot,
   authorityMode,
@@ -807,7 +808,7 @@ const planPropertyEdit = ({
       : {}),
     ...(propertySurface.settlement !== undefined ? { settlement: propertySurface.settlement } : {}),
   })
-  baseGuards.push(evaluatePropertyWrite(proof, desiredWrite))
+  baseGuards.push(evaluatePropertyWrite({ proof, desiredWrite }))
 
   /*
    * Fail closed on a `files` write that would store a Notion-hosted signed/expiring

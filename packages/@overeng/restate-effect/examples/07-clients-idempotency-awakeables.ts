@@ -29,39 +29,50 @@ export const NotifyInput = Schema.Struct({
   body: Schema.String,
 })
 
-export const Notifier = RestateService.contract('notifier', {
-  notify: { input: NotifyInput, success: Schema.Void },
+export const Notifier = RestateService.contract({
+  name: 'notifier',
+  handlers: {
+    notify: { input: NotifyInput, success: Schema.Void },
+  },
 })
 
 /* ── In-handler service-to-service calls (require `RestateContext`) ────────── */
 
-export const Orchestrator = RestateService.define(
-  'orchestrator',
-  {
+export const Orchestrator = RestateService.define({
+  name: 'orchestrator',
+  handlers: {
     start: { input: Schema.String, success: Schema.String },
   },
-  {
+  impl: {
     start: (name) =>
       Effect.gen(function* () {
         /* Request/response to another Service, typed from `Greeter`'s contract.
          * Durably journaled, so a crash recovers the result from the journal. */
-        const greeting = yield* Restate.call(Greeter, 'greet', { name }).pipe(Effect.orDie)
+        const greeting = yield* Restate.call({
+          contract: Greeter,
+          method: 'greet',
+          input: { name },
+        }).pipe(Effect.orDie)
         /* One-way send; the idempotency key is read off `requestId` automatically. */
-        yield* Restate.send(Notifier, 'notify', {
-          requestId: `welcome-${name}`,
-          body: greeting.message,
+        yield* Restate.send({
+          contract: Notifier,
+          method: 'notify',
+          input: {
+            requestId: `welcome-${name}`,
+            body: greeting.message,
+          },
         }).pipe(Effect.orDie)
         /* A delayed one-way send — a durable, fault-tolerant timer. */
-        yield* Restate.send(
-          Notifier,
-          'notify',
-          { requestId: `reminder-${name}`, body: 'still there?' },
-          { delayMillis: 60_000 },
-        ).pipe(Effect.orDie)
+        yield* Restate.send({
+          contract: Notifier,
+          method: 'notify',
+          input: { requestId: `reminder-${name}`, body: 'still there?' },
+          opts: { delayMillis: 60_000 },
+        }).pipe(Effect.orDie)
         return greeting.message
       }),
   },
-)
+})
 
 /* ── Awakeables: a typed external-completion token ─────────────────────────── */
 
@@ -74,29 +85,35 @@ export const StartInput = Schema.Struct({ runId: Restate.idempotencyKey(Schema.S
 const WaiterState = { awakeableId: Schema.String } as const
 const Waiter = State.for(WaiterState)
 
-export const WaiterObj = RestateObject.contract('waiter', {
-  state: WaiterState,
-  handlers: {
-    /* Create the awakeable, store its id (so an external system can read it back
-     * via the shared query), then SUSPEND on the promise until resolved. */
-    start: { input: StartInput, success: Payload },
-    awakeableId: { input: Schema.Void, success: Schema.String, shared: true },
+export const WaiterObj = RestateObject.contract({
+  name: 'waiter',
+  def: {
+    state: WaiterState,
+    handlers: {
+      /* Create the awakeable, store its id (so an external system can read it back
+       * via the shared query), then SUSPEND on the promise until resolved. */
+      start: { input: StartInput, success: Payload },
+      awakeableId: { input: Schema.Void, success: Schema.String, shared: true },
+    },
   },
 })
 
-export const WaiterLive = RestateObject.implement<typeof WaiterObj>(WaiterObj, {
-  /* `Awakeable.make().promise`, `Waiter.set`/`get` all have a CLEAN `E` (#1) —
-   * no `orDie`. An awakeable `reject` arrives as a terminal at the boundary; an
-   * infra failure is a defect classified there. */
-  start: () =>
-    Effect.gen(function* () {
-      const { id, promise } = yield* Awakeable.make(Payload)
-      yield* Waiter.set('awakeableId', id)
-      return yield* promise // suspends until the awakeable is resolved
-    }),
-  awakeableId: () => Waiter.get('awakeableId').pipe(Effect.map((id) => id ?? '')),
+export const WaiterLive = RestateObject.implement<typeof WaiterObj>({
+  contractValue: WaiterObj,
+  impl: {
+    /* `Awakeable.make().promise`, `Waiter.set`/`get` all have a CLEAN `E` (#1) —
+     * no `orDie`. An awakeable `reject` arrives as a terminal at the boundary; an
+     * infra failure is a defect classified there. */
+    start: () =>
+      Effect.gen(function* () {
+        const { id, promise } = yield* Awakeable.make(Payload)
+        yield* Waiter.set({ key: 'awakeableId', value: id })
+        return yield* promise // suspends until the awakeable is resolved
+      }),
+    awakeableId: () => Waiter.get('awakeableId').pipe(Effect.map((id) => id ?? '')),
+  },
 })
 
-/* Resolution comes from ingress (`ingressResolveAwakeable(Payload, id, payload)`)
- * or from another handler (`Awakeable.resolve(Payload, id, payload)`); see
+/* Resolution comes from ingress (`ingressResolveAwakeable({ schema: Payload, id, payload })`)
+ * or from another handler (`Awakeable.resolve({ schema: Payload, id, payload })`); see
  * `src/examples.integration.test.ts` for the full round-trip. */

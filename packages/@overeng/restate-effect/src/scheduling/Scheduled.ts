@@ -86,13 +86,14 @@ import { reschedule } from './Reschedule.ts'
  * `maxRetryBackoffs`). The policy governs only `terminal`/defect/give-up failures.
  *
  * NOTE: there is no `retryCycle` option. To durably retry the work itself, bound
- * a `Restate.run(name, action, { maxRetryAttempts })` INSIDE the cycle (the only
+ * a `Restate.run({ name, effect: action, options: { maxRetryAttempts } })` INSIDE the cycle (the only
  * place that honestly re-executes). An UNBOUNDED `Restate.run` retries forever and
  * wedges the per-key write lock so `stop` cannot run — always bound it (see
  * decision 0012).
  */
 export type OnCycleError = { readonly _tag: 'skipToNext' } | { readonly _tag: 'stopLoop' }
 
+/** Constructors for the {@link OnCycleError} policy values. */
 export const OnCycleError = {
   skipToNext: (): OnCycleError => ({ _tag: 'skipToNext' }),
   stopLoop: (): OnCycleError => ({ _tag: 'stopLoop' }),
@@ -111,6 +112,7 @@ export const OnCycleError = {
  */
 export type Schedule = { readonly _tag: 'fixedDelay'; readonly delayMillis: number }
 
+/** Constructors for the {@link Schedule} shapes (v1 ships `fixedDelay` only). */
 export const Schedule = {
   fixedDelay: (delayMillis: number): Schedule => ({ _tag: 'fixedDelay', delayMillis }),
 } as const
@@ -137,6 +139,7 @@ export type LoopStatusTag = 'idle' | 'running' | 'stopped' | 'failed' | 'complet
  * `reason` is threaded into the NEXT cycle as `wokenBy` (a one-shot signal).
  */
 export const WakePayload = Schema.Struct({ reason: Schema.String })
+/** The decoded {@link WakePayload} value handed to the next cycle as `wokenBy`. */
 export type WakePayload = Schema.Schema.Type<typeof WakePayload>
 
 /* ════════════════════════════════════════════════════════════════════════
@@ -199,6 +202,7 @@ const StatusOutput = Schema.Struct({
   /** The live wake awakeable id (wake mode); omitted when no wait is live. */
   wakeId: Schema.optional(Schema.String),
 })
+/** The decoded {@link StatusOutput} (re-exported from the entry as `ScheduledStatus`). */
 export type StatusOutput = Schema.Schema.Type<typeof StatusOutput>
 
 /* ════════════════════════════════════════════════════════════════════════
@@ -237,6 +241,12 @@ export type CycleEffect<DomainState extends StateSchemas, AppR, CycleE = never> 
   readonly wokenBy?: WakePayload
 }) => Effect.Effect<{ readonly stop?: boolean } | void, RestateError | CycleE, AppR | CycleCaps>
 
+/**
+ * The full `RestateScheduled.make` config: the loop name + domain State, the one
+ * `cycle` effect, the schedule, and the optional stop/error/retry/wake knobs
+ * (decision 0012). `AppR` is the explicit served-app environment; `CycleE` the
+ * cycle's declared domain error.
+ */
 export interface ScheduledConfig<DomainState extends StateSchemas, AppR, CycleE = never> {
   /** The Object name (the materialized service name). */
   readonly name: string
@@ -305,27 +315,30 @@ export interface Scheduled<AppR> {
  * The `cycle` handler is `ingressPrivate` — only the Object's own (delayed)
  * self-send may invoke it, never an external caller. */
 const buildContract = (name: string) =>
-  RestateObject.contract(name, {
-    state: ControlState,
-    handlers: {
-      /** Start (or restart) the loop: bump generation, reset the counter, arm cycle 0. */
-      start: { input: Schema.Void, success: Schema.Boolean },
-      /** Stop the loop: flip status to `stopped`; the in-flight re-arm no-ops. */
-      stop: { input: Schema.Void, success: Schema.Boolean },
-      /** Read-only status (SHARED handler — no write lock, safe to poll). */
-      status: { input: Schema.Void, success: StatusOutput, shared: true },
-      /**
-       * Read the live wake awakeable id (SHARED — no write lock, so the webhook can
-       * read it even while an exclusive cycle holds the lock). Empty string when no
-       * wait is live (or wake is disabled). Wake mode only.
-       */
-      wakeId: { input: Schema.Void, success: Schema.String, shared: true },
-      /**
-       * INTERNAL: one cycle. `ingressPrivate` so it is NOT callable from outside
-       * the cluster — only the Object's own re-arm send (and the initial `start`
-       * arm) may invoke it. This is the chain-of-self-sends body.
-       */
-      cycle: { input: CycleInput, success: Schema.Void, options: { ingressPrivate: true } },
+  RestateObject.contract({
+    name,
+    def: {
+      state: ControlState,
+      handlers: {
+        /** Start (or restart) the loop: bump generation, reset the counter, arm cycle 0. */
+        start: { input: Schema.Void, success: Schema.Boolean },
+        /** Stop the loop: flip status to `stopped`; the in-flight re-arm no-ops. */
+        stop: { input: Schema.Void, success: Schema.Boolean },
+        /** Read-only status (SHARED handler — no write lock, safe to poll). */
+        status: { input: Schema.Void, success: StatusOutput, shared: true },
+        /**
+         * Read the live wake awakeable id (SHARED — no write lock, so the webhook can
+         * read it even while an exclusive cycle holds the lock). Empty string when no
+         * wait is live (or wake is disabled). Wake mode only.
+         */
+        wakeId: { input: Schema.Void, success: Schema.String, shared: true },
+        /**
+         * INTERNAL: one cycle. `ingressPrivate` so it is NOT callable from outside
+         * the cluster — only the Object's own re-arm send (and the initial `start`
+         * arm) may invoke it. This is the chain-of-self-sends body.
+         */
+        cycle: { input: CycleInput, success: Schema.Void, options: { ingressPrivate: true } },
+      },
     },
   })
 
@@ -377,6 +390,12 @@ const retryAfterOf = (thrown: unknown): number | undefined => {
   return typeof ra === 'number' ? ra : undefined
 }
 
+/**
+ * The durable recurring-loop primitive surface (decision 0012, also aliased as
+ * `Restate.pollLoop`): `make` materializes the Virtual Object, with the
+ * {@link Schedule} / {@link OnCycleError} / {@link WakePayload} constructors
+ * bundled alongside.
+ */
 export const RestateScheduled = {
   Schedule,
   OnCycleError,
@@ -405,7 +424,7 @@ export const RestateScheduled = {
 
     /* Self re-arm: a DELAYED send to our OWN `cycle` handler on the same key,
      * carrying the generation we armed under (so a stale re-arm no-ops). */
-    const armNext = (generation: number, delay: number) =>
+    const armNext = ({ generation, delay }: { generation: number; delay: number }) =>
       reschedule({ contract, method: 'cycle', input: { generation }, delayMillis: delay })
 
     /* Classify the cycle's failure cause through the boundary's single source of
@@ -414,11 +433,17 @@ export const RestateScheduled = {
      * carrying its projected `retryAfter`; everything else (terminal / defect /
      * give-up) hits the `onCycleError` policy. Only reached when `retryable` is true
      * (else the caller short-circuits to the policy). */
-    const classifyCycleFailure = (
-      cause: Cause.Cause<unknown>,
-      backoffsSoFar: number,
-    ): CycleOutcome => {
-      const outcome = classifyOutcome(cause, errorSchema)
+    const classifyCycleFailure = ({
+      cause,
+      backoffsSoFar,
+    }: {
+      cause: Cause.Cause<unknown>
+      backoffsSoFar: number
+    }): CycleOutcome => {
+      const outcome = classifyOutcome({
+        cause,
+        ...(errorSchema !== undefined ? { errorSchema } : {}),
+      })
       if (outcome._tag === 'retryable') {
         /* Past the (optional) backoff cap → demote to the count-based policy. */
         if (maxRetryBackoffs !== undefined && backoffsSoFar >= maxRetryBackoffs) {
@@ -442,10 +467,13 @@ export const RestateScheduled = {
      * stand — it is not a cycle failure. When `retryable` is false the failure
      * skips the boundary classification (no retry path can fire) and goes straight
      * to the policy — matching the legacy no-`errorSchema` behavior exactly. */
-    const runCycle = (
-      args: Parameters<CycleEffect<DomainState, AppR, CycleE>>[0],
-      backoffsSoFar: number,
-    ): Effect.Effect<CycleOutcome, never, AppR | CycleCaps> =>
+    const runCycle = ({
+      args,
+      backoffsSoFar,
+    }: {
+      args: Parameters<CycleEffect<DomainState, AppR, CycleE>>[0]
+      backoffsSoFar: number
+    }): Effect.Effect<CycleOutcome, never, AppR | CycleCaps> =>
       /* The cycle's declared `E` (`RestateError | CycleE`) is absorbed HERE by
        * `catchAllCause`: a declared domain failure is routed through `classifyOutcome`
        * (against `errorSchema`), so the loop's outcome channel is `never`-typed. The
@@ -460,8 +488,8 @@ export const RestateScheduled = {
                * `Cause<never>` narrowing is sound under `isInterruptedOnly`. */
               Effect.failCause(cause as Cause.Cause<never>)
             : Effect.succeed(
-                retryable
-                  ? classifyCycleFailure(cause, backoffsSoFar)
+                retryable === true
+                  ? classifyCycleFailure({ cause, backoffsSoFar })
                   : onError._tag === 'stopLoop'
                     ? ({ _tag: 'failed', error: causeStr(cause) } as CycleOutcome)
                     : ({ _tag: 'skipped', error: causeStr(cause) } as CycleOutcome),
@@ -473,12 +501,12 @@ export const RestateScheduled = {
      * outcome (`ok` | `error` | `stopped`). Gated on non-replay (inside `emit`) so a
      * replayed cycle is not re-counted. A retry / skip / failure all read as
      * `error`; a data/count-driven stop reads as `stopped`. */
-    const emitCycle = (outcome: CycleOutcome, stops: boolean) =>
+    const emitCycle = ({ outcome, stops }: { outcome: CycleOutcome; stops: boolean }) =>
       Effect.gen(function* () {
         const ctx = yield* RestateContext
         const metricOutcome: 'ok' | 'error' | 'stopped' =
-          outcome._tag === 'ok' ? (stops ? 'stopped' : 'ok') : 'error'
-        yield* emitPollLoopCycle(ctx, { name: config.name, outcome: metricOutcome })
+          outcome._tag === 'ok' ? (stops === true ? 'stopped' : 'ok') : 'error'
+        yield* emitPollLoopCycle({ ctx, name: config.name, outcome: metricOutcome })
       })
 
     /* eslint-disable-next-line @typescript-eslint/no-explicit-any -- materialization glue; the public make signature stays typed */
@@ -486,14 +514,14 @@ export const RestateScheduled = {
       start: () =>
         Effect.gen(function* () {
           const nextGen = ((yield* Ctrl.get('generation')) ?? 0) + 1
-          yield* Ctrl.set('status', 'running')
-          yield* Ctrl.set('iteration', 0)
-          yield* Ctrl.set('generation', nextGen)
-          yield* Ctrl.set('retryBackoffs', 0)
+          yield* Ctrl.set({ key: 'status', value: 'running' })
+          yield* Ctrl.set({ key: 'iteration', value: 0 })
+          yield* Ctrl.set({ key: 'generation', value: nextGen })
+          yield* Ctrl.set({ key: 'retryBackoffs', value: 0 })
           yield* Ctrl.clear('lastError')
           yield* Ctrl.clear('wakeId')
           /* Arm cycle 0 immediately (delay 0) under the new generation. */
-          yield* armNext(nextGen, 0)
+          yield* armNext({ generation: nextGen, delay: 0 })
           return true
         }).pipe(Effect.orDie),
 
@@ -501,7 +529,7 @@ export const RestateScheduled = {
         Effect.gen(function* () {
           /* Flip status; the pending delayed `cycle` send will land and no-op
            * because the `running` guard fails. We do NOT cancel the timer. */
-          yield* Ctrl.set('status', 'stopped')
+          yield* Ctrl.set({ key: 'status', value: 'stopped' })
           return true
         }).pipe(Effect.orDie),
 
@@ -541,32 +569,32 @@ export const RestateScheduled = {
           const backoffsSoFar = (yield* Ctrl.get('retryBackoffs')) ?? 0
 
           /* Count-driven stop BEFORE doing any work. */
-          if (stopByCount(iteration)) {
-            yield* Ctrl.set('status', 'completed')
+          if (stopByCount(iteration) === true) {
+            yield* Ctrl.set({ key: 'status', value: 'completed' })
             yield* Ctrl.clear('wakeId')
             return
           }
 
           const nextIteration = iteration + 1
 
-          if (!wakeOn) {
+          if (wakeOn === false) {
             /* ── NO-WAKE BODY (wedge-free delayed self-send) ─────────────────────
              * SAFE ORDERING: advance the counter AND re-arm the next cycle FIRST
              * (both journaled), THEN run the user's fallible work. A re-arm journaled
              * before a later failure is still delivered, so the loop SURVIVES a
              * failing cycle even under a terminal failure or a kill — the next cycle
              * is already enqueued. */
-            yield* Ctrl.set('iteration', nextIteration)
-            yield* armNext(liveGen, delayMillis)
+            yield* Ctrl.set({ key: 'iteration', value: nextIteration })
+            yield* armNext({ generation: liveGen, delay: delayMillis })
 
-            const outcome = yield* runCycle(
-              { key, iteration, state: Domain as never },
+            const outcome = yield* runCycle({
+              args: { key, iteration, state: Domain as never },
               backoffsSoFar,
-            )
+            })
 
             const stops =
               outcome._tag === 'ok' && (outcome.stop === true || stopByCount(nextIteration))
-            yield* emitCycle(outcome, stops)
+            yield* emitCycle({ outcome, stops })
 
             if (outcome._tag === 'retry') {
               /* RETRY: the pre-armed `delayMillis` send is WRONG (we want
@@ -576,34 +604,34 @@ export const RestateScheduled = {
                * `retryAfter` send under the new generation. The lock is RELEASED
                * during the backoff (delayed send) — `stop` is never wedged. */
               const retryGen = liveGen + 1
-              yield* Ctrl.set('generation', retryGen)
-              yield* Ctrl.set('iteration', iteration) // undo the bump (same logical cycle)
-              yield* Ctrl.set('retryBackoffs', backoffsSoFar + 1)
-              yield* Ctrl.set('lastError', outcome.error)
-              yield* armNext(retryGen, outcome.retryAfterMillis)
+              yield* Ctrl.set({ key: 'generation', value: retryGen })
+              yield* Ctrl.set({ key: 'iteration', value: iteration }) // undo the bump (same logical cycle)
+              yield* Ctrl.set({ key: 'retryBackoffs', value: backoffsSoFar + 1 })
+              yield* Ctrl.set({ key: 'lastError', value: outcome.error })
+              yield* armNext({ generation: retryGen, delay: outcome.retryAfterMillis })
               return
             }
 
             /* Non-retry: reset the backoff counter (this logical cycle resolved). */
-            if (backoffsSoFar !== 0) yield* Ctrl.set('retryBackoffs', 0)
+            if (backoffsSoFar !== 0) yield* Ctrl.set({ key: 'retryBackoffs', value: 0 })
 
             if (outcome._tag === 'failed') {
-              yield* Ctrl.set('status', 'failed')
-              yield* Ctrl.set('lastError', outcome.error)
+              yield* Ctrl.set({ key: 'status', value: 'failed' })
+              yield* Ctrl.set({ key: 'lastError', value: outcome.error })
               return
             }
             if (outcome._tag === 'skipped') {
-              yield* Ctrl.set('lastError', outcome.error)
+              yield* Ctrl.set({ key: 'lastError', value: outcome.error })
               return
             }
             /* Success: clear any prior error. */
             yield* Ctrl.clear('lastError')
             if (outcome.stop === true) {
-              yield* Ctrl.set('status', 'completed')
+              yield* Ctrl.set({ key: 'status', value: 'completed' })
               return
             }
-            if (stopByCount(nextIteration)) {
-              yield* Ctrl.set('status', 'completed')
+            if (stopByCount(nextIteration) === true) {
+              yield* Ctrl.set({ key: 'status', value: 'completed' })
             }
             return
           }
@@ -616,37 +644,37 @@ export const RestateScheduled = {
            * wait and persist its id BEFORE running work, so the webhook can resolve
            * it as soon as the cycle is live; the id is ROTATED every cycle. */
           const aw = yield* makeAwakeable(WakePayload)
-          yield* Ctrl.set('wakeId', aw.id)
+          yield* Ctrl.set({ key: 'wakeId', value: aw.id })
 
           /* Read + consume the one-shot `wokenByReason` recorded by the prior wait. */
           const wokenByReason = yield* Ctrl.get('wokenByReason')
           if (wokenByReason !== undefined) yield* Ctrl.clear('wokenByReason')
 
-          yield* Ctrl.set('iteration', nextIteration)
+          yield* Ctrl.set({ key: 'iteration', value: nextIteration })
 
-          const outcome = yield* runCycle(
-            {
+          const outcome = yield* runCycle({
+            args: {
               key,
               iteration,
               state: Domain as never,
               ...(wokenByReason !== undefined ? { wokenBy: { reason: wokenByReason } } : {}),
             },
             backoffsSoFar,
-          )
+          })
 
           const stops =
             outcome._tag === 'ok' && (outcome.stop === true || stopByCount(nextIteration))
-          yield* emitCycle(outcome, stops)
+          yield* emitCycle({ outcome, stops })
 
           /* Terminal outcomes end the loop before the held wait. */
           if (outcome._tag === 'failed') {
-            yield* Ctrl.set('status', 'failed')
-            yield* Ctrl.set('lastError', outcome.error)
+            yield* Ctrl.set({ key: 'status', value: 'failed' })
+            yield* Ctrl.set({ key: 'lastError', value: outcome.error })
             yield* Ctrl.clear('wakeId')
             return
           }
-          if (stops) {
-            yield* Ctrl.set('status', 'completed')
+          if (stops === true) {
+            yield* Ctrl.set({ key: 'status', value: 'completed' })
             yield* Ctrl.clear('wakeId')
             return
           }
@@ -658,21 +686,21 @@ export const RestateScheduled = {
              * The held race honors `retryAfter` as the sleep leg but remains wakeable
              * (a webhook can still cut the backoff short). */
             waitMillis = outcome.retryAfterMillis
-            yield* Ctrl.set('iteration', iteration) // undo bump (same logical cycle)
-            yield* Ctrl.set('retryBackoffs', backoffsSoFar + 1)
-            yield* Ctrl.set('lastError', outcome.error)
+            yield* Ctrl.set({ key: 'iteration', value: iteration }) // undo bump (same logical cycle)
+            yield* Ctrl.set({ key: 'retryBackoffs', value: backoffsSoFar + 1 })
+            yield* Ctrl.set({ key: 'lastError', value: outcome.error })
           } else if (outcome._tag === 'skipped') {
-            if (backoffsSoFar !== 0) yield* Ctrl.set('retryBackoffs', 0)
-            yield* Ctrl.set('lastError', outcome.error)
+            if (backoffsSoFar !== 0) yield* Ctrl.set({ key: 'retryBackoffs', value: 0 })
+            yield* Ctrl.set({ key: 'lastError', value: outcome.error })
           } else {
-            if (backoffsSoFar !== 0) yield* Ctrl.set('retryBackoffs', 0)
+            if (backoffsSoFar !== 0) yield* Ctrl.set({ key: 'retryBackoffs', value: 0 })
             yield* Ctrl.clear('lastError')
           }
 
           /* HELD RACE: sleep(waitMillis) vs the wake awakeable. Whichever resolves
            * first ends the wait; then re-arm the next cycle with delay 0. */
           const raced = yield* race([
-            sleepDescriptor(waitMillis, 'inter-cycle'),
+            sleepDescriptor({ millis: waitMillis, name: 'inter-cycle' }),
             aw.descriptor,
           ]) as Effect.Effect<unknown, never, RestateContext>
 
@@ -683,11 +711,12 @@ export const RestateScheduled = {
             typeof raced === 'object' && raced !== null && 'reason' in (raced as object)
               ? (raced as WakePayload)
               : undefined
-          if (wokenBy !== undefined) yield* Ctrl.set('wokenByReason', wokenBy.reason)
+          if (wokenBy !== undefined)
+            yield* Ctrl.set({ key: 'wokenByReason', value: wokenBy.reason })
           yield* Ctrl.clear('wakeId')
 
           /* Re-arm the next cycle immediately (delay 0) under the SAME generation. */
-          yield* armNext(liveGen, 0)
+          yield* armNext({ generation: liveGen, delay: 0 })
         }).pipe(Effect.orDie),
     }
 
@@ -697,10 +726,10 @@ export const RestateScheduled = {
      * `ObjectImplementation<typeof contract>` widens to the `AnyImplementation` arm
      * with a single `as`. No `as unknown as` is needed anywhere — the cycle's typed
      * `E`/`R` line up by construction (see `CycleEffect` / `runCycle`). */
-    const implementation = RestateObject.implement<typeof contract, AppR>(
-      contract,
+    const implementation = RestateObject.implement<typeof contract, AppR>({
+      contractValue: contract,
       impl,
-    ) as AnyImplementation<AppR>
+    }) as AnyImplementation<AppR>
 
     return { contract, implementation }
   },

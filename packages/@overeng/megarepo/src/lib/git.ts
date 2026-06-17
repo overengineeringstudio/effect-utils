@@ -5,7 +5,7 @@
  */
 
 import { Command } from '@effect/platform'
-import { Cause, Chunk, Duration, Effect, Option, Schedule, Stream } from 'effect'
+import { Cause, Chunk, Duration, Effect, Option, Schedule, Sink, Stream } from 'effect'
 
 import * as Observability from './observability.ts'
 
@@ -85,11 +85,25 @@ export class GitCommandError extends Error {
 // Git Commands
 // =============================================================================
 
+/** Decode a chunk of byte buffers into a string with a single O(n) allocation. */
+const decodeChunks = (chunks: Chunk.Chunk<Uint8Array>): string => {
+  const arr = Chunk.toReadonlyArray(chunks)
+  let total = 0
+  for (const chunk of arr) total += chunk.length
+  const merged = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of arr) {
+    merged.set(chunk, offset)
+    offset += chunk.length
+  }
+  return new TextDecoder('utf-8').decode(merged)
+}
+
 /**
- * Run a git command and return stdout.
- * Fails with GitCommandError if exit code is non-zero.
+ * Start a git subprocess with piped stdout/stderr and register a SIGKILL
+ * finalizer so an interrupted command never leaks a running child.
  */
-const runGitCommand = ({ args, cwd }: { args: ReadonlyArray<string>; cwd?: string }) =>
+const startGitProcess = ({ args, cwd }: { args: ReadonlyArray<string>; cwd?: string }) =>
   Effect.gen(function* () {
     const cmd = Command.make('git', ...args).pipe(
       cwd !== undefined ? Command.workingDirectory(cwd) : (x) => x,
@@ -112,31 +126,31 @@ const runGitCommand = ({ args, cwd }: { args: ReadonlyArray<string>; cwd?: strin
         yield* process.kill('SIGKILL').pipe(Effect.catchAll(() => Effect.void))
       }),
     )
+    return process
+  })
 
-    // Collect stdout and stderr
-    const decoder = new TextDecoder('utf-8')
+/**
+ * Run a git command and return stdout.
+ * Fails with GitCommandError if exit code is non-zero.
+ *
+ * Buffers the full output, so use {@link streamGitCommandLines} for commands
+ * whose output is unbounded (large `status`/`worktree list`/`rev-list`).
+ */
+const runGitCommand = ({ args, cwd }: { args: ReadonlyArray<string>; cwd?: string }) =>
+  Effect.gen(function* () {
+    const process = yield* startGitProcess(cwd !== undefined ? { args, cwd } : { args })
+
+    // Collect stdout and stderr. Concat is a single O(n) allocation per stream
+    // (sum lengths once, allocate once, copy once) — the previous per-chunk
+    // `reduce` reallocated the whole buffer on every chunk, which is O(n²) in
+    // output size and OOM-killed the host on large `git status` output.
     const [stdoutChunks, stderrChunks] = yield* Effect.all([
       Stream.runCollect(process.stdout),
       Stream.runCollect(process.stderr),
     ])
 
-    const stdout = decoder.decode(
-      Chunk.toReadonlyArray(stdoutChunks).reduce((acc, chunk) => {
-        const result = new Uint8Array(acc.length + chunk.length)
-        result.set(acc)
-        result.set(chunk, acc.length)
-        return result
-      }, new Uint8Array()),
-    )
-
-    const stderr = decoder.decode(
-      Chunk.toReadonlyArray(stderrChunks).reduce((acc, chunk) => {
-        const result = new Uint8Array(acc.length + chunk.length)
-        result.set(acc)
-        result.set(chunk, acc.length)
-        return result
-      }, new Uint8Array()),
-    )
+    const stdout = decodeChunks(stdoutChunks)
+    const stderr = decodeChunks(stderrChunks)
 
     const exitCode = yield* process.exitCode
 
@@ -144,8 +158,77 @@ const runGitCommand = ({ args, cwd }: { args: ReadonlyArray<string>; cwd?: strin
       return yield* Effect.fail(new GitCommandError({ args, exitCode, stderr }))
     }
 
+    yield* Observability.annotateGitCmdOutput({
+      outputBytes: Buffer.byteLength(stdout, 'utf-8'),
+      outputLines: stdout.length === 0 ? 0 : stdout.split('\n').length,
+    })
+
     return stdout.trim()
-  }).pipe(Effect.scoped)
+  }).pipe(Effect.scoped, Observability.withGitCmdSpan({ args, streamed: false }))
+
+/**
+ * Run a git command, folding stdout LINE BY LINE through `sink` at constant
+ * memory — stdout is never materialized, so peak memory is independent of output
+ * size. stderr is collected (bounded: small for the commands this is used with)
+ * and the exit code is checked, so {@link GitCommandError} semantics are
+ * identical to {@link runGitCommand}.
+ *
+ * `streamLines` alone is unsuitable here: it discards the exit code and stderr,
+ * silently returning an empty stream on a failing command. We therefore drive the
+ * process explicitly via {@link startGitProcess}.
+ *
+ * Lines are split with `Stream.splitLines`, which (like a trailing-newline-aware
+ * `split('\n')`) drops only the final empty segment after the trailing newline;
+ * interior blank lines are preserved, so porcelain record separators survive.
+ */
+const streamGitCommandLines = <A>({
+  args,
+  cwd,
+  sink,
+}: {
+  args: ReadonlyArray<string>
+  cwd?: string
+  sink: Sink.Sink<A, string>
+}) =>
+  Effect.gen(function* () {
+    const process = yield* startGitProcess(cwd !== undefined ? { args, cwd } : { args })
+
+    // SCALAR running counters for the git-cmd output-size span attributes — these
+    // must never accumulate the lines themselves, or we reintroduce the O(n²)
+    // buffering. `Stream.tap` bumps them as each line flows past on its way to the
+    // sink, so memory stays constant.
+    let outputLines = 0
+    let outputBytes = 0
+
+    const [result, stderrChunks, exitCode] = yield* Effect.all(
+      [
+        process.stdout.pipe(
+          Stream.decodeText('utf-8'),
+          Stream.splitLines,
+          Stream.tap((line) =>
+            Effect.sync(() => {
+              outputLines += 1
+              outputBytes += Buffer.byteLength(line, 'utf-8') + 1 // + newline
+            }),
+          ),
+          Stream.run(sink),
+        ),
+        Stream.runCollect(process.stderr),
+        process.exitCode,
+      ],
+      { concurrency: 'unbounded' },
+    )
+
+    if (exitCode !== 0) {
+      return yield* Effect.fail(
+        new GitCommandError({ args, exitCode, stderr: decodeChunks(stderrChunks) }),
+      )
+    }
+
+    yield* Observability.annotateGitCmdOutput({ outputBytes, outputLines })
+
+    return result
+  }).pipe(Effect.scoped, Observability.withGitCmdSpan({ args, streamed: true }))
 
 // =============================================================================
 // Transient Error Retry
@@ -243,7 +326,7 @@ export const fetch = (args: { repoPath: string; remote?: string; prune?: boolean
     }
     cmdArgs.push(args.remote ?? 'origin')
     yield* runGitCommandWithRetry({ args: cmdArgs, cwd: args.repoPath })
-  }).pipe(Observability.withRepoPathSpan('git/fetch', args.repoPath))
+  }).pipe(Observability.withRepoPathSpan({ name: 'git/fetch', path: args.repoPath }))
 
 /**
  * Checkout a specific ref (branch, tag, or commit)
@@ -350,7 +433,7 @@ export const removeWorktree = (args: { repoPath: string; worktreePath: string; f
 export const pruneWorktrees = (repoPath: string) =>
   runGitCommand({ args: ['worktree', 'prune'], cwd: repoPath }).pipe(
     Effect.asVoid,
-    Observability.withRepoPathSpan('git/worktree-prune', repoPath),
+    Observability.withRepoPathSpan({ name: 'git/worktree-prune', path: repoPath }),
   )
 
 /**
@@ -367,46 +450,75 @@ export const moveWorktree = (args: { repoPath: string; fromPath: string; toPath:
  */
 export const listWorktrees = (repoPath: string) =>
   Effect.gen(function* () {
-    const output = yield* runGitCommand({
+    type Worktree = { path: string; head: string; branch: Option.Option<string> }
+
+    // Mutable accumulator: each completed record is PUSHED (amortized O(1)), so
+    // the whole parse is O(n) — NOT a per-record `[...worktrees, x]` spread, which
+    // would be O(n²) and reintroduce the buffering this refactor removes. `current`
+    // stays small/immutable. Lines are folded one at a time, so memory is bounded
+    // by the parsed worktree set, never the full subprocess output.
+    const worktrees: Array<Worktree> = []
+    let current: { path?: string; head?: string; branch?: string } = {}
+    const flush = () => {
+      if (current.path !== undefined && current.head !== undefined) {
+        worktrees.push({
+          path: current.path,
+          head: current.head,
+          branch: Option.fromNullable(current.branch),
+        })
+      }
+      current = {}
+    }
+
+    // `worktree list --porcelain` emits newline-delimited records separated by
+    // blank lines; a record ends on a blank line, and the final record is flushed
+    // at end-of-stream.
+    yield* streamGitCommandLines({
       args: ['worktree', 'list', '--porcelain'],
       cwd: repoPath,
+      sink: Sink.forEach((line: string) =>
+        Effect.sync(() => {
+          if (line.startsWith('worktree ') === true) {
+            current.path = line.slice(9)
+          } else if (line.startsWith('HEAD ') === true) {
+            current.head = line.slice(5)
+          } else if (line.startsWith('branch ') === true) {
+            current.branch = line.slice(7).replace('refs/heads/', '')
+          } else if (line === '') {
+            flush()
+          }
+        }),
+      ),
     })
-    const worktrees: Array<{
-      path: string
-      head: string
-      branch: Option.Option<string>
-    }> = []
 
-    let current: { path?: string; head?: string; branch?: string } = {}
-    for (const line of output.split('\n')) {
-      if (line.startsWith('worktree ') === true) {
-        current.path = line.slice(9)
-      } else if (line.startsWith('HEAD ') === true) {
-        current.head = line.slice(5)
-      } else if (line.startsWith('branch ') === true) {
-        current.branch = line.slice(7).replace('refs/heads/', '')
-      } else if (line === '') {
-        if (current.path !== undefined && current.head !== undefined) {
-          worktrees.push({
-            path: current.path,
-            head: current.head,
-            branch: Option.fromNullable(current.branch),
-          })
-        }
-        current = {}
-      }
-    }
-
-    // Flush remaining entry if output doesn't end with blank line
-    if (current.path !== undefined && current.head !== undefined) {
-      worktrees.push({
-        path: current.path,
-        head: current.head,
-        branch: Option.fromNullable(current.branch),
-      })
-    }
-
+    // Flush remaining entry if output doesn't end with a blank line.
+    flush()
     return worktrees
+  })
+
+/**
+ * List ref short-names under a `refs/<namespace>/` prefix in a bare repo (e.g.
+ * `namespace: 'heads'` yields branch names like `main`, `schickling/foo`).
+ *
+ * Names are folded one line at a time (bounded memory), so this is safe on repos
+ * with very large ref sets. The bare repo's ref set is the authoritative source
+ * of truth for which store-layout directories are worktree roots vs intermediate
+ * namespace directories.
+ */
+export const listRefShortNames = (args: { bareRepoPath: string; namespace: 'heads' | 'tags' }) =>
+  Effect.gen(function* () {
+    const prefix = `refs/${args.namespace}/`
+    const names: Array<string> = []
+    yield* streamGitCommandLines({
+      args: ['for-each-ref', '--format=%(refname)', prefix],
+      cwd: args.bareRepoPath,
+      sink: Sink.forEach((line: string) =>
+        Effect.sync(() => {
+          if (line.startsWith(prefix) === true) names.push(line.slice(prefix.length))
+        }),
+      ),
+    })
+    return names
   })
 
 // =============================================================================
@@ -444,7 +556,7 @@ export const fetchBare = (args: { repoPath: string; remote?: string }) =>
       args: ['fetch', '--tags', '--prune', remote],
       cwd: args.repoPath,
     })
-  }).pipe(Observability.withRepoPathSpan('git/fetch-bare', args.repoPath))
+  }).pipe(Observability.withRepoPathSpan({ name: 'git/fetch-bare', path: args.repoPath }))
 
 /**
  * Get the default branch name from a remote
@@ -477,6 +589,22 @@ export const getDefaultBranch = (args: { url: string } | { repoPath: string; rem
   })
 
 /**
+ * The store bare repo's default branch, read LOCALLY from its `HEAD` symbolic ref
+ * (set at clone time to the remote's default). Offline — no network, unlike
+ * {@link getDefaultBranch} which `ls-remote`s. Returns `none` when HEAD is
+ * detached or unreadable. Used by cold GC to never reclaim a repo's default
+ * branch regardless of PR state or liveness.
+ */
+export const getStoreDefaultBranch = (args: { bareRepoPath: string }) =>
+  runGitCommand({
+    args: ['symbolic-ref', '--short', 'HEAD'],
+    cwd: args.bareRepoPath,
+  }).pipe(
+    Effect.map((out) => (out === '' ? Option.none<string>() : Option.some(out))),
+    Effect.catchAll(() => Effect.succeed(Option.none<string>())),
+  )
+
+/**
  * Resolve a ref to its commit SHA
  * Works with branches, tags, and commits
  */
@@ -499,6 +627,52 @@ export const refExists = (args: { repoPath: string; ref: string }) =>
     Effect.map(() => true),
     Effect.catchAll(() => Effect.succeed(false)),
   )
+
+/**
+ * List commits reachable from `ref` but not from ANY remote-tracking ref
+ * (`refs/remotes/*`), i.e. the commits that exist only locally.
+ *
+ * This is `git -C <repo> rev-list <ref> --not --remotes`. Unlike
+ * `branch -r --contains <ref>` (which asks "is this exact tip on a remote"),
+ * `rev-list --not --remotes` walks the history from `ref` and stops at the first
+ * remote-reachable ancestor, so it returns ONLY the genuinely-unpushed commits.
+ * A local commit stacked on top of a parent that lives on an unrelated remote
+ * ref therefore still shows up here (the parent is excluded, the new commit is
+ * not) — the distinction the lossless check relies on.
+ *
+ * The result is only as fresh as `refs/remotes/*`, so callers must
+ * {@link fetchBare} (fetch --prune) first; on a bare repo with no remote-tracking
+ * refs every commit is reported as unpushed.
+ */
+export const revListUnpushed = (args: { repoPath: string; ref: string }) =>
+  Effect.gen(function* () {
+    // Push each non-empty commit line into a mutable array (amortized O(1)) so the
+    // unbounded `rev-list` output (a whole branch history) is consumed at O(n) —
+    // NOT a per-line `[...commits, line]` spread, which would be O(n²).
+    const commits: Array<string> = []
+    yield* streamGitCommandLines({
+      args: ['rev-list', args.ref, '--not', '--remotes'],
+      cwd: args.repoPath,
+      sink: Sink.forEach((line: string) =>
+        Effect.sync(() => {
+          if (line.trim().length > 0) commits.push(line)
+        }),
+      ),
+    })
+    return commits
+  })
+
+/**
+ * Whether the repo has a non-empty stash.
+ *
+ * Stashes live in a single repo-global `refs/stash` ref in the bare repo (they
+ * are NOT per-worktree and do NOT travel with a worktree directory move), so the
+ * presence of `refs/stash` is the authoritative "stashed work would be lost"
+ * signal. We test the ref directly rather than parsing `git stash list`, whose
+ * output is unreliable for detached worktrees.
+ */
+export const hasStashRef = (args: { repoPath: string }) =>
+  refExists({ repoPath: args.repoPath, ref: 'refs/stash' })
 
 // =============================================================================
 // Branch Operations
@@ -525,6 +699,20 @@ export const createBranch = (args: { repoPath: string; branch: string; baseRef: 
 
     return baseCommit
   })
+
+/**
+ * Delete a local branch ref in a (bare) repo.
+ *
+ * Used by GC archival to FREE a `refs/heads/<branch>` after the worktree has
+ * been moved aside, so `mr apply` can re-materialize the branch. `force` maps to
+ * `git branch -D` (delete even if not merged); the commit stays reachable via
+ * the remote-tracking ref the lossless floor proved.
+ */
+export const deleteBranch = (args: { repoPath: string; branch: string; force?: boolean }) =>
+  runGitCommand({
+    args: ['branch', args.force === true ? '-D' : '-d', args.branch],
+    cwd: args.repoPath,
+  }).pipe(Effect.asVoid, Observability.withGitDeleteBranchSpan(args.branch))
 
 /**
  * Push a branch to the remote.
@@ -634,14 +822,20 @@ const getUnpushedStatus = (worktreePath: string) =>
  */
 export const getWorktreeStatus = (worktreePath: string) =>
   Effect.gen(function* () {
-    // Check for uncommitted changes
-    const statusOutput = yield* runGitCommand({
+    // Count uncommitted changes by folding `status --porcelain` lines one at a
+    // time. `--untracked-files=all` enumerates every untracked file, so a large
+    // untracked tree yields huge output — never materialize it (the previous
+    // single-buffer collect was the OOM trigger). Counting non-empty lines gives
+    // the EXACT `changesCount`/`isDirty` at constant memory, so verdicts are
+    // unchanged.
+    const changesCount = yield* streamGitCommandLines({
       args: ['status', '--porcelain', '--untracked-files=all'],
       cwd: worktreePath,
+      sink: Sink.foldLeft<number, string>(0, (count, line) =>
+        line.trim() !== '' ? count + 1 : count,
+      ),
     })
-
-    const changes = statusOutput.split('\n').filter((line) => line.trim() !== '')
-    const isDirty = changes.length > 0
+    const isDirty = changesCount > 0
 
     // Check for unpushed commits (only relevant for branches)
     const unpushedOutput = yield* getUnpushedStatus(worktreePath)
@@ -649,7 +843,7 @@ export const getWorktreeStatus = (worktreePath: string) =>
     return {
       isDirty,
       hasUnpushed: unpushedOutput,
-      changesCount: changes.length,
+      changesCount,
     } satisfies WorktreeStatus
   }).pipe(
     Observability.withWorktreePathSpan({
@@ -669,9 +863,14 @@ export const getWorktreeStatus = (worktreePath: string) =>
  */
 export const getWorktreeRemovalStatus = (worktreePath: string) =>
   Effect.gen(function* () {
-    const statusOutput = yield* runGitCommand({
+    const changesCount = yield* streamGitCommandLines({
       args: ['status', '--porcelain', '--untracked-files=normal'],
       cwd: worktreePath,
+      // `=normal` collapses large untracked dirs to one entry, but stream-count
+      // anyway so the dirty preflight stays constant-memory regardless of tree.
+      sink: Sink.foldLeft<number, string>(0, (count, line) =>
+        line.trim() !== '' ? count + 1 : count,
+      ),
     }).pipe(
       Observability.withWorktreePathSpan({
         name: 'git/worktree-removal-status/dirty',
@@ -679,13 +878,12 @@ export const getWorktreeRemovalStatus = (worktreePath: string) =>
         worktreePath,
       }),
     )
-    const changes = statusOutput.split('\n').filter((line) => line.trim() !== '')
 
-    if (changes.length > 0) {
+    if (changesCount > 0) {
       return {
         isDirty: true,
         hasUnpushed: false,
-        changesCount: changes.length,
+        changesCount,
       } satisfies WorktreeStatus
     }
 
@@ -742,6 +940,20 @@ export const checkoutWorktree = (args: { worktreePath: string; ref: string }) =>
     args: ['checkout', args.ref],
     cwd: args.worktreePath,
   }).pipe(Effect.asVoid)
+
+/**
+ * Detach a worktree's HEAD from its branch (`git checkout --detach`).
+ *
+ * Used by GC archival: a moved named-branch worktree still has its
+ * `refs/heads/<branch>` checked out, so `git branch -D <branch>` is refused
+ * (`cannot delete branch 'X' used by worktree at ...`). Detaching HEAD first
+ * frees the branch ref for deletion + later re-materialization (invariant 4).
+ */
+export const detachWorktreeHead = (args: { worktreePath: string }) =>
+  runGitCommand({
+    args: ['checkout', '--detach'],
+    cwd: args.worktreePath,
+  }).pipe(Effect.asVoid, Observability.withGitDetachWorktreeHeadSpan(args.worktreePath))
 
 // =============================================================================
 // Megarepo Name Derivation

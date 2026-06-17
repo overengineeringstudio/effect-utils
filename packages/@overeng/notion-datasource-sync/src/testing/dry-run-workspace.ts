@@ -241,7 +241,13 @@ export const establishSharedWorkspace = (workspace: AbsolutePathType): Promise<v
   establishWorkspaceWithMode({ workspace, mode: 'shared' })
 
 /** Stage a PENDING local property edit in the public SQLite data file. */
-export const editSelectInSqlite = (sqlitePath: string, value: string): void => {
+export const editSelectInSqlite = ({
+  sqlitePath,
+  value,
+}: {
+  readonly sqlitePath: string
+  readonly value: string
+}): void => {
   const db = new DatabaseSync(sqlitePath)
   try {
     db.prepare(`UPDATE pages SET "${dryRunSelectPropName}" = ? WHERE _page_id = ?`).run(
@@ -287,17 +293,23 @@ export const writePageNmd = async ({
 /** Stable per-entry name+sha256 listing of a directory tree, or `undefined` when absent. */
 const dirDigest = (dir: string): ReadonlyArray<readonly [string, string]> | undefined => {
   if (existsSync(dir) === false) return undefined
-  const walk = (base: string, prefix: string): Array<readonly [string, string]> =>
+  const walk = ({
+    base,
+    prefix,
+  }: {
+    readonly base: string
+    readonly prefix: string
+  }): Array<readonly [string, string]> =>
     readdirSync(base)
       .toSorted()
       .flatMap((entry) => {
         const abs = join(base, entry)
         const rel = prefix === '' ? entry : `${prefix}/${entry}`
         return statSync(abs).isDirectory() === true
-          ? walk(abs, rel)
+          ? walk({ base: abs, prefix: rel })
           : [[rel, createHash('sha256').update(readFileSync(abs)).digest('hex')] as const]
       })
-  return walk(dir, '')
+  return walk({ base: dir, prefix: '' })
 }
 
 /** Snapshot of every durable workspace surface (CLI-R02). */

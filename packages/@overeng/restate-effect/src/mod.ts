@@ -73,18 +73,19 @@ export {
 import * as Annotations from './schema/Annotations.ts'
 export type { RetentionOptions, SerdeOptions, ErrorClass } from './schema/Annotations.ts'
 import * as Ctx from './authoring/RestateContext.ts'
-/**
- * Durable combinators + Restate Schema annotations under one `Restate`
- * namespace: `Restate.run` / `.sleep` / `.timeout` / `.all` / `.race` / `.any`
- * (durable ops), and `Restate.terminal` / `.retryable` / `.serde` (Schema
- * annotations read at the error boundary / serde).
- */
 import * as Client from './clients/Client.ts'
 import { annotateSpan, annotateSpanFrom } from './observability/Metrics.ts'
 import * as Runtime from './runtime/Runtime.ts'
 import { reschedule } from './scheduling/Reschedule.ts'
 import { pollLoop } from './scheduling/Scheduled.ts'
 
+/**
+ * Durable combinators + Restate Schema annotations under one `Restate`
+ * namespace: `Restate.run` / `.sleep` / `.timeout` / `.all` / `.race` / `.any`
+ * (durable ops), the in-handler peer clients, cancellation, span/metric helpers,
+ * and `Restate.terminal` / `.retryable` / `.serde` (Schema annotations read at
+ * the error boundary / serde).
+ */
 export const Restate = {
   run: Ctx.run,
   /** Observe a `Restate.run`'s outcome (success / infra defect / interrupt) as an `Exit` value (compensation/sagas, decision 0003). */

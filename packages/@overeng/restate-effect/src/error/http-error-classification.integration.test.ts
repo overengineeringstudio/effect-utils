@@ -111,7 +111,11 @@ describe.skipIf(!serverAvailable)('14-http-error-classification (verified end-to
     it.effect('2xx valid body → typed success', () =>
       Effect.gen(function* () {
         const h = yield* RestateTestHarness
-        const ok = yield* h.ingress.callTyped(WidgetApi, 'fetch', { baseUrl, widgetId: 'ok-1' })
+        const ok = yield* h.ingress.callTyped({
+          contract: WidgetApi,
+          method: 'fetch',
+          input: { baseUrl, widgetId: 'ok-1' },
+        })
         expect(ok).toEqual({ id: 'ok-1', name: 'Widget ok-1' })
       }),
     )
@@ -120,7 +124,11 @@ describe.skipIf(!serverAvailable)('14-http-error-classification (verified end-to
       Effect.gen(function* () {
         const h = yield* RestateTestHarness
         const recovered = yield* h.ingress
-          .callTyped(WidgetApi, 'fetch', { baseUrl, widgetId: 'bad-1' })
+          .callTyped({
+            contract: WidgetApi,
+            method: 'fetch',
+            input: { baseUrl, widgetId: 'bad-1' },
+          })
           .pipe(Effect.catchTag('BadRequest', (e: BadRequest) => Effect.succeed(e._tag)))
         expect(recovered).toBe('BadRequest')
       }),
@@ -130,7 +138,11 @@ describe.skipIf(!serverAvailable)('14-http-error-classification (verified end-to
       Effect.gen(function* () {
         const h = yield* RestateTestHarness
         const recovered = yield* h.ingress
-          .callTyped(WidgetApi, 'fetch', { baseUrl, widgetId: 'forbidden-1' })
+          .callTyped({
+            contract: WidgetApi,
+            method: 'fetch',
+            input: { baseUrl, widgetId: 'forbidden-1' },
+          })
           .pipe(Effect.catchTag('Forbidden', (e: Forbidden) => Effect.succeed(e._tag)))
         expect(recovered).toBe('Forbidden')
       }),
@@ -140,7 +152,11 @@ describe.skipIf(!serverAvailable)('14-http-error-classification (verified end-to
       Effect.gen(function* () {
         const h = yield* RestateTestHarness
         const recovered = yield* h.ingress
-          .callTyped(WidgetApi, 'fetch', { baseUrl, widgetId: 'missing-1' })
+          .callTyped({
+            contract: WidgetApi,
+            method: 'fetch',
+            input: { baseUrl, widgetId: 'missing-1' },
+          })
           .pipe(Effect.catchTag('NotFound', (e: NotFound) => Effect.succeed(e.widgetId)))
         expect(recovered).toBe('missing-1')
       }),
@@ -150,7 +166,11 @@ describe.skipIf(!serverAvailable)('14-http-error-classification (verified end-to
       Effect.gen(function* () {
         const h = yield* RestateTestHarness
         const recovered = yield* h.ingress
-          .callTyped(WidgetApi, 'fetch', { baseUrl, widgetId: 'garbage-1' })
+          .callTyped({
+            contract: WidgetApi,
+            method: 'fetch',
+            input: { baseUrl, widgetId: 'garbage-1' },
+          })
           .pipe(
             Effect.catchTag('MalformedUpstream', (e: MalformedUpstream) => Effect.succeed(e._tag)),
           )
@@ -165,9 +185,13 @@ describe.skipIf(!serverAvailable)('14-http-error-classification (verified end-to
     it.effect('fetch: 429-then-200 → the run STEP re-fetches and SUCCEEDS', () =>
       Effect.gen(function* () {
         const h = yield* RestateTestHarness
-        const ok = yield* h.ingress.callTyped(WidgetApi, 'fetch', {
-          baseUrl,
-          widgetId: 'flaky-step',
+        const ok = yield* h.ingress.callTyped({
+          contract: WidgetApi,
+          method: 'fetch',
+          input: {
+            baseUrl,
+            widgetId: 'flaky-step',
+          },
         })
         expect(ok).toEqual({ id: 'flaky-step', name: 'Widget flaky-step' })
         expect(hits['flaky-step']! >= 3).toBe(true)
@@ -181,7 +205,11 @@ describe.skipIf(!serverAvailable)('14-http-error-classification (verified end-to
         const h = yield* RestateTestHarness
         /* Forked: parked in `backing-off`, retrying — assert via the climbing count. */
         yield* h.ingress
-          .callTyped(WidgetApi, 'fetchRetryable', { baseUrl, widgetId: 'throttled-1' })
+          .callTyped({
+            contract: WidgetApi,
+            method: 'fetchRetryable',
+            input: { baseUrl, widgetId: 'throttled-1' },
+          })
           .pipe(Effect.ignore, Effect.fork)
         expect(yield* climbsPastOne(() => hits['throttled-1'] ?? 0)).toBe(true)
       }),
@@ -190,9 +218,13 @@ describe.skipIf(!serverAvailable)('14-http-error-classification (verified end-to
     it.effect('fetchRetryable: 429-then-200 → handler retry re-fetches and SUCCEEDS', () =>
       Effect.gen(function* () {
         const h = yield* RestateTestHarness
-        const ok = yield* h.ingress.callTyped(WidgetApi, 'fetchRetryable', {
-          baseUrl,
-          widgetId: 'flaky-handler',
+        const ok = yield* h.ingress.callTyped({
+          contract: WidgetApi,
+          method: 'fetchRetryable',
+          input: {
+            baseUrl,
+            widgetId: 'flaky-handler',
+          },
         })
         expect(ok).toEqual({ id: 'flaky-handler', name: 'Widget flaky-handler' })
         expect(hits['flaky-handler']! >= 3).toBe(true)

@@ -95,34 +95,48 @@ const trustOtelContract = <A, E, R>(
   effect.pipe(Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)))
 
 const trustedWith =
-  <S extends Schema.Schema.AnyNoContext>(
-    operation: OtelOperationDefinition<S>,
-    attributes: Schema.Schema.Type<S>,
-  ) =>
+  <S extends Schema.Schema.AnyNoContext>({
+    operation,
+    attributes,
+  }: {
+    operation: OtelOperationDefinition<S>
+    attributes: Schema.Schema.Type<S>
+  }) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     trustOtelContract<A, E, R>(operation.with({ attributes, effect }))
 
 const withPtyNameSpan =
-  (spanName: string, name: string) =>
+  ({ spanName, name }: { spanName: string; name: string }) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>) =>
-    effect.pipe(trustedWith(PtyClientNameOperation(spanName), { label: name, name }))
+    effect.pipe(
+      trustedWith({
+        operation: PtyClientNameOperation(spanName),
+        attributes: { label: name, name },
+      }),
+    )
 
 const withPtyOperationSpan =
-  (spanName: string, label: string) =>
+  ({ spanName, label }: { spanName: string; label: string }) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>) =>
-    effect.pipe(trustedWith(PtyClientOperation(spanName), { label }))
+    effect.pipe(trustedWith({ operation: PtyClientOperation(spanName), attributes: { label } }))
 
-const withPtyWaitSpan = (
-  spanName: string,
-  input: { readonly name: PtyName; readonly needle: string | RegExp },
-) => {
+const withPtyWaitSpan = ({
+  spanName,
+  input,
+}: {
+  spanName: string
+  input: { readonly name: PtyName; readonly needle: string | RegExp }
+}) => {
   const needle = String(input.needle)
   return <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     effect.pipe(
-      trustedWith(PtyClientWaitOperation(spanName), {
-        label: `${input.name}: ${needle}`,
-        name: input.name,
-        needle,
+      trustedWith({
+        operation: PtyClientWaitOperation(spanName),
+        attributes: {
+          label: `${input.name}: ${needle}`,
+          name: input.name,
+          needle,
+        },
       }),
     )
 }
@@ -462,7 +476,7 @@ const spawnDaemon = (spec: PtyDaemonSpec): Effect.Effect<void, PtyError> =>
     if (spec.tags !== undefined && Object.keys(spec.tags).length > 0) {
       yield* waitForPersistedTags({ name: spec.name, tags: spec.tags })
     }
-  }).pipe(withPtyNameSpan('pty-client.spawnDaemon', spec.name))
+  }).pipe(withPtyNameSpan({ spanName: 'pty-client.spawnDaemon', name: spec.name }))
 
 const peek = (input: {
   readonly name: PtyName
@@ -479,13 +493,13 @@ const peek = (input: {
         ...(input.plain !== undefined ? { plain: input.plain } : {}),
         ...(input.full !== undefined ? { full: input.full } : {}),
       }),
-  }).pipe(withPtyNameSpan('pty-client.peek', input.name))
+  }).pipe(withPtyNameSpan({ spanName: 'pty-client.peek', name: input.name }))
 
 const list: Effect.Effect<ReadonlyArray<SessionInfo>, PtyError> = wrapPromise({
   method: 'list',
   reason: 'ConnectFailed',
   thunk: () => upstreamListSessions(),
-}).pipe(withPtyOperationSpan('pty-client.list', 'list'))
+}).pipe(withPtyOperationSpan({ spanName: 'pty-client.list', label: 'list' }))
 
 const get = ({ name }: PtyGetSessionSpec) =>
   Effect.gen(function* () {
@@ -496,20 +510,20 @@ const get = ({ name }: PtyGetSessionSpec) =>
       name,
       thunk: () => upstreamGetSession(name),
     })
-  }).pipe(withPtyNameSpan('pty-client.getSession', name))
+  }).pipe(withPtyNameSpan({ spanName: 'pty-client.getSession', name: name }))
 
 const exists = (input: { readonly name: PtyName }) =>
   pipe(
     list,
     Effect.map((sessions) => sessions.some((session) => session.name === input.name)),
-    withPtyNameSpan('pty-client.exists', input.name),
+    withPtyNameSpan({ spanName: 'pty-client.exists', name: input.name }),
   )
 
 const gc: Effect.Effect<ReadonlyArray<string>, PtyError> = wrapPromise({
   method: 'gc',
   reason: 'ConnectFailed',
   thunk: () => upstreamGc(),
-}).pipe(withPtyOperationSpan('pty-client.gc', 'gc'))
+}).pipe(withPtyOperationSpan({ spanName: 'pty-client.gc', label: 'gc' }))
 
 const updateTags = (spec: PtyUpdateTagsSpec) =>
   Effect.gen(function* () {
@@ -520,7 +534,7 @@ const updateTags = (spec: PtyUpdateTagsSpec) =>
       name: spec.name,
       thunk: () => upstreamUpdateTags(spec.name, { ...spec.tags }, spec.removals?.slice() ?? []),
     })
-  }).pipe(withPtyNameSpan('pty-client.updateTags', spec.name))
+  }).pipe(withPtyNameSpan({ spanName: 'pty-client.updateTags', name: spec.name }))
 
 const sendData = (spec: PtySendDataSpec) =>
   Effect.gen(function* () {
@@ -536,7 +550,7 @@ const sendData = (spec: PtySendDataSpec) =>
           ...(spec.delayMs !== undefined ? { delayMs: spec.delayMs } : {}),
         }),
     })
-  }).pipe(withPtyNameSpan('pty-client.sendData', spec.name))
+  }).pipe(withPtyNameSpan({ spanName: 'pty-client.sendData', name: spec.name }))
 
 const queryStats = (spec: PtyQueryStatsSpec) =>
   Effect.gen(function* () {
@@ -547,7 +561,7 @@ const queryStats = (spec: PtyQueryStatsSpec) =>
       name: spec.name,
       thunk: () => upstreamQueryStats(spec.name, spec.timeoutMs),
     })
-  }).pipe(withPtyNameSpan('pty-client.queryStats', spec.name))
+  }).pipe(withPtyNameSpan({ spanName: 'pty-client.queryStats', name: spec.name }))
 
 const readRecentEvents = (spec: PtyReadRecentEventsSpec) =>
   Effect.gen(function* () {
@@ -562,7 +576,7 @@ const readRecentEvents = (spec: PtyReadRecentEventsSpec) =>
       events,
       decodeEvent({ method: 'readRecentEvents', name: spec.name }),
     )
-  }).pipe(withPtyNameSpan('pty-client.readRecentEvents', spec.name))
+  }).pipe(withPtyNameSpan({ spanName: 'pty-client.readRecentEvents', name: spec.name }))
 
 const followEvents = (spec: PtyFollowEventsSpec): Stream.Stream<PtyEvent, PtyError> =>
   Stream.asyncPush<PtyEvent, PtyError>((emit) =>
@@ -592,7 +606,7 @@ const followEvents = (spec: PtyFollowEventsSpec): Stream.Stream<PtyEvent, PtyErr
         }),
         (follower) => Effect.sync(() => follower.stop()),
       )
-    }).pipe(withPtyOperationSpan('pty-client.followEvents', 'follow')),
+    }).pipe(withPtyOperationSpan({ spanName: 'pty-client.followEvents', label: 'follow' })),
   )
 
 const kill = (input: { readonly name: PtyName }) =>
@@ -611,7 +625,7 @@ const kill = (input: { readonly name: PtyName }) =>
       name: input.name,
       thunk: () => process.kill(session.pid!, 'SIGTERM'),
     })
-  }).pipe(withPtyNameSpan('pty-client.kill', input.name))
+  }).pipe(withPtyNameSpan({ spanName: 'pty-client.kill', name: input.name }))
 
 const attach = (spec: PtyAttachSpec): Effect.Effect<PtyClientSession, PtyError, Scope.Scope> =>
   Effect.gen(function* () {
@@ -699,7 +713,7 @@ const attach = (spec: PtyAttachSpec): Effect.Effect<PtyClientSession, PtyError, 
       const text = yield* peek({ name: spec.name, plain: true })
       const lines = text.split('\n')
       return { lines, text, ansi } satisfies Screenshot
-    }).pipe(withPtyNameSpan('pty-client.screenshot', spec.name))
+    }).pipe(withPtyNameSpan({ spanName: 'pty-client.screenshot', name: spec.name }))
 
     const waitForText: PtyClientSession['waitForText'] = ({ needle, schedule }) =>
       pipe(
@@ -721,7 +735,7 @@ const attach = (spec: PtyAttachSpec): Effect.Effect<PtyClientSession, PtyError, 
             onSome: Effect.succeed,
           }),
         ),
-        withPtyWaitSpan('pty-client.waitForText', { name: spec.name, needle }),
+        withPtyWaitSpan({ spanName: 'pty-client.waitForText', input: { name: spec.name, needle } }),
       )
 
     const waitForAbsent: PtyClientSession['waitForAbsent'] = ({ needle, schedule }) =>
@@ -744,7 +758,10 @@ const attach = (spec: PtyAttachSpec): Effect.Effect<PtyClientSession, PtyError, 
             onSome: Effect.succeed,
           }),
         ),
-        withPtyWaitSpan('pty-client.waitForAbsent', { name: spec.name, needle }),
+        withPtyWaitSpan({
+          spanName: 'pty-client.waitForAbsent',
+          input: { name: spec.name, needle },
+        }),
       )
 
     return {
@@ -760,7 +777,7 @@ const attach = (spec: PtyAttachSpec): Effect.Effect<PtyClientSession, PtyError, 
       waitForText,
       waitForAbsent,
     } satisfies PtyClientSession
-  }).pipe(withPtyNameSpan('pty-client.attach', spec.name))
+  }).pipe(withPtyNameSpan({ spanName: 'pty-client.attach', name: spec.name }))
 
 /* ───────────────────────────── layer ────────────────────────────── */
 

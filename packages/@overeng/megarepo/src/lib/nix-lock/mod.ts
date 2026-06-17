@@ -810,7 +810,12 @@ const validateSharedInputSource = ({
     }
 
     return { sourceMemberName, sourceMap }
-  }).pipe(Observability.withLabelSpan('megarepo/nix-lock/shared-input-source/validate', 'validate'))
+  }).pipe(
+    Observability.withLabelSpan({
+      name: 'megarepo/nix-lock/shared-input-source/validate',
+      labelValue: 'validate',
+    }),
+  )
 
 /**
  * Apply phase: propagate validated source inputs to all matching members.
@@ -886,7 +891,12 @@ const applySharedInputSource = ({
       propagatableInputs: sourceMap.size,
       updatedMembers,
     }
-  }).pipe(Observability.withLabelSpan('megarepo/nix-lock/shared-input-source/apply', 'apply'))
+  }).pipe(
+    Observability.withLabelSpan({
+      name: 'megarepo/nix-lock/shared-input-source/apply',
+      labelValue: 'apply',
+    }),
+  )
 
 // =============================================================================
 // Ref Sync
@@ -1117,7 +1127,9 @@ const syncMemberRefs = ({
     yield* syncLockRefs({ filename: DEVENV_LOCK, fileType: 'devenv.lock' })
 
     return results
-  }).pipe(Observability.withLabelSpan('megarepo/nix-lock/ref-sync', memberPath))
+  }).pipe(
+    Observability.withLabelSpan({ name: 'megarepo/nix-lock/ref-sync', labelValue: memberPath }),
+  )
 
 // =============================================================================
 // Main Sync Function

@@ -38,11 +38,14 @@ export { OteliteCapture, makeOteliteCaptureLayer, flushCaptureSpans } from './vi
 export type { OteliteCaptureLayerOptions } from './vitest-bridge.ts'
 export {
   captureEnvTrace,
+  captureInProcessAllSignals,
   captureInProcessTrace,
   captureTest,
   OteliteTestHarness,
 } from './test-harness.ts'
 export type {
+  AllSignalsExpect,
+  OteliteAllSignalsOptions,
   OteliteEnvOptions,
   OteliteTestHandle,
   OteliteTestHarnessOptions,

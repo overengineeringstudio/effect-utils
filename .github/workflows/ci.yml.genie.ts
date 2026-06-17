@@ -168,7 +168,13 @@ const nixDiagnosticsSummaryStep = {
 const jobTimeoutMinutes = 30
 const normalCiIf = `\${{ ${ciMeasurementNotBaselineBackfillPredicate} }}`
 
-const job = (step: { name: string; run: string }, extraSteps: readonly any[] = []) => ({
+const job = ({
+  step,
+  extraSteps = [],
+}: {
+  step: { name: string; run: string }
+  extraSteps?: readonly any[]
+}) => ({
   if: normalCiIf,
   'runs-on': namespaceRunner({
     profile: 'namespace-profile-linux-x86-64',
@@ -312,16 +318,18 @@ const jobs: Record<
   CIJobName,
   ReturnType<typeof job> | ReturnType<typeof multiPlatformJob> | typeof cargoJob
 > = {
-  typecheck: job(
-    {
+  typecheck: job({
+    step: {
       name: 'Type check',
       run: runDevenvTasksBefore('ts:check:strict'),
     },
-    [verifyOtelShellEntryStep],
-  ),
+    extraSteps: [verifyOtelShellEntryStep],
+  }),
   lint: job({
-    name: 'Format + lint',
-    run: runDevenvTasksBefore('lint:check'),
+    step: {
+      name: 'Format + lint',
+      run: runDevenvTasksBefore('lint:check'),
+    },
   }),
   test: multiPlatformJob({
     name: 'Unit tests',
@@ -341,18 +349,20 @@ const jobs: Record<
       substituters: ['https://cache.nixos.org'],
     }),
   ),
-  'pnpm-builder-contract': job(
-    pnpmBuilderContractStep({
+  'pnpm-builder-contract': job({
+    step: pnpmBuilderContractStep({
       builderFile: 'nix/workspace-tools/lib/mk-pnpm-deps.nix',
     }),
-  ),
+  }),
   'pnpm-regression': job({
-    name: 'pnpm regression suite',
-    run: [
-      'bash genie/ci-scripts/nix-gc-race-retry.test.sh',
-      'bash genie/ci-scripts/ci-measurement-comparison.test.sh',
-      'bash nix/workspace-tools/lib/mk-pnpm-cli/tests/run.sh --skip-genie --skip-megarepo --skip-devenv-shell --skip-downstream-megarepo',
-    ].join('\n'),
+    step: {
+      name: 'pnpm regression suite',
+      run: [
+        'bash genie/ci-scripts/nix-gc-race-retry.test.sh',
+        'bash genie/ci-scripts/ci-measurement-comparison.test.sh',
+        'bash nix/workspace-tools/lib/mk-pnpm-cli/tests/run.sh --skip-genie --skip-megarepo --skip-devenv-shell --skip-downstream-megarepo',
+      ].join('\n'),
+    },
   }),
   cargo: cargoJob,
 }
@@ -361,7 +371,13 @@ const sourceShapeMeasurementsDir = 'tmp/source-shape-ci'
 const nixClosureMeasurementsDir = 'tmp/nix-closure-ci'
 const ciMeasurementReportDir = 'tmp/ci-measurement-report'
 
-const downloadCurrentMeasurementArtifactStep = (artifactName: string, outputDir: string) =>
+const downloadCurrentMeasurementArtifactStep = ({
+  artifactName,
+  outputDir,
+}: {
+  artifactName: string
+  outputDir: string
+}) =>
   ({
     name: `Download current measurement artifact: ${artifactName}`,
     uses: 'actions/download-artifact@v4',
@@ -646,18 +662,18 @@ const extraJobs: Record<string, any> = {
       checkoutStep(),
       installNixStep(),
       ciMeasurementReportToolStep,
-      downloadCurrentMeasurementArtifactStep(
-        'devenv-perf',
-        `${ciMeasurementReportDir}/current/devenv-perf`,
-      ),
-      downloadCurrentMeasurementArtifactStep(
-        'nix-closure-measurements',
-        `${ciMeasurementReportDir}/current/nix-closure-measurements`,
-      ),
-      downloadCurrentMeasurementArtifactStep(
-        'source-shape',
-        `${ciMeasurementReportDir}/current/source-shape`,
-      ),
+      downloadCurrentMeasurementArtifactStep({
+        artifactName: 'devenv-perf',
+        outputDir: `${ciMeasurementReportDir}/current/devenv-perf`,
+      }),
+      downloadCurrentMeasurementArtifactStep({
+        artifactName: 'nix-closure-measurements',
+        outputDir: `${ciMeasurementReportDir}/current/nix-closure-measurements`,
+      }),
+      downloadCurrentMeasurementArtifactStep({
+        artifactName: 'source-shape',
+        outputDir: `${ciMeasurementReportDir}/current/source-shape`,
+      }),
       downloadPreviousGitHubArtifactStep({
         artifactName: 'devenv-perf',
         outputDir: `${ciMeasurementReportDir}/baseline/devenv-perf`,

@@ -17,6 +17,10 @@
       "./cli": "./dist/src/cli-command.js"
     }
   },
+  "dependencies": {
+    "@overeng/otel-contract": "workspace:^",
+    "@overeng/utils": "workspace:^"
+  },
   "devDependencies": {
     "@effect/cli": "0.75.1",
     "@effect/platform": "0.96.1",

@@ -37,7 +37,7 @@ export interface AdminClientConfig {
 export class AdminHttpError extends Error {
   readonly status: number
   readonly body: string
-  constructor(method: string, status: number, body: string) {
+  constructor({ method, status, body }: { method: string; status: number; body: string }) {
     super(`admin call ${method} failed (${status})${body !== '' ? `: ${body}` : ''}`)
     this.name = 'AdminHttpError'
     this.status = status
@@ -49,12 +49,17 @@ const authHeaders = (config: AdminClientConfig): Record<string, string> =>
   config.apiKey !== undefined ? { Authorization: `Bearer ${Redacted.value(config.apiKey)}` } : {}
 
 /** Issue one admin request, throwing {@link AdminHttpError} on a non-OK status. */
-const request = async (
-  config: AdminClientConfig,
-  method: string,
-  path: string,
-  opts?: { readonly body?: unknown; readonly accept?: string },
-): Promise<Response> => {
+const request = async ({
+  config,
+  method,
+  path,
+  opts,
+}: {
+  config: AdminClientConfig
+  method: string
+  path: string
+  opts?: { readonly body?: unknown; readonly accept?: string }
+}): Promise<Response> => {
   const headers: Record<string, string> = { ...authHeaders(config) }
   if (opts?.body !== undefined) headers['content-type'] = 'application/json'
   if (opts?.accept !== undefined) headers['accept'] = opts.accept
@@ -63,9 +68,9 @@ const request = async (
     ...(Object.keys(headers).length > 0 ? { headers } : {}),
     ...(opts?.body !== undefined ? { body: JSON.stringify(opts.body) } : {}),
   })
-  if (!res.ok) {
+  if (res.ok === false) {
     const text = await res.text().catch(() => '')
-    throw new AdminHttpError(`${method} ${path}`, res.status, text)
+    throw new AdminHttpError({ method: `${method} ${path}`, status: res.status, body: text })
   }
   return res
 }
@@ -89,76 +94,123 @@ export type InvocationVerb =
   | 'restart-as-new'
 
 /** `PATCH /invocations/{id}/{verb}` with optional query params (no request body). */
-export const patchInvocation = async (
-  config: AdminClientConfig,
-  invocationId: string,
-  verb: InvocationVerb,
-  query?: Readonly<Record<string, string>>,
-): Promise<void> => {
+export const patchInvocation = async ({
+  config,
+  invocationId,
+  verb,
+  query,
+}: {
+  config: AdminClientConfig
+  invocationId: string
+  verb: InvocationVerb
+  query?: Readonly<Record<string, string>>
+}): Promise<void> => {
   const qs =
     query !== undefined && Object.keys(query).length > 0
       ? `?${new URLSearchParams(query).toString()}`
       : ''
-  await request(config, 'PATCH', `/invocations/${encodeURIComponent(invocationId)}/${verb}${qs}`)
+  await request({
+    config,
+    method: 'PATCH',
+    path: `/invocations/${encodeURIComponent(invocationId)}/${verb}${qs}`,
+  })
 }
 
 /** `PATCH /invocations/{id}/restart-as-new` → the new invocation id (admin api ≥3). */
-export const restartAsNew = async (
-  config: AdminClientConfig,
-  invocationId: string,
-  query?: Readonly<Record<string, string>>,
-): Promise<{ readonly new_invocation_id: string }> => {
+export const restartAsNew = async ({
+  config,
+  invocationId,
+  query,
+}: {
+  config: AdminClientConfig
+  invocationId: string
+  query?: Readonly<Record<string, string>>
+}): Promise<{ readonly new_invocation_id: string }> => {
   const qs =
     query !== undefined && Object.keys(query).length > 0
       ? `?${new URLSearchParams(query).toString()}`
       : ''
-  const res = await request(
+  const res = await request({
     config,
-    'PATCH',
-    `/invocations/${encodeURIComponent(invocationId)}/restart-as-new${qs}`,
-  )
+    method: 'PATCH',
+    path: `/invocations/${encodeURIComponent(invocationId)}/restart-as-new${qs}`,
+  })
   return json(res)
 }
 
 /** `DELETE /invocations/{id}` — remove the completed invocation (output + journal). */
-export const deleteInvocation = async (
-  config: AdminClientConfig,
-  invocationId: string,
-  mode?: string,
-): Promise<void> => {
+export const deleteInvocation = async ({
+  config,
+  invocationId,
+  mode,
+}: {
+  config: AdminClientConfig
+  invocationId: string
+  mode?: string
+}): Promise<void> => {
   const qs = mode !== undefined ? `?mode=${encodeURIComponent(mode)}` : ''
-  await request(config, 'DELETE', `/invocations/${encodeURIComponent(invocationId)}${qs}`)
+  await request({
+    config,
+    method: 'DELETE',
+    path: `/invocations/${encodeURIComponent(invocationId)}${qs}`,
+  })
 }
 
 /* ── Deployments (`GET|PATCH /deployments[/{id}]`) ─────────────────────────── */
 
 /** `POST /deployments` — register a deployment by handler-endpoint URI (`force` overwrites). */
-export const registerDeployment = async (
-  config: AdminClientConfig,
-  uri: string,
-  opts?: { readonly force?: boolean },
-): Promise<unknown> => {
-  const res = await request(config, 'POST', '/deployments', {
-    body: { uri, ...(opts?.force !== undefined ? { force: opts.force } : { force: true }) },
+export const registerDeployment = async ({
+  config,
+  uri,
+  opts,
+}: {
+  config: AdminClientConfig
+  uri: string
+  opts?: { readonly force?: boolean }
+}): Promise<unknown> => {
+  const res = await request({
+    config,
+    method: 'POST',
+    path: '/deployments',
+    opts: {
+      body: { uri, ...(opts?.force !== undefined ? { force: opts.force } : { force: true }) },
+    },
   })
   return json(res)
 }
 
 /** `GET /deployments` — list registered deployments + their services. */
 export const listDeployments = async (config: AdminClientConfig): Promise<unknown> =>
-  json(await request(config, 'GET', '/deployments'))
+  json(await request({ config, method: 'GET', path: '/deployments' }))
 
 /** `GET /deployments/{id}` — one deployment's detail. */
-export const getDeployment = async (config: AdminClientConfig, id: string): Promise<unknown> =>
-  json(await request(config, 'GET', `/deployments/${encodeURIComponent(id)}`))
+export const getDeployment = async ({
+  config,
+  id,
+}: {
+  config: AdminClientConfig
+  id: string
+}): Promise<unknown> =>
+  json(await request({ config, method: 'GET', path: `/deployments/${encodeURIComponent(id)}` }))
 
 /** `PATCH /deployments/{id}` — update headers / address / role (the `UpdateDeploymentRequest`). */
-export const updateDeployment = async (
-  config: AdminClientConfig,
-  id: string,
-  body: Readonly<Record<string, unknown>>,
-): Promise<unknown> =>
-  json(await request(config, 'PATCH', `/deployments/${encodeURIComponent(id)}`, { body }))
+export const updateDeployment = async ({
+  config,
+  id,
+  body,
+}: {
+  config: AdminClientConfig
+  id: string
+  body: Readonly<Record<string, unknown>>
+}): Promise<unknown> =>
+  json(
+    await request({
+      config,
+      method: 'PATCH',
+      path: `/deployments/${encodeURIComponent(id)}`,
+      opts: { body },
+    }),
+  )
 
 /* ── Introspection (`POST /query`, SQL over `sys_*`) ───────────────────────── */
 
@@ -170,13 +222,18 @@ export const updateDeployment = async (
  * shapes), so this returns the raw rows for the `./admin` `query` to decode
  * through a caller-supplied Schema.
  */
-export const query = async (
-  config: AdminClientConfig,
-  sql: string,
-): Promise<ReadonlyArray<Record<string, unknown>>> => {
-  const res = await request(config, 'POST', '/query', {
-    body: { query: sql },
-    accept: 'application/json',
+export const query = async ({
+  config,
+  sql,
+}: {
+  config: AdminClientConfig
+  sql: string
+}): Promise<ReadonlyArray<Record<string, unknown>>> => {
+  const res = await request({
+    config,
+    method: 'POST',
+    path: '/query',
+    opts: { body: { query: sql }, accept: 'application/json' },
   })
   const body = await json<{ readonly rows?: ReadonlyArray<Record<string, unknown>> }>(res)
   return body.rows ?? []
@@ -190,15 +247,19 @@ export const query = async (
  * application/json`). Lifted from the harness so `./testing` and any future
  * `./admin` State surface share ONE implementation.
  */
-export const queryStateRows = async (
-  config: AdminClientConfig,
-  service: string,
-  serviceKey: string,
-): Promise<ReadonlyArray<{ readonly key: string; readonly value: Uint8Array }>> => {
-  const rows = await query(
+export const queryStateRows = async ({
+  config,
+  service,
+  serviceKey,
+}: {
+  config: AdminClientConfig
+  service: string
+  serviceKey: string
+}): Promise<ReadonlyArray<{ readonly key: string; readonly value: Uint8Array }>> => {
+  const rows = await query({
     config,
-    `SELECT key, value FROM state WHERE service_name = '${service}' AND service_key = '${serviceKey}'`,
-  )
+    sql: `SELECT key, value FROM state WHERE service_name = '${service}' AND service_key = '${serviceKey}'`,
+  })
   return rows.flatMap((row) => {
     const key = row['key']
     if (typeof key !== 'string') return []
@@ -223,16 +284,26 @@ const decodeQueryValue = (value: unknown): Uint8Array => {
  * mutation endpoint (`POST /services/{service}/state`), encoding each value as a
  * byte array (the `new_state` wire form).
  */
-export const putState = async (
-  config: AdminClientConfig,
-  service: string,
-  serviceKey: string,
-  entries: ReadonlyArray<readonly [string, Uint8Array]>,
-): Promise<void> => {
-  await request(config, 'POST', `/services/${encodeURIComponent(service)}/state`, {
-    body: {
-      object_key: serviceKey,
-      new_state: Object.fromEntries(entries.map(([k, v]) => [k, Array.from(v)])),
+export const putState = async ({
+  config,
+  service,
+  serviceKey,
+  entries,
+}: {
+  config: AdminClientConfig
+  service: string
+  serviceKey: string
+  entries: ReadonlyArray<readonly [string, Uint8Array]>
+}): Promise<void> => {
+  await request({
+    config,
+    method: 'POST',
+    path: `/services/${encodeURIComponent(service)}/state`,
+    opts: {
+      body: {
+        object_key: serviceKey,
+        new_state: Object.fromEntries(entries.map(([k, v]) => [k, Array.from(v)])),
+      },
     },
   })
 }

@@ -30,11 +30,11 @@ vi.mock('@restatedev/restate-sdk/node', async (importOriginal) => {
 })
 
 const Greet = Schema.Struct({ name: Schema.String })
-const GreeterLive = RestateService.define(
-  'Greeter',
-  { greet: { input: Greet, success: Schema.String } },
-  { greet: () => Effect.succeed('hi') },
-)
+const GreeterLive = RestateService.define({
+  name: 'Greeter',
+  handlers: { greet: { input: Greet, success: Schema.String } },
+  impl: { greet: () => Effect.succeed('hi') },
+})
 
 /* A public key in the SDK's documented `publickeyv1_…` format (value irrelevant —
  * we only assert it is threaded, not that it verifies). */

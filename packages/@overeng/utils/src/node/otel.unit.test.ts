@@ -1,9 +1,16 @@
-import { Effect } from 'effect'
+import { Effect, Option, Schema } from 'effect'
 import { expect } from 'vitest'
 
+import { ServiceIdentity } from '@overeng/otel-contract'
 import { Vitest } from '@overeng/utils-dev/node-vitest'
 
-import { makeOtelCliLayer, parentSpanFromTraceparent } from './otel.ts'
+import { makeOtelCliLayer, OtelConfig, parentSpanFromTraceparent } from './otel.ts'
+
+const testIdentity = Schema.decodeSync(ServiceIdentity)({
+  name: 'test-cli',
+  namespace: 'overeng',
+  version: '0.0.0',
+})
 
 Vitest.describe('otel-cli', () => {
   Vitest.describe('parentSpanFromTraceparent', () => {
@@ -115,32 +122,57 @@ Vitest.describe('otel-cli', () => {
 
   Vitest.describe('makeOtelCliLayer', () => {
     Vitest.it.effect(
-      'returns empty layer when endpoint is not set',
+      'provides OtelConfig with endpoint None when env var is not set',
       Effect.fnUntraced(function* () {
         delete process.env.OTEL_EXPORTER_OTLP_ENDPOINT
         delete process.env.TRACEPARENT
 
-        const layer = makeOtelCliLayer({ serviceName: 'test-cli' })
+        const layer = makeOtelCliLayer({ identity: testIdentity })
 
-        // Empty layer should not fail when provided
-        yield* Effect.void.pipe(Effect.provide(layer))
+        const cfg = yield* OtelConfig.pipe(Effect.provide(layer))
+        expect(Option.isNone(cfg.endpoint)).toBe(true)
       }),
     )
 
     Vitest.it.effect(
-      'returns empty layer when custom endpoint env var is not set',
+      'provides OtelConfig with endpoint None when custom endpoint env var is not set',
       Effect.fnUntraced(function* () {
         delete process.env.CUSTOM_OTEL_ENDPOINT
         delete process.env.TRACEPARENT
 
         const layer = makeOtelCliLayer({
-          serviceName: 'test-cli',
+          identity: testIdentity,
           endpointEnvVar: 'CUSTOM_OTEL_ENDPOINT',
         })
 
-        // Empty layer should not fail when provided
-        yield* Effect.void.pipe(Effect.provide(layer))
+        const cfg = yield* OtelConfig.pipe(Effect.provide(layer))
+        expect(Option.isNone(cfg.endpoint)).toBe(true)
       }),
     )
+
+    Vitest.it.effect(
+      'explicit endpoint None disables export without reading process.env',
+      Effect.fnUntraced(function* () {
+        // Env IS set, but the explicit None must win (pure: no env read).
+        process.env.OTEL_EXPORTER_OTLP_ENDPOINT = 'http://127.0.0.1:1/should-be-ignored'
+        delete process.env.TRACEPARENT
+
+        const layer = makeOtelCliLayer({
+          identity: testIdentity,
+          endpoint: Option.none(),
+        })
+
+        const cfg = yield* OtelConfig.pipe(Effect.provide(layer))
+        expect(Option.isNone(cfg.endpoint)).toBe(true)
+
+        delete process.env.OTEL_EXPORTER_OTLP_ENDPOINT
+      }),
+    )
+
+    // The explicit-`Some` path (which stands up the REAL OTLP exporter) is proven
+    // end-to-end against a live otelite receiver in
+    // `megarepo/src/cli/store-gc-otel.integration.test.ts`; building the exporter
+    // here (no receiver, no scoped teardown of its periodic reader fibers) would
+    // hang. The unit test stays on the pure, exporter-free branches above.
   })
 })

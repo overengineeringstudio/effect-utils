@@ -69,7 +69,9 @@ const expectBlocked = (
 
 describe('evaluatePropertyWrite — allow', () => {
   it('allows a clean local proof', () => {
-    expect(evaluatePropertyWrite(baseProof, selectDesired)._tag).toBe('allowed')
+    expect(evaluatePropertyWrite({ proof: baseProof, desiredWrite: selectDesired })._tag).toBe(
+      'allowed',
+    )
   })
 
   it('allows a clean shared proof (settlement present)', () => {
@@ -79,7 +81,9 @@ describe('evaluatePropertyWrite — allow', () => {
       localConvergence: { status: 'converged' },
       settlement: { status: 'present' },
     })
-    expect(evaluatePropertyWrite(sharedProof, selectDesired)._tag).toBe('allowed')
+    expect(evaluatePropertyWrite({ proof: sharedProof, desiredWrite: selectDesired })._tag).toBe(
+      'allowed',
+    )
   })
 
   it('allows an empty value against any property type', () => {
@@ -88,115 +92,117 @@ describe('evaluatePropertyWrite — allow', () => {
       dataSourceId: '00000000-0000-4000-8000-000000000002',
       value: { _tag: 'empty' },
     })
-    expect(evaluatePropertyWrite(baseProof, emptyDesired)._tag).toBe('allowed')
+    expect(evaluatePropertyWrite({ proof: baseProof, desiredWrite: emptyDesired })._tag).toBe(
+      'allowed',
+    )
   })
 })
 
 describe('evaluatePropertyWrite — per-guard block + allow boundary', () => {
   it('RemoteSchemaRequired', () => {
     expectBlocked(
-      evaluatePropertyWrite(
-        withProof({ schemaConsistency: { remoteSchemaObserved: false } }),
-        selectDesired,
-      ),
+      evaluatePropertyWrite({
+        proof: withProof({ schemaConsistency: { remoteSchemaObserved: false } }),
+        desiredWrite: selectDesired,
+      }),
       'RemoteSchemaRequired',
     )
     expect(
-      evaluatePropertyWrite(
-        withProof({ schemaConsistency: { remoteSchemaObserved: true } }),
-        selectDesired,
-      )._tag,
+      evaluatePropertyWrite({
+        proof: withProof({ schemaConsistency: { remoteSchemaObserved: true } }),
+        desiredWrite: selectDesired,
+      })._tag,
     ).toBe('allowed')
   })
 
   it('PropertyIdentityAmbiguous', () => {
     expectBlocked(
-      evaluatePropertyWrite(
-        withProof({ identity: { displayNameUnambiguous: false } }),
-        selectDesired,
-      ),
+      evaluatePropertyWrite({
+        proof: withProof({ identity: { displayNameUnambiguous: false } }),
+        desiredWrite: selectDesired,
+      }),
       'PropertyIdentityAmbiguous',
     )
     expect(
-      evaluatePropertyWrite(
-        withProof({ identity: { displayNameUnambiguous: true } }),
-        selectDesired,
-      )._tag,
+      evaluatePropertyWrite({
+        proof: withProof({ identity: { displayNameUnambiguous: true } }),
+        desiredWrite: selectDesired,
+      })._tag,
     ).toBe('allowed')
   })
 
   it('StaleRemoteSchema', () => {
     expectBlocked(
-      evaluatePropertyWrite(
-        withProof({
+      evaluatePropertyWrite({
+        proof: withProof({
           schemaConsistency: { observedSchemaHash: Schema.decodeSync(SchemaHash)(hashOf(99)) },
         }),
-        selectDesired,
-      ),
+        desiredWrite: selectDesired,
+      }),
       'StaleRemoteSchema',
     )
     // Boundary: observed hash equals expected -> allowed.
     expect(
-      evaluatePropertyWrite(
-        withProof({
+      evaluatePropertyWrite({
+        proof: withProof({
           schemaConsistency: { observedSchemaHash: baseProof.schemaConsistency.expectedSchemaHash },
         }),
-        selectDesired,
-      )._tag,
+        desiredWrite: selectDesired,
+      })._tag,
     ).toBe('allowed')
   })
 
   it('ComputedPropertyWrite', () => {
     expectBlocked(
-      evaluatePropertyWrite(
-        withProof({ schemaConsistency: { writeClass: 'computed' } }),
-        selectDesired,
-      ),
+      evaluatePropertyWrite({
+        proof: withProof({ schemaConsistency: { writeClass: 'computed' } }),
+        desiredWrite: selectDesired,
+      }),
       'ComputedPropertyWrite',
     )
     expect(
-      evaluatePropertyWrite(
-        withProof({ schemaConsistency: { writeClass: 'writable' } }),
-        selectDesired,
-      )._tag,
+      evaluatePropertyWrite({
+        proof: withProof({ schemaConsistency: { writeClass: 'writable' } }),
+        desiredWrite: selectDesired,
+      })._tag,
     ).toBe('allowed')
   })
 
   it('UnsupportedRemoteShape (write class)', () => {
     expectBlocked(
-      evaluatePropertyWrite(
-        withProof({ schemaConsistency: { writeClass: 'unsupported' } }),
-        selectDesired,
-      ),
+      evaluatePropertyWrite({
+        proof: withProof({ schemaConsistency: { writeClass: 'unsupported' } }),
+        desiredWrite: selectDesired,
+      }),
       'UnsupportedRemoteShape',
     )
     // Boundary: a writable class with a fitting value is allowed.
     expect(
-      evaluatePropertyWrite(
-        withProof({ schemaConsistency: { writeClass: 'writable' } }),
-        selectDesired,
-      )._tag,
+      evaluatePropertyWrite({
+        proof: withProof({ schemaConsistency: { writeClass: 'writable' } }),
+        desiredWrite: selectDesired,
+      })._tag,
     ).toBe('allowed')
   })
 
   it('SchemaDriftAffectsIntent', () => {
     expectBlocked(
-      evaluatePropertyWrite(
-        withProof({
+      evaluatePropertyWrite({
+        proof: withProof({
           schemaConsistency: { observedConfigHash: Schema.decodeSync(ConfigHash)(hashOf(99)) },
         }),
-        selectDesired,
-      ),
+        desiredWrite: selectDesired,
+      }),
       'SchemaDriftAffectsIntent',
     )
     // Boundary: observed config equals expected config -> allowed.
     expect(
-      evaluatePropertyWrite(
-        withProof({
+      evaluatePropertyWrite({
+        proof: withProof({
           schemaConsistency: { observedConfigHash: baseProof.schemaConsistency.expectedConfigHash },
         }),
-        selectDesired,
-      )._tag,
+        desiredWrite: selectDesired,
+      })._tag,
     ).toBe('allowed')
   })
 
@@ -211,7 +217,9 @@ describe('evaluatePropertyWrite — per-guard block + allow boundary', () => {
         observedSchemaHash: Schema.decodeSync(SchemaHash)(hashOf(99)),
       },
     }
-    expect(evaluatePropertyWrite(proof, selectDesired)._tag).toBe('allowed')
+    expect(evaluatePropertyWrite({ proof: proof, desiredWrite: selectDesired })._tag).toBe(
+      'allowed',
+    )
   })
 
   it('skips SchemaDriftAffectsIntent when expectedConfigHash is omitted (observed without authored expectation)', () => {
@@ -223,7 +231,9 @@ describe('evaluatePropertyWrite — per-guard block + allow boundary', () => {
         observedConfigHash: Schema.decodeSync(ConfigHash)(hashOf(99)),
       },
     }
-    expect(evaluatePropertyWrite(proof, selectDesired)._tag).toBe('allowed')
+    expect(evaluatePropertyWrite({ proof: proof, desiredWrite: selectDesired })._tag).toBe(
+      'allowed',
+    )
   })
 
   it('UnsupportedRemoteShape (value tag vs property type)', () => {
@@ -232,9 +242,14 @@ describe('evaluatePropertyWrite — per-guard block + allow boundary', () => {
       dataSourceId: '00000000-0000-4000-8000-000000000002',
       value: { _tag: 'number', value: 1 },
     })
-    expectBlocked(evaluatePropertyWrite(baseProof, numberDesired), 'UnsupportedRemoteShape')
+    expectBlocked(
+      evaluatePropertyWrite({ proof: baseProof, desiredWrite: numberDesired }),
+      'UnsupportedRemoteShape',
+    )
     // Boundary: a select value fits the select property type.
-    expect(evaluatePropertyWrite(baseProof, selectDesired)._tag).toBe('allowed')
+    expect(evaluatePropertyWrite({ proof: baseProof, desiredWrite: selectDesired })._tag).toBe(
+      'allowed',
+    )
   })
 
   it('UnsupportedRemoteShape (computed value into writable slot)', () => {
@@ -243,79 +258,90 @@ describe('evaluatePropertyWrite — per-guard block + allow boundary', () => {
       dataSourceId: '00000000-0000-4000-8000-000000000002',
       value: { _tag: 'computed', valueHash: hashOf(7) },
     })
-    expectBlocked(evaluatePropertyWrite(baseProof, computedDesired), 'UnsupportedRemoteShape')
+    expectBlocked(
+      evaluatePropertyWrite({ proof: baseProof, desiredWrite: computedDesired }),
+      'UnsupportedRemoteShape',
+    )
   })
 
   it('PropertyValueIncomplete', () => {
     expectBlocked(
-      evaluatePropertyWrite(
-        withProof({ baseCompleteness: { surfaceComplete: false } }),
-        selectDesired,
-      ),
+      evaluatePropertyWrite({
+        proof: withProof({ baseCompleteness: { surfaceComplete: false } }),
+        desiredWrite: selectDesired,
+      }),
       'PropertyValueIncomplete',
     )
     expect(
-      evaluatePropertyWrite(
-        withProof({ baseCompleteness: { surfaceComplete: true } }),
-        selectDesired,
-      )._tag,
+      evaluatePropertyWrite({
+        proof: withProof({ baseCompleteness: { surfaceComplete: true } }),
+        desiredWrite: selectDesired,
+      })._tag,
     ).toBe('allowed')
   })
 
   it('UnavailableRelationTarget', () => {
     expectBlocked(
-      evaluatePropertyWrite(
-        withProof({ relationAvailability: { status: 'targets-unavailable' } }),
-        selectDesired,
-      ),
+      evaluatePropertyWrite({
+        proof: withProof({ relationAvailability: { status: 'targets-unavailable' } }),
+        desiredWrite: selectDesired,
+      }),
       'UnavailableRelationTarget',
     )
     expect(
-      evaluatePropertyWrite(
-        withProof({ relationAvailability: { status: 'all-available' } }),
-        selectDesired,
-      )._tag,
+      evaluatePropertyWrite({
+        proof: withProof({ relationAvailability: { status: 'all-available' } }),
+        desiredWrite: selectDesired,
+      })._tag,
     ).toBe('allowed')
   })
 
   it('RelatedDataSourceUnshared', () => {
     expectBlocked(
-      evaluatePropertyWrite(
-        withProof({ relationAvailability: { status: 'related-data-source-unshared' } }),
-        selectDesired,
-      ),
+      evaluatePropertyWrite({
+        proof: withProof({ relationAvailability: { status: 'related-data-source-unshared' } }),
+        desiredWrite: selectDesired,
+      }),
       'RelatedDataSourceUnshared',
     )
     // Boundary: a shared, all-available relation is allowed.
     expect(
-      evaluatePropertyWrite(
-        withProof({ relationAvailability: { status: 'all-available' } }),
-        selectDesired,
-      )._tag,
+      evaluatePropertyWrite({
+        proof: withProof({ relationAvailability: { status: 'all-available' } }),
+        desiredWrite: selectDesired,
+      })._tag,
     ).toBe('allowed')
   })
 
   it('LocalSurfaceDisagreement', () => {
     expectBlocked(
-      evaluatePropertyWrite(
-        withProof({ localConvergence: { status: 'disagrees' } }),
-        selectDesired,
-      ),
+      evaluatePropertyWrite({
+        proof: withProof({ localConvergence: { status: 'disagrees' } }),
+        desiredWrite: selectDesired,
+      }),
       'LocalSurfaceDisagreement',
     )
     expect(
-      evaluatePropertyWrite(withProof({ localConvergence: { status: 'converged' } }), selectDesired)
-        ._tag,
+      evaluatePropertyWrite({
+        proof: withProof({ localConvergence: { status: 'converged' } }),
+        desiredWrite: selectDesired,
+      })._tag,
     ).toBe('allowed')
   })
 
   it('ReadAfterWriteMismatch', () => {
     expectBlocked(
-      evaluatePropertyWrite(withProof({ settlement: { status: 'missing' } }), selectDesired),
+      evaluatePropertyWrite({
+        proof: withProof({ settlement: { status: 'missing' } }),
+        desiredWrite: selectDesired,
+      }),
       'ReadAfterWriteMismatch',
     )
     expect(
-      evaluatePropertyWrite(withProof({ settlement: { status: 'present' } }), selectDesired)._tag,
+      evaluatePropertyWrite({
+        proof: withProof({ settlement: { status: 'present' } }),
+        desiredWrite: selectDesired,
+      })._tag,
     ).toBe('allowed')
   })
 })
@@ -329,7 +355,10 @@ describe('evaluatePropertyWrite — guard order', () => {
       baseCompleteness: { surfaceComplete: false },
       settlement: { status: 'missing' },
     })
-    expectBlocked(evaluatePropertyWrite(multiViolation, selectDesired), 'RemoteSchemaRequired')
+    expectBlocked(
+      evaluatePropertyWrite({ proof: multiViolation, desiredWrite: selectDesired }),
+      'RemoteSchemaRequired',
+    )
   })
 
   it('identity ambiguity outranks a later base-completeness violation', () => {
@@ -337,7 +366,10 @@ describe('evaluatePropertyWrite — guard order', () => {
       identity: { displayNameUnambiguous: false },
       baseCompleteness: { surfaceComplete: false },
     })
-    expectBlocked(evaluatePropertyWrite(proof, selectDesired), 'PropertyIdentityAmbiguous')
+    expectBlocked(
+      evaluatePropertyWrite({ proof: proof, desiredWrite: selectDesired }),
+      'PropertyIdentityAmbiguous',
+    )
   })
 
   it('write-class (check 4) outranks config drift (check 5)', () => {
@@ -347,7 +379,10 @@ describe('evaluatePropertyWrite — guard order', () => {
         observedConfigHash: Schema.decodeSync(ConfigHash)(hashOf(99)),
       },
     })
-    expectBlocked(evaluatePropertyWrite(proof, selectDesired), 'ComputedPropertyWrite')
+    expectBlocked(
+      evaluatePropertyWrite({ proof: proof, desiredWrite: selectDesired }),
+      'ComputedPropertyWrite',
+    )
   })
 
   it('value/type fit (check 6) outranks base incompleteness (check 7)', () => {
@@ -357,7 +392,10 @@ describe('evaluatePropertyWrite — guard order', () => {
       value: { _tag: 'number', value: 1 },
     })
     const proof = withProof({ baseCompleteness: { surfaceComplete: false } })
-    expectBlocked(evaluatePropertyWrite(proof, numberDesired), 'UnsupportedRemoteShape')
+    expectBlocked(
+      evaluatePropertyWrite({ proof: proof, desiredWrite: numberDesired }),
+      'UnsupportedRemoteShape',
+    )
   })
 
   it('relation availability (check 8) outranks local disagreement (check 9)', () => {
@@ -365,7 +403,10 @@ describe('evaluatePropertyWrite — guard order', () => {
       relationAvailability: { status: 'targets-unavailable' },
       localConvergence: { status: 'disagrees' },
     })
-    expectBlocked(evaluatePropertyWrite(proof, selectDesired), 'UnavailableRelationTarget')
+    expectBlocked(
+      evaluatePropertyWrite({ proof: proof, desiredWrite: selectDesired }),
+      'UnavailableRelationTarget',
+    )
   })
 
   it('local disagreement (check 9) outranks missing settlement (check 10)', () => {
@@ -373,6 +414,9 @@ describe('evaluatePropertyWrite — guard order', () => {
       localConvergence: { status: 'disagrees' },
       settlement: { status: 'missing' },
     })
-    expectBlocked(evaluatePropertyWrite(proof, selectDesired), 'LocalSurfaceDisagreement')
+    expectBlocked(
+      evaluatePropertyWrite({ proof: proof, desiredWrite: selectDesired }),
+      'LocalSurfaceDisagreement',
+    )
   })
 })

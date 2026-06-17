@@ -138,7 +138,7 @@ const runOneCycleForMode = async (
   const workspace = await tempWorkspace()
   await establishWorkspaceWithMode({ workspace, mode })
   const sqlitePath = dataFilePath({ workspaceRoot: workspace, name: testIds.databaseId })
-  editSelectInSqlite(sqlitePath, localEditValue)
+  editSelectInSqlite({ sqlitePath, value: localEditValue })
 
   // The cycle gateway reports the established remote baseline. (A genuine remote
   // property-value drift cannot be represented here: the fake gateway dedups

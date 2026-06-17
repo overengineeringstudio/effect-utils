@@ -56,7 +56,7 @@ const evaluateStatus = (opts: {
       : {}),
   })
   expect(built, 'expected the proof builder to resolve the property').toBeDefined()
-  return evaluatePropertyWrite(built!.proof, built!.desiredWrite)
+  return evaluatePropertyWrite({ proof: built!.proof, desiredWrite: built!.desiredWrite })
 }
 
 describe('buildStandaloneLiveProof — proof shape', () => {

@@ -165,7 +165,7 @@ describe('SM5.2 one-shot sync --dry-run suppression guarantee (all surfaces)', (
     // intent AND a `.nmd` body/frontmatter edit. `High` in the data file
     // diverges from the unchanged remote base (`init`) → a clean outbound edit
     // that a non-dry-run sync would settle through the gateway.
-    editSelectInSqlite(sqlitePath, 'High')
+    editSelectInSqlite({ sqlitePath, value: 'High' })
     await writePageNmd({
       workspace,
       selectValue: 'High',
@@ -221,7 +221,7 @@ describe('SM5.2 one-shot sync --dry-run suppression guarantee (all surfaces)', (
     await establishSharedWorkspace(workspace)
     const sqlitePath = dataFilePath({ workspaceRoot: workspace, name: testIds.databaseId })
 
-    editSelectInSqlite(sqlitePath, 'High')
+    editSelectInSqlite({ sqlitePath, value: 'High' })
     await writePageNmd({
       workspace,
       selectValue: 'High',

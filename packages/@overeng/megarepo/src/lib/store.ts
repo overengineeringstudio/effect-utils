@@ -111,7 +111,31 @@ export class Store extends Context.Tag('megarepo/Store')<Store, MegarepoStore>()
 // =============================================================================
 
 const shouldSkipStoreRootEntry = (entry: string): boolean =>
-  entry.startsWith('.') === true || entry === 'tmp'
+  // The store root holds member namespaces (`<host>/<owner>/<repo>/`) AND
+  // non-member co-tenant dirs. This is the PRIMARY membership boundary that
+  // separates them, not a temporary backstop:
+  //   - Dot-dirs are store-internal (`.state`, `.locks`, …).
+  //   - `_`-prefixed dirs are co-tenant scratch namespaces — e.g. `_iso/`, where
+  //     external tooling continuously checks out isolated worktrees that share
+  //     the store root. They are NOT members of this store, so the walk must
+  //     never enumerate them (and never descend into their working trees). No
+  //     real host or owner segment starts with `_`, so this never excludes a
+  //     legitimate member.
+  //   - `tmp` is a conventional scratch dir.
+  // The `_`-prefix convention is a stable contract for co-tenants, owned here; a
+  // co-tenant writer that emits `_`-prefixed roots is well-behaved by design.
+  entry.startsWith('.') === true || entry.startsWith('_') === true || entry === 'tmp'
+
+// Backstop depth for the store filesystem walks. For the `listRepos` layout walk
+// the documented layout is `<host>/<owner>/<repo>/.bare` (repos at depth ~2–3
+// from the store root); this generous bound lets nested namespaces (e.g. GitLab
+// subgroups) resolve while guaranteeing the walk can never descend into a
+// checked-out working tree (node_modules, build output) and exhaust memory.
+// `collectNestedWorktrees` reuses it as a ref-NAME-nesting bound under
+// `refs/heads/<a>/<b>/…`; real branch names nest only a few segments, so the same
+// value (8) comfortably clears any legitimate worktree while still capping a
+// pathological worktree-less subtree. Hitting it is logged, never silent.
+const STORE_REPO_WALK_MAX_DEPTH = 8
 
 const make = ({
   config,
@@ -155,10 +179,12 @@ const make = ({
     refTypePath,
     currentPath,
     refType,
+    depth,
   }: {
     refTypePath: AbsoluteDirPath
     currentPath: AbsoluteDirPath
     refType: RefType
+    depth: number
   }): Effect.Effect<
     Array<{
       ref: string
@@ -174,6 +200,21 @@ const make = ({
       if (isWorktree === true) {
         const ref = currentPath.slice(refTypePath.length).replace(/\/$/, '')
         return [{ ref, refType, path: currentPath, broken: false }]
+      }
+
+      // Backstop: a worktree-less subtree (a stray dir, or a broken worktree whose
+      // working tree — `node_modules`, build output — survived a dropped `.git`)
+      // would otherwise recurse to the filesystem's depth. The `.git` check above
+      // runs first, so a real worktree sitting exactly at the cap is still found;
+      // we only refuse to descend PAST it. `depth` is measured in ref-name
+      // segments under `refTypePath` (`refs/heads/<a>/<b>/…`), and real branch
+      // names nest only a handful of levels, so reusing the layout walk's bound (8)
+      // can never truncate a legitimate worktree.
+      if (depth >= STORE_REPO_WALK_MAX_DEPTH) {
+        yield* Effect.logWarning(
+          'store listWorktrees: nested-worktree walk depth limit reached; not descending',
+        ).pipe(Effect.annotateLogs({ currentPath, depth }))
+        return []
       }
 
       const entries = yield* fs.readDirectory(currentPath)
@@ -201,6 +242,7 @@ const make = ({
             refTypePath,
             currentPath: entryPath,
             refType,
+            depth: depth + 1,
           })),
         )
       }
@@ -246,7 +288,13 @@ const make = ({
           fullPath: AbsoluteDirPath
         }> = []
 
-        const walk = (dir: AbsoluteDirPath): Effect.Effect<void, PlatformError.PlatformError> =>
+        const walk = ({
+          dir,
+          depth,
+        }: {
+          dir: AbsoluteDirPath
+          depth: number
+        }): Effect.Effect<void, PlatformError.PlatformError> =>
           Effect.gen(function* () {
             yield* Effect.yieldNow()
             const barePath = EffectPath.ops.join(dir, EffectPath.unsafe.relativeDir('.bare/'))
@@ -257,6 +305,33 @@ const make = ({
                 relativePath: EffectPath.unsafe.relativeDir(relativePath),
                 fullPath: dir,
               })
+              return
+            }
+
+            // Membership-contract stops (a member is `<host>/<owner>/<repo>/.bare`).
+            // Without these the walk descends into directories that are NOT part of
+            // this store and enumerates their entire contents — exhausting memory on
+            // a real store and mis-claiming non-members:
+            //  - `.git` present  → a checked-out worktree, never a namespace dir;
+            //    its working tree (node_modules, …) must never be walked.
+            //  - `.state`/`.locks` present → a NESTED megarepo store (e.g. an
+            //    isolated experiment store), whose repos belong to it, not here.
+            const hasGit = yield* fs.exists(
+              EffectPath.ops.join(dir, EffectPath.unsafe.relativeFile('.git')),
+            )
+            if (hasGit === true) return
+            const isNestedStore = yield* Effect.all([
+              fs.exists(EffectPath.ops.join(dir, EffectPath.unsafe.relativeDir('.state/'))),
+              fs.exists(EffectPath.ops.join(dir, EffectPath.unsafe.relativeDir('.locks/'))),
+            ]).pipe(Effect.map(([state, locks]) => state === true || locks === true))
+            if (isNestedStore === true) return
+
+            // Backstop: never descend past the layout's plausible repo depth, so a
+            // pathological non-git directory tree can't drive an unbounded walk.
+            if (depth >= STORE_REPO_WALK_MAX_DEPTH) {
+              yield* Effect.logWarning(
+                'store listRepos: walk depth limit reached; not descending',
+              ).pipe(Effect.annotateLogs({ dir, depth }))
               return
             }
 
@@ -277,7 +352,7 @@ const make = ({
                     .pipe(Effect.catchAll(() => Effect.succeed(null)))
                   if (entryStat?.type !== 'Directory') return
 
-                  yield* walk(entryPath)
+                  yield* walk({ dir: entryPath, depth: depth + 1 })
                 }),
               ),
               { concurrency: 32 },
@@ -301,11 +376,13 @@ const make = ({
                 .pipe(Effect.catchAll(() => Effect.succeed(null)))
               if (entryStat?.type !== 'Directory') return
 
-              yield* walk(entryPath)
+              yield* walk({ dir: entryPath, depth: 1 })
             }),
           ),
           { concurrency: 32 },
-        ).pipe(Observability.withLabelSpan('megarepo/store/list-repos', 'repos'))
+        ).pipe(
+          Observability.withLabelSpan({ name: 'megarepo/store/list-repos', labelValue: 'repos' }),
+        )
 
         return result.toSorted((a, b) => a.relativePath.localeCompare(b.relativePath))
       }),
@@ -345,6 +422,7 @@ const make = ({
               refTypePath,
               currentPath: refTypePath,
               refType,
+              depth: 0,
             })),
           )
         }

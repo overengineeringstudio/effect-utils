@@ -92,9 +92,12 @@ export const statusPath = (
       ...(opts.concurrency === undefined ? {} : { concurrency: opts.concurrency }),
     })
   }).pipe(
-    Observability.withOperation(Observability.StatusPathSpan, {
-      basename: basename(opts.path),
-      recursive: opts.recursive === true,
+    Observability.withOperation({
+      operation: Observability.StatusPathSpan,
+      attributes: {
+        basename: basename(opts.path),
+        recursive: opts.recursive === true,
+      },
     }),
   )
 
@@ -124,9 +127,12 @@ export const planPath = (
       ...(opts.rootFile === undefined ? {} : { rootFile: opts.rootFile }),
     })
   }).pipe(
-    Observability.withOperation(Observability.PlanPathSpan, {
-      basename: basename(opts.path),
-      fromRemote: opts.fromRemote === true,
+    Observability.withOperation({
+      operation: Observability.PlanPathSpan,
+      attributes: {
+        basename: basename(opts.path),
+        fromRemote: opts.fromRemote === true,
+      },
     }),
   )
 
@@ -201,10 +207,13 @@ export const syncPath = (
       ...(opts.gcObjects === undefined ? {} : { gcObjects: opts.gcObjects }),
     })
   }).pipe(
-    Observability.withOperation(Observability.SyncPathSpan, {
-      basename: basename(opts.path),
-      recursive: opts.recursive === true,
-      fromRemote: opts.fromRemote === true,
+    Observability.withOperation({
+      operation: Observability.SyncPathSpan,
+      attributes: {
+        basename: basename(opts.path),
+        recursive: opts.recursive === true,
+        fromRemote: opts.fromRemote === true,
+      },
     }),
   )
 

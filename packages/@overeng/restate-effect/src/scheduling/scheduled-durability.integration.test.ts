@@ -74,13 +74,13 @@ const waitHealthy = async (adminUrl: string, deadlineMs = 30_000): Promise<void>
   for (;;) {
     try {
       const res = await fetch(`${adminUrl}/health`)
-      if (res.ok) {
+      if (res.ok === true) {
         const q = await fetch(`${adminUrl}/query`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ query: 'SELECT count(1) FROM sys_invocation' }),
         })
-        if (q.ok) return
+        if (q.ok === true) return
       }
     } catch {
       /* not up */
@@ -96,7 +96,8 @@ const register = async (adminUrl: string, uri: string): Promise<void> => {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ uri, force: true }),
   })
-  if (!res.ok) throw new Error(`register failed ${res.status}: ${await res.text().catch(() => '')}`)
+  if (res.ok === false)
+    throw new Error(`register failed ${res.status}: ${await res.text().catch(() => '')}`)
 }
 
 const readCursor = async (adminUrl: string, serviceName: string, key: string): Promise<number> => {
@@ -107,7 +108,7 @@ const readCursor = async (adminUrl: string, serviceName: string, key: string): P
       query: `SELECT key, value FROM state WHERE service_name = '${serviceName}' AND service_key = '${key}'`,
     }),
   })
-  if (!res.ok) return -1
+  if (res.ok === false) return -1
   const body = (await res.json()) as { rows?: Array<Record<string, unknown>> }
   const row = (body.rows ?? []).find((r) => r['key'] === 'cursor')
   if (row === undefined) return 0
@@ -140,7 +141,7 @@ describe.skipIf(!serverAvailable)(
     }
 
     beforeAll(async () => {
-      if (!serverAvailable) return
+      if (serverAvailable === false) return
       resetComposedSources()
       baseDir = await mkdtemp(join(tmpdir(), 'restate-compose-durab-'))
       const [ingress, admin, node] = await Promise.all([freePort(), freePort(), freePort()])
@@ -165,7 +166,7 @@ describe.skipIf(!serverAvailable)(
     }, 90_000)
 
     afterAll(async () => {
-      if (!serverAvailable) return
+      if (serverAvailable === false) return
       if (child !== undefined && child.exitCode === null) {
         child.kill('SIGKILL')
         await sleep(300)
@@ -177,13 +178,18 @@ describe.skipIf(!serverAvailable)(
 
     it('SIGKILL mid inter-cycle wait → the loop resumes (cursor climbs past the kill)', async () => {
       const key = 'durab-1'
-      installComposedSource(key, (cursor) => ({
-        nextCursor: cursor + 1,
-        itemCount: 1,
-        done: false,
-      }))
+      installComposedSource({
+        key,
+        behavior: (cursor) => ({
+          nextCursor: cursor + 1,
+          itemCount: 1,
+          done: false,
+        }),
+      })
       await Effect.runPromise(
-        provideIngress(ingressObjectCall(Daemon.contract, key, 'start', undefined)),
+        provideIngress(
+          ingressObjectCall({ contract: Daemon.contract, key, method: 'start', input: undefined }),
+        ),
       )
 
       /* Let a couple cycles run, then capture the cursor. The 1.5s held wake-race means
@@ -211,7 +217,9 @@ describe.skipIf(!serverAvailable)(
       expect(cursorAfter).toBeGreaterThan(cursorBefore)
 
       await Effect.runPromise(
-        provideIngress(ingressObjectSend(Daemon.contract, key, 'stop', undefined)),
+        provideIngress(
+          ingressObjectSend({ contract: Daemon.contract, key, method: 'stop', input: undefined }),
+        ),
       )
     }, 90_000)
   },

@@ -24,7 +24,7 @@
  */
 
 import { Options } from '@effect/cli'
-import { Cause, Effect, Layer, Logger, Option } from 'effect'
+import { Cause, Effect, Exit, Layer, Logger, Option } from 'effect'
 
 import { createLogCapture } from './LogCapture.ts'
 import { detectOutputMode, viewOutputStreamStdoutLayer } from './OutputMode.node.ts'
@@ -257,7 +257,25 @@ export interface TuiRuntime {
   readonly runMain: (options?: {
     readonly disableErrorReporting?: boolean
     readonly disablePrettyLogger?: boolean
+    readonly teardown?: <E, A>(exit: Exit.Exit<E, A>, onExit: (code: number) => void) => void
   }) => <E, A>(effect: Effect.Effect<A, E>) => void
+}
+
+/**
+ * Custom finalization so a signal-interrupted CLI (Ctrl-C) exits 130 — the shell
+ * convention — instead of the default teardown's hardcoded 0. The `catchAllCause`
+ * in {@link runTuiMainImpl} catches the interrupt, suppresses the stack, sets
+ * `process.exitCode = 130`, and completes the fiber as a Success, so the
+ * interrupt surfaces here only via `process.exitCode` — which we honor instead
+ * of forcing 0. An uncaught failure still maps to 1, matching the default.
+ */
+// oxlint-disable-next-line overeng/named-args -- implements Effect's `Teardown` interface (fixed `(exit, onExit)` signature) passed to `NodeRuntime.runMain`
+const tuiTeardown = <E, A>(exit: Exit.Exit<E, A>, onExit: (code: number) => void): void => {
+  if (Exit.isFailure(exit) === true && Cause.isInterruptedOnly(exit.cause) === false) {
+    onExit(1)
+    return
+  }
+  onExit(process.exitCode === undefined ? 0 : Number(process.exitCode))
 }
 
 /**
@@ -364,6 +382,7 @@ const runTuiMainImpl = <E, A>({
     runtime.runMain({
       disableErrorReporting: true,
       disablePrettyLogger: true,
+      teardown: tuiTeardown,
     }),
   )
 }

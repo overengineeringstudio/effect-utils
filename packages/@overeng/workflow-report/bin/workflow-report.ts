@@ -2,11 +2,12 @@
 
 import * as Cli from '@effect/cli'
 import { NodeContext, NodeRuntime } from '@effect/platform-node'
-import { Effect, Layer } from 'effect'
+import { Effect, Layer, Schema } from 'effect'
 
+import { ServiceIdentity } from '@overeng/otel-contract'
 import { rewriteHelpSubcommand } from '@overeng/utils/node/cli-help-rewrite'
 import { CliVersion, resolveCliVersion } from '@overeng/utils/node/cli-version'
-import { makeOtelCliLayer } from '@overeng/utils/node/otel'
+import { otelEndpointFromConfig, withTelemetry } from '@overeng/utils/node/otel'
 
 import { workflowReportCommand } from '../src/cli-command.ts'
 
@@ -16,15 +17,26 @@ const version = resolveCliVersion({
   buildStamp,
 })
 
-Cli.Command.run(workflowReportCommand, {
-  name: 'workflow-report',
+const identity = Schema.decodeSync(ServiceIdentity)({
+  name: 'workflow-report-cli',
+  namespace: 'overeng',
   version,
-})(rewriteHelpSubcommand(process.argv)).pipe(
-  Effect.scoped,
-  CliVersion.enrichErrors,
-  Effect.provideService(CliVersion, { name: 'workflow-report', version }),
-  Effect.provide(
-    Layer.mergeAll(NodeContext.layer, makeOtelCliLayer({ serviceName: 'workflow-report-cli' })),
-  ),
-  NodeRuntime.runMain({ disableErrorReporting: true }),
-)
+})
+
+const program = Effect.gen(function* () {
+  const endpoint = yield* otelEndpointFromConfig()
+
+  yield* Cli.Command.run(workflowReportCommand, {
+    name: 'workflow-report',
+    version,
+  })(rewriteHelpSubcommand(process.argv)).pipe(
+    Effect.scoped,
+    CliVersion.enrichErrors,
+    Effect.provideService(CliVersion, { name: 'workflow-report', version }),
+    Effect.provide(
+      Layer.mergeAll(NodeContext.layer, withTelemetry({ identity, shape: 'cli', endpoint })),
+    ),
+  )
+})
+
+program.pipe(NodeRuntime.runMain({ disableErrorReporting: true }))

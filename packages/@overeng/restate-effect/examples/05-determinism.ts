@@ -36,57 +36,63 @@ export const DemoSuccess = Schema.Struct({
   token: Schema.String,
 })
 
-export const Demo = RestateService.contract('determinism-demo', {
-  run: { input: DemoInput, success: DemoSuccess },
+export const Demo = RestateService.contract({
+  name: 'determinism-demo',
+  handlers: {
+    run: { input: DemoInput, success: DemoSuccess },
+  },
 })
 
-export const DemoLive = RestateService.implement<typeof Demo>(Demo, {
-  run: () =>
-    Effect.gen(function* () {
-      /* Journaled time: backed by `ctx.date`, so a replay reads the SAME instant. */
-      const at = yield* Clock.currentTimeMillis
-      /* Journaled randomness: backed by `ctx.rand`, seeded + replay-stable. */
-      const roll = yield* Random.nextIntBetween(1, 7)
+export const DemoLive = RestateService.implement<typeof Demo>({
+  contractValue: Demo,
+  impl: {
+    run: () =>
+      Effect.gen(function* () {
+        /* Journaled time: backed by `ctx.date`, so a replay reads the SAME instant. */
+        const at = yield* Clock.currentTimeMillis
+        /* Journaled randomness: backed by `ctx.rand`, seeded + replay-stable. */
+        const roll = yield* Random.nextIntBetween(1, 7)
 
-      /* A durable step: the closure runs once on real execution; its result is
-       * journaled and replayed verbatim. Put raw nondeterminism / external I/O
-       * HERE. Inside a `run` closure a nested `ctx.*` / `State.*` would be a
-       * COMPILE error (the durable capabilities are scrubbed). The `E` is CLEAN
-       * (this closure declares no domain error, so no `catchTag`/`orDie` needed —
-       * an infra failure is a defect classified at the boundary). */
-      const token = yield* Restate.run(
-        'mint-token',
-        Effect.sync(() => crypto.randomUUID()),
-      )
+        /* A durable step: the closure runs once on real execution; its result is
+         * journaled and replayed verbatim. Put raw nondeterminism / external I/O
+         * HERE. Inside a `run` closure a nested `ctx.*` / `State.*` would be a
+         * COMPILE error (the durable capabilities are scrubbed). The `E` is CLEAN
+         * (this closure declares no domain error, so no `catchTag`/`orDie` needed —
+         * an infra failure is a defect classified at the boundary). */
+        const token = yield* Restate.run({
+          name: 'mint-token',
+          effect: Effect.sync(() => crypto.randomUUID()),
+        })
 
-      /* A durable timer (lower bound; survives suspension + restarts). A bare
-       * `Effect.sleep` stays non-durable — use it only for in-handler timing. */
-      yield* Restate.sleep(10, 'settle')
+        /* A durable timer (lower bound; survives suspension + restarts). A bare
+         * `Effect.sleep` stays non-durable — use it only for in-handler timing. */
+        yield* Restate.sleep({ millis: 10, name: 'settle' })
 
-      return { at, roll, token }
-    }),
+        return { at, roll, token }
+      }),
+  },
 })
 
 /* ── Durable concurrency: combinators take DESCRIPTORS, issued in source order ── */
 /*
  * `Restate.all` / `race` / `any` take durable-op descriptors (not opaque Effects)
  * so the journal order is the source order. Each descriptor is one durable op:
- * `Restate.runDescriptor(name, action)` or `Restate.sleepDescriptor(millis)`.
+ * `Restate.runDescriptor({ name, action })` or `Restate.sleepDescriptor({ millis })`.
  * The combinator awaits the single combined promise ONCE; map the RESULT after.
  * The `E` is CLEAN — no `orDie` needed (#1).
  */
 export const raceExample: Effect.Effect<number, never, RestateContext> = Restate.race([
-  Restate.runDescriptor('fetch-a', () => Promise.resolve(1)),
-  Restate.runDescriptor('fetch-b', () => Promise.resolve(2)),
+  Restate.runDescriptor({ name: 'fetch-a', action: () => Promise.resolve(1) }),
+  Restate.runDescriptor({ name: 'fetch-b', action: () => Promise.resolve(2) }),
 ])
 
 /* `Restate.timeout` bounds a single durable-op descriptor by a deadline:
  * the value if it resolved first, `undefined` on timeout. */
 export const timeoutExample: Effect.Effect<number | undefined, never, RestateContext> =
-  Restate.timeout(
-    Restate.runDescriptor('slow-op', () => Promise.resolve(42)),
-    1_000,
-  )
+  Restate.timeout({
+    descr: Restate.runDescriptor({ name: 'slow-op', action: () => Promise.resolve(42) }),
+    millis: 1_000,
+  })
 
 /* ── Awakeable in a deterministic race (#2) ────────────────────────────────── */
 /*
@@ -104,7 +110,10 @@ export const awakeableRaceExample: Effect.Effect<string, never, RestateContext> 
      * (a `sleepDescriptor` resolves to `undefined`, mapped to a timeout marker). */
     const winner = yield* Restate.race([
       descriptor,
-      Restate.runDescriptor('deadline', () => Promise.resolve<string>('__timeout__')),
+      Restate.runDescriptor({
+        name: 'deadline',
+        action: () => Promise.resolve<string>('__timeout__'),
+      }),
     ])
     return winner
   },

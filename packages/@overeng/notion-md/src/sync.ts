@@ -416,8 +416,11 @@ const guardDatasourcePropertyWrites = (opts: {
     if (notionMd.parent._tag !== 'data_source') return
     const dataSourceId = notionMd.parent.id
     if (opts.dataSource !== null && opts.dataSource.data_source_id !== dataSourceId) {
-      yield* Observability.annotateAttrs(Observability.pushDecisionAttrs, {
-        decision: 'schema_drift',
+      yield* Observability.annotateAttrs({
+        attributes: Observability.pushDecisionAttrs,
+        value: {
+          decision: 'schema_drift',
+        },
       })
       return yield* new NmdSchemaDriftError({
         path: opts.path,
@@ -455,8 +458,11 @@ const guardDatasourcePropertyWrites = (opts: {
       })
       if (decision._tag === 'blocked') {
         if (decision.guard === 'StaleRemoteSchema') {
-          yield* Observability.annotateAttrs(Observability.pushDecisionAttrs, {
-            decision: 'schema_drift',
+          yield* Observability.annotateAttrs({
+            attributes: Observability.pushDecisionAttrs,
+            value: {
+              decision: 'schema_drift',
+            },
           })
           return yield* new NmdSchemaDriftError({
             path: opts.path,
@@ -675,8 +681,11 @@ const assertSchemaUnchanged = (opts: {
     const schema = yield* gateway.retrieveDataSource({ dataSourceId: binding.data_source_id })
     const liveHash = writableSchemaHash(schema.properties)
     if (liveHash === binding.schema_hash) return
-    yield* Observability.annotateAttrs(Observability.pushDecisionAttrs, {
-      decision: 'schema_drift',
+    yield* Observability.annotateAttrs({
+      attributes: Observability.pushDecisionAttrs,
+      value: {
+        decision: 'schema_drift',
+      },
     })
     return yield* new NmdSchemaDriftError({
       page_id: opts.pageId,
@@ -881,9 +890,12 @@ export const pullPage = (
       baselineBody: pulled.markdown.markdown,
     })
   }).pipe(
-    Observability.withOperation(Observability.PullPageSpan, {
-      pageId: opts.pageId,
-      basename: basename(opts.outPath),
+    Observability.withOperation({
+      operation: Observability.PullPageSpan,
+      attributes: {
+        pageId: opts.pageId,
+        basename: basename(opts.outPath),
+      },
     }),
   )
 
@@ -925,7 +937,12 @@ const establishSidecarFromRemote = (opts: {
         dataSource,
       }),
     })
-  }).pipe(Observability.withOperation(Observability.EstablishSidecarSpan, { pageId: opts.pageId }))
+  }).pipe(
+    Observability.withOperation({
+      operation: Observability.EstablishSidecarSpan,
+      attributes: { pageId: opts.pageId },
+    }),
+  )
 
 const readNmd = (
   path: string,
@@ -1109,18 +1126,24 @@ export const statusPage = (
     return statusFromSnapshots({ path: opts.path, local, remote })
   }).pipe(
     Effect.tap((status) =>
-      Observability.annotateAttrs(Observability.statusAttrs, {
-        pageId: status.pageId,
-        localChanged: status.localChanged,
-        localPageMetadataChanged: status.localPageMetadataChanged,
-        localPropertiesChanged: status.localPropertiesChanged,
-        remoteChanged: status.remoteChanged,
-        remoteBodyChanged: status.remoteBodyChanged,
-        remotePageMetadataChanged: status.remotePageMetadataChanged,
-        unknownBlockCount: status.unresolvedUnknownBlocks.length,
+      Observability.annotateAttrs({
+        attributes: Observability.statusAttrs,
+        value: {
+          pageId: status.pageId,
+          localChanged: status.localChanged,
+          localPageMetadataChanged: status.localPageMetadataChanged,
+          localPropertiesChanged: status.localPropertiesChanged,
+          remoteChanged: status.remoteChanged,
+          remoteBodyChanged: status.remoteBodyChanged,
+          remotePageMetadataChanged: status.remotePageMetadataChanged,
+          unknownBlockCount: status.unresolvedUnknownBlocks.length,
+        },
       }),
     ),
-    Observability.withOperation(Observability.StatusPageSpan, { basename: basename(opts.path) }),
+    Observability.withOperation({
+      operation: Observability.StatusPageSpan,
+      attributes: { basename: basename(opts.path) },
+    }),
   )
 
 /**
@@ -1341,14 +1364,17 @@ export const pushGuarded = (opts: {
         })
       }
     }).pipe(
-      Observability.withOperation(Observability.DestructiveBodySpan, {
-        guard: 'ReviewMarkupAsContent',
-        blockCount: 0,
-        verdict:
-          containsRoughdraftReviewMarkup(local.desiredBody) === true &&
-          options.allowReviewMarkup !== true
-            ? 'blocked'
-            : 'inert',
+      Observability.withOperation({
+        operation: Observability.DestructiveBodySpan,
+        attributes: {
+          guard: 'ReviewMarkupAsContent',
+          blockCount: 0,
+          verdict:
+            containsRoughdraftReviewMarkup(local.desiredBody) === true &&
+            options.allowReviewMarkup !== true
+              ? 'blocked'
+              : 'inert',
+        },
       }),
     )
 
@@ -1367,15 +1393,18 @@ export const pushGuarded = (opts: {
         })
       }
     }).pipe(
-      Observability.withOperation(Observability.DestructiveBodySpan, {
-        guard: 'UnknownBlockDeletion',
-        blockCount: status.unresolvedUnknownBlocks.length,
-        verdict:
-          status.localChanged === true &&
-          status.unresolvedUnknownBlocks.length > 0 &&
-          options.allowDeletingUnknownBlocks !== true
-            ? 'blocked'
-            : 'inert',
+      Observability.withOperation({
+        operation: Observability.DestructiveBodySpan,
+        attributes: {
+          guard: 'UnknownBlockDeletion',
+          blockCount: status.unresolvedUnknownBlocks.length,
+          verdict:
+            status.localChanged === true &&
+            status.unresolvedUnknownBlocks.length > 0 &&
+            options.allowDeletingUnknownBlocks !== true
+              ? 'blocked'
+              : 'inert',
+        },
       }),
     )
 
@@ -1429,8 +1458,11 @@ export const pushGuarded = (opts: {
         status.localChanged === false &&
         (status.localPageMetadataChanged === true || status.localPropertiesChanged === true)
       ) {
-        yield* Observability.annotateAttrs(Observability.pushDecisionAttrs, {
-          decision: 'metadata_only_remote_body_changed',
+        yield* Observability.annotateAttrs({
+          attributes: Observability.pushDecisionAttrs,
+          value: {
+            decision: 'metadata_only_remote_body_changed',
+          },
         })
         if (hasPageMetadataUpdate(metadataUpdate) === true) {
           yield* gateway.updatePageMetadata({ pageId: status.pageId, metadata: metadataUpdate })
@@ -1472,8 +1504,11 @@ export const pushGuarded = (opts: {
       }
 
       if (mergedBody !== undefined) {
-        yield* Observability.annotateAttrs(Observability.pushDecisionAttrs, {
-          decision: 'auto_merge',
+        yield* Observability.annotateAttrs({
+          attributes: Observability.pushDecisionAttrs,
+          value: {
+            decision: 'auto_merge',
+          },
         })
         const command =
           options.replaceContent === true
@@ -1483,8 +1518,11 @@ export const pushGuarded = (opts: {
                 remoteBody: remoteForStatus.markdown.markdown,
                 desiredBody: mergedBody,
               })
-        yield* Observability.annotateAttrs(Observability.pushMarkdownCommandAttrs, {
-          markdownCommand: command._tag,
+        yield* Observability.annotateAttrs({
+          attributes: Observability.pushMarkdownCommandAttrs,
+          value: {
+            markdownCommand: command._tag,
+          },
         })
         yield* withStage(
           { id: 'write-body', label: 'write-body', doneMessage: 'replace_content' },
@@ -1540,8 +1578,11 @@ export const pushGuarded = (opts: {
         localBody: local.desiredBody,
         remoteBody: remoteForStatus.markdown.markdown,
       })
-      yield* Observability.annotateAttrs(Observability.pushDecisionAttrs, {
-        decision: 'body_conflict',
+      yield* Observability.annotateAttrs({
+        attributes: Observability.pushDecisionAttrs,
+        value: {
+          decision: 'body_conflict',
+        },
       })
       return yield* new NmdConflictError({
         path,
@@ -1603,9 +1644,12 @@ export const pushGuarded = (opts: {
                   remoteBody: remote.markdown.markdown,
                   desiredBody: local.desiredBody,
                 })
-          yield* Observability.annotateAttrs(Observability.pushDecisionMarkdownCommandAttrs, {
-            decision: options.force === true ? 'force_replace' : 'guarded_update',
-            markdownCommand: command._tag,
+          yield* Observability.annotateAttrs({
+            attributes: Observability.pushDecisionMarkdownCommandAttrs,
+            value: {
+              decision: options.force === true ? 'force_replace' : 'guarded_update',
+              markdownCommand: command._tag,
+            },
           })
           yield* gateway.updateMarkdown({
             pageId: status.pageId,
@@ -1684,15 +1728,21 @@ export const pushPageWithPolicy = (
     })
   }).pipe(
     Effect.tap((result) =>
-      Observability.annotateAttrs(Observability.pushResultAttrs, {
-        pageId: result.pageId,
-        pushed: result.pushed,
+      Observability.annotateAttrs({
+        attributes: Observability.pushResultAttrs,
+        value: {
+          pageId: result.pageId,
+          pushed: result.pushed,
+        },
       }),
     ),
-    Observability.withOperation(Observability.PushPageSpan, {
-      basename: basename(opts.path),
-      force: opts.force === true,
-      allowDeleteUnknownBlocks: opts.allowDeletingUnknownBlocks === true,
+    Observability.withOperation({
+      operation: Observability.PushPageSpan,
+      attributes: {
+        basename: basename(opts.path),
+        force: opts.force === true,
+        allowDeleteUnknownBlocks: opts.allowDeletingUnknownBlocks === true,
+      },
     }),
   )
 
@@ -1761,12 +1811,18 @@ export const syncPage = (
 ): Effect.Effect<SyncResult, NmdError, FileSystem.FileSystem | NotionMdGateway | NmdStateStore> =>
   runSyncPass(opts).pipe(
     Effect.tap((result) =>
-      Observability.annotateAttrs(Observability.syncResultAttrs, {
-        pageId: result.pageId,
-        result: result._tag,
+      Observability.annotateAttrs({
+        attributes: Observability.syncResultAttrs,
+        value: {
+          pageId: result.pageId,
+          result: result._tag,
+        },
       }),
     ),
-    Observability.withOperation(Observability.SyncPageSpan, { basename: basename(opts.path) }),
+    Observability.withOperation({
+      operation: Observability.SyncPageSpan,
+      attributes: { basename: basename(opts.path) },
+    }),
   )
 
 /**
@@ -1780,10 +1836,16 @@ export const syncPageReplacingBody = (
 ): Effect.Effect<SyncResult, NmdError, FileSystem.FileSystem | NotionMdGateway | NmdStateStore> =>
   runSyncPass({ ...opts, replaceContent: true }).pipe(
     Effect.tap((result) =>
-      Observability.annotateAttrs(Observability.syncResultAttrs, {
-        pageId: result.pageId,
-        result: result._tag,
+      Observability.annotateAttrs({
+        attributes: Observability.syncResultAttrs,
+        value: {
+          pageId: result.pageId,
+          result: result._tag,
+        },
       }),
     ),
-    Observability.withOperation(Observability.SyncPageSpan, { basename: basename(opts.path) }),
+    Observability.withOperation({
+      operation: Observability.SyncPageSpan,
+      attributes: { basename: basename(opts.path) },
+    }),
   )

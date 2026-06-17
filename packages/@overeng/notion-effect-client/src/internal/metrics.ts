@@ -25,7 +25,10 @@ import { OtelAttr, OtelMetric } from '@overeng/otel-contract'
 /** HTTP method + sanitized operation key — both bounded-cardinality. */
 const HttpPressureLabels = Schema.Struct({
   method: OtelAttr.literal('notion.http.method', 'GET', 'POST', 'PATCH', 'DELETE'),
-  operation: OtelAttr.string('notion.http.operation', { cardinality: 'bounded' }),
+  operation: OtelAttr.string({
+    key: 'notion.http.operation',
+    metadata: { cardinality: 'bounded' },
+  }),
 })
 
 /** Latency buckets (ms) for the throttle-token wait, matching common backpressure scales. */

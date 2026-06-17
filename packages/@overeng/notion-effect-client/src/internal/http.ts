@@ -549,10 +549,10 @@ export const executeRequest = <A, I, R>({
                   method,
                   operation: route.operation,
                 }),
-                NotionRateLimitMetricBridges.retryAfterMsTotal.trustedIncrementBy(
-                  { method, operation: route.operation },
-                  retryAfterMs,
-                ),
+                NotionRateLimitMetricBridges.retryAfterMsTotal.trustedIncrementBy({
+                  labels: { method, operation: route.operation },
+                  amount: retryAfterMs,
+                }),
               )
 
         return Effect.as(

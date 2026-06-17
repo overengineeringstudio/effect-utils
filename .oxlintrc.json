@@ -47,19 +47,20 @@
         "threshold": 0
       }
     ],
-    "overeng/named-args": "warn",
+    "overeng/named-args": "error",
     "import/no-commonjs": "error",
     "import/no-cycle": "warn",
+    "no-await-in-loop": "error",
     "func-style": [
-      "warn",
+      "error",
       "expression",
       {
         "allowArrowFunctions": true
       }
     ],
-    "overeng/explicit-boolean-compare": "warn",
-    "overeng/exports-first": "warn",
-    "overeng/jsdoc-require-exports": "warn",
+    "overeng/explicit-boolean-compare": "error",
+    "overeng/exports-first": "error",
+    "overeng/jsdoc-require-exports": "error",
     "typescript/consistent-type-imports": "warn",
     "overeng/no-raw-otel-primitives": "off",
     "typescript/consistent-type-definitions": "off",
@@ -131,7 +132,8 @@
         "overeng/no-raw-otel-primitives": "off",
         "unicorn/no-array-sort": "off",
         "unicorn/consistent-function-scoping": "off",
-        "require-yield": "off"
+        "require-yield": "off",
+        "no-await-in-loop": "off"
       }
     },
     {
@@ -166,6 +168,36 @@
       "files": ["**/genie/src/runtime/**/*.test.ts"],
       "rules": {
         "overeng/no-external-imports": "off"
+      }
+    },
+    {
+      "files": ["**/genie/**", "**/*.genie.ts", "**/examples/**"],
+      "rules": {
+        "overeng/jsdoc-require-exports": "off"
+      }
+    },
+    {
+      "files": ["packages/@overeng/genie/src/**"],
+      "rules": {
+        "overeng/jsdoc-require-exports": "warn"
+      }
+    },
+    {
+      "files": ["**/utils-dev/src/otelite/**"],
+      "rules": {
+        "overeng/named-args": "off"
+      }
+    },
+    {
+      "files": ["**/utils/src/node/otel.ts", "**/utils/src/node/otel-attrs.ts"],
+      "rules": {
+        "oxc/no-barrel-file": "off"
+      }
+    },
+    {
+      "files": ["**/restate-effect/src/testing/**"],
+      "rules": {
+        "import/no-cycle": "off"
       }
     },
     {
@@ -212,7 +244,8 @@
       ],
       "rules": {
         "overeng/no-raw-nondeterminism": "off",
-        "overeng/no-non-durable-wait": "off"
+        "overeng/no-non-durable-wait": "off",
+        "no-await-in-loop": "off"
       }
     },
     {

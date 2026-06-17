@@ -52,10 +52,13 @@ const trustOtelContract = <A, E, R>(
   effect.pipe(Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)))
 
 const trustedWith =
-  <S extends Schema.Schema.AnyNoContext>(
-    operation: OtelOperationDefinition<S>,
-    attributes: Schema.Schema.Type<S>,
-  ) =>
+  <S extends Schema.Schema.AnyNoContext>({
+    operation,
+    attributes,
+  }: {
+    operation: OtelOperationDefinition<S>
+    attributes: Schema.Schema.Type<S>
+  }) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     trustOtelContract<A, E, R>(operation.with({ attributes, effect }))
 
@@ -122,11 +125,14 @@ export const until = <TResult, TError, TContext>(args: {
       }),
     )
   }).pipe(
-    trustedWith(PwWaitOperation, {
-      label,
-      waitLabel: label,
-      pollInterval: String(pollInterval),
-      timeout: String(timeout),
+    trustedWith({
+      operation: PwWaitOperation,
+      attributes: {
+        label,
+        waitLabel: label,
+        pollInterval: String(pollInterval),
+        timeout: String(timeout),
+      },
     }),
   )
 }
