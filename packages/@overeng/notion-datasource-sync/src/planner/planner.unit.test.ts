@@ -693,6 +693,54 @@ describe('notion datasource planner', () => {
     expect(decision).toMatchObject({ _tag: 'EnqueueCommands' })
   })
 
+  it('blocks a files property write whose value carries an obviously-expiring EXTERNAL (presigned) URL with ExpiringFileUrl', () => {
+    // Decision 0016 part 3 (#775 0016 upgrade): durability is a property of the URL,
+    // not its source. An external URL with an AWS S3 presign signature
+    // (`X-Amz-Signature`/`X-Amz-Expires`) expires just like a Notion-hosted signed
+    // link, so it must fail closed on a clean base rather than be attached as durable.
+    const filesCommand = decode(PatchPagePropertiesCommand, {
+      _tag: 'PatchPagePropertiesCommand',
+      commandId,
+      pageId,
+      basePropertiesHash: hash('a'),
+      propertyPatch: {
+        'prop-a': {
+          _tag: 'files',
+          files: [
+            {
+              _tag: 'CanonicalFileValue',
+              name: 'report.pdf',
+              identityHash: 'sha256:report',
+              externalUrl:
+                'https://bucket.s3.amazonaws.com/report.pdf?X-Amz-Signature=abc123&X-Amz-Expires=3600',
+            },
+          ],
+        },
+      },
+    })
+
+    const decision = planIntent({
+      snapshot: snapshot(),
+      intent: {
+        _tag: 'property-edit',
+        intentEventId,
+        commandKey,
+        surface: propertySurfaceKey({ pageId: pageId, propertyId: propertyA }),
+        pageId,
+        propertyId: propertyA,
+        command: filesCommand,
+        baseHash: hash('a'),
+        desiredHash: hash('f'),
+        expectedPropertyConfigHash: hash('c'),
+      },
+    })
+
+    expect(decision).toMatchObject({
+      _tag: 'BlockedByGuard',
+      guard: 'ExpiringFileUrl',
+    })
+  })
+
   it('blocks property edits when the current property projection is missing', () => {
     const decision = planIntent({
       snapshot: snapshot({

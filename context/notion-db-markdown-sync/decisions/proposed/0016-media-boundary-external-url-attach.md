@@ -39,10 +39,39 @@ up.
 into the production property-write path so a Notion-hosted expiring URL pulled
 into a property is caught rather than silently written as a soon-dead link.
 
-(3) Take an explicit external-URL DURABILITY stance. External URLs can 404 or
-move. v1 attaches them as-is and does NOT verify their durability. This is
-stated as a known content-fidelity limitation — the external analog of
-`ExpiringFileUrl`, but with no guard — rather than left implicit. Byte
+(3) Take an explicit URL-DURABILITY stance — durability is a property of the
+URL, NOT of its source. The guard does not ask "is this URL Notion-hosted vs
+external"; it asks "does this URL expire". Two cases fail closed alongside each
+other:
+
+- a Notion-hosted file (no `externalUrl`) — its signed link is not captured as
+  durable identity (part 2 above); and
+- an OBVIOUSLY-expiring EXTERNAL URL — an S3 presigned link
+  (`X-Amz-Signature`/`X-Amz-Expires`/`X-Amz-Credential`), an Azure SAS (`sig`
+  with `se`/`st`), a GCS signed URL (`X-Goog-Signature`/`X-Goog-Expires`), or a
+  generic presign/expiry shape (`Signature`+`Expires`, a unix-ts `Expires`,
+  `token`+`exp`). A pure `isExpiringExternalUrl(url)` helper
+  (`planner/property-proof.ts`) detects these and routes them through the SAME
+  `ExpiringFileUrl` guard.
+
+This closes the source-vs-durability asymmetry: previously any `externalUrl`
+was treated as durable, so a presigned external link was attached as "durable"
+even though it expires just like a Notion-hosted signed link.
+
+Detection is deliberately CONSERVATIVE — only clear presign/expiry signatures
+are flagged, to avoid false-positives on durable URLs that merely carry benign
+query params (`?utm_source=…`, `?v=2`, a bare `?token=` API key with no expiry).
+The cost of conservatism is the residual below.
+
+Residual limitation: only OBVIOUS expiry signatures are detectable. Non-obvious
+non-durability stays undetectable — a plain durable-looking URL
+(`https://example.com/file.pdf`) that 404s or moves tomorrow carries no signature
+the guard can read, so it is attached as-is and NOT verified. A malformed /
+non-parseable URL likewise carries no detectable signature and is treated as
+durable (fail-open in the SIGNATURE detector — `isExpiringExternalUrl` returns
+`false` and never throws); the notion-hosted no-`externalUrl` path still fails
+closed independently. This is the external analog of `ExpiringFileUrl`'s
+content-fidelity limit, now partially guarded rather than left implicit. Byte
 upload/replace/delete stay fail-closed: `DurableFileUploadUnsupported` and
 `DurableFileWriteUnsupported` are wired; `DurableFileReplacementUnsupported` and
 `DurableFileDeletionUnsupported` are declared with no call site.
@@ -69,8 +98,11 @@ with no production dispatch.
 ## Consequences
 
 - Three hardening items land: (1) a fail-closed byte-path lowering guard, (2)
-  `ExpiringFileUrl` wired into the production property-write path, (3) an
-  explicit external-URL durability limitation in the content-fidelity record.
+  `ExpiringFileUrl` wired into the production property-write path, (3) the
+  durability stance reframed as a URL property not a source property —
+  obviously-expiring external URLs (presigned/SAS/signed-URL signatures) fail
+  closed alongside Notion-hosted via `isExpiringExternalUrl`, with non-obvious
+  non-durability documented as the residual content-fidelity limit.
 - The byte-path lowering guard is the load-bearing invariant: it is what makes
   "inert means durable" true under future refactors rather than true only by the
   current absence of a lowering path.
