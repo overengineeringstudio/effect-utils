@@ -175,6 +175,16 @@ export interface OtelCliLayerConfig {
 }
 
 /**
+ * Default graceful-shutdown cap. The flush is a scope finalizer Effect awaits to
+ * completion, so this only bounds the worst case when the collector is
+ * black-holed (never the happy path). Interactive TTYs get a tighter bound so a
+ * human never waits long on a dead collector; non-interactive (CI) gets a
+ * generous one. Ctrl-C escapes either in tens of ms (the flush stays
+ * interruptible).
+ */
+const defaultShutdownTimeoutMs = (): number => (process.stdout.isTTY === true ? 10_000 : 30_000)
+
+/**
  * Creates an OTEL layer for Effect CLI applications.
  *
  * Features:
@@ -211,16 +221,6 @@ export interface OtelCliLayerConfig {
  *   )
  * ```
  */
-/**
- * Default graceful-shutdown cap. The flush is a scope finalizer Effect awaits to
- * completion, so this only bounds the worst case when the collector is
- * black-holed (never the happy path). Interactive TTYs get a tighter bound so a
- * human never waits long on a dead collector; non-interactive (CI) gets a
- * generous one. Ctrl-C escapes either in tens of ms (the flush stays
- * interruptible).
- */
-const defaultShutdownTimeoutMs = (): number => (process.stdout.isTTY === true ? 10_000 : 30_000)
-
 export const makeOtelCliLayer = (config: OtelCliLayerConfig): Layer.Layer<OtelConfig> => {
   const {
     identity,
@@ -339,6 +339,7 @@ const shapeDefaults = (shape: Shape): ShapeOverrides => {
   }
 }
 
+/** Inputs to {@link withTelemetry}: the validated identity, process {@link Shape}, resolved endpoint, and rare per-call knob overrides. */
 export interface TelemetryLayerOptions {
   /**
    * Typed, decoded service identity stamped onto `service.{name,namespace,version}`
@@ -438,6 +439,7 @@ export const whenTelemetryEnabled = <A, E, R>(
   effect: Effect.Effect<A, E, R>,
 ): Effect.Effect<void, E, R> => Effect.whenEffect(effect, telemetryEnabled).pipe(Effect.asVoid)
 
+/** Inputs to {@link sampleResource}: the per-tick `sample` effect and its real-wall-time `interval`. */
 export interface SampleResourceOptions {
   /**
    * The per-tick sampler — typically `Metric.set(gauge, read())`. Runs on every
@@ -491,6 +493,7 @@ export const sampleResource = (
   )
 }
 
+/** Inputs to {@link sampleGauge}: the target `gauge`, the `read()` closure sampled each tick, optional `labels`, and the `interval`. */
 export interface SampleGaugeOptions {
   /**
    * The gauge to sample into. Construct with `Metric.gauge(...)` (the gauge

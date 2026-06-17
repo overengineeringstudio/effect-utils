@@ -33,12 +33,14 @@ export default packageJson(
     ...privatePackageDefaults,
     exports: {
       './node-vitest': './src/node-vitest/mod.ts',
+      './node-vitest/setup-fast-check': './src/node-vitest/setup-fast-check.ts',
       './otelite': './src/otelite/mod.ts',
     },
     publishConfig: {
       access: 'public',
       exports: {
         './node-vitest': './dist/node-vitest/mod.js',
+        './node-vitest/setup-fast-check': './dist/node-vitest/setup-fast-check.js',
         './otelite': './dist/otelite/mod.js',
       },
     },
