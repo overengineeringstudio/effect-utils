@@ -1,38 +1,28 @@
-# Three reclamation timers: absence grace, post-merge grace, archive retention
+# Three reclamation timers
 
 ## Status
 
-accepted (default values proposed, host-overridable via `$STORE/.state/gc-config.json`)
+accepted
 
 ## Context
 
-The live-set veto already protects actively-used worktrees, so the timers only
-shape how long after work ends a worktree lingers. Real-store data: most merged
-worktrees are 30–120 days old, but a few merges are 2–5 days old — so a generous
-window spares fresh merges at near-zero reclaim cost. A two-timer model was
-considered; three were chosen for explicit control over just-merged branches.
+The liveness and staleness gates decide whether a worktree may be reclaimed. The
+timers decide how long completed work lingers before archive or deletion.
 
 ## Decision
 
-Three independent timers gate reclamation:
+GC uses three host-overridable timers from `$STORE/.state/gc-config.json`:
 
-1. **Absence grace** (default 14d): continuously absent from ALL live sets this
-   long before eligible to archive (guards a consumer that hasn't re-registered).
-2. **Post-merge grace** (default 7d): even once merged + lossless + absent, do not
-   archive until this long after the PR's `mergedAt` (protects follow-up work).
-3. **Archive retention TTL** (default 30d): an archived worktree is reaped this
-   long after archiving.
+- absence grace: default 14d continuously absent from all live sets before archive
+- post-merge grace: default 7d after `mergedAt` before archive
+- archive retention TTL: default 30d from archive to hard delete
 
-A worktree is archived only when ALL hold: cross-megarepo veto passes, not the
-default branch, lossless, merged/closed, absence-grace and (for merged)
-post-merge-grace satisfied. It is reaped only after the retention TTL.
+A worktree is archived only when every policy gate and applicable timer passes.
+An archive is reaped only after retention TTL.
 
 ## Consequences
 
-- "Continuous absence" is tracked against a persisted observation ledger, not a
-  single snapshot; the ledger advances only on real runs (`--dry-run` must not
-  persist it, or it would advance the clock for a planning-only run).
-- **First real run archives nothing** (accepted): the ledger starts empty, so
-  everything hits the absence-grace gate — deliberate slow-to-first-archive.
-- Worst-case "done"→reclaimed ≈ max(absence, post-merge) + retention (~37–44d with
-  defaults), acceptable since the dominant cold population is far older.
+- Continuous absence is stored in a persisted observation ledger.
+- `--dry-run` must not persist observations, because planning runs must not
+  advance the archive clock.
+- The first real run archives nothing when the ledger is empty.
