@@ -416,8 +416,11 @@ const guardDatasourcePropertyWrites = (opts: {
     if (notionMd.parent._tag !== 'data_source') return
     const dataSourceId = notionMd.parent.id
     if (opts.dataSource !== null && opts.dataSource.data_source_id !== dataSourceId) {
-      yield* Observability.annotateAttrs(Observability.pushDecisionAttrs, {
-        decision: 'schema_drift',
+      yield* Observability.annotateAttrs({
+        attributes: Observability.pushDecisionAttrs,
+        value: {
+          decision: 'schema_drift',
+        },
       })
       return yield* new NmdSchemaDriftError({
         path: opts.path,
@@ -455,8 +458,11 @@ const guardDatasourcePropertyWrites = (opts: {
       })
       if (decision._tag === 'blocked') {
         if (decision.guard === 'StaleRemoteSchema') {
-          yield* Observability.annotateAttrs(Observability.pushDecisionAttrs, {
-            decision: 'schema_drift',
+          yield* Observability.annotateAttrs({
+            attributes: Observability.pushDecisionAttrs,
+            value: {
+              decision: 'schema_drift',
+            },
           })
           return yield* new NmdSchemaDriftError({
             path: opts.path,
@@ -1358,14 +1364,17 @@ export const pushGuarded = (opts: {
         })
       }
     }).pipe(
-      Observability.withOperation(Observability.DestructiveBodySpan, {
-        guard: 'ReviewMarkupAsContent',
-        blockCount: 0,
-        verdict:
-          containsRoughdraftReviewMarkup(local.desiredBody) === true &&
-          options.allowReviewMarkup !== true
-            ? 'blocked'
-            : 'inert',
+      Observability.withOperation({
+        operation: Observability.DestructiveBodySpan,
+        attributes: {
+          guard: 'ReviewMarkupAsContent',
+          blockCount: 0,
+          verdict:
+            containsRoughdraftReviewMarkup(local.desiredBody) === true &&
+            options.allowReviewMarkup !== true
+              ? 'blocked'
+              : 'inert',
+        },
       }),
     )
 
@@ -1384,15 +1393,18 @@ export const pushGuarded = (opts: {
         })
       }
     }).pipe(
-      Observability.withOperation(Observability.DestructiveBodySpan, {
-        guard: 'UnknownBlockDeletion',
-        blockCount: status.unresolvedUnknownBlocks.length,
-        verdict:
-          status.localChanged === true &&
-          status.unresolvedUnknownBlocks.length > 0 &&
-          options.allowDeletingUnknownBlocks !== true
-            ? 'blocked'
-            : 'inert',
+      Observability.withOperation({
+        operation: Observability.DestructiveBodySpan,
+        attributes: {
+          guard: 'UnknownBlockDeletion',
+          blockCount: status.unresolvedUnknownBlocks.length,
+          verdict:
+            status.localChanged === true &&
+            status.unresolvedUnknownBlocks.length > 0 &&
+            options.allowDeletingUnknownBlocks !== true
+              ? 'blocked'
+              : 'inert',
+        },
       }),
     )
 

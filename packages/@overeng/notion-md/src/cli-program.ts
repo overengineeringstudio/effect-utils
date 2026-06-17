@@ -834,8 +834,11 @@ const gcNmdTargets = (opts: {
       const representativePath = nmdPaths[0]!
       const syncStates = yield* readAllSyncStates(representativePath)
 
-      const gcResult: NmdObjectGcResult = yield* withOperation(ObjectGcSpan, {
-        dryRun: opts.dryRun,
+      const gcResult: NmdObjectGcResult = yield* withOperation({
+        operation: ObjectGcSpan,
+        attributes: {
+          dryRun: opts.dryRun,
+        },
       })(
         Effect.gen(function* () {
           const result = yield* garbageCollectObjects({
@@ -843,9 +846,12 @@ const gcNmdTargets = (opts: {
             syncStates,
             dryRun: opts.dryRun,
           })
-          yield* annotateAttrs(objectGcResultAttrs, {
-            reachableCount: result.reachable.length,
-            removedCount: result.removed.length,
+          yield* annotateAttrs({
+            attributes: objectGcResultAttrs,
+            value: {
+              reachableCount: result.reachable.length,
+              removedCount: result.removed.length,
+            },
           })
           return result
         }),

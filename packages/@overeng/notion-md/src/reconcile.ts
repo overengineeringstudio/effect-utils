@@ -209,10 +209,13 @@ const assertReviewMarkupAllowed = (opts: {
       })
     }
   }).pipe(
-    withOperation(DestructiveBodySpan, {
-      guard: 'ReviewMarkupAsContent',
-      blockCount: 0,
-      verdict: blocked ? 'blocked' : 'inert',
+    withOperation({
+      operation: DestructiveBodySpan,
+      attributes: {
+        guard: 'ReviewMarkupAsContent',
+        blockCount: 0,
+        verdict: blocked ? 'blocked' : 'inert',
+      },
     }),
   )
 }
@@ -235,10 +238,13 @@ const assertUnknownDeletionAllowed = (opts: {
       })
     }
   }).pipe(
-    withOperation(DestructiveBodySpan, {
-      guard: 'UnknownBlockDeletion',
-      blockCount: opts.unknownBlockIds.length,
-      verdict: blocked ? 'blocked' : 'inert',
+    withOperation({
+      operation: DestructiveBodySpan,
+      attributes: {
+        guard: 'UnknownBlockDeletion',
+        blockCount: opts.unknownBlockIds.length,
+        verdict: blocked ? 'blocked' : 'inert',
+      },
     }),
   )
 }
@@ -436,11 +442,14 @@ const guardMediaWrite = (opts: {
       })
     }
   }).pipe(
-    withOperation(MediaBoundarySpan, {
-      operation: opts.operation,
-      fileCount,
-      verdict: verdict._tag,
-      ...(verdict._tag === 'blocked' ? { guard: verdict.guard } : {}),
+    withOperation({
+      operation: MediaBoundarySpan,
+      attributes: {
+        operation: opts.operation,
+        fileCount,
+        verdict: verdict._tag,
+        ...(verdict._tag === 'blocked' ? { guard: verdict.guard } : {}),
+      },
     }),
   )
 }
@@ -477,11 +486,14 @@ const guardCommentWrite = (opts: {
       })
     }
   }).pipe(
-    withOperation(CommentBoundarySpan, {
-      operation: opts.operation,
-      commentCount,
-      verdict: verdict._tag,
-      ...(verdict._tag === 'blocked' ? { guard: verdict.guard } : {}),
+    withOperation({
+      operation: CommentBoundarySpan,
+      attributes: {
+        operation: opts.operation,
+        commentCount,
+        verdict: verdict._tag,
+        ...(verdict._tag === 'blocked' ? { guard: verdict.guard } : {}),
+      },
     }),
   )
 }

@@ -174,10 +174,13 @@ export const webhookSignalToWatchTriggers = (opts: {
       : []
   const triggers = paths.map((path): WatchTrigger => ({ path, reason: 'webhook' }))
   return Effect.succeed(triggers).pipe(
-    Observability.withOperation(Observability.WebhookTriggerSpan, {
-      eventType: opts.signal.eventType,
-      surface: opts.signal.surface,
-      triggerCount: triggers.length,
+    Observability.withOperation({
+      operation: Observability.WebhookTriggerSpan,
+      attributes: {
+        eventType: opts.signal.eventType,
+        surface: opts.signal.surface,
+        triggerCount: triggers.length,
+      },
     }),
   )
 }
