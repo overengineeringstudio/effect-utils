@@ -295,7 +295,12 @@ export const makeNotionMdPageBodySyncPort = ({
                 }
               }
 
-              if (bodyIdentityEquals(remote.identity, input.baseBodyPointer.identity) === false) {
+              if (
+                bodyIdentityEquals({
+                  left: remote.identity,
+                  right: input.baseBodyPointer.identity,
+                }) === false
+              ) {
                 return {
                   _tag: 'BodyConflict' as const,
                   pageId: input.pageId,

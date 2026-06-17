@@ -269,6 +269,7 @@ export interface TuiRuntime {
  * interrupt surfaces here only via `process.exitCode` — which we honor instead
  * of forcing 0. An uncaught failure still maps to 1, matching the default.
  */
+// oxlint-disable-next-line overeng/named-args -- implements Effect's `Teardown` interface (fixed `(exit, onExit)` signature) passed to `NodeRuntime.runMain`
 const tuiTeardown = <E, A>(exit: Exit.Exit<E, A>, onExit: (code: number) => void): void => {
   if (Exit.isFailure(exit) === true && Cause.isInterruptedOnly(exit.cause) === false) {
     onExit(1)

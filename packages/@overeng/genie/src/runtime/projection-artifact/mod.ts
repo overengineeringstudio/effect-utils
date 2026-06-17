@@ -44,13 +44,19 @@ const projectionArtifactJson = <
     data: args.data,
     stringify: (_ctx) => {
       const projected = projectData(args)
-      const projection = withSchemaVersion(projected, args.schemaVersion)
+      const projection = withSchemaVersion({
+        projection: projected,
+        schemaVersion: args.schemaVersion,
+      })
 
       return JSON.stringify(stableJsonValue(projection), null, args.indentation ?? 2) + '\n'
     },
     validate: (ctx) => {
       const projected = projectData(args)
-      const projection = withSchemaVersion(projected, args.schemaVersion)
+      const projection = withSchemaVersion({
+        projection: projected,
+        schemaVersion: args.schemaVersion,
+      })
 
       return (args.validators ?? []).flatMap((validator) =>
         validator({
@@ -112,10 +118,13 @@ export const projectionValidators = {
     }),
 } as const
 
-const withSchemaVersion = <TProjection extends ProjectionJsonObject>(
-  projection: TProjection,
-  schemaVersion: number,
-): TProjection & { readonly schemaVersion: number } => {
+const withSchemaVersion = <TProjection extends ProjectionJsonObject>({
+  projection,
+  schemaVersion,
+}: {
+  projection: TProjection
+  schemaVersion: number
+}): TProjection & { readonly schemaVersion: number } => {
   return {
     ...projection,
     schemaVersion,

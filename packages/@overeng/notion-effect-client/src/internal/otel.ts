@@ -76,20 +76,26 @@ const NotionPagesRetrieveSpan = OtelOperation.define({
 })
 
 const withOperation =
-  <S extends Schema.Schema.AnyNoContext>(
-    operation: OtelOperationDefinition<S>,
-    attributes: Schema.Schema.Type<S>,
-  ) =>
+  <S extends Schema.Schema.AnyNoContext>({
+    operation,
+    attributes,
+  }: {
+    operation: OtelOperationDefinition<S>
+    attributes: Schema.Schema.Type<S>
+  }) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
     effect.pipe(
       operation.with(attributes),
       Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)),
     )
 
-const annotateAttrs = <S extends Schema.Schema.AnyNoContext>(
-  attributes: OtelAttrs<S>,
-  value: Schema.Schema.Type<S>,
-): Effect.Effect<void> =>
+const annotateAttrs = <S extends Schema.Schema.AnyNoContext>({
+  attributes,
+  value,
+}: {
+  attributes: OtelAttrs<S>
+  value: Schema.Schema.Type<S>
+}): Effect.Effect<void> =>
   OtelSpan.annotate({ attributes, value }).pipe(
     Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)),
   )
@@ -105,11 +111,14 @@ export const withNotionHttpSpan =
   }) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
     effect.pipe(
-      withOperation(NotionHttpSpan(method), {
-        spanLabel: route.spanLabel,
-        method,
-        route: route.route,
-        operation: route.operation,
+      withOperation({
+        operation: NotionHttpSpan(method),
+        attributes: {
+          spanLabel: route.spanLabel,
+          method,
+          route: route.route,
+          operation: route.operation,
+        },
       }),
     )
 
@@ -125,26 +134,29 @@ export const annotateNotionHttpRateLimitSpan = (input: {
 }): Effect.Effect<void> => {
   const rateLimit = input.rateLimit
   const isSome = Option.isSome(rateLimit)
-  return annotateAttrs(HttpRateLimitAttrs, {
-    label: input.route.spanLabel,
-    method: input.method,
-    route: input.route.route,
-    operation: input.route.operation,
-    status: input.status,
-    attempt: input.attempt,
-    attempts: input.attempts,
-    retryDelayMs: input.retryDelayMs,
-    quotaCost: input.attempts,
-    rateLimitPresent: isSome,
-    rateLimitRemaining: isSome === true ? rateLimit.value.remaining : undefined,
-    rateLimitResetAfterMs: isSome === true ? rateLimit.value.resetAfterSeconds * 1000 : undefined,
+  return annotateAttrs({
+    attributes: HttpRateLimitAttrs,
+    value: {
+      label: input.route.spanLabel,
+      method: input.method,
+      route: input.route.route,
+      operation: input.route.operation,
+      status: input.status,
+      attempt: input.attempt,
+      attempts: input.attempts,
+      retryDelayMs: input.retryDelayMs,
+      quotaCost: input.attempts,
+      rateLimitPresent: isSome,
+      rateLimitRemaining: isSome === true ? rateLimit.value.remaining : undefined,
+      rateLimitResetAfterMs: isSome === true ? rateLimit.value.resetAfterSeconds * 1000 : undefined,
+    },
   })
 }
 
 /** Wraps a data-source query effect in the `NotionDatabases.query` span, labeled by data source id. */
 export const withNotionDatabasesQuerySpan = (dataSourceId: string) =>
-  withOperation(NotionDatabasesQuerySpan, { dataSourceId })
+  withOperation({ operation: NotionDatabasesQuerySpan, attributes: { dataSourceId } })
 
 /** Wraps a page-retrieve effect in the `NotionPages.retrieve` span, labeled by page id. */
 export const withNotionPagesRetrieveSpan = (pageId: string) =>
-  withOperation(NotionPagesRetrieveSpan, { pageId })
+  withOperation({ operation: NotionPagesRetrieveSpan, attributes: { pageId } })

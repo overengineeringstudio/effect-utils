@@ -94,6 +94,7 @@ const makeNotionRootCommand = <
  * back to 1 for any unmapped failure and 0 on success, matching the previous
  * default teardown (Ctrl+C now maps to 130, consistent with `notion-md`).
  */
+// oxlint-disable-next-line overeng/named-args -- implements Effect's `Teardown` interface (fixed `(exit, onExit)` signature) passed to `NodeRuntime.runMain`
 const editorTeardown = <E, A>(exit: Exit.Exit<E, A>, onExit: (code: number) => void): void => {
   onExit(editorExitCode(exit))
 }

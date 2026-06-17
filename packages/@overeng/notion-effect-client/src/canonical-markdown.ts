@@ -75,11 +75,15 @@ const forceTightLists: () => (tree: unknown) => void = () => (tree) => {
   })
 }
 
-const pushProcessorData = <A>(
-  data: Record<string, unknown>,
-  key: string,
-  extensions: ReadonlyArray<A>,
-): void => {
+const pushProcessorData = <A>({
+  data,
+  key,
+  extensions,
+}: {
+  data: Record<string, unknown>
+  key: string
+  extensions: ReadonlyArray<A>
+}): void => {
   const current = (data[key] ??= []) as Array<A>
   current.push(...extensions)
 }
@@ -93,21 +97,25 @@ const pushProcessorData = <A>(
  */
 const remarkNotionGfm = function (this: Processor): void {
   const data = this.data() as Record<string, unknown>
-  pushProcessorData(data, 'micromarkExtensions', [
-    gfmTable(),
-    gfmTaskListItem(),
-    gfmStrikethrough(),
-  ])
-  pushProcessorData(data, 'fromMarkdownExtensions', [
-    gfmTableFromMarkdown(),
-    gfmTaskListItemFromMarkdown(),
-    gfmStrikethroughFromMarkdown(),
-  ])
-  pushProcessorData(data, 'toMarkdownExtensions', [
-    gfmTableToMarkdown(),
-    gfmTaskListItemToMarkdown(),
-    gfmStrikethroughToMarkdown(),
-  ])
+  pushProcessorData({
+    data,
+    key: 'micromarkExtensions',
+    extensions: [gfmTable(), gfmTaskListItem(), gfmStrikethrough()],
+  })
+  pushProcessorData({
+    data,
+    key: 'fromMarkdownExtensions',
+    extensions: [
+      gfmTableFromMarkdown(),
+      gfmTaskListItemFromMarkdown(),
+      gfmStrikethroughFromMarkdown(),
+    ],
+  })
+  pushProcessorData({
+    data,
+    key: 'toMarkdownExtensions',
+    extensions: [gfmTableToMarkdown(), gfmTaskListItemToMarkdown(), gfmStrikethroughToMarkdown()],
+  })
 }
 
 const processor = unified()

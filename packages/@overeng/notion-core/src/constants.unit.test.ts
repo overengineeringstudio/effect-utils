@@ -51,10 +51,10 @@ describe('Notion API version helpers', () => {
   })
 
   it('compares valid API version dates', () => {
-    expect(compareNotionApiVersions('2026-03-10', '2026-03-11')).toBe(-1)
-    expect(compareNotionApiVersions('2026-03-11', '2026-03-11')).toBe(0)
-    expect(compareNotionApiVersions('2026-04-01', '2026-03-11')).toBe(1)
-    expect(compareNotionApiVersions('invalid', '2026-03-11')).toBeUndefined()
+    expect(compareNotionApiVersions({ left: '2026-03-10', right: '2026-03-11' })).toBe(-1)
+    expect(compareNotionApiVersions({ left: '2026-03-11', right: '2026-03-11' })).toBe(0)
+    expect(compareNotionApiVersions({ left: '2026-04-01', right: '2026-03-11' })).toBe(1)
+    expect(compareNotionApiVersions({ left: 'invalid', right: '2026-03-11' })).toBeUndefined()
   })
 
   it('checks the pinned supported API version', () => {
