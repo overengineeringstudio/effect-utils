@@ -97,8 +97,11 @@ export const baseOxlintRules = {
   // Enforce exported declarations come before non-exported declarations
   'overeng/exports-first': 'warn',
 
-  // Require JSDoc comments on type/wildcard exports
-  'overeng/jsdoc-require-exports': 'warn',
+  // Require JSDoc comments on exported declarations. Enforced (error): every
+  // published package `src` export must carry JSDoc. Non-API surfaces (test
+  // files, stories, config, genie tooling, examples, incubation waivers) are
+  // exempted by the overrides below / in the repo-specific config.
+  'overeng/jsdoc-require-exports': 'error',
 
   // Enforce proper type imports
   'typescript/consistent-type-imports': 'warn',

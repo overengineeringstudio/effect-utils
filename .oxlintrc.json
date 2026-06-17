@@ -59,7 +59,7 @@
     ],
     "overeng/explicit-boolean-compare": "warn",
     "overeng/exports-first": "warn",
-    "overeng/jsdoc-require-exports": "warn",
+    "overeng/jsdoc-require-exports": "error",
     "typescript/consistent-type-imports": "warn",
     "overeng/no-raw-otel-primitives": "off",
     "typescript/consistent-type-definitions": "off",
