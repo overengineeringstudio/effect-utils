@@ -40,7 +40,9 @@ export {
   ownWriteSuppressionToken,
 } from './sidecar.ts'
 
+/** Re-export of the per-page sidecar schema (defined in `./sidecar.ts`) on the workspace entry surface. */
 export const FilesystemWorkspaceSidecar = FilesystemWorkspaceSidecarSchema
+/** Decoded shape of {@link FilesystemWorkspaceSidecar}. */
 export type FilesystemWorkspaceSidecar = FilesystemWorkspaceSidecarType
 
 const decode = <TSchema extends Schema.Schema.AnyNoContext>({

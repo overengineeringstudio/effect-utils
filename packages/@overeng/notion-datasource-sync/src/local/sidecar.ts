@@ -25,7 +25,9 @@ const decode = <TSchema extends Schema.Schema.AnyNoContext>({
   readonly value: unknown
 }) => Schema.decodeUnknownSync(schema)(value)
 
+/** Hidden workspace subdirectory holding all sync metadata; never materialized as user content and skipped during scans. */
 export const metadataDirectoryName = '.notion-datasource-sync'
+/** Subdirectory under {@link metadataDirectoryName} holding per-page JSON sidecars. */
 export const pageSidecarDirectoryName = 'pages'
 
 /**
@@ -77,6 +79,7 @@ export const FilesystemWorkspaceSidecar = Schema.Struct({
 }).annotations({ identifier: 'NotionDatasourceSync.FilesystemWorkspaceSidecar' })
 export type FilesystemWorkspaceSidecar = typeof FilesystemWorkspaceSidecar.Type
 
+/** Constructs a sidecar record, deriving the own-write suppression token from `pageId`/`path`/`bodyHash` and stamping `observedAt` (defaults to now). */
 export const makeFilesystemWorkspaceSidecar = ({
   pageId,
   path,
