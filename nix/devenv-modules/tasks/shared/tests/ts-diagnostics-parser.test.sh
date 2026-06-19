@@ -1,0 +1,137 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Validates the ts:check OTEL diagnostics parser against real tsgo
+# `--build --extendedDiagnostics --verbose` output (captured fixture).
+#
+# It extracts the actual ts:check exec script from ts.nix via `nix eval`, runs
+# it with stub `tsgo`/`otel-span` binaries, and asserts that:
+#   - one child span per built project is emitted with correct per-project timing
+#   - tsgo's aggregate build summary is emitted as a single build-level span and
+#     is NOT mis-attributed to the last project
+#   - tsgo's Effect lint warnings are re-surfaced to the user (not swallowed)
+
+TESTS_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$TESTS_DIR/../../../../.." && pwd)"
+FIXTURE="$TESTS_DIR/fixtures/tsgo-extended-diagnostics.txt"
+
+fail() {
+  echo "FAIL: $1"
+  exit 1
+}
+
+echo "Running ts diagnostics parser test..."
+echo ""
+
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+mkdir -p "$tmpdir/bin"
+
+# Extract the real ts:check exec script so we test the shipped parser, not a copy.
+nix eval --impure --raw --expr "
+  let
+    flake = builtins.getFlake (toString $ROOT);
+    pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
+    evaluated = pkgs.lib.evalModules {
+      modules = [
+        ({ ... }: {
+          options.tasks = pkgs.lib.mkOption { type = pkgs.lib.types.attrsOf pkgs.lib.types.anything; default = { }; };
+          options.processes = pkgs.lib.mkOption { type = pkgs.lib.types.attrsOf pkgs.lib.types.anything; default = { }; };
+          options.packages = pkgs.lib.mkOption { type = pkgs.lib.types.listOf pkgs.lib.types.anything; default = [ ]; };
+        })
+        ((import $ROOT/nix/devenv-modules/tasks/shared/ts.nix {
+          tsconfigFile = \"tsconfig.all.json\";
+        }) {
+          pkgs = pkgs;
+          lib = pkgs.lib;
+          config = { };
+        })
+      ];
+    };
+  in evaluated.config.tasks.\"ts:check\".exec
+" > "$tmpdir/ts-check.exec.sh"
+chmod +x "$tmpdir/ts-check.exec.sh"
+
+# Stub tsgo: ignore args, emit the captured diagnostics fixture, exit 0.
+cat > "$tmpdir/bin/tsgo" <<EOF
+#!/usr/bin/env bash
+cat "$FIXTURE"
+exit 0
+EOF
+chmod +x "$tmpdir/bin/tsgo"
+
+# Stub otel-span: two call shapes.
+#   "otel-span run <svc> <name> ... -- <cmd...>" must exec the wrapped command.
+#   "otel-span emit" must append the OTLP JSON on stdin to a capture file.
+cat > "$tmpdir/bin/otel-span" <<EOF
+#!/usr/bin/env bash
+if [ "\${1:-}" = "emit" ]; then
+  cat >> "$tmpdir/spans.ndjson"
+  printf '\n---SPAN-SEPARATOR---\n' >> "$tmpdir/spans.ndjson"
+  exit 0
+fi
+if [ "\${1:-}" = "run" ]; then
+  shift
+  # Drop everything up to and including the "--" separator, then exec the rest.
+  while [ "\$#" -gt 0 ] && [ "\$1" != "--" ]; do shift; done
+  [ "\${1:-}" = "--" ] && shift
+  exec "\$@"
+fi
+exit 0
+EOF
+chmod +x "$tmpdir/bin/otel-span"
+
+export PATH="$tmpdir/bin:$PATH"
+export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4318"
+export TRACEPARENT="00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
+export DEVENV_ROOT="$tmpdir/workspace"
+: > "$tmpdir/spans.ndjson"
+
+stdout="$(cd "$tmpdir" && bash "$tmpdir/ts-check.exec.sh" 2>&1)"
+echo "$stdout" > "$tmpdir/stdout.txt"
+
+# 1. Effect lint warnings must be re-surfaced (not swallowed by the parser path).
+grep -q "warning TS377030" "$tmpdir/stdout.txt" \
+  || fail "tsgo Effect lint warning was not surfaced to the user"
+
+# 2. Diagnostics scaffolding must be stripped from user output.
+if grep -qE "^(Files:|Parse time:|Total time:|Aggregate)" "$tmpdir/stdout.txt"; then
+  fail "diagnostics scaffolding leaked into user output"
+fi
+
+# Helper: extract a numeric attribute value from a span JSON block.
+attr_double() { grep -oE "\"$1\",\"value\":\{\"doubleValue\":[0-9.]+" | grep -oE '[0-9.]+$' | tail -1; }
+
+# Split captured spans on the separator.
+spans_count=$(grep -c -- '---SPAN-SEPARATOR---' "$tmpdir/spans.ndjson" || echo 0)
+[ "$spans_count" -eq 3 ] \
+  || fail "expected 3 spans (2 projects + 1 aggregate), got $spans_count"
+
+flat="$(tr -d '\n ' < "$tmpdir/spans.ndjson")"
+
+# 3. Per-project spans carry their own per-project totals (0.339s and 0.274s),
+#    proving the aggregate (18.107s) was NOT mis-attributed to the last project.
+echo "$flat" | grep -q '"tsc.total_time_s","value":{"doubleValue":0.339}' \
+  || fail "first project span missing total_time_s=0.339"
+echo "$flat" | grep -q '"tsc.total_time_s","value":{"doubleValue":0.274}' \
+  || fail "second (last) project span missing total_time_s=0.274"
+
+# 4. Exactly one span is the aggregate, with the build-level total (18.107s) and
+#    projects_built count.
+agg_count=$( (echo "$flat" | grep -oE '"tsc.aggregate","value":\{"boolValue":true\}' || true) | grep -c . || true)
+[ "$agg_count" -eq 1 ] || fail "expected exactly 1 aggregate span, got $agg_count"
+echo "$flat" | grep -q '"tsc.total_time_s","value":{"doubleValue":18.107}' \
+  || fail "aggregate span missing total_time_s=18.107"
+echo "$flat" | grep -q '"tsc.projects_built","value":{"intValue":"34"}' \
+  || fail "aggregate span missing projects_built=34"
+
+# 5. No per-project span should carry the aggregate total. (grep may match
+#    nothing — guard against pipefail killing the assignment.)
+proj_with_agg_total=$( (echo "$flat" \
+  | grep -oE '"name":"[^"]*","kind":1[^]]*"tsc.total_time_s","value":\{"doubleValue":18.107\}' \
+  | grep -v '"name":"aggregate"' || true) | grep -c . || true)
+[ "$proj_with_agg_total" -eq 0 ] \
+  || fail "a per-project span was mis-attributed the aggregate total (18.107s)"
+
+echo ""
+echo "ts diagnostics parser test passed"

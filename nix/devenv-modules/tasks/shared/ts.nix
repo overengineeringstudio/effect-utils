@@ -35,8 +35,11 @@
 # OTEL tracing:
 #   When OTEL is available, ts:check and ts:build run with --extendedDiagnostics
 #   --verbose (adds ~3% overhead) and emit per-project child spans with timing
-#   attributes (tsc.check_time_s, tsc.parse_time_s, etc.). The diagnostics
-#   output is suppressed from the user — only errors are shown on failure.
+#   attributes (tsc.check_time_s, tsc.parse_time_s, etc.). This applies to both
+#   the JS tsc and Effect tsgo, whose build diagnostics share the same shape;
+#   tsgo additionally yields a build-level "aggregate" span. The timing
+#   scaffolding is stripped from the user's view, but real errors and tsgo's
+#   Effect lints are always re-surfaced.
 #
 # Status checks:
 #   - ts:emit uses `tsc --build --dry --noCheck` to skip when no outputs would be produced.
@@ -130,13 +133,34 @@ let
 
     _ts_compiler_name="$(${pkgs.coreutils}/bin/basename ${lib.escapeShellArg compilerBin})"
 
-    # Only add diagnostics flags when OTEL tracing is active. Keep tsgo on the
-    # plain compiler path: Effect tsgo emits language-service diagnostics that
-    # are useful to display directly, and its verbose build output is not stable
-    # enough for the tsc diagnostics parser below.
-    if command -v otel-span >/dev/null 2>&1 && [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] && [ -n "''${TRACEPARENT:-}" ] && [ "$_ts_compiler_name" != "tsgo" ]; then
+    # Only add diagnostics flags when OTEL tracing is active.
+    #
+    # Both the JS `tsc` and Effect `tsgo` emit `--build --extendedDiagnostics
+    # --verbose` output in the same shape (`Building project '...'` blocks with
+    # `Parse time:`/`Check time:`/`Emit time:`/`Total time:`/`Memory used:`), so
+    # a single parser below handles both. tsgo additionally emits an aggregate
+    # build summary (`Projects in scope:` ... `Aggregate Total time:`); the
+    # parser resets the current project on that boundary so the aggregate totals
+    # never get attributed to the last project, and emits them as one
+    # build-level span instead.
+    #
+    # tsgo's per-project blocks also carry Effect language-service lints
+    # (`warning`/`suggestion TS377...`). On this OTEL path the raw compiler
+    # output is captured to a temp file, so those lints are re-surfaced through
+    # `filter_diagnostics_noise` on BOTH success and failure — otherwise routing
+    # tsgo through this path would silently swallow them.
+    if command -v otel-span >/dev/null 2>&1 && [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] && [ -n "''${TRACEPARENT:-}" ]; then
       _tsc_output="$(mktemp)"
       trap 'rm -f "$_tsc_output"' EXIT
+
+      # Strip the diagnostics/timing scaffolding so only real compiler output
+      # (errors, and tsgo's Effect `warning`/`suggestion` lints) is shown.
+      # Drops both tsc-style counters/timers and tsgo's extra build-progress and
+      # aggregate-summary lines (`Building project`, timestamped project status,
+      # `Projects in scope:`, `Aggregate ...`).
+      filter_diagnostics_noise() {
+        grep -v -E "^([0-9]{1,2}:[0-9]{2}:[0-9]{2} (AM|PM) - |Files:|Lines:|Lines of|Identifiers:|Symbols:|Types:|Instantiations:|Memory used:|Memory allocs:|Assignability|Identity|Subtype|Strict subtype|I/O|Config time:|BuildInfo read time:|Parse time:|ResolveModule|ResolveTypeReference|ResolveLibrary|Program time:|Bind time:|Changes compute time:|Check time:|Emit time:|Total time:|Build time:|Projects in scope:|Projects built:|Timestamps only updates:|Aggregate)" "$1" || true
+      }
 
       _tsc_exit=0
       if [[ "${tscInvocation}" == --build* ]]; then
@@ -145,11 +169,10 @@ let
         ${compilerBin} ${tscInvocation} ${extraArgs} > "$_tsc_output" 2>&1 || _tsc_exit=$?
       fi
 
-      # On failure, show the user the error output (filtered to useful lines)
-      if [ "$_tsc_exit" -ne 0 ]; then
-        # Show errors but filter out diagnostics noise
-        grep -v -E "^(Files:|Lines of|Identifiers:|Symbols:|Types:|Instantiations:|Memory used:|Assignability|Identity|Subtype|Strict subtype|I/O|Parse time:|ResolveModule|ResolveTypeReference|ResolveLibrary|Program time:|Bind time:|Check time:|Emit time:|Total time:|Build time:|Aggregate)" "$_tsc_output" || true
-      fi
+      # Always re-surface compiler errors and lints to the user. The raw output
+      # was captured to a temp file for parsing, so without this the diagnostics
+      # path would suppress everything tsgo prints (notably its Effect lints).
+      filter_diagnostics_noise "$_tsc_output"
 
       if [[ "${tscInvocation}" == --build* ]]; then
         # Parse TRACEPARENT to get trace ID and current span ID (our parent)
@@ -167,6 +190,18 @@ let
           _current_project="''${_current_project#$DEVENV_ROOT/}"
           # Strip /tsconfig.json suffix
           _current_project="''${_current_project%/tsconfig.json}"
+          _diag_block=""
+        fi
+
+        # tsgo closes the per-project section with an aggregate build summary
+        # ("Projects in scope: ..." ... "Aggregate Total time: ..."). Reset the
+        # current project on that boundary so the aggregate timers are never
+        # attributed to the last project (which matters for warm builds where an
+        # up-to-date project emits no per-project "Total time:" to close itself).
+        # The aggregate block is captured separately below. tsc never emits this
+        # line, so the reset is a no-op for the JS compiler.
+        if [[ "$line" =~ ^"Projects in scope:" ]]; then
+          _current_project=""
           _diag_block=""
         fi
 
@@ -237,6 +272,62 @@ let
           _diag_block=""
         fi
         done < "$_tsc_output"
+
+        # Emit one build-level span from tsgo's aggregate summary, if present.
+        # This is the highest-fidelity whole-workspace timing tsgo exposes and is
+        # not available from tsc (which has no aggregate block), so it is a
+        # tsgo-only enrichment that complements the per-project spans above.
+        _agg_total=$(grep "^Aggregate Total time:" "$_tsc_output" | grep -oE '[0-9]+\.[0-9]+' | tail -1 || echo "")
+        if [ -n "$_agg_total" ]; then
+          _agg_check=$(grep "^Aggregate Check time:" "$_tsc_output" | grep -oE '[0-9]+\.[0-9]+' | tail -1 || echo "")
+          _agg_parse=$(grep "^Aggregate Parse time:" "$_tsc_output" | grep -oE '[0-9]+\.[0-9]+' | tail -1 || echo "")
+          _agg_emit=$(grep "^Aggregate Emit time:" "$_tsc_output" | grep -oE '[0-9]+\.[0-9]+' | tail -1 || echo "")
+          _agg_files=$(grep "^Aggregate Files:" "$_tsc_output" | grep -oE '[0-9]+' | tail -1 || echo "")
+          _agg_memory=$(grep "^Aggregate Memory used:" "$_tsc_output" | grep -oE '[0-9]+' | tail -1 || echo "")
+          _projects_built=$(grep "^Projects built:" "$_tsc_output" | grep -oE '[0-9]+' | tail -1 || echo "")
+
+          _agg_total_ms=$(${pkgs.coreutils}/bin/printf "%.0f" "$(echo "$_agg_total * 1000" | ${pkgs.bc}/bin/bc)")
+          _agg_duration_ns=$(echo "$_agg_total_ms * 1000000" | ${pkgs.bc}/bin/bc)
+          _agg_span_id=$(${pkgs.coreutils}/bin/od -An -tx1 -N8 /dev/urandom | tr -d ' \n')
+          _agg_end_ns=$(${pkgs.coreutils}/bin/date +%s%N)
+          _agg_start_ns=$((_agg_end_ns - _agg_duration_ns))
+
+          _agg_attrs='[{"key":"service.name","value":{"stringValue":"tsc-project"}}'
+          _agg_attrs="$_agg_attrs"',{"key":"tsc.aggregate","value":{"boolValue":true}}'
+          _agg_attrs="$_agg_attrs"',{"key":"tsc.total_time_s","value":{"doubleValue":'"$_agg_total"'}}'
+          [ -n "$_agg_check" ] && _agg_attrs="$_agg_attrs"',{"key":"tsc.check_time_s","value":{"doubleValue":'"$_agg_check"'}}'
+          [ -n "$_agg_parse" ] && _agg_attrs="$_agg_attrs"',{"key":"tsc.parse_time_s","value":{"doubleValue":'"$_agg_parse"'}}'
+          [ -n "$_agg_emit" ] && _agg_attrs="$_agg_attrs"',{"key":"tsc.emit_time_s","value":{"doubleValue":'"$_agg_emit"'}}'
+          [ -n "$_agg_files" ] && _agg_attrs="$_agg_attrs"',{"key":"tsc.files","value":{"intValue":"'"$_agg_files"'"}}'
+          [ -n "$_agg_memory" ] && _agg_attrs="$_agg_attrs"',{"key":"tsc.memory_kb","value":{"intValue":"'"$_agg_memory"'"}}'
+          [ -n "$_projects_built" ] && _agg_attrs="$_agg_attrs"',{"key":"tsc.projects_built","value":{"intValue":"'"$_projects_built"'"}}'
+          _agg_attrs="$_agg_attrs"',{"key":"devenv.root","value":{"stringValue":"'"$DEVENV_ROOT"'"}}]'
+
+          printf '%s\n' '{
+            "resourceSpans": [{
+              "resource": {
+                "attributes": [
+                  {"key": "service.name", "value": {"stringValue": "tsc-project"}},
+                  {"key": "devenv.root", "value": {"stringValue": "'"$DEVENV_ROOT"'"}}
+                ]
+              },
+              "scopeSpans": [{
+                "scope": {"name": "tsc-diagnostics"},
+                "spans": [{
+                  "traceId": "'"$_tp_trace"'",
+                  "spanId": "'"$_agg_span_id"'",
+                  "parentSpanId": "'"$_tp_parent"'",
+                  "name": "aggregate",
+                  "kind": 1,
+                  "startTimeUnixNano": "'"$_agg_start_ns"'",
+                  "endTimeUnixNano": "'"$_agg_end_ns"'",
+                  "attributes": '"$_agg_attrs"',
+                  "status": {"code": 1}
+                }]
+              }]
+            }]
+          }' | otel-span emit
+        fi
       fi
 
       exit "$_tsc_exit"
