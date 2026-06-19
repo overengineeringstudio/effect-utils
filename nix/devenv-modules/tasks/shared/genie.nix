@@ -47,7 +47,7 @@ let
         # In Git worktrees, follow Git's tracked + untracked/non-ignored view so
         # local ignored worktrees and caches do not poison Genie status.
         if ${pkgs.git}/bin/git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-          ${pkgs.git}/bin/git ls-files -z -- '*.genie.ts' ':(glob)**/*.genie.ts' \
+          ${pkgs.git}/bin/git ls-files -z --recurse-submodules -- '*.genie.ts' ':(glob)**/*.genie.ts' \
             | tr '\0' '\n'
           ${pkgs.git}/bin/git ls-files -z --others --exclude-standard -- '*.genie.ts' ':(glob)**/*.genie.ts' \
             | tr '\0' '\n'

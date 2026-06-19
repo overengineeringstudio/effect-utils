@@ -131,7 +131,7 @@ const discoverGitGenieFiles = ({ cwd }: { cwd: string }): Array<string> | undefi
     })
 
     return [
-      ...gitListGenieFiles({ cwd, args: ['ls-files', '-z'] }),
+      ...gitListGenieFiles({ cwd, args: ['ls-files', '-z', '--recurse-submodules'] }),
       ...gitListGenieFiles({ cwd, args: ['ls-files', '-z', '--others', '--exclude-standard'] }),
     ].map((file) => path.join(cwd, file))
   } catch {

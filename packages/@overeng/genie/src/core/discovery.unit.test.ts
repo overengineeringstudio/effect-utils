@@ -17,6 +17,7 @@ const writeFile = async ({ content, filePath }: { content: string; filePath: str
 describe('findGenieFiles', () => {
   it('uses git ignore rules for repository discovery', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'genie-discovery-'))
+    const rootRealPath = await fs.realpath(root)
 
     try {
       execFileSync('git', ['init'], { cwd: root, stdio: 'ignore' })
@@ -41,7 +42,7 @@ describe('findGenieFiles', () => {
       const discovered = await Effect.runPromise(
         findGenieFiles(root).pipe(Effect.provide(NodeContext.layer)),
       )
-      const relative = discovered.map((file) => path.relative(root, file)).toSorted()
+      const relative = discovered.map((file) => path.relative(rootRealPath, file)).toSorted()
 
       expect(relative).toEqual([
         'tracked/package.json.genie.ts',
@@ -49,6 +50,53 @@ describe('findGenieFiles', () => {
       ])
     } finally {
       await fs.rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('discovers tracked genie files inside checked-out git submodules', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'genie-discovery-'))
+    const submoduleSource = await fs.mkdtemp(path.join(os.tmpdir(), 'genie-submodule-'))
+    const rootRealPath = await fs.realpath(root)
+
+    try {
+      execFileSync('git', ['init'], { cwd: root, stdio: 'ignore' })
+      execFileSync('git', ['init'], { cwd: submoduleSource, stdio: 'ignore' })
+      await writeFile({
+        filePath: path.join(submoduleSource, 'package.json.genie.ts'),
+        content: 'export default {}\n',
+      })
+      execFileSync('git', ['add', 'package.json.genie.ts'], {
+        cwd: submoduleSource,
+        stdio: 'ignore',
+      })
+      execFileSync(
+        'git',
+        [
+          '-c',
+          'user.email=261620128+schickling-assistant@users.noreply.github.com',
+          '-c',
+          'user.name=schickling-assistant',
+          'commit',
+          '-m',
+          'add genie source',
+        ],
+        { cwd: submoduleSource, stdio: 'ignore' },
+      )
+      execFileSync(
+        'git',
+        ['-c', 'protocol.file.allow=always', 'submodule', 'add', submoduleSource, 'vendor/genie'],
+        { cwd: root, stdio: 'ignore' },
+      )
+
+      const discovered = await Effect.runPromise(
+        findGenieFiles(root).pipe(Effect.provide(NodeContext.layer)),
+      )
+      const relative = discovered.map((file) => path.relative(rootRealPath, file)).toSorted()
+
+      expect(relative).toEqual(['vendor/genie/package.json.genie.ts'])
+    } finally {
+      await fs.rm(root, { recursive: true, force: true })
+      await fs.rm(submoduleSource, { recursive: true, force: true })
     }
   })
 })
