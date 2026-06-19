@@ -29,7 +29,10 @@ All notable changes to this project will be documented in this file.
   `@storybook/react-vite` framework package via pnpm package extensions, so
   Storybook's dynamic preset loading works under pnpm's global virtual store;
   refresh the lockfile and affected `pnpm-deps` fixed-output hashes for that
-  package-extension checksum change (#804).
+  package-extension checksum change. The pty-effect native-package linking task
+  now resolves the active pnpm global virtual store path and skips an absent
+  `links` projection instead of assuming the default workspace store exists
+  (#804).
 
 - **devenv TypeScript tasks**: Move the normal workspace TypeScript check/build
   path to the Nix-managed `tsgo` binary, so `ts:check`, `ts:check:strict`,

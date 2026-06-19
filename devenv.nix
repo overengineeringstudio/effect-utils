@@ -27,6 +27,9 @@ let
     inherit pkgs oxlintNpm;
   };
   nodePtyNative = import ./nix/node-pty-native.nix { inherit pkgs; };
+  pnpmTaskHelpersScript = pkgs.writeText "pnpm-task-helpers.sh" (
+    builtins.readFile ./nix/devenv-modules/tasks/shared/pnpm-task-helpers.sh
+  );
 
   # Shared task modules (from shared/ directory)
   taskModules = {
@@ -498,17 +501,25 @@ in
     description = "Link Nix-built native Node packages into the pnpm projection";
     exec = ''
       set -euo pipefail
+      source ${lib.escapeShellArg pnpmTaskHelpersScript}
 
       link_native_package() {
         local package_name="$1"
         local package_path="$2"
         local rel_path="$package_name"
+        local gvs_links_dir
+        local search_roots=(node_modules)
 
         if [[ "$package_name" == @*/* ]]; then
           rel_path="$(dirname "$package_name")/$(basename "$package_name")"
         fi
 
-        find node_modules .devenv/pnpm-store-pure-v1/v11/links \
+        gvs_links_dir="$(resolve_gvs_links_dir)"
+        if [[ -n "$gvs_links_dir" && -d "$gvs_links_dir" ]]; then
+          search_roots+=("$gvs_links_dir")
+        fi
+
+        find "''${search_roots[@]}" \
           -path "*/node_modules/$rel_path" \
           -exec sh -c 'package_path="$1"; shift; for target do rm -rf "$target"; ln -s "$package_path" "$target"; done' sh "$package_path" {} +
       }
