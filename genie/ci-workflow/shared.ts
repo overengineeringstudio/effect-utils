@@ -359,7 +359,7 @@ run_nix_gc_race_retry() {
   local max="${dollar}{NIX_GC_RACE_MAX_RETRIES:-10}"
   local heartbeat="${dollar}{CI_PROGRESS_HEARTBEAT_SECONDS:-60}"
   local attempt=1
-  local log rc path start now elapsed hb_pid flattened saw_invalid_path saw_cachix_signature saw_fetch_signature had_errexit
+  local log rc path start now elapsed hb_pid flattened saw_invalid_path saw_cachix_signature saw_fetch_signature saw_daemon_socket_failure had_errexit
 
   start="$(date +%s)"
 
@@ -373,6 +373,31 @@ run_nix_gc_race_retry() {
       echo "- Attempts: $attempt/$max"
       [ -z "${dollar}{2:-}" ] || echo "- Note: $2"
     } >> "$GITHUB_STEP_SUMMARY"
+  }
+
+  repair_nix_daemon() {
+    echo "::warning::Nix daemon socket is unavailable; attempting daemon restart before retry"
+
+    if command -v launchctl >/dev/null 2>&1; then
+      sudo launchctl kickstart -k system/org.nixos.nix-daemon >/dev/null 2>&1 || true
+    fi
+
+    if command -v systemctl >/dev/null 2>&1; then
+      sudo systemctl restart nix-daemon.socket >/dev/null 2>&1 || true
+      sudo systemctl restart nix-daemon.service >/dev/null 2>&1 || true
+      sudo systemctl restart nix-daemon >/dev/null 2>&1 || true
+    fi
+
+    if [ ! -S /nix/var/nix/daemon-socket/socket ] && [ -x /nix/var/nix/profiles/default/bin/nix-daemon ]; then
+      sudo /nix/var/nix/profiles/default/bin/nix-daemon --daemon >/tmp/nix-daemon-restart.log 2>&1 || true
+    fi
+
+    for _ in 1 2 3 4 5; do
+      [ -S /nix/var/nix/daemon-socket/socket ] && return 0
+      sleep 1
+    done
+
+    return 0
   }
 
   while [ "$attempt" -le "$max" ]; do
@@ -424,19 +449,27 @@ run_nix_gc_race_retry() {
     saw_invalid_path=false
     saw_cachix_signature=false
     saw_fetch_signature=false
+    saw_daemon_socket_failure=false
     [ -n "$path" ] && saw_invalid_path=true
     printf '%s' "$flattened" | grep -Eq 'error:[[:space:]]*.*Failed to convert config\.cachix to JSON' && saw_cachix_signature=true || true
     printf '%s' "$flattened" | grep -Eq 'error:[[:space:]]*.*while evaluating the option.*cachix\.package' && saw_cachix_signature=true || true
     printf '%s' "$flattened" | grep -Eq 'error:[[:space:]]*cannot read file from tarball:[[:space:]]*Truncated tar archive detected while reading data' && saw_fetch_signature=true || true
+    printf '%s' "$flattened" | grep -Eq "error:[[:space:]]*cannot connect to socket at '/nix/var/nix/daemon-socket/socket'" && saw_daemon_socket_failure=true || true
     rm -f "$log"
 
-    if [ "$saw_invalid_path" != true ] && [ "$saw_cachix_signature" != true ] && [ "$saw_fetch_signature" != true ]; then
+    if [ "$saw_invalid_path" != true ] && [ "$saw_cachix_signature" != true ] && [ "$saw_fetch_signature" != true ] && [ "$saw_daemon_socket_failure" != true ]; then
       echo "::warning::[ci] $task failed after $elapsed s without a detected transient Nix failure"
       write_summary failure "No transient Nix failure signature detected"
       return "$rc"
     fi
 
-    if [ "$saw_fetch_signature" = true ]; then
+    if [ "$saw_daemon_socket_failure" = true ]; then
+      repair_nix_daemon
+    fi
+
+    if [ "$saw_daemon_socket_failure" = true ]; then
+      echo "::warning::Nix daemon socket failure detected for $task (attempt $attempt/$max); retrying after daemon repair"
+    elif [ "$saw_fetch_signature" = true ]; then
       echo "::warning::Nix source fetch corruption detected for $task (attempt $attempt/$max); retrying with a refreshed eval cache"
     elif [ "$saw_cachix_signature" = true ] && [ -n "$path" ]; then
       echo "::warning::Nix store validity race detected for $task via cachix eval wrapper (attempt $attempt/$max): $path"
@@ -467,6 +500,9 @@ run_nix_gc_race_retry() {
  * cachix.package` before the final invalid-store-path line appears. We treat
  * those as the same root cause and retry after realizing the missing path and
  * clearing the eval cache.
+ *
+ * Some namespace runners also lose the multi-user Nix daemon socket after
+ * setup; retry those after a best-effort daemon restart.
  *
  * TODO: Remove once NixOS/nix#15469 and DeterminateSystems/nix-src#395 are released
  * @see https://github.com/NixOS/nix/pull/15469

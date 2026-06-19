@@ -23,7 +23,9 @@ All notable changes to this project will be documented in this file.
   locked fixed-output prebuilt optional native packages. The `genie` CLI now
   formats through the Nix-wrapped `oxfmt` executable instead of bundling the npm
   `oxfmt` module, keeping optional formatter plugins out of the compiled CLI
-  closure (#804).
+  closure. CI's shared Nix retry wrapper now repairs and retries a missing
+  multi-user Nix daemon socket, matching the existing transient Nix store/fetch
+  retry policy (#804).
 
 - **devenv TypeScript tasks**: Move the normal workspace TypeScript check/build
   path to the Nix-managed `tsgo` binary, so `ts:check`, `ts:check:strict`,
