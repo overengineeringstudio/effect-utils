@@ -15,11 +15,12 @@ export interface StatusSchemaDrift {
   readonly live?: SelectOptionConfig
 }
 
-/** Status schema convergence plan with additive apply candidates and fail-closed drift diagnostics. */
+/** Status schema convergence plan with additive mutation candidates and drift diagnostics. */
 export interface StatusSchemaPlan {
   readonly propertyName: string
   readonly missingOptions: readonly SelectOptionConfig[]
   readonly unsupportedDrift: readonly StatusSchemaDrift[]
+  /** Whether additive option mutation can proceed without mutation-blocking drift. */
   readonly canApplySafely: boolean
   readonly applyOptions: readonly SelectOptionConfig[]
 }
@@ -60,6 +61,10 @@ const sameGroups = ({
     )
   })
 }
+
+/** Returns whether a drift kind blocks additive option mutation. */
+export const isStatusSchemaMutationBlockingDrift = (drift: StatusSchemaDrift): boolean =>
+  drift.kind !== 'group_changed'
 
 /** Plans additive native Notion status option convergence while reporting unapplyable drift. */
 export const planStatusSchema = ({ desired, live }: PlanStatusSchemaOptions): StatusSchemaPlan => {
@@ -137,7 +142,7 @@ export const planStatusSchema = ({ desired, live }: PlanStatusSchemaOptions): St
     propertyName: desired.name,
     missingOptions,
     unsupportedDrift,
-    canApplySafely: unsupportedDrift.length === 0,
+    canApplySafely: unsupportedDrift.every((drift) => !isStatusSchemaMutationBlockingDrift(drift)),
     applyOptions: [...live.status.options, ...missingOptions],
   }
 }

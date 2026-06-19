@@ -125,7 +125,7 @@ describe('planStatusSchema', () => {
 
     expect(plan.missingOptions).toEqual([])
     expect(plan.unsupportedDrift).toMatchObject([{ kind: 'group_changed' }])
-    expect(plan.canApplySafely).toBe(false)
+    expect(plan.canApplySafely).toBe(true)
   })
 
   it('preserves live options and blocks safe apply when missing options mix with unsupported drift', () => {

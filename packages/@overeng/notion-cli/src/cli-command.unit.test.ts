@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 
 import { makeNotionRootCommand } from './cli.ts'
 import { dbCommand } from './commands/db/mod.ts'
+import { schemaCommand } from './commands/schema/mod.ts'
 
 const placeholderCommand = (name: string) =>
   Command.make(name, {}, () => Effect.void).pipe(Command.withDescription(`${name} command`))
@@ -42,5 +43,17 @@ describe('notion db command composition', () => {
     expect(completionText).not.toContain('replica')
     expect(completionText).not.toContain('migrate')
     expect(completionText).not.toContain('repair')
+  })
+})
+
+describe('notion schema command composition', () => {
+  it('exposes native status convergence commands', async () => {
+    const completions = await Effect.runPromise(
+      Command.getBashCompletions(schemaCommand, 'notion schema'),
+    )
+    const completionText = completions.join('\n')
+
+    expect(completionText).toContain('status-check')
+    expect(completionText).toContain('status-apply')
   })
 })

@@ -211,6 +211,78 @@ export const getRequiredPropertiesFromSchema = Effect.fn(
   return required
 })
 
+/** Extracts full Notion property metadata annotations from a Schema.Struct. */
+export const getPropertyMetasFromSchema = Effect.fn('SchemaHelpers.getPropertyMetasFromSchema')(
+  function* (schema: Schema.Schema.AnyNoContext) {
+    const ast = schema.ast
+    if (ast._tag !== 'TypeLiteral') {
+      return yield* new SchemaMetaMissingError({
+        message: 'Schema must be a Struct to extract Notion property metadata',
+        missing: [],
+      })
+    }
+
+    const metas: Array<{ fieldName: string; meta: NotionPropertyMeta }> = []
+    const missing: string[] = []
+
+    for (const prop of ast.propertySignatures) {
+      if (typeof prop.name !== 'string') {
+        continue
+      }
+
+      const annotation = SchemaAST.getAnnotation<NotionPropertyMeta>(prop.type, notionPropertyMeta)
+      if (Option.isSome(annotation) === true) {
+        metas.push({ fieldName: prop.name, meta: annotation.value })
+      } else {
+        missing.push(prop.name)
+      }
+    }
+
+    if (missing.length > 0) {
+      return yield* new SchemaMetaMissingError({
+        message: `Schema is missing Notion property metadata for: ${missing.join(', ')}`,
+        missing,
+      })
+    }
+
+    return metas
+  },
+)
+
+/** Extracts one Notion property metadata annotation from a Schema.Struct field. */
+export const getPropertyMetaFromSchema = Effect.fn('SchemaHelpers.getPropertyMetaFromSchema')(
+  function* (args: { schema: Schema.Schema.AnyNoContext; propertyName: string }) {
+    const ast = args.schema.ast
+    if (ast._tag !== 'TypeLiteral') {
+      return yield* new SchemaMetaMissingError({
+        message: 'Schema must be a Struct to extract Notion property metadata',
+        missing: [],
+      })
+    }
+
+    for (const prop of ast.propertySignatures) {
+      if (prop.name !== args.propertyName) {
+        continue
+      }
+
+      const annotation = SchemaAST.getAnnotation<NotionPropertyMeta>(prop.type, notionPropertyMeta)
+      if (Option.isSome(annotation) === true) {
+        return annotation.value
+      }
+
+      return yield* new SchemaMetaMissingError({
+        message: `Schema is missing Notion property metadata for: ${args.propertyName}`,
+        missing: [args.propertyName],
+      })
+    }
+
+    return yield* new SchemaMetaMissingError({
+      message: `Schema is missing field: ${args.propertyName}`,
+      missing: [args.propertyName],
+    })
+  },
+)
+
 /** Validates database properties using metadata extracted from a Schema.Struct */
 export const validatePropertiesFromSchema = Effect.fn('SchemaHelpers.validatePropertiesFromSchema')(
   function* (args: {
@@ -462,6 +534,8 @@ export const SchemaHelpers = {
   getPropertyByTag,
   validateProperties,
   getRequiredPropertiesFromSchema,
+  getPropertyMetasFromSchema,
+  getPropertyMetaFromSchema,
   validatePropertiesFromSchema,
   getSelectOptions,
   getMultiSelectOptions,

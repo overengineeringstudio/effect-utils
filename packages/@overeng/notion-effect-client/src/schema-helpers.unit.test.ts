@@ -187,6 +187,73 @@ Vitest.describe('SchemaHelpers', () => {
     )
   })
 
+  Vitest.describe('getPropertyMetaFromSchema', () => {
+    Vitest.it.effect('returns the full Notion property metadata for a schema field', () =>
+      Effect.gen(function* () {
+        const meta = yield* SchemaHelpers.getPropertyMetaFromSchema({
+          schema: Schema.Struct({
+            Status: NotionSchema.status().annotations({
+              [notionPropertyMeta]: {
+                _tag: 'status',
+                id: 'status',
+                name: 'Status',
+                description: null,
+                status: {
+                  options: [{ id: 'done', name: 'Done', color: 'green', description: null }],
+                  groups: [],
+                },
+              },
+            }),
+          }),
+          propertyName: 'Status',
+        })
+
+        expect(meta._tag).toBe('status')
+        if (meta._tag === 'status') {
+          expect(meta.status.options.map((option) => option.name)).toEqual(['Done'])
+        }
+      }),
+    )
+
+    Vitest.it.effect('does not require unrelated schema fields to be annotated', () =>
+      Effect.gen(function* () {
+        const meta = yield* SchemaHelpers.getPropertyMetaFromSchema({
+          schema: Schema.Struct({
+            Status: NotionSchema.status().annotations({
+              [notionPropertyMeta]: {
+                _tag: 'status',
+                id: 'status',
+                name: 'Status',
+                description: null,
+                status: {
+                  options: [{ id: 'done', name: 'Done', color: 'green', description: null }],
+                  groups: [],
+                },
+              },
+            }),
+            Unannotated: Schema.String,
+          }),
+          propertyName: 'Status',
+        })
+
+        expect(meta._tag).toBe('status')
+      }),
+    )
+
+    Vitest.it.effect('fails when the schema field is not annotated', () =>
+      Effect.gen(function* () {
+        const result = yield* SchemaHelpers.getPropertyMetaFromSchema({
+          schema: Schema.Struct({
+            Status: Schema.String,
+          }),
+          propertyName: 'Status',
+        }).pipe(Effect.either)
+
+        expect(result._tag).toBe('Left')
+      }),
+    )
+  })
+
   Vitest.describe('getRelationTargetOrFail', () => {
     Vitest.it.effect('returns relation target when available', () =>
       Effect.gen(function* () {
