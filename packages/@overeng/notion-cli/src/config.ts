@@ -41,6 +41,8 @@ export interface ResolvedDatabaseConfig {
   readonly includeApi?: boolean
   /** Property-specific transforms (normalized to string values) */
   readonly transforms?: PropertyTransformConfig
+  /** Opt-in native `status` convergence intent, keyed by property name */
+  readonly statusProperties?: DatabaseConfig['statusProperties']
 }
 
 /** Resolved config with all paths resolved */
@@ -214,6 +216,9 @@ const buildResolvedDatabaseConfig = (opts: {
   ...(opts.normalizedTransforms !== undefined && {
     transforms: opts.normalizedTransforms,
   }),
+  ...(opts.merged.statusProperties !== undefined && {
+    statusProperties: opts.merged.statusProperties,
+  }),
 })
 
 /** Resolve database configs with outputDir and defaults applied */
@@ -306,5 +311,8 @@ export const mergeWithDefaults = ({
     ...(schemaMeta !== undefined ? { schemaMeta } : {}),
     ...(includeApi !== undefined ? { includeApi } : {}),
     ...(Object.keys(transforms).length > 0 ? { transforms } : {}),
+    ...(database.statusProperties !== undefined
+      ? { statusProperties: database.statusProperties }
+      : {}),
   }
 }

@@ -33,6 +33,7 @@
 import { EffectPath, type RelativeDirPath, type RelativeFilePath } from '@overeng/effect-path'
 
 import type { NotionPropertyType } from './introspect.ts'
+import type { DesiredStatusProperty } from './status-converge.ts'
 
 // Re-export path types for config authors
 export type { RelativeDirPath, RelativeFilePath }
@@ -225,6 +226,13 @@ export interface DatabaseConfig {
   readonly includeApi?: boolean
   /** Property-specific transforms */
   readonly transforms?: PropertyTransforms
+  /**
+   * Opt-in native `status` convergence, keyed by property name. Only properties
+   * listed here are eligible for `schema apply`; introspection never mutates
+   * unlisted status properties. The API is add-only, so apply creates missing
+   * options; colors/groups are advisory drift signals only.
+   */
+  readonly statusProperties?: Record<string, DesiredStatusProperty>
 }
 
 /** Default options applied to all databases */

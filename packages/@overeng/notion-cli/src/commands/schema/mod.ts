@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 
 import { Args, Command, Options } from '@effect/cli'
 import { FetchHttpClient, FileSystem } from '@effect/platform'
-import { Effect, Layer, Option, Schema } from 'effect'
+import { Console, Effect, Layer, Option, Schema } from 'effect'
 import React from 'react'
 
 import { EffectPath } from '@overeng/effect-path'
@@ -29,10 +29,11 @@ import { resolveNotionToken, tokenOption } from '../shared.ts'
 export type { PlatformError } from '@effect/platform/Error'
 
 import { type GenerateOptions, generateApiCode, generateSchemaCode } from '../../codegen.ts'
-import { loadConfig } from '../../config.ts'
+import { loadConfig, type ResolvedDatabaseConfig } from '../../config.ts'
 import { computeDiff, hasDifferences, parseGeneratedFile } from '../../diff.ts'
 import { introspectDatabase, type PropertyTransformConfig } from '../../introspect.ts'
 import { formatCode, writeSchemaToFile } from '../../output.ts'
+import { applyStatusConvergence, type StatusConvergeResult } from '../../status-converge-apply.ts'
 
 export { resolveNotionToken, tokenOption } from '../shared.ts'
 
@@ -55,6 +56,15 @@ export class SchemaDriftDetectedError extends Schema.TaggedError<SchemaDriftDete
   {
     databaseId: Schema.String,
     file: Schema.String,
+    message: Schema.String,
+  },
+) {}
+
+/** Error thrown when `schema apply` left one or more properties blocked/unverified */
+export class StatusConvergeFailedError extends Schema.TaggedError<StatusConvergeFailedError>()(
+  'StatusConvergeFailedError',
+  {
+    failures: Schema.Number,
     message: Schema.String,
   },
 ) {}
@@ -635,6 +645,159 @@ const diffCommand = Command.make(
 )
 
 // -----------------------------------------------------------------------------
+// Apply Command (native status convergence)
+// -----------------------------------------------------------------------------
+
+/** Render one property's convergence result as structured, review-friendly lines. */
+const renderConvergeResult = ({
+  databaseId,
+  property,
+  result,
+}: {
+  databaseId: string
+  property: string
+  result: StatusConvergeResult
+}): string => {
+  const tag = result.applied === true ? 'APPLIED' : 'PLAN'
+  const lines = [`  ${databaseId} · ${property} [${tag}]`]
+  for (const d of result.plan.decisions) {
+    switch (d._tag) {
+      case 'create':
+        lines.push(`    + create '${d.name}' (${d.color})`)
+        break
+      case 'color-drift':
+        lines.push(`    ~ '${d.name}' color ${d.liveColor} != ${d.desiredColor} [UI-ONLY]`)
+        break
+      case 'extra-remote':
+        lines.push(`    ! extra remote option '${d.name}' [${d.policy}]`)
+        break
+      case 'missing-unaddable':
+        lines.push(`    - '${d.name}' missing, createMissing off`)
+        break
+      case 'matches':
+        break
+    }
+  }
+  return lines.join('\n')
+}
+
+/** Regenerate a database's schema file after an apply so a subsequent diff is clean. */
+const regenerateDatabaseSchema = ({
+  db,
+  generatorVersion,
+  writable,
+}: {
+  db: ResolvedDatabaseConfig
+  generatorVersion: string
+  writable: boolean
+}) =>
+  Effect.gen(function* () {
+    const dbInfo = yield* introspectDatabase(db.id)
+    const schemaName = db.name ?? dbInfo.name
+    const generateOptions: GenerateOptions = {
+      transforms: db.transforms ?? {},
+      includeWrite: db.includeWrite ?? false,
+      typedOptions: db.typedOptions ?? false,
+      schemaMeta: db.schemaMeta ?? true,
+      includeApi: db.includeApi ?? false,
+      generatorVersion,
+      ...(db.name !== undefined ? { schemaNameOverride: db.name } : {}),
+    }
+    const code = yield* formatCode(
+      generateSchemaCode({ dbInfo, schemaName, options: generateOptions }),
+    )
+    yield* writeSchemaToFile({ code, outputPath: db.output, writable })
+    if (generateOptions.includeApi === true) {
+      const schemaFileName = basename(db.output)
+      const apiCode = yield* formatCode(
+        generateApiCode({ dbInfo, schemaName, schemaFileName, options: generateOptions }),
+      )
+      yield* writeSchemaToFile({
+        code: apiCode,
+        outputPath: EffectPath.unsafe.absoluteFile(db.output.replace(/\.ts$/, '.api.ts')),
+        writable,
+      })
+    }
+  })
+
+const applyDatabaseOption = Options.text('database').pipe(
+  Options.withDescription('Limit convergence to a single database ID (defaults to all configured)'),
+  Options.optional,
+)
+
+const applyCommand = Command.make(
+  'apply',
+  {
+    config: configOption,
+    token: tokenOption,
+    database: applyDatabaseOption,
+    dryRun: dryRunOption,
+    writable: writableOption,
+  },
+  ({ config, token, database, dryRun, writable }) =>
+    Effect.gen(function* () {
+      const { config: resolvedConfig } = yield* loadConfig(
+        Option.isSome(config) === true ? config.value : undefined,
+      )
+      const resolvedToken = yield* resolveNotionToken(token)
+      const generatorVersion = yield* getGeneratorVersion
+      const configLayer = Layer.succeed(NotionConfig, { authToken: resolvedToken })
+
+      const targets = resolvedConfig.databases.filter(
+        (db) =>
+          db.statusProperties !== undefined &&
+          (Option.isNone(database) === true || db.id === database.value),
+      )
+
+      const program = Effect.gen(function* () {
+        if (targets.length === 0) {
+          yield* Console.log('No databases with `statusProperties` to converge.')
+          return
+        }
+
+        let failures = 0
+        for (const db of targets) {
+          let appliedAny = false
+          for (const [property, desired] of Object.entries(db.statusProperties ?? {})) {
+            const outcome = yield* Effect.either(
+              applyStatusConvergence({ databaseId: db.id, property, desired, dryRun }),
+            )
+            if (outcome._tag === 'Left') {
+              failures += 1
+              const err = outcome.left
+              const detail =
+                err._tag === 'StatusConvergeError' ? `${err.reason} — ${err.message}` : String(err)
+              yield* Console.error(`  ✖ ${db.id} · ${property}: ${detail}`)
+              continue
+            }
+            yield* Console.log(
+              renderConvergeResult({ databaseId: db.id, property, result: outcome.right }),
+            )
+            if (outcome.right.applied === true) appliedAny = true
+          }
+          if (appliedAny === true && dryRun === false) {
+            yield* Console.log(`  ↻ regenerating ${db.output}`)
+            yield* regenerateDatabaseSchema({ db, generatorVersion, writable })
+          }
+        }
+
+        if (failures > 0) {
+          return yield* new StatusConvergeFailedError({
+            failures,
+            message: `${failures} status propert${failures === 1 ? 'y' : 'ies'} blocked or unverified`,
+          })
+        }
+      })
+
+      yield* program.pipe(Effect.provide(Layer.merge(configLayer, FetchHttpClient.layer)))
+    }),
+).pipe(
+  Command.withDescription(
+    'Converge native status options from config (add-only): plan, apply missing options, verify, regenerate',
+  ),
+)
+
+// -----------------------------------------------------------------------------
 // Schema Subcommand
 // -----------------------------------------------------------------------------
 
@@ -645,6 +808,7 @@ export const schemaCommand = Command.make('schema').pipe(
     introspectCommand,
     generateFromConfigCommand,
     diffCommand,
+    applyCommand,
   ]),
   Command.withDescription('Schema generation commands'),
 )
