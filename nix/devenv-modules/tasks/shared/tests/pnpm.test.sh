@@ -422,5 +422,125 @@ exit_code=$?
 set -e
 assert_exit_code 0 "$exit_code" "projection health ignores optional subpath exports"
 
+# ── Install-state miss attribution ────────────────────────────────────────────
+#
+# These tests source the real component-hash helpers, build a baseline, then
+# mutate exactly one surface and assert that classify_install_state_miss reports
+# the highest-severity component. They also assert report_install_miss_reason
+# writes the OTEL sidecar attribute, which is how install.miss_reason reaches the
+# status span.
+
+make_install_state_fixture() {
+  local root="$1"
+
+  mkdir -p "$root/pkg-a"
+  cat > "$root/pnpm-lock.yaml" <<'EOF'
+lockfileVersion: '9.0'
+importers: {}
+packages: {}
+EOF
+  cat > "$root/package.json" <<'EOF'
+{"name":"root","private":true}
+EOF
+  cat > "$root/pkg-a/package.json" <<'EOF'
+{"name":"pkg-a","private":true}
+EOF
+  cat > "$root/pnpm-workspace.yaml" <<'EOF'
+packages:
+  - pkg-a
+
+packageExtensions:
+  some-pkg:
+    dependencies:
+      extra-dep: '1.0.0'
+
+allowBuilds:
+  - esbuild
+
+enableGlobalVirtualStore: true
+ignoreScripts: true
+verifyStoreIntegrity: true
+EOF
+}
+
+# Mirror the env the task scripts export so the sourced helpers see the same
+# surface. Policy keys mirror pnpm-install-policy.nix workspaceYamlPolicyKeys.
+set_component_env() {
+  export PNPM_COMPONENT_PNPM_VERSION="11.0.0"
+  export PNPM_COMPONENT_INSTALL_FLAGS='[]'
+  export PNPM_COMPONENT_PRE_INSTALL=""
+  export PNPM_COMPONENT_POLICY_KEYS="enableGlobalVirtualStore ignoreScripts verifyStoreIntegrity"
+  export PNPM_COMPONENT_MANIFEST_PATHS="pkg-a/package.json"
+  export PNPM_COMPONENT_INJECTED_DIRS=""
+  export PNPM_COMPONENT_GVS_LINKS_DIR="/stable/store/v11/links"
+}
+
+store_component_baseline() {
+  export PNPM_STORED_LOCKFILE_HASH="$(compute_component_lockfile_hash)"
+  export PNPM_STORED_GVS_LINK_HASH="$(compute_component_gvs_link_hash)"
+  export PNPM_STORED_POLICY_HASH="$(compute_component_policy_hash)"
+  export PNPM_STORED_MANIFEST_CONFIG_HASH="$(compute_component_manifest_config_hash)"
+}
+
+echo "Test 23: lockfile-only change reports miss_reason lockfile"
+(
+  state_dir="$test_dir/miss-lockfile"
+  make_install_state_fixture "$state_dir"
+  cd "$state_dir"
+  set_component_env
+  store_component_baseline
+  printf 'packages: { changed }\n' >> pnpm-lock.yaml
+  assert_eq "lockfile" "$(classify_install_state_miss)" "lockfile change reports lockfile"
+)
+
+echo "Test 24: policy-only change reports miss_reason policy"
+(
+  state_dir="$test_dir/miss-policy"
+  make_install_state_fixture "$state_dir"
+  cd "$state_dir"
+  set_component_env
+  store_component_baseline
+  # Flip a workspace.yaml install-policy key that is not part of the gvs-link
+  # surface (packageExtensions/allowBuilds) so the reason is uniquely policy.
+  sed -i 's/^ignoreScripts: true/ignoreScripts: false/' pnpm-workspace.yaml
+  assert_eq "policy" "$(classify_install_state_miss)" "policy key change reports policy"
+)
+
+echo "Test 25: manifest change reports miss_reason manifest+config"
+(
+  state_dir="$test_dir/miss-manifest"
+  make_install_state_fixture "$state_dir"
+  cd "$state_dir"
+  set_component_env
+  store_component_baseline
+  # A non-policy manifest field: only the manifest+config catch-all should fire.
+  cat > pkg-a/package.json <<'EOF'
+{"name":"pkg-a","private":true,"description":"changed"}
+EOF
+  assert_eq "manifest+config" "$(classify_install_state_miss)" "manifest change reports manifest+config"
+)
+
+echo "Test 26: gvs-policy change reports miss_reason gvs-link"
+(
+  state_dir="$test_dir/miss-gvs"
+  make_install_state_fixture "$state_dir"
+  cd "$state_dir"
+  set_component_env
+  store_component_baseline
+  # packageExtensions also trips manifest+config (whole workspace.yaml is hashed
+  # there); priority ordering must still report the GVS-link purge it triggers.
+  sed -i "s/extra-dep: '1.0.0'/extra-dep: '2.0.0'/" pnpm-workspace.yaml
+  assert_eq "gvs-link" "$(classify_install_state_miss)" "packageExtensions change reports gvs-link"
+)
+
+echo "Test 27: report_install_miss_reason writes the OTEL sidecar attribute"
+(
+  attr_file="$test_dir/miss-attr-file"
+  export OTEL_STATUS_ATTR_FILE="$attr_file"
+  report_install_miss_reason "gvs-link" 2>/dev/null
+  unset OTEL_STATUS_ATTR_FILE
+  assert_eq "install.miss_reason=gvs-link" "$(cat "$attr_file")" "miss reason written to sidecar"
+)
+
 echo ""
 echo "All pnpm task helper tests passed"

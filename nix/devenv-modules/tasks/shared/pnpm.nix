@@ -9,6 +9,44 @@
 # - pnpm:update
 # - pnpm:clean
 # - pnpm:reset-lock-files
+#
+# Install-state invalidation contract
+# ------------------------------------
+# A live pnpm install uses a global virtual store (GVS). The status path keeps a
+# single monolithic install-state hash as the hit/miss decision, but on a miss it
+# attributes the change to one of four overlapping COMPONENTS (a single edit can
+# touch several; the reported reason is the highest-severity first match):
+#
+#   lockfile         pnpm-lock.yaml changed                -> plain reinstall
+#   gvs-link         pnpm version / packageExtensions /    -> GVS `links/` purge
+#                    allowBuilds / active links projection     + forced reinstall
+#   policy           install-policy knobs (pnpm-workspace   -> plain reinstall
+#                    .yaml policy keys) / installFlags /
+#                    preInstall changed
+#   manifest+config  any other manifest or config surface  -> plain reinstall
+#                    (root + member package.json, the rest
+#                    of pnpm-workspace.yaml, .npmrc,
+#                    injected source trees)
+#
+# Two further status miss reasons exist outside the install-state decomposition:
+#   bootstrap        node_modules / cache files / .modules.yaml absent (first run)
+#   projection       node_modules projection-state hash changed (stale links)
+#
+# Only `gvs-link` forces the wholesale `rm -rf <store>/v11/links` purge plus a
+# `pnpm install --force`; every other reason is a plain reinstall. The purge is
+# necessary because pnpm 11 reuses cached GVS link projections without
+# re-resolving packageExtensions (pnpm/pnpm#9739, pnpm/pnpm#11385).
+#
+# The reported reason is also emitted as the OTEL span attribute
+# `install.miss_reason` on the `<task>:status` span (see tasks/lib/trace.nix).
+#
+# Component decomposition note: the issue's literal taxonomy placed
+# packageExtensions/allowBuilds/pnpm.version under `policy`. They live in
+# `gvs-link` here so a packageExtensions edit is reported as the GVS-link purge it
+# actually triggers; `policy` is the install-policy surface MINUS that gvs-link
+# surface. The genie-generated config (package.json, member manifests,
+# pnpm-workspace.yaml are all `.genie.ts`-generated) is not cleanly separable
+# from hand edits, so generated config is grouped into `manifest+config`.
 {
   packages,
   workspaceRoot ? ".",
@@ -254,6 +292,59 @@ let
       } | compute_hash
     }
   '';
+  # Export the inputs the component-hash helpers in pnpm-task-helpers.sh need.
+  # Keeping them in one place lets the exec and status paths classify install
+  # misses with the exact same surface. The policy key list is the camelCase
+  # pnpm-workspace.yaml mirror of the shared install policy, so a policy-key edit
+  # is a reachable subset of the monolithic install-state inputs (not only the
+  # abstract Nix flag list, which the workspace.yaml does not spell).
+  setComponentHashInputsFn = ''
+    export PNPM_COMPONENT_PNPM_VERSION=${lib.escapeShellArg pkgs.pnpm.version}
+    export PNPM_COMPONENT_INSTALL_FLAGS=${lib.escapeShellArg (builtins.toJSON installFlags)}
+    export PNPM_COMPONENT_PRE_INSTALL=${lib.escapeShellArg preInstall}
+    export PNPM_COMPONENT_POLICY_KEYS=${lib.escapeShellArg (lib.concatStringsSep " " pnpmInstallPolicy.workspaceYamlPolicyKeys)}
+    export PNPM_COMPONENT_MANIFEST_PATHS=${
+      lib.escapeShellArg (lib.concatMapStringsSep " " (path: "${path}/package.json") packages)
+    }
+    export PNPM_COMPONENT_INJECTED_DIRS=${lib.escapeShellArg (lib.concatStringsSep " " injectedSourcePaths)}
+    PNPM_COMPONENT_GVS_LINKS_DIR="$(resolve_gvs_links_dir)"
+    export PNPM_COMPONENT_GVS_LINKS_DIR
+  '';
+
+  # Persist each component hash beside the monolithic install-state hash so the
+  # status path can name which component changed without re-deriving the stored
+  # baseline. Written only after a successful install.
+  writeComponentHashesFn = ''
+    write_component_hashes() {
+      local components_file="$1"
+      {
+        printf 'lockfile %s\n' "$(compute_component_lockfile_hash)"
+        printf 'gvs-link %s\n' "$(compute_component_gvs_link_hash)"
+        printf 'policy %s\n' "$(compute_component_policy_hash)"
+        printf 'manifest+config %s\n' "$(compute_component_manifest_config_hash)"
+      } > "$components_file"
+    }
+  '';
+
+  # Load stored component hashes into the PNPM_STORED_* variables the classifier
+  # compares against, then classify and report the highest-severity miss.
+  classifyAndReportMissFn = ''
+    classify_and_report_install_miss() {
+      local components_file="$1"
+      local reason="manifest+config"
+      if [ -f "$components_file" ]; then
+        PNPM_STORED_LOCKFILE_HASH="$(awk '$1=="lockfile"{print $2}' "$components_file")"
+        PNPM_STORED_GVS_LINK_HASH="$(awk '$1=="gvs-link"{print $2}' "$components_file")"
+        PNPM_STORED_POLICY_HASH="$(awk '$1=="policy"{print $2}' "$components_file")"
+        PNPM_STORED_MANIFEST_CONFIG_HASH="$(awk '$1=="manifest+config"{print $2}' "$components_file")"
+        export PNPM_STORED_LOCKFILE_HASH PNPM_STORED_GVS_LINK_HASH \
+          PNPM_STORED_POLICY_HASH PNPM_STORED_MANIFEST_CONFIG_HASH
+        reason="$(classify_install_state_miss || printf '%s' "manifest+config")"
+      fi
+      report_install_miss_reason "$reason"
+    }
+  '';
+
   computeProjectionStateHashFn = ''
     compute_projection_state_hash() {
       # Keep the warm-path fingerprint semantics identical while avoiding the
@@ -411,6 +502,9 @@ let
         # root because pnpm 11 bakes absolute paths into `links/`.
         hash_file="${cacheRoot}/install-state.hash"
         projection_hash_file="${cacheRoot}/projection-state.hash"
+        components_file="${cacheRoot}/install-state.components"
+        ${setComponentHashInputsFn}
+        ${writeComponentHashesFn}
 
         lockfile="${cacheRoot}/pnpm-install.lock"
         exec 200>"$lockfile"
@@ -467,7 +561,10 @@ let
           _gvs_hash_file="$(dirname "$_gvs_links_dir")/.effect-utils-gvs-links.hash"
           mkdir -p "$(dirname "$_gvs_links_dir")"
           if [ ! -f "$_gvs_hash_file" ] || [ "$(cat "$_gvs_hash_file")" != "$_gvs_hash" ]; then
-            echo "[pnpm] GVS config changed, forcing current workspace relink"
+            # Invalidation contract: only the gvs-link component (pnpm version /
+            # packageExtensions / allowBuilds / links projection root) forces the
+            # wholesale links/ purge below. Log the precise cause.
+            echo "[pnpm] GVS config changed (component: gvs-link), forcing current workspace relink and purging $_gvs_links_dir"
             purge_node_modules node_modules ${nodeModulesPaths}
             # A workspace relink only rewrites node_modules. If the broken
             # package projection is already cached under v11/links, pnpm can
@@ -520,6 +617,10 @@ let
 
         cache_value="$(compute_projection_state_hash)"
         ${cache.writeCacheFile ''"$projection_hash_file"''}
+
+        # Persist the per-component baseline so the status path can attribute a
+        # future install-state miss to a specific component.
+        write_component_hashes "$components_file"
       '';
       status = trace.status installTaskName "hash" ''
         set -euo pipefail
@@ -531,8 +632,12 @@ let
         ensure_shared_pnpm_files_store
         hash_file="${cacheRoot}/install-state.hash"
         projection_hash_file="${cacheRoot}/projection-state.hash"
+        components_file="${cacheRoot}/install-state.components"
+        ${setComponentHashInputsFn}
+        ${classifyAndReportMissFn}
 
         if [ ! -d node_modules ] || [ ! -f pnpm-lock.yaml ] || [ ! -f "$hash_file" ] || [ ! -f "$projection_hash_file" ] || [ ! -f node_modules/.modules.yaml ]; then
+          report_install_miss_reason "bootstrap"
           exit 1
         fi
 
@@ -545,6 +650,7 @@ let
           current_projection_hash="$(compute_projection_state_hash)"
           stored_projection_hash="$(cat "$projection_hash_file")"
           if [ "$current_projection_hash" != "$stored_projection_hash" ]; then
+            report_install_miss_reason "projection"
             exit 1
           fi
           exit 0
@@ -558,9 +664,13 @@ let
         stored_hash="$(cat "$hash_file")"
         stored_projection_hash="$(cat "$projection_hash_file")"
         if [ "$current_hash" != "$stored_hash" ]; then
+          # The monolithic install-state hash stays the hit/miss decision; only
+          # now do we classify which component changed for the miss reason.
+          classify_and_report_install_miss "$components_file"
           exit 1
         fi
         if [ "$current_projection_hash" != "$stored_projection_hash" ]; then
+          report_install_miss_reason "projection"
           exit 1
         fi
         exit 0

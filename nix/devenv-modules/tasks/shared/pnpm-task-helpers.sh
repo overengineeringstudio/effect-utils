@@ -69,6 +69,139 @@ cache_fingerprint() {
   } | compute_hash
 }
 
+# ── Install-state component hashes (miss attribution) ─────────────────────────
+#
+# The monolithic install-state hash stays the sole hit/miss decision. These
+# narrower component hashes are a diagnostic computed only after that monolithic
+# hash already mismatched, so a miss can name WHICH surface changed instead of a
+# bare `exit 1`. See pnpm.nix for the invalidation contract these encode.
+#
+# Components are deliberately overlapping (one edit can touch several), so the
+# reported reason is the highest-severity first match in this order:
+#   lockfile -> gvs-link -> policy -> manifest+config
+# That order also IS the invalidation contract: gvs-link forces a GVS-link purge
+# plus a forced reinstall; lockfile/policy/manifest force a plain reinstall.
+#
+# All components read files from $PWD (the workspace root). Callers parameterize
+# the version, install flags, pre-install hook, manifest paths, and resolved GVS
+# links dir via the PNPM_COMPONENT_* environment variables so the same helper
+# bodies run in task scripts and in the sourced shell tests.
+
+# lockfile: the resolved dependency graph (pnpm-lock.yaml).
+compute_component_lockfile_hash() {
+  {
+    if [ -f pnpm-lock.yaml ]; then
+      cat pnpm-lock.yaml
+    fi
+  } | compute_hash
+}
+
+# gvs-link: the narrow surface that forces a pnpm 11 GVS `links/` purge. pnpm
+# reuses existing GVS link projections without re-resolving packageExtensions,
+# so this surface (pnpm version + packageExtensions + allowBuilds + the active
+# links projection root, which pnpm bakes into absolute paths) must invalidate
+# the link cache, not just node_modules. This is the same fingerprint the exec
+# path uses to decide whether to drop `links/`.
+#
+# Note: the issue's literal taxonomy grouped packageExtensions/allowBuilds/version
+# under `policy`. They live in `gvs-link` here instead because only that lets a
+# packageExtensions edit be reported as the GVS-link purge it actually triggers;
+# `policy` below is the install-policy surface MINUS this gvs-link surface.
+compute_component_gvs_link_hash() {
+  {
+    printf '%s\n' "${PNPM_COMPONENT_PNPM_VERSION:-}"
+    sed -n '/^packageExtensions:/,/^[a-zA-Z]/p' pnpm-workspace.yaml 2>/dev/null || true
+    sed -n '/^allowBuilds:/,/^[a-zA-Z]/p' pnpm-workspace.yaml 2>/dev/null || true
+    printf '%s\n' "${PNPM_COMPONENT_GVS_LINKS_DIR:-}"
+  } | compute_hash
+}
+
+# policy: the install-policy surface that is NOT already covered by gvs-link.
+# pnpm-workspace.yaml spells these knobs in camelCase; PNPM_COMPONENT_POLICY_KEYS
+# carries that key list (kept beside pnpm-install-policy.nix). installFlags and
+# preInstall complete the per-task policy surface. Hashing the workspace.yaml
+# keys keeps this component a faithful subset of the monolithic install-state
+# inputs, so it stays reachable in real installs and not just in unit tests.
+compute_component_policy_hash() {
+  {
+    local key
+    for key in ${PNPM_COMPONENT_POLICY_KEYS:-}; do
+      grep -E "^${key}:" pnpm-workspace.yaml 2>/dev/null || true
+    done
+    printf '%s\n' "${PNPM_COMPONENT_INSTALL_FLAGS:-}"
+    printf '%s\n' "${PNPM_COMPONENT_PRE_INSTALL:-}"
+  } | compute_hash
+}
+
+# manifest+config: the catch-all for everything else (root + member manifests,
+# the rest of pnpm-workspace.yaml, .npmrc, injected source trees). pnpm-lock.yaml
+# is deliberately excluded (it is the `lockfile` component) so a lockfile-only
+# change is never misreported here.
+#
+# In this repo package.json, member manifests, and pnpm-workspace.yaml are all
+# genie-generated from `.genie.ts` sources, so the generated-config surface is
+# not separable from the manifest surface today; they are grouped together and
+# this limitation is documented in pnpm.nix.
+compute_component_manifest_config_hash() {
+  {
+    if [ -f package.json ]; then
+      cat package.json
+    fi
+    if [ -f pnpm-workspace.yaml ]; then
+      cat pnpm-workspace.yaml
+    fi
+    if [ -f .npmrc ]; then
+      cat .npmrc
+    fi
+
+    local manifest
+    for manifest in ${PNPM_COMPONENT_MANIFEST_PATHS:-}; do
+      if [ -f "$manifest" ]; then
+        cat "$manifest"
+      fi
+    done
+
+    local injected_dir
+    for injected_dir in ${PNPM_COMPONENT_INJECTED_DIRS:-}; do
+      emit_dir_state "$injected_dir"
+    done
+  } | compute_hash
+}
+
+# Compare each component hash against its stored value and print the
+# highest-severity component that changed. Stored values come from the
+# matching PNPM_STORED_* environment variables. Prints nothing (and returns 1)
+# when every component matches, which means the install-state mismatch is caused
+# by an input outside this decomposition.
+classify_install_state_miss() {
+  if [ "$(compute_component_lockfile_hash)" != "${PNPM_STORED_LOCKFILE_HASH:-}" ]; then
+    printf '%s\n' "lockfile"
+    return 0
+  fi
+  if [ "$(compute_component_gvs_link_hash)" != "${PNPM_STORED_GVS_LINK_HASH:-}" ]; then
+    printf '%s\n' "gvs-link"
+    return 0
+  fi
+  if [ "$(compute_component_policy_hash)" != "${PNPM_STORED_POLICY_HASH:-}" ]; then
+    printf '%s\n' "policy"
+    return 0
+  fi
+  if [ "$(compute_component_manifest_config_hash)" != "${PNPM_STORED_MANIFEST_CONFIG_HASH:-}" ]; then
+    printf '%s\n' "manifest+config"
+    return 0
+  fi
+  return 1
+}
+
+# Emit a miss reason to stderr and to the OTEL status attribute sidecar. The
+# /dev/null fallback keeps this byte-identical on the OTEL and non-OTEL branches
+# so callers need no `if OTEL` guard. See trace.nix for the --attr-file plumbing.
+report_install_miss_reason() {
+  local reason="$1"
+  echo "[pnpm] install cache miss: $reason" >&2
+  printf 'install.miss_reason=%s\n' "$reason" > "${OTEL_STATUS_ATTR_FILE:-/dev/null}"
+}
+
 check_node_modules_links_healthy() {
   local node_bin="$1"
   local projection_script="$2"
