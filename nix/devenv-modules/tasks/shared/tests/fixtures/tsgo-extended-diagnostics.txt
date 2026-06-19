@@ -1,0 +1,61 @@
+12:13:31 AM - Projects in this build: 
+    * context/effect/socket/tsconfig.json
+    * packages/@overeng/effect-path/tsconfig.json
+12:13:31 AM - Building project 'context/effect/socket/tsconfig.json'...
+
+packages/@overeng/effect-path/src/index.ts(12,3): warning TS377030: This has unknown in the error channel which is not recommended. effect(anyUnknownInErrorContext)
+Files:                    689
+Lines:                 271605
+Identifiers:           264054
+Symbols:               189452
+Types:                  30644
+Instantiations:         65514
+Memory used:          300015K
+Memory allocs:        2444026
+Config time:           0.002s
+BuildInfo read time:   0.000s
+Parse time:            0.160s
+Bind time:             0.000s
+Check time:            0.086s
+Emit time:             0.017s
+Changes compute time:  0.026s
+Total time:            0.339s
+12:13:31 AM - Project 'context/opentui/tsconfig.json' is being forcibly rebuilt
+
+12:13:31 AM - Building project 'context/opentui/tsconfig.json'...
+
+Files:                    688
+Lines:                 296162
+Identifiers:           284031
+Symbols:               178988
+Types:                   6979
+Instantiations:          8776
+Memory used:          292107K
+Memory allocs:        2202596
+Config time:           0.002s
+BuildInfo read time:   0.000s
+Parse time:            0.161s
+Bind time:             0.000s
+Check time:            0.036s
+Emit time:             0.018s
+Changes compute time:  0.025s
+Total time:            0.274s
+Projects in scope:                     35
+Projects built:                        34
+Timestamps only updates:                0
+Aggregate Files:                    25986
+Aggregate Lines:                  9498859
+Aggregate Identifiers:            9757998
+Aggregate Symbols:               10496963
+Aggregate Types:                  2745960
+Aggregate Instantiations:         9112505
+Aggregate Memory used:          19816481K
+Aggregate Memory allocs:        754404544
+Aggregate Config time:             0.254s
+Aggregate BuildInfo read time:     0.000s
+Aggregate Parse time:              1.698s
+Aggregate Bind time:               0.020s
+Aggregate Check time:             15.079s
+Aggregate Emit time:               5.865s
+Aggregate Changes compute time:    1.151s
+Aggregate Total time:             18.107s
