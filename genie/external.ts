@@ -288,6 +288,88 @@ export const catalog = defineCatalog({
 })
 
 /**
+ * Authoritative classification of every native npm dependency family the
+ * workspace tolerates. This is the single source of truth consumed by both the
+ * generated pnpm `allowBuilds` denylist (below) and the CI policy audit
+ * (`genie/ci-scripts/native-dep-policy-audit.ts`), so the two cannot drift.
+ *
+ * Each entry is tagged by how the native code is obtained:
+ *
+ * - `nix-grafted`: the native artifact is supplied by a Nix derivation instead
+ *   of pnpm. `graft: 'link'` builds the addon from source (`node-pty`),
+ *   `graft: 'fetch-only'` grafts prebuilt platform tarballs (`@opentui/core`).
+ *   `via` names the owning Nix file, which the audit verifies exists.
+ * - `denied-lifecycle-build`: a package that ships an install lifecycle build
+ *   script we explicitly refuse to run (pnpm `allowBuilds: false`). `defensive`
+ *   marks entries kept as guard rails even though the family is not currently
+ *   in the lockfile (e.g. `sharp`, `unix-dgram`); their absence is tolerated.
+ * - `fod-accepted-prebuilt`: an optional, CPU/OS/libc-gated prebuilt native
+ *   binary family (Rollup/Rolldown/esbuild/oxc/etc.) that carries no lifecycle
+ *   build and is locked as a fixed-output set. Listed separately from
+ *   lifecycle-built native addons per issue #807.
+ *
+ * Audit gap (documented, not silently dropped): pnpm lockfile v9 no longer
+ * emits `requiresBuild`, and the builder-contract CI job restores no
+ * `node_modules`, so the build-script ledger (`pendingBuilds`/`ignoredBuilds`)
+ * is unavailable and empty under `ignoreScripts: true`. A brand-new package
+ * that carries a lifecycle build but is neither CPU/OS/libc-gated nor already
+ * in this policy therefore cannot be auto-detected. This policy is the source
+ * of truth; the audit enforces lockfile-vs-policy drift (new gated families,
+ * disappeared/shape-changed entries) against it.
+ */
+export const nativeDependencyPolicy = {
+  // Lifecycle-built native addons denied a pnpm build. Order mirrors the
+  // historical `allowBuilds` literal so the derived denylist stays byte-stable.
+  '@parcel/watcher': { _tag: 'denied-lifecycle-build' },
+  '@myobie/pty': { _tag: 'denied-lifecycle-build' },
+  esbuild: { _tag: 'denied-lifecycle-build' },
+  fsevents: { _tag: 'denied-lifecycle-build' },
+  'msgpackr-extract': { _tag: 'denied-lifecycle-build' },
+  'node-pty': { _tag: 'nix-grafted', graft: 'link', via: 'nix/node-pty-native.nix' },
+  sharp: { _tag: 'denied-lifecycle-build', defensive: true },
+  'unix-dgram': { _tag: 'denied-lifecycle-build', defensive: true },
+
+  // Nix-grafted prebuilt native package (not lifecycle-built, so not denied).
+  '@opentui/core': { _tag: 'nix-grafted', graft: 'fetch-only', via: 'nix/opentui-core-native.nix' },
+
+  // FOD-accepted optional prebuilt native families (CPU/OS/libc-gated, no
+  // lifecycle build). Keys are the family prefix shared by every platform
+  // package (e.g. `@rollup/rollup` covers `@rollup/rollup-linux-x64-gnu`).
+  '@rollup/rollup': { _tag: 'fod-accepted-prebuilt' },
+  '@rolldown/binding': { _tag: 'fod-accepted-prebuilt' },
+  '@esbuild': { _tag: 'fod-accepted-prebuilt' },
+  '@msgpackr-extract': { _tag: 'fod-accepted-prebuilt' },
+  lightningcss: { _tag: 'fod-accepted-prebuilt' },
+  '@oxc-parser/binding': { _tag: 'fod-accepted-prebuilt' },
+  '@oxc-resolver/binding': { _tag: 'fod-accepted-prebuilt' },
+  '@tailwindcss/oxide': { _tag: 'fod-accepted-prebuilt' },
+  '@oxlint-tsgolint': { _tag: 'fod-accepted-prebuilt' },
+} as const satisfies Record<string, NativeDependencyPolicyEntry>
+
+/** Tagged classification of a native dependency family. @see nativeDependencyPolicy */
+export type NativeDependencyPolicyEntry =
+  | { readonly _tag: 'nix-grafted'; readonly graft: 'link' | 'fetch-only'; readonly via: string }
+  | { readonly _tag: 'denied-lifecycle-build'; readonly defensive?: boolean }
+  | { readonly _tag: 'fod-accepted-prebuilt' }
+
+/**
+ * Packages whose pnpm lifecycle build is denied. Derived from
+ * `nativeDependencyPolicy` (every `denied-lifecycle-build` entry plus
+ * `nix-grafted` addons built from source via `graft: 'link'`) so the denylist
+ * and the audit share one source of truth. Insertion order is preserved to
+ * keep the generated `pnpm-workspace.yaml` byte-stable.
+ */
+const deniedLifecycleBuilds = Object.fromEntries(
+  Object.entries(nativeDependencyPolicy)
+    .filter(
+      ([, entry]) =>
+        entry._tag === 'denied-lifecycle-build' ||
+        (entry._tag === 'nix-grafted' && entry.graft === 'link'),
+    )
+    .map(([name]) => [name, false as const]),
+)
+
+/**
  * Shared pnpm policy settings for all megarepos.
  *
  * This is the SSOT for pnpm strictness/layout policy. Every megarepo
@@ -336,17 +418,9 @@ export const commonPnpmPolicySettings = {
   // Native binaries are provided by Nix/custom flakes instead of pnpm lifecycle
   // scripts. pnpm 11 removed ignoreDepScripts in favor of allowBuilds; keep
   // known native packages explicit so approval drift is reviewed, but do not
-  // allow any dependency build during install.
-  allowBuilds: {
-    '@parcel/watcher': false,
-    '@myobie/pty': false,
-    esbuild: false,
-    fsevents: false,
-    'msgpackr-extract': false,
-    'node-pty': false,
-    sharp: false,
-    'unix-dgram': false,
-  },
+  // allow any dependency build during install. Derived from
+  // `nativeDependencyPolicy` so the denylist and CI audit cannot drift.
+  allowBuilds: deniedLifecycleBuilds,
 }
 
 /** Common fields for private packages */

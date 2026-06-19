@@ -2599,6 +2599,16 @@ jobs:
           EOF
           echo "::warning::Intentional failure for diagnostics validation (#272)"
           exit 1
+      - name: Audit native dependency policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          audit=genie/ci-scripts/native-dep-policy-audit.ts
+          if command -v bun >/dev/null 2>&1; then
+            bun "$audit"
+          else
+            nix run nixpkgs#bun -- "$audit"
+          fi
       - name: Guard pnpm builder contract
         shell: bash
         run: |
@@ -2890,6 +2900,7 @@ jobs:
         run: |
           bash genie/ci-scripts/nix-gc-race-retry.test.sh
           bash genie/ci-scripts/ci-measurement-comparison.test.sh
+          bash genie/ci-scripts/native-dep-policy-audit.test.sh
           bash nix/workspace-tools/lib/mk-pnpm-cli/tests/run.sh --skip-genie --skip-megarepo --skip-devenv-shell --skip-downstream-megarepo
       - name: Save pnpm state
         if: ${{ success() && steps.restore-pnpm-state.outputs.cache-hit != 'true' }}
