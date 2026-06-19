@@ -110,6 +110,14 @@ Genie does not materialize missing megarepo members itself. Repository task wiri
 
 The core pipeline begins by recursively discovering `*.genie.ts` files beneath the working directory.
 
+Discovery is repository-bounded. Inside a Git worktree, Genie asks Git for the
+tracked `.genie.ts` sources plus untracked `.genie.ts` sources that are not
+ignored by the repository's normal exclude rules. This keeps local scratch state
+such as nested agent worktrees out of the generation input while still including
+untracked `.genie.ts` files that are not ignored and may be about to be
+committed. Outside a Git worktree, Genie falls back to recursive filesystem
+discovery with known non-source directories skipped.
+
 Discovery must enforce these invariants before generation begins:
 
 - each source maps to exactly one target

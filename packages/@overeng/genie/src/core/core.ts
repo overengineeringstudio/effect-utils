@@ -98,7 +98,8 @@ export type GenieGenerateResult = {
 /** Discover genie files and assert no duplicate targets. */
 const discoverAndValidate = Effect.fn('genie/discoverAndValidate')(function* (cwd: string) {
   yield* Observability.annotatePath({ label: 'discover', path: cwd })
-  const genieFiles = yield* findGenieFiles(cwd)
+  const discoveredFiles = yield* findGenieFiles(cwd)
+  const genieFiles = discoveredFiles.map((file) => path.resolve(cwd, file))
 
   const targetCounts = new Map<string, number>()
   for (const genieFilePath of genieFiles) {

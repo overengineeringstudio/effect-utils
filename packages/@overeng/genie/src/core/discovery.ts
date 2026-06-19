@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -105,12 +106,48 @@ const shouldSkipDirectory = (name: string): boolean => {
 /** Check if a filename is a genie template file (*.genie.ts) */
 export const isGenieFile = (file: string): boolean => file.endsWith('.genie.ts')
 
+const gitGeniePathspecs = ['*.genie.ts', ':(glob)**/*.genie.ts'] as const
+
+const gitListGenieFiles = ({
+  args,
+  cwd,
+}: {
+  args: ReadonlyArray<string>
+  cwd: string
+}): Array<string> => {
+  const output = execFileSync('git', ['-C', cwd, ...args, '--', ...gitGeniePathspecs], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'ignore'],
+  })
+
+  return output.split('\0').filter((file) => file.length > 0)
+}
+
+const discoverGitGenieFiles = ({ cwd }: { cwd: string }): Array<string> | undefined => {
+  try {
+    execFileSync('git', ['-C', cwd, 'rev-parse', '--is-inside-work-tree'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+
+    return [
+      ...gitListGenieFiles({ cwd, args: ['ls-files', '-z', '--recurse-submodules'] }),
+      ...gitListGenieFiles({ cwd, args: ['ls-files', '-z', '--others', '--exclude-standard'] }),
+    ]
+  } catch {
+    return undefined
+  }
+}
+
 /**
- * Find all .genie.ts files under a root directory.
+ * Find all .genie.ts files under a root directory and return repo-relative
+ * paths using `/` separators.
  *
  * Implementation notes:
  * - We resolve the root path once and use it as a boundary so that
  *   symlinked submodule duplicates pointing back into the root are skipped.
+ * - Returned paths are relative to that canonical root. Callers that need to
+ *   read or write files should resolve them against their working directory.
  * - This keeps output stable when symlinks are used to dedupe submodules,
  *   avoiding double generation and racey writes/chmod.
  */
@@ -123,6 +160,7 @@ export const findGenieFiles = Effect.fn('discovery/findGenieFiles')(function* (d
   const rootDir = yield* fs.realPath(dir).pipe(Effect.catchAll(() => Effect.succeed(dir)))
   const rootPrefix = rootDir.endsWith(path.sep) === true ? rootDir : `${rootDir}${path.sep}`
   const seenDirectories = new Set<string>()
+  const gitFiles = discoverGitGenieFiles({ cwd: rootDir })
 
   const resolveSymlinkTarget = (
     fullPath: string,
@@ -219,12 +257,13 @@ export const findGenieFiles = Effect.fn('discovery/findGenieFiles')(function* (d
       return results
     })
 
-  const files = yield* walk(dir)
+  const files = gitFiles ?? (yield* walk(rootDir))
   const seen = new Set<string>()
   const uniqueFiles: string[] = []
 
   for (const file of files) {
-    const resolvedPath = yield* fs.realPath(file).pipe(
+    const fullPath = pathService.isAbsolute(file) === true ? file : pathService.join(rootDir, file)
+    const resolvedPath = yield* fs.realPath(fullPath).pipe(
       Effect.catchTag('SystemError', (e) => {
         warnings.push(`Skipping ${file}: ${e.message}`)
         return Effect.succeed(null)
@@ -238,7 +277,7 @@ export const findGenieFiles = Effect.fn('discovery/findGenieFiles')(function* (d
     if (resolvedPath === null) continue
     if (seen.has(resolvedPath) === true) continue
     seen.add(resolvedPath)
-    uniqueFiles.push(resolvedPath)
+    uniqueFiles.push(path.relative(rootDir, fullPath).replace(/\\/g, '/'))
   }
 
   // Log warnings about skipped files
