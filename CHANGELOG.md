@@ -32,6 +32,8 @@ All notable changes to this project will be documented in this file.
   package-extension checksum change. The pty-effect native-package linking task
   now resolves the active pnpm global virtual store path and skips an absent
   `links` projection instead of assuming the default workspace store exists
+  while source-mode `mr` tasks now wait for `pnpm:install` before resolving
+  their package graph, removing a check:quick task-order race in CI perf probes
   (#804).
 
 - **devenv TypeScript tasks**: Move the normal workspace TypeScript check/build

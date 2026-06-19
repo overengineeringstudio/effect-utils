@@ -493,8 +493,12 @@ in
   tasks."genie:watch".after = [ "pnpm:install" ];
   tasks."genie:check".after = [ "pnpm:install" ];
   tasks."lint:check:genie".after = [ "pnpm:install" ];
+  tasks."mr:bootstrap".after = [ "pnpm:install" ];
   tasks."mr:fetch-apply".after = [ "pnpm:install" ];
+  tasks."mr:lock".after = [ "pnpm:install" ];
   tasks."mr:apply".after = [ "pnpm:install" ];
+  tasks."mr:check".after = [ "pnpm:install" ];
+  tasks."mr:source-policy-check".after = [ "pnpm:install" ];
 
   tasks."pnpm:link-native-node-packages" = {
     after = [ "pnpm:install" ];
