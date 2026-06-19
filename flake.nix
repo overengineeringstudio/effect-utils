@@ -220,7 +220,6 @@
           test-playwright = import ./nix/devenv-modules/tasks/shared/test-playwright.nix;
           storybook = import ./nix/devenv-modules/tasks/shared/storybook.nix;
           netlify = import ./nix/devenv-modules/tasks/shared/netlify.nix;
-          ts-effect-lsp = import ./nix/devenv-modules/tasks/shared/ts-effect-lsp.nix;
           vercel = import ./nix/devenv-modules/tasks/shared/vercel.nix;
           lint-nix = import ./nix/devenv-modules/tasks/shared/lint-nix.nix;
           lint-oxc = import ./nix/devenv-modules/tasks/shared/lint-oxc.nix;

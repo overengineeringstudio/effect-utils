@@ -343,6 +343,7 @@ export const commonPnpmPolicySettings = {
     '@parcel/watcher': false,
     '@myobie/pty': false,
     esbuild: false,
+    fsevents: false,
     'msgpackr-extract': false,
     'node-pty': false,
     sharp: false,

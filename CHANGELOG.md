@@ -16,14 +16,19 @@ All notable changes to this project will be documented in this file.
   projections point at the builder-local pnpm store. Native packages that are
   needed at runtime are supplied through Nix/custom package derivations, and
   Storybook oxlint rule exports are temporarily removed until the upstream
-  ESLint 10 plugin stack is compatible again (#804).
+  ESLint 10 plugin stack is compatible again. Refresh the affected CLI
+  `pnpm-deps` fixed-output hashes so cold Nix prep validates after the lockfile
+  and pnpm policy changes, explicitly deny `fsevents` build approval, and
+  document the boundary between Nix-owned lifecycle-built native addons and
+  locked fixed-output prebuilt optional native packages (#804).
 
 - **devenv TypeScript tasks**: Move the normal workspace TypeScript check/build
   path to the Nix-managed `tsgo` binary, so `ts:check`, `ts:check:strict`,
   `ts:build`, `ts:build-watch`, and `ts:clean` run on the TypeScript 7 native
   compiler track. `ts:emit` keeps using JavaScript `tsc` for its compiler-API
-  tsconfig filtering and no-check emit path, and the standalone
-  `ts-effect-lsp` module remains exported only as a compatibility task.
+  tsconfig filtering and no-check emit path. The old standalone
+  `ts-effect-lsp` compatibility module is removed because Effect diagnostics
+  are now part of the normal tsgo-backed check path.
 
 - **@overeng/genie**: Make `findGenieFiles` return stable repo-relative
   `.genie.ts` paths, with generation/check orchestration resolving them at the
