@@ -78,9 +78,14 @@ cache_fingerprint() {
 #
 # Components are deliberately overlapping (one edit can touch several), so the
 # reported reason is the highest-severity first match in this order:
-#   lockfile -> gvs-link -> policy -> manifest+config
+#   gvs-link -> lockfile -> policy -> manifest+config
 # That order also IS the invalidation contract: gvs-link forces a GVS-link purge
 # plus a forced reinstall; lockfile/policy/manifest force a plain reinstall.
+# gvs-link is checked before lockfile because a steady-state packageExtensions
+# edit also bumps pnpm-lock.yaml, and the higher-severity `links/` purge it
+# triggers must win the report. This is safe because the gvs-link hash EXCLUDES
+# pnpm-lock.yaml, so a pure-lockfile change does not trip gvs-link and still
+# correctly reports `lockfile`.
 #
 # All components read files from $PWD (the workspace root). Callers parameterize
 # the version, install flags, pre-install hook, manifest paths, and resolved GVS
@@ -174,12 +179,12 @@ compute_component_manifest_config_hash() {
 # when every component matches, which means the install-state mismatch is caused
 # by an input outside this decomposition.
 classify_install_state_miss() {
-  if [ "$(compute_component_lockfile_hash)" != "${PNPM_STORED_LOCKFILE_HASH:-}" ]; then
-    printf '%s\n' "lockfile"
-    return 0
-  fi
   if [ "$(compute_component_gvs_link_hash)" != "${PNPM_STORED_GVS_LINK_HASH:-}" ]; then
     printf '%s\n' "gvs-link"
+    return 0
+  fi
+  if [ "$(compute_component_lockfile_hash)" != "${PNPM_STORED_LOCKFILE_HASH:-}" ]; then
+    printf '%s\n' "lockfile"
     return 0
   fi
   if [ "$(compute_component_policy_hash)" != "${PNPM_STORED_POLICY_HASH:-}" ]; then

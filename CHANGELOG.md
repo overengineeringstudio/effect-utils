@@ -41,11 +41,16 @@ All notable changes to this project will be documented in this file.
   now names why a live install cache misses instead of a bare `exit 1`. The
   monolithic install-state hash stays the sole hit/miss decision, but on a miss
   the install-state surface is decomposed into four priority-ordered, overlapping
-  components and the highest-severity match is reported: `lockfile`
-  (pnpm-lock.yaml) → `gvs-link` (pnpm version / packageExtensions / allowBuilds /
-  active GVS links projection root) → `policy` (pnpm-workspace.yaml install-policy
-  keys / installFlags / preInstall) → `manifest+config` (root and member
-  manifests, the rest of pnpm-workspace.yaml, .npmrc, injected source trees). Two
+  components and the highest-severity match is reported: `gvs-link` (pnpm version /
+  packageExtensions / allowBuilds / active GVS links projection root) → `lockfile`
+  (pnpm-lock.yaml) → `policy` (pnpm-workspace.yaml install-policy keys /
+  installFlags / preInstall) → `manifest+config` (root and member manifests, the
+  rest of pnpm-workspace.yaml, .npmrc, injected source trees). `gvs-link` is
+  checked before `lockfile` by consequence severity: a steady-state
+  packageExtensions edit also bumps pnpm-lock.yaml, so the higher-severity
+  `links/` purge it forces is reported even when a lockfile bump co-occurs (the
+  gvs-link hash excludes pnpm-lock.yaml, so a pure-lockfile change still reports
+  `lockfile`). Two
   further reasons cover the remaining status miss sites: `bootstrap` (first run /
   missing cache state) and `projection` (stale node_modules links). The reason is
   emitted both to stderr and as the OTEL span attribute `install.miss_reason` on

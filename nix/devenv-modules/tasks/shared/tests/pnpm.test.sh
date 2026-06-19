@@ -542,5 +542,20 @@ echo "Test 27: report_install_miss_reason writes the OTEL sidecar attribute"
   assert_eq "install.miss_reason=gvs-link" "$(cat "$attr_file")" "miss reason written to sidecar"
 )
 
+echo "Test 28: steady-state packageExtensions co-change reports miss_reason gvs-link"
+(
+  state_dir="$test_dir/miss-gvs-cochange"
+  make_install_state_fixture "$state_dir"
+  cd "$state_dir"
+  set_component_env
+  store_component_baseline
+  # The realistic steady-state shape: a packageExtensions edit ALSO bumps the
+  # lockfile. gvs-link must win over lockfile by consequence severity (it forces
+  # the `links/` purge), so the priority order is gvs-link before lockfile.
+  sed -i "s/extra-dep: '1.0.0'/extra-dep: '2.0.0'/" pnpm-workspace.yaml
+  printf 'packages: { changed }\n' >> pnpm-lock.yaml
+  assert_eq "gvs-link" "$(classify_install_state_miss)" "packageExtensions+lockfile co-change reports gvs-link"
+)
+
 echo ""
 echo "All pnpm task helper tests passed"

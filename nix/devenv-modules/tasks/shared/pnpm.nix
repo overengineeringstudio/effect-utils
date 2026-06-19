@@ -17,9 +17,9 @@
 # attributes the change to one of four overlapping COMPONENTS (a single edit can
 # touch several; the reported reason is the highest-severity first match):
 #
-#   lockfile         pnpm-lock.yaml changed                -> plain reinstall
 #   gvs-link         pnpm version / packageExtensions /    -> GVS `links/` purge
 #                    allowBuilds / active links projection     + forced reinstall
+#   lockfile         pnpm-lock.yaml changed                -> plain reinstall
 #   policy           install-policy knobs (pnpm-workspace   -> plain reinstall
 #                    .yaml policy keys) / installFlags /
 #                    preInstall changed
@@ -27,6 +27,12 @@
 #                    (root + member package.json, the rest
 #                    of pnpm-workspace.yaml, .npmrc,
 #                    injected source trees)
+#
+# gvs-link precedes lockfile by consequence severity: a steady-state
+# packageExtensions edit also bumps pnpm-lock.yaml, so the higher-severity
+# `links/` purge must be reported even when a lockfile bump co-occurs. The
+# gvs-link hash excludes pnpm-lock.yaml, so a pure-lockfile change still reports
+# `lockfile`.
 #
 # Two further status miss reasons exist outside the install-state decomposition:
 #   bootstrap        node_modules / cache files / .modules.yaml absent (first run)
