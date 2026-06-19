@@ -51,11 +51,13 @@ All notable changes to this project will be documented in this file.
   emitted both to stderr and as the OTEL span attribute `install.miss_reason` on
   the `<task>:status` span, threaded through a new `otel-span --attr-file` hook so
   a status body can export runtime-computed span attributes. This documents the
-  invalidation contract: only `gvs-link` forces the wholesale
-  `rm -rf <store>/v11/links` purge plus `pnpm install --force` (pnpm reuses cached
-  GVS link projections without re-resolving packageExtensions —
-  pnpm/pnpm#9739, pnpm/pnpm#11385); every other reason is a plain reinstall. The
-  GVS purge is now logged with its precise cause. Fixed-output Nix dependency prep
+  invalidation contract: only `gvs-link` can force the wholesale
+  `rm -rf <store>/v11/links` purge plus `pnpm install --force`, and only for its
+  config sub-surface (pnpm version / packageExtensions / allowBuilds), because
+  pnpm reuses cached GVS link projections without re-resolving packageExtensions
+  (pnpm/pnpm#9739, pnpm/pnpm#11385); a links-projection-root change (different
+  effective store-dir) instead forces a fresh-store reinstall. Every other reason
+  is a plain reinstall. The GVS purge is now logged with its precise cause. Fixed-output Nix dependency prep
   is unchanged and stays isolated from the live GVS. Known limitation: in this
   repo package.json, member manifests, and pnpm-workspace.yaml are all
   genie-generated, so generated config is not cleanly separable from hand edits

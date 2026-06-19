@@ -32,10 +32,16 @@
 #   bootstrap        node_modules / cache files / .modules.yaml absent (first run)
 #   projection       node_modules projection-state hash changed (stale links)
 #
-# Only `gvs-link` forces the wholesale `rm -rf <store>/v11/links` purge plus a
-# `pnpm install --force`; every other reason is a plain reinstall. The purge is
-# necessary because pnpm 11 reuses cached GVS link projections without
-# re-resolving packageExtensions (pnpm/pnpm#9739, pnpm/pnpm#11385).
+# Of the four, only `gvs-link` can force the wholesale `rm -rf <store>/v11/links`
+# purge plus a `pnpm install --force`; every other reason is a plain reinstall.
+# `gvs-link` has two sub-surfaces with different consequences:
+#   - config (pnpm version / packageExtensions / allowBuilds): forces the `links/`
+#     purge + forced reinstall, because pnpm 11 reuses cached GVS link projections
+#     without re-resolving packageExtensions (pnpm/pnpm#9739, pnpm/pnpm#11385).
+#   - links projection root (effective store-dir / links-dir): a different store
+#     has its own (possibly empty) `links/`, so the exec path takes the forced
+#     reinstall via the missing per-store gvs hash file rather than deleting an
+#     existing `links/` directory.
 #
 # The reported reason is also emitted as the OTEL span attribute
 # `install.miss_reason` on the `<task>:status` span (see tasks/lib/trace.nix).
