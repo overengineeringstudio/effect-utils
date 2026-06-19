@@ -11,17 +11,12 @@
  * - no-non-durable-wait: Ban non-durable Effect.sleep/Effect.timeout outside a journaled Restate.run closure
  * - no-raw-otel-primitives: Ban raw Effect/Stream OTEL span primitives outside contract boundaries
  *
- * It also re-exports selected rules from eslint-plugin-storybook under the
- * `overeng/storybook/*` namespace for enforcing Storybook best practices.
- *
  * TODO: Remove this custom plugin once upstream support lands.
  * See: https://github.com/oxc-project/oxc/issues/17706
  *
  * NOTE: WASM plugins may become available in the future for better performance.
  * See: https://github.com/oxc-project/oxc/discussions/10342
  */
-
-import { rules as storybookRules } from 'eslint-plugin-storybook'
 
 import { explicitBooleanCompareRule } from './explicit-boolean-compare.ts'
 import { exportsFirstRule } from './exports-first.ts'
@@ -41,13 +36,6 @@ type Rules = {
   'no-non-durable-wait': typeof noNonDurableWaitRule
   'no-raw-nondeterminism': typeof noRawNondeterminismRule
   'no-raw-otel-primitives': typeof noRawOtelPrimitivesRule
-  'storybook/meta-satisfies-type': (typeof storybookRules)['meta-satisfies-type']
-  'storybook/default-exports': (typeof storybookRules)['default-exports']
-  'storybook/story-exports': (typeof storybookRules)['story-exports']
-  'storybook/csf-component': (typeof storybookRules)['csf-component']
-  'storybook/hierarchy-separator': (typeof storybookRules)['hierarchy-separator']
-  'storybook/no-redundant-story-name': (typeof storybookRules)['no-redundant-story-name']
-  'storybook/prefer-pascal-case': (typeof storybookRules)['prefer-pascal-case']
 }
 
 const rules: Rules = {
@@ -60,15 +48,6 @@ const rules: Rules = {
   'no-non-durable-wait': noNonDurableWaitRule,
   'no-raw-nondeterminism': noRawNondeterminismRule,
   'no-raw-otel-primitives': noRawOtelPrimitivesRule,
-
-  // Re-exported storybook rules (use as overeng/storybook/*)
-  'storybook/meta-satisfies-type': storybookRules['meta-satisfies-type'],
-  'storybook/default-exports': storybookRules['default-exports'],
-  'storybook/story-exports': storybookRules['story-exports'],
-  'storybook/csf-component': storybookRules['csf-component'],
-  'storybook/hierarchy-separator': storybookRules['hierarchy-separator'],
-  'storybook/no-redundant-story-name': storybookRules['no-redundant-story-name'],
-  'storybook/prefer-pascal-case': storybookRules['prefer-pascal-case'],
 }
 
 type Plugin = {

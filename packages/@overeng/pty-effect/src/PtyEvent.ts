@@ -56,6 +56,15 @@ export const SessionStartEvent = Schema.Struct({
 })
 export type SessionStartEvent = typeof SessionStartEvent.Type
 
+/** Session tags mutation event emitted after persisted tag updates. */
+export const TagsChangeEvent = Schema.Struct({
+  ...Base,
+  type: Schema.Literal('tags_change'),
+  previous: Schema.optional(Tags),
+  value: Tags,
+})
+export type TagsChangeEvent = typeof TagsChangeEvent.Type
+
 /** Session exit event with the final child exit code. */
 export const SessionExitEvent = Schema.Struct({
   ...Base,
@@ -104,6 +113,7 @@ export const PtyEvent = Schema.Union(
   FocusRequestEvent,
   CursorVisibleEvent,
   SessionStartEvent,
+  TagsChangeEvent,
   SessionExitEvent,
   SessionRestartEvent,
   SessionFailedEvent,

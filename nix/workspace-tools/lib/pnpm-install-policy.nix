@@ -7,6 +7,7 @@ rec {
   # their lockfile mode and store path.
   liveInstallPolicyFlags = [
     "--config.confirmModulesPurge=false"
+    "--ignore-scripts"
     "--config.side-effects-cache=false"
     "--config.verify-store-integrity=true"
     "--config.strict-store-pkg-content-check=true"
@@ -18,12 +19,14 @@ rec {
 
   # The fixed-output builder writes policy through .npmrc because pnpm 11
   # rejects some workspace-scoped keys via `pnpm config set --global`. The
-  # prepared tree is restored directly by downstream builds, so we force an
-  # isolated virtual store and disable settings that would preserve caller-local
-  # mutable store state in the fixed-output artifact.
+  # prepared tree is restored directly by downstream builds. That makes FOD
+  # prep the deliberate exception to live GVS: a GVS node_modules tree points at
+  # <store>/v11/links, but the builder-local store is not part of the prepared
+  # output. Keep FOD prep isolated while live devenv installs fully use GVS.
   workspacePrepNpmrcLines = packageImportMethod: [
     "virtual-store-dir=node_modules/.pnpm"
     "package-import-method=${packageImportMethod}"
+    "ignore-scripts=true"
     "side-effects-cache=false"
     "verify-store-integrity=true"
     "strict-store-pkg-content-check=true"
@@ -51,6 +54,7 @@ rec {
     "cache-dir"
     "package-import-method"
     "node-linker"
+    "ignore-scripts"
     "side-effects-cache"
     "side-effects-cache-readonly"
     "verify-store-integrity"
@@ -79,6 +83,7 @@ rec {
     "sideEffectsCacheReadonly"
     "verifyStoreIntegrity"
     "strictStorePkgContentCheck"
+    "ignoreScripts"
     "pmOnFail"
     "childConcurrency"
     "networkConcurrency"

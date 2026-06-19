@@ -65,7 +65,7 @@ describe('defineCatalog', () => {
         extends: baseCatalog,
         packages: {
           '@effect/ai-openai': '0.37.2',
-          typescript: '5.9.3',
+          typescript: '6.0.3',
         },
       })
 
@@ -73,7 +73,7 @@ describe('defineCatalog', () => {
       expect(extended['@effect/platform']).toBe('0.94.1')
       expect(extended.react).toBe('19.2.3')
       expect(extended['@effect/ai-openai']).toBe('0.37.2')
-      expect(extended.typescript).toBe('5.9.3')
+      expect(extended.typescript).toBe('6.0.3')
     })
 
     it('returns frozen object', () => {
@@ -221,7 +221,7 @@ describe('defineCatalog', () => {
 
     const catalogB = defineCatalog({
       react: '19.2.3',
-      typescript: '5.9.3',
+      typescript: '6.0.3',
     })
 
     it('merges multiple base catalogs', () => {
@@ -235,7 +235,7 @@ describe('defineCatalog', () => {
       expect(merged.effect).toBe('3.19.14')
       expect(merged['@effect/platform']).toBe('0.94.1')
       expect(merged.react).toBe('19.2.3')
-      expect(merged.typescript).toBe('5.9.3')
+      expect(merged.typescript).toBe('6.0.3')
       expect(merged.vitest).toBe('4.0.16')
     })
 

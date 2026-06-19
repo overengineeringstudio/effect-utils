@@ -124,8 +124,10 @@ export const renderToString = async ({
     false, // isStrictMode
     null, // concurrentUpdatesByDefaultOverride
     '', // identifierPrefix
+    () => {}, // onUncaughtError
+    () => {}, // onCaughtError
     () => {}, // onRecoverableError
-    null, // transitionCallbacks
+    () => {}, // onDefaultTransitionIndicator
   )
 
   // Render synchronously using updateContainerSync (same as root.tsx)

@@ -1,5 +1,5 @@
-import { sha256 } from '@noble/hashes/sha256'
-import { bytesToHex } from '@noble/hashes/utils'
+import { sha256 } from '@noble/hashes/sha2.js'
+import { bytesToHex } from '@noble/hashes/utils.js'
 import { Effect, Schema } from 'effect'
 
 /** Branded SHA-256 content digest in lowercase-hex `sha256:<64 hex>` form. */

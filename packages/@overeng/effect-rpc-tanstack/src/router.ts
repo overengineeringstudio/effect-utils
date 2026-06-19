@@ -210,7 +210,10 @@ export const createEffectRoute = <TFilePath extends keyof FileRoutesByPath>(path
     const tanstackRoute = createFileRoute(path)
     const loader = options.loader
     type TanstackRouteOptions = NonNullable<Parameters<typeof tanstackRoute>[0]>
-    type TanstackLoader = NonNullable<TanstackRouteOptions['loader']>
+    type TanstackLoader = Extract<
+      NonNullable<TanstackRouteOptions['loader']>,
+      (...args: readonly any[]) => unknown
+    >
     type TanstackLoaderContext = Parameters<TanstackLoader>[0]
 
     const config = {

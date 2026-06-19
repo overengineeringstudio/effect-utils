@@ -24,8 +24,13 @@
 #   corrupted build metadata. Ensure all packages are listed in
 #   tsconfig.all.json references.
 #
+# tsBin:
+#   Path to the TypeScript build/check binary. Defaults to "tsgo" so normal
+#   workspace checks use Nix-managed TypeScript 7.
+#
 # tscBin:
-#   Path to the tsc binary. Defaults to "tsc".
+#   Path to the JavaScript TypeScript compiler. Defaults to "tsc" and is kept
+#   for ts:emit and tsconfig parsing helpers that need the JS compiler API.
 #
 # OTEL tracing:
 #   When OTEL is available, ts:check and ts:build run with --extendedDiagnostics
@@ -37,6 +42,7 @@
 #   - ts:emit uses `tsc --build --dry --noCheck` to skip when no outputs would be produced.
 {
   tsconfigFile ? "tsconfig.all.json",
+  tsBin ? "tsgo",
   tscBin ? "tsc",
 }:
 {
@@ -114,24 +120,29 @@ let
         }
   '';
 
-  # Script that runs tsc with --extendedDiagnostics --verbose,
+  # Script that runs the selected TypeScript compiler with --extendedDiagnostics --verbose,
   # parses per-project timing, and emits OTEL child spans.
   # The outer trace.exec wrapper provides the parent ts:check/ts:build span.
   #
-  # When OTEL is not available, runs plain tsc (no diagnostics flags).
-  tscWithDiagnostics = tscInvocation: extraArgs: ''
+  # When OTEL is not available, runs the compiler without diagnostics flags.
+  tscWithDiagnostics = compilerBin: tscInvocation: extraArgs: ''
     set -euo pipefail
 
-    # Only add diagnostics flags when OTEL tracing is active
-    if command -v otel-span >/dev/null 2>&1 && [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] && [ -n "''${TRACEPARENT:-}" ]; then
+    _ts_compiler_name="$(${pkgs.coreutils}/bin/basename ${lib.escapeShellArg compilerBin})"
+
+    # Only add diagnostics flags when OTEL tracing is active. Keep tsgo on the
+    # plain compiler path: Effect tsgo emits language-service diagnostics that
+    # are useful to display directly, and its verbose build output is not stable
+    # enough for the tsc diagnostics parser below.
+    if command -v otel-span >/dev/null 2>&1 && [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] && [ -n "''${TRACEPARENT:-}" ] && [ "$_ts_compiler_name" != "tsgo" ]; then
       _tsc_output="$(mktemp)"
       trap 'rm -f "$_tsc_output"' EXIT
 
       _tsc_exit=0
       if [[ "${tscInvocation}" == --build* ]]; then
-        ${tscBin} ${tscInvocation} ${extraArgs} --extendedDiagnostics --verbose > "$_tsc_output" 2>&1 || _tsc_exit=$?
+        ${compilerBin} ${tscInvocation} ${extraArgs} --extendedDiagnostics --verbose > "$_tsc_output" 2>&1 || _tsc_exit=$?
       else
-        ${tscBin} ${tscInvocation} ${extraArgs} > "$_tsc_output" 2>&1 || _tsc_exit=$?
+        ${compilerBin} ${tscInvocation} ${extraArgs} > "$_tsc_output" 2>&1 || _tsc_exit=$?
       fi
 
       # On failure, show the user the error output (filtered to useful lines)
@@ -230,31 +241,31 @@ let
 
       exit "$_tsc_exit"
     else
-      # No OTEL: run plain tsc (no diagnostics overhead)
-      ${tscBin} ${tscInvocation} ${extraArgs}
+      # No OTEL: run without diagnostics overhead
+      ${compilerBin} ${tscInvocation} ${extraArgs}
     fi
   '';
 
   guardedTasks = {
     "ts:check" = {
-      guard = tscBin;
-      description = "Type check the whole workspace (tsc --build)";
-      exec = trace.exec "ts:check" (tscWithDiagnostics "--build ${tsconfigFile}" "");
+      guard = tsBin;
+      description = "Type check the whole workspace (tsgo --build)";
+      exec = trace.exec "ts:check" (tscWithDiagnostics tsBin "--build ${tsconfigFile}" "");
       after = [
         "genie:run"
         "pnpm:install"
       ];
     };
     "ts:check:strict" = {
-      guard = tscBin;
-      description = "Type check the whole workspace without incremental reuse (tsc --build --force)";
-      exec = trace.exec "ts:check:strict" (tscWithDiagnostics "--build --force ${tsconfigFile}" "");
+      guard = tsBin;
+      description = "Type check the whole workspace without incremental reuse (tsgo --build --force)";
+      exec = trace.exec "ts:check:strict" (tscWithDiagnostics tsBin "--build --force ${tsconfigFile}" "");
       after = inheritedCheckAfter;
     };
     "ts:build" = {
-      guard = tscBin;
-      description = "Build all packages with type checking (tsc --build)";
-      exec = trace.exec "ts:build" (tscWithDiagnostics "--build ${tsconfigFile}" "");
+      guard = tsBin;
+      description = "Build all packages with type checking (tsgo --build)";
+      exec = trace.exec "ts:build" (tscWithDiagnostics tsBin "--build ${tsconfigFile}" "");
       after = [
         "genie:run"
         "pnpm:install"
@@ -264,8 +275,8 @@ let
 
   otherTasks = {
     "ts:build-watch" = {
-      description = "Build all packages in watch mode (tsc --build --watch)";
-      exec = "${tscBin} --build --watch ${tsconfigFile}";
+      description = "Build all packages in watch mode (tsgo --build --watch)";
+      exec = "${tsBin} --build --watch ${tsconfigFile}";
       after = [
         "genie:run"
         "pnpm:install"
@@ -282,7 +293,7 @@ let
         _emit_tsconfig="$(mktemp "$_emit_tmpdir/.ts-emit-XXXXXX.json")"
         trap 'rm -f "$_emit_tsconfig"' EXIT
         generate_emit_tsconfig "${tsconfigFile}" "$_emit_tsconfig"
-        ${tscWithDiagnostics "--build \"$_emit_tsconfig\"" "--noCheck"}
+        ${tscWithDiagnostics tscBin "--build \"$_emit_tsconfig\"" "--noCheck"}
       '';
       status = ''
         set -euo pipefail
@@ -309,7 +320,7 @@ let
     };
     "ts:clean" = {
       description = "Remove TypeScript build artifacts";
-      exec = trace.exec "ts:clean" "tsc --build --clean ${tsconfigFile}";
+      exec = trace.exec "ts:clean" "${tsBin} --build --clean ${tsconfigFile}";
     };
   };
 in

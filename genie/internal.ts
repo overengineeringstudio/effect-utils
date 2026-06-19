@@ -26,6 +26,7 @@ export {
   githubRuleset,
   githubWorkflow,
   megarepoJson,
+  nodeTypes,
   oxfmtConfig,
   oxlintConfig,
   packageJson,
@@ -133,6 +134,9 @@ export const commonPnpmWorkspaceData = {
       '@effect/experimental': '>=0.58.0',
       '@effect/platform': '>=0.94.2',
       '@effect/rpc': '>=0.73.0',
+      eslint: '>=10.0.0',
+      typescript: '>=6.0.0',
+      vitest: '>=4.0.0',
     },
   },
 }

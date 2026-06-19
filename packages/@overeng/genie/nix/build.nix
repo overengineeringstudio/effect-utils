@@ -28,7 +28,7 @@ let
         hash = "sha256-VU8WMxk8vYSnoprIozlSbyTBIvDDJWgBEtmY9NzZL5o=";
       };
     };
-    nativeNodePackages = [ opentuiCoreNative ];
+    nativeNodePackages = opentuiCoreNative.packages;
     inherit gitRev commitTs dirty;
   };
 in

@@ -94,14 +94,7 @@
       "files": ["**/*.stories.tsx", "**/*.stories.ts", "**/*.stories.jsx"],
       "rules": {
         "overeng/exports-first": "off",
-        "overeng/jsdoc-require-exports": "off",
-        "overeng/storybook/meta-satisfies-type": "error",
-        "overeng/storybook/default-exports": "error",
-        "overeng/storybook/story-exports": "warn",
-        "overeng/storybook/csf-component": "warn",
-        "overeng/storybook/hierarchy-separator": "warn",
-        "overeng/storybook/no-redundant-story-name": "warn",
-        "overeng/storybook/prefer-pascal-case": "warn"
+        "overeng/jsdoc-require-exports": "off"
       }
     },
     {
@@ -269,7 +262,6 @@
         "overeng/explicit-boolean-compare": "off",
         "overeng/named-args": "off",
         "overeng/exports-first": "off",
-        "overeng/storybook/csf-component": "off",
         "no-await-in-loop": "off"
       }
     },

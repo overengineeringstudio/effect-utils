@@ -24,9 +24,10 @@
         let
           pkgs = nixpkgs.legacyPackages.${system};
           playwrightDriver = playwright-web-flake.packages.${system}.playwright-driver;
+          playwrightBrowsers = playwrightDriver.browsers.override { withWebkit = false; };
         in
         pkgs.writeShellScriptBin "playwright" ''
-          export PLAYWRIGHT_BROWSERS_PATH="${playwrightDriver.browsers}"
+          export PLAYWRIGHT_BROWSERS_PATH="${playwrightBrowsers}"
           exec "''${PLAYWRIGHT_BIN:-$PWD/node_modules/.bin/playwright}" "$@"
         '';
     in
@@ -42,13 +43,14 @@
         let
           system = pkgs.stdenv.hostPlatform.system;
           playwrightDriver = playwright-web-flake.packages.${system}.playwright-driver;
+          playwrightBrowsers = playwrightDriver.browsers.override { withWebkit = false; };
           playwrightWrapper = mkPlaywrightWrapper system;
         in
         {
           packages = [ playwrightWrapper ];
 
           env = {
-            PLAYWRIGHT_BROWSERS_PATH = playwrightDriver.browsers;
+            PLAYWRIGHT_BROWSERS_PATH = playwrightBrowsers;
           };
         };
     };

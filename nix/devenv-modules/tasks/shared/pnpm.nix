@@ -270,7 +270,9 @@ let
           --no-frozen-lockfile | --frozen-lockfile=false | \
           --fix-lockfile | --lockfile-only | --no-lockfile | \
           --config.frozen-lockfile=false | --config.frozen-lockfile | \
-          --ignore-scripts | --config.ignore-scripts=true | --config.ignore-scripts | \
+          --no-ignore-scripts | --ignore-scripts=false | \
+          --config.ignore-scripts=false | --config.ignore-scripts | \
+          --config.ignore-dep-scripts=false | --config.ignore-dep-scripts | \
           --config.side-effects-cache=true | --config.side-effects-cache | --side-effects-cache | \
           --side-effects-cache-readonly | --config.side-effects-cache-readonly=true | --config.side-effects-cache-readonly | \
           --no-verify-store-integrity | --verify-store-integrity=false | \

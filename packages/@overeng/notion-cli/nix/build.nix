@@ -33,10 +33,10 @@ let
     # Managed by the repo FOD refresh workflow — do not edit manually.
     depsBuilds = {
       "." = {
-        hash = "sha256-pgJ9X2Q1mf/L5Qc36l13zCEhGuTaLoJhPnpQpO/2wfM=";
+        hash = "sha256-wVRo4pzI2L34k2v9R3l9Tv3TzuktA4XLnz7Vr3ps9xg=";
       };
     };
-    nativeNodePackages = [ opentuiCoreNative ];
+    nativeNodePackages = opentuiCoreNative.packages;
     inherit gitRev commitTs dirty;
   };
   notionDbRuntime = pkgs.writeShellScriptBin "notion-db-runtime" ''

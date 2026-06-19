@@ -51,7 +51,7 @@ export interface TuiStorybookConfigOptionsWithViteFinal<
 
 const opentuiStubPath = new URL('../opentui-stub.ts', import.meta.url).pathname
 
-/** Apply shared Vite config: server binding, esbuild JSX automatic, optimizeDeps JSX. */
+/** Apply shared Vite config: server binding and file-watch policy. */
 const applySharedConfig = (config: InlineConfig): void => {
   config.server = {
     ...config.server,
@@ -66,19 +66,6 @@ const applySharedConfig = (config: InlineConfig): void => {
      * causes EBADF on macOS: https://github.com/vitejs/vite/issues/18527
      * Upstream tracker for @parcel/watcher alternative: https://github.com/vitejs/vite/issues/13593 */
     watch: { ...config.server?.watch, useFsEvents: false },
-  }
-
-  config.esbuild = {
-    ...config.esbuild,
-    jsx: 'automatic',
-  }
-
-  config.optimizeDeps = {
-    ...config.optimizeDeps,
-    esbuildOptions: {
-      ...config.optimizeDeps?.esbuildOptions,
-      jsx: 'automatic',
-    },
   }
 }
 
@@ -188,21 +175,13 @@ export const createTuiStorybookConfig: CreateTuiStorybookConfig = <TConfig exten
       typedConfig.build = {
         ...typedConfig.build,
         target: 'esnext',
-        rollupOptions: {
-          ...typedConfig.build?.rollupOptions,
+        rolldownOptions: {
+          ...typedConfig.build?.rolldownOptions,
           // eslint-disable-next-line overeng/named-args -- Rollup API callback signature
           onwarn: (warning, warn) => {
             if (warning.code === 'MODULE_LEVEL_DIRECTIVE') return
             warn(warning)
           },
-        },
-      }
-
-      typedConfig.optimizeDeps = {
-        ...typedConfig.optimizeDeps,
-        esbuildOptions: {
-          ...typedConfig.optimizeDeps?.esbuildOptions,
-          target: 'esnext',
         },
       }
 

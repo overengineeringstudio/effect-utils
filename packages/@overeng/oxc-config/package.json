@@ -6,18 +6,15 @@
   "exports": {
     "./plugin": "./src/mod.ts"
   },
-  "dependencies": {
-    "eslint-plugin-storybook": "10.2.3"
-  },
   "devDependencies": {
     "@types/eslint": "9.6.1",
-    "@typescript-eslint/parser": "8.52.0",
-    "@typescript-eslint/rule-tester": "8.52.0",
-    "@typescript-eslint/utils": "8.52.0",
-    "eslint": "9.39.2",
-    "oxlint-tsgolint": "0.11.4",
-    "typescript": "5.9.3",
-    "vitest": "3.2.4"
+    "@typescript-eslint/parser": "8.61.1",
+    "@typescript-eslint/rule-tester": "8.61.1",
+    "@typescript-eslint/utils": "8.61.1",
+    "eslint": "10.5.0",
+    "oxlint-tsgolint": "0.23.0",
+    "typescript": "6.0.3",
+    "vitest": "4.1.9"
   },
   "$genie": {
     "source": "package.json.genie.ts",

@@ -6,6 +6,25 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **repo dependency/toolchain refresh**: Upgrade the Nix, pnpm, TypeScript, lint,
+  test, Storybook/Vite, React, OpenTelemetry, OpenTUI, and Effect 3-line
+  dependency set to current major-compatible versions while deliberately not
+  moving to Effect 4. Live installs now use Nix-managed pnpm 11 with global
+  virtual store enabled, install scripts and dependency scripts disabled, strict
+  store verification, and a pure workspace-local store; fixed-output Nix prep
+  keeps an isolated virtual store as the reproducible exception because GVS
+  projections point at the builder-local pnpm store. Native packages that are
+  needed at runtime are supplied through Nix/custom package derivations, and
+  Storybook oxlint rule exports are temporarily removed until the upstream
+  ESLint 10 plugin stack is compatible again (#804).
+
+- **devenv TypeScript tasks**: Move the normal workspace TypeScript check/build
+  path to the Nix-managed `tsgo` binary, so `ts:check`, `ts:check:strict`,
+  `ts:build`, `ts:build-watch`, and `ts:clean` run on the TypeScript 7 native
+  compiler track. `ts:emit` keeps using JavaScript `tsc` for its compiler-API
+  tsconfig filtering and no-check emit path, and the standalone
+  `ts-effect-lsp` module remains exported only as a compatibility task.
+
 - **@overeng/genie**: Make `findGenieFiles` return stable repo-relative
   `.genie.ts` paths, with generation/check orchestration resolving them at the
   filesystem boundary. Discovery tests now assert through a canonical-relative

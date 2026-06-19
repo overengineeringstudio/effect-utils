@@ -29,20 +29,23 @@
       {
         "name": "@effect/language-service",
         "reportSuggestionsAsWarningsInTsc": true,
+        "ignoreEffectWarningsInTscExitCode": true,
         "pipeableMinArgCount": 2,
         "diagnosticSeverity": {
           "missedPipeableOpportunity": "warning",
           "schemaUnionOfLiterals": "warning",
           "anyUnknownInErrorContext": "warning",
-          "preferSchemaOverJson": "warning"
+          "preferSchemaOverJson": "warning",
+          "missingEffectContext": "warning",
+          "missingEffectError": "warning"
         }
       }
     ],
     "composite": true,
     "rootDir": ".",
     "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo",
-    "jsx": "react-jsx",
-    "types": ["node", "bun"]
+    "types": ["node", "bun"],
+    "jsx": "react-jsx"
   },
   "include": ["src/**/*", "test/**/*", "bin/**/*", "../../../types/css.d.ts"],
   "references": [

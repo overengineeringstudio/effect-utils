@@ -26,6 +26,7 @@ let
   oxlintWithPlugins = import ./nix/oxlint-with-plugins.nix {
     inherit pkgs oxlintNpm;
   };
+  nodePtyNative = import ./nix/node-pty-native.nix { inherit pkgs; };
 
   # Shared task modules (from shared/ directory)
   taskModules = {
@@ -40,7 +41,6 @@ let
     storybook = import ./nix/devenv-modules/tasks/shared/storybook.nix;
     netlify = import ./nix/devenv-modules/tasks/shared/netlify.nix;
     lint-genie = ./nix/devenv-modules/tasks/shared/lint-genie.nix;
-    ts-effect-lsp = import ./nix/devenv-modules/tasks/shared/ts-effect-lsp.nix;
     lint-nix = import ./nix/devenv-modules/tasks/shared/lint-nix.nix;
     lint-oxc = import ./nix/devenv-modules/tasks/shared/lint-oxc.nix;
     bun = import ./nix/devenv-modules/tasks/shared/bun.nix;
@@ -411,7 +411,6 @@ in
       # gate (both run `lint:check`).
       denyWarnings = true;
     })
-    (taskModules.ts-effect-lsp { })
     # Setup task (auto-runs in enterShell)
     # Context example tasks
     taskModules.context
@@ -493,6 +492,32 @@ in
   tasks."lint:check:genie".after = [ "pnpm:install" ];
   tasks."mr:fetch-apply".after = [ "pnpm:install" ];
   tasks."mr:apply".after = [ "pnpm:install" ];
+
+  tasks."pnpm:link-native-node-packages" = {
+    after = [ "pnpm:install" ];
+    description = "Link Nix-built native Node packages into the pnpm projection";
+    exec = ''
+      set -euo pipefail
+
+      link_native_package() {
+        local package_name="$1"
+        local package_path="$2"
+        local rel_path="$package_name"
+
+        if [[ "$package_name" == @*/* ]]; then
+          rel_path="$(dirname "$package_name")/$(basename "$package_name")"
+        fi
+
+        find node_modules .devenv/pnpm-store-pure-v1/v11/links \
+          -path "*/node_modules/$rel_path" \
+          -exec sh -c 'package_path="$1"; shift; for target do rm -rf "$target"; ln -s "$package_path" "$target"; done' sh "$package_path" {} +
+      }
+
+      link_native_package "node-pty" "${nodePtyNative}/node_modules/node-pty"
+    '';
+  };
+
+  tasks."test:pty-effect".after = lib.mkAfter [ "pnpm:link-native-node-packages" ];
 
   tasks."gh:apply-settings" = {
     after = [ "genie:run" ];

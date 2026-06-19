@@ -39,6 +39,8 @@
  * @module
  */
 
+import { Console as NodeConsole } from 'node:console'
+
 import { Atom, Registry } from '@effect-atom/atom'
 import type { Scope } from 'effect'
 import {
@@ -897,14 +899,7 @@ const isStringSchema = (schema: Schema.Schema<unknown>): boolean =>
  * Console surface) and promotes each method into an `Effect`.
  */
 const consoleOnStream = (stream: NodeJS.WriteStream): Console.Console => {
-  // Use the Node Console constructor available on the global `console`.
-  // Typed as `any` because DOM lib typings for `globalThis.console` don't
-  // expose the constructor; this only runs in Node, where it's available.
-  const ConsoleCtor = (globalThis.console as any).Console as new (options: {
-    stdout: NodeJS.WriteStream
-    stderr: NodeJS.WriteStream
-  }) => any
-  const raw = new ConsoleCtor({ stdout: stream, stderr: stream })
+  const raw = new NodeConsole({ stdout: stream, stderr: stream })
   // Brand the object with the Console `TypeId` so `Console.setConsole`
   // accepts it. The symbol is keyed as `effect/Console` via `Symbol.for`.
   const TypeId = Symbol.for('effect/Console')
@@ -931,7 +926,9 @@ const consoleOnStream = (stream: NodeJS.WriteStream): Console.Console => {
     log: (...args: ReadonlyArray<any>) => Effect.sync(() => raw.log(...args)),
     // oxlint-disable-next-line overeng/named-args -- matches effect Console.Console interface
     table: (tabularData: any, properties?: ReadonlyArray<string>) =>
-      Effect.sync(() => raw.table(tabularData, properties)),
+      Effect.sync(() =>
+        raw.table(tabularData, properties === undefined ? undefined : [...properties]),
+      ),
     time: (label?: string) => Effect.sync(() => raw.time(label)),
     timeEnd: (label?: string) => Effect.sync(() => raw.timeEnd(label)),
     timeLog: (label?: string, ...args: ReadonlyArray<any>) =>

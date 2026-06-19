@@ -47,6 +47,7 @@
           bun = pkgs.bun;
           src = self;
         };
+        nodePtyNative = import ./nix/node-pty-native.nix { inherit pkgs; };
         # otelite — effect-utils' first Rust package (local OTLP capture tool).
         # Built via rustPlatform.buildRustPackage, separate from the Bun CLIs.
         otelite = import (rootPath + "/packages/@overeng/otelite/nix/build.nix") {
@@ -171,6 +172,7 @@
           oxlint-with-plugins = import ./nix/oxlint-with-plugins.nix {
             inherit pkgs oxlintNpm;
           };
+          node-pty-native = nodePtyNative;
         };
         # Direnv helper for comparing expected CLI outputs to PATH entries.
         cliOutPaths = {

@@ -160,7 +160,6 @@ export default oxlintConfig({
         'overeng/explicit-boolean-compare': 'off',
         'overeng/named-args': 'off',
         'overeng/exports-first': 'off',
-        'overeng/storybook/csf-component': 'off',
         'no-await-in-loop': 'off',
       },
     },
