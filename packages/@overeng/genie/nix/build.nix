@@ -1,9 +1,9 @@
 # Nix derivation that builds genie CLI binary.
 # Uses bun build --compile for native platform.
 #
-# Fallback pattern: oxfmt is appended to PATH via --suffix, so system oxfmt
-# takes precedence when available, but bundled oxfmt is used as fallback.
-# This avoids formatting churn when oxfmt isn't installed in the environment.
+# The CLI calls the executable oxfmt interface; the wrapper appends the Nix
+# package to PATH so generated-file formatting stays outside the bundled
+# JavaScript dependency closure.
 {
   pkgs,
   src,
@@ -25,7 +25,7 @@ let
     # Managed by the repo FOD refresh workflow — do not edit manually.
     depsBuilds = {
       "." = {
-        hash = "sha256-6ygi8tsRflNM4zkKPBIqO6xQ6glZgnKiL9/fpra7x6E=";
+        hash = "sha256-7HcNHHSVRaNJSr4rjbf8QshCegTZfWO/Ft87ygnnnsg=";
       };
     };
     nativeNodePackages = opentuiCoreNative.packages;

@@ -34,7 +34,6 @@ const supportDeps = catalog.compose({
         '@types/react',
         '@types/react-reconciler',
         'prettier',
-        'oxfmt',
         'typescript',
       ),
     },

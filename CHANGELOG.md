@@ -20,7 +20,10 @@ All notable changes to this project will be documented in this file.
   `pnpm-deps` fixed-output hashes so cold Nix prep validates after the lockfile
   and pnpm policy changes, explicitly deny `fsevents` build approval, and
   document the boundary between Nix-owned lifecycle-built native addons and
-  locked fixed-output prebuilt optional native packages (#804).
+  locked fixed-output prebuilt optional native packages. The `genie` CLI now
+  formats through the Nix-wrapped `oxfmt` executable instead of bundling the npm
+  `oxfmt` module, keeping optional formatter plugins out of the compiled CLI
+  closure (#804).
 
 - **devenv TypeScript tasks**: Move the normal workspace TypeScript check/build
   path to the Nix-managed `tsgo` binary, so `ts:check`, `ts:check:strict`,

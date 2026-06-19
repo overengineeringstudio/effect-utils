@@ -15,6 +15,7 @@
     "./web/styles.css": "./src/web/styles.css"
   },
   "publishConfig": {
+    "access": "public",
     "exports": {
       ".": "./dist/mod.js",
       "./renderer": "./dist/renderer/mod.js",
@@ -24,8 +25,7 @@
       "./web": "./dist/web/mod.js",
       "./web/styles.css": "./dist/web/styles.css",
       "./web/katex.css": "./dist/web/katex.css"
-    },
-    "access": "public"
+    }
   },
   "scripts": {
     "storybook": "storybook dev -p 6014",

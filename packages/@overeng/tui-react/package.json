@@ -10,13 +10,13 @@
     "./storybook": "./src/storybook/mod.tsx"
   },
   "publishConfig": {
+    "access": "public",
     "exports": {
       ".": "./dist/mod.js",
       "./node": "./dist/node/mod.js",
       "./storybook": "./dist/storybook/mod.js",
       "./opentui": "./dist/effect/opentui/mod.js"
-    },
-    "access": "public"
+    }
   },
   "scripts": {
     "storybook": "storybook dev -p 6006",

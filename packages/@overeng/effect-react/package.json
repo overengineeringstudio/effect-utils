@@ -8,11 +8,11 @@
     "./react-aria": "./src/react-aria/mod.ts"
   },
   "publishConfig": {
+    "access": "public",
     "exports": {
       ".": "./dist/mod.js",
       "./react-aria": "./dist/react-aria/mod.js"
-    },
-    "access": "public"
+    }
   },
   "scripts": {
     "storybook": "storybook dev -p 6009",

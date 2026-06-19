@@ -10,13 +10,13 @@
     "./server": "./src/server.ts"
   },
   "publishConfig": {
+    "access": "public",
     "exports": {
       ".": "./dist/mod.js",
       "./client": "./dist/client.js",
       "./server": "./dist/server.js",
       "./router": "./dist/router.js"
-    },
-    "access": "public"
+    }
   },
   "devDependencies": {
     "@effect/experimental": "0.60.0",

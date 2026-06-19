@@ -299,29 +299,6 @@ export const errorOriginatesInFile = ({
 const oxfmtSupportedExtensions = new Set(['.json', '.jsonc', '.yml', '.yaml'])
 
 type OxfmtConfig = Readonly<Record<string, unknown>>
-type OxfmtFormatResult = {
-  code: string
-  errors: ReadonlyArray<unknown>
-}
-type OxfmtFormat = (
-  fileName: string,
-  text: string,
-  options?: OxfmtConfig,
-) => Promise<OxfmtFormatResult>
-
-let oxfmtFormatPromise: Promise<OxfmtFormat | undefined> | undefined
-
-const loadOxfmtFormat = (): Promise<OxfmtFormat | undefined> => {
-  if (oxfmtFormatPromise !== undefined) {
-    return oxfmtFormatPromise
-  }
-
-  oxfmtFormatPromise = import('oxfmt')
-    .then((module) => (typeof module.format === 'function' ? module.format : undefined))
-    .catch(() => undefined)
-
-  return oxfmtFormatPromise
-}
 
 const loadOxfmtConfig = Effect.fn('loadOxfmtConfig')(function* ({
   configPath,
@@ -413,20 +390,9 @@ const formatWithOxfmt = Effect.fn('formatWithOxfmt')(function* ({
     return content
   }
 
-  const format = yield* Effect.promise(() => loadOxfmtFormat())
   const optionsResult = yield* loadOxfmtConfig({ configPath }).pipe(Effect.either)
-
-  if (format !== undefined && Either.isRight(optionsResult) === true) {
-    const result = yield* Effect.tryPromise(() =>
-      format(targetFilePath, content, Option.getOrUndefined(optionsResult.right)),
-    ).pipe(Effect.orElseSucceed(() => undefined))
-
-    if (result !== undefined && result.errors.length === 0) {
-      if (result.code.length === 0 && content.length > 0) {
-        return content
-      }
-      return result.code
-    }
+  if (Either.isLeft(optionsResult) === true) {
+    return content
   }
 
   const args = Option.match(configPath, {

@@ -8,11 +8,11 @@
     "./client": "./src/client.ts"
   },
   "publishConfig": {
+    "access": "public",
     "exports": {
       ".": "./dist/mod.js",
       "./client": "./dist/client.js"
-    },
-    "access": "public"
+    }
   },
   "dependencies": {
     "@myobie/pty": "0.10.0",

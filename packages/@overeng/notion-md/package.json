@@ -9,6 +9,7 @@
     "./cli-program": "./src/cli-program.ts"
   },
   "publishConfig": {
+    "access": "public",
     "bin": {
       "notion-md": "./dist/src/cli.js"
     },
@@ -16,8 +17,7 @@
       ".": "./dist/src/mod.js",
       "./cli": "./dist/src/cli.js",
       "./cli-program": "./dist/src/cli-program.js"
-    },
-    "access": "public"
+    }
   },
   "scripts": {
     "storybook": "storybook dev -p 6015",

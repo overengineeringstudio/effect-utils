@@ -11,14 +11,14 @@
     "./opencode": "./src/adapters/opencode.ts"
   },
   "publishConfig": {
+    "access": "public",
     "exports": {
       ".": "./dist/mod.js",
       "./codex": "./dist/adapters/codex.js",
       "./claude": "./dist/adapters/claude.js",
       "./opencode": "./dist/adapters/opencode.js",
       "./jsonl": "./dist/adapters/jsonl.js"
-    },
-    "access": "public"
+    }
   },
   "devDependencies": {
     "@effect/platform": "0.96.2",

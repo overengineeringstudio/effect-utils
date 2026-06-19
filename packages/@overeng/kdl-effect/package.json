@@ -7,10 +7,10 @@
     ".": "./src/mod.ts"
   },
   "publishConfig": {
+    "access": "public",
     "exports": {
       ".": "./dist/mod.js"
-    },
-    "access": "public"
+    }
   },
   "dependencies": {
     "@overeng/kdl": "workspace:^"

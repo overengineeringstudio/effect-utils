@@ -8,11 +8,11 @@
     "./cli": "./src/cli.ts"
   },
   "publishConfig": {
+    "access": "public",
     "exports": {
       ".": "./dist/mod.js",
       "./cli": "./dist/cli.js"
-    },
-    "access": "public"
+    }
   },
   "scripts": {
     "storybook": "storybook dev -p 6007",

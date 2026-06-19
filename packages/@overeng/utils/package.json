@@ -22,6 +22,7 @@
     "./node/storybook/config": "./src/node/storybook/config/mod.ts"
   },
   "publishConfig": {
+    "access": "public",
     "exports": {
       ".": "./dist/isomorphic/mod.js",
       "./node": "./dist/node/mod.js",
@@ -39,8 +40,7 @@
         "node": "./dist/cuid/cuid.node.js",
         "default": "./dist/cuid/mod.js"
       }
-    },
-    "access": "public"
+    }
   },
   "dependencies": {
     "@effect/opentelemetry": "0.63.0",

@@ -26,6 +26,7 @@
     "./webhook": "./src/webhook/mod.ts"
   },
   "publishConfig": {
+    "access": "public",
     "exports": {
       ".": "./dist/src/mod.js",
       "./body": "./dist/src/body/adapter.js",
@@ -47,8 +48,7 @@
       "./sync/observation": "./dist/src/sync/observation.js",
       "./testing/*": "./dist/src/testing/*.js",
       "./webhook": "./dist/src/webhook/mod.js"
-    },
-    "access": "public"
+    }
   },
   "scripts": {
     "demo:verify": "NOTION_DATASOURCE_SYNC_LIVE=1 vitest run src/e2e/live-demo-replica.e2e.test.ts --config vitest.config.ts",

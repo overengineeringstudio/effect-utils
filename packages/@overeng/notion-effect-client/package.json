@@ -8,10 +8,10 @@
     "./test": "./src/test/integration/setup.ts"
   },
   "publishConfig": {
+    "access": "public",
     "exports": {
       ".": "./dist/mod.js"
-    },
-    "access": "public"
+    }
   },
   "dependencies": {
     "@effect/cluster": "0.59.0",

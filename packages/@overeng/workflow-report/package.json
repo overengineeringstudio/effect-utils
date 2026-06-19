@@ -8,14 +8,14 @@
     "./cli": "./src/cli-command.ts"
   },
   "publishConfig": {
+    "access": "public",
     "bin": {
       "workflow-report": "./dist/bin/workflow-report.js"
     },
     "exports": {
       ".": "./dist/src/mod.js",
       "./cli": "./dist/src/cli-command.js"
-    },
-    "access": "public"
+    }
   },
   "dependencies": {
     "@overeng/otel-contract": "workspace:^",

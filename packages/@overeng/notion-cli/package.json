@@ -8,14 +8,14 @@
     "./config": "./src/config-def.ts"
   },
   "publishConfig": {
+    "access": "public",
     "bin": {
       "notion": "./dist/cli.js"
     },
     "exports": {
       ".": "./dist/mod.js",
       "./config": "./dist/config-def.js"
-    },
-    "access": "public"
+    }
   },
   "scripts": {
     "storybook": "storybook dev -p 6012",

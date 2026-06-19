@@ -10,13 +10,13 @@
     "./testing": "./src/testing/testing.ts"
   },
   "publishConfig": {
+    "access": "public",
     "exports": {
       ".": "./dist/mod.js",
       "./admin": "./dist/admin/admin.js",
       "./otel": "./dist/observability/otel.js",
       "./testing": "./dist/testing/testing.js"
-    },
-    "access": "public"
+    }
   },
   "dependencies": {
     "@overeng/otel-contract": "workspace:^",
