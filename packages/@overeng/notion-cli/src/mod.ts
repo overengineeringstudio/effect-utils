@@ -49,3 +49,11 @@ export {
 } from './introspect.ts'
 // Output
 export { formatCode, writeSchemaToFile, WriteSchemaToFileError } from './output.ts'
+// Status schema planning
+export {
+  planStatusSchema,
+  type PlanStatusSchemaOptions,
+  type StatusSchemaDrift,
+  type StatusSchemaDriftKind,
+  type StatusSchemaPlan,
+} from './status-schema-plan.ts'
