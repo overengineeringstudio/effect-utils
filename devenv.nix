@@ -56,6 +56,21 @@ let
   # Use bun source entrypoints for in-repo CLIs in devenv (flake builds stay strict).
   mkSourceCli = import ./nix/devenv-modules/lib/mk-source-cli.nix { inherit pkgs; };
 
+  # Real packages backing guarded command names. The cli-guards own bin/<name>
+  # and exec these via absolute store path under passthrough, so they are passed
+  # as `*Pkg` reals to the task modules instead of also being top-level profile
+  # providers (which would collide with the guards in buildEnv). See cli-guard.nix.
+  effectTsgo = inputs.tsgo.packages.${currentSystem}.effect-tsgo;
+  pnpmPkg = import ./nix/pnpm.nix { inherit pkgs; };
+  genieSourceCli = mkSourceCli {
+    name = "genie";
+    entry = "packages/@overeng/genie/bin/genie.tsx";
+  };
+  mrSourceCli = mkSourceCli {
+    name = "mr";
+    entry = "packages/@overeng/megarepo/bin/mr.ts";
+  };
+
   # CLI packages built with Nix (for hash management)
   nixCliPackages = [
     {
@@ -312,9 +327,11 @@ in
     # Playwright browser drivers and environment setup
     inputs.playwright.devenvModules.default
     # Shared task modules
+    # genie is a standard module; the real is threaded via `_module.args.geniePkg`
+    # below so the guard owns `bin/genie` and exec's it by absolute store path.
     taskModules.genie
-    (taskModules.ts { })
-    (taskModules.megarepo { })
+    (taskModules.ts { tsBinPkg = effectTsgo; })
+    (taskModules.megarepo { mrPkg = mrSourceCli; })
     (taskModules.lint-nix { })
     (taskModules.check {
       extraChecks = [
@@ -326,7 +343,10 @@ in
     (taskModules.clean { packages = allPackages; })
     # Repo-root pnpm install task
     # NOTE: Using pnpm temporarily. See: context/workarounds/bun-issues.md
-    (taskModules.pnpm { packages = allPackages; })
+    (taskModules.pnpm {
+      packages = allPackages;
+      inherit pnpmPkg;
+    })
     # Self-contained test tasks: each package uses its own vitest from node_modules
     (taskModules.test {
       packages = packagesWithTests;
@@ -346,6 +366,7 @@ in
       }) packagesWithNetlifyPreview;
     })
     (taskModules.lint-oxc {
+      oxlintPkg = oxlintWithPlugins;
       lintPaths = [
         "packages"
         "scripts"
@@ -442,29 +463,47 @@ in
     ./nix/devenv-modules/tasks/local/restate-integration-test.nix
   ];
 
+  # Thread the source-mode `genie` real into the (standard) genie task module so
+  # the cli-guard owns `bin/genie` and exec's it by absolute store path. The
+  # module declares `geniePkg` as an optional arg (defaulting to null → PATH-grep
+  # fallback), so the export stays a bare-path module for downstream consumers.
+  _module.args.geniePkg = genieSourceCli;
+
+  # Guarded-command ownership (issue #808):
+  #   Each cli-guard owns its `bin/<name>` and exec's the real binary by absolute
+  #   store path under DT_PASSTHROUGH=1 (see nix/devenv-modules/tasks/lib/cli-guard.nix).
+  #   The reals are therefore threaded into the task modules as `*Pkg` args
+  #   rather than listed here as competing top-level providers, which removes the
+  #   nondeterministic buildEnv `collision between ...` warnings.
+  #
+  #   command  owner (real exec'd by guard)        why not a top-level package
+  #   -------  ---------------------------------    --------------------------------
+  #   genie    genieSourceCli  (mkSourceCli)        guard owns it; sole bin
+  #   mr       mrSourceCli     (mkSourceCli)        guard owns it; sole bin
+  #   oxlint   oxlintWithPlugins                    guard owns it; sole bin
+  #   oxfmt    pkgs.oxfmt                           guard owns it (in lint-oxc.nix); sole bin
+  #   nixfmt   pkgs.nixfmt-rfc-style                guard owns it (in lint-nix.nix); sole bin
+  #   deadnix  pkgs.deadnix                         guard owns it (in lint-nix.nix); sole bin
+  #   tsgo     effectTsgo                           lowPrio below: keeps `effect-tsgo` sibling
+  #   pnpm     pnpmPkg (nix/pnpm.nix)               lowPrio below: keeps `pnpx` sibling
+  #
+  #   tsc/tsserver stay real-owned via `pkgs.typescript` (no guard, no collision).
+  #   tui-stories is real-owned via mkSourceCli (no guard, no collision).
   packages = [
-    inputs.tsgo.packages.${currentSystem}.effect-tsgo
-    (import ./nix/pnpm.nix { inherit pkgs; })
+    # lowPrio: the tsgo guard owns `bin/tsgo`; keep this for the `effect-tsgo` bin.
+    (lib.lowPrio effectTsgo)
+    # lowPrio: the pnpm guard owns `bin/pnpm`; keep this for the `pnpx` bin.
+    (lib.lowPrio pnpmPkg)
     pkgs.nodejs_24
     pkgs.bun
     pkgs.typescript
     pkgs.flock # Cross-process locking for setup tasks (see setup.nix)
-    oxlintWithPlugins
-    pkgs.oxfmt
     # restate-server (+ restate CLI) on $PATH for restate-effect integration tests.
     restate
     # Use the packaged wrapper so `notion db ...` runs on Node 24 with node:sqlite.
     repoFlake.packages.${currentSystem}.notion-cli
     # otelite binary on PATH so @overeng/utils-dev/otelite tests run the real CLI.
     repoFlake.packages.${currentSystem}.otelite
-    (mkSourceCli {
-      name = "genie";
-      entry = "packages/@overeng/genie/bin/genie.tsx";
-    })
-    (mkSourceCli {
-      name = "mr";
-      entry = "packages/@overeng/megarepo/bin/mr.ts";
-    })
     cliBuildStamp.package
     (mkSourceCli {
       name = "tui-stories";

@@ -11,7 +11,21 @@
 #   tasks."genie:run".after = [ "pnpm:install:genie" ];
 #   tasks."genie:watch".after = [ "pnpm:install:genie" ];
 #   tasks."genie:check".after = [ "pnpm:install:genie" ];
-{ lib, pkgs, ... }:
+#
+# This is a standard devenv module — downstream `imports = [ tasks.genie ]` keeps
+# working because `geniePkg` is an optional module argument defaulting to null.
+# Consumers that want the guard to own `bin/genie` thread the real `genie`
+# derivation by setting `_module.args.geniePkg` in their devenv config. When set,
+# the guard owns `bin/genie` and exec's the real by absolute path under
+# passthrough (see cli-guard.nix). Required for source-mode `genie` (no
+# node_modules/.bin fallback) so passthrough does not exit 127. When unset, the
+# guard falls back to grepping `$PATH`.
+{
+  lib,
+  pkgs,
+  geniePkg ? null,
+  ...
+}:
 let
   trace = import ../lib/trace.nix { inherit lib; };
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
@@ -144,6 +158,9 @@ let
   };
 in
 {
-  packages = cliGuard.fromTasks tasks;
+  packages = cliGuard.fromTasks {
+    inherit tasks;
+    reals = lib.optionalAttrs (geniePkg != null) { genie = geniePkg; };
+  };
   tasks = cliGuard.stripGuards tasks;
 }

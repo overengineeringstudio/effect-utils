@@ -6,6 +6,22 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **devenv cli-guard ownership**: Make the cli-guard nudge-wrappers the
+  deterministic owners of their command names so the devenv buildEnv no longer
+  emits nondeterministic `collision between ...` warnings (#808). Each guard now
+  exec's the real binary by absolute store path under `DT_PASSTHROUGH=1` instead
+  of grepping `$PATH`, so the real packages (`genie`, `mr`, `oxlint`, `oxfmt`,
+  `nixfmt`, `deadnix`, `tsgo`, `pnpm`) no longer need to be competing top-level
+  profile providers. Reals are threaded into the task modules via `*Pkg` args
+  (`tsBinPkg`, `oxlintPkg`, `mrPkg`, `pnpmPkg`, `geniePkg`). `effect-tsgo`
+  and `pnpm` stay on `$PATH` at `lib.lowPrio` to keep their `effect-tsgo`/`pnpx`
+  siblings reachable. `realBin` is optional with the previous `$PATH`-grep
+  retained as the fallback, so the `fromTasks`/`mkCliGuard` API and unthreaded
+  guards (`vitest`, `playwright`) are backward compatible. The exported
+  `tasks.genie` module stays a bare-path standard module — `geniePkg` is an
+  optional module argument (threaded via `_module.args.geniePkg`), so downstream
+  `imports = [ inputs.effect-utils.devenvModules.tasks.genie ]` is unaffected.
+
 - **repo dependency/toolchain refresh**: Upgrade the Nix, pnpm, TypeScript, lint,
   test, Storybook/Vite, React, OpenTelemetry, OpenTUI, and Effect 3-line
   dependency set to current major-compatible versions while deliberately not
