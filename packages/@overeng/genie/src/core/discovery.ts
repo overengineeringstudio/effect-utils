@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -105,6 +106,39 @@ const shouldSkipDirectory = (name: string): boolean => {
 /** Check if a filename is a genie template file (*.genie.ts) */
 export const isGenieFile = (file: string): boolean => file.endsWith('.genie.ts')
 
+const gitGeniePathspecs = ['*.genie.ts', ':(glob)**/*.genie.ts'] as const
+
+const gitListGenieFiles = ({
+  args,
+  cwd,
+}: {
+  args: ReadonlyArray<string>
+  cwd: string
+}): Array<string> => {
+  const output = execFileSync('git', ['-C', cwd, ...args, '--', ...gitGeniePathspecs], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'ignore'],
+  })
+
+  return output.split('\0').filter((file) => file.length > 0)
+}
+
+const discoverGitGenieFiles = ({ cwd }: { cwd: string }): Array<string> | undefined => {
+  try {
+    execFileSync('git', ['-C', cwd, 'rev-parse', '--is-inside-work-tree'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+
+    return [
+      ...gitListGenieFiles({ cwd, args: ['ls-files', '-z'] }),
+      ...gitListGenieFiles({ cwd, args: ['ls-files', '-z', '--others', '--exclude-standard'] }),
+    ].map((file) => path.join(cwd, file))
+  } catch {
+    return undefined
+  }
+}
+
 /**
  * Find all .genie.ts files under a root directory.
  *
@@ -123,6 +157,7 @@ export const findGenieFiles = Effect.fn('discovery/findGenieFiles')(function* (d
   const rootDir = yield* fs.realPath(dir).pipe(Effect.catchAll(() => Effect.succeed(dir)))
   const rootPrefix = rootDir.endsWith(path.sep) === true ? rootDir : `${rootDir}${path.sep}`
   const seenDirectories = new Set<string>()
+  const gitFiles = discoverGitGenieFiles({ cwd: rootDir })
 
   const resolveSymlinkTarget = (
     fullPath: string,
@@ -219,7 +254,7 @@ export const findGenieFiles = Effect.fn('discovery/findGenieFiles')(function* (d
       return results
     })
 
-  const files = yield* walk(dir)
+  const files = gitFiles ?? (yield* walk(dir))
   const seen = new Set<string>()
   const uniqueFiles: string[] = []
 

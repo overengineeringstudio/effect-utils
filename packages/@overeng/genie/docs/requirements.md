@@ -84,27 +84,31 @@ may not yet be installed.
   instead of opaque incidental stack traces.
 - **R14 File-level reporting:** Batch runs must report per-file outcomes and an
   aggregate summary suitable for both local use and CI.
+- **R15 Repository-bounded discovery:** Recursive discovery must respect the
+  repository's ignore rules so ignored local state, nested agent worktrees, and
+  other non-source scratch directories cannot become ambient generation input.
+  Untracked but non-ignored `.genie.ts` sources must still be discovered.
 
 ### Must support the main operating modes
 
-- **R15 Generate mode:** Genie must write generated targets to disk for normal
+- **R16 Generate mode:** Genie must write generated targets to disk for normal
   repository authoring workflows.
-- **R16 Check mode:** Genie must verify up-to-date state without mutating
+- **R17 Check mode:** Genie must verify up-to-date state without mutating
   targets.
-- **R17 Dry-run mode:** Genie must support previewing prospective changes
+- **R18 Dry-run mode:** Genie must support previewing prospective changes
   without writing files.
-- **R18 Watch mode:** Genie must support an interactive mode that reacts to
+- **R19 Watch mode:** Genie must support an interactive mode that reacts to
   `.genie.ts` source changes and regenerates the affected output set.
 
 ### Must preserve output quality
 
-- **R19 Supported formatting:** Generated outputs must respect the repository's
+- **R20 Supported formatting:** Generated outputs must respect the repository's
   supported formatting conventions so repeated generation does not create
   formatting churn.
-- **R20 Stable metadata channel:** Composition metadata required by other
+- **R21 Stable metadata channel:** Composition metadata required by other
   generators must flow through an explicit structured channel rather than being
   reconstructed from rendered artifact text.
-- **R21 Multi-artifact coverage:** The system must remain capable of generating
+- **R22 Multi-artifact coverage:** The system must remain capable of generating
   the major repository artifact classes it already serves, including package
   manifests, TypeScript configuration, formatter/linter config, and GitHub
   workflow artifacts.

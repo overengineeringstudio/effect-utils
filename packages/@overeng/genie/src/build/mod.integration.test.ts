@@ -484,6 +484,52 @@ export default {
   )
 
   Vitest.it.effect(
+    'ignores git-ignored genie files during discovery',
+    Effect.fnUntraced(
+      function* () {
+        yield* withTestEnv((env) =>
+          Effect.gen(function* () {
+            yield* env.writeFile({
+              path: '.gitignore',
+              content: '.claude/\n',
+            })
+            yield* env.writeFile({
+              path: 'package.json.genie.ts',
+              content: `export default {
+  data: { name: 'genie-cli-test', private: true },
+  stringify: () => JSON.stringify({ name: 'genie-cli-test', private: true }),
+}`,
+            })
+            yield* env.writeFile({
+              path: '.claude/worktrees/local-scratch/package.json.genie.ts',
+              content: `throw new Error('ignored local worktree should not be discovered')
+export default { data: {}, stringify: () => '{}' }`,
+            })
+
+            const init = Command.make('git', 'init', '-q').pipe(
+              Command.workingDirectory(env.root),
+              Command.stdout('pipe'),
+              Command.stderr('pipe'),
+            )
+            const initProcess = yield* Command.start(init)
+            expect(yield* initProcess.exitCode).toBe(0)
+
+            const { stdout, stderr, exitCode } = yield* runGenie(env, ['--dry-run'])
+            const output = `${stdout}\n${stderr}`
+
+            expect(exitCode).toBe(0)
+            expect(output).toContain('Summary: 1 files processed')
+            expect(output).not.toContain('ignored local worktree')
+            expect(output).not.toContain('.claude/worktrees')
+          }),
+        )
+      },
+      Effect.provide(TestLayer),
+      Effect.scoped,
+    ),
+  )
+
+  Vitest.it.effect(
     'computes locations relative to the nearest repo root (not parent cwd)',
     Effect.fnUntraced(
       function* () {
