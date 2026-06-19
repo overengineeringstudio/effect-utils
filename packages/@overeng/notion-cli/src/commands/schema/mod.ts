@@ -681,6 +681,25 @@ const renderConvergeResult = ({
   return lines.join('\n')
 }
 
+/**
+ * Count drift the apply did not (or in dry-run, would not yet) resolve: UI-only
+ * differences the API cannot write, plus — in dry-run — options still pending
+ * creation. Used by `--exit-code` to fail CI when live diverges from config.
+ */
+const unresolvedDriftCount = ({
+  result,
+  dryRun,
+}: {
+  result: StatusConvergeResult
+  dryRun: boolean
+}): number => {
+  const uiOnly = result.plan.decisions.filter(
+    (d) => d._tag === 'color-drift' || d._tag === 'missing-unaddable',
+  ).length
+  const pendingCreates = dryRun === true ? result.plan.creates.length : 0
+  return uiOnly + pendingCreates
+}
+
 /** Regenerate a database's schema file after an apply so a subsequent diff is clean. */
 const regenerateDatabaseSchema = ({
   db,
@@ -733,8 +752,9 @@ const applyCommand = Command.make(
     database: applyDatabaseOption,
     dryRun: dryRunOption,
     writable: writableOption,
+    exitCode: exitCodeOption,
   },
-  ({ config, token, database, dryRun, writable }) =>
+  ({ config, token, database, dryRun, writable, exitCode }) =>
     Effect.gen(function* () {
       const { config: resolvedConfig } = yield* loadConfig(
         Option.isSome(config) === true ? config.value : undefined,
@@ -756,6 +776,7 @@ const applyCommand = Command.make(
         }
 
         let failures = 0
+        let drift = 0
         for (const db of targets) {
           let appliedAny = false
           for (const [property, desired] of Object.entries(db.statusProperties ?? {})) {
@@ -774,6 +795,7 @@ const applyCommand = Command.make(
               renderConvergeResult({ databaseId: db.id, property, result: outcome.right }),
             )
             if (outcome.right.applied === true) appliedAny = true
+            drift += unresolvedDriftCount({ result: outcome.right, dryRun })
           }
           if (appliedAny === true && dryRun === false) {
             yield* Console.log(`  ↻ regenerating ${db.output}`)
@@ -787,13 +809,19 @@ const applyCommand = Command.make(
             message: `${failures} status propert${failures === 1 ? 'y' : 'ies'} blocked or unverified`,
           })
         }
+        if (exitCode === true && drift > 0) {
+          return yield* new StatusConvergeFailedError({
+            failures: drift,
+            message: `${drift} unresolved status drift item(s) (pending creates or UI-only changes)`,
+          })
+        }
       })
 
       yield* program.pipe(Effect.provide(Layer.merge(configLayer, FetchHttpClient.layer)))
     }),
 ).pipe(
   Command.withDescription(
-    'Converge native status options from config (add-only): plan, apply missing options, verify, regenerate',
+    'Converge native status options from config (add-only): plan, apply missing options, verify, regenerate. Use --dry-run --exit-code to gate CI on drift.',
   ),
 )
 
