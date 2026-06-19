@@ -55,14 +55,25 @@ let
   # mr status) inherit TRACEPARENT and produce sub-traces.
   # --status-attr derives task.cached from exit code (0=true, non-zero=false)
   # and forces span status to OK (status checks aren't errors).
+  #
+  # The status body can also export extra span attributes at runtime by writing
+  # `KEY=VALUE` lines to $OTEL_STATUS_ATTR_FILE (e.g. a pnpm cache miss reason).
+  # otel-span reads that sidecar via --attr-file after the body runs. The body
+  # stays branch-agnostic: when OTEL is unavailable OTEL_STATUS_ATTR_FILE is
+  # unset, so writes fall back to /dev/null in the body's own default.
   traceStatus = taskName: method: statusBody: ''
     if command -v otel-span >/dev/null 2>&1 && [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
       _status_exit=0
+      _status_attr_file="$(mktemp)"
+      export OTEL_STATUS_ATTR_FILE="$_status_attr_file"
       otel-span run "dt-task" "${taskName}:status" \
         --attr "task.phase=status" \
         --attr "status.method=${method}" \
+        --attr-file "$_status_attr_file" \
         --status-attr "task.cached" \
         -- bash -c ${lib.escapeShellArg statusBody} || _status_exit=$?
+      rm -f "$_status_attr_file"
+      unset OTEL_STATUS_ATTR_FILE
 
       exit "$_status_exit"
     else

@@ -56,6 +56,9 @@ pkgs.writeShellScriptBin "otel-span" ''
 
   Options:
     --attr KEY=VALUE      Add a span attribute (repeatable)
+    --attr-file PATH      After the command runs, read KEY=VALUE lines from PATH
+                          (if it exists) and append them as span attributes. Lets
+                          the wrapped command emit runtime-computed attributes.
     --status-attr KEY     Derive bool attribute from exit code (0=true, else=false)
                           and force span status to OK (for status checks, not errors)
     --trace-id ID         Use specific trace ID (default: from TRACEPARENT or random)
@@ -83,6 +86,7 @@ pkgs.writeShellScriptBin "otel-span" ''
       SERVICE_NAME=""
       SPAN_NAME=""
       ATTRS=()
+      ATTR_FILE=""
       STATUS_ATTR=""
       TRACE_ID=""
       SPAN_ID=""
@@ -97,6 +101,10 @@ pkgs.writeShellScriptBin "otel-span" ''
           --help) _run_usage ;;
           --attr)
             ATTRS+=("$2")
+            shift 2
+            ;;
+          --attr-file)
+            ATTR_FILE="$2"
             shift 2
             ;;
           --status-attr)
@@ -199,6 +207,20 @@ pkgs.writeShellScriptBin "otel-span" ''
           attrs_json+=',{"key":"'"$key"'","value":{"stringValue":"'"$val"'"}}'
         fi
       done
+      # --attr-file: append KEY=VALUE attributes the wrapped command computed at
+      # runtime (e.g. a cache-miss reason). Same string/bool encoding as --attr.
+      if [[ -n "$ATTR_FILE" ]] && [[ -f "$ATTR_FILE" ]]; then
+        while IFS= read -r attr || [[ -n "$attr" ]]; do
+          [[ -z "$attr" ]] && continue
+          key="''${attr%%=*}"
+          val="''${attr#*=}"
+          if [ "$val" = "true" ] || [ "$val" = "false" ]; then
+            attrs_json+=',{"key":"'"$key"'","value":{"boolValue":'"$val"'}}'
+          else
+            attrs_json+=',{"key":"'"$key"'","value":{"stringValue":"'"$val"'"}}'
+          fi
+        done < "$ATTR_FILE"
+      fi
       # --status-attr: derive bool attribute from exit code (0=true, non-zero=false)
       if [[ -n "$STATUS_ATTR" ]]; then
         if [[ "$exit_code" -eq 0 ]]; then
