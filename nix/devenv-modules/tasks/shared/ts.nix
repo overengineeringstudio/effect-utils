@@ -194,12 +194,14 @@ let
         fi
 
         # tsgo closes the per-project section with an aggregate build summary
-        # ("Projects in scope: ..." ... "Aggregate Total time: ..."). Reset the
-        # current project on that boundary so the aggregate timers are never
-        # attributed to the last project (which matters for warm builds where an
-        # up-to-date project emits no per-project "Total time:" to close itself).
-        # The aggregate block is captured separately below. tsc never emits this
-        # line, so the reset is a no-op for the JS compiler.
+        # ("Projects in scope: ..." ... "Aggregate Total time: ..."). Defensive
+        # reset on that boundary: in all observed output every built project —
+        # even errored ones — prints its own "Total time:" that already closes
+        # it, and up-to-date projects never emit "Building project" at all, so
+        # the aggregate is normally already orphaned. This guards the edge where
+        # a project's block is left open, keeping the aggregate timers from being
+        # attributed to it; the aggregate is captured separately below. tsc never
+        # emits this line, so the reset is a no-op for the JS compiler.
         if [[ "$line" =~ ^"Projects in scope:" ]]; then
           _current_project=""
           _diag_block=""
