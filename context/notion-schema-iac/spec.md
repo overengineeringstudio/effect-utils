@@ -63,11 +63,20 @@ write that omits the extra would delete it; failing closed prevents that path.
 
 ## Commands
 
-- `schema diff [--exit-code]` — implement option/color/group diffing (today a
-  stub at `diff.ts:210`; `optionsDiffs` is always empty). Parse the desired side
-  from the `notionPropertyMeta` annotation in the committed `.gen.ts`. CI gate
-  for all drift, including UI-only classes. This is net-new, not a tweak.
-- `schema apply --config <c> --database <id> [--dry-run]` — the convergence loop:
+- `schema apply --config <c> [--database <id>] [--dry-run] [--exit-code]` —
+  **implemented.** The convergence loop, and (with `--dry-run --exit-code`) the
+  status drift CI gate. The issue frames status drift as "from desired config",
+  i.e. config-vs-live, which the planner already computes — so the gate reuses
+  the tested planner rather than parsing the generated file. `--exit-code` fails
+  non-zero on pending creates (dry-run) plus UI-only color/missing drift.
+- `schema diff [--exit-code]` (file-vs-live) — **follow-up, not yet done.**
+  Today's `computeDiff` only handles property add/remove/type-change; option
+  diffing is a stub (`diff.ts:210`, `optionsDiffs` always empty). Extending it
+  to option colors/IDs and **group** drift (by parsing the `notionPropertyMeta`
+  annotation the codegen already emits) detects a different thing than the apply
+  gate: staleness of the committed `.gen.ts` vs live (incl. groups, which the
+  config does not carry). This is the largest remaining item.
+- `schema apply` convergence loop steps:
   1. introspect live data-source schema (R2);
   2. classify against `statusProperties` (and `.gen.ts` for group/color drift);
   3. `--dry-run`: print the structured plan (R9) and stop;
@@ -97,6 +106,27 @@ full-array RMW is mandatory: sending only new options deletes the rest.
   desired option set with one missing option, `apply`, assert the option exists
   (read-after-write), assert `diff --exit-code` is clean, then archive the
   database. Mirrors the investigation probes.
+
+## Implementation status
+
+Delivered in `@overeng/notion-cli` (issue #803):
+
+- `status-converge.ts` — pure planner (`planStatusConvergence`) + REPLACE-trap-safe
+  `buildAddOptionsPayload`; unit tests for every classification row.
+- `status-converge-apply.ts` — `applyStatusConvergence` (observe → plan →
+  fail-closed → safe write → read-after-write verify); `StatusConvergeError`.
+- `config-def.ts` / `config.ts` — opt-in `statusProperties` on `DatabaseConfig`,
+  threaded through defaults merge and `ResolvedDatabaseConfig`.
+- `commands/schema/mod.ts` — `schema apply [--dry-run] [--exit-code] [--database]`,
+  structured plan output, post-apply `.gen.ts` regeneration, non-zero exit on
+  blocked/unverified and (with `--exit-code`) on drift.
+- `status-converge.integration.test.ts` — live e2e (create-missing →
+  read-after-write, idempotent re-apply, fail-closed-without-delete, dry-run).
+  Verified live; CLI-level apply + `--exit-code` gate verified end-to-end.
+
+Follow-ups (tracked in `open-questions.md`): file-vs-live `diff` colors/groups
+extension and group-drift detection; fake-gateway unit tests for the apply
+executor (currently covered by the live e2e + pure-planner unit tests).
 
 ## Notes on the issue's original sketch
 

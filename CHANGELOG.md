@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **@overeng/notion-cli**: Native `status` schema convergence (add-only). New
+  opt-in `statusProperties` config and `notion schema apply` command: plan
+  desired-vs-live status options, create missing ones (the only write the Notion
+  API supports for `status`), read-after-write verify, and regenerate the
+  `.gen.ts` so a subsequent diff is clean. `--dry-run` previews the plan;
+  `--dry-run --exit-code` gates CI on drift; extra remote options fail closed
+  (never deleted) and color/group/rename differences are reported as
+  UI-action-required (the API cannot write them). Design and the live API
+  capability matrix are in `context/notion-schema-iac/`. (#803)
+
 ### Changed
 
 - **@overeng/genie**: Make `findGenieFiles` return stable repo-relative
