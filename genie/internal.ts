@@ -126,6 +126,16 @@ export { utilsPatches }
 export const commonPnpmWorkspaceData = {
   ...commonPnpmPolicySettings,
   injectWorkspacePackages: true as const,
+  packageExtensions: {
+    // Storybook loads the configured framework preset dynamically from the
+    // storybook package. Under pnpm's global virtual store, that import cannot
+    // see the workspace package's dev dependency unless the edge is explicit.
+    storybook: {
+      dependencies: {
+        '@storybook/react-vite': '10.4.6',
+      },
+    },
+  },
   patchedDependencies: { ...utilsPatches },
   allowUnusedPatches: true as const,
   peerDependencyRules: {

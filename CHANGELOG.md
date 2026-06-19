@@ -25,7 +25,11 @@ All notable changes to this project will be documented in this file.
   `oxfmt` module, keeping optional formatter plugins out of the compiled CLI
   closure. CI's shared Nix retry wrapper now repairs and retries a missing
   multi-user Nix daemon socket, matching the existing transient Nix store/fetch
-  retry policy (#804).
+  retry policy. Storybook is now declared as depending on this workspace's
+  `@storybook/react-vite` framework package via pnpm package extensions, so
+  Storybook's dynamic preset loading works under pnpm's global virtual store;
+  refresh the lockfile and affected `pnpm-deps` fixed-output hashes for that
+  package-extension checksum change (#804).
 
 - **devenv TypeScript tasks**: Move the normal workspace TypeScript check/build
   path to the Nix-managed `tsgo` binary, so `ts:check`, `ts:check:strict`,
