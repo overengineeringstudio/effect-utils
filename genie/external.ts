@@ -309,13 +309,16 @@ export const catalog = defineCatalog({
  *   lifecycle-built native addons per issue #807.
  *
  * Audit gap (documented, not silently dropped): pnpm lockfile v9 no longer
- * emits `requiresBuild`, and the builder-contract CI job restores no
- * `node_modules`, so the build-script ledger (`pendingBuilds`/`ignoredBuilds`)
- * is unavailable and empty under `ignoreScripts: true`. A brand-new package
- * that carries a lifecycle build but is neither CPU/OS/libc-gated nor already
- * in this policy therefore cannot be auto-detected. This policy is the source
- * of truth; the audit enforces lockfile-vs-policy drift (new gated families,
- * disappeared/shape-changed entries) against it.
+ * emits `requiresBuild`. The build-script ledger (`.modules.yaml`
+ * `pendingBuilds`/`ignoredBuilds`) IS populated by a local install even under
+ * `ignoreScripts: true` (it lists packages blocked from building), but it is
+ * unavailable in CI: the builder-contract job runs install-free, and the
+ * Nix pnpm-deps FOD strips `.modules.yaml` from its output for determinism, so
+ * no CI job sees the ledger. A brand-new package that carries a lifecycle
+ * build but is neither CPU/OS/libc-gated nor already in this policy therefore
+ * cannot be auto-detected here. This policy is the source of truth; the audit
+ * enforces lockfile-vs-policy drift (new gated families, disappeared/
+ * shape-changed entries) against it.
  */
 export const nativeDependencyPolicy = {
   // Lifecycle-built native addons denied a pnpm build. Order mirrors the
