@@ -10,15 +10,15 @@ code-owned schema and the live database.
   2026-03-11, verified by live probe; see `.experiments/0001-...`). Empirically:
   - Adding a new option: supported (the new option lands in the `To-do` group).
   - Recoloring an existing option: rejected (`validation_error: Cannot update
-    color of select with id`).
+color of select with id`).
   - Renaming an existing option: silent no-op (HTTP 200, value unchanged).
   - All group operations (create custom group, rename, recolor, regroup
     `option_ids`) — including via a full-array REPLACE payload: silent no-op.
     Groups are forced to the defaults `To-do / In progress / Complete`.
   - The `options` array PATCH has **declarative REPLACE** semantics: an option
     omitted from the payload is **deleted**, not preserved.
-  This assumption is load-bearing and external; it must be re-validated when the
-  pinned Notion API version changes.
+    This assumption is load-bearing and external; it must be re-validated when the
+    pinned Notion API version changes.
 
 - **A2 — Status schema lives on the data source**, not the database object, in
   API 2026-03-11. Reads use `NotionDataSources.retrieve`; writes use
@@ -26,11 +26,11 @@ code-owned schema and the live database.
 
 - **A3 — The committed generated `.gen.ts`** (with `schemaMeta`, the default) is
   a faithful, complete snapshot of the live status shape at generation time.
-  Verified at the *emission* side: `codegen.ts` already serializes full option
+  Verified at the _emission_ side: `codegen.ts` already serializes full option
   `{id, name, color}` and group `{id, name, color, option_ids}` into the
   `notionPropertyMeta` annotation. So the data needed for full drift detection is
   already in the file and is usable as the drift oracle.
-  **Caveat (current-state gap):** the *consumer* side does not yet read it.
+  **Caveat (current-state gap):** the _consumer_ side does not yet read it.
   `parseGeneratedFile` extracts only property `name` + `transformKey`, and
   `computeDiff` leaves option diffing unimplemented (`diff.ts:210` —
   "Options comparison is not implemented yet"; `optionsDiffs` is always empty).
@@ -43,7 +43,7 @@ code-owned schema and the live database.
   declared in the config's `statusProperties`. Introspection/codegen must never
   mutate a status property that was merely observed.
 
-- **R2 — Observe before mutate.** Every apply plans against a *freshly*
+- **R2 — Observe before mutate.** Every apply plans against a _freshly_
   introspected live schema; a stale or missing observation blocks the write.
 
 - **R3 — Classify every difference.** The planner assigns each per-option and

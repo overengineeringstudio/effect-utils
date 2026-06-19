@@ -11,22 +11,23 @@ was archived afterward. (Throwaway DB/page/token identifiers intentionally omitt
 
 **Result:**
 
-| Operation | Outcome |
-| --- | --- |
-| Create `status` with custom **options** (name + color) | supported |
-| Create `status` with custom **group** names/colors/option_ids | ignored — forced to defaults `To-do / In progress / Complete` |
-| **Add** a new option (RMW full options array) | supported; new option lands in `To-do` |
+| Operation                                                                        | Outcome                                                                            |
+| -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Create `status` with custom **options** (name + color)                           | supported                                                                          |
+| Create `status` with custom **group** names/colors/option_ids                    | ignored — forced to defaults `To-do / In progress / Complete`                      |
+| **Add** a new option (RMW full options array)                                    | supported; new option lands in `To-do`                                             |
 | **Production primitive** — echo all existing by `id` + append one `{name,color}` | confirmed preserves all existing AND appends (probe5); this is the only safe write |
-| **Recolor** an existing option (`{id,name,color}`, full array) | rejected: `validation_error: Cannot update color of select with id` |
-| **Rename** an existing option (`{id,name,color}`, full array) | silent no-op — HTTP 200, name unchanged |
-| **Delete** an option by omitting it from the array | deleted (REPLACE semantics); confirmed for an unused option |
-| Any **group** op (rename/recolor/regroup/add) via full-array REPLACE | silent no-op — HTTP 200, groups unchanged |
+| **Recolor** an existing option (`{id,name,color}`, full array)                   | rejected: `validation_error: Cannot update color of select with id`                |
+| **Rename** an existing option (`{id,name,color}`, full array)                    | silent no-op — HTTP 200, name unchanged                                            |
+| **Delete** an option by omitting it from the array                               | deleted (REPLACE semantics); confirmed for an unused option                        |
+| Any **group** op (rename/recolor/regroup/add) via full-array REPLACE             | silent no-op — HTTP 200, groups unchanged                                          |
 
 **Conclusion:** `status` is effectively **add-only**. Existing-option color/name
 edits and all group operations are unsupported (rejected or silently ignored).
 The `options` PATCH is **declarative REPLACE**: omitted options are deleted.
 
 **Two danger modes for any IaC layer:**
+
 1. REPLACE semantics silently deletes options not echoed back → always
    read-modify-write the full live set by id; treat "live option not in desired"
    as an explicit (fail-closed) decision, never an implicit omission.
@@ -39,5 +40,5 @@ the live probe as authoritative and **re-run this experiment when the pinned
 Notion API version changes** — the capability matrix is version-dependent.
 
 Still un-probed (deliberately, because the planner fails closed on deletion
-regardless): whether Notion *refuses* to delete an option that is in use by a
+regardless): whether Notion _refuses_ to delete an option that is in use by a
 page row, or deletes it silently. Tracked in `open-questions.md`.

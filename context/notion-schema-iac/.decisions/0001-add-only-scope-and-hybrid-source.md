@@ -4,7 +4,7 @@
 
 ## Context
 
-Issue #803 sketched a full convergence engine for native `status` options *and*
+Issue #803 sketched a full convergence engine for native `status` options _and_
 groups (colors, regrouping, renames, destructive policy). Experiment 0001 showed
 the Notion API (2026-03-11) is effectively add-only for `status`: most of that
 engine would be un-applyable.

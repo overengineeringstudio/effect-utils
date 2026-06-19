@@ -49,14 +49,14 @@ A `status` property not listed here is never mutated (R1).
 For an opted-in property, the planner reads live (R2) and emits one decision per
 option and per group:
 
-| Class | Condition | Apply action |
-| --- | --- | --- |
-| `create` | desired option name not present live | create it (only write) |
-| `matches` | desired option present, color matches | none |
-| `color-drift` | option present, live color ≠ advisory color | report (UI-only) |
-| `rename-drift` | id maps to a different name than desired | report (UI-only) |
-| `extra-remote` | live option not in desired `options` | `policy.extras` |
-| `group-drift` | live groups/membership ≠ generated `.gen.ts` | report (UI-only) |
+| Class          | Condition                                    | Apply action           |
+| -------------- | -------------------------------------------- | ---------------------- |
+| `create`       | desired option name not present live         | create it (only write) |
+| `matches`      | desired option present, color matches        | none                   |
+| `color-drift`  | option present, live color ≠ advisory color  | report (UI-only)       |
+| `rename-drift` | id maps to a different name than desired     | report (UI-only)       |
+| `extra-remote` | live option not in desired `options`         | `policy.extras`        |
+| `group-drift`  | live groups/membership ≠ generated `.gen.ts` | report (UI-only)       |
 
 `extra-remote = fail` is the default because the REPLACE trap (A1) means any
 write that omits the extra would delete it; failing closed prevents that path.

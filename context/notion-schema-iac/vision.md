@@ -10,7 +10,7 @@ it — read schemas, typed option unions, drift checks — is code-owned.
 The goal is to bring native `status` options under the same code-owned,
 observe-first, fail-closed discipline already used for page-value writes, **to
 the extent the Notion API allows it**, and to make every divergence that the API
-*cannot* close loudly visible in code review and CI rather than silently
+_cannot_ close loudly visible in code review and CI rather than silently
 drifting.
 
 Concretely, success means:
@@ -27,8 +27,8 @@ Concretely, success means:
 
 This vision is bounded by an external reality (see `requirements.md` A1): the
 Notion API is, as of version 2026-03-11, effectively **add-only** for `status`.
-The vision is therefore deliberately asymmetric — full *detection*, narrow
-*convergence* — and stays honest about that ceiling rather than pretending to a
+The vision is therefore deliberately asymmetric — full _detection_, narrow
+_convergence_ — and stays honest about that ceiling rather than pretending to a
 convergence the platform does not support.
 
 Out of scope: Notion **view** convergence, and convergence of `status` **groups**
