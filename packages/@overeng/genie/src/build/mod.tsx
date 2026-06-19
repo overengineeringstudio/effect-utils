@@ -195,7 +195,9 @@ export const genieCommand = Cli.Command.make(
 
                       return Effect.gen(function* () {
                         // Re-discover files (in case new ones were added)
-                        const newGenieFiles = yield* findGenieFiles(resolvedCwd)
+                        const newGenieFiles = (yield* findGenieFiles(resolvedCwd)).map((file) =>
+                          path.resolve(resolvedCwd, file),
+                        )
 
                         tui.dispatch({
                           _tag: 'FilesDiscovered',

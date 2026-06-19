@@ -14,10 +14,24 @@ const writeFile = async ({ content, filePath }: { content: string; filePath: str
   await fs.writeFile(filePath, content)
 }
 
+const toCanonicalRelative = async ({
+  files,
+  root,
+}: {
+  files: ReadonlyArray<string>
+  root: string
+}) => {
+  const rootRealPath = await fs.realpath(root)
+  return files
+    .map((file) =>
+      path.relative(rootRealPath, path.resolve(rootRealPath, file)).replace(/\\/g, '/'),
+    )
+    .toSorted()
+}
+
 describe('findGenieFiles', () => {
   it('uses git ignore rules for repository discovery', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'genie-discovery-'))
-    const rootRealPath = await fs.realpath(root)
 
     try {
       execFileSync('git', ['init'], { cwd: root, stdio: 'ignore' })
@@ -42,7 +56,7 @@ describe('findGenieFiles', () => {
       const discovered = await Effect.runPromise(
         findGenieFiles(root).pipe(Effect.provide(NodeContext.layer)),
       )
-      const relative = discovered.map((file) => path.relative(rootRealPath, file)).toSorted()
+      const relative = await toCanonicalRelative({ root, files: discovered })
 
       expect(relative).toEqual([
         'tracked/package.json.genie.ts',
@@ -56,7 +70,6 @@ describe('findGenieFiles', () => {
   it('discovers tracked genie files inside checked-out git submodules', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'genie-discovery-'))
     const submoduleSource = await fs.mkdtemp(path.join(os.tmpdir(), 'genie-submodule-'))
-    const rootRealPath = await fs.realpath(root)
 
     try {
       execFileSync('git', ['init'], { cwd: root, stdio: 'ignore' })
@@ -91,12 +104,36 @@ describe('findGenieFiles', () => {
       const discovered = await Effect.runPromise(
         findGenieFiles(root).pipe(Effect.provide(NodeContext.layer)),
       )
-      const relative = discovered.map((file) => path.relative(rootRealPath, file)).toSorted()
+      const relative = await toCanonicalRelative({ root, files: discovered })
 
       expect(relative).toEqual(['vendor/genie/package.json.genie.ts'])
     } finally {
       await fs.rm(root, { recursive: true, force: true })
       await fs.rm(submoduleSource, { recursive: true, force: true })
+    }
+  })
+
+  it('returns repo-relative paths when the root is addressed through a symlink', async () => {
+    const realRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'genie-discovery-'))
+    const symlinkRoot = `${realRoot}-link`
+
+    try {
+      await fs.symlink(realRoot, symlinkRoot, 'dir')
+      await writeFile({
+        filePath: path.join(realRoot, 'package.json.genie.ts'),
+        content: 'export default {}\n',
+      })
+
+      const discovered = await Effect.runPromise(
+        findGenieFiles(symlinkRoot).pipe(Effect.provide(NodeContext.layer)),
+      )
+      const relative = await toCanonicalRelative({ root: symlinkRoot, files: discovered })
+
+      expect(discovered).toEqual(['package.json.genie.ts'])
+      expect(relative).toEqual(['package.json.genie.ts'])
+    } finally {
+      await fs.rm(symlinkRoot, { recursive: true, force: true })
+      await fs.rm(realRoot, { recursive: true, force: true })
     }
   })
 })

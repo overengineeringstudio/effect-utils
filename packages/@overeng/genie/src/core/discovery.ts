@@ -133,18 +133,21 @@ const discoverGitGenieFiles = ({ cwd }: { cwd: string }): Array<string> | undefi
     return [
       ...gitListGenieFiles({ cwd, args: ['ls-files', '-z', '--recurse-submodules'] }),
       ...gitListGenieFiles({ cwd, args: ['ls-files', '-z', '--others', '--exclude-standard'] }),
-    ].map((file) => path.join(cwd, file))
+    ]
   } catch {
     return undefined
   }
 }
 
 /**
- * Find all .genie.ts files under a root directory.
+ * Find all .genie.ts files under a root directory and return repo-relative
+ * paths using `/` separators.
  *
  * Implementation notes:
  * - We resolve the root path once and use it as a boundary so that
  *   symlinked submodule duplicates pointing back into the root are skipped.
+ * - Returned paths are relative to that canonical root. Callers that need to
+ *   read or write files should resolve them against their working directory.
  * - This keeps output stable when symlinks are used to dedupe submodules,
  *   avoiding double generation and racey writes/chmod.
  */
@@ -254,12 +257,13 @@ export const findGenieFiles = Effect.fn('discovery/findGenieFiles')(function* (d
       return results
     })
 
-  const files = gitFiles ?? (yield* walk(dir))
+  const files = gitFiles ?? (yield* walk(rootDir))
   const seen = new Set<string>()
   const uniqueFiles: string[] = []
 
   for (const file of files) {
-    const resolvedPath = yield* fs.realPath(file).pipe(
+    const fullPath = pathService.isAbsolute(file) === true ? file : pathService.join(rootDir, file)
+    const resolvedPath = yield* fs.realPath(fullPath).pipe(
       Effect.catchTag('SystemError', (e) => {
         warnings.push(`Skipping ${file}: ${e.message}`)
         return Effect.succeed(null)
@@ -273,7 +277,7 @@ export const findGenieFiles = Effect.fn('discovery/findGenieFiles')(function* (d
     if (resolvedPath === null) continue
     if (seen.has(resolvedPath) === true) continue
     seen.add(resolvedPath)
-    uniqueFiles.push(resolvedPath)
+    uniqueFiles.push(path.relative(rootDir, fullPath).replace(/\\/g, '/'))
   }
 
   // Log warnings about skipped files

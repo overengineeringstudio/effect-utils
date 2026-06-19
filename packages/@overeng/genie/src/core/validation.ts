@@ -38,7 +38,10 @@ export const runGenieValidation = ({
     const pathService = yield* Path.Path
     const workspaceProvider = yield* resolveWorkspaceProvider({ cwd })
     const packageJsonContext = yield* buildPackageJsonValidationContext({ cwd, workspaceProvider })
-    const files = genieFiles === undefined ? yield* findGenieFiles(cwd) : genieFiles
+    const files =
+      genieFiles === undefined
+        ? (yield* findGenieFiles(cwd)).map((file) => pathService.join(cwd, file))
+        : genieFiles
     const preloadedByPath = new Map(preloadedFiles?.map((file) => [file.genieFilePath, file]) ?? [])
 
     const issues: ValidationIssue[] = []

@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **@overeng/genie**: Make `findGenieFiles` return stable repo-relative
+  `.genie.ts` paths, with generation/check orchestration resolving them at the
+  filesystem boundary. Discovery tests now assert through a canonical-relative
+  helper so symlinked roots and macOS `/var` realpath aliases cannot skew path
+  expectations.
+
 - **repo**: Add a no-op Hypermerge production canary for schickling/dotfiles#1072.
 
 - **Notion docs**: Ratify the durable Notion DB Markdown Sync VRS decisions into
