@@ -182,7 +182,7 @@
     },
     {
       "name": "origin:agent",
-      "color": "a371f7",
+      "color": "6f42c1",
       "description": "Filed or primarily produced by an AI agent · Set: AI agent or manual"
     },
     {
@@ -192,17 +192,17 @@
     },
     {
       "name": "state:blocked",
-      "color": "e99695",
+      "color": "6e7781",
       "description": "Blocked on an external dependency or decision · Set: manual"
     },
     {
       "name": "state:needs-research",
-      "color": "1f8fb8",
+      "color": "6e7781",
       "description": "Needs research / investigation before scope or approach is clear · Set: manual"
     },
     {
       "name": "state:triage",
-      "color": "fbca04",
+      "color": "6e7781",
       "description": "Needs classification or owner decision · Set: manual"
     },
     {

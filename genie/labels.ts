@@ -44,6 +44,8 @@ const colors = {
   grey: 'bfd4e2',
   lightGrey: 'ededed',
   pale: 'bfd4f2',
+  /* Neutral slate used as the single, axis-consistent color for all `state:*` labels. */
+  slate: '6e7781',
 } as const
 
 // ============================================================================
@@ -100,17 +102,17 @@ const typeLabels: readonly LabelDef[] = [
 const stateLabels: readonly LabelDef[] = [
   {
     name: 'state:triage',
-    color: colors.yellow,
+    color: colors.slate,
     description: 'Needs classification or owner decision · Set: manual',
   },
   {
     name: 'state:blocked',
-    color: colors.pink,
+    color: colors.slate,
     description: 'Blocked on an external dependency or decision · Set: manual',
   },
   {
     name: 'state:needs-research',
-    color: colors.lightBlue,
+    color: colors.slate,
     description: 'Needs research / investigation before scope or approach is clear · Set: manual',
   },
 ]
@@ -122,7 +124,7 @@ const stateLabels: readonly LabelDef[] = [
 const originLabels: readonly LabelDef[] = [
   {
     name: 'origin:agent',
-    color: colors.lightPurple,
+    color: colors.darkPurple,
     description: 'Filed or primarily produced by an AI agent · Set: AI agent or manual',
   },
   {
