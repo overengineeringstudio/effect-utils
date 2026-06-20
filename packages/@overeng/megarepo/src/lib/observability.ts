@@ -765,3 +765,57 @@ export const withAssessLosslessSpan = (worktreePath: string) =>
     operation: assessLosslessOperation,
     attributes: { label: 'lossless', worktreePath },
   })
+
+const inUseProbeAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+    worktreePath: Schema.String.pipe(OtelAttr.key({ key: 'worktreePath' })),
+  }),
+)
+
+const inUseProbeOperation = OtelOperation.define({
+  name: 'megarepo/store/gc/inuse-probe',
+  attributes: inUseProbeAttrs,
+  label: ({ label }) => label,
+})
+
+/** Wrap the live-process in-use probe (`/proc` scan) in a `megarepo/store/gc/inuse-probe` span. */
+export const withInUseProbeSpan = (worktreePath: string) =>
+  trustedWith({
+    operation: inUseProbeOperation,
+    attributes: { label: 'inuse-probe', worktreePath },
+  })
+
+const inUseVetoAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+    worktreePath: Schema.String.pipe(OtelAttr.key({ key: 'worktreePath' })),
+    holderPid: Schema.Number.pipe(OtelAttr.key({ key: 'megarepo.store.inuse.holder_pid' })),
+    holderPath: Schema.String.pipe(OtelAttr.key({ key: 'megarepo.store.inuse.holder_path' })),
+  }),
+)
+
+const inUseVetoOperation = OtelOperation.define({
+  name: 'megarepo/store/gc/inuse-veto',
+  attributes: inUseVetoAttrs,
+  label: ({ label }) => label,
+})
+
+/**
+ * Wrap the in-use VETO of a destructive archive/reap in a
+ * `megarepo/store/gc/inuse-veto` span, carrying the holding `pid` and `path` so
+ * the attribution the RCA needed is queryable.
+ */
+export const withInUseVetoSpan = ({
+  worktreePath,
+  holderPid,
+  holderPath,
+}: {
+  readonly worktreePath: string
+  readonly holderPid: number
+  readonly holderPath: string
+}) =>
+  trustedWith({
+    operation: inUseVetoOperation,
+    attributes: { label: 'inuse-veto', worktreePath, holderPid, holderPath },
+  })

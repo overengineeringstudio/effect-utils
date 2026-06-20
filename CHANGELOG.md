@@ -6,6 +6,23 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **@overeng/megarepo**: Guard the store worktree archive/reap path against
+  in-use worktrees. The cold-GC liveness signal only checks whether a worktree
+  is referenced by some workspace manifest; it never checked whether a live OS
+  process is currently working inside it, so a background `mr store gc` could
+  rename an actively-used worktree into `.archive/` (its cwd silently following
+  the inode) and strip it out from under a live coding-agent session. New
+  `src/lib/store-inuse.ts` adds a Linux `/proc`-based probe — a pure
+  `classifyInUse` seam plus an effectful reader that scans each pid's cwd (and
+  optionally open fds), excludes the gc process and its descendants via a PPid
+  walk, and degrades to "unknown ⇒ keep" on hosts without `/proc`. The probe is
+  wired as an orthogonal veto into all three destructive sites in
+  `mr store gc` (`archiveWorktree`, `archiveRefMismatchWorktree`, `reapArchive`),
+  under the existing `withWorktreeLock` re-check: if a live process holds the
+  worktree the result is `kept` with reason `process-in-use` and a
+  `megarepo/store/gc/inuse-veto` span recording the holding pid/path for
+  attribution. Conservative direction throughout (in doubt → keep).
+
 - **@overeng/genie**: Make `findGenieFiles` return stable repo-relative
   `.genie.ts` paths, with generation/check orchestration resolving them at the
   filesystem boundary. Discovery tests now assert through a canonical-relative
