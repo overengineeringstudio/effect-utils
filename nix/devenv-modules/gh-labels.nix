@@ -35,6 +35,10 @@ let
       MIGRATIONS=$(jq -c '.legacyMigrations // [] | .[]' .github/labels.json)
       LIVE=$(gh api "repos/$REPO/labels" --paginate)
 
+      label_path_segment() {
+        jq -rn --arg label "$1" '$label | @uri'
+      }
+
       # 1. Upsert each desired label (create or patch on color/description drift)
       while IFS= read -r d; do
         name=$(jq -r .name <<<"$d")
@@ -44,7 +48,7 @@ let
         if [ -z "$existing" ]; then
           gh api "repos/$REPO/labels" --method POST -f name="$name" -f color="$color" -f description="$desc"
         elif [ "$(jq -r .color <<<"$existing")" != "$color" ] || [ "$(jq -r .description <<<"$existing")" != "$desc" ]; then
-          gh api "repos/$REPO/labels/$name" --method PATCH -f color="$color" -f description="$desc"
+          gh api "repos/$REPO/labels/$(label_path_segment "$name")" --method PATCH -f color="$color" -f description="$desc"
         fi
       done <<<"$LABELS"
 
@@ -53,9 +57,9 @@ let
         [ -z "$m" ] && continue
         from=$(jq -r .from <<<"$m")
         to=$(jq -r .to <<<"$m")
-        gh api "repos/$REPO/issues?labels=$from&state=all" --paginate --jq '.[].number' | while read -r n; do
+        gh api "repos/$REPO/issues?labels=$(label_path_segment "$from")&state=all" --paginate --jq '.[].number' | while read -r n; do
           gh api "repos/$REPO/issues/$n/labels" --method POST -f "labels[]=$to"
-          gh api "repos/$REPO/issues/$n/labels/$from" --method DELETE 2>/dev/null || true
+          gh api "repos/$REPO/issues/$n/labels/$(label_path_segment "$from")" --method DELETE 2>/dev/null || true
         done
       done <<<"$MIGRATIONS"
 
@@ -65,7 +69,7 @@ let
         if jq -e --arg n "$name" 'select(.from == $n)' <<<"$MIGRATIONS" >/dev/null 2>&1; then
           echo "skip delete $name - still has pending migration"
         else
-          gh api "repos/$REPO/labels/$name" --method DELETE 2>/dev/null || true
+          gh api "repos/$REPO/labels/$(label_path_segment "$name")" --method DELETE 2>/dev/null || true
         fi
       done <<<"$DEPRECATED"
 
@@ -85,6 +89,10 @@ let
       DEPRECATED=$(jq -r '.deprecated // [] | .[]' .github/labels.json)
       MIGRATIONS=$(jq -c '.legacyMigrations // [] | .[]' .github/labels.json)
       LIVE=$(gh api "repos/$REPO/labels" --paginate)
+
+      label_path_segment() {
+        jq -rn --arg label "$1" '$label | @uri'
+      }
 
       drift=0
 
@@ -108,7 +116,7 @@ let
         [ -z "$m" ] && continue
         from=$(jq -r .from <<<"$m")
         to=$(jq -r .to <<<"$m")
-        count=$(gh api "repos/$REPO/issues?labels=$from&state=all" --paginate --jq '.[].number' | wc -l | tr -d ' ')
+        count=$(gh api "repos/$REPO/issues?labels=$(label_path_segment "$from")&state=all" --paginate --jq '.[].number' | wc -l | tr -d ' ')
         if [ "$count" -gt 0 ]; then
           printf 'would-migrate %s -> %s (%d issues)\n' "$from" "$to" "$count"
           drift=$((drift + 1))
