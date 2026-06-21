@@ -465,9 +465,6 @@ run_nix_gc_race_retry() {
 
     if [ "$saw_daemon_socket_failure" = true ]; then
       repair_nix_daemon
-    fi
-
-    if [ "$saw_daemon_socket_failure" = true ]; then
       echo "::warning::Nix daemon socket failure detected for $task (attempt $attempt/$max); retrying after daemon repair"
     elif [ "$saw_fetch_signature" = true ]; then
       echo "::warning::Nix source fetch corruption detected for $task (attempt $attempt/$max); retrying with a refreshed eval cache"
@@ -502,9 +499,13 @@ run_nix_gc_race_retry() {
  * clearing the eval cache.
  *
  * Some namespace runners also lose the multi-user Nix daemon socket after
- * setup; retry those after a best-effort daemon restart.
+ * setup; retry those after a best-effort daemon restart. This daemon-socket
+ * sub-case is a distinct runner-side failure mode and is NOT covered by the
+ * two upstream store-race refs below — it has no tracked upstream fix yet.
  *
- * TODO: Remove once NixOS/nix#15469 and DeterminateSystems/nix-src#395 are released
+ * TODO: Remove the store-validity-race retry once NixOS/nix#15469 and
+ * DeterminateSystems/nix-src#395 are released. The daemon-socket repair branch
+ * must be reassessed separately (see `repair_nix_daemon`).
  * @see https://github.com/NixOS/nix/pull/15469
  * @see https://github.com/DeterminateSystems/nix-src/issues/395
  */

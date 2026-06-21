@@ -705,9 +705,6 @@ jobs:
 
               if [ "$saw_daemon_socket_failure" = true ]; then
                 repair_nix_daemon
-              fi
-
-              if [ "$saw_daemon_socket_failure" = true ]; then
                 echo "::warning::Nix daemon socket failure detected for $task (attempt $attempt/$max); retrying after daemon repair"
               elif [ "$saw_fetch_signature" = true ]; then
                 echo "::warning::Nix source fetch corruption detected for $task (attempt $attempt/$max); retrying with a refreshed eval cache"
@@ -863,9 +860,6 @@ jobs:
 
               if [ "$saw_daemon_socket_failure" = true ]; then
                 repair_nix_daemon
-              fi
-
-              if [ "$saw_daemon_socket_failure" = true ]; then
                 echo "::warning::Nix daemon socket failure detected for $task (attempt $attempt/$max); retrying after daemon repair"
               elif [ "$saw_fetch_signature" = true ]; then
                 echo "::warning::Nix source fetch corruption detected for $task (attempt $attempt/$max); retrying with a refreshed eval cache"
@@ -1252,9 +1246,6 @@ jobs:
 
               if [ "$saw_daemon_socket_failure" = true ]; then
                 repair_nix_daemon
-              fi
-
-              if [ "$saw_daemon_socket_failure" = true ]; then
                 echo "::warning::Nix daemon socket failure detected for $task (attempt $attempt/$max); retrying after daemon repair"
               elif [ "$saw_fetch_signature" = true ]; then
                 echo "::warning::Nix source fetch corruption detected for $task (attempt $attempt/$max); retrying with a refreshed eval cache"
@@ -1644,9 +1635,6 @@ jobs:
 
               if [ "$saw_daemon_socket_failure" = true ]; then
                 repair_nix_daemon
-              fi
-
-              if [ "$saw_daemon_socket_failure" = true ]; then
                 echo "::warning::Nix daemon socket failure detected for $task (attempt $attempt/$max); retrying after daemon repair"
               elif [ "$saw_fetch_signature" = true ]; then
                 echo "::warning::Nix source fetch corruption detected for $task (attempt $attempt/$max); retrying with a refreshed eval cache"
@@ -2036,9 +2024,6 @@ jobs:
 
               if [ "$saw_daemon_socket_failure" = true ]; then
                 repair_nix_daemon
-              fi
-
-              if [ "$saw_daemon_socket_failure" = true ]; then
                 echo "::warning::Nix daemon socket failure detected for $task (attempt $attempt/$max); retrying after daemon repair"
               elif [ "$saw_fetch_signature" = true ]; then
                 echo "::warning::Nix source fetch corruption detected for $task (attempt $attempt/$max); retrying with a refreshed eval cache"
@@ -2345,9 +2330,6 @@ jobs:
 
               if [ "$saw_daemon_socket_failure" = true ]; then
                 repair_nix_daemon
-              fi
-
-              if [ "$saw_daemon_socket_failure" = true ]; then
                 echo "::warning::Nix daemon socket failure detected for $task (attempt $attempt/$max); retrying after daemon repair"
               elif [ "$saw_fetch_signature" = true ]; then
                 echo "::warning::Nix source fetch corruption detected for $task (attempt $attempt/$max); retrying with a refreshed eval cache"
@@ -7636,9 +7618,6 @@ jobs:
 
               if [ "$saw_daemon_socket_failure" = true ]; then
                 repair_nix_daemon
-              fi
-
-              if [ "$saw_daemon_socket_failure" = true ]; then
                 echo "::warning::Nix daemon socket failure detected for $task (attempt $attempt/$max); retrying after daemon repair"
               elif [ "$saw_fetch_signature" = true ]; then
                 echo "::warning::Nix source fetch corruption detected for $task (attempt $attempt/$max); retrying with a refreshed eval cache"
@@ -8028,9 +8007,6 @@ jobs:
 
               if [ "$saw_daemon_socket_failure" = true ]; then
                 repair_nix_daemon
-              fi
-
-              if [ "$saw_daemon_socket_failure" = true ]; then
                 echo "::warning::Nix daemon socket failure detected for $task (attempt $attempt/$max); retrying after daemon repair"
               elif [ "$saw_fetch_signature" = true ]; then
                 echo "::warning::Nix source fetch corruption detected for $task (attempt $attempt/$max); retrying with a refreshed eval cache"
@@ -8448,9 +8424,6 @@ jobs:
 
               if [ "$saw_daemon_socket_failure" = true ]; then
                 repair_nix_daemon
-              fi
-
-              if [ "$saw_daemon_socket_failure" = true ]; then
                 echo "::warning::Nix daemon socket failure detected for $task (attempt $attempt/$max); retrying after daemon repair"
               elif [ "$saw_fetch_signature" = true ]; then
                 echo "::warning::Nix source fetch corruption detected for $task (attempt $attempt/$max); retrying with a refreshed eval cache"
@@ -8594,9 +8567,6 @@ jobs:
 
               if [ "$saw_daemon_socket_failure" = true ]; then
                 repair_nix_daemon
-              fi
-
-              if [ "$saw_daemon_socket_failure" = true ]; then
                 echo "::warning::Nix daemon socket failure detected for $task (attempt $attempt/$max); retrying after daemon repair"
               elif [ "$saw_fetch_signature" = true ]; then
                 echo "::warning::Nix source fetch corruption detected for $task (attempt $attempt/$max); retrying with a refreshed eval cache"
