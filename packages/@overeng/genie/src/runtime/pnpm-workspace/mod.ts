@@ -9,6 +9,8 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 
 import { validateCatalogPeerDeps } from '../catalog-peer-deps/mod.ts'
+import { validateCatalogDuplicates } from '../catalog-duplicates/mod.ts'
+import type { CatalogDuplicateException } from '../catalog-duplicates/mod.ts'
 import { createGenieOutput } from '../core.ts'
 import type { GenieContext } from '../core.ts'
 import { validateCrossInstallRootVersions } from '../cross-install-root/mod.ts'
@@ -1185,6 +1187,7 @@ const rootPnpmWorkspaceYaml = ({
   extraMembers = [],
   catalogVersions,
   identityCriticalPackages,
+  catalogDuplicateExceptions,
   ...config
 }: {
   packages: readonly WorkspacePackageLike[]
@@ -1194,6 +1197,8 @@ const rootPnpmWorkspaceYaml = ({
   catalogVersions?: CatalogInput
   /** Package names that must resolve to the same version across all install roots (e.g. `['effect']`). */
   identityCriticalPackages?: readonly string[]
+  /** Acknowledged catalog packages allowed to resolve to multiple lockfile versions (upstream-locked). */
+  catalogDuplicateExceptions?: readonly CatalogDuplicateException[]
 } & Omit<PnpmWorkspaceData, 'packages'>) => {
   const projectedMembers = rootWorkspaceMemberPathsFromPackages({ packages, repoName })
   const allMembers =
@@ -1259,9 +1264,16 @@ const rootPnpmWorkspaceYaml = ({
                 ? { peerDependencyRules: config.peerDependencyRules }
                 : {}),
             }),
+            ...validateCatalogDuplicates({
+              catalog: catalogVersions,
+              lockfileContent,
+              ...(catalogDuplicateExceptions !== undefined
+                ? { exceptions: catalogDuplicateExceptions }
+                : {}),
+            }),
           )
         } catch {
-          /* lockfile not available — skip peer dep validation */
+          /* lockfile not available — skip catalog lockfile validation */
         }
       }
 
