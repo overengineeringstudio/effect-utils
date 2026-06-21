@@ -235,7 +235,6 @@ export const catalog = defineCatalog({
   storybook: '10.4.6',
   '@storybook/react': '10.4.6',
   '@storybook/react-vite': '10.4.6',
-  'eslint-plugin-storybook': '10.4.6',
 
   // xterm (terminal emulator for browser/testing)
   '@xterm/xterm': '6.0.0',
@@ -256,7 +255,6 @@ export const catalog = defineCatalog({
   '@typescript-eslint/utils': '8.61.1',
   'typescript-eslint': '8.61.1',
   prettier: '3.8.4',
-  oxfmt: '0.55.0',
   oxlint: '1.70.0',
   'oxlint-tsgolint': '0.23.0',
 

@@ -211,6 +211,14 @@ export const baseOxlintOverrides = [
       // Relaxed rules for story files
       'overeng/exports-first': 'off',
       'overeng/jsdoc-require-exports': 'off',
+      // Storybook CSF best practices (native overeng/storybook/* rules)
+      'overeng/storybook/meta-satisfies-type': 'error',
+      'overeng/storybook/default-exports': 'error',
+      'overeng/storybook/story-exports': 'warn',
+      'overeng/storybook/csf-component': 'warn',
+      'overeng/storybook/hierarchy-separator': 'warn',
+      'overeng/storybook/no-redundant-story-name': 'warn',
+      'overeng/storybook/prefer-pascal-case': 'warn',
     },
   },
   // Storybook story fixtures (stories/_fixtures.ts, stories/_*.ts)
