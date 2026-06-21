@@ -1308,8 +1308,10 @@ in
       _test_detect_orphan() {
         local orphan_spool="$_tmp/orphan-test"
         mkdir -p "$orphan_spool"
-        # Emit a span with a parentSpanId that doesn't exist
-        OTEL_SPAN_SPOOL_DIR="$orphan_spool" otel-span run "test" "orphan" --trace-id "$_trace_id" --span-id "0000000000000099" --parent-span-id "DOES_NOT_EXIST_00" --start-time-ns "2000000000000000" --end-time-ns "3000000000000000" -- true >/dev/null 2>&1
+        # Emit a span with a valid parentSpanId that doesn't exist in the trace.
+        # Invalid IDs are rejected before emission; this negative case is about
+        # graph structure, not input validation.
+        OTEL_SPAN_SPOOL_DIR="$orphan_spool" otel-span run "test" "orphan" --trace-id "$_trace_id" --span-id "0000000000000099" --parent-span-id "0000000000000088" --start-time-ns "2000000000000000" --end-time-ns "3000000000000000" -- true >/dev/null 2>&1
         local of="$orphan_spool/spans.jsonl"
         local span_ids parent_ids
         span_ids=$(_all_span_ids "$of")

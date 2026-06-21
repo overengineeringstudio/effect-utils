@@ -40,6 +40,12 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **OTEL trace-structure contract**: Tighten the offline trace-structure
+  negative test so orphan detection uses a syntactically valid but missing
+  parent span ID. Invalid span IDs are now left to the helper's input
+  validation path, keeping graph-shape assertions separate from argument
+  validation.
+
 - **devenv cli-guard ownership**: Make the cli-guard nudge-wrappers the
   deterministic owners of their command names so the devenv buildEnv no longer
   emits nondeterministic `collision between ...` warnings (#808). Each guard now
