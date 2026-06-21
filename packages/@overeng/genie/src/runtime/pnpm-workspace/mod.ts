@@ -8,9 +8,9 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 
-import { validateCatalogPeerDeps } from '../catalog-peer-deps/mod.ts'
 import { validateCatalogDuplicates } from '../catalog-duplicates/mod.ts'
 import type { CatalogDuplicateException } from '../catalog-duplicates/mod.ts'
+import { validateCatalogPeerDeps } from '../catalog-peer-deps/mod.ts'
 import { createGenieOutput } from '../core.ts'
 import type { GenieContext } from '../core.ts'
 import { validateCrossInstallRootVersions } from '../cross-install-root/mod.ts'

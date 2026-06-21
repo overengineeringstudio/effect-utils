@@ -15,7 +15,11 @@ const makeLockfileYaml = (packages: string[]) => {
 
 describe('parseAllResolvedVersionsFromLockfile', () => {
   it('collects every version per package, not just the first', () => {
-    const yaml = makeLockfileYaml(['string-width@7.2.0', 'string-width@8.2.0', 'string-width@8.2.1'])
+    const yaml = makeLockfileYaml([
+      'string-width@7.2.0',
+      'string-width@8.2.0',
+      'string-width@8.2.1',
+    ])
     const result = parseAllResolvedVersionsFromLockfile(yaml)
     expect(result.get('string-width')).toEqual(new Set(['7.2.0', '8.2.0', '8.2.1']))
   })
@@ -49,7 +53,11 @@ describe('validateCatalogDuplicates', () => {
   })
 
   it('errors on an unblessed duplicate of a catalog package', () => {
-    const yaml = makeLockfileYaml(['string-width@7.2.0', 'string-width@8.2.0', 'string-width@8.2.1'])
+    const yaml = makeLockfileYaml([
+      'string-width@7.2.0',
+      'string-width@8.2.0',
+      'string-width@8.2.1',
+    ])
     const issues = validateCatalogDuplicates({ catalog, lockfileContent: yaml })
     expect(issues).toHaveLength(1)
     expect(issues[0]!.severity).toBe('error')
@@ -69,7 +77,9 @@ describe('validateCatalogDuplicates', () => {
     const issues = validateCatalogDuplicates({
       catalog,
       lockfileContent: yaml,
-      exceptions: [{ package: 'string-width', reason: '@opentui/core hard-pins 7.2.0', issue: '#820' }],
+      exceptions: [
+        { package: 'string-width', reason: '@opentui/core hard-pins 7.2.0', issue: '#820' },
+      ],
     })
     expect(issues).toHaveLength(1)
     expect(issues[0]!.severity).toBe('warning')

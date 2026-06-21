@@ -75,16 +75,6 @@ export const parseAllResolvedVersionsFromLockfile = (
   return result
 }
 
-/** Sort versions newest-first (descending semver, with a string tiebreaker). */
-const byVersionDesc = (a: string, b: string): number => {
-  const [aMajor, aMinor, aPatch] = parseVersion(a)
-  const [bMajor, bMinor, bPatch] = parseVersion(b)
-  if (aMajor !== bMajor) return bMajor - aMajor
-  if (aMinor !== bMinor) return bMinor - aMinor
-  if (aPatch !== bPatch) return bPatch - aPatch
-  return b.localeCompare(a)
-}
-
 // =============================================================================
 // Validation
 // =============================================================================
@@ -139,7 +129,15 @@ export const validateCatalogDuplicates = ({
     const versions = resolved.get(name)
     if (versions === undefined || versions.size <= 1) continue
 
-    const sorted = [...versions].sort(byVersionDesc)
+    /* Newest-first (descending semver, with a string tiebreaker). */
+    const sorted = [...versions].toSorted((a, b) => {
+      const [aMajor, aMinor, aPatch] = parseVersion(a)
+      const [bMajor, bMinor, bPatch] = parseVersion(b)
+      if (aMajor !== bMajor) return bMajor - aMajor
+      if (aMinor !== bMinor) return bMinor - aMinor
+      if (aPatch !== bPatch) return bPatch - aPatch
+      return b.localeCompare(a)
+    })
     const versionList = sorted.join(', ')
     const baseMessage =
       `"${name}" resolves to ${versions.size} versions in the lockfile: ${versionList} ` +
