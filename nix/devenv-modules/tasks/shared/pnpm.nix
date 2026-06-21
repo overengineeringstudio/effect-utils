@@ -7,6 +7,7 @@
 # Provides:
 # - pnpm:install
 # - pnpm:update
+# - pnpm:dedupe
 # - pnpm:clean
 # - pnpm:reset-lock-files
 {
@@ -20,6 +21,7 @@
   preInstall ? "",
   installAfter ? [ ],
   updateAfter ? [ ],
+  dedupeAfter ? [ ],
   cleanAfter ? [ ],
   resetLockFilesAfter ? [ ],
   # Real derivation/path backing the `pnpm` guard. When set, the guard owns
@@ -67,6 +69,8 @@ let
       "${taskNamePrefix}:install:${taskSuffix}";
   updateTaskName =
     if taskSuffix == null then "${taskNamePrefix}:update" else "${taskNamePrefix}:update:${taskSuffix}";
+  dedupeTaskName =
+    if taskSuffix == null then "${taskNamePrefix}:dedupe" else "${taskNamePrefix}:dedupe:${taskSuffix}";
   cleanTaskName =
     if taskSuffix == null then "${taskNamePrefix}:clean" else "${taskNamePrefix}:clean:${taskSuffix}";
   resetLockFilesTaskName =
@@ -611,6 +615,27 @@ let
         ensure_shared_pnpm_files_store
         pnpm install --fix-lockfile --config.confirmModulesPurge=false --pm-on-fail=ignore --config.store-dir="$npm_config_store_dir"
         echo "Repo-root lockfile updated. Refresh Nix FOD hashes with the repo workflow."
+      '';
+    };
+
+    "${dedupeTaskName}" = {
+      guard = "pnpm";
+      # Remediation counterpart to the catalog duplicate-version gate (genie:check):
+      # collapse in-range duplicate versions onto the newest satisfying release.
+      # Upstream-locked duplicates that cannot be collapsed stay and must be
+      # acknowledged via catalogDuplicateExceptions.
+      description = "Collapse in-range duplicate versions in the pnpm lockfile at ${workspaceRoot}";
+      after = (if workspaceRoot == "." then [ "genie:run" ] else [ ]) ++ dedupeAfter;
+      exec = trace.exec dedupeTaskName ''
+        set -euo pipefail
+        cd ${lib.escapeShellArg workspaceRootAbs}
+        ${loadPnpmTaskHelpersFn}
+        ${ensureLocalPnpmHomeFn}
+        ${ensureLocalPnpmStoreDirFn}
+        ${ensureSharedPnpmFilesStoreFn}
+        ensure_shared_pnpm_files_store
+        pnpm dedupe --config.confirmModulesPurge=false --pm-on-fail=ignore --config.store-dir="$npm_config_store_dir"
+        echo "Lockfile deduped. Re-run genie:check to verify the catalog duplicate gate; bless any upstream-locked residuals via catalogDuplicateExceptions."
       '';
     };
 
