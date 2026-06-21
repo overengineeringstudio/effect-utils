@@ -116,18 +116,22 @@ The Nix package smoke test runs `notion db sync --help` through the wrapper. A m
 
 ## Schema Namespace
 
-Trace: R06.
+Trace: R06, R19.
 
 `src/commands/schema/mod.ts` owns schema-oriented Notion database workflows:
 
-| Command           | Implementation responsibility                                     |
-| ----------------- | ----------------------------------------------------------------- |
-| `generate`        | introspect a database and write Effect schema/API code            |
-| `introspect`      | render database/data-source property metadata                     |
-| `generate-config` | generate schemas for configured database sets                     |
-| `diff`            | compare live Notion schema with an existing generated schema file |
+| Command           | Implementation responsibility                                             |
+| ----------------- | ------------------------------------------------------------------------- |
+| `generate`        | introspect a database and write Effect schema/API code                    |
+| `introspect`      | render database/data-source property metadata                             |
+| `generate-config` | generate schemas for configured database sets                             |
+| `diff`            | compare live Notion schema with an existing generated schema file         |
+| `status-check`    | report native status option drift from generated schema metadata          |
+| `status-apply`    | add missing native status options, then verify by reading the source back |
 
 Schema commands resolve the Notion token from `--token` or `NOTION_API_TOKEN`, use typed Notion client services, and render through package TUI components.
+
+Native status apply is intentionally narrower than general schema convergence. It may only add missing options while preserving every live option in the update payload. Colors, renames, and removals are mutation-blocking because applying in their presence risks Notion renames, recolors, or destructive option replacement. Groups are report-only: `status-check --exit-code` treats group drift as drift, but `status-apply` does not attempt group convergence and does not let group-only drift block additive option creation because Notion assigns new options to native groups outside API control. Apply mode must retrieve the data source again after the write and fail if the second plan still shows missing options or mutation-blocking drift.
 
 ## Export Contract
 

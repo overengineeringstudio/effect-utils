@@ -49,3 +49,33 @@ export {
 } from './introspect.ts'
 // Output
 export { formatCode, writeSchemaToFile, WriteSchemaToFileError } from './output.ts'
+// Status schema convergence
+export {
+  applyStatusSchemaConvergence,
+  applyStatusSchemaConvergenceFromModule,
+  checkStatusSchemaConvergenceFromModule,
+  getDesiredStatusPropertyFromSchemaModule,
+  importStatusSchemaModule,
+  makeNotionStatusSchemaGateway,
+  planStatusSchemaConvergence,
+  StatusSchemaApplyVerificationError,
+  StatusSchemaDesiredPropertyNotStatusError,
+  StatusSchemaExportMissingError,
+  StatusSchemaLivePropertyMissingError,
+  StatusSchemaModuleImportError,
+  StatusSchemaUnsupportedDriftError,
+  type StatusSchemaApplyResult,
+  type StatusSchemaConvergenceGateway,
+  type StatusSchemaConvergenceResult,
+  type StatusSchemaModule,
+  type StatusOptionUpdate,
+} from './status-schema-convergence.ts'
+// Status schema planning
+export {
+  isStatusSchemaMutationBlockingDrift,
+  planStatusSchema,
+  type PlanStatusSchemaOptions,
+  type StatusSchemaDrift,
+  type StatusSchemaDriftKind,
+  type StatusSchemaPlan,
+} from './status-schema-plan.ts'

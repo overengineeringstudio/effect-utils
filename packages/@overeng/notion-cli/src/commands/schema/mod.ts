@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 
 import { Args, Command, Options } from '@effect/cli'
 import { FetchHttpClient, FileSystem } from '@effect/platform'
-import { Effect, Layer, Option, Schema } from 'effect'
+import { Console, Effect, Layer, Option, Schema } from 'effect'
 import React from 'react'
 
 import { EffectPath } from '@overeng/effect-path'
@@ -33,6 +33,12 @@ import { loadConfig } from '../../config.ts'
 import { computeDiff, hasDifferences, parseGeneratedFile } from '../../diff.ts'
 import { introspectDatabase, type PropertyTransformConfig } from '../../introspect.ts'
 import { formatCode, writeSchemaToFile } from '../../output.ts'
+import {
+  applyStatusSchemaConvergenceFromModule,
+  checkStatusSchemaConvergenceFromModule,
+  importStatusSchemaModule,
+} from '../../status-schema-convergence.ts'
+import type { StatusSchemaPlan } from '../../status-schema-plan.ts'
 
 export { resolveNotionToken, tokenOption } from '../shared.ts'
 
@@ -635,6 +641,150 @@ const diffCommand = Command.make(
 )
 
 // -----------------------------------------------------------------------------
+// Native Status Schema Commands
+// -----------------------------------------------------------------------------
+
+const statusSchemaFileOption = Options.file('schema').pipe(
+  Options.withAlias('s'),
+  Options.withDescription(
+    'Path to the generated schema module with notionPropertyMeta annotations',
+  ),
+)
+
+const statusSchemaExportOption = Options.text('schema-export').pipe(
+  Options.withDescription('Generated schema export to inspect, e.g. DeploymentsPageProperties'),
+)
+
+const statusPropertyOption = Options.text('property').pipe(
+  Options.withDescription(
+    'Generated schema field whose Notion metadata is a native status property',
+  ),
+  Options.withDefault('Status'),
+)
+
+const formatStatusPlan = (args: {
+  readonly databaseId: string
+  readonly dataSourceId: string
+  readonly plan: StatusSchemaPlan
+}): string => {
+  const lines = [
+    `Database: ${args.databaseId}`,
+    `Data source: ${args.dataSourceId}`,
+    `Property: ${args.plan.propertyName}`,
+    `Missing options: ${args.plan.missingOptions.length}`,
+    `Unsupported drift: ${args.plan.unsupportedDrift.length}`,
+    `Can apply safely: ${String(args.plan.canApplySafely)}`,
+  ]
+
+  for (const option of args.plan.missingOptions) {
+    lines.push(`  + ${option.name} (${option.id}, ${option.color})`)
+  }
+
+  for (const drift of args.plan.unsupportedDrift) {
+    lines.push(`  ! ${drift.kind}: ${drift.message}`)
+  }
+
+  return lines.join('\n')
+}
+
+const statusCheckCommand = Command.make(
+  'status-check',
+  {
+    databaseId: diffDatabaseIdArg,
+    schema: statusSchemaFileOption,
+    schemaExport: statusSchemaExportOption,
+    property: statusPropertyOption,
+    token: tokenOption,
+    exitCode: exitCodeOption,
+  },
+  ({ databaseId, schema, schemaExport, property, token, exitCode }) =>
+    Effect.gen(function* () {
+      const resolvedToken = yield* resolveNotionToken(token)
+      const schemaModule = yield* importStatusSchemaModule(schema)
+      const result = yield* checkStatusSchemaConvergenceFromModule({
+        databaseId,
+        schemaModule,
+        schemaModulePath: schema,
+        schemaExport,
+        propertyName: property,
+      }).pipe(
+        Effect.provide(
+          Layer.merge(
+            Layer.succeed(NotionConfig, {
+              authToken: resolvedToken,
+            }),
+            FetchHttpClient.layer,
+          ),
+        ),
+      )
+
+      yield* Console.log(
+        formatStatusPlan({
+          databaseId,
+          dataSourceId: result.dataSourceId,
+          plan: result.plan,
+        }),
+      )
+
+      if (
+        exitCode === true &&
+        (result.plan.missingOptions.length > 0 || result.plan.unsupportedDrift.length > 0)
+      ) {
+        return yield* new SchemaDriftDetectedError({
+          databaseId,
+          file: schema,
+          message: 'Native status schema drift detected',
+        })
+      }
+    }),
+).pipe(Command.withDescription('Check native Notion status schema option drift'))
+
+const statusApplyCommand = Command.make(
+  'status-apply',
+  {
+    databaseId: diffDatabaseIdArg,
+    schema: statusSchemaFileOption,
+    schemaExport: statusSchemaExportOption,
+    property: statusPropertyOption,
+    token: tokenOption,
+  },
+  ({ databaseId, schema, schemaExport, property, token }) =>
+    Effect.gen(function* () {
+      const resolvedToken = yield* resolveNotionToken(token)
+      const schemaModule = yield* importStatusSchemaModule(schema)
+      const result = yield* applyStatusSchemaConvergenceFromModule({
+        databaseId,
+        schemaModule,
+        schemaModulePath: schema,
+        schemaExport,
+        propertyName: property,
+      }).pipe(
+        Effect.provide(
+          Layer.merge(
+            Layer.succeed(NotionConfig, {
+              authToken: resolvedToken,
+            }),
+            FetchHttpClient.layer,
+          ),
+        ),
+      )
+
+      yield* Console.log(
+        [
+          `Updated: ${String(result.updated)}`,
+          formatStatusPlan({
+            databaseId,
+            dataSourceId: result.dataSourceId,
+            plan: result.after,
+          }),
+        ].join('\n'),
+      )
+    }),
+).pipe(
+  Command.withDescription('Add missing native Notion status options and verify read-after-write'),
+)
+
+// -----------------------------------------------------------------------------
 // Schema Subcommand
 // -----------------------------------------------------------------------------
 
@@ -645,6 +795,8 @@ export const schemaCommand = Command.make('schema').pipe(
     introspectCommand,
     generateFromConfigCommand,
     diffCommand,
+    statusCheckCommand,
+    statusApplyCommand,
   ]),
   Command.withDescription('Schema generation commands'),
 )

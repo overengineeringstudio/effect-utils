@@ -6,6 +6,18 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **@overeng/notion-cli**: Add a pure native Notion status schema planner for
+  additive option convergence and fail-closed drift classification. The planner
+  exposes an explicit safe-mutation flag, preserves every live option in
+  candidate apply payloads, and reports colors, renames, removals, and groups as
+  drift until the Notion API proves broader safe apply support. (#803)
+
+- **@overeng/notion-cli**: Add native status schema `status-check` and
+  `status-apply` commands. Apply mode refuses mutation-blocking drift, sends a
+  minimal preserve-live-options payload for additive options only, reports
+  group drift without attempting group convergence, and verifies by reading the
+  data source again so Notion HTTP 200 no-ops cannot pass silently. (#803)
+
 - **@overeng/genie**: Make `findGenieFiles` return stable repo-relative
   `.genie.ts` paths, with generation/check orchestration resolving them at the
   filesystem boundary. Discovery tests now assert through a canonical-relative
