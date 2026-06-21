@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **@overeng/oxc-config native `overeng/storybook/*` rules**: Reimplement the
+  seven Storybook CSF best-practice rules (`meta-satisfies-type`,
+  `default-exports`, `story-exports`, `csf-component`, `hierarchy-separator`,
+  `no-redundant-story-name`, `prefer-pascal-case`) as native `overeng` oxlint
+  JS-plugin rules instead of re-exporting them from `eslint-plugin-storybook`.
+  This restores the enforcement temporarily removed in #804 and permanently
+  drops the `eslint-plugin-storybook` dependency (the only remaining consumer of
+  that catalog entry). Each rule carries a source-of-truth reference to its
+  upstream `eslint-plugin-storybook@10.4.6` rule plus resync notes, and the now
+  unreferenced `eslint-plugin-storybook` and `oxfmt` catalog entries are
+  removed. Intentional deviations from upstream (scope-analysis-dependent
+  autofixes are detection-only; `hierarchy-separator`'s `|`→`/` fix is kept) are
+  documented per rule.
+
 ### Changed
 
 - **repo dependency/toolchain refresh**: Upgrade the Nix, pnpm, TypeScript, lint,

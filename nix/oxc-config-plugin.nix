@@ -1,7 +1,8 @@
 # Build pre-bundled @overeng/oxc-config JS plugin for oxlint.
 #
-# Bundles the custom overeng rules + eslint-plugin-storybook into a single
-# self-contained JS file usable as an oxlint jsPlugin without node_modules.
+# Bundles the custom overeng rules (including the native overeng/storybook/*
+# rules) into a single self-contained JS file usable as an oxlint jsPlugin
+# without node_modules.
 # Imported by oxlint-npm.nix when src is provided.
 #
 # =============================================================================
