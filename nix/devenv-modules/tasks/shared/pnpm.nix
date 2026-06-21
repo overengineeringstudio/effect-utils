@@ -22,6 +22,11 @@
   updateAfter ? [ ],
   cleanAfter ? [ ],
   resetLockFilesAfter ? [ ],
+  # Real derivation/path backing the `pnpm` guard. When set, the guard owns
+  # `bin/pnpm` and exec's this by absolute path under passthrough (see
+  # cli-guard.nix). The real package may ship siblings (e.g. `pnpx`) that the
+  # consumer keeps on PATH separately.
+  pnpmPkg ? null,
 }:
 {
   lib,
@@ -612,7 +617,10 @@ let
 
 in
 {
-  packages = cliGuard.fromTasks allTasks;
+  packages = cliGuard.fromTasks {
+    tasks = allTasks;
+    reals = lib.optionalAttrs (pnpmPkg != null) { pnpm = pnpmPkg; };
+  };
 
   enterShell = lib.mkIf (globalCache && workspaceRoot == ".") ''
     export PNPM_HOME="''${PNPM_HOME:-${config.devenv.root}/.devenv/pnpm-home}"

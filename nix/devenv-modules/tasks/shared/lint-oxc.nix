@@ -51,6 +51,11 @@
   # Whether to treat warnings as errors. Set to false for repos with many
   # existing warnings that can't be fixed immediately.
   denyWarnings ? true,
+  # Real derivation/path backing the `oxlint` guard (e.g. the plugin-injecting
+  # oxlint wrapper). When set, the guard owns `bin/oxlint` and exec's this by
+  # absolute path under passthrough (see cli-guard.nix). The `oxfmt` guard uses
+  # pkgs.oxfmt directly since that is in-module.
+  oxlintPkg ? null,
 }:
 { lib, pkgs, ... }:
 let
@@ -208,8 +213,20 @@ let
   };
 in
 {
-  # Provide tsgolint when type-aware linting is enabled
-  packages = lib.optionals (tsconfig != null) [ pkgs.tsgolint ] ++ cliGuard.fromTasks guardedTasks;
+  # Provide tsgolint when type-aware linting is enabled.
+  # The oxlint/oxfmt guards own their command names (exec the reals via absolute
+  # path, see cli-guard.nix), so oxfmt is dropped as a top-level provider here and
+  # oxlint is dropped from the consumer's `packages` — removing the buildEnv
+  # collision while keeping both reachable under passthrough.
+  packages =
+    lib.optionals (tsconfig != null) [ pkgs.tsgolint ]
+    ++ cliGuard.fromTasks {
+      tasks = guardedTasks;
+      reals = {
+        oxfmt = pkgs.oxfmt;
+      }
+      // lib.optionalAttrs (oxlintPkg != null) { oxlint = oxlintPkg; };
+    };
 
   tasks = cliGuard.stripGuards (guardedTasks // otherTasks);
 }

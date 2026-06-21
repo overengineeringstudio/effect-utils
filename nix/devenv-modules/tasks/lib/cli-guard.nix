@@ -11,11 +11,32 @@
 #   - dt wrapper re-sets it before calling devenv tasks run
 #   - CI helper (runDevenvTasksBefore) sets it
 #
+# Ownership and the `realBin` arg:
+#   A guard wrapper is itself a `writeShellScriptBin <cli>`, i.e. it provides
+#   `bin/<cli>`. When the real binary for `<cli>` also sits in the same
+#   buildEnv (the devenv profile), buildEnv keeps only one `bin/<cli>` and the
+#   winner is nondeterministic — the guard might shadow the real, or vice
+#   versa, breaking "CI and local resolve the same command paths".
+#
+#   To make the guard the deterministic owner, pass `realBin` (a derivation or
+#   an absolute path). Under passthrough the guard then `exec`s the real binary
+#   by its ABSOLUTE store path instead of grepping $PATH. This is load-bearing:
+#   once the guard owns `bin/<cli>`, the real is no longer reachable under its
+#   own name on $PATH, so the PATH-grep would find nothing and exit 127. The
+#   absolute reference also pulls the real into the closure, so the real package
+#   can be dropped from (or `lib.lowPrio`'d in) the profile's `packages` list to
+#   silence the collision warning while staying reachable.
+#
+#   When `realBin` is null (e.g. CLIs whose real lives in node_modules/.bin and
+#   is not a profile collision), the guard falls back to the PATH-grep lookup.
+#
 # Usage in task modules:
 #
 #   let cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
 #   in {
-#     packages = cliGuard.fromTasks guardedTasks;
+#     # `reals` maps cli name -> real derivation/path for guards that own
+#     # their command name (collide with a profile-level real).
+#     packages = cliGuard.fromTasks { tasks = guardedTasks; reals = { oxlint = oxlintPkg; }; };
 #     tasks = cliGuard.stripGuards (guardedTasks // otherTasks);
 #   }
 #
@@ -29,6 +50,7 @@
 #   packages = [
 #     (cliGuard.mkCliGuard {
 #       cli = "oxlint";
+#       realBin = oxlintPkg; # optional; absolute-path exec under passthrough
 #       tasks = [
 #         { task = "lint:check:oxlint"; description = "Check lint"; }
 #       ];
@@ -36,9 +58,26 @@
 #   ];
 { pkgs }:
 let
+  lib = pkgs.lib;
+
+  # Resolve a realBin arg (derivation or absolute path) to an absolute
+  # `bin/<cli>` path string, or null when no real was provided.
+  resolveRealBin =
+    cli: realBin:
+    if realBin == null then
+      null
+    else if lib.isDerivation realBin then
+      lib.getExe' realBin cli
+    else
+      toString realBin;
+
   # Build a single guard wrapper script for one CLI
   mkCliGuard =
-    { cli, tasks }:
+    {
+      cli,
+      tasks,
+      realBin ? null,
+    }:
     let
       taskLines = builtins.concatStringsSep "\n" (
         map (
@@ -49,32 +88,41 @@ let
           ''printf "  ${desc}  devenv tasks run ${t.task} --mode before --no-tui\n\n" >&2''
         ) tasks
       );
+      realPath = resolveRealBin cli realBin;
+      # When the real binary is known, exec it by absolute store path. See the
+      # header comment for why PATH-grep cannot work once the guard owns the name.
+      passthroughBody =
+        if realPath != null then
+          ''exec ${lib.escapeShellArg realPath} "$@"''
+        else
+          ''
+            _self="$(cd "''${0%/*}" && pwd -P)"
+            _real=""
+            IFS=: read -ra _dirs <<< "$PATH"
+            for _d in "''${_dirs[@]}"; do
+              [ -z "$_d" ] && continue
+              _resolved="$(cd "$_d" 2>/dev/null && pwd -P)" || continue
+              [ "$_resolved" = "$_self" ] && continue
+              if [ -x "$_d/${cli}" ]; then
+                if grep -q '^# cli-guard-wrapper:${cli}$' "$_d/${cli}" 2>/dev/null; then
+                  continue
+                fi
+                _real="$_d/${cli}"
+                break
+              fi
+            done
+            if [ -z "$_real" ]; then
+              echo "cli-guard: '${cli}' not found on PATH (after removing guard)" >&2
+              exit 127
+            fi
+            exec "$_real" "$@"'';
     in
     pkgs.writeShellScriptBin cli ''
       # cli-guard-wrapper:${cli}
       set -euo pipefail
 
       if [ "''${DT_PASSTHROUGH:-}" = "1" ]; then
-        _self="$(cd "''${0%/*}" && pwd -P)"
-        _real=""
-        IFS=: read -ra _dirs <<< "$PATH"
-        for _d in "''${_dirs[@]}"; do
-          [ -z "$_d" ] && continue
-          _resolved="$(cd "$_d" 2>/dev/null && pwd -P)" || continue
-          [ "$_resolved" = "$_self" ] && continue
-          if [ -x "$_d/${cli}" ]; then
-            if grep -q '^# cli-guard-wrapper:${cli}$' "$_d/${cli}" 2>/dev/null; then
-              continue
-            fi
-            _real="$_d/${cli}"
-            break
-          fi
-        done
-        if [ -z "$_real" ]; then
-          echo "cli-guard: '${cli}' not found on PATH (after removing guard)" >&2
-          exit 127
-        fi
-        exec "$_real" "$@"
+        ${passthroughBody}
       fi
 
       echo "" >&2
@@ -92,9 +140,16 @@ let
   # Extract guard packages from a tasks attrset.
   # Tasks with a `guard = "cli-name"` attribute are grouped by CLI name
   # and a guard wrapper is generated for each group.
+  #
+  # Accepts either a bare tasks attrset (backward compatible) or
+  # `{ tasks, reals }` where `reals` maps a cli name to its real
+  # derivation/path. Reals make the guard own `bin/<cli>` deterministically by
+  # exec'ing the real via absolute path under passthrough (see header comment).
   fromTasks =
-    tasks:
+    arg:
     let
+      tasks = arg.tasks or arg;
+      reals = arg.reals or { };
       # Collect { cli, task, description } from tasks that have a guard attr
       guardEntries = builtins.filter (e: e != null) (
         builtins.attrValues (
@@ -125,6 +180,7 @@ let
         in
         mkCliGuard {
           inherit cli;
+          realBin = reals.${cli} or null;
           tasks = map (e: { inherit (e) task description; }) entries;
         };
     in

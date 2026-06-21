@@ -208,6 +208,8 @@
         # Shared task modules (parameterized) - meant for reuse in other repos
         tasks = {
           # Simple tasks (no config needed)
+          # genie is a standard module; consumers thread the optional `geniePkg`
+          # real via `_module.args.geniePkg` for deterministic guard ownership.
           genie = ./nix/devenv-modules/tasks/shared/genie.nix;
           lint-genie = ./nix/devenv-modules/tasks/shared/lint-genie.nix;
           # Parameterized tasks (pass config)
