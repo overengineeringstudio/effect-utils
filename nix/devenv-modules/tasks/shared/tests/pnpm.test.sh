@@ -286,7 +286,168 @@ if [ "$fingerprint_a" = "$fingerprint_b" ]; then
   exit 1
 fi
 
-echo "Test 8: resolve_package_bin prefers package-local .bin shims"
+echo "Test 8: resolve_pnpm_install_contract_file walks up to the repo contract"
+contract_fixture="$test_dir/contract-fixture"
+mkdir -p "$contract_fixture/packages/app"
+printf '{"schemaVersion":1}\n' > "$contract_fixture/pnpm-install-contract.json"
+assert_eq \
+  "$contract_fixture/pnpm-install-contract.json" \
+  "$(resolve_pnpm_install_contract_file "$contract_fixture/packages/app")" \
+  "resolve_pnpm_install_contract_file finds ancestor contract"
+
+echo "Test 9: pnpm contract section hashing is stable across JSON key order"
+contract_a="$test_dir/contract-a.json"
+contract_b="$test_dir/contract-b.json"
+cat > "$contract_a" <<'EOF'
+{"schemaVersion":1,"gvsLinkContract":{"packageExtensions":{"storybook":{"dependencies":{"@storybook/react-vite":"10.4.6"}}},"allowBuilds":{"esbuild":false}}}
+EOF
+cat > "$contract_b" <<'EOF'
+{"gvsLinkContract":{"allowBuilds":{"esbuild":false},"packageExtensions":{"storybook":{"dependencies":{"@storybook/react-vite":"10.4.6"}}}},"schemaVersion":1}
+EOF
+assert_eq \
+  "$(compute_pnpm_contract_section_hash node "$contract_a" gvsLinkContract)" \
+  "$(compute_pnpm_contract_section_hash node "$contract_b" gvsLinkContract)" \
+  "contract section hash ignores JSON object key order"
+
+echo "Test 10: policy-only contract changes do not classify as GVS link drift"
+contract_policy_old="$test_dir/contract-policy-old.json"
+contract_policy_new="$test_dir/contract-policy-new.json"
+cat > "$contract_policy_old" <<'EOF'
+{
+  "schemaVersion": 1,
+  "packageManager": {"name": "pnpm", "version": "11.8.0"},
+  "gvsLinkContract": {"allowBuilds": {"esbuild": false}, "packageExtensions": {}},
+  "installPolicy": {"enableGlobalVirtualStore": true},
+  "storeContract": {"storeDir": ".devenv/pnpm-store-pure-v1"},
+  "workspaceManifestContract": {"packages": ["packages/app"]},
+  "nixIntegration": {"fixedOutputDependencyPrepUsesLiveGlobalVirtualStore": false},
+  "buck2Integration": {"consumeContractArtifact": true}
+}
+EOF
+cat > "$contract_policy_new" <<'EOF'
+{
+  "schemaVersion": 1,
+  "packageManager": {"name": "pnpm", "version": "11.8.0"},
+  "gvsLinkContract": {"allowBuilds": {"esbuild": false}, "packageExtensions": {}},
+  "installPolicy": {"enableGlobalVirtualStore": false},
+  "storeContract": {"storeDir": ".devenv/pnpm-store-pure-v1"},
+  "workspaceManifestContract": {"packages": ["packages/app"]},
+  "nixIntegration": {"fixedOutputDependencyPrepUsesLiveGlobalVirtualStore": false},
+  "buck2Integration": {"consumeContractArtifact": true}
+}
+EOF
+assert_eq \
+  "policy" \
+  "$(classify_pnpm_contract_change node "$contract_policy_old" "$contract_policy_new")" \
+  "policy-only contract changes are not gvs-link changes"
+
+echo "Test 11: packageExtensions changes classify as GVS link drift"
+contract_gvs_new="$test_dir/contract-gvs-new.json"
+cat > "$contract_gvs_new" <<'EOF'
+{
+  "schemaVersion": 1,
+  "packageManager": {"name": "pnpm", "version": "11.8.0"},
+  "gvsLinkContract": {"allowBuilds": {"esbuild": false}, "packageExtensions": {"storybook": {"dependencies": {"@storybook/react-vite": "10.4.6"}}}},
+  "installPolicy": {"enableGlobalVirtualStore": true},
+  "storeContract": {"storeDir": ".devenv/pnpm-store-pure-v1"},
+  "workspaceManifestContract": {"packages": ["packages/app"]},
+  "nixIntegration": {"fixedOutputDependencyPrepUsesLiveGlobalVirtualStore": false},
+  "buck2Integration": {"consumeContractArtifact": true}
+}
+EOF
+assert_eq \
+  "gvs-link" \
+  "$(classify_pnpm_contract_change node "$contract_policy_old" "$contract_gvs_new")" \
+  "packageExtensions changes are gvs-link changes"
+
+echo "Test 12: unchanged classified sections report an unknown miss reason"
+contract_unknown_new="$test_dir/contract-unknown-new.json"
+cat > "$contract_unknown_new" <<'EOF'
+{
+  "schemaVersion": 2,
+  "packageManager": {"name": "pnpm", "version": "11.8.0"},
+  "gvsLinkContract": {"allowBuilds": {"esbuild": false}, "packageExtensions": {}},
+  "installPolicy": {"enableGlobalVirtualStore": true},
+  "storeContract": {"storeDir": ".devenv/pnpm-store-pure-v1"},
+  "workspaceManifestContract": {"packages": ["packages/app"]},
+  "nixIntegration": {"fixedOutputDependencyPrepUsesLiveGlobalVirtualStore": true},
+  "buck2Integration": {"consumeContractArtifact": false}
+}
+EOF
+assert_eq \
+  "unknown" \
+  "$(classify_pnpm_contract_change node "$contract_policy_old" "$contract_unknown_new")" \
+  "unclassified contract changes return unknown"
+
+echo "Test 13: package manager changes classify as toolchain drift"
+contract_toolchain_new="$test_dir/contract-toolchain-new.json"
+cat > "$contract_toolchain_new" <<'EOF'
+{
+  "schemaVersion": 1,
+  "packageManager": {"name": "pnpm", "version": "11.9.0"},
+  "gvsLinkContract": {"allowBuilds": {"esbuild": false}, "packageExtensions": {}},
+  "installPolicy": {"enableGlobalVirtualStore": true},
+  "storeContract": {"storeDir": ".devenv/pnpm-store-pure-v1"},
+  "workspaceManifestContract": {"packages": ["packages/app"]},
+  "nixIntegration": {"fixedOutputDependencyPrepUsesLiveGlobalVirtualStore": false},
+  "buck2Integration": {"consumeContractArtifact": true}
+}
+EOF
+assert_eq \
+  "toolchain" \
+  "$(classify_pnpm_contract_change node "$contract_policy_old" "$contract_toolchain_new")" \
+  "package manager changes classify as toolchain"
+
+echo "Test 14: store contract changes classify as store drift"
+contract_store_new="$test_dir/contract-store-new.json"
+cat > "$contract_store_new" <<'EOF'
+{
+  "schemaVersion": 1,
+  "packageManager": {"name": "pnpm", "version": "11.8.0"},
+  "gvsLinkContract": {"allowBuilds": {"esbuild": false}, "packageExtensions": {}},
+  "installPolicy": {"enableGlobalVirtualStore": true},
+  "storeContract": {"storeDir": ".devenv/pnpm-store-pure-v2"},
+  "workspaceManifestContract": {"packages": ["packages/app"]},
+  "nixIntegration": {"fixedOutputDependencyPrepUsesLiveGlobalVirtualStore": false},
+  "buck2Integration": {"consumeContractArtifact": true}
+}
+EOF
+assert_eq \
+  "store" \
+  "$(classify_pnpm_contract_change node "$contract_policy_old" "$contract_store_new")" \
+  "store contract changes classify as store"
+
+echo "Test 15: workspace manifest contract changes classify as manifest/config drift"
+contract_manifest_new="$test_dir/contract-manifest-new.json"
+cat > "$contract_manifest_new" <<'EOF'
+{
+  "schemaVersion": 1,
+  "packageManager": {"name": "pnpm", "version": "11.8.0"},
+  "gvsLinkContract": {"allowBuilds": {"esbuild": false}, "packageExtensions": {}},
+  "installPolicy": {"enableGlobalVirtualStore": true},
+  "storeContract": {"storeDir": ".devenv/pnpm-store-pure-v1"},
+  "workspaceManifestContract": {"packages": ["packages/app", "packages/lib"]},
+  "nixIntegration": {"fixedOutputDependencyPrepUsesLiveGlobalVirtualStore": false},
+  "buck2Integration": {"consumeContractArtifact": true}
+}
+EOF
+assert_eq \
+  "manifest_config" \
+  "$(classify_pnpm_contract_change node "$contract_policy_old" "$contract_manifest_new")" \
+  "workspace manifest contract changes classify as manifest_config"
+
+echo "Test 16: missing contract sections fail section hashing"
+contract_missing="$test_dir/contract-missing-section.json"
+cat > "$contract_missing" <<'EOF'
+{"schemaVersion":1}
+EOF
+set +e
+compute_pnpm_contract_section_hash node "$contract_missing" gvsLinkContract >/dev/null 2>&1
+exit_code=$?
+set -e
+assert_exit_code 1 "$exit_code" "missing section hash should fail"
+
+echo "Test 17: resolve_package_bin prefers package-local .bin shims"
 bin_fixture="$test_dir/bin-fixture"
 make_bin_fixture "$bin_fixture"
 resolved_bin="$(resolve_package_bin fake-tool fake-tool "$bin_fixture")"
@@ -296,14 +457,14 @@ assert_eq \
   "$resolved_bin" \
   "resolve_package_bin prefers the generated .bin shim"
 
-echo "Test 9: run_package_bin executes the .bin shim when present"
+echo "Test 18: run_package_bin executes the .bin shim when present"
 output="$(cd "$bin_fixture" && run_package_bin fake-tool fake-tool alpha beta)"
 assert_eq \
   "fake-tool-shim:alpha beta" \
   "$output" \
   "run_package_bin executes the resolved shim"
 
-echo "Test 10: resolve_package_bin falls back to the package bin file"
+echo "Test 19: resolve_package_bin falls back to the package bin file"
 fallback_fixture="$test_dir/fallback-bin-fixture"
 make_bin_fixture_without_shim "$fallback_fixture"
 resolved_fallback_bin="$(resolve_package_bin fallback-tool fallback-tool "$fallback_fixture")"
@@ -313,7 +474,7 @@ assert_eq \
   "$resolved_fallback_bin" \
   "resolve_package_bin falls back to the package bin file"
 
-echo "Test 11: Projection health passes when symlinked package can resolve deps"
+echo "Test 20: Projection health passes when symlinked package can resolve deps"
 healthy_dir="$test_dir/healthy"
 make_projection_fixture "$healthy_dir" 1
 set +e
@@ -322,7 +483,7 @@ exit_code=$?
 set -e
 assert_exit_code 0 "$exit_code" "projection health passes"
 
-echo "Test 12: Projection health ignores packages that do not export ./package.json"
+echo "Test 21: Projection health ignores packages that do not export ./package.json"
 exports_dir="$test_dir/exports"
 make_projection_fixture "$exports_dir" 1 1
 set +e
@@ -331,7 +492,7 @@ exit_code=$?
 set -e
 assert_exit_code 0 "$exit_code" "projection health should not depend on package.json exports"
 
-echo "Test 13: Projection health fails when symlinked package loses a transitive dep"
+echo "Test 22: Projection health fails when symlinked package loses a transitive dep"
 stale_dir="$test_dir/stale"
 make_projection_fixture "$stale_dir" 0
 set +e
@@ -340,7 +501,7 @@ exit_code=$?
 set -e
 assert_exit_code 1 "$exit_code" "projection health detects missing dep"
 
-echo "Test 14: Projection health does not require source link deps to resolve"
+echo "Test 23: Projection health does not require source link deps to resolve"
 source_link_dir="$test_dir/source-link"
 make_source_link_fixture "$source_link_dir"
 set +e
@@ -349,7 +510,7 @@ exit_code=$?
 set -e
 assert_exit_code 0 "$exit_code" "projection health skips source link dependency resolution"
 
-echo "Test 15: Broken node_modules symlink is rejected before projection checks"
+echo "Test 24: Broken node_modules symlink is rejected before projection checks"
 broken_dir="$test_dir/broken"
 mkdir -p "$broken_dir/node_modules"
 ln -s ../missing "$broken_dir/node_modules/broken"
@@ -359,7 +520,7 @@ exit_code=$?
 set -e
 assert_exit_code 1 "$exit_code" "broken symlink is rejected"
 
-echo "Test 16: Projection health fails when a package export target is missing"
+echo "Test 25: Projection health fails when a package export target is missing"
 missing_export_dir="$test_dir/missing-export"
 make_missing_export_fixture "$missing_export_dir"
 set +e
@@ -368,7 +529,7 @@ exit_code=$?
 set -e
 assert_exit_code 1 "$exit_code" "projection health detects missing package export target"
 
-echo "Test 17: Projection health ignores unshipped conditional export targets"
+echo "Test 26: Projection health ignores unshipped conditional export targets"
 unshipped_export_dir="$test_dir/unshipped-export"
 make_unshipped_conditional_export_fixture "$unshipped_export_dir"
 set +e
@@ -377,7 +538,7 @@ exit_code=$?
 set -e
 assert_exit_code 0 "$exit_code" "projection health ignores export targets outside package files"
 
-echo "Test 18: Projection health ignores missing declaration-only export targets"
+echo "Test 27: Projection health ignores missing declaration-only export targets"
 missing_type_dir="$test_dir/missing-type-export"
 make_missing_type_export_fixture "$missing_type_dir"
 set +e
@@ -386,7 +547,7 @@ exit_code=$?
 set -e
 assert_exit_code 0 "$exit_code" "projection health ignores type-only export targets"
 
-echo "Test 19: Projection health accepts a package when one root conditional export target exists"
+echo "Test 28: Projection health accepts a package when one root conditional export target exists"
 missing_condition_alternative_dir="$test_dir/missing-condition-alternative"
 make_missing_conditional_export_alternative_fixture "$missing_condition_alternative_dir"
 set +e
@@ -395,7 +556,7 @@ exit_code=$?
 set -e
 assert_exit_code 0 "$exit_code" "projection health accepts alternate runtime export targets"
 
-echo "Test 20: Projection health ignores dependency names that Node resolves as built-ins"
+echo "Test 29: Projection health ignores dependency names that Node resolves as built-ins"
 builtin_dependency_dir="$test_dir/builtin-dependency"
 make_builtin_dependency_fixture "$builtin_dependency_dir"
 set +e
@@ -404,7 +565,7 @@ exit_code=$?
 set -e
 assert_exit_code 0 "$exit_code" "projection health ignores built-in dependency names"
 
-echo "Test 21: Projection health accepts extensionless main and root export targets"
+echo "Test 30: Projection health accepts extensionless main and root export targets"
 extensionless_main_dir="$test_dir/extensionless-main"
 make_extensionless_main_fixture "$extensionless_main_dir"
 set +e
@@ -413,7 +574,7 @@ exit_code=$?
 set -e
 assert_exit_code 0 "$exit_code" "projection health accepts extensionless runtime targets"
 
-echo "Test 22: Projection health ignores missing optional subpath export targets"
+echo "Test 31: Projection health ignores missing optional subpath export targets"
 missing_subpath_export_dir="$test_dir/missing-subpath-export"
 make_missing_subpath_export_fixture "$missing_subpath_export_dir"
 set +e

@@ -6,6 +6,17 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **pnpm install contract proof**: Add a generated `pnpm-install-contract.json`
+  artifact that makes the long-term pnpm/Nix/Buck2 install contract explicit:
+  pnpm owns `store/v11/{files,links,projects}`, GVS `links` are treated as a
+  rebuildable dependency-graph projection, fixed-output Nix dependency prep does
+  not consume live GVS projections, and Buck2 integration should key from the
+  generated contract plus the lockfile rather than from pnpm's private
+  `node_modules` layout. `pnpm:install` now hashes the structured
+  `gvsLinkContract` JSON section for GVS relink invalidation instead of parsing
+  rendered `pnpm-workspace.yaml`, and helper tests cover the prior false
+  positive where policy-only changes were classified as `gvs-link` drift.
+
 - **@overeng/oxc-config native `overeng/storybook/*` rules**: Reimplement the
   seven Storybook CSF best-practice rules (`meta-satisfies-type`,
   `default-exports`, `story-exports`, `csf-component`, `hierarchy-separator`,

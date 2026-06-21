@@ -726,6 +726,7 @@ let
   ];
   optionalRootWorkspaceFiles = [
     ".npmrc"
+    "pnpm-install-contract.json"
     "tsconfig.base.json"
   ];
   installRootScopedPath =

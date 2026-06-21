@@ -129,6 +129,16 @@ settings: {}
 importers: {}
 packages: {}
 EOF
+cat > "$workspace/pnpm-install-contract.json" <<'EOF'
+{
+  "schemaVersion": 1,
+  "packageManager": {"name": "pnpm", "version": "11.3.0"},
+  "gvsLinkContract": {"allowBuilds": {}, "packageExtensions": {}, "packageManager": {"name": "pnpm", "version": "11.3.0"}},
+  "installPolicy": {"ignoreScripts": true},
+  "storeContract": {"layoutVersion": "v11", "owner": "pnpm", "storeDir": ".devenv/pnpm-store-pure-v1"},
+  "workspaceManifestContract": {"packages": []}
+}
+EOF
 cat > "$workspace/packages/demo/package.json" <<'EOF'
 {"name":"demo","private":true}
 EOF

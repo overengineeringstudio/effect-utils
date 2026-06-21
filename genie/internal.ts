@@ -127,6 +127,7 @@ export const commonPnpmWorkspaceData = {
   ...commonPnpmPolicySettings,
   injectWorkspacePackages: true as const,
   packageExtensions: {
+    ...commonPnpmPolicySettings.packageExtensions,
     // Storybook loads the configured framework preset dynamically from the
     // storybook package. Under pnpm's global virtual store, that import cannot
     // see the workspace package's dev dependency unless the edge is explicit.

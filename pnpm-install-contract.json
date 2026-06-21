@@ -1,0 +1,136 @@
+{
+  "contract": "effect-utils/pnpm-install-contract",
+  "gvsLinkContract": {
+    "allowBuilds": {
+      "@myobie/pty": false,
+      "@parcel/watcher": false,
+      "esbuild": false,
+      "fsevents": false,
+      "msgpackr-extract": false,
+      "node-pty": false,
+      "sharp": false,
+      "unix-dgram": false
+    },
+    "packageExtensions": {
+      "react-aria-components": {
+        "dependencies": {
+          "@types/react": "19.2.17",
+          "@types/react-dom": "19.2.3"
+        }
+      },
+      "storybook": {
+        "dependencies": {
+          "@storybook/react-vite": "10.4.6"
+        }
+      }
+    },
+    "packageManager": {
+      "name": "pnpm",
+      "version": "11.8.0"
+    }
+  },
+  "installPolicy": {
+    "dedupePeerDependents": true,
+    "ignoreScripts": true,
+    "minimumReleaseAgeExclude": ["@effect/platform", "@types/node", "effect"],
+    "optimisticRepeatInstall": false,
+    "packageImportMethod": "clone-or-copy",
+    "peerDependencyRules": {
+      "allowedVersions": {
+        "@effect/experimental": ">=0.58.0",
+        "@effect/platform": ">=0.94.2",
+        "@effect/rpc": ">=0.73.0",
+        "eslint": ">=10.0.0",
+        "typescript": ">=6.0.0",
+        "vitest": ">=4.0.0"
+      }
+    },
+    "pmOnFail": "ignore",
+    "sideEffectsCache": false,
+    "strictPeerDependencies": true,
+    "strictStorePkgContentCheck": true,
+    "supportedArchitectures": {
+      "cpu": ["x64", "arm64"],
+      "libc": ["glibc", "musl"],
+      "os": ["linux", "darwin"]
+    },
+    "verifyDepsBeforeRun": false,
+    "verifyStoreIntegrity": true
+  },
+  "metadata": {
+    "buck2Integration": {
+      "avoidNodeModulesLayoutAsApi": true,
+      "consumeContractArtifact": true
+    },
+    "nixIntegration": {
+      "fixedOutputDependencyPrepUsesLiveGlobalVirtualStore": false,
+      "liveInstallUsesGlobalVirtualStore": true
+    },
+    "pnpmStoreOwnership": {
+      "filesLifecycle": "pnpm-owned content-addressed files store",
+      "linksLifecycle": "pnpm-owned rebuildable dependency-graph projection",
+      "projectsLifecycle": "pnpm-owned store prune reachability registry"
+    }
+  },
+  "packageManager": {
+    "name": "pnpm",
+    "version": "11.8.0"
+  },
+  "schemaVersion": 1,
+  "storeContract": {
+    "globalVirtualStore": {
+      "enabled": true
+    },
+    "layoutVersion": "v11",
+    "owner": "pnpm",
+    "sharedFilesStore": {
+      "disabledInCi": true,
+      "enabledForLocalDev": true
+    },
+    "storeDir": ".devenv/pnpm-store-pure-v1"
+  },
+  "workspaceManifestContract": {
+    "allowUnusedPatches": true,
+    "injectWorkspacePackages": true,
+    "packages": [
+      "context/effect/socket",
+      "context/opentui",
+      "packages/@overeng/agent-session-ingest",
+      "packages/@overeng/content-address",
+      "packages/@overeng/effect-ai-claude-cli",
+      "packages/@overeng/effect-path",
+      "packages/@overeng/effect-react",
+      "packages/@overeng/effect-rpc-tanstack",
+      "packages/@overeng/effect-rpc-tanstack/examples/basic",
+      "packages/@overeng/effect-schema-form",
+      "packages/@overeng/effect-schema-form-aria",
+      "packages/@overeng/genie",
+      "packages/@overeng/kdl",
+      "packages/@overeng/kdl-effect",
+      "packages/@overeng/megarepo",
+      "packages/@overeng/notion-cli",
+      "packages/@overeng/notion-core",
+      "packages/@overeng/notion-datasource-sync",
+      "packages/@overeng/notion-effect-client",
+      "packages/@overeng/notion-effect-schema",
+      "packages/@overeng/notion-md",
+      "packages/@overeng/notion-property-write",
+      "packages/@overeng/notion-react",
+      "packages/@overeng/otel-contract",
+      "packages/@overeng/oxc-config",
+      "packages/@overeng/pty-effect",
+      "packages/@overeng/react-inspector",
+      "packages/@overeng/restate-effect",
+      "packages/@overeng/tui-core",
+      "packages/@overeng/tui-react",
+      "packages/@overeng/tui-stories",
+      "packages/@overeng/utils",
+      "packages/@overeng/utils-dev",
+      "packages/@overeng/workflow-report"
+    ],
+    "patchedDependencies": {
+      "@effect/platform@0.96.2": "packages/@overeng/utils/patches/@effect__platform@0.96.0.patch",
+      "effect-distributed-lock@0.0.11": "packages/@overeng/utils/patches/effect-distributed-lock@0.0.11.patch"
+    }
+  }
+}
