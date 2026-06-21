@@ -619,6 +619,11 @@ export const baseTsconfigCompilerOptions = {
       // this plugin entry, while plain tsc ignores it when the npm package is absent.
       name: '@effect/language-service',
       reportSuggestionsAsWarningsInTsc: true,
+      // Effect diagnostics are surfaced as warnings only and do not affect the
+      // tsc/tsgo exit code, so `ts:check` never fails on them today.
+      // TODO(#811): flip to gating (drop this and/or promote severities to
+      // 'error') once the workspace is clean against these diagnostics.
+      // @see https://github.com/overengineeringstudio/effect-utils/issues/811
       ignoreEffectWarningsInTscExitCode: true,
       pipeableMinArgCount: 2,
       diagnosticSeverity: {
