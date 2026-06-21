@@ -27,8 +27,7 @@ export const inspectCommand = Command.make(
       const story = findStory({ modules, query: storyId })
 
       if (story === undefined) {
-        yield* Effect.fail(new Error(`Story not found: "${storyId}"`))
-        return
+        return yield* Effect.fail(new Error(`Story not found: "${storyId}"`))
       }
 
       const argTypeEntries = Object.entries(story.argTypes)

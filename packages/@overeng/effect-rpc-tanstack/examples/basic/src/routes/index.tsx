@@ -1,6 +1,6 @@
 import type { RpcClientError } from '@effect/rpc'
 import { Effect } from 'effect'
-import { useState } from 'react'
+import { useState, type SyntheticEvent } from 'react'
 
 import {
   createEffectRoute,
@@ -38,7 +38,7 @@ const UserList = ({ initialUsers }: { initialUsers: readonly User[] }): React.Re
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const handleCreateUser = async (e: React.FormEvent) => {
+  const handleCreateUser = async (e: SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault()
     setLoading(true)
     setError(null)

@@ -129,6 +129,16 @@ settings: {}
 importers: {}
 packages: {}
 EOF
+cat > "$workspace/pnpm-install-contract.json" <<'EOF'
+{
+  "schemaVersion": 1,
+  "packageManager": {"name": "pnpm", "version": "11.3.0"},
+  "gvsLinkContract": {"allowBuilds": {}, "packageExtensions": {}, "packageManager": {"name": "pnpm", "version": "11.3.0"}},
+  "installPolicy": {"ignoreScripts": true},
+  "storeContract": {"layoutVersion": "v11", "owner": "pnpm", "storeDir": ".devenv/pnpm-store-pure-v1"},
+  "workspaceManifestContract": {"packages": []}
+}
+EOF
 cat > "$workspace/packages/demo/package.json" <<'EOF'
 {"name":"demo","private":true}
 EOF
@@ -177,10 +187,11 @@ if [ "${1:-}" = "install" ]; then
   # pnpm always writes on a real install. Keep the smoke fixture aligned with
   # that contract so the test still exercises the task logic instead of
   # failing on an unrealistically incomplete fake install.
-  cat > node_modules/.modules.yaml <<'YAML'
+  cat > node_modules/.modules.yaml <<YAML
 hoistPattern: []
-nodeLinker: isolated
-storeDir: /tmp/fake-pnpm-store
+enableGlobalVirtualStore: true
+nodeLinker: hoisted
+storeDir: ${npm_config_store_dir}
 virtualStoreDir: node_modules/.pnpm
 YAML
   if [ -n "${TEST_PNPM_DARWIN_TEARDOWN_STATUS:-}" ]; then
@@ -246,6 +257,8 @@ extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-impure-separated.e
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-impure-store-dir-separated.exec.sh" 'packages = [ "." ]; installFlags = [ "--store-dir" "/tmp/other-pnpm-store" ];' "pnpm:install"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-impure-strict-store.exec.sh" 'packages = [ "." ]; installFlags = [ "--config.strict-store-pkg-content-check=false" ];' "pnpm:install"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-impure-pm-on-fail.exec.sh" 'packages = [ "." ]; installFlags = [ "--pm-on-fail=download" ];' "pnpm:install"
+extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-impure-ignore-scripts.exec.sh" 'packages = [ "." ]; installFlags = [ "--config.ignore-scripts=false" ];' "pnpm:install"
+extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-impure-ignore-dep-scripts.exec.sh" 'packages = [ "." ]; installFlags = [ "--config.ignore-dep-scripts=false" ];' "pnpm:install"
 extract_shared_task_script \
   "nix/devenv-modules/tasks/shared/test.nix" \
   "test:demo" \
@@ -270,6 +283,8 @@ rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-impure-equals.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-impure-separated.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-impure-strict-store.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-impure-pm-on-fail.exec.sh"
+rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-impure-ignore-scripts.exec.sh"
+rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-impure-ignore-dep-scripts.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/test-demo.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/storybook-demo.exec.sh"
 
@@ -307,7 +322,7 @@ echo "Test 2: exec runs fake pnpm and populates cache"
   grep -qxF "flock -w 600 200" "$tmpdir/flock.log"
   grep -qxF "flock -w 600 201" "$tmpdir/flock.log"
   grep -qxF "flock -w 600 202" "$tmpdir/flock.log"
-  grep -qxF "install --force --frozen-lockfile --config.confirmModulesPurge=false --config.side-effects-cache=false --config.verify-store-integrity=true --config.strict-store-pkg-content-check=true --child-concurrency=1 --network-concurrency=4 --config.package-import-method=clone-or-copy --pm-on-fail=ignore --config.store-dir=$workspace/.devenv/pnpm-store-pure-v1" "$tmpdir/pnpm.log"
+  grep -qxF "install --force --frozen-lockfile --config.confirmModulesPurge=false --ignore-scripts --config.side-effects-cache=false --config.verify-store-integrity=true --config.strict-store-pkg-content-check=true --child-concurrency=1 --network-concurrency=4 --config.package-import-method=clone-or-copy --pm-on-fail=ignore --config.store-dir=$workspace/.devenv/pnpm-store-pure-v1" "$tmpdir/pnpm.log"
   grep -qF ".effect-utils-pnpm-install.lock" "$tmpdir/pnpm-install.exec.sh"
   grep -qF ".effect-utils-pnpm-store.lock" "$tmpdir/pnpm-install.exec.sh"
 )
@@ -496,7 +511,7 @@ echo "Test 16: install flags and pre-install hooks are applied"
   : > "$tmpdir/pnpm.log"
   bash "$tmpdir/pnpm-install-flags.exec.sh"
   test -f .preinstall-marker
-  grep -qxF "install --config.public-hoist-pattern=* --frozen-lockfile --config.confirmModulesPurge=false --config.side-effects-cache=false --config.verify-store-integrity=true --config.strict-store-pkg-content-check=true --child-concurrency=1 --network-concurrency=4 --config.package-import-method=clone-or-copy --pm-on-fail=ignore --config.store-dir=$workspace/.devenv/pnpm-store-pure-v1" "$tmpdir/pnpm.log"
+  grep -qxF "install --config.public-hoist-pattern=* --frozen-lockfile --config.confirmModulesPurge=false --ignore-scripts --config.side-effects-cache=false --config.verify-store-integrity=true --config.strict-store-pkg-content-check=true --child-concurrency=1 --network-concurrency=4 --config.package-import-method=clone-or-copy --pm-on-fail=ignore --config.store-dir=$workspace/.devenv/pnpm-store-pure-v1" "$tmpdir/pnpm.log"
 )
 
 echo "Test 17: impure no-frozen install flags are rejected before pnpm runs"
@@ -603,7 +618,47 @@ echo "Test 22: impure pm-on-fail flags are rejected before pnpm runs"
   fi
 )
 
-echo "Test 23: CI install failures preserve and classify the pnpm log"
+echo "Test 23: impure ignore-scripts overrides are rejected before pnpm runs"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  unset PNPM_HOME
+  unset PNPM_STORE_DIR
+  unset npm_config_store_dir
+  : > "$tmpdir/pnpm.log"
+  set +e
+  output="$(bash "$tmpdir/pnpm-install-impure-ignore-scripts.exec.sh" 2>&1)"
+  exit_code=$?
+  set -e
+  assert_exit_code 1 "$exit_code" "ignore-scripts override should be rejected"
+  grep -qF "[pnpm] Refusing impure install argument: --config.ignore-scripts=false" <<< "$output"
+  if grep -q "^install " "$tmpdir/pnpm.log"; then
+    echo "FAIL: ignore-scripts override should be rejected before invoking pnpm"
+    exit 1
+  fi
+)
+
+echo "Test 24: impure ignore-dep-scripts overrides are rejected before pnpm runs"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  unset PNPM_HOME
+  unset PNPM_STORE_DIR
+  unset npm_config_store_dir
+  : > "$tmpdir/pnpm.log"
+  set +e
+  output="$(bash "$tmpdir/pnpm-install-impure-ignore-dep-scripts.exec.sh" 2>&1)"
+  exit_code=$?
+  set -e
+  assert_exit_code 1 "$exit_code" "ignore-dep-scripts override should be rejected"
+  grep -qF "[pnpm] Refusing impure install argument: --config.ignore-dep-scripts=false" <<< "$output"
+  if grep -q "^install " "$tmpdir/pnpm.log"; then
+    echo "FAIL: ignore-dep-scripts override should be rejected before invoking pnpm"
+    exit 1
+  fi
+)
+
+echo "Test 25: CI install failures preserve and classify the pnpm log"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
@@ -627,7 +682,7 @@ echo "Test 23: CI install failures preserve and classify the pnpm log"
   grep -qF "Socket timeout" <<< "$output"
 )
 
-echo "Test 24: Darwin CI install accepts completed pnpm materialization after teardown abort"
+echo "Test 26: Darwin CI install accepts completed pnpm materialization after teardown abort"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
@@ -645,7 +700,7 @@ echo "Test 24: Darwin CI install accepts completed pnpm materialization after te
   test -f "$workspace/.devenv/task-cache/pnpm-install/install-state.hash"
 )
 
-echo "Test 25: Darwin CI install accepts completed pnpm materialization after teardown kill"
+echo "Test 27: Darwin CI install accepts completed pnpm materialization after teardown kill"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
@@ -663,21 +718,21 @@ echo "Test 25: Darwin CI install accepts completed pnpm materialization after te
   test -f "$workspace/.devenv/task-cache/pnpm-install/install-state.hash"
 )
 
-echo "Test 26: generated test task runs vitest without pnpm exec"
+echo "Test 28: generated test task runs vitest without pnpm exec"
 (
   cd "$workspace/packages/demo"
   output="$(bash "$tmpdir/test-demo.exec.sh")"
   [ "$output" = "vitest-shim:run" ]
 )
 
-echo "Test 27: generated storybook task runs storybook without pnpm exec"
+echo "Test 29: generated storybook task runs storybook without pnpm exec"
 (
   cd "$workspace/packages/demo"
   output="$(bash "$tmpdir/storybook-demo.exec.sh")"
   [ "$output" = "storybook-shim:build" ]
 )
 
-echo "Test 28: clean leaves shared GVS links intact"
+echo "Test 30: clean leaves shared GVS links intact"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"

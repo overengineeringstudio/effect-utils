@@ -7,6 +7,7 @@
 # Provides:
 # - pnpm:install
 # - pnpm:update
+# - pnpm:dedupe
 # - pnpm:clean
 # - pnpm:reset-lock-files
 {
@@ -20,8 +21,14 @@
   preInstall ? "",
   installAfter ? [ ],
   updateAfter ? [ ],
+  dedupeAfter ? [ ],
   cleanAfter ? [ ],
   resetLockFilesAfter ? [ ],
+  # Real derivation/path backing the `pnpm` guard. When set, the guard owns
+  # `bin/pnpm` and exec's this by absolute path under passthrough (see
+  # cli-guard.nix). The real package may ship siblings (e.g. `pnpx`) that the
+  # consumer keeps on PATH separately.
+  pnpmPkg ? null,
 }:
 {
   lib,
@@ -62,6 +69,8 @@ let
       "${taskNamePrefix}:install:${taskSuffix}";
   updateTaskName =
     if taskSuffix == null then "${taskNamePrefix}:update" else "${taskNamePrefix}:update:${taskSuffix}";
+  dedupeTaskName =
+    if taskSuffix == null then "${taskNamePrefix}:dedupe" else "${taskNamePrefix}:dedupe:${taskSuffix}";
   cleanTaskName =
     if taskSuffix == null then "${taskNamePrefix}:clean" else "${taskNamePrefix}:clean:${taskSuffix}";
   resetLockFilesTaskName =
@@ -270,7 +279,9 @@ let
           --no-frozen-lockfile | --frozen-lockfile=false | \
           --fix-lockfile | --lockfile-only | --no-lockfile | \
           --config.frozen-lockfile=false | --config.frozen-lockfile | \
-          --ignore-scripts | --config.ignore-scripts=true | --config.ignore-scripts | \
+          --no-ignore-scripts | --ignore-scripts=false | \
+          --config.ignore-scripts=false | --config.ignore-scripts | \
+          --config.ignore-dep-scripts=false | --config.ignore-dep-scripts | \
           --config.side-effects-cache=true | --config.side-effects-cache | --side-effects-cache | \
           --side-effects-cache-readonly | --config.side-effects-cache-readonly=true | --config.side-effects-cache-readonly | \
           --no-verify-store-integrity | --verify-store-integrity=false | \
@@ -404,6 +415,7 @@ let
         # root because pnpm 11 bakes absolute paths into `links/`.
         hash_file="${cacheRoot}/install-state.hash"
         projection_hash_file="${cacheRoot}/projection-state.hash"
+        contract_state_file="${cacheRoot}/pnpm-install-contract.json"
 
         lockfile="${cacheRoot}/pnpm-install.lock"
         exec 200>"$lockfile"
@@ -442,14 +454,20 @@ let
         # TypeScript resolution. Only clear links/ when config changes.
         # Content-addressable store (files/) is unaffected.
         # See: pnpm/pnpm#9739
-        _gvs_hash=$({
-          # Hash the resolved pnpm package version directly instead of probing
-          # the CLI at runtime. That keeps the task deterministic and avoids
-          # trace-wrapper quoting hazards around command rewriting.
-          printf '%s\n' ${lib.escapeShellArg pkgs.pnpm.version}
-          sed -n '/^packageExtensions:/,/^[a-zA-Z]/p' pnpm-workspace.yaml 2>/dev/null || true
-          sed -n '/^allowBuilds:/,/^[a-zA-Z]/p' pnpm-workspace.yaml 2>/dev/null || true
-        } | compute_hash)
+        _pnpm_install_contract_file="$(resolve_pnpm_install_contract_file "$PWD" || true)"
+        if [ -n "''${_pnpm_install_contract_file:-}" ]; then
+          _gvs_hash="$(compute_pnpm_contract_section_hash ${pkgs.nodejs}/bin/node "$_pnpm_install_contract_file" gvsLinkContract)"
+        else
+          ${lib.optionalString (workspaceRoot == ".") ''
+            echo "[pnpm] Missing generated pnpm-install-contract.json at repo root" >&2
+            echo "[pnpm] Run: dt genie:run" >&2
+            exit 1
+          ''}
+          # Non-root downstream workspaces may not carry the generated contract
+          # yet. Keep the fallback deliberately coarse and structured: no YAML
+          # parsing, no partial pnpm-owned layout inference.
+          _gvs_hash="$(printf '%s\n' ${lib.escapeShellArg pkgs.pnpm.version} | compute_hash)"
+        fi
 
         _gvs_hash_file=""
         _gvs_links_dir="$(resolve_gvs_links_dir)"
@@ -507,6 +525,9 @@ let
         if [ -n "''${_gvs_hash_file:-}" ]; then
           echo "$_gvs_hash" > "$_gvs_hash_file"
         fi
+        if [ -n "''${_pnpm_install_contract_file:-}" ]; then
+          cp "$_pnpm_install_contract_file" "$contract_state_file"
+        fi
 
         cache_value="$(compute_install_state_hash)"
         ${cache.writeCacheFile ''"$hash_file"''}
@@ -524,8 +545,20 @@ let
         ensure_shared_pnpm_files_store
         hash_file="${cacheRoot}/install-state.hash"
         projection_hash_file="${cacheRoot}/projection-state.hash"
+        contract_state_file="${cacheRoot}/pnpm-install-contract.json"
+
+        _pnpm_install_contract_file="$(resolve_pnpm_install_contract_file "$PWD" || true)"
+        if [ -z "''${_pnpm_install_contract_file:-}" ]; then
+          ${lib.optionalString (workspaceRoot == ".") ''
+            echo "[pnpm] Missing generated pnpm-install-contract.json at repo root" >&2
+            echo "[pnpm] Run: dt genie:run" >&2
+          ''}
+          emit_pnpm_install_miss_span ${lib.escapeShellArg installTaskName} "contract_missing"
+          exit 1
+        fi
 
         if [ ! -d node_modules ] || [ ! -f pnpm-lock.yaml ] || [ ! -f "$hash_file" ] || [ ! -f "$projection_hash_file" ] || [ ! -f node_modules/.modules.yaml ]; then
+          emit_pnpm_install_miss_span ${lib.escapeShellArg installTaskName} "bootstrap"
           exit 1
         fi
 
@@ -538,6 +571,7 @@ let
           current_projection_hash="$(compute_projection_state_hash)"
           stored_projection_hash="$(cat "$projection_hash_file")"
           if [ "$current_projection_hash" != "$stored_projection_hash" ]; then
+            emit_pnpm_install_miss_span ${lib.escapeShellArg installTaskName} "projection"
             exit 1
           fi
           exit 0
@@ -551,9 +585,16 @@ let
         stored_hash="$(cat "$hash_file")"
         stored_projection_hash="$(cat "$projection_hash_file")"
         if [ "$current_hash" != "$stored_hash" ]; then
+          if [ -f "$contract_state_file" ]; then
+            _miss_reason="$(classify_pnpm_contract_change ${pkgs.nodejs}/bin/node "$contract_state_file" "$_pnpm_install_contract_file" || printf '%s\n' unknown)"
+          else
+            _miss_reason="unknown"
+          fi
+          emit_pnpm_install_miss_span ${lib.escapeShellArg installTaskName} "$_miss_reason"
           exit 1
         fi
         if [ "$current_projection_hash" != "$stored_projection_hash" ]; then
+          emit_pnpm_install_miss_span ${lib.escapeShellArg installTaskName} "projection"
           exit 1
         fi
         exit 0
@@ -574,6 +615,27 @@ let
         ensure_shared_pnpm_files_store
         pnpm install --fix-lockfile --config.confirmModulesPurge=false --pm-on-fail=ignore --config.store-dir="$npm_config_store_dir"
         echo "Repo-root lockfile updated. Refresh Nix FOD hashes with the repo workflow."
+      '';
+    };
+
+    "${dedupeTaskName}" = {
+      guard = "pnpm";
+      # Remediation counterpart to the catalog duplicate-version gate (genie:check):
+      # collapse in-range duplicate versions onto the newest satisfying release.
+      # Upstream-locked duplicates that cannot be collapsed stay and must be
+      # acknowledged via catalogDuplicateExceptions.
+      description = "Collapse in-range duplicate versions in the pnpm lockfile at ${workspaceRoot}";
+      after = (if workspaceRoot == "." then [ "genie:run" ] else [ ]) ++ dedupeAfter;
+      exec = trace.exec dedupeTaskName ''
+        set -euo pipefail
+        cd ${lib.escapeShellArg workspaceRootAbs}
+        ${loadPnpmTaskHelpersFn}
+        ${ensureLocalPnpmHomeFn}
+        ${ensureLocalPnpmStoreDirFn}
+        ${ensureSharedPnpmFilesStoreFn}
+        ensure_shared_pnpm_files_store
+        pnpm dedupe --config.confirmModulesPurge=false --pm-on-fail=ignore --config.store-dir="$npm_config_store_dir"
+        echo "Lockfile deduped. Re-run genie:check to verify the catalog duplicate gate; bless any upstream-locked residuals via catalogDuplicateExceptions."
       '';
     };
 
@@ -610,7 +672,10 @@ let
 
 in
 {
-  packages = cliGuard.fromTasks allTasks;
+  packages = cliGuard.fromTasks {
+    tasks = allTasks;
+    reals = lib.optionalAttrs (pnpmPkg != null) { pnpm = pnpmPkg; };
+  };
 
   enterShell = lib.mkIf (globalCache && workspaceRoot == ".") ''
     export PNPM_HOME="''${PNPM_HOME:-${config.devenv.root}/.devenv/pnpm-home}"

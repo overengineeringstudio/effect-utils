@@ -56,13 +56,15 @@ artifact. The downstream CLI derivation depends on those artifacts directly, so
 the artifact hash already is the effective dependency fingerprint for rebuilds.
 Any faster preflight staleness check belongs in tooling, not in the builder API.
 
-Prepared pnpm dependency artifacts intentionally skip optional dependencies and
-lifecycle scripts. Platform-native tools or bindings belong in the Nix package
-or build phase that actually needs them, usually via `nativeBuildInputs`, PATH,
+Prepared pnpm dependency artifacts intentionally skip lifecycle scripts. Native
+Node packages that require install/build scripts belong in the Nix package or
+build phase that actually needs them, usually via `nativeBuildInputs`, PATH,
 `nativeNodePackages`, or an explicit wrapper. `nativeNodePackages` links a
-Nix-owned Node package into the restored build workspace for bundlers that still
-resolve a platform package by npm name, while keeping the prepared pnpm tree
-platform-neutral.
+Nix-owned Node package into the restored build workspace for packages that still
+resolve a native binding by npm name. Prebuilt optional native packages from the
+lockfile, such as Rollup/Rolldown/Vite toolchain bindings, are acceptable only
+as locked fixed-output pnpm inputs; they must not require a lifecycle build to
+materialize.
 
 The helper exposes the resulting install-root metadata via
 `passthru.installRoots`, `passthru.depsBuildsByInstallRoot`, and

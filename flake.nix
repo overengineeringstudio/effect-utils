@@ -47,6 +47,7 @@
           bun = pkgs.bun;
           src = self;
         };
+        nodePtyNative = import ./nix/node-pty-native.nix { inherit pkgs; };
         # otelite — effect-utils' first Rust package (local OTLP capture tool).
         # Built via rustPlatform.buildRustPackage, separate from the Bun CLIs.
         otelite = import (rootPath + "/packages/@overeng/otelite/nix/build.nix") {
@@ -171,6 +172,7 @@
           oxlint-with-plugins = import ./nix/oxlint-with-plugins.nix {
             inherit pkgs oxlintNpm;
           };
+          node-pty-native = nodePtyNative;
         };
         # Direnv helper for comparing expected CLI outputs to PATH entries.
         cliOutPaths = {
@@ -206,6 +208,8 @@
         # Shared task modules (parameterized) - meant for reuse in other repos
         tasks = {
           # Simple tasks (no config needed)
+          # genie is a standard module; consumers thread the optional `geniePkg`
+          # real via `_module.args.geniePkg` for deterministic guard ownership.
           genie = ./nix/devenv-modules/tasks/shared/genie.nix;
           lint-genie = ./nix/devenv-modules/tasks/shared/lint-genie.nix;
           # Parameterized tasks (pass config)
@@ -218,7 +222,6 @@
           test-playwright = import ./nix/devenv-modules/tasks/shared/test-playwright.nix;
           storybook = import ./nix/devenv-modules/tasks/shared/storybook.nix;
           netlify = import ./nix/devenv-modules/tasks/shared/netlify.nix;
-          ts-effect-lsp = import ./nix/devenv-modules/tasks/shared/ts-effect-lsp.nix;
           vercel = import ./nix/devenv-modules/tasks/shared/vercel.nix;
           lint-nix = import ./nix/devenv-modules/tasks/shared/lint-nix.nix;
           lint-oxc = import ./nix/devenv-modules/tasks/shared/lint-oxc.nix;

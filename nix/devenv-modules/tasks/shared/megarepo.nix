@@ -24,6 +24,11 @@
 {
   syncAll ? true,
   bootstrapMembers ? [ ],
+  # Real derivation/path backing the `mr` guard. When set, the guard owns
+  # `bin/mr` and exec's this by absolute path under passthrough (see
+  # cli-guard.nix). Required for source-mode `mr` (no node_modules/.bin
+  # fallback) so passthrough does not exit 127.
+  mrPkg ? null,
 }:
 { lib, pkgs, ... }:
 let
@@ -397,7 +402,10 @@ in
     pkgs.git
     pkgs.openssh
   ]
-  ++ cliGuard.fromTasks tasks;
+  ++ cliGuard.fromTasks {
+    inherit tasks;
+    reals = lib.optionalAttrs (mrPkg != null) { mr = mrPkg; };
+  };
 
   tasks =
     cliGuard.stripGuards tasks

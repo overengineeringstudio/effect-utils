@@ -420,7 +420,7 @@ let
       if [ -n "''${TRACEPARENT:-}" ]; then
         IFS='-' read -r _ _otel_trace_id _ _ <<< "$TRACEPARENT"
         _panes='{"a":{"datasource":{"type":"tempo","uid":"tempo"},"queries":[{"refId":"A","datasource":{"type":"tempo","uid":"tempo"},"queryType":"traceql","query":"'"$_otel_trace_id"'"}],"range":{"from":"now-1h","to":"now"}}}'
-        _encoded=$(printf '%s' "$_panes" | sed 's/{/%7B/g;s/}/%7D/g;s/\[/%5B/g;s/\]/%5D/g;s/"/%22/g;s/:/%3A/g;s/,/%2C/g;s/ /%20/g')
+        _encoded=$(printf '%s' "$_panes" | ${pkgs.gnused}/bin/sed 's/{/%7B/g;s/}/%7D/g;s/\[/%5B/g;s/\]/%5D/g;s/"/%22/g;s/:/%3A/g;s/,/%2C/g;s/ /%20/g')
         _otel_grafana_link_url="$_otel_grafana/explore?schemaVersion=1&panes=$_encoded&orgId=1"
       else
         unset _otel_trace_id
@@ -483,7 +483,7 @@ let
 
   otelEmitShellEntry = ''
     emit_otel_shell_entry_span() {
-      if [ -z "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] \
+      if { [ -z "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] && { [ -z "''${OTEL_SPAN_SPOOL_DIR:-}" ] || [ ! -d "''${OTEL_SPAN_SPOOL_DIR:-}" ]; }; } \
         || [ -z "''${TRACEPARENT:-}" ] \
         || [ -z "''${OTEL_SHELL_ENTRY_NS:-}" ]; then
         return 0
@@ -503,13 +503,15 @@ let
       # spans. Emit it from explicit shell IDs instead.
       (
         unset TRACEPARENT OTEL_TASK_TRACEPARENT
-        "$_otel_span_bin" run "devenv" "shell:entry" \
+        "$_otel_span_bin" run "effect-utils-devenv" "devenv.shell.entry" \
           --trace-id "$_otel_shell_trace_id" \
           --span-id "$_otel_shell_root_span_id" \
           --start-time-ns "$OTEL_SHELL_ENTRY_NS" \
           --end-time-ns "$(${pkgs.coreutils}/bin/date +%s%N)" \
+          --attr "tool.name=devenv" \
           --attr "cold_start=$_cold_start" \
           --attr "reload.trigger=$_reload_trigger" \
+          --attr "span.label=shell" \
           -- true
       ) || true
 
@@ -712,8 +714,8 @@ in
       # would write one file per span and break span file name assumptions.
       export OTEL_SPOOL_MULTI_WRITER=0
 
-      # otel-span disables file-spooling when OTEL_EXPORTER_OTLP_ENDPOINT is unset,
-      # so always provide a local default for the offline unit tests.
+      # Keep a default endpoint for tests that intentionally exercise HTTP
+      # fallback behavior; spool-only behavior is covered separately below.
       export OTEL_EXPORTER_OTLP_ENDPOINT="''${OTEL_EXPORTER_OTLP_ENDPOINT:-http://127.0.0.1:4318}"
 
       ${otelResolveShellState}
@@ -759,6 +761,44 @@ in
         [ "$bool_val" = "false" ] && [ "$string_val" = "fast" ]
       }
       _check "Attribute type handling" _test_attr_types
+
+      # Test 3: emit-span supports typed measurement spans without a command.
+      _test_emit_span_typed_attrs() {
+        local spool="$_tmp/emit-span-typed"
+        mkdir -p "$spool"
+        OTEL_SPAN_SPOOL_DIR="$spool" OTEL_SPOOL_MULTI_WRITER=0 otel-span emit-span "effect-utils-devenv" "typescript.project.check" \
+          --trace-id "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" \
+          --span-id "bbbbbbbbbbbbbbbb" \
+          --parent-span-id "cccccccccccccccc" \
+          --start-time-ns "1000000000" \
+          --end-time-ns "1339000000" \
+          --scope-name "typescript-diagnostics" \
+          --attr-string "span.label=demo" \
+          --attr-string "tool.name=typescript" \
+          --attr-string "compiler.name=tsgo" \
+          --attr-double "typescript.total_time_s=0.339" \
+          --attr-int "typescript.files=42" \
+          --attr-bool "typescript.aggregate=false" >/dev/null 2>&1
+        [ -f "$spool/spans.jsonl" ] || return 1
+        local line
+        line=$(head -1 "$spool/spans.jsonl")
+        echo "$line" | ${pkgs.jq}/bin/jq -e '
+          .resourceSpans[0].resource.attributes[] | select(.key == "service.name").value.stringValue == "effect-utils-devenv"
+        ' >/dev/null || return 1
+        echo "$line" | ${pkgs.jq}/bin/jq -e '
+          .resourceSpans[0].scopeSpans[0].scope.name == "typescript-diagnostics"
+          and .resourceSpans[0].scopeSpans[0].spans[0].name == "typescript.project.check"
+          and .resourceSpans[0].scopeSpans[0].spans[0].parentSpanId == "cccccccccccccccc"
+          and (.resourceSpans[0].scopeSpans[0].spans[0].attributes[] | select(.key == "span.label").value.stringValue) == "demo"
+          and (.resourceSpans[0].scopeSpans[0].spans[0].attributes[] | select(.key == "tool.name").value.stringValue) == "typescript"
+          and (.resourceSpans[0].scopeSpans[0].spans[0].attributes[] | select(.key == "compiler.name").value.stringValue) == "tsgo"
+          and (.resourceSpans[0].scopeSpans[0].spans[0].attributes[] | select(.key == "typescript.total_time_s").value.doubleValue) == 0.339
+          and (.resourceSpans[0].scopeSpans[0].spans[0].attributes[] | select(.key == "typescript.files").value.intValue) == "42"
+          and (.resourceSpans[0].scopeSpans[0].spans[0].attributes[] | select(.key == "typescript.aggregate").value.boolValue) == false
+          and ([.resourceSpans[0].scopeSpans[0].spans[0].attributes[] | select(.key == "service.name")] | length) == 0
+        ' >/dev/null
+      }
+      _check "emit-span typed attrs" _test_emit_span_typed_attrs
 
       # Test 3: local shell state resolution exports the local stack and a trace link
       _test_shell_state_local() {
@@ -807,7 +847,7 @@ in
       }
       _check "Shell state resolution (system without legacy otel CLI)" _test_shell_state_system_without_legacy_otel_cli
 
-      # Test 6: shell:entry emission uses explicit shell IDs and ignores ambient parents
+      # Test 6: shell entry emission uses explicit shell IDs and ignores ambient parents
       _test_shell_entry_root_span() {
         local spool="$_tmp/shell-entry-root"
         mkdir -p "$spool"
@@ -838,9 +878,41 @@ in
           && [ "$actual_span" = "bbbbbbbbbbbbbbbb" ] \
           && [ "$has_parent" = "false" ]
       }
-      _check "shell:entry root span emission" _test_shell_entry_root_span
+      _check "devenv.shell.entry root span emission" _test_shell_entry_root_span
 
-      # Test 7: shell:entry emission must not depend on PATH already containing
+      # Test 7: shell entry emission works with spool-only delivery.
+      _test_shell_entry_root_span_spool_only() {
+        local spool="$_tmp/shell-entry-spool-only"
+        mkdir -p "$spool"
+        (
+          export OTEL_SPAN_SPOOL_DIR="$spool"
+          unset OTEL_EXPORTER_OTLP_ENDPOINT
+          export TRACEPARENT="00-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee-ffffffffffffffff-01"
+          export OTEL_SHELL_ENTRY_NS="1234567890000000002"
+          _cold_start="false"
+          _reload_trigger="spool-only"
+
+          emit_otel_shell_entry_span
+
+          [ "$TRACEPARENT" = "00-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee-ffffffffffffffff-01" ] || return 1
+          [ -z "''${OTEL_SHELL_ENTRY_NS:-}" ] || return 1
+        )
+
+        [ -f "$spool/spans.jsonl" ] || return 1
+
+        local line actual_trace actual_span service
+        line=$(head -1 "$spool/spans.jsonl")
+        actual_trace=$(echo "$line" | ${pkgs.jq}/bin/jq -r '.resourceSpans[0].scopeSpans[0].spans[0].traceId')
+        actual_span=$(echo "$line" | ${pkgs.jq}/bin/jq -r '.resourceSpans[0].scopeSpans[0].spans[0].spanId')
+        service=$(echo "$line" | ${pkgs.jq}/bin/jq -r '.resourceSpans[0].resource.attributes[] | select(.key == "service.name").value.stringValue')
+
+        [ "$actual_trace" = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" ] \
+          && [ "$actual_span" = "ffffffffffffffff" ] \
+          && [ "$service" = "effect-utils-devenv" ]
+      }
+      _check "devenv.shell.entry spool-only emission" _test_shell_entry_root_span_spool_only
+
+      # Test 8: shell entry emission must not depend on PATH already containing
       # otel-span because enterShell can run before package PATH setup settles.
       _test_shell_entry_root_span_without_path() {
         local spool="$_tmp/shell-entry-no-path"
@@ -872,9 +944,9 @@ in
           && [ "$actual_span" = "dddddddddddddddd" ] \
           && [ "$has_parent" = "false" ]
       }
-      _check "shell:entry root span emission without PATH" _test_shell_entry_root_span_without_path
+      _check "devenv.shell.entry root span emission without PATH" _test_shell_entry_root_span_without_path
 
-      # Test 8: reload-trigger detection uses pinned binaries instead of
+      # Test 9: reload-trigger detection uses pinned binaries instead of
       # ambient PATH, so the shell-entry task works before GNU tools are added.
       _test_shell_entry_state_without_path() {
         local workdir="$_tmp/shell-entry-state-no-path"
@@ -893,7 +965,7 @@ in
       }
       _check "shell-entry state detection without PATH" _test_shell_entry_state_without_path
 
-      # Test 9: reload-trigger detection tolerates input paths that disappear
+      # Test 10: reload-trigger detection tolerates input paths that disappear
       # between eval and shell startup instead of failing the shell-entry task.
       _test_shell_entry_state_missing_paths() {
         local workdir="$_tmp/shell-entry-state-missing-paths"
@@ -912,7 +984,7 @@ in
       }
       _check "shell-entry state detection with missing paths" _test_shell_entry_state_missing_paths
 
-      # Test 10: TRACEPARENT propagation
+      # Test 11: TRACEPARENT propagation
       _test_traceparent() {
         local spool="$_tmp/tp-test"
         mkdir -p "$spool"
@@ -1174,19 +1246,19 @@ in
       _trace_id="aabbccdd11223344aabbccdd11223344"
 
       # Root span (no parent)
-      (unset TRACEPARENT OTEL_TASK_TRACEPARENT; OTEL_SPAN_SPOOL_DIR="$_spool" otel-span run "devenv" "shell:entry" --trace-id "$_trace_id" --span-id "0000000000000001" --start-time-ns "1000000000000000" --end-time-ns "11000000000000000" -- true >/dev/null 2>&1)
+      (unset TRACEPARENT OTEL_TASK_TRACEPARENT; OTEL_SPAN_SPOOL_DIR="$_spool" otel-span run "effect-utils-devenv" "devenv.shell.entry" --trace-id "$_trace_id" --span-id "0000000000000001" --start-time-ns "1000000000000000" --end-time-ns "11000000000000000" --attr "tool.name=devenv" --attr "span.label=shell" -- true >/dev/null 2>&1)
 
       # Child 1 of root
-      OTEL_SPAN_SPOOL_DIR="$_spool" otel-span run "dt-task" "ts:check" --trace-id "$_trace_id" --span-id "0000000000000002" --parent-span-id "0000000000000001" --start-time-ns "1100000000000000" --end-time-ns "6000000000000000" -- true >/dev/null 2>&1
+      OTEL_SPAN_SPOOL_DIR="$_spool" otel-span run "effect-utils-devenv" "devenv.task.exec" --trace-id "$_trace_id" --span-id "0000000000000002" --parent-span-id "0000000000000001" --start-time-ns "1100000000000000" --end-time-ns "6000000000000000" --attr "tool.name=devenv" --attr "task.name=ts:check" --attr "task.phase=exec" --attr "task.cached=false" --attr "span.label=ts:check" -- true >/dev/null 2>&1
 
       # Grandchild 1 of child 1
-      OTEL_SPAN_SPOOL_DIR="$_spool" otel-span run "tsc-project" "utils" --trace-id "$_trace_id" --span-id "0000000000000003" --parent-span-id "0000000000000002" --start-time-ns "1200000000000000" --end-time-ns "4000000000000000" -- true >/dev/null 2>&1
+      OTEL_SPAN_SPOOL_DIR="$_spool" otel-span emit-span "effect-utils-devenv" "typescript.project.check" --trace-id "$_trace_id" --span-id "0000000000000003" --parent-span-id "0000000000000002" --start-time-ns "1200000000000000" --end-time-ns "4000000000000000" --attr-string "tool.name=typescript" --attr-string "ts.project.name=utils" --attr-string "span.label=utils" >/dev/null 2>&1
 
       # Grandchild 2 of child 1
-      OTEL_SPAN_SPOOL_DIR="$_spool" otel-span run "tsc-project" "core" --trace-id "$_trace_id" --span-id "0000000000000004" --parent-span-id "0000000000000002" --start-time-ns "4100000000000000" --end-time-ns "5800000000000000" -- true >/dev/null 2>&1
+      OTEL_SPAN_SPOOL_DIR="$_spool" otel-span emit-span "effect-utils-devenv" "typescript.project.check" --trace-id "$_trace_id" --span-id "0000000000000004" --parent-span-id "0000000000000002" --start-time-ns "4100000000000000" --end-time-ns "5800000000000000" --attr-string "tool.name=typescript" --attr-string "ts.project.name=core" --attr-string "span.label=core" >/dev/null 2>&1
 
       # Child 2 of root
-      OTEL_SPAN_SPOOL_DIR="$_spool" otel-span run "dt-task" "lint:check" --trace-id "$_trace_id" --span-id "0000000000000005" --parent-span-id "0000000000000001" --start-time-ns "1200000000000000" --end-time-ns "4000000000000000" -- true >/dev/null 2>&1
+      OTEL_SPAN_SPOOL_DIR="$_spool" otel-span run "effect-utils-devenv" "devenv.task.exec" --trace-id "$_trace_id" --span-id "0000000000000005" --parent-span-id "0000000000000001" --start-time-ns "1200000000000000" --end-time-ns "4000000000000000" --attr "tool.name=devenv" --attr "task.name=lint:check" --attr "task.phase=exec" --attr "task.cached=false" --attr "span.label=lint:check" -- true >/dev/null 2>&1
 
       _sf="$_spool/spans.jsonl"
 
@@ -1274,8 +1346,10 @@ in
       _test_detect_orphan() {
         local orphan_spool="$_tmp/orphan-test"
         mkdir -p "$orphan_spool"
-        # Emit a span with a parentSpanId that doesn't exist
-        OTEL_SPAN_SPOOL_DIR="$orphan_spool" otel-span run "test" "orphan" --trace-id "$_trace_id" --span-id "0000000000000099" --parent-span-id "DOES_NOT_EXIST_00" --start-time-ns "2000000000000000" --end-time-ns "3000000000000000" -- true >/dev/null 2>&1
+        # Emit a span with a valid parentSpanId that doesn't exist in the trace.
+        # Invalid IDs are rejected before emission; this negative case is about
+        # graph structure, not input validation.
+        OTEL_SPAN_SPOOL_DIR="$orphan_spool" otel-span run "test" "orphan" --trace-id "$_trace_id" --span-id "0000000000000099" --parent-span-id "0000000000000088" --start-time-ns "2000000000000000" --end-time-ns "3000000000000000" -- true >/dev/null 2>&1
         local of="$orphan_spool/spans.jsonl"
         local span_ids parent_ids
         span_ids=$(_all_span_ids "$of")
@@ -1293,6 +1367,14 @@ in
       echo ""
       echo "$_pass passed, $_fail failed"
       [ "$_fail" -eq 0 ]
+    '';
+  };
+
+  tasks."otel:test:devenv-e2e" = {
+    description = "Validate clean devenv OTEL task semantics through real otelite capture";
+    exec = ''
+      set -euo pipefail
+      bash nix/devenv-modules/tasks/shared/tests/ts-otelite-e2e.test.sh
     '';
   };
 }

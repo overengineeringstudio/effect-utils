@@ -1,5 +1,8 @@
 import type { ReactNode } from 'react'
-import { Checkbox as AriaCheckbox } from 'react-aria-components'
+import {
+  CheckboxButton as AriaCheckboxButton,
+  CheckboxField as AriaCheckboxField,
+} from 'react-aria-components'
 
 import { FieldWrapper } from './FieldWrapper.tsx'
 
@@ -31,30 +34,32 @@ export const BooleanField = ({
   isDisabled = false,
 }: BooleanFieldProps): ReactNode => (
   <FieldWrapper description={hint}>
-    <AriaCheckbox
+    <AriaCheckboxField
       id={id}
       isSelected={value}
       onChange={onChange}
       isDisabled={isDisabled}
-      className="group flex items-center gap-2 text-sm text-ink cursor-pointer"
+      className="text-sm text-ink"
     >
-      <div className="size-4 shrink-0 rounded border border-border bg-input group-data-[selected]:bg-primary group-data-[selected]:border-primary flex items-center justify-center transition-colors">
-        <svg
-          viewBox="0 0 12 12"
-          className="size-3 text-white opacity-0 group-data-[selected]:opacity-100 transition-opacity"
-          aria-hidden="true"
-        >
-          <path
-            d="M3 6l2 2 4-5"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            fill="none"
-          />
-        </svg>
-      </div>
-      <span>{label}</span>
-    </AriaCheckbox>
+      <AriaCheckboxButton className="group flex items-center gap-2 cursor-pointer">
+        <div className="size-4 shrink-0 rounded border border-border bg-input group-data-[selected]:bg-primary group-data-[selected]:border-primary flex items-center justify-center transition-colors">
+          <svg
+            viewBox="0 0 12 12"
+            className="size-3 text-white opacity-0 group-data-[selected]:opacity-100 transition-opacity"
+            aria-hidden="true"
+          >
+            <path
+              d="M3 6l2 2 4-5"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              fill="none"
+            />
+          </svg>
+        </div>
+        <span>{label}</span>
+      </AriaCheckboxButton>
+    </AriaCheckboxField>
   </FieldWrapper>
 )

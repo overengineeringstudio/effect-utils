@@ -1,5 +1,6 @@
 import {
   baseTsconfigCompilerOptions,
+  nodeTypes,
   packageTsconfigCompilerOptions,
   reactJsx,
 } from '../../../genie/internal.ts'
@@ -9,6 +10,7 @@ export default tsconfigJson({
   compilerOptions: {
     ...baseTsconfigCompilerOptions,
     ...packageTsconfigCompilerOptions,
+    ...nodeTypes,
     ...reactJsx,
   },
   include: ['src/**/*', 'test/**/*', 'bin/**/*.ts', 'bin/**/*.tsx', '../../../types/css.d.ts'],

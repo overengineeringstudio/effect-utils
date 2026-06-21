@@ -218,8 +218,10 @@ export const createRoot = ({
     false, // isStrictMode
     null, // concurrentUpdatesByDefaultOverride
     '', // identifierPrefix
+    () => {}, // onUncaughtError
+    () => {}, // onCaughtError
     () => {}, // onRecoverableError
-    null, // transitionCallbacks
+    () => {}, // onDefaultTransitionIndicator
   )
 
   /** Find Static element and reset its committedCount for full re-render */

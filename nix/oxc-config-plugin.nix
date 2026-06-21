@@ -1,7 +1,8 @@
 # Build pre-bundled @overeng/oxc-config JS plugin for oxlint.
 #
-# Bundles the custom overeng rules + eslint-plugin-storybook into a single
-# self-contained JS file usable as an oxlint jsPlugin without node_modules.
+# Bundles the custom overeng rules (including the native overeng/storybook/*
+# rules) into a single self-contained JS file usable as an oxlint jsPlugin
+# without node_modules.
 # Imported by oxlint-npm.nix when src is provided.
 #
 # =============================================================================
@@ -28,7 +29,7 @@ let
     pnpm = pinnedPnpm;
   };
   packageDir = "packages/@overeng/oxc-config";
-  pnpmDepsHash = "sha256-kE0Db3HI1qhovi7cejKFXw5Aj/SOGaSdpFn71dirNBg=";
+  pnpmDepsHash = "sha256-1RJSyOsK/AMqDrEnRNQhL/PukFNeGBwmjmgJlWqNVK4=";
 
   srcPath =
     if builtins.isAttrs src && builtins.hasAttr "outPath" src then

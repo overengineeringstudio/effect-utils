@@ -26,6 +26,10 @@ let
   oxlintWithPlugins = import ./nix/oxlint-with-plugins.nix {
     inherit pkgs oxlintNpm;
   };
+  nodePtyNative = import ./nix/node-pty-native.nix { inherit pkgs; };
+  pnpmTaskHelpersScript = pkgs.writeText "pnpm-task-helpers.sh" (
+    builtins.readFile ./nix/devenv-modules/tasks/shared/pnpm-task-helpers.sh
+  );
 
   # Shared task modules (from shared/ directory)
   taskModules = {
@@ -40,7 +44,6 @@ let
     storybook = import ./nix/devenv-modules/tasks/shared/storybook.nix;
     netlify = import ./nix/devenv-modules/tasks/shared/netlify.nix;
     lint-genie = ./nix/devenv-modules/tasks/shared/lint-genie.nix;
-    ts-effect-lsp = import ./nix/devenv-modules/tasks/shared/ts-effect-lsp.nix;
     lint-nix = import ./nix/devenv-modules/tasks/shared/lint-nix.nix;
     lint-oxc = import ./nix/devenv-modules/tasks/shared/lint-oxc.nix;
     bun = import ./nix/devenv-modules/tasks/shared/bun.nix;
@@ -52,6 +55,21 @@ let
   };
   # Use bun source entrypoints for in-repo CLIs in devenv (flake builds stay strict).
   mkSourceCli = import ./nix/devenv-modules/lib/mk-source-cli.nix { inherit pkgs; };
+
+  # Real packages backing guarded command names. The cli-guards own bin/<name>
+  # and exec these via absolute store path under passthrough, so they are passed
+  # as `*Pkg` reals to the task modules instead of also being top-level profile
+  # providers (which would collide with the guards in buildEnv). See cli-guard.nix.
+  effectTsgo = inputs.tsgo.packages.${currentSystem}.effect-tsgo;
+  pnpmPkg = import ./nix/pnpm.nix { inherit pkgs; };
+  genieSourceCli = mkSourceCli {
+    name = "genie";
+    entry = "packages/@overeng/genie/bin/genie.tsx";
+  };
+  mrSourceCli = mkSourceCli {
+    name = "mr";
+    entry = "packages/@overeng/megarepo/bin/mr.ts";
+  };
 
   # CLI packages built with Nix (for hash management)
   nixCliPackages = [
@@ -309,9 +327,11 @@ in
     # Playwright browser drivers and environment setup
     inputs.playwright.devenvModules.default
     # Shared task modules
+    # genie is a standard module; the real is threaded via `_module.args.geniePkg`
+    # below so the guard owns `bin/genie` and exec's it by absolute store path.
     taskModules.genie
-    (taskModules.ts { })
-    (taskModules.megarepo { })
+    (taskModules.ts { tsBinPkg = effectTsgo; })
+    (taskModules.megarepo { mrPkg = mrSourceCli; })
     (taskModules.lint-nix { })
     (taskModules.check {
       extraChecks = [
@@ -323,7 +343,10 @@ in
     (taskModules.clean { packages = allPackages; })
     # Repo-root pnpm install task
     # NOTE: Using pnpm temporarily. See: context/workarounds/bun-issues.md
-    (taskModules.pnpm { packages = allPackages; })
+    (taskModules.pnpm {
+      packages = allPackages;
+      inherit pnpmPkg;
+    })
     # Self-contained test tasks: each package uses its own vitest from node_modules
     (taskModules.test {
       packages = packagesWithTests;
@@ -343,6 +366,7 @@ in
       }) packagesWithNetlifyPreview;
     })
     (taskModules.lint-oxc {
+      oxlintPkg = oxlintWithPlugins;
       lintPaths = [
         "packages"
         "scripts"
@@ -411,7 +435,6 @@ in
       # gate (both run `lint:check`).
       denyWarnings = true;
     })
-    (taskModules.ts-effect-lsp { })
     # Setup task (auto-runs in enterShell)
     # Context example tasks
     taskModules.context
@@ -440,29 +463,47 @@ in
     ./nix/devenv-modules/tasks/local/restate-integration-test.nix
   ];
 
+  # Thread the source-mode `genie` real into the (standard) genie task module so
+  # the cli-guard owns `bin/genie` and exec's it by absolute store path. The
+  # module declares `geniePkg` as an optional arg (defaulting to null → PATH-grep
+  # fallback), so the export stays a bare-path module for downstream consumers.
+  _module.args.geniePkg = genieSourceCli;
+
+  # Guarded-command ownership (issue #808):
+  #   Each cli-guard owns its `bin/<name>` and exec's the real binary by absolute
+  #   store path under DT_PASSTHROUGH=1 (see nix/devenv-modules/tasks/lib/cli-guard.nix).
+  #   The reals are therefore threaded into the task modules as `*Pkg` args
+  #   rather than listed here as competing top-level providers, which removes the
+  #   nondeterministic buildEnv `collision between ...` warnings.
+  #
+  #   command  owner (real exec'd by guard)        why not a top-level package
+  #   -------  ---------------------------------    --------------------------------
+  #   genie    genieSourceCli  (mkSourceCli)        guard owns it; sole bin
+  #   mr       mrSourceCli     (mkSourceCli)        guard owns it; sole bin
+  #   oxlint   oxlintWithPlugins                    guard owns it; sole bin
+  #   oxfmt    pkgs.oxfmt                           guard owns it (in lint-oxc.nix); sole bin
+  #   nixfmt   pkgs.nixfmt-rfc-style                guard owns it (in lint-nix.nix); sole bin
+  #   deadnix  pkgs.deadnix                         guard owns it (in lint-nix.nix); sole bin
+  #   tsgo     effectTsgo                           lowPrio below: keeps `effect-tsgo` sibling
+  #   pnpm     pnpmPkg (nix/pnpm.nix)               lowPrio below: keeps `pnpx` sibling
+  #
+  #   tsc/tsserver stay real-owned via `pkgs.typescript` (no guard, no collision).
+  #   tui-stories is real-owned via mkSourceCli (no guard, no collision).
   packages = [
-    inputs.tsgo.packages.${currentSystem}.effect-tsgo
-    (import ./nix/pnpm.nix { inherit pkgs; })
+    # lowPrio: the tsgo guard owns `bin/tsgo`; keep this for the `effect-tsgo` bin.
+    (lib.lowPrio effectTsgo)
+    # lowPrio: the pnpm guard owns `bin/pnpm`; keep this for the `pnpx` bin.
+    (lib.lowPrio pnpmPkg)
     pkgs.nodejs_24
     pkgs.bun
     pkgs.typescript
     pkgs.flock # Cross-process locking for setup tasks (see setup.nix)
-    oxlintWithPlugins
-    pkgs.oxfmt
     # restate-server (+ restate CLI) on $PATH for restate-effect integration tests.
     restate
     # Use the packaged wrapper so `notion db ...` runs on Node 24 with node:sqlite.
     repoFlake.packages.${currentSystem}.notion-cli
     # otelite binary on PATH so @overeng/utils-dev/otelite tests run the real CLI.
     repoFlake.packages.${currentSystem}.otelite
-    (mkSourceCli {
-      name = "genie";
-      entry = "packages/@overeng/genie/bin/genie.tsx";
-    })
-    (mkSourceCli {
-      name = "mr";
-      entry = "packages/@overeng/megarepo/bin/mr.ts";
-    })
     cliBuildStamp.package
     (mkSourceCli {
       name = "tui-stories";
@@ -491,8 +532,46 @@ in
   tasks."genie:watch".after = [ "pnpm:install" ];
   tasks."genie:check".after = [ "pnpm:install" ];
   tasks."lint:check:genie".after = [ "pnpm:install" ];
+  tasks."mr:bootstrap".after = [ "pnpm:install" ];
   tasks."mr:fetch-apply".after = [ "pnpm:install" ];
+  tasks."mr:lock".after = [ "pnpm:install" ];
   tasks."mr:apply".after = [ "pnpm:install" ];
+  tasks."mr:check".after = [ "pnpm:install" ];
+  tasks."mr:source-policy-check".after = [ "pnpm:install" ];
+
+  tasks."pnpm:link-native-node-packages" = {
+    after = [ "pnpm:install" ];
+    description = "Link Nix-built native Node packages into the pnpm projection";
+    exec = ''
+      set -euo pipefail
+      source ${lib.escapeShellArg pnpmTaskHelpersScript}
+
+      link_native_package() {
+        local package_name="$1"
+        local package_path="$2"
+        local rel_path="$package_name"
+        local gvs_links_dir
+        local search_roots=(node_modules)
+
+        if [[ "$package_name" == @*/* ]]; then
+          rel_path="$(dirname "$package_name")/$(basename "$package_name")"
+        fi
+
+        gvs_links_dir="$(resolve_gvs_links_dir)"
+        if [[ -n "$gvs_links_dir" && -d "$gvs_links_dir" ]]; then
+          search_roots+=("$gvs_links_dir")
+        fi
+
+        find "''${search_roots[@]}" \
+          -path "*/node_modules/$rel_path" \
+          -exec sh -c 'package_path="$1"; shift; for target do rm -rf "$target"; ln -s "$package_path" "$target"; done' sh "$package_path" {} +
+      }
+
+      link_native_package "node-pty" "${nodePtyNative}/node_modules/node-pty"
+    '';
+  };
+
+  tasks."test:pty-effect".after = lib.mkAfter [ "pnpm:link-native-node-packages" ];
 
   tasks."gh:apply-settings" = {
     after = [ "genie:run" ];

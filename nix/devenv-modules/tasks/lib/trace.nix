@@ -3,8 +3,9 @@
 # Wraps task `exec` scripts with `otel-span` to produce child spans
 # that link to the parent trace (from the `dt` wrapper).
 #
-# When OTEL is available (otel-span on PATH + OTEL_EXPORTER_OTLP_ENDPOINT set),
-# each task execution emits an OTLP span with service.name="dt-task".
+# When OTEL delivery is available (otel-span on PATH plus either an OTLP
+# endpoint or a valid spool dir), each task execution emits an OTLP span under
+# the shared effect-utils devenv service.
 # When OTEL is not available, the original exec runs directly.
 #
 # Usage in task modules:
@@ -32,6 +33,8 @@
 #
 { lib }:
 let
+  otelCanEmitShell = ''command -v otel-span >/dev/null 2>&1 && { [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] || { [ -n "''${OTEL_SPAN_SPOOL_DIR:-}" ] && [ -d "''${OTEL_SPAN_SPOOL_DIR:-}" ]; }; }'';
+
   # Wrap a task exec string with otel-span tracing.
   # When OTEL is available, the exec body runs inside an otel-span child span.
   # When OTEL is not available, the exec body runs directly (zero overhead).
@@ -43,8 +46,14 @@ let
   #   falling back to TRACEPARENT
   # - otel-span exports both TRACEPARENT and OTEL_TASK_TRACEPARENT for child processes
   traceExec = taskName: execBody: ''
-    if command -v otel-span >/dev/null 2>&1 && [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
-      otel-span run "dt-task" "${taskName}" --attr "task.cached=false" -- bash -c ${lib.escapeShellArg execBody}
+    if ${otelCanEmitShell}; then
+      otel-span run "effect-utils-devenv" "devenv.task.exec" \
+        --attr "tool.name=devenv" \
+        --attr "task.name=${taskName}" \
+        --attr "task.phase=exec" \
+        --attr "task.cached=false" \
+        --attr "span.label=${taskName}" \
+        -- bash -c ${lib.escapeShellArg execBody}
     else
       ${execBody}
     fi
@@ -56,11 +65,14 @@ let
   # --status-attr derives task.cached from exit code (0=true, non-zero=false)
   # and forces span status to OK (status checks aren't errors).
   traceStatus = taskName: method: statusBody: ''
-    if command -v otel-span >/dev/null 2>&1 && [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
+    if ${otelCanEmitShell}; then
       _status_exit=0
-      otel-span run "dt-task" "${taskName}:status" \
+      otel-span run "effect-utils-devenv" "devenv.task.status" \
+        --attr "tool.name=devenv" \
+        --attr "task.name=${taskName}" \
         --attr "task.phase=status" \
         --attr "status.method=${method}" \
+        --attr "span.label=${taskName}" \
         --status-attr "task.cached" \
         -- bash -c ${lib.escapeShellArg statusBody} || _status_exit=$?
 
@@ -77,8 +89,14 @@ let
     attrs
     // {
       exec = ''
-        if command -v otel-span >/dev/null 2>&1 && [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
-          otel-span run "dt-task" "${taskName}" --attr "task.cached=false" -- bash -c ${lib.escapeShellArg exec}
+        if ${otelCanEmitShell}; then
+          otel-span run "effect-utils-devenv" "devenv.task.exec" \
+            --attr "tool.name=devenv" \
+            --attr "task.name=${taskName}" \
+            --attr "task.phase=exec" \
+            --attr "task.cached=false" \
+            --attr "span.label=${taskName}" \
+            -- bash -c ${lib.escapeShellArg exec}
         else
           ${exec}
         fi
@@ -87,6 +105,7 @@ let
     };
 in
 {
+  inherit otelCanEmitShell;
   exec = traceExec;
   status = traceStatus;
   withStatus = withStatus;

@@ -2,8 +2,8 @@
 // Primary dashboard for understanding task execution times and bottlenecks.
 //
 // Two trace levels:
-//   - Root spans (service.name="dt"): top-level `dt <task>` invocations
-//   - Child spans (service.name="dt-task"): individual sub-task executions
+//   - Root spans: name="dt.run" for top-level `dt <task>` invocations
+//   - Child spans: name="devenv.task.*" for individual task executions/status checks
 //
 // Task caching:
 //   - task.cached=false: task actually executed
@@ -100,7 +100,7 @@ g.dashboard.new('dt Task Performance')
   at(
     g.panel.stat.new('dt invocations')
     + g.panel.stat.queryOptions.withTargets([
-      lib.tempoQuery('{resource.service.name="dt"}', 'A', 100),
+      lib.tempoQuery('{resource.service.name="effect-utils-devenv" && name="dt.run"}', 'A', 100),
     ]),
     0, y.stats, 4, 4,
   ),
@@ -108,7 +108,7 @@ g.dashboard.new('dt Task Performance')
   at(
     g.panel.stat.new('Executed tasks')
     + g.panel.stat.queryOptions.withTargets([
-      lib.tempoQuery('{resource.service.name="dt-task" && span.task.cached=false}', 'A', 500),
+      lib.tempoQuery('{resource.service.name="effect-utils-devenv" && name="devenv.task.exec" && span.task.cached=false}', 'A', 500),
     ])
     + g.panel.stat.options.withColorMode('value')
     + g.panel.stat.standardOptions.color.withMode('fixed')
@@ -119,7 +119,7 @@ g.dashboard.new('dt Task Performance')
   at(
     g.panel.stat.new('Cached tasks')
     + g.panel.stat.queryOptions.withTargets([
-      lib.tempoQuery('{resource.service.name="dt-task" && span.task.cached=true}', 'A', 500),
+      lib.tempoQuery('{resource.service.name="effect-utils-devenv" && name="devenv.task.status" && span.task.cached=true}', 'A', 500),
     ])
     + g.panel.stat.options.withColorMode('value')
     + g.panel.stat.standardOptions.color.withMode('fixed')
@@ -130,7 +130,7 @@ g.dashboard.new('dt Task Performance')
   at(
     g.panel.stat.new('Total tasks')
     + g.panel.stat.queryOptions.withTargets([
-      lib.tempoQuery('{resource.service.name="dt-task"}', 'A', 500),
+      lib.tempoQuery('{resource.service.name="effect-utils-devenv" && name=~"devenv.task.exec|devenv.task.status"}', 'A', 500),
     ])
     + g.panel.stat.options.withColorMode('value')
     + g.panel.stat.standardOptions.color.withMode('fixed')
@@ -141,7 +141,7 @@ g.dashboard.new('dt Task Performance')
   at(
     g.panel.stat.new('Failed (root)')
     + g.panel.stat.queryOptions.withTargets([
-      lib.tempoQuery('{resource.service.name="dt" && status.code=error}', 'A', 100),
+      lib.tempoQuery('{resource.service.name="effect-utils-devenv" && name="dt.run" && status.code=error}', 'A', 100),
     ])
     + g.panel.stat.options.withColorMode('value')
     + g.panel.stat.standardOptions.color.withMode('fixed')
@@ -152,7 +152,7 @@ g.dashboard.new('dt Task Performance')
   at(
     g.panel.stat.new('Failed (sub-task)')
     + g.panel.stat.queryOptions.withTargets([
-      lib.tempoQuery('{resource.service.name="dt-task" && status.code=error}', 'A', 100),
+      lib.tempoQuery('{resource.service.name="effect-utils-devenv" && name=~"devenv.task.exec|devenv.task.status" && status.code=error}', 'A', 100),
     ])
     + g.panel.stat.options.withColorMode('value')
     + g.panel.stat.standardOptions.color.withMode('fixed')
@@ -166,7 +166,7 @@ g.dashboard.new('dt Task Performance')
   at(g.panel.row.new('Top-Level dt Invocations'), 0, y.topLevelRow, 24, 1),
 
   at(
-    traceTable('Recent dt calls (click trace ID to see sub-task waterfall)', '{resource.service.name="dt"}', 50),
+    traceTable('Recent dt calls (click trace ID to see sub-task waterfall)', '{resource.service.name="effect-utils-devenv" && name="dt.run"}', 50),
     0, y.topLevel, 24, 10,
   ),
 
@@ -179,7 +179,7 @@ g.dashboard.new('dt Task Performance')
   at(
     traceTable(
       'Sub-tasks filtered by cache status (green=executed, blue=cached)',
-      '{resource.service.name="dt-task"$task_filter}',
+      '{resource.service.name="effect-utils-devenv" && name=~"devenv.task.exec|devenv.task.status"$task_filter}',
       200
     ),
     0, y.subtask, 24, 10,
@@ -191,7 +191,7 @@ g.dashboard.new('dt Task Performance')
   at(g.panel.row.new('Slow Sub-Tasks (> 5s)'), 0, y.slowRow, 24, 1),
 
   at(
-      traceTable('Sub-tasks exceeding 5 seconds — these are your bottlenecks', '{resource.service.name="dt-task" && duration > 5s && span.task.cached=false}', 100),
+      traceTable('Sub-tasks exceeding 5 seconds — these are your bottlenecks', '{resource.service.name="effect-utils-devenv" && name="devenv.task.exec" && duration > 5s && span.task.cached=false}', 100),
     0, y.slow, 24, 10,
   ),
 
@@ -201,7 +201,7 @@ g.dashboard.new('dt Task Performance')
   at(g.panel.row.new('Failures'), 0, y.failRow, 24, 1),
 
   at(
-    traceTable('Failed tasks (root and sub-task)', '{resource.service.name=~"dt|dt-task" && status.code=error}', 50),
+    traceTable('Failed tasks (root and sub-task)', '{resource.service.name="effect-utils-devenv" && name=~"dt.run|devenv.task.exec|devenv.task.status" && status.code=error}', 50),
     0, y.fail, 24, 10,
   ),
 ])

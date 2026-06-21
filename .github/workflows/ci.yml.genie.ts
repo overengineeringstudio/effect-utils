@@ -313,6 +313,24 @@ const cargoJob = {
   ],
 } as const
 
+/**
+ * Audit the native npm dependency policy against the lockfile (issue #807).
+ * Install-free: depends only on `pnpm-lock.yaml` and the genie policy source.
+ */
+const nativeDepPolicyAuditStep = {
+  name: 'Audit native dependency policy',
+  shell: 'bash',
+  run: [
+    'set -euo pipefail',
+    'audit=genie/ci-scripts/native-dep-policy-audit.ts',
+    'if command -v bun >/dev/null 2>&1; then',
+    '  bun "$audit"',
+    'else',
+    '  nix run nixpkgs#bun -- "$audit"',
+    'fi',
+  ].join('\n'),
+} as const
+
 // Jobs keyed by CIJobName for type safety with required status checks
 const jobs: Record<
   CIJobName,
@@ -353,6 +371,10 @@ const jobs: Record<
     step: pnpmBuilderContractStep({
       builderFile: 'nix/workspace-tools/lib/mk-pnpm-deps.nix',
     }),
+    // Audit the native npm dependency policy (issue #807) in the same lane that
+    // guards the pnpm builder contract. Runs install-free against the lockfile
+    // and the genie policy source, both present here without node_modules.
+    extraSteps: [nativeDepPolicyAuditStep],
   }),
   'pnpm-regression': job({
     step: {
@@ -360,6 +382,7 @@ const jobs: Record<
       run: [
         'bash genie/ci-scripts/nix-gc-race-retry.test.sh',
         'bash genie/ci-scripts/ci-measurement-comparison.test.sh',
+        'bash genie/ci-scripts/native-dep-policy-audit.test.sh',
         'bash nix/workspace-tools/lib/mk-pnpm-cli/tests/run.sh --skip-genie --skip-megarepo --skip-devenv-shell --skip-downstream-megarepo',
       ].join('\n'),
     },
@@ -530,23 +553,21 @@ const extraJobs: Record<string, any> = {
       ],
       probes: [
         {
-          id: 'genie_check_direct',
-          label: 'Genie check direct',
+          id: 'genie_check_task',
+          label: 'Genie check task',
           group: 'genie',
           description:
-            'Runs Genie directly in check mode to isolate generator runtime from devenv task dependency overhead.',
+            'Runs the supported Genie check task without shell-entry overhead.',
           warmupRepetitions: 1,
           repetitions: 5,
           command: [
             '$DEVENV_BIN',
-            'shell',
-            '--no-reload',
-            '--',
-            'bun',
-            'packages/@overeng/genie/bin/genie.tsx',
-            '--output',
-            'ci-plain',
-            '--check',
+            'tasks',
+            'run',
+            'genie:check',
+            '--mode',
+            'before',
+            '--no-tui',
           ],
         },
       ],

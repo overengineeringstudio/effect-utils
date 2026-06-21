@@ -806,7 +806,7 @@ const gcNmdTargets = (opts: {
       yield* Console.error(formatTargetFailure(failure))
     }
     if (resolved.paths.length === 0) {
-      yield* Effect.fail(
+      return yield* Effect.fail(
         new NmdCliError({
           message:
             resolved.errors.length > 0

@@ -21,10 +21,10 @@ let
     # Managed by the repo FOD refresh workflow — do not edit manually.
     depsBuilds = {
       "." = {
-        hash = "sha256-kQiplI4SCJgIV6LHZ3C6CUdGUa4xvpzfJEDWeba1sYs=";
+        hash = "sha256-ptO53GobgcxUYW25Iz3Eo2M1DGP0bZVV61ppl+2kt7g=";
       };
     };
-    nativeNodePackages = [ opentuiCoreNative ];
+    nativeNodePackages = opentuiCoreNative.packages;
     inherit gitRev commitTs dirty;
   };
 in

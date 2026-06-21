@@ -10,24 +10,24 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@effect/platform": "0.96.1",
+    "@effect/platform": "0.96.2",
     "@effect/rpc": "0.75.1",
-    "@tanstack/react-router": "1.145.7",
-    "@tanstack/react-start": "1.145.10",
-    "effect": "3.21.2",
-    "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "@tanstack/react-router": "1.170.16",
+    "@tanstack/react-start": "1.168.26",
+    "effect": "3.21.4",
+    "react": "19.2.7",
+    "react-dom": "19.2.7"
   },
   "devDependencies": {
     "@overeng/utils": "workspace:^",
-    "@playwright/test": "1.59.1",
-    "@tanstack/router-plugin": "1.145.10",
-    "@types/node": "25.3.3",
-    "@types/react": "19.2.7",
+    "@playwright/test": "1.61.0",
+    "@tanstack/router-plugin": "1.168.18",
+    "@types/node": "26.0.0",
+    "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
-    "@vitejs/plugin-react": "5.1.2",
-    "typescript": "5.9.3",
-    "vite": "7.3.1"
+    "@vitejs/plugin-react": "6.0.2",
+    "typescript": "6.0.3",
+    "vite": "8.0.16"
   },
   "$genie": {
     "source": "package.json.genie.ts",

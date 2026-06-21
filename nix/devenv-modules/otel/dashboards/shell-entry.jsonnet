@@ -40,7 +40,7 @@ g.dashboard.new('Shell Entry Performance')
 
     traceTable(
       'All shell entry tasks (pnpm:install, genie:run, mr:apply)',
-      '{resource.service.name="dt-task" && name=~"pnpm:install|genie:run|mr:apply"}',
+      '{resource.service.name="effect-utils-devenv" && name="devenv.task.exec" && span.task.name=~"pnpm:install|genie:run|mr:apply"}',
       50,
     ),
 
@@ -49,19 +49,19 @@ g.dashboard.new('Shell Entry Performance')
 
     traceTable(
       'pnpm:install',
-      '{resource.service.name="dt-task" && name="pnpm:install"}',
+      '{resource.service.name="effect-utils-devenv" && name="devenv.task.exec" && span.task.name="pnpm:install"}',
       30,
     ),
 
     traceTable(
       'genie:run',
-      '{resource.service.name="dt-task" && name="genie:run"}',
+      '{resource.service.name="effect-utils-devenv" && name="devenv.task.exec" && span.task.name="genie:run"}',
       30,
     ),
 
     traceTable(
       'mr:apply',
-      '{resource.service.name="dt-task" && name="mr:apply"}',
+      '{resource.service.name="effect-utils-devenv" && name="devenv.task.exec" && span.task.name="mr:apply"}',
       30,
     ),
   ], panelWidth=24, panelHeight=10)

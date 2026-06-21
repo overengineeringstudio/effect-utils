@@ -28,7 +28,7 @@ g.dashboard.new('pnpm Install Deep-Dive')
   at(
     g.panel.stat.new('Total installs')
     + g.panel.stat.queryOptions.withTargets([
-      lib.tempoQuery('{resource.service.name="dt" && name="pnpm:install"}', 'A', 100),
+      lib.tempoQuery('{resource.service.name="effect-utils-devenv" && name="devenv.task.exec" && span.task.name="pnpm:install"}', 'A', 100),
     ]),
     0, y.stats, 8, 4,
   ),
@@ -36,7 +36,7 @@ g.dashboard.new('pnpm Install Deep-Dive')
   at(
     g.panel.stat.new('Per-package installs')
     + g.panel.stat.queryOptions.withTargets([
-      lib.tempoQuery('{resource.service.name="dt" && name=~"pnpm:install:.*"}', 'A', 100),
+      lib.tempoQuery('{resource.service.name="effect-utils-devenv" && name="devenv.task.exec" && span.task.name=~"pnpm:install:.*"}', 'A', 100),
     ]),
     8, y.stats, 8, 4,
   ),
@@ -44,7 +44,7 @@ g.dashboard.new('pnpm Install Deep-Dive')
   at(
     g.panel.stat.new('Failed installs')
     + g.panel.stat.queryOptions.withTargets([
-      lib.tempoQuery('{resource.service.name="dt" && name=~"pnpm:install.*" && status.code=error}', 'A', 100),
+      lib.tempoQuery('{resource.service.name="effect-utils-devenv" && name="devenv.task.exec" && span.task.name=~"pnpm:install.*" && status.code=error}', 'A', 100),
     ]),
     16, y.stats, 8, 4,
   ),
@@ -55,7 +55,7 @@ g.dashboard.new('pnpm Install Deep-Dive')
   at(
     lib.tempoTable(
       'pnpm:install aggregate traces (shows total duration)',
-      '{resource.service.name="dt" && name="pnpm:install"}',
+      '{resource.service.name="effect-utils-devenv" && name="devenv.task.exec" && span.task.name="pnpm:install"}',
       'A',
       50,
     ),
@@ -68,7 +68,7 @@ g.dashboard.new('pnpm Install Deep-Dive')
   at(
     lib.tempoTable(
       'Per-package install traces (pnpm:install:*)',
-      '{resource.service.name="dt" && name=~"pnpm:install:.*"}',
+      '{resource.service.name="effect-utils-devenv" && name="devenv.task.exec" && span.task.name=~"pnpm:install:.*"}',
       'A',
       100,
     ),

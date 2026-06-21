@@ -40,6 +40,7 @@ const runtimeDeps = catalog.compose({
         '@effect/vitest',
         '@storybook/react',
         '@storybook/react-vite',
+        '@types/node',
         '@types/react',
         '@vitejs/plugin-react',
         'storybook',

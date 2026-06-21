@@ -211,7 +211,7 @@ export const baseOxlintOverrides = [
       // Relaxed rules for story files
       'overeng/exports-first': 'off',
       'overeng/jsdoc-require-exports': 'off',
-      // Storybook best practices (re-exported from eslint-plugin-storybook)
+      // Storybook CSF best practices (native overeng/storybook/* rules)
       'overeng/storybook/meta-satisfies-type': 'error',
       'overeng/storybook/default-exports': 'error',
       'overeng/storybook/story-exports': 'warn',

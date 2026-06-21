@@ -69,6 +69,143 @@ cache_fingerprint() {
   } | compute_hash
 }
 
+resolve_pnpm_install_contract_file() {
+  local dir="${1:-$PWD}"
+
+  while [ "$dir" != "/" ]; do
+    if [ -f "$dir/pnpm-install-contract.json" ]; then
+      printf '%s\n' "$dir/pnpm-install-contract.json"
+      return 0
+    fi
+
+    dir="$(dirname "$dir")"
+  done
+
+  return 1
+}
+
+pnpm_contract_section_json() {
+  local node_bin="$1"
+  local contract_file="$2"
+  local section="$3"
+
+  "$node_bin" - "$contract_file" "$section" <<'EOF'
+const fs = require('node:fs')
+
+const [contractFile, section] = process.argv.slice(2)
+const contract = JSON.parse(fs.readFileSync(contractFile, 'utf8'))
+
+const stableJson = (value) => {
+  if (Array.isArray(value)) {
+    return value.map(stableJson)
+  }
+
+  if (value === null || typeof value !== 'object') {
+    return value
+  }
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, nested]) => [key, stableJson(nested)]),
+  )
+}
+
+if (!Object.prototype.hasOwnProperty.call(contract, section)) {
+  console.error(`[pnpm] pnpm install contract ${contractFile} has no section '${section}'`)
+  process.exit(1)
+}
+
+process.stdout.write(`${JSON.stringify(stableJson(contract[section]))}\n`)
+EOF
+}
+
+compute_pnpm_contract_section_hash() {
+  local node_bin="$1"
+  local contract_file="$2"
+  local section="$3"
+
+  pnpm_contract_section_json "$node_bin" "$contract_file" "$section" | compute_hash
+}
+
+classify_pnpm_contract_change() {
+  local node_bin="$1"
+  local previous_contract="$2"
+  local current_contract="$3"
+
+  "$node_bin" - "$previous_contract" "$current_contract" <<'EOF'
+const fs = require('node:fs')
+const crypto = require('node:crypto')
+
+const [previousContractFile, currentContractFile] = process.argv.slice(2)
+
+const stableJson = (value) => {
+  if (Array.isArray(value)) {
+    return value.map(stableJson)
+  }
+
+  if (value === null || typeof value !== 'object') {
+    return value
+  }
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, nested]) => [key, stableJson(nested)]),
+  )
+}
+
+const sectionHash = (contract, section, contractFile) => {
+  if (!Object.prototype.hasOwnProperty.call(contract, section)) {
+    console.error(`[pnpm] pnpm install contract ${contractFile} has no section '${section}'`)
+    process.exit(1)
+  }
+
+  return crypto
+    .createHash('sha256')
+    .update(`${JSON.stringify(stableJson(contract[section]))}\n`)
+    .digest('hex')
+}
+
+const previousContract = JSON.parse(fs.readFileSync(previousContractFile, 'utf8'))
+const currentContract = JSON.parse(fs.readFileSync(currentContractFile, 'utf8'))
+
+for (const [section, reason] of [
+  ['packageManager', 'toolchain'],
+  ['gvsLinkContract', 'gvs-link'],
+  ['installPolicy', 'policy'],
+  ['storeContract', 'store'],
+  ['workspaceManifestContract', 'manifest_config'],
+]) {
+  if (
+    sectionHash(previousContract, section, previousContractFile) !==
+    sectionHash(currentContract, section, currentContractFile)
+  ) {
+    process.stdout.write(`${reason}\n`)
+    process.exit(0)
+  }
+}
+
+process.stdout.write('unknown\n')
+EOF
+}
+
+emit_pnpm_install_miss_span() {
+  local task_name="$1"
+  local reason="$2"
+
+  if command -v otel-span >/dev/null 2>&1 && { [ -n "${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] || { [ -n "${OTEL_SPAN_SPOOL_DIR:-}" ] && [ -d "${OTEL_SPAN_SPOOL_DIR:-}" ]; }; }; then
+    otel-span emit-span "effect-utils-devenv" "devenv.task.status" \
+      --attr "tool.name=devenv" \
+      --attr "task.name=${task_name}" \
+      --attr "task.phase=status" \
+      --attr "task.cached=false" \
+      --attr "status.method=hash" \
+      --attr-string "span.label=${reason}" \
+      --attr-string "install.miss_reason=${reason}" >/dev/null 2>&1 || true
+  fi
+}
+
 check_node_modules_links_healthy() {
   local node_bin="$1"
   local projection_script="$2"

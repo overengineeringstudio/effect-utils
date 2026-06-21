@@ -14,9 +14,9 @@
   },
   "devDependencies": {
     "@overeng/utils-dev": "workspace:^",
-    "@types/node": "25.3.3",
-    "typescript": "5.9.3",
-    "vitest": "3.2.4"
+    "@types/node": "26.0.0",
+    "typescript": "6.0.3",
+    "vitest": "4.1.9"
   },
   "$genie": {
     "source": "package.json.genie.ts",

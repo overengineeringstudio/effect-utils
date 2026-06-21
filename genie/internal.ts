@@ -26,6 +26,7 @@ export {
   githubRuleset,
   githubWorkflow,
   megarepoJson,
+  nodeTypes,
   oxfmtConfig,
   oxlintConfig,
   packageJson,
@@ -125,6 +126,17 @@ export { utilsPatches }
 export const commonPnpmWorkspaceData = {
   ...commonPnpmPolicySettings,
   injectWorkspacePackages: true as const,
+  packageExtensions: {
+    ...commonPnpmPolicySettings.packageExtensions,
+    // Storybook loads the configured framework preset dynamically from the
+    // storybook package. Under pnpm's global virtual store, that import cannot
+    // see the workspace package's dev dependency unless the edge is explicit.
+    storybook: {
+      dependencies: {
+        '@storybook/react-vite': '10.4.6',
+      },
+    },
+  },
   patchedDependencies: { ...utilsPatches },
   allowUnusedPatches: true as const,
   peerDependencyRules: {
@@ -133,6 +145,9 @@ export const commonPnpmWorkspaceData = {
       '@effect/experimental': '>=0.58.0',
       '@effect/platform': '>=0.94.2',
       '@effect/rpc': '>=0.73.0',
+      eslint: '>=10.0.0',
+      typescript: '>=6.0.0',
+      vitest: '>=4.0.0',
     },
   },
 }

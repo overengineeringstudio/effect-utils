@@ -23,25 +23,25 @@
   },
   "devDependencies": {
     "@overeng/utils": "workspace:^",
-    "@storybook/react": "10.2.3",
-    "@storybook/react-vite": "10.2.3",
-    "@types/react": "19.2.7",
+    "@storybook/react": "10.4.6",
+    "@storybook/react-vite": "10.4.6",
+    "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
-    "@vitejs/plugin-react": "5.1.2",
-    "effect": "3.21.2",
-    "react": "19.2.3",
-    "react-aria-components": "1.17.0",
-    "react-dom": "19.2.3",
-    "storybook": "10.2.3",
-    "typescript": "5.9.3",
-    "vite": "7.3.1",
-    "vitest": "3.2.4"
+    "@vitejs/plugin-react": "6.0.2",
+    "effect": "3.21.4",
+    "react": "19.2.7",
+    "react-aria-components": "1.19.0",
+    "react-dom": "19.2.7",
+    "storybook": "10.4.6",
+    "typescript": "6.0.3",
+    "vite": "8.0.16",
+    "vitest": "4.1.9"
   },
   "peerDependencies": {
-    "effect": "^3.21.2",
-    "react": "^19.2.3",
-    "react-aria-components": "^1.17.0",
-    "react-dom": "^19.2.3"
+    "effect": "^3.21.4",
+    "react": "^19.2.7",
+    "react-aria-components": "^1.19.0",
+    "react-dom": "^19.2.7"
   },
   "$genie": {
     "source": "package.json.genie.ts",

@@ -91,10 +91,16 @@ let
   };
 in
 {
-  packages = [
-    pkgs.nixfmt-rfc-style
-    pkgs.deadnix
-  ]
-  ++ cliGuard.fromTasks guardedTasks;
+  # The nixfmt/deadnix guards own their command names by exec'ing the real
+  # binaries via absolute path (see cli-guard.nix), so the reals no longer need
+  # to be competing top-level providers — dropping them from `packages` removes
+  # the buildEnv collision while the guards keep them reachable.
+  packages = cliGuard.fromTasks {
+    tasks = guardedTasks;
+    reals = {
+      nixfmt = pkgs.nixfmt-rfc-style;
+      deadnix = pkgs.deadnix;
+    };
+  };
   tasks = cliGuard.stripGuards (guardedTasks // otherTasks);
 }

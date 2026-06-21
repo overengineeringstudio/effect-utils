@@ -29,7 +29,6 @@ imports = [
 - `check.nix` - Aggregate check tasks (check:quick, check:all, configurable strict typecheck gate)
 - `clean.nix` - Clean tasks
 - `genie.nix` - Genie config generation tasks
-- `ts-effect-lsp.nix` - Effect LSP diagnostics via tsgo (`ts:effect-lsp`)
 - `lint-oxc.nix` - Linting tasks (oxlint, oxfmt)
   - Note: `lint:check:format`/`lint:fix:format` run oxfmt on an explicit file list
     (git-tracked files) instead of `oxfmt <dir>...` directory walking. This avoids
@@ -47,6 +46,7 @@ imports = [
 - `test.nix` - Test tasks
 - `test-playwright.nix` - Playwright e2e tasks
 - `ts.nix` - TypeScript tasks (`ts:check`, `ts:check:strict`, build/watch/clean helpers)
+  - `ts:check`, `ts:check:strict`, `ts:build`, `ts:build-watch`, and `ts:clean` default to the Nix-managed `tsgo` binary; `ts:emit` keeps using JavaScript `tsc` for compiler-API-backed tsconfig filtering and no-check emit.
   - `ts:check:strict` inherits repo-local `ts:check.after` hooks so strict CI stays aligned with consumer generators
 - `bun.nix` - Bun tasks (legacy)
 - `context.nix` - Context directory tasks

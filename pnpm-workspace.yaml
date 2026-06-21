@@ -38,7 +38,7 @@ packages:
   - packages/@overeng/workflow-report
 
 patchedDependencies:
-  '@effect/platform@0.96.1': packages/@overeng/utils/patches/@effect__platform@0.96.0.patch
+  '@effect/platform@0.96.2': packages/@overeng/utils/patches/@effect__platform@0.96.0.patch
   effect-distributed-lock@0.0.11: packages/@overeng/utils/patches/effect-distributed-lock@0.0.11.patch
 
 allowUnusedPatches: true
@@ -46,23 +46,32 @@ allowUnusedPatches: true
 packageExtensions:
   react-aria-components:
     dependencies:
-      '@types/react': 19.2.7
+      '@types/react': 19.2.17
       '@types/react-dom': 19.2.3
+  storybook:
+    dependencies:
+      '@storybook/react-vite': 10.4.6
 
 peerDependencyRules:
   allowedVersions:
     '@effect/experimental': '>=0.58.0'
     '@effect/platform': '>=0.94.2'
     '@effect/rpc': '>=0.73.0'
+    eslint: '>=10.0.0'
+    typescript: '>=6.0.0'
+    vitest: '>=4.0.0'
 
 allowBuilds:
-  '@parcel/watcher': true
-  '@myobie/pty': true
-  esbuild: true
-  msgpackr-extract: true
-  node-pty: true
-  sharp: true
-  unix-dgram: true
+  '@parcel/watcher': false
+  '@myobie/pty': false
+  esbuild: false
+  fsevents: false
+  msgpackr-extract: false
+  node-pty: false
+  sharp: false
+  unix-dgram: false
+
+minimumReleaseAgeExclude: ['@effect/platform', '@types/node', effect]
 
 supportedArchitectures:
   os: [linux, darwin]
@@ -84,6 +93,8 @@ packageImportMethod: clone-or-copy
 optimisticRepeatInstall: false
 
 verifyDepsBeforeRun: false
+
+ignoreScripts: true
 
 sideEffectsCache: false
 

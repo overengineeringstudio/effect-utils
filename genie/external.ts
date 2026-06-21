@@ -142,48 +142,48 @@ export const otelSdkDeps = [
 /** Catalog versions - single source of truth for dependency versions */
 export const catalog = defineCatalog({
   // Observability
-  // The @opentelemetry/sdk-* packages are pinned at 2.7.1 (semconv 1.41.1,
-  // sdk-logs 0.218.0) so they transitively bring @opentelemetry/core >= 2.6.0,
+  // The @opentelemetry/sdk-* packages are pinned together (semconv 1.41.1,
+  // sdk-logs 0.219.0) so they transitively bring @opentelemetry/core >= 2.6.0,
   // which @restatedev/restate-sdk-opentelemetry@1.14.5 requires as a peer.
   // @effect/opentelemetry@0.63 accepts ^2.0.0, so utils + restate-effect both stay compatible.
-  '@opentelemetry/api': '1.9.0',
-  '@opentelemetry/resources': '2.7.1',
-  '@opentelemetry/sdk-logs': '0.218.0',
-  '@opentelemetry/sdk-metrics': '2.7.1',
-  '@opentelemetry/sdk-trace-base': '2.7.1',
-  '@opentelemetry/sdk-trace-node': '2.7.1',
-  '@opentelemetry/sdk-trace-web': '2.7.1',
+  '@opentelemetry/api': '1.9.1',
+  '@opentelemetry/resources': '2.8.0',
+  '@opentelemetry/sdk-logs': '0.219.0',
+  '@opentelemetry/sdk-metrics': '2.8.0',
+  '@opentelemetry/sdk-trace-base': '2.8.0',
+  '@opentelemetry/sdk-trace-node': '2.8.0',
+  '@opentelemetry/sdk-trace-web': '2.8.0',
   '@opentelemetry/semantic-conventions': '1.41.1',
 
   // Schema
   '@standard-schema/spec': '1.1.0',
 
   // Effect ecosystem
-  '@effect/ai': '0.35.0',
+  '@effect/ai': '0.36.0',
   'effect-distributed-lock': '0.0.11',
-  effect: '3.21.2',
-  '@effect/platform': '0.96.1',
-  '@effect/platform-node': '0.106.0',
-  '@effect/cli': '0.75.1',
+  effect: '3.21.4',
+  '@effect/platform': '0.96.2',
+  '@effect/platform-node': '0.107.0',
+  '@effect/cli': '0.75.2',
   '@effect/vitest': '0.29.0',
   '@effect/printer': '0.49.0',
   '@effect/printer-ansi': '0.49.0',
   '@effect/typeclass': '0.40.0',
-  '@effect/cluster': '0.58.2',
+  '@effect/cluster': '0.59.0',
   '@effect/sql': '0.51.1',
   '@effect/experimental': '0.60.0',
-  '@effect/workflow': '0.18.0',
+  '@effect/workflow': '0.18.2',
   '@effect/rpc': '0.75.1',
   '@effect/opentelemetry': '0.63.0',
 
   // React ecosystem
-  react: '19.2.3',
-  'react-dom': '19.2.3',
-  'react-aria-components': '1.17.0',
+  react: '19.2.7',
+  'react-dom': '19.2.7',
+  'react-aria-components': '1.19.0',
 
   // Notion rendering (optional peer deps)
-  katex: '0.16.45',
-  shiki: '4.0.2',
+  katex: '0.17.0',
+  shiki: '4.2.0',
 
   // Markdown (notion-md canonical markdown pipeline)
   'mdast-util-gfm-strikethrough': '2.0.0',
@@ -198,7 +198,7 @@ export const catalog = defineCatalog({
   'unist-util-visit': '5.1.0',
 
   // PTY
-  '@myobie/pty': '0.9.0',
+  '@myobie/pty': '0.10.0',
 
   // Restate (durable execution) — see packages/@overeng/restate-effect
   '@restatedev/restate-sdk': '1.14.5',
@@ -206,36 +206,35 @@ export const catalog = defineCatalog({
   '@restatedev/restate-sdk-opentelemetry': '1.14.5',
 
   // Type definitions
-  '@types/react': '19.2.7',
+  '@types/react': '19.2.17',
   '@types/react-dom': '19.2.3',
-  '@types/node': '25.3.3',
-  '@types/bun': '1.3.10',
+  '@types/node': '26.0.0',
+  '@types/bun': '1.3.14',
   '@types/eslint': '9.6.1',
   '@types/is-dom': '1.1.2',
   '@types/katex': '0.16.8',
 
   // Build tools
-  typescript: '5.9.3',
-  '@playwright/test': '1.59.1',
-  vite: '7.3.1',
-  // TODO upgrade to 4.x once fixed https://github.com/Effect-TS/effect/issues/5976
-  vitest: '3.2.4',
-  '@vitejs/plugin-react': '5.1.2',
+  // npm TypeScript is kept for JS compiler API consumers; ts:check uses Nix-managed tsgo.
+  typescript: '6.0.3',
+  '@playwright/test': '1.61.0',
+  vite: '8.0.16',
+  vitest: '4.1.9',
+  '@vitejs/plugin-react': '6.0.2',
 
   // TanStack
-  '@tanstack/react-router': '1.145.7',
-  '@tanstack/react-start': '1.145.10',
-  '@tanstack/router-plugin': '1.145.10',
+  '@tanstack/react-router': '1.170.16',
+  '@tanstack/react-start': '1.168.26',
+  '@tanstack/router-plugin': '1.168.18',
 
   // Styling
-  tailwindcss: '4.1.18',
-  '@tailwindcss/vite': '4.1.18',
+  tailwindcss: '4.3.1',
+  '@tailwindcss/vite': '4.3.1',
 
   // Storybook
-  storybook: '10.2.3',
-  '@storybook/react': '10.2.3',
-  '@storybook/react-vite': '10.2.3',
-  'eslint-plugin-storybook': '10.2.3',
+  storybook: '10.4.6',
+  '@storybook/react': '10.4.6',
+  '@storybook/react-vite': '10.4.6',
 
   // xterm (terminal emulator for browser/testing)
   '@xterm/xterm': '6.0.0',
@@ -244,50 +243,134 @@ export const catalog = defineCatalog({
   '@xterm/addon-webgl': '0.19.0',
 
   // Testing
-  '@testing-library/react': '16.3.1',
+  '@testing-library/react': '16.3.2',
   '@testing-library/user-event': '14.6.1',
-  'happy-dom': '18.0.1',
+  'happy-dom': '20.10.6',
 
   // Linting
   /** Kept for rule-tester/types used by our custom lint rules even though runtime linting is oxlint. */
-  eslint: '9.39.2',
-  '@typescript-eslint/parser': '8.52.0',
-  '@typescript-eslint/rule-tester': '8.52.0',
-  '@typescript-eslint/utils': '8.52.0',
-  'typescript-eslint': '8.52.0',
-  prettier: '3.8.3',
-  oxfmt: '0.23.0',
-  oxlint: '1.39.0',
-  'oxlint-tsgolint': '0.11.4',
+  eslint: '10.5.0',
+  '@typescript-eslint/parser': '8.61.1',
+  '@typescript-eslint/rule-tester': '8.61.1',
+  '@typescript-eslint/utils': '8.61.1',
+  'typescript-eslint': '8.61.1',
+  prettier: '3.8.4',
+  oxlint: '1.70.0',
+  'oxlint-tsgolint': '0.23.0',
 
   // Crypto
-  '@noble/hashes': '1.7.1',
+  '@noble/hashes': '2.2.0',
 
   // DOM utilities
   'is-dom': '1.1.0',
 
   // Redis
-  ioredis: '5.6.1',
+  ioredis: '5.11.1',
 
   // OpenTUI / Effect Atom (experimental)
   '@effect-atom/atom': '0.5.3',
   '@effect-atom/atom-react': '0.5.0',
-  '@opentui/core': '0.1.88',
-  '@opentui/react': '0.1.88',
+  '@opentui/core': '0.4.1',
+  '@opentui/react': '0.4.1',
 
   // Pi-tui (terminal UI framework)
-  '@mariozechner/pi-tui': '0.45.7',
+  '@mariozechner/pi-tui': '0.73.1',
 
   // TUI React renderer dependencies
   'react-reconciler': '0.33.0',
-  '@types/react-reconciler': '0.28.9',
+  '@types/react-reconciler': '0.33.0',
   'yoga-layout': '3.2.1',
-  'string-width': '7.2.0',
-  'cli-truncate': '5.1.1',
+  'string-width': '8.2.1',
+  'cli-truncate': '6.0.0',
 
   // AI agent tooling
-  agentation: '3.0.1',
+  agentation: '3.0.2',
 })
+
+/**
+ * Authoritative classification of every native npm dependency family the
+ * workspace tolerates. This is the single source of truth consumed by both the
+ * generated pnpm `allowBuilds` denylist (below) and the CI policy audit
+ * (`genie/ci-scripts/native-dep-policy-audit.ts`), so the two cannot drift.
+ *
+ * Each entry is tagged by how the native code is obtained:
+ *
+ * - `nix-grafted`: the native artifact is supplied by a Nix derivation instead
+ *   of pnpm. `graft: 'link'` builds the addon from source (`node-pty`),
+ *   `graft: 'fetch-only'` grafts prebuilt platform tarballs (`@opentui/core`).
+ *   `via` names the owning Nix file, which the audit verifies exists.
+ * - `denied-lifecycle-build`: a package that ships an install lifecycle build
+ *   script we explicitly refuse to run (pnpm `allowBuilds: false`). `defensive`
+ *   marks entries kept as guard rails even though the family is not currently
+ *   in the lockfile (e.g. `sharp`, `unix-dgram`); their absence is tolerated.
+ * - `fod-accepted-prebuilt`: an optional, CPU/OS/libc-gated prebuilt native
+ *   binary family (Rollup/Rolldown/esbuild/oxc/etc.) that carries no lifecycle
+ *   build and is locked as a fixed-output set. Listed separately from
+ *   lifecycle-built native addons per issue #807.
+ *
+ * Audit gap (documented, not silently dropped): pnpm lockfile v9 no longer
+ * emits `requiresBuild`. The build-script ledger (`.modules.yaml`
+ * `pendingBuilds`/`ignoredBuilds`) IS populated by a local install even under
+ * `ignoreScripts: true` (it lists packages blocked from building), but it is
+ * unavailable in CI: the builder-contract job runs install-free, and the
+ * Nix pnpm-deps FOD strips `.modules.yaml` from its output for determinism, so
+ * no CI job sees the ledger. A brand-new package that carries a lifecycle
+ * build but is neither CPU/OS/libc-gated nor already in this policy therefore
+ * cannot be auto-detected here. This policy is the source of truth; the audit
+ * enforces lockfile-vs-policy drift (new gated families, disappeared/
+ * shape-changed entries) against it.
+ */
+export const nativeDependencyPolicy = {
+  // Lifecycle-built native addons denied a pnpm build. Order mirrors the
+  // historical `allowBuilds` literal so the derived denylist stays byte-stable.
+  '@parcel/watcher': { _tag: 'denied-lifecycle-build' },
+  '@myobie/pty': { _tag: 'denied-lifecycle-build' },
+  esbuild: { _tag: 'denied-lifecycle-build' },
+  fsevents: { _tag: 'denied-lifecycle-build' },
+  'msgpackr-extract': { _tag: 'denied-lifecycle-build' },
+  'node-pty': { _tag: 'nix-grafted', graft: 'link', via: 'nix/node-pty-native.nix' },
+  sharp: { _tag: 'denied-lifecycle-build', defensive: true },
+  'unix-dgram': { _tag: 'denied-lifecycle-build', defensive: true },
+
+  // Nix-grafted prebuilt native package (not lifecycle-built, so not denied).
+  '@opentui/core': { _tag: 'nix-grafted', graft: 'fetch-only', via: 'nix/opentui-core-native.nix' },
+
+  // FOD-accepted optional prebuilt native families (CPU/OS/libc-gated, no
+  // lifecycle build). Keys are the family prefix shared by every platform
+  // package (e.g. `@rollup/rollup` covers `@rollup/rollup-linux-x64-gnu`).
+  '@rollup/rollup': { _tag: 'fod-accepted-prebuilt' },
+  '@rolldown/binding': { _tag: 'fod-accepted-prebuilt' },
+  '@esbuild': { _tag: 'fod-accepted-prebuilt' },
+  '@msgpackr-extract': { _tag: 'fod-accepted-prebuilt' },
+  lightningcss: { _tag: 'fod-accepted-prebuilt' },
+  '@oxc-parser/binding': { _tag: 'fod-accepted-prebuilt' },
+  '@oxc-resolver/binding': { _tag: 'fod-accepted-prebuilt' },
+  '@tailwindcss/oxide': { _tag: 'fod-accepted-prebuilt' },
+  '@oxlint-tsgolint': { _tag: 'fod-accepted-prebuilt' },
+} as const satisfies Record<string, NativeDependencyPolicyEntry>
+
+/** Tagged classification of a native dependency family. @see nativeDependencyPolicy */
+export type NativeDependencyPolicyEntry =
+  | { readonly _tag: 'nix-grafted'; readonly graft: 'link' | 'fetch-only'; readonly via: string }
+  | { readonly _tag: 'denied-lifecycle-build'; readonly defensive?: boolean }
+  | { readonly _tag: 'fod-accepted-prebuilt' }
+
+/**
+ * Packages whose pnpm lifecycle build is denied. Derived from
+ * `nativeDependencyPolicy` (every `denied-lifecycle-build` entry plus
+ * `nix-grafted` addons built from source via `graft: 'link'`) so the denylist
+ * and the audit share one source of truth. Insertion order is preserved to
+ * keep the generated `pnpm-workspace.yaml` byte-stable.
+ */
+const deniedLifecycleBuilds = Object.fromEntries(
+  Object.entries(nativeDependencyPolicy)
+    .filter(
+      ([, entry]) =>
+        entry._tag === 'denied-lifecycle-build' ||
+        (entry._tag === 'nix-grafted' && entry.graft === 'link'),
+    )
+    .map(([name]) => [name, false as const]),
+)
 
 /**
  * Shared pnpm policy settings for all megarepos.
@@ -310,6 +393,9 @@ export const commonPnpmPolicySettings = {
       '@effect/experimental': '>=0.58.0',
       '@effect/platform': '>=0.94.2',
       '@effect/rpc': '>=0.73.0',
+      eslint: '>=10.0.0',
+      typescript: '>=6.0.0',
+      vitest: '>=4.0.0',
     },
   },
   enableGlobalVirtualStore: true as const,
@@ -318,6 +404,11 @@ export const commonPnpmPolicySettings = {
   sideEffectsCache: false as const,
   verifyStoreIntegrity: true as const,
   strictStorePkgContentCheck: true as const,
+  ignoreScripts: true as const,
+  // This dependency refresh intentionally tracks the newest Effect 3 line and
+  // Node 26 types. Keep minimum-release-age strict globally, but allow these
+  // reviewed packages to advance immediately as part of the coordinated upgrade.
+  minimumReleaseAgeExclude: ['@effect/platform', '@types/node', 'effect'],
   pmOnFail: 'ignore' as const,
   /** Disable until pnpm#10393 is resolved (install no-ops for workspace changes) */
   optimisticRepeatInstall: false as const,
@@ -327,15 +418,12 @@ export const commonPnpmPolicySettings = {
     cpu: ['x64', 'arm64'],
     libc: ['glibc', 'musl'],
   },
-  allowBuilds: {
-    '@parcel/watcher': true,
-    '@myobie/pty': true,
-    esbuild: true,
-    'msgpackr-extract': true,
-    'node-pty': true,
-    sharp: true,
-    'unix-dgram': true,
-  },
+  // Native binaries are provided by Nix/custom flakes instead of pnpm lifecycle
+  // scripts. pnpm 11 removed ignoreDepScripts in favor of allowBuilds; keep
+  // known native packages explicit so approval drift is reviewed, but do not
+  // allow any dependency build during install. Derived from
+  // `nativeDependencyPolicy` so the denylist and CI audit cannot drift.
+  allowBuilds: deniedLifecycleBuilds,
 }
 
 /** Common fields for private packages */
@@ -355,6 +443,9 @@ export const packageTsconfigCompilerOptions = {
 
 /** DOM library set for browser-compatible packages */
 export const domLib = ['ES2024', 'DOM', 'DOM.Iterable'] as const
+
+/** Ambient Node types for packages that explicitly depend on @types/node */
+export const nodeTypes = { types: ['node'] } as const
 
 /** React JSX configuration for React packages */
 export const reactJsx = { jsx: 'react-jsx' as const }
@@ -430,7 +521,7 @@ export const utilsPatches = definePatchedDependencies({
        dumps low-signal attrs like cf-ray / alt-svc / cookie flags into
        every span. Keeps the observability-critical ones
        (content-type, x-notion-request-id, retry-after, ...). */
-    '@effect/platform@0.96.1': './patches/@effect__platform@0.96.0.patch',
+    '@effect/platform@0.96.2': './patches/@effect__platform@0.96.0.patch',
   },
 })
 
@@ -603,12 +694,20 @@ export const baseTsconfigCompilerOptions = {
       // this plugin entry, while plain tsc ignores it when the npm package is absent.
       name: '@effect/language-service',
       reportSuggestionsAsWarningsInTsc: true,
+      // Effect diagnostics are surfaced as warnings only and do not affect the
+      // tsc/tsgo exit code, so `ts:check` never fails on them today.
+      // TODO(#811): flip to gating (drop this and/or promote severities to
+      // 'error') once the workspace is clean against these diagnostics.
+      // @see https://github.com/overengineeringstudio/effect-utils/issues/811
+      ignoreEffectWarningsInTscExitCode: true,
       pipeableMinArgCount: 2,
       diagnosticSeverity: {
         missedPipeableOpportunity: 'warning',
         schemaUnionOfLiterals: 'warning',
         anyUnknownInErrorContext: 'warning',
         preferSchemaOverJson: 'warning',
+        missingEffectContext: 'warning',
+        missingEffectError: 'warning',
       },
     },
   ],
@@ -641,14 +740,6 @@ export const storybookOxlintOverride = {
     'func-style': 'off',
     'overeng/exports-first': 'off',
     'overeng/jsdoc-require-exports': 'off',
-    // Storybook best practices (re-exported from eslint-plugin-storybook)
-    'overeng/storybook/meta-satisfies-type': 'error',
-    'overeng/storybook/default-exports': 'error',
-    'overeng/storybook/story-exports': 'warn',
-    'overeng/storybook/csf-component': 'warn',
-    'overeng/storybook/hierarchy-separator': 'warn',
-    'overeng/storybook/no-redundant-story-name': 'warn',
-    'overeng/storybook/prefer-pascal-case': 'warn',
   },
 } as const satisfies OxlintOverride
 

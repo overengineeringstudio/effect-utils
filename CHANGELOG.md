@@ -4,7 +4,125 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **pnpm install contract proof**: Add a generated `pnpm-install-contract.json`
+  artifact that makes the long-term pnpm/Nix/Buck2 install contract explicit:
+  pnpm owns `store/v11/{files,links,projects}`, GVS `links` are treated as a
+  rebuildable dependency-graph projection, fixed-output Nix dependency prep does
+  not consume live GVS projections, and Buck2 integration should key from the
+  generated contract plus the lockfile rather than from pnpm's private
+  `node_modules` layout. `pnpm:install` now hashes the structured
+  `gvsLinkContract` JSON section for GVS relink invalidation instead of parsing
+  rendered `pnpm-workspace.yaml`, and helper tests cover the prior false
+  positive where policy-only changes were classified as `gvs-link` drift.
+
+- **@overeng/oxc-config native `overeng/storybook/*` rules**: Reimplement the
+  seven Storybook CSF best-practice rules (`meta-satisfies-type`,
+  `default-exports`, `story-exports`, `csf-component`, `hierarchy-separator`,
+  `no-redundant-story-name`, `prefer-pascal-case`) as native `overeng` oxlint
+  JS-plugin rules instead of re-exporting them from `eslint-plugin-storybook`.
+  This restores the enforcement temporarily removed in #804 and permanently
+  drops the `eslint-plugin-storybook` dependency (the only remaining consumer of
+  that catalog entry). Each rule carries a source-of-truth reference to its
+  upstream `eslint-plugin-storybook@10.4.6` rule plus resync notes, and the now
+  unreferenced `eslint-plugin-storybook` and `oxfmt` catalog entries are
+  removed. Intentional deviations from upstream (scope-analysis-dependent
+  autofixes are detection-only; `hierarchy-separator`'s `|`→`/` fix is kept) are
+  documented per rule.
+- **Clean devenv OTEL task model** (#377): `dt`, devenv task wrappers, shell
+  entry, pnpm cache-miss status spans, and TypeScript diagnostics now use a
+  single `service.name=effect-utils-devenv` resource with stable operation span
+  names (`dt.run`, `devenv.shell.entry`, `devenv.task.exec`,
+  `devenv.task.status`, `typescript.project.check`,
+  `typescript.build.aggregate`). Task identity moved to typed span attributes
+  such as `task.name`, `task.phase`, and `task.cached`; raw forwarded `dt`
+  arguments are no longer recorded. `ts:check`/`ts:build` emit typed
+  `typescript.*`, `compiler.*`, and `diagnostics.*` attributes through
+  `otel-span emit-span` for both `tsgo` and JS `tsc`, with spool-only delivery
+  and task-context propagation covered. The dashboards now query operation span
+  names plus `span.task.name` / `span.ts.project.name`, and the new
+  `ts-otelite-e2e.test.sh` proof covers the full
+  `dt.run -> devenv.task.exec -> typescript.*` tree through real otelite.
+
+- **native dependency policy audit**: Add `nativeDependencyPolicy`, a tagged
+  source-of-truth classification in `genie/external.ts` for every native npm
+  dependency family (nix-grafted, denied-lifecycle-build, fod-accepted-prebuilt).
+  The generated pnpm `allowBuilds` denylist is now derived from it so the
+  denylist and audit cannot drift. A new install-free CI audit
+  (`genie/ci-scripts/native-dep-policy-audit.ts`, wired into the
+  `pnpm-builder-contract` job) diffs the lockfile against the policy and fails
+  on drift: a CPU/OS/libc-gated native family with no policy entry, a
+  non-defensive policy package that disappeared, or a nix-grafted entry whose
+  `via` file is missing. Because pnpm lockfile v9 dropped `requiresBuild` and the
+  builder-contract job restores no `node_modules`, the pnpm build-script ledger
+  is unavailable; detecting a brand-new lifecycle-built package that is neither
+  gated-native nor in the policy is therefore out of scope, with the policy as
+  the source of truth (#807).
+
 ### Changed
+
+- **OTEL trace-structure contract**: Tighten the offline trace-structure
+  negative test so orphan detection uses a syntactically valid but missing
+  parent span ID. Invalid span IDs are now left to the helper's input
+  validation path, keeping graph-shape assertions separate from argument
+  validation.
+
+- **devenv cli-guard ownership**: Make the cli-guard nudge-wrappers the
+  deterministic owners of their command names so the devenv buildEnv no longer
+  emits nondeterministic `collision between ...` warnings (#808). Each guard now
+  exec's the real binary by absolute store path under `DT_PASSTHROUGH=1` instead
+  of grepping `$PATH`, so the real packages (`genie`, `mr`, `oxlint`, `oxfmt`,
+  `nixfmt`, `deadnix`, `tsgo`, `pnpm`) no longer need to be competing top-level
+  profile providers. Reals are threaded into the task modules via `*Pkg` args
+  (`tsBinPkg`, `oxlintPkg`, `mrPkg`, `pnpmPkg`, `geniePkg`). `effect-tsgo`
+  and `pnpm` stay on `$PATH` at `lib.lowPrio` to keep their `effect-tsgo`/`pnpx`
+  siblings reachable. `realBin` is optional with the previous `$PATH`-grep
+  retained as the fallback, so the `fromTasks`/`mkCliGuard` API and unthreaded
+  guards (`vitest`, `playwright`) are backward compatible. The exported
+  `tasks.genie` module stays a bare-path standard module — `geniePkg` is an
+  optional module argument (threaded via `_module.args.geniePkg`), so downstream
+  `imports = [ inputs.effect-utils.devenvModules.tasks.genie ]` is unaffected.
+
+- **repo dependency/toolchain refresh**: Upgrade the Nix, pnpm, TypeScript, lint,
+  test, Storybook/Vite, React, OpenTelemetry, OpenTUI, and Effect 3-line
+  dependency set to current major-compatible versions while deliberately not
+  moving to Effect 4. Live installs now use Nix-managed pnpm 11 with global
+  virtual store enabled, install scripts and dependency scripts disabled, strict
+  store verification, and a pure workspace-local store; fixed-output Nix prep
+  keeps an isolated virtual store as the reproducible exception because GVS
+  projections point at the builder-local pnpm store. Native packages that are
+  needed at runtime are supplied through Nix/custom package derivations, and
+  Storybook oxlint rule exports are temporarily removed until the upstream
+  ESLint 10 plugin stack is compatible again. Refresh the affected CLI
+  `pnpm-deps` fixed-output hashes so cold Nix prep validates after the lockfile
+  and pnpm policy changes, explicitly deny `fsevents` build approval, and
+  document the boundary between Nix-owned lifecycle-built native addons and
+  locked fixed-output prebuilt optional native packages. The `genie` CLI now
+  formats through the Nix-wrapped `oxfmt` executable instead of bundling the npm
+  `oxfmt` module, keeping optional formatter plugins out of the compiled CLI
+  closure. CI's shared Nix retry wrapper now repairs and retries a missing
+  multi-user Nix daemon socket, matching the existing transient Nix store/fetch
+  retry policy. Storybook is now declared as depending on this workspace's
+  `@storybook/react-vite` framework package via pnpm package extensions, so
+  Storybook's dynamic preset loading works under pnpm's global virtual store;
+  refresh the lockfile and affected `pnpm-deps` fixed-output hashes for that
+  package-extension checksum change. The pty-effect native-package linking task
+  now resolves the active pnpm global virtual store path and skips an absent
+  `links` projection instead of assuming the default workspace store exists
+  while source-mode `mr` tasks now wait for `pnpm:install` before resolving
+  their package graph, removing a check:quick task-order race in CI perf probes
+  and the Genie perf probe now uses the supported `genie:check` task instead of
+  raw Bun execution through shell entry
+  (#804).
+
+- **devenv TypeScript tasks**: Move the normal workspace TypeScript check/build
+  path to the Nix-managed `tsgo` binary, so `ts:check`, `ts:check:strict`,
+  `ts:build`, `ts:build-watch`, and `ts:clean` run on the TypeScript 7 native
+  compiler track. `ts:emit` keeps using JavaScript `tsc` for its compiler-API
+  tsconfig filtering and no-check emit path. The old standalone
+  `ts-effect-lsp` compatibility module is removed because Effect diagnostics
+  are now part of the normal tsgo-backed check path.
 
 - **@overeng/genie**: Make `findGenieFiles` return stable repo-relative
   `.genie.ts` paths, with generation/check orchestration resolving them at the
