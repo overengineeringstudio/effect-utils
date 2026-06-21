@@ -152,28 +152,28 @@ under the task span.
 
 ### Resource Attributes
 
-| Attribute      | Required | Values                           | Set by                    |
-| -------------- | -------- | -------------------------------- | ------------------------- |
+| Attribute      | Required | Values                            | Set by                    |
+| -------------- | -------- | --------------------------------- | ------------------------- |
 | `service.name` | Yes      | `"effect-utils-devenv"`, app name | `otel-span`, Effect layer |
-| `devenv.root`  | Yes      | Absolute path                    | `otel-span`, Effect layer |
+| `devenv.root`  | Yes      | Absolute path                     | `otel-span`, Effect layer |
 
 ### Span Attributes (dt tasks)
 
-| Attribute       | Type      | Description                            | Example                                      |
-| --------------- | --------- | -------------------------------------- | -------------------------------------------- |
-| `name`          | span name | Stable operation name                  | `dt.run`, `devenv.task.exec`                 |
-| `span.label`    | string    | Human-readable short label             | `ts:check`, `socket`, `aggregate`            |
-| `tool.name`     | string    | Tool namespace                         | `dt`, `devenv`, `typescript`                 |
-| `task.name`     | string    | Devenv task name                       | `pnpm:install`, `ts:check`                   |
-| `task.phase`    | string    | Task wrapper phase                     | `exec`, `status`                             |
-| `task.cached`   | bool      | Whether task was cached/skipped        | `true`, `false`                              |
-| `status.method` | string    | Cache/status check strategy            | `binary`, `hash`, `path`                     |
-| `exit.code`     | int       | Process exit code                      | `0`, `1`                                     |
-| `compiler.name` | string    | TypeScript compiler binary             | `tsgo`, `tsc`                                |
-| `ts.project`    | string    | Repo-relative TypeScript project path  | `context/effect/socket`                      |
-| `ts.project.name` | string  | Short TypeScript project label         | `socket`                                     |
-| `tsconfig.path` | string    | TypeScript build config                | `tsconfig.all.json`                          |
-| `typescript.*`  | typed     | Compiler timings/counters              | `typescript.total_time_s`, `typescript.files` |
+| Attribute         | Type      | Description                           | Example                                       |
+| ----------------- | --------- | ------------------------------------- | --------------------------------------------- |
+| `name`            | span name | Stable operation name                 | `dt.run`, `devenv.task.exec`                  |
+| `span.label`      | string    | Human-readable short label            | `ts:check`, `socket`, `aggregate`             |
+| `tool.name`       | string    | Tool namespace                        | `dt`, `devenv`, `typescript`                  |
+| `task.name`       | string    | Devenv task name                      | `pnpm:install`, `ts:check`                    |
+| `task.phase`      | string    | Task wrapper phase                    | `exec`, `status`                              |
+| `task.cached`     | bool      | Whether task was cached/skipped       | `true`, `false`                               |
+| `status.method`   | string    | Cache/status check strategy           | `binary`, `hash`, `path`                      |
+| `exit.code`       | int       | Process exit code                     | `0`, `1`                                      |
+| `compiler.name`   | string    | TypeScript compiler binary            | `tsgo`, `tsc`                                 |
+| `ts.project`      | string    | Repo-relative TypeScript project path | `context/effect/socket`                       |
+| `ts.project.name` | string    | Short TypeScript project label        | `socket`                                      |
+| `tsconfig.path`   | string    | TypeScript build config               | `tsconfig.all.json`                           |
+| `typescript.*`    | typed     | Compiler timings/counters             | `typescript.total_time_s`, `typescript.files` |
 
 `trace.exec` adds `task.cached=false` for executed tasks. `trace.status` derives
 `task.cached` from the status command exit code. Raw command arguments and
