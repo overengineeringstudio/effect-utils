@@ -55,6 +55,15 @@ PY
   } | shasum -a 256 | awk '{print $1}'
 }
 
+simulate_setup_otel_seed() {
+  unset TRACEPARENT OTEL_SHELL_ENTRY_NS
+
+  if [ -n "${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] || { [ -n "${OTEL_SPAN_SPOOL_DIR:-}" ] && [ -d "${OTEL_SPAN_SPOOL_DIR:-}" ]; }; then
+    export TRACEPARENT="00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01"
+    export OTEL_SHELL_ENTRY_NS="1234567890000000000"
+  fi
+}
+
 echo "Running setup-cache tests..."
 echo ""
 
@@ -161,6 +170,58 @@ if [ "$store_fp_1" = "$store_fp_2" ]; then
   exit 1
 fi
 echo "  ok: resolved store path change invalidates fingerprint"
+
+echo ""
+echo "Test 10: OTEL setup root context is seeded for endpoint delivery"
+(
+  export OTEL_EXPORTER_OTLP_ENDPOINT="http://collector.example:4318"
+  unset OTEL_SPAN_SPOOL_DIR
+  simulate_setup_otel_seed
+  [[ "${TRACEPARENT:-}" =~ ^00-[0-9a-f]{32}-[0-9a-f]{16}-01$ ]] || {
+    echo "FAIL: endpoint delivery should seed TRACEPARENT"
+    exit 1
+  }
+  [ -n "${OTEL_SHELL_ENTRY_NS:-}" ] || {
+    echo "FAIL: endpoint delivery should seed OTEL_SHELL_ENTRY_NS"
+    exit 1
+  }
+)
+echo "  ok: endpoint delivery seeds setup root context"
+
+echo ""
+echo "Test 11: OTEL setup root context is seeded for spool-only delivery"
+(
+  unset OTEL_EXPORTER_OTLP_ENDPOINT
+  export OTEL_SPAN_SPOOL_DIR="$test_dir/otel-spool"
+  mkdir -p "$OTEL_SPAN_SPOOL_DIR"
+  simulate_setup_otel_seed
+  [[ "${TRACEPARENT:-}" =~ ^00-[0-9a-f]{32}-[0-9a-f]{16}-01$ ]] || {
+    echo "FAIL: spool-only delivery should seed TRACEPARENT"
+    exit 1
+  }
+  [ -n "${OTEL_SHELL_ENTRY_NS:-}" ] || {
+    echo "FAIL: spool-only delivery should seed OTEL_SHELL_ENTRY_NS"
+    exit 1
+  }
+)
+echo "  ok: spool-only delivery seeds setup root context"
+
+echo ""
+echo "Test 12: Missing spool directory does not seed setup root context"
+(
+  unset OTEL_EXPORTER_OTLP_ENDPOINT
+  export OTEL_SPAN_SPOOL_DIR="$test_dir/missing-spool"
+  simulate_setup_otel_seed
+  [ -z "${TRACEPARENT:-}" ] || {
+    echo "FAIL: missing spool dir should not seed TRACEPARENT"
+    exit 1
+  }
+  [ -z "${OTEL_SHELL_ENTRY_NS:-}" ] || {
+    echo "FAIL: missing spool dir should not seed OTEL_SHELL_ENTRY_NS"
+    exit 1
+  }
+)
+echo "  ok: missing spool dir does not seed setup root context"
 
 echo ""
 echo "All setup-cache tests passed"

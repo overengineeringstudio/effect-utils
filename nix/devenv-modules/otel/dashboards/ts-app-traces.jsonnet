@@ -1,5 +1,5 @@
 // TS App Traces dashboard
-// General-purpose trace exploration for Effect OTEL layers and non-dt services.
+// General-purpose trace exploration for Effect OTEL layers and non-devenv services.
 local g = import 'g.libsonnet';
 local lib = import 'lib.libsonnet';
 local at = lib.at;
@@ -26,9 +26,9 @@ g.dashboard.new('TS App Traces')
   at(g.panel.row.new('App Traces'), 0, y.statsRow, 24, 1),
 
   at(
-    g.panel.stat.new('App traces (non-dt)')
+    g.panel.stat.new('App traces')
     + g.panel.stat.queryOptions.withTargets([
-      lib.tempoQuery('{resource.service.name!="dt"}', 'A', 100),
+      lib.tempoQuery('{resource.service.name!="effect-utils-devenv"}', 'A', 100),
     ]),
     0, y.stats, 8, 4,
   ),
@@ -36,7 +36,7 @@ g.dashboard.new('TS App Traces')
   at(
     g.panel.stat.new('App errors')
     + g.panel.stat.queryOptions.withTargets([
-      lib.tempoQuery('{resource.service.name!="dt" && status.code=error}', 'A', 100),
+      lib.tempoQuery('{resource.service.name!="effect-utils-devenv" && status.code=error}', 'A', 100),
     ]),
     8, y.stats, 8, 4,
   ),
@@ -54,8 +54,8 @@ g.dashboard.new('TS App Traces')
 
   at(
     lib.tempoTable(
-      'Recent app traces (excluding dt)',
-      '{resource.service.name!="dt"}',
+      'Recent app traces (excluding devenv tooling)',
+      '{resource.service.name!="effect-utils-devenv"}',
       'A',
       100,
     ),
@@ -68,7 +68,7 @@ g.dashboard.new('TS App Traces')
   at(
     lib.tempoTable(
       'App error traces',
-      '{resource.service.name!="dt" && status.code=error}',
+      '{resource.service.name!="effect-utils-devenv" && status.code=error}',
       'A',
       50,
     ),

@@ -35,7 +35,7 @@
 # OTEL tracing:
 #   When OTEL is available, ts:check and ts:build run with --extendedDiagnostics
 #   --verbose (adds ~3% overhead) and emit per-project child spans with timing
-#   attributes (tsc.check_time_s, tsc.parse_time_s, etc.). This applies to both
+#   attributes (typescript.check_time_s, typescript.parse_time_s, etc.). This applies to both
 #   the JS tsc and Effect tsgo, whose build diagnostics share the same shape;
 #   tsgo additionally yields a build-level "aggregate" span. The timing
 #   scaffolding is stripped from the user's view, but real errors and tsgo's
@@ -153,7 +153,8 @@ let
     # output is captured to a temp file, so those lints are re-surfaced through
     # `filter_diagnostics_noise` on BOTH success and failure — otherwise routing
     # tsgo through this path would silently swallow them.
-    if command -v otel-span >/dev/null 2>&1 && [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] && [ -n "''${TRACEPARENT:-}" ]; then
+    _ts_parent_context="''${OTEL_TASK_TRACEPARENT:-''${TRACEPARENT:-}}"
+    if ${trace.otelCanEmitShell} && [[ "$_ts_parent_context" =~ ^00-[0-9a-fA-F]{32}-[0-9a-fA-F]{16}-[0-9a-fA-F]{2}$ ]]; then
       _tsc_output="$(mktemp)"
       trap 'rm -f "$_tsc_output"' EXIT
 
@@ -179,8 +180,8 @@ let
       filter_diagnostics_noise "$_tsc_output"
 
       if [[ "${tscInvocation}" == --build* ]]; then
-        # Parse TRACEPARENT to get trace ID and current span ID (our parent)
-        IFS='-' read -r _tp_ver _tp_trace _tp_parent _tp_flags <<< "$TRACEPARENT"
+        # Parse task-scoped trace context to get trace ID and current task span ID.
+        IFS='-' read -r _tp_ver _tp_trace _tp_parent _tp_flags <<< "$_ts_parent_context"
 
         emit_tsc_measurement_span() {
           local _span_name="$1"
@@ -190,17 +191,18 @@ let
           local _label="$5"
           shift 5
 
-          otel-span emit-span "tsc-project" "$_span_name" \
-            --scope-name "tsc-diagnostics" \
+          otel-span emit-span "effect-utils-devenv" "$_span_name" \
+            --scope-name "typescript-diagnostics" \
             --trace-id "$_tp_trace" \
             --span-id "$_span_id" \
             --parent-span-id "$_tp_parent" \
             --start-time-ns "$_start_ns" \
             --end-time-ns "$_end_ns" \
             --attr-string "span.label=$_label" \
-            --attr-string "tsc.compiler=$_ts_compiler_name" \
-            --attr-string "tsc.diagnostics_source=extendedDiagnostics" \
-            --attr-string "tsc.measurement_kind=compiler_diagnostics" \
+            --attr-string "tool.name=typescript" \
+            --attr-string "compiler.name=$_ts_compiler_name" \
+            --attr-string "diagnostics.source=extendedDiagnostics" \
+            --attr-string "diagnostics.kind=compiler_diagnostics" \
             "$@"
         }
 
@@ -262,17 +264,19 @@ let
 
           _project_label="''${_current_project##*/}"
           _span_args=(
-            --attr-string "tsc.project=$_current_project"
-            --attr-string "tsc.tsconfig=${tsconfigFile}"
-            --attr-double "tsc.total_time_s=$_total_time"
+            --attr-string "ts.project=$_current_project"
+            --attr-string "ts.project.name=$_project_label"
+            --attr-string "tsconfig.path=${tsconfigFile}"
+            --attr-bool "typescript.aggregate=false"
+            --attr-double "typescript.total_time_s=$_total_time"
           )
-          [ -n "$_check_time" ] && _span_args+=(--attr-double "tsc.check_time_s=$_check_time")
-          [ -n "$_parse_time" ] && _span_args+=(--attr-double "tsc.parse_time_s=$_parse_time")
-          [ -n "$_emit_time" ] && _span_args+=(--attr-double "tsc.emit_time_s=$_emit_time")
-          [ -n "$_files_count" ] && _span_args+=(--attr-int "tsc.files=$_files_count")
-          [ -n "$_memory" ] && _span_args+=(--attr-int "tsc.memory_kb=$_memory")
+          [ -n "$_check_time" ] && _span_args+=(--attr-double "typescript.check_time_s=$_check_time")
+          [ -n "$_parse_time" ] && _span_args+=(--attr-double "typescript.parse_time_s=$_parse_time")
+          [ -n "$_emit_time" ] && _span_args+=(--attr-double "typescript.emit_time_s=$_emit_time")
+          [ -n "$_files_count" ] && _span_args+=(--attr-int "typescript.files=$_files_count")
+          [ -n "$_memory" ] && _span_args+=(--attr-int "typescript.memory_kb=$_memory")
 
-          emit_tsc_measurement_span "$_current_project" "$_span_id" "$_start_ns" "$_end_ns" "$_project_label" "''${_span_args[@]}"
+          emit_tsc_measurement_span "typescript.project.check" "$_span_id" "$_start_ns" "$_end_ns" "$_project_label" "''${_span_args[@]}"
 
           _current_project=""
           _diag_block=""
@@ -299,17 +303,17 @@ let
           _agg_start_ns=$((_agg_end_ns - _agg_duration_ns))
 
           _agg_args=(
-            --attr-bool "tsc.aggregate=true"
-            --attr-double "tsc.total_time_s=$_agg_total"
+            --attr-bool "typescript.aggregate=true"
+            --attr-double "typescript.total_time_s=$_agg_total"
           )
-          [ -n "$_agg_check" ] && _agg_args+=(--attr-double "tsc.check_time_s=$_agg_check")
-          [ -n "$_agg_parse" ] && _agg_args+=(--attr-double "tsc.parse_time_s=$_agg_parse")
-          [ -n "$_agg_emit" ] && _agg_args+=(--attr-double "tsc.emit_time_s=$_agg_emit")
-          [ -n "$_agg_files" ] && _agg_args+=(--attr-int "tsc.files=$_agg_files")
-          [ -n "$_agg_memory" ] && _agg_args+=(--attr-int "tsc.memory_kb=$_agg_memory")
-          [ -n "$_projects_built" ] && _agg_args+=(--attr-int "tsc.projects_built=$_projects_built")
+          [ -n "$_agg_check" ] && _agg_args+=(--attr-double "typescript.check_time_s=$_agg_check")
+          [ -n "$_agg_parse" ] && _agg_args+=(--attr-double "typescript.parse_time_s=$_agg_parse")
+          [ -n "$_agg_emit" ] && _agg_args+=(--attr-double "typescript.emit_time_s=$_agg_emit")
+          [ -n "$_agg_files" ] && _agg_args+=(--attr-int "typescript.files=$_agg_files")
+          [ -n "$_agg_memory" ] && _agg_args+=(--attr-int "typescript.memory_kb=$_agg_memory")
+          [ -n "$_projects_built" ] && _agg_args+=(--attr-int "typescript.projects_built=$_projects_built")
 
-          emit_tsc_measurement_span "tsc.aggregate" "$_agg_span_id" "$_agg_start_ns" "$_agg_end_ns" "aggregate" "''${_agg_args[@]}"
+          emit_tsc_measurement_span "typescript.build.aggregate" "$_agg_span_id" "$_agg_start_ns" "$_agg_end_ns" "aggregate" "''${_agg_args[@]}"
         fi
       fi
 

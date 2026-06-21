@@ -28,15 +28,15 @@ local taskDurationPanel(title, taskFilter, h=8) =
     title,
     [
       lib.tempoMetricsQuery(
-        '{resource.service.name="dt-task" && name=~"' + taskFilter + '"} | quantile_over_time(duration, 0.5) by (name)',
+        '{resource.service.name="effect-utils-devenv" && name="devenv.task.exec" && span.task.name=~"' + taskFilter + '"} | quantile_over_time(duration, 0.5) by (span.task.name)',
         'p50',
       ),
       lib.tempoMetricsQuery(
-        '{resource.service.name="dt-task" && name=~"' + taskFilter + '"} | quantile_over_time(duration, 0.95) by (name)',
+        '{resource.service.name="effect-utils-devenv" && name="devenv.task.exec" && span.task.name=~"' + taskFilter + '"} | quantile_over_time(duration, 0.95) by (span.task.name)',
         'p95',
       ),
       lib.tempoMetricsQuery(
-        '{resource.service.name="dt-task" && name=~"' + taskFilter + '"} | quantile_over_time(duration, 0.99) by (name)',
+        '{resource.service.name="effect-utils-devenv" && name="devenv.task.exec" && span.task.name=~"' + taskFilter + '"} | quantile_over_time(duration, 0.99) by (span.task.name)',
         'p99',
       ),
     ],
@@ -47,7 +47,7 @@ local taskRatePanel(title, taskFilter) =
   g.panel.timeSeries.new(title)
   + g.panel.timeSeries.queryOptions.withTargets([
     lib.tempoMetricsQuery(
-      '{resource.service.name="dt-task" && name=~"' + taskFilter + '"} | rate() by (name)',
+      '{resource.service.name="effect-utils-devenv" && name="devenv.task.exec" && span.task.name=~"' + taskFilter + '"} | rate() by (span.task.name)',
       'A',
     ),
   ])
@@ -61,15 +61,15 @@ local dtRootDurationPanel(title, taskFilter) =
     title,
     [
       lib.tempoMetricsQuery(
-        '{resource.service.name="dt" && name=~"' + taskFilter + '"} | quantile_over_time(duration, 0.5)',
+        '{resource.service.name="effect-utils-devenv" && name="dt.run" && span.task.name=~"' + taskFilter + '"} | quantile_over_time(duration, 0.5)',
         'p50',
       ),
       lib.tempoMetricsQuery(
-        '{resource.service.name="dt" && name=~"' + taskFilter + '"} | quantile_over_time(duration, 0.95)',
+        '{resource.service.name="effect-utils-devenv" && name="dt.run" && span.task.name=~"' + taskFilter + '"} | quantile_over_time(duration, 0.95)',
         'p95',
       ),
       lib.tempoMetricsQuery(
-        '{resource.service.name="dt" && name=~"' + taskFilter + '"} | quantile_over_time(duration, 0.99)',
+        '{resource.service.name="effect-utils-devenv" && name="dt.run" && span.task.name=~"' + taskFilter + '"} | quantile_over_time(duration, 0.99)',
         'p99',
       ),
     ],
@@ -81,11 +81,11 @@ local tscProjectPanel(title) =
     title,
     [
       lib.tempoMetricsQuery(
-        '{resource.service.name="tsc-project"} | quantile_over_time(duration, 0.5) by (name)',
+        '{resource.service.name="effect-utils-devenv" && name="typescript.project.check"} | quantile_over_time(duration, 0.5) by (span.ts.project.name)',
         'p50',
       ),
       lib.tempoMetricsQuery(
-        '{resource.service.name="tsc-project"} | quantile_over_time(duration, 0.95) by (name)',
+        '{resource.service.name="effect-utils-devenv" && name="typescript.project.check"} | quantile_over_time(duration, 0.95) by (span.ts.project.name)',
         'p95',
       ),
     ],
@@ -148,15 +148,15 @@ g.dashboard.new('dt Task Duration Trends')
       'dt invocation duration (p50 / p95 / p99)',
       [
         lib.tempoMetricsQuery(
-          '{resource.service.name="dt"} | quantile_over_time(duration, 0.5)',
+          '{resource.service.name="effect-utils-devenv" && name="dt.run"} | quantile_over_time(duration, 0.5)',
           'p50',
         ),
         lib.tempoMetricsQuery(
-          '{resource.service.name="dt"} | quantile_over_time(duration, 0.95)',
+          '{resource.service.name="effect-utils-devenv" && name="dt.run"} | quantile_over_time(duration, 0.95)',
           'p95',
         ),
         lib.tempoMetricsQuery(
-          '{resource.service.name="dt"} | quantile_over_time(duration, 0.99)',
+          '{resource.service.name="effect-utils-devenv" && name="dt.run"} | quantile_over_time(duration, 0.99)',
           'p99',
         ),
       ],
@@ -304,21 +304,21 @@ g.dashboard.new('dt Task Duration Trends')
   // =========================================================================
   at(g.panel.row.new('Shell Entry Performance'), 0, y.shellRow, 24, 1),
 
-  // Shell entry uses service.name="dt-shell-entry" for the root span
+  // Shell entry uses the same service as task traces with a dedicated operation span.
   at(
     lib.durationTimeSeries(
       'Shell entry total time (p50 / p95 / p99)',
       [
         lib.tempoMetricsQuery(
-          '{resource.service.name="dt-shell-entry"} | quantile_over_time(duration, 0.5)',
+          '{resource.service.name="effect-utils-devenv" && name="devenv.shell.entry"} | quantile_over_time(duration, 0.5)',
           'p50',
         ),
         lib.tempoMetricsQuery(
-          '{resource.service.name="dt-shell-entry"} | quantile_over_time(duration, 0.95)',
+          '{resource.service.name="effect-utils-devenv" && name="devenv.shell.entry"} | quantile_over_time(duration, 0.95)',
           'p95',
         ),
         lib.tempoMetricsQuery(
-          '{resource.service.name="dt-shell-entry"} | quantile_over_time(duration, 0.99)',
+          '{resource.service.name="effect-utils-devenv" && name="devenv.shell.entry"} | quantile_over_time(duration, 0.99)',
           'p99',
         ),
       ],

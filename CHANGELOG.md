@@ -30,24 +30,20 @@ All notable changes to this project will be documented in this file.
   removed. Intentional deviations from upstream (scope-analysis-dependent
   autofixes are detection-only; `hierarchy-separator`'s `|`→`/` fix is kept) are
   documented per rule.
-- **tsgo build timing telemetry** (#377): `ts:check`/`ts:build` now emit typed
-  OTEL timing measurement spans when the workspace is type-checked with `tsgo`,
-  not only with the JS `tsc`. tsgo's `--build --extendedDiagnostics --verbose`
-  output shares the tsc diagnostics shape, so a single parser drives both
-  compilers and emits one `tsc-project` child span per built project
-  (`tsc.total_time_s`, `tsc.check_time_s`, `tsc.parse_time_s`,
-  `tsc.emit_time_s`, `tsc.files`, `tsc.memory_kb`) under the surrounding
-  `dt-task` span. tsgo's build-level aggregate summary is additionally emitted
-  as one `tsc.aggregate` span (`tsc.aggregate=true`, plus
-  `tsc.projects_built`). The spans use the new `otel-span emit-span` subcommand
-  instead of hand-built OTLP JSON, preserving double/int/bool attribute types,
-  context propagation, `span.label`, `tsc.compiler`, and
-  `tsc.diagnostics_source=extendedDiagnostics`. The previous guard that skipped
-  the diagnostics path for tsgo is removed; tsgo's Effect language lints are now
-  re-surfaced from the captured diagnostics output on both success and failure
-  so routing through this path no longer suppresses them. Covered by a parser
-  test (`ts-diagnostics-parser.test.sh`) against captured real tsgo output and
-  an offline `otel:test` assertion for typed `emit-span` output.
+- **Clean devenv OTEL task model** (#377): `dt`, devenv task wrappers, shell
+  entry, pnpm cache-miss status spans, and TypeScript diagnostics now use a
+  single `service.name=effect-utils-devenv` resource with stable operation span
+  names (`dt.run`, `devenv.shell.entry`, `devenv.task.exec`,
+  `devenv.task.status`, `typescript.project.check`,
+  `typescript.build.aggregate`). Task identity moved to typed span attributes
+  such as `task.name`, `task.phase`, and `task.cached`; raw forwarded `dt`
+  arguments are no longer recorded. `ts:check`/`ts:build` emit typed
+  `typescript.*`, `compiler.*`, and `diagnostics.*` attributes through
+  `otel-span emit-span` for both `tsgo` and JS `tsc`, with spool-only delivery
+  and task-context propagation covered. The dashboards now query operation span
+  names plus `span.task.name` / `span.ts.project.name`, and the new
+  `ts-otelite-e2e.test.sh` proof covers the full
+  `dt.run -> devenv.task.exec -> typescript.*` tree through real otelite.
 
 - **native dependency policy audit**: Add `nativeDependencyPolicy`, a tagged
   source-of-truth classification in `genie/external.ts` for every native npm

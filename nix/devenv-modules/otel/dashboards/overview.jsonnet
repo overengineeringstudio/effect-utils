@@ -40,9 +40,9 @@ g.dashboard.new('OTEL Overview')
   ),
 
   at(
-    g.panel.stat.new('dt task traces (1h)')
+    g.panel.stat.new('devenv task traces (1h)')
     + g.panel.stat.queryOptions.withTargets([
-      lib.tempoQuery('{resource.service.name="dt"}', 'A', 100),
+      lib.tempoQuery('{resource.service.name="effect-utils-devenv" && name=~"dt.run|devenv.task.exec|devenv.task.status|devenv.shell.entry|typescript.project.check|typescript.build.aggregate"}', 'A', 100),
     ]),
     12, y.stats, 6, 4,
   ),
@@ -50,7 +50,7 @@ g.dashboard.new('OTEL Overview')
   at(
     g.panel.stat.new('App traces (1h)')
     + g.panel.stat.queryOptions.withTargets([
-      lib.tempoQuery('{resource.service.name!="dt"}', 'A', 100),
+      lib.tempoQuery('{resource.service.name!="effect-utils-devenv"}', 'A', 100),
     ]),
     18, y.stats, 6, 4,
   ),

@@ -194,10 +194,13 @@ emit_pnpm_install_miss_span() {
   local task_name="$1"
   local reason="$2"
 
-  if command -v otel-span >/dev/null 2>&1 && { [ -n "${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] || [ -n "${OTEL_SPAN_SPOOL_DIR:-}" ]; }; then
-    otel-span emit-span "dt-task" "${task_name}:status:miss" \
+  if command -v otel-span >/dev/null 2>&1 && { [ -n "${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] || { [ -n "${OTEL_SPAN_SPOOL_DIR:-}" ] && [ -d "${OTEL_SPAN_SPOOL_DIR:-}" ]; }; }; then
+    otel-span emit-span "effect-utils-devenv" "devenv.task.status" \
+      --attr "tool.name=devenv" \
+      --attr "task.name=${task_name}" \
       --attr "task.phase=status" \
       --attr "task.cached=false" \
+      --attr "status.method=hash" \
       --attr-string "span.label=${reason}" \
       --attr-string "install.miss_reason=${reason}" >/dev/null 2>&1 || true
   fi

@@ -139,8 +139,9 @@ EOF
 chmod +x "$tmpdir/bin/otel-span"
 
 export PATH="$tmpdir/bin:$PATH"
-export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4318"
-export TRACEPARENT="00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
+export OTEL_SPAN_SPOOL_DIR="$tmpdir/spool"
+mkdir -p "$OTEL_SPAN_SPOOL_DIR"
+export OTEL_TASK_TRACEPARENT="00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
 export DEVENV_ROOT="$tmpdir/workspace"
 : > "$tmpdir/spans.ndjson"
 
@@ -168,35 +169,45 @@ flat="$(tr -d '\n ' < "$tmpdir/spans.ndjson")"
 
 # 3. Per-project spans carry their own per-project totals (0.339s and 0.274s),
 #    proving the aggregate (18.107s) was NOT mis-attributed to the last project.
-echo "$flat" | grep -q '"tsc.total_time_s","value":{"doubleValue":0.339}' \
-  || fail "first project span missing total_time_s=0.339"
-echo "$flat" | grep -q '"tsc.total_time_s","value":{"doubleValue":0.274}' \
+echo "$flat" | grep -q '"typescript.total_time_s","value":{"doubleValue":0.339}' \
+  || fail "first project span missing typescript.total_time_s=0.339"
+echo "$flat" | grep -q '"typescript.total_time_s","value":{"doubleValue":0.274}' \
   || fail "second (last) project span missing total_time_s=0.274"
 
 # 4. Exactly one span is the aggregate, with the build-level total (18.107s) and
 #    projects_built count.
-agg_count=$( (echo "$flat" | grep -oE '"tsc.aggregate","value":\{"boolValue":true\}' || true) | grep -c . || true)
+agg_count=$( (echo "$flat" | grep -oE '"typescript.aggregate","value":\{"boolValue":true\}' || true) | grep -c . || true)
 [ "$agg_count" -eq 1 ] || fail "expected exactly 1 aggregate span, got $agg_count"
-echo "$flat" | grep -q '"tsc.total_time_s","value":{"doubleValue":18.107}' \
+echo "$flat" | grep -q '"typescript.total_time_s","value":{"doubleValue":18.107}' \
   || fail "aggregate span missing total_time_s=18.107"
-echo "$flat" | grep -q '"tsc.projects_built","value":{"intValue":"34"}' \
+echo "$flat" | grep -q '"typescript.projects_built","value":{"intValue":"34"}' \
   || fail "aggregate span missing projects_built=34"
 echo "$flat" | grep -q '"span.label","value":{"stringValue":"aggregate"}' \
   || fail "aggregate span missing span.label=aggregate"
 echo "$flat" | grep -q '"span.label","value":{"stringValue":"socket"}' \
   || fail "project span missing concise span.label"
-echo "$flat" | grep -q '"tsc.compiler","value":{"stringValue":"tsgo"}' \
+echo "$flat" | grep -q '"compiler.name","value":{"stringValue":"tsgo"}' \
   || fail "span missing compiler identity"
-echo "$flat" | grep -q '"tsc.diagnostics_source","value":{"stringValue":"extendedDiagnostics"}' \
+echo "$flat" | grep -q '"diagnostics.source","value":{"stringValue":"extendedDiagnostics"}' \
   || fail "span missing diagnostics source"
-echo "$flat" | grep -q '"name":"tsc.aggregate"' \
-  || fail "aggregate span should use the stable tsc.aggregate name"
+echo "$flat" | grep -q '"name":"typescript.build.aggregate"' \
+  || fail "aggregate span should use the stable typescript.build.aggregate name"
+echo "$flat" | grep -q '"name":"typescript.project.check"' \
+  || fail "project spans should use the stable typescript.project.check name"
+echo "$flat" | grep -q '"service.name","value":{"stringValue":"effect-utils-devenv"}' \
+  || fail "spans should use the unified effect-utils-devenv service"
+echo "$flat" | grep -q '"tool.name","value":{"stringValue":"typescript"}' \
+  || fail "span missing tool.name=typescript"
+echo "$flat" | grep -q '"ts.project.name","value":{"stringValue":"socket"}' \
+  || fail "project span missing typed project name"
+echo "$flat" | grep -q '"tsconfig.path","value":{"stringValue":"tsconfig.all.json"}' \
+  || fail "project span missing typed tsconfig path"
 
 # 5. No per-project span should carry the aggregate total. (grep may match
 #    nothing — guard against pipefail killing the assignment.)
 proj_with_agg_total=$( (echo "$flat" \
-  | grep -oE '"name":"[^"]*","kind":1[^]]*"tsc.total_time_s","value":\{"doubleValue":18.107\}' \
-  | grep -v '"name":"aggregate"' || true) | grep -c . || true)
+  | grep -oE '"name":"[^"]*","kind":1[^]]*"typescript.total_time_s","value":\{"doubleValue":18.107\}' \
+  | grep -v '"name":"typescript.build.aggregate"' || true) | grep -c . || true)
 [ "$proj_with_agg_total" -eq 0 ] \
   || fail "a per-project span was mis-attributed the aggregate total (18.107s)"
 

@@ -102,25 +102,36 @@ Delivers spans via spool file (`$OTEL_SPAN_SPOOL_DIR`) when available, falls bac
 Subcommands:
 
 - `otel-span run` — wrap a command in an OTLP trace span
+- `otel-span emit-span` — emit one typed OTLP span without wrapping a command
 - `otel-span emit` — deliver a raw OTLP JSON payload from stdin
 
 ```bash
 otel-span run <service-name> <span-name> -- <command> [args...]
-otel-span run dt pnpm:install --attr cached=false -- pnpm install
+otel-span run effect-utils-devenv devenv.task.exec --attr task.name=pnpm:install -- pnpm install
+otel-span emit-span effect-utils-devenv typescript.project.check --attr-string span.label=socket
 printf '%s' "$otlp_json" | otel-span emit
 ```
 
 The `dt` wrapper calls `otel-span run` automatically -- no manual wrapping needed for task runs.
 
-## Two-Level Tracing (`dt` + `dt-task`)
+## Devenv Trace Model
 
-**Level 1 -- Root span** (`service.name="dt"`): `dt` wraps the entire `devenv tasks run`:
+All local tooling spans use the real local process boundary:
+`service.name="effect-utils-devenv"`. Tooling categories are represented by
+stable span names and low-cardinality attributes instead of synthetic services.
+
+**Root span**: `dt` wraps the whole `devenv tasks run` invocation:
 
 ```bash
-otel-span run "dt" "$task_name" --attr "dt.args=$*" -- devenv tasks run "$@" --mode before
+otel-span run "effect-utils-devenv" "dt.run" \
+  --attr "tool.name=dt" \
+  --attr "task.name=$task_name" \
+  --attr "task.mode=before" \
+  -- devenv tasks run "$@" --mode before
 ```
 
-**Level 2 -- Child spans** (`service.name="dt-task"`): Each task's `exec` is wrapped via `trace.nix`:
+**Task spans**: each task `exec` and cache/status check is wrapped via
+`trace.nix`:
 
 ```nix
 # In task modules (e.g., ts.nix):
@@ -128,27 +139,45 @@ trace = import ../lib/trace.nix { inherit lib; };
 exec = trace.exec "ts:check" "tsc --build tsconfig.all.json";
 ```
 
-`TRACEPARENT` chains the spans: `dt` exports it -> `devenv tasks run` inherits it -> each task `exec` reads it via `otel-span`.
+**Compiler measurement spans**: TypeScript build diagnostics emit children of
+the `ts:check`/`ts:build` task span with stable operation names:
+`typescript.project.check` and `typescript.build.aggregate`.
+
+`TRACEPARENT`/`OTEL_TASK_TRACEPARENT` chains the spans: `dt.run` exports task
+context, `devenv tasks run` inherits it, task wrappers create
+`devenv.task.*` spans, and compiler diagnostics emit child measurement spans
+under the task span.
 
 ## Span Conventions
 
 ### Resource Attributes
 
-| Attribute      | Required | Values           | Set by                    |
-| -------------- | -------- | ---------------- | ------------------------- |
-| `service.name` | Yes      | `"dt"`, app name | `otel-span`, Effect layer |
-| `devenv.root`  | Yes      | Absolute path    | `otel-span`, Effect layer |
+| Attribute      | Required | Values                           | Set by                    |
+| -------------- | -------- | -------------------------------- | ------------------------- |
+| `service.name` | Yes      | `"effect-utils-devenv"`, app name | `otel-span`, Effect layer |
+| `devenv.root`  | Yes      | Absolute path                    | `otel-span`, Effect layer |
 
 ### Span Attributes (dt tasks)
 
-| Attribute     | Type      | Description             | Example                        |
-| ------------- | --------- | ----------------------- | ------------------------------ |
-| `name`        | span name | Task name               | `"pnpm:install"`, `"ts:check"` |
-| `exit.code`   | int       | Process exit code       | `0`, `1`                       |
-| `dt.args`     | string    | Full dt command args    | `"check:quick"`                |
-| `task.cached` | string    | Whether task was cached | `"true"`, `"false"`            |
+| Attribute       | Type      | Description                            | Example                                      |
+| --------------- | --------- | -------------------------------------- | -------------------------------------------- |
+| `name`          | span name | Stable operation name                  | `dt.run`, `devenv.task.exec`                 |
+| `span.label`    | string    | Human-readable short label             | `ts:check`, `socket`, `aggregate`            |
+| `tool.name`     | string    | Tool namespace                         | `dt`, `devenv`, `typescript`                 |
+| `task.name`     | string    | Devenv task name                       | `pnpm:install`, `ts:check`                   |
+| `task.phase`    | string    | Task wrapper phase                     | `exec`, `status`                             |
+| `task.cached`   | bool      | Whether task was cached/skipped        | `true`, `false`                              |
+| `status.method` | string    | Cache/status check strategy            | `binary`, `hash`, `path`                     |
+| `exit.code`     | int       | Process exit code                      | `0`, `1`                                     |
+| `compiler.name` | string    | TypeScript compiler binary             | `tsgo`, `tsc`                                |
+| `ts.project`    | string    | Repo-relative TypeScript project path  | `context/effect/socket`                      |
+| `ts.project.name` | string  | Short TypeScript project label         | `socket`                                     |
+| `tsconfig.path` | string    | TypeScript build config                | `tsconfig.all.json`                          |
+| `typescript.*`  | typed     | Compiler timings/counters              | `typescript.total_time_s`, `typescript.files` |
 
-`trace.exec` adds `task.cached=false` for executed tasks. `trace.status` adds `task.cached=true` for cached tasks. See `nix/devenv-modules/tasks/lib/trace.nix`.
+`trace.exec` adds `task.cached=false` for executed tasks. `trace.status` derives
+`task.cached` from the status command exit code. Raw command arguments and
+compiler output are not recorded as span attributes.
 
 ## Dashboards
 

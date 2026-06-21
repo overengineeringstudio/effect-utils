@@ -342,7 +342,7 @@ in
           export DEVENV_SETUP_FINGERPRINT="$_setup_current_fingerprint"
           export DEVENV_SETUP_GIT_HASH="$_setup_git_hash"
 
-          if [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
+          if [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] || { [ -n "''${OTEL_SPAN_SPOOL_DIR:-}" ] && [ -d "''${OTEL_SPAN_SPOOL_DIR:-}" ]; }; then
             _root_trace=$(${pkgs.coreutils}/bin/od -An -tx1 -N16 /dev/urandom | tr -d ' \n')
             _root_span=$(${pkgs.coreutils}/bin/od -An -tx1 -N8 /dev/urandom | tr -d ' \n')
             export TRACEPARENT="00-''${_root_trace:0:32}-''${_root_span:0:16}-01"
