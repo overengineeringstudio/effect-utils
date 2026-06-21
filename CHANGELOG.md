@@ -19,6 +19,24 @@ All notable changes to this project will be documented in this file.
   removed. Intentional deviations from upstream (scope-analysis-dependent
   autofixes are detection-only; `hierarchy-separator`'s `|`→`/` fix is kept) are
   documented per rule.
+- **tsgo build timing telemetry** (#377): `ts:check`/`ts:build` now emit typed
+  OTEL timing measurement spans when the workspace is type-checked with `tsgo`,
+  not only with the JS `tsc`. tsgo's `--build --extendedDiagnostics --verbose`
+  output shares the tsc diagnostics shape, so a single parser drives both
+  compilers and emits one `tsc-project` child span per built project
+  (`tsc.total_time_s`, `tsc.check_time_s`, `tsc.parse_time_s`,
+  `tsc.emit_time_s`, `tsc.files`, `tsc.memory_kb`) under the surrounding
+  `dt-task` span. tsgo's build-level aggregate summary is additionally emitted
+  as one `tsc.aggregate` span (`tsc.aggregate=true`, plus
+  `tsc.projects_built`). The spans use the new `otel-span emit-span` subcommand
+  instead of hand-built OTLP JSON, preserving double/int/bool attribute types,
+  context propagation, `span.label`, `tsc.compiler`, and
+  `tsc.diagnostics_source=extendedDiagnostics`. The previous guard that skipped
+  the diagnostics path for tsgo is removed; tsgo's Effect language lints are now
+  re-surfaced from the captured diagnostics output on both success and failure
+  so routing through this path no longer suppresses them. Covered by a parser
+  test (`ts-diagnostics-parser.test.sh`) against captured real tsgo output and
+  an offline `otel:test` assertion for typed `emit-span` output.
 
 ### Changed
 

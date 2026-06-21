@@ -760,6 +760,40 @@ in
       }
       _check "Attribute type handling" _test_attr_types
 
+      # Test 3: emit-span supports typed measurement spans without a command.
+      _test_emit_span_typed_attrs() {
+        local spool="$_tmp/emit-span-typed"
+        mkdir -p "$spool"
+        OTEL_SPAN_SPOOL_DIR="$spool" OTEL_SPOOL_MULTI_WRITER=0 otel-span emit-span "tsc-project" "context/demo" \
+          --trace-id "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" \
+          --span-id "bbbbbbbbbbbbbbbb" \
+          --parent-span-id "cccccccccccccccc" \
+          --start-time-ns "1000000000" \
+          --end-time-ns "1339000000" \
+          --scope-name "tsc-diagnostics" \
+          --attr-string "span.label=demo" \
+          --attr-string "tsc.compiler=tsgo" \
+          --attr-double "tsc.total_time_s=0.339" \
+          --attr-int "tsc.files=42" \
+          --attr-bool "tsc.aggregate=false" >/dev/null 2>&1
+        [ -f "$spool/spans.jsonl" ] || return 1
+        local line
+        line=$(head -1 "$spool/spans.jsonl")
+        echo "$line" | ${pkgs.jq}/bin/jq -e '
+          .resourceSpans[0].resource.attributes[] | select(.key == "service.name").value.stringValue == "tsc-project"
+        ' >/dev/null || return 1
+        echo "$line" | ${pkgs.jq}/bin/jq -e '
+          .resourceSpans[0].scopeSpans[0].scope.name == "tsc-diagnostics"
+          and .resourceSpans[0].scopeSpans[0].spans[0].parentSpanId == "cccccccccccccccc"
+          and (.resourceSpans[0].scopeSpans[0].spans[0].attributes[] | select(.key == "span.label").value.stringValue) == "demo"
+          and (.resourceSpans[0].scopeSpans[0].spans[0].attributes[] | select(.key == "tsc.total_time_s").value.doubleValue) == 0.339
+          and (.resourceSpans[0].scopeSpans[0].spans[0].attributes[] | select(.key == "tsc.files").value.intValue) == "42"
+          and (.resourceSpans[0].scopeSpans[0].spans[0].attributes[] | select(.key == "tsc.aggregate").value.boolValue) == false
+          and ([.resourceSpans[0].scopeSpans[0].spans[0].attributes[] | select(.key == "service.name")] | length) == 0
+        ' >/dev/null
+      }
+      _check "emit-span typed attrs" _test_emit_span_typed_attrs
+
       # Test 3: local shell state resolution exports the local stack and a trace link
       _test_shell_state_local() {
         (
