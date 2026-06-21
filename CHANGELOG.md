@@ -49,6 +49,21 @@ All notable changes to this project will be documented in this file.
   test (`ts-diagnostics-parser.test.sh`) against captured real tsgo output and
   an offline `otel:test` assertion for typed `emit-span` output.
 
+- **native dependency policy audit**: Add `nativeDependencyPolicy`, a tagged
+  source-of-truth classification in `genie/external.ts` for every native npm
+  dependency family (nix-grafted, denied-lifecycle-build, fod-accepted-prebuilt).
+  The generated pnpm `allowBuilds` denylist is now derived from it so the
+  denylist and audit cannot drift. A new install-free CI audit
+  (`genie/ci-scripts/native-dep-policy-audit.ts`, wired into the
+  `pnpm-builder-contract` job) diffs the lockfile against the policy and fails
+  on drift: a CPU/OS/libc-gated native family with no policy entry, a
+  non-defensive policy package that disappeared, or a nix-grafted entry whose
+  `via` file is missing. Because pnpm lockfile v9 dropped `requiresBuild` and the
+  builder-contract job restores no `node_modules`, the pnpm build-script ledger
+  is unavailable; detecting a brand-new lifecycle-built package that is neither
+  gated-native nor in the policy is therefore out of scope, with the policy as
+  the source of truth (#807).
+
 ### Changed
 
 - **OTEL trace-structure contract**: Tighten the offline trace-structure
