@@ -10,8 +10,9 @@
 # A hardcoded CLI `--config.store-dir` has the highest pnpm precedence and would
 # override the CI env, splitting a single deploy job across two stores and
 # desyncing the root node_modules projection (the `next: command not found`
-# class of failure). `--force` performs the GVS relink; frozen (the default)
-# means a drifted effect-utils lockfile fails loudly rather than being silently
-# rewritten.
+# class of failure). `--force` performs the GVS relink. `--frozen-lockfile` is
+# explicit (not relying on pnpm's CI-only default for frozen) so a drifted
+# effect-utils lockfile fails loudly in both local and CI runs rather than being
+# silently rewritten.
 { root, dir ? "repos/effect-utils" }:
-''DT_PASSTHROUGH=1 pnpm install --force --ignore-scripts --config.confirmModulesPurge=false --config.store-dir="''${PNPM_CONFIG_STORE_DIR:-''${PNPM_STORE_DIR:-${root}/.devenv/pnpm-store-pure-v1}}" --dir ${dir}''
+''DT_PASSTHROUGH=1 pnpm install --force --frozen-lockfile --ignore-scripts --config.confirmModulesPurge=false --config.store-dir="''${PNPM_CONFIG_STORE_DIR:-''${PNPM_STORE_DIR:-${root}/.devenv/pnpm-store-pure-v1}}" --dir ${dir}''
