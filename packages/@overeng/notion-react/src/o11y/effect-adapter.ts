@@ -353,7 +353,7 @@ export const instrumentedSync = (
 ): Effect.Effect<SyncResult, NotionSyncError, NotionConfig | HttpClient.HttpClient> =>
   Effect.gen(function* () {
     const tracer = yield* Effect.tracer
-    const parent = yield* Effect.currentSpan.pipe(Effect.catchAll(() => Effect.succeed(undefined)))
+    const parent = yield* Effect.currentSpan.pipe(Effect.orElseSucceed(() => undefined))
     const otelHandler = makeEffectSpanHandler({
       tracer,
       ...(opts.serviceName !== undefined ? { serviceName: opts.serviceName } : {}),

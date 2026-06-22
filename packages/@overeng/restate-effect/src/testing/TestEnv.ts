@@ -270,7 +270,7 @@ const classifyMockExit = ({
     if (Option.isSome(failure) === true) {
       return Schema.encodeUnknown(errorSchema)(failure.value).pipe(
         Effect.flatMap((encoded) => Schema.decodeUnknown(errorSchema)(encoded)),
-        Effect.catchAll(() => Effect.succeed(failure.value)),
+        Effect.orElseSucceed(() => failure.value),
         // @effect-diagnostics-next-line anyUnknownInErrorContext:off -- re-fails with a value decoded from the user-supplied `errorSchema: Schema.Schema<unknown, unknown>`; there is no nameable error type at this dynamic-decode boundary.
         Effect.flatMap((decoded) => Effect.fail(decoded)),
       )
@@ -312,7 +312,8 @@ const mockStateProxy = <S extends StateSchemas>({
         ? Schema.decodeUnknown(schemaFor(key))(state.get(key)).pipe(
             Effect.mapError(stateErr(`stateOf(${contract.name}).get(${key})`)),
           )
-        : Effect.succeed(undefined),
+        : // @effect-diagnostics-next-line effectSucceedWithVoid:off -- `get` returns a meaningful `StateValueType | undefined` union (undefined = key absent), not void; `Effect.void` would break the `StateProxy.get` signature.
+          Effect.succeed(undefined),
     getAll: () =>
       Effect.forEach([...state.entries()], ([k, v]) =>
         Schema.decodeUnknown(schemaFor(k))(v).pipe(Effect.map((decoded) => [k, decoded] as const)),

@@ -80,16 +80,16 @@ const OrchestratorLive = RestateService.implement<typeof Orchestrator>({
           contract: Greeter,
           method: 'greet',
           input: { name },
-        }).pipe(Effect.orDie)
+        })
         /* One-way send to a keyed Object — fire-and-forget, delivered cross-invocation. */
         yield* Restate.objectSendClient({
           contract: RecorderObj,
           key: name,
           method: 'record',
           input: greeting.message,
-        }).pipe(Effect.orDie)
+        })
         return greeting.message
-      }),
+      }).pipe(Effect.orDie),
   },
 })
 

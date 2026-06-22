@@ -825,7 +825,8 @@ const compileAutoEncoder = ({
     encodeUnknown({ key: attrKey, schema, value }).pipe(
       Effect.flatMap((encoded) =>
         encoded === null || encoded === undefined
-          ? Effect.succeed(undefined)
+          ? // @effect-diagnostics-next-line effectSucceedWithVoid:off -- FieldEncoder success channel is `OtelAttributeValue | undefined`; `undefined` is the meaningful "drop field" value, not `void`
+            Effect.succeed(undefined)
           : effectFromEither(primitiveFromUnknown({ key: attrKey, value: encoded })),
       ),
     ),
@@ -843,6 +844,7 @@ const compilePolicyEncoder = ({
 }): FieldEncoder => {
   switch (policy) {
     case 'drop':
+      // @effect-diagnostics-next-line effectSucceedWithVoid:off -- FieldEncoder success channel is `OtelAttributeValue | undefined`; `undefined` is the meaningful "drop field" value, not `void`
       return () => Effect.succeed(undefined)
     case 'redacted':
       return (value) =>

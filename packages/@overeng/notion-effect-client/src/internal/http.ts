@@ -346,28 +346,24 @@ const parseErrorResponse = (opts: {
         : Option.none<number>()
 
     const json = yield* response.json.pipe(
-      Effect.catchAll(() =>
-        Effect.succeed({
-          object: 'error' as const,
-          status: response.status,
-          code: 'internal_server_error' as const,
-          message: `HTTP ${response.status} error`,
-        }),
-      ),
+      Effect.orElseSucceed(() => ({
+        object: 'error' as const,
+        status: response.status,
+        code: 'internal_server_error' as const,
+        message: `HTTP ${response.status} error`,
+      })),
     )
 
     const parsed = yield* Schema.decodeUnknown(NotionErrorResponse)(json).pipe(
-      Effect.catchAll(() =>
-        Effect.succeed({
-          object: 'error' as const,
-          status: response.status,
-          code: 'internal_server_error' as const,
-          message:
-            typeof json === 'object' && json !== null && 'message' in json
-              ? String(json.message)
-              : `HTTP ${response.status} error`,
-        }),
-      ),
+      Effect.orElseSucceed(() => ({
+        object: 'error' as const,
+        status: response.status,
+        code: 'internal_server_error' as const,
+        message:
+          typeof json === 'object' && json !== null && 'message' in json
+            ? String(json.message)
+            : `HTTP ${response.status} error`,
+      })),
     )
 
     return new NotionApiError({

@@ -231,6 +231,7 @@ describe('Otelite.capture', () => {
         Effect.gen(function* () {
           const handle = yield* otelite.capture()
           yield* postSpan(handle.endpoints.http, SPAN_NAME, SERVICE_NAME)
+          // @effect-diagnostics-next-line returnEffectInGen:off -- `handle.summary` (a Deferred) only resolves AFTER this scope's finalizer drains the receiver; it must be returned unyielded so `Effect.scoped` completes first, then the outer `.pipe(Effect.flatten)` awaits it. Yielding here would deadlock.
           return handle.summary
         }),
       ).pipe(Effect.flatten)

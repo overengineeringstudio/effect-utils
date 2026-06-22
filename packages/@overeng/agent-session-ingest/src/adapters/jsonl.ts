@@ -68,17 +68,18 @@ export const makeAppendOnlyJsonlAdapter = <A, I>(
         })
 
         const records = yield* Effect.forEach(splitCompleteJsonlRecords(read.text), (line) =>
-          Effect.try({
-            try: () => Schema.decodeUnknownSync(Schema.parseJson(options.recordSchema))(line),
-            catch: (cause) =>
-              new SessionArtifactDecodeError({
-                message: options.decodeErrorMessage,
-                sourceId: artifact.sourceId,
-                artifactId: artifact.artifactId,
-                rawRecord: line,
-                cause,
-              }),
-          }),
+          Schema.decodeUnknown(Schema.parseJson(options.recordSchema))(line).pipe(
+            Effect.mapError(
+              (cause) =>
+                new SessionArtifactDecodeError({
+                  message: options.decodeErrorMessage,
+                  sourceId: artifact.sourceId,
+                  artifactId: artifact.artifactId,
+                  rawRecord: line,
+                  cause,
+                }),
+            ),
+          ),
         )
 
         return {

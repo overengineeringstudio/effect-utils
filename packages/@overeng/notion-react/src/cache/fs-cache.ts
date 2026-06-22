@@ -51,7 +51,7 @@ export const FsCache = {
       const raw = yield* parseJson(contents).pipe(
         Effect.mapError((cause) => new CacheError({ reason: 'fs-cache-parse-failed', cause })),
       )
-      const decoded = yield* decode(raw).pipe(Effect.catchAll(() => Effect.succeed(undefined)))
+      const decoded = yield* decode(raw).pipe(Effect.orElseSucceed(() => undefined))
       if (decoded === undefined) return undefined
       if (decoded.schemaVersion !== CACHE_SCHEMA_VERSION) return undefined
       return decoded

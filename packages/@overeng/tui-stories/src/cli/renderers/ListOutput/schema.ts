@@ -24,7 +24,7 @@ export type ListStateType = typeof ListState.Type
 
 /** Actions dispatched to update list output state */
 export const ListAction = Schema.Union(
-  Schema.Struct({ _tag: Schema.Literal('SetState'), state: ListState }),
+  Schema.TaggedStruct('SetState', { state: ListState }),
 )
 
 export type ListActionType = typeof ListAction.Type

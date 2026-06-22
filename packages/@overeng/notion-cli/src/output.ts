@@ -95,7 +95,7 @@ export const formatCode = (
 
       const didFormat = yield* cmd(['oxfmt', '--write', tempFile]).pipe(
         Effect.as(true),
-        Effect.catchAll(() => Effect.succeed(false)),
+        Effect.orElseSucceed(() => false),
       )
 
       if (didFormat === true) {

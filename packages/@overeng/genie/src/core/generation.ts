@@ -420,7 +420,7 @@ const formatWithOxfmt = Effect.fn('formatWithOxfmt')(function* ({
   const result = yield* Command.make('oxfmt', ...args).pipe(
     Command.feed(content),
     Command.string,
-    Effect.catchAll(() => Effect.succeed(content)),
+    Effect.orElseSucceed(() => content),
   )
 
   // If oxfmt returned empty output (e.g., failed to parse), return original content.
@@ -743,7 +743,7 @@ export const generateFile = ({
     const fileExists = yield* fs.exists(targetFilePath)
     const currentContent =
       fileExists === true
-        ? yield* fs.readFileString(targetFilePath).pipe(Effect.catchAll(() => Effect.succeed('')))
+        ? yield* fs.readFileString(targetFilePath).pipe(Effect.orElseSucceed(() => ''))
         : ''
 
     const isUnchanged = fileExists === true && currentContent === fileContentString

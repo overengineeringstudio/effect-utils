@@ -491,6 +491,7 @@ const makeStateProxy = <S extends StateSchemas>({
       readAll().pipe(
         Effect.flatMap((rows) => {
           const hit = rows.find(([k]) => k === key)
+          // @effect-diagnostics-next-line effectSucceedWithVoid:off -- `get` returns a meaningful `StateValueType | undefined` union (undefined = key absent), not void; `Effect.void` would break the `StateProxy.get` signature.
           if (hit === undefined) return Effect.succeed(undefined)
           return Effect.try({
             try: () => serdeFor(key).deserialize(hit[1]) as StateValueType<S[typeof key]>,

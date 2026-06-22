@@ -41,11 +41,15 @@ Vitest.describe('agent-session-ingest services', () => {
   Vitest.it.effect('builds unambiguous checkpoint keys', () =>
     Effect.gen(function* () {
       const left = buildCheckpointKey({
+        // @effect-diagnostics-next-line schemaSyncInEffect:off -- hardcoded invariant-valid test literal; a decode failure here is a desirable test failure, not a runtime path
         sourceId: Schema.decodeUnknownSync(SourceId)('a:b'),
+        // @effect-diagnostics-next-line schemaSyncInEffect:off -- hardcoded invariant-valid test literal; a decode failure here is a desirable test failure, not a runtime path
         artifactId: Schema.decodeUnknownSync(ArtifactId)('c'),
       })
       const right = buildCheckpointKey({
+        // @effect-diagnostics-next-line schemaSyncInEffect:off -- hardcoded invariant-valid test literal; a decode failure here is a desirable test failure, not a runtime path
         sourceId: Schema.decodeUnknownSync(SourceId)('a'),
+        // @effect-diagnostics-next-line schemaSyncInEffect:off -- hardcoded invariant-valid test literal; a decode failure here is a desirable test failure, not a runtime path
         artifactId: Schema.decodeUnknownSync(ArtifactId)('b:c'),
       })
       expect(left).not.toBe(right)
@@ -55,10 +59,15 @@ Vitest.describe('agent-session-ingest services', () => {
   Vitest.it.effect('preserves unrelated checkpoints when ingesting one source', () =>
     Effect.gen(function* () {
       const savedRef = yield* Ref.make<ReadonlyArray<IngestionCheckpoint>>([])
+      // @effect-diagnostics-next-line schemaSyncInEffect:off -- hardcoded invariant-valid test literal; a decode failure here is a desirable test failure, not a runtime path
       const codexSourceId = Schema.decodeUnknownSync(SourceId)('codex')
+      // @effect-diagnostics-next-line schemaSyncInEffect:off -- hardcoded invariant-valid test literal; a decode failure here is a desirable test failure, not a runtime path
       const claudeSourceId = Schema.decodeUnknownSync(SourceId)('claude')
+      // @effect-diagnostics-next-line schemaSyncInEffect:off -- hardcoded invariant-valid test literal; a decode failure here is a desirable test failure, not a runtime path
       const otherArtifactId = Schema.decodeUnknownSync(ArtifactId)('other-artifact')
+      // @effect-diagnostics-next-line schemaSyncInEffect:off -- hardcoded invariant-valid test literal; a decode failure here is a desirable test failure, not a runtime path
       const claudeArtifactId = Schema.decodeUnknownSync(ArtifactId)('claude-artifact')
+      // @effect-diagnostics-next-line schemaSyncInEffect:off -- hardcoded invariant-valid test literal; a decode failure here is a desirable test failure, not a runtime path
       const targetArtifactId = Schema.decodeUnknownSync(ArtifactId)('target-artifact')
       const existingCheckpoints = [
         makeCheckpoint({
@@ -78,6 +87,7 @@ Vitest.describe('agent-session-ingest services', () => {
         saveAll: (checkpoints) => Ref.set(savedRef, checkpoints),
       })
 
+      // @effect-diagnostics-next-line schemaSyncInEffect:off -- hardcoded invariant-valid test literal; a decode failure here is a desirable test failure, not a runtime path
       const artifact = Schema.decodeUnknownSync(ArtifactDescriptor)({
         sourceId: codexSourceId,
         artifactId: targetArtifactId,

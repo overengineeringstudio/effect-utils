@@ -91,7 +91,7 @@ export const runGenieValidation = ({
       if (requirePackageJsonValidate === true && isPackageJson === true) {
         const pkgContent = yield* fs
           .readFileString(targetFilePath)
-          .pipe(Effect.catchAll(() => Effect.succeed('')))
+          .pipe(Effect.orElseSucceed(() => ''))
         const pkgName = (() => {
           try {
             return JSON.parse(pkgContent)?.name as string | undefined
