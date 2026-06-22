@@ -664,22 +664,24 @@ export const createPatchPostinstall = (args: { basePath: string }) => {
 }
 
 /**
- * #811 Effect-LSP strict-gate burndown toggle.
+ * #811 Effect-LSP strict-gate policy.
  *
  * The `@effect/language-service` plugin classifies every Effect diagnostic into
  * a TS category (error / warning / suggestion) and only lets a category affect
  * the `tsgo --build` exit code when the matching `ignore…InTscExitCode` flag is
- * `false`. This single switch encodes the intended END policy: gate on Effect
- * warnings AND suggestions, fleet-wide.
+ * `false`. This switch is the gate: both fields are `true`, so Effect warnings
+ * AND suggestions fail the build exit code (errors always gate regardless).
  *
- * Flipping both gate fields to `true` (milestone 6, once the workspace is clean) makes Effect
- * warnings and suggestions fail the `tsgo --build` exit code for effect-utils and
- * every peer repo that consumes this shared base. Errors always gate regardless.
+ * The gate runs through the existing `tsgo --build` over the project graph — no
+ * extra compiler pass — so it is enforced by `ts:check` / `ts:check:strict`
+ * (hence `dt check:quick` / `dt check:all` and the CI `typecheck` lane).
  *
- * Kept `false` during burndown so CI stays green while the ~822 live diagnostics
- * are cleared. This is the only line to flip to enable the gate.
+ * This is the SHARED base consumed by peer repos: enabling it gates Effect
+ * diagnostics fleet-wide. A repo that is not yet clean can locally override its
+ * own tsconfig plugin options (set `ignoreEffect{Warnings,Suggestions}InTscExitCode`
+ * back to `true`) until it converges, rather than carrying diagnostics in source.
  */
-const effectDiagnosticsGate = { warnings: false, suggestions: false } as const
+const effectDiagnosticsGate = { warnings: true, suggestions: true } as const
 
 /** Base tsconfig compiler options shared across all packages */
 export const baseTsconfigCompilerOptions = {
@@ -724,17 +726,15 @@ export const baseTsconfigCompilerOptions = {
       includeSuggestionsInTsc: true,
       pipeableMinArgCount: 2,
       diagnosticSeverity: {
-        // Off-by-default rules the team opts into.
+        // Off-by-default rules the team opts into (now gating as warnings).
         missedPipeableOpportunity: 'warning',
         schemaUnionOfLiterals: 'warning',
         anyUnknownInErrorContext: 'warning',
         preferSchemaOverJson: 'warning',
-        // These two default to 'error' (which always gates). They are held at
-        // 'warning' during burndown so the 5 live sites don't break CI yet.
-        // TODO(#811 M6): drop these two overrides to restore default 'error' once
-        // the 5 sites are fixed.
-        missingEffectContext: 'warning',
-        missingEffectError: 'warning',
+        // `missingEffectContext` / `missingEffectError` keep their upstream
+        // default `error` severity (no override) — real lifecycle bugs, gated
+        // hard. Genuine type-level assertion sites are waived in source with a
+        // narrow `@effect-diagnostics … :skip-file` directive instead.
       },
     },
   ],

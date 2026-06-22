@@ -121,9 +121,8 @@ const scanMembersRecursive = ({
       // Check if this member is itself a megarepo
       const isMegarepo =
         memberExists === true
-          ? (yield* findConfigPath(memberPath).pipe(
-              Effect.orElseSucceed(() => undefined),
-            )) !== undefined
+          ? (yield* findConfigPath(memberPath).pipe(Effect.orElseSucceed(() => undefined))) !==
+            undefined
           : false
 
       // Recursively scan nested members if this is a megarepo and --all is used
@@ -181,9 +180,7 @@ const scanMembersRecursive = ({
       // Read symlink target for drift detection
       const symlinkTarget =
         memberExists === true && isLocal === false
-          ? yield* fs
-              .readLink(memberPath.replace(/\/$/, ''))
-              .pipe(Effect.orElseSucceed(() => null))
+          ? yield* fs.readLink(memberPath.replace(/\/$/, '')).pipe(Effect.orElseSucceed(() => null))
           : null
 
       // Get source ref (what megarepo.json intends)

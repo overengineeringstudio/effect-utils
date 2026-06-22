@@ -25,7 +25,6 @@ import {
   type FakeNotion,
   type FakeRequest,
 } from '../test/mock-client.ts'
-import type { NotionSyncError } from './errors.ts'
 import type { SyncEvent } from './sync-events.ts'
 import { sync } from './sync.ts'
 
@@ -151,15 +150,9 @@ describe('sync() against in-memory fake Notion', () => {
     const fake = createFakeNotion()
     const cache = InMemoryCache.make()
     const tree = <DailyPage screenTime="4h 12m" apps={7} sessions={v1} />
-    await runWith(
-      fake,
-      sync(tree, { pageId: ROOT, cache }),
-    )
+    await runWith(fake, sync(tree, { pageId: ROOT, cache }))
     const before = fake.requests.length
-    const res = await runWith(
-      fake,
-      sync(tree, { pageId: ROOT, cache }),
-    )
+    const res = await runWith(fake, sync(tree, { pageId: ROOT, cache }))
     expect(res).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
     expect(res.fallbackReason).toBeUndefined()
     // Pre-flight drift check (#105) issues exactly one GET; no mutating ops.
@@ -350,18 +343,12 @@ describe('sync() against in-memory fake Notion', () => {
     const fake = createFakeNotion()
     const cache = InMemoryCache.make()
     const tree = <DailyPage screenTime="4h 12m" apps={7} sessions={v1} />
-    const initial = await runWith(
-      fake,
-      sync(tree, { pageId: ROOT, cache }),
-    )
+    const initial = await runWith(fake, sync(tree, { pageId: ROOT, cache }))
     expect(initial.fallbackReason).toBe('cold-cache')
 
     const after = fake.requests.length
     for (let i = 0; i < 3; i++) {
-      const r = await runWith(
-        fake,
-        sync(tree, { pageId: ROOT, cache }),
-      )
+      const r = await runWith(fake, sync(tree, { pageId: ROOT, cache }))
       expect(r).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
       expect(r.fallbackReason).toBeUndefined()
     }
@@ -466,10 +453,7 @@ describe('sync() against in-memory fake Notion', () => {
         </Column>
       </ColumnList>
     )
-    const res = await runWith(
-      fake,
-      sync(tree, { pageId: ROOT, cache }),
-    )
+    const res = await runWith(fake, sync(tree, { pageId: ROOT, cache }))
     // One diff op per rendered block: 1 column_list + 2 columns + 2 images = 5.
     // All five get absorbed into a single atomic payload, but the diff-level
     // tally still reflects the rendered shape.
@@ -513,15 +497,9 @@ describe('sync() against in-memory fake Notion', () => {
         </Column>
       </ColumnList>
     )
-    await runWith(
-      fake,
-      sync(tree, { pageId: ROOT, cache }),
-    )
+    await runWith(fake, sync(tree, { pageId: ROOT, cache }))
     const before = fake.requests.length
-    const rerun = await runWith(
-      fake,
-      sync(tree, { pageId: ROOT, cache }),
-    )
+    const rerun = await runWith(fake, sync(tree, { pageId: ROOT, cache }))
     // If nested tmpIds were not resolved, the persisted cache would carry
     // `tmp-*` ids and the second sync would throw from candidateToCache.
     expect(rerun).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
@@ -563,16 +541,10 @@ describe('sync() against in-memory fake Notion', () => {
         </Column>
       </ColumnList>
     )
-    await runWith(
-      fake,
-      sync(clV1, { pageId: ROOT, cache }),
-    )
+    await runWith(fake, sync(clV1, { pageId: ROOT, cache }))
     // Warm sync with a new column in the middle. Must NOT emit a bare
     // `column` append — the fake's validateAtomic would reject that.
-    const res = await runWith(
-      fake,
-      sync(clV2, { pageId: ROOT, cache }),
-    )
+    const res = await runWith(fake, sync(clV2, { pageId: ROOT, cache }))
     // Full rebuild semantics: the previous column_list is removed, the
     // new one appended (+ nested rendered blocks tallied).
     expect(res.removes).toBe(1)
@@ -608,20 +580,14 @@ describe('sync() against in-memory fake Notion', () => {
         </Column>
       </ColumnList>
     )
-    await runWith(
-      fake,
-      sync(clV1, { pageId: ROOT, cache }),
-    )
+    await runWith(fake, sync(clV1, { pageId: ROOT, cache }))
     // The inner paragraph is new and its parent column existed; a naive
     // diff would emit `append` of a paragraph under the old column.
     // Appending children into an existing column IS supported by Notion,
     // so in principle this could be a surgical op — but the cache path
     // currently lacks an incremental-rebuild strategy below column_list,
     // so we conservatively rebuild the whole column_list to stay correct.
-    const res = await runWith(
-      fake,
-      sync(clV2, { pageId: ROOT, cache }),
-    )
+    const res = await runWith(fake, sync(clV2, { pageId: ROOT, cache }))
     expect(res.removes).toBeGreaterThanOrEqual(1)
     // Most importantly: no validation error from the fake. If a bare
     // `column` append slipped through, the fake would have thrown.
@@ -643,10 +609,7 @@ describe('sync() against in-memory fake Notion', () => {
         <TableRow cells={['C', 'D']} />
       </Table>
     )
-    const res = await runWith(
-      fake,
-      sync(tree, { pageId: ROOT, cache }),
-    )
+    const res = await runWith(fake, sync(tree, { pageId: ROOT, cache }))
     // 1 table + 2 table_rows = 3 diff-level appends, all folded into one call.
     expect(res.appends).toBe(3)
     expect(res.updates + res.inserts + res.removes).toBe(0)
@@ -674,10 +637,7 @@ describe('sync() against in-memory fake Notion', () => {
 
     // Warm re-sync is a no-op (nested table_row tmpIds resolved to server ids).
     const before = fake.requests.length
-    const rerun = await runWith(
-      fake,
-      sync(tree, { pageId: ROOT, cache }),
-    )
+    const rerun = await runWith(fake, sync(tree, { pageId: ROOT, cache }))
     expect(rerun).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
     expect(rerun.fallbackReason).toBeUndefined()
     const newReqs = fake.requests.slice(before)
@@ -699,10 +659,7 @@ describe('sync() against in-memory fake Notion', () => {
         </Column>
       </ColumnList>
     )
-    const res = await runWith(
-      fake,
-      sync(tree, { pageId: ROOT, cache }),
-    )
+    const res = await runWith(fake, sync(tree, { pageId: ROOT, cache }))
     // 1 column_list + 2 columns + 1 table + 1 table_row + 1 paragraph = 6.
     expect(res.appends).toBe(6)
     // Everything folds into one PATCH on the page.
@@ -746,10 +703,7 @@ describe('sync() against in-memory fake Notion', () => {
     const fake = createFakeNotion()
     const cache = InMemoryCache.make()
     const tree = <Table tableWidth={1}>{rowsOf(100)}</Table>
-    await runWith(
-      fake,
-      sync(tree, { pageId: ROOT, cache }),
-    )
+    await runWith(fake, sync(tree, { pageId: ROOT, cache }))
     const mutating = mutatingAppends(fake)
     expect(mutating).toHaveLength(1)
     const body = mutating[0]!.body as {
@@ -762,10 +716,7 @@ describe('sync() against in-memory fake Notion', () => {
     const fake = createFakeNotion()
     const cache = InMemoryCache.make()
     const tree = <Table tableWidth={1}>{rowsOf(101)}</Table>
-    await runWith(
-      fake,
-      sync(tree, { pageId: ROOT, cache }),
-    )
+    await runWith(fake, sync(tree, { pageId: ROOT, cache }))
     const mutating = mutatingAppends(fake)
     expect(mutating).toHaveLength(2)
     const createBody = mutating[0]!.body as { children: { table: { children: unknown[] } }[] }
@@ -792,10 +743,7 @@ describe('sync() against in-memory fake Notion', () => {
     const fake = createFakeNotion()
     const cache = InMemoryCache.make()
     const tree = <Table tableWidth={1}>{rowsOf(150)}</Table>
-    await runWith(
-      fake,
-      sync(tree, { pageId: ROOT, cache }),
-    )
+    await runWith(fake, sync(tree, { pageId: ROOT, cache }))
     const mutating = mutatingAppends(fake)
     expect(mutating).toHaveLength(2)
     const createBody = mutating[0]!.body as { children: { table: { children: unknown[] } }[] }
@@ -812,10 +760,7 @@ describe('sync() against in-memory fake Notion', () => {
     const fake = createFakeNotion()
     const cache = InMemoryCache.make()
     const tree = <Table tableWidth={1}>{rowsOf(250)}</Table>
-    await runWith(
-      fake,
-      sync(tree, { pageId: ROOT, cache }),
-    )
+    await runWith(fake, sync(tree, { pageId: ROOT, cache }))
     const mutating = mutatingAppends(fake)
     expect(mutating).toHaveLength(3)
     const sizes = mutating.map((r) => {
@@ -831,15 +776,9 @@ describe('sync() against in-memory fake Notion', () => {
     const fake = createFakeNotion()
     const cache = InMemoryCache.make()
     const tree = <Table tableWidth={1}>{rowsOf(150)}</Table>
-    await runWith(
-      fake,
-      sync(tree, { pageId: ROOT, cache }),
-    )
+    await runWith(fake, sync(tree, { pageId: ROOT, cache }))
     const before = fake.requests.length
-    const rerun = await runWith(
-      fake,
-      sync(tree, { pageId: ROOT, cache }),
-    )
+    const rerun = await runWith(fake, sync(tree, { pageId: ROOT, cache }))
     expect(rerun).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
     expect(rerun.fallbackReason).toBeUndefined()
     const newReqs = fake.requests.slice(before)
@@ -865,12 +804,9 @@ describe('sync() against in-memory fake Notion', () => {
         </Column>
       </ColumnList>
     )
-    await expect(
-      runWith(
-        fake,
-        sync(tree, { pageId: ROOT, cache }),
-      ),
-    ).rejects.toThrow(/nested level/i)
+    await expect(runWith(fake, sync(tree, { pageId: ROOT, cache }))).rejects.toThrow(
+      /nested level/i,
+    )
   })
 
   // -----------------------------------------------------------------
@@ -887,16 +823,10 @@ describe('sync() against in-memory fake Notion', () => {
     const fake = createFakeNotion()
     const { cache } = spyCache()
     const tree = <DailyPage screenTime="4h 12m" apps={7} sessions={v1} />
-    const cold = await runWith(
-      fake,
-      sync(tree, { pageId: ROOT, cache }),
-    )
+    const cold = await runWith(fake, sync(tree, { pageId: ROOT, cache }))
     expect(cold.fallbackReason).toBe('cold-cache')
     const before = fake.requests.length
-    const warm = await runWith(
-      fake,
-      sync(tree, { pageId: ROOT, cache }),
-    )
+    const warm = await runWith(fake, sync(tree, { pageId: ROOT, cache }))
     expect(warm).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
     const warmReqs = fake.requests.slice(before)
     // Only the drift-check GET; no PATCH / DELETE / POST.
@@ -950,25 +880,16 @@ describe('sync() against in-memory fake Notion', () => {
     const fake = createFakeNotion()
     const spy = spyCache()
     const tree = <DailyPage screenTime="4h 12m" apps={7} sessions={v1} />
-    await runWith(
-      fake,
-      sync(tree, { pageId: ROOT, cache: spy.cache }),
-    )
+    await runWith(fake, sync(tree, { pageId: ROOT, cache: spy.cache }))
     // Out-of-band archive forces a cache-drift rebuild next sync.
     const firstToggle = fake.childrenOf(ROOT).find((b) => b.type === 'toggle')!
     firstToggle.archived = true
-    const drifted = await runWith(
-      fake,
-      sync(tree, { pageId: ROOT, cache: spy.cache }),
-    )
+    const drifted = await runWith(fake, sync(tree, { pageId: ROOT, cache: spy.cache }))
     expect(drifted.fallbackReason).toBe('cache-drift')
     const before = fake.requests.length
     // Next warm sync must not re-delete the already-archived block and must
     // not touch any other live block.
-    const warm = await runWith(
-      fake,
-      sync(tree, { pageId: ROOT, cache: spy.cache }),
-    )
+    const warm = await runWith(fake, sync(tree, { pageId: ROOT, cache: spy.cache }))
     expect(warm).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
     const warmReqs = fake.requests.slice(before)
     expect(warmReqs.every((r) => r.method === 'GET')).toBe(true)
@@ -1344,10 +1265,7 @@ describe('sync() against in-memory fake Notion', () => {
         <Paragraph>after</Paragraph>
       </>
     )
-    await runWith(
-      fake,
-      sync(tree, { pageId: ROOT, cache }),
-    )
+    await runWith(fake, sync(tree, { pageId: ROOT, cache }))
     const coldSnapshot = await Effect.runPromise(cache.load)
     const coldTotal = totalCacheNodes(coldSnapshot!)
     const coldTop = coldSnapshot!.children.length
@@ -1355,10 +1273,7 @@ describe('sync() against in-memory fake Notion', () => {
     // Three warm resyncs with identical input must each be a true no-op
     // w.r.t. cache shape. Repeating catches growth that compounds per run.
     for (let i = 0; i < 3; i++) {
-      const res = await runWith(
-        fake,
-        sync(tree, { pageId: ROOT, cache }),
-      )
+      const res = await runWith(fake, sync(tree, { pageId: ROOT, cache }))
       expect(res).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
       const warm = await Effect.runPromise(cache.load)
       expect(warm!.children.length).toBe(coldTop)
@@ -1394,19 +1309,13 @@ describe('sync() against in-memory fake Notion', () => {
         </ColumnList>
       </>
     )
-    await runWith(
-      fake,
-      sync(tree, { pageId: ROOT, cache }),
-    )
+    await runWith(fake, sync(tree, { pageId: ROOT, cache }))
     const coldSnap = await Effect.runPromise(cache.load)
     const coldTotal = totalCacheNodes(coldSnap!)
     const coldTop = coldSnap!.children.length
 
     for (let i = 0; i < 3; i++) {
-      const res = await runWith(
-        fake,
-        sync(tree, { pageId: ROOT, cache }),
-      )
+      const res = await runWith(fake, sync(tree, { pageId: ROOT, cache }))
       expect(res).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
       const warm = await Effect.runPromise(cache.load)
       expect(warm!.children.length).toBe(coldTop)
@@ -1439,10 +1348,7 @@ describe('sync() against in-memory fake Notion', () => {
         ))}
       </>
     )
-    await runWith(
-      fake,
-      sync(v1Tree, { pageId: ROOT, cache }),
-    )
+    await runWith(fake, sync(v1Tree, { pageId: ROOT, cache }))
     const coldSnap = await Effect.runPromise(cache.load)
     const coldTotal = totalCacheNodes(coldSnap!)
     const coldTop = coldSnap!.children.length
@@ -1469,10 +1375,7 @@ describe('sync() against in-memory fake Notion', () => {
         ))}
       </>
     )
-    await runWith(
-      fake,
-      sync(v2Tree, { pageId: ROOT, cache }),
-    )
+    await runWith(fake, sync(v2Tree, { pageId: ROOT, cache }))
     // Resync v2 multiple times; must be stable in cache shape.
     const v2Snap = await Effect.runPromise(cache.load)
     const v2Total = totalCacheNodes(v2Snap!)
@@ -1482,10 +1385,7 @@ describe('sync() against in-memory fake Notion', () => {
     expect(v2Top).toBe(coldTop)
 
     for (let i = 0; i < 3; i++) {
-      await runWith(
-        fake,
-        sync(v2Tree, { pageId: ROOT, cache }),
-      )
+      await runWith(fake, sync(v2Tree, { pageId: ROOT, cache }))
       const s = await Effect.runPromise(cache.load)
       expect(totalCacheNodes(s!)).toBe(v2Total)
       expect(s!.children.length).toBe(v2Top)
@@ -1517,10 +1417,7 @@ describe('sync() against in-memory fake Notion', () => {
         </ColumnList>
       </>
     )
-    await runWith(
-      fake,
-      sync(tree, { pageId: ROOT, cache: spy.cache }),
-    )
+    await runWith(fake, sync(tree, { pageId: ROOT, cache: spy.cache }))
     // Every checkpoint that commits the column_list must carry its full
     // subtree (4 paragraphs under 2 columns) — not a hollowed `children:[]`.
     const withColumnList = spy.snapshots.filter((s) =>
@@ -1551,19 +1448,13 @@ describe('sync() against in-memory fake Notion', () => {
       })
     }
     const bigTree = <DailyPage screenTime="8h" apps={12} sessions={sessions} />
-    await runWith(
-      fake,
-      sync(bigTree, { pageId: ROOT, cache }),
-    )
+    await runWith(fake, sync(bigTree, { pageId: ROOT, cache }))
     const coldSnap = await Effect.runPromise(cache.load)
     const coldTotal = totalCacheNodes(coldSnap!)
     const coldTop = coldSnap!.children.length
 
     for (let i = 0; i < 2; i++) {
-      const res = await runWith(
-        fake,
-        sync(bigTree, { pageId: ROOT, cache }),
-      )
+      const res = await runWith(fake, sync(bigTree, { pageId: ROOT, cache }))
       expect(res).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
       const warm = await Effect.runPromise(cache.load)
       expect(warm!.children.length).toBe(coldTop)
@@ -1582,16 +1473,10 @@ describe('sync() against in-memory fake Notion', () => {
   it('child_page title change → routes through pages.update (not blocks.update)', async () => {
     const fake = createFakeNotion()
     const cache = InMemoryCache.make()
-    await runWith(
-      fake,
-      sync(<ChildPage title="old title" />, { pageId: ROOT, cache }),
-    )
+    await runWith(fake, sync(<ChildPage title="old title" />, { pageId: ROOT, cache }))
     const before = fake.requests.length
 
-    const res = await runWith(
-      fake,
-      sync(<ChildPage title="new title" />, { pageId: ROOT, cache }),
-    )
+    const res = await runWith(fake, sync(<ChildPage title="new title" />, { pageId: ROOT, cache }))
     // Phase 3b rewires this: `<ChildPage>` at top-level is a page node, so
     // the title change emits a `pages.update` PageOp, not a block update.
     expect(res).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })

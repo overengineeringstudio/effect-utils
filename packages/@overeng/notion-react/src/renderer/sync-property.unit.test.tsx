@@ -143,15 +143,9 @@ describe('sync() property: second identical sync emits zero ops', () => {
       const fake = createFakeNotion()
       const cache = InMemoryCache.make()
       // Cold sync.
-      await runWith(
-        fake,
-        sync(tree, { pageId: ROOT, cache }),
-      )
+      await runWith(fake, sync(tree, { pageId: ROOT, cache }))
       // Warm sync of the exact same tree: must be a no-op.
-      const second = await runWith(
-        fake,
-        sync(tree, { pageId: ROOT, cache }),
-      )
+      const second = await runWith(fake, sync(tree, { pageId: ROOT, cache }))
       const payload = {
         seed,
         appends: second.appends,
@@ -194,14 +188,8 @@ describe('sync() childpage-idempotency bug (issue #618 phase 3d follow-up)', () 
         <Paragraph>a</Paragraph>
       </Page>
     ) as Parameters<typeof sync>[0]
-    await runWith(
-      fake,
-      sync(tree, { pageId: ROOT, cache }),
-    )
-    const r2 = await runWith(
-      fake,
-      sync(tree, { pageId: ROOT, cache }),
-    )
+    await runWith(fake, sync(tree, { pageId: ROOT, cache }))
+    const r2 = await runWith(fake, sync(tree, { pageId: ROOT, cache }))
     expect(r2.appends + r2.inserts + r2.updates + r2.removes).toBe(0)
     expect(r2.pages).toEqual({ creates: 0, updates: 0, archives: 0, moves: 0, reorders: 0 })
   })

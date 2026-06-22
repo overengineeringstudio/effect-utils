@@ -847,8 +847,7 @@ export class RestateTestHarness extends Context.Tag('@overeng/restate-effect/Res
             key: string
             method: M
             input: ObjectInputOf<C, M>
-          }) =>
-            provideIngress(ingressObjectCallTyped(args))) as BoundIngress['objectCallTyped'],
+          }) => provideIngress(ingressObjectCallTyped(args))) as BoundIngress['objectCallTyped'],
           objectSend: ((...a: Parameters<typeof ingressObjectSend>) =>
             provideIngress(ingressObjectSend(...a))) as BoundIngress['objectSend'],
           workflowSubmit: ((...a: Parameters<typeof ingressWorkflowSubmit>) =>

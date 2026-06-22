@@ -173,9 +173,7 @@ export const DeployNdjsonEvent = Schema.Union(
 )
 export type DeployNdjsonEvent = typeof DeployNdjsonEvent.Type
 
-type Phase = DeployNdjsonEvent extends { _tag: 'PhaseChanged'; phase: infer P }
-  ? P
-  : never
+type Phase = DeployNdjsonEvent extends { _tag: 'PhaseChanged'; phase: infer P } ? P : never
 
 /** Derive NDJSON events from a deploy action + previous state */
 export const deployFromAction = ({

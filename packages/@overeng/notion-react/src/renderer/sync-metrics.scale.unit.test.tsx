@@ -9,9 +9,9 @@ import { InMemoryCache } from '../cache/in-memory-cache.ts'
 import type { NotionCache } from '../cache/types.ts'
 import { Paragraph } from '../components/blocks.ts'
 import { createFakeNotion, type FakeNotion } from '../test/mock-client.ts'
+import type { NotionSyncError } from './errors.ts'
 import { MAX_CHILDREN_PER_APPEND } from './render-to-notion.ts'
 import type { SyncMetrics } from './sync-metrics.ts'
-import type { NotionSyncError } from './errors.ts'
 import { sync } from './sync.ts'
 
 /**

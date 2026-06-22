@@ -118,9 +118,7 @@ const startGitProcess = ({ args, cwd }: { args: ReadonlyArray<string>; cwd?: str
           return
         }
 
-        const isRunning = yield* process.isRunning.pipe(
-          Effect.orElseSucceed(() => false),
-        )
+        const isRunning = yield* process.isRunning.pipe(Effect.orElseSucceed(() => false))
         if (isRunning === false) return
 
         yield* process.kill('SIGKILL').pipe(Effect.catchAll(() => Effect.void))

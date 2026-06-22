@@ -28,8 +28,8 @@
     "plugins": [
       {
         "name": "@effect/language-service",
-        "ignoreEffectWarningsInTscExitCode": true,
-        "ignoreEffectSuggestionsInTscExitCode": true,
+        "ignoreEffectWarningsInTscExitCode": false,
+        "ignoreEffectSuggestionsInTscExitCode": false,
         "ignoreEffectErrorsInTscExitCode": false,
         "includeSuggestionsInTsc": true,
         "pipeableMinArgCount": 2,
@@ -37,9 +37,7 @@
           "missedPipeableOpportunity": "warning",
           "schemaUnionOfLiterals": "warning",
           "anyUnknownInErrorContext": "warning",
-          "preferSchemaOverJson": "warning",
-          "missingEffectContext": "warning",
-          "missingEffectError": "warning"
+          "preferSchemaOverJson": "warning"
         }
       }
     ],

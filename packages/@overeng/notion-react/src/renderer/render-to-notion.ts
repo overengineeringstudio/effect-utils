@@ -2,7 +2,8 @@ import type { HttpClient } from '@effect/platform'
 import { Effect } from 'effect'
 import type { ReactNode } from 'react'
 
-import { NotionApiError, NotionBlocks, NotionPages, type NotionConfig } from '@overeng/notion-effect-client'
+import type { NotionApiError } from '@overeng/notion-effect-client'
+import { NotionBlocks, NotionPages, type NotionConfig } from '@overeng/notion-effect-client'
 import type { BlockType } from '@overeng/notion-effect-schema'
 
 import { NotionSyncError } from './errors.ts'

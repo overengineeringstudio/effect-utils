@@ -232,9 +232,7 @@ const make = ({
           currentPath,
           EffectPath.unsafe.relativeDir(`${entry}/`),
         )
-        const entryStat = yield* fs
-          .stat(entryPath)
-          .pipe(Effect.orElseSucceed(() => null))
+        const entryStat = yield* fs.stat(entryPath).pipe(Effect.orElseSucceed(() => null))
         if (entryStat?.type !== 'Directory') continue
 
         nestedResults.push(
@@ -347,9 +345,7 @@ const make = ({
                     dir,
                     EffectPath.unsafe.relativeDir(`${entry}/`),
                   )
-                  const entryStat = yield* fs
-                    .stat(entryPath)
-                    .pipe(Effect.orElseSucceed(() => null))
+                  const entryStat = yield* fs.stat(entryPath).pipe(Effect.orElseSucceed(() => null))
                   if (entryStat?.type !== 'Directory') return
 
                   yield* walk({ dir: entryPath, depth: depth + 1 })
@@ -371,9 +367,7 @@ const make = ({
                 basePath,
                 EffectPath.unsafe.relativeDir(`${entry}/`),
               )
-              const entryStat = yield* fs
-                .stat(entryPath)
-                .pipe(Effect.orElseSucceed(() => null))
+              const entryStat = yield* fs.stat(entryPath).pipe(Effect.orElseSucceed(() => null))
               if (entryStat?.type !== 'Directory') return
 
               yield* walk({ dir: entryPath, depth: 1 })

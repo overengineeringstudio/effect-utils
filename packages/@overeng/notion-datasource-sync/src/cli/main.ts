@@ -2386,9 +2386,7 @@ const writeEstablishedWorkspaceManifest = (source: EstablishManifestSource): voi
  * manifest. The manifest is the location source-of-truth; the binding in the
  * resolved SQLite file is then verified for integrity.
  */
-const discoverSelfContainedStore = (
-  workspaceRoot: AbsolutePath,
-): DiscoveredSelfContainedStore => {
+const discoverSelfContainedStore = (workspaceRoot: AbsolutePath): DiscoveredSelfContainedStore => {
   const result = requireCompatibleWorkspaceNamespace(workspaceRoot)
   if (result._tag === 'untracked') {
     throw new WorkspaceNotTracked({

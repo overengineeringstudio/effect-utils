@@ -1,7 +1,8 @@
 import { FetchHttpClient, type HttpClient } from '@effect/platform'
 import { Duration, Effect, Layer, Redacted, Schedule } from 'effect'
 
-import { NotionApiError, NotionBlocks, NotionConfig, NotionPages } from '@overeng/notion-effect-client'
+import type { NotionApiError } from '@overeng/notion-effect-client'
+import { NotionBlocks, NotionConfig, NotionPages } from '@overeng/notion-effect-client'
 
 import { NotionSyncError } from '../../../renderer/errors.ts'
 
@@ -151,9 +152,7 @@ const retrieveChildrenSettled = (
   NotionBlocks.retrieveChildren({ blockId }).pipe(
     Effect.flatMap((res) =>
       expectChildren && res.results.length === 0
-        ? Effect.fail(
-            new NotionSyncError({ reason: 'children-not-yet-visible', cause: blockId }),
-          )
+        ? Effect.fail(new NotionSyncError({ reason: 'children-not-yet-visible', cause: blockId }))
         : Effect.succeed(res),
     ),
     Effect.retry(childrenSettleSchedule),
