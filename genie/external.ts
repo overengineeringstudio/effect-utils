@@ -663,6 +663,24 @@ export const createPatchPostinstall = (args: { basePath: string }) => {
   }
 }
 
+/**
+ * #811 Effect-LSP strict-gate burndown toggle.
+ *
+ * The `@effect/language-service` plugin classifies every Effect diagnostic into
+ * a TS category (error / warning / suggestion) and only lets a category affect
+ * the `tsgo --build` exit code when the matching `ignore…InTscExitCode` flag is
+ * `false`. This single switch encodes the intended END policy: gate on Effect
+ * warnings AND suggestions, fleet-wide.
+ *
+ * Flipping both gate fields to `true` (milestone 6, once the workspace is clean) makes Effect
+ * warnings and suggestions fail the `tsgo --build` exit code for effect-utils and
+ * every peer repo that consumes this shared base. Errors always gate regardless.
+ *
+ * Kept `false` during burndown so CI stays green while the ~822 live diagnostics
+ * are cleared. This is the only line to flip to enable the gate.
+ */
+const effectDiagnosticsGate = { warnings: false, suggestions: false } as const
+
 /** Base tsconfig compiler options shared across all packages */
 export const baseTsconfigCompilerOptions = {
   target: 'ES2024',
@@ -693,19 +711,28 @@ export const baseTsconfigCompilerOptions = {
       // Upstream tsgo currently reads Effect-specific diagnostics/options from
       // this plugin entry, while plain tsc ignores it when the npm package is absent.
       name: '@effect/language-service',
-      reportSuggestionsAsWarningsInTsc: true,
-      // Effect diagnostics are surfaced as warnings only and do not affect the
-      // tsc/tsgo exit code, so `ts:check` never fails on them today.
-      // TODO(#811): flip to gating (drop this and/or promote severities to
-      // 'error') once the workspace is clean against these diagnostics.
-      // @see https://github.com/overengineeringstudio/effect-utils/issues/811
-      ignoreEffectWarningsInTscExitCode: true,
+      // #811 Effect-LSP gate policy. Each `ignore…InTscExitCode` flag is the
+      // INVERSE of "this severity gates": `false` => the severity contributes to
+      // the `tsgo --build` exit code. Derived from `effectDiagnosticsGate` so the
+      // intent is a single one-line flip (see that constant for the burndown plan).
+      ignoreEffectWarningsInTscExitCode: !effectDiagnosticsGate.warnings,
+      ignoreEffectSuggestionsInTscExitCode: !effectDiagnosticsGate.suggestions,
+      // Errors always gate.
+      ignoreEffectErrorsInTscExitCode: false,
+      // Keep suggestions visible in build output (advisory steering). Visibility
+      // is independent of gating: this stays `true` regardless of the toggle.
+      includeSuggestionsInTsc: true,
       pipeableMinArgCount: 2,
       diagnosticSeverity: {
+        // Off-by-default rules the team opts into.
         missedPipeableOpportunity: 'warning',
         schemaUnionOfLiterals: 'warning',
         anyUnknownInErrorContext: 'warning',
         preferSchemaOverJson: 'warning',
+        // These two default to 'error' (which always gates). They are held at
+        // 'warning' during burndown so the 5 live sites don't break CI yet.
+        // TODO(#811 M6): drop these two overrides to restore default 'error' once
+        // the 5 sites are fixed.
         missingEffectContext: 'warning',
         missingEffectError: 'warning',
       },
