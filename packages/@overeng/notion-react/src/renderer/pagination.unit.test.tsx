@@ -9,6 +9,7 @@ import { InMemoryCache } from '../cache/in-memory-cache.ts'
 import { ColumnList, Paragraph, Toggle } from '../components/blocks.ts'
 import { h } from '../components/h.ts'
 import { createFakeNotion, type FakeNotion } from '../test/mock-client.ts'
+import type { NotionSyncError } from './errors.ts'
 import { buildCandidateTree, diff, tallyDiff } from './sync-diff.ts'
 import { sync } from './sync.ts'
 
@@ -24,13 +25,13 @@ const ROOT = '00000000-0000-4000-8000-0000000000aa'
 
 const runWith = <A,>(
   fake: FakeNotion,
-  eff: Effect.Effect<A, unknown, HttpClient.HttpClient | NotionConfig>,
+  eff: Effect.Effect<A, NotionSyncError, HttpClient.HttpClient | NotionConfig>,
 ): Promise<A> => Effect.runPromise(eff.pipe(Effect.provide(fake.layer)))
 
 const runWithExit = <A,>(
   fake: FakeNotion,
-  eff: Effect.Effect<A, unknown, HttpClient.HttpClient | NotionConfig>,
-): Promise<Exit.Exit<A, unknown>> =>
+  eff: Effect.Effect<A, NotionSyncError, HttpClient.HttpClient | NotionConfig>,
+): Promise<Exit.Exit<A, NotionSyncError>> =>
   Effect.runPromise(eff.pipe(Effect.provide(fake.layer), Effect.exit))
 
 describe('pagination + batch boundaries', () => {
@@ -65,9 +66,7 @@ describe('pagination + batch boundaries', () => {
     }
     const res = await runWith(
       fake,
-      sync(<>{paragraphs}</>, { pageId: ROOT, cache }).pipe(
-        Effect.mapError((cause) => new Error(String(cause))),
-      ),
+      sync(<>{paragraphs}</>, { pageId: ROOT, cache }),
     )
     expect(res).toMatchObject({ appends: 150, updates: 0, inserts: 0, removes: 0 })
     const appendReqs = fake.requests.filter(
@@ -94,9 +93,7 @@ describe('pagination + batch boundaries', () => {
     const seedTree = h('paragraph', { blockKey: 'mid' }, 'old')
     await runWith(
       fake,
-      sync(seedTree, { pageId: seedParent, cache: InMemoryCache.make() }).pipe(
-        Effect.mapError((cause) => new Error(String(cause))),
-      ),
+      sync(seedTree, { pageId: seedParent, cache: InMemoryCache.make() }),
     )
     // Build a cache that mirrors the server state after the seed sync.
     const midId = fake.childrenOf(ROOT)[0]!.id
@@ -132,7 +129,7 @@ describe('pagination + batch boundaries', () => {
           {post}
         </>,
         { pageId: ROOT, cache: seedCache },
-      ).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+      ),
     )
     const newReqs = fake.requests.slice(before)
     const appendReqs = newReqs.filter(
@@ -173,9 +170,7 @@ describe('pagination + batch boundaries', () => {
     }
     return runWith(
       fake,
-      sync(<>{toggles}</>, { pageId: ROOT, cache }).pipe(
-        Effect.mapError((cause) => new Error(String(cause))),
-      ),
+      sync(<>{toggles}</>, { pageId: ROOT, cache }),
     ).then(() => {
       // 1 call appending the 3 Toggle parents to ROOT (batch of 3) +
       // 1 call per Toggle appending its 50 children.
@@ -272,17 +267,13 @@ describe('pagination + batch boundaries', () => {
     )
     const first = await runWith(
       fake,
-      sync(tree, { pageId: ROOT, cache }).pipe(
-        Effect.mapError((cause) => new Error(String(cause))),
-      ),
+      sync(tree, { pageId: ROOT, cache }),
     )
     expect(first).toMatchObject({ appends: 3 })
     const before = fake.requests.length
     const second = await runWith(
       fake,
-      sync(tree, { pageId: ROOT, cache }).pipe(
-        Effect.mapError((cause) => new Error(String(cause))),
-      ),
+      sync(tree, { pageId: ROOT, cache }),
     )
     expect(second).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
     const afterReqs = fake.requests.slice(before)
@@ -317,9 +308,7 @@ describe('pagination + batch boundaries', () => {
     const before = fake.requests.length
     const res = await runWith(
       fake,
-      sync(<>{paragraphs}</>, { pageId: ROOT, cache }).pipe(
-        Effect.mapError((cause) => new Error(String(cause))),
-      ),
+      sync(<>{paragraphs}</>, { pageId: ROOT, cache }),
     )
     // Only the remaining 50 should be appended — the first 100 are
     // retained from the checkpointed cache.

@@ -11,6 +11,7 @@ import { Paragraph } from '../components/blocks.ts'
 import { createFakeNotion, type FakeNotion } from '../test/mock-client.ts'
 import { MAX_CHILDREN_PER_APPEND } from './render-to-notion.ts'
 import type { SyncMetrics } from './sync-metrics.ts'
+import type { NotionSyncError } from './errors.ts'
 import { sync } from './sync.ts'
 
 /**
@@ -46,7 +47,7 @@ const mkItems = (n: number): readonly Item[] =>
 
 const runWith = <A,>(
   fake: FakeNotion,
-  eff: Effect.Effect<A, unknown, HttpClient.HttpClient | NotionConfig>,
+  eff: Effect.Effect<A, NotionSyncError, HttpClient.HttpClient | NotionConfig>,
 ): Promise<A> => Effect.runPromise(eff.pipe(Effect.provide(fake.layer)))
 
 const collect = async (
@@ -63,7 +64,7 @@ const collect = async (
       onMetrics: (m) => {
         captured = m
       },
-    }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+    }),
   )
   if (captured === undefined) throw new Error('onMetrics was never invoked')
   return captured

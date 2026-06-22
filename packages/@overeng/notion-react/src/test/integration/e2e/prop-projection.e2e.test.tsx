@@ -54,11 +54,9 @@ describe.skipIf(SKIP_E2E)('e2e prop projection fidelity', () => {
               </Callout>
             </Page>,
             { pageId },
-          ).pipe(Effect.mapError((cause) => new Error(String(cause))))
-
-          const tree = yield* readPageTree(pageId).pipe(
-            Effect.mapError((cause) => new Error(String(cause))),
           )
+
+          const tree = yield* readPageTree(pageId)
           expect(tree).toHaveLength(1)
           const callout = tree[0]!
           expect(callout.type).toBe('callout')
@@ -87,11 +85,9 @@ describe.skipIf(SKIP_E2E)('e2e prop projection fidelity', () => {
               <Code language="plain text">{'no lang'}</Code>
             </Page>,
             { pageId },
-          ).pipe(Effect.mapError((cause) => new Error(String(cause))))
-
-          const tree = yield* readPageTree(pageId).pipe(
-            Effect.mapError((cause) => new Error(String(cause))),
           )
+
+          const tree = yield* readPageTree(pageId)
           expect(tree.map((b) => b.payload.language)).toEqual(['typescript', 'rust', 'plain text'])
         }),
       )
@@ -114,11 +110,9 @@ describe.skipIf(SKIP_E2E)('e2e prop projection fidelity', () => {
               <Heading2>default (omitted)</Heading2>
             </Page>,
             { pageId },
-          ).pipe(Effect.mapError((cause) => new Error(String(cause))))
-
-          const tree = yield* readPageTree(pageId).pipe(
-            Effect.mapError((cause) => new Error(String(cause))),
           )
+
+          const tree = yield* readPageTree(pageId)
           expect(tree).toHaveLength(3)
           expect(tree[0]!.payload.is_toggleable).toBe(true)
           expect(tree[1]!.payload.is_toggleable).toBe(false)
@@ -147,11 +141,9 @@ describe.skipIf(SKIP_E2E)('e2e prop projection fidelity', () => {
               <ToDo>default (omitted)</ToDo>
             </Page>,
             { pageId },
-          ).pipe(Effect.mapError((cause) => new Error(String(cause))))
-
-          const tree = yield* readPageTree(pageId).pipe(
-            Effect.mapError((cause) => new Error(String(cause))),
           )
+
+          const tree = yield* readPageTree(pageId)
           expect(tree).toHaveLength(3)
           expect(tree[0]!.payload.checked).toBe(true)
           expect(tree[1]!.payload.checked).toBe(false)
@@ -186,11 +178,9 @@ describe.skipIf(SKIP_E2E)('e2e prop projection fidelity', () => {
               </Paragraph>
             </Page>,
             { pageId },
-          ).pipe(Effect.mapError((cause) => new Error(String(cause))))
-
-          const tree = yield* readPageTree(pageId).pipe(
-            Effect.mapError((cause) => new Error(String(cause))),
           )
+
+          const tree = yield* readPageTree(pageId)
           const rt = richText(tree[0]!)
           // Items carrying a link have `href` set to the URL; items without
           // a link have `href` null.
@@ -233,11 +223,9 @@ describe.skipIf(SKIP_E2E)('e2e prop projection fidelity', () => {
               <Image url={url} />
             </Page>,
             { pageId },
-          ).pipe(Effect.mapError((cause) => new Error(String(cause))))
-
-          const tree = yield* readPageTree(pageId).pipe(
-            Effect.mapError((cause) => new Error(String(cause))),
           )
+
+          const tree = yield* readPageTree(pageId)
           expect(tree).toHaveLength(1)
           const img = tree[0]!
           expect(img.type).toBe('image')
@@ -271,11 +259,9 @@ describe.skipIf(SKIP_E2E)('e2e prop projection fidelity', () => {
               </Toggle>
             </Page>,
             { pageId },
-          ).pipe(Effect.mapError((cause) => new Error(String(cause))))
-
-          const tree = yield* readPageTree(pageId).pipe(
-            Effect.mapError((cause) => new Error(String(cause))),
           )
+
+          const tree = yield* readPageTree(pageId)
           expect(tree).toHaveLength(2)
           expect(firstPlainText(tree[0]!)).toBe('with title')
           expect(richText(tree[1]!)).toEqual([])
@@ -303,11 +289,9 @@ describe.skipIf(SKIP_E2E)('e2e prop projection fidelity', () => {
               </Paragraph>
             </Page>,
             { pageId },
-          ).pipe(Effect.mapError((cause) => new Error(String(cause))))
-
-          const tree = yield* readPageTree(pageId).pipe(
-            Effect.mapError((cause) => new Error(String(cause))),
           )
+
+          const tree = yield* readPageTree(pageId)
           const rt = richText(tree[0]!)
           const bold = rt.find((r) => r.annotations?.bold === true)
           const italic = rt.find((r) => r.annotations?.italic === true)

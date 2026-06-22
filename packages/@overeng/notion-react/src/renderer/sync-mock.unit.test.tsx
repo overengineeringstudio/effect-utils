@@ -25,6 +25,7 @@ import {
   type FakeNotion,
   type FakeRequest,
 } from '../test/mock-client.ts'
+import type { NotionSyncError } from './errors.ts'
 import type { SyncEvent } from './sync-events.ts'
 import { sync } from './sync.ts'
 
@@ -74,9 +75,9 @@ const v1: readonly Session[] = [
   { id: 's3', title: '11:00 VSCode', body: 'coding session' },
 ]
 
-const runWith = <A,>(
+const runWith = <A, E>(
   fake: FakeNotion,
-  eff: Effect.Effect<A, unknown, HttpClient.HttpClient | NotionConfig>,
+  eff: Effect.Effect<A, E, HttpClient.HttpClient | NotionConfig>,
 ): Promise<A> => Effect.runPromise(eff.pipe(Effect.provide(fake.layer)))
 
 /** Spy wrapper over `InMemoryCache` that exposes every persisted snapshot. */
@@ -124,7 +125,7 @@ describe('sync() against in-memory fake Notion', () => {
       sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v1} />, {
         pageId: ROOT,
         cache,
-      }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+      }),
     )
     // 4 static (h2, p, divider, h2) + 3 toggles + 3 nested paragraphs = 10.
     expect(res).toMatchObject({ appends: 10, updates: 0, inserts: 0, removes: 0 })
@@ -152,16 +153,12 @@ describe('sync() against in-memory fake Notion', () => {
     const tree = <DailyPage screenTime="4h 12m" apps={7} sessions={v1} />
     await runWith(
       fake,
-      sync(tree, { pageId: ROOT, cache }).pipe(
-        Effect.mapError((cause) => new Error(String(cause))),
-      ),
+      sync(tree, { pageId: ROOT, cache }),
     )
     const before = fake.requests.length
     const res = await runWith(
       fake,
-      sync(tree, { pageId: ROOT, cache }).pipe(
-        Effect.mapError((cause) => new Error(String(cause))),
-      ),
+      sync(tree, { pageId: ROOT, cache }),
     )
     expect(res).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
     expect(res.fallbackReason).toBeUndefined()
@@ -178,7 +175,7 @@ describe('sync() against in-memory fake Notion', () => {
       sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v1} />, {
         pageId: ROOT,
         cache,
-      }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+      }),
     )
     const before = fake.requests.length
 
@@ -192,7 +189,7 @@ describe('sync() against in-memory fake Notion', () => {
       sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v2} />, {
         pageId: ROOT,
         cache,
-      }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+      }),
     )
     expect(res).toMatchObject({ appends: 0, updates: 1, inserts: 0, removes: 0 })
     // Pre-flight drift GET + one PATCH for the body change.
@@ -208,7 +205,7 @@ describe('sync() against in-memory fake Notion', () => {
       sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v1} />, {
         pageId: ROOT,
         cache,
-      }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+      }),
     )
 
     const v2: readonly Session[] = [...v1, { id: 's4', title: '12:00 Slack', body: 'chat' }]
@@ -217,7 +214,7 @@ describe('sync() against in-memory fake Notion', () => {
       sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v2} />, {
         pageId: ROOT,
         cache,
-      }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+      }),
     )
     expect(res.updates).toBe(0)
     expect(res.removes).toBe(0)
@@ -238,7 +235,7 @@ describe('sync() against in-memory fake Notion', () => {
       sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v1} />, {
         pageId: ROOT,
         cache,
-      }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+      }),
     )
 
     const v2: readonly Session[] = [
@@ -252,7 +249,7 @@ describe('sync() against in-memory fake Notion', () => {
       sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v2} />, {
         pageId: ROOT,
         cache,
-      }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+      }),
     )
     expect(res.updates).toBe(0)
     expect(res.removes).toBe(0)
@@ -278,7 +275,7 @@ describe('sync() against in-memory fake Notion', () => {
       sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v1} />, {
         pageId: ROOT,
         cache,
-      }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+      }),
     )
 
     /* New session sorts before every existing one → sync-diff emits an
@@ -291,7 +288,7 @@ describe('sync() against in-memory fake Notion', () => {
       sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v2} />, {
         pageId: ROOT,
         cache,
-      }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+      }),
     )
     expect(res.updates).toBe(0)
     expect(res.removes).toBe(0)
@@ -317,7 +314,7 @@ describe('sync() against in-memory fake Notion', () => {
       sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v2} />, {
         pageId: ROOT,
         cache,
-      }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+      }),
     )
     expect(rerun).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
     const rerunReqs = fake.requests.slice(before)
@@ -332,7 +329,7 @@ describe('sync() against in-memory fake Notion', () => {
       sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v1} />, {
         pageId: ROOT,
         cache,
-      }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+      }),
     )
     const before = fake.requests.length
 
@@ -342,7 +339,7 @@ describe('sync() against in-memory fake Notion', () => {
       sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v2} />, {
         pageId: ROOT,
         cache,
-      }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+      }),
     )
     expect(res).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 1 })
     const newReqs = fake.requests.slice(before)
@@ -355,9 +352,7 @@ describe('sync() against in-memory fake Notion', () => {
     const tree = <DailyPage screenTime="4h 12m" apps={7} sessions={v1} />
     const initial = await runWith(
       fake,
-      sync(tree, { pageId: ROOT, cache }).pipe(
-        Effect.mapError((cause) => new Error(String(cause))),
-      ),
+      sync(tree, { pageId: ROOT, cache }),
     )
     expect(initial.fallbackReason).toBe('cold-cache')
 
@@ -365,9 +360,7 @@ describe('sync() against in-memory fake Notion', () => {
     for (let i = 0; i < 3; i++) {
       const r = await runWith(
         fake,
-        sync(tree, { pageId: ROOT, cache }).pipe(
-          Effect.mapError((cause) => new Error(String(cause))),
-        ),
+        sync(tree, { pageId: ROOT, cache }),
       )
       expect(r).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
       expect(r.fallbackReason).toBeUndefined()
@@ -385,7 +378,7 @@ describe('sync() against in-memory fake Notion', () => {
       sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v1} />, {
         pageId: ROOT,
         cache,
-      }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+      }),
     )
 
     // Simulate another client archiving one of the toggles out-of-band.
@@ -397,7 +390,7 @@ describe('sync() against in-memory fake Notion', () => {
       sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v1} />, {
         pageId: ROOT,
         cache,
-      }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+      }),
     )
     expect(res.fallbackReason).toBe('cache-drift')
     // Drift recovery is targeted: the hybrid `driftedBase` preserves prior
@@ -434,7 +427,7 @@ describe('sync() against in-memory fake Notion', () => {
       sync(<DailyPage screenTime="4h 12m" apps={20} sessions={manySessions} />, {
         pageId: ROOT,
         cache,
-      }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+      }),
     )
     // Archive exactly one toggle out of band.
     const firstToggle = fake.childrenOf(ROOT).find((b) => b.type === 'toggle')!
@@ -445,7 +438,7 @@ describe('sync() against in-memory fake Notion', () => {
       sync(<DailyPage screenTime="4h 12m" apps={20} sessions={manySessions} />, {
         pageId: ROOT,
         cache,
-      }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+      }),
     )
     expect(res.fallbackReason).toBe('cache-drift')
     // Total ops bounded by the drift magnitude, not by tree size. Old
@@ -475,9 +468,7 @@ describe('sync() against in-memory fake Notion', () => {
     )
     const res = await runWith(
       fake,
-      sync(tree, { pageId: ROOT, cache }).pipe(
-        Effect.mapError((cause) => new Error(String(cause))),
-      ),
+      sync(tree, { pageId: ROOT, cache }),
     )
     // One diff op per rendered block: 1 column_list + 2 columns + 2 images = 5.
     // All five get absorbed into a single atomic payload, but the diff-level
@@ -524,16 +515,12 @@ describe('sync() against in-memory fake Notion', () => {
     )
     await runWith(
       fake,
-      sync(tree, { pageId: ROOT, cache }).pipe(
-        Effect.mapError((cause) => new Error(String(cause))),
-      ),
+      sync(tree, { pageId: ROOT, cache }),
     )
     const before = fake.requests.length
     const rerun = await runWith(
       fake,
-      sync(tree, { pageId: ROOT, cache }).pipe(
-        Effect.mapError((cause) => new Error(String(cause))),
-      ),
+      sync(tree, { pageId: ROOT, cache }),
     )
     // If nested tmpIds were not resolved, the persisted cache would carry
     // `tmp-*` ids and the second sync would throw from candidateToCache.
@@ -578,17 +565,13 @@ describe('sync() against in-memory fake Notion', () => {
     )
     await runWith(
       fake,
-      sync(clV1, { pageId: ROOT, cache }).pipe(
-        Effect.mapError((cause) => new Error(String(cause))),
-      ),
+      sync(clV1, { pageId: ROOT, cache }),
     )
     // Warm sync with a new column in the middle. Must NOT emit a bare
     // `column` append — the fake's validateAtomic would reject that.
     const res = await runWith(
       fake,
-      sync(clV2, { pageId: ROOT, cache }).pipe(
-        Effect.mapError((cause) => new Error(String(cause))),
-      ),
+      sync(clV2, { pageId: ROOT, cache }),
     )
     // Full rebuild semantics: the previous column_list is removed, the
     // new one appended (+ nested rendered blocks tallied).
@@ -627,9 +610,7 @@ describe('sync() against in-memory fake Notion', () => {
     )
     await runWith(
       fake,
-      sync(clV1, { pageId: ROOT, cache }).pipe(
-        Effect.mapError((cause) => new Error(String(cause))),
-      ),
+      sync(clV1, { pageId: ROOT, cache }),
     )
     // The inner paragraph is new and its parent column existed; a naive
     // diff would emit `append` of a paragraph under the old column.
@@ -639,9 +620,7 @@ describe('sync() against in-memory fake Notion', () => {
     // so we conservatively rebuild the whole column_list to stay correct.
     const res = await runWith(
       fake,
-      sync(clV2, { pageId: ROOT, cache }).pipe(
-        Effect.mapError((cause) => new Error(String(cause))),
-      ),
+      sync(clV2, { pageId: ROOT, cache }),
     )
     expect(res.removes).toBeGreaterThanOrEqual(1)
     // Most importantly: no validation error from the fake. If a bare
@@ -666,9 +645,7 @@ describe('sync() against in-memory fake Notion', () => {
     )
     const res = await runWith(
       fake,
-      sync(tree, { pageId: ROOT, cache }).pipe(
-        Effect.mapError((cause) => new Error(String(cause))),
-      ),
+      sync(tree, { pageId: ROOT, cache }),
     )
     // 1 table + 2 table_rows = 3 diff-level appends, all folded into one call.
     expect(res.appends).toBe(3)
@@ -699,9 +676,7 @@ describe('sync() against in-memory fake Notion', () => {
     const before = fake.requests.length
     const rerun = await runWith(
       fake,
-      sync(tree, { pageId: ROOT, cache }).pipe(
-        Effect.mapError((cause) => new Error(String(cause))),
-      ),
+      sync(tree, { pageId: ROOT, cache }),
     )
     expect(rerun).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
     expect(rerun.fallbackReason).toBeUndefined()
@@ -726,9 +701,7 @@ describe('sync() against in-memory fake Notion', () => {
     )
     const res = await runWith(
       fake,
-      sync(tree, { pageId: ROOT, cache }).pipe(
-        Effect.mapError((cause) => new Error(String(cause))),
-      ),
+      sync(tree, { pageId: ROOT, cache }),
     )
     // 1 column_list + 2 columns + 1 table + 1 table_row + 1 paragraph = 6.
     expect(res.appends).toBe(6)
@@ -775,9 +748,7 @@ describe('sync() against in-memory fake Notion', () => {
     const tree = <Table tableWidth={1}>{rowsOf(100)}</Table>
     await runWith(
       fake,
-      sync(tree, { pageId: ROOT, cache }).pipe(
-        Effect.mapError((cause) => new Error(String(cause))),
-      ),
+      sync(tree, { pageId: ROOT, cache }),
     )
     const mutating = mutatingAppends(fake)
     expect(mutating).toHaveLength(1)
@@ -793,9 +764,7 @@ describe('sync() against in-memory fake Notion', () => {
     const tree = <Table tableWidth={1}>{rowsOf(101)}</Table>
     await runWith(
       fake,
-      sync(tree, { pageId: ROOT, cache }).pipe(
-        Effect.mapError((cause) => new Error(String(cause))),
-      ),
+      sync(tree, { pageId: ROOT, cache }),
     )
     const mutating = mutatingAppends(fake)
     expect(mutating).toHaveLength(2)
@@ -825,9 +794,7 @@ describe('sync() against in-memory fake Notion', () => {
     const tree = <Table tableWidth={1}>{rowsOf(150)}</Table>
     await runWith(
       fake,
-      sync(tree, { pageId: ROOT, cache }).pipe(
-        Effect.mapError((cause) => new Error(String(cause))),
-      ),
+      sync(tree, { pageId: ROOT, cache }),
     )
     const mutating = mutatingAppends(fake)
     expect(mutating).toHaveLength(2)
@@ -847,9 +814,7 @@ describe('sync() against in-memory fake Notion', () => {
     const tree = <Table tableWidth={1}>{rowsOf(250)}</Table>
     await runWith(
       fake,
-      sync(tree, { pageId: ROOT, cache }).pipe(
-        Effect.mapError((cause) => new Error(String(cause))),
-      ),
+      sync(tree, { pageId: ROOT, cache }),
     )
     const mutating = mutatingAppends(fake)
     expect(mutating).toHaveLength(3)
@@ -868,16 +833,12 @@ describe('sync() against in-memory fake Notion', () => {
     const tree = <Table tableWidth={1}>{rowsOf(150)}</Table>
     await runWith(
       fake,
-      sync(tree, { pageId: ROOT, cache }).pipe(
-        Effect.mapError((cause) => new Error(String(cause))),
-      ),
+      sync(tree, { pageId: ROOT, cache }),
     )
     const before = fake.requests.length
     const rerun = await runWith(
       fake,
-      sync(tree, { pageId: ROOT, cache }).pipe(
-        Effect.mapError((cause) => new Error(String(cause))),
-      ),
+      sync(tree, { pageId: ROOT, cache }),
     )
     expect(rerun).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
     expect(rerun.fallbackReason).toBeUndefined()
@@ -907,9 +868,7 @@ describe('sync() against in-memory fake Notion', () => {
     await expect(
       runWith(
         fake,
-        sync(tree, { pageId: ROOT, cache }).pipe(
-          Effect.mapError((cause) => new Error(String(cause))),
-        ),
+        sync(tree, { pageId: ROOT, cache }),
       ),
     ).rejects.toThrow(/nested level/i)
   })
@@ -930,17 +889,13 @@ describe('sync() against in-memory fake Notion', () => {
     const tree = <DailyPage screenTime="4h 12m" apps={7} sessions={v1} />
     const cold = await runWith(
       fake,
-      sync(tree, { pageId: ROOT, cache }).pipe(
-        Effect.mapError((cause) => new Error(String(cause))),
-      ),
+      sync(tree, { pageId: ROOT, cache }),
     )
     expect(cold.fallbackReason).toBe('cold-cache')
     const before = fake.requests.length
     const warm = await runWith(
       fake,
-      sync(tree, { pageId: ROOT, cache }).pipe(
-        Effect.mapError((cause) => new Error(String(cause))),
-      ),
+      sync(tree, { pageId: ROOT, cache }),
     )
     expect(warm).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
     const warmReqs = fake.requests.slice(before)
@@ -956,7 +911,7 @@ describe('sync() against in-memory fake Notion', () => {
       sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v1} />, {
         pageId: ROOT,
         cache: spy.cache,
-      }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+      }),
     )
     const final = spy.current()!
     expect(final.children.length).toBeGreaterThan(0)
@@ -973,7 +928,7 @@ describe('sync() against in-memory fake Notion', () => {
       sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v1} />, {
         pageId: ROOT,
         cache: spy.cache,
-      }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+      }),
     )
     // Force drift: archive a toggle out-of-band, then re-sync.
     const firstToggle = fake.childrenOf(ROOT).find((b) => b.type === 'toggle')!
@@ -983,7 +938,7 @@ describe('sync() against in-memory fake Notion', () => {
       sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v1} />, {
         pageId: ROOT,
         cache: spy.cache,
-      }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+      }),
     )
     expect(res.fallbackReason).toBe('cache-drift')
     const final = spy.current()!
@@ -997,18 +952,14 @@ describe('sync() against in-memory fake Notion', () => {
     const tree = <DailyPage screenTime="4h 12m" apps={7} sessions={v1} />
     await runWith(
       fake,
-      sync(tree, { pageId: ROOT, cache: spy.cache }).pipe(
-        Effect.mapError((cause) => new Error(String(cause))),
-      ),
+      sync(tree, { pageId: ROOT, cache: spy.cache }),
     )
     // Out-of-band archive forces a cache-drift rebuild next sync.
     const firstToggle = fake.childrenOf(ROOT).find((b) => b.type === 'toggle')!
     firstToggle.archived = true
     const drifted = await runWith(
       fake,
-      sync(tree, { pageId: ROOT, cache: spy.cache }).pipe(
-        Effect.mapError((cause) => new Error(String(cause))),
-      ),
+      sync(tree, { pageId: ROOT, cache: spy.cache }),
     )
     expect(drifted.fallbackReason).toBe('cache-drift')
     const before = fake.requests.length
@@ -1016,9 +967,7 @@ describe('sync() against in-memory fake Notion', () => {
     // not touch any other live block.
     const warm = await runWith(
       fake,
-      sync(tree, { pageId: ROOT, cache: spy.cache }).pipe(
-        Effect.mapError((cause) => new Error(String(cause))),
-      ),
+      sync(tree, { pageId: ROOT, cache: spy.cache }),
     )
     expect(warm).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
     const warmReqs = fake.requests.slice(before)
@@ -1034,14 +983,14 @@ describe('sync() against in-memory fake Notion', () => {
       sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v1} />, {
         pageId: ROOT,
         cache: spy.cache,
-      }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+      }),
     )
     const res = await runWith(
       fake,
       sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v1} />, {
         pageId: OTHER,
         cache: spy.cache,
-      }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+      }),
     )
     expect(res.fallbackReason).toBe('page-id-drift')
     const final = spy.current()!
@@ -1057,7 +1006,7 @@ describe('sync() against in-memory fake Notion', () => {
       sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v1} />, {
         pageId: ROOT,
         cache,
-      }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+      }),
     )
     const toggle = fake.childrenOf(ROOT).find((b) => b.type === 'toggle')!
     toggle.archived = true
@@ -1118,7 +1067,7 @@ describe('sync() against in-memory fake Notion', () => {
           <Paragraph>p2</Paragraph>
         </>,
         { pageId: ROOT, cache },
-      ).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+      ),
     )
     // Unkeyed Paragraphs are positional; removing the last one in the
     // candidate tree causes a DELETE of the trailing cached block.
@@ -1147,7 +1096,7 @@ describe('sync() against in-memory fake Notion', () => {
         pageId: ROOT,
         cache,
         onEvent: (e) => events.push(e),
-      }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+      }),
     )
     // No fallback needed — retrieve still reports both as live, so the
     // diff is computed against the warm cache normally.
@@ -1180,7 +1129,7 @@ describe('sync() against in-memory fake Notion', () => {
           <Paragraph>leftover-5</Paragraph>
         </>,
         { pageId: ROOT, cache: InMemoryCache.make() },
-      ).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+      ),
     )
     const seeded = fake.childrenOf(ROOT)
     expect(seeded.length).toBe(5)
@@ -1197,7 +1146,7 @@ describe('sync() against in-memory fake Notion', () => {
           <Paragraph>fresh-2</Paragraph>
         </>,
         { pageId: ROOT, cache },
-      ).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+      ),
     )
     expect(res.fallbackReason).toBe('cold-cache')
     expect(res).toMatchObject({ appends: 2, removes: 5 })
@@ -1220,7 +1169,7 @@ describe('sync() against in-memory fake Notion', () => {
           <Paragraph>fresh-2</Paragraph>
         </>,
         { pageId: ROOT, cache },
-      ).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+      ),
     )
     expect(warm).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
     const warmReqs = fake.requests.slice(before)
@@ -1237,7 +1186,7 @@ describe('sync() against in-memory fake Notion', () => {
           <Paragraph>leftover-2</Paragraph>
         </>,
         { pageId: ROOT, cache: InMemoryCache.make() },
-      ).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+      ),
     )
     const seededIds = new Set(fake.childrenOf(ROOT).map((b) => b.id))
     const cache = InMemoryCache.make()
@@ -1248,7 +1197,7 @@ describe('sync() against in-memory fake Notion', () => {
           <Paragraph>fresh-1</Paragraph>
         </>,
         { pageId: ROOT, cache, coldBaseline: 'merge' },
-      ).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+      ),
     )
     expect(res.fallbackReason).toBe('cold-cache')
     // Merge semantics: no removes on cold; leftovers remain alive. They
@@ -1273,7 +1222,7 @@ describe('sync() against in-memory fake Notion', () => {
           <Paragraph>r0-c</Paragraph>
         </>,
         { pageId: ROOT, cache: InMemoryCache.make() },
-      ).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+      ),
     )
     // Step 2: cold sync against fresh cache — Fix B archives all 3
     // leftovers, then appends 4 fresh blocks.
@@ -1288,7 +1237,7 @@ describe('sync() against in-memory fake Notion', () => {
           <Paragraph>r1-d</Paragraph>
         </>,
         { pageId: ROOT, cache },
-      ).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+      ),
     )
     expect(coldRes).toMatchObject({ fallbackReason: 'cold-cache', removes: 3, appends: 4 })
     const live = fake.childrenOf(ROOT)
@@ -1322,7 +1271,7 @@ describe('sync() against in-memory fake Notion', () => {
           <Paragraph>r1-d</Paragraph>
         </>,
         { pageId: ROOT, cache, onEvent: (e) => events.push(e) },
-      ).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+      ),
     )
     expect(warm.removes).toBe(2)
     const deleteSuccesses = events.filter(
@@ -1346,7 +1295,7 @@ describe('sync() against in-memory fake Notion', () => {
       sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v1} />, {
         pageId: ROOT,
         cache,
-      }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+      }),
     )
     // Re-use the same cache for a different pageId. Must not diff against the
     // stale ROOT tree — that would target wrong-page ids. Expect cold start.
@@ -1355,7 +1304,7 @@ describe('sync() against in-memory fake Notion', () => {
       sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v1} />, {
         pageId: OTHER,
         cache,
-      }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+      }),
     )
     expect(res.fallbackReason).toBe('page-id-drift')
     expect(res).toMatchObject({ appends: 10, updates: 0, inserts: 0, removes: 0 })
@@ -1397,9 +1346,7 @@ describe('sync() against in-memory fake Notion', () => {
     )
     await runWith(
       fake,
-      sync(tree, { pageId: ROOT, cache }).pipe(
-        Effect.mapError((cause) => new Error(String(cause))),
-      ),
+      sync(tree, { pageId: ROOT, cache }),
     )
     const coldSnapshot = await Effect.runPromise(cache.load)
     const coldTotal = totalCacheNodes(coldSnapshot!)
@@ -1410,9 +1357,7 @@ describe('sync() against in-memory fake Notion', () => {
     for (let i = 0; i < 3; i++) {
       const res = await runWith(
         fake,
-        sync(tree, { pageId: ROOT, cache }).pipe(
-          Effect.mapError((cause) => new Error(String(cause))),
-        ),
+        sync(tree, { pageId: ROOT, cache }),
       )
       expect(res).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
       const warm = await Effect.runPromise(cache.load)
@@ -1451,9 +1396,7 @@ describe('sync() against in-memory fake Notion', () => {
     )
     await runWith(
       fake,
-      sync(tree, { pageId: ROOT, cache }).pipe(
-        Effect.mapError((cause) => new Error(String(cause))),
-      ),
+      sync(tree, { pageId: ROOT, cache }),
     )
     const coldSnap = await Effect.runPromise(cache.load)
     const coldTotal = totalCacheNodes(coldSnap!)
@@ -1462,9 +1405,7 @@ describe('sync() against in-memory fake Notion', () => {
     for (let i = 0; i < 3; i++) {
       const res = await runWith(
         fake,
-        sync(tree, { pageId: ROOT, cache }).pipe(
-          Effect.mapError((cause) => new Error(String(cause))),
-        ),
+        sync(tree, { pageId: ROOT, cache }),
       )
       expect(res).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
       const warm = await Effect.runPromise(cache.load)
@@ -1500,9 +1441,7 @@ describe('sync() against in-memory fake Notion', () => {
     )
     await runWith(
       fake,
-      sync(v1Tree, { pageId: ROOT, cache }).pipe(
-        Effect.mapError((cause) => new Error(String(cause))),
-      ),
+      sync(v1Tree, { pageId: ROOT, cache }),
     )
     const coldSnap = await Effect.runPromise(cache.load)
     const coldTotal = totalCacheNodes(coldSnap!)
@@ -1532,9 +1471,7 @@ describe('sync() against in-memory fake Notion', () => {
     )
     await runWith(
       fake,
-      sync(v2Tree, { pageId: ROOT, cache }).pipe(
-        Effect.mapError((cause) => new Error(String(cause))),
-      ),
+      sync(v2Tree, { pageId: ROOT, cache }),
     )
     // Resync v2 multiple times; must be stable in cache shape.
     const v2Snap = await Effect.runPromise(cache.load)
@@ -1547,9 +1484,7 @@ describe('sync() against in-memory fake Notion', () => {
     for (let i = 0; i < 3; i++) {
       await runWith(
         fake,
-        sync(v2Tree, { pageId: ROOT, cache }).pipe(
-          Effect.mapError((cause) => new Error(String(cause))),
-        ),
+        sync(v2Tree, { pageId: ROOT, cache }),
       )
       const s = await Effect.runPromise(cache.load)
       expect(totalCacheNodes(s!)).toBe(v2Total)
@@ -1584,9 +1519,7 @@ describe('sync() against in-memory fake Notion', () => {
     )
     await runWith(
       fake,
-      sync(tree, { pageId: ROOT, cache: spy.cache }).pipe(
-        Effect.mapError((cause) => new Error(String(cause))),
-      ),
+      sync(tree, { pageId: ROOT, cache: spy.cache }),
     )
     // Every checkpoint that commits the column_list must carry its full
     // subtree (4 paragraphs under 2 columns) — not a hollowed `children:[]`.
@@ -1620,9 +1553,7 @@ describe('sync() against in-memory fake Notion', () => {
     const bigTree = <DailyPage screenTime="8h" apps={12} sessions={sessions} />
     await runWith(
       fake,
-      sync(bigTree, { pageId: ROOT, cache }).pipe(
-        Effect.mapError((cause) => new Error(String(cause))),
-      ),
+      sync(bigTree, { pageId: ROOT, cache }),
     )
     const coldSnap = await Effect.runPromise(cache.load)
     const coldTotal = totalCacheNodes(coldSnap!)
@@ -1631,9 +1562,7 @@ describe('sync() against in-memory fake Notion', () => {
     for (let i = 0; i < 2; i++) {
       const res = await runWith(
         fake,
-        sync(bigTree, { pageId: ROOT, cache }).pipe(
-          Effect.mapError((cause) => new Error(String(cause))),
-        ),
+        sync(bigTree, { pageId: ROOT, cache }),
       )
       expect(res).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
       const warm = await Effect.runPromise(cache.load)
@@ -1655,17 +1584,13 @@ describe('sync() against in-memory fake Notion', () => {
     const cache = InMemoryCache.make()
     await runWith(
       fake,
-      sync(<ChildPage title="old title" />, { pageId: ROOT, cache }).pipe(
-        Effect.mapError((cause) => new Error(String(cause))),
-      ),
+      sync(<ChildPage title="old title" />, { pageId: ROOT, cache }),
     )
     const before = fake.requests.length
 
     const res = await runWith(
       fake,
-      sync(<ChildPage title="new title" />, { pageId: ROOT, cache }).pipe(
-        Effect.mapError((cause) => new Error(String(cause))),
-      ),
+      sync(<ChildPage title="new title" />, { pageId: ROOT, cache }),
     )
     // Phase 3b rewires this: `<ChildPage>` at top-level is a page node, so
     // the title change emits a `pages.update` PageOp, not a block update.
@@ -1703,7 +1628,7 @@ describe('sync() against in-memory fake Notion', () => {
       sync(<ChildPage title="doc" icon={{ type: 'emoji', emoji: '📄' }} />, {
         pageId: ROOT,
         cache,
-      }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+      }),
     )
     const before = fake.requests.length
     const res = await runWith(
@@ -1715,7 +1640,7 @@ describe('sync() against in-memory fake Notion', () => {
           cover={{ type: 'external', external: { url: 'https://x/c.png' } }}
         />,
         { pageId: ROOT, cache },
-      ).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+      ),
     )
     expect(res).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
     expect(res.pages).toMatchObject({ creates: 0, updates: 1, archives: 0, moves: 0 })

@@ -15,9 +15,9 @@ import { createFakeNotion, type FakeNotion } from './mock-client.ts'
  * the page, and block-side endpoints coherently reflect page-archival state.
  */
 
-const runWith = <A>(
+const runWith = <A, E>(
   fake: FakeNotion,
-  eff: Effect.Effect<A, unknown, HttpClient.HttpClient | NotionConfig>,
+  eff: Effect.Effect<A, E, HttpClient.HttpClient | NotionConfig>,
 ): Promise<A> => Effect.runPromise(eff.pipe(Effect.provide(fake.layer)))
 
 const PARENT_ID = '11111111-1111-4111-8111-0000000000aa'

@@ -43,14 +43,10 @@ describe.skipIf(SKIP_E2E)('e2e edge cases', () => {
       await withScratchPage('edge-empty-page', (pageId) =>
         Effect.gen(function* () {
           const cache = InMemoryCache.make()
-          const res = yield* sync(<Page>{null}</Page>, { pageId, cache }).pipe(
-            Effect.mapError((cause) => new Error(String(cause))),
-          )
+          const res = yield* sync(<Page>{null}</Page>, { pageId, cache })
           expect(res.appends + res.updates + res.inserts + res.removes).toBe(0)
 
-          const server = yield* readPageTree(pageId).pipe(
-            Effect.mapError((cause) => new Error(String(cause))),
-          )
+          const server = yield* readPageTree(pageId)
           expect(server).toHaveLength(0)
         }),
       )
@@ -66,12 +62,8 @@ describe.skipIf(SKIP_E2E)('e2e edge cases', () => {
     async () => {
       await withScratchPage('edge-single-block', (pageId) =>
         Effect.gen(function* () {
-          yield* renderToNotion(<Paragraph>only one</Paragraph>, { pageId }).pipe(
-            Effect.mapError((cause) => new Error(String(cause))),
-          )
-          const tree = yield* readPageTree(pageId).pipe(
-            Effect.mapError((cause) => new Error(String(cause))),
-          )
+          yield* renderToNotion(<Paragraph>only one</Paragraph>, { pageId })
+          const tree = yield* readPageTree(pageId)
           expect(tree).toHaveLength(1)
           expect(tree[0]!.type).toBe('paragraph')
           expect(firstPlainText(tree[0]!)).toBe('only one')
@@ -92,12 +84,8 @@ describe.skipIf(SKIP_E2E)('e2e edge cases', () => {
       const text = 'café 👨‍👩‍👧 שלום 漢字'
       await withScratchPage('edge-unicode', (pageId) =>
         Effect.gen(function* () {
-          yield* renderToNotion(<Paragraph>{text}</Paragraph>, { pageId }).pipe(
-            Effect.mapError((cause) => new Error(String(cause))),
-          )
-          const tree = yield* readPageTree(pageId).pipe(
-            Effect.mapError((cause) => new Error(String(cause))),
-          )
+          yield* renderToNotion(<Paragraph>{text}</Paragraph>, { pageId })
+          const tree = yield* readPageTree(pageId)
           expect(concatPlainText(tree[0]!)).toBe(text)
         }),
       )
@@ -116,12 +104,8 @@ describe.skipIf(SKIP_E2E)('e2e edge cases', () => {
       const text = 'x'.repeat(2000)
       await withScratchPage('edge-long-paragraph', (pageId) =>
         Effect.gen(function* () {
-          yield* renderToNotion(<Paragraph>{text}</Paragraph>, { pageId }).pipe(
-            Effect.mapError((cause) => new Error(String(cause))),
-          )
-          const tree = yield* readPageTree(pageId).pipe(
-            Effect.mapError((cause) => new Error(String(cause))),
-          )
+          yield* renderToNotion(<Paragraph>{text}</Paragraph>, { pageId })
+          const tree = yield* readPageTree(pageId)
           expect(firstPlainText(tree[0]!).length).toBe(2000)
         }),
       )
@@ -162,11 +146,9 @@ describe.skipIf(SKIP_E2E)('e2e edge cases', () => {
               sync(<TreeB />, { pageId, cache: cacheB }),
             ],
             { concurrency: 2 },
-          ).pipe(Effect.mapError((cause) => new Error(String(cause))))
-
-          const server = yield* readPageTree(pageId).pipe(
-            Effect.mapError((cause) => new Error(String(cause))),
           )
+
+          const server = yield* readPageTree(pageId)
           const texts = server.filter((b) => b.type === 'paragraph').map((b) => firstPlainText(b))
           // All four blocks are present; order is implementation-defined
           // since Notion serializes appends per request.
@@ -258,15 +240,11 @@ describe.skipIf(SKIP_E2E)('e2e edge cases', () => {
           )
 
           // Cold sync: every block appended.
-          const cold = yield* sync(tree('v1'), { pageId, cache }).pipe(
-            Effect.mapError((cause) => new Error(String(cause))),
-          )
+          const cold = yield* sync(tree('v1'), { pageId, cache })
           expect(cold.updates).toBe(0)
           expect(cold.removes).toBe(0)
           // Verify the structure round-trips through the deep-nesting path.
-          const server = yield* readPageTree(pageId).pipe(
-            Effect.mapError((cause) => new Error(String(cause))),
-          )
+          const server = yield* readPageTree(pageId)
           const colList = server.find((b) => b.type === 'column_list')
           expect(colList).toBeDefined()
           const cols = colList!.children.filter((c) => c.type === 'column')
@@ -283,9 +261,7 @@ describe.skipIf(SKIP_E2E)('e2e edge cases', () => {
 
           // Update at depth 5: only the innermost paragraph body changes.
           // Diff should yield exactly one `update` op at the inner paragraph.
-          const warm = yield* sync(tree('v2'), { pageId, cache }).pipe(
-            Effect.mapError((cause) => new Error(String(cause))),
-          )
+          const warm = yield* sync(tree('v2'), { pageId, cache })
           expect(warm).toMatchObject({ appends: 0, updates: 1, inserts: 0, removes: 0 })
         }),
       )

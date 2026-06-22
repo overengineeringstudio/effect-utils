@@ -73,9 +73,8 @@ const findToggleByTitle = (
     return firstPlainText(b) === title
   })
 
-/** Wrap an Effect-producing body in an `Effect.mapError(String)` for assertion clarity. */
-const runE = <A,>(eff: Effect.Effect<A, unknown, TestR>): Effect.Effect<A, Error, TestR> =>
-  eff.pipe(Effect.mapError((cause) => new Error(String(cause))))
+/** Typed seam over the per-test effects, kept so call sites read uniformly. */
+const runE = <A, E>(eff: Effect.Effect<A, E, TestR>): Effect.Effect<A, E, TestR> => eff
 
 const TIMEOUT = 120_000
 const LARGE_TIMEOUT = 300_000
