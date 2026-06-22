@@ -732,6 +732,9 @@ let
   ];
   installRootScopedPath =
     installDir: relPath: if installDir == "." then relPath else "${installDir}/${relPath}";
+  existingSourceFiles =
+    relPaths:
+    builtins.filter (relPath: builtins.pathExists (resolveSourceFor relPath).evalSourcePath) relPaths;
   # Expose a stable, CLI-friendly attr key while keeping the real install dir
   # in `dir`. This avoids leaking path separators into flake package names and
   # keeps downstream tooling simple.
@@ -777,12 +780,12 @@ let
     in
     if root.installDir == "." then
       rootWorkspaceFiles
-      ++ optionalRootWorkspaceFiles
+      ++ existingSourceFiles optionalRootWorkspaceFiles
       ++ [ "pnpm-workspace.yaml" ]
       ++ (map (dir: "${dir}/package.json") aggregateOwnedWorkspaceClosureDirs)
     else
       (map scopedFile rootWorkspaceFiles)
-      ++ (map scopedFile optionalRootWorkspaceFiles)
+      ++ existingSourceFiles (map scopedFile optionalRootWorkspaceFiles)
       ++ [ (scopedFile "pnpm-workspace.yaml") ]
       ++ memberPackageJsons;
   installRootProfile =
@@ -796,7 +799,6 @@ let
       manifestInputs = profileManifestInputsForRoot root;
       policy = {
         packageImportMethod = if pkgs.stdenv.hostPlatform.isDarwin then "copy" else "clone-or-copy";
-        nativeNodePackages = if nativeNodePackages == [ ] then "none" else "nix-linked";
       };
     };
   /**

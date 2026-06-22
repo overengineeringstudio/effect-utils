@@ -199,9 +199,20 @@
                     (builtins.head profileDedupConsumerA.passthru.dependencyMaterializationEvidence.profiles).profileKey
                     == (builtins.head profileDedupConsumerB.passthru.dependencyMaterializationEvidence.profiles)
                     .profileKey;
+                  absentOptionalInputsExcluded =
+                    !(
+                      builtins.elem "pnpm-install-contract.json" (
+                        builtins.head pureEvalFixture.passthru.dependencyMaterializationEvidence.profiles
+                      ).inputs.manifests
+                    )
+                    && !(
+                      builtins.elem "tsconfig.base.json" (
+                        builtins.head pureEvalFixture.passthru.dependencyMaterializationEvidence.profiles
+                      ).inputs.manifests
+                    );
                 }
               }'
-              expected='{"attrNames":["root","repos-effect-utils"],"consumerNameInsensitive":true,"kind":"dependency-materialization-evidence","producer":"effect-utils.mk-pnpm-cli","profileCount":2,"sourcePathInsensitive":true,"traits":[["nixPreparedDeps"],["nixPreparedDeps"]]}'
+              expected='{"absentOptionalInputsExcluded":true,"attrNames":["root","repos-effect-utils"],"consumerNameInsensitive":true,"kind":"dependency-materialization-evidence","producer":"effect-utils.mk-pnpm-cli","profileCount":2,"sourcePathInsensitive":true,"traits":[["nixPreparedDeps"],["nixPreparedDeps"]]}'
               if [ "$actual" != "$expected" ]; then
                 echo "unexpected dependency materialization evidence: $actual" >&2
                 exit 1
