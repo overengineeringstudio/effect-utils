@@ -8,6 +8,7 @@ import { InMemoryCache } from '../cache/in-memory-cache.ts'
 import { CACHE_SCHEMA_VERSION, type CacheTree } from '../cache/types.ts'
 import { ChildPage, Page, Paragraph, Toggle } from '../components/blocks.ts'
 import { createFakeNotion, FakeNotionResponseError, type FakeNotion } from '../test/mock-client.ts'
+import { NotionSyncError } from './errors.ts'
 import { normalizeCover, projectCover } from './icons.ts'
 import { sync } from './sync.ts'
 
@@ -21,7 +22,7 @@ const ROOT = '00000000-0000-4000-8000-000000000001'
 
 const runWith = <A,>(
   fake: FakeNotion,
-  eff: Effect.Effect<A, unknown, HttpClient.HttpClient | NotionConfig>,
+  eff: Effect.Effect<A, NotionSyncError, HttpClient.HttpClient | NotionConfig>,
 ): Promise<A> => Effect.runPromise(eff.pipe(Effect.provide(fake.layer)))
 
 const runSync = async (
@@ -31,9 +32,7 @@ const runSync = async (
 ) => {
   return await runWith(
     fake,
-    sync(element, { pageId: ROOT, cache }).pipe(
-      Effect.mapError((cause) => new Error(String(cause))),
-    ),
+    sync(element, { pageId: ROOT, cache }),
   )
 }
 
@@ -897,9 +896,7 @@ describe('sync() page ops (issue #618 phase 3b)', () => {
     ) =>
       runWith(
         fake,
-        sync(element, { pageId: ROOT, cache, reorderSiblings }).pipe(
-          Effect.mapError((cause) => new Error(String(cause))),
-        ),
+        sync(element, { pageId: ROOT, cache, reorderSiblings }),
       )
 
     /** Return the final child_page block ids under ROOT in server order. */
@@ -1017,7 +1014,9 @@ describe('sync() page ops (issue #618 phase 3b)', () => {
           },
         }).pipe(
           Effect.map((p) => (p as { id: string }).id),
-          Effect.mapError((c) => new Error(String(c))),
+          Effect.mapError(
+            (cause) => new NotionSyncError({ reason: 'holding-parent-create-failed', cause }),
+          ),
         ),
       )
       const before = fake.requests.length
