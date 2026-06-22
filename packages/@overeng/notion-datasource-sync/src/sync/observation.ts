@@ -589,15 +589,15 @@ export const makeConflictRaisedEvent = (input: {
 }
 
 /** Derive a deterministic `CommandId` from a semantic key string; prefixes with `cmd:` after URL-safe escaping. */
-export const commandIdFor = (value: string): typeof CommandId.Type =>
+export const commandIdFor = (value: string): CommandId =>
   decode({ schema: CommandId, value: `cmd:${eventIdPart(value)}` })
 
 /** Derive a deterministic intent `SyncEventId` from a semantic key string; prefixes with `intent:`. */
-export const intentEventIdFor = (value: string): typeof SyncEventId.Type =>
+export const intentEventIdFor = (value: string): SyncEventId =>
   decode({ schema: SyncEventId, value: `intent:${eventIdPart(value)}` })
 
 /** Derive a deterministic `IdempotencyKey` for an outbox command from a semantic key string; uses the `intent:` prefix. */
-export const commandKeyFor = (value: string): typeof IdempotencyKey.Type =>
+export const commandKeyFor = (value: string): IdempotencyKey =>
   decode({ schema: IdempotencyKey, value: `intent:${eventIdPart(value)}` })
 
 /** Query the remote Notion data source, retrieve per-row properties and bodies, and return the full set of sync events to persist — without writing to the store. */
@@ -987,6 +987,11 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
                   pageId: row.pageId,
                   ...(row.dataSourceId === undefined ? {} : { dataSourceId: row.dataSourceId }),
                   requestId: queryPage.requestId,
+                  // `now().toISOString()` is always a valid ISO timestamp, so this is an
+                  // invariant-guaranteed conversion; a failure here is a defect, not a typed
+                  // error. Keep the sync decode (matching the file's `decode` helper and
+                  // module-level sync codecs) rather than widen the gen channel with `ParseError`.
+                  // @effect-diagnostics-next-line schemaSyncInEffect:off
                   observedAt: Schema.decodeSync(Schema.DateTimeUtc)(now().toISOString()),
                   propertiesHash: row.propertiesHash,
                   propertyValuesJson: row.propertyValuesJson,
@@ -1068,7 +1073,11 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
                 propertiesHash: page.propertiesHash,
                 ...(bodyPointer === undefined
                   ? {}
-                  : { bodyPointer: Schema.encodeSync(BodyPointer)(bodyPointer) }),
+                  : // `bodyPointer` is an already-decoded `BodyPointer`; encoding it back cannot
+                    // realistically fail, so a failure is a defect, not a typed error. Keep the
+                    // sync encode rather than widen the gen channel with `ParseError`.
+                    // @effect-diagnostics-next-line schemaSyncInEffect:off
+                    { bodyPointer: Schema.encodeSync(BodyPointer)(bodyPointer) }),
                 inTrash: page.inTrash,
               },
             }),
@@ -1282,7 +1291,7 @@ export const bodyPushCommandFromLocalChange = (input: {
   readonly localBodyHash: Hash
   readonly localBodyPath?: WorkspaceRelativePath
   readonly localBodyContent?: string
-}): typeof BodyPushCommand.Type =>
+}): BodyPushCommand =>
   decode({
     schema: BodyPushCommand,
     value: {

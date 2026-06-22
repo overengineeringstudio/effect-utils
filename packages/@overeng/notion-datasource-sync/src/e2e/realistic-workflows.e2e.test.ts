@@ -140,7 +140,7 @@ const runWithPorts = <TValue, TError>(
 const initializedStore = ({
   workspace = workspaceRoot,
 }: {
-  readonly workspace?: typeof AbsolutePath.Type
+  readonly workspace?: AbsolutePath
 } = {}) => {
   const clock = makeFakeClock()
   const storeFixture = makeStoreFixture({ mode: 'memory', now: clock.now })
@@ -162,7 +162,7 @@ const pullOptions = ({
 }: {
   readonly store: ReturnType<typeof makeStoreFixture>['store']
   readonly clock: ReturnType<typeof makeFakeClock>
-  readonly workspace?: typeof AbsolutePath.Type
+  readonly workspace?: AbsolutePath
 }) => ({
   store,
   rootId: testIds.rootId,

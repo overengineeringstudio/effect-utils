@@ -39,7 +39,7 @@ const CounterApp = createTuiApp({
     count: 0,
     status: 'idle',
     history: [],
-  } as typeof CounterState.Type,
+  } as CounterState,
   reducer: counterReducer,
 })
 
@@ -68,7 +68,7 @@ const runCounter = run(
 
       // Complete
       if (tui.getState()._tag === 'Running') {
-        const state = tui.getState() as Extract<typeof CounterState.Type, { _tag: 'Running' }>
+        const state = tui.getState() as Extract<CounterState, { _tag: 'Running' }>
         tui.dispatch({ _tag: 'SetComplete', message: `Final count: ${state.count}` })
       }
 

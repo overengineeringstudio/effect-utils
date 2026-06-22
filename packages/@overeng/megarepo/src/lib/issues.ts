@@ -85,7 +85,7 @@ export const detectRefMismatch = ({
 
     // Get the actual git branch from the worktree
     const actualBranchOpt = yield* Git.getCurrentBranch(worktreePath).pipe(
-      Effect.catchAll(() => Effect.succeed(Option.none<string>())),
+      Effect.orElseSucceed(() => Option.none<string>()),
     )
 
     // If detached HEAD in a branch worktree, that's a mismatch
@@ -94,7 +94,7 @@ export const detectRefMismatch = ({
       // Get the short commit SHA for display
       const commitSha = yield* Git.getCurrentCommit(worktreePath).pipe(
         Effect.map((sha) => sha.slice(0, 7)),
-        Effect.catchAll(() => Effect.succeed('unknown')),
+        Effect.orElseSucceed(() => 'unknown'),
       )
 
       return {

@@ -46,7 +46,7 @@ const runHelloWorld = (durationSeconds: number) => {
     initial: {
       _tag: 'Displaying',
       secondsRemaining: durationSeconds,
-    } as typeof AppState.Type,
+    } as AppState,
     reducer: appReducer,
   })
 

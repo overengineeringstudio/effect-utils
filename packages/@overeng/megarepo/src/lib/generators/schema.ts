@@ -20,7 +20,7 @@ export interface SchemaGeneratorOptions {
   /** Path to the megarepo root */
   readonly megarepoRoot: AbsoluteDirPath
   /** The megarepo config (unused, but kept for consistency) */
-  readonly config: typeof MegarepoConfig.Type
+  readonly config: MegarepoConfig
   /** Output path for the schema file (relative to megarepo root) */
   readonly outputPath?: string
 }

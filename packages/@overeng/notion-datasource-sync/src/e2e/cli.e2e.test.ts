@@ -133,7 +133,7 @@ const propertyPage = (valueHash = hash('property-a-base')) =>
 
 const bodyPointerFor = (bodyHash = hash('body-a')) => bodyPointer(bodyHash)
 
-const bodyPointerForPage = (pageId: typeof PageId.Type, bodyHash = hash('body-a')) => ({
+const bodyPointerForPage = (pageId: PageId, bodyHash = hash('body-a')) => ({
   ...bodyPointer(bodyHash),
   pageId,
 })
@@ -324,7 +324,7 @@ const createBoundSqlite = async ({
   workspace = workspaceRoot,
 }: {
   readonly path: string
-  readonly workspace?: typeof AbsolutePath.Type
+  readonly workspace?: AbsolutePath
 }): Promise<void> => {
   const clock = makeFakeClock()
   const store = openNotionSyncStore({ path, now: clock.now })
@@ -362,7 +362,7 @@ const establishTrackedWorkspace = async ({
   workspace,
   mode = 'shared',
 }: {
-  readonly workspace: typeof AbsolutePath.Type
+  readonly workspace: AbsolutePath
   readonly mode?: 'local' | 'remote' | 'shared'
 }): Promise<void> => {
   const argv = ['track', testIds.dataSourceId, workspace, '--mode', mode, '--no-materialize-bodies']

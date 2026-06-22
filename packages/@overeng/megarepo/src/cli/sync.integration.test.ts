@@ -594,7 +594,7 @@ const createNestedMegarepoFixture = () =>
     yield* initGitRepo(childPath)
 
     // Create child's megarepo.json pointing to grandchild
-    const childConfig: typeof MegarepoConfig.Type = {
+    const childConfig: MegarepoConfig = {
       members: {
         'grandchild-lib': grandchildPath,
       },
@@ -620,7 +620,7 @@ const createNestedMegarepoFixture = () =>
     yield* initGitRepo(parentPath)
 
     // Create parent's megarepo.json pointing to child
-    const parentConfig: typeof MegarepoConfig.Type = {
+    const parentConfig: MegarepoConfig = {
       members: {
         'child-megarepo': childPath,
       },
@@ -840,7 +840,7 @@ const createDiamondDependencyFixture = () =>
     const childAPath = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('child-a/'))
     yield* fs.makeDirectory(childAPath, { recursive: true })
     yield* initGitRepo(childAPath)
-    const childAConfig: typeof MegarepoConfig.Type = {
+    const childAConfig: MegarepoConfig = {
       members: { 'shared-lib': sharedLibPath },
     }
     const childAConfigContent = yield* Schema.encode(
@@ -859,7 +859,7 @@ const createDiamondDependencyFixture = () =>
     const childBPath = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('child-b/'))
     yield* fs.makeDirectory(childBPath, { recursive: true })
     yield* initGitRepo(childBPath)
-    const childBConfig: typeof MegarepoConfig.Type = {
+    const childBConfig: MegarepoConfig = {
       members: { 'shared-lib': sharedLibPath },
     }
     const childBConfigContent = yield* Schema.encode(
@@ -878,7 +878,7 @@ const createDiamondDependencyFixture = () =>
     const rootPath = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('root/'))
     yield* fs.makeDirectory(rootPath, { recursive: true })
     yield* initGitRepo(rootPath)
-    const rootConfig: typeof MegarepoConfig.Type = {
+    const rootConfig: MegarepoConfig = {
       members: {
         'child-a': childAPath,
         'child-b': childBPath,
@@ -1715,7 +1715,7 @@ describe('mr lock', () => {
           yield* initGitRepo(workspacePath)
 
           // Create megarepo.json with a GitHub repo
-          const config: typeof MegarepoConfig.Type = {
+          const config: MegarepoConfig = {
             members: {
               // Using a real but unlikely-to-change repo
               effect: 'effect-ts/effect',
@@ -1792,7 +1792,7 @@ describe('mr lock', () => {
           yield* initGitRepo(workspacePath)
 
           // Create initial config pointing to the base repo path
-          const initialConfig: typeof MegarepoConfig.Type = {
+          const initialConfig: MegarepoConfig = {
             members: {
               'my-lib': baseRepoPath,
             },
@@ -1827,11 +1827,11 @@ describe('mr lock', () => {
                 EffectPath.unsafe.relativeFile('repos/my-lib/feature.txt'),
               ),
             )
-            .pipe(Effect.catchAll(() => Effect.succeed(false)))
+            .pipe(Effect.orElseSucceed(() => false))
           expect(featureFileInBase).toBe(false)
 
           // Update config to point to the feature repo path
-          const updatedConfig: typeof MegarepoConfig.Type = {
+          const updatedConfig: MegarepoConfig = {
             members: {
               'my-lib': featureRepoPath,
             },
@@ -1864,7 +1864,7 @@ describe('mr lock', () => {
                 EffectPath.unsafe.relativeFile('repos/my-lib/feature.txt'),
               ),
             )
-            .pipe(Effect.catchAll(() => Effect.succeed(false)))
+            .pipe(Effect.orElseSucceed(() => false))
           expect(featureFileInFeature).toBe(true)
           expect(updatedLink.replace(/\/$/, '')).toBe(featureRepoPath.replace(/\/$/, ''))
         },
@@ -2431,7 +2431,7 @@ describe('sync status types', () => {
         yield* fs.makeDirectory(workspacePath, { recursive: true })
         yield* initGitRepo(workspacePath)
 
-        const config: typeof MegarepoConfig.Type = {
+        const config: MegarepoConfig = {
           members: {
             'new-lib': localRepoPath,
           },
@@ -2490,7 +2490,7 @@ describe('sync error handling', () => {
         // Create megarepo.json with a missing remote. Use file:// so the clone
         // failure is deterministic and does not spend the test timeout on
         // network/auth retries.
-        const config: typeof MegarepoConfig.Type = {
+        const config: MegarepoConfig = {
           members: {
             'non-existent-repo': pathToFileURL(missingRemotePath).href,
           },
@@ -2581,7 +2581,7 @@ describe('sync member filtering', () => {
           yield* fs.makeDirectory(workspacePath, { recursive: true })
           yield* initGitRepo(workspacePath)
 
-          const config: typeof MegarepoConfig.Type = {
+          const config: MegarepoConfig = {
             members: {
               repo1: repo1Path,
               repo2: repo2Path,
@@ -2652,7 +2652,7 @@ describe('sync member filtering', () => {
           yield* fs.makeDirectory(workspacePath, { recursive: true })
           yield* initGitRepo(workspacePath)
 
-          const config: typeof MegarepoConfig.Type = {
+          const config: MegarepoConfig = {
             members: {
               repo1: repo1Path,
               repo2: repo2Path,
@@ -2707,7 +2707,7 @@ describe('sync member filtering', () => {
           yield* fs.makeDirectory(workspacePath, { recursive: true })
           yield* initGitRepo(workspacePath)
 
-          const config: typeof MegarepoConfig.Type = {
+          const config: MegarepoConfig = {
             members: {
               repo1: 'owner/repo1',
             },
@@ -2805,7 +2805,7 @@ describe('sync worktree ref mismatch detection', () => {
         yield* initGitRepo(workspacePath)
 
         // Create megarepo.json with URL source (not local path)
-        const config: typeof MegarepoConfig.Type = {
+        const config: MegarepoConfig = {
           members: {
             // Using https URL so it's treated as URL type, not path type
             'test-repo': 'https://example.com/org/test-repo#main',
@@ -2912,7 +2912,7 @@ describe('sync worktree ref mismatch detection', () => {
         yield* initGitRepo(workspacePath)
 
         // Create megarepo.json with URL source
-        const config: typeof MegarepoConfig.Type = {
+        const config: MegarepoConfig = {
           members: {
             'test-repo': 'https://example.com/org/test-repo#main',
           },
@@ -3026,7 +3026,7 @@ describe('sync member removal detection', () => {
         )
 
         // Initial config with both members
-        const initialConfig: typeof MegarepoConfig.Type = {
+        const initialConfig: MegarepoConfig = {
           members: {
             repo1: repo1Path,
             repo2: repo2Path,
@@ -3058,7 +3058,7 @@ describe('sync member removal detection', () => {
         expect(yield* fs.exists(repo2Symlink)).toBe(true)
 
         // Update config to remove repo2
-        const updatedConfig: typeof MegarepoConfig.Type = {
+        const updatedConfig: MegarepoConfig = {
           members: {
             repo1: repo1Path,
             // repo2 removed!
@@ -3134,7 +3134,7 @@ describe('sync member removal detection', () => {
         )
 
         // Initial config with both members
-        const initialConfig: typeof MegarepoConfig.Type = {
+        const initialConfig: MegarepoConfig = {
           members: {
             repo1: repo1Path,
             repo2: repo2Path,
@@ -3154,7 +3154,7 @@ describe('sync member removal detection', () => {
         yield* runFetchApplyCommand({ cwd: workspacePath, args: [] })
 
         // Update config to remove repo2
-        const updatedConfig: typeof MegarepoConfig.Type = {
+        const updatedConfig: MegarepoConfig = {
           members: {
             repo1: repo1Path,
           },
@@ -3228,7 +3228,7 @@ describe('sync member removal detection', () => {
         )
 
         // Config with both members
-        const config: typeof MegarepoConfig.Type = {
+        const config: MegarepoConfig = {
           members: {
             repo1: repo1Path,
             repo2: repo2Path,
@@ -3299,7 +3299,7 @@ describe('sync member removal detection', () => {
         )
 
         // Config with only repo1
-        const config: typeof MegarepoConfig.Type = {
+        const config: MegarepoConfig = {
           members: {
             repo1: repo1Path,
           },

@@ -12,7 +12,7 @@ import { StatusState, StatusAction, statusReducer } from './schema.ts'
 /**
  * Initial empty state for status output.
  */
-export const createInitialStatusState = (): typeof StatusState.Type => ({
+export const createInitialStatusState = (): StatusState => ({
   name: '',
   root: '',
   syncNeeded: false,

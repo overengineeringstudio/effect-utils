@@ -9,7 +9,7 @@ import { InitState, InitAction, initReducer } from './schema.ts'
 /**
  * Initial state (default to initialized with empty path).
  */
-export const createInitialInitState = (): typeof InitState.Type => ({
+export const createInitialInitState = (): InitState => ({
   _tag: 'Success',
   path: '',
 })

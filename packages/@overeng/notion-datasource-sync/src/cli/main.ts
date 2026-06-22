@@ -192,7 +192,7 @@ const bodyPathForPageInSourceDir = ({
   pageId,
 }: {
   readonly pagesDir: string
-  readonly pageId: typeof PageId.Type
+  readonly pageId: PageId
 }): WorkspaceRelativePathType => {
   const decision = bodyPathForRowInDir({ pagesDir, title: `page-${pageId}`, pageId })
   return decision._tag === 'blocked'
@@ -213,7 +213,7 @@ const remoteObservationContext = (context: CliContext) => ({
   ...(context.sourcePagesDir === undefined
     ? {}
     : {
-        bodyPathForPage: (pageId: typeof PageId.Type): WorkspaceRelativePathType =>
+        bodyPathForPage: (pageId: PageId): WorkspaceRelativePathType =>
           bodyPathForPageInSourceDir({ pagesDir: context.sourcePagesDir!, pageId }),
       }),
 })
@@ -227,15 +227,15 @@ const remoteObservationContext = (context: CliContext) => ({
 export type CliCommand =
   | {
       readonly _tag: 'init'
-      readonly dataSourceId: typeof DataSourceId.Type
-      readonly workspaceRoot: typeof AbsolutePath.Type
+      readonly dataSourceId: DataSourceId
+      readonly workspaceRoot: AbsolutePath
       readonly dryRun?: boolean
     }
   | { readonly _tag: 'pull' }
   | { readonly _tag: 'push'; readonly dryRun?: boolean }
   | {
       readonly _tag: 'sync'
-      readonly workspaceRoot?: typeof AbsolutePath.Type
+      readonly workspaceRoot?: AbsolutePath
       readonly dryRun?: boolean
       readonly watch?: boolean
       readonly statePath?: string
@@ -247,9 +247,9 @@ export type CliCommand =
     }
   | {
       readonly _tag: 'sync-from-notion'
-      readonly dataSourceId: typeof DataSourceId.Type
+      readonly dataSourceId: DataSourceId
       readonly remoteRef: NotionRemoteRef
-      readonly workspaceRoot: typeof AbsolutePath.Type
+      readonly workspaceRoot: AbsolutePath
       readonly dryRun?: boolean
       readonly limit?: number
     }
@@ -262,9 +262,9 @@ export type CliCommand =
        * of `sync-from-notion`.
        */
       readonly _tag: 'track'
-      readonly dataSourceId: typeof DataSourceId.Type
+      readonly dataSourceId: DataSourceId
       readonly remoteRef: NotionRemoteRef
-      readonly workspaceRoot: typeof AbsolutePath.Type
+      readonly workspaceRoot: AbsolutePath
       /** Workspace authority mode persisted to the manifest. Defaults to `shared`. */
       readonly authorityMode: AuthorityMode
       readonly dryRun?: boolean
@@ -272,8 +272,8 @@ export type CliCommand =
     }
   | {
       readonly _tag: 'export'
-      readonly outputPath: typeof AbsolutePath.Type
-      readonly workspaceRoot?: typeof AbsolutePath.Type
+      readonly outputPath: AbsolutePath
+      readonly workspaceRoot?: AbsolutePath
       /**
        * `--refresh` re-observes the established binding through
        * remote-observation/project-only work before exporting (CLI-R02). Export
@@ -292,22 +292,22 @@ export type CliCommand =
        */
       readonly dryRun?: boolean
     }
-  | { readonly _tag: 'status'; readonly workspaceRoot?: typeof AbsolutePath.Type }
+  | { readonly _tag: 'status'; readonly workspaceRoot?: AbsolutePath }
   | { readonly _tag: 'conflicts-list' }
   | {
       readonly _tag: 'conflicts-resolve'
-      readonly conflictId: typeof SyncEventId.Type
+      readonly conflictId: SyncEventId
       readonly choice: ConflictResolutionChoice
       readonly dryRun?: boolean
     }
   | {
       readonly _tag: 'forget'
-      readonly pageId: typeof PageId.Type
+      readonly pageId: PageId
       readonly dryRun?: boolean
     }
   | {
       readonly _tag: 'restore'
-      readonly pageId: typeof PageId.Type
+      readonly pageId: PageId
       readonly dryRun?: boolean
     }
   | { readonly _tag: 'doctor' }
@@ -333,8 +333,8 @@ export type CliContext = {
    */
   readonly replicaPath?: string
   readonly rootId: SyncRootIdType
-  readonly dataSourceId: typeof DataSourceId.Type
-  readonly workspaceRoot: typeof AbsolutePath.Type
+  readonly dataSourceId: DataSourceId
+  readonly workspaceRoot: AbsolutePath
   /**
    * Workspace-wide authority mode read from `notion.workspace.v1.json` for a
    * tracked workspace (decisions 0015, 0019). Threads into the planner's
@@ -369,9 +369,9 @@ export type CliContext = {
 }
 
 type EstablishManifestSource = {
-  readonly workspaceRoot: typeof AbsolutePath.Type
+  readonly workspaceRoot: AbsolutePath
   readonly name: string
-  readonly dataSourceId: typeof DataSourceId.Type
+  readonly dataSourceId: DataSourceId
   readonly databaseId: string
   readonly authorityMode?: AuthorityMode
 }
@@ -538,16 +538,16 @@ export type CliRuntimeOptions = {
   readonly workspace?: LocalWorkspacePortShape
 }
 
-const normalizeAbsolutePath = (value: string): typeof AbsolutePath.Type =>
+const normalizeAbsolutePath = (value: string): AbsolutePath =>
   decode({ schema: AbsolutePath, value: isAbsolute(value) === true ? value : resolve(value) })
 
 const defaultSqlitePath = ({
   workspaceRoot,
   databaseId,
 }: {
-  readonly workspaceRoot: typeof AbsolutePath.Type
+  readonly workspaceRoot: AbsolutePath
   readonly databaseId: string
-}): typeof AbsolutePath.Type =>
+}): AbsolutePath =>
   decode({
     schema: AbsolutePath,
     value: dataFilePath({ workspaceRoot, name: databaseId }),
@@ -636,7 +636,7 @@ const statusWithReplicaPending = ({
   }
 }
 
-const rootIdForDataSource = (dataSourceId: typeof DataSourceId.Type): SyncRootIdType =>
+const rootIdForDataSource = (dataSourceId: DataSourceId): SyncRootIdType =>
   decode({ schema: SyncRootId, value: `data-source:${dataSourceId}` })
 
 const fullReplicaQueryContract = (): QueryContract =>
@@ -657,12 +657,12 @@ const fullReplicaQueryContract = (): QueryContract =>
 export type NotionRemoteRef =
   | {
       readonly _tag: 'data-source'
-      readonly dataSourceId: typeof DataSourceId.Type
+      readonly dataSourceId: DataSourceId
       readonly sourceDatabaseId?: string
     }
   | { readonly _tag: 'database'; readonly databaseId: string }
 
-const parseNotionDataSourceRef = (value: string): typeof DataSourceId.Type => {
+const parseNotionDataSourceRef = (value: string): DataSourceId => {
   return decode({ schema: DataSourceId, value: parseNotionUuid(value) ?? value })
 }
 
@@ -2124,16 +2124,16 @@ export const parseCliCommand = (argv: ReadonlyArray<string>): CliCommand => {
 
 type DiscoveredSelfContainedStore = {
   /** Control-plane store file (`.notion/v1/state.sqlite` for a tracked workspace). */
-  readonly storePath: typeof AbsolutePath.Type
+  readonly storePath: AbsolutePath
   /**
    * Public projection / CDC data file (`data/v1/<source>.sqlite`). Distinct from
    * `storePath` for a tracked workspace; equal to it for a standalone `--sqlite`
    * file (unified projection). decision 0020.
    */
-  readonly dataFilePath: typeof AbsolutePath.Type
+  readonly dataFilePath: AbsolutePath
   readonly rootId: SyncRootIdType
-  readonly dataSourceId: typeof DataSourceId.Type
-  readonly workspaceRoot: typeof AbsolutePath.Type
+  readonly dataSourceId: DataSourceId
+  readonly workspaceRoot: AbsolutePath
   /**
    * Workspace-relative page directory for this tracked source (`pages/v1/<name>`,
    * from the manifest's `data_sources[].pages_dir`). Materialized `.nmd` page
@@ -2309,7 +2309,7 @@ const validateSelfContainedSqlite = ({
  * before any local edit is read as write intent. Returns the loaded manifest
  * result so callers can branch on `tracked` vs `untracked` without reloading.
  */
-const requireCompatibleWorkspaceNamespace = (workspaceRoot: typeof AbsolutePath.Type) => {
+const requireCompatibleWorkspaceNamespace = (workspaceRoot: AbsolutePath) => {
   const result = loadWorkspaceManifest(workspaceRoot)
   if (result._tag === 'mixed-namespace') {
     throw new WorkspaceNamespaceError({
@@ -2387,7 +2387,7 @@ const writeEstablishedWorkspaceManifest = (source: EstablishManifestSource): voi
  * resolved SQLite file is then verified for integrity.
  */
 const discoverSelfContainedStore = (
-  workspaceRoot: typeof AbsolutePath.Type,
+  workspaceRoot: AbsolutePath,
 ): DiscoveredSelfContainedStore => {
   const result = requireCompatibleWorkspaceNamespace(workspaceRoot)
   if (result._tag === 'untracked') {
@@ -2444,7 +2444,7 @@ const discoverExplicitSplitWorkspaceStore = ({
   workspaceRoot,
 }: {
   readonly explicitSqlitePath: string
-  readonly workspaceRoot: typeof AbsolutePath.Type
+  readonly workspaceRoot: AbsolutePath
 }): DiscoveredSelfContainedStore => {
   const result = requireCompatibleWorkspaceNamespace(workspaceRoot)
   if (result._tag === 'untracked') {
@@ -2510,7 +2510,7 @@ const resolveExplicitSqliteStore = ({
   fallbackWorkspaceRoot,
 }: {
   readonly explicitSqlitePath: string
-  readonly fallbackWorkspaceRoot?: typeof AbsolutePath.Type
+  readonly fallbackWorkspaceRoot?: AbsolutePath
 }): DiscoveredSelfContainedStore => {
   const binding = readSelfContainedBinding({ storePath: explicitSqlitePath })
   if (binding !== undefined) {
@@ -2839,7 +2839,7 @@ const resolveDatabaseDataSourceId = ({
   readonly databaseId: string
   readonly client: NotionGatewayClient
 }): Effect.Effect<
-  { readonly dataSourceId: typeof DataSourceId.Type; readonly databaseId: string },
+  { readonly dataSourceId: DataSourceId; readonly databaseId: string },
   CliArgumentError
 > =>
   client.retrieveDatabase({ databaseId }).pipe(

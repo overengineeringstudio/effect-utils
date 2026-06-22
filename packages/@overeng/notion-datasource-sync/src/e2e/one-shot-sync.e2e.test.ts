@@ -82,7 +82,7 @@ const bodyPageFor = (pageId: typeof testIds.pageId, bodyHash = hash(`body-${page
     },
   })
 
-const bodyIdentityForHash = (bodyHash: typeof Hash.Type) =>
+const bodyIdentityForHash = (bodyHash: Hash) =>
   evidenceBackedBodyIdentity({
     rendered: bodyDescriptorForDigest(bodyHash),
     evidenceFingerprint: bodyEvidenceFingerprintFromContentDigest(bodyHash),

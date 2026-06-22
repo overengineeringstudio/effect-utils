@@ -65,9 +65,9 @@ const bodyPointerFor = ({
   fingerprint = bodyEvidenceFingerprintFromContentDigest(bodyHash),
   safety = bodySafetySnapshot(),
 }: {
-  readonly pageId?: typeof PageId.Type
-  readonly bodyHash?: typeof Hash.Type
-  readonly fingerprint?: typeof BodyEvidenceFingerprint.Type
+  readonly pageId?: PageId
+  readonly bodyHash?: Hash
+  readonly fingerprint?: BodyEvidenceFingerprint
   readonly safety?: BodySafetySnapshot
 } = {}) =>
   decode(BodyPointer, {

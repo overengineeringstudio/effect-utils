@@ -119,7 +119,7 @@ const startGitProcess = ({ args, cwd }: { args: ReadonlyArray<string>; cwd?: str
         }
 
         const isRunning = yield* process.isRunning.pipe(
-          Effect.catchAll(() => Effect.succeed(false)),
+          Effect.orElseSucceed(() => false),
         )
         if (isRunning === false) return
 
@@ -367,7 +367,7 @@ export const getRemoteUrl = ({
     cwd: repoPath,
   }).pipe(
     Effect.map(Option.some),
-    Effect.catchAll(() => Effect.succeed(Option.none())),
+    Effect.orElseSucceed(() => Option.none()),
   )
 
 /**
@@ -379,7 +379,7 @@ export const isGitRepo = (path: string) =>
     cwd: path,
   }).pipe(
     Effect.map(() => true),
-    Effect.catchAll(() => Effect.succeed(false)),
+    Effect.orElseSucceed(() => false),
   )
 
 // =============================================================================
@@ -601,7 +601,7 @@ export const getStoreDefaultBranch = (args: { bareRepoPath: string }) =>
     cwd: args.bareRepoPath,
   }).pipe(
     Effect.map((out) => (out === '' ? Option.none<string>() : Option.some(out))),
-    Effect.catchAll(() => Effect.succeed(Option.none<string>())),
+    Effect.orElseSucceed(() => Option.none<string>()),
   )
 
 /**
@@ -625,7 +625,7 @@ export const refExists = (args: { repoPath: string; ref: string }) =>
     cwd: args.repoPath,
   }).pipe(
     Effect.map(() => true),
-    Effect.catchAll(() => Effect.succeed(false)),
+    Effect.orElseSucceed(() => false),
   )
 
 /**
@@ -814,7 +814,7 @@ const getUnpushedStatus = (worktreePath: string) =>
     cwd: worktreePath,
   }).pipe(
     Effect.map((out) => out.split('\n').filter((line) => line.trim() !== '').length > 0),
-    Effect.catchAll(() => Effect.succeed(false)), // No upstream or not a branch
+    Effect.orElseSucceed(() => false), // No upstream or not a branch
   )
 
 /**
@@ -1001,7 +1001,7 @@ export const queryRemoteRefType = (args: { url: string; ref: string }) =>
     // Query both tags and heads from remote
     const output = yield* runGitCommandWithRetry({
       args: ['ls-remote', '--refs', args.url],
-    }).pipe(Effect.catchAll(() => Effect.succeed('')))
+    }).pipe(Effect.orElseSucceed(() => ''))
 
     if (output.length === 0) {
       return { type: 'unknown' as const, commit: '' }
@@ -1039,7 +1039,7 @@ export const queryLocalRefType = (args: { repoPath: string; ref: string }) =>
       cwd: args.repoPath,
     }).pipe(
       Effect.map((commit) => ({ exists: true, commit })),
-      Effect.catchAll(() => Effect.succeed({ exists: false, commit: '' })),
+      Effect.orElseSucceed(() => ({ exists: false, commit: '' })),
     )
 
     if (tagExists.exists === true) {
@@ -1052,7 +1052,7 @@ export const queryLocalRefType = (args: { repoPath: string; ref: string }) =>
       cwd: args.repoPath,
     }).pipe(
       Effect.map((commit) => ({ exists: true, commit })),
-      Effect.catchAll(() => Effect.succeed({ exists: false, commit: '' })),
+      Effect.orElseSucceed(() => ({ exists: false, commit: '' })),
     )
 
     if (branchExists.exists === true) {
@@ -1065,7 +1065,7 @@ export const queryLocalRefType = (args: { repoPath: string; ref: string }) =>
       cwd: args.repoPath,
     }).pipe(
       Effect.map((commit) => ({ exists: true, commit })),
-      Effect.catchAll(() => Effect.succeed({ exists: false, commit: '' })),
+      Effect.orElseSucceed(() => ({ exists: false, commit: '' })),
     )
 
     if (localBranchExists.exists === true) {

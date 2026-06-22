@@ -20,7 +20,7 @@ export type UserActionSurface = {
 
 /** A guard decision that was evaluated during command planning; surfaced in the result envelope for diagnostics. */
 export type PlannedGuard = {
-  readonly guard: typeof GuardName.Type
+  readonly guard: GuardName
   readonly surface: string | undefined
   readonly message: string
 }

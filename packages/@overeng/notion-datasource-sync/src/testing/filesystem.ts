@@ -42,7 +42,7 @@ export const testBodyPointer = ({
   bodyHash = testHash('body'),
 }: {
   readonly pageId: PageId
-  readonly bodyHash?: typeof Hash.Type
+  readonly bodyHash?: Hash
 }) =>
   decode({
     schema: BodyPointer,
@@ -85,6 +85,6 @@ export const collectWorkspaceScan = ({
   root,
 }: {
   readonly workspace: LocalWorkspacePortShape
-  readonly root: typeof AbsolutePath.Type
+  readonly root: AbsolutePath
 }) =>
   Effect.runPromise(workspace.scan(root).pipe(Stream.runCollect, Effect.map(Chunk.toReadonlyArray)))
