@@ -62,6 +62,22 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **Restate integration port allocation**: Bind in-process handler endpoints on
+  port `0` and register the actual kernel-assigned URL, while keeping batch +
+  retry allocation for the native `restate-server` child process ports that must
+  be passed by number.
+
+- **CI test task ordering**: Make `nix:test` wait for `pnpm:install` so
+  source-mode CLI shell tests cannot race dependency materialization under
+  `test:run --mode before`.
+
+- **Genie compiled import staging cleanup**: Scope compiled-binary `.genie.ts`
+  import staging directories to the dynamic import lifetime so successful and
+  failing compiled runs no longer leave `genie-import-*` directories in the
+  process temp directory. Add a compiled Genie CLI shell regression test that
+  runs against an isolated `TMPDIR` and verifies the staging directory is
+  removed after repeated runs (#824).
+
 - **OTEL trace-structure contract**: Tighten the offline trace-structure
   negative test so orphan detection uses a syntactically valid but missing
   parent span ID. Invalid span IDs are now left to the helper's input

@@ -259,13 +259,17 @@ export {
 } from './authoring/Service.ts'
 
 export {
+  BoundEndpoint,
   layer,
+  layerWithBoundEndpoint,
+  make,
   serve,
   materialize,
   materializeObject,
   materializeWorkflow,
   materializeAny,
   type AnyImplementation,
+  type EndpointServer,
   type EndpointOptions,
   type MaterializeWiring,
 } from './endpoint/Endpoint.ts'

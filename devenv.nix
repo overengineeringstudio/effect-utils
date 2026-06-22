@@ -531,6 +531,10 @@ in
   tasks."genie:run".after = [ "pnpm:install" ];
   tasks."genie:watch".after = [ "pnpm:install" ];
   tasks."genie:check".after = [ "pnpm:install" ];
+  # `nix:test` includes shell e2es for source-mode CLIs (for example compiling
+  # packages/@overeng/genie/bin/genie.tsx), so it must not race dependency
+  # materialization when run as part of `test:run --mode before` in CI.
+  tasks."nix:test".after = [ "pnpm:install" ];
   tasks."lint:check:genie".after = [ "pnpm:install" ];
   tasks."mr:bootstrap".after = [ "pnpm:install" ];
   tasks."mr:fetch-apply".after = [ "pnpm:install" ];

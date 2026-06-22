@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import * as nodeFsSync from 'node:fs'
 import nodeFs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -34,6 +35,11 @@ export type LoadedGenieFile = {
   genieFilePath: string
   output: GenieOutput<unknown>
   ctx: GenieContext
+}
+
+type StagedCompiledBinaryImportGraph = {
+  stagePath: string
+  tempRoot: string
 }
 
 const IMPORT_SPECIFIER_REGEX = /(?:import|export)\s+(?:[\s\S]*?\s+from\s+)?(['"])([^'"]+)\1/g
@@ -110,7 +116,7 @@ const stageCompiledBinaryImportGraph = ({
   entryPath,
 }: {
   entryPath: string
-}): Effect.Effect<string, GenieImportError, FileSystem.FileSystem> =>
+}): Effect.Effect<StagedCompiledBinaryImportGraph, GenieImportError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const tempRoot = yield* Effect.tryPromise({
       try: () => nodeFs.mkdtemp(path.join(os.tmpdir(), 'genie-import-')),
@@ -195,8 +201,16 @@ const stageCompiledBinaryImportGraph = ({
         return stagePath
       })
 
-    return yield* stageModule(entryPath)
+    const stagePath = yield* stageModule(entryPath)
+    return { stagePath, tempRoot }
   })
+
+const removeStagedCompiledBinaryImportGraph = ({
+  tempRoot,
+}: StagedCompiledBinaryImportGraph): Effect.Effect<void> =>
+  Effect.sync(() => nodeFsSync.rmSync(tempRoot, { recursive: true, force: true })).pipe(
+    Effect.ignore,
+  )
 
 /**
  * Safely convert error to string.
@@ -504,24 +518,30 @@ export const loadGenieFile = Effect.fn('loadGenieFile')(function* ({
   })
   yield* ensureImportMapResolver
 
-  const importPathBase =
-    isCompiledBinary() === true
-      ? yield* stageCompiledBinaryImportGraph({ entryPath: genieFilePath }).pipe(
-          Effect.map((stagePath) => pathToFileURL(stagePath).href),
-        )
-      : genieFilePath
-  const importPath = `${importPathBase}?import=${Date.now()}`
+  const importModule = (
+    importPath: string,
+  ): Effect.Effect<Record<string, unknown>, GenieImportError> =>
+    Effect.tryPromise({
+      // oxlint-disable-next-line eslint-plugin-import/no-dynamic-require -- dynamic import path required for genie
+      try: () => import(importPath),
+      catch: (error) =>
+        new GenieImportError({
+          genieFilePath,
+          message: `Failed to import ${genieFilePath}: ${safeErrorString(error)}`,
+          cause: error,
+        }),
+    })
 
-  const module = yield* Effect.tryPromise({
-    // oxlint-disable-next-line eslint-plugin-import/no-dynamic-require -- dynamic import path required for genie
-    try: () => import(importPath),
-    catch: (error) =>
-      new GenieImportError({
-        genieFilePath,
-        message: `Failed to import ${genieFilePath}: ${safeErrorString(error)}`,
-        cause: error,
-      }),
-  })
+  const module =
+    isCompiledBinary() === true
+      ? yield* Effect.gen(function* () {
+          const staged = yield* stageCompiledBinaryImportGraph({ entryPath: genieFilePath })
+          const importPath = `${pathToFileURL(staged.stagePath).href}?import=${Date.now()}`
+          return yield* importModule(importPath).pipe(
+            Effect.ensuring(removeStagedCompiledBinaryImportGraph(staged)),
+          )
+        })
+      : yield* importModule(`${genieFilePath}?import=${Date.now()}`)
 
   const exported = module.default
 
