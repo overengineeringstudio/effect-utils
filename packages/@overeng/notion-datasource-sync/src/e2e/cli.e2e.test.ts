@@ -1039,12 +1039,12 @@ describe('CLI command surface', () => {
         runCliMain({ argv: ['sync', dir] }).pipe(Effect.scoped),
       )
       expect(Exit.isFailure(exit)).toBe(true)
-      if (Exit.isFailure(exit)) {
+      if (Exit.isFailure(exit) === true) {
         const failure = Cause.failureOption(exit.cause)
         // A defect would land in `Cause.defects`, not `Cause.failureOption`.
         expect(Option.isSome(failure)).toBe(true)
         expect(Cause.defects(exit.cause)).toHaveLength(0)
-        if (Option.isSome(failure)) {
+        if (Option.isSome(failure) === true) {
           expect(failure.value).toBeInstanceOf(WorkspaceNotTracked)
         }
       }
