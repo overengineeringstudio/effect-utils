@@ -6,6 +6,13 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Dependency materialization profile contract**: Extend the generated
+  `pnpm-install-contract.json` with a stable `dependency-materialization-profile/v0`
+  section covering identity inputs, store traits, native build policy inputs,
+  and the Buck2 boundary. The pnpm helper tests now prove profile emission and
+  refuse raw pruning for shared `store/v11/files` pools, forcing coordinated
+  repair plans instead of one-worktree cleanup.
+
 - **pnpm install contract proof**: Add a generated `pnpm-install-contract.json`
   artifact that makes the long-term pnpm/Nix/Buck2 install contract explicit:
   pnpm owns `store/v11/{files,links,projects}`, GVS `links` are treated as a

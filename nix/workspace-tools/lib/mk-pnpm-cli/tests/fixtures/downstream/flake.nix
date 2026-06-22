@@ -174,6 +174,40 @@
           fi
           printf '%s' "$actual" > "$out"
         '';
+        checks.pure-eval-dependency-materialization-evidence =
+          pkgs.runCommand "mk-pnpm-cli-pure-eval-dependency-materialization-evidence" { }
+            ''
+              actual='${
+                builtins.toJSON {
+                  kind = pureEvalFixture.passthru.dependencyMaterializationEvidence.kind;
+                  producer = pureEvalFixture.passthru.dependencyMaterializationEvidence.producer;
+                  profileCount = builtins.length pureEvalFixture.passthru.dependencyMaterializationEvidence.profiles;
+                  attrNames = map (
+                    profile: profile.attrName
+                  ) pureEvalFixture.passthru.dependencyMaterializationEvidence.profiles;
+                  traits = map (
+                    profile: profile.traits
+                  ) pureEvalFixture.passthru.dependencyMaterializationEvidence.profiles;
+                  sourcePathInsensitive =
+                    map (
+                      profile: profile.profileKey
+                    ) pureEvalFixture.passthru.dependencyMaterializationEvidence.profiles
+                    == map (
+                      profile: profile.profileKey
+                    ) pureEvalDerivedWorkspaceFixture.passthru.dependencyMaterializationEvidence.profiles;
+                  consumerNameInsensitive =
+                    (builtins.head profileDedupConsumerA.passthru.dependencyMaterializationEvidence.profiles).profileKey
+                    == (builtins.head profileDedupConsumerB.passthru.dependencyMaterializationEvidence.profiles)
+                    .profileKey;
+                }
+              }'
+              expected='{"attrNames":["root","repos-effect-utils"],"consumerNameInsensitive":true,"kind":"dependency-materialization-evidence","producer":"effect-utils.mk-pnpm-cli","profileCount":2,"sourcePathInsensitive":true,"traits":[["nixPreparedDeps"],["nixPreparedDeps"]]}'
+              if [ "$actual" != "$expected" ]; then
+                echo "unexpected dependency materialization evidence: $actual" >&2
+                exit 1
+              fi
+              printf '%s' "$actual" > "$out"
+            '';
       }
     );
 }

@@ -36,6 +36,17 @@ assert_exit_code() {
   fi
 }
 
+assert_json_field() {
+  local expected="$1"
+  local file="$2"
+  local expression="$3"
+  local label="$4"
+
+  local actual
+  actual="$(node -e "const fs = require('node:fs'); const value = JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); const out = (${expression})(value); process.stdout.write(String(out))" "$file")"
+  assert_eq "$expected" "$actual" "$label"
+}
+
 make_projection_fixture() {
   local root="$1"
   local with_dep="$2"
@@ -447,6 +458,84 @@ exit_code=$?
 set -e
 assert_exit_code 1 "$exit_code" "missing section hash should fail"
 
+echo "Test 16a: dependency materialization profile emission is stable and trait-aware"
+contract_profile="$test_dir/contract-profile.json"
+profile_output="$test_dir/profile.json"
+cat > "$contract_profile" <<'EOF'
+{
+  "schemaVersion": 1,
+  "packageManager": {"name": "pnpm", "version": "11.8.0"},
+  "gvsLinkContract": {"allowBuilds": {}, "packageExtensions": {}, "packageManager": {"name": "pnpm", "version": "11.8.0"}},
+  "installPolicy": {"ignoreScripts": true, "verifyStoreIntegrity": true},
+  "storeContract": {"owner": "pnpm", "layoutVersion": "v11", "storeDir": ".devenv/pnpm-store-pure-v1"},
+  "workspaceManifestContract": {"packages": ["packages/app"]},
+  "dependencyMaterializationProfile": {
+    "schema": "dependency-materialization-profile/v0",
+    "identityInputs": ["packageManager", "gvsLinkContract", "installPolicy", "storeContract", "workspaceManifestContract"],
+    "supportedTraits": {
+      "darwinSplitCas": {
+        "mutableState": "profile-local",
+        "sharedContent": "store/v11/files",
+        "gcAuthority": "shared-pool-coordinator",
+        "repairAuthority": "devenv"
+      },
+      "isolated": {
+        "mutableState": "profile-local",
+        "gcAuthority": "profile-local",
+        "repairAuthority": "devenv"
+      }
+    },
+    "nativeBuildPolicyInputs": {
+      "allowBuilds": "gvsLinkContract.allowBuilds",
+      "compilerEnv": ["CC", "CXX"]
+    }
+  }
+}
+EOF
+emit_dependency_materialization_profile node "$contract_profile" darwinSplitCas "$profile_output"
+node - "$profile_output" <<'EOF'
+const fs = require('node:fs')
+const profile = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'))
+if (profile.schema !== 'dependency-materialization-profile/v0') throw new Error('schema drift')
+if (!profile.profileId.startsWith('pnpm:')) throw new Error('missing pnpm profile id prefix')
+if (profile.store.trait !== 'darwinSplitCas') throw new Error('wrong store trait')
+if (profile.authorities.gc !== 'shared-pool-coordinator') throw new Error('wrong gc authority')
+if (profile.authorities.repair !== 'devenv') throw new Error('wrong repair authority')
+if (!profile.policy.nativeBuildPolicyInputs.compilerEnv.includes('CXX')) throw new Error('missing native compiler policy')
+if (profile.evidence.sectionDigests.storeContract.length !== 64) throw new Error('missing section digest')
+EOF
+set +e
+emit_dependency_materialization_profile node "$contract_profile" unknownTrait >/dev/null 2>&1
+exit_code=$?
+set -e
+assert_exit_code 1 "$exit_code" "unsupported profile trait should fail"
+
+echo "Test 16b: dependency materialization doctor refuses shared pools and plans coordinated repair"
+doctor_root="$test_dir/profile-doctor"
+mkdir -p "$doctor_root/profile-a-store/v11" "$doctor_root/profile-b-store/v11" "$doctor_root/shared-files/v11" "$doctor_root/isolated-store/v11/files"
+ln -s "$doctor_root/shared-files/v11" "$doctor_root/profile-a-store/v11/files"
+ln -s "$doctor_root/shared-files/v11" "$doctor_root/profile-b-store/v11/files"
+registry_file="$doctor_root/registry.json"
+cat > "$registry_file" <<EOF
+{
+  "profiles": [
+    {"id": "profile-a", "filesPoolId": "shared", "project": "$doctor_root/work-a", "store": "$doctor_root/profile-a-store"},
+    {"id": "profile-b", "filesPoolId": "shared", "project": "$doctor_root/work-b", "store": "$doctor_root/profile-b-store"},
+    {"id": "profile-c", "filesPoolId": "isolated", "project": "$doctor_root/work-c", "store": "$doctor_root/isolated-store"}
+  ],
+  "pools": [
+    {"id": "shared", "filesPath": "$doctor_root/profile-a-store/v11/files"},
+    {"id": "isolated", "filesPath": "$doctor_root/isolated-store/v11/files"}
+  ]
+}
+EOF
+shared_decision="$(dependency_materialization_store_doctor node "$registry_file" profile-a | node -e 'const fs=require("node:fs"); process.stdout.write(JSON.parse(fs.readFileSync(0,"utf8")).decision)')"
+assert_eq "refuse-raw-prune" "$shared_decision" "shared files pool refuses raw prune"
+isolated_decision="$(dependency_materialization_store_doctor node "$registry_file" profile-c | node -e 'const fs=require("node:fs"); process.stdout.write(JSON.parse(fs.readFileSync(0,"utf8")).decision)')"
+assert_eq "allow-profile-local-prune" "$isolated_decision" "isolated files pool allows profile-local prune"
+repair_decision="$(dependency_materialization_repair_plan node "$registry_file" shared | node -e 'const fs=require("node:fs"); const plan=JSON.parse(fs.readFileSync(0,"utf8")); process.stdout.write(`${plan.decision}:${plan.roots.length}`)')"
+assert_eq "repair-all-roots:2" "$repair_decision" "shared files pool repair covers all registered roots"
+
 echo "Test 17: resolve_package_bin prefers package-local .bin shims"
 bin_fixture="$test_dir/bin-fixture"
 make_bin_fixture "$bin_fixture"
@@ -582,6 +671,182 @@ check_node_modules_links_healthy node "$PROJECTION_SCRIPT" "$missing_subpath_exp
 exit_code=$?
 set -e
 assert_exit_code 0 "$exit_code" "projection health ignores optional subpath exports"
+
+echo "Test 32: dependency materialization profile is stable for identical contracts"
+profile_contract="$test_dir/profile-contract.json"
+cat > "$profile_contract" <<'EOF'
+{
+  "schemaVersion": 1,
+  "packageManager": {"name": "pnpm", "version": "11.8.0"},
+  "storeContract": {
+    "owner": "pnpm",
+    "layoutVersion": "v11",
+    "storeDir": ".devenv/pnpm-store-pure-v1",
+    "sharedFilesStore": {"enabledForLocalDev": true, "disabledInCi": true},
+    "globalVirtualStore": {"enabled": true}
+  },
+  "gvsLinkContract": {
+    "packageManager": {"name": "pnpm", "version": "11.8.0"},
+    "allowBuilds": {"esbuild": false},
+    "packageExtensions": {}
+  },
+  "installPolicy": {
+    "ignoreScripts": true,
+    "packageImportMethod": "clone-or-copy",
+    "verifyStoreIntegrity": true
+  },
+  "workspaceManifestContract": {
+    "injectWorkspacePackages": true,
+    "packages": ["packages/app", "packages/lib"],
+    "patchedDependencies": {}
+  },
+  "dependencyMaterializationProfile": {
+    "schema": "dependency-materialization-profile/v0",
+    "identityInputs": [
+      "packageManager",
+      "gvsLinkContract",
+      "installPolicy",
+      "storeContract",
+      "workspaceManifestContract"
+    ],
+    "supportedTraits": {
+      "darwinSplitCas": {
+        "mutableState": "profile-local",
+        "sharedContent": "store/v11/files",
+        "gcAuthority": "shared-pool-coordinator",
+        "repairAuthority": "devenv"
+      },
+      "isolated": {
+        "mutableState": "profile-local",
+        "gcAuthority": "profile-local",
+        "repairAuthority": "devenv"
+      }
+    },
+    "nativeBuildPolicyInputs": {
+      "allowBuilds": "gvsLinkContract.allowBuilds",
+      "compilerEnv": ["CC", "CXX"]
+    }
+  }
+}
+EOF
+profile_a="$test_dir/profile-a.json"
+profile_b="$test_dir/profile-b.json"
+emit_dependency_materialization_profile node "$profile_contract" darwinSplitCas "$profile_a"
+emit_dependency_materialization_profile node "$profile_contract" darwinSplitCas "$profile_b"
+assert_eq \
+  "$(compute_hash < "$profile_a")" \
+  "$(compute_hash < "$profile_b")" \
+  "dependency profile output is stable"
+assert_json_field \
+  "shared-pool-coordinator" \
+  "$profile_a" \
+  "(value) => value.authorities.gc" \
+  "dependency profile records gc authority"
+
+echo "Test 33: source-only files are not dependency profile identity inputs"
+mkdir -p "$test_dir/profile-source/packages/app/src"
+cp "$profile_contract" "$test_dir/profile-source/pnpm-install-contract.json"
+echo "export const value = 1" > "$test_dir/profile-source/packages/app/src/index.ts"
+(
+  cd "$test_dir/profile-source"
+  emit_dependency_materialization_profile node pnpm-install-contract.json darwinSplitCas profile-before.json
+  echo "export const value = 2" > packages/app/src/index.ts
+  emit_dependency_materialization_profile node pnpm-install-contract.json darwinSplitCas profile-after.json
+  assert_json_field \
+    "$(node -e "const fs = require('node:fs'); process.stdout.write(JSON.parse(fs.readFileSync('profile-before.json','utf8')).profileId)")" \
+    profile-after.json \
+    "(value) => value.profileId" \
+    "source-only mutations do not affect dependency profile identity"
+)
+
+echo "Test 34: manifest contract changes dependency profile identity"
+manifest_contract="$test_dir/profile-contract-manifest-change.json"
+node - "$profile_contract" "$manifest_contract" <<'EOF'
+const fs = require('node:fs')
+const [from, to] = process.argv.slice(2)
+const contract = JSON.parse(fs.readFileSync(from, 'utf8'))
+contract.workspaceManifestContract.packages.push('packages/new-member')
+fs.writeFileSync(to, `${JSON.stringify(contract, null, 2)}\n`)
+EOF
+profile_manifest="$test_dir/profile-manifest.json"
+emit_dependency_materialization_profile node "$manifest_contract" darwinSplitCas "$profile_manifest"
+if [ "$(node -e "const fs = require('node:fs'); process.stdout.write(JSON.parse(fs.readFileSync(process.argv[1], 'utf8')).profileId)" "$profile_a")" = "$(node -e "const fs = require('node:fs'); process.stdout.write(JSON.parse(fs.readFileSync(process.argv[1], 'utf8')).profileId)" "$profile_manifest")" ]; then
+  echo "FAIL: manifest contract changes dependency profile identity"
+  exit 1
+fi
+
+echo "Test 35: unknown dependency materialization trait fails closed"
+set +e
+emit_dependency_materialization_profile node "$profile_contract" unknownTrait >/dev/null 2>&1
+exit_code=$?
+set -e
+assert_exit_code 1 "$exit_code" "unknown store trait should fail"
+
+echo "Test 36: store doctor refuses raw prune of a shared files pool"
+doctor_registry="$test_dir/doctor-registry.json"
+shared_files="$test_dir/shared-files/v11"
+shared_root="$test_dir/profile-a/store/v11"
+mkdir -p "$shared_files" "$shared_root"
+ln -s "$shared_files" "$shared_root/files"
+cat > "$doctor_registry" <<EOF
+{
+  "profiles": [
+    {"id": "profile-a", "project": "a", "store": "$test_dir/profile-a/store", "filesPoolId": "pool-shared"},
+    {"id": "profile-b", "project": "b", "store": "$test_dir/profile-b/store", "filesPoolId": "pool-shared"}
+  ],
+  "pools": [
+    {"id": "pool-shared", "filesPath": "$shared_root/files"}
+  ]
+}
+EOF
+doctor_shared="$test_dir/doctor-shared.json"
+dependency_materialization_store_doctor node "$doctor_registry" profile-a > "$doctor_shared"
+assert_json_field \
+  "refuse-raw-prune" \
+  "$doctor_shared" \
+  "(value) => value.decision" \
+  "shared pool raw prune is refused"
+assert_json_field \
+  "profile-a,profile-b" \
+  "$doctor_shared" \
+  "(value) => value.siblings.join(',')" \
+  "shared pool doctor reports sibling profiles"
+
+echo "Test 37: store doctor allows isolated profile-local pool prune"
+isolated_files="$test_dir/isolated/store/v11/files"
+mkdir -p "$isolated_files"
+isolated_registry="$test_dir/isolated-registry.json"
+cat > "$isolated_registry" <<EOF
+{
+  "profiles": [
+    {"id": "isolated", "project": "isolated", "store": "$test_dir/isolated/store", "filesPoolId": "pool-isolated"}
+  ],
+  "pools": [
+    {"id": "pool-isolated", "filesPath": "$isolated_files"}
+  ]
+}
+EOF
+doctor_isolated="$test_dir/doctor-isolated.json"
+dependency_materialization_store_doctor node "$isolated_registry" isolated > "$doctor_isolated"
+assert_json_field \
+  "allow-profile-local-prune" \
+  "$doctor_isolated" \
+  "(value) => value.decision" \
+  "isolated local pool prune is allowed"
+
+echo "Test 38: repair plan targets every root sharing a files pool"
+repair_plan="$test_dir/repair-plan.json"
+dependency_materialization_repair_plan node "$doctor_registry" pool-shared > "$repair_plan"
+assert_json_field \
+  "repair-all-roots" \
+  "$repair_plan" \
+  "(value) => value.decision" \
+  "shared pool repair plans coordinated rebuild"
+assert_json_field \
+  "profile-a,profile-b" \
+  "$repair_plan" \
+  "(value) => value.roots.map((root) => root.profile).join(',')" \
+  "shared pool repair plan lists all roots"
 
 echo ""
 echo "All pnpm task helper tests passed"

@@ -31,6 +31,7 @@
 let
   lib = pkgs.lib;
   pnpmDepsHelper = import ./mk-pnpm-deps.nix { inherit pkgs pnpm; };
+  dependencyProfile = import ./dependency-materialization-profile.nix { inherit lib; };
   inheritRootPatchedDependenciesScript = pkgs.writeText "inherit-root-patched-dependencies.cjs" ''
     const fs = require("node:fs");
     const path = require("node:path");
@@ -766,6 +767,38 @@ let
       lib.sort (left: right: left < right) root.memberDirs
     else
       [ root.installDir ];
+  profileManifestInputsForRoot =
+    root:
+    let
+      scopedFile = installRootScopedPath root.installDir;
+      memberPackageJsons = map (dir: "${dir}/package.json") (
+        builtins.filter (dir: dir != root.installDir) (installRootMemberDirs root)
+      );
+    in
+    if root.installDir == "." then
+      rootWorkspaceFiles
+      ++ optionalRootWorkspaceFiles
+      ++ [ "pnpm-workspace.yaml" ]
+      ++ (map (dir: "${dir}/package.json") aggregateOwnedWorkspaceClosureDirs)
+    else
+      (map scopedFile rootWorkspaceFiles)
+      ++ (map scopedFile optionalRootWorkspaceFiles)
+      ++ [ (scopedFile "pnpm-workspace.yaml") ]
+      ++ memberPackageJsons;
+  installRootProfile =
+    root:
+    dependencyProfile.mkPreparedDepsProfile {
+      installDir = root.installDir;
+      memberDirs = installRootMemberDirs root;
+      lockfilePath = installRootScopedPath root.installDir "pnpm-lock.yaml";
+      attrName = installRootAttrName root.installDir;
+      depsHash = depsBuildHashForInstallRoot root.installDir;
+      manifestInputs = profileManifestInputsForRoot root;
+      policy = {
+        packageImportMethod = if pkgs.stdenv.hostPlatform.isDarwin then "copy" else "clone-or-copy";
+        nativeNodePackages = if nativeNodePackages == [ ] then "none" else "nix-linked";
+      };
+    };
   /**
     Generic identity for a filtered install-root dependency boundary.
 
@@ -774,14 +807,7 @@ let
     key derived from that set. Downstream repos can then decide whether a
     repeated boundary is worth naming and sharing for amortization.
   */
-  installRootProfileKey =
-    root:
-    builtins.hashString "sha256" (
-      builtins.toJSON {
-        dir = root.installDir;
-        memberDirs = installRootMemberDirs root;
-      }
-    );
+  installRootProfileKey = root: (installRootProfile root).profileKey;
 
   /**
     `depsBuilds` is the canonical source of truth for prepared pnpm artifacts.
@@ -1132,6 +1158,12 @@ let
       value = root.depsBuild;
     }) depsInstallRoots
   );
+  dependencyMaterializationProfiles = map installRootProfile depsInstallRoots;
+  dependencyMaterializationEvidence = dependencyProfile.mkEvidence {
+    packageName = packageJson.name;
+    inherit packageDir;
+    profiles = dependencyMaterializationProfiles;
+  };
   depsSrcByInstallRoot = builtins.listToAttrs (
     map (root: {
       name = root.attrName;
@@ -1334,7 +1366,13 @@ pkgs.stdenv.mkDerivation {
   dontFixup = true;
   passthru = {
     depsSrc = rootDepsSrc;
-    inherit depsSrcByInstallRoot depsBuildsByInstallRoot inheritRootPatchedDependenciesScript;
+    inherit
+      depsSrcByInstallRoot
+      depsBuildsByInstallRoot
+      dependencyMaterializationEvidence
+      dependencyMaterializationProfiles
+      inheritRootPatchedDependenciesScript
+      ;
     installRoots = map (root: {
       inherit (root) attrName installDir lockfilePath;
       memberDirs = installRootMemberDirs root;
