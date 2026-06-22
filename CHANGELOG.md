@@ -62,6 +62,13 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **Genie compiled import staging cleanup**: Scope compiled-binary `.genie.ts`
+  import staging directories to the dynamic import lifetime so successful and
+  failing compiled runs no longer leave `genie-import-*` directories in the
+  process temp directory. Add a compiled Genie CLI shell regression test that
+  runs against an isolated `TMPDIR` and verifies the staging directory is
+  removed after repeated runs (#824).
+
 - **OTEL trace-structure contract**: Tighten the offline trace-structure
   negative test so orphan detection uses a syntactically valid but missing
   parent span ID. Invalid span IDs are now left to the helper's input
