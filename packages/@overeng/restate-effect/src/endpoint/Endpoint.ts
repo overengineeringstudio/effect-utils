@@ -2,7 +2,7 @@ import * as http2 from 'node:http2'
 
 import * as restate from '@restatedev/restate-sdk'
 import { createEndpointHandler } from '@restatedev/restate-sdk/node'
-import type { Config, Schema } from 'effect'
+import type { Config, Schema, Scope } from 'effect'
 import { type ConfigError, Context, Duration, Effect, Exit, Layer, Option, Runtime } from 'effect'
 
 import { RestateContext, type StateSchemas } from '../authoring/RestateContext.ts'
@@ -714,11 +714,28 @@ export interface EndpointOptions<AppR> {
   readonly identityKeys?: ReadonlyArray<string>
 }
 
+/** Runtime binding details for a started endpoint server. */
+export interface EndpointServer {
+  readonly port: number
+  readonly url: string
+}
+
+/** Context service carrying the actual address of a scoped endpoint server. */
+export class BoundEndpoint extends Context.Tag('@overeng/restate-effect/BoundEndpoint')<
+  BoundEndpoint,
+  EndpointServer
+>() {}
+
 /* eslint-disable @typescript-eslint/no-explicit-any -- the services-tuple AppR extractor */
 /**
- * A scoped `Layer` that binds the given service implementations to an h2c
- * (cleartext HTTP/2 prior-knowledge) server on `opts.port` and serves the
- * Restate discovery/invocation protocol.
+ * A scoped `Effect` that binds the given service implementations to an h2c
+ * (cleartext HTTP/2 prior-knowledge) server on `opts.port`, serves the Restate
+ * discovery/invocation protocol, and returns the actual bound address.
+ *
+ * Passing `port: 0` delegates port selection to the kernel and returns the
+ * selected port. That is the race-free pattern for in-process tests: there is no
+ * "ask for a free port, close it, then bind by number" gap for another process
+ * to steal.
  *
  * The shared application runtime is captured once (`Effect.runtime<AppR>()`),
  * each implementation materialized, the server started on acquire, and a
@@ -734,57 +751,87 @@ export interface EndpointOptions<AppR> {
  * `bidirectional` is left UNSET so the SDK negotiates full `BIDI_STREAM` over
  * h2c prior-knowledge (DQ7, docs/vrs/07-endpoint-deploy/spec.md §2).
  */
+export const make = <const S extends ReadonlyArray<AnyImplementation<any>>>(
+  opts: Omit<EndpointOptions<AppROf<S>>, 'services'> & { readonly services: S },
+): Effect.Effect<EndpointServer, RestateError | ConfigError.ConfigError, AppROf<S> | Scope.Scope> =>
+  Effect.gen(function* () {
+    type AppR = AppROf<S>
+    /* Resolve a `Config<number>` port (e.g. `Config.integer('PORT')`) on
+     * acquisition; a literal `number` passes through. A failing Config fails
+     * the layer with a `ConfigError`. */
+    const port = typeof opts.port === 'number' ? opts.port : yield* opts.port
+    const runtime = yield* Effect.runtime<AppR>()
+    const wiring: MaterializeWiring = {
+      hooks: opts.hooks,
+      inboundBridge: opts.inboundBridge,
+      boundaryObserver: opts.boundaryObserver,
+    }
+    const fn = createEndpointHandler({
+      services: opts.services.map((s) =>
+        materializeAny({
+          implementation: s,
+          runtime,
+          ...(wiring !== undefined ? { wiring } : {}),
+        }),
+      ),
+      ...(opts.identityKeys !== undefined ? { identityKeys: [...opts.identityKeys] } : {}),
+    })
+    const server = http2.createServer(fn as Parameters<typeof http2.createServer>[0])
+
+    const bound = yield* Effect.acquireRelease(
+      Effect.async<EndpointServer, RestateError>((resume) => {
+        const onError = (cause: Error) => {
+          server.off('error', onError)
+          resume(
+            Effect.fail(new RestateError({ reason: 'EndpointFailed', method: 'listen', cause })),
+          )
+        }
+        server.once('error', onError)
+        server.listen(port, () => {
+          server.off('error', onError)
+          const address = server.address()
+          if (address === null || typeof address === 'string') {
+            const failure = new RestateError({
+              reason: 'EndpointFailed',
+              method: 'listen',
+              cause: new Error('endpoint did not expose a TCP address'),
+            })
+            server.close(() => resume(Effect.fail(failure)))
+            return
+          }
+          resume(
+            Effect.succeed({
+              port: address.port,
+              url: `http://localhost:${address.port}`,
+            }),
+          )
+        })
+      }),
+      () =>
+        Effect.async<void>((resume) => {
+          server.close(() => resume(Effect.void))
+        }),
+    )
+
+    yield* Effect.logInfo(`restate-effect endpoint listening on ${bound.url}`)
+    return bound
+  })
+
+/** A scoped `Layer` wrapper around {@link make} that exposes the bound address. */
+export const layerWithBoundEndpoint = <const S extends ReadonlyArray<AnyImplementation<any>>>(
+  opts: Omit<EndpointOptions<AppROf<S>>, 'services'> & { readonly services: S },
+): Layer.Layer<BoundEndpoint, RestateError | ConfigError.ConfigError, AppROf<S>> =>
+  Layer.scoped(BoundEndpoint, make(opts))
+
+/**
+ * A scoped `Layer` that starts the endpoint server and discards the bound
+ * address. Use {@link make} or {@link layerWithBoundEndpoint} when a test needs
+ * to register a kernel-selected `port: 0` URL.
+ */
 export const layer = <const S extends ReadonlyArray<AnyImplementation<any>>>(
   opts: Omit<EndpointOptions<AppROf<S>>, 'services'> & { readonly services: S },
 ): Layer.Layer<never, RestateError | ConfigError.ConfigError, AppROf<S>> =>
-  Layer.scopedDiscard(
-    Effect.gen(function* () {
-      type AppR = AppROf<S>
-      /* Resolve a `Config<number>` port (e.g. `Config.integer('PORT')`) on
-       * acquisition; a literal `number` passes through. A failing Config fails
-       * the layer with a `ConfigError`. */
-      const port = typeof opts.port === 'number' ? opts.port : yield* opts.port
-      const runtime = yield* Effect.runtime<AppR>()
-      const wiring: MaterializeWiring = {
-        hooks: opts.hooks,
-        inboundBridge: opts.inboundBridge,
-        boundaryObserver: opts.boundaryObserver,
-      }
-      const fn = createEndpointHandler({
-        services: opts.services.map((s) =>
-          materializeAny({
-            implementation: s,
-            runtime,
-            ...(wiring !== undefined ? { wiring } : {}),
-          }),
-        ),
-        ...(opts.identityKeys !== undefined ? { identityKeys: [...opts.identityKeys] } : {}),
-      })
-      const server = http2.createServer(fn as Parameters<typeof http2.createServer>[0])
-
-      yield* Effect.acquireRelease(
-        Effect.async<typeof server, RestateError>((resume) => {
-          const onError = (cause: Error) => {
-            server.off('error', onError)
-            resume(
-              Effect.fail(new RestateError({ reason: 'EndpointFailed', method: 'listen', cause })),
-            )
-          }
-          server.once('error', onError)
-          server.listen(port, () => {
-            server.off('error', onError)
-            resume(Effect.succeed(server))
-          })
-        }),
-        (s) =>
-          Effect.async<void>((resume) => {
-            s.close(() => resume(Effect.void))
-          }),
-      )
-
-      yield* Effect.logInfo(`restate-effect endpoint listening on http://localhost:${port}`)
-    }),
-  )
+  Layer.scopedDiscard(make(opts))
 
 /**
  * Long-lived production entrypoint: launch the endpoint `layer` and block until

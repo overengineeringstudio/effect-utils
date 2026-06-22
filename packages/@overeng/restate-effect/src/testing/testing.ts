@@ -33,7 +33,7 @@ import { join } from 'node:path'
 import * as clients from '@restatedev/restate-sdk-clients'
 import { Clock, Context, Effect, Exit, Layer, Option, type Schema, Scope } from 'effect'
 
-import { freePort, freePorts } from '@overeng/utils/node'
+import { freePorts } from '@overeng/utils/node'
 
 import {
   type AdminClientConfig,
@@ -83,7 +83,11 @@ import {
   workflowSubmit as ingressWorkflowSubmit,
 } from '../clients/Client.ts'
 import { contractSerdeFactory } from '../clients/InvocationPolicy.ts'
-import { type AnyImplementation, layer as endpointLayer } from '../endpoint/Endpoint.ts'
+import {
+  BoundEndpoint,
+  type AnyImplementation,
+  layerWithBoundEndpoint,
+} from '../endpoint/Endpoint.ts'
 import { type BoundaryObserver, type EndpointHooks, type HandlerWrap } from '../error/Boundary.ts'
 import { type RedactionCipher, RestateRedaction } from '../schema/Redaction.ts'
 import { RestateError } from '../schema/RestateError.ts'
@@ -753,28 +757,28 @@ export class RestateTestHarness extends Context.Tag('@overeng/restate-effect/Res
           endpointScope: Scope.Scope
         }): Effect.Effect<string, RestateError, RIn2> =>
           Effect.gen(function* () {
-            const port = yield* Effect.promise(() => freePort())
-            yield* endpointLayer({
-              services,
-              port,
-              ...(opts.hooks !== undefined ? { hooks: opts.hooks } : {}),
-              ...(opts.inboundBridge !== undefined ? { inboundBridge: opts.inboundBridge } : {}),
-              ...(opts.boundaryObserver !== undefined
-                ? { boundaryObserver: opts.boundaryObserver }
-                : {}),
-            }).pipe(
-              Layer.provide(appLayer),
+            const endpointContext = yield* Layer.buildWithScope(
+              layerWithBoundEndpoint({
+                services,
+                port: 0,
+                ...(opts.hooks !== undefined ? { hooks: opts.hooks } : {}),
+                ...(opts.inboundBridge !== undefined ? { inboundBridge: opts.inboundBridge } : {}),
+                ...(opts.boundaryObserver !== undefined
+                  ? { boundaryObserver: opts.boundaryObserver }
+                  : {}),
+              }).pipe(Layer.provide(appLayer)),
+              endpointScope,
+            ).pipe(
               /* The endpoint layer's channel is `RestateError | ConfigError`, but
                * the `ConfigError` arm fires ONLY for a `Config<number>` port — here
-               * the port is a literal `number`, so it is structurally impossible.
+               * the port is literal `0`, so it is structurally impossible.
                * Re-fail a real `RestateError` (a bind/listen failure) and die on the
                * unreachable `ConfigError`, keeping the harness channel clean. */
-              Layer.catchAll((cause) =>
-                cause instanceof RestateError ? Layer.fail(cause) : Layer.die(cause),
+              Effect.catchAll((cause) =>
+                cause instanceof RestateError ? Effect.fail(cause) : Effect.die(cause),
               ),
-              Layer.buildWithScope(endpointScope),
             )
-            const uri = `http://localhost:${port}`
+            const uri = Context.get(endpointContext, BoundEndpoint).url
             yield* Effect.tryPromise({
               try: () => server.register(uri),
               catch: (cause) =>

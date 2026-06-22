@@ -16,10 +16,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import * as clients from '@restatedev/restate-sdk-clients'
-import { Effect, Exit, Layer, Scope } from 'effect'
+import { Context, Effect, Exit, Layer, Scope } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { freePort } from '@overeng/utils/node'
+import { freePorts } from '@overeng/utils/node'
 
 import {
   installComposedSource,
@@ -32,7 +32,7 @@ import {
   RestateIngress,
   type RestateIngressService,
 } from '../clients/Client.ts'
-import { layer as endpointLayer } from '../endpoint/Endpoint.ts'
+import { BoundEndpoint, layerWithBoundEndpoint } from '../endpoint/Endpoint.ts'
 
 const serverBin = (): string => process.env['RESTATE_SERVER_BIN'] ?? 'restate-server'
 const serverAvailable = (() => {
@@ -130,6 +130,7 @@ describe.skipIf(!serverAvailable)(
     let endpointScope: Scope.CloseableScope
     let ingressUrl: string
     let adminUrl: string
+    let sdkUrl: string
 
     const provideIngress = <X, E, R>(eff: Effect.Effect<X, E, R>) => {
       const svc: RestateIngressService = { ingress: clients.connect({ url: ingressUrl }) }
@@ -144,25 +145,39 @@ describe.skipIf(!serverAvailable)(
       if (serverAvailable === false) return
       resetComposedSources()
       baseDir = await mkdtemp(join(tmpdir(), 'restate-compose-durab-'))
-      const [ingress, admin, node] = await Promise.all([freePort(), freePort(), freePort()])
+      const allocatedPorts = await freePorts(3)
+      const [ingress, admin, node] = [allocatedPorts[0]!, allocatedPorts[1]!, allocatedPorts[2]!]
       ports = { ingress, admin, node }
       ingressUrl = `http://localhost:${ingress}`
       adminUrl = `http://localhost:${admin}`
 
-      const sdkPort = await freePort()
       endpointScope = await Effect.runPromise(Scope.make())
-      await Effect.runPromise(
-        Layer.buildWithScope(
-          endpointLayer({ services: [Daemon.implementation], port: sdkPort }).pipe(
-            Layer.provide(Layer.empty),
+      try {
+        const endpointContext = await Effect.runPromise(
+          Layer.buildWithScope(
+            layerWithBoundEndpoint({ services: [Daemon.implementation], port: 0 }).pipe(
+              Layer.provide(Layer.empty),
+            ),
+            endpointScope,
           ),
-          endpointScope,
-        ),
-      )
+        )
+        sdkUrl = Context.get(endpointContext, BoundEndpoint).url
+      } catch (cause) {
+        await Effect.runPromise(Scope.close(endpointScope, Exit.void))
+        throw cause
+      }
 
       child = spawnServer(baseDir, ports)
-      await waitHealthy(adminUrl)
-      await register(adminUrl, `http://localhost:${sdkPort}`)
+      try {
+        await waitHealthy(adminUrl)
+      } catch (cause) {
+        if (child.exitCode === null) {
+          child.kill('SIGKILL')
+          await sleep(300)
+        }
+        throw cause
+      }
+      await register(adminUrl, sdkUrl)
     }, 90_000)
 
     afterAll(async () => {
