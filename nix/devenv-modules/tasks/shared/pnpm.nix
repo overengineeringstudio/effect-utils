@@ -526,7 +526,14 @@ let
           echo "$_gvs_hash" > "$_gvs_hash_file"
         fi
         if [ -n "''${_pnpm_install_contract_file:-}" ]; then
+          # The contract file is a genie-generated read-only (0444) artifact, so a
+          # plain `cp` preserves that mode on the cache copy. A subsequent install
+          # (e.g. a retried CI task) then cannot overwrite the cached copy and
+          # fails with "cp: ... Permission denied". Remove any prior cache copy
+          # and ensure the new one stays writable for future installs.
+          rm -f "$contract_state_file"
           cp "$_pnpm_install_contract_file" "$contract_state_file"
+          chmod u+w "$contract_state_file"
         fi
 
         cache_value="$(compute_install_state_hash)"
