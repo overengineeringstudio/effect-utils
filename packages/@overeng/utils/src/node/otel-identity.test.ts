@@ -83,10 +83,7 @@ const resourceAttrsBySignal = (
       const attrs: Record<string, string> = {}
       for (const line of raw.split('\n')) {
         if (line.trim() === '') continue
-        const parsed = parseLine(line) as Record<
-          string,
-          ReadonlyArray<Record<string, unknown>>
-        >
+        const parsed = parseLine(line) as Record<string, ReadonlyArray<Record<string, unknown>>>
         for (const entry of parsed[resourceKey] ?? []) {
           const resource = entry['resource'] as
             | { attributes?: ReadonlyArray<{ key: string; value: { stringValue?: string } }> }

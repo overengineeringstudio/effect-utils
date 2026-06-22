@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { NotionApiError } from '@overeng/notion-effect-client'
 
 import { canonicalHash, queryContractHash } from '../core/canonical.ts'
-import { NotionGatewayError } from '../core/errors.ts'
+import type { NotionGatewayError } from '../core/errors.ts'
 import { NotionDataSourceGateway } from '../core/ports.ts'
 import {
   DataSourceId,

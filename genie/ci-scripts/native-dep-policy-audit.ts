@@ -23,10 +23,8 @@
 
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import {
-  type NativeDependencyPolicyEntry,
-  nativeDependencyPolicy,
-} from '../external.ts'
+
+import { type NativeDependencyPolicyEntry, nativeDependencyPolicy } from '../external.ts'
 
 const repoRoot = resolve(import.meta.dir, '../..')
 
@@ -38,10 +36,7 @@ export type AuditOptions = {
 }
 
 export type AuditProblem = {
-  readonly kind:
-    | 'unclassified-native-family'
-    | 'missing-policy-package'
-    | 'missing-graft-file'
+  readonly kind: 'unclassified-native-family' | 'missing-policy-package' | 'missing-graft-file'
   readonly family: string
   readonly detail: string
 }

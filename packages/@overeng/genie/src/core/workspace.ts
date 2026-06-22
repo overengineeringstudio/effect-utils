@@ -126,9 +126,7 @@ const discoverPnpmPackageJsonPaths = Effect.fn('workspace/discoverPnpmPackageJso
     const packageDirs = yield* findPackageJsonDirs({ root: workspaceRoot })
     const matched = new Set<string>()
 
-    const content = yield* fs
-      .readFileString(workspaceFile)
-      .pipe(Effect.orElseSucceed(() => ''))
+    const content = yield* fs.readFileString(workspaceFile).pipe(Effect.orElseSucceed(() => ''))
     const patterns = parsePnpmWorkspacePackages(content)
     if (patterns.length === 0) return []
 

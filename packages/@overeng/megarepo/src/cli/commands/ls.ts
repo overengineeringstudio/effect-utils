@@ -80,9 +80,8 @@ const scanMembersRecursive = ({
       // Check if this member is itself a megarepo
       const isMegarepo =
         memberExists === true
-          ? (yield* findConfigPath(memberPath).pipe(
-              Effect.orElseSucceed(() => undefined),
-            )) !== undefined
+          ? (yield* findConfigPath(memberPath).pipe(Effect.orElseSucceed(() => undefined))) !==
+            undefined
           : false
 
       members.push({

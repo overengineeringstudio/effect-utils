@@ -900,9 +900,7 @@ export const syncMember = <R = never>({
         yield* fs.remove(memberPathNormalized)
       }
     } else {
-      const exists = yield* fs
-        .exists(memberPathNormalized)
-        .pipe(Effect.orElseSucceed(() => false))
+      const exists = yield* fs.exists(memberPathNormalized).pipe(Effect.orElseSucceed(() => false))
       if (exists === true) {
         return {
           name,

@@ -30,10 +30,7 @@ const runSync = async (
   element: Parameters<typeof sync>[0],
   cache = InMemoryCache.make(),
 ) => {
-  return await runWith(
-    fake,
-    sync(element, { pageId: ROOT, cache }),
-  )
+  return await runWith(fake, sync(element, { pageId: ROOT, cache }))
 }
 
 describe('sync() page ops (issue #618 phase 3b)', () => {
@@ -893,11 +890,7 @@ describe('sync() page ops (issue #618 phase 3b)', () => {
       element: Parameters<typeof sync>[0],
       cache: ReturnType<typeof InMemoryCache.make>,
       reorderSiblings: boolean | { readonly holdingParentId: string },
-    ) =>
-      runWith(
-        fake,
-        sync(element, { pageId: ROOT, cache, reorderSiblings }),
-      )
+    ) => runWith(fake, sync(element, { pageId: ROOT, cache, reorderSiblings }))
 
     /** Return the final child_page block ids under ROOT in server order. */
     const pageOrderUnderRoot = (fake: FakeNotion): string[] =>

@@ -412,9 +412,7 @@ const collectRepoStoreWorktrees = ({
         repoPath,
         EffectPath.unsafe.relativeDir(`refs/${refType}/`),
       )
-      const refTypeStat = yield* fs
-        .stat(refTypePath)
-        .pipe(Effect.orElseSucceed(() => null))
+      const refTypeStat = yield* fs.stat(refTypePath).pipe(Effect.orElseSucceed(() => null))
       if (refTypeStat?.type !== 'Directory') continue
 
       const layoutWorktrees = yield* collectStoreWorktrees({

@@ -25,15 +25,16 @@
 #   tsconfig.all.json references.
 #
 # Effect-LSP gate (issue #811):
-#   When the `@effect/language-service` gate toggle is enabled (see
-#   `effectDiagnosticsGate` in genie/external.ts -> baseTsconfigCompilerOptions),
-#   any `tsgo --build` over the project graph gates on Effect diagnostics via the
-#   exit code: an Effect warning/suggestion in any member project fails the build.
-#   Both `ts:check` (incremental) and `ts:check:strict` (--force) are this gate.
+#   The `@effect/language-service` gate is ENABLED (see `effectDiagnosticsGate`
+#   in genie/external.ts -> baseTsconfigCompilerOptions): any `tsgo --build` over
+#   the project graph gates on Effect diagnostics via the exit code — an Effect
+#   warning OR suggestion in any member project fails the build (errors always
+#   gate). The gate rides the normal type-check, so there is no extra compiler
+#   pass: `ts:check` (incremental) and `ts:check:strict` (--force) both enforce it,
+#   and thus so do `check:quick`/`check:all` and the CI `typecheck` lane.
 #   `--force` is NOT required for the gate to hold: tsgo persists and replays the
 #   Effect (plugin) diagnostics from .tsbuildinfo, so incremental `ts:check` stays
-#   red until the diagnostic is fixed (verified). The toggle is staged off during
-#   the #811 burndown, so the gate is currently inert and CI stays green.
+#   red until the diagnostic is fixed (verified).
 #
 # tsBin:
 #   Path to the TypeScript build/check binary. Defaults to "tsgo" so normal

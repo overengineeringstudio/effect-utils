@@ -449,9 +449,7 @@ export const createSymlinkDriftState = (options?: StateOptions): StatusState => 
   },
 })
 
-export const createMultipleSymlinkDriftState = (
-  options?: StateOptions,
-): StatusState => ({
+export const createMultipleSymlinkDriftState = (options?: StateOptions): StatusState => ({
   applyNeeded: false,
   lockNeeded: false,
   all: options?.all ?? false,

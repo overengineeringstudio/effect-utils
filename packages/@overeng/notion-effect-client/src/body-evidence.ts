@@ -175,5 +175,4 @@ export const makeRemoteBodyObservationEvidence = (opts: {
 }
 
 /** Extracts the content digest from a content descriptor, e.g. to compare evidence descriptors without their codec/media-type metadata. */
-export const descriptorDigest = (descriptor: ContentDescriptor): ContentDigest =>
-  descriptor.digest
+export const descriptorDigest = (descriptor: ContentDescriptor): ContentDigest => descriptor.digest

@@ -49,25 +49,13 @@ const createRunningState = ({
   termHeight: height,
 })
 
-const finishedState = ({
-  frames,
-  windows,
-}: {
-  frames: number
-  windows: number
-}): AppState => ({
+const finishedState = ({ frames, windows }: { frames: number; windows: number }): AppState => ({
   _tag: 'Finished',
   totalFrames: frames,
   windowCount: windows,
 })
 
-const interruptedState = ({
-  frame,
-  windows,
-}: {
-  frame: number
-  windows: number
-}): AppState => ({
+const interruptedState = ({ frame, windows }: { frame: number; windows: number }): AppState => ({
   _tag: 'Interrupted',
   frame,
   windowCount: windows,

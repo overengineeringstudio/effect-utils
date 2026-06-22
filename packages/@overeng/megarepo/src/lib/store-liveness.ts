@@ -107,15 +107,11 @@ const collectWorkspaceSymlinkTargets = ({
     const entries =
       strict === true
         ? yield* fs.readDirectory(membersRoot)
-        : yield* fs
-            .readDirectory(membersRoot)
-            .pipe(Effect.orElseSucceed(() => [] as string[]))
+        : yield* fs.readDirectory(membersRoot).pipe(Effect.orElseSucceed(() => [] as string[]))
     for (const entry of entries) {
       if (entry.startsWith('.') === true) continue
       const memberPath = EffectPath.ops.join(membersRoot, EffectPath.unsafe.relativeFile(entry))
-      const target = yield* fs
-        .readLink(memberPath)
-        .pipe(Effect.orElseSucceed(() => null))
+      const target = yield* fs.readLink(memberPath).pipe(Effect.orElseSucceed(() => null))
       if (target !== null && isStorePath({ store, path: target }) === true) {
         targets.add(normalizePath(target))
       }

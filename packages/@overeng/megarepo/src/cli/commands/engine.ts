@@ -314,9 +314,7 @@ export const syncMegarepo = <R = never>({
             )
 
             // Only remove symlinks (not directories that might be local repos)
-            const linkTarget = yield* fs
-              .readLink(entryPath)
-              .pipe(Effect.orElseSucceed(() => null))
+            const linkTarget = yield* fs.readLink(entryPath).pipe(Effect.orElseSucceed(() => null))
 
             if (linkTarget !== null) {
               if (dryRun === false) {
