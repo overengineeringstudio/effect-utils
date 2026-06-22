@@ -52,7 +52,7 @@ export const Orchestrator = RestateService.define({
           contract: Greeter,
           method: 'greet',
           input: { name },
-        }).pipe(Effect.orDie)
+        })
         /* One-way send; the idempotency key is read off `requestId` automatically. */
         yield* Restate.send({
           contract: Notifier,
@@ -61,16 +61,16 @@ export const Orchestrator = RestateService.define({
             requestId: `welcome-${name}`,
             body: greeting.message,
           },
-        }).pipe(Effect.orDie)
+        })
         /* A delayed one-way send — a durable, fault-tolerant timer. */
         yield* Restate.send({
           contract: Notifier,
           method: 'notify',
           input: { requestId: `reminder-${name}`, body: 'still there?' },
           opts: { delayMillis: 60_000 },
-        }).pipe(Effect.orDie)
+        })
         return greeting.message
-      }),
+      }).pipe(Effect.orDie),
   },
 })
 

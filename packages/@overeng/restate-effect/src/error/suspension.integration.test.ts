@@ -201,7 +201,7 @@ const pollForAwakeableId = (harness: Harness, key: string): Effect.Effect<string
     for (let attempt = 0; attempt < 50; attempt++) {
       const id = yield* harness.ingress
         .objectCall({ contract: AwObj, key, method: 'awakeableId', input: undefined })
-        .pipe(Effect.catchAll(() => Effect.succeed('')))
+        .pipe(Effect.orElseSucceed(() => ''))
       if (id !== '') return id
       yield* liveSleep(100)
     }

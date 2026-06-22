@@ -26,7 +26,7 @@ export type InspectStateType = typeof InspectState.Type
 
 /** Actions dispatched to update inspect output state */
 export const InspectAction = Schema.Union(
-  Schema.Struct({ _tag: Schema.Literal('SetState'), state: InspectState }),
+  Schema.TaggedStruct('SetState', { state: InspectState }),
 )
 
 export type InspectActionType = typeof InspectAction.Type

@@ -962,20 +962,20 @@ const syncTreeLocal = (opts: {
         }),
       }).pipe(
         Effect.map((result) => ({ ok: true as const, result })),
-        Effect.catchTag('NmdConflictError', (error) =>
-          Effect.as(
-            Effect.logWarning(`notion-md tree conflict on ${page.relPath}: ${error.message}`),
-            { ok: false as const },
-          ),
-        ),
-        Effect.catchTag('NmdDestructiveBodyBlockedError', (error) =>
-          Effect.as(
-            Effect.logWarning(
-              `notion-md tree destructive-body blocked on ${page.relPath}: [${error.guard}] ${error.message}`,
+        Effect.catchTags({
+          NmdConflictError: (error) =>
+            Effect.as(
+              Effect.logWarning(`notion-md tree conflict on ${page.relPath}: ${error.message}`),
+              { ok: false as const },
             ),
-            { ok: false as const },
-          ),
-        ),
+          NmdDestructiveBodyBlockedError: (error) =>
+            Effect.as(
+              Effect.logWarning(
+                `notion-md tree destructive-body blocked on ${page.relPath}: [${error.guard}] ${error.message}`,
+              ),
+              { ok: false as const },
+            ),
+        }),
       )
       if (pushed.ok === false) {
         ops.push({ _tag: 'conflict', relPath: page.relPath, pageId })

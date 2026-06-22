@@ -318,11 +318,11 @@ export const makeComposedDaemon = (opts: {
         /* A 429 → fail with the RETRYABLE typed error (cursor NOT advanced). The
          * loop reads its `retryAfterMillis` projection and re-arms after that floor. */
         if ('_rateLimited' in result) {
-          return yield* Effect.fail(new RateLimited({ retryAfterMillis: result.retryAfterMillis }))
+          return yield* new RateLimited({ retryAfterMillis: result.retryAfterMillis })
         }
         /* A terminal failure → the `onCycleError` policy governs it (skip/stop). */
         if ('_terminal' in result) {
-          return yield* Effect.fail(new SourceFailed({ message: result._terminal }))
+          return yield* new SourceFailed({ message: result._terminal })
         }
 
         /* Success: advance the cursor + tally; `done` ends the loop cleanly. */

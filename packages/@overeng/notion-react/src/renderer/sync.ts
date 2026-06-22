@@ -412,7 +412,7 @@ const flushAppendRun = (
         Effect.catchAll((cause) =>
           Effect.gen(function* () {
             if (!isUploadIdRejection(cause) || o11y.onUploadIdRejected === undefined) {
-              return yield* Effect.fail(cause)
+              return yield* cause
             }
             const refreshed = yield* refreshBatchUploadIds(
               batch.map((op, i) => ({
@@ -424,7 +424,7 @@ const flushAppendRun = (
               cause,
               o11y,
             )
-            if (refreshed === undefined) return yield* Effect.fail(cause)
+            if (refreshed === undefined) return yield* cause
             batchProps = refreshed.slice() as Record<string, unknown>[]
             return yield* issueAppend(batchProps)
           }),
@@ -858,7 +858,7 @@ const applyDiff = (
             Effect.catchAll((cause) =>
               Effect.gen(function* () {
                 if (!isUploadIdRejection(cause) || o11y.onUploadIdRejected === undefined) {
-                  return yield* Effect.fail(cause)
+                  return yield* cause
                 }
                 const refreshed = yield* refreshBatchUploadIds(
                   [{ props: updateProps, blockId: op.blockId, tmpId: undefined }],
@@ -866,7 +866,7 @@ const applyDiff = (
                   cause,
                   o11y,
                 )
-                if (refreshed === undefined) return yield* Effect.fail(cause)
+                if (refreshed === undefined) return yield* cause
                 updateProps = { ...refreshed[0]! }
                 return yield* issueUpdate(updateProps)
               }),
@@ -1588,12 +1588,10 @@ export const sync = (
         )
         const createdId = (created as { id?: string }).id
         if (createdId === undefined) {
-          return yield* Effect.fail(
-            new NotionSyncError({
-              reason: 'notion-page-create-failed',
-              cause: 'no id in response',
-            }),
-          )
+          return yield* new NotionSyncError({
+            reason: 'notion-page-create-failed',
+            cause: 'no id in response',
+          })
         }
         idMap.set(op.tmpPageId, createdId)
         const inlineCands = (op.inlineCandidates ?? []) as readonly CandidateNode[]
@@ -1623,7 +1621,7 @@ export const sync = (
                 yield* NotionPages.update({ pageId: createdId, in_trash: true }).pipe(
                   Effect.catchAll(() => Effect.void),
                 )
-                return yield* Effect.fail(cause)
+                return yield* cause
               }),
             ),
             Effect.asVoid,
@@ -1965,12 +1963,10 @@ export const sync = (
           )
           const createdId = (created as { id?: string }).id
           if (createdId === undefined) {
-            return yield* Effect.fail(
-              new NotionSyncError({
-                reason: 'notion-reorder-holding-create-failed',
-                cause: 'no id in response',
-              }),
-            )
+            return yield* new NotionSyncError({
+              reason: 'notion-reorder-holding-create-failed',
+              cause: 'no id in response',
+            })
           }
           holdingId = createdId
           o11y.opCount.n += 1

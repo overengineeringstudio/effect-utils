@@ -41,7 +41,7 @@ const selectDesired = makeDesired({
   value: { _tag: 'select', option: null },
 })
 
-type ProofShape = typeof PropertyWriteProof.Type
+type ProofShape = PropertyWriteProof
 
 /** Structurally clone the base proof with a deep override of named sections. */
 const withProof = (overrides: {

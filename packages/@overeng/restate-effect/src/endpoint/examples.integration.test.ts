@@ -218,9 +218,7 @@ const pollForId = (harness: Harness, key: string): Effect.Effect<string> =>
   Effect.gen(function* () {
     const state = harness.stateOf({ contract: WaiterObj, key })
     for (let attempt = 0; attempt < 50; attempt++) {
-      const id = yield* state
-        .get('awakeableId')
-        .pipe(Effect.catchAll(() => Effect.succeed(undefined)))
+      const id = yield* state.get('awakeableId').pipe(Effect.orElseSucceed(() => undefined))
       if (id !== undefined && id !== '') return id
       yield* liveSleep(100)
     }

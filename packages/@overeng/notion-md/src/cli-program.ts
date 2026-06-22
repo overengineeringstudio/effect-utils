@@ -805,16 +805,14 @@ const gcNmdTargets = (opts: {
       yield* Console.error(formatTargetFailure(failure))
     }
     if (resolved.paths.length === 0) {
-      return yield* Effect.fail(
-        new NmdCliError({
-          message:
-            resolved.errors.length > 0
-              ? `gc: no valid .nmd targets — all ${resolved.errors.length} target(s) failed to resolve:\n${resolved.errors
-                  .map((failure) => `  ${formatTargetFailure(failure)}`)
-                  .join('\n')}`
-              : 'gc: no .nmd targets matched the requested paths',
-        }),
-      )
+      return yield* new NmdCliError({
+        message:
+          resolved.errors.length > 0
+            ? `gc: no valid .nmd targets — all ${resolved.errors.length} target(s) failed to resolve:\n${resolved.errors
+                .map((failure) => `  ${formatTargetFailure(failure)}`)
+                .join('\n')}`
+            : 'gc: no .nmd targets matched the requested paths',
+      })
     }
 
     // Group resolved .nmd paths by their unique state root (parent dir).

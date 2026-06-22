@@ -85,9 +85,9 @@ const WaiterLive = RestateObject.implement<typeof Waiter>({
         const l = observe(key)
         l.attempts += 1
         yield* Effect.acquireRelease(
-          Effect.sync(() => {
+          Effect.gen(function* () {
             l.acquired += 1
-            Effect.runSync(Deferred.succeed(gateFor(key), undefined))
+            yield* Deferred.succeed(gateFor(key), undefined)
           }),
           () => Effect.sync(() => void (l.released += 1)),
         )

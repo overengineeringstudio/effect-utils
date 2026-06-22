@@ -24,6 +24,7 @@ const withIsolatedDir = <A, E, R>(eff: Effect.Effect<A, E, R>) =>
     } finally {
       if (prev === undefined) delete process.env.PTY_SESSION_DIR
       else process.env.PTY_SESSION_DIR = prev
+      // @effect-diagnostics-next-line tryCatchInEffectGen:off -- synchronous best-effort `fs.rmSync` cleanup in a JS `finally` (no `yield*`); keeping it inline preserves the env save/restore + dir-removal semantics. A principled `Effect.acquireRelease` refactor is the better long-term fix but changes more than the flagged construct.
       try {
         fs.rmSync(dir, { recursive: true, force: true })
       } catch {

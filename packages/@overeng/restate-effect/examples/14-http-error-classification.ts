@@ -241,8 +241,10 @@ export const WidgetApiLive = RestateService.implement<typeof WidgetApi, HttpClie
               return Effect.die(new Error(`transient upstream: HTTP ${status}`))
             }),
             /* A transport-level failure (refused / timeout) → also FAIL the step. */
-            Effect.catchTag('RequestError', (e) => Effect.die(e)),
-            Effect.catchTag('ResponseError', (e) => Effect.die(e)),
+            Effect.catchTags({
+              RequestError: (e) => Effect.die(e),
+              ResponseError: (e) => Effect.die(e),
+            }),
           ),
         })
         switch (outcome._tag) {
@@ -277,14 +279,10 @@ export const WidgetApiLive = RestateService.implement<typeof WidgetApi, HttpClie
           .pipe(
             /* No usable response (refused / timeout / broken stream) → transient with
              * default backoff; `HttpClientError` is `RequestError | ResponseError`. */
-            Effect.catchTag(
-              'RequestError',
-              () => new UpstreamUnavailable({ status: 0, retryAfterMillis: 0 }),
-            ),
-            Effect.catchTag(
-              'ResponseError',
-              () => new UpstreamUnavailable({ status: 0, retryAfterMillis: 0 }),
-            ),
+            Effect.catchTags({
+              RequestError: () => new UpstreamUnavailable({ status: 0, retryAfterMillis: 0 }),
+              ResponseError: () => new UpstreamUnavailable({ status: 0, retryAfterMillis: 0 }),
+            }),
           )
         const status = response.status
         if (status === 200) return yield* decodeWidget(response)

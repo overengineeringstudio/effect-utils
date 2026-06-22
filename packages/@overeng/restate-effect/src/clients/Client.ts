@@ -318,12 +318,11 @@ const tryParse = (text: string): unknown => {
 
 /** Pull the `responseText` off a transport `HttpCallError` carried in the cause. */
 const httpErrorBody = (cause: unknown): string | undefined =>
-  Option.fromNullable(cause)
-    .pipe(
-      Option.filter((c): c is clients.HttpCallError => c instanceof clients.HttpCallError),
-      Option.map((c) => c.responseText),
-    )
-    .pipe(Option.getOrUndefined)
+  Option.fromNullable(cause).pipe(
+    Option.filter((c): c is clients.HttpCallError => c instanceof clients.HttpCallError),
+    Option.map((c) => c.responseText),
+    Option.getOrUndefined,
+  )
 
 /* ════════════════════════════════════════════════════════════════════════
  * Virtual Object ingress client (keyed call / send).

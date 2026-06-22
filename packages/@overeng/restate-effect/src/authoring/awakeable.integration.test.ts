@@ -117,7 +117,7 @@ const pollForId = (key: string): Effect.Effect<string, never, RestateIngress> =>
         key,
         method: 'awakeableId',
         input: undefined,
-      }).pipe(Effect.catchAll(() => Effect.succeed('')))
+      }).pipe(Effect.orElseSucceed(() => ''))
       if (id !== '') return id
       yield* Effect.sleep('100 millis')
     }

@@ -200,6 +200,7 @@ const renderJson = ({
   Effect.sync(() => {
     const targetState = computeState({ captured, timelineMode })
     try {
+      // @effect-diagnostics-next-line schemaSyncInEffect:off -- best-effort serialization of internal state for JSON display with a deliberate try/catch fallback; not parsing external data, and the sync form is load-bearing for the local fallback
       const encoded = Schema.encodeSync(captured.app.config.stateSchema)(targetState)
       return encodeJsonPretty(encoded)
     } catch {

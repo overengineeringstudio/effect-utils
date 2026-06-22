@@ -60,7 +60,7 @@ const findPackageJsonDirs = Effect.fn('workspace/findPackageJsonDirs')(function*
 
   const walk: (dir: string) => Effect.Effect<void, Error, FileSystem.FileSystem | Path.Path> =
     Effect.fnUntraced(function* (dir) {
-      const entries = yield* fs.readDirectory(dir).pipe(Effect.catchAll(() => Effect.succeed([])))
+      const entries = yield* fs.readDirectory(dir).pipe(Effect.orElseSucceed(() => []))
       for (const entry of entries) {
         if (shouldSkipDir(entry) === true) continue
         const fullPath = pathService.join(dir, entry)
@@ -128,7 +128,7 @@ const discoverPnpmPackageJsonPaths = Effect.fn('workspace/discoverPnpmPackageJso
 
     const content = yield* fs
       .readFileString(workspaceFile)
-      .pipe(Effect.catchAll(() => Effect.succeed('')))
+      .pipe(Effect.orElseSucceed(() => ''))
     const patterns = parsePnpmWorkspacePackages(content)
     if (patterns.length === 0) return []
 

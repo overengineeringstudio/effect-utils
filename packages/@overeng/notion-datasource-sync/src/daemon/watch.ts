@@ -942,7 +942,7 @@ export const runWatchDaemon = Effect.fn(spanNames.daemonRun, {
           Effect.catchTag('WatchDaemonCancelled', () =>
             Effect.succeed({ _tag: 'cancelled' as const }),
           ),
-          Effect.catchAll(() => Effect.succeed({ _tag: 'retry' as const })),
+          Effect.orElseSucceed(() => ({ _tag: 'retry' as const })),
         )
 
         if (cycle._tag === 'cancelled') {

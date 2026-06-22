@@ -573,7 +573,7 @@ export const decodeNmdSyncStateV1 = Schema.decodeUnknown(NmdSyncStateV1, nmdStri
  * to read a base would have no field to read it from. R31/R32 are therefore a
  * type property, not a discipline.
  */
-type NotionUUIDValue = typeof NotionUUID.Type
+type NotionUUIDValue = NotionUUID
 
 /** Resolved local `.nmd` state: the source/sidecar combination classified into a tagged stateless/bound/remote/shared case (R31). */
 export type NmdLocalState =
