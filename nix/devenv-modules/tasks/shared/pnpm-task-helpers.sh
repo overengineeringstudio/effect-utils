@@ -311,6 +311,40 @@ fs.writeFileSync(outputFile, `${JSON.stringify(registry, null, 2)}\n`)
 EOF
 }
 
+dependency_materialization_profile_id() {
+  local node_bin="$1"
+  local profile_file="$2"
+
+  "$node_bin" - "$profile_file" <<'EOF'
+const fs = require('node:fs')
+
+const [profileFile] = process.argv.slice(2)
+const profile = JSON.parse(fs.readFileSync(profileFile, 'utf8'))
+process.stdout.write(profile.profileId)
+EOF
+}
+
+dependency_materialization_profile_files_pool_id() {
+  local node_bin="$1"
+  local registry_file="$2"
+  local profile_id="$3"
+
+  "$node_bin" - "$registry_file" "$profile_id" <<'EOF'
+const fs = require('node:fs')
+
+const [registryFile, profileId] = process.argv.slice(2)
+const registry = JSON.parse(fs.readFileSync(registryFile, 'utf8'))
+const profiles = Array.isArray(registry.profiles) ? registry.profiles : []
+const profile = profiles.find((row) => row.id === profileId)
+
+if (profile === undefined || typeof profile.filesPoolId !== 'string') {
+  process.exit(1)
+}
+
+process.stdout.write(profile.filesPoolId)
+EOF
+}
+
 dependency_materialization_store_doctor() {
   local node_bin="$1"
   local registry_file="$2"

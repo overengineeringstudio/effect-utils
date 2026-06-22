@@ -73,6 +73,13 @@ let
     if taskSuffix == null then "${taskNamePrefix}:dedupe" else "${taskNamePrefix}:dedupe:${taskSuffix}";
   cleanTaskName =
     if taskSuffix == null then "${taskNamePrefix}:clean" else "${taskNamePrefix}:clean:${taskSuffix}";
+  doctorTaskName =
+    if taskSuffix == null then "${taskNamePrefix}:doctor" else "${taskNamePrefix}:doctor:${taskSuffix}";
+  repairPlanTaskName =
+    if taskSuffix == null then
+      "${taskNamePrefix}:repair-plan"
+    else
+      "${taskNamePrefix}:repair-plan:${taskSuffix}";
   resetLockFilesTaskName =
     if taskSuffix == null then
       "${taskNamePrefix}:reset-lock-files"
@@ -677,6 +684,49 @@ let
         # The GVS `links/` directory lives under the shared store-dir. Deleting
         # it from one workspace would break node_modules projections in other
         # workspaces that point at the same shared store.
+      '';
+    };
+
+    "${doctorTaskName}" = {
+      guard = "pnpm";
+      description = "Inspect dependency materialization safety for the pnpm workspace at ${workspaceRoot}";
+      after = [ installTaskName ];
+      exec = trace.exec doctorTaskName ''
+        set -euo pipefail
+        cd ${lib.escapeShellArg workspaceRootAbs}
+        ${loadPnpmTaskHelpersFn}
+
+        dependency_profile_file="${cacheRoot}/dependency-materialization-profile.json"
+        dependency_registry_file="${cacheRoot}/dependency-materialization-registry.json"
+        if [ ! -f "$dependency_profile_file" ] || [ ! -f "$dependency_registry_file" ]; then
+          echo "[pnpm] Missing dependency materialization evidence; run: ${installTaskName}" >&2
+          exit 1
+        fi
+
+        profile_id="$(dependency_materialization_profile_id ${pkgs.nodejs}/bin/node "$dependency_profile_file")"
+        dependency_materialization_store_doctor ${pkgs.nodejs}/bin/node "$dependency_registry_file" "$profile_id"
+      '';
+    };
+
+    "${repairPlanTaskName}" = {
+      guard = "pnpm";
+      description = "Plan coordinated dependency materialization repair for the pnpm workspace at ${workspaceRoot}";
+      after = [ installTaskName ];
+      exec = trace.exec repairPlanTaskName ''
+        set -euo pipefail
+        cd ${lib.escapeShellArg workspaceRootAbs}
+        ${loadPnpmTaskHelpersFn}
+
+        dependency_profile_file="${cacheRoot}/dependency-materialization-profile.json"
+        dependency_registry_file="${cacheRoot}/dependency-materialization-registry.json"
+        if [ ! -f "$dependency_profile_file" ] || [ ! -f "$dependency_registry_file" ]; then
+          echo "[pnpm] Missing dependency materialization evidence; run: ${installTaskName}" >&2
+          exit 1
+        fi
+
+        profile_id="$(dependency_materialization_profile_id ${pkgs.nodejs}/bin/node "$dependency_profile_file")"
+        files_pool_id="$(dependency_materialization_profile_files_pool_id ${pkgs.nodejs}/bin/node "$dependency_registry_file" "$profile_id")"
+        dependency_materialization_repair_plan ${pkgs.nodejs}/bin/node "$dependency_registry_file" "$files_pool_id"
       '';
     };
 

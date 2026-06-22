@@ -17,6 +17,19 @@ assert_exit_code() {
   fi
 }
 
+assert_eq() {
+  local expected="$1"
+  local actual="$2"
+  local label="$3"
+
+  if [ "$expected" != "$actual" ]; then
+    echo "FAIL: $label"
+    echo "  expected: $expected"
+    echo "  actual:   $actual"
+    exit 1
+  fi
+}
+
 assert_json_field() {
   local expected="$1"
   local file="$2"
@@ -288,6 +301,8 @@ chmod +x "$workspace/packages/demo/node_modules/.bin/storybook"
 
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install.exec.sh"
 extract_task_script "$workspace" "status" "$tmpdir/pnpm-install.status.sh"
+extract_task_script "$workspace" "exec" "$tmpdir/pnpm-doctor.exec.sh" 'packages = [ ];' "pnpm:doctor"
+extract_task_script "$workspace" "exec" "$tmpdir/pnpm-repair-plan.exec.sh" 'packages = [ ];' "pnpm:repair-plan"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-clean.exec.sh" 'packages = [ "packages/demo" ];' "pnpm:clean"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-nested.exec.sh" 'packages = [ "pkg" ]; workspaceRoot = "nested"; taskSuffix = "nested";' "pnpm:install:nested"
 extract_task_script "$workspace" "status" "$tmpdir/pnpm-install-nested.status.sh" 'packages = [ "pkg" ]; workspaceRoot = "nested"; taskSuffix = "nested";' "pnpm:install:nested"
@@ -315,6 +330,8 @@ extract_shared_task_script \
   "$tmpdir/storybook-demo.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install.status.sh"
+rewrite_unrealized_tool_paths "$tmpdir/pnpm-doctor.exec.sh"
+rewrite_unrealized_tool_paths "$tmpdir/pnpm-repair-plan.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-clean.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-nested.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-nested.status.sh"
@@ -450,6 +467,10 @@ echo "Test 7: exec defaults PNPM_HOME to a workspace-local projection"
   assert_json_field "$workspace" "$registry_file" "value => value.profiles[0].project" "live registry project"
   assert_json_field "$workspace/.devenv/pnpm-store-pure-v1" "$registry_file" "value => value.profiles[0].store" "live registry store"
   assert_json_field "$workspace/.devenv/pnpm-store-pure-v1/v11/files" "$registry_file" "value => value.pools[0].filesPath" "live registry files path"
+  doctor_decision="$(bash "$tmpdir/pnpm-doctor.exec.sh" | node -e 'const fs=require("node:fs"); process.stdout.write(JSON.parse(fs.readFileSync(0,"utf8")).decision)')"
+  assert_eq "refuse-raw-prune" "$doctor_decision" "doctor refuses raw prune for shared files pool"
+  repair_decision="$(bash "$tmpdir/pnpm-repair-plan.exec.sh" | node -e 'const fs=require("node:fs"); const value=JSON.parse(fs.readFileSync(0,"utf8")); process.stdout.write(`${value.decision}:${value.roots.length}`)')"
+  assert_eq "repair-all-roots:1" "$repair_decision" "repair plan covers registered root"
 )
 
 echo "Test 8: status hits after install with the default GVS path"
