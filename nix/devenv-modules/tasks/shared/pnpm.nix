@@ -689,8 +689,7 @@ let
 
     "${doctorTaskName}" = {
       guard = "pnpm";
-      description = "Inspect dependency materialization safety for the pnpm workspace at ${workspaceRoot}";
-      after = [ installTaskName ];
+      description = "Inspect existing dependency materialization evidence for the pnpm workspace at ${workspaceRoot}";
       exec = trace.exec doctorTaskName ''
         set -euo pipefail
         cd ${lib.escapeShellArg workspaceRootAbs}
@@ -710,8 +709,7 @@ let
 
     "${repairPlanTaskName}" = {
       guard = "pnpm";
-      description = "Plan coordinated dependency materialization repair for the pnpm workspace at ${workspaceRoot}";
-      after = [ installTaskName ];
+      description = "Plan repair from existing dependency materialization evidence for the pnpm workspace at ${workspaceRoot}";
       exec = trace.exec repairPlanTaskName ''
         set -euo pipefail
         cd ${lib.escapeShellArg workspaceRootAbs}
