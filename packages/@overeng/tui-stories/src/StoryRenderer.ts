@@ -197,15 +197,14 @@ const renderJson = ({
   readonly captured: CapturedStoryProps
   readonly timelineMode: TimelineMode
 }): Effect.Effect<string> =>
-  Effect.sync(() => {
+  Effect.gen(function* () {
     const targetState = computeState({ captured, timelineMode })
-    try {
-      // @effect-diagnostics-next-line schemaSyncInEffect:off -- best-effort serialization of internal state for JSON display with a deliberate try/catch fallback; not parsing external data, and the sync form is load-bearing for the local fallback
-      const encoded = Schema.encodeSync(captured.app.config.stateSchema)(targetState)
-      return encodeJsonPretty(encoded)
-    } catch {
-      return encodeJsonPretty(targetState)
-    }
+    // Best-effort: encode through the app's schema, falling back to the raw
+    // state on a schema mismatch (display-only path, never fails).
+    const encoded = yield* Schema.encode(captured.app.config.stateSchema)(targetState).pipe(
+      Effect.orElseSucceed(() => targetState),
+    )
+    return encodeJsonPretty(encoded)
   })
 
 // =============================================================================
