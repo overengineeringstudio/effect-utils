@@ -797,6 +797,26 @@ const cliArgumentErrorFromThrow = (cause: unknown): CliArgumentError => {
   throw cause
 }
 
+/**
+ * Narrow a thrown value from `parseCliContext` into its typed failure channel.
+ * Unlike the argument parsers, `parseCliContext` performs workspace discovery
+ * (`discoverSelfContainedStore` → `requireCompatibleWorkspaceNamespace`) and so
+ * legitimately throws `WorkspaceNotTracked` (untracked workspace) and
+ * `WorkspaceNamespaceError` (mixed/unknown/inconsistent namespace) in addition
+ * to `CliArgumentError`. These are all expected CLI failures that must reach the
+ * top-level `renderCliErrorJson` envelope as failures, not defects. Any other
+ * thrown value is a programming defect and is re-thrown for `Effect.try` to
+ * surface as such.
+ */
+const cliContextErrorFromThrow = (
+  cause: unknown,
+): CliArgumentError | WorkspaceNotTracked | WorkspaceNamespaceError => {
+  if (cause instanceof CliArgumentError) return cause
+  if (cause instanceof WorkspaceNotTracked) return cause
+  if (cause instanceof WorkspaceNamespaceError) return cause
+  throw cause
+}
+
 const isWatchCommand = (command: CliCommand): boolean =>
   command._tag === 'sync' && command.watch === true
 
@@ -3244,7 +3264,10 @@ export const runCliMain = ({
     const resolvedCommand = yield* resolveCliCommandNotionRefs({ command, options })
     const context = yield* Effect.try({
       try: () => parseCliContext({ argv, resolvedCommand }),
-      catch: cliArgumentErrorFromThrow,
+      // `parseCliContext` runs workspace discovery and can throw the expected
+      // workspace errors in addition to `CliArgumentError`; keep them on the
+      // failure channel so the top-level renderer emits a structured envelope.
+      catch: cliContextErrorFromThrow,
     })
     const commandEffect = runCliCommandWithRuntime({ command: resolvedCommand, context, options })
     const effectWithProgress =

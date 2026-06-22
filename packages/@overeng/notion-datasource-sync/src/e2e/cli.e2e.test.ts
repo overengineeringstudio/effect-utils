@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 
 import { NodeContext } from '@effect/platform-node'
-import { Effect, Layer, Option, Schema, Stream } from 'effect'
+import { Cause, Effect, Exit, Layer, Option, Schema, Stream } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -47,6 +47,7 @@ import {
   PageId,
   WorkspaceRelativePath,
 } from '../core/domain.ts'
+import { WorkspaceNotTracked } from '../core/errors.ts'
 import { SyncEventId, type SyncEvent as SyncEventType } from '../core/events.ts'
 import {
   LocalWorkspacePort,
@@ -1020,6 +1021,32 @@ describe('CLI command surface', () => {
         expect(ctx.workspaceRoot).toBe(dir)
       } finally {
         ctx.store.close()
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('runCliMain surfaces an untracked workspace as a typed failure, not a defect', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-untracked-'))
+    try {
+      // The workspace-discovery errors thrown by `parseCliContext` are expected
+      // CLI failures and must reach the failure channel (so the top-level
+      // `renderCliErrorJson` envelope renders them) rather than the defect
+      // channel. Driving `runCliMain` end-to-end is what proves the `catch`
+      // mapper at the `parseCliContext` call site keeps them as failures.
+      const exit = await Effect.runPromiseExit(
+        runCliMain({ argv: ['sync', dir] }).pipe(Effect.scoped),
+      )
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.failureOption(exit.cause)
+        // A defect would land in `Cause.defects`, not `Cause.failureOption`.
+        expect(Option.isSome(failure)).toBe(true)
+        expect(Cause.defects(exit.cause)).toHaveLength(0)
+        if (Option.isSome(failure)) {
+          expect(failure.value).toBeInstanceOf(WorkspaceNotTracked)
+        }
       }
     } finally {
       await rm(dir, { recursive: true, force: true })
