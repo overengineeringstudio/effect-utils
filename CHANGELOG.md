@@ -78,6 +78,17 @@ All notable changes to this project will be documented in this file.
   runs against an isolated `TMPDIR` and verifies the staging directory is
   removed after repeated runs (#824).
 
+- **Effect-LSP strict gate policy** (#811, work in progress): Refactor the
+  `@effect/language-service` plugin config in `genie/external.ts` into an
+  explicit, intent-revealing gate policy driven by a single `effectDiagnosticsGate`
+  toggle, with the end state gating the `tsgo --build` exit code on Effect
+  warnings AND suggestions fleet-wide. Drop the dead `reportSuggestionsAsWarningsInTsc`
+  flag (it does not exist in tsgo / LS 0.86.2). The strict flip is staged: the
+  toggle is kept off in this milestone so CI stays green while the ~822 live
+  diagnostics are burned down, so behavior is unchanged for now. Heads-up for
+  alignment: peer repos consuming `baseTsconfigCompilerOptions` will inherit the
+  gate once the toggle is flipped (milestone 6).
+
 - **OTEL trace-structure contract**: Tighten the offline trace-structure
   negative test so orphan detection uses a syntactically valid but missing
   parent span ID. Invalid span IDs are now left to the helper's input

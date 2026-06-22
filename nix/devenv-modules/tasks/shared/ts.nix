@@ -24,6 +24,17 @@
 #   corrupted build metadata. Ensure all packages are listed in
 #   tsconfig.all.json references.
 #
+# Effect-LSP gate (issue #811):
+#   When the `@effect/language-service` gate toggle is enabled (see
+#   `effectDiagnosticsGate` in genie/external.ts -> baseTsconfigCompilerOptions),
+#   any `tsgo --build` over the project graph gates on Effect diagnostics via the
+#   exit code: an Effect warning/suggestion in any member project fails the build.
+#   Both `ts:check` (incremental) and `ts:check:strict` (--force) are this gate.
+#   `--force` is NOT required for the gate to hold: tsgo persists and replays the
+#   Effect (plugin) diagnostics from .tsbuildinfo, so incremental `ts:check` stays
+#   red until the diagnostic is fixed (verified). The toggle is staged off during
+#   the #811 burndown, so the gate is currently inert and CI stays green.
+#
 # tsBin:
 #   Path to the TypeScript build/check binary. Defaults to "tsgo" so normal
 #   workspace checks use Nix-managed TypeScript 7.
