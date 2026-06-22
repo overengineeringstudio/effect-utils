@@ -9,7 +9,7 @@ import { GenerateState, GenerateAction, generateReducer } from './schema.ts'
 /**
  * Initial state (idle).
  */
-export const createInitialGenerateState = (): typeof GenerateState.Type => ({
+export const createInitialGenerateState = (): GenerateState => ({
   _tag: 'Idle',
 })
 

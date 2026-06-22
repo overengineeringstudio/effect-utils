@@ -65,8 +65,8 @@ export const createTimeline = (config: {
   source: string
   synced: boolean
   syncStatus?: 'cloned' | 'synced' | 'error'
-}): Array<{ at: number; action: typeof AddAction.Type }> => {
-  const timeline: Array<{ at: number; action: typeof AddAction.Type }> = []
+}): Array<{ at: number; action: AddAction }> => {
+  const timeline: Array<{ at: number; action: AddAction }> = []
 
   // Start: idle -> adding
   timeline.push({

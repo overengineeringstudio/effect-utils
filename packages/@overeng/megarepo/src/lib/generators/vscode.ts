@@ -20,7 +20,7 @@ export interface VscodeGeneratorOptions {
   /** Path to the megarepo root */
   readonly megarepoRoot: AbsoluteDirPath
   /** The megarepo config */
-  readonly config: typeof MegarepoConfig.Type
+  readonly config: MegarepoConfig
   /** Members to exclude from workspace */
   readonly exclude?: ReadonlyArray<string>
 }

@@ -340,7 +340,7 @@ export const bodyEvidenceFingerprintFromContentDigest = (
 ): BodyEvidenceFingerprint => decodeBodyEvidenceFingerprint(digest)
 
 /** Content-addresses rendered markdown as a notion-enhanced-markdown descriptor (digest computed over the bytes). */
-export const bodyDescriptorForMarkdown = (markdown: string): typeof ContentDescriptor.Type =>
+export const bodyDescriptorForMarkdown = (markdown: string): ContentDescriptor =>
   descriptorForUtf8({
     value: markdown,
     mediaType: 'text/markdown; charset=utf-8',
@@ -349,7 +349,7 @@ export const bodyDescriptorForMarkdown = (markdown: string): typeof ContentDescr
   })
 
 /** Rebuilds a body descriptor from a known digest alone; `byteLength` is 0 since the bytes are absent (digest-only identity). */
-export const bodyDescriptorForDigest = (digest: Hash): typeof ContentDescriptor.Type =>
+export const bodyDescriptorForDigest = (digest: Hash): ContentDescriptor =>
   decodeContentDescriptor({
     _tag: 'ContentDescriptor',
     digest,
@@ -360,7 +360,7 @@ export const bodyDescriptorForDigest = (digest: Hash): typeof ContentDescriptor.
   })
 
 /** Builds a `RenderedBodyIdentity` from a descriptor — identity backed only by the rendered bytes, without completeness evidence. */
-export const renderedBodyIdentity = (descriptor: typeof ContentDescriptor.Type): BodyIdentity =>
+export const renderedBodyIdentity = (descriptor: ContentDescriptor): BodyIdentity =>
   RenderedBodyIdentity.make({
     _tag: 'RenderedBodyIdentity',
     rendered: descriptor,
@@ -368,7 +368,7 @@ export const renderedBodyIdentity = (descriptor: typeof ContentDescriptor.Type):
 
 /** Builds an `EvidenceBackedBodyIdentity` pairing rendered bytes with an evidence fingerprint and completeness, so lossy/partial renders stay distinguishable. */
 export const evidenceBackedBodyIdentity = (opts: {
-  readonly rendered: typeof ContentDescriptor.Type
+  readonly rendered: ContentDescriptor
   readonly evidenceFingerprint: BodyEvidenceFingerprint
   readonly completeness: BodyCompletenessEvidence
 }): BodyIdentity =>

@@ -63,7 +63,7 @@ const scanMembersRecursive = ({
     const configResult = yield* readMegarepoConfig(megarepoRoot).pipe(
       Effect.catchIf(
         (e): e is ConfigNotFoundError => e instanceof ConfigNotFoundError,
-        () => Effect.succeed(undefined),
+        () => Effect.void,
       ),
     )
     if (configResult === undefined) {
@@ -81,7 +81,7 @@ const scanMembersRecursive = ({
       const isMegarepo =
         memberExists === true
           ? (yield* findConfigPath(memberPath).pipe(
-              Effect.catchAll(() => Effect.succeed(undefined)),
+              Effect.orElseSucceed(() => undefined),
             )) !== undefined
           : false
 

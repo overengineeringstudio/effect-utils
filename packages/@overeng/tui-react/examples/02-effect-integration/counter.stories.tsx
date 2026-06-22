@@ -18,7 +18,7 @@ import { CounterView } from './view.tsx'
 const CounterApp = createTuiApp({
   stateSchema: CounterState,
   actionSchema: CounterAction,
-  initial: { _tag: 'Running', count: 0, status: 'idle', history: [] } as typeof CounterState.Type,
+  initial: { _tag: 'Running', count: 0, status: 'idle', history: [] } as CounterState,
   reducer: counterReducer,
 })
 
@@ -32,27 +32,27 @@ const runningState = ({
 }: {
   count: number
   history?: string[]
-}): typeof CounterState.Type => ({
+}): CounterState => ({
   _tag: 'Running',
   count,
   status: 'idle',
   history,
 })
 
-const loadingState = (count: number): typeof CounterState.Type => ({
+const loadingState = (count: number): CounterState => ({
   _tag: 'Running',
   count,
   status: 'loading',
   history: [],
 })
 
-const completeState = (finalCount: number): typeof CounterState.Type => ({
+const completeState = (finalCount: number): CounterState => ({
   _tag: 'Complete',
   finalCount,
   history: [`Final count: ${finalCount}`],
 })
 
-const interruptedState = (count: number): typeof CounterState.Type => ({
+const interruptedState = (count: number): CounterState => ({
   _tag: 'Interrupted',
   count,
   history: ['Interrupted by user'],
@@ -62,7 +62,7 @@ const interruptedState = (count: number): typeof CounterState.Type => ({
 // Timeline - simulates CLI execution
 // =============================================================================
 
-const demoTimeline: Array<{ at: number; action: typeof CounterAction.Type }> = [
+const demoTimeline: Array<{ at: number; action: CounterAction }> = [
   { at: 400, action: { _tag: 'Increment' } },
   { at: 800, action: { _tag: 'Increment' } },
   { at: 1200, action: { _tag: 'Increment' } },

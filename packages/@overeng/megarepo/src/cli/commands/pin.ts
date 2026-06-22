@@ -176,7 +176,7 @@ export const pinCommand = Cli.Command.make(
             // Get current symlink target
             const currentLink = yield* fs
               .readLink(memberPathNormalized)
-              .pipe(Effect.catchAll(() => Effect.succeed(null)))
+              .pipe(Effect.orElseSucceed(() => null))
 
             // Check if worktree exists
             const worktreeExists = yield* store.hasWorktree({
@@ -387,7 +387,7 @@ export const pinCommand = Cli.Command.make(
 
           const currentLink = yield* fs
             .readLink(memberPathNormalized)
-            .pipe(Effect.catchAll(() => Effect.succeed(null)))
+            .pipe(Effect.orElseSucceed(() => null))
 
           const bareRepoPath = store.getBareRepoPath(source)
           const bareExists = yield* store.hasBareRepo(source)
@@ -640,7 +640,7 @@ export const unpinCommand = Cli.Command.make(
               if (refWorktreeExists === true) {
                 const currentLink = yield* fs
                   .readLink(memberPathNormalized)
-                  .pipe(Effect.catchAll(() => Effect.succeed(null)))
+                  .pipe(Effect.orElseSucceed(() => null))
                 if (
                   currentLink !== null &&
                   currentLink.replace(/\/$/, '') !== refWorktreePath.replace(/\/$/, '')

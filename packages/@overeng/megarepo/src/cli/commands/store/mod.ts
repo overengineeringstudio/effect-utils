@@ -252,7 +252,7 @@ const collectStoreWorktrees = ({
 }): Effect.Effect<Array<CollectedWorktree>, PlatformError.PlatformError> =>
   Effect.gen(function* () {
     const gitPath = EffectPath.ops.join(currentPath, EffectPath.unsafe.relativeFile('.git'))
-    const isWorktree = yield* fs.exists(gitPath).pipe(Effect.catchAll(() => Effect.succeed(false)))
+    const isWorktree = yield* fs.exists(gitPath).pipe(Effect.orElseSucceed(() => false))
     if (isWorktree === true) {
       return [
         {
@@ -299,7 +299,7 @@ const collectStoreWorktrees = ({
       if (entry.startsWith('.') === true) continue
 
       const entryPath = EffectPath.ops.join(currentPath, EffectPath.unsafe.relativeDir(`${entry}/`))
-      const entryStat = yield* fs.stat(entryPath).pipe(Effect.catchAll(() => Effect.succeed(null)))
+      const entryStat = yield* fs.stat(entryPath).pipe(Effect.orElseSucceed(() => null))
       if (entryStat?.type !== 'Directory') continue
 
       result.push(
@@ -330,7 +330,7 @@ const collectRepoStoreWorktrees = ({
     const refsPrefix = `${repoPrefix}/refs/`
     const realRepoPrefix = yield* fs.realPath(repoPath).pipe(
       Effect.map((path) => path.replace(/\/+$/, '')),
-      Effect.catchAll(() => Effect.succeed(repoPrefix)),
+      Effect.orElseSucceed(() => repoPrefix),
     )
     const realRefsPrefix = `${realRepoPrefix}/refs/`
     const result: Array<CollectedWorktree> = []
@@ -402,7 +402,7 @@ const collectRepoStoreWorktrees = ({
     // worktree-list names already collected.
     for (const namespace of ['heads', 'tags'] as const) {
       const refNames = yield* Git.listRefShortNames({ bareRepoPath, namespace }).pipe(
-        Effect.catchAll(() => Effect.succeed([] as ReadonlyArray<string>)),
+        Effect.orElseSucceed(() => [] as ReadonlyArray<string>),
       )
       for (const refName of refNames) knownRefsByType[namespace].add(refName)
     }
@@ -414,7 +414,7 @@ const collectRepoStoreWorktrees = ({
       )
       const refTypeStat = yield* fs
         .stat(refTypePath)
-        .pipe(Effect.catchAll(() => Effect.succeed(null)))
+        .pipe(Effect.orElseSucceed(() => null))
       if (refTypeStat?.type !== 'Directory') continue
 
       const layoutWorktrees = yield* collectStoreWorktrees({
@@ -684,7 +684,7 @@ const coldReclaimRepo = ({
       // `refs/heads/<ref>`, which is NOT the branch actually checked out. Only a
       // clean, lossless, absent mismatch takes the separate archive-only path.
       const headBranch = yield* Git.getCurrentBranch(worktree.path).pipe(
-        Effect.catchAll(() => Effect.succeed(Option.none<string>())),
+        Effect.orElseSucceed(() => Option.none<string>()),
       )
       if (Option.isSome(headBranch) === true && headBranch.value !== worktree.ref) {
         const actualHeadBranch = headBranch.value
@@ -721,7 +721,7 @@ const coldReclaimRepo = ({
 
         const head = yield* Git.getCurrentCommit(worktree.path).pipe(
           Effect.map(Option.some),
-          Effect.catchAll(() => Effect.succeed(Option.none<string>())),
+          Effect.orElseSucceed(() => Option.none<string>()),
         )
         if (Option.isNone(head) === true) {
           results.push(keepRefMismatch(`HEAD is '${actualHeadBranch}' but commit is unreadable`))
@@ -735,7 +735,7 @@ const coldReclaimRepo = ({
           worktreeHead,
         }).pipe(
           Effect.map(Option.some),
-          Effect.catchAll(() => Effect.succeed(Option.none<never>())),
+          Effect.orElseSucceed(() => Option.none<never>()),
         )
         if (Option.isNone(lossless) === true) {
           results.push(keepRefMismatch(`HEAD is '${actualHeadBranch}' but lossless probe failed`))
@@ -842,7 +842,7 @@ const coldReclaimRepo = ({
 
       const head = yield* Git.getCurrentCommit(worktree.path).pipe(
         Effect.map(Option.some),
-        Effect.catchAll(() => Effect.succeed(Option.none<string>())),
+        Effect.orElseSucceed(() => Option.none<string>()),
       )
       if (Option.isNone(head) === true) {
         results.push(coldResult({ target, status: 'kept', reason: 'unreadable-head' }))
@@ -857,7 +857,7 @@ const coldReclaimRepo = ({
       }).pipe(
         Effect.map(Option.some),
         // A failed lossless probe (e.g. unresolvable head) degrades to keep.
-        Effect.catchAll(() => Effect.succeed(Option.none<never>())),
+        Effect.orElseSucceed(() => Option.none<never>()),
       )
       if (Option.isNone(lossless) === true) {
         results.push(coldResult({ target, status: 'kept', reason: 'unrecoverable-local-work' }))
@@ -951,7 +951,7 @@ const coldReclaimRepo = ({
 
     // Reap archives past the retention TTL, each under lock + a fresh veto.
     const archives = yield* scanArchives({ repoRoot: repoFullPath, bareRepoPath }).pipe(
-      Effect.catchAll(() => Effect.succeed([] as never[])),
+      Effect.orElseSucceed(() => [] as never[]),
     )
     for (const entry of archives) {
       if (now - entry.archivedAtMs < config.archiveRetentionMs) continue
@@ -1103,7 +1103,7 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
                   } else {
                     if (refTypeDir === 'heads') {
                       const actualBranch = yield* Git.getCurrentBranch(worktreePath).pipe(
-                        Effect.catchAll(() => Effect.succeed(Option.none<string>())),
+                        Effect.orElseSucceed(() => Option.none<string>()),
                       )
                       if (
                         Option.isSome(actualBranch) === true &&
@@ -1118,13 +1118,11 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
                     }
 
                     const worktreeStatus = yield* Git.getWorktreeStatus(worktreePath).pipe(
-                      Effect.catchAll(() =>
-                        Effect.succeed({
-                          isDirty: false,
-                          hasUnpushed: false,
-                          changesCount: 0,
-                        }),
-                      ),
+                      Effect.orElseSucceed(() => ({
+                        isDirty: false,
+                        hasUnpushed: false,
+                        changesCount: 0,
+                      })),
                     )
                     if (worktreeStatus.isDirty === true) {
                       issues.push({

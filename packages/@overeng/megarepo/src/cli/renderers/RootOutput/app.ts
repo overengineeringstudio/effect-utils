@@ -9,7 +9,7 @@ import { RootState, RootAction, rootReducer, isRootError } from './schema.ts'
 /**
  * Initial state (empty success state).
  */
-export const createInitialRootState = (): typeof RootState.Type => ({
+export const createInitialRootState = (): RootState => ({
   _tag: 'Success',
   root: '',
   name: '',

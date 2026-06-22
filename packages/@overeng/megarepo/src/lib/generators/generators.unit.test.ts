@@ -15,7 +15,7 @@ import { generateVscodeContent } from './vscode.ts'
 // Test Fixtures
 // =============================================================================
 
-const createTestConfig = (members: Record<string, string>): typeof MegarepoConfig.Type => ({
+const createTestConfig = (members: Record<string, string>): MegarepoConfig => ({
   members,
 })
 

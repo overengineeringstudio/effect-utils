@@ -88,7 +88,7 @@ export const readObservationLedger = ({
       Effect.flatMap((content) =>
         Schema.decodeUnknown(Schema.parseJson(GcObservationLedger))(content),
       ),
-      Effect.catchAll(() => Effect.succeed({} as GcObservationLedger)),
+      Effect.orElseSucceed(() => ({}) as GcObservationLedger),
     )
   }).pipe(
     Observability.withLabelSpan({

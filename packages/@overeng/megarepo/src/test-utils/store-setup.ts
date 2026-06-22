@@ -330,7 +330,7 @@ export const createWorkspaceWithLock = (args: {
     yield* initGitRepo(workspacePath)
 
     // Create megarepo.json
-    const config: typeof MegarepoConfig.Type = {
+    const config: MegarepoConfig = {
       members: args.members,
     }
     const configContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(

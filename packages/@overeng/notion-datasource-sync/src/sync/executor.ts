@@ -72,8 +72,7 @@ type RemoteWriteResult = {
 }
 
 /** Canonical payload hashed to verify a relation property patch — the sorted target page ids under a stable tag. */
-const RelationVerificationPayload = Schema.Struct({
-  _tag: Schema.Literal('relation'),
+const RelationVerificationPayload = Schema.TaggedStruct('relation', {
   pageIds: Schema.Array(Schema.String),
 }).annotations({ identifier: 'NotionDatasourceSync.RelationVerificationPayload' })
 
@@ -87,6 +86,9 @@ const relationPatchVerificationHash = (
   const entries = Object.entries(command.propertyPatch)
   const [propertyId, value] = entries[0] ?? []
   if (entries.length !== 1 || propertyId === undefined || value?._tag !== 'relation') {
+    // The success channel is `Hash | undefined`; `Effect.void` would widen it to
+    // include `void` and break the explicit return type, so keep the explicit `undefined`.
+    // @effect-diagnostics-next-line effectSucceedWithVoid:off
     return Effect.succeed(undefined)
   }
 
@@ -96,6 +98,11 @@ const relationPatchVerificationHash = (
       .retrievePageProperty({
         _tag: 'RetrievePagePropertyInput',
         pageId: command.pageId,
+        // `propertyId` is a key of `command.propertyPatch`, a `Schema.Record` keyed by
+        // `PropertyId`, so it is already a validated `PropertyId`; this is a pure re-brand
+        // of an invariant-guaranteed value. A failure here is a defect, not a typed error,
+        // so we keep the sync decode rather than widen the channel with `ParseError`.
+        // @effect-diagnostics-next-line schemaSyncInEffect:off
         propertyId: Schema.decodeUnknownSync(PropertyId)(propertyId),
         startCursor: null,
       })
@@ -251,14 +258,12 @@ const observeCurrentSurface = (
         const gateway = yield* NotionDataSourceGateway
         const dataSource = yield* gateway.retrieveDataSource(command.dataSourceId)
         if (dataSource.metadataHash === undefined) {
-          return yield* Effect.fail(
-            new NotionGatewayError({
-              operation: 'retrieveDataSource',
-              dataSourceId: command.dataSourceId,
-              guard: 'CurrentSurfaceMissing',
-              message: 'Current data-source metadata projection is missing',
-            }),
-          )
+          return yield* new NotionGatewayError({
+            operation: 'retrieveDataSource',
+            dataSourceId: command.dataSourceId,
+            guard: 'CurrentSurfaceMissing',
+            message: 'Current data-source metadata projection is missing',
+          })
         }
         return {
           baseHash: dataSource.metadataHash,
@@ -270,14 +275,12 @@ const observeCurrentSurface = (
         const gateway = yield* NotionDataSourceGateway
         const dataSource = yield* gateway.retrieveDataSource(command.dataSourceId)
         if (dataSource.metadataHash === undefined) {
-          return yield* Effect.fail(
-            new NotionGatewayError({
-              operation: 'retrieveDataSource',
-              dataSourceId: command.dataSourceId,
-              guard: 'CurrentSurfaceMissing',
-              message: 'Current database metadata projection is missing',
-            }),
-          )
+          return yield* new NotionGatewayError({
+            operation: 'retrieveDataSource',
+            dataSourceId: command.dataSourceId,
+            guard: 'CurrentSurfaceMissing',
+            message: 'Current database metadata projection is missing',
+          })
         }
         return {
           baseHash: dataSource.metadataHash,

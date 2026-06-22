@@ -196,7 +196,7 @@ export const syncMember = <R = never>({
           : path.resolve(megarepoRoot, expandedPath)
       const existingLink = yield* fs
         .readLink(memberPathNormalized)
-        .pipe(Effect.catchAll(() => Effect.succeed(null)))
+        .pipe(Effect.orElseSucceed(() => null))
 
       if (existingLink !== null) {
         if (existingLink.replace(/\/$/, '') === resolvedPath.replace(/\/$/, '')) {
@@ -205,13 +205,11 @@ export const syncMember = <R = never>({
         // Path changed - check if old worktree has uncommitted changes before switching
         if (force === false && dryRun === false) {
           const worktreeStatus = yield* Git.getWorktreeStatus(existingLink).pipe(
-            Effect.catchAll(() =>
-              Effect.succeed({
-                isDirty: false,
-                hasUnpushed: false,
-                changesCount: 0,
-              }),
-            ),
+            Effect.orElseSucceed(() => ({
+              isDirty: false,
+              hasUnpushed: false,
+              changesCount: 0,
+            })),
           )
           if (worktreeStatus.isDirty === true || worktreeStatus.hasUnpushed === true) {
             return {
@@ -230,7 +228,7 @@ export const syncMember = <R = never>({
       } else {
         const exists = yield* fs
           .exists(memberPathNormalized)
-          .pipe(Effect.catchAll(() => Effect.succeed(false)))
+          .pipe(Effect.orElseSucceed(() => false))
         if (exists === true) {
           return {
             name,
@@ -316,7 +314,7 @@ export const syncMember = <R = never>({
     // Check if member symlink already exists and points to a valid worktree
     const currentLink = yield* fs
       .readLink(memberPathNormalized)
-      .pipe(Effect.catchAll(() => Effect.succeed(null)))
+      .pipe(Effect.orElseSucceed(() => null))
     const memberExists = currentLink !== null
 
     // In lock and apply modes, if member exists, check if symlink points to correct ref
@@ -352,7 +350,7 @@ export const syncMember = <R = never>({
         )
         const currentCommit = Option.getOrUndefined(currentCommitOpt)
         const currentBranchOpt = yield* Git.getCurrentBranch(memberPathNormalized).pipe(
-          Effect.catchAll(() => Effect.succeed(Option.none<string>())),
+          Effect.orElseSucceed(() => Option.none<string>()),
         )
         const currentBranch = Option.getOrUndefined(currentBranchOpt)
 
@@ -386,13 +384,11 @@ export const syncMember = <R = never>({
       // Check if old worktree has uncommitted changes before switching
       if (force === false && dryRun === false) {
         const worktreeStatus = yield* Git.getWorktreeStatus(currentLink).pipe(
-          Effect.catchAll(() =>
-            Effect.succeed({
-              isDirty: false,
-              hasUnpushed: false,
-              changesCount: 0,
-            }),
-          ),
+          Effect.orElseSucceed(() => ({
+            isDirty: false,
+            hasUnpushed: false,
+            changesCount: 0,
+          })),
         )
         if (worktreeStatus.isDirty === true || worktreeStatus.hasUnpushed === true) {
           return {
@@ -411,13 +407,11 @@ export const syncMember = <R = never>({
     // For lock update mode, check if worktree is dirty before making changes
     if (isApplyMode === true && memberExists === true && dryRun === false) {
       const worktreeStatus = yield* Git.getWorktreeStatus(currentLink).pipe(
-        Effect.catchAll(() =>
-          Effect.succeed({
-            isDirty: false,
-            hasUnpushed: false,
-            changesCount: 0,
-          }),
-        ),
+        Effect.orElseSucceed(() => ({
+          isDirty: false,
+          hasUnpushed: false,
+          changesCount: 0,
+        })),
       )
       if (
         (worktreeStatus.isDirty === true || worktreeStatus.hasUnpushed === true) &&
@@ -850,7 +844,7 @@ export const syncMember = <R = never>({
       // Check for ref mismatch before merging — if someone ran `git checkout <other-branch>`
       // in the worktree, we must not merge into the wrong branch.
       const worktreeBranch = yield* Git.getCurrentBranch(worktreePath).pipe(
-        Effect.catchAll(() => Effect.succeed(Option.none<string>())),
+        Effect.orElseSucceed(() => Option.none<string>()),
       )
       const onExpectedBranch =
         Option.isSome(worktreeBranch) === true && worktreeBranch.value === targetRef
@@ -861,7 +855,7 @@ export const syncMember = <R = never>({
         if (currentCommit !== undefined && currentCommit !== targetCommit) {
           const mergeResult = yield* Git.mergeFFOnly({ worktreePath, ref: targetCommit }).pipe(
             Effect.map(() => 'ok' as const),
-            Effect.catchAll(() => Effect.succeed('failed' as const)),
+            Effect.orElseSucceed(() => 'failed' as const),
           )
           if (mergeResult === 'ok') {
             const headAfterMerge = yield* Git.getCurrentCommit(worktreePath)
@@ -891,7 +885,7 @@ export const syncMember = <R = never>({
     // Create symlink from workspace to worktree
     const existingLink = yield* fs
       .readLink(memberPathNormalized)
-      .pipe(Effect.catchAll(() => Effect.succeed(null)))
+      .pipe(Effect.orElseSucceed(() => null))
     if (existingLink !== null) {
       if (existingLink.replace(/\/$/, '') === finalWorktreePath.replace(/\/$/, '')) {
         return {
@@ -908,7 +902,7 @@ export const syncMember = <R = never>({
     } else {
       const exists = yield* fs
         .exists(memberPathNormalized)
-        .pipe(Effect.catchAll(() => Effect.succeed(false)))
+        .pipe(Effect.orElseSucceed(() => false))
       if (exists === true) {
         return {
           name,

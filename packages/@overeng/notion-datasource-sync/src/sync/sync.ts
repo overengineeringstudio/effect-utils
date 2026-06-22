@@ -203,12 +203,12 @@ const decode = <TSchema extends Schema.Schema.AnyNoContext>({
 
 const fallbackHash = (_value: string) => decode({ schema: Hash, value: `sha256:${'0'.repeat(64)}` })
 
-const pageIdFromSurface = (surface: string): typeof PageId.Type => {
+const pageIdFromSurface = (surface: string): PageId => {
   const match = /^page:([^:]+)/.exec(surface)
   return decode({ schema: PageId, value: match?.[1] ?? 'unknown-page' })
 }
 
-const propertyIdFromSurface = (surface: string): typeof PropertyId.Type | undefined => {
+const propertyIdFromSurface = (surface: string): PropertyId | undefined => {
   const match = /^page:[^:]+:property:(.+)$/.exec(surface)
   return match?.[1] === undefined ? undefined : decode({ schema: PropertyId, value: match[1] })
 }
@@ -224,7 +224,7 @@ const appendDecision = ({
   readonly store: NotionSyncStore
   readonly rootId: RemoteObservationOptions['rootId']
   readonly decision: PlanDecision
-  readonly pageId?: typeof PageId.Type
+  readonly pageId?: PageId
   readonly now: () => Date
   readonly dryRun?: boolean
 }): OneShotPlanSummary => {
@@ -360,8 +360,8 @@ const mergePlanSummaries = (summaries: ReadonlyArray<OneShotPlanSummary>): OneSh
 })
 
 const localDeleteIntentFromObservation = (observation: {
-  readonly pageId: typeof PageId.Type
-  readonly contentHash: typeof Hash.Type
+  readonly pageId: PageId
+  readonly contentHash: Hash
 }): LocalDeleteIntent => ({
   _tag: 'local-delete',
   intentEventId: intentEventIdFor(`delete:${observation.pageId}`),

@@ -106,7 +106,7 @@ export interface NixLockSyncOptions {
   /** Path to the megarepo root */
   readonly megarepoRoot: AbsoluteDirPath
   /** Megarepo configuration */
-  readonly config: typeof MegarepoConfig.Type
+  readonly config: MegarepoConfig
   /** Megarepo lock file with resolved commits */
   readonly lockFile: LockFile
   /** Members to exclude from sync (opt-out) */
@@ -501,7 +501,7 @@ const syncSingleLockFile = ({
 
     // Write updated lock file if any changes were made
     if (updatedInputs.length > 0 || schemeNormalized === true) {
-      const updatedContent = Schema.encodeSync(RawFlakeLockJson)(rawJson)
+      const updatedContent = yield* Schema.encode(RawFlakeLockJson)(rawJson)
       yield* fs.writeFileString(lockPath, updatedContent + '\n')
     }
 
@@ -1175,7 +1175,7 @@ export const syncNixLocks = Effect.fn('megarepo/nix-lock/sync')((options: NixLoc
                     name,
                   })
                   const nestedConfig = yield* findConfigPath(memberPath).pipe(
-                    Effect.catchAll(() => Effect.succeed(undefined)),
+                    Effect.orElseSucceed(() => undefined),
                   )
                   return nestedConfig !== undefined ? name : undefined
                 }),

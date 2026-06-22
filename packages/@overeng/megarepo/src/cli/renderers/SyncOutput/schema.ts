@@ -34,8 +34,7 @@ export type PreflightIssue = Schema.Schema.Type<typeof PreflightIssue>
 // =============================================================================
 
 /** Rev (commit) update — mechanical propagation of resolved commit SHAs */
-export const LockRevUpdate = Schema.Struct({
-  _tag: Schema.Literal('RevUpdate'),
+export const LockRevUpdate = Schema.TaggedStruct('RevUpdate', {
   inputName: Schema.String,
   memberName: Schema.String,
   oldRev: Schema.String,
@@ -45,8 +44,7 @@ export const LockRevUpdate = Schema.Struct({
 export type LockRevUpdate = Schema.Schema.Type<typeof LockRevUpdate>
 
 /** Ref (branch) update — intentional branch/input URL change */
-export const LockRefUpdate = Schema.Struct({
-  _tag: Schema.Literal('RefUpdate'),
+export const LockRefUpdate = Schema.TaggedStruct('RefUpdate', {
   inputName: Schema.String,
   memberName: Schema.String,
   oldRef: Schema.String,
@@ -56,16 +54,14 @@ export const LockRefUpdate = Schema.Struct({
 export type LockRefUpdate = Schema.Schema.Type<typeof LockRefUpdate>
 
 /** Scheme normalization update — git+ssh/git+https converted to github: */
-export const LockSchemeUpdate = Schema.Struct({
-  _tag: Schema.Literal('SchemeUpdate'),
+export const LockSchemeUpdate = Schema.TaggedStruct('SchemeUpdate', {
   inputName: Schema.String,
 })
 /** Inferred type for a scheme update */
 export type LockSchemeUpdate = Schema.Schema.Type<typeof LockSchemeUpdate>
 
 /** Shared lock source update — e.g. devenv version propagated from source member */
-export const LockSharedSourceUpdate = Schema.Struct({
-  _tag: Schema.Literal('SharedSourceUpdate'),
+export const LockSharedSourceUpdate = Schema.TaggedStruct('SharedSourceUpdate', {
   sourceName: Schema.String,
   sourceMemberName: Schema.String,
   targetCount: Schema.Number,

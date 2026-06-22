@@ -416,7 +416,7 @@ export const buildDependencyGraph = ({
   excludeMembers,
 }: {
   megarepoRoot: AbsoluteDirPath
-  config: typeof MegarepoConfig.Type
+  config: MegarepoConfig
   lockFile: LockFile
   excludeMembers?: ReadonlySet<string>
 }): Effect.Effect<DependencyGraph, PlatformError.PlatformError, FileSystem.FileSystem> =>

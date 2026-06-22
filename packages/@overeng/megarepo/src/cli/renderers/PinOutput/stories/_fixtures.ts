@@ -11,7 +11,7 @@ import type { PinState as PinStateType } from '../mod.ts'
 // State Factories - Success
 // =============================================================================
 
-export const createPinSuccessWithRef = (): typeof PinState.Type => ({
+export const createPinSuccessWithRef = (): PinState => ({
   _tag: 'Success',
   member: 'effect',
   action: 'pin',
@@ -19,14 +19,14 @@ export const createPinSuccessWithRef = (): typeof PinState.Type => ({
   commit: 'abc1234def5678',
 })
 
-export const createPinSuccessWithCommit = (): typeof PinState.Type => ({
+export const createPinSuccessWithCommit = (): PinState => ({
   _tag: 'Success',
   member: 'effect',
   action: 'pin',
   commit: 'abc1234def5678',
 })
 
-export const createUnpinSuccess = (): typeof PinState.Type => ({
+export const createUnpinSuccess = (): PinState => ({
   _tag: 'Success',
   member: 'effect',
   action: 'unpin',
@@ -36,14 +36,14 @@ export const createUnpinSuccess = (): typeof PinState.Type => ({
 // State Factories - Already
 // =============================================================================
 
-export const createAlreadyPinned = (): typeof PinState.Type => ({
+export const createAlreadyPinned = (): PinState => ({
   _tag: 'Already',
   member: 'effect',
   action: 'pin',
   commit: 'abc1234def5678',
 })
 
-export const createAlreadyUnpinned = (): typeof PinState.Type => ({
+export const createAlreadyUnpinned = (): PinState => ({
   _tag: 'Already',
   member: 'effect',
   action: 'unpin',
@@ -53,7 +53,7 @@ export const createAlreadyUnpinned = (): typeof PinState.Type => ({
 // State Factories - DryRun
 // =============================================================================
 
-export const createDryRunFull = (): typeof PinState.Type => ({
+export const createDryRunFull = (): PinState => ({
   _tag: 'DryRun',
   member: 'effect',
   action: 'pin',
@@ -66,7 +66,7 @@ export const createDryRunFull = (): typeof PinState.Type => ({
   wouldCreateWorktree: true,
 })
 
-export const createDryRunSimple = (): typeof PinState.Type => ({
+export const createDryRunSimple = (): PinState => ({
   _tag: 'DryRun',
   member: 'effect',
   action: 'pin',
@@ -78,31 +78,31 @@ export const createDryRunSimple = (): typeof PinState.Type => ({
 // State Factories - Errors
 // =============================================================================
 
-export const createErrorNotInMegarepo = (): typeof PinState.Type => ({
+export const createErrorNotInMegarepo = (): PinState => ({
   _tag: 'Error',
   error: 'not_in_megarepo',
   message: 'Not in a megarepo',
 })
 
-export const createErrorMemberNotFound = (): typeof PinState.Type => ({
+export const createErrorMemberNotFound = (): PinState => ({
   _tag: 'Error',
   error: 'member_not_found',
   message: "Member 'unknown-repo' not found",
 })
 
-export const createErrorNotSynced = (): typeof PinState.Type => ({
+export const createErrorNotSynced = (): PinState => ({
   _tag: 'Error',
   error: 'not_synced',
   message: "Member 'effect' not synced yet",
 })
 
-export const createErrorLocalPath = (): typeof PinState.Type => ({
+export const createErrorLocalPath = (): PinState => ({
   _tag: 'Error',
   error: 'local_path',
   message: 'Cannot pin local path members',
 })
 
-export const createErrorNotInLock = (): typeof PinState.Type => ({
+export const createErrorNotInLock = (): PinState => ({
   _tag: 'Error',
   error: 'not_in_lock',
   message: "Member 'effect' not in lock file",
@@ -112,12 +112,12 @@ export const createErrorNotInLock = (): typeof PinState.Type => ({
 // State Factories - Warnings
 // =============================================================================
 
-export const createWarningWorktreeNotAvailable = (): typeof PinState.Type => ({
+export const createWarningWorktreeNotAvailable = (): PinState => ({
   _tag: 'Warning',
   warning: 'worktree_not_available',
 })
 
-export const createWarningMemberRemovedFromConfig = (): typeof PinState.Type => ({
+export const createWarningMemberRemovedFromConfig = (): PinState => ({
   _tag: 'Warning',
   warning: 'member_removed_from_config',
   member: 'old-member',
@@ -133,8 +133,8 @@ export const createWarningMemberRemovedFromConfig = (): typeof PinState.Type => 
  */
 export const createTimeline = (
   finalState: PinStateType,
-): Array<{ at: number; action: typeof PinAction.Type }> => {
-  const timeline: Array<{ at: number; action: typeof PinAction.Type }> = []
+): Array<{ at: number; action: PinAction }> => {
+  const timeline: Array<{ at: number; action: PinAction }> = []
 
   // Extract member from final state if available
   const member = getMemberFromState(finalState) ?? 'effect'
@@ -175,7 +175,7 @@ const getMemberFromState = (state: PinStateType): string | undefined => {
 /**
  * Map a PinState to the corresponding PinAction.
  */
-const mapStateToAction = (state: PinStateType): typeof PinAction.Type => {
+const mapStateToAction = (state: PinStateType): PinAction => {
   switch (state._tag) {
     case 'Idle':
       // For idle, we just return a checking action (shouldn't happen in practice)

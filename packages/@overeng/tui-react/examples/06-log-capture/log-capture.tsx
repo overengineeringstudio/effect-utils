@@ -33,7 +33,7 @@ const App = createTuiApp({
     _tag: 'Running',
     tasks: tasks.map((name) => ({ name, status: 'pending' as const })),
     currentTaskName: '',
-  } as typeof TaskRunnerState.Type,
+  } as TaskRunnerState,
   reducer: taskRunnerReducer,
 })
 

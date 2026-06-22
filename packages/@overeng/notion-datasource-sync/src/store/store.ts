@@ -97,7 +97,7 @@ export type OutboxProjectionRow = {
   readonly intentEventId: string
   readonly surface: string | undefined
   readonly commandTag: string
-  readonly state: typeof OutboxState.Type
+  readonly state: OutboxState
   readonly baseHash: string | undefined
   readonly desiredHash: string | undefined
   readonly attemptCount: number
@@ -137,7 +137,7 @@ export type ConflictProjectionRow = {
 export type GuardBlockProjectionRow = {
   readonly blockId: string
   readonly surface: SurfaceKey | undefined
-  readonly guard: typeof GuardName.Type
+  readonly guard: GuardName
   readonly message: string
   readonly eventId: SyncEventId
 }
@@ -183,15 +183,15 @@ export type ClaimedOutboxCommand = {
   readonly intentEventId: SyncEventId
   readonly surface: SurfaceKey
   readonly commandTag: string
-  readonly command: typeof RemoteWriteCommand.Type | undefined
-  readonly baseHash: typeof Hash.Type | undefined
-  readonly desiredHash: typeof Hash.Type
-  readonly preflight: ReadonlyArray<typeof GuardName.Type>
+  readonly command: RemoteWriteCommand | undefined
+  readonly baseHash: Hash | undefined
+  readonly desiredHash: Hash
+  readonly preflight: ReadonlyArray<GuardName>
   readonly attempt: number
   readonly leaseToken: string
-  readonly previousState: typeof OutboxState.Type
+  readonly previousState: OutboxState
   readonly attemptState: Extract<
-    typeof OutboxState.Type,
+    OutboxState,
     'running' | 'retryable' | 'blocked' | 'fenced' | 'ambiguous'
   >
   readonly attemptEvent: Extract<SyncEvent, { readonly _tag: 'RemoteWriteAttempted' }>
@@ -205,11 +205,11 @@ export type OutboxAttemptStateInput = {
   readonly surface: SurfaceKey
   readonly attempt: number
   readonly attemptState: Extract<
-    typeof OutboxState.Type,
+    OutboxState,
     'running' | 'retryable' | 'blocked' | 'fenced' | 'ambiguous'
   >
   readonly leaseToken?: string
-  readonly guard?: typeof GuardName.Type
+  readonly guard?: GuardName
   readonly retryAfterMillis?: number
   readonly idempotencyKey?: IdempotencyKey
 }
@@ -222,17 +222,17 @@ export type OutboxSettlementInput = {
   readonly surface: SurfaceKey
   readonly commandTag: string
   readonly requestId: NotionRequestId
-  readonly desiredHash: typeof Hash.Type
-  readonly observedHash: typeof Hash.Type
+  readonly desiredHash: Hash
+  readonly observedHash: Hash
   readonly bodyPointer?: BodyPointer
-  readonly createdPageId?: typeof PageId.Type
+  readonly createdPageId?: PageId
   readonly settlementKind: 'verified-success' | 'verified-no-op'
   readonly idempotencyKey?: IdempotencyKey
 }
 
 /** A guard-identified reason why compaction cannot proceed right now. */
 export type CompactionBlocker = {
-  readonly guard: typeof GuardName.Type
+  readonly guard: GuardName
   readonly message: string
 }
 
@@ -403,7 +403,7 @@ const readOutboxState = ({
 }: {
   readonly row: SqlRow
   readonly key: string
-}): typeof OutboxState.Type => Schema.decodeUnknownSync(OutboxState)(readString({ row, key }))
+}): OutboxState => Schema.decodeUnknownSync(OutboxState)(readString({ row, key }))
 
 /**
  * The non-empty `pendingLocal` projection the store hands to the planner for a
@@ -472,7 +472,7 @@ const eventPayload = (canonicalJson: string): SyncEvent['payload'] => ({
 const makeEventId = (parts: ReadonlyArray<string | number>): SyncEventId =>
   decodeSyncEventId(parts.map((part) => String(part).replaceAll(':', '-')).join(':'))
 
-const decodePlanCommand = (event: SyncEvent): typeof RemoteWriteCommand.Type | undefined =>
+const decodePlanCommand = (event: SyncEvent): RemoteWriteCommand | undefined =>
   decodePayload({ event: event, decode: decodeRemoteWritePlanPayload })?.command
 
 const assertSupportedSchemaVersion = (db: DatabaseSync): void => {

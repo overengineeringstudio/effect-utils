@@ -21,7 +21,7 @@ const StressTestApp = createTuiApp({
     startTime: Date.now(),
     fps: 0,
     progress: 0,
-  } as typeof StressTestState.Type,
+  } as StressTestState,
   reducer: stressTestReducer,
 })
 
@@ -37,7 +37,7 @@ const runningState = ({
   frame: number
   fps: number
   progress: number
-}): typeof StressTestState.Type => ({
+}): StressTestState => ({
   _tag: 'Running',
   frame,
   startTime: Date.now() - frame * 16, // Approximate based on 60fps
@@ -51,7 +51,7 @@ const finishedState = ({
 }: {
   totalFrames: number
   avgFps: number
-}): typeof StressTestState.Type => ({
+}): StressTestState => ({
   _tag: 'Finished',
   totalFrames,
   averageFps: avgFps,
@@ -66,7 +66,7 @@ const interruptedState = ({
   frame: number
   fps: number
   progress: number
-}): typeof StressTestState.Type => ({
+}): StressTestState => ({
   _tag: 'Interrupted',
   frame,
   fps,
@@ -84,8 +84,8 @@ const createRapidTimeline = ({
 }: {
   durationMs: number
   frameMs?: number
-}): Array<{ at: number; action: typeof StressTestAction.Type }> => {
-  const events: Array<{ at: number; action: typeof StressTestAction.Type }> = []
+}): Array<{ at: number; action: StressTestAction }> => {
+  const events: Array<{ at: number; action: StressTestAction }> = []
   for (let t = frameMs; t < durationMs; t += frameMs) {
     events.push({ at: t, action: { _tag: 'Tick' } })
   }

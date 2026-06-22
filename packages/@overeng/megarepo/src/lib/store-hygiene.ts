@@ -158,10 +158,10 @@ export const validateStoreMembers = ({
       const commitGitPath = `${commitWorktreePath}.git`.replace(/\/\.git$/, '/.git')
       const branchGitExists = yield* fs
         .exists(branchGitPath)
-        .pipe(Effect.catchAll(() => Effect.succeed(false)))
+        .pipe(Effect.orElseSucceed(() => false))
       const commitGitExists = yield* fs
         .exists(commitGitPath)
-        .pipe(Effect.catchAll(() => Effect.succeed(false)))
+        .pipe(Effect.orElseSucceed(() => false))
 
       if (branchGitExists === false && commitGitExists === false) {
         issues.push({
@@ -184,7 +184,7 @@ export const validateStoreMembers = ({
 
       if (classifyRef(expectedRef) === 'branch' && branchGitExists === true) {
         const actualBranch = yield* Git.getCurrentBranch(worktreePath).pipe(
-          Effect.catchAll(() => Effect.succeed(Option.none<string>())),
+          Effect.orElseSucceed(() => Option.none<string>()),
         )
 
         if (Option.isSome(actualBranch) === true && actualBranch.value !== expectedRef) {
@@ -205,7 +205,7 @@ export const validateStoreMembers = ({
           // Detached HEAD in a branch worktree is also a mismatch
           const commitSha = yield* Git.getCurrentCommit(worktreePath).pipe(
             Effect.map((sha) => sha.slice(0, 7)),
-            Effect.catchAll(() => Effect.succeed('unknown')),
+            Effect.orElseSucceed(() => 'unknown'),
           )
           issues.push({
             severity: 'error',
@@ -225,9 +225,7 @@ export const validateStoreMembers = ({
 
       // Check dirty/unpushed (warnings)
       const worktreeStatus = yield* Git.getWorktreeStatus(worktreePath).pipe(
-        Effect.catchAll(() =>
-          Effect.succeed({ isDirty: false, hasUnpushed: false, changesCount: 0 }),
-        ),
+        Effect.orElseSucceed(() => ({ isDirty: false, hasUnpushed: false, changesCount: 0 })),
       )
 
       if (worktreeStatus.isDirty === true) {

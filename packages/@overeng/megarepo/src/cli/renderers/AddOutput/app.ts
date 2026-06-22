@@ -9,7 +9,7 @@ import { AddState, AddAction, addReducer } from './schema.ts'
 /**
  * Initial state (idle).
  */
-export const createInitialAddState = (): typeof AddState.Type => ({
+export const createInitialAddState = (): AddState => ({
   _tag: 'Idle',
 })
 

@@ -85,7 +85,7 @@ export const loadStoreGcConfig = ({
       Effect.flatMap((content) =>
         Schema.decodeUnknown(Schema.parseJson(StoreGcConfigOverride))(content),
       ),
-      Effect.catchAll(() => Effect.succeed({} as StoreGcConfigOverride)),
+      Effect.orElseSucceed(() => ({}) as StoreGcConfigOverride),
     )
     return mergeStoreGcConfig(override)
   }).pipe(

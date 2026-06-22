@@ -484,7 +484,7 @@ export const createPreflightFailedState = (opts: {
  */
 export const createTimeline = (
   finalState: Partial<SyncStateType>,
-): Array<{ at: number; action: typeof SyncAction.Type }> => {
+): Array<{ at: number; action: SyncAction }> => {
   const results = finalState.results ?? []
   const members = finalState.members ?? results.map((r) => r.name)
   const workspace = finalState.workspace ?? WORKSPACE
@@ -506,7 +506,7 @@ export const createTimeline = (
     ]
   }
 
-  const timeline: Array<{ at: number; action: typeof SyncAction.Type }> = []
+  const timeline: Array<{ at: number; action: SyncAction }> = []
   const concurrency = 4
   const resultInterval = 600
 
@@ -612,7 +612,7 @@ export const createCommandTimeline = ({
 }: {
   mode: 'lock' | 'fetch' | 'apply'
   finalState: Partial<SyncStateType> & { results: MemberSyncResult[] }
-}): Array<{ at: number; action: typeof SyncAction.Type }> => {
+}): Array<{ at: number; action: SyncAction }> => {
   const results = finalState.results
   const members = finalState.members ?? results.map((r) => r.name)
   const workspace = finalState.workspace ?? WORKSPACE
@@ -621,7 +621,7 @@ export const createCommandTimeline = ({
   const sharedSourceUpdates = finalState.sharedSourceUpdates ?? []
   const syncErrors = finalState.syncErrors ?? []
 
-  const timeline: Array<{ at: number; action: typeof SyncAction.Type }> = []
+  const timeline: Array<{ at: number; action: SyncAction }> = []
   const concurrency = 4
   const resultInterval = 600
 

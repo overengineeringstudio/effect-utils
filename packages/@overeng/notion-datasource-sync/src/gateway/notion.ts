@@ -418,7 +418,7 @@ const propertyWriteClassFromType = (propertyType: string): PropertyWriteClass =>
 
 const schemaPropertiesFromRemote = (
   properties: Record<string, unknown>,
-): ReadonlyArray<typeof DataSourcePropertySnapshot.Type> =>
+): ReadonlyArray<DataSourcePropertySnapshot> =>
   SchemaHelpers.getPropertiesFromRecord(properties).flatMap((property, ordinal) => {
     const raw = Object.values(properties).find(
       (value) => isRecord(value) === true && value.id === property.id,
@@ -494,7 +494,7 @@ const dataSourceSnapshotFromRemote = (dataSource: NotionGatewayDataSource) => {
 /** Project raw Notion data-source property definitions into datasource-sync schema observations. */
 export const schemaPropertyObservationsFromRemoteProperties = (
   properties: Readonly<Record<string, unknown>>,
-): ReadonlyArray<typeof DataSourcePropertySnapshot.Type> => schemaPropertiesFromRemote(properties)
+): ReadonlyArray<DataSourcePropertySnapshot> => schemaPropertiesFromRemote(properties)
 
 /** Project a full Notion data source into datasource-sync schema-observation descriptors. */
 export const schemaPropertyObservationsFromRemoteDataSource = (
@@ -780,7 +780,10 @@ const querySortsToNotion = (
   input: QueryRowsInput,
 ): Effect.Effect<ReadonlyArray<DatabaseSort> | undefined, NotionGatewayError> =>
   input.queryContract.sorts.length === 0
-    ? Effect.succeed(undefined)
+    ? // Success channel is `ReadonlyArray<DatabaseSort> | undefined`; `Effect.void` would
+      // widen it to include `void` and break the explicit return type.
+      // @effect-diagnostics-next-line effectSucceedWithVoid:off
+      Effect.succeed(undefined)
     : Effect.succeed(
         input.queryContract.sorts.map((sort) => ({
           property: sort.propertyId,
@@ -962,6 +965,9 @@ const canonicalFilterToNotion = (
 ): Effect.Effect<DatabaseFilter | undefined, NotionGatewayError> => {
   const filter = input.queryContract.filter
   if (filter === null || filter._tag === 'none') {
+    // Success channel is `DatabaseFilter | undefined`; `Effect.void` would widen it to
+    // include `void` and break the explicit return type.
+    // @effect-diagnostics-next-line effectSucceedWithVoid:off
     return Effect.succeed(undefined)
   }
   if (filter._tag === 'compound_hash') {
@@ -1029,7 +1035,7 @@ const queryRowsPageFromRemote = (input: {
   readonly queryInput: QueryRowsInput
   readonly apiContract: NotionApiContractType
   readonly result: PaginatedResult<NotionGatewayPage>
-}): typeof QueryRowsPage.Type =>
+}): QueryRowsPage =>
   QueryRowsPage.make({
     _tag: 'QueryRowsPage',
     apiVersion: input.apiContract.apiVersion,

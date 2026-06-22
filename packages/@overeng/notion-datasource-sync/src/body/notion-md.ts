@@ -152,7 +152,7 @@ const bodyPointerFromRemoteBody = (input: {
   readonly bodyEvidenceFingerprint?: string | undefined
   readonly completeness?: BodyCompleteness
   readonly safety?: BodySafetySnapshot
-}): Effect.Effect<typeof BodyPointer.Type, BodySyncError> => {
+}): Effect.Effect<BodyPointer, BodySyncError> => {
   if (input.bodyDescriptor === undefined || input.bodyEvidenceFingerprint === undefined) {
     return Effect.fail(
       new BodySyncError({

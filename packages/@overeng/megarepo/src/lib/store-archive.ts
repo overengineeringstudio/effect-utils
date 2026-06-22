@@ -218,7 +218,7 @@ export const archiveWorktree = (args: {
     )
     const line = `${args.branch}\t${iso}\t${args.commit}\t${args.reason}\n`
     yield* fs.readFileString(readmePath).pipe(
-      Effect.catchAll(() => Effect.succeed('')),
+      Effect.orElseSucceed(() => ''),
       Effect.flatMap((existing) => writeFileAtomic({ path: readmePath, content: existing + line })),
       Effect.catchAll((error) =>
         Effect.sync(() => {
@@ -299,7 +299,7 @@ export const archiveRefMismatchWorktree = (args: {
     )
     const line = `${args.pathRef}\t${iso}\t${args.commit}\t${reason}\tactualHeadBranch=${args.actualHeadBranch}\n`
     yield* fs.readFileString(readmePath).pipe(
-      Effect.catchAll(() => Effect.succeed('')),
+      Effect.orElseSucceed(() => ''),
       Effect.flatMap((existing) => writeFileAtomic({ path: readmePath, content: existing + line })),
       Effect.catchAll((error) =>
         Effect.sync(() => {

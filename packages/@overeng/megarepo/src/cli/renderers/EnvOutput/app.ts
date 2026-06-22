@@ -9,7 +9,7 @@ import { EnvState, EnvAction, envReducer } from './schema.ts'
 /**
  * Initial empty state for env output.
  */
-export const createInitialEnvState = (): typeof EnvState.Type => ({
+export const createInitialEnvState = (): EnvState => ({
   _tag: 'Success',
   MEGAREPO_STORE: '',
   shell: 'bash',

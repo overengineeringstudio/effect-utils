@@ -22,11 +22,11 @@ export interface GenerateAllOptions {
   /** Path to the outermost megarepo root (unused but kept for API compat) */
   readonly outermostRoot: AbsoluteDirPath
   /** The megarepo config */
-  readonly config: typeof MegarepoConfig.Type
+  readonly config: MegarepoConfig
 }
 
 /** Get list of generators that would run based on config */
-export const getEnabledGenerators = (config: typeof MegarepoConfig.Type): string[] => {
+export const getEnabledGenerators = (config: MegarepoConfig): string[] => {
   const generators: string[] = []
   if (config.generators?.vscode?.enabled === true) {
     generators.push('.vscode/megarepo.code-workspace')

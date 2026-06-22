@@ -145,7 +145,7 @@ const localBodyChange = ({
   contentHash = hash('body-local'),
 }: {
   readonly pageId?: PageIdType
-  readonly path?: typeof WorkspaceRelativePath.Type
+  readonly path?: WorkspaceRelativePath
   readonly contentHash?: HashType
 } = {}) =>
   presentArtifactObservation({

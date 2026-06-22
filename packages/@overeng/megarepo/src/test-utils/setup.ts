@@ -191,7 +191,7 @@ export const createWorkspace = (fixture?: WorkspaceFixture) =>
     yield* initGitRepo(workspacePath)
 
     // Create megarepo.json
-    const config: typeof MegarepoConfig.Type = {
+    const config: MegarepoConfig = {
       members: fixture?.members ?? {},
     }
     const configContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
@@ -335,6 +335,6 @@ export const readConfig = (workspacePath: AbsoluteDirPath) =>
   })
 
 /** Generate a megarepo.json config object */
-export const generateConfig = (members: Record<string, string>): typeof MegarepoConfig.Type => ({
+export const generateConfig = (members: Record<string, string>): MegarepoConfig => ({
   members,
 })

@@ -47,7 +47,7 @@ const createMinimalTestSetup = () =>
     yield* initGitRepo(workspacePath)
 
     // Create megarepo.json
-    const config: typeof MegarepoConfig.Type = {
+    const config: MegarepoConfig = {
       members: {
         'test-repo': 'test-owner/test-repo',
       },
@@ -128,7 +128,7 @@ describe('mr config pin', () => {
             EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
           )
 
-          const config1: typeof MegarepoConfig.Type = {
+          const config1: MegarepoConfig = {
             members: {
               'test-repo': 'test-owner/test-repo#feature-branch',
             },

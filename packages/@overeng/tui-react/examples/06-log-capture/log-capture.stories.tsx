@@ -26,7 +26,7 @@ const TaskRunnerApp = createTuiApp({
       { name: 'build', status: 'pending' },
     ],
     currentTaskName: '',
-  } as typeof TaskRunnerState.Type,
+  } as TaskRunnerState,
   reducer: taskRunnerReducer,
 })
 
@@ -34,7 +34,7 @@ const TaskRunnerApp = createTuiApp({
 // Initial States
 // =============================================================================
 
-const initialState: typeof TaskRunnerState.Type = {
+const initialState: TaskRunnerState = {
   _tag: 'Running',
   tasks: [
     { name: 'lint', status: 'pending' },
@@ -45,7 +45,7 @@ const initialState: typeof TaskRunnerState.Type = {
   currentTaskName: '',
 }
 
-const completeState: typeof TaskRunnerState.Type = {
+const completeState: TaskRunnerState = {
   _tag: 'Complete',
   tasks: [
     { name: 'lint', status: 'done' },
@@ -60,7 +60,7 @@ const completeState: typeof TaskRunnerState.Type = {
 // Timeline
 // =============================================================================
 
-const demoTimeline: Array<{ at: number; action: typeof TaskRunnerAction.Type }> = [
+const demoTimeline: Array<{ at: number; action: TaskRunnerAction }> = [
   { at: 200, action: { _tag: 'StartTask', name: 'lint' } },
   { at: 700, action: { _tag: 'CompleteTask', name: 'lint' } },
   { at: 900, action: { _tag: 'StartTask', name: 'typecheck' } },

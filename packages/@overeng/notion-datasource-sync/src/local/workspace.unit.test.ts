@@ -26,7 +26,7 @@ const decode = <TSchema extends Schema.Schema.AnyNoContext>(schema: TSchema, val
   Schema.decodeUnknownSync(schema)(value)
 
 const hash = (char: string) => decode(Hash, `sha256:${char.repeat(64)}`)
-const bodyPointerFor = (bodyHash: typeof Hash.Type) =>
+const bodyPointerFor = (bodyHash: Hash) =>
   decode(BodyPointer, {
     _tag: 'BodyPointer',
     pageId,

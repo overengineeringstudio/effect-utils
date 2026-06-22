@@ -80,10 +80,10 @@ const decode = <TSchema extends Schema.Schema.AnyNoContext>({
 
 const eventIdPart = (value: string): string => value.replaceAll(':', '-').replaceAll('/', '-')
 
-const commandIdFor = (value: string): typeof CommandId.Type =>
+const commandIdFor = (value: string): CommandId =>
   decode({ schema: CommandId, value: `cmd:${eventIdPart(value)}` })
 
-const intentEventIdFor = (value: string): typeof SyncEventId.Type =>
+const intentEventIdFor = (value: string): SyncEventId =>
   decode({ schema: SyncEventId, value: `intent:${eventIdPart(value)}` })
 
 const eventPayload = (value: unknown): SyncEventType['payload'] => ({
@@ -108,8 +108,8 @@ const eventBase = ({
   readonly family: SyncEventType['family']
   readonly eventType: SyncEventType['eventType']
   readonly idempotencyKey: string
-  readonly surface?: typeof SurfaceKey.Type
-  readonly causedByEventIds?: ReadonlyArray<typeof SyncEventId.Type>
+  readonly surface?: SurfaceKey
+  readonly causedByEventIds?: ReadonlyArray<SyncEventId>
   readonly payload: unknown
   readonly now: () => Date
 }) => ({
@@ -647,7 +647,7 @@ export const resolveConflictCommand = <const TChoice extends ConflictResolutionC
 /** Enqueue a `RestorePageCommand` for a page that is in remote trash or classified as `remote-trash`; blocked if the page cannot be unambiguously restored. Respects `dryRun`. */
 export const restorePageCommand = (
   options: UserActionOptions & {
-    readonly pageId: typeof PageId.Type
+    readonly pageId: PageId
   },
 ) => {
   const now = options.now ?? (() => new Date())

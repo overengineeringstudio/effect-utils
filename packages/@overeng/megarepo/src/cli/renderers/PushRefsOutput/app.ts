@@ -7,7 +7,7 @@ import { createTuiApp } from '@overeng/tui-react'
 import { PushRefsState, PushRefsAction, pushRefsReducer } from './schema.ts'
 
 /** Returns the default idle state for the push-refs TUI */
-export const createInitialPushRefsState = (): typeof PushRefsState.Type => ({
+export const createInitialPushRefsState = (): PushRefsState => ({
   _tag: 'Idle',
 })
 

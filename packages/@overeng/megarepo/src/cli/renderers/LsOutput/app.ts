@@ -12,7 +12,7 @@ import { LsState, LsAction, lsReducer } from './schema.ts'
 /**
  * Initial state for ls output (empty members list).
  */
-export const createInitialLsState = (): typeof LsState.Type => ({
+export const createInitialLsState = (): LsState => ({
   _tag: 'Success',
   members: [],
   all: false,

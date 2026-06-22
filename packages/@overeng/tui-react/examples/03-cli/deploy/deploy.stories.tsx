@@ -31,16 +31,16 @@ const sampleLogs: readonly LogEntry[] = [
 // State Factories
 // =============================================================================
 
-const createIdleState = (): typeof DeployState.Type => ({ _tag: 'Idle' })
+const createIdleState = (): DeployState => ({ _tag: 'Idle' })
 
-const createValidatingState = (): typeof DeployState.Type => ({
+const createValidatingState = (): DeployState => ({
   _tag: 'Validating',
   environment: 'production',
   services: ['api', 'web', 'worker'],
   logs: sampleLogs.slice(0, 2),
 })
 
-const createProgressState = (): typeof DeployState.Type => ({
+const createProgressState = (): DeployState => ({
   _tag: 'Progress',
   environment: 'production',
   services: [
@@ -52,7 +52,7 @@ const createProgressState = (): typeof DeployState.Type => ({
   startedAt: Date.now() - 5000,
 })
 
-const createCompleteState = (): typeof DeployState.Type => ({
+const createCompleteState = (): DeployState => ({
   _tag: 'Complete',
   environment: 'production',
   services: [
@@ -72,7 +72,7 @@ const createCompleteState = (): typeof DeployState.Type => ({
   totalDuration: 8200,
 })
 
-const createFailedState = (): typeof DeployState.Type => ({
+const createFailedState = (): DeployState => ({
   _tag: 'Failed',
   environment: 'production',
   services: [
@@ -91,7 +91,7 @@ const createFailedState = (): typeof DeployState.Type => ({
   failedAt: Date.now(),
 })
 
-const createRollingBackState = (): typeof DeployState.Type => ({
+const createRollingBackState = (): DeployState => ({
   _tag: 'RollingBack',
   environment: 'production',
   services: [
@@ -113,7 +113,7 @@ const createRollingBackState = (): typeof DeployState.Type => ({
 // Timeline for Animated Story
 // =============================================================================
 
-const deployTimeline: Array<{ at: number; action: typeof DeployAction.Type }> = [
+const deployTimeline: Array<{ at: number; action: DeployAction }> = [
   // Start validating
   { at: 0, action: { _tag: 'SetState', state: createValidatingState() } },
 
@@ -449,7 +449,7 @@ const longLogsBase: readonly LogEntry[] = [
   },
 ]
 
-const longLinesTimeline: Array<{ at: number; action: typeof DeployAction.Type }> = [
+const longLinesTimeline: Array<{ at: number; action: DeployAction }> = [
   // Start - Idle
   { at: 0, action: { _tag: 'SetState', state: { _tag: 'Idle' } } },
 

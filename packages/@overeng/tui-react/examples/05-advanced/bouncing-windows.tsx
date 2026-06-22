@@ -80,7 +80,7 @@ const runBouncingWindows = ({
       frame: 0,
       termWidth: width,
       termHeight: height,
-    } as typeof AppState.Type,
+    } as AppState,
     reducer: appReducer,
   })
 

@@ -138,7 +138,7 @@ const exampleMembersClean: MemberStatus[] = [
 // Basic States
 // =============================================================================
 
-export const createDefaultState = (options?: StateOptions): typeof StatusState.Type => ({
+export const createDefaultState = (options?: StateOptions): StatusState => ({
   applyNeeded: false,
   lockNeeded: false,
   name: 'dev-workspace',
@@ -149,7 +149,7 @@ export const createDefaultState = (options?: StateOptions): typeof StatusState.T
   all: options?.all ?? false,
 })
 
-export const createCleanState = (options?: StateOptions): typeof StatusState.Type => ({
+export const createCleanState = (options?: StateOptions): StatusState => ({
   applyNeeded: false,
   lockNeeded: false,
   name: 'dev-workspace',
@@ -161,7 +161,7 @@ export const createCleanState = (options?: StateOptions): typeof StatusState.Typ
   lastSyncTime: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
 })
 
-export const createSingleMemberState = (options?: StateOptions): typeof StatusState.Type => ({
+export const createSingleMemberState = (options?: StateOptions): StatusState => ({
   applyNeeded: false,
   lockNeeded: false,
   all: options?.all ?? false,
@@ -191,7 +191,7 @@ export const createSingleMemberState = (options?: StateOptions): typeof StatusSt
   lastSyncTime: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
 })
 
-export const createEmptyWorkspaceState = (options?: StateOptions): typeof StatusState.Type => ({
+export const createEmptyWorkspaceState = (options?: StateOptions): StatusState => ({
   applyNeeded: false,
   lockNeeded: false,
   all: options?.all ?? false,
@@ -206,7 +206,7 @@ export const createEmptyWorkspaceState = (options?: StateOptions): typeof Status
 // Lock File Issues
 // =============================================================================
 
-export const createLockMissingState = (options?: StateOptions): typeof StatusState.Type => ({
+export const createLockMissingState = (options?: StateOptions): StatusState => ({
   applyNeeded: false,
   lockNeeded: false,
   all: options?.all ?? false,
@@ -222,7 +222,7 @@ export const createLockMissingState = (options?: StateOptions): typeof StatusSta
   },
 })
 
-export const createLockStaleState = (options?: StateOptions): typeof StatusState.Type => ({
+export const createLockStaleState = (options?: StateOptions): StatusState => ({
   applyNeeded: false,
   lockNeeded: false,
   all: options?.all ?? false,
@@ -242,7 +242,7 @@ export const createLockStaleState = (options?: StateOptions): typeof StatusState
   },
 })
 
-export const createStaleLockState = (options?: StateOptions): typeof StatusState.Type => ({
+export const createStaleLockState = (options?: StateOptions): StatusState => ({
   applyNeeded: false,
   lockNeeded: false,
   all: options?.all ?? false,
@@ -299,7 +299,7 @@ export const createStaleLockState = (options?: StateOptions): typeof StatusState
   },
 })
 
-export const createCommitDriftState = (options?: StateOptions): typeof StatusState.Type => ({
+export const createCommitDriftState = (options?: StateOptions): StatusState => ({
   applyNeeded: false,
   lockNeeded: false,
   all: options?.all ?? false,
@@ -374,7 +374,7 @@ export const createCommitDriftState = (options?: StateOptions): typeof StatusSta
 // Ref Tracking Issues
 // =============================================================================
 
-export const createSymlinkDriftState = (options?: StateOptions): typeof StatusState.Type => ({
+export const createSymlinkDriftState = (options?: StateOptions): StatusState => ({
   applyNeeded: false,
   lockNeeded: false,
   all: options?.all ?? false,
@@ -451,7 +451,7 @@ export const createSymlinkDriftState = (options?: StateOptions): typeof StatusSt
 
 export const createMultipleSymlinkDriftState = (
   options?: StateOptions,
-): typeof StatusState.Type => ({
+): StatusState => ({
   applyNeeded: false,
   lockNeeded: false,
   all: options?.all ?? false,
@@ -515,7 +515,7 @@ export const createMultipleSymlinkDriftState = (
   },
 })
 
-export const createRefMismatchState = (options?: StateOptions): typeof StatusState.Type => ({
+export const createRefMismatchState = (options?: StateOptions): StatusState => ({
   applyNeeded: false,
   lockNeeded: false,
   all: options?.all ?? false,
@@ -595,7 +595,7 @@ export const createRefMismatchState = (options?: StateOptions): typeof StatusSta
 // Working Tree Issues
 // =============================================================================
 
-export const createAllDirtyState = (options?: StateOptions): typeof StatusState.Type => ({
+export const createAllDirtyState = (options?: StateOptions): StatusState => ({
   applyNeeded: false,
   lockNeeded: false,
   all: options?.all ?? false,
@@ -658,7 +658,7 @@ export const createAllDirtyState = (options?: StateOptions): typeof StatusState.
   ],
 })
 
-export const createAllNotSyncedState = (options?: StateOptions): typeof StatusState.Type => ({
+export const createAllNotSyncedState = (options?: StateOptions): StatusState => ({
   applyNeeded: false,
   lockNeeded: false,
   all: options?.all ?? false,
@@ -707,7 +707,7 @@ export const createAllNotSyncedState = (options?: StateOptions): typeof StatusSt
   ],
 })
 
-export const createWarningsState = (options?: StateOptions): typeof StatusState.Type => ({
+export const createWarningsState = (options?: StateOptions): StatusState => ({
   applyNeeded: false,
   lockNeeded: false,
   all: options?.all ?? false,
@@ -768,7 +768,7 @@ export const createWarningsState = (options?: StateOptions): typeof StatusState.
 // Special Cases
 // =============================================================================
 
-export const createPinnedMembersState = (options?: StateOptions): typeof StatusState.Type => ({
+export const createPinnedMembersState = (options?: StateOptions): StatusState => ({
   applyNeeded: false,
   lockNeeded: false,
   all: options?.all ?? false,
@@ -814,7 +814,7 @@ export const createPinnedMembersState = (options?: StateOptions): typeof StatusS
   ],
 })
 
-export const createLocalPathMembersState = (options?: StateOptions): typeof StatusState.Type => ({
+export const createLocalPathMembersState = (options?: StateOptions): StatusState => ({
   applyNeeded: false,
   lockNeeded: false,
   all: options?.all ?? false,
@@ -860,7 +860,7 @@ export const createLocalPathMembersState = (options?: StateOptions): typeof Stat
   ],
 })
 
-export const createManyMembersState = (options?: StateOptions): typeof StatusState.Type => ({
+export const createManyMembersState = (options?: StateOptions): StatusState => ({
   applyNeeded: false,
   lockNeeded: false,
   all: options?.all ?? false,
@@ -892,7 +892,7 @@ export const createManyMembersState = (options?: StateOptions): typeof StatusSta
 // Complex / Nested
 // =============================================================================
 
-export const createNestedMegareposState = (options?: StateOptions): typeof StatusState.Type => {
+export const createNestedMegareposState = (options?: StateOptions): StatusState => {
   const all = options?.all ?? true
   return {
     applyNeeded: false,
@@ -997,7 +997,7 @@ export const createNestedMegareposState = (options?: StateOptions): typeof Statu
   }
 }
 
-export const createCurrentLocationState = (options?: StateOptions): typeof StatusState.Type => {
+export const createCurrentLocationState = (options?: StateOptions): StatusState => {
   const all = options?.all ?? false
   return {
     applyNeeded: false,
@@ -1070,7 +1070,7 @@ export const createCurrentLocationState = (options?: StateOptions): typeof Statu
   }
 }
 
-export const createDeeplyNestedState = (options?: StateOptions): typeof StatusState.Type => {
+export const createDeeplyNestedState = (options?: StateOptions): StatusState => {
   const all = options?.all ?? false
   return {
     applyNeeded: false,
@@ -1161,7 +1161,7 @@ export const createDeeplyNestedState = (options?: StateOptions): typeof StatusSt
   }
 }
 
-export const createMultipleProblemsState = (options?: StateOptions): typeof StatusState.Type => ({
+export const createMultipleProblemsState = (options?: StateOptions): StatusState => ({
   applyNeeded: false,
   lockNeeded: false,
   all: options?.all ?? false,
