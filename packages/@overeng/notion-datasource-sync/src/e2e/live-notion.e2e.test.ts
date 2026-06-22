@@ -2390,7 +2390,10 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
               })
               const observedRelationTarget = relatedPages.at(29) ?? relatedPages.at(0)
               if (observedRelationTarget === undefined) {
-                return yield* Effect.fail(new Error('relation fixture created no target pages'))
+                // Fixture invariant: we just created the target pages above, so an
+                // empty list is an impossible setup defect, not an expected failure
+                // (matches the surrounding `throw new Error` precondition style).
+                return yield* Effect.die(new Error('relation fixture created no target pages'))
               }
               const observerPage = yield* NotionPages.create({
                 parent: { type: 'data_source_id', data_source_id: sourceDataSourceId },

@@ -9,6 +9,7 @@ import { InMemoryCache } from '../cache/in-memory-cache.ts'
 import type { NotionCache } from '../cache/types.ts'
 import { Heading1, Paragraph } from '../components/blocks.ts'
 import { createFakeNotion, type FakeNotion } from '../test/mock-client.ts'
+import type { NotionSyncError } from './errors.ts'
 import type { SyncMetrics } from './sync-metrics.ts'
 import { sync } from './sync.ts'
 
@@ -66,7 +67,7 @@ const TypeSwapTree = ({
 
 const runWith = <A,>(
   fake: FakeNotion,
-  eff: Effect.Effect<A, unknown, HttpClient.HttpClient | NotionConfig>,
+  eff: Effect.Effect<A, NotionSyncError, HttpClient.HttpClient | NotionConfig>,
 ): Promise<A> => Effect.runPromise(eff.pipe(Effect.provide(fake.layer)))
 
 const ten: readonly ParagraphItem[] = Array.from({ length: 10 }, (_, i) => ({
@@ -93,7 +94,7 @@ const collectMetrics = async (
       onMetrics: (m) => {
         captured = m
       },
-    }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+    }),
   )
   if (captured === undefined) throw new Error('onMetrics was never invoked')
   return captured

@@ -45,7 +45,7 @@ const runStatusCommand = ({
     const stdout = (yield* getStdoutLines).join('\n')
 
     // Parse JSON output
-    let status: typeof StatusState.Type | undefined
+    let status: StatusState | undefined
     if (stdout.trim() !== '') {
       status = yield* Schema.decodeUnknown(Schema.parseJson(StatusState))(stdout)
     }
@@ -80,7 +80,7 @@ const createTestWorkspace = (args: {
     yield* initGitRepo(workspacePath)
 
     // Create megarepo.json
-    const config: typeof MegarepoConfig.Type = {
+    const config: MegarepoConfig = {
       members: args.members,
     }
     const configContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(

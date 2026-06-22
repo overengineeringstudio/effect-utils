@@ -41,8 +41,7 @@ export const RemoteBodyObservationEvidence = Schema.TaggedStruct('RemoteBodyObse
 }).annotations({ identifier: 'NotionBodyEvidence.RemoteBodyObservationEvidence' })
 export type RemoteBodyObservationEvidence = typeof RemoteBodyObservationEvidence.Type
 
-const RemoteBodyObservationIdentityEvidence = Schema.Struct({
-  _tag: Schema.Literal('RemoteBodyObservationEvidence'),
+const RemoteBodyObservationIdentityEvidence = Schema.TaggedStruct('RemoteBodyObservationEvidence', {
   schemaVersion: Schema.Literal(1),
   notionApiVersion: Schema.NonEmptyTrimmedString,
   pageId: Schema.NonEmptyTrimmedString,
@@ -176,5 +175,4 @@ export const makeRemoteBodyObservationEvidence = (opts: {
 }
 
 /** Extracts the content digest from a content descriptor, e.g. to compare evidence descriptors without their codec/media-type metadata. */
-export const descriptorDigest = (descriptor: typeof ContentDescriptor.Type): ContentDigest =>
-  descriptor.digest
+export const descriptorDigest = (descriptor: ContentDescriptor): ContentDigest => descriptor.digest

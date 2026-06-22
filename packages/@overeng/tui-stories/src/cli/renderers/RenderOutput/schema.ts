@@ -9,21 +9,18 @@ import { Schema } from 'effect'
  * not tracked in this state. This state models the *content* being rendered.
  */
 export const RenderState = Schema.Union(
-  Schema.Struct({
-    _tag: Schema.Literal('Rendering'),
+  Schema.TaggedStruct('Rendering', {
     storyId: Schema.String,
     width: Schema.Number,
     timelineMode: Schema.String,
   }),
-  Schema.Struct({
-    _tag: Schema.Literal('Complete'),
+  Schema.TaggedStruct('Complete', {
     storyId: Schema.String,
     width: Schema.Number,
     timelineMode: Schema.String,
     renderedLines: Schema.Array(Schema.String),
   }),
-  Schema.Struct({
-    _tag: Schema.Literal('Error'),
+  Schema.TaggedStruct('Error', {
     storyId: Schema.String,
     message: Schema.String,
   }),
@@ -32,9 +29,7 @@ export const RenderState = Schema.Union(
 export type RenderStateType = typeof RenderState.Type
 
 /** Actions for the render output */
-export const RenderAction = Schema.Union(
-  Schema.Struct({ _tag: Schema.Literal('SetState'), state: RenderState }),
-)
+export const RenderAction = Schema.Union(Schema.TaggedStruct('SetState', { state: RenderState }))
 
 export type RenderActionType = typeof RenderAction.Type
 

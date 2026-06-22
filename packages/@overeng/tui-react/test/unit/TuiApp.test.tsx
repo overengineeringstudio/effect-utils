@@ -492,7 +492,10 @@ describe('Issue #129: typed errors do not mask final state', () => {
           // Exit code signals failure; the error details live in `cause` and
           // are surfaced via `formatError` → stderr.
           expect(capturedOutput).toHaveLength(1)
-          const state = JSON.parse(capturedOutput[0]!)
+          const state = decodeJson(
+            Schema.Record({ key: Schema.String, value: Schema.Unknown }),
+            capturedOutput[0]!,
+          )
           expect(state.count).toBe(42)
           expect(state._tag).toBeUndefined()
 

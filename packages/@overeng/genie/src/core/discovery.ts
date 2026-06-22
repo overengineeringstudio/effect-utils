@@ -157,7 +157,7 @@ export const findGenieFiles = Effect.fn('discovery/findGenieFiles')(function* (d
   const pathService = yield* Path.Path
   const warnings: string[] = []
   // Prefer the canonical root when available; fall back to input on failure.
-  const rootDir = yield* fs.realPath(dir).pipe(Effect.catchAll(() => Effect.succeed(dir)))
+  const rootDir = yield* fs.realPath(dir).pipe(Effect.orElseSucceed(() => dir))
   const rootPrefix = rootDir.endsWith(path.sep) === true ? rootDir : `${rootDir}${path.sep}`
   const seenDirectories = new Set<string>()
   const gitFiles = discoverGitGenieFiles({ cwd: rootDir })
@@ -185,27 +185,29 @@ export const findGenieFiles = Effect.fn('discovery/findGenieFiles')(function* (d
           type: stat.type === 'Directory' ? 'directory' : 'file',
         }),
       ),
-      Effect.catchTag('SystemError', (e) => {
-        // Handle broken symlinks and other stat failures gracefully
-        if (e.reason === 'NotFound') {
-          warnings.push(`Skipping broken symlink: ${fullPath}`)
+      Effect.catchTags({
+        SystemError: (e) => {
+          // Handle broken symlinks and other stat failures gracefully
+          if (e.reason === 'NotFound') {
+            warnings.push(`Skipping broken symlink: ${fullPath}`)
+            return Effect.succeed({
+              type: 'skip',
+              reason: 'broken symlink',
+            } as StatResult)
+          }
+          warnings.push(`Skipping ${fullPath}: ${e.message}`)
           return Effect.succeed({
             type: 'skip',
-            reason: 'broken symlink',
+            reason: e.message,
           } as StatResult)
-        }
-        warnings.push(`Skipping ${fullPath}: ${e.message}`)
-        return Effect.succeed({
-          type: 'skip',
-          reason: e.message,
-        } as StatResult)
-      }),
-      Effect.catchTag('BadArgument', (e) => {
-        warnings.push(`Skipping ${fullPath}: ${e.message}`)
-        return Effect.succeed({
-          type: 'skip',
-          reason: e.message,
-        } as StatResult)
+        },
+        BadArgument: (e) => {
+          warnings.push(`Skipping ${fullPath}: ${e.message}`)
+          return Effect.succeed({
+            type: 'skip',
+            reason: e.message,
+          } as StatResult)
+        },
       }),
     )
 
@@ -264,13 +266,15 @@ export const findGenieFiles = Effect.fn('discovery/findGenieFiles')(function* (d
   for (const file of files) {
     const fullPath = pathService.isAbsolute(file) === true ? file : pathService.join(rootDir, file)
     const resolvedPath = yield* fs.realPath(fullPath).pipe(
-      Effect.catchTag('SystemError', (e) => {
-        warnings.push(`Skipping ${file}: ${e.message}`)
-        return Effect.succeed(null)
-      }),
-      Effect.catchTag('BadArgument', (e) => {
-        warnings.push(`Skipping ${file}: ${e.message}`)
-        return Effect.succeed(null)
+      Effect.catchTags({
+        SystemError: (e) => {
+          warnings.push(`Skipping ${file}: ${e.message}`)
+          return Effect.succeed(null)
+        },
+        BadArgument: (e) => {
+          warnings.push(`Skipping ${file}: ${e.message}`)
+          return Effect.succeed(null)
+        },
       }),
     )
 

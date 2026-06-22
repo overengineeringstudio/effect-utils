@@ -21,7 +21,7 @@ const BouncingApp = createTuiApp({
     frame: 0,
     termWidth: 78,
     termHeight: 20,
-  } as typeof AppState.Type,
+  } as AppState,
   reducer: appReducer,
 })
 
@@ -39,7 +39,7 @@ const createRunningState = ({
   width: number
   height: number
   frame?: number
-}): typeof AppState.Type => ({
+}): AppState => ({
   _tag: 'Running',
   windows: Array.from({ length: windowCount }, (_, i) =>
     createWindow({ id: i, count: windowCount, width, height }),
@@ -49,25 +49,13 @@ const createRunningState = ({
   termHeight: height,
 })
 
-const finishedState = ({
-  frames,
-  windows,
-}: {
-  frames: number
-  windows: number
-}): typeof AppState.Type => ({
+const finishedState = ({ frames, windows }: { frames: number; windows: number }): AppState => ({
   _tag: 'Finished',
   totalFrames: frames,
   windowCount: windows,
 })
 
-const interruptedState = ({
-  frame,
-  windows,
-}: {
-  frame: number
-  windows: number
-}): typeof AppState.Type => ({
+const interruptedState = ({ frame, windows }: { frame: number; windows: number }): AppState => ({
   _tag: 'Interrupted',
   frame,
   windowCount: windows,
@@ -83,8 +71,8 @@ const createBouncingTimeline = ({
 }: {
   durationMs: number
   frameMs?: number
-}): Array<{ at: number; action: typeof AppAction.Type }> => {
-  const events: Array<{ at: number; action: typeof AppAction.Type }> = []
+}): Array<{ at: number; action: AppAction }> => {
+  const events: Array<{ at: number; action: AppAction }> = []
   for (let t = frameMs; t < durationMs; t += frameMs) {
     events.push({ at: t, action: { _tag: 'Tick' } })
   }

@@ -104,9 +104,7 @@ export const genieCommand = Cli.Command.make(
       /**
        * CRITICAL: Normalize cwd to its real path (resolve symlinks).
        */
-      const resolvedCwd = yield* fs
-        .realPath(inputCwd)
-        .pipe(Effect.catchAll(() => Effect.succeed(inputCwd)))
+      const resolvedCwd = yield* fs.realPath(inputCwd).pipe(Effect.orElseSucceed(() => inputCwd))
 
       // Resolve oxfmt config path
       const oxfmtConfigPath = yield* resolveOxfmtConfigPath({

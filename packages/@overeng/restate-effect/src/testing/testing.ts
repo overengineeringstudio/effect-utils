@@ -491,6 +491,7 @@ const makeStateProxy = <S extends StateSchemas>({
       readAll().pipe(
         Effect.flatMap((rows) => {
           const hit = rows.find(([k]) => k === key)
+          // @effect-diagnostics-next-line effectSucceedWithVoid:off -- `get` returns a meaningful `StateValueType | undefined` union (undefined = key absent), not void; `Effect.void` would break the `StateProxy.get` signature.
           if (hit === undefined) return Effect.succeed(undefined)
           return Effect.try({
             try: () => serdeFor(key).deserialize(hit[1]) as StateValueType<S[typeof key]>,
@@ -835,14 +836,28 @@ export class RestateTestHarness extends Context.Tag('@overeng/restate-effect/Res
             provideIngress(ingressCallTyped(...a))) as BoundIngress['callTyped'],
           objectCall: ((...a: Parameters<typeof ingressObjectCall>) =>
             provideIngress(ingressObjectCall(...a))) as BoundIngress['objectCall'],
-          objectCallTyped: ((...a: Parameters<typeof ingressObjectCallTyped>) =>
-            provideIngress(ingressObjectCallTyped(...a))) as BoundIngress['objectCallTyped'],
+          /* Generic wrapper (not `Parameters<typeof ...>`-spread) so the deferred
+           * conditional `ObjectErrorOf<C, M>` stays in the error channel instead of
+           * collapsing to `unknown` at the constraint defaults. */
+          objectCallTyped: (<
+            C extends ObjectContract<string, any, any>,
+            M extends ObjectMethodsOf<C>,
+          >(args: {
+            contract: C
+            key: string
+            method: M
+            input: ObjectInputOf<C, M>
+          }) => provideIngress(ingressObjectCallTyped(args))) as BoundIngress['objectCallTyped'],
           objectSend: ((...a: Parameters<typeof ingressObjectSend>) =>
             provideIngress(ingressObjectSend(...a))) as BoundIngress['objectSend'],
           workflowSubmit: ((...a: Parameters<typeof ingressWorkflowSubmit>) =>
             provideIngress(ingressWorkflowSubmit(...a))) as BoundIngress['workflowSubmit'],
-          workflowAttach: ((...a: Parameters<typeof ingressWorkflowAttach>) =>
-            provideIngress(ingressWorkflowAttach(...a))) as BoundIngress['workflowAttach'],
+          /* Generic wrapper (see `objectCallTyped`) so `WorkflowRunErrorOf<C>` stays
+           * a deferred conditional rather than degrading to `unknown`. */
+          workflowAttach: (<C extends WorkflowContract<string, any, any, any, any>>(args: {
+            contract: C
+            key: string
+          }) => provideIngress(ingressWorkflowAttach(args))) as BoundIngress['workflowAttach'],
           workflowOutput: ((...a: Parameters<typeof ingressWorkflowOutput>) =>
             provideIngress(ingressWorkflowOutput(...a))) as BoundIngress['workflowOutput'],
           workflowCall: ((...a: Parameters<typeof ingressWorkflowCall>) =>

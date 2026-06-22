@@ -4367,7 +4367,7 @@ export const replicaChangesToPlannerIntents = ({
         }
         let dataSourceId: DataSourceId
         let baseSchemaHash: Hash
-        let initialProperties: Record<PropertyId, typeof CanonicalPropertyValue.Type>
+        let initialProperties: Record<PropertyId, CanonicalPropertyValue>
         try {
           dataSourceId = decode({ schema: DataSourceId, value: change.dataSourceId })
           baseSchemaHash = decode({ schema: Hash, value: change.baseHash })
@@ -4377,7 +4377,7 @@ export const replicaChangesToPlannerIntents = ({
               decode({ schema: PropertyId, value: propertyId }),
               Schema.decodeUnknownSync(CanonicalPropertyValue)(value),
             ]),
-          ) as Record<PropertyId, typeof CanonicalPropertyValue.Type>
+          ) as Record<PropertyId, CanonicalPropertyValue>
         } catch {
           markChange({
             replicaPath,
@@ -4819,7 +4819,7 @@ export const replicaChangesToPlannerIntents = ({
           })
           continue
         }
-        let bodyProjectionPayload: typeof BodyProjectionPayload.Type
+        let bodyProjectionPayload: BodyProjectionPayload
         try {
           bodyProjectionPayload = decodeBodyProjectionPayloadJson(
             readString({ row: body, key: 'body_projection_json' }),
@@ -4962,7 +4962,7 @@ export const replicaChangesToPlannerIntents = ({
           continue
         }
         const currentValueJson = readOptionalString({ row: cell, key: 'value_json' })
-        let currentValue: typeof CanonicalPropertyValue.Type
+        let currentValue: CanonicalPropertyValue
         if (
           currentValueJson === undefined ||
           currentValueJson === 'null' ||
@@ -5008,7 +5008,7 @@ export const replicaChangesToPlannerIntents = ({
           })
           continue
         }
-        const value: typeof CanonicalPropertyValue.Type = {
+        const value: CanonicalPropertyValue = {
           _tag: 'files',
           files: [
             {
@@ -5264,7 +5264,7 @@ export const replicaChangesToPlannerIntents = ({
           })
           continue
         }
-        let value: typeof CanonicalPropertyValue.Type
+        let value: CanonicalPropertyValue
         try {
           value = Schema.decodeUnknownSync(Schema.parseJson(CanonicalPropertyValue))(
             change.valueJson,
@@ -5312,7 +5312,7 @@ export const replicaChangesToPlannerIntents = ({
             })
             continue
           }
-          let baseValue: typeof CanonicalPropertyValue.Type
+          let baseValue: CanonicalPropertyValue
           try {
             baseValue = Schema.decodeUnknownSync(Schema.parseJson(CanonicalPropertyValue))(
               readString({ row: cell, key: 'value_json' }),

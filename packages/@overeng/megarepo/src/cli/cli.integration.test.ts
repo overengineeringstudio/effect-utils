@@ -76,7 +76,7 @@ describe('mr init', () => {
         expect(yield* fs.exists(configPath)).toBe(false)
 
         // Simulate init: create initial config
-        const initialConfig: typeof MegarepoConfig.Type = {
+        const initialConfig: MegarepoConfig = {
           $schema:
             'https://raw.githubusercontent.com/overengineeringstudio/megarepo/main/schema/megarepo.schema.json',
           members: {},
@@ -112,7 +112,7 @@ describe('mr init', () => {
         yield* initGitRepo(workDir)
 
         // Create existing config with a member
-        const existingConfig: typeof MegarepoConfig.Type = {
+        const existingConfig: MegarepoConfig = {
           members: { 'existing-lib': 'owner/existing-lib' },
         }
         const configPath = EffectPath.ops.join(
@@ -282,7 +282,7 @@ describe('mr add', () => {
           workDir,
           EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
         )
-        const initialConfig: typeof MegarepoConfig.Type = { members: {} }
+        const initialConfig: MegarepoConfig = { members: {} }
         const initialContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
           initialConfig,
         )
@@ -376,7 +376,7 @@ describe('mr add', () => {
           workDir,
           EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
         )
-        const initialConfig: typeof MegarepoConfig.Type = {
+        const initialConfig: MegarepoConfig = {
           members: { effect: 'effect-ts/effect' },
         }
         const initialContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
@@ -418,7 +418,7 @@ describe('megarepo.json parsing', () => {
           workDir,
           EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
         )
-        const config: typeof MegarepoConfig.Type = {
+        const config: MegarepoConfig = {
           members: {
             github: 'owner/repo',
             'github-ref': 'owner/repo#main',
@@ -457,7 +457,7 @@ describe('megarepo.json parsing', () => {
           workDir,
           EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
         )
-        const config: typeof MegarepoConfig.Type = {
+        const config: MegarepoConfig = {
           members: { lib: 'owner/lib' },
           generators: {
             vscode: { enabled: true, exclude: ['large-repo'] },
@@ -499,7 +499,7 @@ const runRootWithCwd = ({ cwdPath }: { cwdPath: string }) =>
 
     const stdout = (yield* getStdoutLines).join('\n')
 
-    let state: typeof RootState.Type | undefined
+    let state: RootState | undefined
     if (stdout.trim() !== '') {
       state = yield* Schema.decodeUnknown(Schema.parseJson(RootState))(stdout)
     }

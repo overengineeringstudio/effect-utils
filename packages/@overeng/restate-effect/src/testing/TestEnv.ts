@@ -270,7 +270,8 @@ const classifyMockExit = ({
     if (Option.isSome(failure) === true) {
       return Schema.encodeUnknown(errorSchema)(failure.value).pipe(
         Effect.flatMap((encoded) => Schema.decodeUnknown(errorSchema)(encoded)),
-        Effect.catchAll(() => Effect.succeed(failure.value)),
+        Effect.orElseSucceed(() => failure.value),
+        // @effect-diagnostics-next-line anyUnknownInErrorContext:off -- re-fails with a value decoded from the user-supplied `errorSchema: Schema.Schema<unknown, unknown>`; there is no nameable error type at this dynamic-decode boundary.
         Effect.flatMap((decoded) => Effect.fail(decoded)),
       )
     }
@@ -311,7 +312,8 @@ const mockStateProxy = <S extends StateSchemas>({
         ? Schema.decodeUnknown(schemaFor(key))(state.get(key)).pipe(
             Effect.mapError(stateErr(`stateOf(${contract.name}).get(${key})`)),
           )
-        : Effect.succeed(undefined),
+        : // @effect-diagnostics-next-line effectSucceedWithVoid:off -- `get` returns a meaningful `StateValueType | undefined` union (undefined = key absent), not void; `Effect.void` would break the `StateProxy.get` signature.
+          Effect.succeed(undefined),
     getAll: () =>
       Effect.forEach([...state.entries()], ([k, v]) =>
         Schema.decodeUnknown(schemaFor(k))(v).pipe(Effect.map((decoded) => [k, decoded] as const)),
@@ -449,14 +451,26 @@ const makeMockEnv = <AppR, RIn>(opts: {
          * boundary grants) + the journaled determinism layer, then run on the
          * captured `Runtime<AppR>` to an Exit and classify it via the SAME
          * `classifyOutcome` the real boundary uses. */
+        /* The handler `run` is dispatched by runtime string from a type-erased
+         * `Record<string, (input: unknown) => Effect.Effect<unknown, unknown, unknown>>`
+         * and `params.spec.error` is `Schema.Schema<any, any>`, so the error/requirements
+         * channels are STRUCTURALLY un-nameable here — `provideHandlerCaps` is already
+         * generic `<A, E, R>`, so the `unknown` originates at this dynamic-dispatch source,
+         * not in the helper. This mirrors the real boundary in `endpoint/Endpoint.ts`, which
+         * waives the identical construct the same way. Each directive covers every
+         * column-diagnostic on the line it precedes. */
+        // @effect-diagnostics-next-line anyUnknownInErrorContext:off
         const program = provideHandlerCaps({
+          // @effect-diagnostics-next-line anyUnknownInErrorContext:off
           effect: run(params.input).pipe(Effect.provideService(RestateContext, handle.context)),
           markers: params.markers,
           key: params.key,
         }).pipe(Effect.provide(determinismLayer({ ctx: handle.context, frozenBaseMillis })))
         const exit = yield* Effect.promise(() =>
+          // @effect-diagnostics-next-line anyUnknownInErrorContext:off
           Runtime.runPromiseExit(runtime)(program as Effect.Effect<unknown, unknown, AppR>),
         )
+        // @effect-diagnostics-next-line anyUnknownInErrorContext:off
         return yield* classifyMockExit({ exit, errorSchema: params.spec.error })
       })
 
@@ -467,6 +481,7 @@ const makeMockEnv = <AppR, RIn>(opts: {
         method: string
         input: unknown
       }) =>
+        // @effect-diagnostics-next-line anyUnknownInErrorContext:off -- `invoke` returns `Effect.Effect<unknown, unknown>` (dynamic-dispatch source); the typed public channel is recovered by the `as RestateTestEnvService[...]` cast on this expression.
         invoke({
           service: args.contract.name,
           method: args.method,
@@ -481,6 +496,7 @@ const makeMockEnv = <AppR, RIn>(opts: {
         method: string
         input: unknown
       }) =>
+        // @effect-diagnostics-next-line anyUnknownInErrorContext:off -- `invoke` returns `Effect.Effect<unknown, unknown>` (dynamic-dispatch source); the typed public channel is recovered by the `as RestateTestEnvService[...]` cast on this expression.
         invoke({
           service: args.contract.name,
           method: args.method,
@@ -494,6 +510,7 @@ const makeMockEnv = <AppR, RIn>(opts: {
         key: string
         input: unknown
       }) =>
+        // @effect-diagnostics-next-line anyUnknownInErrorContext:off -- `invoke` returns `Effect.Effect<unknown, unknown>` (dynamic-dispatch source); the typed public channel is recovered by the `as RestateTestEnvService[...]` cast on this expression.
         invoke({
           service: args.contract.name,
           method: 'run',
@@ -508,6 +525,7 @@ const makeMockEnv = <AppR, RIn>(opts: {
         method: string
         input: unknown
       }) =>
+        // @effect-diagnostics-next-line anyUnknownInErrorContext:off -- `invoke` returns `Effect.Effect<unknown, unknown>` (dynamic-dispatch source); the typed public channel is recovered by the `as RestateTestEnvService[...]` cast on this expression.
         invoke({
           service: args.contract.name,
           method: args.method,
@@ -525,6 +543,7 @@ const makeMockEnv = <AppR, RIn>(opts: {
         contract: WorkflowContract<string, any, any, any, any>
         key: string
       }) =>
+        // @effect-diagnostics-next-line anyUnknownInErrorContext:off -- `invoke` returns `Effect.Effect<unknown, unknown>` (dynamic-dispatch source); the typed public channel is recovered by the `as RestateTestEnvService[...]` cast on this expression.
         invoke({
           service: args.contract.name,
           method: 'run',

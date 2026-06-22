@@ -18,7 +18,7 @@ import { HelloWorldView } from './view.tsx'
 const HelloApp = createTuiApp({
   stateSchema: AppState,
   actionSchema: AppAction,
-  initial: { _tag: 'Displaying', secondsRemaining: 3 } as typeof AppState.Type,
+  initial: { _tag: 'Displaying', secondsRemaining: 3 } as AppState,
   reducer: appReducer,
 })
 
@@ -26,17 +26,17 @@ const HelloApp = createTuiApp({
 // Initial States
 // =============================================================================
 
-const displayingState = (secondsRemaining: number): typeof AppState.Type => ({
+const displayingState = (secondsRemaining: number): AppState => ({
   _tag: 'Displaying',
   secondsRemaining,
 })
 
-const finishedState: typeof AppState.Type = {
+const finishedState: AppState = {
   _tag: 'Finished',
   message: 'Demo completed successfully!',
 }
 
-const interruptedState: typeof AppState.Type = {
+const interruptedState: AppState = {
   _tag: 'Interrupted',
 }
 
@@ -44,7 +44,7 @@ const interruptedState: typeof AppState.Type = {
 // Timeline - simulates CLI execution
 // =============================================================================
 
-const demoTimeline: Array<{ at: number; action: typeof AppAction.Type }> = [
+const demoTimeline: Array<{ at: number; action: AppAction }> = [
   // Countdown from 3
   { at: 1000, action: { _tag: 'Tick' } }, // 3 -> 2
   { at: 2000, action: { _tag: 'Tick' } }, // 2 -> 1
@@ -52,7 +52,7 @@ const demoTimeline: Array<{ at: number; action: typeof AppAction.Type }> = [
   { at: 3100, action: { _tag: 'Finish' } },
 ]
 
-const interruptTimeline: Array<{ at: number; action: typeof AppAction.Type }> = [
+const interruptTimeline: Array<{ at: number; action: AppAction }> = [
   { at: 1000, action: { _tag: 'Tick' } },
   { at: 1500, action: { _tag: 'Interrupted' } },
 ]

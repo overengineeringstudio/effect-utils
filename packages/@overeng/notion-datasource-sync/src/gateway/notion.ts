@@ -118,53 +118,62 @@ type NotionGatewayDatabase = {
  * either the real HTTP client or a stub in tests; errors are intentionally `unknown` here so
  * the gateway translates them into typed `NotionGatewayError`s with the correct guard.
  */
+/**
+ * Gateway-facing view of the upstream notion-effect-client.
+ *
+ * Every operation fails with the upstream {@link NotionApiError}; the gateway's
+ * `mapClientError` translates those (and any already-mapped `NotionGatewayError`)
+ * into typed `NotionGatewayError`s. The success/element shapes stay structural so
+ * fakes and fixture recorders can satisfy this contract without depending on the
+ * concrete notion-effect-client response classes.
+ */
 export type NotionGatewayClient = {
   readonly retrieveDataSource: (input: {
     readonly dataSourceId: string
-  }) => Effect.Effect<NotionGatewayDataSource, unknown>
+  }) => Effect.Effect<NotionGatewayDataSource, NotionApiError>
   readonly queryDataSource: (input: {
     readonly dataSourceId: string
     readonly pageSize: number
     readonly startCursor: string | undefined
     readonly filter: DatabaseFilter | undefined
     readonly sorts: ReadonlyArray<DatabaseSort> | undefined
-  }) => Effect.Effect<PaginatedResult<NotionGatewayPage>, unknown>
+  }) => Effect.Effect<PaginatedResult<NotionGatewayPage>, NotionApiError>
   readonly retrievePage: (input: {
     readonly pageId: string
-  }) => Effect.Effect<NotionGatewayPage, unknown>
+  }) => Effect.Effect<NotionGatewayPage, NotionApiError>
   readonly retrievePageProperty: (input: {
     readonly pageId: string
     readonly propertyId: string
     readonly pageSize: number
     readonly startCursor: string | undefined
-  }) => Effect.Effect<NotionGatewayPagePropertyResult, unknown>
+  }) => Effect.Effect<NotionGatewayPagePropertyResult, NotionApiError>
   readonly retrieveDatabase: (input: {
     readonly databaseId: string
-  }) => Effect.Effect<NotionGatewayDatabase, unknown>
+  }) => Effect.Effect<NotionGatewayDatabase, NotionApiError>
   readonly listViews?: (input: {
     readonly databaseId: string
     readonly dataSourceId: string
-  }) => Stream.Stream<unknown, unknown>
+  }) => Stream.Stream<unknown, NotionApiError>
   readonly updatePage: (input: {
     readonly pageId: string
     readonly properties?: Record<string, unknown>
     readonly inTrash?: boolean
-  }) => Effect.Effect<NotionGatewayPage, unknown>
+  }) => Effect.Effect<NotionGatewayPage, NotionApiError>
   readonly createPage: (input: {
     readonly dataSourceId: string
     readonly properties: Record<string, unknown>
-  }) => Effect.Effect<NotionGatewayPage, unknown>
+  }) => Effect.Effect<NotionGatewayPage, NotionApiError>
   readonly updateDatabase: (input: {
     readonly databaseId: string
     readonly title?: readonly unknown[]
     readonly description?: readonly unknown[]
-  }) => Effect.Effect<NotionGatewayDatabase, unknown>
+  }) => Effect.Effect<NotionGatewayDatabase, NotionApiError>
   readonly updateDataSource: (input: {
     readonly dataSourceId: string
     readonly properties?: Record<string, unknown>
     readonly title?: readonly unknown[]
     readonly description?: readonly unknown[]
-  }) => Effect.Effect<NotionGatewayDataSource, unknown>
+  }) => Effect.Effect<NotionGatewayDataSource, NotionApiError>
 }
 
 /** Tagged error raised when the live gateway is asked to perform an operation it cannot map onto the underlying Notion client. */
@@ -409,7 +418,7 @@ const propertyWriteClassFromType = (propertyType: string): PropertyWriteClass =>
 
 const schemaPropertiesFromRemote = (
   properties: Record<string, unknown>,
-): ReadonlyArray<typeof DataSourcePropertySnapshot.Type> =>
+): ReadonlyArray<DataSourcePropertySnapshot> =>
   SchemaHelpers.getPropertiesFromRecord(properties).flatMap((property, ordinal) => {
     const raw = Object.values(properties).find(
       (value) => isRecord(value) === true && value.id === property.id,
@@ -485,7 +494,7 @@ const dataSourceSnapshotFromRemote = (dataSource: NotionGatewayDataSource) => {
 /** Project raw Notion data-source property definitions into datasource-sync schema observations. */
 export const schemaPropertyObservationsFromRemoteProperties = (
   properties: Readonly<Record<string, unknown>>,
-): ReadonlyArray<typeof DataSourcePropertySnapshot.Type> => schemaPropertiesFromRemote(properties)
+): ReadonlyArray<DataSourcePropertySnapshot> => schemaPropertiesFromRemote(properties)
 
 /** Project a full Notion data source into datasource-sync schema-observation descriptors. */
 export const schemaPropertyObservationsFromRemoteDataSource = (
@@ -771,7 +780,10 @@ const querySortsToNotion = (
   input: QueryRowsInput,
 ): Effect.Effect<ReadonlyArray<DatabaseSort> | undefined, NotionGatewayError> =>
   input.queryContract.sorts.length === 0
-    ? Effect.succeed(undefined)
+    ? // Success channel is `ReadonlyArray<DatabaseSort> | undefined`; `Effect.void` would
+      // widen it to include `void` and break the explicit return type.
+      // @effect-diagnostics-next-line effectSucceedWithVoid:off
+      Effect.succeed(undefined)
     : Effect.succeed(
         input.queryContract.sorts.map((sort) => ({
           property: sort.propertyId,
@@ -953,6 +965,9 @@ const canonicalFilterToNotion = (
 ): Effect.Effect<DatabaseFilter | undefined, NotionGatewayError> => {
   const filter = input.queryContract.filter
   if (filter === null || filter._tag === 'none') {
+    // Success channel is `DatabaseFilter | undefined`; `Effect.void` would widen it to
+    // include `void` and break the explicit return type.
+    // @effect-diagnostics-next-line effectSucceedWithVoid:off
     return Effect.succeed(undefined)
   }
   if (filter._tag === 'compound_hash') {
@@ -1020,7 +1035,7 @@ const queryRowsPageFromRemote = (input: {
   readonly queryInput: QueryRowsInput
   readonly apiContract: NotionApiContractType
   readonly result: PaginatedResult<NotionGatewayPage>
-}): typeof QueryRowsPage.Type =>
+}): QueryRowsPage =>
   QueryRowsPage.make({
     _tag: 'QueryRowsPage',
     apiVersion: input.apiContract.apiVersion,
@@ -1429,15 +1444,26 @@ export const makeNotionDataSourceGatewayFromClient = ({
                         'Data-source metadata description writes require an owning database parent',
                     }),
                   )
-                : client.updateDatabase({
-                    databaseId: dataSource.parent.database_id,
-                    ...(command.metadataPatch.titlePlainText === undefined
-                      ? {}
-                      : { title: richTextWrite(command.metadataPatch.titlePlainText) }),
-                    ...(command.metadataPatch.descriptionPlainText === undefined
-                      ? {}
-                      : { description: richTextWrite(command.metadataPatch.descriptionPlainText) }),
-                  }),
+                : client
+                    .updateDatabase({
+                      databaseId: dataSource.parent.database_id,
+                      ...(command.metadataPatch.titlePlainText === undefined
+                        ? {}
+                        : { title: richTextWrite(command.metadataPatch.titlePlainText) }),
+                      ...(command.metadataPatch.descriptionPlainText === undefined
+                        ? {}
+                        : {
+                            description: richTextWrite(command.metadataPatch.descriptionPlainText),
+                          }),
+                    })
+                    .pipe(
+                      Effect.mapError(
+                        mapClientError({
+                          operation: 'patchDataSourceMetadata',
+                          dataSourceId: command.dataSourceId,
+                        }),
+                      ),
+                    ),
             ),
             Effect.as(unavailableRequestId),
             Effect.mapError(

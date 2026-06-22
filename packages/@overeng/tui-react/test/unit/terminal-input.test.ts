@@ -77,12 +77,10 @@ describe('createTerminalInput', () => {
 
     const terminalInput = await Effect.runPromise(
       Effect.scoped(
-        Effect.gen(function* () {
-          return yield* createTerminalInput({
-            input: input as unknown as Readable,
-            output: { isTTY: false } as never,
-            handleResize: false,
-          })
+        createTerminalInput({
+          input: input as unknown as Readable,
+          output: { isTTY: false } as never,
+          handleResize: false,
         }),
       ),
     )

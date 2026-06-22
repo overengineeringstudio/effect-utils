@@ -773,11 +773,11 @@ export const makeFakeNotionDataSourceGateway = (
                   titlePlainText: snapshot.metadataTitlePlainText ?? '',
                   descriptionPlainText: snapshot.metadataDescriptionPlainText ?? '',
                   icon: { _tag: 'none' },
-                } satisfies typeof CanonicalDataSourceMetadata.Type)
+                } satisfies CanonicalDataSourceMetadata)
               : Schema.decodeUnknownSync(Schema.parseJson(CanonicalDataSourceMetadata))(
                   snapshot.metadataJson,
                 )
-          const nextMetadata: typeof CanonicalDataSourceMetadata.Type = {
+          const nextMetadata: CanonicalDataSourceMetadata = {
             ...currentMetadata,
             ...(command.metadataPatch.titlePlainText === undefined
               ? {}
@@ -835,11 +835,11 @@ export const makeFakeNotionDataSourceGateway = (
                   titlePlainText: snapshot.metadataTitlePlainText ?? '',
                   descriptionPlainText: snapshot.metadataDescriptionPlainText ?? '',
                   icon: { _tag: 'none' },
-                } satisfies typeof CanonicalDataSourceMetadata.Type)
+                } satisfies CanonicalDataSourceMetadata)
               : Schema.decodeUnknownSync(Schema.parseJson(CanonicalDataSourceMetadata))(
                   snapshot.metadataJson,
                 )
-          const nextMetadata: typeof CanonicalDataSourceMetadata.Type = {
+          const nextMetadata: CanonicalDataSourceMetadata = {
             ...currentMetadata,
             ...(command.metadataPatch.titlePlainText === undefined
               ? {}

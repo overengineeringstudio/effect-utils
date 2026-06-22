@@ -9,7 +9,7 @@ import { createTuiApp } from '@overeng/tui-react'
 import { DepsState, DepsAction, depsReducer } from './schema.ts'
 
 /** Creates the initial empty state for the deps command TUI */
-export const createInitialDepsState = (): typeof DepsState.Type => ({
+export const createInitialDepsState = (): DepsState => ({
   _tag: 'Empty',
 })
 

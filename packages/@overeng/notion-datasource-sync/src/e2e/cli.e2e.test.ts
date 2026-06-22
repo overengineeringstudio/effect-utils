@@ -7,10 +7,13 @@ import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 
 import { NodeContext } from '@effect/platform-node'
-import { Effect, Option, Schema, Stream } from 'effect'
+import { Cause, Effect, Exit, Layer, Option, Schema, Stream } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { BodyEvidenceFingerprintSchema as NotionMdBodyEvidenceFingerprint } from '@overeng/notion-effect-client'
+import {
+  BodyEvidenceFingerprintSchema as NotionMdBodyEvidenceFingerprint,
+  NotionApiError,
+} from '@overeng/notion-effect-client'
 import {
   NmdStateStore,
   NmdStateStoreLive,
@@ -44,6 +47,7 @@ import {
   PageId,
   WorkspaceRelativePath,
 } from '../core/domain.ts'
+import { WorkspaceNotTracked } from '../core/errors.ts'
 import { SyncEventId, type SyncEvent as SyncEventType } from '../core/events.ts'
 import {
   LocalWorkspacePort,
@@ -130,7 +134,7 @@ const propertyPage = (valueHash = hash('property-a-base')) =>
 
 const bodyPointerFor = (bodyHash = hash('body-a')) => bodyPointer(bodyHash)
 
-const bodyPointerForPage = (pageId: typeof PageId.Type, bodyHash = hash('body-a')) => ({
+const bodyPointerForPage = (pageId: PageId, bodyHash = hash('body-a')) => ({
   ...bodyPointer(bodyHash),
   pageId,
 })
@@ -313,7 +317,7 @@ const runWithNmdStateStore = <TValue, TError>(
   effect: Effect.Effect<TValue, TError, NmdStateStore>,
 ) =>
   Effect.runPromise(
-    effect.pipe(Effect.provide(NmdStateStoreLive), Effect.provide(NodeContext.layer)),
+    effect.pipe(Effect.provide(NmdStateStoreLive.pipe(Layer.provide(NodeContext.layer)))),
   )
 
 const createBoundSqlite = async ({
@@ -321,7 +325,7 @@ const createBoundSqlite = async ({
   workspace = workspaceRoot,
 }: {
   readonly path: string
-  readonly workspace?: typeof AbsolutePath.Type
+  readonly workspace?: AbsolutePath
 }): Promise<void> => {
   const clock = makeFakeClock()
   const store = openNotionSyncStore({ path, now: clock.now })
@@ -359,7 +363,7 @@ const establishTrackedWorkspace = async ({
   workspace,
   mode = 'shared',
 }: {
-  readonly workspace: typeof AbsolutePath.Type
+  readonly workspace: AbsolutePath
   readonly mode?: 'local' | 'remote' | 'shared'
 }): Promise<void> => {
   const argv = ['track', testIds.dataSourceId, workspace, '--mode', mode, '--no-materialize-bodies']
@@ -900,7 +904,18 @@ describe('CLI command surface', () => {
     const calls = { retrieveDataSource: 0, queryDataSource: 0, retrievePage: 0 }
     const client: NotionGatewayClient = {
       ...makeInjectedNotionClient(calls),
-      retrieveDatabase: () => Effect.fail(new Error('private workspace object')),
+      retrieveDatabase: () =>
+        Effect.fail(
+          new NotionApiError({
+            status: 404,
+            code: 'object_not_found',
+            message: 'private workspace object',
+            retryAfterSeconds: Option.none(),
+            requestId: Option.none(),
+            url: Option.none(),
+            method: Option.some('GET'),
+          }),
+        ),
     }
     const command = parseCliCommand([
       'track',
@@ -1006,6 +1021,32 @@ describe('CLI command surface', () => {
         expect(ctx.workspaceRoot).toBe(dir)
       } finally {
         ctx.store.close()
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('runCliMain surfaces an untracked workspace as a typed failure, not a defect', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-untracked-'))
+    try {
+      // The workspace-discovery errors thrown by `parseCliContext` are expected
+      // CLI failures and must reach the failure channel (so the top-level
+      // `renderCliErrorJson` envelope renders them) rather than the defect
+      // channel. Driving `runCliMain` end-to-end is what proves the `catch`
+      // mapper at the `parseCliContext` call site keeps them as failures.
+      const exit = await Effect.runPromiseExit(
+        runCliMain({ argv: ['sync', dir] }).pipe(Effect.scoped),
+      )
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit) === true) {
+        const failure = Cause.failureOption(exit.cause)
+        // A defect would land in `Cause.defects`, not `Cause.failureOption`.
+        expect(Option.isSome(failure)).toBe(true)
+        expect(Cause.defects(exit.cause)).toHaveLength(0)
+        if (Option.isSome(failure) === true) {
+          expect(failure.value).toBeInstanceOf(WorkspaceNotTracked)
+        }
       }
     } finally {
       await rm(dir, { recursive: true, force: true })

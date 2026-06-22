@@ -9,6 +9,17 @@ import { CACHE_SCHEMA_VERSION, CacheTree, type NotionCache } from './types.ts'
 
 const decode = Schema.decodeUnknown(CacheTree)
 
+/**
+ * Parse the raw file contents as JSON only (no schema shape check yet) so a
+ * malformed-JSON payload surfaces as a `fs-cache-parse-failed` error, while a
+ * well-formed-but-stale payload can still be treated as a cold cache by the
+ * separate schema `decode` below.
+ */
+const parseJson = Schema.decode(Schema.parseJson())
+
+/** Encode a `CacheTree` to its on-disk JSON string (compact, schema field order). */
+const encodeJson = Schema.encode(Schema.parseJson(CacheTree))
+
 const readIfExists = (filePath: string): Effect.Effect<string | undefined, CacheError> =>
   Effect.tryPromise({
     try: async (): Promise<string | undefined> => {
@@ -37,29 +48,32 @@ export const FsCache = {
     load: Effect.gen(function* () {
       const contents = yield* readIfExists(filePath)
       if (contents === undefined) return undefined
-      const raw = yield* Effect.try({
-        try: () => JSON.parse(contents) as unknown,
-        catch: (cause) => new CacheError({ reason: 'fs-cache-parse-failed', cause }),
-      })
-      const decoded = yield* decode(raw).pipe(Effect.catchAll(() => Effect.succeed(undefined)))
+      const raw = yield* parseJson(contents).pipe(
+        Effect.mapError((cause) => new CacheError({ reason: 'fs-cache-parse-failed', cause })),
+      )
+      const decoded = yield* decode(raw).pipe(Effect.orElseSucceed(() => undefined))
       if (decoded === undefined) return undefined
       if (decoded.schemaVersion !== CACHE_SCHEMA_VERSION) return undefined
       return decoded
     }),
     save: (tree) =>
-      Effect.tryPromise({
-        try: async () => {
-          const body = JSON.stringify(tree)
-          const dir = path.dirname(filePath)
-          await fs.mkdir(dir, { recursive: true })
-          // Per-call unique temp name so concurrent saves in one process
-          // don't race on a shared pathname (which would surface as ENOENT
-          // when one rename pulls the temp out from under another writer).
-          const tmp = `${filePath}.${process.pid}.${randomUUID()}.tmp`
-          await fs.writeFile(tmp, body, 'utf8')
-          await fs.rename(tmp, filePath)
-        },
-        catch: (cause) => new CacheError({ reason: 'fs-cache-write-failed', cause }),
+      Effect.gen(function* () {
+        const body = yield* encodeJson(tree).pipe(
+          Effect.mapError((cause) => new CacheError({ reason: 'fs-cache-write-failed', cause })),
+        )
+        yield* Effect.tryPromise({
+          try: async () => {
+            const dir = path.dirname(filePath)
+            await fs.mkdir(dir, { recursive: true })
+            // Per-call unique temp name so concurrent saves in one process
+            // don't race on a shared pathname (which would surface as ENOENT
+            // when one rename pulls the temp out from under another writer).
+            const tmp = `${filePath}.${process.pid}.${randomUUID()}.tmp`
+            await fs.writeFile(tmp, body, 'utf8')
+            await fs.rename(tmp, filePath)
+          },
+          catch: (cause) => new CacheError({ reason: 'fs-cache-write-failed', cause }),
+        })
       }),
   }),
 } as const

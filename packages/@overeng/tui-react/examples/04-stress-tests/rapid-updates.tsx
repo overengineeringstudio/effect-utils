@@ -55,7 +55,7 @@ const runStressTest = (durationMs: number) => {
       startTime: Date.now(),
       fps: 0,
       progress: 0,
-    } as typeof StressTestState.Type,
+    } as StressTestState,
     reducer: createStressTestReducer(durationMs),
   })
 

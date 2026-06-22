@@ -19,22 +19,22 @@ export interface JsonlArtifactDiscovery {
 }
 
 /** Configuration for a shared append-only JSONL session adapter. */
-export interface JsonlAdapterOptions<TSchema extends Schema.Schema<any, any, never>> {
+export interface JsonlAdapterOptions<A, I> {
   readonly sourceId: SourceId
   readonly discoverArtifacts: Effect.Effect<
     ReadonlyArray<JsonlArtifactDiscovery>,
     SessionSourceDiscoveryError,
     FileSystem.FileSystem
   >
-  readonly recordSchema: TSchema
+  readonly recordSchema: Schema.Schema<A, I>
   readonly decodeErrorMessage: string
   readonly checkpointErrorMessage: string
 }
 
 /** Shared adapter constructor for append-only JSONL transcript sources. */
-export const makeAppendOnlyJsonlAdapter = <TSchema extends Schema.Schema<any, any, never>>(
-  options: JsonlAdapterOptions<TSchema>,
-): SessionSourceAdapter<Schema.Schema.Type<TSchema>> => {
+export const makeAppendOnlyJsonlAdapter = <A, I>(
+  options: JsonlAdapterOptions<A, I>,
+): SessionSourceAdapter<A> => {
   let cachedDiscovery: ReadonlyArray<JsonlArtifactDiscovery> | undefined
 
   const discoverWithCache = options.discoverArtifacts.pipe(
@@ -68,17 +68,18 @@ export const makeAppendOnlyJsonlAdapter = <TSchema extends Schema.Schema<any, an
         })
 
         const records = yield* Effect.forEach(splitCompleteJsonlRecords(read.text), (line) =>
-          Effect.try({
-            try: () => Schema.decodeUnknownSync(options.recordSchema)(JSON.parse(line)),
-            catch: (cause) =>
-              new SessionArtifactDecodeError({
-                message: options.decodeErrorMessage,
-                sourceId: artifact.sourceId,
-                artifactId: artifact.artifactId,
-                rawRecord: line,
-                cause,
-              }),
-          }).pipe(Effect.map((record) => record as Schema.Schema.Type<TSchema>)),
+          Schema.decodeUnknown(Schema.parseJson(options.recordSchema))(line).pipe(
+            Effect.mapError(
+              (cause) =>
+                new SessionArtifactDecodeError({
+                  message: options.decodeErrorMessage,
+                  sourceId: artifact.sourceId,
+                  artifactId: artifact.artifactId,
+                  rawRecord: line,
+                  cause,
+                }),
+            ),
+          ),
         )
 
         return {
@@ -107,7 +108,7 @@ export const makeAppendOnlyJsonlAdapter = <TSchema extends Schema.Schema<any, an
           ),
         } satisfies {
           readonly artifact: ArtifactDescriptor
-          readonly records: ReadonlyArray<Schema.Schema.Type<TSchema>>
+          readonly records: ReadonlyArray<A>
           readonly checkpoint: IngestionCheckpoint
         }
       }),

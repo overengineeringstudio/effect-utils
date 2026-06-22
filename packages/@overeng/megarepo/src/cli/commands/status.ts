@@ -78,7 +78,7 @@ const scanMembersRecursive = ({
     const configResult = yield* readMegarepoConfig(megarepoRoot).pipe(
       Effect.catchIf(
         (e): e is ConfigNotFoundError => e instanceof ConfigNotFoundError,
-        () => Effect.succeed(undefined),
+        () => Effect.void,
       ),
     )
     if (configResult === undefined) {
@@ -113,7 +113,7 @@ const scanMembersRecursive = ({
         // Check if symlink target exists
         const targetExists = yield* fs.readLink(symlinkPath).pipe(
           Effect.flatMap((target) => fs.exists(target)),
-          Effect.catchAll(() => Effect.succeed(false)),
+          Effect.orElseSucceed(() => false),
         )
         memberExists = targetExists
       }
@@ -121,9 +121,8 @@ const scanMembersRecursive = ({
       // Check if this member is itself a megarepo
       const isMegarepo =
         memberExists === true
-          ? (yield* findConfigPath(memberPath).pipe(
-              Effect.catchAll(() => Effect.succeed(undefined)),
-            )) !== undefined
+          ? (yield* findConfigPath(memberPath).pipe(Effect.orElseSucceed(() => undefined))) !==
+            undefined
           : false
 
       // Recursively scan nested members if this is a megarepo and --all is used
@@ -149,18 +148,16 @@ const scanMembersRecursive = ({
         if (isGit === true) {
           // Get worktree status (dirty, unpushed)
           const worktreeStatus = yield* Git.getWorktreeStatus(memberPath).pipe(
-            Effect.catchAll(() =>
-              Effect.succeed({
-                isDirty: false,
-                hasUnpushed: false,
-                changesCount: 0,
-              }),
-            ),
+            Effect.orElseSucceed(() => ({
+              isDirty: false,
+              hasUnpushed: false,
+              changesCount: 0,
+            })),
           )
 
           // Get current branch
           const branchOpt = yield* Git.getCurrentBranch(memberPath).pipe(
-            Effect.catchAll(() => Effect.succeed(Option.none())),
+            Effect.orElseSucceed(() => Option.none()),
           )
           const branch = Option.getOrElse(branchOpt, () => 'HEAD')
           currentBranch = branch !== 'HEAD' ? branch : undefined
@@ -183,9 +180,7 @@ const scanMembersRecursive = ({
       // Read symlink target for drift detection
       const symlinkTarget =
         memberExists === true && isLocal === false
-          ? yield* fs
-              .readLink(memberPath.replace(/\/$/, ''))
-              .pipe(Effect.catchAll(() => Effect.succeed(null)))
+          ? yield* fs.readLink(memberPath.replace(/\/$/, '')).pipe(Effect.orElseSucceed(() => null))
           : null
 
       // Get source ref (what megarepo.json intends)
@@ -379,7 +374,7 @@ export const statusCommand = Cli.Command.make(
       if (currentMemberPath === undefined) {
         const cwdRealPath = yield* fs.realPath(cwd).pipe(
           Effect.map((p) => p.replace(/\/$/, '')),
-          Effect.catchAll(() => Effect.succeed(cwd.replace(/\/$/, ''))),
+          Effect.orElseSucceed(() => cwd.replace(/\/$/, '')),
         )
 
         const findCurrentMemberPath = ({

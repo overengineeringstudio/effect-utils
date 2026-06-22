@@ -78,6 +78,30 @@ All notable changes to this project will be documented in this file.
   runs against an isolated `TMPDIR` and verifies the staging directory is
   removed after repeated runs (#824).
 
+- **Effect-LSP diagnostics are now a strict quality gate** (#811): The
+  `@effect/language-service` plugin config in `genie/external.ts` is an explicit,
+  intent-revealing gate policy driven by a single `effectDiagnosticsGate` toggle,
+  now ENABLED: an Effect warning OR suggestion anywhere in the workspace fails the
+  `tsgo --build` exit code (errors always gate). The gate rides the existing
+  type-check over the project graph — no extra compiler pass — so it is enforced
+  by `ts:check` / `ts:check:strict`, hence `dt check:quick` / `dt check:all` and
+  the CI `typecheck` lane; `--force` is not required (Effect diagnostics replay
+  from `.tsbuildinfo`). To enable it, all 822 pre-existing Effect diagnostics
+  (389 warnings + 433 suggestions) were burned down to zero with idiomatic,
+  behavior-preserving fixes (typed error channels via `Schema.TaggedError`,
+  `Schema.parseJson` over raw JSON, single `Effect.provide`/correct `Layer`
+  construction, `Effect.orElseSucceed` / `Effect.void` / `Schema.TaggedStruct`,
+  etc.); a small number of genuinely un-nameable sites (framework dynamic-dispatch
+  boundaries, type-level negative-assertion files) carry narrow justified
+  `@effect-diagnostics … :off` / `:skip-file` waivers. `missingEffectContext` /
+  `missingEffectError` keep their upstream default `error` severity; the dead
+  `reportSuggestionsAsWarningsInTsc` flag was dropped (it does not exist in
+  tsgo / LS 0.86.2). **Alignment heads-up**: this is the shared
+  `baseTsconfigCompilerOptions`, so peer repos that consume it inherit the gate on
+  their next effect-utils bump; a repo not yet clean can locally set
+  `ignoreEffect{Warnings,Suggestions}InTscExitCode` back to `true` until it
+  converges.
+
 - **OTEL trace-structure contract**: Tighten the offline trace-structure
   negative test so orphan detection uses a syntactically valid but missing
   parent span ID. Invalid span IDs are now left to the helper's input

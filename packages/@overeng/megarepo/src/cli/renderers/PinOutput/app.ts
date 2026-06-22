@@ -9,7 +9,7 @@ import { PinState, PinAction, pinReducer } from './schema.ts'
 /**
  * Initial state (idle).
  */
-export const createInitialPinState = (): typeof PinState.Type => ({
+export const createInitialPinState = (): PinState => ({
   _tag: 'Idle',
 })
 

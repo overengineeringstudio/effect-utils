@@ -2,6 +2,7 @@ import type { HttpClient } from '@effect/platform'
 import { Effect } from 'effect'
 import type { ReactNode } from 'react'
 
+import type { NotionApiError } from '@overeng/notion-effect-client'
 import { NotionBlocks, NotionPages, type NotionConfig } from '@overeng/notion-effect-client'
 import type { BlockType } from '@overeng/notion-effect-schema'
 
@@ -259,7 +260,7 @@ export const issueBlockUpdate = (
   blockId: string,
   type: BlockType,
   props: Record<string, unknown>,
-): Effect.Effect<unknown, unknown, NotionConfig | HttpClient.HttpClient> => {
+): Effect.Effect<unknown, NotionApiError, NotionConfig | HttpClient.HttpClient> => {
   if (type === 'child_page') {
     const spans = pageTitleSpans(props.title)
     const hasTitle = spans !== undefined

@@ -19,6 +19,7 @@ import {
   Toggle,
 } from '../components/blocks.ts'
 import { createFakeNotion, type FakeNotion } from '../test/mock-client.ts'
+import type { NotionSyncError } from './errors.ts'
 import type { SyncMetrics } from './sync-metrics.ts'
 import { sync } from './sync.ts'
 
@@ -47,7 +48,7 @@ const ROOT = '00000000-0000-4000-8000-000000000010'
 
 const runWith = <A,>(
   fake: FakeNotion,
-  eff: Effect.Effect<A, unknown, HttpClient.HttpClient | NotionConfig>,
+  eff: Effect.Effect<A, NotionSyncError, HttpClient.HttpClient | NotionConfig>,
 ): Promise<A> => Effect.runPromise(eff.pipe(Effect.provide(fake.layer)))
 
 const collect = async (
@@ -64,7 +65,7 @@ const collect = async (
       onMetrics: (m) => {
         captured = m
       },
-    }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+    }),
   )
   if (captured === undefined) throw new Error('onMetrics was never invoked')
   return captured

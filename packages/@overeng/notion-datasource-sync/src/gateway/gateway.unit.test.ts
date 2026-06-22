@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { NotionApiError } from '@overeng/notion-effect-client'
 
 import { canonicalHash, queryContractHash } from '../core/canonical.ts'
+import type { NotionGatewayError } from '../core/errors.ts'
 import { NotionDataSourceGateway } from '../core/ports.ts'
 import {
   DataSourceId,
@@ -110,7 +111,7 @@ const config = (
 
 const runWithGateway = <TValue>(
   gatewayConfig: FakeNotionDataSourceGatewayConfig,
-  effect: Effect.Effect<TValue, unknown, NotionDataSourceGateway>,
+  effect: Effect.Effect<TValue, NotionGatewayError, NotionDataSourceGateway>,
 ) =>
   Effect.runPromise(
     effect.pipe(Effect.provide(makeFakeNotionDataSourceGatewayLayer(gatewayConfig))),

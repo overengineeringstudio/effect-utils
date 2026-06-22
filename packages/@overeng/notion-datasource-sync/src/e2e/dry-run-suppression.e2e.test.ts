@@ -289,7 +289,7 @@ describe('F2 one-shot sync --dry-run suppresses bodies-on .nmd materialization',
 
   // Materialize the page body under `pages/v1/<databaseId>/<pageId>.nmd` so the
   // assertion reads the same dir the all-surfaces proof's `pages` surface does.
-  const bodyPathForPage = (pageId: PageIdType): typeof WorkspaceRelativePath.Type =>
+  const bodyPathForPage = (pageId: PageIdType): WorkspaceRelativePath =>
     decode({
       schema: WorkspaceRelativePath,
       value: `${pagesDirRelativePath(testIds.databaseId)}/${pageId}.nmd`,

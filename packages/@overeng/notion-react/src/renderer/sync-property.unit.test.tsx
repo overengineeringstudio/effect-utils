@@ -8,6 +8,7 @@ import type { NotionConfig } from '@overeng/notion-effect-client'
 import { InMemoryCache } from '../cache/in-memory-cache.ts'
 import { ChildPage, Heading1, Page, Paragraph, Toggle } from '../components/blocks.ts'
 import { createFakeNotion, type FakeNotion } from '../test/mock-client.ts'
+import type { NotionSyncError } from './errors.ts'
 import { sync } from './sync.ts'
 
 /**
@@ -115,7 +116,7 @@ const genTree = (seed: number, maxDepth = 3, maxWidth = 4): ReactNode => {
 
 const runWith = <A,>(
   fake: FakeNotion,
-  eff: Effect.Effect<A, unknown, HttpClient.HttpClient | NotionConfig>,
+  eff: Effect.Effect<A, NotionSyncError, HttpClient.HttpClient | NotionConfig>,
 ): Promise<A> => Effect.runPromise(eff.pipe(Effect.provide(fake.layer)))
 
 /**
@@ -142,15 +143,9 @@ describe('sync() property: second identical sync emits zero ops', () => {
       const fake = createFakeNotion()
       const cache = InMemoryCache.make()
       // Cold sync.
-      await runWith(
-        fake,
-        sync(tree, { pageId: ROOT, cache }).pipe(Effect.mapError((c) => new Error(String(c)))),
-      )
+      await runWith(fake, sync(tree, { pageId: ROOT, cache }))
       // Warm sync of the exact same tree: must be a no-op.
-      const second = await runWith(
-        fake,
-        sync(tree, { pageId: ROOT, cache }).pipe(Effect.mapError((c) => new Error(String(c)))),
-      )
+      const second = await runWith(fake, sync(tree, { pageId: ROOT, cache }))
       const payload = {
         seed,
         appends: second.appends,
@@ -193,14 +188,8 @@ describe('sync() childpage-idempotency bug (issue #618 phase 3d follow-up)', () 
         <Paragraph>a</Paragraph>
       </Page>
     ) as Parameters<typeof sync>[0]
-    await runWith(
-      fake,
-      sync(tree, { pageId: ROOT, cache }).pipe(Effect.mapError((c) => new Error(String(c)))),
-    )
-    const r2 = await runWith(
-      fake,
-      sync(tree, { pageId: ROOT, cache }).pipe(Effect.mapError((c) => new Error(String(c)))),
-    )
+    await runWith(fake, sync(tree, { pageId: ROOT, cache }))
+    const r2 = await runWith(fake, sync(tree, { pageId: ROOT, cache }))
     expect(r2.appends + r2.inserts + r2.updates + r2.removes).toBe(0)
     expect(r2.pages).toEqual({ creates: 0, updates: 0, archives: 0, moves: 0, reorders: 0 })
   })

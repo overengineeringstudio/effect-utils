@@ -62,7 +62,7 @@ const tempWorkspace = async (): Promise<AbsolutePathType> => {
   return decode({ schema: AbsolutePath, value: dir })
 }
 
-const propertyPage = (propertyId: typeof PropertyId.Type, plainText: string) =>
+const propertyPage = (propertyId: PropertyId, plainText: string) =>
   decode({
     schema: PagePropertyItemPage,
     value: {

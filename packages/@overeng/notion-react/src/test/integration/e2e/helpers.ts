@@ -1,7 +1,10 @@
 import { FetchHttpClient, type HttpClient } from '@effect/platform'
 import { Duration, Effect, Layer, Redacted, Schedule } from 'effect'
 
+import type { NotionApiError } from '@overeng/notion-effect-client'
 import { NotionBlocks, NotionConfig, NotionPages } from '@overeng/notion-effect-client'
+
+import { NotionSyncError } from '../../../renderer/errors.ts'
 
 /**
  * E2E test harness for `@overeng/notion-react`. Each test creates its own
@@ -89,7 +92,7 @@ const acquireLane = (() => {
  * includes the test label + ISO timestamp so concurrent runs don't collide
  * visually in the workspace tree.
  */
-export const createScratchPage = (label: string): Effect.Effect<string, unknown, E2EEnv> =>
+export const createScratchPage = (label: string): Effect.Effect<string, NotionApiError, E2EEnv> =>
   Effect.gen(function* () {
     const stamp = new Date().toISOString().replace(/[:.]/g, '-')
     const res = yield* NotionPages.create({
@@ -145,11 +148,11 @@ const childrenSettleSchedule = Schedule.exponential(Duration.millis(500), 1.5).p
 const retrieveChildrenSettled = (
   blockId: string,
   expectChildren: boolean,
-): Effect.Effect<{ results: ReadonlyArray<unknown> }, unknown, E2EEnv> =>
+): Effect.Effect<{ results: ReadonlyArray<unknown> }, NotionApiError, E2EEnv> =>
   NotionBlocks.retrieveChildren({ blockId }).pipe(
     Effect.flatMap((res) =>
       expectChildren && res.results.length === 0
-        ? Effect.fail(new Error(`children-not-yet-visible:${blockId}`))
+        ? Effect.fail(new NotionSyncError({ reason: 'children-not-yet-visible', cause: blockId }))
         : Effect.succeed(res),
     ),
     Effect.retry(childrenSettleSchedule),
@@ -163,7 +166,7 @@ export const readPageTree = (
   pageId: string,
   maxDepth = 8,
   expectChildren = false,
-): Effect.Effect<readonly ReadBlockNode[], unknown, E2EEnv> =>
+): Effect.Effect<readonly ReadBlockNode[], NotionApiError, E2EEnv> =>
   Effect.gen(function* () {
     if (maxDepth < 0) return [] as readonly ReadBlockNode[]
     const res = yield* retrieveChildrenSettled(pageId, expectChildren)
@@ -187,9 +190,9 @@ export const readPageTree = (
  * one scratch page is live at a time; always archives on exit, even on
  * failure. The return type is a `Promise` so tests can `await` it directly.
  */
-export const withScratchPage = async <A>(
+export const withScratchPage = async <A, E>(
   label: string,
-  body: (pageId: string) => Effect.Effect<A, unknown, E2EEnv>,
+  body: (pageId: string) => Effect.Effect<A, E, E2EEnv>,
 ): Promise<A> => {
   assertEnv()
   const release = await acquireLane()
@@ -202,7 +205,7 @@ export const withScratchPage = async <A>(
         } finally {
           yield* archiveScratchPage(pageId)
         }
-      }).pipe(Effect.provide(E2ELayer)) as Effect.Effect<A, unknown, never>,
+      }).pipe(Effect.provide(E2ELayer)),
     )
   } finally {
     release()

@@ -61,7 +61,7 @@ const importStoryFile = (filePath: string): Effect.Effect<ParsedStoryModule | un
       ),
   }).pipe(
     Effect.tapError((error) => Effect.logWarning(`Skipping ${filePath}: ${error.message}`)),
-    Effect.catchAll(() => Effect.succeed(undefined)),
+    Effect.orElseSucceed(() => undefined),
   )
 
 /** Result of story discovery including skip statistics */

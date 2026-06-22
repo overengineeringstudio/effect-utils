@@ -242,8 +242,8 @@ const withTempDir = async <T>(fn: (dir: string) => Promise<T>): Promise<T> => {
   }
 }
 
-const run = <A>(
-  effect: Effect.Effect<A, unknown, NodeContext.NodeContext | NotionMdGateway | NmdStateStore>,
+const run = <A, E>(
+  effect: Effect.Effect<A, E, NodeContext.NodeContext | NotionMdGateway | NmdStateStore>,
   fake: FakeTreeNotion,
 ) =>
   Effect.runPromise(

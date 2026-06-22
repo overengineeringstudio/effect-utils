@@ -262,7 +262,8 @@ const maybeGcObjects = (opts: {
         syncStates: opts.syncStates,
         ...(opts.dryRun === undefined ? {} : { dryRun: opts.dryRun }),
       })
-    : Effect.succeed(undefined)
+    : // @effect-diagnostics-next-line effectSucceedWithVoid:off -- success channel is `NmdObjectGcResult | undefined`; `Effect.void` would narrow to `Effect<void>` and break the union
+      Effect.succeed(undefined)
 
 const withObjectGc = <R extends ReconcileResult>({
   result,

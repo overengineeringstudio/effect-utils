@@ -1,5 +1,5 @@
 import { FileSystem, Path } from '@effect/platform'
-import { Effect } from 'effect'
+import { Effect, Schema } from 'effect'
 
 import type { PackageInfo } from '../common/types.ts'
 import * as Observability from './observability.ts'
@@ -17,6 +17,9 @@ export type WorkspaceProvider = {
 
 const normalizePath = (input: string): string => input.replace(/\\/g, '/')
 
+/** Permissive JSON decode for package.json files (shape is cast, not validated). */
+const decodePackageJson = Schema.decodeUnknownSync(Schema.parseJson(Schema.Unknown))
+
 /** Build validation context by reading all workspace package.json files into a lookup map */
 export const buildPackageJsonValidationContext = Effect.fn(
   'genie/buildPackageJsonValidationContext',
@@ -33,7 +36,7 @@ export const buildPackageJsonValidationContext = Effect.fn(
       .pipe(Effect.catchAll(() => Effect.void))
     if (content === undefined) continue
     const parsed = Effect.try({
-      try: () => JSON.parse(content) as Omit<PackageInfo, 'path'>,
+      try: () => decodePackageJson(content) as Omit<PackageInfo, 'path'>,
       catch: () => undefined,
     })
     const data = yield* parsed

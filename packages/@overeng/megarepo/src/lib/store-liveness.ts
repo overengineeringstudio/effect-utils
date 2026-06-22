@@ -97,7 +97,7 @@ const collectWorkspaceSymlinkTargets = ({
     const membersRootExists =
       strict === true
         ? yield* fs.exists(membersRoot)
-        : yield* fs.exists(membersRoot).pipe(Effect.catchAll(() => Effect.succeed(false)))
+        : yield* fs.exists(membersRoot).pipe(Effect.orElseSucceed(() => false))
     if (membersRootExists === false) return targets
 
     // Workspace-level read failures (unreadable members dir) surface in strict
@@ -107,15 +107,11 @@ const collectWorkspaceSymlinkTargets = ({
     const entries =
       strict === true
         ? yield* fs.readDirectory(membersRoot)
-        : yield* fs
-            .readDirectory(membersRoot)
-            .pipe(Effect.catchAll(() => Effect.succeed([] as string[])))
+        : yield* fs.readDirectory(membersRoot).pipe(Effect.orElseSucceed(() => [] as string[]))
     for (const entry of entries) {
       if (entry.startsWith('.') === true) continue
       const memberPath = EffectPath.ops.join(membersRoot, EffectPath.unsafe.relativeFile(entry))
-      const target = yield* fs
-        .readLink(memberPath)
-        .pipe(Effect.catchAll(() => Effect.succeed(null)))
+      const target = yield* fs.readLink(memberPath).pipe(Effect.orElseSucceed(() => null))
       if (target !== null && isStorePath({ store, path: target }) === true) {
         targets.add(normalizePath(target))
       }
@@ -295,12 +291,12 @@ const readRegistryRecords = ({
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const registryDir = workspaceRegistryDir(store)
-    const exists = yield* fs.exists(registryDir).pipe(Effect.catchAll(() => Effect.succeed(false)))
+    const exists = yield* fs.exists(registryDir).pipe(Effect.orElseSucceed(() => false))
     if (exists === false) return { records: [], uncleanReconcilePaths: new Set<string>() }
 
     const entries = yield* fs
       .readDirectory(registryDir)
-      .pipe(Effect.catchAll(() => Effect.succeed([] as string[])))
+      .pipe(Effect.orElseSucceed(() => [] as string[]))
     const records: StoreWorkspaceRecord[] = []
     const uncleanReconcilePaths = new Set<string>()
 
@@ -311,14 +307,14 @@ const readRegistryRecords = ({
         Effect.flatMap((content) =>
           Schema.decodeUnknown(Schema.parseJson(StoreWorkspaceRecord))(content),
         ),
-        Effect.catchAll(() => Effect.succeed(null)),
+        Effect.orElseSucceed(() => null),
       )
       if (parsed === null) continue
 
       const workspaceRoot = EffectPath.unsafe.absoluteDir(`${parsed.workspaceRoot}/`)
       const workspaceExists = yield* fs
         .exists(parsed.workspaceRoot)
-        .pipe(Effect.catchAll(() => Effect.succeed(false)))
+        .pipe(Effect.orElseSucceed(() => false))
 
       // Prune only when the workspace dir is GONE (decision 0010); a
       // present-but-unreadable workspace must never be pruned.
@@ -338,7 +334,7 @@ const readRegistryRecords = ({
       // Read error ⇒ keep the existing record verbatim and flag it unclean.
       const reconciled = yield* collectWorkspaceLivePathsStrict({ workspaceRoot, store }).pipe(
         Effect.map((paths) => ({ _tag: 'ok' as const, paths })),
-        Effect.catchAll(() => Effect.succeed({ _tag: 'error' as const })),
+        Effect.orElseSucceed(() => ({ _tag: 'error' as const })),
       )
 
       if (reconciled._tag === 'ok') {

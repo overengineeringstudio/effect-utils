@@ -75,7 +75,7 @@ const resolveCwd = (inputCwd: string) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const absoluteCwd = path.isAbsolute(inputCwd) === true ? inputCwd : path.resolve(inputCwd)
-    return yield* fs.realPath(absoluteCwd).pipe(Effect.catchAll(() => Effect.succeed(absoluteCwd)))
+    return yield* fs.realPath(absoluteCwd).pipe(Effect.orElseSucceed(() => absoluteCwd))
   })
 
 /** Provide a no-subscriber event bus (events are silently dropped). */

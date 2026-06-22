@@ -667,6 +667,9 @@ const runSyncOrThrow = <A, E>(effect: Effect.Effect<A, E>): A =>
     },
   })
 
+/** Codec whose encode side mirrors `JSON.stringify` for arbitrary values. */
+const jsonStringFromUnknown = Schema.parseJson(Schema.Unknown)
+
 const encodeUnknown = ({
   key,
   schema,
@@ -822,7 +825,8 @@ const compileAutoEncoder = ({
     encodeUnknown({ key: attrKey, schema, value }).pipe(
       Effect.flatMap((encoded) =>
         encoded === null || encoded === undefined
-          ? Effect.succeed(undefined)
+          ? // @effect-diagnostics-next-line effectSucceedWithVoid:off -- FieldEncoder success channel is `OtelAttributeValue | undefined`; `undefined` is the meaningful "drop field" value, not `void`
+            Effect.succeed(undefined)
           : effectFromEither(primitiveFromUnknown({ key: attrKey, value: encoded })),
       ),
     ),
@@ -840,6 +844,7 @@ const compilePolicyEncoder = ({
 }): FieldEncoder => {
   switch (policy) {
     case 'drop':
+      // @effect-diagnostics-next-line effectSucceedWithVoid:off -- FieldEncoder success channel is `OtelAttributeValue | undefined`; `undefined` is the meaningful "drop field" value, not `void`
       return () => Effect.succeed(undefined)
     case 'redacted':
       return (value) =>
@@ -850,14 +855,12 @@ const compilePolicyEncoder = ({
       return (value) =>
         encodeUnknown({ key: attrKey, schema, value }).pipe(
           Effect.flatMap((encoded) =>
-            Effect.try({
-              try: () => {
-                const json = JSON.stringify(encoded)
-                if (json === undefined) throw new Error('JSON.stringify returned undefined')
-                return json
-              },
-              catch: (cause) => encodeFailure({ key: attrKey, cause }),
-            }),
+            // `Schema.parseJson(Schema.Unknown)` encodes via `JSON.stringify`, but
+            // fails with a `ParseError` exactly when the result would be `undefined`
+            // (functions, bare `undefined`, ...) instead of returning `undefined`.
+            Schema.encode(jsonStringFromUnknown)(encoded).pipe(
+              Effect.mapError((cause) => encodeFailure({ key: attrKey, cause })),
+            ),
           ),
         )
     case 'string':

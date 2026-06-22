@@ -663,6 +663,26 @@ export const createPatchPostinstall = (args: { basePath: string }) => {
   }
 }
 
+/**
+ * #811 Effect-LSP strict-gate policy.
+ *
+ * The `@effect/language-service` plugin classifies every Effect diagnostic into
+ * a TS category (error / warning / suggestion) and only lets a category affect
+ * the `tsgo --build` exit code when the matching `ignore…InTscExitCode` flag is
+ * `false`. This switch is the gate: both fields are `true`, so Effect warnings
+ * AND suggestions fail the build exit code (errors always gate regardless).
+ *
+ * The gate runs through the existing `tsgo --build` over the project graph — no
+ * extra compiler pass — so it is enforced by `ts:check` / `ts:check:strict`
+ * (hence `dt check:quick` / `dt check:all` and the CI `typecheck` lane).
+ *
+ * This is the SHARED base consumed by peer repos: enabling it gates Effect
+ * diagnostics fleet-wide. A repo that is not yet clean can locally override its
+ * own tsconfig plugin options (set `ignoreEffect{Warnings,Suggestions}InTscExitCode`
+ * back to `true`) until it converges, rather than carrying diagnostics in source.
+ */
+const effectDiagnosticsGate = { warnings: true, suggestions: true } as const
+
 /** Base tsconfig compiler options shared across all packages */
 export const baseTsconfigCompilerOptions = {
   target: 'ES2024',
@@ -693,21 +713,28 @@ export const baseTsconfigCompilerOptions = {
       // Upstream tsgo currently reads Effect-specific diagnostics/options from
       // this plugin entry, while plain tsc ignores it when the npm package is absent.
       name: '@effect/language-service',
-      reportSuggestionsAsWarningsInTsc: true,
-      // Effect diagnostics are surfaced as warnings only and do not affect the
-      // tsc/tsgo exit code, so `ts:check` never fails on them today.
-      // TODO(#811): flip to gating (drop this and/or promote severities to
-      // 'error') once the workspace is clean against these diagnostics.
-      // @see https://github.com/overengineeringstudio/effect-utils/issues/811
-      ignoreEffectWarningsInTscExitCode: true,
+      // #811 Effect-LSP gate policy. Each `ignore…InTscExitCode` flag is the
+      // INVERSE of "this severity gates": `false` => the severity contributes to
+      // the `tsgo --build` exit code. Derived from `effectDiagnosticsGate` so the
+      // intent is a single one-line flip (see that constant for the burndown plan).
+      ignoreEffectWarningsInTscExitCode: !effectDiagnosticsGate.warnings,
+      ignoreEffectSuggestionsInTscExitCode: !effectDiagnosticsGate.suggestions,
+      // Errors always gate.
+      ignoreEffectErrorsInTscExitCode: false,
+      // Keep suggestions visible in build output (advisory steering). Visibility
+      // is independent of gating: this stays `true` regardless of the toggle.
+      includeSuggestionsInTsc: true,
       pipeableMinArgCount: 2,
       diagnosticSeverity: {
+        // Off-by-default rules the team opts into (now gating as warnings).
         missedPipeableOpportunity: 'warning',
         schemaUnionOfLiterals: 'warning',
         anyUnknownInErrorContext: 'warning',
         preferSchemaOverJson: 'warning',
-        missingEffectContext: 'warning',
-        missingEffectError: 'warning',
+        // `missingEffectContext` / `missingEffectError` keep their upstream
+        // default `error` severity (no override) — real lifecycle bugs, gated
+        // hard. Genuine type-level assertion sites are waived in source with a
+        // narrow `@effect-diagnostics … :skip-file` directive instead.
       },
     },
   ],

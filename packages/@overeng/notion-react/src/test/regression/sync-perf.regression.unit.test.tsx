@@ -11,6 +11,7 @@ import type { NotionConfig } from '@overeng/notion-effect-client'
 import { InMemoryCache } from '../../cache/in-memory-cache.ts'
 import type { NotionCache } from '../../cache/types.ts'
 import { BulletedListItem, Heading2, Paragraph, Toggle } from '../../components/blocks.ts'
+import type { NotionSyncError } from '../../renderer/errors.ts'
 import type { SyncMetrics } from '../../renderer/sync-metrics.ts'
 import { sync } from '../../renderer/sync.ts'
 import { createFakeNotion, type FakeNotion } from '../mock-client.ts'
@@ -94,7 +95,7 @@ const RealisticDaily = (): ReactNode => {
 
 const runWith = <A,>(
   fake: FakeNotion,
-  eff: Effect.Effect<A, unknown, HttpClient.HttpClient | NotionConfig>,
+  eff: Effect.Effect<A, NotionSyncError, HttpClient.HttpClient | NotionConfig>,
 ): Promise<A> => Effect.runPromise(eff.pipe(Effect.provide(fake.layer)))
 
 const collect = async (
@@ -111,7 +112,7 @@ const collect = async (
       onMetrics: (m) => {
         captured = m
       },
-    }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+    }),
   )
   if (captured === undefined) throw new Error('onMetrics was never invoked')
   return captured

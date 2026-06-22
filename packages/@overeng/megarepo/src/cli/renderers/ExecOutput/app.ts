@@ -12,7 +12,7 @@ import { ExecState, ExecAction, execReducer } from './schema.ts'
 /**
  * Initial state for exec output.
  */
-export const createInitialExecState = (): typeof ExecState.Type => ({
+export const createInitialExecState = (): ExecState => ({
   _tag: 'Running',
   command: '',
   mode: 'parallel',

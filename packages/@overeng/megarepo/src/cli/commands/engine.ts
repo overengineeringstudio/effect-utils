@@ -294,12 +294,12 @@ export const syncMegarepo = <R = never>({
     // Only check for orphans in apply mode (workspace changes) and if repos/ directory exists
     const membersRootExists =
       changesWorkspace === true &&
-      (yield* fs.exists(membersRoot).pipe(Effect.catchAll(() => Effect.succeed(false))))
+      (yield* fs.exists(membersRoot).pipe(Effect.orElseSucceed(() => false)))
 
     if (membersRootExists === true) {
       const existingEntries = yield* fs
         .readDirectory(membersRoot)
-        .pipe(Effect.catchAll(() => Effect.succeed([] as string[])))
+        .pipe(Effect.orElseSucceed(() => [] as string[]))
 
       const candidates = existingEntries.filter(
         (entry) => !configuredMemberNames.has(entry) && !skippedMemberNames.has(entry),
@@ -314,9 +314,7 @@ export const syncMegarepo = <R = never>({
             )
 
             // Only remove symlinks (not directories that might be local repos)
-            const linkTarget = yield* fs
-              .readLink(entryPath)
-              .pipe(Effect.catchAll(() => Effect.succeed(null)))
+            const linkTarget = yield* fs.readLink(entryPath).pipe(Effect.orElseSucceed(() => null))
 
             if (linkTarget !== null) {
               if (dryRun === false) {
@@ -353,7 +351,7 @@ export const syncMegarepo = <R = never>({
           }
           const memberPath = getMemberPath({ megarepoRoot, name: result.name })
           const nestedConfig = yield* findConfigPath(memberPath).pipe(
-            Effect.catchAll(() => Effect.succeed(undefined)),
+            Effect.orElseSucceed(() => undefined),
           )
           return nestedConfig !== undefined ? result.name : null
         }),

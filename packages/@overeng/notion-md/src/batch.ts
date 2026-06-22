@@ -458,9 +458,11 @@ const coalesceTriggers = (triggers: Iterable<WatchTrigger>): readonly WatchTrigg
     .toSorted((left, right) => left.path.localeCompare(right.path))
 }
 
+const encodeJsonLine = Schema.encodeSync(Schema.parseJson())
+
 const writeJsonLine = (value: unknown): Effect.Effect<void> =>
   Effect.sync(() => {
-    console.log(JSON.stringify(value))
+    console.log(encodeJsonLine(value))
   })
 
 const watchErrorJson = (error: unknown): Record<string, unknown> => {

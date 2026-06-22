@@ -184,6 +184,11 @@ const renderReact = ({
 // JSON Rendering
 // =============================================================================
 
+/** Encode an arbitrary (already schema-encoded) value to a JSON string. */
+const encodeJson = Schema.encodeSync(Schema.parseJson(Schema.Unknown))
+/** Same, but pretty-printed with a 2-space indent (json output mode). */
+const encodeJsonPretty = Schema.encodeSync(Schema.parseJson(Schema.Unknown, { space: 2 }))
+
 /** Encode state as JSON via the app's stateSchema */
 const renderJson = ({
   captured,
@@ -192,14 +197,14 @@ const renderJson = ({
   readonly captured: CapturedStoryProps
   readonly timelineMode: TimelineMode
 }): Effect.Effect<string> =>
-  Effect.sync(() => {
+  Effect.gen(function* () {
     const targetState = computeState({ captured, timelineMode })
-    try {
-      const encoded = Schema.encodeSync(captured.app.config.stateSchema)(targetState)
-      return JSON.stringify(encoded, null, 2)
-    } catch {
-      return JSON.stringify(targetState, null, 2)
-    }
+    // Best-effort: encode through the app's schema, falling back to the raw
+    // state on a schema mismatch (display-only path, never fails).
+    const encoded = yield* Schema.encode(captured.app.config.stateSchema)(targetState).pipe(
+      Effect.orElseSucceed(() => targetState),
+    )
+    return encodeJsonPretty(encoded)
   })
 
 // =============================================================================
@@ -228,7 +233,7 @@ const renderNdjson = ({
     const lines: string[] = []
 
     // Initial state line
-    lines.push(JSON.stringify({ at: 0, state: encode(baseState) }))
+    lines.push(encodeJson({ at: 0, state: encode(baseState) }))
 
     // Apply each timeline event and emit the resulting state
     let currentState = baseState
@@ -236,7 +241,7 @@ const renderNdjson = ({
     for (const event of sorted) {
       currentState = reducer({ state: currentState, action: event.action })
       lines.push(
-        JSON.stringify({
+        encodeJson({
           at: event.at,
           action: event.action,
           state: encode(currentState),

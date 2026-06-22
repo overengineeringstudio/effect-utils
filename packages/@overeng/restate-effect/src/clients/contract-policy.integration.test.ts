@@ -210,7 +210,9 @@ describe.skipIf(!serverAvailable)('contract-invocation policy at the public entr
         )
         /* Raw wire: the sensitive field is ciphertext, never the plaintext. */
         expect(body).not.toContain(SECRET)
-        const wire = JSON.parse(body) as { token: string }
+        const wire = yield* Schema.decode(
+          Schema.parseJson(Schema.Struct({ token: Schema.String })),
+        )(body)
         expect(wire.token).not.toBe(SECRET)
         /* The typed `call` over the SAME handler decrypts the response to plaintext. */
         const out = yield* harness.ingress.call({

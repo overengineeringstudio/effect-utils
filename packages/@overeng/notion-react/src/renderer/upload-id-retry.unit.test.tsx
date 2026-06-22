@@ -15,7 +15,7 @@ const ROOT = '00000000-0000-4000-8000-000000000001'
 
 const runWith = <A,>(
   fake: FakeNotion,
-  eff: Effect.Effect<A, unknown, HttpClient.HttpClient | NotionConfig>,
+  eff: Effect.Effect<A, NotionSyncError, HttpClient.HttpClient | NotionConfig>,
 ): Promise<A> => Effect.runPromise(eff.pipe(Effect.provide(fake.layer)))
 
 describe('onUploadIdRejected hook', () => {
@@ -43,7 +43,7 @@ describe('onUploadIdRejected hook', () => {
         pageId: ROOT,
         cache,
         onUploadIdRejected: hook,
-      }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+      }),
     )
     expect(res.appends).toBe(1)
     expect(calls).toHaveLength(1)

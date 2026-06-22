@@ -54,7 +54,7 @@ describe('makeOtelVitestLayer — flush on shutdown', () => {
       const post = yield* cap.inspect({ signal: 'traces', service: SERVICE, name: SPAN })
 
       return { pre: pre.length, post: post.length }
-    }).pipe(Effect.scoped, Effect.provide(Otelite.Default), Effect.provide(NodeContext.layer))
+    }).pipe(Effect.scoped, Effect.provide(Layer.provideMerge(Otelite.Default, NodeContext.layer)))
 
     const { pre, post } = await Effect.runPromise(program)
     expect(pre).toBe(0)

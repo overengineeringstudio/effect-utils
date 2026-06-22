@@ -106,7 +106,7 @@ export interface NixLockSyncOptions {
   /** Path to the megarepo root */
   readonly megarepoRoot: AbsoluteDirPath
   /** Megarepo configuration */
-  readonly config: typeof MegarepoConfig.Type
+  readonly config: MegarepoConfig
   /** Megarepo lock file with resolved commits */
   readonly lockFile: LockFile
   /** Members to exclude from sync (opt-out) */
@@ -140,7 +140,23 @@ const RawFlakeLockJson = Schema.parseJson(
       version: Schema.Number,
     }),
   ),
+  { space: 2 },
 )
+
+/**
+ * Schema for an opaque JSON object (devenv.lock / flake.lock) whose nodes are
+ * manipulated in place. Decodes any JSON object to a mutable record and encodes
+ * with 2-space indentation, matching the prior `JSON.stringify(value, null, 2)`
+ * output byte-for-byte.
+ */
+const RawLockJson = Schema.parseJson(
+  Schema.mutable(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+  { space: 2 },
+)
+
+/** Encode a manipulated lock object back to its 2-space JSON file content (with trailing newline). */
+const encodeRawLockJson = (value: Record<string, unknown>): string =>
+  Schema.encodeSync(RawLockJson)(value) + '\n'
 
 // =============================================================================
 // Nix Metadata Fetching
@@ -485,9 +501,7 @@ const syncSingleLockFile = ({
 
     // Write updated lock file if any changes were made
     if (updatedInputs.length > 0 || schemeNormalized === true) {
-      // JSON.stringify is safe here - it doesn't throw on valid objects
-      // @effect-diagnostics-next-line preferSchemaOverJson:off
-      const updatedContent = JSON.stringify(rawJson, null, 2)
+      const updatedContent = yield* Schema.encode(RawFlakeLockJson)(rawJson)
       yield* fs.writeFileString(lockPath, updatedContent + '\n')
     }
 
@@ -765,15 +779,16 @@ const validateSharedInputSource = ({
     }
 
     const sourceContent = yield* fs.readFileString(sourceLockPath)
-    let sourceJson: Record<string, unknown>
-    try {
-      sourceJson = JSON.parse(sourceContent) as Record<string, unknown>
-    } catch {
-      return yield* new SharedInputSourceError({
-        message: `Source member '${sourceMemberName}' has invalid devenv.lock (not valid JSON)`,
-        sourceMemberName,
-      })
-    }
+    const sourceJson = yield* Schema.decodeUnknown(RawLockJson)(sourceContent).pipe(
+      Effect.catchTag(
+        'ParseError',
+        () =>
+          new SharedInputSourceError({
+            message: `Source member '${sourceMemberName}' has invalid devenv.lock (not valid JSON)`,
+            sourceMemberName,
+          }),
+      ),
+    )
 
     const sourceNodes = sourceJson['nodes'] as Record<string, Record<string, unknown>> | undefined
     if (sourceNodes === undefined) {
@@ -848,12 +863,9 @@ const applySharedInputSource = ({
       if ((yield* fs.exists(lockPath)) === false) continue
 
       const content = yield* fs.readFileString(lockPath)
-      let parsed: Record<string, unknown>
-      try {
-        parsed = JSON.parse(content) as Record<string, unknown>
-      } catch {
-        continue
-      }
+      const parsedOpt = Schema.decodeUnknownOption(RawLockJson)(content)
+      if (Option.isNone(parsedOpt) === true) continue
+      const parsed = parsedOpt.value
 
       const targetNodes = parsed['nodes'] as Record<string, Record<string, unknown>> | undefined
       if (targetNodes === undefined) continue
@@ -880,8 +892,7 @@ const applySharedInputSource = ({
       }
 
       if (updatedInputs.length > 0) {
-        // @effect-diagnostics-next-line preferSchemaOverJson:off
-        yield* fs.writeFileString(lockPath, JSON.stringify(parsed, null, 2) + '\n')
+        yield* fs.writeFileString(lockPath, encodeRawLockJson(parsed))
         updatedMembers.push({ name: memberName, updatedInputs })
       }
     }
@@ -1033,12 +1044,9 @@ const syncMemberRefs = ({
           if (member === undefined) continue
 
           /** Check original.ref in the lock file node */
-          let parsed: { nodes?: Record<string, Record<string, unknown>> }
-          try {
-            parsed = JSON.parse(content) as { nodes?: Record<string, Record<string, unknown>> }
-          } catch {
-            return
-          }
+          const parsedOpt = Schema.decodeUnknownOption(RawLockJson)(content)
+          if (Option.isNone(parsedOpt) === true) return
+          const parsed = parsedOpt.value as { nodes?: Record<string, Record<string, unknown>> }
 
           const node = parsed.nodes?.[input.inputName]
           if (node === undefined) continue
@@ -1071,16 +1079,15 @@ const syncMemberRefs = ({
         }
 
         // Normalize all git GitHub nodes to github: scheme
-        let lockJson: { nodes?: Record<string, Record<string, unknown>> }
-        try {
-          lockJson = JSON.parse(currentContent) as typeof lockJson
-        } catch {
+        const lockJsonOpt = Schema.decodeUnknownOption(RawLockJson)(currentContent)
+        if (Option.isNone(lockJsonOpt) === true) {
           if (currentContent !== content) {
             yield* fs.writeFileString(filePath, currentContent)
             results.push({ path: filePath, type: fileType, updatedInputs: updatedInputDetails })
           }
           return
         }
+        const lockJson = lockJsonOpt.value as { nodes?: Record<string, Record<string, unknown>> }
 
         let schemeConverted = false
         if (lockJson.nodes !== undefined) {
@@ -1106,7 +1113,7 @@ const syncMemberRefs = ({
         }
 
         if (schemeConverted === true) {
-          currentContent = JSON.stringify(lockJson, null, 2) + '\n'
+          currentContent = encodeRawLockJson(lockJson)
         }
 
         if (currentContent !== content) {
@@ -1168,7 +1175,7 @@ export const syncNixLocks = Effect.fn('megarepo/nix-lock/sync')((options: NixLoc
                     name,
                   })
                   const nestedConfig = yield* findConfigPath(memberPath).pipe(
-                    Effect.catchAll(() => Effect.succeed(undefined)),
+                    Effect.orElseSucceed(() => undefined),
                   )
                   return nestedConfig !== undefined ? name : undefined
                 }),

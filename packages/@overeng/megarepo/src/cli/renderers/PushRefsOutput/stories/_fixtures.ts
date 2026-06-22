@@ -11,7 +11,7 @@ import type { PushRefsState as PushRefsStateType } from '../mod.ts'
 // State Factories - Aligned (no changes needed)
 // =============================================================================
 
-export const createAligned = (): typeof PushRefsState.Type => ({
+export const createAligned = (): PushRefsState => ({
   _tag: 'Aligned',
 })
 
@@ -20,7 +20,7 @@ export const createAligned = (): typeof PushRefsState.Type => ({
 // =============================================================================
 
 /** Single nested megarepo with one ref update */
-export const createSingleUpdate = (): typeof PushRefsState.Type => ({
+export const createSingleUpdate = (): PushRefsState => ({
   _tag: 'Result',
   dryRun: false,
   totalUpdates: 1,
@@ -41,7 +41,7 @@ export const createSingleUpdate = (): typeof PushRefsState.Type => ({
 })
 
 /** Multiple nested megarepos with several ref updates */
-export const createMultipleUpdates = (): typeof PushRefsState.Type => ({
+export const createMultipleUpdates = (): PushRefsState => ({
   _tag: 'Result',
   dryRun: false,
   totalUpdates: 3,
@@ -80,7 +80,7 @@ export const createMultipleUpdates = (): typeof PushRefsState.Type => ({
 })
 
 /** Dry run with single update */
-export const createDryRunSingle = (): typeof PushRefsState.Type => ({
+export const createDryRunSingle = (): PushRefsState => ({
   _tag: 'Result',
   dryRun: true,
   totalUpdates: 1,
@@ -101,7 +101,7 @@ export const createDryRunSingle = (): typeof PushRefsState.Type => ({
 })
 
 /** Dry run with multiple updates */
-export const createDryRunMultiple = (): typeof PushRefsState.Type => ({
+export const createDryRunMultiple = (): PushRefsState => ({
   _tag: 'Result',
   dryRun: true,
   totalUpdates: 3,
@@ -144,7 +144,7 @@ export const createDryRunMultiple = (): typeof PushRefsState.Type => ({
 // =============================================================================
 
 /** Update with genie file warning */
-export const createWithGenieWarning = (): typeof PushRefsState.Type => ({
+export const createWithGenieWarning = (): PushRefsState => ({
   _tag: 'Result',
   dryRun: false,
   totalUpdates: 1,
@@ -168,7 +168,7 @@ export const createWithGenieWarning = (): typeof PushRefsState.Type => ({
 // State Factories - Errors
 // =============================================================================
 
-export const createErrorNotInMegarepo = (): typeof PushRefsState.Type => ({
+export const createErrorNotInMegarepo = (): PushRefsState => ({
   _tag: 'Error',
   error: 'not_in_megarepo',
   message: 'Not in a megarepo',
@@ -180,8 +180,8 @@ export const createErrorNotInMegarepo = (): typeof PushRefsState.Type => ({
 
 export const createTimeline = (
   finalState: PushRefsStateType,
-): Array<{ at: number; action: typeof PushRefsAction.Type }> => {
-  const timeline: Array<{ at: number; action: typeof PushRefsAction.Type }> = []
+): Array<{ at: number; action: PushRefsAction }> => {
+  const timeline: Array<{ at: number; action: PushRefsAction }> = []
 
   timeline.push({
     at: 0,
@@ -196,7 +196,7 @@ export const createTimeline = (
   return timeline
 }
 
-const mapStateToAction = (state: PushRefsStateType): typeof PushRefsAction.Type => {
+const mapStateToAction = (state: PushRefsStateType): PushRefsAction => {
   switch (state._tag) {
     case 'Idle':
     case 'Scanning':

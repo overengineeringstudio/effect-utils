@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { NodeContext } from '@effect/platform-node'
-import { Chunk, Effect, Schema, Stream } from 'effect'
+import { Chunk, Effect, Layer, Schema, Stream } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { BodyEvidenceFingerprintSchema as NotionMdBodyEvidenceFingerprint } from '@overeng/notion-effect-client'
@@ -65,9 +65,9 @@ const bodyPointerFor = ({
   fingerprint = bodyEvidenceFingerprintFromContentDigest(bodyHash),
   safety = bodySafetySnapshot(),
 }: {
-  readonly pageId?: typeof PageId.Type
-  readonly bodyHash?: typeof Hash.Type
-  readonly fingerprint?: typeof BodyEvidenceFingerprint.Type
+  readonly pageId?: PageId
+  readonly bodyHash?: Hash
+  readonly fingerprint?: BodyEvidenceFingerprint
   readonly safety?: BodySafetySnapshot
 } = {}) =>
   decode(BodyPointer, {
@@ -164,7 +164,7 @@ const runWithNmdStateStore = <TValue, TError>(
   effect: Effect.Effect<TValue, TError, NmdStateStore>,
 ) =>
   Effect.runPromise(
-    effect.pipe(Effect.provide(NmdStateStoreLive), Effect.provide(NodeContext.layer)),
+    effect.pipe(Effect.provide(NmdStateStoreLive.pipe(Layer.provide(NodeContext.layer)))),
   )
 
 describe('body adapter contract', () => {

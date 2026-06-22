@@ -12,7 +12,7 @@ import { StoreState, StoreAction, storeReducer } from './schema.ts'
 /**
  * Initial state for store output (empty ls).
  */
-export const createInitialStoreState = (): typeof StoreState.Type => ({
+export const createInitialStoreState = (): StoreState => ({
   _tag: 'Ls',
   basePath: '',
   repos: [],

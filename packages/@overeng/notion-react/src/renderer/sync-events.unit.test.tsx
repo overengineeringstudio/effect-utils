@@ -8,6 +8,7 @@ import type { NotionConfig } from '@overeng/notion-effect-client'
 import { InMemoryCache } from '../cache/in-memory-cache.ts'
 import { Paragraph } from '../components/blocks.ts'
 import { createFakeNotion, type FakeNotion } from '../test/mock-client.ts'
+import type { NotionSyncError } from './errors.ts'
 import { type SyncEvent } from './sync-events.ts'
 import { sync } from './sync.ts'
 
@@ -15,7 +16,7 @@ const ROOT = '00000000-0000-4000-8000-000000000001'
 
 const runWith = <A,>(
   fake: FakeNotion,
-  eff: Effect.Effect<A, unknown, HttpClient.HttpClient | NotionConfig>,
+  eff: Effect.Effect<A, NotionSyncError, HttpClient.HttpClient | NotionConfig>,
 ): Promise<A> => Effect.runPromise(eff.pipe(Effect.provide(fake.layer)))
 
 const Tree = ({ text }: { readonly text: string }): ReactNode => (
@@ -35,7 +36,7 @@ describe('sync() observability events', () => {
         pageId: ROOT,
         cache,
         onEvent: (e) => events.push(e),
-      }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+      }),
     )
     const tags = events.map((e) => e._tag)
     expect(tags[0]).toBe('SyncStart')
@@ -71,7 +72,7 @@ describe('sync() observability events', () => {
         pageId: ROOT,
         cache,
         onEvent: (e) => events.push(e),
-      }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+      }),
     )
     const fb = events.find((e) => e._tag === 'FallbackTriggered')
     expect(fb).toBeDefined()
@@ -122,7 +123,7 @@ describe('sync() observability events', () => {
         pageId: ROOT,
         cache,
         onEvent: (e) => events.push(e),
-      }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+      }),
     )
     events.length = 0
     // Second sync with same tree: diff emits nothing, no UpdateNoop and no
@@ -133,7 +134,7 @@ describe('sync() observability events', () => {
         pageId: ROOT,
         cache,
         onEvent: (e) => events.push(e),
-      }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+      }),
     )
     expect(events.filter((e) => e._tag === 'UpdateNoop')).toHaveLength(0)
     // CacheOutcome reports 'hit' for the warm path.
@@ -150,7 +151,7 @@ describe('sync() observability events', () => {
       sync(<Tree text="hi" />, {
         pageId: ROOT,
         cache,
-      }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+      }),
     )
     expect(res.appends).toBe(1)
   })

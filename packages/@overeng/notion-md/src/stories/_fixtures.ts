@@ -55,8 +55,7 @@ export const CommandFixture = Schema.Struct({
 export type CommandFixture = typeof CommandFixture.Type
 
 export const CommandFixtureAction = Schema.Union(
-  Schema.Struct({
-    _tag: Schema.Literal('SetFixture'),
+  Schema.TaggedStruct('SetFixture', {
     fixture: CommandFixture,
   }),
 )

@@ -15,7 +15,7 @@ import { SyncState, SyncAction, syncReducer } from './schema.ts'
 export const createInitialSyncState = (params: {
   workspaceName: string
   workspaceRoot: string
-}): typeof SyncState.Type => ({
+}): SyncState => ({
   _tag: 'Syncing',
   workspace: {
     name: params.workspaceName,

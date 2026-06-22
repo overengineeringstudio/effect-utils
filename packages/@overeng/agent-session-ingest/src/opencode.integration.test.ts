@@ -7,7 +7,11 @@ import { expect } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'
 
-import { TestLayer, expectSingleArtifact } from './adapters.integration-test-helpers.ts'
+import {
+  TestLayer,
+  expectSingleArtifact,
+  stringifyJson,
+} from './adapters.integration-test-helpers.ts'
 import { makeOpenCodeAdapter } from './adapters/opencode.ts'
 
 Vitest.describe('opencode adapter integration', () => {
@@ -70,7 +74,7 @@ Vitest.describe('opencode adapter integration', () => {
             'ses_1',
             1001,
             1101,
-            JSON.stringify({
+            stringifyJson({
               role: 'assistant',
               modelID: 'gpt-5',
               providerID: 'openai',
@@ -86,7 +90,7 @@ Vitest.describe('opencode adapter integration', () => {
             'ses_1',
             1002,
             1102,
-            JSON.stringify({
+            stringifyJson({
               type: 'tool',
               callID: 'call_1',
               tool: 'bash',
@@ -119,7 +123,7 @@ Vitest.describe('opencode adapter integration', () => {
             'ses_1',
             1003,
             1200,
-            JSON.stringify({
+            stringifyJson({
               type: 'step-finish',
               reason: 'completed',
             }),
@@ -194,7 +198,7 @@ Vitest.describe('opencode adapter integration', () => {
           db.prepare(
             `insert into message (id, session_id, time_created, time_updated, data)
              values (?, ?, ?, ?, ?)`,
-          ).run('msg_a', 'ses_2', 1001, 2000, JSON.stringify({ role: 'assistant' }))
+          ).run('msg_a', 'ses_2', 1001, 2000, stringifyJson({ role: 'assistant' }))
         } finally {
           db.close()
         }
@@ -217,7 +221,7 @@ Vitest.describe('opencode adapter integration', () => {
             'ses_2',
             1002,
             2000,
-            JSON.stringify({ type: 'text', text: 'same watermark' }),
+            stringifyJson({ type: 'text', text: 'same watermark' }),
           )
         } finally {
           db.close()
@@ -301,7 +305,7 @@ Vitest.describe('opencode adapter integration', () => {
           db.prepare(
             `insert into message (id, session_id, time_created, time_updated, data)
              values (?, ?, ?, ?, ?)`,
-          ).run('msg_late', 'ses_3', 1001, 3000, JSON.stringify({ role: 'assistant' }))
+          ).run('msg_late', 'ses_3', 1001, 3000, stringifyJson({ role: 'assistant' }))
         } finally {
           db.close()
         }
