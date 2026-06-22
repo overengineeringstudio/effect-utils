@@ -786,6 +786,17 @@ export class CliArgumentError extends Schema.TaggedError<CliArgumentError>()('Cl
   message: Schema.String,
 }) {}
 
+/**
+ * Narrow a thrown value from the synchronous CLI parsers into the typed
+ * `CliArgumentError` channel. The parsers only ever `throw new CliArgumentError`;
+ * any other thrown value is a programming defect, so we re-throw it and let
+ * `Effect.try` surface it as a defect rather than an expected failure.
+ */
+const cliArgumentErrorFromThrow = (cause: unknown): CliArgumentError => {
+  if (cause instanceof CliArgumentError) return cause
+  throw cause
+}
+
 const isWatchCommand = (command: CliCommand): boolean =>
   command._tag === 'sync' && command.watch === true
 
@@ -3227,13 +3238,15 @@ export const runCliMain = ({
 
     const command = yield* Effect.try({
       try: () => parseCliCommand(argv),
-      catch: (cause) => cause,
+      // `parseCliCommand` only ever throws `CliArgumentError`; anything else is a
+      // programming defect and is surfaced as such rather than an expected failure.
+      catch: cliArgumentErrorFromThrow,
     })
 
     const resolvedCommand = yield* resolveCliCommandNotionRefs({ command, options })
     const context = yield* Effect.try({
       try: () => parseCliContext({ argv, resolvedCommand }),
-      catch: (cause) => cause,
+      catch: cliArgumentErrorFromThrow,
     })
     const commandEffect = runCliCommandWithRuntime({ command: resolvedCommand, context, options })
     const effectWithProgress =

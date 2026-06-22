@@ -495,8 +495,8 @@ const withTempDir = async <T>(fn: (dir: string) => Promise<T>): Promise<T> => {
 
 const stateStoreLayer = NmdStateStoreLive.pipe(Layer.provide(NodeContext.layer))
 
-const runWithFake = <A>(
-  effect: Effect.Effect<A, unknown, NodeContext.NodeContext | NotionMdGateway | NmdStateStore>,
+const runWithFake = <A, E>(
+  effect: Effect.Effect<A, E, NodeContext.NodeContext | NotionMdGateway | NmdStateStore>,
   fake: FakeNotion,
 ) =>
   Effect.runPromise(

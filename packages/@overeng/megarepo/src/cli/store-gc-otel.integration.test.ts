@@ -130,10 +130,10 @@ const runGc = ({
     const argv = ['node', 'mr', 'store', 'gc', '--output', 'json']
     yield* Cli.Command.run(mrCommand, { name: 'mr', version: 'test' })(argv).pipe(
       Effect.provideService(Cwd, cwd),
-      Effect.provide(consoleLayer),
-      Effect.provide(makeStubPrStateResolverLayer(prRepos)),
       Effect.provideService(OtelConfig, { endpoint: telemetry }),
-      Effect.provide(fixedClockLayer(now)),
+      Effect.provide(
+        Layer.mergeAll(consoleLayer, makeStubPrStateResolverLayer(prRepos), fixedClockLayer(now)),
+      ),
       Effect.scoped,
       Effect.exit,
     )
@@ -246,7 +246,7 @@ describe('mr store gc — OTEL instrumentation contract', () => {
           value: metricValue.predicate('rss > 0', (rss) => rss > 0),
           attrs: { repo_concurrency: telemetryAttr.present() },
         })
-      }).pipe(Effect.provide(OteliteTestHarness.Default), Effect.provide(NodeContext.layer)),
+      }).pipe(Effect.provide(Layer.mergeAll(OteliteTestHarness.Default, NodeContext.layer))),
     60_000,
   )
 })

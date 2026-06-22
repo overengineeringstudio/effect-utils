@@ -7,10 +7,13 @@ import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 
 import { NodeContext } from '@effect/platform-node'
-import { Effect, Option, Schema, Stream } from 'effect'
+import { Effect, Layer, Option, Schema, Stream } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { BodyEvidenceFingerprintSchema as NotionMdBodyEvidenceFingerprint } from '@overeng/notion-effect-client'
+import {
+  BodyEvidenceFingerprintSchema as NotionMdBodyEvidenceFingerprint,
+  NotionApiError,
+} from '@overeng/notion-effect-client'
 import {
   NmdStateStore,
   NmdStateStoreLive,
@@ -313,7 +316,7 @@ const runWithNmdStateStore = <TValue, TError>(
   effect: Effect.Effect<TValue, TError, NmdStateStore>,
 ) =>
   Effect.runPromise(
-    effect.pipe(Effect.provide(NmdStateStoreLive), Effect.provide(NodeContext.layer)),
+    effect.pipe(Effect.provide(NmdStateStoreLive.pipe(Layer.provide(NodeContext.layer)))),
   )
 
 const createBoundSqlite = async ({
@@ -900,7 +903,18 @@ describe('CLI command surface', () => {
     const calls = { retrieveDataSource: 0, queryDataSource: 0, retrievePage: 0 }
     const client: NotionGatewayClient = {
       ...makeInjectedNotionClient(calls),
-      retrieveDatabase: () => Effect.fail(new Error('private workspace object')),
+      retrieveDatabase: () =>
+        Effect.fail(
+          new NotionApiError({
+            status: 404,
+            code: 'object_not_found',
+            message: 'private workspace object',
+            retryAfterSeconds: Option.none(),
+            requestId: Option.none(),
+            url: Option.none(),
+            method: Option.some('GET'),
+          }),
+        ),
     }
     const command = parseCliCommand([
       'track',

@@ -40,7 +40,7 @@ import {
   type LocalWorkspacePortShape,
   type PageBodySyncPortShape,
 } from '../core/ports.ts'
-import { makeFilesystemWorkspaceSidecar } from '../local/sidecar.ts'
+import { FilesystemWorkspaceSidecar, makeFilesystemWorkspaceSidecar } from '../local/sidecar.ts'
 import {
   filesystemWorkspacePageSidecarPath,
   makeFilesystemLocalWorkspacePort,
@@ -200,16 +200,50 @@ const provideNotionMdGatewayAndStateStore =
       Effect.provideService(NmdStateStore, input.stateStore),
     )
 
-const writeJsonFile = ({ path, value }: { readonly path: string; readonly value: unknown }) =>
-  Effect.tryPromise({
-    try: async () => {
-      await mkdir(dirname(path), { recursive: true })
-      const temporaryPath = `${path}.${process.pid}.${Date.now()}.tmp`
-      await writeFile(temporaryPath, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
-      await rename(temporaryPath, path)
-    },
-    catch: (cause) => cause,
+/** Raised when atomically encoding/writing a JSON sidecar to the workspace fails. */
+class JsonFileWriteError extends Schema.TaggedError<JsonFileWriteError>()('JsonFileWriteError', {
+  path: Schema.String,
+  message: Schema.String,
+  cause: Schema.Defect,
+}) {}
+
+/**
+ * Atomically writes a schema-encoded JSON file via a `.tmp` rename.
+ *
+ * The value is encoded through `Schema.parseJson(schema, { space: 2 })` so the
+ * persisted JSON is the schema's canonical encoding rather than a raw
+ * `JSON.stringify`, and any I/O failure is surfaced as a typed
+ * {@link JsonFileWriteError}.
+ */
+const writeJsonFile = <A>({
+  path,
+  schema,
+  value,
+}: {
+  readonly path: string
+  readonly schema: Schema.Schema<A, string>
+  readonly value: A
+}): Effect.Effect<void, JsonFileWriteError> =>
+  Effect.gen(function* () {
+    const json = yield* Schema.encode(schema)(value).pipe(
+      Effect.mapError(
+        (cause) =>
+          new JsonFileWriteError({ path, message: 'Failed to encode JSON sidecar', cause }),
+      ),
+    )
+    yield* Effect.tryPromise({
+      try: async () => {
+        await mkdir(dirname(path), { recursive: true })
+        const temporaryPath = `${path}.${process.pid}.${Date.now()}.tmp`
+        await writeFile(temporaryPath, `${json}\n`, 'utf8')
+        await rename(temporaryPath, path)
+      },
+      catch: (cause) =>
+        new JsonFileWriteError({ path, message: 'Failed to write JSON sidecar', cause }),
+    })
   })
+
+const sidecarJson = Schema.parseJson(FilesystemWorkspaceSidecar, { space: 2 })
 
 const writeDatasourceSyncBodySidecar = ({
   root,
@@ -226,6 +260,7 @@ const writeDatasourceSyncBodySidecar = ({
 }) =>
   writeJsonFile({
     path: filesystemWorkspacePageSidecarPath({ root, pageId }),
+    schema: sidecarJson,
     value: makeFilesystemWorkspaceSidecar({
       pageId,
       path,
@@ -536,6 +571,7 @@ export const makeNotionMdMaterializingLocalWorkspacePort = ({
         })
         yield* writeJsonFile({
           path: filesystemWorkspacePageSidecarPath({ root, pageId: plan.pageId }),
+          schema: sidecarJson,
           value: sidecar,
         }).pipe(
           Effect.mapError(

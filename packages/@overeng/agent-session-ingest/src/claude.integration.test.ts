@@ -9,6 +9,7 @@ import {
   TestLayer,
   expectSingleArtifact,
   makeTempJsonlArtifact,
+  stringifyJson,
 } from './adapters.integration-test-helpers.ts'
 import { makeClaudeAdapter } from './adapters/claude.ts'
 
@@ -98,7 +99,7 @@ Vitest.describe('claude adapter integration', () => {
       const fs = yield* FileSystem.FileSystem
       yield* fs.writeFileString(
         artifactPath,
-        `${JSON.stringify({
+        `${stringifyJson({
           type: 'system',
           parentUuid: null,
           isSidechain: true,

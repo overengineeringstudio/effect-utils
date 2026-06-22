@@ -6,6 +6,7 @@ import { expect } from 'vitest'
 
 import { EffectPath } from '@overeng/effect-path'
 
+import { decodeJson } from '../test-utils/mod.ts'
 import {
   createStoreFixture,
   createWorkspaceWithLock,
@@ -133,7 +134,7 @@ describe('store-liveness', () => {
         const registryContent = yield* fs.readFileString(
           EffectPath.ops.join(registryDir, EffectPath.unsafe.relativeFile(registryEntries[0]!)),
         )
-        expect(JSON.parse(registryContent)).toMatchObject({
+        expect(decodeJson(registryContent)).toMatchObject({
           version: 1,
           workspaceRoot: normalizePath(workspacePath),
           livePaths: [normalizePath(commitWorktreePath), normalizePath(mainWorktreePath)].sort(),
@@ -277,7 +278,7 @@ describe('store-liveness', () => {
         const content = yield* fs.readFileString(
           EffectPath.ops.join(registryDir, EffectPath.unsafe.relativeFile(entries[0]!)),
         )
-        const record = JSON.parse(content) as {
+        const record = decodeJson(content) as {
           updatedAt: string
           livePaths: ReadonlyArray<string>
         }
@@ -357,7 +358,7 @@ describe('store-liveness', () => {
         const content = yield* fs.readFileString(
           EffectPath.ops.join(registryDir, EffectPath.unsafe.relativeFile(entries[0]!)),
         )
-        const record = JSON.parse(content) as { updatedAt: string }
+        const record = decodeJson(content) as { updatedAt: string }
         expect(record.updatedAt).toBe(new Date(1_700_000_000_000).toISOString())
       },
       Effect.provide(NodeContext.layer),

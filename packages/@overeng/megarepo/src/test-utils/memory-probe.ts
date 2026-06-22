@@ -24,6 +24,7 @@ import { NodeContext } from '@effect/platform-node'
 import { Effect } from 'effect'
 
 import * as Git from '../lib/git.ts'
+import { encodeJson } from './json.ts'
 
 const readProcKb = (field: 'VmHWM' | 'VmRSS'): number => {
   const status = readFileSync('/proc/self/status', 'utf8')
@@ -45,7 +46,7 @@ const program = Effect.gen(function* () {
   const status = yield* Git.getWorktreeStatus(worktreePath)
   const vmHwmKb = readProcKb('VmHWM')
   // eslint-disable-next-line no-console
-  console.log(JSON.stringify({ rssStartKb, vmHwmKb, changesCount: status.changesCount }))
+  console.log(encodeJson({ rssStartKb, vmHwmKb, changesCount: status.changesCount }))
 })
 
 Effect.runPromise(program.pipe(Effect.provide(NodeContext.layer))).catch((error) => {

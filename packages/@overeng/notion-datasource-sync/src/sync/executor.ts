@@ -71,6 +71,16 @@ type RemoteWriteResult = {
   readonly bodyPointer?: BodyPointer
 }
 
+/** Canonical payload hashed to verify a relation property patch — the sorted target page ids under a stable tag. */
+const RelationVerificationPayload = Schema.Struct({
+  _tag: Schema.Literal('relation'),
+  pageIds: Schema.Array(Schema.String),
+}).annotations({ identifier: 'NotionDatasourceSync.RelationVerificationPayload' })
+
+const encodeRelationVerificationJson = Schema.encodeSync(
+  Schema.parseJson(RelationVerificationPayload),
+)
+
 const relationPatchVerificationHash = (
   command: PatchPagePropertiesCommand,
 ): Effect.Effect<Hash | undefined, NotionGatewayError, NotionDataSourceGateway> => {
@@ -101,7 +111,7 @@ const relationPatchVerificationHash = (
       })
       .filter((pageId): pageId is string => pageId !== undefined)
       .toSorted()
-    return hashStoreBytes(JSON.stringify({ _tag: 'relation', pageIds }))
+    return hashStoreBytes(encodeRelationVerificationJson({ _tag: 'relation', pageIds }))
   })
 }
 

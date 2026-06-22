@@ -9,12 +9,15 @@ import { runTuiMain, type TuiRuntime } from '../../src/effect/cli.tsx'
 
 describe('runTuiMain', () => {
   test('sets exit code 130 for interrupt-only failures', async () => {
-    let captured: Effect.Effect<unknown, unknown> | undefined
+    // The interrupt path is fully handled inside `runTuiMain` (interrupt-only
+    // cause → exitCode 130, completes as Success), so the effect handed to
+    // `runMain` carries no failure in its error channel.
+    let captured: Effect.Effect<unknown, never> | undefined
     const runtime: TuiRuntime = {
       runMain:
         () =>
         <E, A>(effect: Effect.Effect<A, E>) => {
-          captured = effect
+          captured = effect as Effect.Effect<unknown, never>
         },
     }
     const previousExitCode = process.exitCode

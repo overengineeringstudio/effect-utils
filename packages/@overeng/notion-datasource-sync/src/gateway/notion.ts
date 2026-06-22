@@ -118,53 +118,62 @@ type NotionGatewayDatabase = {
  * either the real HTTP client or a stub in tests; errors are intentionally `unknown` here so
  * the gateway translates them into typed `NotionGatewayError`s with the correct guard.
  */
+/**
+ * Gateway-facing view of the upstream notion-effect-client.
+ *
+ * Every operation fails with the upstream {@link NotionApiError}; the gateway's
+ * `mapClientError` translates those (and any already-mapped `NotionGatewayError`)
+ * into typed `NotionGatewayError`s. The success/element shapes stay structural so
+ * fakes and fixture recorders can satisfy this contract without depending on the
+ * concrete notion-effect-client response classes.
+ */
 export type NotionGatewayClient = {
   readonly retrieveDataSource: (input: {
     readonly dataSourceId: string
-  }) => Effect.Effect<NotionGatewayDataSource, unknown>
+  }) => Effect.Effect<NotionGatewayDataSource, NotionApiError>
   readonly queryDataSource: (input: {
     readonly dataSourceId: string
     readonly pageSize: number
     readonly startCursor: string | undefined
     readonly filter: DatabaseFilter | undefined
     readonly sorts: ReadonlyArray<DatabaseSort> | undefined
-  }) => Effect.Effect<PaginatedResult<NotionGatewayPage>, unknown>
+  }) => Effect.Effect<PaginatedResult<NotionGatewayPage>, NotionApiError>
   readonly retrievePage: (input: {
     readonly pageId: string
-  }) => Effect.Effect<NotionGatewayPage, unknown>
+  }) => Effect.Effect<NotionGatewayPage, NotionApiError>
   readonly retrievePageProperty: (input: {
     readonly pageId: string
     readonly propertyId: string
     readonly pageSize: number
     readonly startCursor: string | undefined
-  }) => Effect.Effect<NotionGatewayPagePropertyResult, unknown>
+  }) => Effect.Effect<NotionGatewayPagePropertyResult, NotionApiError>
   readonly retrieveDatabase: (input: {
     readonly databaseId: string
-  }) => Effect.Effect<NotionGatewayDatabase, unknown>
+  }) => Effect.Effect<NotionGatewayDatabase, NotionApiError>
   readonly listViews?: (input: {
     readonly databaseId: string
     readonly dataSourceId: string
-  }) => Stream.Stream<unknown, unknown>
+  }) => Stream.Stream<unknown, NotionApiError>
   readonly updatePage: (input: {
     readonly pageId: string
     readonly properties?: Record<string, unknown>
     readonly inTrash?: boolean
-  }) => Effect.Effect<NotionGatewayPage, unknown>
+  }) => Effect.Effect<NotionGatewayPage, NotionApiError>
   readonly createPage: (input: {
     readonly dataSourceId: string
     readonly properties: Record<string, unknown>
-  }) => Effect.Effect<NotionGatewayPage, unknown>
+  }) => Effect.Effect<NotionGatewayPage, NotionApiError>
   readonly updateDatabase: (input: {
     readonly databaseId: string
     readonly title?: readonly unknown[]
     readonly description?: readonly unknown[]
-  }) => Effect.Effect<NotionGatewayDatabase, unknown>
+  }) => Effect.Effect<NotionGatewayDatabase, NotionApiError>
   readonly updateDataSource: (input: {
     readonly dataSourceId: string
     readonly properties?: Record<string, unknown>
     readonly title?: readonly unknown[]
     readonly description?: readonly unknown[]
-  }) => Effect.Effect<NotionGatewayDataSource, unknown>
+  }) => Effect.Effect<NotionGatewayDataSource, NotionApiError>
 }
 
 /** Tagged error raised when the live gateway is asked to perform an operation it cannot map onto the underlying Notion client. */
@@ -1429,15 +1438,26 @@ export const makeNotionDataSourceGatewayFromClient = ({
                         'Data-source metadata description writes require an owning database parent',
                     }),
                   )
-                : client.updateDatabase({
-                    databaseId: dataSource.parent.database_id,
-                    ...(command.metadataPatch.titlePlainText === undefined
-                      ? {}
-                      : { title: richTextWrite(command.metadataPatch.titlePlainText) }),
-                    ...(command.metadataPatch.descriptionPlainText === undefined
-                      ? {}
-                      : { description: richTextWrite(command.metadataPatch.descriptionPlainText) }),
-                  }),
+                : client
+                    .updateDatabase({
+                      databaseId: dataSource.parent.database_id,
+                      ...(command.metadataPatch.titlePlainText === undefined
+                        ? {}
+                        : { title: richTextWrite(command.metadataPatch.titlePlainText) }),
+                      ...(command.metadataPatch.descriptionPlainText === undefined
+                        ? {}
+                        : {
+                            description: richTextWrite(command.metadataPatch.descriptionPlainText),
+                          }),
+                    })
+                    .pipe(
+                      Effect.mapError(
+                        mapClientError({
+                          operation: 'patchDataSourceMetadata',
+                          dataSourceId: command.dataSourceId,
+                        }),
+                      ),
+                    ),
             ),
             Effect.as(unavailableRequestId),
             Effect.mapError(

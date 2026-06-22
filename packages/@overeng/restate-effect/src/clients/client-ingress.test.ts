@@ -26,7 +26,7 @@ vi.mock('@restatedev/restate-sdk-clients', async (importOriginal) => {
   }
 })
 
-const build = (layer: Layer.Layer<RestateIngress, unknown>): Promise<void> =>
+const build = <E>(layer: Layer.Layer<RestateIngress, E>): Promise<void> =>
   Effect.runPromise(Effect.scoped(Layer.build(layer)).pipe(Effect.asVoid) as Effect.Effect<void>)
 
 describe('RestateIngress auth (decision 0016)', () => {

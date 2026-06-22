@@ -1,7 +1,10 @@
 import { HttpClient, type HttpClientRequest, HttpClientResponse } from '@effect/platform'
-import { Chunk, Effect, Layer, Redacted, Stream } from 'effect'
+import { Chunk, Effect, Layer, Redacted, Schema, Stream } from 'effect'
 
 import { type NotionClientConfig, NotionConfig } from '../config.ts'
+
+/** Encodes an arbitrary mock body to a JSON string (mirrors `JSON.stringify`). */
+const encodeJson = Schema.encodeSync(Schema.parseJson(Schema.Unknown))
 
 /** Mock response configuration */
 export interface MockResponse {
@@ -19,7 +22,7 @@ export const createMockHttpClient = (
       const mockResponse = handler(request)
       return HttpClientResponse.fromWeb(
         request,
-        new Response(JSON.stringify(mockResponse.body), {
+        new Response(encodeJson(mockResponse.body), {
           status: mockResponse.status,
           headers: {
             'content-type': 'application/json',

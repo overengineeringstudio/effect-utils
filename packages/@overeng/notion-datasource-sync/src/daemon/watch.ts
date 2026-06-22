@@ -205,6 +205,7 @@ const WatchDaemonStateSchema = Schema.Struct({
 
 const decodeState = Schema.decodeUnknownSync(WatchDaemonStateSchema)
 const decodeStateJson = Schema.decodeUnknownSync(Schema.parseJson(WatchDaemonStateSchema))
+const encodeStateJson = Schema.encodeSync(Schema.parseJson(WatchDaemonStateSchema, { space: 2 }))
 
 const modeBackoffMillis = (mode: WatchDaemonMode): number => {
   switch (mode) {
@@ -353,7 +354,7 @@ export const writeWatchDaemonState = (input: {
   Effect.tryPromise({
     try: async () => {
       await mkdir(dirname(input.statePath), { recursive: true })
-      await writeFile(`${input.statePath}.tmp`, `${JSON.stringify(input.state, null, 2)}\n`, 'utf8')
+      await writeFile(`${input.statePath}.tmp`, `${encodeStateJson(input.state)}\n`, 'utf8')
       await rename(`${input.statePath}.tmp`, input.statePath)
     },
     catch: (cause) =>

@@ -183,7 +183,7 @@ afterAll(held.teardown, 90_000)
 
 /* ── helpers ──────────────────────────────────────────────────────────────── */
 
-const live = <A>(eff: Effect.Effect<A, unknown, never>): Promise<A> =>
+const live = <A, E>(eff: Effect.Effect<A, E, never>): Promise<A> =>
   Effect.runPromise(eff as Effect.Effect<A, never, never>)
 
 /* A REAL-time sleep (the harness live-clock util), so the wall-clock waits this

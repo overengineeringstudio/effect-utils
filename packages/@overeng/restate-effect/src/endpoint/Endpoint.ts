@@ -141,7 +141,17 @@ const runEffectHandler =
     Runtime.runSync(opts.runtime)(
       emitAttempt({ ctx, service: opts.service, handler: opts.handler }),
     )
+    /* DYNAMIC USER-HANDLER DISPATCH BOUNDARY (next ~20 lines, through `runPromiseExit`):
+     * this materializes an ARBITRARY user `opts.run: EffectHandler` (whose error +
+     * requirements channels are intentionally un-nameable here) into the single
+     * positional SDK callback. The `any`/`unknown` in the error/requirements channels
+     * is STRUCTURAL — there is no more specific type without parameterizing the public
+     * `EffectHandler` contract — so `anyUnknownInErrorContext` is waived per-site below.
+     * Each `@effect-diagnostics-next-line` covers every column-diagnostic on the line it
+     * precedes (145/154/160 each carry several). */
+    // @effect-diagnostics-next-line anyUnknownInErrorContext:off
     const effect = provideHandlerCaps({
+      // @effect-diagnostics-next-line anyUnknownInErrorContext:off
       effect: opts.run(input).pipe(Effect.provideService(RestateContext, ctx)),
       markers: opts.markers,
       key: opts.markers !== 'service' ? (ctx as restate.ObjectContext).key : undefined,
@@ -151,14 +161,17 @@ const runEffectHandler =
      * routes `Effect.log*` through `ctx.console`, suppressed on replay) over the
      * handler. The per-invocation layers wrap OUTSIDE the interruption bridge so
      * the forked fiber inherits them. */
+    // @effect-diagnostics-next-line anyUnknownInErrorContext:off
     const bridged = withAttemptInterruption({ ctx, effect }).pipe(
       Effect.provide(Layer.merge(determinismLayer({ ctx, frozenBaseMillis }), loggerLayer(ctx))),
     )
     /* Reparent under the OTel attempt span (no-op in the core; `./otel` supplies
      * the transform). Applied last so the active span is read at runtime, inside
      * the hook's `context.with` window, just before the program runs (R23). */
+    // @effect-diagnostics-next-line anyUnknownInErrorContext:off
     const program = opts.inboundBridge !== undefined ? opts.inboundBridge(bridged) : bridged
     const exit = await Runtime.runPromiseExit(opts.runtime)(
+      // @effect-diagnostics-next-line anyUnknownInErrorContext:off
       program as Effect.Effect<unknown, unknown, AppR>,
     )
     const emitInvocation = (

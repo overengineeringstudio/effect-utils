@@ -12,7 +12,7 @@ import {
   type Error as PlatformError,
   FileSystem,
 } from '@effect/platform'
-import { Duration, Effect, Either, Option } from 'effect'
+import { Duration, Effect, Either, Option, Schema } from 'effect'
 
 import { DistributedSemaphore } from '@overeng/utils'
 import { FileSystemBacking } from '@overeng/utils/node'
@@ -314,6 +314,9 @@ const oxfmtSupportedExtensions = new Set(['.json', '.jsonc', '.yml', '.yaml'])
 
 type OxfmtConfig = Readonly<Record<string, unknown>>
 
+/** Permissive JSON decode for an oxfmt config (shape is cast, not validated). */
+const decodeOxfmtConfig = Schema.decodeUnknownSync(Schema.parseJson(Schema.Unknown))
+
 const loadOxfmtConfig = Effect.fn('loadOxfmtConfig')(function* ({
   configPath,
 }: {
@@ -330,7 +333,7 @@ const loadOxfmtConfig = Effect.fn('loadOxfmtConfig')(function* ({
   const fs = yield* FileSystem.FileSystem
   const raw = yield* fs.readFileString(configPath.value)
   const config = yield* Effect.try({
-    try: () => JSON.parse(raw) as OxfmtConfig,
+    try: () => decodeOxfmtConfig(raw) as OxfmtConfig,
     catch: () =>
       new InvalidOxfmtConfigError({
         message: 'Invalid oxfmt config JSON',

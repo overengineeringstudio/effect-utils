@@ -19,8 +19,10 @@ describe('umbrella editor teardown exit codes', () => {
   })
 
   it('falls back to 1 for non-editor failures and 0 on success', () => {
+    // An unmapped tagged failure and a value without any `_tag` both exercise
+    // the fallback branch (the latter hits the `'_tag' in value === false` path).
     expect(editorExitCode(Exit.fail({ _tag: 'SomeUnmappedError' }))).toBe(1)
-    expect(editorExitCode(Exit.fail(new Error('boom')))).toBe(1)
+    expect(editorExitCode(Exit.fail({ message: 'boom' }))).toBe(1)
     expect(editorExitCode(Exit.succeed(undefined))).toBe(0)
   })
 })

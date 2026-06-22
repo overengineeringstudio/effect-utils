@@ -494,7 +494,7 @@ export const StoreLayer = Layer.effect(
 ).pipe((storeOnly) => {
   /* Derive basePath at provision time for the lock layer.
    * We read the env var again (same as storeOnly) so both use the same path. */
-  const lockLayer = Layer.effect(
+  const lockLayer = Layer.scoped(
     StoreLock,
     Effect.gen(function* () {
       const store = yield* Store

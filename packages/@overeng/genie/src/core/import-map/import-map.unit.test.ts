@@ -396,7 +396,7 @@ export default packageJson({
       'prefers local editable megarepo member over fallback source map',
       Effect.fnUntraced(function* () {
         process.env[MEGAREPO_STORE_ENV] = path.join(tempDir, '.megarepo')
-        process.env[GENIE_MEMBER_SOURCE_MAP_ENV] = JSON.stringify({
+        process.env[GENIE_MEMBER_SOURCE_MAP_ENV] = toJson({
           'effect-utils': path.join(tempDir, 'fallback-effect-utils'),
         })
 
@@ -558,7 +558,7 @@ export default packageJson({
     Vitest.it.effect(
       'uses fallback source map when local megarepo member is absent',
       Effect.fnUntraced(function* () {
-        process.env[GENIE_MEMBER_SOURCE_MAP_ENV] = JSON.stringify({
+        process.env[GENIE_MEMBER_SOURCE_MAP_ENV] = toJson({
           'effect-utils': path.join(tempDir, 'fallback-effect-utils'),
         })
         yield* writeFile(path.join(tempDir, '.git'), '')
@@ -579,7 +579,7 @@ export default packageJson({
       'prefers explicit override over local editable megarepo member',
       Effect.fnUntraced(function* () {
         process.env[MEGAREPO_STORE_ENV] = path.join(tempDir, '.megarepo')
-        process.env[GENIE_MEMBER_OVERRIDE_MAP_ENV] = JSON.stringify({
+        process.env[GENIE_MEMBER_OVERRIDE_MAP_ENV] = toJson({
           'effect-utils': path.join(tempDir, 'override-effect-utils'),
         })
 
@@ -805,7 +805,7 @@ import { baz } from './local.ts'`
     Vitest.it.effect(
       'transforms #mr member imports without a package.json import map',
       Effect.fnUntraced(function* () {
-        process.env[GENIE_MEMBER_SOURCE_MAP_ENV] = JSON.stringify({
+        process.env[GENIE_MEMBER_SOURCE_MAP_ENV] = toJson({
           'effect-utils': path.join(tempDir, 'fallback-effect-utils'),
         })
         yield* writeFile(path.join(tempDir, '.git'), '')
