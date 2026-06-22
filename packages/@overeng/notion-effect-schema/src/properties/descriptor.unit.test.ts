@@ -1,4 +1,4 @@
-import { Effect, Exit, Schema } from 'effect'
+import { Effect, Exit, type ParseResult, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { NOTION_PROPERTY_TYPES } from '@overeng/notion-core'
@@ -24,7 +24,7 @@ const validDescriptor = {
 
 const isFailure = <A>(exit: Exit.Exit<A, unknown>): boolean => Exit.isFailure(exit)
 
-const decode = <A>(effect: Effect.Effect<A, unknown>): Exit.Exit<A, unknown> =>
+const decode = <A>(effect: Effect.Effect<A, ParseResult.ParseError>): Exit.Exit<A, unknown> =>
   Effect.runSyncExit(effect)
 
 describe('PropertyDescriptor decoding', () => {

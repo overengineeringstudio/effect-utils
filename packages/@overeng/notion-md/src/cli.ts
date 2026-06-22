@@ -51,7 +51,5 @@ const identity = Schema.decodeSync(ServiceIdentity)({
 })
 
 if (import.meta.main) {
-  NodeRuntime.runMain({ disableErrorReporting: true, teardown: editorTeardown })(
-    runCliMain() as Effect.Effect<void, unknown, never>,
-  )
+  NodeRuntime.runMain({ disableErrorReporting: true, teardown: editorTeardown })(runCliMain())
 }

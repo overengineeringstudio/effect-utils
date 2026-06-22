@@ -5,6 +5,7 @@ import React from 'react'
 import { run } from '@overeng/tui-react'
 import { outputOption, outputModeLayer } from '@overeng/tui-react/node'
 
+import { StoryCaptureError } from '../StoryCapture.ts'
 import { discoverStories } from '../StoryDiscovery.ts'
 import { findStory } from '../StoryModule.ts'
 import { InspectApp, InspectView } from './renderers/InspectOutput/mod.ts'
@@ -27,7 +28,9 @@ export const inspectCommand = Command.make(
       const story = findStory({ modules, query: storyId })
 
       if (story === undefined) {
-        return yield* Effect.fail(new Error(`Story not found: "${storyId}"`))
+        return yield* Effect.fail(
+          new StoryCaptureError({ storyId, message: `Story not found: "${storyId}"` }),
+        )
       }
 
       const argTypeEntries = Object.entries(story.argTypes)

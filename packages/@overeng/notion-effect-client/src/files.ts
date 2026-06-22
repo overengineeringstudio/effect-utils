@@ -27,6 +27,15 @@ const FileUploadResponseSchema = Schema.Struct({
   content_length: Schema.NullOr(Schema.Number),
 })
 
+/** Request body for creating a single-part file upload. */
+const CreateFileUploadRequestJson = Schema.parseJson(
+  Schema.Struct({
+    mode: Schema.Literal('single_part'),
+    filename: Schema.String,
+    content_type: Schema.String,
+  }),
+)
+
 // ---------------------------------------------------------------------------
 // Options
 // ---------------------------------------------------------------------------
@@ -78,16 +87,30 @@ export const upload = Effect.fn('NotionFiles.upload')(function* (opts: UploadFil
   }
 
   // Step 1: Create file upload object
+  const createBody = yield* Schema.encode(CreateFileUploadRequestJson)({
+    mode: 'single_part',
+    filename: opts.filename,
+    content_type: opts.contentType,
+  }).pipe(
+    Effect.mapError(
+      (cause) =>
+        new NotionApiError({
+          status: 400,
+          code: 'validation_error',
+          message: `Failed to encode file upload request: ${cause}`,
+          retryAfterSeconds: Option.none(),
+          requestId: Option.none(),
+          url: Option.some('/v1/file_uploads'),
+          method: Option.some('POST'),
+        }),
+    ),
+  )
   const createRes = yield* Effect.tryPromise({
     try: async () => {
       const res = await fetch('https://api.notion.com/v1/file_uploads', {
         method: 'POST',
         headers: { ...headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          mode: 'single_part',
-          filename: opts.filename,
-          content_type: opts.contentType,
-        }),
+        body: createBody,
       })
       if (res.ok === false) {
         const text = await res.text()

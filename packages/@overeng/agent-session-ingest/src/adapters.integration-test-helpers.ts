@@ -3,10 +3,26 @@ import * as nodePath from 'node:path'
 
 import { FileSystem } from '@effect/platform'
 import { NodeContext } from '@effect/platform-node'
-import { Effect } from 'effect'
+import { Effect, Schema } from 'effect'
 import { expect } from 'vitest'
 
 import type { SessionSourceAdapter } from './schema/core.ts'
+
+/** Raised when a test helper fails to append records to a JSONL artifact. */
+export class JsonlArtifactAppendError extends Schema.TaggedError<JsonlArtifactAppendError>()(
+  'JsonlArtifactAppendError',
+  {
+    message: Schema.String,
+    path: Schema.String,
+    cause: Schema.Defect,
+  },
+) {}
+
+/** Schema-based JSON encoder for test fixtures (mirrors `JSON.stringify`). */
+const encodeJson = Schema.encodeSync(Schema.parseJson())
+
+/** Encodes a value to its JSON string for test fixtures via Effect Schema. */
+export const stringifyJson = (value: unknown): string => encodeJson(value)
 
 /** Shared Node runtime layer for adapter integration tests. */
 export const TestLayer = NodeContext.layer
@@ -65,6 +81,11 @@ export const appendJsonlArtifact = Effect.fn('AgentSessionIngest.Tests.appendJso
           options.path,
           [...options.records.map((record) => JSON.stringify(record)), ''].join('\n'),
         ),
-      catch: (cause) => cause,
+      catch: (cause) =>
+        new JsonlArtifactAppendError({
+          message: `Failed to append JSONL records to ${options.path}`,
+          path: options.path,
+          cause,
+        }),
     }),
 )

@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest'
 
 import { EffectPath } from '@overeng/effect-path'
 
+import { encodeJson } from '../test-utils/mod.ts'
 import {
   DEFAULT_ABSENCE_GRACE_MS,
   DEFAULT_ARCHIVE_RETENTION_MS,
@@ -87,7 +88,7 @@ describe('store-gc-config', () => {
       Effect.fnUntraced(
         function* () {
           const storeBasePath = yield* writeConfig(
-            JSON.stringify({ absenceGraceMs: 1234, archiveRetentionMs: 5678 }),
+            encodeJson({ absenceGraceMs: 1234, archiveRetentionMs: 5678 }),
           )
           expect(yield* loadStoreGcConfig({ storeBasePath })).toEqual({
             absenceGraceMs: 1234,

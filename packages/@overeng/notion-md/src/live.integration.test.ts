@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import type { FileSystem } from '@effect/platform'
 import { FetchHttpClient, type HttpClient } from '@effect/platform'
 import { NodeContext } from '@effect/platform-node'
-import { Chunk, Effect, Layer, Redacted, Stream } from 'effect'
+import { Chunk, Effect, Layer, Redacted, Schema, Stream } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import {
@@ -97,13 +97,23 @@ const runLive = <A, E>(effect: Effect.Effect<A, E, LiveEnv>) =>
 const scratchTitlePrefix = 'notion-md e2e: '
 const ledgerTitle = 'notion-md e2e run ledger'
 
+/** Raised when live cleanup targets a parent page outside the test allowlist. */
+class DisallowedTestParentPageError extends Schema.TaggedError<DisallowedTestParentPageError>()(
+  'DisallowedTestParentPageError',
+  {
+    message: Schema.String,
+    pageId: Schema.String,
+  },
+) {}
+
 const assertAllowedTestParentPage = (pageId: string) =>
   allowedTestParentPageIds.has(pageId.replaceAll('-', '')) === true
     ? Effect.void
     : Effect.fail(
-        new Error(
-          `Refusing live notion-md cleanup for unallowlisted parent page ${pageId}. Set NOTION_MD_TEST_PARENT_PAGE_ID_ALLOWLIST for a dedicated private test page.`,
-        ),
+        new DisallowedTestParentPageError({
+          pageId,
+          message: `Refusing live notion-md cleanup for unallowlisted parent page ${pageId}. Set NOTION_MD_TEST_PARENT_PAGE_ID_ALLOWLIST for a dedicated private test page.`,
+        }),
       )
 
 type LiveTestRecord =

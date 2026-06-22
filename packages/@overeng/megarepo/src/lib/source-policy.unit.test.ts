@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
+import { encodeJson } from '../test-utils/mod.ts'
 import type { MegarepoConfig } from './config.ts'
 import type { LockFile } from './lock.ts'
 import { checkSourcePolicy } from './source-policy.ts'
@@ -71,7 +72,7 @@ describe('checkSourcePolicy', () => {
           yield* writeFile({
             root,
             path: 'flake.lock',
-            content: JSON.stringify({
+            content: encodeJson({
               root: 'root',
               nodes: {
                 root: { inputs: { 'private-member': 'private-member' } },
@@ -120,7 +121,7 @@ describe('checkSourcePolicy', () => {
           yield* writeFile({
             root,
             path: 'flake.lock',
-            content: JSON.stringify({
+            content: encodeJson({
               root: 'root',
               nodes: {
                 root: { inputs: { 'private-member': 'private-member' } },
@@ -173,7 +174,7 @@ describe('checkSourcePolicy', () => {
           yield* writeFile({
             root,
             path: 'flake.lock',
-            content: JSON.stringify({
+            content: encodeJson({
               root: 'root',
               nodes: {
                 root: { inputs: { 'private-member': 'private-member' } },
@@ -222,7 +223,7 @@ describe('checkSourcePolicy', () => {
           yield* writeFile({
             root,
             path: 'flake.lock',
-            content: JSON.stringify({
+            content: encodeJson({
               root: 'root',
               nodes: {
                 root: { inputs: { 'private-member': 'private-member' } },

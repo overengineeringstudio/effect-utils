@@ -11,6 +11,15 @@
  * It is included by `tsconfig`'s `src/**` glob, so `tsc` checks it; it is not a
  * `*.test.ts`, so vitest never runs it.
  */
+
+/**
+ * Type-level negative assertions deliberately construct Effects that under-specify
+ * required context/error to prove the API rejects them (each guarded by an adjacent
+ * `@ts-expect-error`). The Effect LS flags those same constructs, so disable the two
+ * relevant rules file-wide here — this is the LS's intended mechanism for type-level
+ * assertion files (#811).
+ * @effect-diagnostics missingEffectContext:skip-file missingEffectError:skip-file
+ */
 import { Effect, type Exit, Schema } from 'effect'
 
 import { call, callTyped, objectCall, workflowSubmit } from '../clients/Client.ts'

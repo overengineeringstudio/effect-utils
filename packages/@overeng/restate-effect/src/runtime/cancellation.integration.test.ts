@@ -35,6 +35,14 @@ interface Lifecycle {
 const lifecycle = new Map<string, Lifecycle>()
 const acquireGate = new Map<string, Deferred.Deferred<void>>()
 
+/* The handler never reached its acquire gate within the deadline — the test setup
+ * raced the cancel ahead of the suspend point. A typed failure (not a global
+ * `Error`) so the `timeoutFail` failure channel stays type-safe. */
+class HandlerNeverAcquired extends Schema.TaggedError<HandlerNeverAcquired>()(
+  'HandlerNeverAcquired',
+  {},
+) {}
+
 const observe = (key: string): Lifecycle => {
   let l = lifecycle.get(key)
   if (l === undefined) {
@@ -129,7 +137,7 @@ describe('restate-effect cancellation ↔ interruption', () => {
         Deferred.await(gateFor(key)).pipe(
           Effect.timeoutFail({
             duration: '30 seconds',
-            onTimeout: () => new Error('handler never acquired'),
+            onTimeout: () => new HandlerNeverAcquired(),
           }),
         ),
       )

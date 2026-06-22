@@ -153,3 +153,12 @@ export class StoreCommandError extends Schema.TaggedError<StoreCommandError>()(
     message: Schema.String,
   },
 ) {}
+
+/** Error when megarepo structural checks fail */
+export class CheckCommandError extends Schema.TaggedError<CheckCommandError>()(
+  'CheckCommandError',
+  {
+    message: Schema.String,
+    violationCount: Schema.Number,
+  },
+) {}

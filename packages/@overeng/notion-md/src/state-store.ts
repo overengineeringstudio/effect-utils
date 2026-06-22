@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 
 import { FileSystem, Path } from '@effect/platform'
-import { Context, Effect, Layer, Schema } from 'effect'
+import { Context, Effect, Layer, type ParseResult, Schema } from 'effect'
 
 import {
   makeNmdObjectRef,
@@ -114,7 +114,7 @@ export const isSafeRelativePath = (opts: {
 }
 
 const parseObjectJson = <A>(opts: {
-  readonly parse: (content: string) => Effect.Effect<A, unknown>
+  readonly parse: (content: string) => Effect.Effect<A, ParseResult.ParseError>
   readonly path: string
   readonly objectPath: string
   readonly content: string

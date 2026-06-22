@@ -244,8 +244,7 @@ export const MainLayer = Layer.unwrapEffect(
         baseLayer,
         NotionMdGatewayLive.pipe(Layer.provide(baseLayer)),
         NmdStateStoreLive,
-        Path.layer,
-      )
+      ).pipe(Layer.provideMerge(Path.layer))
     }),
   ),
 )
@@ -675,7 +674,7 @@ const syncCommand = Command.make(
  * Token-free layer for the `gc` command: only NmdStateStore + filesystem.
  * GC is a local-only operation and must not require NOTION_API_TOKEN.
  */
-const GcLayer = Layer.mergeAll(NmdStateStoreLive, Path.layer)
+const GcLayer = NmdStateStoreLive.pipe(Layer.provideMerge(Path.layer))
 
 const withGc = <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.provide(effect, GcLayer)
 

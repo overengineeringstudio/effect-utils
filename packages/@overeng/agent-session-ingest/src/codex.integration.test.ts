@@ -13,6 +13,7 @@ import {
   expectSingleArtifact,
   makeTempJsonlArtifact,
   rewriteJsonlArtifact,
+  stringifyJson,
 } from './adapters.integration-test-helpers.ts'
 import { makeCodexAdapter } from './adapters/codex.ts'
 
@@ -176,7 +177,7 @@ Vitest.describe('codex adapter integration', () => {
         yield* fs.makeDirectory(nestedDirectory, { recursive: true })
         yield* fs.writeFileString(
           artifactPath,
-          `${JSON.stringify({
+          `${stringifyJson({
             timestamp: '2026-03-11T10:00:00.000Z',
             type: 'turn_context',
             payload: { cwd: '/tmp/repo-b' },

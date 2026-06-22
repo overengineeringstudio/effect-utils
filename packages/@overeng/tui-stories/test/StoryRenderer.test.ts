@@ -1,12 +1,15 @@
 import { resolve } from 'node:path'
 
 import { expect, layer } from '@effect/vitest'
-import { Context, Effect, Layer } from 'effect'
+import { Context, Effect, Layer, Schema } from 'effect'
 
 import { captureStoryProps } from '../src/StoryCapture.ts'
 import { discoverStories, type DiscoverStoriesResult } from '../src/StoryDiscovery.ts'
 import { findStory } from '../src/StoryModule.ts'
 import { renderStory } from '../src/StoryRenderer.ts'
+
+/** Permissive JSON decode for asserting render output shape. */
+const parseJson = Schema.decodeSync(Schema.parseJson(Schema.Unknown))
 
 const WORKSPACE_ROOT = resolve(import.meta.dirname, '../../../..')
 const MEGAREPO_DIR = resolve(WORKSPACE_ROOT, 'packages/@overeng/megarepo')
@@ -97,7 +100,7 @@ layer(TestStories.layer, { timeout: '30 seconds' })('StoryRenderer', (it) => {
         output: 'json',
       })
 
-      const parsed = JSON.parse(output)
+      const parsed = parseJson(output)
       expect(parsed).toBeDefined()
       expect(typeof parsed).toBe('object')
     }),
@@ -121,7 +124,7 @@ layer(TestStories.layer, { timeout: '30 seconds' })('StoryRenderer', (it) => {
       expect(lines.length).toBeGreaterThan(1)
 
       for (const line of lines) {
-        const parsed = JSON.parse(line)
+        const parsed = parseJson(line)
         expect(parsed).toHaveProperty('at')
         expect(parsed).toHaveProperty('state')
       }

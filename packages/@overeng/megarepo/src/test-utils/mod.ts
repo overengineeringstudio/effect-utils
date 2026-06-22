@@ -24,3 +24,4 @@ export {
 } from './setup.ts'
 
 export { makeConsoleCapture } from './consoleCapture.ts'
+export { decodeJson, encodeJson } from './json.ts'

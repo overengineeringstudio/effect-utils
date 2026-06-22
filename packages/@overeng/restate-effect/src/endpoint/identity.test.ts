@@ -43,7 +43,7 @@ const IDENTITY_KEY = 'publickeyv1_2G8dCQhArfvGpzPw5Vx2ALciR4xCLHfS5YaT93XjNxX9'
 /* Build an endpoint layer into a scope and release it immediately (acquire listens
  * on port 0; the finalizer closes the server). The captured options are the
  * assertion. */
-const buildAndRelease = (built: Layer.Layer<never, unknown, never>): Promise<void> =>
+const buildAndRelease = <E>(built: Layer.Layer<never, E, never>): Promise<void> =>
   Effect.runPromise(Effect.scoped(Layer.build(built)).pipe(Effect.asVoid) as Effect.Effect<void>)
 
 describe('request-identity keys (decision 0016)', () => {

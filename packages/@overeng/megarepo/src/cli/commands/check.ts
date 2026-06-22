@@ -1,5 +1,5 @@
 import * as Cli from '@effect/cli'
-import { Console, Effect, Option } from 'effect'
+import { Console, Effect, Option, Schema } from 'effect'
 
 import { EffectPath } from '@overeng/effect-path'
 
@@ -7,7 +7,11 @@ import { readMegarepoConfig } from '../../lib/config.ts'
 import { LOCK_FILE_NAME, readLockFile } from '../../lib/lock.ts'
 import { checkSourcePolicy, formatSourcePolicyViolation } from '../../lib/source-policy.ts'
 import { Cwd, findMegarepoRoot, jsonOption } from '../context.ts'
+import { CheckCommandError, LockFileRequiredError, NotInMegarepoError } from '../errors.ts'
 import * as Observability from '../observability.ts'
+
+/** Encodes the structured check result as pretty-printed JSON for `--json` output. */
+const CheckReportJson = Schema.parseJson(Schema.Unknown, { space: 2 })
 
 const allOption = Cli.Options.boolean('all').pipe(
   Cli.Options.withDescription('Check member source and lock files in repos/ as well as the root'),
@@ -27,7 +31,7 @@ export const checkCommand = Cli.Command.make(
       const rootOpt = yield* findMegarepoRoot(cwd)
 
       if (Option.isNone(rootOpt) === true) {
-        return yield* Effect.fail(new Error('No megarepo config found'))
+        return yield* new NotInMegarepoError({ message: 'No megarepo config found' })
       }
 
       const root = rootOpt.value
@@ -36,9 +40,9 @@ export const checkCommand = Cli.Command.make(
       const lockFileOpt = yield* readLockFile(lockPath)
 
       if (Option.isNone(lockFileOpt) === true) {
-        return yield* Effect.fail(
-          new Error('megarepo.lock is required for megarepo checks; run `mr lock` first'),
-        )
+        return yield* new LockFileRequiredError({
+          message: 'megarepo.lock is required for megarepo checks; run `mr lock` first',
+        })
       }
 
       const sourcePolicy = yield* checkSourcePolicy({
@@ -59,7 +63,7 @@ export const checkCommand = Cli.Command.make(
       }
 
       if (json === true) {
-        yield* Console.log(JSON.stringify(result, null, 2))
+        yield* Console.log(yield* Schema.encode(CheckReportJson)(result))
       } else if (result.violations.length === 0) {
         yield* Console.log('Megarepo checks OK')
       } else {
@@ -70,9 +74,10 @@ export const checkCommand = Cli.Command.make(
       }
 
       if (result.violations.length > 0) {
-        return yield* Effect.fail(
-          new Error(`Megarepo checks failed with ${result.violations.length} violation(s)`),
-        )
+        return yield* new CheckCommandError({
+          message: `Megarepo checks failed with ${result.violations.length} violation(s)`,
+          violationCount: result.violations.length,
+        })
       }
     }).pipe(
       Observability.withCommandSpan({

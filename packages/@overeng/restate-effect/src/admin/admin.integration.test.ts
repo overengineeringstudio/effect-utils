@@ -36,7 +36,7 @@ const held = withRestateServer({
 })
 
 /* Run an admin program against the booted admin url. */
-const runAdmin = <A>(use: (admin: RestateAdminService) => Effect.Effect<A, unknown>): Promise<A> =>
+const runAdmin = <A, E>(use: (admin: RestateAdminService) => Effect.Effect<A, E>): Promise<A> =>
   Effect.runPromise(
     Effect.gen(function* () {
       const admin = yield* RestateAdmin

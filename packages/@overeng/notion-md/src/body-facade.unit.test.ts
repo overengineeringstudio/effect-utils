@@ -1,6 +1,6 @@
 import type { FileSystem } from '@effect/platform'
 import { NodeContext } from '@effect/platform-node'
-import { Effect, Layer } from 'effect'
+import { Effect, Layer, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -31,6 +31,8 @@ import { NmdStateStore, type NmdStateStoreShape } from './state-store.ts'
 
 const pageId = '00000000-0000-4000-8000-000000000001'
 const path = '/tmp/page.nmd'
+
+const encodeJson = Schema.encodeSync(Schema.parseJson())
 
 const emptyStorage = (): NmdStorage => ({
   _tag: 'self_contained',
@@ -114,7 +116,7 @@ class FakeStore {
     writeBaseSnapshot: (opts) =>
       Effect.sync((): NmdObjectRef => {
         this.writeBaseSnapshotCalls.push(opts)
-        const content = JSON.stringify({
+        const content = encodeJson({
           version: 2,
           page_id: opts.pageId,
           body_hash: sha256Digest(normalizeMarkdownLineEndings(opts.body)),
@@ -208,10 +210,7 @@ const runWithGatewayAndStore = <A, E>(
   store: FakeStore,
 ) =>
   Effect.runPromise(
-    effect.pipe(
-      Effect.provide(Layer.merge(gateway.layer, store.layer)),
-      Effect.provide(NodeContext.layer),
-    ),
+    effect.pipe(Effect.provide(Layer.mergeAll(gateway.layer, store.layer, NodeContext.layer))),
   )
 
 describe('notion-md body facade', () => {

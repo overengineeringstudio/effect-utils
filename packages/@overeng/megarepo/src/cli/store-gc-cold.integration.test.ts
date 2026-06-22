@@ -117,9 +117,9 @@ const runGc = ({
     const argv = ['node', 'mr', 'store', 'gc', ...args, '--output', 'json']
     const exit = yield* Cli.Command.run(mrCommand, { name: 'mr', version: 'test' })(argv).pipe(
       Effect.provideService(Cwd, cwd),
-      Effect.provide(consoleLayer),
-      Effect.provide(makeStubPrStateResolverLayer(prRepos)),
-      Effect.provide(fixedClockLayer(now)),
+      Effect.provide(
+        Layer.mergeAll(consoleLayer, makeStubPrStateResolverLayer(prRepos), fixedClockLayer(now)),
+      ),
       Effect.exit,
     )
 
