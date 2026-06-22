@@ -416,6 +416,8 @@ let
         hash_file="${cacheRoot}/install-state.hash"
         projection_hash_file="${cacheRoot}/projection-state.hash"
         contract_state_file="${cacheRoot}/pnpm-install-contract.json"
+        dependency_profile_file="${cacheRoot}/dependency-materialization-profile.json"
+        dependency_registry_file="${cacheRoot}/dependency-materialization-registry.json"
 
         lockfile="${cacheRoot}/pnpm-install.lock"
         exec 200>"$lockfile"
@@ -527,6 +529,17 @@ let
         fi
         if [ -n "''${_pnpm_install_contract_file:-}" ]; then
           cp "$_pnpm_install_contract_file" "$contract_state_file"
+          if pnpm_contract_supports_dependency_materialization_profile ${pkgs.nodejs}/bin/node "$_pnpm_install_contract_file"; then
+            if [ -n "''${CI:-}" ]; then
+              _dependency_materialization_trait="ciJobLocal"
+            elif [ -L "$npm_config_store_dir/v11/files" ]; then
+              _dependency_materialization_trait="darwinSplitCas"
+            else
+              _dependency_materialization_trait="isolated"
+            fi
+            emit_dependency_materialization_profile ${pkgs.nodejs}/bin/node "$_pnpm_install_contract_file" "$_dependency_materialization_trait" "$dependency_profile_file"
+            write_dependency_materialization_registry ${pkgs.nodejs}/bin/node "$dependency_profile_file" "$PWD" "$npm_config_store_dir" "$dependency_registry_file"
+          fi
         fi
 
         cache_value="$(compute_install_state_hash)"
@@ -546,6 +559,8 @@ let
         hash_file="${cacheRoot}/install-state.hash"
         projection_hash_file="${cacheRoot}/projection-state.hash"
         contract_state_file="${cacheRoot}/pnpm-install-contract.json"
+        dependency_profile_file="${cacheRoot}/dependency-materialization-profile.json"
+        dependency_registry_file="${cacheRoot}/dependency-materialization-registry.json"
 
         _pnpm_install_contract_file="$(resolve_pnpm_install_contract_file "$PWD" || true)"
         if [ -z "''${_pnpm_install_contract_file:-}" ]; then
@@ -558,6 +573,11 @@ let
         fi
 
         if [ ! -d node_modules ] || [ ! -f pnpm-lock.yaml ] || [ ! -f "$hash_file" ] || [ ! -f "$projection_hash_file" ] || [ ! -f node_modules/.modules.yaml ]; then
+          emit_pnpm_install_miss_span ${lib.escapeShellArg installTaskName} "bootstrap"
+          exit 1
+        fi
+
+        if pnpm_contract_supports_dependency_materialization_profile ${pkgs.nodejs}/bin/node "$_pnpm_install_contract_file" && { [ ! -f "$dependency_profile_file" ] || [ ! -f "$dependency_registry_file" ]; }; then
           emit_pnpm_install_miss_span ${lib.escapeShellArg installTaskName} "bootstrap"
           exit 1
         fi

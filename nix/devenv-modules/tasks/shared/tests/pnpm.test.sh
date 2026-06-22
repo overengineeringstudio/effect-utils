@@ -503,7 +503,14 @@ if (profile.authorities.gc !== 'shared-pool-coordinator') throw new Error('wrong
 if (profile.authorities.repair !== 'devenv') throw new Error('wrong repair authority')
 if (!profile.policy.nativeBuildPolicyInputs.compilerEnv.includes('CXX')) throw new Error('missing native compiler policy')
 if (profile.evidence.sectionDigests.storeContract.length !== 64) throw new Error('missing section digest')
+if (profile.evidence.contractPath.startsWith('/')) throw new Error('contract path should be relative')
 EOF
+pnpm_contract_supports_dependency_materialization_profile node "$contract_profile"
+set +e
+pnpm_contract_supports_dependency_materialization_profile node "$contract_missing" >/dev/null 2>&1
+exit_code=$?
+set -e
+assert_exit_code 1 "$exit_code" "old contract should not require dependency materialization evidence"
 set +e
 emit_dependency_materialization_profile node "$contract_profile" unknownTrait >/dev/null 2>&1
 exit_code=$?
@@ -535,6 +542,29 @@ isolated_decision="$(dependency_materialization_store_doctor node "$registry_fil
 assert_eq "allow-profile-local-prune" "$isolated_decision" "isolated files pool allows profile-local prune"
 repair_decision="$(dependency_materialization_repair_plan node "$registry_file" shared | node -e 'const fs=require("node:fs"); const plan=JSON.parse(fs.readFileSync(0,"utf8")); process.stdout.write(`${plan.decision}:${plan.roots.length}`)')"
 assert_eq "repair-all-roots:2" "$repair_decision" "shared files pool repair covers all registered roots"
+
+echo "Test 16c: dependency materialization registry records live profile and files pool"
+registry_root="$test_dir/profile-registry"
+mkdir -p "$registry_root/store/v11" "$registry_root/shared-files/v11" "$registry_root/workspace"
+ln -s "$registry_root/shared-files/v11" "$registry_root/store/v11/files"
+live_registry="$registry_root/registry.json"
+write_dependency_materialization_registry node "$profile_output" "$registry_root/workspace" "$registry_root/store" "$live_registry"
+registry_profile_id="$(node -e 'const fs=require("node:fs"); process.stdout.write(JSON.parse(fs.readFileSync(process.argv[1],"utf8")).profileId)' "$profile_output")"
+assert_json_field \
+  "dependency-materialization-registry/v0" \
+  "$live_registry" \
+  "value => value.schema" \
+  "registry schema"
+assert_json_field \
+  "$registry_profile_id" \
+  "$live_registry" \
+  "value => value.profiles[0].id" \
+  "registry profile id"
+assert_json_field \
+  "refuse-raw-prune" \
+  <(dependency_materialization_store_doctor node "$live_registry" "$registry_profile_id") \
+  "value => value.decision" \
+  "registry shared pool doctor decision"
 
 echo "Test 17: resolve_package_bin prefers package-local .bin shims"
 bin_fixture="$test_dir/bin-fixture"

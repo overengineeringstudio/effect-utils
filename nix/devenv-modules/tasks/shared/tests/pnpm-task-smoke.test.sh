@@ -17,6 +17,22 @@ assert_exit_code() {
   fi
 }
 
+assert_json_field() {
+  local expected="$1"
+  local file="$2"
+  local expression="$3"
+  local label="$4"
+
+  local actual
+  actual="$(node -e "const fs = require('node:fs'); const value = JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); const out = (${expression})(value); process.stdout.write(String(out))" "$file")"
+  if [ "$expected" != "$actual" ]; then
+    echo "FAIL: $label"
+    echo "  expected: $expected"
+    echo "  actual:   $actual"
+    exit 1
+  fi
+}
+
 extract_task_script() {
   local workspace_root="$1"
   local attr="$2"
@@ -136,7 +152,33 @@ cat > "$workspace/pnpm-install-contract.json" <<'EOF'
   "gvsLinkContract": {"allowBuilds": {}, "packageExtensions": {}, "packageManager": {"name": "pnpm", "version": "11.3.0"}},
   "installPolicy": {"ignoreScripts": true},
   "storeContract": {"layoutVersion": "v11", "owner": "pnpm", "storeDir": ".devenv/pnpm-store-pure-v1"},
-  "workspaceManifestContract": {"packages": []}
+  "workspaceManifestContract": {"packages": []},
+  "dependencyMaterializationProfile": {
+    "schema": "dependency-materialization-profile/v0",
+    "identityInputs": ["packageManager", "gvsLinkContract", "installPolicy", "storeContract", "workspaceManifestContract"],
+    "supportedTraits": {
+      "ciJobLocal": {
+        "mutableState": "job-local",
+        "gcAuthority": "profile-local",
+        "repairAuthority": "ci-job"
+      },
+      "darwinSplitCas": {
+        "mutableState": "profile-local",
+        "sharedContent": "store/v11/files",
+        "gcAuthority": "shared-pool-coordinator",
+        "repairAuthority": "devenv"
+      },
+      "isolated": {
+        "mutableState": "profile-local",
+        "gcAuthority": "profile-local",
+        "repairAuthority": "devenv"
+      }
+    },
+    "nativeBuildPolicyInputs": {
+      "allowBuilds": "gvsLinkContract.allowBuilds",
+      "compilerEnv": ["CC", "CXX"]
+    }
+  }
 }
 EOF
 cat > "$workspace/packages/demo/package.json" <<'EOF'
@@ -393,6 +435,21 @@ echo "Test 7: exec defaults PNPM_HOME to a workspace-local projection"
   grep -qxF "npm_config_store_dir=$workspace/.devenv/pnpm-store-pure-v1" "$tmpdir/pnpm.log"
   test -L "$workspace/.devenv/pnpm-store-pure-v1/v11/files"
   test "$(readlink "$workspace/.devenv/pnpm-store-pure-v1/v11/files")" = "$tmpdir/home/.local/share/pnpm/shared-files/v11"
+  profile_file="$workspace/.devenv/task-cache/pnpm-install/dependency-materialization-profile.json"
+  registry_file="$workspace/.devenv/task-cache/pnpm-install/dependency-materialization-registry.json"
+  test -f "$profile_file"
+  test -f "$registry_file"
+  profile_id="$(node -e 'const fs=require("node:fs"); process.stdout.write(JSON.parse(fs.readFileSync(process.argv[1],"utf8")).profileId)' "$profile_file")"
+  assert_json_field "dependency-materialization-profile/v0" "$profile_file" "value => value.schema" "live profile schema"
+  assert_json_field "true" "$profile_file" "value => value.profileId.startsWith('pnpm:')" "live profile id prefix"
+  assert_json_field "darwinSplitCas" "$profile_file" "value => value.store.trait" "live profile split store trait"
+  assert_json_field "shared-pool-coordinator" "$profile_file" "value => value.authorities.gc" "live profile gc authority"
+  assert_json_field "pnpm-install-contract.json" "$profile_file" "value => value.evidence.contractPath" "live profile relative contract path"
+  assert_json_field "dependency-materialization-registry/v0" "$registry_file" "value => value.schema" "live registry schema"
+  assert_json_field "$profile_id" "$registry_file" "value => value.profiles[0].id" "live registry profile id"
+  assert_json_field "$workspace" "$registry_file" "value => value.profiles[0].project" "live registry project"
+  assert_json_field "$workspace/.devenv/pnpm-store-pure-v1" "$registry_file" "value => value.profiles[0].store" "live registry store"
+  assert_json_field "$workspace/.devenv/pnpm-store-pure-v1/v11/files" "$registry_file" "value => value.pools[0].filesPath" "live registry files path"
 )
 
 echo "Test 8: status hits after install with the default GVS path"

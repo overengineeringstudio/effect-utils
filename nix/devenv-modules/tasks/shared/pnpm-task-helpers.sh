@@ -128,6 +128,24 @@ compute_pnpm_contract_section_hash() {
   pnpm_contract_section_json "$node_bin" "$contract_file" "$section" | compute_hash
 }
 
+pnpm_contract_supports_dependency_materialization_profile() {
+  local node_bin="$1"
+  local contract_file="$2"
+
+  "$node_bin" - "$contract_file" <<'EOF'
+const fs = require('node:fs')
+
+const [contractFile] = process.argv.slice(2)
+const contract = JSON.parse(fs.readFileSync(contractFile, 'utf8'))
+
+process.exit(
+  contract.dependencyMaterializationProfile?.schema === 'dependency-materialization-profile/v0'
+    ? 0
+    : 1,
+)
+EOF
+}
+
 emit_dependency_materialization_profile() {
   local node_bin="$1"
   local contract_file="$2"
@@ -137,9 +155,13 @@ emit_dependency_materialization_profile() {
   "$node_bin" - "$contract_file" "$store_trait" "$output_file" <<'EOF'
 const crypto = require('node:crypto')
 const fs = require('node:fs')
+const path = require('node:path')
 
 const [contractFile, storeTrait, outputFile] = process.argv.slice(2)
 const contract = JSON.parse(fs.readFileSync(contractFile, 'utf8'))
+const evidenceContractPath = path.isAbsolute(contractFile)
+  ? path.relative(fs.realpathSync(process.cwd()), fs.realpathSync(contractFile))
+  : contractFile
 
 const stableJson = (value) => {
   if (Array.isArray(value)) {
@@ -224,7 +246,7 @@ const profile = {
     nativeBuildPolicyInputs: profileContract.nativeBuildPolicyInputs,
   },
   evidence: {
-    contractPath: contractFile,
+    contractPath: evidenceContractPath,
     sectionDigests,
   },
 }
@@ -235,6 +257,57 @@ if (outputFile) {
 } else {
   process.stdout.write(rendered)
 }
+EOF
+}
+
+write_dependency_materialization_registry() {
+  local node_bin="$1"
+  local profile_file="$2"
+  local project_dir="$3"
+  local store_dir="$4"
+  local output_file="$5"
+
+  "$node_bin" - "$profile_file" "$project_dir" "$store_dir" "$output_file" <<'EOF'
+const crypto = require('node:crypto')
+const fs = require('node:fs')
+const path = require('node:path')
+
+const [profileFile, projectDir, storeDir, outputFile] = process.argv.slice(2)
+const profile = JSON.parse(fs.readFileSync(profileFile, 'utf8'))
+const filesPath = path.join(storeDir, 'v11', 'files')
+
+const realFilesPath = (() => {
+  try {
+    return fs.realpathSync(filesPath)
+  } catch {
+    return filesPath
+  }
+})()
+
+const poolId = crypto
+  .createHash('sha256')
+  .update(`${realFilesPath}\n`)
+  .digest('hex')
+
+const registry = {
+  schema: 'dependency-materialization-registry/v0',
+  profiles: [
+    {
+      id: profile.profileId,
+      project: projectDir,
+      store: storeDir,
+      filesPoolId: poolId,
+    },
+  ],
+  pools: [
+    {
+      id: poolId,
+      filesPath,
+    },
+  ],
+}
+
+fs.writeFileSync(outputFile, `${JSON.stringify(registry, null, 2)}\n`)
 EOF
 }
 

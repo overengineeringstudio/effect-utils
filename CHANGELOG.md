@@ -11,7 +11,10 @@ All notable changes to this project will be documented in this file.
   section covering identity inputs, store traits, native build policy inputs,
   and the Buck2 boundary. The pnpm helper tests now prove profile emission and
   refuse raw pruning for shared `store/v11/files` pools, forcing coordinated
-  repair plans instead of one-worktree cleanup.
+  repair plans instead of one-worktree cleanup. Successful live `pnpm:install`
+  runs also emit profile and registry evidence in the install cache so future
+  doctor/repair tasks can reason from registered materialization roots instead
+  of probing pnpm's private store layout directly.
 
 - **pnpm install contract proof**: Add a generated `pnpm-install-contract.json`
   artifact that makes the long-term pnpm/Nix/Buck2 install contract explicit:
