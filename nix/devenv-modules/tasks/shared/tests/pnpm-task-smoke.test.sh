@@ -479,6 +479,8 @@ echo "Test 7: exec defaults PNPM_HOME to a workspace-local projection"
   grep -qxF "install --force --config.confirmModulesPurge=false --pm-on-fail=ignore --config.store-dir=$workspace/.devenv/pnpm-store-pure-v1" "$tmpdir/pnpm.log"
   grep -qxF "PWD=$workspace" "$tmpdir/pnpm.log"
   grep -qxF "flock -w 600 204" "$tmpdir/flock.log"
+  CI=1 bash "$tmpdir/pnpm-install.exec.sh"
+  assert_json_field "ciJobLocal" "$profile_file" "value => value.store.trait" "CI install records CI-local profile trait"
 )
 
 echo "Test 8: status hits after install with the default GVS path"
