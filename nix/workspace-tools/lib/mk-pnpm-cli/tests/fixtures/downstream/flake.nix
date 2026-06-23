@@ -189,14 +189,11 @@
                     profile: profile.traits
                   ) pureEvalFixture.passthru.dependencyMaterializationEvidence.profiles;
                   rootFreshnessInputs = builtins.sort builtins.lessThan (
-                    builtins.attrNames (
-                      builtins.head pureEvalFixture.passthru.dependencyMaterializationEvidence.profiles
-                    ).freshness.manifestDigests
+                    builtins.attrNames (builtins.head pureEvalFixture.passthru.dependencyMaterializationEvidence.profiles)
+                    .freshness.manifestDigests
                   );
-                  externalRootPatchAuthorityPresent =
-                    builtins.hasAttr "rootPatchedDependenciesSection" (
-                      builtins.elemAt pureEvalFixture.passthru.dependencyMaterializationEvidence.profiles 1
-                    ).freshness.rootPatchAuthority;
+                  externalRootPatchAuthorityPresent = builtins.hasAttr "rootPatchedDependenciesSection" (builtins.elemAt pureEvalFixture.passthru.dependencyMaterializationEvidence.profiles 1)
+                  .freshness.rootPatchAuthority;
                   buck2Kind = pureEvalFixture.passthru.buck2DependencyMaterializationEvidence.kind;
                   buck2DoesNotOwnLive = lib.all (
                     materialization: materialization.ownsLiveMaterialization == false
@@ -220,16 +217,10 @@
                     == (builtins.head profileDedupConsumerB.passthru.dependencyMaterializationEvidence.profiles)
                     .profileKey;
                   absentOptionalInputsExcluded =
-                    !(
-                      builtins.elem "pnpm-install-contract.json" (
-                        builtins.head pureEvalFixture.passthru.dependencyMaterializationEvidence.profiles
-                      ).inputs.manifests
-                    )
-                    && !(
-                      builtins.elem "tsconfig.base.json" (
-                        builtins.head pureEvalFixture.passthru.dependencyMaterializationEvidence.profiles
-                      ).inputs.manifests
-                    );
+                    !(builtins.elem "pnpm-install-contract.json" (builtins.head pureEvalFixture.passthru.dependencyMaterializationEvidence.profiles)
+                    .inputs.manifests)
+                    && !(builtins.elem "tsconfig.base.json" (builtins.head pureEvalFixture.passthru.dependencyMaterializationEvidence.profiles)
+                    .inputs.manifests);
                 }
               }'
               expected='{"absentOptionalInputsExcluded":true,"attrNames":["root","repos-effect-utils"],"buck2DoesNotOwnLive":true,"buck2EvidenceKeysMatch":true,"buck2Kind":"buck2-dependency-materialization-evidence","consumerNameInsensitive":true,"externalRootPatchAuthorityPresent":true,"kind":"dependency-materialization-evidence","producer":"effect-utils.mk-pnpm-cli","profileCount":2,"rootFreshnessInputs":[".npmrc","app/package.json","package.json","pnpm-lock.yaml","pnpm-workspace.yaml"],"sourcePathInsensitive":true,"traits":[["nixPreparedDeps"],["nixPreparedDeps"]]}'

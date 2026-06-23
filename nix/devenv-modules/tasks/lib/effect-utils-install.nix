@@ -14,5 +14,8 @@
 # explicit (not relying on pnpm's CI-only default for frozen) so a drifted
 # effect-utils lockfile fails loudly in both local and CI runs rather than being
 # silently rewritten.
-{ root, dir ? "repos/effect-utils" }:
+{
+  root,
+  dir ? "repos/effect-utils",
+}:
 ''DT_PASSTHROUGH=1 pnpm install --force --frozen-lockfile --ignore-scripts --config.confirmModulesPurge=false --config.store-dir="''${PNPM_CONFIG_STORE_DIR:-''${PNPM_STORE_DIR:-${root}/.devenv/pnpm-store-pure-v1}}" --dir ${dir}''

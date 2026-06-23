@@ -100,23 +100,20 @@ in
       subject = {
         inherit packageName packageDir;
       };
-      materializations = map (
-        profile:
-        {
-          inherit (profile)
-            attrName
-            depsHash
-            evidenceKey
-            freshness
-            inputs
-            profileKey
-            traits
-            ;
-          inherit (profile.identity) installDir lockfilePath memberDirs;
-          owner = "nix-prepared-deps";
-          ownsLiveMaterialization = false;
-          repairAuthority = "devenv-pnpm-tasks";
-        }
-      ) evidence.profiles;
+      materializations = map (profile: {
+        inherit (profile)
+          attrName
+          depsHash
+          evidenceKey
+          freshness
+          inputs
+          profileKey
+          traits
+          ;
+        inherit (profile.identity) installDir lockfilePath memberDirs;
+        owner = "nix-prepared-deps";
+        ownsLiveMaterialization = false;
+        repairAuthority = "devenv-pnpm-tasks";
+      }) evidence.profiles;
     };
 }
