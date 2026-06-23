@@ -14,9 +14,11 @@ All notable changes to this project will be documented in this file.
   repair plans instead of one-worktree cleanup. Successful live `pnpm:install`
   runs also emit profile and registry evidence in the install cache so future
   doctor/repair tasks can reason from registered materialization roots instead
-  of probing pnpm's private store layout directly. New read-only `pnpm:doctor`
-  and `pnpm:repair-plan` tasks consume that evidence to refuse raw pruning of
-  shared files pools and print coordinated repair plans.
+  of probing pnpm's private store layout directly. A shared aggregate registry
+  tracks all roots that point at the same files pool, while new `pnpm:doctor`,
+  `pnpm:repair-plan`, and explicit `pnpm:repair` tasks consume that evidence to
+  refuse raw pruning of shared files pools and force-rebuild every live
+  registered root instead.
 
 - **pnpm install contract proof**: Add a generated `pnpm-install-contract.json`
   artifact that makes the long-term pnpm/Nix/Buck2 install contract explicit:

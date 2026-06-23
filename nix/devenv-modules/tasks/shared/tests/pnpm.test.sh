@@ -545,10 +545,12 @@ assert_eq "repair-all-roots:2" "$repair_decision" "shared files pool repair cove
 
 echo "Test 16c: dependency materialization registry records live profile and files pool"
 registry_root="$test_dir/profile-registry"
-mkdir -p "$registry_root/store/v11" "$registry_root/shared-files/v11" "$registry_root/workspace"
+mkdir -p "$registry_root/store/v11" "$registry_root/second-store/v11" "$registry_root/shared-files/v11" "$registry_root/workspace" "$registry_root/second-workspace"
 ln -s "$registry_root/shared-files/v11" "$registry_root/store/v11/files"
+ln -s "$registry_root/shared-files/v11" "$registry_root/second-store/v11/files"
 live_registry="$registry_root/registry.json"
-write_dependency_materialization_registry node "$profile_output" "$registry_root/workspace" "$registry_root/store" "$live_registry"
+shared_registry="$(dependency_materialization_shared_registry_file node "$registry_root/store")"
+write_dependency_materialization_registry node "$profile_output" "$registry_root/workspace" "$registry_root/store" "$live_registry" "$shared_registry"
 registry_profile_id="$(node -e 'const fs=require("node:fs"); process.stdout.write(JSON.parse(fs.readFileSync(process.argv[1],"utf8")).profileId)' "$profile_output")"
 assert_json_field \
   "dependency-materialization-registry/v0" \
@@ -558,13 +560,24 @@ assert_json_field \
 assert_json_field \
   "$registry_profile_id" \
   "$live_registry" \
-  "value => value.profiles[0].id" \
+  "value => value.profiles[0].profileId" \
   "registry profile id"
 assert_json_field \
   "refuse-raw-prune" \
   <(dependency_materialization_store_doctor node "$live_registry" "$registry_profile_id") \
   "value => value.decision" \
   "registry shared pool doctor decision"
+second_registry="$registry_root/second-registry.json"
+write_dependency_materialization_registry node "$profile_output" "$registry_root/second-workspace" "$registry_root/second-store" "$second_registry" "$shared_registry"
+assert_json_field \
+  "2" \
+  "$second_registry" \
+  "value => value.profiles.length" \
+  "shared registry aggregates sibling roots with the same dependency profile"
+assert_eq \
+  "2" \
+  "$(dependency_materialization_repair_roots node "$second_registry" "$(dependency_materialization_profile_files_pool_id node "$second_registry" "$registry_profile_id")" | wc -l | tr -d ' ')" \
+  "repair roots include every workspace sharing the files pool"
 
 echo "Test 17: resolve_package_bin prefers package-local .bin shims"
 bin_fixture="$test_dir/bin-fixture"

@@ -266,15 +266,17 @@ write_dependency_materialization_registry() {
   local project_dir="$3"
   local store_dir="$4"
   local output_file="$5"
+  local shared_registry_file="${6:-}"
 
-  "$node_bin" - "$profile_file" "$project_dir" "$store_dir" "$output_file" <<'EOF'
+  "$node_bin" - "$profile_file" "$project_dir" "$store_dir" "$output_file" "$shared_registry_file" <<'EOF'
 const crypto = require('node:crypto')
 const fs = require('node:fs')
 const path = require('node:path')
 
-const [profileFile, projectDir, storeDir, outputFile] = process.argv.slice(2)
+const [profileFile, projectDir, storeDir, outputFile, sharedRegistryFile] = process.argv.slice(2)
 const profile = JSON.parse(fs.readFileSync(profileFile, 'utf8'))
-const filesPath = path.join(storeDir, 'v11', 'files')
+const storeLayoutVersion = 'v11'
+const filesPath = path.join(storeDir, storeLayoutVersion, 'files')
 
 const realFilesPath = (() => {
   try {
@@ -288,12 +290,17 @@ const poolId = crypto
   .createHash('sha256')
   .update(`${realFilesPath}\n`)
   .digest('hex')
+const rootId = crypto
+  .createHash('sha256')
+  .update(`${profile.profileId}\n${projectDir}\n${storeDir}\n`)
+  .digest('hex')
 
-const registry = {
+const singletonRegistry = {
   schema: 'dependency-materialization-registry/v0',
   profiles: [
     {
-      id: profile.profileId,
+      id: rootId,
+      profileId: profile.profileId,
       project: projectDir,
       store: storeDir,
       filesPoolId: poolId,
@@ -307,7 +314,62 @@ const registry = {
   ],
 }
 
-fs.writeFileSync(outputFile, `${JSON.stringify(registry, null, 2)}\n`)
+const readRegistry = (file) => {
+  if (!file || !fs.existsSync(file)) {
+    return { schema: 'dependency-materialization-registry/v0', profiles: [], pools: [] }
+  }
+
+  const registry = JSON.parse(fs.readFileSync(file, 'utf8'))
+  return {
+    schema: 'dependency-materialization-registry/v0',
+    profiles: Array.isArray(registry.profiles) ? registry.profiles : [],
+    pools: Array.isArray(registry.pools) ? registry.pools : [],
+  }
+}
+
+const upsertBy = (rows, row, key) => [
+  ...rows.filter((candidate) => candidate[key] !== row[key]),
+  row,
+].sort((left, right) => left[key].localeCompare(right[key]))
+
+const merged = readRegistry(sharedRegistryFile)
+merged.profiles = upsertBy(merged.profiles, singletonRegistry.profiles[0], 'id')
+merged.pools = upsertBy(merged.pools, singletonRegistry.pools[0], 'id')
+
+const rendered = `${JSON.stringify(merged, null, 2)}\n`
+if (sharedRegistryFile) {
+  fs.mkdirSync(path.dirname(sharedRegistryFile), { recursive: true })
+  const tmpFile = `${sharedRegistryFile}.${process.pid}.tmp`
+  fs.writeFileSync(tmpFile, rendered)
+  fs.renameSync(tmpFile, sharedRegistryFile)
+}
+fs.writeFileSync(outputFile, rendered)
+EOF
+}
+
+dependency_materialization_shared_registry_file() {
+  local node_bin="$1"
+  local store_dir="$2"
+
+  "$node_bin" - "$store_dir" <<'EOF'
+const fs = require('node:fs')
+const path = require('node:path')
+
+const [storeDir] = process.argv.slice(2)
+const storeLayoutVersion = 'v11'
+const filesPath = path.join(storeDir, storeLayoutVersion, 'files')
+const realFilesPath = (() => {
+  try {
+    return fs.realpathSync(filesPath)
+  } catch {
+    return filesPath
+  }
+})()
+
+process.stdout.write(path.join(
+  path.dirname(realFilesPath),
+  `.effect-utils-dependency-materialization-registry-${storeLayoutVersion}.json`,
+))
 EOF
 }
 
@@ -335,13 +397,33 @@ const fs = require('node:fs')
 const [registryFile, profileId] = process.argv.slice(2)
 const registry = JSON.parse(fs.readFileSync(registryFile, 'utf8'))
 const profiles = Array.isArray(registry.profiles) ? registry.profiles : []
-const profile = profiles.find((row) => row.id === profileId)
+const profile = profiles.find((row) => row.id === profileId || row.profileId === profileId)
 
 if (profile === undefined || typeof profile.filesPoolId !== 'string') {
   process.exit(1)
 }
 
 process.stdout.write(profile.filesPoolId)
+EOF
+}
+
+dependency_materialization_repair_roots() {
+  local node_bin="$1"
+  local registry_file="$2"
+  local files_pool_id="$3"
+
+  "$node_bin" - "$registry_file" "$files_pool_id" <<'EOF'
+const fs = require('node:fs')
+
+const [registryFile, filesPoolId] = process.argv.slice(2)
+const registry = JSON.parse(fs.readFileSync(registryFile, 'utf8'))
+const profiles = Array.isArray(registry.profiles) ? registry.profiles : []
+
+for (const profile of profiles
+  .filter((row) => row.filesPoolId === filesPoolId)
+  .sort((left, right) => left.id.localeCompare(right.id))) {
+  process.stdout.write(`${profile.project}\t${profile.store}\n`)
+}
 EOF
 }
 
@@ -379,7 +461,7 @@ const classifyPool = (pool) => {
 
 const profiles = Array.isArray(registry.profiles) ? registry.profiles : []
 const pools = Array.isArray(registry.pools) ? registry.pools : []
-const profile = profiles.find((row) => row.id === profileId)
+const profile = profiles.find((row) => row.id === profileId || row.profileId === profileId)
 
 if (profile === undefined) {
   console.log(JSON.stringify({ phase: 'doctor', profileId, decision: 'refuse', reason: 'unknown-profile', siblings: [] }))
