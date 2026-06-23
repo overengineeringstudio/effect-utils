@@ -751,14 +751,10 @@ let
   # output hash is content-addressed, so this rename is hash-neutral: only the
   # store-path name changes, which is exactly what enables the deduplication.
   #
-  # This assumes member-set identity implies staged-content identity: the
-  # prepared tree also depends on the consumer's root pnpm-lock.yaml /
-  # pnpm-workspace.yaml (staged for patch inheritance) and on the source bound
-  # to each `workspaceSources` entry. That holds when consumers sharing a
-  # profile compose the same source at a fixed root lock — the case in a single
-  # pnpm workspace with one pinned dependency. If a consumer varied the root
-  # lock or the bound source under the same member set, this key would alias
-  # distinct trees and must be widened to fingerprint the staged content.
+  # The profile key includes content freshness digests for the staged manifests
+  # and inherited root patch authority, so the derivation name is still
+  # consumer-invariant for byte-identical install roots but moves when the
+  # prepared tree's dependency inputs move.
   installRootDepsDerivationName =
     root:
     "${lib.strings.sanitizeDerivationName (lib.replaceStrings [ "/" ] [ "-" ] root.installDir)}-deps-${
@@ -788,6 +784,45 @@ let
       ++ existingSourceFiles (map scopedFile optionalRootWorkspaceFiles)
       ++ [ (scopedFile "pnpm-workspace.yaml") ]
       ++ memberPackageJsons;
+  rootPatchedDependenciesSection =
+    lockfileContent:
+    let
+      lines = lib.splitString "\n" lockfileContent;
+      startIndex = lib.lists.findFirstIndex (line: line == "patchedDependencies:") null lines;
+    in
+    if startIndex == null then
+      ""
+    else
+      let
+        rest = lib.lists.drop (startIndex + 1) lines;
+        endOffset = lib.lists.findFirstIndex (
+          line: line != "" && !(lib.hasPrefix " " line)
+        ) (builtins.length rest) rest;
+      in
+      builtins.concatStringsSep "\n" (lib.lists.take endOffset rest);
+  profileFreshnessInputsForRoot =
+    root:
+    let
+      manifestInputs = profileManifestInputsForRoot root;
+      manifestDigests = builtins.listToAttrs (
+        map (relPath: {
+          name = relPath;
+          value = builtins.hashFile "sha256" (resolveEvalSourceFor relPath);
+        }) manifestInputs
+      );
+      rootPatchAuthority =
+        if root.installDir == "." then
+          { }
+        else
+          {
+            rootPatchedDependenciesSection = builtins.hashString "sha256" (
+              rootPatchedDependenciesSection (builtins.readFile (resolveEvalSourceFor "pnpm-lock.yaml"))
+            );
+          };
+    in
+    {
+      inherit manifestDigests rootPatchAuthority;
+    };
   installRootProfile =
     root:
     dependencyProfile.mkPreparedDepsProfile {
@@ -797,6 +832,7 @@ let
       attrName = installRootAttrName root.installDir;
       depsHash = depsBuildHashForInstallRoot root.installDir;
       manifestInputs = profileManifestInputsForRoot root;
+      freshnessInputs = profileFreshnessInputsForRoot root;
       policy = {
         packageImportMethod = if pkgs.stdenv.hostPlatform.isDarwin then "copy" else "clone-or-copy";
       };
@@ -1166,6 +1202,11 @@ let
     inherit packageDir;
     profiles = dependencyMaterializationProfiles;
   };
+  buck2DependencyMaterializationEvidence = dependencyProfile.mkBuck2Evidence {
+    packageName = packageJson.name;
+    inherit packageDir;
+    evidence = dependencyMaterializationEvidence;
+  };
   depsSrcByInstallRoot = builtins.listToAttrs (
     map (root: {
       name = root.attrName;
@@ -1371,6 +1412,7 @@ pkgs.stdenv.mkDerivation {
     inherit
       depsSrcByInstallRoot
       depsBuildsByInstallRoot
+      buck2DependencyMaterializationEvidence
       dependencyMaterializationEvidence
       dependencyMaterializationProfiles
       inheritRootPatchedDependenciesScript
@@ -1387,6 +1429,7 @@ pkgs.stdenv.mkDerivation {
       memberDirs = installRootMemberDirs root;
       profileKey = installRootProfileKey root;
       hash = depsBuildHashForInstallRoot root.installDir;
+      freshness = (installRootProfile root).freshness;
     }) depsInstallRoots;
   };
 

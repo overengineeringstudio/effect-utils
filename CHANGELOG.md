@@ -18,7 +18,10 @@ All notable changes to this project will be documented in this file.
   tracks all roots that point at the same files pool, while new `pnpm:doctor`,
   `pnpm:repair-plan`, and explicit `pnpm:repair` tasks consume that evidence to
   refuse raw pruning of shared files pools and force-rebuild every live
-  registered root instead.
+  registered root instead. Prepared-deps profile keys now include content
+  freshness digests for staged manifests and inherited root patch authority, and
+  `mk-pnpm-cli` exposes a Buck2-facing evidence adapter that consumes the same
+  prepared-deps profiles without owning live pnpm materialization.
 
 - **pnpm install contract proof**: Add a generated `pnpm-install-contract.json`
   artifact that makes the long-term pnpm/Nix/Buck2 install contract explicit:

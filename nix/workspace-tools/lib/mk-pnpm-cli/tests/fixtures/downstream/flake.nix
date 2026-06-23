@@ -188,6 +188,26 @@
                   traits = map (
                     profile: profile.traits
                   ) pureEvalFixture.passthru.dependencyMaterializationEvidence.profiles;
+                  rootFreshnessInputs = builtins.sort builtins.lessThan (
+                    builtins.attrNames (
+                      builtins.head pureEvalFixture.passthru.dependencyMaterializationEvidence.profiles
+                    ).freshness.manifestDigests
+                  );
+                  externalRootPatchAuthorityPresent =
+                    builtins.hasAttr "rootPatchedDependenciesSection" (
+                      builtins.elemAt pureEvalFixture.passthru.dependencyMaterializationEvidence.profiles 1
+                    ).freshness.rootPatchAuthority;
+                  buck2Kind = pureEvalFixture.passthru.buck2DependencyMaterializationEvidence.kind;
+                  buck2DoesNotOwnLive = lib.all (
+                    materialization: materialization.ownsLiveMaterialization == false
+                  ) pureEvalFixture.passthru.buck2DependencyMaterializationEvidence.materializations;
+                  buck2EvidenceKeysMatch =
+                    map (
+                      materialization: materialization.evidenceKey
+                    ) pureEvalFixture.passthru.buck2DependencyMaterializationEvidence.materializations
+                    == map (
+                      profile: profile.evidenceKey
+                    ) pureEvalFixture.passthru.dependencyMaterializationEvidence.profiles;
                   sourcePathInsensitive =
                     map (
                       profile: profile.profileKey
@@ -212,7 +232,7 @@
                     );
                 }
               }'
-              expected='{"absentOptionalInputsExcluded":true,"attrNames":["root","repos-effect-utils"],"consumerNameInsensitive":true,"kind":"dependency-materialization-evidence","producer":"effect-utils.mk-pnpm-cli","profileCount":2,"sourcePathInsensitive":true,"traits":[["nixPreparedDeps"],["nixPreparedDeps"]]}'
+              expected='{"absentOptionalInputsExcluded":true,"attrNames":["root","repos-effect-utils"],"buck2DoesNotOwnLive":true,"buck2EvidenceKeysMatch":true,"buck2Kind":"buck2-dependency-materialization-evidence","consumerNameInsensitive":true,"externalRootPatchAuthorityPresent":true,"kind":"dependency-materialization-evidence","producer":"effect-utils.mk-pnpm-cli","profileCount":2,"rootFreshnessInputs":[".npmrc","app/package.json","package.json","pnpm-lock.yaml","pnpm-workspace.yaml"],"sourcePathInsensitive":true,"traits":[["nixPreparedDeps"],["nixPreparedDeps"]]}'
               if [ "$actual" != "$expected" ]; then
                 echo "unexpected dependency materialization evidence: $actual" >&2
                 exit 1

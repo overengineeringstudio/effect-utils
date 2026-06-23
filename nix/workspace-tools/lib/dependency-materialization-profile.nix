@@ -34,6 +34,7 @@ in
       attrName,
       depsHash,
       manifestInputs,
+      freshnessInputs ? { },
       policy ? { },
       traits ? [ ],
     }:
@@ -42,6 +43,7 @@ in
         inherit installDir lockfilePath;
         memberDirs = sortedStrings memberDirs;
         policy = sortedAttrs (defaultPolicy // policy);
+        freshness = sortedAttrs freshnessInputs;
       };
     in
     {
@@ -53,6 +55,7 @@ in
       inputs = {
         manifests = sortedStrings manifestInputs;
       };
+      freshness = freshnessInputs;
     };
 
   mkEvidence =
@@ -82,5 +85,38 @@ in
           };
         }
       ) profiles;
+    };
+
+  mkBuck2Evidence =
+    {
+      packageName,
+      packageDir,
+      evidence,
+    }:
+    {
+      schemaVersion = 1;
+      kind = "buck2-dependency-materialization-evidence";
+      producer = "effect-utils.mk-pnpm-cli";
+      subject = {
+        inherit packageName packageDir;
+      };
+      materializations = map (
+        profile:
+        {
+          inherit (profile)
+            attrName
+            depsHash
+            evidenceKey
+            freshness
+            inputs
+            profileKey
+            traits
+            ;
+          inherit (profile.identity) installDir lockfilePath memberDirs;
+          owner = "nix-prepared-deps";
+          ownsLiveMaterialization = false;
+          repairAuthority = "devenv-pnpm-tasks";
+        }
+      ) evidence.profiles;
     };
 }
