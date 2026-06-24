@@ -104,6 +104,24 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **@overeng/restate-effect**: Make the Restate real-server test harness use
+  request identity and structured SDK log capture. The harness now generates an
+  ephemeral ED25519 request-identity keypair per native-server boot, starts
+  `restate-server` with the private key, and serves each SDK endpoint with the
+  derived `publickeyv1_...` identity key, removing unauthenticated-handler
+  warnings at the source. `EndpointOptions.sdkLogger` threads a structured SDK
+  logger into `createEndpointHandler({ logger })`, and the harness captures SDK
+  SYSTEM/JOURNAL/USER records through `harness.sdkLogs.records()` instead of
+  relying on stderr or `RESTATE_LOGGING=ERROR`. Expected terminal domain failures
+  remain available as `TerminalError` log params with code/metadata, so the bridge
+  keeps terminal/retryable/defect semantics intact while making integration test
+  output quiet and inspectable.
+
+- **@overeng/restate-effect**: Route the scheduled durability SIGKILL test's SDK
+  endpoint diagnostics through structured log capture as well. The test now keeps
+  the expected HTTP/2 abort evidence from killing `restate-server` mid wake-mode
+  wait, while avoiding misleading raw stderr noise in CI.
+
 - **Restate integration port allocation**: Bind in-process handler endpoints on
   port `0` and register the actual kernel-assigned URL, while keeping batch +
   retry allocation for the native `restate-server` child process ports that must
@@ -350,6 +368,10 @@ All notable changes to this project will be documented in this file.
 - **@overeng/restate-effect**: VRS design docs restructured into the ten numeric subsystem dirs (`docs/vrs/01-authoring/` … `10-admin/`), mirroring the `src/` subsystem taxonomy. `docs/vrs/spec.md` is now a thin architecture index (Status + Scope + the architecture diagram + the cross-cutting Deferred + Open-design-question lists + a table linking each subsystem `spec.md`); the §-section bodies moved into each subsystem's `spec.md`, and the requirement bullets distributed into each subsystem's `requirements.md` PRESERVING the global IDs (R01–R39 / A01–A11 / T01–T08 — one ID per subsystem, never renumbered, so every cross-reference still resolves). Root `requirements.md` keeps only the cross-cutting faithful-binding stance + the global Assumptions/Tradeoffs; `vision.md` + `glossary.md` stay whole at root (inherited downward). `docs/vrs/decisions/` renamed to `docs/vrs/.decisions/` (dot-prefixed per `/sk-vrs`; `git mv` preserves history, all 0001–0019 records unchanged in content). External path references updated to the new locations (`README.md`, `docs/guide/*`, `src/schema/{Serde,Annotations}.ts` doc-comment links, intra-VRS cross-links, epic #757). Docs-only — no library surface change.
 
 ### Fixed
+
+- **genie/ci-workflow**: Skip workflow-report PR comment publishing for fork
+  pull requests after writing the job summary, so preview-reporting jobs do not
+  fail when GitHub downgrades the `pull_request` token to read-only.
 
 - **@overeng/notion-md / @overeng/notion-datasource-sync**: Address PR review regressions for datasource body/property settlement and workspace establishment. Verified body-push settlement now preserves existing `.nmd` writable frontmatter properties, `--sqlite data/v1/<source>.sqlite` selects the matching manifest source in multi-source workspaces, and `track` writes `notion.workspace.v1.json` only after successful establishment. Public SQLite replicas now treat macOS `/var` and `/private/var` temp-path aliases as the same workspace for move detection, avoiding false `moved` status while still detecting copied data files. Also makes GFM autolink canonicalization idempotent for generated canonical bodies.
 

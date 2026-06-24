@@ -725,6 +725,17 @@ export interface EndpointOptions<AppR> {
    * owns the verification. Leave unset for a trusted local network.
    */
   readonly identityKeys?: ReadonlyArray<string>
+  /**
+   * Restate SDK endpoint logger transport. This is the SDK-level logger (SYSTEM /
+   * JOURNAL / USER records around endpoint discovery and invocation processing),
+   * distinct from the per-invocation Effect logger bridge that routes
+   * `Effect.log*` through `ctx.console`.
+   *
+   * Leave unset to use the SDK's default console transport. Tests and hosted
+   * runtimes can pass a structured transport to preserve SDK diagnostics without
+   * writing expected terminal outcomes to process stderr.
+   */
+  readonly sdkLogger?: restate.LoggerTransport
 }
 
 /** Runtime binding details for a started endpoint server. */
@@ -788,6 +799,7 @@ export const make = <const S extends ReadonlyArray<AnyImplementation<any>>>(
         }),
       ),
       ...(opts.identityKeys !== undefined ? { identityKeys: [...opts.identityKeys] } : {}),
+      ...(opts.sdkLogger !== undefined ? { logger: opts.sdkLogger } : {}),
     })
     const server = http2.createServer(fn as Parameters<typeof http2.createServer>[0])
 

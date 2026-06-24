@@ -8690,6 +8690,11 @@ jobs:
             exit 0
           fi
 
+          if [ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]; then
+            echo "::notice::workflow report PR comment skipped for fork pull request; summary remains available in the job summary"
+            exit 0
+          fi
+
           if [ ! -s "$WORKFLOW_REPORT_COMMENT_BODY_PATH" ]; then
             echo "::notice::workflow report comment body is empty; skipping PR comment"
             exit 0

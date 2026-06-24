@@ -17,12 +17,18 @@ import { layer } from './Endpoint.ts'
 
 /* Capture the options each `createEndpointHandler` call receives, then return a
  * no-op handler so the http2 server can be created/listened/closed in the scope. */
-const captured: Array<{ identityKeys?: ReadonlyArray<string> }> = []
+const captured: Array<{
+  identityKeys?: ReadonlyArray<string>
+  logger?: restateNode.LoggerTransport
+}> = []
 vi.mock('@restatedev/restate-sdk/node', async (importOriginal) => {
   const actual = await importOriginal<typeof restateNode>()
   return {
     ...actual,
-    createEndpointHandler: (options: { identityKeys?: ReadonlyArray<string> }) => {
+    createEndpointHandler: (options: {
+      identityKeys?: ReadonlyArray<string>
+      logger?: restateNode.LoggerTransport
+    }) => {
       captured.push(options)
       return (() => {}) as ReturnType<typeof actual.createEndpointHandler>
     },
@@ -61,5 +67,14 @@ describe('request-identity keys (decision 0016)', () => {
     await buildAndRelease(layer({ services: [GreeterLive], port: 0 }))
     expect(captured).toHaveLength(1)
     expect(captured[0]!.identityKeys).toBeUndefined()
+  })
+
+  it('threads EndpointOptions.sdkLogger into createEndpointHandler', async () => {
+    const sdkLogger: restateNode.LoggerTransport = () => {}
+
+    await buildAndRelease(layer({ services: [GreeterLive], port: 0, sdkLogger }))
+
+    expect(captured).toHaveLength(1)
+    expect(captured[0]!.logger).toBe(sdkLogger)
   })
 })
