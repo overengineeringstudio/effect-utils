@@ -9,6 +9,7 @@ packageExtensionsChecksum: sha256-gJVbGKCzsiTLmVnQ74k2GtcbKOOuGvVsGVwXhM0lg4Q=
 
 patchedDependencies:
   '@effect/platform@0.96.2': 08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32
+  '@myobie/pty@0.10.0': e6d9b2f6990efbb98235e6e4018e3e9bb5ac94bc54ea6764364857206b6b95a5
   effect-distributed-lock@0.0.11: a365d5c8857e3a421ea3b83b6be483433a5a75b344072aa68c4c984b14ec5a0b
 
 importers:
@@ -1319,7 +1320,7 @@ importers:
     dependencies:
       '@myobie/pty':
         specifier: 0.10.0
-        version: 0.10.0
+        version: 0.10.0(patch_hash=e6d9b2f6990efbb98235e6e4018e3e9bb5ac94bc54ea6764364857206b6b95a5)
       '@overeng/otel-contract':
         specifier: workspace:^
         version: link:../otel-contract
@@ -5813,7 +5814,7 @@ snapshots:
   '@msgpackr-extract/msgpackr-extract-win32-x64@3.0.3':
     optional: true
 
-  '@myobie/pty@0.10.0':
+  '@myobie/pty@0.10.0(patch_hash=e6d9b2f6990efbb98235e6e4018e3e9bb5ac94bc54ea6764364857206b6b95a5)':
     dependencies:
       '@preact/signals-core': 1.14.1
       '@xterm/addon-serialize': 0.14.0

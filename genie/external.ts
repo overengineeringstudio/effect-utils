@@ -515,6 +515,13 @@ export const utilsPatches = definePatchedDependencies({
   location: 'packages/@overeng/utils',
   patches: {
     'effect-distributed-lock@0.0.11': './patches/effect-distributed-lock@0.0.11.patch',
+    /* @myobie/pty@0.10.0 (via @overeng/pty-effect) does a default import
+       `import xtermSerialize from "@xterm/addon-serialize"`, but
+       @xterm/addon-serialize@0.14.0 shipped a proper ESM build whose only
+       exports are named (`SerializeAddon`, `HTMLSerializeHandler`) — the
+       CJS-interop default that 0.13.x provided is gone. Rewrite the import to
+       a namespace import so `xtermSerialize.SerializeAddon` resolves. */
+    '@myobie/pty@0.10.0': './patches/@myobie__pty@0.10.0.patch',
     /* Restrict `http.client` tracer span attribute emission to a small
        allowlist of response headers. Upstream hardcodes emission of every
        header, which for chatty APIs (Notion: ~31 headers per response)

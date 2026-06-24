@@ -39,6 +39,7 @@ packages:
 
 patchedDependencies:
   '@effect/platform@0.96.2': packages/@overeng/utils/patches/@effect__platform@0.96.0.patch
+  '@myobie/pty@0.10.0': packages/@overeng/utils/patches/@myobie__pty@0.10.0.patch
   effect-distributed-lock@0.0.11: packages/@overeng/utils/patches/effect-distributed-lock@0.0.11.patch
 
 allowUnusedPatches: true
