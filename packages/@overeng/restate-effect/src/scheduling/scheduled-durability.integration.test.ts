@@ -15,6 +15,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import type * as restate from '@restatedev/restate-sdk'
 import * as clients from '@restatedev/restate-sdk-clients'
 import { Context, Effect, Exit, Layer, Scope } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -45,6 +46,12 @@ const serverAvailable = (() => {
 })()
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
+
+interface SdkLogRecord {
+  readonly metadata: restate.LogMetadata
+  readonly message: unknown
+  readonly optionalParams: ReadonlyArray<unknown>
+}
 
 interface Ports {
   ingress: number
@@ -117,6 +124,43 @@ const readCursor = async (adminUrl: string, serviceName: string, key: string): P
   return Number(JSON.parse(Buffer.from(value, 'hex').toString('utf8')) as number)
 }
 
+const unknownText = (value: unknown): string => {
+  if (value instanceof Error) return `${value.name}: ${value.message}\n${value.stack ?? ''}`
+  if (typeof value === 'string') return value
+  try {
+    return JSON.stringify(value) ?? String(value)
+  } catch {
+    return String(value)
+  }
+}
+
+const sdkLogText = (record: SdkLogRecord): string =>
+  [
+    unknownText(record.metadata),
+    unknownText(record.message),
+    ...record.optionalParams.map(unknownText),
+  ].join('\n')
+
+const isExpectedKillAbortLog = (record: SdkLogRecord): boolean => {
+  const text = sdkLogText(record)
+  return (
+    text.includes('Premature close') === true ||
+    text.includes('ERR_STREAM_PREMATURE_CLOSE') === true ||
+    text.includes('The stream has been destroyed') === true
+  )
+}
+
+const waitForExpectedKillAbortLog = async (
+  sdkLogs: ReadonlyArray<SdkLogRecord>,
+  deadlineMs = 5_000,
+): Promise<void> => {
+  const deadline = Date.now() + deadlineMs
+  while (Date.now() < deadline) {
+    if (sdkLogs.some(isExpectedKillAbortLog) === true) return
+    await sleep(100)
+  }
+}
+
 /* A wake-enabled composed daemon with a slow-ish delay so a kill reliably lands
  * mid-wait (the held wake race). */
 const Daemon = makeComposedDaemon({ name: 'cmp-durab', delayMillis: 1_500, wake: true })
@@ -131,6 +175,7 @@ describe.skipIf(!serverAvailable)(
     let ingressUrl: string
     let adminUrl: string
     let sdkUrl: string
+    let sdkLogs: Array<SdkLogRecord>
 
     const provideIngress = <X, E, R>(eff: Effect.Effect<X, E, R>) => {
       const svc: RestateIngressService = { ingress: clients.connect({ url: ingressUrl }) }
@@ -144,6 +189,10 @@ describe.skipIf(!serverAvailable)(
     beforeAll(async () => {
       if (serverAvailable === false) return
       resetComposedSources()
+      sdkLogs = []
+      const sdkLogger: restate.LoggerTransport = (metadata, message, ...optionalParams) => {
+        sdkLogs.push({ metadata, message, optionalParams })
+      }
       baseDir = await mkdtemp(join(tmpdir(), 'restate-compose-durab-'))
       const allocatedPorts = await freePorts(3)
       const [ingress, admin, node] = [allocatedPorts[0]!, allocatedPorts[1]!, allocatedPorts[2]!]
@@ -155,9 +204,11 @@ describe.skipIf(!serverAvailable)(
       try {
         const endpointContext = await Effect.runPromise(
           Layer.buildWithScope(
-            layerWithBoundEndpoint({ services: [Daemon.implementation], port: 0 }).pipe(
-              Layer.provide(Layer.empty),
-            ),
+            layerWithBoundEndpoint({
+              services: [Daemon.implementation],
+              port: 0,
+              sdkLogger,
+            }).pipe(Layer.provide(Layer.empty)),
             endpointScope,
           ),
         )
@@ -230,6 +281,8 @@ describe.skipIf(!serverAvailable)(
         await sleep(300)
       }
       expect(cursorAfter).toBeGreaterThan(cursorBefore)
+      await waitForExpectedKillAbortLog(sdkLogs)
+      expect(sdkLogs.some(isExpectedKillAbortLog)).toBe(true)
 
       await Effect.runPromise(
         provideIngress(

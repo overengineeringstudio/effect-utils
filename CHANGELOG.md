@@ -117,6 +117,11 @@ All notable changes to this project will be documented in this file.
   keeps terminal/retryable/defect semantics intact while making integration test
   output quiet and inspectable.
 
+- **@overeng/restate-effect**: Route the scheduled durability SIGKILL test's SDK
+  endpoint diagnostics through structured log capture as well. The test now keeps
+  the expected HTTP/2 abort evidence from killing `restate-server` mid wake-mode
+  wait, while avoiding misleading raw stderr noise in CI.
+
 - **Restate integration port allocation**: Bind in-process handler endpoints on
   port `0` and register the actual kernel-assigned URL, while keeping batch +
   retry allocation for the native `restate-server` child process ports that must
