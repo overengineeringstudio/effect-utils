@@ -1,0 +1,252 @@
+# Dependency Materialization Spec
+
+This document specifies effect-utils dependency materialization. It builds on
+[requirements.md](./requirements.md).
+
+Status: **Draft**
+
+## Scope
+
+This spec defines:
+
+- the strict pnpm install policy;
+- the separation between dependency data, executable projections, and native
+  build outputs;
+- the prepared dependency FOD purity boundary;
+- the dependency materialization profile shape shared by live tasks, Nix, CI,
+  and Buck2 evidence;
+- the repair, doctor, and benchmark gates for changing the policy.
+
+This spec does not define package-specific native integrations. Those belong in
+Nix package derivations, native package registries, or downstream wrappers that
+name the package and platform explicitly.
+
+## Model
+
+```text
+canonical workspace inputs
+  -> pure pnpm materialization
+     -> dependency data
+     -> pure executable projection
+     -> Nix/native wrapper integration
+     -> profile evidence and health reports
+```
+
+pnpm is responsible for resolving and linking package contents. It is not the
+authority for executing package lifecycle code in effect-utils-managed paths.
+
+## Strict pnpm Install Policy
+
+Managed live installs and prepared dependency builds use the strict install
+policy:
+
+```text
+pnpm install
+  --frozen-lockfile or --no-frozen-lockfile selected by caller
+  --ignore-scripts
+  --config.side-effects-cache=false
+  --config.verify-store-integrity=true
+  --config.strict-store-pkg-content-check=true
+```
+
+Prepared dependency builds additionally use `--no-optional` unless a profile
+explicitly opts into a different optional-dependency policy.
+
+Install entrypoints reject arguments or config that would re-enable lifecycle
+execution:
+
+| Surface | Decision |
+| --- | --- |
+| `--no-ignore-scripts`, `--ignore-scripts=false`, `--config.ignore-scripts=false` | reject |
+| `pnpm rebuild` for managed dependency materialization | reject or route to explicit native integration |
+| `pnpm approve-builds`, `--allow-build`, `dangerouslyAllowAllBuilds` | reject |
+| `allowBuilds` / `onlyBuiltDependencies` as trust gate | not used for managed purity |
+
+The generated pnpm workspace contract may still mention upstream pnpm fields
+when needed for compatibility, but effect-utils-managed materialization treats
+script execution as closed.
+
+## Dependency Data, Projections, And Native Outputs
+
+```text
+dependency data       package files linked by pnpm without scripts
+projection state      .bin links, wrappers, generated local metadata
+native/build output   compiled .node files, downloaded runtimes, generated CLIs
+```
+
+Dependency data may be archived in prepared dependency artifacts when it is
+deterministic and platform-classified. Projection state is recreated after
+restore. Native/build output is excluded unless it is a pure package artifact
+or a Nix-produced artifact explicitly named by the profile.
+
+## Prepared FOD Purity
+
+The prepared pnpm dependency FOD is a strict data artifact. After pnpm install
+and normalization, validation scans the prepared tree before archive.
+
+The default failing scan rejects:
+
+- `node_modules/.bin` directories and their shims;
+- pnpm store, home, state, cache, and lock metadata paths that are not part of
+  the restored dependency graph;
+- unexpected `*.node` files;
+- known platform-specific package directories such as `@esbuild/*`,
+  `@rollup/rollup-*`, `@tailwindcss/oxide-*`, `@cloudflare/workerd-*`, and
+  `@opentui/core-*`, unless the profile classifies them as pure package data;
+- leaked absolute pnpm store, home, cache, or workspace-local state paths.
+
+Removing `.bin` changes recursive fixed-output hashes, so enabling this purity
+scan requires a prepared artifact version bump and regenerated hashes.
+
+## Pure Bin Projection
+
+Bin projection creates executable entries after dependency data exists.
+
+```text
+installed package manifests
+  + package roots visible from each workspace package
+  + platform shim policy
+  -> node_modules/.bin entries
+```
+
+The projection step:
+
+1. discovers package roots from the realized `node_modules` graph and pnpm
+   projection metadata;
+2. reads each package manifest's `bin` field;
+3. validates that the target file exists in package data;
+4. creates the expected shim or symlink in the relevant `node_modules/.bin`;
+5. records a projection report for doctor and repair.
+
+It must not import package code, run package scripts, call `pnpm rebuild`, or
+invoke pnpm build approval commands.
+
+The first implementation may either use pnpm's bin-linking library surface when
+it can be consumed as ordinary tool code, or implement the minimal manifest
+linking semantics directly. In both cases, tests define the contract.
+
+### Bin Projection Edge Cases
+
+The projection contract covers:
+
+- scoped package names;
+- string and object `bin` fields;
+- package aliases where the dependency name differs from the package name;
+- package-local bins for workspace package roots;
+- executable bit and shebang preservation on Unix;
+- deterministic overwrite of stale shims owned by the profile.
+
+The projection does not cover package CLIs generated by postinstall. Those are
+native/build integration work.
+
+## Profile Record
+
+Profile evidence is emitted as JSON. Producers may add fields, but the stable
+core shape is:
+
+```json
+{
+  "schema": "dependency-materialization-profile/v0",
+  "profileId": "pnpm:<topologyDigest>:<lockDigest>:<toolchainDigest>:<storeTrait>:<projectionPolicy>",
+  "topology": {
+    "ownerRoot": ".",
+    "workspaceDigest": "sha256:...",
+    "lockfileDigest": "sha256:...",
+    "manifestDigest": "sha256:..."
+  },
+  "toolchain": {
+    "packageManager": "pnpm",
+    "packageManagerVersion": "11.x",
+    "nodeVersion": "24.x",
+    "policyDigest": "sha256:..."
+  },
+  "policy": {
+    "lifecycleScripts": "ignored",
+    "optionalDependencies": "excluded | included",
+    "binProjection": "pure-manifest",
+    "nativeOutputs": "nix-or-pure-package-artifacts"
+  },
+  "store": {
+    "trait": "ciJobLocal | darwinSplitCas | linuxSharedHardlink | isolated | nixPreparedDeps | frozenSeed",
+    "filesPoolId": "host-pnpm-v11-files",
+    "metadataNamespace": "profile-local",
+    "projectionNamespace": "profile-local"
+  },
+  "authorities": {
+    "liveRepair": "nix-devenv",
+    "gc": "shared-pool-coordinator | profile-local | none",
+    "evidence": "buck2 | nix | devenv"
+  }
+}
+```
+
+`profileId` is stable only for semantic dependency inputs. It does not include
+machine-local checkout paths, temporary store paths, or CI job ids.
+
+The policy digest includes lifecycle policy, optional dependency policy,
+prepared artifact normalization version, native-output classification, bin
+projection policy, and store trait.
+
+## Store Traits And Authorities
+
+| Trait | Intended use | Sharing model | GC authority |
+| --- | --- | --- | --- |
+| `ciJobLocal` | CI jobs and isolated automation | job-local pnpm state | profile-local |
+| `darwinSplitCas` | macOS local development | profile-local metadata/projection, shared package files | shared-pool coordinator |
+| `linuxSharedHardlink` | Linux local development after proof | host-local store with hardlink import | shared-pool coordinator |
+| `isolated` | fallback and reproduction | no sibling sharing | profile-local |
+| `nixPreparedDeps` | Nix fixed-output dependency data | prepared tree in Nix store | Nix store |
+| `frozenSeed` | future read-only seed | immutable seed plus writable projection | seed owner plus profile-local projection |
+
+Profile-local prune refuses to sweep a shared files pool. Shared-pool GC marks
+from every active root before sweeping.
+
+## Doctor And Repair
+
+Doctor checks:
+
+- profile identity matches the current topology and policy;
+- dependency data is present;
+- shared package files are present for the profile;
+- prepared artifact scans pass for the selected profile;
+- expected `.bin` projection entries exist and point at package data;
+- no lifecycle sentinel output exists for test profiles.
+
+Repair may:
+
+- rerun pure pnpm install with scripts disabled;
+- recreate `.bin` projection;
+- restore prepared data from Nix;
+- route shared-pool GC or repair to the coordinated authority.
+
+Repair may not:
+
+- run dependency lifecycle scripts;
+- run pnpm rebuild;
+- approve package builds;
+- compile or download native outputs through package-manager hooks.
+
+## Benchmark And Acceptance Gates
+
+A materialization policy change is accepted only when it proves:
+
+- no lifecycle sentinel scripts ran;
+- expected bins exist after projection in a faithful fixture;
+- at least one real downstream graph with missing bins is repaired;
+- prepared dependency FOD scans reject `.bin`, unexpected native files, and
+  leaked pnpm state;
+- fixed-output hashes are measured per covered system, with missing systems
+  marked pending rather than silently collapsed;
+- host-wide bytes, file counts, cold install, warm install, offline reinstall,
+  and repair times are recorded.
+
+## Open Design Questions
+
+- **DQ1 Bin-link implementation:** Should effect-utils consume pnpm's bin
+  linking library surface or implement the minimal manifest-based linker?
+- **DQ2 Native package registry:** Which package families should be modeled as
+  pure package artifacts versus Nix-provided native integrations?
+- **DQ3 FOD scan rollout:** What prepared artifact version and migration order
+  minimizes fixed-output hash churn while making `.bin` stripping explicit?
+- **DQ4 Cross-system hash metadata:** What metadata shape lets Evergreen refuse
+  unsafe shared-hash collapse when Darwin or another covered system is missing?

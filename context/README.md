@@ -10,6 +10,7 @@ implementation details.
 ## Kept Here
 
 - [Megarepo Spec](../packages/@overeng/megarepo/docs/spec.md)
+- [dependency-materialization/](./dependency-materialization/) - local pnpm/Nix dependency materialization contract
 - [effect/](./effect/) - Effect socket examples and related package files
 - [opentui/](./opentui/) - OpenTUI integration example
 - [otel.md](./otel.md) - OpenTelemetry notes
