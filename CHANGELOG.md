@@ -20,6 +20,8 @@ All notable changes to this project will be documented in this file.
   prepared artifact version bump and hash refresh, rather than report-only or
   profile-gated legacy scan modes, and that FOD run evidence belongs to
   generated repair or CI output rather than committed per-target witness files.
+  The FOD hash evidence spec separates structural proof from value proof so
+  shared hashes remain preferred only when measured outputs converge.
 
 - **Dependency materialization profile contract**: Extend the generated
   `pnpm-install-contract.json` with a stable `dependency-materialization-profile/v0`

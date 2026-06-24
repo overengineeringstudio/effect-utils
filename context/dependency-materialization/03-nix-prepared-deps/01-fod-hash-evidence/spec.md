@@ -11,6 +11,7 @@ Status: **Draft**
 | --------------------- | ------------------------------------------------------------------ |
 | Producer Target Shape | DMP.NIX.FOD-R05, DMP.NIX.FOD-R06, DMP.NIX.FOD-R08                  |
 | Measurement Evidence  | DMP.NIX.FOD-R01, DMP.NIX.FOD-R02, DMP.NIX.FOD-R03, DMP.NIX.FOD-R04 |
+| Hash Authority        | DMP.NIX.FOD-R01, DMP.NIX.FOD-R03, DMP.NIX.FOD-R04, DMP.NIX.FOD-R08 |
 | Reconciliation        | DMP.NIX.FOD-R03, DMP.NIX.FOD-R04, DMP.NIX.FOD-R07                  |
 
 ## Producer Target Shape
@@ -85,6 +86,30 @@ run evidence, not an additional source file that package authors maintain.
 `shared` means all covered systems were measured equal. `shared-pending` means
 at least one covered system remains pending and tooling must not silently treat
 the hash as fully proven. `split` means system-specific hashes are selected.
+
+## Hash Authority And Proof Lanes
+
+The authored hash location records the selected hash for each direct prepared
+dependency artifact. `shared` is the preferred steady state when every covered
+system measured for the artifact produces the same output hash. `split` is
+reserved for measured platform divergence.
+
+Hash proof has two independent lanes:
+
+- structural proof validates that every prepared artifact has a canonical hash
+  location, direct rebuild attr, covered-system metadata, and complete evidence
+  shape;
+- value proof realizes the direct prepared artifact for covered systems and
+  compares the produced hash to the authored selected hash.
+
+Structural proof can make missing evidence red by construction, but it cannot
+prove that a syntactically valid hash value is current. Value proof is the
+authority for current bytes.
+
+A previously shared artifact that starts requiring split hashes after a builder
+or normalization change is a regression signal until the prepared tree is
+inspected. Accepting a split requires measured outputs and evidence explaining
+which covered systems diverged.
 
 ## Reconciliation
 
