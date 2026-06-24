@@ -29,21 +29,29 @@ data; projections are recreated and checked by effect-utils-managed steps.
 
 - **DMP.PROJ-R01 Bin ownership:** `node_modules/.bin` is profile-owned
   projection state, not dependency data.
+  Refines: DMP-R06.
 - **DMP.PROJ-R02 Manifest source:** Expected bins must be derived from package
   manifests and realized package roots.
+  Refines: DMP-R07.
 - **DMP.PROJ-R03 No lifecycle execution:** Projection must not run `preinstall`,
   `install`, `postinstall`, `prepare`, `pnpm rebuild`, or package-manager
   build approval paths.
+  Refines: DMP-R01, DMP-R03, DMP-R17.
 - **DMP.PROJ-R04 Target validation:** A bin entry may be created only when its
   target file exists in dependency data or an explicit Nix/native integration.
+  Refines: DMP-R04, DMP-R07.
 
 ### Must be deterministic and diagnosable
 
 - **DMP.PROJ-R05 Stable output:** The same dependency data and projection policy
   must produce the same projection files.
+  Refines: DMP-R07, DMP-R15.
 - **DMP.PROJ-R06 Owned overwrite:** Stale projection files owned by the profile
   must be repaired deterministically.
+  Refines: DMP-R15.
 - **DMP.PROJ-R07 Report:** Projection must emit a report that doctor, repair,
   and benchmarks can consume.
+  Refines: DMP-R19.
 - **DMP.PROJ-R08 Prepared-deps exclusion:** Prepared dependency FOD validation
   must reject archived `.bin` projections by default.
+  Refines: DMP-R05, DMP-R06, DMP-R18.

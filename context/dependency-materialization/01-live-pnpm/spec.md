@@ -18,6 +18,16 @@ This spec defines:
 This spec does not define Nix prepared dependency artifacts. Those are specified
 in [../03-nix-prepared-deps/spec.md](../03-nix-prepared-deps/spec.md).
 
+## Requirement Trace
+
+| Section | Requirements |
+| --- | --- |
+| Model | DMP.LIVE-R01, DMP.LIVE-R08, DMP.LIVE-R11 |
+| Install Ownership | DMP.LIVE-R01, DMP.LIVE-R02, DMP.LIVE-R03, DMP.LIVE-R04 |
+| Runtime Identity | DMP.LIVE-R05, DMP.LIVE-R06, DMP.LIVE-R07 |
+| CI State | DMP.LIVE-R10 |
+| Health | DMP.LIVE-R09, DMP.LIVE-R11 |
+
 ## Model
 
 ```text

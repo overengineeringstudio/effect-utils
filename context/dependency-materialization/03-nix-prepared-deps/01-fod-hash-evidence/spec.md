@@ -5,6 +5,13 @@ This document specifies FOD hash evidence. It builds on
 
 Status: **Draft**
 
+## Requirement Trace
+
+| Section | Requirements |
+| --- | --- |
+| Evidence Shape | DMP.NIX.FOD-R01, DMP.NIX.FOD-R02, DMP.NIX.FOD-R05, DMP.NIX.FOD-R06 |
+| Reconciliation | DMP.NIX.FOD-R03, DMP.NIX.FOD-R04, DMP.NIX.FOD-R07 |
+
 ## Evidence Shape
 
 ```json

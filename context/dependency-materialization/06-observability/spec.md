@@ -5,6 +5,14 @@ This document specifies dependency materialization producer facts. It builds on
 
 Status: **Draft**
 
+## Requirement Trace
+
+| Section | Requirements |
+| --- | --- |
+| Surfaces | DMP.OBS-R01, DMP.OBS-R05, DMP.OBS-R06 |
+| Phase Hierarchy | DMP.OBS-R01, DMP.OBS-R03 |
+| Required Fields | DMP.OBS-R02, DMP.OBS-R04, DMP.OBS-R07 |
+
 ## Surfaces
 
 Sandboxed Nix builders emit JSON records on registered log prefixes:

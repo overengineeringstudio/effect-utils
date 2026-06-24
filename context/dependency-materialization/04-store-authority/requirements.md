@@ -26,25 +26,34 @@ repair, prune, or garbage-collect it. It refines DMP-R12 through DMP-R15.
 
 - **DMP.STORE-R01 One trait:** Every profile must declare exactly one store
   trait.
+  Refines: DMP-R12.
 - **DMP.STORE-R02 Mutable owner:** Writable package-manager metadata and
   projection state must have one owner.
+  Refines: DMP-R12.
 - **DMP.STORE-R03 Shared pool root set:** A shared content pool may be swept
   only by an authority that can enumerate every active root.
+  Refines: DMP-R13.
 - **DMP.STORE-R04 Raw prune refusal:** Profile-local prune must refuse when it
   would sweep a shared content pool without root-set authority.
+  Refines: DMP-R14.
 
 ### Must be repairable
 
 - **DMP.STORE-R05 Missing content detection:** Health checks must detect
   missing shared content needed for offline reuse or projection.
+  Refines: DMP-R13, DMP-R15.
 - **DMP.STORE-R06 Deterministic repair:** Repair must rebuild from declared
   inputs and must not rewrite lockfiles.
+  Refines: DMP-R15.
 - **DMP.STORE-R07 Low-disk safety:** Low-disk refusal and recovery must be
   explicit rather than leaving a profile apparently healthy but unusable.
+  Refines: DMP-R15.
 
 ### Must be measured
 
 - **DMP.STORE-R08 Benchmark matrix:** Candidate traits must report cold, warm,
   offline, concurrent, byte, and file-count metrics.
+  Refines: DMP-R16.
 - **DMP.STORE-R09 Default gate:** A trait may become default only after proving
   correctness and material cache-efficiency gains on real workspaces.
+  Refines: DMP-R16.

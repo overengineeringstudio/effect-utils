@@ -5,6 +5,15 @@ This document specifies store authority. It builds on
 
 Status: **Draft**
 
+## Requirement Trace
+
+| Section | Requirements |
+| --- | --- |
+| Traits | DMP.STORE-R01, DMP.STORE-R02 |
+| Shared Pool GC | DMP.STORE-R03, DMP.STORE-R04 |
+| Health And Repair | DMP.STORE-R05, DMP.STORE-R06, DMP.STORE-R07 |
+| Benchmark evidence | DMP.STORE-R08, DMP.STORE-R09 |
+
 ## Traits
 
 | Trait | Use | Writable state | Shared content | GC authority |

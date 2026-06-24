@@ -14,6 +14,15 @@ This spec defines deterministic projection after dependency data exists:
 - stale projection repair;
 - the prepared-deps exclusion boundary.
 
+## Requirement Trace
+
+| Section | Requirements |
+| --- | --- |
+| Bin Projection | DMP.PROJ-R01, DMP.PROJ-R02, DMP.PROJ-R03, DMP.PROJ-R04, DMP.PROJ-R05, DMP.PROJ-R06 |
+| Report Shape | DMP.PROJ-R07 |
+| Edge Cases | DMP.PROJ-R02, DMP.PROJ-R04, DMP.PROJ-R05 |
+| Prepared-deps exclusion | DMP.PROJ-R08 |
+
 ## Bin Projection
 
 ```text

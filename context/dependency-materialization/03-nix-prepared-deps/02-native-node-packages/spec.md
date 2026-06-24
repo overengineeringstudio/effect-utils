@@ -5,6 +5,13 @@ This document specifies native Node package handling. It builds on
 
 Status: **Draft**
 
+## Requirement Trace
+
+| Section | Requirements |
+| --- | --- |
+| Classification | DMP.NIX.NATIVE-R01, DMP.NIX.NATIVE-R03, DMP.NIX.NATIVE-R05, DMP.NIX.NATIVE-R06 |
+| Build Phase | DMP.NIX.NATIVE-R02, DMP.NIX.NATIVE-R04, DMP.NIX.NATIVE-R07 |
+
 ## Classification
 
 Native package families use one of these classifications:

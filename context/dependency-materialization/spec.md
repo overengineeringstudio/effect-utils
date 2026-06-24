@@ -35,6 +35,20 @@ dependency-materialization/
   06-observability/          producer facts and build-log bridge records
 ```
 
+## Requirement Trace
+
+| Section | Requirements |
+| --- | --- |
+| Model | DMP-R09, DMP-R10, DMP-R11 |
+| Strict pnpm Install Policy | DMP-R01, DMP-R02, DMP-R03, DMP-R04 |
+| Dependency Data, Projections, And Native Outputs | DMP-R05, DMP-R06, DMP-R08 |
+| Prepared FOD Purity | DMP-R05, DMP-R08, DMP-R18 |
+| Pure Bin Projection | DMP-R06, DMP-R07, DMP-R17 |
+| Profile Record | DMP-R09, DMP-R10, DMP-R11, DMP-R12 |
+| Store Traits And Authorities | DMP-R12, DMP-R13, DMP-R14 |
+| Doctor And Repair | DMP-R15 |
+| Benchmark And Acceptance Gates | DMP-R16, DMP-R17, DMP-R18, DMP-R19 |
+
 ## Model
 
 ```text
@@ -260,7 +274,7 @@ A materialization policy change is accepted only when it proves:
   linking library surface or implement the minimal manifest-based linker?
 - **DQ2 Native package registry:** Which package families should be modeled as
   pure package artifacts versus Nix-provided native integrations?
-- **DQ3 FOD scan rollout:** What prepared artifact version and migration order
+- **DQ3 FOD scan transition:** What prepared artifact version and transition order
   minimizes fixed-output hash churn while making `.bin` stripping explicit?
 - **DQ4 Cross-system hash metadata:** What metadata shape lets Evergreen refuse
   unsafe shared-hash collapse when Darwin or another covered system is missing?
