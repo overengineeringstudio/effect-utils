@@ -39,7 +39,7 @@ active behind profile gates once `v18` lands.
 
 - The implementation milestone that lands strict scan enforcement must also
   refresh the impacted FOD hashes.
-- CI and Evergreen-style tooling should treat `v18` hashes as a new prepared
+- CI and hash repair tooling should treat `v18` hashes as a new prepared
   artifact class, not as an incremental repair of `v17`.
 - Any missing platform measurements remain represented by FOD hash evidence;
   they do not justify keeping an old prepared artifact scan policy alive.
