@@ -1978,7 +1978,11 @@ export const compareCiMeasurementsStep = (opts?: CiMeasurementsComparisonStepOpt
         : { CI_MEASUREMENT_PR_COMMENT_PUBLIC_ASSET_COMMAND: opts.prComment.publicAssetCommand }),
       ...opts?.prComment?.publicAssetEnv,
       ...(opts?.prComment?.enabled === true
-        ? { GH_TOKEN: opts.prComment.tokenExpression ?? '${{ github.token }}' }
+        ? {
+            CI_MEASUREMENT_IS_FORK_PR:
+              "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && '1' || '' }}",
+            GH_TOKEN: opts.prComment.tokenExpression ?? '${{ github.token }}',
+          }
         : {}),
     },
     run: String.raw`set -euo pipefail
@@ -2477,7 +2481,7 @@ ${
 
   can_render_pr_comment=true
   is_fork_pr=false
-  if [ "${dollar}{{ github.event.pull_request.head.repo.full_name }}" != "${dollar}{{ github.repository }}" ]; then
+  if [ "${dollar}{CI_MEASUREMENT_IS_FORK_PR:-}" = "1" ]; then
     echo "::notice::CI measurement PR comment skipped for fork pull request; summary and artifacts remain available"
     can_render_pr_comment=false
     is_fork_pr=true
