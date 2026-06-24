@@ -149,9 +149,8 @@ The projection step:
 It must not import package code, run package scripts, call `pnpm rebuild`, or
 invoke pnpm build approval commands.
 
-The first implementation may either use pnpm's bin-linking library surface when
-it can be consumed as ordinary tool code, or implement the minimal manifest
-linking semantics directly. In both cases, tests define the contract.
+Effect-utils owns the production bin projector. Pnpm's published linker is a
+conformance oracle for compatible edge cases, not the runtime authority.
 
 ### Bin Projection Edge Cases
 
@@ -270,8 +269,6 @@ A materialization policy change is accepted only when it proves:
 
 ## Open Design Questions
 
-- **DQ1 Bin-link implementation:** Should effect-utils consume pnpm's bin
-  linking library surface or implement the minimal manifest-based linker?
 - **DQ2 Native package registry:** Which package families should be modeled as
   pure package artifacts versus Nix-provided native integrations?
 - **DQ3 FOD scan transition:** What prepared artifact version and transition order

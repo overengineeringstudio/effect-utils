@@ -33,17 +33,54 @@ realized node_modules graph
   -> projection report
 ```
 
+The production projector is an effect-utils-owned manifest linker. It may
+reuse small, audited algorithms from pnpm packages, but it must not depend on
+pnpm install-time bin linking as the runtime authority. pnpm's current linker is
+used as a conformance oracle in tests.
+
+```text
+realized package root
+  -> parse package.json
+  -> resolve declared bins
+  -> validate target is inside package root and exists
+  -> select conflict winner
+  -> create profile-owned .bin entry
+```
+
 The projector:
 
 1. enumerates package roots visible to the selected workspace package;
 2. reads each `package.json`;
-3. normalizes string and object `bin` fields;
-4. validates that each target exists;
-5. creates a symlink or shim according to the platform policy;
-6. records the created, repaired, skipped, and rejected entries.
+3. normalizes `bin` and `directories.bin` declarations;
+4. normalizes scoped command names such as `@scope/pkg` to `pkg`;
+5. rejects command names that are empty, path-like, or not URL-safe;
+6. validates that each target stays inside the package root and exists;
+7. resolves conflicts deterministically;
+8. creates a symlink or shim according to the platform policy;
+9. records the created, repaired, skipped, and rejected entries.
 
 The projector does not import package modules, execute package scripts, or call
 pnpm build commands.
+
+## Conformance Oracle
+
+The conformance fixture compares effect-utils output with pnpm's published bin
+linking behavior for cases that are compatible with this VRS:
+
+| Case | Expected behavior |
+| --- | --- |
+| `bin` string | command name derives from package name |
+| `bin` object | command names derive from object keys |
+| scoped object key | `@scope/tool` links as `tool` |
+| `directories.bin` | each file under the declared directory becomes a command |
+| invalid command name | skip and report rejection |
+| target outside package root | skip and report rejection |
+| missing generated target | skip and report missing target; do not build |
+| duplicate command names | choose deterministic owner and report skipped entries |
+
+The oracle is not a production dependency boundary. If pnpm changes behavior,
+effect-utils updates the conformance fixture deliberately and records the
+compatibility choice here.
 
 ## Report Shape
 
@@ -74,6 +111,7 @@ The projection contract covers:
 
 - scoped package names;
 - string and object `bin` fields;
+- `directories.bin`;
 - dependency aliases where the dependency key differs from the package name;
 - workspace package bins;
 - executable bit and shebang preservation on Unix;
