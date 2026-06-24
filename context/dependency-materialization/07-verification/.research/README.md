@@ -1,24 +1,19 @@
 # Dependency Materialization Verification Research
 
-This directory holds non-normative source references that informed the
-verification VRS. Requirements and specs remain self-contained; research links
-exist only to preserve provenance for later audits.
+This directory holds non-normative research references that informed the
+verification VRS. Requirements and specs remain self-contained; these notes
+preserve enough source material to audit the design without consulting external
+review artifacts.
 
-## Historical Sources
+## Imported Research
 
-### `schickling/dotfiles#1126`
+### Downstream dependency-profile research
 
-Durable categories imported:
+Research package:
+[downstream-dependency-profile-research.md](./downstream-dependency-profile-research.md).
 
-- shared-store prune failure;
-- store status limits;
-- doctor and repair models;
-- store-trait benchmarks;
-- Buck2 profile evidence;
-- FOD freshness;
-- native lifecycle probes;
-- CI isolation;
-- low-disk skips.
+Proof and benchmark catalog:
+[proof-catalog.md](./proof-catalog.md).
 
 Graduation record:
-[2026-06-24 consolidation](../.experiments/2026-06-24-dotfiles-1126-consolidation.md).
+[2026-06-24 consolidation](../.experiments/2026-06-24-downstream-profile-research-consolidation.md).

@@ -14,10 +14,10 @@ All notable changes to this project will be documented in this file.
   purity, hash evidence, native package boundaries, shared-store repair/GC,
   and build-log producer facts. The hierarchy now includes a verification
   subsystem with a timeless evidence-intake contract for graduating prototype,
-  downstream, CI, and historical PR evidence into effect-utils-owned fixture,
-  proof, real-workload, and cross-system evidence tiers. Historical research
-  references now live in dot-prefixed companion directories instead of the
-  normative spec. The VRS now records that the
+  downstream, CI, and historical change evidence into effect-utils-owned
+  fixture, proof, real-workload, and cross-system evidence tiers. Imported
+  research references now live in self-contained dot-prefixed companion
+  directories instead of the normative spec. The VRS now records that the
   strict prepared-deps purity scan transition uses one convergent `v18`
   prepared artifact version bump and hash refresh, rather than report-only or
   profile-gated legacy scan modes, and that FOD run evidence belongs to
