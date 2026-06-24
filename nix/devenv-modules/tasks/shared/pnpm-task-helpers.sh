@@ -333,7 +333,11 @@ const upsertBy = (rows, row, key) => [
 ].sort((left, right) => left[key].localeCompare(right[key]))
 
 const merged = readRegistry(sharedRegistryFile)
-merged.profiles = upsertBy(merged.profiles, singletonRegistry.profiles[0], 'id')
+const nextProfile = singletonRegistry.profiles[0]
+const withoutSameRoot = merged.profiles.filter(
+  (candidate) => candidate.project !== nextProfile.project || candidate.store !== nextProfile.store,
+)
+merged.profiles = upsertBy(withoutSameRoot, nextProfile, 'id')
 merged.pools = upsertBy(merged.pools, singletonRegistry.pools[0], 'id')
 
 const rendered = `${JSON.stringify(merged, null, 2)}\n`
@@ -404,6 +408,27 @@ if (profile === undefined || typeof profile.filesPoolId !== 'string') {
 }
 
 process.stdout.write(profile.filesPoolId)
+EOF
+}
+
+dependency_materialization_profile_store_dir() {
+  local node_bin="$1"
+  local registry_file="$2"
+  local profile_id="$3"
+
+  "$node_bin" - "$registry_file" "$profile_id" <<'EOF'
+const fs = require('node:fs')
+
+const [registryFile, profileId] = process.argv.slice(2)
+const registry = JSON.parse(fs.readFileSync(registryFile, 'utf8'))
+const profiles = Array.isArray(registry.profiles) ? registry.profiles : []
+const profile = profiles.find((row) => row.id === profileId || row.profileId === profileId)
+
+if (profile === undefined || typeof profile.store !== 'string') {
+  process.exit(1)
+}
+
+process.stdout.write(profile.store)
 EOF
 }
 

@@ -578,6 +578,29 @@ assert_eq \
   "2" \
   "$(dependency_materialization_repair_roots node "$second_registry" "$(dependency_materialization_profile_files_pool_id node "$second_registry" "$registry_profile_id")" | wc -l | tr -d ' ')" \
   "repair roots include every workspace sharing the files pool"
+discovered_profile_store_dir="$(dependency_materialization_profile_store_dir node "$second_registry" "$registry_profile_id")"
+case "$discovered_profile_store_dir" in
+  "$registry_root/store" | "$registry_root/second-store") ;;
+  *)
+    echo "FAIL: profile store dir is discoverable for shared registry refresh"
+    echo "  actual: $discovered_profile_store_dir"
+    exit 1
+    ;;
+esac
+stale_local_registry="$registry_root/stale-local-registry.json"
+write_dependency_materialization_registry node "$profile_output" "$registry_root/workspace" "$registry_root/store" "$stale_local_registry"
+assert_eq \
+  "2" \
+  "$(dependency_materialization_repair_roots node "$shared_registry" "$(dependency_materialization_profile_files_pool_id node "$stale_local_registry" "$registry_profile_id")" | wc -l | tr -d ' ')" \
+  "shared registry carries sibling roots missing from stale local registry"
+changed_profile="$registry_root/changed-profile.json"
+node -e 'const fs=require("node:fs"); const profile=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); profile.profileId += ":changed"; fs.writeFileSync(process.argv[2], JSON.stringify(profile, null, 2) + "\n")' "$profile_output" "$changed_profile"
+write_dependency_materialization_registry node "$changed_profile" "$registry_root/workspace" "$registry_root/store" "$live_registry" "$shared_registry"
+assert_json_field \
+  "2" \
+  "$shared_registry" \
+  "value => value.profiles.length" \
+  "changed profile replaces existing root row instead of adding duplicate sibling"
 
 echo "Test 17: resolve_package_bin prefers package-local .bin shims"
 bin_fixture="$test_dir/bin-fixture"

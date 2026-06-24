@@ -732,8 +732,16 @@ let
         fi
 
         profile_id="$(dependency_materialization_profile_id ${pkgs.nodejs}/bin/node "$dependency_profile_file")"
-        files_pool_id="$(dependency_materialization_profile_files_pool_id ${pkgs.nodejs}/bin/node "$dependency_registry_file" "$profile_id")"
-        dependency_materialization_repair_plan ${pkgs.nodejs}/bin/node "$dependency_registry_file" "$files_pool_id"
+        profile_store_dir="$(dependency_materialization_profile_store_dir ${pkgs.nodejs}/bin/node "$dependency_registry_file" "$profile_id")"
+        shared_registry_file="$(dependency_materialization_shared_registry_file ${pkgs.nodejs}/bin/node "$profile_store_dir")"
+        repair_registry_file="$dependency_registry_file"
+        if [ -f "$shared_registry_file" ]; then
+          repair_registry_file="$shared_registry_file"
+        fi
+        if ! files_pool_id="$(dependency_materialization_profile_files_pool_id ${pkgs.nodejs}/bin/node "$repair_registry_file" "$profile_id")"; then
+          files_pool_id="$(dependency_materialization_profile_files_pool_id ${pkgs.nodejs}/bin/node "$dependency_registry_file" "$profile_id")"
+        fi
+        dependency_materialization_repair_plan ${pkgs.nodejs}/bin/node "$repair_registry_file" "$files_pool_id"
       '';
     };
 
@@ -753,8 +761,16 @@ let
         fi
 
         profile_id="$(dependency_materialization_profile_id ${pkgs.nodejs}/bin/node "$dependency_profile_file")"
-        files_pool_id="$(dependency_materialization_profile_files_pool_id ${pkgs.nodejs}/bin/node "$dependency_registry_file" "$profile_id")"
-        dependency_materialization_repair_plan ${pkgs.nodejs}/bin/node "$dependency_registry_file" "$files_pool_id"
+        profile_store_dir="$(dependency_materialization_profile_store_dir ${pkgs.nodejs}/bin/node "$dependency_registry_file" "$profile_id")"
+        shared_registry_file="$(dependency_materialization_shared_registry_file ${pkgs.nodejs}/bin/node "$profile_store_dir")"
+        repair_registry_file="$dependency_registry_file"
+        if [ -f "$shared_registry_file" ]; then
+          repair_registry_file="$shared_registry_file"
+        fi
+        if ! files_pool_id="$(dependency_materialization_profile_files_pool_id ${pkgs.nodejs}/bin/node "$repair_registry_file" "$profile_id")"; then
+          files_pool_id="$(dependency_materialization_profile_files_pool_id ${pkgs.nodejs}/bin/node "$dependency_registry_file" "$profile_id")"
+        fi
+        dependency_materialization_repair_plan ${pkgs.nodejs}/bin/node "$repair_registry_file" "$files_pool_id"
 
         repaired_roots=0
         while IFS=$'\t' read -r repair_project_dir repair_store_dir; do
@@ -780,10 +796,11 @@ let
             export PNPM_STORE_DIR="$repair_store_dir"
             export PNPM_CONFIG_STORE_DIR="$repair_store_dir"
             export npm_config_store_dir="$repair_store_dir"
-            pnpm install --force --config.confirmModulesPurge=false --pm-on-fail=ignore --config.store-dir="$repair_store_dir"
+            ${runPnpmInstallFn}
+            run_pnpm_install --force
           )
           repaired_roots=$((repaired_roots + 1))
-        done < <(dependency_materialization_repair_roots ${pkgs.nodejs}/bin/node "$dependency_registry_file" "$files_pool_id")
+        done < <(dependency_materialization_repair_roots ${pkgs.nodejs}/bin/node "$repair_registry_file" "$files_pool_id")
 
         if [ "$repaired_roots" -eq 0 ]; then
           echo "[pnpm] No live dependency materialization roots were repaired" >&2

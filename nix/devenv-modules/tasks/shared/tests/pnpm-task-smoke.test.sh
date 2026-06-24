@@ -476,7 +476,7 @@ echo "Test 7: exec defaults PNPM_HOME to a workspace-local projection"
   : > "$tmpdir/pnpm.log"
   : > "$tmpdir/flock.log"
   bash "$tmpdir/pnpm-repair.exec.sh" >/dev/null
-  grep -qxF "install --force --config.confirmModulesPurge=false --pm-on-fail=ignore --config.store-dir=$workspace/.devenv/pnpm-store-pure-v1" "$tmpdir/pnpm.log"
+  grep -qxF "install --force --frozen-lockfile --config.confirmModulesPurge=false --ignore-scripts --config.side-effects-cache=false --config.verify-store-integrity=true --config.strict-store-pkg-content-check=true --child-concurrency=1 --network-concurrency=4 --config.package-import-method=clone-or-copy --pm-on-fail=ignore --config.store-dir=$workspace/.devenv/pnpm-store-pure-v1" "$tmpdir/pnpm.log"
   grep -qxF "PWD=$workspace" "$tmpdir/pnpm.log"
   grep -qxF "flock -w 600 204" "$tmpdir/flock.log"
   CI=1 bash "$tmpdir/pnpm-install.exec.sh"
