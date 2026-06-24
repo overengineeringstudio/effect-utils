@@ -177,6 +177,18 @@ const sharedAreaLabels: readonly LabelDef[] = [
 ]
 
 // ============================================================================
+// system:* — named systems/products/packages with their own identity
+//   Distinct from `area:*` (cross-cutting concerns): a `system:*` value names a
+//   thing with its own identity (e.g. a concrete package) that issues and
+//   feedback are attributed *to*. Cross-cutting frameworks such as Effect stay
+//   on `area:*` (`area:effect`) — they are a concern, not a system. There are no
+//   shared `system:*` values; each repo adds its own in its label config.
+//
+//   Color convention: light purple/violet (`a371f7`) so `system:*` chips read
+//   distinctly from the bright-blue `area:*` chips.
+// ============================================================================
+
+// ============================================================================
 // mq:* — Hypermerge / merge-queue lifecycle labels
 //   Must stay loosely aligned with mq_label_color / mq_label_description in
 //   dotfiles/flakes/merge-queue/crates/mq-core/src/gh_client.rs.
