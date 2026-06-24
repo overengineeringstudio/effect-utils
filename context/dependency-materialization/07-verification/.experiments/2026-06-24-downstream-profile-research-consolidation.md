@@ -34,13 +34,13 @@ The research package contains durable proof categories:
 
 Those categories map to existing effect-utils DMP subsystems:
 
-| Durable category | Owning VRS surface |
-| --- | --- |
-| shared-store prune/status/repair | [04-store-authority](../../04-store-authority/spec.md) |
-| prepared FOD freshness and hash proof | [03-nix-prepared-deps](../../03-nix-prepared-deps/spec.md) |
-| Buck2 clean-root/profile evidence | [05-buck2-evidence](../../05-buck2-evidence/spec.md) |
-| benchmarks, skips, and proof taxonomy | [07-verification](../spec.md) |
-| build-log and machine-readable records | [06-observability](../../06-observability/spec.md) |
+| Durable category                       | Owning VRS surface                                         |
+| -------------------------------------- | ---------------------------------------------------------- |
+| shared-store prune/status/repair       | [04-store-authority](../../04-store-authority/spec.md)     |
+| prepared FOD freshness and hash proof  | [03-nix-prepared-deps](../../03-nix-prepared-deps/spec.md) |
+| Buck2 clean-root/profile evidence      | [05-buck2-evidence](../../05-buck2-evidence/spec.md)       |
+| benchmarks, skips, and proof taxonomy  | [07-verification](../spec.md)                              |
+| build-log and machine-readable records | [06-observability](../../06-observability/spec.md)         |
 
 ## Conclusion
 

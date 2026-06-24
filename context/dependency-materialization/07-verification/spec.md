@@ -7,12 +7,12 @@ Status: **Draft**
 
 ## Requirement Trace
 
-| Section                | Requirements                                       |
-| ---------------------- | -------------------------------------------------- |
-| Evidence Tiers         | DMP.VER-R01, DMP.VER-R02, DMP.VER-R03, DMP.VER-R04 |
-| Benchmark Matrix       | DMP.VER-R05, DMP.VER-R06, DMP.VER-R07              |
-| Evidence Records       | DMP.VER-R08, DMP.VER-R09                           |
-| Evidence Intake        | DMP.VER-R10                                        |
+| Section          | Requirements                                       |
+| ---------------- | -------------------------------------------------- |
+| Evidence Tiers   | DMP.VER-R01, DMP.VER-R02, DMP.VER-R03, DMP.VER-R04 |
+| Benchmark Matrix | DMP.VER-R05, DMP.VER-R06, DMP.VER-R07              |
+| Evidence Records | DMP.VER-R08, DMP.VER-R09                           |
+| Evidence Intake  | DMP.VER-R10                                        |
 
 ## Evidence Tiers
 

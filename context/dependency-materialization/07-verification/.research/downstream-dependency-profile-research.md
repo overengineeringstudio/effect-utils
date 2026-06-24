@@ -37,18 +37,18 @@ the pnpm/Nix/Buck2 relationship stayed implicit:
 
 ## Durable Evidence Categories
 
-| Category | Finding | VRS destination |
-| --- | --- | --- |
-| Shared-store prune | Profile-local prune can delete files required by sibling roots sharing `v11/files`. | store authority and verification |
-| Store status limits | `pnpm store status` can report clean after sibling prune even though offline reinstall fails. | store authority health checks |
-| Doctor/repair | Correct repair is registry-backed all-root repair, not a thin prune wrapper. | store authority and live pnpm repair |
-| Store traits | Shared/split stores preserve large host-wide byte and file-count wins over isolated stores. | verification benchmark matrix |
-| CI isolation | Job-local pnpm stores avoid sibling corruption and stay the CI default. | store trait contract |
-| Low disk | Broad proofs must fail before mutation and emit machine-readable skip evidence. | verification skip records |
-| Native/lifecycle | Native package behavior is profile-policy-sensitive; source-built native compilation needs explicit toolchain policy. | native policy and verification |
-| Profile evidence | Profile identity is stable across same inputs, changes with lock/policy/store trait, and excludes local output paths. | root profile contract |
-| Nix FOD freshness | FOD freshness can use profile identity plus FOD input digest instead of parallel stale-hash heuristics. | Nix prepared deps and FOD evidence |
-| Buck2 evidence | Buck2 should consume deterministic evidence and keep mutable materialization outside watched source roots. | Buck2 evidence subsystem |
+| Category            | Finding                                                                                                               | VRS destination                      |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| Shared-store prune  | Profile-local prune can delete files required by sibling roots sharing `v11/files`.                                   | store authority and verification     |
+| Store status limits | `pnpm store status` can report clean after sibling prune even though offline reinstall fails.                         | store authority health checks        |
+| Doctor/repair       | Correct repair is registry-backed all-root repair, not a thin prune wrapper.                                          | store authority and live pnpm repair |
+| Store traits        | Shared/split stores preserve large host-wide byte and file-count wins over isolated stores.                           | verification benchmark matrix        |
+| CI isolation        | Job-local pnpm stores avoid sibling corruption and stay the CI default.                                               | store trait contract                 |
+| Low disk            | Broad proofs must fail before mutation and emit machine-readable skip evidence.                                       | verification skip records            |
+| Native/lifecycle    | Native package behavior is profile-policy-sensitive; source-built native compilation needs explicit toolchain policy. | native policy and verification       |
+| Profile evidence    | Profile identity is stable across same inputs, changes with lock/policy/store trait, and excludes local output paths. | root profile contract                |
+| Nix FOD freshness   | FOD freshness can use profile identity plus FOD input digest instead of parallel stale-hash heuristics.               | Nix prepared deps and FOD evidence   |
+| Buck2 evidence      | Buck2 should consume deterministic evidence and keep mutable materialization outside watched source roots.            | Buck2 evidence subsystem             |
 
 ## Open Gaps Preserved
 

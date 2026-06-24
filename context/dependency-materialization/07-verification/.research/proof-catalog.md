@@ -84,25 +84,25 @@ files-pool classification, sibling enumeration, and all-roots repair plan.
 
 ### Synthetic overlap baseline
 
-| Trait | Host-wide size | File count |
-| --- | ---: | ---: |
-| isolated | about 94,260 KiB | about 20,041 |
-| split files | about 35,676 KiB | about 2,157 |
-| shared store | about 35,676 KiB | about 2,157 |
+| Trait        |   Host-wide size |   File count |
+| ------------ | ---------------: | -----------: |
+| isolated     | about 94,260 KiB | about 20,041 |
+| split files  | about 35,676 KiB |  about 2,157 |
+| shared store | about 35,676 KiB |  about 2,157 |
 
 Conclusion: removing sharing would be a correctness simplification but would
 discard a large cache-efficiency win.
 
 ### Linux ext4 copy versus hardlink smoke
 
-| Import | Trait | Store KiB | Files KiB | File count |
-| --- | --- | ---: | ---: | ---: |
-| copy | isolated | 96,876 | 96,876 | 20,037 |
-| copy | split files | 85,528 | 36,704 | 2,157 |
-| copy | shared store | 37,116 | 36,704 | 2,157 |
-| hardlink | isolated | 49,512 | 49,512 | 20,037 |
-| hardlink | split files | 38,156 | 36,704 | 2,157 |
-| hardlink | shared store | 37,116 | 36,704 | 2,157 |
+| Import   | Trait        | Store KiB | Files KiB | File count |
+| -------- | ------------ | --------: | --------: | ---------: |
+| copy     | isolated     |    96,876 |    96,876 |     20,037 |
+| copy     | split files  |    85,528 |    36,704 |      2,157 |
+| copy     | shared store |    37,116 |    36,704 |      2,157 |
+| hardlink | isolated     |    49,512 |    49,512 |     20,037 |
+| hardlink | split files  |    38,156 |    36,704 |      2,157 |
+| hardlink | shared store |    37,116 |    36,704 |      2,157 |
 
 All copy and hardlink phases passed offline reinstall. Total benchmark tree
 footprint dropped from 273 MiB with copy import to 135 MiB with hardlink
@@ -113,19 +113,19 @@ still needs real-repo and concurrent-run proof before becoming a default.
 
 ### Downstream monorepo APFS real profile
 
-| Trait | cold-a | cold-b | offline-b |
-| --- | ---: | ---: | ---: |
-| isolated | `ok` / 34.674s | `materialized_exit_134` / 24.467s | `ok` / 9.408s |
-| split-files | `ok` / 30.680s | `ok` / 24.171s | `ok` / 9.775s |
-| shared-store | `materialized_exit_134` / 24.963s | `ok` / 17.402s | `ok` / 8.147s |
+| Trait        |                            cold-a |                            cold-b |     offline-b |
+| ------------ | --------------------------------: | --------------------------------: | ------------: |
+| isolated     |                    `ok` / 34.674s | `materialized_exit_134` / 24.467s | `ok` / 9.408s |
+| split-files  |                    `ok` / 30.680s |                    `ok` / 24.171s | `ok` / 9.775s |
+| shared-store | `materialized_exit_134` / 24.963s |                    `ok` / 17.402s | `ok` / 8.147s |
 
 Footprint after two cold materializations:
 
-| Trait | Store KiB | Shared/files KiB | Project KiB | node_modules KiB | File count |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| isolated | 10,752,160 | 10,752,160 | 2,798,472 | 2,678,284 | 445,794 |
-| split files | 8,127,804 | 2,517,760 | 2,872,860 | 2,752,672 | 61,481 |
-| shared store | 2,533,060 | 2,517,760 | 2,872,860 | 2,752,672 | 61,481 |
+| Trait        |  Store KiB | Shared/files KiB | Project KiB | node_modules KiB | File count |
+| ------------ | ---------: | ---------------: | ----------: | ---------------: | ---------: |
+| isolated     | 10,752,160 |       10,752,160 |   2,798,472 |        2,678,284 |    445,794 |
+| split files  |  8,127,804 |        2,517,760 |   2,872,860 |        2,752,672 |     61,481 |
+| shared store |  2,533,060 |        2,517,760 |   2,872,860 |        2,752,672 |     61,481 |
 
 Offline reinstall reused 998 packages, downloaded 0 packages, and completed for
 all traits.
@@ -174,7 +174,14 @@ delete another job's required blobs.
 Forced disk floor result:
 
 ```json
-{"trait":"all","phase":"disk-floor","status":"skipped_low_disk","ms":0,"availableGiB":76,"floorGiB":999999}
+{
+  "trait": "all",
+  "phase": "disk-floor",
+  "status": "skipped_low_disk",
+  "ms": 0,
+  "availableGiB": 76,
+  "floorGiB": 999999
+}
 ```
 
 The command exited 75 before install work started.
@@ -188,19 +195,19 @@ and must fail before mutation when disk floors are not met.
 
 Packages: `esbuild@0.27.7`, `sharp@0.34.5`, `lightningcss@1.30.2`.
 
-| Trait | cold-a | cold-b | offline-b | Runtime probe |
-| --- | --- | --- | --- | --- |
-| isolated | `materialized_exit_134` | `materialized_exit_137` | `ok` | `ok` before and after offline reinstall |
-| split files | `materialized_exit_137` | `ok` | `ok` | `ok` before and after offline reinstall |
-| shared store | `materialized_exit_134` | `materialized_exit_134` | `ok` | `ok` before and after offline reinstall |
+| Trait        | cold-a                  | cold-b                  | offline-b | Runtime probe                           |
+| ------------ | ----------------------- | ----------------------- | --------- | --------------------------------------- |
+| isolated     | `materialized_exit_134` | `materialized_exit_137` | `ok`      | `ok` before and after offline reinstall |
+| split files  | `materialized_exit_137` | `ok`                    | `ok`      | `ok` before and after offline reinstall |
+| shared store | `materialized_exit_134` | `materialized_exit_134` | `ok`      | `ok` before and after offline reinstall |
 
 Footprint after two cold materializations:
 
-| Trait | Store KiB | Files KiB | File count |
-| --- | ---: | ---: | ---: |
-| isolated | 144,380 | 144,380 | 1,896 |
-| split files | 109,516 | 36,196 | 165 |
-| shared store | 36,496 | 36,196 | 165 |
+| Trait        | Store KiB | Files KiB | File count |
+| ------------ | --------: | --------: | ---------: |
+| isolated     |   144,380 |   144,380 |      1,896 |
+| split files  |   109,516 |    36,196 |        165 |
+| shared store |    36,496 |    36,196 |        165 |
 
 Conclusion: native package behavior can preserve offline correctness with
 shared package files, but pnpm build approvals are dependency profile inputs.
@@ -304,12 +311,12 @@ Prototype target shape:
 
 Clean-root watch comparison:
 
-| Scenario | Follow-up action | Buck watch events |
-| --- | --- | ---: |
-| repo-like source root | add 200 generated files under source root | 619 |
-| ignored in-source path | add 200 generated files under ignored-looking source path | 608 |
-| minimal clean root | repeat no-op build | 19 |
-| external output root | add 200 generated files outside source root | 0 |
+| Scenario               | Follow-up action                                          | Buck watch events |
+| ---------------------- | --------------------------------------------------------- | ----------------: |
+| repo-like source root  | add 200 generated files under source root                 |               619 |
+| ignored in-source path | add 200 generated files under ignored-looking source path |               608 |
+| minimal clean root     | repeat no-op build                                        |                19 |
+| external output root   | add 200 generated files outside source root               |                 0 |
 
 Evidence oracle:
 
