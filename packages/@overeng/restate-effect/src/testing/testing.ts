@@ -26,10 +26,12 @@
  * ```
  */
 import { type ChildProcess, execFileSync, spawn } from 'node:child_process'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { generateKeyPairSync } from 'node:crypto'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import type * as restate from '@restatedev/restate-sdk'
 import * as clients from '@restatedev/restate-sdk-clients'
 import { Clock, Context, Effect, Exit, Layer, Option, type Schema, Scope } from 'effect'
 
@@ -206,8 +208,47 @@ const determinismEnv = (opts: {
 interface ServerHandle {
   readonly ingressUrl: string
   readonly adminUrl: string
+  readonly requestIdentityPublicKey: string
   readonly register: (uri: string) => Promise<void>
   readonly shutdown: () => Promise<void>
+}
+
+const base58Alphabet = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
+
+const base58Encode = (bytes: Uint8Array): string => {
+  let zeros = 0
+  while (zeros < bytes.length && bytes[zeros] === 0) zeros += 1
+
+  const digits = [0]
+  for (const byte of bytes) {
+    let carry = byte
+    for (let i = 0; i < digits.length; i += 1) {
+      const value = digits[i]! * 256 + carry
+      digits[i] = value % 58
+      carry = Math.floor(value / 58)
+    }
+    while (carry > 0) {
+      digits.push(carry % 58)
+      carry = Math.floor(carry / 58)
+    }
+  }
+
+  return `${'1'.repeat(zeros)}${digits
+    .toReversed()
+    .map((digit) => base58Alphabet[digit]!)
+    .join('')}`
+}
+
+const makeRequestIdentity = async (
+  baseDir: string,
+): Promise<{ readonly privateKeyPath: string; readonly publicKey: string }> => {
+  const { privateKey, publicKey } = generateKeyPairSync('ed25519')
+  const privateKeyPath = join(baseDir, 'request-identity-private.pem')
+  await writeFile(privateKeyPath, privateKey.export({ type: 'pkcs8', format: 'pem' }))
+
+  const publicDer = new Uint8Array(publicKey.export({ type: 'spki', format: 'der' }))
+  const rawPublicKey = publicDer.slice(-32)
+  return { privateKeyPath, publicKey: `publickeyv1_${base58Encode(rawPublicKey)}` }
 }
 
 /**
@@ -239,6 +280,7 @@ const startServer = async (opts: {
   readonly disableRetries?: boolean
 }): Promise<ServerHandle> => {
   const baseDir = await mkdtemp(join(tmpdir(), 'restate-harness-'))
+  const requestIdentity = await makeRequestIdentity(baseDir)
   const bin = serverBin()
 
   /* One boot attempt: allocate a fresh, internally-collision-free port batch,
@@ -266,6 +308,7 @@ const startServer = async (opts: {
            * bind, else concurrent instances collide on the fixed default 5122. */
           RESTATE_BIND_ADDRESS: `0.0.0.0:${nodePort}`,
           RESTATE_ADVERTISED_ADDRESS: `http://127.0.0.1:${nodePort}/`,
+          RESTATE_REQUEST_IDENTITY_PRIVATE_KEY_PEM_FILE: requestIdentity.privateKeyPath,
           /* Quiet but still capture warnings/errors for diagnostics. */
           RESTATE_LOG_FILTER: process.env['RESTATE_LOG_FILTER'] ?? 'warn',
           ...determinismEnv(opts),
@@ -362,7 +405,13 @@ const startServer = async (opts: {
       await rm(baseDir, { recursive: true, force: true })
     }
 
-    return { ingressUrl, adminUrl, register, shutdown }
+    return {
+      ingressUrl,
+      adminUrl,
+      requestIdentityPublicKey: requestIdentity.publicKey,
+      register,
+      shutdown,
+    }
   }
 
   try {
@@ -557,12 +606,27 @@ const makeStateProxy = <S extends StateSchemas>({
  * The harness service + scoped Layer (docs/vrs/09-testing/spec.md, decision 0009).
  * ════════════════════════════════════════════════════════════════════════ */
 
+/** One structured Restate SDK endpoint log record captured by the test harness. */
+export interface RestateSdkLogRecord {
+  readonly metadata: restate.LogMetadata
+  readonly message: unknown
+  readonly optionalParams: ReadonlyArray<unknown>
+}
+
+/** Snapshot access to Restate SDK endpoint logs captured by the test harness. */
+export interface RestateSdkLogCapture {
+  /** Snapshot of SDK endpoint logs captured by the harness logger. */
+  readonly records: () => ReadonlyArray<RestateSdkLogRecord>
+}
+
 /** The harness service value: a bound ingress + a typed `stateOf` factory. */
 export interface RestateTestHarnessService {
   /** The spawned server's ingress URL. */
   readonly ingressUrl: string
   /** The spawned server's admin URL (deployment registration + State inspection). */
   readonly adminUrl: string
+  /** Structured SDK endpoint logs captured without writing them to process stderr. */
+  readonly sdkLogs: RestateSdkLogCapture
   /**
    * The typed ingress client surface, each pre-bound to the spawned ingress (no
    * need to thread `RestateIngress` — the harness provides it internally). Mirrors
@@ -724,6 +788,12 @@ export class RestateTestHarness extends Context.Tag('@overeng/restate-effect/Res
     Layer.scoped(
       RestateTestHarness,
       Effect.gen(function* () {
+        const sdkLogRecords: Array<RestateSdkLogRecord> = []
+        // oxlint-disable-next-line overeng/named-args -- implements the Restate SDK's positional LoggerTransport callback.
+        const sdkLogger: restate.LoggerTransport = (metadata, message, ...optionalParams) => {
+          sdkLogRecords.push({ metadata, message, optionalParams })
+        }
+
         /* 1. Spawn the native server (ephemeral ports + isolated base dir). The
          * finalizer SIGTERM/SIGKILLs it and removes the base dir LAST. */
         const server = yield* Effect.acquireRelease(
@@ -767,6 +837,8 @@ export class RestateTestHarness extends Context.Tag('@overeng/restate-effect/Res
                 ...(opts.boundaryObserver !== undefined
                   ? { boundaryObserver: opts.boundaryObserver }
                   : {}),
+                identityKeys: [server.requestIdentityPublicKey],
+                sdkLogger,
               }).pipe(Layer.provide(appLayer)),
               endpointScope,
             ).pipe(
@@ -871,6 +943,9 @@ export class RestateTestHarness extends Context.Tag('@overeng/restate-effect/Res
         return {
           ingressUrl: server.ingressUrl,
           adminUrl: server.adminUrl,
+          sdkLogs: {
+            records: () => [...sdkLogRecords],
+          },
           ingress: bound,
           stateOf: <S extends StateSchemas>(args: { contract: StatefulContract<S>; key: string }) =>
             makeStateProxy({

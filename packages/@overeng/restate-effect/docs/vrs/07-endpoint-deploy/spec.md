@@ -65,6 +65,15 @@ config to wire them from the environment (R38, R39):
   `x-restate-jwt-v1` JWT signed by the matching private key, so only the operator's
   cluster can invoke the endpoint. PURE passthrough (the SDK owns verification);
   pairs with the deferred serverless work. Unset = trusted local network.
+- **SDK endpoint logging.** `EndpointOptions.sdkLogger?: restate.LoggerTransport`
+  threads into `createEndpointHandler({ logger })`, replacing the SDK's default
+  console transport for endpoint SYSTEM/JOURNAL/USER records. This is distinct
+  from the per-invocation Effect logger bridge (`Effect.log*` → `ctx.console`):
+  the SDK logger captures endpoint discovery, request-identity validation, and
+  invocation-processing records such as expected `TerminalError` outcomes. A
+  structured transport should preserve `LogMetadata`, the raw message, and raw
+  optional params rather than stringify them, so callers do not lose the
+  `TerminalError` object/code/metadata.
 - **Ingress auth (you → server, R38).** `RestateIngress.layer({ url, apiKey?, headers? })`
   sends `apiKey` (a `Redacted<string>`, never printed) as `Authorization: Bearer …`
   on every ingress request — reaching a secured ingress that the bare `{ url }` form

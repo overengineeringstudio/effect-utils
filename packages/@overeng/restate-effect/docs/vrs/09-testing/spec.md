@@ -21,6 +21,17 @@ ephemeral ports against an isolated temp base dir, waits for the admin health
 endpoint, builds and serves the endpoint, and registers the deployment; on
 release it shuts the server down and removes the base dir.
 
+The harness mirrors the secured endpoint shape by generating an ephemeral ED25519
+request-identity keypair inside the isolated temp base dir, starting
+`restate-server` with the private key, and serving every SDK endpoint with the
+derived `publickeyv1_...` identity key. This removes unauthenticated-handler
+warnings at the source and proves the signing path used by secured deployments.
+The harness also installs a structured SDK endpoint logger and exposes
+`harness.sdkLogs.records()` so tests can inspect SYSTEM/JOURNAL/USER records
+without relying on process stderr. Expected terminal domain failures remain
+available as structured `TerminalError` log params; they are not flattened into
+strings or hidden via `RESTATE_LOGGING=ERROR`.
+
 ```ts
 it.effect('greet round-trips', () =>
   Effect.gen(function* () {

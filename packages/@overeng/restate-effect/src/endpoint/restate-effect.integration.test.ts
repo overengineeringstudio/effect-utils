@@ -61,6 +61,9 @@ const held = withRestateServer({ services: [GreeterLive], appLayer: Greeting.Def
 const ingressLayer = (): Layer.Layer<RestateIngress> =>
   RestateIngress.layer({ url: held.harness().ingressUrl })
 
+const terminalErrorParam = (value: unknown): value is { readonly name: 'TerminalError' } =>
+  typeof value === 'object' && value !== null && 'name' in value && value.name === 'TerminalError'
+
 describe('restate-effect end-to-end (contract/implement)', () => {
   beforeAll(held.setup, 60_000)
   afterAll(held.teardown, 60_000)
@@ -86,6 +89,18 @@ describe('restate-effect end-to-end (contract/implement)', () => {
         ),
       )
       expect(recovered).toBe('recovered-EmptyName')
+
+      const sdkLogs = held.harness().sdkLogs.records()
+      expect(
+        sdkLogs.some(
+          (record) =>
+            typeof record.message === 'string' &&
+            record.message.includes('Accepting requests without validating request signatures'),
+        ),
+      ).toBe(false)
+      expect(
+        sdkLogs.some((record) => record.optionalParams.some((param) => terminalErrorParam(param))),
+      ).toBe(true)
     },
   )
 })

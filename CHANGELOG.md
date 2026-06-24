@@ -104,6 +104,19 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **@overeng/restate-effect**: Make the Restate real-server test harness use
+  request identity and structured SDK log capture. The harness now generates an
+  ephemeral ED25519 request-identity keypair per native-server boot, starts
+  `restate-server` with the private key, and serves each SDK endpoint with the
+  derived `publickeyv1_...` identity key, removing unauthenticated-handler
+  warnings at the source. `EndpointOptions.sdkLogger` threads a structured SDK
+  logger into `createEndpointHandler({ logger })`, and the harness captures SDK
+  SYSTEM/JOURNAL/USER records through `harness.sdkLogs.records()` instead of
+  relying on stderr or `RESTATE_LOGGING=ERROR`. Expected terminal domain failures
+  remain available as `TerminalError` log params with code/metadata, so the bridge
+  keeps terminal/retryable/defect semantics intact while making integration test
+  output quiet and inspectable.
+
 - **Restate integration port allocation**: Bind in-process handler endpoints on
   port `0` and register the actual kernel-assigned URL, while keeping batch +
   retry allocation for the native `restate-server` child process ports that must
