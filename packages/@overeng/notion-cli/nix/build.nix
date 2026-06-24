@@ -49,7 +49,12 @@ pkgs.runCommand "notion-cli"
     nativeBuildInputs = [ pkgs.makeWrapper ];
     meta.mainProgram = "notion";
     passthru = {
-      inherit (unwrapped.passthru) depsBuildEntries depsBuildsByInstallRoot installRoots;
+      inherit (unwrapped.passthru)
+        depsBuildEntries
+        depsBuildsByInstallRoot
+        fodHashRepairTargets
+        installRoots
+        ;
     };
   }
   ''

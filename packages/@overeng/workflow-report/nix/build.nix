@@ -31,7 +31,12 @@ pkgs.runCommand "workflow-report"
     nativeBuildInputs = [ pkgs.makeWrapper ];
     meta.mainProgram = "workflow-report";
     passthru = {
-      inherit (unwrapped.passthru) depsBuildEntries depsBuildsByInstallRoot installRoots;
+      inherit (unwrapped.passthru)
+        depsBuildEntries
+        depsBuildsByInstallRoot
+        fodHashRepairTargets
+        installRoots
+        ;
     };
   }
   ''

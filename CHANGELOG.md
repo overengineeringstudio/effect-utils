@@ -18,7 +18,8 @@ All notable changes to this project will be documented in this file.
   real-workload, and cross-system evidence tiers. The VRS now records that the
   strict prepared-deps purity scan transition uses one convergent `v18`
   prepared artifact version bump and hash refresh, rather than report-only or
-  profile-gated legacy scan modes.
+  profile-gated legacy scan modes, and that FOD run evidence belongs to
+  generated repair or CI output rather than committed per-target witness files.
 
 - **Dependency materialization profile contract**: Extend the generated
   `pnpm-install-contract.json` with a stable `dependency-materialization-profile/v0`
@@ -35,7 +36,10 @@ All notable changes to this project will be documented in this file.
   registered root instead. Prepared-deps profile keys now include content
   freshness digests for staged manifests and inherited root patch authority, and
   `mk-pnpm-cli` exposes a Buck2-facing evidence adapter that consumes the same
-  prepared-deps profiles without owning live pnpm materialization.
+  prepared-deps profiles without owning live pnpm materialization. It also
+  exposes generated FOD hash repair targets so repair tooling can discover
+  direct prepared-deps attrs and hash paths without adding per-package witness
+  files.
 
 - **pnpm install contract proof**: Add a generated `pnpm-install-contract.json`
   artifact that makes the long-term pnpm/Nix/Buck2 install contract explicit:

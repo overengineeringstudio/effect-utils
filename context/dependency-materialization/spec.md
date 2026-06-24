@@ -220,6 +220,12 @@ The policy digest includes lifecycle policy, optional dependency policy,
 prepared artifact normalization version, native-output classification, bin
 projection policy, and store trait.
 
+Nix prepared-deps producers also expose `fodHashRepairTargets` as evaluated
+package metadata. Each target derives from the same profile and `depsBuilds`
+hash declaration as the fixed-output derivation. Repair tools consume those
+targets to rebuild direct dependency artifacts and publish run evidence; package
+sources do not carry a second per-target witness file.
+
 ## Store Traits And Authorities
 
 | Trait                 | Intended use                        | Sharing model                                           | GC authority                             |
@@ -279,5 +285,4 @@ these acceptance gates.
 
 ## Open Design Questions
 
-- **DQ4 Cross-system hash metadata:** What metadata shape lets Evergreen refuse
-  unsafe shared-hash collapse when Darwin or another covered system is missing?
+No open design questions remain for this milestone.

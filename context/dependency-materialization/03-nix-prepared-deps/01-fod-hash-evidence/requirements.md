@@ -6,12 +6,21 @@ FOD hash evidence is the producer-side contract that lets repair tooling and
 reviewers distinguish validated shared hashes from stale, collapsed, or
 under-measured hashes.
 
+The committed source of truth remains the Nix hash field consumed by the
+prepared dependency derivation. Evidence is generated from evaluation, builds,
+CI, or hash repair runs; it is not a second per-target witness file checked
+into package source.
+
 ## Assumptions
 
 - **A01 Prepared-deps parent:** This subsystem refines
   DMP.NIX-R03, DMP.NIX-R08, and DMP.NIX-R09.
-- **A02 External repair consumers:** Evergreen-style tools may consume this
-  evidence, but effect-utils owns the producer schema for prepared artifacts.
+- **A02 External repair consumers:** External hash repair tools may consume
+  this evidence, but effect-utils owns the producer schema for prepared
+  artifacts.
+- **A03 Repair authority:** Hash repair tooling owns measurement,
+  reconciliation, and rich run evidence. The effect-utils source surface must
+  make that tooling reliable without duplicating its state.
 
 ## Requirements
 
@@ -42,3 +51,13 @@ under-measured hashes.
 - **DMP.NIX.FOD-R07 Diagnostic text:** Stale hash failures must point at the
   direct dependency artifact, not only the final package.
   Refines: DMP.NIX-R09.
+- **DMP.NIX.FOD-R08 No parallel source authority:** The producer contract must
+  be derived from evaluated package metadata and committed hash declarations,
+  not from a separate checked-in witness file that can drift from the Nix
+  derivation.
+  Refines: DMP.NIX-R08, DMP.NIX-R09.
+- **DMP.NIX.FOD-R09 No committed witness files:** Package source must not add
+  per-target FOD witness files. If repair tooling needs more context, it should
+  consume eval-time metadata derived from `mkPnpmCli` inputs and emit run
+  evidence outside the source tree.
+  Refines: DMP.NIX-R08, DMP.NIX-R09.

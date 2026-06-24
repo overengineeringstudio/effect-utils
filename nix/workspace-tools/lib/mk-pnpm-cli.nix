@@ -1202,6 +1202,35 @@ let
     inherit packageDir;
     profiles = dependencyMaterializationProfiles;
   };
+  fodHashRepairTargets = map (
+    root:
+    let
+      profile = installRootProfile root;
+      depsHash = depsBuildHashForInstallRoot root.installDir;
+    in
+    {
+      schemaVersion = 1;
+      kind = "dependency-fod-hash-repair-target";
+      producer = "effect-utils.mk-pnpm-cli";
+      subject = {
+        packageName = packageJson.name;
+        inherit packageDir;
+      };
+      inherit (root) attrName installDir lockfilePath;
+      memberDirs = installRootMemberDirs root;
+      profileKey = profile.profileKey;
+      declaredHash = depsHash;
+      depsDrvPath = root.depsBuild.drvPath;
+      hashPath = [
+        "depsBuilds"
+        root.installDir
+        "hash"
+      ];
+      inputs = profile.inputs;
+      freshness = profile.freshness;
+      traits = profile.traits;
+    }
+  ) depsInstallRoots;
   buck2DependencyMaterializationEvidence = dependencyProfile.mkBuck2Evidence {
     packageName = packageJson.name;
     inherit packageDir;
@@ -1415,6 +1444,7 @@ pkgs.stdenv.mkDerivation {
       buck2DependencyMaterializationEvidence
       dependencyMaterializationEvidence
       dependencyMaterializationProfiles
+      fodHashRepairTargets
       inheritRootPatchedDependenciesScript
       ;
     installRoots = map (root: {

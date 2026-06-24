@@ -37,7 +37,12 @@ pkgs.stdenv.mkDerivation {
   version = base.version or "0.0.0";
   meta.mainProgram = "mr";
   passthru = {
-    inherit (base.passthru) depsBuildEntries depsBuildsByInstallRoot installRoots;
+    inherit (base.passthru)
+      depsBuildEntries
+      depsBuildsByInstallRoot
+      fodHashRepairTargets
+      installRoots
+      ;
   };
 
   phases = [ "installPhase" ];

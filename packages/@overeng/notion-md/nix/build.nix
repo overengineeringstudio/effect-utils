@@ -32,7 +32,12 @@ pkgs.runCommand "notion-md"
     nativeBuildInputs = [ pkgs.makeWrapper ];
     meta.mainProgram = "notion-md";
     passthru = {
-      inherit (unwrapped.passthru) depsBuildEntries depsBuildsByInstallRoot installRoots;
+      inherit (unwrapped.passthru)
+        depsBuildEntries
+        depsBuildsByInstallRoot
+        fodHashRepairTargets
+        installRoots
+        ;
     };
   }
   ''

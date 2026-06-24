@@ -33,7 +33,12 @@ pkgs.runCommand "tui-stories"
     nativeBuildInputs = [ pkgs.makeWrapper ];
     meta.mainProgram = "tui-stories";
     passthru = {
-      inherit (unwrapped.passthru) depsBuildEntries depsBuildsByInstallRoot installRoots;
+      inherit (unwrapped.passthru)
+        depsBuildEntries
+        depsBuildsByInstallRoot
+        fodHashRepairTargets
+        installRoots
+        ;
     };
   }
   ''

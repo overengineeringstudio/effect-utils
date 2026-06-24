@@ -205,6 +205,13 @@
                     == map (
                       profile: profile.evidenceKey
                     ) pureEvalFixture.passthru.dependencyMaterializationEvidence.profiles;
+                  fodRepairKinds = map (target: target.kind) pureEvalFixture.passthru.fodHashRepairTargets;
+                  fodRepairProfileKeysMatch =
+                    map (target: target.profileKey) pureEvalFixture.passthru.fodHashRepairTargets
+                    == map (
+                      profile: profile.profileKey
+                    ) pureEvalFixture.passthru.dependencyMaterializationEvidence.profiles;
+                  fodRepairHashPaths = map (target: target.hashPath) pureEvalFixture.passthru.fodHashRepairTargets;
                   sourcePathInsensitive =
                     map (
                       profile: profile.profileKey
@@ -223,7 +230,7 @@
                     .inputs.manifests);
                 }
               }'
-              expected='{"absentOptionalInputsExcluded":true,"attrNames":["root","repos-effect-utils"],"buck2DoesNotOwnLive":true,"buck2EvidenceKeysMatch":true,"buck2Kind":"buck2-dependency-materialization-evidence","consumerNameInsensitive":true,"externalRootPatchAuthorityPresent":true,"kind":"dependency-materialization-evidence","producer":"effect-utils.mk-pnpm-cli","profileCount":2,"rootFreshnessInputs":[".npmrc","app/package.json","package.json","pnpm-lock.yaml","pnpm-workspace.yaml"],"sourcePathInsensitive":true,"traits":[["nixPreparedDeps"],["nixPreparedDeps"]]}'
+              expected='{"absentOptionalInputsExcluded":true,"attrNames":["root","repos-effect-utils"],"buck2DoesNotOwnLive":true,"buck2EvidenceKeysMatch":true,"buck2Kind":"buck2-dependency-materialization-evidence","consumerNameInsensitive":true,"externalRootPatchAuthorityPresent":true,"fodRepairHashPaths":[["depsBuilds",".","hash"],["depsBuilds","repos/effect-utils","hash"]],"fodRepairKinds":["dependency-fod-hash-repair-target","dependency-fod-hash-repair-target"],"fodRepairProfileKeysMatch":true,"kind":"dependency-materialization-evidence","producer":"effect-utils.mk-pnpm-cli","profileCount":2,"rootFreshnessInputs":[".npmrc","app/package.json","package.json","pnpm-lock.yaml","pnpm-workspace.yaml"],"sourcePathInsensitive":true,"traits":[["nixPreparedDeps"],["nixPreparedDeps"]]}'
               if [ "$actual" != "$expected" ]; then
                 echo "unexpected dependency materialization evidence: $actual" >&2
                 exit 1

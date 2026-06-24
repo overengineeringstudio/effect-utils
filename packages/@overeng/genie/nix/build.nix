@@ -40,6 +40,7 @@ pkgs.runCommand "genie"
       inherit (unwrapped.passthru)
         depsBuildEntries
         depsBuildsByInstallRoot
+        fodHashRepairTargets
         inheritRootPatchedDependenciesScript
         installRoots
         ;
