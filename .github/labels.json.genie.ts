@@ -1,3 +1,6 @@
+import { readdirSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+
 import {
   andonLabels,
   commonLabels,
@@ -47,6 +50,27 @@ const effectUtilsAreaLabels: readonly LabelDef[] = [
   },
 ]
 
+/**
+ * Repo-local `system:*` labels — one per concrete `@overeng/*` package. A
+ * `system:*` value names a thing with its own identity that issues and feedback
+ * are attributed *to*, distinct from the cross-cutting `area:*` concern axis.
+ * Derived from the package directories (derive-don't-author) so the catalog
+ * tracks the workspace automatically; the genie freshness gate regenerates and
+ * diffs `labels.json`, so adding/removing a package is always reflected here.
+ */
+const effectUtilsSystemLabels: readonly LabelDef[] = readdirSync(
+  fileURLToPath(new URL('../packages/@overeng', import.meta.url)),
+  { withFileTypes: true },
+)
+  .filter((entry) => entry.isDirectory())
+  .map((entry) => entry.name)
+  .sort()
+  .map((pkg) => ({
+    name: `system:${pkg}`,
+    color: 'a371f7',
+    description: `@overeng/${pkg} package · Set: manual`,
+  }))
+
 /** Repo-local utility labels used by automation in this repo. */
 const effectUtilsAutomationLabels: readonly LabelDef[] = [
   {
@@ -79,6 +103,7 @@ export default githubLabels({
     ...mqLabels,
     ...andonLabels,
     ...effectUtilsAreaLabels,
+    ...effectUtilsSystemLabels,
     ...effectUtilsAutomationLabels,
   ],
   deprecated: [...deprecatedDefaults, ...repoLocalDeprecated],
