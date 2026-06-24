@@ -8814,7 +8814,7 @@ jobs:
       - pnpm-regression
       - cargo
       - deploy-storybooks
-    if: (github.ref == 'refs/heads/main') && github.event_name == 'push'
+    if: ${{ (github.ref == 'refs/heads/main') && github.event_name == 'push' }}
     steps:
       - name: Dispatch alignment to coordinator
         env:
