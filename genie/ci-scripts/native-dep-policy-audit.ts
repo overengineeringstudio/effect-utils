@@ -10,7 +10,7 @@
  *
  * The audit fails when:
  * - a CPU/OS/libc-gated native family appears in the lockfile with no
- *   `fod-accepted-prebuilt` or `nix-grafted` policy entry (new native family);
+ *   `pure-package-artifact` or `nix-grafted` policy entry (new native family);
  * - a non-defensive `denied-lifecycle-build` or a `nix-grafted` family is
  *   absent from the lockfile (policy entry disappeared / shape changed);
  * - a `nix-grafted` entry's `via` Nix file is missing.
@@ -153,7 +153,7 @@ export const auditNativeDependencyPolicy = (opts: AuditOptions): AuditProblem[] 
       problems.push({
         kind: 'unclassified-native-family',
         family,
-        detail: `gated native package family "${family}" has no nativeDependencyPolicy entry (classify as fod-accepted-prebuilt, nix-grafted, or denied-lifecycle-build)`,
+        detail: `gated native package family "${family}" has no nativeDependencyPolicy entry (classify as pure-package-artifact, nix-grafted, or denied-lifecycle-build)`,
       })
     }
   }

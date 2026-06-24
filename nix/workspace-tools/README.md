@@ -70,6 +70,14 @@ The helper exposes the resulting install-root metadata via
 `passthru.installRoots`, `passthru.depsBuildsByInstallRoot`, and
 `passthru.depsBuildEntries` so downstream hash-refresh tooling can target the
 real prepared dependency boundary for each root. Each `depsBuildEntries`
-element also includes the install-root `drvPath`, which lets CI/tooling evict
-or realize the authoritative prepared-deps derivation without guessing from
-derivation names.
+element also includes the install-root `drvPath` and dependency freshness
+digests, which lets CI/tooling evict or realize the authoritative prepared-deps
+derivation without guessing from derivation names.
+
+`passthru.dependencyMaterializationEvidence` is the Nix-prepared dependency
+contract. Its profile keys include staged manifest digests and inherited root
+patch authority, so shared external install-root FODs converge for
+byte-identical dependency inputs but move when lockfiles, package manifests, or
+patch authority change. `passthru.buck2DependencyMaterializationEvidence`
+adapts the same evidence into a Buck2-facing shape while explicitly declaring
+that Buck2 does not own live pnpm materialization or repair.

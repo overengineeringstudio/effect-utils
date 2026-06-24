@@ -19,7 +19,7 @@ let
     # Managed by the repo FOD refresh workflow — do not edit manually.
     depsBuilds = {
       "." = {
-        hash = "sha256-Cpt8jb8TB3TdA5FbAo2E4t+HEhqoqZE5oIeJGLf1kfs=";
+        hash = "sha256-8o638XU5pHepYSSff7+Kn38AO35ZvmVB/5wG5LHqJoU=";
       };
     };
     smokeTestArgs = [ "--help" ];
@@ -31,7 +31,12 @@ pkgs.runCommand "workflow-report"
     nativeBuildInputs = [ pkgs.makeWrapper ];
     meta.mainProgram = "workflow-report";
     passthru = {
-      inherit (unwrapped.passthru) depsBuildEntries depsBuildsByInstallRoot installRoots;
+      inherit (unwrapped.passthru)
+        depsBuildEntries
+        depsBuildsByInstallRoot
+        fodHashRepairTargets
+        installRoots
+        ;
     };
   }
   ''

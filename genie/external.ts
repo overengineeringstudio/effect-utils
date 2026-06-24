@@ -303,7 +303,7 @@ export const catalog = defineCatalog({
  *   script we explicitly refuse to run (pnpm `allowBuilds: false`). `defensive`
  *   marks entries kept as guard rails even though the family is not currently
  *   in the lockfile (e.g. `sharp`, `unix-dgram`); their absence is tolerated.
- * - `fod-accepted-prebuilt`: an optional, CPU/OS/libc-gated prebuilt native
+ * - `pure-package-artifact`: an optional, CPU/OS/libc-gated prebuilt native
  *   binary family (Rollup/Rolldown/esbuild/oxc/etc.) that carries no lifecycle
  *   build and is locked as a fixed-output set. Listed separately from
  *   lifecycle-built native addons per issue #807.
@@ -335,25 +335,25 @@ export const nativeDependencyPolicy = {
   // Nix-grafted prebuilt native package (not lifecycle-built, so not denied).
   '@opentui/core': { _tag: 'nix-grafted', graft: 'fetch-only', via: 'nix/opentui-core-native.nix' },
 
-  // FOD-accepted optional prebuilt native families (CPU/OS/libc-gated, no
+  // Pure package-artifact native families (CPU/OS/libc-gated, no
   // lifecycle build). Keys are the family prefix shared by every platform
   // package (e.g. `@rollup/rollup` covers `@rollup/rollup-linux-x64-gnu`).
-  '@rollup/rollup': { _tag: 'fod-accepted-prebuilt' },
-  '@rolldown/binding': { _tag: 'fod-accepted-prebuilt' },
-  '@esbuild': { _tag: 'fod-accepted-prebuilt' },
-  '@msgpackr-extract': { _tag: 'fod-accepted-prebuilt' },
-  lightningcss: { _tag: 'fod-accepted-prebuilt' },
-  '@oxc-parser/binding': { _tag: 'fod-accepted-prebuilt' },
-  '@oxc-resolver/binding': { _tag: 'fod-accepted-prebuilt' },
-  '@tailwindcss/oxide': { _tag: 'fod-accepted-prebuilt' },
-  '@oxlint-tsgolint': { _tag: 'fod-accepted-prebuilt' },
+  '@rollup/rollup': { _tag: 'pure-package-artifact' },
+  '@rolldown/binding': { _tag: 'pure-package-artifact' },
+  '@esbuild': { _tag: 'pure-package-artifact' },
+  '@msgpackr-extract': { _tag: 'pure-package-artifact' },
+  lightningcss: { _tag: 'pure-package-artifact' },
+  '@oxc-parser/binding': { _tag: 'pure-package-artifact' },
+  '@oxc-resolver/binding': { _tag: 'pure-package-artifact' },
+  '@tailwindcss/oxide': { _tag: 'pure-package-artifact' },
+  '@oxlint-tsgolint': { _tag: 'pure-package-artifact' },
 } as const satisfies Record<string, NativeDependencyPolicyEntry>
 
 /** Tagged classification of a native dependency family. @see nativeDependencyPolicy */
 export type NativeDependencyPolicyEntry =
   | { readonly _tag: 'nix-grafted'; readonly graft: 'link' | 'fetch-only'; readonly via: string }
   | { readonly _tag: 'denied-lifecycle-build'; readonly defensive?: boolean }
-  | { readonly _tag: 'fod-accepted-prebuilt' }
+  | { readonly _tag: 'pure-package-artifact' }
 
 /**
  * Packages whose pnpm lifecycle build is denied. Derived from

@@ -1,5 +1,46 @@
 {
   "contract": "effect-utils/pnpm-install-contract",
+  "dependencyMaterializationProfile": {
+    "buck2Boundary": {
+      "consumesEvidence": true,
+      "ownsLiveMaterialization": false
+    },
+    "identityInputs": [
+      "packageManager",
+      "gvsLinkContract",
+      "installPolicy",
+      "storeContract",
+      "workspaceManifestContract"
+    ],
+    "nativeBuildPolicyInputs": {
+      "allowBuilds": "gvsLinkContract.allowBuilds",
+      "compilerEnv": ["CC", "CXX"]
+    },
+    "schema": "dependency-materialization-profile/v0",
+    "supportedTraits": {
+      "ciJobLocal": {
+        "gcAuthority": "profile-local",
+        "mutableState": "job-local",
+        "repairAuthority": "ci-job"
+      },
+      "darwinSplitCas": {
+        "gcAuthority": "shared-pool-coordinator",
+        "mutableState": "profile-local",
+        "repairAuthority": "devenv",
+        "sharedContent": "store/v11/files"
+      },
+      "isolated": {
+        "gcAuthority": "profile-local",
+        "mutableState": "profile-local",
+        "repairAuthority": "devenv"
+      },
+      "nixPreparedDeps": {
+        "gcAuthority": "nix-store",
+        "mutableState": "none",
+        "repairAuthority": "evergreen-fod"
+      }
+    }
+  },
   "gvsLinkContract": {
     "allowBuilds": {
       "@myobie/pty": false,

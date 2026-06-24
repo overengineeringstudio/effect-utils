@@ -31,6 +31,7 @@
 let
   lib = pkgs.lib;
   pnpmDepsHelper = import ./mk-pnpm-deps.nix { inherit pkgs pnpm; };
+  dependencyProfile = import ./dependency-materialization-profile.nix { inherit lib; };
   inheritRootPatchedDependenciesScript = pkgs.writeText "inherit-root-patched-dependencies.cjs" ''
     const fs = require("node:fs");
     const path = require("node:path");
@@ -731,6 +732,9 @@ let
   ];
   installRootScopedPath =
     installDir: relPath: if installDir == "." then relPath else "${installDir}/${relPath}";
+  existingSourceFiles =
+    relPaths:
+    builtins.filter (relPath: builtins.pathExists (resolveSourceFor relPath).evalSourcePath) relPaths;
   # Expose a stable, CLI-friendly attr key while keeping the real install dir
   # in `dir`. This avoids leaking path separators into flake package names and
   # keeps downstream tooling simple.
@@ -747,14 +751,10 @@ let
   # output hash is content-addressed, so this rename is hash-neutral: only the
   # store-path name changes, which is exactly what enables the deduplication.
   #
-  # This assumes member-set identity implies staged-content identity: the
-  # prepared tree also depends on the consumer's root pnpm-lock.yaml /
-  # pnpm-workspace.yaml (staged for patch inheritance) and on the source bound
-  # to each `workspaceSources` entry. That holds when consumers sharing a
-  # profile compose the same source at a fixed root lock — the case in a single
-  # pnpm workspace with one pinned dependency. If a consumer varied the root
-  # lock or the bound source under the same member set, this key would alias
-  # distinct trees and must be widened to fingerprint the staged content.
+  # The profile key includes content freshness digests for the staged manifests
+  # and inherited root patch authority, so the derivation name is still
+  # consumer-invariant for byte-identical install roots but moves when the
+  # prepared tree's dependency inputs move.
   installRootDepsDerivationName =
     root:
     "${lib.strings.sanitizeDerivationName (lib.replaceStrings [ "/" ] [ "-" ] root.installDir)}-deps-${
@@ -766,6 +766,77 @@ let
       lib.sort (left: right: left < right) root.memberDirs
     else
       [ root.installDir ];
+  profileManifestInputsForRoot =
+    root:
+    let
+      scopedFile = installRootScopedPath root.installDir;
+      memberPackageJsons = map (dir: "${dir}/package.json") (
+        builtins.filter (dir: dir != root.installDir) (installRootMemberDirs root)
+      );
+    in
+    if root.installDir == "." then
+      rootWorkspaceFiles
+      ++ existingSourceFiles optionalRootWorkspaceFiles
+      ++ [ "pnpm-workspace.yaml" ]
+      ++ (map (dir: "${dir}/package.json") aggregateOwnedWorkspaceClosureDirs)
+    else
+      (map scopedFile rootWorkspaceFiles)
+      ++ existingSourceFiles (map scopedFile optionalRootWorkspaceFiles)
+      ++ [ (scopedFile "pnpm-workspace.yaml") ]
+      ++ memberPackageJsons;
+  rootPatchedDependenciesSection =
+    lockfileContent:
+    let
+      lines = lib.splitString "\n" lockfileContent;
+      startIndex = lib.lists.findFirstIndex (line: line == "patchedDependencies:") null lines;
+    in
+    if startIndex == null then
+      ""
+    else
+      let
+        rest = lib.lists.drop (startIndex + 1) lines;
+        endOffset = lib.lists.findFirstIndex (
+          line: line != "" && !(lib.hasPrefix " " line)
+        ) (builtins.length rest) rest;
+      in
+      builtins.concatStringsSep "\n" (lib.lists.take endOffset rest);
+  profileFreshnessInputsForRoot =
+    root:
+    let
+      manifestInputs = profileManifestInputsForRoot root;
+      manifestDigests = builtins.listToAttrs (
+        map (relPath: {
+          name = relPath;
+          value = builtins.hashFile "sha256" (resolveEvalSourceFor relPath);
+        }) manifestInputs
+      );
+      rootPatchAuthority =
+        if root.installDir == "." then
+          { }
+        else
+          {
+            rootPatchedDependenciesSection = builtins.hashString "sha256" (
+              rootPatchedDependenciesSection (builtins.readFile (resolveEvalSourceFor "pnpm-lock.yaml"))
+            );
+          };
+    in
+    {
+      inherit manifestDigests rootPatchAuthority;
+    };
+  installRootProfile =
+    root:
+    dependencyProfile.mkPreparedDepsProfile {
+      installDir = root.installDir;
+      memberDirs = installRootMemberDirs root;
+      lockfilePath = installRootScopedPath root.installDir "pnpm-lock.yaml";
+      attrName = installRootAttrName root.installDir;
+      depsHash = depsBuildHashForInstallRoot root.installDir;
+      manifestInputs = profileManifestInputsForRoot root;
+      freshnessInputs = profileFreshnessInputsForRoot root;
+      policy = {
+        packageImportMethod = if pkgs.stdenv.hostPlatform.isDarwin then "copy" else "clone-or-copy";
+      };
+    };
   /**
     Generic identity for a filtered install-root dependency boundary.
 
@@ -774,14 +845,7 @@ let
     key derived from that set. Downstream repos can then decide whether a
     repeated boundary is worth naming and sharing for amortization.
   */
-  installRootProfileKey =
-    root:
-    builtins.hashString "sha256" (
-      builtins.toJSON {
-        dir = root.installDir;
-        memberDirs = installRootMemberDirs root;
-      }
-    );
+  installRootProfileKey = root: (installRootProfile root).profileKey;
 
   /**
     `depsBuilds` is the canonical source of truth for prepared pnpm artifacts.
@@ -1132,6 +1196,46 @@ let
       value = root.depsBuild;
     }) depsInstallRoots
   );
+  dependencyMaterializationProfiles = map installRootProfile depsInstallRoots;
+  dependencyMaterializationEvidence = dependencyProfile.mkEvidence {
+    packageName = packageJson.name;
+    inherit packageDir;
+    profiles = dependencyMaterializationProfiles;
+  };
+  fodHashRepairTargets = map (
+    root:
+    let
+      profile = installRootProfile root;
+      depsHash = depsBuildHashForInstallRoot root.installDir;
+    in
+    {
+      schemaVersion = 1;
+      kind = "dependency-fod-hash-repair-target";
+      producer = "effect-utils.mk-pnpm-cli";
+      subject = {
+        packageName = packageJson.name;
+        inherit packageDir;
+      };
+      inherit (root) attrName installDir lockfilePath;
+      memberDirs = installRootMemberDirs root;
+      profileKey = profile.profileKey;
+      declaredHash = depsHash;
+      depsDrvPath = root.depsBuild.drvPath;
+      hashPath = [
+        "depsBuilds"
+        root.installDir
+        "hash"
+      ];
+      inputs = profile.inputs;
+      freshness = profile.freshness;
+      traits = profile.traits;
+    }
+  ) depsInstallRoots;
+  buck2DependencyMaterializationEvidence = dependencyProfile.mkBuck2Evidence {
+    packageName = packageJson.name;
+    inherit packageDir;
+    evidence = dependencyMaterializationEvidence;
+  };
   depsSrcByInstallRoot = builtins.listToAttrs (
     map (root: {
       name = root.attrName;
@@ -1334,7 +1438,15 @@ pkgs.stdenv.mkDerivation {
   dontFixup = true;
   passthru = {
     depsSrc = rootDepsSrc;
-    inherit depsSrcByInstallRoot depsBuildsByInstallRoot inheritRootPatchedDependenciesScript;
+    inherit
+      depsSrcByInstallRoot
+      depsBuildsByInstallRoot
+      buck2DependencyMaterializationEvidence
+      dependencyMaterializationEvidence
+      dependencyMaterializationProfiles
+      fodHashRepairTargets
+      inheritRootPatchedDependenciesScript
+      ;
     installRoots = map (root: {
       inherit (root) attrName installDir lockfilePath;
       memberDirs = installRootMemberDirs root;
@@ -1347,6 +1459,7 @@ pkgs.stdenv.mkDerivation {
       memberDirs = installRootMemberDirs root;
       profileKey = installRootProfileKey root;
       hash = depsBuildHashForInstallRoot root.installDir;
+      freshness = (installRootProfile root).freshness;
     }) depsInstallRoots;
   };
 

@@ -72,5 +72,46 @@ export default projectionArtifact.json({
         avoidNodeModulesLayoutAsApi: true,
       },
     },
+    dependencyMaterializationProfile: {
+      schema: 'dependency-materialization-profile/v0',
+      identityInputs: [
+        'packageManager',
+        'gvsLinkContract',
+        'installPolicy',
+        'storeContract',
+        'workspaceManifestContract',
+      ],
+      supportedTraits: {
+        ciJobLocal: {
+          mutableState: 'job-local',
+          gcAuthority: 'profile-local',
+          repairAuthority: 'ci-job',
+        },
+        darwinSplitCas: {
+          mutableState: 'profile-local',
+          sharedContent: 'store/v11/files',
+          gcAuthority: 'shared-pool-coordinator',
+          repairAuthority: 'devenv',
+        },
+        isolated: {
+          mutableState: 'profile-local',
+          gcAuthority: 'profile-local',
+          repairAuthority: 'devenv',
+        },
+        nixPreparedDeps: {
+          mutableState: 'none',
+          gcAuthority: 'nix-store',
+          repairAuthority: 'evergreen-fod',
+        },
+      },
+      nativeBuildPolicyInputs: {
+        allowBuilds: 'gvsLinkContract.allowBuilds',
+        compilerEnv: ['CC', 'CXX'],
+      },
+      buck2Boundary: {
+        consumesEvidence: true,
+        ownsLiveMaterialization: false,
+      },
+    },
   },
 })

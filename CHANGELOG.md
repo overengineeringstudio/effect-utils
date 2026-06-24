@@ -6,6 +6,48 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Dependency materialization VRS hierarchy**: Move the reusable pnpm install,
+  projection, Nix prepared-deps, store-authority, Buck2 evidence, and
+  observability contracts into `context/dependency-materialization/` as a
+  composed VRS hierarchy. The root DMP contract now stays mechanism-agnostic,
+  while child specs own live pnpm state, `.bin` projection, prepared FOD
+  purity, hash evidence, native package boundaries, shared-store repair/GC,
+  and build-log producer facts. The hierarchy now includes a verification
+  subsystem with a timeless evidence-intake contract for graduating prototype,
+  downstream, CI, and historical change evidence into effect-utils-owned
+  fixture, proof, real-workload, and cross-system evidence tiers. Imported
+  research references now live in self-contained dot-prefixed companion
+  directories instead of the normative spec. The VRS now records that the
+  strict prepared-deps purity scan transition uses one convergent `v18`
+  prepared artifact version bump and hash refresh, rather than report-only or
+  profile-gated legacy scan modes, and that FOD run evidence belongs to
+  generated repair or CI output rather than committed per-target witness files.
+  The FOD hash evidence spec separates structural proof from value proof so
+  shared hashes remain preferred only when measured outputs converge.
+
+- **Dependency materialization profile contract**: Extend the generated
+  `pnpm-install-contract.json` with a stable `dependency-materialization-profile/v0`
+  section covering identity inputs, store traits, native build policy inputs,
+  and the Buck2 boundary. The pnpm helper tests now prove profile emission and
+  refuse raw pruning for shared `store/v11/files` pools, forcing coordinated
+  repair plans instead of one-worktree cleanup. Successful live `pnpm:install`
+  runs also emit profile and registry evidence in the install cache so future
+  doctor/repair tasks can reason from registered materialization roots instead
+  of probing pnpm's private store layout directly. A shared aggregate registry
+  tracks all roots that point at the same files pool, while new `pnpm:doctor`,
+  `pnpm:repair-plan`, and explicit `pnpm:repair` tasks consume that evidence to
+  refuse raw pruning of shared files pools and force-rebuild every live
+  registered root instead. Repair planning now refreshes from the shared
+  registry, profile changes replace stale root rows, and repair execution uses
+  the same pure install policy as `pnpm:install`. Prepared-deps profile keys
+  now include content freshness digests for staged manifests and inherited root
+  patch authority, and
+  `mk-pnpm-cli` exposes a Buck2-facing evidence adapter that consumes the same
+  prepared-deps profiles without owning live pnpm materialization. It also
+  exposes generated FOD hash repair targets so repair tooling can discover
+  direct prepared-deps attrs and hash paths without adding per-package witness
+  files.
+
 - **pnpm install contract proof**: Add a generated `pnpm-install-contract.json`
   artifact that makes the long-term pnpm/Nix/Buck2 install contract explicit:
   pnpm owns `store/v11/{files,links,projects}`, GVS `links` are treated as a
@@ -47,7 +89,7 @@ All notable changes to this project will be documented in this file.
 
 - **native dependency policy audit**: Add `nativeDependencyPolicy`, a tagged
   source-of-truth classification in `genie/external.ts` for every native npm
-  dependency family (nix-grafted, denied-lifecycle-build, fod-accepted-prebuilt).
+  dependency family (nix-grafted, denied-lifecycle-build, pure-package-artifact).
   The generated pnpm `allowBuilds` denylist is now derived from it so the
   denylist and audit cannot drift. A new install-free CI audit
   (`genie/ci-scripts/native-dep-policy-audit.ts`, wired into the

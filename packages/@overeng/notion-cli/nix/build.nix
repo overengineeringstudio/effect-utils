@@ -33,7 +33,7 @@ let
     # Managed by the repo FOD refresh workflow — do not edit manually.
     depsBuilds = {
       "." = {
-        hash = "sha256-I8lMOisGdfUeLjDIH5CxGz1lasR0z5qAq+fbTKLB+PI=";
+        hash = "sha256-J0Y7fFyDw48pn5cZaf3iMoBZaU0+OJNvLDcToYXovvg=";
       };
     };
     nativeNodePackages = opentuiCoreNative.packages;
@@ -49,7 +49,12 @@ pkgs.runCommand "notion-cli"
     nativeBuildInputs = [ pkgs.makeWrapper ];
     meta.mainProgram = "notion";
     passthru = {
-      inherit (unwrapped.passthru) depsBuildEntries depsBuildsByInstallRoot installRoots;
+      inherit (unwrapped.passthru)
+        depsBuildEntries
+        depsBuildsByInstallRoot
+        fodHashRepairTargets
+        installRoots
+        ;
     };
   }
   ''

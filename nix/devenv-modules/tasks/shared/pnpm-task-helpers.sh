@@ -128,6 +128,424 @@ compute_pnpm_contract_section_hash() {
   pnpm_contract_section_json "$node_bin" "$contract_file" "$section" | compute_hash
 }
 
+pnpm_contract_supports_dependency_materialization_profile() {
+  local node_bin="$1"
+  local contract_file="$2"
+
+  "$node_bin" - "$contract_file" <<'EOF'
+const fs = require('node:fs')
+
+const [contractFile] = process.argv.slice(2)
+const contract = JSON.parse(fs.readFileSync(contractFile, 'utf8'))
+
+process.exit(
+  contract.dependencyMaterializationProfile?.schema === 'dependency-materialization-profile/v0'
+    ? 0
+    : 1,
+)
+EOF
+}
+
+emit_dependency_materialization_profile() {
+  local node_bin="$1"
+  local contract_file="$2"
+  local store_trait="$3"
+  local output_file="${4:-}"
+
+  "$node_bin" - "$contract_file" "$store_trait" "$output_file" <<'EOF'
+const crypto = require('node:crypto')
+const fs = require('node:fs')
+const path = require('node:path')
+
+const [contractFile, storeTrait, outputFile] = process.argv.slice(2)
+const contract = JSON.parse(fs.readFileSync(contractFile, 'utf8'))
+const evidenceContractPath = path.isAbsolute(contractFile)
+  ? path.relative(fs.realpathSync(process.cwd()), fs.realpathSync(contractFile))
+  : contractFile
+
+const stableJson = (value) => {
+  if (Array.isArray(value)) {
+    return value.map(stableJson)
+  }
+
+  if (value === null || typeof value !== 'object') {
+    return value
+  }
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, nested]) => [key, stableJson(nested)]),
+  )
+}
+
+const digest = (value) =>
+  crypto
+    .createHash('sha256')
+    .update(`${JSON.stringify(stableJson(value))}\n`)
+    .digest('hex')
+
+const profileContract = contract.dependencyMaterializationProfile
+if (profileContract?.schema !== 'dependency-materialization-profile/v0') {
+  console.error(`[pnpm] ${contractFile} has no dependencyMaterializationProfile schema`)
+  process.exit(1)
+}
+
+const trait = profileContract.supportedTraits?.[storeTrait]
+if (trait === undefined) {
+  console.error(`[pnpm] unsupported dependency materialization store trait '${storeTrait}'`)
+  process.exit(1)
+}
+
+const inputSections = Object.fromEntries(
+  profileContract.identityInputs.map((section) => {
+    if (!Object.prototype.hasOwnProperty.call(contract, section)) {
+      console.error(`[pnpm] ${contractFile} has no identity section '${section}'`)
+      process.exit(1)
+    }
+    return [section, contract[section]]
+  }),
+)
+
+const sectionDigests = Object.fromEntries(
+  Object.entries(inputSections).map(([section, value]) => [section, digest(value)]),
+)
+const topologyDigest = digest({
+  packageManager: inputSections.packageManager,
+  workspaceManifestContract: inputSections.workspaceManifestContract,
+})
+const policyDigest = digest({
+  gvsLinkContract: inputSections.gvsLinkContract,
+  installPolicy: inputSections.installPolicy,
+})
+const storeDigest = digest({
+  storeContract: inputSections.storeContract,
+  storeTrait,
+  trait,
+})
+
+const profile = {
+  schema: 'dependency-materialization-profile/v0',
+  profileId: `pnpm:${topologyDigest}:${policyDigest}:${storeDigest}:${storeTrait}`,
+  store: {
+    trait: storeTrait,
+    contract: inputSections.storeContract,
+  },
+  authorities: {
+    gc: trait.gcAuthority,
+    repair: trait.repairAuthority,
+  },
+  topology: {
+    digest: topologyDigest,
+    workspaceManifestContractDigest: sectionDigests.workspaceManifestContract,
+  },
+  policy: {
+    digest: policyDigest,
+    gvsLinkContractDigest: sectionDigests.gvsLinkContract,
+    installPolicyDigest: sectionDigests.installPolicy,
+    nativeBuildPolicyInputs: profileContract.nativeBuildPolicyInputs,
+  },
+  evidence: {
+    contractPath: evidenceContractPath,
+    sectionDigests,
+  },
+}
+
+const rendered = `${JSON.stringify(profile, null, 2)}\n`
+if (outputFile) {
+  fs.writeFileSync(outputFile, rendered)
+} else {
+  process.stdout.write(rendered)
+}
+EOF
+}
+
+write_dependency_materialization_registry() {
+  local node_bin="$1"
+  local profile_file="$2"
+  local project_dir="$3"
+  local store_dir="$4"
+  local output_file="$5"
+  local shared_registry_file="${6:-}"
+
+  "$node_bin" - "$profile_file" "$project_dir" "$store_dir" "$output_file" "$shared_registry_file" <<'EOF'
+const crypto = require('node:crypto')
+const fs = require('node:fs')
+const path = require('node:path')
+
+const [profileFile, projectDir, storeDir, outputFile, sharedRegistryFile] = process.argv.slice(2)
+const profile = JSON.parse(fs.readFileSync(profileFile, 'utf8'))
+const storeLayoutVersion = 'v11'
+const filesPath = path.join(storeDir, storeLayoutVersion, 'files')
+
+const realFilesPath = (() => {
+  try {
+    return fs.realpathSync(filesPath)
+  } catch {
+    return filesPath
+  }
+})()
+
+const poolId = crypto
+  .createHash('sha256')
+  .update(`${realFilesPath}\n`)
+  .digest('hex')
+const rootId = crypto
+  .createHash('sha256')
+  .update(`${profile.profileId}\n${projectDir}\n${storeDir}\n`)
+  .digest('hex')
+
+const singletonRegistry = {
+  schema: 'dependency-materialization-registry/v0',
+  profiles: [
+    {
+      id: rootId,
+      profileId: profile.profileId,
+      project: projectDir,
+      store: storeDir,
+      filesPoolId: poolId,
+    },
+  ],
+  pools: [
+    {
+      id: poolId,
+      filesPath,
+    },
+  ],
+}
+
+const readRegistry = (file) => {
+  if (!file || !fs.existsSync(file)) {
+    return { schema: 'dependency-materialization-registry/v0', profiles: [], pools: [] }
+  }
+
+  const registry = JSON.parse(fs.readFileSync(file, 'utf8'))
+  return {
+    schema: 'dependency-materialization-registry/v0',
+    profiles: Array.isArray(registry.profiles) ? registry.profiles : [],
+    pools: Array.isArray(registry.pools) ? registry.pools : [],
+  }
+}
+
+const upsertBy = (rows, row, key) => [
+  ...rows.filter((candidate) => candidate[key] !== row[key]),
+  row,
+].sort((left, right) => left[key].localeCompare(right[key]))
+
+const merged = readRegistry(sharedRegistryFile)
+const nextProfile = singletonRegistry.profiles[0]
+const withoutSameRoot = merged.profiles.filter(
+  (candidate) => candidate.project !== nextProfile.project || candidate.store !== nextProfile.store,
+)
+merged.profiles = upsertBy(withoutSameRoot, nextProfile, 'id')
+merged.pools = upsertBy(merged.pools, singletonRegistry.pools[0], 'id')
+
+const rendered = `${JSON.stringify(merged, null, 2)}\n`
+if (sharedRegistryFile) {
+  fs.mkdirSync(path.dirname(sharedRegistryFile), { recursive: true })
+  const tmpFile = `${sharedRegistryFile}.${process.pid}.tmp`
+  fs.writeFileSync(tmpFile, rendered)
+  fs.renameSync(tmpFile, sharedRegistryFile)
+}
+fs.writeFileSync(outputFile, rendered)
+EOF
+}
+
+dependency_materialization_shared_registry_file() {
+  local node_bin="$1"
+  local store_dir="$2"
+
+  "$node_bin" - "$store_dir" <<'EOF'
+const fs = require('node:fs')
+const path = require('node:path')
+
+const [storeDir] = process.argv.slice(2)
+const storeLayoutVersion = 'v11'
+const filesPath = path.join(storeDir, storeLayoutVersion, 'files')
+const realFilesPath = (() => {
+  try {
+    return fs.realpathSync(filesPath)
+  } catch {
+    return filesPath
+  }
+})()
+
+process.stdout.write(path.join(
+  path.dirname(realFilesPath),
+  `.effect-utils-dependency-materialization-registry-${storeLayoutVersion}.json`,
+))
+EOF
+}
+
+dependency_materialization_profile_id() {
+  local node_bin="$1"
+  local profile_file="$2"
+
+  "$node_bin" - "$profile_file" <<'EOF'
+const fs = require('node:fs')
+
+const [profileFile] = process.argv.slice(2)
+const profile = JSON.parse(fs.readFileSync(profileFile, 'utf8'))
+process.stdout.write(profile.profileId)
+EOF
+}
+
+dependency_materialization_profile_files_pool_id() {
+  local node_bin="$1"
+  local registry_file="$2"
+  local profile_id="$3"
+
+  "$node_bin" - "$registry_file" "$profile_id" <<'EOF'
+const fs = require('node:fs')
+
+const [registryFile, profileId] = process.argv.slice(2)
+const registry = JSON.parse(fs.readFileSync(registryFile, 'utf8'))
+const profiles = Array.isArray(registry.profiles) ? registry.profiles : []
+const profile = profiles.find((row) => row.id === profileId || row.profileId === profileId)
+
+if (profile === undefined || typeof profile.filesPoolId !== 'string') {
+  process.exit(1)
+}
+
+process.stdout.write(profile.filesPoolId)
+EOF
+}
+
+dependency_materialization_profile_store_dir() {
+  local node_bin="$1"
+  local registry_file="$2"
+  local profile_id="$3"
+
+  "$node_bin" - "$registry_file" "$profile_id" <<'EOF'
+const fs = require('node:fs')
+
+const [registryFile, profileId] = process.argv.slice(2)
+const registry = JSON.parse(fs.readFileSync(registryFile, 'utf8'))
+const profiles = Array.isArray(registry.profiles) ? registry.profiles : []
+const profile = profiles.find((row) => row.id === profileId || row.profileId === profileId)
+
+if (profile === undefined || typeof profile.store !== 'string') {
+  process.exit(1)
+}
+
+process.stdout.write(profile.store)
+EOF
+}
+
+dependency_materialization_repair_roots() {
+  local node_bin="$1"
+  local registry_file="$2"
+  local files_pool_id="$3"
+
+  "$node_bin" - "$registry_file" "$files_pool_id" <<'EOF'
+const fs = require('node:fs')
+
+const [registryFile, filesPoolId] = process.argv.slice(2)
+const registry = JSON.parse(fs.readFileSync(registryFile, 'utf8'))
+const profiles = Array.isArray(registry.profiles) ? registry.profiles : []
+
+for (const profile of profiles
+  .filter((row) => row.filesPoolId === filesPoolId)
+  .sort((left, right) => left.id.localeCompare(right.id))) {
+  process.stdout.write(`${profile.project}\t${profile.store}\n`)
+}
+EOF
+}
+
+dependency_materialization_store_doctor() {
+  local node_bin="$1"
+  local registry_file="$2"
+  local profile_id="$3"
+
+  "$node_bin" - "$registry_file" "$profile_id" <<'EOF'
+const fs = require('node:fs')
+const path = require('node:path')
+
+const [registryFile, profileId] = process.argv.slice(2)
+const registry = JSON.parse(fs.readFileSync(registryFile, 'utf8'))
+
+const classifyPool = (pool) => {
+  if (pool.filesKind !== undefined) return pool.filesKind
+  if (typeof pool.filesPath !== 'string') return 'missing'
+
+  try {
+    const stat = fs.lstatSync(pool.filesPath)
+    if (stat.isSymbolicLink()) {
+      const target = fs.realpathSync(pool.filesPath)
+      const localRoot = path.dirname(path.dirname(pool.filesPath))
+      return target.startsWith(`${localRoot}${path.sep}`)
+        ? 'profile-local-symlink'
+        : 'shared-symlink'
+    }
+    if (stat.isDirectory()) return 'directory'
+    return 'invalid'
+  } catch {
+    return 'missing'
+  }
+}
+
+const profiles = Array.isArray(registry.profiles) ? registry.profiles : []
+const pools = Array.isArray(registry.pools) ? registry.pools : []
+const profile = profiles.find((row) => row.id === profileId || row.profileId === profileId)
+
+if (profile === undefined) {
+  console.log(JSON.stringify({ phase: 'doctor', profileId, decision: 'refuse', reason: 'unknown-profile', siblings: [] }))
+  process.exit(0)
+}
+
+const pool = pools.find((row) => row.id === profile.filesPoolId)
+if (pool === undefined) {
+  console.log(JSON.stringify({ phase: 'doctor', profileId, filesPoolId: profile.filesPoolId, decision: 'refuse', reason: 'unknown-files-pool', siblings: [] }))
+  process.exit(0)
+}
+
+const filesKind = classifyPool(pool)
+const siblings = profiles
+  .filter((row) => row.filesPoolId === pool.id)
+  .map((row) => row.id)
+  .sort()
+
+if ((filesKind === 'directory' || filesKind === 'profile-local-symlink') && siblings.length === 1) {
+  console.log(JSON.stringify({ phase: 'doctor', profileId, filesPoolId: pool.id, decision: 'allow-profile-local-prune', reason: 'profile-local-files-pool', siblings, filesKind }))
+  process.exit(0)
+}
+
+console.log(JSON.stringify({
+  phase: 'doctor',
+  profileId,
+  filesPoolId: pool.id,
+  decision: 'refuse-raw-prune',
+  reason: filesKind === 'shared-symlink' ? 'shared-files-pool' : 'invalid-files-pool',
+  siblings,
+  filesKind,
+}))
+EOF
+}
+
+dependency_materialization_repair_plan() {
+  local node_bin="$1"
+  local registry_file="$2"
+  local files_pool_id="$3"
+
+  "$node_bin" - "$registry_file" "$files_pool_id" <<'EOF'
+const fs = require('node:fs')
+
+const [registryFile, filesPoolId] = process.argv.slice(2)
+const registry = JSON.parse(fs.readFileSync(registryFile, 'utf8'))
+const profiles = Array.isArray(registry.profiles) ? registry.profiles : []
+const roots = profiles
+  .filter((profile) => profile.filesPoolId === filesPoolId)
+  .map((profile) => ({ profile: profile.id, project: profile.project, store: profile.store }))
+  .sort((left, right) => left.profile.localeCompare(right.profile))
+
+if (roots.length === 0) {
+  console.log(JSON.stringify({ phase: 'repair-plan', filesPoolId, decision: 'refuse', reason: 'no-registered-roots', roots }))
+} else {
+  console.log(JSON.stringify({ phase: 'repair-plan', filesPoolId, decision: 'repair-all-roots', reason: 'registered-roots', roots }))
+}
+EOF
+}
+
 classify_pnpm_contract_change() {
   local node_bin="$1"
   local previous_contract="$2"

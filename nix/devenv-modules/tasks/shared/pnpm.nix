@@ -73,6 +73,15 @@ let
     if taskSuffix == null then "${taskNamePrefix}:dedupe" else "${taskNamePrefix}:dedupe:${taskSuffix}";
   cleanTaskName =
     if taskSuffix == null then "${taskNamePrefix}:clean" else "${taskNamePrefix}:clean:${taskSuffix}";
+  doctorTaskName =
+    if taskSuffix == null then "${taskNamePrefix}:doctor" else "${taskNamePrefix}:doctor:${taskSuffix}";
+  repairPlanTaskName =
+    if taskSuffix == null then
+      "${taskNamePrefix}:repair-plan"
+    else
+      "${taskNamePrefix}:repair-plan:${taskSuffix}";
+  repairTaskName =
+    if taskSuffix == null then "${taskNamePrefix}:repair" else "${taskNamePrefix}:repair:${taskSuffix}";
   resetLockFilesTaskName =
     if taskSuffix == null then
       "${taskNamePrefix}:reset-lock-files"
@@ -416,6 +425,8 @@ let
         hash_file="${cacheRoot}/install-state.hash"
         projection_hash_file="${cacheRoot}/projection-state.hash"
         contract_state_file="${cacheRoot}/pnpm-install-contract.json"
+        dependency_profile_file="${cacheRoot}/dependency-materialization-profile.json"
+        dependency_registry_file="${cacheRoot}/dependency-materialization-registry.json"
 
         lockfile="${cacheRoot}/pnpm-install.lock"
         exec 200>"$lockfile"
@@ -527,6 +538,24 @@ let
         fi
         if [ -n "''${_pnpm_install_contract_file:-}" ]; then
           cp "$_pnpm_install_contract_file" "$contract_state_file"
+          if pnpm_contract_supports_dependency_materialization_profile ${pkgs.nodejs}/bin/node "$_pnpm_install_contract_file"; then
+            if [ -n "''${CI:-}" ]; then
+              _dependency_materialization_trait="ciJobLocal"
+            elif [ -L "$npm_config_store_dir/v11/files" ]; then
+              _dependency_materialization_trait="darwinSplitCas"
+            else
+              _dependency_materialization_trait="isolated"
+            fi
+            emit_dependency_materialization_profile ${pkgs.nodejs}/bin/node "$_pnpm_install_contract_file" "$_dependency_materialization_trait" "$dependency_profile_file"
+            _dependency_shared_registry_file="$(dependency_materialization_shared_registry_file ${pkgs.nodejs}/bin/node "$npm_config_store_dir")"
+            mkdir -p "$(dirname "$_dependency_shared_registry_file")"
+            exec 203>"$_dependency_shared_registry_file.lock"
+            if ! ${flock} -w 600 203; then
+              echo "[pnpm] dependency materialization registry lock timeout after 600s: $_dependency_shared_registry_file.lock" >&2
+              exit 1
+            fi
+            write_dependency_materialization_registry ${pkgs.nodejs}/bin/node "$dependency_profile_file" "$PWD" "$npm_config_store_dir" "$dependency_registry_file" "$_dependency_shared_registry_file"
+          fi
         fi
 
         cache_value="$(compute_install_state_hash)"
@@ -546,6 +575,8 @@ let
         hash_file="${cacheRoot}/install-state.hash"
         projection_hash_file="${cacheRoot}/projection-state.hash"
         contract_state_file="${cacheRoot}/pnpm-install-contract.json"
+        dependency_profile_file="${cacheRoot}/dependency-materialization-profile.json"
+        dependency_registry_file="${cacheRoot}/dependency-materialization-registry.json"
 
         _pnpm_install_contract_file="$(resolve_pnpm_install_contract_file "$PWD" || true)"
         if [ -z "''${_pnpm_install_contract_file:-}" ]; then
@@ -558,6 +589,11 @@ let
         fi
 
         if [ ! -d node_modules ] || [ ! -f pnpm-lock.yaml ] || [ ! -f "$hash_file" ] || [ ! -f "$projection_hash_file" ] || [ ! -f node_modules/.modules.yaml ]; then
+          emit_pnpm_install_miss_span ${lib.escapeShellArg installTaskName} "bootstrap"
+          exit 1
+        fi
+
+        if pnpm_contract_supports_dependency_materialization_profile ${pkgs.nodejs}/bin/node "$_pnpm_install_contract_file" && { [ ! -f "$dependency_profile_file" ] || [ ! -f "$dependency_registry_file" ]; }; then
           emit_pnpm_install_miss_span ${lib.escapeShellArg installTaskName} "bootstrap"
           exit 1
         fi
@@ -657,6 +693,119 @@ let
         # The GVS `links/` directory lives under the shared store-dir. Deleting
         # it from one workspace would break node_modules projections in other
         # workspaces that point at the same shared store.
+      '';
+    };
+
+    "${doctorTaskName}" = {
+      guard = "pnpm";
+      description = "Inspect existing dependency materialization evidence for the pnpm workspace at ${workspaceRoot}";
+      exec = trace.exec doctorTaskName ''
+        set -euo pipefail
+        cd ${lib.escapeShellArg workspaceRootAbs}
+        ${loadPnpmTaskHelpersFn}
+
+        dependency_profile_file="${cacheRoot}/dependency-materialization-profile.json"
+        dependency_registry_file="${cacheRoot}/dependency-materialization-registry.json"
+        if [ ! -f "$dependency_profile_file" ] || [ ! -f "$dependency_registry_file" ]; then
+          echo "[pnpm] Missing dependency materialization evidence; run: ${installTaskName}" >&2
+          exit 1
+        fi
+
+        profile_id="$(dependency_materialization_profile_id ${pkgs.nodejs}/bin/node "$dependency_profile_file")"
+        dependency_materialization_store_doctor ${pkgs.nodejs}/bin/node "$dependency_registry_file" "$profile_id"
+      '';
+    };
+
+    "${repairPlanTaskName}" = {
+      guard = "pnpm";
+      description = "Plan repair from existing dependency materialization evidence for the pnpm workspace at ${workspaceRoot}";
+      exec = trace.exec repairPlanTaskName ''
+        set -euo pipefail
+        cd ${lib.escapeShellArg workspaceRootAbs}
+        ${loadPnpmTaskHelpersFn}
+
+        dependency_profile_file="${cacheRoot}/dependency-materialization-profile.json"
+        dependency_registry_file="${cacheRoot}/dependency-materialization-registry.json"
+        if [ ! -f "$dependency_profile_file" ] || [ ! -f "$dependency_registry_file" ]; then
+          echo "[pnpm] Missing dependency materialization evidence; run: ${installTaskName}" >&2
+          exit 1
+        fi
+
+        profile_id="$(dependency_materialization_profile_id ${pkgs.nodejs}/bin/node "$dependency_profile_file")"
+        profile_store_dir="$(dependency_materialization_profile_store_dir ${pkgs.nodejs}/bin/node "$dependency_registry_file" "$profile_id")"
+        shared_registry_file="$(dependency_materialization_shared_registry_file ${pkgs.nodejs}/bin/node "$profile_store_dir")"
+        repair_registry_file="$dependency_registry_file"
+        if [ -f "$shared_registry_file" ]; then
+          repair_registry_file="$shared_registry_file"
+        fi
+        if ! files_pool_id="$(dependency_materialization_profile_files_pool_id ${pkgs.nodejs}/bin/node "$repair_registry_file" "$profile_id")"; then
+          files_pool_id="$(dependency_materialization_profile_files_pool_id ${pkgs.nodejs}/bin/node "$dependency_registry_file" "$profile_id")"
+        fi
+        dependency_materialization_repair_plan ${pkgs.nodejs}/bin/node "$repair_registry_file" "$files_pool_id"
+      '';
+    };
+
+    "${repairTaskName}" = {
+      guard = "pnpm";
+      description = "Repair all registered pnpm workspaces sharing this dependency materialization files pool";
+      exec = trace.exec repairTaskName ''
+        set -euo pipefail
+        cd ${lib.escapeShellArg workspaceRootAbs}
+        ${loadPnpmTaskHelpersFn}
+
+        dependency_profile_file="${cacheRoot}/dependency-materialization-profile.json"
+        dependency_registry_file="${cacheRoot}/dependency-materialization-registry.json"
+        if [ ! -f "$dependency_profile_file" ] || [ ! -f "$dependency_registry_file" ]; then
+          echo "[pnpm] Missing dependency materialization evidence; run: ${installTaskName}" >&2
+          exit 1
+        fi
+
+        profile_id="$(dependency_materialization_profile_id ${pkgs.nodejs}/bin/node "$dependency_profile_file")"
+        profile_store_dir="$(dependency_materialization_profile_store_dir ${pkgs.nodejs}/bin/node "$dependency_registry_file" "$profile_id")"
+        shared_registry_file="$(dependency_materialization_shared_registry_file ${pkgs.nodejs}/bin/node "$profile_store_dir")"
+        repair_registry_file="$dependency_registry_file"
+        if [ -f "$shared_registry_file" ]; then
+          repair_registry_file="$shared_registry_file"
+        fi
+        if ! files_pool_id="$(dependency_materialization_profile_files_pool_id ${pkgs.nodejs}/bin/node "$repair_registry_file" "$profile_id")"; then
+          files_pool_id="$(dependency_materialization_profile_files_pool_id ${pkgs.nodejs}/bin/node "$dependency_registry_file" "$profile_id")"
+        fi
+        dependency_materialization_repair_plan ${pkgs.nodejs}/bin/node "$repair_registry_file" "$files_pool_id"
+
+        repaired_roots=0
+        while IFS=$'\t' read -r repair_project_dir repair_store_dir; do
+          if [ -z "''${repair_project_dir:-}" ]; then
+            continue
+          fi
+          if [ ! -d "$repair_project_dir" ] || [ ! -f "$repair_project_dir/pnpm-lock.yaml" ]; then
+            echo "[pnpm] Skipping stale dependency materialization root: $repair_project_dir" >&2
+            continue
+          fi
+
+          mkdir -p "$repair_store_dir"
+          repair_store_lockfile="$repair_store_dir/.effect-utils-pnpm-store.lock"
+          exec 204>"$repair_store_lockfile"
+          if ! ${flock} -w 600 204; then
+            echo "[pnpm] store-dir repair lock timeout after 600s: $repair_store_lockfile" >&2
+            exit 1
+          fi
+
+          echo "[pnpm] Repairing dependency materialization root: $repair_project_dir"
+          (
+            cd "$repair_project_dir"
+            export PNPM_STORE_DIR="$repair_store_dir"
+            export PNPM_CONFIG_STORE_DIR="$repair_store_dir"
+            export npm_config_store_dir="$repair_store_dir"
+            ${runPnpmInstallFn}
+            run_pnpm_install --force
+          )
+          repaired_roots=$((repaired_roots + 1))
+        done < <(dependency_materialization_repair_roots ${pkgs.nodejs}/bin/node "$repair_registry_file" "$files_pool_id")
+
+        if [ "$repaired_roots" -eq 0 ]; then
+          echo "[pnpm] No live dependency materialization roots were repaired" >&2
+          exit 1
+        fi
       '';
     };
 

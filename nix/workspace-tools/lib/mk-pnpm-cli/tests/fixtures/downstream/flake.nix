@@ -174,6 +174,69 @@
           fi
           printf '%s' "$actual" > "$out"
         '';
+        checks.pure-eval-dependency-materialization-evidence =
+          pkgs.runCommand "mk-pnpm-cli-pure-eval-dependency-materialization-evidence" { }
+            ''
+              actual='${
+                builtins.toJSON {
+                  kind = pureEvalFixture.passthru.dependencyMaterializationEvidence.kind;
+                  producer = pureEvalFixture.passthru.dependencyMaterializationEvidence.producer;
+                  profileCount = builtins.length pureEvalFixture.passthru.dependencyMaterializationEvidence.profiles;
+                  attrNames = map (
+                    profile: profile.attrName
+                  ) pureEvalFixture.passthru.dependencyMaterializationEvidence.profiles;
+                  traits = map (
+                    profile: profile.traits
+                  ) pureEvalFixture.passthru.dependencyMaterializationEvidence.profiles;
+                  rootFreshnessInputs = builtins.sort builtins.lessThan (
+                    builtins.attrNames (builtins.head pureEvalFixture.passthru.dependencyMaterializationEvidence.profiles)
+                    .freshness.manifestDigests
+                  );
+                  externalRootPatchAuthorityPresent = builtins.hasAttr "rootPatchedDependenciesSection" (builtins.elemAt pureEvalFixture.passthru.dependencyMaterializationEvidence.profiles 1)
+                  .freshness.rootPatchAuthority;
+                  buck2Kind = pureEvalFixture.passthru.buck2DependencyMaterializationEvidence.kind;
+                  buck2DoesNotOwnLive = lib.all (
+                    materialization: materialization.ownsLiveMaterialization == false
+                  ) pureEvalFixture.passthru.buck2DependencyMaterializationEvidence.materializations;
+                  buck2EvidenceKeysMatch =
+                    map (
+                      materialization: materialization.evidenceKey
+                    ) pureEvalFixture.passthru.buck2DependencyMaterializationEvidence.materializations
+                    == map (
+                      profile: profile.evidenceKey
+                    ) pureEvalFixture.passthru.dependencyMaterializationEvidence.profiles;
+                  fodRepairKinds = map (target: target.kind) pureEvalFixture.passthru.fodHashRepairTargets;
+                  fodRepairProfileKeysMatch =
+                    map (target: target.profileKey) pureEvalFixture.passthru.fodHashRepairTargets
+                    == map (
+                      profile: profile.profileKey
+                    ) pureEvalFixture.passthru.dependencyMaterializationEvidence.profiles;
+                  fodRepairHashPaths = map (target: target.hashPath) pureEvalFixture.passthru.fodHashRepairTargets;
+                  sourcePathInsensitive =
+                    map (
+                      profile: profile.profileKey
+                    ) pureEvalFixture.passthru.dependencyMaterializationEvidence.profiles
+                    == map (
+                      profile: profile.profileKey
+                    ) pureEvalDerivedWorkspaceFixture.passthru.dependencyMaterializationEvidence.profiles;
+                  consumerNameInsensitive =
+                    (builtins.head profileDedupConsumerA.passthru.dependencyMaterializationEvidence.profiles).profileKey
+                    == (builtins.head profileDedupConsumerB.passthru.dependencyMaterializationEvidence.profiles)
+                    .profileKey;
+                  absentOptionalInputsExcluded =
+                    !(builtins.elem "pnpm-install-contract.json" (builtins.head pureEvalFixture.passthru.dependencyMaterializationEvidence.profiles)
+                    .inputs.manifests)
+                    && !(builtins.elem "tsconfig.base.json" (builtins.head pureEvalFixture.passthru.dependencyMaterializationEvidence.profiles)
+                    .inputs.manifests);
+                }
+              }'
+              expected='{"absentOptionalInputsExcluded":true,"attrNames":["root","repos-effect-utils"],"buck2DoesNotOwnLive":true,"buck2EvidenceKeysMatch":true,"buck2Kind":"buck2-dependency-materialization-evidence","consumerNameInsensitive":true,"externalRootPatchAuthorityPresent":true,"fodRepairHashPaths":[["depsBuilds",".","hash"],["depsBuilds","repos/effect-utils","hash"]],"fodRepairKinds":["dependency-fod-hash-repair-target","dependency-fod-hash-repair-target"],"fodRepairProfileKeysMatch":true,"kind":"dependency-materialization-evidence","producer":"effect-utils.mk-pnpm-cli","profileCount":2,"rootFreshnessInputs":[".npmrc","app/package.json","package.json","pnpm-lock.yaml","pnpm-workspace.yaml"],"sourcePathInsensitive":true,"traits":[["nixPreparedDeps"],["nixPreparedDeps"]]}'
+              if [ "$actual" != "$expected" ]; then
+                echo "unexpected dependency materialization evidence: $actual" >&2
+                exit 1
+              fi
+              printf '%s' "$actual" > "$out"
+            '';
       }
     );
 }
