@@ -13,9 +13,11 @@ All notable changes to this project will be documented in this file.
   while child specs own live pnpm state, `.bin` projection, prepared FOD
   purity, hash evidence, native package boundaries, shared-store repair/GC,
   and build-log producer facts. The hierarchy now includes a verification
-  subsystem that consolidates the long-term proof and benchmark categories from
-  the superseded dotfiles research PR into effect-utils-owned fixture, proof,
-  real-workload, and cross-system evidence tiers. The VRS now records that the
+  subsystem with a timeless evidence-intake contract for graduating prototype,
+  downstream, CI, and historical PR evidence into effect-utils-owned fixture,
+  proof, real-workload, and cross-system evidence tiers. Historical research
+  references now live in dot-prefixed companion directories instead of the
+  normative spec. The VRS now records that the
   strict prepared-deps purity scan transition uses one convergent `v18`
   prepared artifact version bump and hash refresh, rather than report-only or
   profile-gated legacy scan modes, and that FOD run evidence belongs to

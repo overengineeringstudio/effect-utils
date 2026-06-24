@@ -12,7 +12,7 @@ Status: **Draft**
 | Evidence Tiers         | DMP.VER-R01, DMP.VER-R02, DMP.VER-R03, DMP.VER-R04 |
 | Benchmark Matrix       | DMP.VER-R05, DMP.VER-R06, DMP.VER-R07              |
 | Evidence Records       | DMP.VER-R08, DMP.VER-R09                           |
-| Research Consolidation | DMP.VER-R10                                        |
+| Evidence Intake        | DMP.VER-R10                                        |
 
 ## Evidence Tiers
 
@@ -25,8 +25,8 @@ fixture checks
 
 | Tier                      | Purpose                                                 | Typical cadence                        | Examples                                             |
 | ------------------------- | ------------------------------------------------------- | -------------------------------------- | ---------------------------------------------------- |
-| Fixture checks            | Fast contract regressions                               | PR/CI                                  | policy audit, helper tests, prepared scan fixtures   |
-| Synthetic proofs          | Reproduce failure modes and decision logic              | PR or targeted                         | shared prune repro, lifecycle sentinel, doctor model |
+| Fixture checks            | Fast contract regressions                               | change/CI                              | policy audit, helper tests, prepared scan fixtures   |
+| Synthetic proofs          | Reproduce failure modes and decision logic              | change or targeted                     | shared prune repro, lifecycle sentinel, doctor model |
 | Real-workload benchmarks  | Measure correctness and cache efficiency on real graphs | before defaults                        | isolated vs shared APFS/ext4 profiles                |
 | Cross-system/default gate | Prevent unsafe platform generalization                  | before default or shared hash collapse | Darwin/Linux FOD evidence, pending-system markers    |
 
@@ -44,8 +44,8 @@ fixture checks
 
 ## Benchmark Matrix
 
-Benchmark records use JSON lines so CI logs, PR comments, and local runs can
-share one parser:
+Benchmark records use JSON lines so CI logs, automation comments, and local
+runs can share one parser:
 
 ```json
 {
@@ -82,17 +82,23 @@ Default changes require same-workload comparisons against the current default
 and an isolated baseline. Cache-efficiency claims must report bytes and file
 counts, not only timing.
 
-## Research Consolidation
+## Evidence Intake And Graduation
 
-The dotfiles draft PR
-`schickling/dotfiles#1126` is superseded by the effect-utils DMP PR once:
+Verification may import evidence from prototype branches, downstream
+repositories, local experiments, CI artifacts, and historical change records.
+Imported evidence is not normative by itself. It graduates into the DMP
+verification system only when its durable finding maps to one of these
+outcomes:
 
-1. shared-store prune/status/repair is represented by store-authority evidence;
-2. Buck2 profile evidence is represented by the Buck2 evidence subsystem;
-3. store-trait benchmark categories are represented by this verification
-   subsystem;
-4. remaining platform gaps are tracked as pending evidence rather than as a
-   dotfiles-owned VRS.
+1. a fixture, smoke test, or policy audit that protects a correctness
+   invariant;
+2. a synthetic proof that reproduces a known failure mode or decision boundary;
+3. a real-workload benchmark with comparable timing, byte, file-count, and
+   platform records;
+4. a pending evidence marker that prevents overgeneralized default changes;
+5. a rejected finding with enough rationale to prevent re-importing the same
+   obsolete assumption.
 
-Research scripts may remain useful as references, but production verification
-belongs in effect-utils fixtures, checks, and reusable proof harnesses.
+Research may be retired once every durable finding has one of those outcomes.
+Historical source links belong in `.research/` or `.experiments/`, not in the
+normative spec.

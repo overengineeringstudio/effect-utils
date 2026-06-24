@@ -11,8 +11,10 @@ observability subsystems.
 
 - **A01 Layered evidence:** Cheap fixtures catch contract regressions, while
   real-workload benchmarks gate defaults and cache-efficiency claims.
-- **A02 Imported research:** Prior dotfiles research is evidence input, not the
-  owning VRS surface. effect-utils owns the reusable verification contract.
+- **A02 External evidence:** Prototype branches, downstream experiments,
+  historical change records, CI artifacts, and local measurements are evidence
+  inputs, not the owning VRS surface. effect-utils owns the reusable
+  verification contract.
 
 ## Acceptable Tradeoffs
 
@@ -66,7 +68,8 @@ observability subsystems.
 - **DMP.VER-R09 Decision linkage:** Consequential DMP decisions must name the
   evidence category that justifies them and any evidence still pending.
   Refines: DMP-R20.
-- **DMP.VER-R10 Superseded research:** Draft research PRs may be closed only
-  after their long-term evidence categories are represented in this VRS or in a
-  linked effect-utils issue/PR.
+- **DMP.VER-R10 Research graduation:** Prototype or downstream research may be
+  retired only after each durable finding is represented by a verification
+  requirement, implemented as a reusable proof or benchmark, recorded as
+  pending evidence, or explicitly rejected with rationale.
   Refines: DMP-R20.
