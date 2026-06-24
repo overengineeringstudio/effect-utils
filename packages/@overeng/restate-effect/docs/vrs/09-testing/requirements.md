@@ -43,3 +43,8 @@ key)` proxy with `get`/`getAll`/`set`/`setAll`, key- and value-typed against the
   consumer's `AppLayer`, so handler `R` is satisfied inside the spawned endpoint,
   and expose the typed ingress client plus `stateOf` for use with
   `@effect/vitest` `it.effect`. (A07; [../.decisions/0009](../.decisions/0009-effect-native-testing-harness.md).)
+- **R26e Structured SDK log capture:** The native-server harness MUST capture SDK
+  endpoint logs through the structured endpoint logger (R40) and expose them to
+  tests without flattening SDK params, so expected terminal-domain failures,
+  request-identity events, and invocation-processing records can be asserted
+  without relying on process stderr or global log-level suppression.

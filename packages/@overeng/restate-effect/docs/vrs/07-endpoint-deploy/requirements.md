@@ -36,3 +36,8 @@ per-invocation boundary the endpoint drives is owned by
   resolvable from `Config` (`port: Config<number>`,
   `OTEL_SERVICE_NAME`/`OTEL_EXPORTER_OTLP_ENDPOINT`).
   ([../.decisions/0016](../.decisions/0016-secured-ingress-and-request-identity.md).)
+- **R40 Structured SDK endpoint logging:** The endpoint MUST allow callers to
+  replace the Restate SDK endpoint logger with a structured transport that
+  preserves SDK log metadata, raw message, and optional params without
+  stringification, so endpoint discovery, request-identity validation, and
+  invocation-processing records remain inspectable without scraping stderr.

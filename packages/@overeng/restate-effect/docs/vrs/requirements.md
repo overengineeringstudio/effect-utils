@@ -137,7 +137,7 @@ everything else lives with the subsystem that owns it (see the
 | [04-error-boundary](./04-error-boundary/requirements.md)   | R11, R12, R13, R14, R15, R16, R21, R22, R31                                           |
 | [05-clients](./05-clients/requirements.md)                 | R10, R32, R33                                                                         |
 | [06-scheduling](./06-scheduling/requirements.md)           | (role-only; traces [.decisions/0012](./.decisions/0012-self-reschedule.md), R10/R32)  |
-| [07-endpoint-deploy](./07-endpoint-deploy/requirements.md) | R29, R38, R39                                                                         |
+| [07-endpoint-deploy](./07-endpoint-deploy/requirements.md) | R29, R38, R39, R40                                                                    |
 | [08-observability](./08-observability/requirements.md)     | R23, R23b, R24, R25                                                                   |
-| [09-testing](./09-testing/requirements.md)                 | R26, R26a, R26b, R26c, R26d, R27, R28                                                 |
+| [09-testing](./09-testing/requirements.md)                 | R26, R26a, R26b, R26c, R26d, R26e, R27, R28                                           |
 | [10-admin](./10-admin/requirements.md)                     | (role-only; traces [.decisions/0018](./.decisions/0018-admin-management-api.md), R31) |
