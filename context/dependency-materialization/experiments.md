@@ -95,3 +95,21 @@ Conclusion:
   hash changes.
 - Shared fixed-output hash helpers should require complete measurement metadata
   or an explicit pending-system marker before collapsing per-system hashes.
+
+## 2026-06-24: Strict Scan Transition Choice
+
+Hypothesis:
+
+- The prepared-deps scan transition should converge in one version bump instead
+  of preserving report-only or legacy-compatible scan modes.
+
+Result:
+
+- User selected the single strict transition option during VRS interview.
+- The accepted transition is `v18`: strict scan enforcement and hash refresh
+  happen together.
+
+Conclusion:
+
+- DMP treats broad fixed-output hash churn as an acceptable cost for making the
+  prepared-deps data boundary unambiguous.

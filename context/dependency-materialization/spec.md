@@ -126,7 +126,11 @@ The default failing scan rejects:
 - leaked absolute pnpm store, home, cache, or workspace-local state paths.
 
 Removing `.bin` changes recursive fixed-output hashes, so enabling this purity
-scan requires a prepared artifact version bump and regenerated hashes.
+scan requires a prepared artifact version bump and regenerated hashes. The
+strict-scan transition is a single convergent boundary: bump the prepared
+artifact version, enforce the failing scan immediately for that version, and
+refresh the affected hashes rather than carrying report-only or profile-gated
+legacy scan modes.
 
 ## Pure Bin Projection
 
@@ -275,7 +279,5 @@ these acceptance gates.
 
 ## Open Design Questions
 
-- **DQ3 FOD scan transition:** What prepared artifact version and transition order
-  minimizes fixed-output hash churn while making `.bin` stripping explicit?
 - **DQ4 Cross-system hash metadata:** What metadata shape lets Evergreen refuse
   unsafe shared-hash collapse when Darwin or another covered system is missing?

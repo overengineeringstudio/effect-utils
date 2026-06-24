@@ -15,7 +15,10 @@ All notable changes to this project will be documented in this file.
   and build-log producer facts. The hierarchy now includes a verification
   subsystem that consolidates the long-term proof and benchmark categories from
   the superseded dotfiles research PR into effect-utils-owned fixture, proof,
-  real-workload, and cross-system evidence tiers.
+  real-workload, and cross-system evidence tiers. The VRS now records that the
+  strict prepared-deps purity scan transition uses one convergent `v18`
+  prepared artifact version bump and hash refresh, rather than report-only or
+  profile-gated legacy scan modes.
 
 - **Dependency materialization profile contract**: Extend the generated
   `pnpm-install-contract.json` with a stable `dependency-materialization-profile/v0`

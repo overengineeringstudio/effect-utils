@@ -76,6 +76,12 @@ by default on:
 - unexpected `*.node` files;
 - known platform package directories unless explicitly classified.
 
+The strict scan transition is versioned at the prepared artifact boundary. The
+next tightening that strips and rejects archived `.bin` projection state uses
+prepared artifact version `v18`, enforces the scan immediately for `v18`, and
+requires regenerated fixed-output hashes for all affected prepared dependency
+artifacts.
+
 The output hash is the recursive directory hash of the normalized data tree.
 Archive streams may be used for transport, but archive bytes are not the
 fixed-output contract.

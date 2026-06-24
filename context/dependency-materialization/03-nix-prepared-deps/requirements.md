@@ -24,7 +24,9 @@ projection semantics from
 - **T01 Staged workspace:** Builders may stage a filtered workspace if the
   staged inputs are mechanically derived from canonical topology inputs.
 - **T02 Versioned churn:** Tightening normalization or purity may require a
-  prepared artifact version bump and hash refresh.
+  prepared artifact version bump and hash refresh. Strict purity transitions
+  use one new artifact version instead of report-only or legacy-compatible
+  enforcement modes.
 - **T03 Explicit native grafts:** Platform-specific native packages may be
   grafted during the platform-specific build phase instead of living in the
   platform-neutral FOD.

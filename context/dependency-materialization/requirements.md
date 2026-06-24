@@ -53,7 +53,9 @@ Subsystem requirements refine this root contract:
   package metadata and writes local shims without executing package code.
 - **T03 Versioned artifact churn:** Tightening prepared artifact purity may
   require a prepared-deps artifact version bump and broad fixed-output hash
-  refreshes.
+  refreshes. When a purity boundary is deliberately tightened, a single
+  convergent version bump is preferred over maintaining parallel legacy
+  prepared-deps policies.
 - **T04 Conservative repair:** Repair and GC commands may refuse to mutate when
   they cannot prove the correct profile, platform, or shared-store authority.
 
