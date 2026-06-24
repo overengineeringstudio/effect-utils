@@ -25,6 +25,8 @@ Subsystem requirements refine this root contract:
   evidence boundary.
 - [06-observability](./06-observability/requirements.md) defines producer facts
   for materialization telemetry.
+- [07-verification](./07-verification/requirements.md) defines the proof,
+  benchmark, and regression architecture for dependency materialization.
 
 ## Assumptions
 
@@ -127,3 +129,6 @@ Subsystem requirements refine this root contract:
 - **DMP-R19 Observable phases:** Materialization, normalization, projection,
   repair, GC, and evidence production must emit enough timing and size facts to
   explain regressions.
+- **DMP-R20 Verification architecture:** Changes to dependency materialization
+  behavior must map to explicit fixture, proof, benchmark, or real-workload
+  evidence before they become defaults.

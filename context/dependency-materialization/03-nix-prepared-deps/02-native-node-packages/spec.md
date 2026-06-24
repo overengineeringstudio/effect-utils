@@ -7,20 +7,20 @@ Status: **Draft**
 
 ## Requirement Trace
 
-| Section | Requirements |
-| --- | --- |
+| Section        | Requirements                                                                   |
+| -------------- | ------------------------------------------------------------------------------ |
 | Classification | DMP.NIX.NATIVE-R01, DMP.NIX.NATIVE-R03, DMP.NIX.NATIVE-R05, DMP.NIX.NATIVE-R06 |
-| Build Phase | DMP.NIX.NATIVE-R02, DMP.NIX.NATIVE-R04, DMP.NIX.NATIVE-R07 |
+| Build Phase    | DMP.NIX.NATIVE-R02, DMP.NIX.NATIVE-R04, DMP.NIX.NATIVE-R07                     |
 
 ## Classification
 
 Native package families use one of these classifications:
 
-| Classification | Meaning |
-| --- | --- |
-| `nix-grafted` | Native output is supplied by a Nix derivation or wrapper. |
-| `pure-package-artifact` | Package contents are accepted as data without lifecycle execution. |
-| `denied-lifecycle-build` | Package requires scripts/builds and is rejected until integrated. |
+| Classification           | Meaning                                                            |
+| ------------------------ | ------------------------------------------------------------------ |
+| `nix-grafted`            | Native output is supplied by a Nix derivation or wrapper.          |
+| `pure-package-artifact`  | Package contents are accepted as data without lifecycle execution. |
+| `denied-lifecycle-build` | Package requires scripts/builds and is rejected until integrated.  |
 
 Prepared-deps scans apply the classification before accepting `*.node` files or
 known platform package directories.

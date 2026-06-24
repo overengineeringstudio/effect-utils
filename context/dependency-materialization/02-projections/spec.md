@@ -16,12 +16,12 @@ This spec defines deterministic projection after dependency data exists:
 
 ## Requirement Trace
 
-| Section | Requirements |
-| --- | --- |
-| Bin Projection | DMP.PROJ-R01, DMP.PROJ-R02, DMP.PROJ-R03, DMP.PROJ-R04, DMP.PROJ-R05, DMP.PROJ-R06 |
-| Report Shape | DMP.PROJ-R07 |
-| Edge Cases | DMP.PROJ-R02, DMP.PROJ-R04, DMP.PROJ-R05 |
-| Prepared-deps exclusion | DMP.PROJ-R08 |
+| Section                 | Requirements                                                                       |
+| ----------------------- | ---------------------------------------------------------------------------------- |
+| Bin Projection          | DMP.PROJ-R01, DMP.PROJ-R02, DMP.PROJ-R03, DMP.PROJ-R04, DMP.PROJ-R05, DMP.PROJ-R06 |
+| Report Shape            | DMP.PROJ-R07                                                                       |
+| Edge Cases              | DMP.PROJ-R02, DMP.PROJ-R04, DMP.PROJ-R05                                           |
+| Prepared-deps exclusion | DMP.PROJ-R08                                                                       |
 
 ## Bin Projection
 
@@ -67,16 +67,16 @@ pnpm build commands.
 The conformance fixture compares effect-utils output with pnpm's published bin
 linking behavior for cases that are compatible with this VRS:
 
-| Case | Expected behavior |
-| --- | --- |
-| `bin` string | command name derives from package name |
-| `bin` object | command names derive from object keys |
-| scoped object key | `@scope/tool` links as `tool` |
-| `directories.bin` | each file under the declared directory becomes a command |
-| invalid command name | skip and report rejection |
-| target outside package root | skip and report rejection |
-| missing generated target | skip and report missing target; do not build |
-| duplicate command names | choose deterministic owner and report skipped entries |
+| Case                        | Expected behavior                                        |
+| --------------------------- | -------------------------------------------------------- |
+| `bin` string                | command name derives from package name                   |
+| `bin` object                | command names derive from object keys                    |
+| scoped object key           | `@scope/tool` links as `tool`                            |
+| `directories.bin`           | each file under the declared directory becomes a command |
+| invalid command name        | skip and report rejection                                |
+| target outside package root | skip and report rejection                                |
+| missing generated target    | skip and report missing target; do not build             |
+| duplicate command names     | choose deterministic owner and report skipped entries    |
 
 The oracle is not a production dependency boundary. If pnpm changes behavior,
 effect-utils updates the conformance fixture deliberately and records the

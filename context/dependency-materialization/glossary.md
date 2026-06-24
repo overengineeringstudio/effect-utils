@@ -28,6 +28,9 @@ created from declared inputs and restored into downstream builds.
 **Native graft:** A platform-specific native package output supplied by Nix or
 an explicit wrapper after prepared dependency data is restored.
 
+**Pure package artifact:** Package contents accepted as dependency data without
+running lifecycle scripts, downloads, source compilation, or generated native
+build output.
+
 **Buck2 evidence:** A declared dependency-profile fact consumed by Buck2 without
 granting Buck2 authority over live pnpm install or shared-store repair.
-

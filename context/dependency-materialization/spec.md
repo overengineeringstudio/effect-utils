@@ -33,21 +33,23 @@ dependency-materialization/
   04-store-authority/        shared content, repair, prune, and GC authority
   05-buck2-evidence/         Buck2 evidence-only boundary
   06-observability/          producer facts and build-log bridge records
+  07-verification/           proof, benchmark, and regression architecture
 ```
 
 ## Requirement Trace
 
-| Section | Requirements |
-| --- | --- |
-| Model | DMP-R09, DMP-R10, DMP-R11 |
-| Strict pnpm Install Policy | DMP-R01, DMP-R02, DMP-R03, DMP-R04 |
-| Dependency Data, Projections, And Native Outputs | DMP-R05, DMP-R06, DMP-R08 |
-| Prepared FOD Purity | DMP-R05, DMP-R08, DMP-R18 |
-| Pure Bin Projection | DMP-R06, DMP-R07, DMP-R17 |
-| Profile Record | DMP-R09, DMP-R10, DMP-R11, DMP-R12 |
-| Store Traits And Authorities | DMP-R12, DMP-R13, DMP-R14 |
-| Doctor And Repair | DMP-R15 |
-| Benchmark And Acceptance Gates | DMP-R16, DMP-R17, DMP-R18, DMP-R19 |
+| Section                                          | Requirements                                |
+| ------------------------------------------------ | ------------------------------------------- |
+| Model                                            | DMP-R09, DMP-R10, DMP-R11                   |
+| Strict pnpm Install Policy                       | DMP-R01, DMP-R02, DMP-R03, DMP-R04          |
+| Dependency Data, Projections, And Native Outputs | DMP-R05, DMP-R06, DMP-R08                   |
+| Prepared FOD Purity                              | DMP-R05, DMP-R08, DMP-R18                   |
+| Pure Bin Projection                              | DMP-R06, DMP-R07, DMP-R17                   |
+| Profile Record                                   | DMP-R09, DMP-R10, DMP-R11, DMP-R12          |
+| Store Traits And Authorities                     | DMP-R12, DMP-R13, DMP-R14                   |
+| Doctor And Repair                                | DMP-R15                                     |
+| Benchmark And Acceptance Gates                   | DMP-R16, DMP-R17, DMP-R18, DMP-R19          |
+| Verification Architecture                        | DMP-R16, DMP-R17, DMP-R18, DMP-R19, DMP-R20 |
 
 ## Model
 
@@ -83,12 +85,12 @@ explicitly opts into a different optional-dependency policy.
 Install entrypoints reject arguments or config that would re-enable lifecycle
 execution:
 
-| Surface | Decision |
-| --- | --- |
-| `--no-ignore-scripts`, `--ignore-scripts=false`, `--config.ignore-scripts=false` | reject |
-| `pnpm rebuild` for managed dependency materialization | reject or route to explicit native integration |
-| `pnpm approve-builds`, `--allow-build`, `dangerouslyAllowAllBuilds` | reject |
-| `allowBuilds` / `onlyBuiltDependencies` as trust gate | not used for managed purity |
+| Surface                                                                          | Decision                                       |
+| -------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `--no-ignore-scripts`, `--ignore-scripts=false`, `--config.ignore-scripts=false` | reject                                         |
+| `pnpm rebuild` for managed dependency materialization                            | reject or route to explicit native integration |
+| `pnpm approve-builds`, `--allow-build`, `dangerouslyAllowAllBuilds`              | reject                                         |
+| `allowBuilds` / `onlyBuiltDependencies` as trust gate                            | not used for managed purity                    |
 
 The generated pnpm workspace contract may still mention upstream pnpm fields
 when needed for compatibility, but effect-utils-managed materialization treats
@@ -216,14 +218,14 @@ projection policy, and store trait.
 
 ## Store Traits And Authorities
 
-| Trait | Intended use | Sharing model | GC authority |
-| --- | --- | --- | --- |
-| `ciJobLocal` | CI jobs and isolated automation | job-local pnpm state | profile-local |
-| `darwinSplitCas` | macOS local development | profile-local metadata/projection, shared package files | shared-pool coordinator |
-| `linuxSharedHardlink` | Linux local development after proof | host-local store with hardlink import | shared-pool coordinator |
-| `isolated` | fallback and reproduction | no sibling sharing | profile-local |
-| `nixPreparedDeps` | Nix fixed-output dependency data | prepared tree in Nix store | Nix store |
-| `frozenSeed` | future read-only seed | immutable seed plus writable projection | seed owner plus profile-local projection |
+| Trait                 | Intended use                        | Sharing model                                           | GC authority                             |
+| --------------------- | ----------------------------------- | ------------------------------------------------------- | ---------------------------------------- |
+| `ciJobLocal`          | CI jobs and isolated automation     | job-local pnpm state                                    | profile-local                            |
+| `darwinSplitCas`      | macOS local development             | profile-local metadata/projection, shared package files | shared-pool coordinator                  |
+| `linuxSharedHardlink` | Linux local development after proof | host-local store with hardlink import                   | shared-pool coordinator                  |
+| `isolated`            | fallback and reproduction           | no sibling sharing                                      | profile-local                            |
+| `nixPreparedDeps`     | Nix fixed-output dependency data    | prepared tree in Nix store                              | Nix store                                |
+| `frozenSeed`          | future read-only seed               | immutable seed plus writable projection                 | seed owner plus profile-local projection |
 
 Profile-local prune refuses to sweep a shared files pool. Shared-pool GC marks
 from every active root before sweeping.
@@ -267,10 +269,12 @@ A materialization policy change is accepted only when it proves:
 - host-wide bytes, file counts, cold install, warm install, offline reinstall,
   and repair times are recorded.
 
+The [verification subsystem](./07-verification/spec.md) owns the evidence
+matrix, proof tiers, benchmark record shape, and regression-gate routing for
+these acceptance gates.
+
 ## Open Design Questions
 
-- **DQ2 Native package registry:** Which package families should be modeled as
-  pure package artifacts versus Nix-provided native integrations?
 - **DQ3 FOD scan transition:** What prepared artifact version and transition order
   minimizes fixed-output hash churn while making `.bin` stripping explicit?
 - **DQ4 Cross-system hash metadata:** What metadata shape lets Evergreen refuse

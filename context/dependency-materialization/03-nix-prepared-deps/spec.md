@@ -18,14 +18,14 @@ This spec defines:
 
 ## Requirement Trace
 
-| Section | Requirements |
-| --- | --- |
-| Pipeline | DMP.NIX-R01, DMP.NIX-R04, DMP.NIX-R05, DMP.NIX-R07 |
-| Staged Inputs | DMP.NIX-R02, DMP.NIX-R06 |
-| Install Policy | DMP.NIX-R01 |
-| Normalization And Purity Scan | DMP.NIX-R03, DMP.NIX-R04 |
-| Restore | DMP.NIX-R05, DMP.NIX-R07 |
-| Evidence | DMP.NIX-R08, DMP.NIX-R09, DMP.NIX-R10 |
+| Section                       | Requirements                                       |
+| ----------------------------- | -------------------------------------------------- |
+| Pipeline                      | DMP.NIX-R01, DMP.NIX-R04, DMP.NIX-R05, DMP.NIX-R07 |
+| Staged Inputs                 | DMP.NIX-R02, DMP.NIX-R06                           |
+| Install Policy                | DMP.NIX-R01                                        |
+| Normalization And Purity Scan | DMP.NIX-R03, DMP.NIX-R04                           |
+| Restore                       | DMP.NIX-R05, DMP.NIX-R07                           |
+| Evidence                      | DMP.NIX-R08, DMP.NIX-R09, DMP.NIX-R10              |
 
 ## Pipeline
 

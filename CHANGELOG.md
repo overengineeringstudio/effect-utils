@@ -12,7 +12,10 @@ All notable changes to this project will be documented in this file.
   composed VRS hierarchy. The root DMP contract now stays mechanism-agnostic,
   while child specs own live pnpm state, `.bin` projection, prepared FOD
   purity, hash evidence, native package boundaries, shared-store repair/GC,
-  and build-log producer facts.
+  and build-log producer facts. The hierarchy now includes a verification
+  subsystem that consolidates the long-term proof and benchmark categories from
+  the superseded dotfiles research PR into effect-utils-owned fixture, proof,
+  real-workload, and cross-system evidence tiers.
 
 - **Dependency materialization profile contract**: Extend the generated
   `pnpm-install-contract.json` with a stable `dependency-materialization-profile/v0`
@@ -72,7 +75,7 @@ All notable changes to this project will be documented in this file.
 
 - **native dependency policy audit**: Add `nativeDependencyPolicy`, a tagged
   source-of-truth classification in `genie/external.ts` for every native npm
-  dependency family (nix-grafted, denied-lifecycle-build, fod-accepted-prebuilt).
+  dependency family (nix-grafted, denied-lifecycle-build, pure-package-artifact).
   The generated pnpm `allowBuilds` denylist is now derived from it so the
   denylist and audit cannot drift. A new install-free CI audit
   (`genie/ci-scripts/native-dep-policy-audit.ts`, wired into the

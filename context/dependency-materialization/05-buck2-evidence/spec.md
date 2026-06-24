@@ -7,11 +7,11 @@ Status: **Draft**
 
 ## Requirement Trace
 
-| Section | Requirements |
-| --- | --- |
-| Boundary | DMP.BUCK-R01, DMP.BUCK-R04 |
+| Section        | Requirements               |
+| -------------- | -------------------------- |
+| Boundary       | DMP.BUCK-R01, DMP.BUCK-R04 |
 | Evidence Shape | DMP.BUCK-R02, DMP.BUCK-R03 |
-| Future Builder | DMP.BUCK-R05 |
+| Future Builder | DMP.BUCK-R05               |
 
 ## Boundary
 
