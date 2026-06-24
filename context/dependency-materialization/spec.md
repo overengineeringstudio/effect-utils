@@ -21,6 +21,20 @@ This spec does not define package-specific native integrations. Those belong in
 Nix package derivations, native package registries, or downstream wrappers that
 name the package and platform explicitly.
 
+Subsystem specs refine this root model:
+
+```text
+dependency-materialization/
+  01-live-pnpm/              mutable worktree installs
+  02-projections/            deterministic .bin and workspace projection
+  03-nix-prepared-deps/      immutable Nix prepared dependency artifacts
+    01-fod-hash-evidence/   cross-system FOD hash evidence
+    02-native-node-packages/ native package classification and grafting
+  04-store-authority/        shared content, repair, prune, and GC authority
+  05-buck2-evidence/         Buck2 evidence-only boundary
+  06-observability/          producer facts and build-log bridge records
+```
+
 ## Model
 
 ```text

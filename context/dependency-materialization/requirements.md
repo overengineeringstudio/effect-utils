@@ -11,6 +11,21 @@ pnpm resolves and links package contents, while executable projection, native
 tooling, and repair are owned by effect-utils, Nix, or explicit profile
 operations.
 
+Subsystem requirements refine this root contract:
+
+- [01-live-pnpm](./01-live-pnpm/requirements.md) defines mutable worktree
+  installs and topology ownership.
+- [02-projections](./02-projections/requirements.md) defines deterministic
+  executable and workspace projection.
+- [03-nix-prepared-deps](./03-nix-prepared-deps/requirements.md) defines
+  immutable Nix prepared dependency artifacts.
+- [04-store-authority](./04-store-authority/requirements.md) defines shared
+  content, repair, prune, and GC authority.
+- [05-buck2-evidence](./05-buck2-evidence/requirements.md) defines the Buck2
+  evidence boundary.
+- [06-observability](./06-observability/requirements.md) defines producer facts
+  for materialization telemetry.
+
 ## Assumptions
 
 - **A01 pnpm base:** The supported package-manager surface is pnpm 11 with the

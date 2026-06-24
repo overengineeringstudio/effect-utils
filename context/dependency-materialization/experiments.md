@@ -95,3 +95,11 @@ Conclusion:
   hash changes.
 - Shared fixed-output hash helpers should require complete measurement metadata
   or an explicit pending-system marker before collapsing per-system hashes.
+
+## Migrated VRS Evidence
+
+The previous dotfiles VRS roots for live node_modules installs, Nix pnpm CLI
+prepared dependencies, and dependency materialization profiles were split into
+the child systems under this directory. The migration keeps product-owned
+contracts in effect-utils and leaves fleet/task orchestration policy outside
+this repo.

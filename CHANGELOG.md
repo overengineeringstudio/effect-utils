@@ -6,6 +6,14 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Dependency materialization VRS hierarchy**: Move the reusable pnpm install,
+  projection, Nix prepared-deps, store-authority, Buck2 evidence, and
+  observability contracts into `context/dependency-materialization/` as a
+  composed VRS hierarchy. The root DMP contract now stays mechanism-agnostic,
+  while child specs own live pnpm state, `.bin` projection, prepared FOD
+  purity, hash evidence, native package boundaries, shared-store repair/GC,
+  and build-log producer facts.
+
 - **Dependency materialization profile contract**: Extend the generated
   `pnpm-install-contract.json` with a stable `dependency-materialization-profile/v0`
   section covering identity inputs, store traits, native build policy inputs,
