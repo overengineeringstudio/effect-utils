@@ -131,6 +131,15 @@ All notable changes to this project will be documented in this file.
   source-mode CLI shell tests cannot race dependency materialization under
   `test:run --mode before`.
 
+- **CI alignment notification**: Keep the `notify-alignment` dispatch limited to
+  trusted push events so fork pull requests without `MEGAREPO_ALIGNMENT_TOKEN`
+  do not run the coordinator dispatch job and fail with GitHub `401`.
+
+- **CI measurement reporting**: Skip PR comment publication for fork pull
+  requests that cannot write comments/assets, while keeping measurement summaries
+  and artifacts. Chart asset fallbacks now re-render the comment from structured
+  URLs instead of editing Markdown with brittle `sed` ranges.
+
 - **Genie compiled import staging cleanup**: Scope compiled-binary `.genie.ts`
   import staging directories to the dynamic import lifetime so successful and
   failing compiled runs no longer leave `genie-import-*` directories in the

@@ -904,7 +904,6 @@ export default ciWorkflow({
           'namespace-features:github.run-id=${{ github.run_id }}',
         ],
       }),
-      if: normalCiIf,
     },
   },
 } satisfies GitHubWorkflowArgs)
