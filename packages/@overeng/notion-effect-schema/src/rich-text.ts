@@ -39,6 +39,28 @@ export const TextAnnotations = Schema.Struct({
 
 export type TextAnnotations = typeof TextAnnotations.Type
 
+/**
+ * Styling annotations accepted in Notion rich text write/create payloads.
+ *
+ * The read-side annotation object always includes every flag and color. Create
+ * payloads may send only the annotations that differ from Notion defaults.
+ */
+export const TextAnnotationsCreate = Schema.Struct({
+  bold: Schema.optional(Schema.Boolean),
+  italic: Schema.optional(Schema.Boolean),
+  strikethrough: Schema.optional(Schema.Boolean),
+  underline: Schema.optional(Schema.Boolean),
+  code: Schema.optional(Schema.Boolean),
+  color: Schema.optional(NotionColor),
+}).annotations({
+  identifier: 'Notion.TextAnnotationsCreate',
+  title: 'Text Annotations (Create)',
+  description: 'Optional styling properties accepted in Notion rich text create payloads.',
+  [docsPath]: 'rich-text#the-annotation-object',
+})
+
+export type TextAnnotationsCreate = typeof TextAnnotationsCreate.Type
+
 // -----------------------------------------------------------------------------
 // Rich Text Types
 // -----------------------------------------------------------------------------
@@ -93,6 +115,27 @@ export const TextRichText = Schema.Struct({
 })
 
 export type TextRichText = typeof TextRichText.Type
+
+/**
+ * Text-type rich text content accepted in Notion create/update payloads.
+ *
+ * @see https://developers.notion.com/reference/rich-text#text
+ */
+export const TextRichTextCreate = Schema.Struct({
+  type: Schema.Literal('text'),
+  text: Schema.Struct({
+    content: Schema.String,
+    link: Schema.optional(Schema.NullOr(TextLink)),
+  }),
+  annotations: Schema.optional(TextAnnotationsCreate),
+}).annotations({
+  identifier: 'Notion.TextRichTextCreate',
+  title: 'Text Rich Text (Create)',
+  description: 'Minimal text rich text object accepted in Notion create/update requests.',
+  [docsPath]: 'rich-text#text',
+})
+
+export type TextRichTextCreate = typeof TextRichTextCreate.Type
 
 // -----------------------------------------------------------------------------
 // Mention Types

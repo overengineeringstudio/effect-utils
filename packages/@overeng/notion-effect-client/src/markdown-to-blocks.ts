@@ -1,115 +1,21 @@
+import type {
+  NotionBlockCreate,
+  TableRowBlockCreate as NotionTableRowBlockCreate,
+  TextAnnotationsCreate as NotionTextAnnotationsCreate,
+  TextRichTextCreate as NotionRichTextCreate,
+} from '@overeng/notion-effect-schema'
+
 import { parseNotionMarkdownAst } from './canonical-markdown.ts'
-
-/** Text annotations accepted by Notion rich-text create payloads. */
-export interface NotionTextAnnotationsCreate {
-  readonly bold?: boolean
-  readonly italic?: boolean
-  readonly strikethrough?: boolean
-  readonly code?: boolean
-}
-
-/** Rich-text payload accepted by Notion block append/create APIs. */
-export interface NotionRichTextCreate {
-  readonly type: 'text'
-  readonly text: {
-    readonly content: string
-    readonly link?: {
-      readonly url: string
-    }
-  }
-  readonly annotations?: NotionTextAnnotationsCreate
-}
-
-/** Table-row block payload accepted inside Notion table append/create blocks. */
-export interface NotionTableRowBlockCreate {
-  readonly object: 'block'
-  readonly type: 'table_row'
-  readonly table_row: {
-    readonly cells: readonly (readonly NotionRichTextCreate[])[]
-  }
-}
 
 /** Short alias for Notion table-row create payloads. */
 export type NotionTableRowCreate = NotionTableRowBlockCreate
 
-/** Block payload accepted by Notion append/create APIs for Markdown imports. */
-export type NotionBlockCreate =
-  | {
-      readonly object: 'block'
-      readonly type: 'divider'
-      readonly divider: Record<string, never>
-    }
-  | {
-      readonly object: 'block'
-      readonly type: 'paragraph'
-      readonly paragraph: { readonly rich_text: readonly NotionRichTextCreate[] }
-    }
-  | {
-      readonly object: 'block'
-      readonly type: 'heading_1'
-      readonly heading_1: { readonly rich_text: readonly NotionRichTextCreate[] }
-    }
-  | {
-      readonly object: 'block'
-      readonly type: 'heading_2'
-      readonly heading_2: { readonly rich_text: readonly NotionRichTextCreate[] }
-    }
-  | {
-      readonly object: 'block'
-      readonly type: 'heading_3'
-      readonly heading_3: { readonly rich_text: readonly NotionRichTextCreate[] }
-    }
-  | {
-      readonly object: 'block'
-      readonly type: 'bulleted_list_item'
-      readonly bulleted_list_item: {
-        readonly rich_text: readonly NotionRichTextCreate[]
-        readonly children?: readonly NotionBlockCreate[]
-      }
-    }
-  | {
-      readonly object: 'block'
-      readonly type: 'numbered_list_item'
-      readonly numbered_list_item: {
-        readonly rich_text: readonly NotionRichTextCreate[]
-        readonly children?: readonly NotionBlockCreate[]
-      }
-    }
-  | {
-      readonly object: 'block'
-      readonly type: 'to_do'
-      readonly to_do: {
-        readonly rich_text: readonly NotionRichTextCreate[]
-        readonly checked: boolean
-        readonly children?: readonly NotionBlockCreate[]
-      }
-    }
-  | {
-      readonly object: 'block'
-      readonly type: 'quote'
-      readonly quote: {
-        readonly rich_text: readonly NotionRichTextCreate[]
-        readonly children?: readonly NotionBlockCreate[]
-      }
-    }
-  | {
-      readonly object: 'block'
-      readonly type: 'code'
-      readonly code: {
-        readonly rich_text: readonly NotionRichTextCreate[]
-        readonly language: string
-      }
-    }
-  | {
-      readonly object: 'block'
-      readonly type: 'table'
-      readonly table: {
-        readonly table_width: number
-        readonly has_column_header: boolean
-        readonly has_row_header: boolean
-        readonly children: readonly NotionTableRowBlockCreate[]
-      }
-    }
+export type {
+  NotionBlockCreate,
+  NotionRichTextCreate,
+  NotionTableRowBlockCreate,
+  NotionTextAnnotationsCreate,
+}
 
 interface MarkdownNode {
   readonly type?: string
