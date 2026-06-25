@@ -18,6 +18,15 @@ All notable changes to this project will be documented in this file.
   mismatches in runtime dependencies fail in CI before downstream consumers hit
   them. Mark `pnpm-install-contract.json` as generated in Git attributes.
 
+- **devenv/lint**: Add a `lint:check:asset-import-needs-type-reference` task (wired into
+  `lint:check`) that fails when a compiled, exported source file imports an asset
+  (`import '...css|scss|sass|less'`) without a `/// <reference>` directive to make the ambient
+  `*.css` declaration travel into downstream TS checks (TS2882, #837). It runs out-of-band over
+  tracked + untracked source (an in-oxlint rule would itself be suppressible by an `oxlint-disable`,
+  which is how this regressed), so no disable directive — next-line, same-line, or file-level — can
+  bypass it. Exempts the globs where side-effect imports are allowed and not type-checked downstream
+  (`.storybook/**`, `*.gen.*`, `*.d.ts`, `*.test.*`, `*.stories.*`).
+
 - **Dependency materialization VRS hierarchy**: Move the reusable pnpm install,
   projection, Nix prepared-deps, store-authority, Buck2 evidence, and
   observability contracts into `context/dependency-materialization/` as a
@@ -124,6 +133,17 @@ All notable changes to this project will be documented in this file.
   effect-utils' root workspace config only, so downstream
   `createPnpmPatchedDependencies` consumers do not inherit a pty-only patch and
   trip pnpm's unused-patch validation.
+
+- **@overeng/tui-react**: Fix downstream `TS2882` for `TuiStoryPreview`'s
+  `import '@xterm/xterm/css/xterm.css'`. The `*.css` ambient that types the side-effect import is
+  now referenced from the importing file via a `/// <reference path>` directive (to a shipped
+  `src/storybook/asset-modules.d.ts`), so the declaration travels into every program that compiles
+  the file — including downstream source-linked TS checks. Previously the ambient lived in floating
+  `.d.ts` files loaded only by this repo's own tsconfig `include` globs, so it did not ride along
+  when a downstream consumer compiled the source via `exports`-resolution. Removes those floating
+  declarations (`types/css.d.ts`, `tui-react/src/types/css.d.ts`) and their `include` references
+  across the `genie`, `megarepo`, `notion-cli`, and `tui-stories` tsconfigs. The bundler still
+  injects the stylesheet natively — no runtime or codegen change.
 
 ### Changed
 

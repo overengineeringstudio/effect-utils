@@ -13,13 +13,7 @@ export default tsconfigJson({
     types: ['node', 'bun'],
     jsx: 'react-jsx',
   },
-  include: [
-    'src/**/*.ts',
-    'src/**/*.tsx',
-    'bin/**/*.ts',
-    'bin/**/*.tsx',
-    '../../../types/css.d.ts',
-  ],
+  include: ['src/**/*.ts', 'src/**/*.tsx', 'bin/**/*.ts', 'bin/**/*.tsx'],
   references: [
     { path: '../otel-contract' },
     { path: '../tui-core' },
