@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Bundle smoke CI gate**: Add a Vite/Rollup-based smoke check for
+  `@overeng/pty-effect` public entries so bundler-resolution ESM export
+  mismatches in runtime dependencies fail in CI before downstream consumers hit
+  them. Mark `pnpm-install-contract.json` as generated in Git attributes.
+
 - **Dependency materialization VRS hierarchy**: Move the reusable pnpm install,
   projection, Nix prepared-deps, store-authority, Buck2 evidence, and
   observability contracts into `context/dependency-materialization/` as a

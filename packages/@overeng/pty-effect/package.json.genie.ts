@@ -19,7 +19,7 @@ const workspaceDeps = catalog.compose({
   devDependencies: {
     workspace: [utilsDevPkg],
     external: {
-      ...catalog.pick(...peerDepNames, '@effect/vitest', '@types/node', 'typescript', 'vitest'),
+      ...catalog.pick(...peerDepNames, '@effect/vitest', '@types/node', 'typescript', 'vite', 'vitest'),
     },
   },
   peerDependencies: {
@@ -31,6 +31,9 @@ export default packageJson(
   {
     name: '@overeng/pty-effect',
     ...privatePackageDefaults,
+    scripts: {
+      'bundle:smoke': 'bun ../../../genie/ci-scripts/bundle-smoke.ts',
+    },
     exports: {
       '.': './src/mod.ts',
       './client': './src/client.ts',
