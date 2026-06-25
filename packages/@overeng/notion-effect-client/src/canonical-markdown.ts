@@ -1,20 +1,9 @@
-import {
-  gfmStrikethroughFromMarkdown,
-  gfmStrikethroughToMarkdown,
-} from 'mdast-util-gfm-strikethrough'
-import { gfmTableFromMarkdown, gfmTableToMarkdown } from 'mdast-util-gfm-table'
-import {
-  gfmTaskListItemFromMarkdown,
-  gfmTaskListItemToMarkdown,
-} from 'mdast-util-gfm-task-list-item'
-import { gfmStrikethrough } from 'micromark-extension-gfm-strikethrough'
-import { gfmTable } from 'micromark-extension-gfm-table'
-import { gfmTaskListItem } from 'micromark-extension-gfm-task-list-item'
 import remarkParse from 'remark-parse'
 import remarkStringify from 'remark-stringify'
-import { unified, type Processor } from 'unified'
+import { unified } from 'unified'
 import { visit } from 'unist-util-visit'
 
+import { remarkNotionGfm } from './markdown-gfm.ts'
 import { canonicalizeMediaUrlsInMarkdown } from './media-url.ts'
 
 /*
@@ -125,49 +114,6 @@ const markdownStringifyOptions = {
   setext: false,
   tightDefinitions: true,
 } as const
-
-const pushProcessorData = <A>({
-  data,
-  key,
-  extensions,
-}: {
-  data: Record<string, unknown>
-  key: string
-  extensions: ReadonlyArray<A>
-}): void => {
-  const current = (data[key] ??= []) as Array<A>
-  current.push(...extensions)
-}
-
-/*
- * Use only the GFM constructs Notion-flavored Markdown needs here. The bundled
- * `remark-gfm` also enables autolink literals, which rewrites plain URL/email-
- * shaped text into angle autolinks (`https://x.y` -> `<https://x.y>`). That is
- * lossy for Notion preview-link text and makes edge cases like `0@.A`
- * non-idempotent (`<0@.A>` -> `<<0@.A>>`).
- */
-const remarkNotionGfm = function (this: Processor): void {
-  const data = this.data() as Record<string, unknown>
-  pushProcessorData({
-    data,
-    key: 'micromarkExtensions',
-    extensions: [gfmTable(), gfmTaskListItem(), gfmStrikethrough()],
-  })
-  pushProcessorData({
-    data,
-    key: 'fromMarkdownExtensions',
-    extensions: [
-      gfmTableFromMarkdown(),
-      gfmTaskListItemFromMarkdown(),
-      gfmStrikethroughFromMarkdown(),
-    ],
-  })
-  pushProcessorData({
-    data,
-    key: 'toMarkdownExtensions',
-    extensions: [gfmTableToMarkdown(), gfmTaskListItemToMarkdown(), gfmStrikethroughToMarkdown()],
-  })
-}
 
 const processor = unified()
   .use(remarkParse)

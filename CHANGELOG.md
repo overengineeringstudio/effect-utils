@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Notion Markdown block payloads**: Add `NotionMarkdown.markdownToBlocks`,
+  an AST-based converter from selected Notion-flavored Markdown and GFM tables
+  into block-children payloads accepted by `NotionBlocks.append`.
+
 - **Bundle smoke CI gate**: Add a Vite/Rollup-based smoke check for
   `@overeng/pty-effect` public entries so bundler-resolution ESM export
   mismatches in runtime dependencies fail in CI before downstream consumers hit

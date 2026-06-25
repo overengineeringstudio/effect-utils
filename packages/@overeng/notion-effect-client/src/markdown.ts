@@ -20,7 +20,10 @@ import {
   NotionBlocks,
   type RetrieveNestedOptions,
 } from './blocks.ts'
+import { markdownToBlocks } from './markdown-to-blocks.ts'
 import { canonicalizeMediaUrl } from './media-url.ts'
+
+export { markdownToBlocks } from './markdown-to-blocks.ts'
 
 // -----------------------------------------------------------------------------
 // Types
@@ -679,4 +682,5 @@ export const NotionMarkdown = {
   pageToMarkdown,
   treeToMarkdown,
   blocksToMarkdown,
+  markdownToBlocks,
 } as const

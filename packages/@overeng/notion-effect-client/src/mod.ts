@@ -130,6 +130,7 @@ export type {
   BlockWithData,
   PageToMarkdownOptions,
 } from './markdown.ts'
+export type { NotionBlockCreate, NotionRichTextCreate } from './markdown-to-blocks.ts'
 export {
   BlockHelpers,
   getBlockCaption,
@@ -143,6 +144,7 @@ export {
   getEquationExpression,
   getTableRowCells,
   isTodoChecked,
+  markdownToBlocks,
   NotionMarkdown,
 } from './markdown.ts'
 export { canonicalizeBlockMarkdown, canonicalizeSemanticMarkdown } from './canonical-markdown.ts'
