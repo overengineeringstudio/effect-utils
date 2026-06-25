@@ -752,12 +752,17 @@ export const getSchemaInfo = (schema: S.Schema.AnyNoContext): SchemaInfo => {
   const lineageValue = Lineage.getLineage(schema)
   const lineage: LineageBundle | undefined =
     lineageValue !== undefined
-      ? {
-          display: Lineage.getLineageDisplay(lineageValue),
-          authority: Lineage.getAuthority(schema),
-          freshness: Lineage.getFreshness(schema),
-          reference: Lineage.getReference(schema),
-        }
+      ? (() => {
+          const authority = Lineage.getAuthority(schema)
+          const freshness = Lineage.getFreshness(schema)
+          const reference = Lineage.getReference(schema)
+          return {
+            display: Lineage.getLineageDisplay(lineageValue),
+            ...(authority !== undefined ? { authority } : {}),
+            ...(freshness !== undefined ? { freshness } : {}),
+            ...(reference !== undefined ? { reference } : {}),
+          }
+        })()
       : (() => {
           /* No primary Lineage but companion annotations may still exist. */
           const authority = Lineage.getAuthority(schema)
@@ -774,9 +779,9 @@ export const getSchemaInfo = (schema: S.Schema.AnyNoContext): SchemaInfo => {
               kindLabel: '',
               summary: '',
             },
-            authority,
-            freshness,
-            reference,
+            ...(authority !== undefined ? { authority } : {}),
+            ...(freshness !== undefined ? { freshness } : {}),
+            ...(reference !== undefined ? { reference } : {}),
           }
         })()
 
@@ -793,17 +798,20 @@ export const getSchemaInfo = (schema: S.Schema.AnyNoContext): SchemaInfo => {
     lineage !== undefined
 
   return {
-    displayName,
-    typeKind,
-    description: meaningfulDescription,
-    documentation: annotations.documentation,
-    examples,
-    defaultValue,
-    constraints: constraints.length > 0 ? constraints : undefined,
-    possibleValues: possible?.values,
-    possibleValuesTruncated: possible?.truncated,
-    containerLabel,
-    lineage,
+    ...(displayName !== undefined ? { displayName } : {}),
+    ...(typeKind !== undefined ? { typeKind } : {}),
+    ...(meaningfulDescription !== undefined ? { description: meaningfulDescription } : {}),
+    ...(annotations.documentation !== undefined
+      ? { documentation: annotations.documentation }
+      : {}),
+    ...(examples !== undefined ? { examples } : {}),
+    ...(defaultValue !== undefined ? { defaultValue } : {}),
+    ...(constraints.length > 0 ? { constraints } : {}),
+    ...(possible !== undefined
+      ? { possibleValues: possible.values, possibleValuesTruncated: possible.truncated }
+      : {}),
+    ...(containerLabel !== undefined ? { containerLabel } : {}),
+    ...(lineage !== undefined ? { lineage } : {}),
     hasContent,
   }
 }
