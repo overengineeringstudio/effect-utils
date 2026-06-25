@@ -1978,7 +1978,11 @@ export const compareCiMeasurementsStep = (opts?: CiMeasurementsComparisonStepOpt
         : { CI_MEASUREMENT_PR_COMMENT_PUBLIC_ASSET_COMMAND: opts.prComment.publicAssetCommand }),
       ...opts?.prComment?.publicAssetEnv,
       ...(opts?.prComment?.enabled === true
-        ? { GH_TOKEN: opts.prComment.tokenExpression ?? '${{ github.token }}' }
+        ? {
+            CI_MEASUREMENT_IS_FORK_PR:
+              "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && '1' || '' }}",
+            GH_TOKEN: opts.prComment.tokenExpression ?? '${{ github.token }}',
+          }
         : {}),
     },
     run: String.raw`set -euo pipefail
@@ -2476,6 +2480,12 @@ ${
   fi
 
   can_render_pr_comment=true
+  is_fork_pr=false
+  if [ "${dollar}{CI_MEASUREMENT_IS_FORK_PR:-}" = "1" ]; then
+    echo "::notice::CI measurement PR comment skipped for fork pull request; summary and artifacts remain available"
+    can_render_pr_comment=false
+    is_fork_pr=true
+  fi
 
   ensure_ci_measurement_tool() {
     tool_name="$1"
@@ -2524,7 +2534,9 @@ ${
   fi
 
   if [ "$can_render_pr_comment" != "true" ]; then
-    exit 1
+    if [ "$is_fork_pr" != "true" ]; then
+      exit 1
+    fi
   fi
 
   if [ "$can_render_pr_comment" = "true" ]; then
@@ -3492,6 +3504,22 @@ EOF
 
       node "$renderer_script" "$comparison_file" "$comments_json" "$comment_body" "$comment_id_file" "$chart_file" "$chart_dark_file"
 
+      rerender_ci_measurement_comment() {
+        node "$renderer_script" "$comparison_file" "$comments_json" "$comment_body" "$comment_id_file" "$chart_file" "$chart_dark_file"
+      }
+
+      drop_ci_measurement_chart_source() {
+        export CI_MEASUREMENT_PR_COMMENT_CHART_SOURCE_URL=""
+        rerender_ci_measurement_comment
+      }
+
+      drop_ci_measurement_chart_images() {
+        export CI_MEASUREMENT_PR_COMMENT_CHART_URL=""
+        export CI_MEASUREMENT_PR_COMMENT_CHART_DARK_URL=""
+        export CI_MEASUREMENT_PR_COMMENT_CHART_SOURCE_URL=""
+        rerender_ci_measurement_comment
+      }
+
       if [ -s "$chart_file" ]; then
         if [ "$require_public_asset" = "true" ] && [ -z "$public_asset_command" ]; then
           echo "::error::CI measurement chart was rendered for a private repository, but CI_MEASUREMENT_PR_COMMENT_PUBLIC_ASSET_COMMAND is not configured. Private raw GitHub URLs cannot be embedded in PR comments."
@@ -3530,7 +3558,7 @@ EOF
         if ! gh api "repos/$repo/contents/$asset_svg_path" --method PUT --field message="Update CI measurement chart SVG for PR #$pr_number" --field content="$chart_content" --field branch="$asset_branch" >/dev/null; then
           echo "::notice::unable to upload CI measurement chart SVG asset"
           if [ -z "$public_asset_command" ]; then
-            sed -i.bak '/\[SVG source\]/d' "$comment_body"
+            drop_ci_measurement_chart_source
           fi
         fi
         if [ -s "$chart_png_file" ]; then
@@ -3538,11 +3566,11 @@ EOF
           if ! gh api "repos/$repo/contents/$asset_png_path" --method PUT --field message="Update CI measurement chart PNG for PR #$pr_number" --field content="$chart_png_content" --field branch="$asset_branch" >/dev/null; then
             echo "::notice::unable to upload CI measurement chart PNG asset"
             if [ -z "$public_asset_command" ]; then
-              sed -i.bak '/!\[Measurement change vs baseline chart\]/d; /!\[Perf change vs baseline chart\]/d; /<picture>/,/<\\/picture>/d' "$comment_body"
+              drop_ci_measurement_chart_images
             fi
           fi
         else
-          sed -i.bak '/!\[Measurement change vs baseline chart\]/d; /!\[Perf change vs baseline chart\]/d; /<picture>/,/<\\/picture>/d' "$comment_body"
+          drop_ci_measurement_chart_images
         fi
         if [ -s "$chart_dark_png_file" ]; then
           chart_dark_png_content="$(base64 <"$chart_dark_png_file" | tr -d '\n')"
@@ -3550,7 +3578,7 @@ EOF
             echo "::notice::unable to upload dark CI measurement chart PNG asset"
             if [ -z "$public_asset_command" ]; then
               export CI_MEASUREMENT_PR_COMMENT_CHART_DARK_URL=""
-              node "$renderer_script" "$comparison_file" "$comments_json" "$comment_body" "$comment_id_file" "$chart_file" "$chart_dark_file"
+              rerender_ci_measurement_comment
             fi
           fi
         fi

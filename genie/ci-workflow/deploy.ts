@@ -59,7 +59,7 @@ export const notifyAlignmentJob = (opts: {
   'runs-on': opts.runner ?? linuxX64Runner,
   'timeout-minutes': opts.timeoutMinutes ?? 30,
   needs: [...opts.needs],
-  if: `(${(opts.branches ?? ['main']).map((b) => `github.ref == 'refs/heads/${b}'`).join(' || ')}) && github.event_name == 'push'`,
+  if: `\${{ (${(opts.branches ?? ['main']).map((b) => `github.ref == 'refs/heads/${b}'`).join(' || ')}) && github.event_name == 'push' }}`,
   steps: [dispatchAlignmentStep({ targetRepo: opts.targetRepo })],
 })
 
