@@ -125,6 +125,10 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/react-inspector**: Omit absent schema tooltip and lineage metadata
+  instead of materializing optional fields as `undefined`, so downstream
+  `exactOptionalPropertyTypes` checks can compile the source-linked package.
+
 - **@overeng/notion-effect-client**: Preserve Markdown importer semantics for
   soft-wrapped paragraphs, common JavaScript/TypeScript code-fence aliases, and
   loose list item child blocks when producing Notion append/create payloads.

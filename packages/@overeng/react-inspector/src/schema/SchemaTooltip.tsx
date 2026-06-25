@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useId, useRef, useState } from 'react'
 import type { FC, ReactNode } from 'react'
 
+import type { Lineage } from '@overeng/utils'
+
 import type { LineageBundle, SchemaInfo } from './effectSchema.tsx'
 
 export interface SchemaTooltipProps {
@@ -427,7 +429,7 @@ const renderSummaryWithPaths = (summary: string): ReactNode => {
   return parts.length > 0 ? parts : summary
 }
 
-const formatFreshness = (freshness: { capturedAt?: string; maxAgeMs?: number }): string => {
+const formatFreshness = (freshness: Lineage.Freshness): string => {
   const parts: string[] = []
   if (freshness.capturedAt !== undefined) parts.push(freshness.capturedAt)
   if (freshness.maxAgeMs !== undefined) parts.push(`≤ ${freshness.maxAgeMs}ms`)
