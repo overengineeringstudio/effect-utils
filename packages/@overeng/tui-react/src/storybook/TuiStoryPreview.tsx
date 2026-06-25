@@ -32,12 +32,17 @@
  * - `ndjson` - Streaming NDJSON
  */
 
+// Types the `*.css` side-effect import below via a referenced ambient (not a floating .d.ts) so the
+// declaration travels into downstream source-linked TS checks. See asset-modules.d.ts and #837.
+// oxlint-disable-next-line typescript-eslint(triple-slash-reference) -- intentional: an ambient-only .d.ts cannot be an ES import
+/// <reference path="./asset-modules.d.ts" />
+
 import { Atom, Registry } from '@effect-atom/atom'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { Terminal } from '@xterm/xterm'
 import { Schema } from 'effect'
-// oxlint-disable-next-line eslint-plugin-import(no-unassigned-import) -- CSS side-effect import
+// oxlint-disable-next-line eslint-plugin-import(no-unassigned-import) -- deliberate bundler stylesheet
 import '@xterm/xterm/css/xterm.css'
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 

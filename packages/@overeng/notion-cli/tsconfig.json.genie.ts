@@ -11,7 +11,7 @@ export default tsconfigJson({
     ...packageTsconfigCompilerOptions,
     ...reactJsx,
   },
-  include: ['src/**/*', 'bin/**/*.ts', '../../../types/css.d.ts'],
+  include: ['src/**/*', 'bin/**/*.ts'],
   references: [
     { path: '../effect-path' },
     { path: '../notion-effect-client' },
