@@ -116,6 +116,10 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/notion-effect-client**: Preserve Markdown importer semantics for
+  soft-wrapped paragraphs, common JavaScript/TypeScript code-fence aliases, and
+  loose list item child blocks when producing Notion append/create payloads.
+
 - **Patch projection scope**: Keep the `@myobie/pty` xterm serialize patch in
   effect-utils' root workspace config only, so downstream
   `createPnpmPatchedDependencies` consumers do not inherit a pty-only patch and

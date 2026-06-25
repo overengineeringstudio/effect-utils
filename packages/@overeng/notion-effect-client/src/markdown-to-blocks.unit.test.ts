@@ -170,6 +170,22 @@ describe('markdownToBlocks', () => {
     })
   })
 
+  it('collapses Markdown soft breaks without changing explicit hard breaks', () => {
+    const blocks = markdownToBlocks('soft\nwrapped\\\nhard')
+
+    expect(blocks[0]).toMatchObject({
+      object: 'block',
+      type: 'paragraph',
+      paragraph: {
+        rich_text: [
+          { text: { content: 'soft wrapped' } },
+          { text: { content: '\n' } },
+          { text: { content: 'hard' } },
+        ],
+      },
+    })
+  })
+
   it('converts code blocks and block quotes', () => {
     const blocks = markdownToBlocks(
       ['```ts', 'const x = 1', '```', '', '> note', '> - nested'].join('\n'),
@@ -178,7 +194,7 @@ describe('markdownToBlocks', () => {
     expect(blocks[0]).toMatchObject({
       object: 'block',
       type: 'code',
-      code: { language: 'ts', rich_text: [{ text: { content: 'const x = 1' } }] },
+      code: { language: 'typescript', rich_text: [{ text: { content: 'const x = 1' } }] },
     })
     expect(blocks[1]).toMatchObject({
       object: 'block',
@@ -186,6 +202,45 @@ describe('markdownToBlocks', () => {
       quote: {
         rich_text: [{ text: { content: 'note' } }],
         children: [{ object: 'block', type: 'bulleted_list_item' }],
+      },
+    })
+  })
+
+  it('normalizes JavaScript code fence aliases', () => {
+    expect(markdownToBlocks('```js\nconst y = 2\n```')[0]).toMatchObject({
+      object: 'block',
+      type: 'code',
+      code: { language: 'javascript' },
+    })
+  })
+
+  it('preserves loose list item child blocks', () => {
+    const blocks = markdownToBlocks(
+      ['- first paragraph', '', '  second paragraph', '', '  ```js', '  const x = 1', '  ```'].join(
+        '\n',
+      ),
+    )
+
+    expect(blocks[0]).toMatchObject({
+      object: 'block',
+      type: 'bulleted_list_item',
+      bulleted_list_item: {
+        rich_text: [{ text: { content: 'first paragraph' } }],
+        children: [
+          {
+            object: 'block',
+            type: 'paragraph',
+            paragraph: { rich_text: [{ text: { content: 'second paragraph' } }] },
+          },
+          {
+            object: 'block',
+            type: 'code',
+            code: {
+              language: 'javascript',
+              rich_text: [{ text: { content: 'const x = 1' } }],
+            },
+          },
+        ],
       },
     })
   })

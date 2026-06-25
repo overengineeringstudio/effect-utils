@@ -54,6 +54,8 @@ const annotationsFromContext = (
   return Object.keys(annotations).length === 0 ? undefined : annotations
 }
 
+const normalizeSoftBreaks = (value: string): string => value.replace(/\r?\n/gu, ' ')
+
 const textSegment = ({
   content,
   context = {},
@@ -81,7 +83,7 @@ const richTextFromNodes = ({
   for (const node of nodes) {
     if (node.type === 'text') {
       if (node.value !== undefined && node.value.length > 0) {
-        richText.push(textSegment({ content: node.value, context }))
+        richText.push(textSegment({ content: normalizeSoftBreaks(node.value), context }))
       }
       continue
     }
@@ -136,15 +138,23 @@ const richTextFromNodes = ({
   return richText.length === 0 ? emptyRichText : richText
 }
 
+const firstParagraphIndex = (node: MarkdownNode): number =>
+  childrenOf(node).findIndex((child) => child.type === 'paragraph')
+
 const richTextFromListItem = (node: MarkdownNode): readonly NotionRichTextCreate[] => {
-  const firstParagraph = childrenOf(node).find((child) => child.type === 'paragraph')
+  const paragraphIndex = firstParagraphIndex(node)
+  const firstParagraph = childrenOf(node)[paragraphIndex]
   return firstParagraph === undefined
-    ? richTextFromNodes({ nodes: childrenOf(node) })
+    ? emptyRichText
     : richTextFromNodes({ nodes: childrenOf(firstParagraph) })
 }
 
-const nestedListChildren = (node: MarkdownNode): readonly NotionBlockCreate[] =>
-  childrenOf(node).flatMap((child) => (child.type === 'list' ? blocksFromNodes([child]) : []))
+const listItemChildren = (node: MarkdownNode): readonly NotionBlockCreate[] => {
+  const paragraphIndex = firstParagraphIndex(node)
+  return childrenOf(node).flatMap((child, index) =>
+    index === paragraphIndex ? [] : blocksFromNodes([child]),
+  )
+}
 
 const withChildren = <TValue extends Record<string, unknown>>({
   value,
@@ -162,7 +172,7 @@ const listItemBlock = ({
   readonly node: MarkdownNode
   readonly type: 'bulleted_list_item' | 'numbered_list_item' | 'to_do'
 }): NotionBlockCreate => {
-  const children = nestedListChildren(node)
+  const children = listItemChildren(node)
   const richText = richTextFromListItem(node)
 
   if (type === 'to_do') {
@@ -227,7 +237,17 @@ const tableBlock = (node: MarkdownNode): NotionBlockCreate => {
 
 const codeLanguage = (node: MarkdownNode): string => {
   const language = node.lang?.trim()
-  return language === undefined || language.length === 0 ? 'plain text' : language
+  if (language === undefined || language.length === 0) return 'plain text'
+
+  const normalized = language.toLowerCase()
+  if (normalized === 'js' || normalized === 'jsx' || normalized === 'mjs' || normalized === 'cjs') {
+    return 'javascript'
+  }
+  if (normalized === 'ts' || normalized === 'tsx' || normalized === 'mts' || normalized === 'cts') {
+    return 'typescript'
+  }
+
+  return normalized
 }
 
 const quoteText = (node: MarkdownNode): readonly NotionRichTextCreate[] => {
