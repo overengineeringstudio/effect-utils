@@ -566,11 +566,7 @@ type RichTextBlockCreateContentWithChildrenType = RichTextBlockCreateContentType
 type ToDoBlockCreateContentType = RichTextBlockCreateContentWithChildrenType & {
   readonly checked: boolean
 }
-type BlockCreatePayload<
-  TType extends string,
-  TProperty extends string,
-  TContent,
-> = {
+type BlockCreatePayload<TType extends string, TProperty extends string, TContent> = {
   readonly object: 'block'
   readonly type: TType
 } & {
