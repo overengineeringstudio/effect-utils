@@ -455,10 +455,13 @@ const RichTextBlockCreateContent = Schema.Struct({
   rich_text: RichTextCreateArray,
 })
 
-const RichTextBlockCreateContentWithChildren = Schema.Struct({
-  rich_text: RichTextCreateArray,
-  children: Schema.optional(Schema.Array(Schema.Unknown)),
-})
+const RichTextBlockCreateContentWithChildren: Schema.Schema<RichTextBlockCreateContentWithChildrenType> =
+  Schema.suspend(() =>
+    Schema.Struct({
+      rich_text: RichTextCreateArray,
+      children: Schema.optional(Schema.Array(NotionBlockCreate)),
+    }),
+  )
 
 const ParagraphBlockCreate = Schema.Struct({
   object: Schema.Literal('block'),
@@ -496,15 +499,19 @@ const NumberedListItemBlockCreate = Schema.Struct({
   numbered_list_item: RichTextBlockCreateContentWithChildren,
 })
 
-const ToDoBlockCreate = Schema.Struct({
-  object: Schema.Literal('block'),
-  type: Schema.Literal('to_do'),
-  to_do: Schema.Struct({
-    rich_text: RichTextCreateArray,
-    checked: Schema.Boolean,
-    children: Schema.optional(Schema.Array(Schema.Unknown)),
+const ToDoBlockCreate: Schema.Schema<
+  BlockCreatePayload<'to_do', 'to_do', ToDoBlockCreateContentType>
+> = Schema.suspend(() =>
+  Schema.Struct({
+    object: Schema.Literal('block'),
+    type: Schema.Literal('to_do'),
+    to_do: Schema.Struct({
+      rich_text: RichTextCreateArray,
+      checked: Schema.Boolean,
+      children: Schema.optional(Schema.Array(NotionBlockCreate)),
+    }),
   }),
-})
+)
 
 const QuoteBlockCreate = Schema.Struct({
   object: Schema.Literal('block'),
@@ -552,28 +559,68 @@ const TableBlockCreate = Schema.Struct({
   }),
 })
 
+type RichTextBlockCreateContentType = typeof RichTextBlockCreateContent.Type
+type RichTextBlockCreateContentWithChildrenType = RichTextBlockCreateContentType & {
+  readonly children?: readonly NotionBlockCreateType[] | undefined
+}
+type ToDoBlockCreateContentType = RichTextBlockCreateContentWithChildrenType & {
+  readonly checked: boolean
+}
+type BlockCreatePayload<
+  TType extends string,
+  TProperty extends string,
+  TContent,
+> = {
+  readonly object: 'block'
+  readonly type: TType
+} & {
+  readonly [Property in TProperty]: TContent
+}
+type NotionBlockCreateType =
+  | typeof ParagraphBlockCreate.Type
+  | typeof Heading1BlockCreate.Type
+  | typeof Heading2BlockCreate.Type
+  | typeof Heading3BlockCreate.Type
+  | BlockCreatePayload<
+      'bulleted_list_item',
+      'bulleted_list_item',
+      RichTextBlockCreateContentWithChildrenType
+    >
+  | BlockCreatePayload<
+      'numbered_list_item',
+      'numbered_list_item',
+      RichTextBlockCreateContentWithChildrenType
+    >
+  | BlockCreatePayload<'to_do', 'to_do', ToDoBlockCreateContentType>
+  | BlockCreatePayload<'quote', 'quote', RichTextBlockCreateContentWithChildrenType>
+  | typeof CodeBlockCreate.Type
+  | typeof DividerBlockCreate.Type
+  | typeof TableBlockCreate.Type
+
 /**
  * Block payload accepted by Notion append/create APIs for Markdown imports.
  *
  * This is intentionally narrower than the read-side `Block` schema: create
  * payloads omit ids, timestamps, parents, and other server-populated fields.
  */
-export const NotionBlockCreate = Schema.Union(
-  ParagraphBlockCreate,
-  Heading1BlockCreate,
-  Heading2BlockCreate,
-  Heading3BlockCreate,
-  BulletedListItemBlockCreate,
-  NumberedListItemBlockCreate,
-  ToDoBlockCreate,
-  QuoteBlockCreate,
-  CodeBlockCreate,
-  DividerBlockCreate,
-  TableBlockCreate,
-).annotations({
-  identifier: 'Notion.BlockCreate',
-  [docsPath]: 'block',
-})
+export const NotionBlockCreate: Schema.Schema<NotionBlockCreateType> = Schema.suspend(() =>
+  Schema.Union(
+    ParagraphBlockCreate,
+    Heading1BlockCreate,
+    Heading2BlockCreate,
+    Heading3BlockCreate,
+    BulletedListItemBlockCreate,
+    NumberedListItemBlockCreate,
+    ToDoBlockCreate,
+    QuoteBlockCreate,
+    CodeBlockCreate,
+    DividerBlockCreate,
+    TableBlockCreate,
+  ).annotations({
+    identifier: 'Notion.BlockCreate',
+    [docsPath]: 'block',
+  }),
+)
 
 export type NotionBlockCreate = typeof NotionBlockCreate.Type
 
