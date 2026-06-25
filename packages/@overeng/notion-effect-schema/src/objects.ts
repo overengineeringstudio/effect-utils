@@ -1,7 +1,7 @@
 import { Schema } from 'effect'
 
 import { docsPath, ISO8601DateTime, NoticonColor, NotionUUID } from './common.ts'
-import { RichTextArray } from './rich-text.ts'
+import { RichTextArray, TextRichTextCreate } from './rich-text.ts'
 import { PartialUser } from './users.ts'
 
 // -----------------------------------------------------------------------------
@@ -438,6 +438,187 @@ export const Block = Schema.extend(
 })
 
 export type Block = typeof Block.Type
+
+// -----------------------------------------------------------------------------
+// Block Create Payloads
+// -----------------------------------------------------------------------------
+
+/** Rich text array accepted in Notion block create payloads. */
+export const RichTextCreateArray = Schema.Array(TextRichTextCreate).annotations({
+  identifier: 'Notion.RichTextCreateArray',
+  [docsPath]: 'rich-text',
+})
+
+export type RichTextCreateArray = typeof RichTextCreateArray.Type
+
+const RichTextBlockCreateContent = Schema.Struct({
+  rich_text: RichTextCreateArray,
+})
+
+const RichTextBlockCreateContentWithChildren: Schema.Schema<RichTextBlockCreateContentWithChildrenType> =
+  Schema.suspend(() =>
+    Schema.Struct({
+      rich_text: RichTextCreateArray,
+      children: Schema.optional(Schema.Array(NotionBlockCreate)),
+    }),
+  )
+
+const ParagraphBlockCreate = Schema.Struct({
+  object: Schema.Literal('block'),
+  type: Schema.Literal('paragraph'),
+  paragraph: RichTextBlockCreateContent,
+})
+
+const Heading1BlockCreate = Schema.Struct({
+  object: Schema.Literal('block'),
+  type: Schema.Literal('heading_1'),
+  heading_1: RichTextBlockCreateContent,
+})
+
+const Heading2BlockCreate = Schema.Struct({
+  object: Schema.Literal('block'),
+  type: Schema.Literal('heading_2'),
+  heading_2: RichTextBlockCreateContent,
+})
+
+const Heading3BlockCreate = Schema.Struct({
+  object: Schema.Literal('block'),
+  type: Schema.Literal('heading_3'),
+  heading_3: RichTextBlockCreateContent,
+})
+
+const BulletedListItemBlockCreate = Schema.Struct({
+  object: Schema.Literal('block'),
+  type: Schema.Literal('bulleted_list_item'),
+  bulleted_list_item: RichTextBlockCreateContentWithChildren,
+})
+
+const NumberedListItemBlockCreate = Schema.Struct({
+  object: Schema.Literal('block'),
+  type: Schema.Literal('numbered_list_item'),
+  numbered_list_item: RichTextBlockCreateContentWithChildren,
+})
+
+const ToDoBlockCreate: Schema.Schema<
+  BlockCreatePayload<'to_do', 'to_do', ToDoBlockCreateContentType>
+> = Schema.suspend(() =>
+  Schema.Struct({
+    object: Schema.Literal('block'),
+    type: Schema.Literal('to_do'),
+    to_do: Schema.Struct({
+      rich_text: RichTextCreateArray,
+      checked: Schema.Boolean,
+      children: Schema.optional(Schema.Array(NotionBlockCreate)),
+    }),
+  }),
+)
+
+const QuoteBlockCreate = Schema.Struct({
+  object: Schema.Literal('block'),
+  type: Schema.Literal('quote'),
+  quote: RichTextBlockCreateContentWithChildren,
+})
+
+const CodeBlockCreate = Schema.Struct({
+  object: Schema.Literal('block'),
+  type: Schema.Literal('code'),
+  code: Schema.Struct({
+    rich_text: RichTextCreateArray,
+    language: Schema.String,
+  }),
+})
+
+const DividerBlockCreate = Schema.Struct({
+  object: Schema.Literal('block'),
+  type: Schema.Literal('divider'),
+  divider: Schema.Struct({}),
+})
+
+/** Table row block payload accepted inside Notion table create payloads. */
+export const TableRowBlockCreate = Schema.Struct({
+  object: Schema.Literal('block'),
+  type: Schema.Literal('table_row'),
+  table_row: Schema.Struct({
+    cells: Schema.Array(RichTextCreateArray),
+  }),
+}).annotations({
+  identifier: 'Notion.TableRowBlockCreate',
+  [docsPath]: 'block#table-row',
+})
+
+export type TableRowBlockCreate = typeof TableRowBlockCreate.Type
+
+const TableBlockCreate = Schema.Struct({
+  object: Schema.Literal('block'),
+  type: Schema.Literal('table'),
+  table: Schema.Struct({
+    table_width: Schema.NonNegativeInt,
+    has_column_header: Schema.Boolean,
+    has_row_header: Schema.Boolean,
+    children: Schema.Array(TableRowBlockCreate),
+  }),
+})
+
+type RichTextBlockCreateContentType = typeof RichTextBlockCreateContent.Type
+type RichTextBlockCreateContentWithChildrenType = RichTextBlockCreateContentType & {
+  readonly children?: readonly NotionBlockCreateType[] | undefined
+}
+type ToDoBlockCreateContentType = RichTextBlockCreateContentWithChildrenType & {
+  readonly checked: boolean
+}
+type BlockCreatePayload<TType extends string, TProperty extends string, TContent> = {
+  readonly object: 'block'
+  readonly type: TType
+} & {
+  readonly [Property in TProperty]: TContent
+}
+type NotionBlockCreateType =
+  | typeof ParagraphBlockCreate.Type
+  | typeof Heading1BlockCreate.Type
+  | typeof Heading2BlockCreate.Type
+  | typeof Heading3BlockCreate.Type
+  | BlockCreatePayload<
+      'bulleted_list_item',
+      'bulleted_list_item',
+      RichTextBlockCreateContentWithChildrenType
+    >
+  | BlockCreatePayload<
+      'numbered_list_item',
+      'numbered_list_item',
+      RichTextBlockCreateContentWithChildrenType
+    >
+  | BlockCreatePayload<'to_do', 'to_do', ToDoBlockCreateContentType>
+  | BlockCreatePayload<'quote', 'quote', RichTextBlockCreateContentWithChildrenType>
+  | typeof CodeBlockCreate.Type
+  | typeof DividerBlockCreate.Type
+  | typeof TableBlockCreate.Type
+
+/**
+ * Block payload accepted by Notion append/create APIs for Markdown imports.
+ *
+ * This is intentionally narrower than the read-side `Block` schema: create
+ * payloads omit ids, timestamps, parents, and other server-populated fields.
+ */
+export const NotionBlockCreate: Schema.Schema<NotionBlockCreateType> = Schema.suspend(() =>
+  Schema.Union(
+    ParagraphBlockCreate,
+    Heading1BlockCreate,
+    Heading2BlockCreate,
+    Heading3BlockCreate,
+    BulletedListItemBlockCreate,
+    NumberedListItemBlockCreate,
+    ToDoBlockCreate,
+    QuoteBlockCreate,
+    CodeBlockCreate,
+    DividerBlockCreate,
+    TableBlockCreate,
+  ).annotations({
+    identifier: 'Notion.BlockCreate',
+    [docsPath]: 'block',
+  }),
+)
+
+export type NotionBlockCreate = typeof NotionBlockCreate.Type
 
 // -----------------------------------------------------------------------------
 // Page Markdown

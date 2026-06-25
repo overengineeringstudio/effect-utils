@@ -6,6 +6,13 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **@overeng/notion-effect-client**: Add `NotionMarkdown.markdownToBlocks`,
+  an AST-based selected-GFM Markdown importer that emits Notion append/create
+  block payloads for paragraphs, headings, dividers, lists, task lists, code,
+  quotes, and tables. The importer shares the same Notion-flavored remark/GFM
+  setup as canonical Markdown so downstream packages can delete hand-rolled
+  Markdown parsers and consume one block-payload contract.
+
 - **Bundle smoke CI gate**: Add a Vite/Rollup-based smoke check for
   `@overeng/pty-effect` public entries so bundler-resolution ESM export
   mismatches in runtime dependencies fail in CI before downstream consumers hit
@@ -108,6 +115,10 @@ All notable changes to this project will be documented in this file.
   the source of truth (#807).
 
 ### Fixed
+
+- **@overeng/notion-effect-client**: Preserve Markdown importer semantics for
+  soft-wrapped paragraphs, common JavaScript/TypeScript code-fence aliases, and
+  loose list item child blocks when producing Notion append/create payloads.
 
 - **Patch projection scope**: Keep the `@myobie/pty` xterm serialize patch in
   effect-utils' root workspace config only, so downstream

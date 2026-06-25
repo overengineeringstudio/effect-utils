@@ -128,6 +128,9 @@ export type {
   BlockTransformerEffect,
   BlockTransformers,
   BlockWithData,
+  NotionBlockCreate,
+  NotionRichTextCreate,
+  NotionTableRowBlockCreate,
   PageToMarkdownOptions,
 } from './markdown.ts'
 export {
@@ -143,6 +146,7 @@ export {
   getEquationExpression,
   getTableRowCells,
   isTodoChecked,
+  markdownToBlocks,
   NotionMarkdown,
 } from './markdown.ts'
 export { canonicalizeBlockMarkdown, canonicalizeSemanticMarkdown } from './canonical-markdown.ts'

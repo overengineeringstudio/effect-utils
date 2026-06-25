@@ -1,21 +1,14 @@
-import {
-  gfmStrikethroughFromMarkdown,
-  gfmStrikethroughToMarkdown,
-} from 'mdast-util-gfm-strikethrough'
-import { gfmTableFromMarkdown, gfmTableToMarkdown } from 'mdast-util-gfm-table'
-import {
-  gfmTaskListItemFromMarkdown,
-  gfmTaskListItemToMarkdown,
-} from 'mdast-util-gfm-task-list-item'
-import { gfmStrikethrough } from 'micromark-extension-gfm-strikethrough'
-import { gfmTable } from 'micromark-extension-gfm-table'
-import { gfmTaskListItem } from 'micromark-extension-gfm-task-list-item'
 import remarkParse from 'remark-parse'
 import remarkStringify from 'remark-stringify'
-import { unified, type Processor } from 'unified'
+import { unified } from 'unified'
 import { visit } from 'unist-util-visit'
 
 import { canonicalizeMediaUrlsInMarkdown } from './media-url.ts'
+import {
+  markdownStringifyOptions,
+  normalizeMarkdownLineEndings,
+  notionMarkdownGfm,
+} from './notion-markdown-processor.ts'
 
 /*
  * Canonical Markdown serialization used as the wire and on-disk form.
@@ -113,72 +106,16 @@ const normalizeOrderedListStarts: () => (tree: unknown) => void = () => (tree) =
   })
 }
 
-const markdownStringifyOptions = {
-  bullet: '-',
-  emphasis: '_',
-  strong: '*',
-  fence: '`',
-  fences: true,
-  listItemIndent: 'one',
-  resourceLink: true,
-  rule: '-',
-  setext: false,
-  tightDefinitions: true,
-} as const
-
-const pushProcessorData = <A>({
-  data,
-  key,
-  extensions,
-}: {
-  data: Record<string, unknown>
-  key: string
-  extensions: ReadonlyArray<A>
-}): void => {
-  const current = (data[key] ??= []) as Array<A>
-  current.push(...extensions)
-}
-
-/*
- * Use only the GFM constructs Notion-flavored Markdown needs here. The bundled
- * `remark-gfm` also enables autolink literals, which rewrites plain URL/email-
- * shaped text into angle autolinks (`https://x.y` -> `<https://x.y>`). That is
- * lossy for Notion preview-link text and makes edge cases like `0@.A`
- * non-idempotent (`<0@.A>` -> `<<0@.A>>`).
- */
-const remarkNotionGfm = function (this: Processor): void {
-  const data = this.data() as Record<string, unknown>
-  pushProcessorData({
-    data,
-    key: 'micromarkExtensions',
-    extensions: [gfmTable(), gfmTaskListItem(), gfmStrikethrough()],
-  })
-  pushProcessorData({
-    data,
-    key: 'fromMarkdownExtensions',
-    extensions: [
-      gfmTableFromMarkdown(),
-      gfmTaskListItemFromMarkdown(),
-      gfmStrikethroughFromMarkdown(),
-    ],
-  })
-  pushProcessorData({
-    data,
-    key: 'toMarkdownExtensions',
-    extensions: [gfmTableToMarkdown(), gfmTaskListItemToMarkdown(), gfmStrikethroughToMarkdown()],
-  })
-}
-
 const processor = unified()
   .use(remarkParse)
-  .use(remarkNotionGfm)
+  .use(notionMarkdownGfm)
   .use(unwrapSoftBreaks)
   .use(forceTightLists)
   .use(remarkStringify, markdownStringifyOptions)
 
 const semanticProcessor = unified()
   .use(remarkParse)
-  .use(remarkNotionGfm)
+  .use(notionMarkdownGfm)
   .use(unwrapSoftBreaks)
   .use(foldHardBreaks)
   .use(normalizeCodeLanguages)
@@ -186,11 +123,19 @@ const semanticProcessor = unified()
   .use(normalizeOrderedListStarts)
   .use(remarkStringify, markdownStringifyOptions)
 
-const normalizeInput = (markdown: string): string =>
-  canonicalizeMediaUrlsInMarkdown(markdown.replace(/\r\n/g, '\n').replace(/\r/g, '\n'))
+/** Normalize Markdown input before canonical parsing and serialization. */
+export const normalizeMarkdownInput = (markdown: string): string =>
+  canonicalizeMediaUrlsInMarkdown(normalizeMarkdownLineEndings(markdown))
 
 const ensureTrailingNewline = (markdown: string): string =>
   markdown.endsWith('\n') === true ? markdown : `${markdown}\n`
+
+/**
+ * Parse Markdown with the same selected-GFM parser and input normalization used
+ * by the canonical body pipeline.
+ */
+export const parseNotionMarkdownAst = (markdown: string): unknown =>
+  processor.parse(normalizeMarkdownInput(markdown))
 
 /**
  * Reduce arbitrary Markdown to the single canonical body form, applied at BOTH
@@ -215,7 +160,7 @@ const ensureTrailingNewline = (markdown: string): string =>
  * block-type-aware — that would re-split the policy across two serializers.
  */
 export const canonicalizeBlockMarkdown = (markdown: string): string => {
-  const rendered = processor.processSync(normalizeInput(markdown)).toString()
+  const rendered = processor.processSync(normalizeMarkdownInput(markdown)).toString()
   return ensureTrailingNewline(rendered)
 }
 
@@ -228,6 +173,6 @@ export const canonicalizeBlockMarkdown = (markdown: string): string => {
  * equality/hash oracles, not for writing a body back to disk.
  */
 export const canonicalizeSemanticMarkdown = (markdown: string): string => {
-  const rendered = semanticProcessor.processSync(normalizeInput(markdown)).toString()
+  const rendered = semanticProcessor.processSync(normalizeMarkdownInput(markdown)).toString()
   return ensureTrailingNewline(rendered)
 }
