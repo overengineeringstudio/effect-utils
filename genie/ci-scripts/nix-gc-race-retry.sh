@@ -74,6 +74,11 @@ run_nix_gc_race_retry() {
     [ -n "$path" ] && saw_invalid_path=true
     printf '%s' "$flattened" | grep -Eq 'error:[[:space:]]*.*Failed to convert config\.cachix to JSON' && saw_cachix_signature=true || true
     printf '%s' "$flattened" | grep -Eq 'error:[[:space:]]*.*while evaluating the option.*cachix\.package' && saw_cachix_signature=true || true
+    # Nix can surface fetched-source corruption as missing subpaths under
+    # «github:owner/repo/rev»/... during arbitrary flake evaluation, not only
+    # while resolving the devenv CLI. Retry after clearing fetch/eval caches:
+    # this indicates an incomplete or stale fetched-source view, not project source.
+    printf '%s' "$flattened" | grep -Eq "error:[[:space:]]*path '«(github|https?)[:/][^»]+»/[^']+' does not exist" && saw_fetch_signature=true || true
     printf '%s' "$flattened" | grep -Eq 'error:[[:space:]]*cannot read file from tarball:[[:space:]]*Truncated tar archive detected while reading data' && saw_fetch_signature=true || true
     rm -f "$log"
 
@@ -94,7 +99,7 @@ run_nix_gc_race_retry() {
     fi
 
     [ -z "$path" ] || nix-store --realise "$path" 2>/dev/null || true
-    rm -rf ~/.cache/nix/eval-cache-*
+    rm -rf ~/.cache/nix/eval-cache-* ~/.cache/nix/gitv3 ~/.cache/nix/tarball-cache ~/.cache/nix/tarball-cache-v2 ~/.cache/nix/fetcher-cache*.sqlite*
     attempt=$((attempt + 1))
   done
 
