@@ -427,7 +427,10 @@ export const syncMegarepo = <R = never>({
           (lockSyncExplicitSetting !== false && (devenvLockExists || flakeLockExists))
 
         if (lockSyncEnabled === true) {
-          const excludeMembers = new Set(config.lockSync?.exclude ?? [])
+          const excludeMembers = new Set([
+            ...(config.lockSync?.exclude ?? []),
+            ...skippedMemberNames,
+          ])
           nixLockResult = yield* syncNixLocks({
             megarepoRoot,
             config,
@@ -452,7 +455,12 @@ export const syncMegarepo = <R = never>({
       yield* generateAll({
         megarepoRoot: megarepoRoot,
         outermostRoot,
-        config,
+        config: {
+          ...config,
+          members: Object.fromEntries(
+            Object.entries(config.members).filter(([name]) => !skippedMemberNames.has(name)),
+          ),
+        },
       })
     }
 
