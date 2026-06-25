@@ -39,6 +39,9 @@
             "context": "pnpm-regression"
           },
           {
+            "context": "bundle-smoke"
+          },
+          {
             "context": "cargo"
           },
           {

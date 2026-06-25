@@ -387,6 +387,12 @@ const jobs: Record<
       ].join('\n'),
     },
   }),
+  'bundle-smoke': job({
+    step: {
+      name: 'Bundle smoke tests',
+      run: runDevenvTasksBefore('bundle:smoke'),
+    },
+  }),
   cargo: cargoJob,
 }
 

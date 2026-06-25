@@ -577,6 +577,15 @@ in
 
   tasks."test:pty-effect".after = lib.mkAfter [ "pnpm:link-native-node-packages" ];
 
+  tasks."bundle:smoke" = {
+    after = [ "pnpm:install" ];
+    description = "Bundle representative public entries with Vite/Rollup dependency resolution";
+    exec = ''
+      set -euo pipefail
+      DT_PASSTHROUGH=1 pnpm --dir packages/@overeng/pty-effect run bundle:smoke
+    '';
+  };
+
   tasks."gh:apply-settings" = {
     after = [ "genie:run" ];
     exec = ''

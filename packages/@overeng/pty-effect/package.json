@@ -14,6 +14,9 @@
       "./client": "./dist/client.js"
     }
   },
+  "scripts": {
+    "bundle:smoke": "bun ../../../genie/ci-scripts/bundle-smoke.ts"
+  },
   "dependencies": {
     "@myobie/pty": "0.10.0",
     "@overeng/otel-contract": "workspace:^"
@@ -24,6 +27,7 @@
     "@types/node": "26.0.0",
     "effect": "3.21.4",
     "typescript": "6.0.3",
+    "vite": "8.0.16",
     "vitest": "4.1.9"
   },
   "peerDependencies": {

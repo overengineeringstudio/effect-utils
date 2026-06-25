@@ -23,6 +23,7 @@ export const CI_JOB_NAMES = [
   'nix-fod-check',
   'pnpm-builder-contract',
   'pnpm-regression',
+  'bundle-smoke',
   // Rust lane for the otelite crate: build/test/clippy/fmt via the nix toolchain.
   'cargo',
 ] as const
@@ -39,6 +40,7 @@ export const requiredCIJobs = [
   'lint',
   'pnpm-builder-contract',
   'pnpm-regression',
+  'bundle-smoke',
   'cargo',
   // Matrix jobs - GitHub reports these with the matrix value in parentheses
   ...RUNNER_PROFILES.map((runner) => `test (${runner})`),
