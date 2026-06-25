@@ -374,6 +374,10 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **Workspace patch projection**: Keep the temporary `@myobie/pty` ESM patch scoped
+  to the effect-utils workspace so it does not leak into the generated
+  `@overeng/utils` package metadata consumed downstream.
+
 - **genie/ci-workflow**: Skip workflow-report PR comment publishing for fork
   pull requests after writing the job summary, so preview-reporting jobs do not
   fail when GitHub downgrades the `pull_request` token to read-only.

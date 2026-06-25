@@ -9,6 +9,7 @@ import {
   catalog as externalCatalog,
   commonPnpmPolicySettings,
   defineCatalog,
+  effectUtilsWorkspacePatches,
   utilsPatches,
 } from './external.ts'
 import { internalPackageCatalogEntries } from './packages.ts'
@@ -137,7 +138,7 @@ export const commonPnpmWorkspaceData = {
       },
     },
   },
-  patchedDependencies: { ...utilsPatches },
+  patchedDependencies: { ...effectUtilsWorkspacePatches },
   allowUnusedPatches: true as const,
   peerDependencyRules: {
     /** @effect-atom/atom@0.5.3 pins pre-1.0 Effect peer ranges that don't cover our versions */
