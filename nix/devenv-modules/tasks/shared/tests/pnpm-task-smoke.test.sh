@@ -194,6 +194,7 @@ cat > "$workspace/pnpm-install-contract.json" <<'EOF'
   }
 }
 EOF
+chmod 444 "$workspace/pnpm-install-contract.json"
 cat > "$workspace/packages/demo/package.json" <<'EOF'
 {"name":"demo","private":true}
 EOF
@@ -386,6 +387,17 @@ echo "Test 2: exec runs fake pnpm and populates cache"
   grep -qxF "install --force --frozen-lockfile --config.confirmModulesPurge=false --ignore-scripts --config.side-effects-cache=false --config.verify-store-integrity=true --config.strict-store-pkg-content-check=true --child-concurrency=1 --network-concurrency=4 --config.package-import-method=clone-or-copy --pm-on-fail=ignore --config.store-dir=$workspace/.devenv/pnpm-store-pure-v1" "$tmpdir/pnpm.log"
   grep -qF ".effect-utils-pnpm-install.lock" "$tmpdir/pnpm-install.exec.sh"
   grep -qF ".effect-utils-pnpm-store.lock" "$tmpdir/pnpm-install.exec.sh"
+  test -w "$workspace/.devenv/task-cache/pnpm-install/pnpm-install-contract.json"
+)
+
+echo "Test 2b: exec replaces a read-only cached generated contract snapshot"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  export PNPM_HOME="$workspace/.pnpm-home-a"
+  chmod 444 "$workspace/.devenv/task-cache/pnpm-install/pnpm-install-contract.json"
+  bash "$tmpdir/pnpm-install.exec.sh"
+  test -w "$workspace/.devenv/task-cache/pnpm-install/pnpm-install-contract.json"
 )
 
 echo "Test 3: status hits after install with same GVS path"

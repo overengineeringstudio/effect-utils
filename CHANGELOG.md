@@ -13,6 +13,13 @@ All notable changes to this project will be documented in this file.
   setup as canonical Markdown so downstream packages can delete hand-rolled
   Markdown parsers and consume one block-payload contract.
 
+### Fixed
+
+- **devenv/pnpm**: Keep the cached `pnpm-install-contract.json` writable even
+  when the generated source file is read-only, so repeated `pnpm:install` runs
+  can update `.devenv/task-cache` instead of failing on the preserved generated
+  file mode.
+
 - **Bundle smoke CI gate**: Add a Vite/Rollup-based smoke check for
   `@overeng/pty-effect` public entries so bundler-resolution ESM export
   mismatches in runtime dependencies fail in CI before downstream consumers hit
