@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **devenv/pnpm**: Keep the cached `pnpm-install-contract.json` writable after
+  copying the generated read-only contract into `.devenv/task-cache`, so repeat
+  `pnpm:install` runs can replace mutable cache state without downstream
+  chmod workarounds.
+
 - **@overeng/notion-effect-client**: Add `NotionMarkdown.markdownToBlocks`,
   an AST-based selected-GFM Markdown importer that emits Notion append/create
   block payloads for paragraphs, headings, dividers, lists, task lists, code,

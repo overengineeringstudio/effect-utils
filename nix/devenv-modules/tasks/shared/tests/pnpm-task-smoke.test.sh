@@ -388,6 +388,17 @@ echo "Test 2: exec runs fake pnpm and populates cache"
   grep -qF ".effect-utils-pnpm-store.lock" "$tmpdir/pnpm-install.exec.sh"
 )
 
+echo "Test 2b: exec rewrites read-only generated contract cache state"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  export PNPM_HOME="$workspace/.pnpm-home-a"
+  contract_state_file="$workspace/.devenv/task-cache/pnpm-install/pnpm-install-contract.json"
+  chmod a-w "$workspace/pnpm-install-contract.json" "$contract_state_file"
+  bash "$tmpdir/pnpm-install.exec.sh"
+  test -w "$contract_state_file"
+)
+
 echo "Test 3: status hits after install with same GVS path"
 (
   cd "$workspace"
