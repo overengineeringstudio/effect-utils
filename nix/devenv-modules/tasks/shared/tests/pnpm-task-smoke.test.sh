@@ -400,7 +400,18 @@ echo "Test 3: status hits after install with same GVS path"
   assert_exit_code 0 "$exit_code" "status should hit after install"
 )
 
-echo "Test 4: outer cache hit still misses when projection metadata is missing"
+echo "Test 4: exec can overwrite a cached generated contract with read-only mode"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  export PNPM_HOME="$workspace/.pnpm-home-a"
+  contract_cache="$workspace/.devenv/task-cache/pnpm-install/pnpm-install-contract.json"
+  chmod 0444 "$workspace/pnpm-install-contract.json" "$contract_cache"
+  bash "$tmpdir/pnpm-install.exec.sh"
+  test -w "$contract_cache"
+)
+
+echo "Test 5: outer cache hit still misses when projection metadata is missing"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
