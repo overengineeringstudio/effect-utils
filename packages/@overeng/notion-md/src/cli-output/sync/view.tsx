@@ -1,7 +1,12 @@
 import { type Atom } from '@effect-atom/atom'
 import React from 'react'
 
-import { CommandOutput, type DetailSection, useTuiAtomValue } from '@overeng/tui-react'
+import {
+  CommandOutput,
+  type DetailSection,
+  type ProblemItem,
+  useTuiAtomValue,
+} from '@overeng/tui-react'
 
 import type { SyncPageOutcome, SyncPageRow, SyncState } from './schema.ts'
 
@@ -52,6 +57,26 @@ const multiSummary = (pages: readonly SyncPageRow[]): readonly string[] => {
   return [`${pages.length} page${pages.length === 1 ? '' : 's'}`, ...parts]
 }
 
+/**
+ * Problems for the view: any accumulated warnings, plus — on the terminal
+ * `Error` — a problems-first CRITICAL so the most blocking outcome reads loudest
+ * (the dim `failed · <msg>` summary and the `✗` stage row stay as-is). Generic
+ * failures carry no fabricated fix, just an inspect hint when the target is known.
+ */
+const problemsFor = (state: SyncState): readonly ProblemItem[] => {
+  if (state._tag !== 'Error') return state.warnings
+  return [
+    ...state.warnings,
+    {
+      severity: 'critical',
+      name: state.target.length === 0 ? 'sync' : state.target,
+      status: 'failed',
+      details: state.message,
+      fixes: state.target.length === 0 ? [] : [`notion-md status ${state.target}`],
+    },
+  ]
+}
+
 /** Build the dimmed `·`-joined summary line for a terminal state. */
 const summaryParts = (state: SyncState): readonly string[] => {
   switch (state._tag) {
@@ -83,7 +108,7 @@ export const SyncView = ({ stateAtom }: SyncViewProps): React.ReactElement => {
   return (
     <CommandOutput
       context={contextLine(state.target)}
-      problems={state.warnings}
+      problems={problemsFor(state)}
       sections={pageSections(pages)}
       stages={state.stages}
       summary={summaryParts(state)}

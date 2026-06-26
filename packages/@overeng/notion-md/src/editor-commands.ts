@@ -290,14 +290,21 @@ export const putEditorPage = (
     }
 
     // --- Post-push semantic-equivalence gate (decision 0012; exit 9). ---
-    if (semanticEquivalent({ a: replaced.markdown, b: doc.body }) === false) {
-      return yield* new NmdPostPushGateError({
-        page_id: opts.pageId,
-        message:
-          `Post-push gate rejected the result for page ${opts.pageId}: the stored body is not ` +
-          'semantically equivalent to what was sent. The page may be mutated; re-cat to inspect.',
-      })
-    }
+    // Wrapped as the `settle` stage so `put` shows a `✓ settle` row (on pass) /
+    // `✗ settle` (on the exit-9 reject) like single-page `sync` does. The error
+    // is yielded as the stage's effect, so a reject still propagates UNCAUGHT —
+    // the `runMain` teardown owns the exit-9 mapping (exit-codes.ts).
+    yield* withStage(
+      { id: 'settle', label: 'settle', doneMessage: 'verified' },
+      semanticEquivalent({ a: replaced.markdown, b: doc.body }) === true
+        ? Effect.void
+        : new NmdPostPushGateError({
+            page_id: opts.pageId,
+            message:
+              `Post-push gate rejected the result for page ${opts.pageId}: the stored body is not ` +
+              'semantically equivalent to what was sent. The page may be mutated; re-cat to inspect.',
+          }),
+    )
 
     const finalBaseHash = editorBaseHash({ title: doc.title, body: replaced.markdown })
     return {

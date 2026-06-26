@@ -381,6 +381,29 @@ export const runWatch = (opts: {
     }),
   )
 
+/**
+ * Errors a seam'd command (`status`/`plan`/`sync`/`put`/`edit`) already rendered
+ * to stdout via its terminal CRITICAL/WARNING view. `renderCliError` checks this
+ * set and skips its stderr human render, so a seam'd failure is reported ONCE.
+ *
+ * The error object is NOT mutated (its `_tag` stays intact for the `runMain`
+ * exit-code teardown, exit-codes.ts) and still propagates UNCAUGHT — only the
+ * duplicate stderr log is suppressed. Keyed on instance identity, so if the
+ * instance ever fails to reach `renderCliError` unchanged the worst case is the
+ * pre-existing double-report, never a wrong exit code. The `--watch` path keeps
+ * its own reporting and is intentionally NOT marked here.
+ */
+const seamRenderedErrors = new WeakSet<object>()
+
+/**
+ * Record an error as already rendered by a seam view (ignores non-objects).
+ * Exported for the report-once unit test (drives the suppression branch of
+ * {@link renderCliError}).
+ */
+export const markSeamRendered = (error: unknown): void => {
+  if (typeof error === 'object' && error !== null) seamRenderedErrors.add(error)
+}
+
 const commandSpan = <A, E, R>(opts: {
   readonly command: string
   readonly label: string
@@ -492,7 +515,10 @@ const statusCommand = Command.make(
               Option.match(Cause.failureOption(cause), {
                 onNone: () => Effect.void,
                 onSome: (error) =>
-                  Effect.sync(() => tui.dispatch({ _tag: 'SetError', message: String(error) })),
+                  Effect.sync(() => {
+                    markSeamRendered(error)
+                    tui.dispatch({ _tag: 'SetError', message: String(error) })
+                  }),
               }),
             ),
           )
@@ -562,9 +588,10 @@ const planCommand = Command.make(
                       Option.match(Cause.failureOption(cause), {
                         onNone: () => Effect.void,
                         onSome: (error) =>
-                          Effect.sync(() =>
-                            tui.dispatch({ _tag: 'SetError', message: String(error) }),
-                          ),
+                          Effect.sync(() => {
+                            markSeamRendered(error)
+                            tui.dispatch({ _tag: 'SetError', message: String(error) })
+                          }),
                       }),
                     ),
                   )
@@ -620,7 +647,11 @@ const runSyncOutput = <E>({
         Effect.tapErrorCause((cause) =>
           Option.match(Cause.failureOption(cause), {
             onNone: () => Effect.void,
-            onSome: (error) => Effect.sync(() => tui.dispatch(syncErrorAction(error))),
+            onSome: (error) =>
+              Effect.sync(() => {
+                markSeamRendered(error)
+                tui.dispatch(syncErrorAction(error))
+              }),
           }),
         ),
         Effect.provide(progressReporterTui(tui.dispatch)),
@@ -1064,7 +1095,10 @@ const putCommand = Command.make(
                           Option.match(Cause.failureOption(cause), {
                             onNone: () => Effect.void,
                             onSome: (error) =>
-                              Effect.sync(() => tui.dispatch(putErrorAction(error))),
+                              Effect.sync(() => {
+                                markSeamRendered(error)
+                                tui.dispatch(putErrorAction(error))
+                              }),
                           }),
                         ),
                         Effect.provide(progressReporterTui(tui.dispatch)),
@@ -1144,9 +1178,10 @@ const makeEditCommand = (name: string) =>
                         Option.match(Cause.failureOption(cause), {
                           onNone: () => Effect.void,
                           onSome: (error) =>
-                            Effect.sync(() =>
-                              tui.dispatch({ _tag: 'SetError', message: String(error) }),
-                            ),
+                            Effect.sync(() => {
+                              markSeamRendered(error)
+                              tui.dispatch({ _tag: 'SetError', message: String(error) })
+                            }),
                         }),
                       ),
                       Effect.provide(progressReporterTui(tui.dispatch)),
@@ -1197,11 +1232,21 @@ export const cli = Command.run(notionMdCommand, {
   version: cliVersion,
 })
 
-/** Render expected CLI failures without duplicating Effect's defect reporter. */
+/**
+ * Render expected CLI failures without duplicating Effect's defect reporter.
+ *
+ * A seam'd command (`status`/`plan`/`sync`/`put`/`edit`) already rendered its
+ * failure to stdout as a CRITICAL/WARNING view, so this skips the stderr human
+ * render for those (report once — see {@link seamRenderedErrors}). The error
+ * still propagates UNCAUGHT, so the `runMain` teardown owns the exit code.
+ */
 export const renderCliError = (cause: Cause.Cause<unknown>) =>
   Cause.isInterruptedOnly(cause) === true
     ? Effect.void
     : Option.match(Cause.failureOption(cause), {
         onNone: () => Effect.logError(cause),
-        onSome: (error) => Effect.logError(error),
+        onSome: (error) =>
+          typeof error === 'object' && error !== null && seamRenderedErrors.has(error) === true
+            ? Effect.void
+            : Effect.logError(error),
       })

@@ -1,7 +1,7 @@
 import { type Atom } from '@effect-atom/atom'
 import React from 'react'
 
-import { CommandOutput, useTuiAtomValue } from '@overeng/tui-react'
+import { CommandOutput, type ProblemItem, useTuiAtomValue } from '@overeng/tui-react'
 
 import type { PlanState } from './schema.ts'
 
@@ -13,6 +13,25 @@ export interface PlanViewProps {
 /** Context header line for the `plan` output (`notion-md plan · <target>`). */
 const contextLine = (target: string): string =>
   target.length === 0 ? 'notion-md plan' : `notion-md plan · ${target}`
+
+/**
+ * Problems for the view: the precomputed result problems on `Success`, or — on
+ * the terminal `Error` — a problems-first CRITICAL so the most blocking outcome
+ * reads loudest (the dim `failed · <msg>` summary stays as-is). Generic failures
+ * carry no fabricated fix, just a `status` inspect hint when the target is known.
+ */
+const problemsFor = (state: PlanState): readonly ProblemItem[] => {
+  if (state._tag === 'Success') return state.problems
+  return [
+    {
+      severity: 'critical',
+      name: state.target.length === 0 ? 'plan' : state.target,
+      status: 'failed',
+      details: state.message,
+      fixes: state.target.length === 0 ? [] : [`notion-md status ${state.target}`],
+    },
+  ]
+}
 
 /** The dimmed `·`-joined summary line for a terminal state. */
 const summaryParts = (state: PlanState): readonly string[] =>
@@ -32,7 +51,7 @@ export const PlanView = ({ stateAtom }: PlanViewProps): React.ReactElement => {
   return (
     <CommandOutput
       context={contextLine(state.target)}
-      problems={state._tag === 'Success' ? state.problems : []}
+      problems={problemsFor(state)}
       sections={state._tag === 'Success' ? state.sections : []}
       summary={summaryParts(state)}
     />

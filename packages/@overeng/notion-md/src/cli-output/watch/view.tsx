@@ -7,9 +7,11 @@ import {
   type ProblemItem,
   ProblemList,
   DetailSections,
+  SeverityBadge,
   StatusGlyph,
   SummaryLine,
   Text,
+  useSymbols,
   useTuiAtomValue,
 } from '@overeng/tui-react'
 
@@ -103,6 +105,7 @@ const warnings = (state: WatchState): readonly ProblemItem[] => {
  */
 export const WatchView = ({ stateAtom }: WatchViewProps): React.ReactElement => {
   const state = useTuiAtomValue(stateAtom)
+  const symbols = useSymbols()
   const problems = warnings(state)
   const sections = eventSections(state.recentEvents)
   const glyphKind = state.lastResult?.problem === true ? 'error' : 'ok'
@@ -122,16 +125,14 @@ export const WatchView = ({ stateAtom }: WatchViewProps): React.ReactElement => 
   if (problems.length > 0) {
     blocks.push(
       <Box key="problems">
-        <Text bold backgroundColor="yellow" color="black">
-          WARNING
-        </Text>
+        <SeverityBadge severity="warning" />
         <Text>{''}</Text>
         <ProblemList items={problems} />
       </Box>,
     )
     blocks.push(
       <Text key="sep" dim>
-        ───
+        {symbols.line.horizontal.repeat(3)}
       </Text>,
     )
   }

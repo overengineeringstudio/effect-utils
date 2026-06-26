@@ -1,7 +1,7 @@
 import { type Atom } from '@effect-atom/atom'
 import React from 'react'
 
-import { CommandOutput, useTuiAtomValue } from '@overeng/tui-react'
+import { CommandOutput, type ProblemItem, useTuiAtomValue } from '@overeng/tui-react'
 
 import type { PutState } from './schema.ts'
 
@@ -13,6 +13,27 @@ export interface PutViewProps {
 /** Context header line for the `put` output (`notion-md put · <page>`). */
 const contextLine = (page: string): string =>
   page.length === 0 ? 'notion-md put' : `notion-md put · ${page}`
+
+/**
+ * Problems for the view: any accumulated warnings, plus — on the terminal
+ * `Error` — a problems-first CRITICAL so the most blocking outcome reads loudest
+ * (the dim `failed · <msg>` summary and the `✗` stage row stay as-is). Generic
+ * failures carry no fabricated fix, just a `cat` inspect hint when the page is
+ * known (`cat` takes a pageId; `status` is path-only, so it would not apply here).
+ */
+const problemsFor = (state: PutState): readonly ProblemItem[] => {
+  if (state._tag !== 'Error') return state.warnings
+  return [
+    ...state.warnings,
+    {
+      severity: 'critical',
+      name: state.page.length === 0 ? 'put' : state.page,
+      status: 'failed',
+      details: state.message,
+      fixes: state.page.length === 0 ? [] : [`notion-md cat ${state.page}`],
+    },
+  ]
+}
 
 /** Build the dimmed `·`-joined summary line for a terminal state. */
 const summaryParts = (state: PutState): readonly string[] => {
@@ -45,7 +66,7 @@ export const PutView = ({ stateAtom }: PutViewProps): React.ReactElement => {
   return (
     <CommandOutput
       context={contextLine(state.page)}
-      problems={state.warnings}
+      problems={problemsFor(state)}
       sections={[]}
       stages={state.stages}
       summary={summaryParts(state)}

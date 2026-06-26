@@ -1,7 +1,7 @@
 import { type Atom } from '@effect-atom/atom'
 import React from 'react'
 
-import { CommandOutput, useTuiAtomValue } from '@overeng/tui-react'
+import { CommandOutput, type ProblemItem, useTuiAtomValue } from '@overeng/tui-react'
 
 import type { StatusState } from './schema.ts'
 
@@ -13,6 +13,25 @@ export interface StatusViewProps {
 /** Context header line for the `status` output (`notion-md status · <target>`). */
 const contextLine = (target: string): string =>
   target.length === 0 ? 'notion-md status' : `notion-md status · ${target}`
+
+/**
+ * Problems for the view: the precomputed result problems on `Success`, or — on
+ * the terminal `Error` — a problems-first CRITICAL so the most blocking outcome
+ * reads loudest (the dim `failed · <msg>` summary stays as-is). Re-running
+ * `status` is the failed command itself, so no fix is offered (none to fabricate).
+ */
+const problemsFor = (state: StatusState): readonly ProblemItem[] => {
+  if (state._tag === 'Success') return state.problems
+  return [
+    {
+      severity: 'critical',
+      name: state.target.length === 0 ? 'status' : state.target,
+      status: 'failed',
+      details: state.message,
+      fixes: [],
+    },
+  ]
+}
 
 /** The dimmed `·`-joined summary line for a terminal state. */
 const summaryParts = (state: StatusState): readonly string[] =>
@@ -32,7 +51,7 @@ export const StatusView = ({ stateAtom }: StatusViewProps): React.ReactElement =
   return (
     <CommandOutput
       context={contextLine(state.target)}
-      problems={state._tag === 'Success' ? state.problems : []}
+      problems={problemsFor(state)}
       sections={state._tag === 'Success' ? state.sections : []}
       summary={summaryParts(state)}
     />
