@@ -537,7 +537,9 @@ let
           echo "$_gvs_hash" > "$_gvs_hash_file"
         fi
         if [ -n "''${_pnpm_install_contract_file:-}" ]; then
+          rm -f "$contract_state_file"
           cp "$_pnpm_install_contract_file" "$contract_state_file"
+          chmod u+w "$contract_state_file" 2>/dev/null || true
           if pnpm_contract_supports_dependency_materialization_profile ${pkgs.nodejs}/bin/node "$_pnpm_install_contract_file"; then
             if [ -n "''${CI:-}" ]; then
               _dependency_materialization_trait="ciJobLocal"

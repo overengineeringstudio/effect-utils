@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **pnpm shared task**: Make the cached `pnpm-install-contract.json` mutable
+  task state by replacing any previous cached copy before writing it. This
+  prevents read-only generated contract permissions from breaking later
+  `pnpm:install` runs that need to refresh the cache.
+
 - **@overeng/notion-effect-client**: Add `NotionMarkdown.markdownToBlocks`,
   an AST-based selected-GFM Markdown importer that emits Notion append/create
   block payloads for paragraphs, headings, dividers, lists, task lists, code,

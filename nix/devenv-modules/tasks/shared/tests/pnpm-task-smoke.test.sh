@@ -400,6 +400,25 @@ echo "Test 3: status hits after install with same GVS path"
   assert_exit_code 0 "$exit_code" "status should hit after install"
 )
 
+echo "Test 3a: exec replaces a read-only cached install contract"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  export PNPM_HOME="$workspace/.pnpm-home-a"
+  contract_cache="$workspace/.devenv/task-cache/pnpm-install/pnpm-install-contract.json"
+  chmod 444 "$contract_cache"
+  node -e '
+    const fs = require("node:fs")
+    const file = process.argv[1]
+    const value = JSON.parse(fs.readFileSync(file, "utf8"))
+    value.packageManager.version = "11.3.1"
+    fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`)
+  ' "$workspace/pnpm-install-contract.json"
+  bash "$tmpdir/pnpm-install.exec.sh"
+  test -w "$contract_cache"
+  assert_json_field "11.3.1" "$contract_cache" "value => value.packageManager.version" "cached install contract updates after read-only state"
+)
+
 echo "Test 4: outer cache hit still misses when projection metadata is missing"
 (
   cd "$workspace"
