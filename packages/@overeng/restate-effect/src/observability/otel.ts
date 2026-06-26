@@ -201,7 +201,7 @@ const sharedLayer = (config: OtelLayerConfig): Layer.Layer<never, never, never> 
         )
         const metricReader = resolveMetricReader(config)
         const metricsLayer =
-          metricReader !== undefined ? EffectMetrics.layer(() => metricReader) : Layer.empty
+          metricReader !== undefined ? EffectMetrics.layer(() => [metricReader]) : Layer.empty
         return Layer.merge(tracerLayer, metricsLayer).pipe(Layer.provideMerge(resourceLayer))
       }),
     ),
