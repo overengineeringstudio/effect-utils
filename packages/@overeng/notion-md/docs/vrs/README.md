@@ -6,7 +6,8 @@ These documents are the design source of truth for `@overeng/notion-md`.
 - [Requirements](./requirements.md) — cross-cutting; per-subsystem requirements live in the numeric dirs
 - [Spec](./spec.md) — thin architecture index + subsystem map
 - [Glossary](./glossary.md)
-- [Decisions](./.decisions/) — `0001`–`0019` (some early ids superseded and removed; rationale in [experiments.md](./experiments.md))
+- [Decisions](./.decisions/) — `0001`–`0021` (some early ids superseded and removed; rationale in [experiments.md](./experiments.md))
+- [Open Questions](./open-questions.md)
 - [Implementation Delta](./impl-delta.md)
 - [Experiments](./experiments.md)
 

@@ -42,6 +42,24 @@ Does not define:
 - a replacement syntax for Notion enhanced Markdown,
 - full data-source schema/view sync (see the [Notion datasource sync spec](../../../notion-datasource-sync/docs/vrs/spec.md)).
 
+## Boundary with the official `ntn` CLI
+
+This tool layers guarded body/page editing and multi-page subtree sync **on top
+of** Notion's official `ntn` CLI; it does not re-implement `ntn`'s surface. We
+add a command on a surface `ntn` already covers only with a documented clear
+reason — a safety, fidelity, library-reuse, or scope property `ntn` lacks. The
+per-command audit and the clear reasons live in
+[decision 0021](./.decisions/0021-avoid-duplicating-official-ntn.md); raw
+datasource queries, `api`, `files`, and `login` stay `ntn`'s.
+
+### DQ1 — `cat` vs `ntn pages get`
+
+`cat` overlaps `ntn pages get`; its only edge is base-hash emission for the
+guarded `put` workflow plus refuse-on-read, and it is weaker than `ntn pages get`
+for casual reads. Whether `cat` stays a user-facing guarded-workflow read
+primitive or is deprecated toward `ntn pages get` is an open question — see
+[open-questions.md `OQ1`](./open-questions.md#oq1--keep-cat-or-defer-casual-reads-to-ntn-pages-get).
+
 ## System Shape
 
 ```
@@ -134,8 +152,11 @@ link up to [../requirements.md](./requirements.md) + its own `requirements.md`.
 | 05  | [local-state](./05-local-state/spec.md) | `.nmd` envelope, frontmatter schema, `.notion-md/` content-addressed object store, base snapshots                                                                                                  | R06, R07, R08, R10                    | 0006                                                     |
 | 06  | [data-source](./06-data-source/spec.md) | writable property values, writable page metadata, `data_source` binding, `schema_snapshot` schema-drift guard                                                                                      | R04, R14                              | 0013                                                     |
 
-The `.decisions/` directory (0001–0018) is the authoritative decision log; the
-Decisions column above is the citation map. Decision **0016** (refuse lossy pages)
+The `.decisions/` directory (0001–0021) is the authoritative decision log; the
+Decisions column above is the citation map. Decision **0021** (avoid duplicating
+the official `ntn` CLI) is cross-cutting — it constrains the whole command surface
+rather than one subsystem — and is cited from the "Boundary with the official
+`ntn` CLI" section above. Decision **0016** (refuse lossy pages)
 supersedes the reconciler/converter records (0005, 0010, 0011, 0014, 0015);
 decision **0017** (edit = ephemeral file-engine session) supersedes 0013 (the
 stateless schema fingerprint) and broadens the refusal to uniform; decision

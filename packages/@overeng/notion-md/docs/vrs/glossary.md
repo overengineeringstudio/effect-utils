@@ -96,6 +96,14 @@ decision 0007.
 _Avoid_: url stripping, url normalization (it is specifically the signed-param
 strip).
 
+**Official `ntn` CLI**:
+Notion's own command-line tool — a closed-source, prebuilt Rust binary (vendored
+through a Nix flake) exposing `pages`, `datasources`, `api`, `files`, and `login`
+surfaces. It is the baseline this tool layers on top of: we avoid duplicating an
+`ntn` command without a documented clear reason ([decision 0021](./.decisions/0021-avoid-duplicating-official-ntn.md)).
+Its page-edit path is an unguarded last-writer-wins `replace_content`.
+_Avoid_: notion-cli (ambiguous with our own `@overeng/notion-cli` umbrella), `ntn` binary.
+
 **Guarded body replace**:
 The **`cat`/`put`** push engine: write the edited body through
 `replaceRemoteBodyVerified` (Notion's `replace_content`, guarded by the
