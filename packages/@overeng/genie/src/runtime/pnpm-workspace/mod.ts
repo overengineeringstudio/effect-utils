@@ -99,6 +99,12 @@ export interface PnpmSettings {
   publicHoistPattern?: readonly string[]
 
   /**
+   * Limit how far dependencies are hoisted when using `nodeLinker: hoisted`.
+   * @see https://pnpm.io/settings#hoistinglimits
+   */
+  hoistingLimits?: 'none' | 'workspaces' | 'dependencies'
+
+  /**
    * Hoist all dependencies matching hoistPattern to the root node_modules.
    * @see https://pnpm.io/settings#shamefully-hoist
    */
@@ -709,6 +715,12 @@ export interface PnpmWorkspaceData {
   publicHoistPattern?: readonly string[]
 
   /**
+   * Limit how far dependencies are hoisted when using `nodeLinker: hoisted`.
+   * @see https://pnpm.io/settings#hoistinglimits
+   */
+  hoistingLimits?: 'none' | 'workspaces' | 'dependencies'
+
+  /**
    * The node_modules layout.
    * @see https://pnpm.io/settings#node-linker
    */
@@ -1002,6 +1014,10 @@ const buildPnpmWorkspaceYaml = <T extends PnpmWorkspaceData>({
 
   if (data.publicHoistPattern !== undefined) {
     result.publicHoistPattern = [...data.publicHoistPattern]
+  }
+
+  if (data.hoistingLimits !== undefined) {
+    result.hoistingLimits = data.hoistingLimits
   }
 
   if (data.nodeLinker !== undefined) {
