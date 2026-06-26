@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
 import { NodeContext } from '@effect/platform-node'
-import { Deferred, Effect, Fiber, Layer } from 'effect'
+import { Console, Deferred, Effect, Fiber, Layer, Ref } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { classifyBodyCompleteness, type BodyCompleteness } from '@overeng/notion-core'
@@ -674,6 +674,82 @@ describe('notion-md e2e prototype', () => {
           result: expect.objectContaining({ _tag: 'noop' }),
         }),
       )
+    })
+  })
+
+  /*
+   * Regression guard for Slice D: the live `--watch` view (react/TTY) must NOT
+   * change the per-pass machine stream. The machine branch runs the IDENTICAL
+   * loop with the default `writeJsonLine` emit, so each stdout line must stay
+   * exactly `JSON.stringify({ event: 'sync', reason, result })` — no kit
+   * bootstrap-snapshot line, no schema-reordered fields, no envelope. We capture
+   * the real stdout (default emit → Effect `Console.log`) and assert each line
+   * round-trips byte-for-byte and carries only the historical per-pass shape.
+   */
+  it('watch mode default stdout stays byte-identical to writeJsonLine per-pass shape', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeNotion([{ pageId, title: 'Probe', markdown: '# Probe\n\nBody' }])
+      const path = join(dir, 'probe.nmd')
+
+      await runWithFake(pullPage({ pageId, outPath: path }), fake)
+      fake.mutateRemote(pageId, '# Probe\n\nRemote body')
+
+      // Capture exactly what the default `writeJsonLine` emits — it calls Effect
+      // `Console.log`, so a recording Console service records the real lines.
+      const lines = await runWithFake(
+        Effect.gen(function* () {
+          const captured = yield* Ref.make<readonly string[]>([])
+          const consoleService: Console.Console = {
+            [Console.TypeId]: Console.TypeId,
+            log: (...args) => Ref.update(captured, (cur) => [...cur, args.map(String).join(' ')]),
+            error: () => Effect.void,
+            info: (...args) => Ref.update(captured, (cur) => [...cur, args.map(String).join(' ')]),
+            warn: () => Effect.void,
+            debug: () => Effect.void,
+            trace: () => Effect.void,
+            assert: () => Effect.void,
+            clear: Effect.void,
+            count: () => Effect.void,
+            countReset: () => Effect.void,
+            dir: () => Effect.void,
+            dirxml: () => Effect.void,
+            group: () => Effect.void,
+            groupEnd: Effect.void,
+            table: () => Effect.void,
+            time: () => Effect.void,
+            timeEnd: () => Effect.void,
+            timeLog: () => Effect.void,
+            unsafe: globalThis.console,
+          }
+          yield* Effect.scoped(
+            Effect.gen(function* () {
+              const fiber = yield* Effect.fork(
+                // No `emit` override → exercises the production default writeJsonLine.
+                runWatch({ syncOptions: { path }, pollIntervalMs: 50 }),
+              )
+              yield* Effect.sleep('800 millis')
+              yield* Fiber.interrupt(fiber)
+            }),
+          ).pipe(Effect.provide(Console.setConsole(consoleService)))
+          return yield* Ref.get(captured)
+        }),
+        fake,
+      )
+
+      expect(lines.length).toBeGreaterThan(0)
+      for (const line of lines) {
+        const parsed = JSON.parse(line) as Record<string, unknown>
+        // Byte-identity: re-stringifying the parsed object reproduces the line
+        // exactly (no whitespace, no reordering, no extra/dropped fields).
+        expect(JSON.stringify(parsed)).toBe(line)
+        // Per-pass shape: only the historical `sync` (or error) event fields.
+        expect(parsed.event).toMatch(/^(sync|sync_error|watch_error)$/u)
+        if (parsed.event === 'sync') {
+          expect(Object.keys(parsed).sort()).toEqual(['event', 'reason', 'result'])
+        }
+      }
+      // No kit bootstrap-snapshot line: nothing tagged `Watching` (the view state).
+      expect(lines.some((line) => line.includes('"_tag":"Watching"'))).toBe(false)
     })
   })
 

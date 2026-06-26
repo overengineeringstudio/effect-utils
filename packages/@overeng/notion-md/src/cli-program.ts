@@ -8,7 +8,7 @@ import React from 'react'
 import { NotionConfigLive, resolveNotionToken } from '@overeng/notion-effect-client'
 import { parseNotionUuid } from '@overeng/notion-effect-schema'
 import { OtelAttr, OtelAttrs, OtelOperation } from '@overeng/otel-contract'
-import { run } from '@overeng/tui-react'
+import { OutputModeTag, run } from '@overeng/tui-react'
 import { outputModeLayer, outputOption } from '@overeng/tui-react/node'
 import { resolveCliVersion } from '@overeng/utils/node/cli-version'
 
@@ -34,6 +34,9 @@ import { StatusView } from './cli-output/status/view.tsx'
 import { getSyncApp } from './cli-output/sync/app.ts'
 import { syncErrorAction, syncResultAction, type SyncEngineResult } from './cli-output/sync/map.ts'
 import { SyncView } from './cli-output/sync/view.tsx'
+import { getWatchApp } from './cli-output/watch/app.ts'
+import { toWatchAction } from './cli-output/watch/map.ts'
+import { WatchView } from './cli-output/watch/view.tsx'
 import {
   catEditorPage,
   editEditorPage,
@@ -626,6 +629,64 @@ const runSyncOutput = <E>({
     { view: React.createElement(SyncView, { stateAtom: getSyncApp().stateAtom }) },
   ).pipe(Effect.provide(outputModeLayer(output)))
 
+/**
+ * Run a `--watch` loop with mode-appropriate output.
+ *
+ * Hard constraint: the per-pass NDJSON/`writeJsonLine` stream MUST stay
+ * byte-identical to today's (scripts depend on it). So this branches on the
+ * RESOLVED `OutputMode` instead of folding both paths through the kit's
+ * `NdjsonConfig`:
+ *
+ * - **react (TTY)**: mount {@link getWatchApp} and redirect the loop's per-pass
+ *   `emit` into `tui.dispatch(toWatchAction(event))` for a live status view.
+ *   Watch is infinite — `run`'s handler never returns; Ctrl+C interrupts the
+ *   scope and the finalizer unmounts. The view renders to the TTY only.
+ * - **machine (json/ndjson/log/ci/auto-piped)**: run the IDENTICAL loop with the
+ *   default `writeJsonLine` emit (no `emit` override). Byte-identity holds by
+ *   construction — there is no re-encoding, no schema key-order risk, and the
+ *   heterogeneous `sync`/`sync_error`/`watch_error`/batch-`paths` lines are
+ *   reproduced verbatim. `--output json` for `--watch` streams these ndjson-
+ *   style per-pass lines (there is no single terminal state for an infinite
+ *   stream); the kit's progressive-json snapshot mode is intentionally bypassed.
+ *
+ * `buildWatch` receives the loop's optional `emit` override and returns the
+ * (never-returning) watch Effect — the two call sites pass `runWatch` /
+ * `runBatchWatch` partially applied with their target-specific options.
+ */
+const runWatchOutput = <R>({
+  target,
+  pollIntervalMs,
+  output,
+  buildWatch,
+}: {
+  readonly target: string
+  readonly pollIntervalMs: number
+  readonly output: Parameters<typeof outputModeLayer>[0]
+  readonly buildWatch: (
+    emit?: (value: unknown) => Effect.Effect<void>,
+  ) => Effect.Effect<never, never, R>
+}): Effect.Effect<never, NmdCliError, R> =>
+  Effect.gen(function* () {
+    const mode = yield* OutputModeTag
+    if (mode._tag === 'react') {
+      return yield* run(
+        getWatchApp(),
+        (tui) => {
+          tui.dispatch({ _tag: 'Init', target, pollIntervalMs })
+          return buildWatch((event) =>
+            Effect.sync(() => {
+              const action = toWatchAction(event)
+              if (action !== undefined) tui.dispatch(action)
+            }),
+          )
+        },
+        { view: React.createElement(WatchView, { stateAtom: getWatchApp().stateAtom }) },
+      )
+    }
+    // Machine modes: today's stream, verbatim (default `writeJsonLine` emit).
+    return yield* buildWatch()
+  }).pipe(Effect.provide(outputModeLayer(output)))
+
 const syncCommand = Command.make(
   'sync',
   {
@@ -722,9 +783,16 @@ const syncCommand = Command.make(
                 : singleFile.pipe(
                     Effect.flatMap((isSingleFile) =>
                       isSingleFile === true
-                        ? runWatch({
-                            syncOptions: { ...syncOptions, path: targets[0] ?? '' },
+                        ? runWatchOutput({
+                            target: targets[0] ?? source,
                             pollIntervalMs,
+                            output,
+                            buildWatch: (emit) =>
+                              runWatch({
+                                syncOptions: { ...syncOptions, path: targets[0] ?? '' },
+                                pollIntervalMs,
+                                ...(emit === undefined ? {} : { emit }),
+                              }),
                           })
                         : resolveNmdTargets({ targets, recursive, operation: 'sync' }).pipe(
                             Effect.flatMap((resolved) => {
@@ -737,11 +805,18 @@ const syncCommand = Command.make(
                                   }),
                                 )
                               }
-                              return runBatchWatch({
-                                ...syncOptions,
-                                paths: resolved.paths,
-                                concurrency,
+                              return runWatchOutput({
+                                target: label,
                                 pollIntervalMs,
+                                output,
+                                buildWatch: (emit) =>
+                                  runBatchWatch({
+                                    ...syncOptions,
+                                    paths: resolved.paths,
+                                    concurrency,
+                                    pollIntervalMs,
+                                    ...(emit === undefined ? {} : { emit }),
+                                  }),
                               })
                             }),
                           ),
