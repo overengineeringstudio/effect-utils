@@ -192,6 +192,17 @@ describe('metadata-based workspace projections', () => {
     expect(workspaceFile.stringify(mockGenieContext)).toContain('storeDir: .pnpm-store')
   })
 
+  it('serializes hoistingLimits for hoisted pnpm workspaces', () => {
+    const workspaceFile = pnpmWorkspaceYaml.root({
+      packages: [app],
+      repoName: repo.repoName,
+      nodeLinker: 'hoisted',
+      hoistingLimits: 'workspaces',
+    })
+
+    expect(workspaceFile.stringify(mockGenieContext)).toContain('hoistingLimits: workspaces')
+  })
+
   it('projects workspace root workspaces from package metadata', () => {
     const workspaceRoot = packageJson.aggregateFromPackages({
       packages: [app],
