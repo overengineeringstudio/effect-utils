@@ -52,8 +52,11 @@ const scanMembersRecursive = ({
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
 
-    // Prevent cycles
-    const normalizedRoot = megarepoRoot.replace(/\/$/, '')
+    // Prevent cycles across repos/<member> symlink paths.
+    const normalizedRoot = yield* fs.realPath(megarepoRoot).pipe(
+      Effect.map((p) => p.replace(/\/$/, '')),
+      Effect.catchAll(() => Effect.succeed(megarepoRoot.replace(/\/$/, ''))),
+    )
     if (visited.has(normalizedRoot) === true) {
       return []
     }

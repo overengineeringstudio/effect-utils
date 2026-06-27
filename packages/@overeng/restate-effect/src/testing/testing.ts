@@ -217,6 +217,11 @@ interface ServerHandle {
 const isPortCollisionLog = (logs: string): boolean =>
   /address (already )?in use|EADDRINUSE/i.test(logs)
 
+const isEndpointPortCollision = (error: RestateError): boolean =>
+  error.reason === 'EndpointFailed' &&
+  error.method === 'listen' &&
+  isPortCollisionLog(String(error.cause ?? error.message))
+
 /** One boot attempt against fixed ports, or `'port-collision'` if the child died on a taken port. */
 type BootAttempt = ServerHandle | 'port-collision'
 
@@ -743,7 +748,7 @@ export class RestateTestHarness extends Context.Tag('@overeng/restate-effect/Res
          * server-shutdown finalizer (close endpoint → kill server → rm base dir).
          * Reused for the primary deployment AND `registerDeployment` (multi-version,
          * docs/vrs/09-testing/spec.md §2) — each gets its own port + scope-managed endpoint. */
-        const serveAndRegister = <AppR2, RIn2>({
+        const serveAndRegisterOnce = <AppR2, RIn2>({
           services,
           appLayer,
           endpointScope,
@@ -782,6 +787,22 @@ export class RestateTestHarness extends Context.Tag('@overeng/restate-effect/Res
             })
             return uri
           })
+
+        const serveAndRegister = <AppR2, RIn2>(
+          args: Parameters<typeof serveAndRegisterOnce<AppR2, RIn2>>[0],
+        ): Effect.Effect<string, RestateError, RIn2> => {
+          const maxAttempts = 6
+          const attempt = (remaining: number): Effect.Effect<string, RestateError, RIn2> =>
+            serveAndRegisterOnce(args).pipe(
+              Effect.catchIf(
+                (error): error is RestateError =>
+                  remaining > 1 && error instanceof RestateError && isEndpointPortCollision(error),
+                () => attempt(remaining - 1),
+              ),
+            )
+
+          return attempt(maxAttempts)
+        }
 
         /* MEMOIZE the primary `appLayer` so it is built EXACTLY ONCE into the
          * harness scope and shared by (a) the served endpoint and (b) the redaction

@@ -1484,13 +1484,39 @@ pkgs.stdenv.mkDerivation {
     echo "cli-build: phase=install cli=${binaryName} package=${packageDir} duration=$(install_timer_elapsed "$installStartedAt")s installed_size=$(install_format_bytes "$installedBytes")"
 
     ${lib.optionalString generateCompletions ''
-      # Generate shell completions (Effect CLI built-in support)
+      # Generate shell completions. Effect CLIs commonly support `--log-level none`,
+      # but package builders must also work for CLIs that expose completions without
+      # that logging flag.
       mkdir -p "$out/share/fish/vendor_completions.d"
       mkdir -p "$out/share/bash-completion/completions"
       mkdir -p "$out/share/zsh/site-functions"
-      $out/bin/${binaryName} --log-level none --completions fish > "$out/share/fish/vendor_completions.d/${binaryName}.fish" || true
-      $out/bin/${binaryName} --log-level none --completions bash > "$out/share/bash-completion/completions/${binaryName}" || true
-      $out/bin/${binaryName} --log-level none --completions zsh > "$out/share/zsh/site-functions/_${binaryName}" || true
+
+      generate_completion() {
+        shell_name="$1"
+        target="$2"
+        output_file="$(mktemp)"
+        stderr_file="$(mktemp)"
+
+        if "$out/bin/${binaryName}" --log-level none --completions "$shell_name" > "$output_file" 2>"$stderr_file"; then
+          mv "$output_file" "$target"
+          rm -f "$stderr_file"
+          return 0
+        fi
+
+        if "$out/bin/${binaryName}" --completions "$shell_name" > "$output_file" 2>"$stderr_file"; then
+          mv "$output_file" "$target"
+          rm -f "$stderr_file"
+          return 0
+        fi
+
+        echo "mk-pnpm-cli: warning: failed to generate $shell_name completions for ${binaryName}" >&2
+        cat "$stderr_file" >&2
+        rm -f "$output_file" "$stderr_file"
+      }
+
+      generate_completion fish "$out/share/fish/vendor_completions.d/${binaryName}.fish"
+      generate_completion bash "$out/share/bash-completion/completions/${binaryName}"
+      generate_completion zsh "$out/share/zsh/site-functions/_${binaryName}"
     ''}
     runHook postInstall
   '';

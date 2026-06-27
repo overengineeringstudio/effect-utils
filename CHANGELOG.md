@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Restore repo-local `@myobie/pty` patching at the generated workspace root,
+  keep it out of downstream `@overeng/utils` package metadata, make CLI
+  completion generation tolerate commands without `--log-level`, canonicalize
+  nested megarepo traversal paths before cycle checks, and retry Restate test
+  endpoint binds that lose the fixed-port race.
+
 ### Added
 
 - **pnpm install contract proof**: Add a generated `pnpm-install-contract.json`
