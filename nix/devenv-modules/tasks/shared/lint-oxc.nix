@@ -128,11 +128,12 @@ let
                   status=$?
                 fi
 
-                if grep -Fq "$empty_selection_diagnostic" "$stderr_file"; then
+                stderr="$(cat "$stderr_file")"
+                if [ "$stderr" = "$empty_selection_diagnostic" ]; then
                   exit 0
                 fi
 
-                cat "$stderr_file" >&2
+                printf "%s\n" "$stderr" >&2
                 exit "$status"
               ' sh ${lib.escapeShellArg emptySelectionDiagnostic} < "$files"
             ''

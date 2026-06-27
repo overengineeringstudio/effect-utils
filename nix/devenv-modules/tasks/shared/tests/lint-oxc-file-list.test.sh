@@ -90,6 +90,11 @@ if [ "${TEST_OXFMT_OTHER_ERROR:-0}" = 1 ]; then
   echo "parse error" >&2
   exit 1
 fi
+if [ "${TEST_OXFMT_MIXED_EMPTY_TARGET_ERROR:-0}" = 1 ]; then
+  echo "Expected at least one target file" >&2
+  echo "parse error" >&2
+  exit 1
+fi
 printf '%s\n' "$@" > "${TEST_OXFMT_ARGS:?}"
 EOF
 chmod +x "$tmpdir/bin/oxfmt"
@@ -240,6 +245,18 @@ if (
   exit 1
 fi
 unset TEST_OXFMT_OTHER_ERROR
+
+echo ""
+echo "Test 5: format task does not hide mixed empty-target and real errors"
+export TEST_OXFMT_MIXED_EMPTY_TARGET_ERROR=1
+if (
+  cd "$workspace"
+  bash "$tmpdir/lint-check-format.sh"
+); then
+  echo "FAIL: mixed empty-target and real oxfmt errors must fail"
+  exit 1
+fi
+unset TEST_OXFMT_MIXED_EMPTY_TARGET_ERROR
 
 echo ""
 echo "All lint-oxc file list tests passed"
