@@ -3,7 +3,11 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import type { GenieActionlintConfig, GenieActionlintRunner } from '../core.ts'
 import type { GenieValidationIssue } from '../validation/mod.ts'
+
+/** Configuration for actionlint validation (alias of the shared {@link GenieActionlintConfig}). */
+export type ActionlintConfig = GenieActionlintConfig
 
 type ActionlintJsonIssue = {
   message: string
@@ -13,14 +17,6 @@ type ActionlintJsonIssue = {
   kind: string
   snippet: string
   end_column: number
-}
-
-/** Configuration for actionlint validation in `githubWorkflow()` */
-export type ActionlintConfig = {
-  /** Custom self-hosted runner labels (suppresses "unknown label" errors) */
-  selfHostedRunnerLabels?: readonly string[]
-  /** Extra `-ignore` regex patterns passed to actionlint */
-  ignorePatterns?: readonly string[]
 }
 
 /** shellcheck/pyflakes info/style issues are warnings; everything else is an error */
@@ -46,8 +42,28 @@ const writeConfigFile = (labels: readonly string[]): string => {
   return configPath
 }
 
+/**
+ * Run actionlint and log any issues to stderr.
+ *
+ * This is the node-only runner the genie engine injects as the `ctx.actionlint` capability (typed as
+ * {@link GenieActionlintRunner}); it owns the stderr reporting that previously lived in the (now pure)
+ * `githubWorkflow` validator.
+ */
+export const runActionlint: GenieActionlintRunner = (args) => {
+  const result = runActionlintRaw(args)
+  if (result.issues.length > 0) {
+    console.error(
+      `[genie/actionlint] ${args.location}: ${result.issues.length} issue(s) in ${result.durationMs.toFixed(0)}ms`,
+    )
+    for (const issue of result.issues) {
+      console.error(`  [${issue.severity}] ${issue.rule}: ${issue.message}`)
+    }
+  }
+  return result
+}
+
 /** Run actionlint on a YAML string via stdin, returning structured validation issues and timing data */
-export const runActionlint = ({
+const runActionlintRaw = ({
   yaml,
   location,
   config,

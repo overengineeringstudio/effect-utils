@@ -3,16 +3,9 @@
  * Reference: https://www.typescriptlang.org/tsconfig
  */
 
-import { existsSync } from 'node:fs'
-import path from 'node:path'
-
 import type { GenieContext, GenieOutput, Strict } from '../mod.ts'
-import type { WorkspacePackageLike } from '../package-json/mod.ts'
-import { rootWorkspaceMemberPathsFromPackages } from '../workspace-graph.ts'
+import { warn } from '../utils/log.ts'
 import { validateTsconfigReferences } from './validators/references.ts'
-
-const sortStrings = (values: Iterable<string>) =>
-  [...new Set(values)].toSorted((a, b) => a.localeCompare(b))
 
 type Target =
   | 'ES3'
@@ -310,7 +303,7 @@ export const tsconfigJson = <const T extends TSConfigArgs>(
   args: Strict<T, TSConfigArgs>,
 ): GenieOutput<T> => {
   if (args.extends !== undefined) {
-    console.warn(
+    warn(
       `[genie] tsconfig.json uses "extends" which is not recommended with Genie.\n` +
         `        Instead, import and spread the base config directly for better composability:\n` +
         `        compilerOptions: { ...baseTsconfigCompilerOptions, ...yourOptions }`,
@@ -323,42 +316,4 @@ export const tsconfigJson = <const T extends TSConfigArgs>(
     validate: (ctx: GenieContext) =>
       validateTsconfigReferences({ ctx, references: args.references }),
   }
-}
-
-/** Project a root tsconfig.json references list from package metadata instead of maintaining reference paths manually. */
-export const tsconfigJsonFromPackages = ({
-  dir,
-  packages,
-  repoName,
-  extraReferences = [],
-  onlyExistingReferences = false,
-  ...args
-}: {
-  dir: string
-  packages: readonly WorkspacePackageLike[]
-  repoName: string
-  extraReferences?: readonly string[]
-  onlyExistingReferences?: boolean
-} & Omit<TSConfigArgs, 'references'>): GenieOutput<TSConfigArgs> => {
-  const references = sortStrings([
-    ...rootWorkspaceMemberPathsFromPackages({
-      packages,
-      repoName,
-    }),
-    ...extraReferences,
-  ])
-
-  const normalizedReferences =
-    onlyExistingReferences === true
-      ? references.filter((referencePath) =>
-          existsSync(path.join(dir, referencePath, 'tsconfig.json')),
-        )
-      : references
-
-  return tsconfigJson({
-    ...args,
-    references: normalizedReferences.map((referencePath) => ({
-      path: `./${referencePath}`,
-    })),
-  })
 }

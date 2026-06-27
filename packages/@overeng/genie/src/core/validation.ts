@@ -1,8 +1,21 @@
 import { type Error as PlatformError, FileSystem, Path } from '@effect/platform'
 import { Effect } from 'effect'
+import ts from 'typescript'
 
-import type { GenieContext } from '../runtime/mod.ts'
+import type { GenieContext, GenieJsoncParser } from '../runtime/mod.ts'
+import { nodeGenieIO, runActionlint } from '../runtime/node/mod.ts'
 import { formatValidationIssues, type ValidationIssue } from '../runtime/package-json/validation.ts'
+
+/**
+ * Engine-side JSONC parser injected as the {@link GenieContext.parseJsonc} capability. Backed by the
+ * TypeScript compiler's JSONC-aware parse so validators (e.g. tsconfig references) tolerate comment-headed
+ * config files exactly as the previous `ts.readConfigFile` path did. Lives here (`src/core/`, the node engine)
+ * rather than `src/runtime/` so the dependency-free runtime never value-imports typescript (issue #138).
+ */
+const nodeJsoncParser: GenieJsoncParser = ({ path, text }) => {
+  const { config, error } = ts.parseConfigFileTextToJson(path, text)
+  return error !== undefined ? undefined : config
+}
 import { findGenieFiles } from './discovery.ts'
 import { GenieValidationError } from './errors.ts'
 import type { GenieImportError } from './errors.ts'
@@ -81,6 +94,9 @@ export const runGenieValidation = ({
           packages: packageJsonContext.packages,
           byName: packageJsonContext.byName,
         },
+        io: nodeGenieIO,
+        actionlint: runActionlint,
+        parseJsonc: nodeJsoncParser,
       }
 
       if (loaded.output.validate !== undefined) {

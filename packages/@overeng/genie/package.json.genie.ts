@@ -54,11 +54,14 @@ export default packageJson(
       'storybook:build': 'storybook build',
     },
     exports: {
+      // Isomorphic entry: pure builders + types, free of node/Bun/DOM in their import closure. A TYPECHECKING
+      // consumer (e.g. a `.bzl` genie generator) can import `GenieOutput`/`Strict` and the builders without
+      // dragging genie's runtime ambient globals into its program. Filesystem/spawn capabilities used during
+      // validation are injected via `GenieContext` (`io`, `actionlint`) by the engine.
       '.': './src/runtime/mod.ts',
-      // Types-only leaf entry: GenieOutput/Strict + their transitive type closure, none of which
-      // import node/Bun/DOM. Lets a TYPECHECKING consumer (e.g. a `.bzl` genie generator) import the
-      // core types without dragging genie's runtime source (and its ambient globals) into its program.
-      './core': './src/runtime/core.ts',
+      // Node-resident entry: re-exports `.` plus the node-only members (nodeGenieIO, actionlint runner,
+      // github-ruleset reconcile ops, fs-discovery tsconfigJsonFromPackages, repo-context).
+      './node': './src/runtime/node/mod.ts',
       './cli': './src/build/mod.tsx',
       './sdk': './src/sdk/mod.ts',
     },
@@ -66,7 +69,7 @@ export default packageJson(
       access: 'public',
       exports: {
         '.': './dist/src/runtime/mod.js',
-        './core': './dist/src/runtime/core.js',
+        './node': './dist/src/runtime/node/mod.js',
         './cli': './dist/src/build/mod.js',
         './sdk': './dist/src/sdk/mod.js',
       },

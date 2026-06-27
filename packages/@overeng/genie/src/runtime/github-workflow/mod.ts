@@ -1,10 +1,10 @@
-import { createGenieOutput } from '../core.ts'
+import { createGenieOutput, type GenieActionlintConfig, type GenieContext } from '../core.ts'
 import type { GenieOutput, Strict } from '../mod.ts'
 import * as yaml from '../utils/yaml.ts'
 import type { GenieValidationIssue } from '../validation/mod.ts'
-import { runActionlint, type ActionlintConfig } from './actionlint.ts'
 
-export type { ActionlintConfig }
+/** Configuration for actionlint validation in `githubWorkflow()` (alias of {@link GenieActionlintConfig}). */
+export type ActionlintConfig = GenieActionlintConfig
 
 /**
  * Type-safe GitHub Actions workflow generator
@@ -425,12 +425,13 @@ const validateGitHubExpressionStrings = ({
 const validateWorkflow = ({
   args,
   yamlContent,
-  location,
+  ctx,
 }: {
   args: GitHubWorkflowArgs
   yamlContent: string
-  location: string
+  ctx: GenieContext
 }): GenieValidationIssue[] => {
+  const location = ctx.location
   const issues: GenieValidationIssue[] = []
 
   for (const [jobName, job] of Object.entries(args.jobs)) {
@@ -446,20 +447,14 @@ const validateWorkflow = ({
     }),
   )
 
-  if (args.actionlint !== false) {
-    const actionlintResult =
-      args.actionlint !== undefined
-        ? runActionlint({ yaml: yamlContent, location, config: args.actionlint })
-        : runActionlint({ yaml: yamlContent, location })
-    const { issues: actionlintIssues, durationMs } = actionlintResult
-    if (actionlintIssues.length > 0) {
-      console.error(
-        `[genie/actionlint] ${location}: ${actionlintIssues.length} issue(s) in ${durationMs.toFixed(0)}ms`,
-      )
-      for (const issue of actionlintIssues) {
-        console.error(`  [${issue.severity}] ${issue.rule}: ${issue.message}`)
-      }
-    }
+  // actionlint shells out to a binary (node-only), so it runs only when the engine injects the
+  // `ctx.actionlint` capability. A typechecking consumer of the pure `.` entry never resolves the spawn runner.
+  if (args.actionlint !== false && ctx.actionlint !== undefined) {
+    const { issues: actionlintIssues } = ctx.actionlint({
+      yaml: yamlContent,
+      location,
+      ...(args.actionlint !== undefined ? { config: args.actionlint } : {}),
+    })
     issues.push(...actionlintIssues)
   }
 
@@ -501,7 +496,7 @@ export const githubWorkflow = <const T extends GitHubWorkflowArgs>(
     stringify: (_ctx) => yaml.stringify(yamlArgs),
     validate: (ctx) => {
       const yamlContent = yaml.stringify(yamlArgs)
-      return validateWorkflow({ args, yamlContent, location: ctx.location })
+      return validateWorkflow({ args, yamlContent, ctx })
     },
   })
 }
