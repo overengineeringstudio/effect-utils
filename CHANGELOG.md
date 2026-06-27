@@ -276,6 +276,8 @@ All notable changes to this project will be documented in this file.
   compiled runs do not leak OS temp state. Restore `lint-oxc`'s git-backed
   tracked/untracked file selection so lint tasks skip ignored, deleted, and
   unsupported paths instead of handing broad directories to `oxlint`/`oxfmt`.
+  Reuse the shared Notion Markdown processor helpers from canonical Markdown
+  parsing so the GFM extension policy has a single implementation.
 
 - **@overeng/notion-md / @overeng/notion-datasource-sync**: Address PR review regressions for datasource body/property settlement and workspace establishment. Verified body-push settlement now preserves existing `.nmd` writable frontmatter properties, `--sqlite data/v1/<source>.sqlite` selects the matching manifest source in multi-source workspaces, and `track` writes `notion.workspace.v1.json` only after successful establishment. Public SQLite replicas now treat macOS `/var` and `/private/var` temp-path aliases as the same workspace for move detection, avoiding false `moved` status while still detecting copied data files. Also makes GFM autolink canonicalization idempotent for generated canonical bodies.
 
