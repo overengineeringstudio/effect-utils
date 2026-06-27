@@ -6,6 +6,20 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **devenv/lint-oxc**: Make `lintPaths` the single lint surface contract.
+  oxlint/oxfmt tasks now enumerate tracked plus untracked non-ignored files via
+  `git ls-files` and always run instead of delegating change detection to
+  devenv's `execIfModified` glob walker. The shared lint module is kept
+  repo-agnostic; effect-utils-specific source policy checks live in local task
+  modules. Per-tool file filters include the broader Oxc-supported extension
+  sets, including `.mts`/`.cts` for oxlint and additional oxfmt-supported
+  formats such as JSON5, SCSS/Less, MDX, GraphQL, and Handlebars.
+
+- **devenv task-module tests**: Add a dedicated `devenv-modules:test` task for
+  shell tests colocated under `nix/devenv-modules/tasks/shared/tests`, and wire
+  it into `test:run` so shared task-module regressions run in the normal CI unit
+  test job.
+
 - **@overeng/notion-effect-client**: Add `NotionMarkdown.markdownToBlocks`,
   an AST-based selected-GFM Markdown importer that emits Notion append/create
   block payloads for paragraphs, headings, dividers, lists, task lists, code,
@@ -25,8 +39,8 @@ All notable changes to this project will be documented in this file.
   mismatches in runtime dependencies fail in CI before downstream consumers hit
   them. Mark `pnpm-install-contract.json` as generated in Git attributes.
 
-- **devenv/lint**: Add a `lint:check:asset-import-needs-type-reference` task (wired into
-  `lint:check`) that fails when a compiled, exported source file imports an asset
+- **devenv/lint**: Add a local `lint:check:asset-import-needs-type-reference`
+  task (wired into `lint:check`) that fails when a compiled, exported source file imports an asset
   (`import '...css|scss|sass|less'`) without a `/// <reference>` directive to make the ambient
   `*.css` declaration travel into downstream TS checks (TS2882, #837). It runs out-of-band over
   tracked + untracked source (an in-oxlint rule would itself be suppressible by an `oxlint-disable`,
@@ -187,7 +201,7 @@ All notable changes to this project will be documented in this file.
   retry allocation for the native `restate-server` child process ports that must
   be passed by number.
 
-- **CI test task ordering**: Make `nix:test` wait for `pnpm:install` so
+- **CI test task ordering**: Make shared devenv task-module tests wait for `pnpm:install` so
   source-mode CLI shell tests cannot race dependency materialization under
   `test:run --mode before`.
 

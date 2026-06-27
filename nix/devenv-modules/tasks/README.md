@@ -12,7 +12,9 @@ imports = [
   (inputs.effect-utils.devenvModules.tasks.check {})
   (inputs.effect-utils.devenvModules.tasks.ts {})
   (inputs.effect-utils.devenvModules.tasks.lint-oxc {
-    execIfModifiedPatterns = [ "src/**/*.ts" ];
+    lintPaths = [ "src" "test" ];
+    geniePatterns = [ "*.genie.ts" ];
+    genieCoverageDirs = [ "." ];
   })
 ];
 ```
@@ -30,10 +32,9 @@ imports = [
 - `clean.nix` - Clean tasks
 - `genie.nix` - Genie config generation tasks
 - `lint-oxc.nix` - Linting tasks (oxlint, oxfmt)
-  - Note: `lint:check:format`/`lint:fix:format` run oxfmt on an explicit file list
-    (git-tracked files) instead of `oxfmt <dir>...` directory walking. This avoids
-    flaky "File not found" errors when pnpm is concurrently mutating/symlinking
-    `node_modules` during CI.
+  - `lintPaths` are Git pathspecs. The lint tasks enumerate tracked and untracked
+    non-ignored files through `git ls-files` before calling oxlint/oxfmt, and do
+    not use devenv's `execIfModified` glob walker.
 - `megarepo.nix` - Megarepo workspace tasks
 - `nix-cli.nix` - Nix CLI build/check tasks
 - `pnpm.nix` - pnpm install tasks
@@ -67,6 +68,8 @@ They assume the effect-utils repo structure and are not exported in flake.nix.
 
 ### Available Modules:
 
+- `asset-import-type-reference.nix` - effect-utils package export policy check for asset side-effect imports
+- `devenv-module-tests.nix` - CI task that runs shell tests for reusable task modules
 - `workspace-check.nix` - Validates `allPackages` in devenv.nix matches filesystem
 
 ## `lib/` - Shared Utilities

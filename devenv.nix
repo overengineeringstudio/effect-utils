@@ -52,6 +52,8 @@ let
     nix-cli = import ./nix/devenv-modules/tasks/shared/nix-cli.nix;
     secretspec = import ./nix/devenv-modules/tasks/shared/secretspec.nix;
     context = ./nix/devenv-modules/tasks/shared/context.nix;
+    devenv-module-tests = ./nix/devenv-modules/tasks/local/devenv-module-tests.nix;
+    asset-import-type-reference = ./nix/devenv-modules/tasks/local/asset-import-type-reference.nix;
   };
   # Use bun source entrypoints for in-repo CLIs in devenv (flake builds stay strict).
   mkSourceCli = import ./nix/devenv-modules/lib/mk-source-cli.nix { inherit pkgs; };
@@ -348,7 +350,7 @@ in
     # Self-contained test tasks: each package uses its own vitest from node_modules
     (taskModules.test {
       packages = packagesWithTests;
-      extraTests = [ "nix:test" ];
+      extraTests = [ "devenv-modules:test" ];
     })
     (taskModules.storybook {
       packages = packagesWithStorybook;
@@ -369,49 +371,6 @@ in
         "packages"
         "scripts"
         "context"
-      ];
-      # Explicit patterns that avoid node_modules traversal
-      # Key insight: patterns like "packages/*/src/**" are safe because src/ never contains node_modules
-      execIfModifiedPatterns = [
-        # packages: src directories (safe - no node_modules inside src)
-        "packages/@overeng/*/src/**/*.ts"
-        "packages/@overeng/*/src/**/*.tsx"
-        "packages/@overeng/*/src/**/*.js"
-        "packages/@overeng/*/src/**/*.jsx"
-        # packages: root level config files
-        "packages/@overeng/*/*.ts"
-        "packages/@overeng/*/*.js"
-        # packages: bin, .storybook, stories, stress-test directories
-        "packages/@overeng/*/bin/*.ts"
-        "packages/@overeng/*/.storybook/*.ts"
-        "packages/@overeng/*/.storybook/*.tsx"
-        "packages/@overeng/*/stories/**/*.ts"
-        "packages/@overeng/*/stories/**/*.tsx"
-        "packages/@overeng/*/stress-test/**/*.ts"
-        # packages: test directories and setup files
-        "packages/@overeng/*/test/**/*.ts"
-        "packages/@overeng/*/test/**/*.tsx"
-        "packages/@overeng/*/vitest.setup.ts"
-        # packages/examples: specific paths (examples/basic has node_modules)
-        "packages/@overeng/*/examples/*/*.ts"
-        "packages/@overeng/*/examples/*/*.tsx"
-        "packages/@overeng/*/examples/*/src/**/*.ts"
-        "packages/@overeng/*/examples/*/src/**/*.tsx"
-        "packages/@overeng/*/examples/*/tests/*.ts"
-        # scripts
-        "scripts/*.ts"
-        "scripts/commands/**/*.ts"
-        # context: specific safe paths
-        "context/cli-design/*.ts"
-        "context/effect/socket/*.genie.ts"
-        "context/effect/socket/examples/*.ts"
-        "context/opentui/*.genie.ts"
-        # context: docs/config (safe; no node_modules under context/)
-        "context/**/*.md"
-        "context/**/*.json"
-        # linter config files (changes should trigger lint)
-        ".oxfmtrc.json"
-        ".oxlintrc.json"
       ];
       # Genie file patterns for caching genie:check tasks
       geniePatterns = [
@@ -455,6 +414,8 @@ in
     (taskModules.secretspec { })
     # Local task: Validate allPackages matches filesystem packages (effect-utils specific)
     ./nix/devenv-modules/tasks/local/workspace-check.nix
+    taskModules.devenv-module-tests
+    taskModules.asset-import-type-reference
     # Notion integration tests (requires NOTION_API_TOKEN)
     ./nix/devenv-modules/tasks/local/notion-integration-test.nix
     # Restate integration tests (native restate-server via RESTATE_SERVER_BIN)
@@ -529,10 +490,6 @@ in
   tasks."genie:run".after = [ "pnpm:install" ];
   tasks."genie:watch".after = [ "pnpm:install" ];
   tasks."genie:check".after = [ "pnpm:install" ];
-  # `nix:test` includes shell e2es for source-mode CLIs (for example compiling
-  # packages/@overeng/genie/bin/genie.tsx), so it must not race dependency
-  # materialization when run as part of `test:run` in CI.
-  tasks."nix:test".after = [ "pnpm:install" ];
   tasks."lint:check:genie".after = [ "pnpm:install" ];
   tasks."mr:bootstrap".after = [ "pnpm:install" ];
   tasks."mr:fetch-apply".after = [ "pnpm:install" ];
