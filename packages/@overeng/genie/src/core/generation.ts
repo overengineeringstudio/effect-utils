@@ -110,7 +110,11 @@ const stageCompiledBinaryImportGraph = ({
   entryPath,
 }: {
   entryPath: string
-}): Effect.Effect<string, GenieImportError, FileSystem.FileSystem> =>
+}): Effect.Effect<
+  { readonly entryStagePath: string; readonly tempRoot: string },
+  GenieImportError,
+  FileSystem.FileSystem
+> =>
   Effect.gen(function* () {
     const tempRoot = yield* Effect.tryPromise({
       try: () => nodeFs.mkdtemp(path.join(os.tmpdir(), 'genie-import-')),
@@ -195,7 +199,25 @@ const stageCompiledBinaryImportGraph = ({
         return stagePath
       })
 
-    return yield* stageModule(entryPath)
+    const entryStagePath = yield* stageModule(entryPath)
+    return { entryStagePath, tempRoot }
+  })
+
+const cleanupCompiledBinaryImportGraph = ({
+  tempRoot,
+  genieFilePath,
+}: {
+  tempRoot: string
+  genieFilePath: string
+}): Effect.Effect<void, GenieImportError> =>
+  Effect.tryPromise({
+    try: () => nodeFs.rm(tempRoot, { recursive: true, force: true }),
+    catch: (error) =>
+      new GenieImportError({
+        genieFilePath,
+        message: `Failed to remove compiled-binary staging directory ${tempRoot}: ${safeErrorString(error)}`,
+        cause: error,
+      }),
   })
 
 /**
@@ -504,15 +526,15 @@ export const loadGenieFile = Effect.fn('loadGenieFile')(function* ({
   })
   yield* ensureImportMapResolver
 
-  const importPathBase =
+  const stagedGraph =
     isCompiledBinary() === true
-      ? yield* stageCompiledBinaryImportGraph({ entryPath: genieFilePath }).pipe(
-          Effect.map((stagePath) => pathToFileURL(stagePath).href),
-        )
-      : genieFilePath
+      ? yield* stageCompiledBinaryImportGraph({ entryPath: genieFilePath })
+      : undefined
+  const importPathBase =
+    stagedGraph === undefined ? genieFilePath : pathToFileURL(stagedGraph.entryStagePath).href
   const importPath = `${importPathBase}?import=${Date.now()}`
 
-  const module = yield* Effect.tryPromise({
+  const importModule = Effect.tryPromise({
     // oxlint-disable-next-line eslint-plugin-import/no-dynamic-require -- dynamic import path required for genie
     try: () => import(importPath),
     catch: (error) =>
@@ -522,6 +544,16 @@ export const loadGenieFile = Effect.fn('loadGenieFile')(function* ({
         cause: error,
       }),
   })
+  const module = yield* stagedGraph === undefined
+    ? importModule
+    : importModule.pipe(
+        Effect.ensuring(
+          cleanupCompiledBinaryImportGraph({
+            tempRoot: stagedGraph.tempRoot,
+            genieFilePath,
+          }).pipe(Effect.ignore),
+        ),
+      )
 
   const exported = module.default
 

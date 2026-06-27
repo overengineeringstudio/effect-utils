@@ -6,15 +6,8 @@
 # Usage in devenv.nix:
 #   imports = [
 #     (inputs.effect-utils.devenvModules.tasks.lint-oxc {
-#       # Explicit glob patterns for execIfModified.
-#       # Use negation patterns to exclude vendored/generated trees globally.
-#       execIfModifiedPatterns = [
-#         "packages/*/src/**/*.ts"
-#         "packages/*/src/**/*.tsx"
-#         "packages/*/*.ts"  # root config files including *.genie.ts
-#         "!**/node_modules/**"
-#         "!**/dist/**"
-#       ];
+#       # Git pathspecs that define the lint surface.
+#       lintPaths = [ "packages" "scripts" ];
 #       # Glob patterns for .genie.ts files (for genie check caching)
 #       # Should match all *.genie.ts files without traversing node_modules
 #       geniePatterns = [
@@ -36,7 +29,7 @@
 # Provides: lint:check, lint:check:format, lint:check:oxlint, lint:check:genie, lint:check:genie:coverage
 #           lint:fix, lint:fix:format, lint:fix:oxlint
 {
-  execIfModifiedPatterns,
+  execIfModifiedPatterns ? [ ],
   geniePatterns,
   genieCoverageDirs,
   genieCoverageExcludes ? [ ],
@@ -44,6 +37,9 @@
     "package.json"
     "tsconfig.json"
   ],
+  # Git pathspecs that define the lint surface. Lint tasks enumerate tracked and
+  # untracked non-ignored files below these paths, so ignored dependency/build
+  # trees are never walked by devenv or the lint tools.
   lintPaths ? [ "." ],
   # Type-aware linting: provide tsconfig to enable --type-aware flag.
   # Requires pkgs.tsgolint in devenv packages (auto-discovered on PATH by oxlint).
@@ -78,7 +74,79 @@ let
       ''"$f" == */${f}''
     ]) genieCoverageFiles
   );
-  lintPathsArg = builtins.concatStringsSep " " lintPaths;
+  lintPathspecsSetup = builtins.concatStringsSep "\n" (
+    map (pathspec: "lint_pathspec_args+=(${builtins.toJSON pathspec})") lintPaths
+  );
+
+  mkLintExec =
+    {
+      command,
+      includeCase,
+      emptySelectionDiagnostic ? null,
+    }:
+    ''
+      set -euo pipefail
+
+      lint_pathspec_args=()
+      ${lintPathspecsSetup}
+
+      files=$(mktemp)
+      trap 'rm -f "$files"' EXIT
+      {
+        ${git} ls-files -z -- "''${lint_pathspec_args[@]}"
+        ${git} ls-files -z --others --exclude-standard -- "''${lint_pathspec_args[@]}"
+      } | ${pkgs.coreutils}/bin/sort -zu | while IFS= read -r -d "" path; do
+        [ -e "$path" ] || [ -L "$path" ] || continue
+        case "$path" in
+          ${includeCase}
+            printf '%s\0' "$path"
+            ;;
+        esac
+      done > "$files"
+
+      if [ ! -s "$files" ]; then
+        echo "No lint files matched"
+        exit 0
+      fi
+
+      ${
+        if emptySelectionDiagnostic == null then
+          "${pkgs.findutils}/bin/xargs -0 ${command} < \"$files\""
+        else
+          ''
+            ${pkgs.findutils}/bin/xargs -0 sh -c '
+              empty_selection_diagnostic="$1"
+              shift
+              stderr_file=$(mktemp)
+              trap "rm -f \"$stderr_file\"" EXIT
+
+              if ${command} "$@" 2>"$stderr_file"; then
+                if [ -s "$stderr_file" ]; then
+                  cat "$stderr_file" >&2
+                fi
+                exit 0
+              else
+                status=$?
+              fi
+
+              stderr="$(cat "$stderr_file")"
+              if [ "$stderr" = "$empty_selection_diagnostic" ]; then
+                exit 0
+              fi
+
+              printf "%s\n" "$stderr" >&2
+              exit "$status"
+            ' sh ${lib.escapeShellArg emptySelectionDiagnostic} < "$files"
+          ''
+      }
+    '';
+
+  oxlintIncludeCase = ''
+    *.js|*.jsx|*.mjs|*.cjs|*.ts|*.tsx|*.mts|*.cts|*.vue|*.svelte|*.astro)
+  '';
+  oxfmtIncludeCase = ''
+    *.js|*.jsx|*.mjs|*.cjs|*.ts|*.tsx|*.mts|*.cts|*.json|*.jsonc|*.json5|*.yaml|*.yml|*.toml|*.html|*.vue|*.css|*.scss|*.sass|*.less|*.md|*.markdown|*.mdx|*.graphql|*.gql|*.hbs|*.handlebars)
+  '';
 
   # Type-aware linting flags (enabled when tsconfig is provided)
   typeAwareFlags = if tsconfig != null then "--type-aware --tsconfig ${tsconfig}" else "";
@@ -92,20 +160,27 @@ let
     let
       flags = "${warningsFlag} ${extraFlags}";
     in
-    "oxlint --import-plugin ${flags} ${typeAwareFlags} ${lintPathsArg}";
+    mkLintExec {
+      command = "oxlint --import-plugin ${flags} ${typeAwareFlags}";
+      includeCase = oxlintIncludeCase;
+    };
 
   guardedTasks = {
     "lint:check:format" = {
       guard = "oxfmt";
       description = "Check code formatting with oxfmt";
-      exec = trace.exec "lint:check:format" "oxfmt --check ${lintPathsArg}";
-      execIfModified = execIfModifiedPatterns;
+      exec = trace.exec "lint:check:format" (mkLintExec {
+        command = "oxfmt --check";
+        includeCase = oxfmtIncludeCase;
+        emptySelectionDiagnostic = "Expected at least one target file";
+      });
+      execIfModified = [ ];
     };
     "lint:check:oxlint" = {
       guard = "oxlint";
       description = "Run oxlint linter";
       exec = trace.exec "lint:check:oxlint" (mkOxlintCmd "");
-      execIfModified = execIfModifiedPatterns;
+      execIfModified = [ ];
     }
     // lib.optionalAttrs (tsconfig != null) {
       after = [ "pnpm:install" ];
@@ -113,7 +188,11 @@ let
     "lint:fix:format" = {
       guard = "oxfmt";
       description = "Fix code formatting with oxfmt";
-      exec = trace.exec "lint:fix:format" "oxfmt ${lintPathsArg}";
+      exec = trace.exec "lint:fix:format" (mkLintExec {
+        command = "oxfmt";
+        includeCase = oxfmtIncludeCase;
+        emptySelectionDiagnostic = "Expected at least one target file";
+      });
     };
     "lint:fix:oxlint" = {
       guard = "oxlint";

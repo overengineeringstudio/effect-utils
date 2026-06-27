@@ -377,6 +377,7 @@ lib.mkIf hasPackages {
           "nix:test" = {
             description = "Run nix-cli tooling tests";
             exec = trace.exec "nix:test" "${nixTestsScript}";
+            after = lib.optional (packagesWithLockfile != [ ]) "pnpm:install";
           };
 
           "nix:build" = {
