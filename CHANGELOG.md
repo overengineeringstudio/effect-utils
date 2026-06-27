@@ -29,6 +29,11 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/megarepo**: Share canonical nested-megarepo traversal state across
+  recursive commands and key visited roots by resolved worktree identity, so
+  `mr status --all` and `mr ls --all` stop at symlink cycles instead of
+  recursing through ever-growing `repos/` paths.
+
 - **devenv/pnpm**: Keep the cached `pnpm-install-contract.json` writable even
   when the generated source file is read-only, so repeated `pnpm:install` runs
   can update `.devenv/task-cache` instead of failing on the preserved generated
