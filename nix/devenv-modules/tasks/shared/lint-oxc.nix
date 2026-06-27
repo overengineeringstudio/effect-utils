@@ -88,7 +88,11 @@ let
       {
         ${git} ls-files -z -- "''${lint_pathspec_args[@]}"
         ${git} ls-files -z --others --exclude-standard -- "''${lint_pathspec_args[@]}"
-      } | ${pkgs.coreutils}/bin/sort -zu > "$files"
+      } | ${pkgs.coreutils}/bin/sort -zu | while IFS= read -r -d "" path; do
+        if [ -e "$path" ] || [ -L "$path" ]; then
+          printf '%s\0' "$path"
+        fi
+      done > "$files"
 
     if [ ! -s "$files" ]; then
       echo "No lint files matched"
