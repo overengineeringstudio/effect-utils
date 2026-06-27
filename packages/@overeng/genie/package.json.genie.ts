@@ -14,6 +14,7 @@ const supportDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/genie' }),
   dependencies: {
     workspace: [otelContractPkg],
+    external: catalog.pick('typescript'),
   },
   devDependencies: {
     workspace: [tuiCorePkg, tuiReactPkg, utilsDevPkg, utilsPkg],
@@ -34,7 +35,6 @@ const supportDeps = catalog.compose({
         '@types/react',
         '@types/react-reconciler',
         'prettier',
-        'typescript',
       ),
     },
   },
