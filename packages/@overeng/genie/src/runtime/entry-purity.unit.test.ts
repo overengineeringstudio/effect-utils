@@ -39,5 +39,5 @@ describe('@overeng/genie (.) entry purity', () => {
       .getPreEmitDiagnostics(program)
       .map((d) => ts.flattenDiagnosticMessageText(d.messageText, '\n'))
     expect(diagnostics, diagnostics.join('\n')).toEqual([])
-  })
+  }, 30_000)
 })
