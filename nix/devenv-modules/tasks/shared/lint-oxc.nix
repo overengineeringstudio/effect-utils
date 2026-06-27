@@ -30,6 +30,14 @@
 #       tsconfig = "tsconfig.all.json";  # optional
 #       # Whether to fail on warnings (default: true for CI strictness)
 #       # denyWarnings = false;  # optional
+#       # How lint file arguments are assembled:
+#       # - "argv" passes lintPaths directly to oxlint/oxfmt (default).
+#       # - "git" resolves lintPaths through git ls-files, including untracked
+#       #   non-ignored files, and avoids filesystem walks through ignored trees.
+#       # fileSelection = "git";  # optional
+#       # Whether devenv should cache the lint task based on execIfModifiedPatterns.
+#       # Set to "always" for megarepos where devenv's glob walker is too expensive.
+#       # changeDetection = "always";  # optional
 #     })
 #   ];
 #
@@ -45,6 +53,14 @@
     "tsconfig.json"
   ],
   lintPaths ? [ "." ],
+  # File selection for the lint tool invocation.
+  # - "argv": pass lintPaths directly (backward-compatible default).
+  # - "git": enumerate tracked + untracked non-ignored files via git pathspecs.
+  fileSelection ? "argv",
+  # Task change detection:
+  # - "devenv": use execIfModifiedPatterns (backward-compatible default).
+  # - "always": disable devenv's execIfModified cache for these lint tasks.
+  changeDetection ? "devenv",
   # Type-aware linting: provide tsconfig to enable --type-aware flag.
   # Requires pkgs.tsgolint in devenv packages (auto-discovered on PATH by oxlint).
   tsconfig ? null,
@@ -66,6 +82,26 @@ let
     MEGAREPO_STORE = megarepoStoreEnv;
   };
   git = "${pkgs.git}/bin/git";
+  fileSelectionMode =
+    if
+      builtins.elem fileSelection [
+        "argv"
+        "git"
+      ]
+    then
+      fileSelection
+    else
+      throw "lint-oxc: fileSelection must be one of: argv, git";
+  changeDetectionMode =
+    if
+      builtins.elem changeDetection [
+        "devenv"
+        "always"
+      ]
+    then
+      changeDetection
+    else
+      throw "lint-oxc: changeDetection must be one of: devenv, always";
   scanDirsSetup = builtins.concatStringsSep "\n" (
     map (dir: "scan_dir_args+=(${builtins.toJSON dir})") genieCoverageDirs
   );
@@ -79,6 +115,35 @@ let
     ]) genieCoverageFiles
   );
   lintPathsArg = builtins.concatStringsSep " " lintPaths;
+  lintPathspecsSetup = builtins.concatStringsSep "\n" (
+    map (pathspec: "lint_pathspec_args+=(${builtins.toJSON pathspec})") lintPaths
+  );
+  lintExecIfModified = if changeDetectionMode == "always" then [ ] else execIfModifiedPatterns;
+
+  mkGitFileSelectionExec = command: ''
+    set -euo pipefail
+
+    lint_pathspec_args=()
+    ${lintPathspecsSetup}
+
+    files=$(mktemp)
+    trap 'rm -f "$files"' EXIT
+      {
+        ${git} ls-files -z -- "''${lint_pathspec_args[@]}"
+        ${git} ls-files -z --others --exclude-standard -- "''${lint_pathspec_args[@]}"
+      } | ${pkgs.coreutils}/bin/sort -zu > "$files"
+
+    if [ ! -s "$files" ]; then
+      echo "No lint files matched"
+      exit 0
+    fi
+
+      ${pkgs.findutils}/bin/xargs -0 ${command} < "$files"
+  '';
+
+  mkLintExec =
+    command:
+    if fileSelectionMode == "git" then mkGitFileSelectionExec command else command + " ${lintPathsArg}";
 
   # Type-aware linting flags (enabled when tsconfig is provided)
   typeAwareFlags = if tsconfig != null then "--type-aware --tsconfig ${tsconfig}" else "";
@@ -92,20 +157,20 @@ let
     let
       flags = "${warningsFlag} ${extraFlags}";
     in
-    "oxlint --import-plugin ${flags} ${typeAwareFlags} ${lintPathsArg}";
+    mkLintExec "oxlint --import-plugin ${flags} ${typeAwareFlags}";
 
   guardedTasks = {
     "lint:check:format" = {
       guard = "oxfmt";
       description = "Check code formatting with oxfmt";
-      exec = trace.exec "lint:check:format" "oxfmt --check ${lintPathsArg}";
-      execIfModified = execIfModifiedPatterns;
+      exec = trace.exec "lint:check:format" (mkLintExec "oxfmt --check");
+      execIfModified = lintExecIfModified;
     };
     "lint:check:oxlint" = {
       guard = "oxlint";
       description = "Run oxlint linter";
       exec = trace.exec "lint:check:oxlint" (mkOxlintCmd "");
-      execIfModified = execIfModifiedPatterns;
+      execIfModified = lintExecIfModified;
     }
     // lib.optionalAttrs (tsconfig != null) {
       after = [ "pnpm:install" ];
@@ -113,7 +178,7 @@ let
     "lint:fix:format" = {
       guard = "oxfmt";
       description = "Fix code formatting with oxfmt";
-      exec = trace.exec "lint:fix:format" "oxfmt ${lintPathsArg}";
+      exec = trace.exec "lint:fix:format" (mkLintExec "oxfmt");
     };
     "lint:fix:oxlint" = {
       guard = "oxlint";

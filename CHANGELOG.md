@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **devenv/lint-oxc**: Add opt-in `fileSelection = "git"` and
+  `changeDetection = "always"` modes so large repos can enumerate lint inputs
+  from tracked plus untracked non-ignored files and skip devenv's expensive
+  `execIfModified` glob walker without overriding shared task bodies.
+
 - **@overeng/notion-effect-client**: Add `NotionMarkdown.markdownToBlocks`,
   an AST-based selected-GFM Markdown importer that emits Notion append/create
   block payloads for paragraphs, headings, dividers, lists, task lists, code,

@@ -365,6 +365,8 @@ in
     })
     (taskModules.lint-oxc {
       oxlintPkg = oxlintWithPlugins;
+      fileSelection = "git";
+      changeDetection = "always";
       lintPaths = [
         "packages"
         "scripts"
