@@ -365,55 +365,10 @@ in
     })
     (taskModules.lint-oxc {
       oxlintPkg = oxlintWithPlugins;
-      fileSelection = "git";
-      changeDetection = "always";
       lintPaths = [
         "packages"
         "scripts"
         "context"
-      ];
-      # Explicit patterns that avoid node_modules traversal
-      # Key insight: patterns like "packages/*/src/**" are safe because src/ never contains node_modules
-      execIfModifiedPatterns = [
-        # packages: src directories (safe - no node_modules inside src)
-        "packages/@overeng/*/src/**/*.ts"
-        "packages/@overeng/*/src/**/*.tsx"
-        "packages/@overeng/*/src/**/*.js"
-        "packages/@overeng/*/src/**/*.jsx"
-        # packages: root level config files
-        "packages/@overeng/*/*.ts"
-        "packages/@overeng/*/*.js"
-        # packages: bin, .storybook, stories, stress-test directories
-        "packages/@overeng/*/bin/*.ts"
-        "packages/@overeng/*/.storybook/*.ts"
-        "packages/@overeng/*/.storybook/*.tsx"
-        "packages/@overeng/*/stories/**/*.ts"
-        "packages/@overeng/*/stories/**/*.tsx"
-        "packages/@overeng/*/stress-test/**/*.ts"
-        # packages: test directories and setup files
-        "packages/@overeng/*/test/**/*.ts"
-        "packages/@overeng/*/test/**/*.tsx"
-        "packages/@overeng/*/vitest.setup.ts"
-        # packages/examples: specific paths (examples/basic has node_modules)
-        "packages/@overeng/*/examples/*/*.ts"
-        "packages/@overeng/*/examples/*/*.tsx"
-        "packages/@overeng/*/examples/*/src/**/*.ts"
-        "packages/@overeng/*/examples/*/src/**/*.tsx"
-        "packages/@overeng/*/examples/*/tests/*.ts"
-        # scripts
-        "scripts/*.ts"
-        "scripts/commands/**/*.ts"
-        # context: specific safe paths
-        "context/cli-design/*.ts"
-        "context/effect/socket/*.genie.ts"
-        "context/effect/socket/examples/*.ts"
-        "context/opentui/*.genie.ts"
-        # context: docs/config (safe; no node_modules under context/)
-        "context/**/*.md"
-        "context/**/*.json"
-        # linter config files (changes should trigger lint)
-        ".oxfmtrc.json"
-        ".oxlintrc.json"
       ];
       # Genie file patterns for caching genie:check tasks
       geniePatterns = [

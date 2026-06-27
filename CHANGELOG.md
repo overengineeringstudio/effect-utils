@@ -6,10 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- **devenv/lint-oxc**: Add opt-in `fileSelection = "git"` and
-  `changeDetection = "always"` modes so large repos can enumerate lint inputs
-  from tracked plus untracked non-ignored files and skip devenv's expensive
-  `execIfModified` glob walker without overriding shared task bodies.
+- **devenv/lint-oxc**: Make `lintPaths` the single lint surface contract.
+  oxlint/oxfmt tasks now enumerate tracked plus untracked non-ignored files via
+  `git ls-files` and always run instead of delegating change detection to
+  devenv's `execIfModified` glob walker.
 
 - **@overeng/notion-effect-client**: Add `NotionMarkdown.markdownToBlocks`,
   an AST-based selected-GFM Markdown importer that emits Notion append/create
