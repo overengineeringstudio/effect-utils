@@ -32,10 +32,11 @@ All notable changes to this project will be documented in this file.
 - **@overeng/genie**: Ship `typescript` as a runtime dependency so the CLI's
   JSONC validation path resolves outside the repo development shell.
 
-- **@overeng/genie / devenv tests**: Refresh the Genie pnpm fixed-output hash
-  for the new `./node` entry closure, and isolate the `ts-otelite` e2e test
-  from ambient task trace context so `devenv-modules:test` remains deterministic
-  when run under traced `devenv tasks`.
+- **@overeng/genie / devenv tests**: Refresh the pnpm fixed-output hashes for
+  the new Genie `./node` entry closure and the follow-up runtime dependency
+  lockfile change, and isolate the `ts-otelite` e2e test from ambient task trace
+  context so `devenv-modules:test` remains deterministic when run under traced
+  `devenv tasks`.
 
 - **devenv/lint-oxc, CLI package builders**: Treat an `oxfmt` chunk that becomes
   empty after formatter config ignores as no work while preserving failures for
