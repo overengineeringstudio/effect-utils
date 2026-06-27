@@ -278,6 +278,8 @@ All notable changes to this project will be documented in this file.
   unsupported paths instead of handing broad directories to `oxlint`/`oxfmt`.
   Reuse the shared Notion Markdown processor helpers from canonical Markdown
   parsing so the GFM extension policy has a single implementation.
+  Give the Genie entry-purity compiler test an explicit timeout so Linux CI load
+  does not fail the semantic guard under Vitest's default 5s test timeout.
 
 - **@overeng/notion-md / @overeng/notion-datasource-sync**: Address PR review regressions for datasource body/property settlement and workspace establishment. Verified body-push settlement now preserves existing `.nmd` writable frontmatter properties, `--sqlite data/v1/<source>.sqlite` selects the matching manifest source in multi-source workspaces, and `track` writes `notion.workspace.v1.json` only after successful establishment. Public SQLite replicas now treat macOS `/var` and `/private/var` temp-path aliases as the same workspace for move detection, avoiding false `moved` status while still detecting copied data files. Also makes GFM autolink canonicalization idempotent for generated canonical bodies.
 
