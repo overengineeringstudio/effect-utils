@@ -24,6 +24,7 @@ import {
 import * as Git from '../../lib/git.ts'
 import { detectRefMismatch, type RefMismatch } from '../../lib/issues.ts'
 import { checkLockStaleness, LOCK_FILE_NAME, readLockFile } from '../../lib/lock.ts'
+import { type MegarepoTraversal, withMegarepoTraversal } from '../../lib/megarepo-traversal.ts'
 import { extractRefFromSymlinkPath } from '../../lib/ref.ts'
 import { refreshWorkspaceRegistry } from '../../lib/store-liveness.ts'
 import { Store, StoreLayer } from '../../lib/store.ts'
@@ -49,30 +50,30 @@ import type {
  * Recursively scan members and build status tree.
  * @param megarepoRoot - Root path of the megarepo
  * @param all - Whether to recurse into nested megarepos
- * @param visited - Set of visited paths to prevent cycles
+ * @param traversal - Shared traversal state keyed by canonical root identity
  */
 const scanMembersRecursive = ({
   megarepoRoot,
   all,
-  visited = new Set<string>(),
+  traversal,
+  depth = 0,
 }: {
   megarepoRoot: AbsoluteDirPath
   all: boolean
-  visited?: Set<string>
+  traversal: MegarepoTraversal
+  depth?: number
 }): Effect.Effect<
   MemberStatus[],
   PlatformError.PlatformError | ParseResult.ParseError | Error,
   FileSystem.FileSystem | CommandExecutor.CommandExecutor | Store
 > =>
   Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-
-    // Prevent cycles
-    const normalizedRoot = megarepoRoot.replace(/\/$/, '')
-    if (visited.has(normalizedRoot) === true) {
+    const enterResult = yield* traversal.enterRoot({ root: megarepoRoot, depth })
+    if (enterResult._tag === 'Cycle') {
       return []
     }
-    visited.add(normalizedRoot)
+
+    const fs = yield* FileSystem.FileSystem
 
     // Load config
     const configResult = yield* readMegarepoConfig(megarepoRoot).pipe(
@@ -134,7 +135,8 @@ const scanMembersRecursive = ({
         nestedMembers = yield* scanMembersRecursive({
           megarepoRoot: nestedRoot,
           all,
-          visited,
+          traversal,
+          depth: depth + 1,
         })
       }
 
@@ -305,9 +307,16 @@ export const statusCommand = Cli.Command.make(
       const { config } = yield* readMegarepoConfig(root.value)
 
       // Scan members (recursively if --all)
-      const members = yield* scanMembersRecursive({
-        megarepoRoot: root.value,
+      const members = yield* withMegarepoTraversal({
+        purpose: 'status',
+        root: root.value,
         all,
+        effect: (traversal) =>
+          scanMembersRecursive({
+            megarepoRoot: root.value,
+            all,
+            traversal,
+          }),
       })
 
       // Get last sync time and lock staleness from lock file

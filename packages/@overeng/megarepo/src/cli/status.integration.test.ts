@@ -19,7 +19,13 @@ import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 import { MegarepoConfig } from '../lib/config.ts'
 import { createLockedMember, type LockFile, LOCK_FILE_NAME, writeLockFile } from '../lib/lock.ts'
 import { makeConsoleCapture } from '../test-utils/consoleCapture.ts'
-import { createRepo, getGitRev, initGitRepo, runGitCommand } from '../test-utils/setup.ts'
+import {
+  addCommit,
+  createRepo,
+  getGitRev,
+  initGitRepo,
+  runGitCommand,
+} from '../test-utils/setup.ts'
 import { mrCommand } from './mod.ts'
 import { StatusState } from './renderers/StatusOutput/schema.ts'
 
@@ -503,6 +509,72 @@ describe('mr status --output json', () => {
           // Overall sync needed due to missing remote member
           expect(status!.syncNeeded).toBe(true)
           expect(status!.syncReasons).toContain("Member 'remote-lib' symlink missing")
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+    )
+  })
+
+  describe('--all traversal cycles', () => {
+    it.effect(
+      'should stop recursive status at repeated real worktree paths',
+      Effect.fnUntraced(
+        function* () {
+          const fs = yield* FileSystem.FileSystem
+          const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+          const workspaceA = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('a/'))
+          const workspaceB = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('b/'))
+
+          yield* fs.makeDirectory(workspaceA, { recursive: true })
+          yield* fs.makeDirectory(workspaceB, { recursive: true })
+          yield* initGitRepo(workspaceA)
+          yield* initGitRepo(workspaceB)
+
+          const writeConfig = (workspacePath: AbsoluteDirPath, members: Record<string, string>) =>
+            Effect.gen(function* () {
+              const configContent = yield* Schema.encode(
+                Schema.parseJson(MegarepoConfig, { space: 2 }),
+              )({ members })
+              yield* fs.writeFileString(
+                EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile('megarepo.json')),
+                `${configContent}\n`,
+              )
+              yield* fs.makeDirectory(
+                EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeDir('repos/')),
+                { recursive: true },
+              )
+            })
+
+          yield* writeConfig(workspaceA, { b: workspaceB })
+          yield* writeConfig(workspaceB, { a: workspaceA })
+
+          yield* fs.symlink(
+            workspaceB.slice(0, -1),
+            EffectPath.ops.join(workspaceA, EffectPath.unsafe.relativeFile('repos/b')),
+          )
+          yield* fs.symlink(
+            workspaceA.slice(0, -1),
+            EffectPath.ops.join(workspaceB, EffectPath.unsafe.relativeFile('repos/a')),
+          )
+
+          yield* addCommit({ repoPath: workspaceA, message: 'Initialize megarepo A' })
+          yield* addCommit({ repoPath: workspaceB, message: 'Initialize megarepo B' })
+
+          const { status, exitCode } = yield* runStatusCommand({
+            cwd: workspaceA,
+            args: ['--all'],
+          })
+
+          expect(exitCode).toBe(0)
+          expect(status).toBeDefined()
+          const memberB = status!.members.find((member) => member.name === 'b')
+          expect(memberB?.isMegarepo).toBe(true)
+          expect(memberB?.nestedMembers).toHaveLength(1)
+          const cycleClosingMember = memberB?.nestedMembers?.[0]
+          expect(cycleClosingMember?.name).toBe('a')
+          expect(cycleClosingMember?.isMegarepo).toBe(true)
+          expect(cycleClosingMember?.nestedMembers).toEqual([])
         },
         Effect.provide(NodeContext.layer),
         Effect.scoped,

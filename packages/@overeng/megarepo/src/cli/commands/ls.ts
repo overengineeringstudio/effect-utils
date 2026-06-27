@@ -19,6 +19,7 @@ import {
   readMegarepoConfig,
 } from '../../lib/config.ts'
 import * as Git from '../../lib/git.ts'
+import { type MegarepoTraversal, withMegarepoTraversal } from '../../lib/megarepo-traversal.ts'
 import {
   Cwd,
   detectCurrentMemberPath,
@@ -36,28 +37,28 @@ import type { MemberInfo } from '../renderers/LsOutput/schema.ts'
 const scanMembersRecursive = ({
   megarepoRoot,
   ownerPath,
-  visited = new Set<string>(),
+  traversal,
   all,
+  depth = 0,
 }: {
   megarepoRoot: AbsoluteDirPath
   /** Path to owning megarepo (undefined = root megarepo) */
   ownerPath?: readonly [string, ...string[]]
-  visited?: Set<string>
+  traversal: MegarepoTraversal
   all: boolean
+  depth?: number
 }): Effect.Effect<
   MemberInfo[],
   PlatformError.PlatformError | ParseResult.ParseError | Error,
   FileSystem.FileSystem
 > =>
   Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-
-    // Prevent cycles
-    const normalizedRoot = megarepoRoot.replace(/\/$/, '')
-    if (visited.has(normalizedRoot) === true) {
+    const enterResult = yield* traversal.enterRoot({ root: megarepoRoot, depth })
+    if (enterResult._tag === 'Cycle') {
       return []
     }
-    visited.add(normalizedRoot)
+
+    const fs = yield* FileSystem.FileSystem
 
     // Load config
     const configResult = yield* readMegarepoConfig(megarepoRoot).pipe(
@@ -101,8 +102,9 @@ const scanMembersRecursive = ({
         const nestedMembers = yield* scanMembersRecursive({
           megarepoRoot: nestedRoot,
           ownerPath: nestedOwnerPath,
-          visited,
+          traversal,
           all,
+          depth: depth + 1,
         })
         members.push(...nestedMembers)
       }
@@ -145,9 +147,16 @@ export const lsCommand = Cli.Command.make(
             const megarepoName = yield* Git.deriveMegarepoName(root.value)
 
             // Scan members (recursively if --all)
-            const members = yield* scanMembersRecursive({
-              megarepoRoot: root.value,
+            const members = yield* withMegarepoTraversal({
+              purpose: 'ls',
+              root: root.value,
               all,
+              effect: (traversal) =>
+                scanMembersRecursive({
+                  megarepoRoot: root.value,
+                  all,
+                  traversal,
+                }),
             })
 
             // Detect current member path for scope dimming

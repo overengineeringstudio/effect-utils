@@ -111,6 +111,27 @@ const workspaceAttrs = OtelAttrs.defineSync(
   }),
 )
 
+const megarepoTraversalAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+    root: Schema.String.pipe(OtelAttr.key({ key: 'megarepo.traversal.root' })),
+    purpose: Schema.NonEmptyString.pipe(OtelAttr.key({ key: 'megarepo.traversal.purpose' })),
+    all: Schema.Boolean.pipe(OtelAttr.key({ key: 'megarepo.traversal.all' })),
+  }),
+)
+
+const megarepoTraversalResultAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    nodesVisited: Schema.NonNegativeInt.pipe(
+      OtelAttr.key({ key: 'megarepo.traversal.nodes_visited' }),
+    ),
+    cyclesSkipped: Schema.NonNegativeInt.pipe(
+      OtelAttr.key({ key: 'megarepo.traversal.cycles_skipped' }),
+    ),
+    maxDepth: Schema.NonNegativeInt.pipe(OtelAttr.key({ key: 'megarepo.traversal.max_depth' })),
+  }),
+)
+
 const storeLiveSetAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
@@ -361,6 +382,38 @@ export const withWorkspaceSpan = ({
   readonly workspaceRoot: string
   readonly label?: string
 }) => trustedWith({ operation: workspaceOperation(name), attributes: { label, workspaceRoot } })
+
+const megarepoTraversalOperation = OtelOperation.define({
+  name: 'megarepo/traversal',
+  attributes: megarepoTraversalAttrs,
+  label: ({ label }) => label,
+})
+
+/** Wrap a nested megarepo traversal in a span keyed by its root and purpose.
+ *  Result counters are annotated after traversal completes. */
+export const withMegarepoTraversalSpan = ({
+  root,
+  purpose,
+  all,
+  label = basename(root),
+}: {
+  readonly root: string
+  readonly purpose: string
+  readonly all: boolean
+  readonly label?: string
+}) =>
+  trustedWith({
+    operation: megarepoTraversalOperation,
+    attributes: { label, root, purpose, all },
+  })
+
+/** Annotate the enclosing traversal span with bounded scalar counters. */
+export const annotateMegarepoTraversalResult = (
+  value: Schema.Schema.Type<typeof megarepoTraversalResultAttrs.schema>,
+) =>
+  trustOtelContract<void, never, never>(
+    OtelSpan.annotate({ attributes: megarepoTraversalResultAttrs, value }),
+  )
 
 const storeLiveSetOperation = (name: string) =>
   OtelOperation.define({
