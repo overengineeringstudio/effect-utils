@@ -21,7 +21,7 @@ pnpm --dir packages/@overeng/notion-datasource-sync run demo:verify
 The same verifier is part of the repo Notion integration task:
 
 ```sh
-dt test:notion-integration:notion-datasource-sync
+devenv tasks run test:notion-integration:notion-datasource-sync
 ```
 
 The fast verifier checks the live page/database/data-source mapping, validates

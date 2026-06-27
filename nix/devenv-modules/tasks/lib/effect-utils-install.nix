@@ -18,4 +18,4 @@
   root,
   dir ? "repos/effect-utils",
 }:
-''DT_PASSTHROUGH=1 pnpm install --force --frozen-lockfile --ignore-scripts --config.confirmModulesPurge=false --config.store-dir="''${PNPM_CONFIG_STORE_DIR:-''${PNPM_STORE_DIR:-${root}/.devenv/pnpm-store-pure-v1}}" --dir ${dir}''
+''DEVENV_TASK_PASSTHROUGH=1 pnpm install --force --frozen-lockfile --ignore-scripts --config.confirmModulesPurge=false --config.store-dir="''${PNPM_CONFIG_STORE_DIR:-''${PNPM_STORE_DIR:-${root}/.devenv/pnpm-store-pure-v1}}" --dir ${dir}''

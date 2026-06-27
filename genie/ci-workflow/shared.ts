@@ -343,7 +343,7 @@ export const runDevenvTasksBeforeWithOptions = (
 ) =>
   withAppendedNixConfig({
     command: withCiPnpmState(
-      `DT_PASSTHROUGH=1 ${devenvBinRef} tasks run ${args.join(' ')} --mode before`,
+      `DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${devenvBinRef} tasks run ${args.join(' ')}`,
     ),
     opts,
   })
@@ -523,9 +523,9 @@ export const withGcRaceRetry = ({ command, label }: { command: string; label: st
   ].join('\n')
 }
 
-/** Build a command that runs one or more devenv tasks with `--mode before`. */
+/** Build a command that runs one or more devenv tasks with dependencies. */
 export const runDevenvTasksBefore = (...args: [string, ...string[]]) =>
   withGcRaceRetry({
     command: runDevenvTasksBeforeWithOptions({ unrestrictedEval: true }, ...args),
-    label: `devenv tasks run ${args.join(' ')} --mode before`,
+    label: `devenv tasks run ${args.join(' ')}`,
   })

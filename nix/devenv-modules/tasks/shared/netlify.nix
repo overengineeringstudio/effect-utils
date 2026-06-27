@@ -43,9 +43,9 @@
 #                      for pnpm-workspace consumers. Most sites don't need this.
 #
 # Deploy modes (via --input):
-#   dt netlify:deploy:<name>                          # draft (unique URL)
-#   dt netlify:deploy:<name> --input type=prod        # prod alias
-#   dt netlify:deploy:<name> --input type=pr --input pr=42  # PR preview alias
+#   devenv tasks run netlify:deploy:<name>                          # draft (unique URL)
+#   devenv tasks run netlify:deploy:<name> --input type=prod        # prod alias
+#   devenv tasks run netlify:deploy:<name> --input type=pr --input pr=42  # PR preview alias
 #
 # Provides:
 #   Tasks:
@@ -78,7 +78,7 @@ let
     {
       "netlify:deploy:${name}" = {
         description = "Deploy ${name} to Netlify";
-        # `dt` runs `after` tasks in before-mode, so the build runs first.
+        # Native devenv task dependency resolution runs `after` tasks first.
         after = if afterTask == null then [ ] else [ afterTask ];
         exec = ''
           set -euo pipefail
@@ -86,7 +86,7 @@ let
           ${deployTask.mkRequiredEnvCheck {
             envName = "NETLIFY_AUTH_TOKEN";
             errorMessage = "Error: NETLIFY_AUTH_TOKEN is not set.";
-            hint = "Run through: secrets-run --reason 'deploy Netlify preview' -- dt netlify:deploy:<target>";
+            hint = "Run through: secrets-run --reason 'deploy Netlify preview' -- devenv tasks run netlify:deploy:<target>";
           }}
 
           deploy_dir="${staticDir}"
@@ -103,7 +103,7 @@ let
               if afterTask == null then
                 ''echo "Build the directory first." >&2''
               else
-                ''echo "Run 'dt ${afterTask}' first." >&2''
+                ''echo "Run 'devenv tasks run ${afterTask}' first." >&2''
             }
             exit 0
           fi

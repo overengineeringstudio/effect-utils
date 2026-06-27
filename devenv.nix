@@ -316,8 +316,6 @@ let
 in
 {
   imports = [
-    # `dt` (devenv tasks) wrapper script and shell completions
-    ./nix/devenv-modules/dt.nix
     # Git hook: prevent commits on default branch + enforce linked worktrees
     (taskModules.worktree-guard { })
     # OpenTelemetry observability stack (Collector + Tempo + Grafana)
@@ -471,7 +469,7 @@ in
 
   # Guarded-command ownership (issue #808):
   #   Each cli-guard owns its `bin/<name>` and exec's the real binary by absolute
-  #   store path under DT_PASSTHROUGH=1 (see nix/devenv-modules/tasks/lib/cli-guard.nix).
+  #   store path under DEVENV_TASK_PASSTHROUGH=1 (see nix/devenv-modules/tasks/lib/cli-guard.nix).
   #   The reals are therefore threaded into the task modules as `*Pkg` args
   #   rather than listed here as competing top-level providers, which removes the
   #   nondeterministic buildEnv `collision between ...` warnings.
@@ -533,7 +531,7 @@ in
   tasks."genie:check".after = [ "pnpm:install" ];
   # `nix:test` includes shell e2es for source-mode CLIs (for example compiling
   # packages/@overeng/genie/bin/genie.tsx), so it must not race dependency
-  # materialization when run as part of `test:run --mode before` in CI.
+  # materialization when run as part of `test:run` in CI.
   tasks."nix:test".after = [ "pnpm:install" ];
   tasks."lint:check:genie".after = [ "pnpm:install" ];
   tasks."mr:bootstrap".after = [ "pnpm:install" ];
@@ -582,7 +580,7 @@ in
     description = "Bundle representative public entries with Vite/Rollup dependency resolution";
     exec = ''
       set -euo pipefail
-      DT_PASSTHROUGH=1 pnpm --dir packages/@overeng/pty-effect run bundle:smoke
+      DEVENV_TASK_PASSTHROUGH=1 pnpm --dir packages/@overeng/pty-effect run bundle:smoke
     '';
   };
 
@@ -615,8 +613,7 @@ in
   git-hooks.enable = true;
   git-hooks.hooks.check-quick = {
     enable = true;
-    # Can't use `dt` here — git hooks run outside the devenv shell where `dt` isn't on $PATH
-    entry = "devenv tasks run check:quick --mode before";
+    entry = "DEVENV_TUI=false devenv tasks run check:quick";
     stages = [ "pre-commit" ];
     always_run = true;
     pass_filenames = false;

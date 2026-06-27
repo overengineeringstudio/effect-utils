@@ -152,12 +152,12 @@ Trace: R14-R16.
 
 | Check                                     | Required proof                                                                 |
 | ----------------------------------------- | ------------------------------------------------------------------------------ |
-| `dt test:notion-cli --no-tui`             | root command composition, help/completion drift, schema/db package tests       |
-| `dt test:notion-datasource-sync --no-tui` | datasource-backed `db` leaves and export behavior                              |
-| `dt genie:check --no-tui`                 | generated package metadata is current                                          |
-| `dt ts:check --no-tui`                    | TypeScript surface is valid                                                    |
-| `dt lint:check --no-tui`                  | formatting, lint, lockfile, and generated-source coverage are valid            |
-| `dt check:quick --no-tui`                 | aggregate quick gate for branch readiness                                      |
+| `devenv tasks run test:notion-cli`             | root command composition, help/completion drift, schema/db package tests       |
+| `devenv tasks run test:notion-datasource-sync` | datasource-backed `db` leaves and export behavior                              |
+| `devenv tasks run genie:check`                 | generated package metadata is current                                          |
+| `devenv tasks run ts:check`                    | TypeScript surface is valid                                                    |
+| `devenv tasks run lint:check`                  | formatting, lint, lockfile, and generated-source coverage are valid            |
+| `devenv tasks run check:quick`                 | aggregate quick gate for branch readiness                                      |
 | `nix build .#notion-cli --no-link`        | packaged wrapper includes all runtime files and routes Node-backed `db` leaves |
 
 ## Design Questions

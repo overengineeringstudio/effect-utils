@@ -75,7 +75,7 @@ let
     "${processName pkg}" = {
       ports.http.allocate = pkg.port;
       exec = ''
-        export DT_PASSTHROUGH=1
+        export DEVENV_TASK_PASSTHROUGH=1
         _host="''${TS_HOSTNAME:-localhost}"
         echo "[storybook] ${pkg.name}: http://$_host:${toString (getAllocatedPort pkg)}"
         source ${lib.escapeShellArg pnpmTaskHelpersScript}

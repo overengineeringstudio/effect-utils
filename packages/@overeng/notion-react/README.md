@@ -51,7 +51,7 @@ children render under the new page.
     <Heading2>Week 1</Heading2>
     <Paragraph>Set up your dev environment.</Paragraph>
     <ChildPage blockKey="onboarding-dev" title="Dev setup">
-      <Paragraph>Clone the repo, run `dt bun:install`.</Paragraph>
+      <Paragraph>Clone the repo, run `devenv tasks run bun:install`.</Paragraph>
     </ChildPage>
   </ChildPage>
 </Page>

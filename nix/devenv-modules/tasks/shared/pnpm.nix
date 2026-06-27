@@ -432,7 +432,7 @@ let
         exec 200>"$lockfile"
         if ! ${flock} -w 600 200; then
           echo "[pnpm] Install lock timeout after 600s: $lockfile" >&2
-          echo "[pnpm] Another pnpm install may be stuck; try: dt pnpm:clean && dt pnpm:install" >&2
+          echo "[pnpm] Another pnpm install may be stuck; try: devenv tasks run pnpm:clean && devenv tasks run pnpm:install" >&2
           exit 1
         fi
 
@@ -471,7 +471,7 @@ let
         else
           ${lib.optionalString (workspaceRoot == ".") ''
             echo "[pnpm] Missing generated pnpm-install-contract.json at repo root" >&2
-            echo "[pnpm] Run: dt genie:run" >&2
+            echo "[pnpm] Run: devenv tasks run genie:run" >&2
             exit 1
           ''}
           # Non-root downstream workspaces may not carry the generated contract
@@ -584,7 +584,7 @@ let
         if [ -z "''${_pnpm_install_contract_file:-}" ]; then
           ${lib.optionalString (workspaceRoot == ".") ''
             echo "[pnpm] Missing generated pnpm-install-contract.json at repo root" >&2
-            echo "[pnpm] Run: dt genie:run" >&2
+            echo "[pnpm] Run: devenv tasks run genie:run" >&2
           ''}
           emit_pnpm_install_miss_span ${lib.escapeShellArg installTaskName} "contract_missing"
           exit 1

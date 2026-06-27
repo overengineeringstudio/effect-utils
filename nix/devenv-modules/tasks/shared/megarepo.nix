@@ -368,7 +368,7 @@ let
         if [ "$failed" -eq 1 ]; then
           echo ""
           echo "Lock files out of sync with megarepo.lock."
-          echo "Fix: dt mr:apply"
+          echo "Fix: devenv tasks run mr:apply"
           exit 1
         fi
       '';

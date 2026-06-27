@@ -115,9 +115,9 @@ Key features:
 ### Rebuild and reload binaries
 
 ```bash
-dt nix:build:genie
-dt nix:build
-dt nix:check
+devenv tasks run nix:build:genie
+devenv tasks run nix:build
+devenv tasks run nix:check
 ```
 
 After `pnpm-lock.yaml` changes:
@@ -140,36 +140,36 @@ devenv shell
 ### Install Dependencies
 
 ```bash
-dt bun:install
+devenv tasks run bun:install
 ```
 
 ### Build All Packages
 
 ```bash
-dt ts:build
+devenv tasks run ts:build
 ```
 
 Fast emit-only build (skips full type checking):
 
 ```bash
-dt ts:emit
+devenv tasks run ts:emit
 ```
 
 ### Run Tests
 
 ```bash
 # All tests
-dt test:run
+devenv tasks run test:run
 
 # Single package (e.g., utils, genie)
-dt test:utils
-dt test:genie
+devenv tasks run test:utils
+devenv tasks run test:genie
 
 # Integration tests (requires NOTION_API_TOKEN for Notion packages)
-NOTION_API_TOKEN=secret_xxx dt test:integration
+NOTION_API_TOKEN=secret_xxx devenv tasks run test:integration
 
 # Watch mode
-dt test:watch
+devenv tasks run test:watch
 ```
 
 ### Type Checking
@@ -177,23 +177,23 @@ dt test:watch
 Continuous type checking across the entire monorepo (project references):
 
 ```bash
-dt ts:build-watch
+devenv tasks run ts:build-watch
 ```
 
 Or one-off type check:
 
 ```bash
-dt ts:check
+devenv tasks run ts:check
 ```
 
 ### Linting
 
 ```bash
 # Check formatting + lint
-dt lint:check
+devenv tasks run lint:check
 
 # Auto-fix formatting + lint issues
-dt lint:fix
+devenv tasks run lint:fix
 ```
 
 ## Package Structure

@@ -4,15 +4,15 @@
 
 # Development Commands
 
-Use `dt <task>` (devenv tasks) to execute tasks with dependencies:
+Use `devenv tasks run <task>` (devenv tasks) to execute tasks with dependencies:
 
-- **TypeScript**: `dt ts:check` or `dt ts:build-watch` (watch mode) or `dt ts:clean`
-- **Linting**: `dt lint:check` or `dt lint:fix`
-- **Testing**: `dt test:run` (all) or `dt test:<pkg>` (single package) or `dt test:watch` or `dt test:integration`
-- **Build**: `dt ts:build`
-- **Install**: `dt bun:install`
-- **Genie**: `dt genie:run` or `dt genie:watch` or `dt genie:check`
-- **Check all**: `dt check:quick` (ts + lint) or `dt check:all` (ts + lint + test)
+- **TypeScript**: `devenv tasks run ts:check` or `devenv tasks run ts:build-watch` (watch mode) or `devenv tasks run ts:clean`
+- **Linting**: `devenv tasks run lint:check` or `devenv tasks run lint:fix`
+- **Testing**: `devenv tasks run test:run` (all) or `devenv tasks run test:<pkg>` (single package) or `devenv tasks run test:watch` or `devenv tasks run test:integration`
+- **Build**: `devenv tasks run ts:build`
+- **Install**: `devenv tasks run bun:install`
+- **Genie**: `devenv tasks run genie:run` or `devenv tasks run genie:watch` or `devenv tasks run genie:check`
+- **Check all**: `devenv tasks run check:quick` (ts + lint) or `devenv tasks run check:all` (ts + lint + test)
 
 Use the `--no-tui` flag to see all output. If tools aren't directly in `$PATH`, enter the dev environment first with `devenv shell`.
 
@@ -23,9 +23,9 @@ We're using megarepo for repo management. We're using `pnpm` temporarily for ins
 Config files like `package.json`, `tsconfig.base.json`, and `.github/workflows/ci.yml` are generated from TypeScript source files using genie. The source files have a `.genie.ts` suffix (e.g., `package.json.genie.ts`).
 
 - **Never edit generated files directly** - they are read-only and will be overwritten
-- **Edit the `.genie.ts` source file** and run `dt genie:run` to regenerate
+- **Edit the `.genie.ts` source file** and run `devenv tasks run genie:run` to regenerate
 - Shared constants (catalog versions, tsconfig options) live in `genie/repo.ts`
-- `dt check:quick` verifies generated files are up to date via `dt genie:check`
+- `devenv tasks run check:quick` verifies generated files are up to date via `devenv tasks run genie:check`
 
 # Changelog
 

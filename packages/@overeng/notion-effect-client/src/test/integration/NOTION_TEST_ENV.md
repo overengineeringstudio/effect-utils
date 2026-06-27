@@ -42,11 +42,11 @@ The current IDs are exported from `setup.ts` as `TEST_IDS` after
 ## Running Tests
 
 ```bash
-NOTION_TEST_PARENT_PAGE_ID=<scratch-parent-page-id> dt test:notion-effect-client
+NOTION_TEST_PARENT_PAGE_ID=<scratch-parent-page-id> devenv tasks run test:notion-effect-client
 ```
 
 The broader Notion integration lane also uses the same scratch parent:
 
 ```bash
-NOTION_TEST_PARENT_PAGE_ID=<scratch-parent-page-id> dt test:integration
+NOTION_TEST_PARENT_PAGE_ID=<scratch-parent-page-id> devenv tasks run test:integration
 ```

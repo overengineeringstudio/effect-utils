@@ -3,8 +3,7 @@ set -euo pipefail
 
 # Proves the clean devenv OTEL trace contract with real otelite + real otel-span.
 # The expensive outer systems are stubbed narrowly:
-#   - dt is the real evaluated dt wrapper
-#   - devenv delegates to the real evaluated ts:check task exec
+#   - devenv tasks run delegates to the real evaluated ts:check task exec
 #   - tsgo prints the captured extendedDiagnostics fixture
 
 TESTS_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -39,15 +38,6 @@ resolve_otel_span() {
       in import $ROOT/nix/devenv-modules/otel/otel-span.nix { inherit pkgs; }
     " | sed 's|$|/bin/otel-span|'
   fi
-}
-
-extract_dt_body() {
-  nix eval --impure --raw --expr "
-    let
-      flake = builtins.getFlake (toString $ROOT);
-      pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
-    in (import $ROOT/nix/devenv-modules/dt.nix { inherit pkgs; }).scripts.dt.exec
-  "
 }
 
 extract_ts_check_exec() {
@@ -85,12 +75,6 @@ mkdir -p "$tmpdir/bin"
 otelite_bin="$(resolve_otelite)"
 otel_span_bin="$(resolve_otel_span)"
 
-{
-  printf '#!/usr/bin/env bash\nset -euo pipefail\n'
-  extract_dt_body
-} > "$tmpdir/bin/dt"
-chmod +x "$tmpdir/bin/dt"
-
 extract_ts_check_exec > "$tmpdir/ts-check.exec.sh"
 chmod +x "$tmpdir/ts-check.exec.sh"
 
@@ -114,17 +98,17 @@ chmod +x "$tmpdir/bin/tsgo"
 ln -s "$otel_span_bin" "$tmpdir/bin/otel-span"
 
 cap="$tmpdir/capture"
-PATH="$tmpdir/bin:$PATH" DEVENV_ROOT="$tmpdir/workspace" \
-  "$otelite_bin" run --out "$cap" --protocol http/json -- dt ts:check \
+PATH="$tmpdir/bin:$PATH" DEVENV_ROOT="$tmpdir/workspace" DEVENV_TUI=false \
+  "$otelite_bin" run --out "$cap" --protocol http/json -- devenv tasks run ts:check \
   > "$tmpdir/summary.json" 2> "$tmpdir/run.stderr"
 
 "$otelite_bin" inspect "$cap" --signal traces > "$tmpdir/spans.ndjson"
 
-jq -e '.counts.spans == 5 and .counts.rejected == 0 and .child.exit_code == 0' "$tmpdir/summary.json" >/dev/null \
-  || fail "otelite summary should report 5 accepted spans and child exit 0"
+jq -e '.counts.spans == 4 and .counts.rejected == 0 and .child.exit_code == 0' "$tmpdir/summary.json" >/dev/null \
+  || fail "otelite summary should report 4 accepted spans and child exit 0"
 
 span_count="$(wc -l < "$tmpdir/spans.ndjson" | tr -d ' ')"
-[ "$span_count" -eq 5 ] || fail "expected 5 inspected spans, got $span_count"
+[ "$span_count" -eq 4 ] || fail "expected 4 inspected spans, got $span_count"
 
 trace_count="$(jq -r '.trace_id' "$tmpdir/spans.ndjson" | sort -u | wc -l | tr -d ' ')"
 [ "$trace_count" -eq 1 ] || fail "expected one trace id, got $trace_count"
@@ -134,20 +118,16 @@ service_count="$(jq -r '.service' "$tmpdir/spans.ndjson" | sort -u | wc -l | tr 
 jq -s -e 'all(.[]; .service == "effect-utils-devenv")' "$tmpdir/spans.ndjson" >/dev/null \
   || fail "all spans should use service.name=effect-utils-devenv"
 
-root_span="$(jq -r 'select(.name == "dt.run") | .span_id' "$tmpdir/spans.ndjson")"
 task_span="$(jq -r 'select(.name == "devenv.task.exec") | .span_id' "$tmpdir/spans.ndjson")"
-[ -n "$root_span" ] || fail "missing dt.run root span"
 [ -n "$task_span" ] || fail "missing devenv.task.exec child span"
 
-jq -s -e --arg root "$root_span" 'any(.[]; .name == "devenv.task.exec" and .parent_span_id == $root)' "$tmpdir/spans.ndjson" >/dev/null \
-  || fail "devenv.task.exec should parent to dt.run"
+jq -s -e 'any(.[]; .name == "devenv.task.exec" and (.parent_span_id == null or .parent_span_id == ""))' "$tmpdir/spans.ndjson" >/dev/null \
+  || fail "devenv.task.exec should be the root task span"
 jq -s -e --arg task "$task_span" '
   all([.[] | select(.name == "typescript.project.check" or .name == "typescript.build.aggregate")][]; .parent_span_id == $task)
 ' "$tmpdir/spans.ndjson" >/dev/null \
   || fail "TypeScript spans should parent to devenv.task.exec"
 
-jq -s -e 'any(.[]; .name == "dt.run" and .attrs["tool.name"] == "dt" and .attrs["task.name"] == "ts:check" and .attrs["dt.fresh"] == "false")' "$tmpdir/spans.ndjson" >/dev/null \
-  || fail "dt.run is missing typed dt attrs"
 jq -s -e 'any(.[]; .name == "devenv.task.exec" and .attrs["tool.name"] == "devenv" and .attrs["task.cached"] == "false" and .attrs["task.phase"] == "exec")' "$tmpdir/spans.ndjson" >/dev/null \
   || fail "task span is missing typed task attrs"
 jq -s -e 'any(.[]; .name == "typescript.project.check" and .attrs["span.label"] == "socket" and .attrs["ts.project"] == "context/effect/socket" and .attrs["typescript.total_time_s"] == "0.339")' "$tmpdir/spans.ndjson" >/dev/null \
@@ -161,20 +141,18 @@ if grep -qE "^(Files:|Parse time:|Total time:|Aggregate)" "$tmpdir/run.stderr"; 
   fail "diagnostic timing scaffolding leaked into stderr"
 fi
 
-trace_id="$(jq -r 'select(.name == "dt.run") | .trace_id' "$tmpdir/spans.ndjson")"
-root_label="$(jq -r 'select(.name == "dt.run") | .attrs["span.label"]' "$tmpdir/spans.ndjson")"
+trace_id="$(jq -r 'select(.name == "devenv.task.exec") | .trace_id' "$tmpdir/spans.ndjson")"
 task_label="$(jq -r 'select(.name == "devenv.task.exec") | .attrs["span.label"]' "$tmpdir/spans.ndjson")"
 
 echo "Trace tree preview"
 echo "trace $trace_id"
-echo "\`-- effect-utils-devenv dt.run [$root_label] span=$root_span"
-echo "    \`-- effect-utils-devenv devenv.task.exec [$task_label] span=$task_span parent=$root_span"
+echo "\`-- effect-utils-devenv devenv.task.exec [$task_label] span=$task_span"
 jq -r -s --arg task "$task_span" '
   [.[] | select(.parent_span_id == $task and (.name == "typescript.project.check" or .name == "typescript.build.aggregate"))]
   | sort_by(.name, .attrs["span.label"])
   | to_entries as $items
   | $items[]
-  | "        " + (if .key + 1 == ($items | length) then "`-- " else "|-- " end)
+  | "    " + (if .key + 1 == ($items | length) then "`-- " else "|-- " end)
     + .value.service + " " + .value.name + " ["
     + .value.attrs["span.label"] + "] span=" + .value.span_id
     + " parent=" + .value.parent_span_id

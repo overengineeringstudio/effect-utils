@@ -608,7 +608,7 @@ let
       genieData = packageJson."$genie" or { };
     in
     if !(genieData ? workspaceClosureDirs) then
-      throw "mk-pnpm-cli: ${packageDir}/package.json missing $genie.workspaceClosureDirs (run: dt genie:run)"
+      throw "mk-pnpm-cli: ${packageDir}/package.json missing $genie.workspaceClosureDirs (run: devenv tasks run genie:run)"
     else if !(lib.elem packageDir genieData.workspaceClosureDirs) then
       throw "mk-pnpm-cli: $genie.workspaceClosureDirs does not contain packageDir (${packageDir})"
     else

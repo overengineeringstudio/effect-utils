@@ -211,7 +211,7 @@ let
       echo "✗ $name: pnpm lockfile is stale (new deps added but not locked)"
       echo ""
       echo "To fix:"
-      echo "  1. Run: dt pnpm:update     # Update the repo-root pnpm lockfile"
+      echo "  1. Run: devenv tasks run pnpm:update     # Update the repo-root pnpm lockfile"
       echo "  2. Refresh Nix FOD hashes for $name"
       echo "  3. Commit: pnpm-lock.yaml changes and hashSource updates"
       echo ""
@@ -223,7 +223,7 @@ let
       echo ""
       echo "To fix:"
       echo "  1. Refresh prepared install FODs for $name"
-      echo "  2. If lockfiles changed: dt pnpm:update"
+      echo "  2. If lockfiles changed: devenv tasks run pnpm:update"
       echo ""
       exit 1
     fi

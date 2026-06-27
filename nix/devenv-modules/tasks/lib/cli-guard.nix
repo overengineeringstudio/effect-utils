@@ -2,13 +2,12 @@
 #
 # Creates shell scripts that intercept direct CLI invocations and
 # print the canonical devenv task(s) instead. The real binary is
-# reachable via DT_PASSTHROUGH=1 (set automatically by devenv env,
-# dt wrapper, and CI).
+# reachable via DEVENV_TASK_PASSTHROUGH=1 (set automatically by task env
+# and CI).
 #
 # How passthrough works:
-#   - stripGuards sets per-task env.DT_PASSTHROUGH=1 on all tasks
+#   - stripGuards sets per-task env.DEVENV_TASK_PASSTHROUGH=1 on all tasks
 #   - enterShell unsets it (so interactive shell usage hits guards)
-#   - dt wrapper re-sets it before calling devenv tasks run
 #   - CI helper (runDevenvTasksBefore) sets it
 #
 # Ownership and the `realBin` arg:
@@ -42,7 +41,7 @@
 #
 #   guardedTasks have a `guard = "cli-name"` attribute on entries that
 #   should appear in the guard's help message. otherTasks may also call
-#   guarded CLIs. stripGuards removes guard attrs and sets DT_PASSTHROUGH=1
+#   guarded CLIs. stripGuards removes guard attrs and sets DEVENV_TASK_PASSTHROUGH=1
 #   on all tasks so they can call guarded CLIs during task execution.
 #
 # Low-level API (for cases where tasks aren't a plain attrset):
@@ -85,7 +84,7 @@ let
           let
             desc = if t ? description && t.description != null then "# ${t.description}\\n" else "";
           in
-          ''printf "  ${desc}  devenv tasks run ${t.task} --mode before --no-tui\n\n" >&2''
+          ''printf "  ${desc}  devenv tasks run ${t.task}\n\n" >&2''
         ) tasks
       );
       realPath = resolveRealBin cli realBin;
@@ -121,7 +120,7 @@ let
       # cli-guard-wrapper:${cli}
       set -euo pipefail
 
-      if [ "''${DT_PASSTHROUGH:-}" = "1" ]; then
+      if [ "''${DEVENV_TASK_PASSTHROUGH:-}" = "1" ]; then
         ${passthroughBody}
       fi
 
@@ -132,7 +131,7 @@ let
       echo "Run 'devenv tasks list' to see all available tasks." >&2
       echo "" >&2
       echo "Bypass (not recommended):" >&2
-      echo "  DT_PASSTHROUGH=1 ${cli} $*" >&2
+      echo "  DEVENV_TASK_PASSTHROUGH=1 ${cli} $*" >&2
       echo "" >&2
       exit 1
     '';
@@ -186,7 +185,7 @@ let
     in
     map mkGuardForCli cliNames;
 
-  # Strip the `guard` attribute and set DT_PASSTHROUGH=1 via per-task env.
+  # Strip the `guard` attribute and set DEVENV_TASK_PASSTHROUGH=1 via per-task env.
   # devenv's module-level `env` attributes are not propagated to task
   # subprocesses, but per-task `env` is. Pass all tasks (guarded + other)
   # so every task can call guarded CLIs during task execution.
@@ -198,7 +197,7 @@ let
     stripped
     // {
       env = (stripped.env or { }) // {
-        DT_PASSTHROUGH = "1";
+        DEVENV_TASK_PASSTHROUGH = "1";
       };
     }
   );
