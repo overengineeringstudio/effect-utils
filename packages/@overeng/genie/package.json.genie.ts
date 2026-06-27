@@ -55,6 +55,10 @@ export default packageJson(
     },
     exports: {
       '.': './src/runtime/mod.ts',
+      // Types-only leaf entry: GenieOutput/Strict + their transitive type closure, none of which
+      // import node/Bun/DOM. Lets a TYPECHECKING consumer (e.g. a `.bzl` genie generator) import the
+      // core types without dragging genie's runtime source (and its ambient globals) into its program.
+      './core': './src/runtime/core.ts',
       './cli': './src/build/mod.tsx',
       './sdk': './src/sdk/mod.ts',
     },
@@ -62,6 +66,7 @@ export default packageJson(
       access: 'public',
       exports: {
         '.': './dist/src/runtime/mod.js',
+        './core': './dist/src/runtime/core.js',
         './cli': './dist/src/build/mod.js',
         './sdk': './dist/src/sdk/mod.js',
       },
