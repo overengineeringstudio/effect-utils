@@ -8,7 +8,7 @@
 { lib, pkgs, ... }:
 let
   trace = import ../lib/trace.nix { inherit lib; };
-  githubRulesetModule = toString ../../../.. + "/packages/@overeng/genie/src/runtime/mod.ts";
+  githubRulesetModule = toString ../../../.. + "/packages/@overeng/genie/src/runtime/node/mod.ts";
   mkTask =
     mode:
     let
