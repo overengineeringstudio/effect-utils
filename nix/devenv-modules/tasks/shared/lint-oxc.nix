@@ -111,10 +111,10 @@ let
     '';
 
   oxlintIncludeCase = ''
-    *.js|*.jsx|*.mjs|*.cjs|*.ts|*.tsx)
+    *.js|*.jsx|*.mjs|*.cjs|*.ts|*.tsx|*.mts|*.cts|*.vue|*.svelte|*.astro)
   '';
   oxfmtIncludeCase = ''
-    *.js|*.jsx|*.mjs|*.cjs|*.ts|*.tsx|*.json|*.jsonc|*.yaml|*.yml|*.toml|*.html|*.css|*.md|*.markdown)
+    *.js|*.jsx|*.mjs|*.cjs|*.ts|*.tsx|*.mts|*.cts|*.json|*.jsonc|*.json5|*.yaml|*.yml|*.toml|*.html|*.vue|*.css|*.scss|*.sass|*.less|*.md|*.markdown|*.mdx|*.graphql|*.gql|*.hbs|*.handlebars)
   '';
 
   # Type-aware linting flags (enabled when tsconfig is provided)

@@ -114,11 +114,45 @@ EOF
 cat > "$workspace/config.json" <<'EOF'
 {"supported": true}
 EOF
+cat > "$workspace/module.mts" <<'EOF'
+export const module = true
+EOF
+cat > "$workspace/common.cts" <<'EOF'
+export const common = true
+EOF
+cat > "$workspace/view.vue" <<'EOF'
+<script setup lang="ts">const view = true</script>
+EOF
+cat > "$workspace/card.svelte" <<'EOF'
+<script lang="ts">const card = true</script>
+EOF
+cat > "$workspace/page.astro" <<'EOF'
+---
+const page = true
+---
+EOF
+cat > "$workspace/config.json5" <<'EOF'
+{supported: true}
+EOF
+cat > "$workspace/styles.scss" <<'EOF'
+.supported { color: red; }
+EOF
+cat > "$workspace/notes.mdx" <<'EOF'
+# Supported by oxfmt
+EOF
+cat > "$workspace/query.graphql" <<'EOF'
+query Supported { node { id } }
+EOF
+cat > "$workspace/template.hbs" <<'EOF'
+<p>{{supported}}</p>
+EOF
 
 (
   cd "$workspace"
   git init --quiet
-  git add .gitignore keep.ts deleted.ts fixture.kdl lib.rs readme.md config.json
+  git add .gitignore keep.ts deleted.ts fixture.kdl lib.rs readme.md config.json \
+    module.mts common.cts view.vue card.svelte page.astro config.json5 styles.scss \
+    notes.mdx query.graphql template.hbs
   rm deleted.ts
 )
 
@@ -137,12 +171,22 @@ echo "Test 1: lint task skips tracked paths deleted from the worktree"
 
 assert_contains "keep.ts" "$TEST_OXLINT_ARGS" "tracked existing file is linted"
 assert_contains "new.ts" "$TEST_OXLINT_ARGS" "untracked non-ignored file is linted"
+assert_contains "module.mts" "$TEST_OXLINT_ARGS" "MTS file is linted by oxlint"
+assert_contains "common.cts" "$TEST_OXLINT_ARGS" "CTS file is linted by oxlint"
+assert_contains "view.vue" "$TEST_OXLINT_ARGS" "Vue file is linted by oxlint"
+assert_contains "card.svelte" "$TEST_OXLINT_ARGS" "Svelte file is linted by oxlint"
+assert_contains "page.astro" "$TEST_OXLINT_ARGS" "Astro file is linted by oxlint"
 assert_not_contains "deleted.ts" "$TEST_OXLINT_ARGS" "tracked deleted file is filtered"
 assert_not_contains "node_modules/pkg/ignored.ts" "$TEST_OXLINT_ARGS" "ignored file is not linted"
 assert_not_contains "fixture.kdl" "$TEST_OXLINT_ARGS" "unsupported KDL fixture is not linted by oxlint"
 assert_not_contains "lib.rs" "$TEST_OXLINT_ARGS" "unsupported Rust file is not linted by oxlint"
 assert_not_contains "readme.md" "$TEST_OXLINT_ARGS" "Markdown file is not linted by oxlint"
 assert_not_contains "config.json" "$TEST_OXLINT_ARGS" "JSON file is not linted by oxlint"
+assert_not_contains "config.json5" "$TEST_OXLINT_ARGS" "JSON5 file is not linted by oxlint"
+assert_not_contains "styles.scss" "$TEST_OXLINT_ARGS" "SCSS file is not linted by oxlint"
+assert_not_contains "notes.mdx" "$TEST_OXLINT_ARGS" "MDX file is not linted by oxlint"
+assert_not_contains "query.graphql" "$TEST_OXLINT_ARGS" "GraphQL file is not linted by oxlint"
+assert_not_contains "template.hbs" "$TEST_OXLINT_ARGS" "Handlebars file is not linted by oxlint"
 
 echo ""
 echo "Test 2: format task keeps oxfmt-supported files and skips unsupported paths"
@@ -153,8 +197,16 @@ echo "Test 2: format task keeps oxfmt-supported files and skips unsupported path
 
 assert_contains "keep.ts" "$TEST_OXFMT_ARGS" "tracked TypeScript file is formatted"
 assert_contains "new.ts" "$TEST_OXFMT_ARGS" "untracked TypeScript file is formatted"
+assert_contains "module.mts" "$TEST_OXFMT_ARGS" "MTS file is formatted"
+assert_contains "common.cts" "$TEST_OXFMT_ARGS" "CTS file is formatted"
+assert_contains "view.vue" "$TEST_OXFMT_ARGS" "Vue file is formatted"
 assert_contains "readme.md" "$TEST_OXFMT_ARGS" "Markdown file is formatted"
 assert_contains "config.json" "$TEST_OXFMT_ARGS" "JSON file is formatted"
+assert_contains "config.json5" "$TEST_OXFMT_ARGS" "JSON5 file is formatted"
+assert_contains "styles.scss" "$TEST_OXFMT_ARGS" "SCSS file is formatted"
+assert_contains "notes.mdx" "$TEST_OXFMT_ARGS" "MDX file is formatted"
+assert_contains "query.graphql" "$TEST_OXFMT_ARGS" "GraphQL file is formatted"
+assert_contains "template.hbs" "$TEST_OXFMT_ARGS" "Handlebars file is formatted"
 assert_not_contains "deleted.ts" "$TEST_OXFMT_ARGS" "tracked deleted file is filtered for oxfmt"
 assert_not_contains "fixture.kdl" "$TEST_OXFMT_ARGS" "unsupported KDL fixture is not formatted"
 assert_not_contains "lib.rs" "$TEST_OXFMT_ARGS" "unsupported Rust file is not formatted"

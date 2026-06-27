@@ -11,7 +11,9 @@ All notable changes to this project will be documented in this file.
   `git ls-files` and always run instead of delegating change detection to
   devenv's `execIfModified` glob walker. The shared lint module is kept
   repo-agnostic; effect-utils-specific source policy checks live in local task
-  modules.
+  modules. Per-tool file filters include the broader Oxc-supported extension
+  sets, including `.mts`/`.cts` for oxlint and additional oxfmt-supported
+  formats such as JSON5, SCSS/Less, MDX, GraphQL, and Handlebars.
 
 - **devenv task-module tests**: Add a dedicated `devenv-modules:test` task for
   shell tests colocated under `nix/devenv-modules/tasks/shared/tests`, and wire
