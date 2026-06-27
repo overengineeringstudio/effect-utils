@@ -82,6 +82,14 @@ EOF
 cat > "$tmpdir/bin/oxfmt" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
+if [ "${TEST_OXFMT_EMPTY_TARGET_ERROR:-0}" = 1 ]; then
+  echo "Expected at least one target file" >&2
+  exit 1
+fi
+if [ "${TEST_OXFMT_OTHER_ERROR:-0}" = 1 ]; then
+  echo "parse error" >&2
+  exit 1
+fi
 printf '%s\n' "$@" > "${TEST_OXFMT_ARGS:?}"
 EOF
 chmod +x "$tmpdir/bin/oxfmt"
@@ -211,6 +219,27 @@ assert_not_contains "deleted.ts" "$TEST_OXFMT_ARGS" "tracked deleted file is fil
 assert_not_contains "fixture.kdl" "$TEST_OXFMT_ARGS" "unsupported KDL fixture is not formatted"
 assert_not_contains "lib.rs" "$TEST_OXFMT_ARGS" "unsupported Rust file is not formatted"
 assert_not_contains "node_modules/pkg/ignored.ts" "$TEST_OXFMT_ARGS" "ignored file is not formatted"
+
+echo ""
+echo "Test 3: format task treats an oxfmt all-ignored chunk as empty work"
+export TEST_OXFMT_EMPTY_TARGET_ERROR=1
+(
+  cd "$workspace"
+  bash "$tmpdir/lint-check-format.sh"
+)
+unset TEST_OXFMT_EMPTY_TARGET_ERROR
+
+echo ""
+echo "Test 4: format task still fails real oxfmt errors"
+export TEST_OXFMT_OTHER_ERROR=1
+if (
+  cd "$workspace"
+  bash "$tmpdir/lint-check-format.sh"
+); then
+  echo "FAIL: non-empty oxfmt errors must fail"
+  exit 1
+fi
+unset TEST_OXFMT_OTHER_ERROR
 
 echo ""
 echo "All lint-oxc file list tests passed"

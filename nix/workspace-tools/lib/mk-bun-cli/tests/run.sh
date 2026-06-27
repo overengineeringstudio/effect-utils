@@ -168,12 +168,41 @@ run_build() {
   local label="$1"
   local target="$2"
   local extra_args="${3:-}"
+  local bin_name="${4:-}"
   local start
   start="$(now)"
   echo "Build: $label"
   # shellcheck disable=SC2086
-  nix build --no-link --no-write-lock-file -L $extra_args "$target"
+  local out
+  out="$(nix build --impure --no-link --no-write-lock-file --print-out-paths -L $extra_args "$target")"
+  if [ -n "$bin_name" ]; then
+    check_completions "$out" "$bin_name"
+  fi
   print_timing "$label" "$start"
+}
+
+check_completions() {
+  local out="$1"
+  local bin_name="$2"
+
+  echo "Check: $bin_name shell completions"
+  local fish_file="$out/share/fish/vendor_completions.d/${bin_name}.fish"
+  local bash_file="$out/share/bash-completion/completions/${bin_name}"
+  local zsh_file="$out/share/zsh/site-functions/_${bin_name}"
+  for f in "$fish_file" "$bash_file" "$zsh_file"; do
+    if [ ! -f "$f" ] && [ ! -L "$f" ]; then
+      echo "error: missing completion file: $f" >&2
+      exit 1
+    fi
+    if [ ! -s "$f" ]; then
+      echo "error: empty completion file: $f" >&2
+      exit 1
+    fi
+    if ! grep -q "completions for $bin_name" "$f"; then
+      echo "error: completion file was not generated via fallback: $f" >&2
+      exit 1
+    fi
+  done
 }
 
 run_devenv() {
@@ -251,9 +280,9 @@ fi
 
 if [ "$SKIP_PEER" -eq 0 ]; then
   run_build "peer app (from repos)" "path:$WORKSPACE_REAL/repos/app#app-cli" \
-    "--override-input effect-utils path:$WORKSPACE_REAL/repos/effect-utils"
+    "--override-input effect-utils path:$WORKSPACE_REAL/repos/effect-utils" "app-cli"
   run_build "peer app (standalone)" "path:$WORKSPACE_REAL/app#app-cli" \
-    "--override-input effect-utils path:$WORKSPACE_REAL/effect-utils"
+    "--override-input effect-utils path:$WORKSPACE_REAL/effect-utils" "app-cli"
 fi
 
 if [ "$SKIP_DEVENV" -eq 0 ]; then

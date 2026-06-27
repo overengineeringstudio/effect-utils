@@ -29,6 +29,11 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **devenv/lint-oxc, CLI package builders**: Treat an `oxfmt` chunk that becomes
+  empty after formatter config ignores as no work while preserving failures for
+  real formatter errors, and generate packaged CLI completions without assuming
+  every CLI accepts the shared `--log-level none` option.
+
 - **@overeng/megarepo**: Share canonical nested-megarepo traversal state across
   recursive commands and key visited roots by resolved worktree identity, so
   `mr status --all` and `mr ls --all` stop at symlink cycles instead of
