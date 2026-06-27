@@ -296,25 +296,6 @@ let
     echo "✓ $name: lockfile and deps unchanged"
   '';
 
-  # Script to run nix-cli tests colocated with this module
-  nixTestsScript = pkgs.writeShellScript "nix-cli-tests" ''
-    set -euo pipefail
-    testDir="${toString ./tests}"
-    if [ ! -d "$testDir" ]; then
-      echo "No nix-cli tests found (missing $testDir)"
-      exit 1
-    fi
-
-    for testFile in "$testDir"/*.test.sh; do
-      if [ ! -f "$testFile" ]; then
-        echo "No nix-cli tests found in $testDir"
-        exit 1
-      fi
-      echo "Running $testFile"
-      bash "$testFile"
-    done
-  '';
-
   mkBuildTask = pkg: {
     "nix:build:${pkg.name}" = {
       description = "Build ${pkg.name} Nix package";
@@ -374,11 +355,6 @@ lib.mkIf hasPackages {
       # Aggregate tasks
       [
         {
-          "nix:test" = {
-            description = "Run nix-cli tooling tests";
-            exec = trace.exec "nix:test" "${nixTestsScript}";
-          };
-
           "nix:build" = {
             description = "Build all CLI Nix packages";
             after = map (p: "nix:build:${p.name}") cliPackages;

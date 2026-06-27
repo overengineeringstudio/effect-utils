@@ -52,6 +52,8 @@ let
     nix-cli = import ./nix/devenv-modules/tasks/shared/nix-cli.nix;
     secretspec = import ./nix/devenv-modules/tasks/shared/secretspec.nix;
     context = ./nix/devenv-modules/tasks/shared/context.nix;
+    devenv-module-tests = ./nix/devenv-modules/tasks/local/devenv-module-tests.nix;
+    asset-import-type-reference = ./nix/devenv-modules/tasks/local/asset-import-type-reference.nix;
   };
   # Use bun source entrypoints for in-repo CLIs in devenv (flake builds stay strict).
   mkSourceCli = import ./nix/devenv-modules/lib/mk-source-cli.nix { inherit pkgs; };
@@ -348,7 +350,7 @@ in
     # Self-contained test tasks: each package uses its own vitest from node_modules
     (taskModules.test {
       packages = packagesWithTests;
-      extraTests = [ "nix:test" ];
+      extraTests = [ "devenv-modules:test" ];
     })
     (taskModules.storybook {
       packages = packagesWithStorybook;
@@ -412,6 +414,8 @@ in
     (taskModules.secretspec { })
     # Local task: Validate allPackages matches filesystem packages (effect-utils specific)
     ./nix/devenv-modules/tasks/local/workspace-check.nix
+    taskModules.devenv-module-tests
+    taskModules.asset-import-type-reference
     # Notion integration tests (requires NOTION_API_TOKEN)
     ./nix/devenv-modules/tasks/local/notion-integration-test.nix
     # Restate integration tests (native restate-server via RESTATE_SERVER_BIN)
@@ -486,10 +490,6 @@ in
   tasks."genie:run".after = [ "pnpm:install" ];
   tasks."genie:watch".after = [ "pnpm:install" ];
   tasks."genie:check".after = [ "pnpm:install" ];
-  # `nix:test` includes shell e2es for source-mode CLIs (for example compiling
-  # packages/@overeng/genie/bin/genie.tsx), so it must not race dependency
-  # materialization when run as part of `test:run` in CI.
-  tasks."nix:test".after = [ "pnpm:install" ];
   tasks."lint:check:genie".after = [ "pnpm:install" ];
   tasks."mr:bootstrap".after = [ "pnpm:install" ];
   tasks."mr:fetch-apply".after = [ "pnpm:install" ];
