@@ -1,5 +1,56 @@
 import type { GenieValidationIssue, PackageInfo } from './validation/mod.ts'
 
+/**
+ * Filesystem capabilities a validator may need, injected via {@link GenieContext.io}.
+ *
+ * Keeping these on the context (rather than importing `node:fs` inside a builder/validator) is what lets the
+ * builder modules — and therefore the `@overeng/genie` (`.`) entry — stay isomorphic: a typechecking consumer
+ * that imports only the builders/types never resolves `node:*` into its program. The genie engine (which is
+ * node) injects a real implementation during validation; it is `undefined` during `stringify` and whenever a
+ * consumer has not opted into validation, so every validator must guard on `ctx.io === undefined`.
+ */
+export type GenieIO = {
+  /** Whether a path exists on disk. */
+  readonly fileExists: (path: string) => boolean
+  /** Read a file as UTF-8 text, or `undefined` if it does not exist / cannot be read. */
+  readonly readText: (path: string) => string | undefined
+}
+
+/** Config for the actionlint workflow validation capability (mirrors `githubWorkflow`'s `actionlint` option). */
+export type GenieActionlintConfig = {
+  /** Custom self-hosted runner labels (suppresses "unknown label" errors). */
+  readonly selfHostedRunnerLabels?: readonly string[]
+  /** Extra `-ignore` regex patterns passed to actionlint. */
+  readonly ignorePatterns?: readonly string[]
+}
+
+/**
+ * Actionlint capability injected via {@link GenieContext.actionlint}.
+ *
+ * The `githubWorkflow` validator shells out to the `actionlint` binary, which is irreducibly node-only
+ * (`spawnSync`). Rather than statically importing the spawn runner into the pure builder (which would drag
+ * `node:child_process` into the `.` entry's closure), the engine injects this runner during validation. The
+ * pure builder calls it only when present, so a typechecking consumer never resolves the node implementation.
+ */
+export type GenieActionlintRunner = (args: {
+  readonly yaml: string
+  readonly location: string
+  readonly config?: GenieActionlintConfig
+}) => { readonly issues: GenieValidationIssue[]; readonly durationMs: number }
+
+/**
+ * JSONC parser capability injected via {@link GenieContext.parseJsonc}.
+ *
+ * Some validators read JSONC config files (e.g. tsconfig.json, which permits comments) and need a tolerant
+ * parse. A TypeScript-backed parser is dependency territory (genie's runtime must be dependency-free, issue
+ * #138), so the engine injects it; the pure validator calls it only when present and treats `undefined`
+ * (absent capability or parse error) as "could not parse".
+ */
+export type GenieJsoncParser = (args: {
+  readonly path: string
+  readonly text: string
+}) => unknown | undefined
+
 /** Context passed to genie generator functions */
 export type GenieContext = {
   /** Repo-relative path to the directory containing this genie file (e.g., 'packages/@overeng/utils') */
@@ -11,6 +62,12 @@ export type GenieContext = {
     packages: PackageInfo[]
     byName: Map<string, PackageInfo>
   }
+  /** Filesystem capabilities — injected by the engine during validation, undefined during stringify (GenieIO). */
+  io?: GenieIO
+  /** Actionlint runner — injected by the engine during validation, undefined during stringify (GenieActionlintRunner). */
+  actionlint?: GenieActionlintRunner
+  /** JSONC parser — injected by the engine during validation, undefined during stringify (GenieJsoncParser). */
+  parseJsonc?: GenieJsoncParser
 }
 
 /**

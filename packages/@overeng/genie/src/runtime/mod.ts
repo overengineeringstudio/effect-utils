@@ -1,4 +1,12 @@
-export type { GenieContext, GenieOutput, Strict } from './core.ts'
+export type {
+  GenieActionlintConfig,
+  GenieActionlintRunner,
+  GenieContext,
+  GenieIO,
+  GenieJsoncParser,
+  GenieOutput,
+  Strict,
+} from './core.ts'
 
 export * from './github-action/mod.ts'
 export * from './github-labels/mod.ts'
@@ -9,7 +17,6 @@ export * from './megarepo-config/mod.ts'
 export * from './oxfmt-config/mod.ts'
 export * from './oxlint-config/mod.ts'
 export * from './projection-artifact/mod.ts'
-export * from './repo-context/mod.ts'
 export {
   CatalogConflictError,
   OverrideConflictError,

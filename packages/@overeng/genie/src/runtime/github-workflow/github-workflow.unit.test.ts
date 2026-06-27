@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest'
 
 import { githubWorkflow, type GenieContext, type GitHubWorkflowArgs } from '../mod.ts'
+import { runActionlint } from './actionlint.ts'
 
+// Inject the actionlint capability the engine normally provides, so the actionlint integration cases below
+// actually exercise the spawn runner (rather than no-op'ing through the `ctx.actionlint === undefined` guard).
 const mockGenieContext: GenieContext = {
   location: '.github/workflows/ci.yml',
   cwd: '/workspace',
+  actionlint: runActionlint,
 }
 
 /** Helper that only checks the built-in TS validators (actionlint disabled) */

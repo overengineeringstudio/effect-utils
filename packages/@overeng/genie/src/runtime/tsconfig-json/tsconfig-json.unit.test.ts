@@ -4,7 +4,8 @@ import path from 'node:path'
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { tsconfigJson, tsconfigJsonFromPackages, type GenieContext } from '../mod.ts'
+import { tsconfigJson, type GenieContext } from '../mod.ts'
+import { tsconfigJsonFromPackages } from '../node/mod.ts'
 import type { WorkspacePackageLike } from '../package-json/mod.ts'
 
 const mockGenieContext: GenieContext = {

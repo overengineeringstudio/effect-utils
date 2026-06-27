@@ -12,10 +12,9 @@
  * identity-critical packages resolve to the same version everywhere.
  */
 
-import { readFileSync } from 'node:fs'
-import path from 'node:path'
-
+import type { GenieIO } from '../core.ts'
 import type { WorkspacePackageLike } from '../package-json/mod.ts'
+import { joinPath } from '../utils/path.ts'
 import type { GenieValidationIssue } from '../validation/mod.ts'
 
 // =============================================================================
@@ -119,8 +118,8 @@ const discoverInstallRoots = ({
     repoName: name,
     lockfilePath:
       name === repoName
-        ? path.join(cwd, 'pnpm-lock.yaml')
-        : path.join(cwd, 'repos', name, 'pnpm-lock.yaml'),
+        ? joinPath(cwd, 'pnpm-lock.yaml')
+        : joinPath(cwd, 'repos', name, 'pnpm-lock.yaml'),
   }))
 }
 
@@ -182,18 +181,29 @@ export type CrossInstallRootValidationArgs = {
   cwd: string
   /** Package names that must resolve to the same version across all install roots. */
   identityCriticalPackages: readonly string[]
+  /**
+   * Filesystem capability used to read each install root's lockfile. When absent the validator is a no-op —
+   * the genie engine injects {@link GenieIO} during validation, so this keeps the parser pure (and the `.`
+   * entry isomorphic) while preserving behavior for the engine path.
+   */
+  io?: GenieIO
 }
 
 /**
  * Validate that identity-critical packages resolve to the same version
  * across all install roots in the workspace composition.
+ *
+ * Requires the {@link GenieIO} capability to read lockfiles; returns `[]` when it is not provided.
  */
 export const validateCrossInstallRootVersions = ({
   packages,
   repoName,
   cwd,
   identityCriticalPackages,
+  io,
 }: CrossInstallRootValidationArgs): GenieValidationIssue[] => {
+  if (io === undefined) return []
+
   const installRoots = discoverInstallRoots({ packages, repoName, cwd })
 
   if (installRoots.length < 2) return []
@@ -201,12 +211,9 @@ export const validateCrossInstallRootVersions = ({
   const versionsByRoot = new Map<string, Map<string, string>>()
 
   for (const root of installRoots) {
-    try {
-      const lockfileContent = readFileSync(root.lockfilePath, 'utf-8')
-      versionsByRoot.set(root.repoName, parseResolvedVersionsFromLockfile(lockfileContent))
-    } catch {
-      /* lockfile not available — skip this root */
-    }
+    const lockfileContent = io.readText(root.lockfilePath)
+    if (lockfileContent === undefined) continue
+    versionsByRoot.set(root.repoName, parseResolvedVersionsFromLockfile(lockfileContent))
   }
 
   if (versionsByRoot.size < 2) return []

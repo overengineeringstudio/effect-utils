@@ -5,9 +5,6 @@
  * Reference: https://pnpm.io/pnpm-workspace_yaml
  */
 
-import { readFileSync } from 'node:fs'
-import path from 'node:path'
-
 import { validateCatalogDuplicates } from '../catalog-duplicates/mod.ts'
 import type { CatalogDuplicateException } from '../catalog-duplicates/mod.ts'
 import { validateCatalogPeerDeps } from '../catalog-peer-deps/mod.ts'
@@ -16,6 +13,7 @@ import type { GenieContext } from '../core.ts'
 import { validateCrossInstallRootVersions } from '../cross-install-root/mod.ts'
 import type { CatalogInput } from '../package-json/catalog.ts'
 import type { WorkspacePackageLike } from '../package-json/mod.ts'
+import { joinPath } from '../utils/path.ts'
 import { stringify } from '../utils/yaml.ts'
 import type { GenieValidationIssue } from '../validation/mod.ts'
 import { relativeRepoPath, rootWorkspaceMemberPathsFromPackages } from '../workspace-graph.ts'
@@ -1099,7 +1097,7 @@ const logicalWorkspaceMemberPath = ({
 }) =>
   pkg.meta.workspace.repoName === currentRepoName
     ? pkg.meta.workspace.memberPath
-    : path.posix.join('repos', pkg.meta.workspace.repoName, pkg.meta.workspace.memberPath)
+    : joinPath('repos', pkg.meta.workspace.repoName, pkg.meta.workspace.memberPath)
 
 const relativePathForMember = ({
   packageDir,
@@ -1253,9 +1251,9 @@ const rootPnpmWorkspaceYaml = ({
         }),
       ]
 
-      if (catalogVersions !== undefined) {
-        try {
-          const lockfileContent = readFileSync(path.join(ctx.cwd, 'pnpm-lock.yaml'), 'utf-8')
+      if (catalogVersions !== undefined && ctx.io !== undefined) {
+        const lockfileContent = ctx.io.readText(joinPath(ctx.cwd, 'pnpm-lock.yaml'))
+        if (lockfileContent !== undefined) {
           issues.push(
             ...validateCatalogPeerDeps({
               catalog: catalogVersions,
@@ -1272,8 +1270,6 @@ const rootPnpmWorkspaceYaml = ({
                 : {}),
             }),
           )
-        } catch {
-          /* lockfile not available — skip catalog lockfile validation */
         }
       }
 
@@ -1284,6 +1280,7 @@ const rootPnpmWorkspaceYaml = ({
             repoName,
             cwd: ctx.cwd,
             identityCriticalPackages,
+            ...(ctx.io !== undefined ? { io: ctx.io } : {}),
           }),
         )
       }

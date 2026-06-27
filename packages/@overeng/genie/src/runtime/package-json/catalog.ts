@@ -6,6 +6,7 @@
  * - Conflict: same package + different version → error
  */
 
+import { warn } from '../utils/log.ts'
 import type { WorkspaceIdentity, WorkspaceMetadata, WorkspacePackageLike } from './mod.ts'
 
 /** Base catalog type - a record of package names to version strings */
@@ -486,9 +487,7 @@ export function defineCatalog<const T extends CatalogInput>(
     if (pkg in merged) {
       if (merged[pkg] === version) {
         // Duplicate - warn but continue
-        console.warn(
-          `[defineCatalog] Duplicate: "${pkg}@${version}" already defined in base catalog`,
-        )
+        warn(`[defineCatalog] Duplicate: "${pkg}@${version}" already defined in base catalog`)
       } else {
         // Conflict - throw
         throw new CatalogConflictError({

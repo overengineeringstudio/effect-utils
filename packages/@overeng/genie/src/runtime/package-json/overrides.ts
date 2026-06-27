@@ -4,6 +4,8 @@
  * Similar to catalog.ts but for pnpm overrides and patched dependencies.
  */
 
+import { warn } from '../utils/log.ts'
+
 // =============================================================================
 // Types
 // =============================================================================
@@ -88,7 +90,7 @@ export const defineOverrides = <
   for (const [key, value] of Object.entries(input.overrides)) {
     if (key in merged) {
       if (merged[key] === value) {
-        console.warn(`[defineOverrides] Duplicate: "${key}" = "${value}" already defined`)
+        warn(`[defineOverrides] Duplicate: "${key}" = "${value}" already defined`)
       } else {
         throw new OverrideConflictError({
           key,
