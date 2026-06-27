@@ -77,29 +77,44 @@ let
     map (pathspec: "lint_pathspec_args+=(${builtins.toJSON pathspec})") lintPaths
   );
 
-  mkLintExec = command: ''
-    set -euo pipefail
+  mkLintExec =
+    {
+      command,
+      includeCase,
+    }:
+    ''
+      set -euo pipefail
 
-    lint_pathspec_args=()
-    ${lintPathspecsSetup}
+      lint_pathspec_args=()
+      ${lintPathspecsSetup}
 
-    files=$(mktemp)
-    trap 'rm -f "$files"' EXIT
-      {
-        ${git} ls-files -z -- "''${lint_pathspec_args[@]}"
-        ${git} ls-files -z --others --exclude-standard -- "''${lint_pathspec_args[@]}"
-      } | ${pkgs.coreutils}/bin/sort -zu | while IFS= read -r -d "" path; do
-        if [ -e "$path" ] || [ -L "$path" ]; then
-          printf '%s\0' "$path"
-        fi
-      done > "$files"
+      files=$(mktemp)
+      trap 'rm -f "$files"' EXIT
+        {
+          ${git} ls-files -z -- "''${lint_pathspec_args[@]}"
+          ${git} ls-files -z --others --exclude-standard -- "''${lint_pathspec_args[@]}"
+        } | ${pkgs.coreutils}/bin/sort -zu | while IFS= read -r -d "" path; do
+          [ -e "$path" ] || [ -L "$path" ] || continue
+          case "$path" in
+            ${includeCase}
+              printf '%s\0' "$path"
+              ;;
+          esac
+        done > "$files"
 
-    if [ ! -s "$files" ]; then
-      echo "No lint files matched"
-      exit 0
-    fi
+      if [ ! -s "$files" ]; then
+        echo "No lint files matched"
+        exit 0
+      fi
 
-      ${pkgs.findutils}/bin/xargs -0 ${command} < "$files"
+        ${pkgs.findutils}/bin/xargs -0 ${command} < "$files"
+    '';
+
+  oxlintIncludeCase = ''
+    *.js|*.jsx|*.mjs|*.cjs|*.ts|*.tsx)
+  '';
+  oxfmtIncludeCase = ''
+    *.js|*.jsx|*.mjs|*.cjs|*.ts|*.tsx|*.json|*.jsonc|*.yaml|*.yml|*.toml|*.html|*.css|*.md|*.markdown)
   '';
 
   # Type-aware linting flags (enabled when tsconfig is provided)
@@ -114,13 +129,19 @@ let
     let
       flags = "${warningsFlag} ${extraFlags}";
     in
-    mkLintExec "oxlint --import-plugin ${flags} ${typeAwareFlags}";
+    mkLintExec {
+      command = "oxlint --import-plugin ${flags} ${typeAwareFlags}";
+      includeCase = oxlintIncludeCase;
+    };
 
   guardedTasks = {
     "lint:check:format" = {
       guard = "oxfmt";
       description = "Check code formatting with oxfmt";
-      exec = trace.exec "lint:check:format" (mkLintExec "oxfmt --check");
+      exec = trace.exec "lint:check:format" (mkLintExec {
+        command = "oxfmt --check";
+        includeCase = oxfmtIncludeCase;
+      });
       execIfModified = [ ];
     };
     "lint:check:oxlint" = {
@@ -135,7 +156,10 @@ let
     "lint:fix:format" = {
       guard = "oxfmt";
       description = "Fix code formatting with oxfmt";
-      exec = trace.exec "lint:fix:format" (mkLintExec "oxfmt");
+      exec = trace.exec "lint:fix:format" (mkLintExec {
+        command = "oxfmt";
+        includeCase = oxfmtIncludeCase;
+      });
     };
     "lint:fix:oxlint" = {
       guard = "oxlint";

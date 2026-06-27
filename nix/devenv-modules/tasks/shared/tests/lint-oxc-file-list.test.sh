@@ -50,7 +50,7 @@ extract_lint_task_script() {
             options.packages = pkgs.lib.mkOption { type = pkgs.lib.types.listOf pkgs.lib.types.anything; default = [ ]; };
           })
           ((import $ROOT/nix/devenv-modules/tasks/shared/lint-oxc.nix {
-            lintPaths = [ \"*.ts\" ];
+            lintPaths = [ \".\" ];
             geniePatterns = [ ];
             genieCoverageDirs = [ \".\" ];
           }) {
@@ -79,6 +79,12 @@ cat > "$tmpdir/bin/oxlint" <<'EOF'
 set -euo pipefail
 printf '%s\n' "$@" > "${TEST_OXLINT_ARGS:?}"
 EOF
+cat > "$tmpdir/bin/oxfmt" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$@" > "${TEST_OXFMT_ARGS:?}"
+EOF
+chmod +x "$tmpdir/bin/oxfmt"
 chmod +x "$tmpdir/bin/oxlint"
 
 cat > "$workspace/keep.ts" <<'EOF'
@@ -96,18 +102,32 @@ EOF
 cat > "$workspace/node_modules/pkg/ignored.ts" <<'EOF'
 export const ignored = true
 EOF
+cat > "$workspace/fixture.kdl" <<'EOF'
+node "unsupported"
+EOF
+cat > "$workspace/lib.rs" <<'EOF'
+pub fn unsupported() {}
+EOF
+cat > "$workspace/readme.md" <<'EOF'
+# Supported by oxfmt
+EOF
+cat > "$workspace/config.json" <<'EOF'
+{"supported": true}
+EOF
 
 (
   cd "$workspace"
   git init --quiet
-  git add .gitignore keep.ts deleted.ts
+  git add .gitignore keep.ts deleted.ts fixture.kdl lib.rs readme.md config.json
   rm deleted.ts
 )
 
 extract_lint_task_script "lint:check:oxlint" "$tmpdir/lint-check-oxlint.sh"
+extract_lint_task_script "lint:check:format" "$tmpdir/lint-check-format.sh"
 
 export PATH="$tmpdir/bin:$PATH"
 export TEST_OXLINT_ARGS="$tmpdir/oxlint-args.txt"
+export TEST_OXFMT_ARGS="$tmpdir/oxfmt-args.txt"
 
 echo "Test 1: lint task skips tracked paths deleted from the worktree"
 (
@@ -119,6 +139,26 @@ assert_contains "keep.ts" "$TEST_OXLINT_ARGS" "tracked existing file is linted"
 assert_contains "new.ts" "$TEST_OXLINT_ARGS" "untracked non-ignored file is linted"
 assert_not_contains "deleted.ts" "$TEST_OXLINT_ARGS" "tracked deleted file is filtered"
 assert_not_contains "node_modules/pkg/ignored.ts" "$TEST_OXLINT_ARGS" "ignored file is not linted"
+assert_not_contains "fixture.kdl" "$TEST_OXLINT_ARGS" "unsupported KDL fixture is not linted by oxlint"
+assert_not_contains "lib.rs" "$TEST_OXLINT_ARGS" "unsupported Rust file is not linted by oxlint"
+assert_not_contains "readme.md" "$TEST_OXLINT_ARGS" "Markdown file is not linted by oxlint"
+assert_not_contains "config.json" "$TEST_OXLINT_ARGS" "JSON file is not linted by oxlint"
+
+echo ""
+echo "Test 2: format task keeps oxfmt-supported files and skips unsupported paths"
+(
+  cd "$workspace"
+  bash "$tmpdir/lint-check-format.sh"
+)
+
+assert_contains "keep.ts" "$TEST_OXFMT_ARGS" "tracked TypeScript file is formatted"
+assert_contains "new.ts" "$TEST_OXFMT_ARGS" "untracked TypeScript file is formatted"
+assert_contains "readme.md" "$TEST_OXFMT_ARGS" "Markdown file is formatted"
+assert_contains "config.json" "$TEST_OXFMT_ARGS" "JSON file is formatted"
+assert_not_contains "deleted.ts" "$TEST_OXFMT_ARGS" "tracked deleted file is filtered for oxfmt"
+assert_not_contains "fixture.kdl" "$TEST_OXFMT_ARGS" "unsupported KDL fixture is not formatted"
+assert_not_contains "lib.rs" "$TEST_OXFMT_ARGS" "unsupported Rust file is not formatted"
+assert_not_contains "node_modules/pkg/ignored.ts" "$TEST_OXFMT_ARGS" "ignored file is not formatted"
 
 echo ""
 echo "All lint-oxc file list tests passed"
