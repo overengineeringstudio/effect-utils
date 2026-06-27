@@ -150,15 +150,15 @@ The command exports from the public replica surfaces (`rows`, `schema`, `schema_
 
 Trace: R14-R16.
 
-| Check                                     | Required proof                                                                 |
-| ----------------------------------------- | ------------------------------------------------------------------------------ |
+| Check                                          | Required proof                                                                 |
+| ---------------------------------------------- | ------------------------------------------------------------------------------ |
 | `devenv tasks run test:notion-cli`             | root command composition, help/completion drift, schema/db package tests       |
 | `devenv tasks run test:notion-datasource-sync` | datasource-backed `db` leaves and export behavior                              |
 | `devenv tasks run genie:check`                 | generated package metadata is current                                          |
 | `devenv tasks run ts:check`                    | TypeScript surface is valid                                                    |
 | `devenv tasks run lint:check`                  | formatting, lint, lockfile, and generated-source coverage are valid            |
 | `devenv tasks run check:quick`                 | aggregate quick gate for branch readiness                                      |
-| `nix build .#notion-cli --no-link`        | packaged wrapper includes all runtime files and routes Node-backed `db` leaves |
+| `nix build .#notion-cli --no-link`             | packaged wrapper includes all runtime files and routes Node-backed `db` leaves |
 
 ## Design Questions
 

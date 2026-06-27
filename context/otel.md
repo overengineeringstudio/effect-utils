@@ -197,14 +197,14 @@ jsonnet -J path/to/grafonnet devenv-tasks.jsonnet | jq .
 
 ### Dashboard List
 
-| Dashboard            | Purpose                                        |
-| -------------------- | ---------------------------------------------- |
-| `overview`           | Landing page: recent traces, service breakdown |
-| `devenv-tasks`       | Task duration, cache hit rate, failure rate    |
-| `shell-entry`        | `devenv shell` / enterShell duration breakdown |
-| `pnpm-install`       | Per-package install analysis, waterfall view   |
-| `ts-app-traces`      | General-purpose trace exploration for Effect   |
-| `devenv-task-duration-trends` | p50/p95/p99 percentiles over time by category |
+| Dashboard                     | Purpose                                        |
+| ----------------------------- | ---------------------------------------------- |
+| `overview`                    | Landing page: recent traces, service breakdown |
+| `devenv-tasks`                | Task duration, cache hit rate, failure rate    |
+| `shell-entry`                 | `devenv shell` / enterShell duration breakdown |
+| `pnpm-install`                | Per-package install analysis, waterfall view   |
+| `ts-app-traces`               | General-purpose trace exploration for Effect   |
+| `devenv-task-duration-trends` | p50/p95/p99 percentiles over time by category  |
 
 ### Project Dashboards (`.otel/dashboards.json`)
 
