@@ -13,6 +13,11 @@ imports = [
   (inputs.effect-utils.devenvModules.tasks.ts {})
   (inputs.effect-utils.devenvModules.tasks.lint-oxc {
     execIfModifiedPatterns = [ "src/**/*.ts" ];
+    # For large repos where devenv's glob-based change detection is too
+    # expensive, let the task always run and enumerate lint inputs through git.
+    changeDetection = "always";
+    fileSelection = "git";
+    lintPaths = [ "src" "test" ];
   })
 ];
 ```
@@ -30,10 +35,12 @@ imports = [
 - `clean.nix` - Clean tasks
 - `genie.nix` - Genie config generation tasks
 - `lint-oxc.nix` - Linting tasks (oxlint, oxfmt)
-  - Note: `lint:check:format`/`lint:fix:format` run oxfmt on an explicit file list
-    (git-tracked files) instead of `oxfmt <dir>...` directory walking. This avoids
-    flaky "File not found" errors when pnpm is concurrently mutating/symlinking
-    `node_modules` during CI.
+  - `fileSelection = "git"` resolves `lintPaths` via `git ls-files`, including
+    untracked non-ignored files, before calling oxlint/oxfmt. Use it for large
+    repos where direct directory arguments risk walking ignored dependency trees.
+  - `changeDetection = "always"` disables devenv's `execIfModified` cache for
+    lint tasks. This is useful when devenv's glob walker is more expensive than
+    simply running the focused lint command.
 - `megarepo.nix` - Megarepo workspace tasks
 - `nix-cli.nix` - Nix CLI build/check tasks
 - `pnpm.nix` - pnpm install tasks
