@@ -5,8 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/runtime/mod.ts",
-    "./core": "./src/runtime/core.ts",
     "./cli": "./src/build/mod.tsx",
+    "./core": "./src/runtime/core.ts",
     "./sdk": "./src/sdk/mod.ts"
   },
   "publishConfig": {
