@@ -81,6 +81,7 @@ let
     {
       command,
       includeCase,
+      emptySelectionDiagnostic ? null,
     }:
     ''
       set -euo pipefail
@@ -107,7 +108,36 @@ let
         exit 0
       fi
 
-        ${pkgs.findutils}/bin/xargs -0 ${command} < "$files"
+        ${
+          if emptySelectionDiagnostic == null then
+            "${pkgs.findutils}/bin/xargs -0 ${command} < \"$files\""
+          else
+            ''
+              ${pkgs.findutils}/bin/xargs -0 sh -c '
+                empty_selection_diagnostic="$1"
+                shift
+                stderr_file=$(mktemp)
+                trap "rm -f \"$stderr_file\"" EXIT
+
+                if ${command} "$@" 2>"$stderr_file"; then
+                  if [ -s "$stderr_file" ]; then
+                    cat "$stderr_file" >&2
+                  fi
+                  exit 0
+                else
+                  status=$?
+                fi
+
+                stderr="$(cat "$stderr_file")"
+                if [ "$stderr" = "$empty_selection_diagnostic" ]; then
+                  exit 0
+                fi
+
+                printf "%s\n" "$stderr" >&2
+                exit "$status"
+              ' sh ${lib.escapeShellArg emptySelectionDiagnostic} < "$files"
+            ''
+        }
     '';
 
   oxlintIncludeCase = ''
@@ -141,6 +171,7 @@ let
       exec = trace.exec "lint:check:format" (mkLintExec {
         command = "oxfmt --check";
         includeCase = oxfmtIncludeCase;
+        emptySelectionDiagnostic = "Expected at least one target file";
       });
       execIfModified = [ ];
     };
@@ -159,6 +190,7 @@ let
       exec = trace.exec "lint:fix:format" (mkLintExec {
         command = "oxfmt";
         includeCase = oxfmtIncludeCase;
+        emptySelectionDiagnostic = "Expected at least one target file";
       });
     };
     "lint:fix:oxlint" = {
