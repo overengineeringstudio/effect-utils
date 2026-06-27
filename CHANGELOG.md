@@ -29,6 +29,11 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/genie / devenv tests**: Refresh the Genie pnpm fixed-output hash
+  for the new `./node` entry closure, and isolate the `ts-otelite` e2e test
+  from ambient task trace context so `devenv-modules:test` remains deterministic
+  when run under traced `devenv tasks`.
+
 - **devenv/lint-oxc, CLI package builders**: Treat an `oxfmt` chunk that becomes
   empty after formatter config ignores as no work while preserving failures for
   real formatter errors, and generate packaged CLI completions without assuming
