@@ -1,7 +1,7 @@
 # OpenTelemetry observability stack for local development
 #
 # Provides OTEL Collector + Grafana Tempo + Grafana as devenv processes
-# for collecting traces from dt tasks, TS app code, and (future) devenv native OTEL.
+# for collecting traces from native devenv tasks and application code.
 #
 # Usage in devenv.nix:
 #   imports = [
@@ -73,8 +73,8 @@ let
     src = ./otel/dashboards;
     dashboardNames = [
       "overview"
-      "dt-tasks"
-      "dt-duration-trends"
+      "devenv-tasks"
+      "devenv-task-duration-trends"
       "shell-entry"
       "pnpm-install"
       "ts-app-traces"
@@ -566,11 +566,11 @@ in
 
     # setup:gate seeds shell-root trace IDs for setup tasks. Clear the
     # task-scoped context markers before handing control to the interactive
-    # shell so later `dt` roots do not accidentally reuse shell bootstrap state.
+    # shell so later task runs do not accidentally reuse shell bootstrap state.
     unset OTEL_TASK_TRACEPARENT OTEL_SHELL_ENTRY_NS
 
         # Mark the moment the shell becomes interactive (after all setup + OTEL work).
-        # Consumed by dt.nix for the shell.ready_ms span attribute.
+        # Consumed by shell-entry diagnostics.
         export SHELL_ENTRY_TIME_NS=$(date +%s%N)
   '';
 

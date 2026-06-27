@@ -109,7 +109,7 @@ package.json.genie.ts    # symlink only
 **Workaround:** Clean node_modules before installing:
 
 ```bash
-rm -rf node_modules && dt bun:install
+rm -rf node_modules && devenv tasks run bun:install
 ```
 
 ## Removing the Workaround

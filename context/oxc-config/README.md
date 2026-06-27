@@ -213,11 +213,11 @@ Requires JSDoc comments on exported declarations. Documents the public API.
 
 ## Running Lint/Format
 
-Via dt:
+Via devenv tasks:
 
 ```bash
-dt lint:check   # Check formatting and linting
-dt lint:fix     # Auto-fix issues
+devenv tasks run lint:check   # Check formatting and linting
+devenv tasks run lint:fix     # Auto-fix issues
 ```
 
 Direct:
@@ -233,7 +233,7 @@ oxfmt --write .
 After modifying `*.genie.ts` files:
 
 ```bash
-dt check:quick  # Includes genie check
+devenv tasks run check:quick  # Includes genie check
 # or directly
 bun genie
 ```

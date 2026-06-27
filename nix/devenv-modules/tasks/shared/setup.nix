@@ -2,7 +2,7 @@
 #
 # Wires specified tasks to run as dependencies of devenv:enterShell.
 # This uses native devenv task dependency resolution, avoiding the
-# double shell entry that occurs when calling `dt` from enterShell.
+# double shell entry that occurs when invoking a nested devenv shell from enterShell.
 #
 # Usage in devenv.nix:
 #   imports = [
@@ -25,7 +25,7 @@
 # will intentionally fail during rebase, causing dependent tasks to
 # be "skipped due to dependency failure".
 #
-# If you need to run setup during rebase, use: `dt setup:run`
+# If you need to run setup during rebase, use: `devenv tasks run setup:run`
 {
   requiredTasks ? [ ],
   optionalTasks ? [ ],
@@ -326,7 +326,7 @@ in
           _git_dir=$(${git} rev-parse --git-dir 2>/dev/null)
           if [ -d "$_git_dir/rebase-merge" ] || [ -d "$_git_dir/rebase-apply" ]; then
             echo "Skipping setup during git rebase/cherry-pick"
-            echo "Run 'dt setup:run' manually if needed"
+            echo "Run 'devenv tasks run setup:run' manually if needed"
             exit 1
           fi
 
@@ -403,14 +403,14 @@ in
           set -euo pipefail
 
           if [ "''${DEVENV_STRICT:-}" = "1" ]; then
-            devenv tasks run setup:strict --mode before
+            devenv tasks run setup:strict
             exit 0
           fi
 
           # Best effort: run each task but swallow failures (devenv tasks run
           # can still exit non-zero if any task in the graph failed).
           for t in ${lib.concatStringsSep " " setupTasks}; do
-            devenv tasks run "$t" --mode before || true
+            devenv tasks run "$t" || true
           done
         '';
       };

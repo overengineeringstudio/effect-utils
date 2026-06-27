@@ -1,4 +1,4 @@
-// dt Task Duration Trends dashboard
+// devenv task Duration Trends dashboard
 // Time-series charts tracking task durations over time with percentiles.
 //
 // Uses TraceQL metrics (Tempo local_blocks) to compute p50/p95/p99
@@ -55,21 +55,21 @@ local taskRatePanel(title, taskFilter) =
   + g.panel.timeSeries.fieldConfig.defaults.custom.withLineWidth(1)
   + g.panel.timeSeries.fieldConfig.defaults.custom.withFillOpacity(20);
 
-// Helper: dt root span duration panel
-local dtRootDurationPanel(title, taskFilter) =
+// Helper: task execution duration panel
+local taskExecDurationPanel(title, taskFilter) =
   lib.durationTimeSeries(
     title,
     [
       lib.tempoMetricsQuery(
-        '{resource.service.name="effect-utils-devenv" && name="dt.run" && span.task.name=~"' + taskFilter + '"} | quantile_over_time(duration, 0.5)',
+        '{resource.service.name="effect-utils-devenv" && name="devenv.task.exec" && span.task.name=~"' + taskFilter + '"} | quantile_over_time(duration, 0.5)',
         'p50',
       ),
       lib.tempoMetricsQuery(
-        '{resource.service.name="effect-utils-devenv" && name="dt.run" && span.task.name=~"' + taskFilter + '"} | quantile_over_time(duration, 0.95)',
+        '{resource.service.name="effect-utils-devenv" && name="devenv.task.exec" && span.task.name=~"' + taskFilter + '"} | quantile_over_time(duration, 0.95)',
         'p95',
       ),
       lib.tempoMetricsQuery(
-        '{resource.service.name="effect-utils-devenv" && name="dt.run" && span.task.name=~"' + taskFilter + '"} | quantile_over_time(duration, 0.99)',
+        '{resource.service.name="effect-utils-devenv" && name="devenv.task.exec" && span.task.name=~"' + taskFilter + '"} | quantile_over_time(duration, 0.99)',
         'p99',
       ),
     ],
@@ -128,8 +128,8 @@ local y = {
   tscProjectContent: 91,
 };
 
-g.dashboard.new('dt Task Duration Trends')
-+ g.dashboard.withUid('otel-dt-duration-trends')
+g.dashboard.new('devenv task Duration Trends')
++ g.dashboard.withUid('otel-devenv-task-duration-trends')
 + g.dashboard.withDescription('Track task duration over time with p50/p95/p99 percentiles — identify regressions and improvements')
 + g.dashboard.graphTooltip.withSharedCrosshair()
 + g.dashboard.withTimezone('browser')
@@ -138,25 +138,25 @@ g.dashboard.new('dt Task Duration Trends')
 + g.dashboard.withPanels([
 
   // =========================================================================
-  // Row 1: Overview — all dt invocations
+  // Row 1: Overview — all devenv task executions
   // =========================================================================
-  at(g.panel.row.new('Overview — All dt Invocations'), 0, y.overviewRow, 24, 1),
+  at(g.panel.row.new('Overview — All devenv task executions'), 0, y.overviewRow, 24, 1),
 
-  // Top-level dt invocation durations (the wall time users experience)
+  // Top-level devenv task execution durations (the wall time users experience)
   at(
     lib.durationTimeSeries(
-      'dt invocation duration (p50 / p95 / p99)',
+      'devenv task execution duration (p50 / p95 / p99)',
       [
         lib.tempoMetricsQuery(
-          '{resource.service.name="effect-utils-devenv" && name="dt.run"} | quantile_over_time(duration, 0.5)',
+          '{resource.service.name="effect-utils-devenv" && name="devenv.task.exec"} | quantile_over_time(duration, 0.5)',
           'p50',
         ),
         lib.tempoMetricsQuery(
-          '{resource.service.name="effect-utils-devenv" && name="dt.run"} | quantile_over_time(duration, 0.95)',
+          '{resource.service.name="effect-utils-devenv" && name="devenv.task.exec"} | quantile_over_time(duration, 0.95)',
           'p95',
         ),
         lib.tempoMetricsQuery(
-          '{resource.service.name="effect-utils-devenv" && name="dt.run"} | quantile_over_time(duration, 0.99)',
+          '{resource.service.name="effect-utils-devenv" && name="devenv.task.exec"} | quantile_over_time(duration, 0.99)',
           'p99',
         ),
       ],
@@ -166,7 +166,7 @@ g.dashboard.new('dt Task Duration Trends')
 
   // Invocation rate
   at(
-    taskRatePanel('dt invocation rate', '.*')
+    taskRatePanel('devenv task execution rate', '.*')
     + { fieldConfig+: { defaults+: { unit: 'cpm' } } },
     16, y.overviewContent, 8, 8,
   ),
@@ -177,7 +177,7 @@ g.dashboard.new('dt Task Duration Trends')
   at(g.panel.row.new('check:quick — Most Common Workflow'), 0, y.checkQuickRow, 24, 1),
 
   at(
-    dtRootDurationPanel('check:quick total duration (p50 / p95 / p99)', 'check:quick'),
+    taskExecDurationPanel('check:quick total duration (p50 / p95 / p99)', 'check:quick'),
     0, y.checkQuickContent, 12, 8,
   ),
 

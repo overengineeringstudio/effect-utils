@@ -60,13 +60,13 @@ in
 
 ```bash
 # After modifying genie source code
-dt nix:build:genie
+devenv tasks run nix:build:genie
 
 # After repo-root pnpm-lock.yaml changes (updates dependency hash)
 refresh Nix FOD hashes for genie with the repo workflow
 
 # Build all CLI packages (optional)
-dt nix:build
+devenv tasks run nix:build
 ```
 
 ## Usage
@@ -75,13 +75,13 @@ dt nix:build
 
 ```bash
 # Generate all config files
-dt genie:run
+devenv tasks run genie:run
 
 # Check if files are up to date (for CI)
-dt genie:check
+devenv tasks run genie:check
 
 # Watch mode - regenerate on changes
-dt genie:watch
+devenv tasks run genie:watch
 ```
 
 Or use the `genie` binary directly for additional options:
@@ -133,7 +133,7 @@ export default packageJSON({
 })
 ```
 
-Run `dt genie:run` to generate `package.json` from the source file.
+Run `devenv tasks run genie:run` to generate `package.json` from the source file.
 
 ## Generators
 

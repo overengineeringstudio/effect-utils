@@ -158,6 +158,12 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **devenv/tasks**: Remove the `dt` task wrapper and make native
+  `devenv tasks run <task>` the only task entrypoint. Task tracing now uses
+  `devenv.task.exec` / `devenv.task.status` as the canonical span shape,
+  dashboards are renamed to `devenv-*`, and guard passthrough now uses the
+  task-neutral `DEVENV_TASK_PASSTHROUGH` environment variable.
+
 - **@overeng/restate-effect**: Make the Restate real-server test harness use
   request identity and structured SDK log capture. The harness now generates an
   ephemeral ED25519 request-identity keypair per native-server boot, starts

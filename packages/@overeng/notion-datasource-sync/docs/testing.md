@@ -37,7 +37,7 @@ CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run \
 The repo task used by CI is:
 
 ```sh
-dt test:notion-integration:notion-datasource-sync
+devenv tasks run test:notion-integration:notion-datasource-sync
 ```
 
 That task skips when `NOTION_API_TOKEN` is absent. It uses

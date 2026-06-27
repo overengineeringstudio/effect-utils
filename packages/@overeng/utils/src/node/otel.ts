@@ -2,7 +2,7 @@
  * OTEL integration for Effect CLI applications.
  *
  * Provides:
- * - Parent span propagation from dt tasks (via W3C TRACEPARENT env var)
+ * - Parent span propagation from devenv tasks run tasks (via W3C TRACEPARENT env var)
  * - OTEL exporter layer for CLI traces
  * - Zero overhead when OTEL is not configured
  *
@@ -101,10 +101,10 @@ const parseTraceparent = (
  * Gets the parent span from the W3C TRACEPARENT env var (when present and valid).
  *
  * This allows a CLI process to emit spans into the same trace as the
- * parent dt task by constructing an external parent span.
+ * parent devenv tasks run task by constructing an external parent span.
  *
  * The `otel-span` shell helper automatically exports TRACEPARENT for child processes,
- * so this works out of the box with dt task tracing.
+ * so this works out of the box with devenv tasks run task tracing.
  */
 const getParentSpanFromTraceparent = (): Tracer.ExternalSpan | undefined => {
   const traceparent = process.env.TRACEPARENT
@@ -188,7 +188,7 @@ const defaultShutdownTimeoutMs = (): number => (process.stdout.isTTY === true ? 
  * Creates an OTEL layer for Effect CLI applications.
  *
  * Features:
- * - Optionally joins an existing trace via W3C TRACEPARENT env var (dt task integration)
+ * - Optionally joins an existing trace via W3C TRACEPARENT env var (devenv tasks run task integration)
  * - Exports to OTLP endpoint if configured (explicit `endpoint`, else env fallback)
  * - Zero exporter overhead when no endpoint is configured (only the lightweight
  *   {@link OtelConfig} marker is provided so command code can gate on it)
@@ -266,7 +266,7 @@ export const makeOtelCliLayer = (config: OtelCliLayerConfig): Layer.Layer<OtelCo
 
     // Propagate parent trace context from TRACEPARENT without creating a bridge span.
     // Layer.parentSpan sets the external parent so child spans (e.g. command-level
-    // schema-first operation spans) appear under the dt task span in the trace.
+    // schema-first operation spans) appear under the devenv tasks run task span in the trace.
     const parentLive = parentSpan !== undefined ? Layer.parentSpan(parentSpan) : Layer.empty
 
     const baseUrl = endpoint.endsWith('/') === true ? endpoint.slice(0, -1) : endpoint

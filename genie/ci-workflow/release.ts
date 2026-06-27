@@ -112,7 +112,7 @@ export type ReleaseWorkflowOptions = {
    * Typically this is the repo's `standardSelfHostedPnpmCiPrepSteps(...)`
    * (or `livestoreSetupSteps`) — devenv setup, nix cache restore, pnpm
    * install, etc. The helper keeps this opaque on purpose; the release
-   * workflow only needs *some* working devenv to run `dt` tasks.
+   * workflow only needs *some* working devenv to run native devenv tasks.
    */
   readonly setupSteps: readonly WorkflowStep[]
 

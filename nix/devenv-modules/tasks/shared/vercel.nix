@@ -33,9 +33,9 @@
 #   ];
 #
 # Deploy modes (via --input):
-#   dt vercel:deploy:web                              # preview
-#   dt vercel:deploy:web --input type=prod            # production
-#   dt vercel:deploy:web --input type=pr --input pr=42
+#   devenv tasks run vercel:deploy:web                              # preview
+#   devenv tasks run vercel:deploy:web --input type=prod            # production
+#   devenv tasks run vercel:deploy:web --input type=pr --input pr=42
 #
 # Provides:
 #   Tasks:
@@ -64,7 +64,7 @@ let
       ${deployTask.mkRequiredEnvCheck {
         envName = "VERCEL_TOKEN";
         errorMessage = "Error: VERCEL_TOKEN is not set.";
-        hint = "Run through: secrets-run --reason 'deploy Vercel preview' -- dt vercel:deploy:<target>";
+        hint = "Run through: secrets-run --reason 'deploy Vercel preview' -- devenv tasks run vercel:deploy:<target>";
       }}
       ${deployTask.mkRequiredEnvCheck {
         envName = orgIdEnv;

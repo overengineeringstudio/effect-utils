@@ -1,7 +1,6 @@
 # OTEL tracing helpers for devenv tasks
 #
-# Wraps task `exec` scripts with `otel-span` to produce child spans
-# that link to the parent trace (from the `dt` wrapper).
+# Wraps task `exec` scripts with `otel-span` to produce native devenv task spans.
 #
 # When OTEL delivery is available (otel-span on PATH plus either an OTLP
 # endpoint or a valid spool dir), each task execution emits an OTLP span under

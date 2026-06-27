@@ -1,6 +1,6 @@
 # Devenv OTEL Integration
 
-Per-project OpenTelemetry tracing for `dt` tasks, TS app code, and (future) devenv native telemetry. Provides a local Collector + Tempo + Grafana stack via `devenv up`, with auto-detection of an existing system-level stack.
+Per-project OpenTelemetry tracing for native devenv tasks and TS app code. Provides a local Collector + Tempo + Grafana stack via `devenv up`, with auto-detection of an existing system-level stack.
 
 ## System Stack Assumptions
 
@@ -20,8 +20,8 @@ devenv shell
 devenv up
 
 # 3. Run tasks -- automatically traced when stack is running
-dt pnpm:install
-dt check:quick
+devenv tasks run pnpm:install
+devenv tasks run check:quick
 
 # 4. View traces
 otel-trace                      # re-open the current shell session's trace URL
@@ -112,23 +112,13 @@ otel-span emit-span effect-utils-devenv typescript.project.check --attr-string s
 printf '%s' "$otlp_json" | otel-span emit
 ```
 
-The `dt` wrapper calls `otel-span run` automatically -- no manual wrapping needed for task runs.
+Task modules call `otel-span run` automatically -- no manual wrapping needed for task runs.
 
 ## Devenv Trace Model
 
 All local tooling spans use the real local process boundary:
 `service.name="effect-utils-devenv"`. Tooling categories are represented by
 stable span names and low-cardinality attributes instead of synthetic services.
-
-**Root span**: `dt` wraps the whole `devenv tasks run` invocation:
-
-```bash
-otel-span run "effect-utils-devenv" "dt.run" \
-  --attr "tool.name=dt" \
-  --attr "task.name=$task_name" \
-  --attr "task.mode=before" \
-  -- devenv tasks run "$@" --mode before
-```
 
 **Task spans**: each task `exec` and cache/status check is wrapped via
 `trace.nix`:
@@ -143,8 +133,7 @@ exec = trace.exec "ts:check" "tsc --build tsconfig.all.json";
 the `ts:check`/`ts:build` task span with stable operation names:
 `typescript.project.check` and `typescript.build.aggregate`.
 
-`TRACEPARENT`/`OTEL_TASK_TRACEPARENT` chains the spans: `dt.run` exports task
-context, `devenv tasks run` inherits it, task wrappers create
+`TRACEPARENT`/`OTEL_TASK_TRACEPARENT` chains the spans: task wrappers create
 `devenv.task.*` spans, and compiler diagnostics emit child measurement spans
 under the task span.
 
@@ -157,13 +146,13 @@ under the task span.
 | `service.name` | Yes      | `"effect-utils-devenv"`, app name | `otel-span`, Effect layer |
 | `devenv.root`  | Yes      | Absolute path                     | `otel-span`, Effect layer |
 
-### Span Attributes (dt tasks)
+### Span Attributes (devenv tasks)
 
 | Attribute         | Type      | Description                           | Example                                       |
 | ----------------- | --------- | ------------------------------------- | --------------------------------------------- |
-| `name`            | span name | Stable operation name                 | `dt.run`, `devenv.task.exec`                  |
+| `name`            | span name | Stable operation name                 | `devenv.task.exec`, `devenv.task.status`      |
 | `span.label`      | string    | Human-readable short label            | `ts:check`, `socket`, `aggregate`             |
-| `tool.name`       | string    | Tool namespace                        | `dt`, `devenv`, `typescript`                  |
+| `tool.name`       | string    | Tool namespace                        | `devenv`, `typescript`                        |
 | `task.name`       | string    | Devenv task name                      | `pnpm:install`, `ts:check`                    |
 | `task.phase`      | string    | Task wrapper phase                    | `exec`, `status`                              |
 | `task.cached`     | bool      | Whether task was cached/skipped       | `true`, `false`                               |
@@ -201,21 +190,21 @@ Grafana UI                                      # Live dashboards
 
 ```bash
 # Preview JSON output locally
-jsonnet -J path/to/grafonnet dt-tasks.jsonnet | jq .
+jsonnet -J path/to/grafonnet devenv-tasks.jsonnet | jq .
 
 # Or paste into Grafana's Dashboard Settings > JSON Model for live preview
 ```
 
 ### Dashboard List
 
-| Dashboard            | Purpose                                        |
-| -------------------- | ---------------------------------------------- |
-| `overview`           | Landing page: recent traces, service breakdown |
-| `dt-tasks`           | Task duration, cache hit rate, failure rate    |
-| `shell-entry`        | `devenv shell` / enterShell duration breakdown |
-| `pnpm-install`       | Per-package install analysis, waterfall view   |
-| `ts-app-traces`      | General-purpose trace exploration for Effect   |
-| `dt-duration-trends` | p50/p95/p99 percentiles over time by category  |
+| Dashboard                     | Purpose                                        |
+| ----------------------------- | ---------------------------------------------- |
+| `overview`                    | Landing page: recent traces, service breakdown |
+| `devenv-tasks`                | Task duration, cache hit rate, failure rate    |
+| `shell-entry`                 | `devenv shell` / enterShell duration breakdown |
+| `pnpm-install`                | Per-package install analysis, waterfall view   |
+| `ts-app-traces`               | General-purpose trace exploration for Effect   |
+| `devenv-task-duration-trends` | p50/p95/p99 percentiles over time by category  |
 
 ### Project Dashboards (`.otel/dashboards.json`)
 
@@ -252,6 +241,6 @@ nix/devenv-modules/
 
 ## Related
 
-- **`nix/devenv-modules/tasks/tasks.md`** -- `dt` wrapper and task modules
+- **`nix/devenv-modules/tasks/`** -- shared task modules
 - **[cachix/devenv#2415](https://github.com/cachix/devenv/issues/2415)** -- Upstream native OTEL support
 - **[cachix/devenv#2500](https://github.com/cachix/devenv/issues/2500)** -- Post-drain hook (for auto-displaying trace URL on shell entry)

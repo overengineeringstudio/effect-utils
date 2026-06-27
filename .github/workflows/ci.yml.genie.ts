@@ -565,7 +565,7 @@ const extraJobs: Record<string, any> = {
           description: 'Runs the supported Genie check task without shell-entry overhead.',
           warmupRepetitions: 1,
           repetitions: 5,
-          command: ['$DEVENV_BIN', 'tasks', 'run', 'genie:check', '--mode', 'before', '--no-tui'],
+          command: ['$DEVENV_BIN', 'tasks', 'run', 'genie:check'],
         },
       ],
       permissions: ciMeasurementsCommentPermissions,

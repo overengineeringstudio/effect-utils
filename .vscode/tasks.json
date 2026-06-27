@@ -7,7 +7,7 @@
     {
       "label": "install",
       "type": "shell",
-      "command": "dt pnpm:install",
+      "command": "devenv tasks run pnpm:install",
       "problemMatcher": [],
       "presentation": {
         "focus": true,
@@ -25,7 +25,7 @@
     {
       "label": "ts",
       "type": "shell",
-      "command": "dt ts:check",
+      "command": "devenv tasks run ts:check",
       "problemMatcher": ["$tsc"],
       "presentation": {
         "focus": false,
@@ -38,7 +38,7 @@
     {
       "label": "ts:build-watch",
       "type": "shell",
-      "command": "dt ts:build-watch",
+      "command": "devenv tasks run ts:build-watch",
       "problemMatcher": ["$tsc-watch"],
       "isBackground": true,
       "presentation": {
@@ -52,7 +52,7 @@
     {
       "label": "ts:clean",
       "type": "shell",
-      "command": "dt ts:clean",
+      "command": "devenv tasks run ts:clean",
       "problemMatcher": ["$tsc"],
       "presentation": {
         "focus": false,
@@ -65,7 +65,7 @@
     {
       "label": "ts:clean:build-watch",
       "type": "shell",
-      "command": "dt ts:clean && dt ts:build-watch",
+      "command": "devenv tasks run ts:clean && devenv tasks run ts:build-watch",
       "problemMatcher": ["$tsc-watch"],
       "isBackground": true,
       "presentation": {
@@ -83,7 +83,7 @@
     {
       "label": "lint",
       "type": "shell",
-      "command": "dt lint:check",
+      "command": "devenv tasks run lint:check",
       "problemMatcher": [],
       "presentation": {
         "focus": false,
@@ -96,7 +96,7 @@
     {
       "label": "lint:fix",
       "type": "shell",
-      "command": "dt lint:fix",
+      "command": "devenv tasks run lint:fix",
       "problemMatcher": [],
       "presentation": {
         "focus": true,
@@ -113,7 +113,7 @@
     {
       "label": "test",
       "type": "shell",
-      "command": "dt test:run",
+      "command": "devenv tasks run test:run",
       "problemMatcher": [],
       "presentation": {
         "focus": true,
@@ -126,7 +126,7 @@
     {
       "label": "test:watch",
       "type": "shell",
-      "command": "dt test:watch",
+      "command": "devenv tasks run test:watch",
       "isBackground": true,
       "problemMatcher": [],
       "presentation": {
@@ -144,7 +144,7 @@
     {
       "label": "build",
       "type": "shell",
-      "command": "dt ts:build",
+      "command": "devenv tasks run ts:build",
       "problemMatcher": ["$tsc"],
       "presentation": {
         "focus": true,
@@ -157,7 +157,7 @@
     {
       "label": "clean",
       "type": "shell",
-      "command": "dt build:clean",
+      "command": "devenv tasks run build:clean",
       "problemMatcher": [],
       "presentation": {
         "focus": false,
@@ -170,7 +170,7 @@
     {
       "label": "check",
       "type": "shell",
-      "command": "dt check:quick",
+      "command": "devenv tasks run check:quick",
       "problemMatcher": ["$tsc"],
       "presentation": {
         "focus": true,
@@ -183,7 +183,7 @@
     {
       "label": "check:all",
       "type": "shell",
-      "command": "dt check:all",
+      "command": "devenv tasks run check:all",
       "problemMatcher": ["$tsc"],
       "presentation": {
         "focus": true,

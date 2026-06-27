@@ -1,9 +1,9 @@
-// dt Task Performance dashboard
+// devenv task Performance dashboard
 // Primary dashboard for understanding task execution times and bottlenecks.
 //
 // Two trace levels:
-//   - Root spans: name="dt.run" for top-level `dt <task>` invocations
-//   - Child spans: name="devenv.task.*" for individual task executions/status checks
+//   - Task execution spans: name="devenv.task.exec"
+//   - Task status spans: name="devenv.task.status" for cache/status checks
 //
 // Task caching:
 //   - task.cached=false: task actually executed
@@ -66,7 +66,7 @@ local y = {
   // Row 1: Overview stats
   statsRow: 0,
   stats: 1,
-  // Row 2: Top-level dt invocations
+  // Row 2: Top-level devenv task executions
   topLevelRow: 5,
   topLevel: 6,
   // Row 3: Sub-task breakdown (the bottleneck finder)
@@ -84,9 +84,9 @@ local y = {
 // Dashboard
 // ============================================================================
 
-g.dashboard.new('dt Task Performance')
-+ g.dashboard.withUid('otel-dt-tasks')
-+ g.dashboard.withDescription('Performance of dt (devenv tasks) — root spans show total wall time, child spans reveal per-task bottlenecks. Use Task Filter to show cached vs executed tasks.')
+g.dashboard.new('devenv task Performance')
++ g.dashboard.withUid('otel-devenv-tasks')
++ g.dashboard.withDescription('Performance of native devenv task spans. Use Task Filter to show cached vs executed tasks.')
 + g.dashboard.graphTooltip.withSharedCrosshair()
 + g.dashboard.withTimezone('browser')
 + g.dashboard.withVariables([taskFilterVar])
@@ -98,9 +98,9 @@ g.dashboard.new('dt Task Performance')
   at(g.panel.row.new('Overview'), 0, y.statsRow, 24, 1),
 
   at(
-    g.panel.stat.new('dt invocations')
+    g.panel.stat.new('devenv task executions')
     + g.panel.stat.queryOptions.withTargets([
-      lib.tempoQuery('{resource.service.name="effect-utils-devenv" && name="dt.run"}', 'A', 100),
+      lib.tempoQuery('{resource.service.name="effect-utils-devenv" && name="devenv.task.exec"}', 'A', 100),
     ]),
     0, y.stats, 4, 4,
   ),
@@ -139,9 +139,9 @@ g.dashboard.new('dt Task Performance')
   ),
 
   at(
-    g.panel.stat.new('Failed (root)')
+    g.panel.stat.new('Failed executions')
     + g.panel.stat.queryOptions.withTargets([
-      lib.tempoQuery('{resource.service.name="effect-utils-devenv" && name="dt.run" && status.code=error}', 'A', 100),
+      lib.tempoQuery('{resource.service.name="effect-utils-devenv" && name="devenv.task.exec" && status.code=error}', 'A', 100),
     ])
     + g.panel.stat.options.withColorMode('value')
     + g.panel.stat.standardOptions.color.withMode('fixed')
@@ -161,12 +161,12 @@ g.dashboard.new('dt Task Performance')
   ),
 
   // =========================================================================
-  // Row: Top-level dt invocations (root spans)
+  // Row: devenv task executions
   // =========================================================================
-  at(g.panel.row.new('Top-Level dt Invocations'), 0, y.topLevelRow, 24, 1),
+  at(g.panel.row.new('devenv task executions'), 0, y.topLevelRow, 24, 1),
 
   at(
-    traceTable('Recent dt calls (click trace ID to see sub-task waterfall)', '{resource.service.name="effect-utils-devenv" && name="dt.run"}', 50),
+    traceTable('Recent devenv task spans (click trace ID to see sub-task waterfall)', '{resource.service.name="effect-utils-devenv" && name="devenv.task.exec"}', 50),
     0, y.topLevel, 24, 10,
   ),
 
@@ -201,7 +201,7 @@ g.dashboard.new('dt Task Performance')
   at(g.panel.row.new('Failures'), 0, y.failRow, 24, 1),
 
   at(
-    traceTable('Failed tasks (root and sub-task)', '{resource.service.name="effect-utils-devenv" && name=~"dt.run|devenv.task.exec|devenv.task.status" && status.code=error}', 50),
+    traceTable('Failed tasks (root and sub-task)', '{resource.service.name="effect-utils-devenv" && name=~"devenv.task.exec|devenv.task.status" && status.code=error}', 50),
     0, y.fail, 24, 10,
   ),
 ])
