@@ -145,8 +145,21 @@ export {
   isTodoChecked,
   NotionMarkdown,
 } from './markdown.ts'
-export { canonicalizeBlockMarkdown, canonicalizeSemanticMarkdown } from './canonical-markdown.ts'
+export {
+  canonicalizeBlockMarkdown,
+  canonicalizeSemanticMarkdown,
+  parseNotionMarkdownAst,
+} from './canonical-markdown.ts'
 export { canonicalizeMediaUrl, canonicalizeMediaUrlsInMarkdown } from './media-url.ts'
+// Markdown-to-blocks converter
+export type {
+  NotionBlockCreate,
+  NotionRichTextCreate,
+  NotionTableRowBlockCreate,
+  NotionTextAnnotationsCreate,
+  NotionTableRowCreate,
+} from './markdown-to-blocks.ts'
+export { markdownToBlocks } from './markdown-to-blocks.ts'
 // Notion Markdown local format
 export type {
   ClassifyNmdFrontmatterPayloadOptions,

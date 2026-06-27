@@ -176,6 +176,8 @@ const processor = unified()
   .use(forceTightLists)
   .use(remarkStringify, markdownStringifyOptions)
 
+const parseOnlyProcessor = unified().use(remarkParse).use(remarkNotionGfm)
+
 const semanticProcessor = unified()
   .use(remarkParse)
   .use(remarkNotionGfm)
@@ -231,3 +233,13 @@ export const canonicalizeSemanticMarkdown = (markdown: string): string => {
   const rendered = semanticProcessor.processSync(normalizeInput(markdown)).toString()
   return ensureTrailingNewline(rendered)
 }
+
+/**
+ * Parse Markdown into a mdast AST without stringifying.
+ *
+ * Uses the same GFM extension set (tables, task-list items, strikethrough) as
+ * the canonical serializers but skips any transforms — the raw tree is returned
+ * for consumers that walk the AST directly (e.g. markdown-to-blocks).
+ */
+export const parseNotionMarkdownAst = (markdown: string): unknown =>
+  parseOnlyProcessor.runSync(parseOnlyProcessor.parse(normalizeInput(markdown)))

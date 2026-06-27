@@ -765,3 +765,63 @@ export const withAssessLosslessSpan = (worktreePath: string) =>
     operation: assessLosslessOperation,
     attributes: { label: 'lossless', worktreePath },
   })
+
+// =============================================================================
+// Megarepo traversal span contracts
+// =============================================================================
+
+const megarepoTraversalAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+    root: Schema.String.pipe(OtelAttr.key({ key: 'megarepo.traversal.root' })),
+    purpose: Schema.String.pipe(OtelAttr.key({ key: 'megarepo.traversal.purpose' })),
+    all: Schema.Boolean.pipe(OtelAttr.key({ key: 'megarepo.traversal.all' })),
+  }),
+)
+
+const megarepoTraversalResultAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    nodesVisited: Schema.Number.pipe(OtelAttr.key({ key: 'megarepo.traversal.nodes_visited' })),
+    cyclesSkipped: Schema.Number.pipe(OtelAttr.key({ key: 'megarepo.traversal.cycles_skipped' })),
+    maxDepth: Schema.Number.pipe(OtelAttr.key({ key: 'megarepo.traversal.max_depth' })),
+  }),
+)
+
+const megarepoTraversalOperation = OtelOperation.define({
+  name: 'megarepo/traversal',
+  attributes: megarepoTraversalAttrs,
+  label: ({ label }) => label,
+})
+
+/** Wrap a recursive megarepo walk in a `megarepo/traversal` span carrying the
+ *  root path, traversal purpose, and the `all` flag. */
+export const withMegarepoTraversalSpan = ({
+  root,
+  purpose,
+  all,
+}: {
+  readonly root: string
+  readonly purpose: string
+  readonly all: boolean
+}) =>
+  trustedWith({
+    operation: megarepoTraversalOperation,
+    attributes: { label: basename(root), root, purpose, all },
+  })
+
+/** Annotate the enclosing traversal span with the scalar traversal stats. */
+export const annotateMegarepoTraversalResult = ({
+  nodesVisited,
+  cyclesSkipped,
+  maxDepth,
+}: {
+  readonly nodesVisited: number
+  readonly cyclesSkipped: number
+  readonly maxDepth: number
+}) =>
+  trustOtelContract<void, never, never>(
+    OtelSpan.annotate({
+      attributes: megarepoTraversalResultAttrs,
+      value: { nodesVisited, cyclesSkipped, maxDepth },
+    }),
+  )

@@ -344,6 +344,14 @@ export {
   notionWebhookDecodeOptions,
 } from './webhook.ts'
 
+// Create/append payload types (for API writes)
+export {
+  type NotionBlockCreate,
+  type TableRowBlockCreate,
+  type TextAnnotationsCreate,
+  type TextRichTextCreate,
+} from './create-types.ts'
+
 // User schemas
 export {
   type Bot,
