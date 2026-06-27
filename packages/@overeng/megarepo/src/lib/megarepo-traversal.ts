@@ -50,6 +50,12 @@ interface MegarepoTraversalState extends MegarepoTraversalStats {
   readonly visited: ReadonlySet<MegarepoTraversalNodeKey>
 }
 
+/** Remove trailing slashes from a path without turning the filesystem root into an empty path. */
+export const stripTrailingSlashesPreservingRoot = (path: string): string => {
+  const stripped = path.replace(/\/+$/, '')
+  return stripped === '' ? '/' : stripped
+}
+
 /** Stateful traversal guard shared by one recursive megarepo walk. */
 export interface MegarepoTraversal {
   readonly enterRoot: (args: {
@@ -67,9 +73,10 @@ const canonicalizeRoot = Effect.fn('megarepo/traversal/canonicalize-root')(funct
   root: AbsoluteDirPath,
 ) {
   const fs = yield* FileSystem.FileSystem
-  const resolvedRoot = yield* fs.realPath(root.replace(/\/$/, '')).pipe(
-    Effect.map((path) => path.replace(/\/$/, '')),
-    Effect.orElseSucceed(() => root.replace(/\/$/, '')),
+  const normalizedRoot = stripTrailingSlashesPreservingRoot(root)
+  const resolvedRoot = yield* fs.realPath(normalizedRoot).pipe(
+    Effect.map(stripTrailingSlashesPreservingRoot),
+    Effect.orElseSucceed(() => normalizedRoot),
   )
   const key = yield* Schema.decodeUnknown(MegarepoTraversalNodeKey)(resolvedRoot)
   return { key, resolvedRoot }
