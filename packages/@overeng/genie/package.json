@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/runtime/mod.ts",
+    "./core": "./src/runtime/core.ts",
     "./cli": "./src/build/mod.tsx",
     "./sdk": "./src/sdk/mod.ts"
   },
@@ -12,6 +13,7 @@
     "access": "public",
     "exports": {
       ".": "./dist/src/runtime/mod.js",
+      "./core": "./dist/src/runtime/core.js",
       "./cli": "./dist/src/build/mod.js",
       "./sdk": "./dist/src/sdk/mod.js"
     }
