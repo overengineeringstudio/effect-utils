@@ -4,7 +4,13 @@ import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-import { exportEntry, packageJson, type GenieContext, type PackageInfo } from '../mod.ts'
+import {
+  definePackageJson,
+  exportEntry,
+  packageJson,
+  type GenieContext,
+  type PackageInfo,
+} from '../mod.ts'
 import { defineCatalog } from './catalog.ts'
 import { nodePackageJsonValidationRuntime } from './node/export-environments.ts'
 
@@ -253,6 +259,174 @@ describe('packageJson', () => {
         'Export environment contract is declared for ".", but publishConfig.exports does not contain the corresponding published subpath.',
       rule: 'package-json-export-environment-publish-target',
     })
+  })
+
+  it('does not require export environment contracts by default', () => {
+    const result = packageJson({
+      name: '@test/package',
+      version: '1.0.0',
+      exports: {
+        '.': './src/mod.ts',
+      },
+    })
+
+    expect(result.validate?.(mockGenieContext)).not.toContainEqual(
+      expect.objectContaining({
+        rule: 'package-json-export-environment-contract-coverage',
+      }),
+    )
+  })
+
+  it('allows export environment contract coverage to be baked into a configured generator', () => {
+    const configuredPackageJson = definePackageJson({
+      validation: {
+        exportEnvironmentContracts: {
+          coverage: 'warn',
+        },
+      },
+    })
+
+    const result = configuredPackageJson({
+      name: '@test/package',
+      version: '1.0.0',
+      exports: {
+        '.': './src/mod.ts',
+      },
+    })
+
+    expect(result.validate?.(mockGenieContext)).toContainEqual({
+      severity: 'warning',
+      packageName: '@test/package',
+      dependency: '.',
+      message:
+        'Package export "." has no export environment contract. Wrap the target with exportEntry(...), or add an explicit validation ignore while migrating.',
+      rule: 'package-json-export-environment-contract-coverage',
+    })
+  })
+
+  it('allows per-call export environment contract coverage overrides on a configured generator', () => {
+    const configuredPackageJson = definePackageJson({
+      validation: {
+        exportEnvironmentContracts: {
+          coverage: 'warn',
+        },
+      },
+    })
+
+    const result = configuredPackageJson(
+      {
+        name: '@test/package',
+        version: '1.0.0',
+        exports: {
+          '.': './src/mod.ts',
+        },
+      },
+      undefined,
+      {
+        validation: {
+          exportEnvironmentContracts: {
+            coverage: 'off',
+          },
+        },
+      },
+    )
+
+    expect(result.validate?.(mockGenieContext)).not.toContainEqual(
+      expect.objectContaining({
+        rule: 'package-json-export-environment-contract-coverage',
+      }),
+    )
+  })
+
+  it('warns for uncontracted exports when export environment contract coverage is warn', () => {
+    const result = packageJson(
+      {
+        name: '@test/package',
+        version: '1.0.0',
+        exports: {
+          '.': './src/mod.ts',
+        },
+      },
+      undefined,
+      {
+        validation: {
+          exportEnvironmentContracts: {
+            coverage: 'warn',
+          },
+        },
+      },
+    )
+
+    expect(result.validate?.(mockGenieContext)).toContainEqual({
+      severity: 'warning',
+      packageName: '@test/package',
+      dependency: '.',
+      message:
+        'Package export "." has no export environment contract. Wrap the target with exportEntry(...), or add an explicit validation ignore while migrating.',
+      rule: 'package-json-export-environment-contract-coverage',
+    })
+  })
+
+  it('errors for uncontracted exports when export environment contract coverage is error', () => {
+    const result = packageJson(
+      {
+        name: '@test/package',
+        version: '1.0.0',
+        exports: {
+          '.': './src/mod.ts',
+        },
+      },
+      undefined,
+      {
+        validation: {
+          exportEnvironmentContracts: {
+            coverage: 'error',
+          },
+        },
+      },
+    )
+
+    expect(result.validate?.(mockGenieContext)).toContainEqual({
+      severity: 'error',
+      packageName: '@test/package',
+      dependency: '.',
+      message:
+        'Package export "." has no export environment contract. Wrap the target with exportEntry(...), or add an explicit validation ignore while migrating.',
+      rule: 'package-json-export-environment-contract-coverage',
+    })
+  })
+
+  it('ignores covered and explicitly ignored exports in contract coverage validation', () => {
+    const result = packageJson(
+      {
+        name: '@test/package',
+        version: '1.0.0',
+        exports: {
+          '.': './src/mod.ts',
+          './legacy': './src/legacy.ts',
+          './testing/foo': './src/testing/foo.ts',
+          './testing/e2e/foo': './src/testing/e2e/foo.ts',
+          './covered': exportEntry('./src/covered.ts', {
+            environment: 'isomorphic-es2024',
+          }),
+        },
+      },
+      undefined,
+      {
+        validation: {
+          exportEnvironmentContracts: {
+            coverage: 'warn',
+            ignore: ['.', './legacy', './testing/**'],
+          },
+        },
+      },
+    )
+
+    expect(
+      result
+        .validate?.(mockGenieContext)
+        .filter((issue) => issue.rule === 'package-json-export-environment-contract-coverage'),
+    ).toEqual([])
   })
 
   it('allows source-only contracted exports to be absent from publishConfig.exports', () => {
@@ -523,10 +697,20 @@ describe('packageJson', () => {
       {
         name: '@test/package',
         version: '1.0.0',
+        exports: {
+          '.': './src/mod.ts',
+        },
       },
       {
         someMeta: {
           enabled: true,
+        },
+      },
+      {
+        validation: {
+          exportEnvironmentContracts: {
+            coverage: 'warn',
+          },
         },
       },
     )
@@ -534,6 +718,18 @@ describe('packageJson', () => {
     expect(result.meta.someMeta).toEqual({
       enabled: true,
     })
+    expect(result.meta.validation).toEqual({
+      exportEnvironmentContracts: {
+        coverage: 'warn',
+      },
+    })
+    expect(result.validate?.(mockGenieContext)).toContainEqual(
+      expect.objectContaining({
+        severity: 'warning',
+        dependency: '.',
+        rule: 'package-json-export-environment-contract-coverage',
+      }),
+    )
     expect(JSON.parse(result.stringify(mockGenieContext))).not.toHaveProperty('meta')
   })
 

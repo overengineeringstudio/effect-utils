@@ -141,3 +141,8 @@ may not yet be installed.
   source consumers but are intentionally absent from `publishConfig.exports`
   must remain contractable without forcing them into the published package
   surface.
+- **R29 Export contract migration policy:** Package manifest generation must be
+  able to suggest or require export environment contracts for every package
+  export without making that policy mandatory for all repositories. The policy
+  must support warning and error modes plus explicit ignores so downstream
+  repositories can stage adoption while preserving a single validation surface.

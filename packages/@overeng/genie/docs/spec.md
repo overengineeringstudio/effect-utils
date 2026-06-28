@@ -186,6 +186,44 @@ The contract is stored only in the generator's structured metadata as
 `meta.exportContracts`. That metadata lets package-json validation check the
 source export without exposing Genie-specific keys to package managers.
 
+Repositories can opt into migration pressure for missing contracts by defining a
+configured package-json generator once in their shared Genie helper:
+
+```ts
+export const packageJson = definePackageJson({
+  validation: {
+    exportEnvironmentContracts: {
+      coverage: 'warn',
+      ignore: ['./legacy'],
+    },
+  },
+})
+```
+
+Call sites then keep using the normal package-json authoring API:
+
+```ts
+export default packageJson(
+  {
+    name: '@myorg/package',
+    exports: {
+      '.': exportEntry('./src/mod.ts', { environment: 'isomorphic-es2024' }),
+      './legacy': './src/legacy.ts',
+    },
+  },
+  compositionOrMeta,
+)
+```
+
+`coverage: 'warn'` emits Genie validation warnings for uncontracted exports and
+keeps `genie --check` non-blocking. `coverage: 'error'` fails validation.
+`coverage: 'off'` is the default for compatibility. Ignores match export
+subpaths exactly or with the same `*`/`**` glob syntax used by package-json
+validation helpers. A call may pass a third options argument to override the
+configured defaults for an exceptional package. The policy is owned by
+package-json validation rather than Genie core, and the heavier node/type proof
+runtime still runs only for exports that actually declare contracts.
+
 Package-json pure validation owns structural checks:
 
 - every contracted export subpath must exist in emitted `exports`

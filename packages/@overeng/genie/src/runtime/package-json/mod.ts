@@ -13,7 +13,7 @@ import type { PnpmPackageClosureConfig } from '../pnpm-workspace/mod.ts'
 import { projectPnpmPackageClosure } from '../pnpm-workspace/mod.ts'
 import { relativeRepoPath, rootWorkspaceMemberPathsFromPackages } from '../workspace-graph.ts'
 import { PackageJsonCompositionBrand, type PackageJsonComposition } from './catalog.ts'
-import type { ValidationIssue } from './validation.ts'
+import { matchesPattern, type ValidationIssue } from './validation.ts'
 import {
   validatePackageRecompositionForPackage,
   validateWorkspaceMetadataPresenceForPackageJson,
@@ -178,6 +178,32 @@ type PackageJsonComposedInputData = Omit<
 /** Non-emitted package.json validation metadata owned by the package-json generator. */
 export type PackageJsonValidationMeta = {
   exportContracts?: Record<string, readonly ExportEnvironmentContract[]>
+  validation?: PackageJsonValidationOptions
+}
+
+/** Whether package exports must be annotated with environment contracts. */
+export type ExportEnvironmentContractCoverage = 'off' | 'warn' | 'error'
+
+/** Package-json export environment contract validation policy. */
+export type PackageJsonExportEnvironmentContractValidationOptions = {
+  /** Suggest or require `exportEntry(...)` contracts for each package export. */
+  coverage?: ExportEnvironmentContractCoverage
+  /** Export subpaths to exclude while migrating, supporting `*` and `**` globs. */
+  ignore?: readonly string[]
+}
+
+/** Package-json validation policy. */
+export type PackageJsonValidationOptions = {
+  exportEnvironmentContracts?: PackageJsonExportEnvironmentContractValidationOptions
+}
+
+/** Non-emitted package.json generator options. */
+export type PackageJsonOptions = {
+  validation?: PackageJsonValidationOptions
+}
+
+type PackageJsonGenerator = typeof createPackageJson & {
+  aggregateFromPackages: typeof aggregatePackageJsonFromPackages
 }
 
 /** Package-json node validation runtime injected by the Genie engine. */
@@ -453,17 +479,37 @@ const validateExportEnvironmentContracts = ({
   ctx,
   data,
   contracts,
+  options,
 }: {
   ctx: GenieContext
   data: PackageJsonData
   contracts: Record<string, readonly ExportEnvironmentContract[]> | undefined
+  options: PackageJsonExportEnvironmentContractValidationOptions | undefined
 }): ValidationIssue[] => {
-  if (contracts === undefined) return []
-
   const packageName = data.name ?? '(anonymous package)'
   const issues: ValidationIssue[] = []
+  const exportContracts = contracts ?? {}
 
-  for (const exportPath of Object.keys(contracts)) {
+  const coverage = options?.coverage ?? 'off'
+  if (coverage !== 'off' && data.exports !== undefined) {
+    for (const exportPath of Object.keys(data.exports)) {
+      if (exportContracts[exportPath] !== undefined) continue
+      if (
+        options?.ignore?.some((pattern) => matchesPattern({ name: exportPath, pattern })) === true
+      )
+        continue
+
+      issues.push({
+        severity: coverage === 'warn' ? 'warning' : 'error',
+        packageName,
+        dependency: exportPath,
+        message: `Package export "${exportPath}" has no export environment contract. Wrap the target with exportEntry(...), or add an explicit validation ignore while migrating.`,
+        rule: 'package-json-export-environment-contract-coverage',
+      })
+    }
+  }
+
+  for (const exportPath of Object.keys(exportContracts)) {
     if (data.exports?.[exportPath] === undefined) {
       issues.push({
         severity: 'error',
@@ -475,7 +521,7 @@ const validateExportEnvironmentContracts = ({
     }
 
     const requiresPublishMirror =
-      contracts[exportPath]?.some((contract) => contract.published !== false) ?? true
+      exportContracts[exportPath]?.some((contract) => contract.published !== false) ?? true
     if (
       requiresPublishMirror === true &&
       data.publishConfig?.exports !== undefined &&
@@ -492,7 +538,12 @@ const validateExportEnvironmentContracts = ({
   }
 
   const runtime = packageJsonValidationRuntime(ctx)
-  if (runtime === undefined || data.exports === undefined) return issues
+  if (
+    runtime === undefined ||
+    data.exports === undefined ||
+    Object.keys(exportContracts).length === 0
+  )
+    return issues
 
   const result = runtime.validateExportEnvironments({
     cwd: ctx.cwd,
@@ -502,7 +553,7 @@ const validateExportEnvironmentContracts = ({
     ...(data.publishConfig?.exports === undefined
       ? {}
       : { publishExports: data.publishConfig.exports }),
-    contracts,
+    contracts: exportContracts,
   })
 
   issues.push(...result.issues)
@@ -790,14 +841,21 @@ const buildPackageJson = <T extends PackageJsonData>({
  */
 function createPackageJson<const T extends PackageJsonInputData>(
   data: Strict<T, PackageJsonInputData>,
+  meta: undefined,
+  options: PackageJsonOptions,
+): GenieOutput<PackageJsonData, PackageJsonValidationMeta>
+function createPackageJson<const T extends PackageJsonInputData>(
+  data: Strict<T, PackageJsonInputData>,
 ): GenieOutput<PackageJsonData, PackageJsonValidationMeta>
 function createPackageJson<const T extends PackageJsonComposedInputData>(
   data: Strict<T, PackageJsonComposedInputData>,
   composition: PackageJsonComposition,
+  options?: PackageJsonOptions,
 ): GenieOutput<PackageJsonData, WorkspaceMeta & PackageJsonValidationMeta>
 function createPackageJson<const T extends PackageJsonInputData, const TMeta extends object>(
   data: Strict<T, PackageJsonInputData>,
   meta: PackageJsonMetadataInput<TMeta>,
+  options?: PackageJsonOptions,
 ): GenieOutput<PackageJsonData, TMeta & PackageJsonValidationMeta>
 /**
  * Genie convention: the first arg is emitted data and the second arg is
@@ -812,6 +870,7 @@ function createPackageJson<const T extends PackageJsonInputData, const TMeta ext
 function createPackageJson<const T extends PackageJsonInputData, const TMeta>(
   data: Strict<T, PackageJsonInputData>,
   meta?: TMeta,
+  options?: PackageJsonOptions,
 ) {
   const hasManualDepsWithComposition =
     isPackageJsonComposition(meta) === true &&
@@ -856,9 +915,14 @@ function createPackageJson<const T extends PackageJsonInputData, const TMeta>(
       : normalizedInputData
 
   const packageJsonValidationMeta =
-    normalizedExports.contracts === undefined
+    normalizedExports.contracts === undefined && options?.validation === undefined
       ? undefined
-      : ({ exportContracts: normalizedExports.contracts } satisfies PackageJsonValidationMeta)
+      : ({
+          ...(normalizedExports.contracts === undefined
+            ? {}
+            : { exportContracts: normalizedExports.contracts }),
+          ...(options?.validation === undefined ? {} : { validation: options.validation }),
+        } satisfies PackageJsonValidationMeta)
 
   const effectiveMeta = (() => {
     const base =
@@ -934,6 +998,7 @@ function createPackageJson<const T extends PackageJsonInputData, const TMeta>(
         ctx,
         data: effectiveData,
         contracts: packageJsonValidationMeta?.exportContracts,
+        options: packageJsonValidationMeta?.validation?.exportEnvironmentContracts,
       }),
       ...(hasManualDepsWithComposition === true
         ? [
@@ -977,6 +1042,65 @@ function createPackageJson<const T extends PackageJsonInputData, const TMeta>(
       ? {}
       : { gvsTypeExtensions: effectiveGvsTypeExtensions }),
   })
+}
+
+const mergeExportEnvironmentContractValidationOptions = ({
+  defaults,
+  overrides,
+}: {
+  defaults: PackageJsonExportEnvironmentContractValidationOptions | undefined
+  overrides: PackageJsonExportEnvironmentContractValidationOptions | undefined
+}): PackageJsonExportEnvironmentContractValidationOptions | undefined => {
+  if (defaults === undefined) return overrides
+  if (overrides === undefined) return defaults
+  return {
+    ...defaults,
+    ...overrides,
+  }
+}
+
+const mergePackageJsonValidationOptions = ({
+  defaults,
+  overrides,
+}: {
+  defaults: PackageJsonValidationOptions | undefined
+  overrides: PackageJsonValidationOptions | undefined
+}): PackageJsonValidationOptions | undefined => {
+  if (defaults === undefined) return overrides
+  if (overrides === undefined) return defaults
+
+  const exportEnvironmentContracts = mergeExportEnvironmentContractValidationOptions({
+    defaults: defaults.exportEnvironmentContracts,
+    overrides: overrides.exportEnvironmentContracts,
+  })
+
+  return {
+    ...defaults,
+    ...overrides,
+    ...(exportEnvironmentContracts === undefined ? {} : { exportEnvironmentContracts }),
+  }
+}
+
+const mergePackageJsonOptions = ({
+  defaults,
+  overrides,
+}: {
+  defaults: PackageJsonOptions | undefined
+  overrides: PackageJsonOptions | undefined
+}): PackageJsonOptions | undefined => {
+  if (defaults === undefined) return overrides
+  if (overrides === undefined) return defaults
+
+  const validation = mergePackageJsonValidationOptions({
+    defaults: defaults.validation,
+    overrides: overrides.validation,
+  })
+
+  return {
+    ...defaults,
+    ...overrides,
+    ...(validation === undefined ? {} : { validation }),
+  }
 }
 
 /**
@@ -1041,9 +1165,30 @@ const aggregatePackageJsonFromPackages = ({
   })
 }
 
-/** Package manifest authoring API plus constrained aggregate projection. */
-export const packageJson = Object.assign(createPackageJson, {
-  aggregateFromPackages: aggregatePackageJsonFromPackages,
-}) as typeof createPackageJson & {
-  aggregateFromPackages: typeof aggregatePackageJsonFromPackages
+/** Create a package manifest authoring API with repository-level defaults. */
+export const definePackageJson = (defaults?: PackageJsonOptions): PackageJsonGenerator => {
+  // oxlint-disable-next-line overeng/named-args -- returned function preserves the packageJson(data, meta, options) DSL.
+  const configuredPackageJson = function configuredPackageJson(
+    data: PackageJsonInputData,
+    meta?: PackageJsonComposition | PackageJsonMetadataInput<object>,
+    options?: PackageJsonOptions,
+  ) {
+    const effectiveOptions = mergePackageJsonOptions({
+      defaults,
+      overrides: options,
+    })
+    if (meta === undefined) {
+      return effectiveOptions === undefined
+        ? createPackageJson(data)
+        : createPackageJson(data, undefined, effectiveOptions)
+    }
+    return createPackageJson(data, meta as PackageJsonMetadataInput<object>, effectiveOptions)
+  } as unknown as typeof createPackageJson
+
+  return Object.assign(configuredPackageJson, {
+    aggregateFromPackages: aggregatePackageJsonFromPackages,
+  })
 }
+
+/** Package manifest authoring API plus constrained aggregate projection. */
+export const packageJson = definePackageJson()
