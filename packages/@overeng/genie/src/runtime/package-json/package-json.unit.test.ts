@@ -258,6 +258,101 @@ describe('packageJson', () => {
     })
   })
 
+  it('follows NodeNext .js source imports when scanning export environments', () => {
+    const repo = createTempRepo('packages/pkg')
+    const packageDir = repo.memberDirs['packages/pkg']!
+    fs.mkdirSync(path.join(packageDir, 'src'))
+    fs.writeFileSync(path.join(packageDir, 'src/mod.ts'), "import './util.js'\n")
+    fs.writeFileSync(path.join(packageDir, 'src/util.ts'), "import fs from 'node:fs'\nvoid fs\n")
+    const result = packageJson({
+      name: '@test/package',
+      version: '1.0.0',
+      exports: {
+        '.': exportEntry('./src/mod.ts', {
+          environment: 'isomorphic-es2024',
+        }),
+      },
+    })
+
+    const issues = result.validate?.({
+      cwd: repo.repoRoot,
+      location: 'packages/pkg',
+      validation: { packageJson: nodePackageJsonValidationRuntime },
+    })
+
+    expect(issues).toContainEqual({
+      severity: 'error',
+      packageName: '@test/package',
+      dependency: '.',
+      message: expect.stringContaining('src/util.ts imports "node:fs"'),
+      rule: 'package-json-export-environment-import',
+    })
+  })
+
+  it('forbids direct process global usage in cheap isomorphic validation', () => {
+    const repo = createTempRepo('packages/pkg')
+    const packageDir = repo.memberDirs['packages/pkg']!
+    fs.mkdirSync(path.join(packageDir, 'src'))
+    fs.writeFileSync(path.join(packageDir, 'src/mod.ts'), 'export const env = process.env\n')
+    const result = packageJson({
+      name: '@test/package',
+      version: '1.0.0',
+      exports: {
+        '.': exportEntry('./src/mod.ts', {
+          environment: 'isomorphic-es2024',
+        }),
+      },
+    })
+
+    const issues = result.validate?.({
+      cwd: repo.repoRoot,
+      location: 'packages/pkg',
+      validation: { packageJson: nodePackageJsonValidationRuntime },
+    })
+
+    expect(issues).toContainEqual({
+      severity: 'error',
+      packageName: '@test/package',
+      dependency: '.',
+      message: expect.stringContaining('references forbidden global "process"'),
+      rule: 'package-json-export-environment-global',
+    })
+  })
+
+  it('invalidates strict proof cache entries when dependency metadata changes', () => {
+    const repo = createTempRepo('packages/pkg')
+    const packageDir = repo.memberDirs['packages/pkg']!
+    fs.mkdirSync(path.join(packageDir, 'src'))
+    fs.writeFileSync(path.join(repo.repoRoot, 'pnpm-lock.yaml'), 'lockfileVersion: 11.0\n')
+    fs.writeFileSync(path.join(repo.repoRoot, 'package.json'), '{"name":"repo"}\n')
+    fs.writeFileSync(path.join(packageDir, 'package.json'), '{"name":"@test/package"}\n')
+    fs.writeFileSync(path.join(packageDir, 'src/mod.ts'), 'export const value = 1\n')
+
+    const validate = () =>
+      nodePackageJsonValidationRuntime.validateExportEnvironments({
+        cwd: repo.repoRoot,
+        location: 'packages/pkg',
+        packageName: '@test/package',
+        exports: { '.': './src/mod.ts' },
+        contracts: {
+          '.': {
+            environment: 'isomorphic-es2024',
+            typeProof: 'strict',
+          },
+        },
+      })
+
+    expect(validate().cache).toEqual({ hits: 0, misses: 1 })
+    expect(validate().cache).toEqual({ hits: 1, misses: 0 })
+
+    fs.writeFileSync(
+      path.join(repo.repoRoot, 'pnpm-lock.yaml'),
+      'lockfileVersion: 11.0\nchanged: true\n',
+    )
+
+    expect(validate().cache).toEqual({ hits: 0, misses: 1 })
+  }, 30_000)
+
   it('accepts a strict isomorphic TypeScript proof for the pure genie runtime entry', () => {
     const repoRoot = path.resolve(import.meta.dirname, '../../../../../..')
     const result = packageJson({

@@ -33,7 +33,7 @@ const builtinEnvironmentProfiles: Record<string, EnvironmentProfile> = {
   'isomorphic-es2024': {
     conditions: ['import', 'default'],
     forbiddenImports: ['node:*', 'bun', 'bun:*'],
-    forbiddenGlobals: ['Bun', 'window', 'document'],
+    forbiddenGlobals: ['Bun', 'process', 'window', 'document'],
     typecheck: { lib: ['lib.es2024.d.ts'], types: [] },
   },
   node: {
@@ -123,6 +123,23 @@ const resolveRelativeImport = ({
   if (specifier.startsWith('.') === false) return undefined
   const resolved = path.resolve(path.dirname(fromFile), specifier)
   if (existsSync(resolved) === true) return resolved
+
+  const parsed = path.parse(resolved)
+  const sourceExtensionsForRuntimeExtension: Record<string, readonly string[]> = {
+    '.js': ['.ts', '.tsx'],
+    '.jsx': ['.tsx', '.ts'],
+    '.mjs': ['.mts', '.ts'],
+    '.cjs': ['.cts', '.ts'],
+  }
+  const sourceExtensions = sourceExtensionsForRuntimeExtension[parsed.ext]
+  if (sourceExtensions !== undefined) {
+    const sourceBase = path.join(parsed.dir, parsed.name)
+    for (const extension of sourceExtensions) {
+      const candidate = `${sourceBase}${extension}`
+      if (existsSync(candidate) === true) return candidate
+    }
+  }
+
   for (const suffix of ['.ts', '.tsx', '.mts', '.cts', '/mod.ts', '/index.ts']) {
     const candidate = `${resolved}${suffix}`
     if (existsSync(candidate) === true) return candidate
@@ -239,10 +256,12 @@ const sha256 = (content: string): string => createHash('sha256').update(content)
 
 const proofCacheKey = ({
   files,
+  cacheInputs,
   contract,
   profile,
 }: {
   files: readonly string[]
+  cacheInputs: readonly string[]
   contract: ExportEnvironmentContract
   profile: EnvironmentProfile
 }): string => {
@@ -254,6 +273,12 @@ const proofCacheKey = ({
   hash.update(JSON.stringify(contract))
   hash.update('\n')
   hash.update(JSON.stringify(profile))
+  for (const file of cacheInputs) {
+    hash.update('\n')
+    hash.update(file)
+    hash.update('\n')
+    hash.update(existsSync(file) === true ? sha256(readFileSync(file, 'utf8')) : '(missing)')
+  }
   for (const file of files) {
     hash.update('\n')
     hash.update(file)
@@ -276,6 +301,7 @@ const typecheck = ({
   cwd,
   entry,
   files,
+  cacheInputs,
   contract,
   profile,
   packageName,
@@ -284,6 +310,7 @@ const typecheck = ({
   cwd: string
   entry: string
   files: readonly string[]
+  cacheInputs: readonly string[]
   contract: ExportEnvironmentContract
   profile: EnvironmentProfile
   packageName: string
@@ -304,7 +331,7 @@ const typecheck = ({
     }
   }
 
-  const key = proofCacheKey({ files, contract, profile })
+  const key = proofCacheKey({ files, cacheInputs, contract, profile })
   if (hasCachedProof({ cwd, key }) === true) return { issues: [], cache: { hits: 1, misses: 0 } }
 
   const program = ts.createProgram([entry], {
@@ -403,6 +430,12 @@ export const nodePackageJsonValidationRuntime: PackageJsonValidationRuntime = {
         cwd: args.cwd,
         entry,
         files: graph.files,
+        cacheInputs: [
+          path.join(args.cwd, 'pnpm-lock.yaml'),
+          path.join(args.cwd, 'package.json'),
+          path.join(args.cwd, args.location, 'package.json'),
+          path.join(args.cwd, args.location, 'tsconfig.json'),
+        ],
         contract,
         profile,
         packageName: args.packageName,
