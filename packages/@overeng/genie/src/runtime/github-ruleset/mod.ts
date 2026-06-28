@@ -838,13 +838,6 @@ export const githubRuleset = <const T extends GithubRulesetArgs>(
   stringify: (_ctx) => JSON.stringify(args, null, 2) + '\n',
 })
 
-export {
-  diffGithubRuleset,
-  formatGithubRulesetReport,
-  normalizeGithubRulesetForComparison,
-  reconcileGithubRuleset,
-  type GithubRulesetOptions,
-  type GithubRulesetReport,
-  type RulesetDiff,
-  type RulesetMode,
-} from './reconcile.ts'
+// The `reconcile.ts` operations (`reconcileGithubRuleset`, `diffGithubRuleset`, …) shell out to `gh`
+// (`Bun.spawn`/`node:fs`) and are therefore node-only — they are re-exported from the `@overeng/genie/node`
+// entry, not here, so this builder module stays within the isomorphic `.` closure.

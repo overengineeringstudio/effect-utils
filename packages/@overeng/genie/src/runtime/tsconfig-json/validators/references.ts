@@ -6,12 +6,9 @@
  * tsconfig reference to enable proper TypeScript project references.
  */
 
-import { existsSync } from 'node:fs'
-import { createRequire } from 'node:module'
-import { join } from 'node:path'
-
-import type { GenieContext } from '../../mod.ts'
+import type { GenieContext, GenieIO, GenieJsoncParser } from '../../mod.ts'
 import type { ValidationIssue } from '../../package-json/validation.ts'
+import { joinPath } from '../../utils/path.ts'
 import type { TSConfigArgs } from '../mod.ts'
 
 /**
@@ -53,8 +50,10 @@ export const validateTsconfigReferences = ({
   ctx: GenieContext
   references: TSConfigArgs['references']
 }): ValidationIssue[] => {
-  // Need workspace context and location to validate
-  if (ctx.workspace === undefined) return []
+  // Need workspace context and the filesystem + JSONC-parse capabilities to validate
+  if (ctx.workspace === undefined || ctx.io === undefined || ctx.parseJsonc === undefined) return []
+  const io = ctx.io
+  const parseJsonc = ctx.parseJsonc
 
   const issues: ValidationIssue[] = []
   const currentRefs = new Set((references ?? []).map((r) => r.path))
@@ -81,9 +80,9 @@ export const validateTsconfigReferences = ({
     // Skip deps that can't be valid project reference targets:
     // - No tsconfig.json (e.g. meta-packages like peer-deps)
     // - composite: false (e.g. Astro sites, CLI tools)
-    const depTsconfigPath = join(ctx.cwd, depPkg.path, 'tsconfig.json')
-    if (existsSync(depTsconfigPath) === false) continue
-    if (isCompositeProject(depTsconfigPath) === false) continue
+    const depTsconfigPath = joinPath(ctx.cwd, depPkg.path, 'tsconfig.json')
+    if (io.fileExists(depTsconfigPath) === false) continue
+    if (isCompositeProject({ tsconfigPath: depTsconfigPath, io, parseJsonc }) === false) continue
 
     const expectedRef = computeRelativeRef({ from: ctx.location, to: depPkg.path })
     if (currentRefs.has(expectedRef) === false) {
@@ -104,18 +103,28 @@ export const validateTsconfigReferences = ({
   return issues
 }
 
-/** Check if a tsconfig.json has composite: true (required for project reference targets). */
-const isCompositeProject = (tsconfigPath: string): boolean => {
-  try {
-    // Resolve typescript from the consumer workspace (not from genie's own location)
-    // since genie runtime files may be loaded from a cache outside node_modules.
-    const require = createRequire(tsconfigPath)
-    // oxlint-disable-next-line typescript-eslint/consistent-type-imports -- dynamic require needs runtime type annotation
-    const ts: typeof import('typescript') = require('typescript')
-    const { config, error } = ts.readConfigFile(tsconfigPath, ts.sys.readFile)
-    if (error !== undefined || config === undefined) return false
-    return config.compilerOptions?.composite !== false
-  } catch {
-    return false
-  }
+/**
+ * Check if a tsconfig.json has composite: true (required for project reference targets).
+ *
+ * Reads the file via the injected {@link GenieIO} and parses it with the injected {@link GenieJsoncParser}
+ * (the engine backs it with the same TypeScript JSONC parser the previous `ts.readConfigFile` impl used, so
+ * comment-headed/JSONC tsconfigs parse identically). An unreadable or unparseable file yields `false` —
+ * matching the prior `catch → false` behavior, conservatively skipping the dep as a reference target.
+ */
+const isCompositeProject = ({
+  tsconfigPath,
+  io,
+  parseJsonc,
+}: {
+  tsconfigPath: string
+  io: GenieIO
+  parseJsonc: GenieJsoncParser
+}): boolean => {
+  const text = io.readText(tsconfigPath)
+  if (text === undefined) return false
+  const config = parseJsonc({ path: tsconfigPath, text })
+  if (config === undefined) return false
+  return (
+    (config as { compilerOptions?: { composite?: boolean } }).compilerOptions?.composite !== false
+  )
 }

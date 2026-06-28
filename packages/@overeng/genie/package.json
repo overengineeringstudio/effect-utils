@@ -6,12 +6,14 @@
   "exports": {
     ".": "./src/runtime/mod.ts",
     "./cli": "./src/build/mod.tsx",
+    "./node": "./src/runtime/node/mod.ts",
     "./sdk": "./src/sdk/mod.ts"
   },
   "publishConfig": {
     "access": "public",
     "exports": {
       ".": "./dist/src/runtime/mod.js",
+      "./node": "./dist/src/runtime/node/mod.js",
       "./cli": "./dist/src/build/mod.js",
       "./sdk": "./dist/src/sdk/mod.js"
     }
@@ -43,6 +45,7 @@
     "react": "19.2.7",
     "react-dom": "19.2.7",
     "react-reconciler": "0.33.0",
+    "typescript": "6.0.3",
     "vitest": "4.1.9"
   },
   "devDependencies": {
@@ -64,7 +67,6 @@
     "@types/react-reconciler": "0.33.0",
     "prettier": "3.8.4",
     "storybook": "10.4.6",
-    "typescript": "6.0.3",
     "vitest": "4.1.9"
   },
   "dependenciesMeta": {

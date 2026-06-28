@@ -29,6 +29,15 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/genie**: Ship `typescript` as a runtime dependency so the CLI's
+  JSONC validation path resolves outside the repo development shell.
+
+- **@overeng/genie / devenv tests**: Refresh the pnpm fixed-output hashes for
+  the new Genie `./node` entry closure and the follow-up runtime dependency
+  lockfile change, and isolate the `ts-otelite` e2e test from ambient task trace
+  context so `devenv-modules:test` remains deterministic when run under traced
+  `devenv tasks`.
+
 - **devenv/lint-oxc, CLI package builders**: Treat an `oxfmt` chunk that becomes
   empty after formatter config ignores as no work while preserving failures for
   real formatter errors, and generate packaged CLI completions without assuming
@@ -463,6 +472,10 @@ All notable changes to this project will be documented in this file.
 - **genie/ci-workflow**: Skip workflow-report PR comment publishing for fork
   pull requests after writing the job summary, so preview-reporting jobs do not
   fail when GitHub downgrades the `pull_request` token to read-only.
+
+- **@overeng/genie**: Give the entry-purity compiler test an explicit timeout
+  so Linux CI load does not fail the semantic guard under Vitest's default 5s
+  test timeout.
 
 - **@overeng/notion-md / @overeng/notion-datasource-sync**: Address PR review regressions for datasource body/property settlement and workspace establishment. Verified body-push settlement now preserves existing `.nmd` writable frontmatter properties, `--sqlite data/v1/<source>.sqlite` selects the matching manifest source in multi-source workspaces, and `track` writes `notion.workspace.v1.json` only after successful establishment. Public SQLite replicas now treat macOS `/var` and `/private/var` temp-path aliases as the same workspace for move detection, avoiding false `moved` status while still detecting copied data files. Also makes GFM autolink canonicalization idempotent for generated canonical bodies.
 

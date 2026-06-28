@@ -98,7 +98,8 @@ chmod +x "$tmpdir/bin/tsgo"
 ln -s "$otel_span_bin" "$tmpdir/bin/otel-span"
 
 cap="$tmpdir/capture"
-PATH="$tmpdir/bin:$PATH" DEVENV_ROOT="$tmpdir/workspace" DEVENV_TUI=false \
+env -u TRACEPARENT -u OTEL_TASK_TRACEPARENT -u OTEL_SHELL_ENTRY_NS \
+  PATH="$tmpdir/bin:$PATH" DEVENV_ROOT="$tmpdir/workspace" DEVENV_TUI=false \
   "$otelite_bin" run --out "$cap" --protocol http/json -- devenv tasks run ts:check \
   > "$tmpdir/summary.json" 2> "$tmpdir/run.stderr"
 

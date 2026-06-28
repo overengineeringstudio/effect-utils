@@ -14,6 +14,7 @@ const supportDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/genie' }),
   dependencies: {
     workspace: [otelContractPkg],
+    external: catalog.pick('typescript'),
   },
   devDependencies: {
     workspace: [tuiCorePkg, tuiReactPkg, utilsDevPkg, utilsPkg],
@@ -34,7 +35,6 @@ const supportDeps = catalog.compose({
         '@types/react',
         '@types/react-reconciler',
         'prettier',
-        'typescript',
       ),
     },
   },
@@ -54,7 +54,14 @@ export default packageJson(
       'storybook:build': 'storybook build',
     },
     exports: {
+      // Isomorphic entry: pure builders + types, free of node/Bun/DOM in their import closure. A TYPECHECKING
+      // consumer (e.g. a `.bzl` genie generator) can import `GenieOutput`/`Strict` and the builders without
+      // dragging genie's runtime ambient globals into its program. Filesystem/spawn capabilities used during
+      // validation are injected via `GenieContext` (`io`, `actionlint`) by the engine.
       '.': './src/runtime/mod.ts',
+      // Node-resident entry: re-exports `.` plus the node-only members (nodeGenieIO, actionlint runner,
+      // github-ruleset reconcile ops, fs-discovery tsconfigJsonFromPackages, repo-context).
+      './node': './src/runtime/node/mod.ts',
       './cli': './src/build/mod.tsx',
       './sdk': './src/sdk/mod.ts',
     },
@@ -62,6 +69,7 @@ export default packageJson(
       access: 'public',
       exports: {
         '.': './dist/src/runtime/mod.js',
+        './node': './dist/src/runtime/node/mod.js',
         './cli': './dist/src/build/mod.js',
         './sdk': './dist/src/sdk/mod.js',
       },

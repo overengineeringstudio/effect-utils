@@ -10,7 +10,6 @@
 import {
   defineCatalog,
   definePatchedDependencies,
-  defineRepoContext,
   githubLabels,
   githubRuleset,
   githubWorkflow,
@@ -39,7 +38,6 @@ import {
   type PatchesRegistry,
   type PnpmSettings,
   type PnpmWorkspaceData,
-  type RepoContext,
   type ScriptValue,
   type TSConfigArgs,
   type TSConfigCompilerOptions,
@@ -49,6 +47,14 @@ import {
   type WorkspacePackage,
   type WorkspacePackageLike,
 } from '../packages/@overeng/genie/src/runtime/mod.ts'
+/**
+ * Repo-context discovery is node-only (reads the filesystem via `import.meta.url`), so it is sourced from the
+ * `@overeng/genie/node` entry. Peer repos consume `external.ts` to author genie configs at engine (node) time.
+ */
+import {
+  defineRepoContext,
+  type RepoContext,
+} from '../packages/@overeng/genie/src/runtime/node/mod.ts'
 /**
  * Exceptional export: downstream repos that define `workspaceMember()` factories
  * need this type for the optional `pnpmPackageClosure` parameter in `WorkspaceIdentity`.
