@@ -65,9 +65,9 @@ export default packageJson(
       }),
       // Node-resident entry: re-exports `.` plus the node-only members (nodeGenieIO, actionlint runner,
       // github-ruleset reconcile ops, fs-discovery tsconfigJsonFromPackages, repo-context).
-      './node': './src/runtime/node/mod.ts',
-      './cli': './src/build/mod.tsx',
-      './sdk': './src/sdk/mod.ts',
+      './node': exportEntry('./src/runtime/node/mod.ts', { environment: 'node' }),
+      './cli': exportEntry('./src/build/mod.tsx', { environment: 'node' }),
+      './sdk': exportEntry('./src/sdk/mod.ts', { environment: 'node' }),
     },
     publishConfig: {
       access: 'public',

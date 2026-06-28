@@ -1,8 +1,9 @@
 import {
   catalog,
   workspaceMember,
+  exportEntry,
   packageJson,
-  type PackageJsonData,
+  type PackageJsonInputData,
 } from '../../../genie/internal.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
@@ -49,7 +50,7 @@ export default packageJson(
     description: 'Power of Browser DevTools inspectors right inside your React app',
     type: 'module',
     exports: {
-      '.': './src/index.tsx',
+      '.': exportEntry('./src/index.tsx', { environment: 'browser' }),
     },
     publishConfig: {
       access: 'public',
@@ -70,6 +71,6 @@ export default packageJson(
         optional: true,
       },
     },
-  } satisfies PackageJsonData,
+  } satisfies PackageJsonInputData,
   workspaceDeps,
 )

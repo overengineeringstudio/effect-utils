@@ -150,11 +150,18 @@ export type ExportEnvironmentContract = {
   environment: ExportEnvironmentName | (string & {})
   /** Whether to prove the transitive type closure under the environment profile. */
   typeProof?: ExportTypeProofMode
+  /** Source-only exports may be intentionally absent from publishConfig.exports. */
+  published?: false
 }
+
+/** One or more JavaScript environment contracts attached to one package export entry. */
+export type ExportEnvironmentContracts =
+  | ExportEnvironmentContract
+  | readonly ExportEnvironmentContract[]
 
 type AuthoredExportEntry = ExportsEntry | ExportEntryContract
 
-type PackageJsonInputData = Omit<PackageJsonData, 'exports'> & {
+export type PackageJsonInputData = Omit<PackageJsonData, 'exports'> & {
   /** Package entry points, optionally annotated with non-emitted environment contracts. */
   exports?: Record<string, AuthoredExportEntry>
 }
@@ -170,7 +177,7 @@ type PackageJsonComposedInputData = Omit<
 
 /** Non-emitted package.json validation metadata owned by the package-json generator. */
 export type PackageJsonValidationMeta = {
-  exportContracts?: Record<string, ExportEnvironmentContract>
+  exportContracts?: Record<string, readonly ExportEnvironmentContract[]>
 }
 
 /** Package-json node validation runtime injected by the Genie engine. */
@@ -181,7 +188,7 @@ export type PackageJsonValidationRuntime = {
     packageName: string
     exports: Record<string, ExportsEntry>
     publishExports?: Record<string, ExportsEntry>
-    contracts: Record<string, ExportEnvironmentContract>
+    contracts: Record<string, readonly ExportEnvironmentContract[]>
   }) => {
     issues: ValidationIssue[]
     durationMs: number
@@ -191,14 +198,14 @@ export type PackageJsonValidationRuntime = {
 
 type ExportEntryContract = {
   target: ExportsEntry
-  contract: ExportEnvironmentContract
+  contract: ExportEnvironmentContracts
 }
 
 /** Annotate a package export target with a non-emitted JavaScript environment contract. */
 // oxlint-disable-next-line overeng/named-args -- authoring DSL mirrors package.json's export target plus adjacent contract.
 export const exportEntry = <const TTarget extends ExportsEntry>(
   target: TTarget,
-  contract: ExportEnvironmentContract,
+  contract: ExportEnvironmentContracts,
 ): ExportEntryContract => ({ target, contract })
 
 type Funding =
@@ -405,17 +412,18 @@ const normalizeExports = (
   exports: Record<string, AuthoredExportEntry> | undefined,
 ): {
   exports?: Record<string, ExportsEntry>
-  contracts?: Record<string, ExportEnvironmentContract>
+  contracts?: Record<string, readonly ExportEnvironmentContract[]>
 } => {
   if (exports === undefined) return {}
 
   const normalized: Record<string, ExportsEntry> = {}
-  const contracts: Record<string, ExportEnvironmentContract> = {}
+  const contracts: Record<string, readonly ExportEnvironmentContract[]> = {}
 
   for (const [exportPath, entry] of Object.entries(exports)) {
     if (isExportEntryContract(entry) === true) {
       normalized[exportPath] = entry.target
-      contracts[exportPath] = entry.contract
+      contracts[exportPath] =
+        Array.isArray(entry.contract) === true ? entry.contract : [entry.contract]
     } else {
       normalized[exportPath] = entry
     }
@@ -448,7 +456,7 @@ const validateExportEnvironmentContracts = ({
 }: {
   ctx: GenieContext
   data: PackageJsonData
-  contracts: Record<string, ExportEnvironmentContract> | undefined
+  contracts: Record<string, readonly ExportEnvironmentContract[]> | undefined
 }): ValidationIssue[] => {
   if (contracts === undefined) return []
 
@@ -466,7 +474,10 @@ const validateExportEnvironmentContracts = ({
       })
     }
 
+    const requiresPublishMirror =
+      contracts[exportPath]?.some((contract) => contract.published !== false) ?? true
     if (
+      requiresPublishMirror === true &&
       data.publishConfig?.exports !== undefined &&
       data.publishConfig.exports[exportPath] === undefined
     ) {

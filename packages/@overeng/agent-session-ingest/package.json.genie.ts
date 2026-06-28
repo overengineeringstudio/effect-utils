@@ -1,9 +1,10 @@
 import {
   catalog,
   workspaceMember,
+  exportEntry,
   packageJson,
   privatePackageDefaults,
-  type PackageJsonData,
+  type PackageJsonInputData,
 } from '../../../genie/internal.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 
@@ -34,11 +35,11 @@ export default packageJson(
     name: '@overeng/agent-session-ingest',
     ...privatePackageDefaults,
     exports: {
-      '.': './src/mod.ts',
-      './codex': './src/adapters/codex.ts',
-      './claude': './src/adapters/claude.ts',
-      './opencode': './src/adapters/opencode.ts',
-      './jsonl': './src/adapters/jsonl.ts',
+      '.': exportEntry('./src/mod.ts', { environment: 'node' }),
+      './codex': exportEntry('./src/adapters/codex.ts', { environment: 'node' }),
+      './claude': exportEntry('./src/adapters/claude.ts', { environment: 'node' }),
+      './opencode': exportEntry('./src/adapters/opencode.ts', { environment: 'node' }),
+      './jsonl': exportEntry('./src/adapters/jsonl.ts', { environment: 'node' }),
     },
     publishConfig: {
       access: 'public',
@@ -50,6 +51,6 @@ export default packageJson(
         './jsonl': './dist/adapters/jsonl.js',
       },
     },
-  } satisfies PackageJsonData,
+  } satisfies PackageJsonInputData,
   workspaceDeps,
 )

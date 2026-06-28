@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { performance } from 'node:perf_hooks'
 
@@ -165,9 +165,65 @@ const findForbiddenGlobals = ({
   const sourceFile = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true)
   const issues: ValidationIssue[] = []
   const forbiddenGlobals = new Set(profile.forbiddenGlobals)
+  const declaredNames = new Set<string>()
+
+  const collectBindingNames = (name: ts.BindingName): void => {
+    if (ts.isIdentifier(name) === true) {
+      declaredNames.add(name.text)
+      return
+    }
+    for (const element of name.elements) {
+      if (ts.isBindingElement(element) === true) collectBindingNames(element.name)
+    }
+  }
+
+  const collectDeclarations = (node: ts.Node): void => {
+    if (ts.isImportSpecifier(node) === true) declaredNames.add(node.name.text)
+    if (ts.isImportClause(node) === true && node.name !== undefined)
+      declaredNames.add(node.name.text)
+    if (ts.isNamespaceImport(node) === true) declaredNames.add(node.name.text)
+    if (ts.isVariableDeclaration(node) === true) collectBindingNames(node.name)
+    if (ts.isParameter(node) === true) collectBindingNames(node.name)
+    if (
+      (ts.isFunctionDeclaration(node) === true ||
+        ts.isClassDeclaration(node) === true ||
+        ts.isInterfaceDeclaration(node) === true ||
+        ts.isTypeAliasDeclaration(node) === true) &&
+      node.name !== undefined
+    ) {
+      declaredNames.add(node.name.text)
+    }
+    ts.forEachChild(node, collectDeclarations)
+  }
+
+  collectDeclarations(sourceFile)
 
   const visit = (node: ts.Node): void => {
-    if (ts.isIdentifier(node) === true && forbiddenGlobals.has(node.text) === true) {
+    if (
+      ts.isIdentifier(node) === true &&
+      forbiddenGlobals.has(node.text) === true &&
+      declaredNames.has(node.text) === false
+    ) {
+      const parent = node.parent
+      if (
+        parent !== undefined &&
+        ((ts.isPropertyAccessExpression(parent) === true && parent.name === node) ||
+          (ts.isPropertyAssignment(parent) === true && parent.name === node) ||
+          (ts.isPropertyDeclaration(parent) === true && parent.name === node) ||
+          (ts.isMethodDeclaration(parent) === true && parent.name === node) ||
+          (ts.isBindingElement(parent) === true && parent.name === node) ||
+          (ts.isImportSpecifier(parent) === true && parent.name === node) ||
+          (ts.isExportSpecifier(parent) === true && parent.name === node) ||
+          (ts.isVariableDeclaration(parent) === true && parent.name === node) ||
+          (ts.isFunctionDeclaration(parent) === true && parent.name === node) ||
+          (ts.isParameter(parent) === true && parent.name === node) ||
+          (ts.isClassDeclaration(parent) === true && parent.name === node) ||
+          (ts.isInterfaceDeclaration(parent) === true && parent.name === node) ||
+          (ts.isTypeAliasDeclaration(parent) === true && parent.name === node))
+      ) {
+        ts.forEachChild(node, visit)
+        return
+      }
       issues.push(
         issue({
           packageName,
@@ -247,6 +303,48 @@ const resolveExportTarget = ({
     if (typeof target === 'string') return target
   }
   return undefined
+}
+
+const escapeRegExp = (input: string): string => input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+const walkFiles = (root: string): readonly string[] => {
+  if (existsSync(root) === false) return []
+  const pending = [root]
+  const files: string[] = []
+  while (pending.length > 0) {
+    const current = pending.pop()
+    if (current === undefined) continue
+    const stat = statSync(current)
+    if (stat.isDirectory() === true) {
+      for (const child of readdirSync(current)) {
+        pending.push(path.join(current, child))
+      }
+    } else if (stat.isFile() === true) {
+      files.push(current)
+    }
+  }
+  return files.toSorted()
+}
+
+const resolveTargetEntries = ({
+  cwd,
+  location,
+  target,
+}: {
+  cwd: string
+  location: string
+  target: string
+}): readonly string[] => {
+  const absoluteTarget = path.resolve(cwd, location, target)
+  if (target.includes('*') === false)
+    return existsSync(absoluteTarget) === true ? [absoluteTarget] : []
+
+  const wildcardIndex = absoluteTarget.indexOf('*')
+  const basePrefix = absoluteTarget.slice(0, wildcardIndex)
+  const baseDir = basePrefix.endsWith(path.sep) === true ? basePrefix : path.dirname(basePrefix)
+  const targetPattern = new RegExp(`^${escapeRegExp(absoluteTarget).replaceAll('\\*', '[^/]*')}$`)
+
+  return walkFiles(baseDir).filter((file) => targetPattern.test(file))
 }
 
 const cacheRoot = (cwd: string): string =>
@@ -375,75 +473,83 @@ export const nodePackageJsonValidationRuntime: PackageJsonValidationRuntime = {
     let hits = 0
     let misses = 0
 
-    for (const [exportPath, contract] of Object.entries(args.contracts)) {
-      const profile = builtinEnvironmentProfiles[contract.environment]
-      if (profile === undefined) {
-        issues.push(
-          issue({
+    for (const [exportPath, contracts] of Object.entries(args.contracts)) {
+      for (const contract of contracts) {
+        const profile = builtinEnvironmentProfiles[contract.environment]
+        if (profile === undefined) {
+          issues.push(
+            issue({
+              packageName: args.packageName,
+              dependency: exportPath,
+              message: `Unknown export environment "${contract.environment}".`,
+              rule: 'package-json-export-environment-unknown',
+            }),
+          )
+          continue
+        }
+
+        const exportEntry = args.exports[exportPath]
+        if (exportEntry === undefined) continue
+
+        const target = resolveExportTarget({ entry: exportEntry, profile })
+        if (target === undefined) {
+          issues.push(
+            issue({
+              packageName: args.packageName,
+              dependency: exportPath,
+              message: `Export "${exportPath}" has no target for environment "${contract.environment}" using conditions ${profile.conditions.join(', ')}.`,
+              rule: 'package-json-export-environment-target',
+            }),
+          )
+          continue
+        }
+
+        const entries = resolveTargetEntries({
+          cwd: args.cwd,
+          location: args.location,
+          target,
+        })
+        if (entries.length === 0) {
+          issues.push(
+            issue({
+              packageName: args.packageName,
+              dependency: exportPath,
+              message: `Export "${exportPath}" target does not exist: ${path.relative(args.cwd, path.resolve(args.cwd, args.location, target))}`,
+              rule: 'package-json-export-environment-target-exists',
+            }),
+          )
+          continue
+        }
+
+        for (const entry of entries) {
+          const graph = scanGraph({
+            entry,
+            profile,
             packageName: args.packageName,
-            dependency: exportPath,
-            message: `Unknown export environment "${contract.environment}".`,
-            rule: 'package-json-export-environment-unknown',
-          }),
-        )
-        continue
-      }
+            exportPath,
+          })
+          issues.push(...graph.issues)
 
-      const exportEntry = args.exports[exportPath]
-      if (exportEntry === undefined) continue
-
-      const target = resolveExportTarget({ entry: exportEntry, profile })
-      if (target === undefined) {
-        issues.push(
-          issue({
+          const typecheckResult = typecheck({
+            cwd: args.cwd,
+            entry,
+            files: graph.files,
+            cacheInputs: [
+              path.join(args.cwd, 'pnpm-lock.yaml'),
+              path.join(args.cwd, 'package.json'),
+              path.join(args.cwd, args.location, 'package.json'),
+              path.join(args.cwd, args.location, 'tsconfig.json'),
+            ],
+            contract,
+            profile,
             packageName: args.packageName,
-            dependency: exportPath,
-            message: `Export "${exportPath}" has no target for environment "${contract.environment}" using conditions ${profile.conditions.join(', ')}.`,
-            rule: 'package-json-export-environment-target',
-          }),
-        )
-        continue
+            exportPath,
+          })
+          hits += typecheckResult.cache.hits
+          misses += typecheckResult.cache.misses
+          issues.push(...typecheckResult.issues)
+        }
       }
-
-      const entry = path.resolve(args.cwd, args.location, target)
-      if (existsSync(entry) === false) {
-        issues.push(
-          issue({
-            packageName: args.packageName,
-            dependency: exportPath,
-            message: `Export "${exportPath}" target does not exist: ${path.relative(args.cwd, entry)}`,
-            rule: 'package-json-export-environment-target-exists',
-          }),
-        )
-        continue
-      }
-
-      const graph = scanGraph({
-        entry,
-        profile,
-        packageName: args.packageName,
-        exportPath,
-      })
-      issues.push(...graph.issues)
-
-      const typecheckResult = typecheck({
-        cwd: args.cwd,
-        entry,
-        files: graph.files,
-        cacheInputs: [
-          path.join(args.cwd, 'pnpm-lock.yaml'),
-          path.join(args.cwd, 'package.json'),
-          path.join(args.cwd, args.location, 'package.json'),
-          path.join(args.cwd, args.location, 'tsconfig.json'),
-        ],
-        contract,
-        profile,
-        packageName: args.packageName,
-        exportPath,
-      })
-      hits += typecheckResult.cache.hits
-      misses += typecheckResult.cache.misses
-      issues.push(...typecheckResult.issues)
     }
 
     return {

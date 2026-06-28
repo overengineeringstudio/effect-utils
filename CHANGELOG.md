@@ -12,6 +12,9 @@ All notable changes to this project will be documented in this file.
   package-json validator owns the Node-only static import/global scanner,
   strict TypeScript proof, and cache-backed fast path for constrained
   environments such as Node, browsers, Workers, Workerd, and React Native.
+  Contracts now cover the repository's package exports, including conditional
+  browser/node entries and patterned source exports, replacing the previous
+  one-off Genie entry-purity test.
 
 - **devenv/lint-oxc**: Make `lintPaths` the single lint surface contract.
   oxlint/oxfmt tasks now enumerate tracked plus untracked non-ignored files via

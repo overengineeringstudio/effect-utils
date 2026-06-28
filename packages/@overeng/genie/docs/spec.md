@@ -145,17 +145,39 @@ exports: {
   './node': exportEntry('./src/runtime/node/mod.ts', {
     environment: 'node',
   }),
+  './cuid': exportEntry(
+    {
+      browser: './src/cuid/cuid.browser.ts',
+      node: './src/cuid/cuid.node.ts',
+      default: './src/cuid/mod.ts',
+    },
+    [{ environment: 'browser' }, { environment: 'node' }],
+  ),
+  './testing/*': exportEntry('./src/testing/*.ts', {
+    environment: 'node',
+    published: false,
+  }),
 }
 ```
 
-`exportEntry(target, contract)` is an authoring helper. The emitted
+`exportEntry(target, contract | contracts)` is an authoring helper. A single
+export can carry multiple contracts when different package export conditions
+select different source files. Pattern targets with `*` expand to matching
+source files during validation. Source-only exports that are intentionally
+absent from `publishConfig.exports` declare `published: false`. The emitted
 `package.json` remains ordinary package.json:
 
 ```json
 {
   "exports": {
     ".": "./src/runtime/mod.ts",
-    "./node": "./src/runtime/node/mod.ts"
+    "./node": "./src/runtime/node/mod.ts",
+    "./cuid": {
+      "browser": "./src/cuid/cuid.browser.ts",
+      "node": "./src/cuid/cuid.node.ts",
+      "default": "./src/cuid/mod.ts"
+    },
+    "./testing/*": "./src/testing/*.ts"
   }
 }
 ```
@@ -168,13 +190,14 @@ Package-json pure validation owns structural checks:
 
 - every contracted export subpath must exist in emitted `exports`
 - if `publishConfig.exports` is present, contracted source subpaths must be
-  mirrored there
+  mirrored there unless the contract declares `published: false`
 
 The package-json node validation runtime owns JavaScript environment checks. It
 is deliberately isolated below `src/runtime/package-json/node/` so pure runtime
 imports do not value-import TypeScript or node-only modules. The validator:
 
 - resolves the export target for the contract's environment conditions
+- expands patterned export targets to matching source files before scanning
 - scans the transitive relative source import graph for forbidden imports and
   forbidden globals
 - runs a TypeScript environment proof only when the contract requests

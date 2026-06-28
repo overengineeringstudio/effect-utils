@@ -190,15 +190,45 @@ describe('packageJson', () => {
       '.': './src/mod.ts',
     })
     expect((result as any).meta.exportContracts).toEqual({
-      '.': {
-        environment: 'isomorphic-es2024',
-        typeProof: 'strict',
-      },
+      '.': [
+        {
+          environment: 'isomorphic-es2024',
+          typeProof: 'strict',
+        },
+      ],
     })
     expect(JSON.parse(result.stringify(mockGenieContext)).exports).toEqual({
       '.': './src/mod.ts',
     })
     expect(JSON.parse(result.stringify(mockGenieContext))).not.toHaveProperty('meta')
+  })
+
+  it('normalizes multiple exportEntry contracts for conditional exports', () => {
+    const result = packageJson({
+      name: '@test/package',
+      version: '1.0.0',
+      exports: {
+        './cuid': exportEntry(
+          {
+            browser: './src/cuid.browser.ts',
+            node: './src/cuid.node.ts',
+            default: './src/cuid.ts',
+          },
+          [{ environment: 'browser' }, { environment: 'node' }],
+        ),
+      },
+    })
+
+    expect(result.data.exports).toEqual({
+      './cuid': {
+        browser: './src/cuid.browser.ts',
+        node: './src/cuid.node.ts',
+        default: './src/cuid.ts',
+      },
+    })
+    expect((result as any).meta.exportContracts).toEqual({
+      './cuid': [{ environment: 'browser' }, { environment: 'node' }],
+    })
   })
 
   it('validates that contracted exports are mirrored in publishConfig.exports', () => {
@@ -221,6 +251,36 @@ describe('packageJson', () => {
       dependency: '.',
       message:
         'Export environment contract is declared for ".", but publishConfig.exports does not contain the corresponding published subpath.',
+      rule: 'package-json-export-environment-publish-target',
+    })
+  })
+
+  it('allows source-only contracted exports to be absent from publishConfig.exports', () => {
+    const result = packageJson({
+      name: '@test/package',
+      version: '1.0.0',
+      exports: {
+        '.': exportEntry('./src/mod.ts', {
+          environment: 'isomorphic-es2024',
+        }),
+        './test': exportEntry('./src/test.ts', {
+          environment: 'node',
+          published: false,
+        }),
+      },
+      publishConfig: {
+        exports: {
+          '.': './dist/mod.js',
+        },
+      },
+    })
+
+    expect(result.validate?.(mockGenieContext)).not.toContainEqual({
+      severity: 'error',
+      packageName: '@test/package',
+      dependency: './test',
+      message:
+        'Export environment contract is declared for "./test", but publishConfig.exports does not contain the corresponding published subpath.',
       rule: 'package-json-export-environment-publish-target',
     })
   })
@@ -319,6 +379,40 @@ describe('packageJson', () => {
     })
   })
 
+  it('validates package export patterns against matching source files', () => {
+    const repo = createTempRepo('packages/pkg')
+    const packageDir = repo.memberDirs['packages/pkg']!
+    fs.mkdirSync(path.join(packageDir, 'src/testing'), { recursive: true })
+    fs.writeFileSync(path.join(packageDir, 'src/testing/ok.ts'), 'export const value = 1\n')
+    fs.writeFileSync(
+      path.join(packageDir, 'src/testing/not-ok.ts'),
+      "import fs from 'node:fs'\nexport const value = fs.readFileSync\n",
+    )
+    const result = packageJson({
+      name: '@test/package',
+      version: '1.0.0',
+      exports: {
+        './testing/*': exportEntry('./src/testing/*.ts', {
+          environment: 'isomorphic-es2024',
+        }),
+      },
+    })
+
+    const issues = result.validate?.({
+      cwd: repo.repoRoot,
+      location: 'packages/pkg',
+      validation: { packageJson: nodePackageJsonValidationRuntime },
+    })
+
+    expect(issues).toContainEqual({
+      severity: 'error',
+      packageName: '@test/package',
+      dependency: './testing/*',
+      message: expect.stringContaining('src/testing/not-ok.ts imports "node:fs"'),
+      rule: 'package-json-export-environment-import',
+    })
+  })
+
   it('invalidates strict proof cache entries when dependency metadata changes', () => {
     const repo = createTempRepo('packages/pkg')
     const packageDir = repo.memberDirs['packages/pkg']!
@@ -335,10 +429,12 @@ describe('packageJson', () => {
         packageName: '@test/package',
         exports: { '.': './src/mod.ts' },
         contracts: {
-          '.': {
-            environment: 'isomorphic-es2024',
-            typeProof: 'strict',
-          },
+          '.': [
+            {
+              environment: 'isomorphic-es2024',
+              typeProof: 'strict',
+            },
+          ],
         },
       })
 

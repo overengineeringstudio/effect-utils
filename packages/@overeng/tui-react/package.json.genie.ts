@@ -1,9 +1,10 @@
 import {
   catalog,
   workspaceMember,
+  exportEntry,
   packageJson,
   privatePackageDefaults,
-  type PackageJsonData,
+  type PackageJsonInputData,
 } from '../../../genie/internal.ts'
 import tuiCorePkg from '../tui-core/package.json.genie.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
@@ -75,10 +76,10 @@ export default packageJson(
     name: '@overeng/tui-react',
     ...privatePackageDefaults,
     exports: {
-      '.': './src/mod.tsx',
-      './node': './src/node/mod.ts',
-      './storybook': './src/storybook/mod.tsx',
-      './opentui': './src/effect/opentui/mod.tsx',
+      '.': exportEntry('./src/mod.tsx', { environment: 'node' }),
+      './node': exportEntry('./src/node/mod.ts', { environment: 'node' }),
+      './storybook': exportEntry('./src/storybook/mod.tsx', { environment: 'node' }),
+      './opentui': exportEntry('./src/effect/opentui/mod.tsx', { environment: 'node' }),
     },
     scripts: {
       storybook: 'storybook dev -p 6006',
@@ -95,6 +96,6 @@ export default packageJson(
         './opentui': './dist/effect/opentui/mod.js',
       },
     },
-  } satisfies PackageJsonData,
+  } satisfies PackageJsonInputData,
   runtimeDeps,
 )

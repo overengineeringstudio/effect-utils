@@ -11,9 +11,10 @@
 import {
   catalog,
   workspaceMember,
+  exportEntry,
   packageJson,
   privatePackageDefaults,
-  type PackageJsonData,
+  type PackageJsonInputData,
 } from '../../../genie/internal.ts'
 
 const deps = catalog.compose({
@@ -39,8 +40,8 @@ export default packageJson(
     name: '@overeng/oxc-config',
     ...privatePackageDefaults,
     exports: {
-      './plugin': './src/mod.ts',
+      './plugin': exportEntry('./src/mod.ts', { environment: 'node' }),
     },
-  } satisfies PackageJsonData,
+  } satisfies PackageJsonInputData,
   deps,
 )

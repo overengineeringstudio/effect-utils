@@ -133,3 +133,11 @@ may not yet be installed.
 - **R26 Fast-path validation:** Export environment validation must avoid turning
   `genie --check` into a bottleneck. Cheap source/import checks may run
   normally; strict TypeScript proofs must be opt-in and cacheable.
+- **R27 Conditional and patterned export coverage:** Export environment
+  contracts must support conditional exports that need more than one
+  environment proof, and package export patterns whose source target expands to
+  multiple files.
+- **R28 Source-only export contracts:** Package exports that exist for local
+  source consumers but are intentionally absent from `publishConfig.exports`
+  must remain contractable without forcing them into the published package
+  surface.
