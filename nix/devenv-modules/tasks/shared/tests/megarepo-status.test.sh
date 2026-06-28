@@ -119,4 +119,21 @@ set -e
 assert_exit_code 0 "$exit_code" "skipped member is ignored"
 
 echo ""
+echo "Test 4: shared module points setup checks at mr:setup"
+module_file="$(cd "$(dirname "$0")/.." && pwd)/megarepo.nix"
+if ! grep -F 'after = [ "mr:setup" ];' "$module_file" >/dev/null; then
+  echo "FAIL: mr:check should depend on mr:setup"
+  exit 1
+fi
+if grep -F '[devenv] Fix: devenv tasks run mr:apply' "$module_file" >/dev/null; then
+  echo "FAIL: setup repair hint should not point at mr:apply"
+  exit 1
+fi
+if ! grep -F '[devenv] Fix: devenv tasks run mr:setup' "$module_file" >/dev/null; then
+  echo "FAIL: setup repair hint should point at mr:setup"
+  exit 1
+fi
+echo "  ok: setup task is the canonical setup dependency"
+
+echo ""
 echo "All megarepo status tests passed"

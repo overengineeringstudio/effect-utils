@@ -7,12 +7,13 @@
 # - mr:setup - Materialize committed root members without fetching or rewriting locks
 # - mr:fetch-apply - Fetch latest refs and apply to workspace (mr fetch --apply)
 # - mr:lock - Record the current workspace into megarepo.lock (mr lock)
-# - mr:apply - Apply megarepo.lock exactly (mr apply)
+# - mr:apply - Apply megarepo.lock to the workspace (explicit apply operation)
 # - mr:check - Verify megarepo setup is complete
 # - mr:lock-sync-check - Verify Nix lock files match megarepo.lock revisions (~5ms)
 #
 # Options:
-# - syncAll: Whether to use `--all` (recursive nested sync). Default: true.
+# - syncAll: Whether explicit update/apply tasks use `--all` (recursive nested
+#   sync). Default: true for backwards compatibility.
 #   Set to false in CI where root members are already synced and nested sync
 #   may fail due to credential scoping or version mismatches.
 # - bootstrapMembers: Minimal members that must exist before tooling like genie
@@ -20,7 +21,8 @@
 #   refs. Default: [ ] (task becomes a no-op)
 # NOTE: No pnpm:install:megarepo dependency here — this shared module is used by
 # repos where megarepo may be a Nix package (no pnpm install needed). Repos that
-# use source-mode megarepo via pnpm should add the dependency in their devenv.nix:
+# use source-mode megarepo via pnpm should add dependencies in their devenv.nix:
+#   tasks."mr:setup".after = [ "pnpm:install:megarepo" ];
 #   tasks."mr:fetch-apply".after = [ "pnpm:install:megarepo" ];
 {
   syncAll ? true,
@@ -286,7 +288,7 @@ let
     "mr:check" = {
       guard = "mr";
       description = "Verify megarepo setup is complete";
-      after = [ "mr:apply" ];
+      after = [ "mr:setup" ];
       # Check that repos dir exists and all members have symlinks
       status = trace.status "mr:check" "path" ''
         if [ ! -f ./megarepo.kdl ] && [ ! -f ./megarepo.json ]; then
@@ -304,7 +306,7 @@ let
 
         if [ ! -d ./repos ]; then
           echo "[devenv] Missing repos/ directory." >&2
-          echo "[devenv] Fix: devenv tasks run mr:apply" >&2
+          echo "[devenv] Fix: devenv tasks run mr:setup" >&2
           exit 1
         fi
 
@@ -324,7 +326,7 @@ let
 
         if [ -n "$missing" ]; then
           echo "[devenv] Missing member symlinks:$missing" >&2
-          echo "[devenv] Fix: devenv tasks run mr:apply" >&2
+          echo "[devenv] Fix: devenv tasks run mr:setup" >&2
           exit 1
         fi
       '';
