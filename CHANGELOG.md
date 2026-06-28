@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **@overeng/megarepo / devenv tasks**: Add an explicit `--lock-sync` policy
+  to `mr apply` / `mr fetch --apply`, including `--lock-sync off` for
+  non-mutating workspace materialization, and add a shared `mr:setup` devenv
+  task that applies committed root members without fetching remotes or rewriting
+  lock files.
+
 - **devenv/lint-oxc**: Make `lintPaths` the single lint surface contract.
   oxlint/oxfmt tasks now enumerate tracked plus untracked non-ignored files via
   `git ls-files` and always run instead of delegating change detection to

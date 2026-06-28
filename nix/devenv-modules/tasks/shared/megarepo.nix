@@ -4,6 +4,7 @@
 #
 # Tasks:
 # - mr:bootstrap - Materialize the minimal lock-based members needed for local tooling
+# - mr:setup - Materialize committed root members without fetching or rewriting locks
 # - mr:fetch-apply - Fetch latest refs and apply to workspace (mr fetch --apply)
 # - mr:lock - Record the current workspace into megarepo.lock (mr lock)
 # - mr:apply - Apply megarepo.lock exactly (mr apply)
@@ -218,6 +219,22 @@ let
 
         exit 0
       '';
+    };
+
+    "mr:setup" = {
+      guard = "mr";
+      description = "Materialize committed root members without fetching or rewriting locks";
+      exec = trace.exec "mr:setup" ''
+        if [ ! -f ./megarepo.kdl ] && [ ! -f ./megarepo.json ]; then
+          exit 0
+        fi
+
+        ${loadCheckSkipMembersScript}
+        build_mr_skip_args
+        mr apply --lock-sync off "''${MR_SKIP_ARGS[@]}"
+        ${recordWorkspaceMembers}
+      '';
+      status = trace.status "mr:setup" "binary" mrStatusCheck;
     };
 
     "mr:fetch-apply" = {
