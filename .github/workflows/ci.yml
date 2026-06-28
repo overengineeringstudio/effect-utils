@@ -6,8 +6,7 @@ name: CI
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
+  pull_request: null
   workflow_dispatch:
     inputs:
       measurement_baseline_ref:

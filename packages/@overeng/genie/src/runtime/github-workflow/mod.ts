@@ -110,20 +110,40 @@ type RepositoryDispatchConfig = {
   types?: string[]
 }
 
+export type GitHubWorkflowEventAll = {
+  readonly _tag: 'GitHubWorkflowEventAll'
+}
+
+/** GitHub Actions event trigger sentinels. */
+export const githubWorkflowEvent = {
+  /** Run for every occurrence of the event without branch/path/type filters. */
+  all: { _tag: 'GitHubWorkflowEventAll' },
+} satisfies {
+  all: GitHubWorkflowEventAll
+}
+
+const isGitHubWorkflowEventAll = (value: unknown): value is GitHubWorkflowEventAll =>
+  typeof value === 'object' &&
+  value !== null &&
+  '_tag' in value &&
+  value._tag === githubWorkflowEvent.all._tag
+
+type GitHubWorkflowEventAllTrigger = null | GitHubWorkflowEventAll
+
 type OnConfig = {
   [K in EventTrigger]?: K extends 'push' | 'pull_request' | 'pull_request_target'
-    ? PushPullRequestTriggerConfig | null
+    ? PushPullRequestTriggerConfig | GitHubWorkflowEventAllTrigger
     : K extends 'schedule'
       ? ScheduleTrigger[]
       : K extends 'workflow_dispatch'
-        ? WorkflowDispatchConfig | null
+        ? WorkflowDispatchConfig | GitHubWorkflowEventAllTrigger
         : K extends 'workflow_call'
-          ? WorkflowCallConfig | null
+          ? WorkflowCallConfig | GitHubWorkflowEventAllTrigger
           : K extends 'workflow_run'
             ? WorkflowRunConfig
             : K extends 'repository_dispatch'
-              ? RepositoryDispatchConfig | null
-              : null
+              ? RepositoryDispatchConfig | GitHubWorkflowEventAllTrigger
+              : GitHubWorkflowEventAllTrigger
 }
 
 type PermissionLevel = 'read' | 'write' | 'none'
@@ -261,6 +281,17 @@ export type GitHubWorkflowArgs = {
   'run-name'?: string
   /** actionlint validation config — pass `false` to disable, or provide runner labels / ignore patterns */
   actionlint?: ActionlintConfig | false
+}
+
+const normalizeWorkflowOn = (on: GitHubWorkflowArgs['on']): GitHubWorkflowArgs['on'] => {
+  if (typeof on !== 'object' || on === null || Array.isArray(on) === true) return on
+
+  return Object.fromEntries(
+    Object.entries(on).map(([eventName, eventConfig]) => [
+      eventName,
+      isGitHubWorkflowEventAll(eventConfig) === true ? null : eventConfig,
+    ]),
+  ) as GitHubWorkflowArgs['on']
 }
 
 const invalidRunnerLabelPattern = /(^|[=:])(undefined|null)$/
@@ -490,13 +521,14 @@ const validateWorkflow = ({
 export const githubWorkflow = <const T extends GitHubWorkflowArgs>(
   args: Strict<T, GitHubWorkflowArgs>,
 ): GenieOutput<T> => {
-  const { actionlint: _actionlint, ...yamlArgs } = args
+  const normalizedArgs = { ...args, on: normalizeWorkflowOn(args.on) }
+  const { actionlint: _actionlint, ...yamlArgs } = normalizedArgs
   return createGenieOutput({
     data: args,
     stringify: (_ctx) => yaml.stringify(yamlArgs),
     validate: (ctx) => {
       const yamlContent = yaml.stringify(yamlArgs)
-      return validateWorkflow({ args, yamlContent, ctx })
+      return validateWorkflow({ args: normalizedArgs, yamlContent, ctx })
     },
   })
 }
