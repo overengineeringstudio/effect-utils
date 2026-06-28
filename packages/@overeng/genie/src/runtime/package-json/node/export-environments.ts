@@ -165,65 +165,106 @@ const findForbiddenGlobals = ({
   const sourceFile = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true)
   const issues: ValidationIssue[] = []
   const forbiddenGlobals = new Set(profile.forbiddenGlobals)
-  const declaredNames = new Set<string>()
 
-  const collectBindingNames = (name: ts.BindingName): void => {
+  const addBindingNames = ({
+    target,
+    name,
+  }: {
+    target: Set<string>
+    name: ts.BindingName
+  }): void => {
     if (ts.isIdentifier(name) === true) {
-      declaredNames.add(name.text)
+      target.add(name.text)
       return
     }
     for (const element of name.elements) {
-      if (ts.isBindingElement(element) === true) collectBindingNames(element.name)
+      if (ts.isBindingElement(element) === true) addBindingNames({ target, name: element.name })
     }
   }
 
-  const collectDeclarations = (node: ts.Node): void => {
-    if (ts.isImportSpecifier(node) === true) declaredNames.add(node.name.text)
-    if (ts.isImportClause(node) === true && node.name !== undefined)
-      declaredNames.add(node.name.text)
-    if (ts.isNamespaceImport(node) === true) declaredNames.add(node.name.text)
-    if (ts.isVariableDeclaration(node) === true) collectBindingNames(node.name)
-    if (ts.isParameter(node) === true) collectBindingNames(node.name)
-    if (
-      (ts.isFunctionDeclaration(node) === true ||
-        ts.isClassDeclaration(node) === true ||
-        ts.isInterfaceDeclaration(node) === true ||
-        ts.isTypeAliasDeclaration(node) === true) &&
-      node.name !== undefined
-    ) {
-      declaredNames.add(node.name.text)
+  const isScopeBoundary = (node: ts.Node): boolean =>
+    ts.isSourceFile(node) === true ||
+    ts.isBlock(node) === true ||
+    ts.isModuleBlock(node) === true ||
+    ts.isCaseBlock(node) === true ||
+    ts.isCatchClause(node) === true ||
+    ts.isFunctionLike(node) === true
+
+  const collectScopeDeclarations = (node: ts.Node): Set<string> => {
+    const declarations = new Set<string>()
+    if (ts.isFunctionLike(node) === true) {
+      for (const parameter of node.parameters) {
+        addBindingNames({ target: declarations, name: parameter.name })
+      }
     }
-    ts.forEachChild(node, collectDeclarations)
+    if (ts.isCatchClause(node) === true && node.variableDeclaration !== undefined) {
+      addBindingNames({ target: declarations, name: node.variableDeclaration.name })
+    }
+
+    const visitDeclaration = (child: ts.Node): void => {
+      if (child !== node && isScopeBoundary(child) === true) return
+      if (ts.isImportSpecifier(child) === true) declarations.add(child.name.text)
+      if (ts.isImportClause(child) === true && child.name !== undefined)
+        declarations.add(child.name.text)
+      if (ts.isNamespaceImport(child) === true) declarations.add(child.name.text)
+      if (ts.isVariableDeclaration(child) === true)
+        addBindingNames({ target: declarations, name: child.name })
+      if (
+        (ts.isFunctionDeclaration(child) === true ||
+          ts.isClassDeclaration(child) === true ||
+          ts.isInterfaceDeclaration(child) === true ||
+          ts.isTypeAliasDeclaration(child) === true) &&
+        child.name !== undefined
+      ) {
+        declarations.add(child.name.text)
+      }
+      ts.forEachChild(child, visitDeclaration)
+    }
+
+    ts.forEachChild(node, visitDeclaration)
+    return declarations
   }
 
-  collectDeclarations(sourceFile)
+  const isDeclarationName = (node: ts.Identifier): boolean => {
+    const parent = node.parent
+    return (
+      parent !== undefined &&
+      ((ts.isBindingElement(parent) === true && parent.name === node) ||
+        (ts.isImportSpecifier(parent) === true && parent.name === node) ||
+        (ts.isImportClause(parent) === true && parent.name === node) ||
+        (ts.isNamespaceImport(parent) === true && parent.name === node) ||
+        (ts.isVariableDeclaration(parent) === true && parent.name === node) ||
+        (ts.isFunctionDeclaration(parent) === true && parent.name === node) ||
+        (ts.isParameter(parent) === true && parent.name === node) ||
+        (ts.isClassDeclaration(parent) === true && parent.name === node) ||
+        (ts.isInterfaceDeclaration(parent) === true && parent.name === node) ||
+        (ts.isTypeAliasDeclaration(parent) === true && parent.name === node))
+    )
+  }
 
-  const visit = (node: ts.Node): void => {
+  const isPropertyName = (node: ts.Identifier): boolean => {
+    const parent = node.parent
+    return (
+      parent !== undefined &&
+      ((ts.isPropertyAccessExpression(parent) === true && parent.name === node) ||
+        (ts.isPropertyAssignment(parent) === true && parent.name === node) ||
+        (ts.isPropertyDeclaration(parent) === true && parent.name === node) ||
+        (ts.isMethodDeclaration(parent) === true && parent.name === node) ||
+        (ts.isExportSpecifier(parent) === true && parent.name === node))
+    )
+  }
+
+  const visit = ({ node, scopes }: { node: ts.Node; scopes: readonly Set<string>[] }): void => {
+    const nextScopes =
+      isScopeBoundary(node) === true ? [...scopes, collectScopeDeclarations(node)] : scopes
+
     if (
       ts.isIdentifier(node) === true &&
       forbiddenGlobals.has(node.text) === true &&
-      declaredNames.has(node.text) === false
+      isDeclarationName(node) === false &&
+      isPropertyName(node) === false &&
+      nextScopes.some((scope) => scope.has(node.text)) === false
     ) {
-      const parent = node.parent
-      if (
-        parent !== undefined &&
-        ((ts.isPropertyAccessExpression(parent) === true && parent.name === node) ||
-          (ts.isPropertyAssignment(parent) === true && parent.name === node) ||
-          (ts.isPropertyDeclaration(parent) === true && parent.name === node) ||
-          (ts.isMethodDeclaration(parent) === true && parent.name === node) ||
-          (ts.isBindingElement(parent) === true && parent.name === node) ||
-          (ts.isImportSpecifier(parent) === true && parent.name === node) ||
-          (ts.isExportSpecifier(parent) === true && parent.name === node) ||
-          (ts.isVariableDeclaration(parent) === true && parent.name === node) ||
-          (ts.isFunctionDeclaration(parent) === true && parent.name === node) ||
-          (ts.isParameter(parent) === true && parent.name === node) ||
-          (ts.isClassDeclaration(parent) === true && parent.name === node) ||
-          (ts.isInterfaceDeclaration(parent) === true && parent.name === node) ||
-          (ts.isTypeAliasDeclaration(parent) === true && parent.name === node))
-      ) {
-        ts.forEachChild(node, visit)
-        return
-      }
       issues.push(
         issue({
           packageName,
@@ -233,10 +274,10 @@ const findForbiddenGlobals = ({
         }),
       )
     }
-    ts.forEachChild(node, visit)
+    ts.forEachChild(node, (child) => visit({ node: child, scopes: nextScopes }))
   }
 
-  visit(sourceFile)
+  visit({ node: sourceFile, scopes: [] })
   return issues
 }
 
@@ -342,7 +383,7 @@ const resolveTargetEntries = ({
   const wildcardIndex = absoluteTarget.indexOf('*')
   const basePrefix = absoluteTarget.slice(0, wildcardIndex)
   const baseDir = basePrefix.endsWith(path.sep) === true ? basePrefix : path.dirname(basePrefix)
-  const targetPattern = new RegExp(`^${escapeRegExp(absoluteTarget).replaceAll('\\*', '[^/]*')}$`)
+  const targetPattern = new RegExp(`^${escapeRegExp(absoluteTarget).replaceAll('\\*', '.*')}$`)
 
   return walkFiles(baseDir).filter((file) => targetPattern.test(file))
 }

@@ -379,14 +379,54 @@ describe('packageJson', () => {
     })
   })
 
+  it('does not let scoped forbidden-global declarations mask outer usage', () => {
+    const repo = createTempRepo('packages/pkg')
+    const packageDir = repo.memberDirs['packages/pkg']!
+    fs.mkdirSync(path.join(packageDir, 'src'))
+    fs.writeFileSync(
+      path.join(packageDir, 'src/mod.ts'),
+      [
+        'export const local = (process: { env: Record<string, string> }) => process.env.LOCAL',
+        'export const outer = process.env.OUTER',
+      ].join('\n'),
+    )
+    const result = packageJson({
+      name: '@test/package',
+      version: '1.0.0',
+      exports: {
+        '.': exportEntry('./src/mod.ts', {
+          environment: 'isomorphic-es2024',
+        }),
+      },
+    })
+
+    const issues = result.validate?.({
+      cwd: repo.repoRoot,
+      location: 'packages/pkg',
+      validation: { packageJson: nodePackageJsonValidationRuntime },
+    })
+
+    expect(
+      issues?.filter(
+        (issue) =>
+          issue.rule === 'package-json-export-environment-global' &&
+          issue.message.includes('references forbidden global "process"'),
+      ),
+    ).toHaveLength(1)
+  })
+
   it('validates package export patterns against matching source files', () => {
     const repo = createTempRepo('packages/pkg')
     const packageDir = repo.memberDirs['packages/pkg']!
-    fs.mkdirSync(path.join(packageDir, 'src/testing'), { recursive: true })
+    fs.mkdirSync(path.join(packageDir, 'src/testing/e2e'), { recursive: true })
     fs.writeFileSync(path.join(packageDir, 'src/testing/ok.ts'), 'export const value = 1\n')
     fs.writeFileSync(
       path.join(packageDir, 'src/testing/not-ok.ts'),
       "import fs from 'node:fs'\nexport const value = fs.readFileSync\n",
+    )
+    fs.writeFileSync(
+      path.join(packageDir, 'src/testing/e2e/not-ok.ts'),
+      "import crypto from 'node:crypto'\nexport const value = crypto.randomUUID\n",
     )
     const result = packageJson({
       name: '@test/package',
@@ -409,6 +449,13 @@ describe('packageJson', () => {
       packageName: '@test/package',
       dependency: './testing/*',
       message: expect.stringContaining('src/testing/not-ok.ts imports "node:fs"'),
+      rule: 'package-json-export-environment-import',
+    })
+    expect(issues).toContainEqual({
+      severity: 'error',
+      packageName: '@test/package',
+      dependency: './testing/*',
+      message: expect.stringContaining('src/testing/e2e/not-ok.ts imports "node:crypto"'),
       rule: 'package-json-export-environment-import',
     })
   })
