@@ -25,6 +25,42 @@ export default tsconfigJSON({
 - **Complete coverage**: Supports all tsconfig fields including watch options and ts-node configuration
 - **Reference support**: Project references for monorepo setups
 
+## Workspace References
+
+Keep `tsconfigJson(...)` as a direct model of `tsconfig.json`. For reusable
+cross-artifact composition, import helpers from `@overeng/genie/composition`:
+
+```ts
+import { tsconfigJson } from '@overeng/genie'
+import { tsconfigReferencesFromPackages } from '@overeng/genie/composition'
+
+import appPkg from './package.json.genie.ts'
+
+export default tsconfigJson({
+  compilerOptions: {
+    composite: true,
+    rootDir: '.',
+    outDir: './dist',
+  },
+  include: ['src/**/*.ts'],
+  references: tsconfigReferencesFromPackages({ from: appPkg }),
+})
+```
+
+When target tsconfig data is available, pass it with each package entry so the
+helper can apply TypeScript project-reference target rules such as skipping
+`noEmit: true` targets:
+
+```ts
+import utilsPkg from '../utils/package.json.genie.ts'
+import utilsTsconfig from '../utils/tsconfig.json.genie.ts'
+
+references: tsconfigReferencesFromPackages({
+  from: appPkg,
+  packages: [{ package: utilsPkg, tsconfig: utilsTsconfig }],
+})
+```
+
 ## Type Reference
 
 See [TypeScript tsconfig reference](https://www.typescriptlang.org/tsconfig) for detailed documentation on all compiler options.

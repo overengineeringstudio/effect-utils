@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/runtime/mod.ts",
     "./cli": "./src/build/mod.tsx",
+    "./composition": "./src/runtime/composition/mod.ts",
     "./node": "./src/runtime/node/mod.ts",
     "./sdk": "./src/sdk/mod.ts"
   },
@@ -14,6 +15,7 @@
     "exports": {
       ".": "./dist/src/runtime/mod.js",
       "./node": "./dist/src/runtime/node/mod.js",
+      "./composition": "./dist/src/runtime/composition/mod.js",
       "./cli": "./dist/src/build/mod.js",
       "./sdk": "./dist/src/sdk/mod.js"
     }

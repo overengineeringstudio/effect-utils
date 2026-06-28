@@ -147,6 +147,24 @@ Each generator has its own documentation:
 - **[oxfmt-config](./src/lib/oxfmt-config/README.md)** - Generate `oxfmt.jsonc` configuration files
 - **[pnpm-workspace](./src/lib/pnpm-workspace/README.md)** - Generate `pnpm-workspace.yaml` files
 
+## Composition Helpers
+
+The canonical `@overeng/genie` export exposes the thin artifact builders. Use
+`@overeng/genie/composition` for reusable cross-artifact helpers that consume
+structured generator metadata explicitly.
+
+```ts
+import { tsconfigJson } from '@overeng/genie'
+import { tsconfigReferencesFromPackages } from '@overeng/genie/composition'
+
+import appPkg from './package.json.genie.ts'
+
+export default tsconfigJson({
+  compilerOptions: { composite: true },
+  references: tsconfigReferencesFromPackages({ from: appPkg }),
+})
+```
+
 ## Features
 
 - **Read-only output** - Generated files are marked read-only by default to prevent accidental edits
