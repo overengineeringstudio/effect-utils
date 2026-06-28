@@ -1,6 +1,7 @@
 import {
   catalog,
   workspaceMember,
+  exportEntry,
   packageJson,
   privatePackageDefaults,
 } from '../../../genie/internal.ts'
@@ -58,7 +59,10 @@ export default packageJson(
       // consumer (e.g. a `.bzl` genie generator) can import `GenieOutput`/`Strict` and the builders without
       // dragging genie's runtime ambient globals into its program. Filesystem/spawn capabilities used during
       // validation are injected via `GenieContext` (`io`, `actionlint`) by the engine.
-      '.': './src/runtime/mod.ts',
+      '.': exportEntry('./src/runtime/mod.ts', {
+        environment: 'isomorphic-es2024',
+        typeProof: 'strict',
+      }),
       // Node-resident entry: re-exports `.` plus the node-only members (nodeGenieIO, actionlint runner,
       // github-ruleset reconcile ops, fs-discovery tsconfigJsonFromPackages, repo-context).
       './node': './src/runtime/node/mod.ts',

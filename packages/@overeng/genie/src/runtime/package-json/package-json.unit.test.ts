@@ -4,8 +4,9 @@ import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-import { packageJson, type GenieContext, type PackageInfo } from '../mod.ts'
+import { exportEntry, packageJson, type GenieContext, type PackageInfo } from '../mod.ts'
 import { defineCatalog } from './catalog.ts'
+import { nodePackageJsonValidationRuntime } from './node/export-environments.ts'
 
 /** Mock GenieContext for package tests (nested package location) */
 const mockGenieContext: GenieContext = {
@@ -172,6 +173,112 @@ describe('packageJson', () => {
     const paths = Object.keys(parsed.exports)
     expect(paths[0]).toBe('.')
   })
+
+  it('normalizes exportEntry contracts into non-emitted package-json metadata', () => {
+    const result = packageJson({
+      name: '@test/package',
+      version: '1.0.0',
+      exports: {
+        '.': exportEntry('./src/mod.ts', {
+          environment: 'isomorphic-es2024',
+          typeProof: 'strict',
+        }),
+      },
+    })
+
+    expect(result.data.exports).toEqual({
+      '.': './src/mod.ts',
+    })
+    expect((result as any).meta.exportContracts).toEqual({
+      '.': {
+        environment: 'isomorphic-es2024',
+        typeProof: 'strict',
+      },
+    })
+    expect(JSON.parse(result.stringify(mockGenieContext)).exports).toEqual({
+      '.': './src/mod.ts',
+    })
+    expect(JSON.parse(result.stringify(mockGenieContext))).not.toHaveProperty('meta')
+  })
+
+  it('validates that contracted exports are mirrored in publishConfig.exports', () => {
+    const result = packageJson({
+      name: '@test/package',
+      version: '1.0.0',
+      exports: {
+        '.': exportEntry('./src/mod.ts', {
+          environment: 'isomorphic-es2024',
+        }),
+      },
+      publishConfig: {
+        exports: {},
+      },
+    })
+
+    expect(result.validate?.(mockGenieContext)).toContainEqual({
+      severity: 'error',
+      packageName: '@test/package',
+      dependency: '.',
+      message:
+        'Export environment contract is declared for ".", but publishConfig.exports does not contain the corresponding published subpath.',
+      rule: 'package-json-export-environment-publish-target',
+    })
+  })
+
+  it('uses the package-json node validation runtime to catch forbidden imports', () => {
+    const repo = createTempRepo('packages/pkg')
+    const packageDir = repo.memberDirs['packages/pkg']!
+    fs.mkdirSync(path.join(packageDir, 'src'))
+    fs.writeFileSync(
+      path.join(packageDir, 'src/mod.ts'),
+      "import fs from 'node:fs'\nexport const read = fs.readFileSync\n",
+    )
+    const result = packageJson({
+      name: '@test/package',
+      version: '1.0.0',
+      exports: {
+        '.': exportEntry('./src/mod.ts', {
+          environment: 'isomorphic-es2024',
+        }),
+      },
+    })
+
+    const issues = result.validate?.({
+      cwd: repo.repoRoot,
+      location: 'packages/pkg',
+      validation: { packageJson: nodePackageJsonValidationRuntime },
+    })
+
+    expect(issues).toContainEqual({
+      severity: 'error',
+      packageName: '@test/package',
+      dependency: '.',
+      message: expect.stringContaining('imports "node:fs"'),
+      rule: 'package-json-export-environment-import',
+    })
+  })
+
+  it('accepts a strict isomorphic TypeScript proof for the pure genie runtime entry', () => {
+    const repoRoot = path.resolve(import.meta.dirname, '../../../../../..')
+    const result = packageJson({
+      name: '@overeng/genie',
+      version: '0.0.0',
+      exports: {
+        '.': exportEntry('./src/runtime/mod.ts', {
+          environment: 'isomorphic-es2024',
+          typeProof: 'strict',
+        }),
+      },
+    })
+
+    const issues = result.validate?.({
+      cwd: repoRoot,
+      location: 'packages/@overeng/genie',
+      validation: { packageJson: nodePackageJsonValidationRuntime },
+    })
+
+    expect(issues).toEqual([])
+  }, 30_000)
 
   it('preserves non-emitted metadata when provided as the second argument', () => {
     const result = packageJson(

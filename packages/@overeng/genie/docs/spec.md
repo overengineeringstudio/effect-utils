@@ -17,6 +17,7 @@ This spec defines:
   composition helpers
 - import resolution, including megarepo-aware `#mr/...` imports
 - the end-to-end generation and check pipeline
+- package-json-owned export environment contracts
 
 This spec does not define:
 
@@ -192,6 +193,67 @@ Discovery must enforce these invariants before generation begins:
 - no two sources may claim the same target path
 
 After discovery, Genie runs repository-wide validation before reporting success. Validation warnings are emitted to the event stream and surfaced in the UI, but hard validation failures abort the run.
+
+Validation context may carry an opaque `validation` extension registry. Genie
+core owns only the registry transport; each domain owns the shape and semantics
+of its entry. The `package-json` domain uses `validation.packageJson` for
+node-side package manifest checks that need dependency-backed JavaScript tooling.
+
+## Package Export Environment Contracts
+
+The package-json generator supports non-emitted environment contracts on package
+exports. Authors attach a contract next to the export target:
+
+```ts
+exports: {
+  '.': exportEntry('./src/runtime/mod.ts', {
+    environment: 'isomorphic-es2024',
+    typeProof: 'strict',
+  }),
+  './node': exportEntry('./src/runtime/node/mod.ts', {
+    environment: 'node',
+  }),
+}
+```
+
+`exportEntry(target, contract)` is an authoring helper. The emitted
+`package.json` remains ordinary package.json:
+
+```json
+{
+  "exports": {
+    ".": "./src/runtime/mod.ts",
+    "./node": "./src/runtime/node/mod.ts"
+  }
+}
+```
+
+The contract is stored only in the generator's structured metadata as
+`meta.exportContracts`. That metadata lets package-json validation check the
+source export without exposing Genie-specific keys to package managers.
+
+Package-json pure validation owns structural checks:
+
+- every contracted export subpath must exist in emitted `exports`
+- if `publishConfig.exports` is present, contracted source subpaths must be
+  mirrored there
+
+The package-json node validation runtime owns JavaScript environment checks. It
+is deliberately isolated below `src/runtime/package-json/node/` so pure runtime
+imports do not value-import TypeScript or node-only modules. The validator:
+
+- resolves the export target for the contract's environment conditions
+- scans the transitive relative source import graph for forbidden imports and
+  forbidden globals
+- runs a TypeScript environment proof only when the contract requests
+  `typeProof: 'strict'`
+- caches successful strict proofs under
+  `.devenv/task-cache/genie-package-json-export-environments/`
+
+Built-in environment profiles are data, not core behavior. The initial profile
+set covers `isomorphic-es2024`, `node`, `bun`, `browser`, `webworker`,
+`workerd`, and `react-native`. Profiles define export-condition preference,
+forbidden imports/globals, and optional TypeScript proof settings.
 
 ## Generation Pipeline
 

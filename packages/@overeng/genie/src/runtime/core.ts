@@ -68,6 +68,15 @@ export type GenieContext = {
   actionlint?: GenieActionlintRunner
   /** JSONC parser — injected by the engine during validation, undefined during stringify (GenieJsoncParser). */
   parseJsonc?: GenieJsoncParser
+  /**
+   * Optional domain-specific validation runtimes injected by the engine.
+   *
+   * The core runtime intentionally keeps this as an opaque registry so domain
+   * packages own their validator contracts. For example, `package-json`
+   * defines the shape of `validation.packageJson` without making Genie core a
+   * JavaScript package/export validation framework.
+   */
+  validation?: Record<string, unknown>
 }
 
 /**

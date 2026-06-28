@@ -171,6 +171,12 @@
       }
     },
     {
+      "files": ["**/genie/src/runtime/package-json/node/**"],
+      "rules": {
+        "overeng/no-external-imports": "off"
+      }
+    },
+    {
       "files": ["**/genie/**", "**/*.genie.ts", "**/examples/**"],
       "rules": {
         "overeng/jsdoc-require-exports": "off"
