@@ -33,6 +33,11 @@ may not yet be installed.
   layer rather than the runtime layer. This tradeoff is acceptable because
   bootstrap safety and cross-repo composability matter more than making every
   helper usable from the runtime surface.
+- **T03 Domain-owned heavy validation:** A domain generator may own node-side
+  validation helpers for checks that need dependency-backed tooling, but Genie
+  core must remain a generic validation runner. Domain-specific validation
+  state should flow through an explicit extension point rather than hardcoding
+  that domain into core.
 
 ## Requirements
 
@@ -88,6 +93,9 @@ may not yet be installed.
   repository's ignore rules so ignored local state, nested agent worktrees, and
   other non-source scratch directories cannot become ambient generation input.
   Untracked but non-ignored `.genie.ts` sources must still be discovered.
+- **R15a Domain validation extensions:** Genie validation context may carry an
+  opaque extension registry for domain-owned validators. The registry must not
+  make core depend on the domain's schema, runtime, or external tooling.
 
 ### Must support the main operating modes
 
@@ -112,3 +120,16 @@ may not yet be installed.
   the major repository artifact classes it already serves, including package
   manifests, TypeScript configuration, formatter/linter config, and GitHub
   workflow artifacts.
+- **R23 Package export environment contracts:** Package manifest generation
+  must allow a package export to declare the JavaScript environment it conforms
+  to while emitting ordinary package.json exports.
+- **R24 Package-json-owned export validation:** JavaScript export environment
+  validation must be owned by the package-json generator. Genie core must not
+  grow JavaScript-specific export, runtime, or TypeScript proof semantics.
+- **R25 Constrained-environment coverage:** Export environment contracts must
+  be able to represent constrained JavaScript targets including at least
+  isomorphic ES, Node, Bun, browser, Web Worker, Cloudflare Workers/workerd, and
+  React Native.
+- **R26 Fast-path validation:** Export environment validation must avoid turning
+  `genie --check` into a bottleneck. Cheap source/import checks may run
+  normally; strict TypeScript proofs must be opt-in and cacheable.

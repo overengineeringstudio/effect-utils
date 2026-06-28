@@ -13,6 +13,7 @@ import type { PnpmPackageClosureConfig } from '../pnpm-workspace/mod.ts'
 import { projectPnpmPackageClosure } from '../pnpm-workspace/mod.ts'
 import { relativeRepoPath, rootWorkspaceMemberPathsFromPackages } from '../workspace-graph.ts'
 import { PackageJsonCompositionBrand, type PackageJsonComposition } from './catalog.ts'
+import type { ValidationIssue } from './validation.ts'
 import {
   validatePackageRecompositionForPackage,
   validateWorkspaceMetadataPresenceForPackageJson,
@@ -129,6 +130,76 @@ type ExportsEntry =
       types?: string
       browser?: string
     }
+
+/** Built-in JavaScript runtime/type environments for package export contracts. */
+export type ExportEnvironmentName =
+  | 'isomorphic-es2024'
+  | 'node'
+  | 'bun'
+  | 'browser'
+  | 'webworker'
+  | 'workerd'
+  | 'react-native'
+
+/** How much type-level proof to run for a package export environment contract. */
+export type ExportTypeProofMode = 'off' | 'strict'
+
+/** JavaScript environment contract attached to one package export entry. */
+export type ExportEnvironmentContract = {
+  /** Named environment profile the export entry must conform to. */
+  environment: ExportEnvironmentName | (string & {})
+  /** Whether to prove the transitive type closure under the environment profile. */
+  typeProof?: ExportTypeProofMode
+}
+
+type AuthoredExportEntry = ExportsEntry | ExportEntryContract
+
+type PackageJsonInputData = Omit<PackageJsonData, 'exports'> & {
+  /** Package entry points, optionally annotated with non-emitted environment contracts. */
+  exports?: Record<string, AuthoredExportEntry>
+}
+
+type PackageJsonComposedInputData = Omit<
+  PackageJsonInputData,
+  'dependencies' | 'devDependencies' | 'peerDependencies'
+> & {
+  dependencies?: never
+  devDependencies?: never
+  peerDependencies?: never
+}
+
+/** Non-emitted package.json validation metadata owned by the package-json generator. */
+export type PackageJsonValidationMeta = {
+  exportContracts?: Record<string, ExportEnvironmentContract>
+}
+
+/** Package-json node validation runtime injected by the Genie engine. */
+export type PackageJsonValidationRuntime = {
+  validateExportEnvironments: (args: {
+    cwd: string
+    location: string
+    packageName: string
+    exports: Record<string, ExportsEntry>
+    publishExports?: Record<string, ExportsEntry>
+    contracts: Record<string, ExportEnvironmentContract>
+  }) => {
+    issues: ValidationIssue[]
+    durationMs: number
+    cache?: { hits: number; misses: number }
+  }
+}
+
+type ExportEntryContract = {
+  target: ExportsEntry
+  contract: ExportEnvironmentContract
+}
+
+/** Annotate a package export target with a non-emitted JavaScript environment contract. */
+// oxlint-disable-next-line overeng/named-args -- authoring DSL mirrors package.json's export target plus adjacent contract.
+export const exportEntry = <const TTarget extends ExportsEntry>(
+  target: TTarget,
+  contract: ExportEnvironmentContract,
+): ExportEntryContract => ({ target, contract })
 
 type Funding =
   | string
@@ -327,13 +398,104 @@ export type WorkspacePackageLike = {
 /** Package.json genie output that carries workspace-composition metadata. */
 export type WorkspacePackage = GenieOutput<PackageJsonData, WorkspaceMeta>
 
-type PackageJsonComposedData = Omit<
-  PackageJsonData,
-  'dependencies' | 'devDependencies' | 'peerDependencies'
-> & {
-  dependencies?: never
-  devDependencies?: never
-  peerDependencies?: never
+const isExportEntryContract = (entry: AuthoredExportEntry): entry is ExportEntryContract =>
+  typeof entry === 'object' && entry !== null && 'target' in entry && 'contract' in entry
+
+const normalizeExports = (
+  exports: Record<string, AuthoredExportEntry> | undefined,
+): {
+  exports?: Record<string, ExportsEntry>
+  contracts?: Record<string, ExportEnvironmentContract>
+} => {
+  if (exports === undefined) return {}
+
+  const normalized: Record<string, ExportsEntry> = {}
+  const contracts: Record<string, ExportEnvironmentContract> = {}
+
+  for (const [exportPath, entry] of Object.entries(exports)) {
+    if (isExportEntryContract(entry) === true) {
+      normalized[exportPath] = entry.target
+      contracts[exportPath] = entry.contract
+    } else {
+      normalized[exportPath] = entry
+    }
+  }
+
+  return {
+    exports: normalized,
+    ...(Object.keys(contracts).length === 0 ? {} : { contracts }),
+  }
+}
+
+const packageJsonValidationRuntime = (
+  ctx: GenieContext,
+): PackageJsonValidationRuntime | undefined => {
+  const runtime = ctx.validation?.packageJson
+  if (runtime === undefined || typeof runtime !== 'object' || runtime === null) return undefined
+  if (
+    'validateExportEnvironments' in runtime &&
+    typeof runtime.validateExportEnvironments === 'function'
+  ) {
+    return runtime as PackageJsonValidationRuntime
+  }
+  return undefined
+}
+
+const validateExportEnvironmentContracts = ({
+  ctx,
+  data,
+  contracts,
+}: {
+  ctx: GenieContext
+  data: PackageJsonData
+  contracts: Record<string, ExportEnvironmentContract> | undefined
+}): ValidationIssue[] => {
+  if (contracts === undefined) return []
+
+  const packageName = data.name ?? '(anonymous package)'
+  const issues: ValidationIssue[] = []
+
+  for (const exportPath of Object.keys(contracts)) {
+    if (data.exports?.[exportPath] === undefined) {
+      issues.push({
+        severity: 'error',
+        packageName,
+        dependency: exportPath,
+        message: `Export environment contract is declared for "${exportPath}", but package.json exports does not contain that subpath.`,
+        rule: 'package-json-export-environment-contract-target',
+      })
+    }
+
+    if (
+      data.publishConfig?.exports !== undefined &&
+      data.publishConfig.exports[exportPath] === undefined
+    ) {
+      issues.push({
+        severity: 'error',
+        packageName,
+        dependency: exportPath,
+        message: `Export environment contract is declared for "${exportPath}", but publishConfig.exports does not contain the corresponding published subpath.`,
+        rule: 'package-json-export-environment-publish-target',
+      })
+    }
+  }
+
+  const runtime = packageJsonValidationRuntime(ctx)
+  if (runtime === undefined || data.exports === undefined) return issues
+
+  const result = runtime.validateExportEnvironments({
+    cwd: ctx.cwd,
+    location: ctx.location,
+    packageName,
+    exports: data.exports,
+    ...(data.publishConfig?.exports === undefined
+      ? {}
+      : { publishExports: data.publishConfig.exports }),
+    contracts,
+  })
+
+  issues.push(...result.issues)
+  return issues
 }
 
 type PackageJsonMetadataInput<TMeta extends object = {}> = TMeta & {
@@ -615,17 +777,17 @@ const buildPackageJson = <T extends PackageJsonData>({
  * )
  * ```
  */
-function createPackageJson<const T extends PackageJsonData>(
-  data: Strict<T, PackageJsonData>,
-): GenieOutput<T>
-function createPackageJson<const T extends PackageJsonComposedData>(
-  data: Strict<T, PackageJsonComposedData>,
+function createPackageJson<const T extends PackageJsonInputData>(
+  data: Strict<T, PackageJsonInputData>,
+): GenieOutput<PackageJsonData, PackageJsonValidationMeta>
+function createPackageJson<const T extends PackageJsonComposedInputData>(
+  data: Strict<T, PackageJsonComposedInputData>,
   composition: PackageJsonComposition,
-): GenieOutput<T, WorkspaceMeta>
-function createPackageJson<const T extends PackageJsonData, const TMeta extends object>(
-  data: Strict<T, PackageJsonData>,
+): GenieOutput<PackageJsonData, WorkspaceMeta & PackageJsonValidationMeta>
+function createPackageJson<const T extends PackageJsonInputData, const TMeta extends object>(
+  data: Strict<T, PackageJsonInputData>,
   meta: PackageJsonMetadataInput<TMeta>,
-): GenieOutput<T, TMeta>
+): GenieOutput<PackageJsonData, TMeta & PackageJsonValidationMeta>
 /**
  * Genie convention: the first arg is emitted data and the second arg is
  * non-emitted metadata.
@@ -636,8 +798,8 @@ function createPackageJson<const T extends PackageJsonData, const TMeta extends 
  * for unrelated concerns.
  */
 // oxlint-disable-next-line overeng/named-args
-function createPackageJson<const T extends PackageJsonData, const TMeta>(
-  data: Strict<T, PackageJsonData>,
+function createPackageJson<const T extends PackageJsonInputData, const TMeta>(
+  data: Strict<T, PackageJsonInputData>,
   meta?: TMeta,
 ) {
   const hasManualDepsWithComposition =
@@ -660,11 +822,16 @@ function createPackageJson<const T extends PackageJsonData, const TMeta>(
     meta !== null &&
     'composition' in meta
   const composition = isPackageJsonComposition(meta) === true ? meta : undefined
+  const normalizedExports = normalizeExports(data.exports)
+  const normalizedInputData = {
+    ...data,
+    ...(normalizedExports.exports === undefined ? {} : { exports: normalizedExports.exports }),
+  } satisfies PackageJsonData
 
   const effectiveData =
     composition !== undefined
       ? ({
-          ...data,
+          ...normalizedInputData,
           ...(Object.keys(composition.dependencies).length === 0
             ? {}
             : { dependencies: composition.dependencies }),
@@ -675,12 +842,24 @@ function createPackageJson<const T extends PackageJsonData, const TMeta>(
             ? {}
             : { peerDependencies: composition.peerDependencies }),
         } satisfies PackageJsonData)
-      : data
+      : normalizedInputData
 
-  const effectiveMeta =
-    composition !== undefined
-      ? ({ workspace: composition.workspace } satisfies WorkspaceMeta)
-      : meta
+  const packageJsonValidationMeta =
+    normalizedExports.contracts === undefined
+      ? undefined
+      : ({ exportContracts: normalizedExports.contracts } satisfies PackageJsonValidationMeta)
+
+  const effectiveMeta = (() => {
+    const base =
+      composition !== undefined
+        ? ({ workspace: composition.workspace } satisfies WorkspaceMeta)
+        : meta
+    if (packageJsonValidationMeta === undefined) return base
+    if (base !== undefined && typeof base === 'object' && base !== null) {
+      return { ...base, ...packageJsonValidationMeta }
+    }
+    return packageJsonValidationMeta
+  })()
 
   const effectiveGvsTypeExtensions =
     composition !== undefined && 'gvsTypeExtensions' in composition
@@ -740,6 +919,11 @@ function createPackageJson<const T extends PackageJsonData, const TMeta>(
             data: effectiveData,
             metadata: effectiveWorkspaceMeta,
           })),
+      ...validateExportEnvironmentContracts({
+        ctx,
+        data: effectiveData,
+        contracts: packageJsonValidationMeta?.exportContracts,
+      }),
       ...(hasManualDepsWithComposition === true
         ? [
             {

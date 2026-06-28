@@ -6,6 +6,13 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **@overeng/genie**: Add package-json-owned export environment contracts for
+  JavaScript package entries. `exportEntry(...)` attaches non-emitted runtime
+  and type-level environment metadata to generated package exports, while the
+  package-json validator owns the Node-only static import/global scanner,
+  strict TypeScript proof, and cache-backed fast path for constrained
+  environments such as Node, browsers, Workers, Workerd, and React Native.
+
 - **devenv/lint-oxc**: Make `lintPaths` the single lint surface contract.
   oxlint/oxfmt tasks now enumerate tracked plus untracked non-ignored files via
   `git ls-files` and always run instead of delegating change detection to
