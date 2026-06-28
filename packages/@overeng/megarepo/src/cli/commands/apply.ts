@@ -7,7 +7,14 @@
 import * as Cli from '@effect/cli'
 
 import { outputOption, verboseOption } from '../context.ts'
-import { runCommand } from './engine.ts'
+import { runCommand, type LockSyncMode } from './engine.ts'
+
+const lockSyncOption = Cli.Options.choice('lock-sync', ['auto', 'off', 'direct', 'recursive']).pipe(
+  Cli.Options.withDescription(
+    'Lock-file rewrite policy during apply: auto, off, direct members only, or recursive nested megarepos',
+  ),
+  Cli.Options.withDefault('auto' as LockSyncMode),
+)
 
 /** `mr apply` — Lock → Workspace: create worktrees, symlink, nix lock sync, generators. */
 export const applyCommand = Cli.Command.make(
@@ -47,9 +54,10 @@ export const applyCommand = Cli.Command.make(
       ),
       Cli.Options.withDefault('auto' as const),
     ),
+    lockSync: lockSyncOption,
     verbose: verboseOption,
   },
-  ({ output, dryRun, force, all, only, skip, gitProtocol, worktreeMode, verbose }) =>
+  ({ output, dryRun, force, all, only, skip, gitProtocol, worktreeMode, lockSync, verbose }) =>
     runCommand({
       mode: 'apply',
       output,
@@ -62,6 +70,7 @@ export const applyCommand = Cli.Command.make(
       createBranches: false,
       verbose,
       worktreeMode,
+      lockSyncMode: lockSync,
     }),
 ).pipe(
   Cli.Command.withDescription(

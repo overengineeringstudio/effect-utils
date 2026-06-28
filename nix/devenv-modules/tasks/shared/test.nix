@@ -43,10 +43,10 @@ let
   # Do not force preserve-symlinks here. pnpm's projected workspace graph
   # relies on realpath-based resolution, and preserve-symlinks caused Vitest to
   # miss hoisted dependencies in CI.
-  vitestExec = ''
+  vitestExec = extraArgs: ''
     set -euo pipefail
     source ${lib.escapeShellArg pnpmTaskHelpersScript}
-    run_package_bin vitest vitest run
+    run_package_bin vitest vitest run ${extraArgs}
   '';
   vitestWatchExec = ''
     set -euo pipefail
@@ -58,7 +58,7 @@ let
   mkTestTask = pkg: {
     "test:${pkg.name}" = {
       description = "Run tests for ${pkg.name}";
-      exec = trace.exec "test:${pkg.name}" vitestExec;
+      exec = trace.exec "test:${pkg.name}" (vitestExec (pkg.vitestArgs or ""));
       cwd = pkg.path;
       execIfModified = [
         "${pkg.path}/src/**/*.ts"
@@ -79,7 +79,7 @@ let
     "test:run" = {
       guard = "vitest";
       description = "Run all tests";
-      exec = if hasPackages then null else vitestExec;
+      exec = if hasPackages then null else vitestExec "";
       after =
         if hasPackages then map (pkg: "test:${pkg.name}") packages ++ extraTests else [ "genie:run" ];
     };

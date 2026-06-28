@@ -74,6 +74,9 @@ import type {
   SyncAction,
 } from '../renderers/SyncOutput/schema.ts'
 
+/** Policy for apply-time lock-file rewrites. */
+export type LockSyncMode = 'auto' | 'off' | 'direct' | 'recursive'
+
 /**
  * Sync a megarepo at the given root path.
  * This is extracted to enable recursive syncing for --all mode.
@@ -104,6 +107,8 @@ export const syncMegarepo = <R = never>({
     applyAfterFetch?: boolean
     /** When true, use commit-based worktrees (refs/commits/<sha>) for deterministic apply. */
     commitMode?: boolean
+    /** Controls whether apply also rewrites Nix/nested megarepo lock files. */
+    lockSyncMode?: LockSyncMode
   }
   depth?: number
   visited?: Set<string>
@@ -426,14 +431,25 @@ export const syncMegarepo = <R = never>({
           lockSyncExplicitSetting === true ||
           (lockSyncExplicitSetting !== false && (devenvLockExists || flakeLockExists))
 
-        if (lockSyncEnabled === true) {
+        const lockSyncMode = options.lockSyncMode ?? 'auto'
+        const cliLockSyncEnabled = lockSyncMode !== 'off'
+        const lockSyncScope =
+          lockSyncMode === 'recursive'
+            ? 'recursive'
+            : lockSyncMode === 'direct' || lockSyncMode === 'off'
+              ? 'direct'
+              : all === true
+                ? 'recursive'
+                : 'direct'
+
+        if (lockSyncEnabled === true && cliLockSyncEnabled === true) {
           const excludeMembers = new Set(config.lockSync?.exclude ?? [])
           nixLockResult = yield* syncNixLocks({
             megarepoRoot,
             config,
             lockFile,
             excludeMembers,
-            scope: all === true ? 'recursive' : 'direct',
+            scope: lockSyncScope,
             recursiveMegarepoMembers: new Set(nestedMegarepos),
           })
           if (nixLockResult.totalUpdates > 0) {
@@ -594,6 +610,7 @@ export const runCommand = ({
   verbose,
   applyAfterFetch = false,
   worktreeMode,
+  lockSyncMode,
 }: {
   mode: SyncMode
   output: OutputModeValue
@@ -609,6 +626,8 @@ export const runCommand = ({
   applyAfterFetch?: boolean
   /** Worktree strategy for apply mode: 'commit', 'tracking', or 'auto' (default). */
   worktreeMode?: 'commit' | 'tracking' | 'auto'
+  /** Controls whether apply also rewrites Nix/nested megarepo lock files. */
+  lockSyncMode?: LockSyncMode
 }) =>
   Effect.gen(function* () {
     const json = output === 'json' || output === 'ndjson'
@@ -679,6 +698,7 @@ export const runCommand = ({
           skip: skipMembers,
           gitProtocol,
           createBranches,
+          ...(lockSyncMode !== undefined ? { lockSyncMode } : {}),
         },
         ...(onMissingRef !== undefined ? { onMissingRef } : {}),
       })
@@ -700,6 +720,7 @@ export const runCommand = ({
           createBranches,
           ...(applyAfterFetch === true ? { applyAfterFetch: true } : {}),
           ...(commitMode === true ? { commitMode: true } : {}),
+          ...(lockSyncMode !== undefined ? { lockSyncMode } : {}),
         },
         ...(progressHandle !== undefined ? { progressHandle } : {}),
         ...(onMissingRef !== undefined ? { onMissingRef } : {}),

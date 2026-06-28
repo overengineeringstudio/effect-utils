@@ -8,7 +8,14 @@
 import * as Cli from '@effect/cli'
 
 import { outputOption, verboseOption } from '../context.ts'
-import { runCommand } from './engine.ts'
+import { runCommand, type LockSyncMode } from './engine.ts'
+
+const lockSyncOption = Cli.Options.choice('lock-sync', ['auto', 'off', 'direct', 'recursive']).pipe(
+  Cli.Options.withDescription(
+    'Lock-file rewrite policy for the apply phase: auto, off, direct members only, or recursive nested megarepos',
+  ),
+  Cli.Options.withDefault('auto' as LockSyncMode),
+)
 
 const sharedOptions = {
   output: outputOption,
@@ -45,6 +52,7 @@ const sharedOptions = {
     ),
     Cli.Options.withDefault('auto' as const),
   ),
+  lockSync: lockSyncOption,
   verbose: verboseOption,
 } as const
 
@@ -75,6 +83,7 @@ export const fetchCommand = Cli.Command.make(
     apply: applyAfter,
     createBranches,
     worktreeMode,
+    lockSync,
     verbose,
   }) =>
     runCommand({
@@ -90,6 +99,7 @@ export const fetchCommand = Cli.Command.make(
       verbose,
       applyAfterFetch: applyAfter,
       worktreeMode,
+      lockSyncMode: lockSync,
     }),
 ).pipe(
   Cli.Command.withDescription(

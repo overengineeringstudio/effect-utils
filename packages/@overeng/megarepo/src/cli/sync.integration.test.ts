@@ -163,6 +163,17 @@ const runFetchCommand = ({
   env?: Record<string, string>
 }) => runMrCommand({ cwd, command: ['fetch'], args, env })
 
+/** Run `mr apply` and capture output. */
+const runApplyCommand = ({
+  cwd,
+  args = [],
+  env = {},
+}: {
+  cwd: AbsoluteDirPath
+  args?: ReadonlyArray<string>
+  env?: Record<string, string>
+}) => runMrCommand({ cwd, command: ['apply'], args, env })
+
 /** Run `mr fetch --apply` (the daily driver, replaces old `mr sync`). */
 const runFetchApplyCommand = ({
   cwd,
@@ -1325,6 +1336,42 @@ const createNestedMegarepoLockRefMatchFixture = () =>
   })
 
 describe('nested megarepo.lock sync scope', () => {
+  it.effect(
+    'should not sync nested megarepo.lock when apply lock sync is disabled',
+    Effect.fnUntraced(
+      function* () {
+        const { parentPath, childPath, storePath, staleNestedCommit } =
+          yield* createNestedWorkspaceFixture()
+
+        const nestedLockPath = EffectPath.ops.join(
+          childPath,
+          EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
+        )
+        const beforeNestedLockOpt = yield* readLockFile(nestedLockPath)
+        expect(Option.isSome(beforeNestedLockOpt)).toBe(true)
+        const beforeNestedLock = Option.getOrThrow(beforeNestedLockOpt)
+        expect(beforeNestedLock.members['shared']?.commit).toBe(staleNestedCommit)
+
+        const result = yield* runApplyCommand({
+          cwd: parentPath,
+          args: ['--output', 'json', '--lock-sync', 'off'],
+          env: {
+            MEGAREPO_STORE: storePath.slice(0, -1),
+          },
+        })
+        expect(result.exitCode).toBe(0)
+
+        const afterNestedLockOpt = yield* readLockFile(nestedLockPath)
+        expect(Option.isSome(afterNestedLockOpt)).toBe(true)
+        const afterNestedLock = Option.getOrThrow(afterNestedLockOpt)
+        expect(afterNestedLock.members['shared']?.commit).toBe(staleNestedCommit)
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+    { timeout: 15_000 },
+  )
+
   it.effect(
     'should not sync nested megarepo.lock in default workspace sync mode',
     Effect.fnUntraced(

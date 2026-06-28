@@ -19,6 +19,7 @@ export const CI_JOB_NAMES = [
   'typecheck',
   'lint',
   'test',
+  'test-megarepo-cold-gc',
   'nix-check',
   'nix-fod-check',
   'pnpm-builder-contract',
@@ -44,6 +45,7 @@ export const requiredCIJobs = [
   'cargo',
   // Matrix jobs - GitHub reports these with the matrix value in parentheses
   ...RUNNER_PROFILES.map((runner) => `test (${runner})`),
+  'test-megarepo-cold-gc',
   ...RUNNER_PROFILES.map((runner) => `nix-check (${runner})`),
   ...RUNNER_PROFILES.map((runner) => `nix-fod-check (${runner})`),
   'deploy-storybooks',
