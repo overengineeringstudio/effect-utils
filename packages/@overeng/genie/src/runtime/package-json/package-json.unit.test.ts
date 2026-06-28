@@ -405,6 +405,7 @@ describe('packageJson', () => {
           '.': './src/mod.ts',
           './legacy': './src/legacy.ts',
           './testing/foo': './src/testing/foo.ts',
+          './testing/e2e/foo': './src/testing/e2e/foo.ts',
           './covered': exportEntry('./src/covered.ts', {
             environment: 'isomorphic-es2024',
           }),
