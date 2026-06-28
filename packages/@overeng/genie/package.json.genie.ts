@@ -62,6 +62,9 @@ export default packageJson(
       // Node-resident entry: re-exports `.` plus the node-only members (nodeGenieIO, actionlint runner,
       // github-ruleset reconcile ops, fs-discovery tsconfigJsonFromPackages, repo-context).
       './node': './src/runtime/node/mod.ts',
+      // Explicit reusable composition layer. Keep `.` focused on thin artifact builders; put cross-artifact
+      // helpers that consume structured Genie metadata here.
+      './composition': './src/runtime/composition/mod.ts',
       './cli': './src/build/mod.tsx',
       './sdk': './src/sdk/mod.ts',
     },
@@ -70,6 +73,7 @@ export default packageJson(
       exports: {
         '.': './dist/src/runtime/mod.js',
         './node': './dist/src/runtime/node/mod.js',
+        './composition': './dist/src/runtime/composition/mod.js',
         './cli': './dist/src/build/mod.js',
         './sdk': './dist/src/sdk/mod.js',
       },

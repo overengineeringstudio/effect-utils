@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **@overeng/genie**: Add the explicit `@overeng/genie/composition` subpath for
+  reusable cross-artifact composition helpers. The first helper,
+  `tsconfigReferencesFromPackages`, projects TypeScript project references from
+  package workspace metadata while keeping `tsconfigJson(...)` as a thin
+  artifact builder.
+
 - **@overeng/megarepo / CI**: Isolate the cold named-branch GC integration
   matrix into its own CI task and add deterministic git subprocess timeouts
   with OTEL `git.timeout_ms` span attributes so stuck GC probes fail with the

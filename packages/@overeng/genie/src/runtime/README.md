@@ -19,3 +19,15 @@ The returned default export is a `GenieOutput<TData, TMeta>` with:
 
 Projection helpers should consume `meta` explicitly instead of re-deriving the
 same information from generated files.
+
+## Composition Layer
+
+The canonical `@overeng/genie` export is the thin runtime surface for
+artifact-focused builders. Reusable cross-artifact helpers live under
+dedicated subpath exports so the import path states the abstraction level.
+
+Use `@overeng/genie/composition` for explicit helpers that consume semantic
+metadata from generated artifacts. For example,
+`tsconfigReferencesFromPackages(...)` projects TypeScript project references
+from package workspace dependency metadata without making `tsconfigJson(...)`
+know about `packageJson(...)`.

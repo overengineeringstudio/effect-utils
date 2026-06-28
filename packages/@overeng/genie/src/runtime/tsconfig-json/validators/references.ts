@@ -80,9 +80,12 @@ export const validateTsconfigReferences = ({
     // Skip deps that can't be valid project reference targets:
     // - No tsconfig.json (e.g. meta-packages like peer-deps)
     // - composite: false (e.g. Astro sites, CLI tools)
+    // - noEmit: true (TypeScript rejects referenced projects that disable emit)
     const depTsconfigPath = joinPath(ctx.cwd, depPkg.path, 'tsconfig.json')
     if (io.fileExists(depTsconfigPath) === false) continue
-    if (isCompositeProject({ tsconfigPath: depTsconfigPath, io, parseJsonc }) === false) continue
+    if (isReferenceTargetProject({ tsconfigPath: depTsconfigPath, io, parseJsonc }) === false) {
+      continue
+    }
 
     const expectedRef = computeRelativeRef({ from: ctx.location, to: depPkg.path })
     if (currentRefs.has(expectedRef) === false) {
@@ -104,14 +107,14 @@ export const validateTsconfigReferences = ({
 }
 
 /**
- * Check if a tsconfig.json has composite: true (required for project reference targets).
+ * Check if a tsconfig.json can be used as a project reference target.
  *
  * Reads the file via the injected {@link GenieIO} and parses it with the injected {@link GenieJsoncParser}
  * (the engine backs it with the same TypeScript JSONC parser the previous `ts.readConfigFile` impl used, so
  * comment-headed/JSONC tsconfigs parse identically). An unreadable or unparseable file yields `false` —
  * matching the prior `catch → false` behavior, conservatively skipping the dep as a reference target.
  */
-const isCompositeProject = ({
+const isReferenceTargetProject = ({
   tsconfigPath,
   io,
   parseJsonc,
@@ -124,7 +127,8 @@ const isCompositeProject = ({
   if (text === undefined) return false
   const config = parseJsonc({ path: tsconfigPath, text })
   if (config === undefined) return false
-  return (
-    (config as { compilerOptions?: { composite?: boolean } }).compilerOptions?.composite !== false
-  )
+  const compilerOptions = (
+    config as { compilerOptions?: { composite?: boolean; noEmit?: boolean } }
+  ).compilerOptions
+  return compilerOptions?.composite !== false && compilerOptions?.noEmit !== true
 }

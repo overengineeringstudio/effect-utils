@@ -88,6 +88,70 @@ describe('tsconfigJson', () => {
       expect(warnSpy).not.toHaveBeenCalled()
     })
   })
+
+  describe('workspace reference validation', () => {
+    const workspacePackages = [
+      {
+        name: '@test/app',
+        path: 'packages/app',
+        dependencies: { '@test/lib': 'workspace:^' },
+        devDependencies: {},
+      },
+      {
+        name: '@test/lib',
+        path: 'packages/lib',
+        dependencies: {},
+        devDependencies: {},
+      },
+    ]
+
+    const context = ({ tsconfig }: { tsconfig: string }): GenieContext => ({
+      location: 'packages/app',
+      cwd: '/workspace',
+      workspace: {
+        packages: workspacePackages,
+        byName: new Map(workspacePackages.map((pkg) => [pkg.name, pkg])),
+      },
+      io: {
+        fileExists: (filePath) => filePath === '/workspace/packages/lib/tsconfig.json',
+        readText: (filePath) =>
+          filePath === '/workspace/packages/lib/tsconfig.json' ? tsconfig : undefined,
+      },
+      parseJsonc: ({ text }) => JSON.parse(text),
+    })
+
+    it('requires references for workspace deps that can be project reference targets', () => {
+      const result = tsconfigJson({ compilerOptions: {}, include: ['src/**/*.ts'] })
+
+      expect(
+        result.validate?.(
+          context({
+            tsconfig: JSON.stringify({ compilerOptions: { composite: true } }),
+          }),
+        ),
+      ).toEqual([
+        {
+          severity: 'error',
+          packageName: '@test/app',
+          dependency: '@test/lib',
+          message: 'Missing tsconfig reference "../lib" for workspace dependency "@test/lib"',
+          rule: 'tsconfig-references',
+        },
+      ])
+    })
+
+    it('skips workspace deps whose tsconfig disables emit', () => {
+      const result = tsconfigJson({ compilerOptions: {}, include: ['src/**/*.ts'] })
+
+      expect(
+        result.validate?.(
+          context({
+            tsconfig: JSON.stringify({ compilerOptions: { composite: true, noEmit: true } }),
+          }),
+        ),
+      ).toEqual([])
+    })
+  })
 })
 
 describe('tsconfigJsonFromPackages', () => {
