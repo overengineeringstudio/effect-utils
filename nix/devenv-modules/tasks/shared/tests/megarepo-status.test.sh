@@ -60,6 +60,17 @@ run_check() {
   )
 }
 
+run_status_check() {
+  (
+    cd "$workspace"
+    check_workspace_members
+    status_json=$(mr status --output json 2>/dev/null) || exit 1
+    echo "$status_json" \
+      | jq -e '(.syncNeeded // false) == false and (.applyNeeded // false) == false' \
+      >/dev/null 2>&1
+  )
+}
+
 echo "Running megarepo status tests..."
 echo ""
 
@@ -74,12 +85,8 @@ cat > "$tmpdir/bin/mr" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [ "$1" != "ls" ] || [ "$2" != "--output" ] || [ "$3" != "json" ]; then
-  echo "unexpected mr invocation: $*" >&2
-  exit 2
-fi
-
-cat <<'JSON'
+if [ "$1" = "ls" ] && [ "$2" = "--output" ] && [ "$3" = "json" ]; then
+  cat <<'JSON'
 {
   "_tag": "Success",
   "members": [
@@ -88,6 +95,22 @@ cat <<'JSON'
   ]
 }
 JSON
+  exit 0
+fi
+
+if [ "$1" = "status" ] && [ "$2" = "--output" ] && [ "$3" = "json" ]; then
+  if [ -n "${MR_STATUS_JSON:-}" ]; then
+    printf '%s\n' "$MR_STATUS_JSON"
+  else
+    cat <<'JSON'
+{"syncNeeded":false,"applyNeeded":false}
+JSON
+  fi
+  exit 0
+fi
+
+echo "unexpected mr invocation: $*" >&2
+exit 2
 EOF
 chmod +x "$tmpdir/bin/mr"
 export PATH="$tmpdir/bin:$PATH"
@@ -119,7 +142,32 @@ set -e
 assert_exit_code 0 "$exit_code" "skipped member is ignored"
 
 echo ""
-echo "Test 4: shared module points setup checks at mr:setup"
+echo "Test 4: status check re-runs when apply or sync is needed"
+mkdir -p "$workspace/repos/two"
+export MR_STATUS_JSON='{"syncNeeded":false,"applyNeeded":false}'
+set +e
+run_status_check
+exit_code=$?
+set -e
+assert_exit_code 0 "$exit_code" "clean status is cacheable"
+
+export MR_STATUS_JSON='{"syncNeeded":true,"applyNeeded":false}'
+set +e
+run_status_check
+exit_code=$?
+set -e
+assert_exit_code 1 "$exit_code" "syncNeeded invalidates cache"
+
+export MR_STATUS_JSON='{"syncNeeded":false,"applyNeeded":true}'
+set +e
+run_status_check
+exit_code=$?
+set -e
+assert_exit_code 1 "$exit_code" "applyNeeded invalidates cache"
+unset MR_STATUS_JSON
+
+echo ""
+echo "Test 5: shared module points setup checks at mr:setup"
 module_file="$(cd "$(dirname "$0")/.." && pwd)/megarepo.nix"
 if ! grep -F 'after = [ "mr:setup" ];' "$module_file" >/dev/null; then
   echo "FAIL: mr:check should depend on mr:setup"

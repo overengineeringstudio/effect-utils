@@ -182,7 +182,9 @@ let
     ${checkWorkspaceMembersScript}
 
     status_json=$(mr status --output json 2>/dev/null) || exit 1
-    echo "$status_json" | ${jq} -e '(.workspaceSyncNeeded // false) == false' >/dev/null 2>&1
+    echo "$status_json" \
+      | ${jq} -e '(.syncNeeded // false) == false and (.applyNeeded // false) == false' \
+      >/dev/null 2>&1
   '';
 
   tasks = {
