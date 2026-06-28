@@ -60,13 +60,19 @@ const git = (cwd: string, ...args: ReadonlyArray<string>) =>
     return (yield* Command.string(command)).trim()
   })
 
-/** Deterministic clock so grace/retention decisions are reproducible. */
+const liveClock = Clock.make()
+
+/**
+ * Deterministic decision clock so grace/retention decisions are reproducible.
+ * Sleep delegates to the live clock so command-level timeouts remain real
+ * deadlines instead of firing immediately under the fixed decision time.
+ */
 const fixedClockLayer = (nowMs: number) =>
   Layer.setClock({
     [Clock.ClockTypeId]: Clock.ClockTypeId,
     currentTimeMillis: Effect.succeed(nowMs),
     currentTimeNanos: Effect.succeed(BigInt(nowMs) * 1_000_000n),
-    sleep: () => Effect.void,
+    sleep: (duration) => liveClock.sleep(duration),
     unsafeCurrentTimeMillis: () => nowMs,
     unsafeCurrentTimeNanos: () => BigInt(nowMs) * 1_000_000n,
   })

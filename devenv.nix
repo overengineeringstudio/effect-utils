@@ -193,6 +193,7 @@ let
     {
       path = "packages/@overeng/megarepo";
       name = "megarepo";
+      vitestArgs = "--exclude src/cli/store-gc-cold.integration.test.ts";
     }
     {
       path = "packages/@overeng/notion-cli";
@@ -531,6 +532,23 @@ in
   };
 
   tasks."test:pty-effect".after = lib.mkAfter [ "pnpm:link-native-node-packages" ];
+
+  tasks."test:megarepo-cold-gc" = {
+    after = [ "pnpm:install" ];
+    description = "Run isolated megarepo cold-GC integration tests";
+    cwd = "packages/@overeng/megarepo";
+    exec = ''
+      set -euo pipefail
+      source ${lib.escapeShellArg pnpmTaskHelpersScript}
+      export MEGAREPO_GIT_COMMAND_TIMEOUT_MS="5000"
+      run_package_bin vitest vitest run src/cli/store-gc-cold.integration.test.ts
+    '';
+    execIfModified = [
+      "packages/@overeng/megarepo/src/**/*.ts"
+      "packages/@overeng/megarepo/src/**/*.tsx"
+      "packages/@overeng/megarepo/vitest.config.ts"
+    ];
+  };
 
   tasks."bundle:smoke" = {
     after = [ "pnpm:install" ];

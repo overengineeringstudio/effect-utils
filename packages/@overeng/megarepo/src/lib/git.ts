@@ -81,9 +81,47 @@ export class GitCommandError extends Error {
   }
 }
 
+/** Error thrown when a git command exceeds the deterministic command deadline. */
+export class GitCommandTimeoutError extends GitCommandError {
+  readonly timedOut = true
+  readonly timeoutMillis: number
+
+  constructor({ args, timeoutMillis }: { args: ReadonlyArray<string>; timeoutMillis: number }) {
+    super({
+      args,
+      exitCode: 124,
+      stderr: `git ${args.join(' ')} timed out after ${timeoutMillis}ms`,
+    })
+    this.name = 'GitCommandTimeoutError'
+    this.timeoutMillis = timeoutMillis
+  }
+}
+
 // =============================================================================
 // Git Commands
 // =============================================================================
+
+const DEFAULT_GIT_COMMAND_TIMEOUT_MILLIS = 30_000
+
+const gitCommandTimeoutMillis = (): number => {
+  const raw = process.env['MEGAREPO_GIT_COMMAND_TIMEOUT_MS']
+  if (raw === undefined) return DEFAULT_GIT_COMMAND_TIMEOUT_MILLIS
+
+  const parsed = Number.parseInt(raw, 10)
+  return Number.isInteger(parsed) === true && parsed > 0
+    ? parsed
+    : DEFAULT_GIT_COMMAND_TIMEOUT_MILLIS
+}
+
+const withGitCommandTimeout =
+  <A, E, R>({ args, timeoutMillis }: { args: ReadonlyArray<string>; timeoutMillis: number }) =>
+  (effect: Effect.Effect<A, E, R>) =>
+    effect.pipe(
+      Effect.timeoutFail({
+        duration: Duration.millis(timeoutMillis),
+        onTimeout: () => new GitCommandTimeoutError({ args, timeoutMillis }),
+      }),
+    )
 
 /** Decode a chunk of byte buffers into a string with a single O(n) allocation. */
 const decodeChunks = (chunks: Chunk.Chunk<Uint8Array>): string => {
@@ -135,34 +173,41 @@ const startGitProcess = ({ args, cwd }: { args: ReadonlyArray<string>; cwd?: str
  * whose output is unbounded (large `status`/`worktree list`/`rev-list`).
  */
 const runGitCommand = ({ args, cwd }: { args: ReadonlyArray<string>; cwd?: string }) =>
-  Effect.gen(function* () {
-    const process = yield* startGitProcess(cwd !== undefined ? { args, cwd } : { args })
+  (() => {
+    const timeoutMillis = gitCommandTimeoutMillis()
+    return Effect.gen(function* () {
+      const process = yield* startGitProcess(cwd !== undefined ? { args, cwd } : { args })
 
-    // Collect stdout and stderr. Concat is a single O(n) allocation per stream
-    // (sum lengths once, allocate once, copy once) — the previous per-chunk
-    // `reduce` reallocated the whole buffer on every chunk, which is O(n²) in
-    // output size and OOM-killed the host on large `git status` output.
-    const [stdoutChunks, stderrChunks] = yield* Effect.all([
-      Stream.runCollect(process.stdout),
-      Stream.runCollect(process.stderr),
-    ])
+      // Collect stdout and stderr. Concat is a single O(n) allocation per stream
+      // (sum lengths once, allocate once, copy once) — the previous per-chunk
+      // `reduce` reallocated the whole buffer on every chunk, which is O(n²) in
+      // output size and OOM-killed the host on large `git status` output.
+      const [stdoutChunks, stderrChunks] = yield* Effect.all([
+        Stream.runCollect(process.stdout),
+        Stream.runCollect(process.stderr),
+      ])
 
-    const stdout = decodeChunks(stdoutChunks)
-    const stderr = decodeChunks(stderrChunks)
+      const stdout = decodeChunks(stdoutChunks)
+      const stderr = decodeChunks(stderrChunks)
 
-    const exitCode = yield* process.exitCode
+      const exitCode = yield* process.exitCode
 
-    if (exitCode !== 0) {
-      return yield* Effect.fail(new GitCommandError({ args, exitCode, stderr }))
-    }
+      if (exitCode !== 0) {
+        return yield* Effect.fail(new GitCommandError({ args, exitCode, stderr }))
+      }
 
-    yield* Observability.annotateGitCmdOutput({
-      outputBytes: Buffer.byteLength(stdout, 'utf-8'),
-      outputLines: stdout.length === 0 ? 0 : stdout.split('\n').length,
-    })
+      yield* Observability.annotateGitCmdOutput({
+        outputBytes: Buffer.byteLength(stdout, 'utf-8'),
+        outputLines: stdout.length === 0 ? 0 : stdout.split('\n').length,
+      })
 
-    return stdout.trim()
-  }).pipe(Effect.scoped, Observability.withGitCmdSpan({ args, streamed: false }))
+      return stdout.trim()
+    }).pipe(
+      Effect.scoped,
+      withGitCommandTimeout({ args, timeoutMillis }),
+      Observability.withGitCmdSpan({ args, streamed: false, timeoutMs: timeoutMillis }),
+    )
+  })()
 
 /**
  * Run a git command, folding stdout LINE BY LINE through `sink` at constant
@@ -188,45 +233,52 @@ const streamGitCommandLines = <A>({
   cwd?: string
   sink: Sink.Sink<A, string>
 }) =>
-  Effect.gen(function* () {
-    const process = yield* startGitProcess(cwd !== undefined ? { args, cwd } : { args })
+  (() => {
+    const timeoutMillis = gitCommandTimeoutMillis()
+    return Effect.gen(function* () {
+      const process = yield* startGitProcess(cwd !== undefined ? { args, cwd } : { args })
 
-    // SCALAR running counters for the git-cmd output-size span attributes — these
-    // must never accumulate the lines themselves, or we reintroduce the O(n²)
-    // buffering. `Stream.tap` bumps them as each line flows past on its way to the
-    // sink, so memory stays constant.
-    let outputLines = 0
-    let outputBytes = 0
+      // SCALAR running counters for the git-cmd output-size span attributes — these
+      // must never accumulate the lines themselves, or we reintroduce the O(n²)
+      // buffering. `Stream.tap` bumps them as each line flows past on its way to the
+      // sink, so memory stays constant.
+      let outputLines = 0
+      let outputBytes = 0
 
-    const [result, stderrChunks, exitCode] = yield* Effect.all(
-      [
-        process.stdout.pipe(
-          Stream.decodeText('utf-8'),
-          Stream.splitLines,
-          Stream.tap((line) =>
-            Effect.sync(() => {
-              outputLines += 1
-              outputBytes += Buffer.byteLength(line, 'utf-8') + 1 // + newline
-            }),
+      const [result, stderrChunks, exitCode] = yield* Effect.all(
+        [
+          process.stdout.pipe(
+            Stream.decodeText('utf-8'),
+            Stream.splitLines,
+            Stream.tap((line) =>
+              Effect.sync(() => {
+                outputLines += 1
+                outputBytes += Buffer.byteLength(line, 'utf-8') + 1 // + newline
+              }),
+            ),
+            Stream.run(sink),
           ),
-          Stream.run(sink),
-        ),
-        Stream.runCollect(process.stderr),
-        process.exitCode,
-      ],
-      { concurrency: 'unbounded' },
-    )
-
-    if (exitCode !== 0) {
-      return yield* Effect.fail(
-        new GitCommandError({ args, exitCode, stderr: decodeChunks(stderrChunks) }),
+          Stream.runCollect(process.stderr),
+          process.exitCode,
+        ],
+        { concurrency: 'unbounded' },
       )
-    }
 
-    yield* Observability.annotateGitCmdOutput({ outputBytes, outputLines })
+      if (exitCode !== 0) {
+        return yield* Effect.fail(
+          new GitCommandError({ args, exitCode, stderr: decodeChunks(stderrChunks) }),
+        )
+      }
 
-    return result
-  }).pipe(Effect.scoped, Observability.withGitCmdSpan({ args, streamed: true }))
+      yield* Observability.annotateGitCmdOutput({ outputBytes, outputLines })
+
+      return result
+    }).pipe(
+      Effect.scoped,
+      withGitCommandTimeout({ args, timeoutMillis }),
+      Observability.withGitCmdSpan({ args, streamed: true, timeoutMs: timeoutMillis }),
+    )
+  })()
 
 // =============================================================================
 // Transient Error Retry
@@ -240,6 +292,8 @@ const streamGitCommandLines = <A>({
  * identically on every retry.
  */
 export const isTransientGitError = (error: GitCommandError): boolean => {
+  if (error instanceof GitCommandTimeoutError) return false
+
   const stderr = error.stderr.toLowerCase()
   return (
     stderr.includes('http 5') ||

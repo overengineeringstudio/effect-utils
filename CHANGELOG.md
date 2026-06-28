@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **@overeng/megarepo / CI**: Isolate the cold named-branch GC integration
+  matrix into its own CI task and add deterministic git subprocess timeouts
+  with OTEL `git.timeout_ms` span attributes so stuck GC probes fail with the
+  offending command instead of Vitest's generic per-test timeout.
+
 - **@overeng/megarepo / devenv tasks**: Add an explicit `--lock-sync` policy
   to `mr apply` / `mr fetch --apply`, including `--lock-sync off` for
   non-mutating workspace materialization, and add a shared `mr:setup` devenv

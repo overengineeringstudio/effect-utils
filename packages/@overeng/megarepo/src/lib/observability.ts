@@ -80,6 +80,7 @@ export const gitCmdAttrs = OtelAttrs.defineSync(
     label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
     subcommand: Schema.String.pipe(OtelAttr.key({ key: 'git.subcommand' })),
     streamed: Schema.Boolean.pipe(OtelAttr.key({ key: 'git.streamed' })),
+    timeoutMs: Schema.optional(Schema.Number.pipe(OtelAttr.key({ key: 'git.timeout_ms' }))),
   }),
 )
 
@@ -278,14 +279,21 @@ const gitCmdOperation = OtelOperation.define({
 export const withGitCmdSpan = ({
   args,
   streamed,
+  timeoutMs,
 }: {
   readonly args: ReadonlyArray<string>
   readonly streamed: boolean
+  readonly timeoutMs?: number
 }) => {
   const subcommand = args[0] ?? 'git'
   return trustedWith({
     operation: gitCmdOperation,
-    attributes: { label: subcommand, subcommand, streamed },
+    attributes: {
+      label: subcommand,
+      subcommand,
+      streamed,
+      ...(timeoutMs === undefined ? {} : { timeoutMs }),
+    },
   })
 }
 

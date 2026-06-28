@@ -353,6 +353,12 @@ const jobs: Record<
     name: 'Unit tests',
     run: runDevenvTasksBefore('test:run'),
   }),
+  'test-megarepo-cold-gc': job({
+    step: {
+      name: 'Megarepo cold-GC tests',
+      run: runDevenvTasksBefore('test:megarepo-cold-gc'),
+    },
+  }),
   // Verify Nix hashes are up-to-date (pnpmDepsHash + localDeps)
   // This catches stale hashes before they break downstream consumers
   'nix-check': multiPlatformJob({

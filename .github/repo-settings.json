@@ -51,6 +51,9 @@
             "context": "test (namespace-profile-macos-arm64)"
           },
           {
+            "context": "test-megarepo-cold-gc"
+          },
+          {
             "context": "nix-check (namespace-profile-linux-x86-64)"
           },
           {
