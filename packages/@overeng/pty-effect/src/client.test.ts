@@ -193,6 +193,7 @@ describe('PtyClient', () => {
           })
 
           expect(process.env.PTY_EFFECT_TEST_VALUE).toBeUndefined()
+          yield* waitForPeekText(client, { name, needle: `ENV:${marker}` })
 
           const session = yield* client.attach({
             name,
