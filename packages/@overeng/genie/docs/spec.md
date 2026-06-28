@@ -13,12 +13,16 @@ This spec defines:
 - the public operating modes of the `genie` CLI
 - the source and target file conventions for `.genie.ts` generators
 - the boundary between build-time CLI code and runtime generator code
+- the package export boundary between thin artifact builders and explicit
+  composition helpers
 - import resolution, including megarepo-aware `#mr/...` imports
 - the end-to-end generation and check pipeline
 
 This spec does not define:
 
 - the detailed API contract of each individual runtime factory such as `package-json` or `tsconfig-json`
+- project-specific composition policy such as package catalogs, private
+  defaults, patch sets, or Nix/FOD closure policy
 - the packaging and hash-refresh mechanics of the Nix CLI wrappers outside the `genie` package itself
 - repository-local task wiring beyond the prerequisite boundary that ensures bootstrap members exist before Genie-backed tasks run
 
@@ -32,10 +36,20 @@ The package-level context and current module-boundary docs remain:
 
 Genie exposes two coupled surfaces:
 
-| Surface                                | Role                                                                                         |
-| -------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `genie` CLI                            | discovers `.genie.ts` files, loads them, validates them, renders outputs, and reports status |
-| runtime libraries under `src/runtime/` | provide pure or mostly-pure factories and helpers imported by `.genie.ts` source files       |
+| Surface                                | Role                                                                                                      |
+| -------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `genie` CLI                            | discovers `.genie.ts` files, loads them, validates them, renders outputs, and reports status              |
+| runtime libraries under `src/runtime/` | provide pure or mostly-pure factories and helpers imported by `.genie.ts` source files                    |
+| package subpath exports                | communicate abstraction level for thin builders, explicit composition helpers, node-only helpers, and SDK |
+
+The package export contract is:
+
+| Export                         | Role                                                                                         |
+| ------------------------------ | -------------------------------------------------------------------------------------------- |
+| `@overeng/genie`               | thin runtime API for artifact builders, primitive helpers, and shared types                  |
+| `@overeng/genie/composition`   | explicit reusable cross-artifact composition helpers that consume semantic inputs or `meta`  |
+| `@overeng/genie/node`          | node-resident helpers that may read the filesystem, spawn tools, or otherwise need Node APIs |
+| `@overeng/genie/cli` / `./sdk` | build-time CLI and programmatic SDK surfaces                                                 |
 
 The CLI supports four operating modes:
 
@@ -80,6 +94,60 @@ Genie is split into two execution domains:
 | runtime generator library | `src/runtime/` | dynamically imported by `.genie.ts` modules; npm dependencies are disallowed   |
 
 The runtime layer must stay lightweight and loadable in arbitrary repository contexts because `.genie.ts` files import it directly during evaluation. The build layer may own TUI concerns, CLI option parsing, process orchestration, and other binary-local concerns.
+
+## Composition Boundary
+
+Artifact-specific generators are responsible for modeling and rendering one
+artifact or domain. For example, `packageJson(...)` models package manifest
+authoring and `tsconfigJson(...)` models TypeScript configuration authoring.
+They must not hide cross-generator inference inside their normal rendering
+path.
+
+Reusable cross-artifact behavior belongs in explicit helpers, exposed through
+named package subpaths. The first shared subpath is
+`@overeng/genie/composition`.
+
+Admission to `@overeng/genie/composition` requires that a helper:
+
+- is reusable across repositories;
+- consumes explicit semantic inputs or `GenieOutput.meta`;
+- remains bootstrap-safe when imported by `.genie.ts` sources;
+- avoids encoding a specific repository's package catalog, patch set, private
+  defaults, Nix/FOD closure policy, or comparable local policy.
+
+`GenieOutput.meta` is the structured channel for non-emitted composition facts.
+It stores stable semantic facts such as workspace identity and dependency
+relationships. Projection helpers compute target-location-dependent output
+values, such as relative paths, from those facts and render context instead of
+requiring producer generators to store rendered projection data.
+
+### TypeScript Reference Composition
+
+`@overeng/genie/composition` provides `tsconfigReferencesFromPackages(...)`.
+The helper projects TypeScript `references` entries from package workspace
+metadata while keeping `tsconfigJson(...)` a thin `tsconfig.json` builder.
+
+The helper accepts:
+
+- a `from` package carrying workspace metadata for the package whose
+  `tsconfig.json` is being authored;
+- an optional package list, defaulting to `from.meta.workspace.deps`;
+- optional `{ package, tsconfig }` entries when the caller wants the helper to
+  apply TypeScript project-reference target eligibility from known tsconfig
+  data;
+- an optional project-local predicate for policy that is not reusable Genie
+  semantics.
+
+The helper must:
+
+- render deterministic, sorted reference paths;
+- compute relative paths from semantic workspace identity and package member
+  paths;
+- route foreign-repo packages through the composed `repos/<repo>/<member>`
+  logical path;
+- skip targets whose supplied tsconfig data explicitly sets
+  `compilerOptions.noEmit: true` or `compilerOptions.composite: false`;
+- avoid filesystem reads so it remains valid in the runtime composition layer.
 
 ## Import Resolution
 

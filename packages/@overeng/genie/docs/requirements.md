@@ -72,43 +72,63 @@ may not yet be installed.
 - **R10 Local iteration compatibility:** Cross-repo reuse must still allow
   local source iteration against the active composed worktree rather than
   forcing copy-paste or publish-and-upgrade loops.
+- **R11 Explicit composition layer:** Reusable cross-artifact composition must
+  live behind explicit helper APIs or package subpath exports rather than hidden
+  inference inside artifact-specific generators.
+- **R12 Generator boundary preservation:** Artifact-specific generators must
+  remain principled abstractions over their own target artifact or domain. A
+  generator must not require knowledge of unrelated generators to understand
+  its emitted output.
+- **R13 Project-policy locality:** Project-specific catalogs, defaults, patch
+  sets, Nix/FOD closure policy, and comparable local conventions must live in
+  repository-local Genie helper modules unless they satisfy the reusable
+  composition admission rule.
+- **R14 Composition subpath semantics:** The canonical `@overeng/genie` export
+  must remain the thin runtime API for artifact builders and shared primitives.
+  More opinionated reusable composition helpers must be exposed through
+  semantically named package subpaths such as `@overeng/genie/composition`.
 
 ### Must validate and fail clearly
 
-- **R11 Duplicate-target rejection:** Genie must reject configurations where
+- **R15 Duplicate-target rejection:** Genie must reject configurations where
   multiple sources claim the same generated target.
-- **R12 Repository validation:** Genie must run repository-level validation so
+- **R16 Repository validation:** Genie must run repository-level validation so
   cross-file invariants are checked before reporting a successful run.
-- **R13 Root-cause reporting:** Import cycles, TDZ failures, catalog conflicts,
+- **R17 Root-cause reporting:** Import cycles, TDZ failures, catalog conflicts,
   and comparable configuration errors must surface actionable diagnostics
   instead of opaque incidental stack traces.
-- **R14 File-level reporting:** Batch runs must report per-file outcomes and an
+- **R18 File-level reporting:** Batch runs must report per-file outcomes and an
   aggregate summary suitable for both local use and CI.
-- **R15 Repository-bounded discovery:** Recursive discovery must respect the
+- **R19 Repository-bounded discovery:** Recursive discovery must respect the
   repository's ignore rules so ignored local state, nested agent worktrees, and
   other non-source scratch directories cannot become ambient generation input.
   Untracked but non-ignored `.genie.ts` sources must still be discovered.
 
 ### Must support the main operating modes
 
-- **R16 Generate mode:** Genie must write generated targets to disk for normal
+- **R20 Generate mode:** Genie must write generated targets to disk for normal
   repository authoring workflows.
-- **R17 Check mode:** Genie must verify up-to-date state without mutating
+- **R21 Check mode:** Genie must verify up-to-date state without mutating
   targets.
-- **R18 Dry-run mode:** Genie must support previewing prospective changes
+- **R22 Dry-run mode:** Genie must support previewing prospective changes
   without writing files.
-- **R19 Watch mode:** Genie must support an interactive mode that reacts to
+- **R23 Watch mode:** Genie must support an interactive mode that reacts to
   `.genie.ts` source changes and regenerates the affected output set.
 
 ### Must preserve output quality
 
-- **R20 Supported formatting:** Generated outputs must respect the repository's
+- **R24 Supported formatting:** Generated outputs must respect the repository's
   supported formatting conventions so repeated generation does not create
   formatting churn.
-- **R21 Stable metadata channel:** Composition metadata required by other
+- **R25 Stable metadata channel:** Composition metadata required by other
   generators must flow through an explicit structured channel rather than being
   reconstructed from rendered artifact text.
-- **R22 Multi-artifact coverage:** The system must remain capable of generating
+- **R26 Semantic metadata:** `GenieOutput.meta` must carry stable semantic facts
+  such as identities, relationships, declared capabilities, and normalized
+  authoring intent. Target-location-dependent projection values such as
+  relative paths should be computed by projection helpers from metadata and
+  render context instead of stored as producer metadata.
+- **R27 Multi-artifact coverage:** The system must remain capable of generating
   the major repository artifact classes it already serves, including package
   manifests, TypeScript configuration, formatter/linter config, and GitHub
   workflow artifacts.
