@@ -147,7 +147,11 @@ interface ObservedProcess {
   readonly parentPidHash?: `sha256:${string}`
   readonly argvHash: `sha256:${string}`
   readonly exitCode?: number
-  readonly termination?: { readonly _tag: 'Signal'; readonly signal: number; readonly synthetic_exit_code: number }
+  readonly termination?: {
+    readonly _tag: 'Signal'
+    readonly signal: number
+    readonly synthetic_exit_code: number
+  }
   readonly startUnixNano: number
   readonly endUnixNano: number
   readonly wallMs: number

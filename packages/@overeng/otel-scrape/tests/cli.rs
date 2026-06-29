@@ -1,7 +1,8 @@
-use std::process::Command;
 use std::{
     io::{Read, Write},
     net::TcpListener,
+    path::{Path, PathBuf},
+    process::Command,
     sync::mpsc,
     thread,
 };
@@ -483,6 +484,50 @@ fn process_observation_fixture_marks_descendant_workload_as_direct_child_only() 
         .starts_with("sha256:"));
 }
 
+#[cfg(unix)]
+#[test]
+fn compiled_process_dag_fixture_gates_descendant_exactness_claims() {
+    let dir = tempfile::tempdir().unwrap();
+    let summary = dir.path().join("summary.json");
+    let expected_dag = dir.path().join("expected-dag.json");
+    let fixture = compile_process_dag_fixture(dir.path());
+
+    let out = otel_scrape()
+        .env("OTEL_SCRAPE_EXPECTED_DAG", &expected_dag)
+        .args(["--summary-out"])
+        .arg(&summary)
+        .args(["--"])
+        .arg(&fixture)
+        .output()
+        .unwrap();
+
+    assert!(out.status.success());
+    assert_eq!(String::from_utf8_lossy(&out.stdout), "fixture-done");
+
+    let expected: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(expected_dag).unwrap()).unwrap();
+    assert!(expected["rootPid"].as_u64().is_some());
+    assert_eq!(expected["children"].as_array().unwrap().len(), 2);
+    assert!(expected["children"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|child| child["parentPid"] == expected["rootPid"]));
+
+    let summary: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(summary).unwrap()).unwrap();
+    assert_eq!(summary["processes"]["backend"], "direct-child");
+    assert_eq!(summary["processes"]["fidelity"], "degraded");
+    assert_eq!(summary["processes"]["reason"], "direct-child-only");
+    let observed = summary["processes"]["observed"].as_array().unwrap();
+    assert_eq!(observed.len(), 1);
+    assert_eq!(observed[0]["relation"], "direct-child");
+    assert!(observed[0]["pidHash"]
+        .as_str()
+        .unwrap()
+        .starts_with("sha256:"));
+}
+
 #[test]
 fn exports_root_traceparent_to_child() {
     let dir = tempfile::tempdir().unwrap();
@@ -512,6 +557,65 @@ fn exports_root_traceparent_to_child() {
     assert_eq!(summary["trace"]["parent_span_id"], serde_json::Value::Null);
     assert_eq!(summary["trace"]["child_traceparent"], child_traceparent);
     assert!(child_traceparent.starts_with("00-"));
+}
+
+#[cfg(unix)]
+fn compile_process_dag_fixture(dir: &Path) -> PathBuf {
+    let source = dir.join("process_dag_fixture.rs");
+    let binary = dir.join("process-dag-fixture");
+    std::fs::write(
+        &source,
+        r##"
+use std::io::Write;
+use std::process::{Command, Stdio};
+
+fn main() {
+    let expected_path = std::env::var("OTEL_SCRAPE_EXPECTED_DAG").unwrap();
+    let root_pid = std::process::id();
+    let mut children = Vec::new();
+    for role in ["immediate-exit", "nested-shell"] {
+        let mut child = Command::new("sh")
+            .arg("-c")
+            .arg(match role {
+                "immediate-exit" => "exit 0",
+                _ => "sh -c 'exit 0'",
+            })
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        let pid = child.id();
+        let status = child.wait().unwrap();
+        children.push(format!(
+            r#"{{"role":"{}","pid":{},"parentPid":{},"exitCode":{}}}"#,
+            role,
+            pid,
+            root_pid,
+            status.code().unwrap_or(-1)
+        ));
+    }
+    let json = format!(
+        r#"{{"rootPid":{},"children":[{}]}}"#,
+        root_pid,
+        children.join(",")
+    );
+    std::fs::write(expected_path, json).unwrap();
+    std::io::stdout().write_all(b"fixture-done").unwrap();
+}
+"##,
+    )
+    .unwrap();
+    let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_owned());
+    let status = Command::new(rustc)
+        .arg("--edition=2021")
+        .arg(&source)
+        .arg("-o")
+        .arg(&binary)
+        .status()
+        .unwrap();
+    assert!(status.success());
+    binary
 }
 
 #[test]
