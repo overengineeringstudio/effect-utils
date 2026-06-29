@@ -221,7 +221,13 @@ interface ProfileLink {
 
 The span carries the descriptor. The artifact bytes live outside the OTEL backend. Retrieval resolves `uri` against the run's CAS root and verifies the digest and byte length before use, following the content-address resolver contract. Local runs may keep the CAS root on disk; CI runs must upload or expose the CAS root as one artifact tree. Each run should write and pin one manifest covering the retained profile artifacts. UI/download links are optional presentation metadata and are not the retrieval identity.
 
-See [.decisions/0006-cas-profile-artifact-uris.md](./.decisions/0006-cas-profile-artifact-uris.md) and [.experiments/0003-artifact-uri-prototypes.md](./.experiments/0003-artifact-uri-prototypes.md).
+The Rust implementation keeps its artifact-lane CAS behavior in a private
+module that mirrors the content-address contract with conformance vectors. The
+public reusable implementation package remains `@overeng/content-address` until
+a second Rust consumer or generated cross-language contract justifies a Rust
+crate boundary.
+
+See [.decisions/0006-cas-profile-artifact-uris.md](./.decisions/0006-cas-profile-artifact-uris.md), [.decisions/0009-rust-cas-module-boundary.md](./.decisions/0009-rust-cas-module-boundary.md), and [.experiments/0003-artifact-uri-prototypes.md](./.experiments/0003-artifact-uri-prototypes.md).
 
 ## Adapter Fleet
 

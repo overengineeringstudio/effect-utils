@@ -17,8 +17,15 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 
+mod content_address;
 #[path = "telemetry_registry.gen.rs"]
 pub mod telemetry_registry;
+
+use content_address::{
+    canonical_manifest_json, cas_uri_for_digest, descriptor_for_bytes, write_bytes_atomic,
+    write_object, write_pin, ManifestEntry, CANONICAL_JSON_CODEC, MANIFEST_MEDIA_TYPE,
+    PROFILE_MEDIA_TYPE,
+};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const EX_USAGE: u8 = 64;
@@ -28,10 +35,7 @@ const CAS_ROOT_ENV: &str = "OTEL_SCRAPE_CAS_ROOT";
 const OTLP_ENDPOINT_ENV: &str = "OTEL_EXPORTER_OTLP_ENDPOINT";
 const SERVICE_NAME_ENV: &str = "OTEL_SERVICE_NAME";
 const TRACEPARENT_ENV: &str = "traceparent";
-const PROFILE_MEDIA_TYPE: &str = "application/octet-stream";
 const OUTPUT_MEDIA_TYPE: &str = "application/octet-stream";
-const MANIFEST_MEDIA_TYPE: &str = "application/json";
-const CANONICAL_JSON_CODEC: &str = "canonical-json";
 const RESOURCE_FACT_UNAVAILABLE: &str = "unavailable";
 const OTLP_HTTP_TIMEOUT: Duration = Duration::from_millis(500);
 
@@ -966,7 +970,7 @@ fn artifact_summary(config: &RunConfig, trace: &TraceContext) -> io::Result<Arti
             }
         };
         let descriptor = descriptor_for_bytes(&bytes, PROFILE_MEDIA_TYPE, None, None);
-        if let Err(cause) = write_object(root, &descriptor.digest, &bytes) {
+        if let Err(cause) = write_object(root, &descriptor, &bytes) {
             errors.push(artifact_error(
                 artifact,
                 format!("failed to write profile artifact object: {cause}"),
@@ -1003,7 +1007,7 @@ fn artifact_summary(config: &RunConfig, trace: &TraceContext) -> io::Result<Arti
         Some(CANONICAL_JSON_CODEC),
         Some(1),
     );
-    if let Err(cause) = write_object(root, &manifest_descriptor.digest, manifest_json.as_bytes()) {
+    if let Err(cause) = write_object(root, &manifest_descriptor, manifest_json.as_bytes()) {
         errors.push(ArtifactError {
             profile_type: None,
             path_hash: None,
@@ -1099,158 +1103,16 @@ fn hash_path_identity(path: &str) -> String {
     stable_hash(Path::new(path).to_string_lossy().as_bytes())
 }
 
-#[derive(Debug, Clone)]
-struct ContentDescriptor {
-    digest: String,
-    byte_length: usize,
-    media_type: &'static str,
-    codec: Option<&'static str>,
-    schema_version: Option<u64>,
-}
-
-#[derive(Debug)]
-struct ManifestEntry {
-    descriptor: ContentDescriptor,
-    logical_path: String,
-    role: String,
-}
-
-fn descriptor_for_bytes(
-    bytes: &[u8],
-    media_type: &'static str,
-    codec: Option<&'static str>,
-    schema_version: Option<u64>,
-) -> ContentDescriptor {
-    ContentDescriptor {
-        digest: stable_hash(bytes),
-        byte_length: bytes.len(),
-        media_type,
-        codec,
-        schema_version,
-    }
-}
-
-fn cas_uri_for_digest(digest: &str) -> String {
-    format!("cas:{}", object_path_for_digest(digest))
-}
-
-fn object_path_for_digest(digest: &str) -> String {
-    let hex = digest
-        .strip_prefix("sha256:")
-        .expect("stable_hash returns sha256 digest");
-    format!("sha256/{}/{}", &hex[..2], &hex[2..])
-}
-
-fn write_object(root: &Path, digest: &str, bytes: &[u8]) -> io::Result<()> {
-    write_bytes_atomic(&root.join(object_path_for_digest(digest)), bytes)
-}
-
-fn write_pin(root: &Path, name: &str, manifest: &ContentDescriptor) -> io::Result<()> {
-    let pin_path = pin_path(root, name)?;
-    let pin_json = format!(
-        "{{\"_tag\":\"ContentPin\",\"schemaVersion\":1,\"target\":{}}}\n",
-        descriptor_json(manifest)
-    );
-    write_bytes_atomic(&pin_path, pin_json.as_bytes())
-}
-
-fn pin_path(root: &Path, name: &str) -> io::Result<PathBuf> {
-    validate_pin_name(name)
-        .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err.message))?;
-    Ok(root.join("pins").join(name.replace('\\', "/")))
-}
-
 fn validate_pin_name(name: &str) -> Result<(), UsageError> {
-    if name.trim().is_empty()
-        || name.contains('\0')
-        || Path::new(name).is_absolute()
-        || name
-            .split(['/', '\\'])
-            .any(|part| part.is_empty() || part == "." || part == "..")
-    {
-        return usage_error(
-            "pin names must be non-empty relative paths without empty or parent segments",
-        );
-    }
-    Ok(())
-}
-
-fn canonical_manifest_json(entries: &[ManifestEntry]) -> String {
-    let entries = entries
-        .iter()
-        .map(manifest_entry_json)
-        .collect::<Vec<_>>()
-        .join(",");
-    format!(
-        "{{\"_tag\":\"ContentManifest\",\"entries\":[{entries}],\"role\":\"otel-scrape-run\",\"schemaVersion\":1}}"
-    )
-}
-
-fn manifest_entry_json(entry: &ManifestEntry) -> String {
-    format!(
-        "{{\"descriptor\":{},\"logicalPath\":{},\"role\":{}}}",
-        descriptor_json(&entry.descriptor),
-        json_string(&entry.logical_path),
-        json_string(&entry.role)
-    )
-}
-
-fn descriptor_json(descriptor: &ContentDescriptor) -> String {
-    let mut out = format!(
-        "{{\"_tag\":\"ContentDescriptor\",\"byteLength\":{},",
-        descriptor.byte_length
-    );
-    if let Some(codec) = descriptor.codec {
-        write!(&mut out, "\"codec\":{},", json_string(codec)).expect("write to string");
-    }
-    write!(
-        &mut out,
-        "\"digest\":{},\"mediaType\":{}",
-        json_string(&descriptor.digest),
-        json_string(descriptor.media_type)
-    )
-    .expect("write to string");
-    if let Some(schema_version) = descriptor.schema_version {
-        write!(&mut out, ",\"schemaVersion\":{schema_version}").expect("write to string");
-    }
-    out.push('}');
-    out
-}
-
-fn json_string(value: &str) -> String {
-    serde_json::to_string(value).expect("string serialization cannot fail")
+    content_address::validate_pin_name(name).map_err(|message| UsageError {
+        message: message.to_owned(),
+    })
 }
 
 fn write_summary(path: &Path, summary: &Summary) -> io::Result<()> {
     let mut bytes = serde_json::to_vec(summary)?;
     bytes.push(b'\n');
     write_bytes_atomic(path, &bytes)
-}
-
-fn write_bytes_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
-    if let Some(parent) = path.parent() {
-        if !parent.as_os_str().is_empty() {
-            fs::create_dir_all(parent)?;
-        }
-    }
-    let temp = temp_path_for(path)?;
-    if let Err(cause) = fs::write(&temp, bytes).and_then(|()| fs::rename(&temp, path)) {
-        let _ = fs::remove_file(&temp);
-        return Err(cause);
-    }
-    Ok(())
-}
-
-fn temp_path_for(path: &Path) -> io::Result<PathBuf> {
-    let suffix = random_hex(8)?;
-    Ok(path.with_extension(format!(
-        "{}tmp-{}-{suffix}",
-        path.extension()
-            .and_then(|ext| ext.to_str())
-            .map(|ext| format!("{ext}."))
-            .unwrap_or_default(),
-        std::process::id()
-    )))
 }
 
 fn trace_context_from_env() -> io::Result<TraceContext> {
