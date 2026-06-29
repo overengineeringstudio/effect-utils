@@ -398,6 +398,26 @@ fn exports_command_span_to_otlp_http_json() {
 #[test]
 fn otlp_export_failure_preserves_child_exit_code() {
     let collector = TestCollector::start(500);
+    let endpoint = format!("{}/tokenized-secret-path", collector.endpoint);
+
+    let out = otel_scrape()
+        .args(["--otlp-endpoint", &endpoint])
+        .args(["--", "sh", "-c", "printf child; exit 7"])
+        .output()
+        .unwrap();
+
+    assert_eq!(out.status.code(), Some(7));
+    assert_eq!(String::from_utf8_lossy(&out.stdout), "child");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("failed to export OTLP trace"));
+    assert!(!stderr.contains("tokenized-secret-path"));
+    let request = collector.request();
+    assert_eq!(request.path, "/tokenized-secret-path");
+}
+
+#[test]
+fn otlp_export_timeout_preserves_child_exit_code_when_collector_stalls() {
+    let collector = TestCollector::start_stalling();
 
     let out = otel_scrape()
         .args(["--otlp-endpoint", &collector.endpoint])
@@ -407,9 +427,30 @@ fn otlp_export_failure_preserves_child_exit_code() {
 
     assert_eq!(out.status.code(), Some(7));
     assert_eq!(String::from_utf8_lossy(&out.stdout), "child");
-    assert!(String::from_utf8_lossy(&out.stderr).contains("failed to export OTLP trace"));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("failed to export OTLP trace"));
     let request = collector.request();
     assert_eq!(request.path, "/v1/traces");
+}
+
+#[test]
+fn otlp_export_warning_does_not_leak_invalid_env_endpoint() {
+    let out = otel_scrape()
+        .env(
+            "OTEL_EXPORTER_OTLP_ENDPOINT",
+            "http://user:SECRET@127.0.0.1:9/private-token?token=SECRET",
+        )
+        .args(["--", "sh", "-c", "printf child; exit 7"])
+        .output()
+        .unwrap();
+
+    assert_eq!(out.status.code(), Some(7));
+    assert_eq!(String::from_utf8_lossy(&out.stdout), "child");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("failed to export OTLP trace to <invalid http endpoint>"));
+    assert!(!stderr.contains("SECRET"));
+    assert!(!stderr.contains("private-token"));
+    assert!(!stderr.contains("user:"));
 }
 
 fn attr_value(attrs: &[serde_json::Value], key: &str) -> Option<String> {
@@ -445,6 +486,14 @@ struct CapturedRequest {
 
 impl TestCollector {
     fn start(status: u16) -> Self {
+        Self::start_with_response(Some(status))
+    }
+
+    fn start_stalling() -> Self {
+        Self::start_with_response(None)
+    }
+
+    fn start_with_response(status: Option<u16>) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let endpoint = format!("http://{}", listener.local_addr().unwrap());
         let (request_tx, request_rx) = mpsc::channel();
@@ -464,10 +513,14 @@ impl TestCollector {
             }
             let request = captured_request(&bytes).unwrap();
             request_tx.send(request).unwrap();
-            let response = format!(
-                "HTTP/1.1 {status} test\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}"
-            );
-            stream.write_all(response.as_bytes()).unwrap();
+            if let Some(status) = status {
+                let response = format!(
+                    "HTTP/1.1 {status} test\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}"
+                );
+                stream.write_all(response.as_bytes()).unwrap();
+            } else {
+                thread::sleep(std::time::Duration::from_secs(2));
+            }
         });
         Self {
             endpoint,

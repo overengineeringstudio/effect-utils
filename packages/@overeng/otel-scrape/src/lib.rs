@@ -7,11 +7,11 @@
 use std::fmt::Write as _;
 use std::fs;
 use std::io::{self, Read, Write};
-use std::net::TcpStream;
+use std::net::{TcpStream, ToSocketAddrs};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
 use std::thread;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -33,6 +33,7 @@ const OUTPUT_MEDIA_TYPE: &str = "application/octet-stream";
 const MANIFEST_MEDIA_TYPE: &str = "application/json";
 const CANONICAL_JSON_CODEC: &str = "canonical-json";
 const RESOURCE_FACT_UNAVAILABLE: &str = "unavailable";
+const OTLP_HTTP_TIMEOUT: Duration = Duration::from_millis(500);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunConfig {
@@ -394,9 +395,12 @@ pub fn run(config: RunConfig) -> io::Result<i32> {
     }
 
     if let Some(endpoint) = config.otlp_endpoint.as_ref() {
+        let endpoint_for_warning = endpoint_for_warning(endpoint);
         if let Err(cause) = export_command_span(&config, &trace, &child, started_wall, duration_ms)
         {
-            eprintln!("otel-scrape: warning: failed to export OTLP trace to {endpoint}: {cause}");
+            eprintln!(
+                "otel-scrape: warning: failed to export OTLP trace to {endpoint_for_warning}: {cause}"
+            );
         }
     }
 
@@ -606,7 +610,13 @@ fn unix_nanos(time: SystemTime) -> u128 {
 
 fn post_otlp_http_json(endpoint: &str, body: &[u8]) -> io::Result<()> {
     let endpoint = parse_http_endpoint(endpoint)?;
-    let mut stream = TcpStream::connect((endpoint.host.as_str(), endpoint.port))?;
+    let socket_addr = (endpoint.host.as_str(), endpoint.port)
+        .to_socket_addrs()?
+        .next()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "endpoint did not resolve"))?;
+    let mut stream = TcpStream::connect_timeout(&socket_addr, OTLP_HTTP_TIMEOUT)?;
+    stream.set_read_timeout(Some(OTLP_HTTP_TIMEOUT))?;
+    stream.set_write_timeout(Some(OTLP_HTTP_TIMEOUT))?;
     let request = format!(
         "POST {} HTTP/1.1\r\nHost: {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
         endpoint.path,
@@ -641,6 +651,18 @@ struct HttpEndpoint {
     path: String,
 }
 
+impl HttpEndpoint {
+    fn warning_label(&self) -> String {
+        format!("http://{}/...", self.host_header)
+    }
+}
+
+fn endpoint_for_warning(value: &str) -> String {
+    parse_http_endpoint(value)
+        .map(|endpoint| endpoint.warning_label())
+        .unwrap_or_else(|_| String::from("<invalid http endpoint>"))
+}
+
 fn validate_http_endpoint(value: &str) -> Result<(), UsageError> {
     parse_http_endpoint(value)
         .map(|_| ())
@@ -656,11 +678,23 @@ fn parse_http_endpoint(value: &str) -> io::Result<HttpEndpoint> {
             "only http:// endpoints are supported in this slice",
         ));
     };
+    if rest.contains('?') || rest.contains('#') {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "endpoint query and fragment are not accepted",
+        ));
+    }
     let (authority, path) = rest.split_once('/').unwrap_or((rest, ""));
     if authority.is_empty() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             "missing endpoint host",
+        ));
+    }
+    if authority.contains('@') {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "endpoint user info is not accepted",
         ));
     }
     let (host, port) = authority.rsplit_once(':').map_or_else(
