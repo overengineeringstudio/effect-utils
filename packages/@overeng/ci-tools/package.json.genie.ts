@@ -11,7 +11,7 @@ import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
 const workspaceDeps = catalog.compose({
-  workspace: workspaceMember({ memberPath: 'packages/@overeng/workflow-report' }),
+  workspace: workspaceMember({ memberPath: 'packages/@overeng/ci-tools' }),
   dependencies: {
     workspace: [otelContractPkg, utilsPkg],
   },
@@ -36,7 +36,7 @@ const workspaceDeps = catalog.compose({
 
 export default packageJson(
   {
-    name: '@overeng/workflow-report',
+    name: '@overeng/ci-tools',
     ...privatePackageDefaults,
     exports: {
       '.': exportEntry('./src/mod.ts', { environment: 'node' }),
@@ -45,7 +45,7 @@ export default packageJson(
     publishConfig: {
       access: 'public',
       bin: {
-        'workflow-report': './dist/bin/workflow-report.js',
+        'ci-tools': './dist/bin/ci-tools.js',
       },
       exports: {
         '.': './dist/src/mod.js',

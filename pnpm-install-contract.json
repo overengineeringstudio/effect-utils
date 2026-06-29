@@ -137,6 +137,7 @@
       "context/effect/socket",
       "context/opentui",
       "packages/@overeng/agent-session-ingest",
+      "packages/@overeng/ci-tools",
       "packages/@overeng/content-address",
       "packages/@overeng/effect-ai-claude-cli",
       "packages/@overeng/effect-path",
@@ -166,8 +167,7 @@
       "packages/@overeng/tui-react",
       "packages/@overeng/tui-stories",
       "packages/@overeng/utils",
-      "packages/@overeng/utils-dev",
-      "packages/@overeng/workflow-report"
+      "packages/@overeng/utils-dev"
     ],
     "patchedDependencies": {
       "@effect/platform@0.96.2": "packages/@overeng/utils/patches/@effect__platform@0.96.0.patch",

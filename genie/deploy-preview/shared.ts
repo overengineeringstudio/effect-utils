@@ -1,4 +1,4 @@
-import { workflowReportRecordLineMarker } from '../../packages/@overeng/workflow-report/src/mod.ts'
+import { workflowReportRecordLineMarker } from '../../packages/@overeng/ci-tools/src/mod.ts'
 export {
   workflowReportCommand,
   workflowReportEnv,

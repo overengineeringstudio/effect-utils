@@ -154,7 +154,7 @@ let
     "packages/@overeng/tui-core"
     "packages/@overeng/tui-react"
     "packages/@overeng/tui-stories"
-    "packages/@overeng/workflow-report"
+    "packages/@overeng/ci-tools"
     "context/opentui"
     "context/effect/socket"
   ];
@@ -257,8 +257,8 @@ let
       name = "utils-dev";
     }
     {
-      path = "packages/@overeng/workflow-report";
-      name = "workflow-report";
+      path = "packages/@overeng/ci-tools";
+      name = "ci-tools";
     }
   ];
 

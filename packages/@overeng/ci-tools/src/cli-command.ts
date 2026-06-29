@@ -251,3 +251,9 @@ export const workflowReportCommand = Command.make('workflow-report').pipe(
   Command.withSubcommands([collectBundleCommand, renderCommentBodyCommand, findCommentCommand]),
   Command.withDescription('Workflow report bundle, render, and comment-state helpers'),
 )
+
+/** Root CLI command for CI automation helpers. */
+export const ciToolsCommand = Command.make('ci-tools').pipe(
+  Command.withSubcommands([workflowReportCommand]),
+  Command.withDescription('CI automation helpers'),
+)
