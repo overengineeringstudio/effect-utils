@@ -38,6 +38,24 @@ fn preserves_passthrough_and_writes_summary() {
 }
 
 #[test]
+fn summary_write_failure_preserves_child_exit_code() {
+    let dir = tempfile::tempdir().unwrap();
+    let summary_path_is_directory = dir.path().join("summary-target");
+    std::fs::create_dir(&summary_path_is_directory).unwrap();
+
+    let out = otel_scrape()
+        .args(["--summary-out"])
+        .arg(&summary_path_is_directory)
+        .args(["--", "sh", "-c", "echo child-out; exit 7"])
+        .output()
+        .unwrap();
+
+    assert_eq!(out.status.code(), Some(7));
+    assert_eq!(String::from_utf8_lossy(&out.stdout), "child-out\n");
+    assert!(String::from_utf8_lossy(&out.stderr).contains("failed to write summary"));
+}
+
+#[test]
 fn exports_root_traceparent_to_child() {
     let dir = tempfile::tempdir().unwrap();
     let env_file = dir.path().join("traceparent");

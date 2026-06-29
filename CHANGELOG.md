@@ -14,6 +14,10 @@ All notable changes to this project will be documented in this file.
   execution, W3C `traceparent` root-or-join propagation, stable hashed command
   evidence, file-only JSON summaries, flake/devenv wiring, and cargo CI gates.
 
+- **otel-scrape**: Add a generated telemetry registry with a JSON source of
+  truth and Rust/TypeScript projections for wrapper schemas, span names,
+  attribute keys, and profile fields.
+
 - **otel-scrape**: Add the public VRS for an effect-utils-owned process wrapper
   that turns build/dev tool executions into OTEL spans, events, metrics, and
   content-addressed profile links.
@@ -60,6 +64,10 @@ All notable changes to this project will be documented in this file.
   Markdown parsers and consume one block-payload contract.
 
 ### Fixed
+
+- **otel-scrape**: Preserve the wrapped command's exit code when optional
+  summary file writing fails after the child process exits, while still
+  reporting the summary write failure on stderr.
 
 - **@overeng/content-address**: Require manifest pins to target stored canonical
   JSON manifest bytes and allow safe pin path segments that merely start with

@@ -23,3 +23,8 @@ duration, trace join/root facts, and explicit degraded flags for direct-child-on
 process capture and absent OTLP export. Later milestones can add command spans,
 adapter parsing, and CAS profile links without changing the pass-through
 boundary.
+
+Telemetry semantic names are generated from
+`context/otel-scrape/telemetry-registry.json` into Rust and TypeScript bindings;
+update the registry source and run `devenv tasks run genie:run` instead of
+editing generated constants by hand.

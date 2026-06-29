@@ -12,5 +12,6 @@ export default tsconfigJson({
     ...nodeTypes,
   },
   include: ['src/**/*'],
+  exclude: ['src/**/*.genie.ts'],
   references: [{ path: '../utils-dev' }],
 } satisfies TSConfigArgs)

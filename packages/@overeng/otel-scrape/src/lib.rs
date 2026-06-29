@@ -14,6 +14,9 @@ use std::time::Instant;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
+#[path = "telemetry_registry.gen.rs"]
+pub mod telemetry_registry;
+
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const EX_USAGE: u8 = 64;
 const TRACE_FLAGS_SAMPLED: &str = "01";
@@ -179,9 +182,17 @@ pub fn run(config: RunConfig) -> io::Result<i32> {
 
     let duration_ms = started.elapsed().as_millis();
     if let Some(path) = config.summary_out.as_ref() {
-        let summary =
-            summary_for_status(&config, &trace, &child_traceparent, &status, duration_ms)?;
-        write_summary(path, &summary)?;
+        match summary_for_status(&config, &trace, &child_traceparent, &status, duration_ms)
+            .and_then(|summary| write_summary(path, &summary))
+        {
+            Ok(()) => {}
+            Err(cause) => {
+                eprintln!(
+                    "otel-scrape: warning: failed to write summary {}: {cause}",
+                    path.display()
+                );
+            }
+        }
     }
 
     Ok(exit_code(status))
@@ -196,7 +207,7 @@ fn summary_for_status(
 ) -> io::Result<Summary> {
     let cwd = std::env::current_dir()?;
     Ok(Summary {
-        schema: "otel-scrape.summary/v1",
+        schema: telemetry_registry::schemas::SUMMARY_V1,
         version: VERSION,
         command: CommandSummary {
             argv_hash: stable_hash_lines(&config.argv),
@@ -409,6 +420,19 @@ mod tests {
         assert_eq!(
             err.message(),
             "only --adapter none is supported in this slice"
+        );
+    }
+
+    #[test]
+    fn generated_registry_owns_summary_schema() {
+        assert_eq!(
+            telemetry_registry::schemas::SUMMARY_V1,
+            "otel-scrape.summary/v1"
+        );
+        assert_eq!(telemetry_registry::spans::COMMAND, "otel_scrape.command");
+        assert_eq!(
+            telemetry_registry::attributes::PROCESS_COMMAND_ARGS_HASH,
+            "process.command_args_hash"
         );
     }
 }
