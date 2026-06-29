@@ -31,6 +31,11 @@ All notable changes to this project will be documented in this file.
   artifacts, stores them through the CAS lane, and emits sanitized profile-link
   evidence.
 
+- **otel-scrape / @overeng/otel-contract**: Add a consumer-neutral E2E fixture
+  that captures a real `node-cpuprofile` wrapper run through `otelite`, decodes
+  the emitted profile link with the TypeScript contract, and resolves the
+  linked artifact from CAS.
+
 - **otel-scrape**: Add the public VRS for an effect-utils-owned process wrapper
   that turns build/dev tool executions into OTEL spans, events, metrics, and
   content-addressed profile links.
