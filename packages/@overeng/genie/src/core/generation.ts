@@ -354,7 +354,7 @@ const loadOxfmtConfig = Effect.fn('loadOxfmtConfig')(function* ({
  * ensures consistent output regardless of where genie is invoked, since the `.genie.ts` source
  * file is always a sibling of the generated file.
  */
-const getHeaderComment = ({
+export const getHeaderComment = ({
   targetFilePath,
   sourceFile,
 }: {
@@ -380,6 +380,10 @@ const getHeaderComment = ({
   }
 
   if (ext === '.yml' || ext === '.yaml') {
+    return `# Generated file - DO NOT EDIT\n# Source: ${sourceFile}\n\n`
+  }
+
+  if (basename === 'BUCK' || ext === '.bzl' || ext === '.bxl') {
     return `# Generated file - DO NOT EDIT\n# Source: ${sourceFile}\n\n`
   }
 
