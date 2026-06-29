@@ -79,6 +79,9 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/genie**: Emit Starlark `#` generated-file headers for Buck2
+  `BUCK`, `.bzl`, and `.bxl` outputs.
+
 - **@overeng/genie**: Tighten package-json export environment validation so
   constrained profiles reject bare Node builtin imports, follow extensionless
   directory entrypoints, and resolve overlapping conditional exports in emitted
