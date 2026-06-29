@@ -67,9 +67,11 @@ export const DeployDiagnostic = Schema.Record({
 export type DeployDiagnostic = typeof DeployDiagnostic.Type
 
 export const NetlifyProviderConfig = Schema.TaggedStruct('NetlifyProviderConfig', {
+  siteName: Schema.optional(DeployTarget),
   siteIdEnv: EnvVarName,
   authTokenEnv: EnvVarName,
   accountSlugEnv: Schema.optional(EnvVarName),
+  apiBaseUrlEnv: Schema.optional(EnvVarName),
 }).annotations({ identifier: 'CiTools.Deploy.NetlifyProviderConfig' })
 export type NetlifyProviderConfig = typeof NetlifyProviderConfig.Type
 

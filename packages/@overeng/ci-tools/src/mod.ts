@@ -1,5 +1,8 @@
 /* oxlint-disable overeng/jsdoc-require-exports, overeng/named-args -- Wire-contract exports mirror JSON field names; validators use value/path pairs for precise errors. */
 
+export * from './deploy-domain.ts'
+export * from './deploy-netlify.ts'
+
 export const workflowReportRecordLineMarker = 'WORKFLOW_REPORT_V1: ' as const
 export const workflowReportManagedMarker = '<!-- workflow-report:managed -->' as const
 export const workflowReportStatePrefix = '<!-- workflow-report:state\n' as const
