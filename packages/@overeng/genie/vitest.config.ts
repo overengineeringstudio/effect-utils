@@ -5,5 +5,7 @@ export default defineConfig({
     include: ['src/**/*.test.ts'],
     exclude: ['src/**/*.integration.test.ts', 'src/**/*.pw.test.ts'],
     server: { deps: { inline: ['@effect/vitest'] } },
+    testTimeout: 30_000,
+    hookTimeout: 30_000,
   },
 })

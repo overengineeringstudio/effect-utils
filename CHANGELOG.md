@@ -12,13 +12,13 @@ All notable changes to this project will be documented in this file.
 - **@overeng/genie**: Validate documented GitHub Actions limits for static
   matrix expansion, check runs per check suite, and explicit job timeouts.
 
-- **nix packages / @overeng/genie**: Refresh the Genie, Megarepo, and
-  TUI Stories pnpm-deps fixed-output hashes and keep the native dependency
+- **nix packages / @overeng/genie**: Refresh the Genie, Megarepo, TUI Stories,
+  and Notion MD pnpm-deps fixed-output hashes and keep the native dependency
   policy audit install-free by splitting the policy into a lightweight module.
 
-- **tests**: Give `@overeng/ci-tools` process-spawning E2Es CI timeout
-  headroom and keep the pty-effect roundtrip fixture alive long enough for
-  loaded Linux runners to attach reliably.
+- **tests**: Give repo Vitest tasks and `@overeng/ci-tools` process-spawning
+  E2Es CI timeout headroom, and keep the pty-effect roundtrip fixture alive
+  long enough for loaded Linux runners to attach reliably.
 
 ### Added
 
