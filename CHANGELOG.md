@@ -84,9 +84,9 @@ All notable changes to this project will be documented in this file.
   stalls can produce inspectable trace evidence.
 
 - **devenv/pnpm**: Add an explicit `materializationProfile` API and profile
-  evidence contract for `ciJobLocal`, `darwinSplitCas`,
-  `linuxSharedHardlink`, and `isolated` without changing Linux `auto` to
-  hardlink materialization yet.
+  evidence contract for `ciJobLocal`, transitional Linux `splitFilesCas`,
+  macOS `darwinSplitCas`, opt-in `linuxSharedHardlink`, and `isolated` without
+  changing Linux `auto` to hardlink materialization yet.
 
 - **@overeng/genie**: Document the intended package export type-proof
   architecture: strict proofs should use an explicit compiler executable
