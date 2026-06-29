@@ -16,6 +16,10 @@ All notable changes to this project will be documented in this file.
   fixed-output hashes and keep the native dependency policy audit install-free
   by splitting the policy into a lightweight module.
 
+- **tests**: Give `@overeng/ci-tools` process-spawning E2Es CI timeout
+  headroom and keep the pty-effect roundtrip fixture alive long enough for
+  loaded Linux runners to attach reliably.
+
 ### Added
 
 - **@overeng/genie**: Document the intended package export type-proof
