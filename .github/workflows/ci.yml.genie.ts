@@ -95,6 +95,43 @@ const failureReminderStep = {
   ].join('\n'),
 } as const
 
+const liveNetlifyCiToolsPreflightStep = {
+  id: 'live-netlify-preflight',
+  name: 'Check live Netlify ci-tools E2E secrets',
+  shell: 'bash',
+  env: {
+    NETLIFY_AUTH_TOKEN: '${{ secrets.NETLIFY_AUTH_TOKEN }}',
+    NETLIFY_SITE_ID: '${{ secrets.NETLIFY_SITE_ID }}',
+  },
+  run: [
+    'if [ -z "${NETLIFY_AUTH_TOKEN:-}" ] || [ -z "${NETLIFY_SITE_ID:-}" ]; then',
+    '  echo "::notice::Skipping live Netlify ci-tools E2E because NETLIFY_AUTH_TOKEN or NETLIFY_SITE_ID is unavailable"',
+    '  echo "run=false" >> "$GITHUB_OUTPUT"',
+    '  exit 0',
+    'fi',
+    'echo "run=true" >> "$GITHUB_OUTPUT"',
+  ].join('\n'),
+} as const
+
+const liveNetlifyCiToolsIf = "steps.live-netlify-preflight.outputs.run == 'true'"
+
+const andLiveNetlifyCiToolsIf = (condition: string) => {
+  const trimmed = condition.trim()
+  const unwrapped =
+    trimmed.startsWith('${{') && trimmed.endsWith('}}')
+      ? trimmed.slice(3, -2).trim()
+      : trimmed
+  return `${unwrapped} && ${liveNetlifyCiToolsIf}`
+}
+
+const onlyWhenLiveNetlifyCiTools = <Step extends Record<string, unknown>>(step: Step) => ({
+  ...step,
+  if:
+    typeof step.if === 'string' && step.if.length > 0
+      ? andLiveNetlifyCiToolsIf(step.if)
+      : liveNetlifyCiToolsIf,
+})
+
 const liveNetlifyCiToolsE2EStep = {
   name: 'Live Netlify ci-tools E2E',
   shell: 'bash',
@@ -102,13 +139,8 @@ const liveNetlifyCiToolsE2EStep = {
     CI_TOOLS_NETLIFY_LIVE: '1',
     NETLIFY_AUTH_TOKEN: '${{ secrets.NETLIFY_AUTH_TOKEN }}',
     NETLIFY_SITE_ID: '${{ secrets.NETLIFY_SITE_ID }}',
-    CI_TOOLS_NETLIFY_SITE_NAME: '${{ secrets.CI_TOOLS_NETLIFY_SITE_NAME }}',
   },
   run: [
-    'if [ -z "${NETLIFY_AUTH_TOKEN:-}" ] || [ -z "${NETLIFY_SITE_ID:-}" ]; then',
-    '  echo "::notice::Skipping live Netlify ci-tools E2E because NETLIFY_AUTH_TOKEN or NETLIFY_SITE_ID is unavailable"',
-    '  exit 0',
-    'fi',
     'netlify_pkg="$(nix build --no-link --print-out-paths nixpkgs#netlify-cli)"',
     'export CI_TOOLS_LIVE_NETLIFY_BIN="$netlify_pkg/bin/netlify"',
     'DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run pnpm:install',
@@ -847,12 +879,13 @@ const extraJobs: Record<string, any> = {
     defaults: bashShellDefaults,
     env: standardCIEnv,
     steps: [
-      ...baseSteps,
-      liveNetlifyCiToolsE2EStep,
-      savePnpmStateStep(),
-      nixDiagnosticsSummaryStep,
-      nixDiagnosticsArtifactStep(),
-      failureReminderStep,
+      liveNetlifyCiToolsPreflightStep,
+      ...baseSteps.map(onlyWhenLiveNetlifyCiTools),
+      onlyWhenLiveNetlifyCiTools(liveNetlifyCiToolsE2EStep),
+      onlyWhenLiveNetlifyCiTools(savePnpmStateStep()),
+      onlyWhenLiveNetlifyCiTools(nixDiagnosticsSummaryStep),
+      onlyWhenLiveNetlifyCiTools(nixDiagnosticsArtifactStep()),
+      onlyWhenLiveNetlifyCiTools(failureReminderStep),
     ],
   },
 }
