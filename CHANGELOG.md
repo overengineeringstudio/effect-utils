@@ -60,6 +60,11 @@ All notable changes to this project will be documented in this file.
   mode, and cover the task scripts through real-CLI E2E fixtures with fake
   provider endpoints.
 
+- **context/ci-tools / @overeng/ci-tools**: Restore the CI tools vision and
+  requirements VRS documents, update the spec for the current task-output,
+  CLI-output, and provider-boundary contracts, and move provider API lookup plus
+  live verification HTTP calls onto the Effect platform `HttpClient`.
+
 - **@overeng/genie**: Add the explicit `@overeng/genie/composition` subpath for
   reusable cross-artifact composition helpers. The first helper,
   `tsconfigReferencesFromPackages`, projects TypeScript project references from

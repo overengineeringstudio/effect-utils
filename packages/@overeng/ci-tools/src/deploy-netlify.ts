@@ -3,6 +3,7 @@
 import { spawnSync } from 'node:child_process'
 import { appendFileSync, existsSync, writeFileSync } from 'node:fs'
 
+import { HttpClient, HttpClientRequest } from '@effect/platform'
 import { Effect, Either, Schema } from 'effect'
 
 import {
@@ -160,25 +161,35 @@ const fetchNetlifyJson = Effect.fn('ci-tools.deploy.netlify.fetch-json')(functio
   readonly authToken: string
   readonly path: string
 }) {
-  return yield* Effect.tryPromise({
-    try: async () => {
-      const response = (await globalThis.fetch(
-        `${opts.apiBaseUrl.replace(/\/+$/u, '')}${opts.path}`,
-        {
-          headers: { Authorization: `Bearer ${opts.authToken}`, Connection: 'close' },
-        },
-      )) as unknown as { readonly status: number; readonly text: () => Promise<string> }
-      const text = await response.text()
-      return { status: response.status, text }
-    },
-    catch: (cause) =>
-      new ProviderProjectLookupFailed({
-        provider: 'netlify',
-        target: opts.target,
-        transient: true,
-        message: cause instanceof Error ? cause.message : 'Netlify API lookup failed',
+  const client = yield* HttpClient.HttpClient
+  return yield* client
+    .execute(
+      HttpClientRequest.get(`${opts.apiBaseUrl.replace(/\/+$/u, '')}${opts.path}`).pipe(
+        HttpClientRequest.setHeader('Authorization', `Bearer ${opts.authToken}`),
+        HttpClientRequest.setHeader('Connection', 'close'),
+      ),
+    )
+    .pipe(
+      Effect.flatMap((response) =>
+        response.text.pipe(Effect.map((text) => ({ status: response.status, text }))),
+      ),
+      Effect.catchTags({
+        RequestError: (cause) =>
+          new ProviderProjectLookupFailed({
+            provider: 'netlify',
+            target: opts.target,
+            transient: true,
+            message: cause.message,
+          }),
+        ResponseError: (cause) =>
+          new ProviderProjectLookupFailed({
+            provider: 'netlify',
+            target: opts.target,
+            transient: true,
+            message: cause.message,
+          }),
       }),
-  })
+    )
 })
 
 const resolveNetlifySite = Effect.fn('ci-tools.deploy.netlify.resolve-site')(function* (opts: {
@@ -332,24 +343,38 @@ const verifyFinalUrlOnce = Effect.fn('ci-tools.deploy.netlify.verify-once')(func
   readonly attempt: number
 }) {
   const verifyUrl = new URL(opts.path, opts.finalUrl)
-  const response = yield* Effect.tryPromise({
-    try: async () => {
-      const result = (await globalThis.fetch(verifyUrl, {
-        headers: { Connection: 'close' },
-      })) as unknown as { readonly status: number; readonly text: () => Promise<string> }
-      const text = await result.text()
-      return { status: result.status, text }
-    },
-    catch: (cause) =>
-      new VerificationFailed({
-        provider: 'netlify',
-        target: opts.target,
-        finalUrl: opts.finalUrl,
-        transient: true,
-        message: cause instanceof Error ? cause.message : 'Netlify live E2E verification failed',
-        diagnostics: { attempt: String(opts.attempt), verifyPath: opts.path },
+  const client = yield* HttpClient.HttpClient
+  const response = yield* client
+    .execute(
+      HttpClientRequest.get(verifyUrl.toString()).pipe(
+        HttpClientRequest.setHeader('Connection', 'close'),
+      ),
+    )
+    .pipe(
+      Effect.flatMap((result) =>
+        result.text.pipe(Effect.map((text) => ({ status: result.status, text }))),
+      ),
+      Effect.catchTags({
+        RequestError: (cause) =>
+          new VerificationFailed({
+            provider: 'netlify',
+            target: opts.target,
+            finalUrl: opts.finalUrl,
+            transient: true,
+            message: cause.message,
+            diagnostics: { attempt: String(opts.attempt), verifyPath: opts.path },
+          }),
+        ResponseError: (cause) =>
+          new VerificationFailed({
+            provider: 'netlify',
+            target: opts.target,
+            finalUrl: opts.finalUrl,
+            transient: true,
+            message: cause.message,
+            diagnostics: { attempt: String(opts.attempt), verifyPath: opts.path },
+          }),
       }),
-  })
+    )
 
   if (response.status < 200 || response.status >= 300) {
     return yield* new VerificationFailed({
