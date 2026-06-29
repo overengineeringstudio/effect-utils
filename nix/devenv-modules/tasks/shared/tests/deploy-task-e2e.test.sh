@@ -18,6 +18,20 @@ assert_contains() {
   fi
 }
 
+assert_not_contains() {
+  local haystack="$1"
+  local needle="$2"
+  local label="$3"
+
+  if printf '%s' "$haystack" | grep -qF -- "$needle"; then
+    echo "FAIL: $label"
+    echo "  expected not to contain: $needle"
+    echo "  actual output:"
+    printf '%s\n' "$haystack" | sed 's/^/    /'
+    exit 1
+  fi
+}
+
 assert_exit_code() {
   local expected="$1"
   local actual="$2"
@@ -165,6 +179,11 @@ if [ "${1:-}" = "deploy" ]; then
     exit 9
   fi
 
+  if [ "${FAKE_NETLIFY_MODE:-success}" = "invalid-json" ]; then
+    printf '{"deploy_id":null}\n'
+    exit 0
+  fi
+
   printf '{"deploy_id":"deploy123","site_name":"fake-site","deploy_url":"https://deploy123--fake-site.netlify.app"}\n'
   exit 0
 fi
@@ -181,6 +200,10 @@ printf 'cwd=%s args=%s\n' "$PWD" "$*" >> "${FAKE_BUNX_LOG:?}"
 
 if [ "${1:-}" = "vercel" ] && [ "${2:-}" = "deploy" ]; then
   test -f .vercel/output/static/index.html
+  if [ "${FAKE_VERCEL_MODE:-success}" = "no-url" ]; then
+    printf 'Deployment complete without URL\n'
+    exit 0
+  fi
   printf 'https://deploy-web.vercel.app\n'
   exit 0
 fi
@@ -235,10 +258,7 @@ assert_exit_code 9 "$netlify_failure_status" "Netlify unauthorized path should p
 assert_contains "$netlify_failure_output" "Netlify auth diagnostics for storybook:" "Netlify failure should print diagnostics header"
 assert_contains "$netlify_failure_output" "getCurrentUser: ok" "Netlify failure should diagnose current user"
 assert_contains "$netlify_failure_output" "getSite(fake-site-id): ok" "Netlify failure should diagnose configured site"
-if printf '%s' "$netlify_failure_output" | grep -qF 'fake-token'; then
-  echo "FAIL: Netlify diagnostics leaked token"
-  exit 1
-fi
+assert_not_contains "$netlify_failure_output" "fake-token" "Netlify diagnostics should not leak token"
 
 echo "Test 3: Vercel static PR deploy packages local output, aliases, and emits records"
 vercel_output_file="$tmpdir/vercel-task-output.json"
@@ -262,6 +282,94 @@ assert_contains "$(cat "$tmpdir/bunx.log")" "args=vercel alias https://deploy-we
 assert_json_field "https://web-pr-123-team.vercel.app" "$vercel_output_file" "value => value.devenv.env.VERCEL_DEPLOY_URL_WEB" "Vercel task output should include scoped URL"
 assert_json_field "vercel" "$vercel_report_file" "value => value.data.provider" "Vercel report record should include provider"
 assert_json_field "web" "$vercel_report_file" "value => value.data.target" "Vercel report record should include target"
+
+echo "Test 4: Netlify invalid provider output fails before record emission"
+set +e
+netlify_invalid_output="$(
+  cd "$workspace"
+  export FAKE_NETLIFY_LOG="$tmpdir/netlify-invalid.log"
+  export FAKE_NETLIFY_MODE="invalid-json"
+  export NETLIFY_AUTH_TOKEN="fake-token"
+  export DEVENV_TASK_INPUT='{"type":"draft"}'
+  export WORKFLOW_REPORT_OUTPUT_FILE="$tmpdir/netlify-invalid-report.jsonl"
+  bash "$tmpdir/netlify-deploy.sh" 2>&1
+)"
+netlify_invalid_status=$?
+set -e
+
+assert_exit_code 1 "$netlify_invalid_status" "Netlify invalid JSON should fail task"
+assert_contains "$netlify_invalid_output" "Error: Netlify CLI did not return the expected deploy JSON for storybook" "Netlify invalid JSON should explain schema failure"
+if [ -e "$tmpdir/netlify-invalid-report.jsonl" ]; then
+  echo "FAIL: Netlify invalid provider output should not emit success report"
+  exit 1
+fi
+
+echo "Test 5: Netlify PR deploy without PR input fails before provider call"
+set +e
+netlify_missing_pr_output="$(
+  cd "$workspace"
+  : > "$tmpdir/netlify-missing-pr.log"
+  export FAKE_NETLIFY_LOG="$tmpdir/netlify-missing-pr.log"
+  export NETLIFY_AUTH_TOKEN="fake-token"
+  export DEVENV_TASK_INPUT='{"type":"pr"}'
+  bash "$tmpdir/netlify-deploy.sh" 2>&1
+)"
+netlify_missing_pr_status=$?
+set -e
+
+assert_exit_code 1 "$netlify_missing_pr_status" "Netlify missing PR input should fail"
+assert_contains "$netlify_missing_pr_output" "Error: PR deploy requires 'pr' input" "Netlify missing PR input should explain required field"
+if [ -s "$tmpdir/netlify-missing-pr.log" ]; then
+  echo "FAIL: Netlify missing PR input should not call provider"
+  exit 1
+fi
+
+echo "Test 6: Vercel deploy output without URL fails before record emission"
+set +e
+vercel_no_url_output="$(
+  cd "$workspace"
+  export FAKE_BUNX_LOG="$tmpdir/bunx-no-url.log"
+  export FAKE_VERCEL_MODE="no-url"
+  export VERCEL_TOKEN="fake-token"
+  export VERCEL_ORG_ID="fake-org"
+  export VERCEL_PROJECT_ID_WEB="fake-project"
+  export DEVENV_TASK_INPUT='{"type":"preview"}'
+  export WORKFLOW_REPORT_OUTPUT_FILE="$tmpdir/vercel-no-url-report.jsonl"
+  bash "$tmpdir/vercel-deploy.sh" 2>&1
+)"
+vercel_no_url_status=$?
+set -e
+
+assert_exit_code 1 "$vercel_no_url_status" "Vercel output without URL should fail"
+assert_contains "$vercel_no_url_output" "Error: Could not determine Vercel deploy URL from CLI output." "Vercel missing URL should explain extraction failure"
+if [ -e "$tmpdir/vercel-no-url-report.jsonl" ]; then
+  echo "FAIL: Vercel missing URL should not emit success report"
+  exit 1
+fi
+
+echo "Test 7: Vercel missing static output fails before provider call"
+missing_static_script="$tmpdir/vercel-missing-static.sh"
+extract_vercel_task_script "$workspace/missing-static" "$missing_static_script"
+set +e
+vercel_missing_static_output="$(
+  cd "$workspace"
+  : > "$tmpdir/bunx-missing-static.log"
+  export FAKE_BUNX_LOG="$tmpdir/bunx-missing-static.log"
+  export VERCEL_TOKEN="fake-token"
+  export VERCEL_ORG_ID="fake-org"
+  export VERCEL_PROJECT_ID_WEB="fake-project"
+  export DEVENV_TASK_INPUT='{"type":"preview"}'
+  bash "$missing_static_script" 2>&1
+)"
+vercel_missing_static_status=$?
+set -e
+
+assert_exit_code 1 "$vercel_missing_static_status" "Vercel missing static output should fail"
+assert_contains "$vercel_missing_static_output" "Error: No build output at $workspace/missing-static" "Vercel missing static output should identify directory"
+if [ -s "$tmpdir/bunx-missing-static.log" ]; then
+  echo "FAIL: Vercel missing static output should not call provider"
+  exit 1
+fi
 
 echo ""
 echo "Deploy task E2E tests passed."

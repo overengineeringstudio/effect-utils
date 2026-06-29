@@ -25,9 +25,13 @@ Coverage:
   metadata, and a workflow-report record.
 - Netlify unauthorized/project lookup failure prints provider diagnostics and
   preserves the provider exit code without leaking the fake token.
+- Netlify malformed provider JSON fails before emitting a success record.
+- Netlify PR mode without a PR number fails before calling the provider.
 - Vercel static PR deploy packages local output as Build Output API v3, calls
   `vercel deploy --prebuilt`, assigns the PR alias, emits task output metadata,
   and emits a workflow-report record.
+- Vercel CLI output without a deploy URL fails before emitting a success record.
+- Vercel missing local static output fails before calling the provider.
 
 The test uses fake tokens, fake provider CLIs, fake provider IDs, and local
 fixtures only. It performs no network access and does not require real provider
