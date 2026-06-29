@@ -38,7 +38,7 @@ type GraphResult = {
   issues: readonly ValidationIssue[]
 }
 
-export type ExportTypeProofCompilerKind = 'tsgo' | 'tsc'
+export type ExportTypeProofCompilerKind = 'tsgo' | 'custom'
 
 export type ExportTypeProofCompiler = {
   path: string
@@ -440,7 +440,7 @@ const resolveExecutableFromPath = (name: string): string | undefined => {
 }
 
 const inferCompilerKind = (compilerPath: string): ExportTypeProofCompilerKind =>
-  path.basename(compilerPath).startsWith('tsgo') === true ? 'tsgo' : 'tsc'
+  path.basename(compilerPath).startsWith('tsgo') === true ? 'tsgo' : 'custom'
 
 const resolveTypeProofCompiler = (
   configured: ExportTypeProofCompiler | undefined,

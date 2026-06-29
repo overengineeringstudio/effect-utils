@@ -784,7 +784,7 @@ describe('packageJson', () => {
     const repo = createTempRepo('packages/pkg')
     const packageDir = repo.memberDirs['packages/pkg']!
     const compilerLog = path.join(repo.repoRoot, 'compiler-args.log')
-    const compilerBin = path.join(repo.repoRoot, 'fake-tsc')
+    const compilerBin = path.join(repo.repoRoot, 'fake-tsgo')
     fs.mkdirSync(path.join(packageDir, 'src'))
     fs.writeFileSync(path.join(packageDir, 'src/mod.ts'), 'export const value = 1\n')
     fs.writeFileSync(
@@ -801,7 +801,7 @@ describe('packageJson', () => {
     fs.chmodSync(compilerBin, 0o755)
 
     const runtime = createNodePackageJsonValidationRuntime({
-      typeProofCompiler: { path: compilerBin, kind: 'tsc' },
+      typeProofCompiler: { path: compilerBin, kind: 'tsgo' },
     })
     const result = runtime.validateExportEnvironments({
       cwd: repo.repoRoot,
@@ -826,7 +826,7 @@ describe('packageJson', () => {
   it('reports strict type proof compiler failures as validation issues', () => {
     const repo = createTempRepo('packages/pkg')
     const packageDir = repo.memberDirs['packages/pkg']!
-    const compilerBin = path.join(repo.repoRoot, 'fake-tsc')
+    const compilerBin = path.join(repo.repoRoot, 'fake-tsgo')
     fs.mkdirSync(path.join(packageDir, 'src'))
     fs.writeFileSync(path.join(packageDir, 'src/mod.ts'), 'export const value = 1\n')
     fs.writeFileSync(
@@ -844,7 +844,7 @@ describe('packageJson', () => {
     fs.chmodSync(compilerBin, 0o755)
 
     const runtime = createNodePackageJsonValidationRuntime({
-      typeProofCompiler: { path: compilerBin, kind: 'tsc' },
+      typeProofCompiler: { path: compilerBin, kind: 'tsgo' },
     })
     const result = runtime.validateExportEnvironments({
       cwd: repo.repoRoot,

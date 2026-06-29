@@ -25,10 +25,10 @@ it is the wrong long-term boundary for packaged Genie CLIs:
   export type proof should follow the same shape
 
 Effect-utils already carries a Nix-managed `tsgo` input and its TypeScript task
-module defaults check/build tasks to `tsgo`. That makes `tsgo` the default
-compiler tool for Genie package export type proofs. JavaScript `tsc` remains
-possible only as an explicit compiler override for exceptional consumers; it is
-not a fallback default.
+module defaults check/build tasks to `tsgo`. That makes `tsgo` the default and
+intended compiler tool for Genie package export type proofs. Non-`tsgo`
+compilers are treated as explicit custom overrides for exceptional consumers;
+they are not fallback defaults.
 
 ## Decision
 
@@ -42,8 +42,8 @@ owned by the engine environment:
 - Nix-packaged Genie should provide a pinned `tsgo` executable
 - source-mode development should use `tsgo` from the dev shell or an explicitly
   configured compiler executable
-- JavaScript `tsc` is allowed only when a caller deliberately configures it as
-  the compiler executable; Genie must not silently discover it as a legacy
+- non-`tsgo` compilers are allowed only when a caller deliberately configures a
+  custom compiler executable; Genie must not silently discover legacy `tsc` as a
   fallback
 
 The pure `@overeng/genie` authoring surface remains free of node-only validation

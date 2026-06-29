@@ -54,8 +54,8 @@ fi
 
 echo "Test 3: compiled Genie strict export proof uses explicit compiler executable"
 strict_workspace="$tmpdir/strict-workspace"
-fake_compiler="$tmpdir/fake-tsc"
-compiler_log="$tmpdir/fake-tsc.log"
+fake_compiler="$tmpdir/fake-tsgo"
+compiler_log="$tmpdir/fake-tsgo.log"
 
 mkdir -p "$strict_workspace/src"
 

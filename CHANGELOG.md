@@ -8,8 +8,8 @@ All notable changes to this project will be documented in this file.
 
 - **@overeng/genie**: Document the intended package export type-proof
   architecture: strict proofs should use an explicit compiler executable
-  boundary (`tsgo` first, `tsc` fallback) instead of dynamic TypeScript module
-  imports or staged `node_modules` plumbing.
+  boundary (`tsgo` by default, custom only by explicit override) instead of
+  dynamic TypeScript module imports or staged `node_modules` plumbing.
 
 - **@overeng/genie**: Add the explicit `@overeng/genie/composition` subpath for
   reusable cross-artifact composition helpers. The first helper,
