@@ -455,9 +455,6 @@ const resolveTypeProofCompiler = (
   const tsgo = resolveExecutableFromPath('tsgo')
   if (tsgo !== undefined) return { path: tsgo, kind: 'tsgo' }
 
-  const tsc = resolveExecutableFromPath('tsc')
-  if (tsc !== undefined) return { path: tsc, kind: 'tsc' }
-
   return undefined
 }
 
@@ -631,7 +628,7 @@ const typecheck = ({
           packageName,
           dependency: exportPath,
           message:
-            'Strict TypeScript environment proof requires a compiler executable. Provide GENIE_EXPORT_TYPE_PROOF_COMPILER, install tsgo on PATH, or install tsc on PATH.',
+            'Strict TypeScript environment proof requires a compiler executable. Provide GENIE_EXPORT_TYPE_PROOF_COMPILER or install tsgo on PATH.',
           rule: 'package-json-export-environment-type-compiler',
         }),
       ],

@@ -93,8 +93,7 @@ All notable changes to this project will be documented in this file.
 
 - **@overeng/genie**: Run strict package export type proofs through an explicit
   compiler executable, with Nix-packaged Genie wired to the pinned `tsgo`
-  binary and source-mode validation falling back through `tsgo`/`tsc` on
-  `PATH`.
+  binary and source-mode validation discovering `tsgo` on `PATH`.
 
 - **@overeng/genie**: Tighten package-json export environment validation so
   constrained profiles reject bare Node builtin imports, follow extensionless

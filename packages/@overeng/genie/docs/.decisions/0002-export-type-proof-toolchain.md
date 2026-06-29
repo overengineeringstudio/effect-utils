@@ -25,9 +25,10 @@ it is the wrong long-term boundary for packaged Genie CLIs:
   export type proof should follow the same shape
 
 Effect-utils already carries a Nix-managed `tsgo` input and its TypeScript task
-module defaults check/build tasks to `tsgo`. That makes `tsgo` the preferred
-compiler tool for Genie package export type proofs in Nix-packaged contexts,
-with JavaScript `tsc` kept as a compatible fallback where needed.
+module defaults check/build tasks to `tsgo`. That makes `tsgo` the default
+compiler tool for Genie package export type proofs. JavaScript `tsc` remains
+possible only as an explicit compiler override for exceptional consumers; it is
+not a fallback default.
 
 ## Decision
 
@@ -39,10 +40,11 @@ The validation runtime should receive or discover a compiler executable path
 owned by the engine environment:
 
 - Nix-packaged Genie should provide a pinned `tsgo` executable
-- source-mode development may use `tsgo` from the dev shell or an explicitly
-  configured fallback
-- JavaScript `tsc` may remain a fallback for environments where `tsgo` is not
-  available, but the contract is still an executable boundary
+- source-mode development should use `tsgo` from the dev shell or an explicitly
+  configured compiler executable
+- JavaScript `tsc` is allowed only when a caller deliberately configures it as
+  the compiler executable; Genie must not silently discover it as a legacy
+  fallback
 
 The pure `@overeng/genie` authoring surface remains free of node-only validation
 internals and TypeScript value imports. `exportEntry(...)` only records
@@ -93,7 +95,7 @@ The implementation:
 1. defines `createNodePackageJsonValidationRuntime(...)` with an optional
    compiler executable path and compiler kind
 2. resolves source-mode compilers from `GENIE_EXPORT_TYPE_PROOF_COMPILER`,
-   then `tsgo`, then `tsc`
+   then `tsgo`
 3. wires the Nix-packaged Genie wrapper to the flake-pinned
    `effect-tsgo`/`bin/tsgo` executable
 4. generates temporary proof tsconfigs under the existing export-validation

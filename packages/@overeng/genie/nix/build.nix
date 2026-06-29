@@ -10,7 +10,7 @@
   gitRev ? "unknown",
   commitTs ? 0,
   dirty ? false,
-  typeProofCompilerBin ? "${pkgs.typescript}/bin/tsc",
+  typeProofCompilerBin,
 }:
 
 let

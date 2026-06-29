@@ -870,6 +870,53 @@ describe('packageJson', () => {
     })
   })
 
+  it('does not silently fall back to tsc from PATH for strict type proof', () => {
+    const repo = createTempRepo('packages/pkg')
+    const packageDir = repo.memberDirs['packages/pkg']!
+    const binDir = path.join(repo.repoRoot, 'bin')
+    fs.mkdirSync(path.join(packageDir, 'src'))
+    fs.mkdirSync(binDir)
+    fs.writeFileSync(path.join(packageDir, 'src/mod.ts'), 'export const value = 1\n')
+    fs.writeFileSync(path.join(binDir, 'tsc'), '#!/usr/bin/env bash\nexit 0\n')
+    fs.chmodSync(path.join(binDir, 'tsc'), 0o755)
+
+    const originalPath = process.env.PATH
+    const originalCompiler = process.env.GENIE_EXPORT_TYPE_PROOF_COMPILER
+    process.env.PATH = binDir
+    delete process.env.GENIE_EXPORT_TYPE_PROOF_COMPILER
+    try {
+      const result = createNodePackageJsonValidationRuntime().validateExportEnvironments({
+        cwd: repo.repoRoot,
+        location: 'packages/pkg',
+        packageName: '@test/package',
+        exports: { '.': './src/mod.ts' },
+        contracts: {
+          '.': [
+            {
+              environment: 'isomorphic-es2024',
+              typeProof: 'strict',
+            },
+          ],
+        },
+      })
+
+      expect(result.issues).toContainEqual({
+        severity: 'error',
+        packageName: '@test/package',
+        dependency: '.',
+        message: expect.stringContaining('install tsgo on PATH'),
+        rule: 'package-json-export-environment-type-compiler',
+      })
+    } finally {
+      process.env.PATH = originalPath
+      if (originalCompiler === undefined) {
+        delete process.env.GENIE_EXPORT_TYPE_PROOF_COMPILER
+      } else {
+        process.env.GENIE_EXPORT_TYPE_PROOF_COMPILER = originalCompiler
+      }
+    }
+  })
+
   it('accepts a strict isomorphic TypeScript proof for the pure genie runtime entry', () => {
     const repoRoot = path.resolve(import.meta.dirname, '../../../../../..')
     const result = packageJson({
