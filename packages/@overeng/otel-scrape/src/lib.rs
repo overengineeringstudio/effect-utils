@@ -13,6 +13,9 @@ use std::process::{Command, ExitStatus, Stdio};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+#[cfg(unix)]
+use std::os::unix::process::ExitStatusExt;
+
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -34,14 +37,18 @@ const SUMMARY_ENV: &str = "OTEL_SCRAPE_SUMMARY_OUT";
 const CAS_ROOT_ENV: &str = "OTEL_SCRAPE_CAS_ROOT";
 const OTLP_ENDPOINT_ENV: &str = "OTEL_EXPORTER_OTLP_ENDPOINT";
 const SERVICE_NAME_ENV: &str = "OTEL_SERVICE_NAME";
+const PROCESS_BACKEND_ENV: &str = "OTEL_SCRAPE_PROCESS_BACKEND";
 const TRACEPARENT_ENV: &str = "traceparent";
 const OUTPUT_MEDIA_TYPE: &str = "application/octet-stream";
 const RESOURCE_FACT_UNAVAILABLE: &str = "unavailable";
 const OTLP_HTTP_TIMEOUT: Duration = Duration::from_millis(500);
 const NODE_CPUPROFILE_ADAPTER: &str = "node-cpuprofile";
 const DIRECT_CHILD_BACKEND: &str = "direct-child";
+const PTRACE_EXPERIMENTAL_BACKEND: &str = "ptrace-experimental";
+const PROCESS_FIDELITY_EXACT: &str = "exact";
 const PROCESS_FIDELITY_DEGRADED: &str = "degraded";
 const PROCESS_RELATION_DIRECT_CHILD: &str = "direct-child";
+const PROCESS_RELATION_DESCENDANT: &str = "descendant";
 const PROCESS_OBSERVATION_DEGRADED_REASONS: &[ProcessObservationDegradedReason] = &[
     ProcessObservationDegradedReason::DirectChildOnly,
     ProcessObservationDegradedReason::UnsupportedPlatform,
@@ -60,6 +67,7 @@ pub struct RunConfig {
     pub cas_pin: Option<String>,
     pub otlp_endpoint: Option<String>,
     pub service_name: String,
+    pub process_backend: ProcessBackendSelection,
     pub profile_artifacts: Vec<ProfileArtifactInput>,
     pub argv: Vec<String>,
 }
@@ -85,6 +93,22 @@ pub struct UsageError {
 impl UsageError {
     pub fn message(&self) -> &str {
         &self.message
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProcessBackendSelection {
+    DirectChild,
+    PtraceExperimental,
+}
+
+impl ProcessBackendSelection {
+    fn parse(value: &str) -> Option<Self> {
+        match value {
+            DIRECT_CHILD_BACKEND => Some(Self::DirectChild),
+            PTRACE_EXPERIMENTAL_BACKEND => Some(Self::PtraceExperimental),
+            _ => None,
+        }
     }
 }
 
@@ -291,24 +315,28 @@ struct ProcessObservation {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ProcessObservationBackend {
     DirectChild,
+    PtraceExperimental,
 }
 
 impl ProcessObservationBackend {
     fn as_str(self) -> &'static str {
         match self {
             Self::DirectChild => DIRECT_CHILD_BACKEND,
+            Self::PtraceExperimental => PTRACE_EXPERIMENTAL_BACKEND,
         }
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ProcessObservationFidelity {
+    Exact,
     Degraded,
 }
 
 impl ProcessObservationFidelity {
     fn as_str(self) -> &'static str {
         match self {
+            Self::Exact => PROCESS_FIDELITY_EXACT,
             Self::Degraded => PROCESS_FIDELITY_DEGRADED,
         }
     }
@@ -356,12 +384,14 @@ struct ObservedProcess {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ObservedProcessRelation {
     DirectChild,
+    Descendant,
 }
 
 impl ObservedProcessRelation {
     fn as_str(self) -> &'static str {
         match self {
             Self::DirectChild => PROCESS_RELATION_DIRECT_CHILD,
+            Self::Descendant => PROCESS_RELATION_DESCENDANT,
         }
     }
 }
@@ -404,6 +434,14 @@ pub fn parse_args(args: &[String]) -> Result<CommandRequest, UsageError> {
     let mut otlp_endpoint = std::env::var(OTLP_ENDPOINT_ENV).ok();
     let mut service_name =
         std::env::var(SERVICE_NAME_ENV).unwrap_or_else(|_| String::from("otel-scrape"));
+    let mut process_backend = match std::env::var(PROCESS_BACKEND_ENV) {
+        Ok(value) => ProcessBackendSelection::parse(&value).ok_or_else(|| UsageError {
+            message: format!(
+                "{PROCESS_BACKEND_ENV} must be {DIRECT_CHILD_BACKEND} or {PTRACE_EXPERIMENTAL_BACKEND}"
+            ),
+        })?,
+        Err(_) => ProcessBackendSelection::DirectChild,
+    };
     let mut profile_artifacts = Vec::new();
     let mut child_start: Option<usize> = None;
 
@@ -468,6 +506,18 @@ pub fn parse_args(args: &[String]) -> Result<CommandRequest, UsageError> {
                 service_name = value.clone();
                 i += 2;
             }
+            "--process-backend" => {
+                let Some(value) = args.get(i + 1) else {
+                    return usage_error("--process-backend needs a value");
+                };
+                let Some(backend) = ProcessBackendSelection::parse(value) else {
+                    return usage_error(
+                        "only --process-backend direct-child and --process-backend ptrace-experimental are supported",
+                    );
+                };
+                process_backend = backend;
+                i += 2;
+            }
             "--profile-artifact" => {
                 let Some(value) = args.get(i + 1) else {
                     return usage_error("--profile-artifact needs <type>:<path>");
@@ -513,6 +563,7 @@ pub fn parse_args(args: &[String]) -> Result<CommandRequest, UsageError> {
         cas_pin,
         otlp_endpoint,
         service_name,
+        process_backend,
         profile_artifacts,
         argv,
     }))
@@ -523,7 +574,7 @@ pub fn print_help() {
     eprintln!();
     eprintln!("usage:");
     eprintln!(
-        "  otel-scrape [--summary-out <file>] [--adapter none|oxlint|node-cpuprofile] [--otlp-endpoint <url>] [--service-name <name>] [--cas-root <dir>] [--cas-pin <name>] [--profile-artifact <type>:<path>] -- <cmd...>"
+        "  otel-scrape [--summary-out <file>] [--adapter none|oxlint|node-cpuprofile] [--process-backend direct-child|ptrace-experimental] [--otlp-endpoint <url>] [--service-name <name>] [--cas-root <dir>] [--cas-pin <name>] [--profile-artifact <type>:<path>] -- <cmd...>"
     );
     eprintln!("  otel-scrape --version | --help");
 }
@@ -607,6 +658,13 @@ struct ChildRun {
 }
 
 fn run_child(config: &RunConfig, child_traceparent: &str) -> io::Result<ChildRun> {
+    if config.process_backend == ProcessBackendSelection::PtraceExperimental {
+        return run_child_with_ptrace(config, child_traceparent);
+    }
+    run_child_direct(config, child_traceparent)
+}
+
+fn run_child_direct(config: &RunConfig, child_traceparent: &str) -> io::Result<ChildRun> {
     let node_profile_dir = prepare_node_cpuprofile_dir(config)?;
     let process_span_id = random_hex(8)?;
     let mut command = Command::new(&config.argv[0]);
@@ -685,6 +743,331 @@ fn run_child(config: &RunConfig, child_traceparent: &str) -> io::Result<ChildRun
     })
 }
 
+#[cfg(not(target_os = "linux"))]
+fn run_child_with_ptrace(config: &RunConfig, child_traceparent: &str) -> io::Result<ChildRun> {
+    let mut child = run_child_direct(config, child_traceparent)?;
+    child.process_observation.backend = ProcessObservationBackend::DirectChild;
+    child.process_observation.fidelity = ProcessObservationFidelity::Degraded;
+    child.process_observation.degraded_reason =
+        Some(ProcessObservationDegradedReason::UnsupportedPlatform);
+    Ok(child)
+}
+
+#[cfg(target_os = "linux")]
+fn run_child_with_ptrace(config: &RunConfig, child_traceparent: &str) -> io::Result<ChildRun> {
+    use std::collections::{HashMap, HashSet};
+    use std::os::unix::process::CommandExt;
+
+    let node_profile_dir = prepare_node_cpuprofile_dir(config)?;
+    let mut command = Command::new(&config.argv[0]);
+    command
+        .args(&config.argv[1..])
+        .env(TRACEPARENT_ENV, child_traceparent)
+        .env("TRACEPARENT", child_traceparent)
+        .stdin(Stdio::inherit());
+    if let Some(profile_dir) = node_profile_dir.as_ref() {
+        command.env(
+            "NODE_OPTIONS",
+            node_options_with_cpu_profile(
+                std::env::var("NODE_OPTIONS").ok().as_deref(),
+                profile_dir,
+            ),
+        );
+    }
+    unsafe {
+        command.pre_exec(|| {
+            if libc::ptrace(
+                libc::PTRACE_TRACEME,
+                0,
+                std::ptr::null_mut::<libc::c_void>(),
+                std::ptr::null_mut::<libc::c_void>(),
+            ) == -1
+            {
+                return Err(io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+
+    let captures_output = config.adapter != "none";
+    if captures_output {
+        command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    } else {
+        command.stdout(Stdio::inherit()).stderr(Stdio::inherit());
+    }
+
+    let root_span_id = random_hex(8)?;
+    let root_started_wall = SystemTime::now();
+    let root_started = Instant::now();
+    let mut child = command.spawn()?;
+    let root_pid = child.id() as libc::pid_t;
+    let mut stdout_reader = None;
+    let mut stderr_reader = None;
+    if captures_output {
+        let stdout = child.stdout.take().expect("stdout is piped");
+        let stderr = child.stderr.take().expect("stderr is piped");
+        stdout_reader = Some(thread::spawn(move || tee_reader(stdout, io::stdout())));
+        stderr_reader = Some(thread::spawn(move || tee_reader(stderr, io::stderr())));
+    }
+
+    let mut traces = HashMap::new();
+    traces.insert(
+        root_pid,
+        PtraceProcessTrace {
+            pid: root_pid,
+            parent_pid: Some(std::process::id()),
+            relation: ObservedProcessRelation::DirectChild,
+            span_id: root_span_id,
+            parent_span_id: None,
+            argv_hash: stable_hash_lines(&config.argv),
+            started_wall: root_started_wall,
+            started: root_started,
+            wall_ms: None,
+            exit_code: None,
+            termination: None,
+            finished: false,
+        },
+    );
+    let mut continued = HashSet::new();
+    let mut root_status = None;
+
+    loop {
+        let mut status: libc::c_int = 0;
+        let pid = unsafe { libc::waitpid(-1, &mut status, libc::__WALL | libc::WUNTRACED) };
+        if pid == -1 {
+            let err = io::Error::last_os_error();
+            if err.raw_os_error() == Some(libc::ECHILD) {
+                break;
+            }
+            return Err(err);
+        }
+        if libc::WIFEXITED(status) || libc::WIFSIGNALED(status) {
+            if let Some(trace) = traces.get_mut(&pid) {
+                trace.finished = true;
+                trace.wall_ms = Some(trace.started.elapsed().as_millis());
+                if libc::WIFEXITED(status) {
+                    trace.exit_code = Some(libc::WEXITSTATUS(status));
+                } else if libc::WIFSIGNALED(status) {
+                    let signal = libc::WTERMSIG(status);
+                    trace.termination = Some(ChildTermination::Signal {
+                        signal,
+                        synthetic_exit_code: 128 + signal,
+                    });
+                }
+            }
+            if pid == root_pid {
+                root_status = Some(ExitStatus::from_raw(status));
+            }
+            continue;
+        }
+        if !libc::WIFSTOPPED(status) {
+            continue;
+        }
+
+        if continued.insert(pid) {
+            set_ptrace_options(pid)?;
+        }
+
+        let signal = libc::WSTOPSIG(status);
+        let event = (status >> 16) as libc::c_int;
+        match event {
+            libc::PTRACE_EVENT_FORK | libc::PTRACE_EVENT_VFORK | libc::PTRACE_EVENT_CLONE => {
+                let new_pid = ptrace_event_pid(pid)?;
+                let parent_span_id = traces.get(&pid).map(|trace| trace.span_id.clone());
+                if is_process_leader(new_pid) {
+                    if let std::collections::hash_map::Entry::Vacant(entry) = traces.entry(new_pid)
+                    {
+                        let started_wall = SystemTime::now();
+                        entry.insert(PtraceProcessTrace {
+                            pid: new_pid,
+                            parent_pid: Some(pid as u32),
+                            relation: ObservedProcessRelation::Descendant,
+                            span_id: stable_process_span_id(new_pid, started_wall),
+                            parent_span_id,
+                            argv_hash: process_cmdline_hash(new_pid)
+                                .unwrap_or_else(|| stable_hash(new_pid.to_string().as_bytes())),
+                            started_wall,
+                            started: Instant::now(),
+                            wall_ms: None,
+                            exit_code: None,
+                            termination: None,
+                            finished: false,
+                        });
+                    }
+                }
+                if continued.insert(new_pid) {
+                    set_ptrace_options(new_pid)?;
+                }
+                ptrace_continue(new_pid, 0)?;
+                ptrace_continue(pid, 0)?;
+            }
+            libc::PTRACE_EVENT_EXEC => {
+                if let Some(trace) = traces.get_mut(&pid) {
+                    trace.argv_hash = process_cmdline_hash(pid)
+                        .unwrap_or_else(|| stable_hash(pid.to_string().as_bytes()));
+                }
+                ptrace_continue(pid, 0)?;
+            }
+            libc::PTRACE_EVENT_EXIT => {
+                ptrace_continue(pid, 0)?;
+            }
+            _ if signal == libc::SIGSTOP || signal == libc::SIGTRAP => {
+                ptrace_continue(pid, 0)?;
+            }
+            _ => {
+                ptrace_continue(pid, signal)?;
+            }
+        }
+    }
+
+    let stdout = stdout_reader.map(join_reader).transpose()?;
+    let stderr = stderr_reader.map(join_reader).transpose()?;
+    let Some(status) = root_status else {
+        return Err(io::Error::new(
+            io::ErrorKind::Other,
+            "ptrace backend did not observe root process exit",
+        ));
+    };
+
+    Ok(ChildRun {
+        status,
+        stdout,
+        stderr,
+        node_profile_dir,
+        process_observation: ptrace_process_observation(traces),
+    })
+}
+
+#[cfg(target_os = "linux")]
+#[derive(Debug)]
+struct PtraceProcessTrace {
+    pid: libc::pid_t,
+    parent_pid: Option<u32>,
+    relation: ObservedProcessRelation,
+    span_id: String,
+    parent_span_id: Option<String>,
+    argv_hash: String,
+    started_wall: SystemTime,
+    started: Instant,
+    wall_ms: Option<u128>,
+    exit_code: Option<i32>,
+    termination: Option<ChildTermination>,
+    finished: bool,
+}
+
+#[cfg(target_os = "linux")]
+fn set_ptrace_options(pid: libc::pid_t) -> io::Result<()> {
+    let options = libc::PTRACE_O_TRACEFORK
+        | libc::PTRACE_O_TRACEVFORK
+        | libc::PTRACE_O_TRACECLONE
+        | libc::PTRACE_O_TRACEEXEC
+        | libc::PTRACE_O_TRACEEXIT
+        | libc::PTRACE_O_EXITKILL;
+    let result = unsafe {
+        libc::ptrace(
+            libc::PTRACE_SETOPTIONS,
+            pid,
+            std::ptr::null_mut::<libc::c_void>(),
+            options as usize as *mut libc::c_void,
+        )
+    };
+    if result == -1 {
+        let err = io::Error::last_os_error();
+        if err.raw_os_error() == Some(libc::ESRCH) {
+            Ok(())
+        } else {
+            Err(err)
+        }
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn ptrace_event_pid(pid: libc::pid_t) -> io::Result<libc::pid_t> {
+    let mut event_pid: libc::c_ulong = 0;
+    let result = unsafe {
+        libc::ptrace(
+            libc::PTRACE_GETEVENTMSG,
+            pid,
+            std::ptr::null_mut::<libc::c_void>(),
+            &mut event_pid as *mut libc::c_ulong as *mut libc::c_void,
+        )
+    };
+    if result == -1 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(event_pid as libc::pid_t)
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn ptrace_continue(pid: libc::pid_t, signal: libc::c_int) -> io::Result<()> {
+    let result = unsafe {
+        libc::ptrace(
+            libc::PTRACE_CONT,
+            pid,
+            std::ptr::null_mut::<libc::c_void>(),
+            signal as usize as *mut libc::c_void,
+        )
+    };
+    if result == -1 {
+        let err = io::Error::last_os_error();
+        if err.raw_os_error() == Some(libc::ESRCH) {
+            Ok(())
+        } else {
+            Err(err)
+        }
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn process_cmdline_hash(pid: libc::pid_t) -> Option<String> {
+    let bytes = fs::read(format!("/proc/{pid}/cmdline")).ok()?;
+    if bytes.is_empty() {
+        None
+    } else {
+        Some(stable_hash(&bytes))
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn ptrace_process_observation(
+    traces: std::collections::HashMap<libc::pid_t, PtraceProcessTrace>,
+) -> ProcessObservation {
+    let mut traces: Vec<_> = traces.into_values().collect();
+    traces.sort_by_key(|trace| match trace.relation {
+        ObservedProcessRelation::DirectChild => (0, trace.pid),
+        ObservedProcessRelation::Descendant => (1, trace.pid),
+    });
+    ProcessObservation {
+        backend: ProcessObservationBackend::PtraceExperimental,
+        fidelity: ProcessObservationFidelity::Exact,
+        degraded_reason: None,
+        observed: traces
+            .into_iter()
+            .map(|trace| ObservedProcess {
+                relation: trace.relation,
+                span_id: trace.span_id,
+                parent_span_id: trace.parent_span_id,
+                pid_hash: stable_hash(trace.pid.to_string().as_bytes()),
+                parent_pid_hash: trace
+                    .parent_pid
+                    .map(|pid| stable_hash(pid.to_string().as_bytes())),
+                argv_hash: trace.argv_hash,
+                exit_code: trace.exit_code,
+                termination: trace.termination,
+                started_wall: trace.started_wall,
+                wall_ms: trace
+                    .wall_ms
+                    .unwrap_or_else(|| trace.started.elapsed().as_millis()),
+            })
+            .collect(),
+    }
+}
+
 struct DirectChildProcessObservation<'a> {
     config: &'a RunConfig,
     process_id: u32,
@@ -717,6 +1100,18 @@ fn direct_child_process_observation(
             wall_ms: input.process_duration_ms,
         }],
     }
+}
+
+#[cfg(target_os = "linux")]
+fn is_process_leader(pid: libc::pid_t) -> bool {
+    let Ok(status) = fs::read_to_string(format!("/proc/{pid}/status")) else {
+        return true;
+    };
+    status
+        .lines()
+        .find_map(|line| line.strip_prefix("Tgid:"))
+        .and_then(|value| value.trim().parse::<libc::pid_t>().ok())
+        .is_none_or(|tgid| tgid == pid)
 }
 
 fn prepare_node_cpuprofile_dir(config: &RunConfig) -> io::Result<Option<PathBuf>> {
@@ -818,7 +1213,8 @@ fn summary_for_status(
         },
         duration_ms,
         degraded: DegradedSummary {
-            direct_child_only: true,
+            direct_child_only: child.process_observation.backend
+                == ProcessObservationBackend::DirectChild,
             otlp_export: false,
         },
     })
@@ -1706,6 +2102,21 @@ fn stable_hash(bytes: &[u8]) -> String {
     format!("sha256:{}", hex(&hasher.finalize()))
 }
 
+#[cfg(target_os = "linux")]
+fn stable_process_span_id(pid: libc::pid_t, observed_wall: SystemTime) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(pid.to_string().as_bytes());
+    hasher.update(b"\0");
+    hasher.update(unix_nanos(observed_wall).to_string().as_bytes());
+    let digest = hex(&hasher.finalize());
+    let span_id = &digest[..16];
+    if span_id.chars().all(|char| char == '0') {
+        "0000000000000001".to_owned()
+    } else {
+        span_id.to_owned()
+    }
+}
+
 fn hex(bytes: &[u8]) -> String {
     let mut out = String::with_capacity(bytes.len() * 2);
     for byte in bytes {
@@ -1783,6 +2194,7 @@ mod tests {
                 otlp_endpoint: std::env::var(OTLP_ENDPOINT_ENV).ok(),
                 service_name: std::env::var(SERVICE_NAME_ENV)
                     .unwrap_or_else(|_| "otel-scrape".to_owned()),
+                process_backend: ProcessBackendSelection::DirectChild,
                 profile_artifacts: Vec::new(),
                 argv: vec!["echo".to_owned(), "hi".to_owned()],
             })
@@ -1814,6 +2226,7 @@ mod tests {
                 otlp_endpoint: std::env::var(OTLP_ENDPOINT_ENV).ok(),
                 service_name: std::env::var(SERVICE_NAME_ENV)
                     .unwrap_or_else(|_| "otel-scrape".to_owned()),
+                process_backend: ProcessBackendSelection::DirectChild,
                 profile_artifacts: vec![ProfileArtifactInput {
                     profile_type: "cpuprofile".to_owned(),
                     path: PathBuf::from("profile.cpuprofile"),
@@ -1844,6 +2257,42 @@ mod tests {
             Some("http://127.0.0.1:4318".to_owned())
         );
         assert_eq!(config.service_name, "custom-service");
+    }
+
+    #[test]
+    fn parses_process_backend_option() {
+        let args = vec![
+            "--process-backend".to_owned(),
+            "ptrace-experimental".to_owned(),
+            "--".to_owned(),
+            "true".to_owned(),
+        ];
+
+        let CommandRequest::Run(config) = parse_args(&args).unwrap() else {
+            panic!("expected run request");
+        };
+
+        assert_eq!(
+            config.process_backend,
+            ProcessBackendSelection::PtraceExperimental
+        );
+    }
+
+    #[test]
+    fn rejects_unknown_process_backend() {
+        let args = vec![
+            "--process-backend".to_owned(),
+            "snapshot".to_owned(),
+            "--".to_owned(),
+            "true".to_owned(),
+        ];
+
+        let err = parse_args(&args).unwrap_err();
+
+        assert_eq!(
+            err.message(),
+            "only --process-backend direct-child and --process-backend ptrace-experimental are supported"
+        );
     }
 
     #[test]
@@ -2010,6 +2459,7 @@ mod tests {
             cas_pin: None,
             otlp_endpoint: None,
             service_name: "otel-scrape".to_owned(),
+            process_backend: ProcessBackendSelection::DirectChild,
             profile_artifacts: Vec::new(),
             argv: vec!["node".to_owned(), "-e".to_owned(), String::new()],
         }

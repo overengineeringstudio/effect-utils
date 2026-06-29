@@ -49,6 +49,10 @@ All notable changes to this project will be documented in this file.
   evidence in summary JSON and OTLP export, including a validation fixture that
   proves descendant workloads are not reported as release-grade process trees.
 
+- **otel-scrape**: Add an opt-in Linux `ptrace-experimental` process backend
+  that observes fork/vfork/clone, exec, and exit events for a traced child tree
+  and validates exact descendant evidence with a compiled process-DAG fixture.
+
 - **@overeng/genie**: Add the explicit `@overeng/genie/composition` subpath for
   reusable cross-artifact composition helpers. The first helper,
   `tsconfigReferencesFromPackages`, projects TypeScript project references from

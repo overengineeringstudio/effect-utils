@@ -7,6 +7,8 @@ use std::{
     thread,
 };
 
+use sha2::{Digest, Sha256};
+
 fn otel_scrape() -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_otel-scrape"));
     command
@@ -490,10 +492,12 @@ fn compiled_process_dag_fixture_gates_descendant_exactness_claims() {
     let dir = tempfile::tempdir().unwrap();
     let summary = dir.path().join("summary.json");
     let expected_dag = dir.path().join("expected-dag.json");
+    let grandchild_record = dir.path().join("grandchild.json");
     let fixture = compile_process_dag_fixture(dir.path());
 
     let out = otel_scrape()
         .env("OTEL_SCRAPE_EXPECTED_DAG", &expected_dag)
+        .env("OTEL_SCRAPE_GRANDCHILD_RECORD", &grandchild_record)
         .args(["--summary-out"])
         .arg(&summary)
         .args(["--"])
@@ -507,12 +511,14 @@ fn compiled_process_dag_fixture_gates_descendant_exactness_claims() {
     let expected: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(expected_dag).unwrap()).unwrap();
     assert!(expected["rootPid"].as_u64().is_some());
-    assert_eq!(expected["children"].as_array().unwrap().len(), 2);
-    assert!(expected["children"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .all(|child| child["parentPid"] == expected["rootPid"]));
+    let expected_children = expected["children"].as_array().unwrap();
+    assert_eq!(expected_children.len(), 3);
+    assert_eq!(expected_children[0]["parentPid"], expected["rootPid"]);
+    assert_eq!(expected_children[1]["parentPid"], expected["rootPid"]);
+    assert_eq!(
+        expected_children[2]["parentPid"],
+        expected_children[1]["pid"]
+    );
 
     let summary: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(summary).unwrap()).unwrap();
@@ -526,6 +532,80 @@ fn compiled_process_dag_fixture_gates_descendant_exactness_claims() {
         .as_str()
         .unwrap()
         .starts_with("sha256:"));
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn ptrace_experimental_process_backend_observes_fixture_dag() {
+    let dir = tempfile::tempdir().unwrap();
+    let summary = dir.path().join("summary.json");
+    let expected_dag = dir.path().join("expected-dag.json");
+    let grandchild_record = dir.path().join("grandchild.json");
+    let fixture = compile_process_dag_fixture(dir.path());
+
+    let out = otel_scrape()
+        .env("OTEL_SCRAPE_EXPECTED_DAG", &expected_dag)
+        .env("OTEL_SCRAPE_GRANDCHILD_RECORD", &grandchild_record)
+        .args(["--summary-out"])
+        .arg(&summary)
+        .args(["--process-backend", "ptrace-experimental"])
+        .args(["--"])
+        .arg(&fixture)
+        .output()
+        .unwrap();
+
+    assert!(
+        out.status.success(),
+        "status={:?}\nstdout={}\nstderr={}",
+        out.status,
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&out.stdout), "fixture-done");
+
+    let expected: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(expected_dag).unwrap()).unwrap();
+    let expected_root_hash = stable_hash(expected["rootPid"].as_u64().unwrap().to_string());
+    let expected_children = expected["children"].as_array().unwrap();
+    let summary: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(summary).unwrap()).unwrap();
+    assert_eq!(summary["processes"]["backend"], "ptrace-experimental");
+    assert_eq!(summary["processes"]["fidelity"], "exact");
+    assert_eq!(summary["processes"]["reason"], serde_json::Value::Null);
+    assert_eq!(summary["degraded"]["direct_child_only"], false);
+
+    let observed = summary["processes"]["observed"].as_array().unwrap();
+    assert_eq!(observed.len(), 4);
+    assert_eq!(observed[0]["relation"], "direct-child");
+    assert_eq!(observed[0]["pidHash"], expected_root_hash);
+    assert_eq!(observed[0]["parentSpanId"], summary["trace"]["span_id"]);
+    let root_span_id = observed[0]["spanId"].clone();
+
+    for expected_child in expected_children {
+        let pid_hash = stable_hash(expected_child["pid"].as_u64().unwrap().to_string());
+        let parent_pid_hash =
+            stable_hash(expected_child["parentPid"].as_u64().unwrap().to_string());
+        let observed_child = observed
+            .iter()
+            .find(|process| process["pidHash"] == pid_hash)
+            .unwrap_or_else(|| panic!("missing observed child with pid hash {pid_hash}"));
+        assert_eq!(observed_child["parentPidHash"], parent_pid_hash);
+        assert_eq!(
+            observed_child["exitCode"],
+            expected_child["exitCode"].as_i64().unwrap()
+        );
+        assert_eq!(observed_child["relation"], "descendant");
+        match expected_child["role"].as_str().unwrap() {
+            "immediate-exit" | "nested-parent" => {
+                assert_eq!(observed_child["parentSpanId"], root_span_id);
+            }
+            "grandchild" => {
+                assert!(observed_child["parentSpanId"].as_str().is_some());
+                assert_ne!(observed_child["parentSpanId"], root_span_id);
+            }
+            role => panic!("unexpected fixture role {role}"),
+        }
+    }
 }
 
 #[test]
@@ -570,31 +650,73 @@ use std::io::Write;
 use std::process::{Command, Stdio};
 
 fn main() {
-    let expected_path = std::env::var("OTEL_SCRAPE_EXPECTED_DAG").unwrap();
-    let root_pid = std::process::id();
-    let mut children = Vec::new();
-    for role in ["immediate-exit", "nested-shell"] {
-        let mut child = Command::new("sh")
-            .arg("-c")
-            .arg(match role {
-                "immediate-exit" => "exit 0",
-                _ => "sh -c 'exit 0'",
-            })
+    if std::env::var("OTEL_SCRAPE_PROCESS_DAG_GRANDCHILD").is_ok() {
+        std::process::exit(0);
+    }
+
+    if std::env::var("OTEL_SCRAPE_PROCESS_DAG_NESTED_PARENT").is_ok() {
+        let child = Command::new(std::env::current_exe().unwrap())
+            .env("OTEL_SCRAPE_PROCESS_DAG_GRANDCHILD", "1")
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
             .unwrap();
-        let pid = child.id();
-        let status = child.wait().unwrap();
-        children.push(format!(
-            r#"{{"role":"{}","pid":{},"parentPid":{},"exitCode":{}}}"#,
-            role,
-            pid,
-            root_pid,
-            status.code().unwrap_or(-1)
-        ));
+        let grandchild_pid = child.id();
+        let status = child.wait_with_output().unwrap().status;
+        let record_path = std::env::var("OTEL_SCRAPE_GRANDCHILD_RECORD").unwrap();
+        std::fs::write(
+            record_path,
+            format!(
+                r#"{{"role":"grandchild","pid":{},"parentPid":{},"exitCode":{}}}"#,
+                grandchild_pid,
+                std::process::id(),
+                status.code().unwrap_or(-1)
+            ),
+        )
+        .unwrap();
+        std::process::exit(0);
     }
+
+    let expected_path = std::env::var("OTEL_SCRAPE_EXPECTED_DAG").unwrap();
+    let grandchild_record_path = std::env::var("OTEL_SCRAPE_GRANDCHILD_RECORD").unwrap();
+    let root_pid = std::process::id();
+    let mut children = Vec::new();
+
+    let immediate = Command::new(std::env::current_exe().unwrap())
+        .env("OTEL_SCRAPE_PROCESS_DAG_GRANDCHILD", "1")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let immediate_pid = immediate.id();
+    let immediate_status = immediate.wait_with_output().unwrap().status;
+    children.push(format!(
+        r#"{{"role":"immediate-exit","pid":{},"parentPid":{},"exitCode":{}}}"#,
+        immediate_pid,
+        root_pid,
+        immediate_status.code().unwrap_or(-1)
+    ));
+
+    let nested = Command::new(std::env::current_exe().unwrap())
+        .env("OTEL_SCRAPE_PROCESS_DAG_NESTED_PARENT", "1")
+        .env("OTEL_SCRAPE_GRANDCHILD_RECORD", &grandchild_record_path)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let nested_pid = nested.id();
+    let nested_status = nested.wait_with_output().unwrap().status;
+    children.push(format!(
+        r#"{{"role":"nested-parent","pid":{},"parentPid":{},"exitCode":{}}}"#,
+        nested_pid,
+        root_pid,
+        nested_status.code().unwrap_or(-1)
+    ));
+    children.push(std::fs::read_to_string(grandchild_record_path).unwrap());
+
     let json = format!(
         r#"{{"rootPid":{},"children":[{}]}}"#,
         root_pid,
@@ -616,6 +738,20 @@ fn main() {
         .unwrap();
     assert!(status.success());
     binary
+}
+
+fn stable_hash(value: impl AsRef<[u8]>) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(value.as_ref());
+    format!("sha256:{}", hex(&hasher.finalize()))
+}
+
+fn hex(bytes: &[u8]) -> String {
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        out.push_str(&format!("{byte:02x}"));
+    }
+    out
 }
 
 #[test]

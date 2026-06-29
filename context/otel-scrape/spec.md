@@ -119,9 +119,11 @@ flowchart TD
 
 Best-effort or sampled descendant discovery may exist only when explicitly marked as degraded/experimental output. Release validation must include Linux and macOS ARM evidence from public-safe runner classes, not private machine identities.
 
-The current implementation does not make a release-grade descendant process-tree claim. Summary evidence records `degraded.direct_child_only = true` and a `processes` observation block with `backend = "direct-child"`, `fidelity = "degraded"`, and `reason = "direct-child-only"`. OTLP export emits the wrapper-owned command span, one direct-child `otel_scrape.process` span, and adapter/profile events. A release that ships before exact process-tree backends land must document this as degraded/direct-child-only process evidence instead of implying arbitrary descendant process spans.
+The default implementation does not make a release-grade descendant process-tree claim. Summary evidence records `degraded.direct_child_only = true` and a `processes` observation block with `backend = "direct-child"`, `fidelity = "degraded"`, and `reason = "direct-child-only"`. OTLP export emits the wrapper-owned command span, one direct-child `otel_scrape.process` span, and adapter/profile events.
 
-See [.decisions/0005-exact-process-tree-fidelity.md](./.decisions/0005-exact-process-tree-fidelity.md).
+Linux also has an opt-in `ptrace-experimental` backend. It may emit `fidelity = "exact"` for the traced child tree only when the compiled process-DAG fixture validates fork/vfork/clone, exec, exit, immediate-exit descendants, and nested descendants. The backend name remains experimental until ptrace perturbation, privilege, namespace, and operational caveats are resolved for default use.
+
+See [.decisions/0005-exact-process-tree-fidelity.md](./.decisions/0005-exact-process-tree-fidelity.md) and [.decisions/0011-linux-ptrace-process-backend.md](./.decisions/0011-linux-ptrace-process-backend.md).
 
 ### Process Observation Backend Contract
 
@@ -167,7 +169,7 @@ interface ProcessObservation {
 
 An exact backend must observe fork or equivalent parent-child creation, exec or equivalent command identity changes, and exit for every descendant it includes. If the backend can detect that events were lost, privileges are missing, namespaces hide descendants, or platform support is unavailable, it must downgrade the whole observation or the affected records instead of emitting exact spans.
 
-Linux exact support may start behind an explicit `ptrace-experimental` backend if validation proves short-lived descendants. macOS exact support must use a mechanism that can observe unknown descendants; `kqueue`/`EVFILT_PROC` is insufficient for this because it starts from known process IDs only. Endpoint Security is the expected macOS candidate, but exact support is gated on entitlement, installation, user/admin approval, event-loss handling, and validation evidence. See [.decisions/0010-macos-process-observation.md](./.decisions/0010-macos-process-observation.md).
+Linux exact support starts behind the explicit `ptrace-experimental` backend. macOS exact support must use a mechanism that can observe unknown descendants; `kqueue`/`EVFILT_PROC` is insufficient for this because it starts from known process IDs only. Endpoint Security is the expected macOS candidate, but exact support is gated on entitlement, installation, user/admin approval, event-loss handling, and validation evidence. See [.decisions/0010-macos-process-observation.md](./.decisions/0010-macos-process-observation.md).
 
 ## Semantic Conventions
 
@@ -343,8 +345,9 @@ prototype/degraded evidence:
   pin; the `cas:` URI plus descriptor is the durable identity.
 - Raw argv, cwd, local paths, credentials, source text, profile bytes, and child
   output payloads are excluded from summary and OTLP evidence.
-- Descendant process-tree spans are not a release claim unless platform-specific
-  exactness tests prove them.
+- Descendant process-tree spans are release claims only for platform/backend
+  combinations with exactness tests. The current exact claim is limited to
+  Linux `ptrace-experimental`; default and macOS evidence remains degraded.
 
 ## Relationship To Existing Packages
 

@@ -28,6 +28,7 @@ joins a W3C `traceparent` and exports the child context through both
 ```text
 otel-scrape [--summary-out <file>]
   [--adapter none|oxlint|node-cpuprofile]
+  [--process-backend direct-child|ptrace-experimental]
   [--otlp-endpoint <url>]
   [--service-name <name>]
   [--cas-root <dir>]
@@ -38,12 +39,13 @@ otel-scrape [--summary-out <file>]
 
 Environment fallbacks:
 
-| CLI flag          | Environment fallback          | Purpose                                                    |
-| ----------------- | ----------------------------- | ---------------------------------------------------------- |
-| `--summary-out`   | `OTEL_SCRAPE_SUMMARY_OUT`     | Write local JSON summary evidence.                         |
-| `--cas-root`      | `OTEL_SCRAPE_CAS_ROOT`        | Store profile artifacts and manifests in a local CAS root. |
-| `--otlp-endpoint` | `OTEL_EXPORTER_OTLP_ENDPOINT` | Export the wrapper command span over OTLP/HTTP JSON.       |
-| `--service-name`  | `OTEL_SERVICE_NAME`           | Set the emitted OTLP resource `service.name`.              |
+| CLI flag            | Environment fallback          | Purpose                                                    |
+| ------------------- | ----------------------------- | ---------------------------------------------------------- |
+| `--summary-out`     | `OTEL_SCRAPE_SUMMARY_OUT`     | Write local JSON summary evidence.                         |
+| `--cas-root`        | `OTEL_SCRAPE_CAS_ROOT`        | Store profile artifacts and manifests in a local CAS root. |
+| `--otlp-endpoint`   | `OTEL_EXPORTER_OTLP_ENDPOINT` | Export the wrapper command span over OTLP/HTTP JSON.       |
+| `--service-name`    | `OTEL_SERVICE_NAME`           | Set the emitted OTLP resource `service.name`.              |
+| `--process-backend` | `OTEL_SCRAPE_PROCESS_BACKEND` | Select process observation backend.                        |
 
 `--cas-pin` writes a manifest pin under the CAS root and requires at least one
 profile artifact source. `--profile-artifact <type>:<path>` is the explicit
@@ -57,18 +59,31 @@ When `--summary-out <file>` or `OTEL_SCRAPE_SUMMARY_OUT` is set, the wrapper
 writes local JSON evidence with hashed argv/cwd identity, child exit status,
 duration, trace join/root facts, artifact links, adapter records, output
 descriptors for captured streams, and explicit degraded flags for
-direct-child-only process capture. Summary evidence is a local debug and test
-surface; it is not the OTLP transport.
+direct-child-only process capture unless an exact backend is explicitly
+selected. Summary evidence is a local debug and test surface; it is not the
+OTLP transport.
 
 When `--otlp-endpoint <url>` or `OTEL_EXPORTER_OTLP_ENDPOINT` is set, the
-wrapper exports one `otel_scrape.command` span and one degraded direct-child
-`otel_scrape.process` span through the first-party OTLP/HTTP JSON boundary after
-the child exits. `--service-name <name>` or `OTEL_SERVICE_NAME` sets the emitted
-resource `service.name`. Export failures are warnings and do not change stdout,
-stderr, stdin, or the child exit code.
+wrapper exports one `otel_scrape.command` span and process spans from the active
+process backend through the first-party OTLP/HTTP JSON boundary after the child
+exits. `--service-name <name>` or `OTEL_SERVICE_NAME` sets the emitted resource
+`service.name`. Export failures are warnings and do not change stdout, stderr,
+stdin, or the child exit code.
 Adapter-derived OTLP events and profile-link events are attached to the command
-span. Adapter metrics and release-grade descendant process-tree spans are
-follow-up milestones.
+span. Adapter metrics remain local summary records.
+
+## Process Backends
+
+`direct-child` is the default process backend. It records only the spawned child
+process and marks process evidence as degraded with `reason =
+"direct-child-only"`.
+
+On Linux, `ptrace-experimental` observes fork/vfork/clone, exec, and exit events
+for the traced child tree. It can emit exact descendant process spans for the
+validated fixture, including immediate-exit and nested descendants. The backend
+is opt-in because ptrace can perturb command execution and has platform,
+privilege, and namespace caveats. macOS remains degraded/direct-child unless an
+Endpoint Security-backed exact backend is implemented and validated.
 
 ## Adapters
 
@@ -100,17 +115,17 @@ artifacts that should survive cleanup.
 
 ## Support Matrix
 
-| Capability                                      | Current release claim           | Notes                                                                                                                                                    |
-| ----------------------------------------------- | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Passthrough stdout/stderr/stdin and exit status | Supported                       | Wrapper diagnostics go to stderr. Optional summary/export failures do not replace the child exit code.                                                   |
-| W3C trace context root-or-join propagation      | Supported                       | The child receives `traceparent` and `TRACEPARENT`.                                                                                                      |
-| Local summary evidence                          | Supported                       | Raw argv, cwd, paths, output payloads, source text, and credentials are not embedded.                                                                    |
-| OTLP command span export                        | Supported                       | Emits command span, one degraded direct-child process span, adapter events, and profile-link events over OTLP/HTTP JSON.                                 |
-| CAS profile links                               | Supported                       | Profile bytes are stored under `--cas-root`; summaries and OTLP events carry `cas:` URIs plus descriptors, not raw bytes or local paths.                 |
-| Adapter metrics as OTLP metrics                 | Not a release claim             | Adapter metrics remain local summary records until trace-correlated metric semantics are explicit.                                                       |
-| Descendant process-tree spans                   | Not a release claim             | Current evidence is explicitly degraded/direct-child-only. Exact descendant spans need platform backend validation before being documented as supported. |
-| `oxlint` adapter                                | Supported                       | Parses structured JSON diagnostics while preserving stdout.                                                                                              |
-| `node-cpuprofile` adapter                       | Supported first profile adapter | Direct Node child commands only; degraded evidence is recorded for unsupported or malformed profile cases.                                               |
+| Capability                                      | Current release claim           | Notes                                                                                                                                                  |
+| ----------------------------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Passthrough stdout/stderr/stdin and exit status | Supported                       | Wrapper diagnostics go to stderr. Optional summary/export failures do not replace the child exit code.                                                 |
+| W3C trace context root-or-join propagation      | Supported                       | The child receives `traceparent` and `TRACEPARENT`.                                                                                                    |
+| Local summary evidence                          | Supported                       | Raw argv, cwd, paths, output payloads, source text, and credentials are not embedded.                                                                  |
+| OTLP command span export                        | Supported                       | Emits command span, process spans from the active backend, adapter events, and profile-link events over OTLP/HTTP JSON.                                |
+| CAS profile links                               | Supported                       | Profile bytes are stored under `--cas-root`; summaries and OTLP events carry `cas:` URIs plus descriptors, not raw bytes or local paths.               |
+| Adapter metrics as OTLP metrics                 | Not a release claim             | Adapter metrics remain local summary records until trace-correlated metric semantics are explicit.                                                     |
+| Descendant process-tree spans                   | Linux opt-in exact backend      | `--process-backend ptrace-experimental` is validated on Linux by the compiled DAG fixture. Default and macOS output remain degraded/direct-child-only. |
+| `oxlint` adapter                                | Supported                       | Parses structured JSON diagnostics while preserving stdout.                                                                                            |
+| `node-cpuprofile` adapter                       | Supported first profile adapter | Direct Node child commands only; degraded evidence is recorded for unsupported or malformed profile cases.                                             |
 
 Telemetry semantic names are generated from
 `context/otel-scrape/telemetry-registry.json` into Rust and TypeScript bindings;
