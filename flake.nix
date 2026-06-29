@@ -263,7 +263,15 @@
 
       # Convenience helper for bundling the common genie/megarepo CLIs.
       # Use this for releases/CI where hermetic Nix builds are needed.
-      lib.mkCliPackages = import ./nix/workspace-tools/lib/mk-cli-packages.nix;
+      lib.mkCliPackages =
+        args:
+        import ./nix/workspace-tools/lib/mk-cli-packages.nix (
+          {
+            typeProofCompilerBin =
+              "${tsgo.packages.${args.pkgs.stdenv.hostPlatform.system}.tsgo}/bin/tsgo";
+          }
+          // args
+        );
 
       # npm oxlint with NAPI bindings for JavaScript plugin support.
       # When `src` is provided (the effect-utils source), the @overeng/oxc-config

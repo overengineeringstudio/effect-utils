@@ -870,6 +870,40 @@ describe('packageJson', () => {
     })
   })
 
+  it('reports missing strict type proof compilers as validation issues', () => {
+    const repo = createTempRepo('packages/pkg')
+    const packageDir = repo.memberDirs['packages/pkg']!
+    const compilerBin = path.join(repo.repoRoot, 'missing-tsgo')
+    fs.mkdirSync(path.join(packageDir, 'src'))
+    fs.writeFileSync(path.join(packageDir, 'src/mod.ts'), 'export const value = 1\n')
+
+    const runtime = createNodePackageJsonValidationRuntime({
+      typeProofCompiler: { path: compilerBin, kind: 'tsgo' },
+    })
+    const result = runtime.validateExportEnvironments({
+      cwd: repo.repoRoot,
+      location: 'packages/pkg',
+      packageName: '@test/package',
+      exports: { '.': './src/mod.ts' },
+      contracts: {
+        '.': [
+          {
+            environment: 'isomorphic-es2024',
+            typeProof: 'strict',
+          },
+        ],
+      },
+    })
+
+    expect(result.issues).toContainEqual({
+      severity: 'error',
+      packageName: '@test/package',
+      dependency: '.',
+      message: expect.stringContaining('ENOENT'),
+      rule: 'package-json-export-environment-type-proof',
+    })
+  })
+
   it('does not silently fall back to tsc from PATH for strict type proof', () => {
     const repo = createTempRepo('packages/pkg')
     const packageDir = repo.memberDirs['packages/pkg']!

@@ -94,6 +94,9 @@ All notable changes to this project will be documented in this file.
 - **@overeng/genie**: Run strict package export type proofs through an explicit
   compiler executable, with Nix-packaged Genie wired to the pinned `tsgo`
   binary and source-mode validation discovering `tsgo` on `PATH`.
+  `lib.mkCliPackages` now threads the same pinned compiler into the Genie
+  package, and missing compiler executables are reported as validation issues
+  instead of crashing cache-key computation.
 
 - **@overeng/genie**: Tighten package-json export environment validation so
   constrained profiles reject bare Node builtin imports, follow extensionless

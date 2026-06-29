@@ -417,8 +417,13 @@ const cacheRoot = (cwd: string): string =>
 
 const sha256 = (content: string): string => createHash('sha256').update(content).digest('hex')
 
-const nonEmptyOutput = (part: string | undefined): part is string =>
-  part !== undefined && part.trim() !== ''
+const outputText = (part: unknown): string => {
+  if (typeof part === 'string') return part
+  if (Buffer.isBuffer(part) === true) return part.toString('utf8')
+  return ''
+}
+
+const nonEmptyOutput = (part: string): boolean => part.trim() !== ''
 
 const executableExists = (file: string): boolean => {
   try {
@@ -466,8 +471,8 @@ const compilerVersion = (compiler: ExportTypeProofCompiler): string => {
   return [
     compiler.kind,
     compiler.path,
-    result.stdout.trim(),
-    result.stderr.trim(),
+    outputText(result.stdout).trim(),
+    outputText(result.stderr).trim(),
     result.error?.message ?? '',
   ].join('\n')
 }
@@ -579,6 +584,7 @@ const runTypeProofCompiler = ({
   return {
     ok: false,
     output: [result.stdout, result.stderr, result.error?.message]
+      .map(outputText)
       .filter(nonEmptyOutput)
       .join('\n')
       .trim(),
