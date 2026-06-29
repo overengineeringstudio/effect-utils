@@ -31,6 +31,19 @@ fn preserves_passthrough_and_writes_summary() {
     assert_eq!(summary["child"]["exit_code"], 7);
     assert_eq!(summary["adapter"]["name"], "none");
     assert_eq!(summary["adapter"]["records"].as_array().unwrap().len(), 0);
+    assert_eq!(summary["output"]["stdout"], serde_json::Value::Null);
+    assert_eq!(summary["output"]["stderr"], serde_json::Value::Null);
+    assert!(summary["resources"]["wallMs"].as_u64().is_some());
+    assert_eq!(summary["resources"]["cpuTimeMs"], serde_json::Value::Null);
+    assert_eq!(summary["resources"]["maxRssBytes"], serde_json::Value::Null);
+    assert_eq!(
+        summary["resources"]["availability"]["cpuTime"],
+        "unavailable"
+    );
+    assert_eq!(
+        summary["resources"]["availability"]["maxRss"],
+        "unavailable"
+    );
     assert_eq!(
         summary["artifacts"]["profiles"].as_array().unwrap().len(),
         0
@@ -48,7 +61,7 @@ fn preserves_passthrough_and_writes_summary() {
 fn oxlint_adapter_parses_json_diagnostics_without_hiding_stdout() {
     let dir = tempfile::tempdir().unwrap();
     let summary = dir.path().join("summary.json");
-    let oxlint_json = r#"{ "diagnostics": [{"message": "Unexpected token","severity": "error","filename": "/private/source.ts"}] }"#;
+    let oxlint_json = r#"{ "privatePayload": "PRIVATE_OUTPUT_PAYLOAD", "diagnostics": [{"message": "Unexpected token","severity": "error","filename": "/private/source.ts"}] }"#;
 
     let out = otel_scrape()
         .env("OX_JSON", oxlint_json)
@@ -70,6 +83,25 @@ fn oxlint_adapter_parses_json_diagnostics_without_hiding_stdout() {
         "oxlint.diagnostics"
     );
     assert_eq!(summary["adapter"]["records"][0]["value"], 1);
+    assert_eq!(summary["output"]["stdout"]["_tag"], "ContentDescriptor");
+    assert!(summary["output"]["stdout"]["digest"]
+        .as_str()
+        .unwrap()
+        .starts_with("sha256:"));
+    assert_eq!(
+        summary["output"]["stdout"]["byteLength"],
+        oxlint_json.as_bytes().len()
+    );
+    assert_eq!(
+        summary["output"]["stdout"]["mediaType"],
+        "application/octet-stream"
+    );
+    assert_eq!(summary["output"]["stderr"]["_tag"], "ContentDescriptor");
+    assert_eq!(summary["output"]["stderr"]["byteLength"], 0);
+    assert_eq!(
+        summary["output"]["stderr"]["mediaType"],
+        "application/octet-stream"
+    );
     assert_eq!(summary["adapter"]["records"][1]["_tag"], "Event");
     assert_eq!(
         summary["adapter"]["records"][1]["message"],
@@ -81,6 +113,9 @@ fn oxlint_adapter_parses_json_diagnostics_without_hiding_stdout() {
         .unwrap()
         .starts_with("sha256:"));
     assert!(summary["adapter"]["records"][1].get("filename").is_none());
+    let summary_json = serde_json::to_string(&summary).unwrap();
+    assert!(!summary_json.contains("/private/source.ts"));
+    assert!(!summary_json.contains("PRIVATE_OUTPUT_PAYLOAD"));
 }
 
 #[test]

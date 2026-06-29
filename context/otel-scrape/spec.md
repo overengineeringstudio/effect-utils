@@ -140,6 +140,31 @@ See [.decisions/0004-generated-telemetry-registry.md](./.decisions/0004-generate
 
 Raw command arguments, local absolute paths, credentials, source text, and private payloads must not be emitted as span attributes.
 
+## Summary Evidence
+
+Summary JSON is local/debug evidence for tests, prototypes, and degraded-mode inspection. It is not the primary telemetry transport once OTLP export is enabled, but it must use the same privacy and identity rules as emitted telemetry.
+
+The command summary records stable identities, not raw local inputs:
+
+- `command.argv_hash` is a stable hash over the child argv vector.
+- `command.cwd_hash` is a stable hash over the current working directory identity.
+- Raw argv, cwd, local absolute paths, credentials, source text, and private payloads are not embedded.
+
+When the wrapper captures a stream for adapter parsing, the summary records an output descriptor for that captured byte sequence:
+
+```ts
+interface OutputDescriptor {
+  readonly _tag: 'ContentDescriptor'
+  readonly digest: `sha256:${string}`
+  readonly byteLength: number
+  readonly mediaType: string
+}
+```
+
+The descriptor identifies the captured bytes by digest, byte length, and media type; it does not embed the output payload and does not imply the bytes were stored in CAS. Streams inherited directly by the child are represented as unavailable for descriptor purposes because the wrapper did not observe the bytes.
+
+Resource facts are explicit. `resources.wallMs` is always wrapper-measured. Platform facts such as `resources.cpuTimeMs` and `resources.maxRssBytes` are `null` until a backend can prove them for the release platform, with `resources.availability.* = "unavailable"` documenting the absence.
+
 ## OTLP Export Boundary
 
 `otel-scrape` starts with a small first-party OTLP/HTTP JSON exporter boundary before adopting a full Rust OpenTelemetry SDK. The boundary exists to prove the wrapper contract, adapter records, profile links, and `otelite` E2E capture without letting SDK lifecycle or metric semantics own the first release shape.

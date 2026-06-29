@@ -25,8 +25,10 @@ const SUMMARY_ENV: &str = "OTEL_SCRAPE_SUMMARY_OUT";
 const CAS_ROOT_ENV: &str = "OTEL_SCRAPE_CAS_ROOT";
 const TRACEPARENT_ENV: &str = "traceparent";
 const PROFILE_MEDIA_TYPE: &str = "application/octet-stream";
+const OUTPUT_MEDIA_TYPE: &str = "application/octet-stream";
 const MANIFEST_MEDIA_TYPE: &str = "application/json";
 const CANONICAL_JSON_CODEC: &str = "canonical-json";
+const RESOURCE_FACT_UNAVAILABLE: &str = "unavailable";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunConfig {
@@ -75,6 +77,8 @@ pub struct Summary {
     schema: &'static str,
     version: &'static str,
     command: CommandSummary,
+    output: OutputSummary,
+    resources: ResourceSummary,
     adapter: AdapterSummary,
     artifacts: ArtifactSummary,
     trace: TraceSummary,
@@ -87,6 +91,38 @@ pub struct Summary {
 struct CommandSummary {
     argv_hash: String,
     cwd_hash: String,
+}
+
+#[derive(Debug, Serialize)]
+struct OutputSummary {
+    stdout: Option<OutputDescriptor>,
+    stderr: Option<OutputDescriptor>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct OutputDescriptor {
+    #[serde(rename = "_tag")]
+    tag: &'static str,
+    digest: String,
+    byte_length: usize,
+    media_type: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ResourceSummary {
+    wall_ms: u128,
+    cpu_time_ms: Option<u64>,
+    max_rss_bytes: Option<u64>,
+    availability: ResourceAvailability,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ResourceAvailability {
+    cpu_time: &'static str,
+    max_rss: &'static str,
 }
 
 #[derive(Debug, Serialize)]
@@ -332,7 +368,8 @@ pub fn run(config: RunConfig) -> io::Result<i32> {
 
 struct ChildRun {
     status: ExitStatus,
-    stdout: Vec<u8>,
+    stdout: Option<Vec<u8>>,
+    stderr: Option<Vec<u8>>,
 }
 
 fn run_child(config: &RunConfig, child_traceparent: &str) -> io::Result<ChildRun> {
@@ -350,7 +387,8 @@ fn run_child(config: &RunConfig, child_traceparent: &str) -> io::Result<ChildRun
             .status()?;
         return Ok(ChildRun {
             status,
-            stdout: Vec::new(),
+            stdout: None,
+            stderr: None,
         });
     }
 
@@ -364,9 +402,13 @@ fn run_child(config: &RunConfig, child_traceparent: &str) -> io::Result<ChildRun
     let stderr_reader = thread::spawn(move || tee_reader(stderr, io::stderr()));
     let status = child.wait()?;
     let stdout = join_reader(stdout_reader)?;
-    let _stderr = join_reader(stderr_reader)?;
+    let stderr = join_reader(stderr_reader)?;
 
-    Ok(ChildRun { status, stdout })
+    Ok(ChildRun {
+        status,
+        stdout: Some(stdout),
+        stderr: Some(stderr),
+    })
 }
 
 fn join_reader(handle: thread::JoinHandle<io::Result<Vec<u8>>>) -> io::Result<Vec<u8>> {
@@ -399,7 +441,7 @@ fn summary_for_status(
     artifacts: ArtifactSummary,
 ) -> io::Result<Summary> {
     let cwd = std::env::current_dir()?;
-    let adapter = adapter_summary(config, &child.stdout);
+    let adapter = adapter_summary(config, child.stdout.as_deref().unwrap_or_default());
     Ok(Summary {
         schema: telemetry_registry::schemas::SUMMARY_V1,
         version: VERSION,
@@ -407,6 +449,8 @@ fn summary_for_status(
             argv_hash: stable_hash_lines(&config.argv),
             cwd_hash: stable_hash(cwd.to_string_lossy().as_bytes()),
         },
+        output: output_summary(child),
+        resources: resource_summary(duration_ms),
         adapter,
         artifacts,
         trace: TraceSummary {
@@ -425,6 +469,40 @@ fn summary_for_status(
             otlp_export: false,
         },
     })
+}
+
+fn output_summary(child: &ChildRun) -> OutputSummary {
+    OutputSummary {
+        stdout: child
+            .stdout
+            .as_deref()
+            .map(|bytes| output_descriptor_for_bytes(bytes)),
+        stderr: child
+            .stderr
+            .as_deref()
+            .map(|bytes| output_descriptor_for_bytes(bytes)),
+    }
+}
+
+fn output_descriptor_for_bytes(bytes: &[u8]) -> OutputDescriptor {
+    OutputDescriptor {
+        tag: "ContentDescriptor",
+        digest: stable_hash(bytes),
+        byte_length: bytes.len(),
+        media_type: OUTPUT_MEDIA_TYPE,
+    }
+}
+
+fn resource_summary(duration_ms: u128) -> ResourceSummary {
+    ResourceSummary {
+        wall_ms: duration_ms,
+        cpu_time_ms: None,
+        max_rss_bytes: None,
+        availability: ResourceAvailability {
+            cpu_time: RESOURCE_FACT_UNAVAILABLE,
+            max_rss: RESOURCE_FACT_UNAVAILABLE,
+        },
+    }
 }
 
 fn adapter_summary(config: &RunConfig, stdout: &[u8]) -> AdapterSummary {
