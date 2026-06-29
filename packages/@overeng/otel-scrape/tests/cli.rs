@@ -67,10 +67,7 @@ fn preserves_passthrough_and_writes_summary() {
     assert!(summary["command"].get("argv").is_none());
     assert_eq!(summary["processes"]["backend"], "direct-child");
     assert_eq!(summary["processes"]["fidelity"], "degraded");
-    assert_eq!(
-        summary["processes"]["reason"],
-        "direct-child-only backend does not observe descendants"
-    );
+    assert_eq!(summary["processes"]["reason"], "direct-child-only");
     assert_eq!(
         summary["processes"]["observed"].as_array().unwrap().len(),
         1
@@ -81,9 +78,16 @@ fn preserves_passthrough_and_writes_summary() {
     assert_eq!(process["parentSpanId"], summary["trace"]["span_id"]);
     assert!(process["spanId"].as_str().unwrap().len() == 16);
     assert!(process["pidHash"].as_str().unwrap().starts_with("sha256:"));
+    assert!(process["parentPidHash"]
+        .as_str()
+        .unwrap()
+        .starts_with("sha256:"));
     assert_eq!(process["argvHash"], summary["command"]["argv_hash"]);
     assert_eq!(process["exitCode"], 7);
+    assert!(process["startUnixNano"].as_u64().is_some());
+    assert!(process["endUnixNano"].as_u64().is_some());
     assert!(process.get("pid").is_none());
+    assert!(process.get("parentPid").is_none());
     assert!(process.get("argv").is_none());
 }
 

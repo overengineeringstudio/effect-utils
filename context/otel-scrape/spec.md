@@ -119,9 +119,51 @@ flowchart TD
 
 Best-effort or sampled descendant discovery may exist only when explicitly marked as degraded/experimental output. Release validation must include Linux and macOS ARM evidence from public-safe runner classes, not private machine identities.
 
-The current implementation does not make a release-grade descendant process-tree claim. Summary evidence records `degraded.direct_child_only = true` and a `processes` observation block with `backend = "direct-child"` and `fidelity = "degraded"`. OTLP export emits the wrapper-owned command span, one direct-child `otel_scrape.process` span, and adapter/profile events. A release that ships before exact process-tree backends land must document this as degraded/direct-child-only process evidence instead of implying arbitrary descendant process spans.
+The current implementation does not make a release-grade descendant process-tree claim. Summary evidence records `degraded.direct_child_only = true` and a `processes` observation block with `backend = "direct-child"`, `fidelity = "degraded"`, and `reason = "direct-child-only"`. OTLP export emits the wrapper-owned command span, one direct-child `otel_scrape.process` span, and adapter/profile events. A release that ships before exact process-tree backends land must document this as degraded/direct-child-only process evidence instead of implying arbitrary descendant process spans.
 
 See [.decisions/0005-exact-process-tree-fidelity.md](./.decisions/0005-exact-process-tree-fidelity.md).
+
+### Process Observation Backend Contract
+
+A process observation backend produces immutable observations for process lifecycle facts it can prove:
+
+```ts
+type ProcessObservationFidelity = 'exact' | 'degraded' | 'experimental'
+
+type ProcessObservationDegradedReason =
+  | 'direct-child-only'
+  | 'unsupported-platform'
+  | 'missing-privilege'
+  | 'ptrace-denied'
+  | 'endpoint-security-unavailable'
+  | 'event-loss'
+  | 'namespace-unsupported'
+
+interface ObservedProcess {
+  readonly relation: 'direct-child' | 'descendant'
+  readonly spanId: string
+  readonly parentSpanId: string
+  readonly pidHash: `sha256:${string}`
+  readonly parentPidHash?: `sha256:${string}`
+  readonly argvHash: `sha256:${string}`
+  readonly exitCode?: number
+  readonly termination?: { readonly _tag: 'Signal'; readonly signal: number; readonly synthetic_exit_code: number }
+  readonly startUnixNano: number
+  readonly endUnixNano: number
+  readonly wallMs: number
+}
+
+interface ProcessObservation {
+  readonly backend: string
+  readonly fidelity: ProcessObservationFidelity
+  readonly reason?: ProcessObservationDegradedReason
+  readonly observed: ReadonlyArray<ObservedProcess>
+}
+```
+
+An exact backend must observe fork or equivalent parent-child creation, exec or equivalent command identity changes, and exit for every descendant it includes. If the backend can detect that events were lost, privileges are missing, namespaces hide descendants, or platform support is unavailable, it must downgrade the whole observation or the affected records instead of emitting exact spans.
+
+Linux exact support may start behind an explicit `ptrace-experimental` backend if validation proves short-lived descendants. macOS exact support must use a mechanism that can observe unknown descendants; `kqueue`/`EVFILT_PROC` is insufficient for this because it starts from known process IDs only. Endpoint Security is the expected macOS candidate, but exact support is gated on entitlement, installation, user/admin approval, event-loss handling, and validation evidence. See [.decisions/0010-macos-process-observation.md](./.decisions/0010-macos-process-observation.md).
 
 ## Semantic Conventions
 
@@ -162,9 +204,15 @@ The command summary records stable identities, not raw local inputs:
 - `processes.backend` names the active observation backend. `direct-child` is
   explicitly degraded and records only the spawned child process, even when the
   workload launches descendants.
+- `processes.reason` is a stable degraded reason code when fidelity is not
+  exact. Current and reserved codes are `direct-child-only`,
+  `unsupported-platform`, `missing-privilege`, `ptrace-denied`,
+  `endpoint-security-unavailable`, `event-loss`, and
+  `namespace-unsupported`.
 - `processes.observed[*]` records process evidence with span IDs, relationship,
-  hashed PID identity, hashed argv identity, exit status, termination evidence,
-  and wrapper-measured wall time. It does not include raw PID, argv, cwd, paths,
+  hashed PID identity, hashed parent PID identity where known, hashed argv
+  identity, exit status, termination evidence, lifecycle timestamps, and
+  wrapper-measured wall time. It does not include raw PID, argv, cwd, paths,
   credentials, source text, or child output.
 - `child.exit_code` records normal process exit codes. Signal-terminated Unix
   children keep `child.exit_code = null` and record

@@ -39,6 +39,18 @@ const OUTPUT_MEDIA_TYPE: &str = "application/octet-stream";
 const RESOURCE_FACT_UNAVAILABLE: &str = "unavailable";
 const OTLP_HTTP_TIMEOUT: Duration = Duration::from_millis(500);
 const NODE_CPUPROFILE_ADAPTER: &str = "node-cpuprofile";
+const DIRECT_CHILD_BACKEND: &str = "direct-child";
+const PROCESS_FIDELITY_DEGRADED: &str = "degraded";
+const PROCESS_RELATION_DIRECT_CHILD: &str = "direct-child";
+const PROCESS_OBSERVATION_DEGRADED_REASONS: &[ProcessObservationDegradedReason] = &[
+    ProcessObservationDegradedReason::DirectChildOnly,
+    ProcessObservationDegradedReason::UnsupportedPlatform,
+    ProcessObservationDegradedReason::MissingPrivilege,
+    ProcessObservationDegradedReason::PtraceDenied,
+    ProcessObservationDegradedReason::EndpointSecurityUnavailable,
+    ProcessObservationDegradedReason::EventLoss,
+    ProcessObservationDegradedReason::NamespaceUnsupported,
+];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunConfig {
@@ -244,9 +256,9 @@ struct ArtifactError {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ProcessObservationSummary {
-    backend: &'static str,
-    fidelity: &'static str,
-    reason: &'static str,
+    backend: String,
+    fidelity: String,
+    reason: Option<String>,
     observed: Vec<ObservedProcessSummary>,
 }
 
@@ -255,14 +267,103 @@ struct ProcessObservationSummary {
 struct ObservedProcessSummary {
     #[serde(rename = "_tag")]
     tag: &'static str,
-    relation: &'static str,
+    relation: String,
     span_id: String,
     parent_span_id: String,
     pid_hash: String,
+    parent_pid_hash: Option<String>,
     argv_hash: String,
     exit_code: Option<i32>,
     termination: Option<ChildTermination>,
+    start_unix_nano: u128,
+    end_unix_nano: u128,
     wall_ms: u128,
+}
+
+#[derive(Debug, Clone)]
+struct ProcessObservation {
+    backend: ProcessObservationBackend,
+    fidelity: ProcessObservationFidelity,
+    degraded_reason: Option<ProcessObservationDegradedReason>,
+    observed: Vec<ObservedProcess>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ProcessObservationBackend {
+    DirectChild,
+}
+
+impl ProcessObservationBackend {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::DirectChild => DIRECT_CHILD_BACKEND,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ProcessObservationFidelity {
+    Degraded,
+}
+
+impl ProcessObservationFidelity {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Degraded => PROCESS_FIDELITY_DEGRADED,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ProcessObservationDegradedReason {
+    DirectChildOnly,
+    UnsupportedPlatform,
+    MissingPrivilege,
+    PtraceDenied,
+    EndpointSecurityUnavailable,
+    EventLoss,
+    NamespaceUnsupported,
+}
+
+impl ProcessObservationDegradedReason {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::DirectChildOnly => "direct-child-only",
+            Self::UnsupportedPlatform => "unsupported-platform",
+            Self::MissingPrivilege => "missing-privilege",
+            Self::PtraceDenied => "ptrace-denied",
+            Self::EndpointSecurityUnavailable => "endpoint-security-unavailable",
+            Self::EventLoss => "event-loss",
+            Self::NamespaceUnsupported => "namespace-unsupported",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct ObservedProcess {
+    relation: ObservedProcessRelation,
+    span_id: String,
+    parent_span_id: Option<String>,
+    pid_hash: String,
+    parent_pid_hash: Option<String>,
+    argv_hash: String,
+    exit_code: Option<i32>,
+    termination: Option<ChildTermination>,
+    started_wall: SystemTime,
+    wall_ms: u128,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ObservedProcessRelation {
+    DirectChild,
+}
+
+impl ObservedProcessRelation {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::DirectChild => PROCESS_RELATION_DIRECT_CHILD,
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -280,7 +381,7 @@ struct ChildSummary {
     termination: Option<ChildTermination>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(tag = "_tag")]
 enum ChildTermination {
     Signal {
@@ -502,10 +603,7 @@ struct ChildRun {
     stdout: Option<Vec<u8>>,
     stderr: Option<Vec<u8>>,
     node_profile_dir: Option<PathBuf>,
-    process_id: u32,
-    process_span_id: String,
-    process_started_wall: SystemTime,
-    process_duration_ms: u128,
+    process_observation: ProcessObservation,
 }
 
 fn run_child(config: &RunConfig, child_traceparent: &str) -> io::Result<ChildRun> {
@@ -536,15 +634,21 @@ fn run_child(config: &RunConfig, child_traceparent: &str) -> io::Result<ChildRun
             .spawn()?;
         let process_id = child.id();
         let status = child.wait()?;
+        let process_duration_ms = process_started.elapsed().as_millis();
         return Ok(ChildRun {
             status,
             stdout: None,
             stderr: None,
             node_profile_dir,
-            process_id,
-            process_span_id,
-            process_started_wall,
-            process_duration_ms: process_started.elapsed().as_millis(),
+            process_observation: direct_child_process_observation(DirectChildProcessObservation {
+                config,
+                process_id,
+                parent_process_id: std::process::id(),
+                process_span_id,
+                process_started_wall,
+                process_duration_ms,
+                status,
+            }),
         });
     }
 
@@ -569,11 +673,50 @@ fn run_child(config: &RunConfig, child_traceparent: &str) -> io::Result<ChildRun
         stdout: Some(stdout),
         stderr: Some(stderr),
         node_profile_dir,
-        process_id,
-        process_span_id,
-        process_started_wall,
-        process_duration_ms,
+        process_observation: direct_child_process_observation(DirectChildProcessObservation {
+            config,
+            process_id,
+            parent_process_id: std::process::id(),
+            process_span_id,
+            process_started_wall,
+            process_duration_ms,
+            status,
+        }),
     })
+}
+
+struct DirectChildProcessObservation<'a> {
+    config: &'a RunConfig,
+    process_id: u32,
+    parent_process_id: u32,
+    process_span_id: String,
+    process_started_wall: SystemTime,
+    process_duration_ms: u128,
+    status: ExitStatus,
+}
+
+fn direct_child_process_observation(
+    input: DirectChildProcessObservation<'_>,
+) -> ProcessObservation {
+    debug_assert!(PROCESS_OBSERVATION_DEGRADED_REASONS
+        .contains(&ProcessObservationDegradedReason::DirectChildOnly));
+    ProcessObservation {
+        backend: ProcessObservationBackend::DirectChild,
+        fidelity: ProcessObservationFidelity::Degraded,
+        degraded_reason: Some(ProcessObservationDegradedReason::DirectChildOnly),
+        observed: vec![ObservedProcess {
+            relation: ObservedProcessRelation::DirectChild,
+            span_id: input.process_span_id,
+            parent_span_id: None,
+            pid_hash: stable_hash(input.process_id.to_string().as_bytes()),
+            parent_pid_hash: Some(stable_hash(input.parent_process_id.to_string().as_bytes())),
+            argv_hash: stable_hash_lines(&input.config.argv),
+            exit_code: input.status.code(),
+            termination: child_termination(input.status),
+            started_wall: input.process_started_wall,
+            wall_ms: input.process_duration_ms,
+        }],
+    }
 }
 
 fn prepare_node_cpuprofile_dir(config: &RunConfig) -> io::Result<Option<PathBuf>> {
@@ -661,7 +804,7 @@ fn summary_for_status(
         resources: resource_summary(duration_ms),
         adapter: adapter_summary(&adapter),
         artifacts: artifacts.clone(),
-        processes: process_observation_summary(config, trace, child),
+        processes: process_observation_summary(trace, child),
         trace: TraceSummary {
             trace_id: trace.trace_id.clone(),
             parent_span_id: trace.parent_span_id.clone(),
@@ -682,25 +825,42 @@ fn summary_for_status(
 }
 
 fn process_observation_summary(
-    config: &RunConfig,
     trace: &TraceContext,
     child: &ChildRun,
 ) -> ProcessObservationSummary {
+    let observation = &child.process_observation;
     ProcessObservationSummary {
-        backend: "direct-child",
-        fidelity: "degraded",
-        reason: "direct-child-only backend does not observe descendants",
-        observed: vec![ObservedProcessSummary {
-            tag: "Process",
-            relation: "direct-child",
-            span_id: child.process_span_id.clone(),
-            parent_span_id: trace.span_id.clone(),
-            pid_hash: stable_hash(child.process_id.to_string().as_bytes()),
-            argv_hash: stable_hash_lines(&config.argv),
-            exit_code: child.status.code(),
-            termination: child_termination(child.status),
-            wall_ms: child.process_duration_ms,
-        }],
+        backend: observation.backend.as_str().to_owned(),
+        fidelity: observation.fidelity.as_str().to_owned(),
+        reason: observation
+            .degraded_reason
+            .map(|reason| reason.as_str().to_owned()),
+        observed: observation
+            .observed
+            .iter()
+            .map(|process| {
+                let start_unix_nano = unix_nanos(process.started_wall);
+                let end_unix_nano =
+                    start_unix_nano.saturating_add(process.wall_ms.saturating_mul(1_000_000));
+                ObservedProcessSummary {
+                    tag: "Process",
+                    relation: process.relation.as_str().to_owned(),
+                    span_id: process.span_id.clone(),
+                    parent_span_id: process
+                        .parent_span_id
+                        .clone()
+                        .unwrap_or_else(|| trace.span_id.clone()),
+                    pid_hash: process.pid_hash.clone(),
+                    parent_pid_hash: process.parent_pid_hash.clone(),
+                    argv_hash: process.argv_hash.clone(),
+                    exit_code: process.exit_code,
+                    termination: process.termination.clone(),
+                    start_unix_nano,
+                    end_unix_nano,
+                    wall_ms: process.wall_ms,
+                }
+            })
+            .collect(),
     }
 }
 
@@ -786,41 +946,8 @@ fn export_command_span(
     if !events.is_empty() {
         command_span["events"] = json!(events);
     }
-    let process_start_unix_nano = unix_nanos(child.process_started_wall);
-    let process_end_unix_nano =
-        process_start_unix_nano.saturating_add(child.process_duration_ms.saturating_mul(1_000_000));
-    let process_span = json!({
-        "traceId": trace.trace_id,
-        "spanId": child.process_span_id,
-        "parentSpanId": trace.span_id,
-        "name": telemetry_registry::spans::PROCESS,
-        "kind": 1,
-        "startTimeUnixNano": process_start_unix_nano.to_string(),
-        "endTimeUnixNano": process_end_unix_nano.to_string(),
-        "attributes": [
-            {
-                "key": telemetry_registry::attributes::PROCESS_COMMAND_ARGS_HASH,
-                "value": { "stringValue": stable_hash_lines(&config.argv) },
-            },
-            {
-                "key": telemetry_registry::attributes::PROCESS_EXIT_CODE,
-                "value": { "intValue": exit_code(child.status).to_string() },
-            },
-            {
-                "key": telemetry_registry::attributes::PROCESS_OBSERVATION_BACKEND,
-                "value": { "stringValue": "direct-child" },
-            },
-            {
-                "key": telemetry_registry::attributes::PROCESS_OBSERVATION_FIDELITY,
-                "value": { "stringValue": "degraded" },
-            },
-            {
-                "key": telemetry_registry::attributes::PROCESS_OBSERVATION_RELATION,
-                "value": { "stringValue": "direct-child" },
-            },
-        ],
-        "status": { "code": if child.status.success() { 1 } else { 2 } },
-    });
+    let mut spans = vec![command_span];
+    spans.extend(process_otlp_spans(trace, &child.process_observation));
     let body = json!({
         "resourceSpans": [{
             "resource": {
@@ -831,12 +958,73 @@ fn export_command_span(
             },
             "scopeSpans": [{
                 "scope": { "name": "otel-scrape" },
-                "spans": [command_span, process_span],
+                "spans": spans,
             }],
         }],
     });
     let bytes = serde_json::to_vec(&body)?;
     post_otlp_http_json(endpoint, &bytes)
+}
+
+fn process_otlp_spans(
+    trace: &TraceContext,
+    observation: &ProcessObservation,
+) -> Vec<serde_json::Value> {
+    observation
+        .observed
+        .iter()
+        .map(|process| {
+            let process_start_unix_nano = unix_nanos(process.started_wall);
+            let process_end_unix_nano =
+                process_start_unix_nano.saturating_add(process.wall_ms.saturating_mul(1_000_000));
+            let parent_span_id = process
+                .parent_span_id
+                .as_deref()
+                .unwrap_or(trace.span_id.as_str());
+            json!({
+                "traceId": trace.trace_id,
+                "spanId": process.span_id,
+                "parentSpanId": parent_span_id,
+                "name": telemetry_registry::spans::PROCESS,
+                "kind": 1,
+                "startTimeUnixNano": process_start_unix_nano.to_string(),
+                "endTimeUnixNano": process_end_unix_nano.to_string(),
+                "attributes": [
+                    {
+                        "key": telemetry_registry::attributes::PROCESS_COMMAND_ARGS_HASH,
+                        "value": { "stringValue": process.argv_hash },
+                    },
+                    {
+                        "key": telemetry_registry::attributes::PROCESS_EXIT_CODE,
+                        "value": { "intValue": process.exit_code.unwrap_or_else(|| synthetic_exit_code(process.termination.as_ref())).to_string() },
+                    },
+                    {
+                        "key": telemetry_registry::attributes::PROCESS_OBSERVATION_BACKEND,
+                        "value": { "stringValue": observation.backend.as_str() },
+                    },
+                    {
+                        "key": telemetry_registry::attributes::PROCESS_OBSERVATION_FIDELITY,
+                        "value": { "stringValue": observation.fidelity.as_str() },
+                    },
+                    {
+                        "key": telemetry_registry::attributes::PROCESS_OBSERVATION_RELATION,
+                        "value": { "stringValue": process.relation.as_str() },
+                    },
+                ],
+                "status": { "code": if process.exit_code == Some(0) { 1 } else { 2 } },
+            })
+        })
+        .collect()
+}
+
+fn synthetic_exit_code(termination: Option<&ChildTermination>) -> i32 {
+    match termination {
+        Some(ChildTermination::Signal {
+            synthetic_exit_code,
+            ..
+        }) => *synthetic_exit_code,
+        None => 0,
+    }
 }
 
 fn otlp_span_events(adapter: &AdapterRun, time_unix_nano: u128) -> Vec<serde_json::Value> {
@@ -1828,15 +2016,21 @@ mod tests {
     }
 
     fn child_run_with_profile_dir(profile_dir: PathBuf) -> ChildRun {
+        let status = std::process::Command::new("true").status().unwrap();
         ChildRun {
-            status: std::process::Command::new("true").status().unwrap(),
+            status,
             stdout: Some(Vec::new()),
             stderr: Some(Vec::new()),
             node_profile_dir: Some(profile_dir),
-            process_id: std::process::id(),
-            process_span_id: "1111111111111111".to_owned(),
-            process_started_wall: SystemTime::now(),
-            process_duration_ms: 0,
+            process_observation: direct_child_process_observation(DirectChildProcessObservation {
+                config: &node_cpuprofile_config(PathBuf::from("cas")),
+                process_id: std::process::id(),
+                parent_process_id: std::process::id(),
+                process_span_id: "1111111111111111".to_owned(),
+                process_started_wall: SystemTime::now(),
+                process_duration_ms: 0,
+                status,
+            }),
         }
     }
 
