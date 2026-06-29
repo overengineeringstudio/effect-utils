@@ -378,7 +378,44 @@ fn summary_write_failure_preserves_child_exit_code() {
 
     assert_eq!(out.status.code(), Some(7));
     assert_eq!(String::from_utf8_lossy(&out.stdout), "child-out\n");
-    assert!(String::from_utf8_lossy(&out.stderr).contains("failed to write summary"));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("failed to write summary target sha256:"));
+    assert!(!stderr.contains(summary_path_is_directory.to_string_lossy().as_ref()));
+    let leftover_temp_files = std::fs::read_dir(dir.path())
+        .unwrap()
+        .filter_map(Result::ok)
+        .filter(|entry| {
+            entry
+                .file_name()
+                .to_string_lossy()
+                .starts_with("summary-target.tmp-")
+        })
+        .count();
+    assert_eq!(leftover_temp_files, 0);
+}
+
+#[cfg(unix)]
+#[test]
+fn signal_termination_preserves_synthetic_exit_code_and_summary_evidence() {
+    let dir = tempfile::tempdir().unwrap();
+    let summary = dir.path().join("summary.json");
+
+    let out = otel_scrape()
+        .args(["--summary-out"])
+        .arg(&summary)
+        .args(["--", "sh", "-c", "kill -TERM $$"])
+        .output()
+        .unwrap();
+
+    assert_eq!(out.status.code(), Some(143));
+
+    let summary: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(summary).unwrap()).unwrap();
+    assert_eq!(summary["child"]["exit_code"], serde_json::Value::Null);
+    assert_eq!(summary["child"]["success"], false);
+    assert_eq!(summary["child"]["termination"]["_tag"], "Signal");
+    assert_eq!(summary["child"]["termination"]["signal"], 15);
+    assert_eq!(summary["child"]["termination"]["synthetic_exit_code"], 143);
 }
 
 #[test]

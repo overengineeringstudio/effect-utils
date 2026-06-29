@@ -154,6 +154,11 @@ The command summary records stable identities, not raw local inputs:
 - `command.argv_hash` is a stable hash over the child argv vector.
 - `command.cwd_hash` is a stable hash over the current working directory identity.
 - Raw argv, cwd, local absolute paths, credentials, source text, and private payloads are not embedded.
+- `child.exit_code` records normal process exit codes. Signal-terminated Unix
+  children keep `child.exit_code = null` and record
+  `child.termination = { _tag: "Signal", signal, synthetic_exit_code }`, where
+  `synthetic_exit_code` is the wrapper process status returned to the parent
+  using the conventional `128 + signal` mapping.
 
 When the wrapper captures a stream for adapter parsing, the summary records an output descriptor for that captured byte sequence:
 

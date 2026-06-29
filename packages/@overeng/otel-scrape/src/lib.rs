@@ -251,6 +251,16 @@ struct TraceSummary {
 struct ChildSummary {
     exit_code: Option<i32>,
     success: bool,
+    termination: Option<ChildTermination>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(tag = "_tag")]
+enum ChildTermination {
+    Signal {
+        signal: i32,
+        synthetic_exit_code: i32,
+    },
 }
 
 #[derive(Debug, Serialize)]
@@ -429,8 +439,8 @@ pub fn run(config: RunConfig) -> io::Result<i32> {
             Ok(()) => {}
             Err(cause) => {
                 eprintln!(
-                    "otel-scrape: warning: failed to write summary {}: {cause}",
-                    path.display()
+                    "otel-scrape: warning: failed to write summary target {}: {cause}",
+                    hash_path_identity(&path.to_string_lossy())
                 );
             }
         }
@@ -555,6 +565,7 @@ fn summary_for_status(
         child: ChildSummary {
             exit_code: child.status.code(),
             success: child.status.success(),
+            termination: child_termination(child.status),
         },
         duration_ms,
         degraded: DegradedSummary {
@@ -1231,6 +1242,23 @@ fn exit_code(status: ExitStatus) -> i32 {
     }
 
     1
+}
+
+fn child_termination(status: ExitStatus) -> Option<ChildTermination> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt;
+        return status.signal().map(|signal| ChildTermination::Signal {
+            signal,
+            synthetic_exit_code: 128 + signal,
+        });
+    }
+
+    #[cfg(not(unix))]
+    {
+        let _ = status;
+        None
+    }
 }
 
 fn usage_error<T>(message: &str) -> Result<T, UsageError> {
