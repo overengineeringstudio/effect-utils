@@ -267,8 +267,7 @@
         args:
         import ./nix/workspace-tools/lib/mk-cli-packages.nix (
           {
-            typeProofCompilerBin =
-              "${tsgo.packages.${args.pkgs.stdenv.hostPlatform.system}.tsgo}/bin/tsgo";
+            typeProofCompilerBin = "${tsgo.packages.${args.pkgs.stdenv.hostPlatform.system}.tsgo}/bin/tsgo";
           }
           // args
         );
