@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **otel-scrape**: Add the public VRS for an effect-utils-owned process wrapper
+  that turns build/dev tool executions into OTEL spans, events, metrics, and
+  content-addressed profile links.
+
 - **@overeng/genie**: Add the explicit `@overeng/genie/composition` subpath for
   reusable cross-artifact composition helpers. The first helper,
   `tsconfigReferencesFromPackages`, projects TypeScript project references from
