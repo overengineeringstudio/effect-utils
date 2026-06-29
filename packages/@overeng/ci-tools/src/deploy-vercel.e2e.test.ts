@@ -267,6 +267,33 @@ exit 1
     }
   })
 
+  it('emits missing-auth records before local output checks', async () => {
+    apiMode = 'ok'
+    const workspace = makeWorkspace()
+    const reportFile = join(workspace.root, 'report.jsonl')
+    try {
+      const result = await runCiTools({
+        workdir: workspace.root,
+        fakeVercelBin: workspace.fakeVercelBin,
+        reportFile,
+        args: [
+          '--target',
+          'web',
+          '--artifact-dir',
+          join(workspace.root, 'missing'),
+          '--mode',
+          'preview',
+        ],
+        env: { VERCEL_TOKEN: undefined },
+      })
+      expect(result.status).not.toBe(0)
+      expect(existsSync(workspace.logPath)).toBe(false)
+      expect(readRecord(reportFile).data).toMatchObject({ errorKind: 'MissingAuth' })
+    } finally {
+      rmSync(workspace.root, { recursive: true, force: true })
+    }
+  })
+
   it('fails before upload when API-first project lookup rejects credentials', async () => {
     apiMode = 'unauthorized'
     const workspace = makeWorkspace()

@@ -10029,13 +10029,14 @@ jobs:
           workflow_report_json=""
           if [ -s "$workflow_report_path" ]; then
             workflow_report_json="$(tail -n 1 "$workflow_report_path")"
+            workflow_report_json="${workflow_report_json#WORKFLOW_REPORT_V1: }"
           fi
           if [ -z "$workflow_report_json" ]; then
             workflow_report_json=$(grep -F "WORKFLOW_REPORT_V1: " "$tmp_log" | sed 's/^.*WORKFLOW_REPORT_V1: //' | tail -n 1 || true)
           fi
           if [ -n "$workflow_report_json" ]; then
             workflow_report_json="$(printf "%s" "$workflow_report_json" | jq -c '.')"
-            printf "%s\n" "$workflow_report_json" > "$workflow_report_path"
+            printf "%s%s\n" "WORKFLOW_REPORT_V1: " "$workflow_report_json" > "$workflow_report_path"
             echo "WORKFLOW_REPORT_V1: $workflow_report_json"
             printf 'workflow_report=%s\n' "$workflow_report_json" >> "$GITHUB_OUTPUT"
           fi
