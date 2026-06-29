@@ -16,6 +16,7 @@ import {
   ProviderProjectLookupFailed,
   Unauthorized,
   UnsafeE2EAlias,
+  VerificationFailed,
   deployFailureRecord,
   deploySkippedRecord,
   deploySuccessRecord,
@@ -44,6 +45,8 @@ export type NetlifyDeployCommandOptions = {
   readonly createdAtUtc?: string | undefined
   readonly e2eAllowSharedProject: boolean
   readonly e2eReservedAliasPrefix: string
+  readonly e2eVerifyPath?: string | undefined
+  readonly e2eVerifyText?: string | undefined
 }
 
 const HttpsUrlString = Schema.NonEmptyTrimmedString.pipe(
@@ -319,6 +322,83 @@ const parseDeployJson = Effect.fn('ci-tools.deploy.netlify.parse-json')(function
   })
 })
 
+const verifyFinalUrlOnce = Effect.fn('ci-tools.deploy.netlify.verify-once')(function* (opts: {
+  readonly target: string
+  readonly finalUrl: URL
+  readonly path: string
+  readonly expectedText: string
+  readonly attempt: number
+}) {
+  const verifyUrl = new URL(opts.path, opts.finalUrl)
+  const response = yield* Effect.tryPromise({
+    try: async () => {
+      const result = (await globalThis.fetch(verifyUrl, {
+        headers: { Connection: 'close' },
+      })) as unknown as { readonly status: number; readonly text: () => Promise<string> }
+      const text = await result.text()
+      return { status: result.status, text }
+    },
+    catch: (cause) =>
+      new VerificationFailed({
+        provider: 'netlify',
+        target: opts.target,
+        finalUrl: opts.finalUrl,
+        transient: true,
+        message: cause instanceof Error ? cause.message : 'Netlify live E2E verification failed',
+        diagnostics: { attempt: String(opts.attempt), verifyPath: opts.path },
+      }),
+  })
+
+  if (response.status < 200 || response.status >= 300) {
+    return yield* new VerificationFailed({
+      provider: 'netlify',
+      target: opts.target,
+      finalUrl: opts.finalUrl,
+      transient: response.status >= 500,
+      message: `Netlify live E2E verification returned HTTP ${response.status}`,
+      diagnostics: { attempt: String(opts.attempt), httpStatus: String(response.status) },
+    })
+  }
+
+  if (response.text.includes(opts.expectedText) === false) {
+    return yield* new VerificationFailed({
+      provider: 'netlify',
+      target: opts.target,
+      finalUrl: opts.finalUrl,
+      transient: false,
+      message: 'Netlify live E2E marker text was not served',
+      diagnostics: { attempt: String(opts.attempt), verifyPath: opts.path },
+    })
+  }
+})
+
+const verifyFinalUrl = Effect.fn('ci-tools.deploy.netlify.verify')(function* (opts: {
+  readonly target: string
+  readonly finalUrl: URL
+  readonly path: string
+  readonly expectedText: string
+}) {
+  let lastFailure: VerificationFailed | undefined
+  for (let attempt = 1; attempt <= 10; attempt += 1) {
+    const result = yield* verifyFinalUrlOnce({ ...opts, attempt }).pipe(Effect.either)
+    if (Either.isRight(result) === true) return
+    lastFailure = result.left
+    if (attempt < 10) {
+      yield* Effect.sleep('2 seconds')
+    }
+  }
+  return yield* (
+    lastFailure ??
+      new VerificationFailed({
+        provider: 'netlify',
+        target: opts.target,
+        finalUrl: opts.finalUrl,
+        transient: true,
+        message: 'Netlify live E2E verification did not complete',
+      })
+  )
+})
+
 const emitRecord = (opts: {
   readonly record: WorkflowReportRecord
   readonly workflowReportOutputFile: string | undefined
@@ -356,6 +436,15 @@ export const runNetlifyDeploy = Effect.fn('ci-tools.deploy.netlify')(function* (
       enabled: options.e2eAllowSharedProject,
       allowSharedProject: options.e2eAllowSharedProject,
       reservedAliasPrefix: options.e2eReservedAliasPrefix,
+      ...(options.e2eVerifyPath === undefined || options.e2eVerifyText === undefined
+        ? {}
+        : {
+            verifyContent: {
+              _tag: 'DeployVerifyContent',
+              path: options.e2eVerifyPath,
+              expectedText: options.e2eVerifyText,
+            },
+          }),
     },
     providerConfig: {
       _tag: 'NetlifyProviderConfig',
@@ -378,6 +467,18 @@ export const runNetlifyDeploy = Effect.fn('ci-tools.deploy.netlify')(function* (
         secretValues: authTokenValue === undefined ? [] : [authTokenValue],
       }),
     }).pipe(Effect.zipRight(Effect.fail(failure)))
+
+  if ((options.e2eVerifyPath === undefined) !== (options.e2eVerifyText === undefined)) {
+    return yield* failWithRecord(
+      new ProviderOperationFailed({
+        provider: 'netlify',
+        target: options.target,
+        operation: 'verify',
+        transient: false,
+        message: 'Netlify live E2E verification requires both path and expected text',
+      }),
+    )
+  }
 
   yield* assertSafeE2EAlias({
     target: options.target,
@@ -473,6 +574,11 @@ export const runNetlifyDeploy = Effect.fn('ci-tools.deploy.netlify')(function* (
     startedAtUtc: createdAtUtc,
     endedAtUtc: isoNow(),
     attempts: 1,
+    cleanup: {
+      _tag: 'CleanupResult',
+      status: 'skipped',
+      message: 'Netlify alias cleanup is not implemented for shared-project live E2E',
+    },
   })
 
   if (Either.isLeft(decoded) === true) {
@@ -485,6 +591,15 @@ export const runNetlifyDeploy = Effect.fn('ci-tools.deploy.netlify')(function* (
         diagnostics: { finalUrl },
       }),
     )
+  }
+
+  if (input.e2e?.verifyContent !== undefined) {
+    yield* verifyFinalUrl({
+      target: input.target,
+      finalUrl: decoded.right.finalUrl,
+      path: input.e2e.verifyContent.path,
+      expectedText: input.e2e.verifyContent.expectedText,
+    }).pipe(Effect.catchAll(failWithRecord))
   }
 
   process.stdout.write(`Netlify deploy URL: ${finalUrl}\n`)

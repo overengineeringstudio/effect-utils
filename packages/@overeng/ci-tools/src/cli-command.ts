@@ -316,6 +316,14 @@ const netlifyDeployCommand = Command.make(
       Options.withDescription('Required alias prefix when shared-project E2E is enabled'),
       Options.withDefault('ci-tools-e2e'),
     ),
+    e2eVerifyPath: Options.text('e2e-verify-path').pipe(
+      Options.withDescription('Optional live E2E path to fetch after deploy'),
+      Options.optional,
+    ),
+    e2eVerifyText: Options.text('e2e-verify-text').pipe(
+      Options.withDescription('Optional live E2E marker text expected at the verify path'),
+      Options.optional,
+    ),
   },
   (opts) =>
     runNetlifyDeploy({
@@ -326,6 +334,8 @@ const netlifyDeployCommand = Command.make(
       accountSlugEnv: optionToUndefined(opts.accountSlugEnv),
       workflowReportOutputFile: optionToUndefined(opts.workflowReportOutputFile),
       createdAtUtc: optionToUndefined(opts.createdAtUtc),
+      e2eVerifyPath: optionToUndefined(opts.e2eVerifyPath),
+      e2eVerifyText: optionToUndefined(opts.e2eVerifyText),
     }),
 ).pipe(Command.withDescription('Deploy a local static directory to Netlify'))
 

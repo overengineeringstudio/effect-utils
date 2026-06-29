@@ -95,6 +95,27 @@ const failureReminderStep = {
   ].join('\n'),
 } as const
 
+const liveNetlifyCiToolsE2EStep = {
+  name: 'Live Netlify ci-tools E2E',
+  shell: 'bash',
+  env: {
+    CI_TOOLS_NETLIFY_LIVE: '1',
+    NETLIFY_AUTH_TOKEN: '${{ secrets.NETLIFY_AUTH_TOKEN }}',
+    NETLIFY_SITE_ID: '${{ secrets.NETLIFY_SITE_ID }}',
+    CI_TOOLS_NETLIFY_SITE_NAME: '${{ secrets.CI_TOOLS_NETLIFY_SITE_NAME }}',
+  },
+  run: [
+    'if [ -z "${NETLIFY_AUTH_TOKEN:-}" ] || [ -z "${NETLIFY_SITE_ID:-}" ]; then',
+    '  echo "::notice::Skipping live Netlify ci-tools E2E because NETLIFY_AUTH_TOKEN or NETLIFY_SITE_ID is unavailable"',
+    '  exit 0',
+    'fi',
+    'netlify_pkg="$(nix build --no-link --print-out-paths nixpkgs#netlify-cli)"',
+    'export CI_TOOLS_LIVE_NETLIFY_BIN="$netlify_pkg/bin/netlify"',
+    'DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run pnpm:install',
+    'DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" shell --no-reload -- bun test packages/@overeng/ci-tools/src/deploy-netlify.live.e2e.test.ts',
+  ].join('\n'),
+} as const
+
 const storybookPreviewBundlePath =
   '${{ runner.temp }}/workflow-reports/storybook-preview-bundle.json'
 const storybookPreviewCommentBodyPath =
@@ -805,6 +826,29 @@ const extraJobs: Record<string, any> = {
         name: 'Restate integration tests',
         run: runDevenvTasksBefore('test:restate-integration'),
       },
+      savePnpmStateStep(),
+      nixDiagnosticsSummaryStep,
+      nixDiagnosticsArtifactStep(),
+      failureReminderStep,
+    ],
+  },
+  'test-live-netlify-ci-tools': {
+    if: normalCiIf,
+    concurrency: {
+      group:
+        'test-live-netlify-ci-tools-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}',
+      'cancel-in-progress': true,
+    },
+    'runs-on': namespaceRunner({
+      profile: 'namespace-profile-linux-x86-64',
+      runId: '${{ github.run_id }}',
+    }),
+    'timeout-minutes': 30,
+    defaults: bashShellDefaults,
+    env: standardCIEnv,
+    steps: [
+      ...baseSteps,
+      liveNetlifyCiToolsE2EStep,
       savePnpmStateStep(),
       nixDiagnosticsSummaryStep,
       nixDiagnosticsArtifactStep(),

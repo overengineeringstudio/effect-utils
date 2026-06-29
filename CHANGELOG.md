@@ -43,6 +43,11 @@ All notable changes to this project will be documented in this file.
   aliases, redacted failure classification, and fake-runner coverage for
   unauthorized, missing-project, malformed-output, and aliased deploy paths.
 
+- **@overeng/ci-tools**: Add a guarded live Netlify E2E that deploys a local
+  static fixture through `ci-tools deploy netlify`, verifies marker content on
+  the served alias, records cleanup status, and runs in CI only when Netlify
+  secrets are available.
+
 - **@overeng/genie**: Add the explicit `@overeng/genie/composition` subpath for
   reusable cross-artifact composition helpers. The first helper,
   `tsconfigReferencesFromPackages`, projects TypeScript project references from
