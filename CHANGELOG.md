@@ -33,6 +33,11 @@ All notable changes to this project will be documented in this file.
   under the `ci-tools workflow-report ...` command surface and regenerating CI
   to call the new binary boundary.
 
+- **@overeng/ci-tools**: Add the first deploy domain model with versioned
+  Effect schemas for deploy inputs/results, tagged deploy failure taxonomy,
+  retryability derivation, redacted workflow-report record builders, and
+  privacy/cardinality-safe OTEL span attribute metadata for deploy operations.
+
 - **@overeng/genie**: Add the explicit `@overeng/genie/composition` subpath for
   reusable cross-artifact composition helpers. The first helper,
   `tsconfigReferencesFromPackages`, projects TypeScript project references from

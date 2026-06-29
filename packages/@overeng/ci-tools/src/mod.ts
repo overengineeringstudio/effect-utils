@@ -733,3 +733,5 @@ export const renderWorkflowReportCommentBody = (opts: {
 
   return `${visibleLines.join('\n')}\n\n${renderWorkflowReportManagedState(opts.state)}\n`
 }
+
+export * from './deploy-domain.ts'
