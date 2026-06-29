@@ -58,11 +58,11 @@ entrypoint names.
 The package currently named `@overeng/workflow-report` becomes
 `@overeng/ci-tools`.
 
-| Old identity | New identity |
-| --- | --- |
-| `@overeng/workflow-report` | `@overeng/ci-tools` |
-| `workflow-report` binary | `ci-tools` binary |
-| workflow-report CLI root | `ci-tools workflow-report ...` or compatible subcommands |
+| Old identity               | New identity                                             |
+| -------------------------- | -------------------------------------------------------- |
+| `@overeng/workflow-report` | `@overeng/ci-tools`                                      |
+| `workflow-report` binary   | `ci-tools` binary                                        |
+| workflow-report CLI root   | `ci-tools workflow-report ...` or compatible subcommands |
 
 The migration is a hard rename. Generated package manifests, TypeScript
 references, Nix package builders, Genie imports, and generated CI workflow call
@@ -148,16 +148,16 @@ type DeployResultV1 = {
 Expected failures are represented as `Schema.TaggedError` classes. The initial
 tags are:
 
-| Error tag | Retryable | Meaning |
-| --- | --- | --- |
-| `MissingAuth` | no | Required provider token env var is absent or empty |
-| `Unauthorized` | no | Provider rejected the token or account access |
-| `MissingBuildOutput` | no | Local artifact directory does not exist |
-| `ProviderProjectLookupFailed` | yes | Provider project/site lookup failed or returned incomplete metadata |
-| `InvalidProviderOutput` | no | Provider CLI/API response does not decode to the expected schema |
-| `ProviderOperationFailed` | conditional | Provider command/API failed without a more specific classification |
-| `UnsafeE2EAlias` | no | Live E2E attempted a shared-project alias outside the reserved namespace |
-| `VerificationFailed` | yes | Deployed URL did not serve the expected local fixture content |
+| Error tag                     | Retryable   | Meaning                                                                  |
+| ----------------------------- | ----------- | ------------------------------------------------------------------------ |
+| `MissingAuth`                 | no          | Required provider token env var is absent or empty                       |
+| `Unauthorized`                | no          | Provider rejected the token or account access                            |
+| `MissingBuildOutput`          | no          | Local artifact directory does not exist                                  |
+| `ProviderProjectLookupFailed` | yes         | Provider project/site lookup failed or returned incomplete metadata      |
+| `InvalidProviderOutput`       | no          | Provider CLI/API response does not decode to the expected schema         |
+| `ProviderOperationFailed`     | conditional | Provider command/API failed without a more specific classification       |
+| `UnsafeE2EAlias`              | no          | Live E2E attempted a shared-project alias outside the reserved namespace |
+| `VerificationFailed`          | yes         | Deployed URL did not serve the expected local fixture content            |
 
 Unexpected defects remain defects. They are not converted into expected domain
 errors unless the boundary has enough information to classify them.
@@ -218,12 +218,12 @@ local artifacts only.
 
 Retry is based on typed error tags, not raw exit codes.
 
-| Error tag | Policy |
-| --- | --- |
-| `ProviderProjectLookupFailed` | retry with bounded exponential backoff |
-| `ProviderOperationFailed` | retry only when classified as transient |
-| `VerificationFailed` | retry verification before failing the deploy |
-| all others | no retry |
+| Error tag                     | Policy                                       |
+| ----------------------------- | -------------------------------------------- |
+| `ProviderProjectLookupFailed` | retry with bounded exponential backoff       |
+| `ProviderOperationFailed`     | retry only when classified as transient      |
+| `VerificationFailed`          | retry verification before failing the deploy |
+| all others                    | no retry                                     |
 
 Attempt count is included in `DeployResultV1`, failure records, and telemetry.
 
@@ -289,21 +289,21 @@ raw secret values, or private account details.
 
 The CLI uses the repo's existing Effect OTEL front door with service identity:
 
-| Resource field | Value |
-| --- | --- |
-| `service.name` | `ci-tools-cli` |
-| `service.namespace` | `overeng` |
-| `service.version` | resolved CLI version |
+| Resource field      | Value                |
+| ------------------- | -------------------- |
+| `service.name`      | `ci-tools-cli`       |
+| `service.namespace` | `overeng`            |
+| `service.version`   | resolved CLI version |
 
 Deploy spans:
 
-| Span | Label | Attributes |
-| --- | --- | --- |
-| `ci-tools.deploy` | target | provider, target, mode, run id |
-| `ci-tools.deploy.provider` | provider | provider, target |
-| `ci-tools.deploy.attempt` | attempt number | provider, target, mode, attempt, status, error kind |
-| `ci-tools.deploy.verify` | final URL host | provider, target, status |
-| `ci-tools.deploy.cleanup` | alias or deploy id | provider, target, cleanup status |
+| Span                       | Label              | Attributes                                          |
+| -------------------------- | ------------------ | --------------------------------------------------- |
+| `ci-tools.deploy`          | target             | provider, target, mode, run id                      |
+| `ci-tools.deploy.provider` | provider           | provider, target                                    |
+| `ci-tools.deploy.attempt`  | attempt number     | provider, target, mode, attempt, status, error kind |
+| `ci-tools.deploy.verify`   | final URL host     | provider, target, status                            |
+| `ci-tools.deploy.cleanup`  | alias or deploy id | provider, target, cleanup status                    |
 
 Attributes must follow `@overeng/otel-contract` conventions. Secret values and
 unbounded raw stderr are not span attributes.

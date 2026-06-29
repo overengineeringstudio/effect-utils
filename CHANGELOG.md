@@ -16,6 +16,11 @@ All notable changes to this project will be documented in this file.
   Phase 0 deploy-preview inventory note for workflow-report, Netlify, and
   Vercel migration surfaces.
 
+- **@overeng/workflow-report**: Add a hermetic CLI E2E test that runs the real
+  `workflow-report` entrypoint through Bun, collects marked deploy-preview
+  records, renders managed comment output, and finds the managed comment ID
+  through file-based CLI boundaries.
+
 - **@overeng/genie**: Add the explicit `@overeng/genie/composition` subpath for
   reusable cross-artifact composition helpers. The first helper,
   `tsconfigReferencesFromPackages`, projects TypeScript project references from
