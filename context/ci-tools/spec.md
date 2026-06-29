@@ -208,6 +208,10 @@ tags are:
 Unexpected defects remain defects. They are not converted into expected domain
 errors unless the boundary has enough information to classify them.
 
+Netlify static deploys may emit a skipped record when an optional static output
+directory is absent. Vercel deploys treat missing configured artifact output as
+`MissingBuildOutput` because the artifact path is the deploy input.
+
 Requirement trace: R05, R06, R08.
 
 ## Provider Adapter Contract
@@ -283,18 +287,18 @@ scoped without committing account identifiers.
 
 Requirement trace: R13, R14, R15, R16, R17.
 
-## Retry Policy
+## Retryability Policy
 
 Retry is based on typed error tags, not raw exit codes.
 
-| Error tag                     | Policy                                       |
-| ----------------------------- | -------------------------------------------- |
-| `ProviderProjectLookupFailed` | retry with bounded exponential backoff       |
-| `ProviderOperationFailed`     | retry only when classified as transient      |
-| `VerificationFailed`          | retry verification before failing the deploy |
-| all others                    | no retry                                     |
+| Error tag                     | Current policy                                          |
+| ----------------------------- | ------------------------------------------------------- |
+| `ProviderProjectLookupFailed` | recorded as retryable; no provider retry loop currently |
+| `ProviderOperationFailed`     | retryable only when classified as transient             |
+| `VerificationFailed`          | retry verification before failing the deploy            |
+| all others                    | no retry                                                |
 
-Attempt count is included in `DeployResultV1`, failure records, and telemetry.
+Attempt count is included in `DeployResultV1` and workflow-report records.
 
 ## Workflow Report Emission
 
@@ -364,7 +368,10 @@ The CLI uses the repo's existing Effect OTEL front door with service identity:
 | `service.namespace` | `overeng`            |
 | `service.version`   | resolved CLI version |
 
-Deploy spans:
+Deploy telemetry uses schema-backed operation contracts so future span
+instrumentation and tests share one attribute vocabulary. The current CLI runtime
+provides the OTEL front door; provider/attempt/cleanup span application remains
+an open design question.
 
 | Span                       | Label              | Attributes                                          |
 | -------------------------- | ------------------ | --------------------------------------------------- |
@@ -393,7 +400,7 @@ devenv task -> ci-tools deploy -> fake provider -> workflow-report record
 Required cases:
 
 - success record is emitted
-- known provider lookup failure is classified and retried
+- known provider lookup failure is classified and marked retryable
 - unauthorized auth is classified and not retried
 - invalid provider output fails as `InvalidProviderOutput`
 - unsafe E2E alias is refused
@@ -455,3 +462,7 @@ Requirement trace: R02, R17, R24.
 - **DQ3 Live E2E requiredness:** Live provider E2E is non-required initially.
   Making it required would require evidence that provider-side flake rate is
   low enough not to block unrelated PRs.
+- **DQ4 Deploy span application:** The deploy operation schemas define root,
+  provider, attempt, verify, and cleanup span attributes. Applying those spans
+  at every provider boundary must preserve the current redaction guarantees and
+  fake/live E2E behavior.
