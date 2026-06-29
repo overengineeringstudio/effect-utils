@@ -19,6 +19,7 @@ import {
   deploySuccessRecord,
   redactDeployDiagnosticText,
 } from './deploy-domain.ts'
+import { decodeWorkflowReportRecord } from './mod.ts'
 
 const decodeInput = Schema.decodeUnknownSync(DeployInputV1)
 const decodeResult = Schema.decodeUnknownSync(DeployResultV1)
@@ -118,10 +119,22 @@ describe('deploy failure taxonomy', () => {
         new ProviderProjectLookupFailed({
           provider: 'netlify',
           target: 'effect-react',
+          transient: true,
           message: 'Netlify project lookup failed',
         }),
       ),
     ).toBe(true)
+
+    expect(
+      deployFailureRetryability(
+        new ProviderProjectLookupFailed({
+          provider: 'netlify',
+          target: 'effect-react',
+          transient: false,
+          message: 'Netlify project is not configured',
+        }),
+      ),
+    ).toBe(false)
 
     expect(
       deployFailureRetryability(
@@ -162,11 +175,13 @@ describe('deploy failure taxonomy', () => {
 
 describe('deploy workflow report records', () => {
   it('builds success, failure, and skipped records through the report decoder', () => {
-    const success = deploySuccessRecord({
-      input: sampleInput,
-      result: sampleResult,
-      createdAtUtc: '2026-06-29T08:00:11Z',
-    })
+    const success = decodeWorkflowReportRecord(
+      deploySuccessRecord({
+        input: sampleInput,
+        result: sampleResult,
+        createdAtUtc: '2026-06-29T08:00:11Z',
+      }),
+    )
     expect(success).toMatchObject({
       _tag: 'WorkflowReportRecord',
       id: 'deploy-netlify-effect-react',
@@ -175,22 +190,24 @@ describe('deploy workflow report records', () => {
       data: { provider: 'netlify', target: 'effect-react', mode: 'pr', attempts: 2 },
     })
 
-    const failure = deployFailureRecord({
-      input: sampleInput,
-      failure: new InvalidProviderOutput({
-        provider: 'netlify',
-        target: 'effect-react',
-        outputKind: 'provider-response',
-        message: 'Provider output did not decode',
-        diagnostics: {
-          stderr: 'authorization: Bearer fake-secret-value token=fake-secret-value',
-          lookup: 'Project not found',
-        },
+    const failure = decodeWorkflowReportRecord(
+      deployFailureRecord({
+        input: sampleInput,
+        failure: new InvalidProviderOutput({
+          provider: 'netlify',
+          target: 'effect-react',
+          outputKind: 'provider-response',
+          message: 'Provider output did not decode',
+          diagnostics: {
+            stderr: 'authorization: Bearer fake-secret-value token=fake-secret-value',
+            lookup: 'Project not found',
+          },
+        }),
+        attempts: 1,
+        createdAtUtc: '2026-06-29T08:00:12Z',
+        secretValues: ['fake-secret-value'],
       }),
-      attempts: 1,
-      createdAtUtc: '2026-06-29T08:00:12Z',
-      secretValues: ['fake-secret-value'],
-    })
+    )
     expect(failure.status).toBe('failure')
     expect(failure.data).toMatchObject({
       errorKind: 'InvalidProviderOutput',
@@ -201,11 +218,27 @@ describe('deploy workflow report records', () => {
     })
     expect(JSON.stringify(failure)).not.toContain('fake-secret-value')
 
-    const skipped = deploySkippedRecord({
+    const failureWithoutDiagnostics = deployFailureRecord({
       input: sampleInput,
-      reason: 'No local artifact was produced for this target',
+      failure: new ProviderOperationFailed({
+        provider: 'netlify',
+        target: 'effect-react',
+        operation: 'deploy',
+        transient: true,
+        message: 'Provider returned a retryable 503',
+      }),
+      attempts: 2,
       createdAtUtc: '2026-06-29T08:00:13Z',
     })
+    expect(failureWithoutDiagnostics.data).not.toHaveProperty('diagnostics')
+
+    const skipped = decodeWorkflowReportRecord(
+      deploySkippedRecord({
+        input: sampleInput,
+        reason: 'No local artifact was produced for this target',
+        createdAtUtc: '2026-06-29T08:00:13Z',
+      }),
+    )
     expect(skipped.status).toBe('skipped')
   })
 
@@ -261,6 +294,7 @@ describe('deploy OTEL span attributes', () => {
         provider: 'netlify',
         target: 'effect-react',
         finalUrl: sampleResult.finalUrl,
+        transient: false,
         message: 'Fixture marker was not served',
       }),
     })
