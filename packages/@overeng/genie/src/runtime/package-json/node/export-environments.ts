@@ -1,13 +1,86 @@
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
-import { isBuiltin } from 'node:module'
+import { createRequire, isBuiltin } from 'node:module'
 import path from 'node:path'
 import { performance } from 'node:perf_hooks'
 
-import ts from 'typescript'
-
 import type { ExportEnvironmentContract, PackageJsonValidationRuntime } from '../mod.ts'
 import type { ValidationIssue } from '../validation.ts'
+
+type TsNode = { readonly parent?: TsNode; readonly [key: string]: unknown }
+type TsIdentifier = TsNode & { readonly text: string }
+type TsNamedNode = TsNode & { readonly name?: TsIdentifier }
+type TsRequiredNamedNode = TsNode & { readonly name: TsIdentifier }
+type TsBindingElement = TsNode & { readonly name: TsBindingName }
+type TsBindingName = TsIdentifier | (TsNode & { readonly elements: readonly TsBindingElement[] })
+type TsDiagnostic = { readonly messageText: unknown }
+type TsModuleResolution = 'bundler' | 'node-next'
+type TypeScriptRuntime = {
+  readonly ModuleKind: { readonly NodeNext: number }
+  readonly ModuleResolutionKind: {
+    readonly Bundler: number
+    readonly NodeNext: number
+  }
+  readonly ScriptTarget: { readonly Latest: number }
+  readonly version: string
+  readonly createProgram: (rootNames: readonly string[], options: object) => unknown
+  readonly createSourceFile: (
+    fileName: string,
+    sourceText: string,
+    languageVersion: number,
+    setParentNodes: boolean,
+  ) => TsNode
+  readonly flattenDiagnosticMessageText: (diagnostic: unknown, newLine: string) => string
+  readonly forEachChild: (node: TsNode, callback: (node: TsNode) => void) => void
+  readonly getPreEmitDiagnostics: (program: unknown) => readonly TsDiagnostic[]
+  readonly isBindingElement: (node: TsNode) => node is TsBindingElement
+  readonly isBlock: (node: TsNode) => boolean
+  readonly isCaseBlock: (node: TsNode) => boolean
+  readonly isCatchClause: (
+    node: TsNode,
+  ) => node is TsNode & { readonly variableDeclaration?: { readonly name: TsBindingName } }
+  readonly isClassDeclaration: (node: TsNode) => node is TsNamedNode
+  readonly isExportSpecifier: (node: TsNode) => node is TsRequiredNamedNode
+  readonly isFunctionDeclaration: (node: TsNode) => node is TsNamedNode
+  readonly isFunctionLike: (
+    node: TsNode,
+  ) => node is TsNode & { readonly parameters: readonly { readonly name: TsBindingName }[] }
+  readonly isIdentifier: (node: TsNode) => node is TsIdentifier
+  readonly isImportClause: (node: TsNode) => node is TsNamedNode
+  readonly isImportSpecifier: (node: TsNode) => node is TsRequiredNamedNode
+  readonly isInterfaceDeclaration: (node: TsNode) => node is TsNamedNode
+  readonly isMethodDeclaration: (node: TsNode) => node is TsNamedNode
+  readonly isModuleBlock: (node: TsNode) => boolean
+  readonly isNamespaceImport: (node: TsNode) => node is TsRequiredNamedNode
+  readonly isParameter: (node: TsNode) => node is TsNode & { readonly name: TsBindingName }
+  readonly isPropertyAccessExpression: (node: TsNode) => node is TsNamedNode
+  readonly isPropertyAssignment: (node: TsNode) => node is TsNamedNode
+  readonly isPropertyDeclaration: (node: TsNode) => node is TsNamedNode
+  readonly isSourceFile: (node: TsNode) => boolean
+  readonly isTypeAliasDeclaration: (node: TsNode) => node is TsNamedNode
+  readonly isVariableDeclaration: (
+    node: TsNode,
+  ) => node is TsNode & { readonly name: TsBindingName }
+  readonly preProcessFile: (
+    sourceText: string,
+    readImportFiles?: boolean,
+    detectJavaScriptImports?: boolean,
+  ) => { readonly importedFiles: readonly { readonly fileName: string }[] }
+}
+
+const loadModule = createRequire(import.meta.url)
+let tsCache: TypeScriptRuntime | undefined
+const getTypeScript = (): TypeScriptRuntime => {
+  const typeScriptModule = process.env.GENIE_TYPESCRIPT_MODULE
+  if (typeScriptModule === undefined) {
+    throw new Error('GENIE_TYPESCRIPT_MODULE is required to validate package export environments.')
+  }
+  tsCache ??=
+    // The compiled Genie binary sets this to its packaged TypeScript module path.
+    // eslint-disable-next-line import/no-dynamic-require
+    Reflect.apply(loadModule, undefined, [typeScriptModule]) as TypeScriptRuntime
+  return tsCache
+}
 
 type ExportsEntry = string | Record<string, string>
 
@@ -19,7 +92,7 @@ type EnvironmentProfile = {
     lib: readonly string[]
     types: readonly string[]
     customConditions?: readonly string[]
-    moduleResolution?: ts.ModuleResolutionKind
+    moduleResolution?: TsModuleResolution
   }
 }
 
@@ -69,7 +142,7 @@ const builtinEnvironmentProfiles: Record<string, EnvironmentProfile> = {
       lib: ['lib.es2024.d.ts', 'lib.webworker.d.ts'],
       types: ['@cloudflare/workers-types'],
       customConditions: ['workerd'],
-      moduleResolution: ts.ModuleResolutionKind.Bundler,
+      moduleResolution: 'bundler',
     },
   },
   'react-native': {
@@ -80,7 +153,7 @@ const builtinEnvironmentProfiles: Record<string, EnvironmentProfile> = {
       lib: ['lib.es2024.d.ts'],
       types: ['react-native'],
       customConditions: ['react-native'],
-      moduleResolution: ts.ModuleResolutionKind.Bundler,
+      moduleResolution: 'bundler',
     },
   },
 }
@@ -164,6 +237,7 @@ const findForbiddenGlobals = ({
 }): ValidationIssue[] => {
   if (profile.forbiddenGlobals.length === 0) return []
 
+  const ts = getTypeScript()
   const sourceFile = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true)
   const issues: ValidationIssue[] = []
   const forbiddenGlobals = new Set(profile.forbiddenGlobals)
@@ -173,7 +247,7 @@ const findForbiddenGlobals = ({
     name,
   }: {
     target: Set<string>
-    name: ts.BindingName
+    name: TsBindingName
   }): void => {
     if (ts.isIdentifier(name) === true) {
       target.add(name.text)
@@ -184,7 +258,7 @@ const findForbiddenGlobals = ({
     }
   }
 
-  const isScopeBoundary = (node: ts.Node): boolean =>
+  const isScopeBoundary = (node: TsNode): boolean =>
     ts.isSourceFile(node) === true ||
     ts.isBlock(node) === true ||
     ts.isModuleBlock(node) === true ||
@@ -192,7 +266,7 @@ const findForbiddenGlobals = ({
     ts.isCatchClause(node) === true ||
     ts.isFunctionLike(node) === true
 
-  const collectScopeDeclarations = (node: ts.Node): Set<string> => {
+  const collectScopeDeclarations = (node: TsNode): Set<string> => {
     const declarations = new Set<string>()
     if (ts.isFunctionLike(node) === true) {
       for (const parameter of node.parameters) {
@@ -203,7 +277,7 @@ const findForbiddenGlobals = ({
       addBindingNames({ target: declarations, name: node.variableDeclaration.name })
     }
 
-    const visitDeclaration = (child: ts.Node): void => {
+    const visitDeclaration = (child: TsNode): void => {
       if (child !== node && isScopeBoundary(child) === true) return
       if (ts.isImportSpecifier(child) === true) declarations.add(child.name.text)
       if (ts.isImportClause(child) === true && child.name !== undefined)
@@ -227,7 +301,7 @@ const findForbiddenGlobals = ({
     return declarations
   }
 
-  const isDeclarationName = (node: ts.Identifier): boolean => {
+  const isDeclarationName = (node: TsIdentifier): boolean => {
     const parent = node.parent
     return (
       parent !== undefined &&
@@ -244,7 +318,7 @@ const findForbiddenGlobals = ({
     )
   }
 
-  const isPropertyName = (node: ts.Identifier): boolean => {
+  const isPropertyName = (node: TsIdentifier): boolean => {
     const parent = node.parent
     return (
       parent !== undefined &&
@@ -256,7 +330,7 @@ const findForbiddenGlobals = ({
     )
   }
 
-  const visit = ({ node, scopes }: { node: ts.Node; scopes: readonly Set<string>[] }): void => {
+  const visit = ({ node, scopes }: { node: TsNode; scopes: readonly Set<string>[] }): void => {
     const nextScopes =
       isScopeBoundary(node) === true ? [...scopes, collectScopeDeclarations(node)] : scopes
 
@@ -294,6 +368,7 @@ const scanGraph = ({
   packageName: string
   exportPath: string
 }): GraphResult => {
+  const ts = getTypeScript()
   const seen = new Set<string>()
   const pending = [entry]
   const issues: ValidationIssue[] = []
@@ -407,6 +482,7 @@ const proofCacheKey = ({
   contract: ExportEnvironmentContract
   profile: EnvironmentProfile
 }): string => {
+  const ts = getTypeScript()
   const hash = createHash('sha256')
   hash.update(validatorVersion)
   hash.update('\n')
@@ -476,13 +552,17 @@ const typecheck = ({
   const key = proofCacheKey({ files, cacheInputs, contract, profile })
   if (hasCachedProof({ cwd, key }) === true) return { issues: [], cache: { hits: 1, misses: 0 } }
 
+  const ts = getTypeScript()
   const program = ts.createProgram([entry], {
     lib: [...profile.typecheck.lib],
     types: [...profile.typecheck.types],
     strict: true,
     noEmit: true,
     module: ts.ModuleKind.NodeNext,
-    moduleResolution: profile.typecheck.moduleResolution ?? ts.ModuleResolutionKind.NodeNext,
+    moduleResolution:
+      profile.typecheck.moduleResolution === 'bundler'
+        ? ts.ModuleResolutionKind.Bundler
+        : ts.ModuleResolutionKind.NodeNext,
     allowImportingTsExtensions: true,
     skipLibCheck: true,
     ...(profile.typecheck.customConditions === undefined

@@ -1,11 +1,33 @@
+import { createRequire } from 'node:module'
+
 import { type Error as PlatformError, FileSystem, Path } from '@effect/platform'
 import { Effect } from 'effect'
-import ts from 'typescript'
 
 import type { GenieContext, GenieJsoncParser } from '../runtime/mod.ts'
 import { nodeGenieIO, runActionlint } from '../runtime/node/mod.ts'
 import { nodePackageJsonValidationRuntime } from '../runtime/package-json/node/export-environments.ts'
 import { formatValidationIssues, type ValidationIssue } from '../runtime/package-json/validation.ts'
+
+type TypeScriptJsoncRuntime = {
+  readonly parseConfigFileTextToJson: (
+    fileName: string,
+    jsonText: string,
+  ) => { readonly config?: unknown; readonly error?: unknown }
+}
+
+const require = createRequire(import.meta.url)
+let tsCache: TypeScriptJsoncRuntime | undefined
+const getTypeScript = (): TypeScriptJsoncRuntime => {
+  const typeScriptModule = process.env.GENIE_TYPESCRIPT_MODULE
+  if (typeScriptModule === undefined) {
+    throw new Error('GENIE_TYPESCRIPT_MODULE is required to parse JSONC configs.')
+  }
+  tsCache ??=
+    // The compiled Genie binary sets this to its packaged TypeScript module path.
+    // eslint-disable-next-line import/no-dynamic-require
+    Reflect.apply(require, undefined, [typeScriptModule]) as TypeScriptJsoncRuntime
+  return tsCache
+}
 
 /**
  * Engine-side JSONC parser injected as the {@link GenieContext.parseJsonc} capability. Backed by the
@@ -14,6 +36,7 @@ import { formatValidationIssues, type ValidationIssue } from '../runtime/package
  * rather than `src/runtime/` so the dependency-free runtime never value-imports typescript (issue #138).
  */
 const nodeJsoncParser: GenieJsoncParser = ({ path, text }) => {
+  const ts = getTypeScript()
   const { config, error } = ts.parseConfigFileTextToJson(path, text)
   return error !== undefined ? undefined : config
 }

@@ -128,6 +128,26 @@ const stageCompiledBinaryImportGraph = ({
         }),
     })
 
+    if (process.env.GENIE_STAGED_NODE_MODULES !== undefined) {
+      yield* Effect.tryPromise({
+        try: async () => {
+          const nodeModulesSource = process.env.GENIE_STAGED_NODE_MODULES
+          if (nodeModulesSource === undefined) return
+
+          const sourceStat = await nodeFs.stat(nodeModulesSource).catch(() => undefined)
+          if (sourceStat?.isDirectory() !== true) return
+
+          await nodeFs.symlink(nodeModulesSource, path.join(tempRoot, 'node_modules'), 'dir')
+        },
+        catch: (error) =>
+          new GenieImportError({
+            genieFilePath: entryPath,
+            message: `Failed to link runtime node_modules into compiled-binary staging directory for ${entryPath}: ${safeErrorString(error)}`,
+            cause: error,
+          }),
+      })
+    }
+
     const stagedPaths = new Map<string, string>()
     const relativeEntryPath = entryPath.replace(/^(?:[A-Za-z]:)?[\\/]+/, '')
 
@@ -146,6 +166,53 @@ const stageCompiledBinaryImportGraph = ({
             : path.relative(path.parse(sourcePath).root, sourcePath)
         const stagePath = path.join(tempRoot, relativeSourcePath)
         stagedPaths.set(sourcePath, stagePath)
+
+        const geniePackageMarker = `${path.sep}packages${path.sep}@overeng${path.sep}genie${path.sep}`
+        const geniePackageMarkerIndex = sourcePath.indexOf(geniePackageMarker)
+        if (process.env.GENIE_STAGED_NODE_MODULES !== undefined && geniePackageMarkerIndex !== -1) {
+          yield* Effect.tryPromise({
+            try: async () => {
+              const workspaceNodeModulesSource = process.env.GENIE_STAGED_NODE_MODULES
+              if (workspaceNodeModulesSource === undefined) return
+
+              const packageNodeModulesSource = path.join(
+                path.dirname(workspaceNodeModulesSource),
+                'packages',
+                '@overeng',
+                'genie',
+                'node_modules',
+              )
+              const sourceStat = await nodeFs.stat(packageNodeModulesSource).catch(() => undefined)
+              if (sourceStat?.isDirectory() !== true) return
+
+              const sourcePackageRoot = sourcePath.slice(
+                0,
+                geniePackageMarkerIndex + geniePackageMarker.length - 1,
+              )
+              const relativePackageRoot = path.relative(
+                path.parse(sourcePackageRoot).root,
+                sourcePackageRoot,
+              )
+              const stagedPackageRoot = path.join(tempRoot, relativePackageRoot)
+              await nodeFs.mkdir(stagedPackageRoot, { recursive: true })
+              await nodeFs
+                .symlink(
+                  packageNodeModulesSource,
+                  path.join(stagedPackageRoot, 'node_modules'),
+                  'dir',
+                )
+                .catch((error: NodeJS.ErrnoException) => {
+                  if (error.code !== 'EEXIST') throw error
+                })
+            },
+            catch: (error) =>
+              new GenieImportError({
+                genieFilePath: entryPath,
+                message: `Failed to link package node_modules into compiled-binary staging directory for ${sourcePath}: ${safeErrorString(error)}`,
+                cause: error,
+              }),
+          })
+        }
 
         const sourceCode = yield* Effect.tryPromise({
           try: () => nodeFs.readFile(sourcePath, 'utf8'),
@@ -354,7 +421,7 @@ const loadOxfmtConfig = Effect.fn('loadOxfmtConfig')(function* ({
  * ensures consistent output regardless of where genie is invoked, since the `.genie.ts` source
  * file is always a sibling of the generated file.
  */
-const getHeaderComment = ({
+export const getHeaderComment = ({
   targetFilePath,
   sourceFile,
 }: {
@@ -380,6 +447,10 @@ const getHeaderComment = ({
   }
 
   if (ext === '.yml' || ext === '.yaml') {
+    return `# Generated file - DO NOT EDIT\n# Source: ${sourceFile}\n\n`
+  }
+
+  if (basename === 'BUCK' || ext === '.bzl' || ext === '.bxl') {
     return `# Generated file - DO NOT EDIT\n# Source: ${sourceFile}\n\n`
   }
 

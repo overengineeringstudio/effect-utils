@@ -19,6 +19,7 @@
   dirty ? false,
   prodInstall ? false,
   smokeTestArgs ? [ "--help" ],
+  extraSmokeTestEnv ? "",
   generateCompletions ? true,
   extraBunBuildArgs ? [ ],
   installRuntimeWorkspace ? false,
@@ -1562,6 +1563,7 @@ pkgs.stdenv.mkDerivation {
     if [ -n "${smokeTestArgsStr}" ]; then
       echo "Running smoke test..."
       smokeStartedAt=$(timer_now)
+      ${extraSmokeTestEnv}
       NODE_PATH="$NIX_BUILD_TOP/workspace/node_modules" ./output/${binaryName} ${smokeTestArgsStr}
       log_cli_phase "smoke-test" "duration=$(timer_elapsed "$smokeStartedAt")s args=${lib.escapeShellArg (builtins.concatStringsSep " " smokeTestArgs)}"
     fi

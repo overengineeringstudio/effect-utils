@@ -1,8 +1,9 @@
 import fs from 'node:fs'
+import { createRequire } from 'node:module'
 import os from 'node:os'
 import path from 'node:path'
 
-import { describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import {
   definePackageJson,
@@ -13,6 +14,21 @@ import {
 } from '../mod.ts'
 import { defineCatalog } from './catalog.ts'
 import { nodePackageJsonValidationRuntime } from './node/export-environments.ts'
+
+const require = createRequire(import.meta.url)
+const originalTypeScriptModule = process.env.GENIE_TYPESCRIPT_MODULE
+
+beforeAll(() => {
+  process.env.GENIE_TYPESCRIPT_MODULE = require.resolve('typescript')
+})
+
+afterAll(() => {
+  if (originalTypeScriptModule === undefined) {
+    delete process.env.GENIE_TYPESCRIPT_MODULE
+  } else {
+    process.env.GENIE_TYPESCRIPT_MODULE = originalTypeScriptModule
+  }
+})
 
 /** Mock GenieContext for package tests (nested package location) */
 const mockGenieContext: GenieContext = {

@@ -79,6 +79,13 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/genie**: Emit Starlark `#` generated-file headers for Buck2
+  `BUCK`, `.bzl`, and `.bxl` outputs, and make the compiled Genie CLI expose
+  its packaged runtime workspace so package export environment validation can
+  resolve runtime-only dependencies such as TypeScript. Peer repo helpers now
+  import repo-context directly instead of the broad node runtime entry, keeping
+  engine-only validation internals out of downstream Genie authoring files.
+
 - **@overeng/genie**: Tighten package-json export environment validation so
   constrained profiles reject bare Node builtin imports, follow extensionless
   directory entrypoints, and resolve overlapping conditional exports in emitted

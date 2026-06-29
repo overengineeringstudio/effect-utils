@@ -29,6 +29,10 @@ let
       };
     };
     nativeNodePackages = opentuiCoreNative.packages;
+    installRuntimeWorkspace = true;
+    extraSmokeTestEnv = ''
+      export GENIE_TYPESCRIPT_MODULE="$NIX_BUILD_TOP/workspace/packages/@overeng/genie/node_modules/typescript/lib/typescript.js"
+    '';
     inherit gitRev commitTs dirty;
   };
 in
@@ -50,7 +54,9 @@ pkgs.runCommand "genie"
     mkdir -p $out/bin
     makeWrapper ${unwrapped}/bin/genie $out/bin/genie \
       --suffix PATH : ${pkgs.oxfmt}/bin \
-      --set GENIE_ACTIONLINT_BIN ${pkgs.actionlint}/bin/actionlint
+      --set GENIE_ACTIONLINT_BIN ${pkgs.actionlint}/bin/actionlint \
+      --set GENIE_STAGED_NODE_MODULES ${unwrapped}/libexec/workspace/node_modules \
+      --set GENIE_TYPESCRIPT_MODULE ${unwrapped}/libexec/workspace/packages/@overeng/genie/node_modules/typescript/lib/typescript.js
 
     # Propagate shell completions from the unwrapped derivation
     for dir in share/fish/vendor_completions.d share/bash-completion/completions share/zsh/site-functions; do
