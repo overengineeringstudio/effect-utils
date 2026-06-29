@@ -574,11 +574,15 @@ export const runNetlifyDeploy = Effect.fn('ci-tools.deploy.netlify')(function* (
     startedAtUtc: createdAtUtc,
     endedAtUtc: isoNow(),
     attempts: 1,
-    cleanup: {
-      _tag: 'CleanupResult',
-      status: 'skipped',
-      message: 'Netlify alias cleanup is not implemented for shared-project live E2E',
-    },
+    ...(input.e2e?.allowSharedProject === true
+      ? {
+          cleanup: {
+            _tag: 'CleanupResult',
+            status: 'skipped',
+            message: 'Netlify alias cleanup is not implemented for shared-project live E2E',
+          },
+        }
+      : {}),
   })
 
   if (Either.isLeft(decoded) === true) {

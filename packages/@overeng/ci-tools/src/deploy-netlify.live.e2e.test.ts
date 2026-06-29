@@ -119,7 +119,10 @@ describe('ci-tools deploy netlify live E2E', () => {
           target,
           marker,
         })
-        expect(`${result.stdout}\n${result.stderr}`).not.toContain(process.env.NETLIFY_AUTH_TOKEN)
+        const token = process.env.NETLIFY_AUTH_TOKEN
+        expect(
+          token === undefined ? false : `${result.stdout}\n${result.stderr}`.includes(token),
+        ).toBe(false)
         expect(result.status).toBe(0)
         expect(result.stdout).toContain('Netlify deploy URL: https://ci-tools-e2e-')
 
