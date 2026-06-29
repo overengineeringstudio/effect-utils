@@ -38,6 +38,11 @@ All notable changes to this project will be documented in this file.
   retryability derivation, redacted workflow-report record builders, and
   privacy/cardinality-safe OTEL span attribute metadata for deploy operations.
 
+- **@overeng/ci-tools**: Add the Phase 3 Netlify provider adapter with typed
+  command-runner boundaries, schema-decoded deploy JSON, guarded live E2E
+  aliases, redacted failure classification, and fake-runner coverage for
+  unauthorized, missing-project, malformed-output, and aliased deploy paths.
+
 - **@overeng/genie**: Add the explicit `@overeng/genie/composition` subpath for
   reusable cross-artifact composition helpers. The first helper,
   `tsconfigReferencesFromPackages`, projects TypeScript project references from

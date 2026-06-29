@@ -2,8 +2,9 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 
 import { Command, Options } from '@effect/cli'
-import { Effect } from 'effect'
+import { Effect, Option } from 'effect'
 
+import { runNetlifyDeploy } from './deploy-netlify.ts'
 import {
   collectWorkflowReportBundle,
   decodeWorkflowReportBundleJson,
@@ -31,6 +32,12 @@ const expectString = (opts: { readonly value: unknown; readonly path: string }) 
 }
 
 const optionalString = (value: string) => (value.length === 0 ? undefined : value)
+
+const optionToUndefined = <A>(value: Option.Option<A>) =>
+  Option.match(value, {
+    onNone: () => undefined,
+    onSome: (inner) => inner,
+  })
 
 const readComments = (path: string): readonly WorkflowReportManagedComment[] => {
   const comments = JSON.parse(readFileSync(path, 'utf8')) as unknown
@@ -246,6 +253,88 @@ const findCommentCommand = Command.make(
     }),
 ).pipe(Command.withDescription('Find the existing managed workflow report comment'))
 
+const netlifyDeployCommand = Command.make(
+  'netlify',
+  {
+    target: nonEmptyTextOption({
+      name: 'target',
+      description: 'Stable deploy target name',
+    }),
+    artifactDir: nonEmptyTextOption({
+      name: 'artifact-dir',
+      description: 'Local static directory to deploy',
+    }),
+    mode: Options.choice('mode', ['prod', 'pr', 'draft']).pipe(
+      Options.withDescription('Netlify deploy mode'),
+      Options.withDefault('draft' as const),
+    ),
+    displayName: Options.text('display-name').pipe(
+      Options.withDescription('Human-readable deploy target label'),
+      Options.optional,
+    ),
+    pr: Options.integer('pr').pipe(
+      Options.withDescription('Pull request number for PR deploy mode'),
+      Options.optional,
+    ),
+    siteName: Options.text('site-name').pipe(
+      Options.withDescription('Netlify site slug used for final alias URLs'),
+      Options.optional,
+    ),
+    siteIdEnv: Options.text('site-id-env').pipe(
+      Options.withDescription('Environment variable containing the Netlify site id'),
+      Options.withDefault('NETLIFY_SITE_ID'),
+    ),
+    authTokenEnv: Options.text('auth-token-env').pipe(
+      Options.withDescription('Environment variable containing the Netlify auth token'),
+      Options.withDefault('NETLIFY_AUTH_TOKEN'),
+    ),
+    accountSlugEnv: Options.text('account-slug-env').pipe(
+      Options.withDescription('Optional environment variable containing the Netlify account slug'),
+      Options.optional,
+    ),
+    workflowReportOutputFile: Options.text('workflow-report-output-file').pipe(
+      Options.withDescription('Optional JSONL file that receives marked workflow-report records'),
+      Options.optional,
+    ),
+    netlifyBin: Options.text('netlify-bin').pipe(
+      Options.withDescription('Netlify CLI binary path'),
+      Options.withDefault('netlify'),
+    ),
+    netlifyApiBaseUrl: Options.text('netlify-api-base-url').pipe(
+      Options.withDescription('Netlify API base URL'),
+      Options.withDefault('https://api.netlify.com'),
+    ),
+    createdAtUtc: Options.text('created-at-utc').pipe(
+      Options.withDescription('Override record creation timestamp for deterministic tests'),
+      Options.optional,
+    ),
+    e2eAllowSharedProject: Options.boolean('e2e-allow-shared-project').pipe(
+      Options.withDescription('Enable shared-project live E2E alias guardrails'),
+      Options.withDefault(false),
+    ),
+    e2eReservedAliasPrefix: Options.text('e2e-reserved-alias-prefix').pipe(
+      Options.withDescription('Required alias prefix when shared-project E2E is enabled'),
+      Options.withDefault('ci-tools-e2e'),
+    ),
+  },
+  (opts) =>
+    runNetlifyDeploy({
+      ...opts,
+      displayName: optionToUndefined(opts.displayName),
+      pr: optionToUndefined(opts.pr),
+      siteName: optionToUndefined(opts.siteName),
+      accountSlugEnv: optionToUndefined(opts.accountSlugEnv),
+      workflowReportOutputFile: optionToUndefined(opts.workflowReportOutputFile),
+      createdAtUtc: optionToUndefined(opts.createdAtUtc),
+    }),
+).pipe(Command.withDescription('Deploy a local static directory to Netlify'))
+
+/** CLI command for deploy preview provider operations. */
+export const deployCommand = Command.make('deploy').pipe(
+  Command.withSubcommands([netlifyDeployCommand]),
+  Command.withDescription('Deploy preview provider operations'),
+)
+
 /** CLI command for collecting bundles and rendering managed workflow report comments. */
 export const workflowReportCommand = Command.make('workflow-report').pipe(
   Command.withSubcommands([collectBundleCommand, renderCommentBodyCommand, findCommentCommand]),
@@ -254,6 +343,6 @@ export const workflowReportCommand = Command.make('workflow-report').pipe(
 
 /** Root CLI command for CI automation helpers. */
 export const ciToolsCommand = Command.make('ci-tools').pipe(
-  Command.withSubcommands([workflowReportCommand]),
+  Command.withSubcommands([workflowReportCommand, deployCommand]),
   Command.withDescription('CI automation helpers'),
 )
