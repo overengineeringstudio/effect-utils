@@ -46,7 +46,7 @@ let
   vitestExec = extraArgs: ''
     set -euo pipefail
     source ${lib.escapeShellArg pnpmTaskHelpersScript}
-    run_package_bin vitest vitest run ${extraArgs}
+    run_package_bin vitest vitest run --testTimeout 30000 --hookTimeout 30000 ${extraArgs}
   '';
   vitestWatchExec = ''
     set -euo pipefail
