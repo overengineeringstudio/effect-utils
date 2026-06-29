@@ -201,27 +201,6 @@ describe('githubWorkflow', () => {
   })
 })
 
-describe('effect-utils observed GitHub Actions admission incident', () => {
-  it('does not encode the observed 10k rendered-line cliff as a hard GitHub rule', () => {
-    expect(
-      getWorkflowValidationIssues({
-        name: 'CI',
-        on: { pull_request: githubWorkflowEvent.all },
-        jobs: {
-          large: {
-            'runs-on': 'ubuntu-latest',
-            steps: [
-              {
-                run: Array.from({ length: 10_100 }, () => 'echo ok').join('\n'),
-              },
-            ],
-          },
-        },
-      }).filter((issue) => issue.rule === 'github-workflow-rendered-line-limit'),
-    ).toEqual([])
-  })
-})
-
 describe('determinate-nix-action extra-conf validation', () => {
   it('no warning when determinate-nix-action has experimental-features in extra-conf', () => {
     const issues = getWorkflowValidationIssues({

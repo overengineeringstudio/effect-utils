@@ -7,11 +7,14 @@ All notable changes to this project will be documented in this file.
 ### Changed
 
 - **CI**: Collapse guarded live Netlify and Vercel deploy E2Es into one shared
-  live deploy job so generated CI stays below GitHub Actions workflow
-  admission size limits.
+  live deploy job with common setup.
 
 - **@overeng/genie**: Validate documented GitHub Actions limits for static
   matrix expansion, check runs per check suite, and explicit job timeouts.
+
+- **@overeng/genie**: Refresh the Genie pnpm-deps fixed-output hash and keep
+  the native dependency policy audit install-free by splitting the policy into a
+  lightweight module.
 
 ### Added
 
