@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **@overeng/genie**: Document the intended package export type-proof
+  architecture: strict proofs should use an explicit compiler executable
+  boundary (`tsgo` by default, custom only by explicit override) instead of
+  dynamic TypeScript module imports or staged `node_modules` plumbing.
+
 - **@overeng/genie**: Add the explicit `@overeng/genie/composition` subpath for
   reusable cross-artifact composition helpers. The first helper,
   `tsconfigReferencesFromPackages`, projects TypeScript project references from
@@ -85,6 +90,13 @@ All notable changes to this project will be documented in this file.
 - **@overeng/genie**: Keep peer repo Genie authoring helpers from importing
   engine-only validation internals by sourcing repo-context helpers directly
   instead of through the broad node runtime entry.
+
+- **@overeng/genie**: Run strict package export type proofs through an explicit
+  compiler executable, with Nix-packaged Genie wired to the pinned `tsgo`
+  binary and source-mode validation discovering `tsgo` on `PATH`.
+  `lib.mkCliPackages` now threads the same pinned compiler into the Genie
+  package, and missing compiler executables are reported as validation issues
+  instead of crashing cache-key computation.
 
 - **@overeng/genie**: Tighten package-json export environment validation so
   constrained profiles reject bare Node builtin imports, follow extensionless

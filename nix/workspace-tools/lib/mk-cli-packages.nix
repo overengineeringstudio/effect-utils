@@ -4,6 +4,7 @@
   commitTs ? 0,
   workspaceRoot ? ./.,
   dirty ? false,
+  typeProofCompilerBin,
 }:
 let
   workspaceRootPath =
@@ -21,6 +22,7 @@ in
       dirty
       ;
     src = workspaceRoot;
+    inherit typeProofCompilerBin;
   };
   megarepo = import (workspaceRootPath + "/packages/@overeng/megarepo/nix/build.nix") {
     inherit

@@ -12,7 +12,10 @@ import {
   type PackageInfo,
 } from '../mod.ts'
 import { defineCatalog } from './catalog.ts'
-import { nodePackageJsonValidationRuntime } from './node/export-environments.ts'
+import {
+  createNodePackageJsonValidationRuntime,
+  nodePackageJsonValidationRuntime,
+} from './node/export-environments.ts'
 
 /** Mock GenieContext for package tests (nested package location) */
 const mockGenieContext: GenieContext = {
@@ -776,6 +779,177 @@ describe('packageJson', () => {
 
     expect(validate().cache).toEqual({ hits: 0, misses: 1 })
   }, 30_000)
+
+  it('runs strict type proof through an explicit compiler executable', () => {
+    const repo = createTempRepo('packages/pkg')
+    const packageDir = repo.memberDirs['packages/pkg']!
+    const compilerLog = path.join(repo.repoRoot, 'compiler-args.log')
+    const compilerBin = path.join(repo.repoRoot, 'fake-tsgo')
+    fs.mkdirSync(path.join(packageDir, 'src'))
+    fs.writeFileSync(path.join(packageDir, 'src/mod.ts'), 'export const value = 1\n')
+    fs.writeFileSync(
+      compilerBin,
+      [
+        '#!/usr/bin/env bash',
+        'if [ "$1" = "--version" ]; then',
+        '  echo "Fake TypeScript 1.0.0"',
+        '  exit 0',
+        'fi',
+        `printf "%s\\n" "$@" > ${JSON.stringify(compilerLog)}`,
+      ].join('\n'),
+    )
+    fs.chmodSync(compilerBin, 0o755)
+
+    const runtime = createNodePackageJsonValidationRuntime({
+      typeProofCompiler: { path: compilerBin, kind: 'tsgo' },
+    })
+    const result = runtime.validateExportEnvironments({
+      cwd: repo.repoRoot,
+      location: 'packages/pkg',
+      packageName: '@test/package',
+      exports: { '.': './src/mod.ts' },
+      contracts: {
+        '.': [
+          {
+            environment: 'isomorphic-es2024',
+            typeProof: 'strict',
+          },
+        ],
+      },
+    })
+
+    expect(result.issues).toEqual([])
+    expect(result.cache).toEqual({ hits: 0, misses: 1 })
+    expect(fs.readFileSync(compilerLog, 'utf8')).toContain('--project')
+  })
+
+  it('reports strict type proof compiler failures as validation issues', () => {
+    const repo = createTempRepo('packages/pkg')
+    const packageDir = repo.memberDirs['packages/pkg']!
+    const compilerBin = path.join(repo.repoRoot, 'fake-tsgo')
+    fs.mkdirSync(path.join(packageDir, 'src'))
+    fs.writeFileSync(path.join(packageDir, 'src/mod.ts'), 'export const value = 1\n')
+    fs.writeFileSync(
+      compilerBin,
+      [
+        '#!/usr/bin/env bash',
+        'if [ "$1" = "--version" ]; then',
+        '  echo "Fake TypeScript 1.0.0"',
+        '  exit 0',
+        'fi',
+        'echo "src/mod.ts(1,1): error TS9999: fake compiler failure"',
+        'exit 2',
+      ].join('\n'),
+    )
+    fs.chmodSync(compilerBin, 0o755)
+
+    const runtime = createNodePackageJsonValidationRuntime({
+      typeProofCompiler: { path: compilerBin, kind: 'tsgo' },
+    })
+    const result = runtime.validateExportEnvironments({
+      cwd: repo.repoRoot,
+      location: 'packages/pkg',
+      packageName: '@test/package',
+      exports: { '.': './src/mod.ts' },
+      contracts: {
+        '.': [
+          {
+            environment: 'isomorphic-es2024',
+            typeProof: 'strict',
+          },
+        ],
+      },
+    })
+
+    expect(result.issues).toContainEqual({
+      severity: 'error',
+      packageName: '@test/package',
+      dependency: '.',
+      message: expect.stringContaining('fake compiler failure'),
+      rule: 'package-json-export-environment-type-proof',
+    })
+  })
+
+  it('reports missing strict type proof compilers as validation issues', () => {
+    const repo = createTempRepo('packages/pkg')
+    const packageDir = repo.memberDirs['packages/pkg']!
+    const compilerBin = path.join(repo.repoRoot, 'missing-tsgo')
+    fs.mkdirSync(path.join(packageDir, 'src'))
+    fs.writeFileSync(path.join(packageDir, 'src/mod.ts'), 'export const value = 1\n')
+
+    const runtime = createNodePackageJsonValidationRuntime({
+      typeProofCompiler: { path: compilerBin, kind: 'tsgo' },
+    })
+    const result = runtime.validateExportEnvironments({
+      cwd: repo.repoRoot,
+      location: 'packages/pkg',
+      packageName: '@test/package',
+      exports: { '.': './src/mod.ts' },
+      contracts: {
+        '.': [
+          {
+            environment: 'isomorphic-es2024',
+            typeProof: 'strict',
+          },
+        ],
+      },
+    })
+
+    expect(result.issues).toContainEqual({
+      severity: 'error',
+      packageName: '@test/package',
+      dependency: '.',
+      message: expect.stringContaining('ENOENT'),
+      rule: 'package-json-export-environment-type-proof',
+    })
+  })
+
+  it('does not silently fall back to tsc from PATH for strict type proof', () => {
+    const repo = createTempRepo('packages/pkg')
+    const packageDir = repo.memberDirs['packages/pkg']!
+    const binDir = path.join(repo.repoRoot, 'bin')
+    fs.mkdirSync(path.join(packageDir, 'src'))
+    fs.mkdirSync(binDir)
+    fs.writeFileSync(path.join(packageDir, 'src/mod.ts'), 'export const value = 1\n')
+    fs.writeFileSync(path.join(binDir, 'tsc'), '#!/usr/bin/env bash\nexit 0\n')
+    fs.chmodSync(path.join(binDir, 'tsc'), 0o755)
+
+    const originalPath = process.env.PATH
+    const originalCompiler = process.env.GENIE_EXPORT_TYPE_PROOF_COMPILER
+    process.env.PATH = binDir
+    delete process.env.GENIE_EXPORT_TYPE_PROOF_COMPILER
+    try {
+      const result = createNodePackageJsonValidationRuntime().validateExportEnvironments({
+        cwd: repo.repoRoot,
+        location: 'packages/pkg',
+        packageName: '@test/package',
+        exports: { '.': './src/mod.ts' },
+        contracts: {
+          '.': [
+            {
+              environment: 'isomorphic-es2024',
+              typeProof: 'strict',
+            },
+          ],
+        },
+      })
+
+      expect(result.issues).toContainEqual({
+        severity: 'error',
+        packageName: '@test/package',
+        dependency: '.',
+        message: expect.stringContaining('install tsgo on PATH'),
+        rule: 'package-json-export-environment-type-compiler',
+      })
+    } finally {
+      process.env.PATH = originalPath
+      if (originalCompiler === undefined) {
+        delete process.env.GENIE_EXPORT_TYPE_PROOF_COMPILER
+      } else {
+        process.env.GENIE_EXPORT_TYPE_PROOF_COMPILER = originalCompiler
+      }
+    }
+  })
 
   it('accepts a strict isomorphic TypeScript proof for the pure genie runtime entry', () => {
     const repoRoot = path.resolve(import.meta.dirname, '../../../../../..')

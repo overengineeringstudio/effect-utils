@@ -311,6 +311,16 @@ imports do not value-import TypeScript or node-only modules. The validator:
 - caches successful strict proofs under
   `.devenv/task-cache/genie-package-json-export-environments/`
 
+Strict TypeScript environment proofs run through an explicit compiler
+executable, not through the TypeScript JavaScript program API. The node runtime
+can be constructed with `createNodePackageJsonValidationRuntime({ typeProofCompiler })`.
+Without an explicit option, source-mode validation resolves
+`GENIE_EXPORT_TYPE_PROOF_COMPILER`, then `tsgo` from `PATH`. Nix-packaged Genie
+sets `GENIE_EXPORT_TYPE_PROOF_COMPILER` to the flake-pinned `tsgo` binary in its
+wrapper. The validator writes a temporary proof
+`tsconfig.json`, invokes the compiler with no emit, reports compiler output as
+Genie validation issues, and removes the temporary config after the proof run.
+
 Built-in environment profiles are data, not core behavior. The initial profile
 set covers `isomorphic-es2024`, `node`, `bun`, `browser`, `webworker`,
 `workerd`, and `react-native`. Profiles define export-condition preference,
