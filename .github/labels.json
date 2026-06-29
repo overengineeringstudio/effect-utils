@@ -311,6 +311,11 @@
       "description": "@overeng/otel-contract package · Set: manual"
     },
     {
+      "name": "system:otel-scrape",
+      "color": "a371f7",
+      "description": "@overeng/otel-scrape package · Set: manual"
+    },
+    {
       "name": "system:otelite",
       "color": "a371f7",
       "description": "@overeng/otelite package · Set: manual"

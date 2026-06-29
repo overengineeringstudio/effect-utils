@@ -253,17 +253,17 @@ const multiPlatformStrictNixJob = (step: ReturnType<typeof validateColdPnpmDepsS
 })
 
 /**
- * Cargo lane for the otelite Rust crate (effect-utils' first Rust package).
+ * Cargo lane for Rust crates that are Nix-only packages.
  *
- * The Nix build/test of the crate is already covered by `.#otelite` /
+ * The Nix build/test of each crate is already covered by its flake package /
  * `nix-check`; this lane is the source-quality gate (build/test/clippy/fmt)
  * using the nixpkgs-provided rust toolchain so it matches local dev and the
  * devenv shell exactly. The crate registry lives in genie/packages.ts as the
- * single source of truth for the crate path.
+ * single source of truth for crate paths.
  */
-const oteliteCrate = nixOnlyPackages.find((p) => p.name === 'otelite')
-if (oteliteCrate === undefined) {
-  throw new Error("genie/packages.ts: nix-only package 'otelite' not found")
+const rustCrates = nixOnlyPackages.filter((p) => p.kind === 'rust-crate')
+if (rustCrates.length === 0) {
+  throw new Error('genie/packages.ts: at least one rust-crate nix-only package is required')
 }
 
 const provideRustToolchainStep = {
@@ -282,11 +282,14 @@ const cargoCrateChecksStep = {
   shell: 'bash',
   run: [
     'set -euo pipefail',
-    `cd ${oteliteCrate.cratePath}`,
-    'cargo build --release',
-    'cargo test',
-    'cargo clippy -- -D warnings',
-    'cargo fmt --check',
+    ...rustCrates.flatMap((crate) => [
+      `echo "::group::${crate.name}"`,
+      `(cd ${crate.cratePath} && cargo build --release)`,
+      `(cd ${crate.cratePath} && cargo test)`,
+      `(cd ${crate.cratePath} && cargo clippy -- -D warnings)`,
+      `(cd ${crate.cratePath} && cargo fmt --check)`,
+      'echo "::endgroup::"',
+    ]),
   ].join('\n'),
 } as const
 

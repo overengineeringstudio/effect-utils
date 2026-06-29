@@ -77,6 +77,13 @@ export const nixOnlyPackages = [
     flakeRef: 'otelite',
     cratePath: 'packages/@overeng/otelite',
   },
+  {
+    name: 'otel-scrape',
+    /** Rust crate: process-wrapper telemetry substrate for build/dev tools. */
+    kind: 'rust-crate',
+    flakeRef: 'otel-scrape',
+    cratePath: 'packages/@overeng/otel-scrape',
+  },
 ] as const
 
 /** Short name of a nix-only (non-pnpm) @overeng/* package. */

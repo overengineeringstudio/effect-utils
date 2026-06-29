@@ -3770,11 +3770,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cd packages/@overeng/otelite
-          cargo build --release
-          cargo test
-          cargo clippy -- -D warnings
-          cargo fmt --check
+          echo "::group::otelite"
+          (cd packages/@overeng/otelite && cargo build --release)
+          (cd packages/@overeng/otelite && cargo test)
+          (cd packages/@overeng/otelite && cargo clippy -- -D warnings)
+          (cd packages/@overeng/otelite && cargo fmt --check)
+          echo "::endgroup::"
+          echo "::group::otel-scrape"
+          (cd packages/@overeng/otel-scrape && cargo build --release)
+          (cd packages/@overeng/otel-scrape && cargo test)
+          (cd packages/@overeng/otel-scrape && cargo clippy -- -D warnings)
+          (cd packages/@overeng/otel-scrape && cargo fmt --check)
+          echo "::endgroup::"
       - name: Failure note
         if: failure()
         shell: bash

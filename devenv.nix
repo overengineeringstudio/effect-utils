@@ -462,14 +462,15 @@ in
     restate
     # Use the packaged wrapper so `notion db ...` runs on Node 24 with node:sqlite.
     repoFlake.packages.${currentSystem}.notion-cli
-    # otelite binary on PATH so @overeng/utils-dev/otelite tests run the real CLI.
+    # Rust binaries on PATH for local smoke tests and downstream wrappers.
     repoFlake.packages.${currentSystem}.otelite
+    repoFlake.packages.${currentSystem}.otel-scrape
     cliBuildStamp.package
     (mkSourceCli {
       name = "tui-stories";
       entry = "packages/@overeng/tui-stories/bin/tui-stories.tsx";
     })
-    # Rust toolchain for the otelite crate (effect-utils' first Rust package).
+    # Rust toolchain for the standalone Rust crates.
     # Nix builds use pkgs.rustPlatform; these give local dev + the cargo CI lane
     # cargo/clippy/rustfmt/rust-analyzer matching nixpkgs' stable rust.
     pkgs.cargo

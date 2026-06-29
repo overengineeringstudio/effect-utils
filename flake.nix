@@ -48,9 +48,11 @@
           src = self;
         };
         nodePtyNative = import ./nix/node-pty-native.nix { inherit pkgs; };
-        # otelite — effect-utils' first Rust package (local OTLP capture tool).
-        # Built via rustPlatform.buildRustPackage, separate from the Bun CLIs.
+        # Rust packages built via rustPlatform.buildRustPackage, separate from the Bun CLIs.
         otelite = import (rootPath + "/packages/@overeng/otelite/nix/build.nix") {
+          inherit pkgs;
+        };
+        otel-scrape = import (rootPath + "/packages/@overeng/otel-scrape/nix/build.nix") {
           inherit pkgs;
         };
         cliPackages = {
@@ -144,7 +146,7 @@
       in
       {
         packages = cliPackages // {
-          inherit otelite;
+          inherit otelite otel-scrape;
           cli-build-stamp = cliBuildStamp.package;
           effect-tsgo = tsgo.packages.${system}.effect-tsgo;
           genie-dirty = cliPackagesDirty.genie;
@@ -196,6 +198,7 @@
           drv = import ./nix/workspace-tools/lib/update-bun-hashes.nix { inherit pkgs; };
         };
         apps.otelite = flake-utils.lib.mkApp { drv = otelite; };
+        apps.otel-scrape = flake-utils.lib.mkApp { drv = otel-scrape; };
       }
     )
     // {

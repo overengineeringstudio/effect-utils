@@ -10,6 +10,10 @@ All notable changes to this project will be documented in this file.
   descriptor-addressed writes, `cas:` URI resolution, canonical JSON manifests,
   and validated manifest pins as local retention roots.
 
+- **otel-scrape**: Add the initial Rust crate skeleton with passthrough command
+  execution, W3C `traceparent` root-or-join propagation, stable hashed command
+  evidence, file-only JSON summaries, flake/devenv wiring, and cargo CI gates.
+
 - **otel-scrape**: Add the public VRS for an effect-utils-owned process wrapper
   that turns build/dev tool executions into OTEL spans, events, metrics, and
   content-addressed profile links.

@@ -1,0 +1,5 @@
+# Rust build artifacts
+/target/
+
+# Local summary files from ad-hoc runs.
+/otel-scrape-summary*.json
