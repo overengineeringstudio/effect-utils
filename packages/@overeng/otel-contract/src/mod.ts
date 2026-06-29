@@ -16,6 +16,7 @@ import {
 import * as AST from 'effect/SchemaAST'
 
 export * from './otel-scrape/registry.gen.ts'
+export * from './otel-scrape/profile-link.ts'
 
 type OtelPrimitive = string | number | boolean
 

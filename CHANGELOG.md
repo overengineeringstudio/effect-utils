@@ -22,6 +22,10 @@ All notable changes to this project will be documented in this file.
   preserving stdout while recording diagnostic events and a generated
   `oxlint.diagnostics` metric in summary evidence.
 
+- **otel-scrape / @overeng/otel-contract**: Add CAS-backed profile artifact
+  links, a reusable `OtelScrapeProfileLink` schema, and CLI support for writing
+  profile blobs, run manifests, and pins under an explicit CAS root.
+
 - **otel-scrape**: Add the public VRS for an effect-utils-owned process wrapper
   that turns build/dev tool executions into OTEL spans, events, metrics, and
   content-addressed profile links.

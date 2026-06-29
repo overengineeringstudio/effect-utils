@@ -22,13 +22,26 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 const EX_USAGE: u8 = 64;
 const TRACE_FLAGS_SAMPLED: &str = "01";
 const SUMMARY_ENV: &str = "OTEL_SCRAPE_SUMMARY_OUT";
+const CAS_ROOT_ENV: &str = "OTEL_SCRAPE_CAS_ROOT";
 const TRACEPARENT_ENV: &str = "traceparent";
+const PROFILE_MEDIA_TYPE: &str = "application/octet-stream";
+const MANIFEST_MEDIA_TYPE: &str = "application/json";
+const CANONICAL_JSON_CODEC: &str = "canonical-json";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunConfig {
     pub summary_out: Option<PathBuf>,
     pub adapter: String,
+    pub cas_root: Option<PathBuf>,
+    pub cas_pin: Option<String>,
+    pub profile_artifacts: Vec<ProfileArtifactInput>,
     pub argv: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProfileArtifactInput {
+    pub profile_type: String,
+    pub path: PathBuf,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -63,6 +76,7 @@ pub struct Summary {
     version: &'static str,
     command: CommandSummary,
     adapter: AdapterSummary,
+    artifacts: ArtifactSummary,
     trace: TraceSummary,
     child: ChildSummary,
     duration_ms: u128,
@@ -81,24 +95,63 @@ struct AdapterSummary {
     records: Vec<AdapterRecord>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(tag = "_tag")]
 enum AdapterRecord {
     Event(AdapterEvent),
     Metric(AdapterMetric),
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 struct AdapterEvent {
     message: String,
     severity: String,
     filename_hash: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 struct AdapterMetric {
     name: &'static str,
     value: u64,
+}
+
+#[derive(Debug, Serialize)]
+struct ArtifactSummary {
+    profiles: Vec<ProfileLink>,
+    manifest: Option<ManifestLink>,
+    errors: Vec<ArtifactError>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProfileLink {
+    #[serde(rename = "type")]
+    profile_type: String,
+    digest: String,
+    uri: String,
+    byte_length: usize,
+    media_type: &'static str,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ManifestLink {
+    digest: String,
+    uri: String,
+    byte_length: usize,
+    media_type: &'static str,
+    codec: &'static str,
+    schema_version: u64,
+    pin: String,
+    entry_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ArtifactError {
+    profile_type: Option<String>,
+    path_hash: Option<String>,
+    message: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -124,6 +177,9 @@ struct DegradedSummary {
 pub fn parse_args(args: &[String]) -> Result<CommandRequest, UsageError> {
     let mut summary_out: Option<PathBuf> = std::env::var_os(SUMMARY_ENV).map(PathBuf::from);
     let mut adapter = String::from("none");
+    let mut cas_root: Option<PathBuf> = std::env::var_os(CAS_ROOT_ENV).map(PathBuf::from);
+    let mut cas_pin: Option<String> = None;
+    let mut profile_artifacts = Vec::new();
     let mut child_start: Option<usize> = None;
 
     if args.is_empty() {
@@ -152,6 +208,28 @@ pub fn parse_args(args: &[String]) -> Result<CommandRequest, UsageError> {
                 adapter = value.clone();
                 i += 2;
             }
+            "--cas-root" => {
+                let Some(value) = args.get(i + 1) else {
+                    return usage_error("--cas-root needs a directory path");
+                };
+                cas_root = Some(PathBuf::from(value));
+                i += 2;
+            }
+            "--cas-pin" => {
+                let Some(value) = args.get(i + 1) else {
+                    return usage_error("--cas-pin needs a pin name");
+                };
+                validate_pin_name(value)?;
+                cas_pin = Some(value.clone());
+                i += 2;
+            }
+            "--profile-artifact" => {
+                let Some(value) = args.get(i + 1) else {
+                    return usage_error("--profile-artifact needs <type>:<path>");
+                };
+                profile_artifacts.push(parse_profile_artifact(value)?);
+                i += 2;
+            }
             "--" => {
                 child_start = Some(i + 1);
                 break;
@@ -173,10 +251,20 @@ pub fn parse_args(args: &[String]) -> Result<CommandRequest, UsageError> {
     if argv.is_empty() {
         return usage_error("missing command");
     }
+    if profile_artifacts.is_empty() {
+        if cas_pin.is_some() {
+            return usage_error("--cas-pin requires --profile-artifact");
+        }
+    } else if cas_root.is_none() {
+        return usage_error("--profile-artifact requires --cas-root or OTEL_SCRAPE_CAS_ROOT");
+    }
 
     Ok(CommandRequest::Run(RunConfig {
         summary_out,
         adapter,
+        cas_root,
+        cas_pin,
+        profile_artifacts,
         argv,
     }))
 }
@@ -185,7 +273,9 @@ pub fn print_help() {
     eprintln!("otel-scrape {VERSION} — process wrapper for command telemetry");
     eprintln!();
     eprintln!("usage:");
-    eprintln!("  otel-scrape [--summary-out <file>] [--adapter none|oxlint] -- <cmd...>");
+    eprintln!(
+        "  otel-scrape [--summary-out <file>] [--adapter none|oxlint] [--cas-root <dir>] [--cas-pin <name>] [--profile-artifact <type>:<path>] -- <cmd...>"
+    );
     eprintln!("  otel-scrape --version | --help");
 }
 
@@ -199,11 +289,33 @@ pub fn run(config: RunConfig) -> io::Result<i32> {
     let started = Instant::now();
 
     let child = run_child(&config, &child_traceparent)?;
-
     let duration_ms = started.elapsed().as_millis();
+    let artifacts = match artifact_summary(&config, &trace) {
+        Ok(artifacts) => artifacts,
+        Err(cause) => {
+            eprintln!("otel-scrape: warning: failed to store profile artifacts: {cause}");
+            ArtifactSummary {
+                profiles: Vec::new(),
+                manifest: None,
+                errors: vec![ArtifactError {
+                    profile_type: None,
+                    path_hash: None,
+                    message: cause.to_string(),
+                }],
+            }
+        }
+    };
+
     if let Some(path) = config.summary_out.as_ref() {
-        match summary_for_status(&config, &trace, &child_traceparent, &child, duration_ms)
-            .and_then(|summary| write_summary(path, &summary))
+        match summary_for_status(
+            &config,
+            &trace,
+            &child_traceparent,
+            &child,
+            duration_ms,
+            artifacts,
+        )
+        .and_then(|summary| write_summary(path, &summary))
         {
             Ok(()) => {}
             Err(cause) => {
@@ -284,6 +396,7 @@ fn summary_for_status(
     child_traceparent: &str,
     child: &ChildRun,
     duration_ms: u128,
+    artifacts: ArtifactSummary,
 ) -> io::Result<Summary> {
     let cwd = std::env::current_dir()?;
     let adapter = adapter_summary(config, &child.stdout);
@@ -295,6 +408,7 @@ fn summary_for_status(
             cwd_hash: stable_hash(cwd.to_string_lossy().as_bytes()),
         },
         adapter,
+        artifacts,
         trace: TraceSummary {
             trace_id: trace.trace_id.clone(),
             parent_span_id: trace.parent_span_id.clone(),
@@ -322,6 +436,150 @@ fn adapter_summary(config: &RunConfig, stdout: &[u8]) -> AdapterSummary {
     AdapterSummary {
         name: config.adapter.clone(),
         records,
+    }
+}
+
+fn parse_profile_artifact(value: &str) -> Result<ProfileArtifactInput, UsageError> {
+    let Some((profile_type, path)) = value.split_once(':') else {
+        return usage_error("--profile-artifact must be <type>:<path>");
+    };
+    if profile_type.is_empty()
+        || !profile_type
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+    {
+        return usage_error(
+            "--profile-artifact type must use only ASCII letters, digits, '.', '_' or '-'",
+        );
+    }
+    if path.is_empty() {
+        return usage_error("--profile-artifact path must not be empty");
+    }
+    Ok(ProfileArtifactInput {
+        profile_type: profile_type.to_owned(),
+        path: PathBuf::from(path),
+    })
+}
+
+fn artifact_summary(config: &RunConfig, trace: &TraceContext) -> io::Result<ArtifactSummary> {
+    if config.profile_artifacts.is_empty() {
+        return Ok(ArtifactSummary {
+            profiles: Vec::new(),
+            manifest: None,
+            errors: Vec::new(),
+        });
+    }
+
+    let root = config
+        .cas_root
+        .as_ref()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "missing CAS root"))?;
+    let mut profiles = Vec::with_capacity(config.profile_artifacts.len());
+    let mut manifest_entries = Vec::with_capacity(config.profile_artifacts.len());
+    let mut errors = Vec::new();
+    for artifact in &config.profile_artifacts {
+        let bytes = match fs::read(&artifact.path) {
+            Ok(bytes) => bytes,
+            Err(cause) => {
+                errors.push(artifact_error(
+                    artifact,
+                    format!("failed to read profile artifact: {cause}"),
+                ));
+                continue;
+            }
+        };
+        let descriptor = descriptor_for_bytes(&bytes, PROFILE_MEDIA_TYPE, None, None);
+        if let Err(cause) = write_object(root, &descriptor.digest, &bytes) {
+            errors.push(artifact_error(
+                artifact,
+                format!("failed to write profile artifact object: {cause}"),
+            ));
+            continue;
+        }
+        let link = ProfileLink {
+            profile_type: artifact.profile_type.clone(),
+            digest: descriptor.digest.clone(),
+            uri: cas_uri_for_digest(&descriptor.digest),
+            byte_length: descriptor.byte_length,
+            media_type: descriptor.media_type,
+        };
+        manifest_entries.push(ManifestEntry {
+            descriptor,
+            logical_path: format!("profiles/{}-{}", profiles.len(), artifact.profile_type),
+            role: String::from("profile"),
+        });
+        profiles.push(link);
+    }
+
+    if manifest_entries.is_empty() {
+        return Ok(ArtifactSummary {
+            profiles,
+            manifest: None,
+            errors,
+        });
+    }
+
+    let manifest_json = canonical_manifest_json(&manifest_entries);
+    let manifest_descriptor = descriptor_for_bytes(
+        manifest_json.as_bytes(),
+        MANIFEST_MEDIA_TYPE,
+        Some(CANONICAL_JSON_CODEC),
+        Some(1),
+    );
+    if let Err(cause) = write_object(root, &manifest_descriptor.digest, manifest_json.as_bytes()) {
+        errors.push(ArtifactError {
+            profile_type: None,
+            path_hash: None,
+            message: format!("failed to write profile artifact manifest: {cause}"),
+        });
+        return Ok(ArtifactSummary {
+            profiles,
+            manifest: None,
+            errors,
+        });
+    }
+    let pin = config
+        .cas_pin
+        .clone()
+        .unwrap_or_else(|| format!("runs/{}/{}", trace.trace_id, trace.span_id));
+    if let Err(cause) = write_pin(root, &pin, &manifest_descriptor) {
+        errors.push(ArtifactError {
+            profile_type: None,
+            path_hash: None,
+            message: format!("failed to write profile artifact pin: {cause}"),
+        });
+        return Ok(ArtifactSummary {
+            profiles,
+            manifest: None,
+            errors,
+        });
+    }
+
+    Ok(ArtifactSummary {
+        profiles,
+        manifest: Some(ManifestLink {
+            digest: manifest_descriptor.digest.clone(),
+            uri: cas_uri_for_digest(&manifest_descriptor.digest),
+            byte_length: manifest_descriptor.byte_length,
+            media_type: manifest_descriptor.media_type,
+            codec: manifest_descriptor
+                .codec
+                .expect("manifest descriptors are canonical-json"),
+            schema_version: manifest_descriptor
+                .schema_version
+                .expect("manifest descriptors are versioned"),
+            pin,
+            entry_count: manifest_entries.len(),
+        }),
+        errors,
+    })
+}
+
+fn artifact_error(artifact: &ProfileArtifactInput, message: String) -> ArtifactError {
+    ArtifactError {
+        profile_type: Some(artifact.profile_type.clone()),
+        path_hash: Some(hash_path_identity(&artifact.path.to_string_lossy())),
+        message,
     }
 }
 
@@ -364,24 +622,158 @@ fn hash_path_identity(path: &str) -> String {
     stable_hash(Path::new(path).to_string_lossy().as_bytes())
 }
 
-fn write_summary(path: &PathBuf, summary: &Summary) -> io::Result<()> {
+#[derive(Debug, Clone)]
+struct ContentDescriptor {
+    digest: String,
+    byte_length: usize,
+    media_type: &'static str,
+    codec: Option<&'static str>,
+    schema_version: Option<u64>,
+}
+
+#[derive(Debug)]
+struct ManifestEntry {
+    descriptor: ContentDescriptor,
+    logical_path: String,
+    role: String,
+}
+
+fn descriptor_for_bytes(
+    bytes: &[u8],
+    media_type: &'static str,
+    codec: Option<&'static str>,
+    schema_version: Option<u64>,
+) -> ContentDescriptor {
+    ContentDescriptor {
+        digest: stable_hash(bytes),
+        byte_length: bytes.len(),
+        media_type,
+        codec,
+        schema_version,
+    }
+}
+
+fn cas_uri_for_digest(digest: &str) -> String {
+    format!("cas:{}", object_path_for_digest(digest))
+}
+
+fn object_path_for_digest(digest: &str) -> String {
+    let hex = digest
+        .strip_prefix("sha256:")
+        .expect("stable_hash returns sha256 digest");
+    format!("sha256/{}/{}", &hex[..2], &hex[2..])
+}
+
+fn write_object(root: &Path, digest: &str, bytes: &[u8]) -> io::Result<()> {
+    write_bytes_atomic(&root.join(object_path_for_digest(digest)), bytes)
+}
+
+fn write_pin(root: &Path, name: &str, manifest: &ContentDescriptor) -> io::Result<()> {
+    let pin_path = pin_path(root, name)?;
+    let pin_json = format!(
+        "{{\"_tag\":\"ContentPin\",\"schemaVersion\":1,\"target\":{}}}\n",
+        descriptor_json(manifest)
+    );
+    write_bytes_atomic(&pin_path, pin_json.as_bytes())
+}
+
+fn pin_path(root: &Path, name: &str) -> io::Result<PathBuf> {
+    validate_pin_name(name)
+        .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err.message))?;
+    Ok(root.join("pins").join(name.replace('\\', "/")))
+}
+
+fn validate_pin_name(name: &str) -> Result<(), UsageError> {
+    if name.trim().is_empty()
+        || name.contains('\0')
+        || Path::new(name).is_absolute()
+        || name
+            .split(['/', '\\'])
+            .any(|part| part.is_empty() || part == "." || part == "..")
+    {
+        return usage_error(
+            "pin names must be non-empty relative paths without empty or parent segments",
+        );
+    }
+    Ok(())
+}
+
+fn canonical_manifest_json(entries: &[ManifestEntry]) -> String {
+    let entries = entries
+        .iter()
+        .map(manifest_entry_json)
+        .collect::<Vec<_>>()
+        .join(",");
+    format!(
+        "{{\"_tag\":\"ContentManifest\",\"entries\":[{entries}],\"role\":\"otel-scrape-run\",\"schemaVersion\":1}}"
+    )
+}
+
+fn manifest_entry_json(entry: &ManifestEntry) -> String {
+    format!(
+        "{{\"descriptor\":{},\"logicalPath\":{},\"role\":{}}}",
+        descriptor_json(&entry.descriptor),
+        json_string(&entry.logical_path),
+        json_string(&entry.role)
+    )
+}
+
+fn descriptor_json(descriptor: &ContentDescriptor) -> String {
+    let mut out = format!(
+        "{{\"_tag\":\"ContentDescriptor\",\"byteLength\":{},",
+        descriptor.byte_length
+    );
+    if let Some(codec) = descriptor.codec {
+        write!(&mut out, "\"codec\":{},", json_string(codec)).expect("write to string");
+    }
+    write!(
+        &mut out,
+        "\"digest\":{},\"mediaType\":{}",
+        json_string(&descriptor.digest),
+        json_string(descriptor.media_type)
+    )
+    .expect("write to string");
+    if let Some(schema_version) = descriptor.schema_version {
+        write!(&mut out, ",\"schemaVersion\":{schema_version}").expect("write to string");
+    }
+    out.push('}');
+    out
+}
+
+fn json_string(value: &str) -> String {
+    serde_json::to_string(value).expect("string serialization cannot fail")
+}
+
+fn write_summary(path: &Path, summary: &Summary) -> io::Result<()> {
     let mut bytes = serde_json::to_vec(summary)?;
     bytes.push(b'\n');
+    write_bytes_atomic(path, &bytes)
+}
+
+fn write_bytes_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
     if let Some(parent) = path.parent() {
         if !parent.as_os_str().is_empty() {
             fs::create_dir_all(parent)?;
         }
     }
-    let temp = path.with_extension(format!(
-        "{}tmp",
+    let temp = temp_path_for(path)?;
+    if let Err(cause) = fs::write(&temp, bytes).and_then(|()| fs::rename(&temp, path)) {
+        let _ = fs::remove_file(&temp);
+        return Err(cause);
+    }
+    Ok(())
+}
+
+fn temp_path_for(path: &Path) -> io::Result<PathBuf> {
+    let suffix = random_hex(8)?;
+    Ok(path.with_extension(format!(
+        "{}tmp-{}-{suffix}",
         path.extension()
             .and_then(|ext| ext.to_str())
             .map(|ext| format!("{ext}."))
-            .unwrap_or_default()
-    ));
-    fs::write(&temp, bytes)?;
-    fs::rename(temp, path)?;
-    Ok(())
+            .unwrap_or_default(),
+        std::process::id()
+    )))
 }
 
 fn trace_context_from_env() -> io::Result<TraceContext> {
@@ -533,8 +925,80 @@ mod tests {
             CommandRequest::Run(RunConfig {
                 summary_out: Some(PathBuf::from("summary.json")),
                 adapter: "none".to_owned(),
+                cas_root: None,
+                cas_pin: None,
+                profile_artifacts: Vec::new(),
                 argv: vec!["echo".to_owned(), "hi".to_owned()],
             })
+        );
+    }
+
+    #[test]
+    fn parses_profile_artifact_options() {
+        let args = vec![
+            "--cas-root".to_owned(),
+            "cas".to_owned(),
+            "--cas-pin".to_owned(),
+            "runs/run-1".to_owned(),
+            "--profile-artifact".to_owned(),
+            "cpuprofile:profile.cpuprofile".to_owned(),
+            "--".to_owned(),
+            "true".to_owned(),
+        ];
+
+        let request = parse_args(&args).unwrap();
+
+        assert_eq!(
+            request,
+            CommandRequest::Run(RunConfig {
+                summary_out: None,
+                adapter: "none".to_owned(),
+                cas_root: Some(PathBuf::from("cas")),
+                cas_pin: Some("runs/run-1".to_owned()),
+                profile_artifacts: vec![ProfileArtifactInput {
+                    profile_type: "cpuprofile".to_owned(),
+                    path: PathBuf::from("profile.cpuprofile"),
+                }],
+                argv: vec!["true".to_owned()],
+            })
+        );
+    }
+
+    #[test]
+    fn rejects_profile_artifact_without_cas_root() {
+        let args = vec![
+            "--profile-artifact".to_owned(),
+            "cpuprofile:profile.cpuprofile".to_owned(),
+            "--".to_owned(),
+            "true".to_owned(),
+        ];
+
+        let err = parse_args(&args).unwrap_err();
+
+        assert_eq!(
+            err.message(),
+            "--profile-artifact requires --cas-root or OTEL_SCRAPE_CAS_ROOT"
+        );
+    }
+
+    #[test]
+    fn rejects_unsafe_cas_pin_names() {
+        let args = vec![
+            "--cas-root".to_owned(),
+            "cas".to_owned(),
+            "--cas-pin".to_owned(),
+            "../escape".to_owned(),
+            "--profile-artifact".to_owned(),
+            "cpuprofile:profile.cpuprofile".to_owned(),
+            "--".to_owned(),
+            "true".to_owned(),
+        ];
+
+        let err = parse_args(&args).unwrap_err();
+
+        assert_eq!(
+            err.message(),
+            "pin names must be non-empty relative paths without empty or parent segments"
         );
     }
 

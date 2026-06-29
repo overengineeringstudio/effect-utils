@@ -5,12 +5,16 @@ import {
   workspaceMember,
   type PackageJsonData,
 } from '../../../genie/internal.ts'
+import contentAddressPkg from '../content-address/package.json.genie.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 
 const peerDepNames = ['effect'] as const
 
 const workspaceDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/otel-contract' }),
+  dependencies: {
+    workspace: [contentAddressPkg],
+  },
   devDependencies: {
     workspace: [utilsDevPkg],
     external: catalog.pick(...peerDepNames, '@types/node', 'typescript', 'vitest'),
