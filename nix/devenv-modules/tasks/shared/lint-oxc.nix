@@ -169,7 +169,7 @@ let
       guard = "oxfmt";
       description = "Check code formatting with oxfmt";
       exec = trace.exec "lint:check:format" (mkLintExec {
-        command = "oxfmt --check";
+        command = "${pkgs.oxfmt}/bin/oxfmt --check";
         includeCase = oxfmtIncludeCase;
         emptySelectionDiagnostic = "Expected at least one target file";
       });
@@ -188,7 +188,7 @@ let
       guard = "oxfmt";
       description = "Fix code formatting with oxfmt";
       exec = trace.exec "lint:fix:format" (mkLintExec {
-        command = "oxfmt";
+        command = "${pkgs.oxfmt}/bin/oxfmt";
         includeCase = oxfmtIncludeCase;
         emptySelectionDiagnostic = "Expected at least one target file";
       });
