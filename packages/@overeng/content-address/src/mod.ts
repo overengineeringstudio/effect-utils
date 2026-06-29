@@ -455,7 +455,12 @@ const safeJoin = ({
 }) => {
   const fullPath = resolve(root, relativePath)
   const back = relative(root, fullPath)
-  if (back === '' || back.startsWith('..') === true || isAbsolute(back) === true) {
+  if (
+    back === '' ||
+    back === '..' ||
+    back.startsWith(`..${sep}`) === true ||
+    isAbsolute(back) === true
+  ) {
     throw new Error(`Path escapes content store root: ${relativePath}`)
   }
   return fullPath
@@ -692,7 +697,13 @@ export const pinManifest = Effect.fn('ContentAddress.pinManifest')(function* ({
   yield* verifyManifestDescriptor({ descriptor: manifestDescriptor })
   const manifestBytes = yield* getBytes({ store, descriptor: manifestDescriptor })
   yield* Effect.try({
-    try: () => decodeContentManifestJson(textDecoder.decode(manifestBytes)),
+    try: () => {
+      const source = textDecoder.decode(manifestBytes)
+      const manifest = decodeContentManifestJson(source)
+      if (source !== canonicalJsonString({ schema: ContentManifest, value: manifest })) {
+        throw new Error('Manifest JSON is not canonical')
+      }
+    },
     catch: (cause) =>
       new InvalidManifestRecordError({
         digest: manifestDescriptor.digest,

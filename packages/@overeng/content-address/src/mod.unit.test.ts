@@ -18,6 +18,7 @@ import {
   UnsupportedDigestAlgorithmError,
   canonicalJsonCodec,
   canonicalJsonMediaType,
+  canonicalJsonString,
   casUriForDescriptor,
   descriptorForCanonicalJson,
   descriptorForUtf8,
@@ -274,6 +275,26 @@ describe('@overeng/content-address', () => {
     }
   })
 
+  it('allows safe pin path segments that merely start with dots', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'content-address-'))
+    const store = makeFileSystemContentStore({ root })
+    try {
+      const manifest = ContentManifest.make({
+        schemaVersion: 1,
+        role: 'otel-scrape-run',
+        entries: [],
+      })
+      const manifestDescriptor = await Effect.runPromise(putManifest({ store, manifest }))
+
+      await expect(
+        Effect.runPromise(pinManifest({ store, name: '..foo/run-1', manifestDescriptor })),
+      ).resolves.toBeUndefined()
+      await expect(Effect.runPromise(hasPin({ store, name: '..foo/run-1' }))).resolves.toBe(true)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('rejects direct blob descriptors as manifest pins', async () => {
     const root = await mkdtemp(join(tmpdir(), 'content-address-'))
     const store = makeFileSystemContentStore({ root })
@@ -345,6 +366,44 @@ describe('@overeng/content-address', () => {
           store,
           name: 'runs/run-1',
           manifestDescriptor: malformedManifestDescriptor,
+        }).pipe(Effect.either),
+      )
+
+      expect(invalidPin._tag).toBe('Left')
+      if (invalidPin._tag === 'Left') {
+        expect(invalidPin.left).toBeInstanceOf(InvalidManifestRecordError)
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects manifest pins whose stored target is not canonical JSON', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'content-address-'))
+    const store = makeFileSystemContentStore({ root })
+    try {
+      const manifest = ContentManifest.make({
+        schemaVersion: 1,
+        role: 'otel-scrape-run',
+        entries: [],
+      })
+      const nonCanonicalManifestDescriptor = await Effect.runPromise(
+        putBytes({
+          store,
+          bytes: utf8Bytes(
+            `${canonicalJsonString({ schema: ContentManifest, value: manifest })}\n`,
+          ),
+          mediaType: canonicalJsonMediaType,
+          codec: canonicalJsonCodec,
+          schemaVersion: 1,
+        }),
+      )
+
+      const invalidPin = await Effect.runPromise(
+        pinManifest({
+          store,
+          name: 'runs/run-1',
+          manifestDescriptor: nonCanonicalManifestDescriptor,
         }).pipe(Effect.either),
       )
 

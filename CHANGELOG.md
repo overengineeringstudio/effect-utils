@@ -57,6 +57,10 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/content-address**: Require manifest pins to target stored canonical
+  JSON manifest bytes and allow safe pin path segments that merely start with
+  dots, while still rejecting real parent segments.
+
 - **@overeng/genie**: Ship `typescript` as a runtime dependency so the CLI's
   JSONC validation path resolves outside the repo development shell.
 
