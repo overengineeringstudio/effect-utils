@@ -1,9 +1,10 @@
 import {
   catalog,
   workspaceMember,
+  exportEntry,
   packageJson,
   privatePackageDefaults,
-  type PackageJsonData,
+  type PackageJsonInputData,
 } from '../../../genie/internal.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
@@ -48,10 +49,10 @@ export default packageJson(
     name: '@overeng/effect-rpc-tanstack',
     ...privatePackageDefaults,
     exports: {
-      '.': './src/mod.ts',
-      './client': './src/client.ts',
-      './server': './src/server.ts',
-      './router': './src/router.ts',
+      '.': exportEntry('./src/mod.ts', { environment: 'browser' }),
+      './client': exportEntry('./src/client.ts', { environment: 'browser' }),
+      './server': exportEntry('./src/server.ts', { environment: 'node' }),
+      './router': exportEntry('./src/router.ts', { environment: 'browser' }),
     },
     publishConfig: {
       access: 'public',
@@ -62,6 +63,6 @@ export default packageJson(
         './router': './dist/router.js',
       },
     },
-  } satisfies PackageJsonData,
+  } satisfies PackageJsonInputData,
   workspaceDeps,
 )

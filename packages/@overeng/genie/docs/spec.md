@@ -213,17 +213,39 @@ exports: {
   './node': exportEntry('./src/runtime/node/mod.ts', {
     environment: 'node',
   }),
+  './cuid': exportEntry(
+    {
+      browser: './src/cuid/cuid.browser.ts',
+      node: './src/cuid/cuid.node.ts',
+      default: './src/cuid/mod.ts',
+    },
+    [{ environment: 'browser' }, { environment: 'node' }],
+  ),
+  './testing/*': exportEntry('./src/testing/*.ts', {
+    environment: 'node',
+    published: false,
+  }),
 }
 ```
 
-`exportEntry(target, contract)` is an authoring helper. The emitted
+`exportEntry(target, contract | contracts)` is an authoring helper. A single
+export can carry multiple contracts when different package export conditions
+select different source files. Pattern targets with `*` expand to matching
+source files during validation. Source-only exports that are intentionally
+absent from `publishConfig.exports` declare `published: false`. The emitted
 `package.json` remains ordinary package.json:
 
 ```json
 {
   "exports": {
     ".": "./src/runtime/mod.ts",
-    "./node": "./src/runtime/node/mod.ts"
+    "./node": "./src/runtime/node/mod.ts",
+    "./cuid": {
+      "browser": "./src/cuid/cuid.browser.ts",
+      "node": "./src/cuid/cuid.node.ts",
+      "default": "./src/cuid/mod.ts"
+    },
+    "./testing/*": "./src/testing/*.ts"
   }
 }
 ```
@@ -232,17 +254,56 @@ The contract is stored only in the generator's structured metadata as
 `meta.exportContracts`. That metadata lets package-json validation check the
 source export without exposing Genie-specific keys to package managers.
 
+Repositories can opt into migration pressure for missing contracts by defining a
+configured package-json generator once in their shared Genie helper:
+
+```ts
+export const packageJson = definePackageJson({
+  validation: {
+    exportEnvironmentContracts: {
+      coverage: 'warn',
+      ignore: ['./legacy'],
+    },
+  },
+})
+```
+
+Call sites then keep using the normal package-json authoring API:
+
+```ts
+export default packageJson(
+  {
+    name: '@myorg/package',
+    exports: {
+      '.': exportEntry('./src/mod.ts', { environment: 'isomorphic-es2024' }),
+      './legacy': './src/legacy.ts',
+    },
+  },
+  compositionOrMeta,
+)
+```
+
+`coverage: 'warn'` emits Genie validation warnings for uncontracted exports and
+keeps `genie --check` non-blocking. `coverage: 'error'` fails validation.
+`coverage: 'off'` is the default for compatibility. Ignores match export
+subpaths exactly or with the same `*`/`**` glob syntax used by package-json
+validation helpers. A call may pass a third options argument to override the
+configured defaults for an exceptional package. The policy is owned by
+package-json validation rather than Genie core, and the heavier node/type proof
+runtime still runs only for exports that actually declare contracts.
+
 Package-json pure validation owns structural checks:
 
 - every contracted export subpath must exist in emitted `exports`
 - if `publishConfig.exports` is present, contracted source subpaths must be
-  mirrored there
+  mirrored there unless the contract declares `published: false`
 
 The package-json node validation runtime owns JavaScript environment checks. It
 is deliberately isolated below `src/runtime/package-json/node/` so pure runtime
 imports do not value-import TypeScript or node-only modules. The validator:
 
 - resolves the export target for the contract's environment conditions
+- expands patterned export targets to matching source files before scanning
 - scans the transitive relative source import graph for forbidden imports and
   forbidden globals
 - runs a TypeScript environment proof only when the contract requests

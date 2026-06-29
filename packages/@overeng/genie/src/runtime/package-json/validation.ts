@@ -76,14 +76,21 @@ export const matchesPattern = (args: {
   if (args.pattern === '**') return true
 
   if (args.pattern.includes('*') === true) {
-    const regex = new RegExp(
-      '^' +
-        args.pattern
-          .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
-          .replace(/\*\*/g, '.*')
-          .replace(/\*/g, '[^/]*') +
-        '$',
-    )
+    let source = ''
+    for (let index = 0; index < args.pattern.length; index++) {
+      const char = args.pattern[index]!
+      if (char === '*') {
+        if (args.pattern[index + 1] === '*') {
+          source += '.*'
+          index++
+        } else {
+          source += '[^/]*'
+        }
+      } else {
+        source += char.replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+      }
+    }
+    const regex = new RegExp(`^${source}$`)
     return regex.test(args.name)
   }
   return false

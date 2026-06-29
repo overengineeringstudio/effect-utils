@@ -5,7 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/mod.ts",
-    "./cli": "./src/cli.ts"
+    "./cli": "./src/cli/mod.ts"
   },
   "publishConfig": {
     "access": "public",

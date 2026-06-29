@@ -1,6 +1,7 @@
 import {
   catalog,
   workspaceMember,
+  exportEntry,
   packageJson,
   privatePackageDefaults,
 } from '../../../genie/internal.ts'
@@ -66,8 +67,8 @@ export default packageJson(
       'storybook:build': 'storybook build',
     },
     exports: {
-      '.': './src/mod.ts',
-      './config': './src/config-def.ts',
+      '.': exportEntry('./src/mod.ts', { environment: 'node' }),
+      './config': exportEntry('./src/config-def.ts', { environment: 'node' }),
     },
     publishConfig: {
       access: 'public',

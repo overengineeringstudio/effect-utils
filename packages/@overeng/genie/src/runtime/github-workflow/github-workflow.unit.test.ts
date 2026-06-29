@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import { githubWorkflow, type GenieContext, type GitHubWorkflowArgs } from '../mod.ts'
+import {
+  githubWorkflow,
+  githubWorkflowEvent,
+  type GenieContext,
+  type GitHubWorkflowArgs,
+} from '../mod.ts'
 import { runActionlint } from './actionlint.ts'
 
 // Inject the actionlint capability the engine normally provides, so the actionlint integration cases below
@@ -315,7 +320,7 @@ describe.runIf(hasActionlint)('actionlint integration', () => {
   it('catches script injection via untrusted input in run step', () => {
     const issues = getFullValidationIssues({
       name: 'CI',
-      on: { pull_request: null },
+      on: { pull_request: githubWorkflowEvent.all },
       jobs: {
         build: {
           'runs-on': 'ubuntu-latest',
@@ -335,7 +340,7 @@ describe.runIf(hasActionlint)('actionlint integration', () => {
     const issues = getFullValidationIssues({
       actionlint: { selfHostedRunnerLabels: ['my-custom-runner', 'nix'] },
       name: 'CI',
-      on: { push: null },
+      on: { push: githubWorkflowEvent.all },
       jobs: {
         build: {
           'runs-on': ['my-custom-runner', 'nix'],
@@ -350,7 +355,7 @@ describe.runIf(hasActionlint)('actionlint integration', () => {
   it('reports unknown runner labels without config', () => {
     const issues = getFullValidationIssues({
       name: 'CI',
-      on: { push: null },
+      on: { push: githubWorkflowEvent.all },
       jobs: {
         build: {
           'runs-on': ['my-unknown-runner'],
@@ -366,7 +371,7 @@ describe.runIf(hasActionlint)('actionlint integration', () => {
     const issues = getFullValidationIssues({
       actionlint: false,
       name: 'CI',
-      on: { pull_request: null },
+      on: { pull_request: githubWorkflowEvent.all },
       jobs: {
         build: {
           'runs-on': 'ubuntu-latest',
@@ -382,7 +387,7 @@ describe.runIf(hasActionlint)('actionlint integration', () => {
     const workflow = githubWorkflow({
       actionlint: { selfHostedRunnerLabels: ['my-runner'] },
       name: 'CI',
-      on: { push: null },
+      on: { push: githubWorkflowEvent.all },
       jobs: {
         build: {
           'runs-on': 'ubuntu-latest',

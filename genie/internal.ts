@@ -9,6 +9,7 @@ import {
   catalog as externalCatalog,
   commonPnpmPolicySettings,
   defineCatalog,
+  definePackageJson,
   effectUtilsWorkspacePatches,
   utilsPatches,
 } from './external.ts'
@@ -22,16 +23,17 @@ export {
   createPnpmPatchedDependencies,
   defineCatalog,
   definePatchedDependencies,
+  definePackageJson,
   domLib,
   effectUtilsPackages,
   exportEntry,
   githubRuleset,
   githubWorkflow,
+  githubWorkflowEvent,
   megarepoJson,
   nodeTypes,
   oxfmtConfig,
   oxlintConfig,
-  packageJson,
   packageTsconfigCompilerOptions,
   patchPostinstall,
   pnpmPatchedDependencies,
@@ -41,6 +43,8 @@ export {
   tsconfigJson,
   type AggregatePackageJsonData,
   type ExportEnvironmentContract,
+  type ExportEnvironmentContractCoverage,
+  type ExportEnvironmentContracts,
   type ExportEnvironmentName,
   type ExportTypeProofMode,
   type GenieOutput,
@@ -50,6 +54,10 @@ export {
   type OxfmtConfigArgs,
   type OxlintConfigArgs,
   type PackageJsonData,
+  type PackageJsonExportEnvironmentContractValidationOptions,
+  type PackageJsonInputData,
+  type PackageJsonOptions,
+  type PackageJsonValidationOptions,
   type PatchesRegistry,
   type PnpmPackageClosureConfig,
   type PnpmSettings,
@@ -63,6 +71,14 @@ export {
   type WorkspacePackage,
   type WorkspacePackageLike,
 } from './external.ts'
+
+export const packageJson = definePackageJson({
+  validation: {
+    exportEnvironmentContracts: {
+      coverage: 'warn',
+    },
+  },
+})
 
 /**
  * Extended catalog with internal @overeng/* packages for effect-utils use.

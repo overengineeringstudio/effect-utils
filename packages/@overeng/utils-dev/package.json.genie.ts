@@ -1,6 +1,7 @@
 import {
   catalog,
   workspaceMember,
+  exportEntry,
   packageJson,
   privatePackageDefaults,
 } from '../../../genie/internal.ts'
@@ -32,9 +33,11 @@ export default packageJson(
     name: '@overeng/utils-dev',
     ...privatePackageDefaults,
     exports: {
-      './node-vitest': './src/node-vitest/mod.ts',
-      './node-vitest/setup-fast-check': './src/node-vitest/setup-fast-check.ts',
-      './otelite': './src/otelite/mod.ts',
+      './node-vitest': exportEntry('./src/node-vitest/mod.ts', { environment: 'node' }),
+      './node-vitest/setup-fast-check': exportEntry('./src/node-vitest/setup-fast-check.ts', {
+        environment: 'node',
+      }),
+      './otelite': exportEntry('./src/otelite/mod.ts', { environment: 'node' }),
     },
     publishConfig: {
       access: 'public',

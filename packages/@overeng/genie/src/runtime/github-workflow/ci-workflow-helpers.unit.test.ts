@@ -316,7 +316,7 @@ describe('ci workflow merge queue helpers', () => {
   it('preserves label control-event concurrency for scarce self-hosted runners', () => {
     expect(mergeQueueSource).toContain('mergeQueueWorkflowConcurrency')
     expect(mergeQueueSource).toContain('mergeQueueWorkflowOn')
-    expect(mergeQueueSource).toContain('merge_group: null')
+    expect(mergeQueueSource).toContain('merge_group: githubWorkflowEvent.all')
     expect(mergeQueueSource).toContain("format('label-{0}', github.event.label.name)")
     expect(mergeQueueSource).toContain(
       "github.event.action != 'labeled' && github.event.action != 'unlabeled'",
@@ -357,7 +357,9 @@ describe('ci workflow merge queue helpers', () => {
       issues: 'read',
       'pull-requests': 'read',
     })
-    expect(mergeQueueWorkflowOn()).toMatchObject({ merge_group: null })
+    expect(mergeQueueWorkflowOn()).toMatchObject({
+      merge_group: { _tag: 'GitHubWorkflowEventAll' },
+    })
   }, 20_000)
 })
 

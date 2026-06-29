@@ -4,7 +4,13 @@ import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-import { exportEntry, packageJson, type GenieContext, type PackageInfo } from '../mod.ts'
+import {
+  definePackageJson,
+  exportEntry,
+  packageJson,
+  type GenieContext,
+  type PackageInfo,
+} from '../mod.ts'
 import { defineCatalog } from './catalog.ts'
 import { nodePackageJsonValidationRuntime } from './node/export-environments.ts'
 
@@ -190,15 +196,45 @@ describe('packageJson', () => {
       '.': './src/mod.ts',
     })
     expect((result as any).meta.exportContracts).toEqual({
-      '.': {
-        environment: 'isomorphic-es2024',
-        typeProof: 'strict',
-      },
+      '.': [
+        {
+          environment: 'isomorphic-es2024',
+          typeProof: 'strict',
+        },
+      ],
     })
     expect(JSON.parse(result.stringify(mockGenieContext)).exports).toEqual({
       '.': './src/mod.ts',
     })
     expect(JSON.parse(result.stringify(mockGenieContext))).not.toHaveProperty('meta')
+  })
+
+  it('normalizes multiple exportEntry contracts for conditional exports', () => {
+    const result = packageJson({
+      name: '@test/package',
+      version: '1.0.0',
+      exports: {
+        './cuid': exportEntry(
+          {
+            browser: './src/cuid.browser.ts',
+            node: './src/cuid.node.ts',
+            default: './src/cuid.ts',
+          },
+          [{ environment: 'browser' }, { environment: 'node' }],
+        ),
+      },
+    })
+
+    expect(result.data.exports).toEqual({
+      './cuid': {
+        browser: './src/cuid.browser.ts',
+        node: './src/cuid.node.ts',
+        default: './src/cuid.ts',
+      },
+    })
+    expect((result as any).meta.exportContracts).toEqual({
+      './cuid': [{ environment: 'browser' }, { environment: 'node' }],
+    })
   })
 
   it('validates that contracted exports are mirrored in publishConfig.exports', () => {
@@ -221,6 +257,204 @@ describe('packageJson', () => {
       dependency: '.',
       message:
         'Export environment contract is declared for ".", but publishConfig.exports does not contain the corresponding published subpath.',
+      rule: 'package-json-export-environment-publish-target',
+    })
+  })
+
+  it('does not require export environment contracts by default', () => {
+    const result = packageJson({
+      name: '@test/package',
+      version: '1.0.0',
+      exports: {
+        '.': './src/mod.ts',
+      },
+    })
+
+    expect(result.validate?.(mockGenieContext)).not.toContainEqual(
+      expect.objectContaining({
+        rule: 'package-json-export-environment-contract-coverage',
+      }),
+    )
+  })
+
+  it('allows export environment contract coverage to be baked into a configured generator', () => {
+    const configuredPackageJson = definePackageJson({
+      validation: {
+        exportEnvironmentContracts: {
+          coverage: 'warn',
+        },
+      },
+    })
+
+    const result = configuredPackageJson({
+      name: '@test/package',
+      version: '1.0.0',
+      exports: {
+        '.': './src/mod.ts',
+      },
+    })
+
+    expect(result.validate?.(mockGenieContext)).toContainEqual({
+      severity: 'warning',
+      packageName: '@test/package',
+      dependency: '.',
+      message:
+        'Package export "." has no export environment contract. Wrap the target with exportEntry(...), or add an explicit validation ignore while migrating.',
+      rule: 'package-json-export-environment-contract-coverage',
+    })
+  })
+
+  it('allows per-call export environment contract coverage overrides on a configured generator', () => {
+    const configuredPackageJson = definePackageJson({
+      validation: {
+        exportEnvironmentContracts: {
+          coverage: 'warn',
+        },
+      },
+    })
+
+    const result = configuredPackageJson(
+      {
+        name: '@test/package',
+        version: '1.0.0',
+        exports: {
+          '.': './src/mod.ts',
+        },
+      },
+      undefined,
+      {
+        validation: {
+          exportEnvironmentContracts: {
+            coverage: 'off',
+          },
+        },
+      },
+    )
+
+    expect(result.validate?.(mockGenieContext)).not.toContainEqual(
+      expect.objectContaining({
+        rule: 'package-json-export-environment-contract-coverage',
+      }),
+    )
+  })
+
+  it('warns for uncontracted exports when export environment contract coverage is warn', () => {
+    const result = packageJson(
+      {
+        name: '@test/package',
+        version: '1.0.0',
+        exports: {
+          '.': './src/mod.ts',
+        },
+      },
+      undefined,
+      {
+        validation: {
+          exportEnvironmentContracts: {
+            coverage: 'warn',
+          },
+        },
+      },
+    )
+
+    expect(result.validate?.(mockGenieContext)).toContainEqual({
+      severity: 'warning',
+      packageName: '@test/package',
+      dependency: '.',
+      message:
+        'Package export "." has no export environment contract. Wrap the target with exportEntry(...), or add an explicit validation ignore while migrating.',
+      rule: 'package-json-export-environment-contract-coverage',
+    })
+  })
+
+  it('errors for uncontracted exports when export environment contract coverage is error', () => {
+    const result = packageJson(
+      {
+        name: '@test/package',
+        version: '1.0.0',
+        exports: {
+          '.': './src/mod.ts',
+        },
+      },
+      undefined,
+      {
+        validation: {
+          exportEnvironmentContracts: {
+            coverage: 'error',
+          },
+        },
+      },
+    )
+
+    expect(result.validate?.(mockGenieContext)).toContainEqual({
+      severity: 'error',
+      packageName: '@test/package',
+      dependency: '.',
+      message:
+        'Package export "." has no export environment contract. Wrap the target with exportEntry(...), or add an explicit validation ignore while migrating.',
+      rule: 'package-json-export-environment-contract-coverage',
+    })
+  })
+
+  it('ignores covered and explicitly ignored exports in contract coverage validation', () => {
+    const result = packageJson(
+      {
+        name: '@test/package',
+        version: '1.0.0',
+        exports: {
+          '.': './src/mod.ts',
+          './legacy': './src/legacy.ts',
+          './testing/foo': './src/testing/foo.ts',
+          './testing/e2e/foo': './src/testing/e2e/foo.ts',
+          './covered': exportEntry('./src/covered.ts', {
+            environment: 'isomorphic-es2024',
+          }),
+        },
+      },
+      undefined,
+      {
+        validation: {
+          exportEnvironmentContracts: {
+            coverage: 'warn',
+            ignore: ['.', './legacy', './testing/**'],
+          },
+        },
+      },
+    )
+
+    expect(
+      result
+        .validate?.(mockGenieContext)
+        .filter((issue) => issue.rule === 'package-json-export-environment-contract-coverage'),
+    ).toEqual([])
+  })
+
+  it('allows source-only contracted exports to be absent from publishConfig.exports', () => {
+    const result = packageJson({
+      name: '@test/package',
+      version: '1.0.0',
+      exports: {
+        '.': exportEntry('./src/mod.ts', {
+          environment: 'isomorphic-es2024',
+        }),
+        './test': exportEntry('./src/test.ts', {
+          environment: 'node',
+          published: false,
+        }),
+      },
+      publishConfig: {
+        exports: {
+          '.': './dist/mod.js',
+        },
+      },
+    })
+
+    expect(result.validate?.(mockGenieContext)).not.toContainEqual({
+      severity: 'error',
+      packageName: '@test/package',
+      dependency: './test',
+      message:
+        'Export environment contract is declared for "./test", but publishConfig.exports does not contain the corresponding published subpath.',
       rule: 'package-json-export-environment-publish-target',
     })
   })
@@ -319,6 +553,87 @@ describe('packageJson', () => {
     })
   })
 
+  it('does not let scoped forbidden-global declarations mask outer usage', () => {
+    const repo = createTempRepo('packages/pkg')
+    const packageDir = repo.memberDirs['packages/pkg']!
+    fs.mkdirSync(path.join(packageDir, 'src'))
+    fs.writeFileSync(
+      path.join(packageDir, 'src/mod.ts'),
+      [
+        'export const local = (process: { env: Record<string, string> }) => process.env.LOCAL',
+        'export const outer = process.env.OUTER',
+      ].join('\n'),
+    )
+    const result = packageJson({
+      name: '@test/package',
+      version: '1.0.0',
+      exports: {
+        '.': exportEntry('./src/mod.ts', {
+          environment: 'isomorphic-es2024',
+        }),
+      },
+    })
+
+    const issues = result.validate?.({
+      cwd: repo.repoRoot,
+      location: 'packages/pkg',
+      validation: { packageJson: nodePackageJsonValidationRuntime },
+    })
+
+    expect(
+      issues?.filter(
+        (issue) =>
+          issue.rule === 'package-json-export-environment-global' &&
+          issue.message.includes('references forbidden global "process"'),
+      ),
+    ).toHaveLength(1)
+  })
+
+  it('validates package export patterns against matching source files', () => {
+    const repo = createTempRepo('packages/pkg')
+    const packageDir = repo.memberDirs['packages/pkg']!
+    fs.mkdirSync(path.join(packageDir, 'src/testing/e2e'), { recursive: true })
+    fs.writeFileSync(path.join(packageDir, 'src/testing/ok.ts'), 'export const value = 1\n')
+    fs.writeFileSync(
+      path.join(packageDir, 'src/testing/not-ok.ts'),
+      "import fs from 'node:fs'\nexport const value = fs.readFileSync\n",
+    )
+    fs.writeFileSync(
+      path.join(packageDir, 'src/testing/e2e/not-ok.ts'),
+      "import crypto from 'node:crypto'\nexport const value = crypto.randomUUID\n",
+    )
+    const result = packageJson({
+      name: '@test/package',
+      version: '1.0.0',
+      exports: {
+        './testing/*': exportEntry('./src/testing/*.ts', {
+          environment: 'isomorphic-es2024',
+        }),
+      },
+    })
+
+    const issues = result.validate?.({
+      cwd: repo.repoRoot,
+      location: 'packages/pkg',
+      validation: { packageJson: nodePackageJsonValidationRuntime },
+    })
+
+    expect(issues).toContainEqual({
+      severity: 'error',
+      packageName: '@test/package',
+      dependency: './testing/*',
+      message: expect.stringContaining('src/testing/not-ok.ts imports "node:fs"'),
+      rule: 'package-json-export-environment-import',
+    })
+    expect(issues).toContainEqual({
+      severity: 'error',
+      packageName: '@test/package',
+      dependency: './testing/*',
+      message: expect.stringContaining('src/testing/e2e/not-ok.ts imports "node:crypto"'),
+      rule: 'package-json-export-environment-import',
+    })
+  })
+
   it('invalidates strict proof cache entries when dependency metadata changes', () => {
     const repo = createTempRepo('packages/pkg')
     const packageDir = repo.memberDirs['packages/pkg']!
@@ -335,10 +650,12 @@ describe('packageJson', () => {
         packageName: '@test/package',
         exports: { '.': './src/mod.ts' },
         contracts: {
-          '.': {
-            environment: 'isomorphic-es2024',
-            typeProof: 'strict',
-          },
+          '.': [
+            {
+              environment: 'isomorphic-es2024',
+              typeProof: 'strict',
+            },
+          ],
         },
       })
 
@@ -380,10 +697,20 @@ describe('packageJson', () => {
       {
         name: '@test/package',
         version: '1.0.0',
+        exports: {
+          '.': './src/mod.ts',
+        },
       },
       {
         someMeta: {
           enabled: true,
+        },
+      },
+      {
+        validation: {
+          exportEnvironmentContracts: {
+            coverage: 'warn',
+          },
         },
       },
     )
@@ -391,6 +718,18 @@ describe('packageJson', () => {
     expect(result.meta.someMeta).toEqual({
       enabled: true,
     })
+    expect(result.meta.validation).toEqual({
+      exportEnvironmentContracts: {
+        coverage: 'warn',
+      },
+    })
+    expect(result.validate?.(mockGenieContext)).toContainEqual(
+      expect.objectContaining({
+        severity: 'warning',
+        dependency: '.',
+        rule: 'package-json-export-environment-contract-coverage',
+      }),
+    )
     expect(JSON.parse(result.stringify(mockGenieContext))).not.toHaveProperty('meta')
   })
 

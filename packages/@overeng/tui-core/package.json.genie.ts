@@ -1,9 +1,10 @@
 import {
   catalog,
   workspaceMember,
+  exportEntry,
   packageJson,
   privatePackageDefaults,
-  type PackageJsonData,
+  type PackageJsonInputData,
 } from '../../../genie/internal.ts'
 
 const deps = catalog.compose({
@@ -20,7 +21,7 @@ export default packageJson(
     name: '@overeng/tui-core',
     ...privatePackageDefaults,
     exports: {
-      '.': './src/mod.ts',
+      '.': exportEntry('./src/mod.ts', { environment: 'node' }),
     },
     publishConfig: {
       access: 'public',
@@ -28,6 +29,6 @@ export default packageJson(
         '.': './dist/mod.js',
       },
     },
-  } satisfies PackageJsonData,
+  } satisfies PackageJsonInputData,
   deps,
 )
