@@ -198,7 +198,10 @@ fn missing_profile_artifact_is_structured_degraded_evidence() {
 
     let summary: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(summary).unwrap()).unwrap();
-    assert_eq!(summary["artifacts"]["profiles"].as_array().unwrap().len(), 0);
+    assert_eq!(
+        summary["artifacts"]["profiles"].as_array().unwrap().len(),
+        0
+    );
     assert_eq!(summary["artifacts"]["manifest"], serde_json::Value::Null);
     let error = &summary["artifacts"]["errors"][0];
     assert_eq!(error["profileType"], "cpuprofile");
