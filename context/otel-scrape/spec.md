@@ -242,13 +242,22 @@ The first implementation proves one real adapter path plus focused CAS/profile f
 
 See [.decisions/0007-first-adapter-plus-fixtures.md](./.decisions/0007-first-adapter-plus-fixtures.md).
 
-| Adapter  | Structured source                         | Output                                    | Profile link     |
-| -------- | ----------------------------------------- | ----------------------------------------- | ---------------- |
-| `cargo`  | `--timings=json`, `--message-format=json` | compile spans, diagnostics metrics/events | timings artifact |
-| `tsc`    | `--generateTrace`                         | checker/program phase spans               | `trace.json`     |
-| `vitest` | JSON reporter / OTEL-aware tests          | suite and test spans                      | none             |
-| `oxlint` | JSON formatter                            | diagnostics events/metrics                | none             |
-| `vite`   | profile/debug output where stable         | plugin transform spans/events             | `cpuprofile`     |
+| Adapter           | Structured source                         | Output                                    | Profile link     |
+| ----------------- | ----------------------------------------- | ----------------------------------------- | ---------------- |
+| `node-cpuprofile` | Node/V8 `--cpu-prof` artifact             | profile link                              | `cpuprofile`     |
+| `cargo`           | `--timings=json`, `--message-format=json` | compile spans, diagnostics metrics/events | timings artifact |
+| `tsc`             | `--generateTrace`                         | checker/program phase spans               | `trace.json`     |
+| `vitest`          | JSON reporter / OTEL-aware tests          | suite and test spans                      | none             |
+| `oxlint`          | JSON formatter                            | diagnostics events/metrics                | none             |
+| `vite`            | profile/debug output where stable         | plugin transform spans/events             | `cpuprofile`     |
+
+The `node-cpuprofile` adapter creates a run-scoped temporary profile directory
+only for direct Node child commands, enables V8 CPU profiling through Node's
+documented `--cpu-prof` options, validates discovered `.cpuprofile` JSON before
+CAS storage, and records degraded evidence for non-Node commands, missing
+profiles, multiple produced profiles, or malformed profile JSON. The temporary
+filesystem path is not part of summary or OTLP evidence; consumers resolve the
+profile through the emitted `cas:` URI and run CAS root.
 
 ## Relationship To Existing Packages
 

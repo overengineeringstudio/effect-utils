@@ -38,6 +38,7 @@ const TRACEPARENT_ENV: &str = "traceparent";
 const OUTPUT_MEDIA_TYPE: &str = "application/octet-stream";
 const RESOURCE_FACT_UNAVAILABLE: &str = "unavailable";
 const OTLP_HTTP_TIMEOUT: Duration = Duration::from_millis(500);
+const NODE_CPUPROFILE_ADAPTER: &str = "node-cpuprofile";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunConfig {
@@ -300,8 +301,10 @@ pub fn parse_args(args: &[String]) -> Result<CommandRequest, UsageError> {
                 let Some(value) = args.get(i + 1) else {
                     return usage_error("--adapter needs a value");
                 };
-                if value != "none" && value != "oxlint" {
-                    return usage_error("only --adapter none and --adapter oxlint are supported");
+                if value != "none" && value != "oxlint" && value != NODE_CPUPROFILE_ADAPTER {
+                    return usage_error(
+                        "only --adapter none, --adapter oxlint, and --adapter node-cpuprofile are supported",
+                    );
                 }
                 adapter = value.clone();
                 i += 2;
@@ -367,12 +370,14 @@ pub fn parse_args(args: &[String]) -> Result<CommandRequest, UsageError> {
     if argv.is_empty() {
         return usage_error("missing command");
     }
-    if profile_artifacts.is_empty() {
+    if profile_artifacts.is_empty() && adapter != NODE_CPUPROFILE_ADAPTER {
         if cas_pin.is_some() {
             return usage_error("--cas-pin requires --profile-artifact");
         }
     } else if cas_root.is_none() {
-        return usage_error("--profile-artifact requires --cas-root or OTEL_SCRAPE_CAS_ROOT");
+        return usage_error(
+            "--profile-artifact and --adapter node-cpuprofile require --cas-root or OTEL_SCRAPE_CAS_ROOT",
+        );
     }
 
     Ok(CommandRequest::Run(RunConfig {
@@ -392,7 +397,7 @@ pub fn print_help() {
     eprintln!();
     eprintln!("usage:");
     eprintln!(
-        "  otel-scrape [--summary-out <file>] [--adapter none|oxlint] [--otlp-endpoint <url>] [--service-name <name>] [--cas-root <dir>] [--cas-pin <name>] [--profile-artifact <type>:<path>] -- <cmd...>"
+        "  otel-scrape [--summary-out <file>] [--adapter none|oxlint|node-cpuprofile] [--otlp-endpoint <url>] [--service-name <name>] [--cas-root <dir>] [--cas-pin <name>] [--profile-artifact <type>:<path>] -- <cmd...>"
     );
     eprintln!("  otel-scrape --version | --help");
 }
@@ -409,7 +414,8 @@ pub fn run(config: RunConfig) -> io::Result<i32> {
 
     let child = run_child(&config, &child_traceparent)?;
     let duration_ms = started.elapsed().as_millis();
-    let artifacts = match artifact_summary(&config, &trace) {
+    let discovered_artifacts = discover_adapter_profile_artifacts(&config, &child);
+    let artifacts = match artifact_summary(&config, &trace, &discovered_artifacts) {
         Ok(artifacts) => artifacts,
         Err(cause) => {
             eprintln!("otel-scrape: warning: failed to store profile artifacts: {cause}");
@@ -424,6 +430,7 @@ pub fn run(config: RunConfig) -> io::Result<i32> {
             }
         }
     };
+    cleanup_adapter_profile_artifacts(&child);
 
     if let Some(path) = config.summary_out.as_ref() {
         match summary_for_status(
@@ -469,15 +476,26 @@ struct ChildRun {
     status: ExitStatus,
     stdout: Option<Vec<u8>>,
     stderr: Option<Vec<u8>>,
+    node_profile_dir: Option<PathBuf>,
 }
 
 fn run_child(config: &RunConfig, child_traceparent: &str) -> io::Result<ChildRun> {
+    let node_profile_dir = prepare_node_cpuprofile_dir(config)?;
     let mut command = Command::new(&config.argv[0]);
     command
         .args(&config.argv[1..])
         .env(TRACEPARENT_ENV, child_traceparent)
         .env("TRACEPARENT", child_traceparent)
         .stdin(Stdio::inherit());
+    if let Some(profile_dir) = node_profile_dir.as_ref() {
+        command.env(
+            "NODE_OPTIONS",
+            node_options_with_cpu_profile(
+                std::env::var("NODE_OPTIONS").ok().as_deref(),
+                profile_dir,
+            ),
+        );
+    }
 
     if config.adapter == "none" {
         let status = command
@@ -488,6 +506,7 @@ fn run_child(config: &RunConfig, child_traceparent: &str) -> io::Result<ChildRun
             status,
             stdout: None,
             stderr: None,
+            node_profile_dir,
         });
     }
 
@@ -507,7 +526,47 @@ fn run_child(config: &RunConfig, child_traceparent: &str) -> io::Result<ChildRun
         status,
         stdout: Some(stdout),
         stderr: Some(stderr),
+        node_profile_dir,
     })
+}
+
+fn prepare_node_cpuprofile_dir(config: &RunConfig) -> io::Result<Option<PathBuf>> {
+    if config.adapter != NODE_CPUPROFILE_ADAPTER {
+        return Ok(None);
+    }
+    if !is_node_command(config.argv.first().map(String::as_str)) {
+        return Ok(None);
+    }
+    let root = std::env::temp_dir().join(format!(
+        "otel-scrape-node-cpuprofile-{}-{}",
+        std::process::id(),
+        random_hex(8)?
+    ));
+    fs::create_dir_all(&root)?;
+    Ok(Some(root))
+}
+
+fn is_node_command(argv0: Option<&str>) -> bool {
+    let Some(argv0) = argv0 else {
+        return false;
+    };
+    matches!(
+        Path::new(argv0).file_name().and_then(|name| name.to_str()),
+        Some("node" | "node.exe")
+    )
+}
+
+fn node_options_with_cpu_profile(existing: Option<&str>, profile_dir: &Path) -> String {
+    let profile_dir = profile_dir.to_string_lossy();
+    let profile_options = [
+        String::from("--cpu-prof"),
+        format!("--cpu-prof-dir={profile_dir}"),
+        String::from("--cpu-prof-name=CPU.cpuprofile"),
+    ];
+    match existing.map(str::trim).filter(|value| !value.is_empty()) {
+        Some(existing) => format!("{existing} {}", profile_options.join(" ")),
+        None => profile_options.join(" "),
+    }
 }
 
 fn join_reader(handle: thread::JoinHandle<io::Result<Vec<u8>>>) -> io::Result<Vec<u8>> {
@@ -953,12 +1012,16 @@ fn parse_profile_artifact(value: &str) -> Result<ProfileArtifactInput, UsageErro
     })
 }
 
-fn artifact_summary(config: &RunConfig, trace: &TraceContext) -> io::Result<ArtifactSummary> {
-    if config.profile_artifacts.is_empty() {
+fn artifact_summary(
+    config: &RunConfig,
+    trace: &TraceContext,
+    discovered_artifacts: &DiscoveredProfileArtifacts,
+) -> io::Result<ArtifactSummary> {
+    if config.profile_artifacts.is_empty() && discovered_artifacts.artifacts.is_empty() {
         return Ok(ArtifactSummary {
             profiles: Vec::new(),
             manifest: None,
-            errors: Vec::new(),
+            errors: discovered_artifacts.errors.clone(),
         });
     }
 
@@ -966,10 +1029,15 @@ fn artifact_summary(config: &RunConfig, trace: &TraceContext) -> io::Result<Arti
         .cas_root
         .as_ref()
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "missing CAS root"))?;
-    let mut profiles = Vec::with_capacity(config.profile_artifacts.len());
-    let mut manifest_entries = Vec::with_capacity(config.profile_artifacts.len());
-    let mut errors = Vec::new();
-    for artifact in &config.profile_artifacts {
+    let mut artifact_inputs =
+        Vec::with_capacity(config.profile_artifacts.len() + discovered_artifacts.artifacts.len());
+    artifact_inputs.extend(config.profile_artifacts.iter().cloned());
+    artifact_inputs.extend(discovered_artifacts.artifacts.iter().cloned());
+
+    let mut profiles = Vec::with_capacity(artifact_inputs.len());
+    let mut manifest_entries = Vec::with_capacity(artifact_inputs.len());
+    let mut errors = discovered_artifacts.errors.clone();
+    for artifact in &artifact_inputs {
         let bytes = match fs::read(&artifact.path) {
             Ok(bytes) => bytes,
             Err(cause) => {
@@ -1072,6 +1140,131 @@ fn artifact_error(artifact: &ProfileArtifactInput, message: String) -> ArtifactE
         profile_type: Some(artifact.profile_type.clone()),
         path_hash: Some(hash_path_identity(&artifact.path.to_string_lossy())),
         message,
+    }
+}
+
+#[derive(Debug, Default)]
+struct DiscoveredProfileArtifacts {
+    artifacts: Vec<ProfileArtifactInput>,
+    errors: Vec<ArtifactError>,
+}
+
+fn discover_adapter_profile_artifacts(
+    config: &RunConfig,
+    child: &ChildRun,
+) -> DiscoveredProfileArtifacts {
+    if config.adapter != NODE_CPUPROFILE_ADAPTER {
+        return DiscoveredProfileArtifacts::default();
+    }
+    let Some(profile_dir) = child.node_profile_dir.as_ref() else {
+        return DiscoveredProfileArtifacts {
+            artifacts: Vec::new(),
+            errors: vec![ArtifactError {
+                profile_type: Some(String::from("cpuprofile")),
+                path_hash: None,
+                message: String::from(
+                    "node-cpuprofile adapter degraded: child command is not node",
+                ),
+            }],
+        };
+    };
+
+    let mut profile_paths = match fs::read_dir(profile_dir) {
+        Ok(entries) => entries
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("cpuprofile"))
+            .collect::<Vec<_>>(),
+        Err(cause) => {
+            return DiscoveredProfileArtifacts {
+                artifacts: Vec::new(),
+                errors: vec![ArtifactError {
+                    profile_type: Some(String::from("cpuprofile")),
+                    path_hash: Some(hash_path_identity(&profile_dir.to_string_lossy())),
+                    message: format!("node-cpuprofile adapter degraded: failed to read profile directory: {cause}"),
+                }],
+            };
+        }
+    };
+    profile_paths.sort();
+
+    if profile_paths.is_empty() {
+        return DiscoveredProfileArtifacts {
+            artifacts: Vec::new(),
+            errors: vec![ArtifactError {
+                profile_type: Some(String::from("cpuprofile")),
+                path_hash: Some(hash_path_identity(&profile_dir.to_string_lossy())),
+                message: String::from(
+                    "node-cpuprofile adapter degraded: no .cpuprofile file produced",
+                ),
+            }],
+        };
+    }
+
+    let mut artifacts = Vec::new();
+    let mut errors = Vec::new();
+    if profile_paths.len() > 1 {
+        errors.push(ArtifactError {
+            profile_type: Some(String::from("cpuprofile")),
+            path_hash: Some(hash_path_identity(&profile_dir.to_string_lossy())),
+            message: format!(
+                "node-cpuprofile adapter degraded: expected one .cpuprofile file, found {}",
+                profile_paths.len()
+            ),
+        });
+    }
+
+    for path in profile_paths {
+        match validate_cpuprofile_file(&path) {
+            Ok(()) => artifacts.push(ProfileArtifactInput {
+                profile_type: String::from("cpuprofile"),
+                path,
+            }),
+            Err(cause) => errors.push(ArtifactError {
+                profile_type: Some(String::from("cpuprofile")),
+                path_hash: Some(hash_path_identity(&path.to_string_lossy())),
+                message: format!(
+                    "node-cpuprofile adapter degraded: malformed profile JSON: {cause}"
+                ),
+            }),
+        }
+    }
+
+    DiscoveredProfileArtifacts { artifacts, errors }
+}
+
+fn validate_cpuprofile_file(path: &Path) -> io::Result<()> {
+    let bytes = fs::read(path)?;
+    validate_cpuprofile_bytes(&bytes)
+}
+
+fn validate_cpuprofile_bytes(bytes: &[u8]) -> io::Result<()> {
+    let value: serde_json::Value = serde_json::from_slice(bytes).map_err(|cause| {
+        io::Error::new(io::ErrorKind::InvalidData, format!("invalid JSON: {cause}"))
+    })?;
+    let is_valid = value.as_object().is_some_and(|object| {
+        object
+            .get("nodes")
+            .and_then(|value| value.as_array())
+            .is_some()
+            && object
+                .get("samples")
+                .and_then(|value| value.as_array())
+                .is_some()
+    });
+    if is_valid {
+        Ok(())
+    } else {
+        Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "expected V8 cpuprofile object with nodes and samples",
+        ))
+    }
+}
+
+fn cleanup_adapter_profile_artifacts(child: &ChildRun) {
+    if let Some(profile_dir) = child.node_profile_dir.as_ref() {
+        let _ = fs::remove_dir_all(profile_dir);
     }
 }
 
@@ -1373,7 +1566,26 @@ mod tests {
 
         assert_eq!(
             err.message(),
-            "--profile-artifact requires --cas-root or OTEL_SCRAPE_CAS_ROOT"
+            "--profile-artifact and --adapter node-cpuprofile require --cas-root or OTEL_SCRAPE_CAS_ROOT"
+        );
+    }
+
+    #[test]
+    fn rejects_node_cpuprofile_adapter_without_cas_root() {
+        let args = vec![
+            "--adapter".to_owned(),
+            "node-cpuprofile".to_owned(),
+            "--".to_owned(),
+            "node".to_owned(),
+            "-e".to_owned(),
+            "console.log('hi')".to_owned(),
+        ];
+
+        let err = parse_args(&args).unwrap_err();
+
+        assert_eq!(
+            err.message(),
+            "--profile-artifact and --adapter node-cpuprofile require --cas-root or OTEL_SCRAPE_CAS_ROOT"
         );
     }
 
@@ -1411,8 +1623,116 @@ mod tests {
 
         assert_eq!(
             err.message(),
-            "only --adapter none and --adapter oxlint are supported"
+            "only --adapter none, --adapter oxlint, and --adapter node-cpuprofile are supported"
         );
+    }
+
+    #[test]
+    fn node_cpuprofile_options_prepare_documented_node_flags() {
+        let dir = PathBuf::from("/tmp/otel-scrape-profile-test");
+
+        assert_eq!(
+            node_options_with_cpu_profile(None, &dir),
+            "--cpu-prof --cpu-prof-dir=/tmp/otel-scrape-profile-test --cpu-prof-name=CPU.cpuprofile"
+        );
+        assert_eq!(
+            node_options_with_cpu_profile(Some("--max-old-space-size=1024"), &dir),
+            "--max-old-space-size=1024 --cpu-prof --cpu-prof-dir=/tmp/otel-scrape-profile-test --cpu-prof-name=CPU.cpuprofile"
+        );
+    }
+
+    #[test]
+    fn node_cpuprofile_discovery_degrades_for_empty_profile_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = node_cpuprofile_config(dir.path().join("cas"));
+        let child = child_run_with_profile_dir(dir.path().join("profiles"));
+        fs::create_dir_all(child.node_profile_dir.as_ref().unwrap()).unwrap();
+
+        let discovered = discover_adapter_profile_artifacts(&config, &child);
+
+        assert!(discovered.artifacts.is_empty());
+        assert_eq!(discovered.errors.len(), 1);
+        assert_eq!(
+            discovered.errors[0].message,
+            "node-cpuprofile adapter degraded: no .cpuprofile file produced"
+        );
+        assert!(discovered.errors[0]
+            .path_hash
+            .as_ref()
+            .unwrap()
+            .starts_with("sha256:"));
+    }
+
+    #[test]
+    fn node_cpuprofile_discovery_records_multiple_profile_degradation() {
+        let dir = tempfile::tempdir().unwrap();
+        let profile_dir = dir.path().join("profiles");
+        fs::create_dir_all(&profile_dir).unwrap();
+        fs::write(profile_dir.join("a.cpuprofile"), valid_cpuprofile_bytes()).unwrap();
+        fs::write(profile_dir.join("b.cpuprofile"), valid_cpuprofile_bytes()).unwrap();
+        let config = node_cpuprofile_config(dir.path().join("cas"));
+        let child = child_run_with_profile_dir(profile_dir);
+
+        let discovered = discover_adapter_profile_artifacts(&config, &child);
+
+        assert_eq!(discovered.artifacts.len(), 2);
+        assert_eq!(discovered.errors.len(), 1);
+        assert_eq!(
+            discovered.errors[0].message,
+            "node-cpuprofile adapter degraded: expected one .cpuprofile file, found 2"
+        );
+    }
+
+    #[test]
+    fn node_cpuprofile_discovery_rejects_malformed_profile_json() {
+        let dir = tempfile::tempdir().unwrap();
+        let profile_dir = dir.path().join("profiles");
+        fs::create_dir_all(&profile_dir).unwrap();
+        fs::write(profile_dir.join("bad.cpuprofile"), br#"{"nodes":[]}"#).unwrap();
+        let config = node_cpuprofile_config(dir.path().join("cas"));
+        let child = child_run_with_profile_dir(profile_dir.clone());
+
+        let discovered = discover_adapter_profile_artifacts(&config, &child);
+
+        assert!(discovered.artifacts.is_empty());
+        assert_eq!(discovered.errors.len(), 1);
+        assert!(discovered.errors[0]
+            .message
+            .starts_with("node-cpuprofile adapter degraded: malformed profile JSON:"));
+        assert!(discovered.errors[0]
+            .path_hash
+            .as_ref()
+            .unwrap()
+            .starts_with("sha256:"));
+        assert!(!discovered.errors[0]
+            .message
+            .contains(profile_dir.to_string_lossy().as_ref()));
+    }
+
+    fn node_cpuprofile_config(cas_root: PathBuf) -> RunConfig {
+        RunConfig {
+            summary_out: None,
+            adapter: NODE_CPUPROFILE_ADAPTER.to_owned(),
+            cas_root: Some(cas_root),
+            cas_pin: None,
+            otlp_endpoint: None,
+            service_name: "otel-scrape".to_owned(),
+            profile_artifacts: Vec::new(),
+            argv: vec!["node".to_owned(), "-e".to_owned(), String::new()],
+        }
+    }
+
+    fn child_run_with_profile_dir(profile_dir: PathBuf) -> ChildRun {
+        ChildRun {
+            status: std::process::Command::new("true").status().unwrap(),
+            stdout: Some(Vec::new()),
+            stderr: Some(Vec::new()),
+            node_profile_dir: Some(profile_dir),
+        }
+    }
+
+    fn valid_cpuprofile_bytes() -> &'static [u8] {
+        br#"{"nodes":[{"id":1,"callFrame":{"functionName":"(root)","scriptId":"0","url":"","lineNumber":-1,"columnNumber":-1},"hitCount":0,"children":[]}],"samples":[1],"timeDeltas":[1],"startTime":1,"endTime":2}"#
     }
 
     #[test]

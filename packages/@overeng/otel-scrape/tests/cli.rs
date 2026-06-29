@@ -699,6 +699,138 @@ fn exports_profile_link_event_without_duplicate_cas_writes_or_path_bytes() {
     assert_eq!(objects, 2);
 }
 
+#[test]
+fn node_cpuprofile_adapter_writes_resolvable_profile_without_leaking_private_inputs() {
+    let collector = TestCollector::start(200);
+    let dir = tempfile::tempdir().unwrap();
+    let summary = dir.path().join("summary.json");
+    let cas_root = dir.path().join("cas");
+    let private_arg = "PRIVATE_ARG_MARKER";
+
+    let out = otel_scrape()
+        .args(["--adapter", "node-cpuprofile"])
+        .args(["--summary-out"])
+        .arg(&summary)
+        .args(["--otlp-endpoint", &collector.endpoint])
+        .args(["--cas-root"])
+        .arg(&cas_root)
+        .args([
+            "--",
+            "node",
+            "-e",
+            "for (let i = 0; i < 100000; i++) Math.sqrt(i); console.log(process.argv[1])",
+            private_arg,
+        ])
+        .output()
+        .unwrap();
+
+    assert!(out.status.success());
+    assert_eq!(String::from_utf8_lossy(&out.stdout), "PRIVATE_ARG_MARKER\n");
+
+    let summary: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&summary).unwrap()).unwrap();
+    assert_eq!(summary["adapter"]["name"], "node-cpuprofile");
+    assert_eq!(summary["adapter"]["ownership"]["stdout"], "this-wrapper");
+    assert_eq!(summary["artifacts"]["errors"].as_array().unwrap().len(), 0);
+    assert_eq!(
+        summary["artifacts"]["profiles"].as_array().unwrap().len(),
+        1
+    );
+    let profile_link = &summary["artifacts"]["profiles"][0];
+    assert_eq!(profile_link["type"], "cpuprofile");
+    assert!(profile_link["byteLength"].as_u64().unwrap() > 0);
+    assert_eq!(profile_link["mediaType"], "application/octet-stream");
+    assert!(profile_link["digest"]
+        .as_str()
+        .unwrap()
+        .starts_with("sha256:"));
+    assert!(profile_link["uri"]
+        .as_str()
+        .unwrap()
+        .starts_with("cas:sha256/"));
+    assert_eq!(summary["artifacts"]["manifest"]["entryCount"], 1);
+
+    let object_path = profile_link["uri"]
+        .as_str()
+        .unwrap()
+        .strip_prefix("cas:")
+        .unwrap();
+    let profile_json: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(cas_root.join(object_path)).unwrap()).unwrap();
+    assert!(profile_json["nodes"].as_array().unwrap().len() > 0);
+    assert!(profile_json["samples"].as_array().is_some());
+
+    let request = collector.request();
+    let body: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
+    let summary_json = serde_json::to_string(&summary).unwrap();
+    let body_json = serde_json::to_string(&body).unwrap();
+    assert!(!summary_json.contains(private_arg));
+    assert!(!summary_json.contains("100000"));
+    assert!(!body_json.contains(private_arg));
+    assert!(!body_json.contains("100000"));
+
+    let span = &body["resourceSpans"][0]["scopeSpans"][0]["spans"][0];
+    let events = span["events"].as_array().unwrap();
+    let event = events
+        .iter()
+        .find(|event| event["name"] == "otel_scrape.profile.link")
+        .unwrap();
+    assert_event_time_within_span(event, span);
+    let attrs = event["attributes"].as_array().unwrap();
+    assert_eq!(
+        attr_value(attrs, "profile.type"),
+        Some("cpuprofile".to_owned())
+    );
+    assert_eq!(
+        attr_value(attrs, "profile.digest"),
+        profile_link["digest"].as_str().map(ToOwned::to_owned)
+    );
+    assert_eq!(
+        attr_value(attrs, "profile.uri"),
+        profile_link["uri"].as_str().map(ToOwned::to_owned)
+    );
+}
+
+#[test]
+fn node_cpuprofile_adapter_degrades_for_non_node_child_without_raw_command() {
+    let dir = tempfile::tempdir().unwrap();
+    let summary = dir.path().join("summary.json");
+    let cas_root = dir.path().join("cas");
+    let private_arg = "PRIVATE_NON_NODE_ARG";
+
+    let out = otel_scrape()
+        .args(["--adapter", "node-cpuprofile"])
+        .args(["--summary-out"])
+        .arg(&summary)
+        .args(["--cas-root"])
+        .arg(&cas_root)
+        .args(["--", "sh", "-c", "printf '%s' \"$1\"", "sh", private_arg])
+        .output()
+        .unwrap();
+
+    assert!(out.status.success());
+    assert_eq!(String::from_utf8_lossy(&out.stdout), private_arg);
+
+    let summary: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(summary).unwrap()).unwrap();
+    assert_eq!(summary["adapter"]["name"], "node-cpuprofile");
+    assert_eq!(
+        summary["artifacts"]["profiles"].as_array().unwrap().len(),
+        0
+    );
+    assert_eq!(summary["artifacts"]["manifest"], serde_json::Value::Null);
+    let error = &summary["artifacts"]["errors"][0];
+    assert_eq!(error["profileType"], "cpuprofile");
+    assert_eq!(error["pathHash"], serde_json::Value::Null);
+    assert_eq!(
+        error["message"],
+        "node-cpuprofile adapter degraded: child command is not node"
+    );
+    assert!(!serde_json::to_string(&summary)
+        .unwrap()
+        .contains(private_arg));
+}
+
 fn attr_value(attrs: &[serde_json::Value], key: &str) -> Option<String> {
     attrs
         .iter()

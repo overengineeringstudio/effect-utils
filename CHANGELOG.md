@@ -26,6 +26,11 @@ All notable changes to this project will be documented in this file.
   links, a reusable `OtelScrapeProfileLink` schema, and CLI support for writing
   profile blobs, run manifests, and pins under an explicit CAS root.
 
+- **otel-scrape**: Add the `node-cpuprofile` adapter, which enables Node/V8 CPU
+  profiling for wrapped Node commands, validates produced `.cpuprofile`
+  artifacts, stores them through the CAS lane, and emits sanitized profile-link
+  evidence.
+
 - **otel-scrape**: Add the public VRS for an effect-utils-owned process wrapper
   that turns build/dev tool executions into OTEL spans, events, metrics, and
   content-addressed profile links.
