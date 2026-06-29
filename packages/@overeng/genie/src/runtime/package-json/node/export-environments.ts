@@ -1,5 +1,15 @@
+import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
 import { isBuiltin } from 'node:module'
 import path from 'node:path'
 import { performance } from 'node:perf_hooks'
@@ -19,7 +29,7 @@ type EnvironmentProfile = {
     lib: readonly string[]
     types: readonly string[]
     customConditions?: readonly string[]
-    moduleResolution?: ts.ModuleResolutionKind
+    moduleResolution?: 'Bundler' | 'NodeNext'
   }
 }
 
@@ -28,7 +38,18 @@ type GraphResult = {
   issues: readonly ValidationIssue[]
 }
 
-const validatorVersion = 'package-json-export-environments-v1'
+export type ExportTypeProofCompilerKind = 'tsgo' | 'tsc'
+
+export type ExportTypeProofCompiler = {
+  path: string
+  kind: ExportTypeProofCompilerKind
+}
+
+export type NodePackageJsonValidationRuntimeOptions = {
+  typeProofCompiler?: ExportTypeProofCompiler
+}
+
+const validatorVersion = 'package-json-export-environments-v2'
 
 const builtinEnvironmentProfiles: Record<string, EnvironmentProfile> = {
   'isomorphic-es2024': {
@@ -69,7 +90,7 @@ const builtinEnvironmentProfiles: Record<string, EnvironmentProfile> = {
       lib: ['lib.es2024.d.ts', 'lib.webworker.d.ts'],
       types: ['@cloudflare/workers-types'],
       customConditions: ['workerd'],
-      moduleResolution: ts.ModuleResolutionKind.Bundler,
+      moduleResolution: 'Bundler',
     },
   },
   'react-native': {
@@ -80,7 +101,7 @@ const builtinEnvironmentProfiles: Record<string, EnvironmentProfile> = {
       lib: ['lib.es2024.d.ts'],
       types: ['react-native'],
       customConditions: ['react-native'],
-      moduleResolution: ts.ModuleResolutionKind.Bundler,
+      moduleResolution: 'Bundler',
     },
   },
 }
@@ -396,21 +417,81 @@ const cacheRoot = (cwd: string): string =>
 
 const sha256 = (content: string): string => createHash('sha256').update(content).digest('hex')
 
+const nonEmptyOutput = (part: string | undefined): part is string =>
+  part !== undefined && part.trim() !== ''
+
+const executableExists = (file: string): boolean => {
+  try {
+    return existsSync(file) === true && statSync(file).isFile() === true
+  } catch {
+    return false
+  }
+}
+
+const resolveExecutableFromPath = (name: string): string | undefined => {
+  const pathEnv = process.env.PATH
+  if (pathEnv === undefined) return undefined
+  for (const dir of pathEnv.split(path.delimiter)) {
+    if (dir === '') continue
+    const candidate = path.join(dir, name)
+    if (executableExists(candidate) === true) return candidate
+  }
+  return undefined
+}
+
+const inferCompilerKind = (compilerPath: string): ExportTypeProofCompilerKind =>
+  path.basename(compilerPath).startsWith('tsgo') === true ? 'tsgo' : 'tsc'
+
+const resolveTypeProofCompiler = (
+  configured: ExportTypeProofCompiler | undefined,
+): ExportTypeProofCompiler | undefined => {
+  if (configured !== undefined) return configured
+
+  const envCompiler = process.env.GENIE_EXPORT_TYPE_PROOF_COMPILER
+  if (envCompiler !== undefined && envCompiler !== '') {
+    return { path: envCompiler, kind: inferCompilerKind(envCompiler) }
+  }
+
+  const tsgo = resolveExecutableFromPath('tsgo')
+  if (tsgo !== undefined) return { path: tsgo, kind: 'tsgo' }
+
+  const tsc = resolveExecutableFromPath('tsc')
+  if (tsc !== undefined) return { path: tsc, kind: 'tsc' }
+
+  return undefined
+}
+
+const compilerVersion = (compiler: ExportTypeProofCompiler): string => {
+  const result = spawnSync(compiler.path, ['--version'], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  return [
+    compiler.kind,
+    compiler.path,
+    result.stdout.trim(),
+    result.stderr.trim(),
+    result.error?.message ?? '',
+  ].join('\n')
+}
+
 const proofCacheKey = ({
   files,
   cacheInputs,
   contract,
   profile,
+  compiler,
 }: {
   files: readonly string[]
   cacheInputs: readonly string[]
   contract: ExportEnvironmentContract
   profile: EnvironmentProfile
+  compiler: ExportTypeProofCompiler
 }): string => {
   const hash = createHash('sha256')
   hash.update(validatorVersion)
   hash.update('\n')
-  hash.update(ts.version)
+  hash.update(compilerVersion(compiler))
   hash.update('\n')
   hash.update(JSON.stringify(contract))
   hash.update('\n')
@@ -439,6 +520,74 @@ const writeCachedProof = ({ cwd, key }: { cwd: string; key: string }): void => {
   writeFileSync(path.join(root, `${key}.ok`), 'ok\n')
 }
 
+const tsconfigLibName = (lib: string): string =>
+  lib
+    .replace(/^lib\./, '')
+    .replace(/\.d\.ts$/, '')
+    .replace(/\b[a-z]/g, (char) => char.toUpperCase())
+
+const writeProofTsconfig = ({
+  cwd,
+  entry,
+  profile,
+}: {
+  cwd: string
+  entry: string
+  profile: EnvironmentProfile
+}): { dir: string; path: string } => {
+  mkdirSync(cacheRoot(cwd), { recursive: true })
+  const dir = mkdtempSync(path.join(cacheRoot(cwd), 'proof-'))
+  const configPath = path.join(dir, 'tsconfig.json')
+  writeFileSync(
+    configPath,
+    `${JSON.stringify(
+      {
+        compilerOptions: {
+          lib: profile.typecheck?.lib.map(tsconfigLibName) ?? [],
+          types: profile.typecheck?.types ?? [],
+          strict: true,
+          noEmit: true,
+          module: 'NodeNext',
+          moduleResolution: profile.typecheck?.moduleResolution ?? 'NodeNext',
+          allowImportingTsExtensions: true,
+          skipLibCheck: true,
+          ...(profile.typecheck?.customConditions === undefined
+            ? {}
+            : { customConditions: profile.typecheck.customConditions }),
+        },
+        files: [entry],
+      },
+      null,
+      2,
+    )}\n`,
+  )
+  return { dir, path: configPath }
+}
+
+const runTypeProofCompiler = ({
+  compiler,
+  configPath,
+  cwd,
+}: {
+  compiler: ExportTypeProofCompiler
+  configPath: string
+  cwd: string
+}): { ok: true } | { ok: false; output: string } => {
+  const result = spawnSync(compiler.path, ['--project', configPath, '--pretty', 'false'], {
+    cwd,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  if (result.status === 0) return { ok: true }
+  return {
+    ok: false,
+    output: [result.stdout, result.stderr, result.error?.message]
+      .filter(nonEmptyOutput)
+      .join('\n')
+      .trim(),
+  }
+}
+
 const typecheck = ({
   cwd,
   entry,
@@ -446,6 +595,7 @@ const typecheck = ({
   cacheInputs,
   contract,
   profile,
+  compiler,
   packageName,
   exportPath,
 }: {
@@ -455,6 +605,7 @@ const typecheck = ({
   cacheInputs: readonly string[]
   contract: ExportEnvironmentContract
   profile: EnvironmentProfile
+  compiler: ExportTypeProofCompiler | undefined
   packageName: string
   exportPath: string
 }): { issues: ValidationIssue[]; cache: { hits: number; misses: number } } => {
@@ -472,50 +623,58 @@ const typecheck = ({
       ],
     }
   }
-
-  const key = proofCacheKey({ files, cacheInputs, contract, profile })
-  if (hasCachedProof({ cwd, key }) === true) return { issues: [], cache: { hits: 1, misses: 0 } }
-
-  const program = ts.createProgram([entry], {
-    lib: [...profile.typecheck.lib],
-    types: [...profile.typecheck.types],
-    strict: true,
-    noEmit: true,
-    module: ts.ModuleKind.NodeNext,
-    moduleResolution: profile.typecheck.moduleResolution ?? ts.ModuleResolutionKind.NodeNext,
-    allowImportingTsExtensions: true,
-    skipLibCheck: true,
-    ...(profile.typecheck.customConditions === undefined
-      ? {}
-      : { customConditions: [...profile.typecheck.customConditions] }),
-  })
-
-  const diagnostics = ts.getPreEmitDiagnostics(program)
-  if (diagnostics.length === 0) {
-    writeCachedProof({ cwd, key })
-    return { issues: [], cache: { hits: 0, misses: 1 } }
+  if (compiler === undefined) {
+    return {
+      cache: { hits: 0, misses: 0 },
+      issues: [
+        issue({
+          packageName,
+          dependency: exportPath,
+          message:
+            'Strict TypeScript environment proof requires a compiler executable. Provide GENIE_EXPORT_TYPE_PROOF_COMPILER, install tsgo on PATH, or install tsc on PATH.',
+          rule: 'package-json-export-environment-type-compiler',
+        }),
+      ],
+    }
   }
 
-  return {
-    cache: { hits: 0, misses: 1 },
-    issues: diagnostics.slice(0, 20).map((diagnostic) =>
-      issue({
-        packageName,
-        dependency: exportPath,
-        message: `TypeScript environment proof failed for "${contract.environment}": ${ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n')}`,
-        rule: 'package-json-export-environment-type-proof',
-      }),
-    ),
+  const key = proofCacheKey({ files, cacheInputs, contract, profile, compiler })
+  if (hasCachedProof({ cwd, key }) === true) return { issues: [], cache: { hits: 1, misses: 0 } }
+
+  const proofConfig = writeProofTsconfig({ cwd, entry, profile })
+  try {
+    const result = runTypeProofCompiler({ compiler, configPath: proofConfig.path, cwd })
+    if (result.ok === true) {
+      writeCachedProof({ cwd, key })
+      return { issues: [], cache: { hits: 0, misses: 1 } }
+    }
+
+    return {
+      cache: { hits: 0, misses: 1 },
+      issues: [
+        issue({
+          packageName,
+          dependency: exportPath,
+          message: `TypeScript environment proof failed for "${contract.environment}" using ${compiler.kind}: ${result.output}`,
+          rule: 'package-json-export-environment-type-proof',
+        }),
+      ],
+    }
+  } finally {
+    rmSync(proofConfig.dir, { recursive: true, force: true })
   }
 }
 
 /** Package-json-owned node validation runtime injected during Genie validation. */
-export const nodePackageJsonValidationRuntime: PackageJsonValidationRuntime = {
+export const createNodePackageJsonValidationRuntime = ({
+  typeProofCompiler: configuredTypeProofCompiler,
+}: NodePackageJsonValidationRuntimeOptions = {}): PackageJsonValidationRuntime => ({
   validateExportEnvironments: (args) => {
     const start = performance.now()
     const issues: ValidationIssue[] = []
     let hits = 0
     let misses = 0
+    const typeProofCompiler = resolveTypeProofCompiler(configuredTypeProofCompiler)
 
     for (const [exportPath, contracts] of Object.entries(args.contracts)) {
       for (const contract of contracts) {
@@ -586,6 +745,7 @@ export const nodePackageJsonValidationRuntime: PackageJsonValidationRuntime = {
             ],
             contract,
             profile,
+            compiler: typeProofCompiler,
             packageName: args.packageName,
             exportPath,
           })
@@ -602,4 +762,8 @@ export const nodePackageJsonValidationRuntime: PackageJsonValidationRuntime = {
       cache: { hits, misses },
     }
   },
-}
+})
+
+/** Package-json-owned node validation runtime injected during Genie validation. */
+export const nodePackageJsonValidationRuntime: PackageJsonValidationRuntime =
+  createNodePackageJsonValidationRuntime()

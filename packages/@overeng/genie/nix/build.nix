@@ -10,6 +10,7 @@
   gitRev ? "unknown",
   commitTs ? 0,
   dirty ? false,
+  typeProofCompilerBin ? "${pkgs.typescript}/bin/tsc",
 }:
 
 let
@@ -50,7 +51,8 @@ pkgs.runCommand "genie"
     mkdir -p $out/bin
     makeWrapper ${unwrapped}/bin/genie $out/bin/genie \
       --suffix PATH : ${pkgs.oxfmt}/bin \
-      --set GENIE_ACTIONLINT_BIN ${pkgs.actionlint}/bin/actionlint
+      --set GENIE_ACTIONLINT_BIN ${pkgs.actionlint}/bin/actionlint \
+      --set GENIE_EXPORT_TYPE_PROOF_COMPILER ${typeProofCompilerBin}
 
     # Propagate shell completions from the unwrapped derivation
     for dir in share/fish/vendor_completions.d share/bash-completion/completions share/zsh/site-functions; do

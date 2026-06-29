@@ -62,6 +62,7 @@
               dirty
               ;
             src = self;
+            typeProofCompilerBin = "${tsgo.packages.${system}.effect-tsgo}/bin/tsgo";
           };
           workflow-report = import (rootPath + "/packages/@overeng/workflow-report/nix/build.nix") {
             inherit
@@ -114,6 +115,7 @@
             inherit pkgs gitRev commitTs;
             src = self;
             dirty = true;
+            typeProofCompilerBin = "${tsgo.packages.${system}.effect-tsgo}/bin/tsgo";
           };
           workflow-report = import (rootPath + "/packages/@overeng/workflow-report/nix/build.nix") {
             inherit pkgs gitRev commitTs;

@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted
 
 ## Context
 
@@ -88,15 +88,21 @@ parser capability whose dependency is packaged normally, not a staged authoring
 
 ## Implementation Notes
 
-The follow-up implementation should:
+The implementation:
 
-1. define a package-json validation runtime option for the compiler executable
-   path and compiler kind (`tsgo` first, `tsc` fallback)
-2. generate temporary proof tsconfigs as validation artifacts under the existing
+1. defines `createNodePackageJsonValidationRuntime(...)` with an optional
+   compiler executable path and compiler kind
+2. resolves source-mode compilers from `GENIE_EXPORT_TYPE_PROOF_COMPILER`,
+   then `tsgo`, then `tsc`
+3. wires the Nix-packaged Genie wrapper to the flake-pinned
+   `effect-tsgo`/`bin/tsgo` executable
+4. generates temporary proof tsconfigs under the existing export-validation
    cache directory
-3. invoke the compiler with no emit and environment-profile-specific libs,
-   types, and conditions
-4. parse diagnostics only enough to report stable Genie validation issues
-5. keep cheap import/global graph checks in-process
-6. add a compiled Genie CLI regression test proving strict export validation
-   works without staged `node_modules`
+5. invokes the compiler with no emit and environment-profile-specific libs,
+   types, module resolution, and custom conditions
+6. reports compiler output as stable Genie validation issues without importing
+   the TypeScript program API for the strict proof
+7. keeps cheap import/global graph checks in-process
+8. extends the compiled Genie staging regression test so strict export
+   validation succeeds through an explicit compiler executable without staged
+   `node_modules`
