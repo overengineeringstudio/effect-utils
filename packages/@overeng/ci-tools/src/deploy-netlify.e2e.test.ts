@@ -181,7 +181,6 @@ printf '{"deploy_id":"deploy123","site_name":"fake-site","deploy_url":"https://d
         target: 'storybook',
         mode: 'pr',
         alias: 'storybook-pr-42',
-        cleanup: 'skipped',
       })
     } finally {
       rmSync(workspace.root, { recursive: true, force: true })

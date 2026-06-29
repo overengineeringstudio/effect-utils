@@ -47,7 +47,7 @@ export const EnvVarName = Schema.NonEmptyTrimmedString.pipe(
 export type EnvVarName = typeof EnvVarName.Type
 
 export const RelativeHttpPath = Schema.NonEmptyTrimmedString.pipe(
-  Schema.pattern(/^\//u),
+  Schema.pattern(/^\/(?!\/)/u),
   Schema.annotations({ identifier: 'CiTools.Deploy.RelativeHttpPath' }),
 )
 export type RelativeHttpPath = typeof RelativeHttpPath.Type
