@@ -30,8 +30,9 @@ wrapper exports one `otel_scrape.command` span through the first-party
 OTLP/HTTP JSON boundary after the child exits. `--service-name <name>` or
 `OTEL_SERVICE_NAME` sets the emitted resource `service.name`. Export failures
 are warnings and do not change stdout, stderr, stdin, or the child exit code.
-Adapter-derived OTLP events, profile links, metrics, and release-grade
-descendant process-tree spans are follow-up milestones.
+Adapter-derived OTLP events and profile-link events are attached to the command
+span. Adapter metrics and release-grade descendant process-tree spans are
+follow-up milestones.
 
 `--adapter oxlint` parses oxlint JSON from stdout after preserving the child
 stdout bytes, recording a diagnostics metric and diagnostic events in the

@@ -453,6 +453,110 @@ fn otlp_export_warning_does_not_leak_invalid_env_endpoint() {
     assert!(!stderr.contains("user:"));
 }
 
+#[test]
+fn exports_oxlint_adapter_event_without_raw_filename_or_payload() {
+    let collector = TestCollector::start(200);
+    let oxlint_json = r#"{ "privatePayload": "PRIVATE_OUTPUT_PAYLOAD", "diagnostics": [{"message": "Unexpected token","severity": "error","filename": "/private/source.ts"}] }"#;
+
+    let out = otel_scrape()
+        .env("OX_JSON", oxlint_json)
+        .args(["--adapter", "oxlint"])
+        .args(["--otlp-endpoint", &collector.endpoint])
+        .args(["--", "sh", "-c", "printf '%s' \"$OX_JSON\""])
+        .output()
+        .unwrap();
+
+    assert!(out.status.success());
+    assert_eq!(String::from_utf8_lossy(&out.stdout), oxlint_json);
+
+    let request = collector.request();
+    let body: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
+    let body_json = serde_json::to_string(&body).unwrap();
+    assert!(!body_json.contains("/private/source.ts"));
+    assert!(!body_json.contains("PRIVATE_OUTPUT_PAYLOAD"));
+    assert!(!body_json.contains("Unexpected token"));
+    assert!(body_json.contains("otel_scrape.adapter.event"));
+    assert!(!body_json.contains("oxlint.diagnostics"));
+    let span = &body["resourceSpans"][0]["scopeSpans"][0]["spans"][0];
+    let events = span["events"].as_array().unwrap();
+    let event = events
+        .iter()
+        .find(|event| event["name"] == "otel_scrape.adapter.event")
+        .unwrap();
+    let attrs = event["attributes"].as_array().unwrap();
+    assert_eq!(attr_value(attrs, "severity"), Some("error".to_owned()));
+    assert!(attr_value(attrs, "source.filename_hash")
+        .unwrap()
+        .starts_with("sha256:"));
+}
+
+#[test]
+fn exports_profile_link_event_without_duplicate_cas_writes_or_path_bytes() {
+    let collector = TestCollector::start(200);
+    let dir = tempfile::tempdir().unwrap();
+    let summary = dir.path().join("summary.json");
+    let cas_root = dir.path().join("cas");
+    let profile = dir.path().join("private-profile.cpuprofile");
+    std::fs::write(&profile, b"PRIVATE_PROFILE_BYTES").unwrap();
+
+    let out = otel_scrape()
+        .args(["--summary-out"])
+        .arg(&summary)
+        .args(["--otlp-endpoint", &collector.endpoint])
+        .args(["--cas-root"])
+        .arg(&cas_root)
+        .arg("--profile-artifact")
+        .arg(format!("cpuprofile:{}", profile.display()))
+        .args(["--", "sh", "-c", "printf child"])
+        .output()
+        .unwrap();
+
+    assert!(out.status.success());
+    assert_eq!(String::from_utf8_lossy(&out.stdout), "child");
+
+    let request = collector.request();
+    let body: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
+    let body_json = serde_json::to_string(&body).unwrap();
+    assert!(!body_json.contains(profile.to_string_lossy().as_ref()));
+    assert!(!body_json.contains("PRIVATE_PROFILE_BYTES"));
+    let span = &body["resourceSpans"][0]["scopeSpans"][0]["spans"][0];
+    let events = span["events"].as_array().unwrap();
+    let event = events
+        .iter()
+        .find(|event| event["name"] == "otel_scrape.profile.link")
+        .unwrap();
+    let attrs = event["attributes"].as_array().unwrap();
+    assert_eq!(
+        attr_value(attrs, "profile.type"),
+        Some("cpuprofile".to_owned())
+    );
+    assert!(attr_value(attrs, "profile.digest")
+        .unwrap()
+        .starts_with("sha256:"));
+    assert!(attr_value(attrs, "profile.uri")
+        .unwrap()
+        .starts_with("cas:sha256/"));
+    assert_eq!(attr_value(attrs, "byteLength"), Some("21".to_owned()));
+    assert_eq!(
+        attr_value(attrs, "mediaType"),
+        Some("application/octet-stream".to_owned())
+    );
+
+    let summary: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(summary).unwrap()).unwrap();
+    assert_eq!(
+        attr_value(attrs, "profile.digest"),
+        summary["artifacts"]["profiles"][0]["digest"]
+            .as_str()
+            .map(ToOwned::to_owned)
+    );
+    let objects = std::fs::read_dir(cas_root.join("sha256"))
+        .unwrap()
+        .flat_map(|prefix| std::fs::read_dir(prefix.unwrap().path()).unwrap())
+        .count();
+    assert_eq!(objects, 2);
+}
+
 fn attr_value(attrs: &[serde_json::Value], key: &str) -> Option<String> {
     attrs
         .iter()

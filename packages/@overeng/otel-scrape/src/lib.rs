@@ -158,7 +158,7 @@ struct AdapterMetric {
     value: u64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 struct ArtifactSummary {
     profiles: Vec<ProfileLink>,
     manifest: Option<ManifestLink>,
@@ -380,7 +380,7 @@ pub fn run(config: RunConfig) -> io::Result<i32> {
             &child_traceparent,
             &child,
             duration_ms,
-            artifacts,
+            &artifacts,
         )
         .and_then(|summary| write_summary(path, &summary))
         {
@@ -396,8 +396,14 @@ pub fn run(config: RunConfig) -> io::Result<i32> {
 
     if let Some(endpoint) = config.otlp_endpoint.as_ref() {
         let endpoint_for_warning = endpoint_for_warning(endpoint);
-        if let Err(cause) = export_command_span(&config, &trace, &child, started_wall, duration_ms)
-        {
+        if let Err(cause) = export_command_span(
+            &config,
+            &trace,
+            &child,
+            &artifacts,
+            started_wall,
+            duration_ms,
+        ) {
             eprintln!(
                 "otel-scrape: warning: failed to export OTLP trace to {endpoint_for_warning}: {cause}"
             );
@@ -479,7 +485,7 @@ fn summary_for_status(
     child_traceparent: &str,
     child: &ChildRun,
     duration_ms: u128,
-    artifacts: ArtifactSummary,
+    artifacts: &ArtifactSummary,
 ) -> io::Result<Summary> {
     let cwd = std::env::current_dir()?;
     let adapter = adapter_summary(config, child.stdout.as_deref().unwrap_or_default());
@@ -493,7 +499,7 @@ fn summary_for_status(
         output: output_summary(child),
         resources: resource_summary(duration_ms),
         adapter,
-        artifacts,
+        artifacts: artifacts.clone(),
         trace: TraceSummary {
             trace_id: trace.trace_id.clone(),
             parent_span_id: trace.parent_span_id.clone(),
@@ -550,6 +556,7 @@ fn export_command_span(
     config: &RunConfig,
     trace: &TraceContext,
     child: &ChildRun,
+    artifacts: &ArtifactSummary,
     started_wall: SystemTime,
     duration_ms: u128,
 ) -> io::Result<()> {
@@ -558,6 +565,7 @@ fn export_command_span(
     };
     let start_unix_nano = unix_nanos(started_wall);
     let end_unix_nano = start_unix_nano.saturating_add(duration_ms.saturating_mul(1_000_000));
+    let adapter = adapter_summary(config, child.stdout.as_deref().unwrap_or_default());
     let mut span = json!({
         "traceId": trace.trace_id,
         "spanId": trace.span_id,
@@ -584,6 +592,10 @@ fn export_command_span(
     if let Some(parent_span_id) = trace.parent_span_id.as_ref() {
         span["parentSpanId"] = json!(parent_span_id);
     }
+    let events = otlp_span_events(&adapter, artifacts);
+    if !events.is_empty() {
+        span["events"] = json!(events);
+    }
     let body = json!({
         "resourceSpans": [{
             "resource": {
@@ -600,6 +612,61 @@ fn export_command_span(
     });
     let bytes = serde_json::to_vec(&body)?;
     post_otlp_http_json(endpoint, &bytes)
+}
+
+fn otlp_span_events(
+    adapter: &AdapterSummary,
+    artifacts: &ArtifactSummary,
+) -> Vec<serde_json::Value> {
+    let mut events = Vec::new();
+    for record in &adapter.records {
+        if let AdapterRecord::Event(event) = record {
+            let mut attrs = vec![json!({
+                "key": "severity",
+                "value": { "stringValue": event.severity },
+            })];
+            if let Some(filename_hash) = event.filename_hash.as_ref() {
+                attrs.push(json!({
+                    "key": "source.filename_hash",
+                    "value": { "stringValue": filename_hash },
+                }));
+            }
+            events.push(json!({
+                "name": "otel_scrape.adapter.event",
+                "attributes": attrs,
+                "timeUnixNano": unix_nanos(SystemTime::now()).to_string(),
+            }));
+        }
+    }
+    for profile in &artifacts.profiles {
+        events.push(json!({
+            "name": "otel_scrape.profile.link",
+            "attributes": [
+                {
+                    "key": telemetry_registry::attributes::PROFILE_TYPE,
+                    "value": { "stringValue": profile.profile_type },
+                },
+                {
+                    "key": telemetry_registry::attributes::PROFILE_DIGEST,
+                    "value": { "stringValue": profile.digest },
+                },
+                {
+                    "key": telemetry_registry::attributes::PROFILE_URI,
+                    "value": { "stringValue": profile.uri },
+                },
+                {
+                    "key": telemetry_registry::profile_fields::BYTE_LENGTH,
+                    "value": { "intValue": profile.byte_length.to_string() },
+                },
+                {
+                    "key": telemetry_registry::profile_fields::MEDIA_TYPE,
+                    "value": { "stringValue": profile.media_type },
+                },
+            ],
+            "timeUnixNano": unix_nanos(SystemTime::now()).to_string(),
+        }));
+    }
+    events
 }
 
 fn unix_nanos(time: SystemTime) -> u128 {
