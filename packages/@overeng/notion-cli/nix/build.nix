@@ -13,6 +13,12 @@ let
   mkPnpmCli = import ../../../../nix/workspace-tools/lib/mk-pnpm-cli.nix { inherit pkgs pnpm; };
   opentuiCoreNative = import ../../../../nix/opentui-core-native.nix { inherit pkgs; };
   nodejs = pkgs.nodejs_24 or pkgs.nodejs;
+  selectHashForSystem =
+    hashes:
+    let
+      system = pkgs.stdenv.hostPlatform.system;
+    in
+    hashes.${system} or (throw "missing notion-cli dependency hash for ${system}");
   datasourceSyncBuildStamp = builtins.toJSON {
     type = "nix";
     version = "0.1.0";
@@ -33,7 +39,11 @@ let
     # Managed by the repo FOD refresh workflow — do not edit manually.
     depsBuilds = {
       "." = {
-        hash = "sha256-xyZyCkEuEI3JXlQk3NN3fmVYHZQZo2uKoDCODLToHVo=";
+        hash = selectHashForSystem {
+          aarch64-darwin = "sha256-gw/dj8hRRNIw4h8+EBfEcZA26Gad2HMxyGUF+x4UEGA=";
+          aarch64-linux = "sha256-Ox+FChLtOlgYkNVZX7oJDuruiRYpElH+bOzBmsbn1uk=";
+          x86_64-linux = "sha256-Ox+FChLtOlgYkNVZX7oJDuruiRYpElH+bOzBmsbn1uk=";
+        };
       };
     };
     nativeNodePackages = opentuiCoreNative.packages;
