@@ -21,6 +21,11 @@ All notable changes to this project will be documented in this file.
   records, renders managed comment output, and finds the managed comment ID
   through file-based CLI boundaries.
 
+- **devenv deploy tasks**: Add fake-provider E2E coverage for the generated
+  Netlify and Vercel deploy task scripts, proving PR aliasing, task output
+  metadata, workflow-report record emission, Vercel prebuilt static packaging,
+  and Netlify diagnostic behavior without real provider credentials.
+
 - **@overeng/genie**: Add the explicit `@overeng/genie/composition` subpath for
   reusable cross-artifact composition helpers. The first helper,
   `tsconfigReferencesFromPackages`, projects TypeScript project references from
