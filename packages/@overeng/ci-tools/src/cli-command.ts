@@ -5,6 +5,7 @@ import { Command, Options } from '@effect/cli'
 import { Effect, Option } from 'effect'
 
 import { runNetlifyDeploy } from './deploy-netlify.ts'
+import { runVercelDeploy } from './deploy-vercel.ts'
 import {
   collectWorkflowReportBundle,
   decodeWorkflowReportBundleJson,
@@ -339,9 +340,99 @@ const netlifyDeployCommand = Command.make(
     }),
 ).pipe(Command.withDescription('Deploy a local static directory to Netlify'))
 
+const vercelDeployCommand = Command.make(
+  'vercel',
+  {
+    target: nonEmptyTextOption({
+      name: 'target',
+      description: 'Stable deploy target name',
+    }),
+    artifactDir: nonEmptyTextOption({
+      name: 'artifact-dir',
+      description: 'Local static directory to package and deploy as prebuilt Vercel output',
+    }),
+    mode: Options.choice('mode', ['prod', 'pr', 'preview']).pipe(
+      Options.withDescription('Vercel deploy mode'),
+      Options.withDefault('preview' as const),
+    ),
+    displayName: Options.text('display-name').pipe(
+      Options.withDescription('Human-readable deploy target label'),
+      Options.optional,
+    ),
+    pr: Options.integer('pr').pipe(
+      Options.withDescription('Pull request number for PR deploy mode'),
+      Options.optional,
+    ),
+    aliasSuffix: Options.text('alias-suffix').pipe(
+      Options.withDescription('Optional suffix appended to Vercel aliases'),
+      Options.optional,
+    ),
+    projectIdEnv: Options.text('project-id-env').pipe(
+      Options.withDescription('Environment variable containing the Vercel project id'),
+      Options.withDefault('VERCEL_PROJECT_ID'),
+    ),
+    orgIdEnv: Options.text('org-id-env').pipe(
+      Options.withDescription('Environment variable containing the Vercel org/team id'),
+      Options.withDefault('VERCEL_ORG_ID'),
+    ),
+    authTokenEnv: Options.text('auth-token-env').pipe(
+      Options.withDescription('Environment variable containing the Vercel auth token'),
+      Options.withDefault('VERCEL_TOKEN'),
+    ),
+    teamIdEnv: Options.text('team-id-env').pipe(
+      Options.withDescription('Optional environment variable containing the Vercel team id'),
+      Options.optional,
+    ),
+    workflowReportOutputFile: Options.text('workflow-report-output-file').pipe(
+      Options.withDescription('Optional JSONL file that receives marked workflow-report records'),
+      Options.optional,
+    ),
+    vercelBin: Options.text('vercel-bin').pipe(
+      Options.withDescription('Vercel CLI binary path'),
+      Options.withDefault('vercel'),
+    ),
+    vercelApiBaseUrl: Options.text('vercel-api-base-url').pipe(
+      Options.withDescription('Vercel API base URL'),
+      Options.withDefault('https://api.vercel.com'),
+    ),
+    createdAtUtc: Options.text('created-at-utc').pipe(
+      Options.withDescription('Override record creation timestamp for deterministic tests'),
+      Options.optional,
+    ),
+    e2eAllowSharedProject: Options.boolean('e2e-allow-shared-project').pipe(
+      Options.withDescription('Enable shared-project live E2E alias guardrails'),
+      Options.withDefault(false),
+    ),
+    e2eReservedAliasPrefix: Options.text('e2e-reserved-alias-prefix').pipe(
+      Options.withDescription('Required alias prefix when shared-project E2E is enabled'),
+      Options.withDefault('ci-tools-e2e'),
+    ),
+    e2eVerifyPath: Options.text('e2e-verify-path').pipe(
+      Options.withDescription('Optional live E2E path to fetch after deploy'),
+      Options.optional,
+    ),
+    e2eVerifyText: Options.text('e2e-verify-text').pipe(
+      Options.withDescription('Optional live E2E marker text expected at the verify path'),
+      Options.optional,
+    ),
+  },
+  (opts) =>
+    runVercelDeploy({
+      ...opts,
+      displayName: optionToUndefined(opts.displayName),
+      pr: optionToUndefined(opts.pr),
+      aliasSuffix: optionToUndefined(opts.aliasSuffix),
+      teamIdEnv: optionToUndefined(opts.teamIdEnv),
+      workflowReportOutputFile: optionToUndefined(opts.workflowReportOutputFile),
+      createdAtUtc: optionToUndefined(opts.createdAtUtc),
+      e2eVerifyPath: optionToUndefined(opts.e2eVerifyPath),
+      e2eVerifyText: optionToUndefined(opts.e2eVerifyText),
+    }),
+).pipe(Command.withDescription('Deploy a local static directory to Vercel'))
+
 /** CLI command for deploy preview provider operations. */
 export const deployCommand = Command.make('deploy').pipe(
-  Command.withSubcommands([netlifyDeployCommand]),
+  Command.withSubcommands([netlifyDeployCommand, vercelDeployCommand]),
   Command.withDescription('Deploy preview provider operations'),
 )
 
