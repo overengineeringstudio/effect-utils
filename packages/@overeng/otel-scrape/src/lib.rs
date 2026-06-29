@@ -135,7 +135,29 @@ struct ResourceAvailability {
 #[derive(Debug, Serialize)]
 struct AdapterSummary {
     name: String,
+    ownership: AdapterOwnershipSummary,
     records: Vec<AdapterSummaryRecord>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AdapterOwnershipSummary {
+    stdout: &'static str,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AdapterStdoutOwnership {
+    ThisWrapper,
+    ChildWrapper,
+}
+
+impl AdapterStdoutOwnership {
+    fn as_summary_value(self) -> &'static str {
+        match self {
+            Self::ThisWrapper => "this-wrapper",
+            Self::ChildWrapper => "child-wrapper",
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -821,12 +843,18 @@ fn parse_http_endpoint(value: &str) -> io::Result<HttpEndpoint> {
 #[derive(Debug, Clone)]
 struct AdapterRun {
     name: String,
+    stdout_ownership: AdapterStdoutOwnership,
     outputs: Vec<AdapterOutput>,
 }
 
 fn adapter_outputs(config: &RunConfig, stdout: &[u8], artifacts: &ArtifactSummary) -> AdapterRun {
-    let mut outputs = match config.adapter.as_str() {
-        "oxlint" => oxlint_outputs(stdout),
+    let stdout_ownership = if config.adapter != "none" && invokes_nested_otel_scrape(config) {
+        AdapterStdoutOwnership::ChildWrapper
+    } else {
+        AdapterStdoutOwnership::ThisWrapper
+    };
+    let mut outputs = match (stdout_ownership, config.adapter.as_str()) {
+        (AdapterStdoutOwnership::ThisWrapper, "oxlint") => oxlint_outputs(stdout),
         _ => Vec::new(),
     };
     outputs.extend(
@@ -839,6 +867,7 @@ fn adapter_outputs(config: &RunConfig, stdout: &[u8], artifacts: &ArtifactSummar
 
     AdapterRun {
         name: config.adapter.clone(),
+        stdout_ownership,
         outputs,
     }
 }
@@ -846,6 +875,9 @@ fn adapter_outputs(config: &RunConfig, stdout: &[u8], artifacts: &ArtifactSummar
 fn adapter_summary(adapter: &AdapterRun) -> AdapterSummary {
     AdapterSummary {
         name: adapter.name.clone(),
+        ownership: AdapterOwnershipSummary {
+            stdout: adapter.stdout_ownership.as_summary_value(),
+        },
         records: adapter
             .outputs
             .iter()
@@ -864,6 +896,24 @@ fn adapter_summary_record(output: &AdapterOutput) -> Option<AdapterSummaryRecord
         }
         AdapterOutput::Profile(_) => None,
     }
+}
+
+fn invokes_nested_otel_scrape(config: &RunConfig) -> bool {
+    let Some(child_argv0) = config.argv.first() else {
+        return false;
+    };
+
+    let child_path = Path::new(child_argv0);
+    if let (Ok(current), Ok(child)) = (std::env::current_exe(), child_path.canonicalize()) {
+        if current == child {
+            return true;
+        }
+    }
+
+    matches!(
+        child_path.file_name().and_then(|name| name.to_str()),
+        Some("otel-scrape" | ".otel-scrape-wrapped")
+    )
 }
 
 fn parse_profile_artifact(value: &str) -> Result<ProfileArtifactInput, UsageError> {

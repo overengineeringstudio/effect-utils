@@ -80,6 +80,11 @@ This keeps nested wrappers compatible with root-or-join propagation without prod
 
 Implementation must provide an ownership or suppression protocol for nested wrappers. Downstream consumers must not be responsible for deduplicating duplicate adapter records.
 
+Summary evidence exposes the stdout ownership decision as `adapter.ownership.stdout`:
+
+- `this-wrapper` means this wrapper parsed captured stdout for the selected adapter.
+- `child-wrapper` means the child command is another `otel-scrape` invocation, so this wrapper preserved stdout/stderr passthrough and descriptors but did not classify the child's structured adapter output.
+
 See [.decisions/0002-leaf-wrapper-owns-adapter-parsing.md](./.decisions/0002-leaf-wrapper-owns-adapter-parsing.md).
 
 ## Classification Ladder

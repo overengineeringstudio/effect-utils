@@ -87,6 +87,7 @@ fn oxlint_adapter_parses_json_diagnostics_without_hiding_stdout() {
     let summary: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(summary).unwrap()).unwrap();
     assert_eq!(summary["adapter"]["name"], "oxlint");
+    assert_eq!(summary["adapter"]["ownership"]["stdout"], "this-wrapper");
     assert_eq!(summary["adapter"]["records"][0]["_tag"], "Metric");
     assert_eq!(
         summary["adapter"]["records"][0]["name"],
@@ -180,6 +181,54 @@ fn oxlint_adapter_does_not_turn_plain_output_lines_into_spans() {
         .iter()
         .all(|record| record["_tag"] == "Event" || record["_tag"] == "Metric"));
     assert_eq!(records.len(), 0);
+}
+
+#[test]
+fn parent_wrapper_preserves_nested_output_without_reclassifying_child_owned_adapter_records() {
+    let dir = tempfile::tempdir().unwrap();
+    let outer_summary = dir.path().join("outer-summary.json");
+    let inner_summary = dir.path().join("inner-summary.json");
+    let oxlint_json = r#"{ "diagnostics": [{"message": "Nested diagnostic","severity": "warning","filename": "nested.ts"}] }"#;
+
+    let out = otel_scrape()
+        .env("OX_JSON", oxlint_json)
+        .args(["--adapter", "oxlint", "--summary-out"])
+        .arg(&outer_summary)
+        .args(["--", env!("CARGO_BIN_EXE_otel-scrape")])
+        .args(["--adapter", "oxlint", "--summary-out"])
+        .arg(&inner_summary)
+        .args(["--", "sh", "-c", "printf '%s' \"$OX_JSON\""])
+        .output()
+        .unwrap();
+
+    assert!(out.status.success());
+    assert_eq!(String::from_utf8_lossy(&out.stdout), oxlint_json);
+
+    let outer: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(outer_summary).unwrap()).unwrap();
+    let inner: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(inner_summary).unwrap()).unwrap();
+
+    assert_eq!(outer["adapter"]["name"], "oxlint");
+    assert_eq!(outer["adapter"]["ownership"]["stdout"], "child-wrapper");
+    assert_eq!(outer["adapter"]["records"].as_array().unwrap().len(), 0);
+    assert_eq!(outer["output"]["stdout"]["_tag"], "ContentDescriptor");
+    assert_eq!(
+        outer["output"]["stdout"]["byteLength"],
+        oxlint_json.as_bytes().len()
+    );
+
+    assert_eq!(inner["adapter"]["name"], "oxlint");
+    assert_eq!(inner["adapter"]["ownership"]["stdout"], "this-wrapper");
+    assert_eq!(inner["adapter"]["records"][0]["_tag"], "Metric");
+    assert_eq!(inner["adapter"]["records"][1]["_tag"], "Event");
+
+    assert_eq!(outer["trace"]["trace_id"], inner["trace"]["trace_id"]);
+    assert_eq!(inner["trace"]["parent_span_id"], outer["trace"]["span_id"]);
+    assert_ne!(
+        outer["trace"]["child_traceparent"],
+        inner["trace"]["child_traceparent"]
+    );
 }
 
 #[test]
