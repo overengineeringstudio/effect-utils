@@ -167,12 +167,11 @@ Resource facts are explicit. `resources.wallMs` is always wrapper-measured. Plat
 
 ## OTLP Export Boundary
 
-`otel-scrape` starts with a small first-party OTLP/HTTP JSON exporter boundary before adopting a full Rust OpenTelemetry SDK. The boundary exists to prove the wrapper contract, adapter records, profile links, and `otelite` E2E capture without letting SDK lifecycle or metric semantics own the first release shape.
+`otel-scrape` starts with a small first-party OTLP/HTTP JSON exporter boundary before adopting a full Rust OpenTelemetry SDK. The boundary exists to prove the wrapper contract and `otelite` E2E capture without letting SDK lifecycle or metric semantics own the first release shape.
 
 ```text
 otel-scrape
   -> command span
-  -> adapter events / profile links
   -> OTLP/HTTP JSON exporter
   -> otelite capture fixture
 ```
@@ -187,7 +186,7 @@ Exporter configuration:
 
 Exporter failures are degraded wrapper evidence. They must not change child stdout, stderr, stdin, or exit status. Summary JSON remains local/debug evidence and must not become the primary telemetry transport.
 
-The first OTLP slice emits the wrapper command span, adapter events, and profile-link attributes/events using generated registry names and fields. Adapter metric records remain structured local records until trace correlation and OTLP metric semantics are explicit.
+The first OTLP slice emits the wrapper command span using generated registry names and fields. Adapter events and profile-link attributes/events are follow-up slices on the same exporter boundary. Adapter metric records remain structured local records until trace correlation and OTLP metric semantics are explicit.
 
 See [.decisions/0008-first-party-otlp-export-boundary.md](./.decisions/0008-first-party-otlp-export-boundary.md).
 

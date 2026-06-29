@@ -1,7 +1,17 @@
 use std::process::Command;
+use std::{
+    io::{Read, Write},
+    net::TcpListener,
+    sync::mpsc,
+    thread,
+};
 
 fn otel_scrape() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_otel-scrape"))
+    let mut command = Command::new(env!("CARGO_BIN_EXE_otel-scrape"));
+    command
+        .env_remove("OTEL_EXPORTER_OTLP_ENDPOINT")
+        .env_remove("OTEL_SERVICE_NAME");
+    command
 }
 
 #[test]
@@ -332,4 +342,165 @@ fn joins_parent_traceparent() {
     assert_eq!(summary["trace"]["parent_span_id"], "2222222222222222");
     assert_eq!(summary["trace"]["child_traceparent"], child_traceparent);
     assert_ne!(child_traceparent, parent);
+}
+
+#[test]
+fn exports_command_span_to_otlp_http_json() {
+    let collector = TestCollector::start(200);
+    let dir = tempfile::tempdir().unwrap();
+    let summary = dir.path().join("summary.json");
+    let parent = "00-11111111111111111111111111111111-2222222222222222-01";
+
+    let out = otel_scrape()
+        .env("traceparent", parent)
+        .args(["--summary-out"])
+        .arg(&summary)
+        .args(["--service-name", "otel-scrape-test"])
+        .args(["--otlp-endpoint", &collector.endpoint])
+        .args(["--", "sh", "-c", "printf child"])
+        .output()
+        .unwrap();
+
+    assert!(out.status.success());
+    assert_eq!(String::from_utf8_lossy(&out.stdout), "child");
+
+    let summary: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(summary).unwrap()).unwrap();
+    let request = collector.request();
+    assert_eq!(request.path, "/v1/traces");
+    assert_eq!(request.content_type.as_deref(), Some("application/json"));
+    let body: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
+    let resource_span = &body["resourceSpans"][0];
+    assert_eq!(
+        attr_value(
+            resource_span["resource"]["attributes"].as_array().unwrap(),
+            "service.name"
+        ),
+        Some("otel-scrape-test".to_owned())
+    );
+    let span = &resource_span["scopeSpans"][0]["spans"][0];
+    assert_eq!(span["name"], "otel_scrape.command");
+    assert_eq!(span["traceId"], "11111111111111111111111111111111");
+    assert_eq!(span["parentSpanId"], "2222222222222222");
+    assert_eq!(span["spanId"], summary["trace"]["span_id"]);
+    assert_eq!(span["status"]["code"], 1);
+    let attrs = span["attributes"].as_array().unwrap();
+    assert!(attr_value(attrs, "process.command_args_hash")
+        .unwrap()
+        .starts_with("sha256:"));
+    assert_eq!(attr_value(attrs, "process.exit_code"), Some("0".to_owned()));
+    assert_eq!(
+        attr_value(attrs, "otel_scrape.adapter.name"),
+        Some("none".to_owned())
+    );
+}
+
+#[test]
+fn otlp_export_failure_preserves_child_exit_code() {
+    let collector = TestCollector::start(500);
+
+    let out = otel_scrape()
+        .args(["--otlp-endpoint", &collector.endpoint])
+        .args(["--", "sh", "-c", "printf child; exit 7"])
+        .output()
+        .unwrap();
+
+    assert_eq!(out.status.code(), Some(7));
+    assert_eq!(String::from_utf8_lossy(&out.stdout), "child");
+    assert!(String::from_utf8_lossy(&out.stderr).contains("failed to export OTLP trace"));
+    let request = collector.request();
+    assert_eq!(request.path, "/v1/traces");
+}
+
+fn attr_value(attrs: &[serde_json::Value], key: &str) -> Option<String> {
+    attrs
+        .iter()
+        .find(|attr| attr["key"] == key)?
+        .get("value")
+        .and_then(|value| {
+            value
+                .get("stringValue")
+                .or_else(|| value.get("intValue"))
+                .or_else(|| value.get("doubleValue"))
+                .or_else(|| value.get("boolValue"))
+        })
+        .and_then(|value| {
+            value
+                .as_str()
+                .map(ToOwned::to_owned)
+                .or_else(|| Some(value.to_string()))
+        })
+}
+
+struct TestCollector {
+    endpoint: String,
+    request_rx: mpsc::Receiver<CapturedRequest>,
+}
+
+struct CapturedRequest {
+    path: String,
+    content_type: Option<String>,
+    body: Vec<u8>,
+}
+
+impl TestCollector {
+    fn start(status: u16) -> Self {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let endpoint = format!("http://{}", listener.local_addr().unwrap());
+        let (request_tx, request_rx) = mpsc::channel();
+        thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut bytes = Vec::new();
+            let mut buffer = [0_u8; 4096];
+            loop {
+                let read = stream.read(&mut buffer).unwrap();
+                if read == 0 {
+                    break;
+                }
+                bytes.extend_from_slice(&buffer[..read]);
+                if captured_request(&bytes).is_some() {
+                    break;
+                }
+            }
+            let request = captured_request(&bytes).unwrap();
+            request_tx.send(request).unwrap();
+            let response = format!(
+                "HTTP/1.1 {status} test\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}"
+            );
+            stream.write_all(response.as_bytes()).unwrap();
+        });
+        Self {
+            endpoint,
+            request_rx,
+        }
+    }
+
+    fn request(self) -> CapturedRequest {
+        self.request_rx.recv().unwrap()
+    }
+}
+
+fn captured_request(bytes: &[u8]) -> Option<CapturedRequest> {
+    let headers_end = bytes.windows(4).position(|window| window == b"\r\n\r\n")?;
+    let headers = std::str::from_utf8(&bytes[..headers_end]).ok()?;
+    let content_length = headers
+        .lines()
+        .find_map(|line| line.strip_prefix("Content-Length: "))
+        .and_then(|value| value.parse::<usize>().ok())?;
+    let body_start = headers_end + 4;
+    if bytes.len() < body_start + content_length {
+        return None;
+    }
+    let mut lines = headers.lines();
+    let request_line = lines.next()?;
+    let path = request_line.split_whitespace().nth(1)?.to_owned();
+    let content_type = headers
+        .lines()
+        .find_map(|line| line.strip_prefix("Content-Type: "))
+        .map(ToOwned::to_owned);
+    Some(CapturedRequest {
+        path,
+        content_type,
+        body: bytes[body_start..body_start + content_length].to_vec(),
+    })
 }

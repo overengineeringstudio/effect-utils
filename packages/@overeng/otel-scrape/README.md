@@ -1,16 +1,18 @@
 # otel-scrape
 
 `otel-scrape` wraps a command, preserves passthrough stdout/stderr/exit status,
-and provides the Rust package boundary for the future telemetry wrapper.
+and provides the Rust package boundary for command-wrapper telemetry.
 
-This first crate slice is deliberately transparent: it does not export OTLP,
-derive adapter telemetry, or claim release-grade descendant process-tree
-fidelity yet.
+The wrapper is deliberately transparent by default: without `--summary-out`,
+`OTEL_SCRAPE_SUMMARY_OUT`, `--otlp-endpoint`, or
+`OTEL_EXPORTER_OTLP_ENDPOINT`, it runs the child without writing local evidence
+or exporting telemetry.
 
 ```bash
 otel-scrape -- cargo test
 otel-scrape cargo test
 otel-scrape --adapter oxlint --summary-out ./summary.json -- oxlint --format=json src
+otel-scrape --otlp-endpoint http://127.0.0.1:4318 -- cargo test
 ```
 
 The script-visible contract is the important part of this milestone: stdout,
@@ -21,9 +23,15 @@ joins a W3C `traceparent` and exports the child context through both
 When `--summary-out <file>` or `OTEL_SCRAPE_SUMMARY_OUT` is set, the wrapper
 writes local JSON evidence with hashed argv/cwd identity, child exit status,
 duration, trace join/root facts, and explicit degraded flags for direct-child-only
-process capture and absent OTLP export. Later milestones can add command spans,
-adapter parsing, and CAS profile links without changing the pass-through
-boundary.
+process capture.
+
+When `--otlp-endpoint <url>` or `OTEL_EXPORTER_OTLP_ENDPOINT` is set, the
+wrapper exports one `otel_scrape.command` span through the first-party
+OTLP/HTTP JSON boundary after the child exits. `--service-name <name>` or
+`OTEL_SERVICE_NAME` sets the emitted resource `service.name`. Export failures
+are warnings and do not change stdout, stderr, stdin, or the child exit code.
+Adapter-derived OTLP events, profile links, metrics, and release-grade
+descendant process-tree spans are follow-up milestones.
 
 `--adapter oxlint` parses oxlint JSON from stdout after preserving the child
 stdout bytes, recording a diagnostics metric and diagnostic events in the

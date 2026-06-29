@@ -7,12 +7,14 @@
 use std::fmt::Write as _;
 use std::fs;
 use std::io::{self, Read, Write};
+use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
 use std::thread;
-use std::time::Instant;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use sha2::{Digest, Sha256};
 
 #[path = "telemetry_registry.gen.rs"]
@@ -23,6 +25,8 @@ const EX_USAGE: u8 = 64;
 const TRACE_FLAGS_SAMPLED: &str = "01";
 const SUMMARY_ENV: &str = "OTEL_SCRAPE_SUMMARY_OUT";
 const CAS_ROOT_ENV: &str = "OTEL_SCRAPE_CAS_ROOT";
+const OTLP_ENDPOINT_ENV: &str = "OTEL_EXPORTER_OTLP_ENDPOINT";
+const SERVICE_NAME_ENV: &str = "OTEL_SERVICE_NAME";
 const TRACEPARENT_ENV: &str = "traceparent";
 const PROFILE_MEDIA_TYPE: &str = "application/octet-stream";
 const OUTPUT_MEDIA_TYPE: &str = "application/octet-stream";
@@ -36,6 +40,8 @@ pub struct RunConfig {
     pub adapter: String,
     pub cas_root: Option<PathBuf>,
     pub cas_pin: Option<String>,
+    pub otlp_endpoint: Option<String>,
+    pub service_name: String,
     pub profile_artifacts: Vec<ProfileArtifactInput>,
     pub argv: Vec<String>,
 }
@@ -215,6 +221,9 @@ pub fn parse_args(args: &[String]) -> Result<CommandRequest, UsageError> {
     let mut adapter = String::from("none");
     let mut cas_root: Option<PathBuf> = std::env::var_os(CAS_ROOT_ENV).map(PathBuf::from);
     let mut cas_pin: Option<String> = None;
+    let mut otlp_endpoint = std::env::var(OTLP_ENDPOINT_ENV).ok();
+    let mut service_name =
+        std::env::var(SERVICE_NAME_ENV).unwrap_or_else(|_| String::from("otel-scrape"));
     let mut profile_artifacts = Vec::new();
     let mut child_start: Option<usize> = None;
 
@@ -259,6 +268,24 @@ pub fn parse_args(args: &[String]) -> Result<CommandRequest, UsageError> {
                 cas_pin = Some(value.clone());
                 i += 2;
             }
+            "--otlp-endpoint" => {
+                let Some(value) = args.get(i + 1) else {
+                    return usage_error("--otlp-endpoint needs an http endpoint");
+                };
+                validate_http_endpoint(value)?;
+                otlp_endpoint = Some(value.clone());
+                i += 2;
+            }
+            "--service-name" => {
+                let Some(value) = args.get(i + 1) else {
+                    return usage_error("--service-name needs a value");
+                };
+                if value.trim().is_empty() {
+                    return usage_error("--service-name must not be empty");
+                }
+                service_name = value.clone();
+                i += 2;
+            }
             "--profile-artifact" => {
                 let Some(value) = args.get(i + 1) else {
                     return usage_error("--profile-artifact needs <type>:<path>");
@@ -300,6 +327,8 @@ pub fn parse_args(args: &[String]) -> Result<CommandRequest, UsageError> {
         adapter,
         cas_root,
         cas_pin,
+        otlp_endpoint,
+        service_name,
         profile_artifacts,
         argv,
     }))
@@ -310,7 +339,7 @@ pub fn print_help() {
     eprintln!();
     eprintln!("usage:");
     eprintln!(
-        "  otel-scrape [--summary-out <file>] [--adapter none|oxlint] [--cas-root <dir>] [--cas-pin <name>] [--profile-artifact <type>:<path>] -- <cmd...>"
+        "  otel-scrape [--summary-out <file>] [--adapter none|oxlint] [--otlp-endpoint <url>] [--service-name <name>] [--cas-root <dir>] [--cas-pin <name>] [--profile-artifact <type>:<path>] -- <cmd...>"
     );
     eprintln!("  otel-scrape --version | --help");
 }
@@ -322,6 +351,7 @@ pub fn print_version() {
 pub fn run(config: RunConfig) -> io::Result<i32> {
     let trace = trace_context_from_env()?;
     let child_traceparent = trace.child_traceparent();
+    let started_wall = SystemTime::now();
     let started = Instant::now();
 
     let child = run_child(&config, &child_traceparent)?;
@@ -360,6 +390,13 @@ pub fn run(config: RunConfig) -> io::Result<i32> {
                     path.display()
                 );
             }
+        }
+    }
+
+    if let Some(endpoint) = config.otlp_endpoint.as_ref() {
+        if let Err(cause) = export_command_span(&config, &trace, &child, started_wall, duration_ms)
+        {
+            eprintln!("otel-scrape: warning: failed to export OTLP trace to {endpoint}: {cause}");
         }
     }
 
@@ -503,6 +540,158 @@ fn resource_summary(duration_ms: u128) -> ResourceSummary {
             max_rss: RESOURCE_FACT_UNAVAILABLE,
         },
     }
+}
+
+fn export_command_span(
+    config: &RunConfig,
+    trace: &TraceContext,
+    child: &ChildRun,
+    started_wall: SystemTime,
+    duration_ms: u128,
+) -> io::Result<()> {
+    let Some(endpoint) = config.otlp_endpoint.as_ref() else {
+        return Ok(());
+    };
+    let start_unix_nano = unix_nanos(started_wall);
+    let end_unix_nano = start_unix_nano.saturating_add(duration_ms.saturating_mul(1_000_000));
+    let mut span = json!({
+        "traceId": trace.trace_id,
+        "spanId": trace.span_id,
+        "name": telemetry_registry::spans::COMMAND,
+        "kind": 1,
+        "startTimeUnixNano": start_unix_nano.to_string(),
+        "endTimeUnixNano": end_unix_nano.to_string(),
+        "attributes": [
+            {
+                "key": telemetry_registry::attributes::PROCESS_COMMAND_ARGS_HASH,
+                "value": { "stringValue": stable_hash_lines(&config.argv) },
+            },
+            {
+                "key": telemetry_registry::attributes::PROCESS_EXIT_CODE,
+                "value": { "intValue": exit_code(child.status).to_string() },
+            },
+            {
+                "key": telemetry_registry::attributes::ADAPTER_NAME,
+                "value": { "stringValue": config.adapter },
+            },
+        ],
+        "status": { "code": if child.status.success() { 1 } else { 2 } },
+    });
+    if let Some(parent_span_id) = trace.parent_span_id.as_ref() {
+        span["parentSpanId"] = json!(parent_span_id);
+    }
+    let body = json!({
+        "resourceSpans": [{
+            "resource": {
+                "attributes": [
+                    { "key": "service.name", "value": { "stringValue": config.service_name } },
+                    { "key": "telemetry.sdk.language", "value": { "stringValue": "rust" } },
+                ],
+            },
+            "scopeSpans": [{
+                "scope": { "name": "otel-scrape" },
+                "spans": [span],
+            }],
+        }],
+    });
+    let bytes = serde_json::to_vec(&body)?;
+    post_otlp_http_json(endpoint, &bytes)
+}
+
+fn unix_nanos(time: SystemTime) -> u128 {
+    time.duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0)
+}
+
+fn post_otlp_http_json(endpoint: &str, body: &[u8]) -> io::Result<()> {
+    let endpoint = parse_http_endpoint(endpoint)?;
+    let mut stream = TcpStream::connect((endpoint.host.as_str(), endpoint.port))?;
+    let request = format!(
+        "POST {} HTTP/1.1\r\nHost: {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        endpoint.path,
+        endpoint.host_header,
+        body.len(),
+    );
+    stream.write_all(request.as_bytes())?;
+    stream.write_all(body)?;
+    stream.flush()?;
+
+    let mut response = Vec::new();
+    stream.read_to_end(&mut response)?;
+    let status_line = response
+        .split(|byte| *byte == b'\n')
+        .next()
+        .and_then(|line| std::str::from_utf8(line).ok())
+        .unwrap_or_default()
+        .trim_end_matches('\r');
+    if status_line.starts_with("HTTP/1.1 2") || status_line.starts_with("HTTP/1.0 2") {
+        return Ok(());
+    }
+    Err(io::Error::other(format!(
+        "collector returned {status_line}"
+    )))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct HttpEndpoint {
+    host: String,
+    host_header: String,
+    port: u16,
+    path: String,
+}
+
+fn validate_http_endpoint(value: &str) -> Result<(), UsageError> {
+    parse_http_endpoint(value)
+        .map(|_| ())
+        .map_err(|cause| UsageError {
+            message: format!("--otlp-endpoint must be an http URL: {cause}"),
+        })
+}
+
+fn parse_http_endpoint(value: &str) -> io::Result<HttpEndpoint> {
+    let Some(rest) = value.strip_prefix("http://") else {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "only http:// endpoints are supported in this slice",
+        ));
+    };
+    let (authority, path) = rest.split_once('/').unwrap_or((rest, ""));
+    if authority.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "missing endpoint host",
+        ));
+    }
+    let (host, port) = authority.rsplit_once(':').map_or_else(
+        || Ok((authority.to_owned(), 80)),
+        |(host, port)| {
+            if host.is_empty() {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "missing endpoint host",
+                ));
+            }
+            let port = port.parse::<u16>().map_err(|cause| {
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("invalid port: {cause}"),
+                )
+            })?;
+            Ok((host.to_owned(), port))
+        },
+    )?;
+    let path = if path.is_empty() {
+        String::from("/v1/traces")
+    } else {
+        format!("/{path}")
+    };
+    Ok(HttpEndpoint {
+        host,
+        host_header: authority.to_owned(),
+        port,
+        path,
+    })
 }
 
 fn adapter_summary(config: &RunConfig, stdout: &[u8]) -> AdapterSummary {
@@ -1005,6 +1194,9 @@ mod tests {
                 adapter: "none".to_owned(),
                 cas_root: None,
                 cas_pin: None,
+                otlp_endpoint: std::env::var(OTLP_ENDPOINT_ENV).ok(),
+                service_name: std::env::var(SERVICE_NAME_ENV)
+                    .unwrap_or_else(|_| "otel-scrape".to_owned()),
                 profile_artifacts: Vec::new(),
                 argv: vec!["echo".to_owned(), "hi".to_owned()],
             })
@@ -1033,6 +1225,9 @@ mod tests {
                 adapter: "none".to_owned(),
                 cas_root: Some(PathBuf::from("cas")),
                 cas_pin: Some("runs/run-1".to_owned()),
+                otlp_endpoint: std::env::var(OTLP_ENDPOINT_ENV).ok(),
+                service_name: std::env::var(SERVICE_NAME_ENV)
+                    .unwrap_or_else(|_| "otel-scrape".to_owned()),
                 profile_artifacts: vec![ProfileArtifactInput {
                     profile_type: "cpuprofile".to_owned(),
                     path: PathBuf::from("profile.cpuprofile"),
@@ -1040,6 +1235,29 @@ mod tests {
                 argv: vec!["true".to_owned()],
             })
         );
+    }
+
+    #[test]
+    fn parses_otlp_endpoint_and_service_name_options() {
+        let args = vec![
+            "--otlp-endpoint".to_owned(),
+            "http://127.0.0.1:4318".to_owned(),
+            "--service-name".to_owned(),
+            "custom-service".to_owned(),
+            "--".to_owned(),
+            "true".to_owned(),
+        ];
+
+        let request = parse_args(&args).unwrap();
+
+        let CommandRequest::Run(config) = request else {
+            panic!("expected run request");
+        };
+        assert_eq!(
+            config.otlp_endpoint,
+            Some("http://127.0.0.1:4318".to_owned())
+        );
+        assert_eq!(config.service_name, "custom-service");
     }
 
     #[test]
