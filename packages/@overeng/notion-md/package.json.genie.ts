@@ -1,9 +1,10 @@
 import {
   catalog,
   workspaceMember,
+  exportEntry,
   packageJson,
   privatePackageDefaults,
-  type PackageJsonData,
+  type PackageJsonInputData,
 } from '../../../genie/internal.ts'
 import contentAddressPkg from '../content-address/package.json.genie.ts'
 import notionCorePkg from '../notion-core/package.json.genie.ts'
@@ -74,9 +75,9 @@ export default packageJson(
     name: '@overeng/notion-md',
     ...privatePackageDefaults,
     exports: {
-      '.': './src/mod.ts',
-      './cli': './src/cli.ts',
-      './cli-program': './src/cli-program.ts',
+      '.': exportEntry('./src/mod.ts', { environment: 'node' }),
+      './cli': exportEntry('./src/cli.ts', { environment: 'node' }),
+      './cli-program': exportEntry('./src/cli-program.ts', { environment: 'node' }),
     },
     scripts: {
       storybook: 'storybook dev -p 6015',
@@ -94,6 +95,6 @@ export default packageJson(
         './cli-program': './dist/src/cli-program.js',
       },
     },
-  } satisfies PackageJsonData,
+  } satisfies PackageJsonInputData,
   workspaceDeps,
 )

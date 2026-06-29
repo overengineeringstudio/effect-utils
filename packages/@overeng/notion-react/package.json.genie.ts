@@ -1,9 +1,10 @@
 import {
   catalog,
   workspaceMember,
+  exportEntry,
   packageJson,
   privatePackageDefaults,
-  type PackageJsonData,
+  type PackageJsonInputData,
 } from '../../../genie/internal.ts'
 import notionEffectClientPkg from '../notion-effect-client/package.json.genie.ts'
 import notionEffectSchemaPkg from '../notion-effect-schema/package.json.genie.ts'
@@ -53,15 +54,18 @@ export default packageJson(
     name: '@overeng/notion-react',
     ...privatePackageDefaults,
     exports: {
-      '.': './src/mod.ts',
-      './renderer': './src/renderer/mod.ts',
-      './o11y': './src/o11y/mod.ts',
-      './o11y/effect': './src/o11y/effect-adapter.ts',
-      './o11y/otel': './src/o11y/otel-adapter.ts',
-      './test': './src/test/integration/e2e/helpers.ts',
-      './web': './src/web/mod.ts',
-      './web/styles.css': './src/web/styles.css',
-      './web/katex.css': './src/web/katex.css',
+      '.': exportEntry('./src/mod.ts', { environment: 'node' }),
+      './renderer': exportEntry('./src/renderer/mod.ts', { environment: 'browser' }),
+      './o11y': exportEntry('./src/o11y/mod.ts', { environment: 'browser' }),
+      './o11y/effect': exportEntry('./src/o11y/effect-adapter.ts', { environment: 'browser' }),
+      './o11y/otel': exportEntry('./src/o11y/otel-adapter.ts', { environment: 'browser' }),
+      './test': exportEntry('./src/test/integration/e2e/helpers.ts', {
+        environment: 'node',
+        published: false,
+      }),
+      './web': exportEntry('./src/web/mod.ts', { environment: 'browser' }),
+      './web/styles.css': exportEntry('./src/web/styles.css', { environment: 'browser' }),
+      './web/katex.css': exportEntry('./src/web/katex.css', { environment: 'browser' }),
     },
     publishConfig: {
       access: 'public',
@@ -90,6 +94,6 @@ export default packageJson(
       'test:integration': 'vitest run --config vitest.integration.config.ts',
       'test:integration:e2e': 'vitest run --config vitest.integration.config.ts e2e',
     },
-  } satisfies PackageJsonData,
+  } satisfies PackageJsonInputData,
   workspaceDeps,
 )

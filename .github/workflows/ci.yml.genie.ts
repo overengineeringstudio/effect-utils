@@ -41,7 +41,10 @@ import {
 } from '../../genie/ci-workflow.ts'
 import { type CIJobName } from '../../genie/ci.ts'
 import { nixOnlyPackages } from '../../genie/packages.ts'
-import { type GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
+import {
+  githubWorkflowEvent,
+  type GitHubWorkflowArgs,
+} from '../../packages/@overeng/genie/src/runtime/mod.ts'
 
 const workflowReportFlakeRef =
   "github:${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}/${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}#workflow-report"
@@ -869,7 +872,7 @@ export default ciWorkflow({
   name: 'CI',
   on: {
     push: { branches: ['main'] },
-    pull_request: { branches: ['main'] },
+    pull_request: githubWorkflowEvent.all,
     workflow_dispatch: {
       inputs: {
         ...ciMeasurementBaselineWorkflowDispatchInputs,

@@ -1,9 +1,10 @@
 import {
   catalog,
   workspaceMember,
+  exportEntry,
   packageJson,
   privatePackageDefaults,
-  type PackageJsonData,
+  type PackageJsonInputData,
 } from '../../../genie/internal.ts'
 import otelContractPkg from '../otel-contract/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
@@ -41,8 +42,8 @@ export default packageJson(
     name: '@overeng/effect-react',
     ...privatePackageDefaults,
     exports: {
-      '.': './src/mod.ts',
-      './react-aria': './src/react-aria/mod.ts',
+      '.': exportEntry('./src/mod.ts', { environment: 'browser' }),
+      './react-aria': exportEntry('./src/react-aria/mod.ts', { environment: 'browser' }),
     },
     publishConfig: {
       access: 'public',
@@ -55,6 +56,6 @@ export default packageJson(
       storybook: 'storybook dev -p 6009',
       'storybook:build': 'storybook build',
     },
-  } satisfies PackageJsonData,
+  } satisfies PackageJsonInputData,
   workspaceDeps,
 )

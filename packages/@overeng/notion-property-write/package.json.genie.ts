@@ -1,9 +1,10 @@
 import {
   catalog,
   workspaceMember,
+  exportEntry,
   packageJson,
   privatePackageDefaults,
-  type PackageJsonData,
+  type PackageJsonInputData,
 } from '../../../genie/internal.ts'
 import notionEffectSchemaPkg from '../notion-effect-schema/package.json.genie.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
@@ -30,7 +31,7 @@ export default packageJson(
     name: '@overeng/notion-property-write',
     ...privatePackageDefaults,
     exports: {
-      '.': './src/mod.ts',
+      '.': exportEntry('./src/mod.ts', { environment: 'isomorphic-es2024' }),
     },
     publishConfig: {
       access: 'public',
@@ -38,6 +39,6 @@ export default packageJson(
         '.': './dist/mod.js',
       },
     },
-  } satisfies PackageJsonData,
+  } satisfies PackageJsonInputData,
   workspaceDeps,
 )

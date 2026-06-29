@@ -1,9 +1,10 @@
 import {
   catalog,
   workspaceMember,
+  exportEntry,
   packageJson,
   privatePackageDefaults,
-  type PackageJsonData,
+  type PackageJsonInputData,
 } from '../../../genie/internal.ts'
 import otelContractPkg from '../otel-contract/package.json.genie.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
@@ -42,8 +43,8 @@ export default packageJson(
       'bundle:smoke': 'bun ../../../genie/ci-scripts/bundle-smoke.ts',
     },
     exports: {
-      '.': './src/mod.ts',
-      './client': './src/client.ts',
+      '.': exportEntry('./src/mod.ts', { environment: 'node' }),
+      './client': exportEntry('./src/client.ts', { environment: 'node' }),
     },
     publishConfig: {
       access: 'public',
@@ -52,6 +53,6 @@ export default packageJson(
         './client': './dist/client.js',
       },
     },
-  } satisfies PackageJsonData,
+  } satisfies PackageJsonInputData,
   workspaceDeps,
 )

@@ -26,6 +26,36 @@ All notable changes to this project will be documented in this file.
   repo wiring now orders `mr:setup` after package installation like the other
   megarepo tasks.
 
+- **@overeng/genie**: Add package-json-owned export environment contracts for
+  JavaScript package entries. `exportEntry(...)` attaches non-emitted runtime
+  and type-level environment metadata to generated package exports, while the
+  package-json validator owns the Node-only static import/global scanner,
+  strict TypeScript proof, and cache-backed fast path for constrained
+  environments such as Node, browsers, Workers, Workerd, and React Native.
+  Contracts now cover the repository's package exports, including conditional
+  browser/node entries and patterned source exports, replacing the previous
+  one-off Genie entry-purity test.
+
+- **@overeng/genie**: Add an opt-in package-json export contract coverage
+  policy. `definePackageJson({ validation })` can now bake warning/error
+  pressure into a repo's package-json generator, while per-call options remain
+  available as overrides. The policy reports package exports that are not
+  annotated with `exportEntry(...)`, supports glob ignores for staged
+  migrations, reuses Genie validation warnings, and stays package-json-owned so
+  shared repos can migrate toward JavaScript environment contracts without
+  adding Genie core semantics. effect-utils' internal Genie surface now uses the
+  configured generator in warning mode.
+
+- **@overeng/genie / CI**: Add the `githubWorkflowEvent.all` trigger sentinel
+  so GitHub workflow generators can request an unfiltered event without raw
+  `null` in authoring code. The main CI workflow now uses it to run for pull
+  requests targeting any base branch, while keeping push CI restricted to
+  `main`.
+
+- **@overeng/megarepo, @overeng/tui-stories**: Refresh stale fixed-output
+  dependency hashes after the stacked PR workflow/API change altered prepared
+  dependency closures.
+
 - **devenv/lint-oxc**: Make `lintPaths` the single lint surface contract.
   oxlint/oxfmt tasks now enumerate tracked plus untracked non-ignored files via
   `git ls-files` and always run instead of delegating change detection to
@@ -48,6 +78,11 @@ All notable changes to this project will be documented in this file.
   Markdown parsers and consume one block-payload contract.
 
 ### Fixed
+
+- **@overeng/genie**: Tighten package-json export environment validation so
+  constrained profiles reject bare Node builtin imports, follow extensionless
+  directory entrypoints, and resolve overlapping conditional exports in emitted
+  condition order.
 
 - **@overeng/genie**: Ship `typescript` as a runtime dependency so the CLI's
   JSONC validation path resolves outside the repo development shell.

@@ -1,9 +1,10 @@
 import {
   catalog,
   workspaceMember,
+  exportEntry,
   packageJson,
   privatePackageDefaults,
-  type PackageJsonData,
+  type PackageJsonInputData,
 } from '../../../genie/internal.ts'
 import otelContractPkg from '../otel-contract/package.json.genie.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
@@ -38,8 +39,8 @@ export default packageJson(
     name: '@overeng/workflow-report',
     ...privatePackageDefaults,
     exports: {
-      '.': './src/mod.ts',
-      './cli': './src/cli-command.ts',
+      '.': exportEntry('./src/mod.ts', { environment: 'node' }),
+      './cli': exportEntry('./src/cli-command.ts', { environment: 'node' }),
     },
     publishConfig: {
       access: 'public',
@@ -51,6 +52,6 @@ export default packageJson(
         './cli': './dist/src/cli-command.js',
       },
     },
-  } satisfies PackageJsonData,
+  } satisfies PackageJsonInputData,
   workspaceDeps,
 )
