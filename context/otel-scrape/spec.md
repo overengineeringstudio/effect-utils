@@ -140,6 +140,32 @@ See [.decisions/0004-generated-telemetry-registry.md](./.decisions/0004-generate
 
 Raw command arguments, local absolute paths, credentials, source text, and private payloads must not be emitted as span attributes.
 
+## OTLP Export Boundary
+
+`otel-scrape` starts with a small first-party OTLP/HTTP JSON exporter boundary before adopting a full Rust OpenTelemetry SDK. The boundary exists to prove the wrapper contract, adapter records, profile links, and `otelite` E2E capture without letting SDK lifecycle or metric semantics own the first release shape.
+
+```text
+otel-scrape
+  -> command span
+  -> adapter events / profile links
+  -> OTLP/HTTP JSON exporter
+  -> otelite capture fixture
+```
+
+Exporter configuration:
+
+- `--otlp-endpoint <url>` enables OTLP export for a run.
+- `OTEL_EXPORTER_OTLP_ENDPOINT` is the environment fallback.
+- `--service-name <name>` sets the service name for emitted resource metadata.
+- `OTEL_SERVICE_NAME` is the environment fallback.
+- If no OTLP endpoint and no summary path are configured, wrapper passthrough behavior stays indistinguishable from direct command execution.
+
+Exporter failures are degraded wrapper evidence. They must not change child stdout, stderr, stdin, or exit status. Summary JSON remains local/debug evidence and must not become the primary telemetry transport.
+
+The first OTLP slice emits the wrapper command span, adapter events, and profile-link attributes/events using generated registry names and fields. Adapter metric records remain structured local records until trace correlation and OTLP metric semantics are explicit.
+
+See [.decisions/0008-first-party-otlp-export-boundary.md](./.decisions/0008-first-party-otlp-export-boundary.md).
+
 ## Artifact Store
 
 Profile artifacts use the reusable [content-address VRS](../content-address/spec.md) for descriptors, object paths, `cas:` retrieval URIs, and manifest pins. `otel-scrape` writes artifact bytes into a per-run CAS root using the digest-derived object path. The span carries a location-independent profile link; the run context supplies the CAS root resolver.
@@ -192,4 +218,4 @@ See [.decisions/0007-first-adapter-plus-fixtures.md](./.decisions/0007-first-ada
 
 ## Open Design Questions
 
-None.
+**DQ1 - Adapter metric correlation:** Should adapter metrics become OTLP metric points, span events, span attributes, or remain local summary records when a run needs trace-correlated diagnostics? This is resolved when one adapter metric shape has a concrete backend query use case and an E2E proof that the chosen representation preserves correlation without faking metric semantics.
