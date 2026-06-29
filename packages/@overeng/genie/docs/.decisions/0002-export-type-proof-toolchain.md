@@ -96,8 +96,8 @@ The implementation:
    compiler executable path and compiler kind
 2. resolves source-mode compilers from `GENIE_EXPORT_TYPE_PROOF_COMPILER`,
    then `tsgo`
-3. wires the Nix-packaged Genie wrapper to the flake-pinned
-   `effect-tsgo`/`bin/tsgo` executable
+3. wires the Nix-packaged Genie wrapper to the flake-pinned lean `tsgo`
+   package executable
 4. generates temporary proof tsconfigs under the existing export-validation
    cache directory
 5. invokes the compiler with no emit and environment-profile-specific libs,
