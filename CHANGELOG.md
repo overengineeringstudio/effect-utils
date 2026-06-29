@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **CI**: Collapse guarded live Netlify and Vercel deploy E2Es into one shared
+  live deploy job so generated CI stays below GitHub Actions workflow
+  admission size limits.
+
 ### Added
 
 - **@overeng/genie**: Document the intended package export type-proof

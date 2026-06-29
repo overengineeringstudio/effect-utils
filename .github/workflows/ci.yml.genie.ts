@@ -170,6 +170,9 @@ const liveVercelCiToolsPreflightStep = {
 
 const liveVercelCiToolsIf = "steps.live-vercel-preflight.outputs.run == 'true'"
 
+const liveDeployCiToolsIf =
+  "steps.live-netlify-preflight.outputs.run == 'true' || steps.live-vercel-preflight.outputs.run == 'true'"
+
 const andLiveVercelCiToolsIf = (condition: string) => {
   const trimmed = condition.trim()
   const unwrapped =
@@ -185,6 +188,23 @@ const onlyWhenLiveVercelCiTools = <Step extends Record<string, unknown>>(step: S
     typeof step.if === 'string' && step.if.length > 0
       ? andLiveVercelCiToolsIf(step.if)
       : liveVercelCiToolsIf,
+})
+
+const andLiveDeployCiToolsIf = (condition: string) => {
+  const trimmed = condition.trim()
+  const unwrapped =
+    trimmed.startsWith('${{') === true && trimmed.endsWith('}}') === true
+      ? trimmed.slice(3, -2).trim()
+      : trimmed
+  return `(${unwrapped}) && (${liveDeployCiToolsIf})`
+}
+
+const onlyWhenLiveDeployCiTools = <Step extends Record<string, unknown>>(step: Step) => ({
+  ...step,
+  if:
+    typeof step.if === 'string' && step.if.length > 0
+      ? andLiveDeployCiToolsIf(step.if)
+      : liveDeployCiToolsIf,
 })
 
 const liveVercelCiToolsE2EStep = {
@@ -928,11 +948,11 @@ const extraJobs: Record<string, any> = {
       failureReminderStep,
     ],
   },
-  'test-live-netlify-ci-tools': {
+  'test-live-deploy-ci-tools': {
     if: normalCiIf,
     concurrency: {
       group:
-        'test-live-netlify-ci-tools-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}',
+        'test-live-deploy-ci-tools-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}',
       'cancel-in-progress': true,
     },
     'runs-on': namespaceRunner({
@@ -944,36 +964,14 @@ const extraJobs: Record<string, any> = {
     env: standardCIEnv,
     steps: [
       liveNetlifyCiToolsPreflightStep,
-      ...baseSteps.map(onlyWhenLiveNetlifyCiTools),
-      onlyWhenLiveNetlifyCiTools(liveNetlifyCiToolsE2EStep),
-      onlyWhenLiveNetlifyCiTools(savePnpmStateStep()),
-      onlyWhenLiveNetlifyCiTools(nixDiagnosticsSummaryStep),
-      onlyWhenLiveNetlifyCiTools(nixDiagnosticsArtifactStep()),
-      onlyWhenLiveNetlifyCiTools(failureReminderStep),
-    ],
-  },
-  'test-live-vercel-ci-tools': {
-    if: normalCiIf,
-    concurrency: {
-      group:
-        'test-live-vercel-ci-tools-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}',
-      'cancel-in-progress': true,
-    },
-    'runs-on': namespaceRunner({
-      profile: 'namespace-profile-linux-x86-64',
-      runId: '${{ github.run_id }}',
-    }),
-    'timeout-minutes': 30,
-    defaults: bashShellDefaults,
-    env: standardCIEnv,
-    steps: [
       liveVercelCiToolsPreflightStep,
-      ...baseSteps.map(onlyWhenLiveVercelCiTools),
+      ...baseSteps.map(onlyWhenLiveDeployCiTools),
+      onlyWhenLiveNetlifyCiTools(liveNetlifyCiToolsE2EStep),
       onlyWhenLiveVercelCiTools(liveVercelCiToolsE2EStep),
-      onlyWhenLiveVercelCiTools(savePnpmStateStep()),
-      onlyWhenLiveVercelCiTools(nixDiagnosticsSummaryStep),
-      onlyWhenLiveVercelCiTools(nixDiagnosticsArtifactStep()),
-      onlyWhenLiveVercelCiTools(failureReminderStep),
+      onlyWhenLiveDeployCiTools(savePnpmStateStep()),
+      onlyWhenLiveDeployCiTools(nixDiagnosticsSummaryStep),
+      onlyWhenLiveDeployCiTools(nixDiagnosticsArtifactStep()),
+      onlyWhenLiveDeployCiTools(failureReminderStep),
     ],
   },
 }
