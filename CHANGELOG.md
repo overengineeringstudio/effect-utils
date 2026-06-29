@@ -79,6 +79,11 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/genie**: Tighten package-json export environment validation so
+  constrained profiles reject bare Node builtin imports, follow extensionless
+  directory entrypoints, and resolve overlapping conditional exports in emitted
+  condition order.
+
 - **@overeng/genie**: Ship `typescript` as a runtime dependency so the CLI's
   JSONC validation path resolves outside the repo development shell.
 

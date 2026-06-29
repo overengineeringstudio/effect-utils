@@ -492,6 +492,39 @@ describe('packageJson', () => {
     })
   })
 
+  it('forbids bare Node builtin imports in constrained export environments', () => {
+    const repo = createTempRepo('packages/pkg')
+    const packageDir = repo.memberDirs['packages/pkg']!
+    fs.mkdirSync(path.join(packageDir, 'src'))
+    fs.writeFileSync(
+      path.join(packageDir, 'src/mod.ts'),
+      "import { readFile } from 'fs/promises'\nexport const read = readFile\n",
+    )
+    const result = packageJson({
+      name: '@test/package',
+      version: '1.0.0',
+      exports: {
+        '.': exportEntry('./src/mod.ts', {
+          environment: 'isomorphic-es2024',
+        }),
+      },
+    })
+
+    const issues = result.validate?.({
+      cwd: repo.repoRoot,
+      location: 'packages/pkg',
+      validation: { packageJson: nodePackageJsonValidationRuntime },
+    })
+
+    expect(issues).toContainEqual({
+      severity: 'error',
+      packageName: '@test/package',
+      dependency: '.',
+      message: expect.stringContaining('imports "fs/promises"'),
+      rule: 'package-json-export-environment-import',
+    })
+  })
+
   it('follows NodeNext .js source imports when scanning export environments', () => {
     const repo = createTempRepo('packages/pkg')
     const packageDir = repo.memberDirs['packages/pkg']!
@@ -519,6 +552,40 @@ describe('packageJson', () => {
       packageName: '@test/package',
       dependency: '.',
       message: expect.stringContaining('src/util.ts imports "node:fs"'),
+      rule: 'package-json-export-environment-import',
+    })
+  })
+
+  it('follows directory entrypoints when scanning extensionless source imports', () => {
+    const repo = createTempRepo('packages/pkg')
+    const packageDir = repo.memberDirs['packages/pkg']!
+    fs.mkdirSync(path.join(packageDir, 'src/feature'), { recursive: true })
+    fs.writeFileSync(path.join(packageDir, 'src/mod.ts'), "import './feature'\n")
+    fs.writeFileSync(
+      path.join(packageDir, 'src/feature/index.ts'),
+      "import fs from 'node:fs'\nvoid fs\n",
+    )
+    const result = packageJson({
+      name: '@test/package',
+      version: '1.0.0',
+      exports: {
+        '.': exportEntry('./src/mod.ts', {
+          environment: 'isomorphic-es2024',
+        }),
+      },
+    })
+
+    const issues = result.validate?.({
+      cwd: repo.repoRoot,
+      location: 'packages/pkg',
+      validation: { packageJson: nodePackageJsonValidationRuntime },
+    })
+
+    expect(issues).toContainEqual({
+      severity: 'error',
+      packageName: '@test/package',
+      dependency: '.',
+      message: expect.stringContaining('src/feature/index.ts imports "node:fs"'),
       rule: 'package-json-export-environment-import',
     })
   })
@@ -630,6 +697,46 @@ describe('packageJson', () => {
       packageName: '@test/package',
       dependency: './testing/*',
       message: expect.stringContaining('src/testing/e2e/not-ok.ts imports "node:crypto"'),
+      rule: 'package-json-export-environment-import',
+    })
+  })
+
+  it('resolves conditional export targets in emitted condition order', () => {
+    const repo = createTempRepo('packages/pkg')
+    const packageDir = repo.memberDirs['packages/pkg']!
+    fs.mkdirSync(path.join(packageDir, 'src'))
+    fs.writeFileSync(
+      path.join(packageDir, 'src/browser.ts'),
+      "import fs from 'node:fs'\nexport const read = fs.readFileSync\n",
+    )
+    fs.writeFileSync(path.join(packageDir, 'src/worker.ts'), 'export const value = 1\n')
+    const result = packageJson({
+      name: '@test/package',
+      version: '1.0.0',
+      exports: {
+        '.': exportEntry(
+          {
+            browser: './src/browser.ts',
+            worker: './src/worker.ts',
+          },
+          {
+            environment: 'webworker',
+          },
+        ),
+      },
+    })
+
+    const issues = result.validate?.({
+      cwd: repo.repoRoot,
+      location: 'packages/pkg',
+      validation: { packageJson: nodePackageJsonValidationRuntime },
+    })
+
+    expect(issues).toContainEqual({
+      severity: 'error',
+      packageName: '@test/package',
+      dependency: '.',
+      message: expect.stringContaining('src/browser.ts imports "node:fs"'),
       rule: 'package-json-export-environment-import',
     })
   })

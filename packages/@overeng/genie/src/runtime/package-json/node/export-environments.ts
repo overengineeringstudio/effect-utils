@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { isBuiltin } from 'node:module'
 import path from 'node:path'
 import { performance } from 'node:perf_hooks'
 
@@ -109,6 +110,7 @@ const matchesForbiddenImport = ({
   specifier: string
   pattern: string
 }): boolean => {
+  if (pattern === 'node:*' && isBuiltin(specifier) === true) return true
   if (pattern.endsWith('*') === true) return specifier.startsWith(pattern.slice(0, -1))
   return specifier === pattern
 }
@@ -122,7 +124,7 @@ const resolveRelativeImport = ({
 }): string | undefined => {
   if (specifier.startsWith('.') === false) return undefined
   const resolved = path.resolve(path.dirname(fromFile), specifier)
-  if (existsSync(resolved) === true) return resolved
+  if (existsSync(resolved) === true && statSync(resolved).isFile() === true) return resolved
 
   const parsed = path.parse(resolved)
   const sourceExtensionsForRuntimeExtension: Record<string, readonly string[]> = {
@@ -339,8 +341,9 @@ const resolveExportTarget = ({
   profile: EnvironmentProfile
 }): string | undefined => {
   if (typeof entry === 'string') return entry
-  for (const condition of profile.conditions) {
-    const target = entry[condition]
+  const supportedConditions = new Set(profile.conditions)
+  for (const [condition, target] of Object.entries(entry)) {
+    if (supportedConditions.has(condition) === false) continue
     if (typeof target === 'string') return target
   }
   return undefined
