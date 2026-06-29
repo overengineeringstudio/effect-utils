@@ -15,6 +15,7 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import { HttpClient, HttpClientRequest } from '@effect/platform'
 import { Effect, Either, Schema } from 'effect'
 
 import {
@@ -181,25 +182,35 @@ const fetchVercelJson = Effect.fn('ci-tools.deploy.vercel.fetch-json')(function*
   readonly authToken: string
   readonly path: string
 }) {
-  return yield* Effect.tryPromise({
-    try: async () => {
-      const response = (await globalThis.fetch(
-        `${opts.apiBaseUrl.replace(/\/+$/u, '')}${opts.path}`,
-        {
-          headers: { Authorization: `Bearer ${opts.authToken}`, Connection: 'close' },
-        },
-      )) as unknown as { readonly status: number; readonly text: () => Promise<string> }
-      const text = await response.text()
-      return { status: response.status, text }
-    },
-    catch: (cause) =>
-      new ProviderProjectLookupFailed({
-        provider: 'vercel',
-        target: opts.target,
-        transient: true,
-        message: cause instanceof Error ? cause.message : 'Vercel API lookup failed',
+  const client = yield* HttpClient.HttpClient
+  return yield* client
+    .execute(
+      HttpClientRequest.get(`${opts.apiBaseUrl.replace(/\/+$/u, '')}${opts.path}`).pipe(
+        HttpClientRequest.setHeader('Authorization', `Bearer ${opts.authToken}`),
+        HttpClientRequest.setHeader('Connection', 'close'),
+      ),
+    )
+    .pipe(
+      Effect.flatMap((response) =>
+        response.text.pipe(Effect.map((text) => ({ status: response.status, text }))),
+      ),
+      Effect.catchTags({
+        RequestError: (cause) =>
+          new ProviderProjectLookupFailed({
+            provider: 'vercel',
+            target: opts.target,
+            transient: true,
+            message: cause.message,
+          }),
+        ResponseError: (cause) =>
+          new ProviderProjectLookupFailed({
+            provider: 'vercel',
+            target: opts.target,
+            transient: true,
+            message: cause.message,
+          }),
       }),
-  })
+    )
 })
 
 const resolveVercelProject = Effect.fn('ci-tools.deploy.vercel.resolve-project')(function* (opts: {
@@ -375,29 +386,41 @@ const verifyFinalUrlOnce = Effect.fn('ci-tools.deploy.vercel.verify-once')(funct
   readonly protectionBypass: string | undefined
 }) {
   const verifyUrl = new URL(opts.path, opts.finalUrl)
-  const response = yield* Effect.tryPromise({
-    try: async () => {
-      const result = (await globalThis.fetch(verifyUrl, {
-        headers: {
-          Connection: 'close',
-          ...(opts.protectionBypass === undefined
-            ? {}
-            : { 'x-vercel-protection-bypass': opts.protectionBypass }),
-        },
-      })) as unknown as { readonly status: number; readonly text: () => Promise<string> }
-      const text = await result.text()
-      return { status: result.status, text }
-    },
-    catch: (cause) =>
-      new VerificationFailed({
-        provider: 'vercel',
-        target: opts.target,
-        finalUrl: opts.finalUrl,
-        transient: true,
-        message: cause instanceof Error ? cause.message : 'Vercel live E2E verification failed',
-        diagnostics: { attempt: String(opts.attempt), verifyPath: opts.path },
-      }),
-  })
+  const client = yield* HttpClient.HttpClient
+  const baseRequest = HttpClientRequest.get(verifyUrl.toString()).pipe(
+    HttpClientRequest.setHeader('Connection', 'close'),
+  )
+  const request =
+    opts.protectionBypass === undefined
+      ? baseRequest
+      : baseRequest.pipe(
+          HttpClientRequest.setHeader('x-vercel-protection-bypass', opts.protectionBypass),
+        )
+  const response = yield* client.execute(request).pipe(
+    Effect.flatMap((result) =>
+      result.text.pipe(Effect.map((text) => ({ status: result.status, text }))),
+    ),
+    Effect.catchTags({
+      RequestError: (cause) =>
+        new VerificationFailed({
+          provider: 'vercel',
+          target: opts.target,
+          finalUrl: opts.finalUrl,
+          transient: true,
+          message: cause.message,
+          diagnostics: { attempt: String(opts.attempt), verifyPath: opts.path },
+        }),
+      ResponseError: (cause) =>
+        new VerificationFailed({
+          provider: 'vercel',
+          target: opts.target,
+          finalUrl: opts.finalUrl,
+          transient: true,
+          message: cause.message,
+          diagnostics: { attempt: String(opts.attempt), verifyPath: opts.path },
+        }),
+    }),
+  )
 
   if (response.status < 200 || response.status >= 300) {
     return yield* new VerificationFailed({

@@ -11,8 +11,8 @@ tasks and uploaded to a provider for review.
 domain model into provider-specific API or CLI operations.
 
 **Provider CLI fallback:** A deliberate provider adapter implementation choice
-where `ci-tools` invokes the provider's CLI through Effect `Command` because
-direct API implementation would be less reliable or too costly.
+where `ci-tools` invokes the provider's CLI from an Effect-wrapped boundary
+because direct API implementation would be less reliable or too costly.
 
 **Hermetic E2E:** An end-to-end test that exercises the real `ci-tools` binary
 and task boundary against fake providers without external provider network

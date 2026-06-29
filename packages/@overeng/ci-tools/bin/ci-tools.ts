@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
 import * as Cli from '@effect/cli'
+import { FetchHttpClient } from '@effect/platform'
 import { NodeContext, NodeRuntime } from '@effect/platform-node'
 import { Effect, Layer, Schema } from 'effect'
 
@@ -37,6 +38,6 @@ const program = Effect.gen(function* () {
       Layer.mergeAll(NodeContext.layer, withTelemetry({ identity, shape: 'cli', endpoint })),
     ),
   )
-})
+}).pipe(Effect.provide(FetchHttpClient.layer))
 
 program.pipe(NodeRuntime.runMain({ disableErrorReporting: true }))

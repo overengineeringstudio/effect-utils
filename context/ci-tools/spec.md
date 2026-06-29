@@ -5,16 +5,17 @@ plane. It builds on [requirements.md](./requirements.md).
 
 ## Status
 
-Draft
+Active
 
 ## Scope
 
 This spec defines:
 
-- the `@overeng/ci-tools` package and CLI after the hard rename
+- the `@overeng/ci-tools` package and CLI identity
 - deploy preview input, result, and failure modeling
 - Netlify and Vercel provider adapter boundaries
 - workflow-report record emission for success, failure, and skipped deploys
+- deploy task output emitted through `DEVENV_TASK_OUTPUT_FILE`
 - OTEL span shape for deploy operations
 - hermetic and live E2E test boundaries
 - the remaining role of generated workflows and Nix tasks
@@ -53,9 +54,11 @@ The Effect CLI is the source of truth for deploy semantics. Generated workflows
 and Nix tasks are launchers that provide configuration and preserve existing
 entrypoint names.
 
+Requirement trace: R01, R02, R03, R04, R24.
+
 ## Package and Binary Rename
 
-The package currently named `@overeng/workflow-report` becomes
+The package formerly named `@overeng/workflow-report` is
 `@overeng/ci-tools`.
 
 | Old identity               | New identity                                             |
@@ -64,9 +67,8 @@ The package currently named `@overeng/workflow-report` becomes
 | `workflow-report` binary   | `ci-tools` binary                                        |
 | workflow-report CLI root   | `ci-tools workflow-report ...` or compatible subcommands |
 
-The migration is a hard rename. Generated package manifests, TypeScript
-references, Nix package builders, Genie imports, and generated CI workflow call
-sites move to the new identity in the migration PR.
+Generated package manifests, TypeScript references, Nix package builders, Genie
+imports, and generated CI workflow call sites use the new identity.
 
 ## CLI Surface
 
@@ -84,9 +86,21 @@ ci-tools deploy vercel ...
 Workflow-report commands preserve the current behavior: collecting marked
 records, rendering managed comments, and locating managed comments.
 
-Deploy commands accept either structured JSON input or explicit CLI options. The
-generated task wrappers prefer structured JSON so config can be passed without
-shell parsing logic.
+Deploy commands accept explicit CLI options. Generated task wrappers parse
+`DEVENV_TASK_INPUT` only to select deploy mode and PR number, then pass provider
+configuration through typed CLI options. This keeps shell launchers thin while
+making the Effect CLI the semantic boundary.
+
+Human output follows the CLI design contract from R09-R11:
+
+- failures emit a typed workflow-report failure record before exiting
+- successes print one final URL line such as
+  `Netlify deploy URL: https://example.netlify.app`
+- every deploy outcome intended for PR reporting is emitted as a marked
+  `WORKFLOW_REPORT_V1:` JSON line
+- no decorative banners or repeated provider logs are added by `ci-tools`
+
+Requirement trace: R09, R10, R11, R12.
 
 ## Deploy Domain Model
 
@@ -143,6 +157,38 @@ type DeployResultV1 = {
 }
 ```
 
+### Deploy Task Output
+
+When `DEVENV_TASK_OUTPUT_FILE` is present, successful deploy commands write a
+single JSON line with environment variables that downstream devenv tasks can
+consume.
+
+```json
+{
+  "devenv": {
+    "env": {
+      "DEPLOY_FINAL_URL": "https://preview.example.app/",
+      "DEPLOY_FINAL_URL_TARGET": "https://preview.example.app/",
+      "DEPLOY_RAW_DEPLOY_URL": "https://raw-provider-url.example.app/",
+      "DEPLOY_RAW_DEPLOY_URL_TARGET": "https://raw-provider-url.example.app/",
+      "DEPLOYED_AT_UTC": "2026-06-29T00:00:00.000Z",
+      "DEPLOYED_AT_UTC_TARGET": "2026-06-29T00:00:00.000Z",
+      "VERCEL_DEPLOY_URL": "https://preview.example.app/",
+      "VERCEL_DEPLOY_URL_TARGET": "https://preview.example.app/",
+      "VERCEL_RAW_DEPLOY_URL": "https://raw-provider-url.example.app/",
+      "VERCEL_RAW_DEPLOY_URL_TARGET": "https://raw-provider-url.example.app/",
+      "VERCEL_DEPLOYED_AT_UTC": "2026-06-29T00:00:00.000Z",
+      "VERCEL_DEPLOYED_AT_UTC_TARGET": "2026-06-29T00:00:00.000Z"
+    }
+  }
+}
+```
+
+The target suffix is derived from the deploy target by replacing `-` and `/`
+with `_`, removing other non-alphanumeric characters, and uppercasing.
+
+Requirement trace: R06, R17.
+
 ### Deploy Errors
 
 Expected failures are represented as `Schema.TaggedError` classes. The initial
@@ -162,6 +208,8 @@ tags are:
 Unexpected defects remain defects. They are not converted into expected domain
 errors unless the boundary has enough information to classify them.
 
+Requirement trace: R05, R06, R08.
+
 ## Provider Adapter Contract
 
 ```
@@ -177,6 +225,12 @@ DeployProvider
 Each provider adapter declares which operations use direct API and which use CLI
 fallback. CLI fallback is acceptable for upload/deploy operations when it avoids
 reimplementing provider-specific file upload semantics.
+
+Provider API lookup and live verification HTTP calls use the Effect platform
+`HttpClient` through the runtime `FetchHttpClient.layer`. Provider CLI fallback
+is wrapped by Effect functions and classifies failures into deploy error tags.
+
+Requirement trace: R07, R08, R13, R15.
 
 ## Netlify Provider
 
@@ -197,6 +251,12 @@ The adapter classifies the known Netlify CLI failure
 `ProviderProjectLookupFailed` unless direct API diagnostics prove a more
 specific cause.
 
+The Netlify task launcher passes `--workspace-filter` when a deployment opts
+into workspace filtering and a package name can be derived from the artifact
+directory's sibling `package.json`.
+
+Requirement trace: R13, R14, R15, R17.
+
 ## Vercel Provider
 
 The Vercel adapter supports local prebuilt or static artifact deployment to the
@@ -213,6 +273,15 @@ ci-tools deploy vercel
 
 The adapter must not trigger Vercel's provider-side build system. It deploys
 local artifacts only.
+
+For static artifacts, `ci-tools` creates a Vercel Build Output API work
+directory with `.vercel/output/static`. For prebuilt artifacts, the task module
+first runs `vercel pull` and `vercel build` locally, then passes the resulting
+`.vercel/output` directory to `ci-tools deploy vercel --artifact-kind
+prebuilt-output`. Team projects may pass `--scope-env` so the provider CLI is
+scoped without committing account identifiers.
+
+Requirement trace: R13, R14, R15, R16, R17.
 
 ## Retry Policy
 
@@ -308,6 +377,8 @@ Deploy spans:
 Attributes must follow `@overeng/otel-contract` conventions. Secret values and
 unbounded raw stderr are not span attributes.
 
+Requirement trace: R06, R12.
+
 ## E2E Strategy
 
 ### Required Hermetic E2E
@@ -327,6 +398,9 @@ Required cases:
 - invalid provider output fails as `InvalidProviderOutput`
 - unsafe E2E alias is refused
 - no secret-like value appears in logs or records
+
+The task-boundary E2E also verifies `DEVENV_TASK_OUTPUT_FILE` URL metadata and
+Vercel prebuilt-output delegation.
 
 ### Non-required Live E2E
 
@@ -348,6 +422,8 @@ Live E2E flow:
 Cleanup failures degrade the record but do not mask deploy or verification
 failure.
 
+Requirement trace: R18, R19, R20, R21, R22, R23.
+
 ## Generated Workflow and Nix Boundaries
 
 Generated workflow steps call `ci-tools` and collect workflow-report records.
@@ -365,14 +441,17 @@ vercel:deploy:<target>
 Those tasks become thin launchers that serialize configured provider inputs and
 call `ci-tools deploy`.
 
+Requirement trace: R02, R17, R24.
+
 ## Open Design Questions
 
 - **DQ1 Direct deploy APIs:** Which provider deploy/upload operations can move
   from CLI fallback to direct API without reimplementing fragile provider file
   upload semantics?
-- **DQ2 Hard rename fallout:** Whether any downstream consumer depends on the
-  old `workflow-report` binary name outside generated CI. The hard rename assumes
-  repository-owned call sites can be updated atomically.
+- **DQ2 Platform command execution:** Provider CLI fallback failures are typed
+  and recorded today. Replacing the remaining Node command runner with
+  `@effect/platform` `Command` must preserve stdout/stderr capture, provider
+  exit codes, redaction, and fake-provider E2E behavior.
 - **DQ3 Live E2E requiredness:** Live provider E2E is non-required initially.
   Making it required would require evidence that provider-side flake rate is
   low enough not to block unrelated PRs.
