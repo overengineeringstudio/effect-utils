@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **CI tools VRS**: Add a VRS contract for the planned hard rename from
+  `@overeng/workflow-report` to `@overeng/ci-tools` and the Effect-owned
+  Netlify/Vercel deploy-preview control plane.
+
 - **devenv/lint-oxc**: Make `lintPaths` the single lint surface contract.
   oxlint/oxfmt tasks now enumerate tracked plus untracked non-ignored files via
   `git ls-files` and always run instead of delegating change detection to
