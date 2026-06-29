@@ -10,6 +10,9 @@ All notable changes to this project will be documented in this file.
   live deploy job so generated CI stays below GitHub Actions workflow
   admission size limits.
 
+- **@overeng/genie**: Validate documented GitHub Actions limits for static
+  matrix expansion, check runs per check suite, and explicit job timeouts.
+
 ### Added
 
 - **@overeng/genie**: Document the intended package export type-proof
