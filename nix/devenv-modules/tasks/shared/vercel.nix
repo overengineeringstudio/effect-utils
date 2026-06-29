@@ -57,11 +57,6 @@ let
           set -euo pipefail
 
           ${deployTask.mkRequiredEnvCheck {
-            envName = "VERCEL_TOKEN";
-            errorMessage = "Error: VERCEL_TOKEN is not set.";
-            hint = "Run through: secrets-run --reason 'deploy Vercel preview' -- devenv tasks run vercel:deploy:<target>";
-          }}
-          ${deployTask.mkRequiredEnvCheck {
             envName = orgIdEnv;
             exportName = "VERCEL_ORG_ID";
             localName = "org_id";
@@ -87,6 +82,9 @@ let
               ""
             else
               ''
+                if [ -z "''${VERCEL_TOKEN:-}" ]; then
+                  echo "Vercel token is unavailable; delegating missing-auth reporting to ci-tools." >&2
+                else
                 # Ensure native Node modules (e.g. sharp) can find libstdc++ on NixOS.
                 export LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
@@ -156,6 +154,7 @@ let
                 if [ ! -d ".vercel/output" ]; then
                   echo "Error: Missing prebuilt output directory: .vercel/output" >&2
                   exit 1
+                fi
                 fi
               ''
           }

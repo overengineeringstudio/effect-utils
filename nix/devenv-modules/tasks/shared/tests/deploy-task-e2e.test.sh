@@ -424,7 +424,29 @@ assert_contains "$vercel_static_args" "--scope-env VERCEL_SCOPE_WEB" "Vercel sta
 assert_json_field "https://web-preview-pr-123-team.vercel.app/" "$vercel_output_file" "value => value.devenv.env.VERCEL_DEPLOY_URL_WEB" "Vercel task output should be delegated through ci-tools"
 assert_json_field "vercel" "$vercel_report_file" "value => value.data.provider" "Vercel report record should be delegated through ci-tools"
 
-echo "Test 4: Vercel build-mode task builds locally then delegates prebuilt output"
+echo "Test 4: Vercel static task delegates missing auth to ci-tools reporting"
+vercel_missing_auth_report_file="$tmpdir/vercel-missing-auth-report.jsonl"
+set +e
+vercel_missing_auth_output="$(
+  cd "$workspace"
+  export FAKE_CI_TOOLS_LOG="$tmpdir/vercel-missing-auth-ci-tools.log"
+  export FAKE_BUNX_LOG="$tmpdir/static-missing-auth-bunx.log"
+  unset VERCEL_TOKEN
+  export VERCEL_ORG_ID="fake-org"
+  export VERCEL_PROJECT_ID_WEB="fake-project"
+  export VERCEL_SCOPE_WEB="fake-scope"
+  export DEVENV_TASK_INPUT='{"type":"preview"}'
+  export WORKFLOW_REPORT_OUTPUT_FILE="$vercel_missing_auth_report_file"
+  bash "$tmpdir/vercel-static-deploy.sh" 2>&1
+)"
+vercel_missing_auth_status=$?
+set -e
+
+assert_exit_code 1 "$vercel_missing_auth_status" "Vercel missing auth should fail through ci-tools"
+assert_contains "$(cat "$tmpdir/vercel-missing-auth-ci-tools.log")" "--workflow-report-output-file $vercel_missing_auth_report_file" "Vercel missing auth should still call ci-tools with report path"
+assert_json_field "MissingAuth" "$vercel_missing_auth_report_file" "value => value.data.errorKind" "Vercel missing auth should emit typed workflow report"
+
+echo "Test 5: Vercel build-mode task builds locally then delegates prebuilt output"
 build_output="$(
   cd "$workspace"
   export FAKE_BUNX_LOG="$tmpdir/build-bunx.log"

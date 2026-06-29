@@ -643,6 +643,16 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
     reservedAliasPrefix: options.e2eReservedAliasPrefix,
   }).pipe(Effect.catchAll(failWithRecord))
 
+  if (authTokenValue === undefined) {
+    return yield* failWithRecord(
+      new MissingAuth({
+        provider: 'vercel',
+        target: options.target,
+        envVar: options.authTokenEnv,
+        message: `Missing ${options.authTokenEnv}`,
+      }),
+    )
+  }
   if (
     existsSync(options.artifactDir) === false ||
     statSync(options.artifactDir).isDirectory() === false
@@ -653,17 +663,6 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
         target: options.target,
         artifactDir: options.artifactDir,
         message: `Missing local Vercel static output at ${options.artifactDir}`,
-      }),
-    )
-  }
-
-  if (authTokenValue === undefined) {
-    return yield* failWithRecord(
-      new MissingAuth({
-        provider: 'vercel',
-        target: options.target,
-        envVar: options.authTokenEnv,
-        message: `Missing ${options.authTokenEnv}`,
       }),
     )
   }
