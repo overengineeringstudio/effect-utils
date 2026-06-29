@@ -11,6 +11,11 @@ All notable changes to this project will be documented in this file.
   boundary (`tsgo` by default, custom only by explicit override) instead of
   dynamic TypeScript module imports or staged `node_modules` plumbing.
 
+- **context/ci-tools**: Start the issue #868 VRS kickoff by restoring the
+  non-protected CI tools spec/glossary/source-of-truth decision and recording a
+  Phase 0 deploy-preview inventory note for workflow-report, Netlify, and
+  Vercel migration surfaces.
+
 - **@overeng/genie**: Add the explicit `@overeng/genie/composition` subpath for
   reusable cross-artifact composition helpers. The first helper,
   `tsconfigReferencesFromPackages`, projects TypeScript project references from
