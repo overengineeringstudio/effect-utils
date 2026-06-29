@@ -64,6 +64,16 @@ interface ToolAdapter {
 
 `AdapterEmit` is deliberately a tagged union. A bare output line can only become an event unless an adapter explicitly constructs a span update or metric sample from structured data.
 
+## Nested Adapter Ownership
+
+Adapter parsing is owned by the leaf wrapper that directly launches the adapted tool. A parent `otel-scrape` invocation preserves passthrough stdout/stderr from nested wrapped commands, but it must not classify structured output already owned by a nested `otel-scrape` invocation.
+
+This keeps nested wrappers compatible with root-or-join propagation without producing duplicate adapter-derived spans, events, metrics, or profile links. Parent wrappers still own their command span, observable process spans, resource facts, and passthrough behavior.
+
+Implementation must provide an ownership or suppression protocol for nested wrappers. Downstream consumers must not be responsible for deduplicating duplicate adapter records.
+
+See [.decisions/0002-leaf-wrapper-owns-adapter-parsing.md](./.decisions/0002-leaf-wrapper-owns-adapter-parsing.md).
+
 ## Classification Ladder
 
 | Source shape                        | Classification | Example                                   |
@@ -157,3 +167,4 @@ Initial adapters should prove the classification ladder across different source 
 - **DQ2 — Registry source:** Which generated contract surface owns final span, metric, and attribute names for both TypeScript and future non-TypeScript emitters?
 - **DQ3 — Process-tree fidelity:** Which platforms receive exact child-process spans, and where is sampled or best-effort process discovery acceptable?
 - **DQ4 — Artifact storage URI:** What URI schemes are accepted for local and CI artifact retrieval?
+- **DQ5 — First-adapter proof shape:** Must one real adapter emit events, spans, metrics, and profile links in one run, or may the first implementation prove the ladder with one real adapter plus focused profile/artifact fixtures? See [.experiments/0002-e2e-prototype.md](./.experiments/0002-e2e-prototype.md).
