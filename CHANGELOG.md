@@ -82,6 +82,10 @@ All notable changes to this project will be documented in this file.
 - **@overeng/genie**: Emit Starlark `#` generated-file headers for Buck2
   `BUCK`, `.bzl`, and `.bxl` outputs.
 
+- **@overeng/genie**: Keep peer repo Genie authoring helpers from importing
+  engine-only validation internals by sourcing repo-context helpers directly
+  instead of through the broad node runtime entry.
+
 - **@overeng/genie**: Tighten package-json export environment validation so
   constrained profiles reject bare Node builtin imports, follow extensionless
   directory entrypoints, and resolve overlapping conditional exports in emitted
