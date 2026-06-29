@@ -195,7 +195,7 @@ let
     _dependency_materialization_trait="$(
       prepare_dependency_materialization_store \
         ${pkgs.nodejs}/bin/node \
-        ${lib.escapeShellArg materializationProfile} \
+        "''${DEPENDENCY_MATERIALIZATION_REQUESTED_PROFILE:-${lib.escapeShellArg materializationProfile}}" \
         ${hostIsDarwinString} \
         "$PWD" \
         "$npm_config_store_dir"
@@ -241,7 +241,13 @@ let
         printf '%s\n' ${lib.escapeShellArg (builtins.toJSON installFlags)}
         printf '%s\n' ${lib.escapeShellArg preInstall}
         printf '%s\n' "''${DEPENDENCY_MATERIALIZATION_TRAIT:-}"
-        dependency_materialization_install_policy_flags "''${DEPENDENCY_MATERIALIZATION_TRAIT:-isolated}"
+        _dependency_materialization_import_method="$(dependency_materialization_install_policy_flags "''${DEPENDENCY_MATERIALIZATION_TRAIT:-isolated}")"
+        printf '%s\n' "$_dependency_materialization_import_method"
+        if [ -n "''${_pnpm_install_contract_file:-}" ] && pnpm_contract_supports_dependency_materialization_profile ${pkgs.nodejs}/bin/node "$_pnpm_install_contract_file"; then
+          compute_pnpm_contract_section_hash ${pkgs.nodejs}/bin/node "$_pnpm_install_contract_file" dependencyMaterializationProfile
+          _dependency_materialization_import_method="''${_dependency_materialization_import_method#--config.package-import-method=}"
+          emit_dependency_materialization_profile ${pkgs.nodejs}/bin/node "$_pnpm_install_contract_file" "''${DEPENDENCY_MATERIALIZATION_TRAIT:-isolated}" "" "$PWD" "$npm_config_store_dir" "$_dependency_materialization_import_method" | compute_hash
+        fi
       } | compute_hash
     }
   '';
@@ -623,7 +629,8 @@ let
         ${ensureLocalPnpmHomeFn}
         ${ensureLocalPnpmStoreDirFn}
         ${prepareDependencyMaterializationStoreFn}
-        pnpm install --fix-lockfile --config.confirmModulesPurge=false --pm-on-fail=ignore --config.store-dir="$npm_config_store_dir"
+        materialization_policy_flags="$(dependency_materialization_install_policy_flags "''${DEPENDENCY_MATERIALIZATION_TRAIT:-isolated}")"
+        pnpm install --fix-lockfile --config.confirmModulesPurge=false --pm-on-fail=ignore "$materialization_policy_flags" --config.store-dir="$npm_config_store_dir"
         echo "Repo-root lockfile updated. Refresh Nix FOD hashes with the repo workflow."
       '';
     };
@@ -643,7 +650,8 @@ let
         ${ensureLocalPnpmHomeFn}
         ${ensureLocalPnpmStoreDirFn}
         ${prepareDependencyMaterializationStoreFn}
-        pnpm dedupe --config.confirmModulesPurge=false --pm-on-fail=ignore --config.store-dir="$npm_config_store_dir"
+        materialization_policy_flags="$(dependency_materialization_install_policy_flags "''${DEPENDENCY_MATERIALIZATION_TRAIT:-isolated}")"
+        pnpm dedupe --config.confirmModulesPurge=false --pm-on-fail=ignore "$materialization_policy_flags" --config.store-dir="$npm_config_store_dir"
         echo "Lockfile deduped. Re-run genie:check to verify the catalog duplicate gate; bless any upstream-locked residuals via catalogDuplicateExceptions."
       '';
     };
@@ -745,9 +753,13 @@ let
         dependency_materialization_repair_plan ${pkgs.nodejs}/bin/node "$repair_registry_file" "$files_pool_id"
 
         repaired_roots=0
-        while IFS=$'\t' read -r repair_project_dir repair_store_dir; do
+        while IFS=$'\t' read -r repair_project_dir repair_store_dir repair_trait; do
           if [ -z "''${repair_project_dir:-}" ]; then
             continue
+          fi
+          if [ -z "''${repair_trait:-}" ]; then
+            echo "[pnpm] Registry entry for $repair_project_dir has no materialization trait; refusing ambiguous repair" >&2
+            exit 1
           fi
           if [ ! -d "$repair_project_dir" ] || [ ! -f "$repair_project_dir/pnpm-lock.yaml" ]; then
             echo "[pnpm] Skipping stale dependency materialization root: $repair_project_dir" >&2
@@ -768,6 +780,7 @@ let
             export PNPM_STORE_DIR="$repair_store_dir"
             export PNPM_CONFIG_STORE_DIR="$repair_store_dir"
             export npm_config_store_dir="$repair_store_dir"
+            export DEPENDENCY_MATERIALIZATION_REQUESTED_PROFILE="$repair_trait"
             ${prepareDependencyMaterializationStoreFn}
             ${runPnpmInstallFn}
             run_pnpm_install --force
@@ -809,7 +822,7 @@ in
     export npm_config_pm_on_fail=ignore
     if [ -z "''${CI:-}" ]; then
       _materialization_profile=${lib.escapeShellArg materializationProfile}
-      if [ "$_materialization_profile" = darwinSplitCas ] || [ "$_materialization_profile" = linuxSharedHardlink ] || [ "$_materialization_profile" = auto ]; then
+      if [ "$_materialization_profile" = splitFilesCas ] || [ "$_materialization_profile" = darwinSplitCas ] || [ "$_materialization_profile" = linuxSharedHardlink ] || [ "$_materialization_profile" = auto ]; then
         _pnpm_shared_files="''${PNPM_SHARED_FILES_DIR:-$HOME/.local/share/pnpm/shared-files}/v11"
         mkdir -p "$PNPM_STORE_DIR/v11" "$_pnpm_shared_files"
         if [ ! -e "$PNPM_STORE_DIR/v11/files" ] && [ ! -L "$PNPM_STORE_DIR/v11/files" ]; then

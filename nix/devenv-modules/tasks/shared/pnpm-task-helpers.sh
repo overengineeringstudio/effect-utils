@@ -178,7 +178,7 @@ prepare_dependency_materialization_store() {
   local store_dir="$5"
 
   case "$requested_profile" in
-    auto | ciJobLocal | darwinSplitCas | linuxSharedHardlink | isolated) ;;
+    auto | ciJobLocal | splitFilesCas | darwinSplitCas | linuxSharedHardlink | isolated) ;;
     *)
       echo "[pnpm] Unsupported materializationProfile: $requested_profile" >&2
       exit 1
@@ -195,16 +195,13 @@ prepare_dependency_materialization_store() {
   local shared_files_path="${PNPM_SHARED_FILES_DIR:-$HOME/.local/share/pnpm/shared-files}/v11"
   local effective_profile="$requested_profile"
 
-  if [ -n "${CI:-}" ]; then
+  if [ -n "${CI:-}" ] && [ "$requested_profile" = auto ]; then
     effective_profile="ciJobLocal"
   elif [ "$requested_profile" = auto ]; then
     if [ "$host_is_darwin" = true ]; then
       effective_profile="darwinSplitCas"
     else
-      # Keep the first explicit-profile milestone behavior-compatible on Linux:
-      # shared files pool with clone-or-copy imports. linuxSharedHardlink is
-      # selectable, but auto needs separate workload proof before switching.
-      effective_profile="darwinSplitCas"
+      effective_profile="splitFilesCas"
     fi
   fi
 
@@ -217,7 +214,7 @@ prepare_dependency_materialization_store() {
       fi
       mkdir -p "$files_path"
       ;;
-    darwinSplitCas | linuxSharedHardlink)
+    splitFilesCas | darwinSplitCas | linuxSharedHardlink)
       mkdir -p "$shared_files_path"
       if [ -L "$files_path" ]; then
         if [ "$(readlink "$files_path")" != "$shared_files_path" ]; then
@@ -255,7 +252,7 @@ dependency_materialization_install_policy_flags() {
     linuxSharedHardlink)
       printf '%s\n' "--config.package-import-method=hardlink"
       ;;
-    ciJobLocal | darwinSplitCas | isolated)
+    ciJobLocal | splitFilesCas | darwinSplitCas | isolated)
       printf '%s\n' "--config.package-import-method=clone-or-copy"
       ;;
     *)
@@ -600,7 +597,7 @@ const profiles = Array.isArray(registry.profiles) ? registry.profiles : []
 for (const profile of profiles
   .filter((row) => row.filesPoolId === filesPoolId)
   .sort((left, right) => left.id.localeCompare(right.id))) {
-  process.stdout.write(`${profile.project}\t${profile.store}\n`)
+  process.stdout.write(`${profile.project}\t${profile.store}\t${profile.trait ?? ''}\n`)
 }
 EOF
 }

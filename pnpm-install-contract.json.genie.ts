@@ -87,6 +87,14 @@ export default projectionArtifact.json({
           gcAuthority: 'profile-local',
           repairAuthority: 'ci-job',
         },
+        splitFilesCas: {
+          mutableState: 'profile-local',
+          sharedContent: 'store/v11/files',
+          importMethod: 'clone-or-copy',
+          sameDeviceRequired: false,
+          gcAuthority: 'shared-pool-coordinator',
+          repairAuthority: 'devenv',
+        },
         darwinSplitCas: {
           mutableState: 'profile-local',
           sharedContent: 'store/v11/files',

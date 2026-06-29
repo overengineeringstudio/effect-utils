@@ -175,6 +175,14 @@ cat > "$workspace/pnpm-install-contract.json" <<'EOF'
         "gcAuthority": "profile-local",
         "repairAuthority": "ci-job"
       },
+      "splitFilesCas": {
+        "mutableState": "profile-local",
+        "sharedContent": "store/v11/files",
+        "importMethod": "clone-or-copy",
+        "sameDeviceRequired": false,
+        "gcAuthority": "shared-pool-coordinator",
+        "repairAuthority": "devenv"
+      },
       "darwinSplitCas": {
         "mutableState": "profile-local",
         "sharedContent": "store/v11/files",
@@ -268,6 +276,9 @@ YAML
   fi
   exit 0
 fi
+if [ "${1:-}" = "dedupe" ]; then
+  exit 0
+fi
 echo "unexpected fake pnpm invocation: $*" >&2
 exit 1
 EOF
@@ -324,6 +335,8 @@ extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-flags.exec.sh" 'pa
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-darwin.exec.sh" 'packages = [ "." ];' "pnpm:install" "true"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-isolated.exec.sh" 'packages = [ "." ]; materializationProfile = "isolated";' "pnpm:install"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-hardlink.exec.sh" 'packages = [ "." ]; materializationProfile = "linuxSharedHardlink";' "pnpm:install"
+extract_task_script "$workspace" "exec" "$tmpdir/pnpm-update-hardlink.exec.sh" 'packages = [ "." ]; materializationProfile = "linuxSharedHardlink";' "pnpm:update"
+extract_task_script "$workspace" "exec" "$tmpdir/pnpm-dedupe-hardlink.exec.sh" 'packages = [ "." ]; materializationProfile = "linuxSharedHardlink";' "pnpm:dedupe"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-impure-flags.exec.sh" 'packages = [ "." ]; installFlags = [ "--no-frozen-lockfile" ];' "pnpm:install"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-impure-equals.exec.sh" 'packages = [ "." ]; installFlags = [ "--frozen-lockfile=false" ];' "pnpm:install"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-impure-separated.exec.sh" 'packages = [ "." ]; installFlags = [ "--config.package-import-method" "hardlink" ];' "pnpm:install"
@@ -356,6 +369,8 @@ rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-flags.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-darwin.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-isolated.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-hardlink.exec.sh"
+rewrite_unrealized_tool_paths "$tmpdir/pnpm-update-hardlink.exec.sh"
+rewrite_unrealized_tool_paths "$tmpdir/pnpm-dedupe-hardlink.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-impure-flags.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-impure-equals.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-impure-separated.exec.sh"
@@ -489,7 +504,7 @@ echo "Test 7: exec defaults PNPM_HOME to a workspace-local projection"
   profile_id="$(node -e 'const fs=require("node:fs"); process.stdout.write(JSON.parse(fs.readFileSync(process.argv[1],"utf8")).profileId)' "$profile_file")"
   assert_json_field "dependency-materialization-profile/v0" "$profile_file" "value => value.schema" "live profile schema"
   assert_json_field "true" "$profile_file" "value => value.profileId.startsWith('pnpm:')" "live profile id prefix"
-  assert_json_field "darwinSplitCas" "$profile_file" "value => value.store.trait" "live profile split store trait"
+  assert_json_field "splitFilesCas" "$profile_file" "value => value.store.trait" "live profile split store trait"
   assert_json_field "clone-or-copy" "$profile_file" "value => value.store.packageImportMethod" "live profile import method"
   assert_json_field "false" "$profile_file" "value => value.store.sameDeviceRequired" "live profile same-device requirement"
   assert_json_field "shared-pool-coordinator" "$profile_file" "value => value.authorities.gc" "live profile gc authority"
@@ -498,7 +513,7 @@ echo "Test 7: exec defaults PNPM_HOME to a workspace-local projection"
   assert_json_field "$profile_id" "$registry_file" "value => value.profiles[0].profileId" "live registry profile id"
   assert_json_field "$workspace" "$registry_file" "value => value.profiles[0].project" "live registry project"
   assert_json_field "$workspace/.devenv/pnpm-store-pure-v1" "$registry_file" "value => value.profiles[0].store" "live registry store"
-  assert_json_field "darwinSplitCas" "$registry_file" "value => value.profiles[0].trait" "live registry trait"
+  assert_json_field "splitFilesCas" "$registry_file" "value => value.profiles[0].trait" "live registry trait"
   assert_json_field "$workspace/.devenv/pnpm-store-pure-v1/v11/files" "$registry_file" "value => value.pools[0].filesPath" "live registry files path"
   doctor_decision="$(bash "$tmpdir/pnpm-doctor.exec.sh" | node -e 'const fs=require("node:fs"); process.stdout.write(JSON.parse(fs.readFileSync(0,"utf8")).decision)')"
   assert_eq "refuse-raw-prune" "$doctor_decision" "doctor refuses raw prune for shared files pool"
@@ -544,6 +559,21 @@ echo "Test 7c: explicit linux hardlink materialization validates and uses hardli
   assert_json_field "linuxSharedHardlink" "$workspace/.devenv/task-cache/pnpm-install/dependency-materialization-profile.json" "value => value.store.trait" "explicit hardlink profile trait"
   assert_json_field "true" "$workspace/.devenv/task-cache/pnpm-install/dependency-materialization-profile.json" "value => value.store.sameDevice" "explicit hardlink profile same-device evidence"
   grep -qxF "install --force --frozen-lockfile --config.confirmModulesPurge=false --ignore-scripts --config.side-effects-cache=false --config.verify-store-integrity=true --config.strict-store-pkg-content-check=true --child-concurrency=1 --network-concurrency=4 --pm-on-fail=ignore --config.package-import-method=hardlink --config.store-dir=$workspace/.devenv/pnpm-store-pure-v1" "$tmpdir/pnpm.log"
+)
+
+echo "Test 7d: update and dedupe apply the selected materialization import policy"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  unset PNPM_HOME
+  unset PNPM_STORE_DIR
+  unset npm_config_store_dir
+  rm -rf "$workspace/.devenv/pnpm-store-pure-v1" node_modules
+  : > "$tmpdir/pnpm.log"
+  bash "$tmpdir/pnpm-update-hardlink.exec.sh"
+  bash "$tmpdir/pnpm-dedupe-hardlink.exec.sh"
+  grep -qxF "install --fix-lockfile --config.confirmModulesPurge=false --pm-on-fail=ignore --config.package-import-method=hardlink --config.store-dir=$workspace/.devenv/pnpm-store-pure-v1" "$tmpdir/pnpm.log"
+  grep -qxF "dedupe --config.confirmModulesPurge=false --pm-on-fail=ignore --config.package-import-method=hardlink --config.store-dir=$workspace/.devenv/pnpm-store-pure-v1" "$tmpdir/pnpm.log"
 )
 
 echo "Test 8: status hits after install with the default GVS path"

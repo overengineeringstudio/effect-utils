@@ -14,7 +14,10 @@
     ],
     "nativeBuildPolicyInputs": {
       "allowBuilds": "gvsLinkContract.allowBuilds",
-      "compilerEnv": ["CC", "CXX"]
+      "compilerEnv": [
+        "CC",
+        "CXX"
+      ]
     },
     "schema": "dependency-materialization-profile/v0",
     "supportedTraits": {
@@ -31,6 +34,13 @@
         "sameDeviceRequired": false,
         "sharedContent": "store/v11/files"
       },
+      "isolated": {
+        "gcAuthority": "profile-local",
+        "importMethod": "clone-or-copy",
+        "mutableState": "profile-local",
+        "repairAuthority": "devenv",
+        "sameDeviceRequired": false
+      },
       "linuxSharedHardlink": {
         "gcAuthority": "shared-pool-coordinator",
         "importMethod": "hardlink",
@@ -39,17 +49,18 @@
         "sameDeviceRequired": true,
         "sharedContent": "store/v11/files"
       },
-      "isolated": {
-        "gcAuthority": "profile-local",
-        "importMethod": "clone-or-copy",
-        "mutableState": "profile-local",
-        "repairAuthority": "devenv",
-        "sameDeviceRequired": false
-      },
       "nixPreparedDeps": {
         "gcAuthority": "nix-store",
         "mutableState": "none",
         "repairAuthority": "evergreen-fod"
+      },
+      "splitFilesCas": {
+        "gcAuthority": "shared-pool-coordinator",
+        "importMethod": "clone-or-copy",
+        "mutableState": "profile-local",
+        "repairAuthority": "devenv",
+        "sameDeviceRequired": false,
+        "sharedContent": "store/v11/files"
       }
     }
   },
@@ -85,7 +96,11 @@
   "installPolicy": {
     "dedupePeerDependents": true,
     "ignoreScripts": true,
-    "minimumReleaseAgeExclude": ["@effect/platform", "@types/node", "effect"],
+    "minimumReleaseAgeExclude": [
+      "@effect/platform",
+      "@types/node",
+      "effect"
+    ],
     "optimisticRepeatInstall": false,
     "packageImportMethod": "clone-or-copy",
     "peerDependencyRules": {
@@ -103,9 +118,18 @@
     "strictPeerDependencies": true,
     "strictStorePkgContentCheck": true,
     "supportedArchitectures": {
-      "cpu": ["x64", "arm64"],
-      "libc": ["glibc", "musl"],
-      "os": ["linux", "darwin"]
+      "cpu": [
+        "x64",
+        "arm64"
+      ],
+      "libc": [
+        "glibc",
+        "musl"
+      ],
+      "os": [
+        "linux",
+        "darwin"
+      ]
     },
     "verifyDepsBeforeRun": false,
     "verifyStoreIntegrity": true

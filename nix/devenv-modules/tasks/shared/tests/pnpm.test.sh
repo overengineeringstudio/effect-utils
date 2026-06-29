@@ -478,6 +478,14 @@ cat > "$contract_profile" <<'EOF'
         "gcAuthority": "profile-local",
         "repairAuthority": "ci-job"
       },
+      "splitFilesCas": {
+        "mutableState": "profile-local",
+        "sharedContent": "store/v11/files",
+        "importMethod": "clone-or-copy",
+        "sameDeviceRequired": false,
+        "gcAuthority": "shared-pool-coordinator",
+        "repairAuthority": "devenv"
+      },
       "darwinSplitCas": {
         "mutableState": "profile-local",
         "sharedContent": "store/v11/files",
@@ -545,10 +553,26 @@ mkdir -p "$profile_store" "$profile_shared"
   export HOME="$profile_shared/home"
   export PNPM_SHARED_FILES_DIR="$profile_shared/shared-files"
   trait="$(prepare_dependency_materialization_store node auto false "$test_dir" "$profile_store")"
-  assert_eq "darwinSplitCas" "$trait" "Linux auto keeps the existing shared split CAS profile"
+  assert_eq "splitFilesCas" "$trait" "Linux auto keeps the existing shared split CAS profile"
   test -L "$profile_store/v11/files"
   assert_eq "$profile_shared/shared-files/v11" "$(readlink "$profile_store/v11/files")" "auto shared files symlink target"
   assert_eq "--config.package-import-method=clone-or-copy" "$(dependency_materialization_install_policy_flags "$trait")" "auto uses clone-or-copy imports"
+)
+ci_auto_store="$test_dir/ci-auto-profile-store"
+(
+  export CI=1
+  export HOME="$profile_shared/home"
+  trait="$(prepare_dependency_materialization_store node auto false "$test_dir" "$ci_auto_store")"
+  assert_eq "ciJobLocal" "$trait" "CI auto selects a job-local materialization profile"
+  test -d "$ci_auto_store/v11/files"
+  test ! -L "$ci_auto_store/v11/files"
+)
+ci_explicit_store="$test_dir/ci-explicit-profile-store"
+(
+  export CI=1
+  export HOME="$profile_shared/home"
+  trait="$(prepare_dependency_materialization_store node isolated false "$test_dir" "$ci_explicit_store")"
+  assert_eq "isolated" "$trait" "CI preserves explicit materialization profiles"
 )
 isolated_store="$test_dir/isolated-profile-store"
 mkdir -p "$isolated_store/v11" "$profile_shared/isolated-shared/v11"
@@ -632,6 +656,10 @@ assert_eq \
   "2" \
   "$(dependency_materialization_repair_roots node "$second_registry" "$(dependency_materialization_profile_files_pool_id node "$second_registry" "$registry_profile_id")" | wc -l | tr -d ' ')" \
   "repair roots include every workspace sharing the files pool"
+assert_eq \
+  "darwinSplitCas" \
+  "$(dependency_materialization_repair_roots node "$second_registry" "$(dependency_materialization_profile_files_pool_id node "$second_registry" "$registry_profile_id")" | awk -F '\t' 'NR == 1 { print $3 }')" \
+  "repair roots carry the registered materialization trait"
 discovered_profile_store_dir="$(dependency_materialization_profile_store_dir node "$second_registry" "$registry_profile_id")"
 case "$discovered_profile_store_dir" in
   "$registry_root/store" | "$registry_root/second-store") ;;
@@ -835,6 +863,14 @@ cat > "$profile_contract" <<'EOF'
         "gcAuthority": "profile-local",
         "repairAuthority": "ci-job"
       },
+      "splitFilesCas": {
+        "mutableState": "profile-local",
+        "sharedContent": "store/v11/files",
+        "importMethod": "clone-or-copy",
+        "sameDeviceRequired": false,
+        "gcAuthority": "shared-pool-coordinator",
+        "repairAuthority": "devenv"
+      },
       "darwinSplitCas": {
         "mutableState": "profile-local",
         "sharedContent": "store/v11/files",
@@ -868,8 +904,8 @@ cat > "$profile_contract" <<'EOF'
 EOF
 profile_a="$test_dir/profile-a.json"
 profile_b="$test_dir/profile-b.json"
-emit_dependency_materialization_profile node "$profile_contract" darwinSplitCas "$profile_a"
-emit_dependency_materialization_profile node "$profile_contract" darwinSplitCas "$profile_b"
+emit_dependency_materialization_profile node "$profile_contract" splitFilesCas "$profile_a"
+emit_dependency_materialization_profile node "$profile_contract" splitFilesCas "$profile_b"
 assert_eq \
   "$(compute_hash < "$profile_a")" \
   "$(compute_hash < "$profile_b")" \
@@ -891,9 +927,9 @@ cp "$profile_contract" "$test_dir/profile-source/pnpm-install-contract.json"
 echo "export const value = 1" > "$test_dir/profile-source/packages/app/src/index.ts"
 (
   cd "$test_dir/profile-source"
-  emit_dependency_materialization_profile node pnpm-install-contract.json darwinSplitCas profile-before.json
+  emit_dependency_materialization_profile node pnpm-install-contract.json splitFilesCas profile-before.json
   echo "export const value = 2" > packages/app/src/index.ts
-  emit_dependency_materialization_profile node pnpm-install-contract.json darwinSplitCas profile-after.json
+  emit_dependency_materialization_profile node pnpm-install-contract.json splitFilesCas profile-after.json
   assert_json_field \
     "$(node -e "const fs = require('node:fs'); process.stdout.write(JSON.parse(fs.readFileSync('profile-before.json','utf8')).profileId)")" \
     profile-after.json \
@@ -911,7 +947,7 @@ contract.workspaceManifestContract.packages.push('packages/new-member')
 fs.writeFileSync(to, `${JSON.stringify(contract, null, 2)}\n`)
 EOF
 profile_manifest="$test_dir/profile-manifest.json"
-emit_dependency_materialization_profile node "$manifest_contract" darwinSplitCas "$profile_manifest"
+emit_dependency_materialization_profile node "$manifest_contract" splitFilesCas "$profile_manifest"
 if [ "$(node -e "const fs = require('node:fs'); process.stdout.write(JSON.parse(fs.readFileSync(process.argv[1], 'utf8')).profileId)" "$profile_a")" = "$(node -e "const fs = require('node:fs'); process.stdout.write(JSON.parse(fs.readFileSync(process.argv[1], 'utf8')).profileId)" "$profile_manifest")" ]; then
   echo "FAIL: manifest contract changes dependency profile identity"
   exit 1
