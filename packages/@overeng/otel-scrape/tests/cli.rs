@@ -129,6 +129,60 @@ fn oxlint_adapter_parses_json_diagnostics_without_hiding_stdout() {
 }
 
 #[test]
+fn oxlint_adapter_parse_failure_preserves_output_and_exit_status() {
+    let dir = tempfile::tempdir().unwrap();
+    let summary = dir.path().join("summary.json");
+    let invalid_json = "{not-json";
+
+    let out = otel_scrape()
+        .env("OX_JSON", invalid_json)
+        .args(["--adapter", "oxlint", "--summary-out"])
+        .arg(&summary)
+        .args(["--", "sh", "-c", "printf '%s' \"$OX_JSON\"; exit 7"])
+        .output()
+        .unwrap();
+
+    assert_eq!(out.status.code(), Some(7));
+    assert_eq!(String::from_utf8_lossy(&out.stdout), invalid_json);
+
+    let summary: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(summary).unwrap()).unwrap();
+    assert_eq!(summary["child"]["exit_code"], 7);
+    assert_eq!(summary["adapter"]["name"], "oxlint");
+    assert_eq!(summary["adapter"]["records"].as_array().unwrap().len(), 0);
+    assert_eq!(
+        summary["output"]["stdout"]["byteLength"],
+        invalid_json.as_bytes().len()
+    );
+}
+
+#[test]
+fn oxlint_adapter_does_not_turn_plain_output_lines_into_spans() {
+    let dir = tempfile::tempdir().unwrap();
+    let summary = dir.path().join("summary.json");
+    let plain_output = "line one\nline two\nline three\n";
+
+    let out = otel_scrape()
+        .env("PLAIN_OUTPUT", plain_output)
+        .args(["--adapter", "oxlint", "--summary-out"])
+        .arg(&summary)
+        .args(["--", "sh", "-c", "printf '%s' \"$PLAIN_OUTPUT\""])
+        .output()
+        .unwrap();
+
+    assert!(out.status.success());
+    assert_eq!(String::from_utf8_lossy(&out.stdout), plain_output);
+
+    let summary: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(summary).unwrap()).unwrap();
+    let records = summary["adapter"]["records"].as_array().unwrap();
+    assert!(records
+        .iter()
+        .all(|record| record["_tag"] == "Event" || record["_tag"] == "Metric"));
+    assert_eq!(records.len(), 0);
+}
+
+#[test]
 fn profile_artifact_writes_cas_object_manifest_pin_and_profile_record() {
     let dir = tempfile::tempdir().unwrap();
     let summary = dir.path().join("summary.json");

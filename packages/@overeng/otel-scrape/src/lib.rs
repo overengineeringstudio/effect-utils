@@ -135,12 +135,21 @@ struct ResourceAvailability {
 #[derive(Debug, Serialize)]
 struct AdapterSummary {
     name: String,
-    records: Vec<AdapterRecord>,
+    records: Vec<AdapterSummaryRecord>,
+}
+
+#[derive(Debug, Clone)]
+enum AdapterOutput {
+    Event(AdapterEvent),
+    #[allow(dead_code)]
+    Span(AdapterSpan),
+    Metric(AdapterMetric),
+    Profile(ProfileLink),
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "_tag")]
-enum AdapterRecord {
+enum AdapterSummaryRecord {
     Event(AdapterEvent),
     Metric(AdapterMetric),
 }
@@ -150,6 +159,13 @@ struct AdapterEvent {
     message: String,
     severity: String,
     filename_hash: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct AdapterSpan {
+    name: String,
+    identity_hash: String,
+    duration_ms: Option<u128>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -488,7 +504,11 @@ fn summary_for_status(
     artifacts: &ArtifactSummary,
 ) -> io::Result<Summary> {
     let cwd = std::env::current_dir()?;
-    let adapter = adapter_summary(config, child.stdout.as_deref().unwrap_or_default());
+    let adapter = adapter_outputs(
+        config,
+        child.stdout.as_deref().unwrap_or_default(),
+        artifacts,
+    );
     Ok(Summary {
         schema: telemetry_registry::schemas::SUMMARY_V1,
         version: VERSION,
@@ -498,7 +518,7 @@ fn summary_for_status(
         },
         output: output_summary(child),
         resources: resource_summary(duration_ms),
-        adapter,
+        adapter: adapter_summary(&adapter),
         artifacts: artifacts.clone(),
         trace: TraceSummary {
             trace_id: trace.trace_id.clone(),
@@ -565,7 +585,11 @@ fn export_command_span(
     };
     let start_unix_nano = unix_nanos(started_wall);
     let end_unix_nano = start_unix_nano.saturating_add(duration_ms.saturating_mul(1_000_000));
-    let adapter = adapter_summary(config, child.stdout.as_deref().unwrap_or_default());
+    let adapter = adapter_outputs(
+        config,
+        child.stdout.as_deref().unwrap_or_default(),
+        artifacts,
+    );
     let mut span = json!({
         "traceId": trace.trace_id,
         "spanId": trace.span_id,
@@ -592,7 +616,7 @@ fn export_command_span(
     if let Some(parent_span_id) = trace.parent_span_id.as_ref() {
         span["parentSpanId"] = json!(parent_span_id);
     }
-    let events = otlp_span_events(&adapter, artifacts, end_unix_nano);
+    let events = otlp_span_events(&adapter, end_unix_nano);
     if !events.is_empty() {
         span["events"] = json!(events);
     }
@@ -614,59 +638,56 @@ fn export_command_span(
     post_otlp_http_json(endpoint, &bytes)
 }
 
-fn otlp_span_events(
-    adapter: &AdapterSummary,
-    artifacts: &ArtifactSummary,
-    time_unix_nano: u128,
-) -> Vec<serde_json::Value> {
+fn otlp_span_events(adapter: &AdapterRun, time_unix_nano: u128) -> Vec<serde_json::Value> {
     let time_unix_nano = time_unix_nano.to_string();
     let mut events = Vec::new();
-    for record in &adapter.records {
-        if let AdapterRecord::Event(event) = record {
-            let mut attrs = vec![json!({
-                "key": "severity",
-                "value": { "stringValue": event.severity },
-            })];
-            if let Some(filename_hash) = event.filename_hash.as_ref() {
-                attrs.push(json!({
-                    "key": "source.filename_hash",
-                    "value": { "stringValue": filename_hash },
+    for output in &adapter.outputs {
+        match output {
+            AdapterOutput::Event(event) => {
+                let mut attrs = vec![json!({
+                    "key": "severity",
+                    "value": { "stringValue": event.severity },
+                })];
+                if let Some(filename_hash) = event.filename_hash.as_ref() {
+                    attrs.push(json!({
+                        "key": "source.filename_hash",
+                        "value": { "stringValue": filename_hash },
+                    }));
+                }
+                events.push(json!({
+                    "name": "otel_scrape.adapter.event",
+                    "attributes": attrs,
+                    "timeUnixNano": time_unix_nano,
                 }));
             }
-            events.push(json!({
-                "name": "otel_scrape.adapter.event",
-                "attributes": attrs,
+            AdapterOutput::Profile(profile) => events.push(json!({
+                "name": "otel_scrape.profile.link",
+                "attributes": [
+                    {
+                        "key": telemetry_registry::attributes::PROFILE_TYPE,
+                        "value": { "stringValue": profile.profile_type },
+                    },
+                    {
+                        "key": telemetry_registry::attributes::PROFILE_DIGEST,
+                        "value": { "stringValue": profile.digest },
+                    },
+                    {
+                        "key": telemetry_registry::attributes::PROFILE_URI,
+                        "value": { "stringValue": profile.uri },
+                    },
+                    {
+                        "key": telemetry_registry::profile_fields::BYTE_LENGTH,
+                        "value": { "intValue": profile.byte_length.to_string() },
+                    },
+                    {
+                        "key": telemetry_registry::profile_fields::MEDIA_TYPE,
+                        "value": { "stringValue": profile.media_type },
+                    },
+                ],
                 "timeUnixNano": time_unix_nano,
-            }));
+            })),
+            AdapterOutput::Metric(_) | AdapterOutput::Span(_) => {}
         }
-    }
-    for profile in &artifacts.profiles {
-        events.push(json!({
-            "name": "otel_scrape.profile.link",
-            "attributes": [
-                {
-                    "key": telemetry_registry::attributes::PROFILE_TYPE,
-                    "value": { "stringValue": profile.profile_type },
-                },
-                {
-                    "key": telemetry_registry::attributes::PROFILE_DIGEST,
-                    "value": { "stringValue": profile.digest },
-                },
-                {
-                    "key": telemetry_registry::attributes::PROFILE_URI,
-                    "value": { "stringValue": profile.uri },
-                },
-                {
-                    "key": telemetry_registry::profile_fields::BYTE_LENGTH,
-                    "value": { "intValue": profile.byte_length.to_string() },
-                },
-                {
-                    "key": telemetry_registry::profile_fields::MEDIA_TYPE,
-                    "value": { "stringValue": profile.media_type },
-                },
-            ],
-            "timeUnixNano": time_unix_nano,
-        }));
     }
     events
 }
@@ -797,15 +818,51 @@ fn parse_http_endpoint(value: &str) -> io::Result<HttpEndpoint> {
     })
 }
 
-fn adapter_summary(config: &RunConfig, stdout: &[u8]) -> AdapterSummary {
-    let records = match config.adapter.as_str() {
-        "oxlint" => oxlint_records(stdout),
+#[derive(Debug, Clone)]
+struct AdapterRun {
+    name: String,
+    outputs: Vec<AdapterOutput>,
+}
+
+fn adapter_outputs(config: &RunConfig, stdout: &[u8], artifacts: &ArtifactSummary) -> AdapterRun {
+    let mut outputs = match config.adapter.as_str() {
+        "oxlint" => oxlint_outputs(stdout),
         _ => Vec::new(),
     };
+    outputs.extend(
+        artifacts
+            .profiles
+            .iter()
+            .cloned()
+            .map(AdapterOutput::Profile),
+    );
 
-    AdapterSummary {
+    AdapterRun {
         name: config.adapter.clone(),
-        records,
+        outputs,
+    }
+}
+
+fn adapter_summary(adapter: &AdapterRun) -> AdapterSummary {
+    AdapterSummary {
+        name: adapter.name.clone(),
+        records: adapter
+            .outputs
+            .iter()
+            .filter_map(adapter_summary_record)
+            .collect(),
+    }
+}
+
+fn adapter_summary_record(output: &AdapterOutput) -> Option<AdapterSummaryRecord> {
+    match output {
+        AdapterOutput::Event(event) => Some(AdapterSummaryRecord::Event(event.clone())),
+        AdapterOutput::Metric(metric) => Some(AdapterSummaryRecord::Metric(metric.clone())),
+        AdapterOutput::Span(span) => {
+            let _ = (&span.name, &span.identity_hash, span.duration_ms);
+            None
+        }
+        AdapterOutput::Profile(_) => None,
     }
 }
 
@@ -966,19 +1023,19 @@ struct OxlintDiagnostic {
     filename: Option<String>,
 }
 
-fn oxlint_records(stdout: &[u8]) -> Vec<AdapterRecord> {
+fn oxlint_outputs(stdout: &[u8]) -> Vec<AdapterOutput> {
     let Ok(report) = serde_json::from_slice::<OxlintJson>(stdout) else {
         return Vec::new();
     };
 
     let mut records = Vec::with_capacity(report.diagnostics.len() + 1);
-    records.push(AdapterRecord::Metric(AdapterMetric {
+    records.push(AdapterOutput::Metric(AdapterMetric {
         name: telemetry_registry::metrics::OXLINT_DIAGNOSTICS,
         value: report.diagnostics.len() as u64,
     }));
 
     for diagnostic in report.diagnostics {
-        records.push(AdapterRecord::Event(AdapterEvent {
+        records.push(AdapterOutput::Event(AdapterEvent {
             message: diagnostic.message,
             severity: diagnostic.severity,
             filename_hash: diagnostic.filename.as_deref().map(hash_path_identity),
