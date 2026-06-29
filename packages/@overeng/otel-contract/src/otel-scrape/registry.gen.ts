@@ -1,7 +1,7 @@
 // Generated file - DO NOT EDIT
 // Source: registry.gen.ts.genie.ts
 // Registry source: context/otel-scrape/telemetry-registry.json
-// Input fingerprint: sha256:b2ba4dec425b302da82d3ca662d4765ce5eb77fb0707189e96292a95cff5517b
+// Input fingerprint: sha256:71a77bb48e88f88759191183f268f7ce4cc6917306a466cb568d2fe810dbda2e
 
 export const otelScrapeTelemetryRegistry = {
   "schemaVersion": 1,
@@ -46,6 +46,27 @@ export const otelScrapeTelemetryRegistry = {
       "valueType": "int",
       "cardinality": "low",
       "description": "Process exit code when available."
+    },
+    {
+      "id": "process_observation_backend",
+      "key": "otel_scrape.process.observation.backend",
+      "valueType": "string",
+      "cardinality": "low",
+      "description": "Process observation backend that produced this process evidence."
+    },
+    {
+      "id": "process_observation_fidelity",
+      "key": "otel_scrape.process.observation.fidelity",
+      "valueType": "string",
+      "cardinality": "low",
+      "description": "Process observation fidelity, such as exact or degraded."
+    },
+    {
+      "id": "process_observation_relation",
+      "key": "otel_scrape.process.observation.relation",
+      "valueType": "string",
+      "cardinality": "low",
+      "description": "Relationship between the observed process and the wrapper command span."
     },
     {
       "id": "tool_name",
@@ -145,6 +166,9 @@ export const otelScrapeAttributeKeys = {
   "adapterName": "otel_scrape.adapter.name",
   "processCommandArgsHash": "process.command_args_hash",
   "processExitCode": "process.exit_code",
+  "processObservationBackend": "otel_scrape.process.observation.backend",
+  "processObservationFidelity": "otel_scrape.process.observation.fidelity",
+  "processObservationRelation": "otel_scrape.process.observation.relation",
   "toolName": "tool.name",
   "toolVersion": "tool.version",
   "profileType": "profile.type",

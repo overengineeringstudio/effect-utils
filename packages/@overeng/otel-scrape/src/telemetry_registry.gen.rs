@@ -1,12 +1,12 @@
 // Generated file - DO NOT EDIT
 // Source: telemetry_registry.gen.rs.genie.ts
 // Registry source: context/otel-scrape/telemetry-registry.json
-// Input fingerprint: sha256:b2ba4dec425b302da82d3ca662d4765ce5eb77fb0707189e96292a95cff5517b
+// Input fingerprint: sha256:71a77bb48e88f88759191183f268f7ce4cc6917306a466cb568d2fe810dbda2e
 
 pub const REGISTRY_SCHEMA_VERSION: u8 = 1;
 pub const REGISTRY_NAMESPACE: &str = "otel_scrape";
 pub const REGISTRY_INPUT_FINGERPRINT: &str =
-    "sha256:b2ba4dec425b302da82d3ca662d4765ce5eb77fb0707189e96292a95cff5517b";
+    "sha256:71a77bb48e88f88759191183f268f7ce4cc6917306a466cb568d2fe810dbda2e";
 
 pub mod spans {
     pub const COMMAND: &str = "otel_scrape.command";
@@ -21,6 +21,9 @@ pub mod attributes {
     pub const ADAPTER_NAME: &str = "otel_scrape.adapter.name";
     pub const PROCESS_COMMAND_ARGS_HASH: &str = "process.command_args_hash";
     pub const PROCESS_EXIT_CODE: &str = "process.exit_code";
+    pub const PROCESS_OBSERVATION_BACKEND: &str = "otel_scrape.process.observation.backend";
+    pub const PROCESS_OBSERVATION_FIDELITY: &str = "otel_scrape.process.observation.fidelity";
+    pub const PROCESS_OBSERVATION_RELATION: &str = "otel_scrape.process.observation.relation";
     pub const TOOL_NAME: &str = "tool.name";
     pub const TOOL_VERSION: &str = "tool.version";
     pub const PROFILE_TYPE: &str = "profile.type";

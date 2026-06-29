@@ -43,6 +43,27 @@
       "description": "Process exit code when available."
     },
     {
+      "id": "process_observation_backend",
+      "key": "otel_scrape.process.observation.backend",
+      "valueType": "string",
+      "cardinality": "low",
+      "description": "Process observation backend that produced this process evidence."
+    },
+    {
+      "id": "process_observation_fidelity",
+      "key": "otel_scrape.process.observation.fidelity",
+      "valueType": "string",
+      "cardinality": "low",
+      "description": "Process observation fidelity, such as exact or degraded."
+    },
+    {
+      "id": "process_observation_relation",
+      "key": "otel_scrape.process.observation.relation",
+      "valueType": "string",
+      "cardinality": "low",
+      "description": "Relationship between the observed process and the wrapper command span."
+    },
+    {
       "id": "tool_name",
       "key": "tool.name",
       "valueType": "string",

@@ -8,7 +8,7 @@ Exact descendant-process attribution is platform-sensitive. Linux and macOS expo
 
 **Decision:** `otel-scrape` must provide exact descendant process-tree spans on supported release platforms before a stable release.
 
-The first implementation may stage this behind an experimental flag or limited platform support, but it must not present best-effort descendant discovery as satisfying the release contract. Validation must include Linux and macOS ARM evidence, with `mbp2021` used for macOS validation as needed.
+The first implementation may stage this behind an experimental flag or limited platform support, but it must not present best-effort descendant discovery as satisfying the release contract. Validation must include Linux and macOS ARM evidence from public-safe runner classes rather than private machine identities.
 
 **Consequences:**
 

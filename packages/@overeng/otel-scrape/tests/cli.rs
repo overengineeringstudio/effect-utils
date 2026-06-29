@@ -65,6 +65,26 @@ fn preserves_passthrough_and_writes_summary() {
         .unwrap()
         .starts_with("sha256:"));
     assert!(summary["command"].get("argv").is_none());
+    assert_eq!(summary["processes"]["backend"], "direct-child");
+    assert_eq!(summary["processes"]["fidelity"], "degraded");
+    assert_eq!(
+        summary["processes"]["reason"],
+        "direct-child-only backend does not observe descendants"
+    );
+    assert_eq!(
+        summary["processes"]["observed"].as_array().unwrap().len(),
+        1
+    );
+    let process = &summary["processes"]["observed"][0];
+    assert_eq!(process["_tag"], "Process");
+    assert_eq!(process["relation"], "direct-child");
+    assert_eq!(process["parentSpanId"], summary["trace"]["span_id"]);
+    assert!(process["spanId"].as_str().unwrap().len() == 16);
+    assert!(process["pidHash"].as_str().unwrap().starts_with("sha256:"));
+    assert_eq!(process["argvHash"], summary["command"]["argv_hash"]);
+    assert_eq!(process["exitCode"], 7);
+    assert!(process.get("pid").is_none());
+    assert!(process.get("argv").is_none());
 }
 
 #[test]
@@ -419,6 +439,47 @@ fn signal_termination_preserves_synthetic_exit_code_and_summary_evidence() {
 }
 
 #[test]
+fn process_observation_fixture_marks_descendant_workload_as_direct_child_only() {
+    let dir = tempfile::tempdir().unwrap();
+    let summary = dir.path().join("summary.json");
+    let descendant_marker = dir.path().join("descendant-ran");
+
+    let out = otel_scrape()
+        .env("DESCENDANT_MARKER", &descendant_marker)
+        .args(["--summary-out"])
+        .arg(&summary)
+        .args([
+            "--",
+            "sh",
+            "-c",
+            "sh -c 'printf descendant > \"$DESCENDANT_MARKER\"'; printf parent",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(out.status.success());
+    assert_eq!(String::from_utf8_lossy(&out.stdout), "parent");
+    assert_eq!(
+        std::fs::read_to_string(descendant_marker).unwrap(),
+        "descendant"
+    );
+
+    let summary: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(summary).unwrap()).unwrap();
+    assert_eq!(summary["processes"]["backend"], "direct-child");
+    assert_eq!(summary["processes"]["fidelity"], "degraded");
+    assert_eq!(summary["degraded"]["direct_child_only"], true);
+    let observed = summary["processes"]["observed"].as_array().unwrap();
+    assert_eq!(observed.len(), 1);
+    assert_eq!(observed[0]["relation"], "direct-child");
+    assert_eq!(observed[0]["parentSpanId"], summary["trace"]["span_id"]);
+    assert!(observed[0]["pidHash"]
+        .as_str()
+        .unwrap()
+        .starts_with("sha256:"));
+}
+
+#[test]
 fn exports_root_traceparent_to_child() {
     let dir = tempfile::tempdir().unwrap();
     let env_file = dir.path().join("traceparent");
@@ -532,6 +593,41 @@ fn exports_command_span_to_otlp_http_json() {
     assert_eq!(
         attr_value(attrs, "otel_scrape.adapter.name"),
         Some("none".to_owned())
+    );
+    let spans = resource_span["scopeSpans"][0]["spans"].as_array().unwrap();
+    assert_eq!(spans.len(), 2);
+    let process_span = spans
+        .iter()
+        .find(|span| span["name"] == "otel_scrape.process")
+        .unwrap();
+    assert_eq!(process_span["traceId"], span["traceId"]);
+    assert_eq!(process_span["parentSpanId"], span["spanId"]);
+    assert_eq!(
+        process_span["spanId"],
+        summary["processes"]["observed"][0]["spanId"]
+    );
+    let process_attrs = process_span["attributes"].as_array().unwrap();
+    assert_eq!(
+        attr_value(process_attrs, "process.command_args_hash"),
+        summary["command"]["argv_hash"]
+            .as_str()
+            .map(ToOwned::to_owned)
+    );
+    assert_eq!(
+        attr_value(process_attrs, "process.exit_code"),
+        Some("0".to_owned())
+    );
+    assert_eq!(
+        attr_value(process_attrs, "otel_scrape.process.observation.backend"),
+        Some("direct-child".to_owned())
+    );
+    assert_eq!(
+        attr_value(process_attrs, "otel_scrape.process.observation.fidelity"),
+        Some("degraded".to_owned())
+    );
+    assert_eq!(
+        attr_value(process_attrs, "otel_scrape.process.observation.relation"),
+        Some("direct-child".to_owned())
     );
 }
 

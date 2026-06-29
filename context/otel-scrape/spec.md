@@ -131,19 +131,22 @@ The registry source owns span names, metric names, attribute keys, and profile-l
 
 See [.decisions/0004-generated-telemetry-registry.md](./.decisions/0004-generated-telemetry-registry.md).
 
-| Kind      | Name / attribute            | Notes                            |
-| --------- | --------------------------- | -------------------------------- |
-| Span      | `otel_scrape.command`       | One wrapper invocation           |
-| Span      | `otel_scrape.process`       | Observable child process         |
-| Attribute | `otel_scrape.adapter.name`  | Selected adapter                 |
-| Attribute | `process.command_args_hash` | Stable hash, not raw argv        |
-| Attribute | `process.exit_code`         | Exit status                      |
-| Attribute | `tool.name`                 | Tool identity when detected      |
-| Attribute | `tool.version`              | Tool version when cheap and safe |
-| Attribute | `profile.type`              | Native profile kind              |
-| Attribute | `profile.digest`            | `sha256:...` digest              |
-| Attribute | `profile.uri`               | Artifact retrieval URI           |
-| Attribute | `profile.ui`                | Optional viewer URI              |
+| Kind      | Name / attribute                           | Notes                                    |
+| --------- | ------------------------------------------ | ---------------------------------------- |
+| Span      | `otel_scrape.command`                      | One wrapper invocation                   |
+| Span      | `otel_scrape.process`                      | Observable child process                 |
+| Attribute | `otel_scrape.adapter.name`                 | Selected adapter                         |
+| Attribute | `process.command_args_hash`                | Stable hash, not raw argv                |
+| Attribute | `process.exit_code`                        | Exit status                              |
+| Attribute | `otel_scrape.process.observation.backend`  | Process observation backend              |
+| Attribute | `otel_scrape.process.observation.fidelity` | `exact` or explicitly degraded evidence  |
+| Attribute | `otel_scrape.process.observation.relation` | Relationship to the wrapper command span |
+| Attribute | `tool.name`                                | Tool identity when detected              |
+| Attribute | `tool.version`                             | Tool version when cheap and safe         |
+| Attribute | `profile.type`                             | Native profile kind                      |
+| Attribute | `profile.digest`                           | `sha256:...` digest                      |
+| Attribute | `profile.uri`                              | Artifact retrieval URI                   |
+| Attribute | `profile.ui`                               | Optional viewer URI                      |
 
 Raw command arguments, local absolute paths, credentials, source text, and private payloads must not be emitted as span attributes.
 

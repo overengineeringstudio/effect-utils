@@ -61,10 +61,11 @@ direct-child-only process capture. Summary evidence is a local debug and test
 surface; it is not the OTLP transport.
 
 When `--otlp-endpoint <url>` or `OTEL_EXPORTER_OTLP_ENDPOINT` is set, the
-wrapper exports one `otel_scrape.command` span through the first-party
-OTLP/HTTP JSON boundary after the child exits. `--service-name <name>` or
-`OTEL_SERVICE_NAME` sets the emitted resource `service.name`. Export failures
-are warnings and do not change stdout, stderr, stdin, or the child exit code.
+wrapper exports one `otel_scrape.command` span and one degraded direct-child
+`otel_scrape.process` span through the first-party OTLP/HTTP JSON boundary after
+the child exits. `--service-name <name>` or `OTEL_SERVICE_NAME` sets the emitted
+resource `service.name`. Export failures are warnings and do not change stdout,
+stderr, stdin, or the child exit code.
 Adapter-derived OTLP events and profile-link events are attached to the command
 span. Adapter metrics and release-grade descendant process-tree spans are
 follow-up milestones.
@@ -104,7 +105,7 @@ artifacts that should survive cleanup.
 | Passthrough stdout/stderr/stdin and exit status | Supported                       | Wrapper diagnostics go to stderr. Optional summary/export failures do not replace the child exit code.                                                   |
 | W3C trace context root-or-join propagation      | Supported                       | The child receives `traceparent` and `TRACEPARENT`.                                                                                                      |
 | Local summary evidence                          | Supported                       | Raw argv, cwd, paths, output payloads, source text, and credentials are not embedded.                                                                    |
-| OTLP command span export                        | Supported                       | Emits command span, adapter events, and profile-link events over OTLP/HTTP JSON.                                                                         |
+| OTLP command span export                        | Supported                       | Emits command span, one degraded direct-child process span, adapter events, and profile-link events over OTLP/HTTP JSON.                                 |
 | CAS profile links                               | Supported                       | Profile bytes are stored under `--cas-root`; summaries and OTLP events carry `cas:` URIs plus descriptors, not raw bytes or local paths.                 |
 | Adapter metrics as OTLP metrics                 | Not a release claim             | Adapter metrics remain local summary records until trace-correlated metric semantics are explicit.                                                       |
 | Descendant process-tree spans                   | Not a release claim             | Current evidence is explicitly degraded/direct-child-only. Exact descendant spans need platform backend validation before being documented as supported. |
