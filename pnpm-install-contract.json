@@ -25,14 +25,26 @@
       },
       "darwinSplitCas": {
         "gcAuthority": "shared-pool-coordinator",
+        "importMethod": "clone-or-copy",
         "mutableState": "profile-local",
         "repairAuthority": "devenv",
+        "sameDeviceRequired": false,
+        "sharedContent": "store/v11/files"
+      },
+      "linuxSharedHardlink": {
+        "gcAuthority": "shared-pool-coordinator",
+        "importMethod": "hardlink",
+        "mutableState": "profile-local",
+        "repairAuthority": "devenv",
+        "sameDeviceRequired": true,
         "sharedContent": "store/v11/files"
       },
       "isolated": {
         "gcAuthority": "profile-local",
+        "importMethod": "clone-or-copy",
         "mutableState": "profile-local",
-        "repairAuthority": "devenv"
+        "repairAuthority": "devenv",
+        "sameDeviceRequired": false
       },
       "nixPreparedDeps": {
         "gcAuthority": "nix-store",

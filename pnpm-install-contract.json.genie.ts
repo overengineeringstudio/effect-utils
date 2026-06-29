@@ -90,11 +90,23 @@ export default projectionArtifact.json({
         darwinSplitCas: {
           mutableState: 'profile-local',
           sharedContent: 'store/v11/files',
+          importMethod: 'clone-or-copy',
+          sameDeviceRequired: false,
+          gcAuthority: 'shared-pool-coordinator',
+          repairAuthority: 'devenv',
+        },
+        linuxSharedHardlink: {
+          mutableState: 'profile-local',
+          sharedContent: 'store/v11/files',
+          importMethod: 'hardlink',
+          sameDeviceRequired: true,
           gcAuthority: 'shared-pool-coordinator',
           repairAuthority: 'devenv',
         },
         isolated: {
           mutableState: 'profile-local',
+          importMethod: 'clone-or-copy',
+          sameDeviceRequired: false,
           gcAuthority: 'profile-local',
           repairAuthority: 'devenv',
         },

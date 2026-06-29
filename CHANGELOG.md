@@ -83,6 +83,11 @@ All notable changes to this project will be documented in this file.
   typed OTEL spans through the production bounded git runner, so CI fixture
   stalls can produce inspectable trace evidence.
 
+- **devenv/pnpm**: Add an explicit `materializationProfile` API and profile
+  evidence contract for `ciJobLocal`, `darwinSplitCas`,
+  `linuxSharedHardlink`, and `isolated` without changing Linux `auto` to
+  hardlink materialization yet.
+
 - **@overeng/genie**: Document the intended package export type-proof
   architecture: strict proofs should use an explicit compiler executable
   boundary (`tsgo` by default, custom only by explicit override) instead of
