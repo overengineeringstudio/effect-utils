@@ -44,9 +44,9 @@
 
 1. Deploy preview outcomes are emitted as exactly one typed workflow-report
    record per target.
-2. Missing credentials, missing artifacts, provider lookup failures, invalid
-   output, unsafe live aliases, and verification failures decode to explicit
-   error tags.
+2. Missing credentials, required missing artifacts, provider lookup failures,
+   invalid output, unsafe live aliases, and verification failures decode to
+   explicit error tags or skipped records.
 3. Netlify and Vercel deploy previews both run through the same `ci-tools`
    domain model and thin task-launcher contract.
 4. Required E2E uses fake providers and the real task/CLI boundary.
