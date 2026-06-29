@@ -36,9 +36,18 @@ All notable changes to this project will be documented in this file.
   the emitted profile link with the TypeScript contract, and resolves the
   linked artifact from CAS.
 
+- **otel-scrape**: Document the current stable CLI surface, summary/export modes,
+  adapter support policy, CAS artifact handoff, privacy guarantees, and current
+  support matrix, including the explicit non-claim for release-grade descendant
+  process-tree spans until exact backend validation lands.
+
 - **otel-scrape**: Add the public VRS for an effect-utils-owned process wrapper
   that turns build/dev tool executions into OTEL spans, events, metrics, and
   content-addressed profile links.
+
+- **otel-scrape**: Add explicit degraded direct-child process observation
+  evidence in summary JSON and OTLP export, including a validation fixture that
+  proves descendant workloads are not reported as release-grade process trees.
 
 - **@overeng/genie**: Add the explicit `@overeng/genie/composition` subpath for
   reusable cross-artifact composition helpers. The first helper,

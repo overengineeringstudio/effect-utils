@@ -117,7 +117,9 @@ flowchart TD
 
 `otel-scrape` must provide exact descendant process-tree spans on supported release platforms before a stable release. A prototype may start with the direct child process span only, but direct-child-only capture does not satisfy the release contract.
 
-Best-effort or sampled descendant discovery may exist only when explicitly marked as degraded/experimental output. Release validation must include Linux and macOS ARM evidence; use `mbp2021` for macOS validation as needed.
+Best-effort or sampled descendant discovery may exist only when explicitly marked as degraded/experimental output. Release validation must include Linux and macOS ARM evidence from public-safe runner classes, not private machine identities.
+
+The current implementation does not make a release-grade descendant process-tree claim. Summary evidence records `degraded.direct_child_only = true` and a `processes` observation block with `backend = "direct-child"` and `fidelity = "degraded"`. OTLP export emits the wrapper-owned command span, one direct-child `otel_scrape.process` span, and adapter/profile events. A release that ships before exact process-tree backends land must document this as degraded/direct-child-only process evidence instead of implying arbitrary descendant process spans.
 
 See [.decisions/0005-exact-process-tree-fidelity.md](./.decisions/0005-exact-process-tree-fidelity.md).
 
@@ -154,6 +156,13 @@ The command summary records stable identities, not raw local inputs:
 - `command.argv_hash` is a stable hash over the child argv vector.
 - `command.cwd_hash` is a stable hash over the current working directory identity.
 - Raw argv, cwd, local absolute paths, credentials, source text, and private payloads are not embedded.
+- `processes.backend` names the active observation backend. `direct-child` is
+  explicitly degraded and records only the spawned child process, even when the
+  workload launches descendants.
+- `processes.observed[*]` records process evidence with span IDs, relationship,
+  hashed PID identity, hashed argv identity, exit status, termination evidence,
+  and wrapper-measured wall time. It does not include raw PID, argv, cwd, paths,
+  credentials, source text, or child output.
 - `child.exit_code` records normal process exit codes. Signal-terminated Unix
   children keep `child.exit_code = null` and record
   `child.termination = { _tag: "Signal", signal, synthetic_exit_code }`, where
@@ -258,6 +267,29 @@ CAS storage, and records degraded evidence for non-Node commands, missing
 profiles, multiple produced profiles, or malformed profile JSON. The temporary
 filesystem path is not part of summary or OTLP evidence; consumers resolve the
 profile through the emitted `cas:` URI and run CAS root.
+
+Adapter fleet expansion is gated by the same vertical-slice bar as the first
+profile adapter: structured source contract, passthrough preservation, privacy
+tests, degraded-mode tests, OTLP/summary semantics, and a consumer fixture where
+the adapter emits profile links or other cross-package contracts. Candidate
+adapters such as `cargo`, `tsc`, `vitest`, and `vite` remain deferred until they
+meet that bar.
+
+## Release Documentation Contract
+
+Public release documentation must distinguish supported capabilities from
+prototype/degraded evidence:
+
+- Summary JSON is local evidence; OTLP command-span export is the telemetry
+  transport currently implemented.
+- Adapter metrics are not OTLP metrics until DQ1 is resolved with a backend
+  query and E2E proof.
+- Profile artifacts are handed off by retaining the run CAS root and a manifest
+  pin; the `cas:` URI plus descriptor is the durable identity.
+- Raw argv, cwd, local paths, credentials, source text, profile bytes, and child
+  output payloads are excluded from summary and OTLP evidence.
+- Descendant process-tree spans are not a release claim unless platform-specific
+  exactness tests prove them.
 
 ## Relationship To Existing Packages
 
