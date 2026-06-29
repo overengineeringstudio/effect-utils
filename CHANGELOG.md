@@ -24,7 +24,9 @@ All notable changes to this project will be documented in this file.
 - **devenv deploy tasks**: Add fake-provider E2E coverage for the generated
   Netlify and Vercel deploy task scripts, proving PR aliasing, task output
   metadata, workflow-report record emission, Vercel prebuilt static packaging,
-  and Netlify diagnostic behavior without real provider credentials.
+  Netlify diagnostic behavior, malformed provider output failures, missing PR
+  input failures, and missing local static output failures without real provider
+  credentials.
 
 - **@overeng/genie**: Add the explicit `@overeng/genie/composition` subpath for
   reusable cross-artifact composition helpers. The first helper,
