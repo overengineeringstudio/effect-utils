@@ -211,6 +211,11 @@
       "description": "@overeng/agent-session-ingest package · Set: manual"
     },
     {
+      "name": "system:ci-tools",
+      "color": "a371f7",
+      "description": "@overeng/ci-tools package · Set: manual"
+    },
+    {
       "name": "system:content-address",
       "color": "a371f7",
       "description": "@overeng/content-address package · Set: manual"
@@ -359,11 +364,6 @@
       "name": "system:utils-dev",
       "color": "a371f7",
       "description": "@overeng/utils-dev package · Set: manual"
-    },
-    {
-      "name": "system:workflow-report",
-      "color": "a371f7",
-      "description": "@overeng/workflow-report package · Set: manual"
     },
     {
       "name": "type:agent-tooling",

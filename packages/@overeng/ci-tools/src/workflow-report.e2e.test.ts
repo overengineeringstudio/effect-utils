@@ -13,10 +13,10 @@ import {
 } from './mod.ts'
 
 const repoRoot = resolve(import.meta.dirname, '../../../..')
-const workflowReportBin = join(repoRoot, 'packages/@overeng/workflow-report/bin/workflow-report.ts')
+const workflowReportBin = join(repoRoot, 'packages/@overeng/ci-tools/bin/ci-tools.ts')
 
 const runWorkflowReport = (args: readonly string[]) => {
-  const result = spawnSync('bun', [workflowReportBin, ...args], {
+  const result = spawnSync('bun', [workflowReportBin, 'workflow-report', ...args], {
     cwd: repoRoot,
     encoding: 'utf8',
     env: {

@@ -28,6 +28,11 @@ All notable changes to this project will be documented in this file.
   input failures, and missing local static output failures without real provider
   credentials.
 
+- **@overeng/ci-tools**: Hard-rename the workflow-report CLI package and Nix
+  flake output to `@overeng/ci-tools` / `#ci-tools`, keeping the report helpers
+  under the `ci-tools workflow-report ...` command surface and regenerating CI
+  to call the new binary boundary.
+
 - **@overeng/genie**: Add the explicit `@overeng/genie/composition` subpath for
   reusable cross-artifact composition helpers. The first helper,
   `tsconfigReferencesFromPackages`, projects TypeScript project references from

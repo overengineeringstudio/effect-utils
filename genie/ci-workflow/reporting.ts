@@ -4,7 +4,7 @@ import {
   workflowReportManagedMarker,
   workflowReportRecordLineMarker,
   type WorkflowReportRecord,
-} from '../../packages/@overeng/workflow-report/src/mod.ts'
+} from '../../packages/@overeng/ci-tools/src/mod.ts'
 import {
   shellSingleQuote,
   workflowReportCommand,

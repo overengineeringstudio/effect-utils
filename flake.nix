@@ -64,7 +64,7 @@
             src = self;
             typeProofCompilerBin = "${tsgo.packages.${system}.tsgo}/bin/tsgo";
           };
-          workflow-report = import (rootPath + "/packages/@overeng/workflow-report/nix/build.nix") {
+          ci-tools = import (rootPath + "/packages/@overeng/ci-tools/nix/build.nix") {
             inherit
               pkgs
               gitRev
@@ -117,7 +117,7 @@
             dirty = true;
             typeProofCompilerBin = "${tsgo.packages.${system}.tsgo}/bin/tsgo";
           };
-          workflow-report = import (rootPath + "/packages/@overeng/workflow-report/nix/build.nix") {
+          ci-tools = import (rootPath + "/packages/@overeng/ci-tools/nix/build.nix") {
             inherit pkgs gitRev commitTs;
             src = self;
             dirty = true;
@@ -150,13 +150,13 @@
           cli-build-stamp = cliBuildStamp.package;
           effect-tsgo = tsgo.packages.${system}.effect-tsgo;
           genie-dirty = cliPackagesDirty.genie;
-          workflow-report = cliPackages.workflow-report;
-          workflow-report-dirty = cliPackagesDirty.workflow-report;
+          ci-tools = cliPackages.ci-tools;
+          ci-tools-dirty = cliPackagesDirty.ci-tools;
           # Publish the FODs as first-class flake outputs so external tooling
           # can refresh hashes against the actual cached boundary without
           # rebuilding the full CLI package graph.
           "genie-pnpm-deps" = cliPackages.genie.passthru.depsBuildsByInstallRoot.root;
-          "workflow-report-pnpm-deps" = cliPackages.workflow-report.passthru.depsBuildsByInstallRoot.root;
+          "ci-tools-pnpm-deps" = cliPackages.ci-tools.passthru.depsBuildsByInstallRoot.root;
           megarepo-dirty = cliPackagesDirty.megarepo;
           "megarepo-pnpm-deps" = cliPackages.megarepo.passthru.depsBuildsByInstallRoot.root;
           tui-stories-dirty = cliPackagesDirty.tui-stories;
@@ -179,7 +179,7 @@
         # Direnv helper for comparing expected CLI outputs to PATH entries.
         cliOutPaths = {
           genie = cliPackages.genie.outPath;
-          workflow-report = cliPackages.workflow-report.outPath;
+          ci-tools = cliPackages.ci-tools.outPath;
           megarepo = cliPackages.megarepo.outPath;
           tui-stories = cliPackages.tui-stories.outPath;
           notion-cli = cliPackages.notion-cli.outPath;
@@ -187,7 +187,7 @@
         };
         cliOutPathsDirty = {
           genie = cliPackagesDirty.genie.outPath;
-          workflow-report = cliPackagesDirty.workflow-report.outPath;
+          ci-tools = cliPackagesDirty.ci-tools.outPath;
           megarepo = cliPackagesDirty.megarepo.outPath;
           tui-stories = cliPackagesDirty.tui-stories.outPath;
           notion-cli = cliPackagesDirty.notion-cli.outPath;
@@ -308,7 +308,7 @@
       # Note: mkSourceCli is internal-only (not exported).
       # For consuming CLIs from other repos, use:
       #   effectUtils.packages.${system}.genie
-      #   effectUtils.packages.${system}.workflow-report
+      #   effectUtils.packages.${system}.ci-tools
       #   effectUtils.packages.${system}.megarepo
       # See the stack-level Nix/devenv CLI distribution policy docs.
     };
