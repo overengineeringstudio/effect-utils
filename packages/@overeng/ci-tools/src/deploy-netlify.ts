@@ -1,7 +1,7 @@
 /* oxlint-disable overeng/jsdoc-require-exports, overeng/named-args -- Phase 3 exposes the Netlify deploy boundary used by generated tasks. */
 
 import { spawnSync } from 'node:child_process'
-import { appendFileSync, existsSync } from 'node:fs'
+import { appendFileSync, existsSync, writeFileSync } from 'node:fs'
 
 import { Effect, Either, Schema } from 'effect'
 
@@ -20,6 +20,7 @@ import {
   deployFailureRecord,
   deploySkippedRecord,
   deploySuccessRecord,
+  deployTaskOutputLine,
   redactDeployDiagnosticText,
 } from './deploy-domain.ts'
 import type { WorkflowReportRecord } from './mod.ts'
@@ -39,6 +40,7 @@ export type NetlifyDeployCommandOptions = {
   readonly siteIdEnv: string
   readonly authTokenEnv: string
   readonly accountSlugEnv?: string | undefined
+  readonly workspaceFilter?: string | undefined
   readonly workflowReportOutputFile?: string | undefined
   readonly netlifyBin: string
   readonly netlifyApiBaseUrl: string
@@ -525,6 +527,7 @@ export const runNetlifyDeploy = Effect.fn('ci-tools.deploy.netlify')(function* (
     `--auth=${authTokenValue}`,
     '--no-build',
     ...(siteId === undefined && siteName !== undefined ? [`--site=${siteName}`] : []),
+    ...(options.workspaceFilter === undefined ? [] : [`--filter=${options.workspaceFilter}`]),
     ...(alias === undefined ? [] : [`--alias=${alias}`]),
     `--message=${options.target} (${options.mode})`,
     '--json',
@@ -607,6 +610,12 @@ export const runNetlifyDeploy = Effect.fn('ci-tools.deploy.netlify')(function* (
   }
 
   process.stdout.write(`Netlify deploy URL: ${finalUrl}\n`)
+  const taskOutputFile = process.env.DEVENV_TASK_OUTPUT_FILE
+  if (taskOutputFile !== undefined) {
+    yield* Effect.sync(() => {
+      writeFileSync(taskOutputFile, `${deployTaskOutputLine({ result: decoded.right })}\n`)
+    })
+  }
   yield* emitRecord({
     workflowReportOutputFile: options.workflowReportOutputFile,
     record: deploySuccessRecord({

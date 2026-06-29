@@ -51,8 +51,14 @@ All notable changes to this project will be documented in this file.
 - **@overeng/ci-tools**: Add the Phase 4 Vercel provider adapter with API-first
   project diagnostics, local Build Output API static packaging, prod/PR/preview
   alias semantics, redacted failure records, fake-provider E2E coverage, and a
-  guarded live E2E that verifies served marker content and records best-effort
-  alias cleanup.
+  guarded live E2E that verifies served marker content through Vercel's
+  automation protection-bypass header and records best-effort alias cleanup.
+
+- **devenv deploy tasks / @overeng/ci-tools**: Move shared Netlify and Vercel
+  deploy tasks onto thin `ci-tools deploy ...` launchers, add task-output
+  environment metadata for deploy URLs, preserve Vercel build-output deploy
+  mode, and cover the task scripts through real-CLI E2E fixtures with fake
+  provider endpoints.
 
 - **@overeng/genie**: Add the explicit `@overeng/genie/composition` subpath for
   reusable cross-artifact composition helpers. The first helper,

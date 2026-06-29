@@ -72,6 +72,10 @@ let
     name = "mr";
     entry = "packages/@overeng/megarepo/bin/mr.ts";
   };
+  ciToolsSourceCli = mkSourceCli {
+    name = "ci-tools";
+    entry = "packages/@overeng/ci-tools/bin/ci-tools.ts";
+  };
 
   # CLI packages built with Nix (for hash management)
   nixCliPackages = [
@@ -359,6 +363,7 @@ in
     (taskModules.netlify {
       siteName = "overeng-utils";
       siteId = "462d2440-fb38-4e69-8023-9c425d1e2132";
+      ciToolsBin = "${ciToolsSourceCli}/bin/ci-tools";
       deployments = map (pkg: {
         name = pkg.name;
         staticDir = "${pkg.path}/storybook-static";
@@ -465,6 +470,7 @@ in
     # otelite binary on PATH so @overeng/utils-dev/otelite tests run the real CLI.
     repoFlake.packages.${currentSystem}.otelite
     cliBuildStamp.package
+    ciToolsSourceCli
     (mkSourceCli {
       name = "tui-stories";
       entry = "packages/@overeng/tui-stories/bin/tui-stories.tsx";

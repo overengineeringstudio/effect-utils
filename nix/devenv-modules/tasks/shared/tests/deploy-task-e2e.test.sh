@@ -18,20 +18,6 @@ assert_contains() {
   fi
 }
 
-assert_not_contains() {
-  local haystack="$1"
-  local needle="$2"
-  local label="$3"
-
-  if printf '%s' "$haystack" | grep -qF -- "$needle"; then
-    echo "FAIL: $label"
-    echo "  expected not to contain: $needle"
-    echo "  actual output:"
-    printf '%s\n' "$haystack" | sed 's/^/    /'
-    exit 1
-  fi
-}
-
 assert_exit_code() {
   local expected="$1"
   local actual="$2"
@@ -52,7 +38,9 @@ assert_json_field() {
   local label="$4"
 
   local actual
-  actual="$(node -e "const fs = require('node:fs'); const value = JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); const out = (${expression})(value); process.stdout.write(String(out))" "$file")"
+  actual="$(
+    node -e "const fs = require('node:fs'); const marker = 'WORKFLOW_REPORT_V1: '; const text = fs.readFileSync(process.argv[1], 'utf8').trim().split('\n').find((line) => line.trim().length > 0) ?? ''; const json = text.startsWith(marker) ? text.slice(marker.length) : text; const value = JSON.parse(json); const out = (${expression})(value); process.stdout.write(String(out))" "$file"
+  )"
   if [ "$expected" != "$actual" ]; then
     echo "FAIL: $label"
     echo "  expected: $expected"
@@ -82,6 +70,7 @@ extract_netlify_task_script() {
           ((import $ROOT/nix/devenv-modules/tasks/shared/netlify.nix {
             siteName = \"fake-site\";
             siteId = \"fake-site-id\";
+            ciToolsBin = \"$tmpdir/ci-tools-wrapper\";
             deployments = [
               {
                 name = \"storybook\";
@@ -101,7 +90,7 @@ extract_netlify_task_script() {
   chmod +x "$output_path"
 }
 
-extract_vercel_task_script() {
+extract_vercel_static_task_script() {
   local static_dir="$1"
   local output_path="$2"
 
@@ -121,12 +110,15 @@ extract_vercel_task_script() {
           })
           ((import $ROOT/nix/devenv-modules/tasks/shared/vercel.nix {
             aliasSuffix = \"team\";
+            ciToolsBin = \"$tmpdir/ci-tools-wrapper\";
+            vercelBin = \"$tmpdir/fake-vercel\";
             deployments = [
               {
                 name = \"web\";
                 staticDir = \"$static_dir\";
                 projectIdEnv = \"VERCEL_PROJECT_ID_WEB\";
-                aliasPrefix = \"web\";
+                scopeEnv = \"VERCEL_SCOPE_WEB\";
+                aliasPrefix = \"web-preview\";
                 afterTask = null;
               }
             ];
@@ -142,48 +134,125 @@ extract_vercel_task_script() {
   chmod +x "$output_path"
 }
 
+extract_vercel_build_task_script() {
+  local output_path="$1"
+
+  nix-instantiate --eval --strict --json --expr "
+    let
+      flake = builtins.getFlake (toString $ROOT);
+      pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
+      pkgsForTest = pkgs // {
+        bun = \"$tmpdir/fake-bun-pkg\";
+      };
+      evaluated = pkgs.lib.evalModules {
+        modules = [
+          ({ ... }: {
+            options.tasks = pkgs.lib.mkOption { type = pkgs.lib.types.attrsOf pkgs.lib.types.anything; default = { }; };
+            options.processes = pkgs.lib.mkOption { type = pkgs.lib.types.attrsOf pkgs.lib.types.anything; default = { }; };
+            options.packages = pkgs.lib.mkOption { type = pkgs.lib.types.listOf pkgs.lib.types.anything; default = [ ]; };
+          })
+          ((import $ROOT/nix/devenv-modules/tasks/shared/vercel.nix {
+            aliasSuffix = \"team\";
+            ciToolsBin = \"$tmpdir/ci-tools-wrapper\";
+            vercelBin = \"$tmpdir/fake-vercel\";
+            deployments = [
+              {
+                name = \"app\";
+                cwd = \"app\";
+                projectIdEnv = \"VERCEL_PROJECT_ID_APP\";
+                scopeEnv = \"VERCEL_SCOPE_APP\";
+                aliasPrefix = \"app-preview\";
+              }
+            ];
+          }) {
+            pkgs = pkgsForTest;
+            lib = pkgs.lib;
+            config = { };
+          })
+        ];
+      };
+    in evaluated.config.tasks.\"vercel:deploy:app\".exec
+  " | jq -r . > "$output_path"
+  chmod +x "$output_path"
+}
+
 echo "Running deploy task E2E tests..."
 echo ""
 
 tmpdir="$(mktemp -d)"
-trap 'rm -rf "$tmpdir"' EXIT
+api_pid=""
+cleanup() {
+  if [ -n "$api_pid" ]; then
+    kill "$api_pid" >/dev/null 2>&1 || true
+  fi
+  rm -rf "$tmpdir"
+}
+trap cleanup EXIT
 
 workspace="$tmpdir/workspace"
 mkdir -p \
   "$workspace/storybook-static" \
   "$workspace/static" \
+  "$workspace/app" \
   "$tmpdir/fake-netlify-pkg/bin" \
   "$tmpdir/fake-bun-pkg/bin"
 
 echo "storybook marker" > "$workspace/storybook-static/index.html"
 echo "vercel marker" > "$workspace/static/index.html"
+echo '{"name":"fixture-app"}' > "$workspace/app/package.json"
+
+cat > "$tmpdir/fake-api.mjs" <<'EOF'
+import { createServer } from 'node:http'
+import { writeFileSync } from 'node:fs'
+
+const portFile = process.argv[2]
+const server = createServer((request, response) => {
+  const url = new URL(request.url ?? '/', 'http://127.0.0.1')
+  response.setHeader('content-type', 'application/json')
+
+  if (url.pathname === '/api/v1/sites/fake-site-id') {
+    response.end(JSON.stringify({ name: 'fake-site', account_slug: 'fake-account' }))
+    return
+  }
+
+  if (url.pathname === '/v9/projects/fake-project') {
+    response.end(JSON.stringify({ id: 'fake-project', name: 'fake-project' }))
+    return
+  }
+
+  response.statusCode = 404
+  response.end(JSON.stringify({ error: { message: `Unhandled fake API route: ${url.pathname}` } }))
+})
+
+server.listen(0, '127.0.0.1', () => {
+  const address = server.address()
+  if (address === null || typeof address === 'string') {
+    throw new Error('Fake API did not bind to a TCP port')
+  }
+  writeFileSync(portFile, `${address.port}\n`)
+})
+EOF
+
+node "$tmpdir/fake-api.mjs" "$tmpdir/api-port" &
+api_pid=$!
+for _ in $(seq 1 100); do
+  if [ -s "$tmpdir/api-port" ]; then
+    break
+  fi
+  sleep 0.05
+done
+if [ ! -s "$tmpdir/api-port" ]; then
+  echo "FAIL: fake API did not start"
+  exit 1
+fi
+export FAKE_API_BASE_URL="http://127.0.0.1:$(cat "$tmpdir/api-port")"
 
 cat > "$tmpdir/fake-netlify-pkg/bin/netlify" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$*" >> "${FAKE_NETLIFY_LOG:?}"
 
-if [ "${1:-}" = "api" ] && [ "${2:-}" = "getCurrentUser" ]; then
-  printf '{"email":"fake@example.invalid","slug":"fake-user"}\n'
-  exit 0
-fi
-
-if [ "${1:-}" = "api" ] && [ "${2:-}" = "getSite" ]; then
-  printf '{"name":"fake-site","account_slug":"fake-account"}\n'
-  exit 0
-fi
-
 if [ "${1:-}" = "deploy" ]; then
-  if [ "${FAKE_NETLIFY_MODE:-success}" = "unauthorized" ]; then
-    echo 'Unauthorized: could not retrieve project' >&2
-    exit 9
-  fi
-
-  if [ "${FAKE_NETLIFY_MODE:-success}" = "invalid-json" ]; then
-    printf '{"deploy_id":null}\n'
-    exit 0
-  fi
-
   printf '{"deploy_id":"deploy123","site_name":"fake-site","deploy_url":"https://deploy123--fake-site.netlify.app"}\n'
   exit 0
 fi
@@ -198,14 +267,26 @@ cat > "$tmpdir/fake-bun-pkg/bin/bunx" <<'EOF'
 set -euo pipefail
 printf 'cwd=%s args=%s\n' "$PWD" "$*" >> "${FAKE_BUNX_LOG:?}"
 
+if [ "${1:-}" = "vercel" ] && [ "${2:-}" = "pull" ]; then
+  mkdir -p .vercel
+  printf '{"settings":{}}\n' > .vercel/project.json
+  exit 0
+fi
+
+if [ "${1:-}" = "vercel" ] && [ "${2:-}" = "build" ]; then
+  mkdir -p .vercel/output/static
+  printf '{"version":3}\n' > .vercel/output/config.json
+  printf 'built marker\n' > .vercel/output/static/index.html
+  exit 0
+fi
+
 if [ "${1:-}" = "vercel" ] && [ "${2:-}" = "deploy" ]; then
-  test -f .vercel/output/static/index.html
-  if [ "${FAKE_VERCEL_MODE:-success}" = "no-url" ]; then
-    printf 'Deployment complete without URL\n'
+  if [ -f .vercel/output/static/index.html ]; then
+    printf 'https://deploy-web.vercel.app\n'
     exit 0
   fi
-  printf 'https://deploy-web.vercel.app\n'
-  exit 0
+  echo "missing fake prebuilt output" >&2
+  exit 1
 fi
 
 if [ "${1:-}" = "vercel" ] && [ "${2:-}" = "alias" ]; then
@@ -218,14 +299,61 @@ exit 1
 EOF
 chmod +x "$tmpdir/fake-bun-pkg/bin/bunx"
 
-extract_netlify_task_script "$workspace/storybook-static" "$tmpdir/netlify-deploy.sh"
-extract_vercel_task_script "$workspace/static" "$tmpdir/vercel-deploy.sh"
+cat > "$tmpdir/fake-vercel" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'cwd=%s args=vercel %s\n' "$PWD" "$*" >> "${FAKE_BUNX_LOG:?}"
 
-echo "Test 1: Netlify PR deploy emits task output and workflow report records"
+if [ "${1:-}" = "deploy" ]; then
+  if [ -f .vercel/output/static/index.html ]; then
+    printf 'https://deploy-web.vercel.app\n'
+    exit 0
+  fi
+  echo "missing fake prebuilt output" >&2
+  exit 1
+fi
+
+if [ "${1:-}" = "alias" ]; then
+  printf 'Aliased %s to %s\n' "${2:-}" "${3:-}"
+  exit 0
+fi
+
+echo "unexpected fake vercel invocation: $*" >&2
+exit 1
+EOF
+chmod +x "$tmpdir/fake-vercel"
+
+cat > "$tmpdir/ci-tools-wrapper" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%q ' "\$@" >> "\${FAKE_CI_TOOLS_LOG:?}"
+printf '\n' >> "\${FAKE_CI_TOOLS_LOG:?}"
+
+case "\${1:-}:\${2:-}" in
+  deploy:netlify)
+    exec bun "$ROOT/packages/@overeng/ci-tools/bin/ci-tools.ts" "\$@" --netlify-api-base-url "\${FAKE_API_BASE_URL:?}"
+    ;;
+  deploy:vercel)
+    exec bun "$ROOT/packages/@overeng/ci-tools/bin/ci-tools.ts" "\$@" --vercel-api-base-url "\${FAKE_API_BASE_URL:?}"
+    ;;
+  *)
+    echo "unexpected ci-tools wrapper invocation: \$*" >&2
+    exit 1
+    ;;
+esac
+EOF
+chmod +x "$tmpdir/ci-tools-wrapper"
+
+extract_netlify_task_script "$workspace/storybook-static" "$tmpdir/netlify-deploy.sh"
+extract_vercel_static_task_script "$workspace/static" "$tmpdir/vercel-static-deploy.sh"
+extract_vercel_build_task_script "$tmpdir/vercel-build-deploy.sh"
+
+echo "Test 1: Netlify PR task delegates to ci-tools and preserves outputs"
 netlify_output_file="$tmpdir/netlify-task-output.json"
 netlify_report_file="$tmpdir/netlify-report.jsonl"
 netlify_output="$(
   cd "$workspace"
+  export FAKE_CI_TOOLS_LOG="$tmpdir/netlify-ci-tools.log"
   export FAKE_NETLIFY_LOG="$tmpdir/netlify.log"
   export NETLIFY_AUTH_TOKEN="fake-token"
   export DEVENV_TASK_INPUT='{"type":"pr","pr":42}'
@@ -234,82 +362,25 @@ netlify_output="$(
   bash "$tmpdir/netlify-deploy.sh" 2>&1
 )"
 
-assert_contains "$netlify_output" "Netlify deploy URL: https://storybook-pr-42--fake-site.netlify.app" "Netlify final URL should use PR alias"
-assert_contains "$netlify_output" "WORKFLOW_REPORT_V1:" "Netlify output should include marked workflow-report record"
-assert_contains "$(cat "$tmpdir/netlify.log")" "--alias=storybook-pr-42" "Netlify CLI should receive PR alias"
-assert_json_field "https://storybook-pr-42--fake-site.netlify.app" "$netlify_output_file" "value => value.devenv.env.NETLIFY_DEPLOY_URL_STORYBOOK" "Netlify task output should include scoped URL"
-assert_json_field "netlify" "$netlify_report_file" "value => value.data.provider" "Netlify report record should include provider"
-assert_json_field "storybook" "$netlify_report_file" "value => value.data.target" "Netlify report record should include target"
+netlify_args="$(cat "$tmpdir/netlify-ci-tools.log")"
+assert_contains "$netlify_output" "Netlify deploy URL: https://storybook-pr-42--fake-site.netlify.app" "Netlify wrapper should surface ci-tools output"
+assert_contains "$netlify_args" "deploy netlify" "Netlify wrapper should call ci-tools deploy netlify"
+assert_contains "$netlify_args" "--target storybook" "Netlify wrapper should preserve target"
+assert_contains "$netlify_args" "--mode pr" "Netlify wrapper should pass PR mode"
+assert_contains "$netlify_args" "--pr 42" "Netlify wrapper should pass PR number"
+assert_contains "$netlify_args" "--site-name fake-site" "Netlify wrapper should pass site name"
+assert_contains "$netlify_args" "--site-id-env NETLIFY_SITE_ID" "Netlify wrapper should pass site id env name"
+assert_contains "$netlify_args" "--workflow-report-output-file $netlify_report_file" "Netlify wrapper should pass report path"
+assert_json_field "https://storybook-pr-42--fake-site.netlify.app/" "$netlify_output_file" "value => value.devenv.env.NETLIFY_DEPLOY_URL_STORYBOOK" "Netlify task output should be delegated through ci-tools"
+assert_json_field "netlify" "$netlify_report_file" "value => value.data.provider" "Netlify report record should be delegated through ci-tools"
 
-echo "Test 2: Netlify lookup failure emits diagnostics without leaking token"
-set +e
-netlify_failure_output="$(
-  cd "$workspace"
-  export FAKE_NETLIFY_LOG="$tmpdir/netlify-failure.log"
-  export FAKE_NETLIFY_MODE="unauthorized"
-  export NETLIFY_AUTH_TOKEN="fake-token"
-  export DEVENV_TASK_INPUT='{"type":"prod"}'
-  bash "$tmpdir/netlify-deploy.sh" 2>&1
-)"
-netlify_failure_status=$?
-set -e
-
-assert_exit_code 9 "$netlify_failure_status" "Netlify unauthorized path should preserve provider exit code"
-assert_contains "$netlify_failure_output" "Netlify auth diagnostics for storybook:" "Netlify failure should print diagnostics header"
-assert_contains "$netlify_failure_output" "getCurrentUser: ok" "Netlify failure should diagnose current user"
-assert_contains "$netlify_failure_output" "getSite(fake-site-id): ok" "Netlify failure should diagnose configured site"
-assert_not_contains "$netlify_failure_output" "fake-token" "Netlify diagnostics should not leak token"
-
-echo "Test 3: Vercel static PR deploy packages local output, aliases, and emits records"
-vercel_output_file="$tmpdir/vercel-task-output.json"
-vercel_report_file="$tmpdir/vercel-report.jsonl"
-vercel_output="$(
-  cd "$workspace"
-  export FAKE_BUNX_LOG="$tmpdir/bunx.log"
-  export VERCEL_TOKEN="fake-token"
-  export VERCEL_ORG_ID="fake-org"
-  export VERCEL_PROJECT_ID_WEB="fake-project"
-  export DEVENV_TASK_INPUT='{"type":"pr","pr":123}'
-  export DEVENV_TASK_OUTPUT_FILE="$vercel_output_file"
-  export WORKFLOW_REPORT_OUTPUT_FILE="$vercel_report_file"
-  bash "$tmpdir/vercel-deploy.sh" 2>&1
-)"
-
-assert_contains "$vercel_output" "Vercel deploy URL: https://web-pr-123-team.vercel.app" "Vercel final URL should use PR alias"
-assert_contains "$vercel_output" "WORKFLOW_REPORT_V1:" "Vercel output should include marked workflow-report record"
-assert_contains "$(cat "$tmpdir/bunx.log")" "args=vercel deploy --prebuilt --yes --token fake-token" "Vercel deploy should use prebuilt local upload"
-assert_contains "$(cat "$tmpdir/bunx.log")" "args=vercel alias https://deploy-web.vercel.app web-pr-123-team.vercel.app --token fake-token" "Vercel alias command should receive PR alias"
-assert_json_field "https://web-pr-123-team.vercel.app" "$vercel_output_file" "value => value.devenv.env.VERCEL_DEPLOY_URL_WEB" "Vercel task output should include scoped URL"
-assert_json_field "vercel" "$vercel_report_file" "value => value.data.provider" "Vercel report record should include provider"
-assert_json_field "web" "$vercel_report_file" "value => value.data.target" "Vercel report record should include target"
-
-echo "Test 4: Netlify invalid provider output fails before record emission"
-set +e
-netlify_invalid_output="$(
-  cd "$workspace"
-  export FAKE_NETLIFY_LOG="$tmpdir/netlify-invalid.log"
-  export FAKE_NETLIFY_MODE="invalid-json"
-  export NETLIFY_AUTH_TOKEN="fake-token"
-  export DEVENV_TASK_INPUT='{"type":"draft"}'
-  export WORKFLOW_REPORT_OUTPUT_FILE="$tmpdir/netlify-invalid-report.jsonl"
-  bash "$tmpdir/netlify-deploy.sh" 2>&1
-)"
-netlify_invalid_status=$?
-set -e
-
-assert_exit_code 1 "$netlify_invalid_status" "Netlify invalid JSON should fail task"
-assert_contains "$netlify_invalid_output" "Error: Netlify CLI did not return the expected deploy JSON for storybook" "Netlify invalid JSON should explain schema failure"
-if [ -e "$tmpdir/netlify-invalid-report.jsonl" ]; then
-  echo "FAIL: Netlify invalid provider output should not emit success report"
-  exit 1
-fi
-
-echo "Test 5: Netlify PR deploy without PR input fails before provider call"
+echo "Test 2: Netlify PR task without PR input fails before ci-tools"
 set +e
 netlify_missing_pr_output="$(
   cd "$workspace"
   : > "$tmpdir/netlify-missing-pr.log"
-  export FAKE_NETLIFY_LOG="$tmpdir/netlify-missing-pr.log"
+  export FAKE_CI_TOOLS_LOG="$tmpdir/netlify-missing-pr.log"
+  export FAKE_NETLIFY_LOG="$tmpdir/netlify-missing-pr-provider.log"
   export NETLIFY_AUTH_TOKEN="fake-token"
   export DEVENV_TASK_INPUT='{"type":"pr"}'
   bash "$tmpdir/netlify-deploy.sh" 2>&1
@@ -320,56 +391,62 @@ set -e
 assert_exit_code 1 "$netlify_missing_pr_status" "Netlify missing PR input should fail"
 assert_contains "$netlify_missing_pr_output" "Error: PR deploy requires 'pr' input" "Netlify missing PR input should explain required field"
 if [ -s "$tmpdir/netlify-missing-pr.log" ]; then
-  echo "FAIL: Netlify missing PR input should not call provider"
+  echo "FAIL: Netlify missing PR input should not call ci-tools"
   exit 1
 fi
 
-echo "Test 6: Vercel deploy output without URL fails before record emission"
-set +e
-vercel_no_url_output="$(
+echo "Test 3: Vercel static PR task delegates alias and static artifact config"
+vercel_output_file="$tmpdir/vercel-task-output.json"
+vercel_report_file="$tmpdir/vercel-report.jsonl"
+vercel_output="$(
   cd "$workspace"
-  export FAKE_BUNX_LOG="$tmpdir/bunx-no-url.log"
-  export FAKE_VERCEL_MODE="no-url"
+  export FAKE_CI_TOOLS_LOG="$tmpdir/vercel-static-ci-tools.log"
+  export FAKE_BUNX_LOG="$tmpdir/static-bunx.log"
   export VERCEL_TOKEN="fake-token"
   export VERCEL_ORG_ID="fake-org"
   export VERCEL_PROJECT_ID_WEB="fake-project"
-  export DEVENV_TASK_INPUT='{"type":"preview"}'
-  export WORKFLOW_REPORT_OUTPUT_FILE="$tmpdir/vercel-no-url-report.jsonl"
-  bash "$tmpdir/vercel-deploy.sh" 2>&1
+  export VERCEL_SCOPE_WEB="fake-scope"
+  export DEVENV_TASK_INPUT='{"type":"pr","pr":123}'
+  export DEVENV_TASK_OUTPUT_FILE="$vercel_output_file"
+  export WORKFLOW_REPORT_OUTPUT_FILE="$vercel_report_file"
+  bash "$tmpdir/vercel-static-deploy.sh" 2>&1
 )"
-vercel_no_url_status=$?
-set -e
 
-assert_exit_code 1 "$vercel_no_url_status" "Vercel output without URL should fail"
-assert_contains "$vercel_no_url_output" "Error: Could not determine Vercel deploy URL from CLI output." "Vercel missing URL should explain extraction failure"
-if [ -e "$tmpdir/vercel-no-url-report.jsonl" ]; then
-  echo "FAIL: Vercel missing URL should not emit success report"
-  exit 1
-fi
+vercel_static_args="$(cat "$tmpdir/vercel-static-ci-tools.log")"
+assert_contains "$vercel_output" "Vercel deploy URL: https://web-preview-pr-123-team.vercel.app" "Vercel static wrapper should surface ci-tools output"
+assert_contains "$vercel_static_args" "deploy vercel" "Vercel static wrapper should call ci-tools deploy vercel"
+assert_contains "$vercel_static_args" "--target web" "Vercel static wrapper should keep record target"
+assert_contains "$vercel_static_args" "--alias-prefix web-preview" "Vercel static wrapper should preserve alias prefix"
+assert_contains "$vercel_static_args" "--alias-suffix team" "Vercel static wrapper should preserve alias suffix"
+assert_contains "$vercel_static_args" "--artifact-kind static" "Vercel static wrapper should pass static artifact kind"
+assert_contains "$vercel_static_args" "--project-id-env VERCEL_PROJECT_ID_WEB" "Vercel static wrapper should pass project id env"
+assert_contains "$vercel_static_args" "--scope-env VERCEL_SCOPE_WEB" "Vercel static wrapper should pass scope env"
+assert_json_field "https://web-preview-pr-123-team.vercel.app/" "$vercel_output_file" "value => value.devenv.env.VERCEL_DEPLOY_URL_WEB" "Vercel task output should be delegated through ci-tools"
+assert_json_field "vercel" "$vercel_report_file" "value => value.data.provider" "Vercel report record should be delegated through ci-tools"
 
-echo "Test 7: Vercel missing static output fails before provider call"
-missing_static_script="$tmpdir/vercel-missing-static.sh"
-extract_vercel_task_script "$workspace/missing-static" "$missing_static_script"
-set +e
-vercel_missing_static_output="$(
+echo "Test 4: Vercel build-mode task builds locally then delegates prebuilt output"
+build_output="$(
   cd "$workspace"
-  : > "$tmpdir/bunx-missing-static.log"
-  export FAKE_BUNX_LOG="$tmpdir/bunx-missing-static.log"
+  export FAKE_BUNX_LOG="$tmpdir/build-bunx.log"
+  export FAKE_CI_TOOLS_LOG="$tmpdir/vercel-build-ci-tools.log"
   export VERCEL_TOKEN="fake-token"
   export VERCEL_ORG_ID="fake-org"
-  export VERCEL_PROJECT_ID_WEB="fake-project"
-  export DEVENV_TASK_INPUT='{"type":"preview"}'
-  bash "$missing_static_script" 2>&1
+  export VERCEL_PROJECT_ID_APP="fake-project"
+  export VERCEL_SCOPE_APP="fake-scope"
+  export DEVENV_TASK_INPUT='{"type":"prod"}'
+  unset DEVENV_TASK_OUTPUT_FILE
+  bash "$tmpdir/vercel-build-deploy.sh" 2>&1
 )"
-vercel_missing_static_status=$?
-set -e
 
-assert_exit_code 1 "$vercel_missing_static_status" "Vercel missing static output should fail"
-assert_contains "$vercel_missing_static_output" "Error: No build output at $workspace/missing-static" "Vercel missing static output should identify directory"
-if [ -s "$tmpdir/bunx-missing-static.log" ]; then
-  echo "FAIL: Vercel missing static output should not call provider"
-  exit 1
-fi
+build_bunx_args="$(cat "$tmpdir/build-bunx.log")"
+build_ci_tools_args="$(cat "$tmpdir/vercel-build-ci-tools.log")"
+assert_contains "$build_output" "Pulling Vercel project settings and env for app (production)..." "Vercel build wrapper should keep local pull/build phase"
+assert_contains "$build_bunx_args" "args=vercel pull --yes --environment production --scope fake-scope --token fake-token" "Vercel build wrapper should pull production env in the configured scope"
+assert_contains "$build_bunx_args" "args=vercel build --yes --prod --scope fake-scope --token fake-token" "Vercel build wrapper should build prod locally in the configured scope"
+assert_contains "$build_ci_tools_args" "--target app" "Vercel build wrapper should keep record target"
+assert_contains "$build_ci_tools_args" "--alias-prefix app-preview" "Vercel build wrapper should preserve build-mode alias prefix"
+assert_contains "$build_ci_tools_args" "--artifact-kind prebuilt-output" "Vercel build wrapper should pass prebuilt output kind"
+assert_contains "$build_ci_tools_args" "--artifact-dir .vercel/output" "Vercel build wrapper should pass local Vercel output"
 
 echo ""
 echo "Deploy task E2E tests passed."

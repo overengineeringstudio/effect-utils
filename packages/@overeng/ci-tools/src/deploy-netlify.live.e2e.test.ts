@@ -12,6 +12,11 @@ const requiredEnv = ['NETLIFY_AUTH_TOKEN', 'NETLIFY_SITE_ID'] as const
 const missingEnv = requiredEnv.filter((name) => process.env[name] === undefined)
 const liveIt = liveEnabled === true && missingEnv.length === 0 ? it : it.skip
 
+const testProcessEnv = () => {
+  const { DEVENV_TASK_OUTPUT_FILE: _taskOutputFile, ...env } = process.env
+  return env
+}
+
 const readStreamText = (stream: NodeJS.ReadableStream) =>
   new Promise<string>((resolve, reject) => {
     const chunks: Buffer[] = []
@@ -73,7 +78,7 @@ const runCiTools = async (opts: {
     {
       cwd: opts.workdir,
       env: {
-        ...process.env,
+        ...testProcessEnv(),
         FORCE_COLOR: '0',
         OTEL_EXPORTER_OTLP_ENDPOINT: '',
       },
