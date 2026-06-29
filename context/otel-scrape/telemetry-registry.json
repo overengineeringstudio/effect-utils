@@ -13,7 +13,13 @@
       "description": "One observed child or descendant process."
     }
   ],
-  "metrics": [],
+  "metrics": [
+    {
+      "id": "oxlint_diagnostics",
+      "name": "oxlint.diagnostics",
+      "description": "Number of oxlint diagnostics parsed from one JSON report."
+    }
+  ],
   "attributes": [
     {
       "id": "adapter_name",

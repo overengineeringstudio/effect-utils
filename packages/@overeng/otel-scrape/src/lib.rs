@@ -6,12 +6,13 @@
 
 use std::fmt::Write as _;
 use std::fs;
-use std::io;
-use std::path::PathBuf;
+use std::io::{self, Read, Write};
+use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
+use std::thread;
 use std::time::Instant;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 #[path = "telemetry_registry.gen.rs"]
@@ -61,6 +62,7 @@ pub struct Summary {
     schema: &'static str,
     version: &'static str,
     command: CommandSummary,
+    adapter: AdapterSummary,
     trace: TraceSummary,
     child: ChildSummary,
     duration_ms: u128,
@@ -71,7 +73,32 @@ pub struct Summary {
 struct CommandSummary {
     argv_hash: String,
     cwd_hash: String,
-    adapter: String,
+}
+
+#[derive(Debug, Serialize)]
+struct AdapterSummary {
+    name: String,
+    records: Vec<AdapterRecord>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(tag = "_tag")]
+enum AdapterRecord {
+    Event(AdapterEvent),
+    Metric(AdapterMetric),
+}
+
+#[derive(Debug, Serialize)]
+struct AdapterEvent {
+    message: String,
+    severity: String,
+    filename_hash: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct AdapterMetric {
+    name: &'static str,
+    value: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -119,8 +146,8 @@ pub fn parse_args(args: &[String]) -> Result<CommandRequest, UsageError> {
                 let Some(value) = args.get(i + 1) else {
                     return usage_error("--adapter needs a value");
                 };
-                if value != "none" {
-                    return usage_error("only --adapter none is supported in this slice");
+                if value != "none" && value != "oxlint" {
+                    return usage_error("only --adapter none and --adapter oxlint are supported");
                 }
                 adapter = value.clone();
                 i += 2;
@@ -158,7 +185,7 @@ pub fn print_help() {
     eprintln!("otel-scrape {VERSION} — process wrapper for command telemetry");
     eprintln!();
     eprintln!("usage:");
-    eprintln!("  otel-scrape [--summary-out <file>] [--adapter none] -- <cmd...>");
+    eprintln!("  otel-scrape [--summary-out <file>] [--adapter none|oxlint] -- <cmd...>");
     eprintln!("  otel-scrape --version | --help");
 }
 
@@ -171,18 +198,11 @@ pub fn run(config: RunConfig) -> io::Result<i32> {
     let child_traceparent = trace.child_traceparent();
     let started = Instant::now();
 
-    let status = Command::new(&config.argv[0])
-        .args(&config.argv[1..])
-        .env(TRACEPARENT_ENV, &child_traceparent)
-        .env("TRACEPARENT", &child_traceparent)
-        .stdin(Stdio::inherit())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .status()?;
+    let child = run_child(&config, &child_traceparent)?;
 
     let duration_ms = started.elapsed().as_millis();
     if let Some(path) = config.summary_out.as_ref() {
-        match summary_for_status(&config, &trace, &child_traceparent, &status, duration_ms)
+        match summary_for_status(&config, &trace, &child_traceparent, &child, duration_ms)
             .and_then(|summary| write_summary(path, &summary))
         {
             Ok(()) => {}
@@ -195,25 +215,86 @@ pub fn run(config: RunConfig) -> io::Result<i32> {
         }
     }
 
-    Ok(exit_code(status))
+    Ok(exit_code(child.status))
+}
+
+struct ChildRun {
+    status: ExitStatus,
+    stdout: Vec<u8>,
+}
+
+fn run_child(config: &RunConfig, child_traceparent: &str) -> io::Result<ChildRun> {
+    let mut command = Command::new(&config.argv[0]);
+    command
+        .args(&config.argv[1..])
+        .env(TRACEPARENT_ENV, child_traceparent)
+        .env("TRACEPARENT", child_traceparent)
+        .stdin(Stdio::inherit());
+
+    if config.adapter == "none" {
+        let status = command
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .status()?;
+        return Ok(ChildRun {
+            status,
+            stdout: Vec::new(),
+        });
+    }
+
+    let mut child = command
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    let stdout = child.stdout.take().expect("stdout is piped");
+    let stderr = child.stderr.take().expect("stderr is piped");
+    let stdout_reader = thread::spawn(move || tee_reader(stdout, io::stdout()));
+    let stderr_reader = thread::spawn(move || tee_reader(stderr, io::stderr()));
+    let status = child.wait()?;
+    let stdout = join_reader(stdout_reader)?;
+    let _stderr = join_reader(stderr_reader)?;
+
+    Ok(ChildRun { status, stdout })
+}
+
+fn join_reader(handle: thread::JoinHandle<io::Result<Vec<u8>>>) -> io::Result<Vec<u8>> {
+    handle
+        .join()
+        .map_err(|_| io::Error::other("child output reader thread panicked"))?
+}
+
+fn tee_reader<R: Read, W: Write>(mut reader: R, mut writer: W) -> io::Result<Vec<u8>> {
+    let mut captured = Vec::new();
+    let mut buffer = [0_u8; 8192];
+    loop {
+        let read = reader.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        writer.write_all(&buffer[..read])?;
+        writer.flush()?;
+        captured.extend_from_slice(&buffer[..read]);
+    }
+    Ok(captured)
 }
 
 fn summary_for_status(
     config: &RunConfig,
     trace: &TraceContext,
     child_traceparent: &str,
-    status: &ExitStatus,
+    child: &ChildRun,
     duration_ms: u128,
 ) -> io::Result<Summary> {
     let cwd = std::env::current_dir()?;
+    let adapter = adapter_summary(config, &child.stdout);
     Ok(Summary {
         schema: telemetry_registry::schemas::SUMMARY_V1,
         version: VERSION,
         command: CommandSummary {
             argv_hash: stable_hash_lines(&config.argv),
             cwd_hash: stable_hash(cwd.to_string_lossy().as_bytes()),
-            adapter: config.adapter.clone(),
         },
+        adapter,
         trace: TraceSummary {
             trace_id: trace.trace_id.clone(),
             parent_span_id: trace.parent_span_id.clone(),
@@ -221,8 +302,8 @@ fn summary_for_status(
             child_traceparent: child_traceparent.to_owned(),
         },
         child: ChildSummary {
-            exit_code: status.code(),
-            success: status.success(),
+            exit_code: child.status.code(),
+            success: child.status.success(),
         },
         duration_ms,
         degraded: DegradedSummary {
@@ -230,6 +311,57 @@ fn summary_for_status(
             otlp_export: false,
         },
     })
+}
+
+fn adapter_summary(config: &RunConfig, stdout: &[u8]) -> AdapterSummary {
+    let records = match config.adapter.as_str() {
+        "oxlint" => oxlint_records(stdout),
+        _ => Vec::new(),
+    };
+
+    AdapterSummary {
+        name: config.adapter.clone(),
+        records,
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct OxlintJson {
+    #[serde(default)]
+    diagnostics: Vec<OxlintDiagnostic>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OxlintDiagnostic {
+    message: String,
+    severity: String,
+    filename: Option<String>,
+}
+
+fn oxlint_records(stdout: &[u8]) -> Vec<AdapterRecord> {
+    let Ok(report) = serde_json::from_slice::<OxlintJson>(stdout) else {
+        return Vec::new();
+    };
+
+    let mut records = Vec::with_capacity(report.diagnostics.len() + 1);
+    records.push(AdapterRecord::Metric(AdapterMetric {
+        name: telemetry_registry::metrics::OXLINT_DIAGNOSTICS,
+        value: report.diagnostics.len() as u64,
+    }));
+
+    for diagnostic in report.diagnostics {
+        records.push(AdapterRecord::Event(AdapterEvent {
+            message: diagnostic.message,
+            severity: diagnostic.severity,
+            filename_hash: diagnostic.filename.as_deref().map(hash_path_identity),
+        }));
+    }
+
+    records
+}
+
+fn hash_path_identity(path: &str) -> String {
+    stable_hash(Path::new(path).to_string_lossy().as_bytes())
 }
 
 fn write_summary(path: &PathBuf, summary: &Summary) -> io::Result<()> {
@@ -410,7 +542,7 @@ mod tests {
     fn rejects_unknown_adapter() {
         let args = vec![
             "--adapter".to_owned(),
-            "oxlint".to_owned(),
+            "cargo".to_owned(),
             "--".to_owned(),
             "true".to_owned(),
         ];
@@ -419,7 +551,7 @@ mod tests {
 
         assert_eq!(
             err.message(),
-            "only --adapter none is supported in this slice"
+            "only --adapter none and --adapter oxlint are supported"
         );
     }
 
@@ -430,6 +562,10 @@ mod tests {
             "otel-scrape.summary/v1"
         );
         assert_eq!(telemetry_registry::spans::COMMAND, "otel_scrape.command");
+        assert_eq!(
+            telemetry_registry::metrics::OXLINT_DIAGNOSTICS,
+            "oxlint.diagnostics"
+        );
         assert_eq!(
             telemetry_registry::attributes::PROCESS_COMMAND_ARGS_HASH,
             "process.command_args_hash"

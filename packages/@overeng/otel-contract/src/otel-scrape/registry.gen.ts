@@ -1,7 +1,7 @@
 // Generated file - DO NOT EDIT
 // Source: registry.gen.ts.genie.ts
 // Registry source: context/otel-scrape/telemetry-registry.json
-// Input fingerprint: sha256:cbfd82826debc526332e4994825eab930a9219a91c4991398bf4d52b115c10eb
+// Input fingerprint: sha256:b2ba4dec425b302da82d3ca662d4765ce5eb77fb0707189e96292a95cff5517b
 
 export const otelScrapeTelemetryRegistry = {
   "schemaVersion": 1,
@@ -18,7 +18,13 @@ export const otelScrapeTelemetryRegistry = {
       "description": "One observed child or descendant process."
     }
   ],
-  "metrics": [],
+  "metrics": [
+    {
+      "id": "oxlint_diagnostics",
+      "name": "oxlint.diagnostics",
+      "description": "Number of oxlint diagnostics parsed from one JSON report."
+    }
+  ],
   "attributes": [
     {
       "id": "adapter_name",
@@ -131,7 +137,9 @@ export const otelScrapeSpanNames = {
   "process": "otel_scrape.process"
 } as const
 
-export const otelScrapeMetricNames = {} as const
+export const otelScrapeMetricNames = {
+  "oxlintDiagnostics": "oxlint.diagnostics"
+} as const
 
 export const otelScrapeAttributeKeys = {
   "adapterName": "otel_scrape.adapter.name",

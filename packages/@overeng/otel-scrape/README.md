@@ -10,6 +10,7 @@ fidelity yet.
 ```bash
 otel-scrape -- cargo test
 otel-scrape cargo test
+otel-scrape --adapter oxlint --summary-out ./summary.json -- oxlint --format=json src
 ```
 
 The script-visible contract is the important part of this milestone: stdout,
@@ -23,6 +24,11 @@ duration, trace join/root facts, and explicit degraded flags for direct-child-on
 process capture and absent OTLP export. Later milestones can add command spans,
 adapter parsing, and CAS profile links without changing the pass-through
 boundary.
+
+`--adapter oxlint` parses oxlint JSON from stdout after preserving the child
+stdout bytes, recording a diagnostics metric and diagnostic events in the
+summary. Diagnostic filenames are hashed instead of copied into telemetry
+evidence.
 
 Telemetry semantic names are generated from
 `context/otel-scrape/telemetry-registry.json` into Rust and TypeScript bindings;

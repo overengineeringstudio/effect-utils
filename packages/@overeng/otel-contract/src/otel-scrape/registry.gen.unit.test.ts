@@ -20,6 +20,7 @@ describe('otel-scrape generated telemetry registry', () => {
     expect(otelScrapeAttributeKeys.adapterName).toBe('otel_scrape.adapter.name')
     expect(otelScrapeAttributeKeys.processCommandArgsHash).toBe('process.command_args_hash')
     expect(otelScrapeAttributeKeys.processExitCode).toBe('process.exit_code')
+    expect(otelScrapeMetricNames.oxlintDiagnostics).toBe('oxlint.diagnostics')
     expect(otelScrapeProfileFields.byteLength).toBe('byteLength')
     expect(otelScrapeSchemas.summaryV1).toBe('otel-scrape.summary/v1')
 

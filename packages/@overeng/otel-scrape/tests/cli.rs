@@ -29,12 +29,52 @@ fn preserves_passthrough_and_writes_summary() {
         serde_json::from_str(&std::fs::read_to_string(summary).unwrap()).unwrap();
     assert_eq!(summary["schema"], "otel-scrape.summary/v1");
     assert_eq!(summary["child"]["exit_code"], 7);
-    assert_eq!(summary["command"]["adapter"], "none");
+    assert_eq!(summary["adapter"]["name"], "none");
+    assert_eq!(summary["adapter"]["records"].as_array().unwrap().len(), 0);
     assert!(summary["command"]["argv_hash"]
         .as_str()
         .unwrap()
         .starts_with("sha256:"));
     assert!(summary["command"].get("argv").is_none());
+}
+
+#[test]
+fn oxlint_adapter_parses_json_diagnostics_without_hiding_stdout() {
+    let dir = tempfile::tempdir().unwrap();
+    let summary = dir.path().join("summary.json");
+    let oxlint_json = r#"{ "diagnostics": [{"message": "Unexpected token","severity": "error","filename": "/private/source.ts"}] }"#;
+
+    let out = otel_scrape()
+        .env("OX_JSON", oxlint_json)
+        .args(["--adapter", "oxlint", "--summary-out"])
+        .arg(&summary)
+        .args(["--", "sh", "-c", "printf '%s' \"$OX_JSON\""])
+        .output()
+        .unwrap();
+
+    assert!(out.status.success());
+    assert_eq!(String::from_utf8_lossy(&out.stdout), oxlint_json);
+
+    let summary: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(summary).unwrap()).unwrap();
+    assert_eq!(summary["adapter"]["name"], "oxlint");
+    assert_eq!(summary["adapter"]["records"][0]["_tag"], "Metric");
+    assert_eq!(
+        summary["adapter"]["records"][0]["name"],
+        "oxlint.diagnostics"
+    );
+    assert_eq!(summary["adapter"]["records"][0]["value"], 1);
+    assert_eq!(summary["adapter"]["records"][1]["_tag"], "Event");
+    assert_eq!(
+        summary["adapter"]["records"][1]["message"],
+        "Unexpected token"
+    );
+    assert_eq!(summary["adapter"]["records"][1]["severity"], "error");
+    assert!(summary["adapter"]["records"][1]["filename_hash"]
+        .as_str()
+        .unwrap()
+        .starts_with("sha256:"));
+    assert!(summary["adapter"]["records"][1].get("filename").is_none());
 }
 
 #[test]

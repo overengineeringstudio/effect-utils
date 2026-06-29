@@ -18,6 +18,10 @@ All notable changes to this project will be documented in this file.
   truth and Rust/TypeScript projections for wrapper schemas, span names,
   attribute keys, and profile fields.
 
+- **otel-scrape**: Add the first real adapter slice for `oxlint --format=json`,
+  preserving stdout while recording diagnostic events and a generated
+  `oxlint.diagnostics` metric in summary evidence.
+
 - **otel-scrape**: Add the public VRS for an effect-utils-owned process wrapper
   that turns build/dev tool executions into OTEL spans, events, metrics, and
   content-addressed profile links.
