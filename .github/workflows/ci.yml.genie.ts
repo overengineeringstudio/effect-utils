@@ -118,7 +118,7 @@ const liveNetlifyCiToolsIf = "steps.live-netlify-preflight.outputs.run == 'true'
 const andLiveNetlifyCiToolsIf = (condition: string) => {
   const trimmed = condition.trim()
   const unwrapped =
-    trimmed.startsWith('${{') && trimmed.endsWith('}}')
+    trimmed.startsWith('${{') === true && trimmed.endsWith('}}') === true
       ? trimmed.slice(3, -2).trim()
       : trimmed
   return `${unwrapped} && ${liveNetlifyCiToolsIf}`
@@ -145,6 +145,67 @@ const liveNetlifyCiToolsE2EStep = {
     'export CI_TOOLS_LIVE_NETLIFY_BIN="$netlify_pkg/bin/netlify"',
     'DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run pnpm:install',
     'DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" shell --no-reload -- bun test packages/@overeng/ci-tools/src/deploy-netlify.live.e2e.test.ts',
+  ].join('\n'),
+} as const
+
+const liveVercelCiToolsPreflightStep = {
+  id: 'live-vercel-preflight',
+  name: 'Check live Vercel ci-tools E2E secrets',
+  shell: 'bash',
+  env: {
+    VERCEL_TOKEN: '${{ secrets.VERCEL_TOKEN }}',
+    VERCEL_PROJECT_ID: '${{ secrets.VERCEL_PROJECT_ID }}',
+    VERCEL_ORG_ID: '${{ secrets.VERCEL_ORG_ID }}',
+  },
+  run: [
+    'if [ -z "${VERCEL_TOKEN:-}" ] || [ -z "${VERCEL_PROJECT_ID:-}" ] || [ -z "${VERCEL_ORG_ID:-}" ]; then',
+    '  echo "::notice::Skipping live Vercel ci-tools E2E because VERCEL_TOKEN, VERCEL_PROJECT_ID, or VERCEL_ORG_ID is unavailable"',
+    '  echo "run=false" >> "$GITHUB_OUTPUT"',
+    '  exit 0',
+    'fi',
+    'echo "run=true" >> "$GITHUB_OUTPUT"',
+  ].join('\n'),
+} as const
+
+const liveVercelCiToolsIf = "steps.live-vercel-preflight.outputs.run == 'true'"
+
+const andLiveVercelCiToolsIf = (condition: string) => {
+  const trimmed = condition.trim()
+  const unwrapped =
+    trimmed.startsWith('${{') === true && trimmed.endsWith('}}') === true
+      ? trimmed.slice(3, -2).trim()
+      : trimmed
+  return `${unwrapped} && ${liveVercelCiToolsIf}`
+}
+
+const onlyWhenLiveVercelCiTools = <Step extends Record<string, unknown>>(step: Step) => ({
+  ...step,
+  if:
+    typeof step.if === 'string' && step.if.length > 0
+      ? andLiveVercelCiToolsIf(step.if)
+      : liveVercelCiToolsIf,
+})
+
+const liveVercelCiToolsE2EStep = {
+  name: 'Live Vercel ci-tools E2E',
+  shell: 'bash',
+  env: {
+    CI_TOOLS_VERCEL_LIVE: '1',
+    VERCEL_TOKEN: '${{ secrets.VERCEL_TOKEN }}',
+    VERCEL_PROJECT_ID: '${{ secrets.VERCEL_PROJECT_ID }}',
+    VERCEL_ORG_ID: '${{ secrets.VERCEL_ORG_ID }}',
+    VERCEL_TEAM_ID: '${{ secrets.VERCEL_TEAM_ID }}',
+  },
+  run: [
+    'vercel_wrapper="${RUNNER_TEMP:-/tmp}/ci-tools-live-vercel"',
+    'cat > "$vercel_wrapper" <<\'EOF\'',
+    '#!/usr/bin/env bash',
+    'exec bunx vercel "$@"',
+    'EOF',
+    'chmod +x "$vercel_wrapper"',
+    'export CI_TOOLS_LIVE_VERCEL_BIN="$vercel_wrapper"',
+    'DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run pnpm:install',
+    'DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" shell --no-reload -- bun test packages/@overeng/ci-tools/src/deploy-vercel.live.e2e.test.ts',
   ].join('\n'),
 } as const
 
@@ -886,6 +947,30 @@ const extraJobs: Record<string, any> = {
       onlyWhenLiveNetlifyCiTools(nixDiagnosticsSummaryStep),
       onlyWhenLiveNetlifyCiTools(nixDiagnosticsArtifactStep()),
       onlyWhenLiveNetlifyCiTools(failureReminderStep),
+    ],
+  },
+  'test-live-vercel-ci-tools': {
+    if: normalCiIf,
+    concurrency: {
+      group:
+        'test-live-vercel-ci-tools-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}',
+      'cancel-in-progress': true,
+    },
+    'runs-on': namespaceRunner({
+      profile: 'namespace-profile-linux-x86-64',
+      runId: '${{ github.run_id }}',
+    }),
+    'timeout-minutes': 30,
+    defaults: bashShellDefaults,
+    env: standardCIEnv,
+    steps: [
+      liveVercelCiToolsPreflightStep,
+      ...baseSteps.map(onlyWhenLiveVercelCiTools),
+      onlyWhenLiveVercelCiTools(liveVercelCiToolsE2EStep),
+      onlyWhenLiveVercelCiTools(savePnpmStateStep()),
+      onlyWhenLiveVercelCiTools(nixDiagnosticsSummaryStep),
+      onlyWhenLiveVercelCiTools(nixDiagnosticsArtifactStep()),
+      onlyWhenLiveVercelCiTools(failureReminderStep),
     ],
   },
 }

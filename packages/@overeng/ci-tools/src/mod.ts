@@ -2,6 +2,7 @@
 
 export * from './deploy-domain.ts'
 export * from './deploy-netlify.ts'
+export * from './deploy-vercel.ts'
 
 export const workflowReportRecordLineMarker = 'WORKFLOW_REPORT_V1: ' as const
 export const workflowReportManagedMarker = '<!-- workflow-report:managed -->' as const

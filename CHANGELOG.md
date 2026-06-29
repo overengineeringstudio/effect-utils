@@ -48,6 +48,12 @@ All notable changes to this project will be documented in this file.
   the served alias, records cleanup status, and runs in CI only when Netlify
   secrets are available.
 
+- **@overeng/ci-tools**: Add the Phase 4 Vercel provider adapter with API-first
+  project diagnostics, local Build Output API static packaging, prod/PR/preview
+  alias semantics, redacted failure records, fake-provider E2E coverage, and a
+  guarded live E2E that verifies served marker content and records best-effort
+  alias cleanup.
+
 - **@overeng/genie**: Add the explicit `@overeng/genie/composition` subpath for
   reusable cross-artifact composition helpers. The first helper,
   `tsconfigReferencesFromPackages`, projects TypeScript project references from
