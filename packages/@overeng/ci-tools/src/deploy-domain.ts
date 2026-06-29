@@ -1,4 +1,4 @@
-/* oxlint-disable overeng/jsdoc-require-exports, overeng/named-args, eslint-plugin-import/no-cycle -- Phase 2 exports the deploy wire contract as a dense schema surface; type-only workflow-report imports keep record builders aligned with the aggregate module without adding runtime dependencies. */
+/* oxlint-disable overeng/jsdoc-require-exports, overeng/named-args -- Phase 2 exports the deploy wire contract as a dense schema surface. */
 
 import { Schema } from 'effect'
 
@@ -182,6 +182,7 @@ export class ProviderProjectLookupFailed extends Schema.TaggedError<ProviderProj
   '@overeng/ci-tools/deploy/ProviderProjectLookupFailed',
 )('ProviderProjectLookupFailed', {
   ...DeployFailureFields,
+  transient: Schema.Boolean,
 }) {
   override get message(): string {
     return `${this.provider} project lookup failed for ${this.target}`
@@ -228,6 +229,7 @@ export class VerificationFailed extends Schema.TaggedError<VerificationFailed>(
 )('VerificationFailed', {
   ...DeployFailureFields,
   finalUrl: HttpsUrl,
+  transient: Schema.Boolean,
 }) {
   override get message(): string {
     return `${this.provider} verification failed for ${this.target}`
@@ -250,7 +252,6 @@ export const deployFailureRetryability = (failure: DeployFailure): boolean => {
   switch (failure._tag) {
     case 'ProviderProjectLookupFailed':
     case 'VerificationFailed':
-      return true
     case 'ProviderOperationFailed':
       return failure.transient
     case 'MissingAuth':
@@ -267,7 +268,44 @@ export type DeployRecordContext = {
   readonly createdAtUtc: string
 }
 
-const validateWorkflowReportRecord = (record: WorkflowReportRecord): WorkflowReportRecord => record
+const DeployWorkflowReportSubject = Schema.Struct({
+  id: Schema.NonEmptyTrimmedString,
+  label: Schema.optional(Schema.NonEmptyTrimmedString),
+}).annotations({ identifier: 'CiTools.Deploy.WorkflowReportSubject' })
+
+const DeployWorkflowReportHttpsUrlString = Schema.NonEmptyTrimmedString.pipe(
+  Schema.pattern(/^https:\/\/[^\s]+$/u),
+  Schema.annotations({ identifier: 'CiTools.Deploy.WorkflowReportHttpsUrlString' }),
+)
+
+const DeployWorkflowReportLink = Schema.Struct({
+  label: Schema.NonEmptyTrimmedString,
+  url: DeployWorkflowReportHttpsUrlString,
+  primary: Schema.optional(Schema.Boolean),
+}).annotations({ identifier: 'CiTools.Deploy.WorkflowReportLink' })
+
+const DeployWorkflowReportRecordData = Schema.Record({
+  key: Schema.NonEmptyTrimmedString,
+  value: Schema.Unknown,
+}).annotations({ identifier: 'CiTools.Deploy.WorkflowReportRecordData' })
+
+const DeployWorkflowReportRecord = Schema.TaggedStruct('WorkflowReportRecord', {
+  schemaVersion: Schema.Literal(1),
+  id: Schema.NonEmptyTrimmedString,
+  kind: Schema.NonEmptyTrimmedString,
+  subject: DeployWorkflowReportSubject,
+  status: Schema.Literal('success', 'failure', 'skipped', 'neutral'),
+  title: Schema.NonEmptyTrimmedString,
+  summary: Schema.optional(Schema.String),
+  createdAtUtc: Schema.NonEmptyTrimmedString.pipe(
+    Schema.pattern(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u),
+  ),
+  links: Schema.optional(Schema.Array(DeployWorkflowReportLink)),
+  data: Schema.optional(DeployWorkflowReportRecordData),
+}).annotations({ identifier: 'CiTools.Deploy.WorkflowReportRecord' })
+
+const validateWorkflowReportRecord = (record: WorkflowReportRecord): WorkflowReportRecord =>
+  Schema.decodeUnknownSync(DeployWorkflowReportRecord)(record) as WorkflowReportRecord
 
 const deployRecordId = (provider: DeployProvider, target: string) => `deploy-${provider}-${target}`
 
@@ -348,8 +386,17 @@ export const deployFailureRecord = (opts: {
   readonly attempts: number
   readonly createdAtUtc: string
   readonly secretValues?: readonly string[]
-}): WorkflowReportRecord =>
-  validateWorkflowReportRecord({
+}): WorkflowReportRecord => {
+  const diagnostics = sanitizedDiagnostics(
+    opts.failure.diagnostics === undefined
+      ? undefined
+      : redactDeployDiagnostics(
+          opts.failure.diagnostics,
+          opts.secretValues === undefined ? {} : { secretValues: opts.secretValues },
+        ),
+  )
+
+  return validateWorkflowReportRecord({
     _tag: 'WorkflowReportRecord',
     schemaVersion: 1,
     id: deployRecordId(opts.input.provider, opts.input.target),
@@ -366,16 +413,10 @@ export const deployFailureRecord = (opts: {
       errorKind: opts.failure._tag,
       retryable: deployFailureRetryability(opts.failure),
       attempts: opts.attempts,
-      diagnostics: sanitizedDiagnostics(
-        opts.failure.diagnostics === undefined
-          ? undefined
-          : redactDeployDiagnostics(
-              opts.failure.diagnostics,
-              opts.secretValues === undefined ? {} : { secretValues: opts.secretValues },
-            ),
-      ),
+      ...(diagnostics === undefined ? {} : { diagnostics }),
     },
   })
+}
 
 export const deploySkippedRecord = (opts: DeployRecordContext & { readonly reason: string }) =>
   validateWorkflowReportRecord({
