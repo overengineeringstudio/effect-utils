@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **@overeng/content-address**: Add filesystem-backed CAS primitives with
+  descriptor-addressed writes, `cas:` URI resolution, canonical JSON manifests,
+  and validated manifest pins as local retention roots.
+
 - **otel-scrape**: Add the public VRS for an effect-utils-owned process wrapper
   that turns build/dev tool executions into OTEL spans, events, metrics, and
   content-addressed profile links.
