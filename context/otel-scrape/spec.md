@@ -10,7 +10,15 @@ Draft.
 
 **Defines:** the wrapper contract, adapter contract, event/span/metric classification, context propagation model, artifact-linking shape, and relationship to existing effect-utils packages.
 
-**Does not define:** final package boundaries, every adapter parser, an orchestrator, backend storage topology, dashboard layout, or profile-rendering UI.
+**Does not define:** every adapter parser, an orchestrator, backend storage topology, dashboard layout, or profile-rendering UI.
+
+## Package Boundary
+
+`otel-scrape` is implemented as a dedicated Rust package under `packages/@overeng/otel-scrape`, producing a CLI binary named `otel-scrape`.
+
+The package follows the existing `packages/@overeng/otelite` pattern: committed Cargo metadata, package-local Nix build file, flake package/app outputs, and devenv quality-gate integration. Rust owns the process wrapper mechanics; the public telemetry semantics still conform to the effect-utils contracts and VRS.
+
+See [.decisions/0003-rust-package-boundary.md](./.decisions/0003-rust-package-boundary.md).
 
 ## Architecture
 
@@ -100,9 +108,21 @@ flowchart TD
 - The wrapper injects the active context into child processes.
 - Context-specific facts stay on the span owned by the participant that knows them.
 
+## Process-Tree Fidelity
+
+`otel-scrape` must provide exact descendant process-tree spans on supported release platforms before a stable release. A prototype may start with the direct child process span only, but direct-child-only capture does not satisfy the release contract.
+
+Best-effort or sampled descendant discovery may exist only when explicitly marked as degraded/experimental output. Release validation must include Linux and macOS ARM evidence; use `mbp2021` for macOS validation as needed.
+
+See [.decisions/0005-exact-process-tree-fidelity.md](./.decisions/0005-exact-process-tree-fidelity.md).
+
 ## Semantic Conventions
 
-The names below are draft conventions. Final implementation must register or export them through the repo's OTEL contract surface instead of hand-authoring duplicate literals.
+The names below are draft conventions. Final implementation must register or export them through a generated telemetry registry consumed by both Rust and TypeScript.
+
+The registry source owns span names, metric names, attribute keys, and profile-link wire fields. Generated outputs must be checked for drift by the repo's normal generated-file gates. Rust and TypeScript code must consume generated bindings instead of hand-authoring duplicate literals.
+
+See [.decisions/0004-generated-telemetry-registry.md](./.decisions/0004-generated-telemetry-registry.md).
 
 | Kind      | Name / attribute            | Notes                            |
 | --------- | --------------------------- | -------------------------------- |
@@ -122,7 +142,7 @@ Raw command arguments, local absolute paths, credentials, source text, and priva
 
 ## Artifact Store
 
-Profile artifacts use the `@overeng/content-address` convention:
+Profile artifacts use the reusable [content-address VRS](../content-address/spec.md) for descriptors, object paths, `cas:` retrieval URIs, and manifest pins. `otel-scrape` writes artifact bytes into a per-run CAS root using the digest-derived object path. The span carries a location-independent profile link; the run context supplies the CAS root resolver.
 
 ```ts
 interface ProfileLink {
@@ -134,17 +154,26 @@ interface ProfileLink {
     | 'cargo-timings'
     | string
   readonly digest: `sha256:${string}`
-  readonly uri: string
+  readonly uri: `cas:sha256/${string}/${string}`
   readonly ui?: string
   readonly byteLength?: number
+  readonly mediaType?: string
+  readonly codec?: string
+  readonly schemaVersion?: number
 }
 ```
 
-The span carries the descriptor. The artifact bytes live outside the OTEL backend. Retrieval verifies the digest before use.
+The span carries the descriptor. The artifact bytes live outside the OTEL backend. Retrieval resolves `uri` against the run's CAS root and verifies the digest and byte length before use, following the content-address resolver contract. Local runs may keep the CAS root on disk; CI runs must upload or expose the CAS root as one artifact tree. Each run should write and pin one manifest covering the retained profile artifacts. UI/download links are optional presentation metadata and are not the retrieval identity.
+
+See [.decisions/0006-cas-profile-artifact-uris.md](./.decisions/0006-cas-profile-artifact-uris.md) and [.experiments/0003-artifact-uri-prototypes.md](./.experiments/0003-artifact-uri-prototypes.md).
 
 ## Adapter Fleet
 
 Initial adapters should prove the classification ladder across different source shapes before expanding the fleet.
+
+The first implementation proves one real adapter path plus focused CAS/profile fixtures. One real adapter does not need to emit events, spans, metrics, and profile links in the same run. The implementation must still test wrapper command/process spans, adapter-derived records for the source shapes the adapter owns, and profile artifact behavior through the content-address contract.
+
+See [.decisions/0007-first-adapter-plus-fixtures.md](./.decisions/0007-first-adapter-plus-fixtures.md).
 
 | Adapter  | Structured source                         | Output                                    | Profile link     |
 | -------- | ----------------------------------------- | ----------------------------------------- | ---------------- |
@@ -158,13 +187,9 @@ Initial adapters should prove the classification ladder across different source 
 
 - `@overeng/otel-contract` owns typed OTEL values and validation. `otel-scrape` should consume those types rather than creating untyped primitives.
 - `@overeng/utils` contains existing node command and OTEL helpers. The implementation should reuse those helpers where they satisfy the wrapper contract.
-- `@overeng/content-address` owns reusable artifact identity and fan-out path conventions.
+- `context/content-address` owns reusable artifact identity and resolver semantics; `@overeng/content-address` is the first implementation package.
 - `@overeng/utils-dev` / otelite can provide local test assertions for emitted spans, events, metrics, and profile descriptors.
 
 ## Open Design Questions
 
-- **DQ1 — Package boundary:** Should `otel-scrape` live in an existing package such as `@overeng/utils`, or in a dedicated package with a CLI entry?
-- **DQ2 — Registry source:** Which generated contract surface owns final span, metric, and attribute names for both TypeScript and future non-TypeScript emitters?
-- **DQ3 — Process-tree fidelity:** Which platforms receive exact child-process spans, and where is sampled or best-effort process discovery acceptable?
-- **DQ4 — Artifact storage URI:** What URI schemes are accepted for local and CI artifact retrieval?
-- **DQ5 — First-adapter proof shape:** Must one real adapter emit events, spans, metrics, and profile links in one run, or may the first implementation prove the ladder with one real adapter plus focused profile/artifact fixtures? See [.experiments/0002-e2e-prototype.md](./.experiments/0002-e2e-prototype.md).
+None.

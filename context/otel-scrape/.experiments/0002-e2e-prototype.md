@@ -12,6 +12,6 @@
 - The prototype verifies the contract shape, not OTLP export or package integration. It mimics the `@overeng/content-address` descriptor shape with Node `crypto` because workspace package imports were not available from the bare tmp script.
 - A follow-up prototype run using the local `@overeng/content-address` source directly verified content-addressed profile descriptors and exposed a nested-wrapper ownership gap: passthrough output lets a parent wrapper classify the nested tool's structured output a second time.
 
-**Conclusion:** The wrapper, propagation, classification, and profile-link concepts are coherent. The remaining critical ambiguity is the proof shape for the first adapter: a real `oxlint` adapter can prove structured metrics/events but cannot prove profile links, while a full event/span/metric/profile proof likely needs either multiple adapters or a fixture-backed artifact lane. This is tracked as DQ5 in [../spec.md](../spec.md).
+**Conclusion:** The wrapper, propagation, classification, and profile-link concepts are coherent. The first-adapter proof shape is resolved by [../.decisions/0007-first-adapter-plus-fixtures.md](../.decisions/0007-first-adapter-plus-fixtures.md): prove one real adapter path plus focused profile/artifact fixtures instead of forcing every output kind through one tool run.
 
 The nested-wrapper ownership gap is resolved by decision [0002](../.decisions/0002-leaf-wrapper-owns-adapter-parsing.md): adapter parsing belongs to the leaf wrapper that directly launches the adapted tool.

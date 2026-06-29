@@ -16,4 +16,4 @@ Private deployment topology, machine names, and downstream consumer details are 
 
 - The issue tracker for implementation is effect-utils.
 - Downstream repositories can reference the public contract without copying private design context.
-- Package boundaries remain open until the first implementation PR resolves DQ1 in [../spec.md](../spec.md).
+- Package boundaries are resolved by [0003-rust-package-boundary.md](./0003-rust-package-boundary.md).
