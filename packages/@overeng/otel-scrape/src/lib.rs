@@ -592,7 +592,7 @@ fn export_command_span(
     if let Some(parent_span_id) = trace.parent_span_id.as_ref() {
         span["parentSpanId"] = json!(parent_span_id);
     }
-    let events = otlp_span_events(&adapter, artifacts);
+    let events = otlp_span_events(&adapter, artifacts, end_unix_nano);
     if !events.is_empty() {
         span["events"] = json!(events);
     }
@@ -617,7 +617,9 @@ fn export_command_span(
 fn otlp_span_events(
     adapter: &AdapterSummary,
     artifacts: &ArtifactSummary,
+    time_unix_nano: u128,
 ) -> Vec<serde_json::Value> {
+    let time_unix_nano = time_unix_nano.to_string();
     let mut events = Vec::new();
     for record in &adapter.records {
         if let AdapterRecord::Event(event) = record {
@@ -634,7 +636,7 @@ fn otlp_span_events(
             events.push(json!({
                 "name": "otel_scrape.adapter.event",
                 "attributes": attrs,
-                "timeUnixNano": unix_nanos(SystemTime::now()).to_string(),
+                "timeUnixNano": time_unix_nano,
             }));
         }
     }
@@ -663,7 +665,7 @@ fn otlp_span_events(
                     "value": { "stringValue": profile.media_type },
                 },
             ],
-            "timeUnixNano": unix_nanos(SystemTime::now()).to_string(),
+            "timeUnixNano": time_unix_nano,
         }));
     }
     events

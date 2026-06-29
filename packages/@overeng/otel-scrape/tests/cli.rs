@@ -483,6 +483,7 @@ fn exports_oxlint_adapter_event_without_raw_filename_or_payload() {
         .iter()
         .find(|event| event["name"] == "otel_scrape.adapter.event")
         .unwrap();
+    assert_event_time_within_span(event, span);
     let attrs = event["attributes"].as_array().unwrap();
     assert_eq!(attr_value(attrs, "severity"), Some("error".to_owned()));
     assert!(attr_value(attrs, "source.filename_hash")
@@ -525,6 +526,7 @@ fn exports_profile_link_event_without_duplicate_cas_writes_or_path_bytes() {
         .iter()
         .find(|event| event["name"] == "otel_scrape.profile.link")
         .unwrap();
+    assert_event_time_within_span(event, span);
     let attrs = event["attributes"].as_array().unwrap();
     assert_eq!(
         attr_value(attrs, "profile.type"),
@@ -575,6 +577,32 @@ fn attr_value(attrs: &[serde_json::Value], key: &str) -> Option<String> {
                 .map(ToOwned::to_owned)
                 .or_else(|| Some(value.to_string()))
         })
+}
+
+fn assert_event_time_within_span(event: &serde_json::Value, span: &serde_json::Value) {
+    let event_time = event["timeUnixNano"]
+        .as_str()
+        .unwrap()
+        .parse::<u128>()
+        .unwrap();
+    let span_start = span["startTimeUnixNano"]
+        .as_str()
+        .unwrap()
+        .parse::<u128>()
+        .unwrap();
+    let span_end = span["endTimeUnixNano"]
+        .as_str()
+        .unwrap()
+        .parse::<u128>()
+        .unwrap();
+    assert!(
+        event_time >= span_start,
+        "event timestamp {event_time} should be >= span start {span_start}"
+    );
+    assert!(
+        event_time <= span_end,
+        "event timestamp {event_time} should be <= span end {span_end}"
+    );
 }
 
 struct TestCollector {
