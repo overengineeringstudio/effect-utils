@@ -9,6 +9,7 @@ import {
   mkdtempSync,
   readdirSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -33,6 +34,7 @@ import {
   VerificationFailed,
   deployFailureRecord,
   deploySuccessRecord,
+  deployTaskOutputLine,
   redactDeployDiagnosticText,
 } from './deploy-domain.ts'
 import type { WorkflowReportRecord } from './mod.ts'
@@ -45,14 +47,18 @@ const decodeResultEither = Schema.decodeUnknownEither(DeployResultV1)
 export type VercelDeployCommandOptions = {
   readonly target: string
   readonly artifactDir: string
+  readonly artifactKind: 'static' | 'prebuilt-output'
   readonly mode: 'prod' | 'pr' | 'preview'
   readonly displayName?: string | undefined
   readonly pr?: number | undefined
+  readonly aliasPrefix?: string | undefined
   readonly aliasSuffix?: string | undefined
   readonly projectIdEnv: string
   readonly orgIdEnv: string
   readonly authTokenEnv: string
   readonly teamIdEnv?: string | undefined
+  readonly scopeEnv?: string | undefined
+  readonly protectionBypassEnv?: string | undefined
   readonly workflowReportOutputFile?: string | undefined
   readonly vercelBin: string
   readonly vercelApiBaseUrl: string
@@ -166,6 +172,9 @@ const runVercelCommand = Effect.fn('ci-tools.deploy.vercel.command')(
     }),
 )
 
+const vercelScopeArgs = (scope: string | undefined) =>
+  scope === undefined ? [] : ['--scope', scope]
+
 const fetchVercelJson = Effect.fn('ci-tools.deploy.vercel.fetch-json')(function* (opts: {
   readonly target: string
   readonly apiBaseUrl: string
@@ -275,6 +284,7 @@ const copyStaticDirectory = Effect.fn('ci-tools.deploy.vercel.copy-static')(func
 const preparePrebuiltOutput = Effect.fn('ci-tools.deploy.vercel.prepare-prebuilt')(
   function* (opts: {
     readonly artifactDir: string
+    readonly artifactKind: 'static' | 'prebuilt-output'
     readonly projectId: string
     readonly orgId: string
   }) {
@@ -288,10 +298,17 @@ const preparePrebuiltOutput = Effect.fn('ci-tools.deploy.vercel.prepare-prebuilt
       writeFileSync(join(workDir, '.vercel', 'output', 'config.json'), '{"version":3}\n')
       writeFileSync(join(workDir, '.vercel', 'project.json'), `${projectJson}\n`)
     })
-    yield* copyStaticDirectory({
-      artifactDir: opts.artifactDir,
-      outputStaticDir: join(workDir, '.vercel', 'output', 'static'),
-    })
+    if (opts.artifactKind === 'static') {
+      yield* copyStaticDirectory({
+        artifactDir: opts.artifactDir,
+        outputStaticDir: join(workDir, '.vercel', 'output', 'static'),
+      })
+    } else {
+      yield* Effect.sync(() => {
+        rmSync(join(workDir, '.vercel', 'output'), { recursive: true, force: true })
+        cpSync(opts.artifactDir, join(workDir, '.vercel', 'output'), { recursive: true })
+      })
+    }
     return workDir
   },
 )
@@ -355,12 +372,18 @@ const verifyFinalUrlOnce = Effect.fn('ci-tools.deploy.vercel.verify-once')(funct
   readonly path: string
   readonly expectedText: string
   readonly attempt: number
+  readonly protectionBypass: string | undefined
 }) {
   const verifyUrl = new URL(opts.path, opts.finalUrl)
   const response = yield* Effect.tryPromise({
     try: async () => {
       const result = (await globalThis.fetch(verifyUrl, {
-        headers: { Connection: 'close' },
+        headers: {
+          Connection: 'close',
+          ...(opts.protectionBypass === undefined
+            ? {}
+            : { 'x-vercel-protection-bypass': opts.protectionBypass }),
+        },
       })) as unknown as { readonly status: number; readonly text: () => Promise<string> }
       const text = await result.text()
       return { status: result.status, text }
@@ -404,6 +427,7 @@ const verifyFinalUrl = Effect.fn('ci-tools.deploy.vercel.verify')(function* (opt
   readonly finalUrl: URL
   readonly path: string
   readonly expectedText: string
+  readonly protectionBypass: string | undefined
 }) {
   let lastFailure: VerificationFailed | undefined
   for (let attempt = 1; attempt <= 10; attempt += 1) {
@@ -457,6 +481,7 @@ const cleanupAlias = Effect.fn('ci-tools.deploy.vercel.cleanup-alias')(function*
   readonly projectId: string
   readonly orgId: string
   readonly teamId: string | undefined
+  readonly scope: string | undefined
 }) {
   if (opts.allowSharedProject === false || opts.alias === undefined) {
     return {
@@ -470,7 +495,15 @@ const cleanupAlias = Effect.fn('ci-tools.deploy.vercel.cleanup-alias')(function*
   const result = yield* runVercelCommand({
     vercelBin: opts.vercelBin,
     cwd: opts.workDir,
-    args: ['alias', 'rm', aliasHost, '--yes', '--token', opts.authToken],
+    args: [
+      'alias',
+      'rm',
+      aliasHost,
+      '--yes',
+      ...vercelScopeArgs(opts.scope),
+      '--token',
+      opts.authToken,
+    ],
     env: {
       VERCEL_PROJECT_ID: opts.projectId,
       VERCEL_ORG_ID: opts.orgId,
@@ -513,7 +546,7 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
   const createdAtUtc = options.createdAtUtc ?? isoNow()
   const alias = yield* vercelAlias({
     mode: options.mode,
-    target: options.target,
+    target: options.aliasPrefix ?? options.target,
     pr: options.pr,
     aliasSuffix: options.aliasSuffix,
   })
@@ -550,6 +583,8 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
       orgIdEnv: options.orgIdEnv,
       authTokenEnv: options.authTokenEnv,
       teamIdEnv: options.teamIdEnv,
+      scopeEnv: options.scopeEnv,
+      protectionBypassEnv: options.protectionBypassEnv,
     },
   })
 
@@ -585,7 +620,10 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
     reservedAliasPrefix: options.e2eReservedAliasPrefix,
   }).pipe(Effect.catchAll(failWithRecord))
 
-  if (existsSync(options.artifactDir) === false) {
+  if (
+    existsSync(options.artifactDir) === false ||
+    statSync(options.artifactDir).isDirectory() === false
+  ) {
     return yield* failWithRecord(
       new MissingBuildOutput({
         provider: 'vercel',
@@ -629,6 +667,9 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
     )
   }
   const teamId = options.teamIdEnv === undefined ? undefined : envValue(options.teamIdEnv)
+  const scope = options.scopeEnv === undefined ? undefined : envValue(options.scopeEnv)
+  const protectionBypass =
+    options.protectionBypassEnv === undefined ? undefined : envValue(options.protectionBypassEnv)
 
   yield* resolveVercelProject({
     target: options.target,
@@ -641,6 +682,7 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
 
   const workDir = yield* preparePrebuiltOutput({
     artifactDir: options.artifactDir,
+    artifactKind: options.artifactKind,
     projectId,
     orgId,
   })
@@ -659,6 +701,7 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
           '--prebuilt',
           '--yes',
           ...(options.mode === 'prod' ? ['--prod'] : []),
+          ...vercelScopeArgs(scope),
           '--token',
           authTokenValue,
         ],
@@ -710,7 +753,14 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
         effect: runVercelCommand({
           vercelBin: options.vercelBin,
           cwd: workDir,
-          args: ['alias', rawDeployUrl, aliasHost, '--token', authTokenValue],
+          args: [
+            'alias',
+            rawDeployUrl,
+            aliasHost,
+            ...vercelScopeArgs(scope),
+            '--token',
+            authTokenValue,
+          ],
           env: {
             VERCEL_PROJECT_ID: projectId,
             VERCEL_ORG_ID: orgId,
@@ -765,6 +815,7 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
         finalUrl: preliminary.right.finalUrl,
         path: input.e2e.verifyContent.path,
         expectedText: input.e2e.verifyContent.expectedText,
+        protectionBypass,
       }).pipe(Effect.catchAll(failWithRecord))
     }
 
@@ -780,6 +831,7 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
             projectId,
             orgId,
             teamId,
+            scope,
           })
         : undefined
 
@@ -817,6 +869,12 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
     }
 
     process.stdout.write(`Vercel deploy URL: ${finalUrl}\n`)
+    const taskOutputFile = process.env.DEVENV_TASK_OUTPUT_FILE
+    if (taskOutputFile !== undefined) {
+      yield* Effect.sync(() => {
+        writeFileSync(taskOutputFile, `${deployTaskOutputLine({ result: decoded.right })}\n`)
+      })
+    }
     yield* emitRecord({
       workflowReportOutputFile: options.workflowReportOutputFile,
       record: deploySuccessRecord({

@@ -14,6 +14,11 @@ let apiMode: ApiMode = 'ok'
 let server: Server
 let apiBaseUrl = ''
 
+const testProcessEnv = () => {
+  const { DEVENV_TASK_OUTPUT_FILE: _taskOutputFile, ...env } = process.env
+  return env
+}
+
 const readRecord = (path: string) => {
   const line = readFileSync(path, 'utf8')
     .split('\n')
@@ -62,12 +67,13 @@ const runCiTools = async (opts: {
     {
       cwd: opts.workdir,
       env: {
-        ...process.env,
+        ...testProcessEnv(),
         FORCE_COLOR: '0',
         OTEL_EXPORTER_OTLP_ENDPOINT: '',
         VERCEL_TOKEN: 'fake-token',
         VERCEL_ORG_ID: 'fake-org',
         VERCEL_PROJECT_ID: 'fake-project',
+        VERCEL_SCOPE: 'fake-scope',
         ...opts.env,
       },
     },
@@ -181,6 +187,8 @@ exit 1
           '123',
           '--alias-suffix',
           'team',
+          '--scope-env',
+          'VERCEL_SCOPE',
         ],
       })
       if (result.status !== 0) {
@@ -189,8 +197,10 @@ exit 1
       expect(result.status).toBe(0)
       expect(result.stdout).toContain('Vercel deploy URL: https://web-pr-123-team.vercel.app')
       const log = readFileSync(workspace.logPath, 'utf8')
-      expect(log).toContain('args=deploy --prebuilt --yes --token fake-token')
-      expect(log).toContain('args=alias https://deploy-web.vercel.app web-pr-123-team.vercel.app')
+      expect(log).toContain('args=deploy --prebuilt --yes --scope fake-scope --token fake-token')
+      expect(log).toContain(
+        'args=alias https://deploy-web.vercel.app web-pr-123-team.vercel.app --scope fake-scope',
+      )
       expect(log).toContain('VERCEL_PROJECT_ID=fake-project')
 
       const record = readRecord(reportFile)

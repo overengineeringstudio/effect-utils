@@ -14,6 +14,11 @@ let apiMode: ApiMode = 'ok'
 let server: Server
 let apiBaseUrl = ''
 
+const testProcessEnv = () => {
+  const { DEVENV_TASK_OUTPUT_FILE: _taskOutputFile, ...env } = process.env
+  return env
+}
+
 const readRecord = (path: string) => {
   const line = readFileSync(path, 'utf8')
     .split('\n')
@@ -62,7 +67,7 @@ const runCiTools = async (opts: {
     {
       cwd: opts.workdir,
       env: {
-        ...process.env,
+        ...testProcessEnv(),
         FORCE_COLOR: '0',
         OTEL_EXPORTER_OTLP_ENDPOINT: '',
         NETLIFY_AUTH_TOKEN: 'fake-token',

@@ -293,6 +293,10 @@ const netlifyDeployCommand = Command.make(
       Options.withDescription('Optional environment variable containing the Netlify account slug'),
       Options.optional,
     ),
+    workspaceFilter: Options.text('workspace-filter').pipe(
+      Options.withDescription('Optional Netlify monorepo workspace filter passed to the CLI'),
+      Options.optional,
+    ),
     workflowReportOutputFile: Options.text('workflow-report-output-file').pipe(
       Options.withDescription('Optional JSONL file that receives marked workflow-report records'),
       Options.optional,
@@ -333,6 +337,7 @@ const netlifyDeployCommand = Command.make(
       pr: optionToUndefined(opts.pr),
       siteName: optionToUndefined(opts.siteName),
       accountSlugEnv: optionToUndefined(opts.accountSlugEnv),
+      workspaceFilter: optionToUndefined(opts.workspaceFilter),
       workflowReportOutputFile: optionToUndefined(opts.workflowReportOutputFile),
       createdAtUtc: optionToUndefined(opts.createdAtUtc),
       e2eVerifyPath: optionToUndefined(opts.e2eVerifyPath),
@@ -351,6 +356,12 @@ const vercelDeployCommand = Command.make(
       name: 'artifact-dir',
       description: 'Local static directory to package and deploy as prebuilt Vercel output',
     }),
+    artifactKind: Options.choice('artifact-kind', ['static', 'prebuilt-output']).pipe(
+      Options.withDescription(
+        'Whether artifact-dir is static files or a Vercel Build Output API directory',
+      ),
+      Options.withDefault('static' as const),
+    ),
     mode: Options.choice('mode', ['prod', 'pr', 'preview']).pipe(
       Options.withDescription('Vercel deploy mode'),
       Options.withDefault('preview' as const),
@@ -361,6 +372,10 @@ const vercelDeployCommand = Command.make(
     ),
     pr: Options.integer('pr').pipe(
       Options.withDescription('Pull request number for PR deploy mode'),
+      Options.optional,
+    ),
+    aliasPrefix: Options.text('alias-prefix').pipe(
+      Options.withDescription('Optional Vercel alias prefix; defaults to target'),
       Options.optional,
     ),
     aliasSuffix: Options.text('alias-suffix').pipe(
@@ -381,6 +396,16 @@ const vercelDeployCommand = Command.make(
     ),
     teamIdEnv: Options.text('team-id-env').pipe(
       Options.withDescription('Optional environment variable containing the Vercel team id'),
+      Options.optional,
+    ),
+    scopeEnv: Options.text('scope-env').pipe(
+      Options.withDescription('Optional environment variable containing the Vercel CLI scope slug'),
+      Options.optional,
+    ),
+    protectionBypassEnv: Options.text('protection-bypass-env').pipe(
+      Options.withDescription(
+        'Optional environment variable containing the Vercel protection bypass secret for live verification',
+      ),
       Options.optional,
     ),
     workflowReportOutputFile: Options.text('workflow-report-output-file').pipe(
@@ -421,8 +446,12 @@ const vercelDeployCommand = Command.make(
       ...opts,
       displayName: optionToUndefined(opts.displayName),
       pr: optionToUndefined(opts.pr),
+      artifactKind: opts.artifactKind,
+      aliasPrefix: optionToUndefined(opts.aliasPrefix),
       aliasSuffix: optionToUndefined(opts.aliasSuffix),
       teamIdEnv: optionToUndefined(opts.teamIdEnv),
+      scopeEnv: optionToUndefined(opts.scopeEnv),
+      protectionBypassEnv: optionToUndefined(opts.protectionBypassEnv),
       workflowReportOutputFile: optionToUndefined(opts.workflowReportOutputFile),
       createdAtUtc: optionToUndefined(opts.createdAtUtc),
       e2eVerifyPath: optionToUndefined(opts.e2eVerifyPath),

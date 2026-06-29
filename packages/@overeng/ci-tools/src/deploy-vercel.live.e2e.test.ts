@@ -8,9 +8,14 @@ import { describe, expect, it } from 'vitest'
 const repoRoot = resolve(import.meta.dirname, '../../../..')
 const cliPath = join(repoRoot, 'packages/@overeng/ci-tools/bin/ci-tools.ts')
 const liveEnabled = process.env.CI_TOOLS_VERCEL_LIVE === '1'
-const requiredEnv = ['VERCEL_TOKEN', 'VERCEL_PROJECT_ID', 'VERCEL_ORG_ID'] as const
+const requiredEnv = ['VERCEL_TOKEN', 'VERCEL_PROJECT_ID', 'VERCEL_ORG_ID', 'VERCEL_SCOPE'] as const
 const missingEnv = requiredEnv.filter((name) => process.env[name] === undefined)
 const liveIt = liveEnabled === true && missingEnv.length === 0 ? it : it.skip
+
+const testProcessEnv = () => {
+  const { DEVENV_TASK_OUTPUT_FILE: _taskOutputFile, ...env } = process.env
+  return env
+}
 
 const readStreamText = (stream: NodeJS.ReadableStream) =>
   new Promise<string>((resolve, reject) => {
@@ -58,6 +63,10 @@ const runCiTools = async (opts: {
       '--vercel-bin',
       process.env.CI_TOOLS_LIVE_VERCEL_BIN ?? 'vercel',
       ...(process.env.VERCEL_TEAM_ID === undefined ? [] : ['--team-id-env', 'VERCEL_TEAM_ID']),
+      ...(process.env.VERCEL_SCOPE === undefined ? [] : ['--scope-env', 'VERCEL_SCOPE']),
+      ...(process.env.VERCEL_AUTOMATION_BYPASS_SECRET === undefined
+        ? []
+        : ['--protection-bypass-env', 'VERCEL_AUTOMATION_BYPASS_SECRET']),
       '--workflow-report-output-file',
       opts.reportFile,
       '--e2e-allow-shared-project',
@@ -71,7 +80,7 @@ const runCiTools = async (opts: {
     {
       cwd: opts.workdir,
       env: {
-        ...process.env,
+        ...testProcessEnv(),
         FORCE_COLOR: '0',
         OTEL_EXPORTER_OTLP_ENDPOINT: '',
       },
@@ -118,8 +127,12 @@ describe('ci-tools deploy vercel live E2E', () => {
           marker,
         })
         const token = process.env.VERCEL_TOKEN
+        const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET
         expect(
-          token === undefined ? false : `${result.stdout}\n${result.stderr}`.includes(token),
+          [token, bypassSecret].some(
+            (secret) =>
+              secret !== undefined && `${result.stdout}\n${result.stderr}`.includes(secret),
+          ),
         ).toBe(false)
         expect(result.status).toBe(0)
         expect(result.stdout).toContain('Vercel deploy URL: https://ci-tools-e2e-')

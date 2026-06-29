@@ -80,6 +80,8 @@ export const VercelProviderConfig = Schema.TaggedStruct('VercelProviderConfig', 
   orgIdEnv: EnvVarName,
   authTokenEnv: EnvVarName,
   teamIdEnv: Schema.optional(EnvVarName),
+  scopeEnv: Schema.optional(EnvVarName),
+  protectionBypassEnv: Schema.optional(EnvVarName),
 }).annotations({ identifier: 'CiTools.Deploy.VercelProviderConfig' })
 export type VercelProviderConfig = typeof VercelProviderConfig.Type
 
@@ -140,6 +142,44 @@ export const DeployResultV1 = Schema.TaggedStruct('DeployResult', {
   cleanup: Schema.optional(CleanupResult),
 }).annotations({ identifier: 'CiTools.Deploy.ResultV1' })
 export type DeployResultV1 = typeof DeployResultV1.Type
+
+const encodeDateTimeUtc = Schema.encodeSync(Schema.DateTimeUtc)
+
+const deployEnvKeySuffix = (target: string) =>
+  target
+    .replaceAll(/[-/]/gu, '_')
+    .replaceAll(/[^A-Za-z0-9_]/gu, '')
+    .toUpperCase()
+
+export const deployTaskOutput = (opts: { readonly result: DeployResultV1 }) => {
+  const suffix = deployEnvKeySuffix(opts.result.target)
+  const provider = opts.result.provider.toUpperCase()
+  const rawDeployUrl = opts.result.rawDeployUrl.toString()
+  const finalDeployUrl = opts.result.finalUrl.toString()
+  const deployedAtUtc = encodeDateTimeUtc(opts.result.endedAtUtc)
+
+  return {
+    devenv: {
+      env: {
+        DEPLOY_FINAL_URL: finalDeployUrl,
+        [`DEPLOY_FINAL_URL_${suffix}`]: finalDeployUrl,
+        DEPLOY_RAW_DEPLOY_URL: rawDeployUrl,
+        [`DEPLOY_RAW_DEPLOY_URL_${suffix}`]: rawDeployUrl,
+        DEPLOYED_AT_UTC: deployedAtUtc,
+        [`DEPLOYED_AT_UTC_${suffix}`]: deployedAtUtc,
+        [`${provider}_DEPLOY_URL`]: finalDeployUrl,
+        [`${provider}_DEPLOY_URL_${suffix}`]: finalDeployUrl,
+        [`${provider}_RAW_DEPLOY_URL`]: rawDeployUrl,
+        [`${provider}_RAW_DEPLOY_URL_${suffix}`]: rawDeployUrl,
+        [`${provider}_DEPLOYED_AT_UTC`]: deployedAtUtc,
+        [`${provider}_DEPLOYED_AT_UTC_${suffix}`]: deployedAtUtc,
+      },
+    },
+  }
+}
+
+export const deployTaskOutputLine = (opts: { readonly result: DeployResultV1 }) =>
+  Schema.encodeSync(Schema.parseJson(Schema.Unknown))(deployTaskOutput(opts))
 
 const DeployFailureFields = {
   provider: DeployProvider,

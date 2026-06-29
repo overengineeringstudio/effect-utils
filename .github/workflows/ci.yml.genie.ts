@@ -156,10 +156,11 @@ const liveVercelCiToolsPreflightStep = {
     VERCEL_TOKEN: '${{ secrets.VERCEL_TOKEN }}',
     VERCEL_PROJECT_ID: '${{ secrets.VERCEL_PROJECT_ID }}',
     VERCEL_ORG_ID: '${{ secrets.VERCEL_ORG_ID }}',
+    VERCEL_SCOPE: '${{ secrets.VERCEL_SCOPE }}',
   },
   run: [
-    'if [ -z "${VERCEL_TOKEN:-}" ] || [ -z "${VERCEL_PROJECT_ID:-}" ] || [ -z "${VERCEL_ORG_ID:-}" ]; then',
-    '  echo "::notice::Skipping live Vercel ci-tools E2E because VERCEL_TOKEN, VERCEL_PROJECT_ID, or VERCEL_ORG_ID is unavailable"',
+    'if [ -z "${VERCEL_TOKEN:-}" ] || [ -z "${VERCEL_PROJECT_ID:-}" ] || [ -z "${VERCEL_ORG_ID:-}" ] || [ -z "${VERCEL_SCOPE:-}" ]; then',
+    '  echo "::notice::Skipping live Vercel ci-tools E2E because VERCEL_TOKEN, VERCEL_PROJECT_ID, VERCEL_ORG_ID, or VERCEL_SCOPE is unavailable"',
     '  echo "run=false" >> "$GITHUB_OUTPUT"',
     '  exit 0',
     'fi',
@@ -195,6 +196,8 @@ const liveVercelCiToolsE2EStep = {
     VERCEL_PROJECT_ID: '${{ secrets.VERCEL_PROJECT_ID }}',
     VERCEL_ORG_ID: '${{ secrets.VERCEL_ORG_ID }}',
     VERCEL_TEAM_ID: '${{ secrets.VERCEL_TEAM_ID }}',
+    VERCEL_SCOPE: '${{ secrets.VERCEL_SCOPE }}',
+    VERCEL_AUTOMATION_BYPASS_SECRET: '${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}',
   },
   run: [
     'vercel_wrapper="${RUNNER_TEMP:-/tmp}/ci-tools-live-vercel"',
