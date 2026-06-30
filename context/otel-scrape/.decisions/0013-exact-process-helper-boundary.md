@@ -31,9 +31,11 @@ of tracing is itself a behavior change for the wrapped workload.
 
 A helper-style backend moves the privileged observation boundary out of the
 wrapped command path. That is the better long-term default if it can prove event
-loss, namespace scoping, run correlation, and release-grade exactness on Linux
-and macOS ARM. The same shape also matches the macOS Endpoint Security
-direction.
+loss, namespace scoping, run correlation, and release-grade exactness for the
+platform/backend combination that claims exactness. On Linux, the exact default
+candidate uses cgroup-scoped run membership. On macOS ARM, the same helper
+shape is desirable, but exactness is gated on Endpoint Security or an equivalent
+supported event source and remains degraded until validated.
 
 ## Options
 
@@ -55,29 +57,31 @@ opt-in validation and development backend.
 `effect-utils` owns the stable product contract: backend selection, helper
 protocol, schemas, summary evidence, OTLP span rendering, fake-helper fixtures,
 validation tests, and release documentation. The fleet/dotfiles layer owns
-privileged deployment first: activation services, permissions, entitlements,
-socket location and ownership, health checks, rollout, and host policy.
+privileged deployment first: activation services, permissions, cgroup setup,
+Endpoint Security entitlements and approval, socket location and ownership,
+health checks, rollout, and host policy.
 
 The helper contract must prove:
 
 - fork/clone, exec, and exit ordering for the wrapped process tree,
 - event-loss detection and downgrade behavior,
-- namespace/cgroup/session correlation rules that prevent cross-run leakage,
+- cgroup-first Linux correlation rules and platform-equivalent correlation rules that prevent cross-run leakage,
 - least-privilege installation and activation mechanics,
 - public-safe process identity hashing before events enter summaries or OTLP,
 - validation with the same compiled process-DAG fixture used by the ptrace
   backend,
-- Linux and macOS ARM release validation evidence before a release-grade
-  default-exact claim.
+- release validation evidence for each platform/backend combination before it
+  makes a release-grade default-exact claim.
 
 ## Consequences
 
 - `ptrace-experimental` can continue to harden the observation model without
   becoming the default release claim.
-- Linux exact-by-default support is blocked on a helper design and validation
-  evidence, not on sampling `/proc` snapshots.
-- macOS exact-by-default support is part of the release-grade target and is
-  blocked on Endpoint Security or equivalent helper validation, not on kqueue.
+- Linux exact-by-default support is blocked on a cgroup-scoped helper design and
+  validation evidence, not on sampling `/proc` snapshots.
+- macOS ARM support remains degraded by default and is blocked on Endpoint
+  Security or equivalent helper validation, not on kqueue. Linux exactness does
+  not imply macOS exactness.
 - Public tests can exercise the helper contract through a fake-helper stream
   without requiring privileged services on every developer machine.
 - Sampled process snapshots may be added only as explicitly degraded diagnostic

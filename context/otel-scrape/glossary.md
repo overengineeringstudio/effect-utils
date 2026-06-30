@@ -12,6 +12,8 @@
 
 **Helper stream** — A local event stream from an installed process-observation helper to `otel-scrape`. It provides lifecycle facts; `otel-scrape` still owns span construction and export.
 
+**Run authority boundary** — The OS-scoped boundary that proves an observed process belongs to one wrapped run, such as a Linux run cgroup or a macOS Endpoint Security identity plus approved local service boundary.
+
 **Classification ladder** — The rule that output starts as an event and is promoted to a span, metric, or profile link only when the source data justifies it.
 
 **Root-or-join** — The propagation rule: no parent context means mint a root; parent context means join it.

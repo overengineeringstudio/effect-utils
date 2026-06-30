@@ -125,12 +125,15 @@ is opt-in because ptrace can perturb command execution and has platform,
 privilege, and namespace caveats.
 
 The future Linux default exact backend is expected to be helper-backed rather
-than ptrace-backed. eBPF process lifecycle tracepoints are the primary candidate;
-process connector style feeds are fallback candidates only if they can prove
-scoped completeness and event-loss handling. `/proc` snapshots and filesystem
-notification APIs remain degraded enrichment sources, not exact process-tree
-sources. macOS remains degraded/direct-child unless an Endpoint Security-backed
-exact backend is implemented and validated.
+than ptrace-backed. A run-scoped cgroup, or an equally strong OS boundary, is
+the preferred authority for deciding whether an observed process belongs to the
+wrapped run. eBPF process lifecycle tracepoints are the primary candidate event
+source; process connector style feeds are fallback candidates only if they can
+prove scoped completeness and event-loss handling. `/proc` snapshots and
+filesystem notification APIs remain degraded enrichment sources, not exact
+process-tree sources. macOS remains degraded/direct-child unless an Endpoint
+Security-backed exact backend is implemented, approved, and validated on the
+macOS ARM runner class.
 
 `helper-stream` is the public wrapper-side contract for that future helper. In
 this slice it is fail-closed: selecting it records `backend = "helper-stream"`
@@ -187,18 +190,19 @@ artifacts that should survive cleanup.
 
 ## Support Matrix
 
-| Capability                                       | Current release claim           | Notes                                                                                                                                                  |
-| ------------------------------------------------ | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Passthrough stdout/stderr/stdin and exit status  | Supported                       | Wrapper diagnostics go to stderr. Optional summary/export failures do not replace the child exit code.                                                 |
-| W3C trace context root-or-join propagation       | Supported                       | The child receives `traceparent` and `TRACEPARENT`.                                                                                                    |
-| Local summary evidence                           | Supported                       | Raw argv, cwd, paths, output payloads, source text, and credentials are not embedded.                                                                  |
-| OTLP command span export                         | Supported                       | Emits command span, process spans from the active backend, adapter events, and profile-link events over OTLP/HTTP JSON.                                |
-| CAS profile links                                | Supported                       | Profile bytes are stored under `--cas-root`; summaries and OTLP events carry `cas:` URIs plus descriptors, not raw bytes or local paths.               |
-| Adapter metrics as OTLP metrics                  | Not a release claim             | Adapter metrics remain local summary records until trace-correlated metric semantics are explicit.                                                     |
-| Descendant process-tree spans                    | Linux opt-in exact backend      | `--process-backend ptrace-experimental` is validated on Linux by the compiled DAG fixture. Default and macOS output remain degraded/direct-child-only. |
-| `oxlint` adapter                                 | Supported                       | Parses structured JSON diagnostics while preserving stdout.                                                                                            |
-| `node-cpuprofile` adapter                        | Supported first profile adapter | Direct Node child commands only; degraded evidence is recorded for unsupported or malformed profile cases.                                             |
-| `tsc`/Cargo/Vitest/package-manager/Vite adapters | Deferred                        | Candidate adapters are rejected until they land with the structured-source, privacy, degradation, registry, and consumer-evidence gate.                |
+| Capability                                       | Current release claim           | Notes                                                                                                                                                                                    |
+| ------------------------------------------------ | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Passthrough stdout/stderr/stdin and exit status  | Supported                       | Wrapper diagnostics go to stderr. Optional summary/export failures do not replace the child exit code.                                                                                   |
+| W3C trace context root-or-join propagation       | Supported                       | The child receives `traceparent` and `TRACEPARENT`.                                                                                                                                      |
+| Local summary evidence                           | Supported                       | Raw argv, cwd, paths, output payloads, source text, and credentials are not embedded.                                                                                                    |
+| OTLP command span export                         | Supported                       | Emits command span, process spans from the active backend, adapter events, and profile-link events over OTLP/HTTP JSON.                                                                  |
+| CAS profile links                                | Supported                       | Profile bytes are stored under `--cas-root`; summaries and OTLP events carry `cas:` URIs plus descriptors, not raw bytes or local paths.                                                 |
+| Adapter metrics as OTLP metrics                  | Not a release claim             | Adapter metrics remain local summary records until trace-correlated metric semantics are explicit.                                                                                       |
+| Descendant process-tree spans                    | Linux opt-in exact backend      | `--process-backend ptrace-experimental` is validated on Linux by the compiled DAG fixture. Default output remains degraded until helper-backed runner-class validation proves exactness. |
+| macOS descendant process-tree spans              | Degraded                        | Direct-child evidence only until a signed/entitled Endpoint Security helper is installed, approved, loss-aware, and validated on the macOS ARM runner class.                             |
+| `oxlint` adapter                                 | Supported                       | Parses structured JSON diagnostics while preserving stdout.                                                                                                                              |
+| `node-cpuprofile` adapter                        | Supported first profile adapter | Direct Node child commands only; degraded evidence is recorded for unsupported or malformed profile cases.                                                                               |
+| `tsc`/Cargo/Vitest/package-manager/Vite adapters | Deferred                        | Candidate adapters are rejected until they land with the structured-source, privacy, degradation, registry, and consumer-evidence gate.                                                  |
 
 Telemetry semantic names are generated from
 `context/otel-scrape/telemetry-registry.json` into Rust and TypeScript bindings;

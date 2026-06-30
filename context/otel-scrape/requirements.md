@@ -24,6 +24,7 @@
 - **T03 Artifact lane beside sampled profiling:** Content-addressed native profiles and sampled/continuous profiling can coexist. `otel-scrape` owns the artifact lane.
 - **T04 Contract before implementation:** The VRS establishes the public contract before package boundaries and runtime implementation are finalized.
 - **T05 Privileged observation is split from wrapping:** Exact process observation may require an installed helper, but the normal `otel-scrape` wrapper stays unprivileged and transparent. This trades deployment complexity for lower workload perturbation.
+- **T06 Capability-gated exactness:** Release support may be exact on one platform class and degraded on another when the degraded platform lacks a validated exact event source. This trades uniform feature labels for truthful telemetry.
 
 ## Requirements
 
@@ -70,10 +71,12 @@
 
 ### Exact process observation
 
-- **R21 Release-grade exactness:** A stable release-grade process-tree claim requires exact descendant process observation on Linux and macOS ARM runner classes. A platform/backend combination without that evidence remains explicitly degraded or experimental.
+- **R21 Release-grade exactness:** A release-grade process-tree claim is platform/backend-specific. A stable release may claim exact descendant process observation only for platform/backend combinations with validation evidence; all other combinations remain explicitly degraded or experimental.
 - **R22 Exactness proof:** An exact process backend must observe process creation, exec identity changes, and exit for every included descendant, including short-lived descendants, and must prove parent/child links without sampled `/proc` inference.
 - **R23 Downgrade on uncertainty:** Event loss, helper restart, missing privilege, namespace/cgroup ambiguity, unsupported platform mechanisms, version mismatch, or missing lifecycle events must downgrade affected evidence instead of emitting exact spans.
 - **R24 Helper boundary:** Default exact observation uses a helper-style event-source boundary that does not perturb the wrapped command. `otel-scrape` must not require ordinary wrapped commands to run with elevated privileges.
 - **R25 Contract ownership:** `effect-utils` owns the public process-observation contract: backend selection, helper protocol, schemas, summary evidence, OTLP span semantics, fake-helper fixtures, validation tests, and release documentation.
 - **R26 Deployment ownership:** Privileged activation, kernel/Endpoint Security permissions, system service configuration, socket placement, health checks, fleet rollout, and machine-specific policy belong outside the public wrapper contract, initially in the fleet/dotfiles layer.
 - **R27 Public-safe evidence:** Raw process identifiers, argv, cwd, local paths, credentials, source text, and child output payloads must not enter summaries, OTLP export, or persistent helper logs. Persisted process identity uses stable hashes and bounded reason codes.
+- **R28 Linux cgroup authority:** Linux exact helper mode must use a run-scoped cgroup, or an equivalently strong kernel-owned execution boundary, as the authority for run membership. Process ancestry, process groups, sessions, and wrapper run IDs may enrich correlation but must not be the sole authority for exactness.
+- **R29 macOS exactness gate:** macOS ARM support is degraded by default unless an Endpoint Security-backed helper, or an equivalently exact and supported system event source, proves installation, entitlement, user/admin approval, event-loss handling, run correlation, and fixture validation in both a runner environment and the target host class.

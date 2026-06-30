@@ -115,9 +115,9 @@ flowchart TD
 
 ## Process-Tree Fidelity
 
-`otel-scrape` must provide exact descendant process-tree spans on supported release platforms before a stable release. A prototype may start with the direct child process span only, but direct-child-only capture does not satisfy the release contract.
+`otel-scrape` records process-tree fidelity per platform/backend combination. A stable release may claim exact descendant process-tree spans only for combinations with validation evidence. Unsupported or unproven combinations remain explicit degraded support, not release blockers for combinations that are already exact.
 
-Best-effort or sampled descendant discovery may exist only when explicitly marked as degraded/experimental output. Release validation must include Linux and macOS ARM evidence from public-safe runner classes, not private machine identities.
+Best-effort or sampled descendant discovery may exist only when explicitly marked as degraded/experimental output. Exact release validation must use public-safe runner-class evidence, not private machine identities.
 
 The default implementation does not make a release-grade descendant process-tree claim. Summary evidence records `degraded.direct_child_only = true` and a `processes` observation block with `backend = "direct-child"`, `fidelity = "degraded"`, and `reason = "direct-child-only"`. OTLP export emits the wrapper-owned command span, one direct-child `otel_scrape.process` span, and adapter/profile events.
 
@@ -126,9 +126,15 @@ Linux also has an opt-in `ptrace-experimental` backend. It may emit `fidelity = 
 Default exact process observation requires an event-source boundary that does
 not perturb the wrapped command. On Linux, the preferred default-exact path is a
 separate privileged helper that streams lifecycle events from kernel-supported
-sources such as eBPF tracepoints or connector-style process events. On macOS,
-the expected default-exact candidate is an Endpoint Security-backed helper or an
-equivalently exact system event source.
+sources and correlates them through a run-scoped cgroup identity. Process
+ancestry, process groups, sessions, and wrapper-generated run IDs may support
+correlation, but they are not by themselves authoritative enough for an exact
+cross-descendant claim. On macOS, the expected default-exact candidate is an
+Endpoint Security-backed helper or an equivalently exact and supported system
+event source, but macOS ARM stays degraded by default until that path is
+validated in both the runner environment and the target host class with
+entitlement, installation, user/admin approval, lifecycle, run-correlation, and
+event-loss evidence.
 
 The product boundary is split. `effect-utils` owns the stable wrapper-facing
 contract: backend selection, helper protocol, process-observation schemas,
@@ -189,12 +195,16 @@ An exact backend must observe fork or equivalent parent-child creation, exec or 
 
 Linux exact support starts behind the explicit `ptrace-experimental` backend.
 Linux exact-by-default support requires a helper-style backend with event-loss
-and correlation semantics. macOS exact support must use a mechanism that can
+and correlation semantics. Its exact run ownership authority is a run-scoped
+cgroup identity, because global PID ancestry alone can leak across concurrent
+runs and process reparenting. macOS exact support must use a mechanism that can
 observe unknown descendants; `kqueue`/`EVFILT_PROC` is insufficient for this
 because it starts from known process IDs only. Endpoint Security is the expected
 macOS candidate, but exact support is gated on entitlement, installation,
-user/admin approval, event-loss handling, and validation evidence. See
-[.decisions/0010-macos-process-observation.md](./.decisions/0010-macos-process-observation.md).
+user/admin approval, event-loss handling, and validation evidence from Apple
+Silicon runner environments. See
+[.decisions/0010-macos-process-observation.md](./.decisions/0010-macos-process-observation.md)
+and [.experiments/0004-macos-endpoint-security-feasibility.md](./.experiments/0004-macos-endpoint-security-feasibility.md).
 
 ### Helper Stream Backend
 
@@ -234,10 +244,12 @@ and OTLP output from validated helper facts; the helper does not export OTLP or
 own adapter semantics.
 
 Correlation starts from a wrapper-generated run ID propagated to the child
-environment. Platform helpers may additionally use process group, session,
-cgroup, audit token, or equivalent OS facts to prove the run boundary, but
-global PID ancestry alone is not authoritative because it can leak processes
-across concurrent runs.
+environment. On Linux, an exact helper also binds the run to a dedicated cgroup
+scope and treats that cgroup identity as the ownership authority for lifecycle
+events. Platform helpers may additionally use process group, session, audit
+token, or equivalent OS facts to support correlation, but global PID ancestry
+alone is not authoritative because it can leak processes across concurrent
+runs.
 
 The helper stream must not persist or export raw argv, cwd, local paths,
 credentials, source text, or child output payloads. Persistent process evidence
@@ -245,6 +257,25 @@ uses hashes and bounded reason codes. If a platform-specific helper needs raw
 facts for in-memory correlation across the protected local socket boundary, the
 wrapper-facing evidence still sanitizes them before summary JSON, OTLP, or
 logs.
+
+### Platform Helper Realizations
+
+The helper stream is the wrapper-facing contract; platform helpers are
+realizations of that contract.
+
+| Platform class   | Release-grade authority                                                 | Expected event source                                                          | Exactness gate                                                                                                   |
+| ---------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| Linux runner     | Run-scoped cgroup or equally strong OS boundary                         | Kernel process lifecycle events with loss signaling                            | Process-DAG fixture, cgroup membership proof, namespace ambiguity downgrade, helper restart/loss downgrade       |
+| macOS ARM runner | Endpoint Security process identity plus approved local service boundary | Endpoint Security process events, or an equivalently exact system event source | Entitlement/install/approval proof, event-loss handling, process-DAG fixture, degraded fallback when unavailable |
+
+The fleet layer owns helper installation, service supervision, privileges,
+socket ownership, and host policy. The wrapper accepts only sanitized helper
+stream facts and applies the same validation rules for every realization.
+
+Exactness verdicts are platform/backend-specific. A release support matrix must
+state whether each runner class is exact, experimental, or degraded, and must
+link the validation evidence that produced that verdict. The public claim is the
+runner class and backend behavior, not a private host identity.
 
 ## Semantic Conventions
 
@@ -478,7 +509,8 @@ prototype/degraded evidence:
   output payloads are excluded from summary and OTLP evidence.
 - Descendant process-tree spans are release claims only for platform/backend
   combinations with exactness tests. The current exact claim is limited to
-  Linux `ptrace-experimental`; default and macOS evidence remains degraded.
+  Linux `ptrace-experimental`; default output and macOS evidence remain
+  degraded until helper-backed runner-class validation proves exactness.
 - Adapter support matrices distinguish supported adapters from candidates. A
   candidate is not a release claim until its vertical-slice gate passes.
 
