@@ -47,11 +47,6 @@ const standalone = readFileSync(
   join(root, 'genie/ci-scripts/nix-gc-race-retry.sh'),
   'utf8',
 )
-  .replace(
-    /^#!\/usr\/bin\/env bash\n# Generated file - DO NOT EDIT\n# Source: nix-gc-race-retry\.sh\.genie\.ts\n\n/,
-    '#!/usr/bin/env bash\n',
-  )
-  .trimEnd()
 const supportFilesSource = readFileSync(join(root, 'genie/ci-workflow/support-files.ts'), 'utf8')
 const match = supportFilesSource.match(
   /export const ciWorkflowNixGcRaceRetryScript = String\.raw`([\s\S]*?)`\n\nexport const ciWorkflowNixGcRaceRetryWrapperScript/,
@@ -66,7 +61,7 @@ const embedded = match[1].replaceAll('${dollar}', '$').trimEnd()
 const normalizedStandalone = standalone.replace(
   /^#!\/usr\/bin\/env bash\n# Generated file - DO NOT EDIT\n# Source: nix-gc-race-retry\.sh\.genie\.ts\n\n/,
   '#!/usr/bin/env bash\n',
-)
+).trimEnd()
 if (normalizedStandalone !== embedded) {
   console.error('FAIL: standalone helper drifted from workflow helper source')
   process.exit(1)
