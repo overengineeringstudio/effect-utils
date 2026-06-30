@@ -72,6 +72,12 @@ All notable changes to this project will be documented in this file.
   parsing and fail-closed degraded evidence until a validated privileged helper
   stream proves exact lifecycle coverage.
 
+- **otel-scrape**: Implement the `helper-stream` NDJSON parser and fake-helper
+  E2E contract tests. Exact process evidence now requires a complete,
+  same-run, version-matched lifecycle stream; helper loss, sequence gaps,
+  run-id mismatch, version mismatch, disconnects, and incomplete lifecycle data
+  degrade explicitly.
+
 - **otel-scrape**: Support the official OpenTelemetry trace-export environment
   variable surface for the first-party OTLP/HTTP JSON exporter, including
   trace-specific endpoint precedence, resource attributes, service-name

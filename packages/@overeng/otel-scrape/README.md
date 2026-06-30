@@ -78,6 +78,14 @@ stdout, stderr, stdin, or the child exit code.
 Adapter-derived OTLP events and profile-link events are attached to the command
 span. Adapter metrics remain local summary records.
 
+When `--process-backend helper-stream` is selected, the wrapper generates
+`OTEL_SCRAPE_RUN_ID`, passes it to the child, and reads ordered lifecycle facts
+from `--process-helper-socket` / `OTEL_SCRAPE_PROCESS_HELPER_SOCKET`. The helper
+stream is fail-closed: only complete, same-run, version-matched fork/exec/exit
+evidence is exact; helper loss, disconnects, sequence gaps, run mismatch,
+version mismatch, or incomplete lifecycle facts fall back to degraded
+direct-child evidence.
+
 Supported OpenTelemetry SDK/exporter environment variables:
 
 | Env var                                                              | Behavior                                                                                                    |

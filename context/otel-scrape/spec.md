@@ -208,6 +208,7 @@ Initial CLI/configuration surface:
 - `--process-helper-socket <path>`
 - `OTEL_SCRAPE_PROCESS_BACKEND=helper-stream`
 - `OTEL_SCRAPE_PROCESS_HELPER_SOCKET=<path>`
+- `OTEL_SCRAPE_RUN_ID=<wrapper-generated run id>` propagated to the child
 
 The wire format starts as versioned newline-delimited JSON over a local Unix
 domain socket. Every message carries a protocol version, run identity, monotonic
@@ -225,8 +226,11 @@ type HelperProcessEvent =
 ```
 
 Exactness is fail-closed. A helper restart, event-sequence gap, `Loss` event,
-version mismatch, unpaired lifecycle event, missing privilege, namespace or
-cgroup ambiguity, or missing exit downgrades the affected observation.
+version mismatch, run-id mismatch, helper disconnect, unpaired lifecycle event,
+missing privilege, namespace or cgroup ambiguity, or missing exit downgrades the
+affected observation. The wrapper constructs process spans and OTLP output from
+validated helper facts; the helper does not export OTLP or own adapter
+semantics.
 
 Correlation starts from a wrapper-generated run ID propagated to the child
 environment. Platform helpers may additionally use process group, session,

@@ -4,6 +4,7 @@
 //! passthrough, and summary evidence. Adapter parsing and OTLP export will be
 //! layered on this boundary once the generated telemetry registry exists.
 
+use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::fs;
 use std::io::{self, Read, Write};
@@ -13,6 +14,8 @@ use std::process::{Command, ExitStatus, Stdio};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+#[cfg(unix)]
+use std::os::unix::net::UnixStream;
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
 
@@ -43,12 +46,16 @@ const OTLP_TIMEOUT_ENV: &str = "OTEL_EXPORTER_OTLP_TIMEOUT";
 const OTLP_TRACES_TIMEOUT_ENV: &str = "OTEL_EXPORTER_OTLP_TRACES_TIMEOUT";
 const OTLP_PROTOCOL_ENV: &str = "OTEL_EXPORTER_OTLP_PROTOCOL";
 const OTLP_TRACES_PROTOCOL_ENV: &str = "OTEL_EXPORTER_OTLP_TRACES_PROTOCOL";
+const OTLP_COMPRESSION_ENV: &str = "OTEL_EXPORTER_OTLP_COMPRESSION";
+const OTLP_TRACES_COMPRESSION_ENV: &str = "OTEL_EXPORTER_OTLP_TRACES_COMPRESSION";
 const OTEL_TRACES_EXPORTER_ENV: &str = "OTEL_TRACES_EXPORTER";
 const OTEL_SDK_DISABLED_ENV: &str = "OTEL_SDK_DISABLED";
 const RESOURCE_ATTRIBUTES_ENV: &str = "OTEL_RESOURCE_ATTRIBUTES";
 const SERVICE_NAME_ENV: &str = "OTEL_SERVICE_NAME";
 const PROCESS_BACKEND_ENV: &str = "OTEL_SCRAPE_PROCESS_BACKEND";
 const PROCESS_HELPER_SOCKET_ENV: &str = "OTEL_SCRAPE_PROCESS_HELPER_SOCKET";
+const RUN_ID_ENV: &str = "OTEL_SCRAPE_RUN_ID";
+const HELPER_STREAM_PROTOCOL_VERSION: u8 = 1;
 const TRACEPARENT_ENV: &str = "traceparent";
 const OUTPUT_MEDIA_TYPE: &str = "application/octet-stream";
 const RESOURCE_FACT_UNAVAILABLE: &str = "unavailable";
@@ -69,6 +76,11 @@ const PROCESS_OBSERVATION_DEGRADED_REASONS: &[ProcessObservationDegradedReason] 
     ProcessObservationDegradedReason::EndpointSecurityUnavailable,
     ProcessObservationDegradedReason::EventLoss,
     ProcessObservationDegradedReason::NamespaceUnsupported,
+    ProcessObservationDegradedReason::HelperDisconnect,
+    ProcessObservationDegradedReason::VersionMismatch,
+    ProcessObservationDegradedReason::RunIdMismatch,
+    ProcessObservationDegradedReason::SequenceGap,
+    ProcessObservationDegradedReason::LifecycleIncomplete,
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -386,9 +398,21 @@ enum ProcessObservationDegradedReason {
     EndpointSecurityUnavailable,
     EventLoss,
     NamespaceUnsupported,
+    HelperDisconnect,
+    VersionMismatch,
+    RunIdMismatch,
+    SequenceGap,
+    LifecycleIncomplete,
 }
 
 impl ProcessObservationDegradedReason {
+    fn parse(value: &str) -> Option<Self> {
+        PROCESS_OBSERVATION_DEGRADED_REASONS
+            .iter()
+            .copied()
+            .find(|reason| reason.as_str() == value)
+    }
+
     fn as_str(self) -> &'static str {
         match self {
             Self::DirectChildOnly => "direct-child-only",
@@ -398,6 +422,11 @@ impl ProcessObservationDegradedReason {
             Self::EndpointSecurityUnavailable => "endpoint-security-unavailable",
             Self::EventLoss => "event-loss",
             Self::NamespaceUnsupported => "namespace-unsupported",
+            Self::HelperDisconnect => "helper-disconnect",
+            Self::VersionMismatch => "version-mismatch",
+            Self::RunIdMismatch => "run-id-mismatch",
+            Self::SequenceGap => "sequence-gap",
+            Self::LifecycleIncomplete => "lifecycle-incomplete",
         }
     }
 }
@@ -644,10 +673,11 @@ pub fn print_version() {
 pub fn run(config: RunConfig) -> io::Result<i32> {
     let trace = trace_context_from_env()?;
     let child_traceparent = trace.child_traceparent();
+    let run_id = random_hex(16)?;
     let started_wall = SystemTime::now();
     let started = Instant::now();
 
-    let child = run_child(&config, &child_traceparent)?;
+    let child = run_child(&config, &child_traceparent, &run_id)?;
     let duration_ms = started.elapsed().as_millis();
     let discovered_artifacts = discover_adapter_profile_artifacts(&config, &child);
     let artifacts = match artifact_summary(&config, &trace, &discovered_artifacts) {
@@ -718,14 +748,14 @@ struct ChildRun {
     process_observation: ProcessObservation,
 }
 
-fn run_child(config: &RunConfig, child_traceparent: &str) -> io::Result<ChildRun> {
+fn run_child(config: &RunConfig, child_traceparent: &str, run_id: &str) -> io::Result<ChildRun> {
     match config.process_backend {
-        ProcessBackendSelection::DirectChild => run_child_direct(config, child_traceparent),
+        ProcessBackendSelection::DirectChild => run_child_direct(config, child_traceparent, run_id),
         ProcessBackendSelection::PtraceExperimental => {
             run_child_with_ptrace(config, child_traceparent)
         }
         ProcessBackendSelection::HelperStream => {
-            run_child_with_helper_stream(config, child_traceparent)
+            run_child_with_helper_stream(config, child_traceparent, run_id)
         }
     }
 }
@@ -733,19 +763,19 @@ fn run_child(config: &RunConfig, child_traceparent: &str) -> io::Result<ChildRun
 fn run_child_with_helper_stream(
     config: &RunConfig,
     child_traceparent: &str,
+    run_id: &str,
 ) -> io::Result<ChildRun> {
-    let mut child = run_child_direct(config, child_traceparent)?;
-    child.process_observation.backend = ProcessObservationBackend::HelperStream;
-    child.process_observation.fidelity = ProcessObservationFidelity::Degraded;
-    child.process_observation.degraded_reason = Some(if config.process_helper_socket.is_some() {
-        ProcessObservationDegradedReason::EventLoss
-    } else {
-        ProcessObservationDegradedReason::MissingPrivilege
-    });
+    let mut child = run_child_direct(config, child_traceparent, run_id)?;
+    child.process_observation = helper_stream_process_observation(config, run_id)
+        .unwrap_or_else(|reason| degraded_helper_stream_observation(&child, reason));
     Ok(child)
 }
 
-fn run_child_direct(config: &RunConfig, child_traceparent: &str) -> io::Result<ChildRun> {
+fn run_child_direct(
+    config: &RunConfig,
+    child_traceparent: &str,
+    run_id: &str,
+) -> io::Result<ChildRun> {
     let node_profile_dir = prepare_node_cpuprofile_dir(config)?;
     let process_span_id = random_hex(8)?;
     let mut command = Command::new(&config.argv[0]);
@@ -753,6 +783,7 @@ fn run_child_direct(config: &RunConfig, child_traceparent: &str) -> io::Result<C
         .args(&config.argv[1..])
         .env(TRACEPARENT_ENV, child_traceparent)
         .env("TRACEPARENT", child_traceparent)
+        .env(RUN_ID_ENV, run_id)
         .stdin(Stdio::inherit());
     if let Some(profile_dir) = node_profile_dir.as_ref() {
         command.env(
@@ -1181,6 +1212,353 @@ fn direct_child_process_observation(
             wall_ms: input.process_duration_ms,
         }],
     }
+}
+
+fn degraded_helper_stream_observation(
+    child: &ChildRun,
+    reason: ProcessObservationDegradedReason,
+) -> ProcessObservation {
+    let mut observation = child.process_observation.clone();
+    observation.backend = ProcessObservationBackend::HelperStream;
+    observation.fidelity = ProcessObservationFidelity::Degraded;
+    observation.degraded_reason = Some(reason);
+    observation
+}
+
+fn helper_stream_process_observation(
+    config: &RunConfig,
+    run_id: &str,
+) -> Result<ProcessObservation, ProcessObservationDegradedReason> {
+    let Some(socket) = config.process_helper_socket.as_ref() else {
+        return Err(ProcessObservationDegradedReason::MissingPrivilege);
+    };
+    let events = read_helper_stream_events(socket).map_err(|cause| {
+        let reason = helper_stream_read_error_reason(&cause);
+        if std::env::var_os("OTEL_SCRAPE_DEBUG_HELPER_STREAM").is_some() {
+            eprintln!("otel-scrape: helper-stream debug: {cause}");
+        }
+        reason
+    })?;
+    helper_events_to_process_observation(&events, run_id).inspect_err(|reason| {
+        if std::env::var_os("OTEL_SCRAPE_DEBUG_HELPER_STREAM").is_some() {
+            eprintln!("otel-scrape: helper-stream debug: {}", reason.as_str());
+        }
+    })
+}
+
+fn helper_stream_read_error_reason(cause: &io::Error) -> ProcessObservationDegradedReason {
+    match cause.kind() {
+        io::ErrorKind::NotFound
+        | io::ErrorKind::PermissionDenied
+        | io::ErrorKind::ConnectionRefused => ProcessObservationDegradedReason::MissingPrivilege,
+        io::ErrorKind::ConnectionAborted
+        | io::ErrorKind::ConnectionReset
+        | io::ErrorKind::UnexpectedEof
+        | io::ErrorKind::TimedOut
+        | io::ErrorKind::WouldBlock => ProcessObservationDegradedReason::HelperDisconnect,
+        io::ErrorKind::Unsupported => ProcessObservationDegradedReason::UnsupportedPlatform,
+        _ => {
+            if std::env::var_os("OTEL_SCRAPE_DEBUG_HELPER_STREAM").is_some() {
+                eprintln!("otel-scrape: helper-stream debug: {cause}");
+            }
+            ProcessObservationDegradedReason::EventLoss
+        }
+    }
+}
+
+#[cfg(unix)]
+fn read_helper_stream_events(path: &Path) -> io::Result<Vec<HelperStreamEvent>> {
+    let mut stream = UnixStream::connect(path)?;
+    stream.set_read_timeout(Some(OTLP_HTTP_DEFAULT_TIMEOUT))?;
+    let mut body = String::new();
+    stream.read_to_string(&mut body)?;
+    if body.trim().is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            "helper stream closed before sending events",
+        ));
+    }
+    body.lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| {
+            serde_json::from_str::<HelperStreamEvent>(line).map_err(|cause| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("invalid helper stream event: {cause}"),
+                )
+            })
+        })
+        .collect()
+}
+
+#[cfg(not(unix))]
+fn read_helper_stream_events(_path: &Path) -> io::Result<Vec<HelperStreamEvent>> {
+    Err(io::Error::new(
+        io::ErrorKind::Unsupported,
+        "helper-stream sockets require Unix sockets",
+    ))
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "_tag", rename_all = "PascalCase")]
+enum HelperStreamEvent {
+    RunStarted(HelperRunStarted),
+    Fork(HelperFork),
+    Exec(HelperExec),
+    Exit(HelperExit),
+    Loss(HelperLoss),
+    RunFinished(HelperRunFinished),
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct HelperEventBase {
+    protocol_version: u64,
+    run_id: String,
+    event_seq: u64,
+    time_unix_nano: u64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct HelperRunStarted {
+    #[serde(flatten)]
+    base: HelperEventBase,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct HelperFork {
+    #[serde(flatten)]
+    base: HelperEventBase,
+    pid_hash: String,
+    parent_pid_hash: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct HelperExec {
+    #[serde(flatten)]
+    base: HelperEventBase,
+    pid_hash: String,
+    argv_hash: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct HelperExit {
+    #[serde(flatten)]
+    base: HelperEventBase,
+    pid_hash: String,
+    exit_code: Option<i32>,
+    signal: Option<i32>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct HelperLoss {
+    #[serde(flatten)]
+    base: HelperEventBase,
+    reason: ProcessObservationDegradedReason,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct HelperRunFinished {
+    #[serde(flatten)]
+    base: HelperEventBase,
+}
+
+impl<'de> Deserialize<'de> for ProcessObservationDegradedReason {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        ProcessObservationDegradedReason::parse(&value)
+            .ok_or_else(|| serde::de::Error::custom("unknown degraded reason"))
+    }
+}
+
+#[derive(Debug, Clone)]
+struct HelperProcessState {
+    parent_pid_hash: String,
+    started_unix_nano: u64,
+    argv_hash: Option<String>,
+    exit_code: Option<i32>,
+    signal: Option<i32>,
+    ended_unix_nano: Option<u64>,
+}
+
+fn helper_events_to_process_observation(
+    events: &[HelperStreamEvent],
+    run_id: &str,
+) -> Result<ProcessObservation, ProcessObservationDegradedReason> {
+    let mut expected_seq = 0_u64;
+    let mut saw_start = false;
+    let mut saw_finish = false;
+    let mut processes: BTreeMap<String, HelperProcessState> = BTreeMap::new();
+    for event in events {
+        if saw_finish {
+            return Err(ProcessObservationDegradedReason::LifecycleIncomplete);
+        }
+        let base = helper_event_base(event);
+        if base.protocol_version != u64::from(HELPER_STREAM_PROTOCOL_VERSION) {
+            return Err(ProcessObservationDegradedReason::VersionMismatch);
+        }
+        if base.run_id != run_id {
+            return Err(ProcessObservationDegradedReason::RunIdMismatch);
+        }
+        if base.event_seq != expected_seq {
+            return Err(ProcessObservationDegradedReason::SequenceGap);
+        }
+        expected_seq = expected_seq.saturating_add(1);
+        match event {
+            HelperStreamEvent::RunStarted(_) => {
+                if expected_seq != 1 {
+                    return Err(ProcessObservationDegradedReason::LifecycleIncomplete);
+                }
+                saw_start = true;
+            }
+            HelperStreamEvent::Fork(event) => {
+                if !helper_sha256_hash_is_valid(&event.pid_hash)
+                    || !helper_sha256_hash_is_valid(&event.parent_pid_hash)
+                {
+                    return Err(ProcessObservationDegradedReason::EventLoss);
+                }
+                if processes
+                    .insert(
+                        event.pid_hash.clone(),
+                        HelperProcessState {
+                            parent_pid_hash: event.parent_pid_hash.clone(),
+                            started_unix_nano: event.base.time_unix_nano,
+                            argv_hash: None,
+                            exit_code: None,
+                            signal: None,
+                            ended_unix_nano: None,
+                        },
+                    )
+                    .is_some()
+                {
+                    return Err(ProcessObservationDegradedReason::LifecycleIncomplete);
+                }
+            }
+            HelperStreamEvent::Exec(event) => {
+                if !helper_sha256_hash_is_valid(&event.pid_hash)
+                    || !helper_sha256_hash_is_valid(&event.argv_hash)
+                {
+                    return Err(ProcessObservationDegradedReason::EventLoss);
+                }
+                let Some(process) = processes.get_mut(&event.pid_hash) else {
+                    return Err(ProcessObservationDegradedReason::LifecycleIncomplete);
+                };
+                if process.argv_hash.is_some() {
+                    return Err(ProcessObservationDegradedReason::LifecycleIncomplete);
+                }
+                process.argv_hash = Some(event.argv_hash.clone());
+            }
+            HelperStreamEvent::Exit(event) => {
+                if !helper_sha256_hash_is_valid(&event.pid_hash) {
+                    return Err(ProcessObservationDegradedReason::EventLoss);
+                }
+                let Some(process) = processes.get_mut(&event.pid_hash) else {
+                    return Err(ProcessObservationDegradedReason::LifecycleIncomplete);
+                };
+                if process.ended_unix_nano.is_some() {
+                    return Err(ProcessObservationDegradedReason::LifecycleIncomplete);
+                }
+                process.exit_code = event.exit_code;
+                process.signal = event.signal;
+                process.ended_unix_nano = Some(event.base.time_unix_nano);
+            }
+            HelperStreamEvent::Loss(event) => {
+                return Err(event.reason);
+            }
+            HelperStreamEvent::RunFinished(_) => {
+                saw_finish = true;
+            }
+        }
+    }
+    if !saw_start || !saw_finish || processes.is_empty() {
+        return Err(ProcessObservationDegradedReason::LifecycleIncomplete);
+    }
+
+    let mut span_ids = BTreeMap::new();
+    for pid_hash in processes.keys() {
+        span_ids.insert(
+            pid_hash.clone(),
+            random_hex(8).map_err(|_| ProcessObservationDegradedReason::EventLoss)?,
+        );
+    }
+
+    let mut process_entries: Vec<_> = processes.into_iter().collect();
+    process_entries.sort_by_key(|(_, process)| process.started_unix_nano);
+    let mut observed = Vec::new();
+    for (pid_hash, process) in process_entries {
+        let Some(argv_hash) = process.argv_hash else {
+            return Err(ProcessObservationDegradedReason::LifecycleIncomplete);
+        };
+        let Some(ended_unix_nano) = process.ended_unix_nano else {
+            return Err(ProcessObservationDegradedReason::LifecycleIncomplete);
+        };
+        let relation = if span_ids.contains_key(&process.parent_pid_hash) {
+            ObservedProcessRelation::Descendant
+        } else {
+            ObservedProcessRelation::DirectChild
+        };
+        let parent_span_id = span_ids.get(&process.parent_pid_hash).cloned();
+        observed.push(ObservedProcess {
+            relation,
+            span_id: span_ids
+                .get(&pid_hash)
+                .cloned()
+                .ok_or(ProcessObservationDegradedReason::EventLoss)?,
+            parent_span_id,
+            pid_hash,
+            parent_pid_hash: Some(process.parent_pid_hash),
+            argv_hash,
+            exit_code: process.exit_code,
+            termination: process.signal.map(|signal| ChildTermination::Signal {
+                signal,
+                synthetic_exit_code: 128 + signal,
+            }),
+            started_wall: unix_nanos_to_system_time(process.started_unix_nano),
+            wall_ms: u128::from(
+                ended_unix_nano
+                    .saturating_sub(process.started_unix_nano)
+                    .saturating_div(1_000_000),
+            ),
+        });
+    }
+
+    Ok(ProcessObservation {
+        backend: ProcessObservationBackend::HelperStream,
+        fidelity: ProcessObservationFidelity::Exact,
+        degraded_reason: None,
+        observed,
+    })
+}
+
+fn helper_sha256_hash_is_valid(value: &str) -> bool {
+    let Some(hex) = value.strip_prefix("sha256:") else {
+        return false;
+    };
+    hex.len() == 64 && hex.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+fn helper_event_base(event: &HelperStreamEvent) -> &HelperEventBase {
+    match event {
+        HelperStreamEvent::RunStarted(event) => &event.base,
+        HelperStreamEvent::Fork(event) => &event.base,
+        HelperStreamEvent::Exec(event) => &event.base,
+        HelperStreamEvent::Exit(event) => &event.base,
+        HelperStreamEvent::Loss(event) => &event.base,
+        HelperStreamEvent::RunFinished(event) => &event.base,
+    }
+}
+
+fn unix_nanos_to_system_time(value: u64) -> SystemTime {
+    UNIX_EPOCH + Duration::from_nanos(value)
 }
 
 #[cfg(target_os = "linux")]
@@ -1677,6 +2055,21 @@ fn otlp_env_config() -> OtlpEnvConfig {
             true
         }
     };
+    let compression = signal_env_string(OTLP_TRACES_COMPRESSION_ENV, OTLP_COMPRESSION_ENV)
+        .map(|value| value.to_ascii_lowercase());
+    let compression_enabled = match compression.as_deref() {
+        None | Some("none") => true,
+        Some("gzip") => {
+            eprintln!(
+                "otel-scrape: warning: {OTLP_TRACES_COMPRESSION_ENV}/{OTLP_COMPRESSION_ENV}=gzip is not supported by this first-party JSON exporter; trace export is disabled"
+            );
+            false
+        }
+        Some(other) => {
+            eprintln!("otel-scrape: warning: ignoring unrecognized OTLP compression {other}");
+            true
+        }
+    };
     let mut resource_attributes = parse_key_value_list_env(RESOURCE_ATTRIBUTES_ENV, "resource");
     set_resource_attribute(&mut resource_attributes, "telemetry.sdk.language", "rust");
     set_resource_attribute(
@@ -1697,7 +2090,7 @@ fn otlp_env_config() -> OtlpEnvConfig {
         timeout: signal_env_string(OTLP_TRACES_TIMEOUT_ENV, OTLP_TIMEOUT_ENV)
             .and_then(|value| parse_timeout_ms(&value))
             .unwrap_or(OTLP_HTTP_DEFAULT_TIMEOUT),
-        export_enabled: !sdk_disabled && exporter_enabled && protocol_enabled,
+        export_enabled: !sdk_disabled && exporter_enabled && protocol_enabled && compression_enabled,
         service_name,
         resource_attributes,
     }

@@ -10,6 +10,9 @@ use std::{
 
 use sha2::{Digest, Sha256};
 
+#[cfg(unix)]
+use std::os::unix::net::UnixListener;
+
 fn otel_scrape() -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_otel-scrape"));
     command
@@ -581,7 +584,12 @@ fn ptrace_experimental_process_backend_observes_fixture_dag() {
     let summary: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(summary).unwrap()).unwrap();
     assert_eq!(summary["processes"]["backend"], "ptrace-experimental");
-    assert_eq!(summary["processes"]["fidelity"], "exact");
+    assert_eq!(
+        summary["processes"]["fidelity"],
+        "exact",
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     assert_eq!(summary["processes"]["reason"], serde_json::Value::Null);
     assert_eq!(summary["degraded"]["direct_child_only"], false);
 
@@ -616,6 +624,102 @@ fn ptrace_experimental_process_backend_observes_fixture_dag() {
             }
             role => panic!("unexpected fixture role {role}"),
         }
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn helper_stream_backend_accepts_complete_fake_helper_stream() {
+    let dir = tempfile::tempdir().unwrap();
+    let summary = dir.path().join("summary.json");
+    let socket = dir.path().join("helper.sock");
+    let run_id_file = dir.path().join("run-id");
+    let helper = spawn_fake_helper_stream(&socket, &run_id_file, HelperFixtureMode::Complete);
+
+    let out = otel_scrape()
+        .args(["--summary-out"])
+        .arg(&summary)
+        .args(["--process-backend", "helper-stream"])
+        .args(["--process-helper-socket"])
+        .arg(&socket)
+        .args(["--", "sh", "-c"])
+        .arg(format!(
+            "printf '%s' \"$OTEL_SCRAPE_RUN_ID\" > {} && printf child",
+            run_id_file.display()
+        ))
+        .output()
+        .unwrap();
+
+    assert!(out.status.success());
+    assert_eq!(String::from_utf8_lossy(&out.stdout), "child");
+    helper.join().unwrap();
+
+    let summary: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(summary).unwrap()).unwrap();
+    assert_eq!(summary["processes"]["backend"], "helper-stream");
+    assert_eq!(
+        summary["processes"]["fidelity"],
+        "exact",
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(summary["processes"]["reason"], serde_json::Value::Null);
+    assert_eq!(summary["degraded"]["direct_child_only"], false);
+    let observed = summary["processes"]["observed"].as_array().unwrap();
+    assert_eq!(observed.len(), 2);
+    assert_eq!(observed[0]["relation"], "direct-child");
+    assert_eq!(observed[0]["pidHash"], HELPER_ROOT_PID_HASH);
+    assert_eq!(observed[0]["parentSpanId"], summary["trace"]["span_id"]);
+    assert_eq!(observed[1]["relation"], "descendant");
+    assert_eq!(observed[1]["pidHash"], HELPER_CHILD_PID_HASH);
+    assert_eq!(observed[1]["parentPidHash"], HELPER_ROOT_PID_HASH);
+    assert_eq!(observed[1]["parentSpanId"], observed[0]["spanId"]);
+}
+
+#[cfg(unix)]
+#[test]
+fn helper_stream_backend_degrades_on_invalid_fake_helper_streams() {
+    for (mode, reason) in [
+        (HelperFixtureMode::Loss, "event-loss"),
+        (HelperFixtureMode::SequenceGap, "sequence-gap"),
+        (HelperFixtureMode::RunIdMismatch, "run-id-mismatch"),
+        (HelperFixtureMode::VersionMismatch, "version-mismatch"),
+        (HelperFixtureMode::HelperDisconnect, "helper-disconnect"),
+        (HelperFixtureMode::MissingExit, "lifecycle-incomplete"),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let summary = dir.path().join("summary.json");
+        let socket = dir.path().join("helper.sock");
+        let run_id_file = dir.path().join("run-id");
+        let helper = spawn_fake_helper_stream(&socket, &run_id_file, mode);
+
+        let out = otel_scrape()
+            .args(["--summary-out"])
+            .arg(&summary)
+            .args(["--process-backend", "helper-stream"])
+            .args(["--process-helper-socket"])
+            .arg(&socket)
+            .args(["--", "sh", "-c"])
+            .arg(format!(
+                "printf '%s' \"$OTEL_SCRAPE_RUN_ID\" > {} && printf child",
+                run_id_file.display()
+            ))
+            .output()
+            .unwrap();
+
+        assert!(out.status.success());
+        assert_eq!(String::from_utf8_lossy(&out.stdout), "child");
+        helper.join().unwrap();
+
+        let summary: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(summary).unwrap()).unwrap();
+        assert_eq!(summary["processes"]["backend"], "helper-stream");
+        assert_eq!(summary["processes"]["fidelity"], "degraded");
+        assert_eq!(summary["processes"]["reason"], reason);
+        assert_eq!(
+            summary["processes"]["observed"].as_array().unwrap().len(),
+            1
+        );
     }
 }
 
@@ -1427,6 +1531,187 @@ fn assert_event_time_within_span(event: &serde_json::Value, span: &serde_json::V
         event_time <= span_end,
         "event timestamp {event_time} should be <= span end {span_end}"
     );
+}
+
+#[cfg(unix)]
+const HELPER_PARENT_PID_HASH: &str =
+    "sha256:0000000000000000000000000000000000000000000000000000000000000001";
+#[cfg(unix)]
+const HELPER_ROOT_PID_HASH: &str =
+    "sha256:0000000000000000000000000000000000000000000000000000000000000002";
+#[cfg(unix)]
+const HELPER_CHILD_PID_HASH: &str =
+    "sha256:0000000000000000000000000000000000000000000000000000000000000003";
+#[cfg(unix)]
+const HELPER_ROOT_ARGV_HASH: &str =
+    "sha256:1000000000000000000000000000000000000000000000000000000000000000";
+#[cfg(unix)]
+const HELPER_CHILD_ARGV_HASH: &str =
+    "sha256:2000000000000000000000000000000000000000000000000000000000000000";
+
+#[cfg(unix)]
+#[derive(Clone, Copy)]
+enum HelperFixtureMode {
+    Complete,
+    Loss,
+    SequenceGap,
+    RunIdMismatch,
+    VersionMismatch,
+    HelperDisconnect,
+    MissingExit,
+}
+
+#[cfg(unix)]
+fn spawn_fake_helper_stream(
+    socket: &Path,
+    run_id_file: &Path,
+    mode: HelperFixtureMode,
+) -> thread::JoinHandle<()> {
+    let _ = std::fs::remove_file(socket);
+    let listener = UnixListener::bind(socket).unwrap();
+    let run_id_file = run_id_file.to_owned();
+    thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let run_id = std::fs::read_to_string(run_id_file).unwrap();
+        if matches!(mode, HelperFixtureMode::HelperDisconnect) {
+            return;
+        }
+        let body = helper_stream_fixture_body(run_id.trim(), mode);
+        stream.write_all(body.as_bytes()).unwrap();
+    })
+}
+
+#[cfg(unix)]
+fn helper_stream_fixture_body(run_id: &str, mode: HelperFixtureMode) -> String {
+    let base = 1_700_000_000_000_000_000_u128;
+    let event_run_id = if matches!(mode, HelperFixtureMode::RunIdMismatch) {
+        "wrong-run-id"
+    } else {
+        run_id
+    };
+    let protocol_version = if matches!(mode, HelperFixtureMode::VersionMismatch) {
+        2
+    } else {
+        1
+    };
+    let mut events = vec![
+        serde_json::json!({
+            "_tag": "RunStarted",
+            "protocolVersion": protocol_version,
+            "runId": event_run_id,
+            "eventSeq": 0,
+            "timeUnixNano": base,
+        }),
+        serde_json::json!({
+            "_tag": "Fork",
+            "protocolVersion": protocol_version,
+            "runId": event_run_id,
+            "eventSeq": if matches!(mode, HelperFixtureMode::SequenceGap) { 2 } else { 1 },
+            "timeUnixNano": base + 1_000_000,
+            "pidHash": HELPER_ROOT_PID_HASH,
+            "parentPidHash": HELPER_PARENT_PID_HASH,
+        }),
+    ];
+    match mode {
+        HelperFixtureMode::Complete
+        | HelperFixtureMode::SequenceGap
+        | HelperFixtureMode::RunIdMismatch
+        | HelperFixtureMode::VersionMismatch
+        | HelperFixtureMode::MissingExit => {
+            events.extend([
+                serde_json::json!({
+                    "_tag": "Exec",
+                    "protocolVersion": protocol_version,
+                    "runId": event_run_id,
+                    "eventSeq": 2,
+                    "timeUnixNano": base + 2_000_000,
+                    "pidHash": HELPER_ROOT_PID_HASH,
+                    "argvHash": HELPER_ROOT_ARGV_HASH,
+                }),
+                serde_json::json!({
+                    "_tag": "Fork",
+                    "protocolVersion": protocol_version,
+                    "runId": event_run_id,
+                    "eventSeq": 3,
+                    "timeUnixNano": base + 3_000_000,
+                    "pidHash": HELPER_CHILD_PID_HASH,
+                    "parentPidHash": HELPER_ROOT_PID_HASH,
+                }),
+                serde_json::json!({
+                    "_tag": "Exec",
+                    "protocolVersion": protocol_version,
+                    "runId": event_run_id,
+                    "eventSeq": 4,
+                    "timeUnixNano": base + 4_000_000,
+                    "pidHash": HELPER_CHILD_PID_HASH,
+                    "argvHash": HELPER_CHILD_ARGV_HASH,
+                }),
+                serde_json::json!({
+                    "_tag": "Exit",
+                    "protocolVersion": protocol_version,
+                    "runId": event_run_id,
+                    "eventSeq": 5,
+                    "timeUnixNano": base + 5_000_000,
+                    "pidHash": HELPER_CHILD_PID_HASH,
+                    "exitCode": 0,
+                }),
+            ]);
+            if !matches!(mode, HelperFixtureMode::MissingExit) {
+                events.extend([
+                    serde_json::json!({
+                        "_tag": "Exit",
+                        "protocolVersion": protocol_version,
+                        "runId": event_run_id,
+                        "eventSeq": 6,
+                        "timeUnixNano": base + 6_000_000,
+                        "pidHash": HELPER_ROOT_PID_HASH,
+                        "exitCode": 0,
+                    }),
+                    serde_json::json!({
+                        "_tag": "RunFinished",
+                        "protocolVersion": protocol_version,
+                        "runId": event_run_id,
+                        "eventSeq": 7,
+                        "timeUnixNano": base + 7_000_000,
+                    }),
+                ]);
+            } else {
+                events.push(serde_json::json!({
+                    "_tag": "RunFinished",
+                    "protocolVersion": protocol_version,
+                    "runId": event_run_id,
+                    "eventSeq": 6,
+                    "timeUnixNano": base + 6_000_000,
+                }));
+            }
+        }
+        HelperFixtureMode::Loss => {
+            events.extend([
+                serde_json::json!({
+                    "_tag": "Loss",
+                    "protocolVersion": 1,
+                    "runId": run_id,
+                    "eventSeq": 2,
+                    "timeUnixNano": base + 2_000_000,
+                    "reason": "event-loss",
+                }),
+                serde_json::json!({
+                    "_tag": "RunFinished",
+                    "protocolVersion": 1,
+                    "runId": run_id,
+                    "eventSeq": 3,
+                    "timeUnixNano": base + 3_000_000,
+                }),
+            ]);
+        }
+        HelperFixtureMode::HelperDisconnect => {}
+    }
+    events
+        .into_iter()
+        .map(|event| serde_json::to_string(&event).unwrap())
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n"
 }
 
 struct TestCollector {
