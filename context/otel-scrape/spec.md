@@ -364,12 +364,14 @@ Every supported adapter must land as a coherent contract slice:
 | Contract       | Cross-package payloads decode through `@overeng/otel-contract` or a documented VRS contract before support is claimed.                                                  |
 | E2E            | A representative wrapped command proves summary evidence, OTLP export where applicable, and CAS resolution for profile artifacts.                                       |
 
-Candidate order is conservative:
+Candidate order is conservative and split by lane:
 
-1. `tsc --generateTrace`: next trace-artifact candidate once artifact grouping,
-   retention size, and phase-to-span semantics are specified.
-2. Cargo JSON/timings: strong structured sources, but support waits for a stable
+1. Cargo JSON/timings: first general adapter-fleet candidate because Cargo has
+   structured compiler and timing output, but support waits for a stable
    compile-unit/event mapping and artifact contract.
+2. `tsc --generateTrace`: first profile/artifact build-tool candidate once
+   artifact grouping, CAS handoff, retention size, and phase-to-span semantics
+   are specified.
 3. Vitest JSON or OTEL-aware tests: useful for suite/test spans once identity
    and nested wrapper ownership are stable.
 4. Package-manager phases and Vite profiles: defer until the structured-source
