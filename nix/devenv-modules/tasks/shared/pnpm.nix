@@ -17,8 +17,11 @@
   taskSuffix ? null,
   globalCache ? true,
   materializationProfile ? "auto",
+  localMaterializationProfile ? null,
   storeDir ? null,
+  localStoreDir ? null,
   sharedFilesDir ? null,
+  localSharedFilesDir ? null,
   frozenInCi ? true,
   installFlags ? [ ],
   preInstall ? "",
@@ -62,8 +65,15 @@ let
       "${config.devenv.root}/.devenv/pnpm-home/${workspaceCacheName}";
   basePnpmStoreDir =
     if storeDir == null then "${config.devenv.root}/.devenv/pnpm-store-pure-v1" else storeDir;
-  defaultPnpmStoreDir =
+  localBasePnpmStoreDir = if localStoreDir == null then basePnpmStoreDir else localStoreDir;
+  ciDefaultPnpmStoreDir =
     if workspaceRoot == "." then basePnpmStoreDir else "${basePnpmStoreDir}/${workspaceCacheName}";
+  localDefaultPnpmStoreDir =
+    if workspaceRoot == "." then
+      localBasePnpmStoreDir
+    else
+      "${localBasePnpmStoreDir}/${workspaceCacheName}";
+  defaultPnpmStoreDir = ciDefaultPnpmStoreDir;
   installTaskName =
     if taskSuffix == null then
       "${taskNamePrefix}:install"
@@ -177,6 +187,13 @@ let
   '';
   ensureLocalPnpmStoreDirFn = ''
     _pnpm_store_dir="''${npm_config_store_dir:-''${PNPM_CONFIG_STORE_DIR:-''${PNPM_STORE_DIR:-}}}"
+    if [ -z "$_pnpm_store_dir" ]; then
+      if [ -z "''${CI:-}" ]; then
+        _pnpm_default_store_dir=${lib.escapeShellArg localDefaultPnpmStoreDir}
+      else
+        _pnpm_default_store_dir=${lib.escapeShellArg ciDefaultPnpmStoreDir}
+      fi
+    fi
     if [ ${lib.escapeShellArg workspaceRoot} != "." ] && [ -n "$_pnpm_store_dir" ]; then
       case "$_pnpm_store_dir" in
         */${workspaceCacheName}) ;;
@@ -185,26 +202,48 @@ let
     elif [ -n "$_pnpm_store_dir" ]; then
       :
     else
-      _pnpm_store_dir=${lib.escapeShellArg defaultPnpmStoreDir}
+      _pnpm_store_dir="$_pnpm_default_store_dir"
     fi
     export PNPM_STORE_DIR="$_pnpm_store_dir"
     export PNPM_CONFIG_STORE_DIR="$_pnpm_store_dir"
     export npm_config_store_dir="$_pnpm_store_dir"
     unset _pnpm_store_dir
+    unset _pnpm_default_store_dir
   '';
-  configurePnpmSharedFilesDirFn = lib.optionalString (sharedFilesDir != null) ''
-    export PNPM_SHARED_FILES_DIR=${lib.escapeShellArg sharedFilesDir}
+  configurePnpmSharedFilesDirFn = ''
+    if [ -z "''${CI:-}" ]; then
+      :
+      ${lib.optionalString (localSharedFilesDir != null) ''
+        export PNPM_SHARED_FILES_DIR=${lib.escapeShellArg localSharedFilesDir}
+      ''}
+      ${lib.optionalString (localSharedFilesDir == null && sharedFilesDir != null) ''
+        export PNPM_SHARED_FILES_DIR=${lib.escapeShellArg sharedFilesDir}
+      ''}
+    else
+      :
+      ${lib.optionalString (sharedFilesDir != null) ''
+        export PNPM_SHARED_FILES_DIR=${lib.escapeShellArg sharedFilesDir}
+      ''}
+    fi
   '';
   prepareDependencyMaterializationStoreFn = ''
+    _dependency_materialization_requested_profile="''${DEPENDENCY_MATERIALIZATION_REQUESTED_PROFILE:-${lib.escapeShellArg materializationProfile}}"
+    if [ -z "''${CI:-}" ] && [ -z "''${DEPENDENCY_MATERIALIZATION_REQUESTED_PROFILE:-}" ]; then
+      :
+      ${lib.optionalString (localMaterializationProfile != null) ''
+        _dependency_materialization_requested_profile=${lib.escapeShellArg localMaterializationProfile}
+      ''}
+    fi
     _dependency_materialization_trait="$(
       prepare_dependency_materialization_store \
         ${pkgs.nodejs}/bin/node \
-        "''${DEPENDENCY_MATERIALIZATION_REQUESTED_PROFILE:-${lib.escapeShellArg materializationProfile}}" \
+        "$_dependency_materialization_requested_profile" \
         ${hostIsDarwinString} \
         "$PWD" \
         "$npm_config_store_dir"
     )"
     export DEPENDENCY_MATERIALIZATION_TRAIT="$_dependency_materialization_trait"
+    unset _dependency_materialization_requested_profile
   '';
 
   computeWorkspaceStateHash = ''
@@ -824,7 +863,7 @@ in
 
   enterShell = lib.mkIf (globalCache && workspaceRoot == ".") ''
     export PNPM_HOME="''${PNPM_HOME:-${config.devenv.root}/.devenv/pnpm-home}"
-    _pnpm_store_dir="''${npm_config_store_dir:-''${PNPM_CONFIG_STORE_DIR:-''${PNPM_STORE_DIR:-${defaultPnpmStoreDir}}}}"
+    _pnpm_store_dir="''${npm_config_store_dir:-''${PNPM_CONFIG_STORE_DIR:-''${PNPM_STORE_DIR:-${localDefaultPnpmStoreDir}}}}"
     export PNPM_STORE_DIR="$_pnpm_store_dir"
     export PNPM_CONFIG_STORE_DIR="$_pnpm_store_dir"
     export npm_config_store_dir="$_pnpm_store_dir"

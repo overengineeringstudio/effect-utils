@@ -337,6 +337,7 @@ extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-darwin.exec.sh" 'p
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-isolated.exec.sh" 'packages = [ "." ]; materializationProfile = "isolated";' "pnpm:install"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-hardlink.exec.sh" 'packages = [ "." ]; materializationProfile = "linuxSharedHardlink";' "pnpm:install"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-hardlink-boundary.exec.sh" 'packages = [ "." ]; materializationProfile = "linuxSharedHardlink"; storeDir = "'$tmpdir'/cas/pnpm-store/root"; sharedFilesDir = "'$tmpdir'/cas/pnpm-store/files";' "pnpm:install"
+extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-local-hardlink-boundary.exec.sh" 'packages = [ "." ]; localMaterializationProfile = "linuxSharedHardlink"; localStoreDir = "'$tmpdir'/local-cas/pnpm-store/root"; localSharedFilesDir = "'$tmpdir'/local-cas/pnpm-store/files";' "pnpm:install"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-update-hardlink.exec.sh" 'packages = [ "." ]; materializationProfile = "linuxSharedHardlink";' "pnpm:update"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-dedupe-hardlink.exec.sh" 'packages = [ "." ]; materializationProfile = "linuxSharedHardlink";' "pnpm:dedupe"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-impure-flags.exec.sh" 'packages = [ "." ]; installFlags = [ "--no-frozen-lockfile" ];' "pnpm:install"
@@ -372,6 +373,7 @@ rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-darwin.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-isolated.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-hardlink.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-hardlink-boundary.exec.sh"
+rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-local-hardlink-boundary.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-update-hardlink.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-dedupe-hardlink.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-impure-flags.exec.sh"
@@ -600,6 +602,29 @@ echo "Test 7e: explicit machine CAS boundary controls store and files pool"
   assert_json_field "linuxSharedHardlink" "$workspace/.devenv/task-cache/pnpm-install/dependency-materialization-profile.json" "value => value.store.trait" "configured boundary profile trait"
   assert_json_field "$tmpdir/cas/pnpm-store/root" "$workspace/.devenv/task-cache/pnpm-install/dependency-materialization-registry.json" "value => value.profiles[0].store" "configured boundary registry store"
   assert_json_field "$tmpdir/cas/pnpm-store/root/v11/files" "$workspace/.devenv/task-cache/pnpm-install/dependency-materialization-registry.json" "value => value.pools[0].filesPath" "configured boundary registry files path"
+)
+
+echo "Test 7f: local machine CAS override does not leak into CI"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  unset PNPM_HOME
+  unset PNPM_STORE_DIR
+  unset PNPM_CONFIG_STORE_DIR
+  unset npm_config_store_dir
+  rm -rf "$tmpdir/local-cas" "$workspace/.devenv/pnpm-store-pure-v1" "$workspace/.devenv/task-cache/pnpm-install" node_modules
+  : > "$tmpdir/pnpm.log"
+  bash "$tmpdir/pnpm-install-local-hardlink-boundary.exec.sh"
+  grep -qxF "PNPM_STORE_DIR=$tmpdir/local-cas/pnpm-store/root" "$tmpdir/pnpm.log"
+  grep -qxF "PNPM_SHARED_FILES_DIR=$tmpdir/local-cas/pnpm-store/files" "$tmpdir/pnpm.log"
+  assert_json_field "linuxSharedHardlink" "$workspace/.devenv/task-cache/pnpm-install/dependency-materialization-profile.json" "value => value.store.trait" "local override profile trait"
+
+  rm -rf "$workspace/.devenv/pnpm-store-pure-v1" "$workspace/.devenv/task-cache/pnpm-install" node_modules
+  : > "$tmpdir/pnpm.log"
+  CI=1 bash "$tmpdir/pnpm-install-local-hardlink-boundary.exec.sh"
+  grep -qxF "PNPM_STORE_DIR=$workspace/.devenv/pnpm-store-pure-v1" "$tmpdir/pnpm.log"
+  grep -qxF "PNPM_SHARED_FILES_DIR=" "$tmpdir/pnpm.log"
+  assert_json_field "ciJobLocal" "$workspace/.devenv/task-cache/pnpm-install/dependency-materialization-profile.json" "value => value.store.trait" "local override CI profile trait"
 )
 
 echo "Test 8: status hits after install with the default GVS path"
