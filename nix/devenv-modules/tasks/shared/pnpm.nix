@@ -18,6 +18,7 @@
   globalCache ? true,
   materializationProfile ? "auto",
   localMaterializationProfile ? null,
+  localOverridesRequireLinux ? false,
   storeDir ? null,
   localStoreDir ? null,
   sharedFilesDir ? null,
@@ -117,6 +118,8 @@ let
   ) pnpmInstallPolicy.liveInstallPolicyFlags;
   pureInstallFlagsString = lib.concatStringsSep " " pureInstallFlags;
   hostIsDarwinString = if pkgs.stdenv.hostPlatform.isDarwin then "true" else "false";
+  localOverridesEnabledCondition =
+    if localOverridesRequireLinux then ''[ "$(uname -s)" = Linux ]'' else "true";
 
   packageNameToPath = builtins.listToAttrs (
     builtins.filter (x: x != null) (
@@ -189,7 +192,11 @@ let
     _pnpm_store_dir="''${npm_config_store_dir:-''${PNPM_CONFIG_STORE_DIR:-''${PNPM_STORE_DIR:-}}}"
     if [ -z "$_pnpm_store_dir" ]; then
       if [ -z "''${CI:-}" ]; then
-        _pnpm_default_store_dir=${lib.escapeShellArg localDefaultPnpmStoreDir}
+        if ${localOverridesEnabledCondition}; then
+          _pnpm_default_store_dir=${lib.escapeShellArg localDefaultPnpmStoreDir}
+        else
+          _pnpm_default_store_dir=${lib.escapeShellArg ciDefaultPnpmStoreDir}
+        fi
       else
         _pnpm_default_store_dir=${lib.escapeShellArg ciDefaultPnpmStoreDir}
       fi
@@ -214,7 +221,9 @@ let
     if [ -z "''${CI:-}" ]; then
       :
       ${lib.optionalString (localSharedFilesDir != null) ''
-        export PNPM_SHARED_FILES_DIR=${lib.escapeShellArg localSharedFilesDir}
+        if ${localOverridesEnabledCondition}; then
+          export PNPM_SHARED_FILES_DIR=${lib.escapeShellArg localSharedFilesDir}
+        fi
       ''}
       ${lib.optionalString (localSharedFilesDir == null && sharedFilesDir != null) ''
         export PNPM_SHARED_FILES_DIR=${lib.escapeShellArg sharedFilesDir}
@@ -231,7 +240,9 @@ let
     if [ -z "''${CI:-}" ] && [ -z "''${DEPENDENCY_MATERIALIZATION_REQUESTED_PROFILE:-}" ]; then
       :
       ${lib.optionalString (localMaterializationProfile != null) ''
-        _dependency_materialization_requested_profile=${lib.escapeShellArg localMaterializationProfile}
+        if ${localOverridesEnabledCondition}; then
+          _dependency_materialization_requested_profile=${lib.escapeShellArg localMaterializationProfile}
+        fi
       ''}
     fi
     _dependency_materialization_trait="$(

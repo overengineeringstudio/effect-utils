@@ -338,6 +338,7 @@ extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-isolated.exec.sh" 
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-hardlink.exec.sh" 'packages = [ "." ]; materializationProfile = "linuxSharedHardlink";' "pnpm:install"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-hardlink-boundary.exec.sh" 'packages = [ "." ]; materializationProfile = "linuxSharedHardlink"; storeDir = "'$tmpdir'/cas/pnpm-store/root"; sharedFilesDir = "'$tmpdir'/cas/pnpm-store/files";' "pnpm:install"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-local-hardlink-boundary.exec.sh" 'packages = [ "." ]; localMaterializationProfile = "linuxSharedHardlink"; localStoreDir = "'$tmpdir'/local-cas/pnpm-store/root"; localSharedFilesDir = "'$tmpdir'/local-cas/pnpm-store/files";' "pnpm:install"
+extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-local-hardlink-linux-only.exec.sh" 'packages = [ "." ]; localMaterializationProfile = "linuxSharedHardlink"; localOverridesRequireLinux = true; localStoreDir = "'$tmpdir'/linux-only-cas/pnpm-store/root"; localSharedFilesDir = "'$tmpdir'/linux-only-cas/pnpm-store/files";' "pnpm:install"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-update-hardlink.exec.sh" 'packages = [ "." ]; materializationProfile = "linuxSharedHardlink";' "pnpm:update"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-dedupe-hardlink.exec.sh" 'packages = [ "." ]; materializationProfile = "linuxSharedHardlink";' "pnpm:dedupe"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-impure-flags.exec.sh" 'packages = [ "." ]; installFlags = [ "--no-frozen-lockfile" ];' "pnpm:install"
@@ -374,6 +375,7 @@ rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-isolated.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-hardlink.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-hardlink-boundary.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-local-hardlink-boundary.exec.sh"
+rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-local-hardlink-linux-only.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-update-hardlink.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-dedupe-hardlink.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-impure-flags.exec.sh"
@@ -625,6 +627,38 @@ echo "Test 7f: local machine CAS override does not leak into CI"
   grep -qxF "PNPM_STORE_DIR=$workspace/.devenv/pnpm-store-pure-v1" "$tmpdir/pnpm.log"
   grep -qxF "PNPM_SHARED_FILES_DIR=" "$tmpdir/pnpm.log"
   assert_json_field "ciJobLocal" "$workspace/.devenv/task-cache/pnpm-install/dependency-materialization-profile.json" "value => value.store.trait" "local override CI profile trait"
+)
+
+echo "Test 7g: Linux-required local CAS override is runtime-gated"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  unset CI
+  unset PNPM_HOME
+  unset PNPM_STORE_DIR
+  unset PNPM_CONFIG_STORE_DIR
+  unset PNPM_SHARED_FILES_DIR
+  unset npm_config_store_dir
+  rm -rf "$tmpdir/linux-only-cas" "$workspace/.devenv/pnpm-store-pure-v1" "$workspace/.devenv/task-cache/pnpm-install" node_modules
+  : > "$tmpdir/pnpm.log"
+  bash "$tmpdir/pnpm-install-local-hardlink-linux-only.exec.sh"
+  grep -qxF "PNPM_STORE_DIR=$tmpdir/linux-only-cas/pnpm-store/root" "$tmpdir/pnpm.log"
+  grep -qxF "PNPM_SHARED_FILES_DIR=$tmpdir/linux-only-cas/pnpm-store/files" "$tmpdir/pnpm.log"
+  assert_json_field "linuxSharedHardlink" "$workspace/.devenv/task-cache/pnpm-install/dependency-materialization-profile.json" "value => value.store.trait" "Linux-only override Linux trait"
+
+  fake_bin="$tmpdir/fake-darwin-bin"
+  mkdir -p "$fake_bin"
+  cat > "$fake_bin/uname" <<'EOF'
+#!/usr/bin/env bash
+printf 'Darwin\n'
+EOF
+  chmod +x "$fake_bin/uname"
+  rm -rf "$workspace/.devenv/pnpm-store-pure-v1" "$workspace/.devenv/task-cache/pnpm-install" node_modules
+  : > "$tmpdir/pnpm.log"
+  PATH="$fake_bin:$PATH" bash "$tmpdir/pnpm-install-local-hardlink-linux-only.exec.sh"
+  grep -qxF "PNPM_STORE_DIR=$workspace/.devenv/pnpm-store-pure-v1" "$tmpdir/pnpm.log"
+  grep -qxF "PNPM_SHARED_FILES_DIR=" "$tmpdir/pnpm.log"
+  assert_json_field "clone-or-copy" "$workspace/.devenv/task-cache/pnpm-install/dependency-materialization-profile.json" "value => value.store.packageImportMethod" "Linux-only override non-Linux import method"
 )
 
 echo "Test 8: status hits after install with the default GVS path"
