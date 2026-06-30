@@ -376,6 +376,11 @@ run_nix_gc_race_retry() {
   }
 
   repair_nix_daemon() {
+    if [ "${dollar}{NIX_GC_RACE_SKIP_DAEMON_REPAIR:-0}" = 1 ]; then
+      echo "::warning::Nix daemon repair skipped by NIX_GC_RACE_SKIP_DAEMON_REPAIR=1"
+      return 0
+    fi
+
     echo "::warning::Nix daemon socket is unavailable; attempting daemon restart before retry"
 
     if command -v launchctl >/dev/null 2>&1; then

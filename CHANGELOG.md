@@ -84,6 +84,14 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **CI**: Keep the standalone Nix retry helper aligned with the generated
+  workflow helper for missing daemon-socket failures, and cover the daemon
+  retry path in helper tests.
+
+- **@overeng/pty-effect**: Stabilize the daemon env override live test on macOS
+  by keeping the short-lived PTY session alive long enough for peek/attach
+  assertions.
+
 - **@overeng/genie**: Emit Starlark `#` generated-file headers for Buck2
   `BUCK`, `.bzl`, and `.bxl` outputs.
 
