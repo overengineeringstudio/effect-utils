@@ -228,6 +228,9 @@ All notable changes to this project will be documented in this file.
   by keeping the short-lived PTY session alive long enough for peek/attach
   assertions.
 
+- **@overeng/genie, @overeng/megarepo**: Refresh stale pnpm dependency FOD
+  hashes for the CAS materialization profile branch.
+
 - **@overeng/genie**: Emit Starlark `#` generated-file headers for Buck2
   `BUCK`, `.bzl`, and `.bxl` outputs.
 
