@@ -37,6 +37,9 @@ pkgs.buildNpmPackage (finalAttrs: {
   '';
 
   passthru.tests.version = pkgs.runCommand "${finalAttrs.pname}-version-test" { } ''
+    export HOME="$TMPDIR/home"
+    export XDG_CONFIG_HOME="$TMPDIR/config"
+    mkdir -p "$HOME" "$XDG_CONFIG_HOME"
     ${finalAttrs.finalPackage}/bin/netlify --version
     touch "$out"
   '';
