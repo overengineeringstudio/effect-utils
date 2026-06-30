@@ -151,6 +151,8 @@ printf '{"deploy_id":"deploy123","site_name":"fake-site","deploy_url":"https://d
     apiMode = 'ok'
     const workspace = makeWorkspace()
     const reportFile = join(workspace.root, 'report.jsonl')
+    const githubOutputFile = join(workspace.root, 'github-output')
+    const githubEnvFile = join(workspace.root, 'github-env')
     try {
       const result = await runCiTools({
         workdir: workspace.root,
@@ -169,6 +171,12 @@ printf '{"deploy_id":"deploy123","site_name":"fake-site","deploy_url":"https://d
           '42',
           '--site-name',
           'fake-site',
+          '--github-output-file',
+          githubOutputFile,
+          '--github-env-file',
+          githubEnvFile,
+          '--url-env-key',
+          'STORYBOOK_URL',
         ],
       })
       expect(result.status).toBe(0)
@@ -186,7 +194,53 @@ printf '{"deploy_id":"deploy123","site_name":"fake-site","deploy_url":"https://d
         target: 'storybook',
         mode: 'pr',
         alias: 'storybook-pr-42',
+        finalUrl: 'https://storybook-pr-42--fake-site.netlify.app/',
+        rawDeployUrl: 'https://deploy123--fake-site.netlify.app/',
       })
+      expect(readFileSync(githubOutputFile, 'utf8')).toContain(
+        'final_url=https://storybook-pr-42--fake-site.netlify.app/',
+      )
+      expect(readFileSync(githubOutputFile, 'utf8')).toContain('workflow_report=')
+      expect(readFileSync(githubEnvFile, 'utf8')).toContain(
+        'STORYBOOK_URL=https://storybook-pr-42--fake-site.netlify.app/',
+      )
+    } finally {
+      rmSync(workspace.root, { recursive: true, force: true })
+    }
+  })
+
+  it('can treat missing Netlify auth as a typed skipped deploy record', async () => {
+    apiMode = 'ok'
+    const workspace = makeWorkspace()
+    const reportFile = join(workspace.root, 'report.jsonl')
+    const githubOutputFile = join(workspace.root, 'github-output')
+    try {
+      const result = await runCiTools({
+        workdir: workspace.root,
+        fakeNetlifyBin: workspace.fakeNetlifyBin,
+        reportFile,
+        args: [
+          '--target',
+          'storybook',
+          '--artifact-dir',
+          workspace.artifactDir,
+          '--mode',
+          'pr',
+          '--pr',
+          '42',
+          '--missing-auth-policy',
+          'skip',
+          '--github-output-file',
+          githubOutputFile,
+        ],
+        env: { NETLIFY_AUTH_TOKEN: undefined },
+      })
+      expect(result.status).toBe(0)
+      const record = readRecord(reportFile)
+      expect(record.status).toBe('skipped')
+      expect(record.data).toMatchObject({ provider: 'netlify', target: 'storybook', mode: 'pr' })
+      expect(readFileSync(githubOutputFile, 'utf8')).toContain('workflow_report=')
+      expect(existsSync(workspace.logPath)).toBe(false)
     } finally {
       rmSync(workspace.root, { recursive: true, force: true })
     }

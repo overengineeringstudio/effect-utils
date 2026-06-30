@@ -169,6 +169,8 @@ exit 1
     apiMode = 'ok'
     const workspace = makeWorkspace()
     const reportFile = join(workspace.root, 'report.jsonl')
+    const githubOutputFile = join(workspace.root, 'github-output')
+    const githubEnvFile = join(workspace.root, 'github-env')
     try {
       const result = await runCiTools({
         workdir: workspace.root,
@@ -189,6 +191,12 @@ exit 1
           'team',
           '--scope-env',
           'VERCEL_SCOPE',
+          '--github-output-file',
+          githubOutputFile,
+          '--github-env-file',
+          githubEnvFile,
+          '--url-env-key',
+          'WEB_URL',
         ],
       })
       if (result.status !== 0) {
@@ -211,7 +219,16 @@ exit 1
         target: 'web',
         mode: 'pr',
         alias: 'web-pr-123-team',
+        finalUrl: 'https://web-pr-123-team.vercel.app/',
+        rawDeployUrl: 'https://deploy-web.vercel.app/',
       })
+      expect(readFileSync(githubOutputFile, 'utf8')).toContain(
+        'final_url=https://web-pr-123-team.vercel.app/',
+      )
+      expect(readFileSync(githubOutputFile, 'utf8')).toContain('workflow_report=')
+      expect(readFileSync(githubEnvFile, 'utf8')).toContain(
+        'WEB_URL=https://web-pr-123-team.vercel.app/',
+      )
     } finally {
       rmSync(workspace.root, { recursive: true, force: true })
     }

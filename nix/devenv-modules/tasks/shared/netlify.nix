@@ -28,6 +28,10 @@ let
       afterTask = deployment.afterTask or null;
       workspaceFilter = deployment.workspaceFilter or false;
       packageJsonPath = "${builtins.dirOf staticDir}/package.json";
+      urlEnvKey =
+        deployment.urlEnvKey or "NETLIFY_DEPLOY_URL_${
+          lib.toUpper (builtins.replaceStrings [ "-" "." "/" ] [ "_" "_" "_" ] name)
+        }";
     in
     {
       "netlify:deploy:${name}" = {
@@ -38,10 +42,19 @@ let
 
           input="''${DEVENV_TASK_INPUT:-"{}"}"
           deploy_type="$(${pkgs.jq}/bin/jq -r '.type // "draft"' <<<"$input")"
+          missing_auth_policy="$(${pkgs.jq}/bin/jq -r '.missingAuthPolicy // .missing_auth_policy // "fail"' <<<"$input")"
+          url_env_key="$(${pkgs.jq}/bin/jq -r '.urlEnvKey // .url_env_key // ${builtins.toJSON urlEnvKey}' <<<"$input")"
           case "$deploy_type" in
             prod|pr|draft) ;;
             *)
               echo "Error: Unknown Netlify deploy type '$deploy_type'. Use: prod, pr, draft" >&2
+              exit 1
+              ;;
+          esac
+          case "$missing_auth_policy" in
+            fail|skip) ;;
+            *)
+              echo "Error: Unknown Netlify missing auth policy '$missing_auth_policy'. Use: fail, skip" >&2
               exit 1
               ;;
           esac
@@ -56,6 +69,7 @@ let
             --site-id-env NETLIFY_SITE_ID
             --auth-token-env NETLIFY_AUTH_TOKEN
             --netlify-bin ${lib.escapeShellArg netlify}
+            --missing-auth-policy "$missing_auth_policy"
           )
 
           if [ "$deploy_type" = "pr" ]; then
@@ -83,6 +97,15 @@ let
 
           if [ -n "''${WORKFLOW_REPORT_OUTPUT_FILE:-}" ]; then
             args+=(--workflow-report-output-file "$WORKFLOW_REPORT_OUTPUT_FILE")
+          fi
+          if [ -n "''${GITHUB_OUTPUT:-}" ]; then
+            args+=(--github-output-file "$GITHUB_OUTPUT")
+          fi
+          if [ -n "''${GITHUB_ENV:-}" ]; then
+            args+=(--github-env-file "$GITHUB_ENV")
+          fi
+          if [ -n "$url_env_key" ]; then
+            args+=(--url-env-key "$url_env_key")
           fi
 
           ${lib.escapeShellArg resolvedCiToolsBin} "''${args[@]}"
