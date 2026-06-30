@@ -246,27 +246,6 @@ export const resolveDevenvFnScript = `resolve_devenv() {
 
 export const shellSingleQuote = (value: string) => `'${value.replaceAll("'", `'"'"'`)}'`
 
-export const defaultWorkflowReportFlakeRef =
-  'github:overengineeringstudio/effect-utils/main#ci-tools'
-
-export const workflowReportEnv = (opts?: { readonly workflowReportFlakeRef?: string }) => ({
-  WORKFLOW_REPORT_FLAKE_REF: opts?.workflowReportFlakeRef ?? defaultWorkflowReportFlakeRef,
-})
-
-export const workflowReportNixTokenSetup = [
-  'if [ -n "${GH_TOKEN:-}" ]; then',
-  `  export NIX_CONFIG="\${NIX_CONFIG:+$NIX_CONFIG$'\\n'}access-tokens = github.com=\${GH_TOKEN}"`,
-  'fi',
-]
-
-export const workflowReportCommand = (opts: { readonly args: readonly string[] }) => {
-  const args = opts.args.join(' ')
-  return [
-    `workflow_report_flake_ref="\${WORKFLOW_REPORT_FLAKE_REF:-${defaultWorkflowReportFlakeRef}}"`,
-    `nix run "$workflow_report_flake_ref" -- workflow-report ${args}`,
-  ].join('\n')
-}
-
 /** Build extra-conf / NIX_CONFIG content for common Nix feature flags. */
 export const nixExtraConf = (opts: NixConfigOptions = {}) =>
   [

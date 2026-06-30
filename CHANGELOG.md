@@ -15,6 +15,11 @@ All notable changes to this project will be documented in this file.
   metadata and alias helpers now that `ci-tools` is the single workflow-report
   record authority.
 
+- **devenv workflow-report tasks / @overeng/ci-tools**: Add reusable
+  `workflow-report:*` devenv tasks for bundle collection, comment rendering,
+  and PR comment publication, and regenerate CI to delegate deploy-preview
+  reporting through those tasks.
+
 - **CI**: Collapse guarded live Netlify and Vercel deploy E2Es into one shared
   live deploy job with common setup.
 
