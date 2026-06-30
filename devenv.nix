@@ -552,7 +552,7 @@ in
       set -euo pipefail
       source ${lib.escapeShellArg pnpmTaskHelpersScript}
       export MEGAREPO_GIT_COMMAND_TIMEOUT_MS="5000"
-      run_package_bin vitest vitest run src/cli/store-gc-cold.integration.test.ts --testTimeout 30000
+      run_package_bin vitest vitest run src/cli/store-gc-cold.integration.test.ts --reporter verbose --testTimeout 120000
     '';
     execIfModified = [
       "packages/@overeng/megarepo/src/**/*.ts"

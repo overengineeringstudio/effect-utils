@@ -56,8 +56,8 @@ All notable changes to this project will be documented in this file.
   re-entering Devenv's upstream task graph in parallel.
 
 - **devenv test tasks / @overeng/megarepo**: Give the isolated cold-GC
-  integration task explicit Vitest timeout headroom for slow CI runners while
-  keeping the package-wide default timeout unchanged.
+  integration task explicit Vitest timeout headroom and per-test timing output
+  for slow CI runners while keeping the package-wide default timeout unchanged.
 
 - **nix packages / @overeng/genie**: Refresh the Genie, Megarepo, TUI Stories,
   and Notion MD pnpm-deps fixed-output hashes and keep the native dependency
