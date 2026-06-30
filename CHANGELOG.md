@@ -30,6 +30,11 @@ All notable changes to this project will be documented in this file.
   `vercel` 54.18.5) and make shared deploy tasks default to those store paths
   instead of runtime `bunx`/stale nixpkgs CLI resolution.
 
+- **devenv deploy tasks / Nix**: Trim the Netlify and Vercel provider CLI
+  derivations by installing and pruning their npm package graphs without
+  optional dependencies and skipping dependency rebuild scripts during
+  packaging.
+
 - **CI**: Collapse guarded live Netlify and Vercel deploy E2Es into one shared
   live deploy job with common setup.
 

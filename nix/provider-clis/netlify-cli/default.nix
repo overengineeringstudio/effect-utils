@@ -16,12 +16,10 @@ pkgs.buildNpmPackage (finalAttrs: {
   npmDepsHash = "sha256-Ap2FEv3GDRVeNXIo0vF0HBrooWmXLRXc+lM/NMjKvaU=";
 
   dontNpmBuild = true;
+  npmInstallFlags = [ "--omit=optional" ];
+  npmPruneFlags = [ "--omit=optional" ];
   npmRebuildFlags = [ "--ignore-scripts" ];
-  nativeBuildInputs = [
-    pkgs.makeWrapper
-    pkgs.pkg-config
-  ];
-  buildInputs = [ pkgs.vips ];
+  nativeBuildInputs = [ pkgs.makeWrapper ];
 
   installPhase = ''
     runHook preInstall
