@@ -123,7 +123,17 @@ The default implementation does not make a release-grade descendant process-tree
 
 Linux also has an opt-in `ptrace-experimental` backend. It may emit `fidelity = "exact"` for the traced child tree only when the compiled process-DAG fixture validates fork/vfork/clone, exec, exit, immediate-exit descendants, and nested descendants. The backend name remains experimental until ptrace perturbation, privilege, namespace, and operational caveats are resolved for default use.
 
-See [.decisions/0005-exact-process-tree-fidelity.md](./.decisions/0005-exact-process-tree-fidelity.md) and [.decisions/0011-linux-ptrace-process-backend.md](./.decisions/0011-linux-ptrace-process-backend.md).
+Default exact process observation requires an event-source boundary that does
+not perturb the wrapped command. On Linux, the preferred default-exact path is a
+separate privileged helper that streams lifecycle events from kernel-supported
+sources such as eBPF tracepoints or connector-style process events. That helper
+is responsible for event-loss detection, namespace/cgroup/session correlation,
+least-privilege installation, and public-safe identity hashing before evidence
+enters summary JSON or OTLP. Sampling `/proc` snapshots can be useful debugging
+evidence, but it must remain degraded because it can miss short-lived
+descendants.
+
+See [.decisions/0005-exact-process-tree-fidelity.md](./.decisions/0005-exact-process-tree-fidelity.md), [.decisions/0011-linux-ptrace-process-backend.md](./.decisions/0011-linux-ptrace-process-backend.md), and [.decisions/0013-exact-process-helper-boundary.md](./.decisions/0013-exact-process-helper-boundary.md).
 
 ### Process Observation Backend Contract
 
@@ -169,7 +179,14 @@ interface ProcessObservation {
 
 An exact backend must observe fork or equivalent parent-child creation, exec or equivalent command identity changes, and exit for every descendant it includes. If the backend can detect that events were lost, privileges are missing, namespaces hide descendants, or platform support is unavailable, it must downgrade the whole observation or the affected records instead of emitting exact spans.
 
-Linux exact support starts behind the explicit `ptrace-experimental` backend. macOS exact support must use a mechanism that can observe unknown descendants; `kqueue`/`EVFILT_PROC` is insufficient for this because it starts from known process IDs only. Endpoint Security is the expected macOS candidate, but exact support is gated on entitlement, installation, user/admin approval, event-loss handling, and validation evidence. See [.decisions/0010-macos-process-observation.md](./.decisions/0010-macos-process-observation.md).
+Linux exact support starts behind the explicit `ptrace-experimental` backend.
+Linux exact-by-default support requires a helper-style backend with event-loss
+and correlation semantics. macOS exact support must use a mechanism that can
+observe unknown descendants; `kqueue`/`EVFILT_PROC` is insufficient for this
+because it starts from known process IDs only. Endpoint Security is the expected
+macOS candidate, but exact support is gated on entitlement, installation,
+user/admin approval, event-loss handling, and validation evidence. See
+[.decisions/0010-macos-process-observation.md](./.decisions/0010-macos-process-observation.md).
 
 ## Semantic Conventions
 
@@ -327,10 +344,41 @@ profile through the emitted `cas:` URI and run CAS root.
 
 Adapter fleet expansion is gated by the same vertical-slice bar as the first
 profile adapter: structured source contract, passthrough preservation, privacy
-tests, degraded-mode tests, OTLP/summary semantics, and a consumer fixture where
-the adapter emits profile links or other cross-package contracts. Candidate
-adapters such as `cargo`, `tsc`, `vitest`, and `vite` remain deferred until they
-meet that bar.
+tests, degraded-mode tests, OTLP/summary semantics, generated-registry updates,
+CAS handoff for artifacts, and a consumer fixture where the adapter emits
+profile links or other cross-package contracts. Candidate adapters such as
+`cargo`, `tsc`, `vitest`, package-manager phases, and `vite` remain deferred
+until they meet that bar.
+
+### Adapter Admission Policy
+
+Every supported adapter must land as a coherent contract slice:
+
+| Gate           | Requirement                                                                                                                                                             |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Source         | Machine-readable output or native artifact. Human logs are degraded fallback only.                                                                                      |
+| Classification | Each emitted event, span, metric, or profile link follows the classification ladder.                                                                                    |
+| Privacy        | Raw argv, local paths, source text, credentials, output payloads, and profile bytes stay out of summary and OTLP evidence.                                              |
+| Degradation    | Missing tools, malformed artifacts, parse failures, unsupported command shapes, and exporter failures preserve passthrough behavior and emit bounded degraded evidence. |
+| Registry       | New stable names and fields are added to `telemetry-registry.json` and regenerated into Rust/TypeScript.                                                                |
+| Contract       | Cross-package payloads decode through `@overeng/otel-contract` or a documented VRS contract before support is claimed.                                                  |
+| E2E            | A representative wrapped command proves summary evidence, OTLP export where applicable, and CAS resolution for profile artifacts.                                       |
+
+Candidate order is conservative:
+
+1. `tsc --generateTrace`: next trace-artifact candidate once artifact grouping,
+   retention size, and phase-to-span semantics are specified.
+2. Cargo JSON/timings: strong structured sources, but support waits for a stable
+   compile-unit/event mapping and artifact contract.
+3. Vitest JSON or OTEL-aware tests: useful for suite/test spans once identity
+   and nested wrapper ownership are stable.
+4. Package-manager phases and Vite profiles: defer until the structured-source
+   audit proves the adapter can avoid debug-log parsing.
+
+Candidate adapter names remain rejected by the CLI until the adapter's vertical
+slice lands. Placeholders would make unsupported evidence look supported.
+
+See [.decisions/0012-adapter-admission-policy.md](./.decisions/0012-adapter-admission-policy.md).
 
 ## Release Documentation Contract
 
@@ -348,6 +396,8 @@ prototype/degraded evidence:
 - Descendant process-tree spans are release claims only for platform/backend
   combinations with exactness tests. The current exact claim is limited to
   Linux `ptrace-experimental`; default and macOS evidence remains degraded.
+- Adapter support matrices distinguish supported adapters from candidates. A
+  candidate is not a release claim until its vertical-slice gate passes.
 
 ## Relationship To Existing Packages
 
