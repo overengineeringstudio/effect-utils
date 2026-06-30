@@ -1021,6 +1021,22 @@ fn known_but_unsupported_otel_traces_exporter_suppresses_json_exporter() {
 }
 
 #[test]
+fn otel_traces_exporter_none_keeps_precedence_over_unknown_values() {
+    let out = otel_scrape()
+        .env("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:9")
+        .env("OTEL_TRACES_EXPORTER", "none,bogus")
+        .args(["--", "sh", "-c", "printf child"])
+        .output()
+        .unwrap();
+
+    assert!(out.status.success());
+    assert_eq!(String::from_utf8_lossy(&out.stdout), "child");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("ignoring unrecognized"));
+    assert!(!stderr.contains("failed to export OTLP trace"));
+}
+
+#[test]
 fn otel_env_trace_endpoint_is_used_as_is_and_trace_headers_override_generic() {
     let collector = TestCollector::start(200);
 

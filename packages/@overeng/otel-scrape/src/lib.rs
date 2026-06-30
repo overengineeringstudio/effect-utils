@@ -1712,31 +1712,28 @@ fn otlp_trace_exporter_enabled() -> bool {
         .map(|part| part.trim().to_ascii_lowercase())
         .filter(|part| !part.is_empty());
     let mut saw_supported = false;
+    let mut saw_none = false;
     let mut saw_unsupported_known = false;
-    let mut saw_only_none = true;
     for exporter in exporters {
         match exporter.as_str() {
             "otlp" => {
                 saw_supported = true;
-                saw_only_none = false;
             }
-            "none" => {}
+            "none" => saw_none = true,
             "zipkin" | "console" | "logging" | "otlp/stdout" => {
                 saw_unsupported_known = true;
-                saw_only_none = false;
                 eprintln!(
                     "otel-scrape: warning: {OTEL_TRACES_EXPORTER_ENV}={exporter} is not supported by this first-party exporter"
                 );
             }
             other => {
-                saw_only_none = false;
                 eprintln!(
                     "otel-scrape: warning: ignoring unrecognized {OTEL_TRACES_EXPORTER_ENV} value {other}"
                 );
             }
         }
     }
-    saw_supported || (!saw_only_none && !saw_unsupported_known)
+    saw_supported || (!saw_none && !saw_unsupported_known)
 }
 
 fn otlp_env_endpoint() -> Option<String> {
