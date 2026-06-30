@@ -27,6 +27,15 @@ runner environment:
 - The `kqueue` probe observed only the direct watched child. It did not discover the short-lived grandchild without already knowing that grandchild PID, so it cannot satisfy exact unknown-descendant observation.
 - The Darwin task runner's current process-observation sample is best-effort, not exact. CI/namespace-runner validation therefore proves the current degraded baseline and remains a separate gate for any future signed/entitled helper rollout.
 
+Additional macOS ARM runner-class probes on 2026-06-30:
+
+- `task-eb1b3b57-8d71-4456-b360-2c557ba1e746` completed on the macOS ARM runner class and reported a best-effort Darwin process-tree timeline. The temporary `kqueue` fixture again observed the watched direct child and did not prove unknown-grandchild discovery.
+- `task-b6368721-80e4-4a51-9630-12a2e3180396` found Endpoint Security headers through the runner toolchain, but plain C compilation failed on Objective-C block syntax.
+- `task-576c3d98-80b3-46af-bf7e-ba1a13ecba92` compiled the Endpoint Security include path successfully with `/usr/bin/clang -x objective-c -fblocks`.
+- These runner probes validate SDK/toolchain availability and the degraded
+  baseline. They do not validate entitlement, approval, `es_new_client`
+  privilege, event subscription, event-loss handling, or helper supervision.
+
 ## Conclusion
 
 macOS exactness remains capability-gated. `kqueue`/`EVFILT_PROC` is suitable
