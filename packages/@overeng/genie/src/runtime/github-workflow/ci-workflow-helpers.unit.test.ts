@@ -49,6 +49,13 @@ const netlifyTaskModuleSource = readFileSync(
   ),
   'utf8',
 )
+const workflowReportTaskModuleSource = readFileSync(
+  new URL(
+    ['../../../../../../nix/devenv-modules/tasks/shared', 'workflow-report.nix'].join('/'),
+    import.meta.url,
+  ),
+  'utf8',
+)
 
 const extractSourceBlock = (source: string, startMarker: string, endMarker: string) => {
   const start = source.indexOf(startMarker)
@@ -137,8 +144,11 @@ describe('ci workflow reporting helpers', () => {
 
   it('matches managed PR comments by hidden state ID before patching', () => {
     expect(ciWorkflowSource).toContain('workflow-report')
-    expect(ciWorkflowSource).toContain('find-comment')
-    expect(ciWorkflowSource).toContain('workflow report PR comment skipped for fork pull request')
+    expect(ciWorkflowSource).toContain('workflow-report:publish')
+    expect(workflowReportTaskModuleSource).toContain('find-comment')
+    expect(workflowReportTaskModuleSource).toContain(
+      'workflow report PR comment skipped for fork pull request',
+    )
     expect(workflowReportCommandSource).toContain(
       'workflow report comment body is missing managed state',
     )

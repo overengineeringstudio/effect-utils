@@ -5,12 +5,7 @@ import {
   workflowReportRecordLineMarker,
   type WorkflowReportRecord,
 } from '../../packages/@overeng/ci-tools/src/mod.ts'
-import {
-  shellSingleQuote,
-  workflowReportCommand,
-  workflowReportEnv,
-  workflowReportNixTokenSetup,
-} from './shared.ts'
+import { runDevenvTasksBefore, shellSingleQuote } from './shared.ts'
 
 type GitHubWorkflowStep = GitHubWorkflowArgs['jobs'][string]['steps'][number]
 
@@ -27,7 +22,6 @@ export type WorkflowReportCollectorStepOptions = {
   readonly bundleId: string
   readonly inputPaths: readonly string[]
   readonly outputPath: string
-  readonly workflowReportFlakeRef?: string
   readonly id?: string
   readonly name?: string
   readonly marker?: string
@@ -40,7 +34,6 @@ export type WorkflowReportPublisherStepOptions = {
   readonly commentBodyPath: string
   readonly summaryPath?: string
   readonly stateId: string
-  readonly workflowReportFlakeRef?: string
   readonly id?: string
   readonly name?: string
   readonly marker?: string
@@ -58,7 +51,6 @@ export type WorkflowReportCommentBodyStepOptions = {
   readonly createdAtUtc?: string
   readonly summaryPath?: string
   readonly timeZone?: string
-  readonly workflowReportFlakeRef?: string
   readonly id?: string
   readonly name?: string
   readonly marker?: string
@@ -102,29 +94,14 @@ export const workflowReportCollectorStep = (
   shell: 'bash',
   env: {
     GH_TOKEN: '${{ github.token }}',
-    ...workflowReportEnv({ workflowReportFlakeRef: opts.workflowReportFlakeRef }),
     WORKFLOW_REPORT_BUNDLE_ID: opts.bundleId,
     WORKFLOW_REPORT_INPUT_PATHS_JSON: JSON.stringify(opts.inputPaths),
     WORKFLOW_REPORT_OUTPUT_PATH: opts.outputPath,
     WORKFLOW_REPORT_RECORD_MARKER: opts.marker ?? workflowReportRecordLineMarker,
     WORKFLOW_REPORT_ALLOW_MISSING_INPUT: opts.allowMissingInput === true ? '1' : '0',
+    ...(opts.outputName === undefined ? {} : { WORKFLOW_REPORT_GITHUB_OUTPUT_NAME: opts.outputName }),
   },
-  run: [
-    ...workflowReportNixTokenSetup,
-    workflowReportCommand({
-      args: [
-        'collect-bundle',
-        '--bundle-id "$WORKFLOW_REPORT_BUNDLE_ID"',
-        '--input-paths-json "$WORKFLOW_REPORT_INPUT_PATHS_JSON"',
-        '--output-path "$WORKFLOW_REPORT_OUTPUT_PATH"',
-        '--record-marker "$WORKFLOW_REPORT_RECORD_MARKER"',
-        ...(opts.allowMissingInput === true ? ['--allow-missing-input'] : []),
-      ],
-    }),
-    ...(opts.outputName === undefined
-      ? []
-      : [`echo "${opts.outputName}=${opts.outputPath}" >> "$GITHUB_OUTPUT"`]),
-  ].join('\n'),
+  run: runDevenvTasksBefore('workflow-report:collect-bundle', '--show-output'),
 })
 
 export const workflowReportCommentBodyStep = (
@@ -137,7 +114,8 @@ export const workflowReportCommentBodyStep = (
   env: {
     GH_TOKEN: '${{ github.token }}',
     GH_REPO: '${{ github.repository }}',
-    ...workflowReportEnv({ workflowReportFlakeRef: opts.workflowReportFlakeRef }),
+    WORKFLOW_REPORT_EVENT_NAME: '${{ github.event_name }}',
+    WORKFLOW_REPORT_PR_NUMBER: '${{ github.event.pull_request.number }}',
     WORKFLOW_REPORT_BUNDLE_PATH: opts.bundlePath,
     WORKFLOW_REPORT_COMMENT_BODY_PATH: opts.commentBodyPath,
     WORKFLOW_REPORT_SUMMARY_PATH: opts.summaryPath ?? opts.commentBodyPath,
@@ -150,33 +128,7 @@ export const workflowReportCommentBodyStep = (
     WORKFLOW_REPORT_TIME_ZONE: opts.timeZone ?? 'UTC',
     WORKFLOW_REPORT_MANAGED_MARKER: opts.marker ?? workflowReportManagedMarker,
   },
-  run: [
-    ...workflowReportNixTokenSetup,
-    'comments_json="$(mktemp)"',
-    'if [ "${{ github.event_name }}" = "pull_request" ]; then',
-    '  nix run nixpkgs#gh -- api "repos/$GH_REPO/issues/${{ github.event.pull_request.number }}/comments" --paginate > "$comments_json"',
-    'else',
-    '  printf \'[]\' > "$comments_json"',
-    'fi',
-    '',
-    workflowReportCommand({
-      args: [
-        'render-comment-body',
-        '--bundle-path "$WORKFLOW_REPORT_BUNDLE_PATH"',
-        '--comments-path "$comments_json"',
-        '--comment-body-path "$WORKFLOW_REPORT_COMMENT_BODY_PATH"',
-        '--summary-path "$WORKFLOW_REPORT_SUMMARY_PATH"',
-        '--title "$WORKFLOW_REPORT_TITLE"',
-        '--no-records-message "$WORKFLOW_REPORT_NO_RECORDS_MESSAGE"',
-        '--state-id "$WORKFLOW_REPORT_STATE_ID"',
-        '--entry-id "$WORKFLOW_REPORT_ENTRY_ID"',
-        '--entry-label "$WORKFLOW_REPORT_ENTRY_LABEL"',
-        '--created-at-utc "$WORKFLOW_REPORT_CREATED_AT_UTC"',
-        '--time-zone "$WORKFLOW_REPORT_TIME_ZONE"',
-        '--managed-marker "$WORKFLOW_REPORT_MANAGED_MARKER"',
-      ],
-    }),
-  ].join('\n'),
+  run: runDevenvTasksBefore('workflow-report:render-comment-body', '--show-output'),
 })
 
 export const workflowReportPublisherStep = (
@@ -189,54 +141,13 @@ export const workflowReportPublisherStep = (
   env: {
     GH_TOKEN: '${{ github.token }}',
     GH_REPO: '${{ github.repository }}',
-    ...workflowReportEnv({ workflowReportFlakeRef: opts.workflowReportFlakeRef }),
+    WORKFLOW_REPORT_EVENT_NAME: '${{ github.event_name }}',
+    WORKFLOW_REPORT_PR_NUMBER: '${{ github.event.pull_request.number }}',
+    WORKFLOW_REPORT_HEAD_REPO: '${{ github.event.pull_request.head.repo.full_name }}',
     WORKFLOW_REPORT_STATE_ID: opts.stateId,
     WORKFLOW_REPORT_COMMENT_BODY_PATH: opts.commentBodyPath,
     WORKFLOW_REPORT_SUMMARY_PATH: opts.summaryPath ?? opts.commentBodyPath,
     WORKFLOW_REPORT_MANAGED_MARKER: opts.marker ?? workflowReportManagedMarker,
   },
-  run: [
-    ...workflowReportNixTokenSetup,
-    'if [ -s "$WORKFLOW_REPORT_SUMMARY_PATH" ]; then',
-    '  cat "$WORKFLOW_REPORT_SUMMARY_PATH" >> "$GITHUB_STEP_SUMMARY"',
-    'fi',
-    '',
-    'if [ "${{ github.event_name }}" != "pull_request" ]; then',
-    '  exit 0',
-    'fi',
-    '',
-    'if [ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]; then',
-    '  echo "::notice::workflow report PR comment skipped for fork pull request; summary remains available in the job summary"',
-    '  exit 0',
-    'fi',
-    '',
-    'if [ ! -s "$WORKFLOW_REPORT_COMMENT_BODY_PATH" ]; then',
-    '  echo "::notice::workflow report comment body is empty; skipping PR comment"',
-    '  exit 0',
-    'fi',
-    '',
-    'comments_json="$(mktemp)"',
-    'comment_id_file="$(mktemp)"',
-    'nix run nixpkgs#gh -- api "repos/$GH_REPO/issues/${{ github.event.pull_request.number }}/comments" --paginate > "$comments_json"',
-    workflowReportCommand({
-      args: [
-        'find-comment',
-        '--comments-path "$comments_json"',
-        '--comment-body-path "$WORKFLOW_REPORT_COMMENT_BODY_PATH"',
-        '--comment-id-path "$comment_id_file"',
-        '--state-id "$WORKFLOW_REPORT_STATE_ID"',
-        '--managed-marker "$WORKFLOW_REPORT_MANAGED_MARKER"',
-      ],
-    }),
-    '',
-    'comment_id="$(cat "$comment_id_file")"',
-    'if [ -n "$comment_id" ]; then',
-    '  nix run nixpkgs#gh -- api \\',
-    '    --method PATCH \\',
-    '    "repos/$GH_REPO/issues/comments/$comment_id" \\',
-    '    --field body=@"$WORKFLOW_REPORT_COMMENT_BODY_PATH" >/dev/null',
-    'else',
-    '  nix run nixpkgs#gh -- pr comment "${{ github.event.pull_request.number }}" --body-file "$WORKFLOW_REPORT_COMMENT_BODY_PATH"',
-    'fi',
-  ].join('\n'),
+  run: runDevenvTasksBefore('workflow-report:publish', '--show-output'),
 })

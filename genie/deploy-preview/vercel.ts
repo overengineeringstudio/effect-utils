@@ -57,7 +57,6 @@ const vercelDeployReportSteps = (opts: {
   commentTitle: string
   noRecordsMessage: string
   projects: readonly Pick<VercelProject, 'name' | 'label'>[]
-  workflowReportFlakeRef?: string
 }): readonly StepRecord[] => {
   const bundlePath = '${{ runner.temp }}/workflow-reports/deploy-preview-bundle.json'
   const commentBodyPath = '${{ runner.temp }}/workflow-reports/deploy-preview-comment.md'
@@ -74,7 +73,6 @@ const vercelDeployReportSteps = (opts: {
       outputPath: bundlePath,
       marker: workflowReportMarker,
       allowMissingInput: true,
-      workflowReportFlakeRef: opts.workflowReportFlakeRef,
       if: ifPredicate,
     }),
     workflowReportCommentBodyStep({
@@ -89,14 +87,12 @@ const vercelDeployReportSteps = (opts: {
       entryLabel:
         "${{ github.event_name == 'pull_request' && format('PR {0}', github.event.pull_request.number) || 'prod' }}",
       timeZone: 'Europe/Berlin',
-      workflowReportFlakeRef: opts.workflowReportFlakeRef,
       if: ifPredicate,
     }),
     workflowReportPublisherStep({
       commentBodyPath,
       summaryPath,
       stateId: 'deploy-preview',
-      workflowReportFlakeRef: opts.workflowReportFlakeRef,
       if: ifPredicate,
     }),
   ]
@@ -117,7 +113,6 @@ export const vercelDeployJobs = (opts: {
   deployCommentPermissions: Record<string, string>
   bashShellDefaults: { run: { shell: string } }
   commentRunner: readonly string[]
-  workflowReportFlakeRef?: string
   deployStepDecorator?: (step: StepRecord, project: VercelProject) => StepRecord
 }) => {
   const deployCondition =
@@ -177,7 +172,6 @@ export const vercelDeployJobs = (opts: {
         commentTitle: opts.commentTitle ?? 'Deploy Preview',
         projects: opts.projects,
         noRecordsMessage: opts.noRecordsMessage ?? 'No deploy URLs detected.',
-        workflowReportFlakeRef: opts.workflowReportFlakeRef,
       }),
     ],
   }
