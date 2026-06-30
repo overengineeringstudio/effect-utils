@@ -41,6 +41,10 @@ const vercelDeploySource = readFileSync(
   new URL(['../../../../../../genie/deploy-preview', 'vercel.ts'].join('/'), import.meta.url),
   'utf8',
 )
+const netlifyDeploySource = readFileSync(
+  new URL(['../../../../../../genie/deploy-preview', 'netlify.ts'].join('/'), import.meta.url),
+  'utf8',
+)
 const workflowReportCommandSource = readFileSync(
   new URL(
     ['../../../../../../packages/@overeng/ci-tools/src', 'cli-command.ts'].join('/'),
@@ -542,6 +546,16 @@ describe('ci workflow shared auth helpers', () => {
     expect(vercelDeploySource).toContain('opts.deployStepDecorator?.(')
     expect(vercelDeploySource).toContain(
       'vercelDeployStep({ project, runDevenvTasksBefore: opts.runDevenvTasksBefore })',
+    )
+  })
+
+  it('does not require a Netlify workflow report on manual runs that do not deploy', () => {
+    expect(netlifyDeploySource).toContain('deploy_ran=0')
+    expect(netlifyDeploySource).toContain(
+      'if [ "$deploy_ran" = "1" ] && [ ! -s "$workflow_report_path" ]; then',
+    )
+    expect(netlifyDeploySource).toContain(
+      'echo "workflow_report_path=$workflow_report_path" >> "$GITHUB_OUTPUT"',
     )
   })
 })

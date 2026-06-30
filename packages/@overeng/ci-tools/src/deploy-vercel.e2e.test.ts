@@ -147,6 +147,9 @@ if [ "\${1:-}" = "build" ]; then
   grep -q '"installCommand":"true"' app/vercel.json
   grep -q '"rootDirectory":"app"' .vercel/project.json
   test "\${BUILD_MARKER:-}" = "ci-tools"
+  if [ "\${FAKE_VERCEL_LARGE_BUILD_OUTPUT:-0}" = "1" ]; then
+    printf '%1200000s\\n' '' | tr ' ' x
+  fi
   mkdir -p .vercel/output/static
   printf '{"version":3}\\n' > .vercel/output/config.json
   printf 'built marker\\n' > .vercel/output/static/index.html
@@ -302,6 +305,44 @@ exit 1
         target: 'app',
         mode: 'prod',
       })
+    } finally {
+      rmSync(workspace.root, { recursive: true, force: true })
+    }
+  })
+
+  it('captures verbose Vercel build output without hitting Node spawnSync defaults', async () => {
+    apiMode = 'ok'
+    const workspace = makeWorkspace()
+    const reportFile = join(workspace.root, 'report.jsonl')
+    try {
+      const result = await runCiTools({
+        workdir: workspace.root,
+        fakeVercelBin: workspace.fakeVercelBin,
+        reportFile,
+        args: [
+          '--target',
+          'app',
+          '--artifact-dir',
+          join(workspace.root, '.vercel', 'output'),
+          '--artifact-kind',
+          'prebuilt-output',
+          '--mode',
+          'prod',
+          '--build-prebuilt-output',
+          '--vercel-root-directory',
+          'app',
+          '--build-env',
+          'BUILD_MARKER=ci-tools',
+          '--scope-env',
+          'VERCEL_SCOPE',
+        ],
+        env: { FAKE_VERCEL_LARGE_BUILD_OUTPUT: '1', FAKE_VERCEL_REQUIRE_DOTFILE: '0' },
+      })
+      if (result.status !== 0) {
+        console.error({ stdout: result.stdout, stderr: result.stderr })
+      }
+      expect(result.status).toBe(0)
+      expect(readRecord(reportFile).status).toBe('success')
     } finally {
       rmSync(workspace.root, { recursive: true, force: true })
     }

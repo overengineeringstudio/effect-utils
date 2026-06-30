@@ -160,6 +160,8 @@ const assertSafeE2EAlias = Effect.fn('ci-tools.deploy.vercel.e2e-alias')(functio
   })
 })
 
+const vercelCommandMaxBufferBytes = 64 * 1024 * 1024
+
 const runVercelCommand = Effect.fn('ci-tools.deploy.vercel.command')(
   (opts: {
     readonly vercelBin: string
@@ -172,6 +174,7 @@ const runVercelCommand = Effect.fn('ci-tools.deploy.vercel.command')(
         cwd: opts.cwd,
         encoding: 'utf8',
         env: { ...process.env, ...opts.env },
+        maxBuffer: vercelCommandMaxBufferBytes,
       })
       return {
         status: typeof result.status === 'number' ? result.status : 1,
