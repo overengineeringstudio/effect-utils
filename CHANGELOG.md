@@ -25,6 +25,11 @@ All notable changes to this project will be documented in this file.
   temporary install-command overrides, and prebuilt output validation into
   `ci-tools deploy vercel`, leaving the devenv task as thin config delegation.
 
+- **devenv deploy tasks / Nix**: Package the Netlify and Vercel provider CLIs
+  as first-party fixed-output npm derivations (`netlify-cli` 26.1.0 and
+  `vercel` 54.18.5) and make shared deploy tasks default to those store paths
+  instead of runtime `bunx`/stale nixpkgs CLI resolution.
+
 - **CI**: Collapse guarded live Netlify and Vercel deploy E2Es into one shared
   live deploy job with common setup.
 

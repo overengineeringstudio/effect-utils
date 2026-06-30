@@ -7,6 +7,8 @@
   siteName,
   siteId ? null,
   ciToolsBin ? null,
+  netlifyCliPkg ? null,
+  netlifyBin ? null,
 }:
 { lib, pkgs, ... }:
 let
@@ -17,7 +19,13 @@ let
     dirty = true;
   };
   resolvedCiToolsBin = if ciToolsBin == null then "${ciToolsPkg}/bin/ci-tools" else ciToolsBin;
-  netlify = "${pkgs.netlify-cli}/bin/netlify";
+  defaultNetlifyCliPkg =
+    if netlifyCliPkg == null then
+      import (root + "/nix/provider-clis/netlify-cli") { inherit pkgs; }
+    else
+      netlifyCliPkg;
+  resolvedNetlifyBin =
+    if netlifyBin == null then "${defaultNetlifyCliPkg}/bin/netlify" else netlifyBin;
   hasDeployments = deployments != [ ];
 
   mkDeployTask =
@@ -68,7 +76,7 @@ let
             --site-name ${lib.escapeShellArg siteName}
             --site-id-env NETLIFY_SITE_ID
             --auth-token-env NETLIFY_AUTH_TOKEN
-            --netlify-bin ${lib.escapeShellArg netlify}
+            --netlify-bin ${lib.escapeShellArg resolvedNetlifyBin}
             --missing-auth-policy "$missing_auth_policy"
           )
 

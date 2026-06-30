@@ -48,6 +48,10 @@
           src = self;
         };
         nodePtyNative = import ./nix/node-pty-native.nix { inherit pkgs; };
+        providerCliPackages = {
+          vercel-cli = import ./nix/provider-clis/vercel-cli { inherit pkgs; };
+          netlify-cli = import ./nix/provider-clis/netlify-cli { inherit pkgs; };
+        };
         # otelite — effect-utils' first Rust package (local OTLP capture tool).
         # Built via rustPlatform.buildRustPackage, separate from the Bun CLIs.
         otelite = import (rootPath + "/packages/@overeng/otelite/nix/build.nix") {
@@ -145,37 +149,40 @@
         };
       in
       {
-        packages = cliPackages // {
-          inherit otelite;
-          cli-build-stamp = cliBuildStamp.package;
-          effect-tsgo = tsgo.packages.${system}.effect-tsgo;
-          genie-dirty = cliPackagesDirty.genie;
-          ci-tools = cliPackages.ci-tools;
-          ci-tools-dirty = cliPackagesDirty.ci-tools;
-          # Publish the FODs as first-class flake outputs so external tooling
-          # can refresh hashes against the actual cached boundary without
-          # rebuilding the full CLI package graph.
-          "genie-pnpm-deps" = cliPackages.genie.passthru.depsBuildsByInstallRoot.root;
-          "ci-tools-pnpm-deps" = cliPackages.ci-tools.passthru.depsBuildsByInstallRoot.root;
-          megarepo-dirty = cliPackagesDirty.megarepo;
-          "megarepo-pnpm-deps" = cliPackages.megarepo.passthru.depsBuildsByInstallRoot.root;
-          tui-stories-dirty = cliPackagesDirty.tui-stories;
-          "tui-stories-pnpm-deps" = cliPackages.tui-stories.passthru.depsBuildsByInstallRoot.root;
-          notion-cli = cliPackages.notion-cli;
-          notion-cli-dirty = cliPackagesDirty.notion-cli;
-          "notion-cli-pnpm-deps" = cliPackages.notion-cli.passthru.depsBuildsByInstallRoot.root;
-          notion-md = cliPackages.notion-md;
-          notion-md-dirty = cliPackagesDirty.notion-md;
-          "notion-md-pnpm-deps" = cliPackages.notion-md.passthru.depsBuildsByInstallRoot.root;
-          "oxc-config-plugin-pnpm-deps" = oxlintNpm.pluginBundle.passthru.pnpmDeps;
-          # npm oxlint with NAPI bindings + pre-bundled @overeng/oxc-config plugin
-          oxlint-npm = oxlintNpm;
-          # oxlint-npm wrapped with automatic @overeng/oxc-config plugin injection
-          oxlint-with-plugins = import ./nix/oxlint-with-plugins.nix {
-            inherit pkgs oxlintNpm;
+        packages =
+          cliPackages
+          // providerCliPackages
+          // {
+            inherit otelite;
+            cli-build-stamp = cliBuildStamp.package;
+            effect-tsgo = tsgo.packages.${system}.effect-tsgo;
+            genie-dirty = cliPackagesDirty.genie;
+            ci-tools = cliPackages.ci-tools;
+            ci-tools-dirty = cliPackagesDirty.ci-tools;
+            # Publish the FODs as first-class flake outputs so external tooling
+            # can refresh hashes against the actual cached boundary without
+            # rebuilding the full CLI package graph.
+            "genie-pnpm-deps" = cliPackages.genie.passthru.depsBuildsByInstallRoot.root;
+            "ci-tools-pnpm-deps" = cliPackages.ci-tools.passthru.depsBuildsByInstallRoot.root;
+            megarepo-dirty = cliPackagesDirty.megarepo;
+            "megarepo-pnpm-deps" = cliPackages.megarepo.passthru.depsBuildsByInstallRoot.root;
+            tui-stories-dirty = cliPackagesDirty.tui-stories;
+            "tui-stories-pnpm-deps" = cliPackages.tui-stories.passthru.depsBuildsByInstallRoot.root;
+            notion-cli = cliPackages.notion-cli;
+            notion-cli-dirty = cliPackagesDirty.notion-cli;
+            "notion-cli-pnpm-deps" = cliPackages.notion-cli.passthru.depsBuildsByInstallRoot.root;
+            notion-md = cliPackages.notion-md;
+            notion-md-dirty = cliPackagesDirty.notion-md;
+            "notion-md-pnpm-deps" = cliPackages.notion-md.passthru.depsBuildsByInstallRoot.root;
+            "oxc-config-plugin-pnpm-deps" = oxlintNpm.pluginBundle.passthru.pnpmDeps;
+            # npm oxlint with NAPI bindings + pre-bundled @overeng/oxc-config plugin
+            oxlint-npm = oxlintNpm;
+            # oxlint-npm wrapped with automatic @overeng/oxc-config plugin injection
+            oxlint-with-plugins = import ./nix/oxlint-with-plugins.nix {
+              inherit pkgs oxlintNpm;
+            };
+            node-pty-native = nodePtyNative;
           };
-          node-pty-native = nodePtyNative;
-        };
         # Direnv helper for comparing expected CLI outputs to PATH entries.
         cliOutPaths = {
           genie = cliPackages.genie.outPath;

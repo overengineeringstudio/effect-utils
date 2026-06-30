@@ -71,9 +71,6 @@ extract_netlify_task_script() {
     let
       flake = builtins.getFlake (toString $ROOT);
       pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
-      pkgsForTest = pkgs // {
-        netlify-cli = \"$tmpdir/fake-netlify-pkg\";
-      };
       evaluated = pkgs.lib.evalModules {
         modules = [
           ({ ... }: {
@@ -85,6 +82,7 @@ extract_netlify_task_script() {
             siteName = \"fake-site\";
             siteId = \"fake-site-id\";
             ciToolsBin = \"$tmpdir/ci-tools-wrapper\";
+            netlifyBin = \"$tmpdir/fake-netlify-pkg/bin/netlify\";
             deployments = [
               {
                 name = \"storybook\";
@@ -93,7 +91,7 @@ extract_netlify_task_script() {
               }
             ];
           }) {
-            pkgs = pkgsForTest;
+            pkgs = pkgs;
             lib = pkgs.lib;
             config = { };
           })

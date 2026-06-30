@@ -49,6 +49,13 @@ const netlifyTaskModuleSource = readFileSync(
   ),
   'utf8',
 )
+const vercelTaskModuleSource = readFileSync(
+  new URL(
+    ['../../../../../../nix/devenv-modules/tasks/shared', 'vercel.nix'].join('/'),
+    import.meta.url,
+  ),
+  'utf8',
+)
 const workflowReportTaskModuleSource = readFileSync(
   new URL(
     ['../../../../../../nix/devenv-modules/tasks/shared', 'workflow-report.nix'].join('/'),
@@ -433,9 +440,18 @@ describe('ci workflow shared auth helpers', () => {
     expect(cachixStepSource).not.toContain('nix profile install')
   })
 
-  it('uses the Nix-provided Netlify CLI for parallel deploy safety', () => {
-    expect(netlifyTaskModuleSource).toContain('netlify = "${pkgs.netlify-cli}/bin/netlify";')
+  it('uses first-party Nix-packaged provider CLIs instead of runtime npm execution', () => {
+    expect(netlifyTaskModuleSource).toContain('/nix/provider-clis/netlify-cli')
+    expect(netlifyTaskModuleSource).toContain('netlifyBin ? null')
+    expect(netlifyTaskModuleSource).not.toContain('pkgs.netlify-cli')
     expect(netlifyTaskModuleSource).not.toContain('bunx netlify-cli@24.11.3')
+    expect(vercelTaskModuleSource).toContain('/nix/provider-clis/vercel-cli')
+    expect(vercelTaskModuleSource).toContain('vercelCliPkg ? null')
+    expect(vercelTaskModuleSource).not.toContain('bunx vercel')
+    expect(generatedWorkflowSource).toContain('.#netlify-cli')
+    expect(generatedWorkflowSource).toContain('.#vercel-cli')
+    expect(generatedWorkflowSource).not.toContain('nixpkgs#netlify-cli')
+    expect(generatedWorkflowSource).not.toContain('bunx vercel')
   })
 
   it('lets Vercel deploy jobs decorate the deploy run step', () => {
