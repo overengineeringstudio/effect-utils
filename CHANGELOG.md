@@ -67,6 +67,17 @@ All notable changes to this project will be documented in this file.
   Default exact process-tree support remains helper-gated rather than ptrace or
   sampled snapshots.
 
+- **otel-scrape**: Add the wrapper-side `helper-stream` process backend contract,
+  including `--process-helper-socket` / `OTEL_SCRAPE_PROCESS_HELPER_SOCKET`
+  parsing and fail-closed degraded evidence until a validated privileged helper
+  stream proves exact lifecycle coverage.
+
+- **otel-scrape**: Support the official OpenTelemetry trace-export environment
+  variable surface for the first-party OTLP/HTTP JSON exporter, including
+  trace-specific endpoint precedence, resource attributes, service-name
+  precedence, headers, timeout, SDK/exporter disable flags, and explicit
+  unsupported-protocol handling.
+
 - **@overeng/genie**: Add the explicit `@overeng/genie/composition` subpath for
   reusable cross-artifact composition helpers. The first helper,
   `tsconfigReferencesFromPackages`, projects TypeScript project references from

@@ -326,9 +326,32 @@ otel-scrape
 Exporter configuration:
 
 - `--otlp-endpoint <url>` enables OTLP export for a run.
-- `OTEL_EXPORTER_OTLP_ENDPOINT` is the environment fallback.
+- `OTEL_EXPORTER_OTLP_ENDPOINT` is the generic OTLP/HTTP environment fallback.
+  For traces it is treated as a base URL and `/v1/traces` is appended.
+- `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` is the trace-specific endpoint override
+  and is used as-is. If it has no path, traces are posted to `/`.
 - `--service-name <name>` sets the service name for emitted resource metadata.
-- `OTEL_SERVICE_NAME` is the environment fallback.
+- `OTEL_SERVICE_NAME` is the environment fallback and takes precedence over
+  `service.name` from `OTEL_RESOURCE_ATTRIBUTES`.
+- `OTEL_RESOURCE_ATTRIBUTES` supplies additional OTLP resource attributes.
+- `OTEL_EXPORTER_OTLP_HEADERS` supplies generic OTLP request headers.
+- `OTEL_EXPORTER_OTLP_TRACES_HEADERS` is the trace-specific header override.
+- `OTEL_EXPORTER_OTLP_TIMEOUT` and `OTEL_EXPORTER_OTLP_TRACES_TIMEOUT` configure
+  exporter timeout in milliseconds; trace-specific wins.
+- `OTEL_SDK_DISABLED=true` and `OTEL_TRACES_EXPORTER=none` disable trace export
+  without changing command execution.
+- Unrecognized enum values such as `OTEL_TRACES_EXPORTER=bogus` are warned about
+  and ignored. Known trace exporters not implemented by this first-party
+  exporter are warned about and do not silently fall through to OTLP export.
+- `OTEL_EXPORTER_OTLP_PROTOCOL` and `OTEL_EXPORTER_OTLP_TRACES_PROTOCOL` are
+  recognized. The first-party boundary supports `http/json`; `grpc` and
+  `http/protobuf` disable this JSON exporter with a warning until a full SDK or
+  protobuf exporter boundary exists. The current first-party transport supports
+  plain `http://` endpoints only; secure `https://` export belongs with the
+  future SDK/protobuf transport rather than a partial TLS reimplementation.
+- Empty OTEL environment variables are interpreted as unset. Boolean variables
+  follow the official OpenTelemetry SDK convention: only case-insensitive
+  `true` is true.
 - If no OTLP endpoint and no summary path are configured, wrapper passthrough behavior stays indistinguishable from direct command execution.
 
 Exporter failures are degraded wrapper evidence. They must not change child stdout, stderr, stdin, or exit status. Summary JSON remains local/debug evidence and must not become the primary telemetry transport.

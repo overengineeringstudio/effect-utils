@@ -36,15 +36,27 @@ const TRACE_FLAGS_SAMPLED: &str = "01";
 const SUMMARY_ENV: &str = "OTEL_SCRAPE_SUMMARY_OUT";
 const CAS_ROOT_ENV: &str = "OTEL_SCRAPE_CAS_ROOT";
 const OTLP_ENDPOINT_ENV: &str = "OTEL_EXPORTER_OTLP_ENDPOINT";
+const OTLP_TRACES_ENDPOINT_ENV: &str = "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT";
+const OTLP_HEADERS_ENV: &str = "OTEL_EXPORTER_OTLP_HEADERS";
+const OTLP_TRACES_HEADERS_ENV: &str = "OTEL_EXPORTER_OTLP_TRACES_HEADERS";
+const OTLP_TIMEOUT_ENV: &str = "OTEL_EXPORTER_OTLP_TIMEOUT";
+const OTLP_TRACES_TIMEOUT_ENV: &str = "OTEL_EXPORTER_OTLP_TRACES_TIMEOUT";
+const OTLP_PROTOCOL_ENV: &str = "OTEL_EXPORTER_OTLP_PROTOCOL";
+const OTLP_TRACES_PROTOCOL_ENV: &str = "OTEL_EXPORTER_OTLP_TRACES_PROTOCOL";
+const OTEL_TRACES_EXPORTER_ENV: &str = "OTEL_TRACES_EXPORTER";
+const OTEL_SDK_DISABLED_ENV: &str = "OTEL_SDK_DISABLED";
+const RESOURCE_ATTRIBUTES_ENV: &str = "OTEL_RESOURCE_ATTRIBUTES";
 const SERVICE_NAME_ENV: &str = "OTEL_SERVICE_NAME";
 const PROCESS_BACKEND_ENV: &str = "OTEL_SCRAPE_PROCESS_BACKEND";
+const PROCESS_HELPER_SOCKET_ENV: &str = "OTEL_SCRAPE_PROCESS_HELPER_SOCKET";
 const TRACEPARENT_ENV: &str = "traceparent";
 const OUTPUT_MEDIA_TYPE: &str = "application/octet-stream";
 const RESOURCE_FACT_UNAVAILABLE: &str = "unavailable";
-const OTLP_HTTP_TIMEOUT: Duration = Duration::from_millis(500);
+const OTLP_HTTP_DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
 const NODE_CPUPROFILE_ADAPTER: &str = "node-cpuprofile";
 const DIRECT_CHILD_BACKEND: &str = "direct-child";
 const PTRACE_EXPERIMENTAL_BACKEND: &str = "ptrace-experimental";
+const HELPER_STREAM_BACKEND: &str = "helper-stream";
 const PROCESS_FIDELITY_EXACT: &str = "exact";
 const PROCESS_FIDELITY_DEGRADED: &str = "degraded";
 const PROCESS_RELATION_DIRECT_CHILD: &str = "direct-child";
@@ -66,8 +78,13 @@ pub struct RunConfig {
     pub cas_root: Option<PathBuf>,
     pub cas_pin: Option<String>,
     pub otlp_endpoint: Option<String>,
+    pub otlp_headers: Vec<(String, String)>,
+    pub otlp_timeout: Duration,
+    pub otlp_export_enabled: bool,
     pub service_name: String,
+    pub resource_attributes: Vec<(String, String)>,
     pub process_backend: ProcessBackendSelection,
+    pub process_helper_socket: Option<PathBuf>,
     pub profile_artifacts: Vec<ProfileArtifactInput>,
     pub argv: Vec<String>,
 }
@@ -96,10 +113,21 @@ impl UsageError {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct OtlpEnvConfig {
+    endpoint: Option<String>,
+    headers: Vec<(String, String)>,
+    timeout: Duration,
+    export_enabled: bool,
+    service_name: String,
+    resource_attributes: Vec<(String, String)>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProcessBackendSelection {
     DirectChild,
     PtraceExperimental,
+    HelperStream,
 }
 
 impl ProcessBackendSelection {
@@ -107,8 +135,13 @@ impl ProcessBackendSelection {
         match value {
             DIRECT_CHILD_BACKEND => Some(Self::DirectChild),
             PTRACE_EXPERIMENTAL_BACKEND => Some(Self::PtraceExperimental),
+            HELPER_STREAM_BACKEND => Some(Self::HelperStream),
             _ => None,
         }
+    }
+
+    fn supported_values() -> &'static str {
+        "direct-child, ptrace-experimental, or helper-stream"
     }
 }
 
@@ -316,6 +349,7 @@ struct ProcessObservation {
 enum ProcessObservationBackend {
     DirectChild,
     PtraceExperimental,
+    HelperStream,
 }
 
 impl ProcessObservationBackend {
@@ -323,6 +357,7 @@ impl ProcessObservationBackend {
         match self {
             Self::DirectChild => DIRECT_CHILD_BACKEND,
             Self::PtraceExperimental => PTRACE_EXPERIMENTAL_BACKEND,
+            Self::HelperStream => HELPER_STREAM_BACKEND,
         }
     }
 }
@@ -431,13 +466,19 @@ pub fn parse_args(args: &[String]) -> Result<CommandRequest, UsageError> {
     let mut adapter = String::from("none");
     let mut cas_root: Option<PathBuf> = std::env::var_os(CAS_ROOT_ENV).map(PathBuf::from);
     let mut cas_pin: Option<String> = None;
-    let mut otlp_endpoint = std::env::var(OTLP_ENDPOINT_ENV).ok();
-    let mut service_name =
-        std::env::var(SERVICE_NAME_ENV).unwrap_or_else(|_| String::from("otel-scrape"));
+    let otlp_env = otlp_env_config();
+    let mut otlp_endpoint = otlp_env.endpoint;
+    let otlp_headers = otlp_env.headers;
+    let otlp_timeout = otlp_env.timeout;
+    let otlp_export_enabled = otlp_env.export_enabled;
+    let mut service_name = otlp_env.service_name;
+    let mut resource_attributes = otlp_env.resource_attributes;
+    let mut process_helper_socket = std::env::var_os(PROCESS_HELPER_SOCKET_ENV).map(PathBuf::from);
     let mut process_backend = match std::env::var(PROCESS_BACKEND_ENV) {
         Ok(value) => ProcessBackendSelection::parse(&value).ok_or_else(|| UsageError {
             message: format!(
-                "{PROCESS_BACKEND_ENV} must be {DIRECT_CHILD_BACKEND} or {PTRACE_EXPERIMENTAL_BACKEND}"
+                "{PROCESS_BACKEND_ENV} must be {}",
+                ProcessBackendSelection::supported_values()
             ),
         })?,
         Err(_) => ProcessBackendSelection::DirectChild,
@@ -504,6 +545,7 @@ pub fn parse_args(args: &[String]) -> Result<CommandRequest, UsageError> {
                     return usage_error("--service-name must not be empty");
                 }
                 service_name = value.clone();
+                set_resource_attribute(&mut resource_attributes, "service.name", value);
                 i += 2;
             }
             "--process-backend" => {
@@ -511,11 +553,22 @@ pub fn parse_args(args: &[String]) -> Result<CommandRequest, UsageError> {
                     return usage_error("--process-backend needs a value");
                 };
                 let Some(backend) = ProcessBackendSelection::parse(value) else {
-                    return usage_error(
-                        "only --process-backend direct-child and --process-backend ptrace-experimental are supported",
-                    );
+                    return usage_error(&format!(
+                        "only --process-backend {} are supported",
+                        ProcessBackendSelection::supported_values()
+                    ));
                 };
                 process_backend = backend;
+                i += 2;
+            }
+            "--process-helper-socket" => {
+                let Some(value) = args.get(i + 1) else {
+                    return usage_error("--process-helper-socket needs a socket path");
+                };
+                if value.trim().is_empty() {
+                    return usage_error("--process-helper-socket must not be empty");
+                }
+                process_helper_socket = Some(PathBuf::from(value));
                 i += 2;
             }
             "--profile-artifact" => {
@@ -562,8 +615,13 @@ pub fn parse_args(args: &[String]) -> Result<CommandRequest, UsageError> {
         cas_root,
         cas_pin,
         otlp_endpoint,
+        otlp_headers,
+        otlp_timeout,
+        otlp_export_enabled,
         service_name,
+        resource_attributes,
         process_backend,
+        process_helper_socket,
         profile_artifacts,
         argv,
     }))
@@ -574,7 +632,7 @@ pub fn print_help() {
     eprintln!();
     eprintln!("usage:");
     eprintln!(
-        "  otel-scrape [--summary-out <file>] [--adapter none|oxlint|node-cpuprofile] [--process-backend direct-child|ptrace-experimental] [--otlp-endpoint <url>] [--service-name <name>] [--cas-root <dir>] [--cas-pin <name>] [--profile-artifact <type>:<path>] -- <cmd...>"
+        "  otel-scrape [--summary-out <file>] [--adapter none|oxlint|node-cpuprofile] [--process-backend direct-child|ptrace-experimental|helper-stream] [--process-helper-socket <path>] [--otlp-endpoint <url>] [--service-name <name>] [--cas-root <dir>] [--cas-pin <name>] [--profile-artifact <type>:<path>] -- <cmd...>"
     );
     eprintln!("  otel-scrape --version | --help");
 }
@@ -630,7 +688,10 @@ pub fn run(config: RunConfig) -> io::Result<i32> {
         }
     }
 
-    if let Some(endpoint) = config.otlp_endpoint.as_ref() {
+    if config.otlp_export_enabled {
+        let Some(endpoint) = config.otlp_endpoint.as_ref() else {
+            return Ok(exit_code(child.status));
+        };
         let endpoint_for_warning = endpoint_for_warning(endpoint);
         if let Err(cause) = export_command_span(
             &config,
@@ -658,10 +719,30 @@ struct ChildRun {
 }
 
 fn run_child(config: &RunConfig, child_traceparent: &str) -> io::Result<ChildRun> {
-    if config.process_backend == ProcessBackendSelection::PtraceExperimental {
-        return run_child_with_ptrace(config, child_traceparent);
+    match config.process_backend {
+        ProcessBackendSelection::DirectChild => run_child_direct(config, child_traceparent),
+        ProcessBackendSelection::PtraceExperimental => {
+            run_child_with_ptrace(config, child_traceparent)
+        }
+        ProcessBackendSelection::HelperStream => {
+            run_child_with_helper_stream(config, child_traceparent)
+        }
     }
-    run_child_direct(config, child_traceparent)
+}
+
+fn run_child_with_helper_stream(
+    config: &RunConfig,
+    child_traceparent: &str,
+) -> io::Result<ChildRun> {
+    let mut child = run_child_direct(config, child_traceparent)?;
+    child.process_observation.backend = ProcessObservationBackend::HelperStream;
+    child.process_observation.fidelity = ProcessObservationFidelity::Degraded;
+    child.process_observation.degraded_reason = Some(if config.process_helper_socket.is_some() {
+        ProcessObservationDegradedReason::EventLoss
+    } else {
+        ProcessObservationDegradedReason::MissingPrivilege
+    });
+    Ok(child)
 }
 
 fn run_child_direct(config: &RunConfig, child_traceparent: &str) -> io::Result<ChildRun> {
@@ -1215,7 +1296,7 @@ fn summary_for_status(
         degraded: DegradedSummary {
             direct_child_only: child.process_observation.backend
                 == ProcessObservationBackend::DirectChild,
-            otlp_export: false,
+            otlp_export: config.otlp_export_enabled && config.otlp_endpoint.is_some(),
         },
     })
 }
@@ -1344,13 +1425,15 @@ fn export_command_span(
     }
     let mut spans = vec![command_span];
     spans.extend(process_otlp_spans(trace, &child.process_observation));
+    let resource_attributes: Vec<serde_json::Value> = config
+        .resource_attributes
+        .iter()
+        .map(|(key, value)| json!({ "key": key, "value": { "stringValue": value } }))
+        .collect();
     let body = json!({
         "resourceSpans": [{
             "resource": {
-                "attributes": [
-                    { "key": "service.name", "value": { "stringValue": config.service_name } },
-                    { "key": "telemetry.sdk.language", "value": { "stringValue": "rust" } },
-                ],
+                "attributes": resource_attributes,
             },
             "scopeSpans": [{
                 "scope": { "name": "otel-scrape" },
@@ -1359,7 +1442,7 @@ fn export_command_span(
         }],
     });
     let bytes = serde_json::to_vec(&body)?;
-    post_otlp_http_json(endpoint, &bytes)
+    post_otlp_http_json(endpoint, &config.otlp_headers, config.otlp_timeout, &bytes)
 }
 
 fn process_otlp_spans(
@@ -1483,21 +1566,43 @@ fn unix_nanos(time: SystemTime) -> u128 {
         .unwrap_or(0)
 }
 
-fn post_otlp_http_json(endpoint: &str, body: &[u8]) -> io::Result<()> {
+fn post_otlp_http_json(
+    endpoint: &str,
+    headers: &[(String, String)],
+    timeout: Duration,
+    body: &[u8],
+) -> io::Result<()> {
     let endpoint = parse_http_endpoint(endpoint)?;
     let socket_addr = (endpoint.host.as_str(), endpoint.port)
         .to_socket_addrs()?
         .next()
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "endpoint did not resolve"))?;
-    let mut stream = TcpStream::connect_timeout(&socket_addr, OTLP_HTTP_TIMEOUT)?;
-    stream.set_read_timeout(Some(OTLP_HTTP_TIMEOUT))?;
-    stream.set_write_timeout(Some(OTLP_HTTP_TIMEOUT))?;
-    let request = format!(
-        "POST {} HTTP/1.1\r\nHost: {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+    let timeout = if timeout.is_zero() {
+        OTLP_HTTP_DEFAULT_TIMEOUT
+    } else {
+        timeout
+    };
+    let mut stream = TcpStream::connect_timeout(&socket_addr, timeout)?;
+    stream.set_read_timeout(Some(timeout))?;
+    stream.set_write_timeout(Some(timeout))?;
+    let mut request = format!(
+        "POST {} HTTP/1.1\r\nHost: {}\r\nContent-Type: application/json\r\nUser-Agent: otel-scrape/{VERSION}\r\n",
         endpoint.path,
         endpoint.host_header,
-        body.len(),
     );
+    for (name, value) in headers {
+        if !is_safe_http_header_name(name) || !is_safe_http_header_value(value) {
+            continue;
+        }
+        write!(&mut request, "{name}: {value}\r\n")
+            .map_err(|cause| io::Error::other(cause.to_string()))?;
+    }
+    write!(
+        &mut request,
+        "Content-Length: {}\r\nConnection: close\r\n\r\n",
+        body.len()
+    )
+    .map_err(|cause| io::Error::other(cause.to_string()))?;
     stream.write_all(request.as_bytes())?;
     stream.write_all(body)?;
     stream.flush()?;
@@ -1518,6 +1623,22 @@ fn post_otlp_http_json(endpoint: &str, body: &[u8]) -> io::Result<()> {
     )))
 }
 
+fn is_safe_http_header_name(value: &str) -> bool {
+    !value.is_empty()
+        && value.bytes().all(|byte| {
+            matches!(
+                byte,
+                b'!' | b'#' | b'$' | b'%' | b'&' | b'\'' | b'*' | b'+' | b'-' | b'.'
+                    | b'^' | b'_' | b'`' | b'|' | b'~' | b'0'..=b'9' | b'A'..=b'Z'
+                    | b'a'..=b'z'
+            )
+        })
+}
+
+fn is_safe_http_header_value(value: &str) -> bool {
+    !value.bytes().any(|byte| byte == b'\r' || byte == b'\n')
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct HttpEndpoint {
     host: String,
@@ -1536,6 +1657,200 @@ fn endpoint_for_warning(value: &str) -> String {
     parse_http_endpoint(value)
         .map(|endpoint| endpoint.warning_label())
         .unwrap_or_else(|_| String::from("<invalid http endpoint>"))
+}
+
+fn otlp_env_config() -> OtlpEnvConfig {
+    let sdk_disabled = env_bool(OTEL_SDK_DISABLED_ENV);
+    let exporter_enabled = otlp_trace_exporter_enabled();
+    let protocol = signal_env_string(OTLP_TRACES_PROTOCOL_ENV, OTLP_PROTOCOL_ENV)
+        .map(|value| value.to_ascii_lowercase());
+    let protocol_enabled = match protocol.as_deref() {
+        None | Some("http/json") => true,
+        Some("grpc" | "http/protobuf") => {
+            eprintln!(
+                "otel-scrape: warning: {OTLP_TRACES_PROTOCOL_ENV}/{OTLP_PROTOCOL_ENV} requested a protocol not supported by this HTTP/JSON exporter; trace export is disabled"
+            );
+            false
+        }
+        Some(other) => {
+            eprintln!("otel-scrape: warning: ignoring unrecognized OTLP protocol {other}");
+            true
+        }
+    };
+    let mut resource_attributes = parse_key_value_list_env(RESOURCE_ATTRIBUTES_ENV, "resource");
+    set_resource_attribute(&mut resource_attributes, "telemetry.sdk.language", "rust");
+    set_resource_attribute(
+        &mut resource_attributes,
+        "telemetry.sdk.name",
+        "otel-scrape",
+    );
+    set_resource_attribute(&mut resource_attributes, "telemetry.sdk.version", VERSION);
+    let service_name = env_string(SERVICE_NAME_ENV).unwrap_or_else(|| {
+        resource_attribute(&resource_attributes, "service.name")
+            .unwrap_or_else(|| String::from("otel-scrape"))
+    });
+    set_resource_attribute(&mut resource_attributes, "service.name", &service_name);
+
+    OtlpEnvConfig {
+        endpoint: otlp_env_endpoint(),
+        headers: otlp_env_headers(),
+        timeout: signal_env_string(OTLP_TRACES_TIMEOUT_ENV, OTLP_TIMEOUT_ENV)
+            .and_then(|value| parse_timeout_ms(&value))
+            .unwrap_or(OTLP_HTTP_DEFAULT_TIMEOUT),
+        export_enabled: !sdk_disabled && exporter_enabled && protocol_enabled,
+        service_name,
+        resource_attributes,
+    }
+}
+
+fn otlp_trace_exporter_enabled() -> bool {
+    let Some(value) = env_string(OTEL_TRACES_EXPORTER_ENV) else {
+        return true;
+    };
+    let exporters = value
+        .split(',')
+        .map(|part| part.trim().to_ascii_lowercase())
+        .filter(|part| !part.is_empty());
+    let mut saw_supported = false;
+    let mut saw_unsupported_known = false;
+    let mut saw_only_none = true;
+    for exporter in exporters {
+        match exporter.as_str() {
+            "otlp" => {
+                saw_supported = true;
+                saw_only_none = false;
+            }
+            "none" => {}
+            "zipkin" | "console" | "logging" | "otlp/stdout" => {
+                saw_unsupported_known = true;
+                saw_only_none = false;
+                eprintln!(
+                    "otel-scrape: warning: {OTEL_TRACES_EXPORTER_ENV}={exporter} is not supported by this first-party exporter"
+                );
+            }
+            other => {
+                saw_only_none = false;
+                eprintln!(
+                    "otel-scrape: warning: ignoring unrecognized {OTEL_TRACES_EXPORTER_ENV} value {other}"
+                );
+            }
+        }
+    }
+    saw_supported || (!saw_only_none && !saw_unsupported_known)
+}
+
+fn otlp_env_endpoint() -> Option<String> {
+    if let Some(value) = env_string(OTLP_TRACES_ENDPOINT_ENV) {
+        return Some(normalize_otlp_trace_endpoint(&value));
+    }
+    env_string(OTLP_ENDPOINT_ENV).map(|value| normalize_otlp_base_endpoint(&value))
+}
+
+fn otlp_env_headers() -> Vec<(String, String)> {
+    if env_string(OTLP_TRACES_HEADERS_ENV).is_some() {
+        parse_key_value_list_env(OTLP_TRACES_HEADERS_ENV, "header")
+    } else {
+        parse_key_value_list_env(OTLP_HEADERS_ENV, "header")
+    }
+}
+
+fn normalize_otlp_trace_endpoint(value: &str) -> String {
+    if endpoint_has_path(value) {
+        value.to_owned()
+    } else {
+        format!("{}/", value.trim_end_matches('/'))
+    }
+}
+
+fn normalize_otlp_base_endpoint(value: &str) -> String {
+    let base = value.trim_end_matches('/');
+    if endpoint_has_path(base) {
+        format!("{base}/v1/traces")
+    } else {
+        format!("{base}/v1/traces")
+    }
+}
+
+fn endpoint_has_path(value: &str) -> bool {
+    value
+        .strip_prefix("http://")
+        .or_else(|| value.strip_prefix("https://"))
+        .and_then(|rest| rest.split_once('/').map(|(_, path)| !path.is_empty()))
+        .unwrap_or(false)
+}
+
+fn signal_env_string(signal_name: &str, generic_name: &str) -> Option<String> {
+    env_string(signal_name).or_else(|| env_string(generic_name))
+}
+
+fn env_string(name: &str) -> Option<String> {
+    std::env::var(name)
+        .ok()
+        .and_then(|value| if value.is_empty() { None } else { Some(value) })
+}
+
+fn env_bool(name: &str) -> bool {
+    match env_string(name).map(|value| value.to_ascii_lowercase()) {
+        Some(value) if value == "true" => true,
+        Some(value) if value == "false" => false,
+        Some(value) => {
+            eprintln!("otel-scrape: warning: ignoring invalid boolean {name}={value}");
+            false
+        }
+        None => false,
+    }
+}
+
+fn parse_timeout_ms(value: &str) -> Option<Duration> {
+    match value.parse::<u64>() {
+        Ok(ms) => Some(Duration::from_millis(ms)),
+        Err(cause) => {
+            eprintln!("otel-scrape: warning: ignoring invalid OTLP timeout {value}: {cause}");
+            None
+        }
+    }
+}
+
+fn parse_key_value_list_env(name: &str, value_kind: &str) -> Vec<(String, String)> {
+    let Some(value) = env_string(name) else {
+        return Vec::new();
+    };
+    value
+        .split(',')
+        .filter_map(|part| {
+            let trimmed = part.trim();
+            if trimmed.is_empty() {
+                return None;
+            }
+            let Some((key, value)) = trimmed.split_once('=') else {
+                eprintln!(
+                    "otel-scrape: warning: ignoring malformed OTEL {value_kind} entry in {name}"
+                );
+                return None;
+            };
+            if key.is_empty() || value.contains('\r') || value.contains('\n') {
+                eprintln!(
+                    "otel-scrape: warning: ignoring unsafe OTEL {value_kind} entry in {name}"
+                );
+                return None;
+            }
+            Some((key.to_owned(), value.to_owned()))
+        })
+        .collect()
+}
+
+fn set_resource_attribute(attrs: &mut Vec<(String, String)>, key: &str, value: &str) {
+    if let Some((_, existing)) = attrs.iter_mut().find(|(attr_key, _)| attr_key == key) {
+        *existing = value.to_owned();
+    } else {
+        attrs.push((key.to_owned(), value.to_owned()));
+    }
+}
+
+fn resource_attribute(attrs: &[(String, String)], key: &str) -> Option<String> {
+    attrs
+        .iter()
+        .find_map(|(attr_key, value)| (attr_key == key).then(|| value.clone()))
 }
 
 fn validate_http_endpoint(value: &str) -> Result<(), UsageError> {
@@ -1559,7 +1874,10 @@ fn parse_http_endpoint(value: &str) -> io::Result<HttpEndpoint> {
             "endpoint query and fragment are not accepted",
         ));
     }
-    let (authority, path) = rest.split_once('/').unwrap_or((rest, ""));
+    let (authority, path, has_explicit_path) = match rest.split_once('/') {
+        Some((authority, path)) => (authority, path, true),
+        None => (rest, "", false),
+    };
     if authority.is_empty() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -1590,8 +1908,10 @@ fn parse_http_endpoint(value: &str) -> io::Result<HttpEndpoint> {
             Ok((host.to_owned(), port))
         },
     )?;
-    let path = if path.is_empty() {
+    let path = if !has_explicit_path {
         String::from("/v1/traces")
+    } else if path.is_empty() {
+        String::from("/")
     } else {
         format!("/{path}")
     };
@@ -2191,10 +2511,14 @@ mod tests {
                 adapter: "none".to_owned(),
                 cas_root: None,
                 cas_pin: None,
-                otlp_endpoint: std::env::var(OTLP_ENDPOINT_ENV).ok(),
-                service_name: std::env::var(SERVICE_NAME_ENV)
-                    .unwrap_or_else(|_| "otel-scrape".to_owned()),
+                otlp_endpoint: otlp_env_config().endpoint,
+                otlp_headers: otlp_env_config().headers,
+                otlp_timeout: otlp_env_config().timeout,
+                otlp_export_enabled: otlp_env_config().export_enabled,
+                service_name: otlp_env_config().service_name,
+                resource_attributes: otlp_env_config().resource_attributes,
                 process_backend: ProcessBackendSelection::DirectChild,
+                process_helper_socket: None,
                 profile_artifacts: Vec::new(),
                 argv: vec!["echo".to_owned(), "hi".to_owned()],
             })
@@ -2223,10 +2547,14 @@ mod tests {
                 adapter: "none".to_owned(),
                 cas_root: Some(PathBuf::from("cas")),
                 cas_pin: Some("runs/run-1".to_owned()),
-                otlp_endpoint: std::env::var(OTLP_ENDPOINT_ENV).ok(),
-                service_name: std::env::var(SERVICE_NAME_ENV)
-                    .unwrap_or_else(|_| "otel-scrape".to_owned()),
+                otlp_endpoint: otlp_env_config().endpoint,
+                otlp_headers: otlp_env_config().headers,
+                otlp_timeout: otlp_env_config().timeout,
+                otlp_export_enabled: otlp_env_config().export_enabled,
+                service_name: otlp_env_config().service_name,
+                resource_attributes: otlp_env_config().resource_attributes,
                 process_backend: ProcessBackendSelection::DirectChild,
+                process_helper_socket: None,
                 profile_artifacts: vec![ProfileArtifactInput {
                     profile_type: "cpuprofile".to_owned(),
                     path: PathBuf::from("profile.cpuprofile"),
@@ -2279,6 +2607,31 @@ mod tests {
     }
 
     #[test]
+    fn parses_helper_stream_backend_and_socket_option() {
+        let args = vec![
+            "--process-backend".to_owned(),
+            "helper-stream".to_owned(),
+            "--process-helper-socket".to_owned(),
+            "/tmp/otel-scrape-helper.sock".to_owned(),
+            "--".to_owned(),
+            "true".to_owned(),
+        ];
+
+        let CommandRequest::Run(config) = parse_args(&args).unwrap() else {
+            panic!("expected run request");
+        };
+
+        assert_eq!(
+            config.process_backend,
+            ProcessBackendSelection::HelperStream
+        );
+        assert_eq!(
+            config.process_helper_socket,
+            Some(PathBuf::from("/tmp/otel-scrape-helper.sock"))
+        );
+    }
+
+    #[test]
     fn rejects_unknown_process_backend() {
         let args = vec![
             "--process-backend".to_owned(),
@@ -2291,7 +2644,7 @@ mod tests {
 
         assert_eq!(
             err.message(),
-            "only --process-backend direct-child and --process-backend ptrace-experimental are supported"
+            "only --process-backend direct-child, ptrace-experimental, or helper-stream are supported"
         );
     }
 
@@ -2460,8 +2813,18 @@ mod tests {
             cas_root: Some(cas_root),
             cas_pin: None,
             otlp_endpoint: None,
+            otlp_headers: Vec::new(),
+            otlp_timeout: OTLP_HTTP_DEFAULT_TIMEOUT,
+            otlp_export_enabled: true,
             service_name: "otel-scrape".to_owned(),
+            resource_attributes: vec![
+                ("telemetry.sdk.language".to_owned(), "rust".to_owned()),
+                ("telemetry.sdk.name".to_owned(), "otel-scrape".to_owned()),
+                ("telemetry.sdk.version".to_owned(), VERSION.to_owned()),
+                ("service.name".to_owned(), "otel-scrape".to_owned()),
+            ],
             process_backend: ProcessBackendSelection::DirectChild,
+            process_helper_socket: None,
             profile_artifacts: Vec::new(),
             argv: vec!["node".to_owned(), "-e".to_owned(), String::new()],
         }

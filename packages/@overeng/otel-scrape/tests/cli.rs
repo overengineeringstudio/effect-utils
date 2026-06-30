@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeMap,
     io::{Read, Write},
     net::TcpListener,
     path::{Path, PathBuf},
@@ -13,6 +14,16 @@ fn otel_scrape() -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_otel-scrape"));
     command
         .env_remove("OTEL_EXPORTER_OTLP_ENDPOINT")
+        .env_remove("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT")
+        .env_remove("OTEL_EXPORTER_OTLP_HEADERS")
+        .env_remove("OTEL_EXPORTER_OTLP_TRACES_HEADERS")
+        .env_remove("OTEL_EXPORTER_OTLP_TIMEOUT")
+        .env_remove("OTEL_EXPORTER_OTLP_TRACES_TIMEOUT")
+        .env_remove("OTEL_EXPORTER_OTLP_PROTOCOL")
+        .env_remove("OTEL_EXPORTER_OTLP_TRACES_PROTOCOL")
+        .env_remove("OTEL_TRACES_EXPORTER")
+        .env_remove("OTEL_SDK_DISABLED")
+        .env_remove("OTEL_RESOURCE_ATTRIBUTES")
         .env_remove("OTEL_SERVICE_NAME");
     command
 }
@@ -814,6 +825,10 @@ fn exports_command_span_to_otlp_http_json() {
     let request = collector.request();
     assert_eq!(request.path, "/v1/traces");
     assert_eq!(request.content_type.as_deref(), Some("application/json"));
+    assert!(request
+        .headers
+        .get("user-agent")
+        .is_some_and(|value| value.starts_with("otel-scrape/")));
     let body: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
     let resource_span = &body["resourceSpans"][0];
     assert_eq!(
@@ -876,6 +891,186 @@ fn exports_command_span_to_otlp_http_json() {
 }
 
 #[test]
+fn otlp_env_follows_trace_specific_precedence_and_resource_attributes() {
+    let generic_collector = TestCollector::start(200);
+    let traces_collector = TestCollector::start(200);
+
+    let out = otel_scrape()
+        .env("OTEL_EXPORTER_OTLP_ENDPOINT", &generic_collector.endpoint)
+        .env(
+            "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
+            &traces_collector.endpoint,
+        )
+        .env("OTEL_EXPORTER_OTLP_HEADERS", "x-generic=ignored")
+        .env("OTEL_EXPORTER_OTLP_TRACES_HEADERS", "x-trace=kept")
+        .env(
+            "OTEL_RESOURCE_ATTRIBUTES",
+            "service.name=from-resource,team=tooling",
+        )
+        .env("OTEL_SERVICE_NAME", "from-service-env")
+        .env("OTEL_EXPORTER_OTLP_PROTOCOL", "http/json")
+        .args(["--", "sh", "-c", "printf child"])
+        .output()
+        .unwrap();
+
+    assert!(out.status.success());
+    let request = traces_collector.request();
+    assert_eq!(request.path, "/");
+    assert_eq!(request.headers.get("x-trace"), Some(&"kept".to_owned()));
+    assert_eq!(
+        request.headers.get("x-generic"),
+        None,
+        "captured headers: {:?}",
+        request.headers
+    );
+    let body: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
+    let resource_attrs = body["resourceSpans"][0]["resource"]["attributes"]
+        .as_array()
+        .unwrap();
+    assert_eq!(
+        attr_value(resource_attrs, "service.name"),
+        Some("from-service-env".to_owned())
+    );
+    assert_eq!(
+        attr_value(resource_attrs, "team"),
+        Some("tooling".to_owned())
+    );
+    assert_eq!(
+        attr_value(resource_attrs, "telemetry.sdk.name"),
+        Some("otel-scrape".to_owned())
+    );
+    drop(generic_collector);
+}
+
+#[test]
+fn generic_otlp_endpoint_is_base_url_for_trace_path() {
+    let collector = TestCollector::start(200);
+    let endpoint = format!("{}/collector", collector.endpoint);
+
+    let out = otel_scrape()
+        .env("OTEL_EXPORTER_OTLP_ENDPOINT", endpoint)
+        .args(["--", "sh", "-c", "printf child"])
+        .output()
+        .unwrap();
+
+    assert!(out.status.success());
+    assert_eq!(collector.request().path, "/collector/v1/traces");
+}
+
+#[test]
+fn otel_sdk_disabled_suppresses_export_without_affecting_child() {
+    let collector = TestCollector::start(200);
+
+    let out = otel_scrape()
+        .env("OTEL_EXPORTER_OTLP_ENDPOINT", &collector.endpoint)
+        .env("OTEL_SDK_DISABLED", "true")
+        .args(["--", "sh", "-c", "printf child; exit 7"])
+        .output()
+        .unwrap();
+
+    assert_eq!(out.status.code(), Some(7));
+    assert_eq!(String::from_utf8_lossy(&out.stdout), "child");
+}
+
+#[test]
+fn otel_traces_exporter_none_suppresses_export_without_affecting_child() {
+    let collector = TestCollector::start(200);
+
+    let out = otel_scrape()
+        .env("OTEL_EXPORTER_OTLP_ENDPOINT", &collector.endpoint)
+        .env("OTEL_TRACES_EXPORTER", "none")
+        .args(["--", "sh", "-c", "printf child; exit 7"])
+        .output()
+        .unwrap();
+
+    assert_eq!(out.status.code(), Some(7));
+    assert_eq!(String::from_utf8_lossy(&out.stdout), "child");
+}
+
+#[test]
+fn unrecognized_otel_traces_exporter_value_is_ignored() {
+    let collector = TestCollector::start(200);
+
+    let out = otel_scrape()
+        .env("OTEL_EXPORTER_OTLP_ENDPOINT", &collector.endpoint)
+        .env("OTEL_TRACES_EXPORTER", "bogus")
+        .args(["--", "sh", "-c", "printf child"])
+        .output()
+        .unwrap();
+
+    assert!(out.status.success());
+    assert_eq!(String::from_utf8_lossy(&out.stdout), "child");
+    assert_eq!(collector.request().path, "/v1/traces");
+    assert!(String::from_utf8_lossy(&out.stderr).contains("ignoring unrecognized"));
+}
+
+#[test]
+fn known_but_unsupported_otel_traces_exporter_suppresses_json_exporter() {
+    let out = otel_scrape()
+        .env("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:9")
+        .env("OTEL_TRACES_EXPORTER", "zipkin")
+        .args(["--", "sh", "-c", "printf child"])
+        .output()
+        .unwrap();
+
+    assert!(out.status.success());
+    assert_eq!(String::from_utf8_lossy(&out.stdout), "child");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("is not supported by this first-party exporter"));
+    assert!(!stderr.contains("failed to export OTLP trace"));
+}
+
+#[test]
+fn otel_env_trace_endpoint_is_used_as_is_and_trace_headers_override_generic() {
+    let collector = TestCollector::start(200);
+
+    let out = otel_scrape()
+        .env("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:9/base")
+        .env("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", &collector.endpoint)
+        .env(
+            "OTEL_EXPORTER_OTLP_HEADERS",
+            "x-shared=generic,x-generic=yes",
+        )
+        .env(
+            "OTEL_EXPORTER_OTLP_TRACES_HEADERS",
+            "x-shared=trace,x-trace=yes",
+        )
+        .env("OTEL_EXPORTER_OTLP_PROTOCOL", "http/json")
+        .env("OTEL_EXPORTER_OTLP_TIMEOUT", "1000")
+        .args(["--", "sh", "-c", "printf child"])
+        .output()
+        .unwrap();
+
+    assert!(out.status.success());
+    let request = collector.request();
+    assert_eq!(request.path, "/");
+    assert_eq!(request.headers.get("x-shared"), Some(&"trace".to_owned()));
+    assert_eq!(
+        request.headers.get("x-generic"),
+        None,
+        "captured headers: {:?}",
+        request.headers
+    );
+    assert_eq!(request.headers.get("x-trace"), Some(&"yes".to_owned()));
+}
+
+#[test]
+fn unsupported_otlp_protocol_disables_first_party_json_exporter() {
+    let out = otel_scrape()
+        .env("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:9")
+        .env("OTEL_EXPORTER_OTLP_PROTOCOL", "grpc")
+        .args(["--", "sh", "-c", "printf child"])
+        .output()
+        .unwrap();
+
+    assert!(out.status.success());
+    assert_eq!(String::from_utf8_lossy(&out.stdout), "child");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("trace export is disabled"));
+    assert!(!stderr.contains("failed to export OTLP trace"));
+}
+
+#[test]
 fn otlp_export_failure_preserves_child_exit_code() {
     let collector = TestCollector::start(500);
     let endpoint = format!("{}/tokenized-secret-path", collector.endpoint);
@@ -900,6 +1095,7 @@ fn otlp_export_timeout_preserves_child_exit_code_when_collector_stalls() {
     let collector = TestCollector::start_stalling();
 
     let out = otel_scrape()
+        .env("OTEL_EXPORTER_OTLP_TIMEOUT", "500")
         .args(["--otlp-endpoint", &collector.endpoint])
         .args(["--", "sh", "-c", "printf child; exit 7"])
         .output()
@@ -1225,6 +1421,7 @@ struct TestCollector {
 struct CapturedRequest {
     path: String,
     content_type: Option<String>,
+    headers: BTreeMap<String, String>,
     body: Vec<u8>,
 }
 
@@ -1295,9 +1492,18 @@ fn captured_request(bytes: &[u8]) -> Option<CapturedRequest> {
         .lines()
         .find_map(|line| line.strip_prefix("Content-Type: "))
         .map(ToOwned::to_owned);
+    let captured_headers = headers
+        .lines()
+        .skip(1)
+        .filter_map(|line| {
+            line.split_once(": ")
+                .map(|(name, value)| (name.to_ascii_lowercase(), value.to_owned()))
+        })
+        .collect();
     Some(CapturedRequest {
         path,
         content_type,
+        headers: captured_headers,
         body: bytes[body_start..body_start + content_length].to_vec(),
     })
 }

@@ -4,9 +4,9 @@
 and provides the Rust package boundary for command-wrapper telemetry.
 
 The wrapper is deliberately transparent by default: without `--summary-out`,
-`OTEL_SCRAPE_SUMMARY_OUT`, `--otlp-endpoint`, or
-`OTEL_EXPORTER_OTLP_ENDPOINT`, it runs the child without writing local evidence
-or exporting telemetry.
+`OTEL_SCRAPE_SUMMARY_OUT`, `--otlp-endpoint`,
+`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`, or `OTEL_EXPORTER_OTLP_ENDPOINT`, it runs
+the child without writing local evidence or exporting telemetry.
 
 ```bash
 otel-scrape -- cargo test
@@ -28,7 +28,8 @@ joins a W3C `traceparent` and exports the child context through both
 ```text
 otel-scrape [--summary-out <file>]
   [--adapter none|oxlint|node-cpuprofile]
-  [--process-backend direct-child|ptrace-experimental]
+  [--process-backend direct-child|ptrace-experimental|helper-stream]
+  [--process-helper-socket <path>]
   [--otlp-endpoint <url>]
   [--service-name <name>]
   [--cas-root <dir>]
@@ -39,13 +40,14 @@ otel-scrape [--summary-out <file>]
 
 Environment fallbacks:
 
-| CLI flag            | Environment fallback          | Purpose                                                    |
-| ------------------- | ----------------------------- | ---------------------------------------------------------- |
-| `--summary-out`     | `OTEL_SCRAPE_SUMMARY_OUT`     | Write local JSON summary evidence.                         |
-| `--cas-root`        | `OTEL_SCRAPE_CAS_ROOT`        | Store profile artifacts and manifests in a local CAS root. |
-| `--otlp-endpoint`   | `OTEL_EXPORTER_OTLP_ENDPOINT` | Export the wrapper command span over OTLP/HTTP JSON.       |
-| `--service-name`    | `OTEL_SERVICE_NAME`           | Set the emitted OTLP resource `service.name`.              |
-| `--process-backend` | `OTEL_SCRAPE_PROCESS_BACKEND` | Select process observation backend.                        |
+| CLI flag                  | Environment fallback                | Purpose                                                    |
+| ------------------------- | ----------------------------------- | ---------------------------------------------------------- |
+| `--summary-out`           | `OTEL_SCRAPE_SUMMARY_OUT`           | Write local JSON summary evidence.                         |
+| `--cas-root`              | `OTEL_SCRAPE_CAS_ROOT`              | Store profile artifacts and manifests in a local CAS root. |
+| `--otlp-endpoint`         | `OTEL_EXPORTER_OTLP_ENDPOINT`       | Export the wrapper command span over OTLP/HTTP JSON.       |
+| `--service-name`          | `OTEL_SERVICE_NAME`                 | Set the emitted OTLP resource `service.name`.              |
+| `--process-backend`       | `OTEL_SCRAPE_PROCESS_BACKEND`       | Select process observation backend.                        |
+| `--process-helper-socket` | `OTEL_SCRAPE_PROCESS_HELPER_SOCKET` | Select the helper-stream socket path.                      |
 
 `--cas-pin` writes a manifest pin under the CAS root and requires at least one
 profile artifact source. `--profile-artifact <type>:<path>` is the explicit
@@ -63,14 +65,43 @@ direct-child-only process capture unless an exact backend is explicitly
 selected. Summary evidence is a local debug and test surface; it is not the
 OTLP transport.
 
-When `--otlp-endpoint <url>` or `OTEL_EXPORTER_OTLP_ENDPOINT` is set, the
-wrapper exports one `otel_scrape.command` span and process spans from the active
-process backend through the first-party OTLP/HTTP JSON boundary after the child
-exits. `--service-name <name>` or `OTEL_SERVICE_NAME` sets the emitted resource
-`service.name`. Export failures are warnings and do not change stdout, stderr,
-stdin, or the child exit code.
+When `--otlp-endpoint <url>`, `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`, or
+`OTEL_EXPORTER_OTLP_ENDPOINT` is set, the wrapper exports one
+`otel_scrape.command` span and process spans from the active process backend
+through the first-party OTLP/HTTP JSON boundary after the child exits.
+`OTEL_EXPORTER_OTLP_ENDPOINT` is treated as an OTLP/HTTP base URL and appends
+`/v1/traces`; `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` is signal-specific and used
+as-is. `--service-name <name>` or `OTEL_SERVICE_NAME` sets the emitted resource
+`service.name` and takes precedence over `service.name` from
+`OTEL_RESOURCE_ATTRIBUTES`. Export failures are warnings and do not change
+stdout, stderr, stdin, or the child exit code.
 Adapter-derived OTLP events and profile-link events are attached to the command
 span. Adapter metrics remain local summary records.
+
+Supported OpenTelemetry SDK/exporter environment variables:
+
+| Env var                                                              | Behavior                                                                                                    |
+| -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `OTEL_SDK_DISABLED=true`                                             | Disables trace export without affecting the child command.                                                  |
+| `OTEL_TRACES_EXPORTER=none` / `otlp`                                 | Disables export or enables the OTLP path. Unrecognized enum values warn and are ignored.                    |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`                                        | Generic OTLP/HTTP base URL; traces are sent below `/v1/traces`.                                             |
+| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`                                 | Trace endpoint override; used as-is, with `/` for an empty path.                                            |
+| `OTEL_EXPORTER_OTLP_HEADERS`                                         | Generic OTLP headers.                                                                                       |
+| `OTEL_EXPORTER_OTLP_TRACES_HEADERS`                                  | Trace headers override the generic header config for trace export.                                          |
+| `OTEL_EXPORTER_OTLP_TIMEOUT` / `OTEL_EXPORTER_OTLP_TRACES_TIMEOUT`   | Export timeout in milliseconds; trace-specific wins.                                                        |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` / `OTEL_EXPORTER_OTLP_TRACES_PROTOCOL` | `http/json` is supported. `grpc` and `http/protobuf` disable this first-party JSON exporter with a warning. |
+| `OTEL_RESOURCE_ATTRIBUTES`                                           | Comma-separated resource attributes added to OTLP resources.                                                |
+| `OTEL_SERVICE_NAME`                                                  | Resource `service.name`; overrides `service.name` from resource attrs.                                      |
+
+Empty OTEL env vars are treated as unset. Boolean parsing follows the official
+OpenTelemetry SDK convention: only case-insensitive `true` is true.
+Known trace exporters not implemented by this first-party exporter, such as
+`zipkin`, warn and disable the JSON exporter rather than silently sending OTLP
+after a non-OTLP exporter was requested.
+This first-party exporter supports plain `http://` OTLP endpoints. Use a
+collector-local HTTP endpoint for dogfooding today; `https://`, gRPC, and
+protobuf belong behind a future full SDK/protobuf transport instead of a partial
+TLS implementation in this wrapper.
 
 ## Process Backends
 
@@ -91,6 +122,13 @@ scoped completeness and event-loss handling. `/proc` snapshots and filesystem
 notification APIs remain degraded enrichment sources, not exact process-tree
 sources. macOS remains degraded/direct-child unless an Endpoint Security-backed
 exact backend is implemented and validated.
+
+`helper-stream` is the public wrapper-side contract for that future helper. In
+this slice it is fail-closed: selecting it records `backend = "helper-stream"`
+but keeps process evidence degraded until a validated helper stream proves
+loss-free lifecycle coverage. A missing helper socket degrades with
+`missing-privilege`; a configured socket without an exact event stream degrades
+with `event-loss`.
 
 ## Adapters
 
