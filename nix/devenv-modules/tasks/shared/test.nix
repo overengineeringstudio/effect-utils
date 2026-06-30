@@ -99,10 +99,13 @@ let
           "${pkg.path}/test/**/*.test.tsx"
           "${pkg.path}/vitest.config.ts"
         ];
-        after =
-          [ installTask ]
-          ++ (pkg.after or [ ])
-          ++ lib.optional (hasPackageConcurrency && batchIndex > 0) (packageTestBatchTaskName (batchIndex - 1));
+        after = [
+          installTask
+        ]
+        ++ (pkg.after or [ ])
+        ++ lib.optional (hasPackageConcurrency && batchIndex > 0) (
+          packageTestBatchTaskName (batchIndex - 1)
+        );
       };
     };
 
