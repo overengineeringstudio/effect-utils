@@ -11,7 +11,6 @@
 }:
 { lib, pkgs, ... }:
 let
-  deployTask = import ../lib/deploy-task.nix { inherit pkgs; };
   root = ../../../..;
   ciToolsPkg = import (root + "/packages/@overeng/ci-tools/nix/build.nix") {
     inherit pkgs;
@@ -60,17 +59,6 @@ let
         exec = ''
           set -euo pipefail
 
-          ${deployTask.mkRequiredEnvCheck {
-            envName = orgIdEnv;
-            exportName = "VERCEL_ORG_ID";
-            localName = "org_id";
-          }}
-          ${deployTask.mkRequiredEnvCheck {
-            envName = projectIdEnv;
-            exportName = "VERCEL_PROJECT_ID";
-            localName = "project_id";
-          }}
-
           input="''${DEVENV_TASK_INPUT:-"{}"}"
           deploy_type="$(${pkgs.jq}/bin/jq -r '.type // "preview"' <<<"$input")"
           url_env_key="$(${pkgs.jq}/bin/jq -r '.urlEnvKey // .url_env_key // ${builtins.toJSON urlEnvKey}' <<<"$input")"
@@ -81,88 +69,6 @@ let
               exit 1
               ;;
           esac
-
-          ${
-            if isStatic then
-              ""
-            else
-              ''
-                if [ -z "''${VERCEL_TOKEN:-}" ]; then
-                  echo "Vercel token is unavailable; delegating missing-auth reporting to ci-tools." >&2
-                else
-                # Ensure native Node modules (e.g. sharp) can find libstdc++ on NixOS.
-                export LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-
-                ${lib.concatStringsSep "\n                " (
-                  lib.mapAttrsToList (k: v: "export ${k}=${lib.escapeShellArg v}") extraEnv
-                )}
-
-                scope_args=()
-                ${lib.optionalString (scopeEnv != null) ''
-                  if [ -n "''${${scopeEnv}:-}" ]; then
-                    scope_args+=(--scope "''${${scopeEnv}}")
-                  fi
-                ''}
-
-                case "$deploy_type" in
-                  prod)
-                    pull_env="production"
-                    build_flag="--prod"
-                    ;;
-                  pr|preview)
-                    pull_env="preview"
-                    build_flag=""
-                    ;;
-                esac
-
-                echo "Pulling Vercel project settings and env for ${name} ($pull_env)..."
-                ${pkgs.bun}/bin/bunx vercel pull --yes --environment "$pull_env" "''${scope_args[@]}" --token "$VERCEL_TOKEN"
-
-                if [ "${cwd}" != "." ] && [ -f ".vercel/project.json" ]; then
-                  ${pkgs.jq}/bin/jq --arg rd "${cwd}" '.settings.rootDirectory = $rd' .vercel/project.json > .vercel/project.json.tmp \
-                    && mv .vercel/project.json.tmp .vercel/project.json
-                fi
-
-                vercel_json="${cwd}/vercel.json"
-                original_vercel_json=""
-                cleanup_vercel_json() {
-                  if [ -n "$original_vercel_json" ]; then
-                    echo "$original_vercel_json" > "$vercel_json"
-                  elif [ -f "$vercel_json" ] && [ "''${_vercel_json_created:-}" = "1" ]; then
-                    rm -f "$vercel_json"
-                  fi
-                }
-
-                cleanup() {
-                  cleanup_vercel_json
-                  rm -rf .vercel
-                }
-                trap cleanup EXIT
-
-                if [ -f "$vercel_json" ]; then
-                  original_vercel_json="$(cat "$vercel_json")"
-                  ${pkgs.jq}/bin/jq '. + {"installCommand": "true"}' "$vercel_json" > "$vercel_json.tmp" && mv "$vercel_json.tmp" "$vercel_json"
-                else
-                  echo '{"installCommand":"true"}' > "$vercel_json"
-                  _vercel_json_created=1
-                fi
-
-                echo "Building ${name} locally with vercel build..."
-                if [ -n "$build_flag" ]; then
-                  ${pkgs.bun}/bin/bunx vercel build --yes $build_flag "''${scope_args[@]}" --token "$VERCEL_TOKEN"
-                else
-                  ${pkgs.bun}/bin/bunx vercel build --yes "''${scope_args[@]}" --token "$VERCEL_TOKEN"
-                fi
-
-                cleanup_vercel_json
-
-                if [ ! -d ".vercel/output" ]; then
-                  echo "Error: Missing prebuilt output directory: .vercel/output" >&2
-                  exit 1
-                fi
-                fi
-              ''
-          }
 
           args=(
             deploy vercel
@@ -201,6 +107,19 @@ let
           ${lib.optionalString (protectionBypassEnv != null) ''
             args+=(--protection-bypass-env ${lib.escapeShellArg protectionBypassEnv})
           ''}
+          ${
+            if isStatic then
+              ""
+            else
+              ''
+                args+=(--build-prebuilt-output)
+                args+=(--vercel-root-directory ${lib.escapeShellArg cwd})
+                args+=(--build-env "LD_LIBRARY_PATH=${pkgs.stdenv.cc.cc.lib}/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}")
+                ${lib.concatStringsSep "\n                " (
+                  lib.mapAttrsToList (k: v: "args+=(--build-env ${lib.escapeShellArg "${k}=${v}"})") extraEnv
+                )}
+              ''
+          }
 
           if [ -n "''${WORKFLOW_REPORT_OUTPUT_FILE:-}" ]; then
             args+=(--workflow-report-output-file "$WORKFLOW_REPORT_OUTPUT_FILE")

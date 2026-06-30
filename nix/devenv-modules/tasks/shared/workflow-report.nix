@@ -2,7 +2,9 @@
 #
 # CI should only pass GitHub event context and paths through environment
 # variables; record collection, comment rendering, and publication live here.
-{ ciToolsBin ? null }:
+{
+  ciToolsBin ? null,
+}:
 { pkgs, lib, ... }:
 let
   root = ../../../..;

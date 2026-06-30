@@ -443,6 +443,22 @@ const vercelDeployCommand = Command.make(
       Options.withDescription('Optional env var name for the final deploy URL'),
       Options.optional,
     ),
+    buildPrebuiltOutput: Options.boolean('build-prebuilt-output').pipe(
+      Options.withDescription('Run vercel pull/build before deploying a prebuilt-output artifact'),
+      Options.withDefault(false),
+    ),
+    vercelRootDirectory: Options.text('vercel-root-directory').pipe(
+      Options.withDescription(
+        'Optional Vercel project rootDirectory used while building prebuilt output',
+      ),
+      Options.optional,
+    ),
+    buildEnv: Options.text('build-env').pipe(
+      Options.withDescription(
+        'Environment variable for local vercel build (KEY=VALUE, repeatable)',
+      ),
+      Options.repeated,
+    ),
     vercelBin: Options.text('vercel-bin').pipe(
       Options.withDescription('Vercel CLI binary path'),
       Options.withDefault('vercel'),
@@ -487,6 +503,9 @@ const vercelDeployCommand = Command.make(
       githubOutputFile: optionToUndefined(opts.githubOutputFile),
       githubEnvFile: optionToUndefined(opts.githubEnvFile),
       urlEnvKey: optionToUndefined(opts.urlEnvKey),
+      buildPrebuiltOutput: opts.buildPrebuiltOutput,
+      vercelRootDirectory: optionToUndefined(opts.vercelRootDirectory),
+      buildEnv: opts.buildEnv,
       createdAtUtc: optionToUndefined(opts.createdAtUtc),
       e2eVerifyPath: optionToUndefined(opts.e2eVerifyPath),
       e2eVerifyText: optionToUndefined(opts.e2eVerifyText),

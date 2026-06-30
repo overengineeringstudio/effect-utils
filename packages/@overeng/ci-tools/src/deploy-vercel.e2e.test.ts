@@ -126,8 +126,10 @@ describe('ci-tools deploy vercel', () => {
     const binDir = join(root, 'bin')
     mkdirSync(artifactDir)
     mkdirSync(binDir)
+    mkdirSync(join(root, 'app'))
     writeFileSync(join(artifactDir, 'index.html'), 'vercel static marker')
     writeFileSync(join(artifactDir, '.well-known'), 'dotfile marker')
+    writeFileSync(join(root, 'app', 'package.json'), '{"name":"fixture-app"}\n')
     const logPath = join(root, 'vercel.log')
     const fakeVercelBin = join(binDir, 'vercel')
     writeFileSync(
@@ -135,9 +137,26 @@ describe('ci-tools deploy vercel', () => {
       `#!/usr/bin/env bash
 set -euo pipefail
 printf 'cwd=%s VERCEL_PROJECT_ID=%s VERCEL_ORG_ID=%s args=%s\\n' "$PWD" "\${VERCEL_PROJECT_ID:-}" "\${VERCEL_ORG_ID:-}" "$*" >> "${logPath}"
+if [ "\${1:-}" = "pull" ]; then
+  mkdir -p .vercel
+  printf '{"settings":{}}\\n' > .vercel/project.json
+  exit 0
+fi
+if [ "\${1:-}" = "build" ]; then
+  test -f app/vercel.json
+  grep -q '"installCommand":"true"' app/vercel.json
+  grep -q '"rootDirectory":"app"' .vercel/project.json
+  test "\${BUILD_MARKER:-}" = "ci-tools"
+  mkdir -p .vercel/output/static
+  printf '{"version":3}\\n' > .vercel/output/config.json
+  printf 'built marker\\n' > .vercel/output/static/index.html
+  exit 0
+fi
 if [ "\${1:-}" = "deploy" ]; then
   test -f .vercel/output/static/index.html
-  test -f .vercel/output/static/.well-known
+  if [ "\${FAKE_VERCEL_REQUIRE_DOTFILE:-1}" = "1" ]; then
+    test -f .vercel/output/static/.well-known
+  fi
   if [ "\${FAKE_VERCEL_MODE:-success}" = "no-url" ]; then
     printf 'Deployment completed without URL\\n'
     exit 0
@@ -229,6 +248,92 @@ exit 1
       expect(readFileSync(githubEnvFile, 'utf8')).toContain(
         'WEB_URL=https://web-pr-123-team.vercel.app/',
       )
+    } finally {
+      rmSync(workspace.root, { recursive: true, force: true })
+    }
+  })
+
+  it('runs Vercel pull/build for build-mode prebuilt output before deploy', async () => {
+    apiMode = 'ok'
+    const workspace = makeWorkspace()
+    const reportFile = join(workspace.root, 'report.jsonl')
+    try {
+      const result = await runCiTools({
+        workdir: workspace.root,
+        fakeVercelBin: workspace.fakeVercelBin,
+        reportFile,
+        args: [
+          '--target',
+          'app',
+          '--artifact-dir',
+          join(workspace.root, '.vercel', 'output'),
+          '--artifact-kind',
+          'prebuilt-output',
+          '--mode',
+          'prod',
+          '--build-prebuilt-output',
+          '--vercel-root-directory',
+          'app',
+          '--build-env',
+          'BUILD_MARKER=ci-tools',
+          '--scope-env',
+          'VERCEL_SCOPE',
+        ],
+        env: { FAKE_VERCEL_REQUIRE_DOTFILE: '0' },
+      })
+      if (result.status !== 0) {
+        console.error({ stdout: result.stdout, stderr: result.stderr })
+      }
+      expect(result.status).toBe(0)
+      expect(result.stdout).toContain('Pulling Vercel project settings and env for app')
+      expect(result.stdout).toContain('Building app locally with vercel build')
+      const log = readFileSync(workspace.logPath, 'utf8')
+      expect(log).toContain(
+        'args=pull --yes --environment production --scope fake-scope --token fake-token',
+      )
+      expect(log).toContain('args=build --yes --prod --scope fake-scope --token fake-token')
+      expect(log).toContain(
+        'args=deploy --prebuilt --yes --prod --scope fake-scope --token fake-token',
+      )
+      expect(existsSync(join(workspace.root, 'app', 'vercel.json'))).toBe(false)
+      expect(existsSync(join(workspace.root, '.vercel'))).toBe(false)
+      expect(readRecord(reportFile).data).toMatchObject({
+        provider: 'vercel',
+        target: 'app',
+        mode: 'prod',
+      })
+    } finally {
+      rmSync(workspace.root, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects build-mode orchestration for static artifacts', async () => {
+    apiMode = 'ok'
+    const workspace = makeWorkspace()
+    const reportFile = join(workspace.root, 'report.jsonl')
+    try {
+      const result = await runCiTools({
+        workdir: workspace.root,
+        fakeVercelBin: workspace.fakeVercelBin,
+        reportFile,
+        args: [
+          '--target',
+          'web',
+          '--artifact-dir',
+          workspace.artifactDir,
+          '--artifact-kind',
+          'static',
+          '--mode',
+          'preview',
+          '--build-prebuilt-output',
+        ],
+      })
+      expect(result.status).not.toBe(0)
+      expect(existsSync(workspace.logPath)).toBe(false)
+      expect(readRecord(reportFile).data).toMatchObject({
+        errorKind: 'ProviderOperationFailed',
+        retryable: false,
+      })
     } finally {
       rmSync(workspace.root, { recursive: true, force: true })
     }

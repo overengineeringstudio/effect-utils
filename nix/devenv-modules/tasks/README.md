@@ -49,6 +49,17 @@ imports = [
 - `ts.nix` - TypeScript tasks (`ts:check`, `ts:check:strict`, build/watch/clean helpers)
   - `ts:check`, `ts:check:strict`, `ts:build`, `ts:build-watch`, and `ts:clean` default to the Nix-managed `tsgo` binary; `ts:emit` keeps using JavaScript `tsc` for compiler-API-backed tsconfig filtering and no-check emit.
   - `ts:check:strict` inherits repo-local `ts:check.after` hooks so strict CI stays aligned with consumer generators
+- `vercel.nix` - Vercel deploy tasks
+  - Static and build-mode deploys delegate provider behavior to `ci-tools deploy vercel`.
+  - Build-mode tasks pass root-directory/build-env config to `ci-tools`; `ci-tools`
+    owns `vercel pull`, `vercel build`, prebuilt output validation, deploy,
+    aliasing, workflow-report records, and GitHub outputs.
+- `workflow-report.nix` - Workflow-report tasks
+  - Provides `workflow-report:collect-bundle`,
+    `workflow-report:render-comment-body`, and `workflow-report:publish`.
+  - CI should pass event context and paths through environment variables while
+    these tasks own `ci-tools workflow-report ...` invocation and PR comment
+    lookup/publication behavior.
 - `bun.nix` - Bun tasks (legacy)
 - `context.nix` - Context directory tasks
 - `lint-genie.nix` - Genie lint tasks
@@ -77,6 +88,8 @@ They assume the effect-utils repo structure and are not exported in flake.nix.
 Helper functions used by task modules:
 
 - `cache.nix` - Task caching utilities
+- `cli-guard.nix` - Guarded task-owned CLI wrappers
+- `trace.nix` - Task tracing wrappers
 
 ## Adding New Tasks
 

@@ -20,6 +20,11 @@ All notable changes to this project will be documented in this file.
   and PR comment publication, and regenerate CI to delegate deploy-preview
   reporting through those tasks.
 
+- **devenv deploy tasks / @overeng/ci-tools**: Move Vercel build-mode
+  `vercel pull` / `vercel build` orchestration, root-directory patching,
+  temporary install-command overrides, and prebuilt output validation into
+  `ci-tools deploy vercel`, leaving the devenv task as thin config delegation.
+
 - **CI**: Collapse guarded live Netlify and Vercel deploy E2Es into one shared
   live deploy job with common setup.
 

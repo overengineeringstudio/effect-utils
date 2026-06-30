@@ -251,7 +251,7 @@ export class ProviderOperationFailed extends Schema.TaggedError<ProviderOperatio
   '@overeng/ci-tools/deploy/ProviderOperationFailed',
 )('ProviderOperationFailed', {
   ...DeployFailureFields,
-  operation: Schema.Literal('resolve-project', 'deploy', 'alias', 'verify', 'cleanup'),
+  operation: Schema.Literal('resolve-project', 'prepare', 'deploy', 'alias', 'verify', 'cleanup'),
   transient: Schema.Boolean,
 }) {
   override get message(): string {
