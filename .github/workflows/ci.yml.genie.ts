@@ -40,7 +40,7 @@ import {
   validateNixStoreStep,
   defaultRefPolicyCheckJob,
 } from '../../genie/ci-workflow.ts'
-import { type CIJobName } from '../../genie/ci.ts'
+import { type CoreCIJobName } from '../../genie/ci.ts'
 import { nixOnlyPackages } from '../../genie/packages.ts'
 import {
   githubWorkflowEvent,
@@ -469,9 +469,9 @@ const nativeDepPolicyAuditStep = {
   ].join('\n'),
 } as const
 
-// Jobs keyed by CIJobName for type safety with required status checks
+// Core product jobs keyed by the shared Genie CI source of truth.
 const jobs: Record<
-  CIJobName,
+  CoreCIJobName,
   ReturnType<typeof job> | ReturnType<typeof multiPlatformJob> | typeof cargoJob
 > = {
   typecheck: job({
@@ -604,7 +604,8 @@ const nixClosureMeasurementTargets = [
   },
 ] as const
 
-// Non-required jobs (separate from CIJobName — not required status checks)
+// Non-core jobs are kept outside the typed product-job block but still tracked
+// in genie/ci.ts for required-check policy.
 const extraJobs: Record<string, any> = {
   'devenv-perf': {
     ...devenvPerfJob({
