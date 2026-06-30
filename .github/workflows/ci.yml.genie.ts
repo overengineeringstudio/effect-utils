@@ -5,6 +5,7 @@ import {
   cachixCliBuildStep,
   cachixStep,
   checkoutStep,
+  prepareCiScriptsStep,
   notifyAlignmentJob,
   evictCachedPnpmDepsStep,
   pnpmBuilderContractStep,
@@ -51,6 +52,7 @@ const workflowReportFlakeRef =
 
 const baseSteps = [
   checkoutStep(),
+  prepareCiScriptsStep,
   ciMeasurementBaselineCheckoutStep,
   installNixStep(),
   cachixCliBuildStep,
@@ -356,6 +358,7 @@ const multiPlatformJob = (step: { name: string; run: string }) => ({
 
 const strictNixJobBaseSteps = [
   checkoutStep(),
+  prepareCiScriptsStep,
   ciMeasurementBaselineCheckoutStep,
   installNixStep(),
   cachixCliBuildStep,

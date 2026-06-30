@@ -131,13 +131,51 @@ const megarepoTaskModuleSource = readFileSync(
 )
 
 describe('ci workflow retry helpers', () => {
-  it('inlines the retry helper for bootstrap-safe downstream imports', () => {
-    expect(ciWorkflowSource).toContain('const nixGcRaceRetryScript = String.raw')
-    expect(ciWorkflowSource).toContain('Keep helper script bodies inline')
-    expect(ciWorkflowSource).toContain('__nix_gc_retry_helper=$(mktemp)')
-    expect(ciWorkflowSource).toContain('run_nix_gc_race_retry')
+  it('emits compact calls to the checked-in retry helper script', () => {
+    expect(ciWorkflowSource).toContain("defaultCiRuntimeScriptsDir = 'genie/ci-scripts'")
+    expect(ciWorkflowSource).toContain(
+      "preparedCiRuntimeScriptsDir = '${{ runner.temp }}/genie-ci-scripts'",
+    )
+    expect(ciWorkflowSource).toContain('prepareCiScriptsStep')
+    expect(ciWorkflowSource).toContain('createRunDevenvTasksBefore')
+    expect(ciWorkflowSource).toContain('run-with-nix-gc-race-retry.sh')
+    expect(ciWorkflowSource).not.toContain('const nixGcRaceRetryScript = String.raw')
+    expect(generatedCiWorkflowYamlSource).not.toContain('__nix_gc_retry_helper=$(mktemp)')
+    expect(generatedCiWorkflowYamlSource).toContain('run-with-nix-gc-race-retry.sh')
+    expect(nixGcRaceRetryScriptSource).toContain('run_nix_gc_race_retry')
+    expect(nixGcRaceRetryScriptSource).toContain('"$@" > >(tee -a "$log")')
+    expect(nixGcRaceRetryScriptSource).not.toContain('eval "$command"')
     expect(nixGcRaceRetryScriptSource).toContain("tr '\\r\\n' '  ' < \"$log\"")
+    expect(nixGcRaceRetryScriptSource).toContain('repair_nix_daemon')
     expect(nixGcRaceRetryScriptSource).not.toContain("awk 'BEGIN { ORS=")
+  })
+
+  it('keeps the retry helper script path configurable for downstream workflows', () => {
+    expect(ciWorkflowSource).toContain('createRunDevenvTasksBefore')
+    expect(ciWorkflowSource).toContain('opts.scriptsDir === undefined')
+    expect(ciWorkflowSource).not.toContain('if [ ! -x "$__genie_ci_retry_script" ]')
+  })
+
+  it('prepares retry helpers before generated jobs use the prepared retry script', () => {
+    const jobBlocks = generatedCiWorkflowYamlSource.split(/\n  [a-zA-Z0-9_-]+:\n/g).slice(1)
+
+    for (const jobBlock of jobBlocks) {
+      const helperIndex = jobBlock.indexOf(
+        '${{ runner.temp }}/genie-ci-scripts/run-with-nix-gc-race-retry.sh',
+      )
+      if (helperIndex < 0) continue
+
+      const checkoutIndex = jobBlock.indexOf('uses: actions/checkout@v6')
+      const prepareIndex = jobBlock.indexOf('Prepare CI helper scripts')
+      const baselineCheckoutIndex = jobBlock.indexOf('Checkout CI measurement baseline ref')
+      expect(checkoutIndex).toBeGreaterThanOrEqual(0)
+      expect(checkoutIndex).toBeLessThan(helperIndex)
+      expect(prepareIndex).toBeGreaterThanOrEqual(0)
+      expect(prepareIndex).toBeLessThan(helperIndex)
+      if (baselineCheckoutIndex >= 0) {
+        expect(prepareIndex).toBeLessThan(baselineCheckoutIndex)
+      }
+    }
   })
 })
 

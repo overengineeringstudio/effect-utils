@@ -4,6 +4,7 @@ import { applyMegarepoLockStep } from './megarepo.ts'
 import {
   bashShellDefaults,
   cachixHostsFromBinaryCaches,
+  defaultCiRuntimeScriptsDir,
   jobLocalCiDiagnosticsDir,
   jobLocalPnpmHome,
   jobLocalPnpmStatePaths,
@@ -16,6 +17,7 @@ import {
   shellSingleQuote,
   standardCIEnv,
   withGcRaceRetry,
+  preparedCiRuntimeScriptsDir,
   workspaceLocalNixCachePath,
   workspaceLocalNixCacheRoot,
   type NixBinaryCache,
@@ -109,6 +111,24 @@ export const checkoutStep = (opts?: { repository?: string; ref?: string; path?: 
   uses: 'actions/checkout@v6' as const,
   ...(opts !== undefined && Object.keys(opts).length > 0 ? { with: opts } : {}),
 })
+
+export const prepareCiScriptsStep = {
+  name: 'Prepare CI helper scripts',
+  shell: 'bash',
+  run: [
+    'set -euo pipefail',
+    `scripts_src=${shellSingleQuote(defaultCiRuntimeScriptsDir)}`,
+    `scripts_dst=${shellSingleQuote(preparedCiRuntimeScriptsDir)}`,
+    'if [ ! -d "$scripts_src" ]; then',
+    '  echo "::error::CI helper script directory is missing: $scripts_src"',
+    '  exit 1',
+    'fi',
+    'rm -rf "$scripts_dst"',
+    'mkdir -p "$scripts_dst"',
+    'cp -R "$scripts_src/." "$scripts_dst/"',
+    'chmod +x "$scripts_dst"/*.sh',
+  ].join('\n'),
+} as const
 
 /** Mint a GitHub App installation token for downstream private-repo fetches. */
 export const githubAppInstallationTokenStep = (opts: {
@@ -627,6 +647,7 @@ export const standardSelfHostedPnpmCiPrepSteps = (opts?: {
 }) =>
   [
     checkoutStep(opts?.checkout),
+    prepareCiScriptsStep,
     installNixStep(opts?.installNix),
     preparePinnedDevenvStep,
     nixCacheSetupStep,

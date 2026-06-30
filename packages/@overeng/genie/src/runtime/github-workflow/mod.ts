@@ -301,6 +301,8 @@ const githubExpressionEnd = '}}'
 // https://docs.github.com/en/actions/reference/limits
 const githubWorkflowMatrixJobLimit = 256
 const githubWorkflowCheckRunsPerSuiteLimit = 50_000
+const githubWorkflowAdmissionSizeLimitBytes = 512 * 1024
+const githubWorkflowAdmissionSizeWarnBytes = 480 * 1024
 const githubHostedJobTimeoutMinutesLimit = 6 * 60
 const selfHostedJobTimeoutMinutesLimit = 5 * 24 * 60
 const githubHostedRunnerLabels = new Set([
@@ -569,6 +571,95 @@ const validateDocumentedGitHubLimits = ({
   return issues
 }
 
+const utf8ByteLength = (value: string) => {
+  let bytes = 0
+  for (let index = 0; index < value.length; index += 1) {
+    const codePoint = value.codePointAt(index) ?? 0
+    if (codePoint > 0xffff) index += 1
+    bytes += codePoint <= 0x7f ? 1 : codePoint <= 0x7ff ? 2 : codePoint <= 0xffff ? 3 : 4
+  }
+  return bytes
+}
+
+const formatBytes = (bytes: number) => `${bytes.toLocaleString('en-US')} bytes`
+
+const validateGitHubWorkflowAdmissionSize = ({
+  yamlContent,
+  location,
+}: {
+  yamlContent: string
+  location: string
+}): GenieValidationIssue[] => {
+  const sizeBytes = utf8ByteLength(yamlContent)
+
+  if (sizeBytes > githubWorkflowAdmissionSizeLimitBytes) {
+    return [
+      {
+        severity: 'error',
+        packageName: location,
+        dependency: 'workflow',
+        message: `Workflow serializes to ${formatBytes(sizeBytes)}, exceeding the observed GitHub Actions workflow admission limit of ${formatBytes(githubWorkflowAdmissionSizeLimitBytes)}. GitHub can silently skip creating runs for oversized workflow files; reduce generated YAML size before pushing.`,
+        rule: 'github-workflow-admission-size-limit',
+      },
+    ]
+  }
+
+  if (sizeBytes >= githubWorkflowAdmissionSizeWarnBytes) {
+    return [
+      {
+        severity: 'warning',
+        packageName: location,
+        dependency: 'workflow',
+        message: `Workflow serializes to ${formatBytes(sizeBytes)}, leaving ${formatBytes(githubWorkflowAdmissionSizeLimitBytes - sizeBytes)} before the observed GitHub Actions workflow admission limit of ${formatBytes(githubWorkflowAdmissionSizeLimitBytes)}.`,
+        rule: 'github-workflow-admission-size-margin',
+      },
+    ]
+  }
+
+  return []
+}
+
+const preparedCiRetryScriptPath =
+  '${{ runner.temp }}/genie-ci-scripts/run-with-nix-gc-race-retry.sh'
+const prepareCiScriptsStepName = 'Prepare CI helper scripts'
+
+const stepName = (step: Step): string | undefined =>
+  typeof step.name === 'string' ? step.name : undefined
+
+const stepRun = (step: Step): string | undefined =>
+  'run' in step && typeof step.run === 'string' ? step.run : undefined
+
+const validatePreparedCiRetryScriptSetup = ({
+  args,
+  location,
+}: {
+  args: GitHubWorkflowArgs
+  location: string
+}): GenieValidationIssue[] => {
+  const issues: GenieValidationIssue[] = []
+
+  for (const [jobName, job] of Object.entries(args.jobs)) {
+    const firstRetryScriptUseIndex = job.steps.findIndex(
+      (step) => stepRun(step)?.includes(preparedCiRetryScriptPath) === true,
+    )
+
+    if (firstRetryScriptUseIndex < 0) continue
+
+    const prepareIndex = job.steps.findIndex((step) => stepName(step) === prepareCiScriptsStepName)
+    if (prepareIndex >= 0 && prepareIndex < firstRetryScriptUseIndex) continue
+
+    issues.push({
+      severity: 'error',
+      packageName: location,
+      dependency: `jobs.${jobName}.steps[${firstRetryScriptUseIndex}]`,
+      message: `jobs.${jobName} uses the prepared CI retry helper at ${preparedCiRetryScriptPath} without a preceding "${prepareCiScriptsStepName}" step. Add the CI runtime support preparation step before retry-wrapped commands, especially before any alternate checkout can replace the workspace.`,
+      rule: 'github-workflow-prepared-ci-retry-script-setup',
+    })
+  }
+
+  return issues
+}
+
 const validateWorkflow = ({
   args,
   yamlContent,
@@ -586,6 +677,8 @@ const validateWorkflow = ({
   }
 
   issues.push(...validateDocumentedGitHubLimits({ args, location }))
+  issues.push(...validateGitHubWorkflowAdmissionSize({ yamlContent, location }))
+  issues.push(...validatePreparedCiRetryScriptSetup({ args, location }))
   issues.push(...validateDeterminateNixExtraConf({ args, location }))
   issues.push(
     ...validateGitHubExpressionStrings({
