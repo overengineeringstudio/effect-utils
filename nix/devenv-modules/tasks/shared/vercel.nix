@@ -7,6 +7,7 @@
   buildTaskPrefix ? null,
   aliasSuffix ? null,
   ciToolsBin ? null,
+  vercelCliPkg ? null,
   vercelBin ? null,
 }:
 { lib, pkgs, ... }:
@@ -18,10 +19,12 @@ let
     dirty = true;
   };
   resolvedCiToolsBin = if ciToolsBin == null then "${ciToolsPkg}/bin/ci-tools" else ciToolsBin;
-  defaultVercelBin = pkgs.writeShellScript "ci-tools-vercel" ''
-    exec ${pkgs.bun}/bin/bunx vercel "$@"
-  '';
-  resolvedVercelBin = if vercelBin == null then defaultVercelBin else vercelBin;
+  defaultVercelCliPkg =
+    if vercelCliPkg == null then
+      import (root + "/nix/provider-clis/vercel-cli") { inherit pkgs; }
+    else
+      vercelCliPkg;
+  resolvedVercelBin = if vercelBin == null then "${defaultVercelCliPkg}/bin/vercel" else vercelBin;
   hasDeployments = deployments != [ ];
 
   mkDeployTask =
