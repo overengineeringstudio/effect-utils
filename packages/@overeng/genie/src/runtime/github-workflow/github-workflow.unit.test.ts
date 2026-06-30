@@ -199,6 +199,112 @@ describe('githubWorkflow', () => {
       }).filter((issue) => issue.rule === 'github-workflow-job-timeout-limit'),
     ).toEqual([])
   })
+
+  it('rejects generated workflow YAML above the observed GitHub Actions admission size limit', () => {
+    const issues = getWorkflowValidationIssues({
+      name: 'CI',
+      on: { pull_request: githubWorkflowEvent.all },
+      jobs: {
+        large: {
+          'runs-on': 'ubuntu-latest',
+          steps: [{ run: `echo ${'x'.repeat(512 * 1024)}` }],
+        },
+      },
+    })
+
+    expect(issues).toContainEqual(
+      expect.objectContaining({
+        severity: 'error',
+        packageName: '.github/workflows/ci.yml',
+        dependency: 'workflow',
+        rule: 'github-workflow-admission-size-limit',
+      }),
+    )
+  })
+
+  it('warns when generated workflow YAML is close to the observed admission size limit', () => {
+    const issues = getWorkflowValidationIssues({
+      name: 'CI',
+      on: { pull_request: githubWorkflowEvent.all },
+      jobs: {
+        large: {
+          'runs-on': 'ubuntu-latest',
+          steps: [{ run: `echo ${'x'.repeat(480 * 1024)}` }],
+        },
+      },
+    })
+
+    expect(issues).toContainEqual(
+      expect.objectContaining({
+        severity: 'warning',
+        packageName: '.github/workflows/ci.yml',
+        dependency: 'workflow',
+        rule: 'github-workflow-admission-size-margin',
+      }),
+    )
+    expect(issues.filter((issue) => issue.rule === 'github-workflow-admission-size-limit')).toEqual(
+      [],
+    )
+  })
+
+  it('rejects prepared CI retry script use without the preparation step', () => {
+    const issues = getWorkflowValidationIssues({
+      name: 'CI',
+      on: { pull_request: githubWorkflowEvent.all },
+      jobs: {
+        test: {
+          'runs-on': 'ubuntu-latest',
+          steps: [
+            { uses: 'actions/checkout@v6' },
+            {
+              run: [
+                "__genie_ci_retry_script='${{ runner.temp }}/genie-ci-scripts/run-with-nix-gc-race-retry.sh'",
+                'bash "$__genie_ci_retry_script" test true',
+              ].join('\n'),
+            },
+          ],
+        },
+      },
+    })
+
+    expect(issues).toContainEqual(
+      expect.objectContaining({
+        severity: 'error',
+        packageName: '.github/workflows/ci.yml',
+        dependency: 'jobs.test.steps[1]',
+        rule: 'github-workflow-prepared-ci-retry-script-setup',
+      }),
+    )
+  })
+
+  it('accepts prepared CI retry script use after the preparation step', () => {
+    const issues = getWorkflowValidationIssues({
+      name: 'CI',
+      on: { pull_request: githubWorkflowEvent.all },
+      jobs: {
+        test: {
+          'runs-on': 'ubuntu-latest',
+          steps: [
+            { uses: 'actions/checkout@v6' },
+            {
+              name: 'Prepare CI helper scripts',
+              run: 'echo prepared',
+            },
+            {
+              run: [
+                "__genie_ci_retry_script='${{ runner.temp }}/genie-ci-scripts/run-with-nix-gc-race-retry.sh'",
+                'bash "$__genie_ci_retry_script" test true',
+              ].join('\n'),
+            },
+          ],
+        },
+      },
+    })
+
+    expect(
+      issues.filter((issue) => issue.rule === 'github-workflow-prepared-ci-retry-script-setup'),
+    ).toEqual([])
+  })
 })
 
 describe('determinate-nix-action extra-conf validation', () => {

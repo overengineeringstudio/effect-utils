@@ -1,12 +1,24 @@
-#!/usr/bin/env bash
-# Generated file - DO NOT EDIT
-# Source: nix-gc-race-retry.sh.genie.ts
+import { createGenieOutput, type GenieOutput } from '../../packages/@overeng/genie/src/runtime/core.ts'
 
+const withTrailingNewline = (content: string) => (content.endsWith('\n') ? content : `${content}\n`)
+const dollar = '$'
+
+const textArtifact = (content: string): GenieOutput<string> =>
+  createGenieOutput({
+    data: content,
+    stringify: () => withTrailingNewline(content),
+  })
+
+export const ciWorkflowNixGcRaceRetryScriptPath = 'genie/ci-scripts/nix-gc-race-retry.sh'
+export const ciWorkflowNixGcRaceRetryWrapperPath =
+  'genie/ci-scripts/run-with-nix-gc-race-retry.sh'
+
+export const ciWorkflowNixGcRaceRetryScript = String.raw`#!/usr/bin/env bash
 
 run_nix_gc_race_retry() {
   local task="$1"
-  local max="${NIX_GC_RACE_MAX_RETRIES:-10}"
-  local heartbeat="${CI_PROGRESS_HEARTBEAT_SECONDS:-60}"
+  local max="${dollar}{NIX_GC_RACE_MAX_RETRIES:-10}"
+  local heartbeat="${dollar}{CI_PROGRESS_HEARTBEAT_SECONDS:-60}"
   local attempt=1
   local log rc path start now elapsed hb_pid flattened saw_invalid_path saw_cachix_signature saw_fetch_signature saw_daemon_socket_failure had_errexit
 
@@ -14,19 +26,19 @@ run_nix_gc_race_retry() {
   start="$(date +%s)"
 
   write_summary() {
-    [ -n "${GITHUB_STEP_SUMMARY:-}" ] || return 0
+    [ -n "${dollar}{GITHUB_STEP_SUMMARY:-}" ] || return 0
     {
       echo "### CI Task"
       echo "- Task: $task"
       echo "- Status: $1"
       echo "- Duration: $elapsed s"
       echo "- Attempts: $attempt/$max"
-      [ -z "${2:-}" ] || echo "- Note: $2"
+      [ -z "${dollar}{2:-}" ] || echo "- Note: $2"
     } >> "$GITHUB_STEP_SUMMARY"
   }
 
   repair_nix_daemon() {
-    if [ "${NIX_GC_RACE_SKIP_DAEMON_REPAIR:-0}" = 1 ]; then
+    if [ "${dollar}{NIX_GC_RACE_SKIP_DAEMON_REPAIR:-0}" = 1 ]; then
       echo "::warning::Nix daemon repair skipped by NIX_GC_RACE_SKIP_DAEMON_REPAIR=1"
       return 0
     fi
@@ -141,4 +153,33 @@ run_nix_gc_race_retry() {
   echo "::error::Transient Nix retry exhausted for $task ($max attempts)"
   write_summary failure "Transient Nix retry exhausted"
   return 1
-}
+}`
+
+export const ciWorkflowNixGcRaceRetryWrapperScript = String.raw`#!/usr/bin/env bash
+set -euo pipefail
+
+if [ "$#" -ne 2 ]; then
+  echo "usage: $0 <label> <shell-command>" >&2
+  exit 2
+fi
+
+label="$1"
+command="$2"
+script_dir="$(cd -- "$(dirname -- "${dollar}{BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=genie/ci-scripts/nix-gc-race-retry.sh
+. "$script_dir/nix-gc-race-retry.sh"
+
+run_nix_gc_race_retry "$label" bash -euo pipefail -c "$command"`
+
+export const ciWorkflowSupportFiles = {
+  nixGcRaceRetry: {
+    path: ciWorkflowNixGcRaceRetryScriptPath,
+    output: textArtifact(ciWorkflowNixGcRaceRetryScript),
+  },
+  nixGcRaceRetryWrapper: {
+    path: ciWorkflowNixGcRaceRetryWrapperPath,
+    output: textArtifact(ciWorkflowNixGcRaceRetryWrapperScript),
+  },
+} as const
+
+export type CiWorkflowSupportFiles = typeof ciWorkflowSupportFiles

@@ -79,7 +79,9 @@ export {
   cachixBinaryCache,
   ciWorkflow,
   ciWorkflowConcurrency,
+  createRunDevenvTasksBefore,
   darwinArm64Runner,
+  defaultCiRuntimeScriptsDir,
   defaultActionlintConfig,
   devenvBinaryCache,
   jobLocalCiDiagnosticsDir,
@@ -90,10 +92,13 @@ export {
   linuxX64Runner,
   nixBinaryCachesExtraConf,
   nixExtraConf,
+  preparedCiRuntimeScriptsDir,
   runDevenvTasksBefore,
   standardCIEnv,
   workspaceLocalNixCachePath,
   workspaceLocalNixCacheRoot,
+  withGcRaceRetry,
+  type GcRaceRetryOptions,
   type NixBinaryCache,
   type RunnerProfile,
 } from './ci-workflow/shared.ts'
@@ -143,6 +148,12 @@ export {
   type WorkflowReportPublisherStepOptions,
 } from './ci-workflow/reporting.ts'
 export {
+  ciWorkflowNixGcRaceRetryScriptPath,
+  ciWorkflowNixGcRaceRetryWrapperPath,
+  ciWorkflowSupportFiles,
+  type CiWorkflowSupportFiles,
+} from './ci-workflow/support-files.ts'
+export {
   appendGitHubAccessTokenToNixConfigStep,
   cachixCliBuildStep,
   cachixStep,
@@ -161,6 +172,7 @@ export {
   pnpmBuilderContractStep,
   pnpmInstallWithDiagnosticsStep,
   pnpmStateSetupStep,
+  prepareCiScriptsStep,
   preparePinnedDevenvStep,
   restoreNixCacheStep,
   restorePnpmStateStep,

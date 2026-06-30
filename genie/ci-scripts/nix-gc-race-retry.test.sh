@@ -181,5 +181,35 @@ exit_code=$?
 set -e
 assert_exit_code 7 "$exit_code" "non-signature failures keep their exit code"
 
+echo "Test 6: executes argv without shell eval"
+argv_fixture="$test_dir/argv-fixture.sh"
+argv_output="$test_dir/argv-output"
+cat > "$argv_fixture" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$1" > "$2"
+EOF
+chmod +x "$argv_fixture"
+CI_PROGRESS_HEARTBEAT_SECONDS=1 NIX_GC_RACE_MAX_RETRIES=1 run_nix_gc_race_retry "argv-fixture" "$argv_fixture" 'literal $HOME value' "$argv_output" >/dev/null
+assert_eq 'literal $HOME value' "$(cat "$argv_output")" "argv command arguments are not shell-expanded"
+
+echo "Test 7: wrapper script delegates shell commands to the retry helper"
+wrapper_attempt_file="$test_dir/wrapper-attempt"
+wrapper_command=$(cat <<EOF
+attempt=1
+if [ -f "$wrapper_attempt_file" ]; then
+  attempt=\$(cat "$wrapper_attempt_file")
+fi
+if [ "\$attempt" -eq 1 ]; then
+  echo 2 > "$wrapper_attempt_file"
+  echo "error: path '/nix/store/wrapper-fixture-path' is not valid" >&2
+  exit 1
+fi
+echo "wrapper recovered"
+EOF
+)
+CI_PROGRESS_HEARTBEAT_SECONDS=1 NIX_GC_RACE_MAX_RETRIES=2 "$ROOT/genie/ci-scripts/run-with-nix-gc-race-retry.sh" "wrapper-fixture" "$wrapper_command" >/dev/null
+assert_eq "2" "$(cat "$wrapper_attempt_file")" "wrapper retry count"
+
 echo ""
 echo "All nix GC race retry helper tests passed"

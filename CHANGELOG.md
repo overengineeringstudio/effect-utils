@@ -41,6 +41,16 @@ All notable changes to this project will be documented in this file.
 - **@overeng/genie**: Validate documented GitHub Actions limits for static
   matrix expansion, check runs per check suite, and explicit job timeouts.
 
+- **@overeng/genie**: Fail generated GitHub workflow validation above the
+  observed 512 KiB Actions admission limit and warn when workflows approach it,
+  so oversized workflows are caught by `genie:check` before GitHub silently
+  skips PR runs.
+
+- **genie/ci-workflow**: Move the Nix transient-failure retry implementation
+  out of generated workflow YAML and into checked-in CI scripts, keeping
+  `runDevenvTasksBefore(...)` as the Genie composition API while shrinking the
+  generated CI workflow well below GitHub's admission limit.
+
 - **nix packages / @overeng/genie**: Refresh the Genie, Megarepo, TUI Stories,
   and Notion MD pnpm-deps fixed-output hashes and keep the native dependency
   policy audit install-free by splitting the policy into a lightweight module.
