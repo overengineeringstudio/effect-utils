@@ -136,6 +136,13 @@ validated in both the runner environment and the target host class with
 entitlement, installation, user/admin approval, lifecycle, run-correlation, and
 event-loss evidence.
 
+The macOS ARM runner-class proof confirms this boundary: a minimal Endpoint
+Security client can compile and link, but an ordinary task process receives
+`ES_NEW_CLIENT_RESULT_ERR_NOT_PRIVILEGED` from `es_new_client`. Therefore the
+public wrapper must not grow an unprivileged macOS exact backend. The only
+release-grade macOS exactness path is a signed/entitled helper that can be
+installed, approved, supervised, and validated as a fleet component.
+
 The product boundary is split. `effect-utils` owns the stable wrapper-facing
 contract: backend selection, helper protocol, process-observation schemas,
 summary evidence, OTLP rendering, fake-helper fixtures, validation tests, and

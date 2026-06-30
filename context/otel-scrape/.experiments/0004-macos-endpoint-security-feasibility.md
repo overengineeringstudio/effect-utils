@@ -32,9 +32,14 @@ Additional macOS ARM runner-class probes on 2026-06-30:
 - `task-eb1b3b57-8d71-4456-b360-2c557ba1e746` completed on the macOS ARM runner class and reported a best-effort Darwin process-tree timeline. The temporary `kqueue` fixture again observed the watched direct child and did not prove unknown-grandchild discovery.
 - `task-b6368721-80e4-4a51-9630-12a2e3180396` found Endpoint Security headers through the runner toolchain, but plain C compilation failed on Objective-C block syntax.
 - `task-576c3d98-80b3-46af-bf7e-ba1a13ecba92` compiled the Endpoint Security include path successfully with `/usr/bin/clang -x objective-c -fblocks`.
+- `task-badc1db4-5c94-470c-88a6-933090e76c7f` compiled and linked a minimal
+  Objective-C Endpoint Security client on the macOS ARM runner class, then ran
+  it as the ordinary task process. `es_new_client` returned
+  `ES_NEW_CLIENT_RESULT_ERR_NOT_PRIVILEGED` and did not create a client.
 - These runner probes validate SDK/toolchain availability and the degraded
-  baseline. They do not validate entitlement, approval, `es_new_client`
-  privilege, event subscription, event-loss handling, or helper supervision.
+  baseline. They also prove that ordinary wrapper/task execution is not a
+  viable exact macOS backend. They do not validate entitlement, approval,
+  event subscription, event-loss handling, or helper supervision.
 
 ## Conclusion
 
@@ -42,8 +47,11 @@ macOS exactness remains capability-gated. `kqueue`/`EVFILT_PROC` is suitable
 only for degraded direct-child evidence. Endpoint Security remains the
 principled candidate because it can observe fork/exec/exit and expose loss
 counters, but exact support requires a dotfiles-owned signed/entitled helper
-rollout with approval/install evidence and CI/runner-class validation. Until
-that exists, macOS ARM support must be documented as degraded.
+rollout with approval/install evidence and CI/runner-class validation. The
+macOS ARM runner definitively rejects the unprivileged wrapper path through
+`ES_NEW_CLIENT_RESULT_ERR_NOT_PRIVILEGED`, so there is no intermediate
+unprivileged exact backend to pursue. Until the helper exists, macOS ARM support
+must be documented as degraded.
 
 ## VRS Impact
 
