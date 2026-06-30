@@ -6,6 +6,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   readdirSync,
   rmSync,
   statSync,
@@ -64,6 +65,9 @@ export type VercelDeployCommandOptions = {
   readonly githubOutputFile?: string | undefined
   readonly githubEnvFile?: string | undefined
   readonly urlEnvKey?: string | undefined
+  readonly buildPrebuiltOutput: boolean
+  readonly vercelRootDirectory?: string | undefined
+  readonly buildEnv: readonly string[]
   readonly vercelBin: string
   readonly vercelApiBaseUrl: string
   readonly createdAtUtc?: string | undefined
@@ -84,6 +88,7 @@ const VercelProjectFileJson = Schema.parseJson(
     orgId: Schema.NonEmptyTrimmedString,
   }),
 )
+const JsonUnknown = Schema.parseJson(Schema.Unknown)
 
 const isoNow = () => new Date().toISOString()
 
@@ -178,6 +183,27 @@ const runVercelCommand = Effect.fn('ci-tools.deploy.vercel.command')(
 
 const vercelScopeArgs = (scope: string | undefined) =>
   scope === undefined ? [] : ['--scope', scope]
+
+const buildEnvRecord = Effect.fn('ci-tools.deploy.vercel.build-env')(function* (opts: {
+  readonly target: string
+  readonly entries: readonly string[]
+}) {
+  const env: Record<string, string> = {}
+  for (const entry of opts.entries) {
+    const separator = entry.indexOf('=')
+    if (separator <= 0) {
+      return yield* new ProviderOperationFailed({
+        provider: 'vercel',
+        target: opts.target,
+        operation: 'prepare',
+        transient: false,
+        message: `Invalid --build-env entry: ${entry}`,
+      })
+    }
+    env[entry.slice(0, separator)] = entry.slice(separator + 1)
+  }
+  return env
+})
 
 const fetchVercelJson = Effect.fn('ci-tools.deploy.vercel.fetch-json')(function* (opts: {
   readonly target: string
@@ -327,6 +353,224 @@ const preparePrebuiltOutput = Effect.fn('ci-tools.deploy.vercel.prepare-prebuilt
   },
 )
 
+const patchProjectRootDirectory = Effect.fn('ci-tools.deploy.vercel.patch-root-directory')(
+  function* (opts: { readonly target: string; readonly rootDirectory: string | undefined }) {
+    if (opts.rootDirectory === undefined || opts.rootDirectory === '.') return
+    const projectJsonPath = join('.vercel', 'project.json')
+    if (existsSync(projectJsonPath) === false) return
+    const decodedJson = Schema.decodeUnknownEither(JsonUnknown)(
+      readFileSync(projectJsonPath, 'utf8'),
+    )
+    if (Either.isLeft(decodedJson) === true) {
+      return yield* new ProviderOperationFailed({
+        provider: 'vercel',
+        target: opts.target,
+        operation: 'prepare',
+        transient: false,
+        message: 'Vercel project.json could not be decoded',
+        diagnostics: { cause: String(decodedJson.left) },
+      })
+    }
+    const decoded = decodedJson.right
+    const projectJson =
+      typeof decoded === 'object' && decoded !== null && Array.isArray(decoded) === false
+        ? decoded
+        : {}
+    const rawSettings = 'settings' in projectJson ? projectJson.settings : undefined
+    const settings =
+      typeof rawSettings === 'object' &&
+      rawSettings !== null &&
+      Array.isArray(rawSettings) === false
+        ? rawSettings
+        : {}
+    const encodedJson = Schema.encodeEither(JsonUnknown)({
+      ...projectJson,
+      settings: {
+        ...settings,
+        rootDirectory: opts.rootDirectory,
+      },
+    })
+    if (Either.isLeft(encodedJson) === true) {
+      return yield* new ProviderOperationFailed({
+        provider: 'vercel',
+        target: opts.target,
+        operation: 'prepare',
+        transient: false,
+        message: 'Vercel project.json could not be encoded',
+        diagnostics: { cause: String(encodedJson.left) },
+      })
+    }
+    yield* Effect.sync(() => {
+      writeFileSync(projectJsonPath, `${encodedJson.right}\n`)
+    })
+  },
+)
+
+const withTemporaryInstallCommand = Effect.fn('ci-tools.deploy.vercel.install-command')(function* <
+  A,
+  E,
+  R,
+>(opts: {
+  readonly target: string
+  readonly rootDirectory: string
+  readonly effect: Effect.Effect<A, E, R>
+}) {
+  const vercelJsonPath = join(opts.rootDirectory, 'vercel.json')
+  const original =
+    existsSync(vercelJsonPath) === true ? readFileSync(vercelJsonPath, 'utf8') : undefined
+  const base =
+    original === undefined
+      ? Either.right({})
+      : (() => {
+          const decodedJson = Schema.decodeUnknownEither(JsonUnknown)(original)
+          if (Either.isLeft(decodedJson) === true) return decodedJson
+          const decoded = decodedJson.right
+          return Either.right(
+            typeof decoded === 'object' && decoded !== null && Array.isArray(decoded) === false
+              ? decoded
+              : {},
+          )
+        })()
+  if (Either.isLeft(base) === true) {
+    return yield* new ProviderOperationFailed({
+      provider: 'vercel',
+      target: opts.target,
+      operation: 'prepare',
+      transient: false,
+      message: 'Vercel vercel.json could not be decoded',
+      diagnostics: { cause: String(base.left) },
+    })
+  }
+  const updatedJson = Schema.encodeEither(JsonUnknown)({ ...base.right, installCommand: 'true' })
+  if (Either.isLeft(updatedJson) === true) {
+    return yield* new ProviderOperationFailed({
+      provider: 'vercel',
+      target: opts.target,
+      operation: 'prepare',
+      transient: false,
+      message: 'Vercel vercel.json could not be encoded',
+      diagnostics: { cause: String(updatedJson.left) },
+    })
+  }
+  const updated = updatedJson.right
+  yield* Effect.sync(() => {
+    if (original === undefined) {
+      mkdirSync(opts.rootDirectory, { recursive: true })
+      writeFileSync(vercelJsonPath, `${updated}\n`)
+      return
+    }
+    writeFileSync(vercelJsonPath, `${updated}\n`)
+  })
+  return yield* opts.effect.pipe(
+    Effect.ensuring(
+      Effect.sync(() => {
+        if (original === undefined) {
+          rmSync(vercelJsonPath, { force: true })
+        } else {
+          writeFileSync(vercelJsonPath, original)
+        }
+      }),
+    ),
+  )
+})
+
+const prepareLocalPrebuiltOutput = Effect.fn('ci-tools.deploy.vercel.prepare-local-prebuilt')(
+  function* (opts: {
+    readonly target: string
+    readonly mode: 'prod' | 'pr' | 'preview'
+    readonly artifactDir: string
+    readonly rootDirectory: string | undefined
+    readonly vercelBin: string
+    readonly authToken: string
+    readonly projectId: string
+    readonly orgId: string
+    readonly teamId: string | undefined
+    readonly scope: string | undefined
+    readonly buildEnv: Readonly<Record<string, string>>
+  }) {
+    const pullEnvironment = opts.mode === 'prod' ? 'production' : 'preview'
+    const buildArgs = [
+      'build',
+      '--yes',
+      ...(opts.mode === 'prod' ? ['--prod'] : []),
+      ...vercelScopeArgs(opts.scope),
+      '--token',
+      opts.authToken,
+    ]
+    const commandEnv = {
+      ...opts.buildEnv,
+      VERCEL_PROJECT_ID: opts.projectId,
+      VERCEL_ORG_ID: opts.orgId,
+      ...(opts.teamId === undefined ? {} : { VERCEL_TEAM_ID: opts.teamId }),
+    }
+
+    process.stdout.write(
+      `Pulling Vercel project settings and env for ${opts.target} (${pullEnvironment})...\n`,
+    )
+    const pullResult = yield* runVercelCommand({
+      vercelBin: opts.vercelBin,
+      cwd: process.cwd(),
+      args: [
+        'pull',
+        '--yes',
+        '--environment',
+        pullEnvironment,
+        ...vercelScopeArgs(opts.scope),
+        '--token',
+        opts.authToken,
+      ],
+      env: commandEnv,
+    })
+    if (pullResult.status !== 0) {
+      return yield* classifyVercelFailure({
+        target: opts.target,
+        status: pullResult.status,
+        stdout: pullResult.stdout,
+        stderr: pullResult.stderr,
+        authToken: opts.authToken,
+        operation: 'prepare',
+      })
+    }
+
+    yield* patchProjectRootDirectory({ target: opts.target, rootDirectory: opts.rootDirectory })
+
+    process.stdout.write(`Building ${opts.target} locally with vercel build...\n`)
+    const rootDirectory = opts.rootDirectory ?? '.'
+    const buildResult = yield* withTemporaryInstallCommand({
+      target: opts.target,
+      rootDirectory,
+      effect: runVercelCommand({
+        vercelBin: opts.vercelBin,
+        cwd: process.cwd(),
+        args: buildArgs,
+        env: commandEnv,
+      }),
+    })
+    if (buildResult.status !== 0) {
+      return yield* classifyVercelFailure({
+        target: opts.target,
+        status: buildResult.status,
+        stdout: buildResult.stdout,
+        stderr: buildResult.stderr,
+        authToken: opts.authToken,
+        operation: 'prepare',
+      })
+    }
+
+    if (
+      existsSync(opts.artifactDir) === false ||
+      statSync(opts.artifactDir).isDirectory() === false
+    ) {
+      return yield* new MissingBuildOutput({
+        provider: 'vercel',
+        target: opts.target,
+        artifactDir: opts.artifactDir,
+        message: `Missing local Vercel prebuilt output at ${opts.artifactDir}`,
+      })
+    }
+  },
+)
+
 const extractDeployUrl = (stdout: string) =>
   stdout.match(/https:\/\/[^\s"]+\.vercel\.app(?:\/[^\s"]*)?/u)?.[0]
 
@@ -336,7 +580,7 @@ const classifyVercelFailure = (opts: {
   readonly stdout: string
   readonly stderr: string
   readonly authToken: string
-  readonly operation: 'deploy' | 'alias' | 'cleanup'
+  readonly operation: 'prepare' | 'deploy' | 'alias' | 'cleanup'
 }) => {
   const sanitizedStderr = redactDeployDiagnosticText(opts.stderr, {
     secretValues: [opts.authToken],
@@ -641,19 +885,6 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
       }),
     )
   }
-  if (
-    existsSync(options.artifactDir) === false ||
-    statSync(options.artifactDir).isDirectory() === false
-  ) {
-    return yield* failWithRecord(
-      new MissingBuildOutput({
-        provider: 'vercel',
-        target: options.target,
-        artifactDir: options.artifactDir,
-        message: `Missing local Vercel static output at ${options.artifactDir}`,
-      }),
-    )
-  }
   const projectId = envValue(options.projectIdEnv)
   if (projectId === undefined) {
     return yield* failWithRecord(
@@ -680,6 +911,22 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
   const scope = options.scopeEnv === undefined ? undefined : envValue(options.scopeEnv)
   const protectionBypass =
     options.protectionBypassEnv === undefined ? undefined : envValue(options.protectionBypassEnv)
+  const buildEnv = yield* buildEnvRecord({
+    target: options.target,
+    entries: options.buildEnv,
+  }).pipe(Effect.catchAll(failWithRecord))
+
+  if (options.buildPrebuiltOutput === true && options.artifactKind !== 'prebuilt-output') {
+    return yield* failWithRecord(
+      new ProviderOperationFailed({
+        provider: 'vercel',
+        target: options.target,
+        operation: 'prepare',
+        transient: false,
+        message: 'Vercel --build-prebuilt-output requires --artifact-kind prebuilt-output',
+      }),
+    )
+  }
 
   yield* resolveVercelProject({
     target: options.target,
@@ -690,72 +937,50 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
     apiBaseUrl: options.vercelApiBaseUrl,
   }).pipe(Effect.catchAll(failWithRecord))
 
-  const workDir = yield* preparePrebuiltOutput({
-    artifactDir: options.artifactDir,
-    artifactKind: options.artifactKind,
-    projectId,
-    orgId,
-  })
-
+  let cleanupLocalVercel = false
   try {
-    const deployResult = yield* DeployProviderOperation.with({
-      attributes: {
-        provider: 'vercel',
-        target: input.target,
-      },
-      effect: runVercelCommand({
+    if (options.buildPrebuiltOutput === true) {
+      cleanupLocalVercel = true
+      yield* prepareLocalPrebuiltOutput({
+        target: options.target,
+        mode: options.mode,
+        artifactDir: options.artifactDir,
+        rootDirectory: options.vercelRootDirectory,
         vercelBin: options.vercelBin,
-        cwd: workDir,
-        args: [
-          'deploy',
-          '--prebuilt',
-          '--yes',
-          ...(options.mode === 'prod' ? ['--prod'] : []),
-          ...vercelScopeArgs(scope),
-          '--token',
-          authTokenValue,
-        ],
-        env: {
-          VERCEL_PROJECT_ID: projectId,
-          VERCEL_ORG_ID: orgId,
-          ...(teamId === undefined ? {} : { VERCEL_TEAM_ID: teamId }),
-        },
-      }),
-    })
-
-    if (deployResult.status !== 0) {
-      return yield* failWithRecord(
-        classifyVercelFailure({
-          target: options.target,
-          status: deployResult.status,
-          stdout: deployResult.stdout,
-          stderr: deployResult.stderr,
-          authToken: authTokenValue,
-          operation: 'deploy',
-        }),
-      )
+        authToken: authTokenValue,
+        projectId,
+        orgId,
+        teamId,
+        scope,
+        buildEnv,
+      }).pipe(Effect.catchAll(failWithRecord))
     }
 
-    const rawDeployUrl = extractDeployUrl(deployResult.stdout)
-    if (rawDeployUrl === undefined) {
-      const sanitizedStdout = redactDeployDiagnosticText(deployResult.stdout, {
-        secretValues: [authTokenValue],
-      }).trim()
+    if (
+      existsSync(options.artifactDir) === false ||
+      statSync(options.artifactDir).isDirectory() === false
+    ) {
       return yield* failWithRecord(
-        new InvalidProviderOutput({
+        new MissingBuildOutput({
           provider: 'vercel',
           target: options.target,
-          outputKind: 'url',
-          message: 'Vercel CLI did not print a vercel.app deploy URL',
-          diagnostics: sanitizedStdout.length === 0 ? undefined : { stdout: sanitizedStdout },
+          artifactDir: options.artifactDir,
+          message: `Missing local Vercel ${
+            options.artifactKind === 'static' ? 'static' : 'prebuilt'
+          } output at ${options.artifactDir}`,
         }),
       )
     }
 
-    let finalUrl = rawDeployUrl
-    if (alias !== undefined) {
-      const aliasHost = `${alias}.vercel.app`
-      const aliasResult = yield* DeployProviderOperation.with({
+    const workDir = yield* preparePrebuiltOutput({
+      artifactDir: options.artifactDir,
+      artifactKind: options.artifactKind,
+      projectId,
+      orgId,
+    })
+
+    try {
+      const deployResult = yield* DeployProviderOperation.with({
         attributes: {
           provider: 'vercel',
           target: input.target,
@@ -764,9 +989,10 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
           vercelBin: options.vercelBin,
           cwd: workDir,
           args: [
-            'alias',
-            rawDeployUrl,
-            aliasHost,
+            'deploy',
+            '--prebuilt',
+            '--yes',
+            ...(options.mode === 'prod' ? ['--prod'] : []),
             ...vercelScopeArgs(scope),
             '--token',
             authTokenValue,
@@ -778,128 +1004,189 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
           },
         }),
       })
-      if (aliasResult.status !== 0) {
+
+      if (deployResult.status !== 0) {
         return yield* failWithRecord(
           classifyVercelFailure({
             target: options.target,
-            status: aliasResult.status,
-            stdout: aliasResult.stdout,
-            stderr: aliasResult.stderr,
+            status: deployResult.status,
+            stdout: deployResult.stdout,
+            stderr: deployResult.stderr,
             authToken: authTokenValue,
-            operation: 'alias',
+            operation: 'deploy',
           }),
         )
       }
-      finalUrl = `https://${aliasHost}`
-    }
 
-    const preliminary = decodeResultEither({
-      _tag: 'DeployResult',
-      schemaVersion: 1,
-      provider: 'vercel',
-      target: options.target,
-      mode: options.mode,
-      rawDeployUrl,
-      finalUrl,
-      alias,
-      startedAtUtc: createdAtUtc,
-      endedAtUtc: isoNow(),
-      attempts: 1,
-    })
+      const rawDeployUrl = extractDeployUrl(deployResult.stdout)
+      if (rawDeployUrl === undefined) {
+        const sanitizedStdout = redactDeployDiagnosticText(deployResult.stdout, {
+          secretValues: [authTokenValue],
+        }).trim()
+        return yield* failWithRecord(
+          new InvalidProviderOutput({
+            provider: 'vercel',
+            target: options.target,
+            outputKind: 'url',
+            message: 'Vercel CLI did not print a vercel.app deploy URL',
+            diagnostics: sanitizedStdout.length === 0 ? undefined : { stdout: sanitizedStdout },
+          }),
+        )
+      }
 
-    if (Either.isLeft(preliminary) === true) {
-      return yield* failWithRecord(
-        new InvalidProviderOutput({
-          provider: 'vercel',
-          target: options.target,
-          outputKind: 'provider-response',
-          message: 'Vercel deploy result did not match the ci-tools schema',
-          diagnostics: { finalUrl },
-        }),
-      )
-    }
-
-    if (input.e2e?.verifyContent !== undefined) {
-      yield* verifyFinalUrl({
-        target: input.target,
-        finalUrl: preliminary.right.finalUrl,
-        path: input.e2e.verifyContent.path,
-        expectedText: input.e2e.verifyContent.expectedText,
-        protectionBypass,
-      }).pipe(Effect.catchAll(failWithRecord))
-    }
-
-    const cleanup =
-      input.e2e?.allowSharedProject === true
-        ? yield* cleanupAlias({
+      let finalUrl = rawDeployUrl
+      if (alias !== undefined) {
+        const aliasHost = `${alias}.vercel.app`
+        const aliasResult = yield* DeployProviderOperation.with({
+          attributes: {
+            provider: 'vercel',
             target: input.target,
-            alias,
-            allowSharedProject: true,
-            workDir,
-            vercelBin: options.vercelBin,
-            authToken: authTokenValue,
-            projectId,
-            orgId,
-            teamId,
-            scope,
-          })
-        : undefined
-
-    const decoded = decodeResultEither({
-      _tag: 'DeployResult',
-      schemaVersion: 1,
-      provider: 'vercel',
-      target: options.target,
-      mode: options.mode,
-      rawDeployUrl,
-      finalUrl,
-      alias,
-      startedAtUtc: createdAtUtc,
-      endedAtUtc: isoNow(),
-      attempts: 1,
-      ...(cleanup === undefined ? {} : { cleanup }),
-    })
-    if (Either.isLeft(decoded) === true) {
-      return yield* failWithRecord(
-        new InvalidProviderOutput({
-          provider: 'vercel',
-          target: options.target,
-          outputKind: 'provider-response',
-          message: 'Vercel cleanup result did not match the ci-tools schema',
-          diagnostics: {
-            finalUrl,
-            cleanup:
-              cleanup === undefined
-                ? 'undefined'
-                : `${cleanup.status}${cleanup.message === undefined ? '' : `:${cleanup.message}`}`,
-            cause: String(decoded.left),
           },
-        }),
-      )
-    }
+          effect: runVercelCommand({
+            vercelBin: options.vercelBin,
+            cwd: workDir,
+            args: [
+              'alias',
+              rawDeployUrl,
+              aliasHost,
+              ...vercelScopeArgs(scope),
+              '--token',
+              authTokenValue,
+            ],
+            env: {
+              VERCEL_PROJECT_ID: projectId,
+              VERCEL_ORG_ID: orgId,
+              ...(teamId === undefined ? {} : { VERCEL_TEAM_ID: teamId }),
+            },
+          }),
+        })
+        if (aliasResult.status !== 0) {
+          return yield* failWithRecord(
+            classifyVercelFailure({
+              target: options.target,
+              status: aliasResult.status,
+              stdout: aliasResult.stdout,
+              stderr: aliasResult.stderr,
+              authToken: authTokenValue,
+              operation: 'alias',
+            }),
+          )
+        }
+        finalUrl = `https://${aliasHost}`
+      }
 
-    process.stdout.write(`Vercel deploy URL: ${finalUrl}\n`)
-    yield* writeDevenvTaskOutput({
-      result: decoded.right,
-      taskOutputFile: process.env.DEVENV_TASK_OUTPUT_FILE,
-    })
-    const recordJson = yield* emitWorkflowReportRecord({
-      workflowReportOutputFile: options.workflowReportOutputFile,
-      record: deploySuccessRecord({
-        input,
+      const preliminary = decodeResultEither({
+        _tag: 'DeployResult',
+        schemaVersion: 1,
+        provider: 'vercel',
+        target: options.target,
+        mode: options.mode,
+        rawDeployUrl,
+        finalUrl,
+        alias,
+        startedAtUtc: createdAtUtc,
+        endedAtUtc: isoNow(),
+        attempts: 1,
+      })
+
+      if (Either.isLeft(preliminary) === true) {
+        return yield* failWithRecord(
+          new InvalidProviderOutput({
+            provider: 'vercel',
+            target: options.target,
+            outputKind: 'provider-response',
+            message: 'Vercel deploy result did not match the ci-tools schema',
+            diagnostics: { finalUrl },
+          }),
+        )
+      }
+
+      if (input.e2e?.verifyContent !== undefined) {
+        yield* verifyFinalUrl({
+          target: input.target,
+          finalUrl: preliminary.right.finalUrl,
+          path: input.e2e.verifyContent.path,
+          expectedText: input.e2e.verifyContent.expectedText,
+          protectionBypass,
+        }).pipe(Effect.catchAll(failWithRecord))
+      }
+
+      const cleanup =
+        input.e2e?.allowSharedProject === true
+          ? yield* cleanupAlias({
+              target: input.target,
+              alias,
+              allowSharedProject: true,
+              workDir,
+              vercelBin: options.vercelBin,
+              authToken: authTokenValue,
+              projectId,
+              orgId,
+              teamId,
+              scope,
+            })
+          : undefined
+
+      const decoded = decodeResultEither({
+        _tag: 'DeployResult',
+        schemaVersion: 1,
+        provider: 'vercel',
+        target: options.target,
+        mode: options.mode,
+        rawDeployUrl,
+        finalUrl,
+        alias,
+        startedAtUtc: createdAtUtc,
+        endedAtUtc: isoNow(),
+        attempts: 1,
+        ...(cleanup === undefined ? {} : { cleanup }),
+      })
+      if (Either.isLeft(decoded) === true) {
+        return yield* failWithRecord(
+          new InvalidProviderOutput({
+            provider: 'vercel',
+            target: options.target,
+            outputKind: 'provider-response',
+            message: 'Vercel cleanup result did not match the ci-tools schema',
+            diagnostics: {
+              finalUrl,
+              cleanup:
+                cleanup === undefined
+                  ? 'undefined'
+                  : `${cleanup.status}${cleanup.message === undefined ? '' : `:${cleanup.message}`}`,
+              cause: String(decoded.left),
+            },
+          }),
+        )
+      }
+
+      process.stdout.write(`Vercel deploy URL: ${finalUrl}\n`)
+      yield* writeDevenvTaskOutput({
         result: decoded.right,
-        createdAtUtc,
-      }),
-    })
-    yield* writeGithubDeployOutputs({
-      result: decoded.right,
-      recordJson,
-      workflowReportOutputFile: options.workflowReportOutputFile,
-      githubOutputFile: options.githubOutputFile,
-      githubEnvFile: options.githubEnvFile,
-      urlEnvKey: options.urlEnvKey,
-    })
+        taskOutputFile: process.env.DEVENV_TASK_OUTPUT_FILE,
+      })
+      const recordJson = yield* emitWorkflowReportRecord({
+        workflowReportOutputFile: options.workflowReportOutputFile,
+        record: deploySuccessRecord({
+          input,
+          result: decoded.right,
+          createdAtUtc,
+        }),
+      })
+      yield* writeGithubDeployOutputs({
+        result: decoded.right,
+        recordJson,
+        workflowReportOutputFile: options.workflowReportOutputFile,
+        githubOutputFile: options.githubOutputFile,
+        githubEnvFile: options.githubEnvFile,
+        urlEnvKey: options.urlEnvKey,
+      })
+    } finally {
+      rmSync(workDir, { recursive: true, force: true })
+    }
   } finally {
-    rmSync(workDir, { recursive: true, force: true })
+    if (cleanupLocalVercel === true) {
+      rmSync('.vercel', { recursive: true, force: true })
+    }
   }
 })

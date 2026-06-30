@@ -18,6 +18,20 @@ assert_contains() {
   fi
 }
 
+assert_not_contains() {
+  local haystack="$1"
+  local needle="$2"
+  local label="$3"
+
+  if printf '%s' "$haystack" | grep -qF -- "$needle"; then
+    echo "FAIL: $label"
+    echo "  expected not to contain: $needle"
+    echo "  actual output:"
+    printf '%s\n' "$haystack" | sed 's/^/    /'
+    exit 1
+  fi
+}
+
 assert_exit_code() {
   local expected="$1"
   local actual="$2"
@@ -304,6 +318,21 @@ cat > "$tmpdir/fake-vercel" <<'EOF'
 set -euo pipefail
 printf 'cwd=%s args=vercel %s\n' "$PWD" "$*" >> "${FAKE_BUNX_LOG:?}"
 
+if [ "${1:-}" = "pull" ]; then
+  mkdir -p .vercel
+  printf '{"settings":{}}\n' > .vercel/project.json
+  exit 0
+fi
+
+if [ "${1:-}" = "build" ]; then
+  grep -q '"installCommand":"true"' app/vercel.json
+  grep -q '"rootDirectory":"app"' .vercel/project.json
+  mkdir -p .vercel/output/static
+  printf '{"version":3}\n' > .vercel/output/config.json
+  printf 'built marker\n' > .vercel/output/static/index.html
+  exit 0
+fi
+
 if [ "${1:-}" = "deploy" ]; then
   if [ -f .vercel/output/static/index.html ]; then
     printf 'https://deploy-web.vercel.app\n'
@@ -488,6 +517,14 @@ assert_contains "$build_ci_tools_args" "--target app" "Vercel build wrapper shou
 assert_contains "$build_ci_tools_args" "--alias-prefix app-preview" "Vercel build wrapper should preserve build-mode alias prefix"
 assert_contains "$build_ci_tools_args" "--artifact-kind prebuilt-output" "Vercel build wrapper should pass prebuilt output kind"
 assert_contains "$build_ci_tools_args" "--artifact-dir .vercel/output" "Vercel build wrapper should pass local Vercel output"
+assert_contains "$build_ci_tools_args" "--build-prebuilt-output" "Vercel build wrapper should delegate local build mode to ci-tools"
+assert_contains "$build_ci_tools_args" "--vercel-root-directory app" "Vercel build wrapper should pass Vercel root directory to ci-tools"
+assert_contains "$build_ci_tools_args" "--build-env LD_LIBRARY_PATH=" "Vercel build wrapper should pass native library build env to ci-tools"
+assert_not_contains "$build_output" "Error:" "Vercel build wrapper should not surface shell-owned build errors"
+if [ -e "$workspace/.vercel" ]; then
+  echo "Assertion failed: Vercel build wrapper should let ci-tools clean local .vercel state" >&2
+  exit 1
+fi
 
 echo ""
 echo "Deploy task E2E tests passed."
