@@ -17,11 +17,12 @@ The existing supported adapters prove different source shapes:
 - `node-cpuprofile` uses a native profile artifact and the CAS profile lane.
 
 The deferred candidates are useful, but each has a contract gap that should be
-closed before CLI support:
+closed before CLI support. The queue has two lanes:
 
-- `tsc --generateTrace` needs artifact grouping, retention size, and
-  phase-to-span semantics.
-- Cargo JSON/timings need stable compile-unit/event and artifact semantics.
+- Cargo JSON/timings are the first general adapter-fleet candidate, but need
+  stable compile-unit/event and artifact semantics.
+- `tsc --generateTrace` is the first profile/artifact build-tool candidate, but
+  needs artifact grouping, retention size, and phase-to-span semantics.
 - Vitest needs stable suite/test identity and nested-wrapper ownership.
 - Package-manager phases and Vite need a structured-source audit so we do not
   promote debug logs or progress output into first-class telemetry.
@@ -44,16 +45,18 @@ must define its structured input source, output kinds, privacy boundary,
 degradation behavior, generated-registry additions, and consumer evidence before
 it is listed as supported.
 
-Candidate order is:
+Candidate order has two lanes:
 
 1. keep `oxlint` and `node-cpuprofile` as supported baseline adapters,
-2. add `tsc --generateTrace` when trace artifact grouping and CAS handoff are
+2. for general adapter-fleet expansion, add Cargo JSON/timings when a stable
+   compile-unit/event mapping and artifact contract are specified,
+3. for profile/artifact build-tool expansion, add `tsc --generateTrace` when
+   trace artifact grouping, CAS handoff, retention size, and phase semantics are
    specified,
-3. add Cargo JSON/timings when a stable compile-unit and profile mapping is
-   specified,
-4. add Vitest JSON or OTEL-aware test output when suite/test identity is stable,
-5. add package-manager phases and Vite profiles only after a structured-source
-   audit proves they avoid debug-log parsing.
+4. then add Vitest JSON or OTEL-aware test output when suite/test identity is
+   stable,
+5. then add package-manager phases and Vite profiles only after a
+   structured-source audit proves they avoid debug-log parsing.
 
 Adapters may remain documented as candidates before implementation, but support
 matrices must distinguish candidates from supported adapters. The CLI must not
