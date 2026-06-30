@@ -17,6 +17,8 @@
   taskSuffix ? null,
   globalCache ? true,
   materializationProfile ? "auto",
+  storeDir ? null,
+  sharedFilesDir ? null,
   frozenInCi ? true,
   installFlags ? [ ],
   preInstall ? "",
@@ -58,11 +60,10 @@ let
       "${config.devenv.root}/.devenv/pnpm-home"
     else
       "${config.devenv.root}/.devenv/pnpm-home/${workspaceCacheName}";
+  basePnpmStoreDir =
+    if storeDir == null then "${config.devenv.root}/.devenv/pnpm-store-pure-v1" else storeDir;
   defaultPnpmStoreDir =
-    if workspaceRoot == "." then
-      "${config.devenv.root}/.devenv/pnpm-store-pure-v1"
-    else
-      "${config.devenv.root}/.devenv/pnpm-store-pure-v1/${workspaceCacheName}";
+    if workspaceRoot == "." then basePnpmStoreDir else "${basePnpmStoreDir}/${workspaceCacheName}";
   installTaskName =
     if taskSuffix == null then
       "${taskNamePrefix}:install"
@@ -190,6 +191,9 @@ let
     export PNPM_CONFIG_STORE_DIR="$_pnpm_store_dir"
     export npm_config_store_dir="$_pnpm_store_dir"
     unset _pnpm_store_dir
+  '';
+  configurePnpmSharedFilesDirFn = lib.optionalString (sharedFilesDir != null) ''
+    export PNPM_SHARED_FILES_DIR=${lib.escapeShellArg sharedFilesDir}
   '';
   prepareDependencyMaterializationStoreFn = ''
     _dependency_materialization_trait="$(
@@ -402,6 +406,7 @@ let
         ${loadPnpmTaskHelpersFn}
         ${ensureLocalPnpmHomeFn}
         ${ensureLocalPnpmStoreDirFn}
+        ${configurePnpmSharedFilesDirFn}
         ${prepareDependencyMaterializationStoreFn}
         mkdir -p "${cacheRoot}"
         # This cache tracks the effective install state, not just workspace
@@ -552,6 +557,7 @@ let
         ${loadPnpmTaskHelpersFn}
         ${ensureLocalPnpmHomeFn}
         ${ensureLocalPnpmStoreDirFn}
+        ${configurePnpmSharedFilesDirFn}
         ${prepareDependencyMaterializationStoreFn}
         hash_file="${cacheRoot}/install-state.hash"
         projection_hash_file="${cacheRoot}/projection-state.hash"
@@ -628,6 +634,7 @@ let
         ${loadPnpmTaskHelpersFn}
         ${ensureLocalPnpmHomeFn}
         ${ensureLocalPnpmStoreDirFn}
+        ${configurePnpmSharedFilesDirFn}
         ${prepareDependencyMaterializationStoreFn}
         materialization_policy_flags="$(dependency_materialization_install_policy_flags "''${DEPENDENCY_MATERIALIZATION_TRAIT:-isolated}")"
         pnpm install --fix-lockfile --config.confirmModulesPurge=false --pm-on-fail=ignore "$materialization_policy_flags" --config.store-dir="$npm_config_store_dir"
@@ -649,6 +656,7 @@ let
         ${loadPnpmTaskHelpersFn}
         ${ensureLocalPnpmHomeFn}
         ${ensureLocalPnpmStoreDirFn}
+        ${configurePnpmSharedFilesDirFn}
         ${prepareDependencyMaterializationStoreFn}
         materialization_policy_flags="$(dependency_materialization_install_policy_flags "''${DEPENDENCY_MATERIALIZATION_TRAIT:-isolated}")"
         pnpm dedupe --config.confirmModulesPurge=false --pm-on-fail=ignore "$materialization_policy_flags" --config.store-dir="$npm_config_store_dir"
@@ -666,6 +674,7 @@ let
         ${loadPnpmTaskHelpersFn}
         ${ensureLocalPnpmHomeFn}
         ${ensureLocalPnpmStoreDirFn}
+        ${configurePnpmSharedFilesDirFn}
         ${prepareDependencyMaterializationStoreFn}
 
         purge_node_modules node_modules ${nodeModulesPaths}
@@ -780,6 +789,7 @@ let
             export PNPM_STORE_DIR="$repair_store_dir"
             export PNPM_CONFIG_STORE_DIR="$repair_store_dir"
             export npm_config_store_dir="$repair_store_dir"
+            ${configurePnpmSharedFilesDirFn}
             export DEPENDENCY_MATERIALIZATION_REQUESTED_PROFILE="$repair_trait"
             ${prepareDependencyMaterializationStoreFn}
             ${runPnpmInstallFn}
@@ -818,6 +828,7 @@ in
     export PNPM_STORE_DIR="$_pnpm_store_dir"
     export PNPM_CONFIG_STORE_DIR="$_pnpm_store_dir"
     export npm_config_store_dir="$_pnpm_store_dir"
+    ${configurePnpmSharedFilesDirFn}
     export npm_config_cache="$HOME/.cache/pnpm"
     export npm_config_pm_on_fail=ignore
     if [ -z "''${CI:-}" ]; then
