@@ -357,6 +357,7 @@ in
     (taskModules.test {
       packages = packagesWithTests;
       extraTests = [ "devenv-modules:test" ];
+      packageConcurrency = 4;
     })
     (taskModules.storybook {
       packages = packagesWithStorybook;

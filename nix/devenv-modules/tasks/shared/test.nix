@@ -19,6 +19,9 @@
 #   # Simple tests (no per-package):
 #   imports = [ (inputs.effect-utils.devenvModules.tasks.test {}) ];
 #
+#   # Bound package-level fan-out for large repos / constrained CI runners:
+#   imports = [ (inputs.effect-utils.devenvModules.tasks.test { packageConcurrency = 4; }) ];
+#
 # Each package must have:
 #   - vitest as a devDependency in package.json
 #   - vitest.config.ts in the package root
@@ -31,6 +34,7 @@
   packages ? [ ],
   installTask ? "pnpm:install",
   extraTests ? [ ],
+  packageConcurrency ? null,
 }:
 { lib, pkgs, ... }:
 let
@@ -40,6 +44,12 @@ let
     builtins.readFile ./pnpm-task-helpers.sh
   );
   hasPackages = packages != [ ];
+  hasPackageConcurrency = packageConcurrency != null;
+  validatedPackageConcurrency =
+    if hasPackageConcurrency && packageConcurrency < 1 then
+      throw "packageConcurrency must be at least 1"
+    else
+      packageConcurrency;
   # Do not force preserve-symlinks here. pnpm's projected workspace graph
   # relies on realpath-based resolution, and preserve-symlinks caused Vitest to
   # miss hoisted dependencies in CI.
@@ -75,13 +85,60 @@ let
     };
   };
 
+  boundedPackageTestRunExec =
+    let
+      taskNames = map (pkg: "test:${pkg.name}") packages;
+      quotedTasks = lib.concatMapStringsSep " " lib.escapeShellArg taskNames;
+    in
+    ''
+      set -euo pipefail
+
+      failed=0
+      running_pids=()
+
+      wait_for_running_tasks() {
+        local pid
+        for pid in "''${running_pids[@]}"; do
+          if ! wait "$pid"; then
+            failed=1
+          fi
+        done
+        running_pids=()
+      }
+
+      for task in ${quotedTasks}; do
+        (
+          DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false devenv tasks run --mode single "$task"
+        ) &
+        running_pids+=("$!")
+
+        if [ "''${#running_pids[@]}" -ge ${toString validatedPackageConcurrency} ]; then
+          wait_for_running_tasks
+        fi
+      done
+
+      wait_for_running_tasks
+
+      exit "$failed"
+    '';
+
   guardedTasks = {
     "test:run" = {
       guard = "vitest";
       description = "Run all tests";
-      exec = if hasPackages then null else vitestExec "";
+      exec =
+        if hasPackages then
+          if hasPackageConcurrency then trace.exec "test:run" boundedPackageTestRunExec else null
+        else
+          vitestExec "";
       after =
-        if hasPackages then map (pkg: "test:${pkg.name}") packages ++ extraTests else [ "genie:run" ];
+        if hasPackages then
+          if hasPackageConcurrency then
+            [ installTask ] ++ extraTests
+          else
+            map (pkg: "test:${pkg.name}") packages ++ extraTests
+        else
+          [ "genie:run" ];
     };
     "test:watch" = {
       guard = "vitest";
