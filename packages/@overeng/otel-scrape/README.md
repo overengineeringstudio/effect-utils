@@ -98,6 +98,7 @@ Supported OpenTelemetry SDK/exporter environment variables:
 | `OTEL_EXPORTER_OTLP_TRACES_HEADERS`                                  | Trace headers override the generic header config for trace export.                                          |
 | `OTEL_EXPORTER_OTLP_TIMEOUT` / `OTEL_EXPORTER_OTLP_TRACES_TIMEOUT`   | Export timeout in milliseconds; trace-specific wins.                                                        |
 | `OTEL_EXPORTER_OTLP_PROTOCOL` / `OTEL_EXPORTER_OTLP_TRACES_PROTOCOL` | `http/json` is supported. `grpc` and `http/protobuf` disable this first-party JSON exporter with a warning. |
+| `OTEL_EXPORTER_OTLP_COMPRESSION` / trace-specific variant            | `none` is supported. `gzip` disables this first-party JSON exporter with a warning.                         |
 | `OTEL_RESOURCE_ATTRIBUTES`                                           | Comma-separated resource attributes added to OTLP resources.                                                |
 | `OTEL_SERVICE_NAME`                                                  | Resource `service.name`; overrides `service.name` from resource attrs.                                      |
 

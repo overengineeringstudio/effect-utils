@@ -24,6 +24,8 @@ fn otel_scrape() -> Command {
         .env_remove("OTEL_EXPORTER_OTLP_TRACES_TIMEOUT")
         .env_remove("OTEL_EXPORTER_OTLP_PROTOCOL")
         .env_remove("OTEL_EXPORTER_OTLP_TRACES_PROTOCOL")
+        .env_remove("OTEL_EXPORTER_OTLP_COMPRESSION")
+        .env_remove("OTEL_EXPORTER_OTLP_TRACES_COMPRESSION")
         .env_remove("OTEL_TRACES_EXPORTER")
         .env_remove("OTEL_SDK_DISABLED")
         .env_remove("OTEL_RESOURCE_ATTRIBUTES")
@@ -1179,6 +1181,22 @@ fn unsupported_otlp_protocol_disables_first_party_json_exporter() {
     let out = otel_scrape()
         .env("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:9")
         .env("OTEL_EXPORTER_OTLP_PROTOCOL", "grpc")
+        .args(["--", "sh", "-c", "printf child"])
+        .output()
+        .unwrap();
+
+    assert!(out.status.success());
+    assert_eq!(String::from_utf8_lossy(&out.stdout), "child");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("trace export is disabled"));
+    assert!(!stderr.contains("failed to export OTLP trace"));
+}
+
+#[test]
+fn unsupported_otlp_compression_disables_first_party_json_exporter() {
+    let out = otel_scrape()
+        .env("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:9")
+        .env("OTEL_EXPORTER_OTLP_COMPRESSION", "gzip")
         .args(["--", "sh", "-c", "printf child"])
         .output()
         .unwrap();
