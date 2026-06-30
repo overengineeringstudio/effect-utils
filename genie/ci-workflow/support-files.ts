@@ -20,7 +20,7 @@ run_nix_gc_race_retry() {
   local max="${dollar}{NIX_GC_RACE_MAX_RETRIES:-10}"
   local heartbeat="${dollar}{CI_PROGRESS_HEARTBEAT_SECONDS:-60}"
   local attempt=1
-  local log rc path start now elapsed hb_pid flattened saw_invalid_path saw_cachix_signature saw_fetch_signature saw_daemon_socket_failure had_errexit
+  local log log_dir stdout_pipe stderr_pipe rc path start now elapsed hb_pid stdout_tee_pid stderr_tee_pid flattened saw_invalid_path saw_cachix_signature saw_fetch_signature saw_daemon_socket_failure had_errexit
 
   shift
   start="$(date +%s)"
@@ -79,16 +79,27 @@ run_nix_gc_race_retry() {
     hb_pid=$!
 
     log=$(mktemp)
+    log_dir=$(mktemp -d)
+    stdout_pipe="$log_dir/stdout"
+    stderr_pipe="$log_dir/stderr"
+    mkfifo "$stdout_pipe" "$stderr_pipe"
+    tee -a "$log" < "$stdout_pipe" &
+    stdout_tee_pid=$!
+    tee -a "$log" < "$stderr_pipe" >&2 &
+    stderr_tee_pid=$!
     had_errexit=false
     case $- in
       *e*) had_errexit=true ;;
     esac
     set +e
-    "$@" > >(tee -a "$log") 2> >(tee -a "$log" >&2)
+    "$@" > "$stdout_pipe" 2> "$stderr_pipe"
     rc=$?
     if [ "$had_errexit" = true ]; then
       set -e
     fi
+    wait "$stdout_tee_pid" 2>/dev/null || true
+    wait "$stderr_tee_pid" 2>/dev/null || true
+    rm -rf "$log_dir"
 
     kill "$hb_pid" 2>/dev/null || true
     wait "$hb_pid" 2>/dev/null || true

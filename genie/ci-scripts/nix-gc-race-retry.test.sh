@@ -31,6 +31,32 @@ assert_exit_code() {
   fi
 }
 
+assert_contains() {
+  local needle="$1"
+  local file="$2"
+  local label="$3"
+
+  if ! grep -Fq "$needle" "$file"; then
+    echo "FAIL: $label"
+    echo "  missing: $needle"
+    echo "  file:    $file"
+    exit 1
+  fi
+}
+
+assert_not_contains() {
+  local needle="$1"
+  local file="$2"
+  local label="$3"
+
+  if grep -Fq "$needle" "$file"; then
+    echo "FAIL: $label"
+    echo "  unexpected: $needle"
+    echo "  file:       $file"
+    exit 1
+  fi
+}
+
 test_dir="$(mktemp -d)"
 trap 'rm -rf "$test_dir"' EXIT
 
@@ -197,7 +223,28 @@ chmod +x "$argv_fixture"
 CI_PROGRESS_HEARTBEAT_SECONDS=1 NIX_GC_RACE_MAX_RETRIES=1 run_nix_gc_race_retry "argv-fixture" "$argv_fixture" 'literal $HOME value' "$argv_output" >/dev/null
 assert_eq 'literal $HOME value' "$(cat "$argv_output")" "argv command arguments are not shell-expanded"
 
-echo "Test 9: wrapper script delegates shell commands to the retry helper"
+echo "Test 9: preserves stdout and stderr while capturing retry signatures"
+stdio_fixture="$test_dir/stdio-fixture.sh"
+stdio_stdout="$test_dir/stdio-stdout"
+stdio_stderr="$test_dir/stdio-stderr"
+cat > "$stdio_fixture" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "stdout-marker"
+echo "stderr-marker" >&2
+exit 3
+EOF
+chmod +x "$stdio_fixture"
+set +e
+CI_PROGRESS_HEARTBEAT_SECONDS=1 NIX_GC_RACE_MAX_RETRIES=1 run_nix_gc_race_retry "stdio-fixture" "$stdio_fixture" >"$stdio_stdout" 2>"$stdio_stderr"
+exit_code=$?
+set -e
+assert_exit_code 3 "$exit_code" "stdio fixture keeps original exit code"
+assert_contains "stdout-marker" "$stdio_stdout" "stdout marker remains on stdout"
+assert_contains "stderr-marker" "$stdio_stderr" "stderr marker remains on stderr"
+assert_not_contains "stderr-marker" "$stdio_stdout" "stderr marker does not move to stdout"
+
+echo "Test 10: wrapper script delegates shell commands to the retry helper"
 wrapper_attempt_file="$test_dir/wrapper-attempt"
 wrapper_command=$(cat <<EOF
 attempt=1
