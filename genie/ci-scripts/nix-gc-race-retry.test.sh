@@ -37,7 +37,34 @@ trap 'rm -rf "$test_dir"' EXIT
 echo "Running nix GC race retry helper tests..."
 echo ""
 
-echo "Test 1: retries invalid-store-path failures and succeeds on the next attempt"
+echo "Test 1: standalone helper stays aligned with workflow helper source"
+node - "$ROOT" <<'NODE'
+const { readFileSync } = require('node:fs')
+const { join } = require('node:path')
+
+const root = process.argv[2]
+const standalone = readFileSync(
+  join(root, 'genie/ci-scripts/nix-gc-race-retry.sh'),
+  'utf8',
+).trimEnd()
+const sharedSource = readFileSync(join(root, 'genie/ci-workflow/shared.ts'), 'utf8')
+const match = sharedSource.match(
+  /const nixGcRaceRetryScript = String\.raw`([\s\S]*?)`\n\n\/\*\*/,
+)
+
+if (match === null) {
+  console.error('FAIL: unable to locate nixGcRaceRetryScript in shared.ts')
+  process.exit(1)
+}
+
+const embedded = match[1].replaceAll('${dollar}', '$').trimEnd()
+if (standalone !== embedded) {
+  console.error('FAIL: standalone helper drifted from workflow helper source')
+  process.exit(1)
+}
+NODE
+
+echo "Test 2: retries invalid-store-path failures and succeeds on the next attempt"
 retry_fixture="$test_dir/retry-fixture.sh"
 cat > "$retry_fixture" <<EOF
 #!/usr/bin/env bash
@@ -58,7 +85,7 @@ chmod +x "$retry_fixture"
 CI_PROGRESS_HEARTBEAT_SECONDS=1 NIX_GC_RACE_MAX_RETRIES=2 run_nix_gc_race_retry "retry-fixture" "$retry_fixture" >/dev/null
 assert_eq "2" "$(cat "$test_dir/retry-attempt")" "invalid-store-path retry count"
 
-echo "Test 2: retries cachix wrapper failures without an extracted store path"
+echo "Test 3: retries cachix wrapper failures without an extracted store path"
 cachix_fixture="$test_dir/cachix-fixture.sh"
 cat > "$cachix_fixture" <<EOF
 #!/usr/bin/env bash
@@ -80,7 +107,7 @@ chmod +x "$cachix_fixture"
 CI_PROGRESS_HEARTBEAT_SECONDS=1 NIX_GC_RACE_MAX_RETRIES=2 run_nix_gc_race_retry "cachix-fixture" "$cachix_fixture" >/dev/null
 assert_eq "2" "$(cat "$test_dir/cachix-attempt")" "cachix wrapper retry count"
 
-echo "Test 3: retries truncated Nix input tarball failures"
+echo "Test 4: retries truncated Nix input tarball failures"
 fetch_fixture="$test_dir/fetch-fixture.sh"
 cat > "$fetch_fixture" <<EOF
 #!/usr/bin/env bash
@@ -101,13 +128,35 @@ chmod +x "$fetch_fixture"
 CI_PROGRESS_HEARTBEAT_SECONDS=1 NIX_GC_RACE_MAX_RETRIES=2 run_nix_gc_race_retry "fetch-fixture" "$fetch_fixture" >/dev/null
 assert_eq "2" "$(cat "$test_dir/fetch-attempt")" "truncated tarball retry count"
 
-echo "Test 4: does not retry when literal signature strings appear outside Nix error context"
+echo "Test 5: retries missing Nix daemon socket failures"
+daemon_fixture="$test_dir/daemon-fixture.sh"
+cat > "$daemon_fixture" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+attempt_file="$test_dir/daemon-attempt"
+attempt=1
+if [ -f "\$attempt_file" ]; then
+  attempt=\$(cat "\$attempt_file")
+fi
+if [ "\$attempt" -eq 1 ]; then
+  echo 2 > "\$attempt_file"
+  echo "error: cannot connect to socket at '/nix/var/nix/daemon-socket/socket': No such file or directory" >&2
+  exit 1
+fi
+echo "daemon recovered"
+EOF
+chmod +x "$daemon_fixture"
+CI_PROGRESS_HEARTBEAT_SECONDS=1 NIX_GC_RACE_MAX_RETRIES=2 NIX_GC_RACE_SKIP_DAEMON_REPAIR=1 run_nix_gc_race_retry "daemon-fixture" "$daemon_fixture" >/dev/null
+assert_eq "2" "$(cat "$test_dir/daemon-attempt")" "Nix daemon socket retry count"
+
+echo "Test 6: does not retry when literal signature strings appear outside Nix error context"
 false_positive_fixture="$test_dir/false-positive-fixture.sh"
 cat > "$false_positive_fixture" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 echo "AssertionError: expected source to contain Failed to convert config.cachix to JSON" >&2
 echo "source snippet: while evaluating the option cachix.package" >&2
+echo "source snippet: cannot connect to socket at '/nix/var/nix/daemon-socket/socket'" >&2
 exit 9
 EOF
 chmod +x "$false_positive_fixture"
@@ -117,7 +166,7 @@ exit_code=$?
 set -e
 assert_exit_code 9 "$exit_code" "non-error-context strings do not trigger retries"
 
-echo "Test 5: preserves the original exit code when no retry signature is present"
+echo "Test 7: preserves the original exit code when no retry signature is present"
 non_retry_fixture="$test_dir/non-retry-fixture.sh"
 cat > "$non_retry_fixture" <<'EOF'
 #!/usr/bin/env bash
