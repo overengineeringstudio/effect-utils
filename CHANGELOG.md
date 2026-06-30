@@ -11,6 +11,10 @@ All notable changes to this project will be documented in this file.
   provider-owned skip records, URL outputs, and task metadata, so generated CI
   delegates deploy behavior through devenv tasks.
 
+- **devenv deploy tasks / @overeng/ci-tools**: Remove the obsolete Nix deploy
+  metadata and alias helpers now that `ci-tools` is the single workflow-report
+  record authority.
+
 - **CI**: Collapse guarded live Netlify and Vercel deploy E2Es into one shared
   live deploy job with common setup.
 
