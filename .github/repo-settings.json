@@ -27,6 +27,9 @@
         "strict_required_status_checks_policy": false,
         "required_status_checks": [
           {
+            "context": "default-ref-policy"
+          },
+          {
             "context": "typecheck"
           },
           {
@@ -64,6 +67,24 @@
           },
           {
             "context": "nix-fod-check (namespace-profile-macos-arm64)"
+          },
+          {
+            "context": "devenv-perf"
+          },
+          {
+            "context": "nix-closure-sizes"
+          },
+          {
+            "context": "source-shape"
+          },
+          {
+            "context": "test-integration-notion"
+          },
+          {
+            "context": "test-integration-restate"
+          },
+          {
+            "context": "test-live-deploy-ci-tools"
           },
           {
             "context": "deploy-storybooks"

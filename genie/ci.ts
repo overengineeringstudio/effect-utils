@@ -37,6 +37,7 @@ export type CIJobName = (typeof CI_JOB_NAMES)[number]
  * Matrix jobs are reported as "job-name (matrix-value)" by GitHub Actions.
  */
 export const requiredCIJobs = [
+  'default-ref-policy',
   'typecheck',
   'lint',
   'pnpm-builder-contract',
@@ -48,5 +49,11 @@ export const requiredCIJobs = [
   'test-megarepo-cold-gc',
   ...RUNNER_PROFILES.map((runner) => `nix-check (${runner})`),
   ...RUNNER_PROFILES.map((runner) => `nix-fod-check (${runner})`),
+  'devenv-perf',
+  'nix-closure-sizes',
+  'source-shape',
+  'test-integration-notion',
+  'test-integration-restate',
+  'test-live-deploy-ci-tools',
   'deploy-storybooks',
 ] as const

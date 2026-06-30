@@ -24,6 +24,19 @@ const generatedCiWorkflowYamlSource = readFileSync(
   new URL(['../../../../../../.github/workflows', 'ci.yml'].join('/'), import.meta.url),
   'utf8',
 )
+const generatedRepoSettings = JSON.parse(
+  readFileSync(
+    new URL(['../../../../../../.github', 'repo-settings.json'].join('/'), import.meta.url),
+    'utf8',
+  ),
+) as {
+  rules: Array<{
+    type: string
+    parameters?: {
+      required_status_checks?: Array<{ context: string }>
+    }
+  }>
+}
 const vercelDeploySource = readFileSync(
   new URL(['../../../../../../genie/deploy-preview', 'vercel.ts'].join('/'), import.meta.url),
   'utf8',
@@ -63,6 +76,30 @@ const workflowReportTaskModuleSource = readFileSync(
   ),
   'utf8',
 )
+
+const generatedCiJobKeys = Array.from(
+  (generatedCiWorkflowYamlSource.split('\njobs:\n')[1] ?? '').matchAll(/^  ([a-zA-Z0-9_-]+):$/gm),
+  ([, jobKey]) => jobKey,
+).filter((jobKey): jobKey is string => jobKey !== undefined)
+
+const advisoryCheckContexts = new Set(['ci/measurements-report', 'notify-alignment'])
+const matrixCheckJobs = new Set(['test', 'nix-check', 'nix-fod-check'])
+const matrixRunners = ['namespace-profile-linux-x86-64', 'namespace-profile-macos-arm64'] as const
+
+const generatedNonAdvisoryCheckContexts = generatedCiJobKeys
+  .flatMap((jobKey) => {
+    if (jobKey === 'ci-measurements-report') return ['ci/measurements-report']
+    if (matrixCheckJobs.has(jobKey) === true) {
+      return matrixRunners.map((runner) => `${jobKey} (${runner})`)
+    }
+    return [jobKey]
+  })
+  .filter((context) => advisoryCheckContexts.has(context) === false)
+
+const generatedRequiredCheckContexts =
+  generatedRepoSettings.rules
+    .find((rule) => rule.type === 'required_status_checks')
+    ?.parameters?.required_status_checks?.map((check) => check.context) ?? []
 
 const extractSourceBlock = (source: string, startMarker: string, endMarker: string) => {
   const start = source.indexOf(startMarker)
@@ -131,6 +168,12 @@ const megarepoTaskModuleSource = readFileSync(
 )
 
 describe('ci workflow retry helpers', () => {
+  it('keeps non-advisory workflow jobs required by branch protection', () => {
+    expect(new Set(generatedRequiredCheckContexts)).toEqual(
+      new Set(generatedNonAdvisoryCheckContexts),
+    )
+  })
+
   it('emits compact calls to the checked-in retry helper script', () => {
     expect(ciWorkflowSource).toContain("defaultCiRuntimeScriptsDir = 'genie/ci-scripts'")
     expect(ciWorkflowSource).toContain(
