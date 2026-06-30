@@ -46,19 +46,28 @@ const root = process.argv[2]
 const standalone = readFileSync(
   join(root, 'genie/ci-scripts/nix-gc-race-retry.sh'),
   'utf8',
-).trimEnd()
-const sharedSource = readFileSync(join(root, 'genie/ci-workflow/shared.ts'), 'utf8')
-const match = sharedSource.match(
-  /const nixGcRaceRetryScript = String\.raw`([\s\S]*?)`\n\n\/\*\*/,
+)
+  .replace(
+    /^#!\/usr\/bin\/env bash\n# Generated file - DO NOT EDIT\n# Source: nix-gc-race-retry\.sh\.genie\.ts\n\n/,
+    '#!/usr/bin/env bash\n',
+  )
+  .trimEnd()
+const supportFilesSource = readFileSync(join(root, 'genie/ci-workflow/support-files.ts'), 'utf8')
+const match = supportFilesSource.match(
+  /export const ciWorkflowNixGcRaceRetryScript = String\.raw`([\s\S]*?)`\n\nexport const ciWorkflowNixGcRaceRetryWrapperScript/,
 )
 
 if (match === null) {
-  console.error('FAIL: unable to locate nixGcRaceRetryScript in shared.ts')
+  console.error('FAIL: unable to locate ciWorkflowNixGcRaceRetryScript in support-files.ts')
   process.exit(1)
 }
 
 const embedded = match[1].replaceAll('${dollar}', '$').trimEnd()
-if (standalone !== embedded) {
+const normalizedStandalone = standalone.replace(
+  /^#!\/usr\/bin\/env bash\n# Generated file - DO NOT EDIT\n# Source: nix-gc-race-retry\.sh\.genie\.ts\n\n/,
+  '#!/usr/bin/env bash\n',
+)
+if (normalizedStandalone !== embedded) {
   console.error('FAIL: standalone helper drifted from workflow helper source')
   process.exit(1)
 }
@@ -181,7 +190,7 @@ exit_code=$?
 set -e
 assert_exit_code 7 "$exit_code" "non-signature failures keep their exit code"
 
-echo "Test 6: executes argv without shell eval"
+echo "Test 8: executes argv without shell eval"
 argv_fixture="$test_dir/argv-fixture.sh"
 argv_output="$test_dir/argv-output"
 cat > "$argv_fixture" <<'EOF'
@@ -193,7 +202,7 @@ chmod +x "$argv_fixture"
 CI_PROGRESS_HEARTBEAT_SECONDS=1 NIX_GC_RACE_MAX_RETRIES=1 run_nix_gc_race_retry "argv-fixture" "$argv_fixture" 'literal $HOME value' "$argv_output" >/dev/null
 assert_eq 'literal $HOME value' "$(cat "$argv_output")" "argv command arguments are not shell-expanded"
 
-echo "Test 7: wrapper script delegates shell commands to the retry helper"
+echo "Test 9: wrapper script delegates shell commands to the retry helper"
 wrapper_attempt_file="$test_dir/wrapper-attempt"
 wrapper_command=$(cat <<EOF
 attempt=1
