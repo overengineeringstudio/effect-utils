@@ -55,6 +55,10 @@ All notable changes to this project will be documented in this file.
   package-specific prerequisites, so native-link setup is preserved without
   re-entering Devenv's upstream task graph in parallel.
 
+- **devenv test tasks / @overeng/megarepo**: Give the isolated cold-GC
+  integration task explicit Vitest timeout headroom for slow CI runners while
+  keeping the package-wide default timeout unchanged.
+
 - **nix packages / @overeng/genie**: Refresh the Genie, Megarepo, TUI Stories,
   and Notion MD pnpm-deps fixed-output hashes and keep the native dependency
   policy audit install-free by splitting the policy into a lightweight module.
