@@ -236,6 +236,7 @@ let
     {
       path = "packages/@overeng/pty-effect";
       name = "pty-effect";
+      after = [ "pnpm:link-native-node-packages" ];
     }
     {
       path = "packages/@overeng/restate-effect";
@@ -542,8 +543,6 @@ in
       link_native_package "node-pty" "${nodePtyNative}/node_modules/node-pty"
     '';
   };
-
-  tasks."test:pty-effect".after = lib.mkAfter [ "pnpm:link-native-node-packages" ];
 
   tasks."test:megarepo-cold-gc" = {
     after = [ "pnpm:install" ];

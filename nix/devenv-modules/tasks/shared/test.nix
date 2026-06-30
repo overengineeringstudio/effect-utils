@@ -25,6 +25,7 @@
 # Each package must have:
 #   - vitest as a devDependency in package.json
 #   - vitest.config.ts in the package root
+#   - optional `after = [ ... ]` for package-specific prerequisites
 #
 # Provides:
 #   - test:run - Run all tests
@@ -50,6 +51,8 @@ let
       throw "packageConcurrency must be at least 1"
     else
       packageConcurrency;
+  packagesWithIndexes = lib.imap0 (index: pkg: pkg // { __testIndex = index; }) packages;
+
   # Do not force preserve-symlinks here. pnpm's projected workspace graph
   # relies on realpath-based resolution, and preserve-symlinks caused Vitest to
   # miss hoisted dependencies in CI.
@@ -64,79 +67,61 @@ let
     run_package_bin vitest vitest
   '';
 
-  # Per-package test task using the workspace-aware vitest entrypoint.
-  mkTestTask = pkg: {
-    "test:${pkg.name}" = {
-      description = "Run tests for ${pkg.name}";
-      exec = trace.exec "test:${pkg.name}" (vitestExec (pkg.vitestArgs or ""));
-      cwd = pkg.path;
-      execIfModified = [
-        "${pkg.path}/src/**/*.ts"
-        "${pkg.path}/src/**/*.tsx"
-        "${pkg.path}/src/**/*.test.ts"
-        "${pkg.path}/src/**/*.test.tsx"
-        "${pkg.path}/test/**/*.ts"
-        "${pkg.path}/test/**/*.tsx"
-        "${pkg.path}/test/**/*.test.ts"
-        "${pkg.path}/test/**/*.test.tsx"
-        "${pkg.path}/vitest.config.ts"
-      ];
-      after = [ installTask ];
+  chunkList =
+    size: items:
+    if items == [ ] then [ ] else [ (lib.take size items) ] ++ chunkList size (lib.drop size items);
+
+  packageTestTaskNames = map (pkg: "test:${pkg.name}") packages;
+  packageTestBatches =
+    if hasPackageConcurrency then chunkList validatedPackageConcurrency packageTestTaskNames else [ ];
+  packageTestBatchTaskName = index: "test:run:batch:${toString index}";
+  lastPackageTestBatchTaskName = packageTestBatchTaskName (builtins.length packageTestBatches - 1);
+
+  mkTestTask =
+    pkg:
+    let
+      batchIndex =
+        if hasPackageConcurrency then builtins.div pkg.__testIndex validatedPackageConcurrency else 0;
+    in
+    {
+      "test:${pkg.name}" = {
+        description = "Run tests for ${pkg.name}";
+        exec = trace.exec "test:${pkg.name}" (vitestExec (pkg.vitestArgs or ""));
+        cwd = pkg.path;
+        execIfModified = [
+          "${pkg.path}/src/**/*.ts"
+          "${pkg.path}/src/**/*.tsx"
+          "${pkg.path}/src/**/*.test.ts"
+          "${pkg.path}/src/**/*.test.tsx"
+          "${pkg.path}/test/**/*.ts"
+          "${pkg.path}/test/**/*.tsx"
+          "${pkg.path}/test/**/*.test.ts"
+          "${pkg.path}/test/**/*.test.tsx"
+          "${pkg.path}/vitest.config.ts"
+        ];
+        after =
+          [ installTask ]
+          ++ (pkg.after or [ ])
+          ++ lib.optional (hasPackageConcurrency && batchIndex > 0) (packageTestBatchTaskName (batchIndex - 1));
+      };
+    };
+
+  mkPackageTestBatchTask = index: taskNames: {
+    "${packageTestBatchTaskName index}" = {
+      description = "Complete test:run package batch ${toString (index + 1)}";
+      after = taskNames;
     };
   };
-
-  boundedPackageTestRunExec =
-    let
-      taskNames = map (pkg: "test:${pkg.name}") packages;
-      quotedTasks = lib.concatMapStringsSep " " lib.escapeShellArg taskNames;
-    in
-    ''
-      set -euo pipefail
-
-      failed=0
-      running_pids=()
-
-      wait_for_running_tasks() {
-        local pid
-        for pid in "''${running_pids[@]}"; do
-          if ! wait "$pid"; then
-            failed=1
-          fi
-        done
-        running_pids=()
-      }
-
-      for task in ${quotedTasks}; do
-        (
-          # Preserve each package task's own dependency graph while bounding the
-          # package task bodies from this parent scheduler.
-          DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false devenv tasks run --mode before "$task"
-        ) &
-        running_pids+=("$!")
-
-        if [ "''${#running_pids[@]}" -ge ${toString validatedPackageConcurrency} ]; then
-          wait_for_running_tasks
-        fi
-      done
-
-      wait_for_running_tasks
-
-      exit "$failed"
-    '';
 
   guardedTasks = {
     "test:run" = {
       guard = "vitest";
       description = "Run all tests";
-      exec =
-        if hasPackages then
-          if hasPackageConcurrency then trace.exec "test:run" boundedPackageTestRunExec else null
-        else
-          vitestExec "";
+      exec = if hasPackages then null else vitestExec "";
       after =
         if hasPackages then
           if hasPackageConcurrency then
-            [ installTask ] ++ extraTests
+            [ lastPackageTestBatchTaskName ] ++ extraTests
           else
             map (pkg: "test:${pkg.name}") packages ++ extraTests
         else
@@ -149,13 +134,18 @@ let
       after = [ "genie:run" ];
     };
   };
-
 in
 {
   packages = cliGuard.fromTasks guardedTasks;
 
   tasks = lib.mkMerge (
-    (if hasPackages then map (pkg: cliGuard.stripGuards (mkTestTask pkg)) packages else [ ])
+    (if hasPackages then map (pkg: cliGuard.stripGuards (mkTestTask pkg)) packagesWithIndexes else [ ])
+    ++ (
+      if hasPackages && hasPackageConcurrency then
+        lib.imap0 mkPackageTestBatchTask packageTestBatches
+      else
+        [ ]
+    )
     ++ [ (cliGuard.stripGuards guardedTasks) ]
   );
 }

@@ -51,6 +51,10 @@ All notable changes to this project will be documented in this file.
   `runDevenvTasksBefore(...)` as the Genie composition API while shrinking the
   generated CI workflow well below GitHub's admission limit.
 
+- **devenv test tasks**: Bound package test fanout while preserving
+  package-specific prerequisites, so native-link setup is preserved without
+  re-entering Devenv's upstream task graph in parallel.
+
 - **nix packages / @overeng/genie**: Refresh the Genie, Megarepo, TUI Stories,
   and Notion MD pnpm-deps fixed-output hashes and keep the native dependency
   policy audit install-free by splitting the policy into a lightweight module.
