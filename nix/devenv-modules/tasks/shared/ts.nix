@@ -366,7 +366,7 @@ let
   otherTasks = {
     "ts:build-watch" = {
       description = "Build all packages in watch mode (tsgo --build --watch)";
-      exec = "${tsBin} --build --watch ${tsconfigFile}";
+      exec = trace.exec "ts:build-watch" "${tsBin} --build --watch ${tsconfigFile}";
       after = [
         "genie:run"
         "pnpm:install"

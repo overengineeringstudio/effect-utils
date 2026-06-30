@@ -53,7 +53,7 @@ in
     };
     "lint:fix" = {
       description = "Fix all lint issues (no formatter configured)";
-      exec = "echo 'No lint fixer configured'";
+      exec = trace.exec "lint:fix" "echo 'No lint fixer configured'";
     };
   };
 }

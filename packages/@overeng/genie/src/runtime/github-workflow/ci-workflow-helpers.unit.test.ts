@@ -335,7 +335,7 @@ describe('ci workflow merge queue helpers', () => {
   it('hardens dynamic semantic gate names and admission-job permissions', async () => {
     const { mergeQueueAdmittedJob, mergeQueueWorkflowOn, requiredGateCheckName } = (await import(
       // oxlint-disable-next-line import/no-dynamic-require
-      new URL('../../../../../../genie/ci-workflow.ts', import.meta.url).href
+      new URL('../../../../../../genie/ci-workflow/merge-queue.ts', import.meta.url).href
     )) as any
 
     expect(requiredGateCheckName("pr/quality's gate")).toBe(

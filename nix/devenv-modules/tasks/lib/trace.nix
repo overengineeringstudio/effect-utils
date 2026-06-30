@@ -1,6 +1,7 @@
 # OTEL tracing helpers for devenv tasks
 #
-# Wraps task `exec` scripts with `otel-span` to produce native devenv task spans.
+# Wraps task `exec` scripts with `otel-scrape` and `otel-span` to produce native
+# devenv task spans plus wrapper-owned command evidence.
 #
 # When OTEL delivery is available (otel-span on PATH plus either an OTLP
 # endpoint or a valid spool dir), each task execution emits an OTLP span under
@@ -33,6 +34,40 @@
 { lib }:
 let
   otelCanEmitShell = ''command -v otel-span >/dev/null 2>&1 && { [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] || { [ -n "''${OTEL_SPAN_SPOOL_DIR:-}" ] && [ -d "''${OTEL_SPAN_SPOOL_DIR:-}" ]; }; }'';
+  taskFileStem =
+    taskName:
+    builtins.replaceStrings
+      [
+        ":"
+        "/"
+        " "
+        "."
+      ]
+      [
+        "-"
+        "-"
+        "-"
+        "_"
+      ]
+      taskName;
+
+  # Dogfood otel-scrape around every task phase while keeping task execution
+  # transparent: stdout/stderr/stdin/exit-code stay owned by the wrapped script.
+  dogfood = taskName: phase: execBody: ''
+    _otel_scrape_bin="''${OTEL_SCRAPE_BIN:-otel-scrape}"
+    if [ "''${OTEL_SCRAPE_DOGFOOD:-1}" != "0" ] && command -v "$_otel_scrape_bin" >/dev/null 2>&1; then
+      _otel_scrape_summary_dir="''${OTEL_SCRAPE_SUMMARY_DIR:-tmp/otel-scrape-dogfood/summaries}"
+      mkdir -p "$_otel_scrape_summary_dir"
+      _otel_scrape_summary="$_otel_scrape_summary_dir/${taskFileStem taskName}.${phase}.$$.summary.json"
+      _otel_scrape_service="''${OTEL_SCRAPE_SERVICE_NAME:-''${OTEL_SERVICE_NAME:-effect-utils-devenv}}"
+      "$_otel_scrape_bin" \
+        --summary-out "$_otel_scrape_summary" \
+        --service-name "$_otel_scrape_service" \
+        -- bash -c ${lib.escapeShellArg execBody}
+    else
+      ${execBody}
+    fi
+  '';
 
   # Wrap a task exec string with otel-span tracing.
   # When OTEL is available, the exec body runs inside an otel-span child span.
@@ -44,42 +79,46 @@ let
   # - otel-span reads OTEL_TASK_TRACEPARENT (preferred, survives devenv re-evaluations)
   #   falling back to TRACEPARENT
   # - otel-span exports both TRACEPARENT and OTEL_TASK_TRACEPARENT for child processes
-  traceExec = taskName: execBody: ''
-    if ${otelCanEmitShell}; then
-      otel-span run "effect-utils-devenv" "devenv.task.exec" \
-        --attr "tool.name=devenv" \
-        --attr "task.name=${taskName}" \
-        --attr "task.phase=exec" \
-        --attr "task.cached=false" \
-        --attr "span.label=${taskName}" \
-        -- bash -c ${lib.escapeShellArg execBody}
-    else
-      ${execBody}
-    fi
-  '';
+  traceExec =
+    taskName: execBody:
+    dogfood taskName "exec" ''
+      if ${otelCanEmitShell}; then
+        otel-span run "effect-utils-devenv" "devenv.task.exec" \
+          --attr "tool.name=devenv" \
+          --attr "task.name=${taskName}" \
+          --attr "task.phase=exec" \
+          --attr "task.cached=false" \
+          --attr "span.label=${taskName}" \
+          -- bash -c ${lib.escapeShellArg execBody}
+      else
+        ${execBody}
+      fi
+    '';
 
   # Trace status scripts so cached/skipped decisions become visible in traces.
   # The status body runs INSIDE otel-span so sub-programs (e.g. genie --check,
   # mr status) inherit TRACEPARENT and produce sub-traces.
   # --status-attr derives task.cached from exit code (0=true, non-zero=false)
   # and forces span status to OK (status checks aren't errors).
-  traceStatus = taskName: method: statusBody: ''
-    if ${otelCanEmitShell}; then
-      _status_exit=0
-      otel-span run "effect-utils-devenv" "devenv.task.status" \
-        --attr "tool.name=devenv" \
-        --attr "task.name=${taskName}" \
-        --attr "task.phase=status" \
-        --attr "status.method=${method}" \
-        --attr "span.label=${taskName}" \
-        --status-attr "task.cached" \
-        -- bash -c ${lib.escapeShellArg statusBody} || _status_exit=$?
+  traceStatus =
+    taskName: method: statusBody:
+    dogfood taskName "status" ''
+      if ${otelCanEmitShell}; then
+        _status_exit=0
+        otel-span run "effect-utils-devenv" "devenv.task.status" \
+          --attr "tool.name=devenv" \
+          --attr "task.name=${taskName}" \
+          --attr "task.phase=status" \
+          --attr "status.method=${method}" \
+          --attr "span.label=${taskName}" \
+          --status-attr "task.cached" \
+          -- bash -c ${lib.escapeShellArg statusBody} || _status_exit=$?
 
-      exit "$_status_exit"
-    else
-      ${statusBody}
-    fi
-  '';
+        exit "$_status_exit"
+      else
+        ${statusBody}
+      fi
+    '';
 
   # Wrap a task's exec and status scripts with otel-span tracing.
   withStatus =
@@ -87,19 +126,7 @@ let
     { exec, status, ... }@attrs:
     attrs
     // {
-      exec = ''
-        if ${otelCanEmitShell}; then
-          otel-span run "effect-utils-devenv" "devenv.task.exec" \
-            --attr "tool.name=devenv" \
-            --attr "task.name=${taskName}" \
-            --attr "task.phase=exec" \
-            --attr "task.cached=false" \
-            --attr "span.label=${taskName}" \
-            -- bash -c ${lib.escapeShellArg exec}
-        else
-          ${exec}
-        fi
-      '';
+      exec = traceExec taskName exec;
       status = traceStatus taskName method status;
     };
 in

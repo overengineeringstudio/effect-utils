@@ -82,10 +82,22 @@ On Linux, `ptrace-experimental` observes fork/vfork/clone, exec, and exit events
 for the traced child tree. It can emit exact descendant process spans for the
 validated fixture, including immediate-exit and nested descendants. The backend
 is opt-in because ptrace can perturb command execution and has platform,
-privilege, and namespace caveats. macOS remains degraded/direct-child unless an
-Endpoint Security-backed exact backend is implemented and validated.
+privilege, and namespace caveats. A future default Linux exact backend should be
+a separate helper/event-source design, with eBPF or process-connector-style
+lifecycle events as the primary candidates. That helper must prove privilege
+boundaries, event-loss handling, namespace behavior, and fixture coverage before
+replacing `direct-child` as the default. macOS remains degraded/direct-child
+unless an Endpoint Security-backed exact backend is implemented and validated.
 
 ## Adapters
+
+Supported release adapters are first-party and intentionally narrow. New
+adapters must consume stable structured sources, preserve stdout/stderr/stdin
+and child exit status, keep nested-wrapper ownership, update the generated
+telemetry registry for new semantic names, and prove privacy/degraded behavior
+with focused tests. English logs, progress bars, unstable human output, raw
+paths, source text, private payloads, and raw profile bytes are not accepted as
+release adapter inputs.
 
 `--adapter oxlint` parses oxlint JSON from stdout after preserving the child
 stdout bytes, recording a diagnostics metric and diagnostic events in the
@@ -99,9 +111,12 @@ profile-link event on the OTLP command span. If the child is not Node, no profil
 is produced, multiple profiles are produced, or the profile is malformed, the
 adapter records degraded evidence without changing the child exit status.
 
-Additional build-tool adapters are intentionally not release scope until each
-one lands as a vertical slice with structured input, privacy tests, degradation
-tests, and consumer evidence.
+Additional build-tool adapters are intentionally not release scope. Candidate
+order is `cargo` first, then `tsc --generateTrace`, then `vitest`, with package
+manager/install phases and `vite` held until their structured sources and
+artifact grouping are specified. Any adapter that needs new output semantics,
+OTLP metric export, adapter span export, or CAS artifact grouping must land that
+core contract before the adapter.
 
 ## Artifact Retention
 

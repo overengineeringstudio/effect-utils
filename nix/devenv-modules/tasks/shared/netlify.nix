@@ -58,6 +58,7 @@
 }:
 { lib, pkgs, ... }:
 let
+  trace = import ../lib/trace.nix { inherit lib; };
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
   deployTask = import ../lib/deploy-task.nix { inherit pkgs; };
   git = "${pkgs.git}/bin/git";
@@ -80,7 +81,7 @@ let
         description = "Deploy ${name} to Netlify";
         # Native devenv task dependency resolution runs `after` tasks first.
         after = if afterTask == null then [ ] else [ afterTask ];
-        exec = ''
+        exec = trace.exec "netlify:deploy:${name}" ''
           set -euo pipefail
 
           ${deployTask.mkRequiredEnvCheck {

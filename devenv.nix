@@ -30,6 +30,7 @@ let
   pnpmTaskHelpersScript = pkgs.writeText "pnpm-task-helpers.sh" (
     builtins.readFile ./nix/devenv-modules/tasks/shared/pnpm-task-helpers.sh
   );
+  trace = import ./nix/devenv-modules/tasks/lib/trace.nix { inherit lib; };
 
   # Shared task modules (from shared/ directory)
   taskModules = {
@@ -336,6 +337,7 @@ in
     (taskModules.lint-nix { })
     (taskModules.check {
       extraChecks = [
+        "otel-scrape:dogfood-audit"
         "workspace:check"
         "lint:nix"
       ];
@@ -504,7 +506,7 @@ in
   tasks."pnpm:link-native-node-packages" = {
     after = [ "pnpm:install" ];
     description = "Link Nix-built native Node packages into the pnpm projection";
-    exec = ''
+    exec = trace.exec "pnpm:link-native-node-packages" ''
       set -euo pipefail
       source ${lib.escapeShellArg pnpmTaskHelpersScript}
 
@@ -539,7 +541,7 @@ in
     after = [ "pnpm:install" ];
     description = "Run isolated megarepo cold-GC integration tests";
     cwd = "packages/@overeng/megarepo";
-    exec = ''
+    exec = trace.exec "test:megarepo-cold-gc" ''
       set -euo pipefail
       source ${lib.escapeShellArg pnpmTaskHelpersScript}
       export MEGAREPO_GIT_COMMAND_TIMEOUT_MS="5000"
@@ -555,7 +557,7 @@ in
   tasks."bundle:smoke" = {
     after = [ "pnpm:install" ];
     description = "Bundle representative public entries with Vite/Rollup dependency resolution";
-    exec = ''
+    exec = trace.exec "bundle:smoke" ''
       set -euo pipefail
       DEVENV_TASK_PASSTHROUGH=1 pnpm --dir packages/@overeng/pty-effect run bundle:smoke
     '';
@@ -563,13 +565,29 @@ in
 
   tasks."gh:apply-settings" = {
     after = [ "genie:run" ];
-    exec = ''
+    exec = trace.exec "gh:apply-settings" ''
       set -euo pipefail
       ruleset_id=$(gh api repos/overengineeringstudio/effect-utils/rulesets --jq '.[0].id')
       gh api "repos/overengineeringstudio/effect-utils/rulesets/$ruleset_id" --method PUT --input .github/repo-settings.json
       echo "Applied repo-settings.json to ruleset $ruleset_id"
     '';
     description = "Apply .github/repo-settings.json to GitHub ruleset";
+  };
+
+  tasks."otel-scrape:dogfood-audit" = {
+    description = "Check active devenv task modules route exec/status scripts through otel-scrape dogfooding";
+    exec = trace.exec "otel-scrape:dogfood-audit" ''
+      set -euo pipefail
+      if rg -n '^\\s*(exec|status) = ' \
+        devenv.nix \
+        nix/devenv-modules/tasks/shared \
+        nix/devenv-modules/tasks/local \
+        -g '*.nix' \
+        | rg -v 'trace\\.(exec|status)|exec = null|exec = if hasPackages then null else trace\\.exec|trace\\.withStatus|nix/devenv-modules/tasks/local/restate-integration-test\\.nix:21:|nix/devenv-modules/tasks/shared/ts\\.nix:(377|388):|nix/devenv-modules/tasks/shared/vercel\\.nix:'; then
+        echo "Found task exec/status scripts that bypass trace.nix otel-scrape dogfooding." >&2
+        exit 1
+      fi
+    '';
   };
 
   # Keep git-hook installation out of the shell-entry path.

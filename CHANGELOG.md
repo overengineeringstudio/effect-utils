@@ -53,6 +53,18 @@ All notable changes to this project will be documented in this file.
   that observes fork/vfork/clone, exec, and exit events for a traced child tree
   and validates exact descendant evidence with a compiled process-DAG fixture.
 
+- **otel-scrape / devenv**: Dogfood `otel-scrape` across effect-utils devenv
+  task execution, status checks, Storybook processes, Netlify/SecretSpec tasks,
+  and aggregate gates via the shared `trace.nix` task wrapper. Local task runs
+  now write summary evidence under `tmp/otel-scrape-dogfood/summaries` by
+  default and `check:*` runs a source audit to catch new unwrapped task scripts.
+
+- **otel-scrape**: Document the adapter admission bar before broadening the
+  fleet: new release adapters must land as independent structured-source
+  vertical slices, keep generated telemetry names as the source of truth, and
+  reject English logs, progress bars, unstable human output, raw paths, source
+  text, private payloads, and raw profile bytes as adapter inputs.
+
 - **@overeng/genie**: Add the explicit `@overeng/genie/composition` subpath for
   reusable cross-artifact composition helpers. The first helper,
   `tsconfigReferencesFromPackages`, projects TypeScript project references from
