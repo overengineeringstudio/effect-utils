@@ -108,7 +108,9 @@ let
 
       for task in ${quotedTasks}; do
         (
-          DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false devenv tasks run --mode single "$task"
+          # Preserve each package task's own dependency graph while bounding the
+          # package task bodies from this parent scheduler.
+          DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false devenv tasks run --mode before "$task"
         ) &
         running_pids+=("$!")
 

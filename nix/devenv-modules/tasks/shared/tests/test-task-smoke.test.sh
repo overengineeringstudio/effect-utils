@@ -86,7 +86,7 @@ active_file="${TEST_ACTIVE_FILE:?}"
 max_file="${TEST_MAX_FILE:?}"
 log_file="${TEST_LOG_FILE:?}"
 
-if [ "$#" -ne 5 ] || [ "$1" != "tasks" ] || [ "$2" != "run" ] || [ "$3" != "--mode" ] || [ "$4" != "single" ]; then
+if [ "$#" -ne 5 ] || [ "$1" != "tasks" ] || [ "$2" != "run" ] || [ "$3" != "--mode" ] || [ "$4" != "before" ]; then
   printf 'unexpected devenv argv: %s\n' "$*" >&2
   exit 64
 fi
