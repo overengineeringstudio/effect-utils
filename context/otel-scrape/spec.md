@@ -227,10 +227,11 @@ type HelperProcessEvent =
 
 Exactness is fail-closed. A helper restart, event-sequence gap, `Loss` event,
 version mismatch, run-id mismatch, helper disconnect, unpaired lifecycle event,
-missing privilege, namespace or cgroup ambiguity, or missing exit downgrades the
-affected observation. The wrapper constructs process spans and OTLP output from
-validated helper facts; the helper does not export OTLP or own adapter
-semantics.
+non-monotonic event timestamp, invalid fork/exec/exit ordering, multiple
+external roots, missing privilege, namespace or cgroup ambiguity, or missing
+exit downgrades the affected observation. The wrapper constructs process spans
+and OTLP output from validated helper facts; the helper does not export OTLP or
+own adapter semantics.
 
 Correlation starts from a wrapper-generated run ID propagated to the child
 environment. Platform helpers may additionally use process group, session,

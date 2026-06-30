@@ -1385,6 +1385,7 @@ struct HelperProcessState {
     parent_pid_hash: String,
     started_unix_nano: u64,
     argv_hash: Option<String>,
+    executed_unix_nano: Option<u64>,
     exit_code: Option<i32>,
     signal: Option<i32>,
     ended_unix_nano: Option<u64>,
@@ -1397,6 +1398,7 @@ fn helper_events_to_process_observation(
     let mut expected_seq = 0_u64;
     let mut saw_start = false;
     let mut saw_finish = false;
+    let mut last_event_unix_nano = None;
     let mut processes: BTreeMap<String, HelperProcessState> = BTreeMap::new();
     for event in events {
         if saw_finish {
@@ -1412,6 +1414,12 @@ fn helper_events_to_process_observation(
         if base.event_seq != expected_seq {
             return Err(ProcessObservationDegradedReason::SequenceGap);
         }
+        if last_event_unix_nano
+            .is_some_and(|last| base.time_unix_nano < last)
+        {
+            return Err(ProcessObservationDegradedReason::LifecycleIncomplete);
+        }
+        last_event_unix_nano = Some(base.time_unix_nano);
         expected_seq = expected_seq.saturating_add(1);
         match event {
             HelperStreamEvent::RunStarted(_) => {
@@ -1433,6 +1441,7 @@ fn helper_events_to_process_observation(
                             parent_pid_hash: event.parent_pid_hash.clone(),
                             started_unix_nano: event.base.time_unix_nano,
                             argv_hash: None,
+                            executed_unix_nano: None,
                             exit_code: None,
                             signal: None,
                             ended_unix_nano: None,
@@ -1455,7 +1464,14 @@ fn helper_events_to_process_observation(
                 if process.argv_hash.is_some() {
                     return Err(ProcessObservationDegradedReason::LifecycleIncomplete);
                 }
+                if process.ended_unix_nano.is_some() {
+                    return Err(ProcessObservationDegradedReason::LifecycleIncomplete);
+                }
+                if event.base.time_unix_nano < process.started_unix_nano {
+                    return Err(ProcessObservationDegradedReason::LifecycleIncomplete);
+                }
                 process.argv_hash = Some(event.argv_hash.clone());
+                process.executed_unix_nano = Some(event.base.time_unix_nano);
             }
             HelperStreamEvent::Exit(event) => {
                 if !helper_sha256_hash_is_valid(&event.pid_hash) {
@@ -1465,6 +1481,14 @@ fn helper_events_to_process_observation(
                     return Err(ProcessObservationDegradedReason::LifecycleIncomplete);
                 };
                 if process.ended_unix_nano.is_some() {
+                    return Err(ProcessObservationDegradedReason::LifecycleIncomplete);
+                }
+                let Some(executed_unix_nano) = process.executed_unix_nano else {
+                    return Err(ProcessObservationDegradedReason::LifecycleIncomplete);
+                };
+                if event.base.time_unix_nano < process.started_unix_nano
+                    || event.base.time_unix_nano < executed_unix_nano
+                {
                     return Err(ProcessObservationDegradedReason::LifecycleIncomplete);
                 }
                 process.exit_code = event.exit_code;
@@ -1481,6 +1505,27 @@ fn helper_events_to_process_observation(
     }
     if !saw_start || !saw_finish || processes.is_empty() {
         return Err(ProcessObservationDegradedReason::LifecycleIncomplete);
+    }
+
+    let external_roots = processes
+        .iter()
+        .filter(|(_, process)| !processes.contains_key(&process.parent_pid_hash))
+        .count();
+    if external_roots != 1 {
+        return Err(ProcessObservationDegradedReason::LifecycleIncomplete);
+    }
+    for process in processes.values() {
+        if let Some(parent) = processes.get(&process.parent_pid_hash) {
+            let Some(parent_ended_unix_nano) = parent.ended_unix_nano else {
+                return Err(ProcessObservationDegradedReason::LifecycleIncomplete);
+            };
+            if process.started_unix_nano < parent.started_unix_nano {
+                return Err(ProcessObservationDegradedReason::LifecycleIncomplete);
+            }
+            if process.started_unix_nano > parent_ended_unix_nano {
+                return Err(ProcessObservationDegradedReason::LifecycleIncomplete);
+            }
+        }
     }
 
     let mut span_ids = BTreeMap::new();

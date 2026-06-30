@@ -688,6 +688,13 @@ fn helper_stream_backend_degrades_on_invalid_fake_helper_streams() {
         (HelperFixtureMode::VersionMismatch, "version-mismatch"),
         (HelperFixtureMode::HelperDisconnect, "helper-disconnect"),
         (HelperFixtureMode::MissingExit, "lifecycle-incomplete"),
+        (HelperFixtureMode::ReversedTimestamps, "lifecycle-incomplete"),
+        (HelperFixtureMode::MultipleRoots, "lifecycle-incomplete"),
+        (HelperFixtureMode::ExitBeforeExec, "lifecycle-incomplete"),
+        (
+            HelperFixtureMode::ChildForkAfterParentExit,
+            "lifecycle-incomplete",
+        ),
     ] {
         let dir = tempfile::tempdir().unwrap();
         let summary = dir.path().join("summary.json");
@@ -1561,11 +1568,17 @@ const HELPER_ROOT_PID_HASH: &str =
 const HELPER_CHILD_PID_HASH: &str =
     "sha256:0000000000000000000000000000000000000000000000000000000000000003";
 #[cfg(unix)]
+const HELPER_OTHER_ROOT_PID_HASH: &str =
+    "sha256:0000000000000000000000000000000000000000000000000000000000000004";
+#[cfg(unix)]
 const HELPER_ROOT_ARGV_HASH: &str =
     "sha256:1000000000000000000000000000000000000000000000000000000000000000";
 #[cfg(unix)]
 const HELPER_CHILD_ARGV_HASH: &str =
     "sha256:2000000000000000000000000000000000000000000000000000000000000000";
+#[cfg(unix)]
+const HELPER_OTHER_ROOT_ARGV_HASH: &str =
+    "sha256:3000000000000000000000000000000000000000000000000000000000000000";
 
 #[cfg(unix)]
 #[derive(Clone, Copy)]
@@ -1577,6 +1590,10 @@ enum HelperFixtureMode {
     VersionMismatch,
     HelperDisconnect,
     MissingExit,
+    ReversedTimestamps,
+    MultipleRoots,
+    ExitBeforeExec,
+    ChildForkAfterParentExit,
 }
 
 #[cfg(unix)]
@@ -1635,7 +1652,9 @@ fn helper_stream_fixture_body(run_id: &str, mode: HelperFixtureMode) -> String {
         | HelperFixtureMode::SequenceGap
         | HelperFixtureMode::RunIdMismatch
         | HelperFixtureMode::VersionMismatch
-        | HelperFixtureMode::MissingExit => {
+        | HelperFixtureMode::MissingExit
+        | HelperFixtureMode::ReversedTimestamps
+        | HelperFixtureMode::MultipleRoots => {
             events.extend([
                 serde_json::json!({
                     "_tag": "Exec",
@@ -1669,19 +1688,62 @@ fn helper_stream_fixture_body(run_id: &str, mode: HelperFixtureMode) -> String {
                     "protocolVersion": protocol_version,
                     "runId": event_run_id,
                     "eventSeq": 5,
-                    "timeUnixNano": base + 5_000_000,
+                    "timeUnixNano": if matches!(mode, HelperFixtureMode::ReversedTimestamps) {
+                        base + 3_500_000
+                    } else {
+                        base + 5_000_000
+                    },
                     "pidHash": HELPER_CHILD_PID_HASH,
                     "exitCode": 0,
                 }),
             ]);
+            if matches!(mode, HelperFixtureMode::MultipleRoots) {
+                events.extend([
+                    serde_json::json!({
+                        "_tag": "Fork",
+                        "protocolVersion": protocol_version,
+                        "runId": event_run_id,
+                        "eventSeq": 6,
+                        "timeUnixNano": base + 6_000_000,
+                        "pidHash": HELPER_OTHER_ROOT_PID_HASH,
+                        "parentPidHash": HELPER_PARENT_PID_HASH,
+                    }),
+                    serde_json::json!({
+                        "_tag": "Exec",
+                        "protocolVersion": protocol_version,
+                        "runId": event_run_id,
+                        "eventSeq": 7,
+                        "timeUnixNano": base + 7_000_000,
+                        "pidHash": HELPER_OTHER_ROOT_PID_HASH,
+                        "argvHash": HELPER_OTHER_ROOT_ARGV_HASH,
+                    }),
+                    serde_json::json!({
+                        "_tag": "Exit",
+                        "protocolVersion": protocol_version,
+                        "runId": event_run_id,
+                        "eventSeq": 8,
+                        "timeUnixNano": base + 8_000_000,
+                        "pidHash": HELPER_OTHER_ROOT_PID_HASH,
+                        "exitCode": 0,
+                    }),
+                ]);
+            }
             if !matches!(mode, HelperFixtureMode::MissingExit) {
                 events.extend([
                     serde_json::json!({
                         "_tag": "Exit",
                         "protocolVersion": protocol_version,
                         "runId": event_run_id,
-                        "eventSeq": 6,
-                        "timeUnixNano": base + 6_000_000,
+                        "eventSeq": if matches!(mode, HelperFixtureMode::MultipleRoots) {
+                            9
+                        } else {
+                            6
+                        },
+                        "timeUnixNano": if matches!(mode, HelperFixtureMode::MultipleRoots) {
+                            base + 9_000_000
+                        } else {
+                            base + 6_000_000
+                        },
                         "pidHash": HELPER_ROOT_PID_HASH,
                         "exitCode": 0,
                     }),
@@ -1689,8 +1751,16 @@ fn helper_stream_fixture_body(run_id: &str, mode: HelperFixtureMode) -> String {
                         "_tag": "RunFinished",
                         "protocolVersion": protocol_version,
                         "runId": event_run_id,
-                        "eventSeq": 7,
-                        "timeUnixNano": base + 7_000_000,
+                        "eventSeq": if matches!(mode, HelperFixtureMode::MultipleRoots) {
+                            10
+                        } else {
+                            7
+                        },
+                        "timeUnixNano": if matches!(mode, HelperFixtureMode::MultipleRoots) {
+                            base + 10_000_000
+                        } else {
+                            base + 7_000_000
+                        },
                     }),
                 ]);
             } else {
@@ -1702,6 +1772,91 @@ fn helper_stream_fixture_body(run_id: &str, mode: HelperFixtureMode) -> String {
                     "timeUnixNano": base + 6_000_000,
                 }));
             }
+        }
+        HelperFixtureMode::ExitBeforeExec => {
+            events.extend([
+                serde_json::json!({
+                    "_tag": "Exit",
+                    "protocolVersion": protocol_version,
+                    "runId": event_run_id,
+                    "eventSeq": 2,
+                    "timeUnixNano": base + 2_000_000,
+                    "pidHash": HELPER_ROOT_PID_HASH,
+                    "exitCode": 0,
+                }),
+                serde_json::json!({
+                    "_tag": "Exec",
+                    "protocolVersion": protocol_version,
+                    "runId": event_run_id,
+                    "eventSeq": 3,
+                    "timeUnixNano": base + 3_000_000,
+                    "pidHash": HELPER_ROOT_PID_HASH,
+                    "argvHash": HELPER_ROOT_ARGV_HASH,
+                }),
+                serde_json::json!({
+                    "_tag": "RunFinished",
+                    "protocolVersion": protocol_version,
+                    "runId": event_run_id,
+                    "eventSeq": 4,
+                    "timeUnixNano": base + 4_000_000,
+                }),
+            ]);
+        }
+        HelperFixtureMode::ChildForkAfterParentExit => {
+            events.extend([
+                serde_json::json!({
+                    "_tag": "Exec",
+                    "protocolVersion": protocol_version,
+                    "runId": event_run_id,
+                    "eventSeq": 2,
+                    "timeUnixNano": base + 2_000_000,
+                    "pidHash": HELPER_ROOT_PID_HASH,
+                    "argvHash": HELPER_ROOT_ARGV_HASH,
+                }),
+                serde_json::json!({
+                    "_tag": "Exit",
+                    "protocolVersion": protocol_version,
+                    "runId": event_run_id,
+                    "eventSeq": 3,
+                    "timeUnixNano": base + 3_000_000,
+                    "pidHash": HELPER_ROOT_PID_HASH,
+                    "exitCode": 0,
+                }),
+                serde_json::json!({
+                    "_tag": "Fork",
+                    "protocolVersion": protocol_version,
+                    "runId": event_run_id,
+                    "eventSeq": 4,
+                    "timeUnixNano": base + 4_000_000,
+                    "pidHash": HELPER_CHILD_PID_HASH,
+                    "parentPidHash": HELPER_ROOT_PID_HASH,
+                }),
+                serde_json::json!({
+                    "_tag": "Exec",
+                    "protocolVersion": protocol_version,
+                    "runId": event_run_id,
+                    "eventSeq": 5,
+                    "timeUnixNano": base + 5_000_000,
+                    "pidHash": HELPER_CHILD_PID_HASH,
+                    "argvHash": HELPER_CHILD_ARGV_HASH,
+                }),
+                serde_json::json!({
+                    "_tag": "Exit",
+                    "protocolVersion": protocol_version,
+                    "runId": event_run_id,
+                    "eventSeq": 6,
+                    "timeUnixNano": base + 6_000_000,
+                    "pidHash": HELPER_CHILD_PID_HASH,
+                    "exitCode": 0,
+                }),
+                serde_json::json!({
+                    "_tag": "RunFinished",
+                    "protocolVersion": protocol_version,
+                    "runId": event_run_id,
+                    "eventSeq": 7,
+                    "timeUnixNano": base + 7_000_000,
+                }),
+            ]);
         }
         HelperFixtureMode::Loss => {
             events.extend([
