@@ -126,12 +126,20 @@ Linux also has an opt-in `ptrace-experimental` backend. It may emit `fidelity = 
 Default exact process observation requires an event-source boundary that does
 not perturb the wrapped command. On Linux, the preferred default-exact path is a
 separate privileged helper that streams lifecycle events from kernel-supported
-sources such as eBPF tracepoints or connector-style process events. That helper
-is responsible for event-loss detection, namespace/cgroup/session correlation,
-least-privilege installation, and public-safe identity hashing before evidence
-enters summary JSON or OTLP. Sampling `/proc` snapshots can be useful debugging
-evidence, but it must remain degraded because it can miss short-lived
-descendants.
+sources such as eBPF tracepoints or connector-style process events. On macOS,
+the expected default-exact candidate is an Endpoint Security-backed helper or an
+equivalently exact system event source.
+
+The product boundary is split. `effect-utils` owns the stable wrapper-facing
+contract: backend selection, helper protocol, process-observation schemas,
+summary evidence, OTLP rendering, fake-helper fixtures, validation tests, and
+release documentation. Fleet-specific privileged activation belongs outside the
+public wrapper contract: system services, kernel capabilities, Endpoint
+Security entitlements and approval, socket ownership, health checks, rollout,
+and machine policy.
+
+Sampling `/proc` snapshots can be useful debugging evidence, but it must remain
+degraded because it can miss short-lived descendants.
 
 See [.decisions/0005-exact-process-tree-fidelity.md](./.decisions/0005-exact-process-tree-fidelity.md), [.decisions/0011-linux-ptrace-process-backend.md](./.decisions/0011-linux-ptrace-process-backend.md), and [.decisions/0013-exact-process-helper-boundary.md](./.decisions/0013-exact-process-helper-boundary.md).
 
@@ -187,6 +195,51 @@ because it starts from known process IDs only. Endpoint Security is the expected
 macOS candidate, but exact support is gated on entitlement, installation,
 user/admin approval, event-loss handling, and validation evidence. See
 [.decisions/0010-macos-process-observation.md](./.decisions/0010-macos-process-observation.md).
+
+### Helper Stream Backend
+
+The helper backend is a wrapper-facing event stream, not an OTLP exporter. It
+exists to provide ordered process lifecycle facts to `otel-scrape`; the wrapper
+still owns span construction, degradation policy, summary JSON, and OTLP export.
+
+Initial CLI/configuration surface:
+
+- `--process-backend helper-stream`
+- `--process-helper-socket <path>`
+- `OTEL_SCRAPE_PROCESS_BACKEND=helper-stream`
+- `OTEL_SCRAPE_PROCESS_HELPER_SOCKET=<path>`
+
+The wire format starts as versioned newline-delimited JSON over a local Unix
+domain socket. Every message carries a protocol version, run identity, monotonic
+event sequence, and event timestamp. The minimum event set is:
+
+```ts
+type HelperProcessEvent =
+  | { readonly _tag: 'RunStarted'; readonly protocolVersion: 1; readonly runId: string; readonly eventSeq: number; readonly timeUnixNano: number }
+  | { readonly _tag: 'Fork'; readonly protocolVersion: 1; readonly runId: string; readonly eventSeq: number; readonly timeUnixNano: number; readonly pidHash: `sha256:${string}`; readonly parentPidHash: `sha256:${string}` }
+  | { readonly _tag: 'Exec'; readonly protocolVersion: 1; readonly runId: string; readonly eventSeq: number; readonly timeUnixNano: number; readonly pidHash: `sha256:${string}`; readonly argvHash: `sha256:${string}` }
+  | { readonly _tag: 'Exit'; readonly protocolVersion: 1; readonly runId: string; readonly eventSeq: number; readonly timeUnixNano: number; readonly pidHash: `sha256:${string}`; readonly exitCode?: number; readonly signal?: number }
+  | { readonly _tag: 'Loss'; readonly protocolVersion: 1; readonly runId: string; readonly eventSeq: number; readonly timeUnixNano: number; readonly reason: ProcessObservationDegradedReason }
+  | { readonly _tag: 'RunFinished'; readonly protocolVersion: 1; readonly runId: string; readonly eventSeq: number; readonly timeUnixNano: number }
+}
+```
+
+Exactness is fail-closed. A helper restart, event-sequence gap, `Loss` event,
+version mismatch, unpaired lifecycle event, missing privilege, namespace or
+cgroup ambiguity, or missing exit downgrades the affected observation.
+
+Correlation starts from a wrapper-generated run ID propagated to the child
+environment. Platform helpers may additionally use process group, session,
+cgroup, audit token, or equivalent OS facts to prove the run boundary, but
+global PID ancestry alone is not authoritative because it can leak processes
+across concurrent runs.
+
+The helper stream must not persist or export raw argv, cwd, local paths,
+credentials, source text, or child output payloads. Persistent process evidence
+uses hashes and bounded reason codes. If a platform-specific helper needs raw
+facts for in-memory correlation across the protected local socket boundary, the
+wrapper-facing evidence still sanitizes them before summary JSON, OTLP, or
+logs.
 
 ## Semantic Conventions
 

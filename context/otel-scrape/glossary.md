@@ -8,6 +8,10 @@
 
 **Process-tree span** — A span representing an observed child process under a command span.
 
+**Process observation backend** — The mechanism that produces process lifecycle observations for `otel-scrape`, such as `direct-child`, `ptrace-experimental`, or a helper stream.
+
+**Helper stream** — A local event stream from an installed process-observation helper to `otel-scrape`. It provides lifecycle facts; `otel-scrape` still owns span construction and export.
+
 **Classification ladder** — The rule that output starts as an event and is promoted to a span, metric, or profile link only when the source data justifies it.
 
 **Root-or-join** — The propagation rule: no parent context means mint a root; parent context means join it.
