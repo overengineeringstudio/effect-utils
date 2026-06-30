@@ -188,7 +188,7 @@ describe('PtyClient', () => {
           yield* client.spawnDaemon({
             name,
             command: 'sh',
-            args: ['-c', 'echo "ENV:$PTY_EFFECT_TEST_VALUE" && sleep 0.05'],
+            args: ['-c', 'echo "ENV:$PTY_EFFECT_TEST_VALUE" && sleep 0.5'],
             env: { PTY_EFFECT_TEST_VALUE: marker },
           })
 
