@@ -59,11 +59,13 @@ All notable changes to this project will be documented in this file.
   now write summary evidence under `tmp/otel-scrape-dogfood/summaries` by
   default and `check:*` runs a source audit to catch new unwrapped task scripts.
 
-- **otel-scrape**: Document the adapter admission bar before broadening the
-  fleet: new release adapters must land as independent structured-source
-  vertical slices, keep generated telemetry names as the source of truth, and
-  reject English logs, progress bars, unstable human output, raw paths, source
-  text, private payloads, and raw profile bytes as adapter inputs.
+- **otel-scrape**: Document the adapter admission policy and exact process
+  helper boundary. New build-tool adapters stay rejected until they land as a
+  vertical slice with a structured source contract, passthrough preservation,
+  privacy and degraded-mode tests, classification justification, generated
+  contract updates, and consumer evidence for cross-package/profile contracts.
+  Default exact process-tree support remains helper-gated rather than ptrace or
+  sampled snapshots.
 
 - **@overeng/genie**: Add the explicit `@overeng/genie/composition` subpath for
   reusable cross-artifact composition helpers. The first helper,

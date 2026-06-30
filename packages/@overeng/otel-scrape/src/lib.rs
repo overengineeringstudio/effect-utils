@@ -2354,19 +2354,21 @@ mod tests {
 
     #[test]
     fn rejects_unknown_adapter() {
-        let args = vec![
-            "--adapter".to_owned(),
-            "cargo".to_owned(),
-            "--".to_owned(),
-            "true".to_owned(),
-        ];
+        for adapter in ["cargo", "tsc", "vite", "vitest"] {
+            let args = vec![
+                "--adapter".to_owned(),
+                adapter.to_owned(),
+                "--".to_owned(),
+                "true".to_owned(),
+            ];
 
-        let err = parse_args(&args).unwrap_err();
+            let err = parse_args(&args).unwrap_err();
 
-        assert_eq!(
-            err.message(),
-            "only --adapter none, --adapter oxlint, and --adapter node-cpuprofile are supported"
-        );
+            assert_eq!(
+                err.message(),
+                "only --adapter none, --adapter oxlint, and --adapter node-cpuprofile are supported"
+            );
+        }
     }
 
     #[test]
