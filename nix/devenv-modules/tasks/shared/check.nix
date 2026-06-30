@@ -50,6 +50,7 @@
 }:
 { lib, ... }:
 let
+  trace = import ../lib/trace.nix { inherit lib; };
   lintTask = lib.optional hasLint "lint:check";
   nixQuickTask = lib.optionals hasNixCheck [ "nix:check:quick" ];
   nixFullTask = lib.optionals hasNixCheck [ "nix:flake:check" ];
@@ -72,13 +73,13 @@ in
   tasks = {
     "check:quick" = {
       description = "Fast checks for development (${checkQuickTypecheckTask}${lib.optionalString hasLint ", lint"}${lib.optionalString hasNixCheck ", nix-fingerprint"}) without tests";
-      exec = "true";
+      exec = trace.exec "check:quick" "true";
       after = [ checkQuickTypecheckTask ] ++ megarepoTasks ++ lintTask ++ nixQuickTask ++ extraChecks;
     };
 
     "check:all" = {
       description = "All checks (${checkAllTypecheckTask}${extraDesc})";
-      exec = "true";
+      exec = trace.exec "check:all" "true";
       after = [
         checkAllTypecheckTask
       ]

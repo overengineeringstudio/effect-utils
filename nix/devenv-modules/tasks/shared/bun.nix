@@ -28,6 +28,7 @@
 { packages }:
 { lib, ... }:
 let
+  trace = import ../lib/trace.nix { inherit lib; };
   # Convert path to task name:
   # "packages/@scope/foo" -> "foo"
   # "packages/@scope/foo/examples/basic" -> "foo-examples-basic"
@@ -50,7 +51,7 @@ let
   mkInstallTask = path: {
     "bun:install:${toName path}" = {
       description = "Install dependencies for ${toName path}";
-      exec = "bun install";
+      exec = trace.exec "bun:install:${toName path}" "bun install";
       cwd = path;
       execIfModified = [
         "${path}/package.json"
@@ -75,11 +76,11 @@ in
         };
         "bun:clean" = {
           description = "Remove node_modules for all managed packages";
-          exec = "rm -rf ${nodeModulesPaths}";
+          exec = trace.exec "bun:clean" "rm -rf ${nodeModulesPaths}";
         };
         "bun:clean-lock-files" = {
           description = "Remove bun lock files for all managed packages";
-          exec = "rm -f ${lockFilePaths}";
+          exec = trace.exec "bun:clean-lock-files" "rm -f ${lockFilePaths}";
         };
       }
     ]

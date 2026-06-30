@@ -23,6 +23,9 @@ pkgs.rustPlatform.buildRustPackage {
   inherit src;
   cargoLock.lockFile = crateRoot + "/Cargo.lock";
   doCheck = true;
+  nativeCheckInputs = [
+    pkgs.nodejs
+  ];
   meta = {
     description = "Process wrapper for command telemetry and profile artifact links";
     license = lib.licenses.mit;

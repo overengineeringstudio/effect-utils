@@ -79,14 +79,14 @@ let
     "test:run" = {
       guard = "vitest";
       description = "Run all tests";
-      exec = if hasPackages then null else vitestExec "";
+      exec = if hasPackages then null else trace.exec "test:run" (vitestExec "");
       after =
         if hasPackages then map (pkg: "test:${pkg.name}") packages ++ extraTests else [ "genie:run" ];
     };
     "test:watch" = {
       guard = "vitest";
       description = "Run tests in watch mode";
-      exec = vitestWatchExec;
+      exec = trace.exec "test:watch" vitestWatchExec;
       after = [ "genie:run" ];
     };
   };

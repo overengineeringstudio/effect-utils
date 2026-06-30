@@ -90,7 +90,7 @@ let
   tasks = {
     "genie:prepare" = {
       description = "Run shared prerequisites before invoking genie";
-      exec = "true";
+      exec = trace.exec "genie:prepare" "true";
       env = genieTaskEnv;
     };
     "genie:run" = {
@@ -146,7 +146,7 @@ let
       description = "Watch and regenerate config files";
       after = [ "genie:prepare" ];
       env = genieTaskEnv;
-      exec = "genie --watch";
+      exec = trace.exec "genie:watch" "genie --watch";
     };
     "genie:check" = {
       guard = "genie";
