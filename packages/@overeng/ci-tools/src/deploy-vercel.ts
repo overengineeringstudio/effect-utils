@@ -2,7 +2,6 @@
 
 import { spawnSync } from 'node:child_process'
 import {
-  appendFileSync,
   cpSync,
   existsSync,
   mkdirSync,
@@ -35,12 +34,13 @@ import {
   VerificationFailed,
   deployFailureRecord,
   deploySuccessRecord,
-  deployTaskOutputLine,
   redactDeployDiagnosticText,
 } from './deploy-domain.ts'
-import type { WorkflowReportRecord } from './mod.ts'
-
-const workflowReportRecordLineMarker = 'WORKFLOW_REPORT_V1: ' as const
+import {
+  emitWorkflowReportRecord,
+  writeDevenvTaskOutput,
+  writeGithubDeployOutputs,
+} from './deploy-io.ts'
 
 const decodeInputEither = Schema.decodeUnknownEither(DeployInputV1)
 const decodeResultEither = Schema.decodeUnknownEither(DeployResultV1)
@@ -61,6 +61,9 @@ export type VercelDeployCommandOptions = {
   readonly scopeEnv?: string | undefined
   readonly protectionBypassEnv?: string | undefined
   readonly workflowReportOutputFile?: string | undefined
+  readonly githubOutputFile?: string | undefined
+  readonly githubEnvFile?: string | undefined
+  readonly urlEnvKey?: string | undefined
   readonly vercelBin: string
   readonly vercelApiBaseUrl: string
   readonly createdAtUtc?: string | undefined
@@ -548,21 +551,6 @@ const cleanupAlias = Effect.fn('ci-tools.deploy.vercel.cleanup-alias')(function*
   } satisfies CleanupResult
 })
 
-const emitRecord = (opts: {
-  readonly record: WorkflowReportRecord
-  readonly workflowReportOutputFile: string | undefined
-}) =>
-  Effect.gen(function* () {
-    const encodedRecord = yield* Schema.encode(Schema.parseJson(Schema.Unknown))(opts.record)
-    yield* Effect.sync(() => {
-      const line = `${workflowReportRecordLineMarker}${encodedRecord}\n`
-      process.stdout.write(line)
-      if (opts.workflowReportOutputFile !== undefined) {
-        appendFileSync(opts.workflowReportOutputFile, line)
-      }
-    })
-  })
-
 export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
   options: VercelDeployCommandOptions,
 ) {
@@ -613,7 +601,7 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
 
   const authTokenValue = envValue(options.authTokenEnv)
   const failWithRecord = (failure: DeployFailure) =>
-    emitRecord({
+    emitWorkflowReportRecord({
       workflowReportOutputFile: options.workflowReportOutputFile,
       record: deployFailureRecord({
         input,
@@ -891,19 +879,25 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
     }
 
     process.stdout.write(`Vercel deploy URL: ${finalUrl}\n`)
-    const taskOutputFile = process.env.DEVENV_TASK_OUTPUT_FILE
-    if (taskOutputFile !== undefined) {
-      yield* Effect.sync(() => {
-        writeFileSync(taskOutputFile, `${deployTaskOutputLine({ result: decoded.right })}\n`)
-      })
-    }
-    yield* emitRecord({
+    yield* writeDevenvTaskOutput({
+      result: decoded.right,
+      taskOutputFile: process.env.DEVENV_TASK_OUTPUT_FILE,
+    })
+    const recordJson = yield* emitWorkflowReportRecord({
       workflowReportOutputFile: options.workflowReportOutputFile,
       record: deploySuccessRecord({
         input,
         result: decoded.right,
         createdAtUtc,
       }),
+    })
+    yield* writeGithubDeployOutputs({
+      result: decoded.right,
+      recordJson,
+      workflowReportOutputFile: options.workflowReportOutputFile,
+      githubOutputFile: options.githubOutputFile,
+      githubEnvFile: options.githubEnvFile,
+      urlEnvKey: options.urlEnvKey,
     })
   } finally {
     rmSync(workDir, { recursive: true, force: true })

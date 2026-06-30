@@ -301,6 +301,18 @@ const netlifyDeployCommand = Command.make(
       Options.withDescription('Optional JSONL file that receives marked workflow-report records'),
       Options.optional,
     ),
+    githubOutputFile: Options.text('github-output-file').pipe(
+      Options.withDescription('Optional GitHub Actions output file that receives deploy outputs'),
+      Options.optional,
+    ),
+    githubEnvFile: Options.text('github-env-file').pipe(
+      Options.withDescription('Optional GitHub Actions env file that receives deploy env vars'),
+      Options.optional,
+    ),
+    urlEnvKey: Options.text('url-env-key').pipe(
+      Options.withDescription('Optional env var name for the final deploy URL'),
+      Options.optional,
+    ),
     netlifyBin: Options.text('netlify-bin').pipe(
       Options.withDescription('Netlify CLI binary path'),
       Options.withDefault('netlify'),
@@ -308,6 +320,10 @@ const netlifyDeployCommand = Command.make(
     netlifyApiBaseUrl: Options.text('netlify-api-base-url').pipe(
       Options.withDescription('Netlify API base URL'),
       Options.withDefault('https://api.netlify.com'),
+    ),
+    missingAuthPolicy: Options.choice('missing-auth-policy', ['fail', 'skip']).pipe(
+      Options.withDescription('Whether missing Netlify auth fails or emits a skipped record'),
+      Options.withDefault('fail' as const),
     ),
     createdAtUtc: Options.text('created-at-utc').pipe(
       Options.withDescription('Override record creation timestamp for deterministic tests'),
@@ -339,6 +355,9 @@ const netlifyDeployCommand = Command.make(
       accountSlugEnv: optionToUndefined(opts.accountSlugEnv),
       workspaceFilter: optionToUndefined(opts.workspaceFilter),
       workflowReportOutputFile: optionToUndefined(opts.workflowReportOutputFile),
+      githubOutputFile: optionToUndefined(opts.githubOutputFile),
+      githubEnvFile: optionToUndefined(opts.githubEnvFile),
+      urlEnvKey: optionToUndefined(opts.urlEnvKey),
       createdAtUtc: optionToUndefined(opts.createdAtUtc),
       e2eVerifyPath: optionToUndefined(opts.e2eVerifyPath),
       e2eVerifyText: optionToUndefined(opts.e2eVerifyText),
@@ -412,6 +431,18 @@ const vercelDeployCommand = Command.make(
       Options.withDescription('Optional JSONL file that receives marked workflow-report records'),
       Options.optional,
     ),
+    githubOutputFile: Options.text('github-output-file').pipe(
+      Options.withDescription('Optional GitHub Actions output file that receives deploy outputs'),
+      Options.optional,
+    ),
+    githubEnvFile: Options.text('github-env-file').pipe(
+      Options.withDescription('Optional GitHub Actions env file that receives deploy env vars'),
+      Options.optional,
+    ),
+    urlEnvKey: Options.text('url-env-key').pipe(
+      Options.withDescription('Optional env var name for the final deploy URL'),
+      Options.optional,
+    ),
     vercelBin: Options.text('vercel-bin').pipe(
       Options.withDescription('Vercel CLI binary path'),
       Options.withDefault('vercel'),
@@ -453,6 +484,9 @@ const vercelDeployCommand = Command.make(
       scopeEnv: optionToUndefined(opts.scopeEnv),
       protectionBypassEnv: optionToUndefined(opts.protectionBypassEnv),
       workflowReportOutputFile: optionToUndefined(opts.workflowReportOutputFile),
+      githubOutputFile: optionToUndefined(opts.githubOutputFile),
+      githubEnvFile: optionToUndefined(opts.githubEnvFile),
+      urlEnvKey: optionToUndefined(opts.urlEnvKey),
       createdAtUtc: optionToUndefined(opts.createdAtUtc),
       e2eVerifyPath: optionToUndefined(opts.e2eVerifyPath),
       e2eVerifyText: optionToUndefined(opts.e2eVerifyText),

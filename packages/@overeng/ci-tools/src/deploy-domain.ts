@@ -21,6 +21,11 @@ export const DeployStatus = Schema.Literal('success', 'failure', 'skipped').anno
 })
 export type DeployStatus = typeof DeployStatus.Type
 
+export const MissingAuthPolicy = Schema.Literal('fail', 'skip').annotations({
+  identifier: 'CiTools.Deploy.MissingAuthPolicy',
+})
+export type MissingAuthPolicy = typeof MissingAuthPolicy.Type
+
 export const PositiveInt = Schema.Number.pipe(
   Schema.int(),
   Schema.positive(),
@@ -418,6 +423,9 @@ export const deploySuccessRecord = (
       mode: opts.input.mode,
       attempts: opts.result.attempts,
       ...(opts.result.alias === undefined ? {} : { alias: opts.result.alias }),
+      rawDeployUrl: opts.result.rawDeployUrl.toString(),
+      finalUrl: opts.result.finalUrl.toString(),
+      deployedAtUtc: encodeDateTimeUtc(opts.result.endedAtUtc),
       ...(opts.result.cleanup === undefined ? {} : { cleanup: opts.result.cleanup.status }),
     },
   })

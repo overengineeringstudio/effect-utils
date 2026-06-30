@@ -1,7 +1,7 @@
 /* oxlint-disable overeng/jsdoc-require-exports, overeng/named-args -- Phase 3 exposes the Netlify deploy boundary used by generated tasks. */
 
 import { spawnSync } from 'node:child_process'
-import { appendFileSync, existsSync, writeFileSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 
 import { HttpClient, HttpClientRequest } from '@effect/platform'
 import { Effect, Either, Schema } from 'effect'
@@ -9,6 +9,7 @@ import { Effect, Either, Schema } from 'effect'
 import {
   DeployInputV1,
   type DeployFailure,
+  type MissingAuthPolicy,
   DeployProviderOperation,
   DeployResultV1,
   InvalidProviderOutput,
@@ -21,12 +22,14 @@ import {
   deployFailureRecord,
   deploySkippedRecord,
   deploySuccessRecord,
-  deployTaskOutputLine,
   redactDeployDiagnosticText,
 } from './deploy-domain.ts'
-import type { WorkflowReportRecord } from './mod.ts'
-
-const workflowReportRecordLineMarker = 'WORKFLOW_REPORT_V1: ' as const
+import {
+  emitWorkflowReportRecord,
+  writeDevenvTaskOutput,
+  writeGithubDeployOutputs,
+  writeGithubWorkflowReportOutput,
+} from './deploy-io.ts'
 
 const decodeInputEither = Schema.decodeUnknownEither(DeployInputV1)
 const decodeResultEither = Schema.decodeUnknownEither(DeployResultV1)
@@ -43,8 +46,12 @@ export type NetlifyDeployCommandOptions = {
   readonly accountSlugEnv?: string | undefined
   readonly workspaceFilter?: string | undefined
   readonly workflowReportOutputFile?: string | undefined
+  readonly githubOutputFile?: string | undefined
+  readonly githubEnvFile?: string | undefined
+  readonly urlEnvKey?: string | undefined
   readonly netlifyBin: string
   readonly netlifyApiBaseUrl: string
+  readonly missingAuthPolicy: MissingAuthPolicy
   readonly createdAtUtc?: string | undefined
   readonly e2eAllowSharedProject: boolean
   readonly e2eReservedAliasPrefix: string
@@ -426,21 +433,6 @@ const verifyFinalUrl = Effect.fn('ci-tools.deploy.netlify.verify')(function* (op
   )
 })
 
-const emitRecord = (opts: {
-  readonly record: WorkflowReportRecord
-  readonly workflowReportOutputFile: string | undefined
-}) =>
-  Effect.gen(function* () {
-    const encodedRecord = yield* Schema.encode(Schema.parseJson(Schema.Unknown))(opts.record)
-    yield* Effect.sync(() => {
-      const line = `${workflowReportRecordLineMarker}${encodedRecord}\n`
-      process.stdout.write(line)
-      if (opts.workflowReportOutputFile !== undefined) {
-        appendFileSync(opts.workflowReportOutputFile, line)
-      }
-    })
-  })
-
 export const runNetlifyDeploy = Effect.fn('ci-tools.deploy.netlify')(function* (
   options: NetlifyDeployCommandOptions,
 ) {
@@ -484,7 +476,7 @@ export const runNetlifyDeploy = Effect.fn('ci-tools.deploy.netlify')(function* (
 
   const authTokenValue = envValue(options.authTokenEnv)
   const failWithRecord = (failure: DeployFailure) =>
-    emitRecord({
+    emitWorkflowReportRecord({
       workflowReportOutputFile: options.workflowReportOutputFile,
       record: deployFailureRecord({
         input,
@@ -515,7 +507,7 @@ export const runNetlifyDeploy = Effect.fn('ci-tools.deploy.netlify')(function* (
   }).pipe(Effect.catchAll(failWithRecord))
 
   if (existsSync(options.artifactDir) === false) {
-    yield* emitRecord({
+    const recordJson = yield* emitWorkflowReportRecord({
       workflowReportOutputFile: options.workflowReportOutputFile,
       record: deploySkippedRecord({
         input,
@@ -523,10 +515,31 @@ export const runNetlifyDeploy = Effect.fn('ci-tools.deploy.netlify')(function* (
         createdAtUtc,
       }),
     })
+    yield* writeGithubWorkflowReportOutput({
+      recordJson,
+      workflowReportOutputFile: options.workflowReportOutputFile,
+      githubOutputFile: options.githubOutputFile,
+    })
     return
   }
 
   if (authTokenValue === undefined) {
+    if (options.missingAuthPolicy === 'skip') {
+      const recordJson = yield* emitWorkflowReportRecord({
+        workflowReportOutputFile: options.workflowReportOutputFile,
+        record: deploySkippedRecord({
+          input,
+          reason: `Skipping ${options.target} deploy because ${options.authTokenEnv} is not available.`,
+          createdAtUtc,
+        }),
+      })
+      yield* writeGithubWorkflowReportOutput({
+        recordJson,
+        workflowReportOutputFile: options.workflowReportOutputFile,
+        githubOutputFile: options.githubOutputFile,
+      })
+      return
+    }
     return yield* failWithRecord(
       new MissingAuth({
         provider: 'netlify',
@@ -635,18 +648,24 @@ export const runNetlifyDeploy = Effect.fn('ci-tools.deploy.netlify')(function* (
   }
 
   process.stdout.write(`Netlify deploy URL: ${finalUrl}\n`)
-  const taskOutputFile = process.env.DEVENV_TASK_OUTPUT_FILE
-  if (taskOutputFile !== undefined) {
-    yield* Effect.sync(() => {
-      writeFileSync(taskOutputFile, `${deployTaskOutputLine({ result: decoded.right })}\n`)
-    })
-  }
-  yield* emitRecord({
+  yield* writeDevenvTaskOutput({
+    result: decoded.right,
+    taskOutputFile: process.env.DEVENV_TASK_OUTPUT_FILE,
+  })
+  const recordJson = yield* emitWorkflowReportRecord({
     workflowReportOutputFile: options.workflowReportOutputFile,
     record: deploySuccessRecord({
       input,
       result: decoded.right,
       createdAtUtc,
     }),
+  })
+  yield* writeGithubDeployOutputs({
+    result: decoded.right,
+    recordJson,
+    workflowReportOutputFile: options.workflowReportOutputFile,
+    githubOutputFile: options.githubOutputFile,
+    githubEnvFile: options.githubEnvFile,
+    urlEnvKey: options.urlEnvKey,
   })
 })

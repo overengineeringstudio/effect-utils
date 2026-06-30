@@ -47,6 +47,10 @@ let
       scopeEnv = deployment.scopeEnv or null;
       protectionBypassEnv = deployment.protectionBypassEnv or null;
       aliasPrefix = deployment.aliasPrefix or null;
+      urlEnvKey =
+        deployment.urlEnvKey or "VERCEL_DEPLOY_URL_${
+          lib.toUpper (builtins.replaceStrings [ "-" "." "/" ] [ "_" "_" "_" ] name)
+        }";
       extraEnv = deployment.env or { };
     in
     {
@@ -69,6 +73,7 @@ let
 
           input="''${DEVENV_TASK_INPUT:-"{}"}"
           deploy_type="$(${pkgs.jq}/bin/jq -r '.type // "preview"' <<<"$input")"
+          url_env_key="$(${pkgs.jq}/bin/jq -r '.urlEnvKey // .url_env_key // ${builtins.toJSON urlEnvKey}' <<<"$input")"
           case "$deploy_type" in
             prod|pr|preview) ;;
             *)
@@ -199,6 +204,15 @@ let
 
           if [ -n "''${WORKFLOW_REPORT_OUTPUT_FILE:-}" ]; then
             args+=(--workflow-report-output-file "$WORKFLOW_REPORT_OUTPUT_FILE")
+          fi
+          if [ -n "''${GITHUB_OUTPUT:-}" ]; then
+            args+=(--github-output-file "$GITHUB_OUTPUT")
+          fi
+          if [ -n "''${GITHUB_ENV:-}" ]; then
+            args+=(--github-env-file "$GITHUB_ENV")
+          fi
+          if [ -n "$url_env_key" ]; then
+            args+=(--url-env-key "$url_env_key")
           fi
 
           ${lib.escapeShellArg resolvedCiToolsBin} "''${args[@]}"

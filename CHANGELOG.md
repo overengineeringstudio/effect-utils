@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **devenv deploy tasks / @overeng/ci-tools**: Centralize deploy-preview
+  workflow-report and GitHub output emission in `ci-tools`, including
+  provider-owned skip records, URL outputs, and task metadata, so generated CI
+  delegates deploy behavior through devenv tasks.
+
 - **CI**: Collapse guarded live Netlify and Vercel deploy E2Es into one shared
   live deploy job with common setup.
 

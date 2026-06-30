@@ -351,14 +351,18 @@ extract_vercel_build_task_script "$tmpdir/vercel-build-deploy.sh"
 echo "Test 1: Netlify PR task delegates to ci-tools and preserves outputs"
 netlify_output_file="$tmpdir/netlify-task-output.json"
 netlify_report_file="$tmpdir/netlify-report.jsonl"
+netlify_github_output="$tmpdir/netlify-github-output"
+netlify_github_env="$tmpdir/netlify-github-env"
 netlify_output="$(
   cd "$workspace"
   export FAKE_CI_TOOLS_LOG="$tmpdir/netlify-ci-tools.log"
   export FAKE_NETLIFY_LOG="$tmpdir/netlify.log"
   export NETLIFY_AUTH_TOKEN="fake-token"
-  export DEVENV_TASK_INPUT='{"type":"pr","pr":42}'
+  export DEVENV_TASK_INPUT='{"type":"pr","pr":42,"missingAuthPolicy":"skip","urlEnvKey":"STORYBOOK_URL"}'
   export DEVENV_TASK_OUTPUT_FILE="$netlify_output_file"
   export WORKFLOW_REPORT_OUTPUT_FILE="$netlify_report_file"
+  export GITHUB_OUTPUT="$netlify_github_output"
+  export GITHUB_ENV="$netlify_github_env"
   bash "$tmpdir/netlify-deploy.sh" 2>&1
 )"
 
@@ -370,9 +374,15 @@ assert_contains "$netlify_args" "--mode pr" "Netlify wrapper should pass PR mode
 assert_contains "$netlify_args" "--pr 42" "Netlify wrapper should pass PR number"
 assert_contains "$netlify_args" "--site-name fake-site" "Netlify wrapper should pass site name"
 assert_contains "$netlify_args" "--site-id-env NETLIFY_SITE_ID" "Netlify wrapper should pass site id env name"
+assert_contains "$netlify_args" "--missing-auth-policy skip" "Netlify wrapper should pass missing-auth policy"
 assert_contains "$netlify_args" "--workflow-report-output-file $netlify_report_file" "Netlify wrapper should pass report path"
+assert_contains "$netlify_args" "--github-output-file $netlify_github_output" "Netlify wrapper should pass GitHub output path"
+assert_contains "$netlify_args" "--url-env-key STORYBOOK_URL" "Netlify wrapper should pass URL env key"
+assert_contains "$netlify_args" "--github-env-file $netlify_github_env" "Netlify wrapper should pass GitHub env path"
 assert_json_field "https://storybook-pr-42--fake-site.netlify.app/" "$netlify_output_file" "value => value.devenv.env.NETLIFY_DEPLOY_URL_STORYBOOK" "Netlify task output should be delegated through ci-tools"
 assert_json_field "netlify" "$netlify_report_file" "value => value.data.provider" "Netlify report record should be delegated through ci-tools"
+assert_contains "$(cat "$netlify_github_output")" "workflow_report_path=$netlify_report_file" "Netlify GitHub outputs should include report path from ci-tools"
+assert_contains "$(cat "$netlify_github_env")" "STORYBOOK_URL=https://storybook-pr-42--fake-site.netlify.app/" "Netlify wrapper should let ci-tools write the deploy URL env var"
 
 echo "Test 2: Netlify PR task without PR input fails before ci-tools"
 set +e
@@ -398,6 +408,8 @@ fi
 echo "Test 3: Vercel static PR task delegates alias and static artifact config"
 vercel_output_file="$tmpdir/vercel-task-output.json"
 vercel_report_file="$tmpdir/vercel-report.jsonl"
+vercel_github_output="$tmpdir/vercel-github-output"
+vercel_github_env="$tmpdir/vercel-github-env"
 vercel_output="$(
   cd "$workspace"
   export FAKE_CI_TOOLS_LOG="$tmpdir/vercel-static-ci-tools.log"
@@ -409,6 +421,8 @@ vercel_output="$(
   export DEVENV_TASK_INPUT='{"type":"pr","pr":123}'
   export DEVENV_TASK_OUTPUT_FILE="$vercel_output_file"
   export WORKFLOW_REPORT_OUTPUT_FILE="$vercel_report_file"
+  export GITHUB_OUTPUT="$vercel_github_output"
+  export GITHUB_ENV="$vercel_github_env"
   bash "$tmpdir/vercel-static-deploy.sh" 2>&1
 )"
 
@@ -421,8 +435,13 @@ assert_contains "$vercel_static_args" "--alias-suffix team" "Vercel static wrapp
 assert_contains "$vercel_static_args" "--artifact-kind static" "Vercel static wrapper should pass static artifact kind"
 assert_contains "$vercel_static_args" "--project-id-env VERCEL_PROJECT_ID_WEB" "Vercel static wrapper should pass project id env"
 assert_contains "$vercel_static_args" "--scope-env VERCEL_SCOPE_WEB" "Vercel static wrapper should pass scope env"
+assert_contains "$vercel_static_args" "--github-output-file $vercel_github_output" "Vercel static wrapper should pass GitHub output path"
+assert_contains "$vercel_static_args" "--url-env-key VERCEL_DEPLOY_URL_WEB" "Vercel static wrapper should pass default URL env key"
+assert_contains "$vercel_static_args" "--github-env-file $vercel_github_env" "Vercel static wrapper should pass GitHub env path"
 assert_json_field "https://web-preview-pr-123-team.vercel.app/" "$vercel_output_file" "value => value.devenv.env.VERCEL_DEPLOY_URL_WEB" "Vercel task output should be delegated through ci-tools"
 assert_json_field "vercel" "$vercel_report_file" "value => value.data.provider" "Vercel report record should be delegated through ci-tools"
+assert_contains "$(cat "$vercel_github_output")" "workflow_report_path=$vercel_report_file" "Vercel GitHub outputs should include report path from ci-tools"
+assert_contains "$(cat "$vercel_github_env")" "VERCEL_DEPLOY_URL_WEB=https://web-preview-pr-123-team.vercel.app/" "Vercel static wrapper should let ci-tools write the deploy URL env var"
 
 echo "Test 4: Vercel static task delegates missing auth to ci-tools reporting"
 vercel_missing_auth_report_file="$tmpdir/vercel-missing-auth-report.jsonl"
