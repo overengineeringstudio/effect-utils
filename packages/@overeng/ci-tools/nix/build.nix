@@ -10,6 +10,7 @@
 let
   pnpm = import ../../../../nix/pnpm.nix { inherit pkgs; };
   mkPnpmCli = import ../../../../nix/workspace-tools/lib/mk-pnpm-cli.nix { inherit pkgs pnpm; };
+  mkSharedHash = hash: { inherit hash; };
   unwrapped = mkPnpmCli {
     name = "ci-tools-unwrapped";
     entry = "packages/@overeng/ci-tools/bin/ci-tools.ts";
@@ -18,9 +19,7 @@ let
     workspaceRoot = src;
     # Managed by the repo FOD refresh workflow — do not edit manually.
     depsBuilds = {
-      "." = {
-        hash = "sha256-p7xhogkrANUceRkh/djVVrQ+qcgIm9FK2nd2EFFd7Z4=";
-      };
+      "." = mkSharedHash "sha256-ml8L2f2d9p112XAhn+87z9gKQHJSeItWLreP8sdHFSU=";
     };
     smokeTestArgs = [ "--help" ];
     inherit gitRev commitTs dirty;

@@ -9,7 +9,7 @@ All notable changes to this project will be documented in this file.
 - **@overeng/genie / @overeng/ci-tools**: Keep packaged Genie generation pure by
   staging generated workflow imports through a dependency-free ci-tools
   workflow-report contract, declaring ci-tools' runtime Effect closure
-  explicitly, and refreshing the managed Genie pnpm-deps hash.
+  explicitly, and refreshing the managed Genie and ci-tools pnpm-deps hashes.
 
 - **nix packages / @overeng/genie**: Refresh the `genie-unwrapped`
   pnpm-deps fixed-output hash after the materialization profile rebase.
