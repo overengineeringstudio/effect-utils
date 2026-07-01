@@ -42,7 +42,7 @@ let
         hash = selectHashForSystem {
           aarch64-darwin = "sha256-gw/dj8hRRNIw4h8+EBfEcZA26Gad2HMxyGUF+x4UEGA=";
           aarch64-linux = "sha256-Ox+FChLtOlgYkNVZX7oJDuruiRYpElH+bOzBmsbn1uk=";
-          x86_64-linux = "sha256-avKG+K9P879m77hZvtgwMGw5EC2wcTrwhfRPPd0TSU8=";
+          x86_64-linux = "sha256-/Fho7Vj38qsmunkllmVEaIHp0oIlYg01aVo3PMn1+yo=";
         };
       };
     };
