@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **nix packages / @overeng/genie**: Refresh the `genie-unwrapped`
+  pnpm-deps fixed-output hash after the materialization profile rebase.
+
 - **devenv deploy tasks / @overeng/ci-tools**: Centralize deploy-preview
   workflow-report and GitHub output emission in `ci-tools`, including
   provider-owned skip records, URL outputs, and task metadata, so generated CI
