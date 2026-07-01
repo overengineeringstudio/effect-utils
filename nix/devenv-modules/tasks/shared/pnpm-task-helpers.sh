@@ -146,18 +146,137 @@ process.exit(
 EOF
 }
 
+dependency_materialization_validate_same_device() {
+  local node_bin="$1"
+  local workspace_dir="$2"
+  local files_path="$3"
+
+  "$node_bin" - "$workspace_dir" "$files_path" <<'EOF'
+const fs = require('node:fs')
+
+const [workspaceDir, filesPath] = process.argv.slice(2)
+const realWorkspace = fs.realpathSync(workspaceDir)
+const realFiles = fs.realpathSync(filesPath)
+const workspaceDev = fs.statSync(realWorkspace).dev
+const filesDev = fs.statSync(realFiles).dev
+
+if (workspaceDev !== filesDev) {
+  console.error('[pnpm] linuxSharedHardlink requires workspace and files pool on the same device')
+  console.error(`[pnpm] workspace: ${realWorkspace} (dev ${workspaceDev})`)
+  console.error(`[pnpm] files pool: ${realFiles} (dev ${filesDev})`)
+  console.error('[pnpm] Use materializationProfile = "isolated" for cross-device reproduction.')
+  process.exit(1)
+}
+EOF
+}
+
+prepare_dependency_materialization_store() {
+  local node_bin="$1"
+  local requested_profile="$2"
+  local host_is_darwin="$3"
+  local workspace_dir="$4"
+  local store_dir="$5"
+
+  case "$requested_profile" in
+    auto | ciJobLocal | splitFilesCas | darwinSplitCas | linuxSharedHardlink | isolated) ;;
+    *)
+      echo "[pnpm] Unsupported materializationProfile: $requested_profile" >&2
+      exit 1
+      ;;
+  esac
+
+  if [ -z "${store_dir:-}" ]; then
+    echo "[pnpm] npm_config_store_dir is empty; cannot prepare dependency materialization store" >&2
+    exit 1
+  fi
+
+  local store_version_dir="$store_dir/v11"
+  local files_path="$store_version_dir/files"
+  local shared_files_path="${PNPM_SHARED_FILES_DIR:-$HOME/.local/share/pnpm/shared-files}/v11"
+  local effective_profile="$requested_profile"
+
+  if [ -n "${CI:-}" ] && [ "$requested_profile" = auto ]; then
+    effective_profile="ciJobLocal"
+  elif [ "$requested_profile" = auto ]; then
+    if [ "$host_is_darwin" = true ]; then
+      effective_profile="darwinSplitCas"
+    else
+      effective_profile="splitFilesCas"
+    fi
+  fi
+
+  mkdir -p "$store_version_dir"
+
+  case "$effective_profile" in
+    ciJobLocal | isolated)
+      if [ -L "$files_path" ]; then
+        rm "$files_path"
+      fi
+      mkdir -p "$files_path"
+      ;;
+    splitFilesCas | darwinSplitCas | linuxSharedHardlink)
+      mkdir -p "$shared_files_path"
+      if [ -L "$files_path" ]; then
+        if [ "$(readlink "$files_path")" != "$shared_files_path" ]; then
+          echo "[pnpm] $files_path points at $(readlink "$files_path"), expected $shared_files_path" >&2
+          exit 1
+        fi
+      elif [ -e "$files_path" ]; then
+        if [ "$requested_profile" = auto ] && [ -d "$files_path" ] && [ -n "$(find "$files_path" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
+          printf '%s\n' isolated
+          return 0
+        fi
+        if [ -d "$files_path" ] && [ -z "$(find "$files_path" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
+          rmdir "$files_path"
+        else
+          echo "[pnpm] $files_path is a non-empty local files store; choose materializationProfile = \"isolated\" or run the coordinated migration" >&2
+          exit 1
+        fi
+      fi
+      if [ ! -L "$files_path" ]; then
+        ln -s "$shared_files_path" "$files_path"
+      fi
+      if [ "$effective_profile" = linuxSharedHardlink ]; then
+        dependency_materialization_validate_same_device "$node_bin" "$workspace_dir" "$files_path"
+      fi
+      ;;
+  esac
+
+  printf '%s\n' "$effective_profile"
+}
+
+dependency_materialization_install_policy_flags() {
+  local profile="$1"
+
+  case "$profile" in
+    linuxSharedHardlink)
+      printf '%s\n' "--config.package-import-method=hardlink"
+      ;;
+    ciJobLocal | splitFilesCas | darwinSplitCas | isolated)
+      printf '%s\n' "--config.package-import-method=clone-or-copy"
+      ;;
+    *)
+      echo "[pnpm] Unsupported dependency materialization profile for install policy: $profile" >&2
+      exit 1
+      ;;
+  esac
+}
+
 emit_dependency_materialization_profile() {
   local node_bin="$1"
   local contract_file="$2"
   local store_trait="$3"
   local output_file="${4:-}"
+  local workspace_dir="${5:-}"
+  local store_dir="${6:-}"
+  local package_import_method="${7:-}"
 
-  "$node_bin" - "$contract_file" "$store_trait" "$output_file" <<'EOF'
+  "$node_bin" - "$contract_file" "$store_trait" "$output_file" "$workspace_dir" "$store_dir" "$package_import_method" <<'EOF'
 const crypto = require('node:crypto')
 const fs = require('node:fs')
 const path = require('node:path')
 
-const [contractFile, storeTrait, outputFile] = process.argv.slice(2)
+const [contractFile, storeTrait, outputFile, workspaceDir, storeDir, packageImportMethodArg] = process.argv.slice(2)
 const contract = JSON.parse(fs.readFileSync(contractFile, 'utf8'))
 const evidenceContractPath = path.isAbsolute(contractFile)
   ? path.relative(fs.realpathSync(process.cwd()), fs.realpathSync(contractFile))
@@ -197,6 +316,28 @@ if (trait === undefined) {
   process.exit(1)
 }
 
+const storeLayoutVersion = contract.storeContract?.layoutVersion ?? 'v11'
+const filesPath = storeDir ? path.join(storeDir, storeLayoutVersion, 'files') : undefined
+const realPathOf = (candidate) => {
+  if (!candidate) return undefined
+  try {
+    return fs.realpathSync(candidate)
+  } catch {
+    return candidate
+  }
+}
+const filesRealPath = realPathOf(filesPath)
+const workspaceRealPath = realPathOf(workspaceDir)
+const sameDevice = (() => {
+  if (!workspaceRealPath || !filesRealPath) return undefined
+  try {
+    return fs.statSync(workspaceRealPath).dev === fs.statSync(filesRealPath).dev
+  } catch {
+    return undefined
+  }
+})()
+const packageImportMethod = packageImportMethodArg || trait.importMethod
+
 const inputSections = Object.fromEntries(
   profileContract.identityInputs.map((section) => {
     if (!Object.prototype.hasOwnProperty.call(contract, section)) {
@@ -230,6 +371,11 @@ const profile = {
   store: {
     trait: storeTrait,
     contract: inputSections.storeContract,
+    filesPath,
+    filesRealPath,
+    sameDeviceRequired: trait.sameDeviceRequired === true,
+    sameDevice,
+    packageImportMethod,
   },
   authorities: {
     gc: trait.gcAuthority,
@@ -301,6 +447,7 @@ const singletonRegistry = {
     {
       id: rootId,
       profileId: profile.profileId,
+      trait: profile.store?.trait,
       project: projectDir,
       store: storeDir,
       filesPoolId: poolId,
@@ -310,6 +457,9 @@ const singletonRegistry = {
     {
       id: poolId,
       filesPath,
+      filesRealPath: realFilesPath,
+      sameDeviceRequired: profile.store?.sameDeviceRequired === true,
+      sameDevice: profile.store?.sameDevice,
     },
   ],
 }
@@ -447,7 +597,7 @@ const profiles = Array.isArray(registry.profiles) ? registry.profiles : []
 for (const profile of profiles
   .filter((row) => row.filesPoolId === filesPoolId)
   .sort((left, right) => left.id.localeCompare(right.id))) {
-  process.stdout.write(`${profile.project}\t${profile.store}\n`)
+  process.stdout.write(`${profile.project}\t${profile.store}\t${profile.trait ?? ''}\n`)
 }
 EOF
 }

@@ -4,7 +4,7 @@ import {
   workflowReportManagedMarker,
   workflowReportRecordLineMarker,
   type WorkflowReportRecord,
-} from '../../packages/@overeng/ci-tools/src/mod.ts'
+} from '../../packages/@overeng/ci-tools/src/workflow-report-contract.ts'
 import { runDevenvTasksBefore, shellSingleQuote } from './shared.ts'
 
 type GitHubWorkflowStep = GitHubWorkflowArgs['jobs'][string]['steps'][number]
@@ -60,10 +60,10 @@ export type WorkflowReportCommentBodyStepOptions = {
 export const workflowReportProducerStep = (
   opts: WorkflowReportProducerStepOptions,
 ): GitHubWorkflowStep => {
-  const line = encodeWorkflowReportRecordLine(
-    opts.record,
-    opts.marker ?? workflowReportRecordLineMarker,
-  )
+  const line = encodeWorkflowReportRecordLine({
+    record: opts.record,
+    marker: opts.marker ?? workflowReportRecordLineMarker,
+  })
   const outputPath = opts.outputPath
 
   return {

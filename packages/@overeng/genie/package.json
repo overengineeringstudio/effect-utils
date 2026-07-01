@@ -38,6 +38,7 @@
     "@effect/workflow": "0.18.2",
     "@opentui/core": "0.4.1",
     "@opentui/react": "0.4.1",
+    "@overeng/ci-tools": "workspace:^",
     "@overeng/otel-contract": "workspace:^",
     "@playwright/test": "1.61.0",
     "@storybook/react": "10.4.6",
@@ -102,6 +103,7 @@
     "source": "package.json.genie.ts",
     "warning": "DO NOT EDIT - changes will be overwritten",
     "workspaceClosureDirs": [
+      "packages/@overeng/ci-tools",
       "packages/@overeng/genie",
       "packages/@overeng/otel-contract",
       "packages/@overeng/tui-core",

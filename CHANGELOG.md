@@ -6,6 +6,20 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **@overeng/genie / @overeng/ci-tools**: Keep packaged Genie generation pure by
+  staging generated workflow imports through a dependency-free ci-tools
+  workflow-report contract, declaring ci-tools' runtime Effect closure
+  explicitly, and refreshing the managed Genie and ci-tools pnpm-deps hashes.
+
+- **nix workspace tools / mk-pnpm-cli**: Preserve external workspace source
+  roots as sandbox inputs for full workspace materialization, so downstream
+  flake consumers can build CLIs whose install roots copy packages from an
+  effect-utils flake input; refresh the affected Notion CLI and oxlint
+  plugin dependency hashes after the source-input repair.
+
+- **nix packages / @overeng/genie**: Refresh the `genie-unwrapped`
+  pnpm-deps fixed-output hash after the materialization profile rebase.
+
 - **devenv deploy tasks / @overeng/ci-tools**: Centralize deploy-preview
   workflow-report and GitHub output emission in `ci-tools`, including
   provider-owned skip records, URL outputs, and task metadata, so generated CI
@@ -82,6 +96,11 @@ All notable changes to this project will be documented in this file.
   trace/metrics/log diagnostic JSON writers and make store fixture setup emit
   typed OTEL spans through the production bounded git runner, so CI fixture
   stalls can produce inspectable trace evidence.
+
+- **devenv/pnpm**: Add an explicit `materializationProfile` API and profile
+  evidence contract for `ciJobLocal`, transitional Linux `splitFilesCas`,
+  macOS `darwinSplitCas`, opt-in `linuxSharedHardlink`, and `isolated` without
+  changing Linux `auto` to hardlink materialization yet.
 
 - **@overeng/genie**: Document the intended package export type-proof
   architecture: strict proofs should use an explicit compiler executable
@@ -222,6 +241,9 @@ All notable changes to this project will be documented in this file.
 - **@overeng/pty-effect**: Stabilize the daemon env override live test on macOS
   by keeping the short-lived PTY session alive long enough for peek/attach
   assertions.
+
+- **@overeng/genie, @overeng/megarepo**: Refresh stale pnpm dependency FOD
+  hashes for the CAS materialization profile branch.
 
 - **@overeng/genie**: Emit Starlark `#` generated-file headers for Buck2
   `BUCK`, `.bzl`, and `.bxl` outputs.

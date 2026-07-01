@@ -16,6 +16,13 @@
   taskNamePrefix ? "pnpm",
   taskSuffix ? null,
   globalCache ? true,
+  materializationProfile ? "auto",
+  localMaterializationProfile ? null,
+  localOverridesRequireLinux ? false,
+  storeDir ? null,
+  localStoreDir ? null,
+  sharedFilesDir ? null,
+  localSharedFilesDir ? null,
   frozenInCi ? true,
   installFlags ? [ ],
   preInstall ? "",
@@ -57,11 +64,17 @@ let
       "${config.devenv.root}/.devenv/pnpm-home"
     else
       "${config.devenv.root}/.devenv/pnpm-home/${workspaceCacheName}";
-  defaultPnpmStoreDir =
+  basePnpmStoreDir =
+    if storeDir == null then "${config.devenv.root}/.devenv/pnpm-store-pure-v1" else storeDir;
+  localBasePnpmStoreDir = if localStoreDir == null then basePnpmStoreDir else localStoreDir;
+  ciDefaultPnpmStoreDir =
+    if workspaceRoot == "." then basePnpmStoreDir else "${basePnpmStoreDir}/${workspaceCacheName}";
+  localDefaultPnpmStoreDir =
     if workspaceRoot == "." then
-      "${config.devenv.root}/.devenv/pnpm-store-pure-v1"
+      localBasePnpmStoreDir
     else
-      "${config.devenv.root}/.devenv/pnpm-store-pure-v1/${workspaceCacheName}";
+      "${localBasePnpmStoreDir}/${workspaceCacheName}";
+  defaultPnpmStoreDir = ciDefaultPnpmStoreDir;
   installTaskName =
     if taskSuffix == null then
       "${taskNamePrefix}:install"
@@ -100,8 +113,13 @@ let
   pureInstallFlags = [
     (if frozenInCi then "--frozen-lockfile" else "--no-frozen-lockfile")
   ]
-  ++ pnpmInstallPolicy.liveInstallPolicyFlags;
+  ++ lib.filter (
+    flag: flag != "--config.package-import-method=clone-or-copy"
+  ) pnpmInstallPolicy.liveInstallPolicyFlags;
   pureInstallFlagsString = lib.concatStringsSep " " pureInstallFlags;
+  hostIsDarwinString = if pkgs.stdenv.hostPlatform.isDarwin then "true" else "false";
+  localOverridesEnabledCondition =
+    if localOverridesRequireLinux then ''[ "$(uname -s)" = Linux ]'' else "true";
 
   packageNameToPath = builtins.listToAttrs (
     builtins.filter (x: x != null) (
@@ -172,6 +190,17 @@ let
   '';
   ensureLocalPnpmStoreDirFn = ''
     _pnpm_store_dir="''${npm_config_store_dir:-''${PNPM_CONFIG_STORE_DIR:-''${PNPM_STORE_DIR:-}}}"
+    if [ -z "$_pnpm_store_dir" ]; then
+      if [ -z "''${CI:-}" ]; then
+        if ${localOverridesEnabledCondition}; then
+          _pnpm_default_store_dir=${lib.escapeShellArg localDefaultPnpmStoreDir}
+        else
+          _pnpm_default_store_dir=${lib.escapeShellArg ciDefaultPnpmStoreDir}
+        fi
+      else
+        _pnpm_default_store_dir=${lib.escapeShellArg ciDefaultPnpmStoreDir}
+      fi
+    fi
     if [ ${lib.escapeShellArg workspaceRoot} != "." ] && [ -n "$_pnpm_store_dir" ]; then
       case "$_pnpm_store_dir" in
         */${workspaceCacheName}) ;;
@@ -180,51 +209,52 @@ let
     elif [ -n "$_pnpm_store_dir" ]; then
       :
     else
-      _pnpm_store_dir=${lib.escapeShellArg defaultPnpmStoreDir}
+      _pnpm_store_dir="$_pnpm_default_store_dir"
     fi
     export PNPM_STORE_DIR="$_pnpm_store_dir"
     export PNPM_CONFIG_STORE_DIR="$_pnpm_store_dir"
     export npm_config_store_dir="$_pnpm_store_dir"
     unset _pnpm_store_dir
+    unset _pnpm_default_store_dir
   '';
-  ensureSharedPnpmFilesStoreFn = ''
-    ensure_shared_pnpm_files_store() {
-      if [ -n "''${CI:-}" ]; then
-        return 0
-      fi
-      if [ -z "''${npm_config_store_dir:-}" ]; then
-        echo "[pnpm] npm_config_store_dir is empty; cannot prepare split store" >&2
-        exit 1
-      fi
-
-      local store_version_dir
-      local files_path
-      local shared_files_path
-      store_version_dir="''${npm_config_store_dir}/v11"
-      files_path="$store_version_dir/files"
-      shared_files_path="''${PNPM_SHARED_FILES_DIR:-$HOME/.local/share/pnpm/shared-files}/v11"
-
-      mkdir -p "$store_version_dir" "$shared_files_path"
-
-      if [ -L "$files_path" ]; then
-        if [ "$(readlink "$files_path")" != "$shared_files_path" ]; then
-          echo "[pnpm] $files_path points at $(readlink "$files_path"), expected $shared_files_path" >&2
-          exit 1
+  configurePnpmSharedFilesDirFn = ''
+    if [ -z "''${CI:-}" ]; then
+      :
+      ${lib.optionalString (localSharedFilesDir != null) ''
+        if ${localOverridesEnabledCondition}; then
+          export PNPM_SHARED_FILES_DIR=${lib.escapeShellArg localSharedFilesDir}
         fi
-        return 0
-      fi
-
-      if [ -e "$files_path" ]; then
-        if [ -d "$files_path" ] && [ -z "$(find "$files_path" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
-          rmdir "$files_path"
-        else
-          echo "[pnpm] $files_path is a non-empty local files store; leaving it for the coordinated migration runbook" >&2
-          return 0
+      ''}
+      ${lib.optionalString (localSharedFilesDir == null && sharedFilesDir != null) ''
+        export PNPM_SHARED_FILES_DIR=${lib.escapeShellArg sharedFilesDir}
+      ''}
+    else
+      :
+      ${lib.optionalString (sharedFilesDir != null) ''
+        export PNPM_SHARED_FILES_DIR=${lib.escapeShellArg sharedFilesDir}
+      ''}
+    fi
+  '';
+  prepareDependencyMaterializationStoreFn = ''
+    _dependency_materialization_requested_profile="''${DEPENDENCY_MATERIALIZATION_REQUESTED_PROFILE:-${lib.escapeShellArg materializationProfile}}"
+    if [ -z "''${CI:-}" ] && [ -z "''${DEPENDENCY_MATERIALIZATION_REQUESTED_PROFILE:-}" ]; then
+      :
+      ${lib.optionalString (localMaterializationProfile != null) ''
+        if ${localOverridesEnabledCondition}; then
+          _dependency_materialization_requested_profile=${lib.escapeShellArg localMaterializationProfile}
         fi
-      fi
-
-      ln -s "$shared_files_path" "$files_path"
-    }
+      ''}
+    fi
+    _dependency_materialization_trait="$(
+      prepare_dependency_materialization_store \
+        ${pkgs.nodejs}/bin/node \
+        "$_dependency_materialization_requested_profile" \
+        ${hostIsDarwinString} \
+        "$PWD" \
+        "$npm_config_store_dir"
+    )"
+    export DEPENDENCY_MATERIALIZATION_TRAIT="$_dependency_materialization_trait"
+    unset _dependency_materialization_requested_profile
   '';
 
   computeWorkspaceStateHash = ''
@@ -264,6 +294,14 @@ let
         printf '%s\n' "''${gvs_links_dir:-}"
         printf '%s\n' ${lib.escapeShellArg (builtins.toJSON installFlags)}
         printf '%s\n' ${lib.escapeShellArg preInstall}
+        printf '%s\n' "''${DEPENDENCY_MATERIALIZATION_TRAIT:-}"
+        _dependency_materialization_import_method="$(dependency_materialization_install_policy_flags "''${DEPENDENCY_MATERIALIZATION_TRAIT:-isolated}")"
+        printf '%s\n' "$_dependency_materialization_import_method"
+        if [ -n "''${_pnpm_install_contract_file:-}" ] && pnpm_contract_supports_dependency_materialization_profile ${pkgs.nodejs}/bin/node "$_pnpm_install_contract_file"; then
+          compute_pnpm_contract_section_hash ${pkgs.nodejs}/bin/node "$_pnpm_install_contract_file" dependencyMaterializationProfile
+          _dependency_materialization_import_method="''${_dependency_materialization_import_method#--config.package-import-method=}"
+          emit_dependency_materialization_profile ${pkgs.nodejs}/bin/node "$_pnpm_install_contract_file" "''${DEPENDENCY_MATERIALIZATION_TRAIT:-isolated}" "" "$PWD" "$npm_config_store_dir" "$_dependency_materialization_import_method" | compute_hash
+        fi
       } | compute_hash
     }
   '';
@@ -310,8 +348,10 @@ let
 
     run_pnpm_install() {
       local install_args
+      local materialization_policy_flags
       reject_impure_pnpm_install_args "$@" ${installFlagsString}
-      install_args=(install "$@" ${installFlagsString} ${pureInstallFlagsString} "--config.store-dir=$npm_config_store_dir")
+      materialization_policy_flags="$(dependency_materialization_install_policy_flags "''${DEPENDENCY_MATERIALIZATION_TRAIT:-isolated}")"
+      install_args=(install "$@" ${installFlagsString} ${pureInstallFlagsString} "$materialization_policy_flags" "--config.store-dir=$npm_config_store_dir")
 
       ${lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
         if [ -n "''${CI:-}" ]; then
@@ -416,8 +456,8 @@ let
         ${loadPnpmTaskHelpersFn}
         ${ensureLocalPnpmHomeFn}
         ${ensureLocalPnpmStoreDirFn}
-        ${ensureSharedPnpmFilesStoreFn}
-        ensure_shared_pnpm_files_store
+        ${configurePnpmSharedFilesDirFn}
+        ${prepareDependencyMaterializationStoreFn}
         mkdir -p "${cacheRoot}"
         # This cache tracks the effective install state, not just workspace
         # manifests. The fingerprint also includes the active GVS projection
@@ -541,14 +581,9 @@ let
           cp "$_pnpm_install_contract_file" "$contract_state_file"
           chmod u+w "$contract_state_file" 2>/dev/null || true
           if pnpm_contract_supports_dependency_materialization_profile ${pkgs.nodejs}/bin/node "$_pnpm_install_contract_file"; then
-            if [ -n "''${CI:-}" ]; then
-              _dependency_materialization_trait="ciJobLocal"
-            elif [ -L "$npm_config_store_dir/v11/files" ]; then
-              _dependency_materialization_trait="darwinSplitCas"
-            else
-              _dependency_materialization_trait="isolated"
-            fi
-            emit_dependency_materialization_profile ${pkgs.nodejs}/bin/node "$_pnpm_install_contract_file" "$_dependency_materialization_trait" "$dependency_profile_file"
+            _dependency_materialization_import_method="$(dependency_materialization_install_policy_flags "$_dependency_materialization_trait")"
+            _dependency_materialization_import_method="''${_dependency_materialization_import_method#--config.package-import-method=}"
+            emit_dependency_materialization_profile ${pkgs.nodejs}/bin/node "$_pnpm_install_contract_file" "$_dependency_materialization_trait" "$dependency_profile_file" "$PWD" "$npm_config_store_dir" "$_dependency_materialization_import_method"
             _dependency_shared_registry_file="$(dependency_materialization_shared_registry_file ${pkgs.nodejs}/bin/node "$npm_config_store_dir")"
             mkdir -p "$(dirname "$_dependency_shared_registry_file")"
             exec 203>"$_dependency_shared_registry_file.lock"
@@ -572,8 +607,8 @@ let
         ${loadPnpmTaskHelpersFn}
         ${ensureLocalPnpmHomeFn}
         ${ensureLocalPnpmStoreDirFn}
-        ${ensureSharedPnpmFilesStoreFn}
-        ensure_shared_pnpm_files_store
+        ${configurePnpmSharedFilesDirFn}
+        ${prepareDependencyMaterializationStoreFn}
         hash_file="${cacheRoot}/install-state.hash"
         projection_hash_file="${cacheRoot}/projection-state.hash"
         contract_state_file="${cacheRoot}/pnpm-install-contract.json"
@@ -649,9 +684,10 @@ let
         ${loadPnpmTaskHelpersFn}
         ${ensureLocalPnpmHomeFn}
         ${ensureLocalPnpmStoreDirFn}
-        ${ensureSharedPnpmFilesStoreFn}
-        ensure_shared_pnpm_files_store
-        pnpm install --fix-lockfile --config.confirmModulesPurge=false --pm-on-fail=ignore --config.store-dir="$npm_config_store_dir"
+        ${configurePnpmSharedFilesDirFn}
+        ${prepareDependencyMaterializationStoreFn}
+        materialization_policy_flags="$(dependency_materialization_install_policy_flags "''${DEPENDENCY_MATERIALIZATION_TRAIT:-isolated}")"
+        pnpm install --fix-lockfile --config.confirmModulesPurge=false --pm-on-fail=ignore "$materialization_policy_flags" --config.store-dir="$npm_config_store_dir"
         echo "Repo-root lockfile updated. Refresh Nix FOD hashes with the repo workflow."
       '';
     };
@@ -670,9 +706,10 @@ let
         ${loadPnpmTaskHelpersFn}
         ${ensureLocalPnpmHomeFn}
         ${ensureLocalPnpmStoreDirFn}
-        ${ensureSharedPnpmFilesStoreFn}
-        ensure_shared_pnpm_files_store
-        pnpm dedupe --config.confirmModulesPurge=false --pm-on-fail=ignore --config.store-dir="$npm_config_store_dir"
+        ${configurePnpmSharedFilesDirFn}
+        ${prepareDependencyMaterializationStoreFn}
+        materialization_policy_flags="$(dependency_materialization_install_policy_flags "''${DEPENDENCY_MATERIALIZATION_TRAIT:-isolated}")"
+        pnpm dedupe --config.confirmModulesPurge=false --pm-on-fail=ignore "$materialization_policy_flags" --config.store-dir="$npm_config_store_dir"
         echo "Lockfile deduped. Re-run genie:check to verify the catalog duplicate gate; bless any upstream-locked residuals via catalogDuplicateExceptions."
       '';
     };
@@ -687,8 +724,8 @@ let
         ${loadPnpmTaskHelpersFn}
         ${ensureLocalPnpmHomeFn}
         ${ensureLocalPnpmStoreDirFn}
-        ${ensureSharedPnpmFilesStoreFn}
-        ensure_shared_pnpm_files_store
+        ${configurePnpmSharedFilesDirFn}
+        ${prepareDependencyMaterializationStoreFn}
 
         purge_node_modules node_modules ${nodeModulesPaths}
 
@@ -775,9 +812,13 @@ let
         dependency_materialization_repair_plan ${pkgs.nodejs}/bin/node "$repair_registry_file" "$files_pool_id"
 
         repaired_roots=0
-        while IFS=$'\t' read -r repair_project_dir repair_store_dir; do
+        while IFS=$'\t' read -r repair_project_dir repair_store_dir repair_trait; do
           if [ -z "''${repair_project_dir:-}" ]; then
             continue
+          fi
+          if [ -z "''${repair_trait:-}" ]; then
+            echo "[pnpm] Registry entry for $repair_project_dir has no materialization trait; refusing ambiguous repair" >&2
+            exit 1
           fi
           if [ ! -d "$repair_project_dir" ] || [ ! -f "$repair_project_dir/pnpm-lock.yaml" ]; then
             echo "[pnpm] Skipping stale dependency materialization root: $repair_project_dir" >&2
@@ -798,6 +839,9 @@ let
             export PNPM_STORE_DIR="$repair_store_dir"
             export PNPM_CONFIG_STORE_DIR="$repair_store_dir"
             export npm_config_store_dir="$repair_store_dir"
+            ${configurePnpmSharedFilesDirFn}
+            export DEPENDENCY_MATERIALIZATION_REQUESTED_PROFILE="$repair_trait"
+            ${prepareDependencyMaterializationStoreFn}
             ${runPnpmInstallFn}
             run_pnpm_install --force
           )
@@ -830,19 +874,26 @@ in
 
   enterShell = lib.mkIf (globalCache && workspaceRoot == ".") ''
     export PNPM_HOME="''${PNPM_HOME:-${config.devenv.root}/.devenv/pnpm-home}"
-    _pnpm_store_dir="''${npm_config_store_dir:-''${PNPM_CONFIG_STORE_DIR:-''${PNPM_STORE_DIR:-${defaultPnpmStoreDir}}}}"
+    _pnpm_store_dir="''${npm_config_store_dir:-''${PNPM_CONFIG_STORE_DIR:-''${PNPM_STORE_DIR:-${localDefaultPnpmStoreDir}}}}"
     export PNPM_STORE_DIR="$_pnpm_store_dir"
     export PNPM_CONFIG_STORE_DIR="$_pnpm_store_dir"
     export npm_config_store_dir="$_pnpm_store_dir"
+    ${configurePnpmSharedFilesDirFn}
     export npm_config_cache="$HOME/.cache/pnpm"
     export npm_config_pm_on_fail=ignore
     if [ -z "''${CI:-}" ]; then
-      _pnpm_shared_files="''${PNPM_SHARED_FILES_DIR:-$HOME/.local/share/pnpm/shared-files}/v11"
-      mkdir -p "$PNPM_STORE_DIR/v11" "$_pnpm_shared_files"
-      if [ ! -e "$PNPM_STORE_DIR/v11/files" ] && [ ! -L "$PNPM_STORE_DIR/v11/files" ]; then
-        ln -s "$_pnpm_shared_files" "$PNPM_STORE_DIR/v11/files"
+      _materialization_profile=${lib.escapeShellArg materializationProfile}
+      if [ "$_materialization_profile" = splitFilesCas ] || [ "$_materialization_profile" = darwinSplitCas ] || [ "$_materialization_profile" = linuxSharedHardlink ] || [ "$_materialization_profile" = auto ]; then
+        _pnpm_shared_files="''${PNPM_SHARED_FILES_DIR:-$HOME/.local/share/pnpm/shared-files}/v11"
+        mkdir -p "$PNPM_STORE_DIR/v11" "$_pnpm_shared_files"
+        if [ ! -e "$PNPM_STORE_DIR/v11/files" ] && [ ! -L "$PNPM_STORE_DIR/v11/files" ]; then
+          ln -s "$_pnpm_shared_files" "$PNPM_STORE_DIR/v11/files"
+        fi
+        unset _pnpm_shared_files
+      else
+        mkdir -p "$PNPM_STORE_DIR/v11/files"
       fi
-      unset _pnpm_shared_files
+      unset _materialization_profile
     fi
     unset _pnpm_store_dir
   '';

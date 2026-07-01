@@ -11,6 +11,7 @@
 let
   pnpm = import ../../../../nix/pnpm.nix { inherit pkgs; };
   mkPnpmCli = import ../../../../nix/workspace-tools/lib/mk-pnpm-cli.nix { inherit pkgs pnpm; };
+  mkSharedHash = hash: { inherit hash; };
   unwrapped = mkPnpmCli {
     name = "notion-md-unwrapped";
     entry = "packages/@overeng/notion-md/src/cli.ts";
@@ -19,9 +20,7 @@ let
     workspaceRoot = src;
     # Managed by the repo FOD refresh workflow — do not edit manually.
     depsBuilds = {
-      "." = {
-        hash = "sha256-7mF1ThnZDPquxmliD4mc2LZdRZgDIElqyxt9Id5DgvI=";
-      };
+      "." = mkSharedHash "sha256-UHKg5zUU0rdqiHOu1DAbH1cwDmr/S96ANYB0MlxyJBg=";
     };
     smokeTestArgs = [ "--help" ];
     inherit gitRev commitTs dirty;

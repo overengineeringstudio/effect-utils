@@ -473,14 +473,39 @@ cat > "$contract_profile" <<'EOF'
     "schema": "dependency-materialization-profile/v0",
     "identityInputs": ["packageManager", "gvsLinkContract", "installPolicy", "storeContract", "workspaceManifestContract"],
     "supportedTraits": {
+      "ciJobLocal": {
+        "mutableState": "job-local",
+        "gcAuthority": "profile-local",
+        "repairAuthority": "ci-job"
+      },
+      "splitFilesCas": {
+        "mutableState": "profile-local",
+        "sharedContent": "store/v11/files",
+        "importMethod": "clone-or-copy",
+        "sameDeviceRequired": false,
+        "gcAuthority": "shared-pool-coordinator",
+        "repairAuthority": "devenv"
+      },
       "darwinSplitCas": {
         "mutableState": "profile-local",
         "sharedContent": "store/v11/files",
+        "importMethod": "clone-or-copy",
+        "sameDeviceRequired": false,
+        "gcAuthority": "shared-pool-coordinator",
+        "repairAuthority": "devenv"
+      },
+      "linuxSharedHardlink": {
+        "mutableState": "profile-local",
+        "sharedContent": "store/v11/files",
+        "importMethod": "hardlink",
+        "sameDeviceRequired": true,
         "gcAuthority": "shared-pool-coordinator",
         "repairAuthority": "devenv"
       },
       "isolated": {
         "mutableState": "profile-local",
+        "importMethod": "clone-or-copy",
+        "sameDeviceRequired": false,
         "gcAuthority": "profile-local",
         "repairAuthority": "devenv"
       }
@@ -499,6 +524,8 @@ const profile = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'))
 if (profile.schema !== 'dependency-materialization-profile/v0') throw new Error('schema drift')
 if (!profile.profileId.startsWith('pnpm:')) throw new Error('missing pnpm profile id prefix')
 if (profile.store.trait !== 'darwinSplitCas') throw new Error('wrong store trait')
+if (profile.store.sameDeviceRequired !== false) throw new Error('wrong same-device requirement')
+if (profile.store.packageImportMethod !== 'clone-or-copy') throw new Error('wrong import method')
 if (profile.authorities.gc !== 'shared-pool-coordinator') throw new Error('wrong gc authority')
 if (profile.authorities.repair !== 'devenv') throw new Error('wrong repair authority')
 if (!profile.policy.nativeBuildPolicyInputs.compilerEnv.includes('CXX')) throw new Error('missing native compiler policy')
@@ -516,6 +543,57 @@ emit_dependency_materialization_profile node "$contract_profile" unknownTrait >/
 exit_code=$?
 set -e
 assert_exit_code 1 "$exit_code" "unsupported profile trait should fail"
+
+echo "Test 16a.1: dependency materialization store preparation selects explicit profiles"
+profile_store="$test_dir/profile-store"
+profile_shared="$test_dir/profile-shared"
+mkdir -p "$profile_store" "$profile_shared"
+(
+  unset CI
+  export HOME="$profile_shared/home"
+  export PNPM_SHARED_FILES_DIR="$profile_shared/shared-files"
+  trait="$(prepare_dependency_materialization_store node auto false "$test_dir" "$profile_store")"
+  assert_eq "splitFilesCas" "$trait" "Linux auto keeps the existing shared split CAS profile"
+  test -L "$profile_store/v11/files"
+  assert_eq "$profile_shared/shared-files/v11" "$(readlink "$profile_store/v11/files")" "auto shared files symlink target"
+  assert_eq "--config.package-import-method=clone-or-copy" "$(dependency_materialization_install_policy_flags "$trait")" "auto uses clone-or-copy imports"
+)
+ci_auto_store="$test_dir/ci-auto-profile-store"
+(
+  export CI=1
+  export HOME="$profile_shared/home"
+  trait="$(prepare_dependency_materialization_store node auto false "$test_dir" "$ci_auto_store")"
+  assert_eq "ciJobLocal" "$trait" "CI auto selects a job-local materialization profile"
+  test -d "$ci_auto_store/v11/files"
+  test ! -L "$ci_auto_store/v11/files"
+)
+ci_explicit_store="$test_dir/ci-explicit-profile-store"
+(
+  export CI=1
+  export HOME="$profile_shared/home"
+  trait="$(prepare_dependency_materialization_store node isolated false "$test_dir" "$ci_explicit_store")"
+  assert_eq "isolated" "$trait" "CI preserves explicit materialization profiles"
+)
+isolated_store="$test_dir/isolated-profile-store"
+mkdir -p "$isolated_store/v11" "$profile_shared/isolated-shared/v11"
+ln -s "$profile_shared/isolated-shared/v11" "$isolated_store/v11/files"
+(
+  unset CI
+  export HOME="$profile_shared/home"
+  trait="$(prepare_dependency_materialization_store node isolated false "$test_dir" "$isolated_store")"
+  assert_eq "isolated" "$trait" "explicit isolated profile selected"
+  test -d "$isolated_store/v11/files"
+  test ! -L "$isolated_store/v11/files"
+)
+hardlink_store="$test_dir/hardlink-profile-store"
+(
+  unset CI
+  export HOME="$profile_shared/home"
+  export PNPM_SHARED_FILES_DIR="$profile_shared/hardlink-shared-files"
+  trait="$(prepare_dependency_materialization_store node linuxSharedHardlink false "$test_dir" "$hardlink_store")"
+  assert_eq "linuxSharedHardlink" "$trait" "explicit hardlink profile selected"
+  assert_eq "--config.package-import-method=hardlink" "$(dependency_materialization_install_policy_flags "$trait")" "hardlink profile uses hardlink imports"
+)
 
 echo "Test 16b: dependency materialization doctor refuses shared pools and plans coordinated repair"
 doctor_root="$test_dir/profile-doctor"
@@ -578,6 +656,10 @@ assert_eq \
   "2" \
   "$(dependency_materialization_repair_roots node "$second_registry" "$(dependency_materialization_profile_files_pool_id node "$second_registry" "$registry_profile_id")" | wc -l | tr -d ' ')" \
   "repair roots include every workspace sharing the files pool"
+assert_eq \
+  "darwinSplitCas" \
+  "$(dependency_materialization_repair_roots node "$second_registry" "$(dependency_materialization_profile_files_pool_id node "$second_registry" "$registry_profile_id")" | awk -F '\t' 'NR == 1 { print $3 }')" \
+  "repair roots carry the registered materialization trait"
 discovered_profile_store_dir="$(dependency_materialization_profile_store_dir node "$second_registry" "$registry_profile_id")"
 case "$discovered_profile_store_dir" in
   "$registry_root/store" | "$registry_root/second-store") ;;
@@ -776,14 +858,39 @@ cat > "$profile_contract" <<'EOF'
       "workspaceManifestContract"
     ],
     "supportedTraits": {
+      "ciJobLocal": {
+        "mutableState": "job-local",
+        "gcAuthority": "profile-local",
+        "repairAuthority": "ci-job"
+      },
+      "splitFilesCas": {
+        "mutableState": "profile-local",
+        "sharedContent": "store/v11/files",
+        "importMethod": "clone-or-copy",
+        "sameDeviceRequired": false,
+        "gcAuthority": "shared-pool-coordinator",
+        "repairAuthority": "devenv"
+      },
       "darwinSplitCas": {
         "mutableState": "profile-local",
         "sharedContent": "store/v11/files",
+        "importMethod": "clone-or-copy",
+        "sameDeviceRequired": false,
+        "gcAuthority": "shared-pool-coordinator",
+        "repairAuthority": "devenv"
+      },
+      "linuxSharedHardlink": {
+        "mutableState": "profile-local",
+        "sharedContent": "store/v11/files",
+        "importMethod": "hardlink",
+        "sameDeviceRequired": true,
         "gcAuthority": "shared-pool-coordinator",
         "repairAuthority": "devenv"
       },
       "isolated": {
         "mutableState": "profile-local",
+        "importMethod": "clone-or-copy",
+        "sameDeviceRequired": false,
         "gcAuthority": "profile-local",
         "repairAuthority": "devenv"
       }
@@ -797,8 +904,8 @@ cat > "$profile_contract" <<'EOF'
 EOF
 profile_a="$test_dir/profile-a.json"
 profile_b="$test_dir/profile-b.json"
-emit_dependency_materialization_profile node "$profile_contract" darwinSplitCas "$profile_a"
-emit_dependency_materialization_profile node "$profile_contract" darwinSplitCas "$profile_b"
+emit_dependency_materialization_profile node "$profile_contract" splitFilesCas "$profile_a"
+emit_dependency_materialization_profile node "$profile_contract" splitFilesCas "$profile_b"
 assert_eq \
   "$(compute_hash < "$profile_a")" \
   "$(compute_hash < "$profile_b")" \
@@ -808,6 +915,11 @@ assert_json_field \
   "$profile_a" \
   "(value) => value.authorities.gc" \
   "dependency profile records gc authority"
+assert_json_field \
+  "clone-or-copy" \
+  "$profile_a" \
+  "(value) => value.store.packageImportMethod" \
+  "dependency profile records import method"
 
 echo "Test 33: source-only files are not dependency profile identity inputs"
 mkdir -p "$test_dir/profile-source/packages/app/src"
@@ -815,9 +927,9 @@ cp "$profile_contract" "$test_dir/profile-source/pnpm-install-contract.json"
 echo "export const value = 1" > "$test_dir/profile-source/packages/app/src/index.ts"
 (
   cd "$test_dir/profile-source"
-  emit_dependency_materialization_profile node pnpm-install-contract.json darwinSplitCas profile-before.json
+  emit_dependency_materialization_profile node pnpm-install-contract.json splitFilesCas profile-before.json
   echo "export const value = 2" > packages/app/src/index.ts
-  emit_dependency_materialization_profile node pnpm-install-contract.json darwinSplitCas profile-after.json
+  emit_dependency_materialization_profile node pnpm-install-contract.json splitFilesCas profile-after.json
   assert_json_field \
     "$(node -e "const fs = require('node:fs'); process.stdout.write(JSON.parse(fs.readFileSync('profile-before.json','utf8')).profileId)")" \
     profile-after.json \
@@ -835,7 +947,7 @@ contract.workspaceManifestContract.packages.push('packages/new-member')
 fs.writeFileSync(to, `${JSON.stringify(contract, null, 2)}\n`)
 EOF
 profile_manifest="$test_dir/profile-manifest.json"
-emit_dependency_materialization_profile node "$manifest_contract" darwinSplitCas "$profile_manifest"
+emit_dependency_materialization_profile node "$manifest_contract" splitFilesCas "$profile_manifest"
 if [ "$(node -e "const fs = require('node:fs'); process.stdout.write(JSON.parse(fs.readFileSync(process.argv[1], 'utf8')).profileId)" "$profile_a")" = "$(node -e "const fs = require('node:fs'); process.stdout.write(JSON.parse(fs.readFileSync(process.argv[1], 'utf8')).profileId)" "$profile_manifest")" ]; then
   echo "FAIL: manifest contract changes dependency profile identity"
   exit 1

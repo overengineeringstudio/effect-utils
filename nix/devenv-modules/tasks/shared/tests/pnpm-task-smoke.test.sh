@@ -175,14 +175,34 @@ cat > "$workspace/pnpm-install-contract.json" <<'EOF'
         "gcAuthority": "profile-local",
         "repairAuthority": "ci-job"
       },
+      "splitFilesCas": {
+        "mutableState": "profile-local",
+        "sharedContent": "store/v11/files",
+        "importMethod": "clone-or-copy",
+        "sameDeviceRequired": false,
+        "gcAuthority": "shared-pool-coordinator",
+        "repairAuthority": "devenv"
+      },
       "darwinSplitCas": {
         "mutableState": "profile-local",
         "sharedContent": "store/v11/files",
+        "importMethod": "clone-or-copy",
+        "sameDeviceRequired": false,
+        "gcAuthority": "shared-pool-coordinator",
+        "repairAuthority": "devenv"
+      },
+      "linuxSharedHardlink": {
+        "mutableState": "profile-local",
+        "sharedContent": "store/v11/files",
+        "importMethod": "hardlink",
+        "sameDeviceRequired": true,
         "gcAuthority": "shared-pool-coordinator",
         "repairAuthority": "devenv"
       },
       "isolated": {
         "mutableState": "profile-local",
+        "importMethod": "clone-or-copy",
+        "sameDeviceRequired": false,
         "gcAuthority": "profile-local",
         "repairAuthority": "devenv"
       }
@@ -231,6 +251,7 @@ if [ "${1:-}" = "install" ]; then
   printf 'PNPM_STORE_DIR=%s\n' "${PNPM_STORE_DIR:-}" >> "${TEST_PNPM_LOG:?}"
   printf 'PNPM_CONFIG_STORE_DIR=%s\n' "${PNPM_CONFIG_STORE_DIR:-}" >> "${TEST_PNPM_LOG:?}"
   printf 'npm_config_store_dir=%s\n' "${npm_config_store_dir:-}" >> "${TEST_PNPM_LOG:?}"
+  printf 'PNPM_SHARED_FILES_DIR=%s\n' "${PNPM_SHARED_FILES_DIR:-}" >> "${TEST_PNPM_LOG:?}"
   if [ "${TEST_PNPM_FAIL_NETWORK:-0}" = "1" ]; then
     echo "ERR_PNPM_META_FETCH_FAIL GET https://registry.npmjs.org/demo: request to https://registry.npmjs.org/demo failed, reason: Socket timeout" >&2
     exit 42
@@ -254,6 +275,9 @@ YAML
     echo "Progress: resolved 777, reused 0, downloaded 777, added 777, done" >&2
     exit "$TEST_PNPM_DARWIN_TEARDOWN_STATUS"
   fi
+  exit 0
+fi
+if [ "${1:-}" = "dedupe" ]; then
   exit 0
 fi
 echo "unexpected fake pnpm invocation: $*" >&2
@@ -310,6 +334,13 @@ extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-nested.exec.sh" 'p
 extract_task_script "$workspace" "status" "$tmpdir/pnpm-install-nested.status.sh" 'packages = [ "pkg" ]; workspaceRoot = "nested"; taskSuffix = "nested";' "pnpm:install:nested"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-flags.exec.sh" 'packages = [ "." ]; installFlags = [ "--config.public-hoist-pattern=*" ]; preInstall = "touch .preinstall-marker";'
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-darwin.exec.sh" 'packages = [ "." ];' "pnpm:install" "true"
+extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-isolated.exec.sh" 'packages = [ "." ]; materializationProfile = "isolated";' "pnpm:install"
+extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-hardlink.exec.sh" 'packages = [ "." ]; materializationProfile = "linuxSharedHardlink";' "pnpm:install"
+extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-hardlink-boundary.exec.sh" 'packages = [ "." ]; materializationProfile = "linuxSharedHardlink"; storeDir = "'$tmpdir'/cas/pnpm-store/root"; sharedFilesDir = "'$tmpdir'/cas/pnpm-store/files";' "pnpm:install"
+extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-local-hardlink-boundary.exec.sh" 'packages = [ "." ]; localMaterializationProfile = "linuxSharedHardlink"; localStoreDir = "'$tmpdir'/local-cas/pnpm-store/root"; localSharedFilesDir = "'$tmpdir'/local-cas/pnpm-store/files";' "pnpm:install"
+extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-local-hardlink-linux-only.exec.sh" 'packages = [ "." ]; localMaterializationProfile = "linuxSharedHardlink"; localOverridesRequireLinux = true; localStoreDir = "'$tmpdir'/linux-only-cas/pnpm-store/root"; localSharedFilesDir = "'$tmpdir'/linux-only-cas/pnpm-store/files";' "pnpm:install"
+extract_task_script "$workspace" "exec" "$tmpdir/pnpm-update-hardlink.exec.sh" 'packages = [ "." ]; materializationProfile = "linuxSharedHardlink";' "pnpm:update"
+extract_task_script "$workspace" "exec" "$tmpdir/pnpm-dedupe-hardlink.exec.sh" 'packages = [ "." ]; materializationProfile = "linuxSharedHardlink";' "pnpm:dedupe"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-impure-flags.exec.sh" 'packages = [ "." ]; installFlags = [ "--no-frozen-lockfile" ];' "pnpm:install"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-impure-equals.exec.sh" 'packages = [ "." ]; installFlags = [ "--frozen-lockfile=false" ];' "pnpm:install"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-impure-separated.exec.sh" 'packages = [ "." ]; installFlags = [ "--config.package-import-method" "hardlink" ];' "pnpm:install"
@@ -340,6 +371,13 @@ rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-nested.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-nested.status.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-flags.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-darwin.exec.sh"
+rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-isolated.exec.sh"
+rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-hardlink.exec.sh"
+rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-hardlink-boundary.exec.sh"
+rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-local-hardlink-boundary.exec.sh"
+rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-local-hardlink-linux-only.exec.sh"
+rewrite_unrealized_tool_paths "$tmpdir/pnpm-update-hardlink.exec.sh"
+rewrite_unrealized_tool_paths "$tmpdir/pnpm-dedupe-hardlink.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-impure-flags.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-impure-equals.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-impure-separated.exec.sh"
@@ -384,7 +422,7 @@ echo "Test 2: exec runs fake pnpm and populates cache"
   grep -qxF "flock -w 600 200" "$tmpdir/flock.log"
   grep -qxF "flock -w 600 201" "$tmpdir/flock.log"
   grep -qxF "flock -w 600 202" "$tmpdir/flock.log"
-  grep -qxF "install --force --frozen-lockfile --config.confirmModulesPurge=false --ignore-scripts --config.side-effects-cache=false --config.verify-store-integrity=true --config.strict-store-pkg-content-check=true --child-concurrency=1 --network-concurrency=4 --config.package-import-method=clone-or-copy --pm-on-fail=ignore --config.store-dir=$workspace/.devenv/pnpm-store-pure-v1" "$tmpdir/pnpm.log"
+  grep -qxF "install --force --frozen-lockfile --config.confirmModulesPurge=false --ignore-scripts --config.side-effects-cache=false --config.verify-store-integrity=true --config.strict-store-pkg-content-check=true --child-concurrency=1 --network-concurrency=4 --pm-on-fail=ignore --config.package-import-method=clone-or-copy --config.store-dir=$workspace/.devenv/pnpm-store-pure-v1" "$tmpdir/pnpm.log"
   grep -qF ".effect-utils-pnpm-install.lock" "$tmpdir/pnpm-install.exec.sh"
   grep -qF ".effect-utils-pnpm-store.lock" "$tmpdir/pnpm-install.exec.sh"
   test -w "$workspace/.devenv/task-cache/pnpm-install/pnpm-install-contract.json"
@@ -473,13 +511,16 @@ echo "Test 7: exec defaults PNPM_HOME to a workspace-local projection"
   profile_id="$(node -e 'const fs=require("node:fs"); process.stdout.write(JSON.parse(fs.readFileSync(process.argv[1],"utf8")).profileId)' "$profile_file")"
   assert_json_field "dependency-materialization-profile/v0" "$profile_file" "value => value.schema" "live profile schema"
   assert_json_field "true" "$profile_file" "value => value.profileId.startsWith('pnpm:')" "live profile id prefix"
-  assert_json_field "darwinSplitCas" "$profile_file" "value => value.store.trait" "live profile split store trait"
+  assert_json_field "splitFilesCas" "$profile_file" "value => value.store.trait" "live profile split store trait"
+  assert_json_field "clone-or-copy" "$profile_file" "value => value.store.packageImportMethod" "live profile import method"
+  assert_json_field "false" "$profile_file" "value => value.store.sameDeviceRequired" "live profile same-device requirement"
   assert_json_field "shared-pool-coordinator" "$profile_file" "value => value.authorities.gc" "live profile gc authority"
   assert_json_field "pnpm-install-contract.json" "$profile_file" "value => value.evidence.contractPath" "live profile relative contract path"
   assert_json_field "dependency-materialization-registry/v0" "$registry_file" "value => value.schema" "live registry schema"
   assert_json_field "$profile_id" "$registry_file" "value => value.profiles[0].profileId" "live registry profile id"
   assert_json_field "$workspace" "$registry_file" "value => value.profiles[0].project" "live registry project"
   assert_json_field "$workspace/.devenv/pnpm-store-pure-v1" "$registry_file" "value => value.profiles[0].store" "live registry store"
+  assert_json_field "splitFilesCas" "$registry_file" "value => value.profiles[0].trait" "live registry trait"
   assert_json_field "$workspace/.devenv/pnpm-store-pure-v1/v11/files" "$registry_file" "value => value.pools[0].filesPath" "live registry files path"
   doctor_decision="$(bash "$tmpdir/pnpm-doctor.exec.sh" | node -e 'const fs=require("node:fs"); process.stdout.write(JSON.parse(fs.readFileSync(0,"utf8")).decision)')"
   assert_eq "refuse-raw-prune" "$doctor_decision" "doctor refuses raw prune for shared files pool"
@@ -488,11 +529,136 @@ echo "Test 7: exec defaults PNPM_HOME to a workspace-local projection"
   : > "$tmpdir/pnpm.log"
   : > "$tmpdir/flock.log"
   bash "$tmpdir/pnpm-repair.exec.sh" >/dev/null
-  grep -qxF "install --force --frozen-lockfile --config.confirmModulesPurge=false --ignore-scripts --config.side-effects-cache=false --config.verify-store-integrity=true --config.strict-store-pkg-content-check=true --child-concurrency=1 --network-concurrency=4 --config.package-import-method=clone-or-copy --pm-on-fail=ignore --config.store-dir=$workspace/.devenv/pnpm-store-pure-v1" "$tmpdir/pnpm.log"
+  grep -qxF "install --force --frozen-lockfile --config.confirmModulesPurge=false --ignore-scripts --config.side-effects-cache=false --config.verify-store-integrity=true --config.strict-store-pkg-content-check=true --child-concurrency=1 --network-concurrency=4 --pm-on-fail=ignore --config.package-import-method=clone-or-copy --config.store-dir=$workspace/.devenv/pnpm-store-pure-v1" "$tmpdir/pnpm.log"
   grep -qxF "PWD=$workspace" "$tmpdir/pnpm.log"
   grep -qxF "flock -w 600 204" "$tmpdir/flock.log"
   CI=1 bash "$tmpdir/pnpm-install.exec.sh"
   assert_json_field "ciJobLocal" "$profile_file" "value => value.store.trait" "CI install records CI-local profile trait"
+)
+
+echo "Test 7b: explicit isolated materialization leaves files profile-local"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  unset PNPM_HOME
+  unset PNPM_STORE_DIR
+  unset npm_config_store_dir
+  rm -rf "$workspace/.devenv/pnpm-store-pure-v1" "$workspace/.devenv/task-cache/pnpm-install" node_modules
+  : > "$tmpdir/pnpm.log"
+  bash "$tmpdir/pnpm-install-isolated.exec.sh"
+  test -d "$workspace/.devenv/pnpm-store-pure-v1/v11/files"
+  test ! -L "$workspace/.devenv/pnpm-store-pure-v1/v11/files"
+  assert_json_field "isolated" "$workspace/.devenv/task-cache/pnpm-install/dependency-materialization-profile.json" "value => value.store.trait" "explicit isolated profile trait"
+  grep -qxF "install --force --frozen-lockfile --config.confirmModulesPurge=false --ignore-scripts --config.side-effects-cache=false --config.verify-store-integrity=true --config.strict-store-pkg-content-check=true --child-concurrency=1 --network-concurrency=4 --pm-on-fail=ignore --config.package-import-method=clone-or-copy --config.store-dir=$workspace/.devenv/pnpm-store-pure-v1" "$tmpdir/pnpm.log"
+)
+
+echo "Test 7c: explicit linux hardlink materialization validates and uses hardlink imports"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  unset PNPM_HOME
+  unset PNPM_STORE_DIR
+  unset npm_config_store_dir
+  rm -rf "$workspace/.devenv/pnpm-store-pure-v1" "$workspace/.devenv/task-cache/pnpm-install" node_modules
+  : > "$tmpdir/pnpm.log"
+  bash "$tmpdir/pnpm-install-hardlink.exec.sh"
+  test -L "$workspace/.devenv/pnpm-store-pure-v1/v11/files"
+  assert_json_field "linuxSharedHardlink" "$workspace/.devenv/task-cache/pnpm-install/dependency-materialization-profile.json" "value => value.store.trait" "explicit hardlink profile trait"
+  assert_json_field "true" "$workspace/.devenv/task-cache/pnpm-install/dependency-materialization-profile.json" "value => value.store.sameDevice" "explicit hardlink profile same-device evidence"
+  grep -qxF "install --force --frozen-lockfile --config.confirmModulesPurge=false --ignore-scripts --config.side-effects-cache=false --config.verify-store-integrity=true --config.strict-store-pkg-content-check=true --child-concurrency=1 --network-concurrency=4 --pm-on-fail=ignore --config.package-import-method=hardlink --config.store-dir=$workspace/.devenv/pnpm-store-pure-v1" "$tmpdir/pnpm.log"
+)
+
+echo "Test 7d: update and dedupe apply the selected materialization import policy"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  unset PNPM_HOME
+  unset PNPM_STORE_DIR
+  unset npm_config_store_dir
+  rm -rf "$workspace/.devenv/pnpm-store-pure-v1" node_modules
+  : > "$tmpdir/pnpm.log"
+  bash "$tmpdir/pnpm-update-hardlink.exec.sh"
+  bash "$tmpdir/pnpm-dedupe-hardlink.exec.sh"
+  grep -qxF "install --fix-lockfile --config.confirmModulesPurge=false --pm-on-fail=ignore --config.package-import-method=hardlink --config.store-dir=$workspace/.devenv/pnpm-store-pure-v1" "$tmpdir/pnpm.log"
+  grep -qxF "dedupe --config.confirmModulesPurge=false --pm-on-fail=ignore --config.package-import-method=hardlink --config.store-dir=$workspace/.devenv/pnpm-store-pure-v1" "$tmpdir/pnpm.log"
+)
+
+echo "Test 7e: explicit machine CAS boundary controls store and files pool"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  unset PNPM_HOME
+  unset PNPM_STORE_DIR
+  unset PNPM_CONFIG_STORE_DIR
+  unset npm_config_store_dir
+  rm -rf "$tmpdir/cas" "$workspace/.devenv/task-cache/pnpm-install" node_modules
+  : > "$tmpdir/pnpm.log"
+  bash "$tmpdir/pnpm-install-hardlink-boundary.exec.sh"
+  test -L "$tmpdir/cas/pnpm-store/root/v11/files"
+  test "$(readlink "$tmpdir/cas/pnpm-store/root/v11/files")" = "$tmpdir/cas/pnpm-store/files/v11"
+  grep -qxF "PNPM_STORE_DIR=$tmpdir/cas/pnpm-store/root" "$tmpdir/pnpm.log"
+  grep -qxF "PNPM_CONFIG_STORE_DIR=$tmpdir/cas/pnpm-store/root" "$tmpdir/pnpm.log"
+  grep -qxF "npm_config_store_dir=$tmpdir/cas/pnpm-store/root" "$tmpdir/pnpm.log"
+  grep -qxF "PNPM_SHARED_FILES_DIR=$tmpdir/cas/pnpm-store/files" "$tmpdir/pnpm.log"
+  grep -qxF "install --force --frozen-lockfile --config.confirmModulesPurge=false --ignore-scripts --config.side-effects-cache=false --config.verify-store-integrity=true --config.strict-store-pkg-content-check=true --child-concurrency=1 --network-concurrency=4 --pm-on-fail=ignore --config.package-import-method=hardlink --config.store-dir=$tmpdir/cas/pnpm-store/root" "$tmpdir/pnpm.log"
+  assert_json_field "linuxSharedHardlink" "$workspace/.devenv/task-cache/pnpm-install/dependency-materialization-profile.json" "value => value.store.trait" "configured boundary profile trait"
+  assert_json_field "$tmpdir/cas/pnpm-store/root" "$workspace/.devenv/task-cache/pnpm-install/dependency-materialization-registry.json" "value => value.profiles[0].store" "configured boundary registry store"
+  assert_json_field "$tmpdir/cas/pnpm-store/root/v11/files" "$workspace/.devenv/task-cache/pnpm-install/dependency-materialization-registry.json" "value => value.pools[0].filesPath" "configured boundary registry files path"
+)
+
+echo "Test 7f: local machine CAS override does not leak into CI"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  unset PNPM_HOME
+  unset PNPM_STORE_DIR
+  unset PNPM_CONFIG_STORE_DIR
+  unset npm_config_store_dir
+  rm -rf "$tmpdir/local-cas" "$workspace/.devenv/pnpm-store-pure-v1" "$workspace/.devenv/task-cache/pnpm-install" node_modules
+  : > "$tmpdir/pnpm.log"
+  bash "$tmpdir/pnpm-install-local-hardlink-boundary.exec.sh"
+  grep -qxF "PNPM_STORE_DIR=$tmpdir/local-cas/pnpm-store/root" "$tmpdir/pnpm.log"
+  grep -qxF "PNPM_SHARED_FILES_DIR=$tmpdir/local-cas/pnpm-store/files" "$tmpdir/pnpm.log"
+  assert_json_field "linuxSharedHardlink" "$workspace/.devenv/task-cache/pnpm-install/dependency-materialization-profile.json" "value => value.store.trait" "local override profile trait"
+
+  rm -rf "$workspace/.devenv/pnpm-store-pure-v1" "$workspace/.devenv/task-cache/pnpm-install" node_modules
+  : > "$tmpdir/pnpm.log"
+  CI=1 bash "$tmpdir/pnpm-install-local-hardlink-boundary.exec.sh"
+  grep -qxF "PNPM_STORE_DIR=$workspace/.devenv/pnpm-store-pure-v1" "$tmpdir/pnpm.log"
+  grep -qxF "PNPM_SHARED_FILES_DIR=" "$tmpdir/pnpm.log"
+  assert_json_field "ciJobLocal" "$workspace/.devenv/task-cache/pnpm-install/dependency-materialization-profile.json" "value => value.store.trait" "local override CI profile trait"
+)
+
+echo "Test 7g: Linux-required local CAS override is runtime-gated"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  unset CI
+  unset PNPM_HOME
+  unset PNPM_STORE_DIR
+  unset PNPM_CONFIG_STORE_DIR
+  unset PNPM_SHARED_FILES_DIR
+  unset npm_config_store_dir
+  rm -rf "$tmpdir/linux-only-cas" "$workspace/.devenv/pnpm-store-pure-v1" "$workspace/.devenv/task-cache/pnpm-install" node_modules
+  : > "$tmpdir/pnpm.log"
+  bash "$tmpdir/pnpm-install-local-hardlink-linux-only.exec.sh"
+  grep -qxF "PNPM_STORE_DIR=$tmpdir/linux-only-cas/pnpm-store/root" "$tmpdir/pnpm.log"
+  grep -qxF "PNPM_SHARED_FILES_DIR=$tmpdir/linux-only-cas/pnpm-store/files" "$tmpdir/pnpm.log"
+  assert_json_field "linuxSharedHardlink" "$workspace/.devenv/task-cache/pnpm-install/dependency-materialization-profile.json" "value => value.store.trait" "Linux-only override Linux trait"
+
+  fake_bin="$tmpdir/fake-darwin-bin"
+  mkdir -p "$fake_bin"
+  cat > "$fake_bin/uname" <<'EOF'
+#!/usr/bin/env bash
+printf 'Darwin\n'
+EOF
+  chmod +x "$fake_bin/uname"
+  rm -rf "$workspace/.devenv/pnpm-store-pure-v1" "$workspace/.devenv/task-cache/pnpm-install" node_modules
+  : > "$tmpdir/pnpm.log"
+  PATH="$fake_bin:$PATH" bash "$tmpdir/pnpm-install-local-hardlink-linux-only.exec.sh"
+  grep -qxF "PNPM_STORE_DIR=$workspace/.devenv/pnpm-store-pure-v1" "$tmpdir/pnpm.log"
+  grep -qxF "PNPM_SHARED_FILES_DIR=" "$tmpdir/pnpm.log"
+  assert_json_field "clone-or-copy" "$workspace/.devenv/task-cache/pnpm-install/dependency-materialization-profile.json" "value => value.store.packageImportMethod" "Linux-only override non-Linux import method"
 )
 
 echo "Test 8: status hits after install with the default GVS path"
@@ -500,6 +666,7 @@ echo "Test 8: status hits after install with the default GVS path"
   cd "$workspace"
   export HOME="$tmpdir/home"
   unset PNPM_HOME
+  bash "$tmpdir/pnpm-install.exec.sh" >/dev/null
   set +e
   bash "$tmpdir/pnpm-install.status.sh"
   exit_code=$?
@@ -611,7 +778,7 @@ echo "Test 16: install flags and pre-install hooks are applied"
   : > "$tmpdir/pnpm.log"
   bash "$tmpdir/pnpm-install-flags.exec.sh"
   test -f .preinstall-marker
-  grep -qxF "install --config.public-hoist-pattern=* --frozen-lockfile --config.confirmModulesPurge=false --ignore-scripts --config.side-effects-cache=false --config.verify-store-integrity=true --config.strict-store-pkg-content-check=true --child-concurrency=1 --network-concurrency=4 --config.package-import-method=clone-or-copy --pm-on-fail=ignore --config.store-dir=$workspace/.devenv/pnpm-store-pure-v1" "$tmpdir/pnpm.log"
+  grep -qxF "install --config.public-hoist-pattern=* --frozen-lockfile --config.confirmModulesPurge=false --ignore-scripts --config.side-effects-cache=false --config.verify-store-integrity=true --config.strict-store-pkg-content-check=true --child-concurrency=1 --network-concurrency=4 --pm-on-fail=ignore --config.package-import-method=clone-or-copy --config.store-dir=$workspace/.devenv/pnpm-store-pure-v1" "$tmpdir/pnpm.log"
 )
 
 echo "Test 17: impure no-frozen install flags are rejected before pnpm runs"

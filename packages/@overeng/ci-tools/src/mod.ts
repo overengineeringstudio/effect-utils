@@ -444,10 +444,13 @@ export type ParsedWorkflowReportJsonl = {
   readonly ignoredLineCount: number
 }
 
-export const encodeWorkflowReportRecordLine = (
-  record: WorkflowReportRecord,
+export const encodeWorkflowReportRecordLine = ({
+  record,
   marker = workflowReportRecordLineMarker,
-) => `${marker}${encodeWorkflowReportRecordJson(record)}`
+}: {
+  readonly record: WorkflowReportRecord
+  readonly marker?: string
+}) => `${marker}${encodeWorkflowReportRecordJson(record)}`
 
 export const parseMarkedWorkflowReportJsonl = (
   source: string,
