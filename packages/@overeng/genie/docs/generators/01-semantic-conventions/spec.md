@@ -177,7 +177,11 @@ the public fragments), following the megarepo alignment propagation order.
   compat violation" — is a capability to wire, not yet exercised.)
 - **live-check (SC-R12):** in e2e tests, capture emitted OTLP and feed `weaver registry
   live-check --input-source <file|otlp>`; validates types/units/enum/required/coverage
-  against the registry. Any OTLP exporter (incl. the test-capture harness) suffices.
+  against the registry. Any OTLP exporter (incl. the test-capture harness) suffices. In the
+  fleet, telemetry flows OTLP → **Grafana Alloy → Mimir (metrics) / Tempo (traces)**, queried
+  via Grafana; Alloy is also where the metric-label migration bridge runs
+  ([.decisions/0004](./.decisions/0004-metric-label-migration.md)). `weaver registry resolve`
+  is deprecated in 0.23/0.24 — prefer `generate`/`package`.
 
 ## Runtime derivation: the catalog atop otel-contract (SC-R13, SC-R14)
 
@@ -242,10 +246,8 @@ inventory; a subset-only sweep silently misses drift.
 - **SC-DQ4 Weaver version churn:** what is the update cadence / compatibility matrix
   between pinned Weaver, pinned upstream semconv, and the emitted schema? Resolves by a
   version-bump runbook + a smoke test in CI.
-- **SC-DQ6 Metric-label key projection:** today a concept can appear under different keys
-  per context — span attr `restate.service` vs metric label short key `service` (real, in
-  the restate contract). Under a global catalog, options: (a) a catalog entry declares a
-  per-context label alias; (b) metric labels are a distinct catalog namespace; (c) enforce
-  the full key everywhere (kills the short-key convenience, gains consistency + weaver
-  ref-ability). This is the one current freedom the catalog constrains (SC-R15). Resolves
-  by prototyping the metric path on the restate metrics.
+- **SC-DQ6 Metric-label key projection — RESOLVED:** one namespaced key per concept on every
+  signal (registry key dotted, metric wire renders underscore by default); existing metrics
+  migrate retention-first, with a central Alloy OTTL bridge only for long-window metrics. See
+  [.decisions/0003](./.decisions/0003-unified-full-dotted-keys.md) +
+  [0004](./.decisions/0004-metric-label-migration.md).

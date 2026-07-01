@@ -44,12 +44,10 @@ are settled by the shape that reads cleanest there.
 
 ## SC-DQ6 — Metric-label key projection — RESOLVED
 
-Resolved as option (c): one catalog entry per concept, full dotted key everywhere including
-metric labels — [.decisions/0003](./.decisions/0003-unified-full-dotted-keys.md). The
-emitted metric labels change (`service`→`restate.service`, Prometheus `restate_service`),
-which is a deliberate coordinated live migration folded into SC-DQ5. Rejected alternative:
-a separate short-key metric-label namespace (avoided the migration but split a concept
-across two entries).
+Resolved by [.decisions/0003](./.decisions/0003-unified-full-dotted-keys.md) (one namespaced
+key per concept; metric wire renders underscore by default) +
+[0004](./.decisions/0004-metric-label-migration.md) (retention-first transition, central
+Alloy bridge only for long-window metrics).
 
 ## SC-DQ5 — Bootstrap & authority flip (initial migration)
 
@@ -62,12 +60,14 @@ Getting there from the current state is a live-migration-shaped problem (distinc
 SC-DQ1, which is *ongoing* sweep completeness). Naive "author the whole registry by hand" is
 a large one-shot; naive "flip the gate on" fails 240 sites at once.
 
-**Includes the metric-label rename (0003):** per-namespace migration must also carry the
-emitted metric-label key change (short → full dotted, e.g. `service`→`restate.service` /
-Prometheus `restate_service`) and the paired dashboard/alert/query updates, coordinated with
-the (private) owner of the affected dashboards. Treat as a live-systems migration (`/sk-live-migrations`):
-carry both label sets during transition where feasible, prove each site, then remove the old
-label.
+**Includes the metric-label rename (0003/0004):** per-namespace migration also carries the
+metric-label key change (bare → namespaced, `service`→`restate.service`, wire
+`restate_service`) and the paired dashboard/alert updates. The approach is settled
+([.decisions/0004](./.decisions/0004-metric-label-migration.md)): retention-first (emit-new,
+fix known consumers, let old series expire), with a central Alloy OTTL bridge only for
+long-window/SLO/external metrics. What remains open here is the broader authority-flip
+(seeding the registry from ~240 sites, warn→block per namespace) into which the label rename
+is folded.
 
 **Candidates:**
 - Seed the registry by EXTRACTING from existing `OtelAttrs.define` schemas

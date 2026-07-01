@@ -1,57 +1,61 @@
-# 0003 — One catalog key per concept: full dotted keys everywhere (incl. metric labels)
+# 0003 — One namespaced semconv key per concept (registry key dotted; metric wire underscore)
 
-**Status:** Under reconsideration. Originally Accepted by user decision, but an adversarial
-design review surfaced new information not weighed at decision time (see "Reconsideration"
-below). Pending a fresh call.
-
-## Reconsideration (open)
-
-A review argued the (c) justifications don't hold up: metric-label ref-ability is NOT unique
-to (c) — the rejected option (a) (short-key metric-label namespace) is also weaver-valid and
-was the prototype's own "honest modeling" conclusion — so the only real gain of (c) over (a)
-is one catalog entry instead of two. Against that, (c)'s cost is larger than first stated:
-renaming an emitted metric label (`service`→`restate_service` in Prometheus) causes a
-permanent TSDB series discontinuity, **silently** breaks recording rules/alerts (no error,
-just no data), and **destroys the cross-service `service` join key** used by `sum by
-(service)` / `group_left` across exporters. Under the two-layer design this is orthogonal to
-the layer split. Leading reconsidered recommendation: adopt (a) and, if consistency is
-wanted, link the span-attr and label entries with a lint rather than a wire rename. To be
-decided with the user.
+**Status:** Accepted. Two separable sub-decisions: **(A) namespacing** — strong, the core
+decision; **(B) metric wire rendering** — defaults to underscore. Transition owned by
+[0004](./0004-metric-label-migration.md).
 
 ## Context
 
-A concept can appear under different keys per signal: today the restate span uses attribute
-`restate.service` while the restate metric uses the short Prometheus-style label `service`
-(and `outcome`, `handler`, …). SC-DQ6 asked how a single catalog expresses that. Two viable
-models (both prototyped): (a) metric labels are their own catalog namespace with short keys
-(wire unchanged), or (c) one catalog entry per concept with the full dotted key used
-everywhere, including as the metric label.
+A concept can appear on more than one signal — the invoked Restate service is a span
+attribute AND a metric label. Two orthogonal questions hide here, and an earlier draft
+conflated them:
+
+- **(A)** Does the concept have ONE namespaced key (`restate.service`) reused on every
+  signal, or per-signal keys (span `restate.service` vs a bare metric label `service`)?
+- **(B)** How is that key *rendered on the metric wire* — the default underscore mapping
+  (`restate_service`) or dotted-UTF-8 (`restate.service`)?
 
 ## Decision
 
-**Option (c): one catalog entry per concept; the full dotted attribute key is used
-everywhere, including metric labels.** A metric references the same catalog attribute a span
-does; there is no short-key alias. This is the OTel-idiomatic model — semantic conventions
-use dotted attribute keys, and the OTLP→Prometheus exporter performs the dotted→underscore
-mapping (`restate.service` → Prometheus `restate_service`). It maximizes the single-SSOT /
-clean-derivation property the design optimizes for, and keeps first-party metric labels
-weaver-`ref`-able against the same catalog and upstream semconv.
+**(A) One namespaced semantic-convention key per concept, used on every signal.** The
+registry defines `restate.service` once; the span and the metric both reference it. This is
+the core, strong decision.
+
+Rationale (OTel-native, and it applies to the *registry key*):
+- **Same concept ⇒ same key.** A convention registry exists so one attribute is reused
+  across spans/metrics/logs; emitting `restate.service` on the span but `service` on the
+  metric for the identical concept is the drift the registry abolishes.
+- **Namespacing resolves a real ambiguity.** A bare `service` collides with OTel's resource
+  attribute `service.name` (the producing process). `restate.service` (the invoked service)
+  is a distinct domain concept; cross-cutting process identity stays on `service.name`
+  (resource). Namespacing separates them.
+
+**(B) The metric wire renders the key as underscore (`restate_service`) by default.** The
+registry key stays dotted (`restate.service`); the OTLP→Mimir default translation strategy
+(`UnderscoreEscapingWithSuffixes`) maps it deterministically to `restate_service`. This
+keeps 100% of (A)'s semantic wins — `restate_service` is equally namespaced and equally
+collision-free with `service_name` — while avoiding the dotted-UTF-8 tax (quoted PromQL
+selectors everywhere, Grafana template-var/regex assumptions, and silent
+`restate.service`/`restate_service` split-brain if any hop drops the UTF-8 exporter setting).
+
+Dotted-UTF-8 on the wire is a *separately-decidable, later* opt-in (requires fleet-wide
+`NoUTF8EscapingWithSuffixes` + Mimir UTF-8), not a prerequisite and not more "OTel-native" —
+the OTel value lives in the registry key, not the transport rendering.
 
 ## Consequences
 
-- **Live telemetry migration (must be coordinated).** Emitted metric label keys change
-  (`service` → `restate.service`, surfacing in Prometheus as `restate_service`). Existing
-  dashboards, alerts, and recording/queries that reference the old short labels MUST be
-  updated. This is a fleet-wide change owned by the migration plan (SC-DQ5) and coordinated
-  with whoever owns the affected dashboards (a downstream, private observability surface).
-  Not a silent authoring tweak.
-- Metric-label cardinality policy still applies (a high-cardinality attribute remains
-  invalid as a metric label) — enforced against the single catalog entry.
-- Simpler catalog: no per-context alias machinery; every key is decided once.
-- SC-R15 is satisfied by construction (keys are catalog-governed, never ad hoc).
+- Existing metrics that emit a bare `service` label still need to move to the namespaced key
+  — but this is a projection cutover bounded by retention, not a durable-state migration; see
+  [0004](./0004-metric-label-migration.md).
+- One catalog entry per concept (SC-R15 satisfied by construction); metric-label
+  cardinality/privacy policy applies to that single entry.
+- No UTF-8 dependency: works on any Mimir; queries use plain `restate_service` selectors.
 
 ## Alternatives rejected
 
-- **(a) metric-label namespace with short keys:** avoids the wire migration but keeps a
-  concept under two keys and two catalog entries. Rejected in favor of a single SSOT per
-  concept, accepting the migration cost.
+- **Per-signal keys (short-key metric-label namespace):** permanently splits one concept
+  across two keys and re-introduces the `service`/`service.name` ambiguity. Its only
+  advantage (no cutover) is addressed by 0004's retention-first approach instead.
+- **Dotted-UTF-8 on the metric wire (as the default):** buys nothing semantic over
+  underscore, imposes a permanent fleet-wide ergonomic/tooling tax and split-brain risk.
+  Deferred as a later, independent opt-in.

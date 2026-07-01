@@ -44,8 +44,9 @@ all). One clause must give.
   generated". That is a constitutional edit there, requires user sign-off, and is a
   separate action — noted but not performed by this VRS.
 - Weaver's pre-1.0 churn risk is bounded: it never blocks producing runtime artifacts.
-- Legacy inline `OtelAttr.string({key})` sites (~15 enforced consumers) migrate to catalog
-  references, staged per namespace behind the conformance bridge (SC-DQ5). No runtime
+- Legacy inline `OtelAttr.string({key})` usage (~240 define-sites across ~15 enforced
+  consumer packages) migrates to catalog references, staged per namespace behind the
+  conformance bridge (SC-DQ5). No runtime
   behavior is lost (0002).
 - Superseded framing: an earlier draft kept otel-contract as an unchanged, independently
   authored "conformant consumer" ("B-default"). That is now only the transitional bridge;

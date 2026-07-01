@@ -62,14 +62,17 @@ increment), and operations — no runtime benefit lost (the machinery is otel-co
 code, reused verbatim). Selects fold-depth = "catalog atop primitives" (decision 0002) and
 confirms registry-authoritative-via-derivation.
 
-**SC-DQ6 resolved (metric-label keys).** Metric labels use short keys (`service`) distinct
-from span attr keys (`restate.service`). Modeling metric labels as their OWN catalog
-namespace (real short keys) makes the derivation clean AND weaver-valid (refs the actually
-emitted keys) AND leaves the wire output UNCHANGED — no dashboard/alert migration. This is
-honest modeling (span attributes and metric labels are genuinely different OTel/Prometheus
-surfaces), not a compromise. The rejected alternative — forcing the full dotted key onto
-metric labels — would change emitted telemetry (a live-systems migration). Leading answer:
-metric-label namespace. (User to confirm vs full-key unification.)
+**SC-DQ6 (metric-label keys) — SUPERSEDED by [.decisions/0003](../.decisions/0003-unified-full-dotted-keys.md)
++ [0004](../.decisions/0004-metric-label-migration.md).** The exploration below concluded a
+short-key metric-label namespace; the accepted decision is the OPPOSITE — one namespaced key
+per concept on every signal (the OTel-native SOTA case: same-concept-same-key, namespacing
+resolves the `service`/`service.name` ambiguity, cross-cutting identity on resource
+attributes), with the wire migration carried by a staged Alloy-OTTL bridge. The text below is
+kept as the evidence trail that both options are feasible; it is NOT the decision.
+
+> Metric labels use short keys (`service`) distinct from span attr keys (`restate.service`).
+> Modeling metric labels as their OWN catalog namespace keeps the wire output UNCHANGED — no
+> migration — and both this and the full-dotted-key option were prototyped weaver-valid.
 
 ## Conclusion
 

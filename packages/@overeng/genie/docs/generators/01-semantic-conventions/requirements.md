@@ -31,9 +31,11 @@ role here rather than a separate vision.
 
 ## Assumptions
 
-- **SC-A01 Weaver available & pinned:** `nixpkgs#weaver` provides the OTel Weaver binary
-  (verified 0.23.0); the toolchain pins an exact version. Weaver's v1 `groups:` input is
-  the stable contract; its CLI/resolved-schema are pre-1.0 and may churn.
+- **SC-A01 Weaver available & pinned:** the toolchain pins an exact Weaver version via a
+  from-source flake (`nix/weaver-flake/`, currently v0.24.2, ahead of nixpkgs' 0.23.0);
+  behavior was exercised on both 0.23.0 and 0.24.2 with no relevant drift. Weaver's v1
+  `groups:` input is the stable contract; its CLI/resolved-schema are pre-1.0 and may churn
+  (`resolve` is already deprecated — prefer `generate`/`package`).
 - **SC-A02 otel-contract is the runtime seam:** all first-party spans/metrics/attributes
   are authored through `@overeng/otel-contract`, enforced by `no-raw-otel-primitives`.
 - **SC-A03 Upstream semconv is a dependency:** first-party registries compose ON TOP of
@@ -127,9 +129,11 @@ role here rather than a separate vision.
   are re-pointed at catalog entries but keep their internals. Proven for the real restate
   contract (see [.experiments](./.experiments/2026-07-01-weaver-feasibility.md)). Fold depth
   is [.decisions/0002](./.decisions/0002-catalog-atop-otel-contract.md).
-- **SC-R15 One key per concept, catalog-governed:** each concept has exactly ONE catalog
-  entry and ONE full dotted key, used across all signals including metric labels (no
-  per-context short-key aliases). This is OTel-idiomatic (the OTLP→Prometheus exporter maps
-  `restate.service`→`restate_service`) and keeps metric labels weaver-`ref`-able. See
-  [.decisions/0003](./.decisions/0003-unified-full-dotted-keys.md); the emitted-label change
-  is a coordinated live migration owned by SC-DQ5.
+- **SC-R15 One namespaced key per concept, catalog-governed:** each concept has exactly ONE
+  catalog entry with ONE namespaced dotted key (`restate.service`), referenced across all
+  signals including metric labels (no per-context short-key aliases). The metric *wire*
+  renders it via the default OTLP→Mimir mapping (`restate.service`→`restate_service`); dotted
+  UTF-8 on the wire is a later opt-in, not required. See
+  [.decisions/0003](./.decisions/0003-unified-full-dotted-keys.md); the transition for
+  existing metrics is retention-first ([0004](./.decisions/0004-metric-label-migration.md)),
+  folded into the authority-flip (SC-DQ5).
