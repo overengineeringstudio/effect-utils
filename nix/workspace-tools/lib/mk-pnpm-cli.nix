@@ -386,16 +386,13 @@ let
     left: right: lib.stringLength left < lib.stringLength right
   ) (builtins.attrNames workspaceSourceRoots);
   workspaceSourcePrefixesByLengthDesc = lib.reverseList workspaceSourcePrefixesByLengthAsc;
-  workspaceSourceCaptureAttrs =
-    {
-      workspace_source_root = workspaceRoot;
-    }
-    // lib.mapAttrs' (
-      prefix: sourceRoot:
-      lib.nameValuePair
-        "workspace_source_${lib.strings.sanitizeDerivationName (lib.replaceStrings [ "/" ] [ "-" ] prefix)}"
-        sourceRoot
-    ) workspaceSources;
+  workspaceSourceCaptureAttrs = {
+    workspace_source_root = workspaceRoot;
+  }
+  // lib.mapAttrs' (
+    prefix: sourceRoot:
+    lib.nameValuePair "workspace_source_${lib.strings.sanitizeDerivationName (lib.replaceStrings [ "/" ] [ "-" ] prefix)}" sourceRoot
+  ) workspaceSources;
 
   hasInstallRoot =
     sourceRoot:
