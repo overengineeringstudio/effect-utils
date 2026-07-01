@@ -1,4 +1,4 @@
-import { workflowReportRecordLineMarker } from '../../packages/@overeng/ci-tools/src/mod.ts'
+import { workflowReportRecordLineMarker } from '../../packages/@overeng/ci-tools/src/workflow-report-contract.ts'
 
 export const deployTargetEnvSuffix = (name: string) =>
   name

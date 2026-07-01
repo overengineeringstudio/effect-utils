@@ -17,6 +17,7 @@ let
   pnpm = import ../../../../nix/pnpm.nix { inherit pkgs; };
   mkPnpmCli = import ../../../../nix/workspace-tools/lib/mk-pnpm-cli.nix { inherit pkgs pnpm; };
   opentuiCoreNative = import ../../../../nix/opentui-core-native.nix { inherit pkgs; };
+  mkSharedHash = hash: { inherit hash; };
   unwrapped = mkPnpmCli {
     name = "genie-unwrapped";
     entry = "packages/@overeng/genie/bin/genie.tsx";
@@ -25,9 +26,7 @@ let
     workspaceRoot = src;
     # Managed by the repo FOD refresh workflow — do not edit manually.
     depsBuilds = {
-      "." = {
-        hash = "sha256-u9RLpYbL6NDk9TSwhyPjq1WzK+PCbaTNeuaOj2MoWdc=";
-      };
+      "." = mkSharedHash "sha256-YbA+4TfmTXDqTds0JHuiWNXASUFQB/H6n8OvoaR8Yz8=";
     };
     nativeNodePackages = opentuiCoreNative.packages;
     inherit gitRev commitTs dirty;

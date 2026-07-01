@@ -15,6 +15,7 @@ export default tsconfigJson({
   },
   include: ['src/**/*.ts', 'src/**/*.tsx', 'bin/**/*.ts', 'bin/**/*.tsx'],
   references: [
+    { path: '../ci-tools' },
     { path: '../otel-contract' },
     { path: '../tui-core' },
     { path: '../tui-react' },

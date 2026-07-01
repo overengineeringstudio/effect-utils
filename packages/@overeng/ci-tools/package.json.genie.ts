@@ -10,27 +10,28 @@ import otelContractPkg from '../otel-contract/package.json.genie.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
+const runtimeDepNames = [
+  '@effect/cli',
+  '@effect/cluster',
+  '@effect/experimental',
+  '@effect/opentelemetry',
+  '@effect/platform',
+  '@effect/platform-node',
+  '@effect/rpc',
+  '@effect/workflow',
+  '@playwright/test',
+  'effect',
+] as const
+
 const workspaceDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/ci-tools' }),
   dependencies: {
     workspace: [otelContractPkg, utilsPkg],
+    external: catalog.pick(...runtimeDepNames),
   },
   devDependencies: {
     workspace: [utilsDevPkg, utilsPkg],
-    external: catalog.pick(
-      '@effect/cli',
-      '@effect/platform',
-      '@effect/platform-node',
-      '@effect/vitest',
-      '@types/bun',
-      '@types/node',
-      'typescript',
-      'vitest',
-    ),
-  },
-  peerDependencies: {
-    workspace: [utilsPkg],
-    external: catalog.pick('@effect/cli'),
+    external: catalog.pick('@effect/vitest', '@types/bun', '@types/node', 'typescript', 'vitest'),
   },
 })
 

@@ -6,7 +6,10 @@ import { appendFileSync } from 'node:fs'
 import { Effect, Schema } from 'effect'
 
 import { type DeployResultV1, deployTaskOutputLine } from './deploy-domain.ts'
-import { workflowReportRecordLineMarker, type WorkflowReportRecord } from './mod.ts'
+import {
+  workflowReportRecordLineMarker,
+  type WorkflowReportRecord,
+} from './workflow-report-contract.ts'
 
 const appendLine = (opts: { readonly path: string; readonly line: string }) =>
   appendFileSync(opts.path, `${opts.line}\n`)

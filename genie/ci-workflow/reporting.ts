@@ -4,7 +4,7 @@ import {
   workflowReportManagedMarker,
   workflowReportRecordLineMarker,
   type WorkflowReportRecord,
-} from '../../packages/@overeng/ci-tools/src/mod.ts'
+} from '../../packages/@overeng/ci-tools/src/workflow-report-contract.ts'
 import { runDevenvTasksBefore, shellSingleQuote } from './shared.ts'
 
 type GitHubWorkflowStep = GitHubWorkflowArgs['jobs'][string]['steps'][number]
