@@ -11,6 +11,11 @@ All notable changes to this project will be documented in this file.
   workflow-report contract, declaring ci-tools' runtime Effect closure
   explicitly, and refreshing the managed Genie and ci-tools pnpm-deps hashes.
 
+- **nix workspace tools / mk-pnpm-cli**: Preserve external workspace source
+  roots as sandbox inputs for full workspace materialization, so downstream
+  flake consumers can build CLIs whose install roots copy packages from an
+  effect-utils flake input.
+
 - **nix packages / @overeng/genie**: Refresh the `genie-unwrapped`
   pnpm-deps fixed-output hash after the materialization profile rebase.
 
