@@ -1,7 +1,7 @@
 // Generated file - DO NOT EDIT
 // Source: registry.gen.ts.genie.ts
 // Registry source: context/otel-scrape/telemetry-registry.json
-// Input fingerprint: sha256:c7849912891f7e6c9b2a237ce69e7278b6f4f86a0b54a6f95b929d05cef00beb
+// Input fingerprint: sha256:ed87a66dddc6e7d0047dd838b1638fbdbc1adca1f9ac56172068676cb866aab7
 
 export const otelScrapeTelemetryRegistry = {
   "schemaVersion": 1,
@@ -60,6 +60,20 @@ export const otelScrapeTelemetryRegistry = {
       "valueType": "string",
       "cardinality": "bounded",
       "description": "Stable hash of the current working directory identity, never a raw path. Always present."
+    },
+    {
+      "id": "command_argv",
+      "key": "command.argv",
+      "valueType": "string",
+      "cardinality": "high",
+      "description": "Raw command argv, joined as a single string. Trust-gated (decision 0015): emitted only into a sink an operator explicitly asserted private by name (--trusted-sink). Never present by default."
+    },
+    {
+      "id": "command_cwd",
+      "key": "command.cwd",
+      "valueType": "string",
+      "cardinality": "high",
+      "description": "Raw current working directory / local path. Trust-gated (decision 0015): emitted only into a sink an operator explicitly asserted private by name (--trusted-sink). Never present by default."
     },
     {
       "id": "adapter_name",
@@ -200,6 +214,8 @@ export const otelScrapeAttributeKeys = {
   "commandProgram": "command.program",
   "commandArgvHash": "command.argv_hash",
   "commandCwdHash": "command.cwd_hash",
+  "commandArgv": "command.argv",
+  "commandCwd": "command.cwd",
   "adapterName": "otel_scrape.adapter.name",
   "processExitCode": "process.exit_code",
   "processObservationBackend": "otel_scrape.process.observation.backend",

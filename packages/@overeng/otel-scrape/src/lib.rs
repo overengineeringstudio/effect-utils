@@ -52,6 +52,11 @@ const OTEL_TRACES_EXPORTER_ENV: &str = "OTEL_TRACES_EXPORTER";
 const OTEL_SDK_DISABLED_ENV: &str = "OTEL_SDK_DISABLED";
 const RESOURCE_ATTRIBUTES_ENV: &str = "OTEL_RESOURCE_ATTRIBUTES";
 const SERVICE_NAME_ENV: &str = "OTEL_SERVICE_NAME";
+// Per-named-sink trust assertion (decision 0015). The env alias is pinned by
+// invariant to the single OTLP target only; it NEVER unlocks the summary sink.
+const TRUSTED_SINK_ENV: &str = "OTEL_SCRAPE_TRUSTED_SINK";
+const TRUSTED_SINK_OTLP: &str = "otlp";
+const TRUSTED_SINK_SUMMARY: &str = "summary";
 const PROCESS_BACKEND_ENV: &str = "OTEL_SCRAPE_PROCESS_BACKEND";
 const PROCESS_HELPER_SOCKET_ENV: &str = "OTEL_SCRAPE_PROCESS_HELPER_SOCKET";
 const RUN_ID_ENV: &str = "OTEL_SCRAPE_RUN_ID";
@@ -108,6 +113,13 @@ pub struct RunConfig {
     pub process_backend: ProcessBackendSelection,
     pub process_helper_socket: Option<PathBuf>,
     pub profile_artifacts: Vec<ProfileArtifactInput>,
+    /// Whether the operator asserted the OTLP sink private (decision 0015).
+    /// Read ONLY at the OTLP emission site; the summary must never consult it.
+    pub trusted_otlp: bool,
+    /// Whether the operator asserted the local summary sink private
+    /// (decision 0015). Read ONLY at the summary emission site. The summary is
+    /// hard-public-safe by default: an OTLP assertion never sets this.
+    pub trusted_summary: bool,
     pub argv: Vec<String>,
 }
 
@@ -197,6 +209,16 @@ struct CommandSummary {
     program: String,
     argv_hash: String,
     cwd_hash: String,
+    /// Raw argv — trust-gated (decision 0015). The summary is hard-public-safe
+    /// by default: this is `Some` ONLY under an explicit `--trusted-sink summary`
+    /// (never under an OTLP assertion). `skip_serializing_if` keeps the default
+    /// summary byte-identical to the pre-M2 shape.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    argv: Option<Vec<String>>,
+    /// Raw cwd / local path — trust-gated (decision 0015); `Some` only under an
+    /// explicit `--trusted-sink summary`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cwd: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -529,6 +551,12 @@ pub fn parse_args(args: &[String]) -> Result<CommandRequest, UsageError> {
         Err(_) => ProcessBackendSelection::DirectChild,
     };
     let mut profile_artifacts = Vec::new();
+    // Per-named-sink trust (decision 0015): two independent gates. The env alias
+    // OTEL_SCRAPE_TRUSTED_SINK is pinned to the single OTLP target only and can
+    // never unlock the summary. Flags OR in on top; the summary is only ever
+    // unlocked by its own explicit `--trusted-sink summary`.
+    let mut trusted_otlp = env_bool(TRUSTED_SINK_ENV);
+    let mut trusted_summary = false;
     let mut child_start: Option<usize> = None;
 
     if args.is_empty() {
@@ -616,6 +644,21 @@ pub fn parse_args(args: &[String]) -> Result<CommandRequest, UsageError> {
                 process_helper_socket = Some(PathBuf::from(value));
                 i += 2;
             }
+            "--trusted-sink" => {
+                let Some(value) = args.get(i + 1) else {
+                    return usage_error("--trusted-sink needs a sink name (otlp or summary)");
+                };
+                match value.as_str() {
+                    TRUSTED_SINK_OTLP => trusted_otlp = true,
+                    TRUSTED_SINK_SUMMARY => trusted_summary = true,
+                    _ => {
+                        return usage_error(
+                            "only --trusted-sink otlp and --trusted-sink summary are supported",
+                        );
+                    }
+                }
+                i += 2;
+            }
             "--profile-artifact" => {
                 let Some(value) = args.get(i + 1) else {
                     return usage_error("--profile-artifact needs <type>:<path>");
@@ -668,6 +711,8 @@ pub fn parse_args(args: &[String]) -> Result<CommandRequest, UsageError> {
         process_backend,
         process_helper_socket,
         profile_artifacts,
+        trusted_otlp,
+        trusted_summary,
         argv,
     }))
 }
@@ -677,7 +722,7 @@ pub fn print_help() {
     eprintln!();
     eprintln!("usage:");
     eprintln!(
-        "  otel-scrape [--summary-out <file>] [--adapter none|oxlint|node-cpuprofile] [--process-backend direct-child|ptrace-experimental|helper-stream] [--process-helper-socket <path>] [--otlp-endpoint <url>] [--service-name <name>] [--cas-root <dir>] [--cas-pin <name>] [--profile-artifact <type>:<path>] -- <cmd...>"
+        "  otel-scrape [--summary-out <file>] [--adapter none|oxlint|node-cpuprofile] [--process-backend direct-child|ptrace-experimental|helper-stream] [--process-helper-socket <path>] [--otlp-endpoint <url>] [--service-name <name>] [--trusted-sink otlp|summary]... [--cas-root <dir>] [--cas-pin <name>] [--profile-artifact <type>:<path>] -- <cmd...>"
     );
     eprintln!("  otel-scrape --version | --help");
 }
@@ -1770,6 +1815,14 @@ fn summary_for_status(
             program: program_basename(config.argv.first().map(String::as_str)),
             argv_hash: stable_hash_lines(&config.argv),
             cwd_hash: stable_hash(cwd.to_string_lossy().as_bytes()),
+            // Trust gate (decision 0015): the summary is hard-public-safe by
+            // default. This site reads config.trusted_summary ONLY — never
+            // config.trusted_otlp — so an OTLP assertion can never leak raw
+            // argv/cwd into the (possibly public-tree) summary.
+            argv: config.trusted_summary.then(|| config.argv.clone()),
+            cwd: config
+                .trusted_summary
+                .then(|| cwd.to_string_lossy().into_owned()),
         },
         output: output_summary(child),
         resources: resource_summary(duration_ms),
@@ -1930,6 +1983,20 @@ fn export_command_span(
             "value": { "stringValue": config.adapter },
         }),
     ];
+    // Trust gate (decision 0015): raw argv/cwd enter the OTLP sink ONLY when the
+    // operator asserted this sink private. This site reads config.trusted_otlp
+    // and never config.trusted_summary. The hashed identity above is always
+    // present regardless.
+    if config.trusted_otlp {
+        attributes.push(json!({
+            "key": telemetry_registry::attributes::COMMAND_ARGV,
+            "value": { "stringValue": raw_argv_value(&config.argv) },
+        }));
+        attributes.push(json!({
+            "key": telemetry_registry::attributes::COMMAND_CWD,
+            "value": { "stringValue": cwd.to_string_lossy() },
+        }));
+    }
     if merge_process_into_command {
         // Fold the degraded direct-child observation into the command span:
         // preserve backend + relation evidence and mark the fidelity "merged".
@@ -2977,6 +3044,14 @@ fn is_lower_hex(value: &str, len: usize) -> bool {
             .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
 }
 
+/// Renders raw argv as a single OTLP string value (the registry has no array
+/// value type). Elements are newline-joined so argument boundaries survive and
+/// the value stays human-readable for debugging in an asserted-private sink.
+/// Trust-gated (decision 0015): only ever reaches a sink the operator asserted.
+fn raw_argv_value(argv: &[String]) -> String {
+    argv.join("\n")
+}
+
 fn stable_hash_lines(values: &[String]) -> String {
     let mut hasher = Sha256::new();
     for value in values {
@@ -3092,6 +3167,8 @@ mod tests {
                 process_backend: ProcessBackendSelection::DirectChild,
                 process_helper_socket: None,
                 profile_artifacts: Vec::new(),
+                trusted_otlp: false,
+                trusted_summary: false,
                 argv: vec!["echo".to_owned(), "hi".to_owned()],
             })
         );
@@ -3131,6 +3208,8 @@ mod tests {
                     profile_type: "cpuprofile".to_owned(),
                     path: PathBuf::from("profile.cpuprofile"),
                 }],
+                trusted_otlp: false,
+                trusted_summary: false,
                 argv: vec!["true".to_owned()],
             })
         );
@@ -3398,6 +3477,8 @@ mod tests {
             process_backend: ProcessBackendSelection::DirectChild,
             process_helper_socket: None,
             profile_artifacts: Vec::new(),
+            trusted_otlp: false,
+            trusted_summary: false,
             argv: vec!["node".to_owned(), "-e".to_owned(), String::new()],
         }
     }

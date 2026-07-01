@@ -29,7 +29,10 @@ fn otel_scrape() -> Command {
         .env_remove("OTEL_TRACES_EXPORTER")
         .env_remove("OTEL_SDK_DISABLED")
         .env_remove("OTEL_RESOURCE_ATTRIBUTES")
-        .env_remove("OTEL_SERVICE_NAME");
+        .env_remove("OTEL_SERVICE_NAME")
+        // Keep the trust gate hermetic: the default must stay hashed-only
+        // regardless of the ambient environment (decision 0015).
+        .env_remove("OTEL_SCRAPE_TRUSTED_SINK");
     command
 }
 
@@ -1018,6 +1021,209 @@ fn exports_command_span_to_otlp_http_json() {
         attr_value(attrs, "otel_scrape.process.observation.relation"),
         Some("direct-child".to_owned())
     );
+}
+
+// ---------------------------------------------------------------------------
+// Trust gate (decision 0015): per-named-sink assertion + byte-level non-leak.
+//
+// A sentinel secret + a fake local path live ONLY in the wrapped command's
+// argv. We run with BOTH an OTLP capture and a `--summary-out` summary
+// configured, then assert at the *byte level* which sinks may contain the
+// sentinel. The untrusted case is the load-bearing regression guard: it must
+// genuinely fail if anyone later makes raw argv/cwd the default.
+// ---------------------------------------------------------------------------
+
+const TRUST_SENTINEL: &str = "SENTINEL_SECRET_ABC";
+const TRUST_FAKE_PATH: &str = "/tmp/fake/private/path";
+
+/// Captured raw bytes of both trust-gateable sinks for one wrapped run.
+struct SinkCapture {
+    otlp_body: Vec<u8>,
+    summary_json: String,
+    summary: serde_json::Value,
+    otlp_attrs: Vec<serde_json::Value>,
+}
+
+/// Runs a wrapped command whose argv carries `TRUST_SENTINEL` + `TRUST_FAKE_PATH`
+/// (only ever as ignored positional params, so `command.program` stays `sh`),
+/// with both an OTLP collector and a summary configured, applying `trusted_args`
+/// (e.g. `["--trusted-sink", "otlp"]`) and `trusted_env` (e.g. the env alias).
+fn run_trust_capture(trusted_args: &[&str], trusted_env: &[(&str, &str)]) -> SinkCapture {
+    let collector = TestCollector::start(200);
+    let dir = tempfile::tempdir().unwrap();
+    let summary_path = dir.path().join("summary.json");
+
+    let mut command = otel_scrape();
+    command
+        .args(["--summary-out"])
+        .arg(&summary_path)
+        .args(["--otlp-endpoint", &collector.endpoint]);
+    for (key, value) in trusted_env {
+        command.env(key, value);
+    }
+    command.args(trusted_args);
+    // Sentinel + fake path ride in argv as ignored positional params ($0=_, then
+    // extra args) of `sh -c true`, so the child runs clean and program == "sh".
+    command.args([
+        "--",
+        "sh",
+        "-c",
+        "true",
+        "_",
+        &format!("--token={TRUST_SENTINEL}"),
+        TRUST_FAKE_PATH,
+    ]);
+
+    let out = command.output().unwrap();
+    assert!(out.status.success(), "wrapped command should succeed");
+
+    let summary_json = std::fs::read_to_string(&summary_path).unwrap();
+    let summary: serde_json::Value = serde_json::from_str(&summary_json).unwrap();
+    let request = collector.request();
+    let body: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
+    let otlp_attrs = body["resourceSpans"][0]["scopeSpans"][0]["spans"][0]["attributes"]
+        .as_array()
+        .cloned()
+        .unwrap();
+
+    SinkCapture {
+        otlp_body: request.body,
+        summary_json,
+        summary,
+        otlp_attrs,
+    }
+}
+
+#[test]
+fn trust_gate_untrusted_leaks_to_no_sink() {
+    let capture = run_trust_capture(&[], &[]);
+
+    // Byte-level non-leak: sentinel + fake path absent from BOTH raw sinks.
+    let otlp_bytes = String::from_utf8_lossy(&capture.otlp_body);
+    assert!(
+        !otlp_bytes.contains(TRUST_SENTINEL),
+        "sentinel leaked into untrusted OTLP payload"
+    );
+    assert!(
+        !otlp_bytes.contains(TRUST_FAKE_PATH),
+        "fake path leaked into untrusted OTLP payload"
+    );
+    assert!(
+        !capture.summary_json.contains(TRUST_SENTINEL),
+        "sentinel leaked into untrusted summary"
+    );
+    assert!(
+        !capture.summary_json.contains(TRUST_FAKE_PATH),
+        "fake path leaked into untrusted summary"
+    );
+
+    // Only the hashed correlation keys are present, in both sinks.
+    assert!(attr_value(&capture.otlp_attrs, "command.argv_hash")
+        .unwrap()
+        .starts_with("sha256:"));
+    assert!(attr_value(&capture.otlp_attrs, "command.cwd_hash")
+        .unwrap()
+        .starts_with("sha256:"));
+    assert_eq!(attr_value(&capture.otlp_attrs, "command.argv"), None);
+    assert_eq!(attr_value(&capture.otlp_attrs, "command.cwd"), None);
+    assert!(capture.summary["command"]["argv_hash"]
+        .as_str()
+        .unwrap()
+        .starts_with("sha256:"));
+    assert!(capture.summary["command"]["cwd_hash"]
+        .as_str()
+        .unwrap()
+        .starts_with("sha256:"));
+    assert!(capture.summary["command"]["argv"].is_null());
+    assert!(capture.summary["command"]["cwd"].is_null());
+}
+
+#[test]
+fn trust_gate_otlp_reveals_otlp_only() {
+    let capture = run_trust_capture(&["--trusted-sink", "otlp"], &[]);
+
+    // The sentinel is PRESENT in the OTLP command.argv (this sink was asserted).
+    let argv_raw = attr_value(&capture.otlp_attrs, "command.argv").unwrap();
+    assert!(
+        argv_raw.contains(TRUST_SENTINEL),
+        "asserted OTLP sink must carry the raw sentinel argv"
+    );
+    let cwd_raw = attr_value(&capture.otlp_attrs, "command.cwd").unwrap();
+    assert!(cwd_raw.starts_with('/'), "raw cwd should be an absolute path");
+    assert!(String::from_utf8_lossy(&capture.otlp_body).contains(TRUST_SENTINEL));
+
+    // Wrong-sink guard: asserting otlp NEVER puts raw into the summary — the
+    // summary stays hard-public-safe (hashed only), byte-absent sentinel.
+    assert!(
+        !capture.summary_json.contains(TRUST_SENTINEL),
+        "OTLP assertion leaked the sentinel into the (public-safe) summary"
+    );
+    assert!(
+        !capture.summary_json.contains(TRUST_FAKE_PATH),
+        "OTLP assertion leaked the fake path into the summary"
+    );
+    assert!(capture.summary["command"]["argv"].is_null());
+    assert!(capture.summary["command"]["cwd"].is_null());
+    // Hashes remain present in the summary regardless.
+    assert!(capture.summary["command"]["argv_hash"]
+        .as_str()
+        .unwrap()
+        .starts_with("sha256:"));
+}
+
+#[test]
+fn trust_gate_env_alias_is_pinned_to_otlp_only() {
+    // OTEL_SCRAPE_TRUSTED_SINK is the ergonomic alias for --trusted-sink otlp; it
+    // is pinned to the single OTLP target and must never unlock the summary.
+    let capture = run_trust_capture(&[], &[("OTEL_SCRAPE_TRUSTED_SINK", "true")]);
+
+    assert!(
+        attr_value(&capture.otlp_attrs, "command.argv")
+            .unwrap()
+            .contains(TRUST_SENTINEL),
+        "env alias must unlock raw argv in the OTLP sink"
+    );
+    // Pinned-to-otlp: the summary stays byte-clean.
+    assert!(
+        !capture.summary_json.contains(TRUST_SENTINEL),
+        "env alias leaked the sentinel into the summary — it must be pinned to OTLP only"
+    );
+    assert!(capture.summary["command"]["argv"].is_null());
+    assert!(capture.summary["command"]["cwd"].is_null());
+}
+
+#[test]
+fn trust_gate_summary_reveals_summary_only() {
+    let capture = run_trust_capture(&["--trusted-sink", "summary"], &[]);
+
+    // The summary was asserted: it carries raw argv/cwd (sentinel present).
+    assert!(
+        capture.summary_json.contains(TRUST_SENTINEL),
+        "asserted summary sink must carry the raw sentinel"
+    );
+    let argv = capture.summary["command"]["argv"].as_array().unwrap();
+    assert!(argv
+        .iter()
+        .any(|value| value.as_str().unwrap().contains(TRUST_SENTINEL)));
+    assert!(capture.summary["command"]["cwd"].as_str().unwrap().starts_with('/'));
+
+    // Wrong-sink guard: a summary assertion never unlocks the OTLP sink.
+    assert!(
+        !String::from_utf8_lossy(&capture.otlp_body).contains(TRUST_SENTINEL),
+        "summary assertion leaked the sentinel into the OTLP payload"
+    );
+    assert_eq!(attr_value(&capture.otlp_attrs, "command.argv"), None);
+    assert_eq!(attr_value(&capture.otlp_attrs, "command.cwd"), None);
+}
+
+#[test]
+fn trust_gate_rejects_unknown_sink() {
+    let out = otel_scrape()
+        .args(["--trusted-sink", "bogus", "--", "true"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(64));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("--trusted-sink"));
 }
 
 #[test]

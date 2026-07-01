@@ -10,6 +10,14 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **otel-scrape**: Add the per-named-sink command-identity trust gate
+  (decision 0015): `--trusted-sink otlp|summary` (repeatable; env alias
+  `OTEL_SCRAPE_TRUSTED_SINK` pinned to the OTLP target only) emits raw
+  `command.argv`/`command.cwd` into the named sink alone. The default stays
+  hashed-only and the local summary is hard-public-safe — an OTLP assertion
+  never covers it. A byte-level non-leak regression test enforces the
+  invariant.
+
 - **@overeng/content-address**: Add filesystem-backed CAS primitives with
   descriptor-addressed writes, `cas:` URI resolution, canonical JSON manifests,
   and validated manifest pins as local retention roots.

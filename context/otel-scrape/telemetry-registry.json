@@ -57,6 +57,20 @@
       "description": "Stable hash of the current working directory identity, never a raw path. Always present."
     },
     {
+      "id": "command_argv",
+      "key": "command.argv",
+      "valueType": "string",
+      "cardinality": "high",
+      "description": "Raw command argv, joined as a single string. Trust-gated (decision 0015): emitted only into a sink an operator explicitly asserted private by name (--trusted-sink). Never present by default."
+    },
+    {
+      "id": "command_cwd",
+      "key": "command.cwd",
+      "valueType": "string",
+      "cardinality": "high",
+      "description": "Raw current working directory / local path. Trust-gated (decision 0015): emitted only into a sink an operator explicitly asserted private by name (--trusted-sink). Never present by default."
+    },
+    {
       "id": "adapter_name",
       "key": "otel_scrape.adapter.name",
       "valueType": "string",
