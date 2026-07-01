@@ -14,10 +14,7 @@
     ],
     "nativeBuildPolicyInputs": {
       "allowBuilds": "gvsLinkContract.allowBuilds",
-      "compilerEnv": [
-        "CC",
-        "CXX"
-      ]
+      "compilerEnv": ["CC", "CXX"]
     },
     "schema": "dependency-materialization-profile/v0",
     "supportedTraits": {
@@ -96,11 +93,7 @@
   "installPolicy": {
     "dedupePeerDependents": true,
     "ignoreScripts": true,
-    "minimumReleaseAgeExclude": [
-      "@effect/platform",
-      "@types/node",
-      "effect"
-    ],
+    "minimumReleaseAgeExclude": ["@effect/platform", "@types/node", "effect"],
     "optimisticRepeatInstall": false,
     "packageImportMethod": "clone-or-copy",
     "peerDependencyRules": {
@@ -118,18 +111,9 @@
     "strictPeerDependencies": true,
     "strictStorePkgContentCheck": true,
     "supportedArchitectures": {
-      "cpu": [
-        "x64",
-        "arm64"
-      ],
-      "libc": [
-        "glibc",
-        "musl"
-      ],
-      "os": [
-        "linux",
-        "darwin"
-      ]
+      "cpu": ["x64", "arm64"],
+      "libc": ["glibc", "musl"],
+      "os": ["linux", "darwin"]
     },
     "verifyDepsBeforeRun": false,
     "verifyStoreIntegrity": true
