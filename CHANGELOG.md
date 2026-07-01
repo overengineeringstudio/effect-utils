@@ -4,12 +4,143 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **devenv deploy tasks / @overeng/ci-tools**: Centralize deploy-preview
+  workflow-report and GitHub output emission in `ci-tools`, including
+  provider-owned skip records, URL outputs, and task metadata, so generated CI
+  delegates deploy behavior through devenv tasks.
+
+- **devenv deploy tasks / @overeng/ci-tools**: Keep manual CI runs from failing
+  the Netlify deploy job when no deploy branch runs, and capture verbose Vercel
+  CLI output with an explicit buffer.
+
+- **devenv deploy tasks / @overeng/ci-tools**: Remove the obsolete Nix deploy
+  metadata and alias helpers now that `ci-tools` is the single workflow-report
+  record authority.
+
+- **devenv workflow-report tasks / @overeng/ci-tools**: Add reusable
+  `workflow-report:*` devenv tasks for bundle collection, comment rendering,
+  and PR comment publication, and regenerate CI to delegate deploy-preview
+  reporting through those tasks.
+
+- **devenv deploy tasks / @overeng/ci-tools**: Move Vercel build-mode
+  `vercel pull` / `vercel build` orchestration, root-directory patching,
+  temporary install-command overrides, and prebuilt output validation into
+  `ci-tools deploy vercel`, leaving the devenv task as thin config delegation.
+
+- **devenv deploy tasks / Nix**: Package the Netlify and Vercel provider CLIs
+  as first-party fixed-output npm derivations (`netlify-cli` 26.1.0 and
+  `vercel` 54.18.5) and make shared deploy tasks default to those store paths
+  instead of runtime `bunx`/stale nixpkgs CLI resolution.
+
+- **devenv deploy tasks / Nix**: Trim the Netlify and Vercel provider CLI
+  derivations by installing and pruning their npm package graphs without
+  optional dependencies and skipping dependency rebuild scripts during
+  packaging.
+
+- **CI**: Collapse guarded live Netlify and Vercel deploy E2Es into one shared
+  live deploy job with common setup.
+
+- **@overeng/genie**: Validate documented GitHub Actions limits for static
+  matrix expansion, check runs per check suite, and explicit job timeouts.
+
+- **@overeng/genie**: Fail generated GitHub workflow validation above the
+  observed 512 KiB Actions admission limit and warn when workflows approach it,
+  so oversized workflows are caught by `genie:check` before GitHub silently
+  skips PR runs.
+
+- **genie/ci-workflow**: Move the Nix transient-failure retry implementation
+  out of generated workflow YAML and into checked-in CI scripts, keeping
+  `runDevenvTasksBefore(...)` as the Genie composition API while shrinking the
+  generated CI workflow well below GitHub's admission limit.
+
+- **genie / GitHub rulesets**: Require every non-advisory generated CI lane in
+  branch protection, including default-ref, bundle smoke, cargo, CI
+  measurement, and integration lanes, while keeping reporting-only jobs
+  advisory.
+
+- **devenv test tasks**: Bound package test fanout while preserving
+  package-specific prerequisites, so native-link setup is preserved without
+  re-entering Devenv's upstream task graph in parallel.
+
+- **devenv test tasks / @overeng/megarepo**: Give the isolated cold-GC
+  integration task explicit Vitest timeout headroom and per-test timing output
+  for slow CI runners while keeping the package-wide default timeout unchanged.
+
+- **nix packages / @overeng/genie**: Refresh the Genie, Megarepo, TUI Stories,
+  and Notion MD pnpm-deps fixed-output hashes and keep the native dependency
+  policy audit install-free by splitting the policy into a lightweight module.
+
+- **tests**: Give repo Vitest tasks and `@overeng/ci-tools` process-spawning
+  E2Es CI timeout headroom, and keep the pty-effect roundtrip fixture alive
+  long enough for loaded Linux runners to attach reliably.
+
 ### Added
+
+- **@overeng/utils-dev / @overeng/megarepo**: Add reusable `otelite`
+  trace/metrics/log diagnostic JSON writers and make store fixture setup emit
+  typed OTEL spans through the production bounded git runner, so CI fixture
+  stalls can produce inspectable trace evidence.
 
 - **@overeng/genie**: Document the intended package export type-proof
   architecture: strict proofs should use an explicit compiler executable
   boundary (`tsgo` by default, custom only by explicit override) instead of
   dynamic TypeScript module imports or staged `node_modules` plumbing.
+
+- **context/ci-tools**: Start the issue #868 VRS kickoff by restoring the
+  non-protected CI tools spec/glossary/source-of-truth decision and recording a
+  Phase 0 deploy-preview inventory note for workflow-report, Netlify, and
+  Vercel migration surfaces.
+
+- **@overeng/workflow-report**: Add a hermetic CLI E2E test that runs the real
+  `workflow-report` entrypoint through Bun, collects marked deploy-preview
+  records, renders managed comment output, and finds the managed comment ID
+  through file-based CLI boundaries.
+
+- **devenv deploy tasks**: Add fake-provider E2E coverage for the generated
+  Netlify and Vercel deploy task scripts, proving PR aliasing, task output
+  metadata, workflow-report record emission, Vercel prebuilt static packaging,
+  Netlify diagnostic behavior, malformed provider output failures, missing PR
+  input failures, and missing local static output failures without real provider
+  credentials.
+
+- **@overeng/ci-tools**: Hard-rename the workflow-report CLI package and Nix
+  flake output to `@overeng/ci-tools` / `#ci-tools`, keeping the report helpers
+  under the `ci-tools workflow-report ...` command surface and regenerating CI
+  to call the new binary boundary.
+
+- **@overeng/ci-tools**: Add the first deploy domain model with versioned
+  Effect schemas for deploy inputs/results, tagged deploy failure taxonomy,
+  retryability derivation, redacted workflow-report record builders, and
+  privacy/cardinality-safe OTEL span attribute metadata for deploy operations.
+
+- **@overeng/ci-tools**: Add the Phase 3 Netlify provider adapter with typed
+  command-runner boundaries, schema-decoded deploy JSON, guarded live E2E
+  aliases, redacted failure classification, and fake-runner coverage for
+  unauthorized, missing-project, malformed-output, and aliased deploy paths.
+
+- **@overeng/ci-tools**: Add a guarded live Netlify E2E that deploys a local
+  static fixture through `ci-tools deploy netlify`, verifies marker content on
+  the served alias, records cleanup status, and runs in CI only when Netlify
+  secrets are available.
+
+- **@overeng/ci-tools**: Add the Phase 4 Vercel provider adapter with API-first
+  project diagnostics, local Build Output API static packaging, prod/PR/preview
+  alias semantics, redacted failure records, fake-provider E2E coverage, and a
+  guarded live E2E that verifies served marker content through Vercel's
+  automation protection-bypass header and records best-effort alias cleanup.
+
+- **devenv deploy tasks / @overeng/ci-tools**: Move shared Netlify and Vercel
+  deploy tasks onto thin `ci-tools deploy ...` launchers, add task-output
+  environment metadata for deploy URLs, preserve Vercel build-output deploy
+  mode, and cover the task scripts through real-CLI E2E fixtures with fake
+  provider endpoints.
+
+- **context/ci-tools / @overeng/ci-tools**: Restore the CI tools vision and
+  requirements VRS documents, update the spec for the current task-output,
+  CLI-output, and provider-boundary contracts, and move provider API lookup plus
+  live verification HTTP calls onto the Effect platform `HttpClient`.
 
 - **@overeng/genie**: Add the explicit `@overeng/genie/composition` subpath for
   reusable cross-artifact composition helpers. The first helper,

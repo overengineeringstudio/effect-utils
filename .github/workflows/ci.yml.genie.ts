@@ -5,6 +5,7 @@ import {
   cachixCliBuildStep,
   cachixStep,
   checkoutStep,
+  prepareCiScriptsStep,
   notifyAlignmentJob,
   evictCachedPnpmDepsStep,
   pnpmBuilderContractStep,
@@ -39,7 +40,7 @@ import {
   validateNixStoreStep,
   defaultRefPolicyCheckJob,
 } from '../../genie/ci-workflow.ts'
-import { type CIJobName } from '../../genie/ci.ts'
+import { type CoreCIJobName } from '../../genie/ci.ts'
 import { nixOnlyPackages } from '../../genie/packages.ts'
 import {
   githubWorkflowEvent,
@@ -47,10 +48,11 @@ import {
 } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 
 const workflowReportFlakeRef =
-  "github:${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}/${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}#workflow-report"
+  "github:${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}/${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}#ci-tools"
 
 const baseSteps = [
   checkoutStep(),
+  prepareCiScriptsStep,
   ciMeasurementBaselineCheckoutStep,
   installNixStep(),
   cachixCliBuildStep,
@@ -92,6 +94,138 @@ const failureReminderStep = {
   run: [
     'echo "If this looks like Namespace runner Nix store corruption (e.g. \\"... is not valid\\", \\"config.cachix\\", \\"cachix.package\\"), add the run link + full nix-store output to:"',
     'echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"',
+  ].join('\n'),
+} as const
+
+const liveNetlifyCiToolsPreflightStep = {
+  id: 'live-netlify-preflight',
+  name: 'Check live Netlify ci-tools E2E secrets',
+  shell: 'bash',
+  env: {
+    NETLIFY_AUTH_TOKEN: '${{ secrets.NETLIFY_AUTH_TOKEN }}',
+    NETLIFY_SITE_ID: '${{ secrets.NETLIFY_SITE_ID }}',
+  },
+  run: [
+    'if [ -z "${NETLIFY_AUTH_TOKEN:-}" ] || [ -z "${NETLIFY_SITE_ID:-}" ]; then',
+    '  echo "::notice::Skipping live Netlify ci-tools E2E because NETLIFY_AUTH_TOKEN or NETLIFY_SITE_ID is unavailable"',
+    '  echo "run=false" >> "$GITHUB_OUTPUT"',
+    '  exit 0',
+    'fi',
+    'echo "run=true" >> "$GITHUB_OUTPUT"',
+  ].join('\n'),
+} as const
+
+const liveNetlifyCiToolsIf = "steps.live-netlify-preflight.outputs.run == 'true'"
+
+const andLiveNetlifyCiToolsIf = (condition: string) => {
+  const trimmed = condition.trim()
+  const unwrapped =
+    trimmed.startsWith('${{') === true && trimmed.endsWith('}}') === true
+      ? trimmed.slice(3, -2).trim()
+      : trimmed
+  return `${unwrapped} && ${liveNetlifyCiToolsIf}`
+}
+
+const onlyWhenLiveNetlifyCiTools = <Step extends Record<string, unknown>>(step: Step) => ({
+  ...step,
+  if:
+    typeof step.if === 'string' && step.if.length > 0
+      ? andLiveNetlifyCiToolsIf(step.if)
+      : liveNetlifyCiToolsIf,
+})
+
+const liveNetlifyCiToolsE2EStep = {
+  name: 'Live Netlify ci-tools E2E',
+  shell: 'bash',
+  env: {
+    CI_TOOLS_NETLIFY_LIVE: '1',
+    NETLIFY_AUTH_TOKEN: '${{ secrets.NETLIFY_AUTH_TOKEN }}',
+    NETLIFY_SITE_ID: '${{ secrets.NETLIFY_SITE_ID }}',
+  },
+  run: [
+    'netlify_pkg="$(nix build --no-link --print-out-paths .#netlify-cli)"',
+    'export CI_TOOLS_LIVE_NETLIFY_BIN="$netlify_pkg/bin/netlify"',
+    'DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run pnpm:install',
+    'DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" shell --no-reload -- bun test packages/@overeng/ci-tools/src/deploy-netlify.live.e2e.test.ts',
+  ].join('\n'),
+} as const
+
+const liveVercelCiToolsPreflightStep = {
+  id: 'live-vercel-preflight',
+  name: 'Check live Vercel ci-tools E2E secrets',
+  shell: 'bash',
+  env: {
+    VERCEL_TOKEN: '${{ secrets.VERCEL_TOKEN }}',
+    VERCEL_PROJECT_ID: '${{ secrets.VERCEL_PROJECT_ID }}',
+    VERCEL_ORG_ID: '${{ secrets.VERCEL_ORG_ID }}',
+    VERCEL_SCOPE: '${{ secrets.VERCEL_SCOPE }}',
+  },
+  run: [
+    'if [ -z "${VERCEL_TOKEN:-}" ] || [ -z "${VERCEL_PROJECT_ID:-}" ] || [ -z "${VERCEL_ORG_ID:-}" ] || [ -z "${VERCEL_SCOPE:-}" ]; then',
+    '  echo "::notice::Skipping live Vercel ci-tools E2E because VERCEL_TOKEN, VERCEL_PROJECT_ID, VERCEL_ORG_ID, or VERCEL_SCOPE is unavailable"',
+    '  echo "run=false" >> "$GITHUB_OUTPUT"',
+    '  exit 0',
+    'fi',
+    'echo "run=true" >> "$GITHUB_OUTPUT"',
+  ].join('\n'),
+} as const
+
+const liveVercelCiToolsIf = "steps.live-vercel-preflight.outputs.run == 'true'"
+
+const liveDeployCiToolsIf =
+  "steps.live-netlify-preflight.outputs.run == 'true' || steps.live-vercel-preflight.outputs.run == 'true'"
+
+const andLiveVercelCiToolsIf = (condition: string) => {
+  const trimmed = condition.trim()
+  const unwrapped =
+    trimmed.startsWith('${{') === true && trimmed.endsWith('}}') === true
+      ? trimmed.slice(3, -2).trim()
+      : trimmed
+  return `${unwrapped} && ${liveVercelCiToolsIf}`
+}
+
+const onlyWhenLiveVercelCiTools = <Step extends Record<string, unknown>>(step: Step) => ({
+  ...step,
+  if:
+    typeof step.if === 'string' && step.if.length > 0
+      ? andLiveVercelCiToolsIf(step.if)
+      : liveVercelCiToolsIf,
+})
+
+const andLiveDeployCiToolsIf = (condition: string) => {
+  const trimmed = condition.trim()
+  const unwrapped =
+    trimmed.startsWith('${{') === true && trimmed.endsWith('}}') === true
+      ? trimmed.slice(3, -2).trim()
+      : trimmed
+  return `(${unwrapped}) && (${liveDeployCiToolsIf})`
+}
+
+const onlyWhenLiveDeployCiTools = <Step extends Record<string, unknown>>(step: Step) => ({
+  ...step,
+  if:
+    typeof step.if === 'string' && step.if.length > 0
+      ? andLiveDeployCiToolsIf(step.if)
+      : liveDeployCiToolsIf,
+})
+
+const liveVercelCiToolsE2EStep = {
+  name: 'Live Vercel ci-tools E2E',
+  shell: 'bash',
+  env: {
+    CI_TOOLS_VERCEL_LIVE: '1',
+    VERCEL_TOKEN: '${{ secrets.VERCEL_TOKEN }}',
+    VERCEL_PROJECT_ID: '${{ secrets.VERCEL_PROJECT_ID }}',
+    VERCEL_ORG_ID: '${{ secrets.VERCEL_ORG_ID }}',
+    VERCEL_TEAM_ID: '${{ secrets.VERCEL_TEAM_ID }}',
+    VERCEL_SCOPE: '${{ secrets.VERCEL_SCOPE }}',
+    VERCEL_AUTOMATION_BYPASS_SECRET: '${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}',
+  },
+  run: [
+    'vercel_pkg="$(nix build --no-link --print-out-paths .#vercel-cli)"',
+    'export CI_TOOLS_LIVE_VERCEL_BIN="$vercel_pkg/bin/vercel"',
+    'DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run pnpm:install',
+    'DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" shell --no-reload -- bun test packages/@overeng/ci-tools/src/deploy-vercel.live.e2e.test.ts',
   ].join('\n'),
 } as const
 
@@ -224,6 +358,7 @@ const multiPlatformJob = (step: { name: string; run: string }) => ({
 
 const strictNixJobBaseSteps = [
   checkoutStep(),
+  prepareCiScriptsStep,
   ciMeasurementBaselineCheckoutStep,
   installNixStep(),
   cachixCliBuildStep,
@@ -334,9 +469,9 @@ const nativeDepPolicyAuditStep = {
   ].join('\n'),
 } as const
 
-// Jobs keyed by CIJobName for type safety with required status checks
+// Core product jobs keyed by the shared Genie CI source of truth.
 const jobs: Record<
-  CIJobName,
+  CoreCIJobName,
   ReturnType<typeof job> | ReturnType<typeof multiPlatformJob> | typeof cargoJob
 > = {
   typecheck: job({
@@ -469,7 +604,8 @@ const nixClosureMeasurementTargets = [
   },
 ] as const
 
-// Non-required jobs (separate from CIJobName — not required status checks)
+// Non-core jobs are kept outside the typed product-job block but still tracked
+// in genie/ci.ts for required-check policy.
 const extraJobs: Record<string, any> = {
   'devenv-perf': {
     ...devenvPerfJob({
@@ -809,6 +945,32 @@ const extraJobs: Record<string, any> = {
       nixDiagnosticsSummaryStep,
       nixDiagnosticsArtifactStep(),
       failureReminderStep,
+    ],
+  },
+  'test-live-deploy-ci-tools': {
+    if: normalCiIf,
+    concurrency: {
+      group:
+        'test-live-deploy-ci-tools-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}',
+      'cancel-in-progress': true,
+    },
+    'runs-on': namespaceRunner({
+      profile: 'namespace-profile-linux-x86-64',
+      runId: '${{ github.run_id }}',
+    }),
+    'timeout-minutes': 30,
+    defaults: bashShellDefaults,
+    env: standardCIEnv,
+    steps: [
+      liveNetlifyCiToolsPreflightStep,
+      liveVercelCiToolsPreflightStep,
+      ...baseSteps.map(onlyWhenLiveDeployCiTools),
+      onlyWhenLiveNetlifyCiTools(liveNetlifyCiToolsE2EStep),
+      onlyWhenLiveVercelCiTools(liveVercelCiToolsE2EStep),
+      onlyWhenLiveDeployCiTools(savePnpmStateStep()),
+      onlyWhenLiveDeployCiTools(nixDiagnosticsSummaryStep),
+      onlyWhenLiveDeployCiTools(nixDiagnosticsArtifactStep()),
+      onlyWhenLiveDeployCiTools(failureReminderStep),
     ],
   },
 }

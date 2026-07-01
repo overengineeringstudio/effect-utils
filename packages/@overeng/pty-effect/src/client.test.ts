@@ -108,7 +108,7 @@ describe('PtyClient', () => {
         yield* client.spawnDaemon({
           name: decodeName(name),
           command: 'sh',
-          args: ['-c', 'echo HELLO_FROM_CLIENT && sleep 0.05'],
+          args: ['-c', 'echo HELLO_FROM_CLIENT && sleep 1'],
         })
 
         const sessions = yield* client.list

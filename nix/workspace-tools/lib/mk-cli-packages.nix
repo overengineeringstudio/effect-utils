@@ -33,7 +33,7 @@ in
       ;
     src = workspaceRoot;
   };
-  workflow-report = import (workspaceRootPath + "/packages/@overeng/workflow-report/nix/build.nix") {
+  ci-tools = import (workspaceRootPath + "/packages/@overeng/ci-tools/nix/build.nix") {
     inherit
       pkgs
       gitRev

@@ -74,7 +74,7 @@ export const notifyAlignmentJob = (opts: {
  * to both GITHUB_ENV and GITHUB_OUTPUT.
  */
 export const vercelDeployStep = (project: { name: string; urlEnvKey?: string }) =>
-  buildVercelDeployStep(project, runDevenvTasksBefore)
+  buildVercelDeployStep({ project, runDevenvTasksBefore })
 
 /**
  * Configure git author so Vercel Deployment Protection

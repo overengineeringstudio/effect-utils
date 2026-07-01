@@ -24,13 +24,30 @@ const generatedCiWorkflowYamlSource = readFileSync(
   new URL(['../../../../../../.github/workflows', 'ci.yml'].join('/'), import.meta.url),
   'utf8',
 )
+const generatedRepoSettings = JSON.parse(
+  readFileSync(
+    new URL(['../../../../../../.github', 'repo-settings.json'].join('/'), import.meta.url),
+    'utf8',
+  ),
+) as {
+  rules: Array<{
+    type: string
+    parameters?: {
+      required_status_checks?: Array<{ context: string }>
+    }
+  }>
+}
 const vercelDeploySource = readFileSync(
   new URL(['../../../../../../genie/deploy-preview', 'vercel.ts'].join('/'), import.meta.url),
   'utf8',
 )
+const netlifyDeploySource = readFileSync(
+  new URL(['../../../../../../genie/deploy-preview', 'netlify.ts'].join('/'), import.meta.url),
+  'utf8',
+)
 const workflowReportCommandSource = readFileSync(
   new URL(
-    ['../../../../../../packages/@overeng/workflow-report/src', 'cli-command.ts'].join('/'),
+    ['../../../../../../packages/@overeng/ci-tools/src', 'cli-command.ts'].join('/'),
     import.meta.url,
   ),
   'utf8',
@@ -49,6 +66,44 @@ const netlifyTaskModuleSource = readFileSync(
   ),
   'utf8',
 )
+const vercelTaskModuleSource = readFileSync(
+  new URL(
+    ['../../../../../../nix/devenv-modules/tasks/shared', 'vercel.nix'].join('/'),
+    import.meta.url,
+  ),
+  'utf8',
+)
+const workflowReportTaskModuleSource = readFileSync(
+  new URL(
+    ['../../../../../../nix/devenv-modules/tasks/shared', 'workflow-report.nix'].join('/'),
+    import.meta.url,
+  ),
+  'utf8',
+)
+
+const generatedCiJobKeys = Array.from(
+  (generatedCiWorkflowYamlSource.split('\njobs:\n')[1] ?? '').matchAll(/^  ([a-zA-Z0-9_-]+):$/gm),
+  ([, jobKey]) => jobKey,
+).filter((jobKey): jobKey is string => jobKey !== undefined)
+
+const advisoryCheckContexts = new Set(['ci/measurements-report', 'notify-alignment'])
+const matrixCheckJobs = new Set(['test', 'nix-check', 'nix-fod-check'])
+const matrixRunners = ['namespace-profile-linux-x86-64', 'namespace-profile-macos-arm64'] as const
+
+const generatedNonAdvisoryCheckContexts = generatedCiJobKeys
+  .flatMap((jobKey) => {
+    if (jobKey === 'ci-measurements-report') return ['ci/measurements-report']
+    if (matrixCheckJobs.has(jobKey) === true) {
+      return matrixRunners.map((runner) => `${jobKey} (${runner})`)
+    }
+    return [jobKey]
+  })
+  .filter((context) => advisoryCheckContexts.has(context) === false)
+
+const generatedRequiredCheckContexts =
+  generatedRepoSettings.rules
+    .find((rule) => rule.type === 'required_status_checks')
+    ?.parameters?.required_status_checks?.map((check) => check.context) ?? []
 
 const extractSourceBlock = (source: string, startMarker: string, endMarker: string) => {
   const start = source.indexOf(startMarker)
@@ -117,13 +172,58 @@ const megarepoTaskModuleSource = readFileSync(
 )
 
 describe('ci workflow retry helpers', () => {
-  it('inlines the retry helper for bootstrap-safe downstream imports', () => {
-    expect(ciWorkflowSource).toContain('const nixGcRaceRetryScript = String.raw')
-    expect(ciWorkflowSource).toContain('Keep helper script bodies inline')
-    expect(ciWorkflowSource).toContain('__nix_gc_retry_helper=$(mktemp)')
-    expect(ciWorkflowSource).toContain('run_nix_gc_race_retry')
+  it('keeps non-advisory workflow jobs required by branch protection', () => {
+    expect(new Set(generatedRequiredCheckContexts)).toEqual(
+      new Set(generatedNonAdvisoryCheckContexts),
+    )
+  })
+
+  it('emits compact calls to the checked-in retry helper script', () => {
+    expect(ciWorkflowSource).toContain("defaultCiRuntimeScriptsDir = 'genie/ci-scripts'")
+    expect(ciWorkflowSource).toContain(
+      "preparedCiRuntimeScriptsDir = '${{ runner.temp }}/genie-ci-scripts'",
+    )
+    expect(ciWorkflowSource).toContain('prepareCiScriptsStep')
+    expect(ciWorkflowSource).toContain('createRunDevenvTasksBefore')
+    expect(ciWorkflowSource).toContain('run-with-nix-gc-race-retry.sh')
+    expect(ciWorkflowSource).not.toContain('const nixGcRaceRetryScript = String.raw')
+    expect(generatedCiWorkflowYamlSource).not.toContain('__nix_gc_retry_helper=$(mktemp)')
+    expect(generatedCiWorkflowYamlSource).toContain('run-with-nix-gc-race-retry.sh')
+    expect(nixGcRaceRetryScriptSource).toContain('run_nix_gc_race_retry')
+    expect(nixGcRaceRetryScriptSource).toContain('mkfifo "$stdout_pipe" "$stderr_pipe"')
+    expect(nixGcRaceRetryScriptSource).toContain('"$@" > "$stdout_pipe" 2> "$stderr_pipe"')
+    expect(nixGcRaceRetryScriptSource).not.toContain('eval "$command"')
     expect(nixGcRaceRetryScriptSource).toContain("tr '\\r\\n' '  ' < \"$log\"")
+    expect(nixGcRaceRetryScriptSource).toContain('repair_nix_daemon')
     expect(nixGcRaceRetryScriptSource).not.toContain("awk 'BEGIN { ORS=")
+  })
+
+  it('keeps the retry helper script path configurable for downstream workflows', () => {
+    expect(ciWorkflowSource).toContain('createRunDevenvTasksBefore')
+    expect(ciWorkflowSource).toContain('opts.scriptsDir === undefined')
+    expect(ciWorkflowSource).not.toContain('if [ ! -x "$__genie_ci_retry_script" ]')
+  })
+
+  it('prepares retry helpers before generated jobs use the prepared retry script', () => {
+    const jobBlocks = generatedCiWorkflowYamlSource.split(/\n  [a-zA-Z0-9_-]+:\n/g).slice(1)
+
+    for (const jobBlock of jobBlocks) {
+      const helperIndex = jobBlock.indexOf(
+        '${{ runner.temp }}/genie-ci-scripts/run-with-nix-gc-race-retry.sh',
+      )
+      if (helperIndex < 0) continue
+
+      const checkoutIndex = jobBlock.indexOf('uses: actions/checkout@v6')
+      const prepareIndex = jobBlock.indexOf('Prepare CI helper scripts')
+      const baselineCheckoutIndex = jobBlock.indexOf('Checkout CI measurement baseline ref')
+      expect(checkoutIndex).toBeGreaterThanOrEqual(0)
+      expect(checkoutIndex).toBeLessThan(helperIndex)
+      expect(prepareIndex).toBeGreaterThanOrEqual(0)
+      expect(prepareIndex).toBeLessThan(helperIndex)
+      if (baselineCheckoutIndex >= 0) {
+        expect(prepareIndex).toBeLessThan(baselineCheckoutIndex)
+      }
+    }
   })
 })
 
@@ -137,8 +237,11 @@ describe('ci workflow reporting helpers', () => {
 
   it('matches managed PR comments by hidden state ID before patching', () => {
     expect(ciWorkflowSource).toContain('workflow-report')
-    expect(ciWorkflowSource).toContain('find-comment')
-    expect(ciWorkflowSource).toContain('workflow report PR comment skipped for fork pull request')
+    expect(ciWorkflowSource).toContain('workflow-report:publish')
+    expect(workflowReportTaskModuleSource).toContain('find-comment')
+    expect(workflowReportTaskModuleSource).toContain(
+      'workflow report PR comment skipped for fork pull request',
+    )
     expect(workflowReportCommandSource).toContain(
       'workflow report comment body is missing managed state',
     )
@@ -423,9 +526,18 @@ describe('ci workflow shared auth helpers', () => {
     expect(cachixStepSource).not.toContain('nix profile install')
   })
 
-  it('uses the Nix-provided Netlify CLI for parallel deploy safety', () => {
-    expect(netlifyTaskModuleSource).toContain('netlify = "${pkgs.netlify-cli}/bin/netlify";')
+  it('uses first-party Nix-packaged provider CLIs instead of runtime npm execution', () => {
+    expect(netlifyTaskModuleSource).toContain('/nix/provider-clis/netlify-cli')
+    expect(netlifyTaskModuleSource).toContain('netlifyBin ? null')
+    expect(netlifyTaskModuleSource).not.toContain('pkgs.netlify-cli')
     expect(netlifyTaskModuleSource).not.toContain('bunx netlify-cli@24.11.3')
+    expect(vercelTaskModuleSource).toContain('/nix/provider-clis/vercel-cli')
+    expect(vercelTaskModuleSource).toContain('vercelCliPkg ? null')
+    expect(vercelTaskModuleSource).not.toContain('bunx vercel')
+    expect(generatedWorkflowSource).toContain('.#netlify-cli')
+    expect(generatedWorkflowSource).toContain('.#vercel-cli')
+    expect(generatedWorkflowSource).not.toContain('nixpkgs#netlify-cli')
+    expect(generatedWorkflowSource).not.toContain('bunx vercel')
   })
 
   it('lets Vercel deploy jobs decorate the deploy run step', () => {
@@ -434,6 +546,16 @@ describe('ci workflow shared auth helpers', () => {
     expect(vercelDeploySource).toContain('opts.deployStepDecorator?.(')
     expect(vercelDeploySource).toContain(
       'vercelDeployStep({ project, runDevenvTasksBefore: opts.runDevenvTasksBefore })',
+    )
+  })
+
+  it('does not require a Netlify workflow report on manual runs that do not deploy', () => {
+    expect(netlifyDeploySource).toContain('deploy_ran=0')
+    expect(netlifyDeploySource).toContain(
+      'if [ "$deploy_ran" = "1" ] && [ ! -s "$workflow_report_path" ]; then',
+    )
+    expect(netlifyDeploySource).toContain(
+      'echo "workflow_report_path=$workflow_report_path" >> "$GITHUB_OUTPUT"',
     )
   })
 })

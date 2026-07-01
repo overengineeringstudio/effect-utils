@@ -27,22 +27,13 @@
         "strict_required_status_checks_policy": false,
         "required_status_checks": [
           {
+            "context": "default-ref-policy"
+          },
+          {
             "context": "typecheck"
           },
           {
             "context": "lint"
-          },
-          {
-            "context": "pnpm-builder-contract"
-          },
-          {
-            "context": "pnpm-regression"
-          },
-          {
-            "context": "bundle-smoke"
-          },
-          {
-            "context": "cargo"
           },
           {
             "context": "test (namespace-profile-linux-x86-64)"
@@ -64,6 +55,36 @@
           },
           {
             "context": "nix-fod-check (namespace-profile-macos-arm64)"
+          },
+          {
+            "context": "pnpm-builder-contract"
+          },
+          {
+            "context": "pnpm-regression"
+          },
+          {
+            "context": "bundle-smoke"
+          },
+          {
+            "context": "cargo"
+          },
+          {
+            "context": "devenv-perf"
+          },
+          {
+            "context": "nix-closure-sizes"
+          },
+          {
+            "context": "source-shape"
+          },
+          {
+            "context": "test-integration-notion"
+          },
+          {
+            "context": "test-integration-restate"
+          },
+          {
+            "context": "test-live-deploy-ci-tools"
           },
           {
             "context": "deploy-storybooks"

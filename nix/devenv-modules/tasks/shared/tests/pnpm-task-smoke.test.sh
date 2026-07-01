@@ -822,7 +822,7 @@ echo "Test 28: generated test task runs vitest without pnpm exec"
 (
   cd "$workspace/packages/demo"
   output="$(bash "$tmpdir/test-demo.exec.sh")"
-  [ "$output" = "vitest-shim:run" ]
+  [ "$output" = "vitest-shim:run --testTimeout 30000 --hookTimeout 30000" ]
 )
 
 echo "Test 29: generated storybook task runs storybook without pnpm exec"

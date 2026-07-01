@@ -1,0 +1,8 @@
+{
+  "name": "effect-utils-vercel-cli-authority",
+  "version": "0.0.0",
+  "private": true,
+  "dependencies": {
+    "vercel": "54.18.5"
+  }
+}

@@ -31,7 +31,7 @@ import { Command, FileSystem } from '@effect/platform'
 import { NodeContext } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Clock, Effect, Exit, Layer, Schema } from 'effect'
-import { expect } from 'vitest'
+import { expect, vi } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath, type RelativeDirPath } from '@overeng/effect-path'
 
@@ -53,6 +53,13 @@ import { mrCommand } from './mod.ts'
 const DAY_MS = 24 * 60 * 60 * 1000
 /** A fixed decision clock: well past every default grace window. */
 const NOW = Date.parse('2026-06-11T12:00:00.000Z')
+/** This file exercises the real command against full git/store fixtures on shared CI runners. */
+const COLD_GC_E2E_TIMEOUT_MS = 240_000
+
+vi.setConfig({
+  hookTimeout: COLD_GC_E2E_TIMEOUT_MS,
+  testTimeout: COLD_GC_E2E_TIMEOUT_MS,
+})
 
 const git = (cwd: string, ...args: ReadonlyArray<string>) =>
   Effect.gen(function* () {
@@ -597,7 +604,6 @@ describe('mr store gc — cold named-branch reclamation', () => {
       Effect.provide(NodeContext.layer),
       Effect.scoped,
     ),
-    { timeout: 30_000 },
   )
 
   it.effect(

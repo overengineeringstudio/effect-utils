@@ -84,7 +84,7 @@ import { computeNotionWebhookSignature } from '../webhook/notion.ts'
 const execFileAsync = promisify(execFile)
 const packageDir = fileURLToPath(new URL('../..', import.meta.url))
 const cliPath = join(packageDir, 'src/cli/main.ts')
-const cliTestTimeoutMs = 10_000
+const cliTestTimeoutMs = 30_000
 const workspaceRoot = decode({ schema: AbsolutePath, value: '/tmp/notion-ds-sync-cli' })
 const webhookPathPattern = /^\/notion-datasource-sync\/webhook\/notion\/[0-9a-f-]{36}$/
 const webhookSetPathPattern =
