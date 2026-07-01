@@ -338,7 +338,7 @@ The command summary records a public-safe identity plus stable hashes, not raw l
 - `command.program` is the wrapped executable's basename — a public-safe identity, always present.
 - `command.argv_hash` is a stable hash over the child argv vector — always present; the correlation/dedup key.
 - `command.cwd_hash` is a stable hash over the current working directory identity — always present.
-- Raw argv, cwd, and local absolute paths are **trust-gated** (requirement R27): excluded by default, and emitted only into a sink an operator has explicitly asserted private via `OTEL_SCRAPE_TRUSTED_SINK` / `--trusted-sink`. Because a summary file can be written into a public source tree, summaries stay public-safe unless the summary sink is itself asserted private.
+- Raw argv, cwd, and local absolute paths are **trust-gated** (requirement R27, [decision 0015](./.decisions/0015-trust-assertion-is-per-named-sink.md)): excluded by default, and emitted only into a sink an operator has explicitly asserted private **by name** (`--trusted-sink <sink>`). The summary is **hard-public-safe by default**: because it can be written into a public source tree, it never honors an OTLP trust assertion — raw fields enter the summary only under its own explicit `--trusted-sink summary`.
 - Credentials, source text, and child output payloads are never embedded, regardless of trust.
 - `processes.backend` names the active observation backend. `direct-child` is
   explicitly degraded and records only the spawned child process, even when the
@@ -397,7 +397,8 @@ Exporter configuration:
 - `OTEL_SERVICE_NAME` is the environment fallback and takes precedence over
   `service.name` from `OTEL_RESOURCE_ATTRIBUTES`.
 - `OTEL_RESOURCE_ATTRIBUTES` supplies additional OTLP resource attributes.
-- `OTEL_SCRAPE_TRUSTED_SINK=true` / `--trusted-sink` asserts that the configured OTLP sink is a private, access-controlled destination, which permits raw `command.argv`, `command.cwd`, and local paths into this run's OTLP export (requirement R27). It is explicit, per-sink, and off by default; `command.program` + hashes are emitted with or without it, and credentials, source text, and child output payloads are never emitted regardless.
+- `--trusted-sink otlp` (env alias `OTEL_SCRAPE_TRUSTED_SINK`, pinned to the single OTLP target) asserts that the configured OTLP sink is a private, access-controlled destination, which permits raw `command.argv`, `command.cwd`, and local paths into this run's OTLP export (requirement R27, [decision 0015](./.decisions/0015-trust-assertion-is-per-named-sink.md)). The assertion names the sink it covers: an OTLP assertion never covers the local summary sink. It is explicit, per-named-sink, and off by default; `command.program` + hashes are emitted with or without it, and credentials, source text, and child output payloads are never emitted regardless.
+- **Non-leak invariant (tested):** a sentinel secret placed in a wrapped command's argv must be byte-absent from every sink the operator did not assert. This is a required regression test ([decision 0015](./.decisions/0015-trust-assertion-is-per-named-sink.md), [experiment 0006](./.experiments/0006-trust-gate-granularity.md)): with no assertion the sentinel is absent from all sinks; with `--trusted-sink otlp` the sentinel appears in the OTLP payload but stays byte-absent from the summary.
 - `OTEL_EXPORTER_OTLP_HEADERS` supplies generic OTLP request headers.
 - `OTEL_EXPORTER_OTLP_TRACES_HEADERS` is the trace-specific header override.
 - `OTEL_EXPORTER_OTLP_TIMEOUT` and `OTEL_EXPORTER_OTLP_TRACES_TIMEOUT` configure
@@ -554,5 +555,3 @@ prototype/degraded evidence:
 ## Open Design Questions
 
 **DQ1 - Adapter metric correlation:** Should adapter metrics become OTLP metric points, span events, span attributes, or remain local summary records when a run needs trace-correlated diagnostics? This is resolved when one adapter metric shape has a concrete backend query use case and an E2E proof that the chosen representation preserves correlation without faking metric semantics.
-
-**DQ2 - Trust-gate granularity:** The command-identity trust gate (decision 0014, R27) is specified as an explicit, per-sink, off-by-default assertion, but the exact mechanism is open: a single process-wide `OTEL_SCRAPE_TRUSTED_SINK` boolean (simplest), a per-endpoint allowlist (raw only for asserted endpoints, so a run exporting to two sinks treats them differently), or a signed/scoped assertion. This is resolved when the multi-sink and mixed-trust cases have a concrete use and an E2E proof that raw fields never reach an unasserted sink.
