@@ -30,14 +30,14 @@
 
 ### The wrapper is the source of truth
 
-- **R01 Wrapper-owned lifecycle span:** Every `otel-scrape <cmd>` invocation produces a command span from facts the wrapper controls: command identity, stable argv hash, cwd identity, start/end/duration, exit code, tool name/version when available, and captured-output descriptors.
+- **R01 Wrapper-owned lifecycle span:** Every `otel-scrape <cmd>` invocation produces a command span from facts the wrapper controls: a public-safe command identity (the executable basename), stable argv and cwd hashes (retained as correlation keys), start/end/duration, exit code, tool name/version when available, and captured-output descriptors. Raw argv/cwd are trust-gated (R27).
 - **R02 Resource facts:** The command span records resource usage available without privileged host tracing, at minimum process CPU time and max RSS where the platform exposes them.
 - **R03 Passthrough fidelity:** The wrapped tool's stdout, stderr, and exit code are preserved so `otel-scrape <tool> ...` can replace `<tool> ...` in scripts.
 - **R04 Disabled-mode transparency:** With no configured OTEL export target, the command still runs and no telemetry is emitted.
 
 ### Subprocess trees
 
-- **R05 Process-tree spans:** Observable child processes are represented as nested spans under the command span with process identity and stable argument hashes.
+- **R05 Process-tree spans:** Observable child processes carry a public-safe process identity (the executable basename) and stable argument hashes. A distinct process span is emitted only under an exact backend; the default degraded direct-child observation is merged into the command span (spec: Process-Tree Fidelity).
 - **R06 Nested join:** A wrapped tool that invokes `otel-scrape` again joins the same trace through context propagation.
 
 ### Adapter contract
@@ -77,6 +77,6 @@
 - **R24 Helper boundary:** Default exact observation uses a helper-style event-source boundary that does not perturb the wrapped command. `otel-scrape` must not require ordinary wrapped commands to run with elevated privileges.
 - **R25 Contract ownership:** `effect-utils` owns the public process-observation contract: backend selection, helper protocol, schemas, summary evidence, OTLP span semantics, fake-helper fixtures, validation tests, and release documentation.
 - **R26 Deployment ownership:** Privileged activation, kernel/Endpoint Security permissions, system service configuration, socket placement, health checks, fleet rollout, and machine-specific policy belong outside the public wrapper contract, initially in the fleet/dotfiles layer.
-- **R27 Public-safe evidence:** Raw process identifiers, argv, cwd, local paths, credentials, source text, and child output payloads must not enter summaries, OTLP export, or persistent helper logs. Persisted process identity uses stable hashes and bounded reason codes.
+- **R27 Public-safe by default; trust-gated raw identity:** Every evidence sink (summaries, OTLP export, persistent helper logs) is public-safe by default: it carries a public-safe **program identity** (executable basename — never a full path or args), stable argv/cwd **hashes** retained as correlation keys, and bounded reason codes; raw argv, cwd, and local paths are excluded. An operator MAY explicitly assert that a specific sink is private (`OTEL_SCRAPE_TRUSTED_SINK` / `--trusted-sink`), which permits raw argv/cwd/local paths into **that sink only**; the assertion is explicit, per-sink, and off by default. **Credentials are never emitted to any sink**; source text and child output payloads remain descriptor-only (captured-output descriptors, R01) regardless of trust. Trust unlocks identity, not secrets.
 - **R28 Linux cgroup authority:** Linux exact helper mode must use a run-scoped cgroup, or an equivalently strong kernel-owned execution boundary, as the authority for run membership. Process ancestry, process groups, sessions, and wrapper run IDs may enrich correlation but must not be the sole authority for exactness.
 - **R29 macOS exactness gate:** macOS ARM support is degraded by default unless an Endpoint Security-backed helper, or an equivalently exact and supported system event source, proves installation, entitlement, user/admin approval, event-loss handling, run correlation, and fixture validation in both a runner environment and the target host class.

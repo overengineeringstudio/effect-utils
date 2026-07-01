@@ -25,3 +25,13 @@
 **Artifact lane** — Content-addressed storage for native profile files linked from spans.
 
 **Profile link** — A descriptor on a span containing profile type, digest, retrieval URI, and optional viewer URI.
+
+**Program identity** — The wrapped executable's basename (`tsc`, `cargo`), used as the command span name and `command.program`. Public-safe (never a path or args), so it is always emitted.
+
+**Argv hash** — A stable hash over the child argv vector (`command.argv_hash`). Always emitted; it is the correlation/dedup key, not merely a redaction of the raw argv.
+
+**Span origin** — The `span.origin` attribute (`otel-scrape` or `otel-scrape-adapter`) plus `otel.scope.name = otel-scrape`, marking a span as wrapper-owned without the span name carrying the instrumentation.
+
+**Merged process observation** — In the default degraded `direct-child` backend, the process observation folded into the command span (`fidelity = "merged"`) instead of a separate span. A distinct process span appears only under an exact backend.
+
+**Trusted sink** — A telemetry destination an operator has explicitly asserted private and access-controlled (`OTEL_SCRAPE_TRUSTED_SINK` / `--trusted-sink`). Raw argv/cwd/local paths are emitted only to a trusted sink; the assertion is explicit, per-sink, and off by default. Trust unlocks identity, never credentials or payloads.
