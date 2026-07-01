@@ -69,6 +69,24 @@
             "context": "cargo"
           },
           {
+            "context": "devenv-perf"
+          },
+          {
+            "context": "nix-closure-sizes"
+          },
+          {
+            "context": "source-shape"
+          },
+          {
+            "context": "test-integration-notion"
+          },
+          {
+            "context": "test-integration-restate"
+          },
+          {
+            "context": "test-live-deploy-ci-tools"
+          },
+          {
             "context": "deploy-storybooks"
           }
         ]

@@ -26,10 +26,12 @@ adapters use direct APIs where provider semantics are straightforward and fall
 back to provider CLIs when direct upload/deploy implementation would add more
 risk than value.
 
-Live provider E2E runs in normal CI as a non-required check. It may reuse shared
+Live provider E2E runs in normal CI as a required check. It may reuse shared
 provider projects only when the invocation explicitly allows shared-project E2E
 and the alias matches a reserved CI-tools E2E prefix. Provider CI/build systems
-are never part of this pipeline; deployable artifacts are built locally.
+are never part of this pipeline; deployable artifacts are built locally. The
+lane owns reliable skip semantics for missing credentials so unrelated PRs do
+not fail when provider secrets are intentionally unavailable.
 
 ## Consequences
 
@@ -48,6 +50,5 @@ are never part of this pipeline; deployable artifacts are built locally.
   This would fix the immediate incident but preserve the wrong source of truth.
 - Migrate Netlify first and defer Vercel. This would reduce PR size but leave
   provider deploy semantics split across two control planes.
-- Require live provider E2E as a merge-blocking check. This would increase
-  provider drift signal but make unrelated PRs vulnerable to external provider
-  flake.
+- Keep live provider E2E non-required. This would reduce merge friction but
+  leave provider drift outside the branch-protection contract.

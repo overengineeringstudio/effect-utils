@@ -12,7 +12,7 @@ Active.
 | --------------- | ------------------------------------------------------ | --------------------------------------------------------------------- | -------------------------------------------------------- |
 | `deterministic` | Nix closure size, source lines, file counts            | Did a structural quantity exceed its budget?                          | Budget/diff against a comparable baseline.               |
 | `wall-clock`    | Devenv shell eval, task runtime, CLI command latency   | Did this PR make this operation slower on the same runner conditions? | Paired same-run base/head samples before merge blocking. |
-| `diagnostic`    | OTEL-traced shell eval, host context, trace breakdowns | Where did time go?                                                    | Never merge-blocking; explains measurements.             |
+| `diagnostic`    | OTEL-traced shell eval, host context, trace breakdowns | Where did time go?                                                    | Never a regression gate; may be produced by required CI. |
 
 The class is part of the observation contract through `measurementKind`.
 The comparison policy is part of the gate contract through `comparisonMode`.
@@ -30,6 +30,9 @@ semantics match:
 
 Historical comparison is not a substitute for paired wall-clock evidence.
 Budget comparison is not a substitute for owner-approved semantic budgets.
+Branch protection may still require the measurement-producing job to complete
+successfully; that requires evidence production, not a red/yellow measurement
+verdict.
 
 ## Observation Contract
 
@@ -211,16 +214,21 @@ review context, but the pass/fail decision is the budget decision.
 
 Each observation should move through explicit policy stages:
 
-| Stage        | Use Case                                      | Merge Behavior                                      |
-| ------------ | --------------------------------------------- | --------------------------------------------------- |
-| `diagnostic` | New metric, trace attachment, host context    | Render only.                                        |
-| `advisory`   | Historical trend before calibration is mature | Comment and warn, but do not block merge.           |
-| `gateable`   | Calibrated wall-clock or deterministic budget | Block only when the measurement class proves it.    |
-| `required`   | Stable semantic invariant                     | Repo branch protection may depend on the gate name. |
+| Stage        | Use Case                                      | Merge Behavior                                          |
+| ------------ | --------------------------------------------- | ------------------------------------------------------- |
+| `diagnostic` | New metric, trace attachment, host context    | Render only.                                            |
+| `advisory`   | Historical trend before calibration is mature | Comment and warn, but do not fail the job.              |
+| `gateable`   | Calibrated wall-clock or deterministic budget | Fail the job only when the measurement class proves it. |
+| `required`   | Stable semantic invariant                     | Repo branch protection may depend on the gate name.     |
 
 Wall-clock probes should start advisory until paired evidence and a noise
 profile exist for that repo/runner. Deterministic probes can become gateable
 earlier when their target identity and budget are explicit.
+
+Required measurement jobs and required measurement verdicts are separate
+decisions. A repo may require the measurement lane so artifact production and
+comparison code stay healthy while the observations inside that lane remain
+advisory.
 
 ## Baseline Model
 

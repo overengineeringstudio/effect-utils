@@ -66,23 +66,14 @@ export type CIJobName = (typeof CI_JOB_NAMES)[number]
 /**
  * Merge-blocking CI job keys for branch protection.
  *
- * Measurement and live/external integration lanes stay out of branch
- * protection until they have explicit owner-approved budgets or reliability
- * policy. They still run in CI and can fail visibly without becoming required
- * status checks.
+ * Every non-advisory workflow lane is required. Measurement jobs can still run
+ * warn-mode comparisons internally, but the lane must produce its artifact and
+ * complete successfully so branch protection covers CI evidence production.
  */
 export const REQUIRED_CI_JOB_NAMES = [
   DEFAULT_REF_POLICY_CI_JOB_NAME,
-  'typecheck',
-  'lint',
-  'test',
-  'test-megarepo-cold-gc',
-  'nix-check',
-  'nix-fod-check',
-  'pnpm-builder-contract',
-  'pnpm-regression',
-  'bundle-smoke',
-  'cargo',
+  ...CORE_CI_JOB_NAMES,
+  ...EXTRA_CI_JOB_NAMES,
   ...REQUIRED_DEPLOY_CI_JOB_NAMES,
 ] as const satisfies readonly CIJobName[]
 
