@@ -352,23 +352,33 @@ let
 
   normalizeSourceRoot =
     prefix: sourceRoot:
+    let
+      normalizedName = lib.strings.sanitizeDerivationName (lib.replaceStrings [ "/" ] [ "-" ] prefix);
+    in
     if isDerivationOutput sourceRoot then
-      coerceSourceRoot sourceRoot
+      pkgs.runCommand normalizedName { src = sourceRoot; } ''
+        mkdir -p "$out"
+        cp -R "$src"/. "$out"/
+      ''
     else
       let
         rawPath = coerceSourceRoot sourceRoot;
-        normalizedName = lib.strings.sanitizeDerivationName (lib.replaceStrings [ "/" ] [ "-" ] prefix);
-        sanitizedPath = builtins.path {
-          path = rawPath;
-          filter = sourcePathFilter;
-          name = normalizedName;
-        };
+        sanitizedPath =
+          if builtins.isAttrs sourceRoot && sourceRoot ? outPath then
+            sourceRoot
+          else
+            builtins.path {
+              path = rawPath;
+              filter = sourcePathFilter;
+              name = normalizedName;
+            };
       in
       pkgs.runCommand normalizedName { inherit sanitizedPath; } ''
         mkdir -p "$out"
         cp -R "$sanitizedPath"/. "$out"/
       '';
 
+  normalizedWorkspaceRoot = normalizeSourceRoot "." workspaceRoot;
   workspaceSourceRawRoots = lib.mapAttrs (_: coerceSourceRoot) workspaceSources;
   workspaceSourceIsDerivationOutput = lib.mapAttrs (_: isDerivationOutput) workspaceSources;
   workspaceSourceRoots = lib.mapAttrs normalizeSourceRoot workspaceSources;
@@ -376,6 +386,13 @@ let
     left: right: lib.stringLength left < lib.stringLength right
   ) (builtins.attrNames workspaceSourceRoots);
   workspaceSourcePrefixesByLengthDesc = lib.reverseList workspaceSourcePrefixesByLengthAsc;
+  workspaceSourceCaptureAttrs = {
+    workspace_source_root = workspaceRoot;
+  }
+  // lib.mapAttrs' (
+    prefix: sourceRoot:
+    lib.nameValuePair "workspace_source_${lib.strings.sanitizeDerivationName (lib.replaceStrings [ "/" ] [ "-" ] prefix)}" sourceRoot
+  ) workspaceSources;
 
   hasInstallRoot =
     sourceRoot:
@@ -393,7 +410,7 @@ let
           relPath == candidate || lib.hasPrefix "${candidate}/" relPath;
       prefix = lib.findFirst matchesPrefix null workspaceSourcePrefixesByLengthDesc;
       sourceRoot = if prefix == null then workspaceRootPath else workspaceSourceRawRoots.${prefix};
-      fullSourceRoot = if prefix == null then workspaceRootPath else workspaceSourceRoots.${prefix};
+      fullSourceRoot = if prefix == null then normalizedWorkspaceRoot else workspaceSourceRoots.${prefix};
       evalSourceRoot =
         if prefix == null then
           evalWorkspaceRootPath
@@ -459,41 +476,29 @@ let
     in
     if sourceRelPath == "." then sourceRoot else sourceRoot + "/${sourceRelPath}";
 
-  snapshotPath =
-    namePrefix: path:
-    let
-      snapshotName = lib.strings.sanitizeDerivationName (lib.replaceStrings [ "/" ] [ "-" ] namePrefix);
-      sanitizedPath = builtins.path {
-        path = path;
-        filter = sourcePathFilter;
-        name = snapshotName;
-      };
-    in
-    pkgs.runCommand snapshotName { inherit sanitizedPath; } ''
-      cp "$sanitizedPath" "$out"
-    '';
-
   absoluteFileSourcePathFor =
     relPath:
     let
       resolved = resolveSourceFor relPath;
       rawPath =
         if resolved.sourceRelPath == "." then
-          resolved.sourceRoot
+          resolved.fullSourceRoot
         else
-          resolved.sourceRoot + "/${resolved.sourceRelPath}";
+          resolved.fullSourceRoot + "/${resolved.sourceRelPath}";
     in
-    if resolved.sourceIsDerivationOutput then rawPath else snapshotPath relPath rawPath;
+    rawPath;
 
   absoluteDirectorySourcePathFor =
     relPath:
     let
       resolved = resolveSourceFor relPath;
+      rawPath =
+        if resolved.sourceRelPath == "." then
+          resolved.fullSourceRoot
+        else
+          resolved.fullSourceRoot + "/${resolved.sourceRelPath}";
     in
-    if resolved.sourceRelPath == "." then
-      resolved.fullSourceRoot
-    else
-      resolved.fullSourceRoot + "/${resolved.sourceRelPath}";
+    rawPath;
 
   # Read workspace closure dirs from the generated package.json ($genie.workspaceClosureDirs).
   # Pre-computed by genie at generation time, avoiding import-from-derivation (IFD).
@@ -910,8 +915,8 @@ let
       srcPath = absoluteDirectorySourcePathFor relPath;
     in
     ''
-      ${mkdirOutParentCmd relPath}
-      cp -R ${lib.escapeShellArg (toString srcPath)} "$out/${builtins.dirOf relPath}/"
+      mkdir -p "$out/${relPath}"
+      cp -R ${lib.escapeShellArg (toString srcPath)}/. "$out/${relPath}/"
       chmod -R +w "$out/${relPath}"
     '';
 
@@ -1072,7 +1077,7 @@ let
   # not delegated to nested install roots. It still stages external install-root
   # manifests so the aggregate lockfile can resolve linked workspace packages
   # against the exact member set that will exist in the final composed build.
-  rootDepsSrc = pkgs.runCommand "${name}-pnpm-deps-src" { } (
+  rootDepsSrc = pkgs.runCommand "${name}-pnpm-deps-src" workspaceSourceCaptureAttrs (
     ''
       set -euo pipefail
       mkdir -p "$out"
@@ -1099,23 +1104,25 @@ let
   externalInstallRootDeps = map (
     root:
     let
-      depsSrc = pkgs.runCommand "${installRootDepsDerivationName root}-pnpm-deps-src" { } (
-        ''
-          set -euo pipefail
-          mkdir -p "$out"
-        ''
-        + stageExternalInstallRootManifestOnlyCmd root
-        + copyResolvedPatchFilesCmd {
-          sourcePrefix = "";
-          workspaceYamlContent = rootPnpmWorkspaceYaml;
-          targetPrefix = "${root.installDir}/.root-patches";
-        }
-        + ''
-          mkdir -p "$out/.root-patch-authority"
-          cp ${lib.escapeShellArg (toString (absoluteFileSourcePathFor "pnpm-lock.yaml"))} "$out/.root-patch-authority/pnpm-lock.yaml"
-          cp ${lib.escapeShellArg (toString (absoluteFileSourcePathFor "pnpm-workspace.yaml"))} "$out/.root-patch-authority/pnpm-workspace.yaml"
-        ''
-      );
+      depsSrc =
+        pkgs.runCommand "${installRootDepsDerivationName root}-pnpm-deps-src" workspaceSourceCaptureAttrs
+          (
+            ''
+              set -euo pipefail
+              mkdir -p "$out"
+            ''
+            + stageExternalInstallRootManifestOnlyCmd root
+            + copyResolvedPatchFilesCmd {
+              sourcePrefix = "";
+              workspaceYamlContent = rootPnpmWorkspaceYaml;
+              targetPrefix = "${root.installDir}/.root-patches";
+            }
+            + ''
+              mkdir -p "$out/.root-patch-authority"
+              cp ${lib.escapeShellArg (toString (absoluteFileSourcePathFor "pnpm-lock.yaml"))} "$out/.root-patch-authority/pnpm-lock.yaml"
+              cp ${lib.escapeShellArg (toString (absoluteFileSourcePathFor "pnpm-workspace.yaml"))} "$out/.root-patch-authority/pnpm-workspace.yaml"
+            ''
+          );
       lockfilePath = installRootScopedPath root.installDir "pnpm-lock.yaml";
       depsBuild = pnpmDepsHelper.mkDeps {
         name = installRootDepsDerivationName root;
@@ -1248,7 +1255,7 @@ let
       nameSuffix,
       manifestOnly,
     }:
-    pkgs.runCommand "${name}-${nameSuffix}" { } (
+    pkgs.runCommand "${name}-${nameSuffix}" workspaceSourceCaptureAttrs (
       ''
         set -euo pipefail
         mkdir -p "$out"
