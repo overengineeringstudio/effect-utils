@@ -30,7 +30,10 @@ export type WorkflowReportRecord = {
   readonly data?: Readonly<Record<string, unknown>>
 }
 
-export const encodeWorkflowReportRecordLine = (
-  record: WorkflowReportRecord,
+export const encodeWorkflowReportRecordLine = ({
+  record,
   marker = workflowReportRecordLineMarker,
-) => `${marker}${JSON.stringify(record)}`
+}: {
+  readonly record: WorkflowReportRecord
+  readonly marker?: string
+}) => `${marker}${JSON.stringify(record)}`

@@ -14,7 +14,8 @@ All notable changes to this project will be documented in this file.
 - **nix workspace tools / mk-pnpm-cli**: Preserve external workspace source
   roots as sandbox inputs for full workspace materialization, so downstream
   flake consumers can build CLIs whose install roots copy packages from an
-  effect-utils flake input.
+  effect-utils flake input; refresh the affected Notion CLI and oxlint
+  plugin dependency hashes after the source-input repair.
 
 - **nix packages / @overeng/genie**: Refresh the `genie-unwrapped`
   pnpm-deps fixed-output hash after the materialization profile rebase.

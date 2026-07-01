@@ -73,7 +73,7 @@ describe('workflow reporting schemas', () => {
       collectWorkflowReportBundle({
         bundleId: 'deploy-preview',
         generatedAtUtc: '2026-05-31T15:01:00Z',
-        sources: ['plain output', encodeWorkflowReportRecordLine(sampleRecord)],
+        sources: ['plain output', encodeWorkflowReportRecordLine({ record: sampleRecord })],
       }),
     ).toEqual({
       _tag: 'WorkflowReportBundle',
@@ -89,7 +89,7 @@ describe('marked workflow report JSONL parsing', () => {
   it('ignores unmarked output and decodes only marked JSON records', () => {
     const source = [
       'regular deploy output',
-      encodeWorkflowReportRecordLine(sampleRecord),
+      encodeWorkflowReportRecordLine({ record: sampleRecord }),
       'Vercel deploy URL: https://unstructured.example',
     ].join('\n')
 

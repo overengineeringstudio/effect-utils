@@ -206,9 +206,164 @@
       "description": "Needs classification or owner decision · Set: manual"
     },
     {
+      "name": "system:agent-session-ingest",
+      "color": "a371f7",
+      "description": "@overeng/agent-session-ingest package · Set: manual"
+    },
+    {
+      "name": "system:ci-tools",
+      "color": "a371f7",
+      "description": "@overeng/ci-tools package · Set: manual"
+    },
+    {
+      "name": "system:content-address",
+      "color": "a371f7",
+      "description": "@overeng/content-address package · Set: manual"
+    },
+    {
+      "name": "system:effect-ai-claude-cli",
+      "color": "a371f7",
+      "description": "@overeng/effect-ai-claude-cli package · Set: manual"
+    },
+    {
+      "name": "system:effect-path",
+      "color": "a371f7",
+      "description": "@overeng/effect-path package · Set: manual"
+    },
+    {
+      "name": "system:effect-react",
+      "color": "a371f7",
+      "description": "@overeng/effect-react package · Set: manual"
+    },
+    {
+      "name": "system:effect-rpc-tanstack",
+      "color": "a371f7",
+      "description": "@overeng/effect-rpc-tanstack package · Set: manual"
+    },
+    {
+      "name": "system:effect-schema-form",
+      "color": "a371f7",
+      "description": "@overeng/effect-schema-form package · Set: manual"
+    },
+    {
+      "name": "system:effect-schema-form-aria",
+      "color": "a371f7",
+      "description": "@overeng/effect-schema-form-aria package · Set: manual"
+    },
+    {
       "name": "system:genie",
       "color": "a371f7",
       "description": "@overeng/genie package · Set: manual"
+    },
+    {
+      "name": "system:kdl",
+      "color": "a371f7",
+      "description": "@overeng/kdl package · Set: manual"
+    },
+    {
+      "name": "system:kdl-effect",
+      "color": "a371f7",
+      "description": "@overeng/kdl-effect package · Set: manual"
+    },
+    {
+      "name": "system:megarepo",
+      "color": "a371f7",
+      "description": "@overeng/megarepo package · Set: manual"
+    },
+    {
+      "name": "system:notion-cli",
+      "color": "a371f7",
+      "description": "@overeng/notion-cli package · Set: manual"
+    },
+    {
+      "name": "system:notion-core",
+      "color": "a371f7",
+      "description": "@overeng/notion-core package · Set: manual"
+    },
+    {
+      "name": "system:notion-datasource-sync",
+      "color": "a371f7",
+      "description": "@overeng/notion-datasource-sync package · Set: manual"
+    },
+    {
+      "name": "system:notion-effect-client",
+      "color": "a371f7",
+      "description": "@overeng/notion-effect-client package · Set: manual"
+    },
+    {
+      "name": "system:notion-effect-schema",
+      "color": "a371f7",
+      "description": "@overeng/notion-effect-schema package · Set: manual"
+    },
+    {
+      "name": "system:notion-md",
+      "color": "a371f7",
+      "description": "@overeng/notion-md package · Set: manual"
+    },
+    {
+      "name": "system:notion-property-write",
+      "color": "a371f7",
+      "description": "@overeng/notion-property-write package · Set: manual"
+    },
+    {
+      "name": "system:notion-react",
+      "color": "a371f7",
+      "description": "@overeng/notion-react package · Set: manual"
+    },
+    {
+      "name": "system:otel-contract",
+      "color": "a371f7",
+      "description": "@overeng/otel-contract package · Set: manual"
+    },
+    {
+      "name": "system:otelite",
+      "color": "a371f7",
+      "description": "@overeng/otelite package · Set: manual"
+    },
+    {
+      "name": "system:oxc-config",
+      "color": "a371f7",
+      "description": "@overeng/oxc-config package · Set: manual"
+    },
+    {
+      "name": "system:pty-effect",
+      "color": "a371f7",
+      "description": "@overeng/pty-effect package · Set: manual"
+    },
+    {
+      "name": "system:react-inspector",
+      "color": "a371f7",
+      "description": "@overeng/react-inspector package · Set: manual"
+    },
+    {
+      "name": "system:restate-effect",
+      "color": "a371f7",
+      "description": "@overeng/restate-effect package · Set: manual"
+    },
+    {
+      "name": "system:tui-core",
+      "color": "a371f7",
+      "description": "@overeng/tui-core package · Set: manual"
+    },
+    {
+      "name": "system:tui-react",
+      "color": "a371f7",
+      "description": "@overeng/tui-react package · Set: manual"
+    },
+    {
+      "name": "system:tui-stories",
+      "color": "a371f7",
+      "description": "@overeng/tui-stories package · Set: manual"
+    },
+    {
+      "name": "system:utils",
+      "color": "a371f7",
+      "description": "@overeng/utils package · Set: manual"
+    },
+    {
+      "name": "system:utils-dev",
+      "color": "a371f7",
+      "description": "@overeng/utils-dev package · Set: manual"
     },
     {
       "name": "type:agent-tooling",

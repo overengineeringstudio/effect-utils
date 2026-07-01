@@ -60,10 +60,10 @@ export type WorkflowReportCommentBodyStepOptions = {
 export const workflowReportProducerStep = (
   opts: WorkflowReportProducerStepOptions,
 ): GitHubWorkflowStep => {
-  const line = encodeWorkflowReportRecordLine(
-    opts.record,
-    opts.marker ?? workflowReportRecordLineMarker,
-  )
+  const line = encodeWorkflowReportRecordLine({
+    record: opts.record,
+    marker: opts.marker ?? workflowReportRecordLineMarker,
+  })
   const outputPath = opts.outputPath
 
   return {
