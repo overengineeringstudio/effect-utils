@@ -28,7 +28,7 @@ Evidence: [../.experiments/0005-command-identity-and-noise.md](../.experiments/0
 - The executable **basename** (`tsc`, `vitest`, `cargo`) is a public-safe
   identity — it is not a path, args, or secret — and an e2e probe confirmed it
   can name the span without surfacing raw argv. Naming a span by its operation
-  is standard OpenTelemetry practice; the registry can own the naming *scheme*
+  is standard OpenTelemetry practice; the registry can own the naming _scheme_
   rather than a fixed command span-name string.
 - The argv hash is not only a privacy device: it is the stable
   correlation/dedup key (same command → same hash across runs), which raw argv is
@@ -48,12 +48,12 @@ Evidence: [../.experiments/0005-command-identity-and-noise.md](../.experiments/0
 
 ## Options
 
-| Option | Consequence |
-| --- | --- |
-| Keep generic `otel_scrape.command` name + argv hash (status quo) | Stable, but the waterfall stays an unreadable wall of identical spans; no command is distinguishable without dereferencing a hash. |
-| Name spans by program basename; keep everything else hashed (no privacy change) | Readable waterfall with zero R27 change and no trust mechanism; but no raw argv for deep debugging — hash + adapters only. |
-| Name by basename + trust-gated raw argv/cwd (chosen) | Readable by default and fully debuggable when a sink is asserted private; preserves the safe-anywhere substrate default. Cost: relax R27 and build a per-sink trust gate. |
-| Raw argv by default | Simplest and fully readable, but leaks argv/paths to any shared/cloud sink by default; breaks the public-substrate property. |
+| Option                                                                          | Consequence                                                                                                                                                               |
+| ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Keep generic `otel_scrape.command` name + argv hash (status quo)                | Stable, but the waterfall stays an unreadable wall of identical spans; no command is distinguishable without dereferencing a hash.                                        |
+| Name spans by program basename; keep everything else hashed (no privacy change) | Readable waterfall with zero R27 change and no trust mechanism; but no raw argv for deep debugging — hash + adapters only.                                                |
+| Name by basename + trust-gated raw argv/cwd (chosen)                            | Readable by default and fully debuggable when a sink is asserted private; preserves the safe-anywhere substrate default. Cost: relax R27 and build a per-sink trust gate. |
+| Raw argv by default                                                             | Simplest and fully readable, but leaks argv/paths to any shared/cloud sink by default; breaks the public-substrate property.                                              |
 
 ## Decision
 
@@ -62,7 +62,7 @@ instrumentation. Command spans are named by the wrapped program's basename;
 process spans by the observed descendant program basename; tool-phase spans by
 the adapter phase. `otel-scrape` ownership moves to `otel.scope.name =
 otel-scrape` and `span.origin = otel-scrape` (`otel-scrape-adapter` for phase
-spans). The generated telemetry registry owns the naming *scheme*, scope
+spans). The generated telemetry registry owns the naming _scheme_, scope
 identity, and attribute keys — not a fixed command span-name string (amends
 0004). Where `otel-scrape` wraps a command already inside another
 instrumentation's task span, the two cooperate: the task instrumentation owns

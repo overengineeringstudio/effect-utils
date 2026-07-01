@@ -15,7 +15,7 @@ export (a single endpoint today — no multi-OTLP mechanism) and the local summa
 same run. The two sinks do not share a trust level: an operator routinely trusts a
 private, access-controlled OTLP backend while the **summary is written into a
 source tree that may be public** (committed, or attached to a public PR/CI
-artifact). So "assert trust" must say *which* sink — a process-wide switch cannot
+artifact). So "assert trust" must say _which_ sink — a process-wide switch cannot
 express "trust the OTLP backend, not my repo-committed summary".
 
 Evidence ([experiment 0006](../.experiments/0006-trust-gate-granularity.md)): with
@@ -28,12 +28,12 @@ question.
 
 ## Options
 
-| Option | Consequence |
-| --- | --- |
-| Process-wide boolean (`OTEL_SCRAPE_TRUSTED_SINK=true` unlocks all sinks) | Simplest, but leaks raw into the summary (a public-repo footgun) and into any future second/shared OTLP endpoint. Cannot express mixed trust. Rejected as the general design. |
-| **Per-named-sink assertion (`--trusted-sink <sink>`) (chosen)** | The assertion names the sink it covers (`otlp`, `summary`); raw reaches only named sinks. The summary is hard-public-safe unless it is itself named. Extends to per-endpoint later without a model change. |
-| Per-endpoint allowlist | The right shape once multiple OTLP endpoints can coexist; unnecessary complexity today (single OTLP target). Deferred until multi-OTLP export exists. |
-| Signed/scoped capability assertion | Overkill for a local wrapper; no current threat it answers. |
+| Option                                                                   | Consequence                                                                                                                                                                                                |
+| ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Process-wide boolean (`OTEL_SCRAPE_TRUSTED_SINK=true` unlocks all sinks) | Simplest, but leaks raw into the summary (a public-repo footgun) and into any future second/shared OTLP endpoint. Cannot express mixed trust. Rejected as the general design.                              |
+| **Per-named-sink assertion (`--trusted-sink <sink>`) (chosen)**          | The assertion names the sink it covers (`otlp`, `summary`); raw reaches only named sinks. The summary is hard-public-safe unless it is itself named. Extends to per-endpoint later without a model change. |
+| Per-endpoint allowlist                                                   | The right shape once multiple OTLP endpoints can coexist; unnecessary complexity today (single OTLP target). Deferred until multi-OTLP export exists.                                                      |
+| Signed/scoped capability assertion                                       | Overkill for a local wrapper; no current threat it answers.                                                                                                                                                |
 
 ## Decision
 

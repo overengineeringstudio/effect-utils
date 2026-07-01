@@ -1,7 +1,7 @@
 # Delta 0001 — Telemetry registry lags the 0014 span-naming scheme
 
 **Divergence:** [.decisions/0014](./.decisions/0014-command-identity-and-span-naming.md)
-and the spec now define span names as a *scheme* (span named by the operation:
+and the spec now define span names as a _scheme_ (span named by the operation:
 program basename / adapter phase / descendant basename) with `otel-scrape`
 carried in `span.origin` + `otel.scope.name`, and rename
 `process.command_args_hash` to `command.argv_hash`. The generated
