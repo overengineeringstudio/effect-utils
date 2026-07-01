@@ -55,9 +55,10 @@ All notable changes to this project will be documented in this file.
   `runDevenvTasksBefore(...)` as the Genie composition API while shrinking the
   generated CI workflow well below GitHub's admission limit.
 
-- **genie / GitHub rulesets**: Require every non-advisory generated CI job in
-  branch protection and add a drift test so repo settings stay aligned with the
-  generated workflow.
+- **genie / GitHub rulesets**: Split generated branch protection from CI
+  execution topology, keeping measurement and live/external integration lanes
+  non-required while adding default-ref, cold-GC, bundle smoke, and cargo lanes
+  to required status checks.
 
 - **devenv test tasks**: Bound package test fanout while preserving
   package-specific prerequisites, so native-link setup is preserved without

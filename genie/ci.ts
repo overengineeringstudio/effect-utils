@@ -35,8 +35,8 @@ export type CoreCIJobName = (typeof CORE_CI_JOB_NAMES)[number]
 /** Required source-policy job key generated before the core product-job block. */
 export const DEFAULT_REF_POLICY_CI_JOB_NAME = 'default-ref-policy' as const
 
-/** Additional required CI job keys generated outside the core product-job block. */
-export const REQUIRED_EXTRA_CI_JOB_NAMES = [
+/** Additional CI job keys generated outside the core product-job block. */
+export const EXTRA_CI_JOB_NAMES = [
   'devenv-perf',
   'nix-closure-sizes',
   'source-shape',
@@ -55,7 +55,7 @@ export const advisoryCIJobNames = ['ci-measurements-report', 'notify-alignment']
 export const CI_JOB_NAMES = [
   DEFAULT_REF_POLICY_CI_JOB_NAME,
   ...CORE_CI_JOB_NAMES,
-  ...REQUIRED_EXTRA_CI_JOB_NAMES,
+  ...EXTRA_CI_JOB_NAMES,
   ...REQUIRED_DEPLOY_CI_JOB_NAMES,
   ...advisoryCIJobNames,
 ] as const
@@ -63,8 +63,30 @@ export const CI_JOB_NAMES = [
 /** Union of canonical CI job keys used across workflow generation and repo settings. */
 export type CIJobName = (typeof CI_JOB_NAMES)[number]
 
+/**
+ * Merge-blocking CI job keys for branch protection.
+ *
+ * Measurement and live/external integration lanes stay out of branch
+ * protection until they have explicit owner-approved budgets or reliability
+ * policy. They still run in CI and can fail visibly without becoming required
+ * status checks.
+ */
+export const REQUIRED_CI_JOB_NAMES = [
+  DEFAULT_REF_POLICY_CI_JOB_NAME,
+  'typecheck',
+  'lint',
+  'test',
+  'test-megarepo-cold-gc',
+  'nix-check',
+  'nix-fod-check',
+  'pnpm-builder-contract',
+  'pnpm-regression',
+  'bundle-smoke',
+  'cargo',
+  ...REQUIRED_DEPLOY_CI_JOB_NAMES,
+] as const satisfies readonly CIJobName[]
+
 const matrixCIJobNames = ['test', 'nix-check', 'nix-fod-check'] as const
-const advisoryCIJobNameSet = new Set<CIJobName>(advisoryCIJobNames)
 
 /** GitHub status-check context names emitted by a workflow job key. */
 export const ciJobCheckContexts = (jobName: CIJobName) => {
@@ -77,9 +99,6 @@ export const ciJobCheckContexts = (jobName: CIJobName) => {
 
 /**
  * Required status checks for branch protection.
- * Every generated non-advisory workflow job is required. Matrix jobs are
- * reported as "job-name (matrix-value)" by GitHub Actions.
+ * Matrix jobs are reported as "job-name (matrix-value)" by GitHub Actions.
  */
-export const requiredCIJobs = CI_JOB_NAMES.filter(
-  (jobName) => advisoryCIJobNameSet.has(jobName) === false,
-).flatMap(ciJobCheckContexts)
+export const requiredCIJobs = REQUIRED_CI_JOB_NAMES.flatMap(ciJobCheckContexts)
