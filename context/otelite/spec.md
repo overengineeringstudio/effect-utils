@@ -225,6 +225,15 @@ Effect helper for the Effect/TS test harness. The helper is built
 - Decodes the `run` summary and `inspect` rows with `Schema` — `Schema.decode`
   over the CLI's JSON contract — so consumers get typed `Summary` / `SpanRow`
   values, not `unknown`.
+- Writes inspection-oriented diagnostic bundles from an existing scoped capture
+  with `writeCaptureDiagnostics`. The bundle is derived only through
+  `capture.inspect` (the CLI remains the source of truth) and schema-encodes
+  versioned files for later CI/artifact analysis:
+  - `trace.json`: `otelite.trace-json/v1` with a trace summary plus flat
+    `otelite.span/v1` rows.
+  - `trace-summary.json`: the `otelite.trace-summary/v1` object alone.
+  - `metrics.json` / `metrics-summary.json` and `logs.json` /
+    `logs-summary.json` when explicitly requested.
 - Exposed as an `Effect.Service`; failures are tagged errors (spawn failure,
   non-zero child, decode mismatch) on the error channel, not defects.
 - The CLI's JSON output is the single source of truth; the wrapper never
