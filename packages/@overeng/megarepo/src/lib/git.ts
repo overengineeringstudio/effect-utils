@@ -209,6 +209,10 @@ const runGitCommand = ({ args, cwd }: { args: ReadonlyArray<string>; cwd?: strin
     )
   })()
 
+/** Run a bounded, observable git command and return trimmed stdout. */
+export const runCommand = ({ args, cwd }: { args: ReadonlyArray<string>; cwd?: string }) =>
+  runGitCommand(cwd === undefined ? { args } : { args, cwd })
+
 /**
  * Run a git command, folding stdout LINE BY LINE through `sink` at constant
  * memory — stdout is never materialized, so peak memory is independent of output

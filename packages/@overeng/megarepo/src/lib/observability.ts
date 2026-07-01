@@ -625,6 +625,129 @@ export const annotateSyncMemberResult = (status: string) =>
   )
 
 // =============================================================================
+// Store fixture span contracts
+// =============================================================================
+
+const storeFixtureCreateAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+    repoCount: Schema.NonNegativeInt.pipe(
+      OtelAttr.key({ key: 'megarepo.test.store_fixture.repo_count' }),
+    ),
+  }),
+)
+
+const storeFixtureCreateOperation = OtelOperation.define({
+  name: 'megarepo/test/store-fixture/create',
+  attributes: storeFixtureCreateAttrs,
+  label: ({ label }) => label,
+})
+
+/** Wrap creation of a hermetic store fixture. */
+export const withStoreFixtureCreateSpan = ({ repoCount }: { readonly repoCount: number }) =>
+  trustedWith({
+    operation: storeFixtureCreateOperation,
+    attributes: { label: 'store-fixture', repoCount },
+  })
+
+const storeFixtureRepoAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+    storeRepo: Schema.String.pipe(OtelAttr.key({ key: 'megarepo.test.store_fixture.repo' })),
+    branchCount: Schema.NonNegativeInt.pipe(
+      OtelAttr.key({ key: 'megarepo.test.store_fixture.branch_count' }),
+    ),
+    tagCount: Schema.NonNegativeInt.pipe(
+      OtelAttr.key({ key: 'megarepo.test.store_fixture.tag_count' }),
+    ),
+    commitCount: Schema.NonNegativeInt.pipe(
+      OtelAttr.key({ key: 'megarepo.test.store_fixture.commit_count' }),
+    ),
+    withRemote: Schema.Boolean.pipe(
+      OtelAttr.key({ key: 'megarepo.test.store_fixture.with_remote' }),
+    ),
+  }),
+)
+
+const storeFixtureRepoOperation = OtelOperation.define({
+  name: 'megarepo/test/store-fixture/repo',
+  attributes: storeFixtureRepoAttrs,
+  label: ({ label }) => label,
+})
+
+/** Wrap one repository's setup inside a store fixture. */
+export const withStoreFixtureRepoSpan = ({
+  repo,
+  branchCount,
+  tagCount,
+  commitCount,
+  withRemote,
+}: {
+  readonly repo: string
+  readonly branchCount: number
+  readonly tagCount: number
+  readonly commitCount: number
+  readonly withRemote: boolean
+}) =>
+  trustedWith({
+    operation: storeFixtureRepoOperation,
+    attributes: {
+      label: basename(repo),
+      storeRepo: repo,
+      branchCount,
+      tagCount,
+      commitCount,
+      withRemote,
+    },
+  })
+
+/** Low-cardinality setup phases for store fixture trace diagnostics. */
+export type StoreFixturePhase =
+  | 'init-bare'
+  | 'init-upstream'
+  | 'init-source'
+  | 'push-refs'
+  | 'fetch-store-bare'
+  | 'create-worktrees'
+  | 'create-commit-worktrees'
+
+const storeFixturePhaseAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+    phase: Schema.Literal(
+      'init-bare',
+      'init-upstream',
+      'init-source',
+      'push-refs',
+      'fetch-store-bare',
+      'create-worktrees',
+      'create-commit-worktrees',
+    ).pipe(OtelAttr.key({ key: 'megarepo.test.store_fixture.phase' })),
+    storeRepo: Schema.String.pipe(OtelAttr.key({ key: 'megarepo.test.store_fixture.repo' })),
+  }),
+)
+
+const storeFixturePhaseOperation = (phase: StoreFixturePhase) =>
+  OtelOperation.define({
+    name: `megarepo/test/store-fixture/${phase}`,
+    attributes: storeFixturePhaseAttrs,
+    label: ({ label }) => label,
+  })
+
+/** Wrap a bounded phase of one store-fixture repository setup. */
+export const withStoreFixturePhaseSpan = ({
+  phase,
+  repo,
+}: {
+  readonly phase: StoreFixturePhase
+  readonly repo: string
+}) =>
+  trustedWith({
+    operation: storeFixturePhaseOperation(phase),
+    attributes: { label: phase, phase, storeRepo: repo },
+  })
+
+// =============================================================================
 // Store GC lib-site span contracts
 //
 // These mirror the inline `Effect.withSpan` sites previously embedded in the gc

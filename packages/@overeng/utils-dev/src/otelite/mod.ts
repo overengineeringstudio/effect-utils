@@ -13,6 +13,14 @@
  */
 export { Otelite } from './Otelite.ts'
 export type { CaptureHandle, CaptureOptions, RunOptions, Signal } from './Otelite.ts'
+export { LogsJson, MetricsJson, TraceJson, writeCaptureDiagnostics } from './diagnostics.ts'
+export type {
+  DiagnosticFiles,
+  LogsJson as LogsJsonType,
+  MetricsJson as MetricsJsonType,
+  TraceJson as TraceJsonType,
+  WriteCaptureDiagnosticsOptions,
+} from './diagnostics.ts'
 export {
   OteliteSpawnError,
   OteliteChildFailed,

@@ -165,6 +165,42 @@ const EXPECTED_PHASES = [
 
 describe('mr store gc — OTEL instrumentation contract', () => {
   it.scopedLive(
+    'exports observable store fixture setup spans and bounded git command spans',
+    () =>
+      Effect.gen(function* () {
+        const harness = yield* OteliteTestHarness
+        const capture = yield* harness.capture({
+          serviceName: SERVICE,
+          rootSpanName: 'megarepo.fixture-otel.root',
+          exportInterval: 50,
+        })
+
+        const trace = yield* capture.runInProcessTrace(
+          createStoreFixture([{ ...REPO, branches: ['feature/fixture'], withRemote: true }]),
+        )
+
+        trace.expectSome({
+          name: 'megarepo/test/store-fixture/create',
+          attrs: { 'megarepo.test.store_fixture.repo_count': '1' },
+        })
+        trace.expectSome({
+          name: 'megarepo/test/store-fixture/repo',
+          attrs: {
+            'megarepo.test.store_fixture.repo': REPO_KEY,
+            'megarepo.test.store_fixture.with_remote': 'true',
+          },
+        })
+        trace.expectSome({ name: 'megarepo/test/store-fixture/init-source' })
+        trace.expectSome({ name: 'megarepo/test/store-fixture/fetch-store-bare' })
+        trace.expectSome({
+          name: 'git/cmd',
+          attrs: { 'git.subcommand': 'init', 'git.timeout_ms': attr.present() },
+        })
+      }).pipe(Effect.provide(Layer.mergeAll(OteliteTestHarness.Default, NodeContext.layer))),
+    30_000,
+  )
+
+  it.scopedLive(
     'exports the gc phase spans, a git/cmd span with git.output.bytes, and the RSS gauge',
     () =>
       Effect.gen(function* () {

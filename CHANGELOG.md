@@ -77,6 +77,11 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **@overeng/utils-dev / @overeng/megarepo**: Add reusable `otelite`
+  trace/metrics/log diagnostic JSON writers and make store fixture setup emit
+  typed OTEL spans through the production bounded git runner, so CI fixture
+  stalls can produce inspectable trace evidence.
+
 - **@overeng/genie**: Document the intended package export type-proof
   architecture: strict proofs should use an explicit compiler executable
   boundary (`tsgo` by default, custom only by explicit override) instead of
