@@ -15,6 +15,7 @@ let
   pnpm = import ../../../../nix/pnpm.nix { inherit pkgs; };
   mkPnpmCli = import ../../../../nix/workspace-tools/lib/mk-pnpm-cli.nix { inherit pkgs pnpm; };
   opentuiCoreNative = import ../../../../nix/opentui-core-native.nix { inherit pkgs; };
+  mkSharedHash = hash: { inherit hash; };
   base = mkPnpmCli {
     name = "megarepo";
     entry = "packages/@overeng/megarepo/bin/mr.ts";
@@ -23,9 +24,7 @@ let
     workspaceRoot = src;
     # Managed by the repo FOD refresh workflow — do not edit manually.
     depsBuilds = {
-      "." = {
-        hash = "sha256-Ow5RLu/r4sZt9nb/Py/GVznwB5lYYbCUNjAWqRJIDyk=";
-      };
+      "." = mkSharedHash "sha256-vIkg1O2i3HBRZzlKfdk03+yFRTLpXxtQV6jXYFM9YOQ=";
     };
     nativeNodePackages = opentuiCoreNative.packages;
     smokeTestArgs = [ "--help" ];
