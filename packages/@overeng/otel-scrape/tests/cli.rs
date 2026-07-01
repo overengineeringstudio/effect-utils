@@ -79,11 +79,19 @@ fn preserves_passthrough_and_writes_summary() {
     );
     assert_eq!(summary["artifacts"]["manifest"], serde_json::Value::Null);
     assert_eq!(summary["artifacts"]["errors"].as_array().unwrap().len(), 0);
+    // Public-safe program identity (decision 0014, R01): basename, always present.
+    assert_eq!(summary["command"]["program"], "sh");
     assert!(summary["command"]["argv_hash"]
         .as_str()
         .unwrap()
         .starts_with("sha256:"));
+    assert!(summary["command"]["cwd_hash"]
+        .as_str()
+        .unwrap()
+        .starts_with("sha256:"));
+    // Raw argv/cwd remain trust-gated (M2), never present in M1.
     assert!(summary["command"].get("argv").is_none());
+    assert!(summary["command"].get("cwd").is_none());
     assert_eq!(summary["processes"]["backend"], "direct-child");
     assert_eq!(summary["processes"]["fidelity"], "degraded");
     assert_eq!(summary["processes"]["reason"], "direct-child-only");
@@ -952,53 +960,62 @@ fn exports_command_span_to_otlp_http_json() {
         Some("otel-scrape-test".to_owned())
     );
     let span = &resource_span["scopeSpans"][0]["spans"][0];
-    assert_eq!(span["name"], "otel_scrape.command");
+    // Span naming scheme (decision 0014): the command span is named by the
+    // wrapped program's basename (`sh`), never a fixed instrumentation constant.
+    // Ownership is carried by span.origin=otel-scrape + otel.scope.name=otel-scrape.
+    assert_eq!(span["name"], "sh");
     assert_eq!(span["traceId"], "11111111111111111111111111111111");
     assert_eq!(span["parentSpanId"], "2222222222222222");
     assert_eq!(span["spanId"], summary["trace"]["span_id"]);
     assert_eq!(span["status"]["code"], 1);
     let attrs = span["attributes"].as_array().unwrap();
-    assert!(attr_value(attrs, "process.command_args_hash")
+    assert_eq!(
+        attr_value(attrs, "otel.scope.name"),
+        Some("otel-scrape".to_owned())
+    );
+    assert_eq!(
+        attr_value(attrs, "span.origin"),
+        Some("otel-scrape".to_owned())
+    );
+    assert_eq!(attr_value(attrs, "command.program"), Some("sh".to_owned()));
+    assert!(attr_value(attrs, "command.argv_hash")
         .unwrap()
         .starts_with("sha256:"));
+    assert_eq!(
+        attr_value(attrs, "command.argv_hash"),
+        summary["command"]["argv_hash"]
+            .as_str()
+            .map(ToOwned::to_owned)
+    );
+    assert!(attr_value(attrs, "command.cwd_hash")
+        .unwrap()
+        .starts_with("sha256:"));
+    // The raw command.argv / command.cwd trust-gated fields are M2, never M1.
+    assert_eq!(attr_value(attrs, "command.argv"), None);
+    assert_eq!(attr_value(attrs, "command.cwd"), None);
     assert_eq!(attr_value(attrs, "process.exit_code"), Some("0".to_owned()));
     assert_eq!(
         attr_value(attrs, "otel_scrape.adapter.name"),
         Some("none".to_owned())
     );
+    // Process merge (decision 0014): in the default degraded direct-child
+    // backend the process observation is folded into the command span
+    // (fidelity=merged) — no separate process span is emitted.
     let spans = resource_span["scopeSpans"][0]["spans"].as_array().unwrap();
-    assert_eq!(spans.len(), 2);
-    let process_span = spans
+    assert_eq!(spans.len(), 1);
+    assert!(spans
         .iter()
-        .find(|span| span["name"] == "otel_scrape.process")
-        .unwrap();
-    assert_eq!(process_span["traceId"], span["traceId"]);
-    assert_eq!(process_span["parentSpanId"], span["spanId"]);
+        .all(|span| span["name"] != "otel_scrape.process"));
     assert_eq!(
-        process_span["spanId"],
-        summary["processes"]["observed"][0]["spanId"]
-    );
-    let process_attrs = process_span["attributes"].as_array().unwrap();
-    assert_eq!(
-        attr_value(process_attrs, "process.command_args_hash"),
-        summary["command"]["argv_hash"]
-            .as_str()
-            .map(ToOwned::to_owned)
-    );
-    assert_eq!(
-        attr_value(process_attrs, "process.exit_code"),
-        Some("0".to_owned())
-    );
-    assert_eq!(
-        attr_value(process_attrs, "otel_scrape.process.observation.backend"),
+        attr_value(attrs, "otel_scrape.process.observation.backend"),
         Some("direct-child".to_owned())
     );
     assert_eq!(
-        attr_value(process_attrs, "otel_scrape.process.observation.fidelity"),
-        Some("degraded".to_owned())
+        attr_value(attrs, "otel_scrape.process.observation.fidelity"),
+        Some("merged".to_owned())
     );
     assert_eq!(
-        attr_value(process_attrs, "otel_scrape.process.observation.relation"),
+        attr_value(attrs, "otel_scrape.process.observation.relation"),
         Some("direct-child".to_owned())
     );
 }

@@ -4,13 +4,13 @@
   "spans": [
     {
       "id": "command",
-      "name": "otel_scrape.command",
-      "description": "One otel-scrape wrapper invocation."
+      "naming": "program-basename",
+      "description": "One otel-scrape wrapper invocation. Named by the wrapped program's basename (decision 0014), never a fixed instrumentation constant. Ownership is carried by span.origin=otel-scrape and otel.scope.name=otel-scrape."
     },
     {
       "id": "process",
-      "name": "otel_scrape.process",
-      "description": "One observed child or descendant process."
+      "naming": "descendant-basename",
+      "description": "One observed descendant process. Named by the observed descendant program's basename (decision 0014). Emitted as a distinct span only under an exact backend that proves a real descendant; the default degraded direct-child observation is merged into the command span (fidelity=merged)."
     }
   ],
   "metrics": [
@@ -22,18 +22,46 @@
   ],
   "attributes": [
     {
+      "id": "scope_name",
+      "key": "otel.scope.name",
+      "valueType": "string",
+      "cardinality": "low",
+      "description": "Instrumentation scope name; otel-scrape for wrapper-owned spans."
+    },
+    {
+      "id": "span_origin",
+      "key": "span.origin",
+      "valueType": "string",
+      "cardinality": "low",
+      "description": "Origin of the span: otel-scrape for wrapper-owned spans, otel-scrape-adapter for adapter-derived phase spans."
+    },
+    {
+      "id": "command_program",
+      "key": "command.program",
+      "valueType": "string",
+      "cardinality": "bounded",
+      "description": "Wrapped executable basename; a public-safe identity, always present. Never a full path or arguments."
+    },
+    {
+      "id": "command_argv_hash",
+      "key": "command.argv_hash",
+      "valueType": "string",
+      "cardinality": "bounded",
+      "description": "Stable hash of command argv, never raw arguments. Always present; the correlation/dedup key."
+    },
+    {
+      "id": "command_cwd_hash",
+      "key": "command.cwd_hash",
+      "valueType": "string",
+      "cardinality": "bounded",
+      "description": "Stable hash of the current working directory identity, never a raw path. Always present."
+    },
+    {
       "id": "adapter_name",
       "key": "otel_scrape.adapter.name",
       "valueType": "string",
       "cardinality": "low",
       "description": "Selected adapter name."
-    },
-    {
-      "id": "process_command_args_hash",
-      "key": "process.command_args_hash",
-      "valueType": "string",
-      "cardinality": "bounded",
-      "description": "Stable hash of command argv, never raw arguments."
     },
     {
       "id": "process_exit_code",
@@ -54,7 +82,7 @@
       "key": "otel_scrape.process.observation.fidelity",
       "valueType": "string",
       "cardinality": "low",
-      "description": "Process observation fidelity, such as exact or degraded."
+      "description": "Process observation fidelity: exact, merged (degraded direct-child folded into the command span), or a degraded evidence value."
     },
     {
       "id": "process_observation_relation",

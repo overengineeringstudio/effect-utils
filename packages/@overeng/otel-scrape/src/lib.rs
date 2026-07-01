@@ -66,8 +66,18 @@ const PTRACE_EXPERIMENTAL_BACKEND: &str = "ptrace-experimental";
 const HELPER_STREAM_BACKEND: &str = "helper-stream";
 const PROCESS_FIDELITY_EXACT: &str = "exact";
 const PROCESS_FIDELITY_DEGRADED: &str = "degraded";
+// The degraded direct-child observation is folded into the command span rather
+// than emitted as a distinct process span (decision 0014). The command span
+// records this via otel_scrape.process.observation.fidelity = "merged".
+const PROCESS_FIDELITY_MERGED: &str = "merged";
 const PROCESS_RELATION_DIRECT_CHILD: &str = "direct-child";
 const PROCESS_RELATION_DESCENDANT: &str = "descendant";
+// otel-scrape ownership is carried in scope + attributes, never in the span
+// name (decision 0014). The span name is the operation (program basename).
+const OTEL_SCRAPE_SCOPE_NAME: &str = "otel-scrape";
+const SPAN_ORIGIN_OTEL_SCRAPE: &str = "otel-scrape";
+// Fallback program identity when the wrapped argv[0] has no usable basename.
+const UNKNOWN_PROGRAM_BASENAME: &str = "unknown";
 const PROCESS_OBSERVATION_DEGRADED_REASONS: &[ProcessObservationDegradedReason] = &[
     ProcessObservationDegradedReason::DirectChildOnly,
     ProcessObservationDegradedReason::UnsupportedPlatform,
@@ -183,6 +193,8 @@ pub struct Summary {
 
 #[derive(Debug, Serialize)]
 struct CommandSummary {
+    /// Public-safe wrapped executable basename (decision 0014, R01); always present.
+    program: String,
     argv_hash: String,
     cwd_hash: String,
 }
@@ -434,6 +446,10 @@ impl ProcessObservationDegradedReason {
 #[derive(Debug, Clone)]
 struct ObservedProcess {
     relation: ObservedProcessRelation,
+    /// Public-safe descendant program basename (decision 0014). Used to name a
+    /// distinct process span under an exact backend. `unknown` when the backend
+    /// cannot prove a basename (e.g. hash-only helper-stream events).
+    program: String,
     span_id: String,
     parent_span_id: Option<String>,
     pid_hash: String,
@@ -929,6 +945,7 @@ fn run_child_with_ptrace(config: &RunConfig, child_traceparent: &str) -> io::Res
             pid: root_pid,
             parent_pid: Some(std::process::id()),
             relation: ObservedProcessRelation::DirectChild,
+            program: program_basename(config.argv.first().map(String::as_str)),
             span_id: root_span_id,
             parent_span_id: None,
             argv_hash: stable_hash_lines(&config.argv),
@@ -994,6 +1011,7 @@ fn run_child_with_ptrace(config: &RunConfig, child_traceparent: &str) -> io::Res
                             pid: new_pid,
                             parent_pid: Some(pid as u32),
                             relation: ObservedProcessRelation::Descendant,
+                            program: process_program_basename(new_pid),
                             span_id: stable_process_span_id(new_pid, started_wall),
                             parent_span_id,
                             argv_hash: process_cmdline_hash(new_pid)
@@ -1017,6 +1035,12 @@ fn run_child_with_ptrace(config: &RunConfig, child_traceparent: &str) -> io::Res
                 if let Some(trace) = traces.get_mut(&pid) {
                     trace.argv_hash = process_cmdline_hash(pid)
                         .unwrap_or_else(|| stable_hash(pid.to_string().as_bytes()));
+                    // After exec the descendant's real identity is known; refresh
+                    // the public-safe basename so its span is named correctly.
+                    let program = process_program_basename(pid);
+                    if program != UNKNOWN_PROGRAM_BASENAME {
+                        trace.program = program;
+                    }
                 }
                 ptrace_continue(pid, 0)?;
             }
@@ -1056,6 +1080,7 @@ struct PtraceProcessTrace {
     pid: libc::pid_t,
     parent_pid: Option<u32>,
     relation: ObservedProcessRelation,
+    program: String,
     span_id: String,
     parent_span_id: Option<String>,
     argv_hash: String,
@@ -1145,6 +1170,30 @@ fn process_cmdline_hash(pid: libc::pid_t) -> Option<String> {
     }
 }
 
+/// Public-safe descendant program basename from `/proc/{pid}/comm` (decision
+/// 0014). `comm` is the executable name, not a path or arguments. Falls back to
+/// the basename of argv[0] and finally `unknown`.
+#[cfg(target_os = "linux")]
+fn process_program_basename(pid: libc::pid_t) -> String {
+    if let Ok(comm) = fs::read_to_string(format!("/proc/{pid}/comm")) {
+        let comm = comm.trim();
+        if !comm.is_empty() {
+            return comm.to_owned();
+        }
+    }
+    if let Ok(bytes) = fs::read(format!("/proc/{pid}/cmdline")) {
+        if let Some(argv0) = bytes.split(|byte| *byte == 0).next() {
+            if let Ok(argv0) = std::str::from_utf8(argv0) {
+                let basename = program_basename(Some(argv0));
+                if basename != UNKNOWN_PROGRAM_BASENAME {
+                    return basename;
+                }
+            }
+        }
+    }
+    UNKNOWN_PROGRAM_BASENAME.to_owned()
+}
+
 #[cfg(target_os = "linux")]
 fn ptrace_process_observation(
     traces: std::collections::HashMap<libc::pid_t, PtraceProcessTrace>,
@@ -1162,6 +1211,7 @@ fn ptrace_process_observation(
             .into_iter()
             .map(|trace| ObservedProcess {
                 relation: trace.relation,
+                program: trace.program,
                 span_id: trace.span_id,
                 parent_span_id: trace.parent_span_id,
                 pid_hash: stable_hash(trace.pid.to_string().as_bytes()),
@@ -1201,6 +1251,7 @@ fn direct_child_process_observation(
         degraded_reason: Some(ProcessObservationDegradedReason::DirectChildOnly),
         observed: vec![ObservedProcess {
             relation: ObservedProcessRelation::DirectChild,
+            program: program_basename(input.config.argv.first().map(String::as_str)),
             span_id: input.process_span_id,
             parent_span_id: None,
             pid_hash: stable_hash(input.process_id.to_string().as_bytes()),
@@ -1554,6 +1605,10 @@ fn helper_events_to_process_observation(
         let parent_span_id = span_ids.get(&process.parent_pid_hash).cloned();
         observed.push(ObservedProcess {
             relation,
+            // The helper-stream Exec event carries only argvHash, not a basename,
+            // so no public-safe program identity is available (M1). A protocol
+            // extension to carry the basename is future work.
+            program: UNKNOWN_PROGRAM_BASENAME.to_owned(),
             span_id: span_ids
                 .get(&pid_hash)
                 .cloned()
@@ -1634,6 +1689,22 @@ fn prepare_node_cpuprofile_dir(config: &RunConfig) -> io::Result<Option<PathBuf>
     Ok(Some(root))
 }
 
+/// Public-safe program identity: the basename of the wrapped executable
+/// (`tsc`, `vitest`, `cargo`, `sh`). Never a full path or arguments
+/// (decision 0014, R01). Used both as the command span name and as the
+/// `command.program` attribute.
+fn program_basename(argv0: Option<&str>) -> String {
+    argv0
+        .and_then(|argv0| {
+            Path::new(argv0)
+                .file_name()
+                .and_then(|name| name.to_str())
+                .map(ToOwned::to_owned)
+        })
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| UNKNOWN_PROGRAM_BASENAME.to_owned())
+}
+
 fn is_node_command(argv0: Option<&str>) -> bool {
     let Some(argv0) = argv0 else {
         return false;
@@ -1696,6 +1767,7 @@ fn summary_for_status(
         schema: telemetry_registry::schemas::SUMMARY_V1,
         version: VERSION,
         command: CommandSummary {
+            program: program_basename(config.argv.first().map(String::as_str)),
             argv_hash: stable_hash_lines(&config.argv),
             cwd_hash: stable_hash(cwd.to_string_lossy().as_bytes()),
         },
@@ -1816,27 +1888,77 @@ fn export_command_span(
         child.stdout.as_deref().unwrap_or_default(),
         artifacts,
     );
+    let cwd = std::env::current_dir()?;
+    let observation = &child.process_observation;
+    // A distinct process span is emitted only under an exact backend that
+    // proves a real descendant. The default degraded direct-child observation
+    // is folded into the command span (decision 0014, spec Process-Tree
+    // Fidelity), so the command span carries the observation attributes with
+    // fidelity = "merged" and no separate process span is emitted.
+    let merge_process_into_command =
+        observation.fidelity != ProcessObservationFidelity::Exact;
+    // The span name is the operation: the wrapped program's basename
+    // (decision 0014), never a fixed instrumentation constant.
+    let program = program_basename(config.argv.first().map(String::as_str));
+    let mut attributes = vec![
+        json!({
+            "key": telemetry_registry::attributes::SCOPE_NAME,
+            "value": { "stringValue": OTEL_SCRAPE_SCOPE_NAME },
+        }),
+        json!({
+            "key": telemetry_registry::attributes::SPAN_ORIGIN,
+            "value": { "stringValue": SPAN_ORIGIN_OTEL_SCRAPE },
+        }),
+        json!({
+            "key": telemetry_registry::attributes::COMMAND_PROGRAM,
+            "value": { "stringValue": program },
+        }),
+        json!({
+            "key": telemetry_registry::attributes::COMMAND_ARGV_HASH,
+            "value": { "stringValue": stable_hash_lines(&config.argv) },
+        }),
+        json!({
+            "key": telemetry_registry::attributes::COMMAND_CWD_HASH,
+            "value": { "stringValue": stable_hash(cwd.to_string_lossy().as_bytes()) },
+        }),
+        json!({
+            "key": telemetry_registry::attributes::PROCESS_EXIT_CODE,
+            "value": { "intValue": exit_code(child.status).to_string() },
+        }),
+        json!({
+            "key": telemetry_registry::attributes::ADAPTER_NAME,
+            "value": { "stringValue": config.adapter },
+        }),
+    ];
+    if merge_process_into_command {
+        // Fold the degraded direct-child observation into the command span:
+        // preserve backend + relation evidence and mark the fidelity "merged".
+        let relation = observation
+            .observed
+            .first()
+            .map(|process| process.relation.as_str())
+            .unwrap_or(PROCESS_RELATION_DIRECT_CHILD);
+        attributes.push(json!({
+            "key": telemetry_registry::attributes::PROCESS_OBSERVATION_BACKEND,
+            "value": { "stringValue": observation.backend.as_str() },
+        }));
+        attributes.push(json!({
+            "key": telemetry_registry::attributes::PROCESS_OBSERVATION_FIDELITY,
+            "value": { "stringValue": PROCESS_FIDELITY_MERGED },
+        }));
+        attributes.push(json!({
+            "key": telemetry_registry::attributes::PROCESS_OBSERVATION_RELATION,
+            "value": { "stringValue": relation },
+        }));
+    }
     let mut command_span = json!({
         "traceId": trace.trace_id,
         "spanId": trace.span_id,
-        "name": telemetry_registry::spans::COMMAND,
+        "name": program,
         "kind": 1,
         "startTimeUnixNano": start_unix_nano.to_string(),
         "endTimeUnixNano": end_unix_nano.to_string(),
-        "attributes": [
-            {
-                "key": telemetry_registry::attributes::PROCESS_COMMAND_ARGS_HASH,
-                "value": { "stringValue": stable_hash_lines(&config.argv) },
-            },
-            {
-                "key": telemetry_registry::attributes::PROCESS_EXIT_CODE,
-                "value": { "intValue": exit_code(child.status).to_string() },
-            },
-            {
-                "key": telemetry_registry::attributes::ADAPTER_NAME,
-                "value": { "stringValue": config.adapter },
-            },
-        ],
+        "attributes": attributes,
         "status": { "code": if child.status.success() { 1 } else { 2 } },
     });
     if let Some(parent_span_id) = trace.parent_span_id.as_ref() {
@@ -1847,7 +1969,9 @@ fn export_command_span(
         command_span["events"] = json!(events);
     }
     let mut spans = vec![command_span];
-    spans.extend(process_otlp_spans(trace, &child.process_observation));
+    if !merge_process_into_command {
+        spans.extend(process_otlp_spans(trace, observation));
+    }
     let resource_attributes: Vec<serde_json::Value> = config
         .resource_attributes
         .iter()
@@ -1859,7 +1983,7 @@ fn export_command_span(
                 "attributes": resource_attributes,
             },
             "scopeSpans": [{
-                "scope": { "name": "otel-scrape" },
+                "scope": { "name": OTEL_SCRAPE_SCOPE_NAME },
                 "spans": spans,
             }],
         }],
@@ -1887,13 +2011,26 @@ fn process_otlp_spans(
                 "traceId": trace.trace_id,
                 "spanId": process.span_id,
                 "parentSpanId": parent_span_id,
-                "name": telemetry_registry::spans::PROCESS,
+                // Named by the observed descendant program basename (decision 0014).
+                "name": process.program,
                 "kind": 1,
                 "startTimeUnixNano": process_start_unix_nano.to_string(),
                 "endTimeUnixNano": process_end_unix_nano.to_string(),
                 "attributes": [
                     {
-                        "key": telemetry_registry::attributes::PROCESS_COMMAND_ARGS_HASH,
+                        "key": telemetry_registry::attributes::SCOPE_NAME,
+                        "value": { "stringValue": OTEL_SCRAPE_SCOPE_NAME },
+                    },
+                    {
+                        "key": telemetry_registry::attributes::SPAN_ORIGIN,
+                        "value": { "stringValue": SPAN_ORIGIN_OTEL_SCRAPE },
+                    },
+                    {
+                        "key": telemetry_registry::attributes::COMMAND_PROGRAM,
+                        "value": { "stringValue": process.program },
+                    },
+                    {
+                        "key": telemetry_registry::attributes::COMMAND_ARGV_HASH,
                         "value": { "stringValue": process.argv_hash },
                     },
                     {
@@ -3294,14 +3431,27 @@ mod tests {
             telemetry_registry::schemas::SUMMARY_V1,
             "otel-scrape.summary/v1"
         );
-        assert_eq!(telemetry_registry::spans::COMMAND, "otel_scrape.command");
+        // The registry owns the naming *scheme*, not a fixed span-name string
+        // (decision 0014): the command span is named by the program basename.
+        assert_eq!(
+            telemetry_registry::span_naming::COMMAND,
+            "program-basename"
+        );
+        assert_eq!(
+            telemetry_registry::span_naming::PROCESS,
+            "descendant-basename"
+        );
         assert_eq!(
             telemetry_registry::metrics::OXLINT_DIAGNOSTICS,
             "oxlint.diagnostics"
         );
         assert_eq!(
-            telemetry_registry::attributes::PROCESS_COMMAND_ARGS_HASH,
-            "process.command_args_hash"
+            telemetry_registry::attributes::COMMAND_ARGV_HASH,
+            "command.argv_hash"
+        );
+        assert_eq!(
+            telemetry_registry::attributes::COMMAND_PROGRAM,
+            "command.program"
         );
     }
 }

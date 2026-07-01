@@ -12,6 +12,15 @@ type NamedRegistryItem = RegistryItem & {
   readonly name: string
 }
 
+/**
+ * A span is named by the operation it represents (decision 0014), never by a
+ * fixed instrumentation constant. The registry owns the naming *scheme* per
+ * span id, not a fixed span-name string.
+ */
+type SpanRegistryItem = RegistryItem & {
+  readonly naming: 'program-basename' | 'descendant-basename' | 'adapter-phase'
+}
+
 type AttributeRegistryItem = RegistryItem & {
   readonly key: string
   readonly valueType: 'string' | 'int' | 'double' | 'boolean'
@@ -29,7 +38,7 @@ type SchemaRegistryItem = RegistryItem & {
 type OtelScrapeTelemetryRegistry = {
   readonly schemaVersion: 1
   readonly namespace: 'otel_scrape'
-  readonly spans: readonly NamedRegistryItem[]
+  readonly spans: readonly SpanRegistryItem[]
   readonly metrics: readonly NamedRegistryItem[]
   readonly attributes: readonly AttributeRegistryItem[]
   readonly profileFields: readonly ProfileFieldRegistryItem[]
@@ -39,7 +48,10 @@ type OtelScrapeTelemetryRegistry = {
 const sourcePath = 'context/otel-scrape/telemetry-registry.json'
 const repo = defineRepoContext({ name: 'effect-utils', importMetaUrl: import.meta.url })
 
-const registry = (): { readonly data: OtelScrapeTelemetryRegistry; readonly fingerprint: string } => {
+const registry = (): {
+  readonly data: OtelScrapeTelemetryRegistry
+  readonly fingerprint: string
+} => {
   const source = repo.readText(sourcePath)
   const data = JSON.parse(source) as OtelScrapeTelemetryRegistry
   validateRegistry(data)
@@ -51,18 +63,16 @@ const registry = (): { readonly data: OtelScrapeTelemetryRegistry; readonly fing
 }
 
 /** Generates the TypeScript projection for otel-scrape telemetry constants. */
-export const otelScrapeRegistryTs = (): GenieOutput<OtelScrapeTelemetryRegistry> =>
-  ({
-    data: registry().data,
-    stringify: (ctx) => renderTs({ ...registry(), ctx }),
-  })
+export const otelScrapeRegistryTs = (): GenieOutput<OtelScrapeTelemetryRegistry> => ({
+  data: registry().data,
+  stringify: (ctx) => renderTs({ ...registry(), ctx }),
+})
 
 /** Generates the Rust projection for otel-scrape telemetry constants. */
-export const otelScrapeRegistryRust = (): GenieOutput<OtelScrapeTelemetryRegistry> =>
-  ({
-    data: registry().data,
-    stringify: (ctx) => renderRust({ ...registry(), ctx }),
-  })
+export const otelScrapeRegistryRust = (): GenieOutput<OtelScrapeTelemetryRegistry> => ({
+  data: registry().data,
+  stringify: (ctx) => renderRust({ ...registry(), ctx }),
+})
 
 const renderTs = ({
   data,
@@ -76,7 +86,11 @@ const renderTs = ({
 
 export const otelScrapeTelemetryRegistry = ${JSON.stringify(data, null, 2)} as const
 
-export const otelScrapeSpanNames = ${mapObject(data.spans, 'name')} as const
+// Spans are named by the operation they represent (decision 0014), not by a
+// fixed instrumentation constant. The registry owns the naming *scheme* per
+// span id; the emitted name is the program / descendant / adapter-phase
+// basename resolved at runtime.
+export const otelScrapeSpanNaming = ${mapObject(data.spans, 'naming')} as const
 
 export const otelScrapeMetricNames = ${mapObject(data.metrics, 'name')} as const
 
@@ -86,8 +100,8 @@ export const otelScrapeProfileFields = ${mapObject(data.profileFields, 'field')}
 
 export const otelScrapeSchemas = ${mapObject(data.schemas, 'value')} as const
 
-export type OtelScrapeSpanName =
-  (typeof otelScrapeSpanNames)[keyof typeof otelScrapeSpanNames]
+export type OtelScrapeSpanNaming =
+  (typeof otelScrapeSpanNaming)[keyof typeof otelScrapeSpanNaming]
 
 export type OtelScrapeMetricName =
   (typeof otelScrapeMetricNames)[keyof typeof otelScrapeMetricNames]
@@ -111,7 +125,7 @@ pub const REGISTRY_NAMESPACE: &str = ${rustString(data.namespace)};
 pub const REGISTRY_INPUT_FINGERPRINT: &str =
     ${rustString(fingerprint)};
 
-${rustModule({ name: 'spans', items: data.spans, field: 'name' })}
+${rustModule({ name: 'span_naming', items: data.spans, field: 'naming' })}
 
 ${rustModule({ name: 'metrics', items: data.metrics, field: 'name' })}
 
@@ -168,15 +182,38 @@ const validateRegistry = (data: OtelScrapeTelemetryRegistry): void => {
   if (data.schemaVersion !== 1) throw new Error('otel-scrape registry schemaVersion must be 1')
   if (data.namespace !== 'otel_scrape') throw new Error('otel-scrape registry namespace mismatch')
 
-  assertUnique('span ids', data.spans.map((item) => item.id))
-  assertUnique('span names', data.spans.map((item) => item.name))
-  assertUnique('metric ids', data.metrics.map((item) => item.id))
-  assertUnique('metric names', data.metrics.map((item) => item.name))
-  assertUnique('attribute ids', data.attributes.map((item) => item.id))
-  assertUnique('attribute keys', data.attributes.map((item) => item.key))
-  assertUnique('profile field ids', data.profileFields.map((item) => item.id))
-  assertUnique('profile fields', data.profileFields.map((item) => item.field))
-  assertUnique('schema ids', data.schemas.map((item) => item.id))
+  assertUnique(
+    'span ids',
+    data.spans.map((item) => item.id),
+  )
+  assertUnique(
+    'metric ids',
+    data.metrics.map((item) => item.id),
+  )
+  assertUnique(
+    'metric names',
+    data.metrics.map((item) => item.name),
+  )
+  assertUnique(
+    'attribute ids',
+    data.attributes.map((item) => item.id),
+  )
+  assertUnique(
+    'attribute keys',
+    data.attributes.map((item) => item.key),
+  )
+  assertUnique(
+    'profile field ids',
+    data.profileFields.map((item) => item.id),
+  )
+  assertUnique(
+    'profile fields',
+    data.profileFields.map((item) => item.field),
+  )
+  assertUnique(
+    'schema ids',
+    data.schemas.map((item) => item.id),
+  )
 
   for (const span of data.spans) assertId(span.id)
   for (const metric of data.metrics) assertId(metric.id)

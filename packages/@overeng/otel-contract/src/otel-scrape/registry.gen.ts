@@ -1,7 +1,7 @@
 // Generated file - DO NOT EDIT
 // Source: registry.gen.ts.genie.ts
 // Registry source: context/otel-scrape/telemetry-registry.json
-// Input fingerprint: sha256:71a77bb48e88f88759191183f268f7ce4cc6917306a466cb568d2fe810dbda2e
+// Input fingerprint: sha256:c7849912891f7e6c9b2a237ce69e7278b6f4f86a0b54a6f95b929d05cef00beb
 
 export const otelScrapeTelemetryRegistry = {
   "schemaVersion": 1,
@@ -9,13 +9,13 @@ export const otelScrapeTelemetryRegistry = {
   "spans": [
     {
       "id": "command",
-      "name": "otel_scrape.command",
-      "description": "One otel-scrape wrapper invocation."
+      "naming": "program-basename",
+      "description": "One otel-scrape wrapper invocation. Named by the wrapped program's basename (decision 0014), never a fixed instrumentation constant. Ownership is carried by span.origin=otel-scrape and otel.scope.name=otel-scrape."
     },
     {
       "id": "process",
-      "name": "otel_scrape.process",
-      "description": "One observed child or descendant process."
+      "naming": "descendant-basename",
+      "description": "One observed descendant process. Named by the observed descendant program's basename (decision 0014). Emitted as a distinct span only under an exact backend that proves a real descendant; the default degraded direct-child observation is merged into the command span (fidelity=merged)."
     }
   ],
   "metrics": [
@@ -27,18 +27,46 @@ export const otelScrapeTelemetryRegistry = {
   ],
   "attributes": [
     {
+      "id": "scope_name",
+      "key": "otel.scope.name",
+      "valueType": "string",
+      "cardinality": "low",
+      "description": "Instrumentation scope name; otel-scrape for wrapper-owned spans."
+    },
+    {
+      "id": "span_origin",
+      "key": "span.origin",
+      "valueType": "string",
+      "cardinality": "low",
+      "description": "Origin of the span: otel-scrape for wrapper-owned spans, otel-scrape-adapter for adapter-derived phase spans."
+    },
+    {
+      "id": "command_program",
+      "key": "command.program",
+      "valueType": "string",
+      "cardinality": "bounded",
+      "description": "Wrapped executable basename; a public-safe identity, always present. Never a full path or arguments."
+    },
+    {
+      "id": "command_argv_hash",
+      "key": "command.argv_hash",
+      "valueType": "string",
+      "cardinality": "bounded",
+      "description": "Stable hash of command argv, never raw arguments. Always present; the correlation/dedup key."
+    },
+    {
+      "id": "command_cwd_hash",
+      "key": "command.cwd_hash",
+      "valueType": "string",
+      "cardinality": "bounded",
+      "description": "Stable hash of the current working directory identity, never a raw path. Always present."
+    },
+    {
       "id": "adapter_name",
       "key": "otel_scrape.adapter.name",
       "valueType": "string",
       "cardinality": "low",
       "description": "Selected adapter name."
-    },
-    {
-      "id": "process_command_args_hash",
-      "key": "process.command_args_hash",
-      "valueType": "string",
-      "cardinality": "bounded",
-      "description": "Stable hash of command argv, never raw arguments."
     },
     {
       "id": "process_exit_code",
@@ -59,7 +87,7 @@ export const otelScrapeTelemetryRegistry = {
       "key": "otel_scrape.process.observation.fidelity",
       "valueType": "string",
       "cardinality": "low",
-      "description": "Process observation fidelity, such as exact or degraded."
+      "description": "Process observation fidelity: exact, merged (degraded direct-child folded into the command span), or a degraded evidence value."
     },
     {
       "id": "process_observation_relation",
@@ -153,9 +181,13 @@ export const otelScrapeTelemetryRegistry = {
   ]
 } as const
 
-export const otelScrapeSpanNames = {
-  "command": "otel_scrape.command",
-  "process": "otel_scrape.process"
+// Spans are named by the operation they represent (decision 0014), not by a
+// fixed instrumentation constant. The registry owns the naming *scheme* per
+// span id; the emitted name is the program / descendant / adapter-phase
+// basename resolved at runtime.
+export const otelScrapeSpanNaming = {
+  "command": "program-basename",
+  "process": "descendant-basename"
 } as const
 
 export const otelScrapeMetricNames = {
@@ -163,8 +195,12 @@ export const otelScrapeMetricNames = {
 } as const
 
 export const otelScrapeAttributeKeys = {
+  "scopeName": "otel.scope.name",
+  "spanOrigin": "span.origin",
+  "commandProgram": "command.program",
+  "commandArgvHash": "command.argv_hash",
+  "commandCwdHash": "command.cwd_hash",
   "adapterName": "otel_scrape.adapter.name",
-  "processCommandArgsHash": "process.command_args_hash",
   "processExitCode": "process.exit_code",
   "processObservationBackend": "otel_scrape.process.observation.backend",
   "processObservationFidelity": "otel_scrape.process.observation.fidelity",
@@ -192,8 +228,8 @@ export const otelScrapeSchemas = {
   "summaryV1": "otel-scrape.summary/v1"
 } as const
 
-export type OtelScrapeSpanName =
-  (typeof otelScrapeSpanNames)[keyof typeof otelScrapeSpanNames]
+export type OtelScrapeSpanNaming =
+  (typeof otelScrapeSpanNaming)[keyof typeof otelScrapeSpanNaming]
 
 export type OtelScrapeMetricName =
   (typeof otelScrapeMetricNames)[keyof typeof otelScrapeMetricNames]

@@ -4,21 +4,26 @@ import { describe, expect, it } from 'vitest'
 import {
   OtelAttributeKey,
   OtelMetricName,
-  OtelSpanName,
   otelScrapeAttributeKeys,
   otelScrapeMetricNames,
   otelScrapeProfileFields,
   otelScrapeSchemas,
-  otelScrapeSpanNames,
+  otelScrapeSpanNaming,
   otelScrapeTelemetryRegistry,
 } from '../mod.ts'
 
 describe('otel-scrape generated telemetry registry', () => {
   it('exports the semantic names required by the VRS', async () => {
-    expect(otelScrapeSpanNames.command).toBe('otel_scrape.command')
-    expect(otelScrapeSpanNames.process).toBe('otel_scrape.process')
+    // Spans are named by the operation (decision 0014): the registry owns the
+    // naming *scheme* per span id, not a fixed span-name string.
+    expect(otelScrapeSpanNaming.command).toBe('program-basename')
+    expect(otelScrapeSpanNaming.process).toBe('descendant-basename')
+    expect(otelScrapeAttributeKeys.scopeName).toBe('otel.scope.name')
+    expect(otelScrapeAttributeKeys.spanOrigin).toBe('span.origin')
+    expect(otelScrapeAttributeKeys.commandProgram).toBe('command.program')
+    expect(otelScrapeAttributeKeys.commandArgvHash).toBe('command.argv_hash')
+    expect(otelScrapeAttributeKeys.commandCwdHash).toBe('command.cwd_hash')
     expect(otelScrapeAttributeKeys.adapterName).toBe('otel_scrape.adapter.name')
-    expect(otelScrapeAttributeKeys.processCommandArgsHash).toBe('process.command_args_hash')
     expect(otelScrapeAttributeKeys.processExitCode).toBe('process.exit_code')
     expect(otelScrapeAttributeKeys.processObservationBackend).toBe(
       'otel_scrape.process.observation.backend',
@@ -32,12 +37,6 @@ describe('otel-scrape generated telemetry registry', () => {
     expect(otelScrapeMetricNames.oxlintDiagnostics).toBe('oxlint.diagnostics')
     expect(otelScrapeProfileFields.byteLength).toBe('byteLength')
     expect(otelScrapeSchemas.summaryV1).toBe('otel-scrape.summary/v1')
-
-    for (const spanName of Object.values(otelScrapeSpanNames)) {
-      await expect(Effect.runPromise(Schema.decodeUnknown(OtelSpanName)(spanName))).resolves.toBe(
-        spanName,
-      )
-    }
 
     for (const attributeKey of Object.values(otelScrapeAttributeKeys)) {
       await expect(
@@ -53,8 +52,8 @@ describe('otel-scrape generated telemetry registry', () => {
   })
 
   it('keeps generated constants aligned with the registry projection', () => {
-    expect(otelScrapeTelemetryRegistry.spans.map((span) => span.name)).toEqual(
-      Object.values(otelScrapeSpanNames),
+    expect(otelScrapeTelemetryRegistry.spans.map((span) => span.naming)).toEqual(
+      Object.values(otelScrapeSpanNaming),
     )
     expect(otelScrapeTelemetryRegistry.attributes.map((attribute) => attribute.key)).toEqual(
       Object.values(otelScrapeAttributeKeys),
