@@ -5,13 +5,9 @@ resolved — into the spec as decisions or into `.experiments/` as tested hypoth
 
 ## SC-DQ1 — Conformance-sweep completeness — RESOLVED
 
-Resolved by [.decisions/0005](./.decisions/0005-contract-registration-convention.md): a
-per-package registered seam (`defineOtelContract`, collected like `rootWorkspacePackages`)
-is the single source for both the registry projection and the completeness sweep, and a lint
-(extending `no-raw-otel-primitives`) errors on any contract defined outside a seam — so
-completeness is structural, not best-effort grep. Staged warn → per-namespace ERROR →
-repo-wide ERROR, tracking 0004's authority-flip. Rejected: static AST sweep (best-effort),
-runtime self-registration (fragile).
+Resolved by [.decisions/0005](./.decisions/0005-contract-registration-convention.md):
+registered seam + lint + a **no-orphan-seam aggregator check** (globs seam files, asserts each
+is imported) make completeness structural. Staged warn → per-namespace ERROR → repo-wide.
 
 ## SC-DQ2 — Fold-depth sub-questions (direction chosen)
 
@@ -35,7 +31,7 @@ are settled by the shape that reads cleanest there.
 Resolved by [.decisions/0003](./.decisions/0003-unified-full-dotted-keys.md) (one namespaced
 key per concept; metric wire renders underscore by default) +
 [0004](./.decisions/0004-metric-label-migration.md) (retention-first transition, central
-Alloy bridge only for long-window metrics).
+collector bridge only for long-window metrics).
 
 ## SC-DQ5 — Bootstrap & authority flip (initial migration)
 
@@ -52,7 +48,7 @@ a large one-shot; naive "flip the gate on" fails 240 sites at once.
 metric-label key change (bare → namespaced, `service`→`restate.service`, wire
 `restate_service`) and the paired dashboard/alert updates. The approach is settled
 ([.decisions/0004](./.decisions/0004-metric-label-migration.md)): retention-first (emit-new,
-fix known consumers, let old series expire), with a central Alloy OTTL bridge only for
+fix known consumers, let old series expire), with a central collector OTTL bridge only for
 long-window/SLO/external metrics. What remains open here is the broader authority-flip
 (seeding the registry from ~240 sites, warn→block per namespace) into which the label rename
 is folded.

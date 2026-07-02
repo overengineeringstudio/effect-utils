@@ -33,9 +33,10 @@ level, namespace) is authored in exactly one place; the same key appearing in en
 + constants + Rust is derivation, not duplication. Same-concept-same-key across span/metric
 (0003) and ref-don't-redefine for upstream/cross-member attrs are corollaries.
 
-- **Namespace is derived**, not authored: `defineOtelContract` derives it from the common
-  key prefix of the package's OWN attributes and validates every own key shares it (a stray
-  own-namespace key is a hard error).
+- **Namespace is derived**, not authored: `defineOtelContract` derives it from the leading
+  dotted segment of the package's OWN attribute keys and validates every own key shares that
+  segment (a stray own-namespace key is a hard error). (First-segment, not longest-common-
+  prefix; deeper shared namespaces would need LCP — revisit only if wanted.)
 - **Catalog is derived**, not listed: the `registry.<ns>` attribute set is the union of the
   own attributes signals reference plus any explicit *doc-only* attributes; you author
   signals, the catalog falls out.

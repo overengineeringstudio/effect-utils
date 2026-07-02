@@ -26,8 +26,9 @@ all). One clause must give.
   additive — at the cost of clause (1). It reuses the TS ergonomics and the existing
   enforced `@overeng/otel-contract` seam.
 - **D2 Weaver additive (SC-T01).** `check`/`diff`/`live-check`/`generate` are a gate;
-  runtime constants are producible without Weaver on the path. Weaver is pinned via
-  `nixpkgs#weaver`; v1 `groups:` is treated as the stable contract.
+  runtime constants are producible without Weaver on the path. Weaver is pinned via the
+  from-source flake `nix/weaver-flake/` (v0.24.2, ahead of nixpkgs); v1 `groups:` is treated
+  as the stable contract.
 - **D3 Registry is the single SSOT; runtime DERIVES from it (Axis B).** The registry
   catalog is the one authored source of attribute identity + policy; the runtime encoders
   are derived from it (a catalog attribute authored once; signals compose refs, deriving

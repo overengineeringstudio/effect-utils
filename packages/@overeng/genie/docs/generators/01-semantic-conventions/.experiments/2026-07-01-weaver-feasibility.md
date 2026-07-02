@@ -67,7 +67,7 @@ confirms registry-authoritative-via-derivation.
 short-key metric-label namespace; the accepted decision is the OPPOSITE — one namespaced key
 per concept on every signal (the OTel-native SOTA case: same-concept-same-key, namespacing
 resolves the `service`/`service.name` ambiguity, cross-cutting identity on resource
-attributes), with the wire migration carried by a staged Alloy-OTTL bridge. The text below is
+attributes), with the wire migration carried by a staged collector-OTTL bridge. The text below is
 kept as the evidence trail that both options are feasible; it is NOT the decision.
 
 > Metric labels use short keys (`service`) distinct from span attr keys (`restate.service`).

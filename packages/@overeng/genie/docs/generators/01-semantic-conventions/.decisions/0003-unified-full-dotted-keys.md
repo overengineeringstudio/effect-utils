@@ -31,15 +31,15 @@ Rationale (OTel-native, and it applies to the *registry key*):
   (resource). Namespacing separates them.
 
 **(B) The metric wire renders the key as underscore (`restate_service`) by default.** The
-registry key stays dotted (`restate.service`); the OTLP→Mimir default translation strategy
+registry key stays dotted (`restate.service`); the OTLP→Prometheus default translation strategy
 (`UnderscoreEscapingWithSuffixes`) maps it deterministically to `restate_service`. This
 keeps 100% of (A)'s semantic wins — `restate_service` is equally namespaced and equally
 collision-free with `service_name` — while avoiding the dotted-UTF-8 tax (quoted PromQL
-selectors everywhere, Grafana template-var/regex assumptions, and silent
+selectors everywhere, dashboard template-var/regex assumptions, and silent
 `restate.service`/`restate_service` split-brain if any hop drops the UTF-8 exporter setting).
 
 Dotted-UTF-8 on the wire is a *separately-decidable, later* opt-in (requires fleet-wide
-`NoUTF8EscapingWithSuffixes` + Mimir UTF-8), not a prerequisite and not more "OTel-native" —
+`NoUTF8EscapingWithSuffixes` + backend UTF-8), not a prerequisite and not more "OTel-native" —
 the OTel value lives in the registry key, not the transport rendering.
 
 ## Consequences
@@ -49,7 +49,7 @@ the OTel value lives in the registry key, not the transport rendering.
   [0004](./0004-metric-label-migration.md).
 - One catalog entry per concept (SC-R15 satisfied by construction); metric-label
   cardinality/privacy policy applies to that single entry.
-- No UTF-8 dependency: works on any Mimir; queries use plain `restate_service` selectors.
+- No UTF-8 dependency: works on any Prometheus-compatible backend; queries use plain `restate_service` selectors.
 
 ## Alternatives rejected
 

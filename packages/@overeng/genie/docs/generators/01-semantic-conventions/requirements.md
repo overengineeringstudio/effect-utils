@@ -38,10 +38,14 @@ role here rather than a separate vision.
   (`resolve` is already deprecated — prefer `generate`/`package`).
 - **SC-A02 otel-contract is the runtime seam:** all first-party spans/metrics/attributes
   are authored through `@overeng/otel-contract`, enforced by `no-raw-otel-primitives`.
-- **SC-A03 Upstream semconv is a pinned, hermetic dependency:** first-party registries compose
-  ON TOP of the upstream OTel semantic-conventions registry (`registry_path: …@vX.Y.Z[model]`),
-  pinned to a version compatible with the pinned Weaver and materialized as a Nix FOD input so
-  the gate runs against a local, deterministic, offline copy (no network at check time). See
+- **SC-A03 Upstream semconv is a pinned dependency (hermetic is the target, pending a spike):**
+  first-party registries compose ON TOP of the upstream OTel semantic-conventions registry
+  (`registry_path: …@vX.Y.Z[model]`), pinned to a version compatible with the pinned Weaver.
+  The *target* is a Nix-FOD-materialized local copy so the gate is offline/deterministic — but
+  the prototype used unpinned `main` with a live fetch, and whether Weaver `registry check`
+  accepts a local-filesystem `registry_path` is unconfirmed (impl step-1 spike). Until
+  confirmed, the fallback is a pinned tag + a warmed cache (network on cold only). Do not treat
+  "offline/deterministic" as established before the spike. See
   [.decisions/0007](./.decisions/0007-rust-target-and-first-consumer.md).
 - **SC-A04 Composition is megarepo-wide:** registry fragments are contributed by
   multiple members (this public repo plus private downstream consumers) and aggregated into
@@ -128,20 +132,26 @@ role here rather than a separate vision.
   primitives (`OtelAttr`/`OtelAttrs`), so the runtime encode/brand/decode-at-edge machinery
   is otel-contract's own code, reused verbatim — a strict superset. Product APIs
   (`OtelOperation`/`OtelMetric`, span.label enforcement, trusted-vs-validated increment)
-  are re-pointed at catalog entries but keep their internals. Proven for the real restate
-  contract (see [.experiments](./.experiments/2026-07-01-weaver-feasibility.md)). Fold depth
-  is [.decisions/0002](./.decisions/0002-catalog-atop-otel-contract.md).
+  are re-pointed at catalog entries but keep their internals. The prototype validated the
+  *attribute-encode* path (`deepStrictEqual` vs hand-written `OtelAttrs.defineSync`) — but not
+  yet the full product-span surface (`span()` bypassed `OtelSpan.define`/span.label). Before
+  any migration removes a legacy site, this MUST be raised to a **property-based** equivalence
+  (Schema arbitraries over optional/enum/template branches) through the real
+  `OtelSpan`/`OtelOperation` product path — else the "no behavior lost" guarantee covers only
+  attribute maps. See [.experiments](./.experiments/2026-07-01-weaver-feasibility.md); fold
+  depth is [.decisions/0002](./.decisions/0002-catalog-atop-otel-contract.md).
 - **SC-R15 One namespaced key per concept, catalog-governed:** each concept has exactly ONE
   catalog entry with ONE namespaced dotted key (`restate.service`), referenced across all
   signals including metric labels (no per-context short-key aliases). The metric *wire*
-  renders it via the default OTLP→Mimir mapping (`restate.service`→`restate_service`); dotted
+  renders it via the default OTLP→Prometheus mapping (`restate.service`→`restate_service`); dotted
   UTF-8 on the wire is a later opt-in, not required. See
   [.decisions/0003](./.decisions/0003-unified-full-dotted-keys.md); the transition for
   existing metrics is retention-first ([0004](./.decisions/0004-metric-label-migration.md)),
   folded into the authority-flip (SC-DQ5).
 - **SC-R16 Contracts are discoverable via a registered seam:** every telemetry contract is
   reachable from a per-package registered seam (`defineOtelContract`, collected like
-  `rootWorkspacePackages`), enforced by a lint that errors on any contract defined outside a
-  seam. The seam is the single source for both the registry projection and the completeness
-  sweep, so "no site missed" is structural, not audited. See
+  `rootWorkspacePackages`), enforced by a lint (contract only in a seam file) PLUS a
+  no-orphan-seam aggregator check (globs seam files, asserts each is imported — the part the
+  lint cannot provide). The seam is the single source for both the registry projection and the
+  completeness sweep, so "no site missed" is structural, not audited. See
   [.decisions/0005](./.decisions/0005-contract-registration-convention.md).

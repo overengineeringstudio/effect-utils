@@ -24,8 +24,17 @@ defining a contract anywhere else.**
   BOTH the Weaver registry projection AND the completeness sweep, so the two cannot diverge.
 - A lint rule (extending `no-raw-otel-primitives`) errors when a Layer-1/Layer-2 contract
   constructor (`attr.*` / `span` / `metric` / `OtelAttrs.define` / `OtelOperation.define`)
-  is used outside a registered seam. You cannot author a contract the system can't see —
-  completeness becomes a property of the lint/type system, not of grep coverage.
+  is used outside a seam file. This is path-based and single-file — it is what the lint can
+  actually enforce.
+- **No-orphan-seam check (the keystone — the lint alone cannot provide it).** The lint
+  cannot verify a seam file is actually *imported into the root aggregator*: an "orphan seam"
+  (a conforming file defining a real contract, never added to the aggregator's import list)
+  would lint clean yet be absent from BOTH the registry and the sweep — worse than no gate.
+  So the aggregator (or a colocated test) **globs every seam-convention file on disk and
+  asserts each is present in the imported member list**; a seam on disk but not in the list is
+  a hard error — the same shape as a `rootWorkspacePackages` completeness test. Only with this
+  check does completeness become structural rather than "path convention + a hand-maintained
+  import list". It must land before any namespace's lint flips to ERROR.
 
 **Rollout (staged with 0004's authority-flip):** the lint is WARN-only initially (it will
 surface all ~240 unregistered sites without blocking CI); it flips to ERROR per namespace as

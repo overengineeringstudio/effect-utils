@@ -5,10 +5,12 @@ builds on [requirements.md](./requirements.md).
 
 ## Status
 
-Draft. Design derisked by an end-to-end prototype against real `weaver 0.23.0`
-(`nix run nixpkgs#weaver`); not yet implemented. Durable evidence:
-[.experiments/2026-07-01-weaver-feasibility.md](./.experiments/2026-07-01-weaver-feasibility.md)
-(distilled from the transient `tmp/weaver-experiment/`).
+Draft. Design derisked by end-to-end prototypes against the real Weaver binary — the
+pinned from-source flake `nix/weaver-flake/` (**v0.24.2**, the version of record) and
+also `nixpkgs#weaver` 0.23.0 (both exercised; 0.24.2 additionally requires `stability` on
+every enum member — see [.experiments/2026-07-02-e2e-slice.md](./.experiments/2026-07-02-e2e-slice.md)).
+Not yet implemented. Feasibility evidence:
+[.experiments/2026-07-01-weaver-feasibility.md](./.experiments/2026-07-01-weaver-feasibility.md).
 
 ## Scope
 
@@ -107,12 +109,15 @@ type AttrRef = {                           // signals reference, never inline-de
 
 | Concept | Weaver 0.23 shape | Note |
 | --- | --- | --- |
-| enum | `type: { members: [{id,value,brief,stability}] }` | verified |
+| enum | `type: { members: [{id,value,brief,stability}] }` | **each member requires `stability` in 0.24.2** (0.23 did not) |
 | template | `type: template[string[]]` | dynamic-key attrs |
 | requirement (conditional) | `requirement_level: { conditionally_required: <text> }` | object form |
 | deprecation | `deprecated: { reason, renamed_to \| note }` | **string form removed** |
 | stability | `stable` \| `development` | `deprecated` **removed** from enum |
 | string examples | `examples: [...]` | **required** under `--future` |
+
+Limitation: an attribute has exactly ONE `type`; **multi-type attributes are not supported**
+(weaver is one-type-per-attr) — noted, not a blocker (revisit if a real need appears).
 
 **otel-contract policy → Weaver annotations.** `cardinality`/`encode` are emitted under a
 namespaced `annotations.<policy>.{cardinality,encode}` block — non-normative to upstream
@@ -180,11 +185,19 @@ the public fragments), following the megarepo alignment propagation order.
 
 ## Weaver gate wiring (SC-R10, SC-R11, SC-R12)
 
-- **check (SC-R10):** devenv task `weaver:check` → `weaver registry check -r
-  <dir> --future`; wired into `check:all` and CI. Pin `nixpkgs#weaver` to an exact
-  version; pin the upstream semconv `@vX.Y.Z[model]` to a Weaver-compatible tag
-  (v1.37.0 verified clean with 0.23; ≤v1.36 fail `--future` on their own
-  unstructured-deprecated).
+- **check (SC-R10):** devenv task `weaver:check` → `weaver registry check -r <dir> --future`;
+  wired into `check:all` and CI. Weaver is pinned via the from-source flake
+  `nix/weaver-flake/` (v0.24.2), NOT `nixpkgs#weaver`; the upstream semconv is pinned to a
+  Weaver-compatible `@vX.Y.Z[model]` tag (v1.37.0 verified clean with 0.23/0.24; ≤v1.36 fail
+  `--future` on their own unstructured-deprecated). **Block-vs-degrade contract:** a weaver
+  *validation* failure (check/diff/live-check exits nonzero) blocks; weaver *unavailability*
+  (flake build/eval failure, binary missing) degrades to a warning in a separate lane and must
+  NOT wedge unrelated work (GEN-R09) — lane-separate the flake build from the main check.
+- **First-PR acceptance:** the gate runs against the *actually emitted* registry (not a
+  separate fixture) and exercises each fidelity delta with a dedicated attribute
+  (`deprecated:{reason:renamed}`, a multi-member enum with per-member `stability`, a
+  `template[...]`, a conditionally-required ref), so the pinned Weaver version is proven
+  against the real emitted shape.
 - **diff (SC-R11):** on PRs, `weaver registry diff --baseline-registry <merge-base
   registry>` + shipped schema-evolution policies. (Prototype confirmed weaver detects a
   removed-but-referenced attr via unresolved-ref; the evolution-policy path — "removal =
@@ -192,8 +205,8 @@ the public fragments), following the megarepo alignment propagation order.
 - **live-check (SC-R12):** in e2e tests, capture emitted OTLP and feed `weaver registry
   live-check --input-source <file|otlp>`; validates types/units/enum/required/coverage
   against the registry. Any OTLP exporter (incl. the test-capture harness) suffices. In the
-  fleet, telemetry flows OTLP → **Grafana Alloy → Mimir (metrics) / Tempo (traces)**, queried
-  via Grafana; Alloy is also where the metric-label migration bridge runs
+  fleet, telemetry flows OTLP → a central OTel Collector → the metrics/traces backends; that
+  Collector is also where the metric-label migration bridge runs, when used
   ([.decisions/0004](./.decisions/0004-metric-label-migration.md)). `weaver registry resolve`
   is deprecated in 0.23/0.24 — prefer `generate`/`package`.
 
@@ -240,8 +253,12 @@ generated + do-not-edit, the regeneration task, the `source:` path, and a `finge
 sha256:<…>` over ALL semantic inputs — the registry source, the generator, the **pinned
 Weaver version**, and the **pinned upstream semconv version** (all change the output). Any
 `last generated` timestamp is fingerprint-guarded (no timestamp-only churn). Outputs are
-read-only (genie's existing chmod); `genie:check` (same locally + CI) regenerates + diffs; the
-Nix gate reads only tracked, freshness-gated files (the pinned upstream is a FOD input, 0007).
+read-only (genie's existing chmod); `genie:check` (same locally + CI) regenerates + diffs;
+Nix eval reads only tracked, freshness-gated files (the pinned upstream is intended to be a
+FOD input — see SC-A03's pending spike). **Fingerprint granularity:** split the fingerprint so
+a doc-only annotation edit (`brief`/`stability`/`examples`) re-hashes only the doc-carrying
+outputs, not the name/Rust-const targets that encode no doc content — otherwise a prose edit
+churns bindings that didn't change.
 
 ## Remaining mechanism choices (settled)
 
@@ -259,11 +276,11 @@ Nix gate reads only tracked, freshness-gated files (the pinned upstream is a FOD
 
 ## Design Questions
 
-- **SC-DQ1 Conformance completeness — RESOLVED:** a per-package registered seam
-  (`defineOtelContract`, collected like `rootWorkspacePackages`) is the single source for
-  both the registry projection and the completeness sweep, and a lint errors on any contract
-  defined outside a seam — completeness is structural. Staged warn → per-namespace ERROR →
-  repo-wide. See [.decisions/0005](./.decisions/0005-contract-registration-convention.md).
+- **SC-DQ1 Conformance completeness — RESOLVED:** registered seam + lint + a
+  **no-orphan-seam aggregator check** (the lint enforces "contract only in a seam file"; the
+  aggregator check globs seam files and asserts each is imported — the part the lint
+  structurally cannot provide). Completeness is structural. Staged warn → per-namespace ERROR
+  → repo-wide. See [.decisions/0005](./.decisions/0005-contract-registration-convention.md).
 - **SC-DQ2 Fold depth (chosen direction; confirming):** the registry-derives-runtime
   direction is the design intent (SC-R13). Proven no-runtime-loss via "catalog atop
   otel-contract primitives" ([.decisions/0002](./.decisions/0002-catalog-atop-otel-contract.md)).
@@ -286,6 +303,6 @@ Nix gate reads only tracked, freshness-gated files (the pinned upstream is a FOD
   version-bump runbook + a smoke test in CI.
 - **SC-DQ6 Metric-label key projection — RESOLVED:** one namespaced key per concept on every
   signal (registry key dotted, metric wire renders underscore by default); existing metrics
-  migrate retention-first, with a central Alloy OTTL bridge only for long-window metrics. See
+  migrate retention-first, with a central collector OTTL bridge only for long-window metrics. See
   [.decisions/0003](./.decisions/0003-unified-full-dotted-keys.md) +
   [0004](./.decisions/0004-metric-label-migration.md).
