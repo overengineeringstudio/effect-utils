@@ -17,6 +17,7 @@
  */
 import { createHash } from 'node:crypto'
 
+import genieContract from '../packages/@overeng/genie/src/core/genie.contract.ts'
 import { registryFromMembers } from '../packages/@overeng/genie/src/runtime/composition/mod.ts'
 import type { Provenance } from '../packages/@overeng/genie/src/runtime/weaver/mod.ts'
 import demoContract from '../packages/@overeng/otel-contract/src/registry-demo.contract.ts'
@@ -34,10 +35,11 @@ export const GENERATOR_VERSION = '1'
  * guarantee the path-based lint structurally cannot provide (decision 0005).
  */
 export const memberSeamPaths = [
+  'packages/@overeng/genie/src/core/genie.contract.ts',
   'packages/@overeng/otel-contract/src/registry-demo.contract.ts',
 ] as const
 
-const contracts = [demoContract]
+const contracts = [genieContract, demoContract]
 
 // Build members: each member contributes its fragment on the non-emitted `meta.registry`
 // channel (a minimal GenieOutput — no per-member slice is emitted for M1).
@@ -122,5 +124,5 @@ export const rustProvenance: Provenance = {
   fingerprint: rustIdentityFingerprint,
 }
 
-/** The single own namespace emitted as `<ns>.attributes.yaml` (M1 has exactly one). */
+/** The own namespaces, each emitted as `<ns>.attributes.yaml` (M3 adds `genie` next to `acme`). */
 export const namespaces = registry.groups.map((g) => g.namespace)

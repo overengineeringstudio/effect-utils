@@ -2,7 +2,7 @@
 # Source: signals.yaml.genie.ts
 
 # registry-source: weaver-registry/registry.ts
-# fingerprint: sha256:225a7700297d04bd60bf33425624fc5347029b5366699cfd990a15c180d4c179
+# fingerprint: sha256:6bdc9d62a3caa1d3c79c949df7479c9bb0c4cc28933da46c993e54b5db4da296
 groups:
   - id: metric.acme.probe.duration
     type: metric
@@ -49,3 +49,85 @@ groups:
         requirement_level: recommended
       - ref: http.request.method
         requirement_level: recommended
+  - id: span.genie.atomic_write
+    type: span
+    span_kind: internal
+    stability: development
+    brief: A single atomic file write.
+    attributes:
+      - ref: genie.file.target_path
+        requirement_level: required
+      - ref: genie.file.mode
+        requirement_level: recommended
+  - id: span.genie.command
+    type: span
+    span_kind: internal
+    stability: development
+    brief: A top-level genie command invocation.
+    attributes:
+      - ref: genie.cwd
+        requirement_level: required
+      - ref: genie.read_only
+        requirement_level: recommended
+      - ref: genie.dry_run
+        requirement_level: recommended
+      - ref: genie.concurrency
+        requirement_level: recommended
+  - id: span.genie.file
+    type: span
+    span_kind: internal
+    stability: development
+    brief: Generation of a single target file from its `*.genie.ts` source.
+    attributes:
+      - ref: genie.cwd
+        requirement_level: required
+      - ref: genie.file.source_path
+        requirement_level: required
+      - ref: genie.file.target_path
+        requirement_level: required
+      - ref: genie.read_only
+        requirement_level: recommended
+      - ref: genie.dry_run
+        requirement_level: recommended
+  - id: span.genie.oxfmt
+    type: span
+    span_kind: internal
+    stability: development
+    brief: oxfmt formatting of a generated target file.
+    attributes:
+      - ref: genie.file.target_path
+        requirement_level: required
+      - ref: genie.oxfmt.has_config
+        requirement_level: required
+  - id: span.genie.path
+    type: span
+    span_kind: internal
+    stability: development
+    brief: A filesystem path annotated onto the current span.
+    attributes:
+      - ref: genie.path
+        requirement_level: required
+  - id: span.genie.run_validation
+    type: span
+    span_kind: internal
+    stability: development
+    brief: The cross-file validation pass.
+    attributes:
+      - ref: genie.cwd
+        requirement_level: required
+      - ref: genie.validation.require_package_json_validate
+        requirement_level: required
+      - ref: genie.validation.file_count
+        requirement_level: recommended
+      - ref: genie.validation.preloaded_file_count
+        requirement_level: recommended
+  - id: span.genie.target_lock
+    type: span
+    span_kind: internal
+    stability: development
+    brief: Acquisition of the per-target write lock.
+    attributes:
+      - ref: genie.cwd
+        requirement_level: required
+      - ref: genie.file.target_path
+        requirement_level: required

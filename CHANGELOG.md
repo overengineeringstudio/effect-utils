@@ -35,6 +35,20 @@ All notable changes to this project will be documented in this file.
   synthetic ~25-name `otel_scrape.*` fixture (authored via the real Layer-2 seam) with a test
   asserting determinism, full name coverage, and valid/rustfmt-clean Rust (rustc + rustfmt,
   skip-if-absent).
+- **genie semantic-conventions first-namespace migration (M3) / @overeng/genie**: Migrated genie's
+  OWN telemetry (the `genie.*` namespace, 12 attribute keys + 8 span operations) fully onto the
+  registry seam. A new `packages/@overeng/genie/src/core/genie.contract.ts` authors the catalog +
+  operations via the Layer-2 `@overeng/otel-contract/registry` surface; `src/core/observability.ts`
+  is re-pointed at the DERIVED `OtelOperation` product APIs (SC-R13/R14) with emit behavior
+  unchanged (same keys, encode, span names, and the `genie/command` root span, preserved via
+  `.withRoot`). Registered in the root aggregator's `memberSeamPaths`; the composed registry now
+  emits `genie.attributes.yaml` alongside `acme` and passes `weaver registry check --future`.
+  Encoder equivalence is raised from `deepStrictEqual` to a **property-based** proof through the
+  real `OtelOperation` surface (`@effect/vitest` `it.prop` + `Schema` arbitraries over the
+  optional/label branches). `overeng/otel-contract-in-seam-file` is flipped to **ERROR** for
+  genie's telemetry paths (rest of repo stays WARN; staged per decision 0005). The dynamic-name
+  `cli.mode` root span (`genie/<cliMode>`, a foreign `cli.*` namespace) stays a documented legacy
+  inline op — no stable single-signal projection — deferred to a future `cli` namespace member.
 
 ### Changed
 

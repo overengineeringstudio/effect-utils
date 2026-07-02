@@ -216,6 +216,13 @@
       }
     },
     {
+      "files": ["packages/@overeng/genie/src/**/*.ts", "packages/@overeng/genie/src/**/*.tsx"],
+      "rules": {
+        "overeng/no-raw-otel-primitives": "error",
+        "overeng/otel-contract-in-seam-file": "error"
+      }
+    },
+    {
       "files": [
         "packages/@overeng/otel-contract/src/**",
         "packages/@overeng/utils-dev/src/otelite/**",

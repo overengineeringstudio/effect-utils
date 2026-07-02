@@ -1,0 +1,103 @@
+# Generated file - DO NOT EDIT
+# Source: genie.attributes.yaml.genie.ts
+
+# registry-source: weaver-registry/registry.ts
+# fingerprint: sha256:6bdc9d62a3caa1d3c79c949df7479c9bb0c4cc28933da46c993e54b5db4da296
+groups:
+  - id: registry.genie
+    type: attribute_group
+    display_name: Genie Attributes
+    brief: Attributes for the genie namespace.
+    attributes:
+      - id: genie.concurrency
+        type: int
+        stability: development
+        brief: Configured generation concurrency (parallel file generations).
+        examples: [4]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: genie.cwd
+        type: string
+        stability: development
+        brief: Absolute working directory of the genie invocation.
+        examples: [/home/user/project]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: genie.dry_run
+        type: boolean
+        stability: development
+        brief: Whether the run is a dry run (planned writes are logged, not applied).
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: genie.file.mode
+        type: int
+        stability: development
+        brief: POSIX file mode applied to an atomically-written target file.
+        examples: [420]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: genie.file.source_path
+        type: string
+        stability: development
+        brief: Path to the `*.genie.ts` source file that produces a target.
+        examples: [package.json.genie.ts]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: genie.file.target_path
+        type: string
+        stability: development
+        brief: Path to the generated target file.
+        examples: [package.json]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: genie.oxfmt.has_config
+        type: boolean
+        stability: development
+        brief: Whether an oxfmt config was resolved for the formatted target.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: genie.path
+        type: string
+        stability: development
+        brief: A filesystem path annotated onto the current span.
+        examples: [/home/user/project]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: genie.read_only
+        type: boolean
+        stability: development
+        brief: Whether the run is read-only (check mode; no files are written).
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: genie.validation.file_count
+        type: int
+        stability: development
+        brief: Number of files considered in a cross-file validation pass.
+        examples: [12]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: genie.validation.preloaded_file_count
+        type: int
+        stability: development
+        brief: Number of files preloaded before a cross-file validation pass.
+        examples: [3]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: genie.validation.require_package_json_validate
+        type: boolean
+        stability: development
+        brief: Whether the validation pass requires `package.json` validation.
+        annotations:
+          overeng_policy:
+            cardinality: low

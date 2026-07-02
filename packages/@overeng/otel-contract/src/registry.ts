@@ -3,8 +3,12 @@
  * built ON TOP of this package's runtime primitives (`./mod.ts`).
  *
  * This is the `@overeng/otel-contract` `./registry` subpath — the DESIGN-TIME projector home
- * (decision 0006). It is imported ONLY by `.genie.ts` design-time files, never by runtime
- * product code, so it stays out of the `.` runtime bundle (verified by a tree-shaking test).
+ * (decision 0006). It is imported by `.genie.ts` design-time files AND by `*.contract.ts` seam
+ * files; as of M3 a seam's DERIVED encoders (`SpanContract.encoder` / `OperationContract.operation`)
+ * are re-pointed into product runtime code (SC-R13/R14 — the registry is the single SSOT for both
+ * the projection and the runtime encoder), so `./registry` now transitively enters a consumer's
+ * runtime graph via its seam file. It still stays OUT of otel-contract's own `.` runtime bundle
+ * (verified by a tree-shaking test — `mod.ts` never imports `./registry`).
  * It depends on `effect` + `./mod.ts`; it must NEVER import `@overeng/genie` (genie depends on
  * this package — that would be a project-reference cycle). The plain Weaver data types below
  * therefore MIRROR `@overeng/genie` `src/runtime/weaver` Layer 1; the root aggregator's

@@ -10,6 +10,17 @@ import {
   type OtelOperationDefinition,
 } from '@overeng/otel-contract'
 
+import {
+  AtomicWriteOperation,
+  CommandOperation,
+  FileOperation,
+  ImportMapResolverOperation,
+  OxfmtOperation,
+  PathOperation,
+  TargetLockOperation,
+  ValidationOperation,
+} from './genie.contract.ts'
+
 const basename = (filePath: string): string =>
   filePath.split(/[\\/]/).findLast((part) => part.length > 0) ?? filePath
 
@@ -44,6 +55,18 @@ const trustedWith =
   <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     trustOtelContract<A, E, R>(operation.with({ attributes, effect }))
 
+/** Like {@link trustedWith} but forces a ROOT span (used for the top-level `genie/command`). */
+const trustedWithRoot =
+  <S extends Schema.Schema.AnyNoContext>({
+    operation,
+    attributes,
+  }: {
+    operation: OtelOperationDefinition<S>
+    attributes: Schema.Schema.Type<S>
+  }): (<A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>) =>
+  <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+    trustOtelContract<A, E, R>(operation.withRoot({ attributes, effect }))
+
 const trustedAnnotate = <S extends Schema.Schema.AnyNoContext>({
   operation,
   attributes,
@@ -52,129 +75,22 @@ const trustedAnnotate = <S extends Schema.Schema.AnyNoContext>({
   attributes: Schema.Schema.Type<S>
 }): Effect.Effect<void> => trustOtelContract<void, never, never>(operation.annotate(attributes))
 
-const commandAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
-    cwd: Schema.String.pipe(OtelAttr.key({ key: 'genie.cwd' })),
-    readOnly: Schema.optional(Schema.Boolean.pipe(OtelAttr.key({ key: 'genie.read_only' }))),
-    dryRun: Schema.optional(Schema.Boolean.pipe(OtelAttr.key({ key: 'genie.dry_run' }))),
-    concurrency: Schema.optional(Schema.Number.pipe(OtelAttr.key({ key: 'genie.concurrency' }))),
-  }),
-)
+// genie.* operations are DERIVED from the registered seam contract (`./genie.contract.ts`,
+// namespace `genie`) — the single SSOT for both the Weaver registry projection and these
+// runtime encoders (SC-R13/R14). Each `*.operation` is the real `OtelOperation.define` product
+// surface; only the runtime wrappers below (attribute shaping, root-span selection) live here.
+const commandSpan = CommandOperation.operation
+const fileSpan = FileOperation.operation
+const pathOperation = PathOperation.operation
+const oxfmtOperation = OxfmtOperation.operation
+const validationSpan = ValidationOperation.operation
+const atomicWriteSpan = AtomicWriteOperation.operation
+const importMapResolverSpan = ImportMapResolverOperation.operation
+const targetLockOperation = TargetLockOperation.operation
 
-const commandSpan = OtelOperation.define({
-  name: 'genie/command',
-  attributes: commandAttrs,
-  label: ({ label }) => label,
-  root: true,
-})
-
-const fileAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
-    cwd: Schema.String.pipe(OtelAttr.key({ key: 'genie.cwd' })),
-    genieFilePath: Schema.String.pipe(OtelAttr.key({ key: 'genie.file.source_path' })),
-    targetFilePath: Schema.String.pipe(OtelAttr.key({ key: 'genie.file.target_path' })),
-    readOnly: Schema.optional(Schema.Boolean.pipe(OtelAttr.key({ key: 'genie.read_only' }))),
-    dryRun: Schema.optional(Schema.Boolean.pipe(OtelAttr.key({ key: 'genie.dry_run' }))),
-  }),
-)
-
-const fileSpan = OtelOperation.define({
-  name: 'genie/file',
-  attributes: fileAttrs,
-  label: ({ label }) => label,
-})
-
-const pathAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
-    path: Schema.String.pipe(OtelAttr.key({ key: 'genie.path' })),
-  }),
-)
-
-const pathOperation = OtelOperation.define({
-  name: 'genie/path',
-  attributes: pathAttrs,
-  label: ({ label }) => label,
-})
-
-const oxfmtAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
-    targetFilePath: Schema.String.pipe(OtelAttr.key({ key: 'genie.file.target_path' })),
-    hasConfig: Schema.Boolean.pipe(OtelAttr.key({ key: 'genie.oxfmt.has_config' })),
-  }),
-)
-
-const oxfmtOperation = OtelOperation.define({
-  name: 'genie/oxfmt',
-  attributes: oxfmtAttrs,
-  label: ({ label }) => label,
-})
-
-const validationAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
-    cwd: Schema.String.pipe(OtelAttr.key({ key: 'genie.cwd' })),
-    requirePackageJsonValidate: Schema.Boolean.pipe(
-      OtelAttr.key({ key: 'genie.validation.require_package_json_validate' }),
-    ),
-    fileCount: Schema.optional(
-      Schema.Number.pipe(OtelAttr.key({ key: 'genie.validation.file_count' })),
-    ),
-    preloadedFileCount: Schema.optional(
-      Schema.Number.pipe(OtelAttr.key({ key: 'genie.validation.preloaded_file_count' })),
-    ),
-  }),
-)
-
-const validationSpan = OtelOperation.define({
-  name: 'genie/runValidation',
-  attributes: validationAttrs,
-  label: ({ label }) => label,
-})
-
-const atomicWriteAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
-    targetFilePath: Schema.String.pipe(OtelAttr.key({ key: 'genie.file.target_path' })),
-    mode: Schema.optional(Schema.Number.pipe(OtelAttr.key({ key: 'genie.file.mode' }))),
-  }),
-)
-
-const atomicWriteSpan = OtelOperation.define({
-  name: 'atomicWriteFile',
-  attributes: atomicWriteAttrs,
-  label: ({ label }) => label,
-})
-
-const importMapResolverAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
-  }),
-)
-
-const importMapResolverSpan = OtelOperation.define({
-  name: 'genie.registerImportMapResolver',
-  attributes: importMapResolverAttrs,
-  label: ({ label }) => label,
-})
-
-const targetLockAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
-    cwd: Schema.String.pipe(OtelAttr.key({ key: 'genie.cwd' })),
-    targetFilePath: Schema.String.pipe(OtelAttr.key({ key: 'genie.file.target_path' })),
-  }),
-)
-
-const targetLockOperation = OtelOperation.define({
-  name: 'genie/target-lock',
-  attributes: targetLockAttrs,
-  label: ({ label }) => label,
-})
-
+// The `cli.mode` root span (`genie/<cliMode>`) stays a LEGACY inline contract: its span name is
+// DYNAMIC (varies by CLI mode) and its `cli.mode` key is a FOREIGN namespace, so it has no stable
+// single-signal registry projection and is out of the `genie` namespace's scope (SC-DQ5 bridge).
 const cliModeAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
@@ -207,7 +123,7 @@ export const withCommandSpan = ({
   dryRun?: boolean
   concurrency?: number
 }) =>
-  trustedWith({
+  trustedWithRoot({
     operation: commandSpan,
     attributes: {
       label,
