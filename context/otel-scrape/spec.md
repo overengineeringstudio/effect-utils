@@ -84,7 +84,7 @@ terminal so instrumenting never degrades interactive output. Where the tool
 offers a **side-channel** (structured to a file/fd while human output stays on
 stdout, e.g. vitest `--reporter=json --outputFile.json`), the adapter prefers it
 and does not re-render. Rendering lives in otel-scrape, per-adapter — never at the
-call-site. Adapter-derived records are public-safe in every sink (severity, rule,
+call-site. Adapter-derived records are public-safe in every sink (severity, rule, line,
 hashed filename, counts; raw diagnostic messages and paths dropped) per R27; the
 terminal render MAY show full text (the operator's own machine, not a sink). See
 [.decisions/0017-adapter-structured-source-and-presentation.md](./.decisions/0017-adapter-structured-source-and-presentation.md)

@@ -1,7 +1,7 @@
 // Generated file - DO NOT EDIT
 // Source: registry.gen.ts.genie.ts
 // Registry source: context/otel-scrape/telemetry-registry.json
-// Input fingerprint: sha256:129c704eff7970590b68dbc7feaddcf5bed4d8348ef2f18f60a6d742bf9911db
+// Input fingerprint: sha256:0a20a264a614244322ff4af277cf8293dbdf97edd3b2cb35692f2dc44ba1f4d3
 
 export const otelScrapeTelemetryRegistry = {
   "schemaVersion": 1,
@@ -136,6 +136,56 @@ export const otelScrapeTelemetryRegistry = {
         "none"
       ],
       "description": "Selected adapter name."
+    },
+    {
+      "id": "adapter_event_severity",
+      "key": "severity",
+      "valueType": "string",
+      "cardinality": "low",
+      "stability": "development",
+      "examples": [
+        "warning",
+        "error"
+      ],
+      "description": "Severity of an adapter diagnostic event (e.g. an oxlint diagnostic severity). Public-safe (decision 0017): a bounded severity token, never source text or a path. Carried on the otel_scrape.adapter.event span event."
+    },
+    {
+      "id": "adapter_event_source_filename_hash",
+      "key": "source.filename_hash",
+      "valueType": "string",
+      "cardinality": "bounded",
+      "stability": "development",
+      "examples": [
+        "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+      ],
+      "note": "The filename stays HASHED at every sink (decision 0015/0017): the raw path is payload-derived and never emitted; only the stable hashed identity crosses a sink. The summary record carries the same identity under its local field name filename_hash.",
+      "description": "Hashed source-file identity for an adapter diagnostic event; never a raw path. Carried on the otel_scrape.adapter.event span event."
+    },
+    {
+      "id": "adapter_event_rule",
+      "key": "otel_scrape.adapter.rule",
+      "valueType": "string",
+      "cardinality": "bounded",
+      "stability": "development",
+      "examples": [
+        "eslint(no-debugger)",
+        "eslint(no-unused-vars)"
+      ],
+      "note": "Emitted verbatim (the plugin-qualified linter code exactly as the tool reports it, e.g. `eslint(no-debugger)`), not stripped to the bare rule name. Bounded cardinality: the linter's rule set is a fixed, enumerable list.",
+      "description": "Rule/linter code of an adapter diagnostic event (H5, the oxlint rule id). Public-safe (decision 0017): a public lint-rule name, never source text or a path. Carried on the otel_scrape.adapter.event span event and the summary record."
+    },
+    {
+      "id": "adapter_event_line",
+      "key": "otel_scrape.adapter.line",
+      "valueType": "int",
+      "cardinality": "high",
+      "stability": "development",
+      "examples": [
+        2,
+        42
+      ],
+      "note": "A plain 1-based line number. Public-safe (H5, decision 0017): an integer offset into a file — not a path, source text, or private data. Formally high cardinality (spans a file's line range), but cheap and non-sensitive.",
+      "description": "1-based source line of an adapter diagnostic event (H5). Carried on the otel_scrape.adapter.event span event and the summary record."
     },
     {
       "id": "process_exit_code",
@@ -429,6 +479,10 @@ export const otelScrapeAttributeKeys = {
   "processCommandArgs": "process.command_args",
   "processWorkingDirectory": "process.working_directory",
   "adapterName": "otel_scrape.adapter.name",
+  "adapterEventSeverity": "severity",
+  "adapterEventSourceFilenameHash": "source.filename_hash",
+  "adapterEventRule": "otel_scrape.adapter.rule",
+  "adapterEventLine": "otel_scrape.adapter.line",
   "processExitCode": "process.exit.code",
   "processPid": "process.pid",
   "errorType": "error.type",

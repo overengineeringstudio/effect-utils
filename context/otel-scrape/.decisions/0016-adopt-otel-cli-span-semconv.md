@@ -187,10 +187,13 @@ renamed_to: <new>}`, following OTel semconv practice, rather than being
      (`wall_ms` in the observation + summary schema) remain ms-resolution and are
      tracked separately, since changing them would alter the summary schema.
   6. **`scope.version` + `service.version`.** The instrumentation-scope `version`
-     (the OTLP scope object) is always set to `otel-scrape`'s crate version
-     (`CARGO_PKG_VERSION`), so a trace is unambiguously tied to the wrapper build
-     at the scope layer. The resource `service.version` defaults to that same
-     crate version **only** when `service.name` is also otel-scrape's own default
+     (the OTLP scope object) is always set to otel-scrape's build identity, so a
+     trace is unambiguously tied to the wrapper build at the scope layer. (M25.1
+     used the static crate version `CARGO_PKG_VERSION`; superseded by decision
+     0019, which replaces the _value_ with a build-correlated `machineVersion`
+     carrying the git rev — the placement and gating in this clause are unchanged.)
+     The resource `service.version` defaults to that same
+     value **only** when `service.name` is also otel-scrape's own default
      (neither `OTEL_SERVICE_NAME` nor a `service.name` in
      `OTEL_RESOURCE_ATTRIBUTES` was supplied); when a user/harness names the
      enclosing service, otel-scrape does not stamp its own version onto it, and a

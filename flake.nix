@@ -59,7 +59,12 @@
           inherit pkgs;
         };
         otel-scrape = import (rootPath + "/packages/@overeng/otel-scrape/nix/build.nix") {
-          inherit pkgs;
+          inherit
+            pkgs
+            gitRev
+            commitTs
+            dirty
+            ;
         };
         cliPackages = {
           genie = import (rootPath + "/packages/@overeng/genie/nix/build.nix") {

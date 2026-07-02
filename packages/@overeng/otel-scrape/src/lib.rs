@@ -34,6 +34,15 @@ use content_address::{
 };
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
+// OTel semantic-conventions schema this instrumentation targets (decision 0019).
+// Emitted as schemaUrl on the OTLP resource and instrumentation scope so a
+// consumer can resolve attribute semantics deterministically.
+const SEMCONV_SCHEMA_URL: &str = "https://opentelemetry.io/schemas/1.37.0";
+// Build stamp baked at compile time by Nix (decision 0019): a NixStamp JSON in
+// the shared build-versioning contract. `None` for a plain `cargo build`; in a
+// devenv shell `option_env!` instead captures the exported LocalStamp, which is
+// deliberately NOT honored as the binary's own identity (see resolve_machine_version).
+pub const BUILD_STAMP: Option<&str> = option_env!("CLI_BUILD_STAMP");
 const EX_USAGE: u8 = 64;
 const TRACE_FLAGS_SAMPLED: &str = "01";
 const SUMMARY_ENV: &str = "OTEL_SCRAPE_SUMMARY_OUT";
@@ -350,6 +359,16 @@ enum AdapterSummaryRecord {
 struct AdapterEvent {
     severity: String,
     filename_hash: Option<String>,
+    /// The diagnostic rule / linter code, emitted verbatim (e.g.
+    /// `eslint(no-debugger)`) (H5). Public-safe: a public lint-rule name, never
+    /// source text or a path. `skip_serializing_if` keeps the summary shape
+    /// minimal when a diagnostic carries no code.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    rule: Option<String>,
+    /// The 1-based source line of the diagnostic (H5). Public-safe: a plain
+    /// integer, never a path or source text.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    line: Option<u32>,
 }
 
 #[derive(Debug, Clone)]
@@ -781,6 +800,116 @@ pub fn print_help() {
 
 pub fn print_version() {
     println!("otel-scrape {VERSION}");
+}
+
+/// Resolve the machine-readable build version for telemetry (decision 0019),
+/// mirroring the shared build-versioning contract
+/// (`@overeng/utils/node/cli-version` `resolveCliMachineVersion`). Precedence:
+///   1. a compile-time Nix build stamp (`option_env!`) — the binary's own build;
+///   2. else a runtime `CLI_BUILD_STAMP` (a devenv-shell LocalStamp or a NixStamp);
+///   3. else `<baseVersion>+dev`.
+///
+/// The step-3 `+dev` marker is a deliberate local divergence from the TS
+/// `package` case (which returns the bare base): otel-scrape has no
+/// package-registry distribution, so a stampless build is always a local dev
+/// build, and a bare `0.0.0` discriminates no build — the exact gap H5 closes.
+fn build_machine_version() -> String {
+    resolve_machine_version(
+        BUILD_STAMP,
+        std::env::var("CLI_BUILD_STAMP").ok().as_deref(),
+        VERSION,
+    )
+}
+
+/// Whether this binary was compiled with a baked NixStamp (decision 0019) — the
+/// case where a runtime `CLI_BUILD_STAMP` is overridden by the binary's own
+/// build identity. Lets an integration test skip the runtime-stamp/fallback
+/// assertions that only hold for a stampless (plain `cargo`/devenv) build.
+pub fn compiled_with_nix_stamp() -> bool {
+    matches!(
+        BUILD_STAMP.and_then(parse_build_stamp),
+        Some(BuildStamp::Nix { .. })
+    )
+}
+
+/// Pure resolution of the machine version from the compile-time and runtime
+/// stamps (decision 0019). Kept side-effect-free so every precedence branch is
+/// unit-testable without touching the process environment.
+fn resolve_machine_version(
+    compile_stamp: Option<&str>,
+    runtime_stamp: Option<&str>,
+    base: &str,
+) -> String {
+    // A compile-time stamp is honored ONLY when it is a NixStamp: in a devenv
+    // shell `option_env!` also captures the exported LocalStamp, which describes
+    // the shell, not this binary, and must not masquerade as its build identity.
+    // The Nix build path always bakes a NixStamp.
+    if let Some(BuildStamp::Nix { version, rev, dirty }) =
+        compile_stamp.and_then(parse_build_stamp)
+    {
+        return nix_machine_version(&version, &rev, dirty);
+    }
+    match runtime_stamp.and_then(parse_build_stamp) {
+        Some(BuildStamp::Nix { version, rev, dirty }) => nix_machine_version(&version, &rev, dirty),
+        Some(BuildStamp::Local { rev, dirty }) => local_machine_version(base, &rev, dirty),
+        None => format!("{base}+dev"),
+    }
+}
+
+/// machineVersion for a NixStamp — `<version>+<rev>[-dirty]` (mirrors the TS
+/// `nixMachineVersion`). The rev already carries `-dirty` when the flake saw a
+/// dirty tree (`dirtyShortRev`), so the suffix is not doubled.
+fn nix_machine_version(version: &str, rev: &str, dirty: bool) -> String {
+    let dirty_suffix = if dirty && !rev.ends_with("-dirty") {
+        "-dirty"
+    } else {
+        ""
+    };
+    format!("{version}+{rev}{dirty_suffix}")
+}
+
+/// machineVersion for a LocalStamp — `<base>+local.<rev>[.dirty]` (mirrors the
+/// TS `localMachineVersion`).
+fn local_machine_version(base: &str, rev: &str, dirty: bool) -> String {
+    let dirty_suffix = if dirty { ".dirty" } else { "" };
+    format!("{base}+local.{rev}{dirty_suffix}")
+}
+
+/// Parsed build stamp in the shared build-versioning contract (decision 0019).
+enum BuildStamp {
+    Nix {
+        version: String,
+        rev: String,
+        dirty: bool,
+    },
+    Local {
+        rev: String,
+        dirty: bool,
+    },
+}
+
+/// Parse a `CLI_BUILD_STAMP` JSON string. Defensive: any missing/mistyped field
+/// yields `None` so a malformed stamp degrades to the `+dev` fallback rather
+/// than failing the run (decision 0019: never fail on version resolution).
+fn parse_build_stamp(raw: &str) -> Option<BuildStamp> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return None;
+    }
+    let value: serde_json::Value = serde_json::from_str(raw).ok()?;
+    let dirty = value.get("dirty").and_then(|v| v.as_bool()).unwrap_or(false);
+    match value.get("type").and_then(|v| v.as_str())? {
+        "nix" => Some(BuildStamp::Nix {
+            version: value.get("version")?.as_str()?.to_owned(),
+            rev: value.get("rev")?.as_str()?.to_owned(),
+            dirty,
+        }),
+        "local" => Some(BuildStamp::Local {
+            rev: value.get("rev")?.as_str()?.to_owned(),
+            dirty,
+        }),
+        _ => None,
+    }
 }
 
 pub fn run(config: RunConfig) -> io::Result<i32> {
@@ -2364,15 +2493,21 @@ fn export_command_span(
         .iter()
         .map(|(key, value)| json!({ "key": key, "value": { "stringValue": value } }))
         .collect();
+    // Instrumentation-scope version = otel-scrape's build machineVersion
+    // (decision 0019): the git rev is baked in at build time, so a trace is
+    // tied to a specific build/commit — not the bare crate `0.0.0`, which
+    // discriminated no build. schemaUrl pins the semconv version on both the
+    // resource and the scope so attribute semantics resolve deterministically.
+    let scope_version = build_machine_version();
     let body = json!({
         "resourceSpans": [{
             "resource": {
                 "attributes": resource_attributes,
             },
+            "schemaUrl": SEMCONV_SCHEMA_URL,
             "scopeSpans": [{
-                // Instrumentation-scope version = otel-scrape's crate version
-                // (decision 0016, M25.1), so a trace can be tied to a build.
-                "scope": { "name": OTEL_SCRAPE_SCOPE_NAME, "version": VERSION },
+                "scope": { "name": OTEL_SCRAPE_SCOPE_NAME, "version": scope_version },
+                "schemaUrl": SEMCONV_SCHEMA_URL,
                 "spans": spans,
             }],
         }],
@@ -2467,13 +2602,28 @@ fn otlp_span_events(adapter: &AdapterRun, time_unix_nano: u128) -> Vec<serde_jso
         match output {
             AdapterOutput::Event(event) => {
                 let mut attrs = vec![json!({
-                    "key": "severity",
+                    "key": telemetry_registry::attributes::ADAPTER_EVENT_SEVERITY,
                     "value": { "stringValue": event.severity },
                 })];
                 if let Some(filename_hash) = event.filename_hash.as_ref() {
                     attrs.push(json!({
-                        "key": "source.filename_hash",
+                        "key": telemetry_registry::attributes::ADAPTER_EVENT_SOURCE_FILENAME_HASH,
                         "value": { "stringValue": filename_hash },
+                    }));
+                }
+                // rule + line are cheap, non-sensitive diagnostic locators (H5):
+                // a public lint-rule code and a plain integer. The filename stays
+                // hashed above; these add no path or source text.
+                if let Some(rule) = event.rule.as_ref() {
+                    attrs.push(json!({
+                        "key": telemetry_registry::attributes::ADAPTER_EVENT_RULE,
+                        "value": { "stringValue": rule },
+                    }));
+                }
+                if let Some(line) = event.line {
+                    attrs.push(json!({
+                        "key": telemetry_registry::attributes::ADAPTER_EVENT_LINE,
+                        "value": { "intValue": line.to_string() },
                     }));
                 }
                 events.push(json!({
@@ -2662,8 +2812,8 @@ fn otlp_env_config() -> OtlpEnvConfig {
     let service_name = service_name_env
         .or(service_name_from_resource)
         .unwrap_or_else(|| String::from("otel-scrape"));
-    // service.version defaults to otel-scrape's crate version (decision 0016,
-    // M25.1) ONLY when service.name is also otel-scrape's own default — i.e.
+    // service.version defaults to otel-scrape's build machineVersion (decision
+    // 0019) ONLY when service.name is also otel-scrape's own default — i.e.
     // neither OTEL_SERVICE_NAME nor a service.name in OTEL_RESOURCE_ATTRIBUTES was
     // supplied. When a user/harness supplies service.name, service.* names the
     // enclosing harness, so stamping otel-scrape's version onto it would be wrong.
@@ -2672,7 +2822,11 @@ fn otlp_env_config() -> OtlpEnvConfig {
     if !service_name_supplied
         && resource_attribute(&resource_attributes, "service.version").is_none()
     {
-        set_resource_attribute(&mut resource_attributes, "service.version", VERSION);
+        set_resource_attribute(
+            &mut resource_attributes,
+            "service.version",
+            &build_machine_version(),
+        );
     }
     set_resource_attribute(&mut resource_attributes, "service.name", &service_name);
 
@@ -3378,10 +3532,28 @@ struct OxlintDiagnostic {
     message: String,
     severity: String,
     filename: Option<String>,
-    /// The oxlint rule code (e.g. `eslint(no-unused-vars)`). Terminal render only
-    /// (decision 0017 clause 4); parsed defensively and omitted when absent.
+    /// The oxlint rule code (e.g. `eslint(no-unused-vars)`). Public-safe (H5):
+    /// emitted verbatim as the sink-facing `rule`. Parsed defensively and
+    /// omitted when absent.
     #[serde(default)]
     code: Option<String>,
+    /// Diagnostic source labels (oxlint miette JSON): each carries a `span`
+    /// whose `line` is the public-safe 1-based location (H5). Parsed defensively;
+    /// the first label with a line supplies the event `line`.
+    #[serde(default)]
+    labels: Vec<OxlintLabel>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OxlintLabel {
+    #[serde(default)]
+    span: Option<OxlintSpan>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OxlintSpan {
+    #[serde(default)]
+    line: Option<u32>,
 }
 
 /// The subset of vitest's `--reporter=json` summary otel-scrape consumes from the
@@ -3420,6 +3592,14 @@ fn oxlint_adapter(structured_source: &[u8]) -> (Vec<AdapterOutput>, Option<Strin
         records.push(AdapterOutput::Event(AdapterEvent {
             severity: diagnostic.severity.clone(),
             filename_hash: diagnostic.filename.as_deref().map(hash_path_identity),
+            // rule = the linter code verbatim; line = the first labelled source
+            // line (H5). Both public-safe (a rule name + an integer); the path
+            // stays hashed above.
+            rule: diagnostic.code.clone(),
+            line: diagnostic
+                .labels
+                .iter()
+                .find_map(|label| label.span.as_ref().and_then(|span| span.line)),
         }));
     }
 
@@ -3710,6 +3890,66 @@ pub fn usage_exit_code() -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Build-id correlation (H5, decision 0019): the pure precedence resolver is
+    // exercised branch-by-branch so it is independent of the process environment
+    // and of whether the crate was compiled with a baked NixStamp.
+    #[test]
+    fn machine_version_prefers_compile_time_nix_stamp() {
+        // A compile-time NixStamp is the binary's own build and wins over any
+        // runtime stamp.
+        let compile = r#"{"type":"nix","version":"0.0.0","rev":"abc1234","commitTs":42,"dirty":false}"#;
+        let runtime = r#"{"type":"local","rev":"ffff","ts":1,"dirty":true}"#;
+        assert_eq!(
+            resolve_machine_version(Some(compile), Some(runtime), "0.0.0"),
+            "0.0.0+abc1234"
+        );
+    }
+
+    #[test]
+    fn machine_version_nix_stamp_marks_dirty_without_doubling() {
+        let clean = r#"{"type":"nix","version":"0.0.0","rev":"abc1234","commitTs":1,"dirty":true}"#;
+        assert_eq!(
+            resolve_machine_version(Some(clean), None, "0.0.0"),
+            "0.0.0+abc1234-dirty"
+        );
+        // The flake supplies dirtyShortRev already carrying `-dirty`; the suffix
+        // must not be doubled.
+        let already = r#"{"type":"nix","version":"0.0.0","rev":"abc1234-dirty","commitTs":1,"dirty":true}"#;
+        assert_eq!(
+            resolve_machine_version(Some(already), None, "0.0.0"),
+            "0.0.0+abc1234-dirty"
+        );
+    }
+
+    #[test]
+    fn machine_version_uses_runtime_local_stamp_when_no_compile_stamp() {
+        // In a devenv shell option_env! captures a LocalStamp — it describes the
+        // shell, not the binary, so a compile-time LocalStamp is NOT honored and
+        // resolution falls through to the runtime path.
+        let local = r#"{"type":"local","rev":"deadbee","ts":1,"dirty":false}"#;
+        assert_eq!(
+            resolve_machine_version(Some(local), Some(local), "0.0.0"),
+            "0.0.0+local.deadbee"
+        );
+        let dirty = r#"{"type":"local","rev":"deadbee","ts":1,"dirty":true}"#;
+        assert_eq!(
+            resolve_machine_version(None, Some(dirty), "0.0.0"),
+            "0.0.0+local.deadbee.dirty"
+        );
+    }
+
+    #[test]
+    fn machine_version_falls_back_to_dev_marker_when_unstamped() {
+        // Plain `cargo build` with no stamp anywhere: never bare `0.0.0` (which
+        // discriminates no build), always the honest `+dev` marker.
+        assert_eq!(resolve_machine_version(None, None, "0.0.0"), "0.0.0+dev");
+        // A malformed stamp degrades to the same fallback rather than failing.
+        assert_eq!(
+            resolve_machine_version(Some("not json"), Some("{}"), "0.0.0"),
+            "0.0.0+dev"
+        );
+    }
 
     #[test]
     fn parses_command_after_separator() {

@@ -240,6 +240,88 @@ fn oxlint_adapter_keeps_raw_message_and_path_out_of_both_sinks() {
     assert!(otlp.contains("source.filename_hash"));
 }
 
+// Adapter event richness (H5): the oxlint rule id (linter code, emitted
+// verbatim) and the diagnostic line land in BOTH the OTLP event and the summary
+// record — cheap, non-sensitive locators (a public rule name + an integer). The
+// byte-level non-leak invariant still holds: the raw filename/path and raw
+// message stay byte-absent from both sinks, and the filename stays HASHED.
+#[test]
+fn oxlint_adapter_emits_rule_and_line_in_both_sinks_with_filename_hashed() {
+    let collector = TestCollector::start(200);
+    let dir = tempfile::tempdir().unwrap();
+    let summary_path = dir.path().join("summary.json");
+    let raw_message = "`debugger` statement is not allowed";
+    let raw_filename = "/private/secret-source.ts";
+    let rule = "eslint(no-debugger)";
+    // Mirrors real oxlint miette JSON: rule in `code`, line in labels[].span.line.
+    let oxlint_json = format!(
+        r#"{{ "diagnostics": [{{"message": {raw_message:?}, "severity": "warning", "filename": {raw_filename:?}, "code": {rule:?}, "labels": [{{"span": {{"offset": 10, "length": 8, "line": 2, "column": 1}}}}]}}] }}"#,
+    );
+
+    let out = otel_scrape()
+        .env("OX_JSON", &oxlint_json)
+        .args(["--adapter", "oxlint", "--summary-out"])
+        .arg(&summary_path)
+        .args(["--service-name", "otel-scrape-test"])
+        .args(["--otlp-endpoint", &collector.endpoint])
+        .args(["--", "sh", "-c", "printf '%s' \"$OX_JSON\""])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+
+    let summary_bytes = std::fs::read(&summary_path).unwrap();
+    let request = collector.request();
+
+    // rule + line present in the summary record (local field names rule/line).
+    let summary: serde_json::Value = serde_json::from_slice(&summary_bytes).unwrap();
+    let event = &summary["adapter"]["records"][1];
+    assert_eq!(event["_tag"], "Event");
+    assert_eq!(event["severity"], "warning");
+    assert_eq!(event["rule"], rule);
+    assert_eq!(event["line"], 2);
+    let filename_hash = event["filename_hash"].as_str().unwrap();
+    assert!(filename_hash.starts_with("sha256:"));
+    // Raw filename/message never became summary fields.
+    assert!(event.get("filename").is_none());
+    assert!(event.get("message").is_none());
+
+    // rule + line present in the OTLP adapter event, under the registered keys.
+    let body: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
+    let events = body["resourceSpans"][0]["scopeSpans"][0]["spans"][0]["events"]
+        .as_array()
+        .unwrap();
+    let adapter_event = events
+        .iter()
+        .find(|event| event["name"] == "otel_scrape.adapter.event")
+        .expect("an otel_scrape.adapter.event should be present");
+    let attrs = adapter_event["attributes"].as_array().unwrap();
+    assert_eq!(attr_value(attrs, "otel_scrape.adapter.rule").as_deref(), Some(rule));
+    assert_eq!(
+        attr_value(attrs, "otel_scrape.adapter.line").as_deref(),
+        Some("2")
+    );
+    assert_eq!(
+        attr_value(attrs, "source.filename_hash").as_deref(),
+        Some(filename_hash)
+    );
+
+    // Byte-level non-leak invariant across BOTH sinks (R27 / decisions 0015/0017).
+    for (label, bytes) in [
+        ("summary", summary_bytes.as_slice()),
+        ("otlp", request.body.as_slice()),
+    ] {
+        let haystack = String::from_utf8_lossy(bytes);
+        assert!(
+            !haystack.contains(raw_message),
+            "raw diagnostic message leaked into {label}"
+        );
+        assert!(
+            !haystack.contains(raw_filename),
+            "raw filename leaked into {label}"
+        );
+    }
+}
+
 #[test]
 fn oxlint_adapter_parse_failure_preserves_output_and_exit_status() {
     let dir = tempfile::tempdir().unwrap();
@@ -1343,7 +1425,7 @@ fn exports_command_span_to_otlp_http_json() {
     // Status.message — Description is reserved for the Error status.
     assert_eq!(span["status"].get("message"), None);
     // Instrumentation-scope version + resource service.version tie the trace to
-    // a build (decision 0016, M25.1); both equal otel-scrape's crate version.
+    // a build (decision 0019); both equal otel-scrape's build machineVersion.
     let scope = &resource_span["scopeSpans"][0]["scope"];
     assert_eq!(scope["name"], "otel-scrape");
     assert!(scope["version"].as_str().is_some_and(|v| !v.is_empty()));
@@ -1808,6 +1890,76 @@ fn service_version_default_is_gated_when_service_name_is_supplied() {
     let scope = &resource_span["scopeSpans"][0]["scope"];
     assert_eq!(scope["name"], "otel-scrape");
     assert!(scope["version"].as_str().is_some_and(|v| !v.is_empty()));
+}
+
+// Build-id trace correlation (H5, decision 0019): scope.version is a
+// build-correlated machineVersion (not the bare crate `0.0.0`, which
+// discriminated no build), and schemaUrl pins the semconv version on both the
+// scope and the resource. The exact precedence/fallback logic is covered by the
+// pure unit tests in the library crate; this proves the end-to-end wiring.
+#[test]
+fn scope_version_is_build_correlated_and_schema_url_present() {
+    let collector = TestCollector::start(200);
+    // A distinctive runtime NixStamp. On a stampless build (plain cargo / devenv)
+    // it is honored verbatim; on a nix build the baked flake rev wins by
+    // contract. Either way scope.version must be a machineVersion, not `0.0.0`.
+    let out = otel_scrape()
+        .env(
+            "CLI_BUILD_STAMP",
+            r#"{"type":"nix","version":"0.0.0","rev":"beefca7","commitTs":7,"dirty":false}"#,
+        )
+        .args(["--service-name", "otel-scrape-test"])
+        .args(["--otlp-endpoint", &collector.endpoint])
+        .args(["--", "sh", "-c", "printf child"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+
+    let body: serde_json::Value = serde_json::from_slice(&collector.request().body).unwrap();
+    let resource_span = &body["resourceSpans"][0];
+    let scope = &resource_span["scopeSpans"][0]["scope"];
+    let scope_version = scope["version"].as_str().unwrap();
+    assert!(
+        scope_version.starts_with("0.0.0+") && scope_version != "0.0.0",
+        "scope.version must be a build-correlated machineVersion, got {scope_version}"
+    );
+    // Without a baked NixStamp, the injected runtime stamp is reflected exactly.
+    if !otel_scrape::compiled_with_nix_stamp() {
+        assert_eq!(scope_version, "0.0.0+beefca7");
+    }
+    // schemaUrl pins the semconv version on both the ScopeSpans (the
+    // instrumentation scope's schema, a sibling of `scope`) and the ResourceSpans.
+    assert_eq!(
+        resource_span["scopeSpans"][0]["schemaUrl"],
+        "https://opentelemetry.io/schemas/1.37.0"
+    );
+    assert_eq!(
+        resource_span["schemaUrl"],
+        "https://opentelemetry.io/schemas/1.37.0"
+    );
+}
+
+// The stampless fallback (H5, decision 0019): with no honored stamp anywhere,
+// scope.version is the honest `0.0.0+dev` marker — never bare `0.0.0`. Skipped
+// on a nix build, whose baked NixStamp leaves no unstamped path to exercise.
+#[test]
+fn scope_version_falls_back_to_dev_when_unstamped() {
+    if otel_scrape::compiled_with_nix_stamp() {
+        return;
+    }
+    let collector = TestCollector::start(200);
+    let out = otel_scrape()
+        .env_remove("CLI_BUILD_STAMP")
+        .args(["--service-name", "otel-scrape-test"])
+        .args(["--otlp-endpoint", &collector.endpoint])
+        .args(["--", "sh", "-c", "printf child"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+
+    let body: serde_json::Value = serde_json::from_slice(&collector.request().body).unwrap();
+    let scope = &body["resourceSpans"][0]["scopeSpans"][0]["scope"];
+    assert_eq!(scope["version"], "0.0.0+dev");
 }
 
 #[test]

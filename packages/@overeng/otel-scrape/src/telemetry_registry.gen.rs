@@ -1,12 +1,12 @@
 // Generated file - DO NOT EDIT
 // Source: telemetry_registry.gen.rs.genie.ts
 // Registry source: context/otel-scrape/telemetry-registry.json
-// Input fingerprint: sha256:129c704eff7970590b68dbc7feaddcf5bed4d8348ef2f18f60a6d742bf9911db
+// Input fingerprint: sha256:0a20a264a614244322ff4af277cf8293dbdf97edd3b2cb35692f2dc44ba1f4d3
 
 pub const REGISTRY_SCHEMA_VERSION: u8 = 1;
 pub const REGISTRY_NAMESPACE: &str = "otel_scrape";
 pub const REGISTRY_INPUT_FINGERPRINT: &str =
-    "sha256:129c704eff7970590b68dbc7feaddcf5bed4d8348ef2f18f60a6d742bf9911db";
+    "sha256:0a20a264a614244322ff4af277cf8293dbdf97edd3b2cb35692f2dc44ba1f4d3";
 
 pub mod span_naming {
     pub const COMMAND: &str = "program-basename";
@@ -28,6 +28,10 @@ pub mod attributes {
     pub const PROCESS_COMMAND_ARGS: &str = "process.command_args";
     pub const PROCESS_WORKING_DIRECTORY: &str = "process.working_directory";
     pub const ADAPTER_NAME: &str = "otel_scrape.adapter.name";
+    pub const ADAPTER_EVENT_SEVERITY: &str = "severity";
+    pub const ADAPTER_EVENT_SOURCE_FILENAME_HASH: &str = "source.filename_hash";
+    pub const ADAPTER_EVENT_RULE: &str = "otel_scrape.adapter.rule";
+    pub const ADAPTER_EVENT_LINE: &str = "otel_scrape.adapter.line";
     pub const PROCESS_EXIT_CODE: &str = "process.exit.code";
     pub const PROCESS_PID: &str = "process.pid";
     pub const ERROR_TYPE: &str = "error.type";
