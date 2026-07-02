@@ -325,20 +325,20 @@ A span's name is the operation it represents; `otel-scrape` is carried in scope 
 - **Process span** — named by the observed descendant program basename (`rustc`). Emitted as a _distinct_ span only under an exact backend that proves a real descendant; in the default degraded `direct-child` backend the process observation is **merged into the command span** (see Process-Tree Fidelity).
 - **Tool-phase span** — named by the adapter phase (`typescript.project.check`).
 
-Every `otel-scrape`-owned span carries `otel.scope.name = otel-scrape` and `span.origin = otel-scrape` (adapter-derived phase spans use `span.origin = otel-scrape-adapter`), so consumers identify and aggregate wrapper-owned spans without the name carrying the instrumentation. Where `otel-scrape` wraps a command already inside another instrumentation's task span (e.g. a devenv `devenv.task.exec`), the two cooperate: the task instrumentation owns the task level and `otel-scrape` owns the command/process/tool-phase levels beneath it; neither emits a second generic span for the same execution. In devenv this means the task span (`devenv.task.exec`, via otel-span) is not itself wrapped in `otel-scrape`; instead a concrete command inside the task is wrapped with a one-line `trace.instr { adapter ? "none" }` prefix (decision 0018). Orchestration tasks with no single concrete command stay task-span-only.
+Every `otel-scrape`-owned span carries `otel.scope.name = otel-scrape` and `otel_scrape.span.origin = otel-scrape` (adapter-derived phase spans use `otel_scrape.span.origin = otel-scrape-adapter`), so consumers identify and aggregate wrapper-owned spans without the name carrying the instrumentation. The attribute keys are the OpenTelemetry process semantic conventions (`process.executable.name`, `process.command_args`, `process.working_directory`, `process.exit.code`), pinned to semconv v1.37.0; vendor-only concepts stay under the `otel_scrape.*` namespace ([decision 0016](./.decisions/0016-adopt-otel-cli-span-semconv.md)). Where `otel-scrape` wraps a command already inside another instrumentation's task span (e.g. a devenv `devenv.task.exec`), the two cooperate: the task instrumentation owns the task level and `otel-scrape` owns the command/process/tool-phase levels beneath it; neither emits a second generic span for the same execution. In devenv this means the task span (`devenv.task.exec`, via otel-span) is not itself wrapped in `otel-scrape`; instead a concrete command inside the task is wrapped with a one-line `trace.instr { adapter ? "none" }` prefix (decision 0018). Orchestration tasks with no single concrete command stay task-span-only.
 
 | Kind      | Name / attribute                           | Notes                                                             |
 | --------- | ------------------------------------------ | ----------------------------------------------------------------- |
 | Span name | program / phase / descendant basename      | Operation identity, not the instrumentation (0014)                |
 | Attribute | `otel.scope.name`                          | Instrumentation scope; `otel-scrape` for wrapper-owned spans      |
-| Attribute | `span.origin`                              | `otel-scrape` or `otel-scrape-adapter`                            |
-| Attribute | `command.program`                          | Executable basename — public-safe identity, always present        |
-| Attribute | `command.argv_hash`                        | Stable hash over argv — always present; the correlation/dedup key |
-| Attribute | `command.cwd_hash`                         | Stable hash over cwd identity — always present                    |
-| Attribute | `command.argv`                             | Raw argv — trust-gated (emitted only to an asserted private sink) |
-| Attribute | `command.cwd`                              | Raw cwd / local path — trust-gated (asserted private sink only)   |
+| Attribute | `otel_scrape.span.origin`                  | `otel-scrape` or `otel-scrape-adapter`                            |
+| Attribute | `process.executable.name`                  | Executable basename — public-safe identity, always present        |
+| Attribute | `otel_scrape.command.argv_hash`            | Stable hash over argv — always present; the correlation/dedup key |
+| Attribute | `otel_scrape.command.cwd_hash`             | Stable hash over cwd identity — always present                    |
+| Attribute | `process.command_args`                     | Raw argv (`string[]`) — trust-gated (asserted private sink only)  |
+| Attribute | `process.working_directory`                | Raw cwd / local path — trust-gated (asserted private sink only)   |
 | Attribute | `otel_scrape.adapter.name`                 | Selected adapter                                                  |
-| Attribute | `process.exit_code`                        | Exit status                                                       |
+| Attribute | `process.exit.code`                        | Exit status                                                       |
 | Attribute | `otel_scrape.process.observation.backend`  | Process observation backend                                       |
 | Attribute | `otel_scrape.process.observation.fidelity` | `exact`, `merged` (degraded direct-child), or degraded evidence   |
 | Attribute | `otel_scrape.process.observation.relation` | Relationship to the wrapper command span                          |
@@ -349,9 +349,9 @@ Every `otel-scrape`-owned span carries `otel.scope.name = otel-scrape` and `span
 | Attribute | `profile.uri`                              | Artifact retrieval URI                                            |
 | Attribute | `profile.ui`                               | Optional viewer URI                                               |
 
-Identity is **public-safe by default**: `command.program` (basename), `command.argv_hash`, and `command.cwd_hash` are always emitted; raw `command.argv`/`command.cwd` and local paths are emitted only into a sink an operator has explicitly asserted private (the trust gate — see Summary Evidence, OTLP Export Boundary, and requirement R27). Credentials, source text, and child output payloads are never emitted to any sink regardless of trust.
+Identity is **public-safe by default**: `process.executable.name` (basename), `otel_scrape.command.argv_hash`, and `otel_scrape.command.cwd_hash` are always emitted; raw `process.command_args`/`process.working_directory` and local paths are emitted only into a sink an operator has explicitly asserted private (the trust gate — see Summary Evidence, OTLP Export Boundary, and requirement R27). The trust gate, never-default-emit, and high cardinality travel with the semconv rename ([decision 0016](./.decisions/0016-adopt-otel-cli-span-semconv.md)): adopting the standard keys does not make raw argv/cwd always-on standard fields. Credentials, source text, and child output payloads are never emitted to any sink regardless of trust.
 
-The earlier-draft `process.command_args_hash` is renamed to `command.argv_hash` (aligned with the summary field). `telemetry-registry.json` must be regenerated for the renamed key, the new `command.*` / `span.origin` / `otel.scope.name` keys, and the span-name scheme change.
+The attribute keys adopt the OpenTelemetry process semantic conventions (semconv v1.37.0, [decision 0016](./.decisions/0016-adopt-otel-cli-span-semconv.md)): `command.program` → `process.executable.name`, `command.argv` → `process.command_args` (retyped to `string[]`), `command.cwd` → `process.working_directory`, `process.exit_code` → `process.exit.code`; the vendor concepts `command.argv_hash`/`command.cwd_hash`/`span.origin` move under `otel_scrape.*`. Renamed keys are retained in `telemetry-registry.json` as a deprecated evolution trail and the Rust/TypeScript bindings are regenerated.
 
 ## Summary Evidence
 
@@ -421,7 +421,7 @@ Exporter configuration:
 - `OTEL_SERVICE_NAME` is the environment fallback and takes precedence over
   `service.name` from `OTEL_RESOURCE_ATTRIBUTES`.
 - `OTEL_RESOURCE_ATTRIBUTES` supplies additional OTLP resource attributes.
-- `--trusted-sink otlp` (env alias `OTEL_SCRAPE_TRUSTED_SINK`, pinned to the single OTLP target) asserts that the configured OTLP sink is a private, access-controlled destination, which permits raw `command.argv`, `command.cwd`, and local paths into this run's OTLP export (requirement R27, [decision 0015](./.decisions/0015-trust-assertion-is-per-named-sink.md)). The assertion names the sink it covers: an OTLP assertion never covers the local summary sink. It is explicit, per-named-sink, and off by default; `command.program` + hashes are emitted with or without it, and credentials, source text, and child output payloads are never emitted regardless.
+- `--trusted-sink otlp` (env alias `OTEL_SCRAPE_TRUSTED_SINK`, pinned to the single OTLP target) asserts that the configured OTLP sink is a private, access-controlled destination, which permits raw `process.command_args`, `process.working_directory`, and local paths into this run's OTLP export (requirement R27, [decision 0015](./.decisions/0015-trust-assertion-is-per-named-sink.md), [decision 0016](./.decisions/0016-adopt-otel-cli-span-semconv.md)). The assertion names the sink it covers: an OTLP assertion never covers the local summary sink. It is explicit, per-named-sink, and off by default; `process.executable.name` + hashes are emitted with or without it, and credentials, source text, and child output payloads are never emitted regardless.
 - **Non-leak invariant (tested):** a sentinel secret placed in a wrapped command's argv must be byte-absent from every sink the operator did not assert. This is a required regression test ([decision 0015](./.decisions/0015-trust-assertion-is-per-named-sink.md), [experiment 0006](./.experiments/0006-trust-gate-granularity.md)): with no assertion the sentinel is absent from all sinks; with `--trusted-sink otlp` the sentinel appears in the OTLP payload but stays byte-absent from the summary.
 - `OTEL_EXPORTER_OTLP_HEADERS` supplies generic OTLP request headers.
 - `OTEL_EXPORTER_OTLP_TRACES_HEADERS` is the trace-specific header override.
@@ -535,7 +535,7 @@ Every supported adapter must land as a coherent contract slice:
 | Source         | A declared, stable, machine-readable format (named flag + schema) or native artifact. Human-text parsing is not part of a release adapter — at most a clearly-labeled best-effort scraper outside the adapter contract (decision 0017).                                                                        |
 | Presentation   | If the required format replaces the tool's human stdout, otel-scrape re-renders a readable summary (presentation ownership, R30); if the tool offers a side-channel (structured to file/fd, human stays on stdout), the adapter prefers it. Instrumenting must not degrade interactive output (decision 0017). |
 | Classification | Each emitted event, span, metric, or profile link follows the classification ladder.                                                                                                                                                                                                                           |
-| Privacy        | Command identity is public-safe by default (`command.program` basename + argv/cwd hashes, always present); raw argv/cwd/local paths are trust-gated (emitted only to an operator-asserted private sink, R27). Credentials, source text, output payloads, and profile bytes are never emitted to any sink.      |
+| Privacy        | Command identity is public-safe by default (`process.executable.name` basename + argv/cwd hashes, always present); raw argv/cwd/local paths are trust-gated (emitted only to an operator-asserted private sink, R27). Credentials, source text, output payloads, and profile bytes are never emitted to any sink.      |
 | Degradation    | Missing tools, malformed artifacts, parse failures, unsupported command shapes, and exporter failures preserve passthrough behavior and emit bounded degraded evidence.                                                                                                                                        |
 | Registry       | New stable names and fields are added to `telemetry-registry.json` and regenerated into Rust/TypeScript.                                                                                                                                                                                                       |
 | Contract       | Cross-package payloads decode through `@overeng/otel-contract` or a documented VRS contract before support is claimed.                                                                                                                                                                                         |
@@ -570,9 +570,9 @@ prototype/degraded evidence:
   query and E2E proof.
 - Profile artifacts are handed off by retaining the run CAS root and a manifest
   pin; the `cas:` URI plus descriptor is the durable identity.
-- Command identity is public-safe by default (`command.program` basename plus
-  argv/cwd hashes); raw argv, cwd, and local paths are trust-gated and enter OTLP
-  only when the sink is explicitly asserted private (R27). Credentials, source
+- Command identity is public-safe by default (`process.executable.name` basename
+  plus argv/cwd hashes); raw argv, cwd, and local paths are trust-gated and enter
+  OTLP only when the sink is explicitly asserted private (R27). Credentials, source
   text, profile bytes, and child output payloads are never emitted to any sink.
 - Descendant process-tree spans are release claims only for platform/backend
   combinations with exactness tests. The current exact claim is limited to

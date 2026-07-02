@@ -699,7 +699,10 @@ fn helper_stream_backend_degrades_on_invalid_fake_helper_streams() {
         (HelperFixtureMode::VersionMismatch, "version-mismatch"),
         (HelperFixtureMode::HelperDisconnect, "helper-disconnect"),
         (HelperFixtureMode::MissingExit, "lifecycle-incomplete"),
-        (HelperFixtureMode::ReversedTimestamps, "lifecycle-incomplete"),
+        (
+            HelperFixtureMode::ReversedTimestamps,
+            "lifecycle-incomplete",
+        ),
         (HelperFixtureMode::MultipleRoots, "lifecycle-incomplete"),
         (HelperFixtureMode::ExitBeforeExec, "lifecycle-incomplete"),
         (
@@ -965,7 +968,8 @@ fn exports_command_span_to_otlp_http_json() {
     let span = &resource_span["scopeSpans"][0]["spans"][0];
     // Span naming scheme (decision 0014): the command span is named by the
     // wrapped program's basename (`sh`), never a fixed instrumentation constant.
-    // Ownership is carried by span.origin=otel-scrape + otel.scope.name=otel-scrape.
+    // Ownership is carried by otel_scrape.span.origin=otel-scrape +
+    // otel.scope.name=otel-scrape (decision 0016).
     assert_eq!(span["name"], "sh");
     assert_eq!(span["traceId"], "11111111111111111111111111111111");
     assert_eq!(span["parentSpanId"], "2222222222222222");
@@ -977,26 +981,38 @@ fn exports_command_span_to_otlp_http_json() {
         Some("otel-scrape".to_owned())
     );
     assert_eq!(
-        attr_value(attrs, "span.origin"),
+        attr_value(attrs, "otel_scrape.span.origin"),
         Some("otel-scrape".to_owned())
     );
-    assert_eq!(attr_value(attrs, "command.program"), Some("sh".to_owned()));
-    assert!(attr_value(attrs, "command.argv_hash")
+    // OTel span.cli.internal convention (decision 0016): span name equals
+    // process.executable.name (the wrapped program basename).
+    assert_eq!(
+        attr_value(attrs, "process.executable.name"),
+        Some("sh".to_owned())
+    );
+    assert!(attr_value(attrs, "otel_scrape.command.argv_hash")
         .unwrap()
         .starts_with("sha256:"));
     assert_eq!(
-        attr_value(attrs, "command.argv_hash"),
+        attr_value(attrs, "otel_scrape.command.argv_hash"),
         summary["command"]["argv_hash"]
             .as_str()
             .map(ToOwned::to_owned)
     );
-    assert!(attr_value(attrs, "command.cwd_hash")
+    assert!(attr_value(attrs, "otel_scrape.command.cwd_hash")
         .unwrap()
         .starts_with("sha256:"));
-    // The raw command.argv / command.cwd trust-gated fields are M2, never M1.
-    assert_eq!(attr_value(attrs, "command.argv"), None);
-    assert_eq!(attr_value(attrs, "command.cwd"), None);
-    assert_eq!(attr_value(attrs, "process.exit_code"), Some("0".to_owned()));
+    // The raw process.command_args / process.working_directory trust-gated
+    // fields are M2, never M1.
+    assert_eq!(attr_string_array(attrs, "process.command_args"), None);
+    assert_eq!(attr_value(attrs, "process.working_directory"), None);
+    assert_eq!(attr_value(attrs, "process.exit.code"), Some("0".to_owned()));
+    // Deprecated pre-semconv keys (decision 0016) are never emitted on any span.
+    assert_eq!(attr_value(attrs, "span.origin"), None);
+    assert_eq!(attr_value(attrs, "command.program"), None);
+    assert_eq!(attr_value(attrs, "command.argv_hash"), None);
+    assert_eq!(attr_value(attrs, "command.cwd_hash"), None);
+    assert_eq!(attr_value(attrs, "process.exit_code"), None);
     assert_eq!(
         attr_value(attrs, "otel_scrape.adapter.name"),
         Some("none".to_owned())
@@ -1118,14 +1134,24 @@ fn trust_gate_untrusted_leaks_to_no_sink() {
     );
 
     // Only the hashed correlation keys are present, in both sinks.
-    assert!(attr_value(&capture.otlp_attrs, "command.argv_hash")
-        .unwrap()
-        .starts_with("sha256:"));
-    assert!(attr_value(&capture.otlp_attrs, "command.cwd_hash")
-        .unwrap()
-        .starts_with("sha256:"));
-    assert_eq!(attr_value(&capture.otlp_attrs, "command.argv"), None);
-    assert_eq!(attr_value(&capture.otlp_attrs, "command.cwd"), None);
+    assert!(
+        attr_value(&capture.otlp_attrs, "otel_scrape.command.argv_hash")
+            .unwrap()
+            .starts_with("sha256:")
+    );
+    assert!(
+        attr_value(&capture.otlp_attrs, "otel_scrape.command.cwd_hash")
+            .unwrap()
+            .starts_with("sha256:")
+    );
+    assert_eq!(
+        attr_string_array(&capture.otlp_attrs, "process.command_args"),
+        None
+    );
+    assert_eq!(
+        attr_value(&capture.otlp_attrs, "process.working_directory"),
+        None
+    );
     assert!(capture.summary["command"]["argv_hash"]
         .as_str()
         .unwrap()
@@ -1142,14 +1168,21 @@ fn trust_gate_untrusted_leaks_to_no_sink() {
 fn trust_gate_otlp_reveals_otlp_only() {
     let capture = run_trust_capture(&["--trusted-sink", "otlp"], &[]);
 
-    // The sentinel is PRESENT in the OTLP command.argv (this sink was asserted).
-    let argv_raw = attr_value(&capture.otlp_attrs, "command.argv").unwrap();
+    // The sentinel is PRESENT as a member of the OTLP process.command_args array
+    // (this sink was asserted). Array membership, not substring-in-joined-string.
+    let argv_raw = attr_string_array(&capture.otlp_attrs, "process.command_args").unwrap();
     assert!(
-        argv_raw.contains(TRUST_SENTINEL),
-        "asserted OTLP sink must carry the raw sentinel argv"
+        argv_raw.iter().any(|arg| arg.contains(TRUST_SENTINEL)),
+        "asserted OTLP sink must carry the raw sentinel argv as an array member"
     );
-    let cwd_raw = attr_value(&capture.otlp_attrs, "command.cwd").unwrap();
-    assert!(cwd_raw.starts_with('/'), "raw cwd should be an absolute path");
+    // Old-key absence: the pre-semconv command.argv is never emitted, even trusted.
+    assert_eq!(attr_value(&capture.otlp_attrs, "command.argv"), None);
+    let cwd_raw = attr_value(&capture.otlp_attrs, "process.working_directory").unwrap();
+    assert!(
+        cwd_raw.starts_with('/'),
+        "raw cwd should be an absolute path"
+    );
+    assert_eq!(attr_value(&capture.otlp_attrs, "command.cwd"), None);
     assert!(String::from_utf8_lossy(&capture.otlp_body).contains(TRUST_SENTINEL));
 
     // Wrong-sink guard: asserting otlp NEVER puts raw into the summary — the
@@ -1178,9 +1211,10 @@ fn trust_gate_env_alias_is_pinned_to_otlp_only() {
     let capture = run_trust_capture(&[], &[("OTEL_SCRAPE_TRUSTED_SINK", "true")]);
 
     assert!(
-        attr_value(&capture.otlp_attrs, "command.argv")
+        attr_string_array(&capture.otlp_attrs, "process.command_args")
             .unwrap()
-            .contains(TRUST_SENTINEL),
+            .iter()
+            .any(|arg| arg.contains(TRUST_SENTINEL)),
         "env alias must unlock raw argv in the OTLP sink"
     );
     // Pinned-to-otlp: the summary stays byte-clean.
@@ -1205,15 +1239,24 @@ fn trust_gate_summary_reveals_summary_only() {
     assert!(argv
         .iter()
         .any(|value| value.as_str().unwrap().contains(TRUST_SENTINEL)));
-    assert!(capture.summary["command"]["cwd"].as_str().unwrap().starts_with('/'));
+    assert!(capture.summary["command"]["cwd"]
+        .as_str()
+        .unwrap()
+        .starts_with('/'));
 
     // Wrong-sink guard: a summary assertion never unlocks the OTLP sink.
     assert!(
         !String::from_utf8_lossy(&capture.otlp_body).contains(TRUST_SENTINEL),
         "summary assertion leaked the sentinel into the OTLP payload"
     );
-    assert_eq!(attr_value(&capture.otlp_attrs, "command.argv"), None);
-    assert_eq!(attr_value(&capture.otlp_attrs, "command.cwd"), None);
+    assert_eq!(
+        attr_string_array(&capture.otlp_attrs, "process.command_args"),
+        None
+    );
+    assert_eq!(
+        attr_value(&capture.otlp_attrs, "process.working_directory"),
+        None
+    );
 }
 
 #[test]
@@ -1753,6 +1796,25 @@ fn attr_value(attrs: &[serde_json::Value], key: &str) -> Option<String> {
                 .map(ToOwned::to_owned)
                 .or_else(|| Some(value.to_string()))
         })
+}
+
+/// Reads an OTLP `arrayValue` attribute as a Vec of its string members.
+/// `attr_value` only understands scalar values, so `process.command_args`
+/// (an OTel string[]) needs this array-aware accessor.
+fn attr_string_array(attrs: &[serde_json::Value], key: &str) -> Option<Vec<String>> {
+    let values = attrs
+        .iter()
+        .find(|attr| attr["key"] == key)?
+        .get("value")?
+        .get("arrayValue")?
+        .get("values")?
+        .as_array()?;
+    Some(
+        values
+            .iter()
+            .filter_map(|value| value.get("stringValue")?.as_str().map(ToOwned::to_owned))
+            .collect(),
+    )
 }
 
 fn assert_event_time_within_span(event: &serde_json::Value, span: &serde_json::Value) {

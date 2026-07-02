@@ -26,11 +26,11 @@
 
 **Profile link** — A descriptor on a span containing profile type, digest, retrieval URI, and optional viewer URI.
 
-**Program identity** — The wrapped executable's basename (`tsc`, `cargo`), used as the command span name and `command.program`. Public-safe (never a path or args), so it is always emitted.
+**Program identity** — The wrapped executable's basename (`tsc`, `cargo`), used as the command span name and the OTel semconv attribute `process.executable.name` (decision 0016). Public-safe (never a path or args), so it is always emitted.
 
-**Argv hash** — A stable hash over the child argv vector (`command.argv_hash`). Always emitted; it is the correlation/dedup key, not merely a redaction of the raw argv.
+**Argv hash** — A stable hash over the child argv vector (`otel_scrape.command.argv_hash`, a vendor-namespaced key with no upstream equivalent; decision 0016). Always emitted; it is the correlation/dedup key, not merely a redaction of the raw argv.
 
-**Span origin** — The `span.origin` attribute (`otel-scrape` or `otel-scrape-adapter`) plus `otel.scope.name = otel-scrape`, marking a span as wrapper-owned without the span name carrying the instrumentation.
+**Span origin** — The `otel_scrape.span.origin` attribute (`otel-scrape` or `otel-scrape-adapter`) plus `otel.scope.name = otel-scrape`, marking a span as wrapper-owned without the span name carrying the instrumentation.
 
 **Merged process observation** — In the default degraded `direct-child` backend, the process observation folded into the command span (`fidelity = "merged"`) instead of a separate span. A distinct process span appears only under an exact backend.
 
@@ -44,4 +44,4 @@
 
 **Best-effort scraper** — A parser of a tool's human text (e.g. the devenv tsc `--extendedDiagnostics` timing scraper). It is fragile and lives outside the adapter contract; it is never presented as a supported adapter (decision 0017).
 
-**Named-command identity** — The `adapter=none` command span: a concrete command wrapped by `otel-scrape` gets a named span (`command.program`, argv/cwd hashes, exit, merged process) without adapter records. The baseline for concrete-command instrumentation (decision 0018).
+**Named-command identity** — The `adapter=none` command span: a concrete command wrapped by `otel-scrape` gets a named span (`process.executable.name`, argv/cwd hashes, exit, merged process) without adapter records. The baseline for concrete-command instrumentation (decision 0018).

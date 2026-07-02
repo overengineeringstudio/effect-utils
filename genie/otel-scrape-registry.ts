@@ -21,10 +21,30 @@ type SpanRegistryItem = RegistryItem & {
   readonly naming: 'program-basename' | 'descendant-basename' | 'adapter-phase'
 }
 
+/**
+ * A single example value. For a `string[]`-typed attribute an example is itself
+ * a list, so arrays of scalars are permitted alongside scalar examples.
+ */
+type AttrExample = string | number | boolean | readonly (string | number | boolean)[]
+
+/**
+ * Field shape pre-aligned with PR #881's Weaver semconv AttrDef (decision 0016):
+ * `stability`, `examples`, `note`, and a structured `deprecated` trail carried on
+ * the old entry across a rename. `cardinality`/`encode` stay first-class JSON
+ * policy fields (not pre-emitted as Weaver `annotations.<policy>` blocks).
+ */
 type AttributeRegistryItem = RegistryItem & {
   readonly key: string
-  readonly valueType: 'string' | 'int' | 'double' | 'boolean'
+  readonly valueType: 'string' | 'string[]' | 'int' | 'double' | 'boolean'
   readonly cardinality: 'low' | 'bounded' | 'high'
+  readonly stability: 'stable' | 'development'
+  readonly examples?: readonly AttrExample[]
+  readonly note?: string
+  readonly encode?: 'drop'
+  readonly deprecated?: {
+    readonly reason: string
+    readonly renamed_to?: string
+  }
 }
 
 type ProfileFieldRegistryItem = RegistryItem & {

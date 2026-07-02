@@ -1510,9 +1510,7 @@ fn helper_events_to_process_observation(
         if base.event_seq != expected_seq {
             return Err(ProcessObservationDegradedReason::SequenceGap);
         }
-        if last_event_unix_nano
-            .is_some_and(|last| base.time_unix_nano < last)
-        {
+        if last_event_unix_nano.is_some_and(|last| base.time_unix_nano < last) {
             return Err(ProcessObservationDegradedReason::LifecycleIncomplete);
         }
         last_event_unix_nano = Some(base.time_unix_nano);
@@ -1948,8 +1946,7 @@ fn export_command_span(
     // is folded into the command span (decision 0014, spec Process-Tree
     // Fidelity), so the command span carries the observation attributes with
     // fidelity = "merged" and no separate process span is emitted.
-    let merge_process_into_command =
-        observation.fidelity != ProcessObservationFidelity::Exact;
+    let merge_process_into_command = observation.fidelity != ProcessObservationFidelity::Exact;
     // The span name is the operation: the wrapped program's basename
     // (decision 0014), never a fixed instrumentation constant.
     let program = program_basename(config.argv.first().map(String::as_str));
@@ -1959,19 +1956,19 @@ fn export_command_span(
             "value": { "stringValue": OTEL_SCRAPE_SCOPE_NAME },
         }),
         json!({
-            "key": telemetry_registry::attributes::SPAN_ORIGIN,
+            "key": telemetry_registry::attributes::OTEL_SCRAPE_SPAN_ORIGIN,
             "value": { "stringValue": SPAN_ORIGIN_OTEL_SCRAPE },
         }),
         json!({
-            "key": telemetry_registry::attributes::COMMAND_PROGRAM,
+            "key": telemetry_registry::attributes::PROCESS_EXECUTABLE_NAME,
             "value": { "stringValue": program },
         }),
         json!({
-            "key": telemetry_registry::attributes::COMMAND_ARGV_HASH,
+            "key": telemetry_registry::attributes::OTEL_SCRAPE_COMMAND_ARGV_HASH,
             "value": { "stringValue": stable_hash_lines(&config.argv) },
         }),
         json!({
-            "key": telemetry_registry::attributes::COMMAND_CWD_HASH,
+            "key": telemetry_registry::attributes::OTEL_SCRAPE_COMMAND_CWD_HASH,
             "value": { "stringValue": stable_hash(cwd.to_string_lossy().as_bytes()) },
         }),
         json!({
@@ -1988,12 +1985,22 @@ fn export_command_span(
     // and never config.trusted_summary. The hashed identity above is always
     // present regardless.
     if config.trusted_otlp {
+        // process.command_args is an OTel semconv string[] (decision 0016): one
+        // array element per argument, so argument boundaries survive losslessly
+        // (the pre-semconv command.argv was a lossy newline-joined string). The
+        // always-present correlation hash above (stable_hash_lines) is
+        // unaffected; only this trust-gated raw value changes shape.
+        let command_args: Vec<serde_json::Value> = config
+            .argv
+            .iter()
+            .map(|arg| json!({ "stringValue": arg }))
+            .collect();
         attributes.push(json!({
-            "key": telemetry_registry::attributes::COMMAND_ARGV,
-            "value": { "stringValue": raw_argv_value(&config.argv) },
+            "key": telemetry_registry::attributes::PROCESS_COMMAND_ARGS,
+            "value": { "arrayValue": { "values": command_args } },
         }));
         attributes.push(json!({
-            "key": telemetry_registry::attributes::COMMAND_CWD,
+            "key": telemetry_registry::attributes::PROCESS_WORKING_DIRECTORY,
             "value": { "stringValue": cwd.to_string_lossy() },
         }));
     }
@@ -2089,15 +2096,15 @@ fn process_otlp_spans(
                         "value": { "stringValue": OTEL_SCRAPE_SCOPE_NAME },
                     },
                     {
-                        "key": telemetry_registry::attributes::SPAN_ORIGIN,
+                        "key": telemetry_registry::attributes::OTEL_SCRAPE_SPAN_ORIGIN,
                         "value": { "stringValue": SPAN_ORIGIN_OTEL_SCRAPE },
                     },
                     {
-                        "key": telemetry_registry::attributes::COMMAND_PROGRAM,
+                        "key": telemetry_registry::attributes::PROCESS_EXECUTABLE_NAME,
                         "value": { "stringValue": process.program },
                     },
                     {
-                        "key": telemetry_registry::attributes::COMMAND_ARGV_HASH,
+                        "key": telemetry_registry::attributes::OTEL_SCRAPE_COMMAND_ARGV_HASH,
                         "value": { "stringValue": process.argv_hash },
                     },
                     {
@@ -2339,7 +2346,10 @@ fn otlp_env_config() -> OtlpEnvConfig {
         timeout: signal_env_string(OTLP_TRACES_TIMEOUT_ENV, OTLP_TIMEOUT_ENV)
             .and_then(|value| parse_timeout_ms(&value))
             .unwrap_or(OTLP_HTTP_DEFAULT_TIMEOUT),
-        export_enabled: !sdk_disabled && exporter_enabled && protocol_enabled && compression_enabled,
+        export_enabled: !sdk_disabled
+            && exporter_enabled
+            && protocol_enabled
+            && compression_enabled,
         service_name,
         resource_attributes,
     }
@@ -3044,14 +3054,6 @@ fn is_lower_hex(value: &str, len: usize) -> bool {
             .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
 }
 
-/// Renders raw argv as a single OTLP string value (the registry has no array
-/// value type). Elements are newline-joined so argument boundaries survive and
-/// the value stays human-readable for debugging in an asserted-private sink.
-/// Trust-gated (decision 0015): only ever reaches a sink the operator asserted.
-fn raw_argv_value(argv: &[String]) -> String {
-    argv.join("\n")
-}
-
 fn stable_hash_lines(values: &[String]) -> String {
     let mut hasher = Sha256::new();
     for value in values {
@@ -3514,10 +3516,7 @@ mod tests {
         );
         // The registry owns the naming *scheme*, not a fixed span-name string
         // (decision 0014): the command span is named by the program basename.
-        assert_eq!(
-            telemetry_registry::span_naming::COMMAND,
-            "program-basename"
-        );
+        assert_eq!(telemetry_registry::span_naming::COMMAND, "program-basename");
         assert_eq!(
             telemetry_registry::span_naming::PROCESS,
             "descendant-basename"
@@ -3526,10 +3525,22 @@ mod tests {
             telemetry_registry::metrics::OXLINT_DIAGNOSTICS,
             "oxlint.diagnostics"
         );
+        // The active public contract speaks the OTel process.* semconv keys and
+        // the otel_scrape.* vendor namespace (decision 0016).
         assert_eq!(
-            telemetry_registry::attributes::COMMAND_ARGV_HASH,
-            "command.argv_hash"
+            telemetry_registry::attributes::OTEL_SCRAPE_COMMAND_ARGV_HASH,
+            "otel_scrape.command.argv_hash"
         );
+        assert_eq!(
+            telemetry_registry::attributes::PROCESS_EXECUTABLE_NAME,
+            "process.executable.name"
+        );
+        assert_eq!(
+            telemetry_registry::attributes::PROCESS_EXIT_CODE,
+            "process.exit.code"
+        );
+        // The pre-semconv keys are retained as a deprecated evolution trail
+        // (decision 0016); their constants still resolve but are never emitted.
         assert_eq!(
             telemetry_registry::attributes::COMMAND_PROGRAM,
             "command.program"
