@@ -1,13 +1,24 @@
 // Generated file - DO NOT EDIT
 // Source: constants.ts.genie.ts
 // registry-source: genie/weaver-registry/registry.ts
-// fingerprint: sha256:b398865b483389349984225dad13f891994fe6c35601f020433bb7ca9a113971
+// fingerprint: sha256:663e5efda044403d5da7e85830d399672977bfef85a228a5c9d67a6e5f5cd097
 
 export const AcmeAttempt = 'acme.attempt' as const
 export const AcmeProbeLabel = 'acme.probe.label' as const
 export const AcmeProbeName = 'acme.probe.name' as const
 export const AcmeRegion = 'acme.region' as const
 export const AcmeRequestHeader = 'acme.request.header' as const
+export const Ci_toolsDeployAttempt = 'ci_tools.deploy.attempt' as const
+export const Ci_toolsDeployCleanup_id = 'ci_tools.deploy.cleanup_id' as const
+export const Ci_toolsDeployCleanup_status = 'ci_tools.deploy.cleanup_status' as const
+export const Ci_toolsDeployError_kind = 'ci_tools.deploy.error_kind' as const
+export const Ci_toolsDeployMode = 'ci_tools.deploy.mode' as const
+export const Ci_toolsDeployOperation = 'ci_tools.deploy.operation' as const
+export const Ci_toolsDeployProvider = 'ci_tools.deploy.provider' as const
+export const Ci_toolsDeployRun_id = 'ci_tools.deploy.run_id' as const
+export const Ci_toolsDeployStatus = 'ci_tools.deploy.status' as const
+export const Ci_toolsDeployTarget = 'ci_tools.deploy.target' as const
+export const Ci_toolsDeployUrl_host = 'ci_tools.deploy.url_host' as const
 export const CmdArgs = 'cmd.args' as const
 export const CmdCommand = 'cmd.command' as const
 export const CmdCwd = 'cmd.cwd' as const
@@ -171,6 +182,9 @@ export const NotionRate_limitPresent = 'notion.rate_limit.present' as const
 export const NotionRate_limitRemaining = 'notion.rate_limit.remaining' as const
 export const NotionRate_limitReset_after_ms = 'notion.rate_limit.reset_after_ms' as const
 export const NotionRate_limitWait_ms = 'notion.rate_limit.wait_ms' as const
+export const PtyName = 'pty.name' as const
+export const PtySessionMode = 'pty.session.mode' as const
+export const PtyWaitNeedle = 'pty.wait.needle' as const
 export const PwCookieCount = 'pw.cookie.count' as const
 export const PwCookiesUrl = 'pw.cookies.url' as const
 export const PwDelayMs = 'pw.delay.ms' as const
@@ -214,6 +228,8 @@ export const RestateIdempotencyKey = 'restate.idempotency.key' as const
 export const RestateObjectKey = 'restate.object.key' as const
 export const RestateService = 'restate.service' as const
 export const RestateWorkflowId = 'restate.workflow.id' as const
+export const SemaphoreKey = 'semaphore.key' as const
+export const SemaphoreTarget_holder_id = 'semaphore.target_holder_id' as const
 
 export type AttributeKey =
   | 'acme.attempt'
@@ -221,6 +237,17 @@ export type AttributeKey =
   | 'acme.probe.name'
   | 'acme.region'
   | 'acme.request.header'
+  | 'ci_tools.deploy.attempt'
+  | 'ci_tools.deploy.cleanup_id'
+  | 'ci_tools.deploy.cleanup_status'
+  | 'ci_tools.deploy.error_kind'
+  | 'ci_tools.deploy.mode'
+  | 'ci_tools.deploy.operation'
+  | 'ci_tools.deploy.provider'
+  | 'ci_tools.deploy.run_id'
+  | 'ci_tools.deploy.status'
+  | 'ci_tools.deploy.target'
+  | 'ci_tools.deploy.url_host'
   | 'cmd.args'
   | 'cmd.command'
   | 'cmd.cwd'
@@ -384,6 +411,9 @@ export type AttributeKey =
   | 'notion.rate_limit.remaining'
   | 'notion.rate_limit.reset_after_ms'
   | 'notion.rate_limit.wait_ms'
+  | 'pty.name'
+  | 'pty.session.mode'
+  | 'pty.wait.needle'
   | 'pw.cookie.count'
   | 'pw.cookies.url'
   | 'pw.delay.ms'
@@ -427,3 +457,5 @@ export type AttributeKey =
   | 'restate.object.key'
   | 'restate.service'
   | 'restate.workflow.id'
+  | 'semaphore.key'
+  | 'semaphore.target_holder_id'

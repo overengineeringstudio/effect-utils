@@ -1,7 +1,7 @@
 // Generated file - DO NOT EDIT
 // Source: constants.rs.genie.ts
 // registry-source: genie/weaver-registry/registry.ts
-// fingerprint: sha256:1939dc647ac9aa9981b04a87294111352348d8f677ed325ebb9d5b12d9961a5f
+// fingerprint: sha256:d2adfbc2ffa305681c6f390147eaaa9ad4596176254bede5fe9782340236be30
 // regen: devenv tasks run genie:run
 
 //! Generated OpenTelemetry semantic-convention name constants.
@@ -13,6 +13,17 @@ pub mod attribute {
     pub const ACME_PROBE_NAME: &str = "acme.probe.name";
     pub const ACME_REGION: &str = "acme.region";
     pub const ACME_REQUEST_HEADER: &str = "acme.request.header";
+    pub const CI_TOOLS_DEPLOY_ATTEMPT: &str = "ci_tools.deploy.attempt";
+    pub const CI_TOOLS_DEPLOY_CLEANUP_ID: &str = "ci_tools.deploy.cleanup_id";
+    pub const CI_TOOLS_DEPLOY_CLEANUP_STATUS: &str = "ci_tools.deploy.cleanup_status";
+    pub const CI_TOOLS_DEPLOY_ERROR_KIND: &str = "ci_tools.deploy.error_kind";
+    pub const CI_TOOLS_DEPLOY_MODE: &str = "ci_tools.deploy.mode";
+    pub const CI_TOOLS_DEPLOY_OPERATION: &str = "ci_tools.deploy.operation";
+    pub const CI_TOOLS_DEPLOY_PROVIDER: &str = "ci_tools.deploy.provider";
+    pub const CI_TOOLS_DEPLOY_RUN_ID: &str = "ci_tools.deploy.run_id";
+    pub const CI_TOOLS_DEPLOY_STATUS: &str = "ci_tools.deploy.status";
+    pub const CI_TOOLS_DEPLOY_TARGET: &str = "ci_tools.deploy.target";
+    pub const CI_TOOLS_DEPLOY_URL_HOST: &str = "ci_tools.deploy.url_host";
     pub const CMD_ARGS: &str = "cmd.args";
     pub const CMD_COMMAND: &str = "cmd.command";
     pub const CMD_CWD: &str = "cmd.cwd";
@@ -176,6 +187,9 @@ pub mod attribute {
     pub const NOTION_RATE_LIMIT_REMAINING: &str = "notion.rate_limit.remaining";
     pub const NOTION_RATE_LIMIT_RESET_AFTER_MS: &str = "notion.rate_limit.reset_after_ms";
     pub const NOTION_RATE_LIMIT_WAIT_MS: &str = "notion.rate_limit.wait_ms";
+    pub const PTY_NAME: &str = "pty.name";
+    pub const PTY_SESSION_MODE: &str = "pty.session.mode";
+    pub const PTY_WAIT_NEEDLE: &str = "pty.wait.needle";
     pub const PW_COOKIE_COUNT: &str = "pw.cookie.count";
     pub const PW_COOKIES_URL: &str = "pw.cookies.url";
     pub const PW_DELAY_MS: &str = "pw.delay.ms";
@@ -219,6 +233,8 @@ pub mod attribute {
     pub const RESTATE_OBJECT_KEY: &str = "restate.object.key";
     pub const RESTATE_SERVICE: &str = "restate.service";
     pub const RESTATE_WORKFLOW_ID: &str = "restate.workflow.id";
+    pub const SEMAPHORE_KEY: &str = "semaphore.key";
+    pub const SEMAPHORE_TARGET_HOLDER_ID: &str = "semaphore.target_holder_id";
 
     pub const ALL: &[&str] = &[
         "acme.attempt",
@@ -226,6 +242,17 @@ pub mod attribute {
         "acme.probe.name",
         "acme.region",
         "acme.request.header",
+        "ci_tools.deploy.attempt",
+        "ci_tools.deploy.cleanup_id",
+        "ci_tools.deploy.cleanup_status",
+        "ci_tools.deploy.error_kind",
+        "ci_tools.deploy.mode",
+        "ci_tools.deploy.operation",
+        "ci_tools.deploy.provider",
+        "ci_tools.deploy.run_id",
+        "ci_tools.deploy.status",
+        "ci_tools.deploy.target",
+        "ci_tools.deploy.url_host",
         "cmd.args",
         "cmd.command",
         "cmd.cwd",
@@ -389,6 +416,9 @@ pub mod attribute {
         "notion.rate_limit.remaining",
         "notion.rate_limit.reset_after_ms",
         "notion.rate_limit.wait_ms",
+        "pty.name",
+        "pty.session.mode",
+        "pty.wait.needle",
         "pw.cookie.count",
         "pw.cookies.url",
         "pw.delay.ms",
@@ -432,6 +462,8 @@ pub mod attribute {
         "restate.object.key",
         "restate.service",
         "restate.workflow.id",
+        "semaphore.key",
+        "semaphore.target_holder_id",
     ];
 }
 
@@ -439,9 +471,16 @@ pub mod attribute {
 pub mod span {
     pub const ACME_OPERATION: &str = "acme.operation";
     pub const ATOMICWRITEFILE: &str = "atomicWriteFile";
+    pub const CI_TOOLS_DEPLOY: &str = "ci-tools.deploy";
+    pub const CI_TOOLS_DEPLOY_ATTEMPT: &str = "ci-tools.deploy.attempt";
+    pub const CI_TOOLS_DEPLOY_CLEANUP: &str = "ci-tools.deploy.cleanup";
+    pub const CI_TOOLS_DEPLOY_PROVIDER: &str = "ci-tools.deploy.provider";
+    pub const CI_TOOLS_DEPLOY_VERIFY: &str = "ci-tools.deploy.verify";
     pub const CMD_COLLECT: &str = "cmd.collect";
     pub const CMD_RUN: &str = "cmd.run";
     pub const CMD_RUN_WITH_LOGGING: &str = "cmd.run-with-logging";
+    pub const FILESYSTEMBACKING_SEMAPHORE_FORCEREVOKE: &str = "FileSystemBacking.semaphore.forceRevoke";
+    pub const FILESYSTEMBACKING_SEMAPHORE_KEY: &str = "FileSystemBacking.semaphore.key";
     pub const GENIE_COMMAND: &str = "genie/command";
     pub const GENIE_FILE: &str = "genie/file";
     pub const GENIE_OXFMT: &str = "genie/oxfmt";
@@ -500,15 +539,23 @@ pub mod span {
     pub const NOTION_MD_WEBHOOK_TRIGGER: &str = "notion-md.webhook.trigger";
     pub const NOTIONDATABASES_QUERY: &str = "NotionDatabases.query";
     pub const NOTIONPAGES_RETRIEVE: &str = "NotionPages.retrieve";
+    pub const PTY_SESSION_MAKE: &str = "pty-session.make";
     pub const PW_WAIT_UNTIL: &str = "pw.wait.until";
     pub const SPAN_ACME_PROBE: &str = "span.acme.probe";
 
     pub const ALL: &[&str] = &[
         "acme.operation",
         "atomicWriteFile",
+        "ci-tools.deploy",
+        "ci-tools.deploy.attempt",
+        "ci-tools.deploy.cleanup",
+        "ci-tools.deploy.provider",
+        "ci-tools.deploy.verify",
         "cmd.collect",
         "cmd.run",
         "cmd.run-with-logging",
+        "FileSystemBacking.semaphore.forceRevoke",
+        "FileSystemBacking.semaphore.key",
         "genie/command",
         "genie/file",
         "genie/oxfmt",
@@ -567,6 +614,7 @@ pub mod span {
         "notion-md.webhook.trigger",
         "NotionDatabases.query",
         "NotionPages.retrieve",
+        "pty-session.make",
         "pw.wait.until",
         "span.acme.probe",
     ];

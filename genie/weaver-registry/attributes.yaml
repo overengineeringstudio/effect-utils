@@ -2,7 +2,7 @@
 # Source: attributes.yaml.genie.ts
 
 # registry-source: genie/weaver-registry/registry.ts
-# fingerprint: sha256:5f7dbf9092de3b99e94b9b54c04d8e1024d51233a0e649bb697d944bdd1115c5
+# fingerprint: sha256:3d9d2c95e386bd749038e57142eb2c8997bb1b4ca8140c1aadfd2ae38447081e
 groups:
   - id: registry.acme
     type: attribute_group
@@ -64,6 +64,167 @@ groups:
         annotations:
           overeng_policy:
             cardinality: high
+  - id: registry.ci_tools
+    type: attribute_group
+    display_name: CI Tools Deploy Attributes
+    brief: Attributes for the ci_tools namespace.
+    attributes:
+      - id: ci_tools.deploy.attempt
+        type: int
+        stability: development
+        brief: 1-based deploy attempt number.
+        examples: [1, 2]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: ci_tools.deploy.cleanup_id
+        type: string
+        stability: development
+        brief: Identifier of the preview being cleaned up.
+        examples: [effect-react-pr-42]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: ci_tools.deploy.cleanup_status
+        type:
+          members:
+            - id: succeeded
+              value: succeeded
+              brief: Cleaned up.
+              stability: development
+            - id: failed
+              value: failed
+              brief: Cleanup failed.
+              stability: development
+            - id: skipped
+              value: skipped
+              brief: Nothing to clean up.
+              stability: development
+        stability: development
+        brief: Outcome of a preview cleanup.
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: ci_tools.deploy.error_kind
+        type: string
+        stability: development
+        brief: Tagged error kind when a deploy sub-operation fails (bounded — never free text).
+        examples: [ProviderOperationFailed, VerificationFailed]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: ci_tools.deploy.mode
+        type:
+          members:
+            - id: prod
+              value: prod
+              brief: Production deploy.
+              stability: development
+            - id: pr
+              value: pr
+              brief: Pull-request preview deploy.
+              stability: development
+            - id: draft
+              value: draft
+              brief: Draft deploy.
+              stability: development
+            - id: preview
+              value: preview
+              brief: Preview deploy.
+              stability: development
+        stability: development
+        brief: Deploy mode (production vs. preview flavor).
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: ci_tools.deploy.operation
+        type:
+          members:
+            - id: core
+              value: core
+              brief: The enclosing deploy.
+              stability: development
+            - id: provider
+              value: provider
+              brief: A provider deploy command.
+              stability: development
+            - id: attempt
+              value: attempt
+              brief: One deploy attempt.
+              stability: development
+            - id: verify
+              value: verify
+              brief: Post-deploy verification.
+              stability: development
+            - id: cleanup
+              value: cleanup
+              brief: Preview cleanup.
+              stability: development
+        stability: development
+        brief: Which sub-operation of the deploy pipeline a span/record represents.
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: ci_tools.deploy.provider
+        type:
+          members:
+            - id: netlify
+              value: netlify
+              brief: Netlify.
+              stability: development
+            - id: vercel
+              value: vercel
+              brief: Vercel.
+              stability: development
+        stability: development
+        brief: Deploy provider a run targets.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: ci_tools.deploy.run_id
+        type: string
+        stability: development
+        brief: CI run id owning a deploy.
+        examples: [run-123, '18234567890']
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: ci_tools.deploy.status
+        type:
+          members:
+            - id: success
+              value: success
+              brief: Succeeded.
+              stability: development
+            - id: failure
+              value: failure
+              brief: Failed.
+              stability: development
+            - id: skipped
+              value: skipped
+              brief: Skipped.
+              stability: development
+        stability: development
+        brief: Terminal status of a deploy sub-operation.
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: ci_tools.deploy.target
+        type: string
+        stability: development
+        brief: Deploy target (app/site name).
+        examples: [effect-react, docs]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: ci_tools.deploy.url_host
+        type: string
+        stability: development
+        brief: Host of the final deploy URL (host only — never the full URL).
+        examples: [preview.example.netlify.app]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
   - id: registry.cmd
     type: attribute_group
     display_name: Command Runner Attributes
@@ -1458,6 +1619,43 @@ groups:
         annotations:
           overeng_policy:
             cardinality: low
+  - id: registry.pty
+    type: attribute_group
+    display_name: Pty Attributes
+    brief: Attributes for the pty namespace.
+    attributes:
+      - id: pty.name
+        type: string
+        stability: development
+        brief: Name of the pty session a client operation targets.
+        examples: [dev-server, build]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: pty.session.mode
+        type:
+          members:
+            - id: Spawn
+              value: Spawn
+              brief: In-process spawn (scope-bound, kill-on-close).
+              stability: development
+            - id: Server
+              value: Server
+              brief: Detached daemon/server session.
+              stability: development
+        stability: development
+        brief: How a pty session was created (in-process spawn vs. detached server).
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: pty.wait.needle
+        type: string
+        stability: development
+        brief: Needle a waitFor* client operation polls the terminal for.
+        examples: [Server listening, Compiled successfully]
+        annotations:
+          overeng_policy:
+            cardinality: high
   - id: registry.pw
     type: attribute_group
     display_name: Playwright Attributes
@@ -1819,6 +2017,27 @@ groups:
         stability: development
         brief: Workflow key of the invocation (omitted for Services/Objects).
         examples: [wf-2026-07-01]
+        annotations:
+          overeng_policy:
+            cardinality: high
+  - id: registry.semaphore
+    type: attribute_group
+    display_name: Semaphore Attributes
+    brief: Attributes for the semaphore namespace.
+    attributes:
+      - id: semaphore.key
+        type: string
+        stability: development
+        brief: Semaphore key (lock name) an operation acts on.
+        examples: [deploy-lock, migration/2026-07-01]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: semaphore.target_holder_id
+        type: string
+        stability: development
+        brief: Holder id whose lock is being force-revoked.
+        examples: [holder-42, ci-runner-7]
         annotations:
           overeng_policy:
             cardinality: high

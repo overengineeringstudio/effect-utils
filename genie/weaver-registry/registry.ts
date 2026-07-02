@@ -18,6 +18,7 @@
  */
 import { createHash } from 'node:crypto'
 
+import ciToolsContract from '../../packages/@overeng/ci-tools/src/deploy-domain.contract.ts'
 import genieContract from '../../packages/@overeng/genie/src/core/genie.contract.ts'
 import { registryFromMembers } from '../../packages/@overeng/genie/src/runtime/composition/mod.ts'
 import type {
@@ -29,9 +30,11 @@ import notionEffectClientContract from '../../packages/@overeng/notion-effect-cl
 import notionMdContract from '../../packages/@overeng/notion-md/src/notion-md.contract.ts'
 import demoContract from '../../packages/@overeng/otel-contract/src/registry-demo.contract.ts'
 import { fragment } from '../../packages/@overeng/otel-contract/src/registry.ts'
+import ptyContract from '../../packages/@overeng/pty-effect/src/pty.contract.ts'
 import restateContract from '../../packages/@overeng/restate-effect/src/observability/restate.contract.ts'
 import cmdContract from '../../packages/@overeng/utils/src/node/cmd.contract.ts'
 import pwContract from '../../packages/@overeng/utils/src/node/playwright/pw.contract.ts'
+import semaphoreContract from '../../packages/@overeng/utils/src/node/semaphore.contract.ts'
 
 // --- pinned semantic inputs (all change the emitted output → part of the fingerprint) ---
 export const PINNED_WEAVER_VERSION = '0.24.2'
@@ -45,25 +48,31 @@ export const GENERATOR_VERSION = '1'
  * guarantee the path-based lint structurally cannot provide (decision 0005).
  */
 export const memberSeamPaths = [
+  'packages/@overeng/ci-tools/src/deploy-domain.contract.ts',
   'packages/@overeng/genie/src/core/genie.contract.ts',
   'packages/@overeng/megarepo/src/megarepo.contract.ts',
   'packages/@overeng/notion-effect-client/src/notion-effect-client.contract.ts',
   'packages/@overeng/notion-md/src/notion-md.contract.ts',
   'packages/@overeng/otel-contract/src/registry-demo.contract.ts',
+  'packages/@overeng/pty-effect/src/pty.contract.ts',
   'packages/@overeng/restate-effect/src/observability/restate.contract.ts',
   'packages/@overeng/utils/src/node/cmd.contract.ts',
   'packages/@overeng/utils/src/node/playwright/pw.contract.ts',
+  'packages/@overeng/utils/src/node/semaphore.contract.ts',
 ] as const
 
 const contracts = [
+  ciToolsContract,
   genieContract,
   megarepoContract,
   notionEffectClientContract,
   notionMdContract,
   demoContract,
+  ptyContract,
   restateContract,
   cmdContract,
   pwContract,
+  semaphoreContract,
 ]
 
 // Build members: each member contributes its fragment on the non-emitted `meta.registry`

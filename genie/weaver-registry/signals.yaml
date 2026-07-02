@@ -2,7 +2,7 @@
 # Source: signals.yaml.genie.ts
 
 # registry-source: genie/weaver-registry/registry.ts
-# fingerprint: sha256:5f7dbf9092de3b99e94b9b54c04d8e1024d51233a0e649bb697d944bdd1115c5
+# fingerprint: sha256:3d9d2c95e386bd749038e57142eb2c8997bb1b4ca8140c1aadfd2ae38447081e
 groups:
   - id: metric.acme.probe.duration
     type: metric
@@ -58,6 +58,78 @@ groups:
       - ref: acme.attempt
         requirement_level: recommended
       - ref: http.request.method
+        requirement_level: recommended
+  - id: span.ci_tools.deploy
+    type: span
+    span_kind: internal
+    stability: development
+    brief: The enclosing deploy.
+    attributes:
+      - ref: ci_tools.deploy.provider
+        requirement_level: required
+      - ref: ci_tools.deploy.target
+        requirement_level: required
+      - ref: ci_tools.deploy.mode
+        requirement_level: required
+      - ref: ci_tools.deploy.run_id
+        requirement_level: recommended
+  - id: span.ci_tools.deploy_attempt
+    type: span
+    span_kind: internal
+    stability: development
+    brief: One deploy attempt.
+    attributes:
+      - ref: ci_tools.deploy.provider
+        requirement_level: required
+      - ref: ci_tools.deploy.target
+        requirement_level: required
+      - ref: ci_tools.deploy.mode
+        requirement_level: required
+      - ref: ci_tools.deploy.attempt
+        requirement_level: required
+      - ref: ci_tools.deploy.status
+        requirement_level: required
+      - ref: ci_tools.deploy.error_kind
+        requirement_level: recommended
+  - id: span.ci_tools.deploy_cleanup
+    type: span
+    span_kind: internal
+    stability: development
+    brief: Preview cleanup.
+    attributes:
+      - ref: ci_tools.deploy.provider
+        requirement_level: required
+      - ref: ci_tools.deploy.target
+        requirement_level: required
+      - ref: ci_tools.deploy.cleanup_id
+        requirement_level: recommended
+      - ref: ci_tools.deploy.cleanup_status
+        requirement_level: required
+  - id: span.ci_tools.deploy_provider
+    type: span
+    span_kind: internal
+    stability: development
+    brief: A provider deploy command.
+    attributes:
+      - ref: ci_tools.deploy.provider
+        requirement_level: required
+      - ref: ci_tools.deploy.target
+        requirement_level: required
+  - id: span.ci_tools.deploy_verify
+    type: span
+    span_kind: internal
+    stability: development
+    brief: Post-deploy verification.
+    attributes:
+      - ref: ci_tools.deploy.provider
+        requirement_level: required
+      - ref: ci_tools.deploy.target
+        requirement_level: required
+      - ref: ci_tools.deploy.status
+        requirement_level: required
+      - ref: ci_tools.deploy.url_host
+        requirement_level: required
+      - ref: ci_tools.deploy.error_kind
         requirement_level: recommended
   - id: span.cmd.collect
     type: span
@@ -723,6 +795,14 @@ groups:
     attributes:
       - ref: notion.page_id
         requirement_level: required
+  - id: span.pty.session_make
+    type: span
+    span_kind: internal
+    stability: development
+    brief: Construction of a pty session (Spawn or Server).
+    attributes:
+      - ref: pty.session.mode
+        requirement_level: required
   - id: span.pw.wait.until
     type: span
     span_kind: internal
@@ -734,4 +814,22 @@ groups:
       - ref: pw.wait.pollInterval
         requirement_level: required
       - ref: pw.wait.timeout
+        requirement_level: required
+  - id: span.semaphore.force_revoke
+    type: span
+    span_kind: internal
+    stability: development
+    brief: Force-revoke a specific holder's lock on a semaphore key.
+    attributes:
+      - ref: semaphore.key
+        requirement_level: required
+      - ref: semaphore.target_holder_id
+        requirement_level: required
+  - id: span.semaphore.key
+    type: span
+    span_kind: internal
+    stability: development
+    brief: A keyed file-system semaphore operation.
+    attributes:
+      - ref: semaphore.key
         requirement_level: required

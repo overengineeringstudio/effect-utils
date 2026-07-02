@@ -2,7 +2,10 @@ import { FileSystem, Path } from '@effect/platform'
 import { Cause, Data, Duration, Effect, Layer, Option, Schema, Stream } from 'effect'
 import { DistributedSemaphoreBacking, SemaphoreBackingError } from 'effect-distributed-lock'
 
-import { OtelAttr, OtelOperation } from '@overeng/otel-contract'
+import {
+  SemaphoreForceRevokeOperation as SemaphoreForceRevokeContract,
+  SemaphoreKeyOperation as SemaphoreKeyContract,
+} from './semaphore.contract.ts'
 
 /** Information about a holder's lock state */
 export interface HolderInfo {
@@ -24,24 +27,10 @@ const HolderLockSchema = Schema.Struct({
 
 type HolderLockContent = typeof HolderLockSchema.Type
 
-const SemaphoreKeyOperation = OtelOperation.define({
-  name: 'FileSystemBacking.semaphore.key',
-  schema: Schema.Struct({
-    label: OtelAttr.drop(Schema.NonEmptyString),
-    key: Schema.String.pipe(OtelAttr.key({ key: 'semaphore.key' })),
-  }),
-  label: ({ label }) => label,
-})
-
-const SemaphoreForceRevokeOperation = OtelOperation.define({
-  name: 'FileSystemBacking.semaphore.forceRevoke',
-  schema: Schema.Struct({
-    label: OtelAttr.drop(Schema.NonEmptyString),
-    key: Schema.String.pipe(OtelAttr.key({ key: 'semaphore.key' })),
-    targetHolderId: Schema.String.pipe(OtelAttr.key({ key: 'semaphore.target_holder_id' })),
-  }),
-  label: ({ label }) => label,
-})
+// Runtime spans DERIVED from the registered seam contract (`./semaphore.contract.ts`, namespace
+// `semaphore`), so the `semaphore.*` catalog + these encoders share one SSOT (SC-R13/R14).
+const SemaphoreKeyOperation = SemaphoreKeyContract.operation
+const SemaphoreForceRevokeOperation = SemaphoreForceRevokeContract.operation
 
 /**
  * Options for the file-system based semaphore backing.
