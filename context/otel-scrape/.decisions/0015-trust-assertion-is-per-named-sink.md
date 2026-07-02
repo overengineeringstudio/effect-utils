@@ -18,13 +18,23 @@ source tree that may be public** (committed, or attached to a public PR/CI
 artifact). So "assert trust" must say _which_ sink — a process-wide switch cannot
 express "trust the OTLP backend, not my repo-committed summary".
 
-Evidence ([experiment 0006](../.experiments/0006-trust-gate-granularity.md)): with
-a sentinel secret in a wrapped command's argv and both sinks configured, a gate
-scoped in code to the OTLP sink emitted raw `command.argv`/`command.cwd` to OTLP
-while the summary stayed `argv_hash`/`cwd_hash` (sentinel byte-absent from the
-summary); with no assertion, both sinks carried hashes only. The non-leak held
-**only because the gate was scoped to one sink** — the crux of the granularity
-question.
+## Evidence and Argument
+
+- Evidence ([experiment 0006](../.experiments/0006-trust-gate-granularity.md)):
+  with a sentinel secret in a wrapped command's argv and both sinks configured, a
+  gate scoped in code to the OTLP sink emitted raw `command.argv`/`command.cwd` to
+  OTLP while the summary stayed `argv_hash`/`cwd_hash` (sentinel byte-absent from
+  the summary); with no assertion, both sinks carried hashes only. The non-leak
+  held **only because the gate was scoped to one sink** — the crux of the
+  granularity question.
+- A process-wide boolean cannot represent the routine mixed-trust case (private
+  OTLP backend, public-repo summary), so it either under-shares (blocks the
+  private backend the operator does trust) or over-shares (leaks raw into the
+  public summary). Naming the sink the assertion covers is the smallest model that
+  expresses the real trust topology.
+- Naming sinks (`otlp`, `summary`) rather than endpoints keeps the model
+  extensible: once multiple OTLP endpoints can coexist, a per-endpoint allowlist
+  is an additive refinement of the same named-assertion shape, not a redesign.
 
 ## Options
 

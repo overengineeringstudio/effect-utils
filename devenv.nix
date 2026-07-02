@@ -375,13 +375,17 @@ in
         "scripts"
         "context"
       ];
-      # Genie file patterns for caching genie:check tasks
+      # Genie file patterns for caching genie:check tasks. Besides `.genie.ts`
+      # sources, include non-`.genie.ts` generator inputs (source-of-truth files
+      # a generator reads) so a JSON-only edit still triggers `lint:check:genie`
+      # (its `execIfModified`) — kept in sync with `_module.args.genieInputGlobs`.
       geniePatterns = [
         "packages/@overeng/*/*.genie.ts"
         "packages/@overeng/*/examples/*/*.genie.ts"
         "scripts/*.genie.ts"
         "context/effect/socket/*.genie.ts"
         "context/opentui/*.genie.ts"
+        "context/otel-scrape/telemetry-registry.json"
         ".oxfmtrc.json.genie.ts"
         ".oxlintrc.json.genie.ts"
       ];
@@ -430,6 +434,16 @@ in
   # module declares `geniePkg` as an optional arg (defaulting to null → PATH-grep
   # fallback), so the export stays a bare-path module for downstream consumers.
   _module.args.geniePkg = genieSourceCli;
+
+  # Non-`.genie.ts` generator inputs (source-of-truth files a `.genie.ts` reads).
+  # Threaded into the genie task module so a change to one of these busts the
+  # `genie:run` warm-cache fingerprint (which otherwise tracks only `.genie.ts`
+  # sources + generated outputs, silently skipping JSON-only edits). Keep in sync
+  # with the analogous entries in `geniePatterns` below (which cover the
+  # `lint:check:genie` gate's `execIfModified`).
+  _module.args.genieInputGlobs = [
+    "context/otel-scrape/telemetry-registry.json"
+  ];
 
   # Guarded-command ownership (issue #808):
   #   Each cli-guard owns its `bin/<name>` and exec's the real binary by absolute

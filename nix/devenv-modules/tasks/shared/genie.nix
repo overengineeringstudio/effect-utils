@@ -24,6 +24,12 @@
   lib,
   pkgs,
   geniePkg ? null,
+  # Extra, non-`.genie.ts` generator inputs (git pathspecs/globs) that genie
+  # reads as source-of-truth — e.g. a registry JSON consumed by a `.genie.ts`.
+  # These are folded into the `genie:run` warm-cache fingerprint so a change to
+  # such an input busts the cache and regenerates. Defaults to `[ ]`, so repos
+  # that only have `.genie.ts` inputs (the common case) are unaffected.
+  genieInputGlobs ? [ ],
   ...
 }:
 let
@@ -47,6 +53,23 @@ let
         --glob '!node_modules/**' \
         '^// Source: .*\.genie\.ts|^# Source: .*\.genie\.ts' . || true
     }
+  '';
+  # Enumerate the extra non-`.genie.ts` generator inputs so their content joins
+  # the fingerprint. Mirrors the git-tracked/untracked-non-ignored view used for
+  # `.genie.ts` sources, with a find fallback outside a git worktree.
+  enumerateGenieInputGlobs = lib.optionalString (genieInputGlobs != [ ]) ''
+    if ${pkgs.git}/bin/git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    ${lib.concatMapStringsSep "\n" (glob: ''
+      ${pkgs.git}/bin/git ls-files -z -- ${lib.escapeShellArg glob} | tr '\0' '\n'
+      ${pkgs.git}/bin/git ls-files -z --others --exclude-standard -- ${lib.escapeShellArg glob} | tr '\0' '\n'
+    '') genieInputGlobs}
+    else
+    ${lib.concatMapStringsSep "\n" (glob: ''
+      ${pkgs.findutils}/bin/find . -type f -path ${lib.escapeShellArg "./${glob}"} \
+        -not -path './.git/*' -not -path './.devenv/*' -not -path './node_modules/*' \
+        -print 2>/dev/null || true
+    '') genieInputGlobs}
+    fi
   '';
   computeGenieStateHash = ''
     compute_genie_state_hash() {
@@ -74,6 +97,7 @@ let
             -not -path './node_modules/*' \
             -print
         fi
+        ${enumerateGenieInputGlobs}
         ${collectGenieGeneratedFiles}
       } \
         | LC_ALL=C sort -u \

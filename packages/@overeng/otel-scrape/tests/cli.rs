@@ -264,7 +264,7 @@ fn oxlint_adapter_parse_failure_preserves_output_and_exit_status() {
     assert_eq!(summary["adapter"]["records"].as_array().unwrap().len(), 0);
     assert_eq!(
         summary["output"]["stdout"]["byteLength"],
-        invalid_json.as_bytes().len()
+        invalid_json.len()
     );
 }
 
@@ -2197,7 +2197,7 @@ fn node_cpuprofile_adapter_writes_resolvable_profile_without_leaking_private_inp
         .unwrap();
     let profile_json: serde_json::Value =
         serde_json::from_slice(&std::fs::read(cas_root.join(object_path)).unwrap()).unwrap();
-    assert!(profile_json["nodes"].as_array().unwrap().len() > 0);
+    assert!(!profile_json["nodes"].as_array().unwrap().is_empty());
     assert!(profile_json["samples"].as_array().is_some());
 
     let request = collector.request();
