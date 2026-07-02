@@ -72,6 +72,24 @@ interface ToolAdapter {
 
 `AdapterEmit` is deliberately a tagged union. A bare output line can only become an event unless an adapter explicitly constructs a span update or metric sample from structured data.
 
+### Structured source and presentation ownership
+
+A release adapter consumes a **declared, stable, structured source** (a named
+format flag and schema); it does not parse a tool's default/human output.
+Human-text parsing is not part of an adapter — it is at most a clearly-labeled
+best-effort scraper outside the adapter contract. When the required structured
+format replaces the tool's human stdout (e.g. oxlint `--format=json`), the
+adapter **owns re-presentation**: otel-scrape re-renders a readable summary to the
+terminal so instrumenting never degrades interactive output. Where the tool
+offers a **side-channel** (structured to a file/fd while human output stays on
+stdout, e.g. vitest `--reporter=json --outputFile.json`), the adapter prefers it
+and does not re-render. Rendering lives in otel-scrape, per-adapter — never at the
+call-site. Adapter-derived records are public-safe in every sink (severity, rule,
+hashed filename, counts; raw diagnostic messages and paths dropped) per R27; the
+terminal render MAY show full text (the operator's own machine, not a sink). See
+[.decisions/0017-adapter-structured-source-and-presentation.md](./.decisions/0017-adapter-structured-source-and-presentation.md)
+and requirement R30.
+
 ## Nested Adapter Ownership
 
 Adapter parsing is owned by the leaf wrapper that directly launches the adapted tool. A parent `otel-scrape` invocation preserves passthrough stdout/stderr from nested wrapped commands, but it must not classify structured output already owned by a nested `otel-scrape` invocation.
@@ -111,6 +129,12 @@ flowchart TD
 - If a parent exists, the command span joins it.
 - If no parent exists, the command span roots the trace.
 - The wrapper injects the active context into child processes.
+- The wrapper exports its command-span context to children as **both**
+  `TRACEPARENT` and `OTEL_TASK_TRACEPARENT`. A child sub-span emitter that prefers
+  `OTEL_TASK_TRACEPARENT` (to survive shell/task re-evaluation) then re-parents
+  under the otel-scrape command span rather than binding to an outer task span, so
+  otel-scrape is a well-behaved reparenting layer (R13; falsified-and-fixed in
+  `.experiments/0009-tsc-subspan-reparenting.md`, decision 0018).
 - Context-specific facts stay on the span owned by the participant that knows them.
 
 ## Process-Tree Fidelity
@@ -301,7 +325,7 @@ A span's name is the operation it represents; `otel-scrape` is carried in scope 
 - **Process span** — named by the observed descendant program basename (`rustc`). Emitted as a _distinct_ span only under an exact backend that proves a real descendant; in the default degraded `direct-child` backend the process observation is **merged into the command span** (see Process-Tree Fidelity).
 - **Tool-phase span** — named by the adapter phase (`typescript.project.check`).
 
-Every `otel-scrape`-owned span carries `otel.scope.name = otel-scrape` and `span.origin = otel-scrape` (adapter-derived phase spans use `span.origin = otel-scrape-adapter`), so consumers identify and aggregate wrapper-owned spans without the name carrying the instrumentation. Where `otel-scrape` wraps a command already inside another instrumentation's task span (e.g. a devenv `devenv.task.exec`), the two cooperate: the task instrumentation owns the task level and `otel-scrape` owns the command/process/tool-phase levels beneath it; neither emits a second generic span for the same execution.
+Every `otel-scrape`-owned span carries `otel.scope.name = otel-scrape` and `span.origin = otel-scrape` (adapter-derived phase spans use `span.origin = otel-scrape-adapter`), so consumers identify and aggregate wrapper-owned spans without the name carrying the instrumentation. Where `otel-scrape` wraps a command already inside another instrumentation's task span (e.g. a devenv `devenv.task.exec`), the two cooperate: the task instrumentation owns the task level and `otel-scrape` owns the command/process/tool-phase levels beneath it; neither emits a second generic span for the same execution. In devenv this means the task span (`devenv.task.exec`, via otel-span) is not itself wrapped in `otel-scrape`; instead a concrete command inside the task is wrapped with a one-line `trace.instr { adapter ? "none" }` prefix (decision 0018). Orchestration tasks with no single concrete command stay task-span-only.
 
 | Kind      | Name / attribute                           | Notes                                                             |
 | --------- | ------------------------------------------ | ----------------------------------------------------------------- |
@@ -491,19 +515,31 @@ profile links or other cross-package contracts. Candidate adapters such as
 `cargo`, `tsc`, `vitest`, package-manager phases, and `vite` remain deferred
 until they meet that bar.
 
+A real-probe survey (`.experiments/0008-adapter-structured-source-contract.md`,
+decision 0017) classified the fleet by structured source and presentation mode:
+**oxlint** (`--format=json`) and **cargo** (`--message-format=json`) replace human
+stdout and so require otel-scrape re-render; **vitest** (`--reporter=json
+--outputFile.json`) offers a side-channel (human stdout preserved, no re-render).
+`tsc`/`tsgo` have no structured _diagnostics_ source — the current devenv
+`--extendedDiagnostics` text scraper is best-effort and not an adapter; the
+deferred tsc _phase_ adapter path is `--generateTrace` (a `trace.json` artifact),
+distinct from diagnostics. `vite`, `storybook`, and `pnpm` expose no
+per-diagnostic structured source.
+
 ### Adapter Admission Policy
 
 Every supported adapter must land as a coherent contract slice:
 
-| Gate           | Requirement                                                                                                                                                                                                                                                                                               |
-| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Source         | Machine-readable output or native artifact. Human logs are degraded fallback only.                                                                                                                                                                                                                        |
-| Classification | Each emitted event, span, metric, or profile link follows the classification ladder.                                                                                                                                                                                                                      |
-| Privacy        | Command identity is public-safe by default (`command.program` basename + argv/cwd hashes, always present); raw argv/cwd/local paths are trust-gated (emitted only to an operator-asserted private sink, R27). Credentials, source text, output payloads, and profile bytes are never emitted to any sink. |
-| Degradation    | Missing tools, malformed artifacts, parse failures, unsupported command shapes, and exporter failures preserve passthrough behavior and emit bounded degraded evidence.                                                                                                                                   |
-| Registry       | New stable names and fields are added to `telemetry-registry.json` and regenerated into Rust/TypeScript.                                                                                                                                                                                                  |
-| Contract       | Cross-package payloads decode through `@overeng/otel-contract` or a documented VRS contract before support is claimed.                                                                                                                                                                                    |
-| E2E            | A representative wrapped command proves summary evidence, OTLP export where applicable, and CAS resolution for profile artifacts.                                                                                                                                                                         |
+| Gate           | Requirement                                                                                                                                                                                                                                                                                                    |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Source         | A declared, stable, machine-readable format (named flag + schema) or native artifact. Human-text parsing is not part of a release adapter — at most a clearly-labeled best-effort scraper outside the adapter contract (decision 0017).                                                                        |
+| Presentation   | If the required format replaces the tool's human stdout, otel-scrape re-renders a readable summary (presentation ownership, R30); if the tool offers a side-channel (structured to file/fd, human stays on stdout), the adapter prefers it. Instrumenting must not degrade interactive output (decision 0017). |
+| Classification | Each emitted event, span, metric, or profile link follows the classification ladder.                                                                                                                                                                                                                           |
+| Privacy        | Command identity is public-safe by default (`command.program` basename + argv/cwd hashes, always present); raw argv/cwd/local paths are trust-gated (emitted only to an operator-asserted private sink, R27). Credentials, source text, output payloads, and profile bytes are never emitted to any sink.      |
+| Degradation    | Missing tools, malformed artifacts, parse failures, unsupported command shapes, and exporter failures preserve passthrough behavior and emit bounded degraded evidence.                                                                                                                                        |
+| Registry       | New stable names and fields are added to `telemetry-registry.json` and regenerated into Rust/TypeScript.                                                                                                                                                                                                       |
+| Contract       | Cross-package payloads decode through `@overeng/otel-contract` or a documented VRS contract before support is claimed.                                                                                                                                                                                         |
+| E2E            | A representative wrapped command proves summary evidence, OTLP export where applicable, and CAS resolution for profile artifacts.                                                                                                                                                                              |
 
 Candidate order is conservative and split by lane:
 

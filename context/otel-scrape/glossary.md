@@ -35,3 +35,13 @@
 **Merged process observation** — In the default degraded `direct-child` backend, the process observation folded into the command span (`fidelity = "merged"`) instead of a separate span. A distinct process span appears only under an exact backend.
 
 **Trusted sink** — A telemetry destination an operator has explicitly asserted private and access-controlled (`OTEL_SCRAPE_TRUSTED_SINK` / `--trusted-sink`). Raw argv/cwd/local paths are emitted only to a trusted sink; the assertion is explicit, per-sink, and off by default. Trust unlocks identity, never credentials or payloads.
+
+**Structured source** — The declared, stable, machine-readable output an adapter consumes (a named format flag and schema, e.g. oxlint `--format=json`), as opposed to a tool's default human output. A release adapter requires one (decision 0017).
+
+**Presentation ownership** — The rule that when an adapter's required structured format replaces the tool's human stdout, `otel-scrape` re-renders a readable summary to the terminal, so instrumenting is UX-neutral. Rendering lives in `otel-scrape`, per-adapter, not at the call-site (decision 0017, R30).
+
+**Side-channel adapter** — An adapter whose tool writes structured output to a file/fd while human output stays on stdout (e.g. vitest `--reporter=json --outputFile.json`). No re-render is needed; preferred over re-render where offered.
+
+**Best-effort scraper** — A parser of a tool's human text (e.g. the devenv tsc `--extendedDiagnostics` timing scraper). It is fragile and lives outside the adapter contract; it is never presented as a supported adapter (decision 0017).
+
+**Named-command identity** — The `adapter=none` command span: a concrete command wrapped by `otel-scrape` gets a named span (`command.program`, argv/cwd hashes, exit, merged process) without adapter records. The baseline for concrete-command instrumentation (decision 0018).
