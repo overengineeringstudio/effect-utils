@@ -30,11 +30,19 @@ alignment (PR #881, Weaver semantic-conventions VRS), pinned to semconv v1.37.0.
 
 ## Evidence and Argument
 
-- **The CLI-execution span convention fits as-is.** OTel v1.37.0 defines
-  `span.cli.internal` (model/cli/spans.yaml): span_kind INTERNAL, span name SHOULD
-  be `{process.executable.name}`, status SHOULD be Error if `process.exit.code`
-  != 0. `otel-scrape`'s existing basename span name + INTERNAL kind (0014) already
-  conform; adoption is a rename of the attribute keys, not a structural change.
+- **The CLI-execution span convention fits, and we adopt it partially now.** OTel
+  v1.37.0 defines `span.cli.internal` (model/cli/spans.yaml): span_kind INTERNAL,
+  span name SHOULD be `{process.executable.name}`, status SHOULD be Error if
+  `process.exit.code` != 0. `otel-scrape`'s existing basename span name +
+  INTERNAL kind (0014) + status-on-nonzero already align, and the attribute
+  key/type renaming lands here — so span structure and the renamed keys conform
+  now. But conformance is **partial, not complete**: `span.cli.internal` extends
+  `attributes.cli.common`, which lists `process.pid` (int) as **REQUIRED** and
+  `error.type` as conditionally-required; `otel-scrape` emits neither today (it
+  carries only a vendor `otel_scrape.command.argv_hash`, no `process.pid`). These
+  two gaps are deferred to M25.1 (see Consequences), so this decision is a rename
+  plus an honest declaration of what still does not conform, not a claim of full
+  `span.cli` conformance.
 - **Verified upstream keys and types (v1.37.0, fetched, not reconstructed):**
   `process.exit.code` (int); `process.command_args` (**string[]** — the brief
   says it SHOULD NOT be collected by default unless sanitized); `process.command_line`
@@ -52,7 +60,12 @@ alignment (PR #881, Weaver semantic-conventions VRS), pinned to semconv v1.37.0.
   `process.command_args` and `command.cwd` → `process.working_directory` is
   key-and-type only. The trust gate (`--trusted-sink`), never-default-emit,
   `cardinality: high`, and the redaction policy (`encode: drop`) stay attached.
-  Raw argv/cwd emit only under the asserted sink, exactly as before 0016.
+  Raw argv/cwd emit only under the asserted sink, exactly as before 0016. This is
+  a deliberate, documented deviation from the upstream brief's "SHOULD NOT be
+  collected by default unless sanitized" guidance on `process.command_args`:
+  0015's per-named-sink trust assertion substitutes for upstream sanitization —
+  rather than sanitizing the value, `otel-scrape` withholds it entirely except
+  into a sink the operator asserted private by name.
 - **Vendor concepts stay namespaced.** The correlation hashes and the span-origin
   marker have no upstream equivalent, so they move under the `otel_scrape.*`
   vendor namespace (`otel_scrape.command.argv_hash`, `otel_scrape.command.cwd_hash`,
@@ -77,10 +90,17 @@ alignment (PR #881, Weaver semantic-conventions VRS), pinned to semconv v1.37.0.
   `process.executable.name` (the wrapped program basename), which is the
   convention's SHOULD.
 - **Rename to the verified v1.37.0 keys.** `process.exit_code` →
-  `process.exit.code`; `command.program` → `process.executable.name` (cardinality
-  stays `bounded` = basename, never a path); `command.argv` →
+  `process.exit.code`; `command.program` → `process.executable.name`; `command.argv` →
   `process.command_args` (retyped to `string[]`); `command.cwd` →
-  `process.working_directory`.
+  `process.working_directory`. `process.executable.name` is honestly declared
+  `cardinality: high` today: it is also the command span name, and the current
+  derivation is a bare `Path::file_name(argv0)` basename with no bound — a
+  basename that is "not a path" is not the same as one drawn from a finite set,
+  and adversarial or pathological basenames (uuid temp scripts, per-test compiled
+  binaries, nix-store-hashed direct-exec) make the span name unbounded. `span.cli`
+  explicitly permits a different low-cardinality span-name format provided it is
+  documented; M25.1 enforces a documented low-cardinality program-name derivation
+  and re-tightens this key to `bounded`.
 - **Vendor concepts move under `otel_scrape.*`:** `command.argv_hash` →
   `otel_scrape.command.argv_hash`; `command.cwd_hash` →
   `otel_scrape.command.cwd_hash`; `span.origin` → `otel_scrape.span.origin`.
@@ -109,6 +129,19 @@ alignment (PR #881, Weaver semantic-conventions VRS), pinned to semconv v1.37.0.
 - Requirement R27 and the spec's attribute-key references are updated to the
   semconv keys; the summary's own field names (`argv`/`cwd`/`argv_hash`) are a
   separate local schema and are unchanged.
-- H2 behaviors (`error.type`, `status.message`, `scope.version`,
-  `service.version`, high-resolution clock, `process.pid`) are explicitly out of
-  scope and deferred to a later milestone.
+- **Deferred to M25.1 (completes `span.cli.common` conformance and the bounded
+  span name).** This decision's conformance is partial (see Evidence); the two
+  named gaps and the cardinality re-tightening land in M25.1:
+  1. **Enforce a bounded program-name derivation and re-tighten
+     `process.executable.name` to `cardinality: bounded`.** The current
+     `Path::file_name(argv0)` basename is unbounded (declared `high` here); M25.1
+     enforces a documented low-cardinality span-name format (which `span.cli`
+     explicitly permits) and re-tightens the registry cardinality.
+  2. **Emit `process.pid` as a RAW int on the command span.** `process.pid` is
+     REQUIRED by `attributes.cli.common`; a pid is not a path, argument, or
+     credential, so it is emitted raw (not hashed). The existing vendor
+     `pid_hash` stays for descendant-observation correlation — the two coexist.
+  Also deferred is `error.type` (conditionally-required by `attributes.cli.common`).
+- Remaining H2 richness (`status.message`, `scope.version`, `service.version`,
+  high-resolution clock) is out of scope here and tracked separately from the
+  M25.1 conformance gaps above.

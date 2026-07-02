@@ -1,7 +1,7 @@
 // Generated file - DO NOT EDIT
 // Source: registry.gen.ts.genie.ts
 // Registry source: context/otel-scrape/telemetry-registry.json
-// Input fingerprint: sha256:62f0e35225c3fdd4b14571f48de8515dd8c22531297a2dee6094e2d29ddb53f7
+// Input fingerprint: sha256:2ba59438d2d147d139eb9a60595bdb98830cf74bc0ab0ebba4f6ad945d372a17
 
 export const otelScrapeTelemetryRegistry = {
   "schemaVersion": 1,
@@ -53,14 +53,15 @@ export const otelScrapeTelemetryRegistry = {
       "id": "process_executable_name",
       "key": "process.executable.name",
       "valueType": "string",
-      "cardinality": "bounded",
+      "cardinality": "high",
       "stability": "development",
       "examples": [
         "tsc",
         "cargo",
         "node"
       ],
-      "description": "OTel semconv (decision 0016): base name of the wrapped executable; the span-name source. A public-safe identity, always present. Never a full path or arguments."
+      "note": "Honest cardinality until M25.1: this key is also the command span name, and the current basename derivation is Path::file_name(argv0) with no bound — adversarial or pathological basenames (uuid temp scripts, per-test compiled binaries, nix-store-hashed direct-exec) make the span name unbounded, so it is cardinality `high` today. M25.1 will enforce a documented low-cardinality program-name derivation and re-tighten this key to `bounded`.",
+      "description": "OTel semconv (decision 0016): base name of the wrapped executable; the span-name source. A public-safe identity (never a full path or arguments), always present. Currently unbounded (cardinality high); a bounded derivation is enforced in M25.1."
     },
     {
       "id": "otel_scrape_command_argv_hash",
