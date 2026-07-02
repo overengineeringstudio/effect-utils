@@ -56,11 +56,15 @@ the concrete command level beneath it.
 - The generic per-task `bash`/`otel_scrape.command` wrapper is gone; a real
   `check:all` trace shows one task span per task, with named command spans only
   where a concrete command is instrumented.
-- tsc/tsgo has no structured source (0017), so it is instrumented `adapter=none`
-  (named `tsgo` identity); its existing best-effort phase-span scraper remains,
-  and with (4) its `typescript.project.check` spans nest correctly under the
-  `tsgo` command span instead of dangling beside it.
-- oxlint and vitest are instrumented with real adapters (0017): oxlint with
+- tsc/tsgo has no structured source (0017), so it is to be instrumented
+  `adapter=none`. Two wrapping modes trade off (experiment 0009): wrapping only
+  the compiler gives a `tsgo`-named command span with the phase-span scraper's
+  `typescript.project.check` spans remaining task-siblings; wrapping the whole
+  `tscWithDiagnostics` body nests those phase spans under the command span but
+  names it `bash` (generic). Reconciling both (nested AND `tsgo`-named) needs a
+  span-name override — an implementation choice for the epic worker. Clause 4's
+  `OTEL_TASK_TRACEPARENT` export is what makes the nested mode work at all.
+- oxlint and vitest are to be instrumented with real adapters (0017): oxlint with
   `--format=json` + pretty-out, vitest via the `--reporter=json` side-channel
   (interactive output preserved).
 - Implementation is delegated to the epic worker; this decision fixes the intent.

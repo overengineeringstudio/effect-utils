@@ -4,7 +4,8 @@ Status: accepted
 
 **Context:** The adapter admission policy (decision 0012) already requires a
 machine-readable Source ("Human logs are degraded fallback only"). Two problems
-surfaced when the only shipped adapter (oxlint) was exercised on the real devenv
+surfaced when oxlint (the only adapter exercised on the devenv path; 0012 also
+ships node-cpuprofile) was run on the real devenv
 path (experiment `.experiments/0008-adapter-structured-source-contract.md`):
 
 1. **UX regression.** oxlint's structured source is `--format=json`, which
@@ -79,7 +80,8 @@ the terminal. Concretely:
 - The oxlint raw-JSON tee is superseded by structured-in/pretty-out; the existing
   `oxlint_adapter_parses_json_diagnostics_without_hiding_stdout` test is replaced
   by a render + privacy test. Pretty-out composes through re-entrancy (an outer
-  wrapper captures the inner's rendered summary).
+  wrapper captures the inner's rendered summary — human text, not reparseable
+  JSON, so leaf-ownership per 0002 holds).
 - Each new needs-render adapter adds a small renderer in otel-scrape (bounded by
   the 0012 admission gate). Side-channel adapters add none.
 - The summary-sink message field is dropped/gated to preserve public-safety.
