@@ -82,10 +82,13 @@ let
       command,
       includeCase,
       emptySelectionDiagnostic ? null,
+      # Optional shell prelude injected before the file scan (e.g. trace.instr,
+      # which defines the _otel_instr / _otel_instr_flags arrays the command uses).
+      prelude ? "",
     }:
     ''
       set -euo pipefail
-
+      ${prelude}
       lint_pathspec_args=()
       ${lintPathspecsSetup}
 
@@ -154,14 +157,34 @@ let
   # Plugin injection is handled by oxlint-with-plugins wrapper on PATH.
   # Consumers should add oxlint-with-plugins to devenv packages instead of
   # passing jsPlugins here.
+  #
+  # instrName: when set, the concrete oxlint invocation is wrapped with
+  # trace.instr { adapter = "oxlint"; } (decision 0018), so otel-scrape owns a
+  # named `oxlint` command span beneath the task span and re-renders a human
+  # diagnostics summary from `--format=json` (decision 0017). The `--format=json`
+  # child flag is gated together with the otel-scrape prefix (via _otel_instr_flags)
+  # so a repo without otel-scrape never sees raw JSON on the terminal.
   mkOxlintCmd =
-    extraFlags:
+    {
+      extraFlags ? "",
+      instrName ? null,
+    }:
     let
       flags = "${warningsFlag} ${extraFlags}";
     in
     mkLintExec {
-      command = "oxlint --import-plugin ${flags} ${typeAwareFlags}";
+      command =
+        if instrName != null then
+          ''"''${_otel_instr[@]}" oxlint "''${_otel_instr_flags[@]}" --import-plugin ${flags} ${typeAwareFlags}''
+        else
+          "oxlint --import-plugin ${flags} ${typeAwareFlags}";
       includeCase = oxlintIncludeCase;
+      prelude = lib.optionalString (instrName != null) (
+        trace.instr {
+          adapter = "oxlint";
+          name = instrName;
+        }
+      );
     };
 
   guardedTasks = {
@@ -178,7 +201,9 @@ let
     "lint:check:oxlint" = {
       guard = "oxlint";
       description = "Run oxlint linter";
-      exec = trace.exec "lint:check:oxlint" (mkOxlintCmd "");
+      exec = trace.exec "lint:check:oxlint" (mkOxlintCmd {
+        instrName = "lint:check:oxlint";
+      });
       execIfModified = [ ];
     }
     // lib.optionalAttrs (tsconfig != null) {
@@ -196,7 +221,9 @@ let
     "lint:fix:oxlint" = {
       guard = "oxlint";
       description = "Fix lint issues with oxlint";
-      exec = trace.exec "lint:fix:oxlint" (mkOxlintCmd "--fix");
+      exec = trace.exec "lint:fix:oxlint" (mkOxlintCmd {
+        extraFlags = "--fix";
+      });
     };
   };
 

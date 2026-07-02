@@ -821,7 +821,14 @@ echo "Test 27: Darwin CI install accepts completed pnpm materialization after te
 echo "Test 28: generated test task runs vitest without pnpm exec"
 (
   cd "$workspace/packages/demo"
-  output="$(bash "$tmpdir/test-demo.exec.sh")"
+  # This asserts the resolve_package_bin path (vitest run directly, not `pnpm
+  # exec`), which is orthogonal to the otel-scrape command instrumentation
+  # (decision 0018). With otel-scrape on PATH the vitest adapter would wrap the
+  # bin and inject its `--reporter=json` side-channel (decision 0017), changing
+  # the shim's echoed argv. OTEL_SCRAPE_DOGFOOD=0 collapses trace.instr's arrays
+  # to empty, so this also proves the shared-module transparency contract: with
+  # instrumentation disabled the concrete command runs completely unchanged.
+  output="$(OTEL_SCRAPE_DOGFOOD=0 bash "$tmpdir/test-demo.exec.sh")"
   [ "$output" = "vitest-shim:run" ]
 )
 

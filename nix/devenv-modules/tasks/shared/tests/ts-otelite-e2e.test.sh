@@ -40,6 +40,16 @@ resolve_otel_span() {
   fi
 }
 
+resolve_otel_scrape() {
+  if [ -n "${OTEL_SCRAPE_BIN:-}" ]; then
+    printf '%s\n' "$OTEL_SCRAPE_BIN"
+  elif command -v otel-scrape >/dev/null 2>&1; then
+    command -v otel-scrape
+  else
+    printf '%s/bin/otel-scrape\n' "$(nix build --no-link --print-out-paths "$ROOT#otel-scrape")"
+  fi
+}
+
 extract_ts_check_exec() {
   nix eval --impure --raw --expr "
     let
@@ -74,6 +84,7 @@ mkdir -p "$tmpdir/bin"
 
 otelite_bin="$(resolve_otelite)"
 otel_span_bin="$(resolve_otel_span)"
+otel_scrape_bin="$(resolve_otel_scrape)"
 
 extract_ts_check_exec > "$tmpdir/ts-check.exec.sh"
 chmod +x "$tmpdir/ts-check.exec.sh"
@@ -96,6 +107,7 @@ EOF
 chmod +x "$tmpdir/bin/tsgo"
 
 ln -s "$otel_span_bin" "$tmpdir/bin/otel-span"
+ln -s "$otel_scrape_bin" "$tmpdir/bin/otel-scrape"
 
 cap="$tmpdir/capture"
 env -u TRACEPARENT -u OTEL_TASK_TRACEPARENT -u OTEL_SHELL_ENTRY_NS \
@@ -105,11 +117,14 @@ env -u TRACEPARENT -u OTEL_TASK_TRACEPARENT -u OTEL_SHELL_ENTRY_NS \
 
 "$otelite_bin" inspect "$cap" --signal traces > "$tmpdir/spans.ndjson"
 
-jq -e '.counts.spans >= 6 and .counts.rejected == 0 and .child.exit_code == 0' "$tmpdir/summary.json" >/dev/null \
-  || fail "otelite summary should report accepted wrapper/task spans and child exit 0"
+# New cooperation model (decision 0018): task span + one `tsgo` command span +
+# the TypeScript phase spans. The pre-0018 blanket otel_scrape.command wrapper and
+# its separate otel_scrape.process span are gone (5 spans for this fixture, not 6).
+jq -e '.counts.spans >= 5 and .counts.rejected == 0 and .child.exit_code == 0' "$tmpdir/summary.json" >/dev/null \
+  || fail "otelite summary should report accepted task/command/phase spans and child exit 0"
 
 span_count="$(wc -l < "$tmpdir/spans.ndjson" | tr -d ' ')"
-[ "$span_count" -ge 6 ] || fail "expected at least 6 inspected spans, got $span_count"
+[ "$span_count" -ge 5 ] || fail "expected at least 5 inspected spans, got $span_count"
 
 trace_count="$(jq -r '.trace_id' "$tmpdir/spans.ndjson" | sort -u | wc -l | tr -d ' ')"
 [ "$trace_count" -eq 1 ] || fail "expected one trace id, got $trace_count"
@@ -124,23 +139,27 @@ jq -s -e '
 ' "$tmpdir/spans.ndjson" >/dev/null \
   || fail "task and TypeScript spans should use service.name=effect-utils-devenv"
 
-wrapper_span="$(jq -r 'select(.name == "otel_scrape.command") | .span_id' "$tmpdir/spans.ndjson")"
-[ -n "$wrapper_span" ] || fail "missing otel_scrape.command wrapper span"
-
-process_span="$(jq -r 'select(.name == "otel_scrape.process") | .span_id' "$tmpdir/spans.ndjson")"
-[ -n "$process_span" ] || fail "missing otel_scrape.process child span"
+# Decision 0018 — devenv task cooperation: the TASK span (otel-span
+# devenv.task.exec) owns the task level; there is NO generic otel-scrape wrapper
+# ABOVE it. otel-scrape wraps only the concrete compiler BENEATH the task span,
+# yielding a `tsgo`-named command span (adapter=none). The TypeScript phase spans
+# are emitted from the task shell (outside otel-scrape) and so remain task-
+# siblings of the `tsgo` span (experiment 0009 wrap-only-compiler tradeoff).
+jq -s -e 'all(.[]; .name != "otel_scrape.command")' "$tmpdir/spans.ndjson" >/dev/null \
+  || fail "blanket otel_scrape.command wrapper span should be gone (decision 0018)"
 
 task_span="$(jq -r 'select(.name == "devenv.task.exec") | .span_id' "$tmpdir/spans.ndjson")"
-[ -n "$task_span" ] || fail "missing devenv.task.exec child span"
+[ -n "$task_span" ] || fail "missing devenv.task.exec task span"
 
-jq -s -e --arg wrapper "$wrapper_span" 'any(.[]; .name == "devenv.task.exec" and .parent_span_id == $wrapper)' "$tmpdir/spans.ndjson" >/dev/null \
-  || fail "devenv.task.exec should parent to otel_scrape.command"
-jq -s -e --arg wrapper "$wrapper_span" 'any(.[]; .name == "otel_scrape.process" and .parent_span_id == $wrapper)' "$tmpdir/spans.ndjson" >/dev/null \
-  || fail "otel_scrape.process should parent to otel_scrape.command"
+cmd_span="$(jq -r 'select(.name == "tsgo") | .span_id' "$tmpdir/spans.ndjson")"
+[ -n "$cmd_span" ] || fail "missing tsgo command span (compiler-level otel-scrape instrumentation)"
+
+jq -s -e --arg task "$task_span" 'any(.[]; .name == "tsgo" and .parent_span_id == $task)' "$tmpdir/spans.ndjson" >/dev/null \
+  || fail "tsgo command span should parent to devenv.task.exec"
 jq -s -e --arg task "$task_span" '
   all([.[] | select(.name == "typescript.project.check" or .name == "typescript.build.aggregate")][]; .parent_span_id == $task)
 ' "$tmpdir/spans.ndjson" >/dev/null \
-  || fail "TypeScript spans should parent to devenv.task.exec"
+  || fail "TypeScript phase spans should parent to devenv.task.exec (task-siblings of tsgo)"
 
 jq -s -e 'any(.[]; .name == "devenv.task.exec" and .attrs["tool.name"] == "devenv" and .attrs["task.cached"] == "false" and .attrs["task.phase"] == "exec")' "$tmpdir/spans.ndjson" >/dev/null \
   || fail "task span is missing typed task attrs"
@@ -160,15 +179,14 @@ task_label="$(jq -r 'select(.name == "devenv.task.exec") | .attrs["span.label"]'
 
 echo "Trace tree preview"
 echo "trace $trace_id"
-echo "\`-- effect-utils-devenv otel_scrape.command [ts:check] span=$wrapper_span"
-echo "    |-- effect-utils-devenv otel_scrape.process [direct-child] span=$process_span parent=$wrapper_span"
-echo "    \`-- effect-utils-devenv devenv.task.exec [$task_label] span=$task_span parent=$wrapper_span"
+echo "\`-- effect-utils-devenv devenv.task.exec [$task_label] span=$task_span"
+echo "    |-- effect-utils-devenv tsgo [command] span=$cmd_span parent=$task_span"
 jq -r -s --arg task "$task_span" '
   [.[] | select(.parent_span_id == $task and (.name == "typescript.project.check" or .name == "typescript.build.aggregate"))]
   | sort_by(.name, .attrs["span.label"])
   | to_entries as $items
   | $items[]
-  | "        " + (if .key + 1 == ($items | length) then "`-- " else "|-- " end)
+  | "    " + (if .key + 1 == ($items | length) then "`-- " else "|-- " end)
     + .value.service + " " + .value.name + " ["
     + .value.attrs["span.label"] + "] span=" + .value.span_id
     + " parent=" + .value.parent_span_id

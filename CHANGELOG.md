@@ -6,6 +6,20 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **otel-scrape / devenv**: Make effect-utils' own devenv tasks cooperate with
+  the trace model (decision 0018). The task span (`otel-span devenv.task.exec` /
+  `devenv.task.status`) owns the task level; the blanket per-task `otel-scrape`
+  wrapper is removed (it produced one meaningless generic `bash` span above every
+  real task span). A new `trace.instr { adapter ? "none"; name; }` helper wraps a
+  clean concrete command BENEATH the task span, yielding a named command span
+  (`tsgo`, `oxlint`, `node`, ...). Adapters fire where the structured-source
+  contract (decision 0017) is met: oxlint is instrumented `adapter=oxlint` with a
+  presence-gated `--format=json` (otel-scrape re-renders a human summary), vitest
+  `adapter=vitest` (side-channel; human reporter output preserved), and tsc/tsgo
+  `adapter=none` (compiler-only wrap keeps the honest `tsgo` span name with the
+  TypeScript phase spans as task-siblings). The `trace.instr` arrays are empty when
+  otel-scrape is absent, so downstream repos importing these modules run unchanged.
+
 - Refined `otel-scrape` VRS and release docs for helper-backed exact process observation, including Linux cgroup-scoped run authority, macOS Endpoint Security validation gates, and runner-class support-matrix evidence.
 
 ### Added

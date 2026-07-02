@@ -575,7 +575,7 @@ in
   };
 
   tasks."otel-scrape:dogfood-audit" = {
-    description = "Check active devenv task modules route exec/status scripts through otel-scrape dogfooding";
+    description = "Check active devenv task modules route every exec/status through trace.* (otel-span task span; concrete commands opt into otel-scrape via trace.instr)";
     exec = trace.exec "otel-scrape:dogfood-audit" ''
       set -euo pipefail
       if rg -n '^\\s*(exec|status) = ' \
@@ -583,8 +583,8 @@ in
         nix/devenv-modules/tasks/shared \
         nix/devenv-modules/tasks/local \
         -g '*.nix' \
-        | rg -v 'trace\\.(exec|status)|exec = null|exec = if hasPackages then null else trace\\.exec|trace\\.withStatus|nix/devenv-modules/tasks/local/restate-integration-test\\.nix:21:|nix/devenv-modules/tasks/shared/ts\\.nix:(377|388):|nix/devenv-modules/tasks/shared/vercel\\.nix:'; then
-        echo "Found task exec/status scripts that bypass trace.nix otel-scrape dogfooding." >&2
+        | rg -v 'trace\\.(exec|status)|exec = null|exec = if hasPackages then null else trace\\.exec|trace\\.withStatus|nix/devenv-modules/tasks/local/restate-integration-test\\.nix:21:|nix/devenv-modules/tasks/shared/ts\\.nix:(395|406):|nix/devenv-modules/tasks/shared/vercel\\.nix:'; then
+        echo "Found task exec/status scripts that bypass the trace.nix task span (trace.exec/status/withStatus)." >&2
         exit 1
       fi
     '';

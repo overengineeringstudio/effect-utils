@@ -62,8 +62,11 @@ the concrete command level beneath it.
   `typescript.project.check` spans remaining task-siblings; wrapping the whole
   `tscWithDiagnostics` body nests those phase spans under the command span but
   names it `bash` (generic). Reconciling both (nested AND `tsgo`-named) needs a
-  span-name override — an implementation choice for the epic worker. Clause 4's
-  `OTEL_TASK_TRACEPARENT` export is what makes the nested mode work at all.
+  span-name override. Clause 4's `OTEL_TASK_TRACEPARENT` export is what makes the
+  nested mode work at all. **Implemented (M25.2): wrap only the compiler** — the
+  honest `tsgo` span name is preferred over nesting, so the phase spans stay
+  task-siblings of `tsgo` (a real `check:all` trace confirmed
+  `ts:check → { tsgo, typescript.project.check ×N, typescript.build.aggregate }`).
 - oxlint and vitest are to be instrumented with real adapters (0017): oxlint with
   `--format=json` + pretty-out, vitest via the `--reporter=json` side-channel
   (interactive output preserved).
