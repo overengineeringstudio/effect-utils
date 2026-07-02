@@ -121,11 +121,15 @@ fn preserves_passthrough_and_writes_summary() {
     assert!(process.get("argv").is_none());
 }
 
+// Supersedes the pre-M25.1b `oxlint_adapter_parses_json_diagnostics_without_hiding_stdout`
+// test: the raw-JSON stdout tee is replaced by structured-in / pretty-out
+// (decision 0017). This test proves the render (UX-neutral presentation, R30); a
+// companion test proves the byte-level privacy invariant across BOTH sinks.
 #[test]
-fn oxlint_adapter_parses_json_diagnostics_without_hiding_stdout() {
+fn oxlint_adapter_renders_human_summary_instead_of_teeing_raw_json() {
     let dir = tempfile::tempdir().unwrap();
     let summary = dir.path().join("summary.json");
-    let oxlint_json = r#"{ "privatePayload": "PRIVATE_OUTPUT_PAYLOAD", "diagnostics": [{"message": "Unexpected token","severity": "error","filename": "/private/source.ts"}] }"#;
+    let oxlint_json = r#"{ "privatePayload": "PRIVATE_OUTPUT_PAYLOAD", "diagnostics": [{"message": "Unexpected token","severity": "error","filename": "/private/source.ts","code": "eslint(no-undef)"}] }"#;
 
     let out = otel_scrape()
         .env("OX_JSON", oxlint_json)
@@ -136,7 +140,21 @@ fn oxlint_adapter_parses_json_diagnostics_without_hiding_stdout() {
         .unwrap();
 
     assert!(out.status.success());
-    assert_eq!(String::from_utf8_lossy(&out.stdout), oxlint_json);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    // Presentation ownership (R30): the operator sees a concise human summary,
+    // not a raw JSON dump. The render MAY show the full message/path — this is the
+    // operator's own terminal, not a sink (decision 0017 clause 4).
+    assert!(
+        stdout.contains("oxlint: 1 diagnostic(s) over 1 file(s)"),
+        "stdout should show the rendered summary, got: {stdout}"
+    );
+    assert!(stdout.contains("error"));
+    assert!(stdout.contains("/private/source.ts"));
+    // The raw structured source is SUPPRESSED — it must not be teed to the terminal.
+    assert!(
+        !stdout.contains("PRIVATE_OUTPUT_PAYLOAD") && !stdout.contains("\"diagnostics\""),
+        "raw JSON must not be dumped to the terminal, got: {stdout}"
+    );
 
     let summary: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(summary).unwrap()).unwrap();
@@ -148,39 +166,78 @@ fn oxlint_adapter_parses_json_diagnostics_without_hiding_stdout() {
         "oxlint.diagnostics"
     );
     assert_eq!(summary["adapter"]["records"][0]["value"], 1);
-    assert_eq!(summary["output"]["stdout"]["_tag"], "ContentDescriptor");
-    assert!(summary["output"]["stdout"]["digest"]
-        .as_str()
-        .unwrap()
-        .starts_with("sha256:"));
-    assert_eq!(
-        summary["output"]["stdout"]["byteLength"],
-        oxlint_json.as_bytes().len()
-    );
-    assert_eq!(
-        summary["output"]["stdout"]["mediaType"],
-        "application/octet-stream"
-    );
-    assert_eq!(summary["output"]["stderr"]["_tag"], "ContentDescriptor");
-    assert_eq!(summary["output"]["stderr"]["byteLength"], 0);
-    assert_eq!(
-        summary["output"]["stderr"]["mediaType"],
-        "application/octet-stream"
-    );
     assert_eq!(summary["adapter"]["records"][1]["_tag"], "Event");
-    assert_eq!(
-        summary["adapter"]["records"][1]["message"],
-        "Unexpected token"
-    );
     assert_eq!(summary["adapter"]["records"][1]["severity"], "error");
     assert!(summary["adapter"]["records"][1]["filename_hash"]
         .as_str()
         .unwrap()
         .starts_with("sha256:"));
+    // Privacy (decision 0017 clause 4, R27): the raw diagnostic message is DROPPED
+    // from the summary record — it is not a field at all, so it cannot regress.
+    assert!(summary["adapter"]["records"][1].get("message").is_none());
     assert!(summary["adapter"]["records"][1].get("filename").is_none());
-    let summary_json = serde_json::to_string(&summary).unwrap();
-    assert!(!summary_json.contains("/private/source.ts"));
-    assert!(!summary_json.contains("PRIVATE_OUTPUT_PAYLOAD"));
+}
+
+// The byte-level non-leak invariant (R27 / decision 0015, refined by 0017 clause
+// 4): the raw diagnostic message and raw filename are ABSENT from BOTH the summary
+// and the OTLP payload, while the hashed filename identity is present in both. The
+// render legitimately shows them on the terminal, so absence is asserted in the
+// sinks only, never in stdout.
+#[test]
+fn oxlint_adapter_keeps_raw_message_and_path_out_of_both_sinks() {
+    let collector = TestCollector::start(200);
+    let dir = tempfile::tempdir().unwrap();
+    let summary_path = dir.path().join("summary.json");
+    let raw_message = "Unexpected token in private source";
+    let raw_filename = "/private/secret-source.ts";
+    let oxlint_json = format!(
+        r#"{{ "privatePayload": "PRIVATE_OUTPUT_PAYLOAD", "diagnostics": [{{"message": {raw_message:?}, "severity": "error", "filename": {raw_filename:?}}}] }}"#,
+    );
+
+    let out = otel_scrape()
+        .env("OX_JSON", &oxlint_json)
+        .args(["--adapter", "oxlint", "--summary-out"])
+        .arg(&summary_path)
+        .args(["--service-name", "otel-scrape-test"])
+        .args(["--otlp-endpoint", &collector.endpoint])
+        .args(["--", "sh", "-c", "printf '%s' \"$OX_JSON\""])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+
+    let summary_bytes = std::fs::read(&summary_path).unwrap();
+    let request = collector.request();
+    for (label, bytes) in [
+        ("summary", summary_bytes.as_slice()),
+        ("otlp", request.body.as_slice()),
+    ] {
+        let haystack = String::from_utf8_lossy(bytes);
+        assert!(
+            !haystack.contains(raw_message),
+            "raw diagnostic message leaked into {label}"
+        );
+        assert!(
+            !haystack.contains(raw_filename),
+            "raw filename leaked into {label}"
+        );
+        assert!(
+            !haystack.contains("PRIVATE_OUTPUT_PAYLOAD"),
+            "raw JSON envelope leaked into {label}"
+        );
+    }
+
+    // The hashed filename identity IS carried through both sinks.
+    let summary: serde_json::Value = serde_json::from_slice(&summary_bytes).unwrap();
+    let filename_hash = summary["adapter"]["records"][1]["filename_hash"]
+        .as_str()
+        .unwrap();
+    assert!(filename_hash.starts_with("sha256:"));
+    let otlp = String::from_utf8_lossy(&request.body);
+    assert!(
+        otlp.contains(filename_hash),
+        "hashed filename identity should be present in OTLP"
+    );
+    assert!(otlp.contains("source.filename_hash"));
 }
 
 #[test]
@@ -256,7 +313,19 @@ fn parent_wrapper_preserves_nested_output_without_reclassifying_child_owned_adap
         .unwrap();
 
     assert!(out.status.success());
-    assert_eq!(String::from_utf8_lossy(&out.stdout), oxlint_json);
+    // Pretty-out composes through re-entrancy (decision 0017): the INNER wrapper
+    // owns presentation and renders the human summary; the OUTER passes it through
+    // as human text — NOT reparseable JSON — so leaf-ownership per 0002 holds and
+    // the outer does not re-parse the inner's rendered output into records.
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("oxlint: 1 diagnostic(s) over 1 file(s)"),
+        "outer stdout should be the inner's rendered summary, got: {stdout}"
+    );
+    assert!(
+        !stdout.contains("\"diagnostics\""),
+        "outer stdout must not be reparseable raw JSON, got: {stdout}"
+    );
 
     let outer: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(outer_summary).unwrap()).unwrap();
@@ -267,10 +336,9 @@ fn parent_wrapper_preserves_nested_output_without_reclassifying_child_owned_adap
     assert_eq!(outer["adapter"]["ownership"]["stdout"], "child-wrapper");
     assert_eq!(outer["adapter"]["records"].as_array().unwrap().len(), 0);
     assert_eq!(outer["output"]["stdout"]["_tag"], "ContentDescriptor");
-    assert_eq!(
-        outer["output"]["stdout"]["byteLength"],
-        oxlint_json.as_bytes().len()
-    );
+    // The outer captured exactly the human text it passed through (the inner's
+    // render), not the raw JSON the inner consumed.
+    assert_eq!(outer["output"]["stdout"]["byteLength"], out.stdout.len());
 
     assert_eq!(inner["adapter"]["name"], "oxlint");
     assert_eq!(inner["adapter"]["ownership"]["stdout"], "this-wrapper");
@@ -775,6 +843,134 @@ fn exports_root_traceparent_to_child() {
     assert_eq!(summary["trace"]["parent_span_id"], serde_json::Value::Null);
     assert_eq!(summary["trace"]["child_traceparent"], child_traceparent);
     assert!(child_traceparent.starts_with("00-"));
+}
+
+// Reparenting fix (decision 0018 clause 4 / experiment 0009): otel-scrape exports
+// OTEL_TASK_TRACEPARENT carrying its OWN command-span context, so a task-parented
+// sub-span emitter re-parents beneath the command span. It must equal TRACEPARENT
+// (the command span's context) and overwrite any inherited task value.
+#[test]
+fn exports_task_traceparent_carrying_command_span_context_to_child() {
+    let dir = tempfile::tempdir().unwrap();
+    let task_file = dir.path().join("task-traceparent");
+    let child_file = dir.path().join("child-traceparent");
+    let summary = dir.path().join("summary.json");
+    let inherited_task = "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01";
+    let parent = "00-11111111111111111111111111111111-2222222222222222-01";
+
+    let out = otel_scrape()
+        .env("traceparent", parent)
+        // A stale task value inherited from an outer task span must be overwritten.
+        .env("OTEL_TASK_TRACEPARENT", inherited_task)
+        .env("TASK_FILE", &task_file)
+        .env("CHILD_FILE", &child_file)
+        .args(["--summary-out"])
+        .arg(&summary)
+        .args([
+            "--",
+            "sh",
+            "-c",
+            "printf '%s' \"$OTEL_TASK_TRACEPARENT\" > \"$TASK_FILE\"; printf '%s' \"$traceparent\" > \"$CHILD_FILE\"",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(out.status.success());
+    let task_traceparent = std::fs::read_to_string(&task_file).unwrap();
+    let child_traceparent = std::fs::read_to_string(&child_file).unwrap();
+    let summary: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(summary).unwrap()).unwrap();
+
+    // OTEL_TASK_TRACEPARENT = the command span's own context (equal to the child's
+    // TRACEPARENT), NOT the inherited task value and NOT the incoming parent.
+    assert_eq!(task_traceparent, child_traceparent);
+    assert_eq!(summary["trace"]["child_traceparent"], task_traceparent);
+    assert_ne!(task_traceparent, inherited_task);
+    assert_ne!(task_traceparent, parent);
+    // It carries the command span's own span id (the reparent target) under the
+    // shared trace id.
+    assert_eq!(
+        task_traceparent,
+        format!(
+            "00-{}-{}-{}",
+            summary["trace"]["trace_id"].as_str().unwrap(),
+            summary["trace"]["span_id"].as_str().unwrap(),
+            "01",
+        )
+    );
+}
+
+// vitest side-channel adapter (decision 0017): otel-scrape injects
+// `--reporter=json --outputFile.json=<file>`, reads structured counts from the
+// file, and leaves the child's human stdout UNTOUCHED (no re-render). Modeled with
+// a fake vitest that echoes the injected outputFile flag and writes a JSON report.
+#[test]
+fn vitest_adapter_reads_side_channel_and_leaves_stdout_untouched() {
+    let dir = tempfile::tempdir().unwrap();
+    let summary = dir.path().join("summary.json");
+    // A stand-in for vitest: print human output to stdout, and honor the injected
+    // `--outputFile.json=<path>` by writing a JSON report there (parsing it out of
+    // argv the way vitest would consume the flag).
+    let fake_vitest = dir.path().join("fake-vitest.sh");
+    std::fs::write(
+        &fake_vitest,
+        r#"#!/bin/sh
+echo "RUN  human test output"
+for arg in "$@"; do
+  case "$arg" in
+    --outputFile.json=*) out="${arg#--outputFile.json=}" ;;
+  esac
+done
+if [ -n "$out" ]; then
+  printf '%s' '{"numTotalTests":5,"numFailedTests":2,"numPassedTests":3}' > "$out"
+fi
+"#,
+    )
+    .unwrap();
+    let mut perms = std::fs::metadata(&fake_vitest).unwrap().permissions();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        perms.set_mode(0o755);
+    }
+    std::fs::set_permissions(&fake_vitest, perms).unwrap();
+
+    let out = otel_scrape()
+        .args(["--adapter", "vitest", "--summary-out"])
+        .arg(&summary)
+        .args(["--"])
+        .arg(&fake_vitest)
+        .output()
+        .unwrap();
+
+    assert!(out.status.success());
+    // Side-channel: the child's own human output stays on stdout, untouched — no
+    // re-render, no JSON dumped.
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("RUN  human test output"),
+        "vitest human stdout must pass through untouched, got: {stdout}"
+    );
+    assert!(!stdout.contains("numTotalTests"));
+
+    let summary: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(summary).unwrap()).unwrap();
+    assert_eq!(summary["adapter"]["name"], "vitest");
+    // Side-channel presentation: otel-scrape owns the records but not stdout.
+    assert_eq!(summary["adapter"]["ownership"]["stdout"], "inherited");
+    // stdout is inherited (never captured), so no output descriptor.
+    assert_eq!(summary["output"]["stdout"], serde_json::Value::Null);
+    let records = summary["adapter"]["records"].as_array().unwrap();
+    let total = records
+        .iter()
+        .find(|record| record["name"] == "vitest.tests")
+        .expect("vitest.tests metric");
+    assert_eq!(total["value"], 5);
+    let failures = records
+        .iter()
+        .find(|record| record["name"] == "vitest.failures")
+        .expect("vitest.failures metric");
+    assert_eq!(failures["value"], 2);
 }
 
 #[cfg(unix)]
@@ -1679,7 +1875,11 @@ fn exports_oxlint_adapter_event_without_raw_filename_or_payload() {
         .unwrap();
 
     assert!(out.status.success());
-    assert_eq!(String::from_utf8_lossy(&out.stdout), oxlint_json);
+    // Structured-in / pretty-out (decision 0017): the terminal shows the rendered
+    // summary, not the raw JSON. The OTLP payload stays byte-clean (asserted below).
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("oxlint: 1 diagnostic(s) over 1 file(s)"));
+    assert!(!stdout.contains("PRIVATE_OUTPUT_PAYLOAD"));
 
     let request = collector.request();
     let body: serde_json::Value = serde_json::from_slice(&request.body).unwrap();

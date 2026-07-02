@@ -18,6 +18,16 @@
       "id": "oxlint_diagnostics",
       "name": "oxlint.diagnostics",
       "description": "Number of oxlint diagnostics parsed from one JSON report."
+    },
+    {
+      "id": "vitest_tests",
+      "name": "vitest.tests",
+      "description": "Number of tests reported by one vitest JSON side-channel run (numTotalTests). Public-safe count only; no test names, files, or messages (decision 0017)."
+    },
+    {
+      "id": "vitest_failures",
+      "name": "vitest.failures",
+      "description": "Number of failing tests reported by one vitest JSON side-channel run (numFailedTests). Public-safe count only; no test names, files, or messages (decision 0017)."
     }
   ],
   "attributes": [

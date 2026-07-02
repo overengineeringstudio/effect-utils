@@ -1,12 +1,12 @@
 // Generated file - DO NOT EDIT
 // Source: telemetry_registry.gen.rs.genie.ts
 // Registry source: context/otel-scrape/telemetry-registry.json
-// Input fingerprint: sha256:07eb53eff615f574ee09d9f66d1c702f9794d3dc8c5736b82b0fbafe2da910f6
+// Input fingerprint: sha256:129c704eff7970590b68dbc7feaddcf5bed4d8348ef2f18f60a6d742bf9911db
 
 pub const REGISTRY_SCHEMA_VERSION: u8 = 1;
 pub const REGISTRY_NAMESPACE: &str = "otel_scrape";
 pub const REGISTRY_INPUT_FINGERPRINT: &str =
-    "sha256:07eb53eff615f574ee09d9f66d1c702f9794d3dc8c5736b82b0fbafe2da910f6";
+    "sha256:129c704eff7970590b68dbc7feaddcf5bed4d8348ef2f18f60a6d742bf9911db";
 
 pub mod span_naming {
     pub const COMMAND: &str = "program-basename";
@@ -15,6 +15,8 @@ pub mod span_naming {
 
 pub mod metrics {
     pub const OXLINT_DIAGNOSTICS: &str = "oxlint.diagnostics";
+    pub const VITEST_TESTS: &str = "vitest.tests";
+    pub const VITEST_FAILURES: &str = "vitest.failures";
 }
 
 pub mod attributes {

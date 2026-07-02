@@ -1,7 +1,7 @@
 // Generated file - DO NOT EDIT
 // Source: registry.gen.ts.genie.ts
 // Registry source: context/otel-scrape/telemetry-registry.json
-// Input fingerprint: sha256:07eb53eff615f574ee09d9f66d1c702f9794d3dc8c5736b82b0fbafe2da910f6
+// Input fingerprint: sha256:129c704eff7970590b68dbc7feaddcf5bed4d8348ef2f18f60a6d742bf9911db
 
 export const otelScrapeTelemetryRegistry = {
   "schemaVersion": 1,
@@ -23,6 +23,16 @@ export const otelScrapeTelemetryRegistry = {
       "id": "oxlint_diagnostics",
       "name": "oxlint.diagnostics",
       "description": "Number of oxlint diagnostics parsed from one JSON report."
+    },
+    {
+      "id": "vitest_tests",
+      "name": "vitest.tests",
+      "description": "Number of tests reported by one vitest JSON side-channel run (numTotalTests). Public-safe count only; no test names, files, or messages (decision 0017)."
+    },
+    {
+      "id": "vitest_failures",
+      "name": "vitest.failures",
+      "description": "Number of failing tests reported by one vitest JSON side-channel run (numFailedTests). Public-safe count only; no test names, files, or messages (decision 0017)."
     }
   ],
   "attributes": [
@@ -405,7 +415,9 @@ export const otelScrapeSpanNaming = {
 } as const
 
 export const otelScrapeMetricNames = {
-  "oxlintDiagnostics": "oxlint.diagnostics"
+  "oxlintDiagnostics": "oxlint.diagnostics",
+  "vitestTests": "vitest.tests",
+  "vitestFailures": "vitest.failures"
 } as const
 
 export const otelScrapeAttributeKeys = {

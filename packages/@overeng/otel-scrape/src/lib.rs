@@ -62,6 +62,13 @@ const PROCESS_HELPER_SOCKET_ENV: &str = "OTEL_SCRAPE_PROCESS_HELPER_SOCKET";
 const RUN_ID_ENV: &str = "OTEL_SCRAPE_RUN_ID";
 const HELPER_STREAM_PROTOCOL_VERSION: u8 = 1;
 const TRACEPARENT_ENV: &str = "traceparent";
+// Task-level traceparent (decision 0018 clause 4): otel-scrape exports its OWN
+// command-span context under this variable so a task-parented sub-span emitter
+// re-parents beneath the command span instead of the outer task span. A
+// re-eval-safe reparenting fix (experiment 0009); overwrites any inherited value.
+const OTEL_TASK_TRACEPARENT_ENV: &str = "OTEL_TASK_TRACEPARENT";
+const OXLINT_ADAPTER: &str = "oxlint";
+const VITEST_ADAPTER: &str = "vitest";
 const OUTPUT_MEDIA_TYPE: &str = "application/octet-stream";
 const RESOURCE_FACT_UNAVAILABLE: &str = "unavailable";
 const OTLP_HTTP_DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -284,6 +291,10 @@ struct AdapterOwnershipSummary {
 enum AdapterStdoutOwnership {
     ThisWrapper,
     ChildWrapper,
+    /// The adapter consumes a side-channel (a file/fd) and leaves the child's
+    /// stdout untouched (decision 0017: vitest). otel-scrape owns the structured
+    /// records but NOT the terminal presentation — the child writes directly.
+    Inherited,
 }
 
 impl AdapterStdoutOwnership {
@@ -291,8 +302,26 @@ impl AdapterStdoutOwnership {
         match self {
             Self::ThisWrapper => "this-wrapper",
             Self::ChildWrapper => "child-wrapper",
+            Self::Inherited => "inherited",
         }
     }
+}
+
+/// How otel-scrape presents the wrapped child's stdout (decision 0017,
+/// requirement R30). Presentation ownership lives here, per-adapter.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StdoutMode {
+    /// stdout goes straight to the terminal; otel-scrape never captures it
+    /// (adapter=none; vitest side-channel).
+    Inherit,
+    /// stdout is captured AND streamed live to the terminal (node-cpuprofile;
+    /// an outer wrapper passing through a nested otel-scrape's rendered summary).
+    TeeLive,
+    /// stdout is captured but SUPPRESSED from the terminal; otel-scrape renders a
+    /// human summary in its place after parsing (oxlint structured-in/pretty-out).
+    /// On a parse failure the captured raw bytes are flushed instead, so output is
+    /// never swallowed.
+    CaptureSilent,
 }
 
 #[derive(Debug, Clone)]
@@ -311,9 +340,12 @@ enum AdapterSummaryRecord {
     Metric(AdapterMetric),
 }
 
+/// A sink-facing adapter event. Hard-public-safe by construction (decision 0015,
+/// R27; decision 0017 clause 4): the raw diagnostic MESSAGE is never a field, and
+/// the filename is only ever the hashed identity. The full message/path is shown
+/// only in the terminal render (the operator's own machine, not a sink).
 #[derive(Debug, Clone, Serialize)]
 struct AdapterEvent {
-    message: String,
     severity: String,
     filename_hash: Option<String>,
 }
@@ -593,9 +625,13 @@ pub fn parse_args(args: &[String]) -> Result<CommandRequest, UsageError> {
                 let Some(value) = args.get(i + 1) else {
                     return usage_error("--adapter needs a value");
                 };
-                if value != "none" && value != "oxlint" && value != NODE_CPUPROFILE_ADAPTER {
+                if value != "none"
+                    && value != OXLINT_ADAPTER
+                    && value != VITEST_ADAPTER
+                    && value != NODE_CPUPROFILE_ADAPTER
+                {
                     return usage_error(
-                        "only --adapter none, --adapter oxlint, and --adapter node-cpuprofile are supported",
+                        "only --adapter none, --adapter oxlint, --adapter vitest, and --adapter node-cpuprofile are supported",
                     );
                 }
                 adapter = value.clone();
@@ -736,7 +772,7 @@ pub fn print_help() {
     eprintln!();
     eprintln!("usage:");
     eprintln!(
-        "  otel-scrape [--summary-out <file>] [--adapter none|oxlint|node-cpuprofile] [--process-backend direct-child|ptrace-experimental|helper-stream] [--process-helper-socket <path>] [--otlp-endpoint <url>] [--service-name <name>] [--trusted-sink otlp|summary]... [--cas-root <dir>] [--cas-pin <name>] [--profile-artifact <type>:<path>] -- <cmd...>"
+        "  otel-scrape [--summary-out <file>] [--adapter none|oxlint|vitest|node-cpuprofile] [--process-backend direct-child|ptrace-experimental|helper-stream] [--process-helper-socket <path>] [--otlp-endpoint <url>] [--service-name <name>] [--trusted-sink otlp|summary]... [--cas-root <dir>] [--cas-pin <name>] [--profile-artifact <type>:<path>] -- <cmd...>"
     );
     eprintln!("  otel-scrape --version | --help");
 }
@@ -777,6 +813,18 @@ pub fn run(config: RunConfig) -> io::Result<i32> {
     };
     cleanup_adapter_profile_artifacts(&child);
 
+    // Consume the declared structured source and build the adapter records ONCE
+    // (decision 0017): stdout for oxlint, the side-channel file for vitest. The
+    // same AdapterRun feeds both the summary and the OTLP export, so parsing and
+    // presentation happen exactly once.
+    let structured_source = adapter_structured_source(&config, &child);
+    let adapter = adapter_outputs(&config, &structured_source, &artifacts);
+    // Presentation ownership (decision 0017, R30): render the human summary in
+    // place of the suppressed raw stdout (or flush the raw bytes on a parse
+    // failure). UX-neutral: the operator still sees readable output.
+    present_adapter_stdout(&config, &adapter, &child);
+    cleanup_sidechannel_file(&child);
+
     if let Some(path) = config.summary_out.as_ref() {
         match summary_for_status(
             &config,
@@ -785,6 +833,7 @@ pub fn run(config: RunConfig) -> io::Result<i32> {
             &child,
             duration_ms,
             &artifacts,
+            &adapter,
         )
         .and_then(|summary| write_summary(path, &summary))
         {
@@ -804,7 +853,7 @@ pub fn run(config: RunConfig) -> io::Result<i32> {
         };
         let endpoint_for_warning = endpoint_for_warning(endpoint);
         if let Err(cause) =
-            export_command_span(&config, &trace, &child, &artifacts, started_wall, elapsed)
+            export_command_span(&config, &trace, &child, started_wall, elapsed, &adapter)
         {
             eprintln!(
                 "otel-scrape: warning: failed to export OTLP trace to {endpoint_for_warning}: {cause}"
@@ -826,6 +875,10 @@ struct ChildRun {
     // (not hashed). Option so any fixture-only path without a real spawn is
     // honest rather than emitting a fabricated pid.
     child_pid: Option<u32>,
+    // Side-channel structured-source file (decision 0017: vitest). otel-scrape
+    // injects `--outputFile.json=<this>` so the child writes its JSON here while
+    // its human stdout stays untouched. Read after the child exits, then removed.
+    sidechannel_file: Option<PathBuf>,
 }
 
 fn run_child(config: &RunConfig, child_traceparent: &str, run_id: &str) -> io::Result<ChildRun> {
@@ -858,13 +911,23 @@ fn run_child_direct(
 ) -> io::Result<ChildRun> {
     let node_profile_dir = prepare_node_cpuprofile_dir(config)?;
     let process_span_id = random_hex(8)?;
+    let mode = stdout_mode(config);
+    let sidechannel_file = vitest_sidechannel_path(config)?;
     let mut command = Command::new(&config.argv[0]);
     command
         .args(&config.argv[1..])
         .env(TRACEPARENT_ENV, child_traceparent)
         .env("TRACEPARENT", child_traceparent)
+        // decision 0018 clause 4: export the command-span context as the task
+        // traceparent so a task-parented sub-span emitter re-parents beneath this
+        // command span, not the outer task span (experiment 0009). Overwrites any
+        // inherited value.
+        .env(OTEL_TASK_TRACEPARENT_ENV, child_traceparent)
         .env(RUN_ID_ENV, run_id)
         .stdin(Stdio::inherit());
+    if let Some(path) = sidechannel_file.as_ref() {
+        command.args(vitest_sidechannel_args(path));
+    }
     if let Some(profile_dir) = node_profile_dir.as_ref() {
         command.env(
             "NODE_OPTIONS",
@@ -875,56 +938,51 @@ fn run_child_direct(
         );
     }
 
-    if config.adapter == "none" {
-        let process_started_wall = SystemTime::now();
-        let process_started = Instant::now();
-        let mut child = command
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit())
-            .spawn()?;
-        let process_id = child.id();
-        let status = child.wait()?;
-        let process_duration_ms = process_started.elapsed().as_millis();
-        return Ok(ChildRun {
-            status,
-            stdout: None,
-            stderr: None,
-            node_profile_dir,
-            child_pid: Some(process_id),
-            process_observation: direct_child_process_observation(DirectChildProcessObservation {
-                config,
-                process_id,
-                parent_process_id: std::process::id(),
-                process_span_id,
-                process_started_wall,
-                process_duration_ms,
-                status,
-            }),
-        });
-    }
-
     let process_started_wall = SystemTime::now();
     let process_started = Instant::now();
-    let mut child = command
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()?;
-    let process_id = child.id();
-    let stdout = child.stdout.take().expect("stdout is piped");
-    let stderr = child.stderr.take().expect("stderr is piped");
-    let stdout_reader = thread::spawn(move || tee_reader(stdout, io::stdout()));
-    let stderr_reader = thread::spawn(move || tee_reader(stderr, io::stderr()));
-    let status = child.wait()?;
+    let (stdout, stderr, status, process_id) = match mode {
+        StdoutMode::Inherit => {
+            let mut child = command
+                .stdout(Stdio::inherit())
+                .stderr(Stdio::inherit())
+                .spawn()?;
+            let process_id = child.id();
+            let status = child.wait()?;
+            (None, None, status, process_id)
+        }
+        StdoutMode::TeeLive | StdoutMode::CaptureSilent => {
+            let mut child = command
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()?;
+            let process_id = child.id();
+            let stdout_pipe = child.stdout.take().expect("stdout is piped");
+            let stderr_pipe = child.stderr.take().expect("stderr is piped");
+            // CaptureSilent suppresses the raw stdout tee (decision 0017): capture
+            // it into a sink so it never reaches the terminal; the caller renders a
+            // human summary in its place (or flushes it on a parse failure). stderr
+            // always streams live — it carries the tool's own error text.
+            let stdout_reader = if mode == StdoutMode::TeeLive {
+                thread::spawn(move || tee_reader(stdout_pipe, io::stdout()))
+            } else {
+                thread::spawn(move || tee_reader(stdout_pipe, io::sink()))
+            };
+            let stderr_reader = thread::spawn(move || tee_reader(stderr_pipe, io::stderr()));
+            let status = child.wait()?;
+            let stdout = join_reader(stdout_reader)?;
+            let stderr = join_reader(stderr_reader)?;
+            (Some(stdout), Some(stderr), status, process_id)
+        }
+    };
     let process_duration_ms = process_started.elapsed().as_millis();
-    let stdout = join_reader(stdout_reader)?;
-    let stderr = join_reader(stderr_reader)?;
 
     Ok(ChildRun {
         status,
-        stdout: Some(stdout),
-        stderr: Some(stderr),
+        stdout,
+        stderr,
         node_profile_dir,
         child_pid: Some(process_id),
+        sidechannel_file,
         process_observation: direct_child_process_observation(DirectChildProcessObservation {
             config,
             process_id,
@@ -935,6 +993,30 @@ fn run_child_direct(
             status,
         }),
     })
+}
+
+/// Path for the vitest side-channel JSON file (decision 0017), or `None` for any
+/// other adapter. otel-scrape owns the path so it can read and remove it.
+fn vitest_sidechannel_path(config: &RunConfig) -> io::Result<Option<PathBuf>> {
+    if config.adapter != VITEST_ADAPTER {
+        return Ok(None);
+    }
+    let suffix = random_hex(8)?;
+    Ok(Some(
+        std::env::temp_dir().join(format!("otel-scrape-vitest-{suffix}.json")),
+    ))
+}
+
+/// Flags otel-scrape appends to a vitest invocation for the side-channel
+/// (decision 0017): the JSON reporter writes structured results to the injected
+/// file while `--reporter=default` keeps vitest's human output on stdout untouched
+/// (verified: `--reporter=json` alone blanks the terminal).
+fn vitest_sidechannel_args(path: &Path) -> Vec<String> {
+    vec![
+        "--reporter=default".to_owned(),
+        "--reporter=json".to_owned(),
+        format!("--outputFile.json={}", path.display()),
+    ]
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -953,12 +1035,21 @@ fn run_child_with_ptrace(config: &RunConfig, child_traceparent: &str) -> io::Res
     use std::os::unix::process::CommandExt;
 
     let node_profile_dir = prepare_node_cpuprofile_dir(config)?;
+    let mode = stdout_mode(config);
+    let sidechannel_file = vitest_sidechannel_path(config)?;
     let mut command = Command::new(&config.argv[0]);
     command
         .args(&config.argv[1..])
         .env(TRACEPARENT_ENV, child_traceparent)
         .env("TRACEPARENT", child_traceparent)
+        // decision 0018 clause 4: export the command-span context as the task
+        // traceparent (mirrors run_child_direct) so sub-span emitters re-parent
+        // beneath this command span.
+        .env(OTEL_TASK_TRACEPARENT_ENV, child_traceparent)
         .stdin(Stdio::inherit());
+    if let Some(path) = sidechannel_file.as_ref() {
+        command.args(vitest_sidechannel_args(path));
+    }
     if let Some(profile_dir) = node_profile_dir.as_ref() {
         command.env(
             "NODE_OPTIONS",
@@ -983,7 +1074,7 @@ fn run_child_with_ptrace(config: &RunConfig, child_traceparent: &str) -> io::Res
         });
     }
 
-    let captures_output = config.adapter != "none";
+    let captures_output = mode != StdoutMode::Inherit;
     if captures_output {
         command.stdout(Stdio::piped()).stderr(Stdio::piped());
     } else {
@@ -1000,7 +1091,13 @@ fn run_child_with_ptrace(config: &RunConfig, child_traceparent: &str) -> io::Res
     if captures_output {
         let stdout = child.stdout.take().expect("stdout is piped");
         let stderr = child.stderr.take().expect("stderr is piped");
-        stdout_reader = Some(thread::spawn(move || tee_reader(stdout, io::stdout())));
+        // CaptureSilent (oxlint leaf) suppresses the raw stdout tee — capture it
+        // into a sink so the caller can render a summary in its place.
+        stdout_reader = Some(if mode == StdoutMode::TeeLive {
+            thread::spawn(move || tee_reader(stdout, io::stdout()))
+        } else {
+            thread::spawn(move || tee_reader(stdout, io::sink()))
+        });
         stderr_reader = Some(thread::spawn(move || tee_reader(stderr, io::stderr())));
     }
 
@@ -1137,6 +1234,7 @@ fn run_child_with_ptrace(config: &RunConfig, child_traceparent: &str) -> io::Res
         stderr,
         node_profile_dir,
         child_pid: u32::try_from(root_pid).ok(),
+        sidechannel_file,
         process_observation: ptrace_process_observation(traces),
     })
 }
@@ -1903,13 +2001,9 @@ fn summary_for_status(
     child: &ChildRun,
     duration_ms: u128,
     artifacts: &ArtifactSummary,
+    adapter: &AdapterRun,
 ) -> io::Result<Summary> {
     let cwd = std::env::current_dir()?;
-    let adapter = adapter_outputs(
-        config,
-        child.stdout.as_deref().unwrap_or_default(),
-        artifacts,
-    );
     Ok(Summary {
         schema: telemetry_registry::schemas::SUMMARY_V1,
         version: VERSION,
@@ -1928,7 +2022,7 @@ fn summary_for_status(
         },
         output: output_summary(child),
         resources: resource_summary(duration_ms),
-        adapter: adapter_summary(&adapter),
+        adapter: adapter_summary(adapter),
         artifacts: artifacts.clone(),
         processes: process_observation_summary(trace, child),
         trace: TraceSummary {
@@ -2029,9 +2123,9 @@ fn export_command_span(
     config: &RunConfig,
     trace: &TraceContext,
     child: &ChildRun,
-    artifacts: &ArtifactSummary,
     started_wall: SystemTime,
     elapsed: Duration,
+    adapter: &AdapterRun,
 ) -> io::Result<()> {
     let Some(endpoint) = config.otlp_endpoint.as_ref() else {
         return Ok(());
@@ -2041,11 +2135,6 @@ fn export_command_span(
     // monotonic elapsed delta in nanoseconds — not a whole-ms reconstruction.
     let start_unix_nano = unix_nanos(started_wall);
     let end_unix_nano = start_unix_nano.saturating_add(elapsed.as_nanos());
-    let adapter = adapter_outputs(
-        config,
-        child.stdout.as_deref().unwrap_or_default(),
-        artifacts,
-    );
     let cwd = std::env::current_dir()?;
     let observation = &child.process_observation;
     // A distinct process span is emitted only under an exact backend that
@@ -2177,7 +2266,7 @@ fn export_command_span(
     if let Some(parent_span_id) = trace.parent_span_id.as_ref() {
         command_span["parentSpanId"] = json!(parent_span_id);
     }
-    let events = otlp_span_events(&adapter, end_unix_nano);
+    let events = otlp_span_events(adapter, end_unix_nano);
     if !events.is_empty() {
         command_span["events"] = json!(events);
     }
@@ -2739,17 +2828,58 @@ struct AdapterRun {
     name: String,
     stdout_ownership: AdapterStdoutOwnership,
     outputs: Vec<AdapterOutput>,
+    /// The human summary otel-scrape renders to the terminal for a needs-render
+    /// adapter (decision 0017: oxlint pretty-out). `Some` only when the structured
+    /// source parsed; `None` for side-channel/pass-through adapters and on a parse
+    /// failure (the caller then flushes the captured raw bytes instead).
+    render: Option<String>,
 }
 
-fn adapter_outputs(config: &RunConfig, stdout: &[u8], artifacts: &ArtifactSummary) -> AdapterRun {
-    let stdout_ownership = if config.adapter != "none" && invokes_nested_otel_scrape(config) {
-        AdapterStdoutOwnership::ChildWrapper
-    } else {
-        AdapterStdoutOwnership::ThisWrapper
-    };
-    let mut outputs = match (stdout_ownership, config.adapter.as_str()) {
-        (AdapterStdoutOwnership::ThisWrapper, "oxlint") => oxlint_outputs(stdout),
-        _ => Vec::new(),
+/// The stdout presentation mode for the wrapped child (decision 0017). Depends
+/// only on `config`, so it is resolved BEFORE the child is spawned to decide the
+/// capture strategy, and again at emission to decide presentation.
+fn stdout_mode(config: &RunConfig) -> StdoutMode {
+    match config.adapter.as_str() {
+        "none" => StdoutMode::Inherit,
+        // vitest is a side-channel adapter: its JSON goes to a file otel-scrape
+        // injects; its human output stays on stdout untouched (decision 0017).
+        VITEST_ADAPTER => StdoutMode::Inherit,
+        OXLINT_ADAPTER => {
+            if invokes_nested_otel_scrape(config) {
+                // The nested otel-scrape renders; the outer only passes it through.
+                StdoutMode::TeeLive
+            } else {
+                // Leaf: suppress the raw JSON tee and render a summary in its place.
+                StdoutMode::CaptureSilent
+            }
+        }
+        // node-cpuprofile (and any future capture-and-passthrough adapter).
+        _ => StdoutMode::TeeLive,
+    }
+}
+
+fn adapter_ownership(config: &RunConfig) -> AdapterStdoutOwnership {
+    match config.adapter.as_str() {
+        VITEST_ADAPTER => AdapterStdoutOwnership::Inherited,
+        _ if config.adapter != "none" && invokes_nested_otel_scrape(config) => {
+            AdapterStdoutOwnership::ChildWrapper
+        }
+        _ => AdapterStdoutOwnership::ThisWrapper,
+    }
+}
+
+fn adapter_outputs(
+    config: &RunConfig,
+    structured_source: &[u8],
+    artifacts: &ArtifactSummary,
+) -> AdapterRun {
+    let stdout_ownership = adapter_ownership(config);
+    let (mut outputs, render) = match (stdout_ownership, config.adapter.as_str()) {
+        (AdapterStdoutOwnership::ThisWrapper, OXLINT_ADAPTER) => oxlint_adapter(structured_source),
+        (AdapterStdoutOwnership::Inherited, VITEST_ADAPTER) => {
+            (vitest_outputs(structured_source), None)
+        }
+        _ => (Vec::new(), None),
     };
     outputs.extend(
         artifacts
@@ -2763,6 +2893,53 @@ fn adapter_outputs(config: &RunConfig, stdout: &[u8], artifacts: &ArtifactSummar
         name: config.adapter.clone(),
         stdout_ownership,
         outputs,
+        render,
+    }
+}
+
+/// The bytes of the declared structured source (decision 0017): the child's
+/// captured stdout for oxlint, the injected side-channel file for vitest, empty
+/// otherwise. Read once after the child exits.
+fn adapter_structured_source(config: &RunConfig, child: &ChildRun) -> Vec<u8> {
+    match config.adapter.as_str() {
+        OXLINT_ADAPTER => child.stdout.clone().unwrap_or_default(),
+        VITEST_ADAPTER => child
+            .sidechannel_file
+            .as_ref()
+            .and_then(|path| std::fs::read(path).ok())
+            .unwrap_or_default(),
+        _ => Vec::new(),
+    }
+}
+
+/// Present the wrapped child's stdout for a CaptureSilent adapter (decision 0017,
+/// R30). Only oxlint-leaf suppresses its raw stdout; every other mode already
+/// wrote to the terminal (TeeLive) or inherited it (Inherit). On a successful
+/// parse the human summary is rendered; on a parse failure the captured raw bytes
+/// are flushed so output is never swallowed.
+fn present_adapter_stdout(config: &RunConfig, adapter: &AdapterRun, child: &ChildRun) {
+    if stdout_mode(config) != StdoutMode::CaptureSilent {
+        return;
+    }
+    let mut stdout = io::stdout();
+    match adapter.render.as_deref() {
+        Some(render) => {
+            let _ = stdout.write_all(render.as_bytes());
+        }
+        None => {
+            if let Some(raw) = child.stdout.as_deref() {
+                let _ = stdout.write_all(raw);
+            }
+        }
+    }
+    let _ = stdout.flush();
+}
+
+/// Remove the vitest side-channel file after its structured source is consumed
+/// (decision 0017). Best-effort: a failure here never affects the child's exit.
+fn cleanup_sidechannel_file(child: &ChildRun) {
+    if let Some(path) = child.sidechannel_file.as_ref() {
+        let _ = std::fs::remove_file(path);
     }
 }
 
@@ -3099,11 +3276,30 @@ struct OxlintDiagnostic {
     message: String,
     severity: String,
     filename: Option<String>,
+    /// The oxlint rule code (e.g. `eslint(no-unused-vars)`). Terminal render only
+    /// (decision 0017 clause 4); parsed defensively and omitted when absent.
+    #[serde(default)]
+    code: Option<String>,
 }
 
-fn oxlint_outputs(stdout: &[u8]) -> Vec<AdapterOutput> {
-    let Ok(report) = serde_json::from_slice::<OxlintJson>(stdout) else {
-        return Vec::new();
+/// The subset of vitest's `--reporter=json` summary otel-scrape consumes from the
+/// side-channel file. Counts only (decision 0017): no per-test names/files/errors.
+#[derive(Debug, Deserialize)]
+struct VitestJson {
+    #[serde(rename = "numTotalTests", default)]
+    num_total_tests: u64,
+    #[serde(rename = "numFailedTests", default)]
+    num_failed_tests: u64,
+}
+
+/// oxlint structured-in / pretty-out (decision 0017): parse the `--format=json`
+/// report into public-safe adapter records (severity + hashed filename + count),
+/// and produce a human summary otel-scrape renders to the terminal in place of the
+/// suppressed raw JSON. Returns `(outputs, None)` on a parse failure so the caller
+/// flushes the captured raw bytes instead of swallowing output.
+fn oxlint_adapter(structured_source: &[u8]) -> (Vec<AdapterOutput>, Option<String>) {
+    let Ok(report) = serde_json::from_slice::<OxlintJson>(structured_source) else {
+        return (Vec::new(), None);
     };
 
     let mut records = Vec::with_capacity(report.diagnostics.len() + 1);
@@ -3112,15 +3308,66 @@ fn oxlint_outputs(stdout: &[u8]) -> Vec<AdapterOutput> {
         value: report.diagnostics.len() as u64,
     }));
 
-    for diagnostic in report.diagnostics {
+    for diagnostic in &report.diagnostics {
         records.push(AdapterOutput::Event(AdapterEvent {
-            message: diagnostic.message,
-            severity: diagnostic.severity,
+            severity: diagnostic.severity.clone(),
             filename_hash: diagnostic.filename.as_deref().map(hash_path_identity),
         }));
     }
 
-    records
+    let render = oxlint_render(&report.diagnostics);
+    (records, Some(render))
+}
+
+/// The terminal render for oxlint (decision 0017 clause 3, R30). This is the
+/// operator's own machine, not a telemetry sink, so it MAY show full messages and
+/// paths (clause 4). The sink-facing records never carry them.
+fn oxlint_render(diagnostics: &[OxlintDiagnostic]) -> String {
+    let file_count = diagnostics
+        .iter()
+        .filter_map(|diagnostic| diagnostic.filename.as_deref())
+        .collect::<std::collections::BTreeSet<_>>()
+        .len();
+    let mut out = format!(
+        "oxlint: {} diagnostic(s) over {} file(s)\n",
+        diagnostics.len(),
+        file_count,
+    );
+    for diagnostic in diagnostics {
+        let file = diagnostic.filename.as_deref().unwrap_or("<unknown>");
+        out.push_str("  ");
+        out.push_str(&diagnostic.severity);
+        out.push_str("  ");
+        out.push_str(file);
+        if let Some(code) = diagnostic.code.as_deref() {
+            out.push_str("  ");
+            out.push_str(code);
+        }
+        out.push_str("  ");
+        out.push_str(&diagnostic.message);
+        out.push('\n');
+    }
+    out
+}
+
+/// vitest side-channel adapter (decision 0017): parse the `--reporter=json`
+/// report written to the injected `--outputFile.json`. Public-safe count metrics
+/// only — no test names, files, or failure messages cross a sink. Presentation is
+/// left to vitest's own stdout (side-channel), so there is no render.
+fn vitest_outputs(structured_source: &[u8]) -> Vec<AdapterOutput> {
+    let Ok(report) = serde_json::from_slice::<VitestJson>(structured_source) else {
+        return Vec::new();
+    };
+    vec![
+        AdapterOutput::Metric(AdapterMetric {
+            name: telemetry_registry::metrics::VITEST_TESTS,
+            value: report.num_total_tests,
+        }),
+        AdapterOutput::Metric(AdapterMetric {
+            name: telemetry_registry::metrics::VITEST_FAILURES,
+            value: report.num_failed_tests,
+        }),
+    ]
 }
 
 fn hash_path_identity(path: &str) -> String {
@@ -3565,7 +3812,10 @@ mod tests {
 
     #[test]
     fn rejects_unknown_adapter() {
-        for adapter in ["cargo", "tsc", "vite", "vitest"] {
+        // vitest is now an accepted adapter (decision 0017); cargo/tsc/vite remain
+        // unsupported (cargo is an explicit fast-follow, tsc/vite have no
+        // structured diagnostics source).
+        for adapter in ["cargo", "tsc", "vite"] {
             let args = vec![
                 "--adapter".to_owned(),
                 adapter.to_owned(),
@@ -3577,7 +3827,7 @@ mod tests {
 
             assert_eq!(
                 err.message(),
-                "only --adapter none, --adapter oxlint, and --adapter node-cpuprofile are supported"
+                "only --adapter none, --adapter oxlint, --adapter vitest, and --adapter node-cpuprofile are supported"
             );
         }
     }
@@ -3765,6 +4015,7 @@ mod tests {
             stderr: Some(Vec::new()),
             node_profile_dir: Some(profile_dir),
             child_pid: Some(std::process::id()),
+            sidechannel_file: None,
             process_observation: direct_child_process_observation(DirectChildProcessObservation {
                 config: &node_cpuprofile_config(PathBuf::from("cas")),
                 process_id: std::process::id(),
