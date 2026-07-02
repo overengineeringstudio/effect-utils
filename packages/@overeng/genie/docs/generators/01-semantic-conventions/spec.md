@@ -23,31 +23,28 @@ trace query surfaces — owned by the consumer's observability stack.
 
 ## Architecture
 
+Full SSOT chain, layering (Layer-2 home), and composition hierarchy:
+[.decisions/0006](./.decisions/0006-ssot-chain-and-layering.md). Summary:
+
 ```
-   author (TS)                    project (genie)                 gate (weaver, additive)
-┌────────────────┐   meta.registry   ┌──────────────────┐  groups: YAML  ┌──────────────────┐
-│ member          ├──────────────────►│ root aggregator   ├───────────────►│ weaver check      │
-│  *.genie.ts     │  (fragment)       │  (pure projector) │   registry/    │ weaver diff       │
-│  catalog+signals│                   │  ref+ns integrity │                │ weaver live-check │
-└───────┬────────┘                   └───────┬──────────┘                └──────────────────┘
-        │ catalog = SSOT                      │ registry (data)
-        │ (atop otel-contract prims)          ▼
-        ▼                             ┌──────────────────┐   derive (GEN-R05)
-┌────────────────┐   DERIVES (SC-R13) │  resolved model   ├──► TS consts / Rust / Effect
-│ runtime encoder │◄──────────────────┤                   │
-│ (otel-contract  │   registrySpan()  └──────────────────┘
-│  OtelAttrs)     │   → .encoder + weaver group (one decl)
-└────────────────┘
-     bridge only: conformance check (SC-DQ5) while migrating legacy inline sites
+ AUTHORED (only facts):  attribute = annotated Effect Schema (otel + weaver meta)
+                         signal    = attribute refs + per-ref requirement level
+        │
+ DERIVED:  ├─ runtime encoder / product APIs   (otel-contract `.`, OtelAttrs.define)   [runtime]
+           └─ registry fragment                (otel-contract `./registry` projector)  [design-time]
+                 └─ genie L1 (dep-free) ──► Weaver YAML → check/diff/live-check (additive gate)
+                                        ──► TS constants / Rust bindings
+                 └─ bridge OTTL (from `bridge:` annotation, 0004)
+
+ namespace + catalog are DERIVED (from key prefix / signal refs), not authored (0006).
 ```
 
-The catalog is the single source of truth, built ATOP `@overeng/otel-contract`'s
-primitives (so no runtime behavior is lost, SC-R14). A `registrySpan`/`registryMetric`
-declaration derives BOTH the weaver group AND the runtime encoder (`OtelAttrs`), so the
-runtime seam is derived, not separately authored (SC-R13). Upstream OTel semconv is a
-manifest `dependency`; first-party signals `ref` its attributes (SC-R06). Weaver's own
-Jinja codegen is available but non-load-bearing (SC-T01); TS/Rust/Effect bindings may be
-projected by genie directly from the resolved model.
+Layers, each depending only downward: **L2** `@overeng/otel-contract` `.` (runtime authoring
+SSOT) + `./registry` (design-time projector); **L1** `@overeng/genie` `src/runtime/weaver`
+(dep-free render); composed by per-package `weaver.genie.ts` + root `registry.genie.ts`. The
+runtime seam is *derived*, not separately authored (SC-R13/R14); upstream OTel semconv is a
+manifest `dependency` first-party signals `ref` (SC-R06). Weaver's Jinja codegen is available
+but non-load-bearing (SC-T01) — genie L1 renders bindings directly.
 
 ## Registry data model (SC-R01, SC-R02, SC-R03)
 

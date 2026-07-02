@@ -55,6 +55,16 @@ Constraints that make this correct and safe:
 - Reusable where used: a registry `deprecated: renamed` + `bridge:` annotation → generated,
   scoped, canaried Alloy OTTL config → dated sunset.
 
+## Boundary — this repo generates; the deployment repo runs
+
+This subsystem owns only the **generation** of the OTTL bridge config artifact (from the
+registry `bridge:` annotation) and the discipline around it. The **running bridge is fleet
+infrastructure** — which Alloy pipeline the snippet is wired into, the Mimir UTF-8/translation
+settings, the canary/rollback, and the dated sunset — and is realized in the downstream
+(private) deployment repo as a separate change, not here. The concrete Alloy pipeline wiring
+and canary mechanics are intentionally out of scope for this generator; only the artifact
+contract (a scoped OTTL statement set) crosses the boundary.
+
 ## Alternatives rejected
 
 - **Bridge-by-default (database-migration discipline for every rename):** disproportionate
