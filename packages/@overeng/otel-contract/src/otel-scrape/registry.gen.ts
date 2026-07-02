@@ -1,7 +1,7 @@
 // Generated file - DO NOT EDIT
 // Source: registry.gen.ts.genie.ts
 // Registry source: context/otel-scrape/telemetry-registry.json
-// Input fingerprint: sha256:0c481c0d48569ad40cd573e645ecac9b22ed600dc647bb4323e1ee0e9cc1135c
+// Input fingerprint: sha256:07eb53eff615f574ee09d9f66d1c702f9794d3dc8c5736b82b0fbafe2da910f6
 
 export const otelScrapeTelemetryRegistry = {
   "schemaVersion": 1,
@@ -53,15 +53,15 @@ export const otelScrapeTelemetryRegistry = {
       "id": "process_executable_name",
       "key": "process.executable.name",
       "valueType": "string",
-      "cardinality": "bounded",
+      "cardinality": "high",
       "stability": "development",
       "examples": [
         "tsc",
         "cargo",
         "node"
       ],
-      "note": "Bounded by the documented low-cardinality program-name derivation (decision 0016, M25.1): the wrapped executable basename is kept verbatim only when it looks like a normal program name (length <= 64, safe charset [A-Za-z0-9._+-], not a content-hash/uuid/hex-nonce; a nix-store <hash>-name prefix is stripped first). Pathological inputs (uuid temp scripts, per-test compiled binaries, hex nonces) collapse to the bounded fallback token <binary>. span.cli explicitly permits a different low-cardinality span-name format when documented.",
-      "description": "OTel semconv (decision 0016): base name of the wrapped executable; the span-name source. A public-safe, bounded identity (never a full path or arguments), always present. Bounded by the documented program-name derivation (decision 0016, M25.1)."
+      "note": "Best-effort cardinality normalization (bounded_program_name) is applied at every emission site (decision 0016, M25.1) — both the command span and observed-process spans — to collapse common high-entropy forms toward the fallback token <binary>: uuid temp scripts, long hex hashes, overlong names (length > 64 or outside [A-Za-z0-9._+-]), and nix-store <hash>-name prefixes (the hash is stripped so the real name survives). The value is nonetheless formally `high`: wrapped-command names are user-controlled, so residual high-entropy names may survive the normalization. span.cli explicitly permits a documented low-cardinality span-name format; this normalization is a best-effort approximation of that, not a formal bound.",
+      "description": "OTel semconv (decision 0016): base name of the wrapped executable; the span-name source. A public-safe identity — never a full path or arguments — always present. Best-effort cardinality normalization is applied at emission (decision 0016, M25.1), but the value remains formally `high` because wrapped-command names are user-controlled."
     },
     {
       "id": "otel_scrape_command_argv_hash",

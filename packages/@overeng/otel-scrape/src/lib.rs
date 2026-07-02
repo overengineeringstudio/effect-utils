@@ -2222,12 +2222,17 @@ fn process_otlp_spans(
                 .parent_span_id
                 .as_deref()
                 .unwrap_or(trace.span_id.as_str());
+            // The observed program name is the /proc/comm-vs-basename identity,
+            // passed through the same best-effort cardinality normalization as the
+            // command span (decision 0016, M25.1) so process.executable.name gets
+            // consistent normalization at every emission site.
+            let program = bounded_program_name(Some(process.program.as_str()));
             json!({
                 "traceId": trace.trace_id,
                 "spanId": process.span_id,
                 "parentSpanId": parent_span_id,
                 // Named by the observed descendant program basename (decision 0014).
-                "name": process.program,
+                "name": program,
                 "kind": 1,
                 "startTimeUnixNano": process_start_unix_nano.to_string(),
                 "endTimeUnixNano": process_end_unix_nano.to_string(),
@@ -2242,7 +2247,7 @@ fn process_otlp_spans(
                     },
                     {
                         "key": telemetry_registry::attributes::PROCESS_EXECUTABLE_NAME,
-                        "value": { "stringValue": process.program },
+                        "value": { "stringValue": program },
                     },
                     {
                         "key": telemetry_registry::attributes::OTEL_SCRAPE_COMMAND_ARGV_HASH,
@@ -2475,18 +2480,26 @@ fn otlp_env_config() -> OtlpEnvConfig {
         "otel-scrape",
     );
     set_resource_attribute(&mut resource_attributes, "telemetry.sdk.version", VERSION);
-    // Resource service.version defaults to otel-scrape's crate version (decision
-    // 0016, M25.1) so a trace ties to a build, but — like service.name — a value
-    // supplied via OTEL_RESOURCE_ATTRIBUTES wins, since service.* names the
-    // enclosing harness, not the wrapper. scope.version always carries
+    // Resolve service.name: OTEL_SERVICE_NAME wins, then a service.name supplied
+    // via OTEL_RESOURCE_ATTRIBUTES, else otel-scrape's own default.
+    let service_name_env = env_string(SERVICE_NAME_ENV);
+    let service_name_from_resource = resource_attribute(&resource_attributes, "service.name");
+    let service_name_supplied = service_name_env.is_some() || service_name_from_resource.is_some();
+    let service_name = service_name_env
+        .or(service_name_from_resource)
+        .unwrap_or_else(|| String::from("otel-scrape"));
+    // service.version defaults to otel-scrape's crate version (decision 0016,
+    // M25.1) ONLY when service.name is also otel-scrape's own default — i.e.
+    // neither OTEL_SERVICE_NAME nor a service.name in OTEL_RESOURCE_ATTRIBUTES was
+    // supplied. When a user/harness supplies service.name, service.* names the
+    // enclosing harness, so stamping otel-scrape's version onto it would be wrong.
+    // A user-supplied service.version always wins. scope.version carries
     // otel-scrape's build unambiguously regardless.
-    if resource_attribute(&resource_attributes, "service.version").is_none() {
+    if !service_name_supplied
+        && resource_attribute(&resource_attributes, "service.version").is_none()
+    {
         set_resource_attribute(&mut resource_attributes, "service.version", VERSION);
     }
-    let service_name = env_string(SERVICE_NAME_ENV).unwrap_or_else(|| {
-        resource_attribute(&resource_attributes, "service.name")
-            .unwrap_or_else(|| String::from("otel-scrape"))
-    });
     set_resource_attribute(&mut resource_attributes, "service.name", &service_name);
 
     OtlpEnvConfig {

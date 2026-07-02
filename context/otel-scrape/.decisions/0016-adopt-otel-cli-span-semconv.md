@@ -99,8 +99,10 @@ renamed_to: <new>}`, following OTel semconv practice, rather than being
   and adversarial or pathological basenames (uuid temp scripts, per-test compiled
   binaries, nix-store-hashed direct-exec) make the span name unbounded. `span.cli`
   explicitly permits a different low-cardinality span-name format provided it is
-  documented; M25.1 enforces a documented low-cardinality program-name derivation
-  and re-tightens this key to `bounded`.
+  documented; M25.1 adds a documented best-effort program-name normalization at
+  every emission site, but the cardinality stays formally `high` — because
+  wrapped-command names are user-controlled, the normalization cannot bound them,
+  so this is a best-effort collapse with a documented residual, not a formal bound.
 - **Vendor concepts move under `otel_scrape.*`:** `command.argv_hash` →
   `otel_scrape.command.argv_hash`; `command.cwd_hash` →
   `otel_scrape.command.cwd_hash`; `span.origin` → `otel_scrape.span.origin`.
@@ -133,18 +135,25 @@ renamed_to: <new>}`, following OTel semconv practice, rather than being
   richness).** This decision's conformance was partial (see Evidence); M25.1
   closes the named gaps, re-tightens the cardinality, and lands the deferred H2
   richness:
-  1. **Bounded program-name derivation; `process.executable.name` re-tightened to
-     `cardinality: bounded`.** The wrapped basename is kept verbatim only when it
-     looks like a normal program name — length `<= 64`, a conservative safe
-     charset (`[A-Za-z0-9._+-]`), and not a content-hash / uuid / long hex-nonce
-     token. A `nix`-store `<32-char-nixbase32-hash>-name` prefix is stripped first
-     so a direct-exec of `/nix/store/<hash>-foo` is identified as `foo`.
-     Otherwise the name collapses to the bounded fallback token `<binary>`, so
-     pathological inputs (uuid temp scripts, per-test compiled binaries, hex
-     nonces) land in one bucket instead of an unbounded span name. This single
-     bounded value is used for BOTH the span name and `process.executable.name`.
-     `span.cli` explicitly permits a different low-cardinality span-name format
-     provided it is documented — this is that documented format.
+  1. **Best-effort program-name normalization at every emission site;
+     `process.executable.name` cardinality remains formally `high`.** The wrapped
+     basename is kept verbatim only when it looks like a normal program name —
+     length `<= 64`, a conservative safe charset (`[A-Za-z0-9._+-]`), and not a
+     content-hash / uuid / long hex-nonce token. A `nix`-store
+     `<32-char-nixbase32-hash>-name` prefix is stripped first so a direct-exec of
+     `/nix/store/<hash>-foo` is identified as `foo`. Otherwise the name collapses
+     to the fallback token `<binary>`, so common pathological inputs (uuid temp
+     scripts, per-test compiled binaries, hex nonces) land in one bucket instead
+     of an unbounded span name. This same normalization (`bounded_program_name`)
+     is applied at BOTH the command-span emission site (span name +
+     `process.executable.name`) and the observed-process span emission site, so
+     the shared key is normalized everywhere. It is a **best-effort** collapse,
+     not a formal bound: wrapped-command names are user-controlled, so residual
+     high-entropy names can survive the heuristics — the cardinality is therefore
+     honestly declared `high` with a documented residual, not re-tightened to
+     `bounded`. `span.cli` explicitly permits a documented low-cardinality
+     span-name format; this normalization is the documented best-effort
+     approximation of that.
   2. **`process.pid` emitted as a RAW int on the command span.** `process.pid` is
      REQUIRED by `attributes.cli.common`; a pid is not a path, argument, or
      credential, so it is emitted raw (not hashed) and is NOT trust-gated. It is
@@ -156,7 +165,13 @@ renamed_to: <new>}`, following OTel semconv practice, rather than being
      by `attributes.cli.common`. Kept LOW cardinality: `otel-scrape` cannot
      classify the wrapped tool's error domain, so it always uses the semconv
      well-known fallback value `_OTHER` (never the exit code or signal, which
-     would blow cardinality). Absent on success.
+     would blow cardinality). Absent on success. Known semconv characteristic: a
+     non-zero exit is not always a failure — `grep`/`diff`/test-runners-with-skips
+     return non-zero on ordinary outcomes — yet the `span.cli` convention ties
+     Error status + `error.type` to `exit.code != 0`, so those runs are marked
+     `status = Error` with `error.type = _OTHER`. This is semconv's modeling
+     choice, not otel-scrape's; otel-scrape follows the convention rather than
+     inventing a per-tool success predicate.
   4. **`status.message` on Error spans.** The Trace API reserves `Description`
      for the Error status, so a bounded, non-sensitive human message is attached
      there: `process exited with code <n>` or `process terminated by signal
@@ -172,8 +187,13 @@ renamed_to: <new>}`, following OTel semconv practice, rather than being
      (`wall_ms` in the observation + summary schema) remain ms-resolution and are
      tracked separately, since changing them would alter the summary schema.
   6. **`scope.version` + `service.version`.** The instrumentation-scope `version`
-     (the OTLP scope object) and the resource `service.version` are both set to
-     `otel-scrape`'s crate version (`CARGO_PKG_VERSION`), so a trace can be tied
-     to a build at both the scope and service layer. These are standard OTel
+     (the OTLP scope object) is always set to `otel-scrape`'s crate version
+     (`CARGO_PKG_VERSION`), so a trace is unambiguously tied to the wrapper build
+     at the scope layer. The resource `service.version` defaults to that same
+     crate version **only** when `service.name` is also otel-scrape's own default
+     (neither `OTEL_SERVICE_NAME` nor a `service.name` in
+     `OTEL_RESOURCE_ATTRIBUTES` was supplied); when a user/harness names the
+     enclosing service, otel-scrape does not stamp its own version onto it, and a
+     user-supplied `service.version` always wins. These are standard OTel
      placements (scope version field; resource attribute), not vendor attributes,
      so they carry no `telemetry-registry.json` attribute entry.

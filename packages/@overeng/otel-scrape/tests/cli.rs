@@ -991,8 +991,8 @@ fn exports_command_span_to_otlp_http_json() {
         scope["version"].as_str().map(ToOwned::to_owned)
     );
     // High-resolution timing (decision 0016, M25.1): a fast command is not a
-    // zero-width span, and its duration is not a whole-millisecond multiple (the
-    // pre-fix ms-quantization made both fail).
+    // zero-width span. The pre-fix ms-quantization made even a real sub-ms command
+    // collapse to a zero-width span; nanosecond-resolution timing keeps end > start.
     let start = span["startTimeUnixNano"]
         .as_str()
         .unwrap()
@@ -1004,12 +1004,6 @@ fn exports_command_span_to_otlp_http_json() {
         .parse::<u128>()
         .unwrap();
     assert!(end > start, "fast command span must not be zero-width");
-    assert_ne!(
-        (end - start) % 1_000_000,
-        0,
-        "duration {} ns must not be whole-ms-quantized",
-        end - start
-    );
     let attrs = span["attributes"].as_array().unwrap();
     // process.pid (decision 0016, M25.1): REQUIRED by attributes.cli.common,
     // emitted raw (never hashed), and a genuine positive pid.
@@ -1126,6 +1120,12 @@ fn exports_error_type_and_signal_status_message_on_signal_kill() {
     );
     let attrs = span["attributes"].as_array().unwrap();
     assert_eq!(attr_value(attrs, "error.type"), Some("_OTHER".to_owned()));
+    // Signal terminations surface a synthetic 128+signal exit code (decision 0016,
+    // M25.1): SIGTERM (15) => 143.
+    assert_eq!(
+        attr_value(attrs, "process.exit.code"),
+        Some("143".to_owned())
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -1414,6 +1414,36 @@ fn otlp_env_follows_trace_specific_precedence_and_resource_attributes() {
         Some("9.9.9".to_owned())
     );
     drop(generic_collector);
+}
+
+// service.version default is gated on service.name (decision 0016, M25.1,
+// Option A): when a user/harness supplies service.name (naming the enclosing
+// harness), otel-scrape must NOT stamp its own crate version onto it. The scope
+// version still carries the otel-scrape build unambiguously.
+#[test]
+fn service_version_default_is_gated_when_service_name_is_supplied() {
+    let collector = TestCollector::start(200);
+    let out = otel_scrape()
+        .env("OTEL_SERVICE_NAME", "ci-build")
+        .args(["--otlp-endpoint", &collector.endpoint])
+        .args(["--", "sh", "-c", "printf child"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+
+    let body: serde_json::Value = serde_json::from_slice(&collector.request().body).unwrap();
+    let resource_span = &body["resourceSpans"][0];
+    let resource_attrs = resource_span["resource"]["attributes"].as_array().unwrap();
+    assert_eq!(
+        attr_value(resource_attrs, "service.name"),
+        Some("ci-build".to_owned())
+    );
+    // No default service.version stamped onto the harness-named service.
+    assert_eq!(attr_value(resource_attrs, "service.version"), None);
+    // scope.version still carries otel-scrape's build unambiguously.
+    let scope = &resource_span["scopeSpans"][0]["scope"];
+    assert_eq!(scope["name"], "otel-scrape");
+    assert!(scope["version"].as_str().is_some_and(|v| !v.is_empty()));
 }
 
 #[test]
