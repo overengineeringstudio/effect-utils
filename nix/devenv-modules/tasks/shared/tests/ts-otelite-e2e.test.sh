@@ -148,6 +148,19 @@ jq -s -e '
 jq -s -e 'all(.[]; .name != "otel_scrape.command")' "$tmpdir/spans.ndjson" >/dev/null \
   || fail "blanket otel_scrape.command wrapper span should be gone (decision 0018)"
 
+# Merged model (decision 0014): the degraded direct-child observation is folded
+# INTO the command span, so otel-scrape emits exactly ONE span here — the `tsgo`
+# command span — and NO separate process span. A distinct process span exists only
+# under Exact process fidelity, and even then is named by the descendant program
+# basename (never a fixed `otel_scrape.process` constant), so a span-name check
+# would be vacuous. Assert on the discriminating span-origin attribute instead:
+# exactly one otel-scrape-owned span, and it is the tsgo command span.
+jq -s -e 'any(.[]; .name == "tsgo" and .attrs["otel_scrape.span.origin"] == "otel-scrape")' "$tmpdir/spans.ndjson" >/dev/null \
+  || fail "tsgo command span should carry otel_scrape.span.origin=otel-scrape (otel-scrape-owned)"
+otel_scrape_span_count="$(jq -s '[.[] | select(.attrs["otel_scrape.span.origin"] == "otel-scrape")] | length' "$tmpdir/spans.ndjson")"
+[ "$otel_scrape_span_count" -eq 1 ] \
+  || fail "expected exactly one otel-scrape-owned span (merged command span, no separate process span), got $otel_scrape_span_count"
+
 task_span="$(jq -r 'select(.name == "devenv.task.exec") | .span_id' "$tmpdir/spans.ndjson")"
 [ -n "$task_span" ] || fail "missing devenv.task.exec task span"
 

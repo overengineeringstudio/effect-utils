@@ -41,6 +41,17 @@
 { lib }:
 let
   otelCanEmitShell = ''command -v otel-span >/dev/null 2>&1 && { [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] || { [ -n "''${OTEL_SPAN_SPOOL_DIR:-}" ] && [ -d "''${OTEL_SPAN_SPOOL_DIR:-}" ]; }; }'';
+
+  # Shell condition: an OTEL task trace context is actually ACTIVE — OTEL delivery
+  # is available (otelCanEmitShell) AND a well-formed W3C traceparent is present
+  # (OTEL_TASK_TRACEPARENT preferred, falling back to TRACEPARENT). This is the
+  # single gate that decides whether COMMAND-level instrumentation should engage.
+  # tsc (ts.nix) and trace.instr (oxlint/vitest) both gate on THIS exact string so
+  # they engage/disengage together: in a non-interactive `devenv tasks run` with no
+  # span parent and no OTLP endpoint (e.g. CI), every instrumented command runs
+  # bare; under `otel-span run -- devenv tasks run …` the task span exports
+  # OTEL_TASK_TRACEPARENT into the task body, so this is true and commands wrap.
+  otelTraceContextActive = ''${otelCanEmitShell} && [[ "''${OTEL_TASK_TRACEPARENT:-''${TRACEPARENT:-}}" =~ ^00-[0-9a-fA-F]{32}-[0-9a-fA-F]{16}-[0-9a-fA-F]{2}$ ]]'';
   taskFileStem =
     taskName:
     builtins.replaceStrings
@@ -86,9 +97,11 @@ let
   #   ${trace.instr { adapter = "oxlint"; name = "lint:check:oxlint"; }}
   #   "''${_otel_instr[@]}" oxlint "''${_otel_instr_flags[@]}" --import-plugin ... <files>
   #
-  # Both arrays are EMPTY when otel-scrape is absent or `OTEL_SCRAPE_DOGFOOD=0`, so
-  # the concrete command runs completely unchanged (these are SHARED modules that
-  # downstream repos import without otel-scrape on PATH — transparency is required).
+  # Both arrays are EMPTY when otel-scrape is absent, `OTEL_SCRAPE_DOGFOOD=0`, or no
+  # OTEL task trace context is active (otelTraceContextActive false), so the concrete
+  # command runs completely unchanged (these are SHARED modules that downstream repos
+  # import without otel-scrape on PATH — transparency is required — and CI runs them
+  # non-interactively with no span parent).
   #
   # adapter: "none" (named identity only), "oxlint", "vitest", or "node-cpuprofile".
   instr =
@@ -104,7 +117,14 @@ let
       _otel_instr=()
       _otel_instr_flags=()
       _otel_scrape_bin="''${OTEL_SCRAPE_BIN:-otel-scrape}"
-      if [ "''${OTEL_SCRAPE_DOGFOOD:-1}" != "0" ] && command -v "$_otel_scrape_bin" >/dev/null 2>&1; then
+      # Engage command-level otel-scrape wrapping ONLY when an OTEL task trace
+      # context is active (same gate tsc uses — otelTraceContextActive), so a
+      # non-interactive run without a span parent / OTLP endpoint keeps oxlint and
+      # vitest bare instead of injecting structured-source flags that re-render
+      # their output. otel-scrape must additionally be present and dogfooding on.
+      if ${otelTraceContextActive} \
+        && [ "''${OTEL_SCRAPE_DOGFOOD:-1}" != "0" ] \
+        && command -v "$_otel_scrape_bin" >/dev/null 2>&1; then
         _otel_scrape_summary_dir="''${OTEL_SCRAPE_SUMMARY_DIR:-''${DEVENV_ROOT:-$PWD}/tmp/otel-scrape-dogfood/summaries}"
         mkdir -p "$_otel_scrape_summary_dir"
         _otel_instr=(
@@ -182,6 +202,7 @@ let
 in
 {
   inherit otelCanEmitShell;
+  inherit otelTraceContextActive;
   exec = traceExec;
   status = traceStatus;
   withStatus = withStatus;

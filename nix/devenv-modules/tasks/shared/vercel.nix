@@ -121,6 +121,8 @@ let
       "vercel:deploy:${deployment.name}" = {
         description = "Deploy ${deployment.name} to Vercel";
         after = buildDeps;
+        # Interactive deploy task, deliberately untraced (no otel-scrape
+        # structured-source contract). dogfood-audit-allow
         exec = ''
           ${sharedPreamble deployment}
 
@@ -266,6 +268,8 @@ let
       "vercel:deploy:${deployment.name}" = {
         description = "Deploy ${deployment.name} static files to Vercel";
         after = afterDeps;
+        # Interactive deploy task, deliberately untraced (no otel-scrape
+        # structured-source contract). dogfood-audit-allow
         exec = ''
           ${sharedPreamble deployment}
 

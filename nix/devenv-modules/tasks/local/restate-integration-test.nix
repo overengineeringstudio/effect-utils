@@ -18,6 +18,7 @@ let
   pnpmTaskHelpersScript = pkgs.writeText "pnpm-task-helpers.sh" (
     builtins.readFile ../shared/pnpm-task-helpers.sh
   );
+  # dogfood-audit-allow: raw exec body — wrapped by trace.exec at the task below.
   exec = ''
     set -euo pipefail
     if ! "''${RESTATE_SERVER_BIN:-restate-server}" --version >/dev/null 2>&1; then

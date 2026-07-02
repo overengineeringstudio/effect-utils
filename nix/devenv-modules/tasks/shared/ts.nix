@@ -175,8 +175,11 @@ let
     # output is captured to a temp file, so those lints are re-surfaced through
     # `filter_diagnostics_noise` on BOTH success and failure — otherwise routing
     # tsgo through this path would silently swallow them.
+    # Same command-level gate as trace.instr (oxlint/vitest) — otelTraceContextActive
+    # requires OTEL delivery AND a well-formed traceparent. _ts_parent_context below
+    # is still parsed for the trace/span ids when the gate holds.
     _ts_parent_context="''${OTEL_TASK_TRACEPARENT:-''${TRACEPARENT:-}}"
-    if ${trace.otelCanEmitShell} && [[ "$_ts_parent_context" =~ ^00-[0-9a-fA-F]{32}-[0-9a-fA-F]{16}-[0-9a-fA-F]{2}$ ]]; then
+    if ${trace.otelTraceContextActive}; then
       _tsc_output="$(mktemp)"
       trap 'rm -f "$_tsc_output"' EXIT
 
@@ -394,6 +397,7 @@ let
     };
     "ts:emit" = trace.withStatus "ts:emit" "binary" {
       description = "Emit build outputs without full type checking (tsc --build --noCheck)";
+      # dogfood-audit-allow: raw exec — argument to trace.withStatus "ts:emit" above.
       exec = ''
         set -euo pipefail
         ${emitTsconfigHelper}
@@ -405,6 +409,7 @@ let
         generate_emit_tsconfig "${tsconfigFile}" "$_emit_tsconfig"
         ${tscWithDiagnostics "ts:emit" tscBin "--build \"$_emit_tsconfig\"" "--noCheck"}
       '';
+      # dogfood-audit-allow: raw status — argument to trace.withStatus "ts:emit" above.
       status = ''
         set -euo pipefail
         ${emitTsconfigHelper}

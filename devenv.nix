@@ -578,13 +578,47 @@ in
     description = "Check active devenv task modules route every exec/status through trace.* (otel-span task span; concrete commands opt into otel-scrape via trace.instr)";
     exec = trace.exec "otel-scrape:dogfood-audit" ''
       set -euo pipefail
-      if rg -n '^\\s*(exec|status) = ' \
-        devenv.nix \
-        nix/devenv-modules/tasks/shared \
-        nix/devenv-modules/tasks/local \
-        -g '*.nix' \
-        | rg -v 'trace\\.(exec|status)|exec = null|exec = if hasPackages then null else trace\\.exec|trace\\.withStatus|nix/devenv-modules/tasks/local/restate-integration-test\\.nix:21:|nix/devenv-modules/tasks/shared/ts\\.nix:(395|406):|nix/devenv-modules/tasks/shared/vercel\\.nix:'; then
+      # Every active devenv task exec/status must route through the trace.nix
+      # helpers (trace.exec / trace.status / trace.withStatus) so the otel-span
+      # task span owns task identity. This audit greps for raw `exec =`/`status =`
+      # attributes that do NOT go through trace.*.
+      #
+      # Every pattern uses POSIX bracket classes ([[:space:]], [.]) and NEVER a
+      # backslash escape. A literal backslash-s / backslash-dot inside this Nix
+      # indented string becomes a double-backslash that matches nothing, which
+      # silently turns the whole audit vacuous (it always exits 0) — the exact
+      # failure this rewrite fixes.
+      #
+      # A few raw exec/status lines are legitimately allowed and are annotated
+      # with a `dogfood-audit-allow` marker comment IMMEDIATELY ABOVE the line:
+      #   - the raw string is an argument passed INTO trace.* a few lines below
+      #     (restate integration test, ts:emit), or
+      #   - the task is deliberately untraced (vercel deploys have no structured
+      #     source contract and run interactively).
+      # The marker is matched in a 2-line window (the line plus the one above),
+      # so this stays robust to line shifts — no fragile file:line pins.
+      marker='dogfood-audit-allow'
+      violations=0
+      while IFS= read -r hit; do
+        file="''${hit%%:*}"
+        rest="''${hit#*:}"
+        lineno="''${rest%%:*}"
+        if head -n "$lineno" "$file" | tail -n 2 | grep -q "$marker"; then
+          continue
+        fi
+        violations=1
+        echo "BYPASS: $hit" >&2
+      done < <(
+        rg -n '^[[:space:]]*(exec|status) = ' \
+          devenv.nix \
+          nix/devenv-modules/tasks/shared \
+          nix/devenv-modules/tasks/local \
+          -g '*.nix' \
+          | rg -v 'trace[.](exec|status)|exec = null|exec = if hasPackages then null else trace[.]exec|trace[.]withStatus'
+      )
+      if [ "$violations" -ne 0 ]; then
         echo "Found task exec/status scripts that bypass the trace.nix task span (trace.exec/status/withStatus)." >&2
+        echo "Route them through trace.* or, if intentionally raw, add a 'dogfood-audit-allow' marker comment above the line with justification." >&2
         exit 1
       fi
     '';
