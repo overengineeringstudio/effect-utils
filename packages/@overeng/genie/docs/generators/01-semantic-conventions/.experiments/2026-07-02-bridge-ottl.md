@@ -15,11 +15,12 @@ that transform config can be GENERATED from a registry `bridge` annotation, not 
 ## Method
 
 A generator (`generate.ts`) takes `{ newKey, was, context: 'datapoint'|'resource', scopeMetrics }`
-+ a phase (`dual-emit` | `sunset`) and emits a runnable collector transform config (both an
-OTel-Collector YAML and a River-config `transform` block). The
-GENERATED config was run unmodified; an OTLP/HTTP JSON payload with a SCOPED metric
-(`restate.invocations`, datapoint attr `service=checkout`) and an UNSCOPED metric
-(`unrelated.thing`, `service=other`) was POSTed; output inspected via file/debug exporters.
+
+- a phase (`dual-emit` | `sunset`) and emits a runnable collector transform config (both an
+  OTel-Collector YAML and a River-config `transform` block). The
+  GENERATED config was run unmodified; an OTLP/HTTP JSON payload with a SCOPED metric
+  (`restate.invocations`, datapoint attr `service=checkout`) and an UNSCOPED metric
+  (`unrelated.thing`, `service=other`) was POSTed; output inspected via file/debug exporters.
 
 ## Results (✅ — identical on both a real OTel Collector (YAML) and a River-config collector)
 
@@ -28,7 +29,7 @@ GENERATED config was run unmodified; an OTLP/HTTP JSON payload with a SCOPED met
   (the over-broad-rewrite risk is handled by the `where metric.name == …` guard derived from
   `scopeMetrics`).
 - **sunset / contract form:** a second statement `delete_key(datapoint.attributes, "service")
-  where metric.name == "restate.invocations"` drops the old key → the scoped datapoint ends
+where metric.name == "restate.invocations"` drops the old key → the scoped datapoint ends
   with ONLY `restate.service`; unscoped untouched. This is the copy→rename contraction.
 - **generation path proven:** every OTTL statement the collectors ran came from the generator;
   the scope guard (single → bare clause, multi → `(metric.name=="a" or "b")`) and the attribute
@@ -50,6 +51,6 @@ GENERATED config was run unmodified; an OTLP/HTTP JSON payload with a SCOPED met
 ## Conclusion
 
 The scoped dual-emit bridge works end-to-end and is cleanly **generatable from a registry
-annotation** — so it is another *derived target* of the generator (config produced here;
+annotation** — so it is another _derived target_ of the generator (config produced here;
 executed by downstream (private) infra). Folded into decision 0004 as the `bridge` annotation → collector
 OTTL fragment; the running/deployment is out of scope for this repo.

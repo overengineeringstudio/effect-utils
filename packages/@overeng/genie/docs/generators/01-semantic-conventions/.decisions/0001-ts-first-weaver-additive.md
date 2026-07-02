@@ -13,7 +13,7 @@ that cannot both hold while Weaver is pre-1.0:
 1. "the registry is authored in Weaver model YAML" (YAML-first), and
 2. "Weaver's codegen and live-check are additive, never load-bearing while pre-1.0".
 
-They collide because the *rich* contract (types, per-signal `requirement_level`,
+They collide because the _rich_ contract (types, per-signal `requirement_level`,
 post-`ref`/`extends` attribute sets) only materializes after **resolution**. Projecting
 rich runtime artifacts from unresolved YAML forces either Weaver's resolver to be
 load-bearing (violates 2) or a reimplementation of it in genie (defeats authoring YAML at

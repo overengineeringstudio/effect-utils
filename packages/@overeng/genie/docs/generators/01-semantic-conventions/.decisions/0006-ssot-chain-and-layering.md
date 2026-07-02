@@ -6,7 +6,7 @@
 
 The design needs a clean, composable, hierarchical architecture with a single explicit
 source-of-truth chain and minimal non-derived redundancy — and a home for each layer given
-genie's dependency-free-runtime constraint and that Layer 2 is a *runtime* authoring surface
+genie's dependency-free-runtime constraint and that Layer 2 is a _runtime_ authoring surface
 (not codegen).
 
 ## Decision
@@ -15,7 +15,7 @@ genie's dependency-free-runtime constraint and that Layer 2 is a *runtime* autho
 
 The atom is an **attribute authored once as an annotated Effect Schema** carrying both otel
 runtime metadata (`key`/`cardinality`/`encode`) and weaver design-time metadata
-(`brief`/`stability`/`examples`/`type`). Signals compose attribute *refs* + a per-ref
+(`brief`/`stability`/`examples`/`type`). Signals compose attribute _refs_ + a per-ref
 requirement level. These — attributes and signals — are the ONLY hand-authored facts.
 Everything else derives:
 
@@ -30,17 +30,18 @@ signal (refs + requirement) ─┘        ├─► Weaver groups: YAML → chec
 
 **Invariant — minimal non-derived redundancy:** every fact (key, cardinality, requirement
 level, namespace) is authored in exactly one place; the same key appearing in encoder + YAML
-+ constants + Rust is derivation, not duplication. Same-concept-same-key across span/metric
-(0003) and ref-don't-redefine for upstream/cross-member attrs are corollaries.
 
-- **Namespace is derived**, not authored: `defineOtelContract` derives it from the leading
+- constants + Rust is derivation, not duplication. Same-concept-same-key across span/metric
+  (0003) and ref-don't-redefine for upstream/cross-member attrs are corollaries.
+
+* **Namespace is derived**, not authored: `defineOtelContract` derives it from the leading
   dotted segment of the package's OWN attribute keys and validates every own key shares that
   segment (a stray own-namespace key is a hard error). (First-segment, not longest-common-
   prefix; deeper shared namespaces would need LCP — revisit only if wanted.)
-- **Catalog is derived**, not listed: the `registry.<ns>` attribute set is the union of the
-  own attributes signals reference plus any explicit *doc-only* attributes; you author
+* **Catalog is derived**, not listed: the `registry.<ns>` attribute set is the union of the
+  own attributes signals reference plus any explicit _doc-only_ attributes; you author
   signals, the catalog falls out.
-- **Foreign refs are explicitly marked** (refinement, e2e-validated): without a listed
+* **Foreign refs are explicitly marked** (refinement, e2e-validated): without a listed
   catalog, a signal ref to `resate.service` (own-namespace typo) is otherwise
   indistinguishable from a legitimate cross-member/upstream ref (`http.request.method`),
   and prefix inference would silently misclassify the typo as foreign — defeating the
@@ -52,12 +53,12 @@ level, namespace) is authored in exactly one place; the same key appearing in en
 
 ### Layering (each depends only downward)
 
-| Layer | Home | Role | Deps | Imported by |
-| --- | --- | --- | --- | --- |
-| **L2** | `@overeng/otel-contract` `.` | runtime authoring SSOT: `attr`/`span`/`metric` (annotated Schemas), encoders, product APIs | `effect` | product code (runtime) |
-| **L2-proj** | `@overeng/otel-contract` `./registry` | design-time: annotations → plain registry fragment | `effect` | `.genie.ts` only |
-| **L1** | `@overeng/genie` `src/runtime/weaver` | dep-free: registry fragment → YAML / TS / Rust | none heavy | `.genie.ts` |
-| compose | `weaver.genie.ts` (per pkg) + `registry.genie.ts` (root) | project (L2) + render (L1) | — | genie engine |
+| Layer       | Home                                                     | Role                                                                                       | Deps       | Imported by            |
+| ----------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ---------- | ---------------------- |
+| **L2**      | `@overeng/otel-contract` `.`                             | runtime authoring SSOT: `attr`/`span`/`metric` (annotated Schemas), encoders, product APIs | `effect`   | product code (runtime) |
+| **L2-proj** | `@overeng/otel-contract` `./registry`                    | design-time: annotations → plain registry fragment                                         | `effect`   | `.genie.ts` only       |
+| **L1**      | `@overeng/genie` `src/runtime/weaver`                    | dep-free: registry fragment → YAML / TS / Rust                                             | none heavy | `.genie.ts`            |
+| compose     | `weaver.genie.ts` (per pkg) + `registry.genie.ts` (root) | project (L2) + render (L1)                                                                 | —          | genie engine           |
 
 Layer 2 is `@overeng/otel-contract` evolved (the runtime authoring surface it already owns,
 gaining weaver annotations) — NOT a new package and NOT codegen. The one design-time piece

@@ -18,6 +18,7 @@ primitives" ([.decisions/0001](./.decisions/0001-ts-first-weaver-additive.md) D3
 consumer" framing is retained only as the migration bridge.
 
 **Remaining sub-questions:**
+
 - Do the product APIs (`OtelOperation`/`OtelMetric`) keep a thin hand-authored surface that
   references the catalog, or are they themselves generated from it?
 - Is the legacy inline `OtelAttr.string({key})` form retired, or kept as a private
@@ -41,7 +42,7 @@ truth" to "registry is truth" (SC-R13) without a flag day?
 
 **Why it matters:** The spec describes the END state (registry SSOT, runtime derived).
 Getting there from the current state is a live-migration-shaped problem (distinct from
-SC-DQ1, which is *ongoing* sweep completeness). Naive "author the whole registry by hand" is
+SC-DQ1, which is _ongoing_ sweep completeness). Naive "author the whole registry by hand" is
 a large one-shot; naive "flip the gate on" fails 240 sites at once.
 
 **Includes the metric-label rename (0003/0004):** per-namespace migration also carries the
@@ -54,6 +55,7 @@ long-window/SLO/external metrics. What remains open here is the broader authorit
 is folded.
 
 **Candidates:**
+
 - Seed the registry by EXTRACTING from existing `OtelAttrs.define` schemas
   (`.fields` exposes key/cardinality/encode) — a one-time generator producing a first-cut
   registry, then hand-refined with brief/stability/examples.

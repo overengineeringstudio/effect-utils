@@ -46,11 +46,11 @@ generators family makes that split explicit and universal:
 
 The two-layer shape recurs across genie, which is why it lives here once:
 
-| Generator / builder | Layer 1 (foundation) | Layer 2 (opinionated composition) |
-| --- | --- | --- |
-| package.json | the package.json data model | `catalog.compose`, `aggregateFromPackages` |
-| tsconfig | the tsconfig data model | `tsconfigReferencesFromPackages` (meta-projected refs) |
-| github-workflow | the workflow data + YAML | higher-order step/job helpers/decorators |
+| Generator / builder  | Layer 1 (foundation)                | Layer 2 (opinionated composition)                                                                                                |
+| -------------------- | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| package.json         | the package.json data model         | `catalog.compose`, `aggregateFromPackages`                                                                                       |
+| tsconfig             | the tsconfig data model             | `tsconfigReferencesFromPackages` (meta-projected refs)                                                                           |
+| github-workflow      | the workflow data + YAML            | higher-order step/job helpers/decorators                                                                                         |
 | semantic-conventions | the Weaver `groups:` registry model | **Effect-Schema authoring** (one flavor — attributes as annotated Schemas that derive both the registry and the runtime encoder) |
 
 Layer 1 is the escape hatch and the mechanism of record (drop to it when the opinionated

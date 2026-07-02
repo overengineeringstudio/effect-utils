@@ -8,8 +8,8 @@ The registry-authoritative design (0001/0002) is only as strong as the conforman
 being COMPLETE over every telemetry contract. Today there are ~240 `OtelAttrs.define` /
 `OtelOperation.define` sites across ~15 packages with no inventory. A grep/AST sweep of
 "define anywhere" is best-effort: a missed site reads as "covered" while drift hides —
-worse than no gate. `no-raw-otel-primitives` already forces telemetry *through*
-`@overeng/otel-contract`, but it does not make the contracts *discoverable*.
+worse than no gate. `no-raw-otel-primitives` already forces telemetry _through_
+`@overeng/otel-contract`, but it does not make the contracts _discoverable_.
 
 ## Decision
 
@@ -27,7 +27,7 @@ defining a contract anywhere else.**
   is used outside a seam file. This is path-based and single-file — it is what the lint can
   actually enforce.
 - **No-orphan-seam check (the keystone — the lint alone cannot provide it).** The lint
-  cannot verify a seam file is actually *imported into the root aggregator*: an "orphan seam"
+  cannot verify a seam file is actually _imported into the root aggregator_: an "orphan seam"
   (a conforming file defining a real contract, never added to the aggregator's import list)
   would lint clean yet be absent from BOTH the registry and the sweep — worse than no gate.
   So the aggregator (or a colocated test) **globs every seam-convention file on disk and

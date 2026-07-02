@@ -1,7 +1,7 @@
 # Semantic Conventions — Intuition
 
-*For: contributors adding telemetry · Assumes: genie basics, otel-contract exists ·
-Covers: why this subsystem exists and its mental model*
+_For: contributors adding telemetry · Assumes: genie basics, otel-contract exists ·
+Covers: why this subsystem exists and its mental model_
 
 ## The idea
 
@@ -20,7 +20,7 @@ and without Weaver being on the critical path.
 Weaver's whole model is: **define an attribute once** in a namespaced catalog, then
 **reference it** from the spans/metrics/events that use it. You never redefine
 `restate.service` in three spans; you define it once and each span refs it, optionally
-refining *how required* it is in that context.
+refining _how required_ it is in that context.
 
 ```
 catalog (define once)          signals (ref + refine)

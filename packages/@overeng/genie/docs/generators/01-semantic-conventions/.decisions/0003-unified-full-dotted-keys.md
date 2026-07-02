@@ -12,7 +12,7 @@ conflated them:
 
 - **(A)** Does the concept have ONE namespaced key (`restate.service`) reused on every
   signal, or per-signal keys (span `restate.service` vs a bare metric label `service`)?
-- **(B)** How is that key *rendered on the metric wire* — the default underscore mapping
+- **(B)** How is that key _rendered on the metric wire_ — the default underscore mapping
   (`restate_service`) or dotted-UTF-8 (`restate.service`)?
 
 ## Decision
@@ -21,7 +21,8 @@ conflated them:
 registry defines `restate.service` once; the span and the metric both reference it. This is
 the core, strong decision.
 
-Rationale (OTel-native, and it applies to the *registry key*):
+Rationale (OTel-native, and it applies to the _registry key_):
+
 - **Same concept ⇒ same key.** A convention registry exists so one attribute is reused
   across spans/metrics/logs; emitting `restate.service` on the span but `service` on the
   metric for the identical concept is the drift the registry abolishes.
@@ -38,7 +39,7 @@ collision-free with `service_name` — while avoiding the dotted-UTF-8 tax (quot
 selectors everywhere, dashboard template-var/regex assumptions, and silent
 `restate.service`/`restate_service` split-brain if any hop drops the UTF-8 exporter setting).
 
-Dotted-UTF-8 on the wire is a *separately-decidable, later* opt-in (requires fleet-wide
+Dotted-UTF-8 on the wire is a _separately-decidable, later_ opt-in (requires fleet-wide
 `NoUTF8EscapingWithSuffixes` + backend UTF-8), not a prerequisite and not more "OTel-native" —
 the OTel value lives in the registry key, not the transport rendering.
 

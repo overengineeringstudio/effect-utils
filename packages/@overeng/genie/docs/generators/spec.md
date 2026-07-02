@@ -65,11 +65,11 @@ generator (GEN-R04).
 A generator declares targets; each target is a pure function `layer1Model → fileContent`.
 Minimum target set:
 
-| Target | Shape | Notes |
-| --- | --- | --- |
-| TypeScript constants | `export const X = "..." as const` + name unions | plain literals |
-| Effect-idiomatic TS | `Schema`-based contracts, branded names, tagged errors, typed accessors | the primary runtime surface; composes with `@overeng/otel-contract` |
-| Rust | `const`/`struct` bindings | for Rust consumers (e.g. otel-scrape) |
+| Target               | Shape                                                                   | Notes                                                               |
+| -------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| TypeScript constants | `export const X = "..." as const` + name unions                         | plain literals                                                      |
+| Effect-idiomatic TS  | `Schema`-based contracts, branded names, tagged errors, typed accessors | the primary runtime surface; composes with `@overeng/otel-contract` |
+| Rust                 | `const`/`struct` bindings                                               | for Rust consumers (e.g. otel-scrape)                               |
 
 An external tool's codegen (e.g. Weaver's Jinja) may back the Rust/other targets, but per
 GEN-R09 it is an additive path — genie can project any target directly from the Layer 1

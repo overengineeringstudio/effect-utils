@@ -1,7 +1,7 @@
 # Generators — Intuition
 
-*For: contributors adding a genie generator · Assumes: genie basics · Covers: what a
-generator is and the one-source-of-truth rule*
+_For: contributors adding a genie generator · Assumes: genie basics · Covers: what a
+generator is and the one-source-of-truth rule_
 
 ## The idea
 
@@ -20,14 +20,14 @@ Every generator has two layers, and knowing which one you're in is the main thin
 
 - **Layer 1 — the foundation.** A direct, faithful, no-frills model of the target's own
   world (for telemetry: the Weaver registry). Plain typed data in, output out. It's
-  complete and you can use it *by itself* when you want full control or the surfaces need to
+  complete and you can use it _by itself_ when you want full control or the surfaces need to
   differ. It's the mechanism of record — the thing nothing is allowed to bypass.
 - **Layer 2 — the ergonomic layer on top.** Opinionated helpers that make authoring nice
   and derive several artifacts from one source. What that looks like depends on the
   generator: for package.json/tsconfig it's composition helpers (`aggregateFromPackages`);
   for the telemetry generator it's an Effect-Schema surface where you author attributes as
   real Schemas, compose them, get decode/validate for free, and derive both the registry
-  and the runtime encoder from one value. Effect Schema is *that* generator's flavor, not
+  and the runtime encoder from one value. Effect Schema is _that_ generator's flavor, not
   the definition. Layer 2 is opt-in and always projects down to Layer 1.
 
 The point of the split: Layer 1 keeps you from being locked into one authoring style, and

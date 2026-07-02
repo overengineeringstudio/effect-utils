@@ -18,7 +18,7 @@ Defines: the TS registry DSL (catalog + signals), the composition model, the Wea
 `groups:` YAML projection, the three-layer validation model, the Weaver gate wiring, and
 the otel-contract conformance mechanism.
 
-Does not define: the *semantic contract* (attribute meaning, privacy/metric-label
+Does not define: the _semantic contract_ (attribute meaning, privacy/metric-label
 policy, a consumer's own vendor namespace) — owned separately by each downstream consumer
 (private). The runtime encoder internals — owned by `@overeng/otel-contract`. Dashboard /
 trace query surfaces — owned by the consumer's observability stack.
@@ -44,7 +44,7 @@ Full SSOT chain, layering (Layer-2 home), and composition hierarchy:
 Layers, each depending only downward: **L2** `@overeng/otel-contract` `.` (runtime authoring
 SSOT) + `./registry` (design-time projector); **L1** `@overeng/genie` `src/runtime/weaver`
 (dep-free render); composed by per-package `weaver.genie.ts` + root `registry.genie.ts`. The
-runtime seam is *derived*, not separately authored (SC-R13/R14); upstream OTel semconv is a
+runtime seam is _derived_, not separately authored (SC-R13/R14); upstream OTel semconv is a
 manifest `dependency` first-party signals `ref` (SC-R06). Weaver's Jinja codegen is available
 but non-load-bearing (SC-T01) — genie L1 renders bindings directly.
 
@@ -71,35 +71,40 @@ Layer 1 mirrors Weaver's define-once/ref split as plain typed data (effect-free)
 
 ```ts
 type RegistryFragment = {
-  namespace: string          // "restate" → registry.restate group
-  memberPath: string         // provenance (meta.workspace.memberPath)
+  namespace: string // "restate" → registry.restate group
+  memberPath: string // provenance (meta.workspace.memberPath)
   displayName: string
-  attributes: AttrDef[]      // DEFINE-once catalog (registry.<ns>)
-  signals: SignalDef[]       // spans/metrics/events that REF the catalog
+  attributes: AttrDef[] // DEFINE-once catalog (registry.<ns>)
+  signals: SignalDef[] // spans/metrics/events that REF the catalog
 }
 
 type AttrDef = {
-  id: string                 // must start with `${namespace}.`
-  type: AttrType             // 'string'|'int'|'double'|'boolean'|'string[]'
-                             //   | { members: EnumMember[] } | `template[${string}]`
+  id: string // must start with `${namespace}.`
+  type: AttrType // 'string'|'int'|'double'|'boolean'|'string[]'
+  //   | { members: EnumMember[] } | `template[${string}]`
   brief: string
-  stability: 'stable' | 'development'      // NOTE: 'deprecated' is NOT a stability
-  examples?: (string|number|boolean)[]     // REQUIRED for string attrs (weaver --future)
+  stability: 'stable' | 'development' // NOTE: 'deprecated' is NOT a stability
+  examples?: (string | number | boolean)[] // REQUIRED for string attrs (weaver --future)
   note?: string
-  deprecated?: Deprecated                  // orthogonal to stability (see below)
+  deprecated?: Deprecated // orthogonal to stability (see below)
   // otel-contract policy, carried as weaver annotations (SC-R13):
   cardinality?: 'low' | 'bounded' | 'high'
-  encode?: 'auto'|'string'|'number'|'boolean'|'json'|'drop'|'redacted'
+  encode?: 'auto' | 'string' | 'number' | 'boolean' | 'json' | 'drop' | 'redacted'
 }
 
-type Deprecated =                          // weaver 0.23 STRUCTURED form (string removed)
+type Deprecated = // weaver 0.23 STRUCTURED form (string removed)
   | { reason: 'renamed'; renamed_to: string }
   | { reason: 'obsoleted' | 'uncategorized'; note: string }
 
-type AttrRef = {                           // signals reference, never inline-define
+type AttrRef = {
+  // signals reference, never inline-define
   ref: string
-  requirement_level?: 'required'|'recommended'|'opt_in'
-    | { conditionally_required: string } | { recommended: string }
+  requirement_level?:
+    | 'required'
+    | 'recommended'
+    | 'opt_in'
+    | { conditionally_required: string }
+    | { recommended: string }
   sampling_relevant?: boolean
   note?: string
 }
@@ -107,14 +112,14 @@ type AttrRef = {                           // signals reference, never inline-de
 
 **Weaver-vocabulary fidelity (derisked; see [.decisions/0001](./.decisions/0001-ts-first-weaver-additive.md)):**
 
-| Concept | Weaver 0.23 shape | Note |
-| --- | --- | --- |
-| enum | `type: { members: [{id,value,brief,stability}] }` | **each member requires `stability` in 0.24.2** (0.23 did not) |
-| template | `type: template[string[]]` | dynamic-key attrs |
-| requirement (conditional) | `requirement_level: { conditionally_required: <text> }` | object form |
-| deprecation | `deprecated: { reason, renamed_to \| note }` | **string form removed** |
-| stability | `stable` \| `development` | `deprecated` **removed** from enum |
-| string examples | `examples: [...]` | **required** under `--future` |
+| Concept                   | Weaver 0.23 shape                                       | Note                                                          |
+| ------------------------- | ------------------------------------------------------- | ------------------------------------------------------------- |
+| enum                      | `type: { members: [{id,value,brief,stability}] }`       | **each member requires `stability` in 0.24.2** (0.23 did not) |
+| template                  | `type: template[string[]]`                              | dynamic-key attrs                                             |
+| requirement (conditional) | `requirement_level: { conditionally_required: <text> }` | object form                                                   |
+| deprecation               | `deprecated: { reason, renamed_to \| note }`            | **string form removed**                                       |
+| stability                 | `stable` \| `development`                               | `deprecated` **removed** from enum                            |
+| string examples           | `examples: [...]`                                       | **required** under `--future`                                 |
 
 Limitation: an attribute has exactly ONE `type`; **multi-type attributes are not supported**
 (weaver is one-type-per-attr) — noted, not a blocker (revisit if a real need appears).
@@ -133,7 +138,7 @@ Each member returns a `GenieOutput` whose `meta.registry` carries the fragment:
 export const registryFragment = (
   f: RegistryFragment,
 ): GenieOutput<RegistryFragment, { registry: RegistryFragment }> => {
-  assertFragmentWellFormed(f)              // per-member author-time (partial)
+  assertFragmentWellFormed(f) // per-member author-time (partial)
   return createGenieOutput({ data: f, stringify: renderMemberSlice(f), meta: { registry: f } })
 }
 ```
@@ -152,7 +157,7 @@ Mirrors `package.json.aggregateFromPackages` / `workspace-graph.ts`:
 // root registry.genie.ts
 import memberA from '<pkgA>/otel.genie.ts'
 import memberB from '<pkgB>/otel.genie.ts'
-const members = [memberA, memberB] as const                    // direct-import object graph
+const members = [memberA, memberB] as const // direct-import object graph
 export default registryFromMembers({ members, name: 'acme', repoName: 'effect-utils' })
 ```
 
@@ -190,20 +195,20 @@ the public fragments), following the megarepo alignment propagation order.
   `nix/weaver-flake/` (v0.24.2), NOT `nixpkgs#weaver`; the upstream semconv is pinned to a
   Weaver-compatible `@vX.Y.Z[model]` tag (v1.37.0 verified clean with 0.23/0.24; ≤v1.36 fail
   `--future` on their own unstructured-deprecated). **Block-vs-degrade contract:** a weaver
-  *validation* failure (check/diff/live-check exits nonzero) blocks; weaver *unavailability*
+  _validation_ failure (check/diff/live-check exits nonzero) blocks; weaver _unavailability_
   (flake build/eval failure, binary missing) degrades to a warning in a separate lane and must
   NOT wedge unrelated work (GEN-R09) — lane-separate the flake build from the main check.
-- **First-PR acceptance:** the gate runs against the *actually emitted* registry (not a
+- **First-PR acceptance:** the gate runs against the _actually emitted_ registry (not a
   separate fixture) and exercises each fidelity delta with a dedicated attribute
   (`deprecated:{reason:renamed}`, a multi-member enum with per-member `stability`, a
   `template[...]`, a conditionally-required ref), so the pinned Weaver version is proven
   against the real emitted shape.
 - **diff (SC-R11):** on PRs, `weaver registry diff --baseline-registry <merge-base
-  registry>` + shipped schema-evolution policies. (Prototype confirmed weaver detects a
+registry>` + shipped schema-evolution policies. (Prototype confirmed weaver detects a
   removed-but-referenced attr via unresolved-ref; the evolution-policy path — "removal =
   compat violation" — is a capability to wire, not yet exercised.)
 - **live-check (SC-R12):** in e2e tests, capture emitted OTLP and feed `weaver registry
-  live-check --input-source <file|otlp>`; validates types/units/enum/required/coverage
+live-check --input-source <file|otlp>`; validates types/units/enum/required/coverage
   against the registry. Any OTLP exporter (incl. the test-capture harness) suffices. In the
   fleet, telemetry flows OTLP → a central OTel Collector → the metrics/traces backends; that
   Collector is also where the metric-label migration bridge runs, when used

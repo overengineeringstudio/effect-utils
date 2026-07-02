@@ -17,8 +17,8 @@ fold into `@overeng/otel-contract`?
   built ON the existing `OtelAttr`/`OtelAttrs` machinery, adding design-time metadata +
   catalog placement + weaver derivation. otel-contract's encode engine is reused verbatim.
 
-The user's governing concern: *do we lose any benefit the Effect otel-contract API
-provides?*
+The user's governing concern: _do we lose any benefit the Effect otel-contract API
+provides?_
 
 ## Decision
 

@@ -41,7 +41,7 @@ role here rather than a separate vision.
 - **SC-A03 Upstream semconv is a pinned dependency (hermetic is the target, pending a spike):**
   first-party registries compose ON TOP of the upstream OTel semantic-conventions registry
   (`registry_path: …@vX.Y.Z[model]`), pinned to a version compatible with the pinned Weaver.
-  The *target* is a Nix-FOD-materialized local copy so the gate is offline/deterministic — but
+  The _target_ is a Nix-FOD-materialized local copy so the gate is offline/deterministic — but
   the prototype used unpinned `main` with a live fetch, and whether Weaver `registry check`
   accepts a local-filesystem `registry_path` is unconfirmed (impl step-1 spike). Until
   confirmed, the fallback is a pinned tag + a warmed cache (network on cold only). Do not treat
@@ -115,7 +115,7 @@ role here rather than a separate vision.
 - **SC-R10 Check gate:** a devenv/CI task runs `weaver registry check --future` on the
   composed registry; failure blocks.
 - **SC-R11 Compatibility gate:** telemetry evolution is gated by `weaver registry diff
-  --baseline-registry` and the shipped schema-evolution policies, treating the registry
+--baseline-registry` and the shipped schema-evolution policies, treating the registry
   as a versioned public API.
 - **SC-R12 Runtime conformance gate:** live emitted telemetry is validated against the
   registry via `weaver registry live-check` (OTLP), fed in tests by captured OTLP.
@@ -133,7 +133,7 @@ role here rather than a separate vision.
   is otel-contract's own code, reused verbatim — a strict superset. Product APIs
   (`OtelOperation`/`OtelMetric`, span.label enforcement, trusted-vs-validated increment)
   are re-pointed at catalog entries but keep their internals. The prototype validated the
-  *attribute-encode* path (`deepStrictEqual` vs hand-written `OtelAttrs.defineSync`) — but not
+  _attribute-encode_ path (`deepStrictEqual` vs hand-written `OtelAttrs.defineSync`) — but not
   yet the full product-span surface (`span()` bypassed `OtelSpan.define`/span.label). Before
   any migration removes a legacy site, this MUST be raised to a **property-based** equivalence
   (Schema arbitraries over optional/enum/template branches) through the real
@@ -142,7 +142,7 @@ role here rather than a separate vision.
   depth is [.decisions/0002](./.decisions/0002-catalog-atop-otel-contract.md).
 - **SC-R15 One namespaced key per concept, catalog-governed:** each concept has exactly ONE
   catalog entry with ONE namespaced dotted key (`restate.service`), referenced across all
-  signals including metric labels (no per-context short-key aliases). The metric *wire*
+  signals including metric labels (no per-context short-key aliases). The metric _wire_
   renders it via the default OTLP→Prometheus mapping (`restate.service`→`restate_service`); dotted
   UTF-8 on the wire is a later opt-in, not required. See
   [.decisions/0003](./.decisions/0003-unified-full-dotted-keys.md); the transition for

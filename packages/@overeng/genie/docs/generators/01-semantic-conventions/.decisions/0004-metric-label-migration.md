@@ -14,14 +14,15 @@ own; a label rename only has to cover the query window people actually use. So t
 NOT a database-style migration bridge.
 
 The OTel schema mechanism (`rename_attributes` + `schemaprocessor`) is rename-only, no
-dual-emit (alpha), so where a bridge *is* needed it must be an OTTL `transform` copy, which
+dual-emit (alpha), so where a bridge _is_ needed it must be an OTTL `transform` copy, which
 a central OTel Collector (already the metric path → the metrics backend) runs natively.
 
 ## Decision
 
 **Default (most metrics): retention-based cutover, no bridge.**
+
 1. Emit the new namespaced label (mechanically, via Layer 2).
-2. Update the *known* consumers (the specific dashboards/alerts/recording-rules that
+2. Update the _known_ consumers (the specific dashboards/alerts/recording-rules that
    reference the old label).
 3. Let the old series expire over one retention window. Record the cutover date in the
    live-migration entry; a bounded seam older than retention is acceptable.
@@ -33,21 +34,24 @@ For the specific metrics whose consumers query beyond the retention window (SLOs
 planning, external contracts), carry both labels during the transition via a **generated**
 collector OTTL `transform` — a derived target of the generator, alongside YAML/TS/Rust. The
 copy is scoped to the named metrics:
+
 ```
 set(datapoint.attributes["restate.service"], datapoint.attributes["service"])
     where metric.name == "restate.invocations" and datapoint.attributes["service"] != nil
 ```
+
 Validated end-to-end on a real OTel Collector (YAML) and a River-config collector — scoped copy keeps unrelated
 datapoints untouched; the sunset form appends `delete_key(datapoint.attributes, "service")
 where metric.name == …` (see [../.experiments/2026-07-02-bridge-ottl.md](../.experiments/2026-07-02-bridge-ottl.md)).
 Constraints that make this correct and safe:
+
 - **Generation is driven by a registry annotation, not `weaver registry diff`.** The
   deprecated attribute carries `bridge: { context: datapoint | resource, scope_metrics: [<names>] }`
   — the resource-vs-datapoint context and the metric scope are emission facts the diff does
   not (and, on pre-1.0 weaver, may not) carry. The annotation makes generation total and
   prevents an over-broad `set()` mislabeling unrelated datapoints (the scope guard is derived
   from `scope_metrics`: single → bare clause, multi → `(metric.name=="a" or "b")`).
-- **Emit the collector-portable form:** `context = "datapoint"` + *qualified* paths
+- **Emit the collector-portable form:** `context = "datapoint"` + _qualified_ paths
   (`datapoint.attributes[...]`, `metric.name`) — required by a River-config collector's transform processor
   and warning-free, and byte-identical in the statement body across River config and OTel-Collector YAML (only the block wrapper differs). Production uses `error_mode: ignore`.
 - **Deployed as the fleet-wide change it is:** canary one collector instance/tenant before the

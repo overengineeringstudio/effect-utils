@@ -11,7 +11,7 @@ set and — to keep the Rust target honest rather than speculative — a real fi
 
 **Target set: TS name constants + Rust bindings from the start** (not TS-only). The
 Effect-idiomatic ergonomics come from Layer 2 (authored Schemas), so there is no separate
-*generated* Effect target; the generated targets are for consumers: TS name constants/unions
+_generated_ Effect target; the generated targets are for consumers: TS name constants/unions
 (query/dashboard/consumer code) and Rust const modules (Rust consumers).
 
 **Upstream dependency (Q7=A): pinned + Nix-hermetic.** The upstream OTel semconv registry is
@@ -22,7 +22,7 @@ released-manifest `registry_path`, degrade to a pinned tag + a warmed `~/.weaver
 the hermetic-local-path form must be confirmed against the pinned weaver.)
 
 **First Rust consumer: `@overeng/otel-scrape`, via a fixture now + migrate later (Q8=A).**
-otel-scrape (PR #867) is the only in-repo Rust *producer* of fleet-relevant semconv names
+otel-scrape (PR #867) is the only in-repo Rust _producer_ of fleet-relevant semconv names
 (~25: `otel_scrape.*` spans/metrics/attributes, profile fields, schema tags, consumed at 30+
 call sites), it already generates its Rust consts with sha256 freshness gating, and its own
 decision 0004 explicitly wants generated bindings over hand-mirrored literals — a proven,
