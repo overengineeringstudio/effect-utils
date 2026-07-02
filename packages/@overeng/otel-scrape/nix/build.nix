@@ -46,8 +46,10 @@ pkgs.rustPlatform.buildRustPackage {
   inherit src;
   cargoLock.lockFile = crateRoot + "/Cargo.lock";
   # Reaches rustc as a plain env var; `option_env!("CLI_BUILD_STAMP")` captures
-  # it at compile time (decision 0019). rustc records the env read as a build
-  # dependency, so a new rev rebuilds the crate — the binary tracks its build.
+  # it at compile time (decision 0019). Because it is a derivation env var, a new
+  # rev changes the derivation hash so Nix rebuilds the crate — the binary tracks
+  # its build. (The cargo `rerun-if-env-changed` incremental path is not relied on;
+  # each `nix build` is a fresh sandbox.)
   CLI_BUILD_STAMP = buildStamp;
   doCheck = true;
   nativeCheckInputs = [

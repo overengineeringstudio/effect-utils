@@ -21,15 +21,21 @@ M25 (see the SOTA re-critique), both cheap and both observable in fresh OTLP.
 ## Evidence and Argument
 
 - The fleet already has a shared build-versioning contract
-  (`@overeng/utils/node/cli-version`: baseVersion / rev / dirty / sourceKind →
-  `machineVersion` for telemetry, `displayVersion` for humans) and injects the
-  flake git rev into its TS CLIs via `gitRev`/`commitTs`/`dirty`. otel-scrape is
-  Rust, but the _contract_, the `CLI_BUILD_STAMP` env var, and the NixStamp shape
-  transfer verbatim; only the reader is new.
+  (`packages/@overeng/utils/src/node/cli-version.ts` — `resolveCliMachineVersion`:
+  baseVersion / rev / dirty / sourceKind → `machineVersion` for telemetry,
+  `displayVersion` for humans) and injects the flake git rev into its TS CLIs via
+  `gitRev`/`commitTs`/`dirty`. otel-scrape is Rust, but the _contract_, the
+  `CLI_BUILD_STAMP` env var, and the NixStamp shape transfer verbatim; only the
+  reader is new.
 - The rev is a flake input (`self.sourceInfo`), not an impure read, so baking it
-  into the build env preserves Nix purity; rustc records the `option_env!` read as
-  a build dependency, so a new rev rebuilds the crate and the binary tracks its
-  build. Verified end-to-end: a `nix build .#otel-scrape` from a dirty tree emits
+  into the build env preserves Nix purity. The rebuild guarantee is that
+  `CLI_BUILD_STAMP` is passed as a **derivation env var**: a changed gitRev changes
+  the derivation hash, so Nix rebuilds the crate and the binary tracks its build.
+  (This — not cargo's incremental env tracking — is the mechanism. `option_env!`
+  does emit a depfile `env-dep:CLI_BUILD_STAMP` line, but honoring that for
+  incremental rebuilds needs a build script's `rerun-if-env-changed`, which
+  otel-scrape has none of; under `nix build` each build is a fresh sandbox anyway.)
+  Verified end-to-end: a `nix build .#otel-scrape` from a dirty tree emits
   `scope.version` = `service.version` = `0.0.0+70090b9-dirty` (the real short rev),
   with `schemaUrl` on both the ResourceSpans and ScopeSpans, and the oxlint event
   carrying `otel_scrape.adapter.rule=eslint(no-debugger)` + `otel_scrape.adapter.line=2`
@@ -70,9 +76,26 @@ M25 (see the SOTA re-critique), both cheap and both observable in fresh OTLP.
   build, and a bare `0.0.0` discriminates no build. Version resolution never fails.
 - **`schemaUrl`** (`https://opentelemetry.io/schemas/1.37.0`, the targeted semconv
   version) is emitted on both the OTLP ResourceSpans and the ScopeSpans.
-- `telemetry.sdk.version` stays the crate version (`0.0.0`): it names the
-  instrumentation SDK, not the build. Only `scope.version` / `service.version`
-  carry the build identity.
+- `telemetry.sdk.version` carries otel-scrape's **`machineVersion`** too: it names
+  this instrumentation artifact — the same otel-scrape binary that `scope.version`
+  identifies — so a bare `0.0.0` here was internally inconsistent (`telemetry.sdk.name`
+  is `otel-scrape`, the build-versioning anti-pattern of divergent version literals
+  in one tool). `scope.version` and the default `service.version` remain the primary
+  build-id carriers; `telemetry.sdk.version` now agrees with them.
+- The default `service.version` stamp is gated and applied in `parse_args` **after
+  the flag loop**, so a `--service-name` flag gates it exactly like
+  `OTEL_SERVICE_NAME`: the default is applied only when service.name is
+  otel-scrape's own default, supplied by neither env nor flag (a user-supplied
+  `service.version` in `OTEL_RESOURCE_ATTRIBUTES` always wins). Stamping earlier —
+  gated only on env — let the flag path smuggle otel-scrape's build onto a
+  harness-named service.
+- `--version` prints the `machineVersion` (not the bare crate `0.0.0`), so the
+  human-facing version names the actual build like the telemetry does. A full
+  relative-time `displayVersion` renderer is a documented follow-up.
+- `parse_build_stamp` (the Rust reader) is deliberately lenient vs. the TS
+  contract: it accepts a NixStamp missing `commitTs` and defaults `dirty=false`,
+  where the TS parser rejects. Harmless here — only `version`/`rev`/`dirty` feed
+  `machineVersion`, and `commitTs` is unused by the Rust reader.
 
 ### Adapter-event richness
 

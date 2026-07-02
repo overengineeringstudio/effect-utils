@@ -1424,8 +1424,11 @@ fn exports_command_span_to_otlp_http_json() {
     // Success path (decision 0016, M25.1): no error.type attribute and no
     // Status.message — Description is reserved for the Error status.
     assert_eq!(span["status"].get("message"), None);
-    // Instrumentation-scope version + resource service.version tie the trace to
-    // a build (decision 0019); both equal otel-scrape's build machineVersion.
+    // scope.version ties the trace to a build (decision 0019); it always carries
+    // otel-scrape's build machineVersion. service.version is ABSENT here: this run
+    // supplies service.name via --service-name (naming the enclosing harness), so
+    // the default service.version stamp is gated off — otel-scrape must not stamp
+    // its own build onto a harness-named service (decision 0016 §6, FLAG-1).
     let scope = &resource_span["scopeSpans"][0]["scope"];
     assert_eq!(scope["name"], "otel-scrape");
     assert!(scope["version"].as_str().is_some_and(|v| !v.is_empty()));
@@ -1434,7 +1437,7 @@ fn exports_command_span_to_otlp_http_json() {
             resource_span["resource"]["attributes"].as_array().unwrap(),
             "service.version"
         ),
-        scope["version"].as_str().map(ToOwned::to_owned)
+        None
     );
     // High-resolution timing (decision 0016, M25.1): a fast command is not a
     // zero-width span. The pre-fix ms-quantization made even a real sub-ms command
@@ -1892,11 +1895,47 @@ fn service_version_default_is_gated_when_service_name_is_supplied() {
     assert!(scope["version"].as_str().is_some_and(|v| !v.is_empty()));
 }
 
+// Companion to the env-path gate above (decision 0016 §6, decision 0019, FLAG-1):
+// the `--service-name` FLAG must gate the default service.version exactly like
+// OTEL_SERVICE_NAME does. A `--service-name` run with no OTEL_SERVICE_NAME names
+// the enclosing harness, so otel-scrape must NOT stamp its own build version onto
+// it (the pre-fix bug stamped service.version before the flag loop, gated only on
+// env, letting otel-scrape's build masquerade as the harness's version). The
+// scope version still carries otel-scrape's build unambiguously.
+#[test]
+fn service_version_default_is_gated_when_service_name_flag_supplied() {
+    let collector = TestCollector::start(200);
+    let out = otel_scrape()
+        .args(["--service-name", "my-harness"])
+        .args(["--otlp-endpoint", &collector.endpoint])
+        .args(["--", "sh", "-c", "printf child"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+
+    let body: serde_json::Value = serde_json::from_slice(&collector.request().body).unwrap();
+    let resource_span = &body["resourceSpans"][0];
+    let resource_attrs = resource_span["resource"]["attributes"].as_array().unwrap();
+    assert_eq!(
+        attr_value(resource_attrs, "service.name"),
+        Some("my-harness".to_owned())
+    );
+    // No default service.version stamped onto the flag-named harness service.
+    assert_eq!(attr_value(resource_attrs, "service.version"), None);
+    // scope.version still carries otel-scrape's build unambiguously.
+    let scope = &resource_span["scopeSpans"][0]["scope"];
+    assert_eq!(scope["name"], "otel-scrape");
+    assert!(scope["version"].as_str().is_some_and(|v| !v.is_empty()));
+}
+
 // Build-id trace correlation (H5, decision 0019): scope.version is a
 // build-correlated machineVersion (not the bare crate `0.0.0`, which
 // discriminated no build), and schemaUrl pins the semconv version on both the
-// scope and the resource. The exact precedence/fallback logic is covered by the
-// pure unit tests in the library crate; this proves the end-to-end wiring.
+// scope and the resource. This run uses the DEFAULT-service path (no service.name
+// from env or flag), so the resource service.version is stamped and equals
+// scope.version — both the build machineVersion. The exact precedence/fallback
+// logic is covered by the pure unit tests in the library crate; this proves the
+// end-to-end wiring.
 #[test]
 fn scope_version_is_build_correlated_and_schema_url_present() {
     let collector = TestCollector::start(200);
@@ -1908,7 +1947,6 @@ fn scope_version_is_build_correlated_and_schema_url_present() {
             "CLI_BUILD_STAMP",
             r#"{"type":"nix","version":"0.0.0","rev":"beefca7","commitTs":7,"dirty":false}"#,
         )
-        .args(["--service-name", "otel-scrape-test"])
         .args(["--otlp-endpoint", &collector.endpoint])
         .args(["--", "sh", "-c", "printf child"])
         .output()
@@ -1927,6 +1965,18 @@ fn scope_version_is_build_correlated_and_schema_url_present() {
     if !otel_scrape::compiled_with_nix_stamp() {
         assert_eq!(scope_version, "0.0.0+beefca7");
     }
+    // Default-service path: service.name is otel-scrape's own default and the
+    // resource service.version is stamped, equal to scope.version — the trace ties
+    // to a build on the service resource too (decision 0016 §6, decision 0019).
+    let resource_attrs = resource_span["resource"]["attributes"].as_array().unwrap();
+    assert_eq!(
+        attr_value(resource_attrs, "service.name"),
+        Some("otel-scrape".to_owned())
+    );
+    assert_eq!(
+        attr_value(resource_attrs, "service.version"),
+        Some(scope_version.to_owned())
+    );
     // schemaUrl pins the semconv version on both the ScopeSpans (the
     // instrumentation scope's schema, a sibling of `scope`) and the ResourceSpans.
     assert_eq!(

@@ -187,6 +187,14 @@ struct OtlpEnvConfig {
     export_enabled: bool,
     service_name: String,
     resource_attributes: Vec<(String, String)>,
+    /// service.name was supplied by env (OTEL_SERVICE_NAME or a service.name in
+    /// OTEL_RESOURCE_ATTRIBUTES). Gates the default service.version stamp, which
+    /// happens in `parse_args` after the flag loop so a `--service-name` flag is
+    /// also honored (decision 0016 §6, decision 0019).
+    service_name_from_env: bool,
+    /// service.version was supplied by env (OTEL_RESOURCE_ATTRIBUTES). A
+    /// user-supplied service.version always wins over the default stamp.
+    service_version_from_env: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -607,6 +615,7 @@ pub fn parse_args(args: &[String]) -> Result<CommandRequest, UsageError> {
     let otlp_export_enabled = otlp_env.export_enabled;
     let mut service_name = otlp_env.service_name;
     let mut resource_attributes = otlp_env.resource_attributes;
+    let mut service_name_from_flag = false;
     let mut process_helper_socket = std::env::var_os(PROCESS_HELPER_SOCKET_ENV).map(PathBuf::from);
     let mut process_backend = match std::env::var(PROCESS_BACKEND_ENV) {
         Ok(value) => ProcessBackendSelection::parse(&value).ok_or_else(|| UsageError {
@@ -689,6 +698,7 @@ pub fn parse_args(args: &[String]) -> Result<CommandRequest, UsageError> {
                     return usage_error("--service-name must not be empty");
                 }
                 service_name = value.clone();
+                service_name_from_flag = true;
                 set_resource_attribute(&mut resource_attributes, "service.name", value);
                 i += 2;
             }
@@ -768,6 +778,25 @@ pub fn parse_args(args: &[String]) -> Result<CommandRequest, UsageError> {
         );
     }
 
+    // service.version defaults to otel-scrape's build machineVersion (decision
+    // 0019) ONLY when service.name is otel-scrape's own default — supplied by
+    // neither env (OTEL_SERVICE_NAME / OTEL_RESOURCE_ATTRIBUTES) nor the
+    // `--service-name` flag. When a user/harness supplies service.name (via env or
+    // flag), service.* names the enclosing harness, so stamping otel-scrape's
+    // version onto it would be wrong. A user-supplied service.version (env
+    // OTEL_RESOURCE_ATTRIBUTES) always wins. scope.version carries otel-scrape's
+    // build unambiguously regardless (decision 0016 §6).
+    if !otlp_env.service_name_from_env
+        && !service_name_from_flag
+        && !otlp_env.service_version_from_env
+    {
+        set_resource_attribute(
+            &mut resource_attributes,
+            "service.version",
+            &build_machine_version(),
+        );
+    }
+
     Ok(CommandRequest::Run(Box::new(RunConfig {
         summary_out,
         adapter,
@@ -799,7 +828,11 @@ pub fn print_help() {
 }
 
 pub fn print_version() {
-    println!("otel-scrape {VERSION}");
+    // Emit the build machineVersion (decision 0019), not the bare crate `0.0.0`,
+    // so `--version` names the actual build like the telemetry does — one
+    // consistent identity. A full relative-time displayVersion renderer is a
+    // documented follow-up.
+    println!("otel-scrape {}", build_machine_version());
 }
 
 /// Resolve the machine-readable build version for telemetry (decision 0019),
@@ -2803,31 +2836,29 @@ fn otlp_env_config() -> OtlpEnvConfig {
         "telemetry.sdk.name",
         "otel-scrape",
     );
-    set_resource_attribute(&mut resource_attributes, "telemetry.sdk.version", VERSION);
+    // telemetry.sdk.version names this instrumentation artifact; it is the same
+    // otel-scrape binary that scope.version identifies, so it carries the build
+    // machineVersion too (decision 0019) — one consistent build identity, never a
+    // bare `0.0.0` that discriminates no build.
+    set_resource_attribute(
+        &mut resource_attributes,
+        "telemetry.sdk.version",
+        &build_machine_version(),
+    );
     // Resolve service.name: OTEL_SERVICE_NAME wins, then a service.name supplied
     // via OTEL_RESOURCE_ATTRIBUTES, else otel-scrape's own default.
     let service_name_env = env_string(SERVICE_NAME_ENV);
     let service_name_from_resource = resource_attribute(&resource_attributes, "service.name");
-    let service_name_supplied = service_name_env.is_some() || service_name_from_resource.is_some();
+    let service_name_from_env = service_name_env.is_some() || service_name_from_resource.is_some();
+    let service_version_from_env =
+        resource_attribute(&resource_attributes, "service.version").is_some();
     let service_name = service_name_env
         .or(service_name_from_resource)
         .unwrap_or_else(|| String::from("otel-scrape"));
-    // service.version defaults to otel-scrape's build machineVersion (decision
-    // 0019) ONLY when service.name is also otel-scrape's own default — i.e.
-    // neither OTEL_SERVICE_NAME nor a service.name in OTEL_RESOURCE_ATTRIBUTES was
-    // supplied. When a user/harness supplies service.name, service.* names the
-    // enclosing harness, so stamping otel-scrape's version onto it would be wrong.
-    // A user-supplied service.version always wins. scope.version carries
-    // otel-scrape's build unambiguously regardless.
-    if !service_name_supplied
-        && resource_attribute(&resource_attributes, "service.version").is_none()
-    {
-        set_resource_attribute(
-            &mut resource_attributes,
-            "service.version",
-            &build_machine_version(),
-        );
-    }
+    // The default service.version stamp is deferred to `parse_args` (after the
+    // flag loop) so it can also observe a `--service-name` flag; stamping it here
+    // — gated only on env — let the flag path smuggle otel-scrape's version onto a
+    // harness-named service (decision 0016 §6, decision 0019).
     set_resource_attribute(&mut resource_attributes, "service.name", &service_name);
 
     OtlpEnvConfig {
@@ -2842,6 +2873,8 @@ fn otlp_env_config() -> OtlpEnvConfig {
             && compression_enabled,
         service_name,
         resource_attributes,
+        service_name_from_env,
+        service_version_from_env,
     }
 }
 
@@ -3975,7 +4008,23 @@ mod tests {
                 otlp_timeout: otlp_env_config().timeout,
                 otlp_export_enabled: otlp_env_config().export_enabled,
                 service_name: otlp_env_config().service_name,
-                resource_attributes: otlp_env_config().resource_attributes,
+                resource_attributes: {
+                    // Mirror parse_args exactly: with no --service-name flag it
+                    // stamps the default service.version after the flag loop only
+                    // when service.name is otel-scrape's own default (decision
+                    // 0019). Gate on the same env flags so this holds whether or
+                    // not the ambient env supplies a service.name.
+                    let otlp_env = otlp_env_config();
+                    let mut attrs = otlp_env.resource_attributes;
+                    if !otlp_env.service_name_from_env && !otlp_env.service_version_from_env {
+                        set_resource_attribute(
+                            &mut attrs,
+                            "service.version",
+                            &build_machine_version(),
+                        );
+                    }
+                    attrs
+                },
                 process_backend: ProcessBackendSelection::DirectChild,
                 process_helper_socket: None,
                 profile_artifacts: Vec::new(),
@@ -4013,7 +4062,23 @@ mod tests {
                 otlp_timeout: otlp_env_config().timeout,
                 otlp_export_enabled: otlp_env_config().export_enabled,
                 service_name: otlp_env_config().service_name,
-                resource_attributes: otlp_env_config().resource_attributes,
+                resource_attributes: {
+                    // Mirror parse_args exactly: with no --service-name flag it
+                    // stamps the default service.version after the flag loop only
+                    // when service.name is otel-scrape's own default (decision
+                    // 0019). Gate on the same env flags so this holds whether or
+                    // not the ambient env supplies a service.name.
+                    let otlp_env = otlp_env_config();
+                    let mut attrs = otlp_env.resource_attributes;
+                    if !otlp_env.service_name_from_env && !otlp_env.service_version_from_env {
+                        set_resource_attribute(
+                            &mut attrs,
+                            "service.version",
+                            &build_machine_version(),
+                        );
+                    }
+                    attrs
+                },
                 process_backend: ProcessBackendSelection::DirectChild,
                 process_helper_socket: None,
                 profile_artifacts: vec![ProfileArtifactInput {
@@ -4353,7 +4418,10 @@ mod tests {
             resource_attributes: vec![
                 ("telemetry.sdk.language".to_owned(), "rust".to_owned()),
                 ("telemetry.sdk.name".to_owned(), "otel-scrape".to_owned()),
-                ("telemetry.sdk.version".to_owned(), VERSION.to_owned()),
+                (
+                    "telemetry.sdk.version".to_owned(),
+                    build_machine_version(),
+                ),
                 ("service.name".to_owned(), "otel-scrape".to_owned()),
             ],
             process_backend: ProcessBackendSelection::DirectChild,

@@ -106,6 +106,20 @@ signal <NAME>`) on non-zero exit; bound `process.executable.name` / the span
   instrumentation-scope `version` plus a default resource `service.version` to
   otel-scrape's crate version.
 
+- **otel-scrape**: Correlate traces to a build and enrich adapter events
+  (decision 0019, H5). Derive a `machineVersion` (`<version>+<rev>[-dirty]`)
+  from a flake-injected `CLI_BUILD_STAMP` (following the shared build-identity
+  contract in `@overeng/utils` `cli-version`) and emit it as the
+  instrumentation-scope `version`, the default resource `service.version`, and
+  `telemetry.sdk.version` — superseding the bare crate version so a trace ties
+  to a commit — and print it from `--version`. Add
+  `schema_url=https://opentelemetry.io/schemas/1.37.0` on the resource and
+  scope. The oxlint adapter event now carries the public `rule` id and `line`
+  in both the OTLP and summary sinks (the filename stays hashed). The default
+  `service.version` is gated on `service.name` being otel-scrape's own default,
+  so a user/harness `--service-name` (or `OTEL_SERVICE_NAME`) no longer has
+  otel-scrape's build stamped onto its service identity.
+
 - **otel-scrape**: Add the per-named-sink command-identity trust gate
   (decision 0015): `--trusted-sink otlp|summary` (repeatable; env alias
   `OTEL_SCRAPE_TRUSTED_SINK` pinned to the OTLP target only) emits raw
