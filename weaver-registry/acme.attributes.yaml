@@ -2,7 +2,7 @@
 # Source: acme.attributes.yaml.genie.ts
 
 # registry-source: weaver-registry/registry.ts
-# fingerprint: sha256:86bcacc65cff8963a13da7982652d1adb9fd72d145ae07e418969431915e6f41
+# fingerprint: sha256:438fd5daffa1c3376b9f137e9b99b849491e3bd23724f10749211acc7b7b3728
 groups:
   - id: registry.acme
     type: attribute_group

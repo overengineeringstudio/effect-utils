@@ -1,7 +1,7 @@
 // Generated file - DO NOT EDIT
 // Source: constants.rs.genie.ts
 // registry-source: weaver-registry/registry.ts
-// fingerprint: sha256:8a1bda18876552408a55070e25c221fa2ade20caa1d92a8b49d63ce823e0c1cd
+// fingerprint: sha256:1ff2fe899780de9e7c1e50d5e9c59845793c822f2cddb051b8162825998142a1
 // regen: devenv tasks run genie:run
 
 //! Generated OpenTelemetry semantic-convention name constants.
@@ -25,6 +25,75 @@ pub mod attribute {
     pub const GENIE_VALIDATION_FILE_COUNT: &str = "genie.validation.file_count";
     pub const GENIE_VALIDATION_PRELOADED_FILE_COUNT: &str = "genie.validation.preloaded_file_count";
     pub const GENIE_VALIDATION_REQUIRE_PACKAGE_JSON_VALIDATE: &str = "genie.validation.require_package_json_validate";
+    pub const MEGAREPO_BRANCH: &str = "megarepo.branch";
+    pub const MEGAREPO_CLI_ALL: &str = "megarepo.cli.all";
+    pub const MEGAREPO_CLI_COMMAND: &str = "megarepo.cli.command";
+    pub const MEGAREPO_CLI_DRY_RUN: &str = "megarepo.cli.dry_run";
+    pub const MEGAREPO_CLI_FORCE: &str = "megarepo.cli.force";
+    pub const MEGAREPO_CLI_OUTPUT: &str = "megarepo.cli.output";
+    pub const MEGAREPO_CLI_PORCELAIN: &str = "megarepo.cli.porcelain";
+    pub const MEGAREPO_MEMBER: &str = "megarepo.member";
+    pub const MEGAREPO_REPO: &str = "megarepo.repo";
+    pub const MEGAREPO_REPO_PATH: &str = "megarepo.repo_path";
+    pub const MEGAREPO_REPO_ROOT: &str = "megarepo.repo_root";
+    pub const MEGAREPO_ROOT: &str = "megarepo.root";
+    pub const MEGAREPO_STORE_BARE_REPO_PATH: &str = "megarepo.store.bare_repo_path";
+    pub const MEGAREPO_STORE_BASE_REF: &str = "megarepo.store.base_ref";
+    pub const MEGAREPO_STORE_COMMIT: &str = "megarepo.store.commit";
+    pub const MEGAREPO_STORE_GC_ARCHIVE_PATH: &str = "megarepo.store.gc.archive_path";
+    pub const MEGAREPO_STORE_GC_ARCHIVE_REASON: &str = "megarepo.store.gc.archive_reason";
+    pub const MEGAREPO_STORE_GC_CANDIDATE_COMMITS: &str = "megarepo.store.gc.candidate_commits";
+    pub const MEGAREPO_STORE_GC_CANDIDATE_NAMED_REFS: &str = "megarepo.store.gc.candidate_named_refs";
+    pub const MEGAREPO_STORE_GC_PHASE: &str = "megarepo.store.gc.phase";
+    pub const MEGAREPO_STORE_GC_POLICY: &str = "megarepo.store.gc.policy";
+    pub const MEGAREPO_STORE_GC_REPO_CONCURRENCY: &str = "megarepo.store.gc.repo_concurrency";
+    pub const MEGAREPO_STORE_GC_REPO_COUNT: &str = "megarepo.store.gc.repo_count";
+    pub const MEGAREPO_STORE_GC_REPO_TOTAL: &str = "megarepo.store.gc.repo_total";
+    pub const MEGAREPO_STORE_GC_RESULT_ARCHIVED: &str = "megarepo.store.gc.result_archived";
+    pub const MEGAREPO_STORE_GC_RESULT_KEPT: &str = "megarepo.store.gc.result_kept";
+    pub const MEGAREPO_STORE_GC_RESULT_REAPED: &str = "megarepo.store.gc.result_reaped";
+    pub const MEGAREPO_STORE_GC_RESULT_REMOVED: &str = "megarepo.store.gc.result_removed";
+    pub const MEGAREPO_STORE_GC_RESULT_SKIPPED_DIRTY: &str = "megarepo.store.gc.result_skipped_dirty";
+    pub const MEGAREPO_STORE_GC_RESULT_SKIPPED_IN_USE: &str = "megarepo.store.gc.result_skipped_in_use";
+    pub const MEGAREPO_STORE_GC_RESULT_TOTAL: &str = "megarepo.store.gc.result_total";
+    pub const MEGAREPO_STORE_GC_ROOT_SET_WORKSPACE_COUNT: &str = "megarepo.store.gc.root_set_workspace_count";
+    pub const MEGAREPO_STORE_GC_WORKTREE_COUNT: &str = "megarepo.store.gc.worktree_count";
+    pub const MEGAREPO_STORE_GC_WORKTREE_DISCOVERED: &str = "megarepo.store.gc.worktree_discovered";
+    pub const MEGAREPO_STORE_GIT_WORKTREE_LIST_FAILED: &str = "megarepo.store.git_worktree_list_failed";
+    pub const MEGAREPO_STORE_HAS_CURRENT_WORKSPACE: &str = "megarepo.store.has_current_workspace";
+    pub const MEGAREPO_STORE_PRUNE_STALE_REGISTRY: &str = "megarepo.store.prune_stale_registry";
+    pub const MEGAREPO_STORE_REF: &str = "megarepo.store.ref";
+    pub const MEGAREPO_STORE_REF_TYPE: &str = "megarepo.store.ref_type";
+    pub const MEGAREPO_STORE_REFRESH_CURRENT_WORKSPACE: &str = "megarepo.store.refresh_current_workspace";
+    pub const MEGAREPO_STORE_REPO: &str = "megarepo.store.repo";
+    pub const MEGAREPO_STORE_SOURCE: &str = "megarepo.store.source";
+    pub const MEGAREPO_STORE_WORKTREE_BROKEN: &str = "megarepo.store.worktree_broken";
+    pub const MEGAREPO_STORE_WORKTREE_PATH: &str = "megarepo.store.worktree_path";
+    pub const MEGAREPO_SYNC_DEPTH: &str = "megarepo.sync.depth";
+    pub const MEGAREPO_SYNC_MEMBER_ACTION: &str = "megarepo.sync.member.action";
+    pub const MEGAREPO_SYNC_MEMBER_BARE_EXISTS: &str = "megarepo.sync.member.bare_exists";
+    pub const MEGAREPO_SYNC_MEMBER_NAME: &str = "megarepo.sync.member.name";
+    pub const MEGAREPO_SYNC_MEMBER_REF: &str = "megarepo.sync.member.ref";
+    pub const MEGAREPO_SYNC_MEMBER_REF_TYPE: &str = "megarepo.sync.member.ref_type";
+    pub const MEGAREPO_SYNC_MEMBER_RESULT_STATUS: &str = "megarepo.sync.member.result_status";
+    pub const MEGAREPO_SYNC_MEMBER_SOURCE: &str = "megarepo.sync.member.source";
+    pub const MEGAREPO_SYNC_MODE: &str = "megarepo.sync.mode";
+    pub const MEGAREPO_TEST_STORE_FIXTURE_BRANCH_COUNT: &str = "megarepo.test.store_fixture.branch_count";
+    pub const MEGAREPO_TEST_STORE_FIXTURE_COMMIT_COUNT: &str = "megarepo.test.store_fixture.commit_count";
+    pub const MEGAREPO_TEST_STORE_FIXTURE_PHASE: &str = "megarepo.test.store_fixture.phase";
+    pub const MEGAREPO_TEST_STORE_FIXTURE_REPO: &str = "megarepo.test.store_fixture.repo";
+    pub const MEGAREPO_TEST_STORE_FIXTURE_REPO_COUNT: &str = "megarepo.test.store_fixture.repo_count";
+    pub const MEGAREPO_TEST_STORE_FIXTURE_TAG_COUNT: &str = "megarepo.test.store_fixture.tag_count";
+    pub const MEGAREPO_TEST_STORE_FIXTURE_WITH_REMOTE: &str = "megarepo.test.store_fixture.with_remote";
+    pub const MEGAREPO_TRAVERSAL_ALL: &str = "megarepo.traversal.all";
+    pub const MEGAREPO_TRAVERSAL_CYCLES_SKIPPED: &str = "megarepo.traversal.cycles_skipped";
+    pub const MEGAREPO_TRAVERSAL_MAX_DEPTH: &str = "megarepo.traversal.max_depth";
+    pub const MEGAREPO_TRAVERSAL_NODES_VISITED: &str = "megarepo.traversal.nodes_visited";
+    pub const MEGAREPO_TRAVERSAL_PURPOSE: &str = "megarepo.traversal.purpose";
+    pub const MEGAREPO_TRAVERSAL_ROOT: &str = "megarepo.traversal.root";
+    pub const MEGAREPO_WORKSPACE_ROOT: &str = "megarepo.workspace_root";
+    pub const MEGAREPO_WORKTREE_HEAD: &str = "megarepo.worktree_head";
+    pub const MEGAREPO_WORKTREE_PATH: &str = "megarepo.worktree_path";
     pub const NOTION_MD_BATCH: &str = "notion_md.batch";
     pub const NOTION_MD_BATCH_PATH_COUNT: &str = "notion_md.batch.path_count";
     pub const NOTION_MD_BATCH_RECURSIVE: &str = "notion_md.batch.recursive";
@@ -106,6 +175,75 @@ pub mod attribute {
         "genie.validation.file_count",
         "genie.validation.preloaded_file_count",
         "genie.validation.require_package_json_validate",
+        "megarepo.branch",
+        "megarepo.cli.all",
+        "megarepo.cli.command",
+        "megarepo.cli.dry_run",
+        "megarepo.cli.force",
+        "megarepo.cli.output",
+        "megarepo.cli.porcelain",
+        "megarepo.member",
+        "megarepo.repo",
+        "megarepo.repo_path",
+        "megarepo.repo_root",
+        "megarepo.root",
+        "megarepo.store.bare_repo_path",
+        "megarepo.store.base_ref",
+        "megarepo.store.commit",
+        "megarepo.store.gc.archive_path",
+        "megarepo.store.gc.archive_reason",
+        "megarepo.store.gc.candidate_commits",
+        "megarepo.store.gc.candidate_named_refs",
+        "megarepo.store.gc.phase",
+        "megarepo.store.gc.policy",
+        "megarepo.store.gc.repo_concurrency",
+        "megarepo.store.gc.repo_count",
+        "megarepo.store.gc.repo_total",
+        "megarepo.store.gc.result_archived",
+        "megarepo.store.gc.result_kept",
+        "megarepo.store.gc.result_reaped",
+        "megarepo.store.gc.result_removed",
+        "megarepo.store.gc.result_skipped_dirty",
+        "megarepo.store.gc.result_skipped_in_use",
+        "megarepo.store.gc.result_total",
+        "megarepo.store.gc.root_set_workspace_count",
+        "megarepo.store.gc.worktree_count",
+        "megarepo.store.gc.worktree_discovered",
+        "megarepo.store.git_worktree_list_failed",
+        "megarepo.store.has_current_workspace",
+        "megarepo.store.prune_stale_registry",
+        "megarepo.store.ref",
+        "megarepo.store.ref_type",
+        "megarepo.store.refresh_current_workspace",
+        "megarepo.store.repo",
+        "megarepo.store.source",
+        "megarepo.store.worktree_broken",
+        "megarepo.store.worktree_path",
+        "megarepo.sync.depth",
+        "megarepo.sync.member.action",
+        "megarepo.sync.member.bare_exists",
+        "megarepo.sync.member.name",
+        "megarepo.sync.member.ref",
+        "megarepo.sync.member.ref_type",
+        "megarepo.sync.member.result_status",
+        "megarepo.sync.member.source",
+        "megarepo.sync.mode",
+        "megarepo.test.store_fixture.branch_count",
+        "megarepo.test.store_fixture.commit_count",
+        "megarepo.test.store_fixture.phase",
+        "megarepo.test.store_fixture.repo",
+        "megarepo.test.store_fixture.repo_count",
+        "megarepo.test.store_fixture.tag_count",
+        "megarepo.test.store_fixture.with_remote",
+        "megarepo.traversal.all",
+        "megarepo.traversal.cycles_skipped",
+        "megarepo.traversal.max_depth",
+        "megarepo.traversal.nodes_visited",
+        "megarepo.traversal.purpose",
+        "megarepo.traversal.root",
+        "megarepo.workspace_root",
+        "megarepo.worktree_head",
+        "megarepo.worktree_path",
         "notion_md.batch",
         "notion_md.batch.path_count",
         "notion_md.batch.recursive",
@@ -182,6 +320,24 @@ pub mod span {
     pub const SPAN_GENIE_PATH: &str = "span.genie.path";
     pub const SPAN_GENIE_RUN_VALIDATION: &str = "span.genie.run_validation";
     pub const SPAN_GENIE_TARGET_LOCK: &str = "span.genie.target_lock";
+    pub const SPAN_MEGAREPO_GIT_DELETE_BRANCH: &str = "span.megarepo.git_delete_branch";
+    pub const SPAN_MEGAREPO_GIT_DETACH_WORKTREE_HEAD: &str = "span.megarepo.git_detach_worktree_head";
+    pub const SPAN_MEGAREPO_STORE_GC: &str = "span.megarepo.store_gc";
+    pub const SPAN_MEGAREPO_STORE_GC_ARCHIVE_WORKTREE: &str = "span.megarepo.store_gc_archive_worktree";
+    pub const SPAN_MEGAREPO_STORE_GC_ASSESS_LOSSLESS: &str = "span.megarepo.store_gc_assess_lossless";
+    pub const SPAN_MEGAREPO_STORE_GC_COLD_RECLAIM_REPO: &str = "span.megarepo.store_gc_cold_reclaim_repo";
+    pub const SPAN_MEGAREPO_STORE_GC_REAP_ARCHIVE: &str = "span.megarepo.store_gc_reap_archive";
+    pub const SPAN_MEGAREPO_STORE_GC_RESOLVE_PR_STATE: &str = "span.megarepo.store_gc_resolve_pr_state";
+    pub const SPAN_MEGAREPO_STORE_GC_SCAN_ARCHIVES: &str = "span.megarepo.store_gc_scan_archives";
+    pub const SPAN_MEGAREPO_STORE_GC_UNPUSHED_COMMIT_COUNT: &str = "span.megarepo.store_gc_unpushed_commit_count";
+    pub const SPAN_MEGAREPO_SYNC: &str = "span.megarepo.sync";
+    pub const SPAN_MEGAREPO_SYNC_MEMBER: &str = "span.megarepo.sync_member";
+    pub const SPAN_MEGAREPO_SYNC_MEMBER_CLONE: &str = "span.megarepo.sync_member_clone";
+    pub const SPAN_MEGAREPO_SYNC_MEMBER_CREATE_WORKTREE: &str = "span.megarepo.sync_member_create_worktree";
+    pub const SPAN_MEGAREPO_SYNC_MEMBER_RESOLVE_REF: &str = "span.megarepo.sync_member_resolve_ref";
+    pub const SPAN_MEGAREPO_TEST_STORE_FIXTURE_CREATE: &str = "span.megarepo.test_store_fixture_create";
+    pub const SPAN_MEGAREPO_TEST_STORE_FIXTURE_REPO: &str = "span.megarepo.test_store_fixture_repo";
+    pub const SPAN_MEGAREPO_TRAVERSAL: &str = "span.megarepo.traversal";
     pub const SPAN_NOTION_MD_BATCH_WATCH: &str = "span.notion_md.batch_watch";
     pub const SPAN_NOTION_MD_CAT: &str = "span.notion_md.cat";
     pub const SPAN_NOTION_MD_COMMENT_BOUNDARY: &str = "span.notion_md.comment_boundary";
@@ -225,6 +381,24 @@ pub mod span {
         "span.genie.path",
         "span.genie.run_validation",
         "span.genie.target_lock",
+        "span.megarepo.git_delete_branch",
+        "span.megarepo.git_detach_worktree_head",
+        "span.megarepo.store_gc",
+        "span.megarepo.store_gc_archive_worktree",
+        "span.megarepo.store_gc_assess_lossless",
+        "span.megarepo.store_gc_cold_reclaim_repo",
+        "span.megarepo.store_gc_reap_archive",
+        "span.megarepo.store_gc_resolve_pr_state",
+        "span.megarepo.store_gc_scan_archives",
+        "span.megarepo.store_gc_unpushed_commit_count",
+        "span.megarepo.sync",
+        "span.megarepo.sync_member",
+        "span.megarepo.sync_member_clone",
+        "span.megarepo.sync_member_create_worktree",
+        "span.megarepo.sync_member_resolve_ref",
+        "span.megarepo.test_store_fixture_create",
+        "span.megarepo.test_store_fixture_repo",
+        "span.megarepo.traversal",
         "span.notion_md.batch_watch",
         "span.notion_md.cat",
         "span.notion_md.comment_boundary",
@@ -264,6 +438,11 @@ pub mod span {
 pub mod metric {
     pub const ACME_PROBE_DURATION: &str = "acme.probe.duration";
     pub const ACME_PROBES: &str = "acme.probes";
+    pub const MEGAREPO_STORE_GC_RSS_BYTES: &str = "megarepo_store_gc_rss_bytes";
 
-    pub const ALL: &[&str] = &["acme.probe.duration", "acme.probes"];
+    pub const ALL: &[&str] = &[
+        "acme.probe.duration",
+        "acme.probes",
+        "megarepo_store_gc_rss_bytes",
+    ];
 }

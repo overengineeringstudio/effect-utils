@@ -1,0 +1,603 @@
+# Generated file - DO NOT EDIT
+# Source: megarepo.attributes.yaml.genie.ts
+
+# registry-source: weaver-registry/registry.ts
+# fingerprint: sha256:438fd5daffa1c3376b9f137e9b99b849491e3bd23724f10749211acc7b7b3728
+groups:
+  - id: registry.megarepo
+    type: attribute_group
+    display_name: Megarepo Attributes
+    brief: Attributes for the megarepo namespace.
+    attributes:
+      - id: megarepo.branch
+        type: string
+        stability: development
+        brief: Git branch name a megarepo operation acts on.
+        examples: [main, schickling/feature]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: megarepo.cli.all
+        type: boolean
+        stability: development
+        brief: Whether the command operates over all members/repos.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.cli.command
+        type: string
+        stability: development
+        brief: megarepo CLI command name.
+        examples: [sync, store gc]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.cli.dry_run
+        type: boolean
+        stability: development
+        brief: Whether the run is a dry run (planned actions are logged, not applied).
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.cli.force
+        type: boolean
+        stability: development
+        brief: Whether a destructive action was force-requested.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.cli.output
+        type: string
+        stability: development
+        brief: Requested CLI output format.
+        examples: [json, text]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: megarepo.cli.porcelain
+        type: boolean
+        stability: development
+        brief: Whether porcelain (machine-readable) output was requested.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.member
+        type: string
+        stability: development
+        brief: megarepo member name a command targets.
+        examples: [effect-utils, notion-md]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: megarepo.repo
+        type: string
+        stability: development
+        brief: Repository a command targets.
+        examples: [github.com/overengineeringstudio/effect-utils]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: megarepo.repo_path
+        type: string
+        stability: development
+        brief: Absolute path of a composed repo.
+        examples: [/home/user/megarepo/repos/effect-utils]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: megarepo.repo_root
+        type: string
+        stability: development
+        brief: Absolute repo root scanned during gc.
+        examples: [/home/user/.megarepo/store/github.com/org/repo]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: megarepo.root
+        type: string
+        stability: development
+        brief: Absolute megarepo root path a run operates on.
+        examples: [/home/user/megarepo]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: megarepo.store.bare_repo_path
+        type: string
+        stability: development
+        brief: Store bare-repository path.
+        examples: [/home/user/.megarepo/store/github.com/org/repo/repo.git]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: megarepo.store.base_ref
+        type: string
+        stability: development
+        brief: Base ref for a store operation.
+        examples: [main]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: megarepo.store.commit
+        type: string
+        stability: development
+        brief: Resolved commit for a store operation.
+        examples: [a3c1b6323f0e]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: megarepo.store.gc.archive_path
+        type: string
+        stability: development
+        brief: Absolute path of an archive hard-deleted during gc.
+        examples: [/home/user/.megarepo/store/.../archives/2026-07-01]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: megarepo.store.gc.archive_reason
+        type: string
+        stability: development
+        brief: Reason a cold worktree was archived.
+        examples: [cold, lossless]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: megarepo.store.gc.candidate_commits
+        type: int
+        stability: development
+        brief: Candidate commits considered by a gc run.
+        examples: [0, 12]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.store.gc.candidate_named_refs
+        type: int
+        stability: development
+        brief: Candidate named refs considered by a gc run.
+        examples: [0, 8]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.store.gc.phase
+        type: string
+        stability: development
+        brief: gc/status pipeline phase.
+        examples: [collect-liveness, cold-reclaim]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: megarepo.store.gc.policy
+        type: string
+        stability: development
+        brief: Retention policy for a gc run.
+        examples: [conservative, aggressive]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: megarepo.store.gc.repo_concurrency
+        type: int
+        stability: development
+        brief: Per-repo gc concurrency (parameter-sweep operating point).
+        examples: [1, 4]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: megarepo.store.gc.repo_count
+        type: int
+        stability: development
+        brief: Number of repos considered in a gc phase.
+        examples: [1, 20]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.store.gc.repo_total
+        type: int
+        stability: development
+        brief: Total repos considered by a gc run.
+        examples: [1, 20]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.store.gc.result_archived
+        type: int
+        stability: development
+        brief: gc-result entries archived.
+        examples: [0, 3]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.store.gc.result_kept
+        type: int
+        stability: development
+        brief: gc-result entries kept.
+        examples: [1, 30]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.store.gc.result_reaped
+        type: int
+        stability: development
+        brief: gc-result entries reaped.
+        examples: [0, 3]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.store.gc.result_removed
+        type: int
+        stability: development
+        brief: gc-result entries removed.
+        examples: [0, 5]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.store.gc.result_skipped_dirty
+        type: int
+        stability: development
+        brief: gc-result entries skipped because dirty.
+        examples: [0, 2]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.store.gc.result_skipped_in_use
+        type: int
+        stability: development
+        brief: gc-result entries skipped because in use.
+        examples: [0, 2]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.store.gc.result_total
+        type: int
+        stability: development
+        brief: Total gc-result entries.
+        examples: [3, 40]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.store.gc.root_set_workspace_count
+        type: int
+        stability: development
+        brief: Number of root-set workspaces feeding gc liveness.
+        examples: [1, 5]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.store.gc.worktree_count
+        type: int
+        stability: development
+        brief: Number of worktrees considered in a gc phase.
+        examples: [3, 40]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.store.gc.worktree_discovered
+        type: int
+        stability: development
+        brief: Worktrees discovered by a gc run.
+        examples: [3, 40]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.store.git_worktree_list_failed
+        type: boolean
+        stability: development
+        brief: Whether `git worktree list` failed (gc fell back to a degraded worktree view).
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.store.has_current_workspace
+        type: boolean
+        stability: development
+        brief: Whether the live-set computation had a current workspace.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.store.prune_stale_registry
+        type: boolean
+        stability: development
+        brief: Whether the live-set computation pruned the stale registry.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.store.ref
+        type: string
+        stability: development
+        brief: Store ref a span operates on.
+        examples: [main, v1.2.3]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: megarepo.store.ref_type
+        type: string
+        stability: development
+        brief: Kind of the store ref.
+        examples: [branch, tag, commit]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: megarepo.store.refresh_current_workspace
+        type: boolean
+        stability: development
+        brief: Whether the live-set computation refreshed the current workspace.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.store.repo
+        type: string
+        stability: development
+        brief: Store repository (relative path) a span operates on.
+        examples: [github.com/org/repo]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: megarepo.store.source
+        type: string
+        stability: development
+        brief: Source of a store operation.
+        examples: [github.com/org/repo]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: megarepo.store.worktree_broken
+        type: boolean
+        stability: development
+        brief: Whether the store worktree is broken.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.store.worktree_path
+        type: string
+        stability: development
+        brief: Store worktree path a span operates on.
+        examples: [/home/user/.megarepo/store/github.com/org/repo/worktrees/main]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: megarepo.sync.depth
+        type: int
+        stability: development
+        brief: Configured recursion depth for a sync run.
+        examples: [1, 5]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.sync.member.action
+        type:
+          members:
+            - id: clone
+              value: clone
+              brief: Initial clone of the member.
+              stability: development
+            - id: already-cloned-by-sibling
+              value: already-cloned-by-sibling
+              brief: A sibling already cloned this member.
+              stability: development
+            - id: skip-dry-run
+              value: skip-dry-run
+              brief: Skipped because the run is a dry run.
+              stability: development
+            - id: fetch
+              value: fetch
+              brief: Fetched into an existing bare repository.
+              stability: development
+            - id: fetch-missing-commit
+              value: fetch-missing-commit
+              brief: Fetched a specific missing commit.
+              stability: development
+            - id: noop
+              value: noop
+              brief: No action required.
+              stability: development
+        stability: development
+        brief: The action actually taken for a member sync.
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: megarepo.sync.member.bare_exists
+        type: boolean
+        stability: development
+        brief: Whether the member's bare repository already exists (fetch vs initial clone).
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.sync.member.name
+        type: string
+        stability: development
+        brief: Member name being synced.
+        examples: [effect-utils]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: megarepo.sync.member.ref
+        type: string
+        stability: development
+        brief: Target ref for a member sync.
+        examples: [main, v1.2.3]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: megarepo.sync.member.ref_type
+        type: string
+        stability: development
+        brief: Kind of the target ref for a member sync.
+        examples: [branch, tag, commit]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: megarepo.sync.member.result_status
+        type: string
+        stability: development
+        brief: Final result status of a member sync.
+        examples: [cloned, fetched, noop]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: megarepo.sync.member.source
+        type: string
+        stability: development
+        brief: Source of the member being synced.
+        examples: [github.com/org/repo]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: megarepo.sync.mode
+        type: string
+        stability: development
+        brief: Ref-resolution mode for a sync run.
+        examples: [locked, latest]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: megarepo.test.store_fixture.branch_count
+        type: int
+        stability: development
+        brief: Number of branches in a store-fixture repository.
+        examples: [1, 4]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.test.store_fixture.commit_count
+        type: int
+        stability: development
+        brief: Number of commits in a store-fixture repository.
+        examples: [1, 10]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.test.store_fixture.phase
+        type:
+          members:
+            - id: init-bare
+              value: init-bare
+              brief: Initialize the bare repository.
+              stability: development
+            - id: init-upstream
+              value: init-upstream
+              brief: Initialize the upstream remote.
+              stability: development
+            - id: init-source
+              value: init-source
+              brief: Initialize the source repository.
+              stability: development
+            - id: push-refs
+              value: push-refs
+              brief: Push refs into the store bare.
+              stability: development
+            - id: fetch-store-bare
+              value: fetch-store-bare
+              brief: Fetch into the store bare.
+              stability: development
+            - id: create-worktrees
+              value: create-worktrees
+              brief: Create worktrees.
+              stability: development
+            - id: create-commit-worktrees
+              value: create-commit-worktrees
+              brief: Create commit worktrees.
+              stability: development
+        stability: development
+        brief: Setup phase of a store-fixture repository.
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: megarepo.test.store_fixture.repo
+        type: string
+        stability: development
+        brief: Repository being set up inside a store fixture.
+        examples: [origin, upstream]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: megarepo.test.store_fixture.repo_count
+        type: int
+        stability: development
+        brief: Number of repositories in a hermetic store fixture.
+        examples: [1, 3]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.test.store_fixture.tag_count
+        type: int
+        stability: development
+        brief: Number of tags in a store-fixture repository.
+        examples: [0, 2]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.test.store_fixture.with_remote
+        type: boolean
+        stability: development
+        brief: Whether a store-fixture repository has a remote.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.traversal.all
+        type: boolean
+        stability: development
+        brief: Whether the traversal visits all members.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.traversal.cycles_skipped
+        type: int
+        stability: development
+        brief: Number of cycles skipped during a traversal.
+        examples: [0, 1]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.traversal.max_depth
+        type: int
+        stability: development
+        brief: Maximum depth reached during a traversal.
+        examples: [1, 3]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.traversal.nodes_visited
+        type: int
+        stability: development
+        brief: Number of nodes visited during a traversal.
+        examples: [3, 12]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.traversal.purpose
+        type: string
+        stability: development
+        brief: Purpose of a nested-megarepo traversal.
+        examples: [sync, gc]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: megarepo.traversal.root
+        type: string
+        stability: development
+        brief: Root of a nested-megarepo traversal.
+        examples: [/home/user/megarepo]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: megarepo.workspace_root
+        type: string
+        stability: development
+        brief: Absolute megarepo workspace root.
+        examples: [/home/user/megarepo]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: megarepo.worktree_head
+        type: string
+        stability: development
+        brief: Resolved commit sha of a worktree HEAD.
+        examples: [a3c1b6323f0e]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: megarepo.worktree_path
+        type: string
+        stability: development
+        brief: Absolute worktree path a span operates on.
+        examples: [/home/user/.megarepo/store/github.com/org/repo/worktrees/main]
+        annotations:
+          overeng_policy:
+            cardinality: high

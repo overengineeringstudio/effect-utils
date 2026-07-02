@@ -20,6 +20,7 @@ import { createHash } from 'node:crypto'
 import genieContract from '../packages/@overeng/genie/src/core/genie.contract.ts'
 import { registryFromMembers } from '../packages/@overeng/genie/src/runtime/composition/mod.ts'
 import type { Provenance } from '../packages/@overeng/genie/src/runtime/weaver/mod.ts'
+import megarepoContract from '../packages/@overeng/megarepo/src/megarepo.contract.ts'
 import notionMdContract from '../packages/@overeng/notion-md/src/notion-md.contract.ts'
 import demoContract from '../packages/@overeng/otel-contract/src/registry-demo.contract.ts'
 import { fragment } from '../packages/@overeng/otel-contract/src/registry.ts'
@@ -37,11 +38,12 @@ export const GENERATOR_VERSION = '1'
  */
 export const memberSeamPaths = [
   'packages/@overeng/genie/src/core/genie.contract.ts',
+  'packages/@overeng/megarepo/src/megarepo.contract.ts',
   'packages/@overeng/notion-md/src/notion-md.contract.ts',
   'packages/@overeng/otel-contract/src/registry-demo.contract.ts',
 ] as const
 
-const contracts = [genieContract, notionMdContract, demoContract]
+const contracts = [genieContract, megarepoContract, notionMdContract, demoContract]
 
 // Build members: each member contributes its fragment on the non-emitted `meta.registry`
 // channel (a minimal GenieOutput — no per-member slice is emitted for M1).

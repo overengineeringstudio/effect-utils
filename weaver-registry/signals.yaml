@@ -2,7 +2,7 @@
 # Source: signals.yaml.genie.ts
 
 # registry-source: weaver-registry/registry.ts
-# fingerprint: sha256:86bcacc65cff8963a13da7982652d1adb9fd72d145ae07e418969431915e6f41
+# fingerprint: sha256:438fd5daffa1c3376b9f137e9b99b849491e3bd23724f10749211acc7b7b3728
 groups:
   - id: metric.acme.probe.duration
     type: metric
@@ -26,6 +26,16 @@ groups:
         requirement_level: required
       - ref: acme.region
         requirement_level: recommended
+  - id: metric.megarepo.store_gc_rss
+    type: metric
+    metric_name: megarepo_store_gc_rss_bytes
+    instrument: gauge
+    unit: By
+    stability: development
+    brief: Resident set size (bytes) sampled during mr store gc/status.
+    attributes:
+      - ref: megarepo.store.gc.repo_concurrency
+        requirement_level: required
   - id: span.acme.operation
     type: span
     span_kind: internal
@@ -130,6 +140,188 @@ groups:
       - ref: genie.cwd
         requirement_level: required
       - ref: genie.file.target_path
+        requirement_level: required
+  - id: span.megarepo.git_delete_branch
+    type: span
+    span_kind: internal
+    stability: development
+    brief: A `git branch -D/-d` performed by megarepo.
+    attributes:
+      - ref: megarepo.branch
+        requirement_level: required
+  - id: span.megarepo.git_detach_worktree_head
+    type: span
+    span_kind: internal
+    stability: development
+    brief: A `git checkout --detach` performed by megarepo.
+    attributes:
+      - ref: megarepo.worktree_path
+        requirement_level: required
+  - id: span.megarepo.store_gc
+    type: span
+    span_kind: internal
+    stability: development
+    brief: A whole `mr store gc` invocation.
+    attributes:
+      - ref: megarepo.store.gc.policy
+        requirement_level: required
+      - ref: megarepo.cli.dry_run
+        requirement_level: required
+      - ref: megarepo.cli.force
+        requirement_level: required
+      - ref: megarepo.cli.all
+        requirement_level: required
+  - id: span.megarepo.store_gc_archive_worktree
+    type: span
+    span_kind: internal
+    stability: development
+    brief: A cold-worktree archive move.
+    attributes:
+      - ref: megarepo.branch
+        requirement_level: required
+      - ref: megarepo.store.gc.archive_reason
+        requirement_level: required
+  - id: span.megarepo.store_gc_assess_lossless
+    type: span
+    span_kind: internal
+    stability: development
+    brief: The lossless-floor assessment for a worktree.
+    attributes:
+      - ref: megarepo.worktree_path
+        requirement_level: required
+  - id: span.megarepo.store_gc_cold_reclaim_repo
+    type: span
+    span_kind: internal
+    stability: development
+    brief: One repo's cold-reclaim pass.
+    attributes:
+      - ref: megarepo.store.repo
+        requirement_level: required
+      - ref: megarepo.store.bare_repo_path
+        requirement_level: required
+  - id: span.megarepo.store_gc_reap_archive
+    type: span
+    span_kind: internal
+    stability: development
+    brief: An archive hard-delete.
+    attributes:
+      - ref: megarepo.store.gc.archive_path
+        requirement_level: required
+  - id: span.megarepo.store_gc_resolve_pr_state
+    type: span
+    span_kind: internal
+    stability: development
+    brief: A per-branch PR-state lookup.
+    attributes:
+      - ref: megarepo.branch
+        requirement_level: required
+  - id: span.megarepo.store_gc_scan_archives
+    type: span
+    span_kind: internal
+    stability: development
+    brief: Archive enumeration.
+    attributes:
+      - ref: megarepo.repo_root
+        requirement_level: required
+  - id: span.megarepo.store_gc_unpushed_commit_count
+    type: span
+    span_kind: internal
+    stability: development
+    brief: The unpushed-commit count for a worktree HEAD.
+    attributes:
+      - ref: megarepo.worktree_head
+        requirement_level: required
+  - id: span.megarepo.sync
+    type: span
+    span_kind: internal
+    stability: development
+    brief: A whole sync run.
+    attributes:
+      - ref: megarepo.root
+        requirement_level: required
+      - ref: megarepo.sync.mode
+        requirement_level: required
+      - ref: megarepo.sync.depth
+        requirement_level: required
+      - ref: megarepo.cli.dry_run
+        requirement_level: required
+      - ref: megarepo.cli.all
+        requirement_level: required
+      - ref: megarepo.cli.force
+        requirement_level: required
+  - id: span.megarepo.sync_member
+    type: span
+    span_kind: internal
+    stability: development
+    brief: The whole per-member sync (enclosing clone/resolve/create-worktree).
+    attributes:
+      - ref: megarepo.sync.member.name
+        requirement_level: required
+      - ref: megarepo.sync.member.source
+        requirement_level: required
+  - id: span.megarepo.sync_member_clone
+    type: span
+    span_kind: internal
+    stability: development
+    brief: Member clone-or-fetch (bare_exists distinguishes fetch from initial clone).
+    attributes:
+      - ref: megarepo.sync.member.bare_exists
+        requirement_level: required
+  - id: span.megarepo.sync_member_create_worktree
+    type: span
+    span_kind: internal
+    stability: development
+    brief: Member worktree creation.
+    attributes:
+      - ref: megarepo.sync.member.ref
+        requirement_level: required
+      - ref: megarepo.sync.member.ref_type
+        requirement_level: recommended
+  - id: span.megarepo.sync_member_resolve_ref
+    type: span
+    span_kind: internal
+    stability: development
+    brief: Member ref resolution.
+    attributes:
+      - ref: megarepo.sync.member.ref
+        requirement_level: required
+      - ref: megarepo.sync.member.ref_type
+        requirement_level: recommended
+  - id: span.megarepo.test_store_fixture_create
+    type: span
+    span_kind: internal
+    stability: development
+    brief: Creation of a hermetic store fixture.
+    attributes:
+      - ref: megarepo.test.store_fixture.repo_count
+        requirement_level: required
+  - id: span.megarepo.test_store_fixture_repo
+    type: span
+    span_kind: internal
+    stability: development
+    brief: One repository's setup inside a store fixture.
+    attributes:
+      - ref: megarepo.test.store_fixture.repo
+        requirement_level: required
+      - ref: megarepo.test.store_fixture.branch_count
+        requirement_level: required
+      - ref: megarepo.test.store_fixture.tag_count
+        requirement_level: required
+      - ref: megarepo.test.store_fixture.commit_count
+        requirement_level: required
+      - ref: megarepo.test.store_fixture.with_remote
+        requirement_level: required
+  - id: span.megarepo.traversal
+    type: span
+    span_kind: internal
+    stability: development
+    brief: A nested-megarepo traversal.
+    attributes:
+      - ref: megarepo.traversal.root
+        requirement_level: required
+      - ref: megarepo.traversal.purpose
+        requirement_level: required
+      - ref: megarepo.traversal.all
         requirement_level: required
   - id: span.notion_md.batch_watch
     type: span
