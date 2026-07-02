@@ -40,9 +40,22 @@ the terminal. Concretely:
    human-text parsing is NOT part of an adapter — it is, at most, a clearly
    labeled best-effort scraper that lives _outside_ the adapter contract and is
    never presented as a supported adapter.
-2. **Usage site adopts the format flag.** The devenv/CI call-site that opts into
-   an adapter passes the corresponding format flag (or side-channel file). This
-   is part of instrumenting a command, not an otel-scrape default.
+2. **Who adopts the format flag — split by adapter shape.** For a **needs-render**
+   adapter (oxlint) the call-site passes the format flag (`--format=json`): the
+   structured format replaces the tool's stdout, so the flag is part of
+   instrumenting the command, not an otel-scrape default. For a **side-channel**
+   adapter (vitest) otel-scrape MAY own and inject the side-channel flags itself
+   (`--reporter=json --outputFile.json=<tmp>`) for the CLOSED, known adapter set,
+   because the flags are mechanical and the human stdout is unaffected — PROVIDED
+   it (i) respects any user-supplied `--outputFile.json`/`--reporter` (reads the
+   user's file in place and never deletes it; preserves the user's human reporter
+   and only adds `--reporter=json` alongside; injects `--reporter=default` only
+   when the user passed no reporter) and (ii) degrades **non-silently**: on a
+   missing/empty/unparseable side-channel file it warns on stderr and OMITS the
+   metrics rather than emitting a misleading `tests=0 / failures=0`. This is the
+   actual, better design — the impl injects for vitest under these guards; the
+   original "call-site passes it, not an otel-scrape default" wording held only for
+   the needs-render (oxlint) path and is narrowed to it here.
 3. **Presentation ownership (UX-neutral).** When the structured format replaces
    the tool's human stdout, the adapter MUST re-render a readable summary to the
    terminal (severity/file/rule/count). Where the tool offers a **side-channel**

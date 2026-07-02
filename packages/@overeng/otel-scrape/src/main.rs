@@ -19,7 +19,7 @@ fn main() -> ExitCode {
             print_version();
             ExitCode::SUCCESS
         }
-        Ok(CommandRequest::Run(config)) => match run(config) {
+        Ok(CommandRequest::Run(config)) => match run(*config) {
             Ok(code) => ExitCode::from(code.clamp(0, 255) as u8),
             Err(cause) => {
                 eprintln!("otel-scrape: {cause}");

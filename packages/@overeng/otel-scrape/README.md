@@ -27,7 +27,7 @@ joins a W3C `traceparent` and exports the child context through both
 
 ```text
 otel-scrape [--summary-out <file>]
-  [--adapter none|oxlint|node-cpuprofile]
+  [--adapter none|oxlint|vitest|node-cpuprofile]
   [--process-backend direct-child|ptrace-experimental|helper-stream]
   [--process-helper-socket <path>]
   [--otlp-endpoint <url>]
@@ -152,10 +152,25 @@ with focused tests. English logs, progress bars, unstable human output, raw
 paths, source text, private payloads, and raw profile bytes are not accepted as
 release adapter inputs.
 
-`--adapter oxlint` parses oxlint JSON from stdout after preserving the child
-stdout bytes, recording a diagnostics metric and diagnostic events in the
-summary. Diagnostic filenames are hashed instead of copied into telemetry
-evidence.
+`--adapter oxlint` parses oxlint JSON from stdout, recording a diagnostics metric
+and diagnostic events in the summary. Diagnostic filenames are hashed instead of
+copied into telemetry evidence. The caller MUST pass `--format=json` to oxlint
+(decision 0017 clause 2): oxlint has no side-channel, so its JSON replaces the
+human diagnostics on stdout, and otel-scrape captures that stdout and re-renders a
+readable summary in its place. If oxlint emits non-JSON output (the `--format=json`
+flag was omitted), the parse fails and the captured raw bytes are flushed verbatim
+— output is never swallowed, but the re-rendered human summary is unavailable.
+
+`--adapter vitest` reads vitest's Jest-compatible `--reporter=json` output through
+a side-channel instead of scraping human stdout. otel-scrape injects
+`--reporter=json` plus an `--outputFile.json=<file>` it owns, then parses that file
+for summary counts and records `vitest.tests` and `vitest.failures` metrics in the
+summary. It never clobbers user-supplied flags: a pre-existing `--outputFile.json`
+is read in place and never deleted, a user's human `--reporter` is preserved (the
+JSON reporter is only added alongside it), and vitest's human stdout is passed
+through untouched. Like oxlint, the counts stay summary-only — no OTLP metric
+events are emitted. Raw test names, file paths, and failure messages are not
+copied into telemetry evidence.
 
 `--adapter node-cpuprofile` supports direct Node child commands. The wrapper
 adds Node's documented CPU-profile flags, stores the produced `.cpuprofile`
@@ -172,7 +187,7 @@ are not a supported first-class source.
 
 Deferred adapter work has two ordered lanes. General adapter fleet expansion
 starts with Cargo structured compiler/timing output, then `tsc
---generateTrace`, then Vitest JSON/native OTEL evidence. Profile-producing
+--generateTrace`. Profile-producing
 build-tool artifact work starts with `tsc --generateTrace`, but only after trace
 artifact grouping is specified. Package-manager phases and Vite stay behind the
 same structured-source audit. Candidates remain rejected by the CLI until their
@@ -201,8 +216,9 @@ artifacts that should survive cleanup.
 | Descendant process-tree spans                    | Linux opt-in exact backend      | `--process-backend ptrace-experimental` is validated on Linux by the compiled DAG fixture. Default output remains degraded until helper-backed runner-class validation proves exactness. |
 | macOS descendant process-tree spans              | Degraded                        | Direct-child evidence only until a signed/entitled Endpoint Security helper is installed, approved, loss-aware, and validated on the macOS ARM runner class.                             |
 | `oxlint` adapter                                 | Supported                       | Parses structured JSON diagnostics while preserving stdout.                                                                                                                              |
+| `vitest` adapter                                 | Supported                       | Reads vitest's `--reporter=json` side-channel; summary-only `vitest.tests`/`vitest.failures` counts, human stdout preserved, no raw test names/paths/messages in evidence.               |
 | `node-cpuprofile` adapter                        | Supported first profile adapter | Direct Node child commands only; degraded evidence is recorded for unsupported or malformed profile cases.                                                                               |
-| `tsc`/Cargo/Vitest/package-manager/Vite adapters | Deferred                        | Candidate adapters are rejected until they land with the structured-source, privacy, degradation, registry, and consumer-evidence gate.                                                  |
+| `tsc`/Cargo/package-manager/Vite adapters        | Deferred                        | Candidate adapters are rejected until they land with the structured-source, privacy, degradation, registry, and consumer-evidence gate.                                                  |
 
 Telemetry semantic names are generated from
 `context/otel-scrape/telemetry-registry.json` into Rust and TypeScript bindings;

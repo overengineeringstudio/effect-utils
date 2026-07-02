@@ -154,7 +154,9 @@ pub struct ProfileArtifactInput {
 pub enum CommandRequest {
     Help,
     Version,
-    Run(RunConfig),
+    // Boxed: `RunConfig` is ~288 bytes while the other variants carry no data, so
+    // an unboxed `Run` would bloat every `CommandRequest` (clippy large-enum-variant).
+    Run(Box<RunConfig>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -747,7 +749,7 @@ pub fn parse_args(args: &[String]) -> Result<CommandRequest, UsageError> {
         );
     }
 
-    Ok(CommandRequest::Run(RunConfig {
+    Ok(CommandRequest::Run(Box::new(RunConfig {
         summary_out,
         adapter,
         cas_root,
@@ -764,7 +766,7 @@ pub fn parse_args(args: &[String]) -> Result<CommandRequest, UsageError> {
         trusted_otlp,
         trusted_summary,
         argv,
-    }))
+    })))
 }
 
 pub fn print_help() {
@@ -877,15 +879,18 @@ struct ChildRun {
     child_pid: Option<u32>,
     // Side-channel structured-source file (decision 0017: vitest). otel-scrape
     // injects `--outputFile.json=<this>` so the child writes its JSON here while
-    // its human stdout stays untouched. Read after the child exits, then removed.
+    // its human stdout stays untouched. Read after the child exits.
     sidechannel_file: Option<PathBuf>,
+    // Whether otel-scrape created `sidechannel_file` and must delete it. A
+    // user-supplied `--outputFile.json` is read in place, never deleted (0017).
+    sidechannel_owned: bool,
 }
 
 fn run_child(config: &RunConfig, child_traceparent: &str, run_id: &str) -> io::Result<ChildRun> {
     match config.process_backend {
         ProcessBackendSelection::DirectChild => run_child_direct(config, child_traceparent, run_id),
         ProcessBackendSelection::PtraceExperimental => {
-            run_child_with_ptrace(config, child_traceparent)
+            run_child_with_ptrace(config, child_traceparent, run_id)
         }
         ProcessBackendSelection::HelperStream => {
             run_child_with_helper_stream(config, child_traceparent, run_id)
@@ -912,7 +917,7 @@ fn run_child_direct(
     let node_profile_dir = prepare_node_cpuprofile_dir(config)?;
     let process_span_id = random_hex(8)?;
     let mode = stdout_mode(config);
-    let sidechannel_file = vitest_sidechannel_path(config)?;
+    let sidechannel = vitest_sidechannel(config)?;
     let mut command = Command::new(&config.argv[0]);
     command
         .args(&config.argv[1..])
@@ -925,8 +930,8 @@ fn run_child_direct(
         .env(OTEL_TASK_TRACEPARENT_ENV, child_traceparent)
         .env(RUN_ID_ENV, run_id)
         .stdin(Stdio::inherit());
-    if let Some(path) = sidechannel_file.as_ref() {
-        command.args(vitest_sidechannel_args(path));
+    if let Some(plan) = sidechannel.as_ref() {
+        command.args(&plan.inject_args);
     }
     if let Some(profile_dir) = node_profile_dir.as_ref() {
         command.env(
@@ -982,7 +987,8 @@ fn run_child_direct(
         stderr,
         node_profile_dir,
         child_pid: Some(process_id),
-        sidechannel_file,
+        sidechannel_file: sidechannel.as_ref().map(|plan| plan.read_path.clone()),
+        sidechannel_owned: sidechannel.as_ref().is_some_and(|plan| plan.owned),
         process_observation: direct_child_process_observation(DirectChildProcessObservation {
             config,
             process_id,
@@ -995,33 +1001,112 @@ fn run_child_direct(
     })
 }
 
-/// Path for the vitest side-channel JSON file (decision 0017), or `None` for any
-/// other adapter. otel-scrape owns the path so it can read and remove it.
-fn vitest_sidechannel_path(config: &RunConfig) -> io::Result<Option<PathBuf>> {
+/// The vitest side-channel plan (decision 0017): the JSON file otel-scrape reads
+/// after the child exits, the flags it injects so a JSON reporter writes there,
+/// and whether otel-scrape owns (must delete) the file.
+struct VitestSidechannel {
+    /// JSON file otel-scrape reads once the child exits.
+    read_path: PathBuf,
+    /// Flags injected into the child argv so a JSON report lands at a known path
+    /// while the human reporter still writes to the terminal.
+    inject_args: Vec<String>,
+    /// Whether otel-scrape created `read_path` and must delete it. NEVER set for a
+    /// user-supplied `--outputFile.json` — deleting the operator's file is data loss.
+    owned: bool,
+}
+
+/// User-supplied vitest flags otel-scrape must respect before injecting its own
+/// side-channel flags (decision 0017 clause 2): a pre-existing `--outputFile.json`
+/// (any form) is read in place instead of clobbered, and a pre-existing
+/// `--reporter` is preserved instead of overridden.
+struct VitestUserFlags {
+    output_file_json: Option<PathBuf>,
+    has_any_reporter: bool,
+    has_json_reporter: bool,
+}
+
+/// Scan the child argv for the vitest flags that otel-scrape's side-channel would
+/// otherwise clobber. Handles both `--flag=value` and `--flag value` forms.
+fn scan_vitest_user_flags(argv: &[String]) -> VitestUserFlags {
+    let mut output_file_json = None;
+    let mut has_any_reporter = false;
+    let mut has_json_reporter = false;
+    let mut iter = argv.iter().peekable();
+    while let Some(arg) = iter.next() {
+        if let Some(value) = arg.strip_prefix("--outputFile.json=") {
+            output_file_json = Some(PathBuf::from(value));
+        } else if arg == "--outputFile.json" {
+            // Bare form: the next arg is the path. Peek (don't consume) so it is
+            // still forwarded to vitest unchanged.
+            if let Some(value) = iter.peek() {
+                output_file_json = Some(PathBuf::from(value.as_str()));
+            }
+        } else if let Some(value) = arg.strip_prefix("--reporter=") {
+            has_any_reporter = true;
+            has_json_reporter |= value == "json";
+        } else if arg == "--reporter" {
+            has_any_reporter = true;
+            has_json_reporter |= iter.peek().map(|v| v.as_str()) == Some("json");
+        }
+    }
+    VitestUserFlags {
+        output_file_json,
+        has_any_reporter,
+        has_json_reporter,
+    }
+}
+
+/// Plan the vitest side-channel for this invocation (decision 0017), or `None` for
+/// any other adapter. otel-scrape ensures a JSON reporter + a known output path so
+/// it can read structured counts, WITHOUT clobbering user-supplied flags:
+///   - a pre-existing `--outputFile.json` is read in place and never deleted;
+///   - a pre-existing human `--reporter` is preserved (only `--reporter=json` is
+///     added alongside — vitest supports multiple reporters);
+///   - only when the user passed no `--reporter` at all does otel-scrape inject
+///     `--reporter=default` (verified: `--reporter=json` alone blanks the terminal).
+fn vitest_sidechannel(config: &RunConfig) -> io::Result<Option<VitestSidechannel>> {
     if config.adapter != VITEST_ADAPTER {
         return Ok(None);
     }
-    let suffix = random_hex(8)?;
-    Ok(Some(
-        std::env::temp_dir().join(format!("otel-scrape-vitest-{suffix}.json")),
-    ))
-}
+    let user = scan_vitest_user_flags(&config.argv);
 
-/// Flags otel-scrape appends to a vitest invocation for the side-channel
-/// (decision 0017): the JSON reporter writes structured results to the injected
-/// file while `--reporter=default` keeps vitest's human output on stdout untouched
-/// (verified: `--reporter=json` alone blanks the terminal).
-fn vitest_sidechannel_args(path: &Path) -> Vec<String> {
-    vec![
-        "--reporter=default".to_owned(),
-        "--reporter=json".to_owned(),
-        format!("--outputFile.json={}", path.display()),
-    ]
+    let mut inject_args = Vec::new();
+    if !user.has_any_reporter {
+        // No user reporter: keep vitest's human output AND add the JSON side-channel.
+        inject_args.push("--reporter=default".to_owned());
+        inject_args.push("--reporter=json".to_owned());
+    } else if !user.has_json_reporter {
+        // Preserve the user's human reporter(s); add only the JSON side-channel.
+        inject_args.push("--reporter=json".to_owned());
+    }
+    // else: the user already asked for a JSON reporter — inject no reporter flag.
+
+    match user.output_file_json {
+        Some(read_path) => Ok(Some(VitestSidechannel {
+            read_path,
+            inject_args,
+            owned: false,
+        })),
+        None => {
+            let suffix = random_hex(8)?;
+            let read_path = std::env::temp_dir().join(format!("otel-scrape-vitest-{suffix}.json"));
+            inject_args.push(format!("--outputFile.json={}", read_path.display()));
+            Ok(Some(VitestSidechannel {
+                read_path,
+                inject_args,
+                owned: true,
+            }))
+        }
+    }
 }
 
 #[cfg(not(target_os = "linux"))]
-fn run_child_with_ptrace(config: &RunConfig, child_traceparent: &str) -> io::Result<ChildRun> {
-    let mut child = run_child_direct(config, child_traceparent)?;
+fn run_child_with_ptrace(
+    config: &RunConfig,
+    child_traceparent: &str,
+    run_id: &str,
+) -> io::Result<ChildRun> {
+    let mut child = run_child_direct(config, child_traceparent, run_id)?;
     child.process_observation.backend = ProcessObservationBackend::DirectChild;
     child.process_observation.fidelity = ProcessObservationFidelity::Degraded;
     child.process_observation.degraded_reason =
@@ -1030,13 +1115,19 @@ fn run_child_with_ptrace(config: &RunConfig, child_traceparent: &str) -> io::Res
 }
 
 #[cfg(target_os = "linux")]
-fn run_child_with_ptrace(config: &RunConfig, child_traceparent: &str) -> io::Result<ChildRun> {
+fn run_child_with_ptrace(
+    config: &RunConfig,
+    child_traceparent: &str,
+    // The ptrace backend does not thread RUN_ID_ENV to the child (unlike the
+    // direct backend); accepted for a uniform signature across cfg variants.
+    _run_id: &str,
+) -> io::Result<ChildRun> {
     use std::collections::{HashMap, HashSet};
     use std::os::unix::process::CommandExt;
 
     let node_profile_dir = prepare_node_cpuprofile_dir(config)?;
     let mode = stdout_mode(config);
-    let sidechannel_file = vitest_sidechannel_path(config)?;
+    let sidechannel = vitest_sidechannel(config)?;
     let mut command = Command::new(&config.argv[0]);
     command
         .args(&config.argv[1..])
@@ -1047,8 +1138,8 @@ fn run_child_with_ptrace(config: &RunConfig, child_traceparent: &str) -> io::Res
         // beneath this command span.
         .env(OTEL_TASK_TRACEPARENT_ENV, child_traceparent)
         .stdin(Stdio::inherit());
-    if let Some(path) = sidechannel_file.as_ref() {
-        command.args(vitest_sidechannel_args(path));
+    if let Some(plan) = sidechannel.as_ref() {
+        command.args(&plan.inject_args);
     }
     if let Some(profile_dir) = node_profile_dir.as_ref() {
         command.env(
@@ -1222,8 +1313,7 @@ fn run_child_with_ptrace(config: &RunConfig, child_traceparent: &str) -> io::Res
     let stdout = stdout_reader.map(join_reader).transpose()?;
     let stderr = stderr_reader.map(join_reader).transpose()?;
     let Some(status) = root_status else {
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
+        return Err(io::Error::other(
             "ptrace backend did not observe root process exit",
         ));
     };
@@ -1234,7 +1324,8 @@ fn run_child_with_ptrace(config: &RunConfig, child_traceparent: &str) -> io::Res
         stderr,
         node_profile_dir,
         child_pid: u32::try_from(root_pid).ok(),
-        sidechannel_file,
+        sidechannel_file: sidechannel.as_ref().map(|plan| plan.read_path.clone()),
+        sidechannel_owned: sidechannel.as_ref().is_some_and(|plan| plan.owned),
         process_observation: ptrace_process_observation(traces),
     })
 }
@@ -2087,14 +2178,8 @@ fn process_observation_summary(
 
 fn output_summary(child: &ChildRun) -> OutputSummary {
     OutputSummary {
-        stdout: child
-            .stdout
-            .as_deref()
-            .map(|bytes| output_descriptor_for_bytes(bytes)),
-        stderr: child
-            .stderr
-            .as_deref()
-            .map(|bytes| output_descriptor_for_bytes(bytes)),
+        stdout: child.stdout.as_deref().map(output_descriptor_for_bytes),
+        stderr: child.stderr.as_deref().map(output_descriptor_for_bytes),
     }
 }
 
@@ -2664,11 +2749,7 @@ fn normalize_otlp_trace_endpoint(value: &str) -> String {
 
 fn normalize_otlp_base_endpoint(value: &str) -> String {
     let base = value.trim_end_matches('/');
-    if endpoint_has_path(base) {
-        format!("{base}/v1/traces")
-    } else {
-        format!("{base}/v1/traces")
-    }
+    format!("{base}/v1/traces")
 }
 
 fn endpoint_has_path(value: &str) -> bool {
@@ -2853,8 +2934,13 @@ fn stdout_mode(config: &RunConfig) -> StdoutMode {
                 StdoutMode::CaptureSilent
             }
         }
-        // node-cpuprofile (and any future capture-and-passthrough adapter).
-        _ => StdoutMode::TeeLive,
+        // node-cpuprofile emits a side-artifact (the profile) while its human
+        // stdout stays readable, so it is captured AND streamed live.
+        NODE_CPUPROFILE_ADAPTER => StdoutMode::TeeLive,
+        // The adapter set is closed and validated in parse_args; any other value
+        // reaching here is a bug, not a silent tee of raw structured output. A new
+        // adapter MUST be classified deliberately by adding an arm above.
+        other => unreachable!("unclassified adapter for stdout mode: {other}"),
     }
 }
 
@@ -2877,7 +2963,18 @@ fn adapter_outputs(
     let (mut outputs, render) = match (stdout_ownership, config.adapter.as_str()) {
         (AdapterStdoutOwnership::ThisWrapper, OXLINT_ADAPTER) => oxlint_adapter(structured_source),
         (AdapterStdoutOwnership::Inherited, VITEST_ADAPTER) => {
-            (vitest_outputs(structured_source), None)
+            match vitest_outputs(structured_source) {
+                Ok(outputs) => (outputs, None),
+                // Degrade non-silently (decision 0017 clause 2): warn once to stderr and
+                // omit the vitest metrics rather than emitting a misleading 0/0. The
+                // wrapped command's own output and exit code are unaffected.
+                Err(reason) => {
+                    eprintln!(
+                    "otel-scrape: warning: vitest side-channel unavailable ({reason}); skipping vitest metrics"
+                );
+                    (Vec::new(), None)
+                }
+            }
         }
         _ => (Vec::new(), None),
     };
@@ -2936,8 +3033,13 @@ fn present_adapter_stdout(config: &RunConfig, adapter: &AdapterRun, child: &Chil
 }
 
 /// Remove the vitest side-channel file after its structured source is consumed
-/// (decision 0017). Best-effort: a failure here never affects the child's exit.
+/// (decision 0017). Only removes a file otel-scrape created — a user-supplied
+/// `--outputFile.json` is left untouched (data-loss guard, clause 2). Best-effort:
+/// a failure here never affects the child's exit.
 fn cleanup_sidechannel_file(child: &ChildRun) {
+    if !child.sidechannel_owned {
+        return;
+    }
     if let Some(path) = child.sidechannel_file.as_ref() {
         let _ = std::fs::remove_file(path);
     }
@@ -3295,8 +3397,14 @@ struct VitestJson {
 /// oxlint structured-in / pretty-out (decision 0017): parse the `--format=json`
 /// report into public-safe adapter records (severity + hashed filename + count),
 /// and produce a human summary otel-scrape renders to the terminal in place of the
-/// suppressed raw JSON. Returns `(outputs, None)` on a parse failure so the caller
-/// flushes the captured raw bytes instead of swallowing output.
+/// suppressed raw JSON.
+///
+/// PRECONDITION: the caller must pass `--format=json` to oxlint (0017 clause 2 —
+/// the usage site adopts the format flag). oxlint has no side-channel, so its
+/// human output on stdout IS its default format; otel-scrape captures stdout and
+/// re-renders. On non-JSON stdout the parse fails and this returns `(outputs,
+/// None)`, so `present_adapter_stdout` flushes the captured raw bytes instead of
+/// swallowing output — the human render is simply unavailable.
 fn oxlint_adapter(structured_source: &[u8]) -> (Vec<AdapterOutput>, Option<String>) {
     let Ok(report) = serde_json::from_slice::<OxlintJson>(structured_source) else {
         return (Vec::new(), None);
@@ -3351,14 +3459,24 @@ fn oxlint_render(diagnostics: &[OxlintDiagnostic]) -> String {
 }
 
 /// vitest side-channel adapter (decision 0017): parse the `--reporter=json`
-/// report written to the injected `--outputFile.json`. Public-safe count metrics
-/// only — no test names, files, or failure messages cross a sink. Presentation is
-/// left to vitest's own stdout (side-channel), so there is no render.
-fn vitest_outputs(structured_source: &[u8]) -> Vec<AdapterOutput> {
+/// report written to `--outputFile.json`. Public-safe count metrics only — no test
+/// names, files, or failure messages cross a sink. Presentation is left to vitest's
+/// own stdout (side-channel), so there is no render.
+///
+/// Returns `Err(reason)` when the side-channel is unavailable — a missing/empty
+/// file (collapsed to empty bytes upstream) or unparseable JSON. `VitestJson` uses
+/// `#[serde(default)]`, so without this guard an absent side-channel would silently
+/// parse to `tests=0 / failures=0`; instead the caller WARNS and omits the metrics
+/// rather than reporting misleading zeroes. A validly-parsed report with genuine
+/// zero counts is `Ok` and IS emitted.
+fn vitest_outputs(structured_source: &[u8]) -> Result<Vec<AdapterOutput>, &'static str> {
+    if structured_source.is_empty() {
+        return Err("no side-channel output (missing or empty file)");
+    }
     let Ok(report) = serde_json::from_slice::<VitestJson>(structured_source) else {
-        return Vec::new();
+        return Err("unparseable side-channel JSON");
     };
-    vec![
+    Ok(vec![
         AdapterOutput::Metric(AdapterMetric {
             name: telemetry_registry::metrics::VITEST_TESTS,
             value: report.num_total_tests,
@@ -3367,7 +3485,7 @@ fn vitest_outputs(structured_source: &[u8]) -> Vec<AdapterOutput> {
             name: telemetry_registry::metrics::VITEST_FAILURES,
             value: report.num_failed_tests,
         }),
-    ]
+    ])
 }
 
 fn hash_path_identity(path: &str) -> String {
@@ -3566,10 +3684,10 @@ fn child_termination(status: ExitStatus) -> Option<ChildTermination> {
     #[cfg(unix)]
     {
         use std::os::unix::process::ExitStatusExt;
-        return status.signal().map(|signal| ChildTermination::Signal {
+        status.signal().map(|signal| ChildTermination::Signal {
             signal,
             synthetic_exit_code: 128 + signal,
-        });
+        })
     }
 
     #[cfg(not(unix))]
@@ -3607,7 +3725,7 @@ mod tests {
 
         assert_eq!(
             request,
-            CommandRequest::Run(RunConfig {
+            CommandRequest::Run(Box::new(RunConfig {
                 summary_out: Some(PathBuf::from("summary.json")),
                 adapter: "none".to_owned(),
                 cas_root: None,
@@ -3624,7 +3742,7 @@ mod tests {
                 trusted_otlp: false,
                 trusted_summary: false,
                 argv: vec!["echo".to_owned(), "hi".to_owned()],
-            })
+            }))
         );
     }
 
@@ -3645,7 +3763,7 @@ mod tests {
 
         assert_eq!(
             request,
-            CommandRequest::Run(RunConfig {
+            CommandRequest::Run(Box::new(RunConfig {
                 summary_out: None,
                 adapter: "none".to_owned(),
                 cas_root: Some(PathBuf::from("cas")),
@@ -3665,7 +3783,7 @@ mod tests {
                 trusted_otlp: false,
                 trusted_summary: false,
                 argv: vec!["true".to_owned()],
-            })
+            }))
         );
     }
 
@@ -4016,6 +4134,7 @@ mod tests {
             node_profile_dir: Some(profile_dir),
             child_pid: Some(std::process::id()),
             sidechannel_file: None,
+            sidechannel_owned: false,
             process_observation: direct_child_process_observation(DirectChildProcessObservation {
                 config: &node_cpuprofile_config(PathBuf::from("cas")),
                 process_id: std::process::id(),

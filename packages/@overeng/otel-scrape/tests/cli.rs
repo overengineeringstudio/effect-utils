@@ -973,6 +973,174 @@ fi
     assert_eq!(failures["value"], 2);
 }
 
+// Conflict guard (decision 0017 clause 2): when the user already passes
+// `--outputFile.json=<theirs>` and a human `--reporter`, otel-scrape reads THEIR
+// file (never injecting its own path, never deleting it) and preserves their
+// reporter (adding only `--reporter=json` alongside, never forcing
+// `--reporter=default` on top).
+#[test]
+fn vitest_adapter_respects_user_output_file_and_reporter() {
+    let dir = tempfile::tempdir().unwrap();
+    let summary = dir.path().join("summary.json");
+    let user_output = dir.path().join("user-results.json");
+    let argv_dump = dir.path().join("argv.txt");
+    // A stand-in for vitest that records its full argv (so the test can assert what
+    // otel-scrape injected) and writes its JSON report to the `--outputFile.json`
+    // path it receives — which must be the USER's path, untouched by otel-scrape.
+    let fake_vitest = dir.path().join("fake-vitest.sh");
+    std::fs::write(
+        &fake_vitest,
+        format!(
+            r#"#!/bin/sh
+: > "{argv_dump}"
+out=
+for arg in "$@"; do
+  printf '%s\n' "$arg" >> "{argv_dump}"
+  case "$arg" in
+    --outputFile.json=*) out="${{arg#--outputFile.json=}}" ;;
+  esac
+done
+echo "RUN  human test output"
+if [ -n "$out" ]; then
+  printf '%s' '{{"numTotalTests":7,"numFailedTests":1}}' > "$out"
+fi
+"#,
+            argv_dump = argv_dump.display(),
+        ),
+    )
+    .unwrap();
+    let mut perms = std::fs::metadata(&fake_vitest).unwrap().permissions();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        perms.set_mode(0o755);
+    }
+    std::fs::set_permissions(&fake_vitest, perms).unwrap();
+
+    let out = otel_scrape()
+        .args(["--adapter", "vitest", "--summary-out"])
+        .arg(&summary)
+        .args(["--"])
+        .arg(&fake_vitest)
+        .arg(format!("--outputFile.json={}", user_output.display()))
+        .arg("--reporter=dot")
+        .output()
+        .unwrap();
+
+    assert!(out.status.success());
+
+    // otel-scrape read the USER's file: the counts come from it.
+    let summary: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&summary).unwrap()).unwrap();
+    let records = summary["adapter"]["records"].as_array().unwrap();
+    let total = records
+        .iter()
+        .find(|record| record["name"] == "vitest.tests")
+        .expect("vitest.tests metric");
+    assert_eq!(total["value"], 7);
+
+    // Data-loss guard: the user's file must NOT be deleted.
+    assert!(
+        user_output.exists(),
+        "otel-scrape must not delete a user-supplied --outputFile.json"
+    );
+
+    // otel-scrape must NOT inject its own --outputFile.json — only the user's is present.
+    let argv = std::fs::read_to_string(&argv_dump).unwrap();
+    let output_flags: Vec<&str> = argv
+        .lines()
+        .filter(|line| line.starts_with("--outputFile.json"))
+        .collect();
+    assert_eq!(
+        output_flags,
+        vec![format!("--outputFile.json={}", user_output.display()).as_str()],
+        "otel-scrape must not inject its own --outputFile.json; argv:\n{argv}"
+    );
+
+    // The user's human reporter is preserved and a JSON reporter is added alongside;
+    // --reporter=default is NOT forced on top of the user's choice.
+    let reporters: Vec<&str> = argv
+        .lines()
+        .filter(|line| line.starts_with("--reporter"))
+        .collect();
+    assert!(
+        reporters.contains(&"--reporter=dot"),
+        "user reporter must be preserved; argv:\n{argv}"
+    );
+    assert!(
+        reporters.contains(&"--reporter=json"),
+        "a JSON reporter must be added for the side-channel; argv:\n{argv}"
+    );
+    assert!(
+        !reporters.contains(&"--reporter=default"),
+        "must not force --reporter=default over the user's reporter; argv:\n{argv}"
+    );
+}
+
+// Warn-on-miss (decision 0017 clause 2): when the side-channel file is
+// missing/empty (e.g. the tool crashed or wrote nothing), otel-scrape WARNS on
+// stderr and OMITS the vitest metrics rather than emitting a misleading 0/0. The
+// wrapped command's own output and exit are unaffected.
+#[test]
+fn vitest_adapter_warns_and_omits_metrics_on_missing_side_channel() {
+    let dir = tempfile::tempdir().unwrap();
+    let summary = dir.path().join("summary.json");
+    // A stand-in for vitest that prints human output but never writes the injected
+    // --outputFile.json, so the side-channel source is absent.
+    let fake_vitest = dir.path().join("fake-vitest.sh");
+    std::fs::write(
+        &fake_vitest,
+        r#"#!/bin/sh
+echo "RUN  human test output"
+"#,
+    )
+    .unwrap();
+    let mut perms = std::fs::metadata(&fake_vitest).unwrap().permissions();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        perms.set_mode(0o755);
+    }
+    std::fs::set_permissions(&fake_vitest, perms).unwrap();
+
+    let out = otel_scrape()
+        .args(["--adapter", "vitest", "--summary-out"])
+        .arg(&summary)
+        .args(["--"])
+        .arg(&fake_vitest)
+        .output()
+        .unwrap();
+
+    assert!(out.status.success());
+    // Child's own human output still passes through untouched.
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("RUN  human test output"));
+
+    // Non-silent degrade: a concise warning on stderr.
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("vitest side-channel unavailable"),
+        "expected a side-channel warning on stderr, got: {stderr}"
+    );
+
+    // No misleading 0/0: the vitest.* records are omitted entirely.
+    let summary: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&summary).unwrap()).unwrap();
+    let records = summary["adapter"]["records"].as_array().unwrap();
+    assert!(
+        !records
+            .iter()
+            .any(|record| record["name"] == "vitest.tests"),
+        "vitest.tests must be omitted when the side-channel is unavailable"
+    );
+    assert!(
+        !records
+            .iter()
+            .any(|record| record["name"] == "vitest.failures"),
+        "vitest.failures must be omitted when the side-channel is unavailable"
+    );
+}
+
 #[cfg(unix)]
 fn compile_process_dag_fixture(dir: &Path) -> PathBuf {
     let source = dir.join("process_dag_fixture.rs");
