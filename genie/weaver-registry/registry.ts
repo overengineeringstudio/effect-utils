@@ -115,8 +115,11 @@ export const identityProvenance: Provenance = {
 const rustIdentityNames = {
   attributeKeys: identityKeys,
   spanIds: registry.signals
-    .filter((s) => s.kind === 'span')
-    .map((s) => s.id)
+    .filter(
+      (s): s is Extract<(typeof registry.signals)[number], { kind: 'span' }> => s.kind === 'span',
+    )
+    // Hash the emitted Rust span-name consts (runtime names, id fallback), matching renderRustConstants.
+    .map((s) => s.span_name ?? s.id)
     .toSorted((a, b) => a.localeCompare(b)),
   metricNames: registry.signals
     .filter(

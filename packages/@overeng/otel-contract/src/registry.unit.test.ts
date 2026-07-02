@@ -4,15 +4,17 @@ import { Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { OtelAttr, OtelAttrs } from './mod.ts'
-import demoContract, { ProbeSpan, ProbesTotal } from './registry-demo.contract.ts'
+import demoContract, { AcmeProbeName, ProbeSpan, ProbesTotal } from './registry-demo.contract.ts'
 import {
   attr,
   defineOtelContract,
   fragment,
+  metric,
   required,
   span,
   WeaverMissingAnnotationError,
   WeaverStrayNamespaceKeyError,
+  WeaverUnsupportedInstrumentError,
 } from './registry.ts'
 
 describe('Layer 2 → runtime encoder derivation (SC-R13/R14)', () => {
@@ -70,6 +72,23 @@ describe('Layer 2 → runtime encoder derivation (SC-R13/R14)', () => {
     expect(() =>
       ProbeSpan.encoder.encodeSync({ probeName: 'x', region: 'bogus' as never }),
     ).toThrow()
+  })
+
+  it('rejects the updowncounter instrument at author time (no OtelMetric constructor for it)', () => {
+    // `updowncounter` stays valid in the Layer-1 `Instrument` type (weaver supports it) but the
+    // Layer-2 builder must reject it rather than silently building a gauge (which would disagree
+    // with the emitted `updowncounter` registry SignalDef).
+    expect(() =>
+      metric({
+        id: 'metric.acme.inflight',
+        name: 'acme.inflight',
+        instrument: 'updowncounter',
+        unit: '{probe}',
+        brief: 'In-flight probes.',
+        stability: 'development',
+        labels: { probeName: required(AcmeProbeName) },
+      }),
+    ).toThrow(WeaverUnsupportedInstrumentError)
   })
 })
 

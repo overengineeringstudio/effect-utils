@@ -1,7 +1,7 @@
 // Generated file - DO NOT EDIT
 // Source: constants.rs.genie.ts
 // registry-source: genie/weaver-registry/registry.ts
-// fingerprint: sha256:1ff2fe899780de9e7c1e50d5e9c59845793c822f2cddb051b8162825998142a1
+// fingerprint: sha256:bf2703f996967958f3a2ebd804efc4262a0937302e53945e8d9ed86e75d9ff76
 // regen: devenv tasks run genie:run
 
 //! Generated OpenTelemetry semantic-convention name constants.
@@ -311,126 +311,126 @@ pub mod attribute {
 
 /// Span names.
 pub mod span {
-    pub const SPAN_ACME_OPERATION: &str = "span.acme.operation";
+    pub const ACME_OPERATION: &str = "acme.operation";
+    pub const ATOMICWRITEFILE: &str = "atomicWriteFile";
+    pub const GENIE_COMMAND: &str = "genie/command";
+    pub const GENIE_FILE: &str = "genie/file";
+    pub const GENIE_OXFMT: &str = "genie/oxfmt";
+    pub const GENIE_PATH: &str = "genie/path";
+    pub const GENIE_RUNVALIDATION: &str = "genie/runValidation";
+    pub const GENIE_TARGET_LOCK: &str = "genie/target-lock";
+    pub const GIT_DELETE_BRANCH: &str = "git/delete-branch";
+    pub const GIT_DETACH_WORKTREE_HEAD: &str = "git/detach-worktree-head";
+    pub const MEGAREPO_STORE_GC: &str = "megarepo/store/gc";
+    pub const MEGAREPO_STORE_GC_ARCHIVE_WORKTREE: &str = "megarepo/store/gc/archive-worktree";
+    pub const MEGAREPO_STORE_GC_ASSESS_LOSSLESS: &str = "megarepo/store/gc/assess-lossless";
+    pub const MEGAREPO_STORE_GC_COLD_RECLAIM_REPO: &str = "megarepo/store/gc/cold-reclaim-repo";
+    pub const MEGAREPO_STORE_GC_REAP_ARCHIVE: &str = "megarepo/store/gc/reap-archive";
+    pub const MEGAREPO_STORE_GC_RESOLVE_PR_STATE: &str = "megarepo/store/gc/resolve-pr-state";
+    pub const MEGAREPO_STORE_GC_SCAN_ARCHIVES: &str = "megarepo/store/gc/scan-archives";
+    pub const MEGAREPO_STORE_GC_UNPUSHED_COMMIT_COUNT: &str = "megarepo/store/gc/unpushed-commit-count";
+    pub const MEGAREPO_SYNC: &str = "megarepo/sync";
+    pub const MEGAREPO_SYNC_MEMBER: &str = "megarepo/sync/member";
+    pub const MEGAREPO_SYNC_MEMBER_CLONE_OR_FETCH: &str = "megarepo/sync/member/clone-or-fetch";
+    pub const MEGAREPO_SYNC_MEMBER_CREATE_WORKTREE: &str = "megarepo/sync/member/create-worktree";
+    pub const MEGAREPO_SYNC_MEMBER_RESOLVE_REF: &str = "megarepo/sync/member/resolve-ref";
+    pub const MEGAREPO_TEST_STORE_FIXTURE_CREATE: &str = "megarepo/test/store-fixture/create";
+    pub const MEGAREPO_TEST_STORE_FIXTURE_REPO: &str = "megarepo/test/store-fixture/repo";
+    pub const MEGAREPO_TRAVERSAL: &str = "megarepo/traversal";
+    pub const NOTION_MD_BATCH_WATCH: &str = "notion-md.batch-watch";
+    pub const NOTION_MD_CAT: &str = "notion-md.cat";
+    pub const NOTION_MD_COMMENT_BOUNDARY: &str = "notion-md.comment-boundary";
+    pub const NOTION_MD_DESTRUCTIVE_BODY: &str = "notion-md.destructive-body";
+    pub const NOTION_MD_EDIT: &str = "notion-md.edit";
+    pub const NOTION_MD_ESTABLISH_SIDECAR: &str = "notion-md.establish-sidecar";
+    pub const NOTION_MD_GATEWAY_ARCHIVE_PAGE: &str = "notion-md.gateway.archive-page";
+    pub const NOTION_MD_GATEWAY_CREATE_PAGE: &str = "notion-md.gateway.create-page";
+    pub const NOTION_MD_GATEWAY_LIST_CHILD_PAGES: &str = "notion-md.gateway.list-child-pages";
+    pub const NOTION_MD_GATEWAY_MOVE_PAGE: &str = "notion-md.gateway.move-page";
+    pub const NOTION_MD_GATEWAY_PULL_PAGE: &str = "notion-md.gateway.pull-page";
+    pub const NOTION_MD_GATEWAY_RETRIEVE_DATA_SOURCE: &str = "notion-md.gateway.retrieve-data-source";
+    pub const NOTION_MD_GATEWAY_UPDATE_MARKDOWN: &str = "notion-md.gateway.update-markdown";
+    pub const NOTION_MD_GATEWAY_UPDATE_PAGE_METADATA: &str = "notion-md.gateway.update-page-metadata";
+    pub const NOTION_MD_GATEWAY_UPDATE_PAGE_PROPERTIES: &str = "notion-md.gateway.update-page-properties";
+    pub const NOTION_MD_MEDIA_BOUNDARY: &str = "notion-md.media-boundary";
+    pub const NOTION_MD_OBJECT_GC: &str = "notion-md.object-gc";
+    pub const NOTION_MD_PLAN_PATH: &str = "notion-md.plan-path";
+    pub const NOTION_MD_PULL_PAGE: &str = "notion-md.pull-page";
+    pub const NOTION_MD_PUSH_PAGE: &str = "notion-md.push-page";
+    pub const NOTION_MD_PUT: &str = "notion-md.put";
+    pub const NOTION_MD_STATE_READ_NMD: &str = "notion-md.state.read-nmd";
+    pub const NOTION_MD_STATE_READ_OBJECT: &str = "notion-md.state.read-object";
+    pub const NOTION_MD_STATE_WRITE_OBJECT: &str = "notion-md.state.write-object";
+    pub const NOTION_MD_STATUS_PAGE: &str = "notion-md.status-page";
+    pub const NOTION_MD_STATUS_PATH: &str = "notion-md.status-path";
+    pub const NOTION_MD_SYNC_PAGE: &str = "notion-md.sync-page";
+    pub const NOTION_MD_SYNC_PATH: &str = "notion-md.sync-path";
+    pub const NOTION_MD_SYNC_TREE: &str = "notion-md.sync-tree";
+    pub const NOTION_MD_WATCH: &str = "notion-md.watch";
+    pub const NOTION_MD_WATCH_SYNC_PASS: &str = "notion-md.watch.sync-pass";
+    pub const NOTION_MD_WEBHOOK_TRIGGER: &str = "notion-md.webhook.trigger";
     pub const SPAN_ACME_PROBE: &str = "span.acme.probe";
-    pub const SPAN_GENIE_ATOMIC_WRITE: &str = "span.genie.atomic_write";
-    pub const SPAN_GENIE_COMMAND: &str = "span.genie.command";
-    pub const SPAN_GENIE_FILE: &str = "span.genie.file";
-    pub const SPAN_GENIE_OXFMT: &str = "span.genie.oxfmt";
-    pub const SPAN_GENIE_PATH: &str = "span.genie.path";
-    pub const SPAN_GENIE_RUN_VALIDATION: &str = "span.genie.run_validation";
-    pub const SPAN_GENIE_TARGET_LOCK: &str = "span.genie.target_lock";
-    pub const SPAN_MEGAREPO_GIT_DELETE_BRANCH: &str = "span.megarepo.git_delete_branch";
-    pub const SPAN_MEGAREPO_GIT_DETACH_WORKTREE_HEAD: &str = "span.megarepo.git_detach_worktree_head";
-    pub const SPAN_MEGAREPO_STORE_GC: &str = "span.megarepo.store_gc";
-    pub const SPAN_MEGAREPO_STORE_GC_ARCHIVE_WORKTREE: &str = "span.megarepo.store_gc_archive_worktree";
-    pub const SPAN_MEGAREPO_STORE_GC_ASSESS_LOSSLESS: &str = "span.megarepo.store_gc_assess_lossless";
-    pub const SPAN_MEGAREPO_STORE_GC_COLD_RECLAIM_REPO: &str = "span.megarepo.store_gc_cold_reclaim_repo";
-    pub const SPAN_MEGAREPO_STORE_GC_REAP_ARCHIVE: &str = "span.megarepo.store_gc_reap_archive";
-    pub const SPAN_MEGAREPO_STORE_GC_RESOLVE_PR_STATE: &str = "span.megarepo.store_gc_resolve_pr_state";
-    pub const SPAN_MEGAREPO_STORE_GC_SCAN_ARCHIVES: &str = "span.megarepo.store_gc_scan_archives";
-    pub const SPAN_MEGAREPO_STORE_GC_UNPUSHED_COMMIT_COUNT: &str = "span.megarepo.store_gc_unpushed_commit_count";
-    pub const SPAN_MEGAREPO_SYNC: &str = "span.megarepo.sync";
-    pub const SPAN_MEGAREPO_SYNC_MEMBER: &str = "span.megarepo.sync_member";
-    pub const SPAN_MEGAREPO_SYNC_MEMBER_CLONE: &str = "span.megarepo.sync_member_clone";
-    pub const SPAN_MEGAREPO_SYNC_MEMBER_CREATE_WORKTREE: &str = "span.megarepo.sync_member_create_worktree";
-    pub const SPAN_MEGAREPO_SYNC_MEMBER_RESOLVE_REF: &str = "span.megarepo.sync_member_resolve_ref";
-    pub const SPAN_MEGAREPO_TEST_STORE_FIXTURE_CREATE: &str = "span.megarepo.test_store_fixture_create";
-    pub const SPAN_MEGAREPO_TEST_STORE_FIXTURE_REPO: &str = "span.megarepo.test_store_fixture_repo";
-    pub const SPAN_MEGAREPO_TRAVERSAL: &str = "span.megarepo.traversal";
-    pub const SPAN_NOTION_MD_BATCH_WATCH: &str = "span.notion_md.batch_watch";
-    pub const SPAN_NOTION_MD_CAT: &str = "span.notion_md.cat";
-    pub const SPAN_NOTION_MD_COMMENT_BOUNDARY: &str = "span.notion_md.comment_boundary";
-    pub const SPAN_NOTION_MD_DESTRUCTIVE_BODY: &str = "span.notion_md.destructive_body";
-    pub const SPAN_NOTION_MD_EDIT: &str = "span.notion_md.edit";
-    pub const SPAN_NOTION_MD_ESTABLISH_SIDECAR: &str = "span.notion_md.establish_sidecar";
-    pub const SPAN_NOTION_MD_GATEWAY_ARCHIVE_PAGE: &str = "span.notion_md.gateway_archive_page";
-    pub const SPAN_NOTION_MD_GATEWAY_CREATE_PAGE: &str = "span.notion_md.gateway_create_page";
-    pub const SPAN_NOTION_MD_GATEWAY_LIST_CHILD_PAGES: &str = "span.notion_md.gateway_list_child_pages";
-    pub const SPAN_NOTION_MD_GATEWAY_MOVE_PAGE: &str = "span.notion_md.gateway_move_page";
-    pub const SPAN_NOTION_MD_GATEWAY_PULL_PAGE: &str = "span.notion_md.gateway_pull_page";
-    pub const SPAN_NOTION_MD_GATEWAY_RETRIEVE_DATA_SOURCE: &str = "span.notion_md.gateway_retrieve_data_source";
-    pub const SPAN_NOTION_MD_GATEWAY_UPDATE_MARKDOWN: &str = "span.notion_md.gateway_update_markdown";
-    pub const SPAN_NOTION_MD_GATEWAY_UPDATE_PAGE_METADATA: &str = "span.notion_md.gateway_update_page_metadata";
-    pub const SPAN_NOTION_MD_GATEWAY_UPDATE_PAGE_PROPERTIES: &str = "span.notion_md.gateway_update_page_properties";
-    pub const SPAN_NOTION_MD_MEDIA_BOUNDARY: &str = "span.notion_md.media_boundary";
-    pub const SPAN_NOTION_MD_OBJECT_GC: &str = "span.notion_md.object_gc";
-    pub const SPAN_NOTION_MD_PLAN_PATH: &str = "span.notion_md.plan_path";
-    pub const SPAN_NOTION_MD_PULL_PAGE: &str = "span.notion_md.pull_page";
-    pub const SPAN_NOTION_MD_PUSH_PAGE: &str = "span.notion_md.push_page";
-    pub const SPAN_NOTION_MD_PUT: &str = "span.notion_md.put";
-    pub const SPAN_NOTION_MD_STATE_READ_NMD: &str = "span.notion_md.state_read_nmd";
-    pub const SPAN_NOTION_MD_STATE_READ_OBJECT: &str = "span.notion_md.state_read_object";
-    pub const SPAN_NOTION_MD_STATE_WRITE_OBJECT: &str = "span.notion_md.state_write_object";
-    pub const SPAN_NOTION_MD_STATUS_PAGE: &str = "span.notion_md.status_page";
-    pub const SPAN_NOTION_MD_STATUS_PATH: &str = "span.notion_md.status_path";
-    pub const SPAN_NOTION_MD_SYNC_PAGE: &str = "span.notion_md.sync_page";
-    pub const SPAN_NOTION_MD_SYNC_PATH: &str = "span.notion_md.sync_path";
-    pub const SPAN_NOTION_MD_SYNC_TREE: &str = "span.notion_md.sync_tree";
-    pub const SPAN_NOTION_MD_WATCH: &str = "span.notion_md.watch";
-    pub const SPAN_NOTION_MD_WATCH_SYNC_PASS: &str = "span.notion_md.watch_sync_pass";
-    pub const SPAN_NOTION_MD_WEBHOOK_TRIGGER: &str = "span.notion_md.webhook_trigger";
 
     pub const ALL: &[&str] = &[
-        "span.acme.operation",
+        "acme.operation",
+        "atomicWriteFile",
+        "genie/command",
+        "genie/file",
+        "genie/oxfmt",
+        "genie/path",
+        "genie/runValidation",
+        "genie/target-lock",
+        "git/delete-branch",
+        "git/detach-worktree-head",
+        "megarepo/store/gc",
+        "megarepo/store/gc/archive-worktree",
+        "megarepo/store/gc/assess-lossless",
+        "megarepo/store/gc/cold-reclaim-repo",
+        "megarepo/store/gc/reap-archive",
+        "megarepo/store/gc/resolve-pr-state",
+        "megarepo/store/gc/scan-archives",
+        "megarepo/store/gc/unpushed-commit-count",
+        "megarepo/sync",
+        "megarepo/sync/member",
+        "megarepo/sync/member/clone-or-fetch",
+        "megarepo/sync/member/create-worktree",
+        "megarepo/sync/member/resolve-ref",
+        "megarepo/test/store-fixture/create",
+        "megarepo/test/store-fixture/repo",
+        "megarepo/traversal",
+        "notion-md.batch-watch",
+        "notion-md.cat",
+        "notion-md.comment-boundary",
+        "notion-md.destructive-body",
+        "notion-md.edit",
+        "notion-md.establish-sidecar",
+        "notion-md.gateway.archive-page",
+        "notion-md.gateway.create-page",
+        "notion-md.gateway.list-child-pages",
+        "notion-md.gateway.move-page",
+        "notion-md.gateway.pull-page",
+        "notion-md.gateway.retrieve-data-source",
+        "notion-md.gateway.update-markdown",
+        "notion-md.gateway.update-page-metadata",
+        "notion-md.gateway.update-page-properties",
+        "notion-md.media-boundary",
+        "notion-md.object-gc",
+        "notion-md.plan-path",
+        "notion-md.pull-page",
+        "notion-md.push-page",
+        "notion-md.put",
+        "notion-md.state.read-nmd",
+        "notion-md.state.read-object",
+        "notion-md.state.write-object",
+        "notion-md.status-page",
+        "notion-md.status-path",
+        "notion-md.sync-page",
+        "notion-md.sync-path",
+        "notion-md.sync-tree",
+        "notion-md.watch",
+        "notion-md.watch.sync-pass",
+        "notion-md.webhook.trigger",
         "span.acme.probe",
-        "span.genie.atomic_write",
-        "span.genie.command",
-        "span.genie.file",
-        "span.genie.oxfmt",
-        "span.genie.path",
-        "span.genie.run_validation",
-        "span.genie.target_lock",
-        "span.megarepo.git_delete_branch",
-        "span.megarepo.git_detach_worktree_head",
-        "span.megarepo.store_gc",
-        "span.megarepo.store_gc_archive_worktree",
-        "span.megarepo.store_gc_assess_lossless",
-        "span.megarepo.store_gc_cold_reclaim_repo",
-        "span.megarepo.store_gc_reap_archive",
-        "span.megarepo.store_gc_resolve_pr_state",
-        "span.megarepo.store_gc_scan_archives",
-        "span.megarepo.store_gc_unpushed_commit_count",
-        "span.megarepo.sync",
-        "span.megarepo.sync_member",
-        "span.megarepo.sync_member_clone",
-        "span.megarepo.sync_member_create_worktree",
-        "span.megarepo.sync_member_resolve_ref",
-        "span.megarepo.test_store_fixture_create",
-        "span.megarepo.test_store_fixture_repo",
-        "span.megarepo.traversal",
-        "span.notion_md.batch_watch",
-        "span.notion_md.cat",
-        "span.notion_md.comment_boundary",
-        "span.notion_md.destructive_body",
-        "span.notion_md.edit",
-        "span.notion_md.establish_sidecar",
-        "span.notion_md.gateway_archive_page",
-        "span.notion_md.gateway_create_page",
-        "span.notion_md.gateway_list_child_pages",
-        "span.notion_md.gateway_move_page",
-        "span.notion_md.gateway_pull_page",
-        "span.notion_md.gateway_retrieve_data_source",
-        "span.notion_md.gateway_update_markdown",
-        "span.notion_md.gateway_update_page_metadata",
-        "span.notion_md.gateway_update_page_properties",
-        "span.notion_md.media_boundary",
-        "span.notion_md.object_gc",
-        "span.notion_md.plan_path",
-        "span.notion_md.pull_page",
-        "span.notion_md.push_page",
-        "span.notion_md.put",
-        "span.notion_md.state_read_nmd",
-        "span.notion_md.state_read_object",
-        "span.notion_md.state_write_object",
-        "span.notion_md.status_page",
-        "span.notion_md.status_path",
-        "span.notion_md.sync_page",
-        "span.notion_md.sync_path",
-        "span.notion_md.sync_tree",
-        "span.notion_md.watch",
-        "span.notion_md.watch_sync_pass",
-        "span.notion_md.webhook_trigger",
     ];
 }
 

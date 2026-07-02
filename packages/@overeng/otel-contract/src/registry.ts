@@ -119,6 +119,12 @@ export type SignalDef =
   | {
       readonly kind: 'span'
       readonly id: string
+      /**
+       * The runtime span name (e.g. `genie/command`), distinct from the weaver group `id`
+       * (e.g. `span.genie.command`). Carried so Rust producer consts emit the name real telemetry
+       * uses. Absent for plain spans that define no runtime name (Rust falls back to `id`).
+       */
+      readonly span_name?: string
       readonly span_kind: SpanKind
       readonly brief: string
       readonly stability: Stability
@@ -171,6 +177,20 @@ export class WeaverEmptyContractError extends Schema.TaggedError<WeaverEmptyCont
   'WeaverEmptyContractError',
   { memberPath: Schema.String },
 ) {}
+
+/**
+ * A metric was authored with an instrument the runtime cannot build. `OtelMetric` has no
+ * `updowncounter` constructor, so mapping it to `gauge` would make runtime emission disagree with
+ * the semconv registry (which still reports `updowncounter`). Rejected at author time instead.
+ */
+export class WeaverUnsupportedInstrumentError extends Schema.TaggedError<WeaverUnsupportedInstrumentError>()(
+  'WeaverUnsupportedInstrumentError',
+  { metricName: Schema.String, instrument: Schema.String },
+) {
+  override get message(): string {
+    return `${this.instrument} is not yet supported by OtelMetric; use counter/histogram/gauge (metric "${this.metricName}")`
+  }
+}
 
 // ---------------------------------------------------------------------------
 // The weaver annotation — a separate symbol from OtelAttrAnnotationId (decision 0001-R1).
@@ -515,6 +535,11 @@ export const metric = (o: {
 }): MetricContract => {
   const { fields, refList, refs } = buildFields(o.labels)
   const labelStruct = structOf(fields)
+  // `OtelMetric` has no `updowncounter` constructor. Reject at author time rather than silently
+  // falling through to `gauge` (which would disagree with the `updowncounter` registry SignalDef).
+  if (o.instrument === 'updowncounter') {
+    throw new WeaverUnsupportedInstrumentError({ metricName: o.name, instrument: o.instrument })
+  }
   const def: OtelMetricDefinition<Schema.Schema.AnyNoContext> =
     o.instrument === 'counter'
       ? OtelMetric.counter({
@@ -601,6 +626,7 @@ export const operation = <
     signal: (): SignalDef => ({
       kind: 'span',
       id: o.id,
+      span_name: o.name,
       span_kind: o.span_kind ?? 'internal',
       brief: o.brief,
       stability: o.stability,

@@ -94,6 +94,12 @@ export type SignalDef =
   | {
       readonly kind: 'span'
       readonly id: string
+      /**
+       * The runtime span name (e.g. `genie/command`), distinct from the weaver group `id`
+       * (e.g. `span.genie.command`). Carried so Rust producer consts emit the name real telemetry
+       * uses. Absent for plain spans that define no runtime name (Rust falls back to `id`).
+       */
+      readonly span_name?: string
       readonly span_kind: SpanKind
       readonly brief: string
       readonly stability: Stability
@@ -332,7 +338,7 @@ const pascal = (key: string): string =>
     .map((seg) => seg.charAt(0).toUpperCase() + seg.slice(1))
     .join('')
 
-const screamingSnake = (key: string): string => key.replace(/[.\-:]/g, '_').toUpperCase()
+const screamingSnake = (key: string): string => key.replace(/[.\-:/]/g, '_').toUpperCase()
 
 /** Single-quoted string literal (matches the repo's oxfmt style, so no reformat is needed). */
 const sq = (k: string): string => `'${k}'`
@@ -424,7 +430,9 @@ export const renderRustConstants = ({
   const attributeKeys = ownKeys(registry)
   const spanNames = registry.signals
     .filter((s): s is Extract<SignalDef, { kind: 'span' }> => s.kind === 'span')
-    .map((s) => s.id)
+    // Emit the RUNTIME span name (what producers actually name spans), not the weaver group id.
+    // Plain spans carry no runtime name, so fall back to the id.
+    .map((s) => s.span_name ?? s.id)
     .toSorted((a, b) => a.localeCompare(b))
   const metricNames = registry.signals
     .filter((s): s is Extract<SignalDef, { kind: 'metric' }> => s.kind === 'metric')

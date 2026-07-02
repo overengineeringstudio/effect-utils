@@ -41,7 +41,9 @@ const EXPECTED_ATTRIBUTE_KEYS = [
   'otel_scrape.target.url',
   'otel_scrape.tls.enabled',
 ] as const
-const EXPECTED_SPAN_IDS = ['span.otel_scrape.batch', 'span.otel_scrape.request'] as const
+// The `request` span carries a `span_name` (operation projection) so its const emits the RUNTIME
+// name; `batch` has none so it falls back to its id. Both paths are covered here.
+const EXPECTED_SPAN_IDS = ['otel_scrape/request', 'span.otel_scrape.batch'] as const
 const EXPECTED_METRIC_NAMES = [
   'otel_scrape.payload.bytes',
   'otel_scrape.scrape.duration',
@@ -93,6 +95,13 @@ describe('renderRustConstants (otel-scrape fixture)', () => {
     expect(constCount('attribute')).toBe(EXPECTED_ATTRIBUTE_KEYS.length)
     expect(constCount('span')).toBe(EXPECTED_SPAN_IDS.length)
     expect(constCount('metric')).toBe(EXPECTED_METRIC_NAMES.length)
+  })
+
+  it('emits the runtime span name for operation-projected spans, not the weaver group id', () => {
+    // `request` carries `span_name: 'otel_scrape/request'` — the const must read the runtime name…
+    expect(rust).toContain('= "otel_scrape/request";')
+    // …and NOT the weaver group id it projects from.
+    expect(rust).not.toContain('span.otel_scrape.request')
   })
 
   it('carries the provenance header (registry-source + fingerprint)', () => {

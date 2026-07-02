@@ -235,6 +235,8 @@ const signals: ReadonlyArray<SignalDef> = [
   {
     kind: 'span',
     id: 'span.otel_scrape.request',
+    // Operation-projected span: the Rust const must emit this runtime name, NOT the group id.
+    span_name: 'otel_scrape/request',
     span_kind: 'client',
     brief: 'A single scrape request against a target.',
     stability: 'development',
