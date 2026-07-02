@@ -1,0 +1,66 @@
+# Generated file - DO NOT EDIT
+# Source: acme.attributes.yaml.genie.ts
+
+# registry-source: weaver-registry/registry.ts
+# fingerprint: sha256:225a7700297d04bd60bf33425624fc5347029b5366699cfd990a15c180d4c179
+groups:
+  - id: registry.acme
+    type: attribute_group
+    display_name: Acme Attributes
+    brief: Attributes for the acme namespace.
+    attributes:
+      - id: acme.attempt
+        type: int
+        stability: development
+        brief: The attempt number for the probe (1-based).
+        examples: [1, 2]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: acme.probe.label
+        type: string
+        stability: development
+        brief: 'Deprecated: use acme.probe.name.'
+        examples: [liveness]
+        deprecated:
+          reason: renamed
+          renamed_to: acme.probe.name
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: acme.probe.name
+        type: string
+        stability: development
+        brief: The name of the acme health probe.
+        examples: [liveness, readiness]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: acme.region
+        type:
+          members:
+            - id: us_east
+              value: us_east
+              brief: US East.
+              stability: development
+            - id: us_west
+              value: us_west
+              brief: US West.
+              stability: development
+            - id: eu_central
+              value: eu_central
+              brief: EU Central.
+              stability: development
+        stability: development
+        brief: The acme deployment region.
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: acme.request.header
+        type: template[string]
+        stability: development
+        brief: Dynamic request header values, keyed by header name.
+        examples: [application/json]
+        annotations:
+          overeng_policy:
+            cardinality: high

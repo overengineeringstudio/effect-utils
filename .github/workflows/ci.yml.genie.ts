@@ -538,6 +538,16 @@ const jobs: Record<
     },
   }),
   cargo: cargoJob,
+  // Additive Weaver semantic-conventions gate, in its own lane (GEN-R09 block-vs-degrade):
+  // the `weaver:check` task blocks on a validation failure but degrades to a warning (exit 0)
+  // if the weaver flake / upstream semconv FOD is unavailable, so it never wedges the product
+  // lanes above.
+  weaver: job({
+    step: {
+      name: 'Weaver registry check',
+      run: runDevenvTasksBefore('weaver:check'),
+    },
+  }),
 }
 
 const sourceShapeMeasurementsDir = 'tmp/source-shape-ci'

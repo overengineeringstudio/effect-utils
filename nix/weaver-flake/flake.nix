@@ -53,6 +53,15 @@
       forAllSystems = f: lib.genAttrs systems (system: f system);
 
       version = "0.24.2";
+
+      # Pinned upstream OTel semantic-conventions registry — materialized as a Nix
+      # fixed-output derivation so the weaver gate resolves `http.*` (and other upstream)
+      # refs against a LOCAL, deterministic, offline copy (SC-A03; confirmed: weaver 0.24.2
+      # accepts a local-filesystem `registry_path` pointing directly at the `model/` dir).
+      # v1.37.0 is verified clean under `--future` with weaver 0.24.2 (≤v1.36 fail on their
+      # own unstructured `deprecated:`). Refresh on bump with:
+      #   nix run nixpkgs#nurl -- https://github.com/open-telemetry/semantic-conventions v<ver>
+      semconvVersion = "1.37.0";
     in
     {
       packages = forAllSystems (
@@ -67,6 +76,18 @@
             tag = "v${version}";
             hash = "sha256-Yyw7YTwndmNdNu4/5J7v9RJFKAYaO0RS06B4BWwXteE=";
           };
+
+          semconvSrc = pkgs.fetchFromGitHub {
+            owner = "open-telemetry";
+            repo = "semantic-conventions";
+            tag = "v${semconvVersion}";
+            hash = "sha256-anSQASvg8SlLR3d3ArKZk5iCx+37F+NidK6jT3gFmpA=";
+          };
+
+          # Just the `model/` subtree — the directory weaver's `registry_path` points at.
+          semconv-model = pkgs.runCommand "semconv-model-${semconvVersion}" { } ''
+            cp -r ${semconvSrc}/model $out
+          '';
 
           weaver = pkgs.rustPlatform.buildRustPackage {
             pname = "weaver";
@@ -133,7 +154,7 @@
           };
         in
         {
-          inherit weaver;
+          inherit weaver semconv-model;
           default = weaver;
         }
       );

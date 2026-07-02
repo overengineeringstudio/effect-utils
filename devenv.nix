@@ -52,6 +52,7 @@ let
     megarepo = import ./nix/devenv-modules/tasks/shared/megarepo.nix;
     nix-cli = import ./nix/devenv-modules/tasks/shared/nix-cli.nix;
     secretspec = import ./nix/devenv-modules/tasks/shared/secretspec.nix;
+    weaver = import ./nix/devenv-modules/tasks/shared/weaver.nix;
     context = ./nix/devenv-modules/tasks/shared/context.nix;
     devenv-module-tests = ./nix/devenv-modules/tasks/local/devenv-module-tests.nix;
     asset-import-type-reference = ./nix/devenv-modules/tasks/local/asset-import-type-reference.nix;
@@ -347,6 +348,10 @@ in
       ];
       checkAllTypecheckTask = "ts:check:strict";
     })
+    (taskModules.weaver { })
+    # Wire the additive weaver gate into `check:all` only (not `check:quick`, which stays fast):
+    # `after` list options merge across modules, so this appends without redefining check:all.
+    { tasks."check:all".after = [ "weaver:check" ]; }
     (taskModules.clean { packages = allPackages; })
     # Repo-root pnpm install task
     # NOTE: Using pnpm temporarily. See: context/workarounds/bun-issues.md

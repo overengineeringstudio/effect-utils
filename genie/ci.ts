@@ -27,6 +27,8 @@ export const CORE_CI_JOB_NAMES = [
   'bundle-smoke',
   // Rust lane for the otelite crate: build/test/clippy/fmt via the nix toolchain.
   'cargo',
+  // Additive Weaver semantic-conventions gate (separate lane; degrades if weaver unavailable).
+  'weaver',
 ] as const
 
 /** Union of core CI job keys used by the shared product-job generator. */

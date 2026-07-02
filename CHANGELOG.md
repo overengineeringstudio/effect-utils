@@ -4,6 +4,27 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **genie semantic-conventions generator (M1) / @overeng/genie + @overeng/otel-contract**:
+  First genie generator for OpenTelemetry semantic-convention registries.
+  - Layer 1 (`@overeng/genie` `src/runtime/weaver`, dep-free): a faithful typed model of the
+    Weaver `groups:` registry + deterministic renderers (manifest / attributes / signals YAML,
+    TS + Rust name constants) using genie's own YAML stringifier. `registryFromMembers` +
+    `orphanSeamPaths` land in `@overeng/genie/composition`.
+  - Layer 2 (`@overeng/otel-contract` new `./registry` subpath): Effect-Schema authoring
+    (`attr`/`span`/`metric`/`operation`, `defineOtelContract`, the AST→fragment projector) atop
+    the runtime primitives, with derived namespace + catalog, `refExternal` foreign-ref marking,
+    and `Schema.TaggedError` author-time validation. Verified out of the runtime `.` bundle.
+  - Weaver gate: `weaver:check` devenv task (wired into `check:all` + a dedicated CI lane) runs
+    `weaver registry check --future` (pinned from-source flake, v0.24.2) against the emitted
+    registry, resolving the pinned upstream OTel semconv (v1.37.0) hermetically via a Nix FOD.
+    Block-vs-degrade: validation failures block; weaver unavailability degrades to a warning.
+  - Provenance: per-file input fingerprint (sha256 over registry source + generator + pinned
+    weaver + pinned upstream semconv), split so doc-only edits re-hash only the YAML outputs.
+  - `overeng/otel-contract-in-seam-file` oxlint rule (WARN-only) + the no-orphan-seam aggregator
+    check make contract discoverability structural (decision 0005).
+
 ### Changed
 
 - **devenv deploy tasks / @overeng/ci-tools**: Centralize deploy-preview

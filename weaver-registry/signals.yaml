@@ -1,0 +1,51 @@
+# Generated file - DO NOT EDIT
+# Source: signals.yaml.genie.ts
+
+# registry-source: weaver-registry/registry.ts
+# fingerprint: sha256:225a7700297d04bd60bf33425624fc5347029b5366699cfd990a15c180d4c179
+groups:
+  - id: metric.acme.probe.duration
+    type: metric
+    metric_name: acme.probe.duration
+    instrument: histogram
+    unit: s
+    stability: development
+    brief: Acme probe wall-clock duration.
+    attributes:
+      - ref: acme.probe.name
+        requirement_level: required
+  - id: metric.acme.probes
+    type: metric
+    metric_name: acme.probes
+    instrument: counter
+    unit: '{probe}'
+    stability: development
+    brief: Acme probes by name and region.
+    attributes:
+      - ref: acme.probe.name
+        requirement_level: required
+      - ref: acme.region
+        requirement_level: recommended
+  - id: span.acme.operation
+    type: span
+    span_kind: internal
+    stability: development
+    brief: An acme operation with a derived span label.
+    attributes:
+      - ref: acme.probe.name
+        requirement_level: required
+  - id: span.acme.probe
+    type: span
+    span_kind: server
+    stability: development
+    brief: An acme health probe.
+    attributes:
+      - ref: acme.probe.name
+        requirement_level: required
+      - ref: acme.region
+        requirement_level:
+          conditionally_required: If the deployment region is known.
+      - ref: acme.attempt
+        requirement_level: recommended
+      - ref: http.request.method
+        requirement_level: recommended

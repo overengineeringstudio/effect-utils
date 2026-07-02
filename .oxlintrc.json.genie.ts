@@ -16,7 +16,14 @@ export default oxlintConfig({
   jsPlugins: [OXC_PLUGIN_PATH],
   categories: baseOxlintCategories,
   rules: baseOxlintRules,
-  ignorePatterns: baseOxlintIgnorePatterns,
+  ignorePatterns: [
+    ...baseOxlintIgnorePatterns,
+    // The emitted Weaver registry directory: generated YAML/TS bindings + thin codegen glue
+    // (aggregator + per-file `.genie.ts` emitters). Freshness is enforced by `genie:check`;
+    // exclude from lint like other generated-output trees. Real member contracts live in their
+    // package `src` (fully linted, incl. the seam-file rule).
+    'weaver-registry/**',
+  ],
   overrides: [
     ...baseOxlintOverrides,
     // Genie runtime must be dependency-free (issue #138)
@@ -81,7 +88,9 @@ export default oxlintConfig({
     // narrow and explicit so repo-wide adoption remains mechanically checkable.
     {
       files: ['packages/@overeng/*/src/**/*.ts', 'packages/@overeng/*/src/**/*.tsx'],
-      rules: otelOxlintRules({ rawOtel: 'error' }),
+      // `contractSeam: 'warn'` ships the seam-file completeness lint (decision 0005) WARN-only;
+      // it self-exempts `*.contract.ts` seam files and flips per-namespace to ERROR later.
+      rules: otelOxlintRules({ rawOtel: 'error', contractSeam: 'warn' }),
     },
     {
       files: [
