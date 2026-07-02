@@ -13,14 +13,23 @@ const repoRoot = fileURLToPath(new URL('../../../../', import.meta.url))
 
 const SKIP_DIRS = new Set(['node_modules', 'dist', 'tmp', '.git', '.devenv', 'repos', 'result'])
 
-/** Every telemetry seam file (`*.contract.ts`) in the repo, repo-relative (fs walk — robust to git state). */
+/**
+ * Every LIVE telemetry seam file (`*.contract.ts`) in the repo, repo-relative (fs walk — robust
+ * to git state). `*.fixture.contract.ts` is excluded: a fixture authors telemetry via the seam
+ * DSL (so it must be a `*.contract.ts` to satisfy the `otel-contract-in-seam-file` lint), but is
+ * deliberately NOT a live registry member — so it is not expected in the aggregator's
+ * `memberSeamPaths` and must not be flagged as an orphan by the completeness check (decision 0005).
+ */
 const seamFilesOnDisk = (dir: string = repoRoot): string[] => {
   const out: string[] = []
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     if (entry.isDirectory() === true) {
       if (SKIP_DIRS.has(entry.name) === true) continue
       out.push(...seamFilesOnDisk(`${dir}/${entry.name}`))
-    } else if (entry.name.endsWith('.contract.ts') === true) {
+    } else if (
+      entry.name.endsWith('.contract.ts') === true &&
+      entry.name.endsWith('.fixture.contract.ts') === false
+    ) {
       out.push(relative(repoRoot, `${dir}/${entry.name}`))
     }
   }

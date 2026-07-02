@@ -24,6 +24,17 @@ All notable changes to this project will be documented in this file.
     weaver + pinned upstream semconv), split so doc-only edits re-hash only the YAML outputs.
   - `overeng/otel-contract-in-seam-file` oxlint rule (WARN-only) + the no-orphan-seam aggregator
     check make contract discoverability structural (decision 0005).
+- **genie semantic-conventions Rust target (M2) / @overeng/genie**: Finalized the Layer-1 Rust
+  emitter (`renderRustConstants`) for Rust telemetry *producers* (decision 0007). Emits idiomatic,
+  deterministic (sorted), rustfmt-clean const modules — separate `attribute` / `span` / `metric`
+  modules (collision-proof by construction) with a `pub const <SCREAMING_SNAKE>: &str` per name
+  plus an `ALL: &[&str]` slice — covering own attribute keys, span ids, and metric names. Wired one
+  committed `.rs` output (`weaver-registry/constants.rs`) via `constants.rs.genie.ts` alongside the
+  TS constants, with a dedicated Rust-identity fingerprint (attr keys + span ids + metric names) so
+  a signal rename re-hashes only the `.rs` and a doc-only edit churns neither binding. Proven by a
+  synthetic ~25-name `otel_scrape.*` fixture (authored via the real Layer-2 seam) with a test
+  asserting determinism, full name coverage, and valid/rustfmt-clean Rust (rustc + rustfmt,
+  skip-if-absent).
 
 ### Changed
 

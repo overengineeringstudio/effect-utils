@@ -95,5 +95,32 @@ export const identityProvenance: Provenance = {
   fingerprint: identityFingerprint,
 }
 
+/**
+ * Rust identity = the exact names the Rust const target encodes: attribute keys PLUS span ids
+ * PLUS metric names (a Rust telemetry producer needs signal-name consts too). Kept SEPARATE
+ * from {@link identityFingerprint} (attr-keys-only, for the TS `constants.ts`) so a span/metric
+ * rename re-hashes the `.rs` without churning `constants.ts`, and a doc-only edit churns neither
+ * (GEN-R07 §fingerprint granularity).
+ */
+const rustIdentityNames = {
+  attributeKeys: identityKeys,
+  spanIds: registry.signals
+    .filter((s) => s.kind === 'span')
+    .map((s) => s.id)
+    .toSorted((a, b) => a.localeCompare(b)),
+  metricNames: registry.signals
+    .filter(
+      (s): s is Extract<(typeof registry.signals)[number], { kind: 'metric' }> =>
+        s.kind === 'metric',
+    )
+    .map((s) => s.metric_name)
+    .toSorted((a, b) => a.localeCompare(b)),
+}
+export const rustIdentityFingerprint = sha256({ ...rustIdentityNames, ...versionInputs })
+export const rustProvenance: Provenance = {
+  source: REGISTRY_SOURCE,
+  fingerprint: rustIdentityFingerprint,
+}
+
 /** The single own namespace emitted as `<ns>.attributes.yaml` (M1 has exactly one). */
 export const namespaces = registry.groups.map((g) => g.namespace)

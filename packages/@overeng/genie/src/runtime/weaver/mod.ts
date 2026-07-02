@@ -336,10 +336,61 @@ export const renderTsConstants = ({
   return lines.join('\n')
 }
 
+/** Rust string literal (double-quoted, escaped) — matches rustfmt's canonical form. */
+const rustStr = (k: string): string => JSON.stringify(k)
+
 /**
- * Rust const module (GEN-R06 / decision 0007's Rust target). Emits `pub const <NAME>: &str`
- * for each own-namespace attribute key. The first real Rust consumer (otel-scrape) is a
- * follow-up epic; this proves the emitter shape.
+ * A `pub const ALL: &[&str] = ...;` slice line(s), formatted the way rustfmt would: inline when
+ * the array literal is short (rustfmt's `array_width`, default 60), else one element per line
+ * with a trailing comma. `indent` is the module-body indent (4 spaces).
+ */
+const rustAllSlice = ({
+  indent,
+  keys,
+}: {
+  indent: string
+  keys: ReadonlyArray<string>
+}): ReadonlyArray<string> => {
+  const inner = `[${keys.map(rustStr).join(', ')}]`
+  if (inner.length <= 60) return [`${indent}pub const ALL: &[&str] = &${inner};`]
+  return [
+    `${indent}pub const ALL: &[&str] = &[`,
+    ...keys.map((k) => `${indent}    ${rustStr(k)},`),
+    `${indent}];`,
+  ]
+}
+
+/**
+ * One `pub mod <name> { ... }` block: a `pub const <SCREAMING_SNAKE>: &str` per name plus an
+ * `ALL` slice for iteration. Kinds live in SEPARATE modules so a shared final segment (e.g. an
+ * attribute `x.duration` and a metric named `x.duration`) cannot collide into the same const.
+ */
+const rustModule = ({
+  name,
+  doc,
+  keys,
+}: {
+  name: string
+  doc: string
+  keys: ReadonlyArray<string>
+}): string => {
+  const indent = '    '
+  if (keys.length === 0) return [`/// ${doc}`, `pub mod ${name} {}`].join('\n')
+  const lines = [`/// ${doc}`, `pub mod ${name} {`]
+  for (const k of keys) lines.push(`${indent}pub const ${screamingSnake(k)}: &str = ${rustStr(k)};`)
+  lines.push('', ...rustAllSlice({ indent, keys }), '}')
+  return lines.join('\n')
+}
+
+/**
+ * Rust const modules (GEN-R06 / decision 0007's Rust target) for a Rust telemetry *producer*:
+ * one module each for own-namespace attribute keys, span names, and metric names — the names
+ * such a consumer (e.g. otel-scrape) needs to emit conforming telemetry. Deterministic (every
+ * kind sorted) and rustfmt-clean. Upstream-referenced keys are excluded (they come from
+ * upstream's own generated bindings — see spec.md §TS-constants scope, which applies equally to
+ * Rust). The provenance fingerprint must cover attribute keys + span ids + metric names (the
+ * exact names emitted here), split from the doc/TS fingerprints so a prose edit does not churn
+ * this file (GEN-R07 §fingerprint granularity).
  */
 export const renderRustConstants = ({
   registry,
@@ -348,17 +399,29 @@ export const renderRustConstants = ({
   registry: Registry
   provenance: Provenance
 }): string => {
-  const keys = ownKeys(registry)
-  const lines: string[] = [
+  const attributeKeys = ownKeys(registry)
+  const spanNames = registry.signals
+    .filter((s): s is Extract<SignalDef, { kind: 'span' }> => s.kind === 'span')
+    .map((s) => s.id)
+    .toSorted((a, b) => a.localeCompare(b))
+  const metricNames = registry.signals
+    .filter((s): s is Extract<SignalDef, { kind: 'metric' }> => s.kind === 'metric')
+    .map((s) => s.metric_name)
+    .toSorted((a, b) => a.localeCompare(b))
+  return [
     `// registry-source: ${provenance.source}`,
     `// fingerprint: ${provenance.fingerprint}`,
+    '// regen: devenv tasks run genie:run',
     '',
-    '//! Generated attribute-key constants.',
+    '//! Generated OpenTelemetry semantic-convention name constants.',
     '',
-  ]
-  for (const k of keys) lines.push(`pub const ${screamingSnake(k)}: &str = ${JSON.stringify(k)};`)
-  lines.push('')
-  return lines.join('\n')
+    rustModule({ name: 'attribute', doc: 'Attribute keys.', keys: attributeKeys }),
+    '',
+    rustModule({ name: 'span', doc: 'Span names.', keys: spanNames }),
+    '',
+    rustModule({ name: 'metric', doc: 'Metric names.', keys: metricNames }),
+    '',
+  ].join('\n')
 }
 
 // ---------------------------------------------------------------------------
