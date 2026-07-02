@@ -1,7 +1,7 @@
 // Generated file - DO NOT EDIT
 // Source: constants.rs.genie.ts
 // registry-source: genie/weaver-registry/registry.ts
-// fingerprint: sha256:310d07670f8b009168939520c0615785962d77ca64e3a6014edcee1f16e670a4
+// fingerprint: sha256:9c99acd546e5fdc3c405e5a7bee1613cd55c2b57efc74fb887d0f24bb64b406b
 // regen: devenv tasks run genie:run
 
 //! Generated OpenTelemetry semantic-convention name constants.
@@ -156,6 +156,20 @@ pub mod attribute {
     pub const NOTION_MD_WEBHOOK_EVENT_TYPE: &str = "notion_md.webhook.event_type";
     pub const NOTION_MD_WEBHOOK_SURFACE: &str = "notion_md.webhook.surface";
     pub const NOTION_MD_WEBHOOK_TRIGGER_COUNT: &str = "notion_md.webhook.trigger_count";
+    pub const NOTION_DATA_SOURCE_ID: &str = "notion.data_source_id";
+    pub const NOTION_HTTP_METHOD: &str = "notion.http.method";
+    pub const NOTION_HTTP_OPERATION: &str = "notion.http.operation";
+    pub const NOTION_HTTP_RETRY_ATTEMPT: &str = "notion.http.retry.attempt";
+    pub const NOTION_HTTP_RETRY_ATTEMPTS: &str = "notion.http.retry.attempts";
+    pub const NOTION_HTTP_RETRY_DELAY_MS: &str = "notion.http.retry.delay_ms";
+    pub const NOTION_HTTP_ROUTE: &str = "notion.http.route";
+    pub const NOTION_HTTP_STATUS_CODE: &str = "notion.http.status_code";
+    pub const NOTION_PAGE_ID: &str = "notion.page_id";
+    pub const NOTION_QUOTA_COST: &str = "notion.quota.cost";
+    pub const NOTION_RATE_LIMIT_PRESENT: &str = "notion.rate_limit.present";
+    pub const NOTION_RATE_LIMIT_REMAINING: &str = "notion.rate_limit.remaining";
+    pub const NOTION_RATE_LIMIT_RESET_AFTER_MS: &str = "notion.rate_limit.reset_after_ms";
+    pub const NOTION_RATE_LIMIT_WAIT_MS: &str = "notion.rate_limit.wait_ms";
     pub const RESTATE_ERROR_CLASS: &str = "restate.error.class";
     pub const RESTATE_ERROR_TAG: &str = "restate.error.tag";
     pub const RESTATE_HANDLER: &str = "restate.handler";
@@ -313,6 +327,20 @@ pub mod attribute {
         "notion_md.webhook.event_type",
         "notion_md.webhook.surface",
         "notion_md.webhook.trigger_count",
+        "notion.data_source_id",
+        "notion.http.method",
+        "notion.http.operation",
+        "notion.http.retry.attempt",
+        "notion.http.retry.attempts",
+        "notion.http.retry.delay_ms",
+        "notion.http.route",
+        "notion.http.status_code",
+        "notion.page_id",
+        "notion.quota.cost",
+        "notion.rate_limit.present",
+        "notion.rate_limit.remaining",
+        "notion.rate_limit.reset_after_ms",
+        "notion.rate_limit.wait_ms",
         "restate.error.class",
         "restate.error.tag",
         "restate.handler",
@@ -383,6 +411,8 @@ pub mod span {
     pub const NOTION_MD_WATCH: &str = "notion-md.watch";
     pub const NOTION_MD_WATCH_SYNC_PASS: &str = "notion-md.watch.sync-pass";
     pub const NOTION_MD_WEBHOOK_TRIGGER: &str = "notion-md.webhook.trigger";
+    pub const NOTIONDATABASES_QUERY: &str = "NotionDatabases.query";
+    pub const NOTIONPAGES_RETRIEVE: &str = "NotionPages.retrieve";
     pub const SPAN_ACME_PROBE: &str = "span.acme.probe";
 
     pub const ALL: &[&str] = &[
@@ -444,6 +474,8 @@ pub mod span {
         "notion-md.watch",
         "notion-md.watch.sync-pass",
         "notion-md.webhook.trigger",
+        "NotionDatabases.query",
+        "NotionPages.retrieve",
         "span.acme.probe",
     ];
 }

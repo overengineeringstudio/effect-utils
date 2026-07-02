@@ -2,7 +2,7 @@
 # Source: attributes.yaml.genie.ts
 
 # registry-source: genie/weaver-registry/registry.ts
-# fingerprint: sha256:1722f9f7123ed44553a568a9c391b52ec7218ce6e04475c1340e830c3fd83070
+# fingerprint: sha256:9da67009385d2f541ed30ae16b77ad10fafcb37e1328a0bd92569485a7939f96
 groups:
   - id: registry.acme
     type: attribute_group
@@ -758,6 +758,138 @@ groups:
         annotations:
           overeng_policy:
             cardinality: high
+  - id: registry.notion
+    type: attribute_group
+    display_name: Notion Effect Client Attributes
+    brief: Attributes for the notion namespace.
+    attributes:
+      - id: notion.data_source_id
+        type: string
+        stability: development
+        brief: Notion data source (database) id a query targets.
+        examples: [205d5c1a-0000-4000-8000-000000000000]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: notion.http.method
+        type:
+          members:
+            - id: GET
+              value: GET
+              brief: HTTP GET.
+              stability: development
+            - id: POST
+              value: POST
+              brief: HTTP POST.
+              stability: development
+            - id: PATCH
+              value: PATCH
+              brief: HTTP PATCH.
+              stability: development
+            - id: DELETE
+              value: DELETE
+              brief: HTTP DELETE.
+              stability: development
+        stability: development
+        brief: Notion HTTP request method.
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: notion.http.operation
+        type: string
+        stability: development
+        brief: Sanitized Notion API operation key (bounded — never ids/urls).
+        examples: [pages.retrieve, databases.query]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: notion.http.retry.attempt
+        type: int
+        stability: development
+        brief: 1-based attempt number of a Notion HTTP attempt (initial attempt is 1).
+        examples: [1, 2]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion.http.retry.attempts
+        type: int
+        stability: development
+        brief: Cumulative number of HTTP attempts made for a logical Notion request.
+        examples: [1, 3]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion.http.retry.delay_ms
+        type: int
+        stability: development
+        brief: Backoff delay (ms) applied before a Notion HTTP retry (floored by any server `Retry-After`).
+        examples: [1000, 3000]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion.http.route
+        type: string
+        stability: development
+        brief: Notion API route template a request targets (parameterized path, not the concrete url).
+        examples: ['/v1/pages/{id}', '/v1/databases/{id}/query']
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: notion.http.status_code
+        type: int
+        stability: development
+        brief: HTTP status code of a Notion API response.
+        examples: [200, 429]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: notion.page_id
+        type: string
+        stability: development
+        brief: Notion page id a retrieve targets.
+        examples: [205d5c1a-0000-4000-8000-000000000000]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: notion.quota.cost
+        type: int
+        stability: development
+        brief: Logical quota cost charged for a Notion request (attempt-count proxy).
+        examples: [1, 2]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion.rate_limit.present
+        type: boolean
+        stability: development
+        brief: Whether the Notion response carried rate-limit headers.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion.rate_limit.remaining
+        type: int
+        stability: development
+        brief: Remaining rate-limit budget reported by Notion.
+        examples: [0, 90]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion.rate_limit.reset_after_ms
+        type: int
+        stability: development
+        brief: Milliseconds until the Notion rate-limit window resets (from the reset hint).
+        examples: [1000, 30000]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion.rate_limit.wait_ms
+        type: int
+        stability: development
+        brief: Milliseconds a logical request was blocked acquiring a Notion request-throttle token.
+        examples: [0, 1000]
+        annotations:
+          overeng_policy:
+            cardinality: low
   - id: registry.notion_md
     type: attribute_group
     display_name: Notion Markdown Attributes

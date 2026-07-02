@@ -1,7 +1,7 @@
 // Generated file - DO NOT EDIT
 // Source: constants.ts.genie.ts
 // registry-source: genie/weaver-registry/registry.ts
-// fingerprint: sha256:af7bba99bba548502b9bb3d20b9cead196ae3ded08ca05e34a9396e1401c1ffe
+// fingerprint: sha256:7c59be103951cecd4f568b7fc907c480bf47398f95eb24f148850d321692f967
 
 export const AcmeAttempt = 'acme.attempt' as const
 export const AcmeProbeLabel = 'acme.probe.label' as const
@@ -151,6 +151,20 @@ export const Notion_mdWatchReason = 'notion_md.watch.reason' as const
 export const Notion_mdWebhookEvent_type = 'notion_md.webhook.event_type' as const
 export const Notion_mdWebhookSurface = 'notion_md.webhook.surface' as const
 export const Notion_mdWebhookTrigger_count = 'notion_md.webhook.trigger_count' as const
+export const NotionData_source_id = 'notion.data_source_id' as const
+export const NotionHttpMethod = 'notion.http.method' as const
+export const NotionHttpOperation = 'notion.http.operation' as const
+export const NotionHttpRetryAttempt = 'notion.http.retry.attempt' as const
+export const NotionHttpRetryAttempts = 'notion.http.retry.attempts' as const
+export const NotionHttpRetryDelay_ms = 'notion.http.retry.delay_ms' as const
+export const NotionHttpRoute = 'notion.http.route' as const
+export const NotionHttpStatus_code = 'notion.http.status_code' as const
+export const NotionPage_id = 'notion.page_id' as const
+export const NotionQuotaCost = 'notion.quota.cost' as const
+export const NotionRate_limitPresent = 'notion.rate_limit.present' as const
+export const NotionRate_limitRemaining = 'notion.rate_limit.remaining' as const
+export const NotionRate_limitReset_after_ms = 'notion.rate_limit.reset_after_ms' as const
+export const NotionRate_limitWait_ms = 'notion.rate_limit.wait_ms' as const
 export const RestateErrorClass = 'restate.error.class' as const
 export const RestateErrorTag = 'restate.error.tag' as const
 export const RestateHandler = 'restate.handler' as const
@@ -308,6 +322,20 @@ export type AttributeKey =
   | 'notion_md.webhook.event_type'
   | 'notion_md.webhook.surface'
   | 'notion_md.webhook.trigger_count'
+  | 'notion.data_source_id'
+  | 'notion.http.method'
+  | 'notion.http.operation'
+  | 'notion.http.retry.attempt'
+  | 'notion.http.retry.attempts'
+  | 'notion.http.retry.delay_ms'
+  | 'notion.http.route'
+  | 'notion.http.status_code'
+  | 'notion.page_id'
+  | 'notion.quota.cost'
+  | 'notion.rate_limit.present'
+  | 'notion.rate_limit.remaining'
+  | 'notion.rate_limit.reset_after_ms'
+  | 'notion.rate_limit.wait_ms'
   | 'restate.error.class'
   | 'restate.error.tag'
   | 'restate.handler'

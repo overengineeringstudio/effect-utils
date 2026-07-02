@@ -2,7 +2,7 @@
 # Source: signals.yaml.genie.ts
 
 # registry-source: genie/weaver-registry/registry.ts
-# fingerprint: sha256:1722f9f7123ed44553a568a9c391b52ec7218ce6e04475c1340e830c3fd83070
+# fingerprint: sha256:9da67009385d2f541ed30ae16b77ad10fafcb37e1328a0bd92569485a7939f96
 groups:
   - id: metric.acme.probe.duration
     type: metric
@@ -668,4 +668,20 @@ groups:
       - ref: notion_md.webhook.surface
         requirement_level: required
       - ref: notion_md.webhook.trigger_count
+        requirement_level: required
+  - id: span.notion.databases_query
+    type: span
+    span_kind: internal
+    stability: development
+    brief: A Notion data-source (database) query.
+    attributes:
+      - ref: notion.data_source_id
+        requirement_level: required
+  - id: span.notion.pages_retrieve
+    type: span
+    span_kind: internal
+    stability: development
+    brief: A Notion page retrieve.
+    attributes:
+      - ref: notion.page_id
         requirement_level: required
