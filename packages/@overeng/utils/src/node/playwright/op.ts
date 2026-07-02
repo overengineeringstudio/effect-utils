@@ -15,6 +15,8 @@ import {
   type OtelOperationDefinition,
 } from '@overeng/otel-contract'
 
+import { PwExpectAttrs, PwOp, PwTryAttrs } from './pw.contract.ts'
+
 /**
  * Canonical error type for Playwright promise bridging.
  *
@@ -28,27 +30,19 @@ export class PwOpError extends Schema.TaggedError<PwOpError>()('PwOpError', {
   cause: Schema.Defect,
 }) {}
 
+// DYNAMIC-NAME BRIDGE: the span name is the runtime `op` string, so it has no stable single-signal
+// registry projection and stays legacy inline here — but its encoder is REBUILT from the `pw.op`
+// catalog schema exported by the seam contract (`pw.op` reaches the catalog via docOnlyAttributes).
+const pwOpAttrs = OtelAttrs.defineSync(
+  Schema.Struct({ label: OtelAttr.drop(Schema.NonEmptyString), op: PwOp }),
+)
+
 const PwOpOperation = (op: string) =>
   OtelOperation.define({
     name: op,
-    schema: Schema.Struct({
-      label: OtelAttr.drop(Schema.NonEmptyString),
-      op: Schema.NonEmptyString.pipe(OtelAttr.key({ key: 'pw.op' })),
-    }),
+    attributes: pwOpAttrs,
     label: ({ label }) => label,
   })
-
-const PwTryAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    op: Schema.NonEmptyString.pipe(OtelAttr.key({ key: 'pw.try.op' })),
-  }),
-)
-
-const PwExpectAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    assertion: Schema.NonEmptyString.pipe(OtelAttr.key({ key: 'pw.expect.assertion' })),
-  }),
-)
 
 const trustOtelContract = <A, E, R>(
   effect: Effect.Effect<A, E | OtelAttrEncodeError, R>,

@@ -30,6 +30,8 @@ import notionMdContract from '../../packages/@overeng/notion-md/src/notion-md.co
 import demoContract from '../../packages/@overeng/otel-contract/src/registry-demo.contract.ts'
 import { fragment } from '../../packages/@overeng/otel-contract/src/registry.ts'
 import restateContract from '../../packages/@overeng/restate-effect/src/observability/restate.contract.ts'
+import cmdContract from '../../packages/@overeng/utils/src/node/cmd.contract.ts'
+import pwContract from '../../packages/@overeng/utils/src/node/playwright/pw.contract.ts'
 
 // --- pinned semantic inputs (all change the emitted output → part of the fingerprint) ---
 export const PINNED_WEAVER_VERSION = '0.24.2'
@@ -49,6 +51,8 @@ export const memberSeamPaths = [
   'packages/@overeng/notion-md/src/notion-md.contract.ts',
   'packages/@overeng/otel-contract/src/registry-demo.contract.ts',
   'packages/@overeng/restate-effect/src/observability/restate.contract.ts',
+  'packages/@overeng/utils/src/node/cmd.contract.ts',
+  'packages/@overeng/utils/src/node/playwright/pw.contract.ts',
 ] as const
 
 const contracts = [
@@ -58,6 +62,8 @@ const contracts = [
   notionMdContract,
   demoContract,
   restateContract,
+  cmdContract,
+  pwContract,
 ]
 
 // Build members: each member contributes its fragment on the non-emitted `meta.registry`

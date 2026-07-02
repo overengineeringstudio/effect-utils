@@ -1,13 +1,19 @@
 // Generated file - DO NOT EDIT
 // Source: constants.ts.genie.ts
 // registry-source: genie/weaver-registry/registry.ts
-// fingerprint: sha256:7c59be103951cecd4f568b7fc907c480bf47398f95eb24f148850d321692f967
+// fingerprint: sha256:b398865b483389349984225dad13f891994fe6c35601f020433bb7ca9a113971
 
 export const AcmeAttempt = 'acme.attempt' as const
 export const AcmeProbeLabel = 'acme.probe.label' as const
 export const AcmeProbeName = 'acme.probe.name' as const
 export const AcmeRegion = 'acme.region' as const
 export const AcmeRequestHeader = 'acme.request.header' as const
+export const CmdArgs = 'cmd.args' as const
+export const CmdCommand = 'cmd.command' as const
+export const CmdCwd = 'cmd.cwd' as const
+export const CmdLog_dir = 'cmd.log_dir' as const
+export const CmdLog_path = 'cmd.log_path' as const
+export const CmdShell = 'cmd.shell' as const
 export const GenieConcurrency = 'genie.concurrency' as const
 export const GenieCwd = 'genie.cwd' as const
 export const GenieDry_run = 'genie.dry_run' as const
@@ -165,6 +171,42 @@ export const NotionRate_limitPresent = 'notion.rate_limit.present' as const
 export const NotionRate_limitRemaining = 'notion.rate_limit.remaining' as const
 export const NotionRate_limitReset_after_ms = 'notion.rate_limit.reset_after_ms' as const
 export const NotionRate_limitWait_ms = 'notion.rate_limit.wait_ms' as const
+export const PwCookieCount = 'pw.cookie.count' as const
+export const PwCookiesUrl = 'pw.cookies.url' as const
+export const PwDelayMs = 'pw.delay.ms' as const
+export const PwExpectAssertion = 'pw.expect.assertion' as const
+export const PwJitterMs = 'pw.jitter.ms' as const
+export const PwJitterMsMax = 'pw.jitter.msMax' as const
+export const PwJitterMsMin = 'pw.jitter.msMin' as const
+export const PwKey = 'pw.key' as const
+export const PwLabel = 'pw.label' as const
+export const PwLoadState = 'pw.loadState' as const
+export const PwName = 'pw.name' as const
+export const PwOp = 'pw.op' as const
+export const PwPlaceholder = 'pw.placeholder' as const
+export const PwRole = 'pw.role' as const
+export const PwScreenshotFullPage = 'pw.screenshot.fullPage' as const
+export const PwScreenshotPath = 'pw.screenshot.path' as const
+export const PwSelector = 'pw.selector' as const
+export const PwStep = 'pw.step' as const
+export const PwStepName = 'pw.step.name' as const
+export const PwStepParentSpan_tag = 'pw.step.parentSpan._tag' as const
+export const PwStorageStatePath = 'pw.storageState.path' as const
+export const PwTestId = 'pw.testId' as const
+export const PwText = 'pw.text' as const
+export const PwTextLen = 'pw.text.len' as const
+export const PwTimeoutMs = 'pw.timeout.ms' as const
+export const PwTryOp = 'pw.try.op' as const
+export const PwUrl = 'pw.url' as const
+export const PwUrlMatch = 'pw.urlMatch' as const
+export const PwValueLen = 'pw.value.len' as const
+export const PwViewportHeight = 'pw.viewport.height' as const
+export const PwViewportWidth = 'pw.viewport.width' as const
+export const PwWaitAttempt = 'pw.wait.attempt' as const
+export const PwWaitLabel = 'pw.wait.label' as const
+export const PwWaitPollInterval = 'pw.wait.pollInterval' as const
+export const PwWaitTimeout = 'pw.wait.timeout' as const
+export const PwWaitUntil = 'pw.waitUntil' as const
 export const RestateErrorClass = 'restate.error.class' as const
 export const RestateErrorTag = 'restate.error.tag' as const
 export const RestateHandler = 'restate.handler' as const
@@ -179,6 +221,12 @@ export type AttributeKey =
   | 'acme.probe.name'
   | 'acme.region'
   | 'acme.request.header'
+  | 'cmd.args'
+  | 'cmd.command'
+  | 'cmd.cwd'
+  | 'cmd.log_dir'
+  | 'cmd.log_path'
+  | 'cmd.shell'
   | 'genie.concurrency'
   | 'genie.cwd'
   | 'genie.dry_run'
@@ -336,6 +384,42 @@ export type AttributeKey =
   | 'notion.rate_limit.remaining'
   | 'notion.rate_limit.reset_after_ms'
   | 'notion.rate_limit.wait_ms'
+  | 'pw.cookie.count'
+  | 'pw.cookies.url'
+  | 'pw.delay.ms'
+  | 'pw.expect.assertion'
+  | 'pw.jitter.ms'
+  | 'pw.jitter.msMax'
+  | 'pw.jitter.msMin'
+  | 'pw.key'
+  | 'pw.label'
+  | 'pw.loadState'
+  | 'pw.name'
+  | 'pw.op'
+  | 'pw.placeholder'
+  | 'pw.role'
+  | 'pw.screenshot.fullPage'
+  | 'pw.screenshot.path'
+  | 'pw.selector'
+  | 'pw.step'
+  | 'pw.step.name'
+  | 'pw.step.parentSpan._tag'
+  | 'pw.storageState.path'
+  | 'pw.testId'
+  | 'pw.text'
+  | 'pw.text.len'
+  | 'pw.timeout.ms'
+  | 'pw.try.op'
+  | 'pw.url'
+  | 'pw.urlMatch'
+  | 'pw.value.len'
+  | 'pw.viewport.height'
+  | 'pw.viewport.width'
+  | 'pw.wait.attempt'
+  | 'pw.wait.label'
+  | 'pw.wait.pollInterval'
+  | 'pw.wait.timeout'
+  | 'pw.waitUntil'
   | 'restate.error.class'
   | 'restate.error.tag'
   | 'restate.handler'

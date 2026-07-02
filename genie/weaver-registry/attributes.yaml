@@ -2,7 +2,7 @@
 # Source: attributes.yaml.genie.ts
 
 # registry-source: genie/weaver-registry/registry.ts
-# fingerprint: sha256:9da67009385d2f541ed30ae16b77ad10fafcb37e1328a0bd92569485a7939f96
+# fingerprint: sha256:5f7dbf9092de3b99e94b9b54c04d8e1024d51233a0e649bb697d944bdd1115c5
 groups:
   - id: registry.acme
     type: attribute_group
@@ -64,6 +64,59 @@ groups:
         annotations:
           overeng_policy:
             cardinality: high
+  - id: registry.cmd
+    type: attribute_group
+    display_name: Command Runner Attributes
+    brief: Attributes for the cmd namespace.
+    attributes:
+      - id: cmd.args
+        type: string
+        stability: development
+        brief: Command arguments (JSON-encoded array of strings).
+        examples: ['["-la","/tmp"]']
+        annotations:
+          overeng_policy:
+            cardinality: high
+            encode: json
+      - id: cmd.command
+        type: string
+        stability: development
+        brief: Executable a command invokes (argv[0]).
+        examples: [git, ls]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: cmd.cwd
+        type: string
+        stability: development
+        brief: Working directory a command runs in.
+        examples: [/home/user/project]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: cmd.log_dir
+        type: string
+        stability: development
+        brief: Directory a command mirrors its output into (canonical log file lives here).
+        examples: [/home/user/project/.logs]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: cmd.log_path
+        type: string
+        stability: development
+        brief: Canonical log file path a command writes to when logging is enabled.
+        examples: [/home/user/project/.logs/dev.log]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: cmd.shell
+        type: boolean
+        stability: development
+        brief: Whether the command is executed through a subshell.
+        annotations:
+          overeng_policy:
+            cardinality: low
   - id: registry.genie
     type: attribute_group
     display_name: Genie Attributes
@@ -1405,6 +1458,297 @@ groups:
         annotations:
           overeng_policy:
             cardinality: low
+  - id: registry.pw
+    type: attribute_group
+    display_name: Playwright Attributes
+    brief: Attributes for the pw namespace.
+    attributes:
+      - id: pw.cookie.count
+        type: int
+        stability: development
+        brief: Number of cookies read from / added to a browser context.
+        examples: [3]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: pw.cookies.url
+        type: string
+        stability: development
+        brief: URL(s) a cookie query is scoped to.
+        examples: ['https://example.com']
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: pw.delay.ms
+        type: int
+        stability: development
+        brief: Per-key typing delay in milliseconds.
+        examples: [50]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: pw.expect.assertion
+        type: string
+        stability: development
+        brief: Short assertion name for a `Pw.expect` wrapper.
+        examples: [sidebar-visible]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: pw.jitter.ms
+        type: int
+        stability: development
+        brief: Jitter applied before an interaction in milliseconds.
+        examples: [250]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: pw.jitter.msMax
+        type: int
+        stability: development
+        brief: Maximum jitter delay in milliseconds.
+        examples: [420]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: pw.jitter.msMin
+        type: int
+        stability: development
+        brief: Minimum jitter delay in milliseconds.
+        examples: [120]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: pw.key
+        type: string
+        stability: development
+        brief: Keyboard key pressed on a locator.
+        examples: [Enter, Escape]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: pw.label
+        type: string
+        stability: development
+        brief: Label text a locator matches.
+        examples: [Email]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: pw.loadState
+        type: string
+        stability: development
+        brief: Load state waited for.
+        examples: [domcontentloaded, networkidle]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: pw.name
+        type: string
+        stability: development
+        brief: Accessible name a locator matches.
+        examples: [Submit]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: pw.op
+        type: string
+        stability: development
+        brief: Stable Playwright operation identifier a bridged span wraps.
+        examples: [pw.page.goto, pw.context.cookies]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: pw.placeholder
+        type: string
+        stability: development
+        brief: Placeholder text a locator matches.
+        examples: [you@example.com]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: pw.role
+        type: string
+        stability: development
+        brief: ARIA role a locator matches.
+        examples: [button, link]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: pw.screenshot.fullPage
+        type: boolean
+        stability: development
+        brief: Whether a screenshot captures the full page.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: pw.screenshot.path
+        type: string
+        stability: development
+        brief: Filesystem path a screenshot is written to.
+        examples: [tmp/screenshot.png]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: pw.selector
+        type: string
+        stability: development
+        brief: CSS or Playwright selector for a locator.
+        examples: ['#submit']
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: pw.step
+        type: boolean
+        stability: development
+        brief: Whether the span is a Playwright `test.step` boundary.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: pw.step.name
+        type: string
+        stability: development
+        brief: Name of a Playwright `test.step` boundary.
+        examples: [Custom operation]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: pw.step.parentSpan._tag
+        type: string
+        stability: development
+        brief: Effect-span _tag of the parent enclosing a test.step boundary.
+        examples: [Some]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: pw.storageState.path
+        type: string
+        stability: development
+        brief: Filesystem path a browser context storage state is written to.
+        examples: [tmp/state.json]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: pw.testId
+        type: string
+        stability: development
+        brief: Test id a locator matches.
+        examples: [submit-btn]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: pw.text
+        type: string
+        stability: development
+        brief: Text a locator matches.
+        examples: [Sign in]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: pw.text.len
+        type: int
+        stability: development
+        brief: Length of text typed into a locator.
+        examples: [12]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: pw.timeout.ms
+        type: int
+        stability: development
+        brief: Operation timeout in milliseconds.
+        examples: [5000]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: pw.try.op
+        type: string
+        stability: development
+        brief: Short operation name for a generic `Pw.try` wrapper.
+        examples: [set-viewport]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: pw.url
+        type: string
+        stability: development
+        brief: Target URL a navigation goes to.
+        examples: ['https://example.com']
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: pw.urlMatch
+        type: string
+        stability: development
+        brief: URL pattern waited for (string / RegExp source / predicate marker).
+        examples: [/dashboard]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: pw.value.len
+        type: int
+        stability: development
+        brief: Length of a value written into an input.
+        examples: [12]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: pw.viewport.height
+        type: int
+        stability: development
+        brief: Viewport height in pixels.
+        examples: [800]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: pw.viewport.width
+        type: int
+        stability: development
+        brief: Viewport width in pixels.
+        examples: [1200]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: pw.wait.attempt
+        type: int
+        stability: development
+        brief: 1-based attempt number of a polling wait loop.
+        examples: [1, 2]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: pw.wait.label
+        type: string
+        stability: development
+        brief: Stable identifier for a polling wait loop.
+        examples: [sidebar-visible]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: pw.wait.pollInterval
+        type: string
+        stability: development
+        brief: Delay between retry attempts (Duration string).
+        examples: [Duration(500 millis)]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: pw.wait.timeout
+        type: string
+        stability: development
+        brief: Maximum time to wait before failing (Duration string).
+        examples: [Duration(30 seconds)]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: pw.waitUntil
+        type: string
+        stability: development
+        brief: Navigation wait strategy.
+        examples: [load, networkidle]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
   - id: registry.restate
     type: attribute_group
     display_name: Restate Attributes

@@ -5,30 +5,14 @@
  */
 
 import type { Locator, Page } from '@playwright/test'
-import { Effect, Schema } from 'effect'
+import { Effect } from 'effect'
 
-import { OtelAttr, OtelAttrs, OtelSpan } from '@overeng/otel-contract'
+import { OtelSpan } from '@overeng/otel-contract'
 
 import { type PwOpError, tryPw } from './op.ts'
+// PwLocatorAttrs (annotate-only encoder) is DERIVED from the registered seam contract.
+import { PwLocatorAttrs } from './pw.contract.ts'
 import { PwPage } from './tags.ts'
-
-const PwLocatorAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    timeoutMs: Schema.optional(Schema.Number.pipe(OtelAttr.key({ key: 'pw.timeout.ms' }))),
-    valueLen: Schema.optional(Schema.Number.pipe(OtelAttr.key({ key: 'pw.value.len' }))),
-    textLen: Schema.optional(Schema.Number.pipe(OtelAttr.key({ key: 'pw.text.len' }))),
-    delayMs: Schema.optional(Schema.Number.pipe(OtelAttr.key({ key: 'pw.delay.ms' }))),
-    jitterMs: Schema.optional(Schema.Number.pipe(OtelAttr.key({ key: 'pw.jitter.ms' }))),
-    key: Schema.optional(Schema.String.pipe(OtelAttr.key({ key: 'pw.key' }))),
-    selector: Schema.optional(Schema.String.pipe(OtelAttr.key({ key: 'pw.selector' }))),
-    role: Schema.optional(Schema.String.pipe(OtelAttr.key({ key: 'pw.role' }))),
-    name: Schema.optional(Schema.String.pipe(OtelAttr.key({ key: 'pw.name' }))),
-    testId: Schema.optional(Schema.String.pipe(OtelAttr.key({ key: 'pw.testId' }))),
-    text: Schema.optional(Schema.String.pipe(OtelAttr.key({ key: 'pw.text' }))),
-    label: Schema.optional(Schema.String.pipe(OtelAttr.key({ key: 'pw.label' }))),
-    placeholder: Schema.optional(Schema.String.pipe(OtelAttr.key({ key: 'pw.placeholder' }))),
-  }),
-)
 
 const annotateLocator = (
   value: Partial<{

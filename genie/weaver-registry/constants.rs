@@ -1,7 +1,7 @@
 // Generated file - DO NOT EDIT
 // Source: constants.rs.genie.ts
 // registry-source: genie/weaver-registry/registry.ts
-// fingerprint: sha256:9c99acd546e5fdc3c405e5a7bee1613cd55c2b57efc74fb887d0f24bb64b406b
+// fingerprint: sha256:1939dc647ac9aa9981b04a87294111352348d8f677ed325ebb9d5b12d9961a5f
 // regen: devenv tasks run genie:run
 
 //! Generated OpenTelemetry semantic-convention name constants.
@@ -13,6 +13,12 @@ pub mod attribute {
     pub const ACME_PROBE_NAME: &str = "acme.probe.name";
     pub const ACME_REGION: &str = "acme.region";
     pub const ACME_REQUEST_HEADER: &str = "acme.request.header";
+    pub const CMD_ARGS: &str = "cmd.args";
+    pub const CMD_COMMAND: &str = "cmd.command";
+    pub const CMD_CWD: &str = "cmd.cwd";
+    pub const CMD_LOG_DIR: &str = "cmd.log_dir";
+    pub const CMD_LOG_PATH: &str = "cmd.log_path";
+    pub const CMD_SHELL: &str = "cmd.shell";
     pub const GENIE_CONCURRENCY: &str = "genie.concurrency";
     pub const GENIE_CWD: &str = "genie.cwd";
     pub const GENIE_DRY_RUN: &str = "genie.dry_run";
@@ -170,6 +176,42 @@ pub mod attribute {
     pub const NOTION_RATE_LIMIT_REMAINING: &str = "notion.rate_limit.remaining";
     pub const NOTION_RATE_LIMIT_RESET_AFTER_MS: &str = "notion.rate_limit.reset_after_ms";
     pub const NOTION_RATE_LIMIT_WAIT_MS: &str = "notion.rate_limit.wait_ms";
+    pub const PW_COOKIE_COUNT: &str = "pw.cookie.count";
+    pub const PW_COOKIES_URL: &str = "pw.cookies.url";
+    pub const PW_DELAY_MS: &str = "pw.delay.ms";
+    pub const PW_EXPECT_ASSERTION: &str = "pw.expect.assertion";
+    pub const PW_JITTER_MS: &str = "pw.jitter.ms";
+    pub const PW_JITTER_MSMAX: &str = "pw.jitter.msMax";
+    pub const PW_JITTER_MSMIN: &str = "pw.jitter.msMin";
+    pub const PW_KEY: &str = "pw.key";
+    pub const PW_LABEL: &str = "pw.label";
+    pub const PW_LOADSTATE: &str = "pw.loadState";
+    pub const PW_NAME: &str = "pw.name";
+    pub const PW_OP: &str = "pw.op";
+    pub const PW_PLACEHOLDER: &str = "pw.placeholder";
+    pub const PW_ROLE: &str = "pw.role";
+    pub const PW_SCREENSHOT_FULLPAGE: &str = "pw.screenshot.fullPage";
+    pub const PW_SCREENSHOT_PATH: &str = "pw.screenshot.path";
+    pub const PW_SELECTOR: &str = "pw.selector";
+    pub const PW_STEP: &str = "pw.step";
+    pub const PW_STEP_NAME: &str = "pw.step.name";
+    pub const PW_STEP_PARENTSPAN__TAG: &str = "pw.step.parentSpan._tag";
+    pub const PW_STORAGESTATE_PATH: &str = "pw.storageState.path";
+    pub const PW_TESTID: &str = "pw.testId";
+    pub const PW_TEXT: &str = "pw.text";
+    pub const PW_TEXT_LEN: &str = "pw.text.len";
+    pub const PW_TIMEOUT_MS: &str = "pw.timeout.ms";
+    pub const PW_TRY_OP: &str = "pw.try.op";
+    pub const PW_URL: &str = "pw.url";
+    pub const PW_URLMATCH: &str = "pw.urlMatch";
+    pub const PW_VALUE_LEN: &str = "pw.value.len";
+    pub const PW_VIEWPORT_HEIGHT: &str = "pw.viewport.height";
+    pub const PW_VIEWPORT_WIDTH: &str = "pw.viewport.width";
+    pub const PW_WAIT_ATTEMPT: &str = "pw.wait.attempt";
+    pub const PW_WAIT_LABEL: &str = "pw.wait.label";
+    pub const PW_WAIT_POLLINTERVAL: &str = "pw.wait.pollInterval";
+    pub const PW_WAIT_TIMEOUT: &str = "pw.wait.timeout";
+    pub const PW_WAITUNTIL: &str = "pw.waitUntil";
     pub const RESTATE_ERROR_CLASS: &str = "restate.error.class";
     pub const RESTATE_ERROR_TAG: &str = "restate.error.tag";
     pub const RESTATE_HANDLER: &str = "restate.handler";
@@ -184,6 +226,12 @@ pub mod attribute {
         "acme.probe.name",
         "acme.region",
         "acme.request.header",
+        "cmd.args",
+        "cmd.command",
+        "cmd.cwd",
+        "cmd.log_dir",
+        "cmd.log_path",
+        "cmd.shell",
         "genie.concurrency",
         "genie.cwd",
         "genie.dry_run",
@@ -341,6 +389,42 @@ pub mod attribute {
         "notion.rate_limit.remaining",
         "notion.rate_limit.reset_after_ms",
         "notion.rate_limit.wait_ms",
+        "pw.cookie.count",
+        "pw.cookies.url",
+        "pw.delay.ms",
+        "pw.expect.assertion",
+        "pw.jitter.ms",
+        "pw.jitter.msMax",
+        "pw.jitter.msMin",
+        "pw.key",
+        "pw.label",
+        "pw.loadState",
+        "pw.name",
+        "pw.op",
+        "pw.placeholder",
+        "pw.role",
+        "pw.screenshot.fullPage",
+        "pw.screenshot.path",
+        "pw.selector",
+        "pw.step",
+        "pw.step.name",
+        "pw.step.parentSpan._tag",
+        "pw.storageState.path",
+        "pw.testId",
+        "pw.text",
+        "pw.text.len",
+        "pw.timeout.ms",
+        "pw.try.op",
+        "pw.url",
+        "pw.urlMatch",
+        "pw.value.len",
+        "pw.viewport.height",
+        "pw.viewport.width",
+        "pw.wait.attempt",
+        "pw.wait.label",
+        "pw.wait.pollInterval",
+        "pw.wait.timeout",
+        "pw.waitUntil",
         "restate.error.class",
         "restate.error.tag",
         "restate.handler",
@@ -355,6 +439,9 @@ pub mod attribute {
 pub mod span {
     pub const ACME_OPERATION: &str = "acme.operation";
     pub const ATOMICWRITEFILE: &str = "atomicWriteFile";
+    pub const CMD_COLLECT: &str = "cmd.collect";
+    pub const CMD_RUN: &str = "cmd.run";
+    pub const CMD_RUN_WITH_LOGGING: &str = "cmd.run-with-logging";
     pub const GENIE_COMMAND: &str = "genie/command";
     pub const GENIE_FILE: &str = "genie/file";
     pub const GENIE_OXFMT: &str = "genie/oxfmt";
@@ -413,11 +500,15 @@ pub mod span {
     pub const NOTION_MD_WEBHOOK_TRIGGER: &str = "notion-md.webhook.trigger";
     pub const NOTIONDATABASES_QUERY: &str = "NotionDatabases.query";
     pub const NOTIONPAGES_RETRIEVE: &str = "NotionPages.retrieve";
+    pub const PW_WAIT_UNTIL: &str = "pw.wait.until";
     pub const SPAN_ACME_PROBE: &str = "span.acme.probe";
 
     pub const ALL: &[&str] = &[
         "acme.operation",
         "atomicWriteFile",
+        "cmd.collect",
+        "cmd.run",
+        "cmd.run-with-logging",
         "genie/command",
         "genie/file",
         "genie/oxfmt",
@@ -476,6 +567,7 @@ pub mod span {
         "notion-md.webhook.trigger",
         "NotionDatabases.query",
         "NotionPages.retrieve",
+        "pw.wait.until",
         "span.acme.probe",
     ];
 }
