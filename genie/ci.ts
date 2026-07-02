@@ -85,7 +85,7 @@ const matrixCIJobNames = ['test', 'nix-check', 'nix-fod-check'] as const
 export const ciJobCheckContexts = (jobName: CIJobName) => {
   if (jobName === 'ci-measurements-report') return ['ci/measurements-report']
 
-  return matrixCIJobNames.includes(jobName as (typeof matrixCIJobNames)[number])
+  return matrixCIJobNames.includes(jobName as (typeof matrixCIJobNames)[number]) === true
     ? RUNNER_PROFILES.map((runner) => `${jobName} (${runner})`)
     : [jobName]
 }

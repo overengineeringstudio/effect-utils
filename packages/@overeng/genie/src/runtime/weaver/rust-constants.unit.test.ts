@@ -5,31 +5,16 @@ import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-import { fragment } from '@overeng/otel-contract/registry'
-
-import { registryFromMembers, type RegistryMember } from '../composition/mod.ts'
-import type { Provenance, Registry } from './mod.ts'
+import type { Provenance } from './mod.ts'
 import { renderRustConstants } from './mod.ts'
-import fixtureContract from './otel-scrape.fixture.contract.ts'
+import { otelScrapeFixtureRegistry } from './otel-scrape.fixture.ts'
 
-// The synthetic otel-scrape registry, built via the REAL projection path
-// (Layer 2 seam → fragment() → registryFromMembers → Layer 1 Registry).
-const buildFixtureRegistry = (): Registry => {
-  const f = fragment(fixtureContract)
-  const member: RegistryMember = { data: f, stringify: () => '', meta: { registry: f } }
-  const composition = registryFromMembers({
-    members: [member],
-    name: 'otel-scrape-fixture',
-    description: 'Synthetic otel-scrape registry (Rust-target fixture).',
-    schemaUrl: 'https://example.invalid/schemas/otel-scrape/0.0.0',
-  })
-  // The fixture is well-formed (no dangling refs / namespace collisions).
-  expect(composition.issues).toEqual([])
-  return composition.registry
-}
+// The synthetic otel-scrape registry is authored directly as dep-free Layer-1 data
+// (`renderRustConstants` renders it below — the true name-projection path).
+const registry = otelScrapeFixtureRegistry
 
 const FIXTURE_PROVENANCE: Provenance = {
-  source: 'packages/@overeng/genie/src/runtime/weaver/otel-scrape.fixture.contract.ts',
+  source: 'packages/@overeng/genie/src/runtime/weaver/otel-scrape.fixture.ts',
   fingerprint: 'sha256:0000000000000000000000000000000000000000000000000000000000000000',
 }
 
@@ -79,17 +64,11 @@ const onPath = (bin: string): string | undefined => {
 }
 
 describe('renderRustConstants (otel-scrape fixture)', () => {
-  const registry = buildFixtureRegistry()
   const rust = renderRustConstants({ registry, provenance: FIXTURE_PROVENANCE })
 
   it('is deterministic (render twice = byte-identical)', () => {
     const again = renderRustConstants({ registry, provenance: FIXTURE_PROVENANCE })
-    const third = renderRustConstants({
-      registry: buildFixtureRegistry(),
-      provenance: FIXTURE_PROVENANCE,
-    })
     expect(again).toBe(rust)
-    expect(third).toBe(rust)
   })
 
   it('covers all ~25 otel-scrape names as Rust string-literal constants', () => {
