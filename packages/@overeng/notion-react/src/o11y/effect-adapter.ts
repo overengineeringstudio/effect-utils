@@ -26,6 +26,25 @@ import type { NotionConfig } from '@overeng/notion-effect-client'
 import { OtelAttr, OtelAttrs } from '@overeng/otel-contract'
 
 import type { NotionCache } from '../cache/types.ts'
+import {
+  NotionReactBatchBatched,
+  NotionReactBatchIssued,
+  NotionReactBlockId,
+  NotionReactCheckpointBytes,
+  NotionReactDurationMs,
+  NotionReactFallbackReason,
+  NotionReactNoopReason,
+  NotionReactOk,
+  NotionReactOpCount,
+  NotionReactOpDurationMs,
+  NotionReactOpError,
+  NotionReactOpId,
+  NotionReactOpKind,
+  NotionReactOpNote,
+  NotionReactOpResultCount,
+  NotionReactPageId,
+  NotionReactRootBlockCount,
+} from '../notion-react.contract.ts'
 import type { NotionSyncError } from '../renderer/errors.ts'
 import type { SyncResult } from '../renderer/render-to-notion.ts'
 import { SyncEvent, type SyncEventHandler } from '../renderer/sync-events.ts'
@@ -43,27 +62,26 @@ const msToNs = (ms: number): bigint => BigInt(Math.trunc(ms * 1_000_000))
 
 const OpKind = Schema.Literal('append', 'update', 'delete', 'retrieve')
 const CacheKind = Schema.Literal('hit', 'miss', 'drift', 'page-id-drift')
-const SyncFallbackReasonSchema = Schema.String
 
+// Bundles are REBUILT from the registered `notion-react.*` catalog schemas (SC-R13/R14 — the
+// contract is the single SSOT for the projection AND these runtime encoders). `service.name`
+// (a resource attribute) and `span.label` stay plain inline `OtelAttr.*` fields (excluded from
+// the registry). Encode is byte-identical to the pre-migration inline schemas (equivalence test).
 const SyncStartAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     serviceName: Schema.NonEmptyString.pipe(OtelAttr.key({ key: 'service.name' })),
     label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
-    pageId: Schema.String.pipe(OtelAttr.key({ key: 'notion-react.page_id' })),
-    rootBlockCount: Schema.NonNegativeInt.pipe(
-      OtelAttr.key({ key: 'notion-react.root_block_count' }),
-    ),
+    pageId: NotionReactPageId,
+    rootBlockCount: NotionReactRootBlockCount,
   }),
 )
 
 const SyncEndAttrs = OtelAttrs.defineSync(
   Schema.Struct({
-    ok: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion-react.ok' })),
-    opCount: Schema.NonNegativeInt.pipe(OtelAttr.key({ key: 'notion-react.op_count' })),
-    durationMs: Schema.Number.pipe(OtelAttr.key({ key: 'notion-react.duration_ms' })),
-    fallbackReason: Schema.optional(
-      SyncFallbackReasonSchema.pipe(OtelAttr.key({ key: 'notion-react.fallback_reason' })),
-    ),
+    ok: NotionReactOk,
+    opCount: NotionReactOpCount,
+    durationMs: NotionReactDurationMs,
+    fallbackReason: Schema.optional(NotionReactFallbackReason),
   }),
 )
 
@@ -71,25 +89,23 @@ const OpStartAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     serviceName: Schema.NonEmptyString.pipe(OtelAttr.key({ key: 'service.name' })),
     label: OpKind.pipe(OtelAttr.spanLabel()),
-    id: Schema.NonNegativeInt.pipe(OtelAttr.key({ key: 'notion-react.op.id' })),
-    kind: OpKind.pipe(OtelAttr.key({ key: 'notion-react.op.kind' })),
+    id: NotionReactOpId,
+    kind: NotionReactOpKind,
   }),
 )
 
 const OpSucceededAttrs = OtelAttrs.defineSync(
   Schema.Struct({
-    durationMs: Schema.Number.pipe(OtelAttr.key({ key: 'notion-react.op.duration_ms' })),
-    resultCount: Schema.NonNegativeInt.pipe(OtelAttr.key({ key: 'notion-react.op.result_count' })),
-    note: Schema.optional(
-      Schema.Literal('already-archived').pipe(OtelAttr.key({ key: 'notion-react.op.note' })),
-    ),
+    durationMs: NotionReactOpDurationMs,
+    resultCount: NotionReactOpResultCount,
+    note: Schema.optional(NotionReactOpNote),
   }),
 )
 
 const OpFailedAttrs = OtelAttrs.defineSync(
   Schema.Struct({
-    durationMs: Schema.Number.pipe(OtelAttr.key({ key: 'notion-react.op.duration_ms' })),
-    error: Schema.String.pipe(OtelAttr.key({ key: 'notion-react.op.error' })),
+    durationMs: NotionReactOpDurationMs,
+    error: NotionReactOpError,
   }),
 )
 
@@ -103,34 +119,30 @@ const CacheEventAttrs = OtelAttrs.defineSync(
 const FallbackEventAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     serviceName: Schema.NonEmptyString.pipe(OtelAttr.key({ key: 'service.name' })),
-    reason: SyncFallbackReasonSchema.pipe(OtelAttr.key({ key: 'notion-react.fallback_reason' })),
+    reason: NotionReactFallbackReason,
   }),
 )
 
 const BatchFlushEventAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     serviceName: Schema.NonEmptyString.pipe(OtelAttr.key({ key: 'service.name' })),
-    issued: Schema.NonNegativeInt.pipe(OtelAttr.key({ key: 'notion-react.batch.issued' })),
-    batched: Schema.NonNegativeInt.pipe(OtelAttr.key({ key: 'notion-react.batch.batched' })),
+    issued: NotionReactBatchIssued,
+    batched: NotionReactBatchBatched,
   }),
 )
 
 const UpdateNoopEventAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     serviceName: Schema.NonEmptyString.pipe(OtelAttr.key({ key: 'service.name' })),
-    blockId: Schema.String.pipe(OtelAttr.key({ key: 'notion-react.block_id' })),
-    reason: Schema.Literal('hash-equal', 'other').pipe(
-      OtelAttr.key({ key: 'notion-react.noop_reason' }),
-    ),
+    blockId: NotionReactBlockId,
+    reason: NotionReactNoopReason,
   }),
 )
 
 const CheckpointWrittenEventAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     serviceName: Schema.NonEmptyString.pipe(OtelAttr.key({ key: 'service.name' })),
-    bytes: Schema.optional(
-      Schema.NonNegativeInt.pipe(OtelAttr.key({ key: 'notion-react.checkpoint.bytes' })),
-    ),
+    bytes: Schema.optional(NotionReactCheckpointBytes),
   }),
 )
 

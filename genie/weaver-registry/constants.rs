@@ -1,7 +1,7 @@
 // Generated file - DO NOT EDIT
 // Source: constants.rs.genie.ts
 // registry-source: genie/weaver-registry/registry.ts
-// fingerprint: sha256:d2adfbc2ffa305681c6f390147eaaa9ad4596176254bede5fe9782340236be30
+// fingerprint: sha256:ff3ec5fc069cbc741f0d8da2a6ca743dd7e3ed9a9bc447b58c8c26bcaa58d7f6
 // regen: devenv tasks run genie:run
 
 //! Generated OpenTelemetry semantic-convention name constants.
@@ -173,6 +173,23 @@ pub mod attribute {
     pub const NOTION_MD_WEBHOOK_EVENT_TYPE: &str = "notion_md.webhook.event_type";
     pub const NOTION_MD_WEBHOOK_SURFACE: &str = "notion_md.webhook.surface";
     pub const NOTION_MD_WEBHOOK_TRIGGER_COUNT: &str = "notion_md.webhook.trigger_count";
+    pub const NOTION_REACT_BATCH_BATCHED: &str = "notion-react.batch.batched";
+    pub const NOTION_REACT_BATCH_ISSUED: &str = "notion-react.batch.issued";
+    pub const NOTION_REACT_BLOCK_ID: &str = "notion-react.block_id";
+    pub const NOTION_REACT_CHECKPOINT_BYTES: &str = "notion-react.checkpoint.bytes";
+    pub const NOTION_REACT_DURATION_MS: &str = "notion-react.duration_ms";
+    pub const NOTION_REACT_FALLBACK_REASON: &str = "notion-react.fallback_reason";
+    pub const NOTION_REACT_NOOP_REASON: &str = "notion-react.noop_reason";
+    pub const NOTION_REACT_OK: &str = "notion-react.ok";
+    pub const NOTION_REACT_OP_COUNT: &str = "notion-react.op_count";
+    pub const NOTION_REACT_OP_DURATION_MS: &str = "notion-react.op.duration_ms";
+    pub const NOTION_REACT_OP_ERROR: &str = "notion-react.op.error";
+    pub const NOTION_REACT_OP_ID: &str = "notion-react.op.id";
+    pub const NOTION_REACT_OP_KIND: &str = "notion-react.op.kind";
+    pub const NOTION_REACT_OP_NOTE: &str = "notion-react.op.note";
+    pub const NOTION_REACT_OP_RESULT_COUNT: &str = "notion-react.op.result_count";
+    pub const NOTION_REACT_PAGE_ID: &str = "notion-react.page_id";
+    pub const NOTION_REACT_ROOT_BLOCK_COUNT: &str = "notion-react.root_block_count";
     pub const NOTION_DATA_SOURCE_ID: &str = "notion.data_source_id";
     pub const NOTION_HTTP_METHOD: &str = "notion.http.method";
     pub const NOTION_HTTP_OPERATION: &str = "notion.http.operation";
@@ -402,6 +419,23 @@ pub mod attribute {
         "notion_md.webhook.event_type",
         "notion_md.webhook.surface",
         "notion_md.webhook.trigger_count",
+        "notion-react.batch.batched",
+        "notion-react.batch.issued",
+        "notion-react.block_id",
+        "notion-react.checkpoint.bytes",
+        "notion-react.duration_ms",
+        "notion-react.fallback_reason",
+        "notion-react.noop_reason",
+        "notion-react.ok",
+        "notion-react.op_count",
+        "notion-react.op.duration_ms",
+        "notion-react.op.error",
+        "notion-react.op.id",
+        "notion-react.op.kind",
+        "notion-react.op.note",
+        "notion-react.op.result_count",
+        "notion-react.page_id",
+        "notion-react.root_block_count",
         "notion.data_source_id",
         "notion.http.method",
         "notion.http.operation",
@@ -542,6 +576,7 @@ pub mod span {
     pub const PTY_SESSION_MAKE: &str = "pty-session.make";
     pub const PW_WAIT_UNTIL: &str = "pw.wait.until";
     pub const SPAN_ACME_PROBE: &str = "span.acme.probe";
+    pub const SPAN_NOTION_REACT_SYNC: &str = "span.notion-react.sync";
 
     pub const ALL: &[&str] = &[
         "acme.operation",
@@ -617,6 +652,7 @@ pub mod span {
         "pty-session.make",
         "pw.wait.until",
         "span.acme.probe",
+        "span.notion-react.sync",
     ];
 }
 

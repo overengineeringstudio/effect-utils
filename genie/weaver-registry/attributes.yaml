@@ -2,7 +2,7 @@
 # Source: attributes.yaml.genie.ts
 
 # registry-source: genie/weaver-registry/registry.ts
-# fingerprint: sha256:3d9d2c95e386bd749038e57142eb2c8997bb1b4ca8140c1aadfd2ae38447081e
+# fingerprint: sha256:5a804743bbb3437c8cdbcefe72196041664e57faf74a075b5327ee854234f47b
 groups:
   - id: registry.acme
     type: attribute_group
@@ -1616,6 +1616,174 @@ groups:
         stability: development
         brief: Number of watch triggers a webhook signal mapped to.
         examples: [1]
+        annotations:
+          overeng_policy:
+            cardinality: low
+  - id: registry.notion-react
+    type: attribute_group
+    display_name: Notion React Attributes
+    brief: Attributes for the notion-react namespace.
+    attributes:
+      - id: notion-react.batch.batched
+        type: int
+        stability: development
+        brief: Number of ops actually batched in a flush.
+        examples: [0, 25]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion-react.batch.issued
+        type: int
+        stability: development
+        brief: Number of ops issued into a flushed batch.
+        examples: [0, 25]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion-react.block_id
+        type: string
+        stability: development
+        brief: Block id of an update that was a no-op.
+        examples: [205d5c1a-0000-4000-8000-000000000000]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: notion-react.checkpoint.bytes
+        type: int
+        stability: development
+        brief: Size of a written checkpoint in bytes.
+        examples: [512, 40960]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: notion-react.duration_ms
+        type: double
+        stability: development
+        brief: Wall-clock duration of the whole sync in milliseconds.
+        examples: [12.5, 1500]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: notion-react.fallback_reason
+        type: string
+        stability: development
+        brief: Reason the sync fell back to a full re-render.
+        examples: [checkpoint-missing, hash-mismatch]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: notion-react.noop_reason
+        type:
+          members:
+            - id: hash-equal
+              value: hash-equal
+              brief: The block hash was unchanged.
+              stability: development
+            - id: other
+              value: other
+              brief: Another (unclassified) no-op reason.
+              stability: development
+        stability: development
+        brief: Reason an update was a no-op.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion-react.ok
+        type: boolean
+        stability: development
+        brief: Whether the sync completed successfully.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion-react.op_count
+        type: int
+        stability: development
+        brief: Number of HTTP ops issued during the sync.
+        examples: [0, 12]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion-react.op.duration_ms
+        type: double
+        stability: development
+        brief: Wall-clock duration of one op in milliseconds.
+        examples: [1.5, 250]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: notion-react.op.error
+        type: string
+        stability: development
+        brief: Error message recorded on a failed op.
+        examples: ['validation_error: body.length']
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: notion-react.op.id
+        type: int
+        stability: development
+        brief: Correlation id of one HTTP op within a sync.
+        examples: [0, 7]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: notion-react.op.kind
+        type:
+          members:
+            - id: append
+              value: append
+              brief: Append blocks.
+              stability: development
+            - id: update
+              value: update
+              brief: Update a block.
+              stability: development
+            - id: delete
+              value: delete
+              brief: Delete (archive) a block.
+              stability: development
+            - id: retrieve
+              value: retrieve
+              brief: Retrieve blocks.
+              stability: development
+        stability: development
+        brief: Kind of Notion HTTP op a span wraps.
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: notion-react.op.note
+        type:
+          members:
+            - id: already-archived
+              value: already-archived
+              brief: The target block was already archived (delete no-op).
+              stability: development
+        stability: development
+        brief: Note recorded on a succeeded op.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion-react.op.result_count
+        type: int
+        stability: development
+        brief: Number of results returned by one op.
+        examples: [0, 3]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion-react.page_id
+        type: string
+        stability: development
+        brief: Notion page id a sync targets.
+        examples: [205d5c1a-0000-4000-8000-000000000000]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: notion-react.root_block_count
+        type: int
+        stability: development
+        brief: Number of root blocks in the synced document tree.
+        examples: [1, 42]
         annotations:
           overeng_policy:
             cardinality: low

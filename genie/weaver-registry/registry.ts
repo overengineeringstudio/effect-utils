@@ -28,6 +28,7 @@ import type {
 import megarepoContract from '../../packages/@overeng/megarepo/src/megarepo.contract.ts'
 import notionEffectClientContract from '../../packages/@overeng/notion-effect-client/src/notion-effect-client.contract.ts'
 import notionMdContract from '../../packages/@overeng/notion-md/src/notion-md.contract.ts'
+import notionReactContract from '../../packages/@overeng/notion-react/src/notion-react.contract.ts'
 import demoContract from '../../packages/@overeng/otel-contract/src/registry-demo.contract.ts'
 import { fragment } from '../../packages/@overeng/otel-contract/src/registry.ts'
 import ptyContract from '../../packages/@overeng/pty-effect/src/pty.contract.ts'
@@ -53,6 +54,7 @@ export const memberSeamPaths = [
   'packages/@overeng/megarepo/src/megarepo.contract.ts',
   'packages/@overeng/notion-effect-client/src/notion-effect-client.contract.ts',
   'packages/@overeng/notion-md/src/notion-md.contract.ts',
+  'packages/@overeng/notion-react/src/notion-react.contract.ts',
   'packages/@overeng/otel-contract/src/registry-demo.contract.ts',
   'packages/@overeng/pty-effect/src/pty.contract.ts',
   'packages/@overeng/restate-effect/src/observability/restate.contract.ts',
@@ -67,6 +69,7 @@ const contracts = [
   megarepoContract,
   notionEffectClientContract,
   notionMdContract,
+  notionReactContract,
   demoContract,
   ptyContract,
   restateContract,

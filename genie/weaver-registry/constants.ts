@@ -1,7 +1,7 @@
 // Generated file - DO NOT EDIT
 // Source: constants.ts.genie.ts
 // registry-source: genie/weaver-registry/registry.ts
-// fingerprint: sha256:663e5efda044403d5da7e85830d399672977bfef85a228a5c9d67a6e5f5cd097
+// fingerprint: sha256:68a92976e25642d98d4f12f8a0e25dafe7fcc4e89f240b5f3fcaefc5c8d4ed23
 
 export const AcmeAttempt = 'acme.attempt' as const
 export const AcmeProbeLabel = 'acme.probe.label' as const
@@ -168,6 +168,23 @@ export const Notion_mdWatchReason = 'notion_md.watch.reason' as const
 export const Notion_mdWebhookEvent_type = 'notion_md.webhook.event_type' as const
 export const Notion_mdWebhookSurface = 'notion_md.webhook.surface' as const
 export const Notion_mdWebhookTrigger_count = 'notion_md.webhook.trigger_count' as const
+export const NotionReactBatchBatched = 'notion-react.batch.batched' as const
+export const NotionReactBatchIssued = 'notion-react.batch.issued' as const
+export const NotionReactBlock_id = 'notion-react.block_id' as const
+export const NotionReactCheckpointBytes = 'notion-react.checkpoint.bytes' as const
+export const NotionReactDuration_ms = 'notion-react.duration_ms' as const
+export const NotionReactFallback_reason = 'notion-react.fallback_reason' as const
+export const NotionReactNoop_reason = 'notion-react.noop_reason' as const
+export const NotionReactOk = 'notion-react.ok' as const
+export const NotionReactOp_count = 'notion-react.op_count' as const
+export const NotionReactOpDuration_ms = 'notion-react.op.duration_ms' as const
+export const NotionReactOpError = 'notion-react.op.error' as const
+export const NotionReactOpId = 'notion-react.op.id' as const
+export const NotionReactOpKind = 'notion-react.op.kind' as const
+export const NotionReactOpNote = 'notion-react.op.note' as const
+export const NotionReactOpResult_count = 'notion-react.op.result_count' as const
+export const NotionReactPage_id = 'notion-react.page_id' as const
+export const NotionReactRoot_block_count = 'notion-react.root_block_count' as const
 export const NotionData_source_id = 'notion.data_source_id' as const
 export const NotionHttpMethod = 'notion.http.method' as const
 export const NotionHttpOperation = 'notion.http.operation' as const
@@ -397,6 +414,23 @@ export type AttributeKey =
   | 'notion_md.webhook.event_type'
   | 'notion_md.webhook.surface'
   | 'notion_md.webhook.trigger_count'
+  | 'notion-react.batch.batched'
+  | 'notion-react.batch.issued'
+  | 'notion-react.block_id'
+  | 'notion-react.checkpoint.bytes'
+  | 'notion-react.duration_ms'
+  | 'notion-react.fallback_reason'
+  | 'notion-react.noop_reason'
+  | 'notion-react.ok'
+  | 'notion-react.op_count'
+  | 'notion-react.op.duration_ms'
+  | 'notion-react.op.error'
+  | 'notion-react.op.id'
+  | 'notion-react.op.kind'
+  | 'notion-react.op.note'
+  | 'notion-react.op.result_count'
+  | 'notion-react.page_id'
+  | 'notion-react.root_block_count'
   | 'notion.data_source_id'
   | 'notion.http.method'
   | 'notion.http.operation'
