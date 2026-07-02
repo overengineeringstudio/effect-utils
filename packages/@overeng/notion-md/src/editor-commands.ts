@@ -33,7 +33,7 @@ import {
   editResultAttrs,
   PutSpan,
   putResultAttrs,
-  withOperation,
+  withRootOperation,
 } from './observability.ts'
 import { reportNote } from './progress.ts'
 import type { NmdStateStore } from './state-store.ts'
@@ -148,7 +148,7 @@ export const catEditorPage = (
       ...(projected.baseHash === undefined ? {} : { baseHash: projected.baseHash }),
     }
   }).pipe(
-    withOperation({ operation: CatSpan, attributes: { pageId: opts.pageId, mode: opts.mode } }),
+    withRootOperation({ operation: CatSpan, attributes: { pageId: opts.pageId, mode: opts.mode } }),
   )
 
 // ---------------------------------------------------------------------------
@@ -306,7 +306,10 @@ export const putEditorPage = (
         },
       }),
     ),
-    withOperation({ operation: PutSpan, attributes: { pageId: opts.pageId, force: opts.force } }),
+    withRootOperation({
+      operation: PutSpan,
+      attributes: { pageId: opts.pageId, force: opts.force },
+    }),
   )
 
 // ---------------------------------------------------------------------------
@@ -463,7 +466,10 @@ export const editEditorPage = (
         Effect.zipRight(Effect.fail(error)),
       ),
     ),
-    withOperation({ operation: EditSpan, attributes: { pageId: opts.pageId, mode: opts.mode } }),
+    withRootOperation({
+      operation: EditSpan,
+      attributes: { pageId: opts.pageId, mode: opts.mode },
+    }),
   )
 
 // ---------------------------------------------------------------------------
@@ -558,7 +564,10 @@ export const editReadOnlyPage = (
     Effect.tap((result) =>
       annotateAttrs({ attributes: editResultAttrs, value: { outcome: result.outcome } }),
     ),
-    withOperation({ operation: EditSpan, attributes: { pageId: opts.pageId, mode: opts.mode } }),
+    withRootOperation({
+      operation: EditSpan,
+      attributes: { pageId: opts.pageId, mode: opts.mode },
+    }),
   )
 
 const editorIoError =

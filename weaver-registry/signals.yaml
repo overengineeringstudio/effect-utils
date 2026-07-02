@@ -2,7 +2,7 @@
 # Source: signals.yaml.genie.ts
 
 # registry-source: weaver-registry/registry.ts
-# fingerprint: sha256:6bdc9d62a3caa1d3c79c949df7479c9bb0c4cc28933da46c993e54b5db4da296
+# fingerprint: sha256:86bcacc65cff8963a13da7982652d1adb9fd72d145ae07e418969431915e6f41
 groups:
   - id: metric.acme.probe.duration
     type: metric
@@ -130,4 +130,350 @@ groups:
       - ref: genie.cwd
         requirement_level: required
       - ref: genie.file.target_path
+        requirement_level: required
+  - id: span.notion_md.batch_watch
+    type: span
+    span_kind: internal
+    stability: development
+    brief: A batch watch over multiple paths.
+    attributes:
+      - ref: notion_md.command
+        requirement_level: required
+      - ref: notion_md.watch
+        requirement_level: required
+      - ref: notion_md.batch
+        requirement_level: required
+      - ref: notion_md.batch.path_count
+        requirement_level: required
+  - id: span.notion_md.cat
+    type: span
+    span_kind: internal
+    stability: development
+    brief: Read-only editor projection of a Notion page.
+    attributes:
+      - ref: notion_md.page_id
+        requirement_level: required
+      - ref: notion_md.editor.mode
+        requirement_level: required
+  - id: span.notion_md.comment_boundary
+    type: span
+    span_kind: internal
+    stability: development
+    brief: A comment write-boundary classification.
+    attributes:
+      - ref: notion_md.comment_boundary.operation
+        requirement_level: required
+      - ref: notion_md.comment_boundary.comment_count
+        requirement_level: required
+      - ref: notion_md.comment_boundary.verdict
+        requirement_level: required
+      - ref: notion_md.comment_boundary.guard
+        requirement_level: recommended
+  - id: span.notion_md.destructive_body
+    type: span
+    span_kind: internal
+    stability: development
+    brief: A destructive body write gate.
+    attributes:
+      - ref: notion_md.destructive_body.guard
+        requirement_level: required
+      - ref: notion_md.destructive_body.block_count
+        requirement_level: required
+      - ref: notion_md.destructive_body.verdict
+        requirement_level: required
+  - id: span.notion_md.edit
+    type: span
+    span_kind: internal
+    stability: development
+    brief: Ephemeral file-engine editor session (wraps engine spans).
+    attributes:
+      - ref: notion_md.page_id
+        requirement_level: required
+      - ref: notion_md.editor.mode
+        requirement_level: required
+  - id: span.notion_md.establish_sidecar
+    type: span
+    span_kind: internal
+    stability: development
+    brief: Establish the `.nmd` sidecar baseline for a page on first contact.
+    attributes:
+      - ref: notion_md.page_id
+        requirement_level: required
+  - id: span.notion_md.gateway_archive_page
+    type: span
+    span_kind: internal
+    stability: development
+    brief: Gateway-level span for archiving (trashing) a page.
+    attributes:
+      - ref: notion_md.page_id
+        requirement_level: required
+  - id: span.notion_md.gateway_create_page
+    type: span
+    span_kind: internal
+    stability: development
+    brief: Gateway-level span for creating a new child page under a parent.
+    attributes:
+      - ref: notion_md.parent_page_id
+        requirement_level: required
+  - id: span.notion_md.gateway_list_child_pages
+    type: span
+    span_kind: internal
+    stability: development
+    brief: Gateway-level span for listing a page's direct child pages.
+    attributes:
+      - ref: notion_md.page_id
+        requirement_level: required
+  - id: span.notion_md.gateway_move_page
+    type: span
+    span_kind: internal
+    stability: development
+    brief: Gateway-level span for moving a page to a new parent.
+    attributes:
+      - ref: notion_md.page_id
+        requirement_level: required
+  - id: span.notion_md.gateway_pull_page
+    type: span
+    span_kind: internal
+    stability: development
+    brief: Gateway-level Notion API call that pulls a page's content.
+    attributes:
+      - ref: notion_md.page_id
+        requirement_level: required
+  - id: span.notion_md.gateway_retrieve_data_source
+    type: span
+    span_kind: internal
+    stability: development
+    brief: Gateway-level span for retrieving a data source (database) schema.
+    attributes:
+      - ref: notion_md.data_source_id
+        requirement_level: required
+  - id: span.notion_md.gateway_update_markdown
+    type: span
+    span_kind: internal
+    stability: development
+    brief: Gateway-level span for applying a markdown body update to a page.
+    attributes:
+      - ref: notion_md.page_id
+        requirement_level: required
+      - ref: notion_md.markdown_update.type
+        requirement_level: required
+      - ref: notion_md.markdown_update.allow_deleting_content
+        requirement_level: required
+      - ref: notion_md.markdown_update.content_update_count
+        requirement_level: required
+  - id: span.notion_md.gateway_update_page_metadata
+    type: span
+    span_kind: internal
+    stability: development
+    brief: Gateway-level span for updating page metadata (title/icon/cover/trash/lock).
+    attributes:
+      - ref: notion_md.page_id
+        requirement_level: required
+      - ref: notion_md.page_metadata.title
+        requirement_level: required
+      - ref: notion_md.page_metadata.icon
+        requirement_level: required
+      - ref: notion_md.page_metadata.cover
+        requirement_level: required
+      - ref: notion_md.page_metadata.in_trash
+        requirement_level: required
+      - ref: notion_md.page_metadata.is_locked
+        requirement_level: required
+  - id: span.notion_md.gateway_update_page_properties
+    type: span
+    span_kind: internal
+    stability: development
+    brief: Gateway-level span for updating a page's database properties.
+    attributes:
+      - ref: notion_md.page_id
+        requirement_level: required
+  - id: span.notion_md.media_boundary
+    type: span
+    span_kind: internal
+    stability: development
+    brief: A files/media write-boundary classification.
+    attributes:
+      - ref: notion_md.media_boundary.operation
+        requirement_level: required
+      - ref: notion_md.media_boundary.file_count
+        requirement_level: required
+      - ref: notion_md.media_boundary.verdict
+        requirement_level: required
+      - ref: notion_md.media_boundary.guard
+        requirement_level: recommended
+  - id: span.notion_md.object_gc
+    type: span
+    span_kind: internal
+    stability: development
+    brief: An object-GC pass (dry-run or live prune).
+    attributes:
+      - ref: notion_md.object_gc.dry_run
+        requirement_level: required
+      - ref: notion_md.object_gc.reachable_count
+        requirement_level: recommended
+      - ref: notion_md.object_gc.removed_count
+        requirement_level: recommended
+  - id: span.notion_md.plan_path
+    type: span
+    span_kind: internal
+    stability: development
+    brief: Plan a tree sync over a path (`fromRemote` picks the plan direction).
+    attributes:
+      - ref: notion_md.path.basename
+        requirement_level: required
+      - ref: notion_md.tree.from_remote
+        requirement_level: required
+  - id: span.notion_md.pull_page
+    type: span
+    span_kind: internal
+    stability: development
+    brief: Pull a single page from Notion into a local file.
+    attributes:
+      - ref: notion_md.page_id
+        requirement_level: required
+      - ref: notion_md.path.basename
+        requirement_level: required
+  - id: span.notion_md.push_page
+    type: span
+    span_kind: internal
+    stability: development
+    brief: Push a single local page to Notion.
+    attributes:
+      - ref: notion_md.path.basename
+        requirement_level: required
+      - ref: notion_md.push.force
+        requirement_level: required
+      - ref: notion_md.push.allow_delete_unknown_blocks
+        requirement_level: required
+  - id: span.notion_md.put
+    type: span
+    span_kind: internal
+    stability: development
+    brief: Guarded title+body write to a Notion page.
+    attributes:
+      - ref: notion_md.page_id
+        requirement_level: required
+      - ref: notion_md.put.force
+        requirement_level: required
+  - id: span.notion_md.state_read_nmd
+    type: span
+    span_kind: internal
+    stability: development
+    brief: Read the `.nmd` sidecar state file.
+    attributes:
+      - ref: notion_md.state.operation
+        requirement_level: required
+      - ref: notion_md.path.basename
+        requirement_level: required
+  - id: span.notion_md.state_read_object
+    type: span
+    span_kind: internal
+    stability: development
+    brief: Read a content object from the state store (labelled by object role).
+    attributes:
+      - ref: notion_md.object.role
+        requirement_level: required
+      - ref: notion_md.path.basename
+        requirement_level: recommended
+      - ref: notion_md.object.hash_prefix
+        requirement_level: recommended
+  - id: span.notion_md.state_write_object
+    type: span
+    span_kind: internal
+    stability: development
+    brief: Write a content object into the state store (labelled by object role).
+    attributes:
+      - ref: notion_md.object.role
+        requirement_level: required
+      - ref: notion_md.path.basename
+        requirement_level: recommended
+      - ref: notion_md.object.hash_prefix
+        requirement_level: recommended
+  - id: span.notion_md.status_page
+    type: span
+    span_kind: internal
+    stability: development
+    brief: Compute status of a single page against its baseline.
+    attributes:
+      - ref: notion_md.path.basename
+        requirement_level: required
+  - id: span.notion_md.status_path
+    type: span
+    span_kind: internal
+    stability: development
+    brief: Status over a filesystem path (file or recursive tree).
+    attributes:
+      - ref: notion_md.path.basename
+        requirement_level: required
+      - ref: notion_md.path.recursive
+        requirement_level: required
+  - id: span.notion_md.sync_page
+    type: span
+    span_kind: internal
+    stability: development
+    brief: Full reconcile (status + pull/push) of a single page.
+    attributes:
+      - ref: notion_md.path.basename
+        requirement_level: required
+  - id: span.notion_md.sync_path
+    type: span
+    span_kind: internal
+    stability: development
+    brief: Sync over a filesystem path (recursive tree or single file).
+    attributes:
+      - ref: notion_md.path.basename
+        requirement_level: required
+      - ref: notion_md.path.recursive
+        requirement_level: required
+      - ref: notion_md.tree.from_remote
+        requirement_level: required
+  - id: span.notion_md.sync_tree
+    type: span
+    span_kind: internal
+    stability: development
+    brief: Sync an entire tree under a root.
+    attributes:
+      - ref: notion_md.path.basename
+        requirement_level: required
+      - ref: notion_md.tree.plan
+        requirement_level: required
+      - ref: notion_md.tree.from_remote
+        requirement_level: required
+  - id: span.notion_md.watch
+    type: span
+    span_kind: internal
+    stability: development
+    brief: A watch session over a single path.
+    attributes:
+      - ref: notion_md.command
+        requirement_level: required
+      - ref: notion_md.watch
+        requirement_level: required
+      - ref: notion_md.path.basename
+        requirement_level: required
+  - id: span.notion_md.watch_sync_pass
+    type: span
+    span_kind: internal
+    stability: development
+    brief: One watch-driven sync pass.
+    attributes:
+      - ref: notion_md.command
+        requirement_level: required
+      - ref: notion_md.watch
+        requirement_level: required
+      - ref: notion_md.watch.reason
+        requirement_level: required
+      - ref: notion_md.path.basename
+        requirement_level: required
+  - id: span.notion_md.webhook_trigger
+    type: span
+    span_kind: internal
+    stability: development
+    brief: A webhook signal mapped to watch triggers.
+    attributes:
+      - ref: notion_md.webhook.event_type
+        requirement_level: required
+      - ref: notion_md.webhook.surface
+        requirement_level: required
+      - ref: notion_md.webhook.trigger_count
         requirement_level: required

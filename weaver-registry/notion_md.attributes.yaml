@@ -1,0 +1,521 @@
+# Generated file - DO NOT EDIT
+# Source: notion_md.attributes.yaml.genie.ts
+
+# registry-source: weaver-registry/registry.ts
+# fingerprint: sha256:86bcacc65cff8963a13da7982652d1adb9fd72d145ae07e418969431915e6f41
+groups:
+  - id: registry.notion_md
+    type: attribute_group
+    display_name: Notion Markdown Attributes
+    brief: Attributes for the notion_md namespace.
+    attributes:
+      - id: notion_md.batch
+        type: boolean
+        stability: development
+        brief: Whether the invocation runs over a batch of targets.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.batch.path_count
+        type: int
+        stability: development
+        brief: Number of paths watched in a batch watch run.
+        examples: [3]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.batch.recursive
+        type: boolean
+        stability: development
+        brief: Whether a batch run recurses into subdirectories.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.batch.target_count
+        type: int
+        stability: development
+        brief: Number of targets in a batch run.
+        examples: [3]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.command
+        type: string
+        stability: development
+        brief: notion-md command name.
+        examples: [status, sync]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.comment_boundary.comment_count
+        type: int
+        stability: development
+        brief: Number of comments considered at a comment write boundary.
+        examples: [1, 2]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.comment_boundary.guard
+        type: string
+        stability: development
+        brief: Guard that governed a comment write.
+        examples: [force]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: notion_md.comment_boundary.operation
+        type: string
+        stability: development
+        brief: Comment write-boundary operation.
+        examples: [create, skip]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: notion_md.comment_boundary.verdict
+        type: string
+        stability: development
+        brief: Comment write-boundary verdict.
+        examples: [allow, block]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: notion_md.data_source_id
+        type: string
+        stability: development
+        brief: Notion data source (database) id.
+        examples: [205d5c1a-0000-4000-8000-000000000000]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: notion_md.destructive_body.block_count
+        type: int
+        stability: development
+        brief: Number of blocks considered at a destructive body write gate.
+        examples: [1, 10]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.destructive_body.guard
+        type: string
+        stability: development
+        brief: Guard that governed a destructive body write.
+        examples: [allow-delete]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: notion_md.destructive_body.verdict
+        type: string
+        stability: development
+        brief: Destructive body write-gate verdict.
+        examples: [allow, block]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: notion_md.edit.outcome
+        type:
+          members:
+            - id: pushed
+              value: pushed
+              brief: The edit was pushed to Notion.
+              stability: development
+            - id: noop
+              value: noop
+              brief: The edit made no changes.
+              stability: development
+            - id: aborted
+              value: aborted
+              brief: The edit session was aborted.
+              stability: development
+            - id: conflict
+              value: conflict
+              brief: The edit hit a conflict.
+              stability: development
+            - id: read-only
+              value: read-only
+              brief: The page was read-only.
+              stability: development
+        stability: development
+        brief: Outcome of an `edit` session.
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: notion_md.editor.mode
+        type:
+          members:
+            - id: default
+              value: default
+              brief: Body-only editor projection.
+              stability: development
+            - id: frontmatter
+              value: frontmatter
+              brief: Frontmatter + body editor projection.
+              stability: development
+        stability: development
+        brief: Editor representation mode for `cat` / `put` / `edit`.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.markdown_update.allow_deleting_content
+        type: boolean
+        stability: development
+        brief: Whether the markdown update is permitted to delete content.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.markdown_update.content_update_count
+        type: int
+        stability: development
+        brief: Number of content updates in a markdown-update command.
+        examples: [1, 5]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.markdown_update.type
+        type: string
+        stability: development
+        brief: Markdown-update command kind.
+        examples: [replace, patch]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: notion_md.media_boundary.file_count
+        type: int
+        stability: development
+        brief: Number of files considered at a files/media write boundary.
+        examples: [1, 3]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.media_boundary.guard
+        type: string
+        stability: development
+        brief: Guard that governed a files/media write.
+        examples: [force]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: notion_md.media_boundary.operation
+        type: string
+        stability: development
+        brief: Files/media write-boundary operation.
+        examples: [upload, skip]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: notion_md.media_boundary.verdict
+        type: string
+        stability: development
+        brief: Files/media write-boundary verdict.
+        examples: [allow, block]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: notion_md.object_gc.dry_run
+        type: boolean
+        stability: development
+        brief: Whether an object-GC pass is plan-only (dry run).
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.object_gc.reachable_count
+        type: int
+        stability: development
+        brief: Number of reachable objects after an object-GC pass.
+        examples: [12]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.object_gc.removed_count
+        type: int
+        stability: development
+        brief: Number of removed (or would-be-removed) objects after an object-GC pass.
+        examples: [3]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.object.hash_prefix
+        type: string
+        stability: development
+        brief: Short prefix of a content-object hash.
+        examples: [a1b2c3d4e5f6]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: notion_md.object.role
+        type: string
+        stability: development
+        brief: Role of the stored content object.
+        examples: [markdown, frontmatter]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: notion_md.page_id
+        type: string
+        stability: development
+        brief: Notion page id (UUID).
+        examples: [205d5c1a-0000-4000-8000-000000000000]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: notion_md.page_metadata.cover
+        type: boolean
+        stability: development
+        brief: Whether a page-metadata update sets the cover.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.page_metadata.icon
+        type: boolean
+        stability: development
+        brief: Whether a page-metadata update sets the icon.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.page_metadata.in_trash
+        type: boolean
+        stability: development
+        brief: Whether a page-metadata update trashes the page.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.page_metadata.is_locked
+        type: boolean
+        stability: development
+        brief: Whether a page-metadata update locks the page.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.page_metadata.title
+        type: boolean
+        stability: development
+        brief: Whether a page-metadata update sets the title.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.parent_page_id
+        type: string
+        stability: development
+        brief: Parent Notion page id (UUID).
+        examples: [205d5c1a-0000-4000-8000-000000000000]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: notion_md.path.basename
+        type: string
+        stability: development
+        brief: Basename of the `.nmd` path a span operates on.
+        examples: [index.nmd, notes.nmd]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: notion_md.path.recursive
+        type: boolean
+        stability: development
+        brief: Whether a path operation recurses over a tree.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.push.allow_delete_unknown_blocks
+        type: boolean
+        stability: development
+        brief: Whether deleting unknown blocks is permitted during push.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.push.decision
+        type: string
+        stability: development
+        brief: The storage/push decision verdict.
+        examples: [push, skip]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: notion_md.push.force
+        type: boolean
+        stability: development
+        brief: Whether force-push was requested.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.push.markdown_command
+        type: string
+        stability: development
+        brief: The resolved markdown-update command shape a push produced.
+        examples: [replace, patch]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: notion_md.push.pushed
+        type: boolean
+        stability: development
+        brief: Whether the push actually wrote anything.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.put.body_written
+        type: boolean
+        stability: development
+        brief: Whether a `put` wrote the body.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.put.force
+        type: boolean
+        stability: development
+        brief: Whether force-write was requested for `put`.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.put.title_written
+        type: boolean
+        stability: development
+        brief: Whether a `put` wrote the title.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.state.operation
+        type: string
+        stability: development
+        brief: State-store file operation performed.
+        examples: [read, write]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: notion_md.status.local_changed
+        type: boolean
+        stability: development
+        brief: Whether local content changed vs the baseline.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.status.local_page_metadata_changed
+        type: boolean
+        stability: development
+        brief: Whether local page metadata changed vs the baseline.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.status.local_properties_changed
+        type: boolean
+        stability: development
+        brief: Whether local database properties changed vs the baseline.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.status.remote_body_changed
+        type: boolean
+        stability: development
+        brief: Whether the remote page body changed vs the baseline.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.status.remote_changed
+        type: boolean
+        stability: development
+        brief: Whether remote content changed vs the baseline.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.status.remote_page_metadata_changed
+        type: boolean
+        stability: development
+        brief: Whether remote page metadata changed vs the baseline.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.status.unknown_block_count
+        type: int
+        stability: development
+        brief: Number of unknown (unrepresentable) blocks encountered during status.
+        examples: [0, 2]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.sync.error
+        type: boolean
+        stability: development
+        brief: Whether a watch sync pass failed.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.sync.error_tag
+        type: string
+        stability: development
+        brief: Tagged-error name for a failed watch sync pass.
+        examples: [NmdConflictError]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: notion_md.sync.result
+        type: string
+        stability: development
+        brief: Terminal reconciliation verdict of a sync.
+        examples: [pushed, pulled, no-op]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: notion_md.tree.from_remote
+        type: boolean
+        stability: development
+        brief: Whether a tree plan/sync direction pulls from remote.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.tree.plan
+        type: boolean
+        stability: development
+        brief: Whether a tree sync is plan-only (dry run).
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.watch
+        type: boolean
+        stability: development
+        brief: Whether the command runs in watch mode.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.watch.reason
+        type:
+          members:
+            - id: file
+              value: file
+              brief: A filesystem change triggered the pass.
+              stability: development
+            - id: initial
+              value: initial
+              brief: The initial pass at watch startup.
+              stability: development
+            - id: poll
+              value: poll
+              brief: A poll interval triggered the pass.
+              stability: development
+        stability: development
+        brief: What triggered a watch pass.
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: notion_md.webhook.event_type
+        type: string
+        stability: development
+        brief: Webhook event type.
+        examples: [page.content_updated]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: notion_md.webhook.surface
+        type: string
+        stability: development
+        brief: Webhook surface the event targets.
+        examples: [page, database]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: notion_md.webhook.trigger_count
+        type: int
+        stability: development
+        brief: Number of watch triggers a webhook signal mapped to.
+        examples: [1]
+        annotations:
+          overeng_policy:
+            cardinality: low

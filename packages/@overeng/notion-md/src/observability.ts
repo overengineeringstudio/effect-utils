@@ -1,3 +1,10 @@
+/**
+ * Runtime observability surface for notion-md. Every `notion_md.*` span/attribute is DERIVED from
+ * the registered seam contract (`./notion-md.contract.ts`, namespace `notion_md`) — the single
+ * SSOT for BOTH the Weaver registry projection AND these runtime encoders (SC-R13/R14). This file
+ * holds only the runtime wrappers (attribute shaping, root-span selection) plus the DYNAMIC-NAME
+ * bridges that have no stable single-signal registry projection (SC-DQ5).
+ */
 import { Effect, Schema } from 'effect'
 
 import {
@@ -5,231 +12,134 @@ import {
   OtelAttrs,
   OtelOperation,
   OtelSpan,
+  type OtelAttrEncodeError,
   type OtelOperationDefinition,
 } from '@overeng/otel-contract'
 
-const pageAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    pageId: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.page_id' })),
-  }),
-)
+import {
+  BatchWatchOperation,
+  CatOperation,
+  CommentBoundaryOperation,
+  DestructiveBodyOperation,
+  EditOperation,
+  EstablishSidecarOperation,
+  GatewayArchivePageOperation,
+  GatewayCreatePageOperation,
+  GatewayListChildPagesOperation,
+  GatewayMovePageOperation,
+  GatewayPullPageOperation,
+  GatewayRetrieveDataSourceOperation,
+  GatewayUpdateMarkdownOperation,
+  GatewayUpdatePageMetadataOperation,
+  GatewayUpdatePagePropertiesOperation,
+  MediaBoundaryOperation,
+  NotionMdBatch,
+  NotionMdBatchRecursive,
+  NotionMdBatchTargetCount,
+  NotionMdCommand,
+  NotionMdPathBasename,
+  NotionMdStateOperation,
+  ObjectGcOperation,
+  PlanPathOperation,
+  PullPageOperation,
+  PushPageOperation,
+  PutOperation,
+  ReadNmdStateOperation,
+  ReadObjectStateOperation,
+  StatusPageOperation,
+  StatusPathOperation,
+  SyncPageOperation,
+  SyncPathOperation,
+  SyncTreeOperation,
+  WatchOperation,
+  WatchSyncPassOperation,
+  WebhookTriggerOperation,
+  WriteObjectStateOperation,
+} from './notion-md.contract.ts'
 
-const parentPageAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    parentPageId: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.parent_page_id' })),
-  }),
-)
+// ---- DERIVED runtime span surfaces (re-pointed at the seam contract's `.operation` products) ----
+/** Span for `status` over a filesystem path (file or recursive tree). */
+export const StatusPathSpan = StatusPathOperation.operation
+/** Span for planning a tree sync over a path (`fromRemote` picks the plan direction). */
+export const PlanPathSpan = PlanPathOperation.operation
+/** Span for `sync` over a filesystem path (recursive tree or single file). */
+export const SyncPathSpan = SyncPathOperation.operation
+/** Span for syncing an entire tree under a root. */
+export const SyncTreeSpan = SyncTreeOperation.operation
+/** Span for reading the `.nmd` sidecar state file. */
+export const ReadNmdStateSpan = ReadNmdStateOperation.operation
+/** Span for writing a content object into the state store (labelled by object role). */
+export const WriteObjectStateSpan = WriteObjectStateOperation.operation
+/** Span for reading a content object from the state store (labelled by object role). */
+export const ReadObjectStateSpan = ReadObjectStateOperation.operation
+/** Span for pulling a single page from Notion into a local file. */
+export const PullPageSpan = PullPageOperation.operation
+/** Span for establishing the `.nmd` sidecar baseline for a page on first contact. */
+export const EstablishSidecarSpan = EstablishSidecarOperation.operation
+/** Span for computing status of a single page against its baseline. */
+export const StatusPageSpan = StatusPageOperation.operation
+/** Span for pushing a single local page to Notion. */
+export const PushPageSpan = PushPageOperation.operation
+/** Span for the full reconcile (status + pull/push) of a single page. */
+export const SyncPageSpan = SyncPageOperation.operation
+/** Gateway-level span for the Notion API call that pulls a page's content. */
+export const GatewayPullPageSpan = GatewayPullPageOperation.operation
+/** Gateway-level span for applying a markdown body update to a page. */
+export const GatewayUpdateMarkdownSpan = GatewayUpdateMarkdownOperation.operation
+/** Gateway-level span for updating a page's database properties. */
+export const GatewayUpdatePagePropertiesSpan = GatewayUpdatePagePropertiesOperation.operation
+/** Gateway-level span for retrieving a data source (database) schema. */
+export const GatewayRetrieveDataSourceSpan = GatewayRetrieveDataSourceOperation.operation
+/** Gateway-level span for updating page metadata (title/icon/cover/trash/lock). */
+export const GatewayUpdatePageMetadataSpan = GatewayUpdatePageMetadataOperation.operation
+/** Gateway-level span for listing a page's direct child pages. */
+export const GatewayListChildPagesSpan = GatewayListChildPagesOperation.operation
+/** Gateway-level span for creating a new child page under a parent. */
+export const GatewayCreatePageSpan = GatewayCreatePageOperation.operation
+/** Gateway-level span for moving a page to a new parent. */
+export const GatewayMovePageSpan = GatewayMovePageOperation.operation
+/** Gateway-level span for archiving (trashing) a page. */
+export const GatewayArchivePageSpan = GatewayArchivePageOperation.operation
+/** Root span for `notion-md cat` — read-only editor projection of a Notion page. */
+export const CatSpan = CatOperation.operation
+/** Root span for `notion-md put` — guarded title+body write to a Notion page. */
+export const PutSpan = PutOperation.operation
+/** Root span for `notion-md edit` — ephemeral file-engine editor session. */
+export const EditSpan = EditOperation.operation
+/** Operation span emitted when the files/media write boundary classifies a write. */
+export const MediaBoundarySpan = MediaBoundaryOperation.operation
+/** Operation span emitted when the comment write boundary classifies a write. */
+export const CommentBoundarySpan = CommentBoundaryOperation.operation
+/** Operation span emitted when a destructive body write gate blocks or allows. */
+export const DestructiveBodySpan = DestructiveBodyOperation.operation
+/** Operation span emitted when object GC runs (plan-only or live prune). */
+export const ObjectGcSpan = ObjectGcOperation.operation
+/** Operation span emitted when a webhook signal is mapped to watch triggers. */
+export const WebhookTriggerSpan = WebhookTriggerOperation.operation
+/** Span for a batch watch over multiple paths. */
+export const BatchWatchSpan = BatchWatchOperation.operation
+/** Span for a watch session over a single path. */
+export const WatchSpan = WatchOperation.operation
+/** Root span for one watch-driven sync pass. */
+export const WatchSyncPassSpan = WatchSyncPassOperation.operation
 
-const dataSourceAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    dataSourceId: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.data_source_id' })),
-  }),
-)
+// ---- DERIVED annotate-only encoders (re-exported unchanged from the seam contract) ----
+export {
+  editResultAttrs,
+  objectGcResultAttrs,
+  objectHashAttrs,
+  pushDecisionAttrs,
+  pushDecisionMarkdownCommandAttrs,
+  pushMarkdownCommandAttrs,
+  pushResultAttrs,
+  putResultAttrs,
+  statusAttrs,
+  syncResultAttrs,
+  watchSyncErrorAttrs,
+  watchSyncResultAttrs,
+} from './notion-md.contract.ts'
 
-const pathAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    basename: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.path.basename' })),
-  }),
-)
-
-const pathRecursiveAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    basename: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.path.basename' })),
-    recursive: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.path.recursive' })),
-  }),
-)
-
-const pathPlanAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    basename: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.path.basename' })),
-    fromRemote: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.tree.from_remote' })),
-  }),
-)
-
-const pathSyncAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    basename: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.path.basename' })),
-    recursive: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.path.recursive' })),
-    fromRemote: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.tree.from_remote' })),
-  }),
-)
-
-const pagePathAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    pageId: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.page_id' })),
-    basename: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.path.basename' })),
-  }),
-)
-
-/** Status-comparison flags (per local/remote dimension) annotated onto a status span. */
-export const statusAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    pageId: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.page_id' })),
-    localChanged: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.status.local_changed' })),
-    localPageMetadataChanged: Schema.Boolean.pipe(
-      OtelAttr.key({ key: 'notion_md.status.local_page_metadata_changed' }),
-    ),
-    localPropertiesChanged: Schema.Boolean.pipe(
-      OtelAttr.key({ key: 'notion_md.status.local_properties_changed' }),
-    ),
-    remoteChanged: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.status.remote_changed' })),
-    remoteBodyChanged: Schema.Boolean.pipe(
-      OtelAttr.key({ key: 'notion_md.status.remote_body_changed' }),
-    ),
-    remotePageMetadataChanged: Schema.Boolean.pipe(
-      OtelAttr.key({ key: 'notion_md.status.remote_page_metadata_changed' }),
-    ),
-    unknownBlockCount: Schema.NonNegativeInt.pipe(
-      OtelAttr.key({ key: 'notion_md.status.unknown_block_count' }),
-    ),
-  }),
-)
-
-const pushSpanAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    basename: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.path.basename' })),
-    force: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.push.force' })),
-    allowDeleteUnknownBlocks: Schema.Boolean.pipe(
-      OtelAttr.key({ key: 'notion_md.push.allow_delete_unknown_blocks' }),
-    ),
-  }),
-)
-
-/** Outcome of a push: resolved page id plus whether anything was actually pushed. */
-export const pushResultAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    pageId: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.page_id' })),
-    pushed: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.push.pushed' })),
-  }),
-)
-
-/** Terminal sync outcome (`result` is the reconciliation verdict string). */
-export const syncResultAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    pageId: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.page_id' })),
-    result: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.sync.result' })),
-  }),
-)
-
-const stateFileAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    operation: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.state.operation' })),
-    basename: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.path.basename' })),
-  }),
-)
-
-/** Content-object identity carried as a short hash prefix (full hash is high-cardinality). */
-export const objectHashAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    hashPrefix: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.object.hash_prefix' })),
-  }),
-)
-
-const objectRoleAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    role: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.object.role' })),
-    basename: Schema.optional(Schema.String.pipe(OtelAttr.key({ key: 'notion_md.path.basename' }))),
-    hashPrefix: Schema.optional(
-      Schema.String.pipe(OtelAttr.key({ key: 'notion_md.object.hash_prefix' })),
-    ),
-  }),
-)
-
-const markdownUpdateAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    pageId: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.page_id' })),
-    type: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.markdown_update.type' })),
-    allowDeletingContent: Schema.Boolean.pipe(
-      OtelAttr.key({ key: 'notion_md.markdown_update.allow_deleting_content' }),
-    ),
-    contentUpdateCount: Schema.NonNegativeInt.pipe(
-      OtelAttr.key({ key: 'notion_md.markdown_update.content_update_count' }),
-    ),
-  }),
-)
-
-const metadataUpdateAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    pageId: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.page_id' })),
-    hasTitle: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.page_metadata.title' })),
-    hasIcon: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.page_metadata.icon' })),
-    hasCover: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.page_metadata.cover' })),
-    inTrash: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.page_metadata.in_trash' })),
-    isLocked: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.page_metadata.is_locked' })),
-  }),
-)
-
-/** The storage/push decision verdict annotated onto a push span. */
-export const pushDecisionAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    decision: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.push.decision' })),
-  }),
-)
-
-/** Which markdown-update command shape a push resolved to (e.g. replace vs patch). */
-export const pushMarkdownCommandAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    markdownCommand: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.push.markdown_command' })),
-  }),
-)
-
-/** Combined push decision + resolved markdown-command annotated together on one span. */
-export const pushDecisionMarkdownCommandAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    decision: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.push.decision' })),
-    markdownCommand: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.push.markdown_command' })),
-  }),
-)
-
-/** Span attributes for schema-decoded webhook trigger classification. */
-export const webhookTriggerAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    eventType: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.webhook.event_type' })),
-    surface: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.webhook.surface' })),
-    triggerCount: Schema.NonNegativeInt.pipe(
-      OtelAttr.key({ key: 'notion_md.webhook.trigger_count' }),
-    ),
-  }),
-)
-
-/** Span attributes for a files/media write-boundary classification. */
-export const mediaBoundaryAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    operation: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.media_boundary.operation' })),
-    fileCount: Schema.NonNegativeInt.pipe(
-      OtelAttr.key({ key: 'notion_md.media_boundary.file_count' }),
-    ),
-    verdict: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.media_boundary.verdict' })),
-    guard: Schema.optional(
-      Schema.String.pipe(OtelAttr.key({ key: 'notion_md.media_boundary.guard' })),
-    ),
-  }),
-)
-
-/** Span attributes for a destructive body write gate. */
-export const destructiveBodyAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    guard: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.destructive_body.guard' })),
-    blockCount: Schema.NonNegativeInt.pipe(
-      OtelAttr.key({ key: 'notion_md.destructive_body.block_count' }),
-    ),
-    verdict: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.destructive_body.verdict' })),
-  }),
-)
-
-/** Span attributes for a comment write-boundary classification. */
-export const commentBoundaryAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    operation: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.comment_boundary.operation' })),
-    commentCount: Schema.NonNegativeInt.pipe(
-      OtelAttr.key({ key: 'notion_md.comment_boundary.comment_count' }),
-    ),
-    verdict: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.comment_boundary.verdict' })),
-    guard: Schema.optional(
-      Schema.String.pipe(OtelAttr.key({ key: 'notion_md.comment_boundary.guard' })),
-    ),
-  }),
-)
+// ---- runtime wrappers ----
 
 /** Wrap an effect in an OTEL operation span; an attribute-encode failure is a defect, not a recoverable error. */
 export const withOperation =
@@ -246,6 +156,21 @@ export const withOperation =
       Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)),
     )
 
+/** Like {@link withOperation} but forces a ROOT span (for top-level `cat` / `put` / `edit` / watch-pass). */
+export const withRootOperation =
+  <S extends Schema.Schema.AnyNoContext>({
+    operation,
+    attributes,
+  }: {
+    operation: OtelOperationDefinition<S>
+    attributes: Schema.Schema.Type<S>
+  }) =>
+  <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
+    effect.pipe(
+      operation.withRoot(attributes),
+      Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)),
+    )
+
 /** Annotate the current span with typed attributes; an attribute-encode failure is a defect, not a recoverable error. */
 export const annotateAttrs = <S extends Schema.Schema.AnyNoContext>({
   attributes,
@@ -255,29 +180,18 @@ export const annotateAttrs = <S extends Schema.Schema.AnyNoContext>({
   value: Schema.Schema.Type<S>
 }): Effect.Effect<void> =>
   OtelSpan.annotate({ attributes, value }).pipe(
-    Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)),
+    Effect.catchTag('OtelAttrEncodeError', (error: OtelAttrEncodeError) => Effect.die(error)),
   )
 
-/** Span for `status` over a filesystem path (file or recursive tree). */
-export const StatusPathSpan = OtelOperation.define({
-  name: 'notion-md.status-path',
-  attributes: pathRecursiveAttrs,
-  label: ({ basename }) => basename,
-})
+// ---- DYNAMIC-NAME BRIDGES (SC-DQ5) -----------------------------------------------------------
+// These spans have runtime-varying names, so they have NO stable single-signal registry
+// projection and stay LEGACY inline `OtelOperation.define` here (mirroring genie's `cli.mode`).
+// Their attribute keys are all in the `notion_md` catalog (open-refs on migrated static signals,
+// or `docOnlyAttributes` for the `batch.*` keys exclusive to `batchRunSpan`).
 
-/** Span for planning a tree sync over a path (`fromRemote` picks the plan direction). */
-export const PlanPathSpan = OtelOperation.define({
-  name: 'notion-md.plan-path',
-  attributes: pathPlanAttrs,
-  label: ({ basename }) => basename,
-})
-
-/** Span for `sync` over a filesystem path (recursive tree or single file). */
-export const SyncPathSpan = OtelOperation.define({
-  name: 'notion-md.sync-path',
-  attributes: pathSyncAttrs,
-  label: ({ basename }) => basename,
-})
+const stateFileAttrs = OtelAttrs.defineSync(
+  Schema.Struct({ operation: NotionMdStateOperation, basename: NotionMdPathBasename }),
+)
 
 /** Build a state-file span whose name is parameterized by the state operation performed. */
 export const stateFileSpan = (operation: string) =>
@@ -287,242 +201,35 @@ export const stateFileSpan = (operation: string) =>
     label: ({ basename }) => basename,
   })
 
-/** Span for reading the `.nmd` sidecar state file. */
-export const ReadNmdStateSpan = OtelOperation.define({
-  name: 'notion-md.state.read-nmd',
-  attributes: stateFileAttrs,
-  label: ({ basename }) => basename,
-})
-
-/** Span for writing a content object into the state store (labelled by object role). */
-export const WriteObjectStateSpan = OtelOperation.define({
-  name: 'notion-md.state.write-object',
-  attributes: objectRoleAttrs,
-  label: ({ role }) => role,
-})
-
-/** Span for reading a content object from the state store (labelled by object role). */
-export const ReadObjectStateSpan = OtelOperation.define({
-  name: 'notion-md.state.read-object',
-  attributes: objectRoleAttrs,
-  label: ({ role }) => role,
-})
-
-/** Span for pulling a single page from Notion into a local file. */
-export const PullPageSpan = OtelOperation.define({
-  name: 'notion-md.pull-page',
-  attributes: pagePathAttrs,
-  label: ({ pageId }) => pageId.slice(0, 8),
-})
-
-/** Span for establishing the `.nmd` sidecar baseline for a page on first contact. */
-export const EstablishSidecarSpan = OtelOperation.define({
-  name: 'notion-md.establish-sidecar',
-  attributes: pageAttrs,
-  label: ({ pageId }) => pageId.slice(0, 8),
-})
-
-/** Span for computing status of a single page against its baseline. */
-export const StatusPageSpan = OtelOperation.define({
-  name: 'notion-md.status-page',
-  attributes: pathAttrs,
-  label: ({ basename }) => basename,
-})
-
-/** Span for pushing a single local page to Notion. */
-export const PushPageSpan = OtelOperation.define({
-  name: 'notion-md.push-page',
-  attributes: pushSpanAttrs,
-  label: ({ basename }) => basename,
-})
-
-/** Span for the full reconcile (status + pull/push) of a single page. */
-export const SyncPageSpan = OtelOperation.define({
-  name: 'notion-md.sync-page',
-  attributes: pathAttrs,
-  label: ({ basename }) => basename,
-})
-
-/** Gateway-level span for the Notion API call that pulls a page's content. */
-export const GatewayPullPageSpan = OtelOperation.define({
-  name: 'notion-md.gateway.pull-page',
-  attributes: pageAttrs,
-  label: ({ pageId }) => pageId.slice(0, 8),
-})
-
-/** Gateway-level span for applying a markdown body update to a page. */
-export const GatewayUpdateMarkdownSpan = OtelOperation.define({
-  name: 'notion-md.gateway.update-markdown',
-  attributes: markdownUpdateAttrs,
-  label: ({ pageId }) => pageId.slice(0, 8),
-})
-
-/** Gateway-level span for updating a page's database properties. */
-export const GatewayUpdatePagePropertiesSpan = OtelOperation.define({
-  name: 'notion-md.gateway.update-page-properties',
-  attributes: pageAttrs,
-  label: ({ pageId }) => pageId.slice(0, 8),
-})
-
-/** Gateway-level span for retrieving a data source (database) schema. */
-export const GatewayRetrieveDataSourceSpan = OtelOperation.define({
-  name: 'notion-md.gateway.retrieve-data-source',
-  attributes: dataSourceAttrs,
-  label: ({ dataSourceId }) => dataSourceId.slice(0, 8),
-})
-
-/** Gateway-level span for updating page metadata (title/icon/cover/trash/lock). */
-export const GatewayUpdatePageMetadataSpan = OtelOperation.define({
-  name: 'notion-md.gateway.update-page-metadata',
-  attributes: metadataUpdateAttrs,
-  label: ({ pageId }) => pageId.slice(0, 8),
-})
-
-/** Gateway-level span for listing a page's direct child pages. */
-export const GatewayListChildPagesSpan = OtelOperation.define({
-  name: 'notion-md.gateway.list-child-pages',
-  attributes: pageAttrs,
-  label: ({ pageId }) => pageId.slice(0, 8),
-})
-
-/** Gateway-level span for creating a new child page under a parent. */
-export const GatewayCreatePageSpan = OtelOperation.define({
-  name: 'notion-md.gateway.create-page',
-  attributes: parentPageAttrs,
-  label: ({ parentPageId }) => parentPageId.slice(0, 8),
-})
-
-/** Gateway-level span for moving a page to a new parent. */
-export const GatewayMovePageSpan = OtelOperation.define({
-  name: 'notion-md.gateway.move-page',
-  attributes: pageAttrs,
-  label: ({ pageId }) => pageId.slice(0, 8),
-})
-
-/** Gateway-level span for archiving (trashing) a page. */
-export const GatewayArchivePageSpan = OtelOperation.define({
-  name: 'notion-md.gateway.archive-page',
-  attributes: pageAttrs,
-  label: ({ pageId }) => pageId.slice(0, 8),
-})
-
-const editorModeSchema = Schema.Literal('default', 'frontmatter')
-
-/** Span for `notion-md cat` — read-only editor projection of a Notion page. */
-export const CatSpan = OtelOperation.define({
-  name: 'notion-md.cat',
-  root: true,
-  schema: Schema.Struct({
-    pageId: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.page_id' })),
-    mode: editorModeSchema.pipe(OtelAttr.key({ key: 'notion_md.editor.mode' })),
-  }),
-  label: ({ pageId }) => pageId.slice(0, 8),
-})
-
-/** Span for `notion-md put` — guarded title+body write to a Notion page. */
-export const PutSpan = OtelOperation.define({
-  name: 'notion-md.put',
-  root: true,
-  schema: Schema.Struct({
-    pageId: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.page_id' })),
-    force: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.put.force' })),
-  }),
-  label: ({ pageId }) => pageId.slice(0, 8),
-})
-
-/** Result annotations for a completed `notion-md put`. */
-export const putResultAttrs = OtelAttrs.defineSync(
+const batchRunSpanAttrs = OtelAttrs.defineSync(
   Schema.Struct({
-    bodyWritten: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.put.body_written' })),
-    titleWritten: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.put.title_written' })),
+    command: NotionMdCommand,
+    batch: NotionMdBatch,
+    targetCount: NotionMdBatchTargetCount,
+    recursive: NotionMdBatchRecursive,
   }),
 )
 
-/** Span for `notion-md edit` — ephemeral file-engine editor session (wraps engine spans). */
-export const EditSpan = OtelOperation.define({
-  name: 'notion-md.edit',
-  root: true,
-  schema: Schema.Struct({
-    pageId: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.page_id' })),
-    mode: editorModeSchema.pipe(OtelAttr.key({ key: 'notion_md.editor.mode' })),
-  }),
-  label: ({ pageId }) => pageId.slice(0, 8),
-})
+/** Build a batch-run span whose name is parameterized by the batch operation performed. */
+export const batchRunSpan = (operation: string) =>
+  OtelOperation.define({
+    name: `notion-md.${operation}-many`,
+    attributes: batchRunSpanAttrs,
+    label: ({ targetCount }) => `${targetCount} target(s)`,
+  })
 
-/** Outcome annotation for a completed `notion-md edit` session. */
-export const editResultAttrs = OtelAttrs.defineSync(
+const cliCommandSpanAttrs = OtelAttrs.defineSync(
   Schema.Struct({
-    outcome: Schema.Literal('pushed', 'noop', 'aborted', 'conflict', 'read-only').pipe(
-      OtelAttr.key({ key: 'notion_md.edit.outcome' }),
-    ),
+    label: OtelAttr.drop(Schema.NonEmptyString),
+    command: NotionMdCommand,
   }),
 )
 
-/** Operation span emitted when the files/media write boundary classifies a write. */
-export const MediaBoundarySpan = OtelOperation.define({
-  name: 'notion-md.media-boundary',
-  attributes: mediaBoundaryAttrs,
-  label: ({ operation, verdict }) => `${operation}:${verdict}`,
-})
-
-/** Operation span emitted when the comment write boundary classifies a write. */
-export const CommentBoundarySpan = OtelOperation.define({
-  name: 'notion-md.comment-boundary',
-  attributes: commentBoundaryAttrs,
-  label: ({ operation, verdict }) => `${operation}:${verdict}`,
-})
-
-/** Operation span emitted when a destructive body write gate blocks or allows. */
-export const DestructiveBodySpan = OtelOperation.define({
-  name: 'notion-md.destructive-body',
-  attributes: destructiveBodyAttrs,
-  label: ({ guard, verdict }) => `${guard}:${verdict}`,
-})
-
-/** Span attributes for an object-GC pass (dry-run or live prune). */
-export const objectGcAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    /** Whether this was a plan-only (dry-run) pass — known before GC runs. */
-    dryRun: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.object_gc.dry_run' })),
-    /**
-     * Number of reachable objects — annotated after GC completes.
-     * @see {@link annotateAttrs} called with {@link objectGcResultAttrs}
-     */
-    reachableCount: Schema.optional(
-      Schema.NonNegativeInt.pipe(OtelAttr.key({ key: 'notion_md.object_gc.reachable_count' })),
-    ),
-    /**
-     * Number of removed (or would-be-removed) objects — annotated after GC completes.
-     * @see {@link annotateAttrs} called with {@link objectGcResultAttrs}
-     */
-    removedCount: Schema.optional(
-      Schema.NonNegativeInt.pipe(OtelAttr.key({ key: 'notion_md.object_gc.removed_count' })),
-    ),
-  }),
-)
-
-/** Post-GC result attributes annotated onto the {@link ObjectGcSpan}. */
-export const objectGcResultAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    reachableCount: Schema.NonNegativeInt.pipe(
-      OtelAttr.key({ key: 'notion_md.object_gc.reachable_count' }),
-    ),
-    removedCount: Schema.NonNegativeInt.pipe(
-      OtelAttr.key({ key: 'notion_md.object_gc.removed_count' }),
-    ),
-  }),
-)
-
-/** Operation span emitted when object GC runs (plan-only or live prune). */
-export const ObjectGcSpan = OtelOperation.define({
-  name: 'notion-md.object-gc',
-  attributes: objectGcAttrs,
-  label: ({ dryRun }) => (dryRun === true ? 'plan' : 'prune'),
-})
-
-/** Operation span emitted when a webhook signal is mapped to watch triggers. */
-export const WebhookTriggerSpan = OtelOperation.define({
-  name: 'notion-md.webhook.trigger',
-  attributes: webhookTriggerAttrs,
-  label: ({ surface, eventType }) => `${surface}:${eventType}`,
-})
+/** Build the root `notion-md.cli.<command>` span; the name varies by CLI command. */
+export const cliCommandSpan = (command: string) =>
+  OtelOperation.define({
+    name: `notion-md.cli.${command}`,
+    root: true,
+    attributes: cliCommandSpanAttrs,
+    label: ({ label }) => label,
+  })

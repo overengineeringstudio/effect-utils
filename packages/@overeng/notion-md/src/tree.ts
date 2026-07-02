@@ -1,7 +1,7 @@
 import { basename, dirname, extname, join, relative, resolve } from 'node:path'
 
 import { FileSystem } from '@effect/platform'
-import { Effect, Schema } from 'effect'
+import { Effect } from 'effect'
 
 import { describeBodyLossyRefusal, tolerateTreeChildPages } from '@overeng/notion-core'
 import {
@@ -10,7 +10,6 @@ import {
   type NmdParentRef,
 } from '@overeng/notion-effect-client'
 import { parseNotionUuid } from '@overeng/notion-effect-schema'
-import { OtelAttr, OtelOperation } from '@overeng/otel-contract'
 import { titleSlug } from '@overeng/utils'
 
 import { pageUrl, resolveCrossRefs, validateCrossRefTargets } from './cross-refs.ts'
@@ -23,7 +22,7 @@ import {
 import { parseNmdFile, renderNmdFile } from './frontmatter.ts'
 import { normalizeMarkdownLineEndings, sha256Digest, stripChildAnchors } from './hash.ts'
 import { NotionMdGateway, type RemoteMarkdownSnapshot, type RemotePageSnapshot } from './model.ts'
-import { withOperation } from './observability.ts'
+import { SyncTreeSpan, withOperation } from './observability.ts'
 import {
   NmdStateStore,
   readSyncStateOptional,
@@ -75,16 +74,6 @@ const NMD_EXT = '.nmd'
 
 /** Default root-file candidates in priority order, when not explicitly given. */
 const ROOT_FILE_CANDIDATES = ['index.nmd', 'README.nmd'] as const
-
-const SyncTreeSpan = OtelOperation.define({
-  name: 'notion-md.sync-tree',
-  schema: Schema.Struct({
-    basename: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.path.basename' })),
-    plan: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.tree.plan' })),
-    fromRemote: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.tree.from_remote' })),
-  }),
-  label: ({ basename }) => basename,
-})
 
 /**
  * Sentinel "file path" inside the tree root used for all `.notion-md/` state
