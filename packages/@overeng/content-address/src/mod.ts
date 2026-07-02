@@ -261,7 +261,10 @@ const canonicalizeJson = (value: unknown): string => {
 
   if (value !== null && typeof value === 'object') {
     return `{${Object.entries(value)
-      .toSorted(([left], [right]) => left.localeCompare(right))
+      // Deterministic UTF-16 code-unit key order (locale-independent): `localeCompare`
+      // depends on the host ICU/collation, which would let the same value canonicalize
+      // to different byte orderings on different machines and break content addressing.
+      .toSorted(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
       .map(([key, item]) => `${JSON.stringify(key)}:${canonicalizeJson(item)}`)
       .join(',')}}`
   }

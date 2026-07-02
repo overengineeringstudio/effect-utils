@@ -8,12 +8,12 @@ parser) re-parent UNDER the otel-scrape command span, giving
 
 ## Method
 
-Isolated `branchy fork` worktree (archived after; primary untouched).
-`nix build .#otel-scrape`; store `otel-span`; export to dev3 Tempo. Reproduced the
+Isolated scratch prototype worktree (archived after; primary untouched).
+`nix build .#otel-scrape`; store `otel-span`; export to an internal Tempo backend. Reproduced the
 real devenv nesting on a real `tsgo --build`: `otel-span devenv.task.exec -- bash
 -c '<otel-scrape -- tsgo --build … --extendedDiagnostics --verbose>'`, with the
 `tscWithDiagnostics` phase-span emit logic. Parentage read from the captured
-trace with `gcx traces get -d tempo <id> -o json`.
+trace fetched back from the Tempo backend by trace id.
 
 ## Findings
 

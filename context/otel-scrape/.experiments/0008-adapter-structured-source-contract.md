@@ -7,10 +7,9 @@ consume it while keeping the terminal UX-neutral (re-render or side-channel)?
 ## Method
 
 Real-probe capability survey of the tools the repo runs (run each binary, inspect
-output + flags). A Rust prototype in an isolated fork
-(`schickling-assistant/2026-07-02-m4-adapter-render`, `branchy fork`, archived
+output + flags). A Rust prototype on a scratch prototype branch (archived
 after; lib.rs +76/-1) suppressing the raw-JSON tee for a presenting adapter and
-calling a per-adapter re-render. Captures to dev3 Tempo; OTLP payload byte-grepped
+calling a per-adapter re-render. Captures to an internal Tempo backend; OTLP payload byte-grepped
 for leaks.
 
 ## Findings

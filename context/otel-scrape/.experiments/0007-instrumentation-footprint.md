@@ -8,10 +8,10 @@ instead?
 ## Method
 
 `nix build .#otel-scrape` (tip `bbda36a5a`); store `otel-span` for the parent
-`devenv.task.exec` span; export to dev3 Tempo (`http://127.0.0.1:4318`),
+`devenv.task.exec` span; export to an internal Tempo backend (`http://127.0.0.1:4318`),
 TRACEPARENT + protocol vars cleared. Four real trees captured, each rooted at a
-genuine `otel-span devenv.task.exec` span, fetched with `gcx traces get -d tempo
-<id> -o json`. Call-site footprint read from the real task modules
+genuine `otel-span devenv.task.exec` span, fetched back from the Tempo backend
+by trace id. Call-site footprint read from the real task modules
 (`lint-oxc.nix` `mkOxlintCmd`, `ts.nix` `tscWithDiagnostics`, `test.nix`
 `vitestExec`).
 

@@ -55,6 +55,16 @@ describe('@overeng/content-address', () => {
     )
   })
 
+  it('sorts canonical JSON object keys by UTF-16 code unit, not host locale', () => {
+    // Keys where locale order diverges from code-unit order: en-US collation sorts
+    // 'a' before 'B', but UTF-16 code units put 'B' (66) before 'a' (97). A
+    // locale-sensitive comparator would canonicalize this differently per machine.
+    const Record = Schema.Record({ key: Schema.String, value: Schema.Number })
+    const rendered = canonicalJsonString({ schema: Record, value: { a: 1, B: 0 } })
+
+    expect(rendered).toBe('{"B":0,"a":1}')
+  })
+
   it('describes canonical JSON with descriptor metadata', () => {
     const descriptor = descriptorForCanonicalJson({
       schema: Payload,

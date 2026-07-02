@@ -29,10 +29,10 @@ runner environment:
 
 Additional macOS ARM runner-class probes on 2026-06-30:
 
-- `task-eb1b3b57-8d71-4456-b360-2c557ba1e746` completed on the macOS ARM runner class and reported a best-effort Darwin process-tree timeline. The temporary `kqueue` fixture again observed the watched direct child and did not prove unknown-grandchild discovery.
-- `task-b6368721-80e4-4a51-9630-12a2e3180396` found Endpoint Security headers through the runner toolchain, but plain C compilation failed on Objective-C block syntax.
-- `task-576c3d98-80b3-46af-bf7e-ba1a13ecba92` compiled the Endpoint Security include path successfully with `/usr/bin/clang -x objective-c -fblocks`.
-- `task-badc1db4-5c94-470c-88a6-933090e76c7f` compiled and linked a minimal
+- A first runner probe completed on the macOS ARM runner class and reported a best-effort Darwin process-tree timeline. The temporary `kqueue` fixture again observed the watched direct child and did not prove unknown-grandchild discovery.
+- A second probe found Endpoint Security headers through the runner toolchain, but plain C compilation failed on Objective-C block syntax.
+- A third probe compiled the Endpoint Security include path successfully with `/usr/bin/clang -x objective-c -fblocks`.
+- A fourth probe compiled and linked a minimal
   Objective-C Endpoint Security client on the macOS ARM runner class, then ran
   it as the ordinary task process. `es_new_client` returned
   `ES_NEW_CLIENT_RESULT_ERR_NOT_PRIVILEGED` and did not create a client.

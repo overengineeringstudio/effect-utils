@@ -23,8 +23,8 @@ A real-probe capability survey found a clean split: some tools expose a stable
 structured format (oxlint `--format=json`; vitest `--reporter=json` +
 `--outputFile.json`; cargo `--message-format=json`), some expose only a file-set
 list (oxfmt `--list-different`), and some expose no per-diagnostic machine format
-at all (tsc/tsgo, vite, storybook). A Rust prototype (isolated fork
-`schickling-assistant/2026-07-02-m4-adapter-render`, lib.rs +76/-1) demonstrated
+at all (tsc/tsgo, vite, storybook). A Rust prototype (on a scratch prototype
+branch, lib.rs +76/-1) demonstrated
 otel-scrape can consume the structured source and re-render a human summary to
 the terminal (`oxlint: 2 diagnostic(s) over 1 file(s)` + per-diagnostic lines),
 UX-neutral, while the OTLP export stayed byte-clean (severity + hashed filename
