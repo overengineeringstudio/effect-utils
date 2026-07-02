@@ -8,8 +8,9 @@
  * design time; genie's dep-free Layer 1 never hashes.
  *
  * This module is imported by the sibling `*.genie.ts` emitters; the genie engine renders one
- * output file per emitter (manifest / signals / per-namespace attributes / TS + Rust
- * constants). It is deliberately NOT a `.genie.ts` (it emits nothing itself).
+ * output file per emitter (manifest / attributes / signals / TS + Rust constants). It is
+ * deliberately NOT a `.genie.ts` (it emits nothing itself). Emitters are one-liners over the
+ * exported {@link weaver} bundle (design A').
  *
  * NOTE: `@overeng/otel-contract` cannot import `@overeng/genie` (genie depends on it — a
  * project-reference cycle), so the two `RegistryFragment` type mirrors meet HERE; this
@@ -17,13 +18,16 @@
  */
 import { createHash } from 'node:crypto'
 
-import genieContract from '../packages/@overeng/genie/src/core/genie.contract.ts'
-import { registryFromMembers } from '../packages/@overeng/genie/src/runtime/composition/mod.ts'
-import type { Provenance } from '../packages/@overeng/genie/src/runtime/weaver/mod.ts'
-import megarepoContract from '../packages/@overeng/megarepo/src/megarepo.contract.ts'
-import notionMdContract from '../packages/@overeng/notion-md/src/notion-md.contract.ts'
-import demoContract from '../packages/@overeng/otel-contract/src/registry-demo.contract.ts'
-import { fragment } from '../packages/@overeng/otel-contract/src/registry.ts'
+import genieContract from '../../packages/@overeng/genie/src/core/genie.contract.ts'
+import { registryFromMembers } from '../../packages/@overeng/genie/src/runtime/composition/mod.ts'
+import type {
+  Provenance,
+  WeaverRegistryBundle,
+} from '../../packages/@overeng/genie/src/runtime/weaver/mod.ts'
+import megarepoContract from '../../packages/@overeng/megarepo/src/megarepo.contract.ts'
+import notionMdContract from '../../packages/@overeng/notion-md/src/notion-md.contract.ts'
+import demoContract from '../../packages/@overeng/otel-contract/src/registry-demo.contract.ts'
+import { fragment } from '../../packages/@overeng/otel-contract/src/registry.ts'
 
 // --- pinned semantic inputs (all change the emitted output → part of the fingerprint) ---
 export const PINNED_WEAVER_VERSION = '0.24.2'
@@ -94,7 +98,7 @@ export const docFingerprint = sha256({ registry, ...versionInputs })
 /** Identity fingerprint: keys only → TS/Rust const headers (a prose edit must not churn these). */
 export const identityFingerprint = sha256({ keys: identityKeys, ...versionInputs })
 
-export const REGISTRY_SOURCE = 'weaver-registry/registry.ts'
+export const REGISTRY_SOURCE = 'genie/weaver-registry/registry.ts'
 export const docProvenance: Provenance = { source: REGISTRY_SOURCE, fingerprint: docFingerprint }
 export const identityProvenance: Provenance = {
   source: REGISTRY_SOURCE,
@@ -128,5 +132,18 @@ export const rustProvenance: Provenance = {
   fingerprint: rustIdentityFingerprint,
 }
 
-/** The own namespaces, each emitted as `<ns>.attributes.yaml` (M3 adds `genie` next to `acme`). */
+/** The own namespaces, all collapsed into ONE `attributes.yaml` (adding a namespace needs no new emitter). */
 export const namespaces = registry.groups.map((g) => g.namespace)
+
+/**
+ * The complete design-time input every `*.genie.ts` emitter consumes (design A'): the composed
+ * registry, the three split provenance fingerprints, and the whole-registry integrity issues.
+ * Each emitter is a one-liner over this bundle (e.g. `export default weaverSignals(weaver)`).
+ */
+export const weaver: WeaverRegistryBundle = {
+  registry,
+  docProvenance,
+  identityProvenance,
+  rustProvenance,
+  issues: compositionIssues,
+}

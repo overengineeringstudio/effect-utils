@@ -1,6 +1,6 @@
 // Generated file - DO NOT EDIT
 // Source: constants.rs.genie.ts
-// registry-source: weaver-registry/registry.ts
+// registry-source: genie/weaver-registry/registry.ts
 // fingerprint: sha256:1ff2fe899780de9e7c1e50d5e9c59845793c822f2cddb051b8162825998142a1
 // regen: devenv tasks run genie:run
 

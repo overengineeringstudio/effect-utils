@@ -1,7 +1,7 @@
 # Generated file - DO NOT EDIT
 # Source: signals.yaml.genie.ts
 
-# registry-source: weaver-registry/registry.ts
+# registry-source: genie/weaver-registry/registry.ts
 # fingerprint: sha256:438fd5daffa1c3376b9f137e9b99b849491e3bd23724f10749211acc7b7b3728
 groups:
   - id: metric.acme.probe.duration

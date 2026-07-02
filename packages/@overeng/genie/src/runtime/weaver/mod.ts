@@ -10,13 +10,14 @@
  * (see `docs/spec.md` §runtime-vs-build).
  *
  * Layer 2 (`@overeng/otel-contract` `./registry`) projects DOWN to these types; the genie
- * engine renders one file per `.genie.ts` (manifest / signals / per-namespace attributes /
- * TS constants). Provenance fingerprints are computed in the design-time layer (where
+ * engine renders one file per `.genie.ts` (manifest / attributes / signals / TS + Rust
+ * constants). Provenance fingerprints are computed in the design-time layer (where
  * `node:crypto` is available) and passed in as strings — Layer 1 never hashes.
  */
 import type { GenieOutput } from '../core.ts'
 import { createGenieOutput } from '../core.ts'
 import { stringify as yamlStringify } from '../utils/yaml.ts'
+import type { GenieValidationIssue } from '../validation/mod.ts'
 
 // ---------------------------------------------------------------------------
 // Weaver vocabulary — plain typed data (the canonical model; Layer 2 mirrors these).
@@ -287,6 +288,27 @@ export const renderAttributeGroup = ({
   provenanceComment({ provenance, prefix: '#' }) +
   yamlStringify({ groups: [attributeGroupToObject(group)] })
 
+/**
+ * `attributes.yaml` — ALL namespaces' DEFINE-once catalogs collapsed into ONE file. Weaver
+ * accepts multiple `attribute_group` entries per file (as `signals.yaml` already relies on for
+ * multiple signal groups), so a single emitter replaces the former per-namespace sprawl: adding
+ * a namespace needs NO new `.genie.ts`. Groups are namespace-sorted for determinism (each
+ * group's attributes are sorted by id inside {@link attributeGroupToObject}).
+ */
+export const renderAttributes = ({
+  registry,
+  provenance,
+}: {
+  registry: Registry
+  provenance: Provenance
+}): string =>
+  provenanceComment({ provenance, prefix: '#' }) +
+  yamlStringify({
+    groups: registry.groups
+      .toSorted((a, b) => a.namespace.localeCompare(b.namespace))
+      .map(attributeGroupToObject),
+  })
+
 /** `signals.yaml` — all spans + metrics (which only REF the catalog). */
 export const renderSignals = ({
   signals,
@@ -423,6 +445,69 @@ export const renderRustConstants = ({
     '',
   ].join('\n')
 }
+
+// ---------------------------------------------------------------------------
+// Weaver registry builder family (genie-idiomatic, design A'). One builder per emitted target;
+// each `.genie.ts` emitter is then a one-liner: `export default weaverSignals(weaver)`. The
+// provenance fingerprints + composition issues are computed in the design-time aggregator (where
+// `node:crypto` is available) and passed IN via the bundle — Layer 1 stays dep-free (no crypto).
+// ---------------------------------------------------------------------------
+
+/**
+ * The complete design-time input for the builder family: the composed {@link Registry}, the three
+ * split provenance fingerprints (doc / identity / rust — see GEN-R07 §fingerprint granularity),
+ * and the whole-registry integrity {@link GenieValidationIssue}s. The aggregator constructs one
+ * of these and every emitter consumes it.
+ *
+ * NOTE: `issues` is carried here (a deviation from a provenance-only bundle) so `weaverManifest`
+ * can surface namespace-collision / dangling-ref blocking via `validate` while keeping every
+ * emitter a true one-liner — this is the ONLY place whole-registry integrity gates `genie:check`.
+ */
+export type WeaverRegistryBundle = {
+  readonly registry: Registry
+  readonly docProvenance: Provenance
+  readonly identityProvenance: Provenance
+  readonly rustProvenance: Provenance
+  readonly issues: readonly GenieValidationIssue[]
+}
+
+/** `manifest.yaml` builder; also surfaces whole-registry integrity issues via `validate`. */
+export const weaverManifest = (w: WeaverRegistryBundle): GenieOutput<Registry> =>
+  createGenieOutput({
+    data: w.registry,
+    stringify: () => renderManifest({ registry: w.registry, provenance: w.docProvenance }),
+    validate: () => [...w.issues],
+  })
+
+/** `attributes.yaml` builder — ALL namespaces' catalogs in one file (the collapsed emitter). */
+export const weaverAttributes = (
+  w: WeaverRegistryBundle,
+): GenieOutput<ReadonlyArray<AttributeGroup>> =>
+  createGenieOutput({
+    data: w.registry.groups,
+    stringify: () => renderAttributes({ registry: w.registry, provenance: w.docProvenance }),
+  })
+
+/** `signals.yaml` builder — all spans + metrics. */
+export const weaverSignals = (w: WeaverRegistryBundle): GenieOutput<ReadonlyArray<SignalDef>> =>
+  createGenieOutput({
+    data: w.registry.signals,
+    stringify: () => renderSignals({ signals: w.registry.signals, provenance: w.docProvenance }),
+  })
+
+/** `constants.ts` builder — TS name constants (identity/keys-only fingerprint). */
+export const weaverTsConstants = (w: WeaverRegistryBundle): GenieOutput<Registry> =>
+  createGenieOutput({
+    data: w.registry,
+    stringify: () => renderTsConstants({ registry: w.registry, provenance: w.identityProvenance }),
+  })
+
+/** `constants.rs` builder — Rust name constants (rust-identity fingerprint: keys + signal names). */
+export const weaverRustConstants = (w: WeaverRegistryBundle): GenieOutput<Registry> =>
+  createGenieOutput({
+    data: w.registry,
+    stringify: () => renderRustConstants({ registry: w.registry, provenance: w.rustProvenance }),
+  })
 
 // ---------------------------------------------------------------------------
 // Per-member author-time well-formedness (partial). Cross-member checks happen at

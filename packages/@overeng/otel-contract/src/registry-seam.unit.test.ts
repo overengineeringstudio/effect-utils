@@ -30,7 +30,7 @@ const seamFilesOnDisk = (dir: string = repoRoot): string[] => {
 /** Parse the aggregator's `memberSeamPaths = [...]` string-literal list from source. */
 const importedSeamPaths = (): string[] => {
   const src = readFileSync(
-    new URL('../../../../weaver-registry/registry.ts', import.meta.url),
+    new URL('../../../../genie/weaver-registry/registry.ts', import.meta.url),
     'utf8',
   )
   const block = /memberSeamPaths\s*=\s*\[([\s\S]*?)\]/.exec(src)

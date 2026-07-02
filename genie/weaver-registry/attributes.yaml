@@ -1,0 +1,1275 @@
+# Generated file - DO NOT EDIT
+# Source: attributes.yaml.genie.ts
+
+# registry-source: genie/weaver-registry/registry.ts
+# fingerprint: sha256:438fd5daffa1c3376b9f137e9b99b849491e3bd23724f10749211acc7b7b3728
+groups:
+  - id: registry.acme
+    type: attribute_group
+    display_name: Acme Attributes
+    brief: Attributes for the acme namespace.
+    attributes:
+      - id: acme.attempt
+        type: int
+        stability: development
+        brief: The attempt number for the probe (1-based).
+        examples: [1, 2]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: acme.probe.label
+        type: string
+        stability: development
+        brief: 'Deprecated: use acme.probe.name.'
+        examples: [liveness]
+        deprecated:
+          reason: renamed
+          renamed_to: acme.probe.name
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: acme.probe.name
+        type: string
+        stability: development
+        brief: The name of the acme health probe.
+        examples: [liveness, readiness]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: acme.region
+        type:
+          members:
+            - id: us_east
+              value: us_east
+              brief: US East.
+              stability: development
+            - id: us_west
+              value: us_west
+              brief: US West.
+              stability: development
+            - id: eu_central
+              value: eu_central
+              brief: EU Central.
+              stability: development
+        stability: development
+        brief: The acme deployment region.
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: acme.request.header
+        type: template[string]
+        stability: development
+        brief: Dynamic request header values, keyed by header name.
+        examples: [application/json]
+        annotations:
+          overeng_policy:
+            cardinality: high
+  - id: registry.genie
+    type: attribute_group
+    display_name: Genie Attributes
+    brief: Attributes for the genie namespace.
+    attributes:
+      - id: genie.concurrency
+        type: int
+        stability: development
+        brief: Configured generation concurrency (parallel file generations).
+        examples: [4]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: genie.cwd
+        type: string
+        stability: development
+        brief: Absolute working directory of the genie invocation.
+        examples: [/home/user/project]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: genie.dry_run
+        type: boolean
+        stability: development
+        brief: Whether the run is a dry run (planned writes are logged, not applied).
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: genie.file.mode
+        type: int
+        stability: development
+        brief: POSIX file mode applied to an atomically-written target file.
+        examples: [420]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: genie.file.source_path
+        type: string
+        stability: development
+        brief: Path to the `*.genie.ts` source file that produces a target.
+        examples: [package.json.genie.ts]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: genie.file.target_path
+        type: string
+        stability: development
+        brief: Path to the generated target file.
+        examples: [package.json]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: genie.oxfmt.has_config
+        type: boolean
+        stability: development
+        brief: Whether an oxfmt config was resolved for the formatted target.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: genie.path
+        type: string
+        stability: development
+        brief: A filesystem path annotated onto the current span.
+        examples: [/home/user/project]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: genie.read_only
+        type: boolean
+        stability: development
+        brief: Whether the run is read-only (check mode; no files are written).
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: genie.validation.file_count
+        type: int
+        stability: development
+        brief: Number of files considered in a cross-file validation pass.
+        examples: [12]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: genie.validation.preloaded_file_count
+        type: int
+        stability: development
+        brief: Number of files preloaded before a cross-file validation pass.
+        examples: [3]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: genie.validation.require_package_json_validate
+        type: boolean
+        stability: development
+        brief: Whether the validation pass requires `package.json` validation.
+        annotations:
+          overeng_policy:
+            cardinality: low
+  - id: registry.megarepo
+    type: attribute_group
+    display_name: Megarepo Attributes
+    brief: Attributes for the megarepo namespace.
+    attributes:
+      - id: megarepo.branch
+        type: string
+        stability: development
+        brief: Git branch name a megarepo operation acts on.
+        examples: [main, schickling/feature]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: megarepo.cli.all
+        type: boolean
+        stability: development
+        brief: Whether the command operates over all members/repos.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.cli.command
+        type: string
+        stability: development
+        brief: megarepo CLI command name.
+        examples: [sync, store gc]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.cli.dry_run
+        type: boolean
+        stability: development
+        brief: Whether the run is a dry run (planned actions are logged, not applied).
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.cli.force
+        type: boolean
+        stability: development
+        brief: Whether a destructive action was force-requested.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.cli.output
+        type: string
+        stability: development
+        brief: Requested CLI output format.
+        examples: [json, text]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: megarepo.cli.porcelain
+        type: boolean
+        stability: development
+        brief: Whether porcelain (machine-readable) output was requested.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.member
+        type: string
+        stability: development
+        brief: megarepo member name a command targets.
+        examples: [effect-utils, notion-md]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: megarepo.repo
+        type: string
+        stability: development
+        brief: Repository a command targets.
+        examples: [github.com/overengineeringstudio/effect-utils]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: megarepo.repo_path
+        type: string
+        stability: development
+        brief: Absolute path of a composed repo.
+        examples: [/home/user/megarepo/repos/effect-utils]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: megarepo.repo_root
+        type: string
+        stability: development
+        brief: Absolute repo root scanned during gc.
+        examples: [/home/user/.megarepo/store/github.com/org/repo]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: megarepo.root
+        type: string
+        stability: development
+        brief: Absolute megarepo root path a run operates on.
+        examples: [/home/user/megarepo]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: megarepo.store.bare_repo_path
+        type: string
+        stability: development
+        brief: Store bare-repository path.
+        examples: [/home/user/.megarepo/store/github.com/org/repo/repo.git]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: megarepo.store.base_ref
+        type: string
+        stability: development
+        brief: Base ref for a store operation.
+        examples: [main]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: megarepo.store.commit
+        type: string
+        stability: development
+        brief: Resolved commit for a store operation.
+        examples: [a3c1b6323f0e]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: megarepo.store.gc.archive_path
+        type: string
+        stability: development
+        brief: Absolute path of an archive hard-deleted during gc.
+        examples: [/home/user/.megarepo/store/.../archives/2026-07-01]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: megarepo.store.gc.archive_reason
+        type: string
+        stability: development
+        brief: Reason a cold worktree was archived.
+        examples: [cold, lossless]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: megarepo.store.gc.candidate_commits
+        type: int
+        stability: development
+        brief: Candidate commits considered by a gc run.
+        examples: [0, 12]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.store.gc.candidate_named_refs
+        type: int
+        stability: development
+        brief: Candidate named refs considered by a gc run.
+        examples: [0, 8]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.store.gc.phase
+        type: string
+        stability: development
+        brief: gc/status pipeline phase.
+        examples: [collect-liveness, cold-reclaim]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: megarepo.store.gc.policy
+        type: string
+        stability: development
+        brief: Retention policy for a gc run.
+        examples: [conservative, aggressive]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: megarepo.store.gc.repo_concurrency
+        type: int
+        stability: development
+        brief: Per-repo gc concurrency (parameter-sweep operating point).
+        examples: [1, 4]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: megarepo.store.gc.repo_count
+        type: int
+        stability: development
+        brief: Number of repos considered in a gc phase.
+        examples: [1, 20]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.store.gc.repo_total
+        type: int
+        stability: development
+        brief: Total repos considered by a gc run.
+        examples: [1, 20]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.store.gc.result_archived
+        type: int
+        stability: development
+        brief: gc-result entries archived.
+        examples: [0, 3]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.store.gc.result_kept
+        type: int
+        stability: development
+        brief: gc-result entries kept.
+        examples: [1, 30]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.store.gc.result_reaped
+        type: int
+        stability: development
+        brief: gc-result entries reaped.
+        examples: [0, 3]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.store.gc.result_removed
+        type: int
+        stability: development
+        brief: gc-result entries removed.
+        examples: [0, 5]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.store.gc.result_skipped_dirty
+        type: int
+        stability: development
+        brief: gc-result entries skipped because dirty.
+        examples: [0, 2]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.store.gc.result_skipped_in_use
+        type: int
+        stability: development
+        brief: gc-result entries skipped because in use.
+        examples: [0, 2]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.store.gc.result_total
+        type: int
+        stability: development
+        brief: Total gc-result entries.
+        examples: [3, 40]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.store.gc.root_set_workspace_count
+        type: int
+        stability: development
+        brief: Number of root-set workspaces feeding gc liveness.
+        examples: [1, 5]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.store.gc.worktree_count
+        type: int
+        stability: development
+        brief: Number of worktrees considered in a gc phase.
+        examples: [3, 40]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.store.gc.worktree_discovered
+        type: int
+        stability: development
+        brief: Worktrees discovered by a gc run.
+        examples: [3, 40]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.store.git_worktree_list_failed
+        type: boolean
+        stability: development
+        brief: Whether `git worktree list` failed (gc fell back to a degraded worktree view).
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.store.has_current_workspace
+        type: boolean
+        stability: development
+        brief: Whether the live-set computation had a current workspace.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.store.prune_stale_registry
+        type: boolean
+        stability: development
+        brief: Whether the live-set computation pruned the stale registry.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.store.ref
+        type: string
+        stability: development
+        brief: Store ref a span operates on.
+        examples: [main, v1.2.3]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: megarepo.store.ref_type
+        type: string
+        stability: development
+        brief: Kind of the store ref.
+        examples: [branch, tag, commit]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: megarepo.store.refresh_current_workspace
+        type: boolean
+        stability: development
+        brief: Whether the live-set computation refreshed the current workspace.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.store.repo
+        type: string
+        stability: development
+        brief: Store repository (relative path) a span operates on.
+        examples: [github.com/org/repo]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: megarepo.store.source
+        type: string
+        stability: development
+        brief: Source of a store operation.
+        examples: [github.com/org/repo]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: megarepo.store.worktree_broken
+        type: boolean
+        stability: development
+        brief: Whether the store worktree is broken.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.store.worktree_path
+        type: string
+        stability: development
+        brief: Store worktree path a span operates on.
+        examples: [/home/user/.megarepo/store/github.com/org/repo/worktrees/main]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: megarepo.sync.depth
+        type: int
+        stability: development
+        brief: Configured recursion depth for a sync run.
+        examples: [1, 5]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.sync.member.action
+        type:
+          members:
+            - id: clone
+              value: clone
+              brief: Initial clone of the member.
+              stability: development
+            - id: already-cloned-by-sibling
+              value: already-cloned-by-sibling
+              brief: A sibling already cloned this member.
+              stability: development
+            - id: skip-dry-run
+              value: skip-dry-run
+              brief: Skipped because the run is a dry run.
+              stability: development
+            - id: fetch
+              value: fetch
+              brief: Fetched into an existing bare repository.
+              stability: development
+            - id: fetch-missing-commit
+              value: fetch-missing-commit
+              brief: Fetched a specific missing commit.
+              stability: development
+            - id: noop
+              value: noop
+              brief: No action required.
+              stability: development
+        stability: development
+        brief: The action actually taken for a member sync.
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: megarepo.sync.member.bare_exists
+        type: boolean
+        stability: development
+        brief: Whether the member's bare repository already exists (fetch vs initial clone).
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.sync.member.name
+        type: string
+        stability: development
+        brief: Member name being synced.
+        examples: [effect-utils]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: megarepo.sync.member.ref
+        type: string
+        stability: development
+        brief: Target ref for a member sync.
+        examples: [main, v1.2.3]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: megarepo.sync.member.ref_type
+        type: string
+        stability: development
+        brief: Kind of the target ref for a member sync.
+        examples: [branch, tag, commit]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: megarepo.sync.member.result_status
+        type: string
+        stability: development
+        brief: Final result status of a member sync.
+        examples: [cloned, fetched, noop]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: megarepo.sync.member.source
+        type: string
+        stability: development
+        brief: Source of the member being synced.
+        examples: [github.com/org/repo]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: megarepo.sync.mode
+        type: string
+        stability: development
+        brief: Ref-resolution mode for a sync run.
+        examples: [locked, latest]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: megarepo.test.store_fixture.branch_count
+        type: int
+        stability: development
+        brief: Number of branches in a store-fixture repository.
+        examples: [1, 4]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.test.store_fixture.commit_count
+        type: int
+        stability: development
+        brief: Number of commits in a store-fixture repository.
+        examples: [1, 10]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.test.store_fixture.phase
+        type:
+          members:
+            - id: init-bare
+              value: init-bare
+              brief: Initialize the bare repository.
+              stability: development
+            - id: init-upstream
+              value: init-upstream
+              brief: Initialize the upstream remote.
+              stability: development
+            - id: init-source
+              value: init-source
+              brief: Initialize the source repository.
+              stability: development
+            - id: push-refs
+              value: push-refs
+              brief: Push refs into the store bare.
+              stability: development
+            - id: fetch-store-bare
+              value: fetch-store-bare
+              brief: Fetch into the store bare.
+              stability: development
+            - id: create-worktrees
+              value: create-worktrees
+              brief: Create worktrees.
+              stability: development
+            - id: create-commit-worktrees
+              value: create-commit-worktrees
+              brief: Create commit worktrees.
+              stability: development
+        stability: development
+        brief: Setup phase of a store-fixture repository.
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: megarepo.test.store_fixture.repo
+        type: string
+        stability: development
+        brief: Repository being set up inside a store fixture.
+        examples: [origin, upstream]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: megarepo.test.store_fixture.repo_count
+        type: int
+        stability: development
+        brief: Number of repositories in a hermetic store fixture.
+        examples: [1, 3]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.test.store_fixture.tag_count
+        type: int
+        stability: development
+        brief: Number of tags in a store-fixture repository.
+        examples: [0, 2]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.test.store_fixture.with_remote
+        type: boolean
+        stability: development
+        brief: Whether a store-fixture repository has a remote.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.traversal.all
+        type: boolean
+        stability: development
+        brief: Whether the traversal visits all members.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.traversal.cycles_skipped
+        type: int
+        stability: development
+        brief: Number of cycles skipped during a traversal.
+        examples: [0, 1]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.traversal.max_depth
+        type: int
+        stability: development
+        brief: Maximum depth reached during a traversal.
+        examples: [1, 3]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.traversal.nodes_visited
+        type: int
+        stability: development
+        brief: Number of nodes visited during a traversal.
+        examples: [3, 12]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: megarepo.traversal.purpose
+        type: string
+        stability: development
+        brief: Purpose of a nested-megarepo traversal.
+        examples: [sync, gc]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: megarepo.traversal.root
+        type: string
+        stability: development
+        brief: Root of a nested-megarepo traversal.
+        examples: [/home/user/megarepo]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: megarepo.workspace_root
+        type: string
+        stability: development
+        brief: Absolute megarepo workspace root.
+        examples: [/home/user/megarepo]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: megarepo.worktree_head
+        type: string
+        stability: development
+        brief: Resolved commit sha of a worktree HEAD.
+        examples: [a3c1b6323f0e]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: megarepo.worktree_path
+        type: string
+        stability: development
+        brief: Absolute worktree path a span operates on.
+        examples: [/home/user/.megarepo/store/github.com/org/repo/worktrees/main]
+        annotations:
+          overeng_policy:
+            cardinality: high
+  - id: registry.notion_md
+    type: attribute_group
+    display_name: Notion Markdown Attributes
+    brief: Attributes for the notion_md namespace.
+    attributes:
+      - id: notion_md.batch
+        type: boolean
+        stability: development
+        brief: Whether the invocation runs over a batch of targets.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.batch.path_count
+        type: int
+        stability: development
+        brief: Number of paths watched in a batch watch run.
+        examples: [3]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.batch.recursive
+        type: boolean
+        stability: development
+        brief: Whether a batch run recurses into subdirectories.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.batch.target_count
+        type: int
+        stability: development
+        brief: Number of targets in a batch run.
+        examples: [3]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.command
+        type: string
+        stability: development
+        brief: notion-md command name.
+        examples: [status, sync]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.comment_boundary.comment_count
+        type: int
+        stability: development
+        brief: Number of comments considered at a comment write boundary.
+        examples: [1, 2]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.comment_boundary.guard
+        type: string
+        stability: development
+        brief: Guard that governed a comment write.
+        examples: [force]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: notion_md.comment_boundary.operation
+        type: string
+        stability: development
+        brief: Comment write-boundary operation.
+        examples: [create, skip]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: notion_md.comment_boundary.verdict
+        type: string
+        stability: development
+        brief: Comment write-boundary verdict.
+        examples: [allow, block]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: notion_md.data_source_id
+        type: string
+        stability: development
+        brief: Notion data source (database) id.
+        examples: [205d5c1a-0000-4000-8000-000000000000]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: notion_md.destructive_body.block_count
+        type: int
+        stability: development
+        brief: Number of blocks considered at a destructive body write gate.
+        examples: [1, 10]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.destructive_body.guard
+        type: string
+        stability: development
+        brief: Guard that governed a destructive body write.
+        examples: [allow-delete]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: notion_md.destructive_body.verdict
+        type: string
+        stability: development
+        brief: Destructive body write-gate verdict.
+        examples: [allow, block]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: notion_md.edit.outcome
+        type:
+          members:
+            - id: pushed
+              value: pushed
+              brief: The edit was pushed to Notion.
+              stability: development
+            - id: noop
+              value: noop
+              brief: The edit made no changes.
+              stability: development
+            - id: aborted
+              value: aborted
+              brief: The edit session was aborted.
+              stability: development
+            - id: conflict
+              value: conflict
+              brief: The edit hit a conflict.
+              stability: development
+            - id: read-only
+              value: read-only
+              brief: The page was read-only.
+              stability: development
+        stability: development
+        brief: Outcome of an `edit` session.
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: notion_md.editor.mode
+        type:
+          members:
+            - id: default
+              value: default
+              brief: Body-only editor projection.
+              stability: development
+            - id: frontmatter
+              value: frontmatter
+              brief: Frontmatter + body editor projection.
+              stability: development
+        stability: development
+        brief: Editor representation mode for `cat` / `put` / `edit`.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.markdown_update.allow_deleting_content
+        type: boolean
+        stability: development
+        brief: Whether the markdown update is permitted to delete content.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.markdown_update.content_update_count
+        type: int
+        stability: development
+        brief: Number of content updates in a markdown-update command.
+        examples: [1, 5]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.markdown_update.type
+        type: string
+        stability: development
+        brief: Markdown-update command kind.
+        examples: [replace, patch]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: notion_md.media_boundary.file_count
+        type: int
+        stability: development
+        brief: Number of files considered at a files/media write boundary.
+        examples: [1, 3]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.media_boundary.guard
+        type: string
+        stability: development
+        brief: Guard that governed a files/media write.
+        examples: [force]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: notion_md.media_boundary.operation
+        type: string
+        stability: development
+        brief: Files/media write-boundary operation.
+        examples: [upload, skip]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: notion_md.media_boundary.verdict
+        type: string
+        stability: development
+        brief: Files/media write-boundary verdict.
+        examples: [allow, block]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: notion_md.object_gc.dry_run
+        type: boolean
+        stability: development
+        brief: Whether an object-GC pass is plan-only (dry run).
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.object_gc.reachable_count
+        type: int
+        stability: development
+        brief: Number of reachable objects after an object-GC pass.
+        examples: [12]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.object_gc.removed_count
+        type: int
+        stability: development
+        brief: Number of removed (or would-be-removed) objects after an object-GC pass.
+        examples: [3]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.object.hash_prefix
+        type: string
+        stability: development
+        brief: Short prefix of a content-object hash.
+        examples: [a1b2c3d4e5f6]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: notion_md.object.role
+        type: string
+        stability: development
+        brief: Role of the stored content object.
+        examples: [markdown, frontmatter]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: notion_md.page_id
+        type: string
+        stability: development
+        brief: Notion page id (UUID).
+        examples: [205d5c1a-0000-4000-8000-000000000000]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: notion_md.page_metadata.cover
+        type: boolean
+        stability: development
+        brief: Whether a page-metadata update sets the cover.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.page_metadata.icon
+        type: boolean
+        stability: development
+        brief: Whether a page-metadata update sets the icon.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.page_metadata.in_trash
+        type: boolean
+        stability: development
+        brief: Whether a page-metadata update trashes the page.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.page_metadata.is_locked
+        type: boolean
+        stability: development
+        brief: Whether a page-metadata update locks the page.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.page_metadata.title
+        type: boolean
+        stability: development
+        brief: Whether a page-metadata update sets the title.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.parent_page_id
+        type: string
+        stability: development
+        brief: Parent Notion page id (UUID).
+        examples: [205d5c1a-0000-4000-8000-000000000000]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: notion_md.path.basename
+        type: string
+        stability: development
+        brief: Basename of the `.nmd` path a span operates on.
+        examples: [index.nmd, notes.nmd]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: notion_md.path.recursive
+        type: boolean
+        stability: development
+        brief: Whether a path operation recurses over a tree.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.push.allow_delete_unknown_blocks
+        type: boolean
+        stability: development
+        brief: Whether deleting unknown blocks is permitted during push.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.push.decision
+        type: string
+        stability: development
+        brief: The storage/push decision verdict.
+        examples: [push, skip]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: notion_md.push.force
+        type: boolean
+        stability: development
+        brief: Whether force-push was requested.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.push.markdown_command
+        type: string
+        stability: development
+        brief: The resolved markdown-update command shape a push produced.
+        examples: [replace, patch]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: notion_md.push.pushed
+        type: boolean
+        stability: development
+        brief: Whether the push actually wrote anything.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.put.body_written
+        type: boolean
+        stability: development
+        brief: Whether a `put` wrote the body.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.put.force
+        type: boolean
+        stability: development
+        brief: Whether force-write was requested for `put`.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.put.title_written
+        type: boolean
+        stability: development
+        brief: Whether a `put` wrote the title.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.state.operation
+        type: string
+        stability: development
+        brief: State-store file operation performed.
+        examples: [read, write]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: notion_md.status.local_changed
+        type: boolean
+        stability: development
+        brief: Whether local content changed vs the baseline.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.status.local_page_metadata_changed
+        type: boolean
+        stability: development
+        brief: Whether local page metadata changed vs the baseline.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.status.local_properties_changed
+        type: boolean
+        stability: development
+        brief: Whether local database properties changed vs the baseline.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.status.remote_body_changed
+        type: boolean
+        stability: development
+        brief: Whether the remote page body changed vs the baseline.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.status.remote_changed
+        type: boolean
+        stability: development
+        brief: Whether remote content changed vs the baseline.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.status.remote_page_metadata_changed
+        type: boolean
+        stability: development
+        brief: Whether remote page metadata changed vs the baseline.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.status.unknown_block_count
+        type: int
+        stability: development
+        brief: Number of unknown (unrepresentable) blocks encountered during status.
+        examples: [0, 2]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.sync.error
+        type: boolean
+        stability: development
+        brief: Whether a watch sync pass failed.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.sync.error_tag
+        type: string
+        stability: development
+        brief: Tagged-error name for a failed watch sync pass.
+        examples: [NmdConflictError]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: notion_md.sync.result
+        type: string
+        stability: development
+        brief: Terminal reconciliation verdict of a sync.
+        examples: [pushed, pulled, no-op]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: notion_md.tree.from_remote
+        type: boolean
+        stability: development
+        brief: Whether a tree plan/sync direction pulls from remote.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.tree.plan
+        type: boolean
+        stability: development
+        brief: Whether a tree sync is plan-only (dry run).
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.watch
+        type: boolean
+        stability: development
+        brief: Whether the command runs in watch mode.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: notion_md.watch.reason
+        type:
+          members:
+            - id: file
+              value: file
+              brief: A filesystem change triggered the pass.
+              stability: development
+            - id: initial
+              value: initial
+              brief: The initial pass at watch startup.
+              stability: development
+            - id: poll
+              value: poll
+              brief: A poll interval triggered the pass.
+              stability: development
+        stability: development
+        brief: What triggered a watch pass.
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: notion_md.webhook.event_type
+        type: string
+        stability: development
+        brief: Webhook event type.
+        examples: [page.content_updated]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: notion_md.webhook.surface
+        type: string
+        stability: development
+        brief: Webhook surface the event targets.
+        examples: [page, database]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: notion_md.webhook.trigger_count
+        type: int
+        stability: development
+        brief: Number of watch triggers a webhook signal mapped to.
+        examples: [1]
+        annotations:
+          overeng_policy:
+            cardinality: low

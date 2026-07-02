@@ -12,7 +12,7 @@
  *
  * `rust-constants.unit.test.ts` renders this directly via the Layer-1 `renderRustConstants`,
  * exercising the true name-projection the Rust consumer relies on. NOT part of the shipped
- * `weaver-registry/` composed registry — a standalone fixture so it does not pollute the live
+ * `genie/weaver-registry/` composed registry — a standalone fixture so it does not pollute the live
  * registry. Covers the type variety a real Rust consumer needs: string / int / double / boolean
  * attributes, a multi-member enum (per-member stability), a `template[...]` dynamic-key attribute,
  * plus span + metric signals.

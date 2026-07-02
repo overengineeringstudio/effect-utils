@@ -29,7 +29,7 @@ All notable changes to this project will be documented in this file.
   deterministic (sorted), rustfmt-clean const modules — separate `attribute` / `span` / `metric`
   modules (collision-proof by construction) with a `pub const <SCREAMING_SNAKE>: &str` per name
   plus an `ALL: &[&str]` slice — covering own attribute keys, span ids, and metric names. Wired one
-  committed `.rs` output (`weaver-registry/constants.rs`) via `constants.rs.genie.ts` alongside the
+  committed `.rs` output (`genie/weaver-registry/constants.rs`) via `constants.rs.genie.ts` alongside the
   TS constants, with a dedicated Rust-identity fingerprint (attr keys + span ids + metric names) so
   a signal rename re-hashes only the `.rs` and a doc-only edit churns neither binding. Proven by a
   synthetic ~25-name `otel_scrape.*` fixture (authored via the real Layer-2 seam) with a test
@@ -51,6 +51,23 @@ All notable changes to this project will be documented in this file.
   inline op — no stable single-signal projection — deferred to a future `cli` namespace member.
 
 ### Changed
+
+- **genie semantic-conventions registry — genie-idiomatic emit + relocation / @overeng/genie**:
+  Reworked the first-party registry to a builder-per-target API and moved it under `genie/`.
+  - New dep-free `weaver*` builder family in `@overeng/genie` `src/runtime/weaver`
+    (`weaverManifest` / `weaverAttributes` / `weaverSignals` / `weaverTsConstants` /
+    `weaverRustConstants`) over a `WeaverRegistryBundle` (composed registry + the three split
+    provenance fingerprints + whole-registry integrity issues). Each `.genie.ts` emitter is now a
+    one-liner over the aggregator's exported `weaver` bundle; `weaverManifest` surfaces
+    namespace-uniqueness / dangling-ref issues via `validate` so `genie:check` still blocks.
+  - Collapsed the per-namespace `<ns>.attributes.yaml` emitters into a single `attributes.yaml`
+    (new `renderAttributes` emits all groups as multiple `attribute_group` entries in one file).
+    Adding a namespace no longer needs a new `.genie.ts`. The fixed emitted set is now
+    `{manifest, attributes, signals}.yaml` + `constants.{ts,rs}`.
+  - Moved the registry directory `weaver-registry/` → `genie/weaver-registry/` (updated the
+    `weaver:check` task `registryDir`, its YAML copy glob, the no-orphan-seam test path, the
+    oxlint ignore glob, and `REGISTRY_SOURCE`). Emitted YAML/TS/Rust content is unchanged apart
+    from the `registry-source:` provenance-header path (fingerprints are identical).
 
 - **devenv deploy tasks / @overeng/ci-tools**: Centralize deploy-preview
   workflow-report and GitHub output emission in `ci-tools`, including

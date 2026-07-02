@@ -1,6 +1,6 @@
 // Generated file - DO NOT EDIT
 // Source: constants.ts.genie.ts
-// registry-source: weaver-registry/registry.ts
+// registry-source: genie/weaver-registry/registry.ts
 // fingerprint: sha256:be6c22a7adb63fb839969ef8c781142dba4e42481ca3ca057665734ab5abd35f
 
 export const AcmeAttempt = 'acme.attempt' as const

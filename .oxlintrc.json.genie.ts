@@ -22,7 +22,7 @@ export default oxlintConfig({
     // (aggregator + per-file `.genie.ts` emitters). Freshness is enforced by `genie:check`;
     // exclude from lint like other generated-output trees. Real member contracts live in their
     // package `src` (fully linted, incl. the seam-file rule).
-    'weaver-registry/**',
+    'genie/weaver-registry/**',
   ],
   overrides: [
     ...baseOxlintOverrides,
