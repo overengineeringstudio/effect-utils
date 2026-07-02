@@ -1,9 +1,10 @@
 import {
   catalog,
   workspaceMember,
+  exportEntry,
   packageJson,
   privatePackageDefaults,
-  type PackageJsonData,
+  type PackageJsonInputData,
 } from '../../../genie/internal.ts'
 import notionCorePkg from '../notion-core/package.json.genie.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
@@ -30,7 +31,7 @@ export default packageJson(
     name: '@overeng/notion-effect-schema',
     ...privatePackageDefaults,
     exports: {
-      '.': './src/mod.ts',
+      '.': exportEntry('./src/mod.ts', { environment: 'node' }),
     },
     publishConfig: {
       access: 'public',
@@ -38,6 +39,6 @@ export default packageJson(
         '.': './dist/mod.js',
       },
     },
-  } satisfies PackageJsonData,
+  } satisfies PackageJsonInputData,
   workspaceDeps,
 )

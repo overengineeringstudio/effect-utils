@@ -2,9 +2,10 @@ import { otelSdkDeps } from '../../../genie/external.ts'
 import {
   catalog,
   workspaceMember,
+  exportEntry,
   packageJson,
   privatePackageDefaults,
-  type PackageJsonData,
+  type PackageJsonInputData,
 } from '../../../genie/internal.ts'
 import otelContractPkg from '../otel-contract/package.json.genie.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
@@ -66,10 +67,10 @@ export default packageJson(
     name: '@overeng/restate-effect',
     ...privatePackageDefaults,
     exports: {
-      '.': './src/mod.ts',
-      './admin': './src/admin/admin.ts',
-      './otel': './src/observability/otel.ts',
-      './testing': './src/testing/testing.ts',
+      '.': exportEntry('./src/mod.ts', { environment: 'node' }),
+      './admin': exportEntry('./src/admin/admin.ts', { environment: 'node' }),
+      './otel': exportEntry('./src/observability/otel.ts', { environment: 'node' }),
+      './testing': exportEntry('./src/testing/testing.ts', { environment: 'node' }),
     },
     publishConfig: {
       access: 'public',
@@ -80,6 +81,6 @@ export default packageJson(
         './testing': './dist/testing/testing.js',
       },
     },
-  } satisfies PackageJsonData,
+  } satisfies PackageJsonInputData,
   workspaceDeps,
 )

@@ -52,5 +52,49 @@ if [ "$leaked_count" != "0" ]; then
   exit 1
 fi
 
+echo "Test 3: compiled Genie strict export proof uses explicit compiler executable"
+strict_workspace="$tmpdir/strict-workspace"
+fake_compiler="$tmpdir/fake-tsgo"
+compiler_log="$tmpdir/fake-tsgo.log"
+
+mkdir -p "$strict_workspace/src"
+
+cat > "$strict_workspace/src/mod.ts" <<'EOF'
+export const value = 1
+EOF
+
+cat > "$strict_workspace/package.json.genie.ts" <<EOF
+import { exportEntry, packageJson } from '$ROOT/packages/@overeng/genie/src/runtime/mod.ts'
+
+export default packageJson({
+  name: '@test/compiled-strict-proof',
+  version: '1.0.0',
+  exports: {
+    '.': exportEntry('./src/mod.ts', {
+      environment: 'isomorphic-es2024',
+      typeProof: 'strict',
+    }),
+  },
+})
+EOF
+
+cat > "$fake_compiler" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+if [ "\${1:-}" = "--version" ]; then
+  echo "Fake TypeScript 1.0.0"
+  exit 0
+fi
+printf "%s\n" "\$@" > "$compiler_log"
+EOF
+chmod +x "$fake_compiler"
+
+env -u OTEL_EXPORTER_OTLP_ENDPOINT \
+  GENIE_EXPORT_TYPE_PROOF_COMPILER="$fake_compiler" \
+  TMPDIR="$tmp_root" \
+  timeout 20s "$compiled_genie" --cwd "$strict_workspace" --output json >/dev/null
+
+grep -q -- '--project' "$compiler_log"
+
 echo ""
 echo "Genie compiled import staging cleanup tests passed."

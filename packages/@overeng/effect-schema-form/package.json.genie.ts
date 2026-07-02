@@ -1,9 +1,10 @@
 import {
   catalog,
   workspaceMember,
+  exportEntry,
   packageJson,
   privatePackageDefaults,
-  type PackageJsonData,
+  type PackageJsonInputData,
 } from '../../../genie/internal.ts'
 
 const peerDepNames = ['effect', 'react'] as const
@@ -24,7 +25,7 @@ export default packageJson(
     name: '@overeng/effect-schema-form',
     ...privatePackageDefaults,
     exports: {
-      '.': './src/mod.ts',
+      '.': exportEntry('./src/mod.ts', { environment: 'browser' }),
     },
     publishConfig: {
       access: 'public',
@@ -32,6 +33,6 @@ export default packageJson(
         '.': './dist/mod.js',
       },
     },
-  } satisfies PackageJsonData,
+  } satisfies PackageJsonInputData,
   deps,
 )

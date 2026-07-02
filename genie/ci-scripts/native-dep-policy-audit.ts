@@ -3,7 +3,7 @@
  * Native npm dependency policy audit (issue #807).
  *
  * Cross-checks the pnpm lockfile against the authoritative
- * `nativeDependencyPolicy` classification in `genie/external.ts` and fails CI
+ * `nativeDependencyPolicy` classification in `genie/native-dependency-policy.ts` and fails CI
  * on drift. This runs install-free: the only inputs are the lockfile and the
  * genie policy source, which is all the builder-contract CI job has (it
  * restores no `node_modules`, so the pnpm build-script ledger is unavailable).
@@ -24,7 +24,10 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
-import { type NativeDependencyPolicyEntry, nativeDependencyPolicy } from '../external.ts'
+import {
+  type NativeDependencyPolicyEntry,
+  nativeDependencyPolicy,
+} from '../native-dependency-policy.ts'
 
 const repoRoot = resolve(import.meta.dir, '../..')
 

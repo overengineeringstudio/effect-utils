@@ -46,10 +46,13 @@
   # Whether to treat warnings as errors. Set to false for repos with many
   # existing warnings that can't be fixed immediately.
   denyWarnings ? true,
+  # Real derivation/path backing the formatter guard. Defaults to pkgs.oxfmt but
+  # stays injectable so module tests can prove absolute-path execution without
+  # depending on PATH shadowing.
+  oxfmtPkg ? null,
   # Real derivation/path backing the `oxlint` guard (e.g. the plugin-injecting
   # oxlint wrapper). When set, the guard owns `bin/oxlint` and exec's this by
-  # absolute path under passthrough (see cli-guard.nix). The `oxfmt` guard uses
-  # pkgs.oxfmt directly since that is in-module.
+  # absolute path under passthrough (see cli-guard.nix).
   oxlintPkg ? null,
 }:
 { lib, pkgs, ... }:
@@ -153,6 +156,7 @@ let
   # Type-aware linting flags (enabled when tsconfig is provided)
   typeAwareFlags = if tsconfig != null then "--type-aware --tsconfig ${tsconfig}" else "";
   warningsFlag = if denyWarnings then "--deny-warnings" else "";
+  resolvedOxfmtPkg = if oxfmtPkg == null then pkgs.oxfmt else oxfmtPkg;
 
   # Plugin injection is handled by oxlint-with-plugins wrapper on PATH.
   # Consumers should add oxlint-with-plugins to devenv packages instead of
@@ -192,7 +196,7 @@ let
       guard = "oxfmt";
       description = "Check code formatting with oxfmt";
       exec = trace.exec "lint:check:format" (mkLintExec {
-        command = "oxfmt --check";
+        command = "${resolvedOxfmtPkg}/bin/oxfmt --check";
         includeCase = oxfmtIncludeCase;
         emptySelectionDiagnostic = "Expected at least one target file";
       });
@@ -213,7 +217,7 @@ let
       guard = "oxfmt";
       description = "Fix code formatting with oxfmt";
       exec = trace.exec "lint:fix:format" (mkLintExec {
-        command = "oxfmt";
+        command = "${resolvedOxfmtPkg}/bin/oxfmt";
         includeCase = oxfmtIncludeCase;
         emptySelectionDiagnostic = "Expected at least one target file";
       });
@@ -328,7 +332,7 @@ in
     ++ cliGuard.fromTasks {
       tasks = guardedTasks;
       reals = {
-        oxfmt = pkgs.oxfmt;
+        oxfmt = resolvedOxfmtPkg;
       }
       // lib.optionalAttrs (oxlintPkg != null) { oxlint = oxlintPkg; };
     };

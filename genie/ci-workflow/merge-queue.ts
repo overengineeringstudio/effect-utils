@@ -1,4 +1,7 @@
-import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
+import {
+  githubWorkflowEvent,
+  type GitHubWorkflowArgs,
+} from '../../packages/@overeng/genie/src/runtime/mod.ts'
 import { shellSingleQuote } from './shared.ts'
 
 type WorkflowJob = GitHubWorkflowArgs['jobs'][string]
@@ -45,7 +48,7 @@ export const mergeQueuePullRequestTrigger = {
 export const mergeQueueWorkflowOn = (opts: { readonly branches?: readonly string[] } = {}) => ({
   push: { branches: [...(opts.branches ?? ['main'])] },
   pull_request: { ...mergeQueuePullRequestTrigger, branches: [...(opts.branches ?? ['main'])] },
-  merge_group: null,
+  merge_group: githubWorkflowEvent.all,
 })
 
 const githubExpressionStringLiteral = (value: string) => `'${value.replaceAll("'", "''")}'`

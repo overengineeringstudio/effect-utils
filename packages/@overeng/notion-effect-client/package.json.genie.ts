@@ -1,6 +1,7 @@
 import {
   catalog,
   workspaceMember,
+  exportEntry,
   packageJson,
   privatePackageDefaults,
 } from '../../../genie/internal.ts'
@@ -55,8 +56,11 @@ export default packageJson(
     name: '@overeng/notion-effect-client',
     ...privatePackageDefaults,
     exports: {
-      '.': './src/mod.ts',
-      './test': './src/test/integration/setup.ts',
+      '.': exportEntry('./src/mod.ts', { environment: 'node' }),
+      './test': exportEntry('./src/test/integration/setup.ts', {
+        environment: 'node',
+        published: false,
+      }),
     },
     publishConfig: {
       access: 'public',

@@ -10,12 +10,15 @@
 import {
   defineCatalog,
   definePatchedDependencies,
+  definePackageJson,
   githubLabels,
   githubRuleset,
   githubWorkflow,
+  githubWorkflowEvent,
   megarepoJson,
   oxfmtConfig,
   oxlintConfig,
+  exportEntry,
   packageJson,
   pnpmWorkspaceYaml,
   projectionArtifact,
@@ -34,7 +37,16 @@ import {
   type OxfmtConfigArgs,
   type OxlintConfigArgs,
   type AggregatePackageJsonData,
+  type ExportEnvironmentContract,
+  type ExportEnvironmentContractCoverage,
+  type ExportEnvironmentContracts,
+  type ExportEnvironmentName,
+  type ExportTypeProofMode,
   type PackageJsonData,
+  type PackageJsonExportEnvironmentContractValidationOptions,
+  type PackageJsonInputData,
+  type PackageJsonOptions,
+  type PackageJsonValidationOptions,
   type PatchesRegistry,
   type PnpmSettings,
   type PnpmWorkspaceData,
@@ -48,13 +60,14 @@ import {
   type WorkspacePackageLike,
 } from '../packages/@overeng/genie/src/runtime/mod.ts'
 /**
- * Repo-context discovery is node-only (reads the filesystem via `import.meta.url`), so it is sourced from the
- * `@overeng/genie/node` entry. Peer repos consume `external.ts` to author genie configs at engine (node) time.
+ * Repo-context discovery is node-only (reads the filesystem via `import.meta.url`), but importing the broad
+ * `@overeng/genie/node` entry also pulls engine validation internals into peer repo Genie files. Import the
+ * repo-context surface directly so downstream authoring helpers stay free of engine-only dependencies.
  */
 import {
   defineRepoContext,
   type RepoContext,
-} from '../packages/@overeng/genie/src/runtime/node/mod.ts'
+} from '../packages/@overeng/genie/src/runtime/repo-context/mod.ts'
 /**
  * Exceptional export: downstream repos that define `workspaceMember()` factories
  * need this type for the optional `pnpmPackageClosure` parameter in `WorkspaceIdentity`.
@@ -62,18 +75,25 @@ import {
  * workspace subsetting (currently only livestore).
  */
 import type { PnpmPackageClosureConfig } from '../packages/@overeng/genie/src/runtime/pnpm-workspace/mod.ts'
+import {
+  nativeDependencyPolicy,
+  type NativeDependencyPolicyEntry,
+} from './native-dependency-policy.ts'
 
 /** Re-export so TypeScript can reference it in generated declaration files */
 export {
   defineCatalog,
   definePatchedDependencies,
+  definePackageJson,
   defineRepoContext,
   githubLabels,
   githubRuleset,
   githubWorkflow,
+  githubWorkflowEvent,
   megarepoJson,
   oxfmtConfig,
   oxlintConfig,
+  exportEntry,
   packageJson,
   pnpmWorkspaceYaml,
   projectionArtifact,
@@ -82,6 +102,11 @@ export {
 }
 export type {
   AggregatePackageJsonData,
+  ExportEnvironmentContract,
+  ExportEnvironmentContractCoverage,
+  ExportEnvironmentContracts,
+  ExportEnvironmentName,
+  ExportTypeProofMode,
   GenieOutput,
   GithubLabelsArgs,
   GithubRulesetArgs,
@@ -92,6 +117,10 @@ export type {
   OxfmtConfigArgs,
   OxlintConfigArgs,
   PackageJsonData,
+  PackageJsonExportEnvironmentContractValidationOptions,
+  PackageJsonInputData,
+  PackageJsonOptions,
+  PackageJsonValidationOptions,
   PatchesRegistry,
   PnpmPackageClosureConfig,
   PnpmSettings,
@@ -109,6 +138,8 @@ export type {
   WorkspacePackage,
   WorkspacePackageLike,
 }
+export { nativeDependencyPolicy }
+export type { NativeDependencyPolicyEntry }
 
 // =============================================================================
 // Shared label catalog (consumed by per-repo `.github/labels.json.genie.ts`)
@@ -292,74 +323,6 @@ export const catalog = defineCatalog({
   // AI agent tooling
   agentation: '3.0.2',
 })
-
-/**
- * Authoritative classification of every native npm dependency family the
- * workspace tolerates. This is the single source of truth consumed by both the
- * generated pnpm `allowBuilds` denylist (below) and the CI policy audit
- * (`genie/ci-scripts/native-dep-policy-audit.ts`), so the two cannot drift.
- *
- * Each entry is tagged by how the native code is obtained:
- *
- * - `nix-grafted`: the native artifact is supplied by a Nix derivation instead
- *   of pnpm. `graft: 'link'` builds the addon from source (`node-pty`),
- *   `graft: 'fetch-only'` grafts prebuilt platform tarballs (`@opentui/core`).
- *   `via` names the owning Nix file, which the audit verifies exists.
- * - `denied-lifecycle-build`: a package that ships an install lifecycle build
- *   script we explicitly refuse to run (pnpm `allowBuilds: false`). `defensive`
- *   marks entries kept as guard rails even though the family is not currently
- *   in the lockfile (e.g. `sharp`, `unix-dgram`); their absence is tolerated.
- * - `pure-package-artifact`: an optional, CPU/OS/libc-gated prebuilt native
- *   binary family (Rollup/Rolldown/esbuild/oxc/etc.) that carries no lifecycle
- *   build and is locked as a fixed-output set. Listed separately from
- *   lifecycle-built native addons per issue #807.
- *
- * Audit gap (documented, not silently dropped): pnpm lockfile v9 no longer
- * emits `requiresBuild`. The build-script ledger (`.modules.yaml`
- * `pendingBuilds`/`ignoredBuilds`) IS populated by a local install even under
- * `ignoreScripts: true` (it lists packages blocked from building), but it is
- * unavailable in CI: the builder-contract job runs install-free, and the
- * Nix pnpm-deps FOD strips `.modules.yaml` from its output for determinism, so
- * no CI job sees the ledger. A brand-new package that carries a lifecycle
- * build but is neither CPU/OS/libc-gated nor already in this policy therefore
- * cannot be auto-detected here. This policy is the source of truth; the audit
- * enforces lockfile-vs-policy drift (new gated families, disappeared/
- * shape-changed entries) against it.
- */
-export const nativeDependencyPolicy = {
-  // Lifecycle-built native addons denied a pnpm build. Order mirrors the
-  // historical `allowBuilds` literal so the derived denylist stays byte-stable.
-  '@parcel/watcher': { _tag: 'denied-lifecycle-build' },
-  '@myobie/pty': { _tag: 'denied-lifecycle-build' },
-  esbuild: { _tag: 'denied-lifecycle-build' },
-  fsevents: { _tag: 'denied-lifecycle-build' },
-  'msgpackr-extract': { _tag: 'denied-lifecycle-build' },
-  'node-pty': { _tag: 'nix-grafted', graft: 'link', via: 'nix/node-pty-native.nix' },
-  sharp: { _tag: 'denied-lifecycle-build', defensive: true },
-  'unix-dgram': { _tag: 'denied-lifecycle-build', defensive: true },
-
-  // Nix-grafted prebuilt native package (not lifecycle-built, so not denied).
-  '@opentui/core': { _tag: 'nix-grafted', graft: 'fetch-only', via: 'nix/opentui-core-native.nix' },
-
-  // Pure package-artifact native families (CPU/OS/libc-gated, no
-  // lifecycle build). Keys are the family prefix shared by every platform
-  // package (e.g. `@rollup/rollup` covers `@rollup/rollup-linux-x64-gnu`).
-  '@rollup/rollup': { _tag: 'pure-package-artifact' },
-  '@rolldown/binding': { _tag: 'pure-package-artifact' },
-  '@esbuild': { _tag: 'pure-package-artifact' },
-  '@msgpackr-extract': { _tag: 'pure-package-artifact' },
-  lightningcss: { _tag: 'pure-package-artifact' },
-  '@oxc-parser/binding': { _tag: 'pure-package-artifact' },
-  '@oxc-resolver/binding': { _tag: 'pure-package-artifact' },
-  '@tailwindcss/oxide': { _tag: 'pure-package-artifact' },
-  '@oxlint-tsgolint': { _tag: 'pure-package-artifact' },
-} as const satisfies Record<string, NativeDependencyPolicyEntry>
-
-/** Tagged classification of a native dependency family. @see nativeDependencyPolicy */
-export type NativeDependencyPolicyEntry =
-  | { readonly _tag: 'nix-grafted'; readonly graft: 'link' | 'fetch-only'; readonly via: string }
-  | { readonly _tag: 'denied-lifecycle-build'; readonly defensive?: boolean }
-  | { readonly _tag: 'pure-package-artifact' }
 
 /**
  * Packages whose pnpm lifecycle build is denied. Derived from

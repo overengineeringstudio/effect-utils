@@ -1,6 +1,7 @@
 import {
   catalog,
   workspaceMember,
+  exportEntry,
   packageJson,
   privatePackageDefaults,
 } from '../../../genie/internal.ts'
@@ -58,15 +59,20 @@ export default packageJson(
       // consumer (e.g. a `.bzl` genie generator) can import `GenieOutput`/`Strict` and the builders without
       // dragging genie's runtime ambient globals into its program. Filesystem/spawn capabilities used during
       // validation are injected via `GenieContext` (`io`, `actionlint`) by the engine.
-      '.': './src/runtime/mod.ts',
+      '.': exportEntry('./src/runtime/mod.ts', {
+        environment: 'isomorphic-es2024',
+        typeProof: 'strict',
+      }),
       // Node-resident entry: re-exports `.` plus the node-only members (nodeGenieIO, actionlint runner,
       // github-ruleset reconcile ops, fs-discovery tsconfigJsonFromPackages, repo-context).
-      './node': './src/runtime/node/mod.ts',
+      './node': exportEntry('./src/runtime/node/mod.ts', { environment: 'node' }),
       // Explicit reusable composition layer. Keep `.` focused on thin artifact builders; put cross-artifact
       // helpers that consume structured Genie metadata here.
-      './composition': './src/runtime/composition/mod.ts',
-      './cli': './src/build/mod.tsx',
-      './sdk': './src/sdk/mod.ts',
+      './composition': exportEntry('./src/runtime/composition/mod.ts', {
+        environment: 'isomorphic-es2024',
+      }),
+      './cli': exportEntry('./src/build/mod.tsx', { environment: 'node' }),
+      './sdk': exportEntry('./src/sdk/mod.ts', { environment: 'node' }),
     },
     publishConfig: {
       access: 'public',

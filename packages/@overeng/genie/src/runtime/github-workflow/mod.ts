@@ -110,20 +110,40 @@ type RepositoryDispatchConfig = {
   types?: string[]
 }
 
+export type GitHubWorkflowEventAll = {
+  readonly _tag: 'GitHubWorkflowEventAll'
+}
+
+/** GitHub Actions event trigger sentinels. */
+export const githubWorkflowEvent = {
+  /** Run for every occurrence of the event without branch/path/type filters. */
+  all: { _tag: 'GitHubWorkflowEventAll' },
+} satisfies {
+  all: GitHubWorkflowEventAll
+}
+
+const isGitHubWorkflowEventAll = (value: unknown): value is GitHubWorkflowEventAll =>
+  typeof value === 'object' &&
+  value !== null &&
+  '_tag' in value &&
+  value._tag === githubWorkflowEvent.all._tag
+
+type GitHubWorkflowEventAllTrigger = null | GitHubWorkflowEventAll
+
 type OnConfig = {
   [K in EventTrigger]?: K extends 'push' | 'pull_request' | 'pull_request_target'
-    ? PushPullRequestTriggerConfig | null
+    ? PushPullRequestTriggerConfig | GitHubWorkflowEventAllTrigger
     : K extends 'schedule'
       ? ScheduleTrigger[]
       : K extends 'workflow_dispatch'
-        ? WorkflowDispatchConfig | null
+        ? WorkflowDispatchConfig | GitHubWorkflowEventAllTrigger
         : K extends 'workflow_call'
-          ? WorkflowCallConfig | null
+          ? WorkflowCallConfig | GitHubWorkflowEventAllTrigger
           : K extends 'workflow_run'
             ? WorkflowRunConfig
             : K extends 'repository_dispatch'
-              ? RepositoryDispatchConfig | null
-              : null
+              ? RepositoryDispatchConfig | GitHubWorkflowEventAllTrigger
+              : GitHubWorkflowEventAllTrigger
 }
 
 type PermissionLevel = 'read' | 'write' | 'none'
@@ -263,9 +283,59 @@ export type GitHubWorkflowArgs = {
   actionlint?: ActionlintConfig | false
 }
 
+const normalizeWorkflowOn = (on: GitHubWorkflowArgs['on']): GitHubWorkflowArgs['on'] => {
+  if (typeof on !== 'object' || on === null || Array.isArray(on) === true) return on
+
+  return Object.fromEntries(
+    Object.entries(on).map(([eventName, eventConfig]) => [
+      eventName,
+      isGitHubWorkflowEventAll(eventConfig) === true ? null : eventConfig,
+    ]),
+  ) as GitHubWorkflowArgs['on']
+}
+
 const invalidRunnerLabelPattern = /(^|[=:])(undefined|null)$/
 const githubExpressionStart = '${{'
 const githubExpressionEnd = '}}'
+// Documented GitHub Actions limits:
+// https://docs.github.com/en/actions/reference/limits
+const githubWorkflowMatrixJobLimit = 256
+const githubWorkflowCheckRunsPerSuiteLimit = 50_000
+const githubWorkflowAdmissionSizeLimitBytes = 512 * 1024
+const githubWorkflowAdmissionSizeWarnBytes = 480 * 1024
+const githubHostedJobTimeoutMinutesLimit = 6 * 60
+const selfHostedJobTimeoutMinutesLimit = 5 * 24 * 60
+const githubHostedRunnerLabels = new Set([
+  'windows-latest',
+  'windows-latest-8-cores',
+  'windows-2025',
+  'windows-2025-vs2026',
+  'windows-2022',
+  'windows-11-arm',
+  'ubuntu-slim',
+  'ubuntu-latest',
+  'ubuntu-latest-4-cores',
+  'ubuntu-latest-8-cores',
+  'ubuntu-latest-16-cores',
+  'ubuntu-24.04',
+  'ubuntu-24.04-arm',
+  'ubuntu-22.04',
+  'ubuntu-22.04-arm',
+  'macos-latest',
+  'macos-latest-xlarge',
+  'macos-latest-large',
+  'macos-26-intel',
+  'macos-26-xlarge',
+  'macos-26-large',
+  'macos-26',
+  'macos-15-intel',
+  'macos-15-xlarge',
+  'macos-15-large',
+  'macos-15',
+  'macos-14-xlarge',
+  'macos-14-large',
+  'macos-14',
+])
 
 const validateRunsOn = ({
   jobName,
@@ -422,6 +492,174 @@ const validateGitHubExpressionStrings = ({
   return []
 }
 
+const staticMatrixJobCount = (strategy: Strategy | undefined): number | undefined => {
+  const matrix = strategy?.matrix
+  if (matrix === undefined || typeof matrix === 'string') return 1
+
+  let product = 1
+  for (const [key, value] of Object.entries(matrix)) {
+    if (key === 'include' || key === 'exclude') continue
+    if (Array.isArray(value) === false) return undefined
+    product *= value.length
+    if (product > githubWorkflowCheckRunsPerSuiteLimit) return product
+  }
+
+  const includeCount = Array.isArray(matrix.include) === true ? matrix.include.length : 0
+  return product + includeCount
+}
+
+const isGitHubHostedRunsOn = (runsOn: string | string[]) => {
+  const labels = Array.isArray(runsOn) === true ? runsOn : [runsOn]
+  return labels.some((label) => githubHostedRunnerLabels.has(label))
+}
+
+const validateDocumentedGitHubLimits = ({
+  args,
+  location,
+}: {
+  args: GitHubWorkflowArgs
+  location: string
+}): GenieValidationIssue[] => {
+  const issues: GenieValidationIssue[] = []
+  let staticCheckRunCount = 0
+
+  for (const [jobName, job] of Object.entries(args.jobs)) {
+    const matrixJobCount = staticMatrixJobCount(job.strategy)
+    if (matrixJobCount !== undefined) {
+      staticCheckRunCount += matrixJobCount
+
+      if (matrixJobCount > githubWorkflowMatrixJobLimit) {
+        issues.push({
+          severity: 'error',
+          packageName: location,
+          dependency: `jobs.${jobName}.strategy.matrix`,
+          message: `jobs.${jobName}.strategy.matrix statically expands to ${matrixJobCount} jobs, exceeding GitHub Actions' documented ${githubWorkflowMatrixJobLimit}-job matrix limit.`,
+          rule: 'github-workflow-matrix-job-limit',
+        })
+      }
+    }
+
+    const timeoutMinutes = job['timeout-minutes']
+    if (typeof timeoutMinutes === 'number') {
+      const githubHosted = isGitHubHostedRunsOn(job['runs-on'])
+      const timeoutLimit =
+        githubHosted === true
+          ? githubHostedJobTimeoutMinutesLimit
+          : selfHostedJobTimeoutMinutesLimit
+      if (timeoutMinutes > timeoutLimit) {
+        issues.push({
+          severity: 'warning',
+          packageName: location,
+          dependency: `jobs.${jobName}.timeout-minutes`,
+          message: `jobs.${jobName}.timeout-minutes is ${timeoutMinutes}, but GitHub Actions documents a ${timeoutLimit}-minute execution limit for ${githubHosted === true ? 'GitHub-hosted' : 'self-hosted'} jobs. The job can be terminated before this timeout is reached.`,
+          rule: 'github-workflow-job-timeout-limit',
+        })
+      }
+    }
+  }
+
+  if (staticCheckRunCount > githubWorkflowCheckRunsPerSuiteLimit) {
+    issues.push({
+      severity: 'error',
+      packageName: location,
+      dependency: 'jobs',
+      message: `Workflow statically declares at least ${staticCheckRunCount} check runs, exceeding GitHub Actions' documented ${githubWorkflowCheckRunsPerSuiteLimit} check-runs-per-check-suite limit.`,
+      rule: 'github-workflow-check-runs-per-suite-limit',
+    })
+  }
+
+  return issues
+}
+
+const utf8ByteLength = (value: string) => {
+  let bytes = 0
+  for (let index = 0; index < value.length; index += 1) {
+    const codePoint = value.codePointAt(index) ?? 0
+    if (codePoint > 0xffff) index += 1
+    bytes += codePoint <= 0x7f ? 1 : codePoint <= 0x7ff ? 2 : codePoint <= 0xffff ? 3 : 4
+  }
+  return bytes
+}
+
+const formatBytes = (bytes: number) => `${bytes.toLocaleString('en-US')} bytes`
+
+const validateGitHubWorkflowAdmissionSize = ({
+  yamlContent,
+  location,
+}: {
+  yamlContent: string
+  location: string
+}): GenieValidationIssue[] => {
+  const sizeBytes = utf8ByteLength(yamlContent)
+
+  if (sizeBytes > githubWorkflowAdmissionSizeLimitBytes) {
+    return [
+      {
+        severity: 'error',
+        packageName: location,
+        dependency: 'workflow',
+        message: `Workflow serializes to ${formatBytes(sizeBytes)}, exceeding the observed GitHub Actions workflow admission limit of ${formatBytes(githubWorkflowAdmissionSizeLimitBytes)}. GitHub can silently skip creating runs for oversized workflow files; reduce generated YAML size before pushing.`,
+        rule: 'github-workflow-admission-size-limit',
+      },
+    ]
+  }
+
+  if (sizeBytes >= githubWorkflowAdmissionSizeWarnBytes) {
+    return [
+      {
+        severity: 'warning',
+        packageName: location,
+        dependency: 'workflow',
+        message: `Workflow serializes to ${formatBytes(sizeBytes)}, leaving ${formatBytes(githubWorkflowAdmissionSizeLimitBytes - sizeBytes)} before the observed GitHub Actions workflow admission limit of ${formatBytes(githubWorkflowAdmissionSizeLimitBytes)}.`,
+        rule: 'github-workflow-admission-size-margin',
+      },
+    ]
+  }
+
+  return []
+}
+
+const preparedCiRetryScriptPath =
+  '${{ runner.temp }}/genie-ci-scripts/run-with-nix-gc-race-retry.sh'
+const prepareCiScriptsStepName = 'Prepare CI helper scripts'
+
+const stepName = (step: Step): string | undefined =>
+  typeof step.name === 'string' ? step.name : undefined
+
+const stepRun = (step: Step): string | undefined =>
+  'run' in step && typeof step.run === 'string' ? step.run : undefined
+
+const validatePreparedCiRetryScriptSetup = ({
+  args,
+  location,
+}: {
+  args: GitHubWorkflowArgs
+  location: string
+}): GenieValidationIssue[] => {
+  const issues: GenieValidationIssue[] = []
+
+  for (const [jobName, job] of Object.entries(args.jobs)) {
+    const firstRetryScriptUseIndex = job.steps.findIndex(
+      (step) => stepRun(step)?.includes(preparedCiRetryScriptPath) === true,
+    )
+
+    if (firstRetryScriptUseIndex < 0) continue
+
+    const prepareIndex = job.steps.findIndex((step) => stepName(step) === prepareCiScriptsStepName)
+    if (prepareIndex >= 0 && prepareIndex < firstRetryScriptUseIndex) continue
+
+    issues.push({
+      severity: 'error',
+      packageName: location,
+      dependency: `jobs.${jobName}.steps[${firstRetryScriptUseIndex}]`,
+      message: `jobs.${jobName} uses the prepared CI retry helper at ${preparedCiRetryScriptPath} without a preceding "${prepareCiScriptsStepName}" step. Add the CI runtime support preparation step before retry-wrapped commands, especially before any alternate checkout can replace the workspace.`,
+      rule: 'github-workflow-prepared-ci-retry-script-setup',
+    })
+  }
+
+  return issues
+}
+
 const validateWorkflow = ({
   args,
   yamlContent,
@@ -438,6 +676,9 @@ const validateWorkflow = ({
     issues.push(...validateRunsOn({ jobName, runsOn: job['runs-on'], location }))
   }
 
+  issues.push(...validateDocumentedGitHubLimits({ args, location }))
+  issues.push(...validateGitHubWorkflowAdmissionSize({ yamlContent, location }))
+  issues.push(...validatePreparedCiRetryScriptSetup({ args, location }))
   issues.push(...validateDeterminateNixExtraConf({ args, location }))
   issues.push(
     ...validateGitHubExpressionStrings({
@@ -490,13 +731,14 @@ const validateWorkflow = ({
 export const githubWorkflow = <const T extends GitHubWorkflowArgs>(
   args: Strict<T, GitHubWorkflowArgs>,
 ): GenieOutput<T> => {
-  const { actionlint: _actionlint, ...yamlArgs } = args
+  const normalizedArgs = { ...args, on: normalizeWorkflowOn(args.on) }
+  const { actionlint: _actionlint, ...yamlArgs } = normalizedArgs
   return createGenieOutput({
     data: args,
     stringify: (_ctx) => yaml.stringify(yamlArgs),
     validate: (ctx) => {
       const yamlContent = yaml.stringify(yamlArgs)
-      return validateWorkflow({ args, yamlContent, ctx })
+      return validateWorkflow({ args: normalizedArgs, yamlContent, ctx })
     },
   })
 }

@@ -1,0 +1,9 @@
+{
+  "name": "effect-utils-netlify-cli-authority",
+  "version": "0.0.0",
+  "private": true,
+  "dependencies": {
+    "netlify-cli": "26.1.0",
+    "node-gyp": "13.0.0"
+  }
+}

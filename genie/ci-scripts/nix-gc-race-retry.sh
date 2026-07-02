@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
+# Generated file - DO NOT EDIT
+# Source: nix-gc-race-retry.sh.genie.ts
+
 
 run_nix_gc_race_retry() {
   local task="$1"
-  local command="$2"
   local max="${NIX_GC_RACE_MAX_RETRIES:-10}"
   local heartbeat="${CI_PROGRESS_HEARTBEAT_SECONDS:-60}"
   local attempt=1
-  local log rc path start now elapsed hb_pid flattened saw_invalid_path saw_cachix_signature saw_fetch_signature had_errexit
+  local log log_dir stdout_pipe stderr_pipe rc path start now elapsed hb_pid stdout_tee_pid stderr_tee_pid flattened saw_invalid_path saw_cachix_signature saw_fetch_signature saw_daemon_socket_failure had_errexit
 
+  shift
   start="$(date +%s)"
 
   write_summary() {
@@ -22,6 +25,36 @@ run_nix_gc_race_retry() {
     } >> "$GITHUB_STEP_SUMMARY"
   }
 
+  repair_nix_daemon() {
+    if [ "${NIX_GC_RACE_SKIP_DAEMON_REPAIR:-0}" = 1 ]; then
+      echo "::warning::Nix daemon repair skipped by NIX_GC_RACE_SKIP_DAEMON_REPAIR=1"
+      return 0
+    fi
+
+    echo "::warning::Nix daemon socket is unavailable; attempting daemon restart before retry"
+
+    if command -v launchctl >/dev/null 2>&1; then
+      sudo launchctl kickstart -k system/org.nixos.nix-daemon >/dev/null 2>&1 || true
+    fi
+
+    if command -v systemctl >/dev/null 2>&1; then
+      sudo systemctl restart nix-daemon.socket >/dev/null 2>&1 || true
+      sudo systemctl restart nix-daemon.service >/dev/null 2>&1 || true
+      sudo systemctl restart nix-daemon >/dev/null 2>&1 || true
+    fi
+
+    if [ ! -S /nix/var/nix/daemon-socket/socket ] && [ -x /nix/var/nix/profiles/default/bin/nix-daemon ]; then
+      sudo /nix/var/nix/profiles/default/bin/nix-daemon --daemon >/tmp/nix-daemon-restart.log 2>&1 || true
+    fi
+
+    for _ in 1 2 3 4 5; do
+      [ -S /nix/var/nix/daemon-socket/socket ] && return 0
+      sleep 1
+    done
+
+    return 0
+  }
+
   while [ "$attempt" -le "$max" ]; do
     echo "::notice::[ci] starting $task (attempt $attempt/$max)"
     (
@@ -34,16 +67,27 @@ run_nix_gc_race_retry() {
     hb_pid=$!
 
     log=$(mktemp)
+    log_dir=$(mktemp -d)
+    stdout_pipe="$log_dir/stdout"
+    stderr_pipe="$log_dir/stderr"
+    mkfifo "$stdout_pipe" "$stderr_pipe"
+    tee -a "$log" < "$stdout_pipe" &
+    stdout_tee_pid=$!
+    tee -a "$log" < "$stderr_pipe" >&2 &
+    stderr_tee_pid=$!
     had_errexit=false
     case $- in
       *e*) had_errexit=true ;;
     esac
     set +e
-    eval "$command" > >(tee -a "$log") 2> >(tee -a "$log" >&2)
+    "$@" > "$stdout_pipe" 2> "$stderr_pipe"
     rc=$?
     if [ "$had_errexit" = true ]; then
       set -e
     fi
+    wait "$stdout_tee_pid" 2>/dev/null || true
+    wait "$stderr_tee_pid" 2>/dev/null || true
+    rm -rf "$log_dir"
 
     kill "$hb_pid" 2>/dev/null || true
     wait "$hb_pid" 2>/dev/null || true
@@ -71,19 +115,24 @@ run_nix_gc_race_retry() {
     saw_invalid_path=false
     saw_cachix_signature=false
     saw_fetch_signature=false
+    saw_daemon_socket_failure=false
     [ -n "$path" ] && saw_invalid_path=true
     printf '%s' "$flattened" | grep -Eq 'error:[[:space:]]*.*Failed to convert config\.cachix to JSON' && saw_cachix_signature=true || true
     printf '%s' "$flattened" | grep -Eq 'error:[[:space:]]*.*while evaluating the option.*cachix\.package' && saw_cachix_signature=true || true
     printf '%s' "$flattened" | grep -Eq 'error:[[:space:]]*cannot read file from tarball:[[:space:]]*Truncated tar archive detected while reading data' && saw_fetch_signature=true || true
+    printf '%s' "$flattened" | grep -Eq "error:[[:space:]]*cannot connect to socket at '/nix/var/nix/daemon-socket/socket'" && saw_daemon_socket_failure=true || true
     rm -f "$log"
 
-    if [ "$saw_invalid_path" != true ] && [ "$saw_cachix_signature" != true ] && [ "$saw_fetch_signature" != true ]; then
+    if [ "$saw_invalid_path" != true ] && [ "$saw_cachix_signature" != true ] && [ "$saw_fetch_signature" != true ] && [ "$saw_daemon_socket_failure" != true ]; then
       echo "::warning::[ci] $task failed after $elapsed s without a detected transient Nix failure"
       write_summary failure "No transient Nix failure signature detected"
       return "$rc"
     fi
 
-    if [ "$saw_fetch_signature" = true ]; then
+    if [ "$saw_daemon_socket_failure" = true ]; then
+      repair_nix_daemon
+      echo "::warning::Nix daemon socket failure detected for $task (attempt $attempt/$max); retrying after daemon repair"
+    elif [ "$saw_fetch_signature" = true ]; then
       echo "::warning::Nix source fetch corruption detected for $task (attempt $attempt/$max); retrying with a refreshed eval cache"
     elif [ "$saw_cachix_signature" = true ] && [ -n "$path" ]; then
       echo "::warning::Nix store validity race detected for $task via cachix eval wrapper (attempt $attempt/$max): $path"

@@ -1,6 +1,9 @@
+import { FileSystem } from '@effect/platform'
+import { NodeContext } from '@effect/platform-node'
 import { describe, expect, it } from '@effect/vitest'
-import { Effect, Metric, MetricLabel } from 'effect'
+import { Effect, Layer, Metric, MetricLabel, Schema } from 'effect'
 
+import { TraceJson, writeCaptureDiagnostics } from './diagnostics.ts'
 import {
   captureInProcessAllSignals,
   captureInProcessTrace,
@@ -65,6 +68,44 @@ describe('OteliteTestHarness', () => {
           }).service,
         ).toBe('otelite-test-harness-helper')
       }),
+    30_000,
+  )
+
+  it.scopedLive(
+    'writes reusable trace diagnostics JSON from a capture',
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+        const outDir = yield* fs.makeTempDirectoryScoped()
+        const harness = yield* OteliteTestHarness
+        const otel = yield* harness.capture({
+          serviceName: 'otelite-diagnostics',
+          rootSpanName: 'otelite-diagnostics.root',
+          exportInterval: 50,
+        })
+
+        yield* otel.runInProcess(
+          Effect.void.pipe(
+            Effect.withSpan('otelite-diagnostics.child', {
+              attributes: { 'span.label': 'child' },
+            }),
+          ),
+        )
+        yield* otel.flush
+
+        const files = yield* writeCaptureDiagnostics({
+          capture: otel.capture,
+          outDir,
+          service: 'otelite-diagnostics',
+        })
+
+        const traceJson = yield* Schema.decodeUnknown(Schema.parseJson(TraceJson))(
+          yield* fs.readFileString(files.traceJson),
+        )
+        expect(traceJson.schema).toBe('otelite.trace-json/v1')
+        expect(traceJson.summary.span_count).toBeGreaterThanOrEqual(2)
+        expect(traceJson.spans.some((span) => span.name === 'otelite-diagnostics.child')).toBe(true)
+      }).pipe(Effect.provide(Layer.mergeAll(OteliteTestHarness.Default, NodeContext.layer))),
     30_000,
   )
 

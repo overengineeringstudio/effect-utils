@@ -354,7 +354,7 @@ const loadOxfmtConfig = Effect.fn('loadOxfmtConfig')(function* ({
  * ensures consistent output regardless of where genie is invoked, since the `.genie.ts` source
  * file is always a sibling of the generated file.
  */
-const getHeaderComment = ({
+export const getHeaderComment = ({
   targetFilePath,
   sourceFile,
 }: {
@@ -383,8 +383,53 @@ const getHeaderComment = ({
     return `# Generated file - DO NOT EDIT\n# Source: ${sourceFile}\n\n`
   }
 
+  if (basename === 'BUCK' || ext === '.bzl' || ext === '.bxl') {
+    return `# Generated file - DO NOT EDIT\n# Source: ${sourceFile}\n\n`
+  }
+
+  if (ext === '.sh') {
+    return `# Generated file - DO NOT EDIT\n# Source: ${sourceFile}\n\n`
+  }
+
   // Default to JS/TS style comments
   return `// Generated file - DO NOT EDIT\n// Source: ${sourceFile}\n`
+}
+
+export const addHeaderComment = ({
+  content,
+  header,
+  targetFilePath,
+}: {
+  content: string
+  header: string
+  targetFilePath: string
+}) => {
+  if (path.extname(targetFilePath) !== '.sh' || content.startsWith('#!') === false) {
+    return header + content
+  }
+
+  const firstNewlineIndex = content.indexOf('\n')
+  if (firstNewlineIndex < 0) {
+    return `${content}\n${header}`
+  }
+
+  const shebangLine = content.slice(0, firstNewlineIndex + 1)
+  const rest = content.slice(firstNewlineIndex + 1)
+  return shebangLine + header + rest
+}
+
+const generatedFileMode = ({
+  readOnly,
+  targetFilePath,
+}: {
+  readOnly: boolean
+  targetFilePath: string
+}) => {
+  if (path.extname(targetFilePath) === '.sh') {
+    return readOnly === true ? 0o555 : 0o755
+  }
+
+  return readOnly === true ? 0o444 : undefined
 }
 
 /** Format content using oxfmt if the file type is supported */
@@ -607,7 +652,14 @@ export const getExpectedContent = Effect.fn('getExpectedContent')(function* ({
     configPath: oxfmtConfigPath,
   })
 
-  return { targetFilePath, content: header + formattedContent }
+  return {
+    targetFilePath,
+    content: addHeaderComment({
+      content: formattedContent,
+      header,
+      targetFilePath,
+    }),
+  }
 })
 
 /** Generate a brief diff summary showing line count changes */
@@ -766,20 +818,22 @@ export const generateFile = ({
 
     if (isUnchanged === true) {
       // Restore read-only permissions if needed (e.g. after a --writeable run or manual chmod)
-      if (readOnly === true) {
-        yield* fs.chmod(targetFilePath, 0o444).pipe(Effect.catchAll(() => Effect.void))
+      const mode = generatedFileMode({ readOnly, targetFilePath })
+      if (mode !== undefined) {
+        yield* fs.chmod(targetFilePath, mode).pipe(Effect.catchAll(() => Effect.void))
       }
       return { _tag: 'unchanged', targetFilePath } as const
     }
 
     // Atomically write the file (write to temp, then rename)
+    const mode = generatedFileMode({ readOnly, targetFilePath })
     yield* withTargetLock({
       cwd,
       targetFilePath,
       effect: atomicWriteFile({
         targetFilePath,
         content: fileContentString,
-        ...(readOnly && { mode: 0o444 }),
+        ...(mode === undefined ? {} : { mode }),
       }),
     })
 

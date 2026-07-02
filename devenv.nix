@@ -44,6 +44,7 @@ let
     test-playwright = import ./nix/devenv-modules/tasks/shared/test-playwright.nix;
     storybook = import ./nix/devenv-modules/tasks/shared/storybook.nix;
     netlify = import ./nix/devenv-modules/tasks/shared/netlify.nix;
+    workflow-report = import ./nix/devenv-modules/tasks/shared/workflow-report.nix;
     lint-genie = ./nix/devenv-modules/tasks/shared/lint-genie.nix;
     lint-nix = import ./nix/devenv-modules/tasks/shared/lint-nix.nix;
     lint-oxc = import ./nix/devenv-modules/tasks/shared/lint-oxc.nix;
@@ -72,6 +73,10 @@ let
   mrSourceCli = mkSourceCli {
     name = "mr";
     entry = "packages/@overeng/megarepo/bin/mr.ts";
+  };
+  ciToolsSourceCli = mkSourceCli {
+    name = "ci-tools";
+    entry = "packages/@overeng/ci-tools/bin/ci-tools.ts";
   };
 
   # CLI packages built with Nix (for hash management)
@@ -155,7 +160,7 @@ let
     "packages/@overeng/tui-core"
     "packages/@overeng/tui-react"
     "packages/@overeng/tui-stories"
-    "packages/@overeng/workflow-report"
+    "packages/@overeng/ci-tools"
     "context/opentui"
     "context/effect/socket"
   ];
@@ -232,6 +237,7 @@ let
     {
       path = "packages/@overeng/pty-effect";
       name = "pty-effect";
+      after = [ "pnpm:link-native-node-packages" ];
     }
     {
       path = "packages/@overeng/restate-effect";
@@ -258,8 +264,8 @@ let
       name = "utils-dev";
     }
     {
-      path = "packages/@overeng/workflow-report";
-      name = "workflow-report";
+      path = "packages/@overeng/ci-tools";
+      name = "ci-tools";
     }
   ];
 
@@ -354,6 +360,7 @@ in
     (taskModules.test {
       packages = packagesWithTests;
       extraTests = [ "devenv-modules:test" ];
+      packageConcurrency = 4;
     })
     (taskModules.storybook {
       packages = packagesWithStorybook;
@@ -361,12 +368,16 @@ in
     (taskModules.netlify {
       siteName = "overeng-utils";
       siteId = "462d2440-fb38-4e69-8023-9c425d1e2132";
+      ciToolsBin = "${ciToolsSourceCli}/bin/ci-tools";
       deployments = map (pkg: {
         name = pkg.name;
         staticDir = "${pkg.path}/storybook-static";
         afterTask = "storybook:build:${pkg.name}";
         workspaceFilter = true;
       }) packagesWithNetlifyPreview;
+    })
+    (taskModules.workflow-report {
+      ciToolsBin = "${ciToolsSourceCli}/bin/ci-tools";
     })
     (taskModules.lint-oxc {
       oxlintPkg = oxlintWithPlugins;
@@ -482,6 +493,7 @@ in
     repoFlake.packages.${currentSystem}.otelite
     repoFlake.packages.${currentSystem}.otel-scrape
     cliBuildStamp.package
+    ciToolsSourceCli
     (mkSourceCli {
       name = "tui-stories";
       entry = "packages/@overeng/tui-stories/bin/tui-stories.tsx";
@@ -549,8 +561,6 @@ in
     '';
   };
 
-  tasks."test:pty-effect".after = lib.mkAfter [ "pnpm:link-native-node-packages" ];
-
   tasks."test:megarepo-cold-gc" = {
     after = [ "pnpm:install" ];
     description = "Run isolated megarepo cold-GC integration tests";
@@ -559,7 +569,7 @@ in
       set -euo pipefail
       source ${lib.escapeShellArg pnpmTaskHelpersScript}
       export MEGAREPO_GIT_COMMAND_TIMEOUT_MS="5000"
-      run_package_bin vitest vitest run src/cli/store-gc-cold.integration.test.ts
+      run_package_bin vitest vitest run src/cli/store-gc-cold.integration.test.ts --reporter verbose --testTimeout 240000
     '';
     execIfModified = [
       "packages/@overeng/megarepo/src/**/*.ts"
@@ -606,9 +616,10 @@ in
       # A few raw exec/status lines are legitimately allowed and are annotated
       # with a `dogfood-audit-allow` marker comment IMMEDIATELY ABOVE the line:
       #   - the raw string is an argument passed INTO trace.* a few lines below
-      #     (restate integration test, ts:emit), or
-      #   - the task is deliberately untraced (vercel deploys have no structured
-      #     source contract and run interactively).
+      #     (restate integration test, ts:emit).
+      # A deliberately-untraced task would also qualify, but there are currently
+      # none: every thin `ci-tools` delegation task (netlify/vercel deploys,
+      # workflow-report) routes through trace.exec for a task span.
       # The marker is matched in a 2-line window (the line plus the one above),
       # so this stays robust to line shifts — no fragile file:line pins.
       marker='dogfood-audit-allow'

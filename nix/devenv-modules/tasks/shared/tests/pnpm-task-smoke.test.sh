@@ -827,9 +827,11 @@ echo "Test 28: generated test task runs vitest without pnpm exec"
   # bin and inject its `--reporter=json` side-channel (decision 0017), changing
   # the shim's echoed argv. OTEL_SCRAPE_DOGFOOD=0 collapses trace.instr's arrays
   # to empty, so this also proves the shared-module transparency contract: with
-  # instrumentation disabled the concrete command runs completely unchanged.
+  # instrumentation disabled the concrete command runs completely unchanged
+  # (the fixed `--testTimeout`/`--hookTimeout` flags are part of the base vitest
+  # invocation, not instrumentation, so they still appear).
   output="$(OTEL_SCRAPE_DOGFOOD=0 bash "$tmpdir/test-demo.exec.sh")"
-  [ "$output" = "vitest-shim:run" ]
+  [ "$output" = "vitest-shim:run --testTimeout 30000 --hookTimeout 30000" ]
 )
 
 echo "Test 29: generated storybook task runs storybook without pnpm exec"

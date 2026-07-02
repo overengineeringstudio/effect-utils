@@ -1,6 +1,7 @@
 import {
   catalog,
   workspaceMember,
+  exportEntry,
   packageJson,
   privatePackageDefaults,
 } from '../../../genie/internal.ts'
@@ -47,7 +48,7 @@ export default packageJson(
     name: '@overeng/effect-schema-form-aria',
     ...privatePackageDefaults,
     exports: {
-      '.': './src/mod.ts',
+      '.': exportEntry('./src/mod.ts', { environment: 'browser' }),
     },
     publishConfig: {
       access: 'public',

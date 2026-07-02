@@ -4,12 +4,13 @@
  * Provides helpers for creating test stores with bare repos and worktrees.
  */
 
-import { Command, FileSystem } from '@effect/platform'
+import { FileSystem } from '@effect/platform'
 import { Effect, Option, Schema } from 'effect'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
 import { MegarepoConfig } from '../lib/config.ts'
+import * as Git from '../lib/git.ts'
 import {
   createLockedMember,
   type LockFile,
@@ -18,6 +19,7 @@ import {
   readLockFile,
   writeLockFile,
 } from '../lib/lock.ts'
+import * as Observability from '../lib/observability.ts'
 import { refTypeToPathSegment, classifyRef } from '../lib/ref.ts'
 
 // =============================================================================
@@ -67,11 +69,7 @@ export interface StoreFixtureResult {
 
 /** Run a git command in a specific directory */
 const runGitCommand = (cwd: AbsoluteDirPath, ...args: ReadonlyArray<string>) =>
-  Effect.gen(function* () {
-    const command = Command.make('git', ...args).pipe(Command.workingDirectory(cwd))
-    const result = yield* Command.string(command)
-    return result.trim()
-  })
+  Git.runCommand({ args, cwd })
 
 /** Initialize a new git repository (writes user config directly to avoid extra process spawns) */
 const initGitRepo = (path: AbsoluteDirPath) =>
@@ -131,163 +129,221 @@ export const createStoreFixture = (repos: ReadonlyArray<StoreRepoFixture>) =>
 
     for (const repoFixture of repos) {
       const repoKey = `${repoFixture.host}/${repoFixture.owner}/${repoFixture.repo}`
-
-      // Create repo directory structure
-      const repoBasePath = EffectPath.ops.join(
-        storePath,
-        EffectPath.unsafe.relativeDir(`${repoKey}/`),
-      )
-      const bareRepoPath = EffectPath.ops.join(
-        repoBasePath,
-        EffectPath.unsafe.relativeDir('.bare/'),
-      )
-
-      yield* fs.makeDirectory(bareRepoPath, { recursive: true })
-      bareRepoPaths[repoKey] = bareRepoPath
-
-      // Initialize bare repo (`-b main` for a deterministic default branch — see initGitRepo)
-      yield* runGitCommand(bareRepoPath, 'init', '--bare', '-b', 'main')
-
-      // For `withRemote`, the store bare fetches from a separate upstream bare so
-      // it gains real `refs/remotes/origin/*`. The source repo pushes to that
-      // upstream (the true remote); otherwise it pushes to the store bare directly.
       const withRemote = repoFixture.withRemote === true
-      let pushTargetPath = bareRepoPath
-      if (withRemote === true) {
-        const upstreamPath = EffectPath.ops.join(
+
+      yield* Effect.gen(function* () {
+        // Create repo directory structure
+        const repoBasePath = EffectPath.ops.join(
+          storePath,
+          EffectPath.unsafe.relativeDir(`${repoKey}/`),
+        )
+        const bareRepoPath = EffectPath.ops.join(
+          repoBasePath,
+          EffectPath.unsafe.relativeDir('.bare/'),
+        )
+
+        yield* fs.makeDirectory(bareRepoPath, { recursive: true })
+        bareRepoPaths[repoKey] = bareRepoPath
+
+        // Initialize bare repo (`-b main` for a deterministic default branch — see initGitRepo)
+        yield* runGitCommand(bareRepoPath, 'init', '--bare', '-b', 'main').pipe(
+          Observability.withStoreFixturePhaseSpan({ phase: 'init-bare', repo: repoKey }),
+        )
+
+        // For `withRemote`, the store bare fetches from a separate upstream bare so
+        // it gains real `refs/remotes/origin/*`. The source repo pushes to that
+        // upstream (the true remote); otherwise it pushes to the store bare directly.
+        let pushTargetPath = bareRepoPath
+        if (withRemote === true) {
+          pushTargetPath = yield* Effect.gen(function* () {
+            const upstreamPath = EffectPath.ops.join(
+              tmpDir,
+              EffectPath.unsafe.relativeDir(`_upstream/${repoKey}.bare/`),
+            )
+            yield* fs.makeDirectory(upstreamPath, { recursive: true })
+            yield* runGitCommand(upstreamPath, 'init', '--bare', '-b', 'main')
+            upstreamRepoPaths[repoKey] = upstreamPath
+            return upstreamPath
+          }).pipe(
+            Observability.withStoreFixturePhaseSpan({ phase: 'init-upstream', repo: repoKey }),
+          )
+        }
+
+        // Create a source repo to work with (we need commits to reference)
+        const sourceRepoPath = EffectPath.ops.join(
           tmpDir,
-          EffectPath.unsafe.relativeDir(`_upstream/${repoKey}.bare/`),
+          EffectPath.unsafe.relativeDir('_source/'),
         )
-        yield* fs.makeDirectory(upstreamPath, { recursive: true })
-        yield* runGitCommand(upstreamPath, 'init', '--bare', '-b', 'main')
-        upstreamRepoPaths[repoKey] = upstreamPath
-        pushTargetPath = upstreamPath
-      }
+        const commitSha = yield* Effect.gen(function* () {
+          yield* fs.makeDirectory(sourceRepoPath, { recursive: true })
+          yield* initGitRepo(sourceRepoPath)
 
-      // Create a source repo to work with (we need commits to reference)
-      const sourceRepoPath = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('_source/'))
-      yield* fs.makeDirectory(sourceRepoPath, { recursive: true })
-      yield* initGitRepo(sourceRepoPath)
-
-      // Add a file and commit
-      yield* fs.writeFileString(
-        EffectPath.ops.join(sourceRepoPath, EffectPath.unsafe.relativeFile('README.md')),
-        `# ${repoFixture.repo}\n`,
-      )
-      yield* runGitCommand(sourceRepoPath, 'add', '-A')
-      yield* runGitCommand(sourceRepoPath, 'commit', '--no-verify', '-m', 'Initial commit')
-
-      // Get the commit SHA
-      const commitSha = yield* runGitCommand(sourceRepoPath, 'rev-parse', 'HEAD')
-
-      // Set up remote and push branches
-      yield* runGitCommand(sourceRepoPath, 'remote', 'add', 'origin', pushTargetPath)
-      yield* runGitCommand(sourceRepoPath, 'push', '-u', 'origin', 'main').pipe(
-        Effect.catchAll(() =>
-          // Try master if main fails
-          runGitCommand(sourceRepoPath, 'push', '-u', 'origin', 'master'),
-        ),
-      )
-      // Push any additional branches requested (beyond the default).
-      for (const branch of repoFixture.branches ?? []) {
-        if (branch === 'main' || branch === 'master') continue
-        yield* runGitCommand(sourceRepoPath, 'branch', branch, commitSha).pipe(
-          Effect.catchAll(() => Effect.void),
-        )
-        yield* runGitCommand(sourceRepoPath, 'push', 'origin', branch).pipe(
-          Effect.catchAll(() => Effect.void),
-        )
-      }
-
-      // Create tags if requested
-      for (const tag of repoFixture.tags ?? []) {
-        yield* runGitCommand(sourceRepoPath, 'tag', '--no-sign', tag)
-        yield* runGitCommand(sourceRepoPath, 'push', 'origin', tag)
-      }
-
-      // Wire the store bare to the upstream so it gains `refs/remotes/origin/*`
-      // (mirrors Git.cloneBare's refspec + Git.fetchBare).
-      if (withRemote === true) {
-        yield* runGitCommand(bareRepoPath, 'remote', 'add', 'origin', upstreamRepoPaths[repoKey]!)
-        yield* runGitCommand(
-          bareRepoPath,
-          'config',
-          'remote.origin.fetch',
-          '+refs/heads/*:refs/remotes/origin/*',
-        )
-        yield* runGitCommand(bareRepoPath, 'fetch', '--tags', '--prune', 'origin')
-      }
-
-      // Create refs directory structure
-      const refsDir = EffectPath.ops.join(repoBasePath, EffectPath.unsafe.relativeDir('refs/'))
-      yield* fs.makeDirectory(refsDir, { recursive: true })
-
-      // Create worktrees for branches
-      for (const branch of repoFixture.branches ?? []) {
-        const refType = classifyRef(branch)
-        const pathSegment = refTypeToPathSegment(refType)
-        const worktreePath = EffectPath.ops.join(
-          repoBasePath,
-          EffectPath.unsafe.relativeDir(`refs/${pathSegment}/${branch}/`),
-        )
-
-        yield* fs.makeDirectory(worktreePath, { recursive: true })
-
-        // Create worktree from bare repo
-        yield* runGitCommand(bareRepoPath, 'worktree', 'add', '--detach', worktreePath, commitSha)
-
-        worktreePaths[`${repoKey}#${branch}`] = worktreePath
-
-        // Make dirty if requested
-        if (repoFixture.dirtyWorktrees?.includes(branch) === true) {
+          // Add a file and commit
           yield* fs.writeFileString(
-            EffectPath.ops.join(worktreePath, EffectPath.unsafe.relativeFile('dirty.txt')),
-            'uncommitted changes\n',
+            EffectPath.ops.join(sourceRepoPath, EffectPath.unsafe.relativeFile('README.md')),
+            `# ${repoFixture.repo}\n`,
+          )
+          yield* runGitCommand(sourceRepoPath, 'add', '-A')
+          yield* runGitCommand(sourceRepoPath, 'commit', '--no-verify', '-m', 'Initial commit')
+
+          // Get the commit SHA
+          return yield* runGitCommand(sourceRepoPath, 'rev-parse', 'HEAD')
+        }).pipe(Observability.withStoreFixturePhaseSpan({ phase: 'init-source', repo: repoKey }))
+
+        // Set up remote and push branches
+        yield* Effect.gen(function* () {
+          yield* runGitCommand(sourceRepoPath, 'remote', 'add', 'origin', pushTargetPath)
+          yield* runGitCommand(sourceRepoPath, 'push', '-u', 'origin', 'main').pipe(
+            Effect.catchAll(() =>
+              // Try master if main fails
+              runGitCommand(sourceRepoPath, 'push', '-u', 'origin', 'master'),
+            ),
+          )
+          // Push any additional branches requested (beyond the default).
+          for (const branch of repoFixture.branches ?? []) {
+            if (branch === 'main' || branch === 'master') continue
+            yield* runGitCommand(sourceRepoPath, 'branch', branch, commitSha).pipe(
+              Effect.catchAll(() => Effect.void),
+            )
+            yield* runGitCommand(sourceRepoPath, 'push', 'origin', branch).pipe(
+              Effect.catchAll(() => Effect.void),
+            )
+          }
+
+          // Create tags if requested
+          for (const tag of repoFixture.tags ?? []) {
+            yield* runGitCommand(sourceRepoPath, 'tag', '--no-sign', tag)
+            yield* runGitCommand(sourceRepoPath, 'push', 'origin', tag)
+          }
+        }).pipe(Observability.withStoreFixturePhaseSpan({ phase: 'push-refs', repo: repoKey }))
+
+        // Wire the store bare to the upstream so it gains `refs/remotes/origin/*`
+        // (mirrors Git.cloneBare's refspec + Git.fetchBare).
+        if (withRemote === true) {
+          yield* Effect.gen(function* () {
+            yield* runGitCommand(
+              bareRepoPath,
+              'remote',
+              'add',
+              'origin',
+              upstreamRepoPaths[repoKey]!,
+            )
+            yield* runGitCommand(
+              bareRepoPath,
+              'config',
+              'remote.origin.fetch',
+              '+refs/heads/*:refs/remotes/origin/*',
+            )
+            yield* runGitCommand(bareRepoPath, 'fetch', '--tags', '--prune', 'origin')
+          }).pipe(
+            Observability.withStoreFixturePhaseSpan({ phase: 'fetch-store-bare', repo: repoKey }),
           )
         }
-      }
 
-      // Create worktrees for tags
-      for (const tag of repoFixture.tags ?? []) {
-        const refType = classifyRef(tag)
-        const pathSegment = refTypeToPathSegment(refType)
-        const worktreePath = EffectPath.ops.join(
-          repoBasePath,
-          EffectPath.unsafe.relativeDir(`refs/${pathSegment}/${tag}/`),
+        // Create refs directory structure
+        const refsDir = EffectPath.ops.join(repoBasePath, EffectPath.unsafe.relativeDir('refs/'))
+        yield* fs.makeDirectory(refsDir, { recursive: true })
+
+        yield* Effect.gen(function* () {
+          // Create worktrees for branches
+          for (const branch of repoFixture.branches ?? []) {
+            const refType = classifyRef(branch)
+            const pathSegment = refTypeToPathSegment(refType)
+            const worktreePath = EffectPath.ops.join(
+              repoBasePath,
+              EffectPath.unsafe.relativeDir(`refs/${pathSegment}/${branch}/`),
+            )
+
+            yield* fs.makeDirectory(worktreePath, { recursive: true })
+
+            // Create worktree from bare repo
+            yield* runGitCommand(
+              bareRepoPath,
+              'worktree',
+              'add',
+              '--detach',
+              worktreePath,
+              commitSha,
+            )
+
+            worktreePaths[`${repoKey}#${branch}`] = worktreePath
+
+            // Make dirty if requested
+            if (repoFixture.dirtyWorktrees?.includes(branch) === true) {
+              yield* fs.writeFileString(
+                EffectPath.ops.join(worktreePath, EffectPath.unsafe.relativeFile('dirty.txt')),
+                'uncommitted changes\n',
+              )
+            }
+          }
+
+          // Create worktrees for tags
+          for (const tag of repoFixture.tags ?? []) {
+            const refType = classifyRef(tag)
+            const pathSegment = refTypeToPathSegment(refType)
+            const worktreePath = EffectPath.ops.join(
+              repoBasePath,
+              EffectPath.unsafe.relativeDir(`refs/${pathSegment}/${tag}/`),
+            )
+
+            yield* fs.makeDirectory(worktreePath, { recursive: true })
+            yield* runGitCommand(bareRepoPath, 'worktree', 'add', '--detach', worktreePath, tag)
+
+            worktreePaths[`${repoKey}#${tag}`] = worktreePath
+
+            // Make dirty if requested
+            if (repoFixture.dirtyWorktrees?.includes(tag) === true) {
+              yield* fs.writeFileString(
+                EffectPath.ops.join(worktreePath, EffectPath.unsafe.relativeFile('dirty.txt')),
+                'uncommitted changes\n',
+              )
+            }
+          }
+        }).pipe(
+          Observability.withStoreFixturePhaseSpan({ phase: 'create-worktrees', repo: repoKey }),
         )
 
-        yield* fs.makeDirectory(worktreePath, { recursive: true })
-        yield* runGitCommand(bareRepoPath, 'worktree', 'add', '--detach', worktreePath, tag)
+        yield* Effect.gen(function* () {
+          // Create worktrees for commits
+          for (const commitRef of repoFixture.commits ?? []) {
+            const refType = classifyRef(commitRef)
+            const pathSegment = refTypeToPathSegment(refType)
+            const worktreePath = EffectPath.ops.join(
+              repoBasePath,
+              EffectPath.unsafe.relativeDir(`refs/${pathSegment}/${commitRef}/`),
+            )
 
-        worktreePaths[`${repoKey}#${tag}`] = worktreePath
+            yield* fs.makeDirectory(worktreePath, { recursive: true })
+            // Use actual commit SHA for commit worktrees
+            yield* runGitCommand(
+              bareRepoPath,
+              'worktree',
+              'add',
+              '--detach',
+              worktreePath,
+              commitSha,
+            )
 
-        // Make dirty if requested
-        if (repoFixture.dirtyWorktrees?.includes(tag) === true) {
-          yield* fs.writeFileString(
-            EffectPath.ops.join(worktreePath, EffectPath.unsafe.relativeFile('dirty.txt')),
-            'uncommitted changes\n',
-          )
-        }
-      }
-
-      // Create worktrees for commits
-      for (const commitRef of repoFixture.commits ?? []) {
-        const refType = classifyRef(commitRef)
-        const pathSegment = refTypeToPathSegment(refType)
-        const worktreePath = EffectPath.ops.join(
-          repoBasePath,
-          EffectPath.unsafe.relativeDir(`refs/${pathSegment}/${commitRef}/`),
+            worktreePaths[`${repoKey}#${commitRef}`] = worktreePath
+          }
+        }).pipe(
+          Observability.withStoreFixturePhaseSpan({
+            phase: 'create-commit-worktrees',
+            repo: repoKey,
+          }),
         )
 
-        yield* fs.makeDirectory(worktreePath, { recursive: true })
-        // Use actual commit SHA for commit worktrees
-        yield* runGitCommand(bareRepoPath, 'worktree', 'add', '--detach', worktreePath, commitSha)
-
-        worktreePaths[`${repoKey}#${commitRef}`] = worktreePath
-      }
-
-      // Clean up source repo
-      yield* fs.remove(sourceRepoPath, { recursive: true })
+        // Clean up source repo
+        yield* fs.remove(sourceRepoPath, { recursive: true })
+      }).pipe(
+        Observability.withStoreFixtureRepoSpan({
+          repo: repoKey,
+          branchCount: repoFixture.branches?.length ?? 0,
+          tagCount: repoFixture.tags?.length ?? 0,
+          commitCount: repoFixture.commits?.length ?? 0,
+          withRemote,
+        }),
+      )
     }
 
     return {
@@ -296,7 +352,7 @@ export const createStoreFixture = (repos: ReadonlyArray<StoreRepoFixture>) =>
       bareRepoPaths,
       upstreamRepoPaths,
     } satisfies StoreFixtureResult
-  })
+  }).pipe(Observability.withStoreFixtureCreateSpan({ repoCount: repos.length }))
 
 /**
  * Create a workspace with lock file referencing store worktrees.
@@ -461,8 +517,9 @@ export const materializeNonDetachedBranchWorktree = ({
     yield* fs
       .remove(worktreePath, { recursive: true, force: true })
       .pipe(Effect.catchAll(() => Effect.void))
-    // Create the branch ref and check it out in a fresh worktree (non-detached).
-    yield* runGitCommand(bareRepoPath, 'branch', branch, commit)
+    // Ensure the branch ref points at this fixture commit, then check it out in
+    // a fresh worktree (non-detached).
+    yield* runGitCommand(bareRepoPath, 'branch', '-f', branch, commit)
     yield* runGitCommand(bareRepoPath, 'worktree', 'add', worktreePath, branch)
     return worktreePath
   })

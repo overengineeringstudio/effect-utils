@@ -132,3 +132,11 @@ Replace the Grafana/Tempo-mediated verification lane · replace the production c
   a bounded retry to absorb read-after-write visibility lag under load. Real-
   consumer span tests live in the consumer's own suite against the shared helper.
   [0015]
+- **R14 — Reusable diagnostic bundles.** The Effect wrapper exposes a reusable
+  helper that writes schema-tagged, inspection-oriented diagnostic JSON from an
+  existing capture for CI artifacts and post-failure analysis. The helper must
+  derive its output through the typed `inspect` boundary (not by reparsing raw
+  capture files), always write trace rows plus trace summary, and optionally
+  write metrics/logs rows plus summaries. The bundle format is versioned and
+  schema-decodable so downstream tooling can consume it without ad hoc
+  `jq`/string parsing.

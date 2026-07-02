@@ -4,15 +4,15 @@
 
 /** Detects non-production environments when running in Node-like runtimes. */
 export const isDevEnv = (): boolean => {
-  if (typeof process === 'undefined') {
+  if (globalThis.process === undefined) {
     return false
   }
 
-  if (typeof process.env === 'undefined') {
+  if (globalThis.process.env === undefined) {
     return false
   }
 
-  return process.env.NODE_ENV !== 'production'
+  return globalThis.process.env.NODE_ENV !== 'production'
 }
 
 // ============================================================================

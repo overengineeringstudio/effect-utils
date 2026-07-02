@@ -14,8 +14,8 @@ export const RUNNER_PROFILES = [
 /** Union of supported GitHub Actions runner profile labels. */
 export type RunnerProfile = (typeof RUNNER_PROFILES)[number]
 
-/** CI job names (keys in the workflow jobs object) */
-export const CI_JOB_NAMES = [
+/** Core CI job keys used for the typed product-job block in the workflow generator. */
+export const CORE_CI_JOB_NAMES = [
   'typecheck',
   'lint',
   'test',
@@ -29,24 +29,67 @@ export const CI_JOB_NAMES = [
   'cargo',
 ] as const
 
+/** Union of core CI job keys used by the shared product-job generator. */
+export type CoreCIJobName = (typeof CORE_CI_JOB_NAMES)[number]
+
+/** Required source-policy job key generated before the core product-job block. */
+export const DEFAULT_REF_POLICY_CI_JOB_NAME = 'default-ref-policy' as const
+
+/** Additional CI job keys generated outside the core product-job block. */
+export const EXTRA_CI_JOB_NAMES = [
+  'devenv-perf',
+  'nix-closure-sizes',
+  'source-shape',
+  'test-integration-notion',
+  'test-integration-restate',
+  'test-live-deploy-ci-tools',
+] as const
+
+/** Required deploy/reporting job keys that block merge when they fail. */
+export const REQUIRED_DEPLOY_CI_JOB_NAMES = ['deploy-storybooks'] as const
+
+/** Workflow jobs that intentionally do not block merging. */
+export const advisoryCIJobNames = ['ci-measurements-report', 'notify-alignment'] as const
+
+/** CI job keys emitted by the generated workflow. */
+export const CI_JOB_NAMES = [
+  DEFAULT_REF_POLICY_CI_JOB_NAME,
+  ...CORE_CI_JOB_NAMES,
+  ...EXTRA_CI_JOB_NAMES,
+  ...REQUIRED_DEPLOY_CI_JOB_NAMES,
+  ...advisoryCIJobNames,
+] as const
+
 /** Union of canonical CI job keys used across workflow generation and repo settings. */
 export type CIJobName = (typeof CI_JOB_NAMES)[number]
+
+/**
+ * Merge-blocking CI job keys for branch protection.
+ *
+ * Every non-advisory workflow lane is required. Measurement jobs can still run
+ * warn-mode comparisons internally, but the lane must produce its artifact and
+ * complete successfully so branch protection covers CI evidence production.
+ */
+export const REQUIRED_CI_JOB_NAMES = [
+  DEFAULT_REF_POLICY_CI_JOB_NAME,
+  ...CORE_CI_JOB_NAMES,
+  ...EXTRA_CI_JOB_NAMES,
+  ...REQUIRED_DEPLOY_CI_JOB_NAMES,
+] as const satisfies readonly CIJobName[]
+
+const matrixCIJobNames = ['test', 'nix-check', 'nix-fod-check'] as const
+
+/** GitHub status-check context names emitted by a workflow job key. */
+export const ciJobCheckContexts = (jobName: CIJobName) => {
+  if (jobName === 'ci-measurements-report') return ['ci/measurements-report']
+
+  return matrixCIJobNames.includes(jobName as (typeof matrixCIJobNames)[number])
+    ? RUNNER_PROFILES.map((runner) => `${jobName} (${runner})`)
+    : [jobName]
+}
 
 /**
  * Required status checks for branch protection.
  * Matrix jobs are reported as "job-name (matrix-value)" by GitHub Actions.
  */
-export const requiredCIJobs = [
-  'typecheck',
-  'lint',
-  'pnpm-builder-contract',
-  'pnpm-regression',
-  'bundle-smoke',
-  'cargo',
-  // Matrix jobs - GitHub reports these with the matrix value in parentheses
-  ...RUNNER_PROFILES.map((runner) => `test (${runner})`),
-  'test-megarepo-cold-gc',
-  ...RUNNER_PROFILES.map((runner) => `nix-check (${runner})`),
-  ...RUNNER_PROFILES.map((runner) => `nix-fod-check (${runner})`),
-  'deploy-storybooks',
-] as const
+export const requiredCIJobs = REQUIRED_CI_JOB_NAMES.flatMap(ciJobCheckContexts)

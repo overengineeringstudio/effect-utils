@@ -42,6 +42,7 @@ extract_lint_task_script() {
     let
       flake = builtins.getFlake (toString $ROOT);
       pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
+      oxfmtPkg = builtins.getEnv \"TEST_FAKE_OXFMT_PKG\";
       evaluated = pkgs.lib.evalModules {
         modules = [
           ({ ... }: {
@@ -53,6 +54,7 @@ extract_lint_task_script() {
             lintPaths = [ \".\" ];
             geniePatterns = [ ];
             genieCoverageDirs = [ \".\" ];
+            oxfmtPkg = oxfmtPkg;
           }) {
             pkgs = pkgs;
             lib = pkgs.lib;
@@ -99,6 +101,7 @@ printf '%s\n' "$@" > "${TEST_OXFMT_ARGS:?}"
 EOF
 chmod +x "$tmpdir/bin/oxfmt"
 chmod +x "$tmpdir/bin/oxlint"
+export TEST_FAKE_OXFMT_PKG="$tmpdir"
 
 cat > "$workspace/keep.ts" <<'EOF'
 export const keep = true

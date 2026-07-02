@@ -39,7 +39,7 @@ export const internalPackages = [
   'tui-stories',
   'utils',
   'utils-dev',
-  'workflow-report',
+  'ci-tools',
 ] as const
 
 /** Short name of an internal @overeng/* package. */

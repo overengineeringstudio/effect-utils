@@ -13,6 +13,9 @@
       "path": "./packages/@overeng/agent-session-ingest"
     },
     {
+      "path": "./packages/@overeng/ci-tools"
+    },
+    {
       "path": "./packages/@overeng/content-address"
     },
     {
@@ -101,9 +104,6 @@
     },
     {
       "path": "./packages/@overeng/utils-dev"
-    },
-    {
-      "path": "./packages/@overeng/workflow-report"
     }
   ]
 }

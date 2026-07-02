@@ -1,4 +1,4 @@
-# Nix derivation that builds the workflow-report CLI binary.
+# Nix derivation that builds the ci-tools CLI binary.
 {
   pkgs,
   src,
@@ -11,25 +11,25 @@ let
   pnpm = import ../../../../nix/pnpm.nix { inherit pkgs; };
   mkPnpmCli = import ../../../../nix/workspace-tools/lib/mk-pnpm-cli.nix { inherit pkgs pnpm; };
   unwrapped = mkPnpmCli {
-    name = "workflow-report-unwrapped";
-    entry = "packages/@overeng/workflow-report/bin/workflow-report.ts";
-    binaryName = "workflow-report";
-    packageDir = "packages/@overeng/workflow-report";
+    name = "ci-tools-unwrapped";
+    entry = "packages/@overeng/ci-tools/bin/ci-tools.ts";
+    binaryName = "ci-tools";
+    packageDir = "packages/@overeng/ci-tools";
     workspaceRoot = src;
     # Managed by the repo FOD refresh workflow — do not edit manually.
     depsBuilds = {
       "." = {
-        hash = "sha256-tY8lHhD79/sMXapmTzDB7wjpanhtJZmBgXtH0RXa4RU=";
+        hash = "sha256-FFE0uReC940BVcmn7F+raGQdDCxK6MYA7qxadDmXSVs=";
       };
     };
     smokeTestArgs = [ "--help" ];
     inherit gitRev commitTs dirty;
   };
 in
-pkgs.runCommand "workflow-report"
+pkgs.runCommand "ci-tools"
   {
     nativeBuildInputs = [ pkgs.makeWrapper ];
-    meta.mainProgram = "workflow-report";
+    meta.mainProgram = "ci-tools";
     passthru = {
       inherit (unwrapped.passthru)
         depsBuildEntries
@@ -41,5 +41,5 @@ pkgs.runCommand "workflow-report"
   }
   ''
     mkdir -p $out/bin
-    makeWrapper ${unwrapped}/bin/workflow-report $out/bin/workflow-report
+    makeWrapper ${unwrapped}/bin/ci-tools $out/bin/ci-tools
   ''

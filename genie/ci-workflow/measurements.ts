@@ -470,19 +470,13 @@ const defaultDevenvPerfTaskProbe = (probe: DevenvPerfTaskProbe): DevenvPerfProbe
     label: label ?? task,
     group: group ?? 'devenv tasks',
     path,
-    description: description ?? `Runs the devenv task '${task}' with dependencies and non-interactive output.`,
+    description:
+      description ?? `Runs the devenv task '${task}' with dependencies and non-interactive output.`,
     dimensions,
     warmupRepetitions,
     repetitions,
     gate,
-    command: [
-      '$DEVENV_BIN',
-      'tasks',
-      'run',
-      task,
-      '--show-output',
-      ...extraArgs,
-    ],
+    command: ['$DEVENV_BIN', 'tasks', 'run', task, '--show-output', ...extraArgs],
   }
 }
 

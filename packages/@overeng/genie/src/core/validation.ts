@@ -4,6 +4,7 @@ import ts from 'typescript'
 
 import type { GenieContext, GenieJsoncParser } from '../runtime/mod.ts'
 import { nodeGenieIO, runActionlint } from '../runtime/node/mod.ts'
+import { nodePackageJsonValidationRuntime } from '../runtime/package-json/node/export-environments.ts'
 import { formatValidationIssues, type ValidationIssue } from '../runtime/package-json/validation.ts'
 
 /**
@@ -97,6 +98,9 @@ export const runGenieValidation = ({
         io: nodeGenieIO,
         actionlint: runActionlint,
         parseJsonc: nodeJsoncParser,
+        validation: {
+          packageJson: nodePackageJsonValidationRuntime,
+        },
       }
 
       if (loaded.output.validate !== undefined) {

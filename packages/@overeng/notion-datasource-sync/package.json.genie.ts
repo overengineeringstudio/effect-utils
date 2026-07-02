@@ -1,9 +1,10 @@
 import {
   catalog,
+  exportEntry,
   packageJson,
   privatePackageDefaults,
   workspaceMember,
-  type PackageJsonData,
+  type PackageJsonInputData,
 } from '../../../genie/internal.ts'
 import contentAddressPkg from '../content-address/package.json.genie.ts'
 import notionCorePkg from '../notion-core/package.json.genie.ts'
@@ -74,26 +75,28 @@ export default packageJson(
     name: '@overeng/notion-datasource-sync',
     ...privatePackageDefaults,
     exports: {
-      '.': './src/mod.ts',
-      './body': './src/body/adapter.ts',
-      './body/notion-md': './src/body/notion-md.ts',
-      './cli/effect-command': './src/cli/effect-command.ts',
-      './daemon': './src/daemon/watch.ts',
-      './demo': './src/demo/live-demo.ts',
-      './gateway': './src/gateway/gateway.ts',
-      './gateway/fake': './src/gateway/fake.ts',
-      './gateway/notion': './src/gateway/notion.ts',
-      './local': './src/local/workspace.ts',
-      './observability': './src/observability/observability.ts',
-      './replica': './src/replica/replica.ts',
-      './store': './src/store/store.ts',
-      './store/projections': './src/store/projections.ts',
-      './store/schema': './src/store/schema.ts',
-      './sync': './src/sync/sync.ts',
-      './sync/executor': './src/sync/executor.ts',
-      './sync/observation': './src/sync/observation.ts',
-      './testing/*': './src/testing/*.ts',
-      './webhook': './src/webhook/mod.ts',
+      '.': exportEntry('./src/mod.ts', { environment: 'node' }),
+      './body': exportEntry('./src/body/adapter.ts', { environment: 'node' }),
+      './body/notion-md': exportEntry('./src/body/notion-md.ts', { environment: 'node' }),
+      './cli/effect-command': exportEntry('./src/cli/effect-command.ts', { environment: 'node' }),
+      './daemon': exportEntry('./src/daemon/watch.ts', { environment: 'node' }),
+      './demo': exportEntry('./src/demo/live-demo.ts', { environment: 'node' }),
+      './gateway': exportEntry('./src/gateway/gateway.ts', { environment: 'node' }),
+      './gateway/fake': exportEntry('./src/gateway/fake.ts', { environment: 'node' }),
+      './gateway/notion': exportEntry('./src/gateway/notion.ts', { environment: 'node' }),
+      './local': exportEntry('./src/local/workspace.ts', { environment: 'node' }),
+      './observability': exportEntry('./src/observability/observability.ts', {
+        environment: 'node',
+      }),
+      './replica': exportEntry('./src/replica/replica.ts', { environment: 'node' }),
+      './store': exportEntry('./src/store/store.ts', { environment: 'node' }),
+      './store/projections': exportEntry('./src/store/projections.ts', { environment: 'node' }),
+      './store/schema': exportEntry('./src/store/schema.ts', { environment: 'node' }),
+      './sync': exportEntry('./src/sync/sync.ts', { environment: 'node' }),
+      './sync/executor': exportEntry('./src/sync/executor.ts', { environment: 'node' }),
+      './sync/observation': exportEntry('./src/sync/observation.ts', { environment: 'node' }),
+      './testing/*': exportEntry('./src/testing/*.ts', { environment: 'node' }),
+      './webhook': exportEntry('./src/webhook/mod.ts', { environment: 'node' }),
     },
     scripts: {
       'demo:verify':
@@ -134,6 +137,6 @@ export default packageJson(
     dependenciesMeta: {
       '@overeng/tui-react': { injected: true },
     },
-  } satisfies PackageJsonData,
+  } satisfies PackageJsonInputData,
   workspaceDeps,
 )

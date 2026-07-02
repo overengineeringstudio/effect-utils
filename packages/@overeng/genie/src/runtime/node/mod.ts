@@ -12,6 +12,7 @@
 export * from '../mod.ts'
 
 export { nodeGenieIO } from './io.ts'
+export { nodePackageJsonValidationRuntime } from '../package-json/node/export-environments.ts'
 export { tsconfigJsonFromPackages } from './tsconfig-from-packages.ts'
 
 export { runActionlint } from '../github-workflow/actionlint.ts'

@@ -48,7 +48,13 @@
           src = self;
         };
         nodePtyNative = import ./nix/node-pty-native.nix { inherit pkgs; };
-        # Rust packages built via rustPlatform.buildRustPackage, separate from the Bun CLIs.
+        providerCliPackages = {
+          vercel-cli = import ./nix/provider-clis/vercel-cli { inherit pkgs; };
+          netlify-cli = import ./nix/provider-clis/netlify-cli { inherit pkgs; };
+        };
+        # Rust packages (otelite, otel-scrape) built via
+        # rustPlatform.buildRustPackage, separate from the Bun CLIs. otelite (a
+        # local OTLP capture tool) was effect-utils' first Rust package.
         otelite = import (rootPath + "/packages/@overeng/otelite/nix/build.nix") {
           inherit pkgs;
         };
@@ -64,8 +70,9 @@
               dirty
               ;
             src = self;
+            typeProofCompilerBin = "${tsgo.packages.${system}.tsgo}/bin/tsgo";
           };
-          workflow-report = import (rootPath + "/packages/@overeng/workflow-report/nix/build.nix") {
+          ci-tools = import (rootPath + "/packages/@overeng/ci-tools/nix/build.nix") {
             inherit
               pkgs
               gitRev
@@ -116,8 +123,9 @@
             inherit pkgs gitRev commitTs;
             src = self;
             dirty = true;
+            typeProofCompilerBin = "${tsgo.packages.${system}.tsgo}/bin/tsgo";
           };
-          workflow-report = import (rootPath + "/packages/@overeng/workflow-report/nix/build.nix") {
+          ci-tools = import (rootPath + "/packages/@overeng/ci-tools/nix/build.nix") {
             inherit pkgs gitRev commitTs;
             src = self;
             dirty = true;
@@ -145,41 +153,44 @@
         };
       in
       {
-        packages = cliPackages // {
-          inherit otelite otel-scrape;
-          cli-build-stamp = cliBuildStamp.package;
-          effect-tsgo = tsgo.packages.${system}.effect-tsgo;
-          genie-dirty = cliPackagesDirty.genie;
-          workflow-report = cliPackages.workflow-report;
-          workflow-report-dirty = cliPackagesDirty.workflow-report;
-          # Publish the FODs as first-class flake outputs so external tooling
-          # can refresh hashes against the actual cached boundary without
-          # rebuilding the full CLI package graph.
-          "genie-pnpm-deps" = cliPackages.genie.passthru.depsBuildsByInstallRoot.root;
-          "workflow-report-pnpm-deps" = cliPackages.workflow-report.passthru.depsBuildsByInstallRoot.root;
-          megarepo-dirty = cliPackagesDirty.megarepo;
-          "megarepo-pnpm-deps" = cliPackages.megarepo.passthru.depsBuildsByInstallRoot.root;
-          tui-stories-dirty = cliPackagesDirty.tui-stories;
-          "tui-stories-pnpm-deps" = cliPackages.tui-stories.passthru.depsBuildsByInstallRoot.root;
-          notion-cli = cliPackages.notion-cli;
-          notion-cli-dirty = cliPackagesDirty.notion-cli;
-          "notion-cli-pnpm-deps" = cliPackages.notion-cli.passthru.depsBuildsByInstallRoot.root;
-          notion-md = cliPackages.notion-md;
-          notion-md-dirty = cliPackagesDirty.notion-md;
-          "notion-md-pnpm-deps" = cliPackages.notion-md.passthru.depsBuildsByInstallRoot.root;
-          "oxc-config-plugin-pnpm-deps" = oxlintNpm.pluginBundle.passthru.pnpmDeps;
-          # npm oxlint with NAPI bindings + pre-bundled @overeng/oxc-config plugin
-          oxlint-npm = oxlintNpm;
-          # oxlint-npm wrapped with automatic @overeng/oxc-config plugin injection
-          oxlint-with-plugins = import ./nix/oxlint-with-plugins.nix {
-            inherit pkgs oxlintNpm;
+        packages =
+          cliPackages
+          // providerCliPackages
+          // {
+            inherit otelite otel-scrape;
+            cli-build-stamp = cliBuildStamp.package;
+            effect-tsgo = tsgo.packages.${system}.effect-tsgo;
+            genie-dirty = cliPackagesDirty.genie;
+            ci-tools = cliPackages.ci-tools;
+            ci-tools-dirty = cliPackagesDirty.ci-tools;
+            # Publish the FODs as first-class flake outputs so external tooling
+            # can refresh hashes against the actual cached boundary without
+            # rebuilding the full CLI package graph.
+            "genie-pnpm-deps" = cliPackages.genie.passthru.depsBuildsByInstallRoot.root;
+            "ci-tools-pnpm-deps" = cliPackages.ci-tools.passthru.depsBuildsByInstallRoot.root;
+            megarepo-dirty = cliPackagesDirty.megarepo;
+            "megarepo-pnpm-deps" = cliPackages.megarepo.passthru.depsBuildsByInstallRoot.root;
+            tui-stories-dirty = cliPackagesDirty.tui-stories;
+            "tui-stories-pnpm-deps" = cliPackages.tui-stories.passthru.depsBuildsByInstallRoot.root;
+            notion-cli = cliPackages.notion-cli;
+            notion-cli-dirty = cliPackagesDirty.notion-cli;
+            "notion-cli-pnpm-deps" = cliPackages.notion-cli.passthru.depsBuildsByInstallRoot.root;
+            notion-md = cliPackages.notion-md;
+            notion-md-dirty = cliPackagesDirty.notion-md;
+            "notion-md-pnpm-deps" = cliPackages.notion-md.passthru.depsBuildsByInstallRoot.root;
+            "oxc-config-plugin-pnpm-deps" = oxlintNpm.pluginBundle.passthru.pnpmDeps;
+            # npm oxlint with NAPI bindings + pre-bundled @overeng/oxc-config plugin
+            oxlint-npm = oxlintNpm;
+            # oxlint-npm wrapped with automatic @overeng/oxc-config plugin injection
+            oxlint-with-plugins = import ./nix/oxlint-with-plugins.nix {
+              inherit pkgs oxlintNpm;
+            };
+            node-pty-native = nodePtyNative;
           };
-          node-pty-native = nodePtyNative;
-        };
         # Direnv helper for comparing expected CLI outputs to PATH entries.
         cliOutPaths = {
           genie = cliPackages.genie.outPath;
-          workflow-report = cliPackages.workflow-report.outPath;
+          ci-tools = cliPackages.ci-tools.outPath;
           megarepo = cliPackages.megarepo.outPath;
           tui-stories = cliPackages.tui-stories.outPath;
           notion-cli = cliPackages.notion-cli.outPath;
@@ -187,7 +198,7 @@
         };
         cliOutPathsDirty = {
           genie = cliPackagesDirty.genie.outPath;
-          workflow-report = cliPackagesDirty.workflow-report.outPath;
+          ci-tools = cliPackagesDirty.ci-tools.outPath;
           megarepo = cliPackagesDirty.megarepo.outPath;
           tui-stories = cliPackagesDirty.tui-stories.outPath;
           notion-cli = cliPackagesDirty.notion-cli.outPath;
@@ -224,6 +235,7 @@
           storybook = import ./nix/devenv-modules/tasks/shared/storybook.nix;
           netlify = import ./nix/devenv-modules/tasks/shared/netlify.nix;
           vercel = import ./nix/devenv-modules/tasks/shared/vercel.nix;
+          workflow-report = import ./nix/devenv-modules/tasks/shared/workflow-report.nix;
           lint-nix = import ./nix/devenv-modules/tasks/shared/lint-nix.nix;
           lint-oxc = import ./nix/devenv-modules/tasks/shared/lint-oxc.nix;
           bun = import ./nix/devenv-modules/tasks/shared/bun.nix;
@@ -264,7 +276,14 @@
 
       # Convenience helper for bundling the common genie/megarepo CLIs.
       # Use this for releases/CI where hermetic Nix builds are needed.
-      lib.mkCliPackages = import ./nix/workspace-tools/lib/mk-cli-packages.nix;
+      lib.mkCliPackages =
+        args:
+        import ./nix/workspace-tools/lib/mk-cli-packages.nix (
+          {
+            typeProofCompilerBin = "${tsgo.packages.${args.pkgs.stdenv.hostPlatform.system}.tsgo}/bin/tsgo";
+          }
+          // args
+        );
 
       # npm oxlint with NAPI bindings for JavaScript plugin support.
       # When `src` is provided (the effect-utils source), the @overeng/oxc-config
@@ -302,7 +321,7 @@
       # Note: mkSourceCli is internal-only (not exported).
       # For consuming CLIs from other repos, use:
       #   effectUtils.packages.${system}.genie
-      #   effectUtils.packages.${system}.workflow-report
+      #   effectUtils.packages.${system}.ci-tools
       #   effectUtils.packages.${system}.megarepo
       # See the stack-level Nix/devenv CLI distribution policy docs.
     };

@@ -1,16 +1,17 @@
 import {
   catalog,
   workspaceMember,
+  exportEntry,
   packageJson,
   privatePackageDefaults,
-  type PackageJsonData,
+  type PackageJsonInputData,
 } from '../../../genie/internal.ts'
 import otelContractPkg from '../otel-contract/package.json.genie.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
 const workspaceDeps = catalog.compose({
-  workspace: workspaceMember({ memberPath: 'packages/@overeng/workflow-report' }),
+  workspace: workspaceMember({ memberPath: 'packages/@overeng/ci-tools' }),
   dependencies: {
     workspace: [otelContractPkg, utilsPkg],
   },
@@ -35,22 +36,22 @@ const workspaceDeps = catalog.compose({
 
 export default packageJson(
   {
-    name: '@overeng/workflow-report',
+    name: '@overeng/ci-tools',
     ...privatePackageDefaults,
     exports: {
-      '.': './src/mod.ts',
-      './cli': './src/cli-command.ts',
+      '.': exportEntry('./src/mod.ts', { environment: 'node' }),
+      './cli': exportEntry('./src/cli-command.ts', { environment: 'node' }),
     },
     publishConfig: {
       access: 'public',
       bin: {
-        'workflow-report': './dist/bin/workflow-report.js',
+        'ci-tools': './dist/bin/ci-tools.js',
       },
       exports: {
         '.': './dist/src/mod.js',
         './cli': './dist/src/cli-command.js',
       },
     },
-  } satisfies PackageJsonData,
+  } satisfies PackageJsonInputData,
   workspaceDeps,
 )

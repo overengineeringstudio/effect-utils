@@ -1,9 +1,10 @@
 import {
   catalog,
+  exportEntry,
   packageJson,
   privatePackageDefaults,
   workspaceMember,
-  type PackageJsonData,
+  type PackageJsonInputData,
 } from '../../../genie/internal.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 
@@ -20,7 +21,7 @@ export default packageJson(
     name: '@overeng/notion-core',
     ...privatePackageDefaults,
     exports: {
-      '.': './src/mod.ts',
+      '.': exportEntry('./src/mod.ts', { environment: 'isomorphic-es2024' }),
     },
     publishConfig: {
       access: 'public',
@@ -28,6 +29,6 @@ export default packageJson(
         '.': './dist/mod.js',
       },
     },
-  } satisfies PackageJsonData,
+  } satisfies PackageJsonInputData,
   workspaceDeps,
 )

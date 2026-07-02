@@ -3,7 +3,7 @@ import {
   workspaceMember,
   packageJson,
   privatePackageDefaults,
-  type PackageJsonData,
+  type PackageJsonInputData,
 } from '../../../../../genie/internal.ts'
 import utilsPkg from '../../../utils/package.json.genie.ts'
 
@@ -51,6 +51,6 @@ export default packageJson(
       start: 'node .output/server/index.mjs',
       'test:e2e': 'playwright test',
     },
-  } satisfies PackageJsonData,
+  } satisfies PackageJsonInputData,
   workspaceDeps,
 )

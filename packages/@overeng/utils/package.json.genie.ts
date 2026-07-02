@@ -3,9 +3,10 @@ import {
   catalog,
   utilsPatches,
   workspaceMember,
+  exportEntry,
   packageJson,
   privatePackageDefaults,
-  type PackageJsonData,
+  type PackageJsonInputData,
 } from '../../../genie/internal.ts'
 import otelContractPkg from '../otel-contract/package.json.genie.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
@@ -61,22 +62,31 @@ export default packageJson(
     name: '@overeng/utils',
     ...privatePackageDefaults,
     exports: {
-      '.': './src/isomorphic/mod.ts',
-      './node': './src/node/mod.ts',
-      './node/cli-help-rewrite': './src/node/cli-help-rewrite.ts',
-      './node/cli-version': './src/node/cli-version.ts',
-      './node/otel': './src/node/otel.ts',
-      './node/otel-attrs': './src/node/otel-attrs.ts',
-      './node/playwright': './src/node/playwright/mod.ts',
-      './node/playwright/config': './src/node/playwright/config/mod.ts',
-      './node/storybook': './src/node/storybook/mod.ts',
-      './node/storybook/config': './src/node/storybook/config/mod.ts',
-      './browser': './src/browser/mod.ts',
-      './cuid': {
-        browser: './src/cuid/cuid.browser.ts',
-        node: './src/cuid/cuid.node.ts',
-        default: './src/cuid/mod.ts',
-      },
+      '.': exportEntry('./src/isomorphic/mod.ts', { environment: 'node' }),
+      './node': exportEntry('./src/node/mod.ts', { environment: 'node' }),
+      './node/cli-help-rewrite': exportEntry('./src/node/cli-help-rewrite.ts', {
+        environment: 'node',
+      }),
+      './node/cli-version': exportEntry('./src/node/cli-version.ts', { environment: 'node' }),
+      './node/otel': exportEntry('./src/node/otel.ts', { environment: 'node' }),
+      './node/otel-attrs': exportEntry('./src/node/otel-attrs.ts', { environment: 'node' }),
+      './node/playwright': exportEntry('./src/node/playwright/mod.ts', { environment: 'node' }),
+      './node/playwright/config': exportEntry('./src/node/playwright/config/mod.ts', {
+        environment: 'node',
+      }),
+      './node/storybook': exportEntry('./src/node/storybook/mod.ts', { environment: 'node' }),
+      './node/storybook/config': exportEntry('./src/node/storybook/config/mod.ts', {
+        environment: 'node',
+      }),
+      './browser': exportEntry('./src/browser/mod.ts', { environment: 'browser' }),
+      './cuid': exportEntry(
+        {
+          browser: './src/cuid/cuid.browser.ts',
+          node: './src/cuid/cuid.node.ts',
+          default: './src/cuid/mod.ts',
+        },
+        [{ environment: 'browser' }, { environment: 'node' }],
+      ),
     },
     pnpm: {
       patchedDependencies: utilsPatches,
@@ -102,6 +112,6 @@ export default packageJson(
         },
       },
     },
-  } satisfies PackageJsonData,
+  } satisfies PackageJsonInputData,
   runtimeDeps,
 )
