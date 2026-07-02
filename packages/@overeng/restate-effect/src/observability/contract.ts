@@ -2,6 +2,16 @@ import { Schema } from 'effect'
 
 import { OtelAttr, OtelAttrs, OtelMetric, OtelOperation } from '@overeng/otel-contract'
 
+import {
+  RestateErrorClass,
+  RestateErrorTag,
+  RestateHandler,
+  RestateIdempotencyKey,
+  RestateObjectKey,
+  RestateService,
+  RestateWorkflowId,
+} from './restate.contract.ts'
+
 const RestateOperationAttributes = Schema.Struct({
   label: OtelAttr.drop(Schema.NonEmptyString),
 })
@@ -25,17 +35,11 @@ export const restateOperation = (name: string) =>
  */
 export const BoundaryAttemptAttrs = OtelAttrs.defineSync(
   Schema.Struct({
-    service: OtelAttr.string({ key: 'restate.service', metadata: { cardinality: 'bounded' } }),
-    handler: OtelAttr.string({ key: 'restate.handler', metadata: { cardinality: 'bounded' } }),
-    objectKey: Schema.optional(
-      OtelAttr.string({ key: 'restate.object.key', metadata: { cardinality: 'high' } }),
-    ),
-    workflowId: Schema.optional(
-      OtelAttr.string({ key: 'restate.workflow.id', metadata: { cardinality: 'high' } }),
-    ),
-    idempotencyKey: Schema.optional(
-      OtelAttr.string({ key: 'restate.idempotency.key', metadata: { cardinality: 'high' } }),
-    ),
+    service: RestateService,
+    handler: RestateHandler,
+    objectKey: Schema.optional(RestateObjectKey),
+    workflowId: Schema.optional(RestateWorkflowId),
+    idempotencyKey: Schema.optional(RestateIdempotencyKey),
   }),
 )
 
@@ -47,12 +51,8 @@ export const BoundaryAttemptAttrs = OtelAttrs.defineSync(
  */
 export const BoundaryOutcomeAttrs = OtelAttrs.defineSync(
   Schema.Struct({
-    errorClass: Schema.optional(
-      OtelAttr.literal('restate.error.class', 'terminal', 'retryable', 'cancelled'),
-    ),
-    errorTag: Schema.optional(
-      OtelAttr.string({ key: 'restate.error.tag', metadata: { cardinality: 'bounded' } }),
-    ),
+    errorClass: Schema.optional(RestateErrorClass),
+    errorTag: Schema.optional(RestateErrorTag),
   }),
 )
 

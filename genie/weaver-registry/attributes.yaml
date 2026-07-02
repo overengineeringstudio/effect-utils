@@ -2,7 +2,7 @@
 # Source: attributes.yaml.genie.ts
 
 # registry-source: genie/weaver-registry/registry.ts
-# fingerprint: sha256:fb8c7a9156ff5a2267ea8911d2725f0ccba264b32716edd1eb6e4e89cd98bc89
+# fingerprint: sha256:1722f9f7123ed44553a568a9c391b52ec7218ce6e04475c1340e830c3fd83070
 groups:
   - id: registry.acme
     type: attribute_group
@@ -1273,3 +1273,76 @@ groups:
         annotations:
           overeng_policy:
             cardinality: low
+  - id: registry.restate
+    type: attribute_group
+    display_name: Restate Attributes
+    brief: Attributes for the restate namespace.
+    attributes:
+      - id: restate.error.class
+        type:
+          members:
+            - id: terminal
+              value: terminal
+              brief: A terminal error (not retried).
+              stability: development
+            - id: retryable
+              value: retryable
+              brief: A retryable error (the invocation will be retried).
+              stability: development
+            - id: cancelled
+              value: cancelled
+              brief: The invocation was cancelled.
+              stability: development
+        stability: development
+        brief: Boundary failure classification stamped on a handler-exit failure.
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: restate.error.tag
+        type: string
+        stability: development
+        brief: Domain error `_tag` of a failing handler (the boundary error classification).
+        examples: [ValidationError, NotFoundError]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: restate.handler
+        type: string
+        stability: development
+        brief: Restate handler name within a construct.
+        examples: [greet, submit]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: restate.idempotency.key
+        type: string
+        stability: development
+        brief: Original-invocation idempotency key (omitted when none was supplied).
+        examples: [idem-abc123]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: restate.object.key
+        type: string
+        stability: development
+        brief: Virtual-Object key of the invocation (omitted for plain Services).
+        examples: [user-42]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: restate.service
+        type: string
+        stability: development
+        brief: Restate construct (service/object/workflow) name a handler belongs to.
+        examples: [greeter, orders]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: restate.workflow.id
+        type: string
+        stability: development
+        brief: Workflow key of the invocation (omitted for Services/Objects).
+        examples: [wf-2026-07-01]
+        annotations:
+          overeng_policy:
+            cardinality: high

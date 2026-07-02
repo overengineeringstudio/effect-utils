@@ -28,6 +28,7 @@ import megarepoContract from '../../packages/@overeng/megarepo/src/megarepo.cont
 import notionMdContract from '../../packages/@overeng/notion-md/src/notion-md.contract.ts'
 import demoContract from '../../packages/@overeng/otel-contract/src/registry-demo.contract.ts'
 import { fragment } from '../../packages/@overeng/otel-contract/src/registry.ts'
+import restateContract from '../../packages/@overeng/restate-effect/src/observability/restate.contract.ts'
 
 // --- pinned semantic inputs (all change the emitted output → part of the fingerprint) ---
 export const PINNED_WEAVER_VERSION = '0.24.2'
@@ -45,9 +46,10 @@ export const memberSeamPaths = [
   'packages/@overeng/megarepo/src/megarepo.contract.ts',
   'packages/@overeng/notion-md/src/notion-md.contract.ts',
   'packages/@overeng/otel-contract/src/registry-demo.contract.ts',
+  'packages/@overeng/restate-effect/src/observability/restate.contract.ts',
 ] as const
 
-const contracts = [genieContract, megarepoContract, notionMdContract, demoContract]
+const contracts = [genieContract, megarepoContract, notionMdContract, demoContract, restateContract]
 
 // Build members: each member contributes its fragment on the non-emitted `meta.registry`
 // channel (a minimal GenieOutput — no per-member slice is emitted for M1).

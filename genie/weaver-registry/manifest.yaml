@@ -2,7 +2,7 @@
 # Source: manifest.yaml.genie.ts
 
 # registry-source: genie/weaver-registry/registry.ts
-# fingerprint: sha256:fb8c7a9156ff5a2267ea8911d2725f0ccba264b32716edd1eb6e4e89cd98bc89
+# fingerprint: sha256:1722f9f7123ed44553a568a9c391b52ec7218ce6e04475c1340e830c3fd83070
 name: acme-effect-utils
 
 description: First-party OpenTelemetry semantic-convention registry (effect-utils).

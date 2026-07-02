@@ -1,7 +1,7 @@
 // Generated file - DO NOT EDIT
 // Source: constants.rs.genie.ts
 // registry-source: genie/weaver-registry/registry.ts
-// fingerprint: sha256:bf2703f996967958f3a2ebd804efc4262a0937302e53945e8d9ed86e75d9ff76
+// fingerprint: sha256:310d07670f8b009168939520c0615785962d77ca64e3a6014edcee1f16e670a4
 // regen: devenv tasks run genie:run
 
 //! Generated OpenTelemetry semantic-convention name constants.
@@ -156,6 +156,13 @@ pub mod attribute {
     pub const NOTION_MD_WEBHOOK_EVENT_TYPE: &str = "notion_md.webhook.event_type";
     pub const NOTION_MD_WEBHOOK_SURFACE: &str = "notion_md.webhook.surface";
     pub const NOTION_MD_WEBHOOK_TRIGGER_COUNT: &str = "notion_md.webhook.trigger_count";
+    pub const RESTATE_ERROR_CLASS: &str = "restate.error.class";
+    pub const RESTATE_ERROR_TAG: &str = "restate.error.tag";
+    pub const RESTATE_HANDLER: &str = "restate.handler";
+    pub const RESTATE_IDEMPOTENCY_KEY: &str = "restate.idempotency.key";
+    pub const RESTATE_OBJECT_KEY: &str = "restate.object.key";
+    pub const RESTATE_SERVICE: &str = "restate.service";
+    pub const RESTATE_WORKFLOW_ID: &str = "restate.workflow.id";
 
     pub const ALL: &[&str] = &[
         "acme.attempt",
@@ -306,6 +313,13 @@ pub mod attribute {
         "notion_md.webhook.event_type",
         "notion_md.webhook.surface",
         "notion_md.webhook.trigger_count",
+        "restate.error.class",
+        "restate.error.tag",
+        "restate.handler",
+        "restate.idempotency.key",
+        "restate.object.key",
+        "restate.service",
+        "restate.workflow.id",
     ];
 }
 

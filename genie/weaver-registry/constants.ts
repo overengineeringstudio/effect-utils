@@ -1,7 +1,7 @@
 // Generated file - DO NOT EDIT
 // Source: constants.ts.genie.ts
 // registry-source: genie/weaver-registry/registry.ts
-// fingerprint: sha256:be6c22a7adb63fb839969ef8c781142dba4e42481ca3ca057665734ab5abd35f
+// fingerprint: sha256:af7bba99bba548502b9bb3d20b9cead196ae3ded08ca05e34a9396e1401c1ffe
 
 export const AcmeAttempt = 'acme.attempt' as const
 export const AcmeProbeLabel = 'acme.probe.label' as const
@@ -151,6 +151,13 @@ export const Notion_mdWatchReason = 'notion_md.watch.reason' as const
 export const Notion_mdWebhookEvent_type = 'notion_md.webhook.event_type' as const
 export const Notion_mdWebhookSurface = 'notion_md.webhook.surface' as const
 export const Notion_mdWebhookTrigger_count = 'notion_md.webhook.trigger_count' as const
+export const RestateErrorClass = 'restate.error.class' as const
+export const RestateErrorTag = 'restate.error.tag' as const
+export const RestateHandler = 'restate.handler' as const
+export const RestateIdempotencyKey = 'restate.idempotency.key' as const
+export const RestateObjectKey = 'restate.object.key' as const
+export const RestateService = 'restate.service' as const
+export const RestateWorkflowId = 'restate.workflow.id' as const
 
 export type AttributeKey =
   | 'acme.attempt'
@@ -301,3 +308,10 @@ export type AttributeKey =
   | 'notion_md.webhook.event_type'
   | 'notion_md.webhook.surface'
   | 'notion_md.webhook.trigger_count'
+  | 'restate.error.class'
+  | 'restate.error.tag'
+  | 'restate.handler'
+  | 'restate.idempotency.key'
+  | 'restate.object.key'
+  | 'restate.service'
+  | 'restate.workflow.id'
