@@ -975,7 +975,50 @@ fn exports_command_span_to_otlp_http_json() {
     assert_eq!(span["parentSpanId"], "2222222222222222");
     assert_eq!(span["spanId"], summary["trace"]["span_id"]);
     assert_eq!(span["status"]["code"], 1);
+    // Success path (decision 0016, M25.1): no error.type attribute and no
+    // Status.message — Description is reserved for the Error status.
+    assert_eq!(span["status"].get("message"), None);
+    // Instrumentation-scope version + resource service.version tie the trace to
+    // a build (decision 0016, M25.1); both equal otel-scrape's crate version.
+    let scope = &resource_span["scopeSpans"][0]["scope"];
+    assert_eq!(scope["name"], "otel-scrape");
+    assert!(scope["version"].as_str().is_some_and(|v| !v.is_empty()));
+    assert_eq!(
+        attr_value(
+            resource_span["resource"]["attributes"].as_array().unwrap(),
+            "service.version"
+        ),
+        scope["version"].as_str().map(ToOwned::to_owned)
+    );
+    // High-resolution timing (decision 0016, M25.1): a fast command is not a
+    // zero-width span, and its duration is not a whole-millisecond multiple (the
+    // pre-fix ms-quantization made both fail).
+    let start = span["startTimeUnixNano"]
+        .as_str()
+        .unwrap()
+        .parse::<u128>()
+        .unwrap();
+    let end = span["endTimeUnixNano"]
+        .as_str()
+        .unwrap()
+        .parse::<u128>()
+        .unwrap();
+    assert!(end > start, "fast command span must not be zero-width");
+    assert_ne!(
+        (end - start) % 1_000_000,
+        0,
+        "duration {} ns must not be whole-ms-quantized",
+        end - start
+    );
     let attrs = span["attributes"].as_array().unwrap();
+    // process.pid (decision 0016, M25.1): REQUIRED by attributes.cli.common,
+    // emitted raw (never hashed), and a genuine positive pid.
+    assert!(attr_value(attrs, "process.pid")
+        .and_then(|value| value.parse::<u32>().ok())
+        .is_some_and(|pid| pid > 0));
+    // error.type is absent on the success path (conditionally required only on
+    // non-zero exit).
+    assert_eq!(attr_value(attrs, "error.type"), None);
     assert_eq!(
         attr_value(attrs, "otel.scope.name"),
         Some("otel-scrape".to_owned())
@@ -1037,6 +1080,52 @@ fn exports_command_span_to_otlp_http_json() {
         attr_value(attrs, "otel_scrape.process.observation.relation"),
         Some("direct-child".to_owned())
     );
+}
+
+// span.cli error modeling (decision 0016, M25.1): a non-zero exit sets span
+// status Error, the LOW-cardinality error.type=_OTHER fallback, and a bounded
+// non-sensitive Status.message. A signal kill and a clean non-zero exit are
+// distinguished by the message but never blow error.type cardinality.
+#[test]
+fn exports_error_type_and_status_message_on_nonzero_exit() {
+    let collector = TestCollector::start(200);
+    let out = otel_scrape()
+        .args(["--otlp-endpoint", &collector.endpoint])
+        .args(["--", "sh", "-c", "exit 7"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(7));
+
+    let body: serde_json::Value = serde_json::from_slice(&collector.request().body).unwrap();
+    let span = &body["resourceSpans"][0]["scopeSpans"][0]["spans"][0];
+    assert_eq!(span["status"]["code"], 2);
+    assert_eq!(span["status"]["message"], "process exited with code 7");
+    let attrs = span["attributes"].as_array().unwrap();
+    assert_eq!(attr_value(attrs, "error.type"), Some("_OTHER".to_owned()));
+    assert_eq!(attr_value(attrs, "process.exit.code"), Some("7".to_owned()));
+}
+
+#[test]
+fn exports_error_type_and_signal_status_message_on_signal_kill() {
+    let collector = TestCollector::start(200);
+    let out = otel_scrape()
+        .args(["--otlp-endpoint", &collector.endpoint])
+        .args(["--", "sh", "-c", "kill -TERM $$"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(143));
+
+    let body: serde_json::Value = serde_json::from_slice(&collector.request().body).unwrap();
+    let span = &body["resourceSpans"][0]["scopeSpans"][0]["spans"][0];
+    assert_eq!(span["status"]["code"], 2);
+    // Signal kills are distinguished from clean exits by the bounded message,
+    // but error.type stays the LOW-cardinality _OTHER (no signal/code in it).
+    assert_eq!(
+        span["status"]["message"],
+        "process terminated by signal SIGTERM"
+    );
+    let attrs = span["attributes"].as_array().unwrap();
+    assert_eq!(attr_value(attrs, "error.type"), Some("_OTHER".to_owned()));
 }
 
 // ---------------------------------------------------------------------------
@@ -1284,7 +1373,7 @@ fn otlp_env_follows_trace_specific_precedence_and_resource_attributes() {
         .env("OTEL_EXPORTER_OTLP_TRACES_HEADERS", "x-trace=kept")
         .env(
             "OTEL_RESOURCE_ATTRIBUTES",
-            "service.name=from-resource,team=tooling",
+            "service.name=from-resource,team=tooling,service.version=9.9.9",
         )
         .env("OTEL_SERVICE_NAME", "from-service-env")
         .env("OTEL_EXPORTER_OTLP_PROTOCOL", "http/json")
@@ -1317,6 +1406,12 @@ fn otlp_env_follows_trace_specific_precedence_and_resource_attributes() {
     assert_eq!(
         attr_value(resource_attrs, "telemetry.sdk.name"),
         Some("otel-scrape".to_owned())
+    );
+    // service.version from OTEL_RESOURCE_ATTRIBUTES wins over the crate-version
+    // default (decision 0016, M25.1): service.* names the enclosing harness.
+    assert_eq!(
+        attr_value(resource_attrs, "service.version"),
+        Some("9.9.9".to_owned())
     );
     drop(generic_collector);
 }

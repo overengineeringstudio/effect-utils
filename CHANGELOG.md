@@ -10,6 +10,18 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **otel-scrape**: Complete `span.cli` semantic-convention conformance
+  (decision 0016, M25.1): emit the REQUIRED raw `process.pid` (never hashed,
+  not trust-gated); set `error.type=_OTHER` and a bounded, non-sensitive span
+  `Status.message` (`process exited with code <n>` / `process terminated by
+signal <NAME>`) on non-zero exit; bound `process.executable.name` / the span
+  name via a documented low-cardinality derivation (safe-charset basename,
+  nix-store hash prefix stripped, pathological names collapsed to `<binary>`);
+  derive span end time from a monotonic nanosecond delta so fast commands are
+  no longer zero-width or whole-millisecond-quantized; and set the
+  instrumentation-scope `version` plus a default resource `service.version` to
+  otel-scrape's crate version.
+
 - **otel-scrape**: Add the per-named-sink command-identity trust gate
   (decision 0015): `--trusted-sink otlp|summary` (repeatable; env alias
   `OTEL_SCRAPE_TRUSTED_SINK` pinned to the OTLP target only) emits raw

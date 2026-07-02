@@ -83,6 +83,20 @@ const OTEL_SCRAPE_SCOPE_NAME: &str = "otel-scrape";
 const SPAN_ORIGIN_OTEL_SCRAPE: &str = "otel-scrape";
 // Fallback program identity when the wrapped argv[0] has no usable basename.
 const UNKNOWN_PROGRAM_BASENAME: &str = "unknown";
+// Bounded-cardinality fallback for the command span name / process.executable.name
+// when the wrapped basename looks pathological (uuid temp script, per-test
+// compiled binary, hex nonce). Collapses all such names into one bucket
+// (decision 0016, M25.1). span.cli permits a documented low-cardinality format.
+const BOUNDED_PROGRAM_FALLBACK: &str = "<binary>";
+// Maximum length of a basename kept verbatim as the span name (decision 0016).
+const BOUNDED_PROGRAM_MAX_LEN: usize = 64;
+// A hex run this long or longer in an otherwise all-hex basename is treated as a
+// content hash / nonce, not a real program name (decision 0016). Kept high so
+// genuine short all-hex tool names (`dd`, `cafe`, `deadbeef`) survive.
+const HEX_NONCE_MIN_LEN: usize = 16;
+// OTel semconv well-known LOW-cardinality fallback for error.type (decision
+// 0016): otel-scrape cannot classify the wrapped tool's error domain.
+const ERROR_TYPE_OTHER: &str = "_OTHER";
 const PROCESS_OBSERVATION_DEGRADED_REASONS: &[ProcessObservationDegradedReason] = &[
     ProcessObservationDegradedReason::DirectChildOnly,
     ProcessObservationDegradedReason::UnsupportedPlatform,
@@ -739,7 +753,12 @@ pub fn run(config: RunConfig) -> io::Result<i32> {
     let started = Instant::now();
 
     let child = run_child(&config, &child_traceparent, &run_id)?;
-    let duration_ms = started.elapsed().as_millis();
+    // Monotonic delta at nanosecond resolution. The summary keeps its ms field
+    // (local schema, decision 0016), but the OTLP span end time is derived from
+    // the full-resolution delta so sub-ms commands are not zero-width and no two
+    // durations collapse to the same whole-ms multiple (decision 0016, M25.1).
+    let elapsed = started.elapsed();
+    let duration_ms = elapsed.as_millis();
     let discovered_artifacts = discover_adapter_profile_artifacts(&config, &child);
     let artifacts = match artifact_summary(&config, &trace, &discovered_artifacts) {
         Ok(artifacts) => artifacts,
@@ -784,14 +803,9 @@ pub fn run(config: RunConfig) -> io::Result<i32> {
             return Ok(exit_code(child.status));
         };
         let endpoint_for_warning = endpoint_for_warning(endpoint);
-        if let Err(cause) = export_command_span(
-            &config,
-            &trace,
-            &child,
-            &artifacts,
-            started_wall,
-            duration_ms,
-        ) {
+        if let Err(cause) =
+            export_command_span(&config, &trace, &child, &artifacts, started_wall, elapsed)
+        {
             eprintln!(
                 "otel-scrape: warning: failed to export OTLP trace to {endpoint_for_warning}: {cause}"
             );
@@ -807,6 +821,11 @@ struct ChildRun {
     stderr: Option<Vec<u8>>,
     node_profile_dir: Option<PathBuf>,
     process_observation: ProcessObservation,
+    // Raw pid of the wrapped direct child (decision 0016, M25.1): emitted as the
+    // semconv-REQUIRED process.pid on the command span. Ephemeral/local, so raw
+    // (not hashed). Option so any fixture-only path without a real spawn is
+    // honest rather than emitting a fabricated pid.
+    child_pid: Option<u32>,
 }
 
 fn run_child(config: &RunConfig, child_traceparent: &str, run_id: &str) -> io::Result<ChildRun> {
@@ -871,6 +890,7 @@ fn run_child_direct(
             stdout: None,
             stderr: None,
             node_profile_dir,
+            child_pid: Some(process_id),
             process_observation: direct_child_process_observation(DirectChildProcessObservation {
                 config,
                 process_id,
@@ -904,6 +924,7 @@ fn run_child_direct(
         stdout: Some(stdout),
         stderr: Some(stderr),
         node_profile_dir,
+        child_pid: Some(process_id),
         process_observation: direct_child_process_observation(DirectChildProcessObservation {
             config,
             process_id,
@@ -1115,6 +1136,7 @@ fn run_child_with_ptrace(config: &RunConfig, child_traceparent: &str) -> io::Res
         stdout,
         stderr,
         node_profile_dir,
+        child_pid: u32::try_from(root_pid).ok(),
         process_observation: ptrace_process_observation(traces),
     })
 }
@@ -1748,6 +1770,88 @@ fn program_basename(argv0: Option<&str>) -> String {
         .unwrap_or_else(|| UNKNOWN_PROGRAM_BASENAME.to_owned())
 }
 
+/// Bounded, low-cardinality program name for the command span name and the
+/// `process.executable.name` attribute (decision 0016, M25.1). `span.cli`
+/// explicitly permits a different low-cardinality span-name format provided it
+/// is documented; this is that format.
+///
+/// The wrapped basename is kept verbatim when it looks like a normal program
+/// name — length <= 64, a conservative safe charset (`[A-Za-z0-9._+-]`), and
+/// not a content-hash / uuid / hex-nonce token. A `nix`-store `<hash>-name`
+/// prefix is stripped first so `foo` survives a `/nix/store/<hash>-foo` exec.
+/// Otherwise the name collapses to the bounded fallback token `<binary>`, so
+/// pathological inputs (uuid temp scripts, per-test compiled binaries, hex
+/// nonces) land in one bucket instead of an unbounded span name.
+fn bounded_program_name(argv0: Option<&str>) -> String {
+    let basename = program_basename(argv0);
+    if basename == UNKNOWN_PROGRAM_BASENAME {
+        return basename;
+    }
+    let candidate = strip_nix_store_hash_prefix(&basename);
+    if is_bounded_program_name(candidate) {
+        candidate.to_owned()
+    } else {
+        BOUNDED_PROGRAM_FALLBACK.to_owned()
+    }
+}
+
+/// Strip a leading `nix`-store hash from a `<32-char-base32-hash>-name` basename
+/// (decision 0016), so a direct-exec of `/nix/store/<hash>-foo` is identified as
+/// `foo`. Returns the input unchanged when there is no such prefix.
+fn strip_nix_store_hash_prefix(basename: &str) -> &str {
+    let Some((prefix, rest)) = basename.split_once('-') else {
+        return basename;
+    };
+    // Nix store hashes are exactly 32 lowercase base32 (nixbase32) characters.
+    let is_nix_hash = prefix.len() == 32
+        && prefix
+            .bytes()
+            .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'z'));
+    if is_nix_hash && !rest.is_empty() {
+        rest
+    } else {
+        basename
+    }
+}
+
+/// Whether a (nix-normalized) basename may be kept verbatim as the span name.
+fn is_bounded_program_name(name: &str) -> bool {
+    if name.is_empty() || name.len() > BOUNDED_PROGRAM_MAX_LEN {
+        return false;
+    }
+    let safe_charset = name
+        .bytes()
+        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'+' | b'-'));
+    if !safe_charset {
+        return false;
+    }
+    !looks_like_hash_or_nonce(name)
+}
+
+/// Whether a name looks like a content hash, uuid, or hex nonce rather than a
+/// real program name (decision 0016). Conservative: only long all-hex tokens and
+/// uuid-shaped tokens collapse, so genuine short names (`dd`, `cafe`, `sh`) and
+/// version-suffixed interpreters (`node20`, `python3.11`) survive.
+fn looks_like_hash_or_nonce(name: &str) -> bool {
+    if is_uuid_like(name) {
+        return true;
+    }
+    // A long run that is entirely hexadecimal (with no separators) is a hash /
+    // nonce, not a program name.
+    name.len() >= HEX_NONCE_MIN_LEN && name.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+/// Whether a name is a canonical `8-4-4-4-12` hyphenated hex uuid.
+fn is_uuid_like(name: &str) -> bool {
+    let groups: Vec<&str> = name.split('-').collect();
+    let lengths = [8_usize, 4, 4, 4, 12];
+    groups.len() == lengths.len()
+        && groups
+            .iter()
+            .zip(lengths.iter())
+            .all(|(group, &len)| group.len() == len && group.bytes().all(|b| b.is_ascii_hexdigit()))
+}
+
 fn is_node_command(argv0: Option<&str>) -> bool {
     let Some(argv0) = argv0 else {
         return false;
@@ -1927,13 +2031,16 @@ fn export_command_span(
     child: &ChildRun,
     artifacts: &ArtifactSummary,
     started_wall: SystemTime,
-    duration_ms: u128,
+    elapsed: Duration,
 ) -> io::Result<()> {
     let Some(endpoint) = config.otlp_endpoint.as_ref() else {
         return Ok(());
     };
+    // Wall-clock anchor + monotonic delta (decision 0016, M25.1): the start is a
+    // full-resolution unix-nanos wall clock and the end is the anchor plus the
+    // monotonic elapsed delta in nanoseconds — not a whole-ms reconstruction.
     let start_unix_nano = unix_nanos(started_wall);
-    let end_unix_nano = start_unix_nano.saturating_add(duration_ms.saturating_mul(1_000_000));
+    let end_unix_nano = start_unix_nano.saturating_add(elapsed.as_nanos());
     let adapter = adapter_outputs(
         config,
         child.stdout.as_deref().unwrap_or_default(),
@@ -1948,8 +2055,10 @@ fn export_command_span(
     // fidelity = "merged" and no separate process span is emitted.
     let merge_process_into_command = observation.fidelity != ProcessObservationFidelity::Exact;
     // The span name is the operation: the wrapped program's basename
-    // (decision 0014), never a fixed instrumentation constant.
-    let program = program_basename(config.argv.first().map(String::as_str));
+    // (decision 0014), never a fixed instrumentation constant. The basename is
+    // passed through the bounded low-cardinality derivation (decision 0016,
+    // M25.1) so both the span name and process.executable.name are bounded.
+    let program = bounded_program_name(config.argv.first().map(String::as_str));
     let mut attributes = vec![
         json!({
             "key": telemetry_registry::attributes::SCOPE_NAME,
@@ -1980,6 +2089,26 @@ fn export_command_span(
             "value": { "stringValue": config.adapter },
         }),
     ];
+    // process.pid is REQUIRED by attributes.cli.common (decision 0016, M25.1):
+    // the raw pid of the wrapped direct child. A pid is ephemeral/local (not a
+    // path, argument, or credential), so it is emitted raw and is NOT trust-gated.
+    if let Some(child_pid) = child.child_pid {
+        attributes.push(json!({
+            "key": telemetry_registry::attributes::PROCESS_PID,
+            "value": { "intValue": child_pid.to_string() },
+        }));
+    }
+    // error.type is conditionally required by attributes.cli.common iff the child
+    // did not exit 0 (decision 0016, M25.1). Kept LOW cardinality: otel-scrape
+    // cannot classify the wrapped tool's error domain, so it always uses the
+    // semconv well-known fallback _OTHER (never the exit code or signal, which
+    // would blow cardinality). Absent on success.
+    if !child.status.success() {
+        attributes.push(json!({
+            "key": telemetry_registry::attributes::ERROR_TYPE,
+            "value": { "stringValue": ERROR_TYPE_OTHER },
+        }));
+    }
     // Trust gate (decision 0015): raw argv/cwd enter the OTLP sink ONLY when the
     // operator asserted this sink private. This site reads config.trusted_otlp
     // and never config.trusted_summary. The hashed identity above is always
@@ -2025,6 +2154,16 @@ fn export_command_span(
             "value": { "stringValue": relation },
         }));
     }
+    // span.cli SHOULD set status Error when the child did not exit 0. The
+    // Trace API reserves Status.description for the Error status only, so the
+    // human message is attached exactly there (decision 0016, M25.1). The
+    // message is bounded and non-sensitive: exit codes and signal names carry no
+    // private data.
+    let status = if child.status.success() {
+        json!({ "code": 1 })
+    } else {
+        json!({ "code": 2, "message": status_error_message(child.status) })
+    };
     let mut command_span = json!({
         "traceId": trace.trace_id,
         "spanId": trace.span_id,
@@ -2033,7 +2172,7 @@ fn export_command_span(
         "startTimeUnixNano": start_unix_nano.to_string(),
         "endTimeUnixNano": end_unix_nano.to_string(),
         "attributes": attributes,
-        "status": { "code": if child.status.success() { 1 } else { 2 } },
+        "status": status,
     });
     if let Some(parent_span_id) = trace.parent_span_id.as_ref() {
         command_span["parentSpanId"] = json!(parent_span_id);
@@ -2057,7 +2196,9 @@ fn export_command_span(
                 "attributes": resource_attributes,
             },
             "scopeSpans": [{
-                "scope": { "name": OTEL_SCRAPE_SCOPE_NAME },
+                // Instrumentation-scope version = otel-scrape's crate version
+                // (decision 0016, M25.1), so a trace can be tied to a build.
+                "scope": { "name": OTEL_SCRAPE_SCOPE_NAME, "version": VERSION },
                 "spans": spans,
             }],
         }],
@@ -2334,6 +2475,14 @@ fn otlp_env_config() -> OtlpEnvConfig {
         "otel-scrape",
     );
     set_resource_attribute(&mut resource_attributes, "telemetry.sdk.version", VERSION);
+    // Resource service.version defaults to otel-scrape's crate version (decision
+    // 0016, M25.1) so a trace ties to a build, but — like service.name — a value
+    // supplied via OTEL_RESOURCE_ATTRIBUTES wins, since service.* names the
+    // enclosing harness, not the wrapper. scope.version always carries
+    // otel-scrape's build unambiguously regardless.
+    if resource_attribute(&resource_attributes, "service.version").is_none() {
+        set_resource_attribute(&mut resource_attributes, "service.version", VERSION);
+    }
     let service_name = env_string(SERVICE_NAME_ENV).unwrap_or_else(|| {
         resource_attribute(&resource_attributes, "service.name")
             .unwrap_or_else(|| String::from("otel-scrape"))
@@ -3110,6 +3259,49 @@ fn exit_code(status: ExitStatus) -> i32 {
     1
 }
 
+/// Bounded, non-sensitive Error-status message for the command span (decision
+/// 0016, M25.1). A signal kill and a clean non-zero exit are operationally very
+/// different, so the message distinguishes them. Exit codes and signal names
+/// carry no private data, and the signal-name set is finite (low cardinality).
+fn status_error_message(status: ExitStatus) -> String {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt;
+        if let Some(signal) = status.signal() {
+            return match signal_name(signal) {
+                Some(name) => format!("process terminated by signal {name}"),
+                None => format!("process terminated by signal {signal}"),
+            };
+        }
+    }
+    match status.code() {
+        Some(code) => format!("process exited with code {code}"),
+        None => String::from("process exited abnormally"),
+    }
+}
+
+/// Well-known POSIX signal names for the Error-status message. Bounded set; any
+/// signal outside it falls back to the raw number in `status_error_message`.
+#[cfg(unix)]
+fn signal_name(signal: i32) -> Option<&'static str> {
+    let name = match signal {
+        libc::SIGHUP => "SIGHUP",
+        libc::SIGINT => "SIGINT",
+        libc::SIGQUIT => "SIGQUIT",
+        libc::SIGILL => "SIGILL",
+        libc::SIGABRT => "SIGABRT",
+        libc::SIGFPE => "SIGFPE",
+        libc::SIGKILL => "SIGKILL",
+        libc::SIGSEGV => "SIGSEGV",
+        libc::SIGPIPE => "SIGPIPE",
+        libc::SIGALRM => "SIGALRM",
+        libc::SIGTERM => "SIGTERM",
+        libc::SIGBUS => "SIGBUS",
+        _ => return None,
+    };
+    Some(name)
+}
+
 fn child_termination(status: ExitStatus) -> Option<ChildTermination> {
     #[cfg(unix)]
     {
@@ -3459,6 +3651,73 @@ mod tests {
             .contains(profile_dir.to_string_lossy().as_ref()));
     }
 
+    #[test]
+    fn bounded_program_name_keeps_normal_tool_basenames_verbatim() {
+        // Ordinary program names — including version-suffixed interpreters and
+        // short all-hex names — survive the derivation unchanged (decision 0016).
+        for (argv0, expected) in [
+            ("echo", "echo"),
+            ("/usr/bin/node", "node"),
+            ("/nix/store/whatever/bin/oxlint", "oxlint"),
+            ("tsc", "tsc"),
+            ("bash", "bash"),
+            ("node20", "node20"),
+            ("python3.11", "python3.11"),
+            ("clang++", "clang++"),
+            ("dd", "dd"),
+            ("deadbeef", "deadbeef"),
+        ] {
+            assert_eq!(
+                bounded_program_name(Some(argv0)),
+                expected,
+                "basename `{argv0}` should be kept verbatim"
+            );
+        }
+    }
+
+    #[test]
+    fn bounded_program_name_collapses_pathological_basenames_to_fallback() {
+        // uuid temp scripts, per-test compiled binaries, and long hex nonces
+        // collapse into one bounded bucket instead of an unbounded span name.
+        for argv0 in [
+            "/tmp/build/550e8400-e29b-41d4-a716-446655440000",
+            "0123456789abcdef0123456789abcdef", // 32-char hex nonce
+            "/tmp/cargo-testXXXX/a1b2c3d4e5f60718293a4b5c6d7e8f90", // 40-char hex
+            "weird name with spaces",
+            "contains/slash-after-basename-is-fine-but-this-one-is-way-too-long-to-be-a-real-program-name-xxxxxxxx",
+        ] {
+            assert_eq!(
+                bounded_program_name(Some(argv0)),
+                BOUNDED_PROGRAM_FALLBACK,
+                "basename `{argv0}` should collapse to the bounded fallback"
+            );
+        }
+    }
+
+    #[test]
+    fn bounded_program_name_strips_nix_store_hash_prefix_so_real_name_survives() {
+        // A direct-exec of /nix/store/<hash>-foo has basename "<hash>-foo"; the
+        // 32-char nixbase32 hash prefix is stripped so `foo` survives rather than
+        // collapsing (decision 0016).
+        assert_eq!(
+            bounded_program_name(Some(
+                "/nix/store/ignored/1z9y8x7w6v5u4t3s2r1q0p9o8n7m6l5k-foo"
+            )),
+            "foo"
+        );
+        // The bare basename form (no directory) is handled identically.
+        assert_eq!(
+            bounded_program_name(Some("1z9y8x7w6v5u4t3s2r1q0p9o8n7m6l5k-hello-world")),
+            "hello-world"
+        );
+    }
+
+    #[test]
+    fn bounded_program_name_falls_back_when_argv0_has_no_usable_basename() {
+        assert_eq!(bounded_program_name(None), UNKNOWN_PROGRAM_BASENAME);
+        assert_eq!(bounded_program_name(Some("")), UNKNOWN_PROGRAM_BASENAME);
+    }
+
     fn node_cpuprofile_config(cas_root: PathBuf) -> RunConfig {
         RunConfig {
             summary_out: None,
@@ -3492,6 +3751,7 @@ mod tests {
             stdout: Some(Vec::new()),
             stderr: Some(Vec::new()),
             node_profile_dir: Some(profile_dir),
+            child_pid: Some(std::process::id()),
             process_observation: direct_child_process_observation(DirectChildProcessObservation {
                 config: &node_cpuprofile_config(PathBuf::from("cas")),
                 process_id: std::process::id(),

@@ -1,12 +1,12 @@
 // Generated file - DO NOT EDIT
 // Source: telemetry_registry.gen.rs.genie.ts
 // Registry source: context/otel-scrape/telemetry-registry.json
-// Input fingerprint: sha256:2ba59438d2d147d139eb9a60595bdb98830cf74bc0ab0ebba4f6ad945d372a17
+// Input fingerprint: sha256:0c481c0d48569ad40cd573e645ecac9b22ed600dc647bb4323e1ee0e9cc1135c
 
 pub const REGISTRY_SCHEMA_VERSION: u8 = 1;
 pub const REGISTRY_NAMESPACE: &str = "otel_scrape";
 pub const REGISTRY_INPUT_FINGERPRINT: &str =
-    "sha256:2ba59438d2d147d139eb9a60595bdb98830cf74bc0ab0ebba4f6ad945d372a17";
+    "sha256:0c481c0d48569ad40cd573e645ecac9b22ed600dc647bb4323e1ee0e9cc1135c";
 
 pub mod span_naming {
     pub const COMMAND: &str = "program-basename";
@@ -27,6 +27,8 @@ pub mod attributes {
     pub const PROCESS_WORKING_DIRECTORY: &str = "process.working_directory";
     pub const ADAPTER_NAME: &str = "otel_scrape.adapter.name";
     pub const PROCESS_EXIT_CODE: &str = "process.exit.code";
+    pub const PROCESS_PID: &str = "process.pid";
+    pub const ERROR_TYPE: &str = "error.type";
     pub const PROCESS_OBSERVATION_BACKEND: &str = "otel_scrape.process.observation.backend";
     pub const PROCESS_OBSERVATION_FIDELITY: &str = "otel_scrape.process.observation.fidelity";
     pub const PROCESS_OBSERVATION_RELATION: &str = "otel_scrape.process.observation.relation";

@@ -55,7 +55,7 @@ alignment (PR #881, Weaver semantic-conventions VRS), pinned to semconv v1.37.0.
   `process.command_args` is a string array (one element per argument) and is
   lossless. The always-present correlation hash (`otel_scrape.command.argv_hash`,
   a length-prefixed SHA-256 over the argv vector) is unchanged: only the
-  trust-gated raw *display* value changes shape.
+  trust-gated raw _display_ value changes shape.
 - **Privacy must travel with the rename.** Renaming `command.argv` →
   `process.command_args` and `command.cwd` → `process.working_directory` is
   key-and-type only. The trust gate (`--trusted-sink`), never-default-emit,
@@ -72,17 +72,17 @@ alignment (PR #881, Weaver semantic-conventions VRS), pinned to semconv v1.37.0.
   `otel_scrape.span.origin`) rather than squatting on unprefixed keys.
 - **The evolution trail is preserved.** Every renamed key is retained in the
   registry as a deprecated entry carrying `deprecated: {reason: "renamed",
-  renamed_to: <new>}`, following OTel semconv practice, rather than being
+renamed_to: <new>}`, following OTel semconv practice, rather than being
   hard-deleted. Deprecated entries are never emitted.
 
 ## Options
 
-| Option                                                            | Consequence                                                                                                                                    |
-| ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| Keep the invented `command.*` keys (status quo)                   | Stable, but a process wrapper that ignores the process semconv; the biggest "not SOTA" signal, and argv stays a lossy newline-joined string.    |
-| Adopt upstream keys but make raw argv/cwd always-on standard fields | Maximally "standard", but silently converts a public-substrate footgun into the default — leaks argv/paths to any shared sink. Rejected.        |
-| **Adopt upstream keys + types; privacy travels with the rename (chosen)** | Speaks the process semconv and fixes the array lossiness, while the 0015 trust gate stays bound to the renamed raw keys. Contract-only change. |
-| Adopt keys and also emit H2 richness now (error.type, status.message, versions) | Larger, mixes contract alignment with new emission behavior; deferred to a later milestone to keep this change reviewable.                      |
+| Option                                                                          | Consequence                                                                                                                                    |
+| ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Keep the invented `command.*` keys (status quo)                                 | Stable, but a process wrapper that ignores the process semconv; the biggest "not SOTA" signal, and argv stays a lossy newline-joined string.   |
+| Adopt upstream keys but make raw argv/cwd always-on standard fields             | Maximally "standard", but silently converts a public-substrate footgun into the default — leaks argv/paths to any shared sink. Rejected.       |
+| **Adopt upstream keys + types; privacy travels with the rename (chosen)**       | Speaks the process semconv and fixes the array lossiness, while the 0015 trust gate stays bound to the renamed raw keys. Contract-only change. |
+| Adopt keys and also emit H2 richness now (error.type, status.message, versions) | Larger, mixes contract alignment with new emission behavior; deferred to a later milestone to keep this change reviewable.                     |
 
 ## Decision
 
@@ -129,19 +129,51 @@ alignment (PR #881, Weaver semantic-conventions VRS), pinned to semconv v1.37.0.
 - Requirement R27 and the spec's attribute-key references are updated to the
   semconv keys; the summary's own field names (`argv`/`cwd`/`argv_hash`) are a
   separate local schema and are unchanged.
-- **Deferred to M25.1 (completes `span.cli.common` conformance and the bounded
-  span name).** This decision's conformance is partial (see Evidence); the two
-  named gaps and the cardinality re-tightening land in M25.1:
-  1. **Enforce a bounded program-name derivation and re-tighten
-     `process.executable.name` to `cardinality: bounded`.** The current
-     `Path::file_name(argv0)` basename is unbounded (declared `high` here); M25.1
-     enforces a documented low-cardinality span-name format (which `span.cli`
-     explicitly permits) and re-tightens the registry cardinality.
-  2. **Emit `process.pid` as a RAW int on the command span.** `process.pid` is
+- **Completed in M25.1 (`span.cli.common` conformance + bounded span name + H2
+  richness).** This decision's conformance was partial (see Evidence); M25.1
+  closes the named gaps, re-tightens the cardinality, and lands the deferred H2
+  richness:
+  1. **Bounded program-name derivation; `process.executable.name` re-tightened to
+     `cardinality: bounded`.** The wrapped basename is kept verbatim only when it
+     looks like a normal program name — length `<= 64`, a conservative safe
+     charset (`[A-Za-z0-9._+-]`), and not a content-hash / uuid / long hex-nonce
+     token. A `nix`-store `<32-char-nixbase32-hash>-name` prefix is stripped first
+     so a direct-exec of `/nix/store/<hash>-foo` is identified as `foo`.
+     Otherwise the name collapses to the bounded fallback token `<binary>`, so
+     pathological inputs (uuid temp scripts, per-test compiled binaries, hex
+     nonces) land in one bucket instead of an unbounded span name. This single
+     bounded value is used for BOTH the span name and `process.executable.name`.
+     `span.cli` explicitly permits a different low-cardinality span-name format
+     provided it is documented — this is that documented format.
+  2. **`process.pid` emitted as a RAW int on the command span.** `process.pid` is
      REQUIRED by `attributes.cli.common`; a pid is not a path, argument, or
-     credential, so it is emitted raw (not hashed). The existing vendor
-     `pid_hash` stays for descendant-observation correlation — the two coexist.
-  Also deferred is `error.type` (conditionally-required by `attributes.cli.common`).
-- Remaining H2 richness (`status.message`, `scope.version`, `service.version`,
-  high-resolution clock) is out of scope here and tracked separately from the
-  M25.1 conformance gaps above.
+     credential, so it is emitted raw (not hashed) and is NOT trust-gated. It is
+     the pid of the wrapped direct child (consistent with
+     `process.executable.name` naming the child). The existing vendor `pid_hash`
+     stays on observed-process spans for descendant-observation correlation — the
+     two coexist.
+  3. **`error.type` emitted iff `process.exit.code != 0`.** Conditionally required
+     by `attributes.cli.common`. Kept LOW cardinality: `otel-scrape` cannot
+     classify the wrapped tool's error domain, so it always uses the semconv
+     well-known fallback value `_OTHER` (never the exit code or signal, which
+     would blow cardinality). Absent on success.
+  4. **`status.message` on Error spans.** The Trace API reserves `Description`
+     for the Error status, so a bounded, non-sensitive human message is attached
+     there: `process exited with code <n>` or `process terminated by signal
+<NAME>`. Exit codes and signal names carry no private data, and the
+     signal-name set is finite.
+  5. **High-resolution timing.** The pre-M25.1 code reconstructed the span end
+     from a whole-millisecond duration (`Instant::elapsed().as_millis()`), so
+     sub-ms commands were zero-width and every duration was a whole-ms multiple.
+     M25.1 keeps the wall-clock anchor (`SystemTime::now()` at unix-nanos) and
+     derives the end from the monotonic delta at nanosecond resolution
+     (`elapsed.as_nanos()`). The summary keeps its own `duration_ms` field (a
+     separate local schema, unchanged). The observed-_process_ span timings
+     (`wall_ms` in the observation + summary schema) remain ms-resolution and are
+     tracked separately, since changing them would alter the summary schema.
+  6. **`scope.version` + `service.version`.** The instrumentation-scope `version`
+     (the OTLP scope object) and the resource `service.version` are both set to
+     `otel-scrape`'s crate version (`CARGO_PKG_VERSION`), so a trace can be tied
+     to a build at both the scope and service layer. These are standard OTel
+     placements (scope version field; resource attribute), not vendor attributes,
+     so they carry no `telemetry-registry.json` attribute entry.
