@@ -137,3 +137,9 @@ role here rather than a separate vision.
   [.decisions/0003](./.decisions/0003-unified-full-dotted-keys.md); the transition for
   existing metrics is retention-first ([0004](./.decisions/0004-metric-label-migration.md)),
   folded into the authority-flip (SC-DQ5).
+- **SC-R16 Contracts are discoverable via a registered seam:** every telemetry contract is
+  reachable from a per-package registered seam (`defineOtelContract`, collected like
+  `rootWorkspacePackages`), enforced by a lint that errors on any contract defined outside a
+  seam. The seam is the single source for both the registry projection and the completeness
+  sweep, so "no site missed" is structural, not audited. See
+  [.decisions/0005](./.decisions/0005-contract-registration-convention.md).

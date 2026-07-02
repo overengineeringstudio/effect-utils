@@ -3,27 +3,15 @@
 Unresolved design questions. Each links a spec `DQ`. Questions leave this file when
 resolved — into the spec as decisions or into `.experiments/` as tested hypotheses.
 
-## SC-DQ1 — Conformance-sweep completeness (blocking for SC-R14)
+## SC-DQ1 — Conformance-sweep completeness — RESOLVED
 
-**Question:** How does the otel-contract↔registry conformance check discover EVERY
-contract definition site, so drift cannot slip through silently?
-
-**Why it matters:** while the migration bridge is active, its "no drift" guarantee is only
-as strong as the sweep being complete. Reality: **239 `OtelAttrs.define` /
-`OtelOperation.define` sites across ~26 files, no central inventory.**
-`no-raw-otel-primitives` forces code *through* otel-contract but does not make contracts
-*discoverable*. A subset-only sweep reads as "covered" while missing drift — worse than no
-gate.
-
-**Candidates:**
-- (a) Static AST / import-graph sweep of all `OtelAttrs.define` sites.
-- (b) **Registration convention** (leading) — each package exports its contracts through
-  a known seam, collected like `rootWorkspacePackages`, so both the registry projection
-  and the conformance sweep are complete by construction. Aligns with the composition
-  idiom.
-
-**Resolves when:** a discovery mechanism provably enumerates every site (e.g. a lint
-that fails on an unregistered contract).
+Resolved by [.decisions/0005](./.decisions/0005-contract-registration-convention.md): a
+per-package registered seam (`defineOtelContract`, collected like `rootWorkspacePackages`)
+is the single source for both the registry projection and the completeness sweep, and a lint
+(extending `no-raw-otel-primitives`) errors on any contract defined outside a seam — so
+completeness is structural, not best-effort grep. Staged warn → per-namespace ERROR →
+repo-wide ERROR, tracking 0004's authority-flip. Rejected: static AST sweep (best-effort),
+runtime self-registration (fragile).
 
 ## SC-DQ2 — Fold-depth sub-questions (direction chosen)
 

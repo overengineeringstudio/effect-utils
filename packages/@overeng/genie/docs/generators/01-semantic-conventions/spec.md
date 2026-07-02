@@ -215,18 +215,17 @@ for each legacy runtime attr (key, cardinality?, encode?):
 ```
 
 This bridge is removed per namespace as sites migrate to catalog references (SC-DQ5). Its
-one precondition while active is COMPLETENESS (SC-DQ1): 239 legacy define-sites, no
-inventory; a subset-only sweep silently misses drift.
+completeness precondition is closed by the registered-seam + lint of
+[.decisions/0005](./.decisions/0005-contract-registration-convention.md): contracts are
+discoverable by construction, so the sweep cannot silently miss a site.
 
 ## Design Questions
 
-- **SC-DQ1 Conformance completeness:** how does the sweep discover EVERY otel-contract
-  contract? Candidates: (a) AST/import-graph static sweep of `OtelAttrs.define` sites;
-  (b) a **registration convention** — each package exports its contracts through a known
-  seam, collected like `rootWorkspacePackages`, making both the registry projection AND
-  the conformance sweep complete by construction. (b) aligns with the composition idiom
-  and is the leading candidate. Resolves when a discovery mechanism guarantees no site
-  is missed. Tracked in [open-questions.md](./open-questions.md).
+- **SC-DQ1 Conformance completeness — RESOLVED:** a per-package registered seam
+  (`defineOtelContract`, collected like `rootWorkspacePackages`) is the single source for
+  both the registry projection and the completeness sweep, and a lint errors on any contract
+  defined outside a seam — completeness is structural. Staged warn → per-namespace ERROR →
+  repo-wide. See [.decisions/0005](./.decisions/0005-contract-registration-convention.md).
 - **SC-DQ2 Fold depth (chosen direction; confirming):** the registry-derives-runtime
   direction is the design intent (SC-R13). Proven no-runtime-loss via "catalog atop
   otel-contract primitives" ([.decisions/0002](./.decisions/0002-catalog-atop-otel-contract.md)).
