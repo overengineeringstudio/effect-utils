@@ -30,17 +30,26 @@ This is the migration-avoidance answer: time + retention do the work a bridge wo
 
 **Exception (long-window / SLO / external metrics): central collector OTTL dual-emit bridge.**
 For the specific metrics whose consumers query beyond the retention window (SLOs, capacity
-planning, external contracts), carry both labels during the transition:
+planning, external contracts), carry both labels during the transition via a **generated**
+collector OTTL `transform` — a derived target of the generator, alongside YAML/TS/Rust. The
+copy is scoped to the named metrics:
 ```
 set(datapoint.attributes["restate.service"], datapoint.attributes["service"])
-    where datapoint.attributes["service"] != nil
+    where metric.name == "restate.invocations" and datapoint.attributes["service"] != nil
 ```
+Validated end-to-end on a real OTel Collector (YAML) and a River-config collector — scoped copy keeps unrelated
+datapoints untouched; the sunset form appends `delete_key(datapoint.attributes, "service")
+where metric.name == …` (see [../.experiments/2026-07-02-bridge-ottl.md](../.experiments/2026-07-02-bridge-ottl.md)).
 Constraints that make this correct and safe:
 - **Generation is driven by a registry annotation, not `weaver registry diff`.** The
   deprecated attribute carries `bridge: { context: datapoint | resource, scope_metrics: [<names>] }`
   — the resource-vs-datapoint context and the metric scope are emission facts the diff does
   not (and, on pre-1.0 weaver, may not) carry. The annotation makes generation total and
-  prevents an over-broad `set()` mislabeling unrelated datapoints.
+  prevents an over-broad `set()` mislabeling unrelated datapoints (the scope guard is derived
+  from `scope_metrics`: single → bare clause, multi → `(metric.name=="a" or "b")`).
+- **Emit the collector-portable form:** `context = "datapoint"` + *qualified* paths
+  (`datapoint.attributes[...]`, `metric.name`) — required by a River-config collector's transform processor
+  and warning-free, and byte-identical in the statement body across River config and OTel-Collector YAML (only the block wrapper differs). Production uses `error_mode: ignore`.
 - **Deployed as the fleet-wide change it is:** canary one collector instance/tenant before the
   fleet; the generated config is versioned so revert is one command.
 - **Retire by date, not by proving a negative.** You cannot observe "no consumer reads the
