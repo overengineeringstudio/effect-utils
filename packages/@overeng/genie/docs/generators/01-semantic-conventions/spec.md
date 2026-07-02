@@ -46,9 +46,26 @@ runtime seam is *derived*, not separately authored (SC-R13/R14); upstream OTel s
 manifest `dependency` first-party signals `ref` (SC-R06). Weaver's Jinja codegen is available
 but non-load-bearing (SC-T01) — genie L1 renders bindings directly.
 
-## Registry data model (SC-R01, SC-R02, SC-R03)
+## Effect-Schema conventions — Layer 2
 
-The DSL mirrors Weaver's define-once/ref split. A **fragment** is one member's slice.
+Layer 2 is Effect-Schema-based, so it follows our Effect conventions; Layer 1 is deliberately
+effect-free (genie's dep-free runtime), so it uses plain typed data (below), not Schema.
+
+- **Rich schema types, not primitives:** `attr.enum` → `Schema.Literal(...)`; `attr.template`
+  → `Schema.TemplateLiteral(...)`; attribute keys use otel-contract's branded
+  `OtelAttributeKey`/`OtelMetricName`/`OtelSpanName`; sensitive attrs `Schema.Redacted`.
+- **Hierarchical `identifier` annotations** on every attribute Schema (the `Otel.*`
+  convention otel-contract already uses), alongside the otel + weaver metadata annotations.
+- **Author-time validation raises `Schema.TaggedError`s with context** — not plain `throw`:
+  stray-namespace-key, dangling-ref, duplicate-namespace, missing-annotation, unmarked-foreign
+  ref each get a tagged error; genuinely-impossible states use `Effect.die` (defects). (The
+  e2e prototype used plain `throw`; the real impl uses tagged errors.)
+- **Type extraction** via `typeof X.Type`; decode any untrusted input through the Schema.
+
+## Registry data model — Layer 1 (SC-R01, SC-R02, SC-R03)
+
+Layer 1 mirrors Weaver's define-once/ref split as plain typed data (effect-free). A
+**fragment** is one member's slice.
 
 ```ts
 type RegistryFragment = {
@@ -216,6 +233,30 @@ completeness precondition is closed by the registered-seam + lint of
 [.decisions/0005](./.decisions/0005-contract-registration-convention.md): contracts are
 discoverable by construction, so the sweep cannot silently miss a site.
 
+## Generated-file contract (GEN-R07)
+
+Each generated binding (TS constants, Rust consts, YAML) carries a provenance header:
+generated + do-not-edit, the regeneration task, the `source:` path, and a `fingerprint:
+sha256:<…>` over ALL semantic inputs — the registry source, the generator, the **pinned
+Weaver version**, and the **pinned upstream semconv version** (all change the output). Any
+`last generated` timestamp is fingerprint-guarded (no timestamp-only churn). Outputs are
+read-only (genie's existing chmod); `genie:check` (same locally + CI) regenerates + diffs; the
+Nix gate reads only tracked, freshness-gated files (the pinned upstream is a FOD input, 0007).
+
+## Remaining mechanism choices (settled)
+
+- **Provenance = per-file `source` + input `fingerprint`** (Q9=A), mirroring otel-scrape's
+  `REGISTRY_INPUT_FINGERPRINT`; hash is of the semantic inputs (above), not the emitted bytes
+  (genie's read-only + byte-compare already catches hand edits).
+- **`span.label` / operation label path:** the derived encoder uses the direct
+  `OtelAttrs.defineSync` path (validated e2e); `span.label` stays runtime-only and is filtered
+  from the registry projection (SC-T03) — `OtelSpan.define` is not used for derivation since it
+  mandates a non-namespaced `span.label` attribute.
+- **TS-constants scope:** own-namespace keys only; upstream-referenced keys
+  (`http.request.method`) come from upstream's own generated constants, not ours.
+- **Policy annotations:** emitted under `annotations.overeng_policy.{cardinality,encode}`
+  (weaver-ignored, machine-readable for our gates).
+
 ## Design Questions
 
 - **SC-DQ1 Conformance completeness — RESOLVED:** a per-package registered seam
@@ -238,7 +279,8 @@ discoverable by construction, so the sweep cannot silently miss a site.
   there from today's ~240 otel-contract sites (no registry yet) is a live-migration-shaped
   problem: seed the registry by extracting from existing `OtelAttrs.define` schemas, then
   stage the conformance gate warn→block per namespace. Distinct from SC-DQ1 (ongoing
-  completeness). See [open-questions.md](./open-questions.md) and `/sk-live-migrations`.
+  completeness). See [open-questions.md](./open-questions.md); run it as a staged live
+  migration (carry both, prove each site, then remove the bridge).
 - **SC-DQ4 Weaver version churn:** what is the update cadence / compatibility matrix
   between pinned Weaver, pinned upstream semconv, and the emitted schema? Resolves by a
   version-bump runbook + a smoke test in CI.

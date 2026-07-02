@@ -107,8 +107,14 @@ anything that fits its domain.
 - **GEN-R06 Multi-language targets:** a generator can project to multiple language bindings
   from one Layer 1 model — at minimum TypeScript, Rust, and Effect-idiomatic TypeScript —
   without a second source.
-- **GEN-R07 Provenance:** every generated binding records its source path + an input
-  fingerprint (content hash), so staleness is visible in normal repo checks.
+- **GEN-R07 Provenance:** every generated binding is
+  marked generated + do-not-edit and records its regeneration command, its source path, and an
+  input **fingerprint over ALL semantic inputs** — the authored source, the generator, and any
+  pinned tool/contract versions that change the output (for the semconv generator: the pinned
+  Weaver version and the pinned upstream semconv version). Any `last generated` timestamp is
+  guarded by the fingerprint (no timestamp-only churn). Outputs are read-only; a single repo
+  freshness command (the same locally and in CI) regenerates + diffs; secrets never appear in
+  provenance.
 
 ### Composition and validation
 

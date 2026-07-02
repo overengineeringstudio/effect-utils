@@ -17,7 +17,7 @@ Effect-idiomatic ergonomics come from Layer 2 (authored Schemas), so there is no
 **Upstream dependency (Q7=A): pinned + Nix-hermetic.** The upstream OTel semconv registry is
 pinned to an exact `@vX.Y.Z[model]` (SC-A03) and materialized as a Nix FOD input so the weaver
 gate runs against a local, deterministic, **offline** copy — no network at check time. Refresh
-on bump via `/sk-evergreen`. (Evidence gap: if weaver `registry check` only accepts a git-URL /
+on bump via the standard FOD-hash refresh workflow. (Evidence gap: if weaver `registry check` only accepts a git-URL /
 released-manifest `registry_path`, degrade to a pinned tag + a warmed `~/.weaver/vdir_cache`;
 the hermetic-local-path form must be confirmed against the pinned weaver.)
 

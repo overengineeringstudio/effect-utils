@@ -1,6 +1,6 @@
 # 0004 — Metric-label rename: retention-first, bridge only when justified
 
-**Status:** Accepted (approach). Concrete renames tracked as `/sk-live-migrations` entries.
+**Status:** Accepted (approach). Concrete renames tracked as staged live-migration entries.
 
 ## Context
 
@@ -8,7 +8,7 @@
 (`service`) to a namespaced key (registry `restate.service`, wire `restate_service`).
 Getting existing metrics there must not break dashboards/alerts.
 
-The `/sk-live-migrations` gate mandates running migration-avoidance first — and **metrics are
+The live-migration discipline mandates a migration-avoidance gate first — and **metrics are
 a rolling projection with retention, not durable state.** Mimir ages old series out on its
 own; a label rename only has to cover the query window people actually use. So the default is
 NOT a database-style migration bridge.
@@ -24,7 +24,7 @@ Grafana Alloy (already the metric path → Mimir) runs natively.
 2. Update the *known* consumers (the specific dashboards/alerts/recording-rules that
    reference the old label).
 3. Let the old series expire over one retention window. Record the cutover date in the
-   `/sk-live-migrations` entry; a bounded seam older than retention is acceptable.
+   live-migration entry; a bounded seam older than retention is acceptable.
 
 This is the migration-avoidance answer: time + retention do the work a bridge would.
 

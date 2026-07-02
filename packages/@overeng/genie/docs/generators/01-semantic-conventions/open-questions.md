@@ -63,7 +63,7 @@ is folded.
   registry, then hand-refined with brief/stability/examples.
 - Stage the authority flip per-namespace: conformance gate runs in warn-only for
   un-migrated namespaces, blocking only for migrated ones; migrate namespace-by-namespace.
-  Use `/sk-live-migrations` for the staged carry + per-site proof + bridge removal.
+  Run it as a staged live migration: carry both, prove each site, then remove the bridge.
 
 **Resolves when:** a bootstrap generator + a staged per-namespace flip plan exist and the
 first namespace is migrated green.
