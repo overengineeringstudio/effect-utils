@@ -38,9 +38,11 @@ role here rather than a separate vision.
   (`resolve` is already deprecated — prefer `generate`/`package`).
 - **SC-A02 otel-contract is the runtime seam:** all first-party spans/metrics/attributes
   are authored through `@overeng/otel-contract`, enforced by `no-raw-otel-primitives`.
-- **SC-A03 Upstream semconv is a dependency:** first-party registries compose ON TOP of
-  the upstream OTel semantic-conventions registry (`registry_path: …@vX.Y.Z[model]`),
-  pinned to a version compatible with the pinned Weaver.
+- **SC-A03 Upstream semconv is a pinned, hermetic dependency:** first-party registries compose
+  ON TOP of the upstream OTel semantic-conventions registry (`registry_path: …@vX.Y.Z[model]`),
+  pinned to a version compatible with the pinned Weaver and materialized as a Nix FOD input so
+  the gate runs against a local, deterministic, offline copy (no network at check time). See
+  [.decisions/0007](./.decisions/0007-rust-target-and-first-consumer.md).
 - **SC-A04 Composition is megarepo-wide:** registry fragments are contributed by
   multiple members (this public repo plus private downstream consumers) and aggregated into
   one registry, following genie's package/tsconfig composition idiom.

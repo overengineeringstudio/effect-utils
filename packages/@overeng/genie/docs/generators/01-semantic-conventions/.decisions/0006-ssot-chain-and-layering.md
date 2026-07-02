@@ -34,10 +34,20 @@ level, namespace) is authored in exactly one place; the same key appearing in en
 (0003) and ref-don't-redefine for upstream/cross-member attrs are corollaries.
 
 - **Namespace is derived**, not authored: `defineOtelContract` derives it from the common
-  key prefix and validates every key shares it (a stray key is a hard error).
+  key prefix of the package's OWN attributes and validates every own key shares it (a stray
+  own-namespace key is a hard error).
 - **Catalog is derived**, not listed: the `registry.<ns>` attribute set is the union of the
-  attributes signals reference plus any explicit *doc-only* attributes; you author signals,
-  the catalog falls out.
+  own attributes signals reference plus any explicit *doc-only* attributes; you author
+  signals, the catalog falls out.
+- **Foreign refs are explicitly marked** (refinement, e2e-validated): without a listed
+  catalog, a signal ref to `resate.service` (own-namespace typo) is otherwise
+  indistinguishable from a legitimate cross-member/upstream ref (`http.request.method`),
+  and prefix inference would silently misclassify the typo as foreign — defeating the
+  stray-key guard. Resolution: cross-member/upstream refs are **opt-out marked**
+  (`refExternal(...)`); everything else is an own attribute and MUST match the derived
+  namespace or it is a hard error. This is what makes "derive the catalog" and "a stray key
+  is a hard error" both hold at once. See
+  [e2e experiment](../.experiments/2026-07-02-e2e-slice.md).
 
 ### Layering (each depends only downward)
 
