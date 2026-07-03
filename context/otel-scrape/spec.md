@@ -477,7 +477,7 @@ when the trace is wanted).
 **Two tiers.**
 
 - **Resolvable URL** — printed iff `root ∧ export acknowledged (2xx) ∧ template
-  configured`. "Acknowledged" means the collector returned a 2xx to otel-scrape's
+configured`. "Acknowledged" means the collector returned a 2xx to otel-scrape's
   own command-span POST. It does **not** prove downstream ingestion, retention
   under sampling, or that otel-aware children's sub-spans landed: an immediate
   click may transiently 404 under ingestion lag, or miss spans a downstream
@@ -487,7 +487,7 @@ when the trace is wanted).
 - **Bare trace id** — printed when telemetry is active (a summary is configured
   or an export is attempted) but no resolvable URL exists: summary-only, no
   template, export disabled, or export failed. Activeness keys on the summary
-  being *configured*, not on the write succeeding, so a bare id (never a URL) is
+  being _configured_, not on the write succeeding, so a bare id (never a URL) is
   still surfaced if the summary write itself fails — the trace id is real
   regardless. The id is actionable for local correlation —
   the summary records it (`trace.trace_id`), so it greps `summary.json`, an
@@ -497,16 +497,16 @@ when the trace is wanted).
 Exit-scenario matrix (rows with `<url>` presume a `{traceId}` template is
 configured; without one the row degrades to bare `trace:<id>`):
 
-| Scenario | Export acknowledged? | Surfaced |
-| --- | --- | --- |
-| child exit 0, export 2xx, template set | yes | `trace:<id>  <url>` |
-| child exit non-zero, export 2xx, template set | yes | `trace:<id>  <url>` |
-| child signal-terminated, export 2xx, template set | yes | `trace:<id>  <url>` |
-| export 2xx, no template | yes | bare `trace:<id>` |
-| export fails / disabled by env (summary or export attempted) | no | bare `trace:<id>` |
-| `--summary-out` only, no OTLP | n/a | bare `trace:<id>` |
-| pure passthrough (no summary, no export attempted) | — | nothing (R04) |
-| otel-scrape cannot spawn child | — | nothing (errors before export) |
+| Scenario                                                     | Export acknowledged? | Surfaced                       |
+| ------------------------------------------------------------ | -------------------- | ------------------------------ |
+| child exit 0, export 2xx, template set                       | yes                  | `trace:<id>  <url>`            |
+| child exit non-zero, export 2xx, template set                | yes                  | `trace:<id>  <url>`            |
+| child signal-terminated, export 2xx, template set            | yes                  | `trace:<id>  <url>`            |
+| export 2xx, no template                                      | yes                  | bare `trace:<id>`              |
+| export fails / disabled by env (summary or export attempted) | no                   | bare `trace:<id>`              |
+| `--summary-out` only, no OTLP                                | n/a                  | bare `trace:<id>`              |
+| pure passthrough (no summary, no export attempted)           | —                    | nothing (R04)                  |
+| otel-scrape cannot spawn child                               | —                    | nothing (errors before export) |
 
 **Backend-agnostic template.** The wrapper never constructs backend URLs (vision:
 "not a dashboarding system"). It takes an opaque template with a `{traceId}`

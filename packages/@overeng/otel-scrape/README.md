@@ -42,16 +42,16 @@ otel-scrape [--summary-out <file>]
 
 Environment fallbacks:
 
-| CLI flag                  | Environment fallback                | Purpose                                                    |
-| ------------------------- | ----------------------------------- | ---------------------------------------------------------- |
-| `--summary-out`           | `OTEL_SCRAPE_SUMMARY_OUT`           | Write local JSON summary evidence.                         |
-| `--cas-root`              | `OTEL_SCRAPE_CAS_ROOT`              | Store profile artifacts and manifests in a local CAS root. |
-| `--otlp-endpoint`         | `OTEL_EXPORTER_OTLP_ENDPOINT`       | Export the wrapper command span over OTLP/HTTP JSON.       |
-| `--service-name`          | `OTEL_SERVICE_NAME`                 | Set the emitted OTLP resource `service.name`.              |
+| CLI flag                  | Environment fallback                | Purpose                                                             |
+| ------------------------- | ----------------------------------- | ------------------------------------------------------------------- |
+| `--summary-out`           | `OTEL_SCRAPE_SUMMARY_OUT`           | Write local JSON summary evidence.                                  |
+| `--cas-root`              | `OTEL_SCRAPE_CAS_ROOT`              | Store profile artifacts and manifests in a local CAS root.          |
+| `--otlp-endpoint`         | `OTEL_EXPORTER_OTLP_ENDPOINT`       | Export the wrapper command span over OTLP/HTTP JSON.                |
+| `--service-name`          | `OTEL_SERVICE_NAME`                 | Set the emitted OTLP resource `service.name`.                       |
 | `--trace-url-template`    | `OTEL_SCRAPE_TRACE_URL_TEMPLATE`    | Backend-agnostic `{traceId}` URL template for root trace surfacing. |
-| `--trace-link on\|off`    | `OTEL_SCRAPE_TRACE_LINK`            | Enable/disable root trace surfacing (default on).          |
-| `--process-backend`       | `OTEL_SCRAPE_PROCESS_BACKEND`       | Select process observation backend.                        |
-| `--process-helper-socket` | `OTEL_SCRAPE_PROCESS_HELPER_SOCKET` | Select the helper-stream socket path.                      |
+| `--trace-link on\|off`    | `OTEL_SCRAPE_TRACE_LINK`            | Enable/disable root trace surfacing (default on).                   |
+| `--process-backend`       | `OTEL_SCRAPE_PROCESS_BACKEND`       | Select process observation backend.                                 |
+| `--process-helper-socket` | `OTEL_SCRAPE_PROCESS_HELPER_SOCKET` | Select the helper-stream socket path.                               |
 
 `--cas-pin` writes a manifest pin under the CAS root and requires at least one
 profile artifact source. `--profile-artifact <type>:<path>` is the explicit

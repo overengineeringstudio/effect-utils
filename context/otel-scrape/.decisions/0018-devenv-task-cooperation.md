@@ -76,7 +76,7 @@ the concrete command level beneath it.
 
 | Option                                                                 | Consequence                                                                            | Verdict                                                             |
 | ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| Keep blanket task wrapper                                             | one generic `bash` span per task above the real task span; adapters never fire; noise. | rejected — the reported problem.                                    |
+| Keep blanket task wrapper                                              | one generic `bash` span per task above the real task span; adapters never fire; noise. | rejected — the reported problem.                                    |
 | Suppression protocol (otel-scrape hides its span at the task boundary) | machinery to make a no-op invisible.                                                   | rejected — if it adds nothing at a layer, remove it, don't hide it. |
 | otel-scrape replaces otel-span at the task level                       | otel-scrape does not own task semantics (`task.name`/`task.cached`).                   | rejected — fights the ownership split.                              |
 | Task span (otel-span) outer, otel-scrape wraps the concrete command    | clean nesting, adapters fire where structured-source exists, concise call-site.        | accepted                                                            |
