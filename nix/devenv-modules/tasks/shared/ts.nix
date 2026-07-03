@@ -397,7 +397,7 @@ let
     };
     "ts:emit" = trace.withStatus "ts:emit" "binary" {
       description = "Emit build outputs without full type checking (tsc --build --noCheck)";
-      # dogfood-audit-allow: raw exec — argument to trace.withStatus "ts:emit" above.
+      # trace-audit-allow: raw exec - argument to trace.withStatus "ts:emit" above.
       exec = ''
         set -euo pipefail
         ${emitTsconfigHelper}
@@ -409,7 +409,7 @@ let
         generate_emit_tsconfig "${tsconfigFile}" "$_emit_tsconfig"
         ${tscWithDiagnostics "ts:emit" tscBin "--build \"$_emit_tsconfig\"" "--noCheck"}
       '';
-      # dogfood-audit-allow: raw status — argument to trace.withStatus "ts:emit" above.
+      # trace-audit-allow: raw status - argument to trace.withStatus "ts:emit" above.
       status = ''
         set -euo pipefail
         ${emitTsconfigHelper}

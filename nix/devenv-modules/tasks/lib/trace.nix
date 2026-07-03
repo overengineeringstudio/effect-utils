@@ -97,7 +97,7 @@ let
   #   ${trace.instr { adapter = "oxlint"; name = "lint:check:oxlint"; }}
   #   "''${_otel_instr[@]}" oxlint "''${_otel_instr_flags[@]}" --import-plugin ... <files>
   #
-  # Both arrays are EMPTY when otel-scrape is absent, `OTEL_SCRAPE_DOGFOOD=0`, or no
+  # Both arrays are EMPTY when otel-scrape is absent, `OTEL_SCRAPE_ENABLED=0`, or no
   # OTEL task trace context is active (otelTraceContextActive false), so the concrete
   # command runs completely unchanged (these are SHARED modules that downstream repos
   # import without otel-scrape on PATH — transparency is required — and CI runs them
@@ -121,11 +121,11 @@ let
       # context is active (same gate tsc uses — otelTraceContextActive), so a
       # non-interactive run without a span parent / OTLP endpoint keeps oxlint and
       # vitest bare instead of injecting structured-source flags that re-render
-      # their output. otel-scrape must additionally be present and dogfooding on.
+      # their output. otel-scrape must additionally be present and enabled.
       if ${otelTraceContextActive} \
-        && [ "''${OTEL_SCRAPE_DOGFOOD:-1}" != "0" ] \
+        && [ "''${OTEL_SCRAPE_ENABLED:-1}" != "0" ] \
         && command -v "$_otel_scrape_bin" >/dev/null 2>&1; then
-        _otel_scrape_summary_dir="''${OTEL_SCRAPE_SUMMARY_DIR:-''${DEVENV_ROOT:-$PWD}/tmp/otel-scrape-dogfood/summaries}"
+        _otel_scrape_summary_dir="''${OTEL_SCRAPE_SUMMARY_DIR:-''${DEVENV_ROOT:-$PWD}/tmp/otel-scrape/summaries}"
         mkdir -p "$_otel_scrape_summary_dir"
         _otel_instr=(
           "$_otel_scrape_bin"

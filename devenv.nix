@@ -343,7 +343,7 @@ in
     (taskModules.lint-nix { })
     (taskModules.check {
       extraChecks = [
-        "otel-scrape:dogfood-audit"
+        "devenv:trace-audit"
         "workspace:check"
         "lint:nix"
       ];
@@ -598,9 +598,9 @@ in
     description = "Apply .github/repo-settings.json to GitHub ruleset";
   };
 
-  tasks."otel-scrape:dogfood-audit" = {
+  tasks."devenv:trace-audit" = {
     description = "Check active devenv task modules route every exec/status through trace.* (otel-span task span; concrete commands opt into otel-scrape via trace.instr)";
-    exec = trace.exec "otel-scrape:dogfood-audit" ''
+    exec = trace.exec "devenv:trace-audit" ''
       set -euo pipefail
       # Every active devenv task exec/status must route through the trace.nix
       # helpers (trace.exec / trace.status / trace.withStatus) so the otel-span
@@ -614,7 +614,7 @@ in
       # failure this rewrite fixes.
       #
       # A few raw exec/status lines are legitimately allowed and are annotated
-      # with a `dogfood-audit-allow` marker comment IMMEDIATELY ABOVE the line:
+      # with a `trace-audit-allow` marker comment IMMEDIATELY ABOVE the line:
       #   - the raw string is an argument passed INTO trace.* a few lines below
       #     (restate integration test, ts:emit).
       # A deliberately-untraced task would also qualify, but there are currently
@@ -622,7 +622,7 @@ in
       # workflow-report) routes through trace.exec for a task span.
       # The marker is matched in a 2-line window (the line plus the one above),
       # so this stays robust to line shifts — no fragile file:line pins.
-      marker='dogfood-audit-allow'
+      marker='trace-audit-allow'
       violations=0
       while IFS= read -r hit; do
         file="''${hit%%:*}"
@@ -643,7 +643,7 @@ in
       )
       if [ "$violations" -ne 0 ]; then
         echo "Found task exec/status scripts that bypass the trace.nix task span (trace.exec/status/withStatus)." >&2
-        echo "Route them through trace.* or, if intentionally raw, add a 'dogfood-audit-allow' marker comment above the line with justification." >&2
+        echo "Route them through trace.* or, if intentionally raw, add a 'trace-audit-allow' marker comment above the line with justification." >&2
         exit 1
       fi
     '';

@@ -188,10 +188,10 @@ signal <NAME>`) on non-zero exit; bound `process.executable.name` / the span
   that observes fork/vfork/clone, exec, and exit events for a traced child tree
   and validates exact descendant evidence with a compiled process-DAG fixture.
 
-- **otel-scrape / devenv**: Dogfood `otel-scrape` across effect-utils devenv
+- **otel-scrape / devenv**: Wire `otel-scrape` into effect-utils devenv
   task execution, status checks, Storybook processes, Netlify/SecretSpec tasks,
   and aggregate gates via the shared `trace.nix` task wrapper. Local task runs
-  now write summary evidence under `tmp/otel-scrape-dogfood/summaries` by
+  now write summary evidence under `tmp/otel-scrape/summaries` by
   default and `check:*` runs a source audit to catch new unwrapped task scripts.
 
 - **otel-scrape**: Document the adapter admission policy and exact process

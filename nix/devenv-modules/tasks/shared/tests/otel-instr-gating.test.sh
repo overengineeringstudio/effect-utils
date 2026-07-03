@@ -6,7 +6,7 @@ set -euo pipefail
 #
 #   1. GATING (trace.instr prelude): the _otel_instr / _otel_instr_flags arrays
 #      that oxlint/vitest wrap themselves with are EMPTY unless an OTEL task trace
-#      context is active AND otel-scrape is present AND dogfooding is on — the same
+#      context is active AND otel-scrape is present AND instrumentation is enabled — the same
 #      gate tsc uses (otelTraceContextActive). A non-interactive run (no traceparent)
 #      keeps the command bare even when the binaries are on PATH, so oxlint's stdout
 #      is never silently swapped for --format=json.
@@ -86,17 +86,17 @@ out="$(env -i "${base_env[@]}" HOME="$tmpdir" \
   bash -c 'source "$1"; printf "INSTR_COUNT=%s\nFLAGS_COUNT=%s\n" "${#_otel_instr[@]}" "${#_otel_instr_flags[@]}"' _ "$oxlint_prelude")"
 assert_bare "oxlint/no-trace-context" "$out"
 
-# --- (a) NO wrap: OTEL_SCRAPE_DOGFOOD=0 ---
-out="$(env -i "${base_env[@]}" HOME="$tmpdir" OTEL_TASK_TRACEPARENT="$VALID_TRACEPARENT" OTEL_SCRAPE_DOGFOOD=0 \
+# --- (a) NO wrap: OTEL_SCRAPE_ENABLED=0 ---
+out="$(env -i "${base_env[@]}" HOME="$tmpdir" OTEL_TASK_TRACEPARENT="$VALID_TRACEPARENT" OTEL_SCRAPE_ENABLED=0 \
   bash -c 'source "$1"; printf "INSTR_COUNT=%s\nFLAGS_COUNT=%s\n" "${#_otel_instr[@]}" "${#_otel_instr_flags[@]}"' _ "$oxlint_prelude")"
-assert_bare "oxlint/dogfood-0" "$out"
+assert_bare "oxlint/instrumentation-disabled" "$out"
 
 # --- (a) NO wrap: otel-scrape absent (override to a nonexistent bin) ---
 out="$(env -i "${base_env[@]}" HOME="$tmpdir" OTEL_TASK_TRACEPARENT="$VALID_TRACEPARENT" OTEL_SCRAPE_BIN="$tmpdir/no-such-otel-scrape" \
   bash -c 'source "$1"; printf "INSTR_COUNT=%s\nFLAGS_COUNT=%s\n" "${#_otel_instr[@]}" "${#_otel_instr_flags[@]}"' _ "$oxlint_prelude")"
 assert_bare "oxlint/scrape-absent" "$out"
 
-# --- (b) WRAP: binaries present + valid trace context + dogfood on ---
+# --- (b) WRAP: binaries present + valid trace context + instrumentation enabled ---
 out="$(env -i "${base_env[@]}" HOME="$tmpdir" OTEL_TASK_TRACEPARENT="$VALID_TRACEPARENT" \
   bash -c 'source "$1"; printf "INSTR_COUNT=%s\nFLAGS_COUNT=%s\nINSTR=%s\nFLAGS=%s\n" "${#_otel_instr[@]}" "${#_otel_instr_flags[@]}" "${_otel_instr[*]-}" "${_otel_instr_flags[*]-}"' _ "$oxlint_prelude")"
 ic="$(printf '%s\n' "$out" | sed -n 's/^INSTR_COUNT=//p')"
