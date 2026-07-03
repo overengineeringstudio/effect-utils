@@ -60,6 +60,13 @@ import {
   type WorkspacePackageLike,
 } from '../packages/@overeng/genie/src/runtime/mod.ts'
 /**
+ * Exceptional export: downstream repos that define `workspaceMember()` factories
+ * need this type for the optional `pnpmPackageClosure` parameter in `WorkspaceIdentity`.
+ * Prefer not using package closures unless your repo genuinely needs Nix-time
+ * workspace subsetting (currently only livestore).
+ */
+import type { PnpmPackageClosureConfig } from '../packages/@overeng/genie/src/runtime/pnpm-workspace/mod.ts'
+/**
  * Repo-context discovery is node-only (reads the filesystem via `import.meta.url`), but importing the broad
  * `@overeng/genie/node` entry also pulls engine validation internals into peer repo Genie files. Import the
  * repo-context surface directly so downstream authoring helpers stay free of engine-only dependencies.
@@ -68,13 +75,6 @@ import {
   defineRepoContext,
   type RepoContext,
 } from '../packages/@overeng/genie/src/runtime/repo-context/mod.ts'
-/**
- * Exceptional export: downstream repos that define `workspaceMember()` factories
- * need this type for the optional `pnpmPackageClosure` parameter in `WorkspaceIdentity`.
- * Prefer not using package closures unless your repo genuinely needs Nix-time
- * workspace subsetting (currently only livestore).
- */
-import type { PnpmPackageClosureConfig } from '../packages/@overeng/genie/src/runtime/pnpm-workspace/mod.ts'
 import {
   nativeDependencyPolicy,
   type NativeDependencyPolicyEntry,
@@ -184,6 +184,9 @@ export const catalog = defineCatalog({
   // which @restatedev/restate-sdk-opentelemetry@1.14.5 requires as a peer.
   // @effect/opentelemetry@0.63 accepts ^2.0.0, so utils + restate-effect both stay compatible.
   '@opentelemetry/api': '1.9.1',
+  // OTLP/HTTP trace exporter for the shared Vitest native-OTEL sdkPath module
+  // (utils-dev). Experimental 0.219.0 line, matching sdk-logs 0.219.0; peer api ^1.3.0.
+  '@opentelemetry/exporter-trace-otlp-http': '0.219.0',
   '@opentelemetry/resources': '2.8.0',
   '@opentelemetry/sdk-logs': '0.219.0',
   '@opentelemetry/sdk-metrics': '2.8.0',

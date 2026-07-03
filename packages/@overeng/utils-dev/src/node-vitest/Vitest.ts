@@ -12,15 +12,19 @@
 import * as inspector from 'node:inspector'
 
 import { OtlpSerialization, OtlpTracer } from '@effect/opentelemetry'
+import * as OtelTracer from '@effect/opentelemetry/Tracer'
 import { FetchHttpClient } from '@effect/platform'
 import type * as Vitest from '@effect/vitest'
+import { trace } from '@opentelemetry/api'
 import type { Duration } from 'effect'
 import {
   type Cause,
+  Context,
   Effect,
   type FastCheck as FC,
   identity,
   Layer,
+  Option,
   Predicate,
   type Schema,
   type Scope,
@@ -121,6 +125,40 @@ export const makeOtelVitestLayer = (
 /** Dummy OTEL layer that does nothing (for when OTEL is disabled). */
 export const OtelVitestDummy: Layer.Layer<never> = Layer.empty
 
+/**
+ * When present in the test's context, {@link withTestCtx} suppresses the
+ * Vitest→Effect parent bridge. The otelite capture lane provides this so its
+ * captured product spans stay ROOT and deterministic — in-process assertions
+ * must not depend on an ambient `vitest.test.runner.test.callback` parent that
+ * only exists when native Vitest OTEL happens to be enabled for the run.
+ */
+export class SuppressVitestParentBridge extends Context.Tag(
+  '@overeng/utils-dev/node-vitest/SuppressVitestParentBridge',
+)<SuppressVitestParentBridge, true>() {}
+
+/**
+ * Seed Vitest's active per-test span as the Effect parent so harness/product
+ * spans nest under `vitest.test.runner.test.callback` (the lightweight
+ * `OtlpTracer` inherits the external parent's traceId + spanId).
+ *
+ * Read at execution time (`Effect.suspend`) so it resolves the CURRENT test's
+ * callback span, never a per-file value captured too early. No-op when native
+ * Vitest OTEL is off (no active span) or when {@link SuppressVitestParentBridge}
+ * is in context (otelite capture lane).
+ */
+const bridgeVitestParent = <A, E, R>(self: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
+  Effect.suspend(() => {
+    const spanContext = trace.getActiveSpan()?.spanContext()
+    if (spanContext === undefined) return self
+    return Effect.serviceOption(SuppressVitestParentBridge).pipe(
+      Effect.flatMap((suppressed) =>
+        Option.isSome(suppressed) === true
+          ? self
+          : Effect.withParentSpan(self, OtelTracer.makeExternalSpan(spanContext)),
+      ),
+    )
+  })
+
 // ============================================================================
 // withTestCtx - Test Context Wrapper
 // ============================================================================
@@ -207,11 +245,13 @@ export const withTestCtx =
 
       const combinedLayer = layer.pipe(Layer.provideMerge(otelLayer))
 
-      return self.pipe(
-        DEBUGGER_ACTIVE === true ? identity : Effect.timeout(timeout),
-        Effect.provide(combinedLayer),
-        Effect.scoped, // We need to scope the effect manually here because otherwise the span is not closed
-        Effect.annotateLogs({ suffix }),
+      return bridgeVitestParent(
+        self.pipe(
+          DEBUGGER_ACTIVE === true ? identity : Effect.timeout(timeout),
+          Effect.provide(combinedLayer),
+          Effect.scoped, // We need to scope the effect manually here because otherwise the span is not closed
+          Effect.annotateLogs({ suffix }),
+        ),
       ) as any
     }
 
