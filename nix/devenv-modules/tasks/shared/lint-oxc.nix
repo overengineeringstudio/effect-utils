@@ -118,14 +118,40 @@ let
           if emptySelectionDiagnostic == null then
             "${pkgs.findutils}/bin/xargs -0 ${command} < \"$files\""
           else
+            # The empty-selection stderr swallow must run PER xargs batch (a later
+            # all-ignored chunk emits the diagnostic independently), so it lives in
+            # the batch child, not the outer shell. To wrap the tool with the
+            # otel-scrape prefix — which is a bash array (`_otel_instr`) that only
+            # exists in the OUTER shell and cannot cross into a POSIX `sh` child —
+            # we expand it in the outer shell and pass its elements as leading
+            # positional args (preceded by a count) into a `bash -c` child, which
+            # reconstructs the array and applies it to the concrete command. That
+            # names the command span after the wrapped child (`oxfmt`), never the
+            # helper shell. `${command}` runs bare when the prefix is empty
+            # (otel-scrape absent / gate inactive), so this path is behaviorally
+            # identical to a plain `xargs -0 ${command}` in that case.
+            #
+            # `_otel_instr` is defined by the trace.instr prelude when a task opts
+            # in; the guard keeps the branch valid for tasks that don't (the prefix
+            # is then empty and the command runs bare).
             ''
-              ${pkgs.findutils}/bin/xargs -0 sh -c '
+              declare -p _otel_instr >/dev/null 2>&1 || _otel_instr=()
+              ${pkgs.findutils}/bin/xargs -0 ${pkgs.bash}/bin/bash -c '
                 empty_selection_diagnostic="$1"
                 shift
+                otel_prefix_count="$1"
+                shift
+                otel_prefix=()
+                while [ "$otel_prefix_count" -gt 0 ]; do
+                  otel_prefix+=("$1")
+                  shift
+                  otel_prefix_count=$((otel_prefix_count - 1))
+                done
+
                 stderr_file=$(mktemp)
                 trap "rm -f \"$stderr_file\"" EXIT
 
-                if ${command} "$@" 2>"$stderr_file"; then
+                if "''${otel_prefix[@]}" ${command} "$@" 2>"$stderr_file"; then
                   if [ -s "$stderr_file" ]; then
                     cat "$stderr_file" >&2
                   fi
@@ -141,7 +167,8 @@ let
 
                 printf "%s\n" "$stderr" >&2
                 exit "$status"
-              ' sh ${lib.escapeShellArg emptySelectionDiagnostic} < "$files"
+              ' bash ${lib.escapeShellArg emptySelectionDiagnostic} \
+                "''${#_otel_instr[@]}" "''${_otel_instr[@]}" < "$files"
             ''
         }
     '';
@@ -195,10 +222,22 @@ let
     "lint:check:format" = {
       guard = "oxfmt";
       description = "Check code formatting with oxfmt";
+      # oxfmt exposes no declared structured source (adapters/.experiments/0005),
+      # so it opts into otel-scrape as adapter="none" (decision 0018): a timed,
+      # named `oxfmt` command span beneath the task span, no parser, stdout
+      # untouched. The otel-scrape prefix (_otel_instr) is composed in the OUTER
+      # bash and passed through xargs as leading positional args, so oxfmt — not
+      # the nested empty-selection helper shell — is the wrapped child (see the
+      # emptySelectionDiagnostic branch of mkLintExec). Arrays are empty (command
+      # runs bare, empty-selection diagnostic still swallowed) without otel-scrape.
       exec = trace.exec "lint:check:format" (mkLintExec {
         command = "${resolvedOxfmtPkg}/bin/oxfmt --check";
         includeCase = oxfmtIncludeCase;
         emptySelectionDiagnostic = "Expected at least one target file";
+        prelude = trace.instr {
+          adapter = "none";
+          name = "lint:check:format";
+        };
       });
       execIfModified = [ ];
     };

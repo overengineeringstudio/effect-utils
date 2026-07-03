@@ -72,3 +72,11 @@ accept candidate adapter names as placeholders.
 - Core wrapper contracts cannot be changed casually by adapter work; a wrapper,
   process, CAS, or profile-link contract change requires a separate VRS update
   and regression gate.
+
+## Update
+
+The candidate queue above was audited and re-ranked by
+[../adapters/.decisions/0001-adapter-fleet-audit-and-candidate-ranking.md](../adapters/.decisions/0001-adapter-fleet-audit-and-candidate-ranking.md):
+`pnpm` (phase lane) is promoted to first candidate, `deadnix` and `nix` (build
+lane) are added, and the fleet vertical slices live under
+[../adapters/](../adapters/spec.md).

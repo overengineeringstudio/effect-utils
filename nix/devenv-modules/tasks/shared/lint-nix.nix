@@ -55,8 +55,16 @@ let
     "lint:nix:format" = {
       guard = "nixfmt";
       description = "Check Nix formatting with nixfmt";
+      # nixfmt exposes no declared structured source (adapters/.experiments/0005),
+      # so it opts into otel-scrape as adapter="none" (decision 0018): a timed,
+      # named `nixfmt` command span beneath the task span, no parser, stdout
+      # untouched. Arrays are empty (command runs bare) without otel-scrape.
       exec = trace.exec "lint:nix:format" ''
-        ${git} ls-files '*.nix' | xargs nixfmt --check
+        ${trace.instr {
+          adapter = "none";
+          name = "lint:nix:format";
+        }}
+        ${git} ls-files '*.nix' | xargs "''${_otel_instr[@]}" nixfmt --check
       '';
     };
     "lint:nix:fix:format" = {

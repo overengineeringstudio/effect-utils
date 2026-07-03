@@ -6,6 +6,14 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **otel-scrape**: adapter fleet VRS under `context/otel-scrape/adapters/` — the
+  supported/candidate matrix, per-adapter requirements+spec leaves (oxlint,
+  pnpm, deadnix, nix, vitest, node-cpuprofile) with source-of-truth references,
+  and the fleet audit decisions.
+- **devenv tasks**: `lint:check:format` (oxfmt) and `lint:nix:format` (nixfmt)
+  opt into otel-scrape as `adapter="none"`, so each emits a timed, named command
+  span beneath its task span when traced (bare otherwise). Behavioral test
+  `otel-scrape-oxfmt-wrap.test.sh` covers the `mkLintExec` nested-`sh` wrap.
 - **otel-scrape**: Root trace surfacing (decision 0020, R31). When `otel-scrape`
   mints the trace root and telemetry is active, it prints the trace identity to
   stderr at end of run so agents and humans can open or correlate the trace
