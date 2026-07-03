@@ -6,7 +6,7 @@ This document specifies the shared genie **generator** mechanism. It builds on
 ## Status
 
 Active. The mechanism is realized by the first generator, semantic-conventions — implemented
-and landed (see [01-semantic-conventions/](./01-semantic-conventions/spec.md)).
+and landed (see [01-otel-semconv/](./01-otel-semconv/spec.md)).
 
 ## Scope
 
@@ -108,6 +108,6 @@ degrade to a warning or a separate lane, never wedge unrelated work (GEN-R09).
   conventions generator validated a concrete Layer 2 — attributes are annotated Effect
   Schemas built on `@overeng/otel-contract` primitives; one AST reader projects Layer 1,
   and otel-contract's own AST reader derives the runtime encoder (see
-  [01-semantic-conventions/spec.md](./01-semantic-conventions/spec.md)). Open: how much of
+  [01-otel-semconv/spec.md](./01-otel-semconv/spec.md)). Open: how much of
   this Layer-2 machinery (the annotation convention, the AST→Layer1 projector) generalizes
   vs stays semconv-specific. Resolves once generator #2 needs a Layer 2.

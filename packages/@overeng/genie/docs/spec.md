@@ -38,7 +38,7 @@ Subsystems (own VRS, nested):
 - [generators/](./generators/spec.md) — the shared contract for genie **generators**:
   genie artifact domains that project multi-language bindings (TS/Rust/Effect) from one
   typed TS source of truth, drift-gated. Its first child,
-  [generators/01-semantic-conventions/](./generators/01-semantic-conventions/spec.md),
+  [generators/01-otel-semconv/](./generators/01-otel-semconv/spec.md),
   covers OpenTelemetry semantic-convention registries via OTel Weaver.
 
 ## Public Surface

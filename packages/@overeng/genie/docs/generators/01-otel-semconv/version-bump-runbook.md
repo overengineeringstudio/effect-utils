@@ -8,11 +8,11 @@ constraints between them. Enforced by the `weaver:version-smoke` CI task (below)
 
 The emitted registry + bindings depend on three version inputs that MUST move together:
 
-| Pin                                | Source of truth                                          | Value today |
-| ---------------------------------- | ------------------------------------------------------- | ----------- |
-| Weaver binary                      | `nix/weaver-flake/flake.nix` → `version`                | `0.24.2`    |
-| Upstream OTel semconv (dependency) | `nix/weaver-flake/flake.nix` → `semconvVersion`         | `1.37.0`    |
-| Weaver pin (fingerprint input)     | `genie/weaver-registry/registry.ts` → `PINNED_WEAVER_VERSION`          | `0.24.2`    |
+| Pin                                | Source of truth                                                         | Value today |
+| ---------------------------------- | ----------------------------------------------------------------------- | ----------- |
+| Weaver binary                      | `nix/weaver-flake/flake.nix` → `version`                                | `0.24.2`    |
+| Upstream OTel semconv (dependency) | `nix/weaver-flake/flake.nix` → `semconvVersion`                         | `1.37.0`    |
+| Weaver pin (fingerprint input)     | `genie/weaver-registry/registry.ts` → `PINNED_WEAVER_VERSION`           | `0.24.2`    |
 | Upstream pin (fingerprint input)   | `genie/weaver-registry/registry.ts` → `PINNED_UPSTREAM_SEMCONV_VERSION` | `v1.37.0`   |
 
 Two SSOTs, one contract: the **flake** actually builds/materializes Weaver + the semconv
@@ -28,12 +28,12 @@ drift risk — that is exactly what `weaver:version-smoke` guards.
 
 ## Compatibility matrix
 
-| Weaver | Upstream semconv | Status              | Notes                                                                                             |
-| ------ | ---------------- | ------------------- | ------------------------------------------------------------------------------------------------- |
-| 0.24.2 | v1.37.0          | **Known-good (RoR)** | Version of record. Clean under `--future`. Every enum member carries `stability`.                 |
-| 0.23.0 | v1.37.0          | Works (historical)   | `nixpkgs#weaver`; used during derisking. 0.23 does **not** require per-enum-member `stability`.   |
-| 0.24.2 | ≤ v1.36.x        | **Fails**            | ≤v1.36 use their own unstructured `deprecated:` string form → `--future` rejects them.            |
-| ≥0.24  | any              | Constraint           | Each enum member requires a `stability` field (0.23 did not) — the emitter already emits this.    |
+| Weaver | Upstream semconv | Status               | Notes                                                                                           |
+| ------ | ---------------- | -------------------- | ----------------------------------------------------------------------------------------------- |
+| 0.24.2 | v1.37.0          | **Known-good (RoR)** | Version of record. Clean under `--future`. Every enum member carries `stability`.               |
+| 0.23.0 | v1.37.0          | Works (historical)   | `nixpkgs#weaver`; used during derisking. 0.23 does **not** require per-enum-member `stability`. |
+| 0.24.2 | ≤ v1.36.x        | **Fails**            | ≤v1.36 use their own unstructured `deprecated:` string form → `--future` rejects them.          |
+| ≥0.24  | any              | Constraint           | Each enum member requires a `stability` field (0.23 did not) — the emitter already emits this.  |
 
 ### Constraints (why the cells above hold)
 
@@ -44,7 +44,7 @@ drift risk — that is exactly what `weaver:version-smoke` guards.
   `{ id, value, brief, stability }`, `type: template[...]`. See spec.md "Weaver-vocabulary
   fidelity" and [.decisions/0001](./.decisions/0001-ts-first-weaver-additive.md).
 - **`--future` cleanliness needs semconv ≥ v1.37.0.** The gate runs `weaver registry check
-  --future`; older upstream models trip on their own legacy `deprecated:` strings.
+--future`; older upstream models trip on their own legacy `deprecated:` strings.
 - **`stability` on every enum member is mandatory in ≥0.24.2.** A member missing it fails the
   check under 0.24.2 (0.23 tolerated it).
 - **String attributes need `examples`** under `--future` (emitter enforces at author time).

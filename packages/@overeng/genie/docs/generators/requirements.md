@@ -10,7 +10,7 @@ refines it for its domain. It inherits genie's [vision](../vision.md) and
 
 Children:
 
-- [01-semantic-conventions/](./01-semantic-conventions/spec.md) — OpenTelemetry
+- [01-otel-semconv/](./01-otel-semconv/spec.md) — OpenTelemetry
   semantic-convention registries via OTel Weaver (the first generator).
 
 ## Context

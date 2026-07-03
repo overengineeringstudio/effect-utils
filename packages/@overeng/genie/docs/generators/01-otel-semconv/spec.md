@@ -238,12 +238,24 @@ wraps a real `@overeng/otel-contract` primitive (so encode/brand/decode-at-edge 
 otel-contract's own code), plus design-time metadata for weaver:
 
 ```ts
-const RestateService = attr.string({ key: 'restate.service', cardinality: 'bounded',
-  brief, stability, examples })               // .schema IS OtelAttr.string(...)
+const RestateService = attr.string({
+  key: 'restate.service',
+  cardinality: 'bounded',
+  brief,
+  stability,
+  examples,
+}) // .schema IS OtelAttr.string(...)
 
-const RestateAttempt = span({ id: 'span.restate.attempt', kind, brief, stability,
-  attributes: { service: required(RestateService),
-                objectKey: conditionally({ attr: RestateObjectKey, text: '…' }) } })
+const RestateAttempt = span({
+  id: 'span.restate.attempt',
+  kind,
+  brief,
+  stability,
+  attributes: {
+    service: required(RestateService),
+    objectKey: conditionally({ attr: RestateObjectKey, text: '…' }),
+  },
+})
 // → RestateAttempt.encoder = OtelAttrs.defineSync(structOf(refs))   // runtime, unchanged
 // → RestateAttempt.signal() → weaver signal group                   // design-time projection
 ```
@@ -330,9 +342,12 @@ bindings that didn't change.
   retention-first ([.decisions/0004](./.decisions/0004-metric-label-migration.md)); attrs-only
   members (restate/cli/git/nix) reach the catalog via `docOnlyAttributes` for their dynamic-name
   bridge spans. Ongoing repo-wide sweep completeness remains SC-DQ1's concern, not this one.
-- **SC-DQ4 Weaver version churn:** what is the update cadence / compatibility matrix
-  between pinned Weaver, pinned upstream semconv, and the emitted schema? Resolves by a
-  version-bump runbook + a smoke test in CI.
+- **SC-DQ4 Weaver version churn — RESOLVED:** the update cadence / compatibility matrix
+  between pinned Weaver, pinned upstream semconv, and the emitted schema is governed by the
+  [version-bump runbook](./version-bump-runbook.md) plus the `weaver:version-smoke` CI gate
+  (wired into `check:all`), which asserts the Weaver and semconv pins stay consistent across
+  `flake.nix` and `registry.ts`. weaver 0.24.2 `--future` is clean with semconv v1.37.0;
+  ≤v1.36 fail on their own unstructured-`deprecated`.
 - **SC-DQ6 Metric-label key projection — RESOLVED:** one namespaced key per concept on every
   signal (registry key dotted, metric wire renders underscore by default); existing metrics
   migrate retention-first, with a central collector OTTL bridge only for long-window metrics. See

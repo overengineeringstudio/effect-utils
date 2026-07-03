@@ -10,7 +10,7 @@
 #   - `nix/weaver-flake/flake.nix`      : `version` (Weaver) + `semconvVersion` (upstream OTel)
 #   - `genie/weaver-registry/registry.ts`: PINNED_WEAVER_VERSION + PINNED_UPSTREAM_SEMCONV_VERSION
 # (the registry pins feed the GEN-R07 provenance fingerprint, so they MUST track the flake).
-# Companion runbook: packages/@overeng/genie/docs/generators/01-semantic-conventions/version-bump-runbook.md
+# Companion runbook: packages/@overeng/genie/docs/generators/01-otel-semconv/version-bump-runbook.md
 #
 # Block-vs-degrade (intentional DIVERGENCE from weaver:check / GEN-R09):
 #   weaver:check degrades on a weaver-flake BUILD failure (it gates registry CONTENT, so a broken

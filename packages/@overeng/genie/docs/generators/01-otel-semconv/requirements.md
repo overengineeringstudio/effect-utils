@@ -1,6 +1,7 @@
 # Semantic Conventions — Requirements
 
-**Role:** This is the first genie **[generator](../requirements.md)**: it authors
+**Role:** This is the first genie **[generator](../requirements.md)** — the OTel
+semantic-conventions (**otel-semconv**) generator: it authors
 OpenTelemetry **semantic-convention registries** in TypeScript and projects them to
 [OTel Weaver](https://github.com/open-telemetry/weaver) v1 `groups:` YAML plus
 multi-language bindings (TS/Rust/Effect), with Weaver as an additive validation/codegen
@@ -38,14 +39,13 @@ role here rather than a separate vision.
   (`resolve` is already deprecated — prefer `generate`/`package`).
 - **SC-A02 otel-contract is the runtime seam:** all first-party spans/metrics/attributes
   are authored through `@overeng/otel-contract`, enforced by `no-raw-otel-primitives`.
-- **SC-A03 Upstream semconv is a pinned dependency (hermetic is the target, pending a spike):**
+- **SC-A03 Upstream semconv is a pinned FOD dependency (hermetic offline resolution):**
   first-party registries compose ON TOP of the upstream OTel semantic-conventions registry
   (`registry_path: …@vX.Y.Z[model]`), pinned to a version compatible with the pinned Weaver.
-  The _target_ is a Nix-FOD-materialized local copy so the gate is offline/deterministic — but
-  the prototype used unpinned `main` with a live fetch, and whether Weaver `registry check`
-  accepts a local-filesystem `registry_path` is unconfirmed (impl step-1 spike). Until
-  confirmed, the fallback is a pinned tag + a warmed cache (network on cold only). Do not treat
-  "offline/deterministic" as established before the spike. See
+  Upstream semconv is a Nix-FOD-materialized local copy (`nix/weaver-flake/flake.nix`'s
+  `semconv-model`, v1.37.0); the manifest's `registry_path` is rewritten to that local path so
+  the gate resolves offline and deterministically with no network fetch. Weaver 0.24.2 accepts
+  a local-filesystem `registry_path`. See
   [.decisions/0007](./.decisions/0007-rust-target-and-first-consumer.md).
 - **SC-A04 Composition is megarepo-wide:** registry fragments are contributed by
   multiple members (this public repo plus private downstream consumers) and aggregated into
@@ -132,13 +132,13 @@ role here rather than a separate vision.
   primitives (`OtelAttr`/`OtelAttrs`), so the runtime encode/brand/decode-at-edge machinery
   is otel-contract's own code, reused verbatim — a strict superset. Product APIs
   (`OtelOperation`/`OtelMetric`, span.label enforcement, trusted-vs-validated increment)
-  are re-pointed at catalog entries but keep their internals. The prototype validated the
-  _attribute-encode_ path (`deepStrictEqual` vs hand-written `OtelAttrs.defineSync`) — but not
-  yet the full product-span surface (`span()` bypassed `OtelSpan.define`/span.label). Before
-  any migration removes a legacy site, this MUST be raised to a **property-based** equivalence
-  (Schema arbitraries over optional/enum/template branches) through the real
-  `OtelSpan`/`OtelOperation` product path — else the "no behavior lost" guarantee covers only
-  attribute maps. See [.experiments](./.experiments/2026-07-01-weaver-feasibility.md); fold
+  are re-pointed at catalog entries but keep their internals. Equivalence between a migrated
+  site and its legacy behavior MUST be established by **property-based** tests (Schema
+  arbitraries over optional/enum/template branches) through the real
+  `OtelSpan`/`OtelOperation` product path — not merely the attribute-encode path — so the "no
+  behavior lost" guarantee covers the full product-span surface (`span()`,
+  `OtelSpan.define`/span.label), not just attribute maps. See
+  [.experiments](./.experiments/2026-07-01-weaver-feasibility.md); fold
   depth is [.decisions/0002](./.decisions/0002-catalog-atop-otel-contract.md).
 - **SC-R15 One namespaced key per concept, catalog-governed:** each concept has exactly ONE
   catalog entry with ONE namespaced dotted key (`restate.service`), referenced across all

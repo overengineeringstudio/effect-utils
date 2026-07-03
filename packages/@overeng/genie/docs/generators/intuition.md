@@ -59,7 +59,7 @@ destination is derivation.
 
 ## Why "generators" is a family
 
-The first generator is [semantic conventions](./01-semantic-conventions/intuition.md)
+The first generator is [semantic conventions](./01-otel-semconv/intuition.md)
 (telemetry contracts via Weaver). But the shape recurs: a typed source, a resolved model,
 multi-language bindings, provenance, composition across members, a validation gate. Rather
 than each generator reinventing that, the family captures it once (here) and each generator
