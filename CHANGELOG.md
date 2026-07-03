@@ -52,6 +52,10 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **@overeng/megarepo tests**: Disable Git auto-maintenance in the hermetic
+  test gitconfig so detached `git maintenance run --auto` processes cannot race
+  scoped temp-directory cleanup on macOS CI.
+
 - **genie semantic-conventions registry — genie-idiomatic emit + relocation / @overeng/genie**:
   Reworked the first-party registry to a builder-per-target API and moved it under `genie/`.
   - New dep-free `weaver*` builder family in `@overeng/genie` `src/runtime/weaver`

@@ -4,12 +4,13 @@
  * Imported as a vitest `setupFiles` entry so it runs before any test spawns a
  * git subprocess or builds the CLI runtime.
  *
- * Git: the suite inherits the host/CI git config without this, causing two
- * CI-only failures — no global committer identity (so `git commit` inside store
- * worktrees silently no-ops, e.g. `unpushedCommitCount` reads 0) and a `master`
- * `init.defaultBranch` while fixtures assume `main`. We write a private gitconfig
- * and point git at it via `GIT_CONFIG_GLOBAL`, pin `GIT_CONFIG_SYSTEM` to
- * `/dev/null`, and export the author/committer identity directly.
+ * Git: the suite inherits the host/CI git config without this, causing CI-only
+ * failures — no global committer identity (so `git commit` inside store
+ * worktrees silently no-ops, e.g. `unpushedCommitCount` reads 0), a `master`
+ * `init.defaultBranch` while fixtures assume `main`, and detached auto
+ * maintenance racing scoped temp-directory cleanup on macOS. We write a private
+ * gitconfig and point git at it via `GIT_CONFIG_GLOBAL`, pin `GIT_CONFIG_SYSTEM`
+ * to `/dev/null`, and export the author/committer identity directly.
  *
  * OTLP needs no handling here: the bulk tests run `mrCommand` WITHOUT providing
  * `makeOtelCliLayer`, so no exporter is ever built and no `OtelConfig` is in
@@ -35,7 +36,25 @@ const configPath = join(configDir, 'gitconfig')
 
 writeFileSync(
   configPath,
-  `[init]\n\tdefaultBranch = main\n[user]\n\temail = ${identity.email}\n\tname = ${identity.name}\n`,
+  [
+    '[init]',
+    '\tdefaultBranch = main',
+    '[user]',
+    `\temail = ${identity.email}`,
+    `\tname = ${identity.name}`,
+    // Tests create and delete short-lived repositories aggressively. Git's
+    // detached auto-maintenance can keep writing under `.git/objects/pack`
+    // after the parent command exits, which races Effect scoped temp cleanup.
+    '[maintenance]',
+    '\tauto = false',
+    '\tautoDetach = false',
+    '[gc]',
+    '\tauto = 0',
+    '\tautoDetach = false',
+    '[receive]',
+    '\tautogc = false',
+    '',
+  ].join('\n'),
 )
 
 process.env.GIT_CONFIG_GLOBAL = configPath
