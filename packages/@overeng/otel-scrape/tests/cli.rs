@@ -3289,3 +3289,45 @@ fn trace_url_template_never_enters_sinks() {
     // But it IS on the operator's terminal (stderr), which is not a sink.
     assert!(String::from_utf8_lossy(&out.stderr).contains(SENTINEL_HOST));
 }
+
+#[test]
+fn export_disabled_by_env_with_endpoint_surfaces_nothing() {
+    // Endpoint configured but export disabled by env (OTEL_SDK_DISABLED) and NO
+    // summary: no export is attempted and no local sink exists, so R04 keeps the
+    // run silent even though `otlp_export_enabled`-style config is present.
+    let out = otel_scrape()
+        .env("OTEL_SDK_DISABLED", "true")
+        .args(["--otlp-endpoint", "http://127.0.0.1:1"])
+        .args(["--trace-url-template", TRACE_URL_TEMPLATE])
+        .args(["--", "sh", "-c", "true"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    assert_eq!(
+        trace_surface_line(&String::from_utf8_lossy(&out.stderr)),
+        None
+    );
+}
+
+#[test]
+fn exported_without_template_surfaces_bare_id() {
+    // Export succeeds (2xx) but no template is configured: the URL tier needs a
+    // template, so the run degrades to the bare-id tier.
+    let collector = TestCollector::start(200);
+
+    let out = otel_scrape()
+        .args(["--otlp-endpoint", &collector.endpoint])
+        .args(["--", "sh", "-c", "true"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let _ = collector.request();
+
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    let line = trace_surface_line(&stderr).expect("expected a bare trace line");
+    assert!(!line.contains("://"), "no URL without a template");
+    assert!(
+        line.starts_with("otel-scrape: trace:"),
+        "bare trace line shape"
+    );
+}

@@ -41,7 +41,7 @@ surface the trace identity to stderr (terminal-only), backend-agnostically.
 
 3. **Two-tier surfacing (open question resolved B).** A **resolvable URL** is
    printed only under the acknowledged-export gate above; otherwise, when
-   telemetry is active (summary written or export attempted), the **bare trace
+   telemetry is active (summary configured or export attempted), the **bare trace
    id** is printed so it is always on hand for local correlation (the summary
    records `trace.trace_id`, so it greps `summary.json`, an otelite capture, or a
    manual backend search). The alternative — always print a URL — was rejected
@@ -68,7 +68,13 @@ surface the trace identity to stderr (terminal-only), backend-agnostically.
 6. **On/off, no override past the R04 gate.** `--trace-link on|off` (also
    `true|false`) / `OTEL_SCRAPE_TRACE_LINK`, default on; `off` suppresses all
    surfacing even when the gate passes (for strict stderr consumers). There is no
-   on-override: pure passthrough always stays silent (R04).
+   on-override: pure passthrough always stays silent (R04). Invalid values are
+   explicit-strict / ambient-lenient: a bad `--trace-link` value is a usage error
+   like every sibling flag (a malformed explicit invocation should fail fast, not
+   silently mis-surface), while a bad env value warns and keeps the default
+   (matching `env_bool`). Aborting on a malformed *flag* is arg validation, not an
+   R03/R04 runtime-transparency concern, and is consistent with the whole tool's
+   flag philosophy.
 
 7. **Format** mirrors the fleet `otel-trace` convention. TTY detection selects the
    **encoding only** (OSC 8 hyperlink vs plain text), never whether to emit —

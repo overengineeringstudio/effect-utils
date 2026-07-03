@@ -1155,8 +1155,10 @@ fn surface_root_trace(config: &RunConfig, trace: &TraceContext, export_succeeded
 /// surface a misleading or malformed line (decision 0020).
 fn render_trace_url(template: &str, trace_id: &str) -> Option<String> {
     if !template.contains(TRACE_ID_PLACEHOLDER) {
+        // The template may come from the flag or the env var, so the message
+        // names neither source.
         eprintln!(
-            "otel-scrape: warning: ignoring {TRACE_URL_TEMPLATE_ENV} without a {TRACE_ID_PLACEHOLDER} placeholder"
+            "otel-scrape: warning: ignoring trace url template without a {TRACE_ID_PLACEHOLDER} placeholder"
         );
         return None;
     }
@@ -4077,6 +4079,64 @@ pub fn usage_exit_code() -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const TID: &str = "0449d244cd6bfd2e83fa9b846008bc52";
+
+    #[test]
+    fn render_trace_url_substitutes_all_placeholders() {
+        assert_eq!(
+            render_trace_url("https://g/{traceId}", TID).as_deref(),
+            Some("https://g/0449d244cd6bfd2e83fa9b846008bc52")
+        );
+        // replace-all: a template may reference the id more than once.
+        assert_eq!(
+            render_trace_url("https://g/{traceId}?t={traceId}", TID).as_deref(),
+            Some("https://g/0449d244cd6bfd2e83fa9b846008bc52?t=0449d244cd6bfd2e83fa9b846008bc52")
+        );
+    }
+
+    #[test]
+    fn render_trace_url_rejects_missing_placeholder() {
+        // A static URL that does not point at this trace would mislead.
+        assert_eq!(render_trace_url("https://g/no-placeholder", TID), None);
+    }
+
+    #[test]
+    fn render_trace_url_rejects_control_characters() {
+        // A newline or terminal escape would break the single agent-parseable
+        // line / inject a second stderr line (decision 0020).
+        assert_eq!(render_trace_url("https://g/{traceId}\nX", TID), None);
+        assert_eq!(
+            render_trace_url("https://g/{traceId}\x1b]8;;evil\x07", TID),
+            None
+        );
+    }
+
+    #[test]
+    fn format_trace_line_encoding_depends_on_tty_not_emission() {
+        let bare = format_trace_line(TID, None, false);
+        assert_eq!(bare, format!("otel-scrape: trace:{TID}"));
+        // Piped: plain text, no OSC 8 escape, so agents can parse it.
+        let piped = format_trace_line(TID, Some("https://g/x"), false);
+        assert_eq!(piped, format!("otel-scrape: trace:{TID}  https://g/x"));
+        assert!(!piped.contains('\x1b'));
+        // TTY: same content, OSC 8 hyperlink encoding with the trace label.
+        let tty = format_trace_line(TID, Some("https://g/x"), true);
+        assert!(tty.contains("\x1b]8;;https://g/x\x07"));
+        assert!(tty.contains(&format!("trace:{TID}")));
+    }
+
+    #[test]
+    fn parse_trace_link_toggle_accepts_both_spellings() {
+        for on in ["on", "ON", "true", "True"] {
+            assert_eq!(parse_trace_link_toggle(on), Some(true));
+        }
+        for off in ["off", "OFF", "false", "FALSE"] {
+            assert_eq!(parse_trace_link_toggle(off), Some(false));
+        }
+        assert_eq!(parse_trace_link_toggle("yes"), None);
+        assert_eq!(parse_trace_link_toggle(""), None);
+    }
 
     // Build-id correlation (H5, decision 0019): the pure precedence resolver is
     // exercised branch-by-branch so it is independent of the process environment

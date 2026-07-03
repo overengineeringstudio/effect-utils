@@ -484,9 +484,12 @@ when the trace is wanted).
   sampler dropped. The 2xx gate exists so the wrapper does not print a URL for a
   trace the collector outright rejected or never received; it is not a
   backend-ingestion guarantee.
-- **Bare trace id** — printed when telemetry is active (summary written or export
-  attempted) but no resolvable URL exists: summary-only, no template, export
-  disabled, or export failed. The id is still actionable for local correlation —
+- **Bare trace id** — printed when telemetry is active (a summary is configured
+  or an export is attempted) but no resolvable URL exists: summary-only, no
+  template, export disabled, or export failed. Activeness keys on the summary
+  being *configured*, not on the write succeeding, so a bare id (never a URL) is
+  still surfaced if the summary write itself fails — the trace id is real
+  regardless. The id is actionable for local correlation —
   the summary records it (`trace.trace_id`), so it greps `summary.json`, an
   otelite capture, or a manual backend search. Export failures also keep their
   existing degraded-evidence warning.
@@ -525,9 +528,14 @@ placeholder and substitutes (replace-all) the lowercase-hex trace id (URL-safe):
 
 **On/off.** `--trace-link on|off` / `OTEL_SCRAPE_TRACE_LINK` (default `on`; flag
 wins). Both `on|off` and the repo's OTel boolean spelling `true|false` are
-accepted so the switch reads naturally either way. `off`/`false` suppresses all
-surfacing even when the gate passes. There is no on-override past the R04 gate.
-Unknown values are warned about and keep the default.
+accepted (case-insensitive) so the switch reads naturally either way.
+`off`/`false` suppresses all surfacing even when the gate passes. There is no
+on-override past the R04 gate. Invalid values follow the tool's
+explicit-strict / ambient-lenient split: a bad `--trace-link` value is a usage
+error like every other flag (a malformed explicit invocation fails fast and
+visibly), while a bad `OTEL_SCRAPE_TRACE_LINK` env value is warned about and the
+default is kept — ambient env is parsed leniently, matching the other OTel
+boolean env vars (`env_bool`).
 
 **Format** mirrors the fleet `otel-trace` convention, with an `otel-scrape:`
 prefix for attribution on shared stderr. TTY detection on stderr selects the
