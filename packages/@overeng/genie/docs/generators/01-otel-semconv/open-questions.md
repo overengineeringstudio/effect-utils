@@ -2,17 +2,11 @@
 
 Unresolved design questions. Each links a spec `DQ`. Questions leave this file when
 resolved — into the spec as decisions (marked `RESOLVED` in [spec.md](./spec.md) §Design
-Questions) or into `.experiments/` as tested hypotheses. SC-DQ1, SC-DQ2, SC-DQ4, SC-DQ5, and
-SC-DQ6 have exited (all resolved; see the spec's Design Questions, `.decisions/0002`–`0005`,
-and the [version-bump runbook](./version-bump-runbook.md)).
-
-## SC-DQ3 — Where does privacy / metric-label enforcement live?
-
-**Question:** Beyond identity, should a gate reject high/unbounded/secret attributes used as
-metric labels (a metric-label / privacy policy)? Is that mechanism (this subsystem) or
-policy (a consumer's own semantic contract)?
-
-**Resolves when:** reconciled with the consumer's contract owner.
+Questions) or into `.experiments/` as tested hypotheses. All SC-DQ1–SC-DQ6 have exited (all
+resolved; see the spec's Design Questions, `.decisions/0002`–`0008`, the
+[version-bump runbook](./version-bump-runbook.md), and
+[.experiments/2026-07-03-metric-label-enforcement.md](./.experiments/2026-07-03-metric-label-enforcement.md)).
+Only the non-VRS downstream follow-up remains.
 
 ## Non-VRS follow-up — amend the earlier downstream design note
 

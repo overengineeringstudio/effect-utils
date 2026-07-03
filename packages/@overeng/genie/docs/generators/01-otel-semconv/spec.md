@@ -329,10 +329,17 @@ bindings that didn't change.
   the runtime encoder from catalog references (not codegen'd files); and the legacy inline
   `OtelAttr.string({key})` form is kept as a private building block behind the `attr.*` catalog
   factory, not retired.
-- **SC-DQ3 Metric-label / privacy enforcement:** beyond derivation, should a gate reject
-  high/unbounded/secret attributes used as metric labels (a metric-label / privacy policy)?
-  Where does that live — this subsystem (mechanism) vs a consumer's own semantic contract
-  (policy)? Resolves with the consumer's contract owner.
+- **SC-DQ3 Metric-label / privacy enforcement — RESOLVED:** the mechanism enforces the HARD
+  invariants and the consumer's contract owns the richer policy
+  ([.decisions/0008](./.decisions/0008-metric-label-privacy-enforcement.md); evidence in
+  [.experiments/2026-07-03-metric-label-enforcement.md](./.experiments/2026-07-03-metric-label-enforcement.md)).
+  `@overeng/otel-contract`'s author-time `assertMetricLabels` rejects high-cardinality and
+  `drop` labels — an active-series (RAM) invariant aligned with the fleet's bounded-only
+  metric-label contract (ids/versions/paths stay trace/log attributes). No `redacted`-label
+  rule is added: `redacted` encodes to the constant mask `'<redacted>'`, so a redacted label
+  emits no secret and is low-cardinality — the leak such a rule would guard is void. Finer
+  policy (which bounded attrs are labels per metric, privacy classes) stays the downstream
+  consumer's semantic contract.
 - **SC-DQ5 Bootstrap & authority flip — RESOLVED:** the staged per-namespace live migration
   from the ~240 pre-existing otel-contract sites is past its resolving bar — the registry was
   seeded from existing `OtelAttrs.define` schemas, the conformance gate stages warn→block per
