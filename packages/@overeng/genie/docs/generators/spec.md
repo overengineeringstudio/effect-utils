@@ -5,8 +5,8 @@ This document specifies the shared genie **generator** mechanism. It builds on
 
 ## Status
 
-Draft. The mechanism is validated by the semantic-conventions generator prototype (see
-[01-semantic-conventions/](./01-semantic-conventions/spec.md)).
+Active. The mechanism is realized by the first generator, semantic-conventions — implemented
+and landed (see [01-semantic-conventions/](./01-semantic-conventions/spec.md)).
 
 ## Scope
 

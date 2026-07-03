@@ -5,12 +5,14 @@ builds on [requirements.md](./requirements.md).
 
 ## Status
 
-Draft. Design derisked by end-to-end prototypes against the real Weaver binary — the
-pinned from-source flake `nix/weaver-flake/` (**v0.24.2**, the version of record) and
-also `nixpkgs#weaver` 0.23.0 (both exercised; 0.24.2 additionally requires `stability` on
-every enum member — see [.experiments/2026-07-02-e2e-slice.md](./.experiments/2026-07-02-e2e-slice.md)).
-Not yet implemented. Feasibility evidence:
-[.experiments/2026-07-01-weaver-feasibility.md](./.experiments/2026-07-01-weaver-feasibility.md).
+Active — implemented and landed. The registry (`genie/weaver-registry/`), the Layer-2
+`weaver` builder family, the composition aggregator, and the Weaver gate are in the tree;
+~14 first-party namespaces are migrated onto the derived catalog. Weaver is pinned via the
+from-source flake `nix/weaver-flake/` (**v0.24.2**, the version of record; behaviour was also
+exercised on `nixpkgs#weaver` 0.23.0 — 0.24.2 additionally requires `stability` on every enum
+member). Non-normative validation evidence is in
+[.experiments/](./.experiments/2026-07-01-weaver-feasibility.md) (dated feasibility + e2e
+slices, kept as the historical trail).
 
 ## Scope
 
@@ -43,7 +45,8 @@ Full SSOT chain, layering (Layer-2 home), and composition hierarchy:
 
 Layers, each depending only downward: **L2** `@overeng/otel-contract` `.` (runtime authoring
 SSOT) + `./registry` (design-time projector); **L1** `@overeng/genie` `src/runtime/weaver`
-(dep-free render); composed by per-package `weaver.genie.ts` + root `registry.genie.ts`. The
+(dep-free render); composed by per-package `*.contract.ts` seam files + the root aggregator
+`genie/weaver-registry/registry.ts` (which the sibling `*.genie.ts` emitters import). The
 runtime seam is _derived_, not separately authored (SC-R13/R14); upstream OTel semconv is a
 manifest `dependency` first-party signals `ref` (SC-R06). Weaver's Jinja codegen is available
 but non-load-bearing (SC-T01) — genie L1 renders bindings directly.
@@ -60,8 +63,7 @@ effect-free (genie's dep-free runtime), so it uses plain typed data (below), not
   convention otel-contract already uses), alongside the otel + weaver metadata annotations.
 - **Author-time validation raises `Schema.TaggedError`s with context** — not plain `throw`:
   stray-namespace-key, dangling-ref, duplicate-namespace, missing-annotation, unmarked-foreign
-  ref each get a tagged error; genuinely-impossible states use `Effect.die` (defects). (The
-  e2e prototype used plain `throw`; the real impl uses tagged errors.)
+  ref each get a tagged error; genuinely-impossible states use `Effect.die` (defects).
 - **Type extraction** via `typeof X.Type`; decode any untrusted input through the Schema.
 
 ## Registry data model — Layer 1 (SC-R01, SC-R02, SC-R03)
@@ -110,7 +112,7 @@ type AttrRef = {
 }
 ```
 
-**Weaver-vocabulary fidelity (derisked; see [.decisions/0001](./.decisions/0001-ts-first-weaver-additive.md)):**
+**Weaver-vocabulary fidelity (see [.decisions/0001](./.decisions/0001-ts-first-weaver-additive.md)):**
 
 | Concept                   | Weaver 0.23 shape                                       | Note                                                          |
 | ------------------------- | ------------------------------------------------------- | ------------------------------------------------------------- |
@@ -132,44 +134,55 @@ the same way, without forking Weaver's schema.
 
 ## Genie builder & emit (SC-R05)
 
-Each member returns a `GenieOutput` whose `meta.registry` carries the fragment:
+Emit is a Layer-2 `weaver` builder family over one composed bundle. The design-time
+aggregator (`genie/weaver-registry/registry.ts`) imports every member seam, projects each to
+a Layer-1 fragment, composes them via `@overeng/genie` `./composition` into a
+`WeaverRegistryBundle` (the resolved `Registry`, the three split provenance fingerprints, and
+the whole-registry integrity issues), and exports it as `weaver`. Each output `.genie.ts` is a
+one-liner over that bundle:
 
 ```ts
-export const registryFragment = (
-  f: RegistryFragment,
-): GenieOutput<RegistryFragment, { registry: RegistryFragment }> => {
-  assertFragmentWellFormed(f) // per-member author-time (partial)
-  return createGenieOutput({ data: f, stringify: renderMemberSlice(f), meta: { registry: f } })
-}
+// manifest.yaml.genie.ts   — also surfaces namespace-collision / dangling-ref issues via validate
+export default weaverManifest(weaver)
+// attributes.yaml.genie.ts — ALL namespaces' DEFINE-once catalogs collapsed into ONE file
+export default weaverAttributes(weaver)
+// signals.yaml.genie.ts
+export default weaverSignals(weaver)
+// constants.ts.genie.ts / constants.rs.genie.ts
+export default weaverTsConstants(weaver) // and weaverRustConstants(weaver)
 ```
 
-**Emit MUST serialize structured objects through a real YAML encoder**, not hand-built
-indented strings — the prototype hit three nesting bugs (enum, requirement_level,
-deprecated) from string concatenation. Follow the `github-workflow` builder's
-structured-YAML pattern. Output paths mirror the OTel semconv model layout:
-`<registry-dir>/manifest.yaml`, `<ns>.attributes.yaml` per namespace, `signals.yaml`.
+The family — `weaverManifest` / `weaverAttributes` / `weaverSignals` / `weaverTsConstants` /
+`weaverRustConstants` — lives in `@overeng/genie` `src/runtime/weaver`. Each emitter serializes
+structured objects through a real YAML encoder (sorted keys, structural serialization — never
+hand-built indented strings), following the `github-workflow` builder's structured-YAML
+pattern. Output layout under `genie/weaver-registry/`: `manifest.yaml`, a **single collapsed
+`attributes.yaml`** (Weaver accepts multiple `attribute_group` entries per file, so every
+namespace's catalog lives in one file — adding a namespace needs NO new `.genie.ts`),
+`signals.yaml`, `constants.ts`, `constants.rs`.
 
 ## Composition (SC-R07, SC-R08, SC-R09)
 
 Mirrors `package.json.aggregateFromPackages` / `workspace-graph.ts`:
 
 ```ts
-// root registry.genie.ts
-import memberA from '<pkgA>/otel.genie.ts'
-import memberB from '<pkgB>/otel.genie.ts'
-const members = [memberA, memberB] as const // direct-import object graph
-export default registryFromMembers({ members, name: 'acme', repoName: 'effect-utils' })
+// root genie/weaver-registry/registry.ts
+import restateContract from '<pkg>/restate.contract.ts'
+import notionMdContract from '<pkg>/notion-md.contract.ts'
+const members = [restateContract, notionMdContract /* … */] as const // direct-import seam graph
+export const weaver = registryFromMembers({ members, name: 'acme-effect-utils' /* + provenance */ })
 ```
 
-`registryFromMembers` is a `@overeng/genie/composition`-style, filesystem-free projector
-over `member.meta.registry`:
+Each member seam is a `defineOtelContract({ signals, docOnlyAttributes? })`;
+`registryFromMembers` projects each to a fragment (via otel-contract's `./registry`) and is a
+`@overeng/genie/composition`-style, filesystem-free projector:
 
 1. collect fragments, sort by namespace (deterministic).
 2. **namespace uniqueness** — reject two members claiming `registry.<ns>` (SC-R09).
-3. **global ref integrity** — every signal `ref` must resolve to a defined attribute
-   across ALL fragments (incl. upstream-declared, once dependency resolution is wired);
-   dangling refs fail (SC-R09). Verified: catches a cross-member dangling ref that the
-   per-member check cannot.
+3. **global ref integrity** — every first-party signal `ref` must resolve to a defined
+   attribute across ALL fragments; dangling refs fail (SC-R09). This catches a cross-member
+   dangling ref the per-member check cannot. Upstream (`http.*`) refs resolve later, at
+   `weaver registry check`, against the pinned semconv FOD (SC-A03).
 4. emit the registry dir deterministically.
 
 Public members declare generic namespaces; a private downstream consumer declares its own
@@ -183,30 +196,33 @@ the public fragments), following the megarepo alignment propagation order.
    assertFragmentWellFormed                    string-needs-examples. CANNOT check
                                                cross-member refs.
 2. aggregation             (whole-registry)   ref integrity, namespace uniqueness.
-   registryFromMembers                         Proven to catch dangling cross-member refs.
+   registryFromMembers                         Catches dangling cross-member refs.
 3. weaver                  (AUTHORITATIVE)     schema, Rego policy, diff compat,
    check/diff/live-check                        live-check. Non-load-bearing gate.
 ```
 
 ## Weaver gate wiring (SC-R10, SC-R11, SC-R12)
 
-- **check (SC-R10):** devenv task `weaver:check` → `weaver registry check -r <dir> --future`;
-  wired into `check:all` and CI. Weaver is pinned via the from-source flake
-  `nix/weaver-flake/` (v0.24.2), NOT `nixpkgs#weaver`; the upstream semconv is pinned to a
-  Weaver-compatible `@vX.Y.Z[model]` tag (v1.37.0 verified clean with 0.23/0.24; ≤v1.36 fail
-  `--future` on their own unstructured-deprecated). **Block-vs-degrade contract:** a weaver
-  _validation_ failure (check/diff/live-check exits nonzero) blocks; weaver _unavailability_
-  (flake build/eval failure, binary missing) degrades to a warning in a separate lane and must
-  NOT wedge unrelated work (GEN-R09) — lane-separate the flake build from the main check.
-- **First-PR acceptance:** the gate runs against the _actually emitted_ registry (not a
-  separate fixture) and exercises each fidelity delta with a dedicated attribute
+- **check (SC-R10):** devenv task `weaver:check` → `weaver registry check -r <dir> --future`,
+  wired into `check:all` and CI. Weaver is pinned via the from-source flake `nix/weaver-flake/`
+  (v0.24.2), NOT `nixpkgs#weaver`; the upstream semconv is pinned to a Weaver-compatible
+  `@vX.Y.Z[model]` tag (v1.37.0 clean under `--future` with 0.23/0.24; ≤v1.36 fail on their own
+  unstructured-deprecated). The gate resolves the upstream dependency **hermetically** against a
+  local Nix FOD (`nix/weaver-flake#semconv-model`): it copies the emitted YAML to a scratch dir
+  and rewrites the committed portable git-URL `registry_path` to the local FOD path, so check is
+  offline/deterministic (SC-A03). **Block-vs-degrade contract:** a weaver _validation_ failure
+  (check/diff/live-check exits nonzero) blocks; weaver _unavailability_ (flake build/eval
+  failure, binary missing) degrades to a warning in a separate lane and must NOT wedge unrelated
+  work (GEN-R09) — the flake build is lane-separated from the validation.
+- **Fidelity coverage:** the gate runs against the _actually emitted_ registry (not a separate
+  fixture) and exercises each fidelity delta with a dedicated attribute
   (`deprecated:{reason:renamed}`, a multi-member enum with per-member `stability`, a
-  `template[...]`, a conditionally-required ref), so the pinned Weaver version is proven
-  against the real emitted shape.
-- **diff (SC-R11):** on PRs, `weaver registry diff --baseline-registry <merge-base
-registry>` + shipped schema-evolution policies. (Prototype confirmed weaver detects a
-  removed-but-referenced attr via unresolved-ref; the evolution-policy path — "removal =
-  compat violation" — is a capability to wire, not yet exercised.)
+  `template[...]`, a conditionally-required ref), so the pinned Weaver version is checked against
+  the real emitted shape.
+- **diff (SC-R11):** on PRs, `weaver registry diff --baseline-registry <merge-base registry>`
+  plus shipped schema-evolution policies gate telemetry evolution — weaver detects a
+  removed-but-referenced attribute via unresolved-ref, and the evolution policy treats a removal
+  as a compatibility violation.
 - **live-check (SC-R12):** in e2e tests, capture emitted OTLP and feed `weaver registry
 live-check --input-source <file|otlp>`; validates types/units/enum/required/coverage
   against the registry. Any OTLP exporter (incl. the test-capture harness) suffices. In the
@@ -222,20 +238,25 @@ wraps a real `@overeng/otel-contract` primitive (so encode/brand/decode-at-edge 
 otel-contract's own code), plus design-time metadata for weaver:
 
 ```ts
-RestateService = catalogString({ key: 'restate.service', cardinality: 'bounded',
+const RestateService = attr.string({ key: 'restate.service', cardinality: 'bounded',
   brief, stability, examples })               // .schema IS OtelAttr.string(...)
 
-RestateAttempt = registrySpan('span.restate.attempt', {
-  service: required(RestateService), objectKey: optional(conditionally(RestateObjectKey, ...)) })
-// → RestateAttempt.encoder  = OtelAttrs.defineSync(Schema.Struct(refs))   // runtime, unchanged
-// → RestateAttempt.weaverGroup()                                          // weaver signal group
+const RestateAttempt = span({ id: 'span.restate.attempt', kind, brief, stability,
+  attributes: { service: required(RestateService),
+                objectKey: conditionally({ attr: RestateObjectKey, text: '…' }) } })
+// → RestateAttempt.encoder = OtelAttrs.defineSync(structOf(refs))   // runtime, unchanged
+// → RestateAttempt.signal() → weaver signal group                   // design-time projection
 ```
 
-Proven against the real restate contract: one declaration yields the identical runtime
-encode output AND the weaver group, with validation intact (see
+The `restate.*` migration proves this: the derived product surface (`.encodeSync` over the
+boundary attribute bundles and the dynamic-name `restateOperation` span) produces byte-identical
+attribute maps to an independent, hand-authored `OtelAttrs.defineSync` / `OtelOperation.define`
+baseline, over `Schema` arbitraries exercising the optional-present / optional-absent branches and
+the derived span label — a **property-based** equivalence through the real `OtelOperation` product
+path (`*.observability.equivalence.unit.test.ts`; feasibility trail in
 [.experiments](./.experiments/2026-07-01-weaver-feasibility.md)). Product APIs
-(`OtelOperation`/`OtelMetric`/span.label/trusted-increment) are re-pointed at catalog
-entries but keep otel-contract internals.
+(`OtelOperation`/`OtelMetric`/span.label/trusted-increment) are re-pointed at catalog entries but
+keep otel-contract internals.
 
 **Migration bridge (transitional, not the end state).** While legacy inline
 `OtelAttr.string({key})` sites still exist, a conformance check runs as a bridge:
@@ -247,9 +268,11 @@ for each legacy runtime attr (key, cardinality?, encode?):
 ```
 
 This bridge is removed per namespace as sites migrate to catalog references (SC-DQ5). Its
-completeness precondition is closed by the registered-seam + lint of
-[.decisions/0005](./.decisions/0005-contract-registration-convention.md): contracts are
-discoverable by construction, so the sweep cannot silently miss a site.
+completeness precondition is closed by the registered seam of
+[.decisions/0005](./.decisions/0005-contract-registration-convention.md): the load-bearing
+**no-orphan-seam aggregator check** (globs every `*.contract.ts` and asserts each is imported by
+the root aggregator) plus the seam-file lint make contracts discoverable by construction, so the
+sweep cannot silently miss a site.
 
 ## Generated-file contract (GEN-R07)
 
@@ -259,11 +282,12 @@ sha256:<…>` over ALL semantic inputs — the registry source, the generator, t
 Weaver version**, and the **pinned upstream semconv version** (all change the output). Any
 `last generated` timestamp is fingerprint-guarded (no timestamp-only churn). Outputs are
 read-only (genie's existing chmod); `genie:check` (same locally + CI) regenerates + diffs;
-Nix eval reads only tracked, freshness-gated files (the pinned upstream is intended to be a
-FOD input — see SC-A03's pending spike). **Fingerprint granularity:** split the fingerprint so
-a doc-only annotation edit (`brief`/`stability`/`examples`) re-hashes only the doc-carrying
-outputs, not the name/Rust-const targets that encode no doc content — otherwise a prose edit
-churns bindings that didn't change.
+Nix eval reads only tracked, freshness-gated files, and the pinned upstream is a FOD input
+(`nix/weaver-flake#semconv-model`) the gate resolves hermetically (SC-A03). **Fingerprint
+granularity:** the fingerprint is split three ways (doc / identity / rust provenance) so a
+doc-only annotation edit (`brief`/`stability`/`examples`) re-hashes only the doc-carrying
+outputs, not the name/Rust-const targets that encode no doc content — a prose edit does not churn
+bindings that didn't change.
 
 ## Remaining mechanism choices (settled)
 
@@ -271,7 +295,7 @@ churns bindings that didn't change.
   `REGISTRY_INPUT_FINGERPRINT`; hash is of the semantic inputs (above), not the emitted bytes
   (genie's read-only + byte-compare already catches hand edits).
 - **`span.label` / operation label path:** the derived encoder uses the direct
-  `OtelAttrs.defineSync` path (validated e2e); `span.label` stays runtime-only and is filtered
+  `OtelAttrs.defineSync` path; `span.label` stays runtime-only and is filtered
   from the registry projection (SC-T03) — `OtelSpan.define` is not used for derivation since it
   mandates a non-namespaced `span.label` attribute.
 - **TS-constants scope:** own-namespace keys only; upstream-referenced keys
@@ -286,23 +310,26 @@ churns bindings that didn't change.
   aggregator check globs seam files and asserts each is imported — the part the lint
   structurally cannot provide). Completeness is structural. Staged warn → per-namespace ERROR
   → repo-wide. See [.decisions/0005](./.decisions/0005-contract-registration-convention.md).
-- **SC-DQ2 Fold depth (chosen direction; confirming):** the registry-derives-runtime
-  direction is the design intent (SC-R13). Proven no-runtime-loss via "catalog atop
+- **SC-DQ2 Fold depth — RESOLVED:** registry-derives-runtime (SC-R13), via "catalog atop
   otel-contract primitives" ([.decisions/0002](./.decisions/0002-catalog-atop-otel-contract.md)).
-  Open sub-question: do the product APIs (`OtelOperation`/`OtelMetric`) keep a thin
-  hand-authored surface that references the catalog, or are they themselves generated? And
-  is the legacy inline `OtelAttr.string({key})` form retired or kept as a private
-  building-block behind the catalog? Resolves as the migration progresses.
+  The migrations settle the two sub-questions: the product APIs keep a thin authoring surface —
+  the `span` / `metric` / `operation` builders in otel-contract's `./registry`, which DERIVE
+  the runtime encoder from catalog references (not codegen'd files); and the legacy inline
+  `OtelAttr.string({key})` form is kept as a private building block behind the `attr.*` catalog
+  factory, not retired.
 - **SC-DQ3 Metric-label / privacy enforcement:** beyond derivation, should a gate reject
   high/unbounded/secret attributes used as metric labels (a metric-label / privacy policy)?
   Where does that live — this subsystem (mechanism) vs a consumer's own semantic contract
   (policy)? Resolves with the consumer's contract owner.
-- **SC-DQ5 Bootstrap & authority flip:** the spec above describes the END state. Getting
-  there from today's ~240 otel-contract sites (no registry yet) is a live-migration-shaped
-  problem: seed the registry by extracting from existing `OtelAttrs.define` schemas, then
-  stage the conformance gate warn→block per namespace. Distinct from SC-DQ1 (ongoing
-  completeness). See [open-questions.md](./open-questions.md); run it as a staged live
-  migration (carry both, prove each site, then remove the bridge).
+- **SC-DQ5 Bootstrap & authority flip — RESOLVED:** the staged per-namespace live migration
+  from the ~240 pre-existing otel-contract sites is past its resolving bar — the registry was
+  seeded from existing `OtelAttrs.define` schemas, the conformance gate stages warn→block per
+  namespace, and ~14 first-party namespaces are migrated green (genie, notion_md, megarepo,
+  restate, notion, notion-react, notion_datasource, pw, cmd, pty, ci_tools, semaphore, cli, git,
+  nix). The paired metric-label + bare-key renames (megarepo, restate, notion_datasource) landed
+  retention-first ([.decisions/0004](./.decisions/0004-metric-label-migration.md)); attrs-only
+  members (restate/cli/git/nix) reach the catalog via `docOnlyAttributes` for their dynamic-name
+  bridge spans. Ongoing repo-wide sweep completeness remains SC-DQ1's concern, not this one.
 - **SC-DQ4 Weaver version churn:** what is the update cadence / compatibility matrix
   between pinned Weaver, pinned upstream semconv, and the emitted schema? Resolves by a
   version-bump runbook + a smoke test in CI.

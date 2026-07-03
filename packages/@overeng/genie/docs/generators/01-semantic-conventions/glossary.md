@@ -38,8 +38,9 @@ semantic contract.
   the catalog).
 
 - **Conformance completeness** — the property that the bridge check covers EVERY
-  not-yet-migrated otel-contract site. An incomplete sweep silently misses drift; guaranteeing
-  it is SC-DQ1.
+  not-yet-migrated otel-contract site. An incomplete sweep silently misses drift; it is
+  guaranteed structurally by the registered seam — a no-orphan-seam aggregator check plus the
+  seam-file lint ([.decisions/0005](./.decisions/0005-contract-registration-convention.md)).
 
 - **Derivation** — the end-state relationship: the runtime encoder (`OtelAttrs`/`OtelMetric`/
   `OtelOperation`) is produced FROM the catalog, so there is no second authored surface to

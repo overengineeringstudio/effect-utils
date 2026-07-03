@@ -70,8 +70,8 @@ you author ──► TS registry DSL ──► genie projects ──► weaver g
 ```
 
 The formal constraints are in [requirements.md](./requirements.md); the mechanism and the
-derisked weaver-fidelity details are in [spec.md](./spec.md); the decisions (TS-first,
+weaver-fidelity details are in [spec.md](./spec.md); the decisions (TS-first,
 catalog-atop-primitives, one-namespaced-key, migration, completeness, layering, targets) are
-in `.decisions/0001`–`0007`. The genuinely-open items — the bootstrap/authority-flip rollout,
-where privacy/metric-label enforcement lives, and the weaver-version runbook — are in
-[open-questions.md](./open-questions.md).
+in `.decisions/0001`–`0007`. The migration is landed (~14 namespaces on the derived catalog);
+the genuinely-open items — where privacy/metric-label enforcement lives, and the
+weaver-version compatibility matrix / runbook — are in [open-questions.md](./open-questions.md).
