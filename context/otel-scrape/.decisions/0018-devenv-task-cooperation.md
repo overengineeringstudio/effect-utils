@@ -1,6 +1,13 @@
 # 0018 — devenv cooperation: task span owns the task level; otel-scrape wraps the concrete command
 
-Status: accepted
+Status: accepted (boundary realigned by 0021)
+
+> **Realignment (0021):** only the otel-scrape *tool-side* of this cooperation is
+> effect-utils' contract — join via `TRACEPARENT`, export `OTEL_TASK_TRACEPARENT`,
+> own the command level, never own task semantics. *Which* orchestration layer
+> provides the task span — `otel-span` (interim) or native devenv tracing (target,
+> dotfiles#1238) — is the fleet/architecture layer, owned by the dotfiles
+> observability VRS, not this decision.
 
 **Context:** The previous blanket task wrapper wrapped EVERY task phase in
 `otel-scrape -- bash -c '<otel-span

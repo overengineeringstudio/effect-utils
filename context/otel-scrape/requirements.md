@@ -8,6 +8,14 @@
   - `@overeng/utils` command and telemetry helpers for process execution and OTEL setup.
   - `@overeng/content-address` for artifact digest and descriptor conventions.
 - The CLI name is `otel-scrape`.
+- **Boundary (decision
+  [.decisions/0021-observability-boundary-effect-utils-vs-dotfiles.md](./.decisions/0021-observability-boundary-effect-utils-vs-dotfiles.md)):**
+  this contract covers only the shared `otel-scrape` tool (command wrapper +
+  adapters) and the `trace.instr` glue. The orchestration/task tracer, the OTEL
+  stack, the traced-run UX, resource-identity/collector policy, and the
+  `otel-span`→native-devenv migration are the fleet/architecture layer, owned by
+  the dotfiles observability VRS (dotfiles#1238), not this document. R26 already
+  scopes deployment/fleet ownership out.
 
 ## Assumptions
 
