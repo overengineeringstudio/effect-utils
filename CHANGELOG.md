@@ -6,6 +6,14 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **devenv / otel**: `otel-run` — a `time`-like wrapper that runs any command
+  under a fresh root trace and prints its Grafana URL. Derives the root label
+  from argv (`devenv tasks run X` → `X`), mints a fresh trace id (`--join` to
+  nest in the ambient trace instead), and **probes for a reachable OTLP endpoint**
+  (the configured one, then the local ingress) so spans actually land instead of
+  hitting a dead devenv-local collector. Plus `check:quick:trace` /
+  `check:all:trace` tasks (`otel-run devenv tasks run check:quick|all`) — so
+  getting a trace URL for a check run is a one-liner.
 - **otel-scrape**: `deadnix` adapter (`src/adapters/deadnix.rs`) — a diagnostics
   adapter over `deadnix --output-format json` (NDJSON), mirroring oxlint. Dead-code
   findings become public-safe events (hashed filename + line; symbol names, paths,

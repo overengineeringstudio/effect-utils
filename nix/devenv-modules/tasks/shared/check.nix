@@ -89,5 +89,20 @@ in
       ++ nixFullTask
       ++ testTasks;
     };
+
+    # Traced convenience wrappers: run the aggregate check under a FRESH root
+    # trace and print its Grafana link. otel-run (otel devenv module) mints the
+    # root, so these execs stay BARE — wrapping them in trace.exec would emit an
+    # outer span in the ambient trace and defeat the fresh root. Requires the
+    # otel devenv module (provides otel-run on PATH).
+    "check:quick:trace" = {
+      description = "Run check:quick under a fresh root trace and print its Grafana link";
+      exec = "otel-run devenv tasks run check:quick";
+    };
+
+    "check:all:trace" = {
+      description = "Run check:all under a fresh root trace and print its Grafana link";
+      exec = "otel-run devenv tasks run check:all";
+    };
   };
 }
