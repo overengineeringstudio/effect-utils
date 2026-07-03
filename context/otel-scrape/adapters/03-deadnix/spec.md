@@ -1,4 +1,4 @@
-# Spec: deadnix adapter (candidate)
+# Spec: deadnix adapter (supported)
 
 This document specifies *how* the `deadnix` adapter works. It builds on its
 [requirements.md](./requirements.md) (the deadnix-specific constraints), the
@@ -8,16 +8,20 @@ fleet [../spec.md](../spec.md), and the parent adapter contract
 
 ## Status
 
-Candidate (ADP-R05). Worthwhile **contingent on ADP-R06** — its main value is a
-count, and adapter metrics are OTLP-dropped today. Its post-filter OTLP surface
-is materially thinner than oxlint's; this leaf is honest about that.
+Active (supported). Implemented as a module (`src/adapters/deadnix.rs`) on the
+adapter framework — a complete vertical slice (parent 0012): declared source,
+records, privacy boundary, degradation, registry entry, and `tests/cli.rs`
+coverage. At parity with oxlint: its `deadnix.findings` count is a summary metric
+(OTLP-dropped until ADP-R06 exposes it as a command-span attribute); per-finding
+events reach OTLP. Its OTLP surface is materially thinner than oxlint's (no
+rule/severity/kind field); this leaf is honest about that.
 
 ## Sources of truth
 
 | Concern | Source of truth |
 | --- | --- |
 | Structured-source contract | `deadnix --output-format json` (deadnix 1.3.1); NDJSON schema owned by deadnix upstream. Captured: [../.experiments/0003-deadnix-json.md](../.experiments/0003-deadnix-json.md) |
-| Adapter implementation | designated `packages/@overeng/otel-scrape/src/adapters/deadnix.rs` — `DeadnixAdapter` impl of `ToolAdapter` (NDJSON stream parser + render), mirroring the oxlint module |
+| Adapter implementation | `packages/@overeng/otel-scrape/src/adapters/deadnix.rs` — `DeadnixAdapter` impl of `ToolAdapter` (NDJSON stream parse + render); registered in `src/adapters/mod.rs` (`ADAPTERS`) |
 | Telemetry constants | `context/otel-scrape/telemetry-registry.json` — metric `deadnix.findings` (mirrors `oxlint_diagnostics`; reuses the adapter-event attrs) → generated `src/telemetry_registry.gen.rs` (genie) |
 | Call-site wiring | `nix/devenv-modules/tasks/lib/trace.nix` (`instrChildFlags`: `deadnix → --output-format json`) + `nix/devenv-modules/tasks/shared/lint-nix.nix` (task `lint:nix:deadcode`, the `deadnix` guard) |
 | Governing decisions | parent [0012](../../.decisions/0012-adapter-admission-policy.md), [0017](../../.decisions/0017-adapter-structured-source-and-presentation.md); fleet [0001](../.decisions/0001-adapter-fleet-audit-and-candidate-ranking.md), [0002](../.decisions/0002-aggregate-counts-as-command-span-attributes.md) |

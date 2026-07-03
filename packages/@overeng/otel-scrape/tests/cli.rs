@@ -451,6 +451,142 @@ fn parent_wrapper_preserves_nested_output_without_reclassifying_child_owned_adap
     );
 }
 
+// deadnix diagnostics adapter (adapters/03-deadnix): a thinner mirror of oxlint
+// over NDJSON. The structured source is ONE JSON object per file, newline-
+// separated (not a top-level array). This proves the whole lane: the summary
+// carries a `deadnix.findings` count metric plus one `"warning"` event per finding
+// (hashed filename + line), the render shows a compact human summary in place of
+// the raw JSON, and the byte-level non-leak invariant (R27 / ADP.DEADNIX-R02)
+// holds across BOTH sinks — the dead-symbol `message`, the raw path, and
+// `column`/`endColumn` never appear in the summary or the OTLP payload.
+#[test]
+fn deadnix_adapter_renders_summary_and_keeps_message_path_and_columns_out_of_both_sinks() {
+    let collector = TestCollector::start(200);
+    let dir = tempfile::tempdir().unwrap();
+    let summary_path = dir.path().join("summary.json");
+    // Synthetic dead symbols (effect-utils is public — no real private data). Each
+    // message carries a symbol name after ": "; columns leak identifier length.
+    let dead_symbol_a = "unusedBindingXYZZY";
+    let dead_symbol_b = "deadArgQUUX";
+    let raw_path_a = "/private/sample.nix";
+    let raw_path_b = "/private/sample2.nix";
+    // Realistic multiline NDJSON (mirrors experiment 0003): the stream parser must
+    // tolerate whitespace within and between the concatenated per-file objects.
+    let ndjson = format!(
+        "{{\"file\":{raw_path_a:?},\"results\":[\n  \
+         {{\"column\":3,\"endColumn\":16,\"line\":2,\"message\":\"Unused let binding: {dead_symbol_a}\"}},\n  \
+         {{\"column\":12,\"endColumn\":15,\"line\":4,\"message\":\"Unused lambda argument: {dead_symbol_b}\"}}]}}\n\
+         {{\"file\":{raw_path_b:?},\"results\":[\n  \
+         {{\"column\":3,\"endColumn\":11,\"line\":3,\"message\":\"Unused let binding: {dead_symbol_a}\"}}]}}\n",
+    );
+
+    let out = otel_scrape()
+        .env("DEADNIX_JSON", &ndjson)
+        .args(["--adapter", "deadnix", "--summary-out"])
+        .arg(&summary_path)
+        .args(["--service-name", "otel-scrape-test"])
+        .args(["--otlp-endpoint", &collector.endpoint])
+        .args(["--", "sh", "-c", "printf '%s' \"$DEADNIX_JSON\""])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+
+    // Render (R30): a compact human summary replaces the raw JSON dump. The
+    // operator's own terminal MAY show file + line; it never shows the raw JSON.
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("deadnix: 3 finding(s) over 2 file(s)"),
+        "stdout should show the rendered summary, got: {stdout}"
+    );
+    assert!(
+        !stdout.contains("\"results\""),
+        "raw NDJSON must not be dumped to the terminal, got: {stdout}"
+    );
+
+    let summary_bytes = std::fs::read(&summary_path).unwrap();
+    let summary: serde_json::Value = serde_json::from_slice(&summary_bytes).unwrap();
+    assert_eq!(summary["adapter"]["name"], "deadnix");
+    assert_eq!(summary["adapter"]["ownership"]["stdout"], "this-wrapper");
+
+    // Record 0 is the findings count metric; records 1..=3 are the per-finding
+    // events (three findings across two files).
+    let records = summary["adapter"]["records"].as_array().unwrap();
+    assert_eq!(records.len(), 4);
+    assert_eq!(records[0]["_tag"], "Metric");
+    assert_eq!(records[0]["name"], "deadnix.findings");
+    assert_eq!(records[0]["value"], 3);
+    let expected_lines = [2u64, 4, 3];
+    for (event, expected_line) in records[1..].iter().zip(expected_lines) {
+        assert_eq!(event["_tag"], "Event");
+        assert_eq!(event["severity"], "warning");
+        assert_eq!(event["line"], expected_line);
+        assert!(event["filename_hash"]
+            .as_str()
+            .unwrap()
+            .starts_with("sha256:"));
+        // deadnix has no machine-readable rule; the field is omitted, and the raw
+        // path/message never became summary fields (R27 / ADP.DEADNIX-R02).
+        assert!(event.get("rule").is_none());
+        assert!(event.get("filename").is_none());
+        assert!(event.get("message").is_none());
+    }
+
+    // The hashed filename identity IS carried through OTLP under the registered key.
+    let request = collector.request();
+    let filename_hash = records[1]["filename_hash"].as_str().unwrap();
+    let otlp = String::from_utf8_lossy(&request.body);
+    assert!(
+        otlp.contains(filename_hash),
+        "hashed filename identity should be present in OTLP"
+    );
+    assert!(otlp.contains("source.filename_hash"));
+
+    // Byte-level non-leak invariant across BOTH sinks: dead-symbol names, raw
+    // paths, and column offsets never cross a sink.
+    for (label, bytes) in [
+        ("summary", summary_bytes.as_slice()),
+        ("otlp", request.body.as_slice()),
+    ] {
+        let haystack = String::from_utf8_lossy(bytes);
+        for needle in [
+            dead_symbol_a,
+            dead_symbol_b,
+            raw_path_a,
+            raw_path_b,
+            "endColumn",
+            "Unused let binding",
+        ] {
+            assert!(!haystack.contains(needle), "`{needle}` leaked into {label}");
+        }
+    }
+}
+
+// ADP.DEADNIX-R03: a file with no dead code emits zero bytes; the adapter treats an
+// empty stream as zero findings — a `deadnix.findings` = 0 metric, no events, no
+// parse error, exit status preserved.
+#[test]
+fn deadnix_adapter_treats_empty_output_as_zero_findings() {
+    let dir = tempfile::tempdir().unwrap();
+    let summary = dir.path().join("summary.json");
+
+    let out = otel_scrape()
+        .args(["--adapter", "deadnix", "--summary-out"])
+        .arg(&summary)
+        .args(["--", "sh", "-c", "printf ''"])
+        .output()
+        .unwrap();
+
+    assert!(out.status.success());
+    let summary: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(summary).unwrap()).unwrap();
+    assert_eq!(summary["adapter"]["name"], "deadnix");
+    let records = summary["adapter"]["records"].as_array().unwrap();
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0]["_tag"], "Metric");
+    assert_eq!(records[0]["name"], "deadnix.findings");
+    assert_eq!(records[0]["value"], 0);
+}
+
 #[test]
 fn profile_artifact_writes_cas_object_manifest_pin_and_profile_record() {
     let dir = tempfile::tempdir().unwrap();

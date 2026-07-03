@@ -1,7 +1,7 @@
 // Generated file - DO NOT EDIT
 // Source: registry.gen.ts.genie.ts
 // Registry source: context/otel-scrape/telemetry-registry.json
-// Input fingerprint: sha256:0a20a264a614244322ff4af277cf8293dbdf97edd3b2cb35692f2dc44ba1f4d3
+// Input fingerprint: sha256:a1a9f5f6c37dd10a12f9bc9cfb52059faf3c7499fb9597d6b9f5877651e0ef46
 
 export const otelScrapeTelemetryRegistry = {
   "schemaVersion": 1,
@@ -23,6 +23,11 @@ export const otelScrapeTelemetryRegistry = {
       "id": "oxlint_diagnostics",
       "name": "oxlint.diagnostics",
       "description": "Number of oxlint diagnostics parsed from one JSON report."
+    },
+    {
+      "id": "deadnix_findings",
+      "name": "deadnix.findings",
+      "description": "Number of dead-code findings parsed from one deadnix JSON (NDJSON) report. Public-safe count only; no file paths, symbol names, or messages."
     },
     {
       "id": "vitest_tests",
@@ -466,6 +471,7 @@ export const otelScrapeSpanNaming = {
 
 export const otelScrapeMetricNames = {
   "oxlintDiagnostics": "oxlint.diagnostics",
+  "deadnixFindings": "deadnix.findings",
   "vitestTests": "vitest.tests",
   "vitestFailures": "vitest.failures"
 } as const

@@ -75,10 +75,21 @@ let
   # sees them (decision 0017: a needs-render structured-source flag such as oxlint
   # `--format=json` REPLACES the tool's human stdout, so it must not leak onto the
   # terminal when otel-scrape is not present to re-render — advisor bug fix).
-  #   oxlint  -> --format=json   (needs-render: otel-scrape re-renders a summary)
-  #   vitest  -> (none)          (side-channel: otel-scrape injects --reporter=json)
-  #   none    -> (none)          (named-command identity only)
-  instrChildFlags = adapter: if adapter == "oxlint" then [ "--format=json" ] else [ ];
+  #   oxlint  -> --format=json        (needs-render: otel-scrape re-renders a summary)
+  #   deadnix -> --output-format json (needs-render: NDJSON, otel-scrape re-renders)
+  #   vitest  -> (none)               (side-channel: otel-scrape injects --reporter=json)
+  #   none    -> (none)               (named-command identity only)
+  instrChildFlags =
+    adapter:
+    if adapter == "oxlint" then
+      [ "--format=json" ]
+    else if adapter == "deadnix" then
+      [
+        "--output-format"
+        "json"
+      ]
+    else
+      [ ];
 
   # trace.instr — instrument a CONCRETE command BENEATH a task span (decision 0018).
   #
@@ -103,7 +114,8 @@ let
   # import without otel-scrape on PATH — transparency is required — and CI runs them
   # non-interactively with no span parent).
   #
-  # adapter: "none" (named identity only), "oxlint", "vitest", or "node-cpuprofile".
+  # adapter: "none" (named identity only), "oxlint", "deadnix", "vitest", or
+  # "node-cpuprofile".
   instr =
     {
       adapter ? "none",

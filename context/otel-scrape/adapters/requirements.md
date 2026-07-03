@@ -71,7 +71,8 @@ individual tools are audited, admitted, and shaped into adapters.
 - **ADP-R05 Candidate vs supported listing:** Until a leaf's vertical slice is
   implemented and its registry entries generated, the tool is listed as a
   *candidate* in the fleet matrix and its adapter name is rejected by the CLI
-  (0012). Leaves for `pnpm`, `deadnix`, and `nix` are candidates.
+  (0012). `pnpm` and `nix` (build lane) are candidates; `deadnix` is implemented
+  as a supported module.
 
 ### Aggregate representation (cross-cutting)
 

@@ -4055,7 +4055,7 @@ mod tests {
 
             assert_eq!(
                 err.message(),
-                "only --adapter none, --adapter oxlint, --adapter vitest, and --adapter node-cpuprofile are supported"
+                "only --adapter none, --adapter oxlint, --adapter deadnix, --adapter vitest, and --adapter node-cpuprofile are supported"
             );
         }
     }

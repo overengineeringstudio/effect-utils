@@ -33,10 +33,12 @@ use crate::{
     StdoutMode,
 };
 
+mod deadnix;
 pub(crate) mod node_cpuprofile;
 mod oxlint;
 mod vitest;
 
+use deadnix::DeadnixAdapter;
 use node_cpuprofile::NodeCpuProfileAdapter;
 use oxlint::OxlintAdapter;
 use vitest::VitestAdapter;
@@ -44,7 +46,12 @@ use vitest::VitestAdapter;
 /// The registered adapters. Adding an adapter is one entry here plus its module.
 /// `none`/unknown names are intentionally absent — they resolve to `None` in
 /// [`adapter_for`] and take `lib.rs`'s pass-through defaults.
-const ADAPTERS: &[&dyn ToolAdapter] = &[&OxlintAdapter, &VitestAdapter, &NodeCpuProfileAdapter];
+const ADAPTERS: &[&dyn ToolAdapter] = &[
+    &OxlintAdapter,
+    &DeadnixAdapter,
+    &VitestAdapter,
+    &NodeCpuProfileAdapter,
+];
 
 /// The per-tool variation the command wrapper dispatches on. Every method has a
 /// pass-through default except the two an adapter must define (`name`, `parse`);

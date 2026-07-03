@@ -20,6 +20,11 @@
       "description": "Number of oxlint diagnostics parsed from one JSON report."
     },
     {
+      "id": "deadnix_findings",
+      "name": "deadnix.findings",
+      "description": "Number of dead-code findings parsed from one deadnix JSON (NDJSON) report. Public-safe count only; no file paths, symbol names, or messages."
+    },
+    {
       "id": "vitest_tests",
       "name": "vitest.tests",
       "description": "Number of tests reported by one vitest JSON side-channel run (numTotalTests). Public-safe count only; no test names, files, or messages (decision 0017)."

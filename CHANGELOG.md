@@ -6,6 +6,13 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **otel-scrape**: `deadnix` adapter (`src/adapters/deadnix.rs`) — a diagnostics
+  adapter over `deadnix --output-format json` (NDJSON), mirroring oxlint. Dead-code
+  findings become public-safe events (hashed filename + line; symbol names, paths,
+  and columns never reach a sink) plus a `deadnix.findings` count; otel-scrape
+  re-renders a human summary. Wired onto `lint:nix:deadcode`. Added purely as a
+  module + registry entry (no `lib.rs` dispatch change), exercising the adapter
+  framework.
 - **otel-scrape**: adapter fleet VRS under `context/otel-scrape/adapters/` — the
   supported/candidate matrix, per-adapter requirements+spec leaves (oxlint,
   pnpm, deadnix, nix, vitest, node-cpuprofile) with source-of-truth references,

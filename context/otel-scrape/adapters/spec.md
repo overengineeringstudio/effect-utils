@@ -44,7 +44,7 @@ OTLP-survival (ADP-R04) requirements.
 | --- | --- | --- | --- | --- | --- | --- |
 | oxlint | diagnostics | `--format=json` | events (severity/rule/hashed-file/line) + count | events ✓, count metric ✗ (ADP-R06) | **supported** | [01-oxlint](./01-oxlint/spec.md) |
 | pnpm | phase | `--reporter=ndjson` | `pnpm.resolve`/`pnpm.import` **spans** + counts | spans ✓, counts via ADP-R06 | **candidate** | [02-pnpm](./02-pnpm/spec.md) |
-| deadnix | diagnostics | `--output-format json` | events (hashed-file/line) + count | events ✓ (thin), count via ADP-R06 | **candidate** | [03-deadnix](./03-deadnix/spec.md) |
+| deadnix | diagnostics | `--output-format json` | events (hashed-file/line) + count | events ✓ (thin), count metric ✗ (ADP-R06) | **supported** | [03-deadnix](./03-deadnix/spec.md) |
 | nix (build) | phase | `--log-format internal-json` | build/substitute **spans** + byte/path counts | spans ✓ | **candidate** | [04-nix](./04-nix/spec.md) |
 | vitest | phase/test | `--reporter=json` (side-channel) | `tests`/`failures` metrics | metric via ADP-R06 | **supported** | [05-vitest](./05-vitest/spec.md) |
 | node-cpuprofile | profile | `.cpuprofile` artifact | profile link (CAS) | link ✓ | **supported** | [06-node-cpuprofile](./06-node-cpuprofile/spec.md) |
