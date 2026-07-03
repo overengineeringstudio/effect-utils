@@ -1,6 +1,6 @@
 # Spec: node-cpuprofile adapter (supported)
 
-This document specifies *how* the `node-cpuprofile` adapter works. It builds on
+This document specifies _how_ the `node-cpuprofile` adapter works. It builds on
 its [requirements.md](./requirements.md), the fleet [../spec.md](../spec.md), and
 the parent adapter contract [../../spec.md](../../spec.md). Content is derived
 from the implementation; this adapter was not re-investigated in the fleet audit.
@@ -12,13 +12,13 @@ Active (supported). Implemented in `packages/@overeng/otel-scrape/src/lib.rs`
 
 ## Sources of truth
 
-| Concern | Source of truth |
-| --- | --- |
-| Structured-source contract | node `--cpu-prof --cpu-prof-name=CPU.cpuprofile` → a V8 `.cpuprofile` artifact (Node.js upstream format) |
-| Adapter implementation | `packages/@overeng/otel-scrape/src/adapters/node_cpuprofile.rs` — `NodeCpuProfileAdapter` impl of `ToolAdapter` (`prepare`/`discover_artifacts`/`cleanup_artifacts`/validate; `TeeLive`); registered in `src/adapters/mod.rs`; CAS write via `content_address.rs` |
-| Telemetry constants | `context/otel-scrape/telemetry-registry.json` (`profileFields`, `profile_type`/`profile_digest` attrs) → generated `src/telemetry_registry.gen.rs` (genie) |
-| Call-site wiring | invoked ad hoc with `--adapter node-cpuprofile --cas-root <dir>` (no standing devenv task); requires `--cas-root`/`OTEL_SCRAPE_CAS_ROOT` |
-| Governing decisions | parent [0006](../../.decisions/0006-cas-profile-artifact-uris.md) (CAS profile URIs), [0009](../../.decisions/0009-rust-cas-module-boundary.md) |
+| Concern                    | Source of truth                                                                                                                                                                                                                                                   |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Structured-source contract | node `--cpu-prof --cpu-prof-name=CPU.cpuprofile` → a V8 `.cpuprofile` artifact (Node.js upstream format)                                                                                                                                                          |
+| Adapter implementation     | `packages/@overeng/otel-scrape/src/adapters/node_cpuprofile.rs` — `NodeCpuProfileAdapter` impl of `ToolAdapter` (`prepare`/`discover_artifacts`/`cleanup_artifacts`/validate; `TeeLive`); registered in `src/adapters/mod.rs`; CAS write via `content_address.rs` |
+| Telemetry constants        | `context/otel-scrape/telemetry-registry.json` (`profileFields`, `profile_type`/`profile_digest` attrs) → generated `src/telemetry_registry.gen.rs` (genie)                                                                                                        |
+| Call-site wiring           | invoked ad hoc with `--adapter node-cpuprofile --cas-root <dir>` (no standing devenv task); requires `--cas-root`/`OTEL_SCRAPE_CAS_ROOT`                                                                                                                          |
+| Governing decisions        | parent [0006](../../.decisions/0006-cas-profile-artifact-uris.md) (CAS profile URIs), [0009](../../.decisions/0009-rust-cas-module-boundary.md)                                                                                                                   |
 
 ## Source (profile artifact)
 
@@ -32,8 +32,8 @@ Active (supported). Implemented in `packages/@overeng/otel-scrape/src/lib.rs`
 
 ## Records (classification ladder)
 
-| Record | Kind | Derivation |
-| --- | --- | --- |
+| Record       | Kind    | Derivation                                                                                         |
+| ------------ | ------- | -------------------------------------------------------------------------------------------------- |
 | profile link | Profile | the `.cpuprofile` artifact written to CAS, referenced by a CAS URI (`profile_type = "cpuprofile"`) |
 
 No spans or events are derived from the profile bytes; the profile is a linked

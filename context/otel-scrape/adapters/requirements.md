@@ -36,7 +36,7 @@ individual tools are audited, admitted, and shaped into adapters.
   structured source, the fleet prefers the free `adapter = "none"` command span
   over a human-text scraper. Pass/fail + duration is an acceptable ceiling.
 - **ADP-T02 Candidate specs precede support:** A tool may carry a full leaf spec
-  while still listed as a *candidate* (not supported). The spec is the vertical
+  while still listed as a _candidate_ (not supported). The spec is the vertical
   slice; listing follows implementation (ADP-R05).
 
 ## Requirements
@@ -44,7 +44,7 @@ individual tools are audited, admitted, and shaped into adapters.
 ### Diagnostics lane vs phase lane
 
 - **ADP-R01 Source-kind classification:** Each audited tool is classified by the
-  *kind* of declared structured source it exposes, independently of the
+  _kind_ of declared structured source it exposes, independently of the
   diagnostics lane: a **diagnostics** source (per-item findings → events +
   counts, e.g. oxlint `--format=json`, deadnix `--output-format json`) or a
   **phase/lifecycle** source (start/stop activities → phase spans + aggregate
@@ -65,12 +65,12 @@ individual tools are audited, admitted, and shaped into adapters.
   reserved for records with a start/stop pair and stable identity (R11, T02). A
   finding or a single output line is at most an event.
 - **ADP-R04 OTLP-survival ranking:** Candidate ranking weighs what survives to
-  OTLP *today*. Phase spans export unconditionally; count metrics are currently
+  OTLP _today_. Phase spans export unconditionally; count metrics are currently
   OTLP-dropped (see ADP-R06), so a count-only adapter's live value is contingent
   until ADP-R06 resolves. A leaf MUST state its post-filter OTLP surface plainly.
 - **ADP-R05 Candidate vs supported listing:** Until a leaf's vertical slice is
   implemented and its registry entries generated, the tool is listed as a
-  *candidate* in the fleet matrix and its adapter name is rejected by the CLI
+  _candidate_ in the fleet matrix and its adapter name is rejected by the CLI
   (0012). `pnpm` and `nix` (build lane) are candidates; `deadnix` is implemented
   as a supported module.
 

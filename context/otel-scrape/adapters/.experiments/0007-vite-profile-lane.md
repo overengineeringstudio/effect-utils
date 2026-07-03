@@ -5,6 +5,7 @@ Probed `--profile`, `--manifest`, `--ssrManifest`, `-d`, and the node-invocation
 path against the existing node-cpuprofile lane.
 
 **Result:**
+
 - No first-class OTEL.
 - `vite build --profile` writes a standard V8 `vite-profile-0.cpuprofile` on
   **normal exit** (no SIGINT). Passes the existing `validate_cpuprofile_bytes`.

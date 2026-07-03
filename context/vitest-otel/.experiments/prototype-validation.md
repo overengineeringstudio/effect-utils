@@ -7,13 +7,13 @@ throwaway), Vitest pinned `4.1.9`.
 
 ## Hypotheses and results
 
-| Hypothesis | Method | Result |
-| --- | --- | --- |
-| Vitest native OTEL emits a useful runner tree | minimal sdkPath (no auto-instrument), capture spans | `worker→runtime→runner→test.callback` + transform/collect/coverage; ~50 spans/run |
-| Effect spans do NOT auto-nest under the runner | read `OtlpTracer` source | confirmed: imports only `effect/*`, parents from Effect parent only |
-| Explicit bridge nests product spans | seed `withParentSpan(makeExternalSpan(getActiveSpan()))` through real `withTestCtx` | product spans carry Vitest's **exact traceId** — impossible by chance |
-| Suppression keeps the assertion lane deterministic | run otelite tests with native OTEL on | **4/4 pass**, 157 runner spans emitted same run |
-| Change is inert when native OTEL off | `bridgeVitestParent` returns `self` when no active span | utils-dev suite 31/31, otelite baseline 4/4 |
+| Hypothesis                                         | Method                                                                              | Result                                                                            |
+| -------------------------------------------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Vitest native OTEL emits a useful runner tree      | minimal sdkPath (no auto-instrument), capture spans                                 | `worker→runtime→runner→test.callback` + transform/collect/coverage; ~50 spans/run |
+| Effect spans do NOT auto-nest under the runner     | read `OtlpTracer` source                                                            | confirmed: imports only `effect/*`, parents from Effect parent only               |
+| Explicit bridge nests product spans                | seed `withParentSpan(makeExternalSpan(getActiveSpan()))` through real `withTestCtx` | product spans carry Vitest's **exact traceId** — impossible by chance             |
+| Suppression keeps the assertion lane deterministic | run otelite tests with native OTEL on                                               | **4/4 pass**, 157 runner spans emitted same run                                   |
+| Change is inert when native OTEL off               | `bridgeVitestParent` returns `self` when no active span                             | utils-dev suite 31/31, otelite baseline 4/4                                       |
 
 ## Regression gates (raw binaries, bypassing the FOD-blocked devenv shell)
 

@@ -28,6 +28,7 @@ stream.** Sanitized shape:
 ```
 
 **Two structural facts drive the verdict:**
+
 - Per-FILE has real `startTime`+`endTime` → a faithful lifecycle span (but `name`
   is an absolute path → hash-only identity).
 - Per-TEST has `duration` but **no start timestamp**; `skipped`/`todo` have no

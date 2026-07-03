@@ -1,11 +1,11 @@
-*For: contributors adding or reviewing an otel-scrape adapter · Assumes: the
+_For: contributors adding or reviewing an otel-scrape adapter · Assumes: the
 parent otel-scrape vision/requirements/spec · Covers: how the adapter fleet is
-organized and how to read it.*
+organized and how to read it._
 
 # The adapter fleet, in one picture
 
 `otel-scrape` wraps a command and can enrich its span with records parsed from
-the tool's output. This directory is the composable-VRS home for the *concrete*
+the tool's output. This directory is the composable-VRS home for the _concrete_
 adapters. The parent (`../`) states the mechanism-agnostic contract once; this
 tree refines it per tool without restating it.
 
@@ -24,13 +24,13 @@ Read top-down: the parent contract, then the fleet `requirements.md`
 (`ADP-R*`), then a leaf. Each leaf requirement is namespaced and declares what
 it `refines:` (e.g. `ADP.PNPM-R01 refines ADP-R03 refines parent R11`), so the
 IDs read upward and no constraint is stated twice. A leaf's `requirements.md` is
-the testable *what* for that tool; its `spec.md` is the *how* (source flag,
+the testable _what_ for that tool; its `spec.md` is the _how_ (source flag,
 schema, parse, record mapping, registry additions).
 
 ## Two things to internalize
 
-1. **Two lanes, not one.** A tool exposes either a *diagnostics* source
-   (per-item findings → events + counts: oxlint, deadnix) or a *phase* source
+1. **Two lanes, not one.** A tool exposes either a _diagnostics_ source
+   (per-item findings → events + counts: oxlint, deadnix) or a _phase_ source
    (start/stop activities → spans + metrics: pnpm, nix). A tool with no
    per-diagnostic source can still qualify on the phase lane — that is why pnpm
    is an adapter despite the parent audit correctly saying it has no diagnostics

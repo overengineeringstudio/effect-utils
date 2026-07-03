@@ -97,11 +97,13 @@ in
     # otel devenv module (provides otel-run on PATH).
     "check:quick:trace" = {
       description = "Run check:quick under a fresh root trace and print its Grafana link";
+      # trace-audit-allow: raw exec - otel-run intentionally owns the fresh root trace.
       exec = "otel-run devenv tasks run check:quick";
     };
 
     "check:all:trace" = {
       description = "Run check:all under a fresh root trace and print its Grafana link";
+      # trace-audit-allow: raw exec - otel-run intentionally owns the fresh root trace.
       exec = "otel-run devenv tasks run check:all";
     };
   };

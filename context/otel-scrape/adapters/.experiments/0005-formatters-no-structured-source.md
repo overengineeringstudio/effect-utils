@@ -4,9 +4,10 @@
 Read-only (`--check` / `--list-different`); never wrote repo files.
 
 **oxfmt result:**
+
 - No first-class OTEL; no `--format`/`--reporter`/`--json`.
 - `--check` prints human prose (`bad.ts (0ms)` … `Format issues found in above N
-  files` … `Finished in Yms on M files`). `--list-different` prints a newline-
+files` … `Finished in Yms on M files`). `--list-different` prints a newline-
   separated path list (no trailing `\n`). The two are **mutually exclusive**, so
   no mode yields a clean `(files_checked + files_unformatted)` structured source.
   No side-channel. Exit: 0 formatted / 1 diffs / **2 error/no files matched**.
@@ -14,9 +15,10 @@ Read-only (`--check` / `--list-different`); never wrote repo files.
   the exit code.
 
 **nixfmt result:**
+
 - No first-class OTEL; no JSON/`--format`/machine-list flag.
 - `--check` = exit code + human stderr `"<path>: not formatted"`; `--check
-  --quiet` = pure pass/fail (streams empty). Syntax errors dump a Megaparsec
+--quiet` = pure pass/fail (streams empty). Syntax errors dump a Megaparsec
   caret block **including source text** on stderr (never-emit).
 
 **Conclusion:** both are pass/fail `--check` tools. Parsing their human output is

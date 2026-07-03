@@ -5,6 +5,7 @@ trivial derivation under an out-of-repo tmp dir, `--log-format internal-json`.
 Also inspected the `nix:check:quick` task wiring.
 
 **Result:**
+
 - The `@nix {json}` NDJSON stream is on **stderr**; the command result stays on
   **stdout** → side-channel, no re-render needed.
 - `action` ∈ {start, stop, result, msg}. start/stop pairs carry `id` + a `type`

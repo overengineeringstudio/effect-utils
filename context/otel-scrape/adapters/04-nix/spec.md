@@ -1,10 +1,10 @@
 # Spec: nix adapter (candidate, build lane)
 
-This document specifies *how* the `nix` adapter works. It builds on its
+This document specifies _how_ the `nix` adapter works. It builds on its
 [requirements.md](./requirements.md) (the nix-specific constraints), the fleet
 [../spec.md](../spec.md), and the parent adapter contract
 [../../spec.md](../../spec.md). It is a **phase-lane** adapter for the Nix
-*build* path — explicitly not a `check:quick` deliverable.
+_build_ path — explicitly not a `check:quick` deliverable.
 
 ## Status
 
@@ -13,13 +13,13 @@ Candidate (ADP-R05), gated on the source-stability DQ. Serves `nix:build` /
 
 ## Sources of truth
 
-| Concern | Source of truth |
-| --- | --- |
-| Structured-source contract | `nix … --log-format internal-json` (Determinate Nix 3.17.3 / nix 2.33.3); `@nix {json}` activity stream — de-facto schema (consumed by nix-output-monitor), not versioned (DQ-nix-1). Captured: [../.experiments/0004-nix-internal-json.md](../.experiments/0004-nix-internal-json.md) |
-| Adapter implementation | **planned** in `packages/@overeng/otel-scrape/src/lib.rs` — `NIX_ADAPTER` const, `nix_adapter()`; side-channel stderr/`json-log-path` reader (`StdoutMode::Inherit`, no re-render) with start/stop → `AdapterOutput::Span` and progress-drop. Not yet implemented |
-| Telemetry constants | **planned** `context/otel-scrape/telemetry-registry.json` — spans `nix.build`/`nix.substitute` (or `nix.activity`); attrs `otel_scrape.adapter.nix.*` (ADP-R06) → `src/telemetry_registry.gen.rs` (genie) |
-| Call-site wiring | **planned** `nix/devenv-modules/tasks/lib/trace.nix` + `nix/devenv-modules/tasks/shared/nix-cli.nix` (build-lane tasks `nix:build`/`nix:flake:check`). The `nix:check:quick:*` fingerprint tasks (fork `nix-hash`) get **no** adapter (ADP.NIX-R01) |
-| Governing decisions | parent [0012](../../.decisions/0012-adapter-admission-policy.md), [0017](../../.decisions/0017-adapter-structured-source-and-presentation.md); fleet [0001](../.decisions/0001-adapter-fleet-audit-and-candidate-ranking.md), [0002](../.decisions/0002-aggregate-counts-as-command-span-attributes.md) |
+| Concern                    | Source of truth                                                                                                                                                                                                                                                                                         |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Structured-source contract | `nix … --log-format internal-json` (Determinate Nix 3.17.3 / nix 2.33.3); `@nix {json}` activity stream — de-facto schema (consumed by nix-output-monitor), not versioned (DQ-nix-1). Captured: [../.experiments/0004-nix-internal-json.md](../.experiments/0004-nix-internal-json.md)                  |
+| Adapter implementation     | **planned** in `packages/@overeng/otel-scrape/src/lib.rs` — `NIX_ADAPTER` const, `nix_adapter()`; side-channel stderr/`json-log-path` reader (`StdoutMode::Inherit`, no re-render) with start/stop → `AdapterOutput::Span` and progress-drop. Not yet implemented                                       |
+| Telemetry constants        | **planned** `context/otel-scrape/telemetry-registry.json` — spans `nix.build`/`nix.substitute` (or `nix.activity`); attrs `otel_scrape.adapter.nix.*` (ADP-R06) → `src/telemetry_registry.gen.rs` (genie)                                                                                               |
+| Call-site wiring           | **planned** `nix/devenv-modules/tasks/lib/trace.nix` + `nix/devenv-modules/tasks/shared/nix-cli.nix` (build-lane tasks `nix:build`/`nix:flake:check`). The `nix:check:quick:*` fingerprint tasks (fork `nix-hash`) get **no** adapter (ADP.NIX-R01)                                                     |
+| Governing decisions        | parent [0012](../../.decisions/0012-adapter-admission-policy.md), [0017](../../.decisions/0017-adapter-structured-source-and-presentation.md); fleet [0001](../.decisions/0001-adapter-fleet-audit-and-candidate-ranking.md), [0002](../.decisions/0002-aggregate-counts-as-command-span-attributes.md) |
 
 ## Not the `nix:check:quick` lane (mechanism for ADP.NIX-R01)
 
@@ -48,12 +48,12 @@ the duration-trends dashboard. Verdict for that lane: **no adapter** (decision
 
 ## Records (classification ladder)
 
-| Record | Kind | Derivation |
-| --- | --- | --- |
-| per built/substituted path | Span | `start`/`stop` pair where `type` ∈ {105 build, 108 substitute, 100 copyPath, 101 fileTransfer} |
-| downloads / narinfo queries / `msg` | Event | `type` 101/109, `action:"msg"` |
-| paths built/substituted/downloaded, bytes transferred | Metric→span-attr | counts + `result.fields` (ADP-R06) |
-| all `action:"result"` progress | (dropped) | pure noise; a captured trivial build had 17 start/stop vs 138 result lines |
+| Record                                                | Kind             | Derivation                                                                                     |
+| ----------------------------------------------------- | ---------------- | ---------------------------------------------------------------------------------------------- |
+| per built/substituted path                            | Span             | `start`/`stop` pair where `type` ∈ {105 build, 108 substitute, 100 copyPath, 101 fileTransfer} |
+| downloads / narinfo queries / `msg`                   | Event            | `type` 101/109, `action:"msg"`                                                                 |
+| paths built/substituted/downloaded, bytes transferred | Metric→span-attr | counts + `result.fields` (ADP-R06)                                                             |
+| all `action:"result"` progress                        | (dropped)        | pure noise; a captured trivial build had 17 start/stop vs 138 result lines                     |
 
 ## Public-safe disposition (realizes ADP.NIX-R03)
 

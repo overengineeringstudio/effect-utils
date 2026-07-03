@@ -40,19 +40,19 @@ timed, named, pass/fail command span (ADP-A02, ADP-T01).
 Traceability: rows map to the classification (ADP-R01), admission (ADP-R05), and
 OTLP-survival (ADP-R04) requirements.
 
-| Tool | Source-kind | Declared source | Records (post-R27) | OTLP today | Status | Leaf |
-| --- | --- | --- | --- | --- | --- | --- |
-| oxlint | diagnostics | `--format=json` | events (severity/rule/hashed-file/line) + count | events ✓, count metric ✗ (ADP-R06) | **supported** | [01-oxlint](./01-oxlint/spec.md) |
-| pnpm | phase | `--reporter=ndjson` | `pnpm.resolve`/`pnpm.import` **spans** + counts | spans ✓, counts via ADP-R06 | **candidate** | [02-pnpm](./02-pnpm/spec.md) |
-| deadnix | diagnostics | `--output-format json` | events (hashed-file/line) + count | events ✓ (thin), count metric ✗ (ADP-R06) | **supported** | [03-deadnix](./03-deadnix/spec.md) |
-| nix (build) | phase | `--log-format internal-json` | build/substitute **spans** + byte/path counts | spans ✓ | **candidate** | [04-nix](./04-nix/spec.md) |
-| vitest | phase/test | `--reporter=json` (side-channel) | `tests`/`failures` metrics | metric via ADP-R06 | **supported** | [05-vitest](./05-vitest/spec.md) |
-| node-cpuprofile | profile | `.cpuprofile` artifact | profile link (CAS) | link ✓ | **supported** | [06-node-cpuprofile](./06-node-cpuprofile/spec.md) |
-| vite (build) | profile | `--profile` → `.cpuprofile` | profile link (reuses node-cpuprofile CAS lane) | link ✓ | **deferred** (use node-cpuprofile today; not a hot path here) | audit row |
-| oxfmt | none | — (only `--list-different` path list) | none beyond exit code | — | **no adapter → `none`** | audit row |
-| nixfmt | none | — (exit code + human stderr) | none beyond exit code | — | **no adapter → `none`** | audit row |
-| nix (`nix:check:quick`) | n/a | runs `nix-hash`, not `nix` | none | — | **no adapter** (already task-span timed) | audit row |
-| asset-import guard | first-party | (bash/awk) | — | — | native self-instrument if wanted | audit row |
+| Tool                    | Source-kind | Declared source                       | Records (post-R27)                              | OTLP today                                | Status                                                        | Leaf                                               |
+| ----------------------- | ----------- | ------------------------------------- | ----------------------------------------------- | ----------------------------------------- | ------------------------------------------------------------- | -------------------------------------------------- |
+| oxlint                  | diagnostics | `--format=json`                       | events (severity/rule/hashed-file/line) + count | events ✓, count metric ✗ (ADP-R06)        | **supported**                                                 | [01-oxlint](./01-oxlint/spec.md)                   |
+| pnpm                    | phase       | `--reporter=ndjson`                   | `pnpm.resolve`/`pnpm.import` **spans** + counts | spans ✓, counts via ADP-R06               | **candidate**                                                 | [02-pnpm](./02-pnpm/spec.md)                       |
+| deadnix                 | diagnostics | `--output-format json`                | events (hashed-file/line) + count               | events ✓ (thin), count metric ✗ (ADP-R06) | **supported**                                                 | [03-deadnix](./03-deadnix/spec.md)                 |
+| nix (build)             | phase       | `--log-format internal-json`          | build/substitute **spans** + byte/path counts   | spans ✓                                   | **candidate**                                                 | [04-nix](./04-nix/spec.md)                         |
+| vitest                  | phase/test  | `--reporter=json` (side-channel)      | `tests`/`failures` metrics                      | metric via ADP-R06                        | **supported**                                                 | [05-vitest](./05-vitest/spec.md)                   |
+| node-cpuprofile         | profile     | `.cpuprofile` artifact                | profile link (CAS)                              | link ✓                                    | **supported**                                                 | [06-node-cpuprofile](./06-node-cpuprofile/spec.md) |
+| vite (build)            | profile     | `--profile` → `.cpuprofile`           | profile link (reuses node-cpuprofile CAS lane)  | link ✓                                    | **deferred** (use node-cpuprofile today; not a hot path here) | audit row                                          |
+| oxfmt                   | none        | — (only `--list-different` path list) | none beyond exit code                           | —                                         | **no adapter → `none`**                                       | audit row                                          |
+| nixfmt                  | none        | — (exit code + human stderr)          | none beyond exit code                           | —                                         | **no adapter → `none`**                                       | audit row                                          |
+| nix (`nix:check:quick`) | n/a         | runs `nix-hash`, not `nix`            | none                                            | —                                         | **no adapter** (already task-span timed)                      | audit row                                          |
+| asset-import guard      | first-party | (bash/awk)                            | —                                               | —                                         | native self-instrument if wanted                              | audit row                                          |
 
 `vitest` and `node-cpuprofile` are supported adapters that predate this audit;
 their leaves (05, 06) are documented from the implementation
@@ -73,7 +73,7 @@ adapters are siblings under one contract.
 - **`nix:check:quick:*`:** these tasks run a `writeShellScript` forking
   `nix-hash` + jq/perl, not `nix` — an adapter keyed on `nix` would never fire,
   and each task's duration is already captured by its `devenv.task.exec` span
-  and the duration-trends dashboard. Verdict: nothing to add. (The `nix` *build*
+  and the duration-trends dashboard. Verdict: nothing to add. (The `nix` _build_
   lane is a separate candidate — leaf 04.)
 
 ## Implementation layout
@@ -97,10 +97,11 @@ lifecycle hooks `prepare(config) -> AdapterPrep`, `discover_artifacts(child)`,
 `cleanup_artifacts(child)`, `cleanup_structured_source(child)` — all defaulted
 except `name`/`parse`, so an adapter overrides only what it uses. `lib.rs`
 dispatch is registry-driven (`adapter_for(...).map_or(default, |a| a.method(...))`)
-with no per-name `match`, so adding an adapter is **one `src/adapters/<tool>.rs`
-+ one `ADAPTERS` entry + its `telemetry-registry.json` entries** — `lib.rs` is
-untouched. Injection is dynamic via `prepare` (no static `child_flags`), so a
-tool's format flag is supplied only when otel-scrape is engaged.
+with no per-name `match`, so adding an adapter requires three inputs: one
+`src/adapters/<tool>.rs`, one `ADAPTERS` entry, and its
+`telemetry-registry.json` entries. `lib.rs` is untouched. Injection is dynamic
+via `prepare` (no static `child_flags`), so a tool's format flag is supplied only
+when otel-scrape is engaged.
 
 ## Aggregate counts as command-span attributes
 

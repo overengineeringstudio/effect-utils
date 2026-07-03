@@ -25,13 +25,13 @@ Does not define:
 
 ## Two lanes
 
-The system distinguishes two lanes by *purpose*, not by debug-vs-not. The
+The system distinguishes two lanes by _purpose_, not by debug-vs-not. The
 distinction that matters is determinism.
 
-| Lane | Question | Native runner OTEL | Parent bridge | Export target |
-| --- | --- | --- | --- | --- |
-| Observability export | "why is this test slow / what did the run do?" | on (R01) | on when harness exports (R06) | configured collector |
-| otelite assertion | "did my code emit the right telemetry?" | on (harmless) | **suppressed** (R10) | in-process otelite receiver |
+| Lane                 | Question                                       | Native runner OTEL | Parent bridge                 | Export target               |
+| -------------------- | ---------------------------------------------- | ------------------ | ----------------------------- | --------------------------- |
+| Observability export | "why is this test slow / what did the run do?" | on (R01)           | on when harness exports (R06) | configured collector        |
+| otelite assertion    | "did my code emit the right telemetry?"        | on (harmless)      | **suppressed** (R10)          | in-process otelite receiver |
 
 Runner spans always go to the collector, never into the otelite receiver
 (R12); the two exporters are independent providers.
@@ -64,8 +64,8 @@ import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node'
 const provider = new NodeTracerProvider({
   spanProcessors: [new BatchSpanProcessor(new OTLPTraceExporter())],
 })
-provider.register()          // installs global provider + AsyncLocalStorage ctx (A01, A02)
-export default provider        // Vitest calls .shutdown() to flush
+provider.register() // installs global provider + AsyncLocalStorage ctx (A01, A02)
+export default provider // Vitest calls .shutdown() to flush
 ```
 
 - No `getNodeAutoInstrumentations()` — the process is not instrumented (R04).
@@ -95,14 +95,16 @@ withTestCtx(self):                                                          ▼
 
 ```ts
 const bridgeVitestParent = (self) =>
-  Effect.suspend(() => {                                  // read at exec time (R07)
+  Effect.suspend(() => {
+    // read at exec time (R07)
     const sc = trace.getActiveSpan()?.spanContext()
-    if (sc === undefined) return self                     // native OTEL off → no-op (R09)
+    if (sc === undefined) return self // native OTEL off → no-op (R09)
     return Effect.serviceOption(SuppressVitestParentBridge).pipe(
       Effect.flatMap((s) =>
-        Option.isSome(s)                                  // capture lane → suppress (R10)
+        Option.isSome(s) // capture lane → suppress (R10)
           ? self
-          : Effect.withParentSpan(self, OtelTracer.makeExternalSpan(sc))),
+          : Effect.withParentSpan(self, OtelTracer.makeExternalSpan(sc)),
+      ),
     )
   })
 ```

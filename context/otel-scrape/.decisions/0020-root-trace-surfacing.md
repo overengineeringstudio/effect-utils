@@ -15,7 +15,7 @@ The presentation half already exists at the fleet layer: the `otel-trace` shell
 function (`nix/devenv-modules/otel.nix`) reads `TRACEPARENT` and prints a Grafana
 Explore/TraceQL URL as an OSC 8 hyperlink on a TTY, or plain `trace:<id> <url>`
 when piped. That convention is the template to mirror; the gap is that
-otel-scrape mints a *fresh* root trace id per command, so the pre-baked session
+otel-scrape mints a _fresh_ root trace id per command, so the pre-baked session
 link is not it.
 
 **Decision:** When `otel-scrape` is the trace root and telemetry is active,
@@ -27,11 +27,11 @@ surface the trace identity to stderr (terminal-only), backend-agnostically.
 
    (The normative contract — exit-scenario matrix, config surface, two-tier rule,
    format, and privacy line — lives in spec.md "Root Trace Surfacing". This
-   decision keeps the rationale for *why* each choice was made.)
+   decision keeps the rationale for _why_ each choice was made.)
 
 2. **Bound to export acknowledgement, not the child's exit code.** The
    resolvable-URL line is emitted iff **root ∧ export acknowledged (2xx) ∧
-   template configured**, and is emitted for a *failing* wrapped command too — a
+   template configured**, and is emitted for a _failing_ wrapped command too — a
    red build is exactly when the trace is wanted. "Acknowledged" is deliberately
    weaker than "ingested": a 2xx from otel-scrape's own command-span POST proves
    the collector accepted that span, not that a backend has ingested it (immediate
@@ -72,13 +72,13 @@ surface the trace identity to stderr (terminal-only), backend-agnostically.
    explicit-strict / ambient-lenient: a bad `--trace-link` value is a usage error
    like every sibling flag (a malformed explicit invocation should fail fast, not
    silently mis-surface), while a bad env value warns and keeps the default
-   (matching `env_bool`). Aborting on a malformed *flag* is arg validation, not an
+   (matching `env_bool`). Aborting on a malformed _flag_ is arg validation, not an
    R03/R04 runtime-transparency concern, and is consistent with the whole tool's
    flag philosophy.
 
 7. **Format** mirrors the fleet `otel-trace` convention. TTY detection selects the
    **encoding only** (OSC 8 hyperlink vs plain text), never whether to emit —
-   agents read *piped* stderr, so suppressing on non-TTY would defeat the feature.
+   agents read _piped_ stderr, so suppressing on non-TTY would defeat the feature.
 
 8. **Privacy — operator-controlled, not "just ephemeral terminal".** The surfaced
    text is stderr-only and MUST NOT enter the summary file or OTLP export (a
@@ -87,7 +87,7 @@ surface the trace identity to stderr (terminal-only), backend-agnostically.
    own URL template, which may embed a private backend hostname. Because this line
    also lands in piped and CI-captured stderr — the same public-repo vector
    [decision 0015](./0015-trust-assertion-is-per-named-sink.md) hardened the
-   summary against — the safety is *not* the interactive-ephemerality argument of
+   summary against — the safety is _not_ the interactive-ephemerality argument of
    [decision 0017](./0017-adapter-structured-source-and-presentation.md). It is
    operator control: the hostname enters only through the operator's own opt-in
    template (never from the wrapped command), it is a distinct class from the
@@ -106,7 +106,7 @@ surface the trace identity to stderr (terminal-only), backend-agnostically.
   otel-scrape actually mints the root. Those two conditions co-locate in the
   **root-invocation environment**: CI steps, top-level scripts, and agent
   harnesses that do not propagate an inbound `traceparent`. A traced interactive
-  dev shell is deliberately *not* a target — it exports a session `TRACEPARENT`
+  dev shell is deliberately _not_ a target — it exports a session `TRACEPARENT`
   (so every wrapped command joins and surfaces nothing) and already has the
   `otel-trace` helper for the session trace. Template provision therefore belongs
   in the fleet/harness env for root invocations (R26), not in this repo's own

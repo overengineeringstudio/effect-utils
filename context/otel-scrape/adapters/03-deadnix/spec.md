@@ -1,6 +1,6 @@
 # Spec: deadnix adapter (supported)
 
-This document specifies *how* the `deadnix` adapter works. It builds on its
+This document specifies _how_ the `deadnix` adapter works. It builds on its
 [requirements.md](./requirements.md) (the deadnix-specific constraints), the
 fleet [../spec.md](../spec.md), and the parent adapter contract
 [../../spec.md](../../spec.md). It mirrors the oxlint diagnostics adapter
@@ -18,13 +18,13 @@ rule/severity/kind field); this leaf is honest about that.
 
 ## Sources of truth
 
-| Concern | Source of truth |
-| --- | --- |
-| Structured-source contract | `deadnix --output-format json` (deadnix 1.3.1); NDJSON schema owned by deadnix upstream. Captured: [../.experiments/0003-deadnix-json.md](../.experiments/0003-deadnix-json.md) |
-| Adapter implementation | `packages/@overeng/otel-scrape/src/adapters/deadnix.rs` — `DeadnixAdapter` impl of `ToolAdapter` (NDJSON stream parse + render); registered in `src/adapters/mod.rs` (`ADAPTERS`) |
-| Telemetry constants | `context/otel-scrape/telemetry-registry.json` — metric `deadnix.findings` (mirrors `oxlint_diagnostics`; reuses the adapter-event attrs) → generated `src/telemetry_registry.gen.rs` (genie) |
-| Call-site wiring | `nix/devenv-modules/tasks/lib/trace.nix` (`instrChildFlags`: `deadnix → --output-format json`) + `nix/devenv-modules/tasks/shared/lint-nix.nix` (task `lint:nix:deadcode`, the `deadnix` guard) |
-| Governing decisions | parent [0012](../../.decisions/0012-adapter-admission-policy.md), [0017](../../.decisions/0017-adapter-structured-source-and-presentation.md); fleet [0001](../.decisions/0001-adapter-fleet-audit-and-candidate-ranking.md), [0002](../.decisions/0002-aggregate-counts-as-command-span-attributes.md) |
+| Concern                    | Source of truth                                                                                                                                                                                                                                                                                         |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Structured-source contract | `deadnix --output-format json` (deadnix 1.3.1); NDJSON schema owned by deadnix upstream. Captured: [../.experiments/0003-deadnix-json.md](../.experiments/0003-deadnix-json.md)                                                                                                                         |
+| Adapter implementation     | `packages/@overeng/otel-scrape/src/adapters/deadnix.rs` — `DeadnixAdapter` impl of `ToolAdapter` (NDJSON stream parse + render); registered in `src/adapters/mod.rs` (`ADAPTERS`)                                                                                                                       |
+| Telemetry constants        | `context/otel-scrape/telemetry-registry.json` — metric `deadnix.findings` (mirrors `oxlint_diagnostics`; reuses the adapter-event attrs) → generated `src/telemetry_registry.gen.rs` (genie)                                                                                                            |
+| Call-site wiring           | `nix/devenv-modules/tasks/lib/trace.nix` (`instrChildFlags`: `deadnix → --output-format json`) + `nix/devenv-modules/tasks/shared/lint-nix.nix` (task `lint:nix:deadcode`, the `deadnix` guard)                                                                                                         |
+| Governing decisions        | parent [0012](../../.decisions/0012-adapter-admission-policy.md), [0017](../../.decisions/0017-adapter-structured-source-and-presentation.md); fleet [0001](../.decisions/0001-adapter-fleet-audit-and-candidate-ranking.md), [0002](../.decisions/0002-aggregate-counts-as-command-span-attributes.md) |
 
 ## Source (ADP-R01 diagnostics lane)
 
@@ -38,33 +38,33 @@ rule/severity/kind field); this leaf is honest about that.
 - **Exit code:** 0 by default even with findings; `--fail` makes it exit 1 (the
   adapter injects neither `--fail` nor `--edit` — ADP.DEADNIX-R01).
 - **Schema (per-file object):** `{ file: string, results: [{ line, column,
-  endColumn, message }] }`. There is **no** `severity`, `code`, `rule`, or
+endColumn, message }] }`. There is **no** `severity`, `code`, `rule`, or
   `kind` field — all findings are conceptually warnings.
 
 ## Records (classification ladder)
 
-| Record | Kind | Derivation |
-| --- | --- | --- |
-| per finding | Event | `{ filename_hash = hash(file), line }`. Severity is a synthesized constant `"warning"` (deadnix has none) or omitted — carries no information |
-| `deadnix.findings` | Metric→span-attr | sum of `results.len()` across objects (ADP-R06) |
-| `deadnix.files_with_findings` | Metric→span-attr | object count (optional, DQ-deadnix-3) |
-| (none) | Span | a finding has no lifecycle (T02) |
+| Record                        | Kind             | Derivation                                                                                                                                    |
+| ----------------------------- | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| per finding                   | Event            | `{ filename_hash = hash(file), line }`. Severity is a synthesized constant `"warning"` (deadnix has none) or omitted — carries no information |
+| `deadnix.findings`            | Metric→span-attr | sum of `results.len()` across objects (ADP-R06)                                                                                               |
+| `deadnix.files_with_findings` | Metric→span-attr | object count (optional, DQ-deadnix-3)                                                                                                         |
+| (none)                        | Span             | a finding has no lifecycle (T02)                                                                                                              |
 
 ## Public-safe disposition (realizes ADP.DEADNIX-R02)
 
-| JSON field | Disposition |
-| --- | --- |
-| `file` | local path → **hash** (`hash_path_identity`), never raw in a sink |
-| `line` | public-safe integer → keep |
-| `column`, `endColumn` | `endColumn − column` leaks identifier length → **drop from sinks**, render only |
-| `message` | contains the dead symbol's source name after `": "` → **drop from every sink incl. summary**; terminal render only |
-| severity | not in JSON; synthesized constant if emitted |
+| JSON field            | Disposition                                                                                                        |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `file`                | local path → **hash** (`hash_path_identity`), never raw in a sink                                                  |
+| `line`                | public-safe integer → keep                                                                                         |
+| `column`, `endColumn` | `endColumn − column` leaks identifier length → **drop from sinks**, render only                                    |
+| `message`             | contains the dead symbol's source name after `": "` → **drop from every sink incl. summary**; terminal render only |
+| severity              | not in JSON; synthesized constant if emitted                                                                       |
 
 ## The thinness (ADP-R04 honesty)
 
 After R27 drops message + path, deadnix has no rule/severity/kind field, and no
-spans, what lands in OTLP is: *N `"warning"` events, each a hashed filename + a
-line number*, plus the `findings` count via the span-attribute path (ADP-R06).
+spans, what lands in OTLP is: _N `"warning"` events, each a hashed filename + a
+line number_, plus the `findings` count via the span-attribute path (ADP-R06).
 Without ADP-R06 the count is summary-only and the OTLP surface is barely above
 the `adapter = "none"` tools. This is why deadnix ranks below pnpm and ships
 paired with ADP-R06.

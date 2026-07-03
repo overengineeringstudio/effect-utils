@@ -7,10 +7,28 @@ junit, stylish, unix — **no SARIF**.
 **Result (sanitized):**
 
 ```json
-{"diagnostics":[
-  {"message":"`debugger` statement is not allowed","code":"eslint(no-debugger)","severity":"error","filename":"sample.ts","labels":[{"span":{"line":2,"column":3}}]},
-  {"message":"Function 'demo' is declared but never used.","code":"eslint(no-unused-vars)","severity":"warning","filename":"sample.ts","labels":[{"span":{"line":1,"column":10}}]}],
- "number_of_files":1,"number_of_rules":90,"threads_count":32,"start_time":0.023553108}
+{
+  "diagnostics": [
+    {
+      "message": "`debugger` statement is not allowed",
+      "code": "eslint(no-debugger)",
+      "severity": "error",
+      "filename": "sample.ts",
+      "labels": [{ "span": { "line": 2, "column": 3 } }]
+    },
+    {
+      "message": "Function 'demo' is declared but never used.",
+      "code": "eslint(no-unused-vars)",
+      "severity": "warning",
+      "filename": "sample.ts",
+      "labels": [{ "span": { "line": 1, "column": 10 } }]
+    }
+  ],
+  "number_of_files": 1,
+  "number_of_rules": 90,
+  "threads_count": 32,
+  "start_time": 0.023553108
+}
 ```
 
 **Conclusion:** declared, stable, needs-render (replaces human stdout). Both

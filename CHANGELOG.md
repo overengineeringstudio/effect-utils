@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **devenv / lint**: mark the `check:*:trace` wrappers as intentionally raw
+  `otel-run` entrypoints for the trace audit, and apply the repo formatter to the
+  OTEL/Vitest context docs.
+
 ### Added
 
 - **devenv / otel**: `otel-run` — a `time`-like wrapper that runs any command

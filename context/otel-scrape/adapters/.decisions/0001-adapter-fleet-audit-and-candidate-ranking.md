@@ -34,7 +34,7 @@ partitions the tools three ways:
      hashed filename + line, plus a count that only reaches OTLP via the
      span-attribute path. Materially thinner than oxlint, not a co-equal.
    - **nix (build) — worthwhile, out of `check:quick` scope.** `--log-format
-     internal-json` gives real build/substitute spans, but only on the build
+internal-json` gives real build/substitute spans, but only on the build
      lane (`nix:build` / `nix:flake:check`), and its schema stability is a DQ.
 
 3. **First-party tools self-instrument.** The asset-import guard and any bespoke
@@ -48,11 +48,11 @@ now.
 
 ## Options
 
-| Option | Consequence |
-| --- | --- |
-| Build an adapter for every >10ms tool | Manufactured ceremony; formatters/`nix-hash` have nothing structured to emit; violates R11/T02. |
+| Option                                                      | Consequence                                                                                        |
+| ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Build an adapter for every >10ms tool                       | Manufactured ceremony; formatters/`nix-hash` have nothing structured to emit; violates R11/T02.    |
 | Rank candidates by OTLP-survival, wrap the rest with `none` | Effort tracks real signal; the cheap win ships first; count-bearing adapters unblocked by ADP-R06. |
-| Defer all package-manager work (status quo of 0012 lane 5) | Misses the proven pnpm phase-span source that already clears 0012's structured-source condition. |
+| Defer all package-manager work (status quo of 0012 lane 5)  | Misses the proven pnpm phase-span source that already clears 0012's structured-source condition.   |
 
 ## Decision
 

@@ -20,12 +20,12 @@ per-package config. Three sub-decisions were load-bearing.
 
 The harness tracer is `@effect/opentelemetry`'s lightweight `OtlpTracer`, which
 imports only `effect/*` — no `@opentelemetry/api`. Reading its source, it
-parents a span *solely* from the Effect-level parent
+parents a span _solely_ from the Effect-level parent
 (`self.traceId = self.parent.value.traceId`); it never consults the global
 `context.active()`. So Effect spans do **not** auto-nest under Vitest's active
 runner span.
 
-The api-based `Tracer.layerGlobal` *does* auto-parent from the global context,
+The api-based `Tracer.layerGlobal` _does_ auto-parent from the global context,
 but using it would route our spans through the global provider — the "global
 patching" path we want to avoid. Instead we read `trace.getActiveSpan()` once at
 test entry and seed it as an explicit Effect parent via

@@ -30,11 +30,11 @@ case trace-visible now without over-committing.
 
 ## Options
 
-| Option | Consequence |
-| --- | --- |
-| Block count surfaces until adapter-metric OTLP semantics land (DQ1) | deadnix ships with nothing in OTLP; pnpm loses its store-hit signal; fleet stalls on an unrelated question. |
-| Emit aggregates as command-span attributes now | Counts reach OTLP within the ladder; DQ1 can still add metric points later without rework of the attribute surface. |
-| Emit per-item events only, no aggregates | Consumers re-aggregate from events; lossy under sampling and noisier. |
+| Option                                                              | Consequence                                                                                                         |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Block count surfaces until adapter-metric OTLP semantics land (DQ1) | deadnix ships with nothing in OTLP; pnpm loses its store-hit signal; fleet stalls on an unrelated question.         |
+| Emit aggregates as command-span attributes now                      | Counts reach OTLP within the ladder; DQ1 can still add metric points later without rework of the attribute surface. |
+| Emit per-item events only, no aggregates                            | Consumers re-aggregate from events; lossy under sampling and noisier.                                               |
 
 ## Decision
 
