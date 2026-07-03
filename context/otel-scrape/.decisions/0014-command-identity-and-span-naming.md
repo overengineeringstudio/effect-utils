@@ -4,8 +4,8 @@ Status: accepted
 
 ## Context
 
-Dogfooding surfaced that `otel-scrape` traces are dominated by semantically
-empty spans. In a real 138-span `devenv check:all` trace, 76 spans (55%) were
+First-party devenv validation surfaced that `otel-scrape` traces are dominated
+by semantically empty spans. In a real 138-span `devenv check:all` trace, 76 spans (55%) were
 generic `otel_scrape.command` / `otel_scrape.process` pairs — every one named by
 a fixed instrumentation constant, carrying no command identity beyond a
 `sha256` argv hash, `exit_code`, and `adapter.name = none` under a

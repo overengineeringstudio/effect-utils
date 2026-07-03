@@ -4,7 +4,7 @@
 readable, privacy-safe command identity, and the current all-hashing privacy
 default is stronger than the actual trust boundary requires.
 
-**Method:** (1) Analysed a real dogfood trace (`632fcad3…`, a 138-span
+**Method:** (1) Analysed a real first-party devenv trace (`632fcad3…`, a 138-span
 `devenv check:all` run) captured in the dev-fleet Tempo backend, tabulating span
 names and attributes. (2) Built the base-tip `otel-scrape` from an isolated
 worktree (`nix build .#otel-scrape`) and wrapped real commands

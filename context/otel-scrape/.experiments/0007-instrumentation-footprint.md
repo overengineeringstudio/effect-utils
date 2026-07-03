@@ -1,7 +1,7 @@
 # Experiment 0007 — devenv instrumentation footprint (task cooperation)
 
 Evidence for [decision 0018](../.decisions/0018-devenv-task-cooperation.md).
-Question: on the real devenv path, what does the blanket dogfood wrapper actually
+Question: on the real devenv path, what does the blanket task wrapper actually
 emit, and what is the call-site footprint of wrapping the concrete command
 instead?
 

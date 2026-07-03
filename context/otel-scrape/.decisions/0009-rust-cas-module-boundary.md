@@ -1,4 +1,4 @@
-# Decision: Keep Rust CAS Conformance Wrapper-Local For Now
+# Decision: Keep Rust CAS Conformance Wrapper-Local Until a Second Rust Consumer Exists
 
 ## Status
 

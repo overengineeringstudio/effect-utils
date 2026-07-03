@@ -133,9 +133,9 @@ Known trace exporters not implemented by this first-party exporter, such as
 `zipkin`, warn and disable the JSON exporter rather than silently sending OTLP
 after a non-OTLP exporter was requested.
 This first-party exporter supports plain `http://` OTLP endpoints. Use a
-collector-local HTTP endpoint for dogfooding today; `https://`, gRPC, and
-protobuf belong behind a future full SDK/protobuf transport instead of a partial
-TLS implementation in this wrapper.
+collector-local HTTP endpoint for local validation; `https://`, gRPC, and
+protobuf belong behind a full SDK/protobuf transport instead of a partial TLS
+implementation in this wrapper.
 
 ## Process Backends
 
@@ -149,8 +149,8 @@ validated fixture, including immediate-exit and nested descendants. The backend
 is opt-in because ptrace can perturb command execution and has platform,
 privilege, and namespace caveats.
 
-The future Linux default exact backend is expected to be helper-backed rather
-than ptrace-backed. A run-scoped cgroup, or an equally strong OS boundary, is
+The Linux default exact backend should be helper-backed rather than
+ptrace-backed. A run-scoped cgroup, or an equally strong OS boundary, is
 the preferred authority for deciding whether an observed process belongs to the
 wrapped run. eBPF process lifecycle tracepoints are the primary candidate event
 source; process connector style feeds are fallback candidates only if they can
@@ -160,8 +160,8 @@ process-tree sources. macOS remains degraded/direct-child unless an Endpoint
 Security-backed exact backend is implemented, approved, and validated on the
 macOS ARM runner class.
 
-`helper-stream` is the public wrapper-side contract for that future helper. In
-this slice it is fail-closed: selecting it records `backend = "helper-stream"`
+`helper-stream` is the public wrapper-side contract for the helper-backed exact
+backend. It is fail-closed: selecting it records `backend = "helper-stream"`
 but keeps process evidence degraded until a validated helper stream proves
 loss-free lifecycle coverage. A missing helper socket degrades with
 `missing-privilege`; a configured socket without an exact event stream degrades

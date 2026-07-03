@@ -437,7 +437,7 @@ Exporter configuration:
   `http/protobuf` disable this JSON exporter with a warning until a full SDK or
   protobuf exporter boundary exists. The current first-party transport supports
   plain `http://` endpoints only; secure `https://` export belongs with the
-  future SDK/protobuf transport rather than a partial TLS reimplementation.
+  SDK/protobuf transport rather than a partial TLS reimplementation.
 - Empty OTEL environment variables are interpreted as unset. Boolean variables
   follow the official OpenTelemetry SDK convention: only case-insensitive
   `true` is true.

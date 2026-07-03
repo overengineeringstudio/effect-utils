@@ -2,8 +2,8 @@
 
 Status: accepted
 
-**Context:** The devenv dogfood wrapper (`nix/devenv-modules/tasks/lib/trace.nix`
-`dogfood`) wraps EVERY task phase in `otel-scrape -- bash -c '<otel-span
+**Context:** The previous blanket task wrapper wrapped EVERY task phase in
+`otel-scrape -- bash -c '<otel-span
 devenv.task.exec … -- bash -c body>'`. That places a generic `otel-scrape`
 command span (program=`bash`, adapter=none) ABOVE the real `devenv.task.exec`
 span for the same execution — the redundant duplicate the Semantic Conventions
@@ -20,7 +20,7 @@ the concrete command level beneath it.
 
 1. **Task level = otel-span only.** `trace.exec`/`trace.status` emit the
    `devenv.task.exec` / `devenv.task.status` span (via otel-span) and NO longer
-   wrap the task shell in otel-scrape. The blanket `dogfood` wrapper is removed.
+   wrap the task shell in otel-scrape. The blanket task wrapper is removed.
 2. **Concrete command = otel-scrape.** A task instruments a concrete command with
    a `trace.instr { adapter ? "none" }` helper that prepends an `otel-scrape`
    prefix to the command's real argv. This yields a named command span
@@ -45,10 +45,10 @@ the concrete command level beneath it.
    command span makes otel-scrape a well-behaved reparenting layer while leaving
    the parser's precedence (and its re-eval robustness) intact. This is a general
    context-propagation correctness fix (R13), not tsc-specific.
-5. **Audit description, not rule.** The `otel-scrape:dogfood-audit` task already
+5. **Audit description, not rule.** The `devenv:trace-audit` task already
    enforces that every task routes through `trace.exec`/`trace.status`/
    `trace.withStatus` — i.e. every task has a task span. That rule stays correct;
-   only its description updates (otel-scrape blanket dogfood → otel-span task
+   only its description updates (blanket otel-scrape task wrapper → otel-span task
    tracing plus opt-in concrete-command instrumentation).
 
 **Consequences:**
@@ -70,13 +70,13 @@ the concrete command level beneath it.
 - oxlint and vitest are to be instrumented with real adapters (0017): oxlint with
   `--format=json` + pretty-out, vitest via the `--reporter=json` side-channel
   (interactive output preserved).
-- Implementation is delegated to the epic worker; this decision fixes the intent.
+- Implementation follows the task/command ownership split above.
 
 **Options considered:**
 
 | Option                                                                 | Consequence                                                                            | Verdict                                                             |
 | ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| Keep blanket dogfood (status quo after M1)                             | one generic `bash` span per task above the real task span; adapters never fire; noise. | rejected — the reported problem.                                    |
+| Keep blanket task wrapper                                             | one generic `bash` span per task above the real task span; adapters never fire; noise. | rejected — the reported problem.                                    |
 | Suppression protocol (otel-scrape hides its span at the task boundary) | machinery to make a no-op invisible.                                                   | rejected — if it adds nothing at a layer, remove it, don't hide it. |
 | otel-scrape replaces otel-span at the task level                       | otel-scrape does not own task semantics (`task.name`/`task.cached`).                   | rejected — fights the ownership split.                              |
 | Task span (otel-span) outer, otel-scrape wraps the concrete command    | clean nesting, adapters fire where structured-source exists, concise call-site.        | accepted                                                            |
