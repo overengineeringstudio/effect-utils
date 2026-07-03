@@ -449,6 +449,74 @@ The first OTLP slices emit the wrapper command span, adapter-derived span events
 
 See [.decisions/0008-first-party-otlp-export-boundary.md](./.decisions/0008-first-party-otlp-export-boundary.md).
 
+## Root Trace Surfacing
+
+When `otel-scrape` mints the trace root (no inbound `traceparent`), it surfaces
+the trace identity to the operator's terminal (stderr) at end of run, so agents
+and humans can open or correlate the trace without first querying a backend
+(R31, [decision 0020](./.decisions/0020-root-trace-surfacing.md)). This is
+terminal presentation, not telemetry: no `telemetry-registry.json` entry, and it
+is best-effort wrapper output like the existing diagnostics/warnings.
+
+**Gate — surface only when the trace is reachable.** Surfacing happens only when
+otel-scrape owns the root; a joined/nested run stays silent so exactly one
+participant surfaces per trace. Pure passthrough (no summary, no export) emits
+nothing (R04). Emission is bound to **export success**, never to the wrapped
+command's exit code — a failing command still surfaces its trace (a red build is
+when the trace is wanted).
+
+**Two tiers.**
+
+- **Resolvable URL** — printed iff `root ∧ successful OTLP export ∧ template
+  configured`. The trace is provably in the backend, so the URL never
+  dead-links.
+- **Bare trace id** — printed when telemetry is active (summary written or export
+  attempted) but no resolvable URL exists (summary-only, export disabled, or
+  export failed). The id is still actionable for local correlation (grep
+  `summary.json`, otelite capture, manual backend search). Export failures also
+  keep their existing degraded-evidence warning.
+
+Exit-scenario matrix:
+
+| Scenario | Trace queryable? | Surfaced |
+| --- | --- | --- |
+| child exit 0, export OK | yes | `trace:<id>  <url>` |
+| child exit non-zero, export OK | yes | `trace:<id>  <url>` |
+| child signal-terminated, export OK | yes | `trace:<id>  <url>` |
+| export fails / disabled by env (summary or export attempted) | no | bare `trace:<id>` |
+| `--summary-out` only, no OTLP | local only | bare `trace:<id>` |
+| pure passthrough (no summary, no export) | — | nothing (R04) |
+| otel-scrape cannot spawn child | — | nothing (errors before export) |
+
+**Backend-agnostic template.** The wrapper never constructs backend URLs (vision:
+"not a dashboarding system"). It takes an opaque template with a `{traceId}`
+placeholder (replace-all) and substitutes the lowercase-hex trace id (URL-safe):
+
+- `--trace-url-template <tmpl>` / `OTEL_SCRAPE_TRACE_URL_TEMPLATE` (flag wins).
+- The fleet supplies the template (its URL-encoded Grafana Explore/TraceQL URL
+  with the trace-id position marked, e.g. `…query%22%3A%22{traceId}%22…&orgId=1`).
+  Supplying that placeholder template is a fleet/R26 concern; the existing
+  `OTEL_GRAFANA_LINK_URL` is pre-baked with a specific session trace id and is
+  not a placeholder template.
+
+**On/off.** `--trace-link on|off` / `OTEL_SCRAPE_TRACE_LINK` (default `on`). `off`
+suppresses all surfacing even when the gate passes. There is no on-override past
+the R04 gate. Unknown values are warned about and ignored.
+
+**Format** mirrors the fleet `otel-trace` convention, with an `otel-scrape:`
+prefix for attribution on shared stderr. TTY detection on stderr selects the
+**encoding only**, never whether to emit (agents read piped stderr):
+
+- stderr is a TTY → `otel-scrape: ` + OSC 8 hyperlink, label `trace:<id>`.
+- stderr piped/redirected → plain `otel-scrape: trace:<id>  <url>` (or
+  `otel-scrape: trace:<id>` in the bare tier).
+
+**Privacy — terminal is not a sink** ([decision 0017](./.decisions/0017-adapter-structured-source-and-presentation.md),
+R27). The surfaced text is stderr-only and MUST NOT enter the summary file or
+OTLP export. It carries only the random trace id (not derived from argv/cwd) and
+the operator-supplied template. A required regression line asserts the template
+string and rendered URL are byte-absent from every sink.
+
 ## Artifact Store
 
 Profile artifacts use the reusable [content-address VRS](../content-address/spec.md) for descriptors, object paths, `cas:` retrieval URIs, and manifest pins. `otel-scrape` writes artifact bytes into a per-run CAS root using the digest-derived object path. The span carries a location-independent profile link; the run context supplies the CAS root resolver.

@@ -45,3 +45,5 @@
 **Best-effort scraper** — A parser of a tool's human text (e.g. the devenv tsc `--extendedDiagnostics` timing scraper). It is fragile and lives outside the adapter contract; it is never presented as a supported adapter (decision 0017).
 
 **Named-command identity** — The `adapter=none` command span: a concrete command wrapped by `otel-scrape` gets a named span (`process.executable.name`, argv/cwd hashes, exit, merged process) without adapter records. The baseline for concrete-command instrumentation (decision 0018).
+
+**Root trace surfacing** — When `otel-scrape` mints the trace root (no inbound `traceparent`), the terminal-only stderr line that surfaces the trace identity so the operator can open/correlate the trace without querying a backend. Two tiers: a resolvable `trace:<id>  <url>` when the trace is provably exported and a `{traceId}` URL template is configured, or the bare `trace:<id>` when telemetry is active but no resolvable URL exists. Bound to export success, not the child exit code; terminal is not a sink, so it never enters the summary or OTLP export (decision 0020, R31).
