@@ -32,6 +32,8 @@ otel-scrape [--summary-out <file>]
   [--process-helper-socket <path>]
   [--otlp-endpoint <url>]
   [--service-name <name>]
+  [--trace-url-template <tmpl>]
+  [--trace-link on|off]
   [--cas-root <dir>]
   [--cas-pin <name>]
   [--profile-artifact <type>:<path>]
@@ -46,6 +48,8 @@ Environment fallbacks:
 | `--cas-root`              | `OTEL_SCRAPE_CAS_ROOT`              | Store profile artifacts and manifests in a local CAS root. |
 | `--otlp-endpoint`         | `OTEL_EXPORTER_OTLP_ENDPOINT`       | Export the wrapper command span over OTLP/HTTP JSON.       |
 | `--service-name`          | `OTEL_SERVICE_NAME`                 | Set the emitted OTLP resource `service.name`.              |
+| `--trace-url-template`    | `OTEL_SCRAPE_TRACE_URL_TEMPLATE`    | Backend-agnostic `{traceId}` URL template for root trace surfacing. |
+| `--trace-link on\|off`    | `OTEL_SCRAPE_TRACE_LINK`            | Enable/disable root trace surfacing (default on).          |
 | `--process-backend`       | `OTEL_SCRAPE_PROCESS_BACKEND`       | Select process observation backend.                        |
 | `--process-helper-socket` | `OTEL_SCRAPE_PROCESS_HELPER_SOCKET` | Select the helper-stream socket path.                      |
 
@@ -77,6 +81,27 @@ as-is. `--service-name <name>` or `OTEL_SERVICE_NAME` sets the emitted resource
 stdout, stderr, stdin, or the child exit code.
 Adapter-derived OTLP events and profile-link events are attached to the command
 span. Adapter metrics remain local summary records.
+
+## Root Trace Surfacing
+
+When `otel-scrape` mints the trace root (no inbound `traceparent`) and telemetry
+is active, it prints the trace identity to stderr at end of run, so agents and
+humans can open or correlate the trace without querying the backend first. This
+is terminal-only presentation (like the wrapper's diagnostics), never written to
+the summary or OTLP sinks.
+
+- With `--trace-url-template <tmpl>` (or `OTEL_SCRAPE_TRACE_URL_TEMPLATE`) and a
+  successful export, the wrapper prints a resolvable link. The template is
+  backend-agnostic: it carries a `{traceId}` placeholder the wrapper substitutes
+  with the lowercase-hex trace id, e.g.
+  `https://grafana.example/explore?...query%22%3A%22{traceId}%22...&orgId=1`.
+- Without a resolvable URL (no template, export disabled, or export failed) but
+  with a local summary or an attempted export, the wrapper prints the bare
+  `trace:<id>` so the id is still available for local correlation.
+- On a TTY the link is an OSC 8 hyperlink; when piped it is plain
+  `otel-scrape: trace:<id>  <url>` so agents can parse it.
+- Pure passthrough (no summary, no export) prints nothing. `--trace-link off`
+  (or `OTEL_SCRAPE_TRACE_LINK=off`) disables surfacing entirely.
 
 When `--process-backend helper-stream` is selected, the wrapper generates
 `OTEL_SCRAPE_RUN_ID`, passes it to the child, and reads ordered lifecycle facts

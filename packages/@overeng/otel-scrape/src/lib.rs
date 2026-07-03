@@ -7,7 +7,7 @@
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::fs;
-use std::io::{self, Read, Write};
+use std::io::{self, IsTerminal, Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
@@ -66,6 +66,12 @@ const SERVICE_NAME_ENV: &str = "OTEL_SERVICE_NAME";
 const TRUSTED_SINK_ENV: &str = "OTEL_SCRAPE_TRUSTED_SINK";
 const TRUSTED_SINK_OTLP: &str = "otlp";
 const TRUSTED_SINK_SUMMARY: &str = "summary";
+// Root trace surfacing (decision 0020, R31): a backend-agnostic URL template
+// with a `{traceId}` placeholder, and an on/off switch. Both are terminal-only;
+// neither value ever enters the summary or OTLP sinks.
+const TRACE_URL_TEMPLATE_ENV: &str = "OTEL_SCRAPE_TRACE_URL_TEMPLATE";
+const TRACE_LINK_ENV: &str = "OTEL_SCRAPE_TRACE_LINK";
+const TRACE_ID_PLACEHOLDER: &str = "{traceId}";
 const PROCESS_BACKEND_ENV: &str = "OTEL_SCRAPE_PROCESS_BACKEND";
 const PROCESS_HELPER_SOCKET_ENV: &str = "OTEL_SCRAPE_PROCESS_HELPER_SOCKET";
 const RUN_ID_ENV: &str = "OTEL_SCRAPE_RUN_ID";
@@ -150,6 +156,13 @@ pub struct RunConfig {
     /// (decision 0015). Read ONLY at the summary emission site. The summary is
     /// hard-public-safe by default: an OTLP assertion never sets this.
     pub trusted_summary: bool,
+    /// Root trace surfacing (decision 0020, R31). Terminal-only: read ONLY at the
+    /// stderr surfacing site, NEVER at a summary or OTLP emission site. `None`
+    /// template degrades a root run to the bare-trace-id tier.
+    pub trace_url_template: Option<String>,
+    /// Whether root trace surfacing is enabled (default true). `false` suppresses
+    /// all surfacing even when the R04 gate passes; there is no on-override.
+    pub trace_link_enabled: bool,
     pub argv: Vec<String>,
 }
 
@@ -633,6 +646,12 @@ pub fn parse_args(args: &[String]) -> Result<CommandRequest, UsageError> {
     // unlocked by its own explicit `--trusted-sink summary`.
     let mut trusted_otlp = env_bool(TRUSTED_SINK_ENV);
     let mut trusted_summary = false;
+    // Root trace surfacing (decision 0020). Env supplies defaults; flags win.
+    // An empty template is treated as unset (env-empty-is-unset convention).
+    let mut trace_url_template = std::env::var(TRACE_URL_TEMPLATE_ENV)
+        .ok()
+        .filter(|value| !value.is_empty());
+    let mut trace_link_enabled = trace_link_from_env();
     let mut child_start: Option<usize> = None;
 
     if args.is_empty() {
@@ -747,6 +766,28 @@ pub fn parse_args(args: &[String]) -> Result<CommandRequest, UsageError> {
                 profile_artifacts.push(parse_profile_artifact(value)?);
                 i += 2;
             }
+            "--trace-url-template" => {
+                let Some(value) = args.get(i + 1) else {
+                    return usage_error("--trace-url-template needs a url template");
+                };
+                trace_url_template = Some(value.clone()).filter(|value| !value.is_empty());
+                i += 2;
+            }
+            "--trace-link" => {
+                let Some(value) = args.get(i + 1) else {
+                    return usage_error("--trace-link needs on or off");
+                };
+                match value.as_str() {
+                    "on" => trace_link_enabled = true,
+                    "off" => trace_link_enabled = false,
+                    _ => {
+                        return usage_error(
+                            "only --trace-link on and --trace-link off are supported",
+                        )
+                    }
+                }
+                i += 2;
+            }
             "--" => {
                 child_start = Some(i + 1);
                 break;
@@ -813,8 +854,25 @@ pub fn parse_args(args: &[String]) -> Result<CommandRequest, UsageError> {
         profile_artifacts,
         trusted_otlp,
         trusted_summary,
+        trace_url_template,
+        trace_link_enabled,
         argv,
     })))
+}
+
+/// Root trace surfacing on/off from the environment (decision 0020). Default on;
+/// `off` disables; unknown values warn and keep the default (mirrors the
+/// exporter-enum handling). The `--trace-link` flag overrides this.
+fn trace_link_from_env() -> bool {
+    match env_string(TRACE_LINK_ENV).map(|value| value.to_ascii_lowercase()) {
+        None => true,
+        Some(value) if value == "on" => true,
+        Some(value) if value == "off" => false,
+        Some(value) => {
+            eprintln!("otel-scrape: warning: ignoring invalid {TRACE_LINK_ENV}={value}");
+            true
+        }
+    }
 }
 
 pub fn print_help() {
@@ -822,7 +880,7 @@ pub fn print_help() {
     eprintln!();
     eprintln!("usage:");
     eprintln!(
-        "  otel-scrape [--summary-out <file>] [--adapter none|oxlint|vitest|node-cpuprofile] [--process-backend direct-child|ptrace-experimental|helper-stream] [--process-helper-socket <path>] [--otlp-endpoint <url>] [--service-name <name>] [--trusted-sink otlp|summary]... [--cas-root <dir>] [--cas-pin <name>] [--profile-artifact <type>:<path>] -- <cmd...>"
+        "  otel-scrape [--summary-out <file>] [--adapter none|oxlint|vitest|node-cpuprofile] [--process-backend direct-child|ptrace-experimental|helper-stream] [--process-helper-socket <path>] [--otlp-endpoint <url>] [--service-name <name>] [--trusted-sink otlp|summary]... [--trace-url-template <tmpl>] [--trace-link on|off] [--cas-root <dir>] [--cas-pin <name>] [--profile-artifact <type>:<path>] -- <cmd...>"
     );
     eprintln!("  otel-scrape --version | --help");
 }
@@ -877,13 +935,20 @@ fn resolve_machine_version(
     // shell `option_env!` also captures the exported LocalStamp, which describes
     // the shell, not this binary, and must not masquerade as its build identity.
     // The Nix build path always bakes a NixStamp.
-    if let Some(BuildStamp::Nix { version, rev, dirty }) =
-        compile_stamp.and_then(parse_build_stamp)
+    if let Some(BuildStamp::Nix {
+        version,
+        rev,
+        dirty,
+    }) = compile_stamp.and_then(parse_build_stamp)
     {
         return nix_machine_version(&version, &rev, dirty);
     }
     match runtime_stamp.and_then(parse_build_stamp) {
-        Some(BuildStamp::Nix { version, rev, dirty }) => nix_machine_version(&version, &rev, dirty),
+        Some(BuildStamp::Nix {
+            version,
+            rev,
+            dirty,
+        }) => nix_machine_version(&version, &rev, dirty),
         Some(BuildStamp::Local { rev, dirty }) => local_machine_version(base, &rev, dirty),
         None => format!("{base}+dev"),
     }
@@ -930,7 +995,10 @@ fn parse_build_stamp(raw: &str) -> Option<BuildStamp> {
         return None;
     }
     let value: serde_json::Value = serde_json::from_str(raw).ok()?;
-    let dirty = value.get("dirty").and_then(|v| v.as_bool()).unwrap_or(false);
+    let dirty = value
+        .get("dirty")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     match value.get("type").and_then(|v| v.as_str())? {
         "nix" => Some(BuildStamp::Nix {
             version: value.get("version")?.as_str()?.to_owned(),
@@ -1011,21 +1079,96 @@ pub fn run(config: RunConfig) -> io::Result<i32> {
         }
     }
 
+    // The command span is provably in the backend only when export returns a 2xx.
+    // This gates the resolvable-URL tier of root trace surfacing (decision 0020).
+    let mut export_succeeded = false;
     if config.otlp_export_enabled {
-        let Some(endpoint) = config.otlp_endpoint.as_ref() else {
-            return Ok(exit_code(child.status));
-        };
-        let endpoint_for_warning = endpoint_for_warning(endpoint);
-        if let Err(cause) =
-            export_command_span(&config, &trace, &child, started_wall, elapsed, &adapter)
-        {
-            eprintln!(
-                "otel-scrape: warning: failed to export OTLP trace to {endpoint_for_warning}: {cause}"
-            );
+        if let Some(endpoint) = config.otlp_endpoint.as_ref() {
+            let endpoint_for_warning = endpoint_for_warning(endpoint);
+            match export_command_span(&config, &trace, &child, started_wall, elapsed, &adapter) {
+                Ok(()) => export_succeeded = true,
+                Err(cause) => eprintln!(
+                    "otel-scrape: warning: failed to export OTLP trace to {endpoint_for_warning}: {cause}"
+                ),
+            }
         }
     }
 
+    // Root trace surfacing (decision 0020, R31): terminal-only, after export so
+    // the URL is truthful. Emitted last, after all child + wrapper output.
+    surface_root_trace(&config, &trace, export_succeeded);
+
     Ok(exit_code(child.status))
+}
+
+/// Surface the minted root trace to the operator's terminal (stderr), so agents
+/// and humans can open or correlate the trace without querying the backend
+/// (decision 0020, R31). Terminal-only: this NEVER writes to the summary or OTLP
+/// sinks. TTY detection selects the encoding, never whether to emit.
+fn surface_root_trace(config: &RunConfig, trace: &TraceContext, export_succeeded: bool) {
+    if !config.trace_link_enabled {
+        return;
+    }
+    // Root-only: a joined/nested run does not own the root and stays silent, so
+    // exactly one participant surfaces per trace.
+    if trace.parent_span_id.is_some() {
+        return;
+    }
+    // R04 gate: pure passthrough (no summary, no export attempted) stays
+    // byte-identical to direct execution. Telemetry is "active" when a summary is
+    // written or an export is actually attempted — `otlp_export_enabled` alone is
+    // true by default even with no endpoint, so it must be paired with an
+    // endpoint to mean "an export will happen".
+    let export_attempted = config.otlp_export_enabled && config.otlp_endpoint.is_some();
+    let telemetry_active = config.summary_out.is_some() || export_attempted;
+    if !telemetry_active {
+        return;
+    }
+    // Resolvable-URL tier requires a provably-exported trace AND a usable
+    // template; otherwise degrade to the bare-trace-id tier.
+    let url = if export_succeeded {
+        config
+            .trace_url_template
+            .as_deref()
+            .and_then(|template| render_trace_url(template, &trace.trace_id))
+    } else {
+        None
+    };
+    let line = format_trace_line(&trace.trace_id, url.as_deref(), io::stderr().is_terminal());
+    eprintln!("{line}");
+}
+
+/// Substitute the trace id into the operator-supplied URL template. Returns
+/// `None` (degrade to bare id) when the template lacks the `{traceId}`
+/// placeholder or the rendered URL would carry control characters — either would
+/// surface a misleading or malformed line (decision 0020).
+fn render_trace_url(template: &str, trace_id: &str) -> Option<String> {
+    if !template.contains(TRACE_ID_PLACEHOLDER) {
+        eprintln!(
+            "otel-scrape: warning: ignoring {TRACE_URL_TEMPLATE_ENV} without a {TRACE_ID_PLACEHOLDER} placeholder"
+        );
+        return None;
+    }
+    let url = template.replace(TRACE_ID_PLACEHOLDER, trace_id);
+    if url.chars().any(|c| c.is_control()) {
+        eprintln!("otel-scrape: warning: ignoring trace url template with control characters");
+        return None;
+    }
+    Some(url)
+}
+
+/// Format the root trace line. Mirrors the fleet `otel-trace` convention with an
+/// `otel-scrape:` prefix for attribution on shared stderr. On a TTY the URL is an
+/// OSC 8 hyperlink; when piped it is plain text so agents can parse it.
+fn format_trace_line(trace_id: &str, url: Option<&str>, is_tty: bool) -> String {
+    let label = format!("trace:{trace_id}");
+    match url {
+        Some(url) if is_tty => {
+            format!("otel-scrape: \x1b]8;;{url}\x07\x1b[4m{label}\x1b[24m\x1b]8;;\x07")
+        }
+        Some(url) => format!("otel-scrape: {label}  {url}"),
+        None => format!("otel-scrape: {label}"),
+    }
 }
 
 struct ChildRun {
@@ -3931,7 +4074,8 @@ mod tests {
     fn machine_version_prefers_compile_time_nix_stamp() {
         // A compile-time NixStamp is the binary's own build and wins over any
         // runtime stamp.
-        let compile = r#"{"type":"nix","version":"0.0.0","rev":"abc1234","commitTs":42,"dirty":false}"#;
+        let compile =
+            r#"{"type":"nix","version":"0.0.0","rev":"abc1234","commitTs":42,"dirty":false}"#;
         let runtime = r#"{"type":"local","rev":"ffff","ts":1,"dirty":true}"#;
         assert_eq!(
             resolve_machine_version(Some(compile), Some(runtime), "0.0.0"),
@@ -3948,7 +4092,8 @@ mod tests {
         );
         // The flake supplies dirtyShortRev already carrying `-dirty`; the suffix
         // must not be doubled.
-        let already = r#"{"type":"nix","version":"0.0.0","rev":"abc1234-dirty","commitTs":1,"dirty":true}"#;
+        let already =
+            r#"{"type":"nix","version":"0.0.0","rev":"abc1234-dirty","commitTs":1,"dirty":true}"#;
         assert_eq!(
             resolve_machine_version(Some(already), None, "0.0.0"),
             "0.0.0+abc1234-dirty"
@@ -4030,6 +4175,8 @@ mod tests {
                 profile_artifacts: Vec::new(),
                 trusted_otlp: false,
                 trusted_summary: false,
+                trace_url_template: None,
+                trace_link_enabled: true,
                 argv: vec!["echo".to_owned(), "hi".to_owned()],
             }))
         );
@@ -4087,6 +4234,8 @@ mod tests {
                 }],
                 trusted_otlp: false,
                 trusted_summary: false,
+                trace_url_template: None,
+                trace_link_enabled: true,
                 argv: vec!["true".to_owned()],
             }))
         );
@@ -4418,10 +4567,7 @@ mod tests {
             resource_attributes: vec![
                 ("telemetry.sdk.language".to_owned(), "rust".to_owned()),
                 ("telemetry.sdk.name".to_owned(), "otel-scrape".to_owned()),
-                (
-                    "telemetry.sdk.version".to_owned(),
-                    build_machine_version(),
-                ),
+                ("telemetry.sdk.version".to_owned(), build_machine_version()),
                 ("service.name".to_owned(), "otel-scrape".to_owned()),
             ],
             process_backend: ProcessBackendSelection::DirectChild,
@@ -4429,6 +4575,8 @@ mod tests {
             profile_artifacts: Vec::new(),
             trusted_otlp: false,
             trusted_summary: false,
+            trace_url_template: None,
+            trace_link_enabled: true,
             argv: vec!["node".to_owned(), "-e".to_owned(), String::new()],
         }
     }

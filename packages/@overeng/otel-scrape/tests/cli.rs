@@ -32,7 +32,16 @@ fn otel_scrape() -> Command {
         .env_remove("OTEL_SERVICE_NAME")
         // Keep the trust gate hermetic: the default must stay hashed-only
         // regardless of the ambient environment (decision 0015).
-        .env_remove("OTEL_SCRAPE_TRUSTED_SINK");
+        .env_remove("OTEL_SCRAPE_TRUSTED_SINK")
+        // Keep root trace surfacing hermetic: ambient template/switch must not
+        // leak into tests that exercise the flags (decision 0020).
+        .env_remove("OTEL_SCRAPE_TRACE_URL_TEMPLATE")
+        .env_remove("OTEL_SCRAPE_TRACE_LINK")
+        // Scrub inbound trace context so a run is root by default; joined-run
+        // tests opt in by setting `traceparent` explicitly. Without this, an
+        // ambient TRACEPARENT (common in a traced shell) makes every run joined.
+        .env_remove("traceparent")
+        .env_remove("TRACEPARENT");
     command
 }
 
@@ -42,6 +51,10 @@ fn preserves_passthrough_and_writes_summary() {
     let summary = dir.path().join("summary.json");
 
     let out = otel_scrape()
+        // Isolate child-stream fidelity: silence root trace surfacing (decision
+        // 0020) so stderr stays byte-exact to the child. Surfacing has its own
+        // dedicated tests.
+        .args(["--trace-link", "off"])
         .args(["--summary-out"])
         .arg(&summary)
         .args([
@@ -295,7 +308,10 @@ fn oxlint_adapter_emits_rule_and_line_in_both_sinks_with_filename_hashed() {
         .find(|event| event["name"] == "otel_scrape.adapter.event")
         .expect("an otel_scrape.adapter.event should be present");
     let attrs = adapter_event["attributes"].as_array().unwrap();
-    assert_eq!(attr_value(attrs, "otel_scrape.adapter.rule").as_deref(), Some(rule));
+    assert_eq!(
+        attr_value(attrs, "otel_scrape.adapter.rule").as_deref(),
+        Some(rule)
+    );
     assert_eq!(
         attr_value(attrs, "otel_scrape.adapter.line").as_deref(),
         Some("2")
@@ -2960,4 +2976,279 @@ fn captured_request(bytes: &[u8]) -> Option<CapturedRequest> {
         headers: captured_headers,
         body: bytes[body_start..body_start + content_length].to_vec(),
     })
+}
+
+// ---------------------------------------------------------------------------
+// Root trace surfacing (decision 0020, R31). When otel-scrape mints the trace
+// root, it prints the trace id (+ a backend-agnostic URL when the trace is
+// provably exported and a `{traceId}` template is set) to stderr, so agents and
+// humans can reach the trace without querying the backend. Terminal-only: the
+// template/URL never enters the summary or OTLP sinks. Tests capture piped
+// (non-TTY) stderr, so the plain encoding is asserted.
+// ---------------------------------------------------------------------------
+
+const TRACE_URL_TEMPLATE: &str = "https://grafana.example/explore?traceql={traceId}";
+
+/// The `otel-scrape: trace:<id>` surfacing line from captured stderr, if any.
+fn trace_surface_line(stderr: &str) -> Option<String> {
+    stderr
+        .lines()
+        .find(|line| line.starts_with("otel-scrape: trace:"))
+        .map(ToOwned::to_owned)
+}
+
+#[test]
+fn root_surfaces_resolvable_url_on_successful_export() {
+    let collector = TestCollector::start(200);
+    let dir = tempfile::tempdir().unwrap();
+    let summary_path = dir.path().join("summary.json");
+
+    let out = otel_scrape()
+        .args(["--summary-out"])
+        .arg(&summary_path)
+        .args(["--otlp-endpoint", &collector.endpoint])
+        .args(["--trace-url-template", TRACE_URL_TEMPLATE])
+        .args(["--", "sh", "-c", "true"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let _ = collector.request();
+
+    let summary: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&summary_path).unwrap()).unwrap();
+    let trace_id = summary["trace"]["trace_id"].as_str().unwrap();
+
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    let line = trace_surface_line(&stderr).expect("expected a surfaced trace line");
+    // Plain (non-TTY) encoding: `trace:<id>  <url>`, id substituted into template.
+    let expected_url = TRACE_URL_TEMPLATE.replace("{traceId}", trace_id);
+    assert_eq!(
+        line,
+        format!("otel-scrape: trace:{trace_id}  {expected_url}")
+    );
+    // No OSC 8 escape when stderr is not a TTY.
+    assert!(!stderr.contains('\u{1b}'));
+}
+
+#[test]
+fn root_surfaces_bare_id_when_export_fails() {
+    // A 500 makes the first-party exporter return an error: the trace is not
+    // provably in the backend, so only the bare id is surfaced (no dead URL).
+    let collector = TestCollector::start(500);
+    let dir = tempfile::tempdir().unwrap();
+    let summary_path = dir.path().join("summary.json");
+
+    let out = otel_scrape()
+        .args(["--summary-out"])
+        .arg(&summary_path)
+        .args(["--otlp-endpoint", &collector.endpoint])
+        .args(["--trace-url-template", TRACE_URL_TEMPLATE])
+        .args(["--", "sh", "-c", "true"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let _ = collector.request();
+
+    let summary: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&summary_path).unwrap()).unwrap();
+    let trace_id = summary["trace"]["trace_id"].as_str().unwrap();
+
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    let line = trace_surface_line(&stderr).expect("expected a bare trace line");
+    assert_eq!(line, format!("otel-scrape: trace:{trace_id}"));
+    assert!(!line.contains("https://"), "no URL when export failed");
+}
+
+#[test]
+fn root_surfaces_bare_id_summary_only() {
+    // Summary configured, no OTLP: the trace exists locally but not in a backend,
+    // so only the bare id is surfaced even with a template set.
+    let dir = tempfile::tempdir().unwrap();
+    let summary_path = dir.path().join("summary.json");
+
+    let out = otel_scrape()
+        .args(["--summary-out"])
+        .arg(&summary_path)
+        .args(["--trace-url-template", TRACE_URL_TEMPLATE])
+        .args(["--", "sh", "-c", "true"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+
+    let summary: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&summary_path).unwrap()).unwrap();
+    let trace_id = summary["trace"]["trace_id"].as_str().unwrap();
+
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(
+        trace_surface_line(&stderr),
+        Some(format!("otel-scrape: trace:{trace_id}"))
+    );
+    assert!(!stderr.contains("https://"));
+}
+
+#[test]
+fn joined_run_surfaces_nothing() {
+    // A joined run (inbound traceparent) does not own the root, so it stays silent
+    // even with export + template configured.
+    let collector = TestCollector::start(200);
+    let dir = tempfile::tempdir().unwrap();
+    let summary_path = dir.path().join("summary.json");
+
+    let out = otel_scrape()
+        .env(
+            "traceparent",
+            "00-11111111111111111111111111111111-2222222222222222-01",
+        )
+        .args(["--summary-out"])
+        .arg(&summary_path)
+        .args(["--otlp-endpoint", &collector.endpoint])
+        .args(["--trace-url-template", TRACE_URL_TEMPLATE])
+        .args(["--", "sh", "-c", "true"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let _ = collector.request();
+
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(
+        trace_surface_line(&stderr),
+        None,
+        "joined run must stay silent"
+    );
+}
+
+#[test]
+fn pure_passthrough_surfaces_nothing() {
+    // No summary and no OTLP endpoint: R04 pure passthrough must stay
+    // byte-identical to direct execution, even with a template configured.
+    let out = otel_scrape()
+        .args(["--trace-url-template", TRACE_URL_TEMPLATE])
+        .args(["--", "sh", "-c", "printf out; printf err 1>&2"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    assert_eq!(String::from_utf8_lossy(&out.stdout), "out");
+    assert_eq!(String::from_utf8_lossy(&out.stderr), "err");
+}
+
+#[test]
+fn trace_link_off_suppresses_surfacing() {
+    let collector = TestCollector::start(200);
+    let dir = tempfile::tempdir().unwrap();
+    let summary_path = dir.path().join("summary.json");
+
+    let out = otel_scrape()
+        .args(["--trace-link", "off"])
+        .args(["--summary-out"])
+        .arg(&summary_path)
+        .args(["--otlp-endpoint", &collector.endpoint])
+        .args(["--trace-url-template", TRACE_URL_TEMPLATE])
+        .args(["--", "sh", "-c", "true"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let _ = collector.request();
+
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(
+        trace_surface_line(&stderr),
+        None,
+        "--trace-link off silences surfacing"
+    );
+}
+
+#[test]
+fn env_template_and_off_switch_are_honored() {
+    // The env forms mirror the flags: OTEL_SCRAPE_TRACE_URL_TEMPLATE supplies the
+    // template and OTEL_SCRAPE_TRACE_LINK=off silences surfacing.
+    let collector = TestCollector::start(200);
+    let dir = tempfile::tempdir().unwrap();
+    let summary_path = dir.path().join("summary.json");
+
+    let out = otel_scrape()
+        .env("OTEL_SCRAPE_TRACE_URL_TEMPLATE", TRACE_URL_TEMPLATE)
+        .env("OTEL_SCRAPE_TRACE_LINK", "off")
+        .args(["--summary-out"])
+        .arg(&summary_path)
+        .args(["--otlp-endpoint", &collector.endpoint])
+        .args(["--", "sh", "-c", "true"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let _ = collector.request();
+    assert_eq!(
+        trace_surface_line(&String::from_utf8_lossy(&out.stderr)),
+        None
+    );
+}
+
+#[test]
+fn template_without_placeholder_degrades_to_bare_id() {
+    let collector = TestCollector::start(200);
+    let dir = tempfile::tempdir().unwrap();
+    let summary_path = dir.path().join("summary.json");
+
+    let out = otel_scrape()
+        .args(["--summary-out"])
+        .arg(&summary_path)
+        .args(["--otlp-endpoint", &collector.endpoint])
+        .args([
+            "--trace-url-template",
+            "https://grafana.example/no-placeholder",
+        ])
+        .args(["--", "sh", "-c", "true"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let _ = collector.request();
+
+    let summary: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&summary_path).unwrap()).unwrap();
+    let trace_id = summary["trace"]["trace_id"].as_str().unwrap();
+
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("without a {traceId} placeholder"));
+    assert_eq!(
+        trace_surface_line(&stderr),
+        Some(format!("otel-scrape: trace:{trace_id}"))
+    );
+}
+
+#[test]
+fn trace_url_template_never_enters_sinks() {
+    // Terminal is not a sink (decision 0017): a sentinel host in the template must
+    // be byte-absent from both the OTLP payload and the summary file, even though
+    // the rendered URL is printed to stderr.
+    const SENTINEL_HOST: &str = "SURFACE_SENTINEL_HOST.example";
+    let collector = TestCollector::start(200);
+    let dir = tempfile::tempdir().unwrap();
+    let summary_path = dir.path().join("summary.json");
+
+    let out = otel_scrape()
+        .args(["--summary-out"])
+        .arg(&summary_path)
+        .args(["--otlp-endpoint", &collector.endpoint])
+        .args([
+            "--trace-url-template",
+            &format!("https://{SENTINEL_HOST}/{{traceId}}"),
+        ])
+        .args(["--", "sh", "-c", "true"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let request = collector.request();
+
+    let otlp_bytes = String::from_utf8_lossy(&request.body);
+    let summary_json = std::fs::read_to_string(&summary_path).unwrap();
+    assert!(
+        !otlp_bytes.contains(SENTINEL_HOST),
+        "template leaked into OTLP sink"
+    );
+    assert!(
+        !summary_json.contains(SENTINEL_HOST),
+        "template leaked into summary sink"
+    );
+    // But it IS on the operator's terminal (stderr), which is not a sink.
+    assert!(String::from_utf8_lossy(&out.stderr).contains(SENTINEL_HOST));
 }

@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **otel-scrape**: Root trace surfacing (decision 0020, R31). When `otel-scrape`
+  mints the trace root and telemetry is active, it prints the trace identity to
+  stderr at end of run so agents and humans can open or correlate the trace
+  without querying the backend first. With `--trace-url-template <tmpl>` /
+  `OTEL_SCRAPE_TRACE_URL_TEMPLATE` (a backend-agnostic `{traceId}` placeholder
+  template) and a successful export it prints a resolvable link; otherwise it
+  prints the bare `trace:<id>`. OSC 8 hyperlink on a TTY, plain text when piped.
+  Terminal-only — never written to the summary or OTLP sinks. Bound to export
+  success, not the child exit code. Pure passthrough stays silent (R04);
+  `--trace-link off` / `OTEL_SCRAPE_TRACE_LINK=off` disables it.
+
 ### Changed
 
 - **otel-scrape / devenv**: Make effect-utils' own devenv tasks cooperate with
