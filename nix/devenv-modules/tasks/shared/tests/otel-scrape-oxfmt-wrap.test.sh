@@ -40,6 +40,13 @@ cat > "$tmpdir/bin/oxfmt" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$@" >> "${TEST_OXFMT_ARGS:?}"
+# Optional simulated outcome (default: success). TEST_OXFMT_STDERR is emitted to
+# stderr and TEST_OXFMT_EXIT is the exit code, so cases can model oxfmt's real
+# all-ignored (exit 2 + diagnostic), parse-error (exit 2), and diff (exit 1) paths.
+if [ -n "${TEST_OXFMT_STDERR:-}" ]; then
+  printf '%s\n' "$TEST_OXFMT_STDERR" >&2
+fi
+exit "${TEST_OXFMT_EXIT:-0}"
 EOF
 chmod +x "$tmpdir/bin/oxfmt"
 export TEST_FAKE_OXFMT_PKG="$tmpdir"
@@ -74,6 +81,12 @@ cat > "$tmpdir/stubbin/otel-scrape" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 for a in "$@"; do printf '%s\n' "$a" >> "${OTEL_SCRAPE_LOG:?}"; done
+# Real otel-scrape prints its own note lines (e.g. an OTLP protocol note) to the
+# child's stderr stream. Simulate that pollution so the swallow logic is exercised
+# against wrapper stderr, not just the bare oxfmt diagnostic.
+if [ -n "${TEST_SCRAPE_EXTRA_STDERR:-}" ]; then
+  printf '%s\n' "$TEST_SCRAPE_EXTRA_STDERR" >&2
+fi
 child=()
 seen=0
 for a in "$@"; do
@@ -210,6 +223,68 @@ grep -qFx -- '--check' "$oxfmt_args_b" \
   || fail "case B: bare oxfmt should still receive --check"
 grep -qFx 'keep.ts' "$oxfmt_args_b" \
   || fail "case B: bare oxfmt should still receive the target file keep.ts"
+
+# ============================================================================
+# (C) REGRESSION: all-ignored batch (oxfmt exit 2 + empty-selection diagnostic)
+#     under an ACTIVE gate where otel-scrape ALSO prints its own note line to the
+#     shared stderr stream. The swallow keys on exit-code 2 AND the diagnostic
+#     substring, so it must hold DESPITE the extra wrapper stderr. With the old
+#     exact-string match this batch propagated exit 1 and failed the task.
+# ============================================================================
+echo "  case C: all-ignored + wrapper stderr -> swallowed (exit 0)"
+run_format_gate_active() {
+  # $1 = oxfmt exit, $2 = oxfmt stderr, $3 = extra otel-scrape stderr line
+  local oxfmt_args
+  oxfmt_args="$tmpdir/oxfmt-args-$$.txt"
+  : > "$oxfmt_args"
+  (
+    cd "$workspace"
+    env -i \
+      PATH="$tmpdir/stubbin:$PATH" \
+      HOME="$tmpdir" \
+      OTEL_EXPORTER_OTLP_ENDPOINT="http://127.0.0.1:4318" \
+      OTEL_TASK_TRACEPARENT="$VALID_TRACEPARENT" \
+      OTEL_SCRAPE_SUMMARY_DIR="$tmpdir/summaries" \
+      OTEL_SCRAPE_LOG="$tmpdir/scrape-argv-c.log" \
+      OTEL_SCRAPE_CHILD0="$tmpdir/scrape-child0-c.log" \
+      TEST_OXFMT_ARGS="$oxfmt_args" \
+      TEST_OXFMT_EXIT="$1" \
+      TEST_OXFMT_STDERR="$2" \
+      TEST_SCRAPE_EXTRA_STDERR="$3" \
+      bash "$format_exec"
+  )
+}
+
+if run_format_gate_active \
+  2 "Expected at least one target file. All matched files may have been excluded by ignore rules." \
+  "otel-scrape: note: sending OTLP/HTTP JSON instead"; then
+  : # swallow held despite wrapper stderr
+else
+  fail "case C: all-ignored batch (exit 2 + diagnostic) must be swallowed to exit 0 even with extra otel-scrape stderr"
+fi
+
+# ============================================================================
+# (D) A real formatting diff (oxfmt exit 1) under the same active/polluted-stderr
+#     conditions must STILL fail — the swallow only covers the all-ignored case.
+# ============================================================================
+echo "  case D: real formatting diff (exit 1) -> still fails"
+if run_format_gate_active \
+  1 "keep.ts (0ms)" \
+  "otel-scrape: note: sending OTLP/HTTP JSON instead"; then
+  fail "case D: a real formatting diff (oxfmt exit 1) must fail, not be swallowed"
+fi
+
+# ============================================================================
+# (E) DISCRIMINATION: a genuine parse error also exits 2, but WITHOUT the
+#     empty-selection diagnostic. The substring guard must keep it from being
+#     swallowed even though it shares the all-ignored exit code.
+# ============================================================================
+echo "  case E: genuine parse error (exit 2, no diagnostic) -> still fails"
+if run_format_gate_active \
+  2 "Error occurred when checking code style in the above files." \
+  "otel-scrape: note: sending OTLP/HTTP JSON instead"; then
+  fail "case E: a genuine parse error (exit 2 without the empty-selection diagnostic) must fail, not be swallowed"
+fi
 
 echo ""
 echo "otel-scrape oxfmt wrap test passed"

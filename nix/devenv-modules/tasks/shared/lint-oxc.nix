@@ -161,9 +161,21 @@ let
                 fi
 
                 stderr="$(cat "$stderr_file")"
-                if [ "$stderr" = "$empty_selection_diagnostic" ]; then
-                  exit 0
-                fi
+                # All-ignored batch: oxfmt exits 2 and prints the empty-selection
+                # diagnostic. Detect it by BOTH exit code 2 AND the diagnostic
+                # substring, so the swallow survives extra wrapper stderr (the
+                # otel-scrape prefix prints its own note lines to this same stream)
+                # yet never hides a genuine parse error (also exit 2, but WITHOUT
+                # the diagnostic) or a formatting diff (exit 1). Substring, not
+                # exact equality: real oxfmt appends "All matched files may have
+                # been excluded by ignore rules." and the wrapper interleaves lines.
+                case "$stderr" in
+                  *"$empty_selection_diagnostic"*)
+                    if [ "$status" -eq 2 ]; then
+                      exit 0
+                    fi
+                    ;;
+                esac
 
                 printf "%s\n" "$stderr" >&2
                 exit "$status"

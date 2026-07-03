@@ -2325,6 +2325,35 @@ fn unsupported_otlp_compression_disables_first_party_json_exporter() {
 }
 
 #[test]
+fn http_protobuf_protocol_still_exports_via_json_path() {
+    // The OTLP/HTTP receiver routes by request Content-Type, not by the client's
+    // protocol preference, and accepts JSON on /v1/traces. So a requested
+    // `http/protobuf` protocol must NOT disable export — otel-scrape falls back to
+    // the working JSON path and still POSTs the trace.
+    let collector = TestCollector::start(200);
+
+    let out = otel_scrape()
+        .env("OTEL_EXPORTER_OTLP_ENDPOINT", &collector.endpoint)
+        .env("OTEL_EXPORTER_OTLP_PROTOCOL", "http/protobuf")
+        .args(["--", "sh", "-c", "printf child"])
+        .output()
+        .unwrap();
+
+    assert!(out.status.success());
+    assert_eq!(String::from_utf8_lossy(&out.stdout), "child");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(!stderr.contains("disabled"), "stderr: {stderr}");
+    assert!(
+        !stderr.contains("failed to export OTLP trace"),
+        "stderr: {stderr}"
+    );
+
+    let request = collector.request();
+    assert_eq!(request.path, "/v1/traces");
+    assert_eq!(request.content_type.as_deref(), Some("application/json"));
+}
+
+#[test]
 fn otlp_export_failure_preserves_child_exit_code() {
     let collector = TestCollector::start(500);
     let endpoint = format!("{}/tokenized-secret-path", collector.endpoint);

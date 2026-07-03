@@ -2830,7 +2830,22 @@ fn otlp_env_config() -> OtlpEnvConfig {
         .map(|value| value.to_ascii_lowercase());
     let protocol_enabled = match protocol.as_deref() {
         None | Some("http/json") => true,
-        Some("grpc" | "http/protobuf") => {
+        // `http/protobuf` selects the same OTLP/HTTP receiver (default port 4318,
+        // `/v1/traces`) as `http/json` and only asks for a protobuf-encoded body.
+        // The receiver routes by the request `Content-Type`, not by the client's
+        // protocol preference (that env never reaches the server), and `/v1/traces`
+        // accepts `application/json`. So the requested protocol is best-effort: we
+        // keep exporting via the working JSON path instead of disabling export.
+        Some("http/protobuf") => {
+            eprintln!(
+                "otel-scrape: note: {OTLP_TRACES_PROTOCOL_ENV}/{OTLP_PROTOCOL_ENV}=http/protobuf requested; sending OTLP/HTTP JSON instead (the collector accepts JSON on /v1/traces regardless of the requested protocol)"
+            );
+            true
+        }
+        // gRPC is a genuinely different transport (HTTP/2 framing, default port
+        // 4317) that this HTTP/1.1 JSON exporter cannot speak; disable rather than
+        // POST JSON to an endpoint that will not understand it.
+        Some("grpc") => {
             eprintln!(
                 "otel-scrape: warning: {OTLP_TRACES_PROTOCOL_ENV}/{OTLP_PROTOCOL_ENV} requested a protocol not supported by this HTTP/JSON exporter; trace export is disabled"
             );

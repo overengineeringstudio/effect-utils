@@ -32,6 +32,24 @@ All notable changes to this project will be documented in this file.
   success, not the child exit code. Pure passthrough stays silent (R04);
   `--trace-link off` / `OTEL_SCRAPE_TRACE_LINK=off` disables it.
 
+### Fixed
+
+- **otel-scrape**: Export spans when `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`
+  is requested instead of disabling export. The OTLP/HTTP receiver routes by
+  request `Content-Type` (not the client's protocol env), and `/v1/traces`
+  accepts `application/json`, so otel-scrape now sends its JSON payload and
+  prints a `note:` rather than `trace export is disabled`. `grpc` stays disabled
+  (a genuinely different transport this HTTP/JSON exporter cannot speak). This
+  unblocks adapter spans reaching the collector in the fleet's protobuf-configured
+  environments.
+- **devenv tasks**: `lint:check:format` no longer fails when run under tracing.
+  `mkLintExec`'s empty-selection swallow keyed on an exact stderr match, which the
+  otel-scrape wrapper's own stderr line broke for an all-ignored batch. The swallow
+  now keys on oxfmt's exit code 2 **and** the diagnostic substring — robust to any
+  extra wrapper stderr — so a genuine parse error (exit 2, no diagnostic) and a
+  formatting diff (exit 1) still fail. (Also corrects the old exact-match, which
+  never matched real oxfmt's longer message.)
+
 ### Changed
 
 - **otel-scrape**: Refactored the adapters into a per-tool module framework
