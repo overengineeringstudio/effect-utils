@@ -76,6 +76,32 @@ adapters are siblings under one contract.
   and the duration-trends dashboard. Verdict: nothing to add. (The `nix` *build*
   lane is a separate candidate — leaf 04.)
 
+## Implementation layout
+
+Each adapter is a self-contained Rust module implementing a shared trait, so
+adapters are developed and maintained independently:
+
+```
+packages/@overeng/otel-scrape/src/adapters/
+  mod.rs              ToolAdapter trait + AdapterPrep + the ADAPTERS registry
+                      (adapter_for / adapter_names / prepare)
+  oxlint.rs           OxlintAdapter          (diagnostics, needs-render)
+  vitest.rs           VitestAdapter          (side-channel)
+  node_cpuprofile.rs  NodeCpuProfileAdapter  (profile artifact)
+  <tool>.rs           one file per adapter
+```
+
+`ToolAdapter` methods: `name`, `stdout_mode(nested)`, `ownership(nested)`,
+`structured_source(child)`, `parse(source, ownership)`, and the injection/
+lifecycle hooks `prepare(config) -> AdapterPrep`, `discover_artifacts(child)`,
+`cleanup_artifacts(child)`, `cleanup_structured_source(child)` — all defaulted
+except `name`/`parse`, so an adapter overrides only what it uses. `lib.rs`
+dispatch is registry-driven (`adapter_for(...).map_or(default, |a| a.method(...))`)
+with no per-name `match`, so adding an adapter is **one `src/adapters/<tool>.rs`
++ one `ADAPTERS` entry + its `telemetry-registry.json` entries** — `lib.rs` is
+untouched. Injection is dynamic via `prepare` (no static `child_flags`), so a
+tool's format flag is supplied only when otel-scrape is engaged.
+
 ## Aggregate counts as command-span attributes
 
 Adapter-derived **metrics** are currently written to the summary but dropped

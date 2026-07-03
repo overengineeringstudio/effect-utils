@@ -23,6 +23,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 
+mod adapters;
 mod content_address;
 #[path = "telemetry_registry.gen.rs"]
 pub mod telemetry_registry;
@@ -82,8 +83,6 @@ const TRACEPARENT_ENV: &str = "traceparent";
 // re-parents beneath the command span instead of the outer task span. A
 // re-eval-safe reparenting fix (experiment 0009); overwrites any inherited value.
 const OTEL_TASK_TRACEPARENT_ENV: &str = "OTEL_TASK_TRACEPARENT";
-const OXLINT_ADAPTER: &str = "oxlint";
-const VITEST_ADAPTER: &str = "vitest";
 const OUTPUT_MEDIA_TYPE: &str = "application/octet-stream";
 const RESOURCE_FACT_UNAVAILABLE: &str = "unavailable";
 const OTLP_HTTP_DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -320,7 +319,7 @@ struct AdapterOwnershipSummary {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum AdapterStdoutOwnership {
+pub(crate) enum AdapterStdoutOwnership {
     ThisWrapper,
     ChildWrapper,
     /// The adapter consumes a side-channel (a file/fd) and leaves the child's
@@ -342,7 +341,7 @@ impl AdapterStdoutOwnership {
 /// How otel-scrape presents the wrapped child's stdout (decision 0017,
 /// requirement R30). Presentation ownership lives here, per-adapter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum StdoutMode {
+pub(crate) enum StdoutMode {
     /// stdout goes straight to the terminal; otel-scrape never captures it
     /// (adapter=none; vitest side-channel).
     Inherit,
@@ -357,7 +356,7 @@ enum StdoutMode {
 }
 
 #[derive(Debug, Clone)]
-enum AdapterOutput {
+pub(crate) enum AdapterOutput {
     Event(AdapterEvent),
     #[allow(dead_code)]
     Span(AdapterSpan),
@@ -377,7 +376,7 @@ enum AdapterSummaryRecord {
 /// the filename is only ever the hashed identity. The full message/path is shown
 /// only in the terminal render (the operator's own machine, not a sink).
 #[derive(Debug, Clone, Serialize)]
-struct AdapterEvent {
+pub(crate) struct AdapterEvent {
     severity: String,
     filename_hash: Option<String>,
     /// The diagnostic rule / linter code, emitted verbatim (e.g.
@@ -393,14 +392,14 @@ struct AdapterEvent {
 }
 
 #[derive(Debug, Clone)]
-struct AdapterSpan {
+pub(crate) struct AdapterSpan {
     name: String,
     identity_hash: String,
     duration_ms: Option<u128>,
 }
 
 #[derive(Debug, Clone, Serialize)]
-struct AdapterMetric {
+pub(crate) struct AdapterMetric {
     name: &'static str,
     value: u64,
 }
@@ -414,7 +413,7 @@ struct ArtifactSummary {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ProfileLink {
+pub(crate) struct ProfileLink {
     #[serde(rename = "type")]
     profile_type: String,
     digest: String,
@@ -674,14 +673,11 @@ pub fn parse_args(args: &[String]) -> Result<CommandRequest, UsageError> {
                 let Some(value) = args.get(i + 1) else {
                     return usage_error("--adapter needs a value");
                 };
-                if value != "none"
-                    && value != OXLINT_ADAPTER
-                    && value != VITEST_ADAPTER
-                    && value != NODE_CPUPROFILE_ADAPTER
+                if !adapter_choices()
+                    .into_iter()
+                    .any(|choice| choice == value.as_str())
                 {
-                    return usage_error(
-                        "only --adapter none, --adapter oxlint, --adapter vitest, and --adapter node-cpuprofile are supported",
-                    );
+                    return usage_error(&adapter_usage_error());
                 }
                 adapter = value.clone();
                 i += 2;
@@ -859,6 +855,30 @@ pub fn parse_args(args: &[String]) -> Result<CommandRequest, UsageError> {
     })))
 }
 
+/// The user-facing `--adapter` choices: `none` plus every registered adapter, in
+/// registration order. Drives both validation and the usage strings, so a new
+/// adapter is picked up here with no edits (decision: registry-driven).
+fn adapter_choices() -> Vec<&'static str> {
+    std::iter::once("none")
+        .chain(adapters::adapter_names())
+        .collect()
+}
+
+/// The exact `--adapter` usage error, built from [`adapter_choices`] so it stays
+/// in sync with the registry: a serial-comma list matching the prior literal.
+fn adapter_usage_error() -> String {
+    let formatted: Vec<String> = adapter_choices()
+        .into_iter()
+        .map(|choice| format!("--adapter {choice}"))
+        .collect();
+    let list = match formatted.split_last() {
+        None => String::new(),
+        Some((last, [])) => last.clone(),
+        Some((last, init)) => format!("{}, and {last}", init.join(", ")),
+    };
+    format!("only {list} are supported")
+}
+
 /// Root trace surfacing on/off from the environment (decision 0020). Default on;
 /// `off`/`false` disables; unknown values warn and keep the default (mirrors the
 /// exporter-enum handling). The `--trace-link` flag overrides this.
@@ -891,7 +911,8 @@ pub fn print_help() {
     eprintln!();
     eprintln!("usage:");
     eprintln!(
-        "  otel-scrape [--summary-out <file>] [--adapter none|oxlint|vitest|node-cpuprofile] [--process-backend direct-child|ptrace-experimental|helper-stream] [--process-helper-socket <path>] [--otlp-endpoint <url>] [--service-name <name>] [--trusted-sink otlp|summary]... [--trace-url-template <tmpl>] [--trace-link on|off] [--cas-root <dir>] [--cas-pin <name>] [--profile-artifact <type>:<path>] -- <cmd...>"
+        "  otel-scrape [--summary-out <file>] [--adapter {}] [--process-backend direct-child|ptrace-experimental|helper-stream] [--process-helper-socket <path>] [--otlp-endpoint <url>] [--service-name <name>] [--trusted-sink otlp|summary]... [--trace-url-template <tmpl>] [--trace-link on|off] [--cas-root <dir>] [--cas-pin <name>] [--profile-artifact <type>:<path>] -- <cmd...>",
+        adapter_choices().join("|")
     );
     eprintln!("  otel-scrape --version | --help");
 }
@@ -1054,7 +1075,7 @@ pub fn run(config: RunConfig) -> io::Result<i32> {
             }
         }
     };
-    cleanup_adapter_profile_artifacts(&child);
+    cleanup_adapter_profile_artifacts(&config, &child);
 
     // Consume the declared structured source and build the adapter records ONCE
     // (decision 0017): stdout for oxlint, the side-channel file for vitest. The
@@ -1066,7 +1087,7 @@ pub fn run(config: RunConfig) -> io::Result<i32> {
     // place of the suppressed raw stdout (or flush the raw bytes on a parse
     // failure). UX-neutral: the operator still sees readable output.
     present_adapter_stdout(&config, &adapter, &child);
-    cleanup_sidechannel_file(&child);
+    cleanup_sidechannel_file(&config, &child);
 
     if let Some(path) = config.summary_out.as_ref() {
         match summary_for_status(
@@ -1184,7 +1205,7 @@ fn format_trace_line(trace_id: &str, url: Option<&str>, is_tty: bool) -> String 
     }
 }
 
-struct ChildRun {
+pub(crate) struct ChildRun {
     status: ExitStatus,
     stdout: Option<Vec<u8>>,
     stderr: Option<Vec<u8>>,
@@ -1232,10 +1253,9 @@ fn run_child_direct(
     child_traceparent: &str,
     run_id: &str,
 ) -> io::Result<ChildRun> {
-    let node_profile_dir = prepare_node_cpuprofile_dir(config)?;
+    let prep = adapters::prepare(config)?;
     let process_span_id = random_hex(8)?;
     let mode = stdout_mode(config);
-    let sidechannel = vitest_sidechannel(config)?;
     let mut command = Command::new(&config.argv[0]);
     command
         .args(&config.argv[1..])
@@ -1248,17 +1268,12 @@ fn run_child_direct(
         .env(OTEL_TASK_TRACEPARENT_ENV, child_traceparent)
         .env(RUN_ID_ENV, run_id)
         .stdin(Stdio::inherit());
-    if let Some(plan) = sidechannel.as_ref() {
-        command.args(&plan.inject_args);
-    }
-    if let Some(profile_dir) = node_profile_dir.as_ref() {
-        command.env(
-            "NODE_OPTIONS",
-            node_options_with_cpu_profile(
-                std::env::var("NODE_OPTIONS").ok().as_deref(),
-                profile_dir,
-            ),
-        );
+    // Apply the active adapter's planned child-command mutation: extra argv
+    // (vitest reporter/output-file) then extra env (node NODE_OPTIONS). Both are
+    // empty for `none`/oxlint, so this is a no-op there.
+    command.args(&prep.inject_args);
+    for (key, value) in &prep.env {
+        command.env(key, value);
     }
 
     let process_started_wall = SystemTime::now();
@@ -1303,10 +1318,10 @@ fn run_child_direct(
         status,
         stdout,
         stderr,
-        node_profile_dir,
+        node_profile_dir: prep.node_profile_dir,
         child_pid: Some(process_id),
-        sidechannel_file: sidechannel.as_ref().map(|plan| plan.read_path.clone()),
-        sidechannel_owned: sidechannel.as_ref().is_some_and(|plan| plan.owned),
+        sidechannel_file: prep.sidechannel_file,
+        sidechannel_owned: prep.sidechannel_owned,
         process_observation: direct_child_process_observation(DirectChildProcessObservation {
             config,
             process_id,
@@ -1317,105 +1332,6 @@ fn run_child_direct(
             status,
         }),
     })
-}
-
-/// The vitest side-channel plan (decision 0017): the JSON file otel-scrape reads
-/// after the child exits, the flags it injects so a JSON reporter writes there,
-/// and whether otel-scrape owns (must delete) the file.
-struct VitestSidechannel {
-    /// JSON file otel-scrape reads once the child exits.
-    read_path: PathBuf,
-    /// Flags injected into the child argv so a JSON report lands at a known path
-    /// while the human reporter still writes to the terminal.
-    inject_args: Vec<String>,
-    /// Whether otel-scrape created `read_path` and must delete it. NEVER set for a
-    /// user-supplied `--outputFile.json` — deleting the operator's file is data loss.
-    owned: bool,
-}
-
-/// User-supplied vitest flags otel-scrape must respect before injecting its own
-/// side-channel flags (decision 0017 clause 2): a pre-existing `--outputFile.json`
-/// (any form) is read in place instead of clobbered, and a pre-existing
-/// `--reporter` is preserved instead of overridden.
-struct VitestUserFlags {
-    output_file_json: Option<PathBuf>,
-    has_any_reporter: bool,
-    has_json_reporter: bool,
-}
-
-/// Scan the child argv for the vitest flags that otel-scrape's side-channel would
-/// otherwise clobber. Handles both `--flag=value` and `--flag value` forms.
-fn scan_vitest_user_flags(argv: &[String]) -> VitestUserFlags {
-    let mut output_file_json = None;
-    let mut has_any_reporter = false;
-    let mut has_json_reporter = false;
-    let mut iter = argv.iter().peekable();
-    while let Some(arg) = iter.next() {
-        if let Some(value) = arg.strip_prefix("--outputFile.json=") {
-            output_file_json = Some(PathBuf::from(value));
-        } else if arg == "--outputFile.json" {
-            // Bare form: the next arg is the path. Peek (don't consume) so it is
-            // still forwarded to vitest unchanged.
-            if let Some(value) = iter.peek() {
-                output_file_json = Some(PathBuf::from(value.as_str()));
-            }
-        } else if let Some(value) = arg.strip_prefix("--reporter=") {
-            has_any_reporter = true;
-            has_json_reporter |= value == "json";
-        } else if arg == "--reporter" {
-            has_any_reporter = true;
-            has_json_reporter |= iter.peek().map(|v| v.as_str()) == Some("json");
-        }
-    }
-    VitestUserFlags {
-        output_file_json,
-        has_any_reporter,
-        has_json_reporter,
-    }
-}
-
-/// Plan the vitest side-channel for this invocation (decision 0017), or `None` for
-/// any other adapter. otel-scrape ensures a JSON reporter + a known output path so
-/// it can read structured counts, WITHOUT clobbering user-supplied flags:
-///   - a pre-existing `--outputFile.json` is read in place and never deleted;
-///   - a pre-existing human `--reporter` is preserved (only `--reporter=json` is
-///     added alongside — vitest supports multiple reporters);
-///   - only when the user passed no `--reporter` at all does otel-scrape inject
-///     `--reporter=default` (verified: `--reporter=json` alone blanks the terminal).
-fn vitest_sidechannel(config: &RunConfig) -> io::Result<Option<VitestSidechannel>> {
-    if config.adapter != VITEST_ADAPTER {
-        return Ok(None);
-    }
-    let user = scan_vitest_user_flags(&config.argv);
-
-    let mut inject_args = Vec::new();
-    if !user.has_any_reporter {
-        // No user reporter: keep vitest's human output AND add the JSON side-channel.
-        inject_args.push("--reporter=default".to_owned());
-        inject_args.push("--reporter=json".to_owned());
-    } else if !user.has_json_reporter {
-        // Preserve the user's human reporter(s); add only the JSON side-channel.
-        inject_args.push("--reporter=json".to_owned());
-    }
-    // else: the user already asked for a JSON reporter — inject no reporter flag.
-
-    match user.output_file_json {
-        Some(read_path) => Ok(Some(VitestSidechannel {
-            read_path,
-            inject_args,
-            owned: false,
-        })),
-        None => {
-            let suffix = random_hex(8)?;
-            let read_path = std::env::temp_dir().join(format!("otel-scrape-vitest-{suffix}.json"));
-            inject_args.push(format!("--outputFile.json={}", read_path.display()));
-            Ok(Some(VitestSidechannel {
-                read_path,
-                inject_args,
-                owned: true,
-            }))
-        }
-    }
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -1443,9 +1359,8 @@ fn run_child_with_ptrace(
     use std::collections::{HashMap, HashSet};
     use std::os::unix::process::CommandExt;
 
-    let node_profile_dir = prepare_node_cpuprofile_dir(config)?;
+    let prep = adapters::prepare(config)?;
     let mode = stdout_mode(config);
-    let sidechannel = vitest_sidechannel(config)?;
     let mut command = Command::new(&config.argv[0]);
     command
         .args(&config.argv[1..])
@@ -1456,17 +1371,12 @@ fn run_child_with_ptrace(
         // beneath this command span.
         .env(OTEL_TASK_TRACEPARENT_ENV, child_traceparent)
         .stdin(Stdio::inherit());
-    if let Some(plan) = sidechannel.as_ref() {
-        command.args(&plan.inject_args);
-    }
-    if let Some(profile_dir) = node_profile_dir.as_ref() {
-        command.env(
-            "NODE_OPTIONS",
-            node_options_with_cpu_profile(
-                std::env::var("NODE_OPTIONS").ok().as_deref(),
-                profile_dir,
-            ),
-        );
+    // Apply the active adapter's planned child-command mutation: extra argv
+    // (vitest reporter/output-file) then extra env (node NODE_OPTIONS). Both are
+    // empty for `none`/oxlint, so this is a no-op there.
+    command.args(&prep.inject_args);
+    for (key, value) in &prep.env {
+        command.env(key, value);
     }
     unsafe {
         command.pre_exec(|| {
@@ -1640,10 +1550,10 @@ fn run_child_with_ptrace(
         status,
         stdout,
         stderr,
-        node_profile_dir,
+        node_profile_dir: prep.node_profile_dir,
         child_pid: u32::try_from(root_pid).ok(),
-        sidechannel_file: sidechannel.as_ref().map(|plan| plan.read_path.clone()),
-        sidechannel_owned: sidechannel.as_ref().is_some_and(|plan| plan.owned),
+        sidechannel_file: prep.sidechannel_file,
+        sidechannel_owned: prep.sidechannel_owned,
         process_observation: ptrace_process_observation(traces),
     })
 }
@@ -2245,22 +2155,6 @@ fn is_process_leader(pid: libc::pid_t) -> bool {
         .is_none_or(|tgid| tgid == pid)
 }
 
-fn prepare_node_cpuprofile_dir(config: &RunConfig) -> io::Result<Option<PathBuf>> {
-    if config.adapter != NODE_CPUPROFILE_ADAPTER {
-        return Ok(None);
-    }
-    if !is_node_command(config.argv.first().map(String::as_str)) {
-        return Ok(None);
-    }
-    let root = std::env::temp_dir().join(format!(
-        "otel-scrape-node-cpuprofile-{}-{}",
-        std::process::id(),
-        random_hex(8)?
-    ));
-    fs::create_dir_all(&root)?;
-    Ok(Some(root))
-}
-
 /// Public-safe program identity: the basename of the wrapped executable
 /// (`tsc`, `vitest`, `cargo`, `sh`). Never a full path or arguments
 /// (decision 0014, R01). Used both as the command span name and as the
@@ -2357,29 +2251,6 @@ fn is_uuid_like(name: &str) -> bool {
             .iter()
             .zip(lengths.iter())
             .all(|(group, &len)| group.len() == len && group.bytes().all(|b| b.is_ascii_hexdigit()))
-}
-
-fn is_node_command(argv0: Option<&str>) -> bool {
-    let Some(argv0) = argv0 else {
-        return false;
-    };
-    matches!(
-        Path::new(argv0).file_name().and_then(|name| name.to_str()),
-        Some("node" | "node.exe")
-    )
-}
-
-fn node_options_with_cpu_profile(existing: Option<&str>, profile_dir: &Path) -> String {
-    let profile_dir = profile_dir.to_string_lossy();
-    let profile_options = [
-        String::from("--cpu-prof"),
-        format!("--cpu-prof-dir={profile_dir}"),
-        String::from("--cpu-prof-name=CPU.cpuprofile"),
-    ];
-    match existing.map(str::trim).filter(|value| !value.is_empty()) {
-        Some(existing) => format!("{existing} {}", profile_options.join(" ")),
-        None => profile_options.join(" "),
-    }
 }
 
 fn join_reader(handle: thread::JoinHandle<io::Result<Vec<u8>>>) -> io::Result<Vec<u8>> {
@@ -3263,37 +3134,19 @@ struct AdapterRun {
 /// only on `config`, so it is resolved BEFORE the child is spawned to decide the
 /// capture strategy, and again at emission to decide presentation.
 fn stdout_mode(config: &RunConfig) -> StdoutMode {
-    match config.adapter.as_str() {
-        "none" => StdoutMode::Inherit,
-        // vitest is a side-channel adapter: its JSON goes to a file otel-scrape
-        // injects; its human output stays on stdout untouched (decision 0017).
-        VITEST_ADAPTER => StdoutMode::Inherit,
-        OXLINT_ADAPTER => {
-            if invokes_nested_otel_scrape(config) {
-                // The nested otel-scrape renders; the outer only passes it through.
-                StdoutMode::TeeLive
-            } else {
-                // Leaf: suppress the raw JSON tee and render a summary in its place.
-                StdoutMode::CaptureSilent
-            }
-        }
-        // node-cpuprofile emits a side-artifact (the profile) while its human
-        // stdout stays readable, so it is captured AND streamed live.
-        NODE_CPUPROFILE_ADAPTER => StdoutMode::TeeLive,
-        // The adapter set is closed and validated in parse_args; any other value
-        // reaching here is a bug, not a silent tee of raw structured output. A new
-        // adapter MUST be classified deliberately by adding an arm above.
-        other => unreachable!("unclassified adapter for stdout mode: {other}"),
+    // The adapter set is closed and validated in parse_args, so `none` and any
+    // unrecognized value alike resolve to no adapter and inherit the child's
+    // stdout — the registry makes the former `unreachable!` a total function.
+    match adapters::adapter_for(&config.adapter) {
+        Some(adapter) => adapter.stdout_mode(invokes_nested_otel_scrape(config)),
+        None => StdoutMode::Inherit,
     }
 }
 
 fn adapter_ownership(config: &RunConfig) -> AdapterStdoutOwnership {
-    match config.adapter.as_str() {
-        VITEST_ADAPTER => AdapterStdoutOwnership::Inherited,
-        _ if config.adapter != "none" && invokes_nested_otel_scrape(config) => {
-            AdapterStdoutOwnership::ChildWrapper
-        }
-        _ => AdapterStdoutOwnership::ThisWrapper,
+    match adapters::adapter_for(&config.adapter) {
+        Some(adapter) => adapter.ownership(invokes_nested_otel_scrape(config)),
+        None => AdapterStdoutOwnership::ThisWrapper,
     }
 }
 
@@ -3303,23 +3156,12 @@ fn adapter_outputs(
     artifacts: &ArtifactSummary,
 ) -> AdapterRun {
     let stdout_ownership = adapter_ownership(config);
-    let (mut outputs, render) = match (stdout_ownership, config.adapter.as_str()) {
-        (AdapterStdoutOwnership::ThisWrapper, OXLINT_ADAPTER) => oxlint_adapter(structured_source),
-        (AdapterStdoutOwnership::Inherited, VITEST_ADAPTER) => {
-            match vitest_outputs(structured_source) {
-                Ok(outputs) => (outputs, None),
-                // Degrade non-silently (decision 0017 clause 2): warn once to stderr and
-                // omit the vitest metrics rather than emitting a misleading 0/0. The
-                // wrapped command's own output and exit code are unaffected.
-                Err(reason) => {
-                    eprintln!(
-                    "otel-scrape: warning: vitest side-channel unavailable ({reason}); skipping vitest metrics"
-                );
-                    (Vec::new(), None)
-                }
-            }
-        }
-        _ => (Vec::new(), None),
+    // The adapter parses its declared structured source under the ownership it
+    // owns (oxlint under this-wrapper, vitest under its side-channel); `none` and
+    // any adapter that does not own the current ownership yield no records.
+    let (mut outputs, render) = match adapters::adapter_for(&config.adapter) {
+        Some(adapter) => adapter.parse(structured_source, stdout_ownership),
+        None => (Vec::new(), None),
     };
     outputs.extend(
         artifacts
@@ -3341,14 +3183,9 @@ fn adapter_outputs(
 /// captured stdout for oxlint, the injected side-channel file for vitest, empty
 /// otherwise. Read once after the child exits.
 fn adapter_structured_source(config: &RunConfig, child: &ChildRun) -> Vec<u8> {
-    match config.adapter.as_str() {
-        OXLINT_ADAPTER => child.stdout.clone().unwrap_or_default(),
-        VITEST_ADAPTER => child
-            .sidechannel_file
-            .as_ref()
-            .and_then(|path| std::fs::read(path).ok())
-            .unwrap_or_default(),
-        _ => Vec::new(),
+    match adapters::adapter_for(&config.adapter) {
+        Some(adapter) => adapter.structured_source(child),
+        None => Vec::new(),
     }
 }
 
@@ -3375,16 +3212,12 @@ fn present_adapter_stdout(config: &RunConfig, adapter: &AdapterRun, child: &Chil
     let _ = stdout.flush();
 }
 
-/// Remove the vitest side-channel file after its structured source is consumed
-/// (decision 0017). Only removes a file otel-scrape created — a user-supplied
-/// `--outputFile.json` is left untouched (data-loss guard, clause 2). Best-effort:
-/// a failure here never affects the child's exit.
-fn cleanup_sidechannel_file(child: &ChildRun) {
-    if !child.sidechannel_owned {
-        return;
-    }
-    if let Some(path) = child.sidechannel_file.as_ref() {
-        let _ = std::fs::remove_file(path);
+/// Remove any adapter-owned structured-source side-channel after it is consumed
+/// (the vitest JSON file — [`adapters::vitest`]). Best-effort: a failure here
+/// never affects the child's exit.
+fn cleanup_sidechannel_file(config: &RunConfig, child: &ChildRun) {
+    if let Some(adapter) = adapters::adapter_for(&config.adapter) {
+        adapter.cleanup_structured_source(child);
     }
 }
 
@@ -3586,7 +3419,7 @@ fn artifact_error(artifact: &ProfileArtifactInput, message: String) -> ArtifactE
 }
 
 #[derive(Debug, Default)]
-struct DiscoveredProfileArtifacts {
+pub(crate) struct DiscoveredProfileArtifacts {
     artifacts: Vec<ProfileArtifactInput>,
     errors: Vec<ArtifactError>,
 }
@@ -3595,269 +3428,21 @@ fn discover_adapter_profile_artifacts(
     config: &RunConfig,
     child: &ChildRun,
 ) -> DiscoveredProfileArtifacts {
-    if config.adapter != NODE_CPUPROFILE_ADAPTER {
-        return DiscoveredProfileArtifacts::default();
-    }
-    let Some(profile_dir) = child.node_profile_dir.as_ref() else {
-        return DiscoveredProfileArtifacts {
-            artifacts: Vec::new(),
-            errors: vec![ArtifactError {
-                profile_type: Some(String::from("cpuprofile")),
-                path_hash: None,
-                message: String::from(
-                    "node-cpuprofile adapter degraded: child command is not node",
-                ),
-            }],
-        };
-    };
-
-    let mut profile_paths = match fs::read_dir(profile_dir) {
-        Ok(entries) => entries
-            .filter_map(Result::ok)
-            .map(|entry| entry.path())
-            .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("cpuprofile"))
-            .collect::<Vec<_>>(),
-        Err(cause) => {
-            return DiscoveredProfileArtifacts {
-                artifacts: Vec::new(),
-                errors: vec![ArtifactError {
-                    profile_type: Some(String::from("cpuprofile")),
-                    path_hash: Some(hash_path_identity(&profile_dir.to_string_lossy())),
-                    message: format!("node-cpuprofile adapter degraded: failed to read profile directory: {cause}"),
-                }],
-            };
-        }
-    };
-    profile_paths.sort();
-
-    if profile_paths.is_empty() {
-        return DiscoveredProfileArtifacts {
-            artifacts: Vec::new(),
-            errors: vec![ArtifactError {
-                profile_type: Some(String::from("cpuprofile")),
-                path_hash: Some(hash_path_identity(&profile_dir.to_string_lossy())),
-                message: String::from(
-                    "node-cpuprofile adapter degraded: no .cpuprofile file produced",
-                ),
-            }],
-        };
-    }
-
-    let mut artifacts = Vec::new();
-    let mut errors = Vec::new();
-    if profile_paths.len() > 1 {
-        errors.push(ArtifactError {
-            profile_type: Some(String::from("cpuprofile")),
-            path_hash: Some(hash_path_identity(&profile_dir.to_string_lossy())),
-            message: format!(
-                "node-cpuprofile adapter degraded: expected one .cpuprofile file, found {}",
-                profile_paths.len()
-            ),
-        });
-    }
-
-    for path in profile_paths {
-        match validate_cpuprofile_file(&path) {
-            Ok(()) => artifacts.push(ProfileArtifactInput {
-                profile_type: String::from("cpuprofile"),
-                path,
-            }),
-            Err(cause) => errors.push(ArtifactError {
-                profile_type: Some(String::from("cpuprofile")),
-                path_hash: Some(hash_path_identity(&path.to_string_lossy())),
-                message: format!(
-                    "node-cpuprofile adapter degraded: malformed profile JSON: {cause}"
-                ),
-            }),
-        }
-    }
-
-    DiscoveredProfileArtifacts { artifacts, errors }
-}
-
-fn validate_cpuprofile_file(path: &Path) -> io::Result<()> {
-    let bytes = fs::read(path)?;
-    validate_cpuprofile_bytes(&bytes)
-}
-
-fn validate_cpuprofile_bytes(bytes: &[u8]) -> io::Result<()> {
-    let value: serde_json::Value = serde_json::from_slice(bytes).map_err(|cause| {
-        io::Error::new(io::ErrorKind::InvalidData, format!("invalid JSON: {cause}"))
-    })?;
-    let is_valid = value.as_object().is_some_and(|object| {
-        object
-            .get("nodes")
-            .and_then(|value| value.as_array())
-            .is_some()
-            && object
-                .get("samples")
-                .and_then(|value| value.as_array())
-                .is_some()
-    });
-    if is_valid {
-        Ok(())
-    } else {
-        Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "expected V8 cpuprofile object with nodes and samples",
-        ))
+    match adapters::adapter_for(&config.adapter) {
+        Some(adapter) => adapter.discover_artifacts(child),
+        None => DiscoveredProfileArtifacts::default(),
     }
 }
 
-fn cleanup_adapter_profile_artifacts(child: &ChildRun) {
-    if let Some(profile_dir) = child.node_profile_dir.as_ref() {
-        let _ = fs::remove_dir_all(profile_dir);
+/// Remove any adapter-owned profile artifacts once discovered and stored (the
+/// node-cpuprofile temp dir — [`adapters::node_cpuprofile`]).
+fn cleanup_adapter_profile_artifacts(config: &RunConfig, child: &ChildRun) {
+    if let Some(adapter) = adapters::adapter_for(&config.adapter) {
+        adapter.cleanup_artifacts(child);
     }
 }
 
-#[derive(Debug, Deserialize)]
-struct OxlintJson {
-    #[serde(default)]
-    diagnostics: Vec<OxlintDiagnostic>,
-}
-
-#[derive(Debug, Deserialize)]
-struct OxlintDiagnostic {
-    message: String,
-    severity: String,
-    filename: Option<String>,
-    /// The oxlint rule code (e.g. `eslint(no-unused-vars)`). Public-safe (H5):
-    /// emitted verbatim as the sink-facing `rule`. Parsed defensively and
-    /// omitted when absent.
-    #[serde(default)]
-    code: Option<String>,
-    /// Diagnostic source labels (oxlint miette JSON): each carries a `span`
-    /// whose `line` is the public-safe 1-based location (H5). Parsed defensively;
-    /// the first label with a line supplies the event `line`.
-    #[serde(default)]
-    labels: Vec<OxlintLabel>,
-}
-
-#[derive(Debug, Deserialize)]
-struct OxlintLabel {
-    #[serde(default)]
-    span: Option<OxlintSpan>,
-}
-
-#[derive(Debug, Deserialize)]
-struct OxlintSpan {
-    #[serde(default)]
-    line: Option<u32>,
-}
-
-/// The subset of vitest's `--reporter=json` summary otel-scrape consumes from the
-/// side-channel file. Counts only (decision 0017): no per-test names/files/errors.
-#[derive(Debug, Deserialize)]
-struct VitestJson {
-    #[serde(rename = "numTotalTests", default)]
-    num_total_tests: u64,
-    #[serde(rename = "numFailedTests", default)]
-    num_failed_tests: u64,
-}
-
-/// oxlint structured-in / pretty-out (decision 0017): parse the `--format=json`
-/// report into public-safe adapter records (severity + hashed filename + count),
-/// and produce a human summary otel-scrape renders to the terminal in place of the
-/// suppressed raw JSON.
-///
-/// PRECONDITION: the caller must pass `--format=json` to oxlint (0017 clause 2 —
-/// the usage site adopts the format flag). oxlint has no side-channel, so its
-/// human output on stdout IS its default format; otel-scrape captures stdout and
-/// re-renders. On non-JSON stdout the parse fails and this returns `(outputs,
-/// None)`, so `present_adapter_stdout` flushes the captured raw bytes instead of
-/// swallowing output — the human render is simply unavailable.
-fn oxlint_adapter(structured_source: &[u8]) -> (Vec<AdapterOutput>, Option<String>) {
-    let Ok(report) = serde_json::from_slice::<OxlintJson>(structured_source) else {
-        return (Vec::new(), None);
-    };
-
-    let mut records = Vec::with_capacity(report.diagnostics.len() + 1);
-    records.push(AdapterOutput::Metric(AdapterMetric {
-        name: telemetry_registry::metrics::OXLINT_DIAGNOSTICS,
-        value: report.diagnostics.len() as u64,
-    }));
-
-    for diagnostic in &report.diagnostics {
-        records.push(AdapterOutput::Event(AdapterEvent {
-            severity: diagnostic.severity.clone(),
-            filename_hash: diagnostic.filename.as_deref().map(hash_path_identity),
-            // rule = the linter code verbatim; line = the first labelled source
-            // line (H5). Both public-safe (a rule name + an integer); the path
-            // stays hashed above.
-            rule: diagnostic.code.clone(),
-            line: diagnostic
-                .labels
-                .iter()
-                .find_map(|label| label.span.as_ref().and_then(|span| span.line)),
-        }));
-    }
-
-    let render = oxlint_render(&report.diagnostics);
-    (records, Some(render))
-}
-
-/// The terminal render for oxlint (decision 0017 clause 3, R30). This is the
-/// operator's own machine, not a telemetry sink, so it MAY show full messages and
-/// paths (clause 4). The sink-facing records never carry them.
-fn oxlint_render(diagnostics: &[OxlintDiagnostic]) -> String {
-    let file_count = diagnostics
-        .iter()
-        .filter_map(|diagnostic| diagnostic.filename.as_deref())
-        .collect::<std::collections::BTreeSet<_>>()
-        .len();
-    let mut out = format!(
-        "oxlint: {} diagnostic(s) over {} file(s)\n",
-        diagnostics.len(),
-        file_count,
-    );
-    for diagnostic in diagnostics {
-        let file = diagnostic.filename.as_deref().unwrap_or("<unknown>");
-        out.push_str("  ");
-        out.push_str(&diagnostic.severity);
-        out.push_str("  ");
-        out.push_str(file);
-        if let Some(code) = diagnostic.code.as_deref() {
-            out.push_str("  ");
-            out.push_str(code);
-        }
-        out.push_str("  ");
-        out.push_str(&diagnostic.message);
-        out.push('\n');
-    }
-    out
-}
-
-/// vitest side-channel adapter (decision 0017): parse the `--reporter=json`
-/// report written to `--outputFile.json`. Public-safe count metrics only — no test
-/// names, files, or failure messages cross a sink. Presentation is left to vitest's
-/// own stdout (side-channel), so there is no render.
-///
-/// Returns `Err(reason)` when the side-channel is unavailable — a missing/empty
-/// file (collapsed to empty bytes upstream) or unparseable JSON. `VitestJson` uses
-/// `#[serde(default)]`, so without this guard an absent side-channel would silently
-/// parse to `tests=0 / failures=0`; instead the caller WARNS and omits the metrics
-/// rather than reporting misleading zeroes. A validly-parsed report with genuine
-/// zero counts is `Ok` and IS emitted.
-fn vitest_outputs(structured_source: &[u8]) -> Result<Vec<AdapterOutput>, &'static str> {
-    if structured_source.is_empty() {
-        return Err("no side-channel output (missing or empty file)");
-    }
-    let Ok(report) = serde_json::from_slice::<VitestJson>(structured_source) else {
-        return Err("unparseable side-channel JSON");
-    };
-    Ok(vec![
-        AdapterOutput::Metric(AdapterMetric {
-            name: telemetry_registry::metrics::VITEST_TESTS,
-            value: report.num_total_tests,
-        }),
-        AdapterOutput::Metric(AdapterMetric {
-            name: telemetry_registry::metrics::VITEST_FAILURES,
-            value: report.num_failed_tests,
-        }),
-    ])
-}
-
-fn hash_path_identity(path: &str) -> String {
+pub(crate) fn hash_path_identity(path: &str) -> String {
     stable_hash(Path::new(path).to_string_lossy().as_bytes())
 }
 
@@ -3934,7 +3519,7 @@ impl TraceContext {
     }
 }
 
-fn random_hex(byte_len: usize) -> io::Result<String> {
+pub(crate) fn random_hex(byte_len: usize) -> io::Result<String> {
     let mut bytes = vec![0_u8; byte_len];
     getrandom::fill(&mut bytes).map_err(|cause| io::Error::other(cause.to_string()))?;
     if bytes.iter().all(|byte| *byte == 0) {
@@ -4480,11 +4065,14 @@ mod tests {
         let dir = PathBuf::from("/tmp/otel-scrape-profile-test");
 
         assert_eq!(
-            node_options_with_cpu_profile(None, &dir),
+            adapters::node_cpuprofile::node_options_with_cpu_profile(None, &dir),
             "--cpu-prof --cpu-prof-dir=/tmp/otel-scrape-profile-test --cpu-prof-name=CPU.cpuprofile"
         );
         assert_eq!(
-            node_options_with_cpu_profile(Some("--max-old-space-size=1024"), &dir),
+            adapters::node_cpuprofile::node_options_with_cpu_profile(
+                Some("--max-old-space-size=1024"),
+                &dir
+            ),
             "--max-old-space-size=1024 --cpu-prof --cpu-prof-dir=/tmp/otel-scrape-profile-test --cpu-prof-name=CPU.cpuprofile"
         );
     }

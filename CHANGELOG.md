@@ -27,6 +27,14 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **otel-scrape**: Refactored the adapters into a per-tool module framework
+  (`src/adapters/`): a `ToolAdapter` trait + `ADAPTERS` registry, with oxlint,
+  vitest, and node-cpuprofile each in their own module. `lib.rs` dispatch is now
+  registry-driven (`adapter_for(...).map_or(...)`) with no per-adapter-name
+  `match`; injection is dynamic via `prepare`/`AdapterPrep` hooks. Adding an
+  adapter is now one `src/adapters/<tool>.rs` + one `ADAPTERS` entry + registry
+  JSON, so adapters can be developed and maintained in parallel. Pure
+  behavior-preserving restructure — `tests/cli.rs` output byte-identical.
 - **otel-scrape / devenv**: Make effect-utils' own devenv tasks cooperate with
   the trace model (decision 0018). The task span (`otel-span devenv.task.exec` /
   `devenv.task.status`) owns the task level; the blanket per-task `otel-scrape`

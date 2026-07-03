@@ -16,7 +16,7 @@ Active (supported). Implemented in `packages/@overeng/otel-scrape/src/lib.rs`
 | Concern | Source of truth |
 | --- | --- |
 | Structured-source contract | `vitest --reporter=json --outputFile.json=<file>` (vitest 4.1.9, side-channel); `VitestJson { numTotalTests, numFailedTests }` schema owned by vitest upstream |
-| Adapter implementation | `packages/@overeng/otel-scrape/src/lib.rs` — `VITEST_ADAPTER`, `vitest_outputs()`, `VitestJson`, `vitest_sidechannel()`, `scan_vitest_user_flags()`, `cleanup_sidechannel_file()`; `stdout_mode`/`adapter_ownership` = `Inherit`/`Inherited` |
+| Adapter implementation | `packages/@overeng/otel-scrape/src/adapters/vitest.rs` — `VitestAdapter` impl of `ToolAdapter` (side-channel `prepare`/`parse`/`cleanup_structured_source`; `VitestJson`; `Inherit`/`Inherited`); registered in `src/adapters/mod.rs` |
 | Telemetry constants | `context/otel-scrape/telemetry-registry.json` (`vitest_tests`, `vitest_failures`) → generated `src/telemetry_registry.gen.rs` (genie) |
 | Call-site wiring | `nix/devenv-modules/tasks/lib/trace.nix` + `nix/devenv-modules/tasks/shared/test.nix` (task `test:<pkg>`) |
 | Governing decisions | parent [0017](../../.decisions/0017-adapter-structured-source-and-presentation.md); span-promotion precondition parent [0012](../../.decisions/0012-adapter-admission-policy.md) lane 4 |

@@ -17,7 +17,7 @@ wired via `trace.instr { adapter = "oxlint" }` in
 | Concern | Source of truth |
 | --- | --- |
 | Structured-source contract | `oxlint --format=json` (oxlint 1.39.0); schema owned by oxc upstream. Captured: [../.experiments/0001-oxlint-source.md](../.experiments/0001-oxlint-source.md) |
-| Adapter implementation | `packages/@overeng/otel-scrape/src/lib.rs` — `OXLINT_ADAPTER`, `oxlint_adapter()`, `oxlint_render()`, `OxlintJson`; dispatch in `stdout_mode`/`adapter_ownership`/`adapter_outputs`/`adapter_structured_source`; OTLP emission `otlp_span_events` |
+| Adapter implementation | `packages/@overeng/otel-scrape/src/adapters/oxlint.rs` — `OxlintAdapter` impl of `ToolAdapter` (`Oxlint{Json,Diagnostic,Label,Span}` + parse/render); registered in `src/adapters/mod.rs` (`ADAPTERS`); OTLP emission `otlp_span_events` in `lib.rs` |
 | Telemetry constants | `context/otel-scrape/telemetry-registry.json` (`oxlint_diagnostics`; adapter-event attrs `adapter_event_{severity,source_filename_hash,rule,line}`) → generated `src/telemetry_registry.gen.rs` (genie) |
 | Call-site wiring | `nix/devenv-modules/tasks/lib/trace.nix` (`instrChildFlags`: `oxlint → --format=json`) + `nix/devenv-modules/tasks/shared/lint-oxc.nix` (`mkOxlintCmd`, task `lint:check:oxlint`) |
 | Governing decisions | parent [0017](../../.decisions/0017-adapter-structured-source-and-presentation.md), [0018](../../.decisions/0018-devenv-task-cooperation.md); fleet [0002](../.decisions/0002-aggregate-counts-as-command-span-attributes.md) |
