@@ -3159,6 +3159,43 @@ fn trace_link_off_suppresses_surfacing() {
 }
 
 #[test]
+fn trace_link_accepts_boolean_spelling() {
+    // `false` is accepted as an alias for `off` (repo OTel boolean convention),
+    // via both the flag and the env var.
+    let dir = tempfile::tempdir().unwrap();
+
+    let flag_summary = dir.path().join("flag.json");
+    let flag = otel_scrape()
+        .args(["--trace-link", "false"])
+        .args(["--summary-out"])
+        .arg(&flag_summary)
+        .args(["--trace-url-template", TRACE_URL_TEMPLATE])
+        .args(["--", "sh", "-c", "true"])
+        .output()
+        .unwrap();
+    assert!(flag.status.success());
+    assert_eq!(
+        trace_surface_line(&String::from_utf8_lossy(&flag.stderr)),
+        None
+    );
+
+    let env_summary = dir.path().join("env.json");
+    let env = otel_scrape()
+        .env("OTEL_SCRAPE_TRACE_LINK", "false")
+        .args(["--summary-out"])
+        .arg(&env_summary)
+        .args(["--trace-url-template", TRACE_URL_TEMPLATE])
+        .args(["--", "sh", "-c", "true"])
+        .output()
+        .unwrap();
+    assert!(env.status.success());
+    assert_eq!(
+        trace_surface_line(&String::from_utf8_lossy(&env.stderr)),
+        None
+    );
+}
+
+#[test]
 fn env_template_and_off_switch_are_honored() {
     // The env forms mirror the flags: OTEL_SCRAPE_TRACE_URL_TEMPLATE supplies the
     // template and OTEL_SCRAPE_TRACE_LINK=off silences surfacing.

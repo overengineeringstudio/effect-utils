@@ -777,12 +777,11 @@ pub fn parse_args(args: &[String]) -> Result<CommandRequest, UsageError> {
                 let Some(value) = args.get(i + 1) else {
                     return usage_error("--trace-link needs on or off");
                 };
-                match value.as_str() {
-                    "on" => trace_link_enabled = true,
-                    "off" => trace_link_enabled = false,
-                    _ => {
+                match parse_trace_link_toggle(value) {
+                    Some(enabled) => trace_link_enabled = enabled,
+                    None => {
                         return usage_error(
-                            "only --trace-link on and --trace-link off are supported",
+                            "only --trace-link on|off (or true|false) are supported",
                         )
                     }
                 }
@@ -861,17 +860,29 @@ pub fn parse_args(args: &[String]) -> Result<CommandRequest, UsageError> {
 }
 
 /// Root trace surfacing on/off from the environment (decision 0020). Default on;
-/// `off` disables; unknown values warn and keep the default (mirrors the
+/// `off`/`false` disables; unknown values warn and keep the default (mirrors the
 /// exporter-enum handling). The `--trace-link` flag overrides this.
 fn trace_link_from_env() -> bool {
-    match env_string(TRACE_LINK_ENV).map(|value| value.to_ascii_lowercase()) {
+    match env_string(TRACE_LINK_ENV) {
         None => true,
-        Some(value) if value == "on" => true,
-        Some(value) if value == "off" => false,
-        Some(value) => {
-            eprintln!("otel-scrape: warning: ignoring invalid {TRACE_LINK_ENV}={value}");
-            true
-        }
+        Some(value) => match parse_trace_link_toggle(&value) {
+            Some(enabled) => enabled,
+            None => {
+                eprintln!("otel-scrape: warning: ignoring invalid {TRACE_LINK_ENV}={value}");
+                true
+            }
+        },
+    }
+}
+
+/// Parse a root-trace-surfacing toggle. Accepts `on|off` (the natural spelling
+/// for an enable switch) and `true|false` (the repo's OTel boolean convention),
+/// case-insensitively; returns `None` for anything else (decision 0020).
+fn parse_trace_link_toggle(value: &str) -> Option<bool> {
+    match value.to_ascii_lowercase().as_str() {
+        "on" | "true" => Some(true),
+        "off" | "false" => Some(false),
+        _ => None,
     }
 }
 
