@@ -49,8 +49,32 @@ All notable changes to this project will be documented in this file.
   genie's telemetry paths (rest of repo stays WARN; staged per decision 0005). The dynamic-name
   `cli.mode` root span (`genie/<cliMode>`, a foreign `cli.*` namespace) stays a documented legacy
   inline op — no stable single-signal projection — deferred to a future `cli` namespace member.
+- **genie semantic-conventions evolution gates (SC-R11, SC-R12) / @overeng/genie**: Two additive
+  weaver gates alongside `weaver:check`. `weaver:diff` (SC-R11) runs `weaver registry diff` against
+  the `origin/main`..`HEAD` merge-base baseline (materialized offline via git, upstream held
+  constant) and blocks a PR that REMOVES a shipped attribute/signal; it is JSON-payload based
+  (`--format json`, block on `changes.*[].type == "removed"`) because `weaver registry diff` exits
+  0 even for breaking changes. A rename recorded weaver-native — old key retained + `deprecated:
+  { reason: renamed, renamed_to }` — surfaces as `type: "renamed"` and passes with no custom gate
+  logic (decision 0009). `weaver:live-check` (SC-R12) captures registry-conformant OTLP emitted
+  from a first-party site and asserts `weaver registry live-check` accepts it. Both degrade to a
+  warning when weaver/git is unavailable (GEN-R09); `weaver:diff` joins `check:all`, `live-check`
+  runs in the CI `weaver` lane only (subprocess/timing e2e).
+- **genie semantic-conventions rename representation (decision 0009) / @overeng/genie**: Attribute
+  renames use the weaver-native `deprecated: renamed_to` form (retain the old key marked deprecated
+  for a dated sunset window), empirically chosen over a drop-old-key `deprecatedAlias.was` shape
+  because `weaver registry diff` classifies the former as a native `type: "renamed"` and the latter
+  as a breaking removal (`.experiments/2026-07-03-weaver-rename-diff.md`).
 
 ### Changed
+
+- **genie semantic-conventions encoder-equivalence proof — consolidated / @overeng/otel-contract**:
+  Retired the 13 per-namespace `*.observability.equivalence.unit.test.ts` bridges in favor of one
+  strengthened mechanism proof over the `./registry` seam (`registry.unit.test.ts` +
+  `registry-equivalence.property.unit.test.ts`), covering the union of encoder shapes (enum /
+  template / optional / redacted / json / drop, metric-label rejection, requirement-level
+  projection). Genuinely-unique non-equivalence assertions (genie's trimmed `span.label` +
+  non-finite rejection) are preserved in a new `genie/src/core/observability.unit.test.ts`.
 
 - **@overeng/megarepo tests**: Disable Git auto-maintenance in the hermetic
   test gitconfig so detached `git maintenance run --auto` processes cannot race

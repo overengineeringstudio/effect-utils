@@ -219,10 +219,18 @@ the public fragments), following the megarepo alignment propagation order.
   (`deprecated:{reason:renamed}`, a multi-member enum with per-member `stability`, a
   `template[...]`, a conditionally-required ref), so the pinned Weaver version is checked against
   the real emitted shape.
-- **diff (SC-R11):** on PRs, `weaver registry diff --baseline-registry <merge-base registry>`
-  plus shipped schema-evolution policies gate telemetry evolution — weaver detects a
-  removed-but-referenced attribute via unresolved-ref, and the evolution policy treats a removal
-  as a compatibility violation.
+- **diff (SC-R11):** on PRs, `weaver registry diff --baseline-registry <merge-base registry>
+--format json` gates telemetry evolution. `weaver registry diff` **exits 0 even for breaking
+  changes**, so the gate is JSON-payload based: it blocks on `changes.*[].type == "removed"`
+  (plus a separate block on diff exit-nonzero — a removed-but-still-referenced attribute trips an
+  unresolved-ref). A rename recorded weaver-native — old key retained + `deprecated:
+{ reason: renamed, renamed_to }` — surfaces as `type: "renamed"` and passes; that
+  representation is why the gate needs no custom rename logic
+  ([.decisions/0009](./.decisions/0009-weaver-native-rename-representation.md)). The baseline is
+  the `origin/main`..`HEAD` merge-base (not tip-of-main), materialized offline via git with the
+  upstream held constant, so the diff reflects only first-party change; it degrades (exit 0) when
+  git/ref/merge-base is absent or the registry did not exist on the baseline. Richer Rego
+  evolution policies (stability regressions, requirement-level tightening) are a follow-up.
 - **live-check (SC-R12):** in e2e tests, capture emitted OTLP and feed `weaver registry
 live-check --input-source <file|otlp>`; validates types/units/enum/required/coverage
   against the registry. Any OTLP exporter (incl. the test-capture harness) suffices. In the

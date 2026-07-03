@@ -2984,10 +2984,17 @@ jobs:
           EOF
           echo "::warning::Intentional failure for diagnostics validation (#272)"
           exit 1
-      - name: Weaver registry check
+      - name: 'Fetch baseline history for weaver:diff (SC-R11)'
+        run: |
+          set -uo pipefail
+          # weaver:diff needs the merge-base with origin/main; the default checkout is shallow.
+          git fetch --no-tags --prune --unshallow origin 2>/dev/null \
+            || git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main 2>/dev/null \
+            || true
+      - name: Weaver registry gates (check + diff + live-check)
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/genie-ci-scripts/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run weaver:check' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ runner.temp }}/pnpm-store/${{ github.job }}}" PNPM_CONFIG_STORE_DIR="${PNPM_CONFIG_STORE_DIR:-${{ runner.temp }}/pnpm-store/${{ github.job }}}" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run weaver:check'
+          bash "$__genie_ci_retry_script" 'devenv tasks run weaver:check weaver:diff weaver:live-check' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ runner.temp }}/pnpm-store/${{ github.job }}}" PNPM_CONFIG_STORE_DIR="${PNPM_CONFIG_STORE_DIR:-${{ runner.temp }}/pnpm-store/${{ github.job }}}" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run weaver:check weaver:diff weaver:live-check'
       - name: Save pnpm state
         if: ${{ success() && steps.restore-pnpm-state.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v4
