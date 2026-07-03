@@ -35,7 +35,7 @@ export type NotionWebhookReceiverConfig = {
   ) => void
   /**
    * Optional Effect runtime captured from the calling Effect pipeline.
-   * When provided, each webhook delivery is wrapped in a `notion.datasource.webhook.intake`
+   * When provided, each webhook delivery is wrapped in a `notion_datasource.webhook.intake`
    * span so that intake attributes (outcome, event type, page/data-source IDs) flow through
    * the configured tracer. Without it the delivery still works — spans are simply not emitted.
    */
@@ -176,7 +176,7 @@ export const signalInputFromNotionWebhookSignal = ({
 
 /**
  * Map a `NotionWebhookDeliveryResult` to a stable `webhookOutcome` attribute value
- * suitable for the `notion.datasource.webhook.intake` span.
+ * suitable for the `notion_datasource.webhook.intake` span.
  */
 const webhookOutcomeFromResult = (result: NotionWebhookDeliveryResult): string => {
   if (result._tag === 'verification-token-observed') return 'verification'

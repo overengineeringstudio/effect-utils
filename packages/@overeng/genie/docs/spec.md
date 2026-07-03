@@ -33,6 +33,14 @@ The package-level context and current module-boundary docs remain:
 - [../src/build/README.md](../src/build/README.md)
 - [../src/runtime/README.md](../src/runtime/README.md)
 
+Subsystems (own VRS, nested):
+
+- [generators/](./generators/spec.md) — the shared contract for genie **generators**:
+  genie artifact domains that project multi-language bindings (TS/Rust/Effect) from one
+  typed TS source of truth, drift-gated. Its first child,
+  [generators/01-otel-semconv/](./generators/01-otel-semconv/spec.md),
+  covers OpenTelemetry semantic-convention registries via OTel Weaver.
+
 ## Public Surface
 
 Genie exposes two coupled surfaces:

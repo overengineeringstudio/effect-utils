@@ -1,14 +1,10 @@
 import { Session as UpstreamSession } from '@myobie/pty/testing'
-import { Effect, Option, Predicate, Schedule, Schema, Stream, pipe } from 'effect'
-import type { Scope } from 'effect'
+import { Effect, Option, Predicate, Schedule, Stream, pipe } from 'effect'
+import type { Schema, Scope } from 'effect'
 
-import {
-  OtelAttr,
-  OtelOperation,
-  type OtelAttrEncodeError,
-  type OtelOperationDefinition,
-} from '@overeng/otel-contract'
+import { type OtelAttrEncodeError, type OtelOperationDefinition } from '@overeng/otel-contract'
 
+import { PtySessionMakeOperation as PtySessionMakeContract } from './pty.contract.ts'
 import { PtyError } from './PtyError.ts'
 import type { Key } from './PtyKey.ts'
 import type { PtySpec, TerminalSize } from './PtySpec.ts'
@@ -68,14 +64,9 @@ export interface PtySession {
 /** Default polling schedule for `waitFor*` (50ms fixed). */
 export const defaultPollSchedule: Schedule.Schedule<unknown> = Schedule.spaced('50 millis')
 
-const PtySessionMakeOperation = OtelOperation.define({
-  name: 'pty-session.make',
-  schema: Schema.Struct({
-    label: OtelAttr.drop(Schema.NonEmptyString),
-    mode: Schema.Literal('Spawn', 'Server').pipe(OtelAttr.key({ key: 'pty.session.mode' })),
-  }),
-  label: ({ label }) => label,
-})
+// Runtime span DERIVED from the registered seam contract (`./pty.contract.ts`, namespace `pty`),
+// so the `pty.session.mode` catalog + this encoder share one SSOT (SC-R13/R14).
+const PtySessionMakeOperation = PtySessionMakeContract.operation
 
 const trustOtelContract = <A, E, R>(
   effect: Effect.Effect<A, E | OtelAttrEncodeError, R>,

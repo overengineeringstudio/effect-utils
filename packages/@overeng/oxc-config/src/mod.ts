@@ -37,6 +37,7 @@ import { noExternalImportsRule } from './no-external-imports.ts'
 import { noNonDurableWaitRule } from './no-non-durable-wait.ts'
 import { noRawNondeterminismRule } from './no-raw-nondeterminism.ts'
 import { noRawOtelPrimitivesRule } from './no-raw-otel-primitives.ts'
+import { otelContractInSeamFileRule } from './otel-contract-in-seam-file.ts'
 import { csfComponentRule } from './storybook/csf-component.ts'
 import { defaultExportsRule } from './storybook/default-exports.ts'
 import { hierarchySeparatorRule } from './storybook/hierarchy-separator.ts'
@@ -54,6 +55,7 @@ type Rules = {
   'no-non-durable-wait': typeof noNonDurableWaitRule
   'no-raw-nondeterminism': typeof noRawNondeterminismRule
   'no-raw-otel-primitives': typeof noRawOtelPrimitivesRule
+  'otel-contract-in-seam-file': typeof otelContractInSeamFileRule
   'storybook/meta-satisfies-type': typeof metaSatisfiesTypeRule
   'storybook/default-exports': typeof defaultExportsRule
   'storybook/story-exports': typeof storyExportsRule
@@ -73,6 +75,7 @@ const rules: Rules = {
   'no-non-durable-wait': noNonDurableWaitRule,
   'no-raw-nondeterminism': noRawNondeterminismRule,
   'no-raw-otel-primitives': noRawOtelPrimitivesRule,
+  'otel-contract-in-seam-file': otelContractInSeamFileRule,
 
   // Native storybook rules (use as overeng/storybook/*)
   'storybook/meta-satisfies-type': metaSatisfiesTypeRule,

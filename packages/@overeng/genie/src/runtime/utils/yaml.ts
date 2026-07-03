@@ -27,7 +27,7 @@ const isPureExpression = (str: string): boolean => {
   return trimmed.startsWith('${{') && trimmed.endsWith('}}') && trimmed.indexOf('${{', 3) === -1
 }
 
-const needsQuoting = (str: string): boolean => {
+const needsQuoting = ({ str, flow = false }: { str: string; flow?: boolean }): boolean => {
   if (str === '') return true
   if (str === 'true' || str === 'false' || str === 'null') return true
   if (/^\d+$/.test(str) === true || /^\d+\.\d+$/.test(str) === true) return true
@@ -38,13 +38,25 @@ const needsQuoting = (str: string): boolean => {
   if (/^[{[\]!@#%&*|>?]/.test(str) === true) return true
   if (/[:#]/.test(str) === true) return true
   if (str.includes('\n') === true) return true
+  // In FLOW context (inline arrays `[a, b]`), `{}[],` are structural delimiters, so a scalar
+  // containing them mid-string (e.g. a route template `/v1/pages/{id}`) breaks the sequence.
+  // They are harmless in block scalars (briefs with commas stay unquoted), so gate on `flow`.
+  if (flow === true && /[{}[\],]/.test(str) === true) return true
   return false
 }
 
 /** Quote a key if it needs quoting (e.g., starts with @) */
-const quoteKey = (key: string): string => (needsQuoting(key) === true ? `"${key}"` : key)
+const quoteKey = (key: string): string => (needsQuoting({ str: key }) === true ? `"${key}"` : key)
 
-const quoteString = ({ str, indent }: { str: string; indent: number }): string => {
+const quoteString = ({
+  str,
+  indent,
+  flow = false,
+}: {
+  str: string
+  indent: number
+  flow?: boolean
+}): string => {
   if (str.includes('\n') === true) {
     const linePrefix = INDENT.repeat(indent)
     return `|\n${str
@@ -52,7 +64,7 @@ const quoteString = ({ str, indent }: { str: string; indent: number }): string =
       .map((line) => linePrefix + line)
       .join('\n')}`
   }
-  if (needsQuoting(str) === true) {
+  if (needsQuoting({ str, flow }) === true) {
     // Prefer single quotes, fall back to double quotes if string contains single quotes
     if (str.includes("'") === true) {
       return `"${str.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
@@ -89,7 +101,7 @@ const stringifyValue = ({ value, indent }: { value: unknown; indent: number }): 
 
     if (isSimpleArray === true && value.length <= 5) {
       const items = value.map((item) =>
-        typeof item === 'string' ? quoteString({ str: item, indent }) : String(item),
+        typeof item === 'string' ? quoteString({ str: item, indent, flow: true }) : String(item),
       )
       return `[${items.join(', ')}]`
     }
@@ -169,7 +181,7 @@ const MAX_LINE_WIDTH = 100
 /** Calculate the string length of an inline array representation */
 const inlineArrayLength = (arr: unknown[]): number => {
   const items = arr.map((item) =>
-    typeof item === 'string' ? quoteString({ str: item, indent: 0 }) : String(item),
+    typeof item === 'string' ? quoteString({ str: item, indent: 0, flow: true }) : String(item),
   )
   return 2 + items.join(', ').length // 2 for brackets
 }
@@ -213,7 +225,9 @@ const formatMultilineInlineArray = ({
   const baseIndent = INDENT.repeat(indent)
   const itemIndent = INDENT.repeat(indent + 1)
   const items = arr.map((item) =>
-    typeof item === 'string' ? quoteString({ str: item, indent: indent + 1 }) : String(item),
+    typeof item === 'string'
+      ? quoteString({ str: item, indent: indent + 1, flow: true })
+      : String(item),
   )
   return `[\n${items.map((item) => `${itemIndent}${item},`).join('\n')}\n${baseIndent}]`
 }

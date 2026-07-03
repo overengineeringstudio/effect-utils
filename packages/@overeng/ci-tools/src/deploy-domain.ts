@@ -2,8 +2,13 @@
 
 import { Schema } from 'effect'
 
-import { OtelAttr, OtelOperation } from '@overeng/otel-contract'
-
+import {
+  DeployAttemptOperation as DeployAttemptOperationContract,
+  DeployCleanupOperation as DeployCleanupOperationContract,
+  DeployOperation as DeployOperationContract,
+  DeployProviderOperation as DeployProviderOperationContract,
+  DeployVerifyOperation as DeployVerifyOperationContract,
+} from './deploy-domain.contract.ts'
 import type { WorkflowReportRecord } from './mod.ts'
 
 export const DeployProvider = Schema.Literal('netlify', 'vercel').annotations({
@@ -518,86 +523,15 @@ export type DeploySpanAttributes = typeof DeploySpanAttributes.Type
 
 const shortSpanLabel = (value: string) => value.slice(0, 40)
 
-const DeployBaseOtelFields = {
-  provider: DeployProvider.pipe(
-    OtelAttr.key({ key: 'ci_tools.deploy.provider', cardinality: 'low' }),
-  ),
-  target: DeployTarget.pipe(
-    OtelAttr.key({ key: 'ci_tools.deploy.target', cardinality: 'bounded' }),
-  ),
-} as const
-
-export const DeployOperation = OtelOperation.define({
-  name: 'ci-tools.deploy',
-  root: true,
-  schema: Schema.Struct({
-    ...DeployBaseOtelFields,
-    mode: DeployMode.pipe(OtelAttr.key({ key: 'ci_tools.deploy.mode', cardinality: 'low' })),
-    runId: Schema.optional(
-      Schema.NonEmptyTrimmedString.pipe(
-        OtelAttr.key({ key: 'ci_tools.deploy.run_id', cardinality: 'high' }),
-      ),
-    ),
-  }),
-  label: ({ target }) => shortSpanLabel(target),
-})
-
-export const DeployProviderOperation = OtelOperation.define({
-  name: 'ci-tools.deploy.provider',
-  schema: Schema.Struct(DeployBaseOtelFields),
-  label: ({ provider }) => provider,
-})
-
-export const DeployAttemptOperation = OtelOperation.define({
-  name: 'ci-tools.deploy.attempt',
-  schema: Schema.Struct({
-    ...DeployBaseOtelFields,
-    mode: DeployMode.pipe(OtelAttr.key({ key: 'ci_tools.deploy.mode', cardinality: 'low' })),
-    attempt: PositiveInt.pipe(
-      OtelAttr.key({ key: 'ci_tools.deploy.attempt', cardinality: 'bounded' }),
-    ),
-    status: DeployStatus.pipe(OtelAttr.key({ key: 'ci_tools.deploy.status', cardinality: 'low' })),
-    errorKind: Schema.optional(
-      Schema.NonEmptyTrimmedString.pipe(
-        OtelAttr.key({ key: 'ci_tools.deploy.error_kind', cardinality: 'bounded' }),
-      ),
-    ),
-  }),
-  label: ({ attempt }) => String(attempt),
-})
-
-export const DeployVerifyOperation = OtelOperation.define({
-  name: 'ci-tools.deploy.verify',
-  schema: Schema.Struct({
-    ...DeployBaseOtelFields,
-    status: DeployStatus.pipe(OtelAttr.key({ key: 'ci_tools.deploy.status', cardinality: 'low' })),
-    urlHost: Schema.NonEmptyTrimmedString.pipe(
-      OtelAttr.key({ key: 'ci_tools.deploy.url_host', cardinality: 'bounded' }),
-    ),
-    errorKind: Schema.optional(
-      Schema.NonEmptyTrimmedString.pipe(
-        OtelAttr.key({ key: 'ci_tools.deploy.error_kind', cardinality: 'bounded' }),
-      ),
-    ),
-  }),
-  label: ({ urlHost }) => shortSpanLabel(urlHost),
-})
-
-export const DeployCleanupOperation = OtelOperation.define({
-  name: 'ci-tools.deploy.cleanup',
-  schema: Schema.Struct({
-    ...DeployBaseOtelFields,
-    cleanupId: Schema.optional(
-      Schema.NonEmptyTrimmedString.pipe(
-        OtelAttr.key({ key: 'ci_tools.deploy.cleanup_id', cardinality: 'high' }),
-      ),
-    ),
-    cleanupStatus: Schema.Literal('succeeded', 'failed', 'skipped').pipe(
-      OtelAttr.key({ key: 'ci_tools.deploy.cleanup_status', cardinality: 'low' }),
-    ),
-  }),
-  label: ({ cleanupId, cleanupStatus }) => shortSpanLabel(cleanupId ?? cleanupStatus),
-})
+// Runtime spans DERIVED from the registered seam contract (`./deploy-domain.contract.ts`, namespace
+// `ci_tools`), so the `ci_tools.deploy.*` catalog + these encoders share one SSOT (SC-R13/R14). The
+// derived `.operation`s are re-exported under their historical names for the runtime call sites
+// (`deploy-vercel.ts` / `deploy-netlify.ts`) and the unit test.
+export const DeployOperation = DeployOperationContract.operation
+export const DeployProviderOperation = DeployProviderOperationContract.operation
+export const DeployAttemptOperation = DeployAttemptOperationContract.operation
+export const DeployVerifyOperation = DeployVerifyOperationContract.operation
+export const DeployCleanupOperation = DeployCleanupOperationContract.operation
 
 export const deploySpanAttributes = (opts: {
   readonly name: DeploySpanName

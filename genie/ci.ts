@@ -27,6 +27,8 @@ export const CORE_CI_JOB_NAMES = [
   'bundle-smoke',
   // Rust lane for the otelite crate: build/test/clippy/fmt via the nix toolchain.
   'cargo',
+  // Additive Weaver semantic-conventions gate (separate lane; degrades if weaver unavailable).
+  'weaver',
 ] as const
 
 /** Union of core CI job keys used by the shared product-job generator. */
@@ -83,7 +85,7 @@ const matrixCIJobNames = ['test', 'nix-check', 'nix-fod-check'] as const
 export const ciJobCheckContexts = (jobName: CIJobName) => {
   if (jobName === 'ci-measurements-report') return ['ci/measurements-report']
 
-  return matrixCIJobNames.includes(jobName as (typeof matrixCIJobNames)[number])
+  return matrixCIJobNames.includes(jobName as (typeof matrixCIJobNames)[number]) === true
     ? RUNNER_PROFILES.map((runner) => `${jobName} (${runner})`)
     : [jobName]
 }

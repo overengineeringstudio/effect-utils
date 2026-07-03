@@ -34,6 +34,9 @@ import {
   CommentBoundarySpan,
   DestructiveBodySpan,
   MediaBoundarySpan,
+  ReconcileFileSpan,
+  StatusFileSpan,
+  TrackPageSpan,
   withOperation,
 } from './observability.ts'
 import {
@@ -342,11 +345,7 @@ export const statusFile = (opts: {
       pageId,
       status: porcelainStatus(decision),
     })
-  }).pipe(
-    Effect.withSpan('notion-md.status-file', {
-      attributes: { 'span.label': basename(opts.path) },
-    }),
-  )
+  }).pipe(withOperation({ operation: StatusFileSpan, attributes: { label: basename(opts.path) } }))
 
 const toParentRef = (page: RemotePageSnapshot): NmdParentRef => {
   switch (page.parent.type) {
@@ -811,9 +810,7 @@ export const reconcileFile = (
         })
     }
   }).pipe(
-    Effect.withSpan('notion-md.reconcile-file', {
-      attributes: { 'span.label': basename(opts.path) },
-    }),
+    withOperation({ operation: ReconcileFileSpan, attributes: { label: basename(opts.path) } }),
   )
 
 /** Apply the `source: shared` 3-way outcome (the only base/merge path). */
@@ -1166,8 +1163,9 @@ export const trackPage = (opts: {
 
     return { path: opts.outPath, pageId: opts.pageId, source: opts.source }
   }).pipe(
-    Effect.withSpan('notion-md.track-page', {
-      attributes: { 'span.label': opts.pageId.slice(0, 8), 'notion_md.track.source': opts.source },
+    withOperation({
+      operation: TrackPageSpan,
+      attributes: { label: opts.pageId.slice(0, 8), source: opts.source },
     }),
   )
 

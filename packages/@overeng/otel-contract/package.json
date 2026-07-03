@@ -4,12 +4,14 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/mod.ts"
+    ".": "./src/mod.ts",
+    "./registry": "./src/registry.ts"
   },
   "publishConfig": {
     "access": "public",
     "exports": {
-      ".": "./dist/mod.js"
+      ".": "./dist/mod.js",
+      "./registry": "./dist/registry.js"
     }
   },
   "dependencies": {

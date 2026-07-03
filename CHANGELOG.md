@@ -32,6 +32,66 @@ All notable changes to this project will be documented in this file.
   success, not the child exit code. Pure passthrough stays silent (R04);
   `--trace-link off` / `OTEL_SCRAPE_TRACE_LINK=off` disables it.
 
+- **genie semantic-conventions generator (M1) / @overeng/genie + @overeng/otel-contract**:
+  First genie generator for OpenTelemetry semantic-convention registries.
+  - Layer 1 (`@overeng/genie` `src/runtime/weaver`, dep-free): a faithful typed model of the
+    Weaver `groups:` registry + deterministic renderers (manifest / attributes / signals YAML,
+    TS + Rust name constants) using genie's own YAML stringifier. `registryFromMembers` +
+    `orphanSeamPaths` land in `@overeng/genie/composition`.
+  - Layer 2 (`@overeng/otel-contract` new `./registry` subpath): Effect-Schema authoring
+    (`attr`/`span`/`metric`/`operation`, `defineOtelContract`, the AST→fragment projector) atop
+    the runtime primitives, with derived namespace + catalog, `refExternal` foreign-ref marking,
+    and `Schema.TaggedError` author-time validation. Verified out of the runtime `.` bundle.
+  - Weaver gate: `weaver:check` devenv task (wired into `check:all` + a dedicated CI lane) runs
+    `weaver registry check --future` (pinned from-source flake, v0.24.2) against the emitted
+    registry, resolving the pinned upstream OTel semconv (v1.37.0) hermetically via a Nix FOD.
+    Block-vs-degrade: validation failures block; weaver unavailability degrades to a warning.
+  - Provenance: per-file input fingerprint (sha256 over registry source + generator + pinned
+    weaver + pinned upstream semconv), split so doc-only edits re-hash only the YAML outputs.
+  - `overeng/otel-contract-in-seam-file` oxlint rule (WARN-only) + the no-orphan-seam aggregator
+    check make contract discoverability structural (decision 0005).
+- **genie semantic-conventions Rust target (M2) / @overeng/genie**: Finalized the Layer-1 Rust
+  emitter (`renderRustConstants`) for Rust telemetry *producers* (decision 0007). Emits idiomatic,
+  deterministic (sorted), rustfmt-clean const modules — separate `attribute` / `span` / `metric`
+  modules (collision-proof by construction) with a `pub const <SCREAMING_SNAKE>: &str` per name
+  plus an `ALL: &[&str]` slice — covering own attribute keys, span ids, and metric names. Wired one
+  committed `.rs` output (`genie/weaver-registry/constants.rs`) via `constants.rs.genie.ts` alongside the
+  TS constants, with a dedicated Rust-identity fingerprint (attr keys + span ids + metric names) so
+  a signal rename re-hashes only the `.rs` and a doc-only edit churns neither binding. Proven by a
+  synthetic ~25-name `otel_scrape.*` fixture (authored via the real Layer-2 seam) with a test
+  asserting determinism, full name coverage, and valid/rustfmt-clean Rust (rustc + rustfmt,
+  skip-if-absent).
+- **genie semantic-conventions first-namespace migration (M3) / @overeng/genie**: Migrated genie's
+  OWN telemetry (the `genie.*` namespace, 12 attribute keys + 8 span operations) fully onto the
+  registry seam. A new `packages/@overeng/genie/src/core/genie.contract.ts` authors the catalog +
+  operations via the Layer-2 `@overeng/otel-contract/registry` surface; `src/core/observability.ts`
+  is re-pointed at the DERIVED `OtelOperation` product APIs (SC-R13/R14) with emit behavior
+  unchanged (same keys, encode, span names, and the `genie/command` root span, preserved via
+  `.withRoot`). Registered in the root aggregator's `memberSeamPaths`; the composed registry now
+  emits `genie.attributes.yaml` alongside `acme` and passes `weaver registry check --future`.
+  Encoder equivalence is raised from `deepStrictEqual` to a **property-based** proof through the
+  real `OtelOperation` surface (`@effect/vitest` `it.prop` + `Schema` arbitraries over the
+  optional/label branches). `overeng/otel-contract-in-seam-file` is flipped to **ERROR** for
+  genie's telemetry paths (rest of repo stays WARN; staged per decision 0005). The dynamic-name
+  `cli.mode` root span (`genie/<cliMode>`, a foreign `cli.*` namespace) stays a documented legacy
+  inline op — no stable single-signal projection — deferred to a future `cli` namespace member.
+- **genie semantic-conventions evolution gates (SC-R11, SC-R12) / @overeng/genie**: Two additive
+  weaver gates alongside `weaver:check`. `weaver:diff` (SC-R11) runs `weaver registry diff` against
+  the `origin/main`..`HEAD` merge-base baseline (materialized offline via git, upstream held
+  constant) and blocks a PR that REMOVES a shipped attribute/signal; it is JSON-payload based
+  (`--format json`, block on `changes.*[].type == "removed"`) because `weaver registry diff` exits
+  0 even for breaking changes. A rename recorded weaver-native — old key retained + `deprecated:
+  { reason: renamed, renamed_to }` — surfaces as `type: "renamed"` and passes with no custom gate
+  logic (decision 0009). `weaver:live-check` (SC-R12) captures registry-conformant OTLP emitted
+  from a first-party site and asserts `weaver registry live-check` accepts it. Both degrade to a
+  warning when weaver/git is unavailable (GEN-R09); `weaver:diff` joins `check:all`, `live-check`
+  runs in the CI `weaver` lane only (subprocess/timing e2e).
+- **genie semantic-conventions rename representation (decision 0009) / @overeng/genie**: Attribute
+  renames use the weaver-native `deprecated: renamed_to` form (retain the old key marked deprecated
+  for a dated sunset window), empirically chosen over a drop-old-key `deprecatedAlias.was` shape
+  because `weaver registry diff` classifies the former as a native `type: "renamed"` and the latter
+  as a breaking removal (`.experiments/2026-07-03-weaver-rename-diff.md`).
+
 ### Fixed
 
 - **otel-scrape**: Export spans when `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`
@@ -75,6 +135,35 @@ All notable changes to this project will be documented in this file.
   otel-scrape is absent, so downstream repos importing these modules run unchanged.
 
 - Refined `otel-scrape` VRS and release docs for helper-backed exact process observation, including Linux cgroup-scoped run authority, macOS Endpoint Security validation gates, and runner-class support-matrix evidence.
+
+- **genie semantic-conventions encoder-equivalence proof — consolidated / @overeng/otel-contract**:
+  Retired the 13 per-namespace `*.observability.equivalence.unit.test.ts` bridges in favor of one
+  strengthened mechanism proof over the `./registry` seam (`registry.unit.test.ts` +
+  `registry-equivalence.property.unit.test.ts`), covering the union of encoder shapes (enum /
+  template / optional / redacted / json / drop, metric-label rejection, requirement-level
+  projection). Genuinely-unique non-equivalence assertions (genie's trimmed `span.label` +
+  non-finite rejection) are preserved in a new `genie/src/core/observability.unit.test.ts`.
+
+- **@overeng/megarepo tests**: Disable Git auto-maintenance in the hermetic
+  test gitconfig so detached `git maintenance run --auto` processes cannot race
+  scoped temp-directory cleanup on macOS CI.
+
+- **genie semantic-conventions registry — genie-idiomatic emit + relocation / @overeng/genie**:
+  Reworked the first-party registry to a builder-per-target API and moved it under `genie/`.
+  - New dep-free `weaver*` builder family in `@overeng/genie` `src/runtime/weaver`
+    (`weaverManifest` / `weaverAttributes` / `weaverSignals` / `weaverTsConstants` /
+    `weaverRustConstants`) over a `WeaverRegistryBundle` (composed registry + the three split
+    provenance fingerprints + whole-registry integrity issues). Each `.genie.ts` emitter is now a
+    one-liner over the aggregator's exported `weaver` bundle; `weaverManifest` surfaces
+    namespace-uniqueness / dangling-ref issues via `validate` so `genie:check` still blocks.
+  - Collapsed the per-namespace `<ns>.attributes.yaml` emitters into a single `attributes.yaml`
+    (new `renderAttributes` emits all groups as multiple `attribute_group` entries in one file).
+    Adding a namespace no longer needs a new `.genie.ts`. The fixed emitted set is now
+    `{manifest, attributes, signals}.yaml` + `constants.{ts,rs}`.
+  - Moved the registry directory `weaver-registry/` → `genie/weaver-registry/` (updated the
+    `weaver:check` task `registryDir`, its YAML copy glob, the no-orphan-seam test path, the
+    oxlint ignore glob, and `REGISTRY_SOURCE`). Emitted YAML/TS/Rust content is unchanged apart
+    from the `registry-source:` provenance-header path (fingerprints are identical).
 
 - **devenv deploy tasks / @overeng/ci-tools**: Centralize deploy-preview
   workflow-report and GitHub output emission in `ci-tools`, including

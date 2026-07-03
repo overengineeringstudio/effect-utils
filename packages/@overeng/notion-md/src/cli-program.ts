@@ -12,7 +12,6 @@ import {
   type NmdSyncStateV1,
 } from '@overeng/notion-effect-client'
 import { parseNotionUuid } from '@overeng/notion-effect-schema'
-import { OtelAttr, OtelAttrs, OtelOperation } from '@overeng/otel-contract'
 import { resolveCliVersion } from '@overeng/utils/node/cli-version'
 
 import { resolveNmdTargets, runBatchWatch, type BatchFailure } from './batch.ts'
@@ -32,7 +31,18 @@ import {
 } from './errors.ts'
 import { NotionMdGatewayLive } from './live.ts'
 import type { NotionMdGateway } from './model.ts'
-import { annotateAttrs, ObjectGcSpan, objectGcResultAttrs, withOperation } from './observability.ts'
+import {
+  annotateAttrs,
+  cliCommandSpan,
+  ObjectGcSpan,
+  objectGcResultAttrs,
+  watchSyncErrorAttrs,
+  watchSyncResultAttrs,
+  WatchSpan,
+  WatchSyncPassSpan,
+  withOperation,
+  withRootOperation,
+} from './observability.ts'
 import { ProgressReporterStderrLines } from './progress.ts'
 import { reconcileFile, reconcileTree, statusTree, trackPage } from './reconcile.ts'
 import {
@@ -52,55 +62,6 @@ const NonEmptyCliText = Schema.NonEmptyTrimmedString.annotations({
 const PositiveInteger = Schema.Number.pipe(Schema.int(), Schema.positive()).annotations({
   identifier: 'NotionMd.Cli.PositiveInteger',
 })
-
-const WatchReasonSchema = Schema.Literal('file', 'initial', 'poll')
-
-const WatchSyncResultAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    result: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.sync.result' })),
-    reason: WatchReasonSchema.pipe(OtelAttr.key({ key: 'notion_md.watch.reason' })),
-  }),
-)
-
-const WatchSyncErrorAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    error: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.sync.error' })),
-    errorTag: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.sync.error_tag' })),
-  }),
-)
-
-const WatchSyncPassSpan = OtelOperation.define({
-  name: 'notion-md.watch.sync-pass',
-  root: true,
-  schema: Schema.Struct({
-    command: Schema.Literal('sync').pipe(OtelAttr.key({ key: 'notion_md.command' })),
-    watch: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.watch' })),
-    reason: WatchReasonSchema.pipe(OtelAttr.key({ key: 'notion_md.watch.reason' })),
-    basename: Schema.NonEmptyString.pipe(OtelAttr.key({ key: 'notion_md.path.basename' })),
-  }),
-  label: ({ basename, reason }) => `${basename}:${reason}`,
-})
-
-const WatchSpan = OtelOperation.define({
-  name: 'notion-md.watch',
-  schema: Schema.Struct({
-    command: Schema.Literal('sync').pipe(OtelAttr.key({ key: 'notion_md.command' })),
-    watch: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.watch' })),
-    basename: Schema.NonEmptyString.pipe(OtelAttr.key({ key: 'notion_md.path.basename' })),
-  }),
-  label: ({ basename }) => basename,
-})
-
-const cliCommandSpan = (command: string) =>
-  OtelOperation.define({
-    name: `notion-md.cli.${command}`,
-    root: true,
-    schema: Schema.Struct({
-      label: OtelAttr.drop(Schema.NonEmptyString),
-      command: Schema.NonEmptyString.pipe(OtelAttr.key({ key: 'notion_md.command' })),
-    }),
-    label: ({ label }) => label,
-  })
 
 /*
  * The decided v-next surface (spec "Decided surface"): three near-flagless
@@ -348,7 +309,7 @@ export const runWatch = (opts: {
         reconcileFile(opts.syncOptions).pipe(
           Effect.tap((result) =>
             annotateAttrs({
-              attributes: WatchSyncResultAttrs,
+              attributes: watchSyncResultAttrs,
               value: {
                 result: result._tag,
                 reason,
@@ -358,7 +319,7 @@ export const runWatch = (opts: {
           Effect.tap((result) => emit({ event: 'sync', reason, result })),
           Effect.tapError((error: unknown) =>
             annotateAttrs({
-              attributes: WatchSyncErrorAttrs,
+              attributes: watchSyncErrorAttrs,
               value: {
                 error: true,
                 errorTag:
@@ -370,7 +331,7 @@ export const runWatch = (opts: {
               },
             }),
           ),
-          withOperation({
+          withRootOperation({
             operation: WatchSyncPassSpan,
             attributes: {
               command: 'sync',

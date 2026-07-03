@@ -20,15 +20,21 @@
  */
 import { Schema } from 'effect'
 
-import { OtelAttr, OtelMetric } from '@overeng/otel-contract'
+import { OtelMetric } from '@overeng/otel-contract'
 
-/** HTTP method + sanitized operation key — both bounded-cardinality. */
+import { NotionHttpMethod, NotionHttpOperation } from '../notion-effect-client.contract.ts'
+
+/**
+ * HTTP method + sanitized operation key — both bounded-cardinality. The label schemas are DERIVED
+ * from the `notion.*` seam catalog (`../notion-effect-client.contract.ts`), the single SSOT for these
+ * keys (SC-R13/R14). The keys are already namespaced (`notion.http.*`), so there is NO wire rename —
+ * this is a byte-identical re-point (proven by the colocated equivalence property test). These metrics
+ * stay raw `OtelMetric` (rather than registry `metric()` signals) to preserve the counters' ABSENT
+ * unit, which the `metric()` DSL cannot express; promoting them to signals is a flagged follow-up.
+ */
 const HttpPressureLabels = Schema.Struct({
-  method: OtelAttr.literal('notion.http.method', 'GET', 'POST', 'PATCH', 'DELETE'),
-  operation: OtelAttr.string({
-    key: 'notion.http.operation',
-    metadata: { cardinality: 'bounded' },
-  }),
+  method: NotionHttpMethod,
+  operation: NotionHttpOperation,
 })
 
 /** Latency buckets (ms) for the throttle-token wait, matching common backpressure scales. */

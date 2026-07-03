@@ -271,7 +271,7 @@ describe('mr store gc — OTEL instrumentation contract', () => {
         // --- A git/cmd span carries the scalar git.output.bytes attr. ---
         trace.expectSome({ name: 'git/cmd', attrs: { 'git.output.bytes': attr.present() } })
 
-        // --- The RSS gauge landed with value>0 and a repo_concurrency label. ---
+        // --- The RSS gauge landed with value>0 and a megarepo.store.gc.repo_concurrency label. ---
         // `expectSome` (not `expectOne`): the sampler may emit several data points
         // across collection intervals — the contract is ≥1 positive-valued,
         // labeled point, which the selector enforces non-vacuously.
@@ -280,7 +280,7 @@ describe('mr store gc — OTEL instrumentation contract', () => {
           service: SERVICE,
           type: 'gauge',
           value: metricValue.predicate('rss > 0', (rss) => rss > 0),
-          attrs: { repo_concurrency: telemetryAttr.present() },
+          attrs: { 'megarepo.store.gc.repo_concurrency': telemetryAttr.present() },
         })
       }).pipe(Effect.provide(Layer.mergeAll(OteliteTestHarness.Default, NodeContext.layer))),
     60_000,

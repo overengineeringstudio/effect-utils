@@ -53,6 +53,10 @@ let
     megarepo = import ./nix/devenv-modules/tasks/shared/megarepo.nix;
     nix-cli = import ./nix/devenv-modules/tasks/shared/nix-cli.nix;
     secretspec = import ./nix/devenv-modules/tasks/shared/secretspec.nix;
+    weaver = import ./nix/devenv-modules/tasks/shared/weaver.nix;
+    weaver-diff = import ./nix/devenv-modules/tasks/shared/weaver-diff.nix;
+    weaver-live-check = import ./nix/devenv-modules/tasks/shared/weaver-live-check.nix;
+    weaver-version-smoke = import ./nix/devenv-modules/tasks/shared/weaver-version-smoke.nix;
     context = ./nix/devenv-modules/tasks/shared/context.nix;
     devenv-module-tests = ./nix/devenv-modules/tasks/local/devenv-module-tests.nix;
     asset-import-type-reference = ./nix/devenv-modules/tasks/local/asset-import-type-reference.nix;
@@ -349,6 +353,27 @@ in
       ];
       checkAllTypecheckTask = "ts:check:strict";
     })
+    (taskModules.weaver { })
+    # Wire the additive weaver gate into `check:all` only (not `check:quick`, which stays fast):
+    # `after` list options merge across modules, so this appends without redefining check:all.
+    { tasks."check:all".after = [ "weaver:check" ]; }
+    # Compat-diff gate (SC-R11): blocks a PR that REMOVES a shipped registry attribute/signal.
+    # PR-scoped (needs a merge-base baseline) — degrades to a warning locally on a fresh clone with
+    # no `origin/main` merge-base; its load-bearing home is the CI `weaver` lane.
+    (taskModules.weaver-diff { })
+    { tasks."check:all".after = [ "weaver:diff" ]; }
+    # Live-check e2e (SC-R12): emits registry-conformant OTLP from a first-party site, captures it,
+    # and asserts `weaver registry live-check` accepts it (exit 0). Runs the scoped vitest e2e with
+    # the hermetic weaver + semconv-model on env; degrades to a warning if weaver is unavailable.
+    # Defined here so the CI `weaver` lane can invoke it, but deliberately NOT wired into `check:all`:
+    # unlike the deterministic check/diff runs, this is a subprocess e2e (spawns otelite, binds an
+    # ephemeral port, depends on export-flush timing), so it lives in CI rather than gating every
+    # local `check:all` on capture reliability.
+    (taskModules.weaver-live-check { })
+    # Version-pin consistency smoke (SC-DQ4): catches weaver/semconv pin drift the content
+    # gate (weaver:check) silently degrades past (a bumped version with a stale FOD hash).
+    (taskModules.weaver-version-smoke { })
+    { tasks."check:all".after = [ "weaver:version-smoke" ]; }
     (taskModules.clean { packages = allPackages; })
     # Repo-root pnpm install task
     # NOTE: Using pnpm temporarily. See: context/workarounds/bun-issues.md

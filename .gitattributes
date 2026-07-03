@@ -14,6 +14,12 @@ pnpm-workspace.yaml linguist-generated=true
 pnpm-install-contract.json linguist-generated=true
 *.gen.* linguist-generated=true
 
+# Weaver semconv registry - generated from genie/weaver-registry/*.genie.ts
+# (exact paths so the hand-authored *.genie.ts sources and registry.ts stay visible)
+genie/weaver-registry/*.yaml linguist-generated=true
+genie/weaver-registry/constants.ts linguist-generated=true
+genie/weaver-registry/constants.rs linguist-generated=true
+
 # Lock files - collapse in GitHub PR diffs
 *.lock linguist-generated=true
 **/*.lock linguist-generated=true

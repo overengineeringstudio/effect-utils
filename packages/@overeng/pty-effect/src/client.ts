@@ -50,6 +50,10 @@ import {
   type OtelOperationDefinition,
 } from '@overeng/otel-contract'
 
+// Catalog schemas from the registered seam contract (`./pty.contract.ts`, namespace `pty`). The
+// dynamic-name client bridges below are rebuilt from these SAME schemas so the `pty.*` catalog and
+// these runtime encoders share one SSOT (SC-R13/R14 — proven byte-identical by the equivalence test).
+import { PtyName as PtyNameAttr, PtyWaitNeedle as PtyWaitNeedleAttr } from './pty.contract.ts'
 import { PtyError } from './PtyError.ts'
 import { decodePtyEvent, type PtyEvent } from './PtyEvent.ts'
 import { PtyName, type TerminalSize } from './PtySpec.ts'
@@ -59,12 +63,14 @@ import type { Screenshot } from './Screenshot.ts'
 
 const PtyTags = Schema.Record({ key: Schema.String, value: Schema.String })
 
+// DYNAMIC-NAME BRIDGE (SC-DQ5): a `spanName`-parameterized operation family; kept inline (the name
+// is not fixed per contract entry) but rebuilt from the imported catalog schemas.
 const PtyClientNameOperation = (spanName: string) =>
   OtelOperation.define({
     name: spanName,
     schema: Schema.Struct({
       label: OtelAttr.drop(Schema.NonEmptyString),
-      name: Schema.String.pipe(OtelAttr.key({ key: 'pty.name' })),
+      name: PtyNameAttr,
     }),
     label: ({ label }) => label,
   })
@@ -83,8 +89,8 @@ const PtyClientWaitOperation = (spanName: string) =>
     name: spanName,
     schema: Schema.Struct({
       label: OtelAttr.drop(Schema.NonEmptyString),
-      name: Schema.String.pipe(OtelAttr.key({ key: 'pty.name' })),
-      needle: Schema.String.pipe(OtelAttr.key({ key: 'pty.wait.needle' })),
+      name: PtyNameAttr,
+      needle: PtyWaitNeedleAttr,
     }),
     label: ({ label }) => label,
   })

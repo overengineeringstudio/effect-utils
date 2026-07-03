@@ -1,0 +1,14 @@
+# Generated file - DO NOT EDIT
+# Source: manifest.yaml.genie.ts
+
+# registry-source: genie/weaver-registry/registry.ts
+# fingerprint: sha256:aa387a7ceb99a0b2b50edb53ab243c9a5ec74a79d807eb7486ad11c23955c2cf
+name: acme-effect-utils
+
+description: First-party OpenTelemetry semantic-convention registry (effect-utils).
+
+schema_url: 'https://opentelemetry.io/schemas/acme/0.1.0'
+
+dependencies:
+  - name: otel
+    registry_path: 'https://github.com/open-telemetry/semantic-conventions.git@v1.37.0[model]'

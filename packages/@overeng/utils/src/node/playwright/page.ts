@@ -9,7 +9,6 @@ import { Effect, Fiber, Schema } from 'effect'
 
 import {
   OtelAttr,
-  OtelAttrs,
   OtelOperation,
   OtelSpan,
   type OtelAttrEncodeError,
@@ -17,34 +16,16 @@ import {
 } from '@overeng/otel-contract'
 
 import { type PwOpError, tryPw } from './op.ts'
+import { PwPageAttrs } from './pw.contract.ts'
 import { PwPage } from './tags.ts'
 
 type WaitUntil = NonNullable<Parameters<Page['goto']>[1]>['waitUntil']
 type LoadState = Parameters<Page['waitForLoadState']>[0]
 type URLMatch = Parameters<Page['waitForURL']>[0]
 
-const PwPageAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    url: Schema.optional(Schema.String.pipe(OtelAttr.key({ key: 'pw.url' }))),
-    waitUntil: Schema.optional(Schema.String.pipe(OtelAttr.key({ key: 'pw.waitUntil' }))),
-    loadState: Schema.optional(Schema.String.pipe(OtelAttr.key({ key: 'pw.loadState' }))),
-    timeoutMs: Schema.optional(Schema.Number.pipe(OtelAttr.key({ key: 'pw.timeout.ms' }))),
-    urlMatch: Schema.optional(Schema.String.pipe(OtelAttr.key({ key: 'pw.urlMatch' }))),
-    jitterMsMin: Schema.optional(Schema.Number.pipe(OtelAttr.key({ key: 'pw.jitter.msMin' }))),
-    jitterMsMax: Schema.optional(Schema.Number.pipe(OtelAttr.key({ key: 'pw.jitter.msMax' }))),
-    viewportWidth: Schema.optional(Schema.Number.pipe(OtelAttr.key({ key: 'pw.viewport.width' }))),
-    viewportHeight: Schema.optional(
-      Schema.Number.pipe(OtelAttr.key({ key: 'pw.viewport.height' })),
-    ),
-    screenshotPath: Schema.optional(
-      Schema.String.pipe(OtelAttr.key({ key: 'pw.screenshot.path' })),
-    ),
-    screenshotFullPage: Schema.optional(
-      Schema.Boolean.pipe(OtelAttr.key({ key: 'pw.screenshot.fullPage' })),
-    ),
-  }),
-)
-
+// PwPageAttrs (annotate-only encoder) is DERIVED from the registered seam contract. The two
+// label-only spans below carry ZERO catalog attributes (weaver rejects an attribute-less span
+// group), so they stay legacy inline `OtelOperation.define` — there is nothing to register.
 const PwPageUrlOperation = OtelOperation.define({
   name: 'pw.page.url',
   schema: Schema.Struct({

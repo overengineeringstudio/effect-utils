@@ -15,6 +15,12 @@ type OtelOxlintRulesArgs = {
   /** Severity for raw Effect/Stream OTEL span primitives. */
   readonly rawOtel: OxlintRuleSeverity
   /**
+   * Severity for OTel semantic-convention contract constructors used outside a `*.contract.ts`
+   * seam file (decision 0005). Ships WARN-only; flips per-namespace to ERROR as the registry
+   * migration proceeds. Defaults to `off`.
+   */
+  readonly contractSeam?: OxlintRuleSeverity
+  /**
    * Reserved for the second enforcement tier, after `OtelOperation` fully
    * replaces product-code `OtelSpan.unsafe*` usage.
    */
@@ -66,9 +72,13 @@ export const baseOxlintCategories = {
  * Repos should use this instead of spelling raw rule names inline so the
  * cross-megarepo rollout can move from warn to error without policy drift.
  */
-export const otelOxlintRules = ({ rawOtel }: OtelOxlintRulesArgs): OxlintOverride['rules'] =>
+export const otelOxlintRules = ({
+  rawOtel,
+  contractSeam = 'off',
+}: OtelOxlintRulesArgs): OxlintOverride['rules'] =>
   ({
     'overeng/no-raw-otel-primitives': rawOtel,
+    'overeng/otel-contract-in-seam-file': contractSeam,
   }) satisfies OxlintOverride['rules']
 
 /** Standard rules shared across all repos */
@@ -114,6 +124,8 @@ export const baseOxlintRules = {
 
   // OTEL raw primitive enforcement is enabled through generated repo overrides.
   'overeng/no-raw-otel-primitives': 'off',
+  // OTel contract seam-file enforcement (decision 0005) — enabled WARN-only via repo overrides.
+  'overeng/otel-contract-in-seam-file': 'off',
 
   // Don't enforce type vs interface
   'typescript/consistent-type-definitions': 'off',
