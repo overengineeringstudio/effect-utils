@@ -53,6 +53,7 @@ let
     nix-cli = import ./nix/devenv-modules/tasks/shared/nix-cli.nix;
     secretspec = import ./nix/devenv-modules/tasks/shared/secretspec.nix;
     weaver = import ./nix/devenv-modules/tasks/shared/weaver.nix;
+    weaver-version-smoke = import ./nix/devenv-modules/tasks/shared/weaver-version-smoke.nix;
     context = ./nix/devenv-modules/tasks/shared/context.nix;
     devenv-module-tests = ./nix/devenv-modules/tasks/local/devenv-module-tests.nix;
     asset-import-type-reference = ./nix/devenv-modules/tasks/local/asset-import-type-reference.nix;
@@ -352,6 +353,10 @@ in
     # Wire the additive weaver gate into `check:all` only (not `check:quick`, which stays fast):
     # `after` list options merge across modules, so this appends without redefining check:all.
     { tasks."check:all".after = [ "weaver:check" ]; }
+    # Version-pin consistency smoke (SC-DQ4): catches weaver/semconv pin drift the content
+    # gate (weaver:check) silently degrades past (a bumped version with a stale FOD hash).
+    (taskModules.weaver-version-smoke { })
+    { tasks."check:all".after = [ "weaver:version-smoke" ]; }
     (taskModules.clean { packages = allPackages; })
     # Repo-root pnpm install task
     # NOTE: Using pnpm temporarily. See: context/workarounds/bun-issues.md
