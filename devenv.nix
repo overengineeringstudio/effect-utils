@@ -30,6 +30,10 @@ let
   pnpmTaskHelpersScript = pkgs.writeText "pnpm-task-helpers.sh" (
     builtins.readFile ./nix/devenv-modules/tasks/shared/pnpm-task-helpers.sh
   );
+  grep = "${pkgs.gnugrep}/bin/grep";
+  head = "${pkgs.coreutils}/bin/head";
+  rg = "${pkgs.ripgrep}/bin/rg";
+  tail = "${pkgs.coreutils}/bin/tail";
   trace = import ./nix/devenv-modules/tasks/lib/trace.nix { inherit lib; };
 
   # Shared task modules (from shared/ directory)
@@ -653,18 +657,18 @@ in
         file="''${hit%%:*}"
         rest="''${hit#*:}"
         lineno="''${rest%%:*}"
-        if head -n "$lineno" "$file" | tail -n 2 | grep -q "$marker"; then
+        if ${head} -n "$lineno" "$file" | ${tail} -n 2 | ${grep} -q "$marker"; then
           continue
         fi
         violations=1
         echo "BYPASS: $hit" >&2
       done < <(
-        rg -n '^[[:space:]]*(exec|status) = ' \
+        ${rg} -n '^[[:space:]]*(exec|status) = ' \
           devenv.nix \
           nix/devenv-modules/tasks/shared \
           nix/devenv-modules/tasks/local \
           -g '*.nix' \
-          | rg -v 'trace[.](exec|status)|exec = null|exec = if hasPackages then null else trace[.]exec|trace[.]withStatus'
+          | ${rg} -v 'trace[.](exec|status)|exec = null|exec = if hasPackages then null else trace[.]exec|trace[.]withStatus'
       )
       if [ "$violations" -ne 0 ]; then
         echo "Found task exec/status scripts that bypass the trace.nix task span (trace.exec/status/withStatus)." >&2

@@ -9,6 +9,9 @@ All notable changes to this project will be documented in this file.
 - **devenv / lint**: mark the `check:*:trace` wrappers as intentionally raw
   `otel-run` entrypoints for the trace audit, and apply the repo formatter to the
   OTEL/Vitest context docs.
+- **devenv / lint**: make `devenv:trace-audit` self-contained by referencing its
+  Nix-provided scanner and marker-check binaries instead of relying on ambient
+  `rg`, `head`, `tail`, or `grep` in `PATH`.
 
 ### Added
 
