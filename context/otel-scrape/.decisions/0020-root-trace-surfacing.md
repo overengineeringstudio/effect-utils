@@ -102,6 +102,13 @@ surface the trace identity to stderr (terminal-only), backend-agnostically.
 - Not telemetry: no `telemetry-registry.json` change — this is terminal
   presentation, like the existing wrapper diagnostics/warnings, and is
   best-effort (not a stability-guaranteed stdout-style contract).
-- The fleet must add a placeholder-template export alongside the existing
-  `OTEL_GRAFANA_LINK_URL` wiring for the URL tier to light up; without it, the
-  binary degrades to the bare-id tier.
+- The URL tier lights up only where a `{traceId}` template is set **and**
+  otel-scrape actually mints the root. Those two conditions co-locate in the
+  **root-invocation environment**: CI steps, top-level scripts, and agent
+  harnesses that do not propagate an inbound `traceparent`. A traced interactive
+  dev shell is deliberately *not* a target — it exports a session `TRACEPARENT`
+  (so every wrapped command joins and surfaces nothing) and already has the
+  `otel-trace` helper for the session trace. Template provision therefore belongs
+  in the fleet/harness env for root invocations (R26), not in this repo's own
+  `nix/devenv-modules/otel.nix`; wiring it there would never fire. Without a
+  template in the root-invocation env, the binary degrades to the bare-id tier.
