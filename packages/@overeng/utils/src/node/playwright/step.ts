@@ -9,22 +9,30 @@ import { Effect, Exit, Function as F, Schema } from 'effect'
 
 import {
   OtelAttr,
+  OtelAttrs,
   OtelOperation,
   type OtelAttrEncodeError,
   type OtelOperationDefinition,
 } from '@overeng/otel-contract'
 
+import { PwStep, PwStepName, PwStepParentSpanTag } from './pw.contract.ts'
+
+// DYNAMIC-NAME BRIDGE: the span name is the runtime step `name`, so it has no stable single-signal
+// registry projection and stays legacy inline here — but its encoder is REBUILT from the `pw.step*`
+// catalog schemas exported by the seam contract (they reach the catalog via docOnlyAttributes).
+const pwStepAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    label: OtelAttr.drop(Schema.NonEmptyString),
+    step: PwStep,
+    stepName: PwStepName,
+    parentSpanTag: Schema.optional(PwStepParentSpanTag),
+  }),
+)
+
 const PwStepOperation = (name: string) =>
   OtelOperation.define({
     name,
-    schema: Schema.Struct({
-      label: OtelAttr.drop(Schema.NonEmptyString),
-      step: Schema.Boolean.pipe(OtelAttr.key({ key: 'pw.step' })),
-      stepName: Schema.NonEmptyString.pipe(OtelAttr.key({ key: 'pw.step.name' })),
-      parentSpanTag: Schema.optional(
-        Schema.String.pipe(OtelAttr.key({ key: 'pw.step.parentSpan._tag' })),
-      ),
-    }),
+    attributes: pwStepAttrs,
     label: ({ label }) => label,
   })
 

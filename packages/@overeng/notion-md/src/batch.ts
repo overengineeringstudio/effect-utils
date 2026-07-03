@@ -3,45 +3,16 @@ import { basename, dirname, resolve } from 'node:path'
 import { FileSystem, Path } from '@effect/platform'
 import { Duration, Effect, Queue, Schema, Stream } from 'effect'
 
-import { OtelAttr, OtelOperation } from '@overeng/otel-contract'
-
 import { NmdCliError, NmdFileSystemError, type NmdError } from './errors.ts'
 import { parseNmdFile } from './frontmatter.ts'
 import type { NotionMdGateway } from './model.ts'
-import { withOperation } from './observability.ts'
+import { BatchWatchSpan, batchRunSpan, withOperation } from './observability.ts'
 import { NmdStateStore } from './state-store.ts'
 
 const DEFAULT_BATCH_CONCURRENCY = 4
 const WATCH_DEBOUNCE = Duration.millis(250)
 
 const SKIPPED_DIRECTORIES = new Set(['.git', '.notion-md', 'node_modules'])
-
-const BatchOperationSchema = Schema.Literal('status', 'sync')
-
-const BatchRunSpanAttrs = Schema.Struct({
-  command: BatchOperationSchema.pipe(OtelAttr.key({ key: 'notion_md.command' })),
-  batch: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.batch' })),
-  targetCount: Schema.NonNegativeInt.pipe(OtelAttr.key({ key: 'notion_md.batch.target_count' })),
-  recursive: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.batch.recursive' })),
-})
-
-const batchRunSpan = (operation: BatchOperation) =>
-  OtelOperation.define({
-    name: `notion-md.${operation}-many`,
-    schema: BatchRunSpanAttrs,
-    label: ({ targetCount }) => `${targetCount} target(s)`,
-  })
-
-const BatchWatchSpan = OtelOperation.define({
-  name: 'notion-md.batch-watch',
-  schema: Schema.Struct({
-    command: Schema.Literal('sync').pipe(OtelAttr.key({ key: 'notion_md.command' })),
-    watch: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.watch' })),
-    batch: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.batch' })),
-    pathCount: Schema.NonNegativeInt.pipe(OtelAttr.key({ key: 'notion_md.batch.path_count' })),
-  }),
-  label: ({ pathCount }) => `${pathCount} file(s)`,
-})
 
 /** Batch-capable page operation names. */
 export type BatchOperation = 'status' | 'sync'

@@ -24,7 +24,8 @@
     "**/.vite/**",
     "**/patches/**",
     "**/.cache/**",
-    "**/.turbo/**"
+    "**/.turbo/**",
+    "genie/weaver-registry/**"
   ],
   "categories": {
     "correctness": "error",
@@ -63,6 +64,7 @@
     "overeng/jsdoc-require-exports": "error",
     "typescript/consistent-type-imports": "warn",
     "overeng/no-raw-otel-primitives": "off",
+    "overeng/otel-contract-in-seam-file": "off",
     "typescript/consistent-type-definitions": "off",
     "typescript/no-deprecated": "error",
     "typescript/no-unsafe-type-assertion": "off",
@@ -209,7 +211,15 @@
     {
       "files": ["packages/@overeng/*/src/**/*.ts", "packages/@overeng/*/src/**/*.tsx"],
       "rules": {
-        "overeng/no-raw-otel-primitives": "error"
+        "overeng/no-raw-otel-primitives": "error",
+        "overeng/otel-contract-in-seam-file": "warn"
+      }
+    },
+    {
+      "files": ["packages/@overeng/genie/src/**/*.ts", "packages/@overeng/genie/src/**/*.tsx"],
+      "rules": {
+        "overeng/no-raw-otel-primitives": "error",
+        "overeng/otel-contract-in-seam-file": "error"
       }
     },
     {
@@ -230,7 +240,8 @@
         "packages/@overeng/*/src/**/*.gen.tsx"
       ],
       "rules": {
-        "overeng/no-raw-otel-primitives": "off"
+        "overeng/no-raw-otel-primitives": "off",
+        "overeng/otel-contract-in-seam-file": "off"
       }
     },
     {

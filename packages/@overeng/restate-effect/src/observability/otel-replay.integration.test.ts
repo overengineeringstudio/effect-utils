@@ -80,9 +80,9 @@ const HarnessLayer = RestateTestHarness.layer({
 })
 
 /**
- * Sum a counter metric's data points for this service across exports. The metric
- * LABELS are `service`/`handler` (the metric label convention), distinct from the
- * SPAN attributes `restate.service`/`restate.handler`.
+ * Sum a counter metric's data points for this service across exports. Since the metrics migration,
+ * the metric LABELS are the SAME namespaced catalog keys the SPAN carries (`restate.service`/
+ * `restate.handler`) — a breaking rename from the old bare `service`/`handler` labels (approved).
  */
 const counterSumFor = (metricName: string, service: string): number => {
   let sum = 0
@@ -91,7 +91,7 @@ const counterSumFor = (metricName: string, service: string): number => {
       for (const m of sm.metrics) {
         if (m.descriptor.name !== metricName) continue
         for (const dp of m.dataPoints) {
-          if ((dp.attributes as Record<string, unknown>)['service'] === service) {
+          if ((dp.attributes as Record<string, unknown>)['restate.service'] === service) {
             sum += dp.value as number
           }
         }

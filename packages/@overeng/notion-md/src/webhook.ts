@@ -145,7 +145,10 @@ export const decodeNotionWebhookSignal = (
         }),
     ),
     Effect.flatMap(normalizeNotionWebhookPayload),
-    Effect.withSpan('notion-md.webhook.decode'),
+    Observability.withOperation({
+      operation: Observability.WebhookDecodeSpan,
+      attributes: { label: 'decode' },
+    }),
   )
 
 /** Return the explicit comments-surface boundary for comment webhooks. */

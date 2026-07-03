@@ -8,57 +8,58 @@ import {
   type OtelOperationDefinition,
 } from '@overeng/otel-contract'
 
+import {
+  NotionDatabasesQueryOperation,
+  NotionHttpMethod,
+  NotionHttpOperation,
+  NotionHttpRetryAttempt,
+  NotionHttpRetryAttempts,
+  NotionHttpRetryDelayMs,
+  NotionHttpRoute,
+  NotionHttpStatusCode,
+  NotionPagesRetrieveOperation,
+  NotionQuotaCost,
+  NotionRateLimitPresent,
+  NotionRateLimitRemaining,
+  NotionRateLimitResetAfterMs,
+  NotionRateLimitWaitMs,
+} from '../notion-effect-client.contract.ts'
 import type { BuildRequestOptions, NotionHttpRouteInfo, RateLimitInfo } from './http.ts'
 
-const Method = Schema.Literal('GET', 'POST', 'PATCH', 'DELETE')
-
+// The per-method request span embeds the HTTP method in its NAME, so it has no stable single-signal
+// registry projection and stays a LEGACY inline `OtelOperation.define` DYNAMIC-NAME bridge (SC-DQ5).
+// Its attribute schema is REBUILT from the imported `notion.*` catalog attrs (identical encode).
 const HttpSpanAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     spanLabel: OtelAttr.drop(Schema.NonEmptyString),
-    method: Method.pipe(OtelAttr.key({ key: 'notion.http.method' })),
-    route: Schema.String.pipe(OtelAttr.key({ key: 'notion.http.route' })),
-    operation: Schema.String.pipe(OtelAttr.key({ key: 'notion.http.operation' })),
+    method: NotionHttpMethod,
+    route: NotionHttpRoute,
+    operation: NotionHttpOperation,
   }),
 )
 
+// Annotate-only bundle stamped on the CURRENT (request) span; rebuilt from the imported catalog.
 const HttpRateLimitAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
-    method: Method.pipe(OtelAttr.key({ key: 'notion.http.method' })),
-    route: Schema.String.pipe(OtelAttr.key({ key: 'notion.http.route' })),
-    operation: Schema.String.pipe(OtelAttr.key({ key: 'notion.http.operation' })),
-    status: Schema.optional(Schema.Number.pipe(OtelAttr.key({ key: 'notion.http.status_code' }))),
-    attempt: Schema.Number.pipe(OtelAttr.key({ key: 'notion.http.retry.attempt' })),
-    attempts: Schema.Number.pipe(OtelAttr.key({ key: 'notion.http.retry.attempts' })),
-    retryDelayMs: Schema.optional(
-      Schema.Number.pipe(OtelAttr.key({ key: 'notion.http.retry.delay_ms' })),
-    ),
-    quotaCost: Schema.Number.pipe(OtelAttr.key({ key: 'notion.quota.cost' })),
-    rateLimitPresent: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion.rate_limit.present' })),
-    rateLimitRemaining: Schema.optional(
-      Schema.Number.pipe(OtelAttr.key({ key: 'notion.rate_limit.remaining' })),
-    ),
-    rateLimitResetAfterMs: Schema.optional(
-      Schema.Number.pipe(OtelAttr.key({ key: 'notion.rate_limit.reset_after_ms' })),
-    ),
+    method: NotionHttpMethod,
+    route: NotionHttpRoute,
+    operation: NotionHttpOperation,
+    status: Schema.optional(NotionHttpStatusCode),
+    attempt: NotionHttpRetryAttempt,
+    attempts: NotionHttpRetryAttempts,
+    retryDelayMs: Schema.optional(NotionHttpRetryDelayMs),
+    quotaCost: NotionQuotaCost,
+    rateLimitPresent: NotionRateLimitPresent,
+    rateLimitRemaining: Schema.optional(NotionRateLimitRemaining),
+    rateLimitResetAfterMs: Schema.optional(NotionRateLimitResetAfterMs),
   }),
 )
 
+// Annotate-only throttle-wait bundle; rebuilt from the imported catalog.
 const HttpRateLimitWaitAttrs = OtelAttrs.defineSync(
   Schema.Struct({
-    rateLimitWaitMs: Schema.Number.pipe(OtelAttr.key({ key: 'notion.rate_limit.wait_ms' })),
-  }),
-)
-
-const DataSourceQueryAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    dataSourceId: Schema.String.pipe(OtelAttr.key({ key: 'notion.data_source_id' })),
-  }),
-)
-
-const PageRetrieveAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    pageId: Schema.String.pipe(OtelAttr.key({ key: 'notion.page_id' })),
+    rateLimitWaitMs: NotionRateLimitWaitMs,
   }),
 )
 
@@ -69,17 +70,10 @@ const NotionHttpSpan = (method: BuildRequestOptions['method']) =>
     label: ({ spanLabel }) => spanLabel,
   })
 
-const NotionDatabasesQuerySpan = OtelOperation.define({
-  name: 'NotionDatabases.query',
-  attributes: DataSourceQueryAttrs,
-  label: ({ dataSourceId }) => dataSourceId,
-})
+// DERIVED static-name spans (re-pointed at the seam contract's `.operation` products).
+const NotionDatabasesQuerySpan = NotionDatabasesQueryOperation.operation
 
-const NotionPagesRetrieveSpan = OtelOperation.define({
-  name: 'NotionPages.retrieve',
-  attributes: PageRetrieveAttrs,
-  label: ({ pageId }) => pageId,
-})
+const NotionPagesRetrieveSpan = NotionPagesRetrieveOperation.operation
 
 const withOperation =
   <S extends Schema.Schema.AnyNoContext>({

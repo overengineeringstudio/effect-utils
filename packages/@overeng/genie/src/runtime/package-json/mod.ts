@@ -161,6 +161,7 @@ export type ExportEnvironmentContracts =
 
 type AuthoredExportEntry = ExportsEntry | ExportEntryContract
 
+/** Authored package.json input: standard fields plus environment-contract-annotated `exports`. */
 export type PackageJsonInputData = Omit<PackageJsonData, 'exports'> & {
   /** Package entry points, optionally annotated with non-emitted environment contracts. */
   exports?: Record<string, AuthoredExportEntry>

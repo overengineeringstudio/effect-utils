@@ -22,54 +22,26 @@ import {
   Stream,
 } from 'effect'
 
-import {
-  OtelAttr,
-  OtelOperation,
-  type OtelAttrEncodeError,
-  type OtelOperationDefinition,
-} from '@overeng/otel-contract'
+import { type OtelAttrEncodeError, type OtelOperationDefinition } from '@overeng/otel-contract'
 
 import { isNotUndefined } from '../isomorphic/mod.ts'
 import { applyLoggingToCommand } from './cmd-log.ts'
+import {
+  CmdCollectOperation as CmdCollectContract,
+  CmdLoggingOperation as CmdLoggingContract,
+  CmdRunOperation as CmdRunContract,
+} from './cmd.contract.ts'
 import * as FileLogger from './FileLogger.ts'
 import { CurrentWorkingDirectory } from './workspace.ts'
 
 // Branded zero value so we can compare exit codes without touching internals.
 const SUCCESS_EXIT_CODE: CommandExecutor.ExitCode = 0 as CommandExecutor.ExitCode
 
-const CmdRunOperation = OtelOperation.define({
-  name: 'cmd.run',
-  schema: Schema.Struct({
-    label: OtelAttr.drop(Schema.NonEmptyString),
-    cwd: Schema.String.pipe(OtelAttr.key({ key: 'cmd.cwd' })),
-    command: Schema.String.pipe(OtelAttr.key({ key: 'cmd.command' })),
-    args: Schema.Array(Schema.String).pipe(OtelAttr.key({ key: 'cmd.args', encode: 'json' })),
-    logDir: Schema.optional(Schema.String.pipe(OtelAttr.key({ key: 'cmd.log_dir' }))),
-    shell: Schema.Boolean.pipe(OtelAttr.key({ key: 'cmd.shell' })),
-  }),
-  label: ({ label }) => label,
-})
-
-const CmdCollectOperation = OtelOperation.define({
-  name: 'cmd.collect',
-  schema: Schema.Struct({
-    label: OtelAttr.drop(Schema.NonEmptyString),
-    cwd: Schema.optional(Schema.String.pipe(OtelAttr.key({ key: 'cmd.cwd' }))),
-    shell: Schema.Boolean.pipe(OtelAttr.key({ key: 'cmd.shell' })),
-  }),
-  label: ({ label }) => label,
-})
-
-const CmdLoggingOperation = OtelOperation.define({
-  name: 'cmd.run-with-logging',
-  schema: Schema.Struct({
-    label: OtelAttr.drop(Schema.NonEmptyString),
-    cwd: Schema.String.pipe(OtelAttr.key({ key: 'cmd.cwd' })),
-    logPath: Schema.String.pipe(OtelAttr.key({ key: 'cmd.log_path' })),
-    shell: Schema.Boolean.pipe(OtelAttr.key({ key: 'cmd.shell' })),
-  }),
-  label: ({ label }) => label,
-})
+// Runtime spans DERIVED from the registered seam contract (`./cmd.contract.ts`, namespace `cmd`),
+// the single SSOT for the Weaver registry projection AND these runtime encoders (SC-R13/R14).
+const CmdRunOperation = CmdRunContract.operation
+const CmdCollectOperation = CmdCollectContract.operation
+const CmdLoggingOperation = CmdLoggingContract.operation
 
 const trustOtelContract = <A, E, R>(
   effect: Effect.Effect<A, E | OtelAttrEncodeError, R>,

@@ -1,3 +1,12 @@
+/**
+ * Runtime observability surface for megarepo (cli sites). Every `megarepo.*` span/metric/attribute
+ * is DERIVED from the registered seam contract (`../megarepo.contract.ts`, namespace `megarepo`) —
+ * the single SSOT for BOTH the Weaver registry projection AND these runtime encoders (SC-R13/R14).
+ * This file holds only the runtime wrappers (attribute shaping, root-span selection, the gauge
+ * bridge) plus the DYNAMIC-NAME bridges (`withCommandSpan`, `withStoreWorktreeSpan`,
+ * `withStoreSourceSpan`, `withStoreGcPhaseSpan`) whose span name varies at runtime and thus stay
+ * legacy inline, rebuilt from the IMPORTED catalog schema objects (identical encode).
+ */
 import { Duration, Effect, Option, Schema } from 'effect'
 
 import {
@@ -7,9 +16,50 @@ import {
   OtelOperation,
   OtelSpan,
   type OtelAttrEncodeError,
+  type OtelGaugeDefinition,
   type OtelOperationDefinition,
 } from '@overeng/otel-contract'
 import { OtelConfig, sampleResource } from '@overeng/utils/node/otel'
+
+import {
+  MegarepoCliAll,
+  MegarepoCliCommand,
+  MegarepoCliDryRun,
+  MegarepoCliForce,
+  MegarepoCliOutput,
+  MegarepoCliPorcelain,
+  MegarepoMember,
+  MegarepoRepo,
+  MegarepoStoreBaseRef,
+  MegarepoStoreBareRepoPath,
+  MegarepoStoreCommit,
+  MegarepoStoreGcCandidateCommits,
+  MegarepoStoreGcCandidateNamedRefs,
+  MegarepoStoreGcPhase,
+  MegarepoStoreGcRepoConcurrency,
+  MegarepoStoreGcRepoCount,
+  MegarepoStoreGcRepoTotal,
+  MegarepoStoreGcResultArchived,
+  MegarepoStoreGcResultKept,
+  MegarepoStoreGcResultReaped,
+  MegarepoStoreGcResultRemoved,
+  MegarepoStoreGcResultSkippedDirty,
+  MegarepoStoreGcResultSkippedInUse,
+  MegarepoStoreGcResultTotal,
+  MegarepoStoreGcRootSetWorkspaceCount,
+  MegarepoStoreGcWorktreeCount,
+  MegarepoStoreGcWorktreeDiscovered,
+  MegarepoStoreGitWorktreeListFailed,
+  MegarepoStoreRef,
+  MegarepoStoreRefType,
+  MegarepoStoreRepo,
+  MegarepoStoreSource,
+  MegarepoStoreWorktreeBroken,
+  MegarepoStoreWorktreePath,
+  StoreGcOperation,
+  StoreGcRssGauge,
+  SyncOperation,
+} from '../megarepo.contract.ts'
 
 const basename = (value: string): string =>
   value.split('/').findLast((part) => part.length > 0) ?? value
@@ -20,6 +70,9 @@ const shortRef = ({ refType, ref }: { refType: string; ref: string }): string =>
 /** Trailing-slash-tolerant basename, used to derive compact span labels from
  *  filesystem paths (e.g. a worktree dir → its final segment). */
 export const shortPath = (value: string): string => basename(value.replace(/\/+$/, ''))
+
+/** Shared runtime-only span-label field (`span.label`), filtered from the registry projection. */
+const spanLabel = () => Schema.NonEmptyString.pipe(OtelAttr.spanLabel())
 
 const trustOtelContract = <A, E, R>(
   effect: Effect.Effect<A, E | OtelAttrEncodeError, R>,
@@ -46,6 +99,18 @@ const trustedWith =
   <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     trustOtelContract<A, E, R>(operation.with({ attributes, effect }))
 
+/** Like {@link trustedWith} but forces a ROOT span (used for the top-level `megarepo/store/gc`). */
+const trustedWithRoot =
+  <S extends Schema.Schema.AnyNoContext>({
+    operation,
+    attributes,
+  }: {
+    operation: OtelOperationDefinition<S>
+    attributes: Schema.Schema.Type<S>
+  }): (<A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>) =>
+  <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+    trustOtelContract<A, E, R>(operation.withRoot({ attributes, effect }))
+
 const trustedAnnotate = <S extends Schema.Schema.AnyNoContext>({
   operation,
   attributes,
@@ -54,16 +119,19 @@ const trustedAnnotate = <S extends Schema.Schema.AnyNoContext>({
   attributes: Schema.Schema.Type<S>
 }): Effect.Effect<void> => trustOtelContract<void, never, never>(operation.annotate(attributes))
 
+// ---- command span/annotation (DYNAMIC name for the span, static name for the annotation) ----
+// The command keys reach the catalog as `docOnlyAttributes` (the command span's name varies by
+// subcommand → no stable single-signal projection). Rebuilt from the imported catalog schemas.
 const commandAttrs = OtelAttrs.defineSync(
   Schema.Struct({
-    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
-    command: Schema.NonEmptyString.pipe(OtelAttr.key({ key: 'megarepo.cli.command' })),
-    output: Schema.optional(Schema.String.pipe(OtelAttr.key({ key: 'megarepo.cli.output' }))),
-    all: Schema.optional(Schema.Boolean.pipe(OtelAttr.key({ key: 'megarepo.cli.all' }))),
-    dryRun: Schema.optional(Schema.Boolean.pipe(OtelAttr.key({ key: 'megarepo.cli.dry_run' }))),
-    force: Schema.optional(Schema.Boolean.pipe(OtelAttr.key({ key: 'megarepo.cli.force' }))),
-    member: Schema.optional(Schema.String.pipe(OtelAttr.key({ key: 'megarepo.member' }))),
-    repo: Schema.optional(Schema.String.pipe(OtelAttr.key({ key: 'megarepo.repo' }))),
+    label: spanLabel(),
+    command: MegarepoCliCommand,
+    output: Schema.optional(MegarepoCliOutput),
+    all: Schema.optional(MegarepoCliAll),
+    dryRun: Schema.optional(MegarepoCliDryRun),
+    force: Schema.optional(MegarepoCliForce),
+    member: Schema.optional(MegarepoMember),
+    repo: Schema.optional(MegarepoRepo),
   }),
 )
 
@@ -81,39 +149,16 @@ const commandAnnotationOperation = OtelOperation.define({
   label: ({ label }) => label,
 })
 
-const syncAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
-    root: Schema.String.pipe(OtelAttr.key({ key: 'megarepo.root' })),
-    mode: Schema.String.pipe(OtelAttr.key({ key: 'megarepo.sync.mode' })),
-    depth: Schema.Number.pipe(OtelAttr.key({ key: 'megarepo.sync.depth' })),
-    dryRun: Schema.Boolean.pipe(OtelAttr.key({ key: 'megarepo.cli.dry_run' })),
-    all: Schema.Boolean.pipe(OtelAttr.key({ key: 'megarepo.cli.all' })),
-    force: Schema.Boolean.pipe(OtelAttr.key({ key: 'megarepo.cli.force' })),
-  }),
-)
-
-const syncSpan = OtelOperation.define({
-  name: 'megarepo/sync',
-  attributes: syncAttrs,
-  label: ({ label }) => label,
-})
-
+// ---- DYNAMIC-NAME BRIDGES (megarepo.store.*): span name varies → inline, rebuilt from catalog ----
 const storeWorktreeAttrs = OtelAttrs.defineSync(
   Schema.Struct({
-    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
-    repo: Schema.String.pipe(OtelAttr.key({ key: 'megarepo.store.repo' })),
-    refType: Schema.String.pipe(OtelAttr.key({ key: 'megarepo.store.ref_type' })),
-    ref: Schema.String.pipe(OtelAttr.key({ key: 'megarepo.store.ref' })),
-    worktreePath: Schema.optional(
-      Schema.String.pipe(OtelAttr.key({ key: 'megarepo.store.worktree_path' })),
-    ),
-    bareRepoPath: Schema.optional(
-      Schema.String.pipe(OtelAttr.key({ key: 'megarepo.store.bare_repo_path' })),
-    ),
-    broken: Schema.optional(
-      Schema.Boolean.pipe(OtelAttr.key({ key: 'megarepo.store.worktree_broken' })),
-    ),
+    label: spanLabel(),
+    repo: MegarepoStoreRepo,
+    refType: MegarepoStoreRefType,
+    ref: MegarepoStoreRef,
+    worktreePath: Schema.optional(MegarepoStoreWorktreePath),
+    bareRepoPath: Schema.optional(MegarepoStoreBareRepoPath),
+    broken: Schema.optional(MegarepoStoreWorktreeBroken),
   }),
 )
 
@@ -124,71 +169,14 @@ const storeWorktreeOperation = (name: string) =>
     label: ({ label }) => label,
   })
 
-const storeGcAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
-    policy: Schema.String.pipe(OtelAttr.key({ key: 'megarepo.store.gc.policy' })),
-    dryRun: Schema.Boolean.pipe(OtelAttr.key({ key: 'megarepo.cli.dry_run' })),
-    force: Schema.Boolean.pipe(OtelAttr.key({ key: 'megarepo.cli.force' })),
-    all: Schema.Boolean.pipe(OtelAttr.key({ key: 'megarepo.cli.all' })),
-  }),
-)
-
-const storeGcOperation = OtelOperation.define({
-  name: 'megarepo/store/gc',
-  attributes: storeGcAttrs,
-  label: ({ label }) => label,
-  root: true,
-})
-
-const storeGcResultAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    rootSetWorkspaceCount: Schema.Number.pipe(
-      OtelAttr.key({ key: 'megarepo.store.gc.root_set_workspace_count' }),
-    ),
-    repoTotal: Schema.Number.pipe(OtelAttr.key({ key: 'megarepo.store.gc.repo_total' })),
-    worktreeDiscovered: Schema.Number.pipe(
-      OtelAttr.key({ key: 'megarepo.store.gc.worktree_discovered' }),
-    ),
-    resultTotal: Schema.Number.pipe(OtelAttr.key({ key: 'megarepo.store.gc.result_total' })),
-    resultRemoved: Schema.Number.pipe(OtelAttr.key({ key: 'megarepo.store.gc.result_removed' })),
-    resultSkippedInUse: Schema.Number.pipe(
-      OtelAttr.key({ key: 'megarepo.store.gc.result_skipped_in_use' }),
-    ),
-    resultSkippedDirty: Schema.Number.pipe(
-      OtelAttr.key({ key: 'megarepo.store.gc.result_skipped_dirty' }),
-    ),
-    resultArchived: Schema.Number.pipe(OtelAttr.key({ key: 'megarepo.store.gc.result_archived' })),
-    resultReaped: Schema.Number.pipe(OtelAttr.key({ key: 'megarepo.store.gc.result_reaped' })),
-    resultKept: Schema.Number.pipe(OtelAttr.key({ key: 'megarepo.store.gc.result_kept' })),
-    candidateCommits: Schema.Number.pipe(
-      OtelAttr.key({ key: 'megarepo.store.gc.candidate_commits' }),
-    ),
-    candidateNamedRefs: Schema.Number.pipe(
-      OtelAttr.key({ key: 'megarepo.store.gc.candidate_named_refs' }),
-    ),
-    repoConcurrency: Schema.Number.pipe(
-      OtelAttr.key({ key: 'megarepo.store.gc.repo_concurrency' }),
-    ),
-  }),
-)
-
-const storeGitWorktreeListFailureAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    failed: Schema.Boolean.pipe(OtelAttr.key({ key: 'megarepo.store.git_worktree_list_failed' })),
-  }),
-)
-
 const storeSourceAttrs = OtelAttrs.defineSync(
   Schema.Struct({
-    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
-    source: Schema.String.pipe(OtelAttr.key({ key: 'megarepo.store.source' })),
-    ref: Schema.optional(Schema.String.pipe(OtelAttr.key({ key: 'megarepo.store.ref' }))),
-    base: Schema.optional(Schema.String.pipe(OtelAttr.key({ key: 'megarepo.store.base_ref' }))),
-    commit: Schema.optional(Schema.String.pipe(OtelAttr.key({ key: 'megarepo.store.commit' }))),
-    porcelain: Schema.optional(
-      Schema.Boolean.pipe(OtelAttr.key({ key: 'megarepo.cli.porcelain' })),
-    ),
+    label: spanLabel(),
+    source: MegarepoStoreSource,
+    ref: Schema.optional(MegarepoStoreRef),
+    base: Schema.optional(MegarepoStoreBaseRef),
+    commit: Schema.optional(MegarepoStoreCommit),
+    porcelain: Schema.optional(MegarepoCliPorcelain),
   }),
 )
 
@@ -198,6 +186,33 @@ const storeSourceOperation = (name: string) =>
     attributes: storeSourceAttrs,
     label: ({ label }) => label,
   })
+
+// ---- DERIVED static-name operations + annotate bundles ----
+const syncSpan = SyncOperation.operation
+const storeGcOperation = StoreGcOperation.operation
+
+// ANNOTATE-ONLY: gc-result tallies (rebuilt from the imported catalog schemas).
+const storeGcResultAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    rootSetWorkspaceCount: MegarepoStoreGcRootSetWorkspaceCount,
+    repoTotal: MegarepoStoreGcRepoTotal,
+    worktreeDiscovered: MegarepoStoreGcWorktreeDiscovered,
+    resultTotal: MegarepoStoreGcResultTotal,
+    resultRemoved: MegarepoStoreGcResultRemoved,
+    resultSkippedInUse: MegarepoStoreGcResultSkippedInUse,
+    resultSkippedDirty: MegarepoStoreGcResultSkippedDirty,
+    resultArchived: MegarepoStoreGcResultArchived,
+    resultReaped: MegarepoStoreGcResultReaped,
+    resultKept: MegarepoStoreGcResultKept,
+    candidateCommits: MegarepoStoreGcCandidateCommits,
+    candidateNamedRefs: MegarepoStoreGcCandidateNamedRefs,
+    repoConcurrency: MegarepoStoreGcRepoConcurrency,
+  }),
+)
+
+const storeGitWorktreeListFailureAttrs = OtelAttrs.defineSync(
+  Schema.Struct({ failed: MegarepoStoreGitWorktreeListFailed }),
+)
 
 /** Wrap a CLI command effect in its top-level `megarepo/cli/<command>` span.
  *  `root` makes it a trace root (for standalone subcommands); `label` defaults
@@ -368,7 +383,7 @@ export const withStoreGcSpan = ({
   force: boolean
   all: boolean
 }) =>
-  trustedWith({
+  trustedWithRoot({
     operation: storeGcOperation,
     attributes: {
       label: 'gc',
@@ -422,19 +437,14 @@ export type StoreGcPhase =
   | 'cold-reclaim'
   | 'legacy-sweep'
 
+// DYNAMIC-NAME BRIDGE: span name is `megarepo/store/gc/<phase>` → inline, rebuilt from catalog.
 const storeGcPhaseAttrs = OtelAttrs.defineSync(
   Schema.Struct({
-    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
-    phase: Schema.String.pipe(OtelAttr.key({ key: 'megarepo.store.gc.phase' })),
-    repoCount: Schema.optional(
-      Schema.Number.pipe(OtelAttr.key({ key: 'megarepo.store.gc.repo_count' })),
-    ),
-    worktreeCount: Schema.optional(
-      Schema.Number.pipe(OtelAttr.key({ key: 'megarepo.store.gc.worktree_count' })),
-    ),
-    repoConcurrency: Schema.optional(
-      Schema.Number.pipe(OtelAttr.key({ key: 'megarepo.store.gc.repo_concurrency' })),
-    ),
+    label: spanLabel(),
+    phase: MegarepoStoreGcPhase,
+    repoCount: Schema.optional(MegarepoStoreGcRepoCount),
+    worktreeCount: Schema.optional(MegarepoStoreGcWorktreeCount),
+    repoConcurrency: Schema.optional(MegarepoStoreGcRepoConcurrency),
   }),
 )
 
@@ -468,39 +478,30 @@ export const withStoreGcPhaseSpan = ({
 /**
  * Resident-set gauge sampled periodically across a gc run
  * (`megarepo_store_gc_rss_bytes`). A gauge (not a counter): RSS goes up and down.
- * `repo_concurrency` is a label so a parameter sweep produces one comparable
+ * `megarepo.store.gc.repo_concurrency` is a label so a parameter sweep produces one comparable
  * series per operating point (decision 0007 — the sweep plots RSS-vs-concurrency).
  *
- * Defined through the schema-first contract (`OtelMetric.gauge`) — the sanctioned
- * path that brands the name + enforces the label cardinality policy — and bridged
- * to a typed Effect `Metric` via `OtelMetric.effect.gauge`. `trustedSet` encodes
- * the `repo_concurrency` label through the schema (no raw `MetricLabel`).
+ * DERIVED from the seam contract's `StoreGcRssGauge.metric` (`OtelMetric.gauge` — the sanctioned
+ * path that brands the name + enforces the label cardinality policy) and bridged to a typed Effect
+ * `Metric` via `OtelMetric.effect.gauge`. `trustedSet` encodes the label through the schema (no raw
+ * `MetricLabel`). The bare `repo_concurrency` label was renamed to the namespaced catalog key
+ * (retention-first, decisions 0003/0004).
  */
-const storeGcRssGauge = OtelMetric.gauge({
-  name: 'megarepo_store_gc_rss_bytes',
-  description: 'Resident set size (bytes) sampled during mr store gc/status',
-  unit: 'By',
-  labels: Schema.Struct({
-    repoConcurrency: OtelAttr.number({
-      key: 'repo_concurrency',
-      metadata: { cardinality: 'bounded' },
-    }),
-  }),
-})
-
-const storeGcRssGaugeBridge = OtelMetric.effect.gauge(storeGcRssGauge)
+// The registry `metric()` DSL types `.metric` as the general `OtelMetricDefinition` (it does not
+// narrow by instrument); this contract authors it as a gauge, so narrow it for the effect bridge.
+const storeGcRssGaugeBridge = OtelMetric.effect.gauge(
+  StoreGcRssGauge.metric as OtelGaugeDefinition<Schema.Schema.AnyNoContext>,
+)
 
 /**
- * Fork a fiber that samples `process.memoryUsage().rss` into
- * {@link storeGcRssGauge} every `interval` for the lifetime of the enclosing
- * scope, tagged with `repo_concurrency` so sweep runs are comparable.
+ * Fork a fiber that samples `process.memoryUsage().rss` into the RSS gauge every `interval` for the
+ * lifetime of the enclosing scope, tagged with `megarepo.store.gc.repo_concurrency` so sweep runs
+ * are comparable.
  *
- * The clock/gate/fork mechanics are owned by the foundation `sampleResource`
- * primitive: it ticks on a real wall clock and no-ops when telemetry is off. The
- * `Effect.serviceOption(OtelConfig)` read here only DISCHARGES the primitive's
- * `OtelConfig` requirement (defaulting to a telemetry-off config when absent) so
- * the gc command stays runnable without the layer — the gating decision itself
- * lives inside the primitive, not here.
+ * The clock/gate/fork mechanics are owned by the foundation `sampleResource` primitive: it ticks on
+ * a real wall clock and no-ops when telemetry is off. The `Effect.serviceOption(OtelConfig)` read
+ * here only DISCHARGES the primitive's `OtelConfig` requirement (defaulting to a telemetry-off
+ * config when absent) so the gc command stays runnable without the layer.
  */
 export const sampleStoreGcRss = ({
   repoConcurrency,

@@ -12,13 +12,12 @@
 import { type Duration, Effect, Schedule, Schema } from 'effect'
 
 import {
-  OtelAttr,
-  OtelAttrs,
-  OtelOperation,
   OtelSpan,
   type OtelAttrEncodeError,
   type OtelOperationDefinition,
 } from '@overeng/otel-contract'
+
+import { PwWaitAttemptAttrs, PwWaitOperation as PwWaitContract } from './pw.contract.ts'
 
 /** Error thrown when a polling wait operation times out */
 export class PwWaitTimeoutError extends Schema.TaggedError<PwWaitTimeoutError>()(
@@ -29,22 +28,8 @@ export class PwWaitTimeoutError extends Schema.TaggedError<PwWaitTimeoutError>()
   },
 ) {}
 
-const PwWaitOperation = OtelOperation.define({
-  name: 'pw.wait.until',
-  schema: Schema.Struct({
-    label: OtelAttr.drop(Schema.NonEmptyString),
-    waitLabel: Schema.String.pipe(OtelAttr.key({ key: 'pw.wait.label' })),
-    pollInterval: Schema.String.pipe(OtelAttr.key({ key: 'pw.wait.pollInterval' })),
-    timeout: Schema.String.pipe(OtelAttr.key({ key: 'pw.wait.timeout' })),
-  }),
-  label: ({ label }) => label,
-})
-
-const PwWaitAttemptAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    attempt: Schema.Number.pipe(OtelAttr.key({ key: 'pw.wait.attempt' })),
-  }),
-)
+// Runtime span DERIVED from the registered seam contract (`./pw.contract.ts`, namespace `pw`).
+const PwWaitOperation = PwWaitContract.operation
 
 const trustOtelContract = <A, E, R>(
   effect: Effect.Effect<A, E | OtelAttrEncodeError, R>,

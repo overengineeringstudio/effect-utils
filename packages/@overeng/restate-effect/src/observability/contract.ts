@@ -1,6 +1,27 @@
 import { Schema } from 'effect'
 
-import { OtelAttr, OtelAttrs, OtelMetric, OtelOperation } from '@overeng/otel-contract'
+import {
+  OtelAttr,
+  OtelAttrs,
+  OtelOperation,
+  type OtelHistogramDefinition,
+} from '@overeng/otel-contract'
+
+import {
+  AttemptsTotalMetric,
+  AwakeableWaitMsMetric,
+  DurableStepsTotalMetric,
+  InvocationDurationMsMetric,
+  InvocationsTotalMetric,
+  PollLoopCyclesTotalMetric,
+  RestateErrorClass,
+  RestateErrorTag,
+  RestateHandler,
+  RestateIdempotencyKey,
+  RestateObjectKey,
+  RestateService,
+  RestateWorkflowId,
+} from './restate.contract.ts'
 
 const RestateOperationAttributes = Schema.Struct({
   label: OtelAttr.drop(Schema.NonEmptyString),
@@ -25,17 +46,11 @@ export const restateOperation = (name: string) =>
  */
 export const BoundaryAttemptAttrs = OtelAttrs.defineSync(
   Schema.Struct({
-    service: OtelAttr.string({ key: 'restate.service', metadata: { cardinality: 'bounded' } }),
-    handler: OtelAttr.string({ key: 'restate.handler', metadata: { cardinality: 'bounded' } }),
-    objectKey: Schema.optional(
-      OtelAttr.string({ key: 'restate.object.key', metadata: { cardinality: 'high' } }),
-    ),
-    workflowId: Schema.optional(
-      OtelAttr.string({ key: 'restate.workflow.id', metadata: { cardinality: 'high' } }),
-    ),
-    idempotencyKey: Schema.optional(
-      OtelAttr.string({ key: 'restate.idempotency.key', metadata: { cardinality: 'high' } }),
-    ),
+    service: RestateService,
+    handler: RestateHandler,
+    objectKey: Schema.optional(RestateObjectKey),
+    workflowId: Schema.optional(RestateWorkflowId),
+    idempotencyKey: Schema.optional(RestateIdempotencyKey),
   }),
 )
 
@@ -47,81 +62,28 @@ export const BoundaryAttemptAttrs = OtelAttrs.defineSync(
  */
 export const BoundaryOutcomeAttrs = OtelAttrs.defineSync(
   Schema.Struct({
-    errorClass: Schema.optional(
-      OtelAttr.literal('restate.error.class', 'terminal', 'retryable', 'cancelled'),
-    ),
-    errorTag: Schema.optional(
-      OtelAttr.string({ key: 'restate.error.tag', metadata: { cardinality: 'bounded' } }),
-    ),
+    errorClass: Schema.optional(RestateErrorClass),
+    errorTag: Schema.optional(RestateErrorTag),
   }),
 )
 
-const InvocationLabels = Schema.Struct({
-  service: OtelAttr.string({ key: 'service', metadata: { cardinality: 'bounded' } }),
-  handler: OtelAttr.string({ key: 'handler', metadata: { cardinality: 'bounded' } }),
-  outcome: OtelAttr.literal('outcome', 'success', 'terminal', 'retryable', 'cancelled'),
-})
-
-const HandlerLabels = Schema.Struct({
-  service: OtelAttr.string({ key: 'service', metadata: { cardinality: 'bounded' } }),
-  handler: OtelAttr.string({ key: 'handler', metadata: { cardinality: 'bounded' } }),
-})
-
-const DurableStepLabels = Schema.Struct({
-  step: OtelAttr.string({ key: 'step', metadata: { cardinality: 'bounded' } }),
-})
-
-const NoLabels = Schema.Struct({})
-
-const PollLoopCycleLabels = Schema.Struct({
-  name: OtelAttr.string({ key: 'name', metadata: { cardinality: 'bounded' } }),
-  outcome: OtelAttr.literal('outcome', 'ok', 'error', 'stopped'),
-})
-
-const RestateDurationMetricBoundariesMs = [
-  1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10_000, 30_000, 60_000, 300_000,
-] as const
-
 /**
  * The otel-contract metric definitions backing the replay-aware baseline metrics
- * (decision 0014): the names, units, histogram boundaries, and label schemas are
- * declared ONCE here and bridged to Effect `Metric`s in `Metrics.ts`.
+ * (decision 0014), DERIVED from the registered seam contract (`./restate.contract.ts`) — the single
+ * SSOT for BOTH the Weaver registry projection AND these runtime definitions (SC-R13/R14). The
+ * emitted label keys are the namespaced catalog keys (`restate.service`/`restate.handler`/
+ * `restate.outcome`/`restate.step`/`restate.name`); the two histogram `.metric`s are narrowed from
+ * the DSL's general `OtelMetricDefinition` for the `OtelMetric.effect.histogram` bridge in
+ * `Metrics.ts`. The label struct FIELD names stay `service`/`handler`/… so the emit helpers are
+ * unchanged; only the encoded wire keys are namespaced.
  */
 export const RestateMetrics = {
-  invocationsTotal: OtelMetric.counter({
-    name: 'restate_invocations_total',
-    description: 'Restate invocations by service, handler, and terminal outcome.',
-    labels: InvocationLabels,
-  }),
-  invocationDurationMs: OtelMetric.histogram({
-    name: 'restate_invocation_duration_ms',
-    description:
-      'Wall-clock duration of a real invocation attempt (ms), by service/handler/outcome.',
-    unit: 'ms',
-    boundaries: RestateDurationMetricBoundariesMs,
-    labels: InvocationLabels,
-  }),
-  attemptsTotal: OtelMetric.counter({
-    name: 'restate_attempts_total',
-    description: 'Restate handler attempts by service and handler (drives the retry count).',
-    labels: HandlerLabels,
-  }),
-  durableStepsTotal: OtelMetric.counter({
-    name: 'restate_durable_steps_total',
-    description:
-      'Durable `Restate.run` steps executed (exactly-once across replays), by step name.',
-    labels: DurableStepLabels,
-  }),
-  awakeableWaitMs: OtelMetric.histogram({
-    name: 'restate_awakeable_wait_ms',
-    description: 'Wall-clock wait for an awakeable to be externally resolved (ms).',
-    unit: 'ms',
-    boundaries: RestateDurationMetricBoundariesMs,
-    labels: NoLabels,
-  }),
-  pollLoopCyclesTotal: OtelMetric.counter({
-    name: 'restate_poll_loop_cycles_total',
-    description: 'Scheduled `pollLoop` cycles executed, by loop name and cycle outcome.',
-    labels: PollLoopCycleLabels,
-  }),
+  invocationsTotal: InvocationsTotalMetric.metric,
+  invocationDurationMs:
+    InvocationDurationMsMetric.metric as OtelHistogramDefinition<Schema.Schema.AnyNoContext>,
+  attemptsTotal: AttemptsTotalMetric.metric,
+  durableStepsTotal: DurableStepsTotalMetric.metric,
+  awakeableWaitMs:
+    AwakeableWaitMsMetric.metric as OtelHistogramDefinition<Schema.Schema.AnyNoContext>,
+  pollLoopCyclesTotal: PollLoopCyclesTotalMetric.metric,
 } as const

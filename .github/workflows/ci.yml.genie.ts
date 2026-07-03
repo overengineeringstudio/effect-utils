@@ -538,6 +538,33 @@ const jobs: Record<
     },
   }),
   cargo: cargoJob,
+  // Additive Weaver semantic-conventions gates, in one lane (GEN-R09 block-vs-degrade): each
+  // `weaver:*` task BLOCKS on a validation failure but DEGRADES to a warning (exit 0) if the
+  // weaver flake / upstream semconv FOD is unavailable, so it never wedges the product lanes.
+  //   - weaver:check      (SC-R10) registry schema/policy validation
+  //   - weaver:diff       (SC-R11) compat-diff vs the merge-base baseline (blocks on a REMOVED
+  //                        attribute/signal). Needs baseline history: the fetch step below
+  //                        un-shallows the checkout so `merge-base origin/main HEAD` resolves —
+  //                        without it weaver:diff silently degrades (nothing to diff against).
+  //   - weaver:live-check (SC-R12) e2e: emitted OTLP conforms to the registry
+  weaver: job({
+    extraSteps: [
+      {
+        name: 'Fetch baseline history for weaver:diff (SC-R11)',
+        run: [
+          'set -uo pipefail',
+          '# weaver:diff needs the merge-base with origin/main; the default checkout is shallow.',
+          'git fetch --no-tags --prune --unshallow origin 2>/dev/null \\',
+          '  || git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main 2>/dev/null \\',
+          '  || true',
+        ].join('\n'),
+      },
+    ],
+    step: {
+      name: 'Weaver registry gates (check + diff + live-check)',
+      run: runDevenvTasksBefore('weaver:check', 'weaver:diff', 'weaver:live-check'),
+    },
+  }),
 }
 
 const sourceShapeMeasurementsDir = 'tmp/source-shape-ci'

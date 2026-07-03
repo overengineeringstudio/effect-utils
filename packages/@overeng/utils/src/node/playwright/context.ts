@@ -5,22 +5,14 @@
  */
 
 import type { Cookie } from '@playwright/test'
-import { Effect, Schema } from 'effect'
+import { Effect } from 'effect'
 
-import { OtelAttr, OtelAttrs, OtelSpan } from '@overeng/otel-contract'
+import { OtelSpan } from '@overeng/otel-contract'
 
 import { type PwOpError, tryPw } from './op.ts'
+// PwContextAttrs (annotate-only encoder) is DERIVED from the registered seam contract.
+import { PwContextAttrs } from './pw.contract.ts'
 import { PwBrowserContext } from './tags.ts'
-
-const PwContextAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    cookieCount: Schema.optional(Schema.Number.pipe(OtelAttr.key({ key: 'pw.cookie.count' }))),
-    cookiesUrl: Schema.optional(Schema.String.pipe(OtelAttr.key({ key: 'pw.cookies.url' }))),
-    storageStatePath: Schema.optional(
-      Schema.String.pipe(OtelAttr.key({ key: 'pw.storageState.path' })),
-    ),
-  }),
-)
 
 const annotateContext = (
   value: Partial<{
