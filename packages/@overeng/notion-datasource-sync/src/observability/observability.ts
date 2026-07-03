@@ -10,6 +10,12 @@ import {
 } from '@overeng/otel-contract'
 
 import type { OneShotStatusState, OneShotSyncStatus } from '../core/status.ts'
+import {
+  gatewayOperationNames,
+  notionApiRequestsTotal,
+  spanAttrKeys,
+  type GatewayRequestOperation,
+} from './notion-datasource.contract.ts'
 
 /** OTel service names used when registering the CLI and daemon tracer providers. */
 export const otelServiceNames = {
@@ -17,87 +23,38 @@ export const otelServiceNames = {
   daemon: 'notion-datasource-sync-daemon',
 } as const
 
-/** Canonical OTel span names for every traced operation in the sync pipeline and CLI. */
+/**
+ * Canonical OTel span names for every traced operation in the sync pipeline and CLI. Renamed
+ * `notion.datasource.*` → `notion_datasource.*` (breaking wire rename, approved) to match the
+ * disjoint `notion_datasource` attribute namespace. `gatewayRequest` stays `notion.api.request` (it
+ * names the actual outbound Notion API call, not a `notion.datasource.*` internal span).
+ */
 export const spanNames = {
-  cliCommand: 'notion.datasource.cli',
-  daemonPass: 'notion.datasource.daemon.pass',
-  daemonRun: 'notion.datasource.daemon.run',
-  fakeGatewayRequest: 'notion.datasource.fake-gateway.request',
+  cliCommand: 'notion_datasource.cli',
+  daemonPass: 'notion_datasource.daemon.pass',
+  daemonRun: 'notion_datasource.daemon.run',
+  fakeGatewayRequest: 'notion_datasource.fake-gateway.request',
   gatewayRequest: 'notion.api.request',
-  observationLocal: 'notion.datasource.observation.local',
-  observationRemote: 'notion.datasource.observation.remote',
-  outboxAttempt: 'notion.datasource.outbox.attempt',
-  outboxObserveSurface: 'notion.datasource.outbox.observe-surface',
-  outboxWriteRemote: 'notion.datasource.outbox.write-remote',
-  syncEstablishFromNotion: 'notion.datasource.sync.establish-from-notion',
-  syncInit: 'notion.datasource.sync.init',
-  syncPull: 'notion.datasource.sync.pull',
-  syncPush: 'notion.datasource.sync.push',
-  syncOneShot: 'notion.datasource.sync.one-shot',
-  syncQueryAbsence: 'notion.datasource.sync.query-absence',
-  webhookIntake: 'notion.datasource.webhook.intake',
+  observationLocal: 'notion_datasource.observation.local',
+  observationRemote: 'notion_datasource.observation.remote',
+  outboxAttempt: 'notion_datasource.outbox.attempt',
+  outboxObserveSurface: 'notion_datasource.outbox.observe-surface',
+  outboxWriteRemote: 'notion_datasource.outbox.write-remote',
+  syncEstablishFromNotion: 'notion_datasource.sync.establish-from-notion',
+  syncInit: 'notion_datasource.sync.init',
+  syncPull: 'notion_datasource.sync.pull',
+  syncPush: 'notion_datasource.sync.push',
+  syncOneShot: 'notion_datasource.sync.one-shot',
+  syncQueryAbsence: 'notion_datasource.sync.query-absence',
+  webhookIntake: 'notion_datasource.webhook.intake',
 } as const
 
-/** Typed map of every OTel span attribute key emitted by this package — use instead of raw strings. */
-export const spanAttr = {
-  agentIterationId: 'agent.iteration.id',
-  apiVersion: 'notion.datasource.api_version',
-  appendedEvents: 'notion.datasource.appended_events',
-  attempt: 'notion.datasource.attempt',
-  blockedCount: 'notion.datasource.blocked_count',
-  bodyCompleteness: 'notion.datasource.body.completeness',
-  bodyEvidenceDigest: 'notion.datasource.body.evidence.digest',
-  bodyIdentityDigest: 'notion.datasource.body.identity.digest',
-  bodyIdentityKind: 'notion.datasource.body.identity.kind',
-  bodyRenderedDigest: 'notion.datasource.body.rendered.digest',
-  cancelled: 'notion.datasource.cancelled',
-  cappedAtLimit: 'notion.datasource.capped_at_limit',
-  command: 'notion.datasource.command',
-  commandId: 'notion.datasource.command_id',
-  commandKind: 'notion.datasource.command_kind',
-  completedCycles: 'notion.datasource.completed_cycles',
-  conflictCount: 'notion.datasource.conflict_count',
-  cycle: 'notion.datasource.cycle',
-  cycles: 'notion.datasource.cycles',
-  dataSourceId: 'notion.datasource.data_source_id',
-  dryRun: 'notion.datasource.dry_run',
-  enqueuedCommands: 'notion.datasource.enqueued_commands',
-  eventCount: 'notion.datasource.event_count',
-  executorSteps: 'notion.datasource.executor_steps',
-  guard: 'notion.datasource.guard',
-  incompletePropertyCount: 'notion.datasource.incomplete_property_count',
-  leaseDurationMs: 'notion.datasource.lease_duration_ms',
-  localObservationCount: 'notion.datasource.local_observation_count',
-  maxCycles: 'notion.datasource.max_cycles',
-  maxExecutorSteps: 'notion.datasource.max_executor_steps',
-  maxStepsReached: 'notion.datasource.max_steps_reached',
-  mode: 'notion.datasource.mode',
-  operation: 'notion.datasource.operation',
-  outboxAmbiguousCount: 'notion.datasource.outbox_ambiguous_count',
-  outboxBlockedCount: 'notion.datasource.outbox_blocked_count',
-  outboxQueuedCount: 'notion.datasource.outbox_queued_count',
-  outboxRetryableCount: 'notion.datasource.outbox_retryable_count',
-  outboxRunningCount: 'notion.datasource.outbox_running_count',
-  pageId: 'notion.datasource.page_id',
-  processRole: 'notion.datasource.process.role',
-  propertyId: 'notion.datasource.property_id',
-  queryComplete: 'notion.datasource.query_complete',
-  queryPageCount: 'notion.datasource.query_page_count',
-  result: 'notion.datasource.result',
-  rootId: 'notion.datasource.root_id',
-  rowCount: 'notion.datasource.row_count',
-  settlementKind: 'notion.datasource.settlement_kind',
-  spanLabel: 'span.label',
-  statusState: 'notion.datasource.status.state',
-  /** Wake trigger source for a `daemon.pass` span — `'webhook'` when the cycle was woken by a Notion webhook, `'signal'` for any other non-webhook signal, `'poll'` when no signal was claimed. Annotation-only: never gates what gets read. */
-  wakeSource: 'notion.datasource.wake_source',
-  /** Notion event type string from the incoming webhook payload (e.g. `'page.created'`). */
-  webhookEventType: 'notion.datasource.webhook.event_type',
-  /** Outcome of one webhook delivery attempt: `'enqueued'` (new), `'duplicate'` (already known), `'verification'` (token challenge), or `'rejected'`. */
-  webhookOutcome: 'notion.datasource.webhook.outcome',
-  /** Stable rejection reason when `webhookOutcome === 'rejected'`; never contains raw payload material. */
-  webhookRejectionReason: 'notion.datasource.webhook.rejection_reason',
-} as const
+/**
+ * Typed map of every OTel span attribute key emitted by this package — use instead of raw strings.
+ * DERIVED from the registered seam contract's `spanAttrKeys` (the single SSOT for the renamed
+ * `notion_datasource.*` keys); re-exported here as the package's public `spanAttr` API.
+ */
+export const spanAttr = spanAttrKeys
 
 /** Canonical OTel span attribute keys emitted by this package. */
 export type SpanAttributeKey = (typeof spanAttr)[keyof typeof spanAttr]
@@ -369,45 +326,11 @@ export const otelCorrelationSpanAttributes = (input: {
   })
 
 /**
- * The full set of gateway operation names that can label a `notion.api.request`
- * span / metric, kept in lockstep with `gateway.ts`'s `GatewayOperation` union.
- *
- * Bounded cardinality: exactly these 13 logical endpoints, never an id.
+ * The full set of gateway operation names + the request-count metric are DERIVED from the seam
+ * contract (`./notion-datasource.contract.ts`), re-exported here so `gateway.ts` and the rest of the
+ * package keep importing them from the package observability surface.
  */
-export const gatewayOperationNames = [
-  'preflightCapabilities',
-  'retrieveDataSource',
-  'queryRows',
-  'retrievePage',
-  'retrievePageProperty',
-  'listDataSourceViews',
-  'patchPageProperties',
-  'createPage',
-  'patchDataSourceSchema',
-  'patchDataSourceMetadata',
-  'patchDatabaseMetadata',
-  'trashPage',
-  'restorePage',
-] as const
-
-/** Operation name labelling a `notion.api.request` — the bounded `operation` metric/span dimension. */
-export type GatewayRequestOperation = (typeof gatewayOperationNames)[number]
-
-/**
- * Production request-count metric for the call-count budget (EFF-R01, decision
- * 0017 Half 1). Counts LOGICAL `notion.api.request` calls — one per gateway op
- * invocation, matching the `notion.api.request` span — labelled only by the
- * bounded `operation` endpoint (never an id), so a regression that adds a
- * per-entity read shows up as fleet-visible request growth.
- */
-export const notionApiRequestsTotal = OtelMetric.counter({
-  name: 'notion_datasource_api_requests_total',
-  description:
-    'Logical Notion API requests issued by the datasource-sync gateway, by operation endpoint.',
-  labels: Schema.Struct({
-    operation: OtelAttr.literal(spanAttr.operation, ...gatewayOperationNames),
-  }),
-})
+export { gatewayOperationNames, notionApiRequestsTotal, type GatewayRequestOperation }
 
 const notionApiRequestsTotalBridge = OtelMetric.effect.counter(notionApiRequestsTotal)
 

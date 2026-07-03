@@ -1,7 +1,7 @@
 // Generated file - DO NOT EDIT
 // Source: constants.ts.genie.ts
 // registry-source: genie/weaver-registry/registry.ts
-// fingerprint: sha256:fcb7737194ccb20cb5f52530033d2ede79a331309902407805d5b5f53df82d22
+// fingerprint: sha256:a29e00860a50e4d30a7d3870066445413b039a0048224272ef9c77f7afc2210a
 
 export const AcmeAttempt = 'acme.attempt' as const
 export const AcmeProbeLabel = 'acme.probe.label' as const
@@ -123,6 +123,57 @@ export const NixLockPath = 'nix.lock.path' as const
 export const NixLockSource_path = 'nix.lock.source_path' as const
 export const NixLockSource_type = 'nix.lock.source_type' as const
 export const NixLockType = 'nix.lock.type' as const
+export const Notion_datasourceApi_version = 'notion_datasource.api_version' as const
+export const Notion_datasourceAppended_events = 'notion_datasource.appended_events' as const
+export const Notion_datasourceAttempt = 'notion_datasource.attempt' as const
+export const Notion_datasourceBlocked_count = 'notion_datasource.blocked_count' as const
+export const Notion_datasourceBodyCompleteness = 'notion_datasource.body.completeness' as const
+export const Notion_datasourceBodyEvidenceDigest = 'notion_datasource.body.evidence.digest' as const
+export const Notion_datasourceBodyIdentityDigest = 'notion_datasource.body.identity.digest' as const
+export const Notion_datasourceBodyIdentityKind = 'notion_datasource.body.identity.kind' as const
+export const Notion_datasourceBodyRenderedDigest = 'notion_datasource.body.rendered.digest' as const
+export const Notion_datasourceCancelled = 'notion_datasource.cancelled' as const
+export const Notion_datasourceCapped_at_limit = 'notion_datasource.capped_at_limit' as const
+export const Notion_datasourceCommand = 'notion_datasource.command' as const
+export const Notion_datasourceCommand_id = 'notion_datasource.command_id' as const
+export const Notion_datasourceCommand_kind = 'notion_datasource.command_kind' as const
+export const Notion_datasourceCompleted_cycles = 'notion_datasource.completed_cycles' as const
+export const Notion_datasourceConflict_count = 'notion_datasource.conflict_count' as const
+export const Notion_datasourceCycle = 'notion_datasource.cycle' as const
+export const Notion_datasourceCycles = 'notion_datasource.cycles' as const
+export const Notion_datasourceData_source_id = 'notion_datasource.data_source_id' as const
+export const Notion_datasourceDry_run = 'notion_datasource.dry_run' as const
+export const Notion_datasourceEnqueued_commands = 'notion_datasource.enqueued_commands' as const
+export const Notion_datasourceEvent_count = 'notion_datasource.event_count' as const
+export const Notion_datasourceExecutor_steps = 'notion_datasource.executor_steps' as const
+export const Notion_datasourceGuard = 'notion_datasource.guard' as const
+export const Notion_datasourceIncomplete_property_count = 'notion_datasource.incomplete_property_count' as const
+export const Notion_datasourceLease_duration_ms = 'notion_datasource.lease_duration_ms' as const
+export const Notion_datasourceLocal_observation_count = 'notion_datasource.local_observation_count' as const
+export const Notion_datasourceMax_cycles = 'notion_datasource.max_cycles' as const
+export const Notion_datasourceMax_executor_steps = 'notion_datasource.max_executor_steps' as const
+export const Notion_datasourceMax_steps_reached = 'notion_datasource.max_steps_reached' as const
+export const Notion_datasourceMode = 'notion_datasource.mode' as const
+export const Notion_datasourceOperation = 'notion_datasource.operation' as const
+export const Notion_datasourceOutbox_ambiguous_count = 'notion_datasource.outbox_ambiguous_count' as const
+export const Notion_datasourceOutbox_blocked_count = 'notion_datasource.outbox_blocked_count' as const
+export const Notion_datasourceOutbox_queued_count = 'notion_datasource.outbox_queued_count' as const
+export const Notion_datasourceOutbox_retryable_count = 'notion_datasource.outbox_retryable_count' as const
+export const Notion_datasourceOutbox_running_count = 'notion_datasource.outbox_running_count' as const
+export const Notion_datasourcePage_id = 'notion_datasource.page_id' as const
+export const Notion_datasourceProcessRole = 'notion_datasource.process.role' as const
+export const Notion_datasourceProperty_id = 'notion_datasource.property_id' as const
+export const Notion_datasourceQuery_complete = 'notion_datasource.query_complete' as const
+export const Notion_datasourceQuery_page_count = 'notion_datasource.query_page_count' as const
+export const Notion_datasourceResult = 'notion_datasource.result' as const
+export const Notion_datasourceRoot_id = 'notion_datasource.root_id' as const
+export const Notion_datasourceRow_count = 'notion_datasource.row_count' as const
+export const Notion_datasourceSettlement_kind = 'notion_datasource.settlement_kind' as const
+export const Notion_datasourceStatusState = 'notion_datasource.status.state' as const
+export const Notion_datasourceWake_source = 'notion_datasource.wake_source' as const
+export const Notion_datasourceWebhookEvent_type = 'notion_datasource.webhook.event_type' as const
+export const Notion_datasourceWebhookOutcome = 'notion_datasource.webhook.outcome' as const
+export const Notion_datasourceWebhookRejection_reason = 'notion_datasource.webhook.rejection_reason' as const
 export const Notion_mdBatch = 'notion_md.batch' as const
 export const Notion_mdBatchPath_count = 'notion_md.batch.path_count' as const
 export const Notion_mdBatchRecursive = 'notion_md.batch.recursive' as const
@@ -260,8 +311,11 @@ export const RestateErrorClass = 'restate.error.class' as const
 export const RestateErrorTag = 'restate.error.tag' as const
 export const RestateHandler = 'restate.handler' as const
 export const RestateIdempotencyKey = 'restate.idempotency.key' as const
+export const RestateName = 'restate.name' as const
 export const RestateObjectKey = 'restate.object.key' as const
+export const RestateOutcome = 'restate.outcome' as const
 export const RestateService = 'restate.service' as const
+export const RestateStep = 'restate.step' as const
 export const RestateWorkflowId = 'restate.workflow.id' as const
 export const SemaphoreKey = 'semaphore.key' as const
 export const SemaphoreTarget_holder_id = 'semaphore.target_holder_id' as const
@@ -387,6 +441,57 @@ export type AttributeKey =
   | 'nix.lock.source_path'
   | 'nix.lock.source_type'
   | 'nix.lock.type'
+  | 'notion_datasource.api_version'
+  | 'notion_datasource.appended_events'
+  | 'notion_datasource.attempt'
+  | 'notion_datasource.blocked_count'
+  | 'notion_datasource.body.completeness'
+  | 'notion_datasource.body.evidence.digest'
+  | 'notion_datasource.body.identity.digest'
+  | 'notion_datasource.body.identity.kind'
+  | 'notion_datasource.body.rendered.digest'
+  | 'notion_datasource.cancelled'
+  | 'notion_datasource.capped_at_limit'
+  | 'notion_datasource.command'
+  | 'notion_datasource.command_id'
+  | 'notion_datasource.command_kind'
+  | 'notion_datasource.completed_cycles'
+  | 'notion_datasource.conflict_count'
+  | 'notion_datasource.cycle'
+  | 'notion_datasource.cycles'
+  | 'notion_datasource.data_source_id'
+  | 'notion_datasource.dry_run'
+  | 'notion_datasource.enqueued_commands'
+  | 'notion_datasource.event_count'
+  | 'notion_datasource.executor_steps'
+  | 'notion_datasource.guard'
+  | 'notion_datasource.incomplete_property_count'
+  | 'notion_datasource.lease_duration_ms'
+  | 'notion_datasource.local_observation_count'
+  | 'notion_datasource.max_cycles'
+  | 'notion_datasource.max_executor_steps'
+  | 'notion_datasource.max_steps_reached'
+  | 'notion_datasource.mode'
+  | 'notion_datasource.operation'
+  | 'notion_datasource.outbox_ambiguous_count'
+  | 'notion_datasource.outbox_blocked_count'
+  | 'notion_datasource.outbox_queued_count'
+  | 'notion_datasource.outbox_retryable_count'
+  | 'notion_datasource.outbox_running_count'
+  | 'notion_datasource.page_id'
+  | 'notion_datasource.process.role'
+  | 'notion_datasource.property_id'
+  | 'notion_datasource.query_complete'
+  | 'notion_datasource.query_page_count'
+  | 'notion_datasource.result'
+  | 'notion_datasource.root_id'
+  | 'notion_datasource.row_count'
+  | 'notion_datasource.settlement_kind'
+  | 'notion_datasource.status.state'
+  | 'notion_datasource.wake_source'
+  | 'notion_datasource.webhook.event_type'
+  | 'notion_datasource.webhook.outcome'
+  | 'notion_datasource.webhook.rejection_reason'
   | 'notion_md.batch'
   | 'notion_md.batch.path_count'
   | 'notion_md.batch.recursive'
@@ -524,8 +629,11 @@ export type AttributeKey =
   | 'restate.error.tag'
   | 'restate.handler'
   | 'restate.idempotency.key'
+  | 'restate.name'
   | 'restate.object.key'
+  | 'restate.outcome'
   | 'restate.service'
+  | 'restate.step'
   | 'restate.workflow.id'
   | 'semaphore.key'
   | 'semaphore.target_holder_id'

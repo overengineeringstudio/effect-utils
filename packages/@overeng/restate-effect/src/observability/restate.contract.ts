@@ -11,23 +11,24 @@
  * Placement: `src/observability/` (beside `contract.ts`, which already imports `@overeng/otel-contract`
  * at runtime), so this file's `./registry` import is dependency-safe.
  *
- * ATTRS-ONLY MEMBER (no `signals`). Every `restate.*` attribute reaches telemetry through a
- * DYNAMIC-NAME bridge span the Restate SDK hook owns (`attempt <target>`, stamped by the boundary
- * observer) or the dynamic in-handler `restateOperation(name)` span — neither has a stable
- * single-signal registry projection (SC-DQ5, mirroring genie's `cli.mode` and megarepo's dynamic
- * bridges). So the catalog keys reach the registry via `docOnlyAttributes` for completeness
- * (SC-R13), and the runtime bridges stay legacy inline in `contract.ts`, rebuilt from the IMPORTED
- * catalog schemas below (identical encode — proven by the colocated equivalence property test).
+ * SPAN ATTRS reach telemetry through a DYNAMIC-NAME bridge span the Restate SDK hook owns
+ * (`attempt <target>`, stamped by the boundary observer) or the dynamic in-handler
+ * `restateOperation(name)` span — neither has a stable single-signal registry projection (SC-DQ5,
+ * mirroring genie's `cli.mode` and megarepo's dynamic bridges). So those catalog keys reach the
+ * registry via `docOnlyAttributes` for completeness (SC-R13), and the runtime bridges stay legacy
+ * inline in `contract.ts`, rebuilt from the IMPORTED catalog schemas below (identical encode —
+ * proven by the colocated equivalence property test).
  *
- * METRICS DEFERRED (bare-label flag, NOT migrated). restate-effect's replay-aware baseline metrics
- * (`restate_invocations_total`, …, `Metrics.ts`) carry UNPREFIXED Prometheus-style label keys
- * (`service`, `handler`, `outcome`, `step`, `name`). Routing them through the registry `metric(...)`
- * DSL would rename the emitted label keys to their namespaced catalog keys (`restate.service`, …) —
- * a BREAKING wire rename (the same move megarepo made for `repo_concurrency`, with sign-off). Per
- * the behavior-preserving constraint (SC-R14, "do NOT silently rename"), the metrics stay as raw
- * `OtelMetric` definitions in `./contract.ts` and are FLAGGED for a follow-up sign-off decision.
+ * METRICS MIGRATED (BREAKING label rename, APPROVED). restate-effect's replay-aware baseline metrics
+ * (`restate_invocations_total`, …, `Metrics.ts`) historically carried UNPREFIXED Prometheus-style
+ * label keys (`service`, `handler`, `outcome`, `step`, `name`). They are now authored as registry
+ * `metric(...)` SIGNALS below, so their emitted label keys are the namespaced catalog keys
+ * (`restate.service`, `restate.handler`, `restate.outcome`, `restate.step`, `restate.name`) — the
+ * same move megarepo made for `repo_concurrency` (retention-first: the old bare labels stop being
+ * emitted, the new `restate.*` labels emit). The runtime metric definitions in `./contract.ts` are
+ * DERIVED from these seam signals (`.metric`), bridged to Effect `Metric`s in `Metrics.ts`.
  */
-import { attr, defineOtelContract } from '@overeng/otel-contract/registry'
+import { attr, defineOtelContract, metric, required } from '@overeng/otel-contract/registry'
 
 // ---------------------------------------------------------------------------
 // attributes (annotated Effect Schemas; the restate.* catalog SSOT)
@@ -100,17 +101,152 @@ export const RestateErrorTag = attr.string({
   examples: ['ValidationError', 'NotFoundError'],
 })
 
+/**
+ * Terminal classification of a metered execution — a BOUNDED string, not an enum: the invocation
+ * metrics use `success`/`terminal`/`retryable`/`cancelled`, while the `pollLoop` cycle counter uses
+ * `ok`/`error`/`stopped`. The two disjoint value domains share one namespaced catalog key.
+ */
+export const RestateOutcome = attr.string({
+  key: 'restate.outcome',
+  cardinality: 'bounded',
+  brief: 'Terminal classification of a metered execution (invocation outcome or poll-loop cycle).',
+  stability: 'development',
+  examples: ['success', 'retryable', 'ok', 'stopped'],
+})
+
+/** Durable `Restate.run` step name a `restate_durable_steps_total` increment is labelled by. */
+export const RestateStep = attr.string({
+  key: 'restate.step',
+  cardinality: 'bounded',
+  brief: 'Durable `Restate.run` step name.',
+  stability: 'development',
+  examples: ['charge', 'delta'],
+})
+
+/** Scheduled `pollLoop` instance name a `restate_poll_loop_cycles_total` increment is labelled by. */
+export const RestateName = attr.string({
+  key: 'restate.name',
+  cardinality: 'bounded',
+  brief: 'Scheduled `pollLoop` instance name.',
+  stability: 'development',
+  examples: ['invoice-poller'],
+})
+
 // ---------------------------------------------------------------------------
-// contract seam (namespace `restate`, derived). Attrs-only member — see file docstring.
+// metrics (labels reference the SAME catalog attributes as the span bridges; decision 0003).
+// The replay-aware baseline metrics (`Metrics.ts`). Their emitted label keys are the namespaced
+// catalog keys (a BREAKING wire rename from the old bare `service`/`handler`/… labels, approved).
+// ---------------------------------------------------------------------------
+
+/** Millisecond-latency histogram buckets shared by the two duration/wait histograms. */
+const RestateDurationBoundariesMs = [
+  1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10_000, 30_000, 60_000, 300_000,
+] as const
+
+/** `restate_invocations_total` — per-invocation outcome counter, by service/handler/outcome. */
+export const InvocationsTotalMetric = metric({
+  id: 'metric.restate.invocations_total',
+  name: 'restate_invocations_total',
+  instrument: 'counter',
+  unit: '{invocation}',
+  brief: 'Restate invocations by service, handler, and terminal outcome.',
+  stability: 'development',
+  labels: {
+    service: required(RestateService),
+    handler: required(RestateHandler),
+    outcome: required(RestateOutcome),
+  },
+})
+
+/** `restate_invocation_duration_ms` — per-attempt wall-clock histogram, by service/handler/outcome. */
+export const InvocationDurationMsMetric = metric({
+  id: 'metric.restate.invocation_duration_ms',
+  name: 'restate_invocation_duration_ms',
+  instrument: 'histogram',
+  unit: 'ms',
+  brief: 'Wall-clock duration of a real invocation attempt (ms), by service/handler/outcome.',
+  stability: 'development',
+  boundaries: RestateDurationBoundariesMs,
+  labels: {
+    service: required(RestateService),
+    handler: required(RestateHandler),
+    outcome: required(RestateOutcome),
+  },
+})
+
+/** `restate_attempts_total` — per-attempt counter (drives the retry count), by service/handler. */
+export const AttemptsTotalMetric = metric({
+  id: 'metric.restate.attempts_total',
+  name: 'restate_attempts_total',
+  instrument: 'counter',
+  unit: '{attempt}',
+  brief: 'Restate handler attempts by service and handler (drives the retry count).',
+  stability: 'development',
+  labels: {
+    service: required(RestateService),
+    handler: required(RestateHandler),
+  },
+})
+
+/** `restate_durable_steps_total` — durable-step counter (exactly-once across replays), by step. */
+export const DurableStepsTotalMetric = metric({
+  id: 'metric.restate.durable_steps_total',
+  name: 'restate_durable_steps_total',
+  instrument: 'counter',
+  unit: '{step}',
+  brief: 'Durable `Restate.run` steps executed (exactly-once across replays), by step name.',
+  stability: 'development',
+  labels: {
+    step: required(RestateStep),
+  },
+})
+
+/** `restate_awakeable_wait_ms` — external-completion wait histogram (unlabelled). */
+export const AwakeableWaitMsMetric = metric({
+  id: 'metric.restate.awakeable_wait_ms',
+  name: 'restate_awakeable_wait_ms',
+  instrument: 'histogram',
+  unit: 'ms',
+  brief: 'Wall-clock wait for an awakeable to be externally resolved (ms).',
+  stability: 'development',
+  boundaries: RestateDurationBoundariesMs,
+  labels: {},
+})
+
+/** `restate_poll_loop_cycles_total` — scheduled `pollLoop` cycle counter, by name/outcome. */
+export const PollLoopCyclesTotalMetric = metric({
+  id: 'metric.restate.poll_loop_cycles_total',
+  name: 'restate_poll_loop_cycles_total',
+  instrument: 'counter',
+  unit: '{cycle}',
+  brief: 'Scheduled `pollLoop` cycles executed, by loop name and cycle outcome.',
+  stability: 'development',
+  labels: {
+    name: required(RestateName),
+    outcome: required(RestateOutcome),
+  },
+})
+
+// ---------------------------------------------------------------------------
+// contract seam (namespace `restate`, derived).
 // ---------------------------------------------------------------------------
 
 export default defineOtelContract({
   memberPath: 'packages/@overeng/restate-effect',
   displayName: 'Restate Attributes',
-  // No `signals`: every restate.* key reaches telemetry via a DYNAMIC-NAME bridge span (the
-  // hook-owned `attempt <target>` span or the dynamic `restateOperation(name)` span), which has no
-  // stable single-signal projection. Keys reach the catalog via `docOnlyAttributes` (SC-R13).
-  signals: [],
+  // The replay-aware baseline metrics are real signals; `restate.outcome`/`restate.step`/
+  // `restate.name` reach the catalog as own keys via these metric label refs.
+  signals: [
+    InvocationsTotalMetric,
+    InvocationDurationMsMetric,
+    AttemptsTotalMetric,
+    DurableStepsTotalMetric,
+    AwakeableWaitMsMetric,
+    PollLoopCyclesTotalMetric,
+  ],
+  // The span-identity keys reach telemetry ONLY via a DYNAMIC-NAME bridge span (the hook-owned
+  // `attempt <target>` span or the dynamic `restateOperation(name)` span), which has no stable
+  // single-signal projection — so they reach the catalog via `docOnlyAttributes` (SC-R13).
   docOnlyAttributes: [
     RestateService,
     RestateHandler,

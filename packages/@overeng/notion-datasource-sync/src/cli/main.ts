@@ -1538,7 +1538,7 @@ const runCliCommandEffect = ({
 }
 
 /**
- * Runs a parsed `CliCommand` against the provided context under the `notion.datasource.cli` span.
+ * Runs a parsed `CliCommand` against the provided context under the `notion_datasource.cli` span.
  *
  * Annotates the span with correlation attributes, command identity, and final status before returning
  * a `CliResultEnvelope`. Requires `NotionDataSourceGateway`, `PageBodySyncPort`, and `LocalWorkspacePort`

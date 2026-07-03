@@ -29,6 +29,7 @@ import type {
 import gitContract from '../../packages/@overeng/megarepo/src/git.contract.ts'
 import megarepoContract from '../../packages/@overeng/megarepo/src/megarepo.contract.ts'
 import nixContract from '../../packages/@overeng/megarepo/src/nix.contract.ts'
+import notionDatasourceSyncContract from '../../packages/@overeng/notion-datasource-sync/src/observability/notion-datasource.contract.ts'
 import notionEffectClientContract from '../../packages/@overeng/notion-effect-client/src/notion-effect-client.contract.ts'
 import notionMdContract from '../../packages/@overeng/notion-md/src/notion-md.contract.ts'
 import notionReactContract from '../../packages/@overeng/notion-react/src/notion-react.contract.ts'
@@ -58,6 +59,7 @@ export const memberSeamPaths = [
   'packages/@overeng/megarepo/src/git.contract.ts',
   'packages/@overeng/megarepo/src/megarepo.contract.ts',
   'packages/@overeng/megarepo/src/nix.contract.ts',
+  'packages/@overeng/notion-datasource-sync/src/observability/notion-datasource.contract.ts',
   'packages/@overeng/notion-effect-client/src/notion-effect-client.contract.ts',
   'packages/@overeng/notion-md/src/notion-md.contract.ts',
   'packages/@overeng/notion-react/src/notion-react.contract.ts',
@@ -76,6 +78,7 @@ const contracts = [
   gitContract,
   megarepoContract,
   nixContract,
+  notionDatasourceSyncContract,
   notionEffectClientContract,
   notionMdContract,
   notionReactContract,

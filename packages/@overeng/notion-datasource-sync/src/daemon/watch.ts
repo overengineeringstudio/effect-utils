@@ -563,7 +563,7 @@ const daemonCycleRetryAfterMillis = (cause: unknown): number | undefined =>
   isNotionGatewayErrorWithRetryAfter(cause) === true ? cause.retryAfterMillis : undefined
 
 /**
- * Executes one full sync cycle under the `notion.datasource.daemon.pass` span.
+ * Executes one full sync cycle under the `notion_datasource.daemon.pass` span.
  *
  * Reads the previous daemon state, increments the cycle counter, runs `syncOneShot`,
  * and writes the updated state on both success and failure. Emits status span attributes
@@ -890,7 +890,7 @@ export const runWatchDaemonCycle = Effect.fn(spanNames.daemonPass, {
 )
 
 /**
- * Runs the watch daemon loop under the `notion.datasource.daemon.run` span.
+ * Runs the watch daemon loop under the `notion_datasource.daemon.run` span.
  *
  * Repeatedly calls `runWatchDaemonCycle`, sleeping between cycles according to the
  * mode backoff or the `repair.retryAfterMillis` from the last failed cycle.

@@ -2,7 +2,7 @@
 # Source: signals.yaml.genie.ts
 
 # registry-source: genie/weaver-registry/registry.ts
-# fingerprint: sha256:331b2591f4b0787a40f1d08445c8573b208b9da710b2bedba759a02efbdfd7a1
+# fingerprint: sha256:aa387a7ceb99a0b2b50edb53ab243c9a5ec74a79d807eb7486ad11c23955c2cf
 groups:
   - id: metric.acme.probe.duration
     type: metric
@@ -35,6 +35,76 @@ groups:
     brief: Resident set size (bytes) sampled during mr store gc/status.
     attributes:
       - ref: megarepo.store.gc.repo_concurrency
+        requirement_level: required
+  - id: metric.restate.attempts_total
+    type: metric
+    metric_name: restate_attempts_total
+    instrument: counter
+    unit: '{attempt}'
+    stability: development
+    brief: Restate handler attempts by service and handler (drives the retry count).
+    attributes:
+      - ref: restate.service
+        requirement_level: required
+      - ref: restate.handler
+        requirement_level: required
+  - id: metric.restate.awakeable_wait_ms
+    type: metric
+    metric_name: restate_awakeable_wait_ms
+    instrument: histogram
+    unit: ms
+    stability: development
+    brief: Wall-clock wait for an awakeable to be externally resolved (ms).
+    attributes: []
+  - id: metric.restate.durable_steps_total
+    type: metric
+    metric_name: restate_durable_steps_total
+    instrument: counter
+    unit: '{step}'
+    stability: development
+    brief: Durable `Restate.run` steps executed (exactly-once across replays), by step name.
+    attributes:
+      - ref: restate.step
+        requirement_level: required
+  - id: metric.restate.invocation_duration_ms
+    type: metric
+    metric_name: restate_invocation_duration_ms
+    instrument: histogram
+    unit: ms
+    stability: development
+    brief: Wall-clock duration of a real invocation attempt (ms), by service/handler/outcome.
+    attributes:
+      - ref: restate.service
+        requirement_level: required
+      - ref: restate.handler
+        requirement_level: required
+      - ref: restate.outcome
+        requirement_level: required
+  - id: metric.restate.invocations_total
+    type: metric
+    metric_name: restate_invocations_total
+    instrument: counter
+    unit: '{invocation}'
+    stability: development
+    brief: Restate invocations by service, handler, and terminal outcome.
+    attributes:
+      - ref: restate.service
+        requirement_level: required
+      - ref: restate.handler
+        requirement_level: required
+      - ref: restate.outcome
+        requirement_level: required
+  - id: metric.restate.poll_loop_cycles_total
+    type: metric
+    metric_name: restate_poll_loop_cycles_total
+    instrument: counter
+    unit: '{cycle}'
+    stability: development
+    brief: Scheduled `pollLoop` cycles executed, by loop name and cycle outcome.
+    attributes:
+      - ref: restate.name
+        requirement_level: required
+      - ref: restate.outcome
         requirement_level: required
   - id: span.acme.operation
     type: span

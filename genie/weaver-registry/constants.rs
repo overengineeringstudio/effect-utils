@@ -1,7 +1,7 @@
 // Generated file - DO NOT EDIT
 // Source: constants.rs.genie.ts
 // registry-source: genie/weaver-registry/registry.ts
-// fingerprint: sha256:2526d1b952a0644d38f133d56f6d7a45c01f7d05430ce40c887cbf5d08e58b40
+// fingerprint: sha256:ddc3a85168adbefbada437799004cda0c6ea3b7dfb99c8c0048b8fa08c34750f
 // regen: devenv tasks run genie:run
 
 //! Generated OpenTelemetry semantic-convention name constants.
@@ -128,6 +128,57 @@ pub mod attribute {
     pub const NIX_LOCK_SOURCE_PATH: &str = "nix.lock.source_path";
     pub const NIX_LOCK_SOURCE_TYPE: &str = "nix.lock.source_type";
     pub const NIX_LOCK_TYPE: &str = "nix.lock.type";
+    pub const NOTION_DATASOURCE_API_VERSION: &str = "notion_datasource.api_version";
+    pub const NOTION_DATASOURCE_APPENDED_EVENTS: &str = "notion_datasource.appended_events";
+    pub const NOTION_DATASOURCE_ATTEMPT: &str = "notion_datasource.attempt";
+    pub const NOTION_DATASOURCE_BLOCKED_COUNT: &str = "notion_datasource.blocked_count";
+    pub const NOTION_DATASOURCE_BODY_COMPLETENESS: &str = "notion_datasource.body.completeness";
+    pub const NOTION_DATASOURCE_BODY_EVIDENCE_DIGEST: &str = "notion_datasource.body.evidence.digest";
+    pub const NOTION_DATASOURCE_BODY_IDENTITY_DIGEST: &str = "notion_datasource.body.identity.digest";
+    pub const NOTION_DATASOURCE_BODY_IDENTITY_KIND: &str = "notion_datasource.body.identity.kind";
+    pub const NOTION_DATASOURCE_BODY_RENDERED_DIGEST: &str = "notion_datasource.body.rendered.digest";
+    pub const NOTION_DATASOURCE_CANCELLED: &str = "notion_datasource.cancelled";
+    pub const NOTION_DATASOURCE_CAPPED_AT_LIMIT: &str = "notion_datasource.capped_at_limit";
+    pub const NOTION_DATASOURCE_COMMAND: &str = "notion_datasource.command";
+    pub const NOTION_DATASOURCE_COMMAND_ID: &str = "notion_datasource.command_id";
+    pub const NOTION_DATASOURCE_COMMAND_KIND: &str = "notion_datasource.command_kind";
+    pub const NOTION_DATASOURCE_COMPLETED_CYCLES: &str = "notion_datasource.completed_cycles";
+    pub const NOTION_DATASOURCE_CONFLICT_COUNT: &str = "notion_datasource.conflict_count";
+    pub const NOTION_DATASOURCE_CYCLE: &str = "notion_datasource.cycle";
+    pub const NOTION_DATASOURCE_CYCLES: &str = "notion_datasource.cycles";
+    pub const NOTION_DATASOURCE_DATA_SOURCE_ID: &str = "notion_datasource.data_source_id";
+    pub const NOTION_DATASOURCE_DRY_RUN: &str = "notion_datasource.dry_run";
+    pub const NOTION_DATASOURCE_ENQUEUED_COMMANDS: &str = "notion_datasource.enqueued_commands";
+    pub const NOTION_DATASOURCE_EVENT_COUNT: &str = "notion_datasource.event_count";
+    pub const NOTION_DATASOURCE_EXECUTOR_STEPS: &str = "notion_datasource.executor_steps";
+    pub const NOTION_DATASOURCE_GUARD: &str = "notion_datasource.guard";
+    pub const NOTION_DATASOURCE_INCOMPLETE_PROPERTY_COUNT: &str = "notion_datasource.incomplete_property_count";
+    pub const NOTION_DATASOURCE_LEASE_DURATION_MS: &str = "notion_datasource.lease_duration_ms";
+    pub const NOTION_DATASOURCE_LOCAL_OBSERVATION_COUNT: &str = "notion_datasource.local_observation_count";
+    pub const NOTION_DATASOURCE_MAX_CYCLES: &str = "notion_datasource.max_cycles";
+    pub const NOTION_DATASOURCE_MAX_EXECUTOR_STEPS: &str = "notion_datasource.max_executor_steps";
+    pub const NOTION_DATASOURCE_MAX_STEPS_REACHED: &str = "notion_datasource.max_steps_reached";
+    pub const NOTION_DATASOURCE_MODE: &str = "notion_datasource.mode";
+    pub const NOTION_DATASOURCE_OPERATION: &str = "notion_datasource.operation";
+    pub const NOTION_DATASOURCE_OUTBOX_AMBIGUOUS_COUNT: &str = "notion_datasource.outbox_ambiguous_count";
+    pub const NOTION_DATASOURCE_OUTBOX_BLOCKED_COUNT: &str = "notion_datasource.outbox_blocked_count";
+    pub const NOTION_DATASOURCE_OUTBOX_QUEUED_COUNT: &str = "notion_datasource.outbox_queued_count";
+    pub const NOTION_DATASOURCE_OUTBOX_RETRYABLE_COUNT: &str = "notion_datasource.outbox_retryable_count";
+    pub const NOTION_DATASOURCE_OUTBOX_RUNNING_COUNT: &str = "notion_datasource.outbox_running_count";
+    pub const NOTION_DATASOURCE_PAGE_ID: &str = "notion_datasource.page_id";
+    pub const NOTION_DATASOURCE_PROCESS_ROLE: &str = "notion_datasource.process.role";
+    pub const NOTION_DATASOURCE_PROPERTY_ID: &str = "notion_datasource.property_id";
+    pub const NOTION_DATASOURCE_QUERY_COMPLETE: &str = "notion_datasource.query_complete";
+    pub const NOTION_DATASOURCE_QUERY_PAGE_COUNT: &str = "notion_datasource.query_page_count";
+    pub const NOTION_DATASOURCE_RESULT: &str = "notion_datasource.result";
+    pub const NOTION_DATASOURCE_ROOT_ID: &str = "notion_datasource.root_id";
+    pub const NOTION_DATASOURCE_ROW_COUNT: &str = "notion_datasource.row_count";
+    pub const NOTION_DATASOURCE_SETTLEMENT_KIND: &str = "notion_datasource.settlement_kind";
+    pub const NOTION_DATASOURCE_STATUS_STATE: &str = "notion_datasource.status.state";
+    pub const NOTION_DATASOURCE_WAKE_SOURCE: &str = "notion_datasource.wake_source";
+    pub const NOTION_DATASOURCE_WEBHOOK_EVENT_TYPE: &str = "notion_datasource.webhook.event_type";
+    pub const NOTION_DATASOURCE_WEBHOOK_OUTCOME: &str = "notion_datasource.webhook.outcome";
+    pub const NOTION_DATASOURCE_WEBHOOK_REJECTION_REASON: &str = "notion_datasource.webhook.rejection_reason";
     pub const NOTION_MD_BATCH: &str = "notion_md.batch";
     pub const NOTION_MD_BATCH_PATH_COUNT: &str = "notion_md.batch.path_count";
     pub const NOTION_MD_BATCH_RECURSIVE: &str = "notion_md.batch.recursive";
@@ -265,8 +316,11 @@ pub mod attribute {
     pub const RESTATE_ERROR_TAG: &str = "restate.error.tag";
     pub const RESTATE_HANDLER: &str = "restate.handler";
     pub const RESTATE_IDEMPOTENCY_KEY: &str = "restate.idempotency.key";
+    pub const RESTATE_NAME: &str = "restate.name";
     pub const RESTATE_OBJECT_KEY: &str = "restate.object.key";
+    pub const RESTATE_OUTCOME: &str = "restate.outcome";
     pub const RESTATE_SERVICE: &str = "restate.service";
+    pub const RESTATE_STEP: &str = "restate.step";
     pub const RESTATE_WORKFLOW_ID: &str = "restate.workflow.id";
     pub const SEMAPHORE_KEY: &str = "semaphore.key";
     pub const SEMAPHORE_TARGET_HOLDER_ID: &str = "semaphore.target_holder_id";
@@ -392,6 +446,57 @@ pub mod attribute {
         "nix.lock.source_path",
         "nix.lock.source_type",
         "nix.lock.type",
+        "notion_datasource.api_version",
+        "notion_datasource.appended_events",
+        "notion_datasource.attempt",
+        "notion_datasource.blocked_count",
+        "notion_datasource.body.completeness",
+        "notion_datasource.body.evidence.digest",
+        "notion_datasource.body.identity.digest",
+        "notion_datasource.body.identity.kind",
+        "notion_datasource.body.rendered.digest",
+        "notion_datasource.cancelled",
+        "notion_datasource.capped_at_limit",
+        "notion_datasource.command",
+        "notion_datasource.command_id",
+        "notion_datasource.command_kind",
+        "notion_datasource.completed_cycles",
+        "notion_datasource.conflict_count",
+        "notion_datasource.cycle",
+        "notion_datasource.cycles",
+        "notion_datasource.data_source_id",
+        "notion_datasource.dry_run",
+        "notion_datasource.enqueued_commands",
+        "notion_datasource.event_count",
+        "notion_datasource.executor_steps",
+        "notion_datasource.guard",
+        "notion_datasource.incomplete_property_count",
+        "notion_datasource.lease_duration_ms",
+        "notion_datasource.local_observation_count",
+        "notion_datasource.max_cycles",
+        "notion_datasource.max_executor_steps",
+        "notion_datasource.max_steps_reached",
+        "notion_datasource.mode",
+        "notion_datasource.operation",
+        "notion_datasource.outbox_ambiguous_count",
+        "notion_datasource.outbox_blocked_count",
+        "notion_datasource.outbox_queued_count",
+        "notion_datasource.outbox_retryable_count",
+        "notion_datasource.outbox_running_count",
+        "notion_datasource.page_id",
+        "notion_datasource.process.role",
+        "notion_datasource.property_id",
+        "notion_datasource.query_complete",
+        "notion_datasource.query_page_count",
+        "notion_datasource.result",
+        "notion_datasource.root_id",
+        "notion_datasource.row_count",
+        "notion_datasource.settlement_kind",
+        "notion_datasource.status.state",
+        "notion_datasource.wake_source",
+        "notion_datasource.webhook.event_type",
+        "notion_datasource.webhook.outcome",
+        "notion_datasource.webhook.rejection_reason",
         "notion_md.batch",
         "notion_md.batch.path_count",
         "notion_md.batch.recursive",
@@ -529,8 +634,11 @@ pub mod attribute {
         "restate.error.tag",
         "restate.handler",
         "restate.idempotency.key",
+        "restate.name",
         "restate.object.key",
+        "restate.outcome",
         "restate.service",
+        "restate.step",
         "restate.workflow.id",
         "semaphore.key",
         "semaphore.target_holder_id",
@@ -699,10 +807,22 @@ pub mod metric {
     pub const ACME_PROBE_DURATION: &str = "acme.probe.duration";
     pub const ACME_PROBES: &str = "acme.probes";
     pub const MEGAREPO_STORE_GC_RSS_BYTES: &str = "megarepo_store_gc_rss_bytes";
+    pub const RESTATE_ATTEMPTS_TOTAL: &str = "restate_attempts_total";
+    pub const RESTATE_AWAKEABLE_WAIT_MS: &str = "restate_awakeable_wait_ms";
+    pub const RESTATE_DURABLE_STEPS_TOTAL: &str = "restate_durable_steps_total";
+    pub const RESTATE_INVOCATION_DURATION_MS: &str = "restate_invocation_duration_ms";
+    pub const RESTATE_INVOCATIONS_TOTAL: &str = "restate_invocations_total";
+    pub const RESTATE_POLL_LOOP_CYCLES_TOTAL: &str = "restate_poll_loop_cycles_total";
 
     pub const ALL: &[&str] = &[
         "acme.probe.duration",
         "acme.probes",
         "megarepo_store_gc_rss_bytes",
+        "restate_attempts_total",
+        "restate_awakeable_wait_ms",
+        "restate_durable_steps_total",
+        "restate_invocation_duration_ms",
+        "restate_invocations_total",
+        "restate_poll_loop_cycles_total",
     ];
 }

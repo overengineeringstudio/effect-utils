@@ -13,10 +13,12 @@
  * The baseline is authored HERE, from `@overeng/otel-contract`'s runtime primitives directly (NOT
  * from the seam contract), so the comparison is real and not vacuous.
  *
- * NOTE: the replay-aware baseline metrics (`Metrics.ts`) are intentionally OUT of scope — their
- * label keys are unprefixed (`service`/`handler`/`outcome`/`step`/`name`) and routing them through
- * the registry `metric(...)` DSL would rename the emitted keys (a breaking wire change), so they
- * were deferred (see `./restate.contract.ts` docstring). Their encode is unchanged by this migration.
+ * NOTE: the replay-aware baseline metrics (`Metrics.ts`) are OUT of scope of THIS equivalence proof
+ * — their migration to registry `metric(...)` signals DELIBERATELY renamed the emitted label keys
+ * to the namespaced catalog keys (`restate.service`/`restate.handler`/`restate.outcome`/
+ * `restate.step`/`restate.name`), a BREAKING wire rename (approved), so there is no old baseline to
+ * prove equivalence against. That rename is asserted directly by `observability.test.ts`
+ * (`encodeLabelsSync`/`labelKeys`) and end-to-end by `otel-replay.integration.test.ts`.
  *
  * Arbitrary constraints: string attrs use `Schema.NonEmptyTrimmedString` (a derived span label read
  * from an attribute must not be empty/whitespace → throws on both sides).

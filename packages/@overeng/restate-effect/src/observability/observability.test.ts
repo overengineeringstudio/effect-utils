@@ -95,11 +95,13 @@ describe('schema-first observability contracts', () => {
     })
   })
 
-  it('declares low-cardinality metric-label contracts for baseline metrics', () => {
+  it('declares low-cardinality metric-label contracts for baseline metrics (namespaced keys)', () => {
+    /* The emitted label keys are the namespaced catalog keys (a BREAKING rename from the old bare
+     * `service`/`handler`/`outcome` labels, approved). The label struct FIELD names stay short. */
     expect(RestateMetrics.invocationsTotal.metadata.labelKeys).toEqual([
-      'service',
-      'handler',
-      'outcome',
+      'restate.service',
+      'restate.handler',
+      'restate.outcome',
     ])
     expect(
       RestateMetrics.invocationsTotal.encodeLabelsSync({
@@ -108,9 +110,9 @@ describe('schema-first observability contracts', () => {
         outcome: 'success',
       }),
     ).toEqual({
-      service: 'Counter',
-      handler: 'bump',
-      outcome: 'success',
+      'restate.service': 'Counter',
+      'restate.handler': 'bump',
+      'restate.outcome': 'success',
     })
   })
 
@@ -366,18 +368,18 @@ describe('replay-aware baseline metrics', () => {
     const metrics = result.resourceMetrics.scopeMetrics.flatMap((s) => s.metrics)
 
     const invocation = pointFor(metrics, 'restate_invocations_total', {
-      service: 'Counter',
-      handler: 'bump',
-      outcome: 'success',
+      'restate.service': 'Counter',
+      'restate.handler': 'bump',
+      'restate.outcome': 'success',
     })
     expect(invocation?.value).toBe(1)
 
-    const step = pointFor(metrics, 'restate_durable_steps_total', { step: 'charge' })
+    const step = pointFor(metrics, 'restate_durable_steps_total', { 'restate.step': 'charge' })
     expect(step?.value).toBe(1)
 
     const attempt = pointFor(metrics, 'restate_attempts_total', {
-      service: 'Counter',
-      handler: 'bump',
+      'restate.service': 'Counter',
+      'restate.handler': 'bump',
     })
     expect(attempt?.value).toBe(1)
 
@@ -386,16 +388,16 @@ describe('replay-aware baseline metrics', () => {
     expect((awakeable!.value as { count: number }).count).toBeGreaterThanOrEqual(1)
 
     const pollLoop = pointFor(metrics, 'restate_poll_loop_cycles_total', {
-      name: 'invoice-poller',
-      outcome: 'ok',
+      'restate.name': 'invoice-poller',
+      'restate.outcome': 'ok',
     })
     expect(pollLoop?.value).toBe(1)
 
     /* The duration histogram recorded one sample for this label set. */
     const duration = pointFor(metrics, 'restate_invocation_duration_ms', {
-      service: 'Counter',
-      handler: 'bump',
-      outcome: 'success',
+      'restate.service': 'Counter',
+      'restate.handler': 'bump',
+      'restate.outcome': 'success',
     })
     expect(duration).toBeDefined()
     expect((duration!.value as { count: number }).count).toBe(1)
@@ -415,7 +417,7 @@ describe('replay-aware baseline metrics', () => {
     })
 
     const metrics = result.resourceMetrics.scopeMetrics.flatMap((s) => s.metrics)
-    const point = pointFor(metrics, 'restate_durable_steps_total', { step })
+    const point = pointFor(metrics, 'restate_durable_steps_total', { 'restate.step': step })
     expect(point?.value).toBe(1)
   })
 })
