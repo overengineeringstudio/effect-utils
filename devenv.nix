@@ -30,6 +30,16 @@ let
   pnpmTaskHelpersScript = pkgs.writeText "pnpm-task-helpers.sh" (
     builtins.readFile ./nix/devenv-modules/tasks/shared/pnpm-task-helpers.sh
   );
+  rustCrates = [
+    {
+      name = "otelite";
+      path = "packages/@overeng/otelite";
+    }
+    {
+      name = "otel-scrape";
+      path = "packages/@overeng/otel-scrape";
+    }
+  ];
   grep = "${pkgs.gnugrep}/bin/grep";
   head = "${pkgs.coreutils}/bin/head";
   rg = "${pkgs.ripgrep}/bin/rg";
@@ -677,6 +687,26 @@ in
       fi
     '';
   };
+
+  tasks."cargo:check" = {
+    description = "Build, test, lint, and format-check standalone Rust crates";
+    exec = trace.exec "cargo:check" ''
+      set -euo pipefail
+      ${lib.concatMapStringsSep "\n" (crate: ''
+        echo "::group::${crate.name}"
+        (
+          cd "${crate.path}"
+          cargo build --release
+          cargo test
+          cargo clippy -- -D warnings
+          cargo fmt --check
+        )
+        echo "::endgroup::"
+      '') rustCrates}
+    '';
+  };
+
+  tasks."check:all".after = [ "cargo:check" ];
 
   # Keep git-hook installation out of the shell-entry path.
   # If needed, install with `devenv tasks run devenv:git-hooks:install`.

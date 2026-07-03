@@ -28,7 +28,7 @@ Two inputs settle the boundary:
 
 - `otel-scrape` — the command wrapper + adapter framework (Rust CLI) and its
   contract (`context/otel-scrape/`: wrapper, process observation, CAS, semconv,
-  registry, adapters). Agnostic to *who* provides the task layer.
+  registry, adapters). Agnostic to _who_ provides the task layer.
 - `trace.instr` (in `nix/devenv-modules/tasks/lib/trace.nix`) — the thin
   command-instrumentation glue that opts a concrete tool into `otel-scrape`.
 
@@ -48,7 +48,7 @@ alongside #1238):
 - the **traced-run UX** — `otel-run`, the root-URL template and Grafana/collector
   coherence (R2). The URL template already belongs to the fleet root-env (R26).
 
-**Fork B (module ownership): the devenv-otel *modules* move to dotfiles.**
+**Fork B (module ownership): the devenv-otel _modules_ move to dotfiles.**
 `nix/devenv-modules/otel.nix` (the stack), `otel/otel-span.nix` (retiring), and
 `otel/otel-run.nix` (traced-run UX) are fleet-architecture; their target home is
 dotfiles. effect-utils is then left with only `otel-scrape` + `trace.instr`.
@@ -70,7 +70,7 @@ features. See the dotfiles architecture VRS / #1238 for the migration plan.
 
 - `context/otel-scrape/` is sharpened to the tool boundary; architecture-level
   concerns (stack, identity/R1, traced-run/R2, orchestration, migration) are
-  referenced *out* to the dotfiles observability VRS, not owned here.
+  referenced _out_ to the dotfiles observability VRS, not owned here.
 - Decisions 0018 and 0020 keep only their otel-scrape tool-side; their
   architecture-side (task-layer source, stack/URL template) is dotfiles-owned.
 - The pending fixes R1 (resource identity) and R2 (Grafana coherence) are

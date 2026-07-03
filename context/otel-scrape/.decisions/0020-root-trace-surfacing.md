@@ -2,8 +2,8 @@
 
 Status: accepted (boundary realigned by 0021)
 
-> **Realignment (0021):** effect-utils owns only the tool behavior — *surface the
-> trace id/URL when otel-scrape is the root*, using an opaque operator-supplied
+> **Realignment (0021):** effect-utils owns only the tool behavior — _surface the
+> trace id/URL when otel-scrape is the root_, using an opaque operator-supplied
 > `{traceId}` template. The template itself, the collector/Grafana stack it points
 > at, and stack coherence (the Grafana-URL-vs-collector R2 issue) are the
 > fleet/architecture layer (R26), owned by the dotfiles observability VRS, not

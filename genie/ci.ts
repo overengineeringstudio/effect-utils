@@ -25,7 +25,7 @@ export const CORE_CI_JOB_NAMES = [
   'pnpm-builder-contract',
   'pnpm-regression',
   'bundle-smoke',
-  // Rust lane for the otelite crate: build/test/clippy/fmt via the nix toolchain.
+  // Rust lane: delegates build/test/clippy/fmt semantics to devenv task cargo:check.
   'cargo',
   // Additive Weaver semantic-conventions gate (separate lane; degrades if weaver unavailable).
   'weaver',

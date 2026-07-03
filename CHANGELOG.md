@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **CI / cargo**: move standalone Rust crate build/test/clippy/fmt semantics into
+  the `cargo:check` devenv task and make the generated cargo CI lane call that
+  task, ensuring the `node-cpuprofile` integration test runs with the devenv
+  Node toolchain instead of a Rust-only CI PATH.
 - **devenv / lint**: mark the `check:*:trace` wrappers as intentionally raw
   `otel-run` entrypoints for the trace audit, and apply the repo formatter to the
   OTEL/Vitest context docs.
