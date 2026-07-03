@@ -13,9 +13,11 @@
  * lives beside `observability.ts`, which already imports otel-contract at runtime.
  *
  * NOTE: genie's `cli.mode` root span (`genie/<cliMode>`, a DYNAMIC span name with a foreign
- * `cli.*` key) is intentionally NOT migrated here — a runtime-varying span name has no stable
- * single-signal registry projection, and `cli.*` is a separate namespace. It stays a legacy
- * inline `OtelOperation.define` in `observability.ts` (SC-DQ5 migration-bridge state).
+ * `cli.*` key) is NOT a `genie`-namespace signal — a runtime-varying span name has no stable
+ * single-signal registry projection, and `cli.*` is a separate namespace. Its attribute key is
+ * catalogued in the sibling `cli.contract.ts` attrs-only seam; the span stays a legacy inline
+ * `OtelOperation.define` bridge in `observability.ts`, rebuilt from that imported catalog schema
+ * (SC-DQ5 migration-bridge state).
  */
 import { Schema } from 'effect'
 

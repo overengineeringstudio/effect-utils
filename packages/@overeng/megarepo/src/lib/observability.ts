@@ -8,7 +8,9 @@
  *   - ANNOTATE-ONLY bundles (annotate the current span with a disjoint result subset), likewise
  *     rebuilt from the imported catalog schemas.
  *   - FOREIGN-NAMESPACE spans (`git.*`, `nix.*`) that are OUT of the `megarepo` namespace's scope
- *     and stay legacy inline `OtelOperation.define` (a future `git`/`nix` contract owns them).
+ *     and stay legacy inline `OtelOperation.define` bridges; their attribute keys are catalogued in
+ *     the `git`/`nix` namespace seams (`../git.contract.ts`, `../nix.contract.ts`) and the encoders
+ *     below rebuild from those IMPORTED catalog schemas (identical encode).
  */
 import { Effect, Schema } from 'effect'
 
@@ -21,6 +23,17 @@ import {
   type OtelOperationDefinition,
 } from '@overeng/otel-contract'
 
+import {
+  GitBare,
+  GitBranch,
+  GitCommit,
+  GitOutputBytes,
+  GitOutputLines,
+  GitStreamed,
+  GitSubcommand,
+  GitTimeoutMs,
+  GitUrl,
+} from '../git.contract.ts'
 import {
   ArchiveWorktreeOperation,
   AssessLosslessOperation,
@@ -52,6 +65,15 @@ import {
   TraversalOperation,
   UnpushedCommitCountOperation,
 } from '../megarepo.contract.ts'
+import {
+  NixFlakeOwner,
+  NixFlakeRepo,
+  NixFlakeRev,
+  NixLockPath,
+  NixLockSourcePath,
+  NixLockSourceType,
+  NixLockType,
+} from '../nix.contract.ts'
 
 const basename = (path: string): string =>
   path.split('/').findLast((part) => part.length > 0) ?? path
@@ -316,15 +338,18 @@ export const annotateSyncMemberResult = (status: string) =>
 
 // =============================================================================
 // Foreign-namespace spans (`git.*`, `nix.*`) — OUT of the `megarepo` namespace's
-// scope; kept as LEGACY inline `OtelOperation.define` (a future `git`/`nix` contract
-// owns them, mirroring genie keeping `cli.*` inline).
+// scope; kept as LEGACY inline `OtelOperation.define` bridges (their names are static
+// or runtime-dynamic, so no single-signal projection). Their attribute keys are now
+// catalogued in the `git`/`nix` namespace seams (`../git.contract.ts`, `../nix.contract.ts`);
+// the encoders below rebuild from those IMPORTED catalog schemas (identical encode — proven
+// by the colocated equivalence tests) so each `git.*`/`nix.*` catalog is the single SSOT.
 // =============================================================================
 
 const gitUrlAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     label: spanLabel(),
-    url: Schema.String.pipe(OtelAttr.key({ key: 'git.url' })),
-    bare: Schema.optional(Schema.Boolean.pipe(OtelAttr.key({ key: 'git.bare' }))),
+    url: GitUrl,
+    bare: Schema.optional(GitBare),
   }),
 )
 
@@ -334,30 +359,30 @@ const gitUrlAttrs = OtelAttrs.defineSync(
 export const gitCmdAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     label: spanLabel(),
-    subcommand: Schema.String.pipe(OtelAttr.key({ key: 'git.subcommand' })),
-    streamed: Schema.Boolean.pipe(OtelAttr.key({ key: 'git.streamed' })),
-    timeoutMs: Schema.optional(Schema.Number.pipe(OtelAttr.key({ key: 'git.timeout_ms' }))),
+    subcommand: GitSubcommand,
+    streamed: GitStreamed,
+    timeoutMs: Schema.optional(GitTimeoutMs),
   }),
 )
 
 const gitCmdOutputAttrs = OtelAttrs.defineSync(
   Schema.Struct({
-    outputBytes: Schema.Number.pipe(OtelAttr.key({ key: 'git.output.bytes' })),
-    outputLines: Schema.Number.pipe(OtelAttr.key({ key: 'git.output.lines' })),
+    outputBytes: GitOutputBytes,
+    outputLines: GitOutputLines,
   }),
 )
 
 const gitBranchAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     label: spanLabel(),
-    branch: Schema.String.pipe(OtelAttr.key({ key: 'git.branch' })),
+    branch: GitBranch,
   }),
 )
 
 const gitCommitAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     label: spanLabel(),
-    commit: Schema.String.pipe(OtelAttr.key({ key: 'git.commit' })),
+    commit: GitCommit,
   }),
 )
 
@@ -468,17 +493,17 @@ export const withGitCommitSpan = ({
 const nixFlakeMetadataAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     label: spanLabel(),
-    owner: Schema.String.pipe(OtelAttr.key({ key: 'nix.flake.owner' })),
-    repo: Schema.String.pipe(OtelAttr.key({ key: 'nix.flake.repo' })),
-    rev: Schema.String.pipe(OtelAttr.key({ key: 'nix.flake.rev' })),
+    owner: NixFlakeOwner,
+    repo: NixFlakeRepo,
+    rev: NixFlakeRev,
   }),
 )
 
 const nixLockFileAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     label: spanLabel(),
-    path: Schema.String.pipe(OtelAttr.key({ key: 'nix.lock.path' })),
-    type: Schema.String.pipe(OtelAttr.key({ key: 'nix.lock.type' })),
+    path: NixLockPath,
+    type: NixLockType,
   }),
 )
 
@@ -488,17 +513,17 @@ const nixLockFileAttrs = OtelAttrs.defineSync(
 const nixLockPathTypeAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     label: spanLabel(),
-    path: Schema.String.pipe(OtelAttr.key({ key: 'nix.lock.source_path' })),
-    type: Schema.String.pipe(OtelAttr.key({ key: 'nix.lock.source_type' })),
+    path: NixLockSourcePath,
+    type: NixLockSourceType,
   }),
 )
 
-// nix-lock path over a (nested) lock file — the SAME concept as `nix.lock.path` (unified; bare
-// `path` renamed into the foreign `nix.lock.*` namespace).
+// nix-lock path over a (nested) lock file — the SAME concept as `nix.lock.path` (catalogued once in
+// the `nix` namespace seam and referenced from both this and `nixLockFileAttrs`).
 const nixLockPathAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     label: spanLabel(),
-    path: Schema.String.pipe(OtelAttr.key({ key: 'nix.lock.path' })),
+    path: NixLockPath,
   }),
 )
 

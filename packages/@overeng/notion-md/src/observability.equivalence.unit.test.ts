@@ -60,17 +60,21 @@ import {
   putResultAttrs,
   ReadNmdStateOperation,
   ReadObjectStateOperation,
+  ReconcileFileOperation,
   statusAttrs,
+  StatusFileOperation,
   StatusPageOperation,
   StatusPathOperation,
   syncResultAttrs,
   SyncPageOperation,
   SyncPathOperation,
   SyncTreeOperation,
+  TrackPageOperation,
   WatchOperation,
   watchSyncErrorAttrs,
   watchSyncResultAttrs,
   WatchSyncPassOperation,
+  WebhookDecodeOperation,
   WebhookTriggerOperation,
   WriteObjectStateOperation,
 } from './notion-md.contract.ts'
@@ -83,10 +87,13 @@ const EditorMode = Schema.Literal('default', 'frontmatter')
 const EditOutcome = Schema.Literal('pushed', 'noop', 'aborted', 'conflict', 'read-only')
 const WatchReason = Schema.Literal('file', 'initial', 'poll')
 
+const TrackSource = Schema.Literal('local', 'remote', 'shared')
+
 // ---- helpers to author independent baselines from otel-contract runtime primitives ----
 const s = (key: string) => Schema.String.pipe(OtelAttr.key({ key }))
 const b = (key: string) => Schema.Boolean.pipe(OtelAttr.key({ key }))
 const n = (key: string) => Schema.NonNegativeInt.pipe(OtelAttr.key({ key }))
+const label = () => Schema.NonEmptyString.pipe(OtelAttr.spanLabel())
 const lit = <const V extends readonly [string, ...string[]]>(key: string, ...v: V) =>
   Schema.Literal(...v).pipe(OtelAttr.key({ key }))
 
@@ -318,6 +325,22 @@ const watchSyncPassBaseline = OtelOperation.define({
   }),
   label: ({ basename, reason }) => `${basename}:${reason}`,
 })
+// Static-name spans whose label is a runtime-only field (re-pointed from raw `Effect.withSpan`).
+const trackPageBaseline = OtelOperation.define({
+  name: 'notion-md.track-page',
+  schema: Schema.Struct({
+    label: label(),
+    source: lit('notion_md.track.source', 'local', 'remote', 'shared'),
+  }),
+  label: ({ label }) => label,
+})
+// Label-only spans (only `span.label`); mirror the runtime encoder derived from the seam op.
+const labelOnlyBaseline = (name: string) =>
+  OtelOperation.define({
+    name,
+    schema: Schema.Struct({ label: label() }),
+    label: ({ label }) => label,
+  })
 
 // ---- per-operation cases (name / baseline / derived / input arbitrary) ----
 const opCases = [
@@ -546,6 +569,30 @@ const opCases = [
     baseline: watchSyncPassBaseline,
     derived: WatchSyncPassOperation.operation,
     input: Schema.Struct({ command: Str, watch: Flag, reason: WatchReason, basename: Str }),
+  },
+  {
+    name: 'track-page',
+    baseline: trackPageBaseline,
+    derived: TrackPageOperation.operation,
+    input: Schema.Struct({ label: Str, source: TrackSource }),
+  },
+  {
+    name: 'status-file',
+    baseline: labelOnlyBaseline('notion-md.status-file'),
+    derived: StatusFileOperation.operation,
+    input: Schema.Struct({ label: Str }),
+  },
+  {
+    name: 'reconcile-file',
+    baseline: labelOnlyBaseline('notion-md.reconcile-file'),
+    derived: ReconcileFileOperation.operation,
+    input: Schema.Struct({ label: Str }),
+  },
+  {
+    name: 'webhook.decode',
+    baseline: labelOnlyBaseline('notion-md.webhook.decode'),
+    derived: WebhookDecodeOperation.operation,
+    input: Schema.Struct({ label: Str }),
   },
 ] as const
 

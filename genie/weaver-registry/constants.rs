@@ -1,7 +1,7 @@
 // Generated file - DO NOT EDIT
 // Source: constants.rs.genie.ts
 // registry-source: genie/weaver-registry/registry.ts
-// fingerprint: sha256:ff3ec5fc069cbc741f0d8da2a6ca743dd7e3ed9a9bc447b58c8c26bcaa58d7f6
+// fingerprint: sha256:2526d1b952a0644d38f133d56f6d7a45c01f7d05430ce40c887cbf5d08e58b40
 // regen: devenv tasks run genie:run
 
 //! Generated OpenTelemetry semantic-convention name constants.
@@ -24,6 +24,7 @@ pub mod attribute {
     pub const CI_TOOLS_DEPLOY_STATUS: &str = "ci_tools.deploy.status";
     pub const CI_TOOLS_DEPLOY_TARGET: &str = "ci_tools.deploy.target";
     pub const CI_TOOLS_DEPLOY_URL_HOST: &str = "ci_tools.deploy.url_host";
+    pub const CLI_MODE: &str = "cli.mode";
     pub const CMD_ARGS: &str = "cmd.args";
     pub const CMD_COMMAND: &str = "cmd.command";
     pub const CMD_CWD: &str = "cmd.cwd";
@@ -42,6 +43,15 @@ pub mod attribute {
     pub const GENIE_VALIDATION_FILE_COUNT: &str = "genie.validation.file_count";
     pub const GENIE_VALIDATION_PRELOADED_FILE_COUNT: &str = "genie.validation.preloaded_file_count";
     pub const GENIE_VALIDATION_REQUIRE_PACKAGE_JSON_VALIDATE: &str = "genie.validation.require_package_json_validate";
+    pub const GIT_BARE: &str = "git.bare";
+    pub const GIT_BRANCH: &str = "git.branch";
+    pub const GIT_COMMIT: &str = "git.commit";
+    pub const GIT_OUTPUT_BYTES: &str = "git.output.bytes";
+    pub const GIT_OUTPUT_LINES: &str = "git.output.lines";
+    pub const GIT_STREAMED: &str = "git.streamed";
+    pub const GIT_SUBCOMMAND: &str = "git.subcommand";
+    pub const GIT_TIMEOUT_MS: &str = "git.timeout_ms";
+    pub const GIT_URL: &str = "git.url";
     pub const MEGAREPO_BRANCH: &str = "megarepo.branch";
     pub const MEGAREPO_CLI_ALL: &str = "megarepo.cli.all";
     pub const MEGAREPO_CLI_COMMAND: &str = "megarepo.cli.command";
@@ -111,6 +121,13 @@ pub mod attribute {
     pub const MEGAREPO_WORKSPACE_ROOT: &str = "megarepo.workspace_root";
     pub const MEGAREPO_WORKTREE_HEAD: &str = "megarepo.worktree_head";
     pub const MEGAREPO_WORKTREE_PATH: &str = "megarepo.worktree_path";
+    pub const NIX_FLAKE_OWNER: &str = "nix.flake.owner";
+    pub const NIX_FLAKE_REPO: &str = "nix.flake.repo";
+    pub const NIX_FLAKE_REV: &str = "nix.flake.rev";
+    pub const NIX_LOCK_PATH: &str = "nix.lock.path";
+    pub const NIX_LOCK_SOURCE_PATH: &str = "nix.lock.source_path";
+    pub const NIX_LOCK_SOURCE_TYPE: &str = "nix.lock.source_type";
+    pub const NIX_LOCK_TYPE: &str = "nix.lock.type";
     pub const NOTION_MD_BATCH: &str = "notion_md.batch";
     pub const NOTION_MD_BATCH_PATH_COUNT: &str = "notion_md.batch.path_count";
     pub const NOTION_MD_BATCH_RECURSIVE: &str = "notion_md.batch.recursive";
@@ -166,6 +183,7 @@ pub mod attribute {
     pub const NOTION_MD_SYNC_ERROR: &str = "notion_md.sync.error";
     pub const NOTION_MD_SYNC_ERROR_TAG: &str = "notion_md.sync.error_tag";
     pub const NOTION_MD_SYNC_RESULT: &str = "notion_md.sync.result";
+    pub const NOTION_MD_TRACK_SOURCE: &str = "notion_md.track.source";
     pub const NOTION_MD_TREE_FROM_REMOTE: &str = "notion_md.tree.from_remote";
     pub const NOTION_MD_TREE_PLAN: &str = "notion_md.tree.plan";
     pub const NOTION_MD_WATCH: &str = "notion_md.watch";
@@ -270,6 +288,7 @@ pub mod attribute {
         "ci_tools.deploy.status",
         "ci_tools.deploy.target",
         "ci_tools.deploy.url_host",
+        "cli.mode",
         "cmd.args",
         "cmd.command",
         "cmd.cwd",
@@ -288,6 +307,15 @@ pub mod attribute {
         "genie.validation.file_count",
         "genie.validation.preloaded_file_count",
         "genie.validation.require_package_json_validate",
+        "git.bare",
+        "git.branch",
+        "git.commit",
+        "git.output.bytes",
+        "git.output.lines",
+        "git.streamed",
+        "git.subcommand",
+        "git.timeout_ms",
+        "git.url",
         "megarepo.branch",
         "megarepo.cli.all",
         "megarepo.cli.command",
@@ -357,6 +385,13 @@ pub mod attribute {
         "megarepo.workspace_root",
         "megarepo.worktree_head",
         "megarepo.worktree_path",
+        "nix.flake.owner",
+        "nix.flake.repo",
+        "nix.flake.rev",
+        "nix.lock.path",
+        "nix.lock.source_path",
+        "nix.lock.source_type",
+        "nix.lock.type",
         "notion_md.batch",
         "notion_md.batch.path_count",
         "notion_md.batch.recursive",
@@ -412,6 +447,7 @@ pub mod attribute {
         "notion_md.sync.error",
         "notion_md.sync.error_tag",
         "notion_md.sync.result",
+        "notion_md.track.source",
         "notion_md.tree.from_remote",
         "notion_md.tree.plan",
         "notion_md.watch",
@@ -568,6 +604,7 @@ pub mod span {
     pub const NOTION_MD_SYNC_PAGE: &str = "notion-md.sync-page";
     pub const NOTION_MD_SYNC_PATH: &str = "notion-md.sync-path";
     pub const NOTION_MD_SYNC_TREE: &str = "notion-md.sync-tree";
+    pub const NOTION_MD_TRACK_PAGE: &str = "notion-md.track-page";
     pub const NOTION_MD_WATCH: &str = "notion-md.watch";
     pub const NOTION_MD_WATCH_SYNC_PASS: &str = "notion-md.watch.sync-pass";
     pub const NOTION_MD_WEBHOOK_TRIGGER: &str = "notion-md.webhook.trigger";
@@ -644,6 +681,7 @@ pub mod span {
         "notion-md.sync-page",
         "notion-md.sync-path",
         "notion-md.sync-tree",
+        "notion-md.track-page",
         "notion-md.watch",
         "notion-md.watch.sync-pass",
         "notion-md.webhook.trigger",

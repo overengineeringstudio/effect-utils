@@ -19,13 +19,16 @@
 import { createHash } from 'node:crypto'
 
 import ciToolsContract from '../../packages/@overeng/ci-tools/src/deploy-domain.contract.ts'
+import cliContract from '../../packages/@overeng/genie/src/core/cli.contract.ts'
 import genieContract from '../../packages/@overeng/genie/src/core/genie.contract.ts'
 import { registryFromMembers } from '../../packages/@overeng/genie/src/runtime/composition/mod.ts'
 import type {
   Provenance,
   WeaverRegistryBundle,
 } from '../../packages/@overeng/genie/src/runtime/weaver/mod.ts'
+import gitContract from '../../packages/@overeng/megarepo/src/git.contract.ts'
 import megarepoContract from '../../packages/@overeng/megarepo/src/megarepo.contract.ts'
+import nixContract from '../../packages/@overeng/megarepo/src/nix.contract.ts'
 import notionEffectClientContract from '../../packages/@overeng/notion-effect-client/src/notion-effect-client.contract.ts'
 import notionMdContract from '../../packages/@overeng/notion-md/src/notion-md.contract.ts'
 import notionReactContract from '../../packages/@overeng/notion-react/src/notion-react.contract.ts'
@@ -50,8 +53,11 @@ export const GENERATOR_VERSION = '1'
  */
 export const memberSeamPaths = [
   'packages/@overeng/ci-tools/src/deploy-domain.contract.ts',
+  'packages/@overeng/genie/src/core/cli.contract.ts',
   'packages/@overeng/genie/src/core/genie.contract.ts',
+  'packages/@overeng/megarepo/src/git.contract.ts',
   'packages/@overeng/megarepo/src/megarepo.contract.ts',
+  'packages/@overeng/megarepo/src/nix.contract.ts',
   'packages/@overeng/notion-effect-client/src/notion-effect-client.contract.ts',
   'packages/@overeng/notion-md/src/notion-md.contract.ts',
   'packages/@overeng/notion-react/src/notion-react.contract.ts',
@@ -65,8 +71,11 @@ export const memberSeamPaths = [
 
 const contracts = [
   ciToolsContract,
+  cliContract,
   genieContract,
+  gitContract,
   megarepoContract,
+  nixContract,
   notionEffectClientContract,
   notionMdContract,
   notionReactContract,

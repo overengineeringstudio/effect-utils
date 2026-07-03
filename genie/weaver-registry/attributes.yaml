@@ -2,7 +2,7 @@
 # Source: attributes.yaml.genie.ts
 
 # registry-source: genie/weaver-registry/registry.ts
-# fingerprint: sha256:5a804743bbb3437c8cdbcefe72196041664e57faf74a075b5327ee854234f47b
+# fingerprint: sha256:331b2591f4b0787a40f1d08445c8573b208b9da710b2bedba759a02efbdfd7a1
 groups:
   - id: registry.acme
     type: attribute_group
@@ -225,6 +225,19 @@ groups:
         annotations:
           overeng_policy:
             cardinality: bounded
+  - id: registry.cli
+    type: attribute_group
+    display_name: CLI Attributes
+    brief: Attributes for the cli namespace.
+    attributes:
+      - id: cli.mode
+        type: string
+        stability: development
+        brief: CLI mode a genie invocation runs in (the dynamic `genie/<cliMode>` span-name suffix).
+        examples: [generate, check, watch, dry-run]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
   - id: registry.cmd
     type: attribute_group
     display_name: Command Runner Attributes
@@ -375,6 +388,81 @@ groups:
         annotations:
           overeng_policy:
             cardinality: low
+  - id: registry.git
+    type: attribute_group
+    display_name: Git Attributes
+    brief: Attributes for the git namespace.
+    attributes:
+      - id: git.bare
+        type: boolean
+        stability: development
+        brief: Whether the git operation targets a bare repository.
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: git.branch
+        type: string
+        stability: development
+        brief: Git branch name a git operation acts on.
+        examples: [main, schickling/feature]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: git.commit
+        type: string
+        stability: development
+        brief: Resolved commit sha a git operation acts on.
+        examples: [a3c1b6323f0e]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: git.output.bytes
+        type: int
+        stability: development
+        brief: Total output size (bytes) a git subprocess produced.
+        examples: [0, 4096]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: git.output.lines
+        type: int
+        stability: development
+        brief: Total number of output lines a git subprocess produced.
+        examples: [0, 42]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: git.streamed
+        type: boolean
+        stability: development
+        brief: Whether the git subprocess output was streamed (vs buffered).
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: git.subcommand
+        type: string
+        stability: development
+        brief: git subcommand a subprocess runs (the first CLI arg).
+        examples: [status, fetch, worktree]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: git.timeout_ms
+        type: int
+        stability: development
+        brief: Configured timeout (milliseconds) for a git subprocess.
+        examples: [30000]
+        annotations:
+          overeng_policy:
+            cardinality: low
+      - id: git.url
+        type: string
+        stability: development
+        brief: Remote URL a git operation targets.
+        examples: ['https://github.com/org/repo.git']
+        annotations:
+          overeng_policy:
+            cardinality: high
   - id: registry.megarepo
     type: attribute_group
     display_name: Megarepo Attributes
@@ -972,6 +1060,67 @@ groups:
         annotations:
           overeng_policy:
             cardinality: high
+  - id: registry.nix
+    type: attribute_group
+    display_name: Nix Attributes
+    brief: Attributes for the nix namespace.
+    attributes:
+      - id: nix.flake.owner
+        type: string
+        stability: development
+        brief: Flake owner (git host org/user) a `nix flake metadata` fetch targets.
+        examples: [overengineeringstudio]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: nix.flake.repo
+        type: string
+        stability: development
+        brief: Flake repository a `nix flake metadata` fetch targets.
+        examples: [effect-utils]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: nix.flake.rev
+        type: string
+        stability: development
+        brief: Resolved flake revision a `nix flake metadata` fetch pinned.
+        examples: [a3c1b6323f0e]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: nix.lock.path
+        type: string
+        stability: development
+        brief: Path of a nix lock file a span processes.
+        examples: [/home/user/project/flake.lock]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: nix.lock.source_path
+        type: string
+        stability: development
+        brief: Path of a synced source file (flake.nix / devenv.yaml) a nix-lock span operates on.
+        examples: [/home/user/project/flake.nix]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: nix.lock.source_type
+        type: string
+        stability: development
+        brief: Kind of a synced source file a nix-lock span operates on.
+        examples: [flake, devenv]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: nix.lock.type
+        type: string
+        stability: development
+        brief: Kind of a nix lock file a span processes.
+        examples: [flake, devenv]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
   - id: registry.notion
     type: attribute_group
     display_name: Notion Effect Client Attributes
@@ -1551,6 +1700,26 @@ groups:
         stability: development
         brief: Terminal reconciliation verdict of a sync.
         examples: [pushed, pulled, no-op]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: notion_md.track.source
+        type:
+          members:
+            - id: local
+              value: local
+              brief: A local-owned page.
+              stability: development
+            - id: remote
+              value: remote
+              brief: A remote-owned page.
+              stability: development
+            - id: shared
+              value: shared
+              brief: A shared (two-way reconciled) page.
+              stability: development
+        stability: development
+        brief: Frontmatter `source` mode of a page tracked into a local file during a pull.
         annotations:
           overeng_policy:
             cardinality: bounded

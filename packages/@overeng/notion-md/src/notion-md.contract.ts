@@ -24,7 +24,7 @@
  */
 import { Schema } from 'effect'
 
-import { OtelAttrs } from '@overeng/otel-contract'
+import { OtelAttr, OtelAttrs } from '@overeng/otel-contract'
 import {
   attr,
   defineOtelContract,
@@ -552,6 +552,20 @@ export const NotionMdObjectGcRemovedCount = attr.number({
   examples: [3],
 })
 
+// -- track --
+/** Frontmatter `source` mode of a page tracked into a local file during a pull. */
+export const NotionMdTrackSource = attr.enum({
+  key: 'notion_md.track.source',
+  values: ['local', 'remote', 'shared'],
+  briefs: {
+    local: 'A local-owned page.',
+    remote: 'A remote-owned page.',
+    shared: 'A shared (two-way reconciled) page.',
+  },
+  brief: 'Frontmatter `source` mode of a page tracked into a local file during a pull.',
+  stability: 'development',
+})
+
 // -- webhook --
 /** Webhook event type. */
 export const NotionMdWebhookEventType = attr.string({
@@ -1015,6 +1029,78 @@ export const WatchSyncPassOperation = operation({
 })
 
 // ---------------------------------------------------------------------------
+// static-name spans whose label is a runtime-only field (no catalog attribute carries it).
+// These use the `labelFields` shape (a runtime-only `span.label` source, excluded from the
+// registry), mirroring genie/megarepo operations. Re-points the notion-md sites that previously
+// used raw `Effect.withSpan` (SC-R14 raw-otel-boundary), preserving the exact span names + encode.
+// ---------------------------------------------------------------------------
+
+/** Runtime-only span-label source field (excluded from the registry projection). */
+const labelField = { label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()) } as const
+const labelOf = (v: { label: string }): string => v.label
+
+/**
+ * `notion-md.track-page` — track/establish a page's local file from a remote pull. Carries the
+ * frontmatter `source` mode (`notion_md.track.source`); the span is labelled by the page-id prefix
+ * (a runtime-only field, so `labelFields`).
+ */
+export const TrackPageOperation = operation({
+  id: 'span.notion_md.track_page',
+  name: 'notion-md.track-page',
+  brief: "Track/establish a page's local file from a remote pull.",
+  stability: 'development',
+  attributes: {
+    source: required(NotionMdTrackSource),
+  },
+  labelFields: labelField,
+  label: labelOf,
+})
+
+/**
+ * `notion-md.status-file` — status of a single `.nmd` file. Label-only span (its only attribute is
+ * the runtime `span.label` basename); it carries no catalog attribute, so it is authored here (to
+ * derive the runtime encoder) but EXCLUDED from the `signals` list — a zero-catalog-attribute span
+ * group is rejected by Weaver (like genie's `ImportMapResolverOperation`).
+ */
+export const StatusFileOperation = operation({
+  id: 'span.notion_md.status_file',
+  name: 'notion-md.status-file',
+  brief: 'Status of a single `.nmd` file (label-only; labelled by basename).',
+  stability: 'development',
+  attributes: {},
+  labelFields: labelField,
+  label: labelOf,
+})
+
+/** `notion-md.reconcile-file` — reconcile of a single `.nmd` file. Label-only (see `StatusFileOperation`). */
+export const ReconcileFileOperation = operation({
+  id: 'span.notion_md.reconcile_file',
+  name: 'notion-md.reconcile-file',
+  brief: 'Reconcile of a single `.nmd` file (label-only; labelled by basename).',
+  stability: 'development',
+  attributes: {},
+  labelFields: labelField,
+  label: labelOf,
+})
+
+/**
+ * `notion-md.webhook.decode` — decode a raw Notion webhook payload into a normalized signal. The
+ * raw span carried NO attributes; routing it through the schema-backed seam requires a `span.label`
+ * (`OtelSpan.with` mandates one), so it becomes a fixed-label span (label `decode`). Label-only, so
+ * EXCLUDED from `signals` (see `StatusFileOperation`). The added `span.label` is the ONLY encode
+ * delta of this migration (an enrichment; flagged in the migration report).
+ */
+export const WebhookDecodeOperation = operation({
+  id: 'span.notion_md.webhook_decode',
+  name: 'notion-md.webhook.decode',
+  brief: 'Decode a raw Notion webhook payload into a normalized signal (label-only).',
+  stability: 'development',
+  attributes: {},
+  labelFields: labelField,
+  label: labelOf,
+})
+
+// ---------------------------------------------------------------------------
 // annotate-only encoders (standalone; reuse the SAME attr schemas → identical encode).
 // These annotate the CURRENT span with disjoint result-attribute subsets (SC-R14).
 // ---------------------------------------------------------------------------
@@ -1129,6 +1215,12 @@ export default defineOtelContract({
     BatchWatchOperation,
     WatchOperation,
     WatchSyncPassOperation,
+    // `notion_md.track.source` reaches the catalog via this static-name signal's open ref.
+    TrackPageOperation,
+    // NOTE: `StatusFileOperation` / `ReconcileFileOperation` / `WebhookDecodeOperation` are authored
+    // above (to derive their runtime encoders) but deliberately NOT listed here — they are label-only
+    // spans with zero catalog attributes, which Weaver rejects as an empty group (like genie's
+    // `ImportMapResolverOperation`). They stay runtime-only, not registry-projected.
   ],
   // Keys that reach the catalog ONLY via an annotate-only bundle or a dynamic-name bridge span
   // (no static open-ref carries them). Catalog completeness (SC-R13).

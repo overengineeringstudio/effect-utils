@@ -1,7 +1,7 @@
 // Generated file - DO NOT EDIT
 // Source: constants.ts.genie.ts
 // registry-source: genie/weaver-registry/registry.ts
-// fingerprint: sha256:68a92976e25642d98d4f12f8a0e25dafe7fcc4e89f240b5f3fcaefc5c8d4ed23
+// fingerprint: sha256:fcb7737194ccb20cb5f52530033d2ede79a331309902407805d5b5f53df82d22
 
 export const AcmeAttempt = 'acme.attempt' as const
 export const AcmeProbeLabel = 'acme.probe.label' as const
@@ -19,6 +19,7 @@ export const Ci_toolsDeployRun_id = 'ci_tools.deploy.run_id' as const
 export const Ci_toolsDeployStatus = 'ci_tools.deploy.status' as const
 export const Ci_toolsDeployTarget = 'ci_tools.deploy.target' as const
 export const Ci_toolsDeployUrl_host = 'ci_tools.deploy.url_host' as const
+export const CliMode = 'cli.mode' as const
 export const CmdArgs = 'cmd.args' as const
 export const CmdCommand = 'cmd.command' as const
 export const CmdCwd = 'cmd.cwd' as const
@@ -37,6 +38,15 @@ export const GenieRead_only = 'genie.read_only' as const
 export const GenieValidationFile_count = 'genie.validation.file_count' as const
 export const GenieValidationPreloaded_file_count = 'genie.validation.preloaded_file_count' as const
 export const GenieValidationRequire_package_json_validate = 'genie.validation.require_package_json_validate' as const
+export const GitBare = 'git.bare' as const
+export const GitBranch = 'git.branch' as const
+export const GitCommit = 'git.commit' as const
+export const GitOutputBytes = 'git.output.bytes' as const
+export const GitOutputLines = 'git.output.lines' as const
+export const GitStreamed = 'git.streamed' as const
+export const GitSubcommand = 'git.subcommand' as const
+export const GitTimeout_ms = 'git.timeout_ms' as const
+export const GitUrl = 'git.url' as const
 export const MegarepoBranch = 'megarepo.branch' as const
 export const MegarepoCliAll = 'megarepo.cli.all' as const
 export const MegarepoCliCommand = 'megarepo.cli.command' as const
@@ -106,6 +116,13 @@ export const MegarepoTraversalRoot = 'megarepo.traversal.root' as const
 export const MegarepoWorkspace_root = 'megarepo.workspace_root' as const
 export const MegarepoWorktree_head = 'megarepo.worktree_head' as const
 export const MegarepoWorktree_path = 'megarepo.worktree_path' as const
+export const NixFlakeOwner = 'nix.flake.owner' as const
+export const NixFlakeRepo = 'nix.flake.repo' as const
+export const NixFlakeRev = 'nix.flake.rev' as const
+export const NixLockPath = 'nix.lock.path' as const
+export const NixLockSource_path = 'nix.lock.source_path' as const
+export const NixLockSource_type = 'nix.lock.source_type' as const
+export const NixLockType = 'nix.lock.type' as const
 export const Notion_mdBatch = 'notion_md.batch' as const
 export const Notion_mdBatchPath_count = 'notion_md.batch.path_count' as const
 export const Notion_mdBatchRecursive = 'notion_md.batch.recursive' as const
@@ -161,6 +178,7 @@ export const Notion_mdStatusUnknown_block_count = 'notion_md.status.unknown_bloc
 export const Notion_mdSyncError = 'notion_md.sync.error' as const
 export const Notion_mdSyncError_tag = 'notion_md.sync.error_tag' as const
 export const Notion_mdSyncResult = 'notion_md.sync.result' as const
+export const Notion_mdTrackSource = 'notion_md.track.source' as const
 export const Notion_mdTreeFrom_remote = 'notion_md.tree.from_remote' as const
 export const Notion_mdTreePlan = 'notion_md.tree.plan' as const
 export const Notion_mdWatch = 'notion_md.watch' as const
@@ -265,6 +283,7 @@ export type AttributeKey =
   | 'ci_tools.deploy.status'
   | 'ci_tools.deploy.target'
   | 'ci_tools.deploy.url_host'
+  | 'cli.mode'
   | 'cmd.args'
   | 'cmd.command'
   | 'cmd.cwd'
@@ -283,6 +302,15 @@ export type AttributeKey =
   | 'genie.validation.file_count'
   | 'genie.validation.preloaded_file_count'
   | 'genie.validation.require_package_json_validate'
+  | 'git.bare'
+  | 'git.branch'
+  | 'git.commit'
+  | 'git.output.bytes'
+  | 'git.output.lines'
+  | 'git.streamed'
+  | 'git.subcommand'
+  | 'git.timeout_ms'
+  | 'git.url'
   | 'megarepo.branch'
   | 'megarepo.cli.all'
   | 'megarepo.cli.command'
@@ -352,6 +380,13 @@ export type AttributeKey =
   | 'megarepo.workspace_root'
   | 'megarepo.worktree_head'
   | 'megarepo.worktree_path'
+  | 'nix.flake.owner'
+  | 'nix.flake.repo'
+  | 'nix.flake.rev'
+  | 'nix.lock.path'
+  | 'nix.lock.source_path'
+  | 'nix.lock.source_type'
+  | 'nix.lock.type'
   | 'notion_md.batch'
   | 'notion_md.batch.path_count'
   | 'notion_md.batch.recursive'
@@ -407,6 +442,7 @@ export type AttributeKey =
   | 'notion_md.sync.error'
   | 'notion_md.sync.error_tag'
   | 'notion_md.sync.result'
+  | 'notion_md.track.source'
   | 'notion_md.tree.from_remote'
   | 'notion_md.tree.plan'
   | 'notion_md.watch'

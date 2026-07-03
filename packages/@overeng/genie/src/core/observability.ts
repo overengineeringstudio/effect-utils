@@ -10,6 +10,7 @@ import {
   type OtelOperationDefinition,
 } from '@overeng/otel-contract'
 
+import { CliMode } from './cli.contract.ts'
 import {
   AtomicWriteOperation,
   CommandOperation,
@@ -88,13 +89,15 @@ const atomicWriteSpan = AtomicWriteOperation.operation
 const importMapResolverSpan = ImportMapResolverOperation.operation
 const targetLockOperation = TargetLockOperation.operation
 
-// The `cli.mode` root span (`genie/<cliMode>`) stays a LEGACY inline contract: its span name is
-// DYNAMIC (varies by CLI mode) and its `cli.mode` key is a FOREIGN namespace, so it has no stable
-// single-signal registry projection and is out of the `genie` namespace's scope (SC-DQ5 bridge).
+// The `cli.mode` root span (`genie/<cliMode>`) stays a LEGACY inline bridge: its span name is
+// DYNAMIC (varies by CLI mode), so it has no stable single-signal registry projection (SC-DQ5). Its
+// `cli.mode` key is now catalogued in the `cli` namespace seam (`./cli.contract.ts`); the encoder
+// below rebuilds from that IMPORTED catalog schema (identical encode — proven by the equivalence
+// test) so the `cli.*` catalog is the single SSOT (SC-R13/R14).
 const cliModeAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
-    cliMode: Schema.String.pipe(OtelAttr.key({ key: 'cli.mode' })),
+    cliMode: CliMode,
   }),
 )
 

@@ -13,11 +13,12 @@
  * import `@overeng/otel-contract` at runtime, so this file's `./registry` import is runtime-safe).
  *
  * SCOPE — `megarepo` namespace only. Two other namespaces appear in megarepo's runtime telemetry
- * and are intentionally OUT of scope here (they belong to future `git`/`nix` contracts, mirroring
- * genie keeping `cli.*` inline): `git.*` (`git/cmd`, `withGitUrlSpan`, `withGitBranchSpan`,
- * `withGitCommitSpan`) and `nix.*` (`fetchNixFlakeMetadata`, `megarepo/nix-lock/file`). Those
- * spans/annotate-bundles stay LEGACY inline `OtelOperation.define` in `observability.ts` — the
- * derive-strict namespace guard would reject a `git.*`/`nix.*` own-key here anyway.
+ * and are OUT of scope here (they are catalogued in the sibling `git.contract.ts` / `nix.contract.ts`
+ * attrs-only seams, mirroring genie's `cli.contract.ts`): `git.*` (`git/cmd`, `withGitUrlSpan`,
+ * `withGitBranchSpan`, `withGitCommitSpan`) and `nix.*` (`fetchNixFlakeMetadata`,
+ * `megarepo/nix-lock/file`). Those spans/annotate-bundles stay LEGACY inline `OtelOperation.define`
+ * in `observability.ts` (rebuilt from the imported git/nix catalog schemas) — the derive-strict
+ * namespace guard would reject a `git.*`/`nix.*` own-key here anyway.
  *
  * BARE-KEY RENAMES (BREAKING wire renames; retention-first, decision 0004). Several gc lib-site
  * spans historically carried UNPREFIXED attribute keys (`branch`, `worktreePath`, `repoRoot`,

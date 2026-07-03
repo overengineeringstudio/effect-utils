@@ -46,13 +46,17 @@ import {
   PutOperation,
   ReadNmdStateOperation,
   ReadObjectStateOperation,
+  ReconcileFileOperation,
+  StatusFileOperation,
   StatusPageOperation,
   StatusPathOperation,
   SyncPageOperation,
   SyncPathOperation,
   SyncTreeOperation,
+  TrackPageOperation,
   WatchOperation,
   WatchSyncPassOperation,
+  WebhookDecodeOperation,
   WebhookTriggerOperation,
   WriteObjectStateOperation,
 } from './notion-md.contract.ts'
@@ -122,6 +126,14 @@ export const BatchWatchSpan = BatchWatchOperation.operation
 export const WatchSpan = WatchOperation.operation
 /** Root span for one watch-driven sync pass. */
 export const WatchSyncPassSpan = WatchSyncPassOperation.operation
+/** Span for tracking/establishing a page's local file from a remote pull (carries `notion_md.track.source`). */
+export const TrackPageSpan = TrackPageOperation.operation
+/** Label-only span for status of a single `.nmd` file (labelled by basename). */
+export const StatusFileSpan = StatusFileOperation.operation
+/** Label-only span for reconcile of a single `.nmd` file (labelled by basename). */
+export const ReconcileFileSpan = ReconcileFileOperation.operation
+/** Label-only span for decoding a raw Notion webhook payload (fixed label `decode`). */
+export const WebhookDecodeSpan = WebhookDecodeOperation.operation
 
 // ---- DERIVED annotate-only encoders (re-exported unchanged from the seam contract) ----
 export {
