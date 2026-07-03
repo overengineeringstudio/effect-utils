@@ -20,6 +20,7 @@ type TsconfigReferencePackage =
       tsconfig?: TSConfigArgs | GenieOutput<TSConfigArgs>
     }
 
+/** Arguments to {@link tsconfigReferencesFromPackages}. */
 export type TsconfigReferencesFromPackagesArgs = {
   /**
    * Package whose tsconfig is receiving references.
@@ -136,6 +137,7 @@ export type UpstreamDependency = {
   readonly providesNamespaces: readonly string[]
 }
 
+/** Arguments to {@link registryFromMembers}: the member fragments plus registry-level metadata. */
 export type RegistryFromMembersArgs = {
   readonly members: readonly RegistryMember[]
   readonly name: string
@@ -144,6 +146,7 @@ export type RegistryFromMembersArgs = {
   readonly upstream?: readonly UpstreamDependency[]
 }
 
+/** Result of {@link registryFromMembers}: the composed registry, its fragments, and integrity issues. */
 export type RegistryComposition = {
   readonly registry: Registry
   readonly fragments: readonly RegistryFragment[]

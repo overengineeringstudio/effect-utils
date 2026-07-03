@@ -395,6 +395,10 @@ export const getHeaderComment = ({
   return `// Generated file - DO NOT EDIT\n// Source: ${sourceFile}\n`
 }
 
+/**
+ * Prepend the generated-file header to content, preserving a leading `#!` shebang line for
+ * executable shell scripts (the banner is inserted after the shebang, not before it).
+ */
 export const addHeaderComment = ({
   content,
   header,

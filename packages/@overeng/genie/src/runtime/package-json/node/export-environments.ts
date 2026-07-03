@@ -38,13 +38,16 @@ type GraphResult = {
   issues: readonly ValidationIssue[]
 }
 
+/** Which compiler backend proves an export's type closure — the bundled `tsgo` or a `custom` binary. */
 export type ExportTypeProofCompilerKind = 'tsgo' | 'custom'
 
+/** A resolved type-proof compiler: the binary path plus its inferred/declared kind. */
 export type ExportTypeProofCompiler = {
   path: string
   kind: ExportTypeProofCompilerKind
 }
 
+/** Node-runtime knobs for package.json export validation (e.g. overriding the type-proof compiler). */
 export type NodePackageJsonValidationRuntimeOptions = {
   typeProofCompiler?: ExportTypeProofCompiler
 }

@@ -110,6 +110,7 @@ type RepositoryDispatchConfig = {
   types?: string[]
 }
 
+/** Sentinel selecting an event trigger with no branch/path/type filters (see `githubWorkflowEvent.all`). */
 export type GitHubWorkflowEventAll = {
   readonly _tag: 'GitHubWorkflowEventAll'
 }

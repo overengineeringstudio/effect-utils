@@ -23,10 +23,14 @@ import type { GenieValidationIssue } from '../validation/mod.ts'
 // Weaver vocabulary — plain typed data (the canonical model; Layer 2 mirrors these).
 // ---------------------------------------------------------------------------
 
+/** Weaver's maturity marker on an attribute or signal (`stable` graduates from `development`). */
 export type Stability = 'stable' | 'development'
+/** Policy annotation bounding an attribute's value cardinality (drives sampling/metric-label cost). */
 export type Cardinality = 'low' | 'bounded' | 'high'
+/** Policy annotation for how an attribute value is serialized (or dropped/redacted) at emit time. */
 export type Encode = 'auto' | 'string' | 'number' | 'boolean' | 'json' | 'drop' | 'redacted'
 
+/** One allowed value of an enum-typed attribute (weaver `type.members[]`). */
 export type EnumMember = {
   readonly id: string
   readonly value: string | number
@@ -34,6 +38,7 @@ export type EnumMember = {
   readonly stability?: Stability
 }
 
+/** An attribute's `type:` — a primitive, an array, an enum (`{ members }`), or a `template[...]`. */
 export type WeaverType =
   | 'string'
   | 'int'
@@ -50,6 +55,7 @@ export type Deprecated =
   | { readonly reason: 'renamed'; readonly renamed_to: string }
   | { readonly reason: 'obsoleted' | 'uncategorized'; readonly note: string }
 
+/** How strongly an attribute reference is required on a signal (weaver `requirement_level`). */
 export type RequirementLevel =
   | 'required'
   | 'recommended'
@@ -67,6 +73,7 @@ export type Bridge = {
   readonly scope_metrics: ReadonlyArray<string>
 }
 
+/** A registry attribute DEFINITION (the canonical declaration living under an attribute group). */
 export type AttrDef = {
   readonly id: string
   readonly type: WeaverType
@@ -80,6 +87,7 @@ export type AttrDef = {
   readonly bridge?: Bridge
 }
 
+/** A signal's REFERENCE to an attribute defined elsewhere, refining its requirement level. */
 export type AttrRef = {
   readonly ref: string
   readonly requirement_level?: RequirementLevel
@@ -87,9 +95,12 @@ export type AttrRef = {
   readonly sampling_relevant?: boolean
 }
 
+/** OTel span kind for a `span` signal (weaver `span_kind`). */
 export type SpanKind = 'internal' | 'client' | 'server' | 'producer' | 'consumer'
+/** OTel metric instrument for a `metric` signal (weaver `instrument`). */
 export type Instrument = 'counter' | 'updowncounter' | 'gauge' | 'histogram'
 
+/** A `span` or `metric` signal definition (a weaver group carrying attribute references). */
 export type SignalDef =
   | {
       readonly kind: 'span'
@@ -116,14 +127,17 @@ export type SignalDef =
       readonly attributes: ReadonlyArray<AttrRef>
     }
 
+/** A namespaced cluster of attribute definitions (weaver `attribute_group`). */
 export type AttributeGroup = {
   readonly namespace: string
   readonly displayName: string
   readonly attributes: ReadonlyArray<AttrDef>
 }
 
+/** A declared upstream registry this one depends on (weaver `imports`/`dependencies`). */
 export type Dependency = { readonly name: string; readonly registry_path: string }
 
+/** The whole authored registry: metadata, upstream dependencies, attribute groups, and signals. */
 export type Registry = {
   readonly name: string
   readonly description: string
@@ -236,6 +250,7 @@ const signalToObject = (sig: SignalDef): Record<string, unknown> => {
 // layer and passed in (Layer 1 stays node-free — no `node:crypto`).
 // ---------------------------------------------------------------------------
 
+/** The source path + input fingerprint stamped into a generated file's provenance banner. */
 export type Provenance = {
   /** repo-relative path to the authored registry source (the aggregator module). */
   readonly source: string
@@ -522,6 +537,7 @@ export const weaverRustConstants = (w: WeaverRegistryBundle): GenieOutput<Regist
 // aggregation (see `@overeng/genie/composition`), not here.
 // ---------------------------------------------------------------------------
 
+/** A per-fragment well-formedness problem, optionally scoped to the offending attribute. */
 export type FragmentIssue = { readonly message: string; readonly attrId?: string }
 
 /** Partial, per-fragment checks that do not need cross-member context. */
