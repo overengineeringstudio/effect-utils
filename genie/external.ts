@@ -321,6 +321,7 @@ export const catalog = defineCatalog({
   // OpenTUI / Effect Atom (experimental)
   '@effect-atom/atom': '0.5.3',
   '@effect-atom/atom-react': '0.5.0',
+  scheduler: '0.27.0',
   '@opentui/core': '0.4.1',
   '@opentui/react': '0.4.1',
 

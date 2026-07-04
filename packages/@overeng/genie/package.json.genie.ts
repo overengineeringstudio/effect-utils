@@ -29,6 +29,7 @@ const supportDeps = catalog.compose({
       'msgpackr',
       'multipasta',
       'pure-rand',
+      'scheduler',
       'slice-ansi',
       'strip-ansi',
       'toml',
