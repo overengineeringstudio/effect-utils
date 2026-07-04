@@ -8,6 +8,7 @@
 }:
 
 let
+  mkSharedHash = hash: { inherit hash; };
   pnpm = import ../../../../nix/pnpm.nix { inherit pkgs; };
   mkPnpmCli = import ../../../../nix/workspace-tools/lib/mk-pnpm-cli.nix { inherit pkgs pnpm; };
   unwrapped = mkPnpmCli {
@@ -18,9 +19,7 @@ let
     workspaceRoot = src;
     # Managed by the repo FOD refresh workflow — do not edit manually.
     depsBuilds = {
-      "." = {
-        hash = "sha256-7ZNg0CcZv0WY5ySJlnnpGvKIeZ1zwtbyPzOm+7Jb2fQ=";
-      };
+      "." = mkSharedHash "sha256-JmsJ4ttk4U3HIvgtnN6AAn68wOiBGC9enBKpTz/dK90=";
     };
     smokeTestArgs = [ "--help" ];
     inherit gitRev commitTs dirty;

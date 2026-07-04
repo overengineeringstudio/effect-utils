@@ -213,6 +213,8 @@ All notable changes to this project will be documented in this file.
   imports during source-mode CLI startup.
 - **Nix packages**: Refresh the `oxc-config` plugin pnpm fixed-output hash after
   the lockfile authority update for Genie's runtime dependency graph.
+- **@overeng/ci-tools / Nix**: Refresh the packaged CLI pnpm fixed-output hash
+  after the same lockfile authority update.
 
 - **genie semantic-conventions encoder-equivalence proof — consolidated / @overeng/otel-contract**:
   Retired the 13 per-namespace `*.observability.equivalence.unit.test.ts` bridges in favor of one
