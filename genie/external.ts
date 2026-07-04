@@ -333,6 +333,7 @@ export const catalog = defineCatalog({
   '@types/react-reconciler': '0.33.0',
   'yoga-layout': '3.2.1',
   'get-east-asian-width': '1.5.0',
+  'is-fullwidth-code-point': '5.1.0',
   'ansi-regex': '6.2.2',
   'ansi-styles': '6.2.3',
   'string-width': '8.2.1',
