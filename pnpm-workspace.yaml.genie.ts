@@ -41,6 +41,15 @@ export default pnpmWorkspaceYaml.root({
       issue: '#821',
     },
     {
+      package: 'ansi-styles',
+      // Legacy terminal formatting packages still pull ansi-styles@5.2.0 while
+      // slice-ansi@9 uses 6.2.3. Keep Genie's direct runtime closure explicit
+      // without forcing old transitive users.
+      reason:
+        'legacy terminal formatting dependencies still pull ansi-styles@5.2.0; not force-overridden because those are upstream transitive ranges',
+      issue: '#821',
+    },
+    {
       package: 'ws',
       // react-devtools-core@7.0.1 exact-pins ws@7.5.10, so pnpm dedupe cannot
       // collapse it onto the catalog 8.x. Keep the catalog on ws 8.x for our
