@@ -511,6 +511,9 @@ importers:
       fast-check:
         specifier: 3.23.2
         version: 3.23.2
+      multipasta:
+        specifier: 0.2.7
+        version: 0.2.7
       react:
         specifier: 19.2.7
         version: 19.2.7

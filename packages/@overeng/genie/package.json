@@ -46,6 +46,7 @@
     "@types/react-reconciler": "0.33.0",
     "effect": "3.21.4",
     "fast-check": "3.23.2",
+    "multipasta": "0.2.7",
     "react": "19.2.7",
     "react-dom": "19.2.7",
     "react-reconciler": "0.33.0",

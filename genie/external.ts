@@ -214,6 +214,7 @@ export const catalog = defineCatalog({
   '@effect/rpc': '0.75.1',
   '@effect/opentelemetry': '0.63.0',
   'fast-check': '3.23.2',
+  multipasta: '0.2.7',
 
   // React ecosystem
   react: '19.2.7',
