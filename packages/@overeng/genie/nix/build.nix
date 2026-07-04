@@ -32,7 +32,7 @@ let
     workspaceRoot = src;
     # Managed by the repo FOD refresh workflow — do not edit manually.
     depsBuilds = {
-      "." = mkSharedHash "sha256-nz6qi98op/bDefixQAosD2zA13kV7lEub9dOI/105Lo=";
+      "." = mkSharedHash "sha256-PCHVSSjOhuf5b1rzkzxVLqwoEipfzYqrTfdZepBqt34=";
     };
     nativeNodePackages = opentuiCoreNative.packages;
     installRuntimeWorkspace = true;
