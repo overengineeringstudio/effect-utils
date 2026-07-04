@@ -19,6 +19,14 @@
 let
   lib = pkgs.lib;
   crateRoot = ../.;
+  # otel-scrape has a cargo `path = "../otel-core"` dependency. That sibling lives
+  # OUTSIDE `crateRoot`, so `fileset.toSource` (which requires every path be under
+  # `root`) cannot include it if `root = crateRoot`. Widen `root` to the shared
+  # `@overeng` parent so BOTH crates are in the sandbox, then `sourceRoot` points
+  # cargo back at the otel-scrape subdir; `../otel-core` resolves next to it. Only
+  # the explicitly-unioned files are copied, so unrelated packages stay out.
+  workspaceRoot = ../..;
+  coreRoot = ../../otel-core;
   # NixStamp JSON (same contract as @overeng/utils/node/cli-version NixStamp).
   # baseVersion pinned to the crate version below so machineVersion is
   # `0.0.0+<rev>` (and `+…-dirty` for a dirty tree).
@@ -29,7 +37,7 @@ let
     inherit commitTs dirty;
   };
   src = lib.fileset.toSource {
-    root = crateRoot;
+    root = workspaceRoot;
     fileset = lib.fileset.unions [
       (crateRoot + "/Cargo.toml")
       (crateRoot + "/Cargo.lock")
@@ -37,6 +45,12 @@ let
       (crateRoot + "/rust-toolchain.toml")
       (lib.fileset.fileFilter (f: f.hasExt "rs") (crateRoot + "/src"))
       (lib.fileset.maybeMissing (crateRoot + "/tests"))
+      # The `otel-core` path dependency's source must be present too.
+      (coreRoot + "/Cargo.toml")
+      (coreRoot + "/Cargo.lock")
+      (coreRoot + "/rust-toolchain.toml")
+      (lib.fileset.fileFilter (f: f.hasExt "rs") (coreRoot + "/src"))
+      (lib.fileset.maybeMissing (coreRoot + "/tests"))
     ];
   };
 in
@@ -44,6 +58,9 @@ pkgs.rustPlatform.buildRustPackage {
   pname = "otel-scrape";
   version = "0.0.0";
   inherit src;
+  # `src` unpacks the `@overeng` parent; build the otel-scrape crate from its
+  # subdir (its `../otel-core` path dep resolves to the sibling in the sandbox).
+  sourceRoot = "${src.name}/otel-scrape";
   cargoLock.lockFile = crateRoot + "/Cargo.lock";
   # Reaches rustc as a plain env var; `option_env!("CLI_BUILD_STAMP")` captures
   # it at compile time (decision 0019). Because it is a derivation env var, a new

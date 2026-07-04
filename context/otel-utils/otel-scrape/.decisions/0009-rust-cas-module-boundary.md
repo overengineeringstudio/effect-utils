@@ -2,7 +2,15 @@
 
 ## Status
 
-Accepted.
+Accepted; the deferral has since been discharged. The named trigger — a second
+Rust consumer — now exists (`otel-core`, the shared `otel-utils` primitive
+library), so the CAS module was promoted out of `otel-scrape` into
+`otel_core::content_address`. `otel-scrape` consumes it from `otel_core` in place
+of its former private module; the conformance vectors moved with the code. See
+[otel-core spec — CAS Realization Boundary](../../otel-core/spec.md#cas-realization-boundary).
+The decision below records the original wrapper-local rationale and its bounded
+lifetime; the "remain private until a second Rust consumer" clause is what has
+now been satisfied, not reversed.
 
 ## Context
 
