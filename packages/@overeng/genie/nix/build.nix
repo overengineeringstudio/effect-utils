@@ -1,5 +1,11 @@
-# Nix derivation that builds genie CLI binary.
-# Uses bun build --compile for native platform.
+# Nix derivation for the Genie CLI.
+#
+# The builder still compiles the CLI as a package smoke proof, but the public
+# executable runs the installed source workspace with Nix-managed Bun. Genie
+# dynamically imports downstream `.genie.ts` files, and those imports need
+# normal Bun/Node resolver semantics from the target checkout; Bun's compiled
+# binary resolver does not provide that contract for arbitrary generated-source
+# graphs.
 #
 # The CLI calls the executable oxfmt interface; the wrapper appends the Nix
 # package to PATH so generated-file formatting stays outside the bundled
@@ -30,6 +36,7 @@ let
       };
     };
     nativeNodePackages = opentuiCoreNative.packages;
+    installRuntimeWorkspace = true;
     inherit gitRev commitTs dirty;
   };
 in
@@ -38,6 +45,9 @@ pkgs.runCommand "genie"
     nativeBuildInputs = [ pkgs.makeWrapper ];
     meta.mainProgram = "genie";
     passthru = {
+      buildIdentity = {
+        inherit gitRev commitTs dirty;
+      };
       inherit (unwrapped.passthru)
         depsBuildEntries
         depsBuildsByInstallRoot
@@ -49,10 +59,20 @@ pkgs.runCommand "genie"
   }
   ''
     mkdir -p $out/bin
-    makeWrapper ${unwrapped}/bin/genie $out/bin/genie \
+    makeWrapper ${pkgs.bun}/bin/bun $out/bin/genie \
+      --add-flags ${unwrapped}/libexec/workspace/packages/@overeng/genie/bin/genie.tsx \
       --suffix PATH : ${pkgs.oxfmt}/bin \
       --set GENIE_ACTIONLINT_BIN ${pkgs.actionlint}/bin/actionlint \
-      --set GENIE_EXPORT_TYPE_PROOF_COMPILER ${typeProofCompilerBin}
+      --set GENIE_EXPORT_TYPE_PROOF_COMPILER ${typeProofCompilerBin} \
+      --set NODE_PATH ${unwrapped}/libexec/workspace/node_modules
+
+    mkdir -p $out/share/genie
+    cat > $out/share/genie/build-identity.json <<'EOF'
+    ${builtins.toJSON {
+      inherit gitRev commitTs dirty;
+      package = "genie";
+    }}
+    EOF
 
     # Propagate shell completions from the unwrapped derivation
     for dir in share/fish/vendor_completions.d share/bash-completion/completions share/zsh/site-functions; do

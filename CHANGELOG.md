@@ -202,6 +202,14 @@ All notable changes to this project will be documented in this file.
 
 - Refined `otel-scrape` VRS and release docs for helper-backed exact process observation, including Linux cgroup-scoped run authority, macOS Endpoint Security validation gates, and runner-class support-matrix evidence.
 
+- **@overeng/genie / Nix**: Make the packaged Genie executable run the
+  Nix-installed Bun source workspace instead of the compiled binary for normal
+  CLI execution. Genie dynamically imports downstream `.genie.ts` graphs, so the
+  packaged binary now preserves Bun's source-module resolver semantics while
+  still being owned by the Nix package. The derivation also emits
+  `share/genie/build-identity.json` so consumers can guard that their devenv
+  tasks are using the flake-pinned package revision.
+
 - **genie semantic-conventions encoder-equivalence proof — consolidated / @overeng/otel-contract**:
   Retired the 13 per-namespace `*.observability.equivalence.unit.test.ts` bridges in favor of one
   strengthened mechanism proof over the `./registry` seam (`registry.unit.test.ts` +
