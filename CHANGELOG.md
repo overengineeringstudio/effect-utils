@@ -4,7 +4,54 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **CI / cargo**: move standalone Rust crate build/test/clippy/fmt semantics into
+  the `cargo:check` devenv task and make the generated cargo CI lane call that
+  task, ensuring the `node-cpuprofile` integration test runs with the devenv
+  Node toolchain instead of a Rust-only CI PATH.
+- **devenv / lint**: mark the `check:*:trace` wrappers as intentionally raw
+  `otel-run` entrypoints for the trace audit, and apply the repo formatter to the
+  OTEL/Vitest context docs.
+- **devenv / lint**: make `devenv:trace-audit` self-contained by referencing its
+  Nix-provided scanner and marker-check binaries instead of relying on ambient
+  `rg`, `head`, `tail`, or `grep` in `PATH`.
+
 ### Added
+
+- **devenv / otel**: `otel-run` — a `time`-like wrapper that runs any command
+  under a fresh root trace and prints its Grafana URL. Derives the root label
+  from argv (`devenv tasks run X` → `X`), mints a fresh trace id (`--join` to
+  nest in the ambient trace instead), and **probes for a reachable OTLP endpoint**
+  (the configured one, then the local ingress) so spans actually land instead of
+  hitting a dead devenv-local collector. Plus `check:quick:trace` /
+  `check:all:trace` tasks (`otel-run devenv tasks run check:quick|all`) — so
+  getting a trace URL for a check run is a one-liner.
+- **otel-scrape**: `deadnix` adapter (`src/adapters/deadnix.rs`) — a diagnostics
+  adapter over `deadnix --output-format json` (NDJSON), mirroring oxlint. Dead-code
+  findings become public-safe events (hashed filename + line; symbol names, paths,
+  and columns never reach a sink) plus a `deadnix.findings` count; otel-scrape
+  re-renders a human summary. Wired onto `lint:nix:deadcode`. Added purely as a
+  module + registry entry (no `lib.rs` dispatch change), exercising the adapter
+  framework.
+- **otel-scrape**: adapter fleet VRS under `context/otel-scrape/adapters/` — the
+  supported/candidate matrix, per-adapter requirements+spec leaves (oxlint,
+  pnpm, deadnix, nix, vitest, node-cpuprofile) with source-of-truth references,
+  and the fleet audit decisions.
+- **devenv tasks**: `lint:check:format` (oxfmt) and `lint:nix:format` (nixfmt)
+  opt into otel-scrape as `adapter="none"`, so each emits a timed, named command
+  span beneath its task span when traced (bare otherwise). Behavioral test
+  `otel-scrape-oxfmt-wrap.test.sh` covers the `mkLintExec` nested-`sh` wrap.
+- **otel-scrape**: Root trace surfacing (decision 0020, R31). When `otel-scrape`
+  mints the trace root and telemetry is active, it prints the trace identity to
+  stderr at end of run so agents and humans can open or correlate the trace
+  without querying the backend first. With `--trace-url-template <tmpl>` /
+  `OTEL_SCRAPE_TRACE_URL_TEMPLATE` (a backend-agnostic `{traceId}` placeholder
+  template) and a successful export it prints a resolvable link; otherwise it
+  prints the bare `trace:<id>`. OSC 8 hyperlink on a TTY, plain text when piped.
+  Terminal-only — never written to the summary or OTLP sinks. Bound to export
+  success, not the child exit code. Pure passthrough stays silent (R04);
+  `--trace-link off` / `OTEL_SCRAPE_TRACE_LINK=off` disables it.
 
 - **genie semantic-conventions generator (M1) / @overeng/genie + @overeng/otel-contract**:
   First genie generator for OpenTelemetry semantic-convention registries.
@@ -66,7 +113,49 @@ All notable changes to this project will be documented in this file.
   because `weaver registry diff` classifies the former as a native `type: "renamed"` and the latter
   as a breaking removal (`.experiments/2026-07-03-weaver-rename-diff.md`).
 
+### Fixed
+
+- **otel-scrape**: Export spans when `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`
+  is requested instead of disabling export. The OTLP/HTTP receiver routes by
+  request `Content-Type` (not the client's protocol env), and `/v1/traces`
+  accepts `application/json`, so otel-scrape now sends its JSON payload and
+  prints a `note:` rather than `trace export is disabled`. `grpc` stays disabled
+  (a genuinely different transport this HTTP/JSON exporter cannot speak). This
+  unblocks adapter spans reaching the collector in the fleet's protobuf-configured
+  environments.
+- **devenv tasks**: `lint:check:format` no longer fails when run under tracing.
+  `mkLintExec`'s empty-selection swallow keyed on an exact stderr match, which the
+  otel-scrape wrapper's own stderr line broke for an all-ignored batch. The swallow
+  now keys on oxfmt's exit code 2 **and** the diagnostic substring — robust to any
+  extra wrapper stderr — so a genuine parse error (exit 2, no diagnostic) and a
+  formatting diff (exit 1) still fail. (Also corrects the old exact-match, which
+  never matched real oxfmt's longer message.)
+
 ### Changed
+
+- **otel-scrape**: Refactored the adapters into a per-tool module framework
+  (`src/adapters/`): a `ToolAdapter` trait + `ADAPTERS` registry, with oxlint,
+  vitest, and node-cpuprofile each in their own module. `lib.rs` dispatch is now
+  registry-driven (`adapter_for(...).map_or(...)`) with no per-adapter-name
+  `match`; injection is dynamic via `prepare`/`AdapterPrep` hooks. Adding an
+  adapter is now one `src/adapters/<tool>.rs` + one `ADAPTERS` entry + registry
+  JSON, so adapters can be developed and maintained in parallel. Pure
+  behavior-preserving restructure — `tests/cli.rs` output byte-identical.
+- **otel-scrape / devenv**: Make effect-utils' own devenv tasks cooperate with
+  the trace model (decision 0018). The task span (`otel-span devenv.task.exec` /
+  `devenv.task.status`) owns the task level; the blanket per-task `otel-scrape`
+  wrapper is removed (it produced one meaningless generic `bash` span above every
+  real task span). A new `trace.instr { adapter ? "none"; name; }` helper wraps a
+  clean concrete command BENEATH the task span, yielding a named command span
+  (`tsgo`, `oxlint`, `node`, ...). Adapters fire where the structured-source
+  contract (decision 0017) is met: oxlint is instrumented `adapter=oxlint` with a
+  presence-gated `--format=json` (otel-scrape re-renders a human summary), vitest
+  `adapter=vitest` (side-channel; human reporter output preserved), and tsc/tsgo
+  `adapter=none` (compiler-only wrap keeps the honest `tsgo` span name with the
+  TypeScript phase spans as task-siblings). The `trace.instr` arrays are empty when
+  otel-scrape is absent, so downstream repos importing these modules run unchanged.
+
+- Refined `otel-scrape` VRS and release docs for helper-backed exact process observation, including Linux cgroup-scoped run authority, macOS Endpoint Security validation gates, and runner-class support-matrix evidence.
 
 - **genie semantic-conventions encoder-equivalence proof — consolidated / @overeng/otel-contract**:
   Retired the 13 per-namespace `*.observability.equivalence.unit.test.ts` bridges in favor of one
@@ -168,6 +257,118 @@ All notable changes to this project will be documented in this file.
   long enough for loaded Linux runners to attach reliably.
 
 ### Added
+
+- **otel-scrape**: Complete `span.cli` semantic-convention conformance
+  (decision 0016, M25.1): emit the REQUIRED raw `process.pid` (never hashed,
+  not trust-gated); set `error.type=_OTHER` and a bounded, non-sensitive span
+  `Status.message` (`process exited with code <n>` / `process terminated by
+signal <NAME>`) on non-zero exit; bound `process.executable.name` / the span
+  name via a documented low-cardinality derivation (safe-charset basename,
+  nix-store hash prefix stripped, pathological names collapsed to `<binary>`);
+  derive span end time from a monotonic nanosecond delta so fast commands are
+  no longer zero-width or whole-millisecond-quantized; and set the
+  instrumentation-scope `version` plus a default resource `service.version` to
+  otel-scrape's crate version.
+
+- **otel-scrape**: Correlate traces to a build and enrich adapter events
+  (decision 0019, H5). Derive a `machineVersion` (`<version>+<rev>[-dirty]`)
+  from a flake-injected `CLI_BUILD_STAMP` (following the shared build-identity
+  contract in `@overeng/utils` `cli-version`) and emit it as the
+  instrumentation-scope `version`, the default resource `service.version`, and
+  `telemetry.sdk.version` — superseding the bare crate version so a trace ties
+  to a commit — and print it from `--version`. Add
+  `schema_url=https://opentelemetry.io/schemas/1.37.0` on the resource and
+  scope. The oxlint adapter event now carries the public `rule` id and `line`
+  in both the OTLP and summary sinks (the filename stays hashed). The default
+  `service.version` is gated on `service.name` being otel-scrape's own default,
+  so a user/harness `--service-name` (or `OTEL_SERVICE_NAME`) no longer has
+  otel-scrape's build stamped onto its service identity.
+
+- **otel-scrape**: Add the per-named-sink command-identity trust gate
+  (decision 0015): `--trusted-sink otlp|summary` (repeatable; env alias
+  `OTEL_SCRAPE_TRUSTED_SINK` pinned to the OTLP target only) emits raw
+  `command.argv`/`command.cwd` into the named sink alone. The default stays
+  hashed-only and the local summary is hard-public-safe — an OTLP assertion
+  never covers it. A byte-level non-leak regression test enforces the
+  invariant.
+
+- **@overeng/content-address**: Add filesystem-backed CAS primitives with
+  descriptor-addressed writes, `cas:` URI resolution, canonical JSON manifests,
+  and validated manifest pins as local retention roots.
+
+- **otel-scrape**: Add the initial Rust crate skeleton with passthrough command
+  execution, W3C `traceparent` root-or-join propagation, stable hashed command
+  evidence, file-only JSON summaries, flake/devenv wiring, and cargo CI gates.
+
+- **otel-scrape**: Add a generated telemetry registry with a JSON source of
+  truth and Rust/TypeScript projections for wrapper schemas, span names,
+  attribute keys, and profile fields.
+
+- **otel-scrape**: Add the first real adapter slice for `oxlint --format=json`,
+  preserving stdout while recording diagnostic events and a generated
+  `oxlint.diagnostics` metric in summary evidence.
+
+- **otel-scrape / @overeng/otel-contract**: Add CAS-backed profile artifact
+  links, a reusable `OtelScrapeProfileLink` schema, and CLI support for writing
+  profile blobs, run manifests, and pins under an explicit CAS root.
+
+- **otel-scrape**: Add the `node-cpuprofile` adapter, which enables Node/V8 CPU
+  profiling for wrapped Node commands, validates produced `.cpuprofile`
+  artifacts, stores them through the CAS lane, and emits sanitized profile-link
+  evidence.
+
+- **otel-scrape / @overeng/otel-contract**: Add a consumer-neutral E2E fixture
+  that captures a real `node-cpuprofile` wrapper run through `otelite`, decodes
+  the emitted profile link with the TypeScript contract, and resolves the
+  linked artifact from CAS.
+
+- **otel-scrape**: Document the current stable CLI surface, summary/export modes,
+  adapter support policy, CAS artifact handoff, privacy guarantees, and current
+  support matrix, including the explicit non-claim for release-grade descendant
+  process-tree spans until exact backend validation lands.
+
+- **otel-scrape**: Add the public VRS for an effect-utils-owned process wrapper
+  that turns build/dev tool executions into OTEL spans, events, metrics, and
+  content-addressed profile links.
+
+- **otel-scrape**: Add explicit degraded direct-child process observation
+  evidence in summary JSON and OTLP export, including a validation fixture that
+  proves descendant workloads are not reported as release-grade process trees.
+
+- **otel-scrape**: Add an opt-in Linux `ptrace-experimental` process backend
+  that observes fork/vfork/clone, exec, and exit events for a traced child tree
+  and validates exact descendant evidence with a compiled process-DAG fixture.
+
+- **otel-scrape / devenv**: Wire `otel-scrape` into effect-utils devenv
+  task execution, status checks, Storybook processes, Netlify/SecretSpec tasks,
+  and aggregate gates via the shared `trace.nix` task wrapper. Local task runs
+  now write summary evidence under `tmp/otel-scrape/summaries` by
+  default and `check:*` runs a source audit to catch new unwrapped task scripts.
+
+- **otel-scrape**: Document the adapter admission policy and exact process
+  helper boundary. New build-tool adapters stay rejected until they land as a
+  vertical slice with a structured source contract, passthrough preservation,
+  privacy and degraded-mode tests, classification justification, generated
+  contract updates, and consumer evidence for cross-package/profile contracts.
+  Default exact process-tree support remains helper-gated rather than ptrace or
+  sampled snapshots.
+
+- **otel-scrape**: Add the wrapper-side `helper-stream` process backend contract,
+  including `--process-helper-socket` / `OTEL_SCRAPE_PROCESS_HELPER_SOCKET`
+  parsing and fail-closed degraded evidence until a validated privileged helper
+  stream proves exact lifecycle coverage.
+
+- **otel-scrape**: Implement the `helper-stream` NDJSON parser and fake-helper
+  E2E contract tests. Exact process evidence now requires a complete,
+  same-run, version-matched lifecycle stream; helper loss, sequence gaps,
+  run-id mismatch, version mismatch, timestamp/order violations, multiple roots,
+  disconnects, and incomplete lifecycle data degrade explicitly.
+
+- **otel-scrape**: Support the official OpenTelemetry trace-export environment
+  variable surface for the first-party OTLP/HTTP JSON exporter, including
+  trace-specific endpoint precedence, resource attributes, service-name
+  precedence, headers, timeout, SDK/exporter disable flags, and explicit
+  unsupported-protocol handling.
 
 - **@overeng/utils-dev / @overeng/megarepo**: Add reusable `otelite`
   trace/metrics/log diagnostic JSON writers and make store fixture setup emit
@@ -305,6 +506,14 @@ All notable changes to this project will be documented in this file.
   Markdown parsers and consume one block-payload contract.
 
 ### Fixed
+
+- **otel-scrape**: Preserve the wrapped command's exit code when optional
+  summary file writing fails after the child process exits, while still
+  reporting the summary write failure on stderr.
+
+- **@overeng/content-address**: Require manifest pins to target stored canonical
+  JSON manifest bytes and allow safe pin path segments that merely start with
+  dots, while still rejecting real parent segments.
 
 - **CI**: Keep the standalone Nix retry helper aligned with the generated
   workflow helper for missing daemon-socket failures, and cover the daemon

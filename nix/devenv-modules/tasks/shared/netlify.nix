@@ -12,6 +12,7 @@
 }:
 { lib, pkgs, ... }:
 let
+  trace = import ../lib/trace.nix { inherit lib; };
   root = ../../../..;
   ciToolsPkg = import (root + "/packages/@overeng/ci-tools/nix/build.nix") {
     inherit pkgs;
@@ -45,7 +46,7 @@ let
       "netlify:deploy:${name}" = {
         description = "Deploy ${name} to Netlify";
         after = if afterTask == null then [ ] else [ afterTask ];
-        exec = ''
+        exec = trace.exec "netlify:deploy:${name}" ''
           set -euo pipefail
 
           input="''${DEVENV_TASK_INPUT:-"{}"}"

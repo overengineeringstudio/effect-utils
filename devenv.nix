@@ -30,6 +30,21 @@ let
   pnpmTaskHelpersScript = pkgs.writeText "pnpm-task-helpers.sh" (
     builtins.readFile ./nix/devenv-modules/tasks/shared/pnpm-task-helpers.sh
   );
+  rustCrates = [
+    {
+      name = "otelite";
+      path = "packages/@overeng/otelite";
+    }
+    {
+      name = "otel-scrape";
+      path = "packages/@overeng/otel-scrape";
+    }
+  ];
+  grep = "${pkgs.gnugrep}/bin/grep";
+  head = "${pkgs.coreutils}/bin/head";
+  rg = "${pkgs.ripgrep}/bin/rg";
+  tail = "${pkgs.coreutils}/bin/tail";
+  trace = import ./nix/devenv-modules/tasks/lib/trace.nix { inherit lib; };
 
   # Shared task modules (from shared/ directory)
   taskModules = {
@@ -346,6 +361,7 @@ in
     (taskModules.lint-nix { })
     (taskModules.check {
       extraChecks = [
+        "devenv:trace-audit"
         "workspace:check"
         "lint:nix"
       ];
@@ -409,13 +425,17 @@ in
         "scripts"
         "context"
       ];
-      # Genie file patterns for caching genie:check tasks
+      # Genie file patterns for caching genie:check tasks. Besides `.genie.ts`
+      # sources, include non-`.genie.ts` generator inputs (source-of-truth files
+      # a generator reads) so a JSON-only edit still triggers `lint:check:genie`
+      # (its `execIfModified`) — kept in sync with `_module.args.genieInputGlobs`.
       geniePatterns = [
         "packages/@overeng/*/*.genie.ts"
         "packages/@overeng/*/examples/*/*.genie.ts"
         "scripts/*.genie.ts"
         "context/effect/socket/*.genie.ts"
         "context/opentui/*.genie.ts"
+        "context/otel-scrape/telemetry-registry.json"
         ".oxfmtrc.json.genie.ts"
         ".oxlintrc.json.genie.ts"
       ];
@@ -465,6 +485,16 @@ in
   # fallback), so the export stays a bare-path module for downstream consumers.
   _module.args.geniePkg = genieSourceCli;
 
+  # Non-`.genie.ts` generator inputs (source-of-truth files a `.genie.ts` reads).
+  # Threaded into the genie task module so a change to one of these busts the
+  # `genie:run` warm-cache fingerprint (which otherwise tracks only `.genie.ts`
+  # sources + generated outputs, silently skipping JSON-only edits). Keep in sync
+  # with the analogous entries in `geniePatterns` below (which cover the
+  # `lint:check:genie` gate's `execIfModified`).
+  _module.args.genieInputGlobs = [
+    "context/otel-scrape/telemetry-registry.json"
+  ];
+
   # Guarded-command ownership (issue #808):
   #   Each cli-guard owns its `bin/<name>` and exec's the real binary by absolute
   #   store path under DEVENV_TASK_PASSTHROUGH=1 (see nix/devenv-modules/tasks/lib/cli-guard.nix).
@@ -498,15 +528,16 @@ in
     restate
     # Use the packaged wrapper so `notion db ...` runs on Node 24 with node:sqlite.
     repoFlake.packages.${currentSystem}.notion-cli
-    # otelite binary on PATH so @overeng/utils-dev/otelite tests run the real CLI.
+    # Rust binaries on PATH for local smoke tests and downstream wrappers.
     repoFlake.packages.${currentSystem}.otelite
+    repoFlake.packages.${currentSystem}.otel-scrape
     cliBuildStamp.package
     ciToolsSourceCli
     (mkSourceCli {
       name = "tui-stories";
       entry = "packages/@overeng/tui-stories/bin/tui-stories.tsx";
     })
-    # Rust toolchain for the otelite crate (effect-utils' first Rust package).
+    # Rust toolchain for the standalone Rust crates.
     # Nix builds use pkgs.rustPlatform; these give local dev + the cargo CI lane
     # cargo/clippy/rustfmt/rust-analyzer matching nixpkgs' stable rust.
     pkgs.cargo
@@ -540,7 +571,7 @@ in
   tasks."pnpm:link-native-node-packages" = {
     after = [ "pnpm:install" ];
     description = "Link Nix-built native Node packages into the pnpm projection";
-    exec = ''
+    exec = trace.exec "pnpm:link-native-node-packages" ''
       set -euo pipefail
       source ${lib.escapeShellArg pnpmTaskHelpersScript}
 
@@ -573,7 +604,7 @@ in
     after = [ "pnpm:install" ];
     description = "Run isolated megarepo cold-GC integration tests";
     cwd = "packages/@overeng/megarepo";
-    exec = ''
+    exec = trace.exec "test:megarepo-cold-gc" ''
       set -euo pipefail
       source ${lib.escapeShellArg pnpmTaskHelpersScript}
       export MEGAREPO_GIT_COMMAND_TIMEOUT_MS="5000"
@@ -589,7 +620,7 @@ in
   tasks."bundle:smoke" = {
     after = [ "pnpm:install" ];
     description = "Bundle representative public entries with Vite/Rollup dependency resolution";
-    exec = ''
+    exec = trace.exec "bundle:smoke" ''
       set -euo pipefail
       DEVENV_TASK_PASSTHROUGH=1 pnpm --dir packages/@overeng/pty-effect run bundle:smoke
     '';
@@ -597,7 +628,7 @@ in
 
   tasks."gh:apply-settings" = {
     after = [ "genie:run" ];
-    exec = ''
+    exec = trace.exec "gh:apply-settings" ''
       set -euo pipefail
       ruleset_id=$(gh api repos/overengineeringstudio/effect-utils/rulesets --jq '.[0].id')
       gh api "repos/overengineeringstudio/effect-utils/rulesets/$ruleset_id" --method PUT --input .github/repo-settings.json
@@ -605,6 +636,77 @@ in
     '';
     description = "Apply .github/repo-settings.json to GitHub ruleset";
   };
+
+  tasks."devenv:trace-audit" = {
+    description = "Check active devenv task modules route every exec/status through trace.* (otel-span task span; concrete commands opt into otel-scrape via trace.instr)";
+    exec = trace.exec "devenv:trace-audit" ''
+      set -euo pipefail
+      # Every active devenv task exec/status must route through the trace.nix
+      # helpers (trace.exec / trace.status / trace.withStatus) so the otel-span
+      # task span owns task identity. This audit greps for raw `exec =`/`status =`
+      # attributes that do NOT go through trace.*.
+      #
+      # Every pattern uses POSIX bracket classes ([[:space:]], [.]) and NEVER a
+      # backslash escape. A literal backslash-s / backslash-dot inside this Nix
+      # indented string becomes a double-backslash that matches nothing, which
+      # silently turns the whole audit vacuous (it always exits 0) — the exact
+      # failure this rewrite fixes.
+      #
+      # A few raw exec/status lines are legitimately allowed and are annotated
+      # with a `trace-audit-allow` marker comment IMMEDIATELY ABOVE the line:
+      #   - the raw string is an argument passed INTO trace.* a few lines below
+      #     (restate integration test, ts:emit).
+      # A deliberately-untraced task would also qualify, but there are currently
+      # none: every thin `ci-tools` delegation task (netlify/vercel deploys,
+      # workflow-report) routes through trace.exec for a task span.
+      # The marker is matched in a 2-line window (the line plus the one above),
+      # so this stays robust to line shifts — no fragile file:line pins.
+      marker='trace-audit-allow'
+      violations=0
+      while IFS= read -r hit; do
+        file="''${hit%%:*}"
+        rest="''${hit#*:}"
+        lineno="''${rest%%:*}"
+        if ${head} -n "$lineno" "$file" | ${tail} -n 2 | ${grep} -q "$marker"; then
+          continue
+        fi
+        violations=1
+        echo "BYPASS: $hit" >&2
+      done < <(
+        ${rg} -n '^[[:space:]]*(exec|status) = ' \
+          devenv.nix \
+          nix/devenv-modules/tasks/shared \
+          nix/devenv-modules/tasks/local \
+          -g '*.nix' \
+          | ${rg} -v 'trace[.](exec|status)|exec = null|exec = if hasPackages then null else trace[.]exec|trace[.]withStatus'
+      )
+      if [ "$violations" -ne 0 ]; then
+        echo "Found task exec/status scripts that bypass the trace.nix task span (trace.exec/status/withStatus)." >&2
+        echo "Route them through trace.* or, if intentionally raw, add a 'trace-audit-allow' marker comment above the line with justification." >&2
+        exit 1
+      fi
+    '';
+  };
+
+  tasks."cargo:check" = {
+    description = "Build, test, lint, and format-check standalone Rust crates";
+    exec = trace.exec "cargo:check" ''
+      set -euo pipefail
+      ${lib.concatMapStringsSep "\n" (crate: ''
+        echo "::group::${crate.name}"
+        (
+          cd "${crate.path}"
+          cargo build --release
+          cargo test
+          cargo clippy -- -D warnings
+          cargo fmt --check
+        )
+        echo "::endgroup::"
+      '') rustCrates}
+    '';
+  };
+
+  tasks."check:all".after = [ "cargo:check" ];
 
   # Keep git-hook installation out of the shell-entry path.
   # If needed, install with `devenv tasks run devenv:git-hooks:install`.

@@ -56,17 +56,34 @@ let
   # Do not force preserve-symlinks here. pnpm's projected workspace graph
   # relies on realpath-based resolution, and preserve-symlinks caused Vitest to
   # miss hoisted dependencies in CI.
-  vitestExec = extraArgs: ''
-    set -euo pipefail
-    source ${lib.escapeShellArg pnpmTaskHelpersScript}
-    run_package_bin vitest vitest run --testTimeout 30000 --hookTimeout 30000 ${extraArgs}
-  '';
+  #
+  # The concrete vitest binary is instrumented with trace.instr (decision 0018):
+  # otel-scrape owns a named command span beneath the task span and consumes the
+  # vitest `--reporter=json` SIDE-CHANNEL it injects itself (decision 0017), so the
+  # human reporter output stays on the terminal unchanged. `run_package_bin` is a
+  # shell function, so it is resolved to a real bin path first (experiment 0007)
+  # and otel-scrape wraps that path directly.
+  vitestExec =
+    {
+      name,
+      extraArgs ? "",
+    }:
+    ''
+      set -euo pipefail
+      source ${lib.escapeShellArg pnpmTaskHelpersScript}
+      ${trace.instr {
+        adapter = "vitest";
+        inherit name;
+      }}
+      "''${_otel_instr[@]}" "$(resolve_package_bin vitest vitest)" run --testTimeout 30000 --hookTimeout 30000 ${extraArgs}
+    '';
   vitestWatchExec = ''
     set -euo pipefail
     source ${lib.escapeShellArg pnpmTaskHelpersScript}
     run_package_bin vitest vitest
   '';
 
+  # Per-package test task using the workspace-aware vitest entrypoint.
   chunkList =
     size: items:
     if items == [ ] then [ ] else [ (lib.take size items) ] ++ chunkList size (lib.drop size items);
@@ -86,7 +103,10 @@ let
     {
       "test:${pkg.name}" = {
         description = "Run tests for ${pkg.name}";
-        exec = trace.exec "test:${pkg.name}" (vitestExec (pkg.vitestArgs or ""));
+        exec = trace.exec "test:${pkg.name}" (vitestExec {
+          name = "test:${pkg.name}";
+          extraArgs = pkg.vitestArgs or "";
+        });
         cwd = pkg.path;
         execIfModified = [
           "${pkg.path}/src/**/*.ts"
@@ -120,7 +140,13 @@ let
     "test:run" = {
       guard = "vitest";
       description = "Run all tests";
-      exec = if hasPackages then null else vitestExec "";
+      exec =
+        if hasPackages then
+          null
+        else
+          trace.exec "test:run" (vitestExec {
+            name = "test:run";
+          });
       after =
         if hasPackages then
           if hasPackageConcurrency then
@@ -133,7 +159,7 @@ let
     "test:watch" = {
       guard = "vitest";
       description = "Run tests in watch mode";
-      exec = vitestWatchExec;
+      exec = trace.exec "test:watch" vitestWatchExec;
       after = [ "genie:run" ];
     };
   };

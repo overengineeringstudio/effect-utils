@@ -15,6 +15,9 @@ import {
 } from 'effect'
 import * as AST from 'effect/SchemaAST'
 
+export * from './otel-scrape/registry.gen.ts'
+export * from './otel-scrape/profile-link.ts'
+
 type OtelPrimitive = string | number | boolean
 
 /** Branded OTel attribute key: letter-led, `[A-Za-z0-9_.:-]`, ≤255 chars — the canonical key shape shared by resource and span attributes. */

@@ -55,8 +55,16 @@ let
     "lint:nix:format" = {
       guard = "nixfmt";
       description = "Check Nix formatting with nixfmt";
+      # nixfmt exposes no declared structured source (adapters/.experiments/0005),
+      # so it opts into otel-scrape as adapter="none" (decision 0018): a timed,
+      # named `nixfmt` command span beneath the task span, no parser, stdout
+      # untouched. Arrays are empty (command runs bare) without otel-scrape.
       exec = trace.exec "lint:nix:format" ''
-        ${git} ls-files '*.nix' | xargs nixfmt --check
+        ${trace.instr {
+          adapter = "none";
+          name = "lint:nix:format";
+        }}
+        ${git} ls-files '*.nix' | xargs "''${_otel_instr[@]}" nixfmt --check
       '';
     };
     "lint:nix:fix:format" = {
@@ -69,8 +77,18 @@ let
     "lint:nix:deadcode" = {
       guard = "deadnix";
       description = "Check for dead Nix code";
+      # deadnix has a declared structured source (NDJSON, adapters/03-deadnix), so it
+      # opts into otel-scrape as adapter="deadnix" (decision 0017): otel-scrape
+      # captures the `--output-format json` stream, parses public-safe records
+      # (hashed file + line + a deadnix.findings count), and re-renders a compact
+      # summary. The child flag is injected by _otel_instr_flags. Both arrays are
+      # empty (deadnix runs bare) without otel-scrape.
       exec = trace.exec "lint:nix:deadcode" ''
-        ${git} ls-files '*.nix' | xargs deadnix
+        ${trace.instr {
+          adapter = "deadnix";
+          name = "lint:nix:deadcode";
+        }}
+        ${git} ls-files '*.nix' | xargs "''${_otel_instr[@]}" deadnix "''${_otel_instr_flags[@]}"
       '';
     };
   };

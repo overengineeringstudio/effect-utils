@@ -39,6 +39,7 @@
   ...
 }:
 let
+  trace = import ../lib/trace.nix { inherit lib; };
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
   cache = import ../lib/cache.nix { inherit config; };
   git = "${pkgs.git}/bin/git";
@@ -287,8 +288,8 @@ in
     lib.optionalAttrs completionsEnabled {
       "${completionsTaskName}" = {
         description = "Install shell completions for CLI tools";
-        exec = completionsExec;
-        status = completionsStatus;
+        exec = trace.exec completionsTaskName completionsExec;
+        status = trace.status completionsTaskName "path" completionsStatus;
       };
     }
     // {
@@ -298,7 +299,7 @@ in
       # Use for CI or explicit runs (R16): failures should be enforced.
       "setup:strict" = lib.mkIf (setupTasks != [ ]) {
         description = "Setup tasks (strict)";
-        exec = "exit 0";
+        exec = trace.exec "setup:strict" "exit 0";
         after = setupTasks;
       };
 
@@ -319,7 +320,7 @@ in
           "TRACEPARENT"
           "OTEL_SHELL_ENTRY_NS"
         ];
-        exec = ''
+        exec = trace.exec "setup:gate" ''
           set -euo pipefail
           ${setupFingerprintEnv}
 
@@ -359,7 +360,7 @@ in
         # Persist the outer cache only after the setup tasks finished. Writing it
         # earlier would let later warm shells skip work that never completed.
         after = lib.optionals skipDuringRebase [ "setup:gate" ] ++ setupTasks;
-        exec = ''
+        exec = trace.exec setupRecordCacheTaskName ''
           set -euo pipefail
           ${setupFingerprintEnv}
 
@@ -371,7 +372,7 @@ in
           cache_value="''${DEVENV_SETUP_GIT_HASH:-$(${git} rev-parse HEAD 2>/dev/null || echo "no-git")}"
           ${cache.writeCacheFile ''"${setupGitHashFile}"''}
         '';
-        status = ''
+        status = trace.status setupRecordCacheTaskName "hash" ''
           set -euo pipefail
           if [ "''${FORCE_SETUP:-}" = "1" ]; then
             exit 1
@@ -399,7 +400,7 @@ in
       # - DEVENV_STRICT=1: strict mode (fails on task errors)
       "setup:run" = {
         description = "Run setup tasks (DEVENV_STRICT=1 to fail on errors)";
-        exec = ''
+        exec = trace.exec "setup:run" ''
           set -euo pipefail
 
           if [ "''${DEVENV_STRICT:-}" = "1" ]; then

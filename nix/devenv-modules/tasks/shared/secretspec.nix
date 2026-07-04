@@ -8,6 +8,7 @@
 }:
 { lib, pkgs, ... }:
 let
+  trace = import ../lib/trace.nix { inherit lib; };
   secretspec = "${pkgs.secretspec}/bin/secretspec";
   escapedFile = lib.escapeShellArg file;
   secretsRun = pkgs.writeShellApplication {
@@ -134,7 +135,7 @@ in
   tasks = {
     "secrets:check" = {
       description = "Check required secrets against the current process environment";
-      exec = ''
+      exec = trace.exec "secrets:check" ''
         set -euo pipefail
         if [ ! -f ${escapedFile} ]; then
           echo "No ${file}; nothing to check."
@@ -146,7 +147,7 @@ in
 
     "secrets:prefetch" = {
       description = "Resolve op-proxy-backed secrets into the op-proxy cache";
-      exec = ''
+      exec = trace.exec "secrets:prefetch" ''
         set -euo pipefail
         if [ ! -f ${escapedFile} ]; then
           echo "No ${file}; nothing to prefetch."

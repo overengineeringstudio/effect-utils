@@ -24,7 +24,7 @@ export default packageJson(
     name: '@overeng/content-address',
     ...privatePackageDefaults,
     exports: {
-      '.': exportEntry('./src/mod.ts', { environment: 'isomorphic-es2024' }),
+      '.': exportEntry('./src/mod.ts', { environment: 'node' }),
     },
     publishConfig: {
       access: 'public',

@@ -50,6 +50,7 @@
 }:
 { lib, ... }:
 let
+  trace = import ../lib/trace.nix { inherit lib; };
   lintTask = lib.optional hasLint "lint:check";
   nixQuickTask = lib.optionals hasNixCheck [ "nix:check:quick" ];
   nixFullTask = lib.optionals hasNixCheck [ "nix:flake:check" ];
@@ -72,13 +73,13 @@ in
   tasks = {
     "check:quick" = {
       description = "Fast checks for development (${checkQuickTypecheckTask}${lib.optionalString hasLint ", lint"}${lib.optionalString hasNixCheck ", nix-fingerprint"}) without tests";
-      exec = "true";
+      exec = trace.exec "check:quick" "true";
       after = [ checkQuickTypecheckTask ] ++ megarepoTasks ++ lintTask ++ nixQuickTask ++ extraChecks;
     };
 
     "check:all" = {
       description = "All checks (${checkAllTypecheckTask}${extraDesc})";
-      exec = "true";
+      exec = trace.exec "check:all" "true";
       after = [
         checkAllTypecheckTask
       ]
@@ -87,6 +88,23 @@ in
       ++ lintTask
       ++ nixFullTask
       ++ testTasks;
+    };
+
+    # Traced convenience wrappers: run the aggregate check under a FRESH root
+    # trace and print its Grafana link. otel-run (otel devenv module) mints the
+    # root, so these execs stay BARE — wrapping them in trace.exec would emit an
+    # outer span in the ambient trace and defeat the fresh root. Requires the
+    # otel devenv module (provides otel-run on PATH).
+    "check:quick:trace" = {
+      description = "Run check:quick under a fresh root trace and print its Grafana link";
+      # trace-audit-allow: raw exec - otel-run intentionally owns the fresh root trace.
+      exec = "otel-run devenv tasks run check:quick";
+    };
+
+    "check:all:trace" = {
+      description = "Run check:all under a fresh root trace and print its Grafana link";
+      # trace-audit-allow: raw exec - otel-run intentionally owns the fresh root trace.
+      exec = "otel-run devenv tasks run check:all";
     };
   };
 }

@@ -85,10 +85,13 @@ let
       command,
       includeCase,
       emptySelectionDiagnostic ? null,
+      # Optional shell prelude injected before the file scan (e.g. trace.instr,
+      # which defines the _otel_instr / _otel_instr_flags arrays the command uses).
+      prelude ? "",
     }:
     ''
       set -euo pipefail
-
+      ${prelude}
       lint_pathspec_args=()
       ${lintPathspecsSetup}
 
@@ -115,14 +118,40 @@ let
           if emptySelectionDiagnostic == null then
             "${pkgs.findutils}/bin/xargs -0 ${command} < \"$files\""
           else
+            # The empty-selection stderr swallow must run PER xargs batch (a later
+            # all-ignored chunk emits the diagnostic independently), so it lives in
+            # the batch child, not the outer shell. To wrap the tool with the
+            # otel-scrape prefix — which is a bash array (`_otel_instr`) that only
+            # exists in the OUTER shell and cannot cross into a POSIX `sh` child —
+            # we expand it in the outer shell and pass its elements as leading
+            # positional args (preceded by a count) into a `bash -c` child, which
+            # reconstructs the array and applies it to the concrete command. That
+            # names the command span after the wrapped child (`oxfmt`), never the
+            # helper shell. `${command}` runs bare when the prefix is empty
+            # (otel-scrape absent / gate inactive), so this path is behaviorally
+            # identical to a plain `xargs -0 ${command}` in that case.
+            #
+            # `_otel_instr` is defined by the trace.instr prelude when a task opts
+            # in; the guard keeps the branch valid for tasks that don't (the prefix
+            # is then empty and the command runs bare).
             ''
-              ${pkgs.findutils}/bin/xargs -0 sh -c '
+              declare -p _otel_instr >/dev/null 2>&1 || _otel_instr=()
+              ${pkgs.findutils}/bin/xargs -0 ${pkgs.bash}/bin/bash -c '
                 empty_selection_diagnostic="$1"
                 shift
+                otel_prefix_count="$1"
+                shift
+                otel_prefix=()
+                while [ "$otel_prefix_count" -gt 0 ]; do
+                  otel_prefix+=("$1")
+                  shift
+                  otel_prefix_count=$((otel_prefix_count - 1))
+                done
+
                 stderr_file=$(mktemp)
                 trap "rm -f \"$stderr_file\"" EXIT
 
-                if ${command} "$@" 2>"$stderr_file"; then
+                if "''${otel_prefix[@]}" ${command} "$@" 2>"$stderr_file"; then
                   if [ -s "$stderr_file" ]; then
                     cat "$stderr_file" >&2
                   fi
@@ -132,13 +161,26 @@ let
                 fi
 
                 stderr="$(cat "$stderr_file")"
-                if [ "$stderr" = "$empty_selection_diagnostic" ]; then
-                  exit 0
-                fi
+                # All-ignored batch: oxfmt exits 2 and prints the empty-selection
+                # diagnostic. Detect it by BOTH exit code 2 AND the diagnostic
+                # substring, so the swallow survives extra wrapper stderr (the
+                # otel-scrape prefix prints its own note lines to this same stream)
+                # yet never hides a genuine parse error (also exit 2, but WITHOUT
+                # the diagnostic) or a formatting diff (exit 1). Substring, not
+                # exact equality: real oxfmt appends "All matched files may have
+                # been excluded by ignore rules." and the wrapper interleaves lines.
+                case "$stderr" in
+                  *"$empty_selection_diagnostic"*)
+                    if [ "$status" -eq 2 ]; then
+                      exit 0
+                    fi
+                    ;;
+                esac
 
                 printf "%s\n" "$stderr" >&2
                 exit "$status"
-              ' sh ${lib.escapeShellArg emptySelectionDiagnostic} < "$files"
+              ' bash ${lib.escapeShellArg emptySelectionDiagnostic} \
+                "''${#_otel_instr[@]}" "''${_otel_instr[@]}" < "$files"
             ''
         }
     '';
@@ -158,31 +200,65 @@ let
   # Plugin injection is handled by oxlint-with-plugins wrapper on PATH.
   # Consumers should add oxlint-with-plugins to devenv packages instead of
   # passing jsPlugins here.
+  #
+  # instrName: when set, the concrete oxlint invocation is wrapped with
+  # trace.instr { adapter = "oxlint"; } (decision 0018), so otel-scrape owns a
+  # named `oxlint` command span beneath the task span and re-renders a human
+  # diagnostics summary from `--format=json` (decision 0017). The `--format=json`
+  # child flag is gated together with the otel-scrape prefix (via _otel_instr_flags)
+  # so a repo without otel-scrape never sees raw JSON on the terminal.
   mkOxlintCmd =
-    extraFlags:
+    {
+      extraFlags ? "",
+      instrName ? null,
+    }:
     let
       flags = "${warningsFlag} ${extraFlags}";
     in
     mkLintExec {
-      command = "oxlint --import-plugin ${flags} ${typeAwareFlags}";
+      command =
+        if instrName != null then
+          ''"''${_otel_instr[@]}" oxlint "''${_otel_instr_flags[@]}" --import-plugin ${flags} ${typeAwareFlags}''
+        else
+          "oxlint --import-plugin ${flags} ${typeAwareFlags}";
       includeCase = oxlintIncludeCase;
+      prelude = lib.optionalString (instrName != null) (
+        trace.instr {
+          adapter = "oxlint";
+          name = instrName;
+        }
+      );
     };
 
   guardedTasks = {
     "lint:check:format" = {
       guard = "oxfmt";
       description = "Check code formatting with oxfmt";
+      # oxfmt exposes no declared structured source (adapters/.experiments/0005),
+      # so it opts into otel-scrape as adapter="none" (decision 0018): a timed,
+      # named `oxfmt` command span beneath the task span, no parser, stdout
+      # untouched. The otel-scrape prefix (_otel_instr) is composed in the OUTER
+      # bash and passed through xargs as leading positional args, so oxfmt — not
+      # the nested empty-selection helper shell — is the wrapped child (see the
+      # emptySelectionDiagnostic branch of mkLintExec). Arrays are empty (command
+      # runs bare, empty-selection diagnostic still swallowed) without otel-scrape.
       exec = trace.exec "lint:check:format" (mkLintExec {
         command = "${resolvedOxfmtPkg}/bin/oxfmt --check";
         includeCase = oxfmtIncludeCase;
         emptySelectionDiagnostic = "Expected at least one target file";
+        prelude = trace.instr {
+          adapter = "none";
+          name = "lint:check:format";
+        };
       });
       execIfModified = [ ];
     };
     "lint:check:oxlint" = {
       guard = "oxlint";
       description = "Run oxlint linter";
-      exec = trace.exec "lint:check:oxlint" (mkOxlintCmd "");
+      exec = trace.exec "lint:check:oxlint" (mkOxlintCmd {
+        instrName = "lint:check:oxlint";
+      });
       execIfModified = [ ];
     }
     // lib.optionalAttrs (tsconfig != null) {
@@ -200,7 +276,9 @@ let
     "lint:fix:oxlint" = {
       guard = "oxlint";
       description = "Fix lint issues with oxlint";
-      exec = trace.exec "lint:fix:oxlint" (mkOxlintCmd "--fix");
+      exec = trace.exec "lint:fix:oxlint" (mkOxlintCmd {
+        extraFlags = "--fix";
+      });
     };
   };
 

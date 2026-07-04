@@ -41,7 +41,6 @@ import {
   defaultRefPolicyCheckJob,
 } from '../../genie/ci-workflow.ts'
 import { type CoreCIJobName } from '../../genie/ci.ts'
-import { nixOnlyPackages } from '../../genie/packages.ts'
 import {
   githubWorkflowEvent,
   type GitHubWorkflowArgs,
@@ -391,67 +390,6 @@ const multiPlatformStrictNixJob = (step: ReturnType<typeof validateColdPnpmDepsS
 })
 
 /**
- * Cargo lane for the otelite Rust crate (effect-utils' first Rust package).
- *
- * The Nix build/test of the crate is already covered by `.#otelite` /
- * `nix-check`; this lane is the source-quality gate (build/test/clippy/fmt)
- * using the nixpkgs-provided rust toolchain so it matches local dev and the
- * devenv shell exactly. The crate registry lives in genie/packages.ts as the
- * single source of truth for the crate path.
- */
-const oteliteCrate = nixOnlyPackages.find((p) => p.name === 'otelite')
-if (oteliteCrate === undefined) {
-  throw new Error("genie/packages.ts: nix-only package 'otelite' not found")
-}
-
-const provideRustToolchainStep = {
-  name: 'Provide Rust toolchain',
-  shell: 'bash',
-  run: [
-    'set -euo pipefail',
-    'for out in $(nix build --no-link --print-out-paths nixpkgs#cargo nixpkgs#rustc nixpkgs#clippy nixpkgs#rustfmt); do',
-    '  echo "$out/bin" >> "$GITHUB_PATH"',
-    'done',
-  ].join('\n'),
-} as const
-
-const cargoCrateChecksStep = {
-  name: 'Cargo build + test + clippy + fmt',
-  shell: 'bash',
-  run: [
-    'set -euo pipefail',
-    `cd ${oteliteCrate.cratePath}`,
-    'cargo build --release',
-    'cargo test',
-    'cargo clippy -- -D warnings',
-    'cargo fmt --check',
-  ].join('\n'),
-} as const
-
-/**
- * Cargo job: nix-installed rust toolchain + the four crate checks. Kept off the
- * pnpm/devenv base steps because the crate is independent of the JS workspace;
- * it only needs Nix to materialize the toolchain.
- */
-const cargoJob = {
-  if: normalCiIf,
-  'runs-on': namespaceRunner({
-    profile: 'namespace-profile-linux-x86-64',
-    runId: '${{ github.run_id }}',
-  }),
-  'timeout-minutes': jobTimeoutMinutes,
-  defaults: bashShellDefaults,
-  env: standardCIEnv,
-  steps: [
-    checkoutStep(),
-    installNixStep(),
-    provideRustToolchainStep,
-    cargoCrateChecksStep,
-    failureReminderStep,
-  ],
-} as const
-
-/**
  * Audit the native npm dependency policy against the lockfile (issue #807).
  * Install-free: depends only on `pnpm-lock.yaml` and the genie policy source.
  */
@@ -472,7 +410,7 @@ const nativeDepPolicyAuditStep = {
 // Core product jobs keyed by the shared Genie CI source of truth.
 const jobs: Record<
   CoreCIJobName,
-  ReturnType<typeof job> | ReturnType<typeof multiPlatformJob> | typeof cargoJob
+  ReturnType<typeof job> | ReturnType<typeof multiPlatformJob>
 > = {
   typecheck: job({
     step: {
@@ -537,7 +475,12 @@ const jobs: Record<
       run: runDevenvTasksBefore('bundle:smoke'),
     },
   }),
-  cargo: cargoJob,
+  cargo: job({
+    step: {
+      name: 'Cargo build + test + clippy + fmt',
+      run: runDevenvTasksBefore('cargo:check'),
+    },
+  }),
   // Additive Weaver semantic-conventions gates, in one lane (GEN-R09 block-vs-degrade): each
   // `weaver:*` task BLOCKS on a validation failure but DEGRADES to a warning (exit 0) if the
   // weaver flake / upstream semconv FOD is unavailable, so it never wedges the product lanes.

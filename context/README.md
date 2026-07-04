@@ -13,9 +13,13 @@ implementation details.
 - [dependency-materialization/](./dependency-materialization/) - local pnpm,
   projection, Nix prepared dependency, store authority, Buck2 evidence, and
   observability contracts
+- [content-address/](./content-address/) - VRS for reusable
+  content-addressed descriptors, stores, resolvers, and artifact URIs
 - [effect/](./effect/) - Effect socket examples and related package files
 - [opentui/](./opentui/) - OpenTUI integration example
 - [otel.md](./otel.md) - OpenTelemetry notes
+- [otel-scrape/](./otel-scrape/) - VRS for wrapping build/dev tools into
+  OTEL spans, events, metrics, and profile links
 - [oxc-config/](./oxc-config/) - OXC configuration docs
 - [workarounds/](./workarounds/) - historical tool issue notes
 - [workflows/](./workflows/) - local consistency/update workflow notes

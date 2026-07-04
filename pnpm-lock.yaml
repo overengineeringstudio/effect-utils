@@ -1330,6 +1330,10 @@ importers:
         version: 8.0.16(@types/node@26.0.0)(esbuild@0.27.7)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.8.3)
 
   packages/@overeng/otel-contract:
+    dependencies:
+      '@overeng/content-address':
+        specifier: workspace:^
+        version: link:../content-address
     devDependencies:
       '@overeng/utils-dev':
         specifier: workspace:^
@@ -6128,6 +6132,7 @@ snapshots:
 
   '@overeng/otel-contract@file:packages/@overeng/otel-contract(effect@3.21.4)':
     dependencies:
+      '@overeng/content-address': file:packages/@overeng/content-address
       effect: 3.21.4
 
   '@overeng/tui-core@file:packages/@overeng/tui-core': {}

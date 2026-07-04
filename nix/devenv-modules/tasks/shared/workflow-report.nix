@@ -7,6 +7,7 @@
 }:
 { pkgs, lib, ... }:
 let
+  trace = import ../lib/trace.nix { inherit lib; };
   root = ../../../..;
   ciToolsPkg = import (root + "/packages/@overeng/ci-tools/nix/build.nix") {
     inherit pkgs;
@@ -21,7 +22,7 @@ in
   tasks = {
     "workflow-report:collect-bundle" = {
       description = "Collect marked workflow-report records into a bundle";
-      exec = ''
+      exec = trace.exec "workflow-report:collect-bundle" ''
         set -euo pipefail
 
         : "''${WORKFLOW_REPORT_BUNDLE_ID:?WORKFLOW_REPORT_BUNDLE_ID is required}"
@@ -53,7 +54,7 @@ in
 
     "workflow-report:render-comment-body" = {
       description = "Render a managed workflow-report comment body and summary";
-      exec = ''
+      exec = trace.exec "workflow-report:render-comment-body" ''
         set -euo pipefail
 
         : "''${WORKFLOW_REPORT_BUNDLE_PATH:?WORKFLOW_REPORT_BUNDLE_PATH is required}"
@@ -92,7 +93,7 @@ in
 
     "workflow-report:publish" = {
       description = "Publish a workflow-report summary and managed pull-request comment";
-      exec = ''
+      exec = trace.exec "workflow-report:publish" ''
         set -euo pipefail
 
         : "''${WORKFLOW_REPORT_COMMENT_BODY_PATH:?WORKFLOW_REPORT_COMMENT_BODY_PATH is required}"

@@ -52,10 +52,19 @@
           vercel-cli = import ./nix/provider-clis/vercel-cli { inherit pkgs; };
           netlify-cli = import ./nix/provider-clis/netlify-cli { inherit pkgs; };
         };
-        # otelite — effect-utils' first Rust package (local OTLP capture tool).
-        # Built via rustPlatform.buildRustPackage, separate from the Bun CLIs.
+        # Rust packages (otelite, otel-scrape) built via
+        # rustPlatform.buildRustPackage, separate from the Bun CLIs. otelite (a
+        # local OTLP capture tool) was effect-utils' first Rust package.
         otelite = import (rootPath + "/packages/@overeng/otelite/nix/build.nix") {
           inherit pkgs;
+        };
+        otel-scrape = import (rootPath + "/packages/@overeng/otel-scrape/nix/build.nix") {
+          inherit
+            pkgs
+            gitRev
+            commitTs
+            dirty
+            ;
         };
         cliPackages = {
           genie = import (rootPath + "/packages/@overeng/genie/nix/build.nix") {
@@ -153,7 +162,7 @@
           cliPackages
           // providerCliPackages
           // {
-            inherit otelite;
+            inherit otelite otel-scrape;
             cli-build-stamp = cliBuildStamp.package;
             effect-tsgo = tsgo.packages.${system}.effect-tsgo;
             genie-dirty = cliPackagesDirty.genie;
@@ -205,6 +214,7 @@
           drv = import ./nix/workspace-tools/lib/update-bun-hashes.nix { inherit pkgs; };
         };
         apps.otelite = flake-utils.lib.mkApp { drv = otelite; };
+        apps.otel-scrape = flake-utils.lib.mkApp { drv = otel-scrape; };
       }
     )
     // {

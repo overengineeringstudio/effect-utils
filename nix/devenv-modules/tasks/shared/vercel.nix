@@ -12,6 +12,7 @@
 }:
 { lib, pkgs, ... }:
 let
+  trace = import ../lib/trace.nix { inherit lib; };
   root = ../../../..;
   ciToolsPkg = import (root + "/packages/@overeng/ci-tools/nix/build.nix") {
     inherit pkgs;
@@ -59,7 +60,7 @@ let
       "vercel:deploy:${name}" = {
         description = "Deploy ${name} to Vercel";
         after = buildDeps;
-        exec = ''
+        exec = trace.exec "vercel:deploy:${name}" ''
           set -euo pipefail
 
           input="''${DEVENV_TASK_INPUT:-"{}"}"

@@ -50,6 +50,7 @@
     "warning": "DO NOT EDIT - changes will be overwritten",
     "workspaceClosureDirs": [
       "packages/@overeng/ci-tools",
+      "packages/@overeng/content-address",
       "packages/@overeng/otel-contract",
       "packages/@overeng/utils",
       "packages/@overeng/utils-dev"

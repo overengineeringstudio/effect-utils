@@ -84,14 +84,24 @@ EOF
 cat > "$tmpdir/bin/oxfmt" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
+# Real oxfmt exits 2 for an all-ignored batch (empirically verified), printing the
+# empty-selection diagnostic to stderr. The swallow keys on exit-code 2 AND the
+# diagnostic substring, so this stub models the true exit code (was 1).
 if [ "${TEST_OXFMT_EMPTY_TARGET_ERROR:-0}" = 1 ]; then
   echo "Expected at least one target file" >&2
-  exit 1
+  exit 2
 fi
+# Real oxfmt also exits 2 on a genuine parse error, but WITHOUT the empty-selection
+# diagnostic. Modeling this at exit 2 proves the substring guard keeps such errors
+# from being swallowed even though they share the empty-selection exit code.
 if [ "${TEST_OXFMT_OTHER_ERROR:-0}" = 1 ]; then
   echo "parse error" >&2
-  exit 1
+  exit 2
 fi
+# Mixed empty-target + real error. Kept at exit 1 (a formatting-diff-style failure)
+# so it is NOT the pure all-ignored (exit 2) case: the swallow must let it fail
+# rather than hide the real error. Do NOT change to exit 2 or the real error would
+# be swallowed alongside the diagnostic substring.
 if [ "${TEST_OXFMT_MIXED_EMPTY_TARGET_ERROR:-0}" = 1 ]; then
   echo "Expected at least one target file" >&2
   echo "parse error" >&2

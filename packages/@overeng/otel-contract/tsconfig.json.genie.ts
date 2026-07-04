@@ -12,5 +12,6 @@ export default tsconfigJson({
     ...nodeTypes,
   },
   include: ['src/**/*'],
-  references: [{ path: '../utils-dev' }],
+  exclude: ['src/**/*.genie.ts'],
+  references: [{ path: '../content-address' }, { path: '../utils-dev' }],
 } satisfies TSConfigArgs)

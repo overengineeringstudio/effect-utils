@@ -63,6 +63,10 @@ let
   # otel-span shell helper (standalone package with run + emit subcommands)
   otelSpan = import ./otel/otel-span.nix { inherit pkgs; };
 
+  # otel-run: mint a fresh root trace around a command and print its Grafana
+  # link (a thin, endpoint-resolving wrapper over `otel-span run`).
+  otelRun = import ./otel/otel-run.nix { inherit pkgs; };
+
   # =========================================================================
   # Grafonnet: build dashboards from Jsonnet source at Nix eval time
   # =========================================================================
@@ -524,6 +528,7 @@ in
 {
   packages = [
     otelSpan
+    otelRun
   ]
   ++ lib.optionals needsLocalInfra [
     pkgs.opentelemetry-collector-contrib

@@ -1,6 +1,14 @@
 # OTEL tracing helpers for devenv tasks
 #
-# Wraps task `exec` scripts with `otel-span` to produce native devenv task spans.
+# Two cooperating levels (decision 0018 — devenv task cooperation):
+#   - TASK level (trace.exec / trace.status / trace.withStatus): otel-span emits
+#     the `devenv.task.exec` / `devenv.task.status` span that owns task identity
+#     (task.name / task.cached). One task span per task, no generic wrapper above it.
+#   - COMMAND level (trace.instr): a task opts a clean concrete command into
+#     otel-scrape, which wraps it BENEATH the task span — a named command span
+#     (`tsgo`, `oxlint`, `node`, ...) plus adapter records where the structured
+#     source contract (decision 0017) is met. otel-scrape no longer blanket-wraps
+#     every task (that produced one meaningless generic `bash` span per task).
 #
 # When OTEL delivery is available (otel-span on PATH plus either an OTLP
 # endpoint or a valid spool dir), each task execution emits an OTLP span under
@@ -34,6 +42,114 @@
 let
   otelCanEmitShell = ''command -v otel-span >/dev/null 2>&1 && { [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] || { [ -n "''${OTEL_SPAN_SPOOL_DIR:-}" ] && [ -d "''${OTEL_SPAN_SPOOL_DIR:-}" ]; }; }'';
 
+  # Shell condition: an OTEL task trace context is actually ACTIVE — OTEL delivery
+  # is available (otelCanEmitShell) AND a well-formed W3C traceparent is present
+  # (OTEL_TASK_TRACEPARENT preferred, falling back to TRACEPARENT). This is the
+  # single gate that decides whether COMMAND-level instrumentation should engage.
+  # tsc (ts.nix) and trace.instr (oxlint/vitest) both gate on THIS exact string so
+  # they engage/disengage together: in a non-interactive `devenv tasks run` with no
+  # span parent and no OTLP endpoint (e.g. CI), every instrumented command runs
+  # bare; under `otel-span run -- devenv tasks run …` the task span exports
+  # OTEL_TASK_TRACEPARENT into the task body, so this is true and commands wrap.
+  otelTraceContextActive = ''${otelCanEmitShell} && [[ "''${OTEL_TASK_TRACEPARENT:-''${TRACEPARENT:-}}" =~ ^00-[0-9a-fA-F]{32}-[0-9a-fA-F]{16}-[0-9a-fA-F]{2}$ ]]'';
+  taskFileStem =
+    taskName:
+    builtins.replaceStrings
+      [
+        ":"
+        "/"
+        " "
+        "."
+      ]
+      [
+        "-"
+        "-"
+        "-"
+        "_"
+      ]
+      taskName;
+
+  # Per-adapter CHILD flags that otel-scrape requires the CALL-SITE to pass to the
+  # wrapped program (placed AFTER the program name, before its own args). These are
+  # gated together with the otel-scrape prefix so a repo WITHOUT otel-scrape never
+  # sees them (decision 0017: a needs-render structured-source flag such as oxlint
+  # `--format=json` REPLACES the tool's human stdout, so it must not leak onto the
+  # terminal when otel-scrape is not present to re-render — advisor bug fix).
+  #   oxlint  -> --format=json        (needs-render: otel-scrape re-renders a summary)
+  #   deadnix -> --output-format json (needs-render: NDJSON, otel-scrape re-renders)
+  #   vitest  -> (none)               (side-channel: otel-scrape injects --reporter=json)
+  #   none    -> (none)               (named-command identity only)
+  instrChildFlags =
+    adapter:
+    if adapter == "oxlint" then
+      [ "--format=json" ]
+    else if adapter == "deadnix" then
+      [
+        "--output-format"
+        "json"
+      ]
+    else
+      [ ];
+
+  # trace.instr — instrument a CONCRETE command BENEATH a task span (decision 0018).
+  #
+  # The task level is owned by otel-span (trace.exec/trace.status); otel-scrape no
+  # longer blanket-wraps every task shell. Instead a task opts a clean concrete
+  # command into otel-scrape instrumentation, yielding a named command span
+  # (command.program, argv/cwd hashes, exit, merged process) beneath the task span.
+  # otel-scrape joins the task trace via the parent context otel-span exports and
+  # itself re-exports OTEL_TASK_TRACEPARENT (its command-span context) so a
+  # task-parented sub-span emitter re-parents beneath it (clause 4, done in the
+  # Rust wrapper).
+  #
+  # This emits a shell PRELUDE that defines two bash arrays; the call-site uses them
+  # around the concrete argv:
+  #
+  #   ${trace.instr { adapter = "oxlint"; name = "lint:check:oxlint"; }}
+  #   "''${_otel_instr[@]}" oxlint "''${_otel_instr_flags[@]}" --import-plugin ... <files>
+  #
+  # Both arrays are EMPTY when otel-scrape is absent, `OTEL_SCRAPE_ENABLED=0`, or no
+  # OTEL task trace context is active (otelTraceContextActive false), so the concrete
+  # command runs completely unchanged (these are SHARED modules that downstream repos
+  # import without otel-scrape on PATH — transparency is required — and CI runs them
+  # non-interactively with no span parent).
+  #
+  # adapter: "none" (named identity only), "oxlint", "deadnix", "vitest", or
+  # "node-cpuprofile".
+  instr =
+    {
+      adapter ? "none",
+      name,
+    }:
+    let
+      flags = instrChildFlags adapter;
+      flagsArray = lib.concatMapStringsSep " " (f: lib.escapeShellArg f) flags;
+    in
+    ''
+      _otel_instr=()
+      _otel_instr_flags=()
+      _otel_scrape_bin="''${OTEL_SCRAPE_BIN:-otel-scrape}"
+      # Engage command-level otel-scrape wrapping ONLY when an OTEL task trace
+      # context is active (same gate tsc uses — otelTraceContextActive), so a
+      # non-interactive run without a span parent / OTLP endpoint keeps oxlint and
+      # vitest bare instead of injecting structured-source flags that re-render
+      # their output. otel-scrape must additionally be present and enabled.
+      if ${otelTraceContextActive} \
+        && [ "''${OTEL_SCRAPE_ENABLED:-1}" != "0" ] \
+        && command -v "$_otel_scrape_bin" >/dev/null 2>&1; then
+        _otel_scrape_summary_dir="''${OTEL_SCRAPE_SUMMARY_DIR:-''${DEVENV_ROOT:-$PWD}/tmp/otel-scrape/summaries}"
+        mkdir -p "$_otel_scrape_summary_dir"
+        _otel_instr=(
+          "$_otel_scrape_bin"
+          --adapter ${adapter}
+          --service-name "''${OTEL_SCRAPE_SERVICE_NAME:-''${OTEL_SERVICE_NAME:-effect-utils-devenv}}"
+          --summary-out "$_otel_scrape_summary_dir/${taskFileStem name}.$$.summary.json"
+          --
+        )
+        _otel_instr_flags=(${flagsArray})
+      fi
+    '';
+
   # Wrap a task exec string with otel-span tracing.
   # When OTEL is available, the exec body runs inside an otel-span child span.
   # When OTEL is not available, the exec body runs directly (zero overhead).
@@ -44,6 +160,11 @@ let
   # - otel-span reads OTEL_TASK_TRACEPARENT (preferred, survives devenv re-evaluations)
   #   falling back to TRACEPARENT
   # - otel-span exports both TRACEPARENT and OTEL_TASK_TRACEPARENT for child processes
+  #
+  # This is the TASK level only (decision 0018): otel-span owns task.name/task.cached.
+  # A task that runs a clean concrete command additionally wraps it with trace.instr
+  # so otel-scrape owns the command level BENEATH this span (named command span +
+  # adapter records where the structured-source contract is met).
   traceExec = taskName: execBody: ''
     if ${otelCanEmitShell}; then
       otel-span run "effect-utils-devenv" "devenv.task.exec" \
@@ -87,25 +208,15 @@ let
     { exec, status, ... }@attrs:
     attrs
     // {
-      exec = ''
-        if ${otelCanEmitShell}; then
-          otel-span run "effect-utils-devenv" "devenv.task.exec" \
-            --attr "tool.name=devenv" \
-            --attr "task.name=${taskName}" \
-            --attr "task.phase=exec" \
-            --attr "task.cached=false" \
-            --attr "span.label=${taskName}" \
-            -- bash -c ${lib.escapeShellArg exec}
-        else
-          ${exec}
-        fi
-      '';
+      exec = traceExec taskName exec;
       status = traceStatus taskName method status;
     };
 in
 {
   inherit otelCanEmitShell;
+  inherit otelTraceContextActive;
   exec = traceExec;
   status = traceStatus;
   withStatus = withStatus;
+  instr = instr;
 }

@@ -143,8 +143,18 @@ let
   # parses per-project timing, and emits OTEL child spans.
   # The outer trace.exec wrapper provides the parent ts:check/ts:build span.
   #
+  # tsc/tsgo has no structured diagnostics source (decision 0017), so the compiler
+  # is instrumented adapter=none (decision 0018): otel-scrape wraps ONLY the
+  # compiler invocation, yielding a `tsgo`-named command span beneath the task
+  # span. The `typescript.project.check` / `typescript.build.aggregate` phase spans
+  # are emitted from the task shell (outside otel-scrape) and so remain
+  # task-siblings of the `tsgo` span — the wrap-only-compiler tradeoff from
+  # experiment 0009 that keeps the honest `tsgo` name (the nested alternative would
+  # name the command span `bash`). Instrumentation is scoped to the OTEL-active
+  # branch; the no-OTEL fallback runs the compiler bare.
+  #
   # When OTEL is not available, runs the compiler without diagnostics flags.
-  tscWithDiagnostics = compilerBin: tscInvocation: extraArgs: ''
+  tscWithDiagnostics = name: compilerBin: tscInvocation: extraArgs: ''
     set -euo pipefail
 
     _ts_compiler_name="$(${pkgs.coreutils}/bin/basename ${lib.escapeShellArg compilerBin})"
@@ -165,8 +175,11 @@ let
     # output is captured to a temp file, so those lints are re-surfaced through
     # `filter_diagnostics_noise` on BOTH success and failure — otherwise routing
     # tsgo through this path would silently swallow them.
+    # Same command-level gate as trace.instr (oxlint/vitest) — otelTraceContextActive
+    # requires OTEL delivery AND a well-formed traceparent. _ts_parent_context below
+    # is still parsed for the trace/span ids when the gate holds.
     _ts_parent_context="''${OTEL_TASK_TRACEPARENT:-''${TRACEPARENT:-}}"
-    if ${trace.otelCanEmitShell} && [[ "$_ts_parent_context" =~ ^00-[0-9a-fA-F]{32}-[0-9a-fA-F]{16}-[0-9a-fA-F]{2}$ ]]; then
+    if ${trace.otelTraceContextActive}; then
       _tsc_output="$(mktemp)"
       trap 'rm -f "$_tsc_output"' EXIT
 
@@ -179,11 +192,19 @@ let
         grep -v -E "^([0-9]{1,2}:[0-9]{2}:[0-9]{2} (AM|PM) - |Files:|Lines:|Lines of|Identifiers:|Symbols:|Types:|Instantiations:|Memory used:|Memory allocs:|Assignability|Identity|Subtype|Strict subtype|I/O|Config time:|BuildInfo read time:|Parse time:|ResolveModule|ResolveTypeReference|ResolveLibrary|Program time:|Bind time:|Changes compute time:|Check time:|Emit time:|Total time:|Build time:|Projects in scope:|Projects built:|Timestamps only updates:|Aggregate)" "$1" || true
       }
 
+      # Wrap ONLY the compiler with otel-scrape (adapter=none) for a `tsgo`-named
+      # command span. adapter=none uses stdio inherit (byte-clean passthrough), so
+      # the `> "$_tsc_output" 2>&1` capture below still sees exactly the compiler's
+      # own output — no otel-scrape lines leak into the diagnostics parser.
+      ${trace.instr {
+        adapter = "none";
+        inherit name;
+      }}
       _tsc_exit=0
       if [[ "${tscInvocation}" == --build* ]]; then
-        ${compilerBin} ${tscInvocation} ${extraArgs} --extendedDiagnostics --verbose > "$_tsc_output" 2>&1 || _tsc_exit=$?
+        "''${_otel_instr[@]}" ${compilerBin} ${tscInvocation} ${extraArgs} --extendedDiagnostics --verbose > "$_tsc_output" 2>&1 || _tsc_exit=$?
       else
-        ${compilerBin} ${tscInvocation} ${extraArgs} > "$_tsc_output" 2>&1 || _tsc_exit=$?
+        "''${_otel_instr[@]}" ${compilerBin} ${tscInvocation} ${extraArgs} > "$_tsc_output" 2>&1 || _tsc_exit=$?
       fi
 
       # Always re-surface compiler errors and lints to the user. The raw output
@@ -340,7 +361,7 @@ let
     "ts:check" = {
       guard = tsBin;
       description = "Type check the whole workspace (tsgo --build)";
-      exec = trace.exec "ts:check" (tscWithDiagnostics tsBin "--build ${tsconfigFile}" "");
+      exec = trace.exec "ts:check" (tscWithDiagnostics "ts:check" tsBin "--build ${tsconfigFile}" "");
       after = [
         "genie:run"
         "pnpm:install"
@@ -349,13 +370,15 @@ let
     "ts:check:strict" = {
       guard = tsBin;
       description = "Type check the whole workspace without incremental reuse (tsgo --build --force)";
-      exec = trace.exec "ts:check:strict" (tscWithDiagnostics tsBin "--build --force ${tsconfigFile}" "");
+      exec = trace.exec "ts:check:strict" (
+        tscWithDiagnostics "ts:check:strict" tsBin "--build --force ${tsconfigFile}" ""
+      );
       after = inheritedCheckAfter;
     };
     "ts:build" = {
       guard = tsBin;
       description = "Build all packages with type checking (tsgo --build)";
-      exec = trace.exec "ts:build" (tscWithDiagnostics tsBin "--build ${tsconfigFile}" "");
+      exec = trace.exec "ts:build" (tscWithDiagnostics "ts:build" tsBin "--build ${tsconfigFile}" "");
       after = [
         "genie:run"
         "pnpm:install"
@@ -366,7 +389,7 @@ let
   otherTasks = {
     "ts:build-watch" = {
       description = "Build all packages in watch mode (tsgo --build --watch)";
-      exec = "${tsBin} --build --watch ${tsconfigFile}";
+      exec = trace.exec "ts:build-watch" "${tsBin} --build --watch ${tsconfigFile}";
       after = [
         "genie:run"
         "pnpm:install"
@@ -374,6 +397,7 @@ let
     };
     "ts:emit" = trace.withStatus "ts:emit" "binary" {
       description = "Emit build outputs without full type checking (tsc --build --noCheck)";
+      # trace-audit-allow: raw exec - argument to trace.withStatus "ts:emit" above.
       exec = ''
         set -euo pipefail
         ${emitTsconfigHelper}
@@ -383,8 +407,9 @@ let
         _emit_tsconfig="$(mktemp "$_emit_tmpdir/.ts-emit-XXXXXX.json")"
         trap 'rm -f "$_emit_tsconfig"' EXIT
         generate_emit_tsconfig "${tsconfigFile}" "$_emit_tsconfig"
-        ${tscWithDiagnostics tscBin "--build \"$_emit_tsconfig\"" "--noCheck"}
+        ${tscWithDiagnostics "ts:emit" tscBin "--build \"$_emit_tsconfig\"" "--noCheck"}
       '';
+      # trace-audit-allow: raw status - argument to trace.withStatus "ts:emit" above.
       status = ''
         set -euo pipefail
         ${emitTsconfigHelper}

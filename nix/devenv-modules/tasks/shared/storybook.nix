@@ -74,7 +74,7 @@ let
   mkProcess = pkg: {
     "${processName pkg}" = {
       ports.http.allocate = pkg.port;
-      exec = ''
+      exec = trace.exec "process:${processName pkg}" ''
         export DEVENV_TASK_PASSTHROUGH=1
         _host="''${TS_HOSTNAME:-localhost}"
         echo "[storybook] ${pkg.name}: http://$_host:${toString (getAllocatedPort pkg)}"

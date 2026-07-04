@@ -47,7 +47,11 @@
     "types": ["node"]
   },
   "include": ["src/**/*"],
+  "exclude": ["src/**/*.genie.ts"],
   "references": [
+    {
+      "path": "../content-address"
+    },
     {
       "path": "../utils-dev"
     }
