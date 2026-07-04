@@ -18,9 +18,9 @@ supplies its namespace, and so on. The `otel_scrape` registry stays with
 
 This is a different altitude from the weaver-native mandate (decision 0003) and
 is fully compatible with it: decision 0003 governs how telemetry vocabulary is
-*authored* (weaver `*.contract.ts` seams → generated typed encoder); this
-decision governs where the vocabulary *lives* relative to the exporter (with the
-bins, not baked into core). The generated encoder produces attribute *data*; the
+_authored_ (weaver `*.contract.ts` seams → generated typed encoder); this
+decision governs where the vocabulary _lives_ relative to the exporter (with the
+bins, not baked into core). The generated encoder produces attribute _data_; the
 core exporter consumes that data without knowing which registry produced it.
 
 **Consequences:**

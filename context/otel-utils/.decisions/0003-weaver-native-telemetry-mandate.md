@@ -34,6 +34,6 @@ into every producer rather than hand-maintained per call site.
   enforced by generation, not discipline.
 - The weaver-native exporter (decision 0004) consumes the generated encoder;
   this decision absorbs the Rust-encoder side of the `#882` epic as family scope.
-- This governs *authorship* of vocabulary; it is compatible with the
+- This governs _authorship_ of vocabulary; it is compatible with the
   registry-agnostic core (decision 0002), which governs where vocabulary lives
   relative to the exporter. Different altitudes.
