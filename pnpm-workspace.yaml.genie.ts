@@ -21,6 +21,15 @@ export default pnpmWorkspaceYaml.root({
         '@opentui/core@0.4.1 exact-pins string-width@7.2.0; not force-overridden because string-width 8 changes emoji/wide-char width logic that the TUI renderer relies on',
       issue: '#821',
     },
+    {
+      package: 'ws',
+      // react-devtools-core@7.0.1 exact-pins ws@7.5.10, so pnpm dedupe cannot
+      // collapse it onto the catalog 8.x. Keep the catalog on ws 8.x for our
+      // direct consumers and revisit when react-devtools-core updates.
+      reason:
+        'react-devtools-core@7.0.1 exact-pins ws@7.5.10; not force-overridden because it is an upstream devtools transport dependency',
+      issue: '#821',
+    },
   ],
   ...commonPnpmWorkspaceData,
 })

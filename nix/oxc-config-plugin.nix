@@ -29,7 +29,7 @@ let
     pnpm = pinnedPnpm;
   };
   packageDir = "packages/@overeng/oxc-config";
-  pnpmDepsHash = "sha256-SEgDn+Noxu8oRG7InYom0r7iphU3pdPF4QAVZ5zW3xQ=";
+  pnpmDepsHash = "sha256-SJ09I7L0g8XWNXvly/PfIlGJ/nwDI7Je4BXCwUBuEB8=";
 
   srcPath =
     if builtins.isAttrs src && builtins.hasAttr "outPath" src then

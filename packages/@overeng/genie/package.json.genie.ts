@@ -17,6 +17,8 @@ const supportDeps = catalog.compose({
   dependencies: {
     workspace: [otelContractPkg],
     external: catalog.pick(
+      '@effect/platform-node-shared',
+      '@effect/sql',
       '@parcel/watcher',
       'fast-check',
       'find-my-way-ts',
