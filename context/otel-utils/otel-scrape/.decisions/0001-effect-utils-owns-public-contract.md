@@ -4,7 +4,7 @@
 
 **Context:** The design needs a public, reusable home because it relies on effect-utils packages for typed OTEL values, command helpers, and content-addressed artifact descriptors.
 
-**Decision:** The public VRS and package-facing contract live in effect-utils under `context/otel-scrape/`. Any implementation must conform to effect-utils-owned contracts first:
+**Decision:** The public VRS and package-facing contract live in effect-utils under `context/otel-utils/otel-scrape/`. Any implementation must conform to effect-utils-owned contracts first:
 
 - `@overeng/otel-contract` for typed telemetry values.
 - `@overeng/content-address` for artifact identity and descriptor conventions.

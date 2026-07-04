@@ -10,7 +10,7 @@ adapters. The parent (`../`) states the mechanism-agnostic contract once; this
 tree refines it per tool without restating it.
 
 ```
-context/otel-scrape/                 vision + requirements + spec   (the contract)
+context/otel-utils/otel-scrape/                 vision + requirements + spec   (the contract)
 └── adapters/                        requirements + spec + decisions (the fleet)
     ├── 01-oxlint/         req + spec  supported · diagnostics lane · reference
     ├── 02-pnpm/           req + spec  candidate  · phase lane · robust win

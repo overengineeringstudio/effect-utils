@@ -246,6 +246,6 @@ artifacts that should survive cleanup.
 | `tsc`/Cargo/package-manager/Vite adapters       | Deferred                        | Candidate adapters are rejected until they land with the structured-source, privacy, degradation, registry, and consumer-evidence gate.                                                  |
 
 Telemetry semantic names are generated from
-`context/otel-scrape/telemetry-registry.json` into Rust and TypeScript bindings;
+`context/otel-utils/otel-scrape/telemetry-registry.json` into Rust and TypeScript bindings;
 update the registry source and run `devenv tasks run genie:run` instead of
 editing generated constants by hand.

@@ -435,7 +435,7 @@ in
         "scripts/*.genie.ts"
         "context/effect/socket/*.genie.ts"
         "context/opentui/*.genie.ts"
-        "context/otel-scrape/telemetry-registry.json"
+        "context/otel-utils/otel-scrape/telemetry-registry.json"
         ".oxfmtrc.json.genie.ts"
         ".oxlintrc.json.genie.ts"
       ];
@@ -492,7 +492,7 @@ in
   # with the analogous entries in `geniePatterns` below (which cover the
   # `lint:check:genie` gate's `execIfModified`).
   _module.args.genieInputGlobs = [
-    "context/otel-scrape/telemetry-registry.json"
+    "context/otel-utils/otel-scrape/telemetry-registry.json"
   ];
 
   # Guarded-command ownership (issue #808):
