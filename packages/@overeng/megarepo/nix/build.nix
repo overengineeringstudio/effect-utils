@@ -28,8 +28,8 @@ let
     depsBuilds = {
       "." = mkHash {
         aarch64-darwin = "sha256-5G6K2gToD59ZbVoGfrQ0M0M1L+pR0R4LCTKl/MsYquI=";
-        aarch64-linux = "sha256-3hOEdysvkvNYE3EmHzT5AsB747d6s9/zvQZob+cSOUQ=";
-        x86_64-linux = "sha256-3hOEdysvkvNYE3EmHzT5AsB747d6s9/zvQZob+cSOUQ=";
+        aarch64-linux = "sha256-KspCXgcoazXrXRCLPlX69o4tTOKMUzC9r/YLoEf0htA=";
+        x86_64-linux = "sha256-KspCXgcoazXrXRCLPlX69o4tTOKMUzC9r/YLoEf0htA=";
       };
     };
     nativeNodePackages = opentuiCoreNative.packages;

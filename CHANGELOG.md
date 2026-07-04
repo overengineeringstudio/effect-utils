@@ -211,11 +211,12 @@ All notable changes to this project will be documented in this file.
   tasks are using the flake-pinned package revision. Genie's runtime dependency
   graph now also declares `fast-check` and `@effect/platform-node-shared`, which
   source-mode CLI startup reaches through Effect Schema/FastCheck and
-  `@effect/platform-node`; it now includes `@effect/sql` as a direct runtime
-  dependency because Effect's platform/cluster startup imports the SQL migrator
-  surface in source-package execution. The root pnpm duplicate guard also
-  documents the upstream-locked `react-devtools-core@7.0.1` `ws@7.5.10`
-  duplicate instead of force-overriding that devtools transport dependency.
+  `@effect/platform-node`; it now includes `@effect/sql` and `@effect/typeclass`
+  as direct runtime dependencies because Effect's platform/cluster startup
+  imports the SQL migrator surface, and printer-ansi imports typeclass, in
+  source-package execution. The root pnpm duplicate guard also documents the
+  upstream-locked `react-devtools-core@7.0.1` `ws@7.5.10` duplicate instead of
+  force-overriding that devtools transport dependency.
 - **@overeng/genie / Nix**: Add the missing Effect Platform / Effect CLI
   runtime import closure (`multipasta`, `msgpackr`, `find-my-way-ts`,
   `@parcel/watcher`, `mime`, `undici`, `uuid`, `ws`, `ini`, `toml`, `yaml`) to

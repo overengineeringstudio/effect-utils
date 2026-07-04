@@ -19,6 +19,7 @@ const supportDeps = catalog.compose({
     external: catalog.pick(
       '@effect/platform-node-shared',
       '@effect/sql',
+      '@effect/typeclass',
       '@parcel/watcher',
       'fast-check',
       'find-my-way-ts',
