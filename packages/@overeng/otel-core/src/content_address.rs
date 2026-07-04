@@ -1,9 +1,10 @@
 //! Content-address helpers used by the Rust artifact lane.
 //!
-//! This module mirrors the public `context/content-address` contract for the
-//! wrapper slice. The TypeScript `@overeng/content-address` package remains the
-//! reusable implementation package; this Rust module is a conforming private
-//! implementation until a second Rust consumer justifies a crate boundary.
+//! This module mirrors the public `context/content-address` contract. The
+//! TypeScript `@overeng/content-address` package remains the reusable
+//! implementation package; this Rust module is the conforming Rust implementation.
+//! It was promoted here from `otel-scrape` once `otel-core` became the second
+//! Rust consumer that justifies a crate boundary (otel-scrape decision 0009).
 
 use std::fmt::Write as _;
 use std::fs;
@@ -12,27 +13,27 @@ use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
 
-pub(crate) const PROFILE_MEDIA_TYPE: &str = "application/octet-stream";
-pub(crate) const MANIFEST_MEDIA_TYPE: &str = "application/json";
-pub(crate) const CANONICAL_JSON_CODEC: &str = "canonical-json";
+pub const PROFILE_MEDIA_TYPE: &str = "application/octet-stream";
+pub const MANIFEST_MEDIA_TYPE: &str = "application/json";
+pub const CANONICAL_JSON_CODEC: &str = "canonical-json";
 
 #[derive(Debug, Clone)]
-pub(crate) struct ContentDescriptor {
-    pub(crate) digest: String,
-    pub(crate) byte_length: usize,
-    pub(crate) media_type: &'static str,
-    pub(crate) codec: Option<&'static str>,
-    pub(crate) schema_version: Option<u64>,
+pub struct ContentDescriptor {
+    pub digest: String,
+    pub byte_length: usize,
+    pub media_type: &'static str,
+    pub codec: Option<&'static str>,
+    pub schema_version: Option<u64>,
 }
 
 #[derive(Debug)]
-pub(crate) struct ManifestEntry {
-    pub(crate) descriptor: ContentDescriptor,
-    pub(crate) logical_path: String,
-    pub(crate) role: String,
+pub struct ManifestEntry {
+    pub descriptor: ContentDescriptor,
+    pub logical_path: String,
+    pub role: String,
 }
 
-pub(crate) fn descriptor_for_bytes(
+pub fn descriptor_for_bytes(
     bytes: &[u8],
     media_type: &'static str,
     codec: Option<&'static str>,
@@ -47,29 +48,25 @@ pub(crate) fn descriptor_for_bytes(
     }
 }
 
-pub(crate) fn cas_uri_for_digest(digest: &str) -> String {
+pub fn cas_uri_for_digest(digest: &str) -> String {
     format!("cas:{}", object_path_for_digest(digest))
 }
 
-pub(crate) fn object_path_for_digest(digest: &str) -> String {
+pub fn object_path_for_digest(digest: &str) -> String {
     let hex = digest
         .strip_prefix("sha256:")
         .expect("content-address digests use sha256:<hex>");
     format!("sha256/{}/{}", &hex[..2], &hex[2..])
 }
 
-pub(crate) fn write_object(
-    root: &Path,
-    descriptor: &ContentDescriptor,
-    bytes: &[u8],
-) -> io::Result<()> {
+pub fn write_object(root: &Path, descriptor: &ContentDescriptor, bytes: &[u8]) -> io::Result<()> {
     write_bytes_atomic(
         &root.join(object_path_for_digest(&descriptor.digest)),
         bytes,
     )
 }
 
-pub(crate) fn write_pin(root: &Path, name: &str, manifest: &ContentDescriptor) -> io::Result<()> {
+pub fn write_pin(root: &Path, name: &str, manifest: &ContentDescriptor) -> io::Result<()> {
     let pin_path = pin_path(root, name)?;
     let pin_json = format!(
         "{{\"_tag\":\"ContentPin\",\"schemaVersion\":1,\"target\":{}}}\n",
@@ -78,13 +75,13 @@ pub(crate) fn write_pin(root: &Path, name: &str, manifest: &ContentDescriptor) -
     write_bytes_atomic(&pin_path, pin_json.as_bytes())
 }
 
-pub(crate) fn pin_path(root: &Path, name: &str) -> io::Result<PathBuf> {
+pub fn pin_path(root: &Path, name: &str) -> io::Result<PathBuf> {
     validate_pin_name(name)
         .map_err(|message| io::Error::new(io::ErrorKind::InvalidInput, message))?;
     Ok(root.join("pins").join(name.replace('\\', "/")))
 }
 
-pub(crate) fn validate_pin_name(name: &str) -> Result<(), &'static str> {
+pub fn validate_pin_name(name: &str) -> Result<(), &'static str> {
     if name.trim().is_empty()
         || name.contains('\0')
         || Path::new(name).is_absolute()
@@ -97,7 +94,7 @@ pub(crate) fn validate_pin_name(name: &str) -> Result<(), &'static str> {
     Ok(())
 }
 
-pub(crate) fn canonical_manifest_json(entries: &[ManifestEntry]) -> String {
+pub fn canonical_manifest_json(entries: &[ManifestEntry]) -> String {
     let entries = entries
         .iter()
         .map(manifest_entry_json)
@@ -143,7 +140,7 @@ fn json_string(value: &str) -> String {
     serde_json::to_string(value).expect("string serialization cannot fail")
 }
 
-pub(crate) fn write_bytes_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
+pub fn write_bytes_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
     if let Some(parent) = path.parent() {
         if !parent.as_os_str().is_empty() {
             fs::create_dir_all(parent)?;

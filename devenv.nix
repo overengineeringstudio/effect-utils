@@ -35,6 +35,12 @@ let
       name = "otelite";
       path = "packages/@overeng/otelite";
     }
+    # otel-core must precede otel-scrape: the latter has a `path = "../otel-core"`
+    # dependency, so building/linting core first keeps the loop honest.
+    {
+      name = "otel-core";
+      path = "packages/@overeng/otel-core";
+    }
     {
       name = "otel-scrape";
       path = "packages/@overeng/otel-scrape";

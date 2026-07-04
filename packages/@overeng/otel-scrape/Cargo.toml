@@ -14,13 +14,18 @@ name = "otel-scrape"
 path = "src/main.rs"
 
 [dependencies]
-getrandom = "0.4"
+# Registry-agnostic primitives (content-address CAS, W3C trace-context, hex /
+# stable-hash) shared from otel-core. One-way dep: otel-scrape -> otel-core.
+otel-core = { path = "../otel-core" }
 libc = "=0.2.186"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-sha2 = "0.11"
 
 [dev-dependencies]
+# Integration tests (tests/cli.rs) recompute stable hashes to assert against the
+# wrapper's summary output. sha2 is test-only now that the hashing helpers moved
+# to otel-core; the src lane reaches them through otel-core, not this crate.
+sha2 = "0.11"
 tempfile = "3"
 
 [profile.release]

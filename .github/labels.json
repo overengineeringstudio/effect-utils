@@ -261,6 +261,11 @@
       "description": "@overeng/otel-contract package · Set: manual"
     },
     {
+      "name": "system:otel-core",
+      "color": "a371f7",
+      "description": "@overeng/otel-core package · Set: manual"
+    },
+    {
       "name": "system:otel-scrape",
       "color": "a371f7",
       "description": "@overeng/otel-scrape package · Set: manual"
