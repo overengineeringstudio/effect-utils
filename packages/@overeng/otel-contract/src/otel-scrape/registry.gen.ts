@@ -1,6 +1,6 @@
 // Generated file - DO NOT EDIT
 // Source: registry.gen.ts.genie.ts
-// Registry source: context/otel-scrape/telemetry-registry.json
+// Registry source: context/otel-utils/otel-scrape/telemetry-registry.json
 // Input fingerprint: sha256:a1a9f5f6c37dd10a12f9bc9cfb52059faf3c7499fb9597d6b9f5877651e0ef46
 
 export const otelScrapeTelemetryRegistry = {
