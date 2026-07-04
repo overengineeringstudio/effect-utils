@@ -24,7 +24,7 @@ let
     # Managed by the repo FOD refresh workflow — do not edit manually.
     depsBuilds = {
       "." = mkHash {
-        aarch64-darwin = "sha256-WWN13PiC46GMSZACKIj8xw8lK9xOL3niiz81T9+Pqiw=";
+        aarch64-darwin = "sha256-5dKEz+N4pQWZTXafOFOp7qTHntSQN6dGI6Q6eKJKOrQ=";
         aarch64-linux = "sha256-5dKEz+N4pQWZTXafOFOp7qTHntSQN6dGI6Q6eKJKOrQ=";
         x86_64-linux = "sha256-5dKEz+N4pQWZTXafOFOp7qTHntSQN6dGI6Q6eKJKOrQ=";
       };
