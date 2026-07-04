@@ -11,6 +11,9 @@
 let
   pnpm = import ../../../../nix/pnpm.nix { inherit pkgs; };
   mkPnpmCli = import ../../../../nix/workspace-tools/lib/mk-pnpm-cli.nix { inherit pkgs pnpm; };
+  mkHash = hashes: {
+    hash = hashes.${pkgs.stdenv.hostPlatform.system} or hashes.x86_64-linux;
+  };
   opentuiCoreNative = import ../../../../nix/opentui-core-native.nix { inherit pkgs; };
   unwrapped = mkPnpmCli {
     name = "tui-stories-unwrapped";
@@ -20,8 +23,10 @@ let
     workspaceRoot = src;
     # Managed by the repo FOD refresh workflow — do not edit manually.
     depsBuilds = {
-      "." = {
-        hash = "sha256-WWN13PiC46GMSZACKIj8xw8lK9xOL3niiz81T9+Pqiw=";
+      "." = mkHash {
+        aarch64-darwin = "sha256-WWN13PiC46GMSZACKIj8xw8lK9xOL3niiz81T9+Pqiw=";
+        aarch64-linux = "sha256-5dKEz+N4pQWZTXafOFOp7qTHntSQN6dGI6Q6eKJKOrQ=";
+        x86_64-linux = "sha256-5dKEz+N4pQWZTXafOFOp7qTHntSQN6dGI6Q6eKJKOrQ=";
       };
     };
     nativeNodePackages = opentuiCoreNative.packages;
