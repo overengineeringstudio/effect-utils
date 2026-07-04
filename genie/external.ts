@@ -199,6 +199,7 @@ export const catalog = defineCatalog({
   '@effect/ai': '0.36.0',
   'effect-distributed-lock': '0.0.11',
   effect: '3.21.4',
+  ini: '4.1.3',
   '@effect/platform': '0.96.2',
   '@effect/platform-node': '0.107.0',
   '@effect/platform-node-shared': '0.60.0',
@@ -216,6 +217,8 @@ export const catalog = defineCatalog({
   'fast-check': '3.23.2',
   msgpackr: '1.11.10',
   multipasta: '0.2.7',
+  toml: '3.0.0',
+  yaml: '2.8.3',
 
   // React ecosystem
   react: '19.2.7',

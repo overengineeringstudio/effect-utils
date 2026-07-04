@@ -511,12 +511,18 @@ importers:
       fast-check:
         specifier: 3.23.2
         version: 3.23.2
+      ini:
+        specifier: 4.1.3
+        version: 4.1.3
       msgpackr:
         specifier: 1.11.10
         version: 1.11.10
       multipasta:
         specifier: 0.2.7
         version: 0.2.7
+      toml:
+        specifier: 3.0.0
+        version: 3.0.0
       react:
         specifier: 19.2.7
         version: 19.2.7
@@ -532,6 +538,9 @@ importers:
       vitest:
         specifier: 4.1.9
         version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.0.0)(happy-dom@20.10.6)(vite@8.0.16(@types/node@26.0.0)(esbuild@0.27.7)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.8.3))
+      yaml:
+        specifier: 2.8.3
+        version: 2.8.3
     dependenciesMeta:
       '@overeng/tui-react':
         injected: true
