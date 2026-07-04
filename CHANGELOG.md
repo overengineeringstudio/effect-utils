@@ -208,7 +208,9 @@ All notable changes to this project will be documented in this file.
   packaged binary now preserves Bun's source-module resolver semantics while
   still being owned by the Nix package. The derivation also emits
   `share/genie/build-identity.json` so consumers can guard that their devenv
-  tasks are using the flake-pinned package revision.
+  tasks are using the flake-pinned package revision. Genie's runtime dependency
+  graph now also declares `fast-check`, which Effect's Schema/FastCheck module
+  imports during source-mode CLI startup.
 
 - **genie semantic-conventions encoder-equivalence proof — consolidated / @overeng/otel-contract**:
   Retired the 13 per-namespace `*.observability.equivalence.unit.test.ts` bridges in favor of one

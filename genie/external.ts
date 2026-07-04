@@ -212,6 +212,7 @@ export const catalog = defineCatalog({
   '@effect/workflow': '0.18.2',
   '@effect/rpc': '0.75.1',
   '@effect/opentelemetry': '0.63.0',
+  'fast-check': '3.23.2',
 
   // React ecosystem
   react: '19.2.7',
