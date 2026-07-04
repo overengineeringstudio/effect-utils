@@ -212,10 +212,11 @@ All notable changes to this project will be documented in this file.
   graph now also declares `fast-check` and `@effect/platform-node-shared`, which
   source-mode CLI startup reaches through Effect Schema/FastCheck and
   `@effect/platform-node`.
-- **@overeng/genie / Nix**: Add `multipasta`, `msgpackr`, `ini`, `toml`, and
-  `yaml` to Genie's packaged runtime dependency graph so the Nix-owned
-  source-runtime wrapper can load Effect Platform's multipart/MsgPack imports
-  and Effect CLI's config-file imports without relying on an ambient workspace
+- **@overeng/genie / Nix**: Add the missing Effect Platform / Effect CLI
+  runtime import closure (`multipasta`, `msgpackr`, `find-my-way-ts`,
+  `@parcel/watcher`, `mime`, `undici`, `uuid`, `ws`, `ini`, `toml`, `yaml`) to
+  Genie's packaged runtime dependency graph so the Nix-owned source-runtime
+  wrapper can load those imports without relying on an ambient workspace
   install. Refreshed the affected Genie, oxlint, ci-tools, and megarepo FODs
   from the resulting lockfile change.
 - **Nix packages**: Refresh the `oxc-config` plugin pnpm fixed-output hash after

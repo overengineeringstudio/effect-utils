@@ -214,10 +214,16 @@ export const catalog = defineCatalog({
   '@effect/workflow': '0.18.2',
   '@effect/rpc': '0.75.1',
   '@effect/opentelemetry': '0.63.0',
+  '@parcel/watcher': '2.5.6',
   'fast-check': '3.23.2',
+  'find-my-way-ts': '0.1.6',
   msgpackr: '1.11.10',
+  mime: '3.0.0',
   multipasta: '0.2.7',
   toml: '3.0.0',
+  undici: '7.25.0',
+  uuid: '11.1.0',
+  ws: '8.21.0',
   yaml: '2.8.3',
 
   // React ecosystem

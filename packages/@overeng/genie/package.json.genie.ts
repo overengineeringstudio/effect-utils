@@ -16,7 +16,21 @@ const supportDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/genie' }),
   dependencies: {
     workspace: [otelContractPkg],
-    external: catalog.pick('fast-check', 'ini', 'msgpackr', 'multipasta', 'toml', 'typescript', 'yaml'),
+    external: catalog.pick(
+      '@parcel/watcher',
+      'fast-check',
+      'find-my-way-ts',
+      'ini',
+      'mime',
+      'msgpackr',
+      'multipasta',
+      'toml',
+      'typescript',
+      'undici',
+      'uuid',
+      'ws',
+      'yaml',
+    ),
   },
   devDependencies: {
     workspace: [tuiCorePkg, tuiReactPkg, utilsDevPkg, utilsPkg],
