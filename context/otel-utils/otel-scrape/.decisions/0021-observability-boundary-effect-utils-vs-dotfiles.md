@@ -77,3 +77,48 @@ features. See the dotfiles architecture VRS / #1238 for the migration plan.
   **dotfiles** work, not effect-utils changes.
 - The adapter fleet (`context/otel-utils/otel-scrape/adapters/`) is unaffected — it is pure
   tool contract and stays in effect-utils.
+
+## Amendment (otel-utils consolidation, 2026-07-04)
+
+The original decision above stands, but the boundary is **sharpened** and one of
+its premises is **inverted**. Both changes flow from the `otel-utils` family
+consolidation (family VRS at `context/otel-utils/`; epic
+schickling/dotfiles#1250, which supersedes #1238 and #1246).
+
+**Boundary sharpened (unchanged in spirit, wider in scope).** effect-utils owns
+the whole `otel-utils` **family** of building blocks, not just `otel-scrape`:
+`otel-core` (the shared Rust primitive lib), `otel-wrap` (universal wrap +
+root/session), `otel-scrape` (command wrapper + adapters), and `otelite`
+(receiver). dotfiles owns the **composition** — folded into the existing
+`context/observability/` (**no silo**: the `devenv-otel`/`nix-trace` VRS silos
+retire into it): stack, truthful resource identity, dashboards, migration, and
+which-tool-where. `content-address` stays a top-level domain-general primitive
+the family reuses.
+
+**Premise inverted (native-devenv-first → otel-wrap floor).** The original
+decision (and #1238) made **native devenv tracing** the orchestration root and
+gated the `otel-span` migration on it. The Phase-0 evidence above confirmed that
+build emitted **0 bytes** — the migration was blocked. The consolidated design
+inverts this: `otel-wrap` is the **universal floor** (join ambient `TRACEPARENT`
+→ embrace native OTEL where principled → `otel-wrap` mints otherwise; family
+decision 0006). Consequences:
+
+- `otel-span` and `otel-run` are **retired by replacement with `otel-wrap`**, not
+  merely moved to dotfiles. The task-layer floor becomes
+  `otel-wrap --attr task.name=… -- <task-body>`, and the file spool is dropped.
+  This is **not** blocked on native devenv OTLP; `devenv --trace-to` becomes a
+  later optional upgrade the root model already admits.
+- **`nix-trace` is superseded**: `nix` becomes an `otel-scrape` **adapter**
+  (span-forest emission), retiring the separate `nix-trace` crate, Home Manager
+  module, and `service.name=nix` peer identity. The nix adapter's telemetry
+  namespace is an open question (family `open-questions.md` DQ1: extend the
+  existing `nix.*` seam owned by `megarepo/nix.contract.ts` under SC-R09
+  uniqueness, or take a distinct namespace).
+- The Fork-B module moves this decision anticipated (`otel.nix`, `otel-span.nix`,
+  `otel-run.nix` → dotfiles) are subsumed: `otel-span.nix`/`otel-run.nix` retire
+  into `otel-wrap` rather than relocating, and the stack module folds into
+  `context/observability/`.
+- The tool-side seams this decision kept for `otel-scrape` (join via
+  `TRACEPARENT`, export `OTEL_TASK_TRACEPARENT`, root-surface when root) are now
+  `otel-core` primitives shared across the family, so `otel-wrap` and
+  `otel-scrape` follow one mint/join precedence, not two.
