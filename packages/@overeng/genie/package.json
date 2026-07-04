@@ -55,6 +55,7 @@
     "mime": "3.0.0",
     "msgpackr": "1.11.10",
     "multipasta": "0.2.7",
+    "pure-rand": "6.1.0",
     "react": "19.2.7",
     "react-dom": "19.2.7",
     "react-reconciler": "0.33.0",

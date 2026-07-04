@@ -216,6 +216,7 @@ export const catalog = defineCatalog({
   '@effect/opentelemetry': '0.63.0',
   '@parcel/watcher': '2.5.6',
   'fast-check': '3.23.2',
+  'pure-rand': '6.1.0',
   'find-my-way-ts': '0.1.6',
   msgpackr: '1.11.10',
   mime: '3.0.0',
