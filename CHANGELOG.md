@@ -217,7 +217,8 @@ All notable changes to this project will be documented in this file.
   source-package execution. The root pnpm duplicate guard also documents the
   upstream-locked `react-devtools-core@7.0.1` `ws@7.5.10` and
   `@opentui/core@0.4.1` `strip-ansi@7.1.2` duplicates instead of
-  force-overriding those upstream dependency graphs.
+  force-overriding those upstream dependency graphs. It also declares
+  `get-east-asian-width`, which `string-width` imports at runtime.
 - **@overeng/genie / Nix**: Add the missing Effect Platform / Effect CLI
   runtime import closure (`multipasta`, `msgpackr`, `find-my-way-ts`,
   `@parcel/watcher`, `mime`, `undici`, `uuid`, `ws`, `ini`, `toml`, `yaml`) to

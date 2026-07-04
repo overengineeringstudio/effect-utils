@@ -23,6 +23,7 @@ const supportDeps = catalog.compose({
       '@parcel/watcher',
       'fast-check',
       'find-my-way-ts',
+      'get-east-asian-width',
       'ini',
       'mime',
       'msgpackr',
