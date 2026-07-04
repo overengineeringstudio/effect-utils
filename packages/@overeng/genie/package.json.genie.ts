@@ -21,6 +21,7 @@ const supportDeps = catalog.compose({
       '@effect/sql',
       '@effect/typeclass',
       '@parcel/watcher',
+      'ansi-regex',
       'fast-check',
       'find-my-way-ts',
       'get-east-asian-width',

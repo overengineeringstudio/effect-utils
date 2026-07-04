@@ -32,6 +32,15 @@ export default pnpmWorkspaceYaml.root({
       issue: '#821',
     },
     {
+      package: 'ansi-regex',
+      // Legacy terminal formatting packages still pull ansi-regex@5.0.1 while
+      // the catalog tracks 6.2.2 for direct runtime consumers. Keep the direct
+      // Genie runtime closure explicit without forcing old transitive users.
+      reason:
+        'legacy terminal formatting dependencies still pull ansi-regex@5.0.1; not force-overridden because those are upstream transitive ranges',
+      issue: '#821',
+    },
+    {
       package: 'ws',
       // react-devtools-core@7.0.1 exact-pins ws@7.5.10, so pnpm dedupe cannot
       // collapse it onto the catalog 8.x. Keep the catalog on ws 8.x for our
