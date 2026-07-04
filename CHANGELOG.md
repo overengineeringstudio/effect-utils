@@ -217,8 +217,9 @@ All notable changes to this project will be documented in this file.
 - **@overeng/ci-tools / Nix**: Refresh the packaged CLI pnpm fixed-output hash
   after the same lockfile authority update.
 - **@overeng/megarepo / Nix**: Refresh the packaged CLI pnpm fixed-output hash
-  for Linux after the pnpm 11.8 alignment work, while preserving the current
-  Darwin value until a Darwin builder can re-measure it.
+  for Linux after the pnpm 11.8 and Genie runtime dependency alignment work,
+  while preserving the current Darwin value until a Darwin builder can
+  re-measure it.
 
 - **genie semantic-conventions encoder-equivalence proof — consolidated / @overeng/otel-contract**:
   Retired the 13 per-namespace `*.observability.equivalence.unit.test.ts` bridges in favor of one
