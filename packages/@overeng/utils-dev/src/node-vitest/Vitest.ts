@@ -61,6 +61,16 @@ export interface OtelVitestConfig {
   endpoint?: string
   /** Tracer export interval in milliseconds. @default 250 */
   exportInterval?: number
+  /**
+   * Exporter shutdown/flush timeout in milliseconds. On a fast test the periodic
+   * interval never ticks, so every product span rides the per-test scope-close
+   * flush — which `@effect/opentelemetry` bounds by this timeout and, on expiry,
+   * INTERRUPTS mid-POST and drops the spans silently (via `Effect.ignore`). The
+   * `@effect/opentelemetry` default is 3s; the native runner SDK uses 10s, so a
+   * slow collector could drop product spans while runner spans survive. Kept
+   * above 10s so both lanes tolerate the same round-trip. @default 15000
+   */
+  shutdownTimeout?: number
 }
 
 /**
@@ -96,6 +106,7 @@ export const makeOtelVitestLayer = (
     endpointEnvVar = 'OTEL_EXPORTER_OTLP_ENDPOINT',
     endpoint: explicitEndpoint,
     exportInterval = 250,
+    shutdownTimeout = 15_000,
     rootSpanName,
   } = config
 
@@ -113,6 +124,9 @@ export const makeOtelVitestLayer = (
       url: otlpTracesUrl(endpoint),
       resource: { serviceName },
       exportInterval,
+      // Bounds the scope-close flush; above the native runner SDK's 10s so a slow
+      // collector doesn't silently drop product spans while runner spans survive.
+      shutdownTimeout,
     }).pipe(
       Layer.provideMerge(FetchHttpClient.layer),
       Layer.provideMerge(OtlpSerialization.layerJson),
