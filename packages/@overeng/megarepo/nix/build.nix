@@ -14,6 +14,9 @@
 let
   pnpm = import ../../../../nix/pnpm.nix { inherit pkgs; };
   mkPnpmCli = import ../../../../nix/workspace-tools/lib/mk-pnpm-cli.nix { inherit pkgs pnpm; };
+  mkHash = hashes: {
+    hash = hashes.${pkgs.stdenv.hostPlatform.system} or hashes.x86_64-linux;
+  };
   opentuiCoreNative = import ../../../../nix/opentui-core-native.nix { inherit pkgs; };
   base = mkPnpmCli {
     name = "megarepo";
@@ -23,8 +26,10 @@ let
     workspaceRoot = src;
     # Managed by the repo FOD refresh workflow — do not edit manually.
     depsBuilds = {
-      "." = {
-        hash = "sha256-7GIuaFRe7q7SHHHtZsSGbUTtVi+oDCSrrMUKEyCadJU=";
+      "." = mkHash {
+        aarch64-darwin = "sha256-5G6K2gToD59ZbVoGfrQ0M0M1L+pR0R4LCTKl/MsYquI=";
+        aarch64-linux = "sha256-y3VAOXfrSCx7IkiswTRcz/OhL60F8xpLBLekcxdh/Qo=";
+        x86_64-linux = "sha256-y3VAOXfrSCx7IkiswTRcz/OhL60F8xpLBLekcxdh/Qo=";
       };
     };
     nativeNodePackages = opentuiCoreNative.packages;
