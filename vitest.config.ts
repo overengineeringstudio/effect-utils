@@ -26,11 +26,27 @@ const projects = projectRoots.map((root) =>
     : { root, test: { exclude, server: { deps: { inline: inlineDeps } } } },
 )
 
+// Native Vitest OTEL (runner-mechanics span tree) is enabled when a collector
+// context is present — the devenv test task sets VITEST_OTEL_RUNNER=1 so the run
+// nests under the ambient devenv/CI task trace (via TRACEPARENT). Off for bare
+// local/interactive runs (no collector, watch-mode latency).
+const otelRunnerEnabled = process.env.VITEST_OTEL_RUNNER === '1'
+
 // We mostly have this file for VSC test explorer support
 export default defineConfig({
   test: {
     exclude,
     server: { deps: { inline: inlineDeps } },
+    ...(otelRunnerEnabled === true
+      ? {
+          experimental: {
+            openTelemetry: {
+              enabled: true,
+              sdkPath: './packages/@overeng/utils-dev/src/node-vitest/otel-sdk.mjs',
+            },
+          },
+        }
+      : {}),
     projects,
   },
 })

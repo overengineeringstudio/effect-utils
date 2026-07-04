@@ -19,6 +19,15 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **utils-dev / otel**: native Vitest OTEL runner coverage + Effect-span bridge.
+  A shared `experimental.openTelemetry` `sdkPath` module (`node-vitest/otel-sdk.mjs`,
+  NodeTracerProvider + batch OTLP/HTTP exporter) emits Vitest's runner-mechanics
+  span tree, gated on `VITEST_OTEL_RUNNER=1` in the root `vitest.config.ts`.
+  `withTestCtx` now seeds Vitest's active per-test span as the Effect parent
+  (`bridgeVitestParent`) so harness/product spans nest under the runner callback
+  span; the otelite capture lane provides a `SuppressVitestParentBridge` marker
+  to keep captured product spans root and deterministic. Adds runtime deps
+  `@opentelemetry/{api,sdk-trace-base,sdk-trace-node,exporter-trace-otlp-http}`.
 - **devenv / otel**: `otel-run` — a `time`-like wrapper that runs any command
   under a fresh root trace and prints its Grafana URL. Derives the root label
   from argv (`devenv tasks run X` → `X`), mints a fresh trace id (`--join` to

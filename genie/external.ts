@@ -184,6 +184,9 @@ export const catalog = defineCatalog({
   // which @restatedev/restate-sdk-opentelemetry@1.14.5 requires as a peer.
   // @effect/opentelemetry@0.63 accepts ^2.0.0, so utils + restate-effect both stay compatible.
   '@opentelemetry/api': '1.9.1',
+  // OTLP/HTTP trace exporter for the shared Vitest native-OTEL sdkPath module
+  // (utils-dev). Experimental 0.219.0 line, matching sdk-logs 0.219.0; peer api ^1.3.0.
+  '@opentelemetry/exporter-trace-otlp-http': '0.219.0',
   '@opentelemetry/resources': '2.8.0',
   '@opentelemetry/sdk-logs': '0.219.0',
   '@opentelemetry/sdk-metrics': '2.8.0',

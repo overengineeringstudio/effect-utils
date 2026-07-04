@@ -16,8 +16,24 @@ const peerDepNames = [
   'vitest',
 ] as const
 
+/**
+ * Runtime deps the test harness itself pulls in (not consumer-provided peers):
+ * the Vitest native-OTEL `sdkPath` module builds a NodeTracerProvider + OTLP
+ * exporter, and the Vitest→Effect parent bridge reads the active span via the
+ * OpenTelemetry API.
+ */
+const otelRuntimeDepNames = [
+  '@opentelemetry/api',
+  '@opentelemetry/sdk-trace-base',
+  '@opentelemetry/sdk-trace-node',
+  '@opentelemetry/exporter-trace-otlp-http',
+] as const
+
 const deps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/utils-dev' }),
+  dependencies: {
+    external: catalog.pick(...otelRuntimeDepNames),
+  },
   devDependencies: {
     external: {
       ...catalog.pick(...peerDepNames, '@types/node', 'typescript'),

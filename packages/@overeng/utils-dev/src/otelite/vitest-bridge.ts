@@ -25,7 +25,7 @@
 import { NodeContext } from '@effect/platform-node'
 import { Context, Effect, Layer } from 'effect'
 
-import { makeOtelVitestLayer } from '../node-vitest/Vitest.ts'
+import { makeOtelVitestLayer, SuppressVitestParentBridge } from '../node-vitest/Vitest.ts'
 import type { OteliteCliError, OteliteDecodeError, OteliteSpawnError } from './errors.ts'
 import { Otelite } from './Otelite.ts'
 import type { CaptureHandle, CaptureOptions } from './Otelite.ts'
@@ -110,7 +110,13 @@ export const makeOteliteCaptureLayer = (
     ),
   )
 
-  return exporterLayer.pipe(Layer.provideMerge(handleLayer))
+  // Suppress the withTestCtx Vitest→Effect parent bridge so captured product
+  // spans stay ROOT and deterministic, regardless of whether native Vitest OTEL
+  // is enabled for this run.
+  return exporterLayer.pipe(
+    Layer.provideMerge(handleLayer),
+    Layer.provideMerge(Layer.succeed(SuppressVitestParentBridge, true as const)),
+  )
 }
 
 /**
