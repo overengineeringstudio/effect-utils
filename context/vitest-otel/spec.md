@@ -131,18 +131,39 @@ makeOteliteCaptureLayer()
 - `bridgeVitestParent` checks it via `Effect.serviceOption`; when present the
   seed is skipped and captured product spans stay root (R10).
 
+## Product-span export reliability
+
+Product spans use the per-test, independent `OtlpTracer` (own `service.name`,
+own target, isolated from the otelite lane). On a fast test the only flush is the
+scope-close finalizer, bounded by `shutdownTimeout`; the `@effect/opentelemetry`
+default (3s) silently drops spans mid-POST under a slow collector while the
+native runner SDK (10s) survives. The harness raises `shutdownTimeout` to 15s so
+both lanes tolerate the same round-trip. The full a/b/c/d design study, source
+root cause, and benchmark are in
+[.decisions/0002-product-span-export-reliability.md](./.decisions/0002-product-span-export-reliability.md);
+routing product spans through the global provider (option b) is rejected there
+(misattribution + nesting loss + violates R08/T01).
+
 ## Design questions
 
-- **DQ1 — Should product export ever be default-on under devenv/CI?** Current
-  spec keeps per-test product export opt-in (T02) on trace-volume grounds.
-  Resolving this needs a measured volume/value assessment on a representative
-  CI run.
-- **DQ2 — The `Layer.span` root span does not reach the exporter.** In the
-  export lane the harness's own per-test root span (`makeOtelVitestLayer`'s
-  `Layer.span(rootSpanName)`) was not observed in the exported spans, though the
-  product spans under it nest correctly. Likely a tracer-init ordering nuance in
-  `makeOtelVitestLayer`. Orthogonal to nesting; resolving it would make the
-  per-test root span itself visible in the collector.
+- **DQ1 — Should product export be default-on under devenv/CI?** Product export
+  is reliable and cheap against the *local* collector (~1–2 ms/test, 100%
+  delivery — see 0002), so the constraint is remote-collector trace **volume**,
+  not local viability. Resolving this needs a measured volume/value +
+  tail-sampling assessment on a representative remote CI run.
+- **DQ2 — The `Layer.span` root span does not reach the exporter.** The harness's
+  own per-test root span (`makeOtelVitestLayer`'s `Layer.span(rootSpanName)`) is
+  not observed in the exported spans, though product spans under it share the run
+  traceId. Likely a tracer-init ordering nuance; orthogonal to nesting.
 - **DQ3 — sdkPath as `.ts` vs `.mjs`.** `.mjs` sidesteps Vitest's TS-transform
   caveat for sdkPath modules; whether a typed `.ts` sdkPath is worth the setup
   is open.
+- **DQ4 — When (if ever) to adopt option (d)?** A `sdkPath`-owned, worker-scoped
+  exporter gives one batched teardown flush (no per-test blocking) but trades
+  per-test for per-worker delivery blast radius plus a worker-global singleton
+  (0002). Warranted only if a remote-collector, high-volume regime makes (a)'s
+  per-test blocking (wall ≈ N×RTT) a real suite-time cost.
+- **DQ5 — The 250ms `exportInterval` drop race.** For a test longer than the
+  interval, a periodic export in-flight at scope close is interrupted and those
+  spans are lost. Fast tests never hit it; a larger `exportInterval` (past any
+  test duration) would close it at the cost of buffering until scope close.
