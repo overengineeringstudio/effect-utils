@@ -28,7 +28,7 @@ one container rather than one store:
 Session/root state therefore reuses the **span model**, not CAS — a persisted
 open span is the wrong shape for content-addressing (its content changes under a
 stable identity, the opposite of a write-once digest). The persisted open span
-*is* the no-daemon realization: no resident process holds the root; the file is
+_is_ the no-daemon realization: no resident process holds the root; the file is
 the only shared state.
 
 **Consequences:**

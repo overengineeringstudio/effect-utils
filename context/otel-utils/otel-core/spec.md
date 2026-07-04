@@ -57,10 +57,10 @@ encode attribute data, not a fixed vocabulary.
 `otel-core` is extracted from `otel-scrape`'s private implementation. The order
 is a dependency layering, not a schedule:
 
-| Layer | Primitives | Dependency |
-| ----- | ---------- | ---------- |
-| Registry-agnostic | `content_address`, `context`, `wrap` | Extract cleanly; no encoder dependency. |
-| Weaver-native | `export`, `span` (vocabulary), `trust` | Fold in behind the generated Rust encoder (decision 0003). |
+| Layer             | Primitives                             | Dependency                                                 |
+| ----------------- | -------------------------------------- | ---------------------------------------------------------- |
+| Registry-agnostic | `content_address`, `context`, `wrap`   | Extract cleanly; no encoder dependency.                    |
+| Weaver-native     | `export`, `span` (vocabulary), `trust` | Fold in behind the generated Rust encoder (decision 0003). |
 
 The registry-agnostic primitives carry no telemetry vocabulary and move first
 because they have no encoder dependency. The weaver-native primitives encode

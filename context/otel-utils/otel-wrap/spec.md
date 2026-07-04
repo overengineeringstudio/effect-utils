@@ -77,15 +77,15 @@ open between `begin` and `end`.
 
 ## Composition Map
 
-| `otel-wrap` behavior | `otel-core` primitive |
-| -------------------- | --------------------- |
-| Command wrap, passthrough, disabled transparency | `otel_core::wrap` (requirement R03/R05) |
-| Root-or-join | `otel_core::context` mint/join precedence (R04) |
-| Command span + attributes | `otel_core::span` |
-| Emission | `otel_core::export` behind the serializer seam |
-| Root-mint surfacing | `otel_core::surface` (terminal-only, R06) |
-| `root begin|end` state | `otel_core::state_dir` `sessions/` + `otel_core::span` (R07) |
-| Public-safe sinks | `otel_core::trust` (R08) |
+| `otel-wrap` behavior                             | `otel-core` primitive                           |
+| ------------------------------------------------ | ----------------------------------------------- | ------------------------------------------------------------ |
+| Command wrap, passthrough, disabled transparency | `otel_core::wrap` (requirement R03/R05)         |
+| Root-or-join                                     | `otel_core::context` mint/join precedence (R04) |
+| Command span + attributes                        | `otel_core::span`                               |
+| Emission                                         | `otel_core::export` behind the serializer seam  |
+| Root-mint surfacing                              | `otel_core::surface` (terminal-only, R06)       |
+| `root begin                                      | end` state                                      | `otel_core::state_dir` `sessions/` + `otel_core::span` (R07) |
+| Public-safe sinks                                | `otel_core::trust` (R08)                        |
 
 `otel-wrap` adds no primitive; every row is a composition (family requirement
 R01/R14).
