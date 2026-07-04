@@ -209,8 +209,9 @@ All notable changes to this project will be documented in this file.
   still being owned by the Nix package. The derivation also emits
   `share/genie/build-identity.json` so consumers can guard that their devenv
   tasks are using the flake-pinned package revision. Genie's runtime dependency
-  graph now also declares `fast-check`, which Effect's Schema/FastCheck module
-  imports during source-mode CLI startup.
+  graph now also declares `fast-check` and `@effect/platform-node-shared`, which
+  source-mode CLI startup reaches through Effect Schema/FastCheck and
+  `@effect/platform-node`.
 - **Nix packages**: Refresh the `oxc-config` plugin pnpm fixed-output hash after
   the lockfile authority update for Genie's runtime dependency graph.
 - **@overeng/ci-tools / Nix**: Refresh the packaged CLI pnpm fixed-output hash

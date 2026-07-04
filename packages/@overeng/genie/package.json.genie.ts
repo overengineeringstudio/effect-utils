@@ -25,6 +25,7 @@ const supportDeps = catalog.compose({
         '@effect/cli',
         '@effect/platform',
         '@effect/platform-node',
+        '@effect/platform-node-shared',
         '@effect/printer',
         '@effect/printer-ansi',
         '@effect/vitest',

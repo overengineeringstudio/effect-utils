@@ -201,6 +201,7 @@ export const catalog = defineCatalog({
   effect: '3.21.4',
   '@effect/platform': '0.96.2',
   '@effect/platform-node': '0.107.0',
+  '@effect/platform-node-shared': '0.60.0',
   '@effect/cli': '0.75.2',
   '@effect/vitest': '0.29.0',
   '@effect/printer': '0.49.0',
