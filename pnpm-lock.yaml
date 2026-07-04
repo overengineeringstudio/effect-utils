@@ -544,6 +544,9 @@ importers:
       react-reconciler:
         specifier: 0.33.0
         version: 0.33.0(react@19.2.7)
+      strip-ansi:
+        specifier: 7.2.0
+        version: 7.2.0
       toml:
         specifier: 3.0.0
         version: 3.0.0

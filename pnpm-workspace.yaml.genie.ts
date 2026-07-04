@@ -22,6 +22,16 @@ export default pnpmWorkspaceYaml.root({
       issue: '#821',
     },
     {
+      package: 'strip-ansi',
+      // @opentui/core@0.4.1 (latest) pins strip-ansi@7.1.2 exactly while
+      // the catalog tracks 7.2.0 for direct consumers. Keep the catalog current
+      // for Genie's runtime closure, and do not force the renderer's dependency
+      // graph until OpenTUI moves.
+      reason:
+        '@opentui/core@0.4.1 exact-pins strip-ansi@7.1.2; not force-overridden because it is part of the upstream terminal renderer dependency graph',
+      issue: '#821',
+    },
+    {
       package: 'ws',
       // react-devtools-core@7.0.1 exact-pins ws@7.5.10, so pnpm dedupe cannot
       // collapse it onto the catalog 8.x. Keep the catalog on ws 8.x for our

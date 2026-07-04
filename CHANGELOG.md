@@ -215,8 +215,9 @@ All notable changes to this project will be documented in this file.
   as direct runtime dependencies because Effect's platform/cluster startup
   imports the SQL migrator surface, and printer-ansi imports typeclass, in
   source-package execution. The root pnpm duplicate guard also documents the
-  upstream-locked `react-devtools-core@7.0.1` `ws@7.5.10` duplicate instead of
-  force-overriding that devtools transport dependency.
+  upstream-locked `react-devtools-core@7.0.1` `ws@7.5.10` and
+  `@opentui/core@0.4.1` `strip-ansi@7.1.2` duplicates instead of
+  force-overriding those upstream dependency graphs.
 - **@overeng/genie / Nix**: Add the missing Effect Platform / Effect CLI
   runtime import closure (`multipasta`, `msgpackr`, `find-my-way-ts`,
   `@parcel/watcher`, `mime`, `undici`, `uuid`, `ws`, `ini`, `toml`, `yaml`) to

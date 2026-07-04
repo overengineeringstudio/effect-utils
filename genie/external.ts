@@ -331,6 +331,7 @@ export const catalog = defineCatalog({
   '@types/react-reconciler': '0.33.0',
   'yoga-layout': '3.2.1',
   'string-width': '8.2.1',
+  'strip-ansi': '7.2.0',
   'cli-truncate': '6.0.0',
 
   // AI agent tooling
