@@ -332,6 +332,7 @@ export const catalog = defineCatalog({
   'yoga-layout': '3.2.1',
   'get-east-asian-width': '1.5.0',
   'string-width': '8.2.1',
+  'slice-ansi': '9.0.0',
   'strip-ansi': '7.2.0',
   'cli-truncate': '6.0.0',
 
