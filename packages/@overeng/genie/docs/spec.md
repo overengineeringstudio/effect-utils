@@ -183,6 +183,26 @@ This means Genie can resolve `#mr/...` imports against the lock-pinned global me
 
 Genie does not materialize missing megarepo members itself. Repository task wiring is responsible for ensuring required bootstrap members exist before Genie-backed tasks run.
 
+## Bootstrap-Safe Import-Closure Check
+
+Satisfies R06 (runtime independence of the transitive closure) and R30 (bootstrap-closure enforcement). The check walks the transitive _runtime_ import closure of every `.genie.ts` source and reports any source that reaches a package unavailable before install, with the importer chain.
+
+**Walk.** For each `.genie.ts` root, a breadth-first walk follows only bootstrap-safe edges. Edges are extracted per file with the TypeScript parser (`ts.createSourceFile`) — the reused, authoritative parser — covering `import`/`export … from`, `export *`, and dynamic `import('…')` with a string-literal argument. The per-file edge set is memoized globally, since the runtime graph is identical across roots.
+
+**Resolution.** The check reuses genie's own resolvers so a specifier resolves exactly as it does at bootstrap: `#`/`#mr` specifiers go through {@link resolveImportMapSpecifierForImporterSync} (lock-pinned member identity, per _Import Resolution_ above); relative specifiers go through `ts.resolveModuleName`. Bare specifiers are never resolved — they are closure boundaries, not edges — so the check never descends into `node_modules` and has no dependency on install state.
+
+**Policy.** An edge is a violation iff its specifier is a bare package name — not relative, not a `#`/`#mr` import-map specifier, and not a node builtin (with or without the `node:` prefix; builtins are always importable pre-install). Consequences:
+
+- First-party source reached via relative / `#` / `#mr` paths is allowed (it resolves to on-disk `.ts`).
+- A bare first-party workspace specifier (e.g. `@overeng/ci-tools`) IS a violation, because a bare specifier is not resolvable before install; cross-package generator imports must use a relative path or `#mr`.
+- **Type-only edges are excluded** — `import type`, `export type`, `export type *`, and fully per-specifier `{ type X }` — because they are erased at runtime.
+
+**Diagnostic.** Each violation reports the importer chain `source -> barrel -> runtime -> pkg` from the generator source down to the offending import.
+
+**Enforcement (baseline + ratchet).** Pre-existing violations are captured in a committed baseline of source paths so the gate is green today; only _new_ violations fail. The check warns on stale baseline entries (a baselined source that no longer violates) so the baseline ratchets down as violations are fixed. It runs as a devenv task (`bootstrap-closure:check`) wired into `check:all` (not `check:quick`) — an existing check-flow surface, not a new Genie CLI subcommand. The `checkBootstrapClosure` walker is exported from `@overeng/genie/node`, so downstream megarepo members can enforce the same contract over their own `.genie.ts` (whose closures do reach into effect-utils via `#mr/effect-utils/...`).
+
+Relates to DQ1: this is the validate-only flavor of the preflight phase DQ1 anticipates; it detects unavailable closures but does not itself materialize members.
+
 ## Discovery and Validation
 
 The core pipeline begins by recursively discovering `*.genie.ts` files beneath the working directory.

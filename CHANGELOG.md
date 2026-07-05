@@ -84,7 +84,7 @@ All notable changes to this project will be documented in this file.
   - `overeng/otel-contract-in-seam-file` oxlint rule (WARN-only) + the no-orphan-seam aggregator
     check make contract discoverability structural (decision 0005).
 - **genie semantic-conventions Rust target (M2) / @overeng/genie**: Finalized the Layer-1 Rust
-  emitter (`renderRustConstants`) for Rust telemetry *producers* (decision 0007). Emits idiomatic,
+  emitter (`renderRustConstants`) for Rust telemetry _producers_ (decision 0007). Emits idiomatic,
   deterministic (sorted), rustfmt-clean const modules — separate `attribute` / `span` / `metric`
   modules (collision-proof by construction) with a `pub const <SCREAMING_SNAKE>: &str` per name
   plus an `ALL: &[&str]` slice — covering own attribute keys, span ids, and metric names. Wired one
@@ -114,7 +114,7 @@ All notable changes to this project will be documented in this file.
   constant) and blocks a PR that REMOVES a shipped attribute/signal; it is JSON-payload based
   (`--format json`, block on `changes.*[].type == "removed"`) because `weaver registry diff` exits
   0 even for breaking changes. A rename recorded weaver-native — old key retained + `deprecated:
-  { reason: renamed, renamed_to }` — surfaces as `type: "renamed"` and passes with no custom gate
+{ reason: renamed, renamed_to }` — surfaces as `type: "renamed"` and passes with no custom gate
   logic (decision 0009). `weaver:live-check` (SC-R12) captures registry-conformant OTLP emitted
   from a first-party site and asserts `weaver registry live-check` accepts it. Both degrade to a
   warning when weaver/git is unavailable (GEN-R09); `weaver:diff` joins `check:all`, `live-check`
