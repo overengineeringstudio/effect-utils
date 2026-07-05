@@ -67,6 +67,7 @@ let
     megarepo = import ./nix/devenv-modules/tasks/shared/megarepo.nix;
     nix-cli = import ./nix/devenv-modules/tasks/shared/nix-cli.nix;
     secretspec = import ./nix/devenv-modules/tasks/shared/secretspec.nix;
+    bootstrap-closure = import ./nix/devenv-modules/tasks/shared/bootstrap-closure.nix;
     weaver = import ./nix/devenv-modules/tasks/shared/weaver.nix;
     weaver-diff = import ./nix/devenv-modules/tasks/shared/weaver-diff.nix;
     weaver-live-check = import ./nix/devenv-modules/tasks/shared/weaver-live-check.nix;
@@ -371,6 +372,11 @@ in
     # Wire the additive weaver gate into `check:all` only (not `check:quick`, which stays fast):
     # `after` list options merge across modules, so this appends without redefining check:all.
     { tasks."check:all".after = [ "weaver:check" ]; }
+    # Bootstrap-safe import-closure gate (issue #884): fails on NEW violations where a `.genie.ts`
+    # transitively reaches a runtime-only package (breaking `genie:run` on a fresh pre-install clone).
+    # Baseline + ratchet keeps it green today; wired into `check:all` only (kept out of `check:quick`).
+    (taskModules.bootstrap-closure { })
+    { tasks."check:all".after = [ "bootstrap-closure:check" ]; }
     # Compat-diff gate (SC-R11): blocks a PR that REMOVES a shipped registry attribute/signal.
     # PR-scoped (needs a merge-base baseline) — degrades to a warning locally on a fresh clone with
     # no `origin/main` merge-base; its load-bearing home is the CI `weaver` lane.

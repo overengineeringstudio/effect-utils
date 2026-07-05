@@ -28,6 +28,18 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **genie / check**: bootstrap-safe import-closure gate (`bootstrap-closure:check`).
+  A `.genie.ts` and everything it transitively imports at RUNTIME must be importable
+  from a fresh checkout BEFORE install; a generator that reaches a runtime-only
+  package (e.g. through a wide barrel that `export *`s a module importing `effect`)
+  breaks `genie:run` on a fresh clone. The shared `checkBootstrapClosure` walker
+  (reusing TypeScript's parser/resolver plus genie's own `#`/`#mr` resolution, and
+  excluding type-only edges) is exported from `@overeng/genie/node`; a bun entry
+  (`genie/ci-scripts/bootstrap-closure-check.ts`) runs it over every tracked
+  `.genie.ts` with a BASELINE + RATCHET policy — failing only on NEW violations vs
+  the committed `genie/bootstrap-closure-baseline.json` and warning on stale
+  baseline entries. Wired into `check:all` (not `check:quick`).
+
 - **devenv / otel**: `otel-run` — a `time`-like wrapper that runs any command
   under a fresh root trace and prints its Grafana URL. Derives the root label
   from argv (`devenv tasks run X` → `X`), mints a fresh trace id (`--join` to
