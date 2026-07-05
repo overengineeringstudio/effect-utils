@@ -36,6 +36,7 @@ import {
   recordObservations,
 } from '../../../lib/store-gc-observations.ts'
 import { validateStoreMembers, fixStoreIssues } from '../../../lib/store-hygiene.ts'
+import { readWorktreeInUse, type InUseHolder } from '../../../lib/store-inuse.ts'
 import {
   collectStoreLiveSet,
   isPathProtected,
@@ -577,6 +578,50 @@ const reReconcileLiveSet = ({
   })
 
 /**
+ * In-use veto re-check for a destructive archive/reap site (orthogonal to the
+ * live-set veto).
+ *
+ * The live-set veto (`isPathProtected`) only asks whether the worktree is in
+ * some workspace's reconciled manifest. This asks the strictly stronger,
+ * independent question — is a live OS process actually working inside it (cwd /
+ * open file) — so a worktree that is absent from every manifest but actively
+ * occupied by a session is still kept.
+ *
+ * Conservative direction: a host without `/proc` reports `unknown`, which is
+ * treated as in-use (KEEP). Returns `Some(holder)` when the site must KEEP and
+ * skip the destructive step; `None` when it is safe to proceed. On a real veto
+ * the holding `pid`/`path` are recorded on a `megarepo/store/gc/inuse-veto` span
+ * for attribution.
+ */
+const inUseVeto = ({
+  worktreePath,
+}: {
+  worktreePath: AbsoluteDirPath
+}): Effect.Effect<Option.Option<InUseHolder>, never, FileSystem.FileSystem> =>
+  Effect.gen(function* () {
+    const result = yield* readWorktreeInUse({ worktreePath })
+    if (result._tag === 'free') return Option.none()
+    const holder: InUseHolder =
+      result._tag === 'in-use'
+        ? result.holder
+        : // `unknown` (no /proc): keep conservatively; attribute the reason as the
+          // holder path so the veto span still carries why we kept.
+          { pid: -1, path: `unknown: ${result.reason}` }
+    yield* LibObservability.withInUseVetoSpan({
+      worktreePath,
+      holderPid: holder.pid,
+      holderPath: holder.path,
+    })(Effect.void)
+    return Option.some(holder)
+  })
+
+/** Render an in-use holder into the free-form `message` detail for a kept result. */
+const inUseMessage = (holder: InUseHolder): string =>
+  holder.pid >= 0
+    ? `live process pid ${holder.pid} has cwd/handle inside the worktree (${holder.path})`
+    : `in-use state could not be determined, kept conservatively (${holder.path})`
+
+/**
  * Cold reclamation for ONE repo's named worktrees (decisions 0001–0010).
  *
  * Fetch the bare first (failure ⇒ keep ALL this repo's named worktrees — the
@@ -777,6 +822,12 @@ const coldReclaimRepo = ({
               ) {
                 return { _tag: 'kept-live' as const }
               }
+              // Orthogonal in-use veto: refuse to move the directory out from
+              // under a live process whose cwd/handle is inside it.
+              const holder = yield* inUseVeto({ worktreePath: worktree.path })
+              if (Option.isSome(holder) === true) {
+                return { _tag: 'kept-in-use' as const, holder: holder.value }
+              }
               const outcome = yield* archiveRefMismatchWorktree({
                 repoRoot: repoFullPath,
                 bareRepoPath,
@@ -804,6 +855,16 @@ const coldReclaimRepo = ({
 
         if (archiveOutcome._tag === 'kept-live') {
           results.push(keepRefMismatch(`HEAD is '${actualHeadBranch}' and path is live`))
+        } else if (archiveOutcome._tag === 'kept-in-use') {
+          results.push(
+            coldResult({
+              target,
+              status: 'kept',
+              reason: 'process-in-use',
+              message: inUseMessage(archiveOutcome.holder),
+              ...refMismatchMeta,
+            }),
+          )
         } else if (archiveOutcome._tag === 'error') {
           results.push(
             coldResult({
@@ -891,6 +952,12 @@ const coldReclaimRepo = ({
             if (isPathProtected({ liveSet: freshLiveSet, path: worktree.path }) === true) {
               return { _tag: 'kept-live' as const }
             }
+            // Orthogonal in-use veto: refuse to archive a worktree a live
+            // process is currently working inside (cwd/handle).
+            const holder = yield* inUseVeto({ worktreePath: worktree.path })
+            if (Option.isSome(holder) === true) {
+              return { _tag: 'kept-in-use' as const, holder: holder.value }
+            }
             const outcome = yield* archiveWorktree({
               repoRoot: repoFullPath,
               bareRepoPath,
@@ -918,6 +985,15 @@ const coldReclaimRepo = ({
 
       if (archiveOutcome._tag === 'kept-live') {
         results.push(coldResult({ target, status: 'kept', reason: 'live' }))
+      } else if (archiveOutcome._tag === 'kept-in-use') {
+        results.push(
+          coldResult({
+            target,
+            status: 'kept',
+            reason: 'process-in-use',
+            message: inUseMessage(archiveOutcome.holder),
+          }),
+        )
       } else if (archiveOutcome._tag === 'error') {
         // Only a PRE-move failure reaches here (post-move steps are best-effort
         // and reported as warnings, never errors), so the original worktree is
@@ -978,6 +1054,13 @@ const coldReclaimRepo = ({
             if (isPathProtected({ liveSet: freshLiveSet, path: entry.path }) === true) {
               return { _tag: 'kept-live' as const }
             }
+            // Orthogonal in-use veto: a session whose cwd followed an earlier
+            // archive rename can be sitting in the `.archive/` entry itself —
+            // reaping it would yank that cwd. Keep if a live process is inside.
+            const holder = yield* inUseVeto({ worktreePath: entry.path })
+            if (Option.isSome(holder) === true) {
+              return { _tag: 'kept-in-use' as const, holder: holder.value }
+            }
             yield* reapArchive({ bareRepoPath, path: entry.path })
             return { _tag: 'reaped' as const }
           }),
@@ -993,6 +1076,15 @@ const coldReclaimRepo = ({
 
       if (reapOutcome._tag === 'kept-live') {
         results.push(coldResult({ target: reapTarget, status: 'kept', reason: 'live' }))
+      } else if (reapOutcome._tag === 'kept-in-use') {
+        results.push(
+          coldResult({
+            target: reapTarget,
+            status: 'kept',
+            reason: 'process-in-use',
+            message: inUseMessage(reapOutcome.holder),
+          }),
+        )
       } else if (reapOutcome._tag === 'error') {
         results.push(
           coldResult({

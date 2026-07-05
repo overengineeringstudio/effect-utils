@@ -68,6 +68,12 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **@overeng/megarepo**: Guard `mr store gc` archive/reap paths with an
+  orthogonal live-process in-use veto. Before moving or deleting a worktree, GC
+  now checks whether a live process has its cwd or handle inside the worktree and
+  keeps it with reason `process-in-use`; hosts without `/proc` keep
+  conservatively.
+
 - **genie semantic-conventions encoder-equivalence proof — consolidated / @overeng/otel-contract**:
   Retired the 13 per-namespace `*.observability.equivalence.unit.test.ts` bridges in favor of one
   strengthened mechanism proof over the `./registry` seam (`registry.unit.test.ts` +

@@ -575,6 +575,10 @@ in
     cwd = "packages/@overeng/megarepo";
     exec = ''
       set -euo pipefail
+      if [ "$(uname -s)" != "Linux" ]; then
+        echo "Skipping megarepo cold-GC archive/reap integration tests: process in-use guard requires /proc"
+        exit 0
+      fi
       source ${lib.escapeShellArg pnpmTaskHelpersScript}
       export MEGAREPO_GIT_COMMAND_TIMEOUT_MS="5000"
       run_package_bin vitest vitest run src/cli/store-gc-cold.integration.test.ts --reporter verbose --testTimeout 240000
