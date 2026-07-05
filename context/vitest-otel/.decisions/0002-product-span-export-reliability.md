@@ -36,16 +36,16 @@ delivers; RTT=4s → dropped (exact F4 signature).
 
 Product spans = 2/test; RTT = injected per-flush collector delay.
 
-| regime | (a) per-test own | (c/d) worker-scoped | (b) global provider |
-| --- | --- | --- | --- |
-| local (RTT≈0) | 100%, ~1–2 ms/test | 100%, 1 flush, ~5× less wall | 100% but **nest 0%, svc=`vitest-runner`, N root traces** |
-| slow (RTT>3s) | 0% (interrupt), blocks N×RTT | 0% **all-or-nothing** (loses whole worker) | — |
-| failure granularity | per-**test** | per-**worker** | — |
+| regime              | (a) per-test own             | (c/d) worker-scoped                        | (b) global provider                                      |
+| ------------------- | ---------------------------- | ------------------------------------------ | -------------------------------------------------------- |
+| local (RTT≈0)       | 100%, ~1–2 ms/test           | 100%, 1 flush, ~5× less wall               | 100% but **nest 0%, svc=`vitest-runner`, N root traces** |
+| slow (RTT>3s)       | 0% (interrupt), blocks N×RTT | 0% **all-or-nothing** (loses whole worker) | —                                                        |
+| failure granularity | per-**test**                 | per-**worker**                             | —                                                        |
 
 - The devenv default points product export at a **local** collector
   (`nix/devenv-modules/otel.nix:414`); only `OTEL_MODE=system` points remote. So
   the common case is RTT≈0, where **(a) delivers 100% at ~1–2 ms/test**.
-- **(c) is only implementable as (d).** The only worker-scoped, Vitest-*awaited*
+- **(c) is only implementable as (d).** The only worker-scoped, Vitest-_awaited_
   flush seam is the `sdkPath` module's `shutdown()` (`init.d4hAcNdp.js:220,348`);
   `setupFiles` `afterAll` is per-file, `globalSetup` teardown is main-process. A
   worker-scoped own exporter would therefore be a worker-global singleton whose

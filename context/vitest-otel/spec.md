@@ -147,7 +147,7 @@ routing product spans through the global provider (option b) is rejected there
 ## Design questions
 
 - **DQ1 — Should product export be default-on under devenv/CI?** Product export
-  is reliable and cheap against the *local* collector (~1–2 ms/test, 100%
+  is reliable and cheap against the _local_ collector (~1–2 ms/test, 100%
   delivery — see 0002), so the constraint is remote-collector trace **volume**,
   not local viability. Resolving this needs a measured volume/value +
   tail-sampling assessment on a representative remote CI run.
