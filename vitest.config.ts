@@ -2,7 +2,14 @@ import { existsSync, readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { defineConfig } from 'vitest/config'
+import type { ViteUserConfig } from 'vitest/config'
+
+// NOTE: the workspace root has no vitest of its own (per-package installs), so
+// importing the `defineConfig` VALUE from 'vitest/config' is unresolvable when a
+// package's vitest loads this root config from repo root. A type-only import is
+// erased at runtime, and this local identity keeps the same authoring ergonomics
+// without the unresolved-import warning.
+const defineConfig = (config: ViteUserConfig): ViteUserConfig => config
 
 const rootDir = fileURLToPath(new URL('.', import.meta.url))
 const packagesRoot = resolve(rootDir, 'packages', '@overeng')

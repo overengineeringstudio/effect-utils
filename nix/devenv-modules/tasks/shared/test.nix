@@ -63,20 +63,60 @@ let
   # human reporter output stays on the terminal unchanged. `run_package_bin` is a
   # shell function, so it is resolved to a real bin path first (experiment 0007)
   # and otel-scrape wraps that path directly.
+  #
+  # R01 — native Vitest runner OTEL (the `vitest.*` runner-mechanics span tree) is
+  # enabled by exporting VITEST_OTEL_RUNNER=1, which flips the root
+  # `vitest.config.ts` `experimental.openTelemetry` block on. We gate that on a
+  # collector context being present: the devenv OTEL module exports
+  # OTEL_EXPORTER_OTLP_ENDPOINT whenever a collector (local or system) is active,
+  # and the runner SDK is an OTLP/HTTP exporter, so an endpoint — not merely a
+  # spool dir — is the correct signal. Bare local runs and watch mode leave the
+  # endpoint unset, so runner OTEL stays absent there (spec A03).
+  vitestOtelRunnerGate = ''
+    if [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
+      export VITEST_OTEL_RUNNER=1
+    fi
+  '';
+
+  # F1/R02 — per-package tasks run the package's own vitest binary FROM THE REPO
+  # ROOT against the root `vitest.config.ts`, filtered to this package's project
+  # (`--project <package.json name>`). This makes the global
+  # `experimental.openTelemetry` block reach every package with zero per-package
+  # config edits, while the package's own project config still selects its tests
+  # and setup (only that project runs). The package's vitest binary and project
+  # name are resolved while cwd is still the package directory (the task cwd),
+  # then we cd to the repo root so vitest picks up the root config.
   vitestExec =
     {
       name,
       extraArgs ? "",
+      perPackage ? false,
     }:
-    ''
-      set -euo pipefail
-      source ${lib.escapeShellArg pnpmTaskHelpersScript}
-      ${trace.instr {
-        adapter = "vitest";
-        inherit name;
-      }}
-      "''${_otel_instr[@]}" "$(resolve_package_bin vitest vitest)" run --testTimeout 30000 --hookTimeout 30000 ${extraArgs}
-    '';
+    if perPackage then
+      ''
+        set -euo pipefail
+        source ${lib.escapeShellArg pnpmTaskHelpersScript}
+        ${vitestOtelRunnerGate}
+        _vitest_bin="$(resolve_package_bin vitest vitest)"
+        _project_name="$("''${NODE_BIN:-node}" -p "require('$PWD/package.json').name")"
+        ${trace.instr {
+          adapter = "vitest";
+          inherit name;
+        }}
+        cd "''${DEVENV_ROOT:-$PWD}"
+        "''${_otel_instr[@]}" "$_vitest_bin" run --project "$_project_name" --testTimeout 30000 --hookTimeout 30000 ${extraArgs}
+      ''
+    else
+      ''
+        set -euo pipefail
+        source ${lib.escapeShellArg pnpmTaskHelpersScript}
+        ${vitestOtelRunnerGate}
+        ${trace.instr {
+          adapter = "vitest";
+          inherit name;
+        }}
+        "''${_otel_instr[@]}" "$(resolve_package_bin vitest vitest)" run --testTimeout 30000 --hookTimeout 30000 ${extraArgs}
+      '';
   vitestWatchExec = ''
     set -euo pipefail
     source ${lib.escapeShellArg pnpmTaskHelpersScript}
@@ -106,6 +146,7 @@ let
         exec = trace.exec "test:${pkg.name}" (vitestExec {
           name = "test:${pkg.name}";
           extraArgs = pkg.vitestArgs or "";
+          perPackage = true;
         });
         cwd = pkg.path;
         execIfModified = [
