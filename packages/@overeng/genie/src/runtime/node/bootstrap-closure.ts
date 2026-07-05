@@ -104,9 +104,16 @@ const runtimeSpecifiersOf = ({
       const clause = node.importClause
       // `import type ...` (phaseModifier === TypeKeyword) is fully type-only; `import defer ...`
       // (DeferKeyword) is a runtime edge. `ImportClause.isTypeOnly` is deprecated in favor of `phaseModifier`.
+      // A value default binding (`import helper, { type X }`) or a namespace import (`import * as x`) is a
+      // runtime edge even when every named binding is inline-`type`, so those must NOT be skipped.
+      const hasValueDefault = clause?.name !== undefined
+      const isNamespaceImport =
+        clause?.namedBindings !== undefined && ts.isNamespaceImport(clause.namedBindings) === true
       const typeOnly =
         clause?.phaseModifier === ts.SyntaxKind.TypeKeyword ||
-        allNamedBindingsAreTypeOnly(clause?.namedBindings)
+        (hasValueDefault === false &&
+          isNamespaceImport === false &&
+          allNamedBindingsAreTypeOnly(clause?.namedBindings) === true)
       if (typeOnly === false) specifiers.push((node.moduleSpecifier as ts.StringLiteral).text)
     }
 

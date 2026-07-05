@@ -133,6 +133,28 @@ describe('checkBootstrapClosure', () => {
     expect(violations).toHaveLength(0)
   })
 
+  it('follows an import with a value default even when its named bindings are all inline-`type`', () => {
+    const dir = makeDir()
+    // `helper.ts` reaches a bare runtime-only package; the source imports it with a value default
+    // plus only inline-`type` named bindings — the default is a runtime edge and must be followed.
+    write(
+      dir,
+      'helper.ts',
+      `import { Effect } from 'effect'\nexport default Effect\nexport type Options = number`,
+    )
+    const source = write(
+      dir,
+      'default-plus-type.genie.ts',
+      `import helper, { type Options } from './helper.ts'\nexport default helper as unknown as Options`,
+    )
+
+    const { violations } = checkBootstrapClosure({ genieFiles: [source] })
+
+    expect(violations).toHaveLength(1)
+    expect(violations[0]!.specifier).toBe('effect')
+    expect(violations[0]!.chain).toEqual([source, path.join(dir, 'helper.ts')])
+  })
+
   it('detects a dynamic `import(...)` with a string-literal bare specifier as a violation', () => {
     const dir = makeDir()
     const source = write(

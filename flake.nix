@@ -251,6 +251,8 @@
           secretspec = import ./nix/devenv-modules/tasks/shared/secretspec.nix;
           # Prevent commits on default branch and optionally enforce worktree-only workflow
           worktree-guard = import ./nix/devenv-modules/tasks/shared/worktree-guard.nix;
+          # Bootstrap-safe import-closure gate; downstream members pass their own `entry` + baseline.
+          bootstrap-closure = import ./nix/devenv-modules/tasks/shared/bootstrap-closure.nix;
           # Note: local/ directory contains effect-utils specific tasks (not exported)
         };
       };
