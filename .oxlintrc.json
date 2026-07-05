@@ -179,6 +179,12 @@
       }
     },
     {
+      "files": ["**/genie/src/runtime/node/bootstrap-closure.ts"],
+      "rules": {
+        "overeng/no-external-imports": "off"
+      }
+    },
+    {
       "files": ["**/genie/**", "**/*.genie.ts", "**/examples/**"],
       "rules": {
         "overeng/jsdoc-require-exports": "off"

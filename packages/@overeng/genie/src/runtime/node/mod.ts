@@ -12,6 +12,14 @@
 export * from '../mod.ts'
 
 export { nodeGenieIO } from './io.ts'
+
+export {
+  checkBootstrapClosure,
+  formatViolationChain,
+  type BootstrapClosureResult,
+  type BootstrapClosureViolation,
+} from './bootstrap-closure.ts'
+
 export { nodePackageJsonValidationRuntime } from '../package-json/node/export-environments.ts'
 export { tsconfigJsonFromPackages } from './tsconfig-from-packages.ts'
 
