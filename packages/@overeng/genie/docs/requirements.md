@@ -59,12 +59,20 @@ may not yet be installed.
 
 - **R05 Pre-install availability:** Repositories must be able to invoke Genie
   before `pnpm install` or equivalent JavaScript dependency materialization.
-- **R06 Runtime independence:** Code imported directly by `.genie.ts` files
-  must remain usable without depending on an already-installed npm dependency
-  graph.
+- **R06 Runtime independence:** Every module in the _transitive_ runtime import
+  closure of a `.genie.ts` file — not only its direct imports — must remain
+  usable without depending on an already-installed npm dependency graph. In
+  particular, a generator source must not reach a runtime-only package through an
+  intermediate helper or a wide barrel that `export *`s runtime code.
 - **R07 Fresh-checkout safety:** A fresh checkout must be able to run Genie
   successfully once its declared non-JS prerequisites are available, without
   requiring a pre-existing generated state.
+- **R30 Bootstrap-closure enforcement:** Genie must be able to detect, before
+  generation, any `.genie.ts` whose transitive runtime import closure reaches a
+  package that is unavailable before install, and must report each violation as a
+  contract violation carrying the importer chain from the generator source to the
+  offending import (not an incidental package-resolution error). Type-only edges,
+  which are erased at runtime, are excluded from the closure.
 
 ### Must support repository and megarepo composition
 

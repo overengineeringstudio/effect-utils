@@ -49,3 +49,6 @@ devenv.local.*
 
 # Transient plugin-injected oxlint config (written by nix/oxlint-with-plugins.nix during lint)
 .oxlint-with-plugins.*
+
+# Agent-session MCP server config (e.g. coord/smalltalk); regenerated per session, not tracked
+.mcp.json
