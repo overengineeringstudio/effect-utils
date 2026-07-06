@@ -1,24 +1,24 @@
-# Bootstrap-safe import-closure gate (issue #884; BASELINE + RATCHET)
+# Bootstrap-safe import-closure gate (issue #884; SCOPED TO BOOTSTRAP-PHASE, ZERO-TOLERANCE)
 #
 # Usage in devenv.nix (effect-utils, default entry):
 #   imports = [ (inputs.effect-utils.devenvModules.tasks.bootstrap-closure {}) ];
 #
 # Downstream members must pass their own repo-relative `entry` (a bun script that imports
-# `checkBootstrapClosure` from `@overeng/genie/node` and applies its own committed baseline):
+# `checkBootstrapClosure` from `@overeng/genie/node` and scopes to its own bootstrap-phase set):
 #   imports = [ (inputs.effect-utils.devenvModules.tasks.bootstrap-closure { entry = "genie/bootstrap-closure-check.ts"; }) ];
 #
 # Provides: bootstrap-closure:check
 #
-# Runs the bun entry (default genie/ci-scripts/bootstrap-closure-check.ts) over every TRACKED
-# `.genie.ts` source. A generator source (and everything it transitively imports at RUNTIME)
-# must be importable from a fresh checkout BEFORE install: one that reaches a runtime-only
-# package — e.g. through a wide barrel that `export *`s a module importing `effect` — pulls
-# that package into the bootstrap import closure and breaks `genie:run` on a fresh clone.
+# Runs the bun entry (default genie/ci-scripts/bootstrap-closure-check.ts) over the TRACKED
+# `.genie.ts` sources declared `bootstrap`-phase (static `// @genie-phase bootstrap` pragma). A
+# bootstrap-phase generator (and everything it transitively imports at RUNTIME) must be importable
+# from a fresh checkout BEFORE install: one that reaches a runtime-only package — e.g. through a
+# wide barrel that `export *`s a module importing `effect` — pulls that package into the bootstrap
+# import closure and breaks the pre-install `genie --phase bootstrap` run on a fresh clone.
 #
-# The gate is baseline + ratchet: it fails ONLY on NEW violations not present in the committed
-# baseline (genie/bootstrap-closure-baseline.json), so the pre-existing violations keep it green
-# today while any regression (a new/widened import) is caught. It also warns on stale baseline
-# entries (a baselined source that no longer violates) so the baseline can be ratcheted down.
+# Zero-tolerance: it fails on ANY bootstrap-phase violation. There is no baseline and no allowlist;
+# `design-time` generators (the default) are out of scope by declaration. This gate is fast local
+# feedback for the ordering contract (decision 0004); install ordering is the ultimate arbiter.
 {
   # Repo-relative path to the bun entry.
   entry ? "genie/ci-scripts/bootstrap-closure-check.ts",
@@ -30,7 +30,7 @@ in
 {
   tasks = {
     "bootstrap-closure:check" = {
-      description = "Fail on NEW bootstrap-safe import-closure violations in .genie.ts sources (baseline + ratchet)";
+      description = "Fail on any bootstrap-safe import-closure violation in bootstrap-phase .genie.ts sources (zero-tolerance)";
       exec = trace.exec "bootstrap-closure:check" ''
         set -uo pipefail
         root="''${DEVENV_ROOT:-$PWD}"
