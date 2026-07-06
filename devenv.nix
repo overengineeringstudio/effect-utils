@@ -574,6 +574,37 @@ in
   tasks."mr:check".after = [ "pnpm:install" ];
   tasks."mr:source-policy-check".after = [ "pnpm:install" ];
 
+  # genie:bootstrap (decision 0004) — regenerate the bootstrap-phase install inputs (the
+  # `package.json` family + `pnpm-workspace.yaml`, marked `// @genie-phase bootstrap`) BEFORE
+  # `pnpm:install`, so install consumes freshly-derived inputs. `pnpm:install` depends on it below,
+  # so the pre-install regeneration IS the real ordering (install is the arbiter, R32).
+  #
+  # COLD-SAFE GUARD: `genie` here is the SOURCE-MODE CLI (`bun bin/genie.tsx`), whose build layer
+  # resolves `effect`/`@effect/platform-node`/`@overeng/*` from `node_modules`, so it cannot run
+  # before the very first install. When `node_modules` is absent (fresh clone / true pre-install)
+  # this task no-ops: the committed outputs (T01) already satisfy install, and the static
+  # `bootstrap-closure:check` (which reads pragmas without importing) is what proves R06 in the
+  # pre-install-shaped env. Warm (node_modules present, the steady-state dev/CI case), it regenerates
+  # the bootstrap outputs first — the demonstrable arbiter edge. A fresh clone therefore relies on
+  # committed outputs, NOT on this task's execution; see docs/.decisions/0004-*.md for the precise
+  # enforcement story (source-mode cold-run + committed-output completeness gaps).
+  tasks."genie:bootstrap" = {
+    description = "Regenerate bootstrap-phase genie outputs (install inputs) before install";
+    env = {
+      DEVENV_TASK_PASSTHROUGH = "1";
+    };
+    exec = trace.exec "genie:bootstrap" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      if [ -d "$root/node_modules" ]; then
+        genie --phase bootstrap --cwd "$root"
+      else
+        echo "[genie:bootstrap] node_modules absent (pre-install / fresh clone) — skipping source-mode genie; committed outputs cover install and bootstrap-closure:check enforces R06" >&2
+      fi
+    '';
+  };
+  tasks."pnpm:install".after = [ "genie:bootstrap" ];
+
   tasks."pnpm:link-native-node-packages" = {
     after = [ "pnpm:install" ];
     description = "Link Nix-built native Node packages into the pnpm projection";

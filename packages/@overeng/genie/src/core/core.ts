@@ -22,6 +22,7 @@ import {
   isTdzError,
 } from './generation.ts'
 import * as Observability from './observability.ts'
+import { type GeneratorPhase, parseGeneratorPhase } from './phase.ts'
 import type { GenieFileStatus, GenieSummary } from './schema.ts'
 import type { GenerateSuccess } from './types.ts'
 import { runGenieValidation } from './validation.ts'
@@ -77,12 +78,16 @@ export type CoreGenerateOptions = {
   readOnly: boolean
   dryRun: boolean
   oxfmtConfigPath: Option.Option<string>
+  /** When set, restrict generation to generators declaring this phase (R31). Absent ⇒ all phases. */
+  phase?: GeneratorPhase | undefined
 }
 
 /** Internal options passed to the core check (up-to-date verification) pipeline. */
 export type CoreCheckOptions = {
   cwd: string
   oxfmtConfigPath: Option.Option<string>
+  /** When set, restrict the check to generators declaring this phase (R31). Absent ⇒ all phases. */
+  phase?: GeneratorPhase | undefined
 }
 
 /** Aggregate result of a full generation run including per-file outcomes and summary counts. */
@@ -95,8 +100,19 @@ export type GenieGenerateResult = {
 // Shared orchestration
 // ---------------------------------------------------------------------------
 
-/** Discover genie files and assert no duplicate targets. */
-const discoverAndValidate = Effect.fn('genie/discoverAndValidate')(function* (cwd: string) {
+/**
+ * Discover genie files, assert no duplicate targets, and (when a phase is requested) restrict the
+ * set to generators declaring that phase.
+ *
+ * Duplicate-target rejection runs over the FULL discovered set before phase filtering so a
+ * duplicate is caught regardless of the active phase. Phase selection then reads each source's
+ * static `// @genie-phase` pragma ({@link parseGeneratorPhase}) — no import — so a `bootstrap`-phase
+ * run never has to load a `design-time` generator (which would need the runtime graph).
+ */
+const discoverAndValidate = Effect.fn('genie/discoverAndValidate')(function* (
+  cwd: string,
+  phase?: GeneratorPhase | undefined,
+) {
   yield* Observability.annotatePath({ label: 'discover', path: cwd })
   const discoveredFiles = yield* findGenieFiles(cwd)
   const genieFiles = discoveredFiles.map((file) => path.resolve(cwd, file))
@@ -115,7 +131,15 @@ const discoverAndValidate = Effect.fn('genie/discoverAndValidate')(function* (cw
         .join(', ')}`,
   })
 
-  return genieFiles
+  if (phase === undefined) return genieFiles
+
+  const fs = yield* FileSystem.FileSystem
+  const selected: string[] = []
+  for (const genieFilePath of genieFiles) {
+    const sourceText = yield* fs.readFileString(genieFilePath)
+    if (parseGeneratorPhase(sourceText) === phase) selected.push(genieFilePath)
+  }
+  return selected
 })
 
 /** Compute summary counts from a list of successes and a failure count. */
@@ -173,13 +197,14 @@ export const generateAll = ({
   readOnly,
   dryRun,
   oxfmtConfigPath,
+  phase,
 }: CoreGenerateOptions): Effect.Effect<
   GenieGenerateResult,
   GenieGenerationFailedError | PlatformError.PlatformError,
   FileSystem.FileSystem | Path | CommandExecutor.CommandExecutor | GenieEventBus
 > =>
   Effect.gen(function* () {
-    const genieFiles = yield* discoverAndValidate(cwd)
+    const genieFiles = yield* discoverAndValidate(cwd, phase)
 
     if (genieFiles.length === 0) {
       const summary = computeSummary({ successes: [], failedCount: 0 })
@@ -350,6 +375,7 @@ export const generateAll = ({
 export const checkAll = ({
   cwd,
   oxfmtConfigPath,
+  phase,
 }: CoreCheckOptions): Effect.Effect<
   void,
   GenieGenerationFailedError | PlatformError.PlatformError,
@@ -371,7 +397,7 @@ export const checkAll = ({
       concurrency: checkConcurrency,
     })
 
-    const genieFiles = yield* discoverAndValidate(cwd)
+    const genieFiles = yield* discoverAndValidate(cwd, phase)
 
     if (genieFiles.length === 0) {
       yield* emit({ _tag: 'Complete', summary: computeSummary({ successes: [], failedCount: 0 }) })

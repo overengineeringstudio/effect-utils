@@ -1,3 +1,4 @@
+// @genie-phase bootstrap
 import {
   catalog,
   exportEntry,

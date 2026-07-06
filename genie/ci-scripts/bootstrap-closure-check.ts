@@ -1,37 +1,38 @@
 #!/usr/bin/env bun
 /**
- * Bootstrap-safe import-closure gate (issue #884) — BASELINE + RATCHET.
+ * Bootstrap-safe import-closure gate (issue #884) — SCOPED TO BOOTSTRAP-PHASE GENERATORS,
+ * ZERO-TOLERANCE (decision 0004).
  *
- * A `.genie.ts` file (and every helper it transitively imports at RUNTIME) must be importable from a
- * fresh checkout BEFORE package-manager install state exists. A generator that transitively reaches a
- * runtime-only package — e.g. through a wide barrel that `export *`s a module importing `effect` — pulls
- * that package into the generator's bootstrap import closure and breaks `genie:run` on a fresh clone.
+ * A `bootstrap`-phase `.genie.ts` (and every helper it transitively imports at RUNTIME) must be
+ * importable from a fresh checkout BEFORE package-manager install state exists — it runs in
+ * `genie:prepare`, before install, so it must not reach a runtime-only package (e.g. through a wide
+ * barrel that `export *`s a module importing `effect`). `design-time` generators are exempt by
+ * declaration: they run after install (post-install `genie:run`) and may use the runtime graph.
  *
- * This entry discovers every tracked `.genie.ts` (`git ls-files '*.genie.ts'`), runs the shared
- * {@link checkBootstrapClosure} walker, and compares the offending sources against a committed baseline of
- * accepted (pre-existing) violations. It fails ONLY on NEW violations (current \ baseline), so the gate can
- * be adopted over a repo that already has violations without a big-bang cleanup. It also warns on STALE
- * baseline entries (a baselined source that no longer violates) so the baseline can be ratcheted down.
+ * This entry discovers every tracked `.genie.ts` (`git ls-files '*.genie.ts'`), keeps only those
+ * whose static `// @genie-phase bootstrap` pragma marks them bootstrap-phase, runs the shared
+ * {@link checkBootstrapClosure} walker over that set, and FAILS on ANY violation. There is no
+ * baseline and no allowlist: the residual weaver generators are `design-time` by declaration, so
+ * they are structurally out of scope rather than an accepted exception.
+ *
+ * This gate is fast local feedback for the ordering contract (R30/R32); install ordering
+ * (`pnpm:install` after the bootstrap-phase genie run) is the ultimate arbiter (R32).
  *
  * Usage:
- *   bun genie/ci-scripts/bootstrap-closure-check.ts                    # check (exit 1 on new violations)
- *   bun genie/ci-scripts/bootstrap-closure-check.ts --update-baseline  # regenerate the committed baseline
+ *   bun genie/ci-scripts/bootstrap-closure-check.ts   # exit 1 on any bootstrap-phase violation
  */
 
 import { execFileSync } from 'node:child_process'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import path from 'node:path'
 
+import { parseGeneratorPhase } from '../../packages/@overeng/genie/src/core/phase.ts'
 import {
   checkBootstrapClosure,
   formatViolationChain,
 } from '../../packages/@overeng/genie/src/runtime/node/bootstrap-closure.ts'
 
 const repoRoot = path.resolve(import.meta.dir, '../..')
-const baselinePath = path.resolve(repoRoot, 'genie/bootstrap-closure-baseline.json')
-
-/** Repo-relative POSIX-style path (portable across checkouts; safe to commit — this repo's own paths only). */
-const toRepoRelative = (absolutePath: string): string => path.relative(repoRoot, absolutePath)
 
 const discoverGenieFiles = (): readonly string[] =>
   execFileSync('git', ['-C', repoRoot, 'ls-files', '*.genie.ts'], { encoding: 'utf8' })
@@ -40,67 +41,33 @@ const discoverGenieFiles = (): readonly string[] =>
     .filter((line) => line.length > 0)
     .map((relativePath) => path.join(repoRoot, relativePath))
 
-type Baseline = { readonly description?: string; readonly sources: readonly string[] }
-
-const BASELINE_DESCRIPTION =
-  'Accepted (pre-existing) bootstrap-closure violations — repo-relative `.genie.ts` sources that ' +
-  'transitively reach a runtime-only package. Baseline + ratchet: a NEW violation fails the gate; a ' +
-  'fixed source should be removed here. Regenerate with `bootstrap-closure:check --update-baseline`.'
-
-const readBaselineSources = (): ReadonlySet<string> => {
-  if (existsSync(baselinePath) === false) return new Set()
-  const parsed = JSON.parse(readFileSync(baselinePath, 'utf8')) as Baseline
-  return new Set(parsed.sources ?? [])
-}
-
-const writeBaselineSources = (sources: readonly string[]): void => {
-  const body: Baseline = { description: BASELINE_DESCRIPTION, sources: [...sources].toSorted() }
-  writeFileSync(baselinePath, `${JSON.stringify(body, null, 2)}\n`, 'utf8')
-}
-
 const main = (): void => {
-  const updateBaseline = process.argv.includes('--update-baseline')
-  const genieFiles = discoverGenieFiles()
-  const { violations, checkedSources } = checkBootstrapClosure({ genieFiles })
-  const currentSources = violations.map((violation) => toRepoRelative(violation.source)).toSorted()
-
-  if (updateBaseline === true) {
-    writeBaselineSources(currentSources)
-    console.log(
-      `bootstrap-closure: wrote baseline with ${currentSources.length} accepted violation(s) (${checkedSources.length} .genie.ts checked)`,
-    )
-    return
-  }
-
-  const baseline = readBaselineSources()
-  const currentSet = new Set(currentSources)
-  const newViolations = violations.filter(
-    (violation) => baseline.has(toRepoRelative(violation.source)) === false,
+  const allGenieFiles = discoverGenieFiles()
+  const bootstrapFiles = allGenieFiles.filter(
+    (file) => parseGeneratorPhase(readFileSync(file, 'utf8')) === 'bootstrap',
   )
-  const staleEntries = [...baseline].filter((source) => currentSet.has(source) === false).toSorted()
 
-  if (staleEntries.length > 0) {
-    console.warn(
-      `⚠ bootstrap-closure: ${staleEntries.length} baselined source(s) no longer violate — remove them to ratchet (run with --update-baseline):`,
-    )
-    for (const source of staleEntries) console.warn(`    ${source}`)
-  }
+  const { violations, checkedSources } = checkBootstrapClosure({ genieFiles: bootstrapFiles })
 
-  if (newViolations.length > 0) {
+  if (violations.length > 0) {
     console.error(
-      `✗ bootstrap-closure: ${newViolations.length} NEW bootstrap-closure violation(s) not in the baseline:\n`,
+      `✗ bootstrap-closure: ${violations.length} bootstrap-phase generator(s) reach a runtime-only package:\n`,
     )
-    for (const violation of newViolations) {
+    for (const violation of violations) {
       console.error(`  ${formatViolationChain({ violation, repoRoot })}\n`)
     }
     console.error(
-      'A `.genie.ts` must be importable from a fresh checkout BEFORE install. Narrow the import (avoid wide barrels that reach runtime-only packages), or — if intentional — re-run this check with --update-baseline.',
+      'A `bootstrap`-phase `.genie.ts` must be importable from a fresh checkout BEFORE install. ' +
+        'Narrow the import (avoid wide barrels that reach runtime-only packages), or — if the ' +
+        'generator genuinely needs the runtime graph — remove its `// @genie-phase bootstrap` pragma ' +
+        'so it runs post-install as a design-time generator (and ensure no install step depends on its output).',
     )
     process.exit(1)
   }
 
   console.log(
-    `bootstrap-closure: OK — no new violations (${violations.length} baselined, ${checkedSources.length} .genie.ts checked)`,
+    `bootstrap-closure: OK — ${checkedSources.length} bootstrap-phase .genie.ts checked, no violations ` +
+      `(${allGenieFiles.length - bootstrapFiles.length} design-time generator(s) out of scope by declaration)`,
   )
 }
 
