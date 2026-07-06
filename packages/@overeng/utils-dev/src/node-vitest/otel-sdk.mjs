@@ -39,27 +39,33 @@ import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node'
 
 const SHUTDOWN_BUDGET_MS = 2000
 
-const provider = new NodeTracerProvider({
-  spanProcessors: [
-    new BatchSpanProcessor(new OTLPTraceExporter({ timeoutMillis: SHUTDOWN_BUDGET_MS }), {
-      exportTimeoutMillis: SHUTDOWN_BUDGET_MS,
-    }),
-  ],
-})
-provider.register()
+// Constructed and registered inside the default export so the module stays
+// export-first: its entire purpose is to hand Vitest a configured provider, and
+// the registration/shutdown-override side effects are encapsulated rather than
+// stranded as top-level statements before the export.
+export default (() => {
+  const provider = new NodeTracerProvider({
+    spanProcessors: [
+      new BatchSpanProcessor(new OTLPTraceExporter({ timeoutMillis: SHUTDOWN_BUDGET_MS }), {
+        exportTimeoutMillis: SHUTDOWN_BUDGET_MS,
+      }),
+    ],
+  })
+  provider.register()
 
-// Bound shutdown at the seam Vitest awaits. Capture the real shutdown first (the
-// override must not call itself), swallow export errors so the race always
-// resolves, and unref the budget timer so it never itself keeps the worker's
-// event loop alive past a real shutdown.
-const realShutdown = provider.shutdown.bind(provider)
-provider.shutdown = () =>
-  Promise.race([
-    realShutdown().catch(() => {}),
-    new Promise((resolve) => {
-      const timer = setTimeout(resolve, SHUTDOWN_BUDGET_MS)
-      if (typeof timer.unref === 'function') timer.unref()
-    }),
-  ])
+  // Bound shutdown at the seam Vitest awaits. Capture the real shutdown first (the
+  // override must not call itself), swallow export errors so the race always
+  // resolves, and unref the budget timer so it never itself keeps the worker's
+  // event loop alive past a real shutdown.
+  const realShutdown = provider.shutdown.bind(provider)
+  provider.shutdown = () =>
+    Promise.race([
+      realShutdown().catch(() => {}),
+      new Promise((resolve) => {
+        const timer = setTimeout(resolve, SHUTDOWN_BUDGET_MS)
+        if (typeof timer.unref === 'function') timer.unref()
+      }),
+    ])
 
-export default provider
+  return provider
+})()
