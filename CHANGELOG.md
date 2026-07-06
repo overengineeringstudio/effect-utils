@@ -15,6 +15,21 @@ All notable changes to this project will be documented in this file.
   test asserting `-o` resolves to the file path. (`introspect`/`diff`/
   `generate-config` keep the shared render-mode `--output`/`-o`; they have no
   file option to collide with.)
+- **ci-tools / genie**: ratchet the bootstrap-closure baseline from 79 entries
+  down to the 5 `genie/weaver-registry/*.genie.ts` residual by fixing the
+  mechanically-fixable root causes at the source. The wide `@overeng/ci-tools`
+  barrel (`src/mod.ts`) `export *`ed the runtime `./deploy-*` encoders alongside
+  the bootstrap-safe workflow-report constants/types, so genie helpers importing
+  the safe symbols dragged `effect` into their bootstrap closure (73 violations);
+  the safe surface is extracted into a new dependency-free
+  `ci-tools/src/workflow-report.ts` (re-exported by `mod.ts`, so runtime
+  consumers are unaffected) and the genie helpers repointed there. Separately,
+  `tsconfig.all.json.genie.ts` imported the wide `@overeng/genie/node` barrel
+  (which re-exports the `typescript`-importing closure walker), now narrowed to
+  the bootstrap-safe `node/tsconfig-from-packages.ts` module (1 violation). The
+  remaining 5 weaver-registry generators reach `effect` because the OTel
+  semconv contracts are Effect-Schema by design and render post-install; whether
+  to exempt or re-architect them is an open decision.
 - **CI / cargo**: move standalone Rust crate build/test/clippy/fmt semantics into
   the `cargo:check` devenv task and make the generated cargo CI lane call that
   task, ensuring the `node-cpuprofile` integration test runs with the devenv

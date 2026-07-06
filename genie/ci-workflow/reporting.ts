@@ -1,10 +1,10 @@
-import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 import {
   encodeWorkflowReportRecordLine,
   workflowReportManagedMarker,
   workflowReportRecordLineMarker,
   type WorkflowReportRecord,
-} from '../../packages/@overeng/ci-tools/src/mod.ts'
+} from '../../packages/@overeng/ci-tools/src/workflow-report.ts'
+import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 import { runDevenvTasksBefore, shellSingleQuote } from './shared.ts'
 
 type GitHubWorkflowStep = GitHubWorkflowArgs['jobs'][string]['steps'][number]
@@ -99,7 +99,9 @@ export const workflowReportCollectorStep = (
     WORKFLOW_REPORT_OUTPUT_PATH: opts.outputPath,
     WORKFLOW_REPORT_RECORD_MARKER: opts.marker ?? workflowReportRecordLineMarker,
     WORKFLOW_REPORT_ALLOW_MISSING_INPUT: opts.allowMissingInput === true ? '1' : '0',
-    ...(opts.outputName === undefined ? {} : { WORKFLOW_REPORT_GITHUB_OUTPUT_NAME: opts.outputName }),
+    ...(opts.outputName === undefined
+      ? {}
+      : { WORKFLOW_REPORT_GITHUB_OUTPUT_NAME: opts.outputName }),
   },
   run: runDevenvTasksBefore('workflow-report:collect-bundle', '--show-output'),
 })
