@@ -23,7 +23,7 @@ import path from 'node:path'
 
 import ts from 'typescript'
 
-import { resolveImportMapSpecifierForImporterSync } from '../../core/import-map/mod.ts'
+import { resolveImportMapSpecifierForImporterSync } from '../../core/import-map/sync-resolver.ts'
 
 /** A transitive edge from a `.genie.ts` source to a runtime-only package, with the importer chain. */
 export type BootstrapClosureViolation = {

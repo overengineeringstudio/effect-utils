@@ -29,7 +29,10 @@ All notable changes to this project will be documented in this file.
   (`genie/ci-scripts/bootstrap-closure-check.ts`) runs it over every tracked
   `.genie.ts` with a BASELINE + RATCHET policy — failing only on NEW violations vs
   the committed `genie/bootstrap-closure-baseline.json` and warning on stale
-  baseline entries. Wired into `check:all` (not `check:quick`).
+  baseline entries. Wired into `check:all` (not `check:quick`). The walker imports
+  genie's resolver via the effect-free `core/import-map/sync-resolver.ts` (only
+  `node:fs`/`node:path`), so it is itself importable pre-install (`typescript` +
+  node builtins only) and usable by nix-packaged-genie downstream members.
 
 - **devenv / otel**: `otel-run` — a `time`-like wrapper that runs any command
   under a fresh root trace and prints its Grafana URL. Derives the root label
