@@ -35,10 +35,11 @@ All notable changes to this project will be documented in this file.
 - **genie / nix**: make the packaged Genie runtime closure honest without
   duplicating transitive package-manager state. Genie now declares the workspace
   packages its CLI imports at runtime (`@overeng/tui-react`, `@overeng/utils`)
-  plus the direct runtime externals needed by the packaged CLI (`typescript`
-  and Effect's `fast-check` import), and relies on those packages' own manifests
-  for their transitive closure instead of listing Effect/TUI helper packages
-  directly in `@overeng/genie`.
+  plus the runtime externals the packaged CLI must expose at its root
+  (`typescript` and the Effect-owned runtime sidecars reached through
+  `effect`, `@effect/platform`, and `@effect/platform-node`). It still avoids the
+  old broad hand-maintained list of unrelated Effect/TUI helper packages and
+  relies on workspace package manifests for first-party ownership.
 - **genie / check**: make `bootstrap-closure:check` a reusable devenv task by
   parameterizing the effect-utils checker with `--root`. Downstream repos can
   now import the shared task directly; they no longer need repo-local wrapper

@@ -12,11 +12,24 @@ import tuiReactPkg from '../tui-react/package.json.genie.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
+const packagedEffectRuntimeSidecars = [
+  // The packaged CLI can resolve Effect modules through nested workspace package node_modules
+  // (e.g. @overeng/utils/node_modules/@effect/platform). Expose these Effect-owned runtime
+  // sidecars at the packaged root so those nested imports do not depend on hoisted dev state.
+  'fast-check',
+  'find-my-way-ts',
+  'mime',
+  'msgpackr',
+  'multipasta',
+  'undici',
+  'ws',
+] as const
+
 const supportDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/genie' }),
   dependencies: {
     workspace: [otelContractPkg, tuiReactPkg, utilsPkg],
-    external: catalog.pick('typescript', 'fast-check'),
+    external: catalog.pick('typescript', ...packagedEffectRuntimeSidecars),
   },
   devDependencies: {
     workspace: [tuiCorePkg, utilsDevPkg],
