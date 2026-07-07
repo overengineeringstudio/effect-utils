@@ -155,13 +155,15 @@ export interface Beat {
   readonly budgetSec: number
 }
 
-/** A page the demo binds; role name maps to a `.demo-state/<idFile>`. */
+/**
+ * A page the demo binds. The live page id + url are read from the stage `.nmd`
+ * file's frontmatter (the source of truth `notion-md` actually syncs against),
+ * so they stay correct even if `.demo-state/` drifts.
+ */
 export interface DemoPage {
   readonly role: string
-  /** File under `.demo-state/` holding the live page id (e.g. `roadmap.id`). */
-  readonly idFile: string
-  /** File under `.demo-state/` holding the live page url (e.g. `roadmap.url`). */
-  readonly urlFile: string
+  /** Stage `.nmd` file, relative to the stage dir (e.g. `roadmap.nmd`). */
+  readonly nmdFile: string
 }
 
 export interface Demo {

@@ -37,8 +37,8 @@ export const mdDemo: Demo = {
     'notion-md': 'packages/@overeng/notion-md/dist/src/cli.js',
   },
   pages: [
-    { role: 'roadmap', idFile: 'roadmap.id', urlFile: 'roadmap.url' },
-    { role: 'spec', idFile: 'spec.id', urlFile: 'spec.url' },
+    { role: 'roadmap', nmdFile: 'roadmap.nmd' },
+    { role: 'spec', nmdFile: 'spec.nmd' },
   ],
   beats: [
     {

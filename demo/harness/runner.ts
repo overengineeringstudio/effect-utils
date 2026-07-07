@@ -11,12 +11,18 @@
 
 import {
   chmodSync,
+  copyFileSync,
+  cpSync,
   existsSync,
   mkdirSync,
+  mkdtempSync,
   readFileSync,
+  readdirSync,
+  rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { run, sleep } from './exec.ts'
@@ -60,8 +66,22 @@ const actionSummary = (a: Action): string => {
   }
 }
 
-const readState = (demoDir: string, file: string): string =>
-  readFileSync(join(demoDir, '.demo-state', file), 'utf8').trim()
+/** Parse the live page id + url from a stage `.nmd` file's JSON frontmatter. */
+const readPageBinding = (
+  stageDir: string,
+  nmdFile: string,
+): { id: string; url: string } => {
+  const text = readFileSync(join(stageDir, nmdFile), 'utf8')
+  const m = text.match(/^---\n([\s\S]*?)\n---/)
+  if (!m) throw new Error(`no frontmatter in ${nmdFile}`)
+  const fm = JSON.parse(m[1]!) as {
+    notion_md?: { page_id?: string | null; url?: string | null }
+  }
+  const id = fm.notion_md?.page_id
+  const url = fm.notion_md?.url
+  if (!id) throw new Error(`${nmdFile} has no bound page_id (run reset.sh first)`)
+  return { id, url: url ?? '' }
+}
 
 const byteSize = (p: string): number => (existsSync(p) ? statSync(p).size : 0)
 
@@ -171,9 +191,8 @@ const writeShims = (
 export const runDemo = async (demo: Demo, opts: RunOptions = {}): Promise<RunRecord> => {
   const doReset = opts.reset ?? true
   const demoDir = join(REPO_ROOT, demo.demoRel)
-  const stageDir = join(REPO_ROOT, demo.stageRel)
+  const seedStageDir = join(REPO_ROOT, demo.stageRel)
   const resetScript = join(REPO_ROOT, demo.resetRel)
-  const watchLogAbs = join(stageDir, demo.watchLog)
 
   const stamp = new Date().toISOString().replace(/[:.]/g, '-')
   const evidenceDir = join(demoDir, 'evidence', stamp)
@@ -187,28 +206,56 @@ export const runDemo = async (demo: Demo, opts: RunOptions = {}): Promise<RunRec
   // 1. Reset for a clean Notion slate (fresh pages under $DEMO_PARENT_PAGE).
   if (doReset) {
     console.log('▶ reset.sh (fresh Notion pages)…')
-    const r = await run('bash', [resetScript], { env, cwd: REPO_ROOT, timeoutMs: 120_000 })
+    const r = await run('bash', [resetScript], { env, cwd: REPO_ROOT, timeoutMs: 240_000 })
     if (r.code !== 0) {
       throw new Error(`reset.sh failed:\n${r.stderr || r.stdout}`)
     }
     console.log(r.stdout.split('\n').filter((l) => l.startsWith('reset:')).join('\n'))
   }
 
-  // 2. Resolve live page ids/urls from .demo-state.
+  // 2. Isolate: run in a private working COPY of the freshly-bound stage, not
+  // demo/md/stage itself. Both point at the same fresh pages, but only THIS
+  // copy is edited locally — so any other watcher on the shared stage can only
+  // ever passively pull (never clobber our pushes). This makes the run
+  // deterministic regardless of what else touches the stage.
+  const stageDir = join(evidenceDir, 'work')
+  mkdirSync(stageDir, { recursive: true })
+  for (const name of readdirSync(seedStageDir)) {
+    if (name.endsWith('.nmd')) {
+      copyFileSync(join(seedStageDir, name), join(stageDir, name))
+    }
+  }
+  const seedStore = join(seedStageDir, '.notion-md')
+  if (existsSync(seedStore)) {
+    cpSync(seedStore, join(stageDir, '.notion-md'), { recursive: true })
+  }
+  const watchLogAbs = join(stageDir, demo.watchLog)
+
+  // 3. Resolve live page ids/urls from the working copy's .nmd frontmatter.
   const pageIds: Record<string, string> = {}
   const pageUrls: Record<string, string> = {}
   for (const pg of demo.pages) {
-    pageIds[pg.role] = readState(demoDir, pg.idFile)
-    pageUrls[pg.role] = readState(demoDir, pg.urlFile)
+    const b = readPageBinding(stageDir, pg.nmdFile)
+    pageIds[pg.role] = b.id
+    pageUrls[pg.role] = b.url
   }
 
-  // 3. PATH shim so the on-screen command reads naturally.
+  // 4. PATH shim so the on-screen command reads naturally. Targets are
+  // repo-relative in the spec; resolve to absolute so they work from any CWD.
   const binDir = join(evidenceDir, 'bin')
-  if (demo.shims) writeShims(demo.shims, binDir)
+  if (demo.shims) {
+    const abs = Object.fromEntries(
+      Object.entries(demo.shims).map(([k, v]) => [k, join(REPO_ROOT, v)]),
+    )
+    writeShims(abs, binDir)
+  }
 
-  // 4. Reset watch log + start the demo shell in a real PTY.
+  // 5. Reset watch log + start the demo shell in a real PTY. The pty root must
+  // be SHORT (its unix socket path has a ~90-byte limit) — the deep evidence dir
+  // blows it — so use a short temp dir, cleaned up in `finally`.
   writeFileSync(watchLogAbs, '')
-  const pty = new PtyDriver(`eu-demo-${demo.id}`, join(evidenceDir, '.pty'), env)
+  const ptyRoot = mkdtempSync(join(tmpdir(), 'eup-'))
+  const pty = new PtyDriver(`eu-demo-${demo.id}`, ptyRoot, env)
   const shooter = new Screenshotter(`eu-demo-${demo.id}-shot`, STORAGE_STATE)
 
   const ctx: DemoCtx = {
@@ -305,7 +352,12 @@ export const runDemo = async (demo: Demo, opts: RunOptions = {}): Promise<RunRec
     }
   } finally {
     await pty.kill()
+    // Reap our own watcher if it outlived the pty shell (killing zsh can leave
+    // the `node … | tee` child re-parented to init). Scoped to THIS run's unique
+    // work dir path, so it only ever matches our own processes.
+    await run('bash', ['-c', `pkill -f ${JSON.stringify(stageDir)} || true`]).catch(() => {})
     await shooter.close()
+    rmSync(ptyRoot, { recursive: true, force: true })
   }
 
   const finishedAt = new Date()
