@@ -25,6 +25,7 @@ const supportDeps = catalog.compose({
       'find-my-way-ts',
       'get-east-asian-width',
       'ini',
+      'is-fullwidth-code-point',
       'mime',
       'msgpackr',
       'multipasta',

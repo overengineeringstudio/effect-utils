@@ -32,11 +32,11 @@ All notable changes to this project will be documented in this file.
 - **devenv / lint**: make `devenv:trace-audit` self-contained by referencing its
   Nix-provided scanner and marker-check binaries instead of relying on ambient
   `rg`, `head`, `tail`, or `grep` in `PATH`.
-- **genie / nix**: keep the packaged Genie runtime closure minimal by declaring
-  only the direct external runtime dependencies (`typescript`, Effect's
-  `fast-check` peer import, and `@effect/cli`'s `ini`/`toml` file parser imports)
-  needed by the installed source workspace; transitive packages remain owned by
-  the lockfile instead of being promoted to `@overeng/genie` direct dependencies.
+- **genie / nix**: make the packaged Genie runtime closure honest by declaring
+  the external packages imported at runtime by Genie, Effect platform/cluster/CLI,
+  and the TUI rendering stack inside the pruned Nix workspace. This keeps the
+  package boundary explicit instead of relying on ambient development
+  `node_modules` leakage.
 - **nix / mk-pnpm-cli**: preserve flake source inputs as Nix build inputs when
   materializing filtered CLI workspaces, preventing downstream GC from removing
   a pinned flake source before package-directory copies run.
