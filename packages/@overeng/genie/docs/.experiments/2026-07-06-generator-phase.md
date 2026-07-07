@@ -1,7 +1,12 @@
 # Experiment: generator-phase run-context evidence (2026-07-06)
 
-Load-bearing evidence for decision 0004 (generator phase + `genie:prepare`-before-install). Gathered
-while resolving how to reach a zero-baseline bootstrap-closure contract.
+> Note: this is a point-in-time record. The "install is the arbiter" conclusion reached below (and the
+> `genie:prepare`-before-install edge it implies) was superseded during implementation — decision 0004
+> makes the empirical `bootstrap:cold-proof` the authority, not install ordering, and the install edge
+> was removed. The run-context evidence itself still stands.
+
+Load-bearing evidence for decision 0004 (generator phase). Gathered while resolving how to reach a
+zero-baseline bootstrap-closure contract.
 
 ## `genie:run` is post-install; the pre-install path is not exercised
 

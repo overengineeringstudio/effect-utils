@@ -4,10 +4,10 @@
  * ZERO-TOLERANCE (decision 0004).
  *
  * A `bootstrap`-phase `.genie.ts` (and every helper it transitively imports at RUNTIME) must be
- * importable from a fresh checkout BEFORE package-manager install state exists — it runs in
- * `genie:prepare`, before install, so it must not reach a runtime-only package (e.g. through a wide
- * barrel that `export *`s a module importing `effect`). `design-time` generators are exempt by
- * declaration: they run after install (post-install `genie:run`) and may use the runtime graph.
+ * importable from a fresh checkout BEFORE package-manager install state exists, so it must not
+ * reach a runtime-only package (e.g. through a wide barrel that `export *`s a module importing
+ * `effect`). `design-time` generators are exempt by declaration: they run after install
+ * (post-install `genie:run`) and may use the runtime graph.
  *
  * This entry discovers every tracked `.genie.ts` (`git ls-files '*.genie.ts'`), keeps only those
  * whose static `// @genie-bootstrap` pragma marks them bootstrap-phase, runs the shared
@@ -15,8 +15,8 @@
  * baseline and no allowlist: the residual weaver generators are `design-time` by declaration, so
  * they are structurally out of scope rather than an accepted exception.
  *
- * This gate is fast local feedback for the ordering contract (R30/R32); install ordering
- * (`pnpm:install` after the bootstrap-phase genie run) is the ultimate arbiter (R32).
+ * This gate is fast local feedback (R30); the empirical authority is `bootstrap:cold-proof` (R32),
+ * which actually runs the bootstrap-phase generators in a no-`node_modules` checkout before install.
  *
  * Usage:
  *   bun genie/ci-scripts/bootstrap-closure-check.ts   # exit 1 on any bootstrap-phase violation

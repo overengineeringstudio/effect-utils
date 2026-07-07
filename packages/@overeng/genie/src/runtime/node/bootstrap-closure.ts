@@ -23,7 +23,10 @@ import path from 'node:path'
 
 import ts from 'typescript'
 
-import { resolveImportMapSpecifierForImporterSync } from '../../core/import-map/sync-resolver.ts'
+import {
+  isImportMapSpecifier,
+  resolveImportMapSpecifierForImporterSync,
+} from '../../core/import-map/sync-resolver.ts'
 
 /** A transitive edge from a `.genie.ts` source to a runtime-only package, with the importer chain. */
 export type BootstrapClosureViolation = {
@@ -51,8 +54,6 @@ const RESOLUTION_OPTIONS: ts.CompilerOptions = {
 
 const isRelativeSpecifier = (specifier: string): boolean =>
   specifier.startsWith('./') === true || specifier.startsWith('../') === true
-
-const isImportMapSpecifier = (specifier: string): boolean => specifier.startsWith('#') === true
 
 /** A node builtin is always importable pre-install, so it is bootstrap-safe with or without the `node:` prefix. */
 const isNodeBuiltin = (specifier: string): boolean =>
@@ -250,13 +251,14 @@ export const checkBootstrapClosure = ({
     return undefined
   }
 
+  const sortedGenieFiles = [...genieFiles].toSorted()
   const violations: BootstrapClosureViolation[] = []
-  for (const root of [...genieFiles].toSorted()) {
+  for (const root of sortedGenieFiles) {
     const violation = findViolation(root)
     if (violation !== undefined) violations.push(violation)
   }
 
-  return { violations, checkedSources: [...genieFiles].toSorted() }
+  return { violations, checkedSources: sortedGenieFiles }
 }
 
 /** Format a violation's importer chain as a repo-relative `source -> barrel -> runtime -> pkg` diagnostic. */
