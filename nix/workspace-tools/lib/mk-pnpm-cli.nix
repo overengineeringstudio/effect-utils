@@ -335,13 +335,19 @@ let
   workspaceRootPath = coerceSourceRoot workspaceRoot;
   workspaceRootIsDerivationOutput = isDerivationOutput workspaceRoot;
   evalWorkspaceRootPath = coerceSourceRoot evalWorkspaceRoot;
+  sourceContextInputName =
+    prefix:
+    if prefix == null then
+      "workspaceRootSource"
+    else
+      "workspaceSource_${lib.strings.sanitizeDerivationName prefix}";
   sourceContextInputs =
     {
-      workspaceRootSource = workspaceRoot;
+      ${sourceContextInputName null} = workspaceRoot;
     }
     // lib.mapAttrs' (
       prefix: sourceRoot:
-      lib.nameValuePair "workspaceSource-${lib.strings.sanitizeDerivationName prefix}" sourceRoot
+      lib.nameValuePair (sourceContextInputName prefix) sourceRoot
     ) workspaceSources;
 
   sourcePathFilter =
@@ -502,6 +508,17 @@ let
       resolved.fullSourceRoot
     else
       resolved.fullSourceRoot + "/${resolved.sourceRelPath}";
+
+  shellDirectorySourcePathFor =
+    relPath:
+    let
+      resolved = resolveSourceFor relPath;
+      sourceVar = sourceContextInputName resolved.prefix;
+    in
+    if resolved.sourceRelPath == "." then
+      "$" + sourceVar
+    else
+      "$" + sourceVar + "/${resolved.sourceRelPath}";
 
   # Read workspace closure dirs from the generated package.json ($genie.workspaceClosureDirs).
   # Pre-computed by genie at generation time, avoiding import-from-derivation (IFD).
@@ -915,11 +932,11 @@ let
   copyDirCmd =
     relPath:
     let
-      srcPath = absoluteDirectorySourcePathFor relPath;
+      srcPath = shellDirectorySourcePathFor relPath;
     in
     ''
       ${mkdirOutParentCmd relPath}
-      cp -R ${lib.escapeShellArg (toString srcPath)} "$out/${builtins.dirOf relPath}/"
+      cp -R "${srcPath}" "$out/${builtins.dirOf relPath}/"
       chmod -R +w "$out/${relPath}"
     '';
 
