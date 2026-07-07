@@ -30,11 +30,21 @@ const packagedEffectRuntimeClosureDeps = [
   'yaml',
 ] as const
 
+const packagedTuiRuntimeClosureDeps = [
+  // @overeng/tui-react is injected into the packaged Genie workspace. Its direct deps are
+  // declared by tui-react; expose cli-truncate's runtime sidecar at the packaged root.
+  'slice-ansi',
+] as const
+
 const supportDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/genie' }),
   dependencies: {
     workspace: [otelContractPkg, tuiReactPkg, utilsPkg],
-    external: catalog.pick('typescript', ...packagedEffectRuntimeClosureDeps),
+    external: catalog.pick(
+      'typescript',
+      ...packagedEffectRuntimeClosureDeps,
+      ...packagedTuiRuntimeClosureDeps,
+    ),
   },
   devDependencies: {
     workspace: [tuiCorePkg, utilsDevPkg],

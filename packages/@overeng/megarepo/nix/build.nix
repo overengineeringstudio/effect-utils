@@ -27,9 +27,9 @@ let
     # Managed by the repo FOD refresh workflow — do not edit manually.
     depsBuilds = {
       "." = mkHash {
-        aarch64-darwin = "sha256-hvOp/DWCyKDi08P0jdfd/BGCdU5C9ZPJ+0QmVwXs0l0=";
-        aarch64-linux = "sha256-hvOp/DWCyKDi08P0jdfd/BGCdU5C9ZPJ+0QmVwXs0l0=";
-        x86_64-linux = "sha256-hvOp/DWCyKDi08P0jdfd/BGCdU5C9ZPJ+0QmVwXs0l0=";
+        aarch64-darwin = "sha256-hPr3ysrFxLkXLlA3ein4xAr3IG9RwceWJLTtX9/8iek=";
+        aarch64-linux = "sha256-hPr3ysrFxLkXLlA3ein4xAr3IG9RwceWJLTtX9/8iek=";
+        x86_64-linux = "sha256-hPr3ysrFxLkXLlA3ein4xAr3IG9RwceWJLTtX9/8iek=";
       };
     };
     nativeNodePackages = opentuiCoreNative.packages;
