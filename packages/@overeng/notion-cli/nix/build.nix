@@ -60,12 +60,24 @@ pkgs.runCommand "notion-cli"
   ''
     mkdir -p $out/bin
     makeWrapper ${unwrapped}/bin/notion $out/bin/notion \
-      --run 'if [ "$#" -gt 1 ] && [ "$1" = db ]; then case "$2" in init|pull|push|sync|export|status|conflicts|forget|restore|doctor) shift; exec ${notionDbRuntime}/bin/notion-db-runtime "$@";; esac; fi'
+      --run 'if [ "$#" -gt 1 ] && [ "$1" = db ]; then case "$2" in init|pull|push|sync|track|export|status|conflicts|forget|restore|doctor) shift; exec ${notionDbRuntime}/bin/notion-db-runtime "$@";; esac; fi'
 
     db_output="$($out/bin/notion db sync --help 2>&1 || true)"
     if ! printf '%s\n' "$db_output" | grep -q 'Reconcile an established workspace'; then
       printf '%s\n' "$db_output" >&2
       echo "notion db sync smoke test failed" >&2
+      exit 1
+    fi
+
+    # `track` must also route to the Node runtime (needs node:sqlite). A missing
+    # route falls through to the Bun-backed wrapper, which fails closed. Grep for
+    # a phrase unique to the Node entrypoint's help block ("Packaged Node-backed
+    # entrypoint from Nix/devenv" — see renderCliHelpText); the Bun @effect/cli
+    # help does not emit it, so this specifically proves `track` is routed.
+    track_output="$($out/bin/notion db track --help 2>&1 || true)"
+    if ! printf '%s\n' "$track_output" | grep -q 'Packaged Node-backed entrypoint from Nix/devenv'; then
+      printf '%s\n' "$track_output" >&2
+      echo "notion db track smoke test failed (track not routed to node runtime?)" >&2
       exit 1
     fi
   ''

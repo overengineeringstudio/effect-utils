@@ -6,6 +6,19 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **notion-datasource-sync / notion-cli**: `notion db sync`, `track`, and
+  `export` now work under the packaged Node runtime without a `tsx` preload. The
+  CLI sync-progress path loaded the `.tsx` TUI via `Effect.promise(() => import(…))`
+  wrapped in `Effect.either`; under packaged Node the JSX import rejects, which
+  surfaces as an Effect **defect** that `Effect.either` does not catch, so the
+  intended plain-progress fallback was bypassed and the command exited 1 with no
+  output. The load defect is now promoted onto the error channel
+  (`Effect.catchAllDefect`, scoped to the load step only) so any TUI load failure
+  degrades cleanly to plain progress. Separately, the `notion` flake wrapper did
+  not route `db track` to the Node runtime (only `init|pull|push|sync|export|status|conflicts|forget|restore|doctor`),
+  so `notion db track` fell through and failed closed; `track` is now routed. A
+  new unit test guards the fallback, and the Nix smoke test now also asserts
+  `notion db track` is routed to the Node runtime.
 - **CI / cargo**: move standalone Rust crate build/test/clippy/fmt semantics into
   the `cargo:check` devenv task and make the generated cargo CI lane call that
   task, ensuring the `node-cpuprofile` integration test runs with the devenv
