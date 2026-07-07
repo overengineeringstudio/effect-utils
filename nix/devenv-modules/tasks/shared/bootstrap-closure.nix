@@ -18,7 +18,8 @@
 #
 # Zero-tolerance: it fails on ANY bootstrap-phase violation. There is no baseline and no allowlist;
 # `design-time` generators (the default) are out of scope by declaration. This gate is fast local
-# feedback for the ordering contract (decision 0004); install ordering is the ultimate arbiter.
+# feedback (R30); the empirical authority is `bootstrap:cold-proof` (R32), which runs the
+# bootstrap-phase generators in a no-`node_modules` checkout before install (decision 0004).
 #
 # The gate is a checker, not a bootstrap-phase generator: its entry imports the shared
 # `checkBootstrapClosure` walker, which uses the TypeScript compiler API (`import ts from 'typescript'`)

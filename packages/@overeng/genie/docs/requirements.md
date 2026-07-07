@@ -69,6 +69,13 @@ may not yet be installed.
 - **R07 Fresh-checkout safety:** A fresh checkout must be able to run Genie's
   bootstrap-phase generators successfully once its declared non-JS prerequisites
   are available, without requiring a pre-existing generated state.
+- **R30 Bootstrap-closure enforcement (fast-feedback gate):** Genie must provide a
+  static check that detects, before generation, any **bootstrap-phase** `.genie.ts`
+  whose transitive runtime import closure reaches a package unavailable before
+  install, reporting each violation as a contract violation carrying the importer
+  chain (not an incidental package-resolution error); type-only edges are excluded.
+  This gate is fast local feedback for R32's ordering, scoped to bootstrap-phase
+  generators; it is not the sole authority.
 - **R31 Generator phase:** Each generator has a phase — `bootstrap` (runs before
   package-manager install; must satisfy R06) or `design-time` (runs after install;
   may depend on the runtime graph). The phase must be declarable and discoverable
@@ -87,13 +94,6 @@ may not yet be installed.
   committed (T01) and the runner is built from them. Consequently, whether every
   install-input generator carries the bootstrap declaration is not structurally
   enforced; see decision 0004's accepted residual.)
-- **R30 Bootstrap-closure enforcement (fast-feedback gate):** Genie must provide a
-  static check that detects, before generation, any **bootstrap-phase** `.genie.ts`
-  whose transitive runtime import closure reaches a package unavailable before
-  install, reporting each violation as a contract violation carrying the importer
-  chain (not an incidental package-resolution error); type-only edges are excluded.
-  This gate is fast local feedback for R32's ordering, scoped to bootstrap-phase
-  generators; it is not the sole authority.
 
 ### Must support repository and megarepo composition
 
