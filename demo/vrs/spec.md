@@ -112,10 +112,12 @@ How the requirements are met. Kept current with the implementation.
 
 ## Status & known issues
 
-- **Demo proof coverage:** notion md ✅ (3/3 core + merge-proof), schema ✅ (5/5),
-  react ✅ (4/4). **sqlite ⚠️ 2/3** — the `notion db sync` beat is blocked by #899
-  (deployed-binary runtime bug); fix in progress. This blocks the sqlite demo, not
-  just its backup.
+- **Demo proof coverage: all four proven** — notion md ✅ (3/3 core + merge-proof),
+  **sqlite ✅ (3/3, real "Done" cell)**, schema ✅ (5/5), react ✅ (4/4). The sqlite
+  `notion db sync` failure (#899) was a **stale devenv profile** (predating PR
+  #898's fix) — resolved by rebuilding the profile; the binary now routes `track`
+  and catches the `.tsx` import defect. Follow-up #900 (track appends to an
+  existing manifest).
 - **demo-env rewiring pending** — screenplays/dashboard/harness still use the old
   `demo/<tool>/stage` paths, not `$DEMO_*`. Decided shape: **explicit `$DEMO_*`
   env vars** — backstage `eval "$(demo-env new --export)"`, on camera
