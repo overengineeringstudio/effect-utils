@@ -62,7 +62,31 @@ case "$tree" in
 esac
 
 # Independent ground truth: the bootstrap set is exactly the `// @genie-bootstrap`-marked sources.
-expected="$(grep -rl '@genie-bootstrap' "$tree" --include='*.genie.ts' | wc -l | tr -d ' ')"
+# Keep this detector byte-for-byte aligned with parseGeneratorPhase in
+# packages/@overeng/genie/src/core/phase.ts: only a real line-comment pragma counts.
+expected="$(node - "$tree" <<'NODE'
+const fs = require('node:fs')
+const path = require('node:path')
+const [root] = process.argv.slice(2)
+const bootstrapPragmaRe = /^[ \t]*\/\/[ \t]*@genie-bootstrap(?![\w-])/m
+let count = 0
+const visit = (dir) => {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const entryPath = path.join(dir, entry.name)
+    if (entry.isDirectory()) {
+      if (entry.name !== 'node_modules' && entry.name !== '.git') visit(entryPath)
+      continue
+    }
+    if (entry.isFile() && entry.name.endsWith('.genie.ts')) {
+      const sourceText = fs.readFileSync(entryPath, 'utf8')
+      if (bootstrapPragmaRe.test(sourceText)) count += 1
+    }
+  }
+}
+visit(root)
+console.log(count)
+NODE
+)"
 [ "$expected" -ge 1 ] || fail "no @genie-bootstrap generators found in the tree (marker rename broken?)"
 log "expected bootstrap-phase generators: ${expected}"
 

@@ -67,10 +67,12 @@ with the static closure check as fast feedback.
 - **Static completeness check (glob install-input generators, assert each is marked — the 0005
   no-orphan-seam pattern).** Rejected: still hardcodes "which outputs are install inputs." A static check
   cannot know what install needs.
-- **Empirical CI spot-check (P2):** run marked generators in a fresh sandbox + install, in a dedicated CI
-  job. Rejected as primary: principled but a separate test that can drift from the real flow.
-- **Structural ordering (P1, chosen):** the pre-install run IS the real dependency order, exercised on every
-  run; install enforces completeness and execution enforces safety, with nothing to hardcode.
+- **Empirical cold-proof (P2, chosen):** run marked generators in a fresh, no-`node_modules` tree with the
+  self-contained nix genie, then run frozen install. This is the strongest feasible proof in a committed-output
+  repo: it exercises the exact bootstrap execution path and install acceptance without adding a hot-path task edge.
+- **Structural ordering (P1).** Rejected/superseded: attractive in principle, but it did not enforce the
+  contract here. Source-mode genie cannot run cold, and committed outputs let install succeed without proving
+  the generator ran or was marked.
 
 ## Consequences
 
