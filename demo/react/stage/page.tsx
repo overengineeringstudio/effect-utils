@@ -10,7 +10,6 @@
  */
 import { FetchHttpClient } from '@effect/platform'
 import { Effect, Layer, Redacted } from 'effect'
-import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -63,13 +62,20 @@ const LaunchPlan = () => (
 )
 
 // ────────────────────────────────────────────────────────────────────────────
-// Wiring (not the interesting part). Reads the target page id written by
-// setup.sh and a persisted FsCache so reruns diff against the last sync.
+// Wiring (not the interesting part). Reads the target page id from the demo-env
+// export ($DEMO_REACT_PAGE_ID, set by `eval "$(demo/env/demo-env new --export)"`)
+// and keeps a persisted FsCache next to this file so reruns diff against the last
+// sync. This file runs from $DEMO_REACT_DIR (a fresh copy per env).
 // ────────────────────────────────────────────────────────────────────────────
 
-const stateDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.demo-state')
-const pageId = fs.readFileSync(path.join(stateDir, 'page-id'), 'utf8').trim()
-const cache = FsCache.make(path.join(stateDir, 'notion-cache.json'))
+const here = path.dirname(fileURLToPath(import.meta.url))
+const pageId = process.env.DEMO_REACT_PAGE_ID?.trim()
+if (!pageId) {
+  throw new Error(
+    'DEMO_REACT_PAGE_ID is not set — run: eval "$(demo/env/demo-env new --export)" (inside devenv shell)',
+  )
+}
+const cache = FsCache.make(path.join(here, 'notion-cache.json'))
 
 const layer = Layer.mergeAll(
   Layer.succeed(NotionConfig, {

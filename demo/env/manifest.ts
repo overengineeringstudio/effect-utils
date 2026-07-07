@@ -28,10 +28,11 @@ export interface Manifest {
       readonly tracked: boolean
     }
     readonly schema: {
+      readonly dir: string
       readonly tasks: { readonly dbId: string; readonly dsId: string; readonly url: string }
       readonly people: { readonly dbId: string; readonly dsId: string; readonly url: string }
     }
-    readonly react: { readonly pageId: string; readonly url: string }
+    readonly react: { readonly dir: string; readonly pageId: string; readonly url: string }
   }
 }
 
@@ -61,11 +62,13 @@ export const manifestToEnvVars = (m: Manifest): Record<string, string> => {
     DEMO_SQLITE_DIR: d.sqlite.dir,
     DEMO_SQLITE_PATH: d.sqlite.sqlitePath,
     // schema demo
+    DEMO_SCHEMA_DIR: d.schema.dir,
     DEMO_TASKS_DB_ID: d.schema.tasks.dbId,
     DEMO_TASKS_DS_ID: d.schema.tasks.dsId,
     DEMO_PEOPLE_DB_ID: d.schema.people.dbId,
     DEMO_PEOPLE_DS_ID: d.schema.people.dsId,
     // react demo
+    DEMO_REACT_DIR: d.react.dir,
     DEMO_REACT_PAGE_ID: d.react.pageId,
   }
 }

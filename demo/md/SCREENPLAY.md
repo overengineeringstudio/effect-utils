@@ -5,9 +5,8 @@ Gap: Notion has no local Markdown source of truth — you can't edit pages in yo
 ## Backstage (before recording — not on camera)
 
 - `devenv shell`
-- `export DEMO_PARENT_PAGE=<demo parent page id>`
-- `./demo/md/reset.sh`   # trashes last run's pages, creates 2 fresh ones, reseeds stage
-- Open BOTH page URLs it prints (roadmap + spec) in the browser, side by side with the terminal.
+- `eval "$(demo/env/demo-env new --export)"`   # fresh isolated env: sets DEMO_* + prints links
+- Open the printed **md · Launch roadmap** + **md · API spec** links in the browser, side by side with the terminal.
 
 Layout: terminal + editor on the left, the two Notion pages on the right.
 
@@ -16,7 +15,10 @@ Layout: terminal + editor on the left, the two Notion pages on the right.
 ### Beat 0 — Start the watcher   say: "One command. It watches two local files and keeps them in sync with Notion — no push, no pull, direction lives in each file."
 
 ```
-cd demo/md/stage
+cd "$DEMO_MD_DIR"
+```
+
+```
 notion md sync --watch roadmap.nmd spec.nmd --poll-interval-ms 3000
 ```
 
@@ -24,7 +26,7 @@ notion md sync --watch roadmap.nmd spec.nmd --poll-interval-ms 3000
 
 In your editor, open `roadmap.nmd` and check the first box, then save:
 
-```
+```text
 - [ ] Finalize the API spec      →      - [x] Finalize the API spec
 ```
 
@@ -34,7 +36,7 @@ Watch prints `shared-merged`; the roadmap page updates in the browser.
 
 In the browser, on the **API spec** page, add a bullet under the list:
 
-```
+```text
 - DELETE /v1/pages
 ```
 
@@ -44,7 +46,7 @@ Within ~1–2 poll cycles watch prints `pulled`; `spec.nmd` now shows the new en
 
 Stop the watcher, then diverge the same line on both sides:
 
-```
+```keys
 # in the terminal
 Ctrl-C
 ```

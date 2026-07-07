@@ -17,8 +17,8 @@
 // stdout.
 
 import { existsSync } from 'node:fs'
-import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
-import { dirname, join, resolve } from 'node:path'
+import { copyFile, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
+import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { run } from './exec.ts'
@@ -54,6 +54,18 @@ const MD_SEED_DIR = join(REPO_ROOT, 'demo/md/seed')
 const NMD_PLACEHOLDER_PARENT = '00000000-0000-4000-8000-000000000000'
 const NOTION_MD_CLI = join(REPO_ROOT, 'packages/@overeng/notion-md/dist/src/cli.js')
 const NOTION_BIN = process.env.NOTION_BIN ?? 'notion'
+
+// Committed per-demo stage sources copied into each env's DEMO_<TOOL>_DIR so the
+// presenter has a self-contained dir to `cd` into (Option B).
+const SCHEMA_STAGE_DIR = join(REPO_ROOT, 'demo/schema/stage')
+const REACT_STAGE_FILE = join(REPO_ROOT, 'demo/react/stage/page.tsx')
+// node_modules the copied stages symlink to (repo-level pnpm install populates them).
+const SCHEMA_NODE_MODULES = join(REPO_ROOT, 'packages/@overeng/notion-cli/node_modules')
+const REACT_NODE_MODULES = join(REPO_ROOT, 'packages/@overeng/notion-react/node_modules')
+// The 3-level-relative notion-react import in the committed page.tsx is rewritten
+// to an absolute path on copy (the copied file lives at a different depth).
+const REACT_MOD_RELATIVE = '../../../packages/@overeng/notion-react/src/mod.ts'
+const REACT_MOD_ABSOLUTE = join(REPO_ROOT, 'packages/@overeng/notion-react/src/mod.ts')
 
 /** All provisioning logs + link lists go here (never stdout). */
 const log = (msg = ''): void => {
@@ -184,8 +196,9 @@ const provisionSqlite = async (
   log(`    seeded ${SQLITE_ROWS.length} rows`)
 
   await mkdir(sqliteDir, { recursive: true })
-  // The Node-backed runtime creates `<workspace>/<database-id>.sqlite`.
-  const sqlitePath = join(sqliteDir, `${dbId}.sqlite`)
+  // The Node-backed replica runtime writes the tracked SQLite file at
+  // `<workspace>/data/v1/<data-source-id>.sqlite` (keyed by DS id, not DB id).
+  const sqlitePath = join(sqliteDir, 'data', 'v1', `${dsId}.sqlite`)
 
   let tracked = false
   if (doTrack) {
@@ -250,6 +263,65 @@ const provisionSchema = async (
   }
 }
 
+// --- per-demo stage dirs (Option B: a self-contained dir to `cd` into) ------
+
+/** List git-tracked files under a dir (repo-relative), as absolute paths. */
+const trackedFiles = async (dir: string): Promise<string[]> => {
+  const r = await run('git', ['ls-files', '-z', '--', relative(REPO_ROOT, dir)], {
+    cwd: REPO_ROOT,
+  })
+  if (r.code !== 0) throw new Error(`git ls-files failed for ${dir}: ${r.stderr}`)
+  return r.stdout
+    .split('\0')
+    .filter(Boolean)
+    .map((p) => join(REPO_ROOT, p))
+}
+
+/** Symlink `<destDir>/node_modules` at an absolute target (editor/runtime deps). */
+const linkNodeModules = async (destDir: string, target: string): Promise<void> => {
+  const link = join(destDir, 'node_modules')
+  await rm(link, { recursive: true, force: true }).catch(() => {})
+  await symlink(target, link)
+}
+
+/**
+ * schema demo dir: copy the committed `demo/schema/stage/` sources (config,
+ * use-schema, tsconfig, package.json) into DEMO_SCHEMA_DIR + symlink node_modules
+ * for autocomplete. NOTE: the committed schema config still resolves ids from a
+ * sibling `.demo-state/` — wiring it to `$DEMO_*` is deferred to the in-flight
+ * schema split. This step only guarantees the dir + sources exist so the split
+ * has a uniform DEMO_SCHEMA_DIR to land on.
+ */
+const provisionSchemaDir = async (schemaDir: string): Promise<void> => {
+  await mkdir(schemaDir, { recursive: true })
+  for (const src of await trackedFiles(SCHEMA_STAGE_DIR)) {
+    await copyFile(src, join(schemaDir, relative(SCHEMA_STAGE_DIR, src)))
+  }
+  if (existsSync(SCHEMA_NODE_MODULES)) await linkNodeModules(schemaDir, SCHEMA_NODE_MODULES)
+  log(`  schema: staged sources -> ${schemaDir}`)
+}
+
+/**
+ * react demo dir: copy the committed `page.tsx` into DEMO_REACT_DIR, rewriting
+ * the 3-level-relative notion-react import to an absolute path (the copy lives at
+ * a different depth), and symlink node_modules so `bun run page.tsx` resolves its
+ * deps. page.tsx reads the target page id from `$DEMO_REACT_PAGE_ID` and writes
+ * its FsCache next to itself (inside this gitignored dir).
+ */
+const provisionReactDir = async (reactDir: string): Promise<void> => {
+  await mkdir(reactDir, { recursive: true })
+  const src = await readFile(REACT_STAGE_FILE, 'utf8')
+  if (!src.includes(REACT_MOD_RELATIVE)) {
+    throw new Error(
+      `react: expected notion-react import '${REACT_MOD_RELATIVE}' not found in ${REACT_STAGE_FILE} ` +
+        `(the import moved — update REACT_MOD_RELATIVE in demo-env.ts)`,
+    )
+  }
+  await writeFile(join(reactDir, 'page.tsx'), src.split(REACT_MOD_RELATIVE).join(REACT_MOD_ABSOLUTE))
+  if (existsSync(REACT_NODE_MODULES)) await linkNodeModules(reactDir, REACT_NODE_MODULES)
+  log(`  react: staged page.tsx -> ${reactDir}`)
+}
+
 // --- manifest IO -----------------------------------------------------------
 
 const manifestPath = (envId: string): string => join(ENVS_DIR, envId, 'manifest.json')
@@ -305,8 +377,12 @@ const cmdNew = async (opts: {
   const md = await provisionMd(envPage.id, join(envDir, 'md'))
   const sqlite = await provisionSqlite(envPage.id, join(envDir, 'sqlite'), opts.sqliteTrack)
   const schema = await provisionSchema(envPage.id)
+  const schemaDir = join(envDir, 'schema')
+  await provisionSchemaDir(schemaDir)
   log('  react: creating target page ...')
   const react = await createPage(envPage.id, `Q2 Launch Plan — react demo (${envId})`, '🚀')
+  const reactDir = join(envDir, 'react')
+  await provisionReactDir(reactDir)
 
   const manifest: Manifest = {
     envId,
@@ -317,8 +393,8 @@ const cmdNew = async (opts: {
     demos: {
       md,
       sqlite,
-      schema,
-      react: { pageId: react.id, url: react.url },
+      schema: { dir: schemaDir, ...schema },
+      react: { dir: reactDir, pageId: react.id, url: react.url },
     },
   }
   await writeFile(manifestPath(envId), JSON.stringify(manifest, null, 2))

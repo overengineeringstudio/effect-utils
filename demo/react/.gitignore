@@ -1,3 +1,5 @@
 # Backstage runtime state — never commit.
 node_modules
 .demo-state/
+# Persisted FsCache written next to page.tsx when run from stage/ directly.
+stage/notion-cache.json

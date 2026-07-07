@@ -15,9 +15,9 @@ Under one env page `env-<timestamp>-<rand>`:
 | Demo     | Notion objects                                         | Local |
 | -------- | ------------------------------------------------------ | ----- |
 | `md`     | 2 pages (Launch roadmap + API spec)                    | `md/roadmap.nmd` (`source: shared`), `md/spec.nmd` (`source: remote`) |
-| `sqlite` | 1 typed DB "Launch Tasks" + 6 seed rows                | `sqlite/<db-id>.sqlite` (local replica via `notion db track`) |
-| `schema` | 2 typed DBs: `Tasks` + `People` (relation, status, select, date, …) + seed rows | — |
-| `react`  | 1 target page for JSX rendering                        | — |
+| `sqlite` | 1 typed DB "Launch Tasks" + 6 seed rows                | `sqlite/data/v1/<ds-id>.sqlite` (local replica via `notion db track`) |
+| `schema` | 2 typed DBs: `Tasks` + `People` (relation, status, select, date, …) + seed rows | `schema/` (copied `demo/schema/stage/` sources + node_modules) |
+| `react`  | 1 target page for JSX rendering                        | `react/page.tsx` (copied, notion-react import absolutized) + node_modules |
 
 Env page children: **3 `child_page`** (roadmap, spec, react) +
 **3 `child_database`** (sqlite, Tasks, People) = **6**.
@@ -75,13 +75,15 @@ Derived purely from the manifest (`manifestToEnvVars` in `manifest.ts`):
 | `DEMO_MD_SPEC_FILE`   | local `spec.nmd` path |
 | `DEMO_SQLITE_DB_ID`   | sqlite database id |
 | `DEMO_SQLITE_DS_ID`   | sqlite data-source id |
-| `DEMO_SQLITE_DIR`     | sqlite workspace dir |
-| `DEMO_SQLITE_PATH`    | local replica path `<dir>/<db-id>.sqlite` (see limitation) |
+| `DEMO_SQLITE_DIR`     | sqlite workspace dir (`cd` here; `notion db sync .` runs from it) |
+| `DEMO_SQLITE_PATH`    | local replica file `<dir>/data/v1/<ds-id>.sqlite` (what `sqlite3` opens) |
+| `DEMO_SCHEMA_DIR`     | schema stage dir (copied `demo/schema/stage/` sources + node_modules) |
 | `DEMO_TASKS_DB_ID`    | schema Tasks database id |
 | `DEMO_TASKS_DS_ID`    | schema Tasks data-source id |
 | `DEMO_PEOPLE_DB_ID`   | schema People database id |
 | `DEMO_PEOPLE_DS_ID`   | schema People data-source id |
-| `DEMO_REACT_PAGE_ID`  | react target page id |
+| `DEMO_REACT_DIR`      | react stage dir (copied `page.tsx` + node_modules; `cd` here, `bun run page.tsx`) |
+| `DEMO_REACT_PAGE_ID`  | react target page id (read by `page.tsx`) |
 
 ## Manifest schema
 
@@ -103,12 +105,13 @@ derive from it. Shape (`Manifest` in `manifest.ts`):
       "spec":    { "id": "…", "url": "…", "file": "…/md/spec.nmd",    "source": "remote" }
     },
     "sqlite": { "dbId": "…", "dsId": "…", "url": "…", "dir": "…/sqlite",
-                "sqlitePath": "…/sqlite/<db-id>.sqlite", "tracked": false },
+                "sqlitePath": "…/sqlite/data/v1/<ds-id>.sqlite", "tracked": true },
     "schema": {
+      "dir": "…/schema",
       "tasks":  { "dbId": "…", "dsId": "…", "url": "…" },
       "people": { "dbId": "…", "dsId": "…", "url": "…" }
     },
-    "react": { "pageId": "…", "url": "…" }
+    "react": { "dir": "…/react", "pageId": "…", "url": "…" }
   }
 }
 ```
