@@ -20,11 +20,14 @@ const packagedEffectRuntimeClosureDeps = [
   '@effect/typeclass',
   'fast-check',
   'find-my-way-ts',
+  'ini',
   'mime',
   'msgpackr',
   'multipasta',
+  'toml',
   'undici',
   'ws',
+  'yaml',
 ] as const
 
 const supportDeps = catalog.compose({
