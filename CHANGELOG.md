@@ -32,6 +32,10 @@ All notable changes to this project will be documented in this file.
 - **devenv / lint**: make `devenv:trace-audit` self-contained by referencing its
   Nix-provided scanner and marker-check binaries instead of relying on ambient
   `rg`, `head`, `tail`, or `grep` in `PATH`.
+- **genie / nix**: keep the packaged Genie runtime closure minimal by declaring
+  only the direct external runtime dependency (`typescript`) needed by the
+  installed source workspace; transitive packages remain owned by the lockfile
+  instead of being promoted to `@overeng/genie` direct dependencies.
 
 ### Added
 
