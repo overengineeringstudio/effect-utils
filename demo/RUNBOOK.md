@@ -6,7 +6,7 @@ Everything a fresh session/agent needs to run the demo. No hidden state.
 
 ```bash
 cd <repo-root>
-demo/serve.sh                       # regenerate dashboard + serve on :52606 (stable)
+demo/serve.sh                       # serve on :52606 + regenerate on source change (safe for recording)
 # open the control dashboard:
 #   local:   http://127.0.0.1:52606/control.html
 #   tailnet: https://mbp2025.tail8108.ts.net:8443/control.html   (your devices only)
@@ -27,13 +27,14 @@ Notion pages open in the browser.
   (`<demo>-evidence/`). "Deploy" = just **regenerate + serve static files** — no
   build pipeline, no upload.
 - Served statically from `demo/explainers/` on **fixed port 52606**.
-  `demo/serve.sh` (re)starts it idempotently (frees the port first).
+  `demo/serve.sh` (re)starts it idempotently (frees the port first) and **watches
+  sources by default** — it regenerates `control.html` on change and is otherwise
+  identical to a plain serve (idle = no reload), so it's safe for recording too.
 - Cross-machine: `tailscale serve --https=8443 → 127.0.0.1:52606` — a **standing
   config that persists across sessions** (tailnet-only). Only re-run if reset:
   `AGENT_POLICY_BYPASS=1 tailscale serve --bg --https=8443 http://127.0.0.1:52606`.
-- **Iterate with HMR:** `demo/serve.sh watch` (regen on source change) or
-  `demo/serve.sh hmr` (live-reload the browser). Use plain `demo/serve.sh` for
-  recording (no surprise reloads).
+- **Auto-reload while iterating:** `demo/serve.sh hmr` live-reloads the browser on
+  change (injects a reload client — use it for iterating, not the recording page).
 
 > Note: this session currently serves 52606 via a **devnet** caddy (equivalent —
 > the port happens to match). `demo/serve.sh` replaces that with a plain
