@@ -38,8 +38,8 @@ All notable changes to this project will be documented in this file.
   plus the runtime externals the packaged CLI must expose at its root
   (`typescript`, `@overeng/tui-react`'s terminal text sidecars, and the
   Effect-owned runtime closure reached through
-  `@effect/cli`, `effect`, `@effect/cluster`, `@effect/platform`, and
-  `@effect/platform-node`). It still
+  `@effect/cli`, `effect`, `@effect/cluster`, `@effect/platform`,
+  `@effect/platform-node`, and `fast-check`). It still
   avoids the old broad hand-maintained list of unrelated Effect/TUI helper
   packages and relies on workspace package manifests for first-party ownership.
 - **genie / check**: make `bootstrap-closure:check` a reusable devenv task by

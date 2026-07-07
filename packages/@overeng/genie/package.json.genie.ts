@@ -24,6 +24,7 @@ const packagedEffectRuntimeClosureDeps = [
   'mime',
   'msgpackr',
   'multipasta',
+  'pure-rand',
   'toml',
   'undici',
   'ws',
