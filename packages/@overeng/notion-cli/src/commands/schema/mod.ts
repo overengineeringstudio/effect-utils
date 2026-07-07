@@ -13,7 +13,7 @@ import React from 'react'
 import { EffectPath } from '@overeng/effect-path'
 import { NotionConfig, NotionDatabases, NotionDataSources } from '@overeng/notion-effect-client'
 import { run } from '@overeng/tui-react'
-import { outputOption as tuiOutputOption, outputModeLayer } from '@overeng/tui-react/node'
+import { OUTPUT_MODE_VALUES, outputOption as tuiOutputOption, outputModeLayer } from '@overeng/tui-react/node'
 
 import { getDiffApp } from '../../renderers/DiffOutput/app.ts'
 import { DiffView } from '../../renderers/DiffOutput/view.tsx'
@@ -88,6 +88,17 @@ const outputOption = Options.file('output').pipe(
   ),
 )
 
+/**
+ * TUI render-mode option for commands that also take a file `--output`/`-o`.
+ * Uses a distinct `--output-mode` flag (no `-o` alias) so the file-output option
+ * keeps `--output`/`-o`; the shared tui `outputOption` claims those and would
+ * otherwise shadow the file path, making `generate <id> -o file.ts` fail.
+ */
+const tuiOutputModeOption = Options.choice('output-mode', OUTPUT_MODE_VALUES).pipe(
+  Options.withDescription('TUI render mode (auto, pretty, ci-plain, json, ...)'),
+  Options.withDefault('auto' as (typeof OUTPUT_MODE_VALUES)[number]),
+)
+
 const nameOption = Options.text('name').pipe(
   Options.withAlias('n'),
   Options.withDescription('Name for the generated schema (defaults to database title)'),
@@ -158,7 +169,7 @@ const generateCommand = Command.make(
     noSchemaMeta: noSchemaMetaOption,
     includeApi: includeApiOption,
     writable: writableOption,
-    tuiOutput: tuiOutputOption,
+    tuiOutput: tuiOutputModeOption,
   },
   ({
     databaseId,
