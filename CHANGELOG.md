@@ -36,6 +36,9 @@ All notable changes to this project will be documented in this file.
   only the direct external runtime dependency (`typescript`) needed by the
   installed source workspace; transitive packages remain owned by the lockfile
   instead of being promoted to `@overeng/genie` direct dependencies.
+- **nix / mk-pnpm-cli**: preserve flake source inputs as Nix build inputs when
+  materializing filtered CLI workspaces, preventing downstream GC from removing
+  a pinned flake source before package-directory copies run.
 
 ### Added
 

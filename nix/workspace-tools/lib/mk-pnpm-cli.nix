@@ -326,7 +326,7 @@ let
   coerceSourceRoot =
     sourceRoot:
     if builtins.isAttrs sourceRoot && builtins.hasAttr "outPath" sourceRoot then
-      sourceRoot.outPath
+      sourceRoot
     else if builtins.isPath sourceRoot then
       sourceRoot
     else
