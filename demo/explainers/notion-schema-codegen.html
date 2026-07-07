@@ -449,7 +449,24 @@
       <div class="beat-head"><span class="beat-num">01</span><span class="beat-tag">The problem</span></div>
       <h2>Notion hands you untyped JSON — so your code <em>guesses</em> at the shape.</h2>
       <div class="stage">
-        <!-- Notion database, rendered as a real grid -->
+        <!-- your code : guesses, breaks at runtime (LEFT — the other medium) -->
+        <div class="code" style="width:322px">
+          <div class="code-bar">◆ app.ts<span class="ro" style="color:var(--ok)">tsc: 0 errors</span></div>
+          <div class="code-body">
+            <div><span class="cm">// properties typed as `any`</span></div>
+            <div><span class="kw">const</span> s = page.properties.Status</div>
+            <div><span class="kw">if</span> (s === <span class="st un">"In&nbsp;Progress"</span>)</div>
+            <div style="color:var(--warn);font-weight:600">&nbsp;&nbsp;&nbsp;&nbsp;↑ renamed in Notion → <span class="st">"Active"</span></div>
+            <div class="indent">notify() <span class="cm">// never runs now</span></div>
+            <div style="margin-top:8px"><span class="tagline tag-w">✗ the rename silently breaks it · wrong at runtime</span></div>
+          </div>
+        </div>
+        <!-- API : untyped JSON (arrow points Notion → code, right → left) -->
+        <div class="conn warn">
+          <div class="lbl"><b>REST API</b><br/>untyped JSON</div>
+          <svg viewBox="0 0 108 24"><path d="M104 12 H16" stroke="var(--muted)" stroke-width="1.8" fill="none"/><path d="M24 6 L10 12 L24 18 Z" fill="var(--muted)"/></svg>
+        </div>
+        <!-- Notion database, rendered as a real grid (RIGHT — the source of truth) -->
         <div class="ndb-wrap">
           <div class="ndb" style="width:452px">
             <div class="ndb-bar"><span class="ic">▦</span><span class="nm">Tasks</span><span class="src">Notion database</span></div>
@@ -469,23 +486,6 @@
             </div>
           </div>
           <div class="tagline tag-w">✎ "In Progress" → "Active", renamed in the UI</div>
-        </div>
-        <!-- API : untyped JSON -->
-        <div class="conn warn">
-          <div class="lbl"><b>REST API</b><br/>untyped JSON</div>
-          <svg viewBox="0 0 108 24"><path d="M4 12 H92" stroke="var(--muted)" stroke-width="1.8" fill="none"/><path d="M84 6 L98 12 L84 18 Z" fill="var(--muted)"/></svg>
-        </div>
-        <!-- your code : guesses, breaks at runtime -->
-        <div class="code" style="width:322px">
-          <div class="code-bar">◆ app.ts<span class="ro" style="color:var(--ok)">tsc: 0 errors</span></div>
-          <div class="code-body">
-            <div><span class="cm">// properties typed as `any`</span></div>
-            <div><span class="kw">const</span> s = page.properties.Status</div>
-            <div><span class="kw">if</span> (s === <span class="st un">"In&nbsp;Progress"</span>)</div>
-            <div style="color:var(--warn);font-weight:600">&nbsp;&nbsp;&nbsp;&nbsp;↑ renamed in Notion → <span class="st">"Active"</span></div>
-            <div class="indent">notify() <span class="cm">// never runs now</span></div>
-            <div style="margin-top:8px"><span class="tagline tag-w">✗ the rename silently breaks it · wrong at runtime</span></div>
-          </div>
         </div>
       </div>
       <p class="caption"><b>The API returns untyped JSON — property names, option sets and types live only in the workspace.</b> <span class="hint">Your editor can't autocomplete them, and a rename in Notion sails past <code>tsc</code> to break you at runtime, with no warning.</span></p>
