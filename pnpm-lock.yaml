@@ -475,6 +475,12 @@ importers:
       '@effect/rpc':
         specifier: 0.75.1
         version: 0.75.1(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.4))(effect@3.21.4)
+      '@effect/sql':
+        specifier: 0.51.1
+        version: 0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.4))(effect@3.21.4)(ioredis@5.11.1))(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.4))(effect@3.21.4)
+      '@effect/typeclass':
+        specifier: 0.40.0
+        version: 0.40.0(effect@3.21.4)
       '@effect/vitest':
         specifier: 0.29.0
         version: 0.29.0(effect@3.21.4)(vitest@4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.0.0)(happy-dom@20.10.6)(vite@8.0.16(@types/node@26.0.0)(esbuild@0.27.7)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.8.3)))
