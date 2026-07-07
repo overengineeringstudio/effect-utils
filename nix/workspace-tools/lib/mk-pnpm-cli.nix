@@ -340,7 +340,11 @@ let
     if prefix == null then
       "workspaceRootSource"
     else
-      "workspaceSource_${lib.strings.sanitizeDerivationName prefix}";
+      "workspaceSource_${
+        builtins.replaceStrings [ "-" "." "+" ] [ "_" "_" "_" ] (
+          lib.strings.sanitizeDerivationName prefix
+        )
+      }";
   sourceContextInputs =
     {
       ${sourceContextInputName null} = workspaceRoot;
