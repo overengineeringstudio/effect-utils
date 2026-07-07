@@ -1,0 +1,11 @@
+flowchart TB
+  subgraph PLATFORM["Notion dev platform"]
+    API["API<br/>REST · pages · blocks · data sources"]
+    CLI["CLI<br/>ntn · query · pages · files"]
+    WORK["Workers<br/>server-side automation"]
+  end
+
+  PLATFORM --> MD["notion md<br/>local Markdown ⇄ pages, guarded merge"]
+  PLATFORM --> DB["notion db<br/>edit a database as local SQL"]
+  PLATFORM --> SCH["notion schema<br/>typed schemas + CI drift gate"]
+  PLATFORM --> RX["notion-react<br/>write pages as JSX, minimum ops"]

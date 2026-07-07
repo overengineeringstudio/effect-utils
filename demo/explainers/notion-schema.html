@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>notion schema — explainer</title>
+<style>
+  :root {
+    --bg: #ffffff; --panel: #f7f7f8; --ink: #1a1a1a; --muted: #6b6b70;
+    --line: #e3e3e6; --accent: #5b5bd6; --accent-soft: #ececfb;
+    --warn: #b25000; --warn-soft: #fbeede; --ok: #1a7f4b;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #191919; --panel: #202020; --ink: #ececee; --muted: #9a9aa0;
+      --line: #2f2f2f; --accent: #9d9df0; --accent-soft: #26264a;
+      --warn: #e0913f; --warn-soft: #35281a; --ok: #4ec98a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--sans);
+    line-height: 1.5; padding: 28px; }
+  .wrap { max-width: 860px; margin: 0 auto; }
+  .kicker { font: 600 12px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase;
+    color: var(--accent); margin: 0 0 6px; }
+  h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: -.01em; }
+  h1 code { font-family: var(--mono); font-size: .8em; background: var(--accent-soft);
+    color: var(--accent); padding: 2px 8px; border-radius: 6px; }
+  .sub { color: var(--muted); margin: 0 0 22px; font-size: 15px; }
+  .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 22px; }
+  @media (max-width: 640px) { .cards { grid-template-columns: 1fr; } }
+  .card { border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; background: var(--panel); }
+  .card h3 { margin: 0 0 6px; font: 600 12px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; }
+  .card.gap h3 { color: var(--warn); }
+  .card.fix h3 { color: var(--ok); }
+  .card p { margin: 0; font-size: 14px; color: var(--ink); }
+  .card code, .flow code { font-family: var(--mono); font-size: .88em; background: var(--accent-soft);
+    color: var(--accent); padding: 1px 5px; border-radius: 5px; }
+  .flow { border: 1px solid var(--line); border-radius: 12px; padding: 22px 18px 14px; background: var(--panel);
+    margin-bottom: 22px; }
+  .flow figcaption { color: var(--muted); font-size: 12.5px; margin-top: 10px; text-align: center; }
+  svg { width: 100%; height: auto; display: block; }
+  .node rect { fill: var(--bg); stroke: var(--accent); stroke-width: 1.5; }
+  .node text { fill: var(--ink); font: 600 13px var(--mono); }
+  .node .sub2 { fill: var(--muted); font: 400 11px var(--sans); }
+  .edge { stroke: var(--muted); stroke-width: 1.6; fill: none; }
+  .edge.dashed { stroke-dasharray: 5 4; stroke: var(--warn); }
+  .elabel { fill: var(--muted); font: 500 11px var(--sans); }
+  .conflict rect { stroke: var(--warn); }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font: 600 11px/1 var(--mono); letter-spacing: .05em; text-transform: uppercase; }
+  td code { font-family: var(--mono); }
+  .foot { margin-top: 18px; font-size: 13px; color: var(--muted); }
+  .foot b { color: var(--ink); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="kicker">Notion tooling · primitive 03</p>
+  <h1><code>notion&nbsp;schema</code> — typed, versioned, drift-checked access</h1>
+  <p class="sub">Introspect a Notion database into typed Effect schemas, commit them, and let a CI gate fail the build when Notion drifts away from your code.</p>
+
+  <div class="cards">
+    <div class="card gap">
+      <h3>The gap</h3>
+      <p>The Notion API hands you untyped JSON. Property names, option sets, and types live only in the workspace — so your code guesses at shapes, and a rename in Notion breaks you at runtime with no warning.</p>
+    </div>
+    <div class="card fix">
+      <h3>The stopgap</h3>
+      <p><code>schema generate</code> introspects a DB into a typed <code>schema.gen.ts</code> — literal-union options, write schemas, a typed API. <code>generate-config</code> declares many DBs at once; <code>diff --exit-code</code> is a CI drift gate that fails when Notion no longer matches your committed types.</p>
+    </div>
+  </div>
+
+  <figure class="flow">
+    <svg viewBox="0 0 820 230" role="img" aria-label="Data flow: a Notion database is introspected into a typed schema.gen.ts consumed by app code; a CI drift gate compares live Notion against the generated file.">
+      <!-- CI drift gate (top) -->
+      <g class="node conflict"><rect x="298" y="24" width="248" height="52" rx="10"/>
+        <text x="422" y="47" text-anchor="middle" style="font-size:12px">CI drift gate</text>
+        <text class="sub2" x="422" y="65" text-anchor="middle">diff --exit-code · fails on drift</text></g>
+      <!-- main flow edges -->
+      <path class="edge" d="M200 160 H310" marker-end="url(#a)"/>
+      <path class="edge" d="M532 160 H610" marker-end="url(#a)"/>
+      <text class="elabel" x="255" y="142" text-anchor="middle">schema generate</text>
+      <text class="elabel" x="571" y="142" text-anchor="middle">import</text>
+      <!-- drift compares live vs generated -->
+      <path class="edge dashed" d="M110 130 V50 H298" marker-end="url(#w)"/>
+      <path class="edge dashed" d="M421 130 V76" marker-end="url(#w)"/>
+      <text class="elabel" x="150" y="42" text-anchor="start" style="fill:var(--warn)">live schema</text>
+      <text class="elabel" x="430" y="106" text-anchor="start" style="fill:var(--warn)">generated</text>
+      <!-- notion db -->
+      <g class="node"><rect x="30" y="130" width="170" height="60" rx="10"/>
+        <text x="115" y="156" text-anchor="middle">Notion DB</text>
+        <text class="sub2" x="115" y="174" text-anchor="middle">untyped JSON</text></g>
+      <!-- schema.gen.ts -->
+      <g class="node"><rect x="310" y="130" width="222" height="60" rx="10"/>
+        <text x="421" y="156" text-anchor="middle">schema.gen.ts</text>
+        <text class="sub2" x="421" y="174" text-anchor="middle">typed · unions · writes</text></g>
+      <!-- app code -->
+      <g class="node"><rect x="610" y="130" width="180" height="60" rx="10"/>
+        <text x="700" y="156" text-anchor="middle">typed API</text>
+        <text class="sub2" x="700" y="174" text-anchor="middle">queryAll · create · update</text></g>
+      <defs>
+        <marker id="a" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
+          <path d="M1 1 L7 4 L1 7 Z" fill="currentColor" class="edge" style="fill:var(--muted);stroke:none"/></marker>
+        <marker id="w" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
+          <path d="M1 1 L7 4 L1 7 Z" style="fill:var(--warn);stroke:none"/></marker>
+      </defs>
+    </svg>
+    <figcaption>Introspect Notion into a committed typed schema. In CI, <code>diff</code> compares the live database against that file and exits non-zero the moment they drift.</figcaption>
+  </figure>
+
+  <table>
+    <thead><tr><th>Command / flag</th><th>What you get</th></tr></thead>
+    <tbody>
+      <tr><td><code>schema generate &lt;id&gt; -o x.gen.ts</code></td><td>typed read schema for the database</td></tr>
+      <tr><td><code>--typed-options</code></td><td>literal-union types for select / status options</td></tr>
+      <tr><td><code>--include-write</code></td><td>typed create / update property payloads</td></tr>
+      <tr><td><code>--include-api</code></td><td>typed <code>queryAll · get · create · update</code> wrapper</td></tr>
+      <tr><td><code>generate-config</code></td><td>declare many databases in one config file</td></tr>
+      <tr><td><code>diff --exit-code</code></td><td>CI drift gate — exit 1 when Notion ≠ your types</td></tr>
+    </tbody>
+  </table>
+
+  <p class="foot"><b>What first-class would look like:</b> Notion publishing typed, versioned schema bindings with server-side drift alerts. Be clear about what this is: <b>introspect → codegen → drift detection</b>, not declarative provisioning. You still create and change the database in Notion — the CLI mirrors it into your types and fails CI when the two disagree.</p>
+</div>
+</body>
+</html>

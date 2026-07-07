@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Live HTML Block</title>
+<style>
+  :root { color-scheme: light dark; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: grid;
+    place-items: center;
+    min-height: 260px;
+    background: radial-gradient(120% 120% at 50% 0%, #1e1b4b 0%, #0f172a 60%, #020617 100%);
+    color: #e2e8f0;
+    text-align: center;
+    padding: 28px;
+    box-sizing: border-box;
+  }
+  .card { max-width: 420px; }
+  h1 { font-size: 1.5rem; margin: 0 0 6px; letter-spacing: -0.02em; }
+  p  { margin: 0 0 20px; color: #94a3b8; font-size: 0.95rem; }
+  .count {
+    font-variant-numeric: tabular-nums;
+    font-size: 3.2rem;
+    font-weight: 700;
+    line-height: 1;
+    margin: 0 0 4px;
+    background: linear-gradient(90deg, #a78bfa, #22d3ee);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .clock { font-variant-numeric: tabular-nums; color: #64748b; font-size: 0.85rem; margin-bottom: 18px; }
+  button {
+    font: inherit;
+    font-weight: 600;
+    border: 0;
+    border-radius: 999px;
+    padding: 11px 22px;
+    color: #0f172a;
+    background: linear-gradient(90deg, #a78bfa, #22d3ee);
+    cursor: pointer;
+    transition: transform 0.08s ease, filter 0.15s ease;
+  }
+  button:hover { filter: brightness(1.08); }
+  button:active { transform: scale(0.96); }
+  .hint { margin-top: 16px; font-size: 0.75rem; color: #475569; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>This is not a screenshot.</h1>
+    <p>It's a real, sandboxed HTML block — uploaded to Notion via the File Upload API and embedded straight from the terminal.</p>
+    <div class="count" id="count">0</div>
+    <div class="clock" id="clock">--:--:--</div>
+    <button id="btn">Click me — I run inside Notion</button>
+    <div class="hint">JS is live. This counter and clock are ticking right now.</div>
+  </div>
+<script>
+  var n = 0;
+  var countEl = document.getElementById("count");
+  var clockEl = document.getElementById("clock");
+  document.getElementById("btn").addEventListener("click", function () {
+    n += 1;
+    countEl.textContent = String(n);
+  });
+  function tick() {
+    var d = new Date();
+    var p = function (x) { return String(x).padStart(2, "0"); };
+    clockEl.textContent = p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
+  }
+  tick();
+  setInterval(tick, 1000);
+</script>
+</body>
+</html>

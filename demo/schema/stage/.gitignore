@@ -1,0 +1,5 @@
+# Generated live during the demo (Beat 1 / Beat 3) — regenerated, never committed.
+*.gen.ts
+*.gen.api.ts
+# Resolution symlink recreated by reset.sh (points at the notion-cli package's node_modules).
+/node_modules

@@ -1,0 +1,10 @@
+flowchart LR
+  N["Notion DB<br/>data source"]
+  R["&lt;db-id&gt;.sqlite<br/>local rows · plain SQL"]
+  P["guarded sync<br/>plan · guard · verify · apply"]
+  G["fail-closed gate<br/>computed · destructive schema · file bytes"]
+
+  N <-->|track / pull| R
+  R -->|local SQL intents| P
+  P -->|verified writes| N
+  P -.->|unsupported| G

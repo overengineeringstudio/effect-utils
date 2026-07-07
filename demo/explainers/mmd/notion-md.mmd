@@ -1,0 +1,9 @@
+flowchart LR
+  F[".nmd file<br/>local source of truth"]
+  S[".notion-md/ store<br/>content-addressed merge base"]
+  N["Notion<br/>page + properties"]
+  C["*.conflict.roughdraft.md"]
+
+  F <-->|reconcile| S
+  S <-->|reconcile| N
+  S -.->|diverged| C

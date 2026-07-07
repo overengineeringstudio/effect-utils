@@ -1,0 +1,9 @@
+flowchart LR
+  J["&lt;Page&gt; … JSX<br/>your components"]
+  R["reconciler<br/>diff by blockKey"]
+  B["Notion blocks<br/>append · update · move"]
+  C["FsCache — merge base<br/>blockKey → notion block id"]
+
+  J -->|render| R
+  R -->|minimum ops| B
+  R <-->|prev / next tree| C

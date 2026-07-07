@@ -1,0 +1,3 @@
+# Backstage runtime state — never commit.
+node_modules
+.demo-state/

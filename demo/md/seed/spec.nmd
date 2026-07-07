@@ -1,0 +1,28 @@
+---
+{
+  "notion_md": {
+    "version": 2,
+    "api_version": "2026-03-11",
+    "object": "page",
+    "source": "local",
+    "page_id": null,
+    "url": null,
+    "parent": { "_tag": "page", "id": "00000000-0000-4000-8000-000000000000" },
+    "page": {
+      "title": "notion md demo — API spec (authored in Notion)",
+      "icon": null,
+      "cover": null,
+      "in_trash": false,
+      "is_locked": false
+    },
+    "properties": {}
+  }
+}
+---
+
+## API surface
+
+These endpoints are authored in Notion by the team and mirror down into the repo.
+
+- GET /v1/pages
+- POST /v1/pages

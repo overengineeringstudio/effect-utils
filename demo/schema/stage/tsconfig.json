@@ -1,0 +1,16 @@
+{
+  "//": "Editor/typecheck config for the demo stage. Resolves `effect` and `@overeng/*` via the node_modules symlink created by reset.sh (points at the notion-cli package's node_modules). This is what makes autocomplete light up in schema.gen.ts and use-schema.ts on camera.",
+  "compilerOptions": {
+    "target": "ES2024",
+    "lib": ["ES2024"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "strict": true,
+    "exactOptionalPropertyTypes": true,
+    "skipLibCheck": true,
+    "types": ["node"]
+  },
+  "include": ["*.gen.ts", "use-schema.ts"]
+}

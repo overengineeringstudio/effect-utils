@@ -1,0 +1,10 @@
+flowchart LR
+  N["Notion DB<br/>untyped JSON"]
+  S["schema.gen.ts<br/>typed · unions · writes"]
+  A["typed API<br/>queryAll · create · update"]
+  G["CI drift gate<br/>diff --exit-code · fails on drift"]
+
+  N -->|schema generate| S
+  S -->|import| A
+  N -.->|live schema| G
+  S -.->|generated| G

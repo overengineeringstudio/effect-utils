@@ -1,0 +1,3 @@
+# The presenter drives real `notion md` commands from inside this directory.
+# reset.sh fills it with working copies of ../seed/*.nmd bound to fresh Notion
+# pages. Everything here except this file is gitignored runtime state.
