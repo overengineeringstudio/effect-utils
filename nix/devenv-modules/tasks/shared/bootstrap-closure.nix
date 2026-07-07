@@ -19,9 +19,17 @@
 # Zero-tolerance: it fails on ANY bootstrap-phase violation. There is no baseline and no allowlist;
 # `design-time` generators (the default) are out of scope by declaration. This gate is fast local
 # feedback for the ordering contract (decision 0004); install ordering is the ultimate arbiter.
+#
+# The gate is a checker, not a bootstrap-phase generator: its entry imports the shared
+# `checkBootstrapClosure` walker, which uses the TypeScript compiler API (`import ts from 'typescript'`)
+# to analyse import edges statically. That npm dep must be installed for the checker to run, so the task
+# is ordered `after = [ "pnpm:install" ]`. Downstream members whose install task is named differently
+# pass their own `after`.
 {
   # Repo-relative path to the bun entry.
   entry ? "genie/ci-scripts/bootstrap-closure-check.ts",
+  # Tasks that must run before the checker (it imports `typescript`, so it needs install state).
+  after ? [ "pnpm:install" ],
 }:
 { lib, pkgs, ... }:
 let
@@ -30,6 +38,7 @@ in
 {
   tasks = {
     "bootstrap-closure:check" = {
+      inherit after;
       description = "Fail on any bootstrap-safe import-closure violation in bootstrap-phase .genie.ts sources (zero-tolerance)";
       exec = trace.exec "bootstrap-closure:check" ''
         set -uo pipefail
