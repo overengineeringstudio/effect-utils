@@ -6,6 +6,15 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **notion-cli**: `schema generate <id> -o schema.gen.ts` now writes the file
+  again. The `generate` command registered both a file `--output`/`-o` option
+  and the shared TUI render-mode option, which also claimed `--output`/`-o`, so
+  the render-mode choice validator shadowed the file path and rejected it. The
+  TUI render mode on `generate` now uses a distinct `--output-mode` flag (no
+  `-o` alias), leaving `--output`/`-o` for the output file. Added a parse-level
+  test asserting `-o` resolves to the file path. (`introspect`/`diff`/
+  `generate-config` keep the shared render-mode `--output`/`-o`; they have no
+  file option to collide with.)
 - **CI / cargo**: move standalone Rust crate build/test/clippy/fmt semantics into
   the `cargo:check` devenv task and make the generated cargo CI lane call that
   task, ensuring the `node-cpuprofile` integration test runs with the devenv
