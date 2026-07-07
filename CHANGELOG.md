@@ -33,10 +33,10 @@ All notable changes to this project will be documented in this file.
   Nix-provided scanner and marker-check binaries instead of relying on ambient
   `rg`, `head`, `tail`, or `grep` in `PATH`.
 - **genie / nix**: keep the packaged Genie runtime closure minimal by declaring
-  only the direct external runtime dependencies (`typescript` and Effect's
-  `fast-check` peer import) needed by the installed source workspace; transitive
-  packages remain owned by the lockfile instead of being promoted to
-  `@overeng/genie` direct dependencies.
+  only the direct external runtime dependencies (`typescript`, Effect's
+  `fast-check` peer import, and `@effect/cli`'s `ini`/`toml` file parser imports)
+  needed by the installed source workspace; transitive packages remain owned by
+  the lockfile instead of being promoted to `@overeng/genie` direct dependencies.
 - **nix / mk-pnpm-cli**: preserve flake source inputs as Nix build inputs when
   materializing filtered CLI workspaces, preventing downstream GC from removing
   a pinned flake source before package-directory copies run.
