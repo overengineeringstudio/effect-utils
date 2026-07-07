@@ -154,6 +154,116 @@ const parseBody = (body: string[]): Segment[] => {
   return segs
 }
 
+// ---------------------------------------------------------------------------
+// RAW model (additive) — for React renderers that want raw text, not HTML.
+//
+// The `parseBeats`/`inlineMd`/`esc` path above emits PRE-ESCAPED HTML strings
+// (`Segment.prose.html`) tailored to build.ts's string-concat renderer. A React
+// app instead wants the RAW prose lines and does escaping + inline-markdown in
+// JSX. `parseBeatsRaw` mirrors the same parse but carries raw text; it does NOT
+// change any existing export's behavior. build.ts is untouched by this.
+// ---------------------------------------------------------------------------
+
+export type RawSegment =
+  | { kind: 'prose'; lines: string[]; isExpectation: boolean } // raw lines, inline-md rendered in JSX
+  | { kind: 'code'; raw: string }
+  | { kind: 'say'; text: string }
+
+export interface RawBeat {
+  num: string | null
+  label: string
+  title: string
+  narration: string
+  segments: RawSegment[]
+}
+
+const parseBodyRaw = (body: string[]): RawSegment[] => {
+  const segs: RawSegment[] = []
+  let proseBuf: string[] = []
+  const flushProse = () => {
+    if (proseBuf.length === 0) return
+    segs.push({ kind: 'prose', lines: proseBuf, isExpectation: false })
+    proseBuf = []
+  }
+
+  let inCode = false
+  let codeBuf: string[] = []
+  for (const rawLine of body) {
+    const fence = /^\s*```/.test(rawLine)
+    if (fence) {
+      if (!inCode) {
+        flushProse()
+        inCode = true
+        codeBuf = []
+      } else {
+        inCode = false
+        segs.push({ kind: 'code', raw: codeBuf.join('\n') })
+      }
+      continue
+    }
+    if (inCode) {
+      codeBuf.push(rawLine)
+      continue
+    }
+    if (/^\s*say:/i.test(rawLine)) {
+      flushProse()
+      const t = rawLine.replace(/^\s*say:\s*/i, '').replace(/^[“"]|[”"]$/g, '').trim()
+      segs.push({ kind: 'say', text: t })
+      continue
+    }
+    if (rawLine.trim() === '') {
+      flushProse()
+      continue
+    }
+    proseBuf.push(rawLine)
+  }
+  flushProse()
+
+  // expectation: any prose segment with NO code segment after it (same rule as parseBody)
+  for (let k = 0; k < segs.length; k++) {
+    const seg = segs[k]!
+    if (seg.kind !== 'prose') continue
+    const hasCodeAfter = segs.slice(k + 1).some((s) => s.kind === 'code')
+    seg.isExpectation = !hasCodeAfter
+  }
+  return segs
+}
+
+export const parseBeatsRaw = (md: string): RawBeat[] => {
+  const lines = md.split('\n')
+  const beats: RawBeat[] = []
+  let i = 0
+  while (i < lines.length) {
+    const line = lines[i]!
+    const isHeading = /^###\s+/.test(line)
+    if (isHeading && /say:/i.test(line)) {
+      const head = line.replace(/^###\s+/, '')
+      const sayIdx = head.search(/say:/i)
+      const left = head.slice(0, sayIdx).trim()
+      const right = head.slice(sayIdx + 4).trim()
+      const q = right.match(/[“"]([^”"]+)[”"]/)
+      const narration = q ? q[1]! : right.replace(/^[“"]|[”"]$/g, '').trim()
+      const numMatch = left.match(/^Beat\s+(\d+)/i)
+      const bonusMatch = /^Bonus/i.test(left)
+      const num = numMatch ? numMatch[1]! : null
+      const label = numMatch ? `Beat ${numMatch[1]}` : bonusMatch ? 'Bonus' : left.split('—')[0]!.trim()
+      const dashIdx = left.indexOf('—')
+      const title = dashIdx >= 0 ? left.slice(dashIdx + 1).trim() : left.replace(/^Beat\s+\d+/i, '').trim()
+
+      const body: string[] = []
+      i++
+      while (i < lines.length && !/^#{2,3}\s+/.test(lines[i]!)) {
+        body.push(lines[i]!)
+        i++
+      }
+      beats.push({ num, label, title, narration: narration ?? '', segments: parseBodyRaw(body) })
+      continue
+    }
+    i++
+  }
+  return beats
+}
+
 export const parseGapWow = (md: string): string => {
   // first non-heading paragraph (the "Gap: … Wow: …" line)
   const lines = md.split('\n')

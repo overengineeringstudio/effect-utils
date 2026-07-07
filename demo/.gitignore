@@ -13,3 +13,11 @@ harness/.auth/
 
 # demo-env provisioned environments (manifests + local replicas, never committed).
 .demo-envs/
+
+# control dashboard rebuild (Vite/React/Tailwind app) — WIP artifacts, never committed.
+# The bun-managed app is standalone (own node_modules, outside the pnpm workspace);
+# bun.lock IS tracked. The built HTML + generated model + deps are regenerated.
+dashboard/app/node_modules/
+dashboard/app/dist/
+dashboard/app/src/model.gen.ts
+explainers/control.next.html
