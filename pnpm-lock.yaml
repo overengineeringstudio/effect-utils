@@ -511,6 +511,9 @@ importers:
       ansi-regex:
         specifier: 6.2.2
         version: 6.2.2
+      ansi-styles:
+        specifier: 6.2.3
+        version: 6.2.3
       effect:
         specifier: 3.21.4
         version: 3.21.4
