@@ -19,6 +19,7 @@ const supportDeps = catalog.compose({
     external: catalog.pick(
       '@effect/sql',
       '@effect/typeclass',
+      'ansi-regex',
       'fast-check',
       'find-my-way-ts',
       'get-east-asian-width',

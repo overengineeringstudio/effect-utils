@@ -508,6 +508,9 @@ importers:
       '@types/react-reconciler':
         specifier: 0.33.0
         version: 0.33.0(@types/react@19.2.17)
+      ansi-regex:
+        specifier: 6.2.2
+        version: 6.2.2
       effect:
         specifier: 3.21.4
         version: 3.21.4
