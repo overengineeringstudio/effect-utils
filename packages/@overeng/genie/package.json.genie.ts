@@ -24,6 +24,7 @@ const supportDeps = catalog.compose({
       'multipasta',
       'toml',
       'typescript',
+      'yaml',
     ),
   },
   devDependencies: {
