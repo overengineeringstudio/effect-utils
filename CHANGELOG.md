@@ -36,7 +36,7 @@ All notable changes to this project will be documented in this file.
   duplicating transitive package-manager state. Genie now declares the workspace
   packages its CLI imports at runtime (`@overeng/tui-react`, `@overeng/utils`)
   plus the runtime externals the packaged CLI must expose at its root
-  (`typescript`, `@overeng/tui-react`'s terminal text sidecars, and the
+  (`typescript`, `@overeng/tui-react`'s terminal text / atom-react sidecars, and the
   Effect-owned runtime closure reached through
   `@effect/cli`, `effect`, `@effect/cluster`, `@effect/platform`,
   `@effect/platform-node`, and `fast-check`). It still

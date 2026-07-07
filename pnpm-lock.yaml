@@ -556,6 +556,9 @@ importers:
       react-reconciler:
         specifier: 0.33.0
         version: 0.33.0(react@19.2.7)
+      scheduler:
+        specifier: 0.27.0
+        version: 0.27.0
       slice-ansi:
         specifier: 9.0.0
         version: 9.0.0
