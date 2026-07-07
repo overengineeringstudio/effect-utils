@@ -11,12 +11,13 @@ Media files live alongside this doc in the review dir.
 
 **Tweet 1 — The problem** · media: `overview-thread-1-walls.png`
 
-Notion's developer platform is genuinely good — a REST API over pages/blocks/data
-sources, the `ntn` CLI, in-workspace Workers.
-
-But try to build something advanced on it and you slam into the same four walls:
-no local Markdown sync, no tabular/SQL editing, no typed access, no declarative
+You built something real on Notion's API, then hit a wall it won't cross — no
+local Markdown sync, no SQL over your databases, no typed access, no declarative
 page API.
+
+The platform underneath is genuinely good — a REST API over pages/blocks/data
+sources, the `ntn` CLI, in-workspace Workers. You just keep slamming into the
+same four walls the moment you push past the basics.
 
 ---
 

@@ -84,6 +84,13 @@
   .ln .g { color: var(--muted); }
   .doc.local .ln { color: var(--ink); }
   .doc.local .ln .h { color: var(--accent); }
+  /* local .nmd cards read as a file open in an editor: tab + line-number gutter (parity with notion-react's editor card) */
+  .doc.local .doc-bar { box-shadow: inset 0 2px 0 var(--accent); }
+  .doc.local .doc-dot.f { width: 8px; height: 8px; border-radius: 2.5px; }
+  .doc.local .doc-body { padding: 14px 15px 16px 0; counter-reset: eln; }
+  .doc.local .doc-body .ln { position: relative; padding-left: 40px; }
+  .doc.local .doc-body .ln::before { counter-increment: eln; content: counter(eln); position: absolute; left: 0; top: 50%;
+    transform: translateY(-50%); width: 26px; text-align: right; color: var(--muted); opacity: .4; font-size: 11px; }
   .hl { border-radius: 5px; padding: 2px 6px; margin: -2px -6px; }
   .hl.g { background: var(--ok-soft); box-shadow: inset 2px 0 0 var(--ok); }
   .hl.b { background: var(--blue-soft); box-shadow: inset 2px 0 0 var(--blue); }
@@ -257,7 +264,6 @@
               <div class="ln"><span class="h"># Product Spec</span></div>
               <div class="ln"><span class="h">- [x]</span> Finalize the API spec</div>
               <div class="ln">Pricing: <span class="gone">$25</span> <span style="color:var(--warn)">&rarr;</span> $20 / mo</div>
-              <div class="ln"><span class="tagline tag-w">your $25 edit · clobbered</span></div>
             </div>
           </div>
         </div>

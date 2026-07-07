@@ -139,7 +139,7 @@
   .ndb-wrap { display: flex; flex-direction: column; gap: 9px; align-items: flex-start; }
 
   /* ---- code / terminal cards ---- */
-  .term { width: 620px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2);
+  .term { width: 740px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2);
     box-shadow: var(--shadow); overflow: hidden; }
   .term-bar { display: flex; align-items: center; gap: 8px; padding: 9px 13px; border-bottom: 1px solid var(--line-soft);
     background: var(--panel); font: 600 11px/1 var(--mono); color: var(--muted); }
@@ -255,7 +255,7 @@
   <section class="beat" id="beat-1">
     <div class="beat-inner">
       <div class="beat-head"><span class="beat-num">01</span><span class="beat-tag">The problem</span></div>
-      <h2>Notion hands you untyped JSON — so your code <span class="w">guesses</span> at the shape.</h2>
+      <h2>Notion hands you untyped JSON — so your code <em>guesses</em> at the shape.</h2>
       <div class="stage">
         <!-- Notion database, rendered as a real grid -->
         <div class="ndb-wrap">
@@ -290,8 +290,9 @@
             <div><span class="cm">// properties typed as `any`</span></div>
             <div><span class="kw">const</span> s = page.properties.Status</div>
             <div><span class="kw">if</span> (s === <span class="st un">"In&nbsp;Progress"</span>)</div>
-            <div class="indent">notify()</div>
-            <div style="margin-top:8px"><span class="tagline tag-w">✗ never matches now · wrong at runtime</span></div>
+            <div style="color:var(--warn);font-weight:600">&nbsp;&nbsp;&nbsp;&nbsp;↑ renamed in Notion → <span class="st">"Active"</span></div>
+            <div class="indent">notify() <span class="cm">// never runs now</span></div>
+            <div style="margin-top:8px"><span class="tagline tag-w">✗ the rename silently breaks it · wrong at runtime</span></div>
           </div>
         </div>
       </div>
@@ -310,7 +311,7 @@
           <div class="term">
             <div class="term-bar"><span class="term-dots"><i></i><i></i><i></i></span>zsh · your repo</div>
             <div class="term-body">
-              <div class="cmd"><span class="p">$</span> <span class="c">notion schema generate</span> <span class="id">&lt;db-id&gt;</span> <span class="fl">-o</span> <span class="id">tasks.gen.ts</span> <span class="fl">--typed-options --include-api</span></div>
+              <div class="cmd"><span class="p">$</span> <span class="c">notion schema generate</span> <span class="id">&lt;db-id&gt;</span> <span class="fl" style="white-space:nowrap">-o</span> <span class="id" style="white-space:nowrap">tasks.gen.ts</span> <span class="fl" style="white-space:nowrap">--typed-options</span> <span class="fl" style="white-space:nowrap">--include-api</span></div>
               <div class="out">introspecting Tasks… <span class="ok">✓</span> wrote <span class="path">tasks.gen.ts</span> · <span class="path">tasks.gen.api.ts</span></div>
             </div>
           </div>
@@ -416,7 +417,7 @@
           <div class="term" style="width:496px">
             <div class="term-bar"><span class="term-dots"><i></i><i></i><i></i></span>CI · schema-drift</div>
             <div class="term-body">
-              <div class="cmd"><span class="p">$</span> <span class="c">notion schema diff</span> <span class="id">&lt;id&gt;</span> <span class="fl">--file</span> <span class="id">tasks.gen.ts</span> <span class="fl">--exit-code</span></div>
+              <div class="cmd"><span class="p">$</span> <span class="c">notion schema diff</span> <span class="id">&lt;id&gt;</span> <span class="fl" style="white-space:nowrap">--file</span> <span class="id" style="white-space:nowrap">tasks.gen.ts</span> <span class="fl" style="white-space:nowrap">--exit-code</span></div>
               <div class="out">Comparing &lt;id&gt;… with <span class="path">tasks.gen.ts</span></div>
               <div class="out"><span class="add">+ Blocked (status)</span> — new option in Notion</div>
               <div class="out"><span class="chg">~ Status: type changed (select → status)</span></div>

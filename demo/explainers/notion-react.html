@@ -86,22 +86,32 @@
   .code-run .rd { color: var(--ok); } .code-run .rr { color: var(--muted); display: none; }
   body[data-step="1"] .code-run .rd { display: none; } body[data-step="1"] .code-run .rr { display: inline; }
 
-  /* ---- imperative wall (beat 1) ---- */
-  .wall { width: 300px; border: 1px solid var(--warn-line); border-radius: 12px; background: var(--panel-2); box-shadow: var(--shadow); overflow: hidden; }
-  .wall-bar { display: flex; align-items: center; gap: 7px; padding: 9px 13px; border-bottom: 1px solid var(--line-soft); background: var(--warn-soft);
-    font: 600 11px/1 var(--mono); color: var(--warn); }
-  .wall-body { padding: 12px 15px; font-family: var(--mono); font-size: 11.5px; line-height: 1.7; color: var(--muted); }
-  .wall-body .del { color: var(--warn); }
-  .wall-body .app { color: var(--accent); }
-  .wall-body .dots { color: var(--muted); }
-  .wall-note { margin-top: 12px; display: inline-flex; align-items: center; gap: 9px; font-size: 13.5px; color: var(--warn);
-    font-weight: 600; background: var(--warn-soft); border: 1px solid var(--warn-line); border-radius: 22px; padding: 8px 15px; }
-  .orwall { width: 190px; display: flex; flex-direction: column; gap: 11px; align-items: center; }
-  .orlbl { font: 600 10px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
-  .orbox { width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--panel-2); box-shadow: var(--shadow);
-    font-size: 12px; color: var(--ink); }
-  .orbox b { color: var(--warn); }
-  .orbox .sub { color: var(--muted); font-size: 11px; }
+  /* ---- beat 1: raw-API churn (mirrors §2's two surfaces) ---- */
+  .code.raw .code-tab { box-shadow: inset 0 2px 0 var(--warn); }
+  .code.raw .code-tab .tdot { background: var(--warn); }
+  .code-body .del { color: var(--warn); }
+  .code-body .app { color: var(--accent); }
+  .code-body .dots { color: var(--muted); opacity: .8; }
+  .code-body .cmw { color: var(--warn); }
+  .code-run.warn { color: var(--warn); background: var(--warn-soft); border-top-color: var(--warn-line); }
+  .code-run.warn .play { color: var(--warn); }
+  /* churn channel */
+  .churnch { width: 154px; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+  .churn-badge { display: inline-flex; align-items: center; gap: 6px; font: 600 10.5px/1 var(--mono);
+    color: var(--warn); background: var(--warn-soft); border: 1px solid var(--warn-line); border-radius: 20px; padding: 5px 10px; }
+  .churn-badge .pulse { background: var(--warn); }
+  .churnch .wires .wire { background: var(--warn-line); }
+  .churnch .ah-r { border-left-color: var(--warn); }
+  .churnch .packet { background: var(--warn); box-shadow: 0 0 0 4px var(--warn-soft); }
+  .churn-result { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; font: 700 12px/1 var(--mono);
+    color: var(--warn); background: var(--warn-soft); border: 1px solid var(--warn-line); border-radius: 10px; padding: 7px 11px; }
+  .churn-result .big { font-size: 14px; } .churn-result .sm { font-size: 9.5px; font-weight: 600; color: var(--muted); letter-spacing: .02em; }
+  /* rendered notion page: every block torn down & re-created */
+  .tag-x { color: var(--warn); background: var(--warn-soft); border: 1px solid var(--warn-line); }
+  .blk.rebuilt { border-left: 2px solid var(--warn); padding: 4px 8px 4px 9px; margin: -4px -8px -4px -9px;
+    background: var(--warn-soft); border-radius: 6px; }
+  .churn-flag { margin-top: 12px; display: inline-flex; align-items: center; gap: 8px; font: 600 12.5px/1.35 var(--sans);
+    color: var(--warn); background: var(--warn-soft); border: 1px solid var(--warn-line); border-radius: 22px; padding: 8px 15px; text-align: center; }
 
   /* ---- notion page render ---- */
   .page { width: 260px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2); box-shadow: var(--shadow); overflow: hidden; }
@@ -233,28 +243,42 @@
       <div class="beat-head"><span class="beat-num">01</span><span class="beat-tag">The problem</span></div>
       <h2>To change <em>one line</em> on a Notion page, the API makes you rebuild it.</h2>
       <div class="stage">
-        <div class="s1" style="display:flex;align-items:center;gap:22px">
-          <!-- imperative wall: wipe & re-append -->
+        <div class="s1" style="display:flex;align-items:center;gap:6px">
+          <!-- raw block API: one-line intent explodes into wipe & re-append -->
+          <div class="code raw">
+            <div class="code-tabs"><span class="code-tab"><span class="tdot"></span>sync.ts</span><span class="lang">raw API</span></div>
+            <div class="code-body">
+              <div><span class="cmw">// change ONE line: "Draft" → "Final"</span></div>
+              <div><span class="cm">// but the only API you get is:</span></div>
+              <div><span class="del">blocks.delete(b_01)</span></div>
+              <div><span class="del">blocks.delete(b_02)</span></div>
+              <div><span class="del">blocks.delete(b_03) <span class="dots">…×N</span></span></div>
+              <div><span class="app">blocks.append(h1)</span></div>
+              <div><span class="app">blocks.append(para)</span></div>
+              <div><span class="app">blocks.append(todo) <span class="dots">…×N</span></span></div>
+            </div>
+            <div class="code-run warn"><span class="play">⚠</span> wipe &amp; re-append <span class="rout">every run</span></div>
+          </div>
+          <!-- churn channel -->
+          <div class="churnch">
+            <div class="churn-badge"><span class="pulse"></span>rebuild</div>
+            <div class="wires">
+              <div class="wire"><span class="ah-r arrowhead"></span><span class="packet"></span></div>
+              <div class="wlbl">delete all → append all</div>
+            </div>
+            <div class="churn-result"><span class="big">−N · +N</span><span class="sm">O(blocks) churn</span></div>
+          </div>
+          <!-- notion page: EVERY block torn down & re-created -->
           <div style="display:flex;flex-direction:column;align-items:center;gap:0">
-          <div class="wall">
-            <div class="wall-bar">⚠ the only API you get</div>
-            <div class="wall-body">
-              <div class="del">blocks.delete(b_01)</div>
-              <div class="del">blocks.delete(b_02)</div>
-              <div class="del">blocks.delete(b_03) <span class="dots">…×N</span></div>
-              <div class="app">blocks.append(h1)</div>
-              <div class="app">blocks.append(para)</div>
-              <div class="app">blocks.append(todo) <span class="dots">…×N</span></div>
+          <div class="page">
+            <div class="page-bar"><span class="pico">🚀</span><span class="nm">Q2 Plan</span><span class="src">Notion</span></div>
+            <div class="page-body">
+              <div class="blk h1 rebuilt">Final<span class="tag tag-x">delete → re-create</span></div>
+              <div class="blk toggle rebuilt"><span class="tgl">▸</span> Scope<span class="tag tag-x">re-created</span></div>
+              <div class="blk todo rebuilt"><span class="cbx">☐</span> Ship it<span class="tag tag-x">re-created</span></div>
             </div>
           </div>
-          <div class="wall-note">💥 whole page churns · flicker · O(blocks)</div>
-          </div>
-          <!-- the two bad options -->
-          <div class="orwall">
-            <div class="orlbl">your two options</div>
-            <div class="orbox"><b>Wipe &amp; rebuild</b> every run<div class="sub">visible churn, O(blocks) cost</div></div>
-            <div class="orlbl">— or —</div>
-            <div class="orbox"><b>Hand-roll</b> a keyed diff<div class="sub">track every block id, a cache, a kill-switch</div></div>
+          <div class="churn-flag">💥 one line changed — <b>every block re-created</b></div>
           </div>
         </div>
       </div>
@@ -353,7 +377,7 @@
   <div class="coda-rule"><span>Going deeper · optional</span></div>
   <section class="beat coda" id="beat-4">
     <div class="beat-inner">
-      <div class="beat-head"><span class="beat-num">04</span><span class="beat-tag">…keyed by blockKey</span></div>
+      <div class="beat-head"><span class="beat-num">04</span><span class="beat-tag">…and identity holds</span></div>
       <h2>Every block carries a <em>blockKey</em>. That's how identity survives a restart.</h2>
       <div class="stage">
         <div class="keymap">

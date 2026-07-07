@@ -11,7 +11,7 @@
     --accent: #5b5bd6; --accent-soft: #ececfb;
     --warn: #c0392b; --warn-soft: #fbe9e7; --warn-line: #f0b3aa;
     --ok: #1a7f4b; --ok-soft: #e3f5ec; --ok-line: #a9dcc2;
-    --blue: #2f6fd6; --blue-soft: #e6effc;
+    --blue: #2f6fd6; --blue-soft: #e6effc; --blue-line: #bcd3f5;
     --amber: #b25000; --amber-soft: #fbeede; --amber-line: #e6c48f;
     --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
     --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
@@ -24,7 +24,7 @@
       --accent: #9d9df0; --accent-soft: #26264a;
       --warn: #f0796b; --warn-soft: #3a221e; --warn-line: #5c3029;
       --ok: #4ec98a; --ok-soft: #1c2f26; --ok-line: #2c4c3c;
-      --blue: #6fa8f5; --blue-soft: #1b2a44;
+      --blue: #6fa8f5; --blue-soft: #1b2a44; --blue-line: #2b4066;
       --amber: #e0913f; --amber-soft: #35281a; --amber-line: #5c4526;
       --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
     }
@@ -100,7 +100,7 @@
   .gtable .colh { display: inline-flex; align-items: center; gap: 5px; }
   .st { display: inline-flex; align-items: center; gap: 5px; font: 600 11px/1 var(--sans); padding: 3px 9px; border-radius: 20px; }
   .st::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
-  .st-prog { color: var(--amber); background: var(--amber-soft); border: 1px solid var(--amber-line); }
+  .st-prog { color: var(--blue); background: var(--blue-soft); border: 1px solid var(--blue-line); }
   .st-done { color: var(--ok); background: var(--ok-soft); border: 1px solid var(--ok-line); }
   .clickpain { margin-top: 12px; display: inline-flex; align-items: center; gap: 9px; font-size: 13.5px; color: var(--warn);
     font-weight: 600; background: var(--warn-soft); border: 1px solid var(--warn-line); border-radius: 22px; padding: 8px 15px; }
@@ -233,19 +233,16 @@
                 <tr><td>Draft brief</td><td><span class="st st-prog">In&nbsp;Progress</span></td></tr>
                 <tr><td>Review copy</td><td><span class="st st-prog">In&nbsp;Progress</span></td></tr>
                 <tr><td>Ship assets</td><td><span class="st st-prog">In&nbsp;Progress</span></td></tr>
-                <tr><td>Notify team</td><td><span class="st st-prog">In&nbsp;Progress</span></td></tr>
+                <tr><td colspan="2" style="color:var(--muted);font-style:italic;text-align:center;font-size:11.5px">… 37 more rows, all In&nbsp;Progress</td></tr>
               </tbody>
             </table>
           </div>
           <div class="clickpain">😮‍💨 40 rows to flip → 40 clicks, one at a time</div>
           </div>
-          <!-- what you actually want, all unavailable -->
+          <!-- what you actually want -->
           <div class="wants">
             <div class="wt">what you actually want</div>
-            <div class="want"><span class="x">✗</span><span class="wc">SELECT * WHERE …</span></div>
             <div class="want"><span class="x">✗</span><span class="wl">one bulk <b>UPDATE</b>, not 40 clicks</span></div>
-            <div class="want"><span class="x">✗</span><span class="wl">a <b>file</b> you can diff &amp; script</span></div>
-            <div class="want" style="border-style:dashed"><span class="x" style="color:var(--muted)">~</span><span class="wl" style="color:var(--muted)">…or untyped REST JSON. also not it.</span></div>
           </div>
         </div>
       </div>
@@ -267,9 +264,9 @@
               <div class="cmd"><span class="p">$</span> notion db <span class="kw">track</span> &lt;url&gt; . <span class="kw">--mode</span> shared</div>
               <div class="out"><span class="ok">✓</span> wrote <b>a1b2c3d4.sqlite</b></div>
               <div class="cmd">&nbsp;</div>
-              <div class="cmd"><span class="p">$</span> sqlite3 a1b2c3d4.sqlite \</div>
-              <div class="cmd cont"><span class="kw">update</span> rows <span class="kw">set</span> <span class="str">"Status"</span>=<span class="str">'Done'</span></div>
-              <div class="cmd cont"><span class="kw">where</span> _page_id=<span class="str">'…'</span>;</div>
+              <div class="cmd"><span class="p">$</span> sqlite3 a1b2c3d4.sqlite <span class="str">"</span><span class="kw">update</span> rows</div>
+              <div class="cmd cont"><span class="kw">set</span> <span class="str">\"</span>Status<span class="str">\"</span>=<span class="str">'Done'</span></div>
+              <div class="cmd cont"><span class="kw">where</span> _page_id=<span class="str">'…'</span>;<span class="str">"</span></div>
               <div class="cmd">&nbsp;</div>
               <div class="cmd syncline"><span class="p">$</span> notion db <span class="kw">sync</span> .</div>
               <div class="out syncline"><span class="ok st-done-view">✓</span><span class="st-prog-view">…</span> <span class="st-done-view">changes: 1 applied &amp; verified</span><span class="st-prog-view">pushing…</span></div>
@@ -386,7 +383,7 @@
           <!-- outcomes -->
           <div class="col">
             <div class="refusal">
-              <div class="refusal-bar">⚠ blocked · SyncGuardError</div>
+              <div class="refusal-bar">⚠ blocked · GuardBlocked</div>
               <div class="refusal-body">
                 <div class="rerr"><span class="tag">ComputedPropertyWrite</span><span class="msg">"Computed Notion properties cannot be written"</span></div>
                 <div class="rerr"><span class="tag">DeleteVsEdit</span><span class="msg">hard DELETE refused — use <b>_in_trash=1</b></span></div>
@@ -399,7 +396,7 @@
           </div>
         </div>
       </div>
-      <p class="caption"><b>Every write is checked before it touches Notion.</b> <span class="hint">Formula/rollup writes and hard <code>DELETE</code>s are refused with a typed <code>SyncGuardError</code> (<code>ComputedPropertyWrite</code>, <code>DeleteVsEdit</code>) — blocked until the behavior is proven safe, never silently dropped. Writable cells sail through, verified.</span></p>
+      <p class="caption"><b>Every write is checked before it touches Notion.</b> <span class="hint">Formula/rollup writes and hard <code>DELETE</code>s are refused as a typed <code>GuardBlocked</code> event with a named guard (<code>ComputedPropertyWrite</code>, <code>DeleteVsEdit</code>) — blocked until the behavior is proven safe, never silently dropped. Writable cells sail through, verified.</span></p>
     </div>
   </section>
 

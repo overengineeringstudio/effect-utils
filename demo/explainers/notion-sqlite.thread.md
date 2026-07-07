@@ -47,9 +47,10 @@ stopped being a walled grid.
 "But what if I write something Notion can't take?"
 
 Every write is checked before it touches Notion. A write to a formula/rollup
-column, or a hard `DELETE`, is refused with a typed `SyncGuardError`
-(`ComputedPropertyWrite`, `DeleteVsEdit`) — blocked until the behavior is proven
-safe, never silently dropped. Writable cells sail through, verified.
+column, or a hard `DELETE`, is refused as a typed `GuardBlocked` event with a
+named guard (`ComputedPropertyWrite`, `DeleteVsEdit`) — blocked until the
+behavior is proven safe, never silently dropped. Writable cells sail through,
+verified.
 
 Your data is never lost. That's the whole point.
 
