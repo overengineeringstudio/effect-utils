@@ -95,6 +95,21 @@
   .tag-b { color: var(--blue); background: var(--blue-soft); border: 1px solid var(--blue); }
   .tag-w { color: var(--warn); background: var(--warn-soft); border: 1px solid var(--warn-line); }
 
+  /* ---- Notion-native rendered blocks (the app surface) ---- */
+  /* Notion cards render content as real blocks: NO markdown syntax, sans-serif,
+     a real large heading, real checkboxes, block spacing. Reads as the Notion app. */
+  .doc.notion .doc-body { font-family: var(--sans); gap: 10px; padding-top: 14px; }
+  .nheading { font: 700 18px/1.25 var(--sans); letter-spacing: -.012em; color: var(--ink); }
+  .ntodo { display: flex; align-items: center; gap: 9px; }
+  .ncheck { width: 17px; height: 17px; border-radius: 4px; border: 1.6px solid var(--muted);
+    flex: none; display: inline-flex; align-items: center; justify-content: center; }
+  .ncheck svg { width: 11px; height: 11px; display: none; }
+  .ncheck.on { background: var(--accent); border-color: var(--accent); }
+  .ncheck.on svg { display: block; }
+  .ntodo .t { color: var(--ink); }
+  .ntodo.done .t { color: var(--muted); }
+  .ntext { color: var(--ink); }
+
   /* ---- section 1: manual clobber ---- */
   .s1 { display: flex; align-items: center; gap: 10px; }
   .s1col { display: flex; flex-direction: column; align-items: center; gap: 14px; }
@@ -219,13 +234,13 @@
       <div class="stage">
         <div class="s1col">
         <div class="s1">
-          <!-- Notion doc (source of this paste) -->
-          <div class="doc">
+          <!-- Notion doc (source of this paste) — rendered blocks, not raw markdown -->
+          <div class="doc notion">
             <div class="doc-bar"><span class="doc-dot n"></span><span class="doc-name">Product Spec</span><span class="doc-src">Notion</span></div>
             <div class="doc-body">
-              <div class="ln"><span class="h"># Product Spec</span></div>
-              <div class="ln"><span class="g">Pricing:</span> $20 / mo</div>
-              <div class="ln g">Enterprise: contact us</div>
+              <div class="nheading">Product Spec</div>
+              <div class="ntodo done"><span class="ncheck on"><svg viewBox="0 0 12 12"><path d="M2 6.3 L4.7 9 L10 2.9" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="t">Finalize the API spec</span></div>
+              <div class="ntext">Pricing: $20 / mo</div>
             </div>
           </div>
           <!-- one bold paste direction: Notion -> repo -->
@@ -240,8 +255,8 @@
             <div class="doc-bar"><span class="doc-dot f"></span><span class="doc-name">docs/product-spec.md</span><span class="doc-src">repo</span></div>
             <div class="doc-body">
               <div class="ln"><span class="h"># Product Spec</span></div>
-              <div class="ln"><span class="g">Pricing:</span> <span class="gone">$25</span> <span style="color:var(--warn)">&rarr;</span> $20 / mo</div>
-              <div class="ln g">Enterprise: contact us</div>
+              <div class="ln"><span class="h">- [x]</span> Finalize the API spec</div>
+              <div class="ln">Pricing: <span class="gone">$25</span> <span style="color:var(--warn)">&rarr;</span> $20 / mo</div>
               <div class="ln"><span class="tagline tag-w">your $25 edit · clobbered</span></div>
             </div>
           </div>
@@ -265,8 +280,9 @@
             <div class="doc-bar"><span class="doc-dot f"></span><span class="doc-name">docs/product-spec.nmd</span><span class="doc-src">repo</span></div>
             <div class="doc-body">
               <div class="ln"><span class="h"># Product Spec</span></div>
+              <div class="ln"><span class="h">- [x]</span> Finalize the API spec</div>
               <div class="ln hl b" id="l-price">Pricing: $25 / mo<span class="chip chip-b">you typed</span></div>
-              <div class="ln hl g" id="l-ent">Enterprise: contact us<span class="chip chip-g">arrived &larr;</span></div>
+              <div class="ln hl g" id="l-ent">Enterprise: contact us<span class="chip chip-g">from Notion</span></div>
             </div>
           </div>
           <!-- live channel -->
@@ -279,13 +295,14 @@
               <div class="wlbl bot">Notion &rarr; repo</div>
             </div>
           </div>
-          <!-- notion doc: received Pricing from repo, typed Enterprise here -->
-          <div class="doc">
+          <!-- notion doc: rendered blocks — received Pricing from repo, typed Enterprise here -->
+          <div class="doc notion">
             <div class="doc-bar"><span class="doc-dot n"></span><span class="doc-name">Product Spec</span><span class="doc-src">Notion</span></div>
             <div class="doc-body">
-              <div class="ln"><span class="h"># Product Spec</span></div>
-              <div class="ln hl b" id="n-price"><span>Pricing: $25 / mo</span><span class="chip chip-b">arrived &rarr;</span></div>
-              <div class="ln hl g" id="n-ent"><span>Enterprise: contact us</span><span class="chip chip-g">you typed</span></div>
+              <div class="nheading">Product Spec</div>
+              <div class="ntodo done"><span class="ncheck on"><svg viewBox="0 0 12 12"><path d="M2 6.3 L4.7 9 L10 2.9" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="t">Finalize the API spec</span></div>
+              <div class="ntext hl b" id="n-price">Pricing: $25 / mo<span class="chip chip-b">from repo</span></div>
+              <div class="ntext hl g" id="n-ent">Enterprise: contact us<span class="chip chip-g">you typed</span></div>
             </div>
           </div>
         </div>
@@ -323,9 +340,9 @@
             <div class="view-frame"><div class="view-inner">
               <div class="doc-bar"><span class="doc-dot n"></span><span class="doc-name">Product Spec</span><span class="doc-src">Notion</span></div>
               <div class="doc-body">
-                <div class="ln"><span class="h"># Product Spec</span></div>
-                <div class="ln"><span class="g">Pricing:</span> $25 / mo</div>
-                <div class="ln g">Enterprise: contact us</div>
+                <div class="nheading">Product Spec</div>
+                <div class="ntodo done"><span class="ncheck on"><svg viewBox="0 0 12 12"><path d="M2 6.3 L4.7 9 L10 2.9" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="t">Finalize the API spec</span></div>
+                <div class="ntext">Pricing: $25 / mo</div>
               </div>
             </div></div>
             <div class="view-cap">a live view · still editable</div>
