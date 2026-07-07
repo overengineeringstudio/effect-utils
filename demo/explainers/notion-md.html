@@ -212,9 +212,224 @@
   .foot { text-align: center; font-size: 13px; color: var(--muted); margin: 8px 0 0; }
   .foot code { font-family: var(--mono); color: var(--accent); }
 
+  /* ============================================================
+     FRAME KIT + SEQ ENGINE — copied VERBATIM from the notion-sqlite
+     pilot / notion-react sibling so every explainer shares one
+     macOS-window language. .macw = window base; medium variants
+     (.ide mini-IDE, .ntn Notion surface, .flow connector). The .seq
+     step engine is the same data-driven engine; only the per-step
+     choreography (.seq[data-step="N"] rules) is authored fresh here
+     for the three source-of-truth modes.
+     ============================================================ */
+  .macw { border: 1px solid var(--line); border-radius: 11px; background: var(--panel-2); box-shadow: var(--shadow); overflow: hidden; }
+  .macw-bar { position: relative; display: flex; align-items: center; gap: 8px; padding: 9px 12px; min-height: 34px; border-bottom: 1px solid var(--line-soft); background: var(--panel); }
+  .macw-lights { display: flex; gap: 7px; flex: none; z-index: 1; }
+  .macw-lights i { width: 11px; height: 11px; border-radius: 50%; display: block; box-shadow: inset 0 0 0 .5px rgba(0,0,0,.14); }
+  .macw-lights .r { background: #ff5f57; } .macw-lights .y { background: #febc2e; } .macw-lights .g { background: #28c840; }
+  .macw-title { position: absolute; left: 64px; right: 64px; display: flex; align-items: center; justify-content: center; gap: 6px; font: 600 11px/1 var(--sans); color: var(--muted); pointer-events: none; }
+  .macw-title .ic { font-size: 10.5px; opacity: .85; }
+  .macw-title .fn { font-family: var(--mono); font-size: 10.5px; }
+  .macw-tag { margin-left: auto; z-index: 1; font: 600 9px/1 var(--mono); letter-spacing: .07em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--line); border-radius: 5px; padding: 3px 5px; }
+
+  /* ---- variant: mini-IDE (VS Code / editor aesthetic) — shared spec, verbatim from sibling rollouts.
+     File tree mirrors the DB-browser sidebar selection idiom; the line-number gutter mirrors the
+     DB-browser row-number gutter (right-aligned mono, muted, border-right). ---- */
+  .ide { width: 100%; }
+  .ide-body { display: flex; min-height: 200px; }
+  .ide-tree { width: 118px; flex: none; border-right: 1px solid var(--line-soft); background: var(--panel); padding: 8px 0; }
+  .ide-fold { display: flex; align-items: center; gap: 6px; padding: 4px 11px 6px; font: 600 10.5px/1 var(--sans); color: var(--ink); }
+  .ide-fold .tw { color: var(--muted); font-size: 9px; }
+  .ide-file { display: flex; align-items: center; gap: 7px; padding: 5px 11px 5px 22px; font: 500 11.5px/1 var(--sans); color: var(--muted); }
+  .ide-file .ic { flex: none; opacity: .5; font-size: 10px; }
+  .ide-file.sel { background: var(--accent-soft); color: var(--ink); font-weight: 600; box-shadow: inset 2px 0 0 var(--accent); }
+  .ide-file.sel .ic { color: var(--accent); opacity: .9; }
+  .ide-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .ide-tabs { display: flex; align-items: stretch; background: var(--panel); border-bottom: 1px solid var(--line-soft); }
+  .ide-tab { display: flex; align-items: center; gap: 8px; padding: 8px 14px; font: 600 11px/1 var(--mono); color: var(--ink);
+    background: var(--panel-2); border-right: 1px solid var(--line-soft); box-shadow: inset 0 2px 0 var(--accent); }
+  .ide-tab .tdot { width: 8px; height: 8px; border-radius: 2.5px; background: var(--accent); }
+  .ide-code { flex: 1; counter-reset: ln; font-family: var(--mono); font-size: 11.5px; line-height: 1.75; padding: 8px 0; background: var(--panel-2); }
+  .ide-code > div { position: relative; padding: 0 12px 0 42px; white-space: pre; overflow: hidden; text-overflow: ellipsis; }
+  .ide-code > div::before { counter-increment: ln; content: counter(ln); position: absolute; left: 0; top: 0; width: 30px;
+    text-align: right; padding-right: 7px; color: var(--muted); font: 500 9.5px/1.75 var(--mono); border-right: 1px solid var(--line); }
+  .ide-code .tg { color: var(--accent); font-weight: 600; }   /* headings + frontmatter keys */
+  .ide-code .at { color: var(--blue); }
+  .ide-code .str { color: var(--ok); }                        /* frontmatter values */
+  .ide-code .cm { color: var(--muted); }
+
+  /* ---- variant: Notion surface (rendered PAGE, not a table) ---- */
+  .ntn { width: 100%; }
+  .ntn-body { display: flex; min-height: 200px; }
+  .ntn-side { width: 80px; flex: none; border-right: 1px solid var(--line-soft); background: var(--panel); padding: 9px 0; }
+  .ntn-side .ws { display: flex; align-items: center; gap: 6px; padding: 3px 10px 9px; font: 600 10.5px/1 var(--sans); color: var(--ink); }
+  .ntn-side .ws .av { width: 15px; height: 15px; border-radius: 4px; background: var(--accent); color: #fff; font: 700 9px/15px var(--sans); text-align: center; flex: none; }
+  @media (prefers-color-scheme: dark){ .ntn-side .ws .av { color: #14142c; } }
+  .ntn-side .nav { display: flex; align-items: center; gap: 6px; padding: 4px 10px; font: 500 10.5px/1.1 var(--sans); color: var(--muted); }
+  .ntn-side .nav .ic { font-size: 10px; opacity: .7; }
+  .ntn-side .nav.on { color: var(--ink); background: rgba(130,130,140,.09); }
+  .ntn-main { flex: 1; min-width: 0; padding: 14px 16px 16px; }
+  .ntn-page { display: flex; flex-direction: column; gap: 11px; }
+  .ntn-page .nh { font: 700 16px/1.25 var(--sans); letter-spacing: -.012em; color: var(--ink); display: flex; align-items: center; gap: 8px; }
+  .ntn-page .nh .emoji { font-size: 15px; }
+  .ntn-page .blk { position: relative; font-size: 13px; color: var(--ink); }
+
+  /* ---- flow connector — direction is set per mode (.push → · .pull ← · .two ⇄) ---- */
+  .flow { width: 98px; flex: none; align-self: center; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  .flow-badge { display: inline-flex; align-items: center; gap: 6px; text-align: center; font: 600 9px/1.25 var(--mono); letter-spacing: .02em;
+    color: var(--accent); background: var(--accent-soft); border: 1px solid var(--accent); border-radius: 20px; padding: 5px 9px; transition: all .35s ease; }
+  .flow-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex: none; }
+  .flow-rail { position: relative; width: 100%; height: 18px; }
+  .flow.two .flow-rail { height: 30px; }
+  .flow .track { position: absolute; left: 2px; right: 6px; height: 2px; top: 8px; background: var(--accent); border-radius: 2px; transition: background .35s; }
+  .flow.two .track.top { top: 5px; } .flow.two .track.bot { top: 23px; }
+  .flow .head { position: absolute; top: 3px; width: 0; height: 0; border-top: 5px solid transparent; border-bottom: 5px solid transparent; transition: border-color .35s; }
+  .flow .head.r, .flow .head.rr { right: 0; border-left: 8px solid var(--accent); }
+  .flow .head.l, .flow .head.ll { left: 0; border-right: 8px solid var(--accent); }
+  .flow.two .head.rr { top: 0; } .flow.two .head.ll { top: 18px; }
+  .flow .pkt { position: absolute; top: 4px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); opacity: 0; }
+  .flow.two .pkt.fwd { top: 1px; } .flow.two .pkt.rev { top: 19px; }
+  .flow-note { font: 600 9.5px/1 var(--mono); letter-spacing: .04em; color: var(--accent); }
+
+  /* ---- SEQ ENGINE layout + controls (data-driven, reusable) ---- */
+  .seq { display: flex; flex-direction: column; gap: 16px; width: 100%; }
+  .seq-stage { display: flex; align-items: center; justify-content: center; gap: 16px; }
+  .seq-stage .ide { width: 348px; flex: none; }
+  .seq-stage .ntn { width: 320px; flex: none; }
+  .seq-after { display: flex; flex-direction: column; align-items: center; gap: 10px; min-height: 34px; }
+
+  .term { display: inline-flex; align-items: center; gap: 8px; font: 600 11.5px/1 var(--mono); border-radius: 8px; padding: 7px 11px; }
+  .term .pmt { color: var(--muted); font-weight: 600; }
+  .term.g { color: var(--ok); background: var(--ok-soft); border: 1px solid var(--ok-line); }
+  .term.b { color: var(--blue); background: var(--blue-soft); border: 1px solid var(--blue); }
+  .term.w { color: var(--warn); background: var(--warn-soft); border: 1px solid var(--warn-line); }
+  .warnnote { max-width: 580px; text-align: center; font: 500 12.5px/1.45 var(--sans); color: var(--muted);
+    background: var(--warn-soft); border: 1px solid var(--warn-line); border-radius: 10px; padding: 8px 14px; }
+  .warnnote b { color: var(--warn); } .warnnote code { font-family: var(--mono); color: var(--accent); font-size: .92em; }
+  .rdraft { width: 316px; border: 1px solid var(--warn-line); border-radius: 10px; background: var(--panel-2); box-shadow: var(--shadow); overflow: hidden; }
+  .rdraft-bar { display: flex; align-items: center; gap: 7px; padding: 8px 12px; border-bottom: 1px solid var(--warn-line); font: 600 10.5px/1 var(--mono); color: var(--warn); background: var(--warn-soft); }
+  .rdraft-body { padding: 10px 12px; font-family: var(--mono); font-size: 11px; display: flex; flex-direction: column; gap: 6px; }
+  .rdraft-body .cf { display: flex; gap: 8px; align-items: baseline; }
+  .rdraft-body .cf .mk { width: 50px; flex: none; color: var(--muted); text-transform: uppercase; font: 700 8.5px/1.6 var(--mono); letter-spacing: .04em; }
+  .rdraft-body .cf.base .vv { color: var(--muted); } .rdraft-body .cf.loc .vv { color: var(--blue); } .rdraft-body .cf.rem .vv { color: var(--accent); }
+  .rdraft-note { padding: 8px 12px; border-top: 1px solid var(--ok-line); font: 600 10px/1.35 var(--sans); color: var(--ok); background: var(--ok-soft); }
+
+  /* stepwise reveal helpers (only active in anim mode; opacity keeps layout stable) */
+  .seq[data-mode="anim"] .step-hide { opacity: 0; transition: opacity .4s ease; }
+  .seq[data-mode="anim"][data-step="3"] .r3only { opacity: 1; }
+  .seq[data-mode="anim"][data-step="3"] .r3, .seq[data-mode="anim"][data-step="4"] .r3 { opacity: 1; }
+  .seq[data-mode="anim"][data-step="4"] .r4 { opacity: 1; }
+
+  /* value morphs (base = resolved s-now) */
+  .swap { display: inline-grid; }
+  .swap > * { grid-area: 1/1; transition: opacity .35s ease; }
+  .swap .s-was { opacity: 0; } .swap .s-now { opacity: 1; }
+  /* orig = the near side that edits first → appears at step 2 */
+  .seq[data-mode="anim"][data-step="1"] .orig .s-now { opacity: 0; }
+  .seq[data-mode="anim"][data-step="1"] .orig .s-was { opacity: 1; }
+  /* recv = the far side that receives on sync → appears at step 3 */
+  .seq[data-mode="anim"][data-step="1"] .recv .s-now,
+  .seq[data-mode="anim"][data-step="2"] .recv .s-now { opacity: 0; }
+  .seq[data-mode="anim"][data-step="1"] .recv .s-was,
+  .seq[data-mode="anim"][data-step="2"] .recv .s-was { opacity: 1; }
+
+  /* role bands — orig = locally-authored edit (blue), recv = arrived via sync (green) */
+  .ide-code > div.orig { background: var(--blue-soft); box-shadow: inset 3px 0 0 var(--blue); }
+  .ide-code > div.recv { background: var(--ok-soft); box-shadow: inset 3px 0 0 var(--ok); }
+  .ntn-page .blk.orig { border-radius: 6px; padding: 3px 7px; margin: -3px -7px; background: var(--blue-soft); box-shadow: inset 2px 0 0 var(--blue); }
+  .ntn-page .blk.recv { border-radius: 6px; padding: 3px 7px; margin: -3px -7px; background: var(--ok-soft); box-shadow: inset 2px 0 0 var(--ok); }
+  .seq[data-mode="anim"][data-step="1"] .ide-code > div.orig,
+  .seq[data-mode="anim"][data-step="1"] .ntn-page .blk.orig { background: transparent; box-shadow: none; }
+  .seq[data-mode="anim"][data-step="1"] .ide-code > div.recv,
+  .seq[data-mode="anim"][data-step="2"] .ide-code > div.recv,
+  .seq[data-mode="anim"][data-step="1"] .ntn-page .blk.recv,
+  .seq[data-mode="anim"][data-step="2"] .ntn-page .blk.recv { background: transparent; box-shadow: none; }
+
+  /* flow choreography — idle at steps 1-2, active (accent) at step 3+; packet travels only at step 3 */
+  .seq[data-mode="anim"][data-step="1"] .flow-badge,
+  .seq[data-mode="anim"][data-step="2"] .flow-badge { color: var(--muted); background: var(--panel); border-color: var(--line); }
+  .seq[data-mode="anim"][data-step="1"] .flow-badge .dot,
+  .seq[data-mode="anim"][data-step="2"] .flow-badge .dot { background: var(--muted); }
+  .seq[data-mode="anim"][data-step="1"] .flow .track,
+  .seq[data-mode="anim"][data-step="2"] .flow .track { background: var(--line); }
+  .seq[data-mode="anim"][data-step="1"] .flow .head.r, .seq[data-mode="anim"][data-step="1"] .flow .head.rr,
+  .seq[data-mode="anim"][data-step="2"] .flow .head.r, .seq[data-mode="anim"][data-step="2"] .flow .head.rr { border-left-color: var(--line); }
+  .seq[data-mode="anim"][data-step="1"] .flow .head.l, .seq[data-mode="anim"][data-step="1"] .flow .head.ll,
+  .seq[data-mode="anim"][data-step="2"] .flow .head.l, .seq[data-mode="anim"][data-step="2"] .flow .head.ll { border-right-color: var(--line); }
+  .seq[data-mode="anim"][data-step="1"] .flow-note,
+  .seq[data-mode="anim"][data-step="2"] .flow-note { color: var(--muted); }
+  .seq[data-mode="anim"][data-step="3"] .flow-badge .dot { animation: blink 1.2s ease-in-out infinite; }
+  .seq[data-mode="anim"][data-step="3"] .flow .pkt.fwd { animation: pkttravel 1.4s cubic-bezier(.45,0,.55,1) infinite; }
+  .seq[data-mode="anim"][data-step="3"] .flow .pkt.rev { animation: pkttravelRev 1.4s cubic-bezier(.45,0,.55,1) infinite; }
+  @keyframes pkttravel { 0%{ left: 0; opacity: 0; } 12%{ opacity: 1; } 82%{ opacity: 1; } 100%{ left: calc(100% - 12px); opacity: 0; } }
+  @keyframes pkttravelRev { 0%{ left: calc(100% - 12px); opacity: 0; } 12%{ opacity: 1; } 82%{ opacity: 1; } 100%{ left: 0; opacity: 0; } }
+
+  /* live controls vs static legend */
+  .seq-live { display: none; }
+  .seq[data-mode="anim"] .seq-live { display: block; }
+  .seq[data-mode="anim"] .seq-legend-wrap { display: none; }
+  .seq-cap { font-size: 15.5px; color: var(--ink); margin: 0 0 12px; min-height: 22px; font-weight: 600; }
+  .seq-cap code { font-family: var(--mono); color: var(--accent); font-size: .9em; }
+  .seq-ctrl { display: flex; align-items: center; gap: 10px; }
+  .seq-btn { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0;
+    border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); color: var(--ink); cursor: pointer; font-size: 13px; line-height: 1; transition: border-color .15s, background .15s; }
+  .seq-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .seq-btn svg { width: 13px; height: 13px; fill: currentColor; }
+  .seq-dots { display: flex; align-items: center; gap: 8px; margin: 0 4px; }
+  .seq-dot { width: 9px; height: 9px; padding: 0; border-radius: 50%; border: none; cursor: pointer; background: var(--line); transition: background .2s, transform .2s; }
+  .seq-dot:hover { background: var(--muted); }
+  .seq-dot.is-on { background: var(--accent); transform: scale(1.25); }
+  .seq-count { margin-left: auto; font: 600 11px/1 var(--mono); color: var(--muted); letter-spacing: .04em; }
+  .seq-legend { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 26px; }
+  .seq-legend li { display: flex; align-items: flex-start; gap: 9px; font-size: 14px; color: var(--ink); }
+  .seq-legend li .n { flex: none; width: 19px; height: 19px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font: 700 10px/19px var(--mono); text-align: center; }
+  .seq-legend li code { font-family: var(--mono); color: var(--accent); font-size: .88em; }
+  .seq-legend-cap { font: 600 10px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 0 0 3px; }
+
+  /* ---- sub-tab nav (radio driven, zero-JS switching for static shots) ---- */
+  input.mtabs { position: absolute; opacity: 0; pointer-events: none; }
+  .tabbar { display: flex; gap: 8px; margin: 16px 0 6px; flex-wrap: wrap; }
+  .tablabel { cursor: pointer; display: flex; flex-direction: column; gap: 3px; align-items: flex-start;
+    border: 1px solid var(--line); border-radius: 11px; padding: 9px 14px; background: var(--panel-2); transition: border-color .15s, background .15s; min-width: 150px; }
+  .tablabel .tl-top { display: flex; align-items: center; gap: 8px; font: 600 14px/1 var(--sans); color: var(--ink); }
+  .tablabel .tl-top .dirn { font-size: 13px; color: var(--muted); transition: color .15s; }
+  .tablabel .tl-chip { font: 600 10px/1 var(--mono); letter-spacing: .02em; color: var(--muted); transition: color .15s; }
+  .tablabel:hover { border-color: var(--accent); }
+  #md-local:checked  ~ .tabbar label[for=md-local],
+  #md-remote:checked ~ .tabbar label[for=md-remote],
+  #md-shared:checked ~ .tabbar label[for=md-shared] { border-color: var(--accent); background: var(--accent-soft); }
+  #md-local:checked  ~ .tabbar label[for=md-local]  .tl-chip, #md-local:checked  ~ .tabbar label[for=md-local]  .dirn,
+  #md-remote:checked ~ .tabbar label[for=md-remote] .tl-chip, #md-remote:checked ~ .tabbar label[for=md-remote] .dirn,
+  #md-shared:checked ~ .tabbar label[for=md-shared] .tl-chip, #md-shared:checked ~ .tabbar label[for=md-shared] .dirn { color: var(--accent); }
+  .mpanel { display: none; }
+  #md-local:checked  ~ .mpanels .mp-local  { display: block; }
+  #md-remote:checked ~ .mpanels .mp-remote { display: block; }
+  #md-shared:checked ~ .mpanels .mp-shared { display: block; }
+  .subhead { font-size: 15px; margin: 12px 0 2px; color: var(--ink); }
+  .subhead b { font-weight: 600; } .subhead .h { color: var(--muted); }
+  .subhead code { font-family: var(--mono); color: var(--accent); font-size: .9em; }
+
+  @media (prefers-reduced-motion: reduce) {
+    /* seq renders its fully-resolved base view + static numbered legend; no autoplay/packet/flash */
+    .flow .pkt, .flow-badge .dot { animation: none !important; }
+    .seq .step-hide { opacity: 1 !important; }
+    .seq .swap .s-was { opacity: 0 !important; }
+    .seq .swap .s-now { opacity: 1 !important; }
+    .seq-live { display: none !important; }
+    .seq-legend-wrap { display: block !important; }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .packet, .pulse { animation: none !important; }
     .packet.p1 { left: 96px; opacity: 1; } .packet.p2 { left: 40px; opacity: 1; }
+  }
+  @media (max-width: 860px) {
+    .seq-stage { flex-direction: column; }
+    .seq-stage .ide, .seq-stage .ntn { width: 100%; max-width: 360px; }
+    .flow { width: 100%; flex-direction: row; }
+    .flow-rail { width: 70px; transform: rotate(90deg); }
+    .flow.two .flow-rail { transform: rotate(90deg); }
+    .seq-legend { grid-template-columns: 1fr; }
+    .tablabel { flex: 1; }
   }
   @media (max-width: 720px) {
     .beat-inner, .coda .beat-inner { height: auto; }
@@ -241,29 +456,29 @@
       <div class="stage">
         <div class="s1col">
         <div class="s1">
-          <!-- Notion doc (source of this paste) — rendered blocks, not raw markdown -->
-          <div class="doc notion">
-            <div class="doc-bar"><span class="doc-dot n"></span><span class="doc-name">Product Spec</span><span class="doc-src">Notion</span></div>
-            <div class="doc-body">
-              <div class="nheading">Product Spec</div>
-              <div class="ntodo done"><span class="ncheck on"><svg viewBox="0 0 12 12"><path d="M2 6.3 L4.7 9 L10 2.9" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="t">Finalize the API spec</span></div>
-              <div class="ntext">Pricing: $20 / mo</div>
-            </div>
-          </div>
-          <!-- one bold paste direction: Notion -> repo -->
-          <div class="paste">
-            <div class="face">😮‍💨</div>
-            <div class="keys"><span class="kbd">⌘C</span><span class="kbd">⌘V</span></div>
-            <svg class="bigarrow" viewBox="0 0 138 34"><path d="M4 12 H98 V4 L134 17 L98 30 V22 H4 Z" fill="var(--warn-soft)" stroke="var(--warn)" stroke-width="1.5" stroke-linejoin="round"/></svg>
-            <div class="plbl"><b>paste over</b><br/>last one wins, silently</div>
-          </div>
-          <!-- local doc: its edit just got overwritten -->
+          <!-- local doc: its edit just got overwritten (LEFT) -->
           <div class="doc local">
             <div class="doc-bar"><span class="doc-dot f"></span><span class="doc-name">docs/product-spec.md</span><span class="doc-src">repo</span></div>
             <div class="doc-body">
               <div class="ln"><span class="h"># Product Spec</span></div>
               <div class="ln"><span class="h">- [x]</span> Finalize the API spec</div>
               <div class="ln">Pricing: <span class="gone">$25</span> <span style="color:var(--warn)">&rarr;</span> $20 / mo</div>
+            </div>
+          </div>
+          <!-- one bold paste direction: Notion -> repo (arrow points left; Notion is the source of this paste) -->
+          <div class="paste">
+            <div class="face">😮‍💨</div>
+            <div class="keys"><span class="kbd">⌘C</span><span class="kbd">⌘V</span></div>
+            <svg class="bigarrow" viewBox="0 0 138 34" style="transform:scaleX(-1)"><path d="M4 12 H98 V4 L134 17 L98 30 V22 H4 Z" fill="var(--warn-soft)" stroke="var(--warn)" stroke-width="1.5" stroke-linejoin="round"/></svg>
+            <div class="plbl"><b>paste over</b><br/>last one wins, silently</div>
+          </div>
+          <!-- Notion doc (source of this paste) — rendered blocks, not raw markdown (RIGHT) -->
+          <div class="doc notion">
+            <div class="doc-bar"><span class="doc-dot n"></span><span class="doc-name">Product Spec</span><span class="doc-src">Notion</span></div>
+            <div class="doc-body">
+              <div class="nheading">Product Spec</div>
+              <div class="ntodo done"><span class="ncheck on"><svg viewBox="0 0 12 12"><path d="M2 6.3 L4.7 9 L10 2.9" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="t">Finalize the API spec</span></div>
+              <div class="ntext">Pricing: $20 / mo</div>
             </div>
           </div>
         </div>
@@ -274,46 +489,286 @@
     </div>
   </section>
 
-  <!-- BEAT 2 — SEE IT WORK -->
+  <!-- BEAT 2 — SEE IT WORK (sub-tabbed by source-of-truth mode) -->
   <section class="beat" id="beat-2">
     <div class="beat-inner">
-      <div class="beat-head"><span class="beat-num">02</span><span class="beat-tag">See it work</span></div>
-      <h2>Now edit <em>either side</em>. It shows up on the other. Live.</h2>
-      <div class="stage">
-        <div class="s1">
-          <!-- local doc: typed Pricing here, received Enterprise from Notion -->
-          <div class="doc local">
-            <div class="doc-bar"><span class="doc-dot f"></span><span class="doc-name">docs/product-spec.nmd</span><span class="doc-src">repo</span></div>
-            <div class="doc-body">
-              <div class="ln"><span class="h"># Product Spec</span></div>
-              <div class="ln"><span class="h">- [x]</span> Finalize the API spec</div>
-              <div class="ln hl b" id="l-price">Pricing: $25 / mo<span class="chip chip-b">you typed</span></div>
-              <div class="ln hl g" id="l-ent">Enterprise: contact us<span class="chip chip-g">from Notion</span></div>
+      <div class="beat-head"><span class="beat-num">02</span><span class="beat-tag">See it work · pick the direction</span></div>
+      <h2>Edit a file — one <em>source:</em> field decides which way it flows.</h2>
+
+      <!-- radio-driven sub-tabs. DEFAULT = Local (the escalation goes Local → Notion → Shared). -->
+      <input type="radio" name="mdmode" id="md-local"  class="mtabs" checked />
+      <input type="radio" name="mdmode" id="md-remote" class="mtabs" />
+      <input type="radio" name="mdmode" id="md-shared" class="mtabs" />
+
+      <div class="tabbar" role="tablist">
+        <label class="tablabel" for="md-local"  role="tab">
+          <span class="tl-top"><span class="dirn">→</span> Local</span>
+          <span class="tl-chip">source: local</span>
+        </label>
+        <label class="tablabel" for="md-remote" role="tab">
+          <span class="tl-top"><span class="dirn">←</span> Notion</span>
+          <span class="tl-chip">source: remote</span>
+        </label>
+        <label class="tablabel" for="md-shared" role="tab">
+          <span class="tl-top"><span class="dirn">⇄</span> Shared</span>
+          <span class="tl-chip">source: shared</span>
+        </label>
+      </div>
+
+      <div class="mpanels">
+
+        <!-- ============================ LOCAL ============================ -->
+        <div class="mpanel mp-local">
+          <p class="subhead"><b>Local is the source of truth.</b> <span class="h">Your <code>.nmd</code> pushes to Notion — a push-only mirror. Terminal prints <code>pushed</code>.</span></p>
+          <div class="seq" data-seq>
+            <div class="seq-stage">
+              <!-- LEFT — mini-IDE (fixed) -->
+              <div class="macw ide">
+                <div class="macw-bar"><div class="macw-lights"><i class="r"></i><i class="y"></i><i class="g"></i></div><div class="macw-title"><span class="ic">◧</span><span class="fn">roadmap.nmd</span></div><span class="macw-tag">editor</span></div>
+                <div class="ide-body">
+                  <div class="ide-tree">
+                    <div class="ide-fold"><span class="tw">▾</span> docs</div>
+                    <div class="ide-file sel"><span class="ic">◆</span> roadmap.nmd</div>
+                    <div class="ide-file"><span class="ic">▸</span> .notion-md</div>
+                  </div>
+                  <div class="ide-main">
+                    <div class="ide-tabs"><span class="ide-tab"><span class="tdot"></span>roadmap.nmd</span></div>
+                    <div class="ide-code">
+                      <div><span class="cm">---</span></div>
+                      <div><span class="tg">source:</span> <span class="str">local</span></div>
+                      <div><span class="tg">notion_page_id:</span> <span class="cm">24d…</span></div>
+                      <div><span class="cm">---</span></div>
+                      <div><span class="tg"># Roadmap</span></div>
+                      <div class="orig">Pricing: <span class="swap"><span class="s-was">$25</span><span class="s-now">$30</span></span> / mo</div>
+                      <div>Enterprise: contact us</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <!-- CENTER — push → -->
+              <div class="flow push">
+                <div class="flow-badge"><span class="dot"></span>local&nbsp;owns</div>
+                <div class="flow-rail"><span class="track"></span><span class="head r"></span><span class="pkt fwd"></span></div>
+                <div class="flow-note">push →</div>
+              </div>
+              <!-- RIGHT — Notion (fixed) -->
+              <div class="macw ntn">
+                <div class="macw-bar"><div class="macw-lights"><i class="r"></i><i class="y"></i><i class="g"></i></div><div class="macw-title"><span class="ic">◼</span><span>Notion</span></div><span class="macw-tag">notion</span></div>
+                <div class="ntn-body">
+                  <div class="ntn-side">
+                    <div class="ws"><span class="av">A</span>Acme</div>
+                    <div class="nav"><span class="ic">🔍</span>Search</div>
+                    <div class="nav"><span class="ic">📄</span>Docs</div>
+                    <div class="nav on"><span class="ic">🗺</span>Roadmap</div>
+                  </div>
+                  <div class="ntn-main">
+                    <div class="ntn-page">
+                      <div class="nh"><span class="emoji">🗺️</span>Roadmap</div>
+                      <div class="blk recv">Pricing: <span class="swap"><span class="s-was">$25</span><span class="s-now">$30</span></span> / mo</div>
+                      <div class="blk">Enterprise: contact us</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
-          </div>
-          <!-- live channel -->
-          <div class="channel">
-            <div class="chan-badge"><span class="pulse"></span>sync --watch</div>
-            <div class="wires">
-              <div class="wire top"><span class="ah-r arrowhead"></span><span class="packet p1"></span></div>
-              <div class="wire bot"><span class="ah-l arrowhead"></span><span class="packet p2"></span></div>
-              <div class="wlbl top">repo &rarr; Notion</div>
-              <div class="wlbl bot">Notion &rarr; repo</div>
+            <div class="seq-after">
+              <span class="term g step-hide r3"><span class="pmt">notion md sync ›</span> pushed</span>
             </div>
-          </div>
-          <!-- notion doc: rendered blocks — received Pricing from repo, typed Enterprise here -->
-          <div class="doc notion">
-            <div class="doc-bar"><span class="doc-dot n"></span><span class="doc-name">Product Spec</span><span class="doc-src">Notion</span></div>
-            <div class="doc-body">
-              <div class="nheading">Product Spec</div>
-              <div class="ntodo done"><span class="ncheck on"><svg viewBox="0 0 12 12"><path d="M2 6.3 L4.7 9 L10 2.9" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="t">Finalize the API spec</span></div>
-              <div class="ntext hl b" id="n-price">Pricing: $25 / mo<span class="chip chip-b">from repo</span></div>
-              <div class="ntext hl g" id="n-ent">Enterprise: contact us<span class="chip chip-g">you typed</span></div>
+            <div class="seq-live">
+              <p class="seq-cap" data-cap></p>
+              <div class="seq-ctrl">
+                <button class="seq-btn" type="button" data-act="toggle" aria-label="Play or pause"><svg class="ic-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg><svg class="ic-pause" viewBox="0 0 24 24" aria-hidden="true" style="display:none"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg></button>
+                <button class="seq-btn" type="button" data-act="prev" aria-label="Previous step"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5v14l-9-7z"/><rect x="4" y="5" width="2.4" height="14"/></svg></button>
+                <div class="seq-dots" data-dots></div>
+                <button class="seq-btn" type="button" data-act="next" aria-label="Next step"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5v14l9-7z"/><rect x="17.6" y="5" width="2.4" height="14"/></svg></button>
+                <span class="seq-count" data-count></span>
+              </div>
+            </div>
+            <div class="seq-legend-wrap">
+              <p class="seq-legend-cap">The whole flow, in 3 steps</p>
+              <ol class="seq-legend">
+                <li data-cap="roadmap.nmd declares source: local — the file is the source of truth; the page is in sync."><span class="n">1</span><code>source: local</code> — the file is the source of truth.</li>
+                <li data-cap="Edit a line in the file (left). Local owns it."><span class="n">2</span>Edit a line in the file (left). Local owns it.</li>
+                <li data-cap="notion md sync pushes it — the Notion page updates. pushed."><span class="n">3</span><code>notion md sync</code> pushes it → Notion updates. <code>pushed</code>.</li>
+              </ol>
             </div>
           </div>
         </div>
-      </div>
-      <p class="caption"><b>Run <code style="font-family:var(--mono);color:var(--accent)">notion md sync --watch</code> — edit either side, both stay in sync. Live.</b> <span class="hint">Local edits push instantly; Notion changes sync back on a short poll (~30s). Two-way needs <code style="font-family:var(--mono);color:var(--accent)">source: shared</code>.</span></p>
+
+        <!-- ============================ NOTION (remote) ============================ -->
+        <div class="mpanel mp-remote">
+          <p class="subhead"><b>Notion is the source of truth.</b> <span class="h">Notion pulls into your <code>.nmd</code> — pull-only. Local hand-edits are never pushed. Terminal prints <code>pulled</code>.</span></p>
+          <div class="seq" data-seq>
+            <div class="seq-stage">
+              <!-- LEFT — mini-IDE (fixed) -->
+              <div class="macw ide">
+                <div class="macw-bar"><div class="macw-lights"><i class="r"></i><i class="y"></i><i class="g"></i></div><div class="macw-title"><span class="ic">◧</span><span class="fn">roadmap.nmd</span></div><span class="macw-tag">editor</span></div>
+                <div class="ide-body">
+                  <div class="ide-tree">
+                    <div class="ide-fold"><span class="tw">▾</span> docs</div>
+                    <div class="ide-file sel"><span class="ic">◆</span> roadmap.nmd</div>
+                    <div class="ide-file"><span class="ic">▸</span> .notion-md</div>
+                  </div>
+                  <div class="ide-main">
+                    <div class="ide-tabs"><span class="ide-tab"><span class="tdot"></span>roadmap.nmd</span></div>
+                    <div class="ide-code">
+                      <div><span class="cm">---</span></div>
+                      <div><span class="tg">source:</span> <span class="str">remote</span></div>
+                      <div><span class="tg">notion_page_id:</span> <span class="cm">24d…</span></div>
+                      <div><span class="cm">---</span></div>
+                      <div><span class="tg"># Roadmap</span></div>
+                      <div class="recv">Pricing: <span class="swap"><span class="s-was">$25</span><span class="s-now">$30</span></span> / mo</div>
+                      <div>Enterprise: contact us</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <!-- CENTER — ← pull -->
+              <div class="flow pull">
+                <div class="flow-badge"><span class="dot"></span>notion&nbsp;owns</div>
+                <div class="flow-rail"><span class="track"></span><span class="head l"></span><span class="pkt rev"></span></div>
+                <div class="flow-note">← pull</div>
+              </div>
+              <!-- RIGHT — Notion (fixed): the edit ORIGINATES here -->
+              <div class="macw ntn">
+                <div class="macw-bar"><div class="macw-lights"><i class="r"></i><i class="y"></i><i class="g"></i></div><div class="macw-title"><span class="ic">◼</span><span>Notion</span></div><span class="macw-tag">notion</span></div>
+                <div class="ntn-body">
+                  <div class="ntn-side">
+                    <div class="ws"><span class="av">A</span>Acme</div>
+                    <div class="nav"><span class="ic">🔍</span>Search</div>
+                    <div class="nav"><span class="ic">📄</span>Docs</div>
+                    <div class="nav on"><span class="ic">🗺</span>Roadmap</div>
+                  </div>
+                  <div class="ntn-main">
+                    <div class="ntn-page">
+                      <div class="nh"><span class="emoji">🗺️</span>Roadmap</div>
+                      <div class="blk orig">Pricing: <span class="swap"><span class="s-was">$25</span><span class="s-now">$30</span></span> / mo</div>
+                      <div class="blk">Enterprise: contact us</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="seq-after">
+              <span class="term b step-hide r3"><span class="pmt">notion md sync ›</span> pulled</span>
+              <div class="warnnote step-hide r4">⚠ Hand-edit the file on a <code>source: remote</code> page? It's <b>overwritten on the next pull</b> — you're warned. Switch to <code>shared</code> to keep both.</div>
+            </div>
+            <div class="seq-live">
+              <p class="seq-cap" data-cap></p>
+              <div class="seq-ctrl">
+                <button class="seq-btn" type="button" data-act="toggle" aria-label="Play or pause"><svg class="ic-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg><svg class="ic-pause" viewBox="0 0 24 24" aria-hidden="true" style="display:none"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg></button>
+                <button class="seq-btn" type="button" data-act="prev" aria-label="Previous step"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5v14l-9-7z"/><rect x="4" y="5" width="2.4" height="14"/></svg></button>
+                <div class="seq-dots" data-dots></div>
+                <button class="seq-btn" type="button" data-act="next" aria-label="Next step"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5v14l9-7z"/><rect x="17.6" y="5" width="2.4" height="14"/></svg></button>
+                <span class="seq-count" data-count></span>
+              </div>
+            </div>
+            <div class="seq-legend-wrap">
+              <p class="seq-legend-cap">The whole flow, in 4 steps</p>
+              <ol class="seq-legend">
+                <li data-cap="source: remote — Notion is the source of truth; in sync."><span class="n">1</span><code>source: remote</code> — Notion is the source of truth.</li>
+                <li data-cap="A teammate edits the Notion page (right)."><span class="n">2</span>A teammate edits the Notion page (right).</li>
+                <li data-cap="notion md sync pulls it — roadmap.nmd updates. pulled."><span class="n">3</span><code>notion md sync</code> pulls it → the file updates. <code>pulled</code>.</li>
+                <li data-cap="Hand-edit the file? It's overwritten on the next pull — you're warned to switch to shared to keep both."><span class="n">4</span>Local hand-edit? Overwritten on next pull — switch to <code>shared</code> to keep both.</li>
+              </ol>
+            </div>
+          </div>
+        </div>
+
+        <!-- ============================ SHARED ============================ -->
+        <div class="mpanel mp-shared">
+          <p class="subhead"><b>Two-way, guarded.</b> <span class="h">A 3-way merge vs a base in <code>.notion-md/</code>. Different lines auto-merge; the same line writes a conflict draft and <b>never clobbers Notion</b>.</span></p>
+          <div class="seq" data-seq>
+            <div class="seq-stage">
+              <!-- LEFT — mini-IDE (fixed) -->
+              <div class="macw ide">
+                <div class="macw-bar"><div class="macw-lights"><i class="r"></i><i class="y"></i><i class="g"></i></div><div class="macw-title"><span class="ic">◧</span><span class="fn">roadmap.nmd</span></div><span class="macw-tag">editor</span></div>
+                <div class="ide-body">
+                  <div class="ide-tree">
+                    <div class="ide-fold"><span class="tw">▾</span> docs</div>
+                    <div class="ide-file sel"><span class="ic">◆</span> roadmap.nmd</div>
+                    <div class="ide-file"><span class="ic">▸</span> .notion-md</div>
+                  </div>
+                  <div class="ide-main">
+                    <div class="ide-tabs"><span class="ide-tab"><span class="tdot"></span>roadmap.nmd</span></div>
+                    <div class="ide-code">
+                      <div><span class="cm">---</span></div>
+                      <div><span class="tg">source:</span> <span class="str">shared</span></div>
+                      <div><span class="tg">notion_page_id:</span> <span class="cm">24d…</span></div>
+                      <div><span class="cm">---</span></div>
+                      <div><span class="tg"># Roadmap</span></div>
+                      <div class="orig">Pricing: <span class="swap"><span class="s-was">$25</span><span class="s-now">$30</span></span> / mo</div>
+                      <div class="recv">Enterprise: <span class="swap"><span class="s-was">contact us</span><span class="s-now">annual plans</span></span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <!-- CENTER — two-way ⇄ -->
+              <div class="flow two">
+                <div class="flow-badge"><span class="dot"></span>two-way</div>
+                <div class="flow-rail"><span class="track top"></span><span class="track bot"></span><span class="head rr"></span><span class="head ll"></span><span class="pkt fwd"></span><span class="pkt rev"></span></div>
+                <div class="flow-note">⇄ merge</div>
+              </div>
+              <!-- RIGHT — Notion (fixed) -->
+              <div class="macw ntn">
+                <div class="macw-bar"><div class="macw-lights"><i class="r"></i><i class="y"></i><i class="g"></i></div><div class="macw-title"><span class="ic">◼</span><span>Notion</span></div><span class="macw-tag">notion</span></div>
+                <div class="ntn-body">
+                  <div class="ntn-side">
+                    <div class="ws"><span class="av">A</span>Acme</div>
+                    <div class="nav"><span class="ic">🔍</span>Search</div>
+                    <div class="nav"><span class="ic">📄</span>Docs</div>
+                    <div class="nav on"><span class="ic">🗺</span>Roadmap</div>
+                  </div>
+                  <div class="ntn-main">
+                    <div class="ntn-page">
+                      <div class="nh"><span class="emoji">🗺️</span>Roadmap</div>
+                      <div class="blk recv">Pricing: <span class="swap"><span class="s-was">$25</span><span class="s-now">$30</span></span> / mo</div>
+                      <div class="blk orig">Enterprise: <span class="swap"><span class="s-was">contact us</span><span class="s-now">annual plans</span></span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="seq-after">
+              <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:center">
+                <span class="term g step-hide r3only"><span class="pmt">notion md sync ›</span> shared-merged</span>
+                <span class="term w step-hide r4"><span class="pmt">same line ›</span> shared-conflict</span>
+              </div>
+              <div class="rdraft step-hide r4">
+                <div class="rdraft-bar">⚠ roadmap.nmd.conflict.roughdraft.md</div>
+                <div class="rdraft-body">
+                  <div class="cf base"><span class="mk">base</span><span class="vv">Pricing: $30 / mo</span></div>
+                  <div class="cf loc"><span class="mk">local</span><span class="vv">Pricing: $40 / mo</span></div>
+                  <div class="cf rem"><span class="mk">remote</span><span class="vv">Pricing: $35 / mo</span></div>
+                </div>
+                <div class="rdraft-note">✓ Notion left unchanged — never clobbers.</div>
+              </div>
+            </div>
+            <div class="seq-live">
+              <p class="seq-cap" data-cap></p>
+              <div class="seq-ctrl">
+                <button class="seq-btn" type="button" data-act="toggle" aria-label="Play or pause"><svg class="ic-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg><svg class="ic-pause" viewBox="0 0 24 24" aria-hidden="true" style="display:none"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg></button>
+                <button class="seq-btn" type="button" data-act="prev" aria-label="Previous step"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5v14l-9-7z"/><rect x="4" y="5" width="2.4" height="14"/></svg></button>
+                <div class="seq-dots" data-dots></div>
+                <button class="seq-btn" type="button" data-act="next" aria-label="Next step"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5v14l9-7z"/><rect x="17.6" y="5" width="2.4" height="14"/></svg></button>
+                <span class="seq-count" data-count></span>
+              </div>
+            </div>
+            <div class="seq-legend-wrap">
+              <p class="seq-legend-cap">Two-way, then the conflict escalation</p>
+              <ol class="seq-legend">
+                <li data-cap="source: shared — two-way; a base is recorded in .notion-md/."><span class="n">1</span><code>source: shared</code> — base recorded in <code>.notion-md/</code>.</li>
+                <li data-cap="Both sides edit different lines — Pricing here, Enterprise there."><span class="n">2</span>Both sides edit <b>different</b> lines.</li>
+                <li data-cap="Non-overlapping — clean auto-merge; both edits coexist. shared-merged."><span class="n">3</span>Non-overlapping → auto-merge; both coexist. <code>shared-merged</code>.</li>
+                <li data-cap="Both edit the same line? A conflict roughdraft is written — Notion is left unchanged. shared-conflict."><span class="n">4</span>Same line → a <code>*.conflict.roughdraft.md</code>; Notion untouched. <code>shared-conflict</code>.</li>
+              </ol>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /mpanels -->
+
+      <p class="caption"><b>Fixed sides across all three tabs: the <code>.nmd</code> in a mini-IDE on the <b>left</b>, the Notion page on the <b>right</b> — direction lives in the center arrows, never in pane position.</b> <span class="hint">One <code>source:</code> field per file picks push (<code>local</code>) · pull (<code>remote</code>) · two-way guarded merge (<code>shared</code>). A freshly-tracked page is <code>remote</code> by default.</span></p>
     </div>
   </section>
 
@@ -411,5 +866,97 @@
   <p class="foot">What first-class would look like: native conflict-aware Markdown ⇄ page binding, in Notion itself. Until then, <code>notion md</code> fills the gap.</p>
 
 </div>
+
+<script>
+/* ============================================================
+   Sequence engine — data-driven, reusable across explainers
+   (copied VERBATIM from the notion-sqlite pilot). A step is
+   { caption, state }; `state` → the container's data-step attr;
+   CSS renders each state. Playback auto-advances + loops, with
+   controls (play/pause, prev/next, clickable dots). Any manual
+   control pauses autoplay. prefers-reduced-motion → static legend,
+   no auto-advance, all frames resolved.
+   Each source-of-truth sub-tab is its own [data-seq]; the engine
+   runs one independent instance per tab.
+   ============================================================ */
+(function () {
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var INTERVAL = 2600;
+
+  document.querySelectorAll('[data-seq]').forEach(function (seq) {
+    var legendItems = seq.querySelectorAll('.seq-legend li');
+    var steps = Array.prototype.map.call(legendItems, function (li, i) {
+      return { caption: li.getAttribute('data-cap') || li.textContent.trim(), state: String(i + 1) };
+    });
+    if (!steps.length) return;
+
+    var capEl = seq.querySelector('.seq-live [data-cap]');
+    var dotsEl = seq.querySelector('[data-dots]');
+    var countEl = seq.querySelector('[data-count]');
+    var toggleBtn = seq.querySelector('[data-act="toggle"]');
+    var icPlay = toggleBtn && toggleBtn.querySelector('.ic-play');
+    var icPause = toggleBtn && toggleBtn.querySelector('.ic-pause');
+
+    var idx = 0, timer = null, playing = false;
+
+    var dots = [];
+    steps.forEach(function (s, i) {
+      var d = document.createElement('button');
+      d.type = 'button';
+      d.className = 'seq-dot';
+      d.setAttribute('data-i', i);
+      d.setAttribute('aria-label', 'Go to step ' + (i + 1));
+      dotsEl.appendChild(d);
+      dots.push(d);
+    });
+
+    function render() {
+      seq.setAttribute('data-step', steps[idx].state);
+      if (capEl) capEl.textContent = steps[idx].caption;
+      if (countEl) countEl.textContent = (idx + 1) + ' / ' + steps.length;
+      dots.forEach(function (d, i) { d.classList.toggle('is-on', i === idx); });
+      if (toggleBtn) {
+        toggleBtn.setAttribute('aria-pressed', String(playing));
+        toggleBtn.setAttribute('aria-label', playing ? 'Pause' : 'Play');
+        if (icPlay) icPlay.style.display = playing ? 'none' : '';
+        if (icPause) icPause.style.display = playing ? '' : 'none';
+      }
+    }
+    function go(i) { idx = (i % steps.length + steps.length) % steps.length; render(); }
+    function clearTimer() { if (timer) { clearInterval(timer); timer = null; } }
+    function stop() { playing = false; clearTimer(); render(); }
+    function start() {
+      if (playing) return;
+      playing = true;
+      clearTimer();
+      timer = setInterval(function () { go(idx + 1); }, INTERVAL);
+      render();
+    }
+    function toggle() { playing ? stop() : start(); }
+
+    seq.addEventListener('click', function (e) {
+      var act = e.target.closest('[data-act]');
+      if (act) {
+        var a = act.getAttribute('data-act');
+        if (a === 'toggle') toggle();
+        else if (a === 'next') { stop(); go(idx + 1); }
+        else if (a === 'prev') { stop(); go(idx - 1); }
+        return;
+      }
+      var dot = e.target.closest('.seq-dot');
+      if (dot) { stop(); go(parseInt(dot.getAttribute('data-i'), 10)); }
+    });
+
+    // Tiny hook for deterministic screenshotting/testing.
+    seq._seq = { go: function (i) { stop(); go(i); }, play: start, pause: stop,
+                 get index() { return idx; }, get playing() { return playing; } };
+
+    if (reduce) { seq.setAttribute('data-mode', 'static'); return; }
+    seq.setAttribute('data-mode', 'anim');
+    go(0);
+    start();
+  });
+})();
+</script>
 </body>
 </html>
