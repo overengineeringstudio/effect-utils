@@ -17,8 +17,14 @@ All notable changes to this project will be documented in this file.
   degrades cleanly to plain progress. Separately, the `notion` flake wrapper did
   not route `db track` to the Node runtime (only `init|pull|push|sync|export|status|conflicts|forget|restore|doctor`),
   so `notion db track` fell through and failed closed; `track` is now routed. A
-  new unit test guards the fallback, and the Nix smoke test now also asserts
-  `notion db track` is routed to the Node runtime.
+  new unit test guards the fallback with an injected dying loader, and the Nix
+  smoke test is strengthened from a `--help`-only route check to a REAL
+  sync-path run: it invokes `notion db track` on an empty workspace, which
+  reaches `runWithCliSyncProgress` and the real `.tsx` TUI import, and asserts a
+  structured `CliErrorEnvelope` is emitted (proving the import failed soft and
+  dispatch was reached). Deleting the `catchAllDefect` line makes the build RED
+  with "no structured envelope"; dropping `track` routing trips the Bun-guard
+  check.
 - **CI / cargo**: move standalone Rust crate build/test/clippy/fmt semantics into
   the `cargo:check` devenv task and make the generated cargo CI lane call that
   task, ensuring the `node-cpuprofile` integration test runs with the devenv
