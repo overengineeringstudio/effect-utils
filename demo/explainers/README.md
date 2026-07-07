@@ -6,11 +6,12 @@ generated. Update the table when you supersede or regenerate something.
 
 ## Canonical workflow (concise)
 
-1. **Canonical explainer = `notion-<tool>.html`** (root). This is the only live
-   version — the dashboard iframes it and the Notion page embeds it.
+1. **Canonical explainer = `notion-<tool>.html`** (root, served via tailnet, iframed
+   by the dashboard). **The local HTML is the source of truth. The Notion explainer
+   pages are superseded** — no longer maintained or embedded to.
 2. **To redesign:** move the current file to `_archive/notion-<tool>.v<N>.html`,
-   write the new `notion-<tool>.html`, update the ledger row, and if it's
-   embedded in Notion re-run `embed.sh notion-<tool>.html <page-id>`.
+   write the new `notion-<tool>.html`, update the ledger row. (No Notion re-embed —
+   the served local HTML is canonical.)
 3. **Dashboard** (`control.html`) is **generated** — edit `demo/dashboard/build.ts`
    then `bun demo/dashboard/build.ts`. Never hand-edit `control.html`.
 4. **Backups/evidence** (`<demo>-evidence/`) are **generated** — run
@@ -27,7 +28,7 @@ generated. Update the table when you supersede or regenerate something.
 | `control.html` | **Generated** live dashboard (from `demo/dashboard/build.ts`) | no — edit generator |
 | `<demo>-evidence/` | **Generated** harness evidence (gitignored) | no |
 | `vista-review.html` | **Generated** session review | no |
-| `embed.sh` | Helper: upload a `<tool>.html` → Notion HTML block | — |
+| `embed.sh` | **Deprecated** — Notion pages superseded; kept for reference | no |
 
 ## Ledger — current status
 
@@ -39,7 +40,9 @@ generated. Update the table when you supersede or regenerate something.
 | notion-react | `notion-react.html` | visual thread (native-media refine) | [page](https://www.notion.so/396e3d41f4a38133b91cf0cecafb2936) | `notion-react.thread.md` |
 | overview | `overview.html` | visual thread (native-media refine) | [page](https://www.notion.so/396e3d41f4a3818c8493f82e0b689daa) | `overview.thread.md` |
 
-Superseded originals for all five live in `_archive/` (`*.v1.html`).
+Superseded originals for all five live in `_archive/` (`*.v1.html`). The **Notion
+explainer pages** linked above are **superseded/archived** — reference only; the
+served local HTML is the source of truth.
 
 **Live URLs** (tailnet-only): `https://mbp2025.tail8108.ts.net:8443/<file>.html`
 — explainers, `control.html` (dashboard), `vista-review.html`.
