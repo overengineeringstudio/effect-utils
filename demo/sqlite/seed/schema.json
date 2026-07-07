@@ -1,0 +1,28 @@
+{
+  "properties": {
+    "Name": { "title": {} },
+    "Status": {
+      "select": {
+        "options": [
+          { "name": "Backlog", "color": "gray" },
+          { "name": "In progress", "color": "blue" },
+          { "name": "In review", "color": "yellow" },
+          { "name": "Done", "color": "green" }
+        ]
+      }
+    },
+    "Priority": { "number": { "format": "number" } },
+    "Team": {
+      "select": {
+        "options": [
+          { "name": "Platform", "color": "purple" },
+          { "name": "Growth", "color": "orange" },
+          { "name": "Infra", "color": "red" }
+        ]
+      }
+    },
+    "Effort (h)": {
+      "formula": { "expression": "prop(\"Priority\") * 8" }
+    }
+  }
+}

@@ -1,0 +1,8 @@
+[
+  { "Name": "Ship onboarding checklist", "Status": "In progress", "Priority": 2, "Team": "Growth" },
+  { "Name": "Migrate billing service",   "Status": "Backlog",     "Priority": 3, "Team": "Platform" },
+  { "Name": "Fix flaky deploy pipeline",  "Status": "In progress", "Priority": 1, "Team": "Infra" },
+  { "Name": "Draft Q3 roadmap",           "Status": "In review",   "Priority": 2, "Team": "Platform" },
+  { "Name": "Add dark mode to dashboard", "Status": "Backlog",     "Priority": 2, "Team": "Growth" },
+  { "Name": "Rotate signing keys",        "Status": "Done",        "Priority": 1, "Team": "Infra" }
+]
