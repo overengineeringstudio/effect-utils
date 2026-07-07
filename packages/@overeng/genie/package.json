@@ -48,6 +48,7 @@
     "fast-check": "3.23.2",
     "find-my-way-ts": "0.1.6",
     "ini": "4.1.3",
+    "mime": "3.0.0",
     "msgpackr": "1.11.10",
     "multipasta": "0.2.7",
     "react": "19.2.7",

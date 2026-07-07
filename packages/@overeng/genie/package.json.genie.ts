@@ -21,6 +21,7 @@ const supportDeps = catalog.compose({
       'fast-check',
       'find-my-way-ts',
       'ini',
+      'mime',
       'msgpackr',
       'multipasta',
       'toml',
