@@ -117,7 +117,10 @@ How the requirements are met. Kept current with the implementation.
   (deployed-binary runtime bug); fix in progress. This blocks the sqlite demo, not
   just its backup.
 - **demo-env rewiring pending** — screenplays/dashboard/harness still use the old
-  `demo/<tool>/stage` paths, not `$DEMO_*`.
+  `demo/<tool>/stage` paths, not `$DEMO_*`. Decided shape: **explicit `$DEMO_*`
+  env vars** — backstage `eval "$(demo-env new --export)"`, on camera
+  `cd "$DEMO_<TOOL>_DIR"` + `$DEMO_*` ids. Requires the provisioner to expose a
+  `DEMO_<TOOL>_DIR` per demo (copy committed stage + state) for a uniform `cd`.
 
 ## Live-run risks
 
