@@ -36,6 +36,7 @@ const packagedTuiRuntimeClosureDeps = [
   // declared by tui-react; expose the terminal text runtime sidecars reached through
   // cli-truncate/string-width at the packaged root.
   'ansi-regex',
+  'ansi-styles',
   'emoji-regex',
   'get-east-asian-width',
   'scheduler',
