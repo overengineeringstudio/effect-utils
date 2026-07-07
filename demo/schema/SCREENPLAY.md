@@ -1,4 +1,4 @@
-# notion schema (IaC) — Screenplay
+# notion schema (codegen) — Screenplay
 
 Gap: Notion hands you untyped JSON; you want end-to-end typed access to your databases in code.
 Wow: point at a live DB and seconds later you have typed, autocompleting Effect schemas — with literal-union option types, write schemas, a typed API wrapper, and CI drift detection. ~6 min.
@@ -19,6 +19,9 @@ Wow: point at a live DB and seconds later you have typed, autocompleting Effect 
 
 ```
 cd demo/schema/stage
+```
+
+```
 notion schema generate-config
 ```
 
@@ -33,7 +36,7 @@ Then open `schema.gen.ts` and scroll. Point out, top to bottom:
 
 Open `use-schema.ts`. Hover `task.Priority`, trigger completion on `p.name` — the editor offers `'High' | 'Medium' | 'Low'`. Type a bad option name to show the red squiggle. (Nothing here is hand-written types; it all flows from `schema.gen.ts`.)
 
-### Beat 3 — Schema-as-code for the whole workspace say: "One command didn't just do Tasks — it's declarative. This config lists every database; regenerate them all at once."
+### Beat 3 — Schema-as-code for the whole workspace say: "One command didn't just do Tasks — this config lists every database; regenerate them all at once."
 
 ```
 cat notion-schema-gen.config.ts
@@ -51,7 +54,7 @@ code people.gen.ts   # or: open people.gen.ts in the editor
 notion schema generate-config
 ```
 
-### Beat 4 — Gate drift in CI say: "The IaC payoff: your code and your Notion DB can silently diverge. Catch it."
+### Beat 4 — Gate drift in CI say: "The codegen payoff: your code and your Notion DB can silently diverge. Catch it."
 
 First show they're in sync:
 
