@@ -517,6 +517,9 @@ importers:
       msgpackr:
         specifier: 1.11.10
         version: 1.11.10
+      multipasta:
+        specifier: 0.2.7
+        version: 0.2.7
       react:
         specifier: 19.2.7
         version: 19.2.7
