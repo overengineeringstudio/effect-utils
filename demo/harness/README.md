@@ -14,13 +14,15 @@ spec (`demo/<name>/e2e.spec.ts`) — wiring a new demo = writing its spec.
 
 ## Run it
 
-Inside `devenv shell` (so the real `notion-md` binary, `ntn`, `pty`,
-`playwright-cli` and `NOTION_API_TOKEN` are present), from the repo root:
+Run **inside `devenv shell`** — that puts the real umbrella `notion` binary
+(notion-cli, on the devenv profile), plus `ntn`, `pty`, `playwright-cli` and
+`NOTION_API_TOKEN`, on PATH. The pty inherits that PATH, so it drives exactly the
+`notion md …` the presenter types on camera.
 
 ```sh
 export DEMO_PARENT_PAGE=396e3d41f4a380a98491e1c96f6b5c43   # shared Recording page
-bun demo/md/e2e.spec.ts              # reset (fresh Notion pages) + full run
-bun demo/md/e2e.spec.ts --no-reset   # reuse the current live pages
+devenv shell -- bun demo/md/e2e.spec.ts              # reset (fresh pages) + full run
+devenv shell -- bun demo/md/e2e.spec.ts --no-reset   # reuse the current live pages
 ```
 
 Output lands in `demo/md/evidence/<timestamp>/` (gitignored):
@@ -29,6 +31,10 @@ Output lands in `demo/md/evidence/<timestamp>/` (gitignored):
 - `timeline.json` — per-beat id, narration, action, assertions, actual-vs-budget
 - `terminal-<beat>.png` — the real watch-daemon terminal output
 - `notion-<beat>-<role>.png` — the live Notion page (only after login; see below)
+
+Each run also **auto-publishes** the report under the explainers devnet root
+(`demo/explainers/<demo>-evidence/`, gitignored), so it's reachable over the
+tailnet at e.g. `https://mbp2025.tail8108.ts.net:8443/md-evidence/report.html`.
 
 ## One-time browser login (for Notion screenshots)
 
@@ -99,12 +105,12 @@ Beats 2 and 3b represent the presenter editing the page **in the browser**. The
 harness reproduces the same mutation through the Notion API (`ntn api PATCH …`)
 so runs are deterministic. On camera these are a human typing in Notion.
 
-## Fidelity note for the coordinator
+## Stray watcher on the machine
 
-On camera the umbrella command is `notion md sync …` (the `notion` / `notion-cli`
-binary). `notion-cli` isn't built in this tree, so — exactly as `reset.sh` does —
-the harness drives `notion-md/dist` directly via a `notion-md` PATH shim. Same
-binary and behavior; only the typed prefix differs (`notion md` vs `notion-md`).
+If another `notion md … --watch` is already running on this host (a leftover from
+manual demo prep), it can't corrupt a run: each run drives an **isolated working
+copy** of the stage bound to the same fresh pages, and only that copy is edited
+locally — so any other watcher on `demo/md/stage` can only passively pull.
 
 ## Public-repo safety
 

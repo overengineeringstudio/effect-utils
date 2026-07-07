@@ -29,13 +29,10 @@ export const mdDemo: Demo = {
   stageRel: 'demo/md/stage',
   resetRel: 'demo/md/reset.sh',
   watchLog: 'watch.log',
-  // A `notion-md` shim over the built CLI so the on-screen command reads
-  // naturally. NOTE for coordinator: on camera it's the umbrella `notion md`
-  // (notion-cli); the harness drives `notion-md/dist` directly, exactly as
-  // reset.sh does — same binary, a fidelity note not a behavior difference.
-  shims: {
-    'notion-md': 'packages/@overeng/notion-md/dist/src/cli.js',
-  },
+  // No shim: we drive the REAL on-camera umbrella command `notion md …`. The
+  // `notion` (notion-cli) binary is on the devenv-shell profile, so the harness
+  // must be launched inside `devenv shell` (see README) — the pty inherits that
+  // PATH and `notion` resolves exactly as it does for the presenter.
   pages: [
     { role: 'roadmap', nmdFile: 'roadmap.nmd' },
     { role: 'spec', nmdFile: 'spec.nmd' },
@@ -47,7 +44,7 @@ export const mdDemo: Demo = {
         'One command. It watches two local files and keeps them in sync with Notion — no push, no pull; direction lives in each file.',
       action: {
         kind: 'pty',
-        cmd: 'notion-md sync --watch roadmap.nmd spec.nmd --poll-interval-ms 3000',
+        cmd: 'notion md sync --watch roadmap.nmd spec.nmd --poll-interval-ms 3000',
         background: true,
       },
       expectTerminal: '"event":"sync"',
@@ -138,7 +135,7 @@ export const mdDemo: Demo = {
       id: 'beat3d-guarded-merge',
       narration:
         'One sync. It refuses to clobber — writes a conflict draft with Base/Local/Remote, and Notion is untouched.',
-      action: { kind: 'pty', cmd: 'notion-md sync roadmap.nmd' },
+      action: { kind: 'pty', cmd: 'notion md sync roadmap.nmd' },
       expectTerminal: 'shared-conflict',
       // Authoritative: Notion still shows the teammate's line — NOT clobbered.
       expectNotion: (ctx) => blockTextEquals(ctx.api, ctx.pageIds.roadmap!, STATUS_REMOTE),

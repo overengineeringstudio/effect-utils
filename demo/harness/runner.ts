@@ -378,11 +378,32 @@ export const runDemo = async (demo: Demo, opts: RunOptions = {}): Promise<RunRec
   writeTimeline(evidenceDir, record)
   writeReport(evidenceDir, record)
 
+  // Best-effort: publish the report under the explainers devnet root so it's
+  // reachable over the tailnet (e.g. https://<host>:8443/<demo>-evidence/).
+  // report.html is self-contained (screenshots inlined); PNGs copied too.
+  let servedRel: string | undefined
+  const explainersDir = join(REPO_ROOT, 'demo', 'explainers')
+  if (existsSync(explainersDir)) {
+    try {
+      const publishDir = join(explainersDir, `${demo.id}-evidence`)
+      rmSync(publishDir, { recursive: true, force: true })
+      mkdirSync(publishDir, { recursive: true })
+      copyFileSync(join(evidenceDir, 'report.html'), join(publishDir, 'report.html'))
+      for (const f of readdirSync(evidenceDir)) {
+        if (f.endsWith('.png')) copyFileSync(join(evidenceDir, f), join(publishDir, f))
+      }
+      servedRel = `${demo.id}-evidence/report.html`
+    } catch {
+      /* non-fatal */
+    }
+  }
+
   console.log(`\n${'─'.repeat(56)}`)
   console.log(`${passCount}/${beats.length} beats passed · ${record.durationSec.toFixed(1)}s`)
   console.log(`evidence: ${evidenceDir}`)
   console.log(`  report:   ${join(evidenceDir, 'report.html')}`)
   console.log(`  timeline: ${join(evidenceDir, 'timeline.json')}`)
+  if (servedRel) console.log(`  served:   demo/explainers/${servedRel} (→ tailnet devnet root)`)
   if (!shooter.hasAuth) {
     console.log(`\n⚠ Notion screenshots skipped — run once, headful:`)
     console.log(`    bun demo/harness/login.ts`)
