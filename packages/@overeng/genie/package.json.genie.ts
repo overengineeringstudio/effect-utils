@@ -32,8 +32,13 @@ const packagedEffectRuntimeClosureDeps = [
 
 const packagedTuiRuntimeClosureDeps = [
   // @overeng/tui-react is injected into the packaged Genie workspace. Its direct deps are
-  // declared by tui-react; expose cli-truncate's runtime sidecar at the packaged root.
+  // declared by tui-react; expose the terminal text runtime sidecars reached through
+  // cli-truncate/string-width at the packaged root.
+  'ansi-regex',
+  'emoji-regex',
+  'get-east-asian-width',
   'slice-ansi',
+  'strip-ansi',
 ] as const
 
 const supportDeps = catalog.compose({

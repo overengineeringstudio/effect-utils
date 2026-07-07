@@ -336,6 +336,7 @@ export const catalog = defineCatalog({
   'is-fullwidth-code-point': '5.1.0',
   'ansi-regex': '6.2.2',
   'ansi-styles': '6.2.3',
+  'emoji-regex': '10.6.0',
   'string-width': '8.2.1',
   'slice-ansi': '9.0.0',
   'strip-ansi': '7.2.0',
