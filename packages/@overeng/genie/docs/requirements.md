@@ -75,14 +75,18 @@ may not yet be installed.
   **statically**, without importing the generator (importing a design-time
   generator would itself require the runtime graph). `design-time` is the default;
   `bootstrap` is opt-in.
-- **R32 Install-arbitrated ordering:** The pre-install requirement must be enforced
-  by real ordering, not only by static analysis: bootstrap-phase generators run
-  before package-manager install, and install depends on their outputs. A
-  generator whose output install needs but that is not declared bootstrap-phase
-  must fail install (missing/stale input) rather than silently escape the contract;
-  a bootstrap-phase generator that reaches a runtime-only package must fail when run
-  pre-install. No hardcoded catalog of "install-input" artifacts is permitted —
-  install is the authority for what must exist before it runs.
+- **R32 Empirical bootstrap verification:** The pre-install requirement must be
+  _demonstrated_, not only statically asserted: the bootstrap-phase generators must
+  be verified to actually run before install in a fresh, no-`node_modules`
+  environment (using a self-contained runner) and to produce a state install
+  accepts. A bootstrap-phase generator that reaches a runtime-only package must fail
+  that cold run. This empirical check is the authority; the static closure gate (R30)
+  is fast feedback. No hardcoded catalog of "install-input" artifacts is permitted.
+  (Making install itself the completeness arbiter — failing on a missing generated
+  input — is out of scope: it is infeasible here because generated outputs are
+  committed (T01) and the runner is built from them. Consequently, whether every
+  install-input generator carries the bootstrap declaration is not structurally
+  enforced; see decision 0004's accepted residual.)
 - **R30 Bootstrap-closure enforcement (fast-feedback gate):** Genie must provide a
   static check that detects, before generation, any **bootstrap-phase** `.genie.ts`
   whose transitive runtime import closure reaches a package unavailable before
