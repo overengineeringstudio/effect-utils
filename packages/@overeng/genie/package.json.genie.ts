@@ -18,6 +18,7 @@ const supportDeps = catalog.compose({
     workspace: [otelContractPkg],
     external: catalog.pick(
       '@effect/sql',
+      '@effect/typeclass',
       'fast-check',
       'find-my-way-ts',
       'ini',
