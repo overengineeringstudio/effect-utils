@@ -106,7 +106,7 @@ export type GenieGenerateResult = {
  *
  * Duplicate-target rejection runs over the FULL discovered set before phase filtering so a
  * duplicate is caught regardless of the active phase. Phase selection then reads each source's
- * static `// @genie-phase` pragma ({@link parseGeneratorPhase}) — no import — so a `bootstrap`-phase
+ * static `// @genie-bootstrap` flag ({@link parseGeneratorPhase}) — no import — so a `bootstrap`-phase
  * run never has to load a `design-time` generator (which would need the runtime graph).
  */
 const discoverAndValidate = Effect.fn('genie/discoverAndValidate')(function* (

@@ -1,4 +1,4 @@
-// @genie-phase bootstrap
+// @genie-bootstrap
 import effectSocketPkg from './context/effect/socket/package.json.genie.ts'
 import opentuiPkg from './context/opentui/package.json.genie.ts'
 import { packageJson } from './genie/internal.ts'

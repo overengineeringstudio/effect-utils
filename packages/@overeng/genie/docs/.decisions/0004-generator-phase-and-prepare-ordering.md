@@ -1,4 +1,4 @@
-# Decision 0004: Generator phase + `genie:prepare`-before-install makes bootstrap-safety structurally enforced
+# Decision 0004: Generator phase + an empirical cold-proof makes bootstrap-safety demonstrated (not install-ordered)
 
 ## Status
 
@@ -74,56 +74,49 @@ with the static closure check as fast feedback.
 
 ## Consequences
 
-- Genie gains a phase-selection capability (`genie:prepare` runs only `bootstrap`-marked generators);
-  the devenv task graph is reordered so `pnpm:install` depends on `genie:prepare`.
-- Bootstrap-safety becomes _structurally true_ (a violation breaks the real bootstrap), not asserted by a
-  proxy. The static gate remains for fast feedback.
+- Genie gains a phase-selection capability: `genie --phase bootstrap` runs only `// @genie-bootstrap`-marked
+  generators. No devenv task-graph reorder — `pnpm:install` has no `genie` dependency.
+- Bootstrap-safety becomes _empirically demonstrated_ (a real cold run of the marked set, then install),
+  not asserted by a static proxy. The static gate remains for fast feedback.
 - No baseline file, no allowlist. The residual weaver generators are `design-time` by declaration.
-- Residual risk (accepted): the phase pragma is "just a string"; a _wrong_ mark is caught by install (a
-  bootstrap generator that can't run pre-install fails; an unmarked install-input generator fails install),
-  not by a static rule — which is the point (install, not a convention, is the authority).
+- Residual risk (accepted, open): the phase flag is "just a string"; a _wrong_ mark is caught empirically
+  (a bootstrap generator that can't run cold fails `bootstrap:cold-proof`), but a _forgotten_ mark on a new
+  install-input generator escapes both the static gate and the cold-proof (which runs only the marked set),
+  because committed outputs mean install still succeeds. See the accepted-residual note in the decision.
 
 ## Implementation notes (as built)
 
-- **Phase pragma.** Declared as a `// @genie-phase bootstrap` line comment, read from raw source text
-  (`src/core/phase.ts`, `parseGeneratorPhase`) — no import, no TS parse. `design-time` is the default.
-  The bootstrap set is the 35 `package.json.genie.ts` + `pnpm-workspace.yaml.genie.ts` (36 marks). A
-  per-file pragma (not a `package.json.genie.ts` filename rule) is used precisely because R32 forbids a
-  hardcoded install-input catalog.
-- **Task name is `genie:bootstrap`, not `genie:prepare`.** The shared `genie.nix` `genie:prepare` is a
-  prerequisite hook that `genie:run`/`genie:check`/`genie:watch` depend on. The pre-install runner is a
-  separate effect-utils-local task `genie:bootstrap` (`genie --phase bootstrap`), with `pnpm:install`
-  depending on it, because (a) it stays repository-local and does not mutate the exported shared module,
-  and (b) it adds no direct writing edge to `genie:run`/`genie:watch`. Note it does NOT keep the writer
-  out of `genie:check`'s dependency chain: `genie:check → pnpm:install → genie:bootstrap`, so the writer
-  is transitively upstream of `genie:check` regardless of the task name. Masking is prevented by the
-  cold-guard, not by the separation. Purely additive and revertible.
-- **Install-path blast radius.** `pnpm:install` is the most-depended-on task in the graph; it now depends
-  on `genie:bootstrap`, which runs a full `genie --phase bootstrap` generate + validation over the 35
-  `package.json` (including strict tsgo export proofs where configured). This adds cost to every warm
-  install and a new failure mode — a genie generation/validation flake now fails `pnpm:install` and
-  cascades downstream. The cold-guard keeps this off the fresh-clone path; the surface is the
-  warm/steady-state case. This is the headline operational risk of the reorder.
-- **Two enforcement gaps observed and accepted (the honest result).** In this committed-output,
-  source-mode repo, "install is the arbiter via real ordering" holds only partially:
-  1. _Source-mode genie can't run cold._ `genie` on `PATH` needs `node_modules`; `genie:bootstrap` is
-     guarded to no-op when `node_modules` is absent, so a fresh clone relies on committed outputs, not on
-     this task's execution. The `bootstrap-closure:check` static gate carries the pre-install safety
-     property — though it too imports `typescript`, so it is fast local feedback, not a `node_modules`-free
-     proof.
-  2. _Committed outputs blunt completeness._ A forgotten bootstrap mark does NOT break `pnpm:install`
-     (the committed output is already on disk). What catches a stale committed output is the post-install
-     `genie:check` drift gate (all phases) — but only where the cold-guard skipped `genie:bootstrap`. In
-     CI, `node_modules` is not cached (only the pnpm store + `.pnpm-home` are, keyed on the lockfile), so
-     it is absent pre-install and the guard skips → `genie:check` catches the stale output. In a warm
-     local tree, `genie:bootstrap` regenerates the bootstrap outputs before `genie:check`, so local
-     `check:all` MASKS stale committed bootstrap-output drift — CI (cold) is the catching gate. Verified
-     empirically: removing a `package.json.genie.ts` mark drops it from `genie --phase bootstrap` and from
-     `bootstrap-closure:check` scope, and a stale committed output is then not regenerated pre-install —
-     yet install still succeeds. True install-arbitrated completeness would need a fresh-clone (no
-     committed outputs) check — the P2 spot-check considered above and not adopted.
+- **Phase flag.** Declared as a valueless `// @genie-bootstrap` line comment (mirroring `@ts-nocheck`
+  grammar), read from raw source text (`src/core/phase.ts`, `parseGeneratorPhase`, regex
+  `/^[ \t]*\/\/[ \t]*@genie-bootstrap(?![\w-])/m`) — no import, no TS parse. `design-time` is the default
+  (no marker). The bootstrap set is the 35 `package.json.genie.ts` + `pnpm-workspace.yaml.genie.ts`
+  (36 marks). A per-file flag (not a `package.json.genie.ts` filename rule) is used precisely because R32
+  forbids a hardcoded install-input catalog.
+- **No install-ordering task.** An earlier build wired a `genie:bootstrap` task (`genie --phase bootstrap`,
+  cold-guarded) with `pnpm:install.after = [ "genie:bootstrap" ]`. It was removed: it arbitrated nothing
+  (source-mode genie can't run cold, so it no-op'd on a fresh clone; committed outputs (T01) satisfy install
+  regardless), while adding cost to every warm install and a new failure mode on the most-depended-on task.
+  The devenv graph is now unchanged by this decision except for the additive `bootstrap:cold-proof` task.
+- **`bootstrap:cold-proof` (the empirical authority, R32).** `genie/ci-scripts/bootstrap-cold-proof.sh`
+  (devenv task + a dedicated CI lane in `ci.yml.genie.ts`): builds the self-contained nix genie (`.#genie`,
+  a `bun --compile` binary with deps baked into the store — it runs with no `node_modules`, unlike
+  source-mode genie), `git archive HEAD`s a `node_modules`-free tree of the committed source into a temp dir
+  outside the repo, runs `genie --phase bootstrap` cold there (asserting the count of generators run matches
+  the independently-counted `// @genie-bootstrap` set, via `--output json`, and that none errored), then runs
+  `pnpm install --frozen-lockfile` there. Both succeeding is the demonstration. The cold generate also runs
+  validation, including the strict tsgo export-type proof on genie's isomorphic `.` entry
+  (`src/runtime/mod.ts`), whose type closure reaches no `node_modules`-resident types, so it compiles cold.
+  Kept out of `check:all` (heavier than the product checks).
+- **Accepted residual (completeness, open — the honest result).** In this committed-output, source-mode
+  repo the cold-proof proves the _marked_ set runs cold and installs, but cannot prove the marked set is
+  _complete_: a forgotten `// @genie-bootstrap` on a new install-input generator does not break the cold
+  `pnpm install` (the committed output is already on disk). The all-phase `genie:check` drift gate still
+  catches a stale committed output. Closing the completeness gap structurally would need uncommitted outputs
+  (infeasible — the nix genie is built _from_ the committed outputs; deadlock) or a hardcoded install-input
+  catalog (rejected by R32). Left open, closeable later with the hardcoded check only if it bites.
 
 ## Evidence
 
 See `.experiments/2026-07-06-generator-phase.md` (run-context evidence: `genie:run` is post-install; CI does
-not exercise pre-install; the residual-5 weaver analysis) and decision 0003 for the static gate.
+not exercise pre-install; the residual-5 weaver analysis) and decision 0003 for the static gate. The
+cold-proof itself is the running evidence for R32 (`bootstrap:cold-proof`).

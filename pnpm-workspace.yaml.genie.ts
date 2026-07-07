@@ -1,4 +1,4 @@
-// @genie-phase bootstrap
+// @genie-bootstrap
 import { catalog } from './genie/external.ts'
 import { commonPnpmWorkspaceData, pnpmWorkspaceYaml } from './genie/internal.ts'
 import { rootWorkspacePackages } from './package.json.genie.ts'

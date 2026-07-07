@@ -10,7 +10,7 @@
  * declaration: they run after install (post-install `genie:run`) and may use the runtime graph.
  *
  * This entry discovers every tracked `.genie.ts` (`git ls-files '*.genie.ts'`), keeps only those
- * whose static `// @genie-phase bootstrap` pragma marks them bootstrap-phase, runs the shared
+ * whose static `// @genie-bootstrap` pragma marks them bootstrap-phase, runs the shared
  * {@link checkBootstrapClosure} walker over that set, and FAILS on ANY violation. There is no
  * baseline and no allowlist: the residual weaver generators are `design-time` by declaration, so
  * they are structurally out of scope rather than an accepted exception.
@@ -59,7 +59,7 @@ const main = (): void => {
     console.error(
       'A `bootstrap`-phase `.genie.ts` must be importable from a fresh checkout BEFORE install. ' +
         'Narrow the import (avoid wide barrels that reach runtime-only packages), or — if the ' +
-        'generator genuinely needs the runtime graph — remove its `// @genie-phase bootstrap` pragma ' +
+        'generator genuinely needs the runtime graph — remove its `// @genie-bootstrap` pragma ' +
         'so it runs post-install as a design-time generator (and ensure no install step depends on its output).',
     )
     process.exit(1)
