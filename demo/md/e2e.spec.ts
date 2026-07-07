@@ -1,42 +1,31 @@
-// E2E storyboard for the `notion md` watch-mode demo — the typed source of
-// truth the harness drives end-to-end and the artifact we review to dial the
-// demo in before it's driven manually on camera.
+// E2E storyboard for the CORE `notion md` demo — two-way propagation, the
+// ~3-min watch-mode hero. Three beats: start the watcher, local→Notion,
+// Notion→local. (The guarded-merge / conflict scenario lives in the separate
+// `e2e.merge-proof.spec.ts` appendix — it's an explainer deep-dive, not part of
+// the core demo.)
 //
 // Run (inside `devenv shell`, from repo root):
-//   bun demo/md/e2e.spec.ts              # reset + full run
-//   bun demo/md/e2e.spec.ts --no-reset   # reuse current live pages
+//   devenv shell -- bun demo/md/e2e.spec.ts              # reset + full run
+//   devenv shell -- bun demo/md/e2e.spec.ts --no-reset   # reuse current pages
 //
 // Assertions are authoritative via the Notion API; the terminal + local files
-// are secondary evidence. On camera the "notion-side edit" beats are a human
+// are secondary evidence. On camera the "notion-side edit" beat is a human
 // editing the browser; here we reproduce the same mutation through the API so
 // the run is deterministic.
 
 import { runDemo } from '../harness/runner.ts'
-import { blockTextEquals, pageHasText, todoChecked } from '../harness/notion-api.ts'
+import { pageHasText, todoChecked } from '../harness/notion-api.ts'
 import type { Demo } from '../harness/spec.ts'
-
-// Fixed strings shared across beats (must match seed/*.nmd + reset.sh output).
-const TODO = 'Finalize the API spec'
-const STATUS_BASE = 'On track for the Q3 release.'
-const STATUS_REMOTE = 'Slipping — blocked on review.'
-const STATUS_LOCAL = 'Ready to ship today.'
-const NEW_ENDPOINT = 'DELETE /v1/pages'
+import { mdScaffold, NEW_ENDPOINT, TODO } from './_shared.ts'
 
 export const mdDemo: Demo = {
   id: 'md',
-  title: 'notion md — watch-mode hero',
-  demoRel: 'demo/md',
-  stageRel: 'demo/md/stage',
-  resetRel: 'demo/md/reset.sh',
-  watchLog: 'watch.log',
+  title: 'notion md — two-way propagation',
+  ...mdScaffold,
   // No shim: we drive the REAL on-camera umbrella command `notion md …`. The
   // `notion` (notion-cli) binary is on the devenv-shell profile, so the harness
-  // must be launched inside `devenv shell` (see README) — the pty inherits that
-  // PATH and `notion` resolves exactly as it does for the presenter.
-  pages: [
-    { role: 'roadmap', nmdFile: 'roadmap.nmd' },
-    { role: 'spec', nmdFile: 'spec.nmd' },
-  ],
+  // must be launched inside `devenv shell` (see harness/README) — the pty
+  // inherits that PATH and `notion` resolves exactly as it does for the presenter.
   beats: [
     {
       id: 'beat0-watch',
@@ -89,61 +78,6 @@ export const mdDemo: Demo = {
       screenshot: ['terminal', 'notion'],
       capturePages: ['spec'],
       budgetSec: 12,
-    },
-    {
-      id: 'beat3a-stop-watch',
-      narration:
-        'Now the case every naive sync gets wrong: my teammate and I edit the same line at once. First I stop the watcher so the conflict is deterministic.',
-      action: { kind: 'pty-signal', key: 'ctrl+c' },
-      screenshot: ['terminal'],
-      budgetSec: 3,
-    },
-    {
-      id: 'beat3b-notion-edit',
-      narration:
-        'My teammate edits the Status line in Notion — "On track" becomes "Slipping — blocked on review."',
-      action: {
-        kind: 'notion',
-        run: async (ctx) => {
-          const block = await ctx.api.findBlockByText(ctx.pageIds.roadmap!, STATUS_BASE)
-          if (!block) throw new Error(`Status block "${STATUS_BASE}" not found`)
-          await ctx.api.updateBlock(block.id, {
-            paragraph: {
-              rich_text: [{ type: 'text', text: { content: STATUS_REMOTE } }],
-            },
-          })
-        },
-      },
-      expectNotion: (ctx) => blockTextEquals(ctx.api, ctx.pageIds.roadmap!, STATUS_REMOTE),
-      screenshot: ['notion'],
-      capturePages: ['roadmap'],
-      budgetSec: 6,
-    },
-    {
-      id: 'beat3c-local-edit',
-      narration:
-        'At the same time I change the same line in my editor to "Ready to ship today." and save.',
-      action: {
-        kind: 'edit',
-        file: 'roadmap.nmd',
-        apply: (t) => t.replace(STATUS_BASE, STATUS_LOCAL),
-      },
-      expectFile: { file: 'roadmap.nmd', contains: STATUS_LOCAL },
-      budgetSec: 3,
-    },
-    {
-      id: 'beat3d-guarded-merge',
-      narration:
-        'One sync. It refuses to clobber — writes a conflict draft with Base/Local/Remote, and Notion is untouched.',
-      action: { kind: 'pty', cmd: 'notion md sync roadmap.nmd' },
-      expectTerminal: 'shared-conflict',
-      // Authoritative: Notion still shows the teammate's line — NOT clobbered.
-      expectNotion: (ctx) => blockTextEquals(ctx.api, ctx.pageIds.roadmap!, STATUS_REMOTE),
-      // The conflict artifact captured the local edit.
-      expectFile: { file: 'roadmap.nmd.conflict.roughdraft.md', contains: STATUS_LOCAL },
-      screenshot: ['terminal', 'notion'],
-      capturePages: ['roadmap'],
-      budgetSec: 10,
     },
   ],
 }
