@@ -632,7 +632,7 @@ let
     in
     if suffix == "" then "${packagesBlock}\n" else "${packagesBlock}\n\n${suffix}\n";
 
-  workspaceClosureDirs =
+  declaredWorkspaceClosureDirs =
     let
       genieData = packageJson."$genie" or { };
     in
@@ -642,6 +642,27 @@ let
       throw "mk-pnpm-cli: $genie.workspaceClosureDirs does not contain packageDir (${packageDir})"
     else
       genieData.workspaceClosureDirs;
+  expandWorkspaceClosureDirs =
+    seen: pending:
+    if pending == [ ] then
+      seen
+    else
+      let
+        dir = builtins.head pending;
+        rest = builtins.tail pending;
+        packageJsonPath = resolveEvalSourceFor "${dir}/package.json";
+        nestedDirs =
+          if builtins.pathExists packageJsonPath then
+            (builtins.fromJSON (builtins.readFile packageJsonPath))."$genie".workspaceClosureDirs or [ ]
+          else
+            [ ];
+        unseenNestedDirs = builtins.filter (nestedDir: !(lib.elem nestedDir seen)) nestedDirs;
+      in
+      if lib.elem dir seen then
+        expandWorkspaceClosureDirs seen rest
+      else
+        expandWorkspaceClosureDirs (seen ++ [ dir ]) (rest ++ unseenNestedDirs);
+  workspaceClosureDirs = expandWorkspaceClosureDirs [ ] declaredWorkspaceClosureDirs;
   workspaceMembers = builtins.filter (dir: dir != packageDir) workspaceClosureDirs;
 
   resolvedWorkspaceMembers = map (
