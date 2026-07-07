@@ -39,6 +39,7 @@ const packagedTuiRuntimeClosureDeps = [
   'ansi-styles',
   'emoji-regex',
   'get-east-asian-width',
+  'is-fullwidth-code-point',
   'scheduler',
   'slice-ansi',
   'strip-ansi',
