@@ -40,7 +40,7 @@ const terminalHtml = (title: string, promptLine: string, body: string): string =
 </style></head><body>
   <div class="win">
     <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
-      <span class="t">${esc(title)} — demo/md/stage</span></div>
+      <span class="t">${esc(title)} — stage</span></div>
     <div class="scr"><span class="prompt">stage ❯ </span><span class="cmd">${esc(promptLine)}</span>
 ${esc(body)}</div>
   </div>
@@ -101,6 +101,13 @@ export class Screenshotter {
   private readyFn(ready: NotionReady): string {
     if (ready.kind === 'text') {
       return `() => document.body.innerText.includes(${JSON.stringify(ready.value)})`
+    }
+    if (ready.kind === 'rowCell') {
+      // DB-grid row `row` renders a cell containing `value`: find the row's text
+      // node, then walk up looking for an ancestor whose text also contains the
+      // value (i.e. the row now shows the changed cell). Brittle by nature — the
+      // grid virtualizes rows — so a miss lands `ui-not-reflected`, never stale.
+      return `() => { const r=${JSON.stringify(ready.row)}, v=${JSON.stringify(ready.value)}; const w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT); let n; while(n=w.nextNode()){ if(n.textContent && n.textContent.includes(r)){ let c=n.parentElement; for(let i=0;i<12&&c;i++){ if(c.innerText && c.innerText.includes(v)) return true; c=c.parentElement; } } } return false; }`
     }
     // to-do checked → Notion strikes the text through (no aria-checked on the DOM)
     return `() => { const t=${JSON.stringify(ready.text)}; const w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT); let n; while(n=w.nextNode()){ if(n.textContent.includes(t)){ return getComputedStyle(n.parentElement).textDecorationLine.includes("line-through"); } } return false; }`

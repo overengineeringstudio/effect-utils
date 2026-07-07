@@ -58,7 +58,7 @@ const actionSummary = (a: Action): string => {
     case 'pty-signal':
       return `[${a.key}]`
     case 'edit':
-      return `edit ${a.file}`
+      return a.then ? `edit ${a.file} && ${a.then}` : `edit ${a.file}`
     case 'notion':
       return `notion-side edit (via API)`
     case 'wait':
@@ -112,6 +112,11 @@ const performAction = async (
       const file = join(ctx.stageDir, action.file)
       const next = action.apply(readFileSync(file, 'utf8'))
       writeFileSync(file, next)
+      // No watcher? Re-run the presenter's command (e.g. `bun run page.tsx`),
+      // tee'd to the watch log exactly like a `pty` action.
+      if (action.then) {
+        await pty.sendLine(`${action.then} 2>&1 | tee -a ${JSON.stringify(watchLogAbs)}`)
+      }
       break
     }
     case 'notion':
@@ -218,26 +223,46 @@ export const runDemo = async (demo: Demo, opts: RunOptions = {}): Promise<RunRec
   // copy is edited locally — so any other watcher on the shared stage can only
   // ever passively pull (never clobber our pushes). This makes the run
   // deterministic regardless of what else touches the stage.
-  const stageDir = join(evidenceDir, 'work')
-  mkdirSync(stageDir, { recursive: true })
-  for (const name of readdirSync(seedStageDir)) {
-    if (name.endsWith('.nmd')) {
-      copyFileSync(join(seedStageDir, name), join(stageDir, name))
+  //
+  // Demos with heavy, self-referential stage state and no watcher (sqlite's
+  // SQLite replica, schema's generated files + node_modules symlink, react's
+  // page-id cache) opt out via `isolate: false` and drive the real stage.
+  const isolate = demo.isolate ?? true
+  let stageDir: string
+  if (isolate) {
+    stageDir = join(evidenceDir, 'work')
+    mkdirSync(stageDir, { recursive: true })
+    for (const name of readdirSync(seedStageDir)) {
+      if (name.endsWith('.nmd')) {
+        copyFileSync(join(seedStageDir, name), join(stageDir, name))
+      }
     }
-  }
-  const seedStore = join(seedStageDir, '.notion-md')
-  if (existsSync(seedStore)) {
-    cpSync(seedStore, join(stageDir, '.notion-md'), { recursive: true })
+    const seedStore = join(seedStageDir, '.notion-md')
+    if (existsSync(seedStore)) {
+      cpSync(seedStore, join(stageDir, '.notion-md'), { recursive: true })
+    }
+  } else {
+    stageDir = seedStageDir
   }
   const watchLogAbs = join(stageDir, demo.watchLog)
 
-  // 3. Resolve live page ids/urls from the working copy's .nmd frontmatter.
+  // 3. Resolve live page ids/urls. Default: the working copy's .nmd frontmatter
+  // (md). Demos without .nmd supply `resolvePages` (reads .demo-state ids).
   const pageIds: Record<string, string> = {}
   const pageUrls: Record<string, string> = {}
-  for (const pg of demo.pages) {
-    const b = readPageBinding(stageDir, pg.nmdFile)
-    pageIds[pg.role] = b.id
-    pageUrls[pg.role] = b.url
+  if (demo.resolvePages) {
+    const resolved = demo.resolvePages({ demoDir, stageDir })
+    for (const [role, b] of Object.entries(resolved)) {
+      pageIds[role] = b.id
+      pageUrls[role] = b.url
+    }
+  } else {
+    for (const pg of demo.pages) {
+      if (!pg.nmdFile) throw new Error(`page ${pg.role} needs nmdFile or Demo.resolvePages`)
+      const b = readPageBinding(stageDir, pg.nmdFile)
+      pageIds[pg.role] = b.id
+      pageUrls[pg.role] = b.url
+    }
   }
 
   // 4. PATH shim so the on-screen command reads naturally. Targets are
@@ -278,6 +303,7 @@ export const runDemo = async (demo: Demo, opts: RunOptions = {}): Promise<RunRec
     await sleep(300)
 
     for (const beat of demo.beats) {
+      if (demo.beatPauseMs) await sleep(demo.beatPauseMs)
       const startOffsetSec = (Date.now() - t0) / 1000
       console.log(`\n▶ ${beat.id}: ${actionSummary(beat.action)}`)
       const logFromByte = byteSize(watchLogAbs)

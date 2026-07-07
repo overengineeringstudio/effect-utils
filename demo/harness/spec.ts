@@ -95,6 +95,13 @@ export interface EditAction {
   readonly file: string
   /** Pure transform of the file's current text. */
   readonly apply: (text: string) => string
+  /**
+   * Optional command to type into the shell AFTER saving the edit (tee'd to the
+   * watch log like a `pty` action). md omits it — a background watcher reacts to
+   * the save. react has no watcher, so each edit is followed by an explicit
+   * `bun run page.tsx` to re-render, exactly as on camera.
+   */
+  readonly then?: string
 }
 
 /**
@@ -142,6 +149,10 @@ export interface FileExpectation {
 export type NotionReady =
   | { readonly kind: 'text'; readonly value: string } // page text contains value
   | { readonly kind: 'todoChecked'; readonly text: string } // to-do row is checked (strikethrough)
+  // DB-grid row `row` renders a cell containing `value` (e.g. Status → "Done").
+  // Notion virtualizes grid rows; if the row is scrolled out this may never
+  // match → the shot is marked `ui-not-reflected` rather than shipping stale.
+  | { readonly kind: 'rowCell'; readonly row: string; readonly value: string }
 
 export interface Beat {
   readonly id: string
@@ -174,8 +185,12 @@ export interface Beat {
  */
 export interface DemoPage {
   readonly role: string
-  /** Stage `.nmd` file, relative to the stage dir (e.g. `roadmap.nmd`). */
-  readonly nmdFile: string
+  /**
+   * Stage `.nmd` file, relative to the stage dir (e.g. `roadmap.nmd`). Only used
+   * by the default (`.nmd`-frontmatter) page binding; demos that supply
+   * `Demo.resolvePages` (sqlite/schema/react — no `.nmd`) omit it.
+   */
+  readonly nmdFile?: string
 }
 
 export interface Demo {
@@ -197,4 +212,29 @@ export interface Demo {
    * `notion-md` shim over `node …/dist/src/cli.js`).
    */
   readonly shims?: Readonly<Record<string, string>>
+  /**
+   * Run in a private working COPY of the stage (default `true`). The md demo
+   * copies its `.nmd` files + `.notion-md` store so a concurrent watcher can't
+   * clobber it. The sqlite/schema/react demos have no watcher and heavy,
+   * self-referential stage state (a SQLite replica, generated files + a
+   * `node_modules` symlink, a page-id cache) — so they set `isolate: false` and
+   * drive the real stage dir directly, exactly as the presenter does on camera.
+   */
+  readonly isolate?: boolean
+  /**
+   * Resolve `role → { id, url }` for the demo's Notion pages. Default (when
+   * omitted): read each `DemoPage.nmdFile`'s frontmatter (the md binding).
+   * Demos without `.nmd` files supply this to read ids from `.demo-state/`.
+   * Called after `reset.sh` (if any), so it sees freshly-provisioned ids.
+   */
+  readonly resolvePages?: (args: {
+    readonly demoDir: string
+    readonly stageDir: string
+  }) => Record<string, { readonly id: string; readonly url: string }>
+  /**
+   * Pause (ms) before each beat's action, to space out API bursts when Notion is
+   * heavily rate-limited (429). Default 0 (md is unaffected). react sets a few
+   * seconds so its per-beat `bun run page.tsx` sync doesn't stack 429s.
+   */
+  readonly beatPauseMs?: number
 }
