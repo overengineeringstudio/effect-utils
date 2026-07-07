@@ -98,7 +98,11 @@ const fallbackCopy = (text: string, done: () => void): void => {
   document.body.removeChild(ta)
 }
 
-const CopyButton = ({ raw }: { raw: string }) => {
+// `overlay` = absolutely-positioned button pinned inside a code block (default,
+// used by every command <pre>). `inline` = a small in-flow button for tight
+// chips (e.g. the compact backstage reset). Copy behavior is identical — always
+// byte-exact from the raw model string.
+const CopyButton = ({ raw, variant = 'overlay' }: { raw: string; variant?: 'overlay' | 'inline' }) => {
   const [copied, setCopied] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const onClick = () => {
@@ -112,6 +116,10 @@ const CopyButton = ({ raw }: { raw: string }) => {
     } else fallbackCopy(raw, done)
   }
   useEffect(() => () => void (timer.current && clearTimeout(timer.current)), [])
+  const shape =
+    variant === 'overlay'
+      ? 'absolute right-1.5 top-1.5 h-7 w-[30px] text-[15px]'
+      : 'h-6 w-6 flex-none text-[13px]'
   return (
     <button
       type="button"
@@ -119,7 +127,7 @@ const CopyButton = ({ raw }: { raw: string }) => {
       title="Copy to clipboard"
       aria-label="Copy command"
       className={
-        'absolute right-1.5 top-1.5 inline-flex h-7 w-[30px] cursor-pointer items-center justify-center rounded-md border text-[15px] leading-none ' +
+        `inline-flex cursor-pointer items-center justify-center rounded-md border leading-none ${shape} ` +
         (copied
           ? 'border-ok bg-ok text-white'
           : 'border-white/15 bg-white/5 text-[#cfd6e0] hover:bg-white/15 hover:text-white')
@@ -313,6 +321,54 @@ const BeatCard = ({
 }
 
 // ---------------------------------------------------------------------------
+// explainer iframe — auto-height so the PAGE scrolls, never the iframe.
+//
+// The explainer pages are SAME-ORIGIN siblings (served from demo/explainers/),
+// so we read the loaded document's scrollHeight and pin the iframe to exactly
+// that — no inner scrollbar, single document scroll. Measurement is made
+// height-independent by first collapsing to 0 (scrollHeight can never report a
+// value smaller than the frame's own height), forcing a sync reflow, then
+// reading. Re-measures on load (fires after images) and on window resize
+// (rAF-debounced) since a width change reflows the content to a new height.
+// The explainers are normal-flow docs (no html/body 100vh sizing — verified),
+// so onLoad + resize is sufficient; no inner ResizeObserver needed.
+// ---------------------------------------------------------------------------
+
+const ExplainerFrame = ({ src, title }: { src?: string; title: string }) => {
+  const ref = useRef<HTMLIFrameElement>(null)
+  const measure = useCallback(() => {
+    const frame = ref.current
+    const doc = frame?.contentDocument
+    if (!frame || !doc) return
+    frame.style.height = '0px' // baseline: make the read independent of current height
+    const h = doc.documentElement.scrollHeight // forces sync reflow
+    if (h > 0) frame.style.height = `${h}px`
+  }, [])
+  useEffect(() => {
+    let raf = 0
+    const onResize = () => {
+      cancelAnimationFrame(raf)
+      raf = requestAnimationFrame(measure)
+    }
+    window.addEventListener('resize', onResize)
+    return () => {
+      cancelAnimationFrame(raf)
+      window.removeEventListener('resize', onResize)
+    }
+  }, [measure])
+  return (
+    <iframe
+      ref={ref}
+      title={title}
+      loading="lazy"
+      src={src}
+      onLoad={measure}
+      className="block w-full border-none bg-white"
+    />
+  )
+}
+
+// ---------------------------------------------------------------------------
 // demo section — one per demo, ALL kept mounted (build.ts renders every
 // `<section class="demo">` and toggles display, so explainer iframes load once
 // and never re-fetch on reopen/switch). Only the active section is visible.
@@ -359,81 +415,86 @@ const DemoSection = ({
           </span>
         </div>
       )}
-      {/* demo head */}
-      <div className="mb-2.5 flex items-start gap-5">
-        <div className="min-w-0 flex-1">
-          <h2 className="m-0 mb-0.5 text-lg font-semibold">{d.tab}</h2>
-          <p className="m-0 max-w-[120ch] text-[12.5px] text-fg-muted">
+      {/* compact demo head — one cohesive band: title + status + controls on
+          the top line, the gap/wow summary + backstage reset chip beneath it.
+          Consolidates the former title row, dashed backstage banner, and
+          toolbar row into a single space-efficient group so beats start higher. */}
+      <div className="mb-3 flex flex-col gap-1.5">
+        {/* line 1: title + status pill (left) · explanation/backups controls (right) */}
+        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
+          <h2 className="m-0 text-lg font-semibold leading-tight">{d.tab}</h2>
+          <SummaryPill d={d} />
+          <div className="ml-auto flex flex-wrap items-center gap-1.5">
+            {canExp ? (
+              <button
+                type="button"
+                onClick={onToggleExplain}
+                className={
+                  'cursor-pointer rounded-md border px-2.5 py-1 text-[12px] font-medium ' +
+                  (explainOpen
+                    ? 'border-accent bg-accent text-accent-fg'
+                    : 'border-border bg-bg-panel text-fg-muted hover:border-accent hover:text-fg')
+                }
+              >
+                {explainOpen ? '▾ hide explanation' : '▸ show explanation'}
+              </button>
+            ) : (
+              <span
+                title="no explainer page for this demo"
+                className="cursor-default rounded-md border border-dashed border-border px-2.5 py-1 text-[12px] font-medium text-fg-faint"
+              >
+                ▹ no explainer
+              </span>
+            )}
+            {hasBk ? (
+              <button
+                type="button"
+                onClick={onToggleAllBackups}
+                className={
+                  'cursor-pointer rounded-md border px-2.5 py-1 text-[12px] font-medium ' +
+                  (allShown
+                    ? 'border-accent bg-accent text-accent-fg'
+                    : 'border-border bg-bg-panel text-fg-muted hover:border-accent hover:text-fg')
+                }
+              >
+                {allShown ? '▾ hide all backups' : '▸ show all backups'}
+              </button>
+            ) : (
+              <span
+                title="no harness screenshots yet"
+                className="cursor-default rounded-md border border-dashed border-border px-2.5 py-1 text-[12px] font-medium text-fg-faint"
+              >
+                ▹ backups pending
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* line 2: gap/wow summary (muted, secondary) + inline backstage reset chip */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+          <p className="m-0 min-w-0 flex-1 text-[12px] leading-snug text-fg-muted">
             <InlineMd line={d.gapwow} />
           </p>
-        </div>
-        <div className="whitespace-nowrap pt-0.5">
-          <SummaryPill d={d} />
-        </div>
-      </div>
-
-      {/* backstage */}
-      <div className="mb-2.5 flex flex-wrap items-center gap-2.5 rounded-lg border border-dashed border-border-strong bg-bg-subtle px-3 py-2">
-        <span className="text-[11px] font-bold uppercase tracking-wider text-amber">Backstage · not on camera</span>
-        {d.resetCmd ? (
-          <>
-            <div className="relative rounded-lg border border-border-strong bg-bg-code">
-              <pre className="m-0 overflow-x-auto whitespace-pre py-1.5 pl-2.5 pr-10 font-mono text-[13px] leading-normal text-code-fg">
+          {d.resetCmd ? (
+            <span
+              title="backstage — reset between takes, not on camera"
+              className="flex flex-none items-center gap-1.5 rounded-md border border-dashed border-border-strong bg-bg-subtle py-0.5 pl-2 pr-1"
+            >
+              <span className="text-[10px] font-bold uppercase tracking-wider text-amber">Backstage · reset</span>
+              <code className="max-w-[240px] overflow-x-auto whitespace-pre rounded bg-bg-code px-1.5 py-0.5 font-mono text-[11.5px] leading-normal text-code-fg">
                 {d.resetCmd}
-              </pre>
-              <CopyButton raw={d.resetCmd} />
-            </div>
-            <span className="text-xs text-fg-faint">reset between takes</span>
-          </>
-        ) : (
-          <span className="text-xs text-fg-faint">no reset script — see SCREENPLAY.md for setup</span>
-        )}
-      </div>
-
-      {/* toolbar */}
-      <div className="mb-3 flex flex-wrap gap-2">
-        {canExp ? (
-          <button
-            type="button"
-            onClick={onToggleExplain}
-            className={
-              'cursor-pointer rounded-md border px-3 py-1.5 text-[12.5px] font-medium ' +
-              (explainOpen
-                ? 'border-accent bg-accent text-accent-fg'
-                : 'border-border bg-bg-panel text-fg-muted hover:border-accent hover:text-fg')
-            }
-          >
-            {explainOpen ? '▾ hide explanation' : '▸ show explanation'}
-          </button>
-        ) : (
-          <span
-            title="no explainer page for this demo"
-            className="cursor-default rounded-md border border-dashed border-border px-3 py-1.5 text-[12.5px] font-medium text-fg-faint"
-          >
-            ▹ no explainer
-          </span>
-        )}
-        {hasBk ? (
-          <button
-            type="button"
-            onClick={onToggleAllBackups}
-            className={
-              'cursor-pointer rounded-md border px-3 py-1.5 text-[12.5px] font-medium ' +
-              (allShown
-                ? 'border-accent bg-accent text-accent-fg'
-                : 'border-border bg-bg-panel text-fg-muted hover:border-accent hover:text-fg')
-            }
-          >
-            {allShown ? '▾ hide all backups' : '▸ show all backups'}
-          </button>
-        ) : (
-          <span
-            title="no harness screenshots yet"
-            className="cursor-default rounded-md border border-dashed border-border px-3 py-1.5 text-[12.5px] font-medium text-fg-faint"
-          >
-            ▹ backups pending
-          </span>
-        )}
+              </code>
+              <CopyButton raw={d.resetCmd} variant="inline" />
+            </span>
+          ) : (
+            <span
+              title="backstage — not on camera"
+              className="flex-none text-[11px] text-fg-faint"
+            >
+              <span className="font-bold uppercase tracking-wider text-amber">Backstage</span> · no reset script
+            </span>
+          )}
+        </div>
       </div>
 
       {/* body: instructions ⇄ explanation (both mounted; CSS-toggled full bleed) */}
@@ -455,7 +516,7 @@ const DemoSection = ({
         <aside
           className={
             explainOpen
-              ? 'flex h-[calc(100vh-150px)] min-h-[560px] w-full flex-col overflow-hidden rounded-[10px] border border-border bg-bg-panel shadow-[0_8px_30px_rgba(0,0,0,.5)]'
+              ? 'flex w-full flex-col overflow-hidden rounded-[10px] border border-border bg-bg-panel shadow-[0_8px_30px_rgba(0,0,0,.5)]'
               : 'hidden'
           }
         >
@@ -469,12 +530,11 @@ const DemoSection = ({
               ✕
             </button>
           </div>
-          {/* lazy: src set on first open, then persists (section never unmounts) */}
-          <iframe
+          {/* lazy: src set on first open, then persists (section never unmounts).
+              Auto-heights to its content so the page scrolls, never the iframe. */}
+          <ExplainerFrame
             title={`${d.tab} explainer`}
-            loading="lazy"
             src={explainerLoaded[d.id] ? d.explainerSrc ?? undefined : undefined}
-            className="block w-full flex-1 border-none bg-white"
           />
         </aside>
       )}
