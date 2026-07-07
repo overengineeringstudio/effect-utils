@@ -164,9 +164,25 @@ const parseBody = (body: string[]): Segment[] => {
 // change any existing export's behavior. build.ts is untouched by this.
 // ---------------------------------------------------------------------------
 
+// Fence info-strings that denote NON-copyable "expected output" (not a runnable
+// command): ```output / ```console / ```keys / ```text. A code segment tagged
+// with one of these renders as expected-output with no copy affordance.
+const NO_COPY_LANGS = new Set(['output', 'console', 'keys', 'text'])
+
+// Legacy fallback so screenplays authored before info-strings don't regress:
+// a fenced block whose every non-empty line is an `Error:` line is output
+// (e.g. sqlite Beat 3's typed refusals — that file has no info-string yet).
+const isErrorOnlyBlock = (raw: string): boolean => {
+  const lines = raw
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)
+  return lines.length > 0 && lines.every((l) => /^Error:/.test(l))
+}
+
 export type RawSegment =
   | { kind: 'prose'; lines: string[]; isExpectation: boolean } // raw lines, inline-md rendered in JSX
-  | { kind: 'code'; raw: string }
+  | { kind: 'code'; raw: string; lang?: string; noCopy?: boolean } // lang = fence info-string; noCopy derived
   | { kind: 'say'; text: string }
 
 export interface RawBeat {
@@ -188,16 +204,26 @@ const parseBodyRaw = (body: string[]): RawSegment[] => {
 
   let inCode = false
   let codeBuf: string[] = []
+  let codeLang = '' // fence info-string of the currently-open block
   for (const rawLine of body) {
-    const fence = /^\s*```/.test(rawLine)
-    if (fence) {
+    const fenceMatch = rawLine.match(/^\s*```\s*([^\s`]*)/)
+    if (fenceMatch) {
       if (!inCode) {
         flushProse()
         inCode = true
         codeBuf = []
+        codeLang = fenceMatch[1] ?? '' // e.g. "output", "sh", "" (bare fence)
       } else {
         inCode = false
-        segs.push({ kind: 'code', raw: codeBuf.join('\n') })
+        const raw = codeBuf.join('\n')
+        const lang = codeLang.toLowerCase()
+        const noCopy = NO_COPY_LANGS.has(lang) || isErrorOnlyBlock(raw)
+        segs.push({
+          kind: 'code',
+          raw,
+          ...(lang ? { lang } : {}),
+          ...(noCopy ? { noCopy: true } : {}),
+        })
       }
       continue
     }

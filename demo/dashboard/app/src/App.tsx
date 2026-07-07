@@ -9,9 +9,46 @@ import { InlineMd } from './inline-md.tsx'
 
 const TAB_IDS = DEMOS.map((d) => d.id)
 
-// A fenced block that is expected program OUTPUT, not a runnable command
-// (e.g. sqlite Beat 3's typed refusals): every non-empty line is an `Error:`
-// line. Such blocks get NO copy affordance.
+// Nav layout: consecutive demos sharing a groupId render clustered (e.g. the
+// schema group's 3.1/3.2); everything else is a solo tab. Order follows DEMOS.
+type NavItem = { kind: 'solo'; demo: DemoModel } | { kind: 'group'; groupId: string; label: string; members: DemoModel[] }
+const NAV_ITEMS: NavItem[] = (() => {
+  const out: NavItem[] = []
+  for (const d of DEMOS) {
+    if (d.groupId) {
+      const last = out[out.length - 1]
+      if (last && last.kind === 'group' && last.groupId === d.groupId) {
+        last.members.push(d)
+        continue
+      }
+      out.push({ kind: 'group', groupId: d.groupId, label: d.groupLabel ?? d.groupId, members: [d] })
+    } else {
+      out.push({ kind: 'solo', demo: d })
+    }
+  }
+  return out
+})()
+
+// Number-key routing keyed on the integer part of displayNum ("3.1" → "3").
+// A key that maps to one demo selects it; a key that maps to a group (multiple
+// members, e.g. "3" → [3.1, 3.2]) selects the first member, then CYCLES through
+// the group on repeated presses while already inside it.
+const KEY_MAP: Record<string, DemoModel[]> = (() => {
+  const m: Record<string, DemoModel[]> = {}
+  for (const d of DEMOS) {
+    const key = d.displayNum.split('.')[0]!
+    ;(m[key] ??= []).push(d)
+  }
+  return m
+})()
+// Largest single-digit key present, for the header hint ("keys 1–N").
+const MAX_KEY = Math.max(...Object.keys(KEY_MAP).map(Number))
+
+// A code segment is expected program OUTPUT (not a runnable command), so it gets
+// NO copy affordance, when the model marked it `noCopy` — set in the parser from
+// the fence info-string (```output/```console/```keys/```text) OR the legacy
+// `^Error:`-only fallback. The `isOutputBlock` fallback below re-applies that
+// legacy rule at render time so any un-flagged pre-info-string block still works.
 const isOutputBlock = (raw: string): boolean => {
   const lines = raw
     .split('\n')
@@ -19,6 +56,10 @@ const isOutputBlock = (raw: string): boolean => {
     .filter(Boolean)
   return lines.length > 0 && lines.every((l) => /^Error:/.test(l))
 }
+
+// Resolve the no-copy decision for a code segment: trust the model flag, but
+// fall back to the legacy heuristic so nothing regresses if a block predates it.
+const isNoCopy = (seg: Extract<RawSegment, { kind: 'code' }>): boolean => seg.noCopy ?? isOutputBlock(seg.raw)
 
 // build.ts fmtWhen — UTC "Mon D HH:MMZ"
 const fmtWhen = (iso?: string): string => {
@@ -93,8 +134,9 @@ const CopyButton = ({ raw }: { raw: string }) => {
 // segment renderer (raw model → JSX; escaping + inline-md done in JSX)
 // ---------------------------------------------------------------------------
 
-const CodeSegment = ({ raw }: { raw: string }) => {
-  if (isOutputBlock(raw)) {
+const CodeSegment = ({ seg }: { seg: Extract<RawSegment, { kind: 'code' }> }) => {
+  const raw = seg.raw
+  if (isNoCopy(seg)) {
     return (
       <div className="rounded-lg border border-dashed border-fail bg-[color-mix(in_srgb,var(--color-fail)_8%,var(--color-bg-code))]">
         <span className="block px-3 pt-1.5 text-[10px] font-bold uppercase tracking-wide text-fail">
@@ -117,7 +159,7 @@ const CodeSegment = ({ raw }: { raw: string }) => {
 }
 
 const Segment = ({ seg }: { seg: RawSegment }) => {
-  if (seg.kind === 'code') return <CodeSegment raw={seg.raw} />
+  if (seg.kind === 'code') return <CodeSegment seg={seg} />
   if (seg.kind === 'say') {
     return (
       <p className="py-1 text-[13px] italic text-fg-muted">
@@ -160,6 +202,12 @@ const StatusBadge = ({ status }: { status: ModelBeat['status'] }) => {
         ✗
       </span>
     )
+  if (status === 'mock')
+    return (
+      <span title="illustrative / mock — not harnessed" className={`${base} bg-amber/15 text-amber`}>
+        ◆
+      </span>
+    )
   return (
     <span title="not yet harnessed" className={`${base} bg-bg-subtle text-neutral`}>
       ○
@@ -169,6 +217,13 @@ const StatusBadge = ({ status }: { status: ModelBeat['status'] }) => {
 
 const SummaryPill = ({ d }: { d: DemoModel }) => {
   const pill = 'whitespace-nowrap rounded-full border border-border px-2.5 py-1 text-[12.5px] font-semibold tracking-tight'
+  if (d.summary.mock) {
+    return (
+      <span title="illustrative preview — no harness run" className={`${pill} border-amber/40 text-amber`}>
+        ◆ illustrative · not harnessed
+      </span>
+    )
+  }
   if (d.summary.harnessed) {
     const ok = d.summary.pass === d.summary.total
     return (
@@ -292,6 +347,18 @@ const DemoSection = ({
   const hasBk = hasBackups(d)
   return (
     <section hidden={!active}>
+      {/* PLANNED banner — aspirational demo; must be impossible to mistake for shipping */}
+      {d.planned && (
+        <div className="mb-3 flex items-center gap-3 rounded-lg border-2 border-amber bg-amber/15 px-4 py-3">
+          <span className="rounded bg-amber px-2 py-1 text-[11px] font-extrabold uppercase tracking-widest text-black">
+            Planned
+          </span>
+          <span className="text-[13.5px] font-semibold text-amber">
+            Not yet implemented — roadmap preview. The commands below are narrated and shown, NOT run; the
+            terminal output is illustrative mock, not a live harness.
+          </span>
+        </div>
+      )}
       {/* demo head */}
       <div className="mb-2.5 flex items-start gap-5">
         <div className="min-w-0 flex-1">
@@ -458,6 +525,42 @@ const writeUrl = (s: UiState): void => {
 }
 
 // ---------------------------------------------------------------------------
+// nav tab (shared by solo tabs and grouped members). Shows the explicit
+// displayNum (never an array index) and a PLANNED badge for aspirational demos.
+// ---------------------------------------------------------------------------
+
+const TabButton = ({ d, on, onClick }: { d: DemoModel; on: boolean; onClick: () => void }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className={
+      on
+        ? 'inline-flex items-center rounded-lg border border-accent bg-accent px-3 py-1.5 text-[13px] font-medium text-accent-fg'
+        : 'inline-flex items-center rounded-lg border border-border bg-bg-panel px-3 py-1.5 text-[13px] font-medium text-fg-muted hover:border-border-strong hover:text-fg'
+    }
+  >
+    <kbd
+      className={
+        on
+          ? 'mr-1.5 rounded border-transparent bg-white/20 px-1.5 py-0.5 text-[11px]'
+          : 'mr-1.5 rounded border border-border bg-bg-subtle px-1.5 py-0.5 text-[11px] text-fg-muted'
+      }
+    >
+      {d.displayNum}
+    </kbd>
+    {d.tab}
+    {d.planned && (
+      <span
+        title="planned — not yet implemented"
+        className="ml-1.5 rounded bg-amber px-1 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-black"
+      >
+        planned
+      </span>
+    )}
+  </button>
+)
+
+// ---------------------------------------------------------------------------
 // app
 // ---------------------------------------------------------------------------
 
@@ -532,9 +635,16 @@ export const App = () => {
       if (e.metaKey || e.ctrlKey || e.altKey) return
       const tag = (e.target as HTMLElement)?.tagName?.toLowerCase()
       if (tag === 'input' || tag === 'textarea') return
-      const n = parseInt(e.key, 10)
-      if (n >= 1 && n <= DEMOS.length) {
-        commit({ ...state, demo: DEMOS[n - 1]!.id })
+      const members = KEY_MAP[e.key]
+      if (members && members.length > 0) {
+        if (members.length === 1) {
+          commit({ ...state, demo: members[0]!.id })
+        } else {
+          // group key: first press → first member; repeat → cycle to next member
+          const idx = members.findIndex((m) => m.id === state.demo)
+          const next = idx === -1 ? members[0]! : members[(idx + 1) % members.length]!
+          commit({ ...state, demo: next.id })
+        }
         return
       }
       if (e.key === 'e') toggleExplain()
@@ -566,9 +676,10 @@ export const App = () => {
         <div className="flex-1" />
         <span className="text-xs text-fg-faint">
           keys <kbd className="rounded border border-border bg-bg-subtle px-1.5 py-0.5 text-fg-muted">1</kbd>–
-          <kbd className="rounded border border-border bg-bg-subtle px-1.5 py-0.5 text-fg-muted">{DEMOS.length}</kbd>{' '}
-          switch demo · <kbd className="rounded border border-border bg-bg-subtle px-1.5 py-0.5 text-fg-muted">e</kbd>{' '}
-          explainer
+          <kbd className="rounded border border-border bg-bg-subtle px-1.5 py-0.5 text-fg-muted">{MAX_KEY}</kbd>{' '}
+          switch demo (<kbd className="rounded border border-border bg-bg-subtle px-1 py-0.5 text-fg-muted">3</kbd>{' '}
+          cycles 3.1/3.2) ·{' '}
+          <kbd className="rounded border border-border bg-bg-subtle px-1.5 py-0.5 text-fg-muted">e</kbd> explainer
         </span>
         <button
           type="button"
@@ -579,31 +690,22 @@ export const App = () => {
         </button>
       </header>
 
-      <nav className="sticky top-[41px] z-10 flex flex-wrap gap-1 border-b border-border bg-bg px-5 py-2">
-        {DEMOS.map((d, i) => {
-          const on = d.id === state.demo
+      <nav className="sticky top-[41px] z-10 flex flex-wrap items-center gap-1.5 border-b border-border bg-bg px-5 py-2">
+        {NAV_ITEMS.map((item) => {
+          if (item.kind === 'solo') {
+            const d = item.demo
+            return <TabButton key={d.id} d={d} on={d.id === state.demo} onClick={() => setDemo(d.id)} />
+          }
           return (
-            <button
-              type="button"
-              key={d.id}
-              onClick={() => setDemo(d.id)}
-              className={
-                on
-                  ? 'inline-flex items-center rounded-lg border border-accent bg-accent px-3 py-1.5 text-[13px] font-medium text-accent-fg'
-                  : 'inline-flex items-center rounded-lg border border-border bg-bg-panel px-3 py-1.5 text-[13px] font-medium text-fg-muted hover:border-border-strong hover:text-fg'
-              }
+            <div
+              key={item.groupId}
+              className="inline-flex items-center gap-1 rounded-xl border border-dashed border-border-strong bg-bg-subtle px-1.5 py-1"
             >
-              <kbd
-                className={
-                  on
-                    ? 'mr-1.5 rounded border-transparent bg-white/20 px-1.5 py-0.5 text-[11px]'
-                    : 'mr-1.5 rounded border border-border bg-bg-subtle px-1.5 py-0.5 text-[11px] text-fg-muted'
-                }
-              >
-                {i + 1}
-              </kbd>
-              {d.tab}
-            </button>
+              <span className="px-1 text-[10px] font-bold uppercase tracking-wider text-fg-faint">{item.label}</span>
+              {item.members.map((d) => (
+                <TabButton key={d.id} d={d} on={d.id === state.demo} onClick={() => setDemo(d.id)} />
+              ))}
+            </div>
           )
         })}
       </nav>

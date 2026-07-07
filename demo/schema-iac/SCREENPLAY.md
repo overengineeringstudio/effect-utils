@@ -56,7 +56,7 @@ notion schema plan tasks.notiondb.ts
 
 It would print (mock — this is the planned output, hand-authored):
 
-```
+```output
 Plan  ·  tasks.notiondb.ts  →  Notion
 target: create new database (no tasks.notiondb.lock.json yet)
 
@@ -89,7 +89,7 @@ notion schema apply tasks.notiondb.ts
 
 Mock output:
 
-```
+```output
   + create database "Tasks" … done   2f1e…c43   https://www.notion.so/2f1e…c43
   + add 9 properties … done
   · wrote tasks.notiondb.lock.json   (records the created database id)
@@ -111,7 +111,7 @@ notion schema plan tasks.notiondb.ts
 
 Mock output — only the delta, matched against the recorded database:
 
-```
+```output
 Plan  ·  tasks.notiondb.ts  →  Notion
 target: 2f1e…c43   (from tasks.notiondb.lock.json)   base schema hash: match
 
@@ -132,7 +132,7 @@ Plan: 0 to create, 1 property to add, 1 to change, 0 blocked.
 
 Suppose the file dropped `Notes`, retyped `Estimate`, and removed a `Priority` option. `plan` marks each one blocked (mock):
 
-```
+```output
   ~ database "Tasks"
       x remove property "Notes"                    BLOCKED  DestructiveSchemaMigrationRequired
       x change "Estimate"  number → rich_text       BLOCKED  DestructiveSchemaMigrationRequired
@@ -143,7 +143,7 @@ Plan: 0 to create, 0 to add, 0 to change, 3 blocked.
 
 And `apply` refuses the whole run rather than doing the safe parts and stranding the rest (mock):
 
-```
+```output
 Error: refusing to apply — 3 destructive change(s) are out of scope.
        `notion schema apply` performs additive, non-destructive reconciliation
        only (create-db, add property, rename property, add select options).

@@ -26,12 +26,47 @@ const APP = join(HERE, '..') // demo/dashboard/app
 const DEMO_ROOT = join(APP, '..', '..') // demo/
 const EXPLAINERS = join(DEMO_ROOT, 'explainers')
 
-// Same demo registry as build.ts (tab labels + explainer siblings).
-const DEMO_DEFS: { id: string; dir: string; tab: string; explainer: string | null }[] = [
-  { id: 'md', dir: 'md', tab: 'notion md', explainer: 'notion-md.html' },
-  { id: 'sqlite', dir: 'sqlite', tab: 'notion sqlite', explainer: 'notion-sqlite.html' },
-  { id: 'schema', dir: 'schema', tab: 'notion schema', explainer: 'notion-schema.html' },
-  { id: 'react', dir: 'react', tab: 'notion-react', explainer: 'notion-react.html' },
+// Demo registry. Unlike build.ts's flat list, tab numbering is EXPLICIT here
+// (`displayNum`) — never derived from array index — because the schema group
+// splits into sub-numbered members 3.1/3.2. `groupId`/`groupLabel` cluster the
+// two schema members in the nav; `planned` marks aspirational (not-yet-built)
+// demos; `evidence: 'mock'` marks illustrative demos with no harness timeline.
+interface DemoDef {
+  id: string
+  dir: string
+  tab: string
+  explainer: string | null
+  displayNum: string // "1","2","3.1","3.2","4" — authoritative tab number
+  groupId?: string // members sharing a groupId render clustered in the nav
+  groupLabel?: string // human label for the group (e.g. "notion schema")
+  planned?: boolean // aspirational demo: renders a prominent PLANNED banner + badge
+  evidence?: 'mock' // illustrative demo (no harness); beats render as mock, not pass/fail
+}
+
+const DEMO_DEFS: DemoDef[] = [
+  { id: 'md', dir: 'md', tab: 'notion md', explainer: 'notion-md.html', displayNum: '1' },
+  { id: 'sqlite', dir: 'sqlite', tab: 'notion sqlite', explainer: 'notion-sqlite.html', displayNum: '2' },
+  {
+    id: 'schema',
+    dir: 'schema',
+    tab: 'notion schema',
+    explainer: 'notion-schema-codegen.html',
+    displayNum: '3.1',
+    groupId: 'schema',
+    groupLabel: 'notion schema',
+  },
+  {
+    id: 'schema-iac',
+    dir: 'schema-iac',
+    tab: 'notion schema apply',
+    explainer: 'notion-schema-iac.html',
+    displayNum: '3.2',
+    groupId: 'schema',
+    groupLabel: 'notion schema',
+    planned: true,
+    evidence: 'mock',
+  },
+  { id: 'react', dir: 'react', tab: 'notion-react', explainer: 'notion-react.html', displayNum: '4' },
 ]
 
 // ---------------------------------------------------------------------------
@@ -46,6 +81,7 @@ interface Shot {
 
 interface Summary {
   harnessed: boolean
+  mock?: boolean // illustrative demo (no harness run) — renders "illustrative · not harnessed"
   pass: number
   total: number
   durationSec?: number
@@ -101,7 +137,7 @@ const bucketMdImages = (): Record<string, Shot[]> => {
 // ---------------------------------------------------------------------------
 
 // A RawBeat enriched with the harness-derived status + backup screenshots.
-type ModelBeat = RawBeat & { status: 'pass' | 'fail' | 'none'; images: Shot[] }
+type ModelBeat = RawBeat & { status: 'pass' | 'fail' | 'none' | 'mock'; images: Shot[] }
 
 interface DemoModel {
   id: string
@@ -109,6 +145,10 @@ interface DemoModel {
   gapwow: string
   resetCmd: string | null
   explainerSrc: string | null
+  displayNum: string // "1","2","3.1","3.2","4" — authoritative tab number (NOT array index)
+  groupId?: string // members sharing a groupId cluster in the nav (e.g. "schema")
+  groupLabel?: string // human label for the group (e.g. "notion schema")
+  planned?: boolean // aspirational demo: renders a prominent PLANNED banner + nav badge
   beats: ModelBeat[]
   summary: Summary
 }
@@ -127,15 +167,22 @@ export const buildModel = (): DemoModel[] => {
   return DEMO_DEFS.map((def) => {
     const md = readFileSync(join(DEMO_ROOT, def.dir, 'SCREENPLAY.md'), 'utf8')
     const rawBeats = parseBeatsRaw(md)
+    const isMock = def.evidence === 'mock'
     const beats: ModelBeat[] = rawBeats.map((b) => {
-      const status =
-        def.id === 'md' && b.num && b.num in mdStatusByNum ? mdStatusByNum[b.num]! : ('none' as const)
+      // Illustrative demos carry a distinct 'mock' status on every beat — never
+      // harness pass/fail. md is driven by its timeline; others are 'none'.
+      const status: ModelBeat['status'] = isMock
+        ? 'mock'
+        : def.id === 'md' && b.num && b.num in mdStatusByNum
+          ? mdStatusByNum[b.num]!
+          : 'none'
       const images = def.id === 'md' && b.num && mdImages[b.num] ? mdImages[b.num]! : []
       return { ...b, status, images }
     })
 
-    const summary: Summary =
-      def.id === 'md' && timeline
+    const summary: Summary = isMock
+      ? { harnessed: false, mock: true, pass: 0, total: 0 }
+      : def.id === 'md' && timeline
         ? {
             harnessed: true,
             pass: timeline.passCount ?? 0,
@@ -145,14 +192,23 @@ export const buildModel = (): DemoModel[] => {
           }
         : { harnessed: false, pass: 0, total: 0 }
 
+    // explainerSrc: only a plain RELATIVE sibling ref (served next to
+    // control.next.html) — Vite must never bundle it. Guard on existence like
+    // build.ts: the two new schema explainers may be authored in a PARALLEL
+    // task and absent at build time; a missing file must render "no explainer",
+    // NOT a 404 iframe.
+    const explainerSrc = def.explainer && existsSync(join(EXPLAINERS, def.explainer)) ? def.explainer : null
+
     return {
       id: def.id,
       tab: def.tab,
       gapwow: parseGapWow(md),
       resetCmd: findResetCmd(md),
-      // explainerSrc stays a plain RELATIVE sibling ref (served next to control.next.html);
-      // Vite must never try to bundle it.
-      explainerSrc: def.explainer,
+      explainerSrc,
+      displayNum: def.displayNum,
+      ...(def.groupId ? { groupId: def.groupId } : {}),
+      ...(def.groupLabel ? { groupLabel: def.groupLabel } : {}),
+      ...(def.planned ? { planned: true } : {}),
       beats,
       summary,
     }
@@ -176,12 +232,13 @@ export interface ModelBeat {
   title: string
   narration: string
   segments: RawSegment[]
-  status: 'pass' | 'fail' | 'none'
+  status: 'pass' | 'fail' | 'none' | 'mock'
   images: Shot[]
 }
 
 export interface Summary {
   harnessed: boolean
+  mock?: boolean // illustrative demo (no harness run) — renders "illustrative · not harnessed"
   pass: number
   total: number
   durationSec?: number
@@ -194,6 +251,10 @@ export interface DemoModel {
   gapwow: string
   resetCmd: string | null
   explainerSrc: string | null
+  displayNum: string // "1","2","3.1","3.2","4" — authoritative tab number (NOT array index)
+  groupId?: string // members sharing a groupId cluster in the nav (e.g. "schema")
+  groupLabel?: string // human label for the group (e.g. "notion schema")
+  planned?: boolean // aspirational demo: renders a prominent PLANNED banner + nav badge
   beats: ModelBeat[]
   summary: Summary
 }
