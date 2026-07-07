@@ -26,22 +26,36 @@ Investigation established the load-bearing facts:
 
 ## Decision
 
-Introduce a **generator phase** and make bootstrap-safety enforced by **real ordering**, not a static proxy.
+Introduce a **generator phase** and make bootstrap-safety **empirically demonstrated** (a real cold run),
+with the static closure check as fast feedback.
 
 - **Phase is a per-generator property.** `design-time` is the DEFAULT (unmarked). `bootstrap` is OPT-IN
-  via a **static source pragma** in the `.genie.ts` (readable without importing the generator — importing a
-  design-time generator would itself need `effect`).
-- **Ordering is the enforcement.** Bootstrap generators run in **`genie:prepare`, before `pnpm:install`**;
-  `pnpm:install` depends on `genie:prepare`. Design-time generators run in the normal post-install `genie:run`.
-- **Install is the arbiter.** A generator whose output install needs but that is left unmarked does not run
-  in `genie:prepare`, so install sees a stale/missing input and fails — no hardcoded "install input" list;
-  install decides. A `bootstrap` generator that reaches a runtime-only package runs in the real
-  pre-install environment (no `node_modules`) and fails there.
-- **The static bootstrap-closure gate (0003) is retained as fast local feedback**, scoped to the
-  bootstrap-marked generators (it reads the pragma statically, checks only those closures, zero tolerance).
-  It is a quick pre-check for the empirical truth that `genie:prepare` establishes, not the source of truth.
+  via a **static source pragma** `// @genie-bootstrap` — a namespace-prefixed valueless flag mirroring
+  TypeScript pragma grammar (`@ts-nocheck`/`@ts-check`), read from raw source without importing the
+  generator (importing a design-time generator would itself need `effect`).
+- **Enforcement is a real cold run, not a static proxy.** A CI job (`bootstrap:cold-proof`) checks out
+  fresh with no `node_modules`, runs the bootstrap-phase generators with the **self-contained nix genie**
+  (deps baked into the store, needs no install), then runs `pnpm:install`, asserting both succeed. This
+  exercises the exact pre-install path and turns bootstrap-safety from _asserted_ into _demonstrated_.
+  (Proven feasible: a bootstrap generator's full closure bundles with zero
+  `effect`/`@effect/*`/`@overeng/otel-contract`; the nix genie is store-only by construction.)
+- **The static bootstrap-closure gate (0003) is fast local feedback**, scoped to `@genie-bootstrap`
+  generators (reads the pragma statically; checks only their closures; zero tolerance). The quick pre-check
+  for the cold run, not the authority.
 - **The baseline is deleted.** Weaver generators are `design-time` → structurally out of scope. No baseline,
   no allowlist, no enumerated exceptions.
+- **Install ordering is NOT the arbiter (superseded).** An earlier form wired `pnpm:install` to depend on a
+  `genie:prepare` so install would fail on a missing/stale bootstrap output. Verified during implementation
+  that this does **not** hold: source-mode genie can't run cold (the `genie:bootstrap` task cold-guards to a
+  no-op), and committed outputs (T01) mean install succeeds with the on-disk `package.json` regardless. That
+  edge added cost + a failure mode without enforcing anything, so it is **removed**; the cold run is the
+  empirical authority. Committed outputs remain (T01 untouched).
+- **Completeness is an accepted residual (open).** A _new_ install-input generator that forgets
+  `// @genie-bootstrap` silently escapes the gate. Closing it structurally needs either uncommitted outputs
+  (infeasible — the nix genie builds _from_ the committed `package.json`; deadlock) or a hardcoded
+  "install-input" completeness check (rejected as unprincipled). The gap is low-risk (new generators inherit
+  bootstrap-safe builders; `genie:check` still catches output drift) and is left open, closeable later with
+  the hardcoded check only if it ever bites.
 
 ## Options considered
 
