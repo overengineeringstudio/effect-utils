@@ -36,13 +36,32 @@ generated. Update the table when you supersede or regenerate something.
 |------|-----------|--------|-------------|-------------|
 | notion md | `notion-md.html` | visual thread (native-media refine) | [page](https://www.notion.so/396e3d41f4a3814284b2ed2891557e8d) | `notion-md.thread.md` |
 | notion sqlite | `notion-sqlite.html` | visual thread (native-media refine) | [page](https://www.notion.so/396e3d41f4a381e1b2a4d5f91dd6f72e) | `notion-sqlite.thread.md` |
-| notion schema | `notion-schema.html` | visual thread (native-media refine) | [page](https://www.notion.so/396e3d41f4a38108b681c228ad74de33) | `notion-schema.thread.md` |
+| notion schema · 3.1 codegen | `notion-schema-codegen.html` | visual thread (native-media refine) | — | — (todo) |
+| notion schema · 3.2 IaC | `notion-schema-iac.html` | visual thread · **PLANNED / roadmap preview** | — | — (todo) |
+| notion schema *(combined — superseded)* | `notion-schema.html` | visual thread (native-media refine) | [page](https://www.notion.so/396e3d41f4a38108b681c228ad74de33) | `notion-schema.thread.md` |
 | notion-react | `notion-react.html` | visual thread (native-media refine) | [page](https://www.notion.so/396e3d41f4a38133b91cf0cecafb2936) | `notion-react.thread.md` |
 | overview | `overview.html` | visual thread (native-media refine) | [page](https://www.notion.so/396e3d41f4a3818c8493f82e0b689daa) | `overview.thread.md` |
 
-Superseded originals for all five live in `_archive/` (`*.v1.html`). The **Notion
-explainer pages** linked above are **superseded/archived** — reference only; the
-served local HTML is the source of truth.
+Superseded originals for the original five live in `_archive/` (`*.v1.html`). The
+**Notion explainer pages** linked above are **superseded/archived** — reference
+only; the served local HTML is the source of truth.
+
+**`notion schema` split (M6).** The combined `notion-schema.html` is **superseded**
+by two focused pages and is slated to be **retired at dashboard cutover** (kept for
+now only because the frozen live `control.html` still references it — do not delete
+until the dashboard points at the new pair):
+
+- **`notion-schema-codegen.html` (3.1, real/today)** — the shipped
+  introspect → codegen → drift-detection story. Direction **DB → code**: the live
+  Notion DB is the source of truth, `notion schema generate` / `generate-config`
+  emit typed Effect schemas, `notion schema diff --exit-code` gates drift in CI.
+- **`notion-schema-iac.html` (3.2, PLANNED / roadmap preview)** — the honest
+  **inverse**, direction **code → DB**: a declarative `.notiondb.ts` file is the
+  source of truth and a planned `notion schema plan` / `apply` provisions and
+  reconciles Notion to match (additive-only; destructive fails closed; needs a
+  proposed lock/state file). **This capability does not exist yet** — the page is a
+  loudly-labelled preview grounded in `demo/schema-iac/` (README + SCREENPLAY), not
+  a demo of shipped behaviour. Not harnessed; no thread copy / Notion page.
 
 **Live URLs** (tailnet-only): `https://mbp2025.tail8108.ts.net:8443/<file>.html`
 — explainers, `control.html` (dashboard), `vista-review.html`.
