@@ -2,10 +2,38 @@ import { Fragment, type ReactNode } from 'react'
 
 /**
  * Render one raw prose line as inline markdown in JSX (escaping is automatic —
- * React text nodes are escaped). Mirrors screenplay.ts `inlineMd`: leading
- * "- " bullet, **bold**, `code`. This is the raw-text model refinement — the
- * React path never touches pre-escaped HTML strings.
+ * React text nodes are escaped). Mirrors screenplay.ts `inlineMd` semantics as
+ * used by build.ts: a leading "- " bullet, then **bold**, then `code`.
+ *
+ * build.ts applies the two replacements SEQUENTIALLY — bold first across the
+ * whole string, then code — so `code` nested inside **bold** renders as
+ * `<strong>…<code>…</code>…</strong>`. The previous single combined-alternation
+ * regex could not nest and emitted the literal ` ``/`**` delimiters for
+ * `**bold with `code` inside**`. We reproduce the sequential/nesting behavior:
+ * split on bold first, then tokenize `code` inside BOTH bold spans and the
+ * surrounding plain text.
  */
+
+// Split a run of text on `code` spans → array of ReactNodes (plain text + <code>).
+const renderCode = (text: string, keyBase: string): ReactNode[] => {
+  const nodes: ReactNode[] = []
+  const re = /`([^`]+)`/g
+  let last = 0
+  let m: RegExpExecArray | null
+  let key = 0
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) nodes.push(<Fragment key={`${keyBase}-${key++}`}>{text.slice(last, m.index)}</Fragment>)
+    nodes.push(
+      <code key={`${keyBase}-${key++}`} className="rounded bg-bg-subtle px-1 text-fg">
+        {m[1]}
+      </code>,
+    )
+    last = re.lastIndex
+  }
+  if (last < text.length) nodes.push(<Fragment key={`${keyBase}-${key++}`}>{text.slice(last)}</Fragment>)
+  return nodes
+}
+
 export const InlineMd = ({ line }: { line: string }): ReactNode => {
   let s = line
   let bulleted = false
@@ -13,26 +41,20 @@ export const InlineMd = ({ line }: { line: string }): ReactNode => {
     bulleted = true
     s = s.replace(/^\s*-\s+/, '')
   }
-  // Tokenize **bold** and `code`; everything else is plain (auto-escaped) text.
+
+  // Bold FIRST (matching build.ts `.replace(/\*\*([^*]+)\*\*/g,…)`), then code
+  // inside each resulting span.
   const nodes: ReactNode[] = []
-  const re = /\*\*([^*]+)\*\*|`([^`]+)`/g
+  const re = /\*\*([^*]+)\*\*/g
   let last = 0
   let m: RegExpExecArray | null
   let key = 0
   while ((m = re.exec(s)) !== null) {
-    if (m.index > last) nodes.push(<Fragment key={key++}>{s.slice(last, m.index)}</Fragment>)
-    if (m[1] !== undefined) {
-      nodes.push(<strong key={key++}>{m[1]}</strong>)
-    } else if (m[2] !== undefined) {
-      nodes.push(
-        <code key={key++} className="rounded bg-bg-subtle px-1 text-fg">
-          {m[2]}
-        </code>,
-      )
-    }
+    if (m.index > last) nodes.push(...renderCode(s.slice(last, m.index), `t${key++}`))
+    nodes.push(<strong key={`b${key++}`}>{renderCode(m[1]!, `bc${key}`)}</strong>)
     last = re.lastIndex
   }
-  if (last < s.length) nodes.push(<Fragment key={key++}>{s.slice(last)}</Fragment>)
+  if (last < s.length) nodes.push(...renderCode(s.slice(last), `t${key++}`))
 
   return (
     <>
