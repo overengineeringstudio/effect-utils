@@ -92,8 +92,9 @@
 
   /* select / status pills (Notion-native look) */
   .pill { display: inline-flex; align-items: center; gap: 5px; border-radius: 20px; padding: 3px 9px;
-    font: 500 11px/1 var(--sans); }
+    font: 600 11px/1 var(--sans); }
   .pill::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .pill.plain { border-radius: 4px; }
   .pill.plain::before { content: none; }
   .pill.gray { background: var(--line-soft); color: var(--muted); }
   .pill.blue { background: var(--blue-soft); color: var(--blue); }
@@ -173,7 +174,7 @@
   .ide-tree { width: 92px; flex: none; border-right: 1px solid var(--line-soft); background: var(--panel); padding: 8px 0; }
   .ide-tree .grp { font: 700 8.5px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase;
     color: var(--muted); padding: 4px 11px 6px; opacity: .75; }
-  .ide-tree .f { display: flex; align-items: center; gap: 6px; padding: 4px 11px; font: 500 10.5px/1.2 var(--mono); color: var(--muted); }
+  .ide-tree .f { display: flex; align-items: center; gap: 6px; padding: 4px 11px; font: 500 10.5px/1.2 var(--sans); color: var(--muted); }
   .ide-tree .f .ic { flex: none; opacity: .55; font-size: 10px; }
   .ide-tree .f.sub { padding-left: 19px; }
   .ide-tree .f.on { color: var(--ink); font-weight: 600; background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
@@ -181,12 +182,12 @@
   .ide-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   .ide-tabs { display: flex; align-items: stretch; border-bottom: 1px solid var(--line-soft); background: var(--panel); padding: 0 6px; }
   .ide-tabs .tab { font: 500 10.5px/1 var(--mono); color: var(--muted); padding: 8px 10px; border-bottom: 2px solid transparent; }
-  .ide-tabs .tab.on { color: var(--ink); border-bottom-color: var(--accent); background: var(--panel-2); }
+  .ide-tabs .tab.on { color: var(--ink); border-bottom-color: var(--accent); }
   .ide-code { position: relative; flex: 1; min-height: 214px; background: var(--panel-2);
     font-family: var(--mono); font-size: 11.5px; line-height: 1.7; padding: 6px 0; }
   .ide-code .cl { display: flex; }
   .ide-code .gut { width: 30px; flex: none; text-align: right; padding-right: 9px; color: var(--muted);
-    font: 500 9.5px/1.7 var(--mono); opacity: .7; border-right: 1px solid var(--line-soft); user-select: none; }
+    font: 500 9.5px/1.7 var(--mono); border-right: 1px solid var(--line); user-select: none; }
   .ide-code .cd { padding: 0 12px; white-space: pre; color: var(--ink); overflow: hidden; text-overflow: ellipsis; }
   .ide-code .kw { color: var(--accent); }
   .ide-code .str { color: var(--ok); }
@@ -205,7 +206,7 @@
   /* ---- variant: Notion surface ---- */
   .ntn { width: 100%; }
   .ntn-body { display: flex; min-height: 214px; }
-  .ntn-side { width: 74px; flex: none; border-right: 1px solid var(--line-soft); background: var(--panel); padding: 9px 0; }
+  .ntn-side { width: 84px; flex: none; border-right: 1px solid var(--line-soft); background: var(--panel); padding: 9px 0; }
   .ntn-side .ws { display: flex; align-items: center; gap: 6px; padding: 3px 10px 9px; font: 600 10.5px/1 var(--sans); color: var(--ink); }
   .ntn-side .ws .av { width: 15px; height: 15px; border-radius: 4px; background: var(--accent); color: #fff; font: 700 9px/15px var(--sans); text-align: center; flex: none; }
   @media (prefers-color-scheme: dark){ .ntn-side .ws .av { color: #14142c; } }
@@ -234,8 +235,8 @@
   .tmnl-body { padding: 12px 14px; font-family: var(--mono); font-size: 11.5px; line-height: 1.7;
     background: var(--panel-2); min-height: 132px; }
   .tmnl-body .ln { white-space: pre-wrap; word-break: break-word; color: var(--ink); }
-  .tmnl-body .p { color: var(--ok); font-weight: 700; }
-  .tmnl-body .cmd { color: var(--accent); font-weight: 700; }
+  .tmnl-body .p { color: var(--accent); font-weight: 700; }
+  .tmnl-body .cmd { color: var(--ink); font-weight: 700; }
   .tmnl-body .fl { color: var(--muted); }
   .tmnl-body .id { color: var(--ink); }
   .tmnl-body .out { color: var(--muted); }

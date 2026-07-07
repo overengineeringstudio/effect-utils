@@ -11,7 +11,7 @@
     --accent: #5b5bd6; --accent-soft: #ececfb;
     --warn: #c0392b; --warn-soft: #fbe9e7; --warn-line: #f0b3aa;
     --ok: #1a7f4b; --ok-soft: #e3f5ec; --ok-line: #a9dcc2;
-    --blue: #2f6fd6; --blue-soft: #e6effc;
+    --blue: #2f6fd6; --blue-soft: #e6effc; --blue-line: #bcd3f5;
     --amber: #b25000; --amber-soft: #fbeede; --amber-line: #e6c48f;
     --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
     --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
@@ -24,7 +24,7 @@
       --accent: #9d9df0; --accent-soft: #26264a;
       --warn: #f0796b; --warn-soft: #3a221e; --warn-line: #5c3029;
       --ok: #4ec98a; --ok-soft: #1c2f26; --ok-line: #2c4c3c;
-      --blue: #6fa8f5; --blue-soft: #1b2a44;
+      --blue: #6fa8f5; --blue-soft: #1b2a44; --blue-line: #2b4066;
       --amber: #e0913f; --amber-soft: #35281a; --amber-line: #5c4526;
       --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
     }
@@ -255,10 +255,10 @@
   .ide-file.sel { background: var(--accent-soft); color: var(--ink); font-weight: 600; box-shadow: inset 2px 0 0 var(--accent); }
   .ide-file.sel .ic { color: var(--accent); opacity: .9; }
   .ide-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-  .ide-tabs { display: flex; align-items: stretch; background: var(--panel); border-bottom: 1px solid var(--line-soft); }
-  .ide-tab { display: flex; align-items: center; gap: 8px; padding: 8px 14px; font: 600 11px/1 var(--mono); color: var(--ink);
-    background: var(--panel-2); border-right: 1px solid var(--line-soft); box-shadow: inset 0 2px 0 var(--accent); }
-  .ide-tab .tdot { width: 8px; height: 8px; border-radius: 2.5px; background: var(--accent); }
+  .ide-tabs { display: flex; align-items: center; background: var(--panel); border-bottom: 1px solid var(--line-soft); padding: 0 6px; }
+  .ide-tab { display: flex; align-items: center; gap: 8px; padding: 8px 10px; font: 500 10.5px/1 var(--mono); color: var(--ink);
+    border-bottom: 2px solid var(--accent); }
+  .ide-tab .tdot { display: none; }
   .ide-code { flex: 1; counter-reset: ln; font-family: var(--mono); font-size: 11.5px; line-height: 1.7;
     padding: 8px 0; background: var(--panel-2); }
   .ide-code > div { position: relative; padding: 0 12px 0 42px; white-space: pre; overflow: hidden; text-overflow: ellipsis; }
