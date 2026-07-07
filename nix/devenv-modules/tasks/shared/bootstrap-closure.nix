@@ -10,7 +10,7 @@
 # Provides: bootstrap-closure:check
 #
 # Runs the bun entry (default genie/ci-scripts/bootstrap-closure-check.ts) over the TRACKED
-# `.genie.ts` sources declared `bootstrap`-phase (static `// @genie-phase bootstrap` pragma). A
+# `.genie.ts` sources declared `bootstrap`-phase (static `// @genie-bootstrap` pragma). A
 # bootstrap-phase generator (and everything it transitively imports at RUNTIME) must be importable
 # from a fresh checkout BEFORE install: one that reaches a runtime-only package — e.g. through a
 # wide barrel that `export *`s a module importing `effect` — pulls that package into the bootstrap

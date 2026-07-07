@@ -1,4 +1,4 @@
-// @genie-phase bootstrap
+// @genie-bootstrap
 /**
  * Shared oxlint/oxfmt configuration with custom JS plugin rules.
  *

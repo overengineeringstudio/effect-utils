@@ -372,9 +372,11 @@ in
     # Wire the additive weaver gate into `check:all` only (not `check:quick`, which stays fast):
     # `after` list options merge across modules, so this appends without redefining check:all.
     { tasks."check:all".after = [ "weaver:check" ]; }
-    # Bootstrap-safe import-closure gate (issue #884): fails on NEW violations where a `.genie.ts`
-    # transitively reaches a runtime-only package (breaking `genie:run` on a fresh pre-install clone).
-    # Baseline + ratchet keeps it green today; wired into `check:all` only (kept out of `check:quick`).
+    # Bootstrap-safe import-closure gate (issue #884): fast local feedback for the bootstrap contract.
+    # Fails (zero-tolerance, no baseline) on ANY `// @genie-bootstrap` generator whose transitive
+    # runtime closure reaches a runtime-only package (which would break `genie --phase bootstrap` on a
+    # fresh pre-install clone). Wired into `check:all` only (kept out of `check:quick`). The empirical
+    # authority is `bootstrap:cold-proof` (R32); this static gate is its cheap pre-check.
     (taskModules.bootstrap-closure { })
     { tasks."check:all".after = [ "bootstrap-closure:check" ]; }
     # Compat-diff gate (SC-R11): blocks a PR that REMOVES a shipped registry attribute/signal.
@@ -574,36 +576,29 @@ in
   tasks."mr:check".after = [ "pnpm:install" ];
   tasks."mr:source-policy-check".after = [ "pnpm:install" ];
 
-  # genie:bootstrap (decision 0004) — regenerate the bootstrap-phase install inputs (the
-  # `package.json` family + `pnpm-workspace.yaml`, marked `// @genie-phase bootstrap`) BEFORE
-  # `pnpm:install`, so install consumes freshly-derived inputs. `pnpm:install` depends on it below,
-  # so the pre-install regeneration IS the real ordering (install is the arbiter, R32).
-  #
-  # COLD-SAFE GUARD: `genie` here is the SOURCE-MODE CLI (`bun bin/genie.tsx`), whose build layer
-  # resolves `effect`/`@effect/platform-node`/`@overeng/*` from `node_modules`, so it cannot run
-  # before the very first install. When `node_modules` is absent (fresh clone / true pre-install)
-  # this task no-ops: the committed outputs (T01) already satisfy install, and the static
-  # `bootstrap-closure:check` (which reads pragmas without importing) is what proves R06 in the
-  # pre-install-shaped env. Warm (node_modules present, the steady-state dev/CI case), it regenerates
-  # the bootstrap outputs first — the demonstrable arbiter edge. A fresh clone therefore relies on
-  # committed outputs, NOT on this task's execution; see docs/.decisions/0004-*.md for the precise
-  # enforcement story (source-mode cold-run + committed-output completeness gaps).
-  tasks."genie:bootstrap" = {
-    description = "Regenerate bootstrap-phase genie outputs (install inputs) before install";
-    env = {
-      DEVENV_TASK_PASSTHROUGH = "1";
-    };
-    exec = trace.exec "genie:bootstrap" ''
+  # NOTE (decision 0004): there is deliberately NO `genie:bootstrap`-before-`pnpm:install` edge.
+  # An earlier form wired `pnpm:install.after = [ "genie:bootstrap" ]` so install would run
+  # `genie --phase bootstrap` first. Verified during implementation that this does NOT arbitrate
+  # bootstrap-safety: the source-mode `genie` on PATH needs `node_modules` (it cold-guarded to a
+  # no-op on a fresh clone), and committed outputs (T01) mean install succeeds with the on-disk
+  # `package.json` regardless — so the edge enforced nothing while adding cost to every warm install
+  # and a new failure mode. Bootstrap-safety is instead demonstrated empirically by
+  # `bootstrap:cold-proof` (R32, below), with `bootstrap-closure:check` as fast local feedback.
+
+  # bootstrap:cold-proof (R32) — the EMPIRICAL bootstrap-safety authority. In a fresh, no-node_modules
+  # tree of the committed source it runs the self-contained nix genie (`.#genie`, deps baked into the
+  # store) with `--phase bootstrap`, then `pnpm install --frozen-lockfile`, asserting both succeed.
+  # This exercises the exact pre-install path and turns bootstrap-safety from asserted into
+  # demonstrated. Heavy (nix build + full install) so it is a dedicated task/CI lane, NOT in
+  # `check:all`. Set GENIE_COLD_PROOF_BIN to reuse an already-built genie and skip the nix build.
+  tasks."bootstrap:cold-proof" = {
+    description = "Prove bootstrap-phase genie + pnpm install run cold (no node_modules) — R32 authority";
+    exec = trace.exec "bootstrap:cold-proof" ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
-      if [ -d "$root/node_modules" ]; then
-        genie --phase bootstrap --cwd "$root"
-      else
-        echo "[genie:bootstrap] node_modules absent (pre-install / fresh clone) — skipping source-mode genie; committed outputs cover install and bootstrap-closure:check enforces R06" >&2
-      fi
+      exec bash "$root/genie/ci-scripts/bootstrap-cold-proof.sh"
     '';
   };
-  tasks."pnpm:install".after = [ "genie:bootstrap" ];
 
   tasks."pnpm:link-native-node-packages" = {
     after = [ "pnpm:install" ];

@@ -50,14 +50,28 @@ All notable changes to this project will be documented in this file.
   breaks `genie:run` on a fresh clone. The shared `checkBootstrapClosure` walker
   (reusing TypeScript's parser/resolver plus genie's own `#`/`#mr` resolution, and
   excluding type-only edges) is exported from `@overeng/genie/node`; a bun entry
-  (`genie/ci-scripts/bootstrap-closure-check.ts`) runs it over every tracked
-  `.genie.ts` with a BASELINE + RATCHET policy — failing only on NEW violations vs
-  the committed `genie/bootstrap-closure-baseline.json` and warning on stale
-  baseline entries. Wired into `check:all` (not `check:quick`). The walker imports
+  (`genie/ci-scripts/bootstrap-closure-check.ts`) runs it over the tracked
+  `// @genie-bootstrap`-marked `.genie.ts` sources with ZERO TOLERANCE (no baseline,
+  no allowlist — `design-time` generators are out of scope by declaration; see the
+  generator-phase entry below). Wired into `check:all` (not `check:quick`). The walker imports
   genie's resolver via the effect-free `core/import-map/sync-resolver.ts` (only
   `node:fs`/`node:path`), so it is itself importable pre-install (`typescript` +
   node builtins only) and usable by nix-packaged-genie downstream members.
 
+- **genie / bootstrap**: generator phase + empirical cold-proof (decision 0004,
+  issue #884). Each `.genie.ts` declares its phase with a valueless `// @genie-bootstrap`
+  flag comment (mirroring `@ts-nocheck` grammar; `design-time` is the default, no
+  marker), read statically without importing the generator. `genie --phase bootstrap`
+  restricts a run to the marked set (the 35 `package.json.genie.ts` + `pnpm-workspace.yaml.genie.ts`).
+  Bootstrap-safety is now **demonstrated, not asserted**: `bootstrap:cold-proof`
+  (`genie/ci-scripts/bootstrap-cold-proof.sh`, devenv task + CI lane) builds the
+  self-contained nix genie (`.#genie`, deps baked into the store), runs
+  `genie --phase bootstrap` in a fresh `node_modules`-free `git archive` tree, then
+  `pnpm install --frozen-lockfile`, asserting both succeed and that the marked set
+  actually ran. `bootstrap-closure:check` stays as fast local feedback in `check:all`.
+  Supersedes the interim `genie:bootstrap`-before-`pnpm:install` task edge, which
+  arbitrated nothing (source-mode genie can't run cold; committed outputs satisfy
+  install regardless) and is removed.
 - **devenv / otel**: `otel-run` — a `time`-like wrapper that runs any command
   under a fresh root trace and prints its Grafana URL. Derives the root label
   from argv (`devenv tasks run X` → `X`), mints a fresh trace id (`--join` to
