@@ -3,124 +3,389 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>notion-react — explainer</title>
+<title>notion-react — a visual thread</title>
 <style>
   :root {
-    --bg: #ffffff; --panel: #f7f7f8; --ink: #1a1a1a; --muted: #6b6b70;
-    --line: #e3e3e6; --accent: #5b5bd6; --accent-soft: #ececfb;
-    --warn: #b25000; --warn-soft: #fbeede; --ok: #1a7f4b;
+    --bg: #ffffff; --panel: #f7f7f8; --panel-2: #ffffff; --ink: #1a1a1a; --muted: #6b6b70;
+    --line: #e3e3e6; --line-soft: #eeeef0;
+    --accent: #5b5bd6; --accent-soft: #ececfb;
+    --warn: #c0392b; --warn-soft: #fbe9e7; --warn-line: #f0b3aa;
+    --ok: #1a7f4b; --ok-soft: #e3f5ec; --ok-line: #a9dcc2;
+    --blue: #2f6fd6; --blue-soft: #e6effc;
+    --amber: #b25000; --amber-soft: #fbeede; --amber-line: #e6c48f;
     --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
     --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+    --shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.05);
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #191919; --panel: #202020; --ink: #ececee; --muted: #9a9aa0;
-      --line: #2f2f2f; --accent: #9d9df0; --accent-soft: #26264a;
-      --warn: #e0913f; --warn-soft: #35281a; --ok: #4ec98a;
+      --bg: #191919; --panel: #202020; --panel-2: #242424; --ink: #ececee; --muted: #9a9aa0;
+      --line: #2f2f2f; --line-soft: #292929;
+      --accent: #9d9df0; --accent-soft: #26264a;
+      --warn: #f0796b; --warn-soft: #3a221e; --warn-line: #5c3029;
+      --ok: #4ec98a; --ok-soft: #1c2f26; --ok-line: #2c4c3c;
+      --blue: #6fa8f5; --blue-soft: #1b2a44;
+      --amber: #e0913f; --amber-soft: #35281a; --amber-line: #5c4526;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
     }
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--sans);
-    line-height: 1.5; padding: 28px; }
-  .wrap { max-width: 860px; margin: 0 auto; }
-  .kicker { font: 600 12px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase;
-    color: var(--accent); margin: 0 0 6px; }
-  h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: -.01em; }
-  h1 code { font-family: var(--mono); font-size: .8em; background: var(--accent-soft);
-    color: var(--accent); padding: 2px 8px; border-radius: 6px; }
-  .sub { color: var(--muted); margin: 0 0 22px; font-size: 15px; }
-  .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 22px; }
-  @media (max-width: 640px) { .cards { grid-template-columns: 1fr; } }
-  .card { border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; background: var(--panel); }
-  .card h3 { margin: 0 0 6px; font: 600 12px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; }
-  .card.gap h3 { color: var(--warn); }
-  .card.fix h3 { color: var(--ok); }
-  .card p { margin: 0; font-size: 14px; color: var(--ink); }
-  .card code, .flow code { font-family: var(--mono); font-size: .88em; background: var(--accent-soft);
-    color: var(--accent); padding: 1px 5px; border-radius: 5px; }
-  .flow { border: 1px solid var(--line); border-radius: 12px; padding: 22px 18px 14px; background: var(--panel);
-    margin-bottom: 22px; }
-  .flow figcaption { color: var(--muted); font-size: 12.5px; margin-top: 10px; text-align: center; }
-  svg { width: 100%; height: auto; display: block; }
-  .node rect { fill: var(--bg); stroke: var(--accent); stroke-width: 1.5; }
-  .node text { fill: var(--ink); font: 600 13px var(--mono); }
-  .node .sub2 { fill: var(--muted); font: 400 11px var(--sans); }
-  .edge { stroke: var(--muted); stroke-width: 1.6; fill: none; }
-  .edge.dashed { stroke-dasharray: 5 4; stroke: var(--warn); }
-  .elabel { fill: var(--muted); font: 500 11px var(--sans); }
-  .conflict rect { stroke: var(--accent); }
-  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
-  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); }
-  th { color: var(--muted); font: 600 11px/1 var(--mono); letter-spacing: .05em; text-transform: uppercase; }
-  td code { font-family: var(--mono); }
-  .foot { margin-top: 18px; font-size: 13px; color: var(--muted); }
-  .foot b { color: var(--ink); }
+    line-height: 1.5; padding: 40px 20px 80px; }
+  .thread { max-width: 1000px; margin: 0 auto; display: flex; flex-direction: column; gap: 40px; }
+
+  /* ---- thread header ---- */
+  .lead { text-align: left; padding: 0 20px; }
+  .lead .kicker { font: 600 12px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--accent); margin: 0 0 10px; }
+  .lead h1 { font-size: 30px; line-height: 1.15; margin: 0 0 8px; letter-spacing: -.015em; }
+  .lead h1 code { font-family: var(--mono); font-size: .74em; background: var(--accent-soft); color: var(--accent); padding: 3px 9px; border-radius: 7px; }
+  .lead p { color: var(--muted); margin: 0; font-size: 16px; max-width: 64ch; }
+  .lead p code { font-family: var(--mono); color: var(--accent); font-size: .92em; }
+
+  /* ---- beat card ---- */
+  .beat { width: 100%; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); box-shadow: var(--shadow); overflow: hidden; }
+  .beat-inner { padding: 26px 34px 28px; display: flex; flex-direction: column; }
+  .beat-head { display: flex; align-items: baseline; gap: 12px; margin: 0 0 3px; }
+  .beat-num { font: 700 13px/1 var(--mono); color: var(--accent); letter-spacing: .04em; }
+  .beat-tag { font: 600 11px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  .beat h2 { font-size: 25px; line-height: 1.2; margin: 4px 0 0; letter-spacing: -.01em; }
+  .beat h2 em { font-style: normal; color: var(--accent); }
+  .beat h2 code { font-family: var(--mono); font-size: .82em; background: var(--accent-soft); color: var(--accent); padding: 2px 8px; border-radius: 6px; }
+  .stage { margin: 18px 0 14px; position: relative; display: flex; align-items: center; justify-content: center; min-height: 236px; }
+  .caption { font-size: 15.5px; color: var(--ink); margin: 0; max-width: 82ch; }
+  .caption b { font-weight: 600; }
+  .caption .hint { color: var(--muted); }
+  .caption code { font-family: var(--mono); color: var(--accent); font-size: .9em; }
+  .promise { margin-top: 14px; display: inline-flex; align-items: center; gap: 9px; align-self: flex-start;
+    font: 600 13.5px/1 var(--sans); color: var(--ok); background: var(--ok-soft); border: 1px solid var(--ok-line); border-radius: 22px; padding: 9px 15px; }
+  .promise .nxt { font: 600 10px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+
+  /* ---- code / jsx editor ---- */
+  .code { width: 344px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2); box-shadow: var(--shadow); overflow: hidden; }
+  .code-tabs { display: flex; align-items: stretch; background: var(--panel); border-bottom: 1px solid var(--line-soft); }
+  .code-tab { display: flex; align-items: center; gap: 8px; padding: 9px 14px; font: 600 11.5px/1 var(--mono); color: var(--ink);
+    background: var(--panel-2); border-right: 1px solid var(--line-soft); box-shadow: inset 0 2px 0 var(--accent); }
+  .code-tab .tdot { width: 8px; height: 8px; border-radius: 2.5px; background: var(--accent); }
+  .code-tabs .lang { margin-left: auto; display: flex; align-items: center; padding: 9px 13px; font: 600 9.5px/1 var(--mono);
+    letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .code-body { padding: 12px 14px 12px 0; font-family: var(--mono); font-size: 12px; line-height: 1.7; display: flex; flex-direction: column; counter-reset: ln; }
+  .code-body > div { position: relative; padding-left: 40px; }
+  .code-body > div::before { counter-increment: ln; content: counter(ln); position: absolute; left: 0; top: 0; width: 26px;
+    text-align: right; color: var(--muted); opacity: .4; font-size: 11px; }
+  .code-body .tok { color: var(--accent); }
+  .code-body .attr { color: var(--blue); }
+  .code-body .str { color: var(--ok); }
+  .code-body .ind { padding-left: 54px; }
+  .code-body .cm { color: var(--muted); }
+  .chg { border-radius: 5px; padding: 1px 5px; margin: 0 -5px; }
+  .chg.b { background: var(--blue-soft); box-shadow: inset 2px 0 0 var(--blue); }
+  .code-run { display: flex; align-items: center; gap: 8px; padding: 9px 14px; border-top: 1px solid var(--line-soft); background: var(--panel);
+    font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-run .play { color: var(--ok); font-weight: 700; }
+  .code-run .rout { margin-left: auto; }
+  .code-run .rd { color: var(--ok); } .code-run .rr { color: var(--muted); display: none; }
+  body[data-step="1"] .code-run .rd { display: none; } body[data-step="1"] .code-run .rr { display: inline; }
+
+  /* ---- imperative wall (beat 1) ---- */
+  .wall { width: 300px; border: 1px solid var(--warn-line); border-radius: 12px; background: var(--panel-2); box-shadow: var(--shadow); overflow: hidden; }
+  .wall-bar { display: flex; align-items: center; gap: 7px; padding: 9px 13px; border-bottom: 1px solid var(--line-soft); background: var(--warn-soft);
+    font: 600 11px/1 var(--mono); color: var(--warn); }
+  .wall-body { padding: 12px 15px; font-family: var(--mono); font-size: 11.5px; line-height: 1.7; color: var(--muted); }
+  .wall-body .del { color: var(--warn); }
+  .wall-body .app { color: var(--accent); }
+  .wall-body .dots { color: var(--muted); }
+  .wall-note { margin-top: 12px; display: inline-flex; align-items: center; gap: 9px; font-size: 13.5px; color: var(--warn);
+    font-weight: 600; background: var(--warn-soft); border: 1px solid var(--warn-line); border-radius: 22px; padding: 8px 15px; }
+  .orwall { width: 190px; display: flex; flex-direction: column; gap: 11px; align-items: center; }
+  .orlbl { font: 600 10px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  .orbox { width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--panel-2); box-shadow: var(--shadow);
+    font-size: 12px; color: var(--ink); }
+  .orbox b { color: var(--warn); }
+  .orbox .sub { color: var(--muted); font-size: 11px; }
+
+  /* ---- notion page render ---- */
+  .page { width: 260px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2); box-shadow: var(--shadow); overflow: hidden; }
+  .page-bar { display: flex; align-items: center; gap: 8px; padding: 10px 13px; border-bottom: 1px solid var(--line-soft); background: var(--panel); }
+  .page-bar .pico { font-size: 13px; line-height: 1; }
+  .page-bar .nm { font: 600 12px/1 var(--sans); }
+  .page-bar .src { margin-left: auto; font: 600 9.5px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .page-body { padding: 14px 15px; display: flex; flex-direction: column; gap: 10px; }
+  .blk { position: relative; font-size: 13px; }
+  .blk.h1 { font-weight: 700; font-size: 16px; }
+  .blk.toggle, .blk.todo { display: flex; align-items: center; gap: 7px; font-size: 13px; }
+  .blk.toggle .tgl { color: var(--muted); font-size: 10px; }
+  .blk.todo .cbx { color: var(--muted); font-size: 14px; }
+  .blk .tag { position: absolute; right: -6px; top: -8px; font: 600 8px/1 var(--mono); letter-spacing: .02em; padding: 3px 6px; border-radius: 9px; white-space: nowrap; }
+  .tag-u { color: var(--blue); background: var(--blue-soft); border: 1px solid var(--blue); }
+  .tag-k { color: var(--muted); background: var(--panel); border: 1px solid var(--line); }
+  .blk.upd { border-radius: 6px; padding: 3px 7px; margin: -3px -7px; }
+
+  /* ---- connector channel ---- */
+  .channel { width: 154px; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+  .chan-badge { display: inline-flex; align-items: center; gap: 6px; font: 600 10.5px/1 var(--mono);
+    color: var(--accent); background: var(--accent-soft); border: 1px solid var(--accent); border-radius: 20px; padding: 5px 10px; }
+  .pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: blink 1.4s ease-in-out infinite; }
+  @keyframes blink { 0%,100%{opacity:1;} 50%{opacity:.25;} }
+  .wires { position: relative; width: 154px; height: 42px; }
+  .wire { position: absolute; left: 0; width: 100%; height: 2px; background: var(--line); top: 20px; }
+  .wlbl { position: absolute; width: 100%; text-align: center; font: 500 10.5px/1 var(--sans); color: var(--muted); top: 4px; }
+  .arrowhead { position: absolute; top: -4px; width: 0; height: 0; border-top: 5px solid transparent; border-bottom: 5px solid transparent; }
+  .ah-r { right: -1px; border-left: 8px solid var(--accent); }
+  .packet { position: absolute; top: -2.5px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
+    box-shadow: 0 0 0 4px var(--accent-soft); animation: travelR 2.4s cubic-bezier(.5,0,.5,1) infinite; }
+  @keyframes travelR { 0%{left:-4px; opacity:0;} 14%{opacity:1;} 86%{opacity:1;} 100%{left:150px; opacity:0;} }
+  .result { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; font: 600 11px/1 var(--mono);
+    color: var(--ok); background: var(--ok-soft); border: 1px solid var(--ok-line); border-radius: 10px; padding: 7px 11px; }
+  .result .big { font-size: 13px; } .result .sm { font-size: 9.5px; color: var(--muted); letter-spacing: .02em; }
+
+  /* ---- beat 2 GIF states (base = resolved / step 3) ---- */
+  .blk.h1 .final { display: inline; } .blk.h1 .draft { display: none; }
+  .blk.h1 .tag-u { display: inline; }
+  .blk.upd { background: var(--blue-soft); box-shadow: inset 2px 0 0 var(--blue); }
+  .code-body .final { display: inline; } .code-body .draft { display: none; }
+  .code-body .chg.b { background: var(--blue-soft); box-shadow: inset 2px 0 0 var(--blue); }
+  body[data-step="1"] .blk.h1 .final, body[data-step="2"] .blk.h1 .final { display: none; }
+  body[data-step="1"] .blk.h1 .draft, body[data-step="2"] .blk.h1 .draft { display: inline; }
+  body[data-step="1"] .blk.h1 .tag-u { display: none; }
+  body[data-step="1"] .blk.upd, body[data-step="2"] .blk.upd { background: transparent; box-shadow: none; }
+  body[data-step="1"] .code-body .final { display: none; }
+  body[data-step="1"] .code-body .draft { display: inline; }
+  body[data-step="1"] .code-body .chg.b { background: transparent; box-shadow: none; }
+  body[data-step="1"] .channel { opacity: .4; }
+  body[data-step="1"] .chan-badge .pulse, body[data-step="1"] .packet { animation: none; opacity: .3; }
+  body[data-step="1"] .result { visibility: hidden; }
+
+  /* ---- beat 3: tree is source of truth ---- */
+  .s3 { display: flex; align-items: center; gap: 0; }
+  .treecard { width: 300px; }
+  .tree-frame { border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2); box-shadow: var(--shadow); overflow: hidden; }
+  .tree-bar { display: flex; align-items: center; gap: 8px; padding: 10px 13px; border-bottom: 1px solid var(--line-soft); background: var(--panel);
+    font: 600 12px/1 var(--mono); color: var(--accent); }
+  .tree-body { padding: 12px 15px; font-family: var(--mono); font-size: 12px; display: flex; flex-direction: column; gap: 6px; }
+  .tree-body .n { color: var(--accent); } .tree-body .in { padding-left: 16px; color: var(--ink); }
+  .sot { margin-top: 10px; display: inline-flex; align-items: center; gap: 7px; font: 600 11px/1 var(--mono);
+    color: var(--accent); background: var(--accent-soft); border-radius: 8px; padding: 7px 10px; }
+  .projarrow { width: 140px; display: flex; flex-direction: column; align-items: center; gap: 8px; color: var(--muted); }
+  .projarrow .plabel { font-size: 11.5px; text-align: center; line-height: 1.35; }
+  .projarrow svg { width: 118px; height: 26px; }
+  .opsum { width: 234px; border: 1px solid var(--accent); border-radius: 12px; background: var(--accent-soft); padding: 3px; }
+  .opsum-inner { border-radius: 9px; background: var(--panel-2); overflow: hidden; box-shadow: var(--shadow); }
+  .opsum-bar { padding: 9px 13px; border-bottom: 1px solid var(--line-soft); font: 600 11px/1 var(--mono); color: var(--accent); }
+  .oprow { display: flex; align-items: center; justify-content: space-between; padding: 7px 13px; font-family: var(--mono); font-size: 12px; border-bottom: 1px solid var(--line-soft); }
+  .oprow:last-child { border-bottom: none; }
+  .oprow .k { color: var(--muted); } .oprow .v { font-weight: 700; }
+  .oprow .v.z { color: var(--ok); } .oprow .v.n { color: var(--accent); }
+  .opsum-cap { text-align: center; font: 600 10.5px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--accent); margin-top: 8px; }
+
+  /* ---- coda: blockKey diffing ---- */
+  .coda-rule { display: flex; align-items: center; gap: 14px; margin: 0 20px; color: var(--muted); }
+  .coda-rule::before, .coda-rule::after { content: ""; height: 1px; background: var(--line); flex: 1; }
+  .coda-rule span { font: 600 11px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; }
+  .coda { border-style: dashed; background: var(--panel); }
+  .coda .beat-tag { color: var(--accent); }
+  .keymap { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; }
+  .keys { width: 250px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2); box-shadow: var(--shadow); overflow: hidden; }
+  .keys-bar { padding: 9px 13px; border-bottom: 1px solid var(--line-soft); background: var(--panel); font: 600 11px/1 var(--mono); color: var(--accent); }
+  .keyrow { display: flex; align-items: center; gap: 8px; padding: 8px 13px; border-bottom: 1px solid var(--line-soft); font-family: var(--mono); font-size: 11.5px; }
+  .keyrow:last-child { border-bottom: none; }
+  .keyrow .bk { color: var(--accent); } .keyrow .arr { color: var(--muted); } .keyrow .id { color: var(--muted); font-size: 10.5px; }
+  .cachebadge { width: 150px; display: flex; flex-direction: column; align-items: center; gap: 8px; color: var(--muted); }
+  .cachebadge svg { width: 118px; height: 22px; }
+  .cachebadge .cb { font: 600 10.5px/1 var(--mono); color: var(--accent); background: var(--accent-soft); border: 1px solid var(--accent); border-radius: 16px; padding: 5px 9px; }
+  .cachebadge .cl { font-size: 11px; text-align: center; line-height: 1.35; }
+  .difftable { width: 264px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2); box-shadow: var(--shadow); overflow: hidden; }
+  .difftable .dbar { padding: 9px 13px; border-bottom: 1px solid var(--line-soft); background: var(--panel); font: 600 11px/1 var(--mono); color: var(--muted); }
+  .drow { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 13px; border-bottom: 1px solid var(--line-soft); font-size: 12px; }
+  .drow:last-child { border-bottom: none; }
+  .drow .op { font-family: var(--mono); font-size: 11px; font-weight: 700; }
+  .drow .op.c { color: var(--ok); } .drow .op.a { color: var(--warn); } .drow .op.u { color: var(--blue); } .drow .op.m { color: var(--accent); }
+  .drow .lbl { color: var(--ink); } .drow .soon { font: 600 8px/1 var(--mono); letter-spacing: .04em; text-transform: uppercase; color: var(--muted);
+    border: 1px solid var(--line); border-radius: 8px; padding: 2px 5px; }
+
+  .foot { text-align: center; font-size: 13px; color: var(--muted); margin: 8px 0 0; }
+  .foot code { font-family: var(--mono); color: var(--accent); }
+
+  body.nocap .caption, body.nocap .promise { display: none; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .packet, .pulse { animation: none !important; }
+    .packet { left: 100px; opacity: 1; }
+  }
+  @media (max-width: 760px) {
+    .beat-inner { height: auto; }
+    .stage, .s1, .s3, .keymap { flex-direction: column; }
+  }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <p class="kicker">Notion tooling · primitive 04</p>
-  <h1><code>notion-react</code> — write Notion pages as JSX</h1>
-  <p class="sub">Render a page as a React tree; a <code>react-reconciler</code> diffs it against the last sync and emits the minimum set of Notion block operations.</p>
+<div class="thread">
 
-  <div class="cards">
-    <div class="card gap">
-      <h3>The gap</h3>
-      <p>Notion's block API is raw and imperative: <code>append</code> / <code>update</code> / <code>delete</code> against block ids. To re-render a page you either wipe and re-append every run (visible churn, O(blocks) cost) or hand-roll a keyed diff, a cache, and a kill-switch.</p>
+  <!-- LEAD -->
+  <header class="lead">
+    <p class="kicker">Notion tooling · a thread</p>
+    <h1><code>notion-react</code> — write Notion pages as JSX</h1>
+    <p>Describe a page as a React tree. A reconciler diffs it against the last sync and emits only the block ops that changed — no rebuild, no hand-tracking block ids.</p>
+  </header>
+
+  <!-- BEAT 1 — THE PROBLEM -->
+  <section class="beat" id="beat-1">
+    <div class="beat-inner">
+      <div class="beat-head"><span class="beat-num">01</span><span class="beat-tag">The problem</span></div>
+      <h2>To change <em>one line</em> on a Notion page, the API makes you rebuild it.</h2>
+      <div class="stage">
+        <div class="s1" style="display:flex;align-items:center;gap:22px">
+          <!-- imperative wall: wipe & re-append -->
+          <div style="display:flex;flex-direction:column;align-items:center;gap:0">
+          <div class="wall">
+            <div class="wall-bar">⚠ the only API you get</div>
+            <div class="wall-body">
+              <div class="del">blocks.delete(b_01)</div>
+              <div class="del">blocks.delete(b_02)</div>
+              <div class="del">blocks.delete(b_03) <span class="dots">…×N</span></div>
+              <div class="app">blocks.append(h1)</div>
+              <div class="app">blocks.append(para)</div>
+              <div class="app">blocks.append(todo) <span class="dots">…×N</span></div>
+            </div>
+          </div>
+          <div class="wall-note">💥 whole page churns · flicker · O(blocks)</div>
+          </div>
+          <!-- the two bad options -->
+          <div class="orwall">
+            <div class="orlbl">your two options</div>
+            <div class="orbox"><b>Wipe &amp; rebuild</b> every run<div class="sub">visible churn, O(blocks) cost</div></div>
+            <div class="orlbl">— or —</div>
+            <div class="orbox"><b>Hand-roll</b> a keyed diff<div class="sub">track every block id, a cache, a kill-switch</div></div>
+          </div>
+        </div>
+      </div>
+      <p class="caption"><b>Notion's block API is raw and imperative — <code>append</code> / <code>update</code> / <code>delete</code> against block ids.</b> <span class="hint">To re-render a page you either wipe and re-append every block each run (churn, flicker, O(blocks) cost) or hand-roll a keyed diff, a cache, and a kill-switch yourself.</span></p>
     </div>
-    <div class="card fix">
-      <h3>The stopgap</h3>
-      <p>Write the page as JSX. A <code>react-reconciler</code> matches each element to a previously-synced block by <code>blockKey</code>: added ⇒ create, removed ⇒ archive, moved <code>&lt;ChildPage&gt;</code> ⇒ <code>pages.move</code>. Re-rendering identical JSX is a no-op.</p>
+  </section>
+
+  <!-- BEAT 2 — SEE IT WORK -->
+  <section class="beat" id="beat-2">
+    <div class="beat-inner">
+      <div class="beat-head"><span class="beat-num">02</span><span class="beat-tag">See it work</span></div>
+      <h2>Change one line of JSX, rerun — only that block updates. <em>1 op.</em></h2>
+      <div class="stage">
+        <div class="s1" style="display:flex;align-items:center;gap:6px">
+          <!-- jsx editor -->
+          <div class="code">
+            <div class="code-tabs"><span class="code-tab"><span class="tdot"></span>page.tsx</span><span class="lang">TSX</span></div>
+            <div class="code-body">
+              <div><span class="tok">&lt;Page</span> <span class="attr">title</span>=<span class="str">"Q2 Plan"</span><span class="tok">&gt;</span></div>
+              <div class="ind"><span class="chg b"><span class="tok">&lt;Heading1&gt;</span><span class="draft">Draft</span><span class="final">Final</span><span class="tok">&lt;/Heading1&gt;</span></span></div>
+              <div class="ind"><span class="tok">&lt;Toggle&gt;</span>Scope<span class="tok">&lt;/Toggle&gt;</span></div>
+              <div class="ind"><span class="tok">&lt;ToDo&gt;</span>Ship it<span class="tok">&lt;/ToDo&gt;</span></div>
+              <div><span class="tok">&lt;/Page&gt;</span></div>
+            </div>
+            <div class="code-run"><span class="play">▶</span> bun run page.tsx <span class="rout"><span class="rd">✓ updates: 1</span><span class="rr">running…</span></span></div>
+          </div>
+          <!-- reconciler channel -->
+          <div class="channel">
+            <div class="chan-badge"><span class="pulse"></span>reconcile</div>
+            <div class="wires">
+              <div class="wire"><span class="ah-r arrowhead"></span><span class="packet"></span></div>
+              <div class="wlbl">min ops</div>
+            </div>
+            <div class="result"><span class="big">{ updates: 1 }</span><span class="sm">appends 0 · removes 0</span></div>
+          </div>
+          <!-- notion page: only heading changes -->
+          <div class="page">
+            <div class="page-bar"><span class="pico">🚀</span><span class="nm">Q2 Plan</span><span class="src">Notion</span></div>
+            <div class="page-body">
+              <div class="blk h1 upd"><span class="draft">Draft</span><span class="final">Final</span><span class="tag tag-u">update</span></div>
+              <div class="blk toggle"><span class="tgl">▸</span> Scope<span class="tag tag-k">untouched</span></div>
+              <div class="blk todo"><span class="cbx">☐</span> Ship it<span class="tag tag-k">untouched</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="caption"><b>Write the page as JSX (<code>&lt;Page&gt;&lt;Heading1/&gt;…</code>). Change one line and rerun — the reconciler diffs against the last sync and emits <code>{ updates: 1 }</code>.</b> <span class="hint">One block updates in place; every other block keeps its Notion id. Not a rebuild — the exact minimum.</span></p>
     </div>
-  </div>
+  </section>
 
-  <figure class="flow">
-    <svg viewBox="0 0 820 230" role="img" aria-label="Data flow: a JSX tree renders through a reconciler that diffs against a blockKey cache and emits minimum Notion block operations.">
-      <!-- cache (top) -->
-      <g class="node conflict"><rect x="300" y="24" width="244" height="52" rx="10"/>
-        <text x="422" y="47" text-anchor="middle" style="font-size:12px">FsCache — merge base</text>
-        <text class="sub2" x="422" y="65" text-anchor="middle">blockKey → notion block id</text></g>
-      <!-- main flow edges -->
-      <path class="edge" d="M222 160 H312" marker-end="url(#a)"/>
-      <path class="edge" d="M534 160 H610" marker-end="url(#a)"/>
-      <text class="elabel" x="267" y="142" text-anchor="middle">render</text>
-      <text class="elabel" x="572" y="142" text-anchor="middle">minimum ops</text>
-      <!-- reconciler ⇄ cache -->
-      <path class="edge" d="M423 130 V76" marker-end="url(#a)" marker-start="url(#a)"/>
-      <text class="elabel" x="432" y="106" text-anchor="start">prev ⇄ next tree</text>
-      <!-- jsx tree -->
-      <g class="node"><rect x="30" y="130" width="192" height="60" rx="10"/>
-        <text x="126" y="156" text-anchor="middle">&lt;Page&gt; … JSX</text>
-        <text class="sub2" x="126" y="174" text-anchor="middle">your components</text></g>
-      <!-- reconciler -->
-      <g class="node"><rect x="312" y="130" width="222" height="60" rx="10"/>
-        <text x="423" y="156" text-anchor="middle">reconciler</text>
-        <text class="sub2" x="423" y="174" text-anchor="middle">diff by blockKey</text></g>
-      <!-- notion blocks -->
-      <g class="node"><rect x="610" y="130" width="180" height="60" rx="10"/>
-        <text x="700" y="156" text-anchor="middle">Notion blocks</text>
-        <text class="sub2" x="700" y="174" text-anchor="middle">append · update · move</text></g>
-      <defs>
-        <marker id="a" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
-          <path d="M1 1 L7 4 L1 7 Z" fill="currentColor" class="edge" style="fill:var(--muted);stroke:none"/></marker>
-      </defs>
-    </svg>
-    <figcaption>JSX in, minimum Notion ops out. The cache stores the last synced tree keyed by <code>blockKey</code>, so the reconciler touches only what actually changed.</figcaption>
-  </figure>
+  <!-- BEAT 3 — THE INSIGHT -->
+  <section class="beat" id="beat-3">
+    <div class="beat-inner">
+      <div class="beat-head"><span class="beat-num">03</span><span class="beat-tag">The shift</span></div>
+      <h2>You <em>describe</em> the page. It computes the minimal block ops.</h2>
+      <div class="stage">
+        <div class="s3">
+          <!-- jsx tree = source of truth -->
+          <div class="treecard">
+            <div class="tree-frame">
+              <div class="tree-bar">◆ your JSX tree</div>
+              <div class="tree-body">
+                <div class="n">&lt;Page&gt;</div>
+                <div class="in">&lt;Heading1&gt;</div>
+                <div class="in">&lt;Toggle&gt;</div>
+                <div class="in">&lt;ToDo&gt;</div>
+                <div class="n">&lt;/Page&gt;</div>
+              </div>
+            </div>
+            <div class="sot">◆ declarative · your source of truth</div>
+          </div>
+          <!-- reconciler -->
+          <div class="projarrow">
+            <div class="plabel">reconciler<br/>diffs vs last sync</div>
+            <svg viewBox="0 0 118 26"><path d="M4 13 H104" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M98 8 L108 13 L98 18 Z" fill="currentColor"/></svg>
+          </div>
+          <!-- op summary -->
+          <div class="view">
+            <div class="opsum"><div class="opsum-inner">
+              <div class="opsum-bar">SyncResult</div>
+              <div class="oprow"><span class="k">re-render identical</span><span class="v z">0 ops</span></div>
+              <div class="oprow"><span class="k">change one prop</span><span class="v n">1 update</span></div>
+              <div class="oprow"><span class="k">append a sibling</span><span class="v n">1 append</span></div>
+              <div class="oprow"><span class="k">remove a sibling</span><span class="v n">1 remove</span></div>
+            </div></div>
+            <div class="opsum-cap">the exact minimum · every run</div>
+          </div>
+        </div>
+      </div>
+      <p class="caption"><b>Stop diffing block ids by hand.</b> <span class="hint">You hand it a tree; it reconciles against the last sync and returns a <code>SyncResult</code> — the exact <code>appends</code> / <code>updates</code> / <code>removes</code> it applied. Identical JSX is a <code>0</code>-op no-op.</span></p>
+      <div class="promise">✓ …and identity survives restarts — <b>the diff is keyed, not positional</b> <span class="nxt">here's how ↓</span></div>
+    </div>
+  </section>
 
-  <table>
-    <thead><tr><th>Change to the JSX tree</th><th>Notion ops emitted</th></tr></thead>
-    <tbody>
-      <tr><td>Re-render identical JSX</td><td><code>0</code> ops</td></tr>
-      <tr><td>Change one block's props</td><td><code>1</code> update</td></tr>
-      <tr><td>Append a sibling</td><td><code>1</code> append</td></tr>
-      <tr><td>Remove a sibling</td><td><code>1</code> archive</td></tr>
-      <tr><td>Move a <code>&lt;ChildPage&gt;</code></td><td><code>1</code> <code>pages.move</code></td></tr>
-      <tr><td>Manual edit in Notion</td><td>overwritten next sync — tree is source of truth</td></tr>
-    </tbody>
-  </table>
+  <!-- CODA — GOING DEEPER -->
+  <div class="coda-rule"><span>Going deeper · optional</span></div>
+  <section class="beat coda" id="beat-4">
+    <div class="beat-inner">
+      <div class="beat-head"><span class="beat-num">04</span><span class="beat-tag">…keyed by blockKey</span></div>
+      <h2>Every block carries a <em>blockKey</em>. That's how identity survives a restart.</h2>
+      <div class="stage">
+        <div class="keymap">
+          <!-- blockKey → notion id map -->
+          <div class="keys">
+            <div class="keys-bar">blockKey → notion block id</div>
+            <div class="keyrow"><span class="bk">b:overview</span><span class="arr">→</span><span class="id">block_a1b2…</span></div>
+            <div class="keyrow"><span class="bk">b:scope</span><span class="arr">→</span><span class="id">block_c3d4…</span></div>
+            <div class="keyrow"><span class="bk">b:ship</span><span class="arr">→</span><span class="id">block_e5f6…</span></div>
+          </div>
+          <!-- persisted cache -->
+          <div class="cachebadge">
+            <svg viewBox="0 0 118 22"><path d="M4 11 H104" stroke="currentColor" stroke-width="1.6" fill="none"/><path d="M98 6 L108 11 L98 16 Z" fill="currentColor"/><path d="M20 16 L10 11 L20 6" stroke="currentColor" stroke-width="1.6" fill="none"/></svg>
+            <div class="cb">FsCache</div>
+            <div class="cl">.notion-cache.json<br/>persisted, atomic</div>
+          </div>
+          <!-- diff outcomes -->
+          <div class="difftable">
+            <div class="dbar">match a key → reuse · else…</div>
+            <div class="drow"><span class="lbl">add a block</span><span class="op c">create</span></div>
+            <div class="drow"><span class="lbl">remove a block</span><span class="op a">archive</span></div>
+            <div class="drow"><span class="lbl">change props</span><span class="op u">update</span></div>
+            <div class="drow"><span class="lbl">move a &lt;ChildPage&gt;</span><span class="op m">pages.move <span class="soon">contract</span></span></div>
+          </div>
+        </div>
+      </div>
+      <p class="caption"><b>The diff is keyed on <code>blockKey</code>, not sibling position.</b> <span class="hint">Each rendered block matches a previously-synced Notion block through the persisted <code>FsCache</code> (<code>.notion-cache.json</code>) — so a match reuses the real block id, and identity holds across process restarts. add→create, remove→archive, change→update. Page-level <code>pages.move</code> is the designed contract (block ops ship today; page ops are next).</span></p>
+    </div>
+  </section>
 
-  <p class="foot"><b>What first-class would look like:</b> Notion offering a declarative, diffable page API — hand it a tree, get the minimum ops. Until then, <code>notion-react</code> is that reconciler: JSX in, minimum Notion ops out, with the diff keyed on <code>blockKey</code> so identity survives across process restarts.</p>
+  <p class="foot">What first-class would look like: Notion offering a declarative, diffable page API — hand it a tree, get the minimum ops. Until then, <code>notion-react</code> is that reconciler: JSX in, minimum block ops out, keyed on <code>blockKey</code>.</p>
+
 </div>
 </body>
 </html>

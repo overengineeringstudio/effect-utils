@@ -3,121 +3,390 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>notion md — explainer</title>
+<title>notion md — a visual thread</title>
 <style>
   :root {
-    --bg: #ffffff; --panel: #f7f7f8; --ink: #1a1a1a; --muted: #6b6b70;
-    --line: #e3e3e6; --accent: #5b5bd6; --accent-soft: #ececfb;
-    --warn: #b25000; --warn-soft: #fbeede; --ok: #1a7f4b;
+    --bg: #ffffff; --panel: #f7f7f8; --panel-2: #ffffff; --ink: #1a1a1a; --muted: #6b6b70;
+    --line: #e3e3e6; --line-soft: #eeeef0;
+    --accent: #5b5bd6; --accent-soft: #ececfb;
+    --warn: #c0392b; --warn-soft: #fbe9e7; --warn-line: #f0b3aa;
+    --ok: #1a7f4b; --ok-soft: #e3f5ec; --ok-line: #a9dcc2;
+    --blue: #2f6fd6; --blue-soft: #e6effc;
     --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
     --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+    --shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.05);
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #191919; --panel: #202020; --ink: #ececee; --muted: #9a9aa0;
-      --line: #2f2f2f; --accent: #9d9df0; --accent-soft: #26264a;
-      --warn: #e0913f; --warn-soft: #35281a; --ok: #4ec98a;
+      --bg: #191919; --panel: #202020; --panel-2: #242424; --ink: #ececee; --muted: #9a9aa0;
+      --line: #2f2f2f; --line-soft: #292929;
+      --accent: #9d9df0; --accent-soft: #26264a;
+      --warn: #f0796b; --warn-soft: #3a221e; --warn-line: #5c3029;
+      --ok: #4ec98a; --ok-soft: #1c2f26; --ok-line: #2c4c3c;
+      --blue: #6fa8f5; --blue-soft: #1b2a44;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
     }
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--sans);
-    line-height: 1.5; padding: 28px; }
-  .wrap { max-width: 860px; margin: 0 auto; }
-  .kicker { font: 600 12px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase;
-    color: var(--accent); margin: 0 0 6px; }
-  h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: -.01em; }
-  h1 code { font-family: var(--mono); font-size: .8em; background: var(--accent-soft);
-    color: var(--accent); padding: 2px 8px; border-radius: 6px; }
-  .sub { color: var(--muted); margin: 0 0 22px; font-size: 15px; }
-  .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 22px; }
-  @media (max-width: 640px) { .cards { grid-template-columns: 1fr; } }
-  .card { border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; background: var(--panel); }
-  .card h3 { margin: 0 0 6px; font: 600 12px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; }
-  .card.gap h3 { color: var(--warn); }
-  .card.fix h3 { color: var(--ok); }
-  .card p { margin: 0; font-size: 14px; color: var(--ink); }
-  .card code, .flow code { font-family: var(--mono); font-size: .88em; background: var(--accent-soft);
-    color: var(--accent); padding: 1px 5px; border-radius: 5px; }
-  .flow { border: 1px solid var(--line); border-radius: 12px; padding: 22px 18px 14px; background: var(--panel);
-    margin-bottom: 22px; }
-  .flow figcaption { color: var(--muted); font-size: 12.5px; margin-top: 10px; text-align: center; }
-  svg { width: 100%; height: auto; display: block; }
-  .node rect { fill: var(--bg); stroke: var(--accent); stroke-width: 1.5; }
-  .node text { fill: var(--ink); font: 600 13px var(--mono); }
-  .node .sub2 { fill: var(--muted); font: 400 11px var(--sans); }
-  .edge { stroke: var(--muted); stroke-width: 1.6; fill: none; }
-  .edge.dashed { stroke-dasharray: 5 4; stroke: var(--warn); }
-  .elabel { fill: var(--muted); font: 500 11px var(--sans); }
-  .conflict rect { stroke: var(--warn); }
-  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
-  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); }
-  th { color: var(--muted); font: 600 11px/1 var(--mono); letter-spacing: .05em; text-transform: uppercase; }
-  td code { font-family: var(--mono); }
-  .foot { margin-top: 18px; font-size: 13px; color: var(--muted); }
-  .foot b { color: var(--ink); }
+    line-height: 1.5; padding: 40px 20px 80px; }
+  .thread { max-width: 1000px; margin: 0 auto; display: flex; flex-direction: column; gap: 40px; }
+
+  /* ---- thread header ---- */
+  .lead { text-align: left; padding: 0 20px; }
+  .lead .kicker { font: 600 12px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase;
+    color: var(--accent); margin: 0 0 10px; }
+  .lead h1 { font-size: 30px; line-height: 1.15; margin: 0 0 8px; letter-spacing: -.015em; }
+  .lead h1 code { font-family: var(--mono); font-size: .74em; background: var(--accent-soft);
+    color: var(--accent); padding: 3px 9px; border-radius: 7px; }
+  .lead p { color: var(--muted); margin: 0; font-size: 16px; max-width: 62ch; }
+
+  /* ---- beat card ---- */
+  .beat { width: 100%; border: 1px solid var(--line); border-radius: 16px; background: var(--panel);
+    box-shadow: var(--shadow); overflow: hidden; }
+  .beat-inner { padding: 26px 34px 28px; display: flex; flex-direction: column; }
+  .beat-head { display: flex; align-items: baseline; gap: 12px; margin: 0 0 3px; }
+  .beat-num { font: 700 13px/1 var(--mono); color: var(--accent); letter-spacing: .04em; }
+  .beat-tag { font: 600 11px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  .beat h2 { font-size: 25px; line-height: 1.2; margin: 4px 0 0; letter-spacing: -.01em; }
+  .beat h2 em { font-style: normal; color: var(--accent); }
+  .stage { margin: 16px 0 14px; position: relative; display: flex; align-items: center;
+    justify-content: center; min-height: 236px; }
+  .caption { font-size: 15.5px; color: var(--ink); margin: 0; max-width: 78ch; }
+  .caption b { font-weight: 600; }
+  .caption .hint { color: var(--muted); }
+  .promise { margin-top: 14px; display: inline-flex; align-items: center; gap: 9px; align-self: flex-start;
+    font: 600 13.5px/1 var(--sans); color: var(--ok); background: var(--ok-soft); border: 1px solid var(--ok-line);
+    border-radius: 22px; padding: 9px 15px; }
+  .promise .nxt { font: 600 10px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .chip { font: 600 8.5px/1 var(--mono); letter-spacing: .02em; padding: 3px 6px; border-radius: 10px; margin-left: 7px;
+    white-space: nowrap; }
+  .chip-b { color: var(--blue); background: var(--blue-soft); border: 1px solid var(--blue); }
+  .chip-g { color: var(--ok); background: var(--ok-soft); border: 1px solid var(--ok-line); }
+
+  /* ---- doc card motif (shared spine) ---- */
+  .doc { width: 322px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2);
+    box-shadow: var(--shadow); overflow: hidden; font-size: 14.5px; }
+  .doc-bar { display: flex; align-items: center; gap: 8px; padding: 11px 13px; border-bottom: 1px solid var(--line-soft);
+    background: var(--panel); }
+  .doc-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .doc-dot.n { background: #000; }
+  @media (prefers-color-scheme: dark){ .doc-dot.n { background:#fff; } }
+  .doc-dot.f { background: var(--accent); }
+  .doc-name { font: 600 12px/1 var(--sans); }
+  .doc.local .doc-name { font-family: var(--mono); font-weight: 600; font-size: 11.5px; color: var(--muted); }
+  .doc-src { margin-left: auto; font: 600 9.5px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase;
+    color: var(--muted); }
+  .doc-body { padding: 15px 15px 17px; display: flex; flex-direction: column; gap: 11px; }
+  .doc.local .doc-body { font-family: var(--mono); font-size: 13px; }
+  .ln { display: flex; align-items: center; gap: 7px; }
+  .ln .h { font-weight: 700; }
+  .ln .g { color: var(--muted); }
+  .doc.local .ln { color: var(--ink); }
+  .doc.local .ln .h { color: var(--accent); }
+  .hl { border-radius: 5px; padding: 2px 6px; margin: -2px -6px; }
+  .hl.g { background: var(--ok-soft); box-shadow: inset 2px 0 0 var(--ok); }
+  .hl.b { background: var(--blue-soft); box-shadow: inset 2px 0 0 var(--blue); }
+  .hl.a { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
+  .gone { color: var(--warn); text-decoration: line-through; text-decoration-color: var(--warn);
+    opacity: .8; }
+  .tagline { font: 600 10px/1 var(--mono); letter-spacing: .04em; padding: 3px 7px; border-radius: 20px; }
+  .tag-g { color: var(--ok); background: var(--ok-soft); border: 1px solid var(--ok-line); }
+  .tag-b { color: var(--blue); background: var(--blue-soft); border: 1px solid var(--blue); }
+  .tag-w { color: var(--warn); background: var(--warn-soft); border: 1px solid var(--warn-line); }
+
+  /* ---- section 1: manual clobber ---- */
+  .s1 { display: flex; align-items: center; gap: 10px; }
+  .s1col { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  .paste { display: flex; flex-direction: column; align-items: center; gap: 9px; width: 168px; text-align: center; }
+  .paste .face { font-size: 28px; filter: grayscale(.15); }
+  .paste .keys { display: flex; gap: 6px; }
+  .kbd { font: 600 11px/1 var(--mono); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 6px;
+    padding: 5px 7px; background: var(--panel-2); color: var(--muted); }
+  .bigarrow { width: 138px; height: 34px; display: block; }
+  .paste .plbl { font-size: 12px; color: var(--muted); line-height: 1.35; }
+  .paste .plbl b { color: var(--warn); }
+  .clobber-note { display: inline-flex; align-items: center; gap: 9px; font-size: 14px; color: var(--warn);
+    font-weight: 600; background: var(--warn-soft); border: 1px solid var(--warn-line); border-radius: 22px; padding: 9px 16px; }
+  .boom { font-size: 17px; }
+
+  /* ---- connector channel (section 2 & 3) ---- */
+  .channel { width: 150px; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+  .chan-badge { display: inline-flex; align-items: center; gap: 6px; font: 600 11px/1 var(--mono);
+    color: var(--ok); background: var(--ok-soft); border: 1px solid var(--ok-line); border-radius: 20px; padding: 5px 10px; }
+  .pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); animation: blink 1.4s ease-in-out infinite; }
+  @keyframes blink { 0%,100%{opacity:1;} 50%{opacity:.25;} }
+  .wires { position: relative; width: 150px; height: 74px; }
+  .wire { position: absolute; left: 0; width: 100%; height: 2px; background: var(--line); }
+  .wire.top { top: 20px; } .wire.bot { top: 54px; }
+  .wlbl { position: absolute; width: 100%; text-align: center; font: 500 10.5px/1 var(--sans); color: var(--muted); }
+  .wlbl.top { top: 4px; } .wlbl.bot { top: 62px; }
+  .arrowhead { position: absolute; top: -4px; width: 0; height: 0; border-top: 5px solid transparent;
+    border-bottom: 5px solid transparent; }
+  .ah-r { right: -1px; border-left: 8px solid var(--accent); }
+  .ah-l { left: -1px; border-right: 8px solid var(--accent); }
+  .packet { position: absolute; top: -2.5px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
+    box-shadow: 0 0 0 4px var(--accent-soft); }
+  .packet.p1 { animation: travelR 2.6s cubic-bezier(.5,0,.5,1) infinite; }
+  .packet.p2 { animation: travelL 2.6s cubic-bezier(.5,0,.5,1) infinite; animation-delay: 1.3s; }
+  @keyframes travelR { 0%{left:-4px; opacity:0;} 12%{opacity:1;} 88%{opacity:1;} 100%{left:146px; opacity:0;} }
+  @keyframes travelL { 0%{left:146px; opacity:0;} 12%{opacity:1;} 88%{opacity:1;} 100%{left:-4px; opacity:0;} }
+
+  /* ---- section 3: source of truth ---- */
+  .s3 { display: flex; align-items: center; gap: 0; }
+  .repo { width: 300px; }
+  .repo-frame { border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2); box-shadow: var(--shadow);
+    overflow: hidden; }
+  .repo-bar { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid var(--line-soft);
+    background: var(--panel); font: 600 11px/1 var(--mono); color: var(--muted); }
+  .repo-tree { padding: 12px 14px; font-family: var(--mono); font-size: 12px; display: flex; flex-direction: column; gap: 7px; }
+  .repo-tree .row { display: flex; align-items: center; gap: 8px; color: var(--muted); }
+  .repo-tree .row.file { color: var(--ink); font-weight: 600; }
+  .repo-tree .row.file .fi { color: var(--accent); }
+  .repo-tree .indent { padding-left: 16px; }
+  .sot { margin-top: 10px; display: inline-flex; align-items: center; gap: 7px; font: 600 11px/1 var(--mono);
+    color: var(--accent); background: var(--accent-soft); border-radius: 8px; padding: 7px 10px; }
+  .projarrow { width: 130px; display: flex; flex-direction: column; align-items: center; gap: 8px; color: var(--muted); }
+  .projarrow .plabel { font-size: 11.5px; text-align: center; line-height: 1.35; }
+  .projarrow svg { width: 110px; height: 26px; }
+  .view { width: 264px; }
+  .view-frame { border: 1px dashed var(--accent); border-radius: 12px; background: var(--accent-soft);
+    padding: 3px; }
+  .view-inner { border-radius: 9px; background: var(--panel-2); overflow: hidden; box-shadow: var(--shadow); }
+  .view-cap { text-align: center; font: 600 10.5px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase;
+    color: var(--accent); margin-top: 8px; }
+
+  /* ---- coda ---- */
+  .coda { border-style: dashed; background: var(--panel); }
+  .coda .stage { min-height: 250px; }
+  .coda .beat-tag { color: var(--accent); }
+  .coda-rule { display: flex; align-items: center; gap: 14px; margin: -14px 20px 20px; color: var(--muted); }
+  .coda-rule::before, .coda-rule::after { content: ""; height: 1px; background: var(--line); flex: 1; }
+  .coda-rule span { font: 600 11px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; }
+  .merge { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; }
+  .merge .col { display: flex; flex-direction: column; gap: 14px; align-items: stretch; }
+  .mbox { width: 214px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); box-shadow: var(--shadow);
+    padding: 11px 13px; font-size: 12.5px; }
+  .mbox .mt { font: 600 10px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted);
+    margin-bottom: 7px; }
+  .mrow { display: flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 11.5px; }
+  .merge-core { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 168px; }
+  .merge-op { display: inline-flex; align-items: center; gap: 8px; font: 600 12px/1 var(--sans); color: var(--ink);
+    border: 1px solid var(--accent); border-radius: 20px; padding: 8px 14px; background: var(--accent-soft); }
+  .base-sub { font: 600 10px/1 var(--mono); letter-spacing: .02em; color: var(--muted); text-align: center; }
+  .base-sub b { color: var(--accent); }
+  .merge-arrows svg { width: 96px; height: 56px; display: block; }
+  .draft { width: 250px; border: 1px solid var(--ok-line); border-radius: 10px; background: var(--ok-soft);
+    box-shadow: var(--shadow); overflow: hidden; }
+  .draft-bar { display: flex; align-items: center; gap: 7px; padding: 9px 12px; border-bottom: 1px solid var(--ok-line);
+    font: 600 11px/1 var(--mono); color: var(--ok); }
+  .draft-body { padding: 11px 13px; font-family: var(--mono); font-size: 11.5px; display: flex; flex-direction: column; gap: 6px; }
+  .conf { border-left: 2px solid; padding-left: 8px; }
+  .conf.a { border-color: var(--blue); color: var(--blue); }
+  .conf.b { border-color: var(--accent); color: var(--accent); }
+  .conf .mk { color: var(--muted); }
+  .safe { display: inline-flex; align-items: center; gap: 7px; font: 600 12px/1 var(--sans); color: var(--ok); margin-top: 4px; }
+
+  .foot { text-align: center; font-size: 13px; color: var(--muted); margin: 8px 0 0; }
+  .foot code { font-family: var(--mono); color: var(--accent); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .packet, .pulse { animation: none !important; }
+    .packet.p1 { left: 96px; opacity: 1; } .packet.p2 { left: 40px; opacity: 1; }
+  }
+  @media (max-width: 720px) {
+    .beat-inner, .coda .beat-inner { height: auto; }
+    .s1, .s3, .merge { flex-direction: column; }
+    .stage { flex-direction: column; }
+  }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <p class="kicker">Notion tooling · primitive 01</p>
-  <h1><code>notion&nbsp;md</code> — local Markdown ⇄ Notion, safely</h1>
-  <p class="sub">Keep a folder of Markdown in two-way sync with Notion pages, with a guarded merge that never clobbers.</p>
+<div class="thread">
 
-  <div class="cards">
-    <div class="card gap">
-      <h3>The gap</h3>
-      <p>Notion's API is great, but there's no first-class way to keep local Markdown in sync with pages. You hand-roll API calls or copy-paste — and either side can silently overwrite the other.</p>
+  <!-- LEAD -->
+  <header class="lead">
+    <p class="kicker">Notion tooling · a thread</p>
+    <h1><code>notion&nbsp;md</code> — your Markdown and Notion, finally in sync</h1>
+    <p>Keep a folder of local Markdown two-way synced with Notion pages. No copy-paste. No clobbering.</p>
+  </header>
+
+  <!-- BEAT 1 — THE PROBLEM -->
+  <section class="beat" id="beat-1">
+    <div class="beat-inner">
+      <div class="beat-head"><span class="beat-num">01</span><span class="beat-tag">The problem</span></div>
+      <h2>You keep the same doc in two places — and sync it <em>by hand</em>.</h2>
+      <div class="stage">
+        <div class="s1col">
+        <div class="s1">
+          <!-- Notion doc (source of this paste) -->
+          <div class="doc">
+            <div class="doc-bar"><span class="doc-dot n"></span><span class="doc-name">Product Spec</span><span class="doc-src">Notion</span></div>
+            <div class="doc-body">
+              <div class="ln"><span class="h"># Product Spec</span></div>
+              <div class="ln"><span class="g">Pricing:</span> $20 / mo</div>
+              <div class="ln g">Enterprise: contact us</div>
+            </div>
+          </div>
+          <!-- one bold paste direction: Notion -> repo -->
+          <div class="paste">
+            <div class="face">😮‍💨</div>
+            <div class="keys"><span class="kbd">⌘C</span><span class="kbd">⌘V</span></div>
+            <svg class="bigarrow" viewBox="0 0 138 34"><path d="M4 12 H98 V4 L134 17 L98 30 V22 H4 Z" fill="var(--warn-soft)" stroke="var(--warn)" stroke-width="1.5" stroke-linejoin="round"/></svg>
+            <div class="plbl"><b>paste over</b><br/>last one wins, silently</div>
+          </div>
+          <!-- local doc: its edit just got overwritten -->
+          <div class="doc local">
+            <div class="doc-bar"><span class="doc-dot f"></span><span class="doc-name">docs/product-spec.md</span><span class="doc-src">repo</span></div>
+            <div class="doc-body">
+              <div class="ln"><span class="h"># Product Spec</span></div>
+              <div class="ln"><span class="g">Pricing:</span> <span class="gone">$25</span> <span style="color:var(--warn)">&rarr;</span> $20 / mo</div>
+              <div class="ln g">Enterprise: contact us</div>
+              <div class="ln"><span class="tagline tag-w">your $25 edit · clobbered</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="clobber-note"><span class="boom">💥</span> Your $25 edit — silently gone.</div>
+        </div>
+      </div>
+      <p class="caption"><b>You keep the same doc in your repo and in Notion — and there's no first-class way to sync them.</b> <span class="hint">So you copy-paste, they drift, and whoever pastes last quietly wipes the other side's edits.</span></p>
     </div>
-    <div class="card fix">
-      <h3>The stopgap</h3>
-      <p>An <code>.nmd</code> file is the source of truth. <code>sync</code> does a 3-way merge against a local object store; a diverged remote yields a <code>*.conflict.roughdraft.md</code> instead of an overwrite.</p>
+  </section>
+
+  <!-- BEAT 2 — SEE IT WORK -->
+  <section class="beat" id="beat-2">
+    <div class="beat-inner">
+      <div class="beat-head"><span class="beat-num">02</span><span class="beat-tag">See it work</span></div>
+      <h2>Now edit <em>either side</em>. It shows up on the other. Live.</h2>
+      <div class="stage">
+        <div class="s1">
+          <!-- local doc: typed Pricing here, received Enterprise from Notion -->
+          <div class="doc local">
+            <div class="doc-bar"><span class="doc-dot f"></span><span class="doc-name">docs/product-spec.nmd</span><span class="doc-src">repo</span></div>
+            <div class="doc-body">
+              <div class="ln"><span class="h"># Product Spec</span></div>
+              <div class="ln hl b" id="l-price">Pricing: $25 / mo<span class="chip chip-b">you typed</span></div>
+              <div class="ln hl g" id="l-ent">Enterprise: contact us<span class="chip chip-g">arrived &larr;</span></div>
+            </div>
+          </div>
+          <!-- live channel -->
+          <div class="channel">
+            <div class="chan-badge"><span class="pulse"></span>sync --watch</div>
+            <div class="wires">
+              <div class="wire top"><span class="ah-r arrowhead"></span><span class="packet p1"></span></div>
+              <div class="wire bot"><span class="ah-l arrowhead"></span><span class="packet p2"></span></div>
+              <div class="wlbl top">repo &rarr; Notion</div>
+              <div class="wlbl bot">Notion &rarr; repo</div>
+            </div>
+          </div>
+          <!-- notion doc: received Pricing from repo, typed Enterprise here -->
+          <div class="doc">
+            <div class="doc-bar"><span class="doc-dot n"></span><span class="doc-name">Product Spec</span><span class="doc-src">Notion</span></div>
+            <div class="doc-body">
+              <div class="ln"><span class="h"># Product Spec</span></div>
+              <div class="ln hl b" id="n-price"><span>Pricing: $25 / mo</span><span class="chip chip-b">arrived &rarr;</span></div>
+              <div class="ln hl g" id="n-ent"><span>Enterprise: contact us</span><span class="chip chip-g">you typed</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="caption"><b>Run <code style="font-family:var(--mono);color:var(--accent)">notion md sync --watch</code> — edit either side, both stay in sync. Live.</b> <span class="hint">Local edits push instantly; Notion changes sync back on a short poll (~30s). Two-way needs <code style="font-family:var(--mono);color:var(--accent)">source: shared</code>.</span></p>
     </div>
-  </div>
+  </section>
 
-  <figure class="flow">
-    <svg viewBox="0 0 820 220" role="img" aria-label="Data flow: local .nmd and Notion reconcile through the .notion-md object store; divergence produces a conflict draft.">
-      <!-- edges -->
-      <path class="edge" d="M190 150 H330" marker-end="url(#a)" marker-start="url(#a)"/>
-      <path class="edge" d="M560 150 H660" marker-end="url(#a)" marker-start="url(#a)"/>
-      <path class="edge dashed" d="M445 120 V70 H310" marker-end="url(#w)"/>
-      <text class="elabel" x="360" y="132">reconcile</text>
-      <text class="elabel" x="452" y="60">diverged</text>
-      <!-- local -->
-      <g class="node"><rect x="30" y="120" width="160" height="60" rx="10"/>
-        <text x="110" y="146" text-anchor="middle">.nmd file</text>
-        <text class="sub2" x="110" y="164" text-anchor="middle">local source of truth</text></g>
-      <!-- store -->
-      <g class="node"><rect x="330" y="120" width="230" height="60" rx="10"/>
-        <text x="445" y="146" text-anchor="middle">.notion-md/ store</text>
-        <text class="sub2" x="445" y="164" text-anchor="middle">content-addressed merge base</text></g>
-      <!-- notion -->
-      <g class="node"><rect x="660" y="120" width="130" height="60" rx="10"/>
-        <text x="725" y="146" text-anchor="middle">Notion</text>
-        <text class="sub2" x="725" y="164" text-anchor="middle">page + properties</text></g>
-      <!-- conflict -->
-      <g class="node conflict"><rect x="108" y="40" width="204" height="46" rx="10"/>
-        <text x="210" y="68" text-anchor="middle" style="font-size:12px">*.conflict.roughdraft.md</text></g>
-      <defs>
-        <marker id="a" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
-          <path d="M1 1 L7 4 L1 7 Z" fill="currentColor" class="edge" style="fill:var(--muted);stroke:none"/></marker>
-        <marker id="w" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
-          <path d="M1 1 L7 4 L1 7 Z" style="fill:var(--warn);stroke:none"/></marker>
-      </defs>
-    </svg>
-    <figcaption>Local and Notion reconcile through the object store. Both changed? You get a conflict draft, not a clobber.</figcaption>
-  </figure>
+  <!-- BEAT 3 — THE INSIGHT -->
+  <section class="beat" id="beat-3">
+    <div class="beat-inner">
+      <div class="beat-head"><span class="beat-num">03</span><span class="beat-tag">The shift</span></div>
+      <h2>Your repo is the <em>source of truth</em>. Notion becomes a live view of it.</h2>
+      <div class="stage">
+        <div class="s3">
+          <!-- repo -->
+          <div class="repo">
+            <div class="repo-frame">
+              <div class="repo-bar">⎇ main · your repo</div>
+              <div class="repo-tree">
+                <div class="row">📁 docs/</div>
+                <div class="row file indent"><span class="fi">◆</span> product-spec.nmd</div>
+                <div class="row indent">📁 .notion-md/</div>
+              </div>
+            </div>
+            <div class="sot">◆ versioned, reviewed, yours</div>
+          </div>
+          <!-- projection -->
+          <div class="projarrow">
+            <div class="plabel">synced,<br/>not copied</div>
+            <svg viewBox="0 0 110 26"><path d="M4 13 H96" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M90 8 L100 13 L90 18 Z" fill="currentColor"/><path d="M20 18 L10 13 L20 8" stroke="currentColor" stroke-width="1.8" fill="none"/></svg>
+          </div>
+          <!-- view -->
+          <div class="view">
+            <div class="view-frame"><div class="view-inner">
+              <div class="doc-bar"><span class="doc-dot n"></span><span class="doc-name">Product Spec</span><span class="doc-src">Notion</span></div>
+              <div class="doc-body">
+                <div class="ln"><span class="h"># Product Spec</span></div>
+                <div class="ln"><span class="g">Pricing:</span> $25 / mo</div>
+                <div class="ln g">Enterprise: contact us</div>
+              </div>
+            </div></div>
+            <div class="view-cap">a live view · still editable</div>
+          </div>
+        </div>
+      </div>
+      <p class="caption"><b>Stop babysitting two copies.</b> <span class="hint">Your files live in git — versioned, reviewable, the real source. Notion is just a synced, editable window onto them. The copy-paste dance is gone.</span></p>
+      <div class="promise">✓ …and it never clobbers — <b>your work is never lost</b> <span class="nxt">here's how ↓</span></div>
+    </div>
+  </section>
 
-  <table>
-    <thead><tr><th>Sync state</th><th>Meaning</th><th>What <code>sync</code> does</th></tr></thead>
-    <tbody>
-      <tr><td><code>in-sync</code></td><td>local = remote</td><td>nothing</td></tr>
-      <tr><td><code>local-ahead</code></td><td>you edited the file</td><td>push to Notion</td></tr>
-      <tr><td><code>remote-ahead</code></td><td>edited in Notion</td><td>pull to file</td></tr>
-      <tr><td><code>diverged</code></td><td>both changed</td><td>write conflict draft</td></tr>
-    </tbody>
-  </table>
+  <!-- CODA — GOING DEEPER -->
+  <div class="coda-rule"><span>Going deeper · optional</span></div>
+  <section class="beat coda" id="beat-4">
+    <div class="beat-inner">
+      <div class="beat-head"><span class="beat-num">04</span><span class="beat-tag">…and it never clobbers</span></div>
+      <h2>Both sides changed the same line? You get a <em>draft</em>, not a disaster.</h2>
+      <div class="stage">
+        <div class="merge">
+          <!-- two edits, aligned, converging on the merge -->
+          <div class="col">
+            <div class="mbox">
+              <div class="mt">local edit</div>
+              <div class="mrow"><span style="color:var(--blue)">Pricing: $25 / mo</span></div>
+            </div>
+            <div class="mbox">
+              <div class="mt">notion edit</div>
+              <div class="mrow"><span style="color:var(--accent)">Pricing: $30 / mo</span></div>
+            </div>
+          </div>
+          <!-- merge -->
+          <div class="merge-core">
+            <div class="merge-arrows">
+              <svg viewBox="0 0 96 56"><path d="M2 10 C42 10 40 28 80 28" stroke="var(--muted)" stroke-width="1.6" fill="none"/><path d="M2 46 C42 46 40 28 80 28" stroke="var(--muted)" stroke-width="1.6" fill="none"/><path d="M74 23 L84 28 L74 33 Z" fill="var(--muted)"/></svg>
+            </div>
+            <div class="merge-op">◆ guarded 3-way merge</div>
+            <div class="base-sub">vs base <b>$20</b> · from .notion-md/</div>
+            <div class="merge-arrows">
+              <svg viewBox="0 0 96 26"><path d="M6 13 H84" stroke="var(--ok)" stroke-width="1.8" fill="none"/><path d="M78 7 L88 13 L78 19 Z" fill="var(--ok)"/></svg>
+            </div>
+            <div style="font:600 10px/1 var(--mono);letter-spacing:.04em;color:var(--ok);text-align:center">writes a draft &rarr;</div>
+          </div>
+          <!-- conflict draft -->
+          <div class="col">
+            <div class="draft">
+              <div class="draft-bar">⚠ product-spec.conflict.roughdraft.md</div>
+              <div class="draft-body">
+                <div class="conf a"><span class="mk">&lt;&lt;&lt; local</span><br/>Pricing: $25 / mo</div>
+                <div class="conf b"><span class="mk">&gt;&gt;&gt; notion</span><br/>Pricing: $30 / mo</div>
+              </div>
+            </div>
+            <div class="safe">✓ both versions kept · you decide</div>
+          </div>
+        </div>
+      </div>
+      <p class="caption"><b>Every sync is a 3-way merge against a content-addressed base in <code>.notion-md/</code>.</b> <span class="hint">If only one side changed, it just applies. If both touched the same spot, notion md writes a <code>*.conflict.roughdraft.md</code> holding both versions — it never overwrites your work.</span></p>
+    </div>
+  </section>
 
-  <p class="foot"><b>What first-class would look like:</b> Notion offering native Markdown-file binding with conflict-aware sync — until then, <code>notion md</code> fills the gap.</p>
+  <p class="foot">What first-class would look like: native conflict-aware Markdown ⇄ page binding, in Notion itself. Until then, <code>notion md</code> fills the gap.</p>
+
 </div>
 </body>
 </html>

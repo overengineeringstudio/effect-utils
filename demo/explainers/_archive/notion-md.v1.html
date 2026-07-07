@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>notion md — explainer</title>
+<style>
+  :root {
+    --bg: #ffffff; --panel: #f7f7f8; --ink: #1a1a1a; --muted: #6b6b70;
+    --line: #e3e3e6; --accent: #5b5bd6; --accent-soft: #ececfb;
+    --warn: #b25000; --warn-soft: #fbeede; --ok: #1a7f4b;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #191919; --panel: #202020; --ink: #ececee; --muted: #9a9aa0;
+      --line: #2f2f2f; --accent: #9d9df0; --accent-soft: #26264a;
+      --warn: #e0913f; --warn-soft: #35281a; --ok: #4ec98a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--sans);
+    line-height: 1.5; padding: 28px; }
+  .wrap { max-width: 860px; margin: 0 auto; }
+  .kicker { font: 600 12px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase;
+    color: var(--accent); margin: 0 0 6px; }
+  h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: -.01em; }
+  h1 code { font-family: var(--mono); font-size: .8em; background: var(--accent-soft);
+    color: var(--accent); padding: 2px 8px; border-radius: 6px; }
+  .sub { color: var(--muted); margin: 0 0 22px; font-size: 15px; }
+  .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 22px; }
+  @media (max-width: 640px) { .cards { grid-template-columns: 1fr; } }
+  .card { border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; background: var(--panel); }
+  .card h3 { margin: 0 0 6px; font: 600 12px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; }
+  .card.gap h3 { color: var(--warn); }
+  .card.fix h3 { color: var(--ok); }
+  .card p { margin: 0; font-size: 14px; color: var(--ink); }
+  .card code, .flow code { font-family: var(--mono); font-size: .88em; background: var(--accent-soft);
+    color: var(--accent); padding: 1px 5px; border-radius: 5px; }
+  .flow { border: 1px solid var(--line); border-radius: 12px; padding: 22px 18px 14px; background: var(--panel);
+    margin-bottom: 22px; }
+  .flow figcaption { color: var(--muted); font-size: 12.5px; margin-top: 10px; text-align: center; }
+  svg { width: 100%; height: auto; display: block; }
+  .node rect { fill: var(--bg); stroke: var(--accent); stroke-width: 1.5; }
+  .node text { fill: var(--ink); font: 600 13px var(--mono); }
+  .node .sub2 { fill: var(--muted); font: 400 11px var(--sans); }
+  .edge { stroke: var(--muted); stroke-width: 1.6; fill: none; }
+  .edge.dashed { stroke-dasharray: 5 4; stroke: var(--warn); }
+  .elabel { fill: var(--muted); font: 500 11px var(--sans); }
+  .conflict rect { stroke: var(--warn); }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font: 600 11px/1 var(--mono); letter-spacing: .05em; text-transform: uppercase; }
+  td code { font-family: var(--mono); }
+  .foot { margin-top: 18px; font-size: 13px; color: var(--muted); }
+  .foot b { color: var(--ink); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="kicker">Notion tooling · primitive 01</p>
+  <h1><code>notion&nbsp;md</code> — local Markdown ⇄ Notion, safely</h1>
+  <p class="sub">Keep a folder of Markdown in two-way sync with Notion pages, with a guarded merge that never clobbers.</p>
+
+  <div class="cards">
+    <div class="card gap">
+      <h3>The gap</h3>
+      <p>Notion's API is great, but there's no first-class way to keep local Markdown in sync with pages. You hand-roll API calls or copy-paste — and either side can silently overwrite the other.</p>
+    </div>
+    <div class="card fix">
+      <h3>The stopgap</h3>
+      <p>An <code>.nmd</code> file is the source of truth. <code>sync</code> does a 3-way merge against a local object store; a diverged remote yields a <code>*.conflict.roughdraft.md</code> instead of an overwrite.</p>
+    </div>
+  </div>
+
+  <figure class="flow">
+    <svg viewBox="0 0 820 220" role="img" aria-label="Data flow: local .nmd and Notion reconcile through the .notion-md object store; divergence produces a conflict draft.">
+      <!-- edges -->
+      <path class="edge" d="M190 150 H330" marker-end="url(#a)" marker-start="url(#a)"/>
+      <path class="edge" d="M560 150 H660" marker-end="url(#a)" marker-start="url(#a)"/>
+      <path class="edge dashed" d="M445 120 V70 H310" marker-end="url(#w)"/>
+      <text class="elabel" x="360" y="132">reconcile</text>
+      <text class="elabel" x="452" y="60">diverged</text>
+      <!-- local -->
+      <g class="node"><rect x="30" y="120" width="160" height="60" rx="10"/>
+        <text x="110" y="146" text-anchor="middle">.nmd file</text>
+        <text class="sub2" x="110" y="164" text-anchor="middle">local source of truth</text></g>
+      <!-- store -->
+      <g class="node"><rect x="330" y="120" width="230" height="60" rx="10"/>
+        <text x="445" y="146" text-anchor="middle">.notion-md/ store</text>
+        <text class="sub2" x="445" y="164" text-anchor="middle">content-addressed merge base</text></g>
+      <!-- notion -->
+      <g class="node"><rect x="660" y="120" width="130" height="60" rx="10"/>
+        <text x="725" y="146" text-anchor="middle">Notion</text>
+        <text class="sub2" x="725" y="164" text-anchor="middle">page + properties</text></g>
+      <!-- conflict -->
+      <g class="node conflict"><rect x="108" y="40" width="204" height="46" rx="10"/>
+        <text x="210" y="68" text-anchor="middle" style="font-size:12px">*.conflict.roughdraft.md</text></g>
+      <defs>
+        <marker id="a" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
+          <path d="M1 1 L7 4 L1 7 Z" fill="currentColor" class="edge" style="fill:var(--muted);stroke:none"/></marker>
+        <marker id="w" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
+          <path d="M1 1 L7 4 L1 7 Z" style="fill:var(--warn);stroke:none"/></marker>
+      </defs>
+    </svg>
+    <figcaption>Local and Notion reconcile through the object store. Both changed? You get a conflict draft, not a clobber.</figcaption>
+  </figure>
+
+  <table>
+    <thead><tr><th>Sync state</th><th>Meaning</th><th>What <code>sync</code> does</th></tr></thead>
+    <tbody>
+      <tr><td><code>in-sync</code></td><td>local = remote</td><td>nothing</td></tr>
+      <tr><td><code>local-ahead</code></td><td>you edited the file</td><td>push to Notion</td></tr>
+      <tr><td><code>remote-ahead</code></td><td>edited in Notion</td><td>pull to file</td></tr>
+      <tr><td><code>diverged</code></td><td>both changed</td><td>write conflict draft</td></tr>
+    </tbody>
+  </table>
+
+  <p class="foot"><b>What first-class would look like:</b> Notion offering native Markdown-file binding with conflict-aware sync — until then, <code>notion md</code> fills the gap.</p>
+</div>
+</body>
+</html>
