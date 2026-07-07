@@ -25,6 +25,7 @@ const supportDeps = catalog.compose({
       'mime',
       'msgpackr',
       'multipasta',
+      'strip-ansi',
       'toml',
       'typescript',
       'yaml',
