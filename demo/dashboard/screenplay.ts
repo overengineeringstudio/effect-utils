@@ -309,6 +309,10 @@ export const parseGapWow = (md: string): string => {
 }
 
 export const findResetCmd = (md: string): string | null => {
+  // demo-env flow (rewired demos): the reset-between-takes command is a fresh env.
+  const ev = md.match(/eval "\$\(demo\/env\/demo-env new --export\)"/)
+  if (ev) return ev[0]!
+  // legacy per-demo reset script (not-yet-rewired demos, e.g. schema).
   const m = md.match(/(\.\/demo\/[\w-]+\/reset\.sh)/)
   return m ? m[1]! : null
 }
