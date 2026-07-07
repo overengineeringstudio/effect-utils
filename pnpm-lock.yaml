@@ -475,12 +475,6 @@ importers:
       '@effect/rpc':
         specifier: 0.75.1
         version: 0.75.1(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.4))(effect@3.21.4)
-      '@effect/sql':
-        specifier: 0.51.1
-        version: 0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.4))(effect@3.21.4)(ioredis@5.11.1))(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.4))(effect@3.21.4)
-      '@effect/typeclass':
-        specifier: 0.40.0
-        version: 0.40.0(effect@3.21.4)
       '@effect/vitest':
         specifier: 0.29.0
         version: 0.29.0(effect@3.21.4)(vitest@4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.0.0)(happy-dom@20.10.6)(vite@8.0.16(@types/node@26.0.0)(esbuild@0.27.7)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.8.3)))
@@ -496,6 +490,12 @@ importers:
       '@overeng/otel-contract':
         specifier: workspace:^
         version: link:../otel-contract
+      '@overeng/tui-react':
+        specifier: workspace:^
+        version: link:../tui-react
+      '@overeng/utils':
+        specifier: workspace:^
+        version: link:../utils
       '@playwright/test':
         specifier: 1.61.0
         version: 1.61.0
@@ -508,42 +508,9 @@ importers:
       '@types/react-reconciler':
         specifier: 0.33.0
         version: 0.33.0(@types/react@19.2.17)
-      ansi-regex:
-        specifier: 6.2.2
-        version: 6.2.2
-      ansi-styles:
-        specifier: 6.2.3
-        version: 6.2.3
       effect:
         specifier: 3.21.4
         version: 3.21.4
-      fast-check:
-        specifier: 3.23.2
-        version: 3.23.2
-      find-my-way-ts:
-        specifier: 0.1.6
-        version: 0.1.6
-      get-east-asian-width:
-        specifier: 1.5.0
-        version: 1.5.0
-      ini:
-        specifier: 4.1.3
-        version: 4.1.3
-      is-fullwidth-code-point:
-        specifier: 5.1.0
-        version: 5.1.0
-      mime:
-        specifier: 3.0.0
-        version: 3.0.0
-      msgpackr:
-        specifier: 1.11.10
-        version: 1.11.10
-      multipasta:
-        specifier: 0.2.7
-        version: 0.2.7
-      pure-rand:
-        specifier: 6.1.0
-        version: 6.1.0
       react:
         specifier: 19.2.7
         version: 19.2.7
@@ -553,27 +520,12 @@ importers:
       react-reconciler:
         specifier: 0.33.0
         version: 0.33.0(react@19.2.7)
-      scheduler:
-        specifier: 0.27.0
-        version: 0.27.0
-      slice-ansi:
-        specifier: 9.0.0
-        version: 9.0.0
-      strip-ansi:
-        specifier: 7.2.0
-        version: 7.2.0
-      toml:
-        specifier: 3.0.0
-        version: 3.0.0
       typescript:
         specifier: 6.0.3
         version: 6.0.3
       vitest:
         specifier: 4.1.9
         version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.0.0)(happy-dom@20.10.6)(vite@8.0.16(@types/node@26.0.0)(esbuild@0.27.7)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.8.3))
-      yaml:
-        specifier: 2.8.3
-        version: 2.8.3
     dependenciesMeta:
       '@overeng/tui-react':
         injected: true
@@ -590,12 +542,6 @@ importers:
       '@overeng/tui-core':
         specifier: workspace:^
         version: link:../tui-core
-      '@overeng/tui-react':
-        specifier: workspace:^
-        version: link:../tui-react
-      '@overeng/utils':
-        specifier: workspace:^
-        version: link:../utils
       '@overeng/utils-dev':
         specifier: workspace:^
         version: link:../utils-dev

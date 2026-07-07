@@ -15,31 +15,11 @@ import utilsPkg from '../utils/package.json.genie.ts'
 const supportDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/genie' }),
   dependencies: {
-    workspace: [otelContractPkg],
-    external: catalog.pick(
-      '@effect/sql',
-      '@effect/typeclass',
-      'ansi-regex',
-      'ansi-styles',
-      'fast-check',
-      'find-my-way-ts',
-      'get-east-asian-width',
-      'ini',
-      'is-fullwidth-code-point',
-      'mime',
-      'msgpackr',
-      'multipasta',
-      'pure-rand',
-      'scheduler',
-      'slice-ansi',
-      'strip-ansi',
-      'toml',
-      'typescript',
-      'yaml',
-    ),
+    workspace: [otelContractPkg, tuiReactPkg, utilsPkg],
+    external: catalog.pick('typescript'),
   },
   devDependencies: {
-    workspace: [tuiCorePkg, tuiReactPkg, utilsDevPkg, utilsPkg],
+    workspace: [tuiCorePkg, utilsDevPkg],
     external: {
       ...catalog.pick(
         '@effect/cli',
