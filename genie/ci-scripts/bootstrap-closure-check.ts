@@ -19,7 +19,8 @@
  * which actually runs the bootstrap-phase generators in a no-`node_modules` checkout before install.
  *
  * Usage:
- *   bun genie/ci-scripts/bootstrap-closure-check.ts   # exit 1 on any bootstrap-phase violation
+ *   bun genie/ci-scripts/bootstrap-closure-check.ts                 # check this repo
+ *   bun genie/ci-scripts/bootstrap-closure-check.ts --root "$PWD"   # check another repo
  */
 
 import { execFileSync } from 'node:child_process'
@@ -32,9 +33,29 @@ import {
   formatViolationChain,
 } from '../../packages/@overeng/genie/src/runtime/node/bootstrap-closure.ts'
 
-const repoRoot = path.resolve(import.meta.dir, '../..')
+const defaultRepoRoot = path.resolve(import.meta.dir, '../..')
 
-const discoverGenieFiles = (): readonly string[] =>
+const parseArgs = (argv: readonly string[]): { readonly repoRoot: string } => {
+  let repoRoot = defaultRepoRoot
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index]!
+    if (arg === '--root') {
+      const value = argv[index + 1]
+      if (value === undefined || value.length === 0) {
+        throw new Error('--root requires a non-empty path')
+      }
+      repoRoot = path.resolve(value)
+      index += 1
+      continue
+    }
+    throw new Error(`unknown argument: ${arg}`)
+  }
+
+  return { repoRoot }
+}
+
+const discoverGenieFiles = (repoRoot: string): readonly string[] =>
   execFileSync('git', ['-C', repoRoot, 'ls-files', '*.genie.ts'], { encoding: 'utf8' })
     .trim()
     .split('\n')
@@ -42,7 +63,8 @@ const discoverGenieFiles = (): readonly string[] =>
     .map((relativePath) => path.join(repoRoot, relativePath))
 
 const main = (): void => {
-  const allGenieFiles = discoverGenieFiles()
+  const { repoRoot } = parseArgs(process.argv.slice(2))
+  const allGenieFiles = discoverGenieFiles(repoRoot)
   const bootstrapFiles = allGenieFiles.filter(
     (file) => parseGeneratorPhase(readFileSync(file, 'utf8')) === 'bootstrap',
   )

@@ -37,6 +37,10 @@ All notable changes to this project will be documented in this file.
   and the TUI rendering stack inside the pruned Nix workspace. This keeps the
   package boundary explicit instead of relying on ambient development
   `node_modules` leakage.
+- **genie / check**: make `bootstrap-closure:check` a reusable devenv task by
+  parameterizing the effect-utils checker with `--root`. Downstream repos can
+  now import the shared task directly; they no longer need repo-local wrapper
+  scripts that duplicate discovery, phase filtering, and diagnostics.
 - **nix / mk-pnpm-cli**: preserve flake source inputs as Nix build inputs when
   materializing filtered CLI workspaces, preventing downstream GC from removing
   a pinned flake source before package-directory copies run.
@@ -53,7 +57,9 @@ All notable changes to this project will be documented in this file.
   (`genie/ci-scripts/bootstrap-closure-check.ts`) runs it over the tracked
   `// @genie-bootstrap`-marked `.genie.ts` sources with ZERO TOLERANCE (no baseline,
   no allowlist — `design-time` generators are out of scope by declaration; see the
-  generator-phase entry below). Wired into `check:all` (not `check:quick`). The walker imports
+  generator-phase entry below). The entry accepts `--root`, so the shared devenv
+  task can enforce the same contract in downstream repos without local wrapper
+  scripts. Wired into `check:all` (not `check:quick`). The walker imports
   genie's resolver via the effect-free `core/import-map/sync-resolver.ts` (only
   `node:fs`/`node:path`), so it is itself importable pre-install (`typescript` +
   node builtins only) and usable by nix-packaged-genie downstream members.
