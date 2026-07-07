@@ -16,7 +16,7 @@ const supportDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/genie' }),
   dependencies: {
     workspace: [otelContractPkg, tuiReactPkg, utilsPkg],
-    external: catalog.pick('typescript'),
+    external: catalog.pick('typescript', 'fast-check'),
   },
   devDependencies: {
     workspace: [tuiCorePkg, utilsDevPkg],
