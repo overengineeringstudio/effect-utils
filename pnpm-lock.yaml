@@ -514,6 +514,9 @@ importers:
       ini:
         specifier: 4.1.3
         version: 4.1.3
+      msgpackr:
+        specifier: 1.11.10
+        version: 1.11.10
       react:
         specifier: 19.2.7
         version: 19.2.7
