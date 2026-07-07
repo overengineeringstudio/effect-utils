@@ -34,6 +34,7 @@
     "@effect/platform": "0.96.2",
     "@effect/platform-node": "0.107.0",
     "@effect/rpc": "0.75.1",
+    "@effect/sql": "0.51.1",
     "@effect/vitest": "0.29.0",
     "@effect/workflow": "0.18.2",
     "@opentui/core": "0.4.1",
