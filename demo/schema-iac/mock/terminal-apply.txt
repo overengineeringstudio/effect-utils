@@ -1,0 +1,91 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# MOCK terminal output for the PLANNED `notion schema apply` (demo 3.2).
+# HAND-AUTHORED. These commands DO NOT EXIST YET — this is what the roadmap
+# feature WOULD print. Do not present it as a real capture. The op vocabulary
+# (+ create / + add property / ~ add options / x BLOCKED / applied N changes)
+# and the guard names (DestructiveSchemaMigrationRequired, OptionDeletionLosesValues,
+# StaleSurfaceBase) are the real ones from notion-datasource-sync, so this doubles
+# as the seed spec for the output format.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+# ── (1) First plan: nothing exists yet → create-if-absent ────────────────────
+
+$ notion schema plan tasks.notiondb.ts
+
+Plan  ·  tasks.notiondb.ts  →  Notion
+target: create new database (no tasks.notiondb.lock.json yet)
+
+  + create database "Tasks"   (parent: page $DEMO_PARENT_PAGE)
+      + property "Name"         title
+      + property "Status"       select        Todo | In Progress | Done
+      + property "Priority"     select        High | Medium | Low
+      + property "Tags"         multi_select  bug | feature | chore
+      + property "Estimate"     number
+      + property "Due Date"     date
+      + property "Done"         checkbox
+      + property "Ticket URL"   url
+      + property "Notes"        rich_text
+
+Plan: 1 database to create, 9 properties to add, 0 to change, 0 blocked.
+Run `notion schema apply tasks.notiondb.ts` to apply.
+
+
+# ── (2) Apply: provisions the database ───────────────────────────────────────
+
+$ notion schema apply tasks.notiondb.ts
+
+  + create database "Tasks" … done   2f1e…c43   https://www.notion.so/2f1e…c43
+  + add 9 properties … done
+  · wrote tasks.notiondb.lock.json   (records the created database id)
+
+applied 10 changes.
+
+
+# ── (3) Re-apply, unchanged: reconcile is idempotent ─────────────────────────
+
+$ notion schema apply tasks.notiondb.ts
+
+target: 2f1e…c43   (from tasks.notiondb.lock.json)   base schema hash: match
+
+No changes. Notion database "Tasks" already matches tasks.notiondb.ts.
+
+
+# ── (4) Edit the file (add an option + a property), plan the delta ───────────
+#     Priority gains "Urgent"; a new "Blocked" checkbox is declared.
+
+$ notion schema plan tasks.notiondb.ts
+
+Plan  ·  tasks.notiondb.ts  →  Notion
+target: 2f1e…c43   (from tasks.notiondb.lock.json)   base schema hash: match
+
+  ~ database "Tasks"
+      ~ add options to "Priority"   (+ Urgent)
+      + property "Blocked"          checkbox
+
+Plan: 0 to create, 1 property to add, 1 to change, 0 blocked.
+
+
+# ── (5) Boundary: destructive edits fail closed (never applied) ──────────────
+#     If the file dropped "Notes", retyped "Estimate", or removed a Priority
+#     option, `plan` marks each BLOCKED and `apply` refuses the whole run.
+
+$ notion schema plan tasks.notiondb.ts
+
+Plan  ·  tasks.notiondb.ts  →  Notion
+target: 2f1e…c43   (from tasks.notiondb.lock.json)   base schema hash: match
+
+  ~ database "Tasks"
+      x remove property "Notes"                    BLOCKED  DestructiveSchemaMigrationRequired
+      x change "Estimate"  number → rich_text       BLOCKED  DestructiveSchemaMigrationRequired
+      x remove option "Low" from "Priority"        BLOCKED  OptionDeletionLosesValues
+
+Plan: 0 to create, 0 to add, 0 to change, 3 blocked.
+
+$ notion schema apply tasks.notiondb.ts
+
+Error: refusing to apply — 3 destructive change(s) are out of scope.
+       `notion schema apply` performs additive, non-destructive reconciliation
+       only (create-db, add property, rename property, add select options).
+       Deletes, type changes, and option removals must be done deliberately in
+       Notion. Nothing was changed.
