@@ -335,6 +335,14 @@ let
   workspaceRootPath = coerceSourceRoot workspaceRoot;
   workspaceRootIsDerivationOutput = isDerivationOutput workspaceRoot;
   evalWorkspaceRootPath = coerceSourceRoot evalWorkspaceRoot;
+  sourceContextInputs =
+    {
+      workspaceRootSource = workspaceRoot;
+    }
+    // lib.mapAttrs' (
+      prefix: sourceRoot:
+      lib.nameValuePair "workspaceSource-${lib.strings.sanitizeDerivationName prefix}" sourceRoot
+    ) workspaceSources;
 
   sourcePathFilter =
     path: type:
@@ -1072,7 +1080,7 @@ let
   # not delegated to nested install roots. It still stages external install-root
   # manifests so the aggregate lockfile can resolve linked workspace packages
   # against the exact member set that will exist in the final composed build.
-  rootDepsSrc = pkgs.runCommand "${name}-pnpm-deps-src" { } (
+  rootDepsSrc = pkgs.runCommand "${name}-pnpm-deps-src" sourceContextInputs (
     ''
       set -euo pipefail
       mkdir -p "$out"
@@ -1099,7 +1107,7 @@ let
   externalInstallRootDeps = map (
     root:
     let
-      depsSrc = pkgs.runCommand "${installRootDepsDerivationName root}-pnpm-deps-src" { } (
+      depsSrc = pkgs.runCommand "${installRootDepsDerivationName root}-pnpm-deps-src" sourceContextInputs (
         ''
           set -euo pipefail
           mkdir -p "$out"
@@ -1248,7 +1256,7 @@ let
       nameSuffix,
       manifestOnly,
     }:
-    pkgs.runCommand "${name}-${nameSuffix}" { } (
+    pkgs.runCommand "${name}-${nameSuffix}" sourceContextInputs (
       ''
         set -euo pipefail
         mkdir -p "$out"
