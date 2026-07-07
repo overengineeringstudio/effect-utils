@@ -6,6 +6,22 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/notion-datasource-sync, @overeng/notion-cli**: `notion db
+  sync/track/export/pull/push` now run under the packaged Nix/devenv Node
+  runtime with no `NODE_OPTIONS` preload. Two defects broke them (both fixed in
+  #898, hardened here): (1) `runWithCliSyncProgress` loaded the optional `.tsx`
+  `@overeng/tui-react` TUI via `Effect.promise(() => import(...))` wrapped in
+  `Effect.either`; under packaged Node that dynamic import REJECTS (JSX is not
+  stripped) and surfaces as an Effect **defect**, which `Effect.either` does not
+  catch, so progress-bearing verbs silently exited 1 before emitting output — a
+  scoped `Effect.catchAllDefect` around the load step degrades cleanly to plain
+  progress; (2) the flake wrapper (`notion-cli/nix/build.nix`) routed `db` verbs
+  to the Node runtime but omitted `track`, so `notion db track` fell through to
+  the Bun runtime and failed closed on the `node:sqlite` guard — `track` is now
+  routed. The Nix smoke is strengthened from a `--help`-only route check to a
+  REAL sync-path run (`notion db track` on an empty workspace, which reaches the
+  progress wrapper and the real `.tsx` import); deleting the `catchAllDefect`
+  line makes the build RED with "no structured envelope".
 - **CI / cargo**: move standalone Rust crate build/test/clippy/fmt semantics into
   the `cargo:check` devenv task and make the generated cargo CI lane call that
   task, ensuring the `node-cpuprofile` integration test runs with the devenv

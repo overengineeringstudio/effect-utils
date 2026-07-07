@@ -40,9 +40,14 @@ if [[ -f "$STATE_DIR/database-id" ]]; then
 fi
 
 # 2. Wipe the local stage workspace so track starts clean.
+#    The workspace manifest MUST be removed too: `track` APPENDS a data source
+#    to any existing `notion.workspace.v1.json`, so a leftover manifest from a
+#    prior run leaves the stage tracking multiple data sources and `notion db
+#    sync .` fails ambiguously ("tracks multiple data sources; pass --sqlite").
 mkdir -p "$STAGE_DIR"
 rm -rf "$STAGE_DIR"/data "$STAGE_DIR"/.notion "$STAGE_DIR"/.notion-md 2>/dev/null || true
 rm -f  "$STAGE_DIR"/*.sqlite "$STAGE_DIR"/*.sqlite-shm "$STAGE_DIR"/*.sqlite-wal 2>/dev/null || true
+rm -f  "$STAGE_DIR"/notion.workspace.v1.json 2>/dev/null || true
 
 # 3. Create a fresh synthetic Notion database with seed rows.
 bash "$HERE/setup.sh"
