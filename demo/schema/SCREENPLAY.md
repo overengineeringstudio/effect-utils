@@ -15,39 +15,45 @@ Wow: point at a live DB and seconds later you have typed, autocompleting Effect 
 
 ## On camera (copy-paste in order)
 
-### Beat 1 — Point at a live DB → a typed schema file   say: "Notion gives you JSON. Point at a database and here's the whole thing as a typed Effect schema — generated, not written."
+### Beat 1 — Generate typed bindings from a live DB say: "Notion gives you JSON. Here's the whole database as a typed Effect schema — generated, not written."
 
 ```
 cd demo/schema/stage
-notion schema generate "$(cat ../.demo-state/tasks-db-id)" -o schema.gen.ts --typed-options --include-api
-```
-
-Then open `schema.gen.ts` and scroll. Point out, top to bottom:
-- literal-union option types: `TasksPriorityOption = Schema.Literal('High','Low','Medium')` (came from the DB's select options)
-- the read schema `TasksPageProperties` with JSDoc pulled from each property's description
-- `decodeTasksProperties` — runtime-validating decoder
-- a second file `schema.gen.api.ts` — a typed `query` / `get` / `create` / `update` wrapper
-
-### Beat 2 — Use them, with autocomplete   say: "And now the payoff in your own code — real autocomplete, real compile errors."
-
-Open `use-schema.ts`. Hover `task.Priority`, trigger completion on `p.name` — the editor offers `'High' | 'Medium' | 'Low'`. Type a bad option name to show the red squiggle. (Nothing here is hand-written types; it all flows from `schema.gen.ts`.)
-
-### Beat 3 — Schema-as-code for the whole workspace   say: "That was one database. Now declare them all in a config and regenerate in a single command."
-
-```
-cat notion-schema-gen.config.ts
 notion schema generate-config
 ```
 
-Point at the two databases in the config, then show what one command produced — both `schema.gen.ts` (Tasks, regenerated) and a new `people.gen.ts`:
+Then open `schema.gen.ts` and scroll. Point out, top to bottom:
+
+- literal-union option types: `TasksPriorityOption = Schema.Literal('High','Low','Medium')` (came from the DB's select options)
+- the read schema `TasksPageProperties` with JSDoc pulled from each property's description
+- the write schema `TasksPageWrite` + `encodeTasksWrite` (create/update)
+- a second file `schema.gen.api.ts` — a typed `query` / `get` / `create` / `update` wrapper
+
+### Beat 2 — Use them, with autocomplete say: "And now the payoff in your own code — real autocomplete, real compile errors."
+
+Open `use-schema.ts`. Hover `task.Priority`, trigger completion on `p.name` — the editor offers `'High' | 'Medium' | 'Low'`. Type a bad option name to show the red squiggle. (Nothing here is hand-written types; it all flows from `schema.gen.ts`.)
+
+### Beat 3 — Schema-as-code for the whole workspace say: "One command didn't just do Tasks — it's declarative. This config lists every database; regenerate them all at once."
 
 ```
-open people.gen.ts   # in the editor
+cat notion-schema-gen.config.ts
 ```
 
-### Beat 4 — Gate drift in CI   say: "The IaC payoff: your code and your Notion DB can silently diverge. Catch it."
+Point at the two databases in the config, then show the second generated file it produced:
 
-First show they're in sync (diffs the file `generate-config` just produced):
+```
+code people.gen.ts   # or: open people.gen.ts in the editor
+```
+
+(Optional re-run to show it's idempotent regeneration, not a one-off:)
+
+```
+notion schema generate-config
+```
+
+### Beat 4 — Gate drift in CI say: "The IaC payoff: your code and your Notion DB can silently diverge. Catch it."
+
+First show they're in sync:
 
 ```
 notion schema diff "$(cat ../.demo-state/tasks-db-id)" --file schema.gen.ts --exit-code

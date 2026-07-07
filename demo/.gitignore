@@ -6,8 +6,10 @@
 *.conflict.roughdraft.md
 .demo-state/
 
-# Served E2E evidence report (per-run, never committed).
+# E2E harness evidence (raw per-demo runs + served copies) — generated, never committed.
 explainers/*-evidence/
+*/evidence/
+harness/.auth/
 
 # demo-env provisioned environments (manifests + local replicas, never committed).
 .demo-envs/
