@@ -535,6 +535,9 @@ importers:
       multipasta:
         specifier: 0.2.7
         version: 0.2.7
+      pure-rand:
+        specifier: 6.1.0
+        version: 6.1.0
       react:
         specifier: 19.2.7
         version: 19.2.7
