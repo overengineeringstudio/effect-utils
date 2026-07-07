@@ -21,6 +21,7 @@ const supportDeps = catalog.compose({
       '@effect/typeclass',
       'fast-check',
       'find-my-way-ts',
+      'get-east-asian-width',
       'ini',
       'mime',
       'msgpackr',
