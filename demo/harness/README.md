@@ -21,8 +21,14 @@ Run **inside `devenv shell`** — that puts the real umbrella `notion` binary
 
 ```sh
 export DEMO_PARENT_PAGE=396e3d41f4a380a98491e1c96f6b5c43   # shared Recording page
+
+# CORE demo — two-way propagation (3 beats, the ~3-min storyboard):
 devenv shell -- bun demo/md/e2e.spec.ts              # reset (fresh pages) + full run
 devenv shell -- bun demo/md/e2e.spec.ts --no-reset   # reuse the current live pages
+
+# APPENDIX — guarded-merge proof (conflict/never-clobbers; explainer deep-dive,
+# NOT part of the core storyboard). Separate evidence + report (id md-merge-proof):
+devenv shell -- bun demo/md/e2e.merge-proof.spec.ts
 ```
 
 Output lands in `demo/md/evidence/<timestamp>/` (gitignored):

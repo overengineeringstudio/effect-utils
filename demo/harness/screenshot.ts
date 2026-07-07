@@ -9,6 +9,7 @@
 
 import { existsSync } from 'node:fs'
 import { run, sleep } from './exec.ts'
+import type { NotionReady } from './spec.ts'
 
 const PW = process.env.PLAYWRIGHT_CLI ?? 'playwright-cli'
 
@@ -69,7 +70,7 @@ export class Screenshotter {
     if (this.hasAuth) {
       await this.pw(['state-load', this.storageStatePath])
     }
-    await this.pw(['resize', '1000', '720'])
+    await this.pw(['resize', '1280', '900'])
     this.opened = true
   }
 
@@ -88,8 +89,47 @@ export class Screenshotter {
     return { surface: 'terminal', file, ok: r.code === 0 }
   }
 
-  /** Screenshot a live Notion page. Requires storageState; else skipped. */
-  async captureNotion(file: string, pageUrl: string): Promise<ShotResult> {
+  /** Evaluate a JS predicate on the page; returns true only on a `true` result. */
+  private async evalBool(fn: string): Promise<boolean> {
+    const r = await this.pw(['eval', fn])
+    // playwright-cli prints: "### Result\n<value>\n### Ran Playwright code…"
+    const m = r.stdout.match(/### Result\s*\n([\s\S]*?)\n###/)
+    return (m?.[1] ?? '').trim() === 'true'
+  }
+
+  /** JS predicate string for a NotionReady signal. */
+  private readyFn(ready: NotionReady): string {
+    if (ready.kind === 'text') {
+      return `() => document.body.innerText.includes(${JSON.stringify(ready.value)})`
+    }
+    // to-do checked → Notion strikes the text through (no aria-checked on the DOM)
+    return `() => { const t=${JSON.stringify(ready.text)}; const w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT); let n; while(n=w.nextNode()){ if(n.textContent.includes(t)){ return getComputedStyle(n.parentElement).textDecorationLine.includes("line-through"); } } return false; }`
+  }
+
+  /** Hide the left sidebar (leaks private titles) and dismiss overlay popups. */
+  private async dismissOverlays(): Promise<void> {
+    await this.pw([
+      'eval',
+      `() => {
+        let st=document.getElementById("eu-hide"); if(!st){st=document.createElement("style");st.id="eu-hide";document.head.appendChild(st);}
+        st.textContent=".notion-sidebar-container{display:none !important;}";
+        const kill=(re)=>{const w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);let n;while(n=w.nextNode()){if(re.test(n.textContent)){let c=n.parentElement;for(let i=0;i<9&&c&&c.parentElement;i++){const cs=getComputedStyle(c);if(cs.position==="fixed"||cs.position==="absolute"){c.style.display="none";return true;}c=c.parentElement;}}}return false;};
+        kill(/Open in Notion.s desktop app/i); kill(/cookie/i);
+        const d=[...document.querySelectorAll('[aria-label="Dismiss"],[aria-label="Close"]')]; d.forEach(b=>{try{b.click();}catch(e){}});
+        return true;
+      }`,
+    ])
+  }
+
+  /**
+   * Screenshot a live Notion page AFTER the web UI reflects `ready` (reload-poll
+   * with timeout). Crops to the page frame (no sidebar). Requires storageState.
+   */
+  async captureNotion(
+    file: string,
+    pageUrl: string,
+    ready?: NotionReady,
+  ): Promise<ShotResult> {
     if (!this.hasAuth) {
       return {
         surface: 'notion',
@@ -100,9 +140,37 @@ export class Screenshotter {
     }
     await this.ensureOpen()
     await this.pw(['goto', pageUrl])
-    // Notion renders progressively; give it a moment to settle.
-    await sleep(3500)
-    const r = await this.pw(['screenshot', `--filename=${file}`])
+    // Let Notion paint (server state is already consistent with the API write;
+    // it just needs render time — thrashing reloads resets the render clock).
+    await sleep(4000)
+
+    if (ready) {
+      const fn = this.readyFn(ready)
+      const deadline = Date.now() + 35_000
+      let ok = await this.evalBool(fn)
+      let reloaded = false
+      while (!ok && Date.now() < deadline) {
+        await sleep(2500)
+        ok = await this.evalBool(fn)
+        // One mid-way cache-busting reload as a safety net if still not shown.
+        if (!ok && !reloaded && Date.now() > deadline - 20_000) {
+          await this.pw(['reload'])
+          await sleep(4000)
+          ok = await this.evalBool(fn)
+          reloaded = true
+        }
+      }
+      if (!ok) {
+        // Never ship a frame that doesn't show the asserted change.
+        return { surface: 'notion', file, ok: false, skipped: 'ui-not-reflected' }
+      }
+    }
+
+    await this.dismissOverlays()
+    await sleep(400)
+    // Crop to the page frame (excludes the sidebar); fall back to full page.
+    let r = await this.pw(['screenshot', '.notion-frame', `--filename=${file}`])
+    if (r.code !== 0) r = await this.pw(['screenshot', `--filename=${file}`])
     return { surface: 'notion', file, ok: r.code === 0 }
   }
 

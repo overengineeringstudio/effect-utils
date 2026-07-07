@@ -298,32 +298,40 @@ export const runDemo = async (demo: Demo, opts: RunOptions = {}): Promise<RunRec
       // Evidence screenshots (never affect pass/fail).
       const shots: ScreenshotRecord[] = []
       const surfaces = beat.screenshot ?? []
+      // Evidence capture must NEVER fail the run — assertions already passed.
+      // A slow/stuck browser goto or render just marks the shot failed.
       if (surfaces.includes('terminal')) {
         const file = `terminal-${beat.id}.png`
         const prompt =
           beat.action.kind === 'pty'
             ? beat.action.cmd
             : `# ${actionSummary(beat.action)}`
-        const res = await shooter.captureTerminal(
-          join(evidenceDir, file),
-          demo.title,
-          prompt,
-          logSlice(watchLogAbs, logFromByte),
-        )
-        shots.push({ surface: 'terminal', file, ok: res.ok, skipped: res.skipped })
+        try {
+          const res = await shooter.captureTerminal(
+            join(evidenceDir, file),
+            demo.title,
+            prompt,
+            logSlice(watchLogAbs, logFromByte),
+          )
+          shots.push({ surface: 'terminal', file, ok: res.ok, skipped: res.skipped })
+        } catch (e) {
+          shots.push({ surface: 'terminal', file, ok: false, skipped: `capture-error: ${e}` })
+        }
       }
       if (surfaces.includes('notion')) {
         const roles = beat.capturePages ?? demo.pages.map((p) => p.role)
         for (const role of roles) {
           const file = `notion-${beat.id}-${role}.png`
-          const res = await shooter.captureNotion(join(evidenceDir, file), pageUrls[role]!)
-          shots.push({
-            surface: 'notion',
-            role,
-            file,
-            ok: res.ok,
-            skipped: res.skipped,
-          })
+          try {
+            const res = await shooter.captureNotion(
+              join(evidenceDir, file),
+              pageUrls[role]!,
+              beat.notionReady,
+            )
+            shots.push({ surface: 'notion', role, file, ok: res.ok, skipped: res.skipped })
+          } catch (e) {
+            shots.push({ surface: 'notion', role, file, ok: false, skipped: `capture-error: ${e}` })
+          }
         }
       }
 

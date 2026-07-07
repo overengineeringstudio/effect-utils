@@ -133,6 +133,16 @@ export interface FileExpectation {
   readonly absent?: boolean
 }
 
+/**
+ * DOM signal a Notion evidence screenshot must WAIT for before shooting — so the
+ * frame captures the change the viewer should see (not a pre-update state). If
+ * it never appears within the timeout the shot is marked `ui-not-reflected`
+ * instead of shipping a wrong frame. Evidence-only; never an assertion.
+ */
+export type NotionReady =
+  | { readonly kind: 'text'; readonly value: string } // page text contains value
+  | { readonly kind: 'todoChecked'; readonly text: string } // to-do row is checked (strikethrough)
+
 export interface Beat {
   readonly id: string
   /** What the presenter says on camera during this beat. */
@@ -151,6 +161,8 @@ export interface Beat {
   readonly screenshot?: readonly Surface[]
   /** Which page roles to capture when `screenshot` includes `notion` (default: all). */
   readonly capturePages?: readonly string[]
+  /** DOM signal the Notion capture waits for before shooting (see `NotionReady`). */
+  readonly notionReady?: NotionReady
   /** Soft time budget in seconds — warn when exceeded, never fail the run. */
   readonly budgetSec: number
 }

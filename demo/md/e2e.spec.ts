@@ -54,6 +54,8 @@ export const mdDemo: Demo = {
       expectNotion: (ctx) => todoChecked(ctx.api, ctx.pageIds.roadmap!, TODO, true),
       screenshot: ['terminal', 'notion'],
       capturePages: ['roadmap'],
+      // Shoot only once the web UI shows the box ticked (strikethrough text).
+      notionReady: { kind: 'todoChecked', text: TODO },
       budgetSec: 10,
     },
     {
@@ -77,6 +79,8 @@ export const mdDemo: Demo = {
       expectNotion: (ctx) => pageHasText(ctx.api, ctx.pageIds.spec!, NEW_ENDPOINT),
       screenshot: ['terminal', 'notion'],
       capturePages: ['spec'],
+      // Shoot only once the new endpoint is visible on the page.
+      notionReady: { kind: 'text', value: NEW_ENDPOINT },
       budgetSec: 12,
     },
   ],

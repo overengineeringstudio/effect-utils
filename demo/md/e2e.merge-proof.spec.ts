@@ -35,6 +35,7 @@ export const mdMergeProof: Demo = {
       expectNotion: (ctx) => blockTextEquals(ctx.api, ctx.pageIds.roadmap!, STATUS_BASE),
       screenshot: ['terminal', 'notion'],
       capturePages: ['roadmap'],
+      notionReady: { kind: 'text', value: STATUS_BASE },
       budgetSec: 12,
     },
     {
@@ -64,6 +65,7 @@ export const mdMergeProof: Demo = {
       expectNotion: (ctx) => blockTextEquals(ctx.api, ctx.pageIds.roadmap!, STATUS_REMOTE),
       screenshot: ['notion'],
       capturePages: ['roadmap'],
+      notionReady: { kind: 'text', value: STATUS_REMOTE },
       budgetSec: 6,
     },
     {
@@ -90,6 +92,8 @@ export const mdMergeProof: Demo = {
       expectFile: { file: 'roadmap.nmd.conflict.roughdraft.md', contains: STATUS_LOCAL },
       screenshot: ['terminal', 'notion'],
       capturePages: ['roadmap'],
+      // Notion must still show the teammate's line — proof it wasn't clobbered.
+      notionReady: { kind: 'text', value: STATUS_REMOTE },
       budgetSec: 10,
     },
   ],
