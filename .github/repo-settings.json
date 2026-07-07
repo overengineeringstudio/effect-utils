@@ -72,6 +72,9 @@
             "context": "weaver"
           },
           {
+            "context": "bootstrap-cold-proof"
+          },
+          {
             "context": "devenv-perf"
           },
           {
