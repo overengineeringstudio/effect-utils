@@ -3149,24 +3149,45 @@ const runWithPlainSyncProgress = <A, E, R>({
     ),
   )
 
-const runWithCliSyncProgress = <A, E, R>({
-  command,
-  effect,
-}: {
-  readonly command: CliCommand
-  readonly effect: Effect.Effect<A, E, R>
-}): Effect.Effect<A, E, R> => {
-  const loadTuiProgress = Effect.promise(() => import('./progress.ts')).pipe(
-    Effect.flatMap((progressModule) =>
-      Effect.promise(() => import('@overeng/tui-react')).pipe(
-        Effect.flatMap((tuiReact) =>
-          Effect.promise(() => import('@overeng/tui-react/node')).pipe(
-            Effect.map((tuiReactNode) => ({ progressModule, tuiReact, tuiReactNode })),
-          ),
+/**
+ * Loads the optional TUI progress modules. The `@overeng/tui-react` module is a
+ * `.tsx` file; under a runtime that cannot strip JSX (plain packaged Node) the
+ * dynamic `import()` REJECTS, which `Effect.promise` surfaces as a **defect**
+ * (die), not a typed failure. `runWithCliSyncProgress` therefore catches the
+ * whole load as a cause — see the `Effect.catchAllDefect` there — so any load
+ * failure degrades to plain progress rather than crashing the command.
+ */
+const loadSyncProgressTui = Effect.promise(() => import('./progress.ts')).pipe(
+  Effect.flatMap((progressModule) =>
+    Effect.promise(() => import('@overeng/tui-react')).pipe(
+      Effect.flatMap((tuiReact) =>
+        Effect.promise(() => import('@overeng/tui-react/node')).pipe(
+          Effect.map((tuiReactNode) => ({ progressModule, tuiReact, tuiReactNode })),
         ),
       ),
     ),
-    Effect.either,
+  ),
+)
+
+export const runWithCliSyncProgress = <A, E, R>({
+  command,
+  effect,
+  loadTui = loadSyncProgressTui,
+}: {
+  readonly command: CliCommand
+  readonly effect: Effect.Effect<A, E, R>
+  readonly loadTui?: typeof loadSyncProgressTui
+}): Effect.Effect<A, E, R> => {
+  // Loading the optional TUI can fail under a Node runtime that can't strip the
+  // JSX in `@overeng/tui-react`: the rejected dynamic import surfaces as an
+  // Effect **defect**, which `Effect.either` alone does NOT catch. Recover the
+  // defect into a `Left` (keeping the cause in the success channel, so the error
+  // channel stays clean) so any load failure cleanly falls back to
+  // `runWithPlainSyncProgress`. This catch wraps ONLY the load step, never
+  // `effect`, so genuine command errors and interruption still surface.
+  const loadTuiProgress = loadTui.pipe(
+    Effect.map(Either.right),
+    Effect.catchAllDefect((defect) => Effect.succeed(Either.left(defect))),
   )
 
   return loadTuiProgress.pipe(
