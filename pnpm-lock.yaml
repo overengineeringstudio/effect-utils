@@ -505,6 +505,9 @@ importers:
       effect:
         specifier: 3.21.4
         version: 3.21.4
+      fast-check:
+        specifier: 3.23.2
+        version: 3.23.2
       react:
         specifier: 19.2.7
         version: 19.2.7
