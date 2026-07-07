@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Thin wrapper: run the demo-env CLI under bun. Keep this executable.
+# Run inside `devenv shell` so `ntn`, `notion`, and NOTION_API_TOKEN are present.
+set -euo pipefail
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec bun "$DIR/demo-env.ts" "$@"

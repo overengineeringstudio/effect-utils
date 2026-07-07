@@ -5,3 +5,9 @@
 .notion-md/
 *.conflict.roughdraft.md
 .demo-state/
+
+# Served E2E evidence report (per-run, never committed).
+explainers/*-evidence/
+
+# demo-env provisioned environments (manifests + local replicas, never committed).
+.demo-envs/
