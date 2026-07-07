@@ -650,12 +650,18 @@ let
       let
         dir = builtins.head pending;
         rest = builtins.tail pending;
+        resolved = resolveSourceFor dir;
         packageJsonPath = resolveEvalSourceFor "${dir}/package.json";
-        nestedDirs =
+        rawNestedDirs =
           if builtins.pathExists packageJsonPath then
             (builtins.fromJSON (builtins.readFile packageJsonPath))."$genie".workspaceClosureDirs or [ ]
           else
             [ ];
+        nestedDirs =
+          if resolved.prefix == null || resolved.prefix == "." || resolved.prefix == "" then
+            rawNestedDirs
+          else
+            map (nestedDir: "${resolved.prefix}/${nestedDir}") rawNestedDirs;
         unseenNestedDirs = builtins.filter (nestedDir: !(lib.elem nestedDir seen)) nestedDirs;
       in
       if lib.elem dir seen then
