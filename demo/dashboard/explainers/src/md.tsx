@@ -337,18 +337,18 @@ export const Md = () => (
     <header className="lead">
       <p className="kicker">Notion tooling · a thread</p>
       <h1>
-        <code>notion md</code> — Notion for people, files for everything else
+        <code>notion md</code> — 2-way Markdown sync for Notion pages
       </h1>
       <p>
-        Notion's the home for humans. But your agents, your build, and your Git all want a file. Keep the page and the
-        file in sync — edit either side.
+        Point it at a Notion page, get a local Markdown file. Edit either side — your editor or Notion — and it syncs
+        both ways.
       </p>
     </header>
 
     {/* BEAT 1 — THE PROBLEM */}
     <Beat num="01" tag="The problem">
       <h2>
-        The page is for people. Your agents, your build, your Git all want a <em>file</em>.
+        The API is great for apps. For everyday jobs, a local <em>file</em> is easier.
       </h2>
       <div className="stage">
         <div className="s1col">
@@ -414,11 +414,10 @@ export const Md = () => (
         </div>
       </div>
       <p className="caption">
-        <b>Notion's API/UI is the right medium for humans — but agents, build pipelines, and Git all work in files.</b>{' '}
+        <b>A coding agent, a build, or a quick grep over the API means fetch, page through blocks, guess the state, write, refetch.</b>{' '}
         <span className="hint">
-          For an agent, a file <em>is</em> the ideal read/write API: its tools already speak <code>Edit</code> /{' '}
-          <code>grep</code> / <code>git diff</code>, and a local file is always current — no guessing remote state.{' '}
-          <code>notion md</code> keeps the page and the file in sync.
+          A local Markdown file skips all that — your editor, your agent, and git already speak it, and it's always
+          current.
         </span>
       </p>
     </Beat>
@@ -441,80 +440,33 @@ export const Md = () => (
       </p>
     </Beat>
 
-    {/* BEAT 3 — THE SHIFT */}
-    <Beat num="03" tag="The shift">
+    {/* BEAT 3 — WHAT IT ENABLES */}
+    <Beat num="03" tag="What it enables">
       <h2>
-        Your repo is the <em>source of truth</em>. Notion becomes a live view of it.
+        One sync, three very different <em>jobs</em>.
       </h2>
       <div className="stage">
-        <div className="s3">
-          <div className="repo">
-            <div className="repo-frame">
-              <div className="repo-bar">⎇ main · your repo</div>
-              <div className="repo-tree">
-                <div className="row">📁 docs/</div>
-                <div className="row file indent">
-                  <span className="fi">◆</span> {PRODUCT_SPEC.fileNmd}
-                </div>
-                <div className="row indent">📁 .notion-md/</div>
-              </div>
+        <div className="enables">
+          <div className="ecard local">
+            <span className="edir">local →</span>
+            <div className="etitle">Skills &amp; docs → Notion</div>
+            <div className="ebody">
+              Keep agent skills and docs as Markdown in your repo — mirror them into Notion for the team to read.
             </div>
-            <div className="sot">◆ versioned, reviewed, yours</div>
           </div>
-          <div className="projarrow">
-            <div className="plabel">
-              synced,
-              <br />
-              not copied
-            </div>
-            <svg viewBox="0 0 110 26">
-              <path d="M4 13 H96" stroke="currentColor" strokeWidth="1.8" fill="none" />
-              <path d="M90 8 L100 13 L90 18 Z" fill="currentColor" />
-              <path d="M20 18 L10 13 L20 8" stroke="currentColor" strokeWidth="1.8" fill="none" />
-            </svg>
+          <div className="ecard notion">
+            <span className="edir">← notion</span>
+            <div className="etitle">Notion as a CMS</div>
+            <div className="ebody">Author in Notion; sync the content down into your website build.</div>
           </div>
-          <div className="view">
-            <div className="view-frame">
-              <div className="view-inner">
-                <div className="doc-bar">
-                  <span className="doc-dot n" />
-                  <span className="doc-name">{PRODUCT_SPEC.heading}</span>
-                  <span className="doc-src">Notion</span>
-                </div>
-                <div className="doc-body" style={{ fontFamily: 'var(--sans)', gap: '10px', paddingTop: '14px' }}>
-                  <div className="nheading">{PRODUCT_SPEC.heading}</div>
-                  <div className="ntodo done">
-                    <span className="ncheck on">
-                      <svg viewBox="0 0 12 12">
-                        <path
-                          d="M2 6.3 L4.7 9 L10 2.9"
-                          fill="none"
-                          stroke="#fff"
-                          strokeWidth="1.9"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    </span>
-                    <span className="t">{PRODUCT_SPEC.todo}</span>
-                  </div>
-                  <div className="ntext">Pricing: {PRODUCT_SPEC.view} / mo</div>
-                </div>
-              </div>
+          <div className="ecard shared">
+            <span className="edir">⇄ shared</span>
+            <div className="etitle">Live 2-way collaboration</div>
+            <div className="ebody">
+              An agent edits the file, a teammate edits the page — a guarded merge keeps both.
             </div>
-            <div className="view-cap">a live view · still editable</div>
           </div>
         </div>
-      </div>
-      <p className="caption">
-        <b>Stop babysitting two copies.</b>{' '}
-        <span className="hint">
-          Your files live in git — versioned, reviewable, the real source. Notion is just a synced, editable window
-          onto them. The copy-paste dance is gone.
-        </span>
-      </p>
-      <div className="promise">
-        ✓ …and it never clobbers — <b>your work is never lost</b> <span className="nxt">here’s how ↓</span>
       </div>
     </Beat>
 
@@ -594,11 +546,5 @@ export const Md = () => (
         </span>
       </p>
     </Beat>
-
-    <p className="foot">
-      What first-class would look like: Notion natively exposes any page or DB as a file-shaped, versionable,
-      agent-editable surface — <em>mount your workspace as files</em>, not an export. Until then, <code>notion md</code>{' '}
-      fills the gap.
-    </p>
   </div>
 )

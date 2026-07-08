@@ -95,6 +95,18 @@
   .view-cap { text-align: center; font: 600 10.5px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase;
     color: var(--accent); margin-top: 8px; }
 
+  /* beat 3: what it enables — 3-scenario grid (one per direction) */
+  .enables { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; width: 100%; }
+  .ecard { border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2); box-shadow: var(--shadow);
+    padding: 16px 16px 18px; display: flex; flex-direction: column; gap: 10px; }
+  .ecard .edir { align-self: flex-start; font: 600 10px/1 var(--mono); letter-spacing: .04em; padding: 4px 8px; border-radius: 8px; }
+  .ecard.local .edir { color: var(--accent); background: var(--accent-soft); }
+  .ecard.notion .edir { color: var(--ink); background: var(--panel); border: 1px solid var(--line); }
+  .ecard.shared .edir { color: var(--ok); background: var(--ok-soft); border: 1px solid var(--ok-line); }
+  .ecard .etitle { font: 700 15px/1.25 var(--sans); letter-spacing: -.01em; color: var(--ink); }
+  .ecard .ebody { font-size: 13px; line-height: 1.5; color: var(--muted); }
+  @media (max-width: 720px){ .enables { grid-template-columns: 1fr; } }
+
   /* coda: guarded 3-way merge draft */
   .coda-rule { display: flex; align-items: center; gap: 14px; margin: 0 20px; color: var(--muted); }
   .coda-rule::before, .coda-rule::after { content: ""; height: 1px; background: var(--line); flex: 1; }
