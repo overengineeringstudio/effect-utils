@@ -251,9 +251,9 @@ const BeatCard = ({
 }) => {
   const hasImages = beat.images.length > 0
   return (
-    <article className="rounded-lg border border-border bg-bg-panel px-3.5 py-3">
+    <article className="border-t border-border py-4">
       <div className="mb-2 flex items-center gap-2.5">
-        <span className="whitespace-nowrap text-[11px] font-bold uppercase tracking-wider text-fg-faint">
+        <span className="whitespace-nowrap text-[11px] text-fg-faint">
           {beat.label}
         </span>
         <span className="min-w-0 flex-1 text-[14.5px] font-semibold">{beat.title}</span>
