@@ -500,76 +500,65 @@ export const Codegen = () => (
       </div>
     </Beat>
 
-    {/* CODA — HONEST FRAMING */}
+    {/* CODA — THE TOOLKIT */}
     <div className="coda-rule">
-      <span>Being honest · the direction</span>
+      <span>Going deeper · optional</span>
     </div>
-    <Beat num="04" tag="…and it stays honest" coda>
+    <Beat num="04" tag="The toolkit" coda>
       <h2>
-        This <em>reads</em> Notion to generate types. It never <span className="w">writes</span> Notion.
+        More than generate — the full <em>notion schema</em> toolkit.
       </h2>
       <div className="stage">
-        <div style={{ display: 'flex', alignItems: 'stretch', gap: '20px', flexWrap: 'wrap', justifyContent: 'center' }}>
-          {/* real / today */}
-          <div className="doc">
-            <div className="doc-bar">
-              <span className="doc-dot g" />
-              <span className="doc-name">notion schema</span>
-              <span className="doc-src">3.1 · shipping</span>
+        <div className="features">
+          <div className="fcard">
+            <div className="ft">
+              <span className="fico">◆</span> Generate from the live DB
             </div>
-            <div className="doc-body">
-              <div className="doc-flow">
-                <span className="db">Notion DB</span>
-                <svg viewBox="0 0 22 11">
-                  <path d="M1 5.5 H15" stroke="currentColor" strokeWidth="1.5" fill="none" />
-                  <path d="M12 1.5 L20 5.5 L12 9.5 Z" fill="currentColor" />
-                </svg>
-                <span className="cd">typed code</span>
-              </div>
-              <div className="doc-steps">
-                <b>introspect</b> → <b>generate</b> → <b>diff --exit-code</b>
-              </div>
-              <span className="tagline tag-g">✓ read-only · Notion owns the shape</span>
+            <div className="fb">
+              <code>notion schema generate -o schema.gen.ts</code> introspects a Notion database into typed Effect
+              schemas.
             </div>
           </div>
-          {/* planned inverse */}
-          <div className="doc dashed">
-            <div className="doc-bar">
-              <span className="doc-dot m" />
-              <span className="doc-name">notion schema apply</span>
-              <span className="doc-src">3.2 · planned</span>
+          <div className="fcard">
+            <div className="ft">
+              <span className="fico">✓</span> Literal-union options
             </div>
-            <div className="doc-body">
-              <div className="doc-flow">
-                <span className="cd">a file</span>
-                <svg viewBox="0 0 22 11">
-                  <path d="M1 5.5 H15" stroke="currentColor" strokeWidth="1.5" fill="none" />
-                  <path d="M12 1.5 L20 5.5 L12 9.5 Z" fill="currentColor" />
-                </svg>
-                <span className="db">Notion DB</span>
-              </div>
-              <div className="doc-steps">
-                <b>declare</b> → <b>plan</b> → <b>provision Notion</b>
-              </div>
-              <span className="tagline tag-b">◷ roadmap · a separate, inverse capability</span>
+            <div className="fb">Select &amp; status values become string-literal unions — real autocomplete, typos caught by <code>tsc</code>.</div>
+          </div>
+          <div className="fcard">
+            <div className="ft">
+              <span className="fico">◇</span> Effect-native schemas
+            </div>
+            <div className="fb">Output is Effect Schema — real decoders you validate Notion payloads with, not bare type aliases.</div>
+          </div>
+          <div className="fcard">
+            <div className="ft">
+              <span className="fico">▤</span> Many databases at once
+            </div>
+            <div className="fb">
+              <code>generate-config</code> emits schemas for a whole workspace of databases from one config.
+            </div>
+          </div>
+          <div className="fcard">
+            <div className="ft">
+              <span className="fico">◷</span> CI drift gate
+            </div>
+            <div className="fb">
+              <code>diff --exit-code</code> checks the live DB against your committed types and fails CI when they
+              diverge.
+            </div>
+          </div>
+          <div className="fcard">
+            <div className="ft">
+              <span className="fico">●</span> Read-only by design
+            </div>
+            <div className="fb">
+              Introspect → codegen → drift <em>detection</em>. It reads Notion, never writes it — provisioning is the
+              separate, planned IaC block.
             </div>
           </div>
         </div>
       </div>
-      <p className="caption">
-        <b>
-          Be honest about what this is: introspect → codegen → drift{' '}
-          <em style={{ fontStyle: 'normal', color: 'var(--accent)' }}>detection</em>. It reads Notion; it never writes
-          it.
-        </b>{' '}
-        <span className="hint">
-          You still create and change the database in Notion.{' '}
-          <code>notion schema diff &lt;id&gt; --file schema.gen.ts --exit-code</code> mirrors the live DB against your
-          committed types and <b style={{ color: 'var(--warn)' }}>fails CI (exit 1)</b> the moment they disagree — so
-          drift can't silently ship. Provisioning Notion <em style={{ fontStyle: 'normal' }}>from</em> a file is the
-          separate, planned inverse.
-        </span>
-      </p>
     </Beat>
 
     <p className="foot">

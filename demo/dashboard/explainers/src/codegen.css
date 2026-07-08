@@ -302,3 +302,12 @@
 .cg .wayrow.win .waymark { color: var(--ok); }
 .cg .waycode { flex: 1; min-width: 0; padding: 12px 15px; font-family: var(--mono); font-size: 12px; line-height: 1.65;
   color: var(--ink); display: flex; flex-direction: column; gap: 3px; overflow-x: auto; white-space: nowrap; }
+
+/* beat 4 (coda): the toolkit — feature grid (mirrors md) */
+.cg .features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; width: 100%; max-width: 740px; margin: 0 auto; }
+.cg .fcard { border: 1px solid var(--line); border-radius: 11px; background: var(--panel-2); padding: 13px 14px;
+  display: flex; flex-direction: column; gap: 6px; }
+.cg .fcard .ft { font: 700 13px/1.25 var(--sans); color: var(--ink); display: flex; align-items: baseline; gap: 7px; }
+.cg .fico { color: var(--accent); font-size: 12px; line-height: 1; flex: none; }
+.cg .fcard .fb { font-size: 12px; line-height: 1.5; color: var(--muted); }
+@media (max-width: 720px){ .cg .features { grid-template-columns: 1fr 1fr; } }
