@@ -159,18 +159,14 @@ const HowGallery = () => {
   const [active, setActive] = useState(0)
   const blocks: {
     key: string
-    num: string
     name: string
     icon: ReactNode
-    desc: string
     body: ReactNode
   }[] = [
     {
       key: 'md',
-      num: '01',
       name: 'notion md',
       icon: mdLogo,
-      desc: 'Edit a Notion page as local Markdown — two-way, conflict-guarded sync from your editor.',
       body: (
         <div className="intro-pair md">
           <div className="side">
@@ -185,10 +181,8 @@ const HowGallery = () => {
     },
     {
       key: 'sqlite',
-      num: '02',
       name: 'notion sqlite',
       icon: sqliteLogo,
-      desc: 'Edit a Notion database locally with plain SQL — every change syncs straight back to Notion.',
       body: (
         <div className="intro-pair sqlite">
           <div className="side">
@@ -203,10 +197,8 @@ const HowGallery = () => {
     },
     {
       key: 'schema',
-      num: '03',
       name: 'notion schema',
       icon: schemaMark,
-      desc: 'A round-trip: generate typed Effect schemas from the Notion database (codegen), and provision the Notion database from code (IaC).',
       body: (
         <div className="intro-pair schema">
           <div className="side">
@@ -234,10 +226,8 @@ const HowGallery = () => {
     },
     {
       key: 'react',
-      num: '04',
       name: 'notion-react',
       icon: reactLogo,
-      desc: 'Author a Notion page as a React component; rerun renders a precise block-level diff.',
       body: (
         <div className="intro-pair react">
           <div className="side">
@@ -274,15 +264,8 @@ const HowGallery = () => {
           </button>
         ))}
       </div>
-      {/* active block */}
-      <div className="flex flex-col gap-3">
-        <div className="flex items-center gap-2.5">
-          <span className="font-mono text-[11px] font-bold text-fg-faint">{b.num}</span>
-          <span className="font-mono text-[15.5px] font-semibold">{b.name}</span>
-        </div>
-        {b.body}
-        <p className="m-0 text-[13px] leading-snug text-fg-muted">{b.desc}</p>
-      </div>
+      {/* active block — just the mockup pair; the tab above carries the name */}
+      {b.body}
     </div>
   )
 }
