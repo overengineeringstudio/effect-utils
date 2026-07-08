@@ -538,6 +538,254 @@ body {
   opacity: 0;
 }
 
+/* ---- Notion branding + surface distinctness ---- */
+/* Notion "N" on a fixed white tile — same in both themes, like the app icon. */
+.intro .intro-nchip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  color: #191a1e;
+  border-radius: 5px;
+  padding: 3px;
+  line-height: 0;
+}
+/* Notion surfaces read as LIGHT DOCUMENT chrome — never macOS terminal frames.
+ * (kit renders .macw.ntn with traffic lights; strip them under .intro only.) */
+.intro .macw.ntn .macw-lights {
+  display: none;
+}
+.intro .macw.ntn .macw-bar {
+  padding-left: 11px;
+}
+.intro .macw.ntn .macw-title {
+  left: 11px;
+}
+.intro .intro-blogo svg {
+  width: 17px;
+  height: 17px;
+}
+
+/* Notion to-do blocks (bespoke — cannot leak into other kit surfaces) */
+.intro .ntn-page .blk.todo {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+.intro .ntn-page .blk.todo .cbx {
+  position: relative;
+  flex: none;
+  width: 12px;
+  height: 12px;
+  margin-top: 1px;
+  border: 1.5px solid var(--muted);
+  border-radius: 3px;
+}
+.intro .ntn-page .blk.todo.done .cbx,
+.intro .ntn-page .blk.todo .cbx.on {
+  background: var(--blue);
+  border-color: var(--blue);
+}
+.intro .ntn-page .blk.todo.done .cbx::after,
+.intro .ntn-page .blk.todo .cbx.on::after {
+  content: '✓';
+  position: absolute;
+  inset: 0;
+  color: #fff;
+  font-size: 9px;
+  line-height: 11px;
+  text-align: center;
+}
+.intro .ntn-page .blk.todo.done .lbl {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+/* react page: toggle + nested blocks (1:1 with the JSX) */
+.intro .ntn-page .blk.toggle .tgl {
+  color: var(--muted);
+  margin-right: 3px;
+}
+.intro .ntn-page .blk.nested {
+  padding-left: 12px;
+  color: var(--muted);
+}
+
+/* Notion DATABASE table — a Notion surface, visually distinct from a SQL grid */
+.intro .ntn-tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font: 500 10.5px/1.4 var(--sans);
+}
+.intro .ntn-tbl th {
+  text-align: left;
+  font-size: 9.5px;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 4px 9px;
+  border-bottom: 1px solid var(--line);
+}
+.intro .ntn-tbl td {
+  padding: 4px 9px;
+  border-bottom: 1px solid var(--line-soft);
+  color: var(--ink);
+  white-space: nowrap;
+}
+.intro .ntn-tbl tr:last-child td {
+  border-bottom: none;
+}
+.intro .ntn-tbl .nmc {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.intro .ntn-tbl .nmc .pg {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+/* swap (status-pill flip / code diff): 'now' overlays 'was', hidden until hover */
+.intro .swap {
+  position: relative;
+  display: inline-flex;
+}
+.intro .swap .s-now {
+  position: absolute;
+  left: 0;
+  top: 0;
+  opacity: 0;
+  white-space: nowrap;
+}
+
+/* chat: header icons, step chevrons, source-chip glyphs, built DB, composer */
+.intro .iu-chat .hd .hdi {
+  display: flex;
+  gap: 6px;
+  color: var(--muted);
+}
+.intro .iu-chat .stp .cv {
+  margin-left: auto;
+  color: var(--muted);
+  display: inline-flex;
+}
+.intro .iu-chat .chips i {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 11px;
+  height: 11px;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--muted);
+}
+.intro .iu-chat .chips i.ntn {
+  color: #191a1e;
+  background: #fff;
+}
+.intro .iu-chat .chips svg {
+  width: 9px;
+  height: 9px;
+}
+.intro .iu-chat .art {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  overflow: hidden;
+  background: var(--panel);
+}
+.intro .iu-chat .art-hd {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 7px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--ink);
+  border-bottom: 1px solid var(--line-soft);
+}
+.intro .iu-chat .art-tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font: 500 10px/1.3 var(--sans);
+}
+.intro .iu-chat .art-tbl td {
+  padding: 3px 7px;
+  border-bottom: 1px solid var(--line-soft);
+  color: var(--ink);
+}
+.intro .iu-chat .art-tbl tr:last-child td {
+  border-bottom: none;
+}
+.intro .iu-chat .resp {
+  color: var(--ink);
+}
+.intro .iu-chat .inp {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+.intro .iu-chat .inp .ph {
+  font-size: 10.5px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+.intro .iu-chat .inp .tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Claude Code banner + local-file diff */
+.intro .cc-banner {
+  font: 500 9.5px/1.35 var(--mono);
+  color: var(--muted);
+  padding: 1px 0 5px;
+}
+.intro .cc-banner div {
+  white-space: pre;
+}
+.intro .cc-banner .cc-star {
+  color: var(--amber);
+}
+.intro .tmnl-body .cc-tool {
+  color: var(--blue);
+}
+.intro .tmnl-body .cc-file {
+  color: var(--ink);
+}
+.intro .tmnl-body .cc-ln {
+  color: var(--muted);
+}
+.intro .tmnl-body .del {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+.intro .tmnl-body .add,
+.intro .tmnl-body .recvln {
+  color: var(--ok);
+  font-weight: 600;
+}
+
+/* automations: Notion hub chip overlay + edge dash-flow (both directions) */
+.intro .pflow {
+  position: relative;
+}
+.intro .pflow-hub {
+  position: absolute;
+  left: 23%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+.intro .pflow-hub .intro-nchip {
+  padding: 3px;
+}
+.intro .pflow .flow {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-dasharray: 2 22;
+  opacity: 0;
+}
+
 /* =================== hover narratives (message per element) =================== */
 /* md → two-way sync: a token travels page↔md and back */
 .intro-pair.md:hover .intro-arrow .tok {
@@ -565,10 +813,13 @@ body {
     transform: translateX(-38px);
   }
 }
-/* sqlite/react → one direction (local→Notion / code→page) */
-.intro-pair.sqlite:hover .intro-arrow .tok,
+/* react → code(left) change renders to the page(right): token travels right */
 .intro-pair.react:hover .intro-arrow .tok {
   animation: introOneWay 1.9s ease-in-out infinite;
+}
+/* sqlite → the terminal(right) edit lands in the Notion DB(left): token → LEFT */
+.intro-pair.sqlite:hover .intro-arrow .tok {
+  animation: introOneWayL 2.4s ease-in-out infinite;
 }
 @keyframes introOneWay {
   0% {
@@ -587,7 +838,21 @@ body {
     transform: translateX(38px);
   }
 }
-/* sqlite → the row's status pill flips Todo→Done after the UPDATE */
+@keyframes introOneWayL {
+  0% {
+    opacity: 0;
+    transform: translateX(38px);
+  }
+  15% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 1;
+    transform: translateX(-38px);
+  }
+}
+/* sqlite → the Notion row's status pill flips Todo→Done AS the token arrives */
 .intro-pair.sqlite:hover .swap .s-was {
   animation: introFlipWas 2.4s ease-in-out infinite;
 }
@@ -596,20 +861,20 @@ body {
 }
 @keyframes introFlipWas {
   0%,
-  42% {
+  46% {
     opacity: 1;
   }
-  56%,
+  58%,
   100% {
     opacity: 0;
   }
 }
 @keyframes introFlipNow {
   0%,
-  42% {
+  46% {
     opacity: 0;
   }
-  56%,
+  58%,
   100% {
     opacity: 1;
   }
@@ -620,6 +885,20 @@ body {
 }
 .intro-pair.schema:hover .ar.iac .tok {
   animation: introTokL 1.9s ease-in-out infinite 0.35s;
+}
+/* …and the Notion DB visibly reacts when the IaC token lands (provisioned) */
+.intro-pair.schema:hover .ntn-tbl tr:first-child td {
+  animation: introRowFlash 1.9s ease-in-out infinite 0.35s;
+}
+@keyframes introRowFlash {
+  0%,
+  70%,
+  100% {
+    background: transparent;
+  }
+  84% {
+    background: var(--accent-soft);
+  }
 }
 @keyframes introTokR {
   0% {
@@ -655,69 +934,240 @@ body {
     transform: translateX(-90px);
   }
 }
-/* staggered reveal — users page block lands / react page materializes /
- * chat steps advance / coding-agent diff streams in. Default fully visible. */
-.intro-actor:hover .ntn-page .blk,
-.intro-pair.react:hover .ntn-page .blk,
-.intro-actor:hover .iu-chat .bd > *,
-.intro-actor:hover .tmnl-body .ln {
-  animation: introReveal 0.5s ease-out both;
+
+/* users → a person CHECKS OFF a to-do (play ONCE; looping would un-check it) */
+.intro-actor:hover .ntn-page .blk.todo[data-k='user'] .cbx {
+  animation: introCheck 0.35s ease-out 0.3s forwards;
 }
-.intro-actor:hover .ntn-page .blk:nth-child(2),
-.intro-pair.react:hover .ntn-page .blk:nth-child(2),
-.intro-actor:hover .iu-chat .bd > *:nth-child(2),
-.intro-actor:hover .tmnl-body .ln:nth-child(2) {
-  animation-delay: 0.14s;
+.intro-actor:hover .ntn-page .blk.todo[data-k='user'] .cbx::after {
+  content: '✓';
+  position: absolute;
+  inset: 0;
+  color: #fff;
+  font-size: 9px;
+  line-height: 11px;
+  text-align: center;
+  opacity: 0;
+  animation: introFadeIn 0.2s ease-out 0.5s forwards;
 }
-.intro-actor:hover .ntn-page .blk:nth-child(3),
-.intro-pair.react:hover .ntn-page .blk:nth-child(3),
-.intro-actor:hover .iu-chat .bd > *:nth-child(3),
-.intro-actor:hover .tmnl-body .ln:nth-child(3) {
-  animation-delay: 0.28s;
+.intro-actor:hover .ntn-page .blk.todo[data-k='user'] .lbl {
+  animation: introStrike 0.01s linear 0.62s forwards;
 }
-.intro-actor:hover .ntn-page .blk:nth-child(4),
-.intro-pair.react:hover .ntn-page .blk:nth-child(4),
-.intro-actor:hover .iu-chat .bd > *:nth-child(4),
-.intro-actor:hover .tmnl-body .ln:nth-child(4) {
-  animation-delay: 0.42s;
-}
-.intro-actor:hover .iu-chat .bd > *:nth-child(5),
-.intro-actor:hover .tmnl-body .ln:nth-child(5) {
-  animation-delay: 0.56s;
-}
-.intro-actor:hover .iu-chat .bd > *:nth-child(6) {
-  animation-delay: 0.7s;
-}
-@keyframes introReveal {
-  from {
-    opacity: 0;
-    transform: translateY(3px);
+@keyframes introCheck {
+  to {
+    background: var(--blue);
+    border-color: var(--blue);
   }
+}
+@keyframes introFadeIn {
   to {
     opacity: 1;
-    transform: translateY(0);
   }
 }
-/* automations → a pulse travels Notion ⇄ external systems */
-.intro-actor:hover .pflow .pulse {
-  animation: introPulse 1.9s ease-in-out infinite;
+@keyframes introStrike {
+  to {
+    text-decoration: line-through;
+    color: var(--muted);
+  }
 }
-.intro .pflow .pulse.p2 {
-  animation-delay: 0.35s;
+
+/* md → check on the Notion page, it appears on the .md file (loop; two-way) */
+.intro-pair.md:hover .ntn-page .blk.todo[data-k='ship'] .cbx {
+  animation: introCheckLoop 3.6s ease-in-out infinite;
 }
-.intro .pflow .pulse.p3 {
-  animation-delay: 0.7s;
+.intro-pair.md:hover .ntn-page .blk.todo[data-k='ship'] .cbx::after {
+  content: '✓';
+  position: absolute;
+  inset: 0;
+  color: #fff;
+  font-size: 9px;
+  line-height: 11px;
+  text-align: center;
+  opacity: 0;
+  animation: introCheckMark 3.6s ease-in-out infinite;
 }
-@keyframes introPulse {
+.intro-pair.md:hover .mdcheck[data-k='ship'] {
+  animation: introMdRecv 3.6s ease-in-out infinite;
+}
+@keyframes introCheckLoop {
   0%,
+  15% {
+    background: transparent;
+    border-color: var(--muted);
+  }
+  32%,
   100% {
+    background: var(--blue);
+    border-color: var(--blue);
+  }
+}
+@keyframes introCheckMark {
+  0%,
+  20% {
     opacity: 0;
   }
-  35% {
+  35%,
+  100% {
     opacity: 1;
   }
-  70% {
+}
+@keyframes introMdRecv {
+  0%,
+  40%,
+  100% {
+    background: transparent;
+    border-radius: 4px;
+  }
+  60% {
+    background: var(--ok-soft);
+    border-radius: 4px;
+  }
+}
+
+/* developers IDE → I type one line, THEN a guarded sync lands (cause → effect) */
+.intro-actor:hover .edit[data-k='dev'] {
+  animation: introEditFlash 2.8s ease-in-out infinite;
+  border-radius: 4px;
+}
+@keyframes introEditFlash {
+  0%,
+  55%,
+  100% {
+    background: transparent;
+  }
+  18% {
+    background: var(--blue-soft);
+  }
+}
+
+/* coding agent → local-file diff, THEN Notion reflects it last (the payoff) */
+.intro-actor:hover .add[data-k='cc2'] {
+  animation: introDiffIn 2.8s ease-in-out infinite;
+}
+.intro-actor:hover .recvln[data-k='cc3'] {
+  animation: introReflect 2.8s ease-in-out infinite;
+}
+@keyframes introDiffIn {
+  0%,
+  22% {
+    opacity: 0.2;
+  }
+  38%,
+  100% {
+    opacity: 1;
+  }
+}
+@keyframes introReflect {
+  0%,
+  58% {
+    opacity: 0.15;
+  }
+  74%,
+  100% {
+    opacity: 1;
+  }
+}
+
+/* productivity agent → the ask lands, THEN a Notion DB materializes (climax) */
+.intro-actor:hover .iu-chat .bub {
+  animation: introBubIn 3.4s ease-in-out infinite;
+}
+.intro-actor:hover .iu-chat .art {
+  animation: introArt 3.4s ease-in-out infinite;
+}
+@keyframes introBubIn {
+  0% {
     opacity: 0;
+    transform: translateX(14px);
+  }
+  14%,
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@keyframes introArt {
+  0%,
+  42% {
+    opacity: 0;
+    transform: scale(0.94);
+    box-shadow: 0 0 0 0 transparent;
+  }
+  58% {
+    opacity: 1;
+    transform: scale(1);
+    box-shadow: 0 0 0 2px var(--accent);
+  }
+  74%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+/* react → change ONE JSX line; ONLY the matching Notion block repaints (a diff) */
+.intro-pair.react:hover .swap[data-k='rbudget'] .s-was {
+  animation: introFlipWas 2.6s ease-in-out infinite;
+}
+.intro-pair.react:hover .swap[data-k='rbudget'] .s-now {
+  animation: introFlipNow 2.6s ease-in-out infinite;
+}
+.intro-pair.react:hover .ntn-page .blk.nested[data-k='rbudget'] {
+  animation: introRecvBand 2.6s ease-in-out infinite;
+}
+@keyframes introRecvBand {
+  0%,
+  46%,
+  100% {
+    background: transparent;
+    border-radius: 4px;
+  }
+  62% {
+    background: var(--ok-soft);
+    border-radius: 4px;
+  }
+}
+
+/* automations → data flows BOTH ways: counter-running dashes on every edge */
+.intro-actor:hover .pflow .flow {
+  animation: introFlowOut 1.6s linear infinite;
+}
+.intro-actor:hover .pflow .flow.back {
+  animation: introFlowBack 1.6s linear infinite;
+}
+.intro .pflow .flow.e2 {
+  animation-delay: 0.3s;
+}
+.intro .pflow .flow.e3 {
+  animation-delay: 0.6s;
+}
+@keyframes introFlowOut {
+  0% {
+    opacity: 0;
+    stroke-dashoffset: 24;
+  }
+  20%,
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes introFlowBack {
+  0% {
+    opacity: 0;
+    stroke-dashoffset: 0;
+  }
+  20%,
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    stroke-dashoffset: 24;
   }
 }
 

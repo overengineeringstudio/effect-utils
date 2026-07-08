@@ -6,11 +6,9 @@ import {
   At,
   CodeLine,
   Cm,
-  DbBrowser,
   KW,
   MacWindow,
   MiniIDE as KitIDE,
-  NotionBlock,
   NotionPage,
   NotionSurface,
   Prompt,
@@ -634,9 +632,20 @@ const gGlobe = g('M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM1.5 8h13M8 1.5c2
 // Miniature "native UI" mockups — theme-aware; all styling lives in index.css
 // under the `.intro` scope. Each is a small faux screenshot of the real thing.
 // ---------------------------------------------------------------------------
-// mini Notion page — a rendered Notion doc (kit NotionSurface + NotionPage).
+// A Notion to-do block (bespoke, app-side — NOT a kit restyle so it can't leak
+// into other kit surfaces). `done` = checked + strikethrough; `k` keys hover anims.
+const Todo = ({ done = false, k, children }: { done?: boolean; k?: string; children: ReactNode }) => (
+  <div className={done === true ? 'blk todo done' : 'blk todo'} data-k={k}>
+    <span className="cbx" aria-hidden="true" />
+    <span className="lbl">{children}</span>
+  </div>
+)
+
+// mini Notion page — a rendered Notion doc. Shares its to-do list 1:1 with the
+// .md pane (block 01) so the sync animation shows the SAME item flip on both ends.
 const MiniNotionPage = () => (
   <NotionSurface
+    title={notionTitle}
     workspace="Acme"
     workspaceInitial="A"
     nav={[
@@ -645,17 +654,16 @@ const MiniNotionPage = () => (
     ]}
   >
     <NotionPage emoji="🚀" heading="Launch roadmap">
-      <NotionBlock>Finalize the API spec</NotionBlock>
-      <NotionBlock>Ship v1</NotionBlock>
-      <NotionBlock>Draft Q3 plan</NotionBlock>
+      <Todo done k="fin">Finalize the API spec</Todo>
+      <Todo k="ship">Ship v1</Todo>
     </NotionPage>
   </NotionSurface>
 )
 
-// mini .md file (kit editor, markdown syntax)
+// mini .md file (kit editor, markdown syntax) — same to-do list as MiniNotionPage.
 const MiniMdFile = () => (
   <KitIDE
-    title={<WinTitle icon="≡" file="roadmap.md" />}
+    title={<WinTitle icon={mdLogo} file="roadmap.md" />}
     tag="markdown"
     tree={[
       { kind: 'file', label: 'roadmap.md', selected: true },
@@ -670,15 +678,18 @@ const MiniMdFile = () => (
       <STR>- [x]</STR> Finalize the API spec
     </CodeLine>
     <CodeLine>
-      <Cm>- [ ]</Cm> Ship v1
+      <span className="mdcheck" data-k="ship">
+        <Cm>- [ ]</Cm> Ship v1
+      </span>
     </CodeLine>
     <CodeLine> </CodeLine>
   </KitIDE>
 )
 
-// mini Notion desktop app (sidebar + page) — users. Built from the shared kit.
+// mini Notion desktop app (sidebar + page) — users. A real to-do list, one done.
 const MiniNotionApp = () => (
   <NotionSurface
+    title={notionTitle}
     workspace="Acme"
     workspaceInitial="A"
     nav={[
@@ -688,46 +699,99 @@ const MiniNotionApp = () => (
     ]}
   >
     <NotionPage emoji="🚀" heading="Launch roadmap">
-      <NotionBlock>Finalize the API spec</NotionBlock>
-      <NotionBlock>Ship v1</NotionBlock>
-      <NotionBlock role="recv">Draft Q3 plan</NotionBlock>
+      <Todo done>Finalize the API spec</Todo>
+      <Todo k="user">Ship v1</Todo>
+      <Todo>Draft Q3 plan</Todo>
     </NotionPage>
   </NotionSurface>
 )
 
-// mini Notion agent chat panel (from the reference screenshot) — productivity agents
+// source-chip glyphs for the agent's "118 results" row (monochrome silhouettes)
+const chipSlack = (
+  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <rect x="10.5" y="2" width="3" height="9" rx="1.5" />
+    <rect x="10.5" y="13" width="3" height="9" rx="1.5" />
+    <rect x="2" y="10.5" width="9" height="3" rx="1.5" />
+    <rect x="13" y="10.5" width="9" height="3" rx="1.5" />
+  </svg>
+)
+const chipMail = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+    <rect x="2.5" y="5" width="19" height="14" rx="2.5" />
+    <path d="M3 6l9 6 9-6" />
+  </svg>
+)
+
+// mini Notion agent chat panel — productivity agents. The climax is a real Notion
+// database materializing (the "built IN Notion" payoff), keyed for the hover anim.
 const MiniChat = () => (
   <div className="iu iu-chat">
     <div className="hd">
-      <span className="t">Bug tracker {gChevD}</span>
-      <span className="ic">{gChevR}</span>
+      <span className="t">
+        <NotionChip size={11} /> Bug tracker {gChevD}
+      </span>
+      <span className="hdi">
+        {gPencil}
+        {gSearch}
+        {gChevR}
+      </span>
     </div>
-    <div className="bd intro-reveal">
+    <div className="bd">
       <div className="bub">Create a bug tracker with the latest feedback</div>
       <div className="stp">
         <span className="g">{gBulb}</span>
         <span>Thought</span>
+        <span className="cv">{gChevR}</span>
       </div>
       <div className="stp">
         <span className="g">{gPencil}</span>
         <span>
-          Creating <b>Bug Tracker</b>
+          Creating database <b>Bug Tracker</b>
         </span>
+        <span className="cv">{gChevR}</span>
       </div>
       <div className="stp">
         <span className="g">{gSearch}</span>
         <span>118 results</span>
         <span className="chips">
-          <i />
-          <i />
-          <i />
+          <i className="ntn">
+            <NotionMark size={9} />
+          </i>
+          <i>{chipSlack}</i>
+          <i>{chipMail}</i>
         </span>
+        <span className="cv">{gChevR}</span>
       </div>
-      <div className="resp">All set — pulling issues from Slack, Notion &amp; email; duplicates grouped.</div>
+      {/* the built artifact — an actual Notion database (this is the payoff) */}
+      <div className="art">
+        <div className="art-hd">
+          <NotionChip size={9} /> Bug Tracker
+        </div>
+        <table className="art-tbl">
+          <tbody>
+            <tr>
+              <td>Login crash</td>
+              <td>
+                <span className="st st-prog">P1</span>
+              </td>
+            </tr>
+            <tr>
+              <td>Slow search</td>
+              <td>
+                <span className="st st-done">P2</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div className="resp">All set — your bug tracker is live in Notion, pulling from Slack, Notion &amp; email; duplicates grouped.</div>
       <div className="inp">
-        <span className="g">{gGlobe}</span>
-        <span className="src">All sources</span>
-        <span className="snd">↑</span>
+        <span className="ph">Now, let's assign owners and draft a doc per task</span>
+        <span className="tools">
+          <span className="g">{gGlobe}</span>
+          <span className="src">All sources</span>
+          <span className="snd">↑</span>
+        </span>
       </div>
     </div>
   </div>
@@ -746,33 +810,57 @@ const MiniIDE = () => (
     tab={<>sync.ts</>}
   >
     <CodeLine>
-      <KW>import</KW>
-      {' { db } '}
-      <KW>from</KW> <STR>'./notion'</STR>
+      <KW>import</KW> {'{ '}
+      <At>Roadmap</At>
+      {' } '}
+      <KW>from</KW> <STR>'@acme/notion'</STR>
     </CodeLine>
     <CodeLine>
-      <KW>await</KW> db.<At>sync</At>()
+      <KW>const</KW> db = <At>Roadmap</At>.<At>open</At>()
     </CodeLine>
     <CodeLine>
-      <Cm>{'// typed · guarded'}</Cm>
+      <span className="edit" data-k="dev">
+        <KW>await</KW> db.tasks.<At>set</At>(<STR>'Ship v1'</STR>, <STR>'Done'</STR>)
+      </span>
     </CodeLine>
     <CodeLine role="recv">
-      <Cm>{'✓ 12 rows in sync'}</Cm>
+      <Cm>{'✓ synced to Notion · 12 rows guarded'}</Cm>
     </CodeLine>
   </KitIDE>
 )
 
-// mini Claude Code terminal (agent edits a LOCAL file → reflects to Notion) — coding agents
+// mini Claude Code terminal — agent edits a LOCAL file, Notion reflects downstream.
+// Banner is open-right (the ✻ line is ambiguous-width; a tight right border would
+// mis-align). Banner lines kept ≤26 chars so nothing wraps at the card width.
 const MiniTerminal = () => (
   <Terminal title={<WinTitle icon="❯_" file="claude code" />}>
+    <div className="cc-banner">
+      <div>╭────────────────────────</div>
+      <div>
+        │ <span className="cc-star">✻</span> Welcome to Claude Code
+      </div>
+      <div>│</div>
+      <div>│ /help · cwd: ~/acme</div>
+      <div>╰────────────────────────</div>
+    </div>
     <TerminalLine>
-      <Prompt /> edit roadmap.md
+      <Prompt /> mark Ship v1 done on the roadmap
     </TerminalLine>
-    <TerminalLine out>reading local files…</TerminalLine>
     <TerminalLine out>
-      <span className="ok">+ - [x] Ship v1</span>
+      <span className="cc-tool">⏺ Update(</span>
+      <span className="cc-file" data-k="cc">roadmap.md</span>
+      <span className="cc-tool">)</span>
     </TerminalLine>
-    <TerminalLine out>→ reflected to Notion</TerminalLine>
+    <TerminalLine out>
+      <span className="cc-ln">⎿ </span> <span className="del">- [ ] Ship v1</span>
+    </TerminalLine>
+    <TerminalLine out>
+      {'   '}
+      <span className="add" data-k="cc2">+ [x] Ship v1</span>
+    </TerminalLine>
+    <TerminalLine out>
+      <span className="recvln" data-k="cc3">→ reflected to Notion ✓</span>
+    </TerminalLine>
   </Terminal>
 )
 
@@ -782,54 +870,65 @@ const MiniFlow = () => (
   <MacWindow title={<WinTitle icon="⚙" label="automations" />}>
     <div className="pflow">
       <svg viewBox="0 0 120 62" preserveAspectRatio="xMidYMid meet">
-        <path className="ed" d="M40 31 H82" />
-        <path className="ed" d="M40 27 C60 20 64 14 84 13" />
-        <path className="ed" d="M40 35 C60 42 64 48 84 49" />
-        <rect className="nd hub" x="14" y="19" width="26" height="24" rx="4" />
-        <path className="gl hub" d="M20 26h14M20 31h14M20 36h9" />
-        <g transform="translate(84,6)">
+        {/* edges (Notion hub ⇄ systems) + outbound/return dash-flow overlays */}
+        <path className="ed" d="M38 31 H84" />
+        <path className="ed" d="M38 28 C58 22 64 14 86 13" />
+        <path className="ed" d="M38 34 C58 40 64 48 86 49" />
+        <path className="flow out e1" d="M38 31 H84" />
+        <path className="flow back e1" d="M38 31 H84" />
+        <path className="flow out e2" d="M38 28 C58 22 64 14 86 13" />
+        <path className="flow back e2" d="M38 28 C58 22 64 14 86 13" />
+        <path className="flow out e3" d="M38 34 C58 40 64 48 86 49" />
+        <path className="flow back e3" d="M38 34 C58 40 64 48 86 49" />
+        {/* database cylinder */}
+        <g transform="translate(86,6)">
           <rect className="nd" x="0" y="0" width="22" height="14" rx="3" />
-          <path className="gl" d="M5 5h12M5 8h12M5 11h7" />
+          <ellipse className="gl" cx="11" cy="4.5" rx="5" ry="1.6" />
+          <path className="gl" d="M6 4.5v5c0 .9 2.2 1.6 5 1.6s5-.7 5-1.6v-5" />
         </g>
-        <g transform="translate(84,24)">
+        {/* message / webhook bubble */}
+        <g transform="translate(86,24)">
           <rect className="nd" x="0" y="0" width="22" height="14" rx="3" />
-          <circle className="gl" cx="11" cy="7" r="3.4" />
-          <path className="gl" d="M11 2.4v1.6M11 10v1.6M15.6 7h-1.6M8 7H6.4" />
+          <path className="gl" d="M4 3.6h14v5H9l-2.5 2v-2H4z" />
         </g>
-        <g transform="translate(84,42)">
+        {/* email envelope */}
+        <g transform="translate(86,42)">
           <rect className="nd" x="0" y="0" width="22" height="14" rx="3" />
-          <path className="gl" d="M3.5 4h15v6h-15zM3.5 4l7.5 4.5L18.5 4" />
+          <path className="gl" d="M4 4h14v6H4zM4 4l7 4.5L18 4" />
         </g>
-        <circle className="pulse" cx="60" cy="31" r="2.4" />
-        <circle className="pulse p2" cx="62" cy="20" r="2.4" />
-        <circle className="pulse p3" cx="62" cy="42" r="2.4" />
       </svg>
+      <span className="pflow-hub">
+        <NotionChip size={13} />
+      </span>
     </div>
   </MacWindow>
 )
 
-// mini Notion database grid. `flip` renders a Status cell that animates
-// Todo→Done while the parent sqlite pair is hovered.
-const MiniDbGrid = ({ flip = false }: { flip?: boolean }) => (
-  <DbBrowser
-    title={<WinTitle icon="▦" file="tasks.db" />}
-    tables={[
-      { name: 'pages', icon: '▦', selected: true },
-      { name: 'changes', icon: '≡' },
+// mini Notion DATABASE (a Notion surface, NOT SQLite chrome) — the shared left
+// side of the sqlite + schema blocks. `flip`/`react` animate a Status pill when
+// the arriving edit/IaC token lands here. This is what makes Notion visible.
+const MiniNotionDb = ({ flip = false }: { flip?: boolean }) => (
+  <NotionSurface
+    title={notionTitle}
+    workspace="Acme"
+    workspaceInitial="A"
+    nav={[
+      { icon: '▦', label: 'Tasks', on: true },
+      { icon: '◆', label: 'Roadmap' },
     ]}
   >
-    <table className="dbb-grid">
+    <table className="ntn-tbl">
       <thead>
         <tr>
-          <th className="gut"> </th>
           <th>Name</th>
           <th>Status</th>
         </tr>
       </thead>
       <tbody>
         <tr>
-          <td className="gut">1</td>
-          <td>Ship v1</td>
+          <td className="nmc">
+            <span className="pg">▤</span>Ship v1
+          </td>
           <td>
             {flip === true ? (
               <span className="swap">
@@ -846,27 +945,29 @@ const MiniDbGrid = ({ flip = false }: { flip?: boolean }) => (
           </td>
         </tr>
         <tr>
-          <td className="gut">2</td>
-          <td>Fix deploy</td>
+          <td className="nmc">
+            <span className="pg">▤</span>Fix deploy
+          </td>
           <td>
             <span className="st st-prog">In&nbsp;Progress</span>
           </td>
         </tr>
         <tr>
-          <td className="gut">3</td>
-          <td>Draft plan</td>
+          <td className="nmc">
+            <span className="pg">▤</span>Draft plan
+          </td>
           <td>
             <span className="st st-prog">Todo</span>
           </td>
         </tr>
       </tbody>
     </table>
-  </DbBrowser>
+  </NotionSurface>
 )
 
-// mini SQL terminal (plain SQL edit → lands in Notion) — sqlite
+// mini SQL terminal (plain SQL edit on the local file → syncs to Notion) — sqlite
 const MiniSqlTerm = () => (
-  <Terminal title={<WinTitle icon="❯_" file="sqlite3 tasks.db" />}>
+  <Terminal title={<WinTitle icon={sqliteLogo} file="sqlite3 tasks.db" />}>
     <TerminalLine>
       <span className="sq">sqlite&gt;</span> <span className="kw">UPDATE</span> pages
     </TerminalLine>
@@ -874,7 +975,9 @@ const MiniSqlTerm = () => (
       {'   '}
       <span className="kw">SET</span> status = <span className="str">'Done'</span>;
     </TerminalLine>
-    <TerminalLine out>1 row updated · pushed to Notion</TerminalLine>
+    <TerminalLine out>
+      <span className="recvln" data-k="sql">1 row updated · synced to Notion ✓</span>
+    </TerminalLine>
   </Terminal>
 )
 
@@ -909,7 +1012,7 @@ const MiniSchemaCode = () => (
 // mini JSX page component (kit editor) — notion-react
 const MiniJsx = () => (
   <KitIDE
-    title={<WinTitle icon="{ }" file="page.tsx" />}
+    title={<WinTitle icon={reactLogo} file="page.tsx" />}
     tag="react"
     tree={[{ kind: 'file', label: 'page.tsx', selected: true }]}
     tab={<>page.tsx</>}
@@ -918,22 +1021,102 @@ const MiniJsx = () => (
       <KW>const</KW> <At>Page</At> = () =&gt;
     </CodeLine>
     <CodeLine>
-      {'  '}&lt;<At>Toggle</At> <KW>title</KW>=<STR>"Q3"</STR>&gt;
+      {'  '}&lt;<At>Toggle</At> <KW>title</KW>=<STR>"Q3 plan"</STR>&gt;
     </CodeLine>
     <CodeLine>
-      {'    '}&lt;<At>Text</At>&gt;budget…&lt;/&gt;
+      {'    '}&lt;<At>Text</At>&gt;
+      <span className="swap" data-k="rbudget">
+        <span className="s-was">budget…</span>
+        <span className="s-now">budget $42k</span>
+      </span>
+      &lt;/&gt;
     </CodeLine>
     <CodeLine>
       {'  '}&lt;/<At>Toggle</At>&gt;
     </CodeLine>
   </KitIDE>
 )
-const iconNotion = (
-  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
-    <rect x="5" y="3.5" width="14" height="17" rx="2" />
-    <path d="M9 8h6M9 12h6M9 16h4" />
+
+// Dedicated Notion render target for the notion-react block (NOT the shared
+// MiniNotionPage — its blocks map 1:1 to the JSX, incl. a real toggle block, so
+// changing one JSX line updates exactly one block).
+const MiniReactPage = () => (
+  <NotionSurface
+    title={notionTitle}
+    workspace="Acme"
+    workspaceInitial="A"
+    nav={[{ icon: '◆', label: 'Roadmap', on: true }]}
+  >
+    <NotionPage emoji="🚀" heading="Launch roadmap">
+      <div className="blk toggle">
+        <span className="tgl">▸</span> Q3 plan
+      </div>
+      <div className="blk nested" data-k="rbudget">
+        <span className="swap">
+          <span className="s-was">↳ budget…</span>
+          <span className="s-now">↳ budget $42k</span>
+        </span>
+      </div>
+    </NotionPage>
+  </NotionSurface>
+)
+// Official Notion "N" logo — single path, currentColor (theme-aware, CSP-safe).
+const NotionMark = ({ size = 20, className }: { size?: number; className?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className} role="img" aria-label="Notion">
+    <path d="M4.459 4.208c.746.606 1.026.56 2.428.466l13.215-.793c.28 0 .047-.28-.046-.326L17.86 1.968c-.42-.326-.981-.7-2.055-.607L3.01 2.295c-.466.046-.56.28-.374.466zm.793 3.08v13.904c0 .747.373 1.027 1.214.98l14.523-.84c.841-.046.935-.56.935-1.167V6.354c0-.606-.233-.933-.748-.887l-15.177.887c-.56.047-.747.327-.747.933zm14.337.745c.093.42 0 .84-.42.888l-.7.14v10.264c-.608.327-1.168.514-1.635.514-.748 0-.935-.234-1.495-.933l-4.577-7.186v6.952l1.448.328s0 .84-1.168.84l-3.222.186c-.093-.187 0-.653.327-.746l.84-.233V9.854L7.822 9.76c-.094-.42.14-1.026.793-1.073l3.456-.233 4.764 7.279v-6.44l-1.215-.139c-.093-.514.28-.887.747-.933zM1.936 1.035l13.31-.98c1.634-.14 2.055-.047 3.082.7l4.249 2.986c.7.513.934.653.934 1.213v16.378c0 1.026-.373 1.634-1.68 1.726l-15.458.934c-.98.047-1.448-.093-1.962-.746l-3.129-4.06c-.56-.747-.793-1.306-.793-1.96V2.667c0-.839.374-1.54 1.216-1.632z" />
   </svg>
 )
+// Notion mark on a fixed white tile (near-black mark) — same in both themes, like
+// the real app icon. Used wherever Notion is the branded chip (hub, title bars).
+const NotionChip = ({ size = 16 }: { size?: number }) => (
+  <span className="intro-nchip">
+    <NotionMark size={size} />
+  </span>
+)
+// A Notion window title: white N chip + "Notion" label (for NotionSurface bars).
+const notionTitle = <WinTitle icon={<NotionChip size={12} />} label="Notion" />
+
+// ── per-block iconic technology logos (self-contained inline SVG, theme-aware) ──
+// Markdown mark (rounded rect border + "M▼").
+const mdLogo = (
+  <svg width="20" height="14" viewBox="0 0 208 128" aria-label="Markdown">
+    <rect x="5" y="5" width="198" height="118" rx="12" fill="none" stroke="currentColor" strokeWidth="10" />
+    <path fill="currentColor" d="M30 98V30h19l20 25 20-25h19v68H108V59l-19 24-20-24v39zm128 0-30-33h19V30h20v35h20z" />
+  </svg>
+)
+// SQLite feather.
+const sqliteLogo = (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-label="SQLite">
+    <path d="M21 3.5C13.4 4 7.3 8.9 5.6 16.3c-.35 1.5-.5 3-.5 4.2" />
+    <path d="M19.2 5.4C13.6 6.3 9.4 10.2 7.7 15.6" />
+    <path d="M17.4 7.6c-3.9 1.1-6.7 3.9-8.2 7.7" />
+    <path d="M5.1 20.5 8 17.4" />
+  </svg>
+)
+// React atom (iconic cyan; legible on both themes).
+const reactLogo = (
+  <svg width="20" height="18" viewBox="0 0 24 24" fill="none" aria-label="React">
+    <g stroke="#3fb8d6" strokeWidth="1.1">
+      <ellipse cx="12" cy="12" rx="10.5" ry="4.2" />
+      <ellipse cx="12" cy="12" rx="10.5" ry="4.2" transform="rotate(60 12 12)" />
+      <ellipse cx="12" cy="12" rx="10.5" ry="4.2" transform="rotate(120 12 12)" />
+    </g>
+    <circle cx="12" cy="12" r="1.9" fill="#3fb8d6" />
+  </svg>
+)
+// Schema round-trip mark — DB ⇄ {} with codegen→ / ←IaC arrows (its identity).
+const schemaMark = (
+  <svg width="22" height="16" viewBox="0 0 30 20" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" aria-label="schema round-trip">
+    <ellipse cx="5" cy="4.5" rx="4" ry="1.7" />
+    <path d="M1 4.5v6.5c0 .95 1.8 1.7 4 1.7s4-.75 4-1.7V4.5" />
+    <path d="M24 3.5c-1.1 0-1.6.6-1.6 1.6S22.9 7 21.8 8c1.1 1 1.6 1.4 1.6 2.4s-.5 1.6.6 1.6" />
+    <path d="M25.5 3.5c1.1 0 1.6.6 1.6 1.6S27.6 7 28.7 8c-1.1 1-1.6 1.4-1.6 2.4s.5 1.6-.6 1.6" />
+    <path d="M10 6.5h8.5M16.5 5 18.5 6.5l-2 1.5" />
+    <path d="M18.5 11h-8.5M12 9.5 10 11l2 1.5" />
+  </svg>
+)
+
+// ── automations external-system glyphs (monochrome, CSP-safe) ──
 const iconLego = (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
     <rect x="3.5" y="9" width="17" height="10.5" rx="1.5" />
@@ -986,11 +1169,13 @@ const Conn = ({ dir, action }: { dir: string; action: string }) => (
 )
 
 // Slide-2 block card: lego header (num + name) + a paired mockup + description.
-const BlockCard = ({ num, name, desc, children }: { num: string; name: string; desc: string; children: ReactNode }) => (
+// Slide-2 block card. `icon` is the block's ICONIC technology logo (its primary
+// identity, so the four blocks are instantly distinguishable at a glance).
+const BlockCard = ({ num, name, desc, icon, children }: { num: string; name: string; desc: string; icon: ReactNode; children: ReactNode }) => (
   <div className="flex flex-col gap-3 rounded-xl border border-border bg-bg-subtle p-5">
     <div className="flex items-center gap-2.5">
-      <span className="inline-flex h-6 w-6 flex-none items-center justify-center rounded-md bg-accent/10 text-accent">
-        {iconLego}
+      <span className="intro-blogo inline-flex h-7 w-7 flex-none items-center justify-center rounded-md border border-border bg-bg-panel text-fg">
+        {icon}
       </span>
       <span className="font-mono text-[11px] font-bold text-fg-faint">{num}</span>
       <span className="font-mono text-[15.5px] font-semibold">{name}</span>
@@ -1025,8 +1210,8 @@ const IntroPanel = ({ hidden }: { hidden: boolean }) => (
         </div>
         {/* Notion hub */}
         <div className="flex min-w-[144px] flex-col items-center justify-center rounded-2xl border-2 border-accent/50 bg-accent/5 px-6 py-5 text-center">
-          <span className="mb-1.5 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-fg text-bg-panel">
-            {iconNotion}
+          <span className="mb-1.5 inline-flex">
+            <NotionChip size={26} />
           </span>
           <span className="text-[16px] font-bold leading-tight">Notion</span>
           <span className="text-[11px] leading-tight text-fg-muted">source of truth</span>
@@ -1069,7 +1254,7 @@ const IntroPanel = ({ hidden }: { hidden: boolean }) => (
       </div>
       <h2 className="m-0 mb-5 text-[25px] font-bold tracking-tight">Building blocks that snap together</h2>
       <div className="flex flex-col gap-4">
-        <BlockCard num="01" name="notion md" desc="Edit Notion pages as local Markdown — two-way, conflict-guarded sync from your editor.">
+        <BlockCard icon={mdLogo} num="01" name="notion md" desc="Edit a Notion page as local Markdown — two-way, conflict-guarded sync from your editor.">
           <div className="intro-pair md">
             <div className="side">
               <MiniNotionPage />
@@ -1080,25 +1265,26 @@ const IntroPanel = ({ hidden }: { hidden: boolean }) => (
             </div>
           </div>
         </BlockCard>
-        <BlockCard num="02" name="notion sqlite" desc="A Notion database bound to a live local SQLite file — query and edit it with plain SQL.">
+        <BlockCard icon={sqliteLogo} num="02" name="notion sqlite" desc="Edit a Notion database locally with plain SQL — every change syncs straight back to Notion.">
           <div className="intro-pair sqlite">
             <div className="side">
-              <MiniDbGrid flip />
+              <MiniNotionDb flip />
             </div>
-            <Conn dir="⇄" action="SQL query + edit" />
+            <Conn dir="←" action="synced to Notion" />
             <div className="side">
               <MiniSqlTerm />
             </div>
           </div>
         </BlockCard>
         <BlockCard
+          icon={schemaMark}
           num="03"
           name="notion schema"
-          desc="A round-trip: generate typed Effect schemas from the live DB (codegen), and provision the DB from code (IaC)."
+          desc="A round-trip: generate typed Effect schemas from the Notion database (codegen), and provision the Notion database from code (IaC)."
         >
           <div className="intro-pair schema">
             <div className="side">
-              <MiniDbGrid />
+              <MiniNotionDb />
             </div>
             <div className="intro-arrows2">
               <div className="ar cg">
@@ -1119,14 +1305,14 @@ const IntroPanel = ({ hidden }: { hidden: boolean }) => (
             </div>
           </div>
         </BlockCard>
-        <BlockCard num="04" name="notion-react" desc="Author a Notion page as a React component; rerun renders a precise block-level diff.">
+        <BlockCard icon={reactLogo} num="04" name="notion-react" desc="Author a Notion page as a React component; rerun renders a precise block-level diff.">
           <div className="intro-pair react">
             <div className="side">
               <MiniJsx />
             </div>
             <Conn dir="→" action="render" />
             <div className="side">
-              <MiniNotionPage />
+              <MiniReactPage />
             </div>
           </div>
         </BlockCard>
