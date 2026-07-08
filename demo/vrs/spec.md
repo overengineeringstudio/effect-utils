@@ -174,9 +174,22 @@ the beats carry a **problem → enablement** arc (R6). Voice is modeled on the N
 dev product page (`notion.com/product/dev`): confident, concrete, peer-to-peer, and
 **never dissing Notion** — the API/CLI are legitimate tools, a local file is simply
 the easier medium for some jobs (vision.md forbids implying Notion is inadequate).
-Captured here as it's aligned per building block; the React component + its self-scoped
-`md.css` are the copy source of truth (this section is the intent behind it). Populated
-so far for **notion md**.
+Captured here as it's aligned per building block; each explainer's React component +
+its self-scoped CSS are the copy source of truth (this section is the intent behind
+them).
+
+**The shared four-beat pattern (all five demos):** *Lead (capability-first) →
+Beat 01 **Problem** → Beat 02 **How it works** → Beat 03 **What it enables** →
+Beat 04 **The toolkit** (coda)*. The **problem** beat pins a concrete gap with a
+**contrast visual** — the shared `.ways` motif shows *the same task, two/three ways*,
+the win row flagged: md/sqlite (file/SQL vs API/CLI), codegen (typed vs `any`), react
+(declarative JSX vs imperative block API); iac is the planned analog (desired-state
+file vs empty DB). **How it works** is the stepped, causally-gated sequence
+(Notion-always-right). **What it enables** turns the capability into concrete scenarios.
+**The toolkit** coda is a broad glyphed feature grid, not a round-trip deep-dive.
+**Exception — notion schema · IaC (3.2)** is a **3-beat PLANNED arc** (gap → *see how it
+would work* → *destructive fails closed* coda; no Beat 04) and stays loudly marked
+not-yet-built. Documented per building block below.
 
 ### notion md
 
@@ -212,6 +225,125 @@ so far for **notion md**.
   code-verified capability audit of `@overeng/notion-md` (R8: nothing overstated).
 - **Component note:** reuses the **production Notion kit** components (shared with the
   intro slides); per-explainer styles live in the **self-scoped `md.css`**.
+
+### notion sqlite
+
+- **Lead (capability-first):** *`notion db` — edit your Notion database with plain SQL.*
+  Pull the DB into a local `.sqlite`; `SELECT`, bulk `UPDATE`, script it — then sync
+  back, guarded.
+- **Beat 01 · The problem** — headline: *The same bulk edit: dozens of API calls — or
+  one line of SQL.* `.ways` contrast, *mark 40 tasks done · three ways*: **API**
+  (scripting; paginated query + one `update` per row), **CLI** (ad-hoc; per-row), **SQL**
+  (a local file; ✓ one bulk `UPDATE` + one guarded `sync`). Non-dissing: a file is just
+  the queryable/scriptable medium — plain SQL, the read/write API you already know.
+- **Beat 02 · How it works** — headline: *Edit a row with SQL locally — the change lands
+  live in Notion.* `notion db track` pulls the DB into `<db-id>.sqlite`; edit the `pages`
+  table with ordinary SQL, `notion db sync` → the write lands on the real Notion row,
+  read-after-write verified. Two-way push needs `--mode shared` at `track` time. Sequence:
+  DbBrowser + terminal (left) → sync flow → Notion (right).
+- **Beat 03 · What it enables** — headline: *Your Notion database is now an ordinary
+  SQLite file.* Every tool that speaks SQLite — the `sqlite3` CLI, your scripts, a GUI —
+  now edits your Notion data; `sync` keeps both sides in step, both ways. Promise line
+  hands off to the coda: *…unsafe writes are refused, not dropped.*
+- **Beat 04 · The toolkit** (coda) — broad glyphed feature grid (matching md); the
+  guarded planner / fail-closed story (formula-write + hard-`DELETE` refused as a typed
+  `GuardBlocked` — `ComputedPropertyWrite`, `DeleteVsEdit`) lives here as one card, not
+  the focus.
+- **Foot:** *first-class would be Notion exposing real transactional SQL over a typed DB;
+  until then `notion db` is `sqlite3` + a sync that refuses to corrupt your data.*
+
+### notion schema · codegen
+
+- **Lead (capability-first):** *`notion schema` — your Notion databases, as typed code.*
+  The DB is the source of truth: introspect → typed Effect schema → commit → CI goes red
+  when Notion drifts. Direction header: **Notion DB → codegen → typed code**.
+- **Beat 01 · The problem** — headline: *In your code, a Notion DB is `any` — until you
+  generate its types.* `.ways` **two-way** contrast, *typed access · two ways*: **by hand**
+  (untyped; `any`, a typo compiles then fails at runtime, no autocomplete, drifts) vs
+  **generated** (typed; literal-union options, autocomplete, `tsc` catches typos, `diff
+  --exit-code` CI gate).
+- **Beat 02 · How it works** — headline: *One command reads the live database and writes
+  a typed schema.* `notion schema generate` introspects the live DB → `schema.gen.ts`
+  (every select → literal union); `notion schema diff --exit-code` fails the build on
+  drift (exit 1). **The inversion:** this is a **READ** — Notion (right) is the pre-existing
+  SoT and never changes; the generated code (left mini-IDE) is the gated effect; flow runs
+  **right → left**.
+- **Beat 03 · What it enables** — headline: *Your Notion databases become versioned, typed
+  code.* Commit the schema → reviewed in PRs, type-checked end to end; `queryAll · get ·
+  create · update` all typed; list DBs in `notion.config.ts`, `generate-config` regenerates
+  them all. Promise line: *…honest about which way data flows — it reads Notion, never
+  writes it.*
+- **Beat 04 · The toolkit** (coda) — broad glyphed feature grid (matching md). The honest
+  boundary (introspect → codegen → drift *detection*; the inverse **`notion schema apply`**
+  provisioning is the separate, **planned** 3.2 capability) is carried as a card here.
+- **Foot:** the **DB → code** direction; the honest **code → DB** inverse is planned
+  (`notion schema apply`, 3.2 · roadmap).
+
+### notion schema · IaC
+
+- **Planned / not yet built (3.2).** The one explainer that ships as a **designed preview
+  of an unbuilt front-end**. A **single sticky banner** ("Roadmap preview — Planned, not
+  built yet; `plan`/`apply` do not exist; every command is narrated mock output") is the
+  **sole** planned indicator — no per-beat pills, no ghosted grids; the provisioned Notion
+  grid renders clean, the flow is a neutral accent (never green-verified — nothing here is
+  a live write). Color convention: **amber = planned/preview, warn/red = destructive +
+  blocked**. This is a **3-beat arc — no Beat 04**.
+- **Lead (capability-first):** *`notion schema apply` — provision your Notion database from
+  a file.* The honest inverse of codegen (3.1): declare the DB you *want* in a typed
+  `.notiondb.ts`, reconcile Notion to match — additive and safe. Direction header:
+  **.notiondb.ts file → plan → apply → Notion DB**.
+- **Beat 01 · The gap** — headline: *A database's schema should be `code` — not clicks.*
+  The planned analog of the `.ways` contrast: a **desired-state file** (`tasks.notiondb.ts`,
+  `defineDatabase({…})`) → amber dashed *? no command · today you build the DB by hand* →
+  an **empty parent page** (no Tasks DB). Codegen reads a DB into schemas; the inverse — a
+  file that *defines* the DB and provisions it — doesn't exist yet, so every schema change
+  is manual, unversioned UI clicking.
+- **Beat 02 · See how it would work** — headline: *Declare it, plan it, apply it — a typed
+  file provisions Notion, left → right.* Sequence: desired-state file + terminal (declare →
+  `plan` prints the would-create diff, writing nothing → `apply` provisions, gated to the
+  write packet → a destructive re-run **BLOCKED**) → provision flow → Notion empty →
+  provisioned. A reconcile strip carries *re-run reconciles only the delta; unchanged file
+  ⇒ no-op*. First `apply` writes a `tasks.notiondb.lock.json`. Promise line: *…it can never
+  lose data — here's the boundary.*
+- **Beat 03 · …and destructive fails closed** (coda) — headline: *It would only ever add.
+  Anything that could lose data is refused.* Boundary split: **in scope · additive** (create
+  DB if absent, add property [conservative type subset], rename with an explicit
+  `renamedFrom` hint, append select options) vs **out of scope · fails closed** (remove
+  property / change type → `DestructiveSchemaMigrationRequired`; remove select option →
+  `OptionDeletionLosesValues`). **Credibility split:** the engine is **real today** — the
+  sync layer already adds/renames properties, extends options, and refuses destructive
+  changes (guard names are the actual ones in `notion-datasource-sync`); what's **planned**
+  is the declarative `plan`/`apply` front-end, the diff planner, and the `lock.json` state
+  model (a front-end doesn't get to weaken the guards).
+- **Foot:** the shipped inverse is **3.1 codegen** (`generate` · DB → code); this page is
+  the honest **code → DB** direction to be built on the same engine.
+
+### notion react
+
+- **Lead (capability-first):** *`notion-react` — write Notion pages as JSX.* Describe a
+  page as a React tree; a reconciler diffs it against the last sync and emits only the block
+  ops that changed — no rebuild, no hand-tracking block ids.
+- **Beat 01 · The problem** — headline: *The same page: block-by-block API calls — or one
+  JSX component.* `.ways` **two-way** contrast, *change one line · two ways to apply it*:
+  **block API** (imperative; `blocks.delete`×N tear down + `blocks.append`×N rebuild, or
+  hand-roll a keyed diff yourself) vs **a component** (declarative; ✓ `updates: 1`).
+- **Beat 02 · How it works** — headline: *Write the page as a React component. Change one
+  line, rerun — only that block updates.* `bun run page.tsx` reconciles against the last
+  sync: first run `appends:5`, edit the `budget` const → `updates:1` (every other block
+  keeps its Notion id), rerun unchanged → a genuine no-op (`0 0 0`); identity held by
+  `blockKey`, not position. Sequence: mini-IDE + terminal → reconcile flow (green
+  `✓ verified`, react-specific) → Notion rendered page.
+- **Beat 03 · What it enables** — headline: *You describe the page. It computes the minimal
+  block ops.* Hand it a tree; it reconciles vs the last sync and returns a `SyncResult` — the
+  exact `appends` / `updates` / `removes`; identical JSX is a `0`-op no-op. Promise line:
+  *…identity survives restarts — the diff is keyed, not positional.*
+- **Beat 04 · The toolkit** (coda) — broad glyphed feature grid (matching md); the
+  `blockKey → notion block id` map, the persisted `FsCache` (`.notion-cache.json`), the
+  add→create / remove→archive / change→update diff outcomes, and the designed `pages.move`
+  contract live here.
+- **Foot:** *first-class would be Notion offering a declarative, diffable page API; until
+  then `notion-react` is that reconciler — JSX in, minimum block ops out, keyed on
+  `blockKey`.*
 
 ## Source-of-truth map
 
