@@ -978,6 +978,61 @@ const MiniNotionDb = ({ flip = false }: { flip?: boolean }) => (
   </NotionSurface>
 )
 
+// Notion property TYPE icons (monochrome, consistent with Notion's panel).
+const tSelect = (
+  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
+    <path d="M5.5 8l4.5 4.5L14.5 8" />
+  </svg>
+)
+const tMulti = (
+  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="4" cy="5" r="1.2" fill="currentColor" stroke="none" />
+    <circle cx="4" cy="10" r="1.2" fill="currentColor" stroke="none" />
+    <circle cx="4" cy="15" r="1.2" fill="currentColor" stroke="none" />
+    <path d="M8 5h9M8 10h9M8 15h6" />
+  </svg>
+)
+const tDate = (
+  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="10" cy="10" r="7.3" />
+    <path d="M10 5.6V10l3 1.8" />
+  </svg>
+)
+
+// a Notion property row: [type icon] name · (optional select options) · chevron
+const PropRow = ({ icon, name, opts, k }: { icon: ReactNode; name: string; opts?: string; k?: string }) => (
+  <div className="np-row" data-k={k}>
+    <span className="np-ic">{icon}</span>
+    <span className="np-nm">{name}</span>
+    {opts !== undefined && <span className="np-opts">{opts}</span>}
+    <span className="np-cv">›</span>
+  </div>
+)
+
+// The Notion side of the SCHEMA block: a PROPERTIES view (property name + type),
+// 1:1 with schema.gen.ts. Status is a select whose options generate the literal.
+const MiniNotionProps = () => (
+  <NotionSurface
+    title={notionTitle}
+    workspace="Acme"
+    workspaceInitial="A"
+    nav={[
+      { icon: '▦', label: 'Tasks', on: true },
+      { icon: '◆', label: 'Roadmap' },
+    ]}
+  >
+    <div className="ntn-props">
+      <div className="np-hd">Properties</div>
+      <PropRow icon={<span className="tt">Aa</span>} name="Name" />
+      <PropRow icon={tSelect} name="Status" opts="Todo · Doing · Done" k="prop-status" />
+      <PropRow icon={tSelect} name="Priority" opts="High · Med · Low" />
+      <PropRow icon={<span className="num">#</span>} name="Effort (h)" />
+      <PropRow icon={tMulti} name="Team" />
+      <PropRow icon={tDate} name="Due" k="prop-iac" />
+    </div>
+  </NotionSurface>
+)
+
 // mini SQL terminal (plain SQL edit on the local file → syncs to Notion) — sqlite
 const MiniSqlTerm = () => (
   <Terminal title={<WinTitle icon={sqliteLogo} file="sqlite3 tasks.db" />}>
@@ -996,6 +1051,17 @@ const MiniSqlTerm = () => (
 
 // the actual local SQLite database file (a .db grid; SQLite/feather identity,
 // dark local-file chrome — deliberately distinct from the light Notion DB).
+// a raw SQLite value that crossfades on sync (mono text, NOT a Notion pill).
+const RawSwap = ({ k, was, now }: { k: string; was: string; now: string }) => (
+  <span className={'swap ' + k}>
+    <span className="s-was">'{was}'</span>
+    <span className="s-now">'{now}'</span>
+  </span>
+)
+
+// the actual local SQLite database — a RAW DB-tool view (monospace grid, raw cell
+// values, SQL-typed headers, teal selection). Deliberately the visual OPPOSITE of
+// the polished Notion surface on the right; the contrast is the point.
 const MiniSqliteDb = () => (
   <DbBrowser
     title={<WinTitle icon={sqliteLogo} file="tasks.db" />}
@@ -1004,12 +1070,16 @@ const MiniSqliteDb = () => (
       { name: 'changes', icon: '≡' },
     ]}
   >
-    <table className="dbb-grid">
+    <table className="dbb-grid sqraw">
       <thead>
         <tr>
           <th className="gut"> </th>
-          <th>Name</th>
-          <th>Status</th>
+          <th>
+            name <span className="ty">TEXT</span>
+          </th>
+          <th>
+            status <span className="ty">TEXT</span>
+          </th>
         </tr>
       </thead>
       <tbody>
@@ -1017,14 +1087,14 @@ const MiniSqliteDb = () => (
           <td className="gut">1</td>
           <td>Ship v1</td>
           <td>
-            <SqSwap k="sq-l1" was="Todo" wasCls="st-prog" now="Done" />
+            <RawSwap k="sq-l1" was="Todo" now="Done" />
           </td>
         </tr>
         <tr>
           <td className="gut">2</td>
           <td>Fix deploy</td>
           <td>
-            <SqSwap k="sq-l2" was={'In Progress'} wasCls="st-prog" now="Done" />
+            <RawSwap k="sq-l2" was="In Progress" now="Done" />
           </td>
         </tr>
       </tbody>
@@ -1067,8 +1137,10 @@ const MiniSchemaCode = () => (
       <At>Schema</At>.<At>Literal</At>(
     </CodeLine>
     <CodeLine>
-      {'    '}
-      <STR>'Todo'</STR>, <STR>'Doing'</STR>, <STR>'Done'</STR>)
+      <span className="litline" data-k="lit">
+        {'    '}
+        <STR>'Todo'</STR>, <STR>'Doing'</STR>, <STR>'Done'</STR>)
+      </span>
     </CodeLine>
   </KitIDE>
 )
@@ -1394,7 +1466,7 @@ const IntroPanel = ({ hidden }: { hidden: boolean }) => (
               </div>
             </div>
             <div className="side">
-              <MiniNotionDb />
+              <MiniNotionProps />
             </div>
           </div>
         </BlockCard>

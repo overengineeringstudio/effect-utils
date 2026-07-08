@@ -686,6 +686,96 @@ body {
   font-size: 9px;
 }
 
+/* raw SQLite grid (block 02 local side) — a DB-tool look, OPPOSITE the Notion
+ * surface: monospace, raw cell values (no pills), SQL-typed headers, teal. */
+.intro .dbb-grid.sqraw,
+.intro .dbb-grid.sqraw th,
+.intro .dbb-grid.sqraw td {
+  font-family: var(--mono);
+}
+.intro .dbb-grid.sqraw th {
+  font-size: 9px;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--muted);
+  padding: 3px 8px;
+}
+.intro .dbb-grid.sqraw th .ty {
+  color: #14b8a6;
+  font-size: 8px;
+}
+.intro .dbb-grid.sqraw td {
+  font-size: 10px;
+  color: var(--ink);
+  padding: 2.5px 8px;
+}
+.intro .dbb-grid.sqraw .s-was,
+.intro .dbb-grid.sqraw .s-now {
+  color: var(--ink);
+}
+/* teal selected table in the SQLite side panel (not Notion's purple/blue) */
+.intro .loc-db .dbb-tbl.sel {
+  background: rgba(20, 184, 166, 0.16);
+  color: #14b8a6;
+}
+
+/* Notion PROPERTIES view (block 03 Notion side) — property name + type icon */
+.intro .ntn-props {
+  padding: 5px 3px 3px;
+}
+.intro .np-hd {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--muted);
+  padding: 2px 9px 5px;
+}
+.intro .np-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3.5px 9px;
+  font-size: 11px;
+  color: var(--ink);
+  border-radius: 5px;
+}
+.intro .np-ic {
+  flex: none;
+  width: 15px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+}
+.intro .np-ic svg {
+  width: 13px;
+  height: 13px;
+}
+.intro .np-ic .tt {
+  font: 650 10px/1 var(--sans);
+}
+.intro .np-ic .num {
+  font: 700 12px/1 var(--mono);
+}
+.intro .np-nm {
+  color: var(--ink);
+  font-weight: 500;
+}
+.intro .np-opts {
+  margin-left: 5px;
+  font-size: 9px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.intro .np-cv {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 11px;
+  opacity: 0.6;
+}
+
 /* swap (status-pill flip / code diff): 'now' overlays 'was', hidden until hover */
 .intro .swap {
   position: relative;
@@ -865,29 +955,6 @@ body {
 .intro-pair.react:hover .intro-arrow .tok {
   animation: introOneWay 1.9s ease-in-out infinite;
 }
-/* sqlite → SQL edit in the LOCAL db(left) travels RIGHT and lands in Notion(right) */
-.intro-pair.sqlite:hover .intro-arrow .tok {
-  animation: introSqlTok 3s ease-in-out infinite;
-}
-@keyframes introSqlTok {
-  0%,
-  22% {
-    opacity: 0;
-    transform: translateX(-38px);
-  }
-  30% {
-    opacity: 1;
-  }
-  60% {
-    opacity: 1;
-    transform: translateX(38px);
-  }
-  70%,
-  100% {
-    opacity: 0;
-    transform: translateX(38px);
-  }
-}
 @keyframes introOneWay {
   0% {
     opacity: 0;
@@ -905,70 +972,139 @@ body {
     transform: translateX(38px);
   }
 }
-@keyframes introOneWayL {
-  0% {
+/* sqlite is a LIVE BIDIRECTIONAL replica → the token round-trips and BOTH ends
+ * update: local SQL edit propagates to Notion (Ship v1), then a Notion change
+ * propagates back to the local SQLite (Fix deploy). */
+.intro-pair.sqlite:hover .intro-arrow .tok {
+  animation: introSqlTok 5s ease-in-out infinite;
+}
+@keyframes introSqlTok {
+  0%,
+  8% {
     opacity: 0;
-    transform: translateX(38px);
+    transform: translateX(-38px);
   }
-  15% {
-    opacity: 1;
-  }
-  50%,
-  100% {
+  14% {
     opacity: 1;
     transform: translateX(-38px);
   }
+  38%,
+  50% {
+    opacity: 1;
+    transform: translateX(38px);
+  }
+  82% {
+    opacity: 1;
+    transform: translateX(-38px);
+  }
+  88%,
+  100% {
+    opacity: 0;
+    transform: translateX(-38px);
+  }
 }
-/* sqlite → the LOCAL db row flips first (the SQL edit), THEN the Notion pill
- * flips as the token arrives — "edit local SQLite → lands in Notion". */
-.intro-pair.sqlite:hover .swap.sqlocal .s-was {
-  animation: introFlipEarlyWas 3s ease-in-out infinite;
+/* four timed pill crossfades: local Ship (10%) → Notion Ship (38%) [local→Notion];
+ * Notion Fix (52%) → local Fix (82%) [Notion→local]. */
+.intro-pair.sqlite:hover .swap.sq-l1 .s-was {
+  animation: sqW10 5s ease-in-out infinite;
 }
-.intro-pair.sqlite:hover .swap.sqlocal .s-now {
-  animation: introFlipEarlyNow 3s ease-in-out infinite;
+.intro-pair.sqlite:hover .swap.sq-l1 .s-now {
+  animation: sqN10 5s ease-in-out infinite;
 }
-.intro-pair.sqlite:hover .swap:not(.sqlocal) .s-was {
-  animation: introFlipLateWas 3s ease-in-out infinite;
+.intro-pair.sqlite:hover .swap.sq-n1 .s-was {
+  animation: sqW38 5s ease-in-out infinite;
 }
-.intro-pair.sqlite:hover .swap:not(.sqlocal) .s-now {
-  animation: introFlipLateNow 3s ease-in-out infinite;
+.intro-pair.sqlite:hover .swap.sq-n1 .s-now {
+  animation: sqN38 5s ease-in-out infinite;
 }
-@keyframes introFlipEarlyWas {
+.intro-pair.sqlite:hover .swap.sq-n2 .s-was {
+  animation: sqW52 5s ease-in-out infinite;
+}
+.intro-pair.sqlite:hover .swap.sq-n2 .s-now {
+  animation: sqN52 5s ease-in-out infinite;
+}
+.intro-pair.sqlite:hover .swap.sq-l2 .s-was {
+  animation: sqW82 5s ease-in-out infinite;
+}
+.intro-pair.sqlite:hover .swap.sq-l2 .s-now {
+  animation: sqN82 5s ease-in-out infinite;
+}
+@keyframes sqW10 {
   0%,
-  16% {
+  7% {
     opacity: 1;
   }
-  22%,
+  12%,
   100% {
     opacity: 0;
   }
 }
-@keyframes introFlipEarlyNow {
+@keyframes sqN10 {
   0%,
-  16% {
+  7% {
     opacity: 0;
   }
-  22%,
+  12%,
   100% {
     opacity: 1;
   }
 }
-@keyframes introFlipLateWas {
+@keyframes sqW38 {
   0%,
-  58% {
+  34% {
     opacity: 1;
   }
-  64%,
+  40%,
   100% {
     opacity: 0;
   }
 }
-@keyframes introFlipLateNow {
+@keyframes sqN38 {
   0%,
-  58% {
+  34% {
     opacity: 0;
   }
-  64%,
+  40%,
+  100% {
+    opacity: 1;
+  }
+}
+@keyframes sqW52 {
+  0%,
+  48% {
+    opacity: 1;
+  }
+  54%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes sqN52 {
+  0%,
+  48% {
+    opacity: 0;
+  }
+  54%,
+  100% {
+    opacity: 1;
+  }
+}
+@keyframes sqW82 {
+  0%,
+  78% {
+    opacity: 1;
+  }
+  84%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes sqN82 {
+  0%,
+  78% {
+    opacity: 0;
+  }
+  84%,
   100% {
     opacity: 1;
   }
@@ -1001,18 +1137,36 @@ body {
 .intro-pair.schema:hover .ar.iac .tok {
   animation: introTokR 1.9s ease-in-out infinite 0.35s;
 }
-/* …and the Notion DB visibly reacts when the IaC token lands (provisioned) */
-.intro-pair.schema:hover .ntn-tbl tr:first-child td {
+/* codegen: the Status SELECT property lights, then its literal line writes in code */
+.intro-pair.schema:hover .np-row[data-k='prop-status'] {
+  animation: introRowFlash 1.9s ease-in-out infinite;
+}
+.intro-pair.schema:hover .litline[data-k='lit'] {
+  animation: introLitWrite 1.9s ease-in-out infinite;
+  border-radius: 3px;
+}
+/* IaC: the provisioned property (Due) lights when the code→Notion token lands */
+.intro-pair.schema:hover .np-row[data-k='prop-iac'] {
   animation: introRowFlash 1.9s ease-in-out infinite 0.35s;
 }
 @keyframes introRowFlash {
+  0%,
+  8%,
+  100% {
+    background: transparent;
+  }
+  22% {
+    background: var(--accent-soft);
+  }
+}
+@keyframes introLitWrite {
   0%,
   70%,
   100% {
     background: transparent;
   }
   84% {
-    background: var(--accent-soft);
+    background: color-mix(in srgb, var(--ok) 22%, transparent);
   }
 }
 @keyframes introTokR {
