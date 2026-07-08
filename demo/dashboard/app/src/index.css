@@ -207,14 +207,13 @@ body {
  * =================================================================== */
 
 /* slide-1 actor card */
+/* Flat, Notion-native: no frame around the faux mock — the mock keeps its own
+ * window chrome (R6), the actor caption sits bare beneath it. */
 .intro-actor {
   display: flex;
   flex-direction: column;
   gap: 9px;
-  border: 1px solid var(--color-border);
-  border-radius: 14px;
-  background: var(--color-bg-subtle);
-  padding: 10px;
+  padding: 0;
 }
 .intro-actor > * {
   width: 100%;

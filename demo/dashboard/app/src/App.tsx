@@ -1,7 +1,8 @@
-import { type FC, type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
+import { Fragment, type FC, type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import type { RawSegment } from '../../screenplay.ts'
 import { DEMOS, type DemoModel, type ModelBeat, type Shot } from './model.gen.ts'
 import { InlineMd } from './inline-md.tsx'
+import { Agentation } from 'agentation'
 import {
   At,
   CodeLine,
@@ -59,8 +60,6 @@ const KEY_MAP: Record<string, DemoModel[]> = (() => {
   }
   return m
 })()
-// Largest single-digit key present, for the header hint ("keys 1–N").
-const MAX_KEY = Math.max(...Object.keys(KEY_MAP).map(Number))
 
 // A code segment is expected program OUTPUT (not a runnable command), so it gets
 // NO copy affordance, when the model marked it `noCopy` — set in the parser from
@@ -79,24 +78,12 @@ const isOutputBlock = (raw: string): boolean => {
 // fall back to the legacy heuristic so nothing regresses if a block predates it.
 const isNoCopy = (seg: Extract<RawSegment, { kind: 'code' }>): boolean => seg.noCopy ?? isOutputBlock(seg.raw)
 
-// build.ts fmtWhen — UTC "Mon D HH:MMZ"
-const fmtWhen = (iso?: string): string => {
-  if (!iso) return ''
-  const d = new Date(iso)
-  const mon = d.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' })
-  const day = d.getUTCDate()
-  const hh = String(d.getUTCHours()).padStart(2, '0')
-  const mm = String(d.getUTCMinutes()).padStart(2, '0')
-  return `${mon} ${day} ${hh}:${mm}Z`
-}
-
 // Inline explainer components, keyed by demo id (registry id === demo id for the
 // ported explainers). A demo is "explainable" iff a React explainer is registered
 // here — NOT whether a legacy .html exists — so unported demos (schema/react)
 // still fall through to the graceful "no explainer" affordance.
 const EXPLAINER_BY_ID: Record<string, FC> = Object.fromEntries(EXPLAINERS.map((e) => [e.id, e.Component]))
 const canExplain = (d: DemoModel): boolean => d.id in EXPLAINER_BY_ID
-const hasBackups = (d: DemoModel): boolean => d.beats.some((b) => b.images.length > 0)
 
 type View = 'instructions' | 'explanation'
 type Backups = 'shown' | 'hidden'
@@ -246,26 +233,6 @@ const StatusBadge = ({ status }: { status: ModelBeat['status'] }) => {
   )
 }
 
-const SummaryPill = ({ d }: { d: DemoModel }) => {
-  const pill = 'whitespace-nowrap rounded-full border border-border px-2.5 py-1 text-[12.5px] font-semibold tracking-tight'
-  if (d.summary.mock) {
-    return (
-      <span title="illustrative preview — no harness run" className={`${pill} border-amber/40 text-amber`}>
-        ◆ illustrative · not harnessed
-      </span>
-    )
-  }
-  if (d.summary.harnessed) {
-    const ok = d.summary.pass === d.summary.total
-    return (
-      <span className={`${pill} ${ok ? 'text-ok' : 'text-fail'}`}>
-        ● {d.summary.pass}/{d.summary.total} passed · {Math.round(d.summary.durationSec ?? 0)}s ·{' '}
-        {fmtWhen(d.summary.finishedAt)}
-      </span>
-    )
-  }
-  return <span className={`${pill} text-neutral`}>○ not yet harnessed</span>
-}
 
 // ---------------------------------------------------------------------------
 // beat card
@@ -359,27 +326,22 @@ const DemoSection = ({
   d,
   active,
   explainOpen,
-  allShown,
   openBeats,
   onToggleExplain,
   onCloseExplain,
-  onToggleAllBackups,
   onToggleBeat,
   onShot,
 }: {
   d: DemoModel
   active: boolean
   explainOpen: boolean
-  allShown: boolean
   openBeats: Record<string, boolean>
   onToggleExplain: () => void
   onCloseExplain: () => void
-  onToggleAllBackups: () => void
   onToggleBeat: (key: string) => void
   onShot: (src: string) => void
 }) => {
   const canExp = canExplain(d)
-  const hasBk = hasBackups(d)
   const Explainer = EXPLAINER_BY_ID[d.id]
   return (
     <section hidden={!active}>
@@ -395,87 +357,37 @@ const DemoSection = ({
           </span>
         </div>
       )}
-      {/* compact demo head — one cohesive band: title + status + controls on
-          the top line, the gap/wow summary + backstage reset chip beneath it.
-          Consolidates the former title row, dashed backstage banner, and
-          toolbar row into a single space-efficient group so beats start higher. */}
-      <div className="mb-3 flex flex-col gap-1.5">
-        {/* line 1: title + status pill (left) · explanation/backups controls (right) */}
-        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
-          <h2 className="m-0 text-lg font-semibold leading-tight">{d.tab}</h2>
-          <SummaryPill d={d} />
-          <div className="ml-auto flex flex-wrap items-center gap-1.5">
-            {canExp ? (
-              <button
-                type="button"
-                onClick={onToggleExplain}
-                className={
-                  'cursor-pointer rounded-md border px-2.5 py-1 text-[12px] font-medium ' +
-                  (explainOpen
-                    ? 'border-accent bg-accent text-accent-fg'
-                    : 'border-border bg-bg-panel text-fg-muted hover:border-accent hover:text-fg')
-                }
-              >
-                {explainOpen ? '▾ hide explanation' : '▸ show explanation'}
-              </button>
-            ) : (
-              <span
-                title="no explainer page for this demo"
-                className="cursor-default rounded-md border border-dashed border-border px-2.5 py-1 text-[12px] font-medium text-fg-faint"
-              >
-                ▹ no explainer
-              </span>
-            )}
-            {hasBk ? (
-              <button
-                type="button"
-                onClick={onToggleAllBackups}
-                className={
-                  'cursor-pointer rounded-md border px-2.5 py-1 text-[12px] font-medium ' +
-                  (allShown
-                    ? 'border-accent bg-accent text-accent-fg'
-                    : 'border-border bg-bg-panel text-fg-muted hover:border-accent hover:text-fg')
-                }
-              >
-                {allShown ? '▾ hide all backups' : '▸ show all backups'}
-              </button>
-            ) : (
-              <span
-                title="no harness screenshots yet"
-                className="cursor-default rounded-md border border-dashed border-border px-2.5 py-1 text-[12px] font-medium text-fg-faint"
-              >
-                ▹ backups pending
-              </span>
-            )}
-          </div>
+      {/* view switcher — Instructions ⇄ Explanation (only when an explainer exists) */}
+      {canExp && (
+        <div className="mb-3 inline-flex rounded-md border border-border bg-bg-panel p-0.5 text-[12px] font-medium">
+          <button
+            type="button"
+            onClick={() => {
+              if (explainOpen) onCloseExplain()
+            }}
+            className={
+              explainOpen
+                ? 'cursor-pointer rounded px-3 py-1 text-fg-muted hover:text-fg'
+                : 'rounded bg-accent px-3 py-1 text-accent-fg'
+            }
+          >
+            Instructions
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (!explainOpen) onToggleExplain()
+            }}
+            className={
+              explainOpen
+                ? 'rounded bg-accent px-3 py-1 text-accent-fg'
+                : 'cursor-pointer rounded px-3 py-1 text-fg-muted hover:text-fg'
+            }
+          >
+            Explanation
+          </button>
         </div>
-
-        {/* line 2: gap/wow summary (muted, secondary) + inline backstage reset chip */}
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-          <p className="m-0 min-w-0 flex-1 text-[12px] leading-snug text-fg-muted">
-            <InlineMd line={d.gapwow} />
-          </p>
-          {d.resetCmd ? (
-            <span
-              title="backstage — reset between takes, not on camera"
-              className="flex flex-none items-center gap-1.5 rounded-md border border-dashed border-border-strong bg-bg-subtle py-0.5 pl-2 pr-1"
-            >
-              <span className="text-[10px] font-bold uppercase tracking-wider text-amber">Backstage · reset</span>
-              <code className="max-w-[240px] overflow-x-auto whitespace-pre rounded bg-bg-code px-1.5 py-0.5 font-mono text-[11.5px] leading-normal text-code-fg">
-                {d.resetCmd}
-              </code>
-              <CopyButton raw={d.resetCmd} variant="inline" />
-            </span>
-          ) : (
-            <span
-              title="backstage — not on camera"
-              className="flex-none text-[11px] text-fg-faint"
-            >
-              <span className="font-bold uppercase tracking-wider text-amber">Backstage</span> · no reset script
-            </span>
-          )}
-        </div>
-      </div>
+      )}
 
       {/* body: instructions ⇄ explanation (both mounted; CSS-toggled full bleed) */}
       <div className={explainOpen ? 'hidden' : 'flex flex-col gap-3'}>
@@ -494,11 +406,7 @@ const DemoSection = ({
       </div>
       {canExp && (
         <aside
-          className={
-            explainOpen
-              ? 'flex w-full flex-col overflow-hidden rounded-[10px] border border-border bg-bg-panel shadow-[0_8px_30px_rgba(0,0,0,.5)]'
-              : 'hidden'
-          }
+          className={explainOpen ? 'flex w-full flex-col' : 'hidden'}
         >
           <div className="flex flex-none items-center justify-between border-b border-border px-3 py-2 text-[12.5px] font-semibold text-fg-muted">
             <span>Explainer · {d.tab}</span>
@@ -576,34 +484,23 @@ const writeUrl = (s: UiState): void => {
 // displayNum (never an array index) and a PLANNED badge for aspirational demos.
 // ---------------------------------------------------------------------------
 
+// Notion-native tab: plain text, no pill/box. Active reads via ink weight + a
+// single accent underline; the keyboard index is a hair-thin mono glyph, not a
+// boxed kbd. `-mb-px` drops the underline onto the nav's own bottom hairline.
 const TabButton = ({ d, on, onClick }: { d: DemoModel; on: boolean; onClick: () => void }) => (
   <button
     type="button"
     onClick={onClick}
     className={
       on
-        ? 'inline-flex items-center rounded-lg border border-accent bg-accent px-3 py-1.5 text-[13px] font-medium text-accent-fg'
-        : 'inline-flex items-center rounded-lg border border-border bg-bg-panel px-3 py-1.5 text-[13px] font-medium text-fg-muted hover:border-border-strong hover:text-fg'
+        ? '-mb-px inline-flex items-center gap-1.5 border-b-2 border-accent px-3 py-2.5 text-[13px] font-medium text-fg'
+        : '-mb-px inline-flex items-center gap-1.5 border-b-2 border-transparent px-3 py-2.5 text-[13px] text-fg-muted hover:text-fg'
     }
   >
-    <kbd
-      className={
-        on
-          ? 'mr-1.5 rounded border-transparent bg-white/20 px-1.5 py-0.5 text-[11px]'
-          : 'mr-1.5 rounded border border-border bg-bg-subtle px-1.5 py-0.5 text-[11px] text-fg-muted'
-      }
-    >
+    <kbd className={`border-0 bg-transparent p-0 font-mono text-[11px] ${on ? 'text-accent' : 'text-fg-faint'}`}>
       {d.displayNum}
     </kbd>
     {d.tab}
-    {d.planned && (
-      <span
-        title="planned — not yet implemented"
-        className="ml-1.5 rounded bg-amber px-1 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-black"
-      >
-        planned
-      </span>
-    )}
   </button>
 )
 
@@ -1337,7 +1234,7 @@ const Conn = ({ dir, action }: { dir: string; action: string }) => (
 // Slide-2 block card. `icon` is the block's ICONIC technology logo (its primary
 // identity, so the four blocks are instantly distinguishable at a glance).
 const BlockCard = ({ num, name, desc, icon, children }: { num: string; name: string; desc: string; icon: ReactNode; children: ReactNode }) => (
-  <div className="flex flex-col gap-3 rounded-xl border border-border bg-bg-subtle p-5">
+  <div className="flex flex-col gap-3 border-t border-border pt-7">
     <div className="flex items-center gap-2.5">
       <span className="intro-blogo inline-flex h-7 w-7 flex-none items-center justify-center rounded-md border border-border bg-bg-panel text-fg">
         {icon}
@@ -1351,15 +1248,15 @@ const BlockCard = ({ num, name, desc, icon, children }: { num: string; name: str
 )
 
 const IntroPanel = ({ hidden }: { hidden: boolean }) => (
-  <section hidden={hidden} className="intro flex max-w-[1120px] flex-col gap-4">
+  <section hidden={hidden} className="intro flex max-w-[1120px] flex-col gap-20">
     {/* Slide 1 — Why: the ecosystem around Notion (hub = source of truth) */}
-    <section className="rounded-2xl border border-border bg-bg-panel px-8 py-7 shadow-[0_6px_24px_rgba(10,14,20,.10)]">
-      <div className="mb-1.5 text-[11px] font-bold uppercase tracking-[1.2px] text-accent">Why</div>
+    <section className="py-2">
+      <div className="mb-1.5 text-[13px] text-fg-muted">Why</div>
       <h2 className="m-0 mb-6 text-[25px] font-bold tracking-tight">Notion, for users, developers, and agents</h2>
       <div className="flex flex-wrap items-stretch justify-center gap-2">
         {/* Knowledge work — each actor has its own hand-drawn arrow to the hub */}
         <div className="flex min-w-[290px] flex-1 flex-col gap-2.5">
-          <div className="text-[10.5px] font-bold uppercase tracking-wider text-fg-faint">Knowledge work</div>
+          <div className="text-[11px] text-fg-faint">Knowledge work</div>
           <div className="flex items-center gap-1.5">
             <div className="min-w-0 flex-1">
               <ActorCard icon={icUsers} mock={<MiniNotionApp />} name="users" />
@@ -1382,7 +1279,7 @@ const IntroPanel = ({ hidden }: { hidden: boolean }) => (
         </div>
         {/* Engineering */}
         <div className="flex min-w-[290px] flex-1 flex-col gap-2.5">
-          <div className="text-right text-[10.5px] font-bold uppercase tracking-wider text-fg-faint">Engineering</div>
+          <div className="text-right text-[11px] text-fg-faint">Engineering</div>
           <div className="flex items-center gap-1.5">
             <HandArrow />
             <div className="min-w-0 flex-1">
@@ -1400,7 +1297,7 @@ const IntroPanel = ({ hidden }: { hidden: boolean }) => (
       {/* automations & integrations — its own arrow up to the hub */}
       <div className="mt-2 flex flex-col items-center gap-1">
         <HandArrow vertical />
-        <div className="flex w-full max-w-[440px] items-center gap-3.5 rounded-2xl border border-dashed border-border-strong bg-bg-subtle p-3">
+        <div className="flex w-full max-w-[440px] items-center gap-3.5 p-1">
           <div className="w-[200px] flex-none">
             <MiniFlow />
           </div>
@@ -1413,11 +1310,11 @@ const IntroPanel = ({ hidden }: { hidden: boolean }) => (
       </div>
     </section>
     {/* Slide 2 — How: building blocks that snap together */}
-    <section className="rounded-2xl border border-border bg-bg-panel px-8 py-7 shadow-[0_6px_24px_rgba(10,14,20,.10)]">
-      <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[1.2px] text-accent">
-        <span className="text-accent">{iconLego}</span> How
+    <section className="py-2">
+      <div className="mb-1.5 flex items-center gap-1.5 text-[13px] text-fg-muted">
+        <span className="text-fg-muted">{iconLego}</span> How
       </div>
-      <h2 className="m-0 mb-5 text-[25px] font-bold tracking-tight">Building blocks that snap together</h2>
+      <h2 className="m-0 mb-5 text-[25px] font-bold tracking-tight">principled Notion building blocks for agents and developers</h2>
       <div className="flex flex-col gap-4">
         <BlockCard icon={mdLogo} num="01" name="notion md" desc="Edit a Notion page as local Markdown — two-way, conflict-guarded sync from your editor.">
           <div className="intro-pair md">
@@ -1541,10 +1438,6 @@ export const App = () => {
     commit({ ...state, view: state.view === 'explanation' ? 'instructions' : 'explanation' })
   }, [active, state, commit])
   const closeExplain = () => commit({ ...state, view: 'instructions' })
-  const toggleAllBackups = () => {
-    if (onIntro || !hasBackups(active)) return
-    commit({ ...state, backups: state.backups === 'shown' ? 'hidden' : 'shown' })
-  }
   const toggleBeat = (key: string) => setOpenBeats((m) => ({ ...m, [key]: !m[key] }))
 
   // keyboard: 1..N tabs, e explainer, Esc closes lightbox
@@ -1590,50 +1483,20 @@ export const App = () => {
   }
 
   const explainOpen = state.view === 'explanation'
-  const allShown = state.backups === 'shown'
 
   return (
     <div className="min-h-screen">
-      <header className="sticky top-0 z-20 flex items-center gap-4 border-b border-border bg-bg-panel px-5 py-2.5">
-        <h1 className="m-0 text-[15px] font-semibold tracking-tight">
-          <span className="text-accent">●</span> Live Control{' '}
-          <span className="font-normal text-fg-faint">· Notion tooling demos (next)</span>
-        </h1>
-        <div className="flex-1" />
-        <span className="text-xs text-fg-faint">
-          keys <kbd className="rounded border border-border bg-bg-subtle px-1.5 py-0.5 text-fg-muted">0</kbd> intro ·{' '}
-          <kbd className="rounded border border-border bg-bg-subtle px-1.5 py-0.5 text-fg-muted">1</kbd>–
-          <kbd className="rounded border border-border bg-bg-subtle px-1.5 py-0.5 text-fg-muted">{MAX_KEY}</kbd>{' '}
-          demos (<kbd className="rounded border border-border bg-bg-subtle px-1 py-0.5 text-fg-muted">3</kbd>{' '}
-          cycles 3.1/3.2) ·{' '}
-          <kbd className="rounded border border-border bg-bg-subtle px-1.5 py-0.5 text-fg-muted">e</kbd> explainer
-        </span>
-        <button
-          type="button"
-          onClick={toggleTheme}
-          className="cursor-pointer rounded-md border border-border bg-bg-subtle px-2.5 py-1 text-xs text-fg-muted hover:text-fg"
-        >
-          ◐ theme
-        </button>
-      </header>
-
-      <nav className="sticky top-[41px] z-10 flex flex-wrap items-center gap-1.5 border-b border-border bg-bg px-5 py-2">
+      <nav className="sticky top-0 z-10 flex flex-wrap items-center gap-1 border-b border-border bg-bg-panel px-4">
         <button
           type="button"
           onClick={() => setDemo(INTRO_ID)}
           className={
             onIntro
-              ? 'inline-flex items-center rounded-lg border border-accent bg-accent px-3 py-1.5 text-[13px] font-medium text-accent-fg'
-              : 'inline-flex items-center rounded-lg border border-border bg-bg-panel px-3 py-1.5 text-[13px] font-medium text-fg-muted hover:border-border-strong hover:text-fg'
+              ? '-mb-px inline-flex items-center gap-1.5 border-b-2 border-accent px-3 py-2.5 text-[13px] font-medium text-fg'
+              : '-mb-px inline-flex items-center gap-1.5 border-b-2 border-transparent px-3 py-2.5 text-[13px] text-fg-muted hover:text-fg'
           }
         >
-          <kbd
-            className={
-              onIntro
-                ? 'mr-1.5 rounded border-transparent bg-white/20 px-1.5 py-0.5 text-[11px]'
-                : 'mr-1.5 rounded border border-border bg-bg-subtle px-1.5 py-0.5 text-[11px] text-fg-muted'
-            }
-          >
+          <kbd className={`border-0 bg-transparent p-0 font-mono text-[11px] ${onIntro ? 'text-accent' : 'text-fg-faint'}`}>
             0
           </kbd>
           Intro
@@ -1644,15 +1507,11 @@ export const App = () => {
             return <TabButton key={d.id} d={d} on={d.id === state.demo} onClick={() => setDemo(d.id)} />
           }
           return (
-            <div
-              key={item.groupId}
-              className="inline-flex items-center gap-1 rounded-xl border border-dashed border-border-strong bg-bg-subtle px-1.5 py-1"
-            >
-              <span className="px-1 text-[10px] font-bold uppercase tracking-wider text-fg-faint">{item.label}</span>
+            <Fragment key={item.groupId}>
               {item.members.map((d) => (
                 <TabButton key={d.id} d={d} on={d.id === state.demo} onClick={() => setDemo(d.id)} />
               ))}
-            </div>
+            </Fragment>
           )
         })}
       </nav>
@@ -1665,11 +1524,9 @@ export const App = () => {
             d={d}
             active={d.id === state.demo}
             explainOpen={d.id === state.demo && explainOpen && canExplain(d)}
-            allShown={allShown}
             openBeats={openBeats}
             onToggleExplain={toggleExplain}
             onCloseExplain={closeExplain}
-            onToggleAllBackups={toggleAllBackups}
             onToggleBeat={toggleBeat}
             onShot={setLightbox}
           />
@@ -1699,6 +1556,19 @@ export const App = () => {
           />
         </div>
       )}
+
+      {/* Minimal floating theme toggle — relocated from the removed top bar so theme switching still works. */}
+      <button
+        type="button"
+        onClick={toggleTheme}
+        title="Toggle theme"
+        aria-label="Toggle theme"
+        className="fixed bottom-4 left-4 z-40 rounded-md border border-border bg-bg-subtle px-2.5 py-1 text-xs text-fg-muted opacity-40 transition hover:text-fg hover:opacity-100"
+      >
+        ◐
+      </button>
+      {/* Dev-only visual feedback tool: turns UI annotations into structured context for coding agents via MCP. Dev server only — excluded from the built control.next.html. */}
+      {import.meta.env.DEV && <Agentation />}
     </div>
   )
 }
