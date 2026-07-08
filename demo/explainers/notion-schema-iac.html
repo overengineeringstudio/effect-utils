@@ -51,10 +51,7 @@
   /* ---- thread header ---- */
   .lead { text-align: left; padding: 0 20px; }
   .lead .kicker { font: 600 12px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase;
-    color: var(--amber); margin: 0 0 10px; display: inline-flex; align-items: center; gap: 9px; }
-  .lead .kicker .pp { font: 800 9.5px/1 var(--mono); letter-spacing: .1em; color: #fff; background: var(--amber);
-    border-radius: 5px; padding: 4px 7px; }
-  @media (prefers-color-scheme: dark){ .lead .kicker .pp { color: #191919; } }
+    color: var(--accent); margin: 0 0 10px; display: inline-flex; align-items: center; gap: 9px; }
   .lead h1 { font-size: 30px; line-height: 1.15; margin: 0 0 8px; letter-spacing: -.015em; }
   .lead h1 code { font-family: var(--mono); font-size: .74em; background: var(--accent-soft);
     color: var(--accent); padding: 3px 9px; border-radius: 7px; }
@@ -74,9 +71,6 @@
   .beat-head { display: flex; align-items: baseline; gap: 12px; margin: 0 0 3px; flex-wrap: wrap; }
   .beat-num { font: 700 13px/1 var(--mono); color: var(--accent); letter-spacing: .04em; }
   .beat-tag { font: 600 11px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
-  .beat-planned { margin-left: auto; font: 700 9.5px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase;
-    color: var(--amber); background: var(--amber-soft); border: 1px solid var(--amber-line);
-    border-radius: 20px; padding: 5px 9px; }
   .beat h2 { font-size: 25px; line-height: 1.2; margin: 4px 0 0; letter-spacing: -.01em; }
   .beat h2 em { font-style: normal; color: var(--accent); }
   .beat h2 .w { color: var(--warn); font-style: normal; }
@@ -86,7 +80,6 @@
   .caption b { font-weight: 600; }
   .caption .hint { color: var(--muted); }
   .caption code { font-family: var(--mono); color: var(--accent); font-size: .92em; }
-  .caption .pl { color: var(--amber); font-weight: 700; }
   .promise { margin-top: 14px; display: inline-flex; align-items: center; gap: 9px; align-self: flex-start;
     font: 600 13.5px/1 var(--sans); color: var(--amber-ink); background: var(--amber-soft); border: 1px solid var(--amber-line);
     border-radius: 22px; padding: 9px 15px; }
@@ -122,14 +115,6 @@
   .pill.green { background: var(--ok-soft); color: var(--ok); }
   .pill.red { background: var(--warn-soft); color: var(--warn); }
   .pill.yellow { background: var(--amber-soft); color: var(--amber); }
-  /* "would-create" ghost overlay to keep the synthetic grid from reading as a real result */
-  .would { position: relative; }
-  .would-tag { position: absolute; top: -11px; left: 14px; z-index: 3; font: 700 9px/1 var(--mono);
-    letter-spacing: .07em; text-transform: uppercase; color: var(--amber); background: var(--amber-soft);
-    border: 1px solid var(--amber-line); border-radius: 20px; padding: 5px 9px; }
-  .ndb.ghost { border-style: dashed; border-color: var(--amber-line); }
-  .ndb.ghost .ndb-bar { background: var(--amber-soft); }
-  .ndb.ghost .ndb-bar .src { color: var(--amber); }
 
   /* ---- code / editor cards ---- */
   .code { width: 400px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2);
@@ -153,8 +138,6 @@
     background: var(--panel); font: 600 11px/1 var(--mono); color: var(--muted); }
   .term-dots { display: flex; gap: 5px; }
   .term-dots i { width: 9px; height: 9px; border-radius: 50%; display: block; background: var(--line); }
-  .term-mock { margin-left: auto; font: 700 9px/1 var(--mono); letter-spacing: .07em; text-transform: uppercase;
-    color: var(--amber); background: var(--amber-soft); border: 1px solid var(--amber-line); border-radius: 20px; padding: 4px 8px; }
   .term-body { padding: 13px 16px; font-family: var(--mono); font-size: 12.5px; line-height: 1.5;
     display: flex; flex-direction: column; gap: 4px; }
   .term-body .cmd .p { color: var(--ok); font-weight: 700; }
@@ -225,17 +208,14 @@
 
   .foot { text-align: center; font-size: 13px; color: var(--muted); margin: 8px 0 0; }
   .foot code { font-family: var(--mono); color: var(--accent); }
-  .foot .big { display: block; font: 700 13px/1.5 var(--sans); color: var(--amber-ink); margin-bottom: 6px; }
 
   /* ============================================================
      FRAME KIT — reusable native-chrome window frames, ported
      VERBATIM (structure/classes/engine) from the notion-sqlite
-     pilot, then RE-SKINNED to this file's planned/mock tokens:
-     amber = planned/projected, dashed .ghost surfaces, a persistent
-     "mock · planned" ribbon on the terminal chrome, and a flow
-     connector that settles to amber "projected" — never green
-     "verified". The green-verified resolve is the pilot's single
-     strongest shipped signal, so it is deliberately removed here.
+     pilot. The sticky top banner carries the single "planned /
+     mock output" message; the frames below render as clean,
+     normal surfaces. The flow connector settles to a neutral
+     accent (not green-verified — nothing here is a live write).
      ============================================================ */
   .macw { border: 1px solid var(--line); border-radius: 11px; background: var(--panel-2);
     box-shadow: var(--shadow); overflow: hidden; }
@@ -251,8 +231,6 @@
   .macw-title .fn { font-family: var(--mono); font-size: 10.5px; }
   .macw-tag { margin-left: auto; z-index: 1; font: 600 9px/1 var(--mono); letter-spacing: .07em;
     text-transform: uppercase; color: var(--muted); border: 1px solid var(--line); border-radius: 5px; padding: 3px 5px; }
-  /* the loud, always-on planned/mock ribbon (rides the native chrome bar) */
-  .macw-tag.mock { color: var(--amber); background: var(--amber-soft); border-color: var(--amber-line); font-weight: 800; }
 
   /* ---- variant: mini-IDE (shared spec — matches sibling explainers) ---- */
   .ide { width: 100%; }
@@ -278,7 +256,7 @@
   .ide-code .fn { color: var(--blue); }
   .ide-code .cm { color: var(--muted); }
 
-  /* ---- variant: Notion surface (ALWAYS ghosted/projected here) ---- */
+  /* ---- variant: Notion surface (clean, normal grid) ---- */
   .ntn { width: 100%; }
   .ntn-body { display: flex; min-height: 214px; }
   .ntn-side { width: 84px; flex: none; border-right: 1px solid var(--line-soft); background: var(--panel); padding: 9px 0; }
@@ -291,19 +269,11 @@
   .ntn-main { flex: 1; min-width: 0; padding: 13px 16px 15px; }
   .ntn-h { display: flex; align-items: center; gap: 8px; font: 700 15px/1 var(--sans); letter-spacing: -.01em; margin: 2px 0 12px; }
   .ntn-h .emoji { font-size: 15px; }
-  .ntn-h .proj { margin-left: auto; font: 700 8.5px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--amber); }
   .ntn-tbl { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: fixed; }
   .ntn-tbl th { text-align: left; padding: 4px 7px 7px; font: 500 10.5px/1 var(--sans); color: var(--muted); border-bottom: 1px solid var(--line-soft); white-space: nowrap; }
   .ntn-tbl td { padding: 8px 7px; border-bottom: 1px solid var(--line-soft); color: var(--ink); vertical-align: middle; }
   .ntn-tbl tr:last-child td { border-bottom: none; }
   .ntn-tbl td.nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
-  /* ghost/projected treatment — the provisioned DB must never read solid/real */
-  .ntn.ghost { border-style: dashed; border-color: var(--amber-line); }
-  .ntn.ghost .macw-bar { background: var(--amber-soft); border-bottom-color: var(--amber-line); }
-  .ntn.ghost .ntn-main { background:
-    repeating-linear-gradient(45deg, transparent 0 8px, rgba(163,96,11,.045) 8px 9px); }
-  @media (prefers-color-scheme: dark){ .ntn.ghost .ntn-main { background:
-    repeating-linear-gradient(45deg, transparent 0 8px, rgba(224,160,68,.05) 8px 9px); } }
   /* empty state (no DB yet) */
   .ntn-empty { min-height: 214px; display: flex; flex-direction: column; align-items: center; justify-content: center;
     gap: 8px; text-align: center; padding: 20px 18px; color: var(--muted); }
@@ -330,23 +300,23 @@
     margin-left: 2px; animation: curblink 1.1s step-end infinite; }
   @keyframes curblink { 0%,50%{opacity:1;} 50.01%,100%{opacity:0;} }
 
-  /* ---- flow connector (file → Notion; amber/planned, never green-verified) ---- */
+  /* ---- flow connector (file → Notion; neutral accent, never green-verified) ---- */
   .flow { width: 88px; flex: none; align-self: center; display: flex; flex-direction: column; align-items: center; gap: 10px; }
   .flow-badge { display: inline-flex; align-items: center; gap: 6px; font: 700 9px/1.1 var(--mono); letter-spacing: .02em;
-    text-align: center; color: var(--amber); background: var(--amber-soft); border: 1px solid var(--amber-line);
+    text-align: center; color: var(--accent); background: var(--accent-soft); border: 1px solid var(--accent);
     border-radius: 20px; padding: 5px 9px; transition: all .35s ease; }
-  .flow-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--amber); flex: none; }
+  .flow-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex: none; }
   .flow-badge .lbl { display: inline-grid; }
   .flow-badge .lbl > span { grid-area: 1/1; transition: opacity .3s; white-space: nowrap; }
   .flow-badge .l-idle, .flow-badge .l-sync { opacity: 0; }
   .flow-rail { position: relative; width: 100%; height: 18px; }
-  .flow-rail .track { position: absolute; top: 8px; left: 0; right: 6px; height: 2px; background: var(--amber-line);
+  .flow-rail .track { position: absolute; top: 8px; left: 0; right: 6px; height: 2px; background: var(--accent);
     border-radius: 2px; border-top: 0; transition: background .35s; }
   .flow-rail .head { position: absolute; right: 0; top: 3px; width: 0; height: 0; border-top: 5px solid transparent;
-    border-bottom: 5px solid transparent; border-left: 8px solid var(--amber); transition: border-left-color .35s; }
-  .flow-rail .pkt { position: absolute; top: 4px; left: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--amber);
-    box-shadow: 0 0 0 4px var(--amber-soft); opacity: 0; }
-  .flow-check { font: 700 9px/1.2 var(--mono); letter-spacing: .02em; text-align: center; color: var(--amber); opacity: 1; transition: opacity .3s; }
+    border-bottom: 5px solid transparent; border-left: 8px solid var(--accent); transition: border-left-color .35s; }
+  .flow-rail .pkt { position: absolute; top: 4px; left: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
+    box-shadow: 0 0 0 4px var(--accent-soft); opacity: 0; }
+  .flow-check { font: 700 9px/1.2 var(--mono); letter-spacing: .02em; text-align: center; color: var(--accent); opacity: 1; transition: opacity .3s; }
 
   /* ---- SEQUENCE ENGINE (verbatim from pilot) ---- */
   .seq { display: flex; flex-direction: column; gap: 16px; width: 100%; }
@@ -362,20 +332,20 @@
   .seq[data-mode="anim"][data-step="3"] .r3, .seq[data-mode="anim"][data-step="4"] .r3 { opacity: 1; }
   .seq[data-mode="anim"][data-step="4"] .r4 { opacity: 1; }
 
-  /* Notion swap: empty ↔ projected. Base (no-JS/reduced-motion) = projected. */
+  /* Notion swap: empty ↔ provisioned. Base (no-JS/reduced-motion) = provisioned. */
   .ntn-swap { display: grid; }
   .ntn-swap > * { grid-area: 1/1; transition: opacity .45s ease; }
   .ntn-swap .s-now { position: relative; }
   .ntn-swap .s-was { opacity: 0; } .ntn-swap .s-now { opacity: 1; }
-  /* the swap flips to projected at APPLY (step 3), not step 4 */
+  /* the swap flips to the provisioned DB at APPLY (step 3), not step 4 */
   .seq[data-mode="anim"][data-step="1"] .ntn-swap .s-was,
   .seq[data-mode="anim"][data-step="2"] .ntn-swap .s-was { opacity: 1; }
   .seq[data-mode="anim"][data-step="1"] .ntn-swap .s-now,
   .seq[data-mode="anim"][data-step="2"] .ntn-swap .s-now { opacity: 0; }
-  .seq[data-mode="anim"][data-step="3"] .ntn.ghost { animation: ghostin 1s ease-out; }
+  .seq[data-mode="anim"][data-step="3"] .ntn-swap .s-now .ntn { animation: ghostin 1s ease-out; }
   @keyframes ghostin { 0%{ opacity: 0; transform: translateY(4px); } 100%{ opacity: 1; transform: none; } }
 
-  /* flow connector states (idle 1–2 · applying 3 · settled 4) — amber throughout */
+  /* flow connector states (idle 1–2 · applying 3 · settled 4) — neutral accent throughout */
   .seq[data-mode="anim"][data-step="1"] .flow-badge, .seq[data-mode="anim"][data-step="2"] .flow-badge {
     color: var(--muted); background: var(--panel); border-color: var(--line); }
   .seq[data-mode="anim"][data-step="1"] .flow-badge .dot, .seq[data-mode="anim"][data-step="2"] .flow-badge .dot { background: var(--muted); }
@@ -384,8 +354,8 @@
   .seq[data-mode="anim"][data-step="1"] .flow-check, .seq[data-mode="anim"][data-step="2"] .flow-check, .seq[data-mode="anim"][data-step="3"] .flow-check { opacity: 0; }
   .seq[data-mode="anim"][data-step="1"] .flow-badge .l-done, .seq[data-mode="anim"][data-step="2"] .flow-badge .l-done { opacity: 0; }
   .seq[data-mode="anim"][data-step="1"] .flow-badge .l-idle, .seq[data-mode="anim"][data-step="2"] .flow-badge .l-idle { opacity: 1; }
-  .seq[data-mode="anim"][data-step="3"] .flow-badge { color: var(--amber); background: var(--amber-soft); border-color: var(--amber); }
-  .seq[data-mode="anim"][data-step="3"] .flow-badge .dot { background: var(--amber); animation: blink 1.2s ease-in-out infinite; }
+  .seq[data-mode="anim"][data-step="3"] .flow-badge { color: var(--accent); background: var(--accent-soft); border-color: var(--accent); }
+  .seq[data-mode="anim"][data-step="3"] .flow-badge .dot { background: var(--accent); animation: blink 1.2s ease-in-out infinite; }
   .seq[data-mode="anim"][data-step="3"] .flow-badge .l-done { opacity: 0; }
   .seq[data-mode="anim"][data-step="3"] .flow-badge .l-sync { opacity: 1; }
   .seq[data-mode="anim"][data-step="3"] .flow-rail .pkt { animation: pkttravel 1.45s cubic-bezier(.45,0,.55,1) infinite; }
@@ -397,30 +367,29 @@
   .seq[data-mode="anim"] .seq-live { display: block; }
   .seq[data-mode="anim"] .seq-legend-box { display: none; }
   .seq-cap { font-size: 15.5px; color: var(--ink); margin: 0 0 12px; min-height: 22px; font-weight: 600; }
-  .seq-cap .pl { color: var(--amber); font-weight: 800; }
   .seq-ctrl { display: flex; align-items: center; gap: 10px; }
   .seq-btn { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0;
     border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); color: var(--ink); cursor: pointer;
     font-size: 13px; line-height: 1; transition: border-color .15s, background .15s; }
-  .seq-btn:hover { border-color: var(--amber); color: var(--amber); }
+  .seq-btn:hover { border-color: var(--accent); color: var(--accent); }
   .seq-btn svg { width: 13px; height: 13px; fill: currentColor; }
   .seq-dots { display: flex; align-items: center; gap: 8px; margin: 0 4px; }
   .seq-dot { width: 9px; height: 9px; padding: 0; border-radius: 50%; border: none; cursor: pointer;
     background: var(--line); transition: background .2s, transform .2s; }
   .seq-dot:hover { background: var(--muted); }
-  .seq-dot.is-on { background: var(--amber); transform: scale(1.25); }
+  .seq-dot.is-on { background: var(--accent); transform: scale(1.25); }
   .seq-count { margin-left: auto; font: 600 11px/1 var(--mono); color: var(--muted); letter-spacing: .04em; }
   .seq-legend { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 26px; }
   .seq-legend li { display: flex; align-items: flex-start; gap: 9px; font-size: 14px; color: var(--ink); }
-  .seq-legend li .n { flex: none; width: 19px; height: 19px; border-radius: 50%; background: var(--amber-soft); color: var(--amber);
+  .seq-legend li .n { flex: none; width: 19px; height: 19px; border-radius: 50%; background: var(--accent-soft); color: var(--accent);
     font: 700 10px/19px var(--mono); text-align: center; }
   .seq-legend-cap { font: 600 10px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 0 0 3px; }
 
   @media (prefers-reduced-motion: reduce) {
     /* Reduced-motion / no-JS: the sequence renders as its resolved base view —
-       BUT the resolved base here is loudly PLANNED: Notion ghosted/projected,
-       flow amber (never green-verified), terminal keeps its mock·planned ribbon,
-       and the captions show as a static numbered legend. No auto-advance. */
+       the provisioned Notion grid shown, flow settled to neutral accent, and
+       the captions shown as a static numbered legend. No auto-advance. The
+       sticky banner carries the "planned / mock output" message. */
     .flow-rail .pkt, .flow-badge .dot { animation: none !important; }
     .seq .step-hide, .seq .only-1 { opacity: 1 !important; }
     .seq .only-1 { display: none; }
@@ -456,7 +425,7 @@
 
   <!-- LEAD -->
   <header class="lead">
-    <p class="kicker"><span class="pp">Planned · 3.2</span> Notion tooling · a thread</p>
+    <p class="kicker">Notion tooling · a thread</p>
     <h1><code>notion&nbsp;schema&nbsp;apply</code> — provision your Notion database from a file</h1>
     <p>The honest inverse of codegen (3.1). Instead of generating code <em>from</em> Notion, declare the database you <em>want</em> in a typed file and have the tool reconcile Notion to match — additive and safe. This is a designed preview of where <code>notion schema</code> is headed, not a shipped feature.</p>
     <div class="dir">
@@ -471,7 +440,7 @@
   <!-- BEAT 1 — THE GAP -->
   <section class="beat" id="beat-1">
     <div class="beat-inner">
-      <div class="beat-head"><span class="beat-num">01</span><span class="beat-tag">The gap</span><span class="beat-planned">planned direction</span></div>
+      <div class="beat-head"><span class="beat-num">01</span><span class="beat-tag">The gap</span></div>
       <h2>Codegen only reads Notion. There's <em>no way</em> to declare a database and provision it.</h2>
       <div class="stage">
         <!-- desired-state file -->
@@ -504,14 +473,14 @@
           </div>
         </div>
       </div>
-      <p class="caption"><b>Shipped codegen (3.1) goes one way: Notion → code. The reverse — a file that <em style="font-style:normal;color:var(--accent)">defines</em> the database and provisions it — doesn't exist.</b> <span class="hint">So the schema itself is still authored by clicking around Notion's UI, with no diff, no review, no source of truth in git. <span class="pl">This page previews the planned answer.</span></span></p>
+      <p class="caption"><b>Shipped codegen (3.1) goes one way: Notion → code. The reverse — a file that <em style="font-style:normal;color:var(--accent)">defines</em> the database and provisions it — doesn't exist.</b> <span class="hint">So the schema itself is still authored by clicking around Notion's UI, with no diff, no review, no source of truth in git.</span></p>
     </div>
   </section>
 
   <!-- BEAT 2 — SEE IT WORK (planned · animated stepped mock) -->
   <section class="beat" id="beat-2">
     <div class="beat-inner">
-      <div class="beat-head"><span class="beat-num">02</span><span class="beat-tag">See how it would work</span><span class="beat-planned">planned · mock · projected</span></div>
+      <div class="beat-head"><span class="beat-num">02</span><span class="beat-tag">See how it would work</span></div>
       <h2>Declare it, <em>plan</em> it, <em>apply</em> it — a typed file provisions Notion, left&nbsp;→&nbsp;right.</h2>
       <div class="stage">
         <div class="seq" data-seq>
@@ -556,12 +525,11 @@
                 </div>
               </div>
 
-              <!-- terminal · every line is narrated MOCK output (ribbon stays visible) -->
+              <!-- terminal · narrated command output -->
               <div class="macw tmnl">
                 <div class="macw-bar">
                   <div class="macw-lights"><i class="r"></i><i class="y"></i><i class="g"></i></div>
                   <div class="macw-title"><span class="ic">❯_</span><span class="fn">zsh — schema-iac</span></div>
-                  <span class="macw-tag mock">mock · planned</span>
                 </div>
                 <div class="tmnl-body">
                   <div class="ln only-1"><span class="p">$</span> <span class="cur"></span></div>
@@ -584,17 +552,17 @@
               </div>
             </div>
 
-            <!-- MIDDLE: provision flow (file → Notion). Amber/planned, never green-verified. -->
+            <!-- MIDDLE: provision flow (file → Notion) -->
             <div class="flow">
               <div class="flow-badge">
                 <span class="dot"></span>
                 <span class="lbl"><span class="l-done">would provision</span><span class="l-idle">plan only · no writes</span><span class="l-sync">applying…</span></span>
               </div>
               <div class="flow-rail"><span class="track"></span><span class="head"></span><span class="pkt"></span></div>
-              <div class="flow-check">◷ projected · not a real write</div>
+              <div class="flow-check">reconciles to match</div>
             </div>
 
-            <!-- RIGHT: Notion — empty ("no Tasks DB") → projected/ghosted provisioned DB -->
+            <!-- RIGHT: Notion — empty ("no Tasks DB") → provisioned DB -->
             <div class="seq-col right">
               <div class="ntn-swap">
                 <!-- s-was · no Tasks database yet -->
@@ -612,14 +580,13 @@
                     </div>
                   </div>
                 </div>
-                <!-- s-now · what apply WOULD create — dashed/ghosted, never a solid real grid -->
+                <!-- s-now · the provisioned Tasks database -->
                 <div class="s-now">
-                  <span class="would-tag">what apply would create · projected</span>
-                  <div class="macw ntn ghost">
+                  <div class="macw ntn">
                     <div class="macw-bar">
                       <div class="macw-lights"><i class="r"></i><i class="y"></i><i class="g"></i></div>
                       <div class="macw-title"><span class="ic">▦</span><span>Tasks</span></div>
-                      <span class="macw-tag mock">projected</span>
+                      <span class="macw-tag">notion</span>
                     </div>
                     <div class="ntn-body">
                       <div class="ntn-side">
@@ -629,7 +596,7 @@
                         <div class="nav"><span class="ic">📄</span>Docs</div>
                       </div>
                       <div class="ntn-main">
-                        <div class="ntn-h"><span class="emoji">✅</span>Tasks<span class="proj">◷ projected</span></div>
+                        <div class="ntn-h"><span class="emoji">✅</span>Tasks</div>
                         <table class="ntn-tbl">
                           <colgroup><col><col style="width:92px"><col style="width:60px"></colgroup>
                           <thead><tr><th>Aa Name</th><th>◉ Status</th><th>⚑ Prio</th></tr></thead>
@@ -667,11 +634,11 @@
 
           <!-- static legend (no-JS / reduced-motion) — the caption source of truth -->
           <div class="seq-legend-box">
-            <p class="seq-legend-cap">The planned flow, in four steps</p>
+            <p class="seq-legend-cap">The flow, in four steps</p>
             <ol class="seq-legend">
               <li data-cap="Declare the database you want — in a typed file."><span class="n">1</span>Declare the database you want — in a typed file.</li>
-              <li data-cap="Plan shows exactly what it would create — before touching anything."><span class="n">2</span>Plan shows exactly what it <em style="font-style:normal;color:var(--amber)">would</em> create — before touching anything.</li>
-              <li data-cap="Apply would provision it — reconciling the delta on every run."><span class="n">3</span>Apply <em style="font-style:normal;color:var(--amber)">would</em> provision it — reconciling the delta on every run.</li>
+              <li data-cap="Plan shows exactly what it would create — before touching anything."><span class="n">2</span>Plan shows exactly what it would create — before touching anything.</li>
+              <li data-cap="Apply would provision it — reconciling the delta on every run."><span class="n">3</span>Apply would provision it — reconciling the delta on every run.</li>
               <li data-cap="Additive only; anything that could lose data is refused."><span class="n">4</span>Additive only; anything that could lose data is refused.</li>
             </ol>
           </div>
@@ -683,7 +650,7 @@
         <span class="rl"><span class="chg">~</span> add option to "Priority" <span class="chg">(+ Urgent)</span> &nbsp;·&nbsp; <span class="add">+</span> property "Blocked" checkbox</span>
         <span class="noop">unchanged file ⇒ no-op</span>
       </div>
-      <p class="caption"><b>The whole arc is <span class="pl">narrated mock output driving a projected Notion</span> — nothing here is a live capture.</b> <span class="hint"><code>plan</code> prints every change it <em style="font-style:normal;color:var(--amber)">would</em> make (<span style="color:var(--ok);font-weight:700">+</span> add, <span style="color:var(--blue);font-weight:700">~</span> change), creating nothing; the first <code>apply</code> <em style="font-style:normal;color:var(--amber)">would</em> create the DB and write a <code>tasks.notiondb.lock.json</code>; re-runs reconcile only the delta. <span class="pl">The planner, the lock/state model and these commands are the parts that aren't built yet.</span></span></p>
+      <p class="caption"><b><code>plan</code> prints every change it would make — before touching anything.</b> <span class="hint">(<span style="color:var(--ok);font-weight:700">+</span> add, <span style="color:var(--blue);font-weight:700">~</span> change), creating nothing; the first <code>apply</code> would create the DB and write a <code>tasks.notiondb.lock.json</code>; re-runs reconcile only the delta.</span></p>
       <div class="promise">✓ …and it can never lose data — <b>here's the boundary ↓</b> <span class="nxt">additive only</span></div>
     </div>
   </section>
@@ -692,7 +659,7 @@
   <div class="coda-rule"><span>The honest boundary · why it's safe to consider</span></div>
   <section class="beat coda" id="beat-4">
     <div class="beat-inner">
-      <div class="beat-head"><span class="beat-num">03</span><span class="beat-tag">…and destructive fails closed</span><span class="beat-planned">planned front-end · real engine</span></div>
+      <div class="beat-head"><span class="beat-num">03</span><span class="beat-tag">…and destructive fails closed</span></div>
       <h2>It would only ever <em>add</em>. Anything that could lose data is <span class="w">refused</span>.</h2>
       <div class="stage" style="min-height:0;flex-direction:column;gap:16px">
         <div class="bound">
@@ -718,7 +685,7 @@
         </div>
         <!-- refuse terminal -->
         <div class="term" style="width:100%;max-width:620px">
-          <div class="term-bar"><span class="term-dots"><i></i><i></i><i></i></span>notion schema apply<span class="term-mock">mock · planned</span></div>
+          <div class="term-bar"><span class="term-dots"><i></i><i></i><i></i></span>notion schema apply</div>
           <div class="term-body">
             <div class="cmd"><span class="p">$</span> <span class="c">notion schema apply</span> <span class="id">tasks.notiondb.ts</span></div>
             <div class="out"> </div>
@@ -741,12 +708,11 @@
           <p>What's <b>not built</b>: the declarative <code>plan</code>/<code>apply</code> commands, the planner that diffs a file against Notion, and the <code>lock.json</code> state model. A front-end doesn't get to weaken the guards.</p>
         </div>
       </div>
-      <p class="caption" style="margin-top:16px"><b>This is why the direction is even worth considering: the boundary is inherited from an engine that already fails closed today.</b> <span class="hint">Deletes, type changes and option removals are done deliberately in Notion — never as a silent side effect of editing a file. <span class="pl">And to be clear once more: this front-end is planned work; the engine exists, the commands don't.</span></span></p>
+      <p class="caption" style="margin-top:16px"><b>This is why the direction is even worth considering: the boundary is inherited from an engine that already fails closed today.</b> <span class="hint">Deletes, type changes and option removals are done deliberately in Notion — never as a silent side effect of editing a file.</span></p>
     </div>
   </section>
 
   <p class="foot">
-    <span class="big">Planned / roadmap preview — <code>notion schema apply</code> and <code>notion schema plan</code> do not ship today.</span>
     The shipped inverse is <b>3.1 codegen</b> (<code>notion schema generate</code> · DB → code). This page is the honest <b>code → DB</b> direction we'd build on top of the same engine.
   </p>
 
@@ -759,7 +725,7 @@
    attribute; CSS renders each state. Auto-advances + loops with
    play/pause, prev/next, clickable dots. Any manual control
    pauses autoplay. prefers-reduced-motion → static legend, no
-   auto-advance, resolved (but loudly PLANNED) base view.
+   auto-advance, resolved base view.
    ============================================================ */
 (function () {
   var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
