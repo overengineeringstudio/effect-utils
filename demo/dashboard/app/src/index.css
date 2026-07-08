@@ -819,6 +819,18 @@ body {
   opacity: 0;
   white-space: nowrap;
 }
+/* rbudget: 'now' ("budget $42k") is wider than 'was' — flip which one is in-flow
+ * so the box reserves the wider width and the flip never overlaps trailing text. */
+.intro .swap[data-k='rbudget'] .s-was {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+.intro .swap[data-k='rbudget'] .s-now {
+  position: relative;
+  top: auto;
+  left: auto;
+}
 
 /* chat: header icons, step chevrons, source-chip glyphs, built DB, composer */
 .intro .iu-chat .hd .hdi {
