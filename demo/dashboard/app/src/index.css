@@ -222,16 +222,30 @@ body {
 .intro-actor .cap {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   padding: 0 3px 2px;
 }
 .intro-actor.re .cap {
-  text-align: right;
+  align-items: flex-end;
 }
 .intro-actor .cap .nm {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-size: 13.5px;
   font-weight: 650;
   line-height: 1.25;
   color: var(--color-fg);
+}
+/* small name icons (slide-1 actors + automations) */
+.intro .ni {
+  display: inline-flex;
+  flex: none;
+  color: var(--color-accent);
+}
+.intro .ni svg {
+  width: 15px;
+  height: 15px;
 }
 .intro-actor .cap .rl {
   font-size: 11.5px;
@@ -263,6 +277,25 @@ body {
 }
 .intro-pair .side > * {
   width: 100%;
+}
+/* sqlite local side: the .db file with the terminal you edit it with, overlapping
+ * (db behind, terminal floating in front) — reads as "a real local SQLite DB". */
+.intro .loc-sqlite {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 2px;
+}
+.intro .loc-sqlite .loc-db {
+  width: 100%;
+}
+.intro .loc-sqlite .loc-term {
+  position: relative;
+  z-index: 2;
+  width: 88%;
+  margin-top: -12px;
+  margin-left: auto;
+  border-radius: 8px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.34);
 }
 
 /* single connector */
@@ -335,18 +368,20 @@ body {
   top: 50%;
   border-top: 2px solid var(--color-accent);
 }
+/* Notion is on the RIGHT: codegen = Notion→code (arrow LEFT); IaC = code→Notion
+ * (arrow RIGHT). */
 .intro-arrows2 .ar.cg .line::before {
-  left: 2px;
-  right: 11px;
-}
-.intro-arrows2 .ar.iac .line::before {
   left: 11px;
   right: 2px;
 }
+.intro-arrows2 .ar.iac .line::before {
+  left: 2px;
+  right: 11px;
+}
 .intro-arrows2 .ar.cg .line::after {
-  content: '▶';
+  content: '◀';
   position: absolute;
-  right: 0;
+  left: 0;
   top: 50%;
   transform: translateY(-50%);
   font-size: 9px;
@@ -354,9 +389,9 @@ body {
   color: var(--color-accent);
 }
 .intro-arrows2 .ar.iac .line::after {
-  content: '◀';
+  content: '▶';
   position: absolute;
-  left: 0;
+  right: 0;
   top: 50%;
   transform: translateY(-50%);
   font-size: 9px;
@@ -374,10 +409,10 @@ body {
   opacity: 0;
 }
 .intro-arrows2 .ar.cg .tok {
-  left: 2px;
+  right: 2px;
 }
 .intro-arrows2 .ar.iac .tok {
-  right: 2px;
+  left: 2px;
 }
 
 /* status-pill base (kit sets color; ensure padding/shape) */
@@ -561,6 +596,14 @@ body {
 .intro .macw.ntn .macw-title {
   left: 11px;
 }
+/* Drop redundant type badges — identity is the logo + filename. NOTION (Notion
+ * surfaces) + SQLITE (dbb) by variant; MARKDOWN/EDITOR/REACT via empty tag.
+ * GENERATED stays (schema.gen.ts — a meaningful "this is generated" marker). */
+.intro .macw.ntn .macw-tag,
+.intro .macw.dbb .macw-tag,
+.intro .macw-tag:empty {
+  display: none;
+}
 .intro .intro-blogo svg {
   width: 17px;
   height: 17px;
@@ -647,6 +690,11 @@ body {
 .intro .swap {
   position: relative;
   display: inline-flex;
+}
+/* 'was' defines the width and shows at rest (override any kit absolute layout) */
+.intro .swap .s-was {
+  position: relative;
+  opacity: 1;
 }
 .intro .swap .s-now {
   position: absolute;
@@ -817,9 +865,28 @@ body {
 .intro-pair.react:hover .intro-arrow .tok {
   animation: introOneWay 1.9s ease-in-out infinite;
 }
-/* sqlite → the terminal(right) edit lands in the Notion DB(left): token → LEFT */
+/* sqlite → SQL edit in the LOCAL db(left) travels RIGHT and lands in Notion(right) */
 .intro-pair.sqlite:hover .intro-arrow .tok {
-  animation: introOneWayL 2.4s ease-in-out infinite;
+  animation: introSqlTok 3s ease-in-out infinite;
+}
+@keyframes introSqlTok {
+  0%,
+  22% {
+    opacity: 0;
+    transform: translateX(-38px);
+  }
+  30% {
+    opacity: 1;
+  }
+  60% {
+    opacity: 1;
+    transform: translateX(38px);
+  }
+  70%,
+  100% {
+    opacity: 0;
+    transform: translateX(38px);
+  }
 }
 @keyframes introOneWay {
   0% {
@@ -852,12 +919,59 @@ body {
     transform: translateX(-38px);
   }
 }
-/* sqlite → the Notion row's status pill flips Todo→Done AS the token arrives */
-.intro-pair.sqlite:hover .swap .s-was {
-  animation: introFlipWas 2.4s ease-in-out infinite;
+/* sqlite → the LOCAL db row flips first (the SQL edit), THEN the Notion pill
+ * flips as the token arrives — "edit local SQLite → lands in Notion". */
+.intro-pair.sqlite:hover .swap.sqlocal .s-was {
+  animation: introFlipEarlyWas 3s ease-in-out infinite;
 }
-.intro-pair.sqlite:hover .swap .s-now {
-  animation: introFlipNow 2.4s ease-in-out infinite;
+.intro-pair.sqlite:hover .swap.sqlocal .s-now {
+  animation: introFlipEarlyNow 3s ease-in-out infinite;
+}
+.intro-pair.sqlite:hover .swap:not(.sqlocal) .s-was {
+  animation: introFlipLateWas 3s ease-in-out infinite;
+}
+.intro-pair.sqlite:hover .swap:not(.sqlocal) .s-now {
+  animation: introFlipLateNow 3s ease-in-out infinite;
+}
+@keyframes introFlipEarlyWas {
+  0%,
+  16% {
+    opacity: 1;
+  }
+  22%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes introFlipEarlyNow {
+  0%,
+  16% {
+    opacity: 0;
+  }
+  22%,
+  100% {
+    opacity: 1;
+  }
+}
+@keyframes introFlipLateWas {
+  0%,
+  58% {
+    opacity: 1;
+  }
+  64%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes introFlipLateNow {
+  0%,
+  58% {
+    opacity: 0;
+  }
+  64%,
+  100% {
+    opacity: 1;
+  }
 }
 @keyframes introFlipWas {
   0%,
@@ -879,12 +993,13 @@ body {
     opacity: 1;
   }
 }
-/* schema → codegen pulse DB→schema.ts, IaC pulse schema.ts→DB */
+/* schema (Notion on right) → codegen pulse Notion→code (R→L); IaC pulse
+ * code→Notion (L→R); the Notion DB row then reacts (provisioned). */
 .intro-pair.schema:hover .ar.cg .tok {
-  animation: introTokR 1.9s ease-in-out infinite;
+  animation: introTokL 1.9s ease-in-out infinite;
 }
 .intro-pair.schema:hover .ar.iac .tok {
-  animation: introTokL 1.9s ease-in-out infinite 0.35s;
+  animation: introTokR 1.9s ease-in-out infinite 0.35s;
 }
 /* …and the Notion DB visibly reacts when the IaC token lands (provisioned) */
 .intro-pair.schema:hover .ntn-tbl tr:first-child td {

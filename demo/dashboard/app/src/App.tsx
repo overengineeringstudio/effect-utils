@@ -6,6 +6,7 @@ import {
   At,
   CodeLine,
   Cm,
+  DbBrowser,
   KW,
   MacWindow,
   MiniIDE as KitIDE,
@@ -664,7 +665,7 @@ const MiniNotionPage = () => (
 const MiniMdFile = () => (
   <KitIDE
     title={<WinTitle icon={mdLogo} file="roadmap.md" />}
-    tag="markdown"
+    tag=""
     tree={[
       { kind: 'file', label: 'roadmap.md', selected: true },
       { kind: 'file', label: 'spec.md' },
@@ -801,7 +802,7 @@ const MiniChat = () => (
 const MiniIDE = () => (
   <KitIDE
     title={<WinTitle icon="{ }" file="sync.ts" />}
-    tag="editor"
+    tag=""
     tree={[
       { kind: 'fold', label: 'src' },
       { kind: 'file', label: 'notion.ts' },
@@ -981,6 +982,64 @@ const MiniSqlTerm = () => (
   </Terminal>
 )
 
+// the actual local SQLite database file (a .db grid; SQLite/feather identity,
+// dark local-file chrome — deliberately distinct from the light Notion DB).
+const MiniSqliteDb = () => (
+  <DbBrowser
+    title={<WinTitle icon={sqliteLogo} file="tasks.db" />}
+    tables={[
+      { name: 'pages', icon: '▦', selected: true },
+      { name: 'changes', icon: '≡' },
+    ]}
+  >
+    <table className="dbb-grid">
+      <thead>
+        <tr>
+          <th className="gut"> </th>
+          <th>Name</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td className="gut">1</td>
+          <td>Ship v1</td>
+          <td>
+            <span className="swap sqlocal">
+              <span className="s-was">
+                <span className="st st-prog">Todo</span>
+              </span>
+              <span className="s-now">
+                <span className="st st-done">Done</span>
+              </span>
+            </span>
+          </td>
+        </tr>
+        <tr>
+          <td className="gut">2</td>
+          <td>Fix deploy</td>
+          <td>
+            <span className="st st-prog">In&nbsp;Progress</span>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </DbBrowser>
+)
+
+// local side of the sqlite block: the SQLite .db file + the terminal you edit it
+// with, overlapping (db behind, terminal floating in front) — "a real local DB".
+const MiniLocalSqlite = () => (
+  <div className="loc-sqlite">
+    <div className="loc-db">
+      <MiniSqliteDb />
+    </div>
+    <div className="loc-term">
+      <MiniSqlTerm />
+    </div>
+  </div>
+)
+
 // mini generated schema.ts (kit editor) — schema codegen
 const MiniSchemaCode = () => (
   <KitIDE
@@ -1013,7 +1072,7 @@ const MiniSchemaCode = () => (
 const MiniJsx = () => (
   <KitIDE
     title={<WinTitle icon={reactLogo} file="page.tsx" />}
-    tag="react"
+    tag=""
     tree={[{ kind: 'file', label: 'page.tsx', selected: true }]}
     tab={<>page.tsx</>}
   >
@@ -1116,7 +1175,31 @@ const schemaMark = (
   </svg>
 )
 
-// ── automations external-system glyphs (monochrome, CSP-safe) ──
+// slide-1 actor name icons (small, consistent line weight, accent, theme-aware)
+const svgIcon = (d: string) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+    {d.split('|').map((p) => (
+      <path key={p} d={p} />
+    ))}
+  </svg>
+)
+const icUsers = svgIcon('M12 11.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4|M5.5 19.5a6.5 6.5 0 0 1 13 0')
+const icSparkle = svgIcon('M11 3l1.5 4.2L16.7 9 12.5 10.5 11 15 9.5 10.5 5.3 9l4.2-1.8z|M18 14l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z')
+const icBraces = svgIcon('M9.5 6.5 5 12l4.5 5.5|M14.5 6.5 19 12l-4.5 5.5')
+const icTerminal = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="5" width="18" height="14" rx="2.5" />
+    <path d="M7 10l3 2.5-3 2.5M13 15.5h4" />
+  </svg>
+)
+const icGear = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="3.1" />
+    <path d="M12 2.2v3M12 18.8v3M4.4 4.4l2.1 2.1M17.5 17.5l2.1 2.1M2.2 12h3M18.8 12h3M4.4 19.6l2.1-2.1M17.5 6.5l2.1-2.1" />
+  </svg>
+)
+
+// lego brick — the "snap together" motif (How-slide kicker only).
 const iconLego = (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
     <rect x="3.5" y="9" width="17" height="10.5" rx="1.5" />
@@ -1148,12 +1231,17 @@ const HandArrow = ({ vertical = false }: { vertical?: boolean }) => (
 
 // Slide-1 actor card: a miniature native-UI mockup + name + one-line role. `re`
 // right-aligns the caption for the Engineering column.
-const ActorCard = ({ mock, name, role, re = false }: { mock: ReactNode; name: string; role: string; re?: boolean }) => (
+// Slide-1 actor card: a miniature native-UI mockup + name. The mockup carries
+// the meaning, so there's no descriptive sub-line. `re` right-aligns the name
+// for the Engineering column.
+const ActorCard = ({ mock, name, icon, re = false }: { mock: ReactNode; name: string; icon: ReactNode; re?: boolean }) => (
   <div className={re === true ? 'intro-actor re' : 'intro-actor'}>
     {mock}
     <span className="cap">
-      <span className="nm">{name}</span>
-      <span className="rl">{role}</span>
+      <span className="nm">
+        <span className="ni">{icon}</span>
+        {name}
+      </span>
     </span>
   </div>
 )
@@ -1197,13 +1285,13 @@ const IntroPanel = ({ hidden }: { hidden: boolean }) => (
           <div className="text-[10.5px] font-bold uppercase tracking-wider text-fg-faint">Knowledge work</div>
           <div className="flex items-center gap-1.5">
             <div className="min-w-0 flex-1">
-              <ActorCard mock={<MiniNotionApp />} name="users" role="author · plan, in Notion" />
+              <ActorCard icon={icUsers} mock={<MiniNotionApp />} name="users" />
             </div>
             <HandArrow />
           </div>
           <div className="flex items-center gap-1.5">
             <div className="min-w-0 flex-1">
-              <ActorCard mock={<MiniChat />} name="productivity agents" role="assist in-place" />
+              <ActorCard icon={icSparkle} mock={<MiniChat />} name="productivity agents" />
             </div>
             <HandArrow />
           </div>
@@ -1214,7 +1302,6 @@ const IntroPanel = ({ hidden }: { hidden: boolean }) => (
             <NotionChip size={26} />
           </span>
           <span className="text-[16px] font-bold leading-tight">Notion</span>
-          <span className="text-[11px] leading-tight text-fg-muted">source of truth</span>
         </div>
         {/* Engineering */}
         <div className="flex min-w-[290px] flex-1 flex-col gap-2.5">
@@ -1222,13 +1309,13 @@ const IntroPanel = ({ hidden }: { hidden: boolean }) => (
           <div className="flex items-center gap-1.5">
             <HandArrow />
             <div className="min-w-0 flex-1">
-              <ActorCard re mock={<MiniIDE />} name="developers" role="integrate code — reliable & ergonomic" />
+              <ActorCard re icon={icBraces} mock={<MiniIDE />} name="developers" />
             </div>
           </div>
           <div className="flex items-center gap-1.5">
             <HandArrow />
             <div className="min-w-0 flex-1">
-              <ActorCard re mock={<MiniTerminal />} name="coding agents" role="local files (md · sqlite), not APIs" />
+              <ActorCard re icon={icTerminal} mock={<MiniTerminal />} name="coding agents" />
             </div>
           </div>
         </div>
@@ -1241,8 +1328,9 @@ const IntroPanel = ({ hidden }: { hidden: boolean }) => (
             <MiniFlow />
           </div>
           <div className="min-w-0">
-            <div className="text-[13px] font-semibold">automations &amp; integrations</div>
-            <div className="text-[11.5px] leading-snug text-fg-muted">read &amp; write the same Notion source of truth</div>
+            <div className="flex items-center gap-1.5 text-[13px] font-semibold">
+              <span className="ni">{icGear}</span>automations &amp; integrations
+            </div>
           </div>
         </div>
       </div>
@@ -1257,22 +1345,22 @@ const IntroPanel = ({ hidden }: { hidden: boolean }) => (
         <BlockCard icon={mdLogo} num="01" name="notion md" desc="Edit a Notion page as local Markdown — two-way, conflict-guarded sync from your editor.">
           <div className="intro-pair md">
             <div className="side">
-              <MiniNotionPage />
+              <MiniMdFile />
             </div>
             <Conn dir="⇄" action="two-way sync" />
             <div className="side">
-              <MiniMdFile />
+              <MiniNotionPage />
             </div>
           </div>
         </BlockCard>
         <BlockCard icon={sqliteLogo} num="02" name="notion sqlite" desc="Edit a Notion database locally with plain SQL — every change syncs straight back to Notion.">
           <div className="intro-pair sqlite">
             <div className="side">
-              <MiniNotionDb flip />
+              <MiniLocalSqlite />
             </div>
-            <Conn dir="←" action="synced to Notion" />
+            <Conn dir="→" action="synced to Notion" />
             <div className="side">
-              <MiniSqlTerm />
+              <MiniNotionDb flip />
             </div>
           </div>
         </BlockCard>
@@ -1284,7 +1372,7 @@ const IntroPanel = ({ hidden }: { hidden: boolean }) => (
         >
           <div className="intro-pair schema">
             <div className="side">
-              <MiniNotionDb />
+              <MiniSchemaCode />
             </div>
             <div className="intro-arrows2">
               <div className="ar cg">
@@ -1301,7 +1389,7 @@ const IntroPanel = ({ hidden }: { hidden: boolean }) => (
               </div>
             </div>
             <div className="side">
-              <MiniSchemaCode />
+              <MiniNotionDb />
             </div>
           </div>
         </BlockCard>
