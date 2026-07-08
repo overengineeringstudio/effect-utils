@@ -338,20 +338,23 @@ export const Md = () => (
     <header className="lead">
       <p className="kicker">Notion tooling · a thread</p>
       <h1>
-        <code>notion md</code> — your Markdown and Notion, finally in sync
+        <code>notion md</code> — Notion for people, files for everything else
       </h1>
-      <p>Keep a folder of local Markdown two-way synced with Notion pages. No copy-paste. No clobbering.</p>
+      <p>
+        Notion's the home for humans. But your agents, your build, and your Git all want a file. Keep the page and the
+        file in sync — edit either side.
+      </p>
     </header>
 
     {/* BEAT 1 — THE PROBLEM */}
     <Beat num="01" tag="The problem">
       <h2>
-        You keep the same doc in two places — and sync it <em>by hand</em>.
+        The page is for people. Your agents, your build, your Git all want a <em>file</em>.
       </h2>
       <div className="stage">
         <div className="s1col">
           <div className="s1">
-            {/* local doc — its edit just got overwritten (LEFT) */}
+            {/* local doc — the file medium (LEFT) */}
             <div className="doc local">
               <div className="doc-bar">
                 <span className="doc-dot f" />
@@ -365,33 +368,21 @@ export const Md = () => (
                 <div className="dln">
                   <span className="h">- [x]</span> {PRODUCT_SPEC.todo}
                 </div>
-                <div className="dln">
-                  Pricing: <span className="gone">{PRODUCT_SPEC.clobber.yours}</span>{' '}
-                  <span style={{ color: 'var(--warn)' }}>→</span> {PRODUCT_SPEC.clobber.pasted} / mo
-                </div>
+                <div className="dln">Pricing: {PRODUCT_SPEC.view} / mo</div>
               </div>
             </div>
-            {/* one bold paste direction: Notion → repo (arrow points left) */}
-            <div className="paste">
-              <div className="face">😮‍💨</div>
-              <div className="keys">
-                <span className="kbd">⌘C</span>
-                <span className="kbd">⌘V</span>
-              </div>
-              <svg className="bigarrow" viewBox="0 0 138 34" style={{ transform: 'scaleX(-1)' }}>
-                <path
-                  d="M4 12 H98 V4 L134 17 L98 30 V22 H4 Z"
-                  fill="var(--warn-soft)"
-                  stroke="var(--warn)"
-                  strokeWidth="1.5"
-                  strokeLinejoin="round"
-                />
-              </svg>
-              <div className="plbl">
-                <b>paste over</b>
+            {/* same content, two mediums — no first-class link between them */}
+            <div className="projarrow">
+              <div className="plabel">
+                same content
                 <br />
-                last one wins, silently
+                two mediums
               </div>
+              <svg viewBox="0 0 110 26">
+                <path d="M4 13 H96" stroke="currentColor" strokeWidth="1.8" fill="none" />
+                <path d="M90 8 L100 13 L90 18 Z" fill="currentColor" />
+                <path d="M20 18 L10 13 L20 8" stroke="currentColor" strokeWidth="1.8" fill="none" />
+              </svg>
             </div>
             {/* Notion doc — rendered blocks, not raw markdown (RIGHT) */}
             <div className="doc notion">
@@ -417,19 +408,18 @@ export const Md = () => (
                   </span>
                   <span className="t">{PRODUCT_SPEC.todo}</span>
                 </div>
-                <div className="ntext">Pricing: {PRODUCT_SPEC.clobber.pasted} / mo</div>
+                <div className="ntext">Pricing: {PRODUCT_SPEC.view} / mo</div>
               </div>
             </div>
-          </div>
-          <div className="clobber-note">
-            <span className="boom">💥</span> Your {PRODUCT_SPEC.clobber.yours} edit — silently gone.
           </div>
         </div>
       </div>
       <p className="caption">
-        <b>You keep the same doc in your repo and in Notion — and there’s no first-class way to sync them.</b>{' '}
+        <b>Notion's API/UI is the right medium for humans — but agents, build pipelines, and Git all work in files.</b>{' '}
         <span className="hint">
-          So you copy-paste, they drift, and whoever pastes last quietly wipes the other side’s edits.
+          For an agent, a file <em>is</em> the ideal read/write API: its tools already speak <code>Edit</code> /{' '}
+          <code>grep</code> / <code>git diff</code>, and a local file is always current — no guessing remote state.{' '}
+          <code>notion md</code> keeps the page and the file in sync.
         </span>
       </p>
     </Beat>
@@ -607,8 +597,9 @@ export const Md = () => (
     </Beat>
 
     <p className="foot">
-      What first-class would look like: native conflict-aware Markdown ⇄ page binding, in Notion itself. Until then,{' '}
-      <code>notion md</code> fills the gap.
+      What first-class would look like: Notion natively exposes any page or DB as a file-shaped, versionable,
+      agent-editable surface — <em>mount your workspace as files</em>, not an export. Until then, <code>notion md</code>{' '}
+      fills the gap.
     </p>
   </div>
 )
