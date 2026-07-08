@@ -111,13 +111,51 @@ How the requirements are met. Kept current with the implementation.
   SQLite file, a **Notion surface** (sidebar + select-pill DB / rendered page), and a
   **Terminal**. The **See-it-work** beat is a **stepped, auto-advancing animation**
   (play/pause + step dots; `prefers-reduced-motion` → all steps static) showing the
-  change propagate over time; the md explainer **sub-tabs** the See-it-work by
-  source-of-truth mode (**local / remote / shared**). **Invariant:** Notion is always
-  on the **right**, the local/other medium on the **left**; direction is shown by
-  arrows, never by swapping sides.
+  change propagate over time. The md explainer is organized by **source-of-truth
+  mode** (**local / notion / shared**; `notion` is `remote` in code). Today the mode
+  only **sub-tabs** the See-it-work beat; **intended (pending):** lift it to a
+  **page-level** selector scoping the whole explainer — the problem beat stays
+  mode-agnostic (the umbrella), the tab drives the concrete scene below (see *Explainer
+  problem framing*). **Invariant:** Notion is always on the **right**, the local/other
+  medium on the **left**; direction is shown by arrows, never by swapping sides.
 - **Local HTML is the SoT** (`demo/explainers/notion-<tool>.html`); the Notion
   explainer pages are superseded. Caption-less thread images + a hero GIF per
   tool for X. Ledger: `demo/explainers/README.md`.
+
+## Explainer problem framing (per building block)
+
+The problem-first beat (R6) opens on the **durable why** the tool exists — not a
+naive-approach failure mode. Captured here as it's aligned per building block; the
+HTML/React component is the copy source of truth (this section is the intent behind
+it). Populated so far for **notion md**.
+
+### notion md
+
+- **Root problem (umbrella, mode-agnostic):** a **medium mismatch**. Notion's API/UI
+  is the right medium for humans reading/editing in a rich UI — but for other jobs a
+  **file is the better medium** (agents, build pipelines, Git, `grep`). The bridge =
+  use the right medium per job and keep both in sync. Deliberately **not** framed as
+  "trapped behind an API" (imprisonment) or "you chose to duplicate a doc."
+- **Three concrete lives = the source-of-truth modes.** The umbrella is stated once
+  for everyone; the page-level SoT tab then picks the reader's world and drives the
+  concrete scene below:
+  - **local** (files → Notion mirror): an agent authors files / you publish repo docs
+    into Notion. Your source lives in Git; Notion is a published mirror.
+  - **notion** (Notion → files, derived): a blog build imports Notion; backup /
+    `git log` your pages. Notion content that can't otherwise feed a pipeline or be
+    versioned.
+  - **shared** (two-way, guarded): human in Notion + agent in files, live.
+- **Lead scene — agents (highest novelty):** *files are the ideal read/write API.* An
+  agent's toolchain already speaks files (`Edit` / `grep` / `git diff`) and a local
+  file is always current — versus reverse-engineering the block API and refetching to
+  guess remote state. The file **is** the API, and the best one.
+- **Clobber/drift is demoted** out of the problem beat to a **solution property**: two
+  live mediums ⇒ conflicts are possible ⇒ the guarded 3-way merge is why you can trust
+  it. It lives in the deep-dive coda (Beat 04) and earns its keep in **shared** mode —
+  it is *not* the reason to care in the first place.
+- **What native would look like:** Notion natively exposes any page/DB as a
+  **file-shaped, versionable, agent-editable surface** — *mount your workspace as
+  files*, first-class, not an export.
 
 ## Source-of-truth map
 
