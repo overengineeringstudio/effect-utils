@@ -1,8 +1,16 @@
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { defineConfig, type Plugin } from 'vite'
 import { viteSingleFile } from 'vite-plugin-singlefile'
 import { genModel } from './scripts/gen-model.ts'
+
+// This app imports the shared mockup kit from a SIBLING dir (../../kit). The dev
+// server must be allowed to serve those files (components + kit-components.css)
+// from outside the app root, or the mockups render unstyled. Allow the parent
+// dashboard dir (covers app + kit); the singlefile build inlines them regardless.
+const DASHBOARD_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
 // DEV server exposure: `vite` runs on DEV_PORT (127.0.0.1) and a standing
 // `tailscale serve --https=TAILNET_PORT` fronts it with TLS at a clean tailnet
@@ -34,6 +42,8 @@ export default defineConfig({
   },
   // DEV server config (ignored by the singlefile build).
   server: {
+    // Allow serving the sibling kit dir (kit-components.css + components) in dev.
+    fs: { allow: [DASHBOARD_DIR] },
     // Bind IPv4 127.0.0.1 (not the default localhost→::1) so the standing
     // `tailscale serve … http://127.0.0.1:DEV_PORT` proxy can reach it.
     host: '127.0.0.1',

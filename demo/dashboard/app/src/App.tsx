@@ -2,6 +2,23 @@ import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import type { RawSegment } from '../../screenplay.ts'
 import { DEMOS, type DemoModel, type ModelBeat, type Shot } from './model.gen.ts'
 import { InlineMd } from './inline-md.tsx'
+import {
+  At,
+  CodeLine,
+  Cm,
+  DbBrowser,
+  KW,
+  MacWindow,
+  MiniIDE as KitIDE,
+  NotionBlock,
+  NotionPage,
+  NotionSurface,
+  Prompt,
+  STR,
+  Terminal,
+  TerminalLine,
+  WinTitle,
+} from '../../kit/index.ts'
 
 // ---------------------------------------------------------------------------
 // pure helpers — ported byte-for-byte from build.ts
@@ -633,36 +650,316 @@ const INTRO_ID = 'intro'
 
 // Inline actor/motif icons (currentColor → theme-aware). Kept tiny and line-art
 // to match the dashboard's restrained visual language.
-const iconUsers = (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="8" r="3.2" />
-    <path d="M5.5 19.5a6.5 6.5 0 0 1 13 0" />
+// Tiny monochrome glyphs for the chat mockup (currentColor → theme-aware).
+const g = (d: string): ReactNode => (
+  <svg width="8" height="8" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+    <path d={d} />
   </svg>
 )
-const iconSparkle = (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
-    <path d="M12 3.5l1.7 4.8 4.8 1.7-4.8 1.7L12 16.5l-1.7-4.8L5.5 10l4.8-1.7z" />
-  </svg>
+const gBulb = g('M6 11h4M6.5 13h3M8 2a4 4 0 0 1 2.5 7.2V11h-5V9.2A4 4 0 0 1 8 2z')
+const gPencil = g('M11 2.5l2.5 2.5L6 12.5 3 13.5l1-3z')
+const gSearch = g('M7 2.5a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9zM11 11l3 3')
+const gChevD = g('M4 6l4 4 4-4')
+const gChevR = g('M6 4l4 4-4 4')
+const gGlobe = g('M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM1.5 8h13M8 1.5c2 2 2 11 0 13M8 1.5c-2 2-2 11 0 13')
+
+// ---------------------------------------------------------------------------
+// Miniature "native UI" mockups — theme-aware; all styling lives in index.css
+// under the `.intro` scope. Each is a small faux screenshot of the real thing.
+// ---------------------------------------------------------------------------
+// mini Notion page — a rendered Notion doc (kit NotionSurface + NotionPage).
+const MiniNotionPage = () => (
+  <NotionSurface
+    workspace="Acme"
+    workspaceInitial="A"
+    nav={[
+      { icon: '◆', label: 'Roadmap', on: true },
+      { icon: '▦', label: 'Specs' },
+    ]}
+  >
+    <NotionPage emoji="🚀" heading="Launch roadmap">
+      <NotionBlock>Finalize the API spec</NotionBlock>
+      <NotionBlock>Ship v1</NotionBlock>
+      <NotionBlock>Draft Q3 plan</NotionBlock>
+    </NotionPage>
+  </NotionSurface>
 )
-const iconCode = (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-    <path d="M9 8l-4 4 4 4" />
-    <path d="M15 8l4 4-4 4" />
-  </svg>
+
+// mini .md file (kit editor, markdown syntax)
+const MiniMdFile = () => (
+  <KitIDE
+    title={<WinTitle icon="≡" file="roadmap.md" />}
+    tag="markdown"
+    tree={[
+      { kind: 'file', label: 'roadmap.md', selected: true },
+      { kind: 'file', label: 'spec.md' },
+    ]}
+    tab={<>roadmap.md</>}
+  >
+    <CodeLine>
+      <KW># </KW>Launch roadmap
+    </CodeLine>
+    <CodeLine>
+      <STR>- [x]</STR> Finalize the API spec
+    </CodeLine>
+    <CodeLine>
+      <Cm>- [ ]</Cm> Ship v1
+    </CodeLine>
+    <CodeLine> </CodeLine>
+  </KitIDE>
 )
-const iconRobot = (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
-    <path d="M12 3v3" />
-    <rect x="5" y="6" width="14" height="12" rx="2.6" />
-    <circle cx="9.5" cy="12" r="1.05" />
-    <circle cx="14.5" cy="12" r="1.05" />
-    <path d="M9.5 15.2h5" />
-  </svg>
+
+// mini Notion desktop app (sidebar + page) — users. Built from the shared kit.
+const MiniNotionApp = () => (
+  <NotionSurface
+    workspace="Acme"
+    workspaceInitial="A"
+    nav={[
+      { icon: '◆', label: 'Launch roadmap', on: true },
+      { icon: '▦', label: 'API spec' },
+      { icon: '✓', label: 'Tasks' },
+    ]}
+  >
+    <NotionPage emoji="🚀" heading="Launch roadmap">
+      <NotionBlock>Finalize the API spec</NotionBlock>
+      <NotionBlock>Ship v1</NotionBlock>
+      <NotionBlock role="recv">Draft Q3 plan</NotionBlock>
+    </NotionPage>
+  </NotionSurface>
 )
-const iconZap = (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
-    <path d="M13 3L5 13h5l-1 8 8-11h-5z" />
-  </svg>
+
+// mini Notion agent chat panel (from the reference screenshot) — productivity agents
+const MiniChat = () => (
+  <div className="iu iu-chat">
+    <div className="hd">
+      <span className="t">Bug tracker {gChevD}</span>
+      <span className="ic">{gChevR}</span>
+    </div>
+    <div className="bd intro-reveal">
+      <div className="bub">Create a bug tracker with the latest feedback</div>
+      <div className="stp">
+        <span className="g">{gBulb}</span>
+        <span>Thought</span>
+      </div>
+      <div className="stp">
+        <span className="g">{gPencil}</span>
+        <span>
+          Creating <b>Bug Tracker</b>
+        </span>
+      </div>
+      <div className="stp">
+        <span className="g">{gSearch}</span>
+        <span>118 results</span>
+        <span className="chips">
+          <i />
+          <i />
+          <i />
+        </span>
+      </div>
+      <div className="resp">All set — pulling issues from Slack, Notion &amp; email; duplicates grouped.</div>
+      <div className="inp">
+        <span className="g">{gGlobe}</span>
+        <span className="src">All sources</span>
+        <span className="snd">↑</span>
+      </div>
+    </div>
+  </div>
+)
+
+// mini IDE (file tree + code) — developers (kit editor)
+const MiniIDE = () => (
+  <KitIDE
+    title={<WinTitle icon="{ }" file="sync.ts" />}
+    tag="editor"
+    tree={[
+      { kind: 'fold', label: 'src' },
+      { kind: 'file', label: 'notion.ts' },
+      { kind: 'file', label: 'sync.ts', selected: true },
+    ]}
+    tab={<>sync.ts</>}
+  >
+    <CodeLine>
+      <KW>import</KW>
+      {' { db } '}
+      <KW>from</KW> <STR>'./notion'</STR>
+    </CodeLine>
+    <CodeLine>
+      <KW>await</KW> db.<At>sync</At>()
+    </CodeLine>
+    <CodeLine>
+      <Cm>{'// typed · guarded'}</Cm>
+    </CodeLine>
+    <CodeLine role="recv">
+      <Cm>{'✓ 12 rows in sync'}</Cm>
+    </CodeLine>
+  </KitIDE>
+)
+
+// mini Claude Code terminal (agent edits a LOCAL file → reflects to Notion) — coding agents
+const MiniTerminal = () => (
+  <Terminal title={<WinTitle icon="❯_" file="claude code" />}>
+    <TerminalLine>
+      <Prompt /> edit roadmap.md
+    </TerminalLine>
+    <TerminalLine out>reading local files…</TerminalLine>
+    <TerminalLine out>
+      <span className="ok">+ - [x] Ship v1</span>
+    </TerminalLine>
+    <TerminalLine out>→ reflected to Notion</TerminalLine>
+  </Terminal>
+)
+
+// mini workflow graph (Notion ⇄ external systems) — automations. No kit
+// equivalent, so bespoke SVG inside kit window chrome; styled app-side (.pflow).
+const MiniFlow = () => (
+  <MacWindow title={<WinTitle icon="⚙" label="automations" />}>
+    <div className="pflow">
+      <svg viewBox="0 0 120 62" preserveAspectRatio="xMidYMid meet">
+        <path className="ed" d="M40 31 H82" />
+        <path className="ed" d="M40 27 C60 20 64 14 84 13" />
+        <path className="ed" d="M40 35 C60 42 64 48 84 49" />
+        <rect className="nd hub" x="14" y="19" width="26" height="24" rx="4" />
+        <path className="gl hub" d="M20 26h14M20 31h14M20 36h9" />
+        <g transform="translate(84,6)">
+          <rect className="nd" x="0" y="0" width="22" height="14" rx="3" />
+          <path className="gl" d="M5 5h12M5 8h12M5 11h7" />
+        </g>
+        <g transform="translate(84,24)">
+          <rect className="nd" x="0" y="0" width="22" height="14" rx="3" />
+          <circle className="gl" cx="11" cy="7" r="3.4" />
+          <path className="gl" d="M11 2.4v1.6M11 10v1.6M15.6 7h-1.6M8 7H6.4" />
+        </g>
+        <g transform="translate(84,42)">
+          <rect className="nd" x="0" y="0" width="22" height="14" rx="3" />
+          <path className="gl" d="M3.5 4h15v6h-15zM3.5 4l7.5 4.5L18.5 4" />
+        </g>
+        <circle className="pulse" cx="60" cy="31" r="2.4" />
+        <circle className="pulse p2" cx="62" cy="20" r="2.4" />
+        <circle className="pulse p3" cx="62" cy="42" r="2.4" />
+      </svg>
+    </div>
+  </MacWindow>
+)
+
+// mini Notion database grid. `flip` renders a Status cell that animates
+// Todo→Done while the parent sqlite pair is hovered.
+const MiniDbGrid = ({ flip = false }: { flip?: boolean }) => (
+  <DbBrowser
+    title={<WinTitle icon="▦" file="tasks.db" />}
+    tables={[
+      { name: 'pages', icon: '▦', selected: true },
+      { name: 'changes', icon: '≡' },
+    ]}
+  >
+    <table className="dbb-grid">
+      <thead>
+        <tr>
+          <th className="gut"> </th>
+          <th>Name</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td className="gut">1</td>
+          <td>Ship v1</td>
+          <td>
+            {flip === true ? (
+              <span className="swap">
+                <span className="s-was">
+                  <span className="st st-prog">Todo</span>
+                </span>
+                <span className="s-now">
+                  <span className="st st-done">Done</span>
+                </span>
+              </span>
+            ) : (
+              <span className="st st-done">Done</span>
+            )}
+          </td>
+        </tr>
+        <tr>
+          <td className="gut">2</td>
+          <td>Fix deploy</td>
+          <td>
+            <span className="st st-prog">In&nbsp;Progress</span>
+          </td>
+        </tr>
+        <tr>
+          <td className="gut">3</td>
+          <td>Draft plan</td>
+          <td>
+            <span className="st st-prog">Todo</span>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </DbBrowser>
+)
+
+// mini SQL terminal (plain SQL edit → lands in Notion) — sqlite
+const MiniSqlTerm = () => (
+  <Terminal title={<WinTitle icon="❯_" file="sqlite3 tasks.db" />}>
+    <TerminalLine>
+      <span className="sq">sqlite&gt;</span> <span className="kw">UPDATE</span> pages
+    </TerminalLine>
+    <TerminalLine>
+      {'   '}
+      <span className="kw">SET</span> status = <span className="str">'Done'</span>;
+    </TerminalLine>
+    <TerminalLine out>1 row updated · pushed to Notion</TerminalLine>
+  </Terminal>
+)
+
+// mini generated schema.ts (kit editor) — schema codegen
+const MiniSchemaCode = () => (
+  <KitIDE
+    title={<WinTitle icon="{ }" file="schema.gen.ts" />}
+    tag="generated"
+    tree={[
+      { kind: 'file', label: 'schema.gen.ts', selected: true },
+      { kind: 'file', label: 'people.gen.ts' },
+    ]}
+    tab={<>schema.gen.ts</>}
+  >
+    <CodeLine>
+      <Cm>{'// generated from Tasks'}</Cm>
+    </CodeLine>
+    <CodeLine>
+      <KW>export const</KW> <At>Status</At> =
+    </CodeLine>
+    <CodeLine>
+      {'  '}
+      <At>Schema</At>.<At>Literal</At>(
+    </CodeLine>
+    <CodeLine>
+      {'    '}
+      <STR>'Todo'</STR>, <STR>'Doing'</STR>, <STR>'Done'</STR>)
+    </CodeLine>
+  </KitIDE>
+)
+
+// mini JSX page component (kit editor) — notion-react
+const MiniJsx = () => (
+  <KitIDE
+    title={<WinTitle icon="{ }" file="page.tsx" />}
+    tag="react"
+    tree={[{ kind: 'file', label: 'page.tsx', selected: true }]}
+    tab={<>page.tsx</>}
+  >
+    <CodeLine>
+      <KW>const</KW> <At>Page</At> = () =&gt;
+    </CodeLine>
+    <CodeLine>
+      {'  '}&lt;<At>Toggle</At> <KW>title</KW>=<STR>"Q3"</STR>&gt;
+    </CodeLine>
+    <CodeLine>
+      {'    '}&lt;<At>Text</At>&gt;budget…&lt;/&gt;
+    </CodeLine>
+    <CodeLine>
+      {'  '}&lt;/<At>Toggle</At>&gt;
+    </CodeLine>
+  </KitIDE>
 )
 const iconNotion = (
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
@@ -677,149 +974,124 @@ const iconLego = (
   </svg>
 )
 
-// Slide-1 actor card: an icon badge + name + one-line role, used for the four
-// actors that flank the central Notion hub.
-const ActorCard = ({ icon, name, role }: { icon: ReactNode; name: string; role: string }) => (
-  <div className="flex items-center gap-2.5 rounded-xl border border-border bg-bg-subtle px-3.5 py-2.5">
-    <span className="inline-flex h-8 w-8 flex-none items-center justify-center rounded-lg bg-accent/10 text-accent">
-      {icon}
-    </span>
-    <span className="min-w-0">
-      <span className="block text-[13.5px] font-semibold leading-tight">{name}</span>
-      <span className="block text-[11.5px] leading-tight text-fg-muted">{role}</span>
-    </span>
-  </div>
-)
-
-// Slide-2 mini diagram: [node] —action→ [node]. The Notion side is a solid pill,
-// the local/code side accent-tinted; `planned` shows an amber roadmap chip.
-type VizEnd = { label: string; notion?: boolean }
-const VizNode = ({ end }: { end: VizEnd }) => (
-  <span
-    className={
-      'whitespace-nowrap rounded-lg border px-2.5 py-1.5 text-[12px] font-semibold ' +
-      (end.notion === true ? 'border-fg bg-fg text-bg-panel' : 'border-accent/40 bg-accent/10 text-accent')
-    }
+// Hand-drawn (whiteboard-sketch) two-way arrow linking one actor to the Notion
+// hub. Inline SVG; stroke follows the accent token (theme-aware). `vertical`
+// rotates it (used for the automations node below the hub).
+const HandArrow = ({ vertical = false }: { vertical?: boolean }) => (
+  <svg
+    className={vertical === true ? 'intro-hand v' : 'intro-hand'}
+    width="44"
+    height="24"
+    viewBox="0 0 44 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.9}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
   >
-    {end.label}
-  </span>
+    <path d="M6 11 C16 8, 28 15, 38 12" />
+    <path d="M33.5 8 L38.5 12 L33 15.5" />
+    <path d="M10.5 8 L5.5 12 L11 15.5" />
+  </svg>
 )
-const Viz = ({
-  left,
-  right,
-  dir,
-  action,
-  planned,
-}: {
-  left: VizEnd
-  right: VizEnd
-  dir: string
-  action: string
-  planned?: string
-}) => (
-  <div className="flex flex-wrap items-center justify-center gap-2.5 rounded-lg border border-border bg-bg-panel px-3.5 py-3">
-    <VizNode end={left} />
-    <span className="flex flex-col items-center leading-none">
-      <span className="text-[18px] font-bold text-accent">{dir}</span>
-      <span className="mt-0.5 text-[9.5px] font-semibold uppercase tracking-wide text-fg-faint">{action}</span>
+
+// Slide-1 actor card: a miniature native-UI mockup + name + one-line role. `re`
+// right-aligns the caption for the Engineering column.
+const ActorCard = ({ mock, name, role, re = false }: { mock: ReactNode; name: string; role: string; re?: boolean }) => (
+  <div className={re === true ? 'intro-actor re' : 'intro-actor'}>
+    {mock}
+    <span className="cap">
+      <span className="nm">{name}</span>
+      <span className="rl">{role}</span>
     </span>
-    <VizNode end={right} />
-    {planned !== undefined && (
-      <span className="ml-1 rounded bg-amber/15 px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wide text-amber">
-        {planned}
-      </span>
-    )}
   </div>
 )
 
-const INTRO_BLOCKS: {
-  num: string
-  name: string
-  left: VizEnd
-  right: VizEnd
-  dir: string
-  action: string
-  planned?: string
-  desc: string
-}[] = [
-  {
-    num: '01',
-    name: 'notion md',
-    left: { label: 'Notion page', notion: true },
-    dir: '⇄',
-    right: { label: 'roadmap.md' },
-    action: 'two-way sync',
-    desc: 'Edit Notion pages as local Markdown — two-way, conflict-guarded sync from your editor.',
-  },
-  {
-    num: '02',
-    name: 'notion sqlite',
-    left: { label: 'Notion DB', notion: true },
-    dir: '⇄',
-    right: { label: 'local.sqlite' },
-    action: 'SQL query + edit',
-    desc: 'A Notion database bound to a live local SQLite file — query and edit it with plain SQL.',
-  },
-  {
-    num: '03',
-    name: 'notion schema',
-    left: { label: 'Notion DB', notion: true },
-    dir: '→',
-    right: { label: 'schema.ts' },
-    action: 'codegen',
-    planned: 'IaC planned',
-    desc: 'Typed Effect schemas generated from live DBs (codegen). The inverse — schema-as-code (IaC) — is planned.',
-  },
-  {
-    num: '04',
-    name: 'notion-react',
-    left: { label: '‹Page /›' },
-    dir: '→',
-    right: { label: 'Notion page', notion: true },
-    action: 'render',
-    desc: 'Author a Notion page as a React component; rerun renders a precise block-level diff.',
-  },
-]
+// Slide-2 single connector: a direction glyph + action label + a hover token
+// that travels between the two mockups (animation keyed off the pair class).
+const Conn = ({ dir, action }: { dir: string; action: string }) => (
+  <div className="intro-arrow">
+    <span className="tok" />
+    <span className="gl">{dir}</span>
+    <span className="ac">{action}</span>
+  </div>
+)
+
+// Slide-2 block card: lego header (num + name) + a paired mockup + description.
+const BlockCard = ({ num, name, desc, children }: { num: string; name: string; desc: string; children: ReactNode }) => (
+  <div className="flex flex-col gap-3 rounded-xl border border-border bg-bg-subtle p-5">
+    <div className="flex items-center gap-2.5">
+      <span className="inline-flex h-6 w-6 flex-none items-center justify-center rounded-md bg-accent/10 text-accent">
+        {iconLego}
+      </span>
+      <span className="font-mono text-[11px] font-bold text-fg-faint">{num}</span>
+      <span className="font-mono text-[15.5px] font-semibold">{name}</span>
+    </div>
+    {children}
+    <p className="m-0 text-[13px] leading-snug text-fg-muted">{desc}</p>
+  </div>
+)
 
 const IntroPanel = ({ hidden }: { hidden: boolean }) => (
-  <section hidden={hidden} className="flex max-w-[1100px] flex-col gap-4">
+  <section hidden={hidden} className="intro flex max-w-[1120px] flex-col gap-4">
     {/* Slide 1 — Why: the ecosystem around Notion (hub = source of truth) */}
     <section className="rounded-2xl border border-border bg-bg-panel px-8 py-7 shadow-[0_6px_24px_rgba(10,14,20,.10)]">
       <div className="mb-1.5 text-[11px] font-bold uppercase tracking-[1.2px] text-accent">Why</div>
       <h2 className="m-0 mb-6 text-[25px] font-bold tracking-tight">Notion, for users, developers, and agents</h2>
-      <div className="flex flex-wrap items-stretch justify-center gap-3">
-        {/* Knowledge work */}
-        <div className="flex min-w-[210px] flex-1 flex-col gap-2.5">
+      <div className="flex flex-wrap items-stretch justify-center gap-2">
+        {/* Knowledge work — each actor has its own hand-drawn arrow to the hub */}
+        <div className="flex min-w-[290px] flex-1 flex-col gap-2.5">
           <div className="text-[10.5px] font-bold uppercase tracking-wider text-fg-faint">Knowledge work</div>
-          <ActorCard icon={iconUsers} name="users" role="author · plan, in Notion" />
-          <ActorCard icon={iconSparkle} name="productivity agents" role="assist in-place" />
+          <div className="flex items-center gap-1.5">
+            <div className="min-w-0 flex-1">
+              <ActorCard mock={<MiniNotionApp />} name="users" role="author · plan, in Notion" />
+            </div>
+            <HandArrow />
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className="min-w-0 flex-1">
+              <ActorCard mock={<MiniChat />} name="productivity agents" role="assist in-place" />
+            </div>
+            <HandArrow />
+          </div>
         </div>
-        <div className="flex items-center justify-center text-[20px] font-bold text-accent">⇄</div>
         {/* Notion hub */}
-        <div className="flex min-w-[150px] flex-col items-center justify-center rounded-2xl border-2 border-accent/50 bg-accent/5 px-6 py-5 text-center">
+        <div className="flex min-w-[144px] flex-col items-center justify-center rounded-2xl border-2 border-accent/50 bg-accent/5 px-6 py-5 text-center">
           <span className="mb-1.5 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-fg text-bg-panel">
             {iconNotion}
           </span>
           <span className="text-[16px] font-bold leading-tight">Notion</span>
           <span className="text-[11px] leading-tight text-fg-muted">source of truth</span>
         </div>
-        <div className="flex items-center justify-center text-[20px] font-bold text-accent">⇄</div>
         {/* Engineering */}
-        <div className="flex min-w-[210px] flex-1 flex-col gap-2.5">
+        <div className="flex min-w-[290px] flex-1 flex-col gap-2.5">
           <div className="text-right text-[10.5px] font-bold uppercase tracking-wider text-fg-faint">Engineering</div>
-          <ActorCard icon={iconCode} name="developers" role="integrate code — reliable & ergonomic" />
-          <ActorCard icon={iconRobot} name="coding agents" role="local files (md · sqlite), not APIs" />
+          <div className="flex items-center gap-1.5">
+            <HandArrow />
+            <div className="min-w-0 flex-1">
+              <ActorCard re mock={<MiniIDE />} name="developers" role="integrate code — reliable & ergonomic" />
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <HandArrow />
+            <div className="min-w-0 flex-1">
+              <ActorCard re mock={<MiniTerminal />} name="coding agents" role="local files (md · sqlite), not APIs" />
+            </div>
+          </div>
         </div>
       </div>
-      {/* automations & integrations bridge → other systems */}
-      <div className="mt-3.5 flex justify-center">
-        <div className="flex flex-wrap items-center justify-center gap-2.5 rounded-xl border border-dashed border-border-strong bg-bg-subtle px-4 py-2.5">
-          <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-accent/10 text-accent">
-            {iconZap}
-          </span>
-          <span className="text-[13px] font-semibold">automations &amp; integrations</span>
-          <span className="text-accent">→</span>
-          <span className="text-[12.5px] text-fg-muted">connect other systems</span>
+      {/* automations & integrations — its own arrow up to the hub */}
+      <div className="mt-2 flex flex-col items-center gap-1">
+        <HandArrow vertical />
+        <div className="flex w-full max-w-[440px] items-center gap-3.5 rounded-2xl border border-dashed border-border-strong bg-bg-subtle p-3">
+          <div className="w-[200px] flex-none">
+            <MiniFlow />
+          </div>
+          <div className="min-w-0">
+            <div className="text-[13px] font-semibold">automations &amp; integrations</div>
+            <div className="text-[11.5px] leading-snug text-fg-muted">read &amp; write the same Notion source of truth</div>
+          </div>
         </div>
       </div>
     </section>
@@ -829,20 +1101,68 @@ const IntroPanel = ({ hidden }: { hidden: boolean }) => (
         <span className="text-accent">{iconLego}</span> How
       </div>
       <h2 className="m-0 mb-5 text-[25px] font-bold tracking-tight">Building blocks that snap together</h2>
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        {INTRO_BLOCKS.map((b) => (
-          <div key={b.num} className="flex flex-col gap-3 rounded-xl border border-border bg-bg-subtle p-5">
-            <div className="flex items-center gap-2.5">
-              <span className="inline-flex h-6 w-6 flex-none items-center justify-center rounded-md bg-accent/10 text-accent">
-                {iconLego}
-              </span>
-              <span className="font-mono text-[11px] font-bold text-fg-faint">{b.num}</span>
-              <span className="font-mono text-[15.5px] font-semibold">{b.name}</span>
+      <div className="flex flex-col gap-4">
+        <BlockCard num="01" name="notion md" desc="Edit Notion pages as local Markdown — two-way, conflict-guarded sync from your editor.">
+          <div className="intro-pair md">
+            <div className="side">
+              <MiniNotionPage />
             </div>
-            <Viz left={b.left} right={b.right} dir={b.dir} action={b.action} planned={b.planned} />
-            <p className="m-0 text-[13px] leading-snug text-fg-muted">{b.desc}</p>
+            <Conn dir="⇄" action="two-way sync" />
+            <div className="side">
+              <MiniMdFile />
+            </div>
           </div>
-        ))}
+        </BlockCard>
+        <BlockCard num="02" name="notion sqlite" desc="A Notion database bound to a live local SQLite file — query and edit it with plain SQL.">
+          <div className="intro-pair sqlite">
+            <div className="side">
+              <MiniDbGrid flip />
+            </div>
+            <Conn dir="⇄" action="SQL query + edit" />
+            <div className="side">
+              <MiniSqlTerm />
+            </div>
+          </div>
+        </BlockCard>
+        <BlockCard
+          num="03"
+          name="notion schema"
+          desc="A round-trip: generate typed Effect schemas from the live DB (codegen), and provision the DB from code (IaC)."
+        >
+          <div className="intro-pair schema">
+            <div className="side">
+              <MiniDbGrid />
+            </div>
+            <div className="intro-arrows2">
+              <div className="ar cg">
+                <span className="lab">codegen</span>
+                <span className="line">
+                  <span className="tok" />
+                </span>
+              </div>
+              <div className="ar iac">
+                <span className="line">
+                  <span className="tok" />
+                </span>
+                <span className="lab">IaC apply</span>
+              </div>
+            </div>
+            <div className="side">
+              <MiniSchemaCode />
+            </div>
+          </div>
+        </BlockCard>
+        <BlockCard num="04" name="notion-react" desc="Author a Notion page as a React component; rerun renders a precise block-level diff.">
+          <div className="intro-pair react">
+            <div className="side">
+              <MiniJsx />
+            </div>
+            <Conn dir="→" action="render" />
+            <div className="side">
+              <MiniNotionPage />
+            </div>
+          </div>
+        </BlockCard>
       </div>
     </section>
   </section>

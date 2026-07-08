@@ -113,3 +113,619 @@ body {
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
 }
+
+/* ===================================================================
+ * Design tokens for the shared mockup kit (kit-components.css).
+ * Copied from kit/kit-page.css (which the dashboard must NOT import —
+ * it carries body/page chrome). These names (--bg/--panel/--accent/…)
+ * are distinct from the Tailwind --color-* theme above, so there is no
+ * clash; the kit re-themes via the same data-theme / prefers-color-scheme
+ * signals the dashboard already toggles.
+ * =================================================================== */
+:root {
+  --bg: #ffffff;
+  --panel: #f7f7f8;
+  --panel-2: #ffffff;
+  --ink: #1a1a1a;
+  --muted: #6b6b70;
+  --line: #e3e3e6;
+  --line-soft: #eeeef0;
+  --accent: #5b5bd6;
+  --accent-soft: #ececfb;
+  --warn: #c0392b;
+  --warn-soft: #fbe9e7;
+  --warn-line: #f0b3aa;
+  --ok: #1a7f4b;
+  --ok-soft: #e3f5ec;
+  --ok-line: #a9dcc2;
+  --blue: #2f6fd6;
+  --blue-soft: #e6effc;
+  --blue-line: #bcd3f5;
+  --amber: #b25000;
+  --amber-soft: #fbeede;
+  --amber-line: #e6c48f;
+  --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.05);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: #191919;
+    --panel: #202020;
+    --panel-2: #242424;
+    --ink: #ececee;
+    --muted: #9a9aa0;
+    --line: #2f2f2f;
+    --line-soft: #292929;
+    --accent: #9d9df0;
+    --accent-soft: #26264a;
+    --warn: #f0796b;
+    --warn-soft: #3a221e;
+    --warn-line: #5c3029;
+    --ok: #4ec98a;
+    --ok-soft: #1c2f26;
+    --ok-line: #2c4c3c;
+    --blue: #6fa8f5;
+    --blue-soft: #1b2a44;
+    --blue-line: #2b4066;
+    --amber: #e0913f;
+    --amber-soft: #35281a;
+    --amber-line: #5c4526;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 30px rgba(0, 0, 0, 0.35);
+  }
+}
+:root[data-theme='dark'] {
+  --bg: #191919;
+  --panel: #202020;
+  --panel-2: #242424;
+  --ink: #ececee;
+  --muted: #9a9aa0;
+  --line: #2f2f2f;
+  --line-soft: #292929;
+  --accent: #9d9df0;
+  --accent-soft: #26264a;
+  --warn: #f0796b;
+  --warn-soft: #3a221e;
+  --warn-line: #5c3029;
+  --ok: #4ec98a;
+  --ok-soft: #1c2f26;
+  --ok-line: #2c4c3c;
+  --blue: #6fa8f5;
+  --blue-soft: #1b2a44;
+  --blue-line: #2b4066;
+  --amber: #e0913f;
+  --amber-soft: #35281a;
+  --amber-line: #5c4526;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+
+/* ===================================================================
+ * Intro slides — layout, connectors, and the two bespoke mockups
+ * (chat + automations) with no kit equivalent. Kit windows style the
+ * rest. Every hover animation carries ONE message; static default is
+ * screenshot-legible; all motion is disabled under reduced-motion.
+ * =================================================================== */
+
+/* slide-1 actor card */
+.intro-actor {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: var(--color-bg-subtle);
+  padding: 10px;
+}
+.intro-actor > * {
+  width: 100%;
+}
+.intro-actor .cap {
+  display: flex;
+  flex-direction: column;
+  padding: 0 3px 2px;
+}
+.intro-actor.re .cap {
+  text-align: right;
+}
+.intro-actor .cap .nm {
+  font-size: 13.5px;
+  font-weight: 650;
+  line-height: 1.25;
+  color: var(--color-fg);
+}
+.intro-actor .cap .rl {
+  font-size: 11.5px;
+  line-height: 1.3;
+  color: var(--color-fg-muted);
+}
+.intro-hand {
+  color: var(--color-accent);
+  flex: none;
+}
+.intro-hand.v {
+  transform: rotate(90deg);
+}
+
+/* slide-2 paired block */
+.intro-pair {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-bg-panel);
+}
+.intro-pair .side {
+  flex: 0 1 380px;
+  min-width: 0;
+}
+.intro-pair .side > * {
+  width: 100%;
+}
+
+/* single connector */
+.intro-arrow {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+  width: 96px;
+}
+.intro-arrow .gl {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--color-accent);
+}
+.intro-arrow .ac {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--color-fg-faint);
+  text-align: center;
+}
+.intro-arrow .tok {
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  margin-left: -4px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  opacity: 0;
+}
+
+/* dual connector — schema round-trip (both directions equal) */
+.intro-arrows2 {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 14px;
+  flex: none;
+  width: 112px;
+}
+.intro-arrows2 .ar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.intro-arrows2 .ar .lab {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--color-accent);
+}
+.intro-arrows2 .ar .line {
+  position: relative;
+  width: 100%;
+  height: 12px;
+}
+.intro-arrows2 .ar.cg .line::before,
+.intro-arrows2 .ar.iac .line::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  border-top: 2px solid var(--color-accent);
+}
+.intro-arrows2 .ar.cg .line::before {
+  left: 2px;
+  right: 11px;
+}
+.intro-arrows2 .ar.iac .line::before {
+  left: 11px;
+  right: 2px;
+}
+.intro-arrows2 .ar.cg .line::after {
+  content: '▶';
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 9px;
+  line-height: 1;
+  color: var(--color-accent);
+}
+.intro-arrows2 .ar.iac .line::after {
+  content: '◀';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 9px;
+  line-height: 1;
+  color: var(--color-accent);
+}
+.intro-arrows2 .ar .tok {
+  position: absolute;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  margin-top: -3.5px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  opacity: 0;
+}
+.intro-arrows2 .ar.cg .tok {
+  left: 2px;
+}
+.intro-arrows2 .ar.iac .tok {
+  right: 2px;
+}
+
+/* status-pill base (kit sets color; ensure padding/shape) */
+.intro .st {
+  display: inline-flex;
+  align-items: center;
+  font: 600 10.5px/1 var(--sans);
+  padding: 2px 7px;
+  border-radius: 5px;
+}
+
+/* ---- chat panel (productivity agents; no kit equivalent) ---- */
+.intro .iu-chat {
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--panel-2);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  font-family: var(--sans);
+  color: var(--ink);
+}
+.intro .iu-chat .hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 11px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.intro .iu-chat .hd .t {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.intro .iu-chat .hd .ic {
+  display: flex;
+  gap: 5px;
+  color: var(--muted);
+}
+.intro .iu-chat .bd {
+  padding: 10px 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.intro .iu-chat .bub {
+  align-self: flex-end;
+  max-width: 84%;
+  background: var(--panel);
+  border: 1px solid var(--line-soft);
+  border-radius: 9px;
+  padding: 5px 8px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--ink);
+}
+.intro .iu-chat .stp {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.intro .iu-chat .stp .g {
+  flex: none;
+  color: var(--muted);
+  display: inline-flex;
+}
+.intro .iu-chat .stp b {
+  color: var(--ink);
+  font-weight: 600;
+}
+.intro .iu-chat .chips {
+  display: flex;
+  gap: 3px;
+  margin-left: 3px;
+}
+.intro .iu-chat .chips i {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  background: var(--line);
+  display: block;
+}
+.intro .iu-chat .resp {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.intro .iu-chat .inp {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 5px 8px;
+  margin-top: 2px;
+}
+.intro .iu-chat .inp .g {
+  color: var(--muted);
+  display: inline-flex;
+}
+.intro .iu-chat .inp .src {
+  font-size: 10px;
+  color: var(--muted);
+}
+.intro .iu-chat .inp .snd {
+  margin-left: auto;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  flex: none;
+}
+
+/* ---- automations workflow graph ---- */
+.intro .pflow {
+  padding: 8px 10px;
+  height: 98px;
+}
+.intro .pflow svg {
+  width: 100%;
+  height: 100%;
+}
+.intro .pflow .ed {
+  stroke: var(--line);
+  stroke-width: 1.4;
+  fill: none;
+}
+.intro .pflow .nd {
+  fill: var(--panel);
+  stroke: var(--line);
+  stroke-width: 1;
+}
+.intro .pflow .nd.hub {
+  fill: var(--ink);
+  stroke: var(--ink);
+}
+.intro .pflow .gl {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.intro .pflow .gl.hub {
+  stroke: var(--panel-2);
+}
+.intro .pflow .pulse {
+  fill: var(--accent);
+  opacity: 0;
+}
+
+/* =================== hover narratives (message per element) =================== */
+/* md → two-way sync: a token travels page↔md and back */
+.intro-pair.md:hover .intro-arrow .tok {
+  animation: introSync 1.9s ease-in-out infinite;
+}
+@keyframes introSync {
+  0% {
+    opacity: 0;
+    transform: translateX(-38px);
+  }
+  12% {
+    opacity: 1;
+  }
+  45%,
+  55% {
+    opacity: 1;
+    transform: translateX(38px);
+  }
+  88% {
+    opacity: 1;
+    transform: translateX(-38px);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-38px);
+  }
+}
+/* sqlite/react → one direction (local→Notion / code→page) */
+.intro-pair.sqlite:hover .intro-arrow .tok,
+.intro-pair.react:hover .intro-arrow .tok {
+  animation: introOneWay 1.9s ease-in-out infinite;
+}
+@keyframes introOneWay {
+  0% {
+    opacity: 0;
+    transform: translateX(-38px);
+  }
+  15% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+    transform: translateX(38px);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(38px);
+  }
+}
+/* sqlite → the row's status pill flips Todo→Done after the UPDATE */
+.intro-pair.sqlite:hover .swap .s-was {
+  animation: introFlipWas 2.4s ease-in-out infinite;
+}
+.intro-pair.sqlite:hover .swap .s-now {
+  animation: introFlipNow 2.4s ease-in-out infinite;
+}
+@keyframes introFlipWas {
+  0%,
+  42% {
+    opacity: 1;
+  }
+  56%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes introFlipNow {
+  0%,
+  42% {
+    opacity: 0;
+  }
+  56%,
+  100% {
+    opacity: 1;
+  }
+}
+/* schema → codegen pulse DB→schema.ts, IaC pulse schema.ts→DB */
+.intro-pair.schema:hover .ar.cg .tok {
+  animation: introTokR 1.9s ease-in-out infinite;
+}
+.intro-pair.schema:hover .ar.iac .tok {
+  animation: introTokL 1.9s ease-in-out infinite 0.35s;
+}
+@keyframes introTokR {
+  0% {
+    opacity: 0;
+    transform: translateX(0);
+  }
+  15% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+    transform: translateX(90px);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(90px);
+  }
+}
+@keyframes introTokL {
+  0% {
+    opacity: 0;
+    transform: translateX(0);
+  }
+  15% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+    transform: translateX(-90px);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-90px);
+  }
+}
+/* staggered reveal — users page block lands / react page materializes /
+ * chat steps advance / coding-agent diff streams in. Default fully visible. */
+.intro-actor:hover .ntn-page .blk,
+.intro-pair.react:hover .ntn-page .blk,
+.intro-actor:hover .iu-chat .bd > *,
+.intro-actor:hover .tmnl-body .ln {
+  animation: introReveal 0.5s ease-out both;
+}
+.intro-actor:hover .ntn-page .blk:nth-child(2),
+.intro-pair.react:hover .ntn-page .blk:nth-child(2),
+.intro-actor:hover .iu-chat .bd > *:nth-child(2),
+.intro-actor:hover .tmnl-body .ln:nth-child(2) {
+  animation-delay: 0.14s;
+}
+.intro-actor:hover .ntn-page .blk:nth-child(3),
+.intro-pair.react:hover .ntn-page .blk:nth-child(3),
+.intro-actor:hover .iu-chat .bd > *:nth-child(3),
+.intro-actor:hover .tmnl-body .ln:nth-child(3) {
+  animation-delay: 0.28s;
+}
+.intro-actor:hover .ntn-page .blk:nth-child(4),
+.intro-pair.react:hover .ntn-page .blk:nth-child(4),
+.intro-actor:hover .iu-chat .bd > *:nth-child(4),
+.intro-actor:hover .tmnl-body .ln:nth-child(4) {
+  animation-delay: 0.42s;
+}
+.intro-actor:hover .iu-chat .bd > *:nth-child(5),
+.intro-actor:hover .tmnl-body .ln:nth-child(5) {
+  animation-delay: 0.56s;
+}
+.intro-actor:hover .iu-chat .bd > *:nth-child(6) {
+  animation-delay: 0.7s;
+}
+@keyframes introReveal {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+/* automations → a pulse travels Notion ⇄ external systems */
+.intro-actor:hover .pflow .pulse {
+  animation: introPulse 1.9s ease-in-out infinite;
+}
+.intro .pflow .pulse.p2 {
+  animation-delay: 0.35s;
+}
+.intro .pflow .pulse.p3 {
+  animation-delay: 0.7s;
+}
+@keyframes introPulse {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  35% {
+    opacity: 1;
+  }
+  70% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .intro *,
+  .intro *::before,
+  .intro *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
