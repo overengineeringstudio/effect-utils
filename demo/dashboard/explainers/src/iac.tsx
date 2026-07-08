@@ -305,7 +305,6 @@ export const Iac = () => (
 
       {/* LEAD */}
       <header className="lead">
-        <p className="kicker">Notion tooling · a thread</p>
         <h1>
           <code>notion{nbsp(' schema apply')}</code> — provision your Notion database from a file
         </h1>
@@ -332,7 +331,7 @@ export const Iac = () => (
       {/* BEAT 1 — THE GAP */}
       <Beat num="01" tag="The gap">
         <h2>
-          Codegen only reads Notion. There's <em>no way</em> to declare a database and provision it.
+          A database's schema should be <em>code</em> — not clicks.
         </h2>
         <div className="stage">
           <div className="s1">
@@ -385,12 +384,12 @@ export const Iac = () => (
         </div>
         <p className="caption">
           <b>
-            Shipped codegen (3.1) goes one way: Notion → code. The reverse — a file that <em>defines</em> the database
-            and provisions it — doesn't exist.
+            Codegen (3.1) reads a database into typed schemas. The inverse doesn't exist yet — a file that{' '}
+            <em>defines</em> the database and provisions it.
           </b>{' '}
           <span className="hint">
-            So the schema itself is still authored by clicking around Notion's UI, with no diff, no review, no source of
-            truth in git.
+            So every schema change — add a property, rename one, add select options — is manual UI clicking: not
+            reproducible across environments, not in git, not reviewable in a PR, not part of CI.
           </span>
         </p>
       </Beat>
