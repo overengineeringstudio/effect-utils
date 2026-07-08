@@ -36,7 +36,7 @@ import {
   type IdeTreeItem,
   type SubTab,
 } from '../../kit/components.tsx'
-import { PRODUCT_SPEC, ROADMAP } from '../../kit/fixtures.ts'
+import { ROADMAP } from '../../kit/fixtures.ts'
 import { type MultiSyncStory, captionsToSteps, multiSyncStory } from '../../kit/syncStory.ts'
 
 // ── the three causal step-models (asserted at build time) ────────────────────
@@ -347,7 +347,7 @@ export const Md = () => (
     {/* BEAT 1 — THE PROBLEM */}
     <Beat num="01" tag="The problem">
       <h2>
-        The API is great for apps. For everyday jobs, a local <em>file</em> is easier.
+        Working with files is easier than working with a CLI/API in many cases
       </h2>
       <div className="stage">
         <div className="ways">
@@ -478,77 +478,84 @@ export const Md = () => (
     <div className="coda-rule">
       <span>Going deeper · optional</span>
     </div>
-    <Beat num="04" tag="…and it never clobbers" coda>
+    <Beat num="04" tag="The details" coda>
       <h2>
-        Both sides changed the same line? You get a <em>draft</em>, not a disaster.
+        Round-trips what it can — <em>refuses</em> what it can't.
       </h2>
       <div className="stage">
-        <div className="merge">
-          <div className="col">
-            <div className="mbox">
-              <div className="mt">local edit</div>
-              <div className="mrow">
-                <span style={{ color: 'var(--blue)' }}>Pricing: {PRODUCT_SPEC.conflict.local} / mo</span>
-              </div>
-            </div>
-            <div className="mbox">
-              <div className="mt">notion edit</div>
-              <div className="mrow">
-                <span style={{ color: 'var(--accent)' }}>Pricing: {PRODUCT_SPEC.conflict.notion} / mo</span>
-              </div>
+        <div className="features">
+          <div className="fcard">
+            <div className="ft">Two-way sync</div>
+            <div className="fb">
+              One engine pushes and pulls; <code>source: shared</code> syncs both directions.
             </div>
           </div>
-          <div className="merge-core">
-            <div className="merge-arrows">
-              <svg viewBox="0 0 96 56">
-                <path d="M2 10 C42 10 40 28 80 28" stroke="var(--muted)" strokeWidth="1.6" fill="none" />
-                <path d="M2 46 C42 46 40 28 80 28" stroke="var(--muted)" strokeWidth="1.6" fill="none" />
-                <path d="M74 23 L84 28 L74 33 Z" fill="var(--muted)" />
-              </svg>
-            </div>
-            <div className="merge-op">◆ guarded 3-way merge</div>
-            <div className="base-sub">
-              vs base <b>{PRODUCT_SPEC.conflict.base}</b> · from .notion-md/
-            </div>
-            <div className="merge-arrows">
-              <svg viewBox="0 0 96 26">
-                <path d="M6 13 H84" stroke="var(--ok)" strokeWidth="1.8" fill="none" />
-                <path d="M78 7 L88 13 L78 19 Z" fill="var(--ok)" />
-              </svg>
-            </div>
-            <div style={{ font: '600 10px/1 var(--mono)', letterSpacing: '.04em', color: 'var(--ok)', textAlign: 'center' }}>
-              writes a draft →
+          <div className="fcard">
+            <div className="ft">Guarded 3-way merge</div>
+            <div className="fb">
+              Non-overlapping edits auto-merge; overlaps write a conflict file — never a silent overwrite.
             </div>
           </div>
-          <div className="col">
-            <div className="draft">
-              <div className="draft-bar">⚠ {PRODUCT_SPEC.conflictFile}</div>
-              <div className="draft-body">
-                <div className="conf a">
-                  <span className="mk">&lt;&lt;&lt; local</span>
-                  <br />
-                  Pricing: {PRODUCT_SPEC.conflict.local} / mo
-                </div>
-                <div className="conf b">
-                  <span className="mk">&gt;&gt;&gt; notion</span>
-                  <br />
-                  Pricing: {PRODUCT_SPEC.conflict.notion} / mo
-                </div>
-              </div>
+          <div className="fcard">
+            <div className="ft">Content-addressed base</div>
+            <div className="fb">
+              Each clean pull is snapshotted in <code>.notion-md/</code> — merges check the exact bytes Notion last
+              returned.
             </div>
-            <div className="safe">✓ both versions kept · you decide</div>
+          </div>
+          <div className="fcard">
+            <div className="ft">Verified writes</div>
+            <div className="fb">After a push it re-reads the page, asserts it matches, then refreshes the base.</div>
+          </div>
+          <div className="fcard">
+            <div className="ft">Refuses lossy pages</div>
+            <div className="fb">Blocks that wouldn't survive a round-trip are refused at pull, not silently flattened.</div>
+          </div>
+          <div className="fcard">
+            <div className="ft">Watch mode</div>
+            <div className="fb">
+              <code>sync --watch</code> reacts to local saves instantly; polls Notion on an interval (30s default).
+            </div>
           </div>
         </div>
       </div>
-      <p className="caption">
-        <b>
-          Every sync is a 3-way merge against a content-addressed base in <code>.notion-md/</code>.
-        </b>{' '}
-        <span className="hint">
-          If only one side changed, it just applies. If both touched the same spot, notion md writes a{' '}
-          <code>*.conflict.roughdraft.md</code> holding both versions — it never overwrites your work.
-        </span>
-      </p>
+      <div className="blocks">
+        <div className="blockgroup">
+          <div className="blabel">Round-trips both ways</div>
+          <div className="chips">
+            {[
+              'Paragraph',
+              'Headings H1–H3',
+              'Bulleted list',
+              'Numbered list',
+              'To-do',
+              'Toggle',
+              'Quote',
+              'Callout',
+              'Code',
+              'Divider',
+              'Equation',
+              'Bold / italic',
+            ].map((b) => (
+              <span className="bchip" key={b}>
+                {b}
+              </span>
+            ))}
+            <span className="bchip q">Tables · normalized</span>
+            <span className="bchip q">Columns · beta</span>
+          </div>
+        </div>
+        <div className="blockgroup">
+          <div className="blabel muted">Edit in Notion</div>
+          <div className="chips">
+            {['Bookmarks', 'Embeds', 'Synced blocks', 'Databases', 'Table of contents'].map((b) => (
+              <span className="bchip muted" key={b}>
+                {b}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
     </Beat>
   </div>
 )

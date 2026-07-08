@@ -131,6 +131,24 @@
   .ecard .ebody { font-size: 13px; line-height: 1.5; color: var(--muted); }
   @media (max-width: 720px){ .enables { grid-template-columns: 1fr; } }
 
+  /* beat 4 (coda): feature grid + supported-blocks chips */
+  .features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; width: 100%; max-width: 740px; margin: 0 auto; }
+  .fcard { border: 1px solid var(--line); border-radius: 11px; background: var(--panel-2); padding: 13px 14px;
+    display: flex; flex-direction: column; gap: 6px; }
+  .fcard .ft { font: 700 13px/1.25 var(--sans); color: var(--ink); display: flex; align-items: baseline; gap: 6px; }
+  .fcard .ft::before { content: "◆"; color: var(--accent); font-size: 10px; }
+  .fcard .fb { font-size: 12px; line-height: 1.5; color: var(--muted); }
+  .blocks { width: 100%; max-width: 740px; margin: 18px auto 0; display: flex; flex-direction: column; gap: 12px; }
+  .blockgroup { display: flex; flex-direction: column; gap: 8px; }
+  .blabel { font: 700 9.5px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ok); }
+  .blabel.muted { color: var(--muted); }
+  .chips { display: flex; flex-wrap: wrap; gap: 7px; }
+  .bchip { font: 600 11px/1 var(--sans); padding: 5px 10px; border-radius: 20px; color: var(--ok);
+    background: var(--ok-soft); border: 1px solid var(--ok-line); }
+  .bchip.q { color: var(--muted); background: var(--panel-2); border-color: var(--line); }
+  .bchip.muted { color: var(--muted); background: var(--panel); border: 1px dashed var(--line); }
+  @media (max-width: 720px){ .features { grid-template-columns: 1fr 1fr; } }
+
   /* coda: guarded 3-way merge draft */
   .coda-rule { display: flex; align-items: center; gap: 14px; margin: 0 20px; color: var(--muted); }
   .coda-rule::before, .coda-rule::after { content: ""; height: 1px; background: var(--line); flex: 1; }
