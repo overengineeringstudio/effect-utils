@@ -412,9 +412,11 @@ export const runDemo = async (demo: Demo, opts: RunOptions = {}): Promise<RunRec
   writeTimeline(evidenceDir, record)
   writeReport(evidenceDir, record)
 
-  // Best-effort: publish the report under the explainers devnet root so it's
-  // reachable over the tailnet (e.g. https://<host>:8443/<demo>-evidence/).
-  // report.html is self-contained (screenshots inlined); PNGs copied too.
+  // Best-effort: copy the report under demo/explainers/<demo>-evidence/ as a
+  // stable on-disk location. (The tailnet static serve on :8443 was retired when
+  // the control moved to the single native Vite serve on :8445 — evidence is
+  // on-disk only now; open report.html locally.) report.html is self-contained
+  // (screenshots inlined); PNGs copied too.
   let servedRel: string | undefined
   const explainersDir = join(REPO_ROOT, 'demo', 'explainers')
   if (existsSync(explainersDir)) {

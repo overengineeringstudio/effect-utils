@@ -38,9 +38,10 @@ Output lands in `demo/md/evidence/<timestamp>/` (gitignored):
 - `terminal-<beat>.png` — the real watch-daemon terminal output
 - `notion-<beat>-<role>.png` — the live Notion page (only after login; see below)
 
-Each run also **auto-publishes** the report under the explainers devnet root
-(`demo/explainers/<demo>-evidence/`, gitignored), so it's reachable over the
-tailnet at e.g. `https://mbp2025.tail8108.ts.net:8443/md-evidence/report.html`.
+Each run also copies the report to a stable on-disk location
+(`demo/explainers/<demo>-evidence/report.html`, gitignored) — open it locally.
+(It used to be tailnet-served on `:8443`; that static serve was retired when the
+control moved to the single native Vite serve on `:8445`.)
 
 ## One-time browser login (for Notion screenshots)
 
