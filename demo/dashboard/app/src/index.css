@@ -608,6 +608,34 @@ body {
   height: 17px;
 }
 
+/* Slide-3 disclaimer poster — a warm "Notion cream" inset that stays warm in
+ * BOTH themes (like Notion's marketing illustration blocks). The illustration
+ * uses fixed colors, so the panel is a deliberate light island framed by the
+ * theme-aware slide around it. */
+.intro-poster {
+  max-width: 480px;
+  padding: 20px 24px;
+  border-radius: 18px;
+  background: linear-gradient(160deg, #fbf5ea 0%, #f4ead6 100%);
+  border: 1px solid #ece0c8;
+  box-shadow: 0 6px 22px rgba(60, 46, 20, 0.1);
+}
+@media (prefers-color-scheme: dark) {
+  /* soften the glow so the warm island reads as intentional, not blown-out */
+  .intro-poster {
+    border-color: #4a4230;
+    box-shadow: 0 8px 26px rgba(0, 0, 0, 0.4);
+  }
+}
+:root[data-theme='dark'] .intro-poster {
+  border-color: #4a4230;
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.4);
+}
+:root[data-theme='light'] .intro-poster {
+  border-color: #ece0c8;
+  box-shadow: 0 6px 22px rgba(60, 46, 20, 0.1);
+}
+
 /* Notion to-do blocks (bespoke — cannot leak into other kit surfaces) */
 .intro .ntn-page .blk.todo {
   display: flex;

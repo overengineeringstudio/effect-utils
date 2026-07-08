@@ -1360,10 +1360,10 @@ const WorkbenchPoster = () => {
   const woodDark = '#d2b98d'
   // gadget bodies (soft pastels) + their darker emblem inks
   const G = [
-    { fill: '#cdbdf2', logo: mdLogo, lc: '#4b3f7a', lx: 186, ly: 217 },
-    { fill: '#a9d8bb', logo: sqliteLogo, lc: '#2f6b48', lx: 249, ly: 215 },
-    { fill: '#f4b3a2', logo: schemaMark, lc: '#a24a37', lx: 309, ly: 216 },
-    { fill: '#aeddec', logo: reactLogo, lc: undefined, lx: 372, ly: 215 },
+    { key: 'md', fill: '#cdbdf2', logo: mdLogo, lc: '#4b3f7a', lx: 186, ly: 217 },
+    { key: 'sqlite', fill: '#a9d8bb', logo: sqliteLogo, lc: '#2f6b48', lx: 249, ly: 215 },
+    { key: 'schema', fill: '#f4b3a2', logo: schemaMark, lc: '#a24a37', lx: 309, ly: 216 },
+    { key: 'react', fill: '#aeddec', logo: reactLogo, lc: undefined, lx: 372, ly: 215 },
   ]
   return (
     <svg viewBox="0 0 460 300" className="w-full" role="img" aria-label="A tinkerer assembling bespoke Notion tools at a workbench, under a lightbulb">
@@ -1418,7 +1418,7 @@ const WorkbenchPoster = () => {
         const gx = 174 + i * 62
         const cx = gx + 22
         return (
-          <g key={i}>
+          <g key={g.key}>
             {/* antenna */}
             <line x1={cx} y1="202" x2={cx} y2="192" stroke={ink} strokeWidth="2.2" strokeLinecap="round" />
             <circle cx={cx} cy="189" r="4" fill={g.fill} stroke={ink} strokeWidth="2.2" />
