@@ -335,8 +335,8 @@ export const React = () => (
       </p>
     </Beat>
 
-    {/* BEAT 3 — THE SHIFT */}
-    <Beat num="03" tag="The shift">
+    {/* BEAT 3 — WHAT IT ENABLES */}
+    <Beat num="03" tag="What it enables">
       <h2>
         You <em>describe</em> the page. It computes the minimal block ops.
       </h2>

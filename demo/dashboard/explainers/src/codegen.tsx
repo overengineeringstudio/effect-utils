@@ -422,8 +422,8 @@ export const Codegen = () => (
       </p>
     </Beat>
 
-    {/* BEAT 3 — THE SHIFT */}
-    <Beat num="03" tag="The shift">
+    {/* BEAT 3 — WHAT IT ENABLES */}
+    <Beat num="03" tag="What it enables">
       <h2>
         Your Notion databases become <em>versioned, typed code</em>.
       </h2>

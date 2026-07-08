@@ -353,8 +353,8 @@ export const Sqlite = () => (
       </p>
     </Beat>
 
-    {/* BEAT 3 — THE INSIGHT */}
-    <Beat num="03" tag="The shift">
+    {/* BEAT 3 — WHAT IT ENABLES */}
+    <Beat num="03" tag="What it enables">
       <h2>
         Your Notion database is now an ordinary <em>SQLite file</em>.
       </h2>
