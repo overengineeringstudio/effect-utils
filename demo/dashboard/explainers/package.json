@@ -1,0 +1,22 @@
+{
+  "name": "demo-explainers-ssg",
+  "private": true,
+  "type": "module",
+  "version": "0.0.0",
+  "scripts": {
+    "build": "bun run scripts/render.tsx",
+    "assert:causality": "bun run scripts/causality-proof.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "bun-types": "^1.3.14",
+    "typescript": "^5.7.0"
+  }
+}

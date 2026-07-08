@@ -21,3 +21,10 @@ dashboard/app/node_modules/
 dashboard/app/dist/
 dashboard/app/src/model.gen.ts
 explainers/control.next.html
+
+# explainers SSG rebuild (standalone bun app, own node_modules; bun.lock IS tracked).
+# The kit is shared source consumed by the SSG; node_modules is symlinked into it.
+dashboard/explainers/node_modules/
+dashboard/explainers/dist/
+dashboard/kit/node_modules
+explainers/notion-*.next.html

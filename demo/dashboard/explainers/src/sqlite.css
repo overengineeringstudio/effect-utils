@@ -1,0 +1,83 @@
+/* sqlite.css — per-explainer content CSS for notion-sqlite (NOT shared kit).
+   Beat 1 (problem grid + wants), beat 3 (file-is-the-source), beat 4 (guard coda).
+   Inlined after the kit CSS by the SSG build. Promote a block to kit only when a
+   SECOND explainer needs it (no speculative sharing). */
+
+/* ---- beat 1: notion db grid + the ask ---- */
+.grid { width: 340px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2);
+  box-shadow: var(--shadow); overflow: hidden; }
+.grid-bar { display: flex; align-items: center; gap: 8px; padding: 11px 13px; border-bottom: 1px solid var(--line-soft); background: var(--panel); }
+.grid-bar .doc-dot { width: 9px; height: 9px; border-radius: 50%; background: #000; }
+@media (prefers-color-scheme: dark){ .grid-bar .doc-dot { background:#fff; } }
+.grid-bar .nm { font: 600 12px/1 var(--sans); }
+.grid-bar .src { margin-left: auto; font: 600 9.5px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.gtable { width: 100%; border-collapse: collapse; font-size: 12px; }
+.gtable th { text-align: left; padding: 7px 12px; font: 600 9.5px/1 var(--mono); letter-spacing: .05em; text-transform: uppercase;
+  color: var(--muted); border-bottom: 1px solid var(--line-soft); }
+.gtable td { padding: 8px 12px; border-bottom: 1px solid var(--line-soft); color: var(--ink); }
+.gtable tr:last-child td { border-bottom: none; }
+.gtable .colh { display: inline-flex; align-items: center; gap: 5px; }
+.clickpain { margin-top: 12px; display: inline-flex; align-items: center; gap: 9px; font-size: 13.5px; color: var(--warn);
+  font-weight: 600; background: var(--warn-soft); border: 1px solid var(--warn-line); border-radius: 22px; padding: 8px 15px; }
+
+.wants { width: 250px; display: flex; flex-direction: column; gap: 11px; }
+.wants .wt { font: 600 10px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 1px; }
+.want { display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px;
+  background: var(--panel-2); box-shadow: var(--shadow); }
+.want .x { color: var(--warn); font-weight: 800; font-size: 15px; flex: none; }
+.want .wc { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: line-through; text-decoration-color: var(--warn-line); }
+.want .wl { font-size: 12px; color: var(--ink); }
+.want .wl b { color: var(--ink); }
+
+/* ---- beat 3: file is the source ---- */
+.s3 { display: flex; align-items: center; gap: 0; }
+.filecard { width: 300px; }
+.file-frame { border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2); box-shadow: var(--shadow); overflow: hidden; }
+.file-bar { display: flex; align-items: center; gap: 8px; padding: 10px 13px; border-bottom: 1px solid var(--line-soft);
+  background: var(--panel); font: 600 12px/1 var(--mono); color: var(--accent); }
+.file-bar .fi { color: var(--accent); }
+.toolfan { padding: 13px 15px; display: flex; flex-direction: column; gap: 8px; }
+.toolfan .tool { display: flex; align-items: center; gap: 9px; font-family: var(--mono); font-size: 12px; color: var(--ink); }
+.toolfan .tool .ti { width: 16px; text-align: center; }
+.toolfan .tool .tg { color: var(--muted); }
+.sot { margin-top: 10px; display: inline-flex; align-items: center; gap: 7px; font: 600 11px/1 var(--mono);
+  color: var(--accent); background: var(--accent-soft); border-radius: 8px; padding: 7px 10px; }
+.projarrow { width: 132px; display: flex; flex-direction: column; align-items: center; gap: 8px; color: var(--muted); }
+.projarrow .plabel { font-size: 11.5px; text-align: center; line-height: 1.35; }
+.projarrow svg { width: 112px; height: 26px; }
+.view { width: 268px; }
+.view-frame { border: 1px dashed var(--accent); border-radius: 12px; background: var(--accent-soft); padding: 3px; }
+.view-inner { border-radius: 9px; background: var(--panel-2); overflow: hidden; box-shadow: var(--shadow); }
+.view-cap { text-align: center; font: 600 10.5px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--accent); margin-top: 8px; }
+
+/* ---- coda: guard gate ---- */
+.coda-rule { display: flex; align-items: center; gap: 14px; margin: 0 20px; color: var(--muted); }
+.coda-rule::before, .coda-rule::after { content: ""; height: 1px; background: var(--line); flex: 1; }
+.coda-rule span { font: 600 11px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; }
+.coda { border-style: dashed; background: var(--panel); }
+.coda .beat-tag { color: var(--accent); }
+.guard { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; }
+.guard .col { display: flex; flex-direction: column; gap: 12px; }
+.gedit { width: 236px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); box-shadow: var(--shadow);
+  padding: 10px 13px; font-family: var(--mono); font-size: 11.5px; }
+.gedit .gt { font: 600 9.5px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+.gedit.bad { border-color: var(--warn-line); }
+.gedit.good { border-color: var(--ok-line); }
+.gedit .sql .kw { color: var(--blue); } .gedit .sql .str { color: var(--ok); }
+.gate-core { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 150px; }
+.gate-op { display: inline-flex; align-items: center; gap: 8px; font: 600 12px/1 var(--sans); color: var(--ink);
+  border: 1px solid var(--accent); border-radius: 20px; padding: 8px 14px; background: var(--accent-soft); }
+.gate-arrows svg { width: 96px; height: 46px; display: block; }
+.refusal { width: 250px; border: 1px solid var(--warn-line); border-radius: 10px; background: var(--warn-soft); box-shadow: var(--shadow); overflow: hidden; }
+.refusal-bar { display: flex; align-items: center; gap: 7px; padding: 9px 12px; border-bottom: 1px solid var(--warn-line); font: 600 11px/1 var(--mono); color: var(--warn); }
+.refusal-body { padding: 11px 13px; font-family: var(--mono); font-size: 11px; display: flex; flex-direction: column; gap: 10px; }
+.rerr .tag { color: var(--warn); font-weight: 700; }
+.rerr .msg { color: var(--muted); display: block; margin-top: 2px; }
+.passed { width: 250px; border: 1px solid var(--ok-line); border-radius: 10px; background: var(--ok-soft); box-shadow: var(--shadow); overflow: hidden; }
+.passed-bar { display: flex; align-items: center; gap: 7px; padding: 9px 12px; border-bottom: 1px solid var(--ok-line); font: 600 11px/1 var(--mono); color: var(--ok); }
+.passed-body { padding: 11px 13px; font-family: var(--mono); font-size: 11px; color: var(--ink); }
+.safe { display: inline-flex; align-items: center; gap: 7px; font: 600 12px/1 var(--sans); color: var(--ok); margin-top: 6px; }
+
+@media (max-width: 820px) {
+  .s1, .s3, .guard { flex-direction: column; }
+}

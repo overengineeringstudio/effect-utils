@@ -1,0 +1,98 @@
+/* ============================================================
+   kit-page.css — SSG-EXPLAINER-ONLY layer.
+   Design tokens (the explainer palette), body/reset, and the
+   standalone-page chrome (.thread / .lead / .beat / .foot).
+   The control dashboard does NOT import this file (it would
+   clobber its own body/layout); it only imports kit-components.css.
+
+   Tokens are authored light-first with TWO dark mechanisms so the
+   same kit renders correctly as a standalone recording (system
+   preference) AND under an explicit theme toggle (data-theme):
+     - :root                                → light (default)
+     - @media(dark) :root:not([data-theme=light])  → follow system
+     - :root[data-theme="dark"]             → forced dark
+     - :root[data-theme="light"]            → forced light (wins over media)
+   ============================================================ */
+:root {
+  --bg: #ffffff; --panel: #f7f7f8; --panel-2: #ffffff; --ink: #1a1a1a; --muted: #6b6b70;
+  --line: #e3e3e6; --line-soft: #eeeef0;
+  --accent: #5b5bd6; --accent-soft: #ececfb;
+  --warn: #c0392b; --warn-soft: #fbe9e7; --warn-line: #f0b3aa;
+  --ok: #1a7f4b; --ok-soft: #e3f5ec; --ok-line: #a9dcc2;
+  --blue: #2f6fd6; --blue-soft: #e6effc; --blue-line: #bcd3f5;
+  --amber: #b25000; --amber-soft: #fbeede; --amber-line: #e6c48f;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+  --shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.05);
+}
+/* dark token values, shared by the system-preference and forced-dark selectors */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #191919; --panel: #202020; --panel-2: #242424; --ink: #ececee; --muted: #9a9aa0;
+    --line: #2f2f2f; --line-soft: #292929;
+    --accent: #9d9df0; --accent-soft: #26264a;
+    --warn: #f0796b; --warn-soft: #3a221e; --warn-line: #5c3029;
+    --ok: #4ec98a; --ok-soft: #1c2f26; --ok-line: #2c4c3c;
+    --blue: #6fa8f5; --blue-soft: #1b2a44; --blue-line: #2b4066;
+    --amber: #e0913f; --amber-soft: #35281a; --amber-line: #5c4526;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #191919; --panel: #202020; --panel-2: #242424; --ink: #ececee; --muted: #9a9aa0;
+  --line: #2f2f2f; --line-soft: #292929;
+  --accent: #9d9df0; --accent-soft: #26264a;
+  --warn: #f0796b; --warn-soft: #3a221e; --warn-line: #5c3029;
+  --ok: #4ec98a; --ok-soft: #1c2f26; --ok-line: #2c4c3c;
+  --blue: #6fa8f5; --blue-soft: #1b2a44; --blue-line: #2b4066;
+  --amber: #e0913f; --amber-soft: #35281a; --amber-line: #5c4526;
+  --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--sans);
+  line-height: 1.5; padding: 40px 20px 80px; }
+.thread { max-width: 1000px; margin: 0 auto; display: flex; flex-direction: column; gap: 40px; }
+
+/* ---- thread header ---- */
+.lead { text-align: left; padding: 0 20px; }
+.lead .kicker { font: 600 12px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase;
+  color: var(--accent); margin: 0 0 10px; }
+.lead h1 { font-size: 30px; line-height: 1.15; margin: 0 0 8px; letter-spacing: -.015em; }
+.lead h1 code { font-family: var(--mono); font-size: .74em; background: var(--accent-soft);
+  color: var(--accent); padding: 3px 9px; border-radius: 7px; }
+.lead p { color: var(--muted); margin: 0; font-size: 16px; max-width: 64ch; }
+.lead p code { font-family: var(--mono); color: var(--accent); font-size: .92em; }
+
+/* ---- beat card ---- */
+.beat { width: 100%; border: 1px solid var(--line); border-radius: 16px; background: var(--panel);
+  box-shadow: var(--shadow); overflow: hidden; }
+.beat-inner { padding: 26px 34px 28px; display: flex; flex-direction: column; }
+.beat-head { display: flex; align-items: baseline; gap: 12px; margin: 0 0 3px; }
+.beat-num { font: 700 13px/1 var(--mono); color: var(--accent); letter-spacing: .04em; }
+.beat-tag { font: 600 11px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.beat h2 { font-size: 25px; line-height: 1.2; margin: 4px 0 0; letter-spacing: -.01em; }
+.beat h2 em { font-style: normal; color: var(--accent); }
+.beat h2 code { font-family: var(--mono); font-size: .82em; background: var(--accent-soft); color: var(--accent);
+  padding: 2px 8px; border-radius: 6px; }
+.stage { margin: 18px 0 14px; position: relative; display: flex; align-items: center;
+  justify-content: center; min-height: 236px; }
+.caption { font-size: 15.5px; color: var(--ink); margin: 0; max-width: 82ch; }
+.caption b { font-weight: 600; }
+.caption .hint { color: var(--muted); }
+.caption code { font-family: var(--mono); color: var(--accent); font-size: .9em; }
+.promise { margin-top: 14px; display: inline-flex; align-items: center; gap: 9px; align-self: flex-start;
+  font: 600 13.5px/1 var(--sans); color: var(--ok); background: var(--ok-soft); border: 1px solid var(--ok-line);
+  border-radius: 22px; padding: 9px 15px; }
+.promise .nxt { font: 600 10px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+
+.foot { text-align: center; font-size: 13px; color: var(--muted); margin: 8px 0 0; }
+.foot code { font-family: var(--mono); color: var(--accent); }
+
+/* caption-less capture mode for X thread images */
+body.nocap .caption, body.nocap .promise { display: none; }
+
+@media (max-width: 820px) {
+  .beat-inner { height: auto; }
+  .stage { flex-direction: column; }
+}
