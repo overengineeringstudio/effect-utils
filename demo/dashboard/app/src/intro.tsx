@@ -503,6 +503,90 @@ const IntroSlideNav = ({ slide, onGo }: { slide: number; onGo: (i: number) => vo
   )
 }
 
+// Slide-1 "Why" node reveal: presenter clicks through the diagram one node at
+// a time — top pair (users, developers), then the second pair (productivity
+// agents, coding agents), then the automations block — instead of dumping the
+// whole hub-and-spoke diagram at once. Hidden nodes stay `invisible` (not
+// unmounted) so the layout never reflows; revealed nodes just fade in place.
+const SLIDE1_NODE_COUNT = 5
+
+const Slide1 = ({ active }: { active: boolean }) => {
+  const [revealed, setRevealed] = useState(0)
+  // re-entering slide 1 (nav away and back) restarts the narration
+  useEffect(() => {
+    if (active) setRevealed(0)
+  }, [active])
+  // no explicit `visible` here: `visibility` is inherited, and an explicit
+  // `visible` on a shown node would override the *parent* slide section's
+  // `invisible` once the presenter moves off slide 1 — leave the property
+  // unset so it just inherits whatever the parent section is doing.
+  const reveal = (i: number) =>
+    `transition-opacity duration-300 ${i < revealed ? 'opacity-100' : 'invisible opacity-0'}`
+  return (
+    <div className="cursor-pointer" onClick={() => setRevealed((n) => Math.min(n + 1, SLIDE1_NODE_COUNT))}>
+      <div className="mb-1.5 text-[13px] text-fg-muted">Why</div>
+      <h2 className="m-0 mb-6 text-[25px] font-bold tracking-tight">
+        Notion, for users, developers, and agents
+      </h2>
+      <div className="flex flex-wrap items-stretch justify-center gap-2">
+        {/* Knowledge work — each actor has its own hand-drawn arrow to the hub */}
+        <div className="flex min-w-[290px] flex-1 flex-col gap-2.5">
+          <div className="text-[11px] text-fg-faint">Knowledge work</div>
+          <div className={`flex items-center gap-1.5 ${reveal(0)}`}>
+            <div className="min-w-0 flex-1">
+              <ActorCard icon={icUsers} mock={<MiniNotionApp />} name="users" />
+            </div>
+            <HandArrow />
+          </div>
+          <div className={`flex items-center gap-1.5 ${reveal(2)}`}>
+            <div className="min-w-0 flex-1">
+              <ActorCard icon={icSparkle} mock={<MiniChat />} name="productivity agents" />
+            </div>
+            <HandArrow />
+          </div>
+        </div>
+        {/* Notion hub — always visible, the anchor of the diagram */}
+        <div className="flex min-w-[144px] flex-col items-center justify-center rounded-2xl border-2 border-accent/50 bg-accent/5 px-6 py-5 text-center">
+          <span className="mb-1.5 inline-flex">
+            <NotionChip size={26} />
+          </span>
+          <span className="text-[16px] font-bold leading-tight">Notion</span>
+        </div>
+        {/* Engineering */}
+        <div className="flex min-w-[290px] flex-1 flex-col gap-2.5">
+          <div className="text-right text-[11px] text-fg-faint">Engineering</div>
+          <div className={`flex items-center gap-1.5 ${reveal(1)}`}>
+            <HandArrow />
+            <div className="min-w-0 flex-1">
+              <ActorCard re icon={icBraces} mock={<MiniIDE />} name="developers" />
+            </div>
+          </div>
+          <div className={`flex items-center gap-1.5 ${reveal(3)}`}>
+            <HandArrow />
+            <div className="min-w-0 flex-1">
+              <ActorCard re icon={icTerminal} mock={<MiniTerminal />} name="coding agents" />
+            </div>
+          </div>
+        </div>
+      </div>
+      {/* automations & integrations — its own arrow up to the hub */}
+      <div className={`mt-2 flex flex-col items-center gap-1 ${reveal(4)}`}>
+        <HandArrow vertical />
+        <div className="flex w-full max-w-[440px] items-center gap-3.5 p-1">
+          <div className="w-[200px] flex-none">
+            <MiniFlow />
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 text-[13px] font-semibold">
+              <span className="ni">{icGear}</span>automations &amp; integrations
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 const IntroSlides = ({ hidden, slide, onGo }: { hidden: boolean; slide: number; onGo: (i: number) => void }) => (
   <section hidden={hidden} className="intro relative mx-auto min-h-[70vh] max-w-[1120px] pt-2">
     {/* slide controls — pinned top-right so they never move between slides */}
@@ -516,65 +600,7 @@ const IntroSlides = ({ hidden, slide, onGo }: { hidden: boolean; slide: number; 
     <div className="grid">
       {/* Slide 1 — Why: the ecosystem around Notion (hub = source of truth) */}
       <section aria-hidden={slide !== 0} className={`col-start-1 row-start-1 w-full py-2 ${slide === 0 ? '' : 'invisible'}`}>
-      <div className="mb-1.5 text-[13px] text-fg-muted">Why</div>
-      <h2 className="m-0 mb-6 text-[25px] font-bold tracking-tight">
-        Notion, for users, developers, and agents
-      </h2>
-      <div className="flex flex-wrap items-stretch justify-center gap-2">
-        {/* Knowledge work — each actor has its own hand-drawn arrow to the hub */}
-        <div className="flex min-w-[290px] flex-1 flex-col gap-2.5">
-          <div className="text-[11px] text-fg-faint">Knowledge work</div>
-          <div className="flex items-center gap-1.5">
-            <div className="min-w-0 flex-1">
-              <ActorCard icon={icUsers} mock={<MiniNotionApp />} name="users" />
-            </div>
-            <HandArrow />
-          </div>
-          <div className="flex items-center gap-1.5">
-            <div className="min-w-0 flex-1">
-              <ActorCard icon={icSparkle} mock={<MiniChat />} name="productivity agents" />
-            </div>
-            <HandArrow />
-          </div>
-        </div>
-        {/* Notion hub */}
-        <div className="flex min-w-[144px] flex-col items-center justify-center rounded-2xl border-2 border-accent/50 bg-accent/5 px-6 py-5 text-center">
-          <span className="mb-1.5 inline-flex">
-            <NotionChip size={26} />
-          </span>
-          <span className="text-[16px] font-bold leading-tight">Notion</span>
-        </div>
-        {/* Engineering */}
-        <div className="flex min-w-[290px] flex-1 flex-col gap-2.5">
-          <div className="text-right text-[11px] text-fg-faint">Engineering</div>
-          <div className="flex items-center gap-1.5">
-            <HandArrow />
-            <div className="min-w-0 flex-1">
-              <ActorCard re icon={icBraces} mock={<MiniIDE />} name="developers" />
-            </div>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <HandArrow />
-            <div className="min-w-0 flex-1">
-              <ActorCard re icon={icTerminal} mock={<MiniTerminal />} name="coding agents" />
-            </div>
-          </div>
-        </div>
-      </div>
-      {/* automations & integrations — its own arrow up to the hub */}
-      <div className="mt-2 flex flex-col items-center gap-1">
-        <HandArrow vertical />
-        <div className="flex w-full max-w-[440px] items-center gap-3.5 p-1">
-          <div className="w-[200px] flex-none">
-            <MiniFlow />
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5 text-[13px] font-semibold">
-              <span className="ni">{icGear}</span>automations &amp; integrations
-            </div>
-          </div>
-        </div>
-      </div>
+      <Slide1 active={slide === 0} />
     </section>
       {/* Slide 2 — How: building blocks that snap together */}
       <section aria-hidden={slide !== 1} className={`col-start-1 row-start-1 w-full py-2 ${slide === 1 ? '' : 'invisible'}`}>
