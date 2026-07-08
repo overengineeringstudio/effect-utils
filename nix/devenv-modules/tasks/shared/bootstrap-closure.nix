@@ -3,6 +3,9 @@
 # Usage in devenv.nix:
 #   imports = [ (inputs.effect-utils.devenvModules.tasks.bootstrap-closure {}) ];
 #
+# Older consumers may still pass `entry = ...`; the packaged checker now ignores
+# it and always checks the importing repo root via `--root`.
+#
 # Provides: bootstrap-closure:check
 #
 # Runs effect-utils' shared checker over the importing repo's TRACKED
@@ -21,6 +24,9 @@
 # package so `typescript` and the walker implementation are explicit package inputs, not ambient
 # Bun auto-install or downstream `node_modules` state.
 {
+  # Deprecated compatibility parameter. Older downstream repos passed a repo-local
+  # Bun entry; this module now runs effect-utils' packaged checker instead.
+  entry ? null,
   # Optional task prerequisites for repos that want local ordering. The checker itself is packaged
   # and does not require package-manager install state.
   after ? [ ],
@@ -36,12 +42,16 @@ let
     inherit pkgs;
     src = effectUtilsSrc;
   };
+  legacyEntryDescriptionSuffix =
+    if entry == null then "" else " (legacy entry argument ignored; packaged checker is used)";
 in
 {
   tasks = {
     "bootstrap-closure:check" = {
       inherit after;
-      description = "Fail on any bootstrap-safe import-closure violation in bootstrap-phase .genie.ts sources (zero-tolerance)";
+      description =
+        "Fail on any bootstrap-safe import-closure violation in bootstrap-phase .genie.ts sources (zero-tolerance)"
+        + legacyEntryDescriptionSuffix;
       exec = trace.exec "bootstrap-closure:check" ''
         set -uo pipefail
         root="''${DEVENV_ROOT:-$PWD}"
