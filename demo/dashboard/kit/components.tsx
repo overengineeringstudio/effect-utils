@@ -84,11 +84,12 @@ export type MacVariant = 'dbb' | 'ntn' | 'tmnl' | 'ide' | 'plain'
 export const MacWindow = ({
   variant = 'plain',
   title,
-  tag,
   children,
 }: {
   variant?: MacVariant
   title?: React.ReactNode
+  /** Accepted for call-site compat but no longer rendered — the corner surface
+   *  labels (.macw-tag) were removed. TODO: prune the prop + call sites in the token port. */
   tag?: string
   children?: React.ReactNode
 }) => (
@@ -96,7 +97,6 @@ export const MacWindow = ({
     <div className="macw-bar">
       <Lights />
       <div className="macw-title">{title}</div>
-      {tag != null && <span className="macw-tag">{tag}</span>}
     </div>
     {children}
   </div>

@@ -33,8 +33,6 @@
   justify-content: center; gap: 6px; font: 600 11px/1 var(--sans); color: var(--muted); pointer-events: none; }
 .macw-title .ic { font-size: 10.5px; opacity: .85; }
 .macw-title .fn { font-family: var(--mono); font-size: 10.5px; }
-.macw-tag { margin-left: auto; z-index: 1; font: 600 9px/1 var(--mono); letter-spacing: .07em;
-  text-transform: uppercase; color: var(--muted); border: 1px solid var(--line); border-radius: 5px; padding: 3px 5px; }
 
 /* ---- variant: SQLite DB browser (TablePlus / DB Browser aesthetic) ---- */
 .dbb { width: 100%; }
