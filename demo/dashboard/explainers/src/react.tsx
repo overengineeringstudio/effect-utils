@@ -23,6 +23,7 @@
  */
 import {
   Beat,
+  Cm,
   Cursor,
   Flow,
   KW,
@@ -55,16 +56,6 @@ const LAUNCH = {
   run1: 'appends:5 updates:0 removes:0',
   run2: 'appends:0 updates:1 removes:0',
   run3: 'appends:0 updates:0 removes:0',
-} as const
-
-/** beat 1 — the raw-API churn page (`🚀 Q2 Plan`; one line: Draft → Final). */
-const Q2_CHURN = {
-  page: 'Q2 Plan',
-  blocks: [
-    { text: 'Final', tag: 'delete → re-create' },
-    { text: 'Scope', tag: 're-created' },
-    { text: 'Ship it', tag: 're-created' },
-  ],
 } as const
 
 /** beat 4 — the blockKey → notion block id map (identity survives restarts). */
@@ -256,7 +247,6 @@ export const React = () => (
   <div className="thread">
     {/* LEAD */}
     <header className="lead">
-      <p className="kicker">Notion tooling · a thread</p>
       <h1>
         <code>notion-react</code> — write Notion pages as JSX
       </h1>
@@ -269,116 +259,63 @@ export const React = () => (
     {/* BEAT 1 — THE PROBLEM */}
     <Beat num="01" tag="The problem">
       <h2>
-        To change <em>one line</em> on a Notion page, the API makes you rebuild it.
+        The same page: block-by-block API calls — or <em>one JSX component</em>.
       </h2>
       <div className="stage">
-        <div className="s1">
-          {/* raw block API: one-line intent explodes into wipe & re-append */}
-          <div className="code raw">
-            <div className="code-tabs">
-              <span className="code-tab">
-                <span className="tdot" />
-                sync.ts
-              </span>
-              <span className="lang">raw API</span>
-            </div>
-            <div className="code-body">
-              <div>
-                <span className="cmw">// change ONE line: "Draft" → "Final"</span>
+        <div className="ways">
+          <div className="target-cap">change one line on a page · two ways to apply it</div>
+          <div className="waylist">
+            <div className="wayrow">
+              <div className="waylabel">
+                <span className="wayname">block API</span>
+                <span className="waykind">imperative</span>
+                <span className="waymark">✗ every run</span>
               </div>
-              <div>
-                <span className="cm">// but the only API you get is:</span>
-              </div>
-              <div>
-                <span className="del">blocks.delete(b_01)</span>
-              </div>
-              <div>
-                <span className="del">blocks.delete(b_02)</span>
-              </div>
-              <div>
-                <span className="del">
-                  blocks.delete(b_03) <span className="dots">…×N</span>
-                </span>
-              </div>
-              <div>
-                <span className="app">blocks.append(h1)</span>
-              </div>
-              <div>
-                <span className="app">blocks.append(para)</span>
-              </div>
-              <div>
-                <span className="app">
-                  blocks.append(todo) <span className="dots">…×N</span>
-                </span>
-              </div>
-            </div>
-            <div className="code-run warn">
-              <span className="play">⚠</span> wipe &amp; re-append <span className="rout">every run</span>
-            </div>
-          </div>
-
-          {/* churn channel */}
-          <div className="churnch">
-            <div className="churn-badge">
-              <span className="pulse" />
-              rebuild
-            </div>
-            <div className="wires">
-              <div className="wire">
-                <span className="ah-r arrowhead" />
-                <span className="packet" />
-              </div>
-              <div className="wlbl">delete all → append all</div>
-            </div>
-            <div className="churn-result">
-              <span className="big">−N · +N</span>
-              <span className="sm">O(blocks) churn</span>
-            </div>
-          </div>
-
-          {/* notion page: EVERY block torn down & re-created */}
-          <div className="churn-col">
-            <div className="page">
-              <div className="page-bar">
-                <span className="pico">🚀</span>
-                <span className="nm">{Q2_CHURN.page}</span>
-                <span className="src">Notion</span>
-              </div>
-              <div className="page-body">
-                <div className="blk h1 rebuilt">
-                  {Q2_CHURN.blocks[0].text}
-                  <span className="tag tag-x">{Q2_CHURN.blocks[0].tag}</span>
+              <div className="waycode">
+                <div>
+                  <Cm>// change one line → the only API is:</Cm>
                 </div>
-                <div className="blk toggle rebuilt">
-                  <span className="tgl">▸</span> {Q2_CHURN.blocks[1].text}
-                  <span className="tag tag-x">{Q2_CHURN.blocks[1].tag}</span>
+                <div>
+                  blocks.delete(id) <Cm>…×N · tear down</Cm>
                 </div>
-                <div className="blk todo rebuilt">
-                  <span className="cbx">☐</span> {Q2_CHURN.blocks[2].text}
-                  <span className="tag tag-x">{Q2_CHURN.blocks[2].tag}</span>
+                <div>
+                  blocks.append(block) <Cm>…×N · rebuild</Cm>
+                </div>
+                <div>
+                  <Cm>// …or hand-roll a keyed diff + cache yourself</Cm>
                 </div>
               </div>
             </div>
-            <div className="churn-flag">
-              💥 one line changed — <b>every block re-created</b>
+            <div className="wayrow win">
+              <div className="waylabel">
+                <span className="wayname">a component</span>
+                <span className="waykind">declarative</span>
+                <span className="waymark">✓ updates: 1</span>
+              </div>
+              <div className="waycode">
+                <div>
+                  <Cm>// write the page you want:</Cm>
+                </div>
+                <div>const Page = () =&gt; &lt;Doc&gt;…&lt;/Doc&gt;</div>
+                <div>
+                  <Cm>$</Cm> bun run page.tsx <Cm>// rerun → only the changed block: updates: 1</Cm>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </div>
       <p className="caption">
-        <b>
-          Notion's block API is raw and imperative — <code>append</code> / <code>update</code> / <code>delete</code>{' '}
-          against block ids.
-        </b>{' '}
+        <b>Notion's block API is imperative — append / update / delete against block ids.</b>{' '}
         <span className="hint">
-          To re-render a page you either wipe and re-append every block each run (churn, flicker, O(blocks) cost) or
-          hand-roll a keyed diff, a cache, and a kill-switch yourself.
+          Re-render a page and you wipe-and-re-append every block, or hand-roll a keyed diff yourself. Write the page as
+          a component instead: rerun, and only the block that changed updates.
         </span>
       </p>
     </Beat>
 
-    {/* BEAT 2 — SEE IT WORK */}
-    <Beat num="02" tag="See it work">
+    {/* BEAT 2 — HOW IT WORKS */}
+    <Beat num="02" tag="How it works">
       <h2>
         Write the page as a React component. Change one line, rerun — <em>only that block updates.</em>
       </h2>
