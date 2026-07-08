@@ -4,6 +4,7 @@ import path from 'node:path'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
+import { discoverGenieFiles } from './bootstrap-closure-check-cli.ts'
 import { checkBootstrapClosure, formatViolationChain } from './bootstrap-closure.ts'
 
 const GENIE_MEMBER_OVERRIDE_MAP_ENV = 'GENIE_MEMBER_OVERRIDE_MAP'
@@ -192,5 +193,18 @@ describe('checkBootstrapClosure', () => {
     expect(violations).toHaveLength(1)
     expect(violations[0]!.specifier).toBe('@scope/pkg')
     expect(violations[0]!.chain).toEqual([source])
+  })
+})
+
+describe('discoverGenieFiles', () => {
+  it('walks source-tree genie files without requiring git and skips dependency/build directories', () => {
+    const dir = makeDir()
+    const rootSource = write(dir, 'root.genie.ts', `export default {}`)
+    const nestedSource = write(dir, 'nested/member.genie.ts', `export default {}`)
+    write(dir, 'node_modules/pkg/ignored.genie.ts', `export default {}`)
+    write(dir, '.git/hooks/ignored.genie.ts', `export default {}`)
+    write(dir, 'dist/ignored.genie.ts', `export default {}`)
+
+    expect(discoverGenieFiles(dir)).toEqual([nestedSource, rootSource])
   })
 })

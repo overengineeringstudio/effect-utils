@@ -9,8 +9,8 @@
  * `effect`). `design-time` generators are exempt by declaration: they run after install
  * (post-install `genie:run`) and may use the runtime graph.
  *
- * This entry discovers every tracked `.genie.ts` (`git ls-files '*.genie.ts'`), keeps only those
- * whose static `// @genie-bootstrap` pragma marks them bootstrap-phase, runs the shared
+ * This entry discovers every source-tree `.genie.ts` (skipping dependency/build directories),
+ * keeps only those whose static `// @genie-bootstrap` pragma marks them bootstrap-phase, runs the shared
  * {@link checkBootstrapClosure} walker over that set, and FAILS on ANY violation. There is no
  * baseline and no allowlist: the residual weaver generators are `design-time` by declaration, so
  * they are structurally out of scope rather than an accepted exception.

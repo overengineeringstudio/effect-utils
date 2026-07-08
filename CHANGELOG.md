@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **genie / bootstrap**: narrow the packaged `genie-bootstrap-closure-check`
+  derivation to the checker entrypoint, its first-party runtime sources, Bun,
+  and the TypeScript tarball declared by `@overeng/genie`. The checker now walks
+  source-tree `.genie.ts` files directly instead of shelling out to Git, and no
+  longer goes through the root `mkPnpmCli`/pnpm fixed-output dependency surface,
+  keeping the bootstrap proof boundary separate from the normal Genie runtime.
 - **genie / bootstrap**: make the shared `bootstrap-closure:check` devenv task
   run a packaged effect-utils checker against the importing repo root via
   `--root`, so downstream repos can reuse the zero-tolerance bootstrap gate

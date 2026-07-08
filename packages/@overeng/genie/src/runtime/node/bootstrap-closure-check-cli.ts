@@ -1,5 +1,4 @@
-import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 
 import { parseGeneratorPhase } from '../../core/phase.ts'
@@ -8,7 +7,20 @@ import { checkBootstrapClosure, formatViolationChain } from './bootstrap-closure
 const usage = `Usage:
   genie-bootstrap-closure-check [--root <repo-root>]
 
-Checks tracked // @genie-bootstrap .genie.ts files for runtime-only package imports.`
+Checks source-tree // @genie-bootstrap .genie.ts files for runtime-only package imports.`
+
+const ignoredDiscoveryDirs = new Set([
+  '.devenv',
+  '.direnv',
+  '.git',
+  '.next',
+  '.turbo',
+  'coverage',
+  'dist',
+  'node_modules',
+  'result',
+  'target',
+])
 
 const parseArgs = ({
   argv,
@@ -41,12 +53,29 @@ const parseArgs = ({
   return { repoRoot, help }
 }
 
-const discoverGenieFiles = (repoRoot: string): readonly string[] =>
-  execFileSync('git', ['-C', repoRoot, 'ls-files', '*.genie.ts'], { encoding: 'utf8' })
-    .trim()
-    .split('\n')
-    .filter((line) => line.length > 0)
-    .map((relativePath) => path.join(repoRoot, relativePath))
+/** Discover source-tree `.genie.ts` files without requiring Git or package-manager install state. */
+export const discoverGenieFiles = (repoRoot: string): readonly string[] => {
+  const files: string[] = []
+
+  const visit = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.isSymbolicLink() === true) continue
+
+      const entryPath = path.join(dir, entry.name)
+      if (entry.isDirectory() === true) {
+        if (ignoredDiscoveryDirs.has(entry.name) === false) visit(entryPath)
+        continue
+      }
+
+      if (entry.isFile() === true && entry.name.endsWith('.genie.ts') === true) {
+        files.push(entryPath)
+      }
+    }
+  }
+
+  visit(repoRoot)
+  return files.toSorted()
+}
 
 /**
  * Runs the standalone bootstrap import-closure checker CLI.
