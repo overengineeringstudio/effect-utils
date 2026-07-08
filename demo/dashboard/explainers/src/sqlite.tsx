@@ -15,6 +15,7 @@
  */
 import {
   Beat,
+  Cm,
   DbBrowser,
   Flow,
   KW,
@@ -251,7 +252,6 @@ export const Sqlite = () => (
   <div className="thread">
     {/* LEAD */}
     <header className="lead">
-      <p className="kicker">Notion tooling · a thread</p>
       <h1>
         <code>notion{nbsp(' db')}</code> — edit your Notion database with plain SQL
       </h1>
@@ -264,82 +264,76 @@ export const Sqlite = () => (
     {/* BEAT 1 — THE PROBLEM */}
     <Beat num="01" tag="The problem">
       <h2>
-        You want to edit your Notion database like <em>data</em>. You get a web grid.
+        The same bulk edit: dozens of API calls — or one line of <em>SQL</em>.
       </h2>
       <div className="stage">
-        <div className="s1" style={{ display: 'flex', alignItems: 'center', gap: '26px' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0 }}>
-            <div className="grid">
-              <div className="grid-bar">
-                <span className="doc-dot" />
-                <span className="nm">{LABELS.notionMiniGridTitle}</span>
-                <span className="src">Notion</span>
+        <div className="ways">
+          <div className="target-cap">mark 40 tasks done · three ways</div>
+          <div className="waylist">
+            <div className="wayrow">
+              <div className="waylabel">
+                <span className="wayname">API</span>
+                <span className="waykind">scripting</span>
+                <span className="waymark">✗ 40 calls</span>
               </div>
-              <table className="gtable">
-                <thead>
-                  <tr>
-                    <th>
-                      <span className="colh">Name</span>
-                    </th>
-                    <th>
-                      <span className="colh">Status</span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td>Draft brief</td>
-                    <td>
-                      <StatusPill status="In Progress" />
-                    </td>
-                  </tr>
-                  <tr>
-                    <td>Review copy</td>
-                    <td>
-                      <StatusPill status="In Progress" />
-                    </td>
-                  </tr>
-                  <tr>
-                    <td>Ship assets</td>
-                    <td>
-                      <StatusPill status="In Progress" />
-                    </td>
-                  </tr>
-                  <tr>
-                    <td
-                      colSpan={2}
-                      style={{ color: 'var(--muted)', fontStyle: 'italic', textAlign: 'center', fontSize: '11.5px' }}
-                    >
-                      … 37 more rows, all In{' '}Progress
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+              <div className="waycode">
+                <div>
+                  const rows = <KW>await</KW> notion.databases.query({'{ database_id }'}) <Cm>// + paginate</Cm>
+                </div>
+                <div>
+                  <KW>for</KW> (const p <KW>of</KW> rows.results)
+                </div>
+                <div>&nbsp;&nbsp;<KW>await</KW> notion.pages.update({'{ page_id: p.id, properties: { Status: … } }'})</div>
+              </div>
             </div>
-            <div className="clickpain">😮‍💨 40 rows to flip → 40 clicks, one at a time</div>
-          </div>
-          <div className="wants">
-            <div className="wt">what you actually want</div>
-            <div className="want">
-              <span className="x">✗</span>
-              <span className="wl">
-                one bulk <b>UPDATE</b>, not 40 clicks
-              </span>
+            <div className="wayrow">
+              <div className="waylabel">
+                <span className="wayname">CLI</span>
+                <span className="waykind">ad-hoc</span>
+                <span className="waymark">✗ per-row</span>
+              </div>
+              <div className="waycode">
+                <div>
+                  <Cm>$</Cm> ntn db query &lt;db&gt; --status <STR>"In Progress"</STR> <Cm># collect ids</Cm>
+                </div>
+                <div>
+                  <Cm>$</Cm> ntn page update &lt;id&gt; --status <STR>"Done"</STR> <Cm># …once per row</Cm>
+                </div>
+              </div>
+            </div>
+            <div className="wayrow win">
+              <div className="waylabel">
+                <span className="wayname">SQL</span>
+                <span className="waykind">a local file</span>
+                <span className="waymark">✓ one line</span>
+              </div>
+              <div className="waycode">
+                <div>
+                  <KW>UPDATE</KW> tasks <KW>SET</KW> Status = <STR>'Done'</STR> <KW>WHERE</KW> Status ={' '}
+                  <STR>'In Progress'</STR>;
+                </div>
+                <div>
+                  <Cm>$</Cm> notion db sync <Cm># one guarded push</Cm>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </div>
       <p className="caption">
-        <b>You want to query and bulk-edit it like a table.</b>{' '}
+        <b>
+          A local SQLite file makes your Notion database queryable and scriptable — plain SQL, the read/write API you
+          already know.
+        </b>{' '}
         <span className="hint">
-          Notion gives you a web grid — or a REST API of untyped property JSON. No <code>SELECT</code>, no bulk{' '}
-          <code>UPDATE</code>, no file you can script against.
+          Over the Notion API it's paginated queries and one <code>update</code> call per row. A file is{' '}
+          <code>SELECT</code>, one bulk <code>UPDATE</code>, and your whole toolchain.
         </span>
       </p>
     </Beat>
 
-    {/* BEAT 2 — SEE IT WORK */}
-    <Beat num="02" tag="See it work">
+    {/* BEAT 2 — HOW IT WORKS */}
+    <Beat num="02" tag="How it works">
       <h2>
         Edit a row with SQL locally — the change lands <em>live</em> in Notion.
       </h2>

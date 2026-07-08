@@ -25,17 +25,28 @@
   .gtable td { padding: 8px 12px; border-bottom: 1px solid var(--line-soft); color: var(--ink); }
   .gtable tr:last-child td { border-bottom: none; }
   .gtable .colh { display: inline-flex; align-items: center; gap: 5px; }
-  .clickpain { margin-top: 12px; display: inline-flex; align-items: center; gap: 9px; font-size: 13.5px; color: var(--warn);
-    font-weight: 600; background: var(--warn-soft); border: 1px solid var(--warn-line); border-radius: 22px; padding: 8px 15px; }
-
-  .wants { width: 250px; display: flex; flex-direction: column; gap: 11px; }
-  .wants .wt { font: 600 10px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 1px; }
-  .want { display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px;
-    background: var(--panel-2); box-shadow: var(--shadow); }
-  .want .x { color: var(--warn); font-weight: 800; font-size: 15px; flex: none; }
-  .want .wc { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: line-through; text-decoration-color: var(--warn-line); }
-  .want .wl { font-size: 12px; color: var(--ink); }
-  .want .wl b { color: var(--ink); }
+  /* beat 1: the problem — the same bulk edit, three ways (API / CLI / SQL) */
+  .ways { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 100%; }
+  .target-cap { font: 600 10.5px/1 var(--mono); letter-spacing: .04em; color: var(--muted); margin: 0 0 12px; }
+  .waylist { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 680px; }
+  .wayrow { display: flex; align-items: stretch; border: 1px solid var(--line); border-radius: 12px;
+    background: var(--panel-2); box-shadow: var(--shadow); overflow: hidden; }
+  .wayrow.win { border-color: var(--ok-line); background: var(--ok-soft); }
+  .waylabel { flex: none; width: 128px; padding: 12px 14px; display: flex; flex-direction: column; gap: 3px;
+    border-right: 1px solid var(--line-soft); background: var(--panel); }
+  .wayrow.win .waylabel { background: transparent; border-right-color: var(--ok-line); }
+  .wayname { font: 700 13px/1.2 var(--sans); color: var(--ink); }
+  .waykind { font: 600 9px/1 var(--mono); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+  .waymark { margin-top: 3px; font: 700 11px/1.2 var(--sans); color: var(--warn); }
+  .wayrow.win .waymark { color: var(--ok); }
+  .waycode { flex: 1; min-width: 0; padding: 12px 15px; font-family: var(--mono); font-size: 12px; line-height: 1.65;
+    color: var(--ink); display: flex; flex-direction: column; gap: 2px; overflow-x: auto; white-space: nowrap; }
+  @media (max-width: 720px){
+    .wayrow { flex-direction: column; }
+    .waylabel { width: auto; flex-direction: row; align-items: center; gap: 8px; border-right: none;
+      border-bottom: 1px solid var(--line-soft); }
+    .waymark { margin-top: 0; margin-left: auto; }
+  }
 
   /* beat 3: file is the source */
   .s3 { display: flex; align-items: center; gap: 0; }
