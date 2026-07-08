@@ -77,6 +77,17 @@
             src = self;
             typeProofCompilerBin = "${tsgo.packages.${system}.tsgo}/bin/tsgo";
           };
+          genie-bootstrap-closure-check =
+            import (rootPath + "/packages/@overeng/genie/nix/bootstrap-closure-check.nix")
+              {
+                inherit
+                  pkgs
+                  gitRev
+                  commitTs
+                  dirty
+                  ;
+                src = self;
+              };
           ci-tools = import (rootPath + "/packages/@overeng/ci-tools/nix/build.nix") {
             inherit
               pkgs
@@ -251,7 +262,7 @@
           secretspec = import ./nix/devenv-modules/tasks/shared/secretspec.nix;
           # Prevent commits on default branch and optionally enforce worktree-only workflow
           worktree-guard = import ./nix/devenv-modules/tasks/shared/worktree-guard.nix;
-          # Bootstrap-safe import-closure gate; downstream members pass their own `entry` + baseline.
+          # Bootstrap-safe import-closure gate; shared packaged checker runs against the importing repo root.
           bootstrap-closure = import ./nix/devenv-modules/tasks/shared/bootstrap-closure.nix;
           # Note: local/ directory contains effect-utils specific tasks (not exported)
         };

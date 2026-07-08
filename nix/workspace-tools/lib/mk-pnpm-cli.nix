@@ -369,6 +369,7 @@ let
         cp -R "$sanitizedPath"/. "$out"/
       '';
 
+  workspaceRootFullSourceRoot = normalizeSourceRoot "workspace-root" workspaceRoot;
   workspaceSourceRawRoots = lib.mapAttrs (_: coerceSourceRoot) workspaceSources;
   workspaceSourceIsDerivationOutput = lib.mapAttrs (_: isDerivationOutput) workspaceSources;
   workspaceSourceRoots = lib.mapAttrs normalizeSourceRoot workspaceSources;
@@ -393,7 +394,8 @@ let
           relPath == candidate || lib.hasPrefix "${candidate}/" relPath;
       prefix = lib.findFirst matchesPrefix null workspaceSourcePrefixesByLengthDesc;
       sourceRoot = if prefix == null then workspaceRootPath else workspaceSourceRawRoots.${prefix};
-      fullSourceRoot = if prefix == null then workspaceRootPath else workspaceSourceRoots.${prefix};
+      fullSourceRoot =
+        if prefix == null then workspaceRootFullSourceRoot else workspaceSourceRoots.${prefix};
       evalSourceRoot =
         if prefix == null then
           evalWorkspaceRootPath

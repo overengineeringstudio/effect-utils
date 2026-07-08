@@ -7,9 +7,10 @@
 # authority for the bootstrap contract; `bootstrap-closure:check` (static) is fast local feedback.
 #
 # Mechanism:
-#   1. Realize the SELF-CONTAINED nix genie (`.#genie`) — a `bun --compile` binary with its deps
-#      baked into the store, so it needs no `node_modules` to run. (Override with
-#      GENIE_COLD_PROOF_BIN=/path/to/genie to reuse an already-built binary and skip the nix build.)
+#   1. Realize the SELF-CONTAINED packaged Genie CLI (`.#genie`) — a `bun --compile`
+#      binary with its deps baked into the store, so it needs no `node_modules` to run.
+#      (Override with GENIE_COLD_PROOF_BIN=/path/to/genie to reuse an already-built binary
+#      and skip the nix build.)
 #   2. Materialize a `node_modules`-free tree of the COMMITTED repo source via `git archive HEAD`
 #      into a temp dir OUTSIDE the repo (so bun/pnpm cannot walk up into the repo's node_modules).
 #   3. Run `genie --phase bootstrap` COLD in that tree. Success proves every bootstrap generator's
@@ -36,15 +37,15 @@ fail() {
 repo="${DEVENV_ROOT:-$(git rev-parse --show-toplevel)}"
 cd "$repo"
 
-# --- 1. Self-contained nix genie -------------------------------------------------------------------
+# --- 1. Self-contained packaged Genie CLI ----------------------------------------------------------
 genie_bin="${GENIE_COLD_PROOF_BIN:-}"
 if [ -z "$genie_bin" ]; then
-  log "building the self-contained nix genie (.#genie) ..."
+  log "building the self-contained packaged Genie CLI (.#genie) ..."
   genie_out="$(nix build --no-link --print-out-paths "${repo}#genie")"
   genie_bin="${genie_out}/bin/genie"
 fi
 [ -x "$genie_bin" ] || fail "genie binary is not executable: ${genie_bin}"
-log "using nix genie: ${genie_bin}"
+log "using nix genie CLI: ${genie_bin}"
 
 # --- 2. node_modules-free tree of the committed source (outside the repo) ---------------------------
 work="$(mktemp -d "${TMPDIR:-/tmp}/genie-cold-proof.XXXXXX")"
@@ -60,6 +61,11 @@ git -C "$repo" archive --format=tar HEAD | tar -x -C "$tree"
 case "$tree" in
   "${repo}"/*) fail "temp tree is inside the repo (${tree}); bun/pnpm would resolve the repo node_modules" ;;
 esac
+ancestor="$tree"
+while [ "$ancestor" != "/" ]; do
+  ancestor="$(dirname "$ancestor")"
+  [ ! -e "${ancestor}/node_modules" ] || fail "temp tree ancestor contains node_modules: ${ancestor}/node_modules"
+done
 
 # Independent ground truth: the bootstrap set is exactly the `// @genie-bootstrap`-marked sources.
 # Keep this detector byte-for-byte aligned with parseGeneratorPhase in

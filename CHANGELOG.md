@@ -6,6 +6,17 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **genie / bootstrap**: narrow the packaged `genie-bootstrap-closure-check`
+  derivation to the checker entrypoint, its first-party runtime sources, Bun,
+  and the TypeScript tarball declared by `@overeng/genie`. The checker now walks
+  source-tree `.genie.ts` files directly instead of shelling out to Git, and no
+  longer goes through the root `mkPnpmCli`/pnpm fixed-output dependency surface,
+  keeping the bootstrap proof boundary separate from the normal Genie runtime.
+- **genie / bootstrap**: make the shared `bootstrap-closure:check` devenv task
+  run a packaged effect-utils checker against the importing repo root via
+  `--root`, so downstream repos can reuse the zero-tolerance bootstrap gate
+  without carrying local wrapper scripts or relying on ambient Bun/package-manager
+  module resolution.
 - **notion-cli**: `schema generate <id> -o schema.gen.ts` now writes the file
   again. The `generate` command registered both a file `--output`/`-o` option
   and the shared TUI render-mode option, which also claimed `--output`/`-o`, so
@@ -69,7 +80,7 @@ All notable changes to this project will be documented in this file.
   restricts a run to the marked set (the 35 `package.json.genie.ts` + `pnpm-workspace.yaml.genie.ts`).
   Bootstrap-safety is now **demonstrated, not asserted**: `bootstrap:cold-proof`
   (`genie/ci-scripts/bootstrap-cold-proof.sh`, devenv task + CI lane) builds the
-  self-contained nix genie (`.#genie`, deps baked into the store), runs
+  self-contained packaged Genie CLI (`.#genie`, deps baked into the store), runs
   `genie --phase bootstrap` in a fresh `node_modules`-free `git archive` tree, then
   `pnpm install --frozen-lockfile`, asserting both succeed and that the marked set
   actually ran. `bootstrap-closure:check` stays as fast local feedback in `check:all`.
