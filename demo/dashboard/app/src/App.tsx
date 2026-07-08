@@ -1230,22 +1230,133 @@ const Conn = ({ dir, action }: { dir: string; action: string }) => (
   </div>
 )
 
-// Slide-2 block card: lego header (num + name) + a paired mockup + description.
-// Slide-2 block card. `icon` is the block's ICONIC technology logo (its primary
-// identity, so the four blocks are instantly distinguishable at a glance).
-const BlockCard = ({ num, name, desc, icon, children }: { num: string; name: string; desc: string; icon: ReactNode; children: ReactNode }) => (
-  <div className="flex flex-col gap-3 border-t border-border pt-7">
-    <div className="flex items-center gap-2.5">
-      <span className="intro-blogo inline-flex h-7 w-7 flex-none items-center justify-center rounded-md border border-border bg-bg-panel text-fg">
-        {icon}
-      </span>
-      <span className="font-mono text-[11px] font-bold text-fg-faint">{num}</span>
-      <span className="font-mono text-[15.5px] font-semibold">{name}</span>
+// Slide-2 "How" gallery — Notion view-tab pattern: top tabs (one per building
+// block) show ONE block at a time, so the slide isn't a wall of four mockups.
+// `icon` is each block's ICONIC technology logo (its primary identity).
+const HowGallery = () => {
+  const [active, setActive] = useState(0)
+  const blocks: { key: string; num: string; name: string; icon: ReactNode; desc: string; body: ReactNode }[] = [
+    {
+      key: 'md',
+      num: '01',
+      name: 'notion md',
+      icon: mdLogo,
+      desc: 'Edit a Notion page as local Markdown — two-way, conflict-guarded sync from your editor.',
+      body: (
+        <div className="intro-pair md">
+          <div className="side">
+            <MiniMdFile />
+          </div>
+          <Conn dir="⇄" action="two-way sync" />
+          <div className="side">
+            <MiniNotionPage />
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: 'sqlite',
+      num: '02',
+      name: 'notion sqlite',
+      icon: sqliteLogo,
+      desc: 'Edit a Notion database locally with plain SQL — every change syncs straight back to Notion.',
+      body: (
+        <div className="intro-pair sqlite">
+          <div className="side">
+            <MiniLocalSqlite />
+          </div>
+          <Conn dir="⇄" action="live sync" />
+          <div className="side">
+            <MiniNotionDb flip />
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: 'schema',
+      num: '03',
+      name: 'notion schema',
+      icon: schemaMark,
+      desc: 'A round-trip: generate typed Effect schemas from the Notion database (codegen), and provision the Notion database from code (IaC).',
+      body: (
+        <div className="intro-pair schema">
+          <div className="side">
+            <MiniSchemaCode />
+          </div>
+          <div className="intro-arrows2">
+            <div className="ar cg">
+              <span className="lab">codegen</span>
+              <span className="line">
+                <span className="tok" />
+              </span>
+            </div>
+            <div className="ar iac">
+              <span className="line">
+                <span className="tok" />
+              </span>
+              <span className="lab">IaC apply</span>
+            </div>
+          </div>
+          <div className="side">
+            <MiniNotionProps />
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: 'react',
+      num: '04',
+      name: 'notion-react',
+      icon: reactLogo,
+      desc: 'Author a Notion page as a React component; rerun renders a precise block-level diff.',
+      body: (
+        <div className="intro-pair react">
+          <div className="side">
+            <MiniJsx />
+          </div>
+          <Conn dir="→" action="render" />
+          <div className="side">
+            <MiniReactPage />
+          </div>
+        </div>
+      ),
+    },
+  ]
+  const b = blocks[active]!
+  return (
+    <div className="flex flex-col gap-5">
+      {/* view tabs — Notion gallery/view-switcher pattern (underline active) */}
+      <div className="flex flex-wrap items-center gap-1 border-b border-border">
+        {blocks.map((blk, i) => (
+          <button
+            key={blk.key}
+            type="button"
+            onClick={() => setActive(i)}
+            className={
+              i === active
+                ? '-mb-px inline-flex items-center gap-2 border-b-2 border-accent px-2.5 py-2 text-[13px] font-medium text-fg'
+                : '-mb-px inline-flex items-center gap-2 border-b-2 border-transparent px-2.5 py-2 text-[13px] text-fg-muted hover:text-fg'
+            }
+          >
+            <span className="intro-blogo inline-flex h-5 w-5 flex-none items-center justify-center rounded border border-border bg-bg-panel text-fg">
+              {blk.icon}
+            </span>
+            <span className="font-mono">{blk.name}</span>
+          </button>
+        ))}
+      </div>
+      {/* active block */}
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center gap-2.5">
+          <span className="font-mono text-[11px] font-bold text-fg-faint">{b.num}</span>
+          <span className="font-mono text-[15.5px] font-semibold">{b.name}</span>
+        </div>
+        {b.body}
+        <p className="m-0 text-[13px] leading-snug text-fg-muted">{b.desc}</p>
+      </div>
     </div>
-    {children}
-    <p className="m-0 text-[13px] leading-snug text-fg-muted">{desc}</p>
-  </div>
-)
+  )
+}
 
 const IntroPanel = ({ hidden }: { hidden: boolean }) => (
   <section hidden={hidden} className="intro flex max-w-[1120px] flex-col gap-20">
@@ -1315,70 +1426,7 @@ const IntroPanel = ({ hidden }: { hidden: boolean }) => (
         <span className="text-fg-muted">{iconLego}</span> How
       </div>
       <h2 className="m-0 mb-5 text-[25px] font-bold tracking-tight">principled Notion building blocks for agents and developers</h2>
-      <div className="flex flex-col gap-4">
-        <BlockCard icon={mdLogo} num="01" name="notion md" desc="Edit a Notion page as local Markdown — two-way, conflict-guarded sync from your editor.">
-          <div className="intro-pair md">
-            <div className="side">
-              <MiniMdFile />
-            </div>
-            <Conn dir="⇄" action="two-way sync" />
-            <div className="side">
-              <MiniNotionPage />
-            </div>
-          </div>
-        </BlockCard>
-        <BlockCard icon={sqliteLogo} num="02" name="notion sqlite" desc="Edit a Notion database locally with plain SQL — every change syncs straight back to Notion.">
-          <div className="intro-pair sqlite">
-            <div className="side">
-              <MiniLocalSqlite />
-            </div>
-            <Conn dir="⇄" action="live sync" />
-            <div className="side">
-              <MiniNotionDb flip />
-            </div>
-          </div>
-        </BlockCard>
-        <BlockCard
-          icon={schemaMark}
-          num="03"
-          name="notion schema"
-          desc="A round-trip: generate typed Effect schemas from the Notion database (codegen), and provision the Notion database from code (IaC)."
-        >
-          <div className="intro-pair schema">
-            <div className="side">
-              <MiniSchemaCode />
-            </div>
-            <div className="intro-arrows2">
-              <div className="ar cg">
-                <span className="lab">codegen</span>
-                <span className="line">
-                  <span className="tok" />
-                </span>
-              </div>
-              <div className="ar iac">
-                <span className="line">
-                  <span className="tok" />
-                </span>
-                <span className="lab">IaC apply</span>
-              </div>
-            </div>
-            <div className="side">
-              <MiniNotionProps />
-            </div>
-          </div>
-        </BlockCard>
-        <BlockCard icon={reactLogo} num="04" name="notion-react" desc="Author a Notion page as a React component; rerun renders a precise block-level diff.">
-          <div className="intro-pair react">
-            <div className="side">
-              <MiniJsx />
-            </div>
-            <Conn dir="→" action="render" />
-            <div className="side">
-              <MiniReactPage />
-            </div>
-          </div>
-        </BlockCard>
-      </div>
+      <HowGallery />
     </section>
   </section>
 )
