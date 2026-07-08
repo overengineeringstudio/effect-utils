@@ -8,24 +8,24 @@
  * data-theme override the SAME variables, so every utility re-themes for free.
  */
 @theme {
-  --color-bg: #f6f7f9;
+  --color-bg: #f7f6f3;
   --color-bg-panel: #ffffff;
-  --color-bg-subtle: #eef0f3;
-  --color-bg-code: #0f1115;
+  --color-bg-subtle: #f1f0ee;
+  --color-bg-code: #191919;
   --color-code-fg: #e6e6e6;
-  --color-fg: #0b0d10;
-  --color-fg-muted: #5b636e;
-  --color-fg-faint: #8b939e;
-  --color-border: #d9dde3;
-  --color-border-strong: #c2c8d0;
-  --color-accent: #2f6bff;
+  --color-fg: #37352f;
+  --color-fg-muted: #787774;
+  --color-fg-faint: #9b9a97;
+  --color-border: #e9e9e7;
+  --color-border-strong: #dcdbd8;
+  --color-accent: #2383e2;
   --color-accent-fg: #ffffff;
-  --color-ok: #1a8f3c;
-  --color-fail: #dd3333;
-  --color-neutral: #8b939e;
-  --color-amber: #b9770e;
-  --color-say-bg: #eaf1ff;
-  --color-say-fg: #123a8f;
+  --color-ok: #448361;
+  --color-fail: #e03e3e;
+  --color-neutral: #9b9a97;
+  --color-amber: #cb7b1e;
+  --color-say-bg: #ddebf7;
+  --color-say-fg: #205295;
 
   --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
@@ -34,67 +34,67 @@
 /* dark (system) — override the token variables in place */
 @media (prefers-color-scheme: dark) {
   :root {
-    --color-bg: #0c0e12;
-    --color-bg-panel: #14171d;
-    --color-bg-subtle: #1b1f27;
-    --color-bg-code: #05070a;
-    --color-code-fg: #e9edf2;
-    --color-fg: #eef1f5;
-    --color-fg-muted: #9aa3af;
-    --color-fg-faint: #6b7480;
-    --color-border: #262b34;
-    --color-border-strong: #333a45;
-    --color-accent: #5b8bff;
-    --color-accent-fg: #08122b;
-    --color-ok: #3ddc74;
-    --color-fail: #ff6b6b;
-    --color-neutral: #6b7480;
-    --color-amber: #e0a94b;
-    --color-say-bg: #132444;
-    --color-say-fg: #bcd2ff;
+    --color-bg: #191919;
+    --color-bg-panel: #252525;
+    --color-bg-subtle: #2f2f2f;
+    --color-bg-code: #1e1e1e;
+    --color-code-fg: #e6e6e6;
+    --color-fg: #e6e6e6;
+    --color-fg-muted: #9b9b9b;
+    --color-fg-faint: #6f6f6c;
+    --color-border: #373737;
+    --color-border-strong: #454545;
+    --color-accent: #4a8bd6;
+    --color-accent-fg: #ffffff;
+    --color-ok: #4caf7d;
+    --color-fail: #d67670;
+    --color-neutral: #6f6f6c;
+    --color-amber: #d3a13c;
+    --color-say-bg: #28374d;
+    --color-say-fg: #a3c0e6;
   }
 }
 
 /* explicit theme toggle (data-theme on <html>) wins over system in both directions */
 :root[data-theme='light'] {
-  --color-bg: #f6f7f9;
+  --color-bg: #f7f6f3;
   --color-bg-panel: #ffffff;
-  --color-bg-subtle: #eef0f3;
-  --color-bg-code: #0f1115;
+  --color-bg-subtle: #f1f0ee;
+  --color-bg-code: #191919;
   --color-code-fg: #e6e6e6;
-  --color-fg: #0b0d10;
-  --color-fg-muted: #5b636e;
-  --color-fg-faint: #8b939e;
-  --color-border: #d9dde3;
-  --color-border-strong: #c2c8d0;
-  --color-accent: #2f6bff;
+  --color-fg: #37352f;
+  --color-fg-muted: #787774;
+  --color-fg-faint: #9b9a97;
+  --color-border: #e9e9e7;
+  --color-border-strong: #dcdbd8;
+  --color-accent: #2383e2;
   --color-accent-fg: #ffffff;
-  --color-ok: #1a8f3c;
-  --color-fail: #dd3333;
-  --color-neutral: #8b939e;
-  --color-amber: #b9770e;
-  --color-say-bg: #eaf1ff;
-  --color-say-fg: #123a8f;
+  --color-ok: #448361;
+  --color-fail: #e03e3e;
+  --color-neutral: #9b9a97;
+  --color-amber: #cb7b1e;
+  --color-say-bg: #ddebf7;
+  --color-say-fg: #205295;
 }
 :root[data-theme='dark'] {
-  --color-bg: #0c0e12;
-  --color-bg-panel: #14171d;
-  --color-bg-subtle: #1b1f27;
-  --color-bg-code: #05070a;
-  --color-code-fg: #e9edf2;
-  --color-fg: #eef1f5;
-  --color-fg-muted: #9aa3af;
-  --color-fg-faint: #6b7480;
-  --color-border: #262b34;
-  --color-border-strong: #333a45;
-  --color-accent: #5b8bff;
-  --color-accent-fg: #08122b;
-  --color-ok: #3ddc74;
-  --color-fail: #ff6b6b;
-  --color-neutral: #6b7480;
-  --color-amber: #e0a94b;
-  --color-say-bg: #132444;
-  --color-say-fg: #bcd2ff;
+  --color-bg: #191919;
+  --color-bg-panel: #252525;
+  --color-bg-subtle: #2f2f2f;
+  --color-bg-code: #1e1e1e;
+  --color-code-fg: #e6e6e6;
+  --color-fg: #e6e6e6;
+  --color-fg-muted: #9b9b9b;
+  --color-fg-faint: #6f6f6c;
+  --color-border: #373737;
+  --color-border-strong: #454545;
+  --color-accent: #4a8bd6;
+  --color-accent-fg: #ffffff;
+  --color-ok: #4caf7d;
+  --color-fail: #d67670;
+  --color-neutral: #6f6f6c;
+  --color-amber: #d3a13c;
+  --color-say-bg: #28374d;
+  --color-say-fg: #a3c0e6;
 }
 
 :root {
