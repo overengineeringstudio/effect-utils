@@ -485,7 +485,7 @@ export const Md = () => (
     </div>
     <Beat num="04" tag="The toolkit" coda>
       <h2>
-        More than a sync — the full <em>notion md</em> toolkit.
+        Everything <em>notion md</em> does.
       </h2>
       <div className="stage">
         <div className="features">

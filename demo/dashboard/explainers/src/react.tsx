@@ -409,7 +409,7 @@ export const React = () => (
     </div>
     <Beat num="04" tag="The toolkit" coda>
       <h2>
-        More than a render — the full <em>notion-react</em> toolkit.
+        Everything <em>notion-react</em> does.
       </h2>
       <div className="stage">
         <div className="features">

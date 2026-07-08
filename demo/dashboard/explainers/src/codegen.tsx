@@ -506,7 +506,7 @@ export const Codegen = () => (
     </div>
     <Beat num="04" tag="The toolkit" coda>
       <h2>
-        More than generate — the full <em>notion schema</em> toolkit.
+        Everything <em>notion schema</em> does.
       </h2>
       <div className="stage">
         <div className="features">

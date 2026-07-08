@@ -459,7 +459,7 @@ export const Sqlite = () => (
     </div>
     <Beat num="04" tag="The toolkit" coda>
       <h2>
-        More than SQL — the full <em>notion db</em> toolkit.
+        Everything <em>notion db</em> does.
       </h2>
       <div className="stage">
         <div className="features">
