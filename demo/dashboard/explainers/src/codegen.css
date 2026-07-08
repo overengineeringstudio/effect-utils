@@ -92,7 +92,7 @@
   box-shadow: 0 8px 26px rgba(0,0,0,.18); overflow: hidden; font-family: var(--mono); font-size: 12px; min-width: 158px; z-index: 3; }
 .cg .pop-h { padding: 6px 10px; font: 600 9px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase;
   color: var(--muted); border-bottom: 1px solid var(--line-soft); background: var(--panel); }
-.cg .pop-row { display: flex; align-items: center; gap: 8px; padding: 6px 11px; color: var(--ink); }
+.cg .pop-row { display: flex; align-items: center; gap: 8px; padding: 4px 11px; line-height: 1.2; color: var(--ink); }
 .cg .pop-row .ic { color: var(--accent); font-weight: 700; }
 .cg .pop-row.sel { background: var(--accent-soft); }
 .cg .pop-row .sv { color: var(--ok); }
@@ -285,3 +285,20 @@
   .cg .cgflow-rail { width: 60px; height: 18px; transform: rotate(90deg); }
   .cg .code, .cg .repo, .cg .doc, .cg .ndb { width: 100% !important; max-width: 452px; }
 }
+
+/* beat 1: the problem — typed access two ways (mirrors md/sqlite .ways) */
+.cg .ways { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 100%; }
+.cg .target-cap { font: 600 10.5px/1 var(--mono); letter-spacing: .04em; color: var(--muted); margin: 0 0 12px; }
+.cg .waylist { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 680px; }
+.cg .wayrow { display: flex; align-items: stretch; border: 1px solid var(--line); border-radius: 12px;
+  background: var(--panel-2); box-shadow: var(--shadow); overflow: hidden; }
+.cg .wayrow.win { border-color: var(--ok-line); background: var(--ok-soft); }
+.cg .waylabel { flex: none; width: 128px; padding: 12px 14px; display: flex; flex-direction: column; gap: 3px;
+  border-right: 1px solid var(--line-soft); background: var(--panel); }
+.cg .wayrow.win .waylabel { background: transparent; border-right-color: var(--ok-line); }
+.cg .wayname { font: 700 13px/1.2 var(--sans); color: var(--ink); }
+.cg .waykind { font: 600 9px/1 var(--mono); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.cg .waymark { margin-top: 3px; font: 700 11px/1.2 var(--sans); color: var(--warn); }
+.cg .wayrow.win .waymark { color: var(--ok); }
+.cg .waycode { flex: 1; min-width: 0; padding: 12px 15px; font-family: var(--mono); font-size: 12px; line-height: 1.65;
+  color: var(--ink); display: flex; flex-direction: column; gap: 3px; overflow-x: auto; white-space: nowrap; }

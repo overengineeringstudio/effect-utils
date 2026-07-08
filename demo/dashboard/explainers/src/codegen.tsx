@@ -312,7 +312,6 @@ export const Codegen = () => (
   <div className="thread cg">
     {/* LEAD */}
     <header className="lead">
-      <p className="kicker">Notion tooling · a thread · 3.1 codegen</p>
       <h1>
         <code>notion{nbsp(' schema')}</code> — your Notion databases, as typed code
       </h1>
@@ -338,107 +337,72 @@ export const Codegen = () => (
     {/* BEAT 1 — THE PROBLEM */}
     <Beat num="01" tag="The problem">
       <h2>
-        Notion hands you untyped JSON — so your code <em>guesses</em> at the shape.
+        In your code, a Notion DB is <code>any</code> — until you <em>generate</em> its types.
       </h2>
       <div className="stage">
-        {/* your code : guesses, breaks at runtime (LEFT — the other medium) */}
-        <div className="code" style={{ width: '322px' }}>
-          <div className="code-bar">
-            ◆ app.ts
-            <span className="ro" style={{ color: 'var(--ok)' }}>
-              tsc: 0 errors
-            </span>
-          </div>
-          <div className="code-body">
-            <div>
-              <span className="cm">{'// properties typed as `any`'}</span>
+        <div className="ways">
+          <div className="target-cap">typed access to a Notion database · two ways</div>
+          <div className="waylist">
+            <div className="wayrow">
+              <div className="waylabel">
+                <span className="wayname">by hand</span>
+                <span className="waykind">untyped</span>
+                <span className="waymark">✗ runtime</span>
+              </div>
+              <div className="waycode">
+                <div>
+                  page.properties.Status <span className="cm">// : any — no shape</span>
+                </div>
+                <div>
+                  task.Status = <span className="sv">"Doen"</span>{' '}
+                  <span className="cm">// typo compiles → fails at runtime</span>
+                </div>
+                <div>
+                  <span className="cm">// no autocomplete on options · drifts when the DB changes</span>
+                </div>
+              </div>
             </div>
-            <div>
-              <span className="kw">const</span> s = page.properties.Status
-            </div>
-            <div>
-              <span className="kw">if</span> (s === <span className="sv un">{nbsp('"In Progress"')}</span>)
-            </div>
-            <div style={{ color: 'var(--warn)', fontWeight: 600 }}>
-              {'    '}↑ renamed in Notion → <span className="sv">"Active"</span>
-            </div>
-            <div className="indent">
-              notify() <span className="cm">// never runs now</span>
-            </div>
-            <div style={{ marginTop: '8px' }}>
-              <span className="tagline tag-w">✗ the rename silently breaks it · wrong at runtime</span>
-            </div>
-          </div>
-        </div>
-        {/* API : untyped JSON (arrow points Notion → code, right → left) */}
-        <div className="conn warn">
-          <div className="lbl">
-            <b>REST API</b>
-            <br />
-            untyped JSON
-          </div>
-          <svg viewBox="0 0 108 24">
-            <path d="M104 12 H16" stroke="var(--muted)" strokeWidth="1.8" fill="none" />
-            <path d="M24 6 L10 12 L24 18 Z" fill="var(--muted)" />
-          </svg>
-        </div>
-        {/* Notion database, rendered as a real grid (RIGHT — the source of truth) */}
-        <div className="ndb-wrap">
-          <div className="ndb" style={{ width: '452px' }}>
-            <div className="ndb-bar">
-              <span className="ic">▦</span>
-              <span className="nm">Tasks</span>
-              <span className="src">Notion database</span>
-            </div>
-            <div className="ndb-grid" style={{ gridTemplateColumns: '1.5fr 1.05fr .8fr 1fr' }}>
-              <div className="ndb-h">
-                <span className="ty">Aa</span> Name
+            <div className="wayrow win">
+              <div className="waylabel">
+                <span className="wayname">generated</span>
+                <span className="waykind">typed</span>
+                <span className="waymark">✓ compile</span>
               </div>
-              <div className="ndb-h">
-                <span className="ty">◉</span> Status
-              </div>
-              <div className="ndb-h">
-                <span className="ty">🗓</span> Due
-              </div>
-              <div className="ndb-h">
-                <span className="ty">↗</span> Project
-              </div>
-              <div className="ndb-t">Launch pricing page</div>
-              <div>
-                <span className="npill blue ring">Active</span>
-              </div>
-              <div className="date">Mar 14</div>
-              <div>
-                <span className="rel">▦ Roadmap</span>
-              </div>
-              <div className="ndb-t" style={{ borderBottom: 'none' }}>
-                Draft changelog
-              </div>
-              <div style={{ borderBottom: 'none' }}>
-                <span className="npill gray">Todo</span>
-              </div>
-              <div className="date" style={{ borderBottom: 'none' }}>
-                Mar 20
-              </div>
-              <div style={{ borderBottom: 'none' }}>
-                <span className="rel">▦ Docs</span>
+              <div className="waycode">
+                <div>
+                  <span className="cm">$</span> notion schema generate -o schema.gen.ts
+                </div>
+                <div>
+                  Status: <span className="sv">"Todo"</span> | <span className="sv">"In Progress"</span> |{' '}
+                  <span className="sv">"Done"</span> <span className="cm">// literal union · autocomplete</span>
+                </div>
+                <div>
+                  task.Status = <span className="sv">"Doen"</span>{' '}
+                  <span className="cm">// ✗ caught by tsc, before you ship</span>
+                </div>
+                <div>
+                  <span className="cm"># notion schema diff --exit-code → CI drift gate</span>
+                </div>
               </div>
             </div>
           </div>
-          <div className="tagline tag-w">✎ "In Progress" → "Active", renamed in the UI</div>
         </div>
       </div>
       <p className="caption">
-        <b>The API returns untyped JSON — property names, option sets and types live only in the workspace.</b>{' '}
+        <b>
+          Read from code, a Notion DB's properties are <code>any</code> and its options are bare strings — typos and
+          renamed options blow up at runtime, with no autocomplete.
+        </b>{' '}
         <span className="hint">
-          Your editor can't autocomplete them, and a rename in Notion sails past <code>tsc</code> to break you at
-          runtime, with no warning.
+          <code>notion schema generate</code> emits typed Effect schemas straight from the live DB — select options
+          become literal unions (real autocomplete, typos caught by <code>tsc</code>) — and{' '}
+          <code>notion schema diff --exit-code</code> is the CI drift gate.
         </span>
       </p>
     </Beat>
 
-    {/* BEAT 2 — SEE IT WORK */}
-    <Beat num="02" tag="See it work">
+    {/* BEAT 2 — HOW IT WORKS */}
+    <Beat num="02" tag="How it works">
       <h2>
         One command reads the live database and writes a <em>typed schema</em>.
       </h2>
