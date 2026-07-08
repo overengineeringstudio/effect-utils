@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **genie / bootstrap**: make the shared `bootstrap-closure:check` devenv task
+  run effect-utils' checker against the importing repo root via `--root`, so
+  downstream repos can reuse the zero-tolerance bootstrap gate without carrying
+  local wrapper scripts.
 - **notion-cli**: `schema generate <id> -o schema.gen.ts` now writes the file
   again. The `generate` command registered both a file `--output`/`-o` option
   and the shared TUI render-mode option, which also claimed `--output`/`-o`, so

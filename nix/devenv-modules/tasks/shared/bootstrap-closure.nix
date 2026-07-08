@@ -1,15 +1,11 @@
 # Bootstrap-safe import-closure gate (issue #884; SCOPED TO BOOTSTRAP-PHASE, ZERO-TOLERANCE)
 #
-# Usage in devenv.nix (effect-utils, default entry):
+# Usage in devenv.nix:
 #   imports = [ (inputs.effect-utils.devenvModules.tasks.bootstrap-closure {}) ];
-#
-# Downstream members must pass their own repo-relative `entry` (a bun script that imports
-# `checkBootstrapClosure` from `@overeng/genie/node` and scopes to its own bootstrap-phase set):
-#   imports = [ (inputs.effect-utils.devenvModules.tasks.bootstrap-closure { entry = "genie/bootstrap-closure-check.ts"; }) ];
 #
 # Provides: bootstrap-closure:check
 #
-# Runs the bun entry (default genie/ci-scripts/bootstrap-closure-check.ts) over the TRACKED
+# Runs effect-utils' shared checker over the importing repo's TRACKED
 # `.genie.ts` sources declared `bootstrap`-phase (static `// @genie-bootstrap` pragma). A
 # bootstrap-phase generator (and everything it transitively imports at RUNTIME) must be importable
 # from a fresh checkout BEFORE install: one that reaches a runtime-only package — e.g. through a
@@ -27,14 +23,13 @@
 # is ordered `after = [ "pnpm:install" ]`. Downstream members whose install task is named differently
 # pass their own `after`.
 {
-  # Repo-relative path to the bun entry.
-  entry ? "genie/ci-scripts/bootstrap-closure-check.ts",
   # Tasks that must run before the checker (it imports `typescript`, so it needs install state).
   after ? [ "pnpm:install" ],
 }:
 { lib, pkgs, ... }:
 let
   trace = import ../lib/trace.nix { inherit lib; };
+  effectUtilsSrc = ../../../..;
 in
 {
   tasks = {
@@ -44,7 +39,7 @@ in
       exec = trace.exec "bootstrap-closure:check" ''
         set -uo pipefail
         root="''${DEVENV_ROOT:-$PWD}"
-        ${pkgs.bun}/bin/bun "$root/${entry}"
+        ${pkgs.bun}/bin/bun "${effectUtilsSrc}/genie/ci-scripts/bootstrap-closure-check.ts" --root "$root"
       '';
     };
   };
