@@ -30,7 +30,21 @@ How the requirements are met. Kept current with the implementation.
   **single-scroll**, no nested scroll) · **evidence** (backup screenshots, lightbox) ·
   **status** (per-beat pass/fail; **mock/illustrative** for the planned 3.2). Compact
   one-band demo header. UI state is URL-encoded (`#demo=…&view=…`), reload-safe.
-  **Cutover pending:** the legacy string-template generator (`demo/dashboard/build.ts`
+- **Intro tab (first, default-active on load).** Ahead of the per-demo tabs sits
+  a static presenter-facing **why/how deck** for screen-sharing — not a demo, so
+  it has none of the per-demo layers (no beats / explanation / evidence /
+  status). Two slides:
+  - **Why — *Notion, for users, developers, and agents.*** Notion is the shared
+    source of truth that distinct actors act on: knowledge-work actors (users,
+    productivity agents) and engineering actors (developers, coding agents), with
+    **automations & integrations** bridging Notion to external systems. (Distinct
+    from the video's opening platform-gap thesis — this frames the ecosystem, not
+    the arc.)
+  - **How — the four core building blocks as composable pieces:** notion md,
+    notion sqlite, notion schema (codegen today, IaC planned — one block here),
+    notion-react. Schema is a single block; the per-demo tabs split it 3.1/3.2
+    for pacing.
+- **Cutover pending:** the legacy string-template generator (`demo/dashboard/build.ts`
   → `control.html`) is frozen as a fallback until `control.next.html` is promoted to
   the canonical `control.html` and `serve.sh` is wired to the React build.
 
