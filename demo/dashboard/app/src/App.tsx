@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import type { RawSegment } from '../../screenplay.ts'
 import { DEMOS, type DemoModel, type ModelBeat, type Shot } from './model.gen.ts'
 import { InlineMd } from './inline-md.tsx'
@@ -631,126 +631,215 @@ const TabButton = ({ d, on, onClick }: { d: DemoModel; on: boolean; onClick: () 
 
 const INTRO_ID = 'intro'
 
-const bridgeIcon = (
-  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="5" cy="12" r="2.4" />
-    <circle cx="19" cy="12" r="2.4" />
-    <path d="M7.4 12h9.2" />
-    <path d="M14.5 9.5 17 12l-2.5 2.5" />
-    <path d="M9.5 9.5 7 12l2.5 2.5" />
+// Inline actor/motif icons (currentColor → theme-aware). Kept tiny and line-art
+// to match the dashboard's restrained visual language.
+const iconUsers = (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="8" r="3.2" />
+    <path d="M5.5 19.5a6.5 6.5 0 0 1 13 0" />
   </svg>
 )
-const agentIcon = (
-  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
-    <path d="M12 3v3.5" />
-    <rect x="5.5" y="6.5" width="13" height="11" rx="2.6" />
+const iconSparkle = (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 3.5l1.7 4.8 4.8 1.7-4.8 1.7L12 16.5l-1.7-4.8L5.5 10l4.8-1.7z" />
+  </svg>
+)
+const iconCode = (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+    <path d="M9 8l-4 4 4 4" />
+    <path d="M15 8l4 4-4 4" />
+  </svg>
+)
+const iconRobot = (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 3v3" />
+    <rect x="5" y="6" width="14" height="12" rx="2.6" />
     <circle cx="9.5" cy="12" r="1.05" />
     <circle cx="14.5" cy="12" r="1.05" />
-    <path d="M9.5 15h5" />
+    <path d="M9.5 15.2h5" />
+  </svg>
+)
+const iconZap = (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
+    <path d="M13 3L5 13h5l-1 8 8-11h-5z" />
+  </svg>
+)
+const iconNotion = (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
+    <rect x="5" y="3.5" width="14" height="17" rx="2" />
+    <path d="M9 8h6M9 12h6M9 16h4" />
+  </svg>
+)
+const iconLego = (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3.5" y="9" width="17" height="10.5" rx="1.5" />
+    <path d="M7.5 9V7.2a1.5 1.5 0 0 1 3 0V9M13.5 9V7.2a1.5 1.5 0 0 1 3 0V9" />
   </svg>
 )
 
-// A mini node→node diagram (e.g. Notion page ⇄ local .md). The "notion" node is
-// a solid pill; the "dev" node is accent-tinted; `cap` is an optional caption.
-const VizNode = ({ label, notion = false }: { label: string; notion?: boolean }) => (
+// Slide-1 actor card: an icon badge + name + one-line role, used for the four
+// actors that flank the central Notion hub.
+const ActorCard = ({ icon, name, role }: { icon: ReactNode; name: string; role: string }) => (
+  <div className="flex items-center gap-2.5 rounded-xl border border-border bg-bg-subtle px-3.5 py-2.5">
+    <span className="inline-flex h-8 w-8 flex-none items-center justify-center rounded-lg bg-accent/10 text-accent">
+      {icon}
+    </span>
+    <span className="min-w-0">
+      <span className="block text-[13.5px] font-semibold leading-tight">{name}</span>
+      <span className="block text-[11.5px] leading-tight text-fg-muted">{role}</span>
+    </span>
+  </div>
+)
+
+// Slide-2 mini diagram: [node] —action→ [node]. The Notion side is a solid pill,
+// the local/code side accent-tinted; `planned` shows an amber roadmap chip.
+type VizEnd = { label: string; notion?: boolean }
+const VizNode = ({ end }: { end: VizEnd }) => (
   <span
     className={
       'whitespace-nowrap rounded-lg border px-2.5 py-1.5 text-[12px] font-semibold ' +
-      (notion === true ? 'border-fg bg-fg text-bg-panel' : 'border-accent/40 bg-accent/10 text-accent')
+      (end.notion === true ? 'border-fg bg-fg text-bg-panel' : 'border-accent/40 bg-accent/10 text-accent')
     }
   >
-    {label}
+    {end.label}
   </span>
 )
-const Viz = ({ from, dir, to, cap }: { from: string; dir: string; to: string; cap?: string }) => (
-  <div className="flex flex-wrap items-center gap-2.5 rounded-lg border border-border bg-bg-panel px-3.5 py-3">
-    <VizNode label={from} notion />
-    <span className="text-[18px] font-bold leading-none text-accent">{dir}</span>
-    <VizNode label={to} />
-    {cap !== undefined && (
-      <span className="ml-auto text-[10.5px] font-semibold uppercase tracking-wide text-fg-faint">{cap}</span>
+const Viz = ({
+  left,
+  right,
+  dir,
+  action,
+  planned,
+}: {
+  left: VizEnd
+  right: VizEnd
+  dir: string
+  action: string
+  planned?: string
+}) => (
+  <div className="flex flex-wrap items-center justify-center gap-2.5 rounded-lg border border-border bg-bg-panel px-3.5 py-3">
+    <VizNode end={left} />
+    <span className="flex flex-col items-center leading-none">
+      <span className="text-[18px] font-bold text-accent">{dir}</span>
+      <span className="mt-0.5 text-[9.5px] font-semibold uppercase tracking-wide text-fg-faint">{action}</span>
+    </span>
+    <VizNode end={right} />
+    {planned !== undefined && (
+      <span className="ml-1 rounded bg-amber/15 px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wide text-amber">
+        {planned}
+      </span>
     )}
   </div>
 )
 
-const INTRO_BLOCKS: { num: string; name: string; from: string; dir: string; to: string; cap?: string; desc: string }[] = [
+const INTRO_BLOCKS: {
+  num: string
+  name: string
+  left: VizEnd
+  right: VizEnd
+  dir: string
+  action: string
+  planned?: string
+  desc: string
+}[] = [
   {
     num: '01',
     name: 'notion md',
-    from: 'Notion page',
+    left: { label: 'Notion page', notion: true },
     dir: '⇄',
-    to: 'roadmap.md',
+    right: { label: 'roadmap.md' },
+    action: 'two-way sync',
     desc: 'Edit Notion pages as local Markdown — two-way, conflict-guarded sync from your editor.',
   },
   {
     num: '02',
     name: 'notion sqlite',
-    from: 'Notion DB',
+    left: { label: 'Notion DB', notion: true },
     dir: '⇄',
-    to: 'local.sqlite',
+    right: { label: 'local.sqlite' },
+    action: 'SQL query + edit',
     desc: 'A Notion database bound to a live local SQLite file — query and edit it with plain SQL.',
   },
   {
     num: '03',
     name: 'notion schema',
-    from: 'Notion DB',
-    dir: '⇄',
-    to: 'schema.ts',
-    cap: 'codegen · IaC',
-    desc: 'Typed Effect schemas generated from live DBs (codegen), with schema-as-code back the other way (IaC).',
+    left: { label: 'Notion DB', notion: true },
+    dir: '→',
+    right: { label: 'schema.ts' },
+    action: 'codegen',
+    planned: 'IaC planned',
+    desc: 'Typed Effect schemas generated from live DBs (codegen). The inverse — schema-as-code (IaC) — is planned.',
   },
   {
     num: '04',
     name: 'notion-react',
-    from: '‹Page /›',
+    left: { label: '‹Page /›' },
     dir: '→',
-    to: 'Notion page',
+    right: { label: 'Notion page', notion: true },
+    action: 'render',
     desc: 'Author a Notion page as a React component; rerun renders a precise block-level diff.',
   },
 ]
 
 const IntroPanel = ({ hidden }: { hidden: boolean }) => (
-  <section hidden={hidden} className="flex max-w-[1080px] flex-col gap-4">
-    {/* Slide 1 — Why */}
+  <section hidden={hidden} className="flex max-w-[1100px] flex-col gap-4">
+    {/* Slide 1 — Why: the ecosystem around Notion (hub = source of truth) */}
     <section className="rounded-2xl border border-border bg-bg-panel px-8 py-7 shadow-[0_6px_24px_rgba(10,14,20,.10)]">
       <div className="mb-1.5 text-[11px] font-bold uppercase tracking-[1.2px] text-accent">Why</div>
-      <h2 className="m-0 mb-5 text-[25px] font-bold tracking-tight">Notion, for developers and agents</h2>
-      <div className="grid grid-cols-1 gap-[18px] md:grid-cols-2">
-        <div className="rounded-xl border border-border bg-bg-subtle p-[22px]">
-          <div className="mb-3.5 inline-flex h-[42px] w-[42px] items-center justify-center rounded-[11px] bg-accent/15 text-accent">
-            {bridgeIcon}
-          </div>
-          <h3 className="m-0 mb-2 text-[18px] font-semibold">Bridge the two worlds</h3>
-          <p className="m-0 text-[14px] leading-relaxed text-fg-muted">
-            Connect <strong className="font-semibold text-fg">Notion</strong> — where teams plan, spec, and write — with{' '}
-            <strong className="font-semibold text-fg">developer tooling</strong>: your editor, files, git, types, and CI.
-          </p>
+      <h2 className="m-0 mb-6 text-[25px] font-bold tracking-tight">Notion, for users, developers, and agents</h2>
+      <div className="flex flex-wrap items-stretch justify-center gap-3">
+        {/* Knowledge work */}
+        <div className="flex min-w-[210px] flex-1 flex-col gap-2.5">
+          <div className="text-[10.5px] font-bold uppercase tracking-wider text-fg-faint">Knowledge work</div>
+          <ActorCard icon={iconUsers} name="users" role="author · plan, in Notion" />
+          <ActorCard icon={iconSparkle} name="productivity agents" role="assist in-place" />
         </div>
-        <div className="rounded-xl border border-border bg-bg-subtle p-[22px]">
-          <div className="mb-3.5 inline-flex h-[42px] w-[42px] items-center justify-center rounded-[11px] bg-accent/15 text-accent">
-            {agentIcon}
-          </div>
-          <h3 className="m-0 mb-2 text-[18px] font-semibold">Enable agents</h3>
-          <p className="m-0 text-[14px] leading-relaxed text-fg-muted">
-            Give both <strong className="font-semibold text-fg">coding agents</strong> and{' '}
-            <strong className="font-semibold text-fg">productivity agents</strong> a typed, scriptable, guarded surface
-            onto Notion.
-          </p>
+        <div className="flex items-center justify-center text-[20px] font-bold text-accent">⇄</div>
+        {/* Notion hub */}
+        <div className="flex min-w-[150px] flex-col items-center justify-center rounded-2xl border-2 border-accent/50 bg-accent/5 px-6 py-5 text-center">
+          <span className="mb-1.5 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-fg text-bg-panel">
+            {iconNotion}
+          </span>
+          <span className="text-[16px] font-bold leading-tight">Notion</span>
+          <span className="text-[11px] leading-tight text-fg-muted">source of truth</span>
+        </div>
+        <div className="flex items-center justify-center text-[20px] font-bold text-accent">⇄</div>
+        {/* Engineering */}
+        <div className="flex min-w-[210px] flex-1 flex-col gap-2.5">
+          <div className="text-right text-[10.5px] font-bold uppercase tracking-wider text-fg-faint">Engineering</div>
+          <ActorCard icon={iconCode} name="developers" role="integrate code — reliable & ergonomic" />
+          <ActorCard icon={iconRobot} name="coding agents" role="local files (md · sqlite), not APIs" />
+        </div>
+      </div>
+      {/* automations & integrations bridge → other systems */}
+      <div className="mt-3.5 flex justify-center">
+        <div className="flex flex-wrap items-center justify-center gap-2.5 rounded-xl border border-dashed border-border-strong bg-bg-subtle px-4 py-2.5">
+          <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-accent/10 text-accent">
+            {iconZap}
+          </span>
+          <span className="text-[13px] font-semibold">automations &amp; integrations</span>
+          <span className="text-accent">→</span>
+          <span className="text-[12.5px] text-fg-muted">connect other systems</span>
         </div>
       </div>
     </section>
-    {/* Slide 2 — How */}
+    {/* Slide 2 — How: building blocks that snap together */}
     <section className="rounded-2xl border border-border bg-bg-panel px-8 py-7 shadow-[0_6px_24px_rgba(10,14,20,.10)]">
-      <div className="mb-1.5 text-[11px] font-bold uppercase tracking-[1.2px] text-accent">How</div>
-      <h2 className="m-0 mb-5 text-[25px] font-bold tracking-tight">Four core building blocks</h2>
+      <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[1.2px] text-accent">
+        <span className="text-accent">{iconLego}</span> How
+      </div>
+      <h2 className="m-0 mb-5 text-[25px] font-bold tracking-tight">Building blocks that snap together</h2>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {INTRO_BLOCKS.map((b) => (
           <div key={b.num} className="flex flex-col gap-3 rounded-xl border border-border bg-bg-subtle p-5">
-            <div className="flex items-baseline gap-2.5">
+            <div className="flex items-center gap-2.5">
+              <span className="inline-flex h-6 w-6 flex-none items-center justify-center rounded-md bg-accent/10 text-accent">
+                {iconLego}
+              </span>
               <span className="font-mono text-[11px] font-bold text-fg-faint">{b.num}</span>
               <span className="font-mono text-[15.5px] font-semibold">{b.name}</span>
             </div>
-            <Viz from={b.from} dir={b.dir} to={b.to} cap={b.cap} />
+            <Viz left={b.left} right={b.right} dir={b.dir} action={b.action} planned={b.planned} />
             <p className="m-0 text-[13px] leading-snug text-fg-muted">{b.desc}</p>
           </div>
         ))}
