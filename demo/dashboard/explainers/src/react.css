@@ -1,0 +1,263 @@
+/* react.css — per-explainer content CSS for notion-react (NOT shared kit).
+   Inlined AFTER the kit CSS by the SSG build, so equal-specificity rules here win
+   by source order. Two jobs:
+     1. the beat-2 CAUSAL CHOREOGRAPHY that diverges from the kit's single-sync
+        (sqlite/md) shape — react runs TWICE (step 2 first render · step 3 edit +
+        rerun), so the flow syncs on BOTH runs, and the Notion block update must
+        LAG the source edit within step 3 (review §2 [HIGH]);
+     2. the static content primitives (beats 1/3/4: churn card, opsum, keymap) that
+        are react-only — promote to kit only on a second consumer (plan §11c).
+
+   Timing contract: the sync packet travels ~1.45s (kit `pkttravel`); every gated
+   effect fires at that 1.45s arrival. Reuses kit @keyframes (fadein/fadeout,
+   badgesettle/dotsettle/railsettle/headsettle, blink, pkttravel). */
+
+/* ============================================================================
+   BEAT 2 — mini-IDE code lines (the kit styles .ide-code .tg/.at/.str/.cm but
+   not .kw or indentation, both of which the JSX program needs)
+   ============================================================================ */
+.ide-code .kw { color: var(--accent); }
+.ide-code .ind { padding-left: 54px; }
+
+/* ---- the edited code line: accent band, lit at step 3 only (review [LOW] V4:
+   step 4 drops the accent) + in the resolved base/reduced-motion still ---- */
+.seq[data-mode="anim"] .ide-code .edit { background: transparent; box-shadow: none; }
+.seq[data-mode="anim"] .ide-code .edit::before { color: var(--muted); }
+.seq[data-mode="anim"][data-step="3"] .ide-code .edit,
+.seq[data-mode="static"] .ide-code .edit,
+.seq:not([data-mode]) .ide-code .edit { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+.seq[data-mode="anim"][data-step="3"] .ide-code .edit::before,
+.seq[data-mode="static"] .ide-code .edit::before,
+.seq:not([data-mode]) .ide-code .edit::before { color: var(--accent); }
+.seq[data-mode="anim"][data-step="3"] .ide-code .edit { animation: editflash 1s ease-out; }
+@keyframes editflash {
+  0% { box-shadow: inset 3px 0 0 var(--accent), 0 0 0 1px var(--accent) inset; }
+  100% { box-shadow: inset 3px 0 0 var(--accent); }
+}
+
+/* ============================================================================
+   BEAT 2 — the rendered Notion PAGE (block variant of the kit .ntn-page)
+   ============================================================================ */
+.ntn-page { position: relative; min-height: 152px; }
+.ntn-page .blk.h1 { font-weight: 700; font-size: 16px; letter-spacing: -.01em; }
+.ntn-page .blk.toggle { display: flex; align-items: center; gap: 7px; font-size: 13px; }
+.ntn-page .blk.toggle .tgl { color: var(--muted); font-size: 10px; flex: none; }
+.ntn-div { height: 1px; background: var(--line); margin: 1px 0; }
+
+/* empty-page placeholder — the gated effect's "before" state; exists ONLY in the
+   animated walkthrough (step 1). The resolved base/reduced-motion still shows the
+   materialized blocks instead. */
+.ntn-empty { position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
+  font: 500 12px/1 var(--sans); font-style: italic; color: var(--muted);
+  border: 1px dashed var(--line); border-radius: 8px; }
+.seq[data-mode="anim"] .ntn-empty { display: flex; opacity: 0; }
+.seq[data-mode="anim"][data-step="1"] .ntn-empty { opacity: 1; }
+
+/* the single changed block: accent band + update tag. Shown in the resolved
+   base/reduced-motion still (so the still teaches "only THIS block changed"), and
+   gated to the packet ARRIVAL (~1.45s) during step-3 playback. */
+.ntn-upd { border-radius: 6px; padding: 3px 7px; margin: -3px -7px; }
+.seq:not([data-mode]) .ntn-upd,
+.seq[data-mode="static"] .ntn-upd { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
+.seq[data-mode="anim"][data-step="3"] .ntn-upd { animation: updband 1s ease 1.45s both; }
+@keyframes updband {
+  0% { background: transparent; box-shadow: none; transform: scale(1); }
+  30% { transform: scale(1.03); }
+  100% { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); transform: scale(1); }
+}
+
+.ntn-btag { margin-left: auto; font: 600 8px/1 var(--mono); letter-spacing: .02em; padding: 3px 6px;
+  border-radius: 9px; white-space: nowrap; opacity: 0; transition: opacity .3s ease; }
+.ntn-btag.u { color: var(--accent); background: var(--accent-soft); border: 1px solid var(--accent); }
+.ntn-btag.k { color: var(--muted); background: var(--panel); border: 1px solid var(--line); }
+/* base/reduced-motion still: all tags shown (the resolved reveal) */
+.seq:not([data-mode]) .ntn-btag,
+.seq[data-mode="static"] .ntn-btag { opacity: 1; }
+/* step-3 playback: untouched tags at entry; the UPDATE tag gated to arrival */
+.seq[data-mode="anim"][data-step="3"] .ntn-btag.k { opacity: 1; }
+.seq[data-mode="anim"][data-step="3"] .ntn-btag.u { animation: fadein .3s ease 1.45s both; }
+
+/* ---- value swap gating: the $40k → $80k morph, INDEPENDENTLY placed per pane.
+   IDE = the CAUSE (flips at step-3 entry); Notion = the EFFECT (flips only when
+   the packet lands, ~1.45s). This is the review's headline fix — the two are NOT
+   on one shared rule, so the output visibly lags the edit. ---- */
+/* both panes hold $40k through steps 1–2 (kit base shows .s-now = $80k) */
+.seq[data-mode="anim"][data-step="1"] .ide-code .swap .s-was,
+.seq[data-mode="anim"][data-step="2"] .ide-code .swap .s-was,
+.seq[data-mode="anim"][data-step="1"] .ntn-page .swap .s-was,
+.seq[data-mode="anim"][data-step="2"] .ntn-page .swap .s-was { opacity: 1; }
+.seq[data-mode="anim"][data-step="1"] .ide-code .swap .s-now,
+.seq[data-mode="anim"][data-step="2"] .ide-code .swap .s-now,
+.seq[data-mode="anim"][data-step="1"] .ntn-page .swap .s-now,
+.seq[data-mode="anim"][data-step="2"] .ntn-page .swap .s-now { opacity: 0; }
+/* step 3, IDE (cause): flips to $80k at step entry, ungated */
+.seq[data-mode="anim"][data-step="3"] .ide-code .swap .s-was { opacity: 0; }
+.seq[data-mode="anim"][data-step="3"] .ide-code .swap .s-now { opacity: 1; }
+/* step 3, Notion (effect): flips to $80k ONLY at the packet arrival (~1.45s) */
+.seq[data-mode="anim"][data-step="3"] .ntn-page .swap .s-was { animation: fadeout .4s ease 1.45s both; }
+.seq[data-mode="anim"][data-step="3"] .ntn-page .swap .s-now { animation: fadein .4s ease 1.45s both; }
+
+/* ---- first-run materialization gate (r2a): the 5 blocks + the `appends:5`
+   confirmation appear only when the FIRST sync packet lands (~1.45s into step 2),
+   not at step entry (review [LOW] step-2 gate). Cumulative from step 2 onward. ---- */
+.seq[data-mode="anim"][data-step="2"] .r2a { opacity: 1; transition-delay: 1.45s; }
+.seq[data-mode="anim"][data-step="3"] .r2a,
+.seq[data-mode="anim"][data-step="4"] .r2a { opacity: 1; }
+
+/* ---- flow connector: re-author STEP 2 to sync (kit bakes idle@1–2 / sync@3 for
+   the single-sync sqlite/md shape). react's first `bun run` IS a real sync, so
+   step 2 mirrors step 3's syncing→settle. Step 1 stays idle (kit); step 3 reuses
+   kit's rules verbatim. Overrides win by source order (equal specificity). ---- */
+.seq[data-mode="anim"][data-step="2"] .flow-badge {
+  color: var(--accent); background: var(--accent-soft); border-color: var(--accent);
+  animation: badgesettle .35s ease 1.45s forwards; }
+.seq[data-mode="anim"][data-step="2"] .flow-badge .dot {
+  background: var(--accent); animation: blink .72s ease-in-out 2 both, dotsettle .35s ease 1.45s forwards; }
+.seq[data-mode="anim"][data-step="2"] .flow-badge .l-idle { opacity: 0; }
+.seq[data-mode="anim"][data-step="2"] .flow-badge .l-sync { opacity: 1; animation: fadeout .3s ease 1.45s forwards; }
+.seq[data-mode="anim"][data-step="2"] .flow-badge .l-done { animation: fadein .3s ease 1.45s both; }
+.seq[data-mode="anim"][data-step="2"] .flow-check { animation: fadein .3s ease 1.45s both; }
+.seq[data-mode="anim"][data-step="2"] .flow-rail .track {
+  background: var(--accent); animation: railsettle .35s ease 1.45s forwards; }
+.seq[data-mode="anim"][data-step="2"] .flow-rail .head {
+  border-left-color: var(--accent); animation: headsettle .35s ease 1.45s forwards; }
+.seq[data-mode="anim"][data-step="2"] .flow-rail .pkt { animation: pkttravel 1.45s cubic-bezier(.45,0,.55,1); }
+
+/* ============================================================================
+   BEAT 1 — raw-API churn (a one-line intent explodes into wipe & re-append)
+   ============================================================================ */
+.s1 { display: flex; align-items: center; gap: 6px; }
+.churn-col { display: flex; flex-direction: column; align-items: center; gap: 0; }
+
+.code { width: 344px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2);
+  box-shadow: var(--shadow); overflow: hidden; }
+.code-tabs { display: flex; align-items: stretch; background: var(--panel); border-bottom: 1px solid var(--line-soft); }
+.code-tab { display: flex; align-items: center; gap: 8px; padding: 9px 14px; font: 600 11.5px/1 var(--mono);
+  color: var(--ink); background: var(--panel-2); border-right: 1px solid var(--line-soft); }
+.code-tab .tdot { width: 8px; height: 8px; border-radius: 2.5px; }
+.code-tabs .lang { margin-left: auto; display: flex; align-items: center; padding: 9px 13px; font: 600 9.5px/1 var(--mono);
+  letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.code-body { padding: 12px 14px 12px 0; font-family: var(--mono); font-size: 12px; line-height: 1.7;
+  display: flex; flex-direction: column; counter-reset: ln; }
+.code-body > div { position: relative; padding-left: 40px; }
+.code-body > div::before { counter-increment: ln; content: counter(ln); position: absolute; left: 0; top: 0;
+  width: 26px; text-align: right; color: var(--muted); opacity: .4; font-size: 11px; }
+.code.raw .code-tab { box-shadow: inset 0 2px 0 var(--warn); }
+.code.raw .code-tab .tdot { background: var(--warn); }
+.code-body .del { color: var(--warn); }
+.code-body .app { color: var(--accent); }
+.code-body .dots { color: var(--muted); opacity: .8; }
+.code-body .cm { color: var(--muted); }
+.code-body .cmw { color: var(--warn); }
+.code-run { display: flex; align-items: center; gap: 8px; padding: 9px 14px; border-top: 1px solid var(--line-soft);
+  background: var(--panel); font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.code-run.warn { color: var(--warn); background: var(--warn-soft); border-top-color: var(--warn-line); }
+.code-run.warn .play { color: var(--warn); font-weight: 700; }
+.code-run .rout { margin-left: auto; }
+
+/* churn channel (warn-themed connector) */
+.churnch { width: 154px; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.churn-badge { display: inline-flex; align-items: center; gap: 6px; font: 600 10.5px/1 var(--mono);
+  color: var(--warn); background: var(--warn-soft); border: 1px solid var(--warn-line); border-radius: 20px; padding: 5px 10px; }
+.pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--warn); animation: blink 1.4s ease-in-out infinite; }
+.wires { position: relative; width: 154px; height: 42px; }
+.wire { position: absolute; left: 0; width: 100%; height: 2px; background: var(--warn-line); top: 20px; }
+.wlbl { position: absolute; width: 100%; text-align: center; font: 500 10.5px/1 var(--sans); color: var(--muted); top: 4px; }
+.arrowhead { position: absolute; top: -4px; width: 0; height: 0; border-top: 5px solid transparent; border-bottom: 5px solid transparent; }
+.ah-r { right: -1px; border-left: 8px solid var(--warn); }
+.packet { position: absolute; top: -2.5px; width: 8px; height: 8px; border-radius: 50%; background: var(--warn);
+  box-shadow: 0 0 0 4px var(--warn-soft); animation: travelR 2.4s cubic-bezier(.5,0,.5,1) infinite; }
+@keyframes travelR { 0%{ left: -4px; opacity: 0; } 14%{ opacity: 1; } 86%{ opacity: 1; } 100%{ left: 150px; opacity: 0; } }
+.churn-result { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; font: 700 12px/1 var(--mono);
+  color: var(--warn); background: var(--warn-soft); border: 1px solid var(--warn-line); border-radius: 10px; padding: 7px 11px; }
+.churn-result .big { font-size: 14px; }
+.churn-result .sm { font-size: 9.5px; font-weight: 600; color: var(--muted); letter-spacing: .02em; }
+
+/* rendered churn page: every block torn down & re-created */
+.page { width: 260px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2);
+  box-shadow: var(--shadow); overflow: hidden; }
+.page-bar { display: flex; align-items: center; gap: 8px; padding: 10px 13px; border-bottom: 1px solid var(--line-soft); background: var(--panel); }
+.page-bar .pico { font-size: 13px; line-height: 1; }
+.page-bar .nm { font: 600 12px/1 var(--sans); }
+.page-bar .src { margin-left: auto; font: 600 9.5px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.page-body { padding: 14px 15px; display: flex; flex-direction: column; gap: 10px; }
+.page .blk { position: relative; font-size: 13px; color: var(--ink); }
+.page .blk.h1 { font-weight: 700; font-size: 16px; }
+.page .blk.toggle, .page .blk.todo { display: flex; align-items: center; gap: 7px; }
+.page .blk.toggle .tgl { color: var(--muted); font-size: 10px; }
+.page .blk.todo .cbx { color: var(--muted); font-size: 14px; }
+.page .blk .tag { position: absolute; right: -6px; top: -8px; font: 600 8px/1 var(--mono); letter-spacing: .02em;
+  padding: 3px 6px; border-radius: 9px; white-space: nowrap; }
+.page .tag-x { color: var(--warn); background: var(--warn-soft); border: 1px solid var(--warn-line); }
+.page .blk.rebuilt { border-left: 2px solid var(--warn); padding: 4px 8px 4px 9px; margin: -4px -8px -4px -9px;
+  background: var(--warn-soft); border-radius: 6px; }
+.churn-flag { margin-top: 12px; display: inline-flex; align-items: center; gap: 8px; font: 600 12.5px/1.35 var(--sans);
+  color: var(--warn); background: var(--warn-soft); border: 1px solid var(--warn-line); border-radius: 22px; padding: 8px 15px; text-align: center; }
+
+/* ============================================================================
+   BEAT 3 — describe the tree → minimal ops
+   ============================================================================ */
+.s3 { display: flex; align-items: center; gap: 0; }
+.treecard { width: 300px; }
+.tree-frame { border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2); box-shadow: var(--shadow); overflow: hidden; }
+.tree-bar { display: flex; align-items: center; gap: 8px; padding: 10px 13px; border-bottom: 1px solid var(--line-soft);
+  background: var(--panel); font: 600 12px/1 var(--mono); color: var(--accent); }
+.tree-body { padding: 12px 15px; font-family: var(--mono); font-size: 12px; display: flex; flex-direction: column; gap: 6px; }
+.tree-body .n { color: var(--accent); }
+.tree-body .in { padding-left: 16px; color: var(--ink); }
+.sot { margin-top: 10px; display: inline-flex; align-items: center; gap: 7px; font: 600 11px/1 var(--mono);
+  color: var(--accent); background: var(--accent-soft); border-radius: 8px; padding: 7px 10px; }
+.projarrow { width: 140px; display: flex; flex-direction: column; align-items: center; gap: 8px; color: var(--muted); }
+.projarrow .plabel { font-size: 11.5px; text-align: center; line-height: 1.35; }
+.projarrow svg { width: 118px; height: 26px; }
+.opsum-wrap { display: flex; flex-direction: column; align-items: center; }
+.opsum { width: 234px; border: 1px solid var(--accent); border-radius: 12px; background: var(--accent-soft); padding: 3px; }
+.opsum-inner { border-radius: 9px; background: var(--panel-2); overflow: hidden; box-shadow: var(--shadow); }
+.opsum-bar { padding: 9px 13px; border-bottom: 1px solid var(--line-soft); font: 600 11px/1 var(--mono); color: var(--accent); }
+.oprow { display: flex; align-items: center; justify-content: space-between; padding: 7px 13px; font-family: var(--mono);
+  font-size: 12px; border-bottom: 1px solid var(--line-soft); }
+.oprow:last-child { border-bottom: none; }
+.oprow .k { color: var(--muted); }
+.oprow .v { font-weight: 700; }
+.oprow .v.z { color: var(--ok); }
+.oprow .v.n { color: var(--accent); }
+.opsum-cap { text-align: center; font: 600 10.5px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase;
+  color: var(--accent); margin-top: 8px; }
+
+/* ============================================================================
+   CODA (beat 4) — blockKey diffing (.coda-rule/.coda are per-explainer, not kit)
+   ============================================================================ */
+.coda-rule { display: flex; align-items: center; gap: 14px; margin: 0 20px; color: var(--muted); }
+.coda-rule::before, .coda-rule::after { content: ""; height: 1px; background: var(--line); flex: 1; }
+.coda-rule span { font: 600 11px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; }
+.coda { border-style: dashed; background: var(--panel); }
+.coda .beat-tag { color: var(--accent); }
+.keymap { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; }
+.keys { width: 250px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2); box-shadow: var(--shadow); overflow: hidden; }
+.keys-bar { padding: 9px 13px; border-bottom: 1px solid var(--line-soft); background: var(--panel); font: 600 11px/1 var(--mono); color: var(--accent); }
+.keyrow { display: flex; align-items: center; gap: 8px; padding: 8px 13px; border-bottom: 1px solid var(--line-soft); font-family: var(--mono); font-size: 11.5px; }
+.keyrow:last-child { border-bottom: none; }
+.keyrow .bk { color: var(--accent); }
+.keyrow .arr { color: var(--muted); }
+.keyrow .id { color: var(--muted); font-size: 10.5px; }
+.cachebadge { width: 150px; display: flex; flex-direction: column; align-items: center; gap: 8px; color: var(--muted); }
+.cachebadge svg { width: 118px; height: 22px; }
+.cachebadge .cb { font: 600 10.5px/1 var(--mono); color: var(--accent); background: var(--accent-soft); border: 1px solid var(--accent); border-radius: 16px; padding: 5px 9px; }
+.cachebadge .cl { font-size: 11px; text-align: center; line-height: 1.35; }
+.difftable { width: 264px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2); box-shadow: var(--shadow); overflow: hidden; }
+.difftable .dbar { padding: 9px 13px; border-bottom: 1px solid var(--line-soft); background: var(--panel); font: 600 11px/1 var(--mono); color: var(--muted); }
+.drow { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 13px; border-bottom: 1px solid var(--line-soft); font-size: 12px; }
+.drow:last-child { border-bottom: none; }
+.drow .lbl { color: var(--ink); }
+.drow .op { font-family: var(--mono); font-size: 11px; font-weight: 700; }
+.drow .op.c { color: var(--ok); }
+.drow .op.a { color: var(--warn); }
+.drow .op.u { color: var(--blue); }
+.drow .op.m { color: var(--accent); }
+.drow .soon { font: 600 8px/1 var(--mono); letter-spacing: .04em; text-transform: uppercase; color: var(--muted);
+  border: 1px solid var(--line); border-radius: 8px; padding: 2px 5px; }
+
+/* static-beat stacking on narrow viewports */
+@media (max-width: 820px) {
+  .s1, .s3, .keymap { flex-direction: column; }
+}

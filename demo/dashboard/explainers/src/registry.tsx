@@ -6,6 +6,10 @@
 import type * as React from 'react'
 import { Md } from './md.tsx'
 import { Sqlite } from './sqlite.tsx'
+// `React` clashes with the React namespace type import above, so alias on import.
+import { React as ReactExplainer } from './react.tsx'
+import { Codegen } from './codegen.tsx'
+import { Iac } from './iac.tsx'
 
 export interface ExplainerEntry {
   /** output basename → demo/explainers/notion-<id>.next.html */
@@ -29,5 +33,26 @@ export const EXPLAINERS: readonly ExplainerEntry[] = [
     title: 'notion md — a visual thread',
     css: 'md.css',
     Component: Md,
+  },
+  // The registry `id` is ALSO the dashboard demo id (App.tsx maps EXPLAINER_BY_ID
+  // by demo id), so codegen/iac use the DEMO ids `schema` (3.1) / `schema-iac`
+  // (3.2), not `codegen`/`iac`. react's demo id already matches.
+  {
+    id: 'react',
+    title: 'notion-react — a visual thread',
+    css: 'react.css',
+    Component: ReactExplainer,
+  },
+  {
+    id: 'schema',
+    title: 'notion schema — a visual thread',
+    css: 'codegen.css',
+    Component: Codegen,
+  },
+  {
+    id: 'schema-iac',
+    title: 'notion schema — a visual thread',
+    css: 'iac.css',
+    Component: Iac,
   },
 ]

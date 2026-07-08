@@ -11,6 +11,9 @@
 import { CausalityError, captionsToSteps, multiSyncStory, syncStory } from '../../kit/syncStory.ts'
 import { sqliteStory } from '../src/sqlite.tsx'
 import { mdLocalStory, mdRemoteStory, mdSharedStory } from '../src/md.tsx'
+import { reactStory } from '../src/react.tsx'
+import { codegenStory } from '../src/codegen.tsx'
+import { iacStory } from '../src/iac.tsx'
 
 let ok = true
 
@@ -40,6 +43,31 @@ if (
   console.log('✓ real md stories construct (push / reversed pull / two-way shared)')
 } else {
   console.error('✗ real md story unexpected shape')
+  ok = false
+}
+
+// (1c) the three newly-ported real stories construct — importing react/codegen/
+// iac already ran their build-time asserts (each gates its remote effect to the
+// packet arrival). Sanity-check their derived shape: react is a local→remote hop
+// (ide edit → notion block, gated r3b); codegen/iac have NO local pane (the
+// command IS the action) and gate their single remote effect to arrival.
+if (
+  reactStory.steps.length === 4 &&
+  reactStory.local?.pane === 'ide' &&
+  reactStory.remote.pane === 'notion' &&
+  reactStory.gatedRevealClass(reactStory.remote.swap.at) === 'r3b' &&
+  codegenStory.steps.length === 4 &&
+  codegenStory.local === undefined &&
+  codegenStory.remote.pane === 'ide' &&
+  codegenStory.gatedRevealClass(codegenStory.remote.swap.at) === 'r2b' &&
+  iacStory.steps.length === 4 &&
+  iacStory.local === undefined &&
+  iacStory.remote.pane === 'notion' &&
+  iacStory.gatedRevealClass(iacStory.remote.swap.at) === 'r3b'
+) {
+  console.log('✓ real react / codegen / iac stories construct (all gated to packet arrival)')
+} else {
+  console.error('✗ real react/codegen/iac story unexpected shape')
   ok = false
 }
 
@@ -111,6 +139,42 @@ expectThrow('md pull inversion (IDE receives at step 2, before packet arrival)',
         swap: { was: '$25', now: '$30', at: { step: 2 } },
       },
     ],
+  }),
+)
+
+// (4c) react inversion — the review's HEADLINE bug: the Notion block (effect)
+// repainted at step-3 ENTRY, at the same instant as the IDE edit (cause), while
+// the rerun packet is still crossing. delay 0 < arrival 1450 → throws.
+expectThrow('react inversion (Notion block flips at step-3 entry, before rerun packet arrives)', () =>
+  syncStory({
+    steps: captionsToSteps(['written as JSX', 'run → whole page', 'edit one line → one block', 'unchanged → no-op']),
+    local: { pane: 'ide', swap: { was: '$40k', now: '$80k', at: { step: 3 } } },
+    sync: { step: 3, duration: 1450 },
+    // BUG: effect at t=0 of step 3 — right step, but before the packet lands (+1450ms).
+    remote: { pane: 'notion', swap: { was: '$40k', now: '$80k', at: { step: 3, delay: 0 } } },
+  }),
+)
+
+// (4d) codegen inversion — the fixed [HIGH] contradiction: the generated schema
+// (effect) materialized at step-2 entry while the read badge still said "reading…".
+// delay 0 < arrival 1350 → throws.
+expectThrow('codegen inversion (schema materializes at step-2 entry, before the read completes)', () =>
+  syncStory({
+    steps: captionsToSteps(['point at DB', 'generate', 'autocomplete', 'CI drift']),
+    sync: { step: 2, duration: 1350 },
+    // BUG: `export const Task = …` present at step-2 entry, before the read packet arrives.
+    remote: { pane: 'ide', swap: { was: 'schema.gen.ts — empty', now: 'export const Task = …', at: { step: 2, delay: 0 } } },
+  }),
+)
+
+// (4e) iac inversion — the provisioned Notion DB (effect) painted at step-3 entry,
+// before the `apply` write packet lands. delay 0 < arrival 1400 → throws.
+expectThrow('iac inversion (Notion provisions at step-3 entry, before the apply packet arrives)', () =>
+  syncStory({
+    steps: captionsToSteps(['declare', 'plan', 'apply', 'refuse']),
+    sync: { step: 3, duration: 1400 },
+    // BUG: Notion shows provisioned at t=0 of step 3, before the write packet arrives.
+    remote: { pane: 'notion', swap: { was: 'empty', now: 'provisioned', at: { step: 3, delay: 0 } } },
   }),
 )
 
