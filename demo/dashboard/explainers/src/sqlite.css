@@ -28,23 +28,19 @@
   /* beat 1: the problem — the same bulk edit, three ways (API / CLI / SQL) */
   .ways { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 100%; }
   .target-cap { font: 600 10.5px/1 var(--mono); letter-spacing: .04em; color: var(--muted); margin: 0 0 12px; }
-  .waylist { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 680px; }
-  .wayrow { display: flex; align-items: stretch; border: 1px solid var(--line); border-radius: 12px;
-    background: var(--panel-2); box-shadow: var(--shadow); overflow: hidden; }
-  .wayrow.win { border-color: var(--ok-line); background: var(--ok-soft); }
-  .waylabel { flex: none; width: 128px; padding: 12px 14px; display: flex; flex-direction: column; gap: 3px;
-    border-right: 1px solid var(--line-soft); background: var(--panel); }
-  .wayrow.win .waylabel { background: transparent; border-right-color: var(--ok-line); }
+  .waylist { display: flex; flex-direction: column; width: 100%; max-width: 680px; }
+  .wayrow { display: flex; align-items: stretch; gap: 20px; padding: 16px 4px; border-top: 1px solid var(--line); }
+  .waylist .wayrow:first-child { border-top: none; }
+  .waylabel { flex: none; width: 128px; display: flex; flex-direction: column; gap: 3px; }
   .wayname { font: 700 13px/1.2 var(--sans); color: var(--ink); }
-  .waykind { font: 600 9px/1 var(--mono); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+  .waykind { font: 600 9px/1 var(--mono); color: var(--muted); }
   .waymark { margin-top: 3px; font: 700 11px/1.2 var(--sans); color: var(--warn); }
   .wayrow.win .waymark { color: var(--ok); }
-  .waycode { flex: 1; min-width: 0; padding: 12px 15px; font-family: var(--mono); font-size: 12px; line-height: 1.65;
+  .waycode { flex: 1; min-width: 0; font-family: var(--mono); font-size: 12px; line-height: 1.65;
     color: var(--ink); display: flex; flex-direction: column; gap: 2px; overflow-x: auto; white-space: nowrap; }
   @media (max-width: 720px){
-    .wayrow { flex-direction: column; }
-    .waylabel { width: auto; flex-direction: row; align-items: center; gap: 8px; border-right: none;
-      border-bottom: 1px solid var(--line-soft); }
+    .wayrow { flex-direction: column; gap: 8px; }
+    .waylabel { width: auto; flex-direction: row; align-items: center; gap: 8px; }
     .waymark { margin-top: 0; margin-left: auto; }
   }
 
@@ -65,28 +61,25 @@
   .projarrow .plabel { font-size: 11.5px; text-align: center; line-height: 1.35; }
   .projarrow svg { width: 112px; height: 26px; }
   .view { width: 268px; }
-  .view-frame { border: 1px dashed var(--accent); border-radius: 12px; background: var(--accent-soft); padding: 3px; }
-  .view-inner { border-radius: 9px; background: var(--panel-2); overflow: hidden; box-shadow: var(--shadow); }
-  .view-cap { text-align: center; font: 600 10.5px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--accent); margin-top: 8px; }
+  .view-inner { border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); overflow: hidden; box-shadow: var(--shadow); }
+  .view-cap { text-align: center; font: 600 10.5px/1 var(--mono); color: var(--muted); margin-top: 8px; }
 
   /* coda: guard gate */
   .coda-rule { display: flex; align-items: center; gap: 14px; margin: 0 20px; color: var(--muted); }
   .coda-rule::before, .coda-rule::after { content: ""; height: 1px; background: var(--line); flex: 1; }
-  .coda-rule span { font: 600 11px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; }
-  .coda { border-style: dashed; background: var(--panel); }
+  .coda-rule span { font: 600 11px/1 var(--mono); color: var(--muted); }
   .coda .beat-tag { color: var(--accent); }
-  /* beat 4 (coda): the toolkit — feature grid + a compact fidelity strip */
-  .features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; width: 100%; max-width: 740px; margin: 0 auto; }
-  @media (max-width: 820px){ .features { grid-template-columns: 1fr 1fr; } }
-  .fcard { border: 1px solid var(--line); border-radius: 11px; background: var(--panel-2); padding: 13px 14px;
-    display: flex; flex-direction: column; gap: 6px; }
+  /* beat 4 (coda): the toolkit — feature list + a compact fidelity strip */
+  .features { display: flex; flex-direction: column; width: 100%; max-width: 740px; margin: 0 auto; }
+  .fcard { padding: 16px 2px; display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--line); }
+  .features .fcard:first-child { border-top: none; }
   .fcard .ft { font: 700 13px/1.25 var(--sans); color: var(--ink); display: flex; align-items: baseline; gap: 7px; }
   .fico { color: var(--accent); font-size: 12px; line-height: 1; flex: none; }
   .fcard .fb { font-size: 12px; line-height: 1.5; color: var(--muted); }
-  .fidelity { width: 100%; max-width: 740px; margin: 16px auto 0; display: flex; flex-direction: column; gap: 8px; }
-  .fidrow { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+  .fidelity { width: 100%; max-width: 740px; margin: 20px auto 0; display: flex; flex-direction: column; gap: 10px; }
+  .fidrow { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
   .fidrow .blabel { flex: none; width: 92px; }
-  .blabel { font: 700 9.5px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ok); }
+  .blabel { font: 700 9.5px/1 var(--mono); color: var(--ok); }
   .blabel.muted { color: var(--muted); }
   .chips { display: flex; flex-wrap: wrap; gap: 7px; }
   .bchip { font: 600 11px/1 var(--sans); padding: 5px 10px; border-radius: 20px; color: var(--ok);
