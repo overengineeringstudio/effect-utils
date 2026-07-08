@@ -21,10 +21,11 @@ How the requirements are met. Kept current with the implementation.
 - On camera the presenter drives the **real CLIs** inside `devenv shell` (which
   provides `notion` + `NOTION_API_TOKEN` from 1Password via secretspec).
 - The **live control dashboard** is the primary driver, shown beside the terminal +
-  Notion browser. Rebuilt as a self-contained **Vite + React + Tailwind** app
-  (`demo/dashboard/app/`) that parses the SCREENPLAY.md files into a typed model at
-  build time and emits a single zero-external-request, atomically-swapped
-  `demo/explainers/control.next.html` (via `vite-plugin-singlefile`). Tabs per demo —
+  Notion browser. A native **Vite + React + Tailwind** app (`demo/dashboard/app/`)
+  that parses the SCREENPLAY.md files into a typed model and is served **live off the
+  Vite dev server (HMR)** — no build step, no singlefile emit. The per-demo explainers
+  render **inline as React components** (`demo/dashboard/explainers/src/*`, sharing the
+  `demo/dashboard/kit/`), not iframes. Tabs per demo —
   **sub-numbered 3.1/3.2** for the schema split; layers = **instructions** (SAY +
   **one-command-per-copy** boxes + what-to-see) · **explanation** (in-page explainer,
   **single-scroll**, no nested scroll) · **evidence** (backup screenshots, lightbox) ·
@@ -44,9 +45,10 @@ How the requirements are met. Kept current with the implementation.
     notion sqlite, notion schema (codegen today, IaC planned — one block here),
     notion-react. Schema is a single block; the per-demo tabs split it 3.1/3.2
     for pacing.
-- **Cutover pending:** the legacy string-template generator (`demo/dashboard/build.ts`
-  → `control.html`) is frozen as a fallback until `control.next.html` is promoted to
-  the canonical `control.html` and `serve.sh` is wired to the React build.
+- **Single serve.** The legacy string-template generator, the singlefile/SSG build,
+  the hand-authored explainer HTML, and the custom static `serve.sh` are all removed —
+  the native Vite dev server (HMR) on the standing `tailscale serve --https=8445` is
+  the one and only surface. Recording happens directly off it.
 
 ## Demo environment (R1)
 
@@ -180,25 +182,26 @@ it). Populated so far for **notion md**.
 
 ## Running it
 
-- **`demo/RUNBOOK.md`** is the operational handoff: `demo/serve.sh` (watch-default
-  static serve on :52606 + the standing `tailscale serve --https=8443`),
+- **`demo/RUNBOOK.md`** is the operational handoff: `demo/dashboard/app/dev.sh`
+  (starts Vite dev + the standing `tailscale serve --https=8445`),
   `eval "$(demo-env new --export)"`, the harness login, the SoT map, gotchas.
-- The live control is **generated — never hand-edit the HTML**. Current build:
-  `cd demo/dashboard/app && bun run build` → `control.next.html` (the React app).
-  The legacy `demo/dashboard/build.ts` → `control.html` remains a frozen fallback
-  until cutover; both are served side by side on the tailnet.
+- The live control is the **native Vite/React app** at `demo/dashboard/app/` — edit
+  the React source directly; HMR reflects it live. There is no build/generate step
+  and no HTML to hand-edit.
 
 ## Status & known issues
 
-- **Live-control rebuild + schema split — done (cutover pending).** The dashboard is
-  rebuilt as a Vite/React/Tailwind singlefile app (`demo/dashboard/app/` →
-  `control.next.html`); the schema demo is split into **3.1 codegen** (real) + **3.2
-  IaC** (planned roadmap, mock backups). Per-command copy, compact header, and
-  single-scroll explainers are in. All five explainers are wrapped in native chrome
-  with stepped See-it-work animations, Notion-always-right. Remaining: **cutover**
-  (promote `control.next.html` → `control.html`, retire `build.ts`, wire `serve.sh`),
-  optionally extend native chrome to the Problem/Insight beats, and (flagged) sqlite
-  explainer Beat 1's Notion-left-of-wishlist layout.
+- **Live-control rebuild + schema split — done.** The dashboard is a native
+  Vite/React/Tailwind app (`demo/dashboard/app/`) served live off Vite dev; the legacy
+  generator, singlefile/SSG build, hand-authored HTML, and custom `serve.sh` are all
+  removed (single serve on `:8445`). The schema demo is split into **3.1 codegen**
+  (real) + **3.2 IaC** (planned roadmap, mock backups). Per-command copy, compact
+  header, and single-scroll explainers are in. All five explainers render **inline as
+  React components** wrapped in native chrome with stepped See-it-work animations,
+  Notion-always-right, official tech logos. The causal guarantee (effect never precedes
+  cause) runs as a vitest (`cd demo/dashboard/app && bun run test`). Optional follow-up:
+  extend native chrome to the Problem/Insight beats; (flagged) sqlite explainer Beat 1's
+  Notion-left-of-wishlist layout.
 - **Demo proof coverage: all four proven** (3.2 IaC is the mock/not-harnessed 5th) — notion md ✅ (3/3 core + merge-proof),
   **sqlite ✅ (3/3, real "Done" cell)**, schema ✅ (5/5), react ✅ (4/4). The sqlite
   `notion db sync` failure (#899) was a **stale devenv profile** (predating PR
