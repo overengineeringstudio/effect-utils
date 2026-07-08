@@ -149,15 +149,15 @@ marketing site's navy-AI hero treatment).
 
 ## Explainers (R6)
 
-- Problem-first visual **threads**: core beats (Problem → See-it-work → What-it-enables) +
+- Problem-first visual **threads**: core beats (Problem → How-it-works → What-it-enables) +
   optional deep-dive coda; each = headline + a **native-chrome** visual + a one-line
   caption that doubles as tweet copy. Each medium is wrapped in its real chrome via a
   shared, reusable frame kit: a **macOS window** base with per-medium variants — a
   **mini-IDE** (file tree + line numbers) for code/markdown, a **DB-browser** for the
   SQLite file, a **Notion surface** (sidebar + select-pill DB / rendered page), and a
-  **Terminal**. The **See-it-work** beat is a **stepped, auto-advancing animation**
+  **Terminal**. The **how-it-works** beat is a **stepped, auto-advancing animation**
   (play/pause + step dots; `prefers-reduced-motion` → all steps static) showing the
-  change propagate over time. In the md explainer, the See-it-work beat is **sub-tabbed
+  change propagate over time. In the md explainer, the how-it-works beat is **sub-tabbed
   by source-of-truth mode** (**local / notion / shared**; `notion` is `remote` in code);
   the problem beat is a **concrete** problem (not a mode-agnostic umbrella) and Beat 3
   (*What it enables*) is a **per-direction 3-card grid** (see *Explainer problem
@@ -193,7 +193,7 @@ so far for **notion md**.
   - **The point:** you usually **start with only the Notion page** — the local file
     doesn't exist yet. Making that file trivial to read/edit **is** the motivation for
     the tool. Clobber/drift is **not** in this beat.
-- **Beat 02 · See it work · pick the direction:** the See-it-work animation, sub-tabbed
+- **Beat 02 · How it works · pick the direction:** the how-it-works animation, sub-tabbed
   by **source-of-truth mode** (**local / notion / shared**; `notion` = `remote` in
   code). Invariant: Notion on the right, the file on the left; direction shown by arrows.
 - **Beat 03 · What it enables** (was "The shift"): a **3-card grid**, one card per
@@ -251,7 +251,7 @@ so far for **notion md**.
   removed (single serve on `:8445`). The schema demo is split into **3.1 codegen**
   (real) + **3.2 IaC** (planned roadmap, mock backups). Per-command copy, compact
   header, and single-scroll explainers are in. All five explainers render **inline as
-  React components** wrapped in native chrome with stepped See-it-work animations,
+  React components** wrapped in native chrome with stepped how-it-works animations,
   Notion-always-right, official tech logos. The causal guarantee (effect never precedes
   cause) runs as a vitest (`cd demo/dashboard/app && bun run test`). Optional follow-up:
   extend native chrome to the Problem/Insight beats; (flagged) sqlite explainer Beat 1's

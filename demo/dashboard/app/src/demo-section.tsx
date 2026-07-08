@@ -284,22 +284,10 @@ export const DemoSection = ({
       {/* Planned/mock demos (e.g. 3.2) stay labelled per-beat via StatusBadge
           'mock' + narrated mock output (R8); the former heavy amber banner was
           removed per design feedback. */}
-      {/* view switcher — Instructions ⇄ Explanation, Notion-native underline tabs */}
+      {/* view switcher — Explanation ⇄ Instructions, Notion-native underline tabs.
+          Explanation is first because it's the default view (see readUrl). */}
       {canExp && (
         <div className="mb-4 flex items-center gap-1 border-b border-border text-[13px]">
-          <button
-            type="button"
-            onClick={() => {
-              if (explainOpen) onCloseExplain()
-            }}
-            className={
-              explainOpen
-                ? '-mb-px cursor-pointer border-b-2 border-transparent px-3 py-2 text-fg-muted hover:text-fg'
-                : '-mb-px border-b-2 border-accent px-3 py-2 font-medium text-fg'
-            }
-          >
-            Instructions
-          </button>
           <button
             type="button"
             onClick={() => {
@@ -312,6 +300,19 @@ export const DemoSection = ({
             }
           >
             Explanation
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (explainOpen) onCloseExplain()
+            }}
+            className={
+              explainOpen
+                ? '-mb-px cursor-pointer border-b-2 border-transparent px-3 py-2 text-fg-muted hover:text-fg'
+                : '-mb-px border-b-2 border-accent px-3 py-2 font-medium text-fg'
+            }
+          >
+            Instructions
           </button>
         </div>
       )}
