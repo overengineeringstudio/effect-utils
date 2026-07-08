@@ -179,19 +179,94 @@ main{padding:16px 20px 60px}
 figure{margin:0; border:1px solid var(--border); border-radius:8px; overflow:hidden; background:var(--bg-subtle)}
 figcaption{font-size:11px; font-weight:600; color:var(--fg-muted); padding:5px 9px; border-bottom:1px solid var(--border); background:var(--bg-panel)}
 figure img{display:block; width:100%; height:auto}
+
+/* intro slides (first tab — screen-share friendly) */
+.slides{display:flex; flex-direction:column; gap:16px; max-width:1080px}
+.slide{background:var(--bg-panel); border:1px solid var(--border); border-radius:14px; padding:26px 30px; box-shadow:var(--shadow)}
+.slide-kicker{font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase; color:var(--accent); margin-bottom:6px}
+.slide-title{font-size:25px; font-weight:700; margin:0 0 22px; letter-spacing:-.3px}
+.goals{display:grid; grid-template-columns:1fr 1fr; gap:18px}
+.goal{border:1px solid var(--border); border-radius:12px; padding:22px; background:var(--bg-subtle)}
+.goal-badge{display:inline-flex; align-items:center; justify-content:center; width:42px; height:42px; border-radius:11px; background:color-mix(in srgb,var(--accent) 14%,transparent); color:var(--accent); margin-bottom:14px}
+.goal h3{font-size:18px; font-weight:650; margin:0 0 8px}
+.goal p{font-size:14px; line-height:1.5; color:var(--fg-muted); margin:0}
+.goal p strong{color:var(--fg); font-weight:600}
+.blocks{display:grid; grid-template-columns:1fr 1fr; gap:16px}
+.block{border:1px solid var(--border); border-radius:12px; padding:18px 20px; background:var(--bg-subtle); display:flex; flex-direction:column; gap:12px}
+.block-head{display:flex; align-items:baseline; gap:9px}
+.block-num{font-size:11px; font-weight:700; color:var(--fg-faint); font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+.block-name{font-size:15.5px; font-weight:650; font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+.block-desc{font-size:13px; line-height:1.45; color:var(--fg-muted); margin:0}
+/* mini viz: node → node */
+.viz{display:flex; align-items:center; gap:9px; flex-wrap:wrap; padding:13px 14px; background:var(--bg-panel); border:1px solid var(--border); border-radius:10px}
+.viz-node{font-size:12px; font-weight:600; padding:6px 11px; border-radius:8px; border:1px solid var(--border-strong); white-space:nowrap}
+.viz-node.notion{background:var(--fg); color:var(--bg-panel); border-color:var(--fg)}
+.viz-node.dev{background:color-mix(in srgb,var(--accent) 13%,transparent); color:var(--accent); border-color:color-mix(in srgb,var(--accent) 42%,transparent)}
+.viz-arrow{font-size:18px; font-weight:700; color:var(--accent); line-height:1}
+.viz-cap{font-size:10.5px; font-weight:600; letter-spacing:.4px; text-transform:uppercase; color:var(--fg-faint); margin-left:auto}
+@media (max-width:760px){.goals,.blocks{grid-template-columns:1fr}}
+
 @media (prefers-reduced-motion:reduce){*{transition:none!important; animation:none!important}}
 </style>
 
 <header>
   <h1><span class="dot">●</span> Live Control <span style="color:var(--fg-faint);font-weight:400">· Notion tooling demos</span></h1>
   <div class="spacer"></div>
-  <span class="hint">keys <kbd>1</kbd>–<kbd>4</kbd> switch demo · <kbd>e</kbd> explainer</span>
+  <span class="hint">keys <kbd>1</kbd>–<kbd>5</kbd> switch tab · <kbd>e</kbd> explainer</span>
   <button class="theme-btn" id="theme-btn">◐ theme</button>
 </header>
 
-<nav class="tabs"><button class="tab active" data-tab="md"><kbd>1</kbd>notion md</button><button class="tab" data-tab="sqlite"><kbd>2</kbd>notion sqlite</button><button class="tab" data-tab="schema"><kbd>3</kbd>notion schema</button><button class="tab" data-tab="react"><kbd>4</kbd>notion-react</button></nav>
+<nav class="tabs"><button class="tab active" data-tab="intro"><kbd>1</kbd>Intro</button><button class="tab" data-tab="md"><kbd>2</kbd>notion md</button><button class="tab" data-tab="sqlite"><kbd>3</kbd>notion sqlite</button><button class="tab" data-tab="schema"><kbd>4</kbd>notion schema</button><button class="tab" data-tab="react"><kbd>5</kbd>notion-react</button></nav>
 
-<main><section class="demo active" id="demo-md" data-demo="md">
+<main><section class="demo active" id="demo-intro" data-demo="intro">
+    <div class="demo-body" id="intro-body">
+      <div class="slides">
+        <section class="slide">
+          <div class="slide-kicker">Why</div>
+          <h2 class="slide-title">Notion, for developers and agents</h2>
+          <div class="goals">
+            <div class="goal">
+              <div class="goal-badge"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="2.4"/><circle cx="19" cy="12" r="2.4"/><path d="M7.4 12h9.2"/><path d="M14.5 9.5 17 12l-2.5 2.5"/><path d="M9.5 9.5 7 12l2.5 2.5"/></svg></div>
+              <h3>Bridge the two worlds</h3>
+              <p>Connect <strong>Notion</strong> — where teams plan, spec, and write — with <strong>developer tooling</strong>: your editor, files, git, types, and CI.</p>
+            </div>
+            <div class="goal">
+              <div class="goal-badge"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3.5"/><rect x="5.5" y="6.5" width="13" height="11" rx="2.6"/><circle cx="9.5" cy="12" r="1.05"/><circle cx="14.5" cy="12" r="1.05"/><path d="M9.5 15h5"/></svg></div>
+              <h3>Enable agents</h3>
+              <p>Give both <strong>coding agents</strong> and <strong>productivity agents</strong> a typed, scriptable, guarded surface onto Notion.</p>
+            </div>
+          </div>
+        </section>
+        <section class="slide">
+          <div class="slide-kicker">How</div>
+          <h2 class="slide-title">Four core building blocks</h2>
+          <div class="blocks">
+            <div class="block">
+        <div class="block-head"><span class="block-num">01</span><span class="block-name">notion md</span></div>
+        <div class="viz"><span class="viz-node notion">Notion page</span><span class="viz-arrow">⇄</span><span class="viz-node dev">roadmap.md</span></div>
+        <p class="block-desc">Edit Notion pages as local Markdown — two-way, conflict-guarded sync from your editor.</p>
+      </div>
+<div class="block">
+        <div class="block-head"><span class="block-num">02</span><span class="block-name">notion sqlite</span></div>
+        <div class="viz"><span class="viz-node notion">Notion DB</span><span class="viz-arrow">⇄</span><span class="viz-node dev">local.sqlite</span></div>
+        <p class="block-desc">A Notion database bound to a live local SQLite file — query and edit it with plain SQL.</p>
+      </div>
+<div class="block">
+        <div class="block-head"><span class="block-num">03</span><span class="block-name">notion schema</span></div>
+        <div class="viz"><span class="viz-node notion">Notion DB</span><span class="viz-arrow">⇄</span><span class="viz-node dev">schema.ts</span><span class="viz-cap">codegen · IaC</span></div>
+        <p class="block-desc">Typed Effect schemas generated from live DBs (codegen), with schema-as-code back the other way (IaC).</p>
+      </div>
+<div class="block">
+        <div class="block-head"><span class="block-num">04</span><span class="block-name">notion-react</span></div>
+        <div class="viz"><span class="viz-node notion">‹Page /›</span><span class="viz-arrow">→</span><span class="viz-node dev">Notion page</span></div>
+        <p class="block-desc">Author a Notion page as a React component; rerun renders a precise block-level diff.</p>
+      </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </section>
+<section class="demo" id="demo-md" data-demo="md">
     <div class="demo-head">
       <div class="demo-titles">
         <h2>notion md</h2>
@@ -199,7 +274,7 @@ figure img{display:block; width:100%; height:auto}
       </div>
       <div class="demo-meta"><span class="run green">● 3/3 passed · 66s · Jul 7 14:00Z</span></div>
     </div>
-    <div class="backstage"><span class="bs-tag">Backstage · not on camera</span><div class="cmd inline"><pre>./demo/md/reset.sh</pre><button class="copy" data-cmd="0" title="Copy to clipboard" aria-label="Copy command">⧉</button></div><span class="bs-note">reset between takes</span></div>
+    <div class="backstage"><span class="bs-tag">Backstage · not on camera</span><div class="cmd inline"><pre>eval &quot;$(demo/env/demo-env new --export)&quot;</pre><button class="copy" data-cmd="0" title="Copy to clipboard" aria-label="Copy command">⧉</button></div><span class="bs-note">reset between takes</span></div>
     <div class="demo-toolbar"><button class="layer-toggle" data-explain="md">▸ show explanation</button><button class="layer-toggle" data-allbackups="md">▸ show all backups</button></div>
     <div class="demo-body" id="md-body">
       <div class="instructions">
@@ -211,8 +286,8 @@ figure img{display:block; width:100%; height:auto}
     </div>
     <p class="say"><span class="say-tag">SAY</span>One command. It watches two local files and keeps them in sync with Notion — no push, no pull, direction lives in each file.</p>
     <div class="beat-body">
-      <div class="cmd"><pre>cd demo/md/stage
-notion md sync --watch roadmap.nmd spec.nmd --poll-interval-ms 3000</pre><button class="copy" data-cmd="1" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
+      <div class="cmd"><pre>cd &quot;$DEMO_MD_DIR&quot;</pre><button class="copy" data-cmd="1" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
+<div class="cmd"><pre>notion md sync --watch roadmap.nmd spec.nmd --poll-interval-ms 3000</pre><button class="copy" data-cmd="2" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
     </div>
     <div class="beat-foot"><button class="disclosure" data-target="md-ev-0">▸ show backup</button></div>
     <div class="evidence" id="md-ev-0" hidden>
@@ -232,7 +307,7 @@ notion md sync --watch roadmap.nmd spec.nmd --poll-interval-ms 3000</pre><button
     <p class="say"><span class="say-tag">SAY</span>I check a box in my editor and save — watch pushes it straight to the Notion page.</p>
     <div class="beat-body">
       <p class="note">In your editor, open <code>roadmap.nmd</code> and check the first box, then save:</p>
-<div class="cmd"><pre>- [ ] Finalize the API spec      →      - [x] Finalize the API spec</pre><button class="copy" data-cmd="2" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
+<div class="cmd"><pre>- [ ] Finalize the API spec      →      - [x] Finalize the API spec</pre><button class="copy" data-cmd="3" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
 <p class="note expect"><span class="arrow">→</span> Watch prints <code>shared-merged</code>; the roadmap page updates in the browser.</p>
     </div>
     <div class="beat-foot"><button class="disclosure" data-target="md-ev-1">▸ show backup</button></div>
@@ -252,7 +327,7 @@ notion md sync --watch roadmap.nmd spec.nmd --poll-interval-ms 3000</pre><button
     <p class="say"><span class="say-tag">SAY</span>spec.nmd mirrors a page my team authors in Notion. I add an endpoint in Notion — a few seconds later it lands in my repo.</p>
     <div class="beat-body">
       <p class="note">In the browser, on the <strong>API spec</strong> page, add a bullet under the list:</p>
-<div class="cmd"><pre>- DELETE /v1/pages</pre><button class="copy" data-cmd="3" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
+<div class="cmd"><pre>- DELETE /v1/pages</pre><button class="copy" data-cmd="4" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
 <p class="note expect"><span class="arrow">→</span> Within ~1–2 poll cycles watch prints <code>pulled</code>; <code>spec.nmd</code> now shows the new endpoint locally.</p>
     </div>
     <div class="beat-foot"><button class="disclosure" data-target="md-ev-2">▸ show backup</button></div>
@@ -273,11 +348,11 @@ notion md sync --watch roadmap.nmd spec.nmd --poll-interval-ms 3000</pre><button
     <div class="beat-body">
       <p class="note">Stop the watcher, then diverge the same line on both sides:</p>
 <div class="cmd"><pre># in the terminal
-Ctrl-C</pre><button class="copy" data-cmd="4" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
+Ctrl-C</pre><button class="copy" data-cmd="5" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
 <p class="note"><span class="bullet">•</span> In the browser, on the <strong>Launch roadmap</strong> page, change <code>On track for the Q3 release.</code> to <code>Slipping — blocked on review.</code><br><span class="bullet">•</span> In your editor, change the same line in <code>roadmap.nmd</code> to <code>Ready to ship today.</code> and save.</p>
-<div class="cmd"><pre>notion md sync roadmap.nmd</pre><button class="copy" data-cmd="5" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
+<div class="cmd"><pre>notion md sync roadmap.nmd</pre><button class="copy" data-cmd="6" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
 <p class="note">It prints <code>shared-conflict</code> and writes <code>roadmap.nmd.conflict.roughdraft.md</code>. Open it — Base / Local / Remote side by side. Notion was <strong>not</strong> overwritten.</p>
-<div class="cmd"><pre>cat roadmap.nmd.conflict.roughdraft.md</pre><button class="copy" data-cmd="6" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
+<div class="cmd"><pre>cat roadmap.nmd.conflict.roughdraft.md</pre><button class="copy" data-cmd="7" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
     </div>
     <div class="beat-foot"><span class="disclosure disabled" title="no harness screenshots yet">▹ evidence pending</span></div>
     
@@ -291,7 +366,7 @@ Ctrl-C</pre><button class="copy" data-cmd="4" title="Copy to clipboard" aria-lab
     <p class="say"><span class="say-tag">SAY</span>Different lines? It just merges — no conflict.</p>
     <div class="beat-body">
       <p class="note">Restart the watcher, edit a *different* line in Notion and a *different* line locally → watch prints <code>shared-merged</code> and both changes coexist.</p>
-<div class="cmd"><pre>notion md sync --watch roadmap.nmd spec.nmd --poll-interval-ms 3000</pre><button class="copy" data-cmd="7" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
+<div class="cmd"><pre>notion md sync --watch roadmap.nmd spec.nmd --poll-interval-ms 3000</pre><button class="copy" data-cmd="8" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
     </div>
     <div class="beat-foot"><span class="disclosure disabled" title="no harness screenshots yet">▹ evidence pending</span></div>
     
@@ -311,7 +386,7 @@ Ctrl-C</pre><button class="copy" data-cmd="4" title="Copy to clipboard" aria-lab
       </div>
       <div class="demo-meta"><span class="run neutral">○ not yet harnessed</span></div>
     </div>
-    <div class="backstage"><span class="bs-tag">Backstage · not on camera</span><div class="cmd inline"><pre>./demo/sqlite/reset.sh</pre><button class="copy" data-cmd="8" title="Copy to clipboard" aria-label="Copy command">⧉</button></div><span class="bs-note">reset between takes</span></div>
+    <div class="backstage"><span class="bs-tag">Backstage · not on camera</span><div class="cmd inline"><pre>eval &quot;$(demo/env/demo-env new --export)&quot;</pre><button class="copy" data-cmd="9" title="Copy to clipboard" aria-label="Copy command">⧉</button></div><span class="bs-note">reset between takes</span></div>
     <div class="demo-toolbar"><button class="layer-toggle" data-explain="sqlite">▸ show explanation</button><span class="layer-toggle disabled" title="no harness screenshots yet">▹ backups pending</span></div>
     <div class="demo-body" id="sqlite-body">
       <div class="instructions">
@@ -323,9 +398,9 @@ Ctrl-C</pre><button class="copy" data-cmd="4" title="Copy to clipboard" aria-lab
     </div>
     <p class="say"><span class="say-tag">SAY</span>This is my Notion database — and this is the same database as a local SQLite file. Not an export. A live, bound replica.</p>
     <div class="beat-body">
-      <div class="cmd"><pre>cd demo/sqlite/stage
-sqlite3 &quot;$(cat ../.demo-state/sqlite-path)&quot; &quot;.tables&quot;
-sqlite3 -header -column &quot;$(cat ../.demo-state/sqlite-path)&quot; 'select &quot;Name&quot;, &quot;Status&quot;, &quot;Priority&quot;, &quot;Team&quot; from pages order by &quot;Priority&quot;;'</pre><button class="copy" data-cmd="9" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
+      <div class="cmd"><pre>cd &quot;$DEMO_SQLITE_DIR&quot;</pre><button class="copy" data-cmd="10" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
+<div class="cmd"><pre>sqlite3 &quot;$DEMO_SQLITE_PATH&quot; &quot;.tables&quot;</pre><button class="copy" data-cmd="11" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
+<div class="cmd"><pre>sqlite3 -header -column &quot;$DEMO_SQLITE_PATH&quot; 'select &quot;Name&quot;, &quot;Status&quot;, &quot;Priority&quot;, &quot;Team&quot; from pages order by &quot;Priority&quot;;'</pre><button class="copy" data-cmd="12" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
     </div>
     <div class="beat-foot"><span class="disclosure disabled" title="no harness screenshots yet">▹ evidence pending</span></div>
     
@@ -338,11 +413,11 @@ sqlite3 -header -column &quot;$(cat ../.demo-state/sqlite-path)&quot; 'select &q
     </div>
     <p class="say"><span class="say-tag">SAY</span>I'll close a task out with plain SQL — no API, no code. It's recorded as a durable pending intent first, then a guarded sync pushes and verifies it.</p>
     <div class="beat-body">
-      <div class="cmd"><pre>sqlite3 &quot;$(cat ../.demo-state/sqlite-path)&quot; &quot;UPDATE pages SET \&quot;Status\&quot; = 'Done' WHERE \&quot;Name\&quot; = 'Fix flaky deploy pipeline';&quot;
-sqlite3 -header -column &quot;$(cat ../.demo-state/sqlite-path)&quot; &quot;select kind, status, property_id from changes;&quot;
-notion db sync . --no-materialize-bodies</pre><button class="copy" data-cmd="10" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
+      <div class="cmd"><pre>sqlite3 &quot;$DEMO_SQLITE_PATH&quot; &quot;UPDATE pages SET \&quot;Status\&quot; = 'Done' WHERE \&quot;Name\&quot; = 'Fix flaky deploy pipeline';&quot;</pre><button class="copy" data-cmd="13" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
+<div class="cmd"><pre>sqlite3 -header -column &quot;$DEMO_SQLITE_PATH&quot; &quot;select kind, status, property_id from changes;&quot;</pre><button class="copy" data-cmd="14" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
+<div class="cmd"><pre>notion db sync . --no-materialize-bodies</pre><button class="copy" data-cmd="15" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
 <p class="note">Then: switch to the Notion browser tab, refresh if needed — the row flips to <strong>Done</strong> live. (Optional) show it settled:</p>
-<div class="cmd"><pre>sqlite3 -header -column &quot;$(cat ../.demo-state/sqlite-path)&quot; &quot;select kind, status from changes;&quot;</pre><button class="copy" data-cmd="11" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
+<div class="cmd"><pre>sqlite3 -header -column &quot;$DEMO_SQLITE_PATH&quot; &quot;select kind, status from changes;&quot;</pre><button class="copy" data-cmd="16" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
     </div>
     <div class="beat-foot"><span class="disclosure disabled" title="no harness screenshots yet">▹ evidence pending</span></div>
     
@@ -355,8 +430,8 @@ notion db sync . --no-materialize-bodies</pre><button class="copy" data-cmd="10"
     </div>
     <p class="say"><span class="say-tag">SAY</span>Here's what makes it safe to actually use — it refuses anything it can't prove is safe. A local DELETE must never silently become a permanent Notion deletion; a computed property is read-only forever per Notion.</p>
     <div class="beat-body">
-      <div class="cmd"><pre>sqlite3 &quot;$(cat ../.demo-state/sqlite-path)&quot; &quot;DELETE FROM pages WHERE \&quot;Name\&quot; = 'Fix flaky deploy pipeline';&quot;
-sqlite3 &quot;$(cat ../.demo-state/sqlite-path)&quot; &quot;UPDATE pages SET \&quot;Effort (h)\&quot; = 999 WHERE \&quot;Name\&quot; = 'Draft Q3 roadmap';&quot;</pre><button class="copy" data-cmd="12" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
+      <div class="cmd"><pre>sqlite3 &quot;$DEMO_SQLITE_PATH&quot; &quot;DELETE FROM pages WHERE \&quot;Name\&quot; = 'Fix flaky deploy pipeline';&quot;</pre><button class="copy" data-cmd="17" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
+<div class="cmd"><pre>sqlite3 &quot;$DEMO_SQLITE_PATH&quot; &quot;UPDATE pages SET \&quot;Effort (h)\&quot; = 999 WHERE \&quot;Name\&quot; = 'Draft Q3 roadmap';&quot;</pre><button class="copy" data-cmd="18" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
 <p class="note">Both return an immediate typed refusal from triggers inside the file:</p>
 <div class="cmd out"><span class="out-tag">expected output · not a command</span><pre>Error: stepping, DELETE FROM pages is intentionally unsupported; update _in_trash for archive CDC
 Error: stepping, pages property column is not supported for direct writes</pre></div>
@@ -380,21 +455,22 @@ Error: stepping, pages property column is not supported for direct writes</pre><
       </div>
       <div class="demo-meta"><span class="run neutral">○ not yet harnessed</span></div>
     </div>
-    <div class="backstage"><span class="bs-tag">Backstage · not on camera</span><div class="cmd inline"><pre>./demo/schema/reset.sh</pre><button class="copy" data-cmd="13" title="Copy to clipboard" aria-label="Copy command">⧉</button></div><span class="bs-note">reset between takes</span></div>
+    <div class="backstage"><span class="bs-tag">Backstage · not on camera</span><div class="cmd inline"><pre>./demo/schema/reset.sh</pre><button class="copy" data-cmd="19" title="Copy to clipboard" aria-label="Copy command">⧉</button></div><span class="bs-note">reset between takes</span></div>
     <div class="demo-toolbar"><button class="layer-toggle" data-explain="schema">▸ show explanation</button><span class="layer-toggle disabled" title="no harness screenshots yet">▹ backups pending</span></div>
     <div class="demo-body" id="schema-body">
       <div class="instructions">
         <article class="beat">
     <div class="beat-head">
       <span class="beat-label">Beat 1</span>
-      <span class="beat-title">Point at a live DB → a typed schema file</span>
+      <span class="beat-title">Generate typed bindings from a live DB</span>
       <span class="badge none" title="not yet harnessed">○</span>
     </div>
-    <p class="say"><span class="say-tag">SAY</span>Notion gives you JSON. Point at a database and here's the whole thing as a typed Effect schema — generated, not written.</p>
+    <p class="say"><span class="say-tag">SAY</span>Notion gives you JSON. Here's the whole database as a typed Effect schema — generated, not written.</p>
     <div class="beat-body">
-      <div class="cmd"><pre>cd demo/schema/stage
-notion schema generate &quot;$(cat ../.demo-state/tasks-db-id)&quot; -o schema.gen.ts --typed-options --include-api</pre><button class="copy" data-cmd="14" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
-<p class="note expect"><span class="arrow">→</span> Then open <code>schema.gen.ts</code> and scroll. Point out, top to bottom:<br><span class="bullet">•</span> literal-union option types: <code>TasksPriorityOption = Schema.Literal('High','Low','Medium')</code> (came from the DB's select options)<br><span class="bullet">•</span> the read schema <code>TasksPageProperties</code> with JSDoc pulled from each property's description<br><span class="bullet">•</span> <code>decodeTasksProperties</code> — runtime-validating decoder<br><span class="bullet">•</span> a second file <code>schema.gen.api.ts</code> — a typed <code>query</code> / <code>get</code> / <code>create</code> / <code>update</code> wrapper</p>
+      <div class="cmd"><pre>cd demo/schema/stage</pre><button class="copy" data-cmd="20" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
+<div class="cmd"><pre>notion schema generate-config</pre><button class="copy" data-cmd="21" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
+<p class="note expect"><span class="arrow">→</span> Then open <code>schema.gen.ts</code> and scroll. Point out, top to bottom:</p>
+<p class="note expect"><span class="arrow">→</span> <span class="bullet">•</span> literal-union option types: <code>TasksPriorityOption = Schema.Literal('High','Low','Medium')</code> (came from the DB's select options)<br><span class="bullet">•</span> the read schema <code>TasksPageProperties</code> with JSDoc pulled from each property's description<br><span class="bullet">•</span> the write schema <code>TasksPageWrite</code> + <code>encodeTasksWrite</code> (create/update)<br><span class="bullet">•</span> a second file <code>schema.gen.api.ts</code> — a typed <code>query</code> / <code>get</code> / <code>create</code> / <code>update</code> wrapper</p>
     </div>
     <div class="beat-foot"><span class="disclosure disabled" title="no harness screenshots yet">▹ evidence pending</span></div>
     
@@ -418,12 +494,13 @@ notion schema generate &quot;$(cat ../.demo-state/tasks-db-id)&quot; -o schema.g
       <span class="beat-title">Schema-as-code for the whole workspace</span>
       <span class="badge none" title="not yet harnessed">○</span>
     </div>
-    <p class="say"><span class="say-tag">SAY</span>That was one database. Now declare them all in a config and regenerate in a single command.</p>
+    <p class="say"><span class="say-tag">SAY</span>One command didn't just do Tasks — this config lists every database; regenerate them all at once.</p>
     <div class="beat-body">
-      <div class="cmd"><pre>cat notion-schema-gen.config.ts
-notion schema generate-config</pre><button class="copy" data-cmd="15" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
-<p class="note">Point at the two databases in the config, then show what one command produced — both <code>schema.gen.ts</code> (Tasks, regenerated) and a new <code>people.gen.ts</code>:</p>
-<div class="cmd"><pre>open people.gen.ts   # in the editor</pre><button class="copy" data-cmd="16" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
+      <div class="cmd"><pre>cat notion-schema-gen.config.ts</pre><button class="copy" data-cmd="22" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
+<p class="note">Point at the two databases in the config, then show the second generated file it produced:</p>
+<div class="cmd"><pre>code people.gen.ts   # or: open people.gen.ts in the editor</pre><button class="copy" data-cmd="23" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
+<p class="note">(Optional re-run to show it's idempotent regeneration, not a one-off:)</p>
+<div class="cmd"><pre>notion schema generate-config</pre><button class="copy" data-cmd="24" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
     </div>
     <div class="beat-foot"><span class="disclosure disabled" title="no harness screenshots yet">▹ evidence pending</span></div>
     
@@ -434,12 +511,12 @@ notion schema generate-config</pre><button class="copy" data-cmd="15" title="Cop
       <span class="beat-title">Gate drift in CI</span>
       <span class="badge none" title="not yet harnessed">○</span>
     </div>
-    <p class="say"><span class="say-tag">SAY</span>The IaC payoff: your code and your Notion DB can silently diverge. Catch it.</p>
+    <p class="say"><span class="say-tag">SAY</span>The codegen payoff: your code and your Notion DB can silently diverge. Catch it.</p>
     <div class="beat-body">
-      <p class="note">First show they're in sync (diffs the file <code>generate-config</code> just produced):</p>
-<div class="cmd"><pre>notion schema diff &quot;$(cat ../.demo-state/tasks-db-id)&quot; --file schema.gen.ts --exit-code</pre><button class="copy" data-cmd="17" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
+      <p class="note">First show they're in sync:</p>
+<div class="cmd"><pre>notion schema diff &quot;$(cat ../.demo-state/tasks-db-id)&quot; --file schema.gen.ts --exit-code</pre><button class="copy" data-cmd="25" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
 <p class="note">Now change the DB in the Notion UI on camera — add a new property to &quot;Tasks&quot; (e.g. a &quot;Blocked&quot; checkbox). Then re-run:</p>
-<div class="cmd"><pre>notion schema diff &quot;$(cat ../.demo-state/tasks-db-id)&quot; --file schema.gen.ts --exit-code</pre><button class="copy" data-cmd="18" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
+<div class="cmd"><pre>notion schema diff &quot;$(cat ../.demo-state/tasks-db-id)&quot; --file schema.gen.ts --exit-code</pre><button class="copy" data-cmd="26" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
 <p class="note expect"><span class="arrow">→</span> It prints <code>+ Blocked (checkbox)</code> and <strong>exits 1</strong>. Say: &quot;Drop that one command in CI and nobody changes your database schema without your generated code failing the build.&quot;</p>
     </div>
     <div class="beat-foot"><span class="disclosure disabled" title="no harness screenshots yet">▹ evidence pending</span></div>
@@ -460,7 +537,7 @@ notion schema generate-config</pre><button class="copy" data-cmd="15" title="Cop
       </div>
       <div class="demo-meta"><span class="run neutral">○ not yet harnessed</span></div>
     </div>
-    <div class="backstage"><span class="bs-tag">Backstage · not on camera</span><div class="cmd inline"><pre>./demo/react/reset.sh</pre><button class="copy" data-cmd="19" title="Copy to clipboard" aria-label="Copy command">⧉</button></div><span class="bs-note">reset between takes</span></div>
+    <div class="backstage"><span class="bs-tag">Backstage · not on camera</span><div class="cmd inline"><pre>eval &quot;$(demo/env/demo-env new --export)&quot;</pre><button class="copy" data-cmd="27" title="Copy to clipboard" aria-label="Copy command">⧉</button></div><span class="bs-note">reset between takes</span></div>
     <div class="demo-toolbar"><button class="layer-toggle" data-explain="react">▸ show explanation</button><span class="layer-toggle disabled" title="no harness screenshots yet">▹ backups pending</span></div>
     <div class="demo-body" id="react-body">
       <div class="instructions">
@@ -472,8 +549,8 @@ notion schema generate-config</pre><button class="copy" data-cmd="15" title="Cop
     </div>
     <p class="say"><span class="say-tag">SAY</span>This is a Notion page written as a React component — headings, a divider, a toggle per launch phase. I run the program…</p>
     <div class="beat-body">
-      <div class="cmd"><pre>cd demo/react/stage
-bun run page.tsx</pre><button class="copy" data-cmd="20" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
+      <div class="cmd"><pre>cd &quot;$DEMO_REACT_DIR&quot;</pre><button class="copy" data-cmd="28" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
+<div class="cmd"><pre>bun run page.tsx</pre><button class="copy" data-cmd="29" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
 <p class="note expect"><span class="arrow">→</span> (Browser: the whole page materializes. Terminal prints <code>synced → appends:10 updates:0 inserts:0 removes:0 (cold-cache)</code> — 10 blocks created.)</p>
     </div>
     <div class="beat-foot"><span class="disclosure disabled" title="no harness screenshots yet">▹ evidence pending</span></div>
@@ -488,8 +565,8 @@ bun run page.tsx</pre><button class="copy" data-cmd="20" title="Copy to clipboar
     <p class="say"><span class="say-tag">SAY</span>I'll change one value — the budget, one line of JSX — and rerun the exact same command.</p>
     <div class="beat-body">
       <p class="note">Edit <code>page.tsx</code>, change the top-level <code>budget</code> const:</p>
-<div class="cmd"><pre>const budget = '$5.1M'</pre><button class="copy" data-cmd="21" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
-<div class="cmd"><pre>bun run page.tsx</pre><button class="copy" data-cmd="22" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
+<div class="cmd"><pre>const budget = '$5.1M'</pre><button class="copy" data-cmd="30" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
+<div class="cmd"><pre>bun run page.tsx</pre><button class="copy" data-cmd="31" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
 <p class="note expect"><span class="arrow">→</span> (Browser: only the intro paragraph changes — it's top-level so it's visible without expanding anything. Terminal prints <code>synced → appends:0 updates:1 inserts:0 removes:0</code> — a single <code>update</code>, not a rebuild. This is the wow.)</p>
     </div>
     <div class="beat-foot"><span class="disclosure disabled" title="no harness screenshots yet">▹ evidence pending</span></div>
@@ -504,8 +581,8 @@ bun run page.tsx</pre><button class="copy" data-cmd="20" title="Copy to clipboar
     <p class="say"><span class="say-tag">SAY</span>Same deal for structure — I add a fourth phase and rerun.</p>
     <div class="beat-body">
       <p class="note">Edit <code>page.tsx</code>, append to the <code>phases</code> array:</p>
-<div class="cmd"><pre>  { id: 'p4', title: 'Phase 4 — Post-launch review', body: 'debrief and retro' },</pre><button class="copy" data-cmd="23" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
-<div class="cmd"><pre>bun run page.tsx</pre><button class="copy" data-cmd="24" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
+<div class="cmd"><pre>  { id: 'p4', title: 'Phase 4 — Post-launch review', body: 'debrief and retro' },</pre><button class="copy" data-cmd="32" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
+<div class="cmd"><pre>bun run page.tsx</pre><button class="copy" data-cmd="33" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
 <p class="note expect"><span class="arrow">→</span> (Browser: one new toggle appears at the end. Terminal prints <code>synced → appends:2 …</code> — just the new toggle + its nested paragraph. Everything else untouched.)</p>
     </div>
     <div class="beat-foot"><span class="disclosure disabled" title="no harness screenshots yet">▹ evidence pending</span></div>
@@ -519,9 +596,9 @@ bun run page.tsx</pre><button class="copy" data-cmd="20" title="Copy to clipboar
     </div>
     <p class="say"><span class="say-tag">SAY</span>And re-rendering an unchanged tree is a genuine no-op.</p>
     <div class="beat-body">
-      <div class="cmd"><pre>bun run page.tsx</pre><button class="copy" data-cmd="25" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
+      <div class="cmd"><pre>bun run page.tsx</pre><button class="copy" data-cmd="34" title="Copy to clipboard" aria-label="Copy command">⧉</button></div>
 <p class="note expect"><span class="arrow">→</span> (Terminal prints <code>synced → appends:0 updates:0 inserts:0 removes:0</code>. The stable <code>blockKey</code> on each toggle is what makes the diff exact across separate runs.)</p>
-<p class="note expect"><span class="arrow">→</span> &gt; Between takes (backstage): <code>./demo/react/reset.sh</code> — it archives the page, clears the cache, AND restores <code>stage/page.tsx</code> to its committed state (so <code>budget</code> is back to <code>$4.2M</code> and no p4). If the files aren't committed yet, revert <code>page.tsx</code> by hand.</p>
+<p class="note expect"><span class="arrow">→</span> &gt; Between takes (backstage): <code>eval &quot;$(demo/env/demo-env new --export)&quot;</code> — a fresh env gives a new empty page, an empty cache, and a fresh copy of <code>page.tsx</code> (so <code>budget</code> is back to <code>$4.2M</code> and no p4). The old env stays until <code>demo/env/demo-env rm &lt;id&gt;</code>.</p>
     </div>
     <div class="beat-foot"><span class="disclosure disabled" title="no harness screenshots yet">▹ evidence pending</span></div>
     
@@ -540,8 +617,8 @@ bun run page.tsx</pre><button class="copy" data-cmd="20" title="Copy to clipboar
 </div>
 
 <script>
-window.__CMDS = ["./demo/md/reset.sh","cd demo/md/stage\nnotion md sync --watch roadmap.nmd spec.nmd --poll-interval-ms 3000","- [ ] Finalize the API spec      →      - [x] Finalize the API spec","- DELETE /v1/pages","# in the terminal\nCtrl-C","notion md sync roadmap.nmd","cat roadmap.nmd.conflict.roughdraft.md","notion md sync --watch roadmap.nmd spec.nmd --poll-interval-ms 3000","./demo/sqlite/reset.sh","cd demo/sqlite/stage\nsqlite3 \"$(cat ../.demo-state/sqlite-path)\" \".tables\"\nsqlite3 -header -column \"$(cat ../.demo-state/sqlite-path)\" 'select \"Name\", \"Status\", \"Priority\", \"Team\" from pages order by \"Priority\";'","sqlite3 \"$(cat ../.demo-state/sqlite-path)\" \"UPDATE pages SET \\\"Status\\\" = 'Done' WHERE \\\"Name\\\" = 'Fix flaky deploy pipeline';\"\nsqlite3 -header -column \"$(cat ../.demo-state/sqlite-path)\" \"select kind, status, property_id from changes;\"\nnotion db sync . --no-materialize-bodies","sqlite3 -header -column \"$(cat ../.demo-state/sqlite-path)\" \"select kind, status from changes;\"","sqlite3 \"$(cat ../.demo-state/sqlite-path)\" \"DELETE FROM pages WHERE \\\"Name\\\" = 'Fix flaky deploy pipeline';\"\nsqlite3 \"$(cat ../.demo-state/sqlite-path)\" \"UPDATE pages SET \\\"Effort (h)\\\" = 999 WHERE \\\"Name\\\" = 'Draft Q3 roadmap';\"","./demo/schema/reset.sh","cd demo/schema/stage\nnotion schema generate \"$(cat ../.demo-state/tasks-db-id)\" -o schema.gen.ts --typed-options --include-api","cat notion-schema-gen.config.ts\nnotion schema generate-config","open people.gen.ts   # in the editor","notion schema diff \"$(cat ../.demo-state/tasks-db-id)\" --file schema.gen.ts --exit-code","notion schema diff \"$(cat ../.demo-state/tasks-db-id)\" --file schema.gen.ts --exit-code","./demo/react/reset.sh","cd demo/react/stage\nbun run page.tsx","const budget = '$5.1M'","bun run page.tsx","  { id: 'p4', title: 'Phase 4 — Post-launch review', body: 'debrief and retro' },","bun run page.tsx","bun run page.tsx"];
-const TAB_IDS = ["md","sqlite","schema","react"];
+window.__CMDS = ["eval \"$(demo/env/demo-env new --export)\"","cd \"$DEMO_MD_DIR\"","notion md sync --watch roadmap.nmd spec.nmd --poll-interval-ms 3000","- [ ] Finalize the API spec      →      - [x] Finalize the API spec","- DELETE /v1/pages","# in the terminal\nCtrl-C","notion md sync roadmap.nmd","cat roadmap.nmd.conflict.roughdraft.md","notion md sync --watch roadmap.nmd spec.nmd --poll-interval-ms 3000","eval \"$(demo/env/demo-env new --export)\"","cd \"$DEMO_SQLITE_DIR\"","sqlite3 \"$DEMO_SQLITE_PATH\" \".tables\"","sqlite3 -header -column \"$DEMO_SQLITE_PATH\" 'select \"Name\", \"Status\", \"Priority\", \"Team\" from pages order by \"Priority\";'","sqlite3 \"$DEMO_SQLITE_PATH\" \"UPDATE pages SET \\\"Status\\\" = 'Done' WHERE \\\"Name\\\" = 'Fix flaky deploy pipeline';\"","sqlite3 -header -column \"$DEMO_SQLITE_PATH\" \"select kind, status, property_id from changes;\"","notion db sync . --no-materialize-bodies","sqlite3 -header -column \"$DEMO_SQLITE_PATH\" \"select kind, status from changes;\"","sqlite3 \"$DEMO_SQLITE_PATH\" \"DELETE FROM pages WHERE \\\"Name\\\" = 'Fix flaky deploy pipeline';\"","sqlite3 \"$DEMO_SQLITE_PATH\" \"UPDATE pages SET \\\"Effort (h)\\\" = 999 WHERE \\\"Name\\\" = 'Draft Q3 roadmap';\"","./demo/schema/reset.sh","cd demo/schema/stage","notion schema generate-config","cat notion-schema-gen.config.ts","code people.gen.ts   # or: open people.gen.ts in the editor","notion schema generate-config","notion schema diff \"$(cat ../.demo-state/tasks-db-id)\" --file schema.gen.ts --exit-code","notion schema diff \"$(cat ../.demo-state/tasks-db-id)\" --file schema.gen.ts --exit-code","eval \"$(demo/env/demo-env new --export)\"","cd \"$DEMO_REACT_DIR\"","bun run page.tsx","const budget = '$5.1M'","bun run page.tsx","  { id: 'p4', title: 'Phase 4 — Post-launch review', body: 'debrief and retro' },","bun run page.tsx","bun run page.tsx"];
+const TAB_IDS = ["intro","md","sqlite","schema","react"];
 
 // ---- click-to-copy (byte-exact from raw array) ----
 document.addEventListener('click', (e) => {

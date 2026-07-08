@@ -279,17 +279,105 @@ const renderDemo = (d: Demo, active: boolean): string => {
 }
 
 // ---------------------------------------------------------------------------
+// intro slides (first tab) — static, presenter-facing "why + how" deck.
+// Not a SCREENPLAY-driven demo: no beats, no explainer, no copy commands.
+// ---------------------------------------------------------------------------
+
+// A mini node→node diagram (e.g. Notion page ⇄ local .md). `dir` is the arrow
+// glyph; `cap` is an optional lowercase caption (e.g. "codegen · IaC").
+const viz = (opts: { from: string; dir: string; to: string; cap?: string }): string =>
+  `<div class="viz"><span class="viz-node notion">${esc(opts.from)}</span><span class="viz-arrow">${opts.dir}</span><span class="viz-node dev">${esc(opts.to)}</span>${
+    opts.cap !== undefined ? `<span class="viz-cap">${esc(opts.cap)}</span>` : ''
+  }</div>`
+
+const BLOCKS: { num: string; name: string; viz: string; desc: string }[] = [
+  {
+    num: '01',
+    name: 'notion md',
+    viz: viz({ from: 'Notion page', dir: '⇄', to: 'roadmap.md' }),
+    desc: 'Edit Notion pages as local Markdown — two-way, conflict-guarded sync from your editor.',
+  },
+  {
+    num: '02',
+    name: 'notion sqlite',
+    viz: viz({ from: 'Notion DB', dir: '⇄', to: 'local.sqlite' }),
+    desc: 'A Notion database bound to a live local SQLite file — query and edit it with plain SQL.',
+  },
+  {
+    num: '03',
+    name: 'notion schema',
+    viz: viz({ from: 'Notion DB', dir: '⇄', to: 'schema.ts', cap: 'codegen · IaC' }),
+    desc: 'Typed Effect schemas generated from live DBs (codegen), with schema-as-code back the other way (IaC).',
+  },
+  {
+    num: '04',
+    name: 'notion-react',
+    viz: viz({ from: '‹Page /›', dir: '→', to: 'Notion page' }),
+    desc: 'Author a Notion page as a React component; rerun renders a precise block-level diff.',
+  },
+]
+
+const renderIntro = (): string => {
+  const bridgeIcon =
+    '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="2.4"/><circle cx="19" cy="12" r="2.4"/><path d="M7.4 12h9.2"/><path d="M14.5 9.5 17 12l-2.5 2.5"/><path d="M9.5 9.5 7 12l2.5 2.5"/></svg>'
+  const agentIcon =
+    '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3.5"/><rect x="5.5" y="6.5" width="13" height="11" rx="2.6"/><circle cx="9.5" cy="12" r="1.05"/><circle cx="14.5" cy="12" r="1.05"/><path d="M9.5 15h5"/></svg>'
+
+  const blocks = BLOCKS.map(
+    (b) =>
+      `<div class="block">
+        <div class="block-head"><span class="block-num">${b.num}</span><span class="block-name">${esc(b.name)}</span></div>
+        ${b.viz}
+        <p class="block-desc">${esc(b.desc)}</p>
+      </div>`,
+  ).join('\n')
+
+  return `<section class="demo active" id="demo-intro" data-demo="intro">
+    <div class="demo-body" id="intro-body">
+      <div class="slides">
+        <section class="slide">
+          <div class="slide-kicker">Why</div>
+          <h2 class="slide-title">Notion, for developers and agents</h2>
+          <div class="goals">
+            <div class="goal">
+              <div class="goal-badge">${bridgeIcon}</div>
+              <h3>Bridge the two worlds</h3>
+              <p>Connect <strong>Notion</strong> — where teams plan, spec, and write — with <strong>developer tooling</strong>: your editor, files, git, types, and CI.</p>
+            </div>
+            <div class="goal">
+              <div class="goal-badge">${agentIcon}</div>
+              <h3>Enable agents</h3>
+              <p>Give both <strong>coding agents</strong> and <strong>productivity agents</strong> a typed, scriptable, guarded surface onto Notion.</p>
+            </div>
+          </div>
+        </section>
+        <section class="slide">
+          <div class="slide-kicker">How</div>
+          <h2 class="slide-title">Four core building blocks</h2>
+          <div class="blocks">
+            ${blocks}
+          </div>
+        </section>
+      </div>
+    </div>
+  </section>`
+}
+
+// ---------------------------------------------------------------------------
 // page shell
 // ---------------------------------------------------------------------------
 
 const buildHtml = (demos: Demo[]): string => {
-  const tabs = demos
+  // Intro is the first tab (kbd 1, active by default); demos follow. The intro
+  // is not a Demo, so tabs are built from a lightweight descriptor list.
+  const tabDefs = [{ id: 'intro', label: 'Intro' }, ...demos.map((d) => ({ id: d.id, label: d.tab }))]
+  const tabs = tabDefs
     .map(
-      (d, i) =>
-        `<button class="tab${i === 0 ? ' active' : ''}" data-tab="${d.id}"><kbd>${i + 1}</kbd>${esc(d.tab)}</button>`,
+      (t, i) =>
+        `<button class="tab${i === 0 ? ' active' : ''}" data-tab="${t.id}"><kbd>${i + 1}</kbd>${esc(t.label)}</button>`,
     )
     .join('')
-  const panels = demos.map((d, i) => renderDemo(d, i === 0)).join('\n')
+  const panels = [renderIntro(), ...demos.map((d) => renderDemo(d, false))].join('\n')
   const cmdJson = JSON.stringify(CMDS).replace(/</g, '\\u003c')
 
   return `<!doctype html>
@@ -473,13 +561,40 @@ main{padding:16px 20px 60px}
 figure{margin:0; border:1px solid var(--border); border-radius:8px; overflow:hidden; background:var(--bg-subtle)}
 figcaption{font-size:11px; font-weight:600; color:var(--fg-muted); padding:5px 9px; border-bottom:1px solid var(--border); background:var(--bg-panel)}
 figure img{display:block; width:100%; height:auto}
+
+/* intro slides (first tab — screen-share friendly) */
+.slides{display:flex; flex-direction:column; gap:16px; max-width:1080px}
+.slide{background:var(--bg-panel); border:1px solid var(--border); border-radius:14px; padding:26px 30px; box-shadow:var(--shadow)}
+.slide-kicker{font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase; color:var(--accent); margin-bottom:6px}
+.slide-title{font-size:25px; font-weight:700; margin:0 0 22px; letter-spacing:-.3px}
+.goals{display:grid; grid-template-columns:1fr 1fr; gap:18px}
+.goal{border:1px solid var(--border); border-radius:12px; padding:22px; background:var(--bg-subtle)}
+.goal-badge{display:inline-flex; align-items:center; justify-content:center; width:42px; height:42px; border-radius:11px; background:color-mix(in srgb,var(--accent) 14%,transparent); color:var(--accent); margin-bottom:14px}
+.goal h3{font-size:18px; font-weight:650; margin:0 0 8px}
+.goal p{font-size:14px; line-height:1.5; color:var(--fg-muted); margin:0}
+.goal p strong{color:var(--fg); font-weight:600}
+.blocks{display:grid; grid-template-columns:1fr 1fr; gap:16px}
+.block{border:1px solid var(--border); border-radius:12px; padding:18px 20px; background:var(--bg-subtle); display:flex; flex-direction:column; gap:12px}
+.block-head{display:flex; align-items:baseline; gap:9px}
+.block-num{font-size:11px; font-weight:700; color:var(--fg-faint); font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+.block-name{font-size:15.5px; font-weight:650; font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+.block-desc{font-size:13px; line-height:1.45; color:var(--fg-muted); margin:0}
+/* mini viz: node → node */
+.viz{display:flex; align-items:center; gap:9px; flex-wrap:wrap; padding:13px 14px; background:var(--bg-panel); border:1px solid var(--border); border-radius:10px}
+.viz-node{font-size:12px; font-weight:600; padding:6px 11px; border-radius:8px; border:1px solid var(--border-strong); white-space:nowrap}
+.viz-node.notion{background:var(--fg); color:var(--bg-panel); border-color:var(--fg)}
+.viz-node.dev{background:color-mix(in srgb,var(--accent) 13%,transparent); color:var(--accent); border-color:color-mix(in srgb,var(--accent) 42%,transparent)}
+.viz-arrow{font-size:18px; font-weight:700; color:var(--accent); line-height:1}
+.viz-cap{font-size:10.5px; font-weight:600; letter-spacing:.4px; text-transform:uppercase; color:var(--fg-faint); margin-left:auto}
+@media (max-width:760px){.goals,.blocks{grid-template-columns:1fr}}
+
 @media (prefers-reduced-motion:reduce){*{transition:none!important; animation:none!important}}
 </style>
 
 <header>
   <h1><span class="dot">●</span> Live Control <span style="color:var(--fg-faint);font-weight:400">· Notion tooling demos</span></h1>
   <div class="spacer"></div>
-  <span class="hint">keys <kbd>1</kbd>–<kbd>${demos.length}</kbd> switch demo · <kbd>e</kbd> explainer</span>
+  <span class="hint">keys <kbd>1</kbd>–<kbd>${demos.length + 1}</kbd> switch tab · <kbd>e</kbd> explainer</span>
   <button class="theme-btn" id="theme-btn">◐ theme</button>
 </header>
 
@@ -494,7 +609,7 @@ figure img{display:block; width:100%; height:auto}
 
 <script>
 window.__CMDS = ${cmdJson};
-const TAB_IDS = ${JSON.stringify(demos.map((d) => d.id))};
+const TAB_IDS = ${JSON.stringify(['intro', ...demos.map((d) => d.id)])};
 
 // ---- click-to-copy (byte-exact from raw array) ----
 document.addEventListener('click', (e) => {
