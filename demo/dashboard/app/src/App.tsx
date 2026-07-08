@@ -7,7 +7,8 @@ import { InlineMd } from './inline-md.tsx'
 // pure helpers — ported byte-for-byte from build.ts
 // ---------------------------------------------------------------------------
 
-const TAB_IDS = DEMOS.map((d) => d.id)
+// Intro is the first tab (id "intro", key "0", default on load); demos follow.
+const TAB_IDS = ['intro', ...DEMOS.map((d) => d.id)]
 
 // Nav layout: consecutive demos sharing a groupId render clustered (e.g. the
 // schema group's 3.1/3.2); everything else is a solo tab. Order follows DEMOS.
@@ -566,6 +567,8 @@ const readUrl = (): UiState => {
 }
 
 const normalize = (s: UiState): UiState => {
+  // intro is not a demo — it has no explainer, so it is always instructions view
+  if (s.demo === INTRO_ID) return { ...s, view: 'instructions' }
   const d = DEMOS.find((x) => x.id === s.demo) ?? DEMOS[0]!
   // can't be in explanation view if the active demo has no explainer
   const view: View = s.view === 'explanation' && !canExplain(d) ? 'instructions' : s.view
@@ -621,6 +624,142 @@ const TabButton = ({ d, on, onClick }: { d: DemoModel; on: boolean; onClick: () 
 )
 
 // ---------------------------------------------------------------------------
+// intro slides (first tab, id "intro") — static presenter-facing "why + how"
+// deck for screen sharing. Not a DemoModel: no beats/explainer/backups, so it
+// is handled as a special tab alongside DEMOS rather than through the model.
+// ---------------------------------------------------------------------------
+
+const INTRO_ID = 'intro'
+
+const bridgeIcon = (
+  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="5" cy="12" r="2.4" />
+    <circle cx="19" cy="12" r="2.4" />
+    <path d="M7.4 12h9.2" />
+    <path d="M14.5 9.5 17 12l-2.5 2.5" />
+    <path d="M9.5 9.5 7 12l2.5 2.5" />
+  </svg>
+)
+const agentIcon = (
+  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 3v3.5" />
+    <rect x="5.5" y="6.5" width="13" height="11" rx="2.6" />
+    <circle cx="9.5" cy="12" r="1.05" />
+    <circle cx="14.5" cy="12" r="1.05" />
+    <path d="M9.5 15h5" />
+  </svg>
+)
+
+// A mini node→node diagram (e.g. Notion page ⇄ local .md). The "notion" node is
+// a solid pill; the "dev" node is accent-tinted; `cap` is an optional caption.
+const VizNode = ({ label, notion = false }: { label: string; notion?: boolean }) => (
+  <span
+    className={
+      'whitespace-nowrap rounded-lg border px-2.5 py-1.5 text-[12px] font-semibold ' +
+      (notion === true ? 'border-fg bg-fg text-bg-panel' : 'border-accent/40 bg-accent/10 text-accent')
+    }
+  >
+    {label}
+  </span>
+)
+const Viz = ({ from, dir, to, cap }: { from: string; dir: string; to: string; cap?: string }) => (
+  <div className="flex flex-wrap items-center gap-2.5 rounded-lg border border-border bg-bg-panel px-3.5 py-3">
+    <VizNode label={from} notion />
+    <span className="text-[18px] font-bold leading-none text-accent">{dir}</span>
+    <VizNode label={to} />
+    {cap !== undefined && (
+      <span className="ml-auto text-[10.5px] font-semibold uppercase tracking-wide text-fg-faint">{cap}</span>
+    )}
+  </div>
+)
+
+const INTRO_BLOCKS: { num: string; name: string; from: string; dir: string; to: string; cap?: string; desc: string }[] = [
+  {
+    num: '01',
+    name: 'notion md',
+    from: 'Notion page',
+    dir: '⇄',
+    to: 'roadmap.md',
+    desc: 'Edit Notion pages as local Markdown — two-way, conflict-guarded sync from your editor.',
+  },
+  {
+    num: '02',
+    name: 'notion sqlite',
+    from: 'Notion DB',
+    dir: '⇄',
+    to: 'local.sqlite',
+    desc: 'A Notion database bound to a live local SQLite file — query and edit it with plain SQL.',
+  },
+  {
+    num: '03',
+    name: 'notion schema',
+    from: 'Notion DB',
+    dir: '⇄',
+    to: 'schema.ts',
+    cap: 'codegen · IaC',
+    desc: 'Typed Effect schemas generated from live DBs (codegen), with schema-as-code back the other way (IaC).',
+  },
+  {
+    num: '04',
+    name: 'notion-react',
+    from: '‹Page /›',
+    dir: '→',
+    to: 'Notion page',
+    desc: 'Author a Notion page as a React component; rerun renders a precise block-level diff.',
+  },
+]
+
+const IntroPanel = ({ hidden }: { hidden: boolean }) => (
+  <section hidden={hidden} className="flex max-w-[1080px] flex-col gap-4">
+    {/* Slide 1 — Why */}
+    <section className="rounded-2xl border border-border bg-bg-panel px-8 py-7 shadow-[0_6px_24px_rgba(10,14,20,.10)]">
+      <div className="mb-1.5 text-[11px] font-bold uppercase tracking-[1.2px] text-accent">Why</div>
+      <h2 className="m-0 mb-5 text-[25px] font-bold tracking-tight">Notion, for developers and agents</h2>
+      <div className="grid grid-cols-1 gap-[18px] md:grid-cols-2">
+        <div className="rounded-xl border border-border bg-bg-subtle p-[22px]">
+          <div className="mb-3.5 inline-flex h-[42px] w-[42px] items-center justify-center rounded-[11px] bg-accent/15 text-accent">
+            {bridgeIcon}
+          </div>
+          <h3 className="m-0 mb-2 text-[18px] font-semibold">Bridge the two worlds</h3>
+          <p className="m-0 text-[14px] leading-relaxed text-fg-muted">
+            Connect <strong className="font-semibold text-fg">Notion</strong> — where teams plan, spec, and write — with{' '}
+            <strong className="font-semibold text-fg">developer tooling</strong>: your editor, files, git, types, and CI.
+          </p>
+        </div>
+        <div className="rounded-xl border border-border bg-bg-subtle p-[22px]">
+          <div className="mb-3.5 inline-flex h-[42px] w-[42px] items-center justify-center rounded-[11px] bg-accent/15 text-accent">
+            {agentIcon}
+          </div>
+          <h3 className="m-0 mb-2 text-[18px] font-semibold">Enable agents</h3>
+          <p className="m-0 text-[14px] leading-relaxed text-fg-muted">
+            Give both <strong className="font-semibold text-fg">coding agents</strong> and{' '}
+            <strong className="font-semibold text-fg">productivity agents</strong> a typed, scriptable, guarded surface
+            onto Notion.
+          </p>
+        </div>
+      </div>
+    </section>
+    {/* Slide 2 — How */}
+    <section className="rounded-2xl border border-border bg-bg-panel px-8 py-7 shadow-[0_6px_24px_rgba(10,14,20,.10)]">
+      <div className="mb-1.5 text-[11px] font-bold uppercase tracking-[1.2px] text-accent">How</div>
+      <h2 className="m-0 mb-5 text-[25px] font-bold tracking-tight">Four core building blocks</h2>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        {INTRO_BLOCKS.map((b) => (
+          <div key={b.num} className="flex flex-col gap-3 rounded-xl border border-border bg-bg-subtle p-5">
+            <div className="flex items-baseline gap-2.5">
+              <span className="font-mono text-[11px] font-bold text-fg-faint">{b.num}</span>
+              <span className="font-mono text-[15.5px] font-semibold">{b.name}</span>
+            </div>
+            <Viz from={b.from} dir={b.dir} to={b.to} cap={b.cap} />
+            <p className="m-0 text-[13px] leading-snug text-fg-muted">{b.desc}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  </section>
+)
+
+// ---------------------------------------------------------------------------
 // app
 // ---------------------------------------------------------------------------
 
@@ -673,14 +812,15 @@ export const App = () => {
     return () => window.removeEventListener('hashchange', onHash)
   }, [commit])
 
+  const onIntro = state.demo === INTRO_ID
   const setDemo = (id: string) => commit({ ...state, demo: id })
   const toggleExplain = useCallback(() => {
-    if (!canExplain(active)) return
+    if (state.demo === INTRO_ID || !canExplain(active)) return
     commit({ ...state, view: state.view === 'explanation' ? 'instructions' : 'explanation' })
   }, [active, state, commit])
   const closeExplain = () => commit({ ...state, view: 'instructions' })
   const toggleAllBackups = () => {
-    if (!hasBackups(active)) return
+    if (onIntro || !hasBackups(active)) return
     commit({ ...state, backups: state.backups === 'shown' ? 'hidden' : 'shown' })
   }
   const toggleBeat = (key: string) => setOpenBeats((m) => ({ ...m, [key]: !m[key] }))
@@ -695,6 +835,10 @@ export const App = () => {
       if (e.metaKey || e.ctrlKey || e.altKey) return
       const tag = (e.target as HTMLElement)?.tagName?.toLowerCase()
       if (tag === 'input' || tag === 'textarea') return
+      if (e.key === '0') {
+        commit({ ...state, demo: INTRO_ID })
+        return
+      }
       const members = KEY_MAP[e.key]
       if (members && members.length > 0) {
         if (members.length === 1) {
@@ -735,9 +879,10 @@ export const App = () => {
         </h1>
         <div className="flex-1" />
         <span className="text-xs text-fg-faint">
-          keys <kbd className="rounded border border-border bg-bg-subtle px-1.5 py-0.5 text-fg-muted">1</kbd>–
+          keys <kbd className="rounded border border-border bg-bg-subtle px-1.5 py-0.5 text-fg-muted">0</kbd> intro ·{' '}
+          <kbd className="rounded border border-border bg-bg-subtle px-1.5 py-0.5 text-fg-muted">1</kbd>–
           <kbd className="rounded border border-border bg-bg-subtle px-1.5 py-0.5 text-fg-muted">{MAX_KEY}</kbd>{' '}
-          switch demo (<kbd className="rounded border border-border bg-bg-subtle px-1 py-0.5 text-fg-muted">3</kbd>{' '}
+          demos (<kbd className="rounded border border-border bg-bg-subtle px-1 py-0.5 text-fg-muted">3</kbd>{' '}
           cycles 3.1/3.2) ·{' '}
           <kbd className="rounded border border-border bg-bg-subtle px-1.5 py-0.5 text-fg-muted">e</kbd> explainer
         </span>
@@ -751,6 +896,26 @@ export const App = () => {
       </header>
 
       <nav className="sticky top-[41px] z-10 flex flex-wrap items-center gap-1.5 border-b border-border bg-bg px-5 py-2">
+        <button
+          type="button"
+          onClick={() => setDemo(INTRO_ID)}
+          className={
+            onIntro
+              ? 'inline-flex items-center rounded-lg border border-accent bg-accent px-3 py-1.5 text-[13px] font-medium text-accent-fg'
+              : 'inline-flex items-center rounded-lg border border-border bg-bg-panel px-3 py-1.5 text-[13px] font-medium text-fg-muted hover:border-border-strong hover:text-fg'
+          }
+        >
+          <kbd
+            className={
+              onIntro
+                ? 'mr-1.5 rounded border-transparent bg-white/20 px-1.5 py-0.5 text-[11px]'
+                : 'mr-1.5 rounded border border-border bg-bg-subtle px-1.5 py-0.5 text-[11px] text-fg-muted'
+            }
+          >
+            0
+          </kbd>
+          Intro
+        </button>
         {NAV_ITEMS.map((item) => {
           if (item.kind === 'solo') {
             const d = item.demo
@@ -771,6 +936,7 @@ export const App = () => {
       </nav>
 
       <main className="px-5 pb-16 pt-4">
+        <IntroPanel hidden={!onIntro} />
         {DEMOS.map((d) => (
           <DemoSection
             key={d.id}
