@@ -1,4 +1,4 @@
-import { type ReactNode, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useState } from 'react'
 
 import {
   MiniChat,
@@ -430,10 +430,93 @@ const WorkbenchPoster = () => {
   )
 }
 
-export const IntroPanel = ({ hidden }: { hidden: boolean }) => (
-  <section hidden={hidden} className="intro flex max-w-[1120px] flex-col gap-20">
+// Disclaimer-slide kicker icon — a lightbulb (ties to the poster's inspiration
+// motif), matching iconLego's line weight so the three kickers read as a set.
+const iconBulb = (
+  <svg
+    width="18"
+    height="18"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.6}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M9 18h6M10 21h4" />
+    <path d="M12 3a6 6 0 0 0-3.6 10.8c.5.4.85 1 .85 1.65v.55h5.5v-.55c0-.65.34-1.25.85-1.65A6 6 0 0 0 12 3z" />
+  </svg>
+)
+
+// Intro deck slide order — drives the nav dots, the ← / → bound, and which
+// <section> IntroSlides reveals. Index matches the three slides below.
+const SLIDE_LABELS = ['Why', 'How', 'Disclaimer'] as const
+
+// Chevron glyph for the prev/next buttons — module-scoped (captures nothing).
+const navChevron = (d: string) => (
+  <svg
+    width="16"
+    height="16"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={2}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d={d} />
+  </svg>
+)
+
+// Prev / dots / next navigator for the intro deck (keyboard ← / → mirror it).
+// Clamped at both ends, like a real slides app; dots jump directly.
+const IntroSlideNav = ({ slide, onGo }: { slide: number; onGo: (i: number) => void }) => {
+  const arrowCls =
+    'inline-flex h-8 w-8 items-center justify-center rounded-full border border-border text-fg-muted transition hover:border-border-strong hover:text-fg disabled:pointer-events-none disabled:opacity-30'
+  return (
+    <div className="flex items-center justify-center gap-5 pt-2">
+      <button
+        type="button"
+        aria-label="Previous slide"
+        disabled={slide === 0}
+        onClick={() => onGo(slide - 1)}
+        className={arrowCls}
+      >
+        {navChevron('M15 6l-6 6 6 6')}
+      </button>
+      <div className="flex items-center gap-2">
+        {SLIDE_LABELS.map((label, idx) => (
+          <button
+            key={label}
+            type="button"
+            aria-label={label}
+            aria-current={idx === slide ? 'true' : undefined}
+            onClick={() => onGo(idx)}
+            className={
+              idx === slide
+                ? 'h-2 w-6 rounded-full bg-accent transition-all'
+                : 'h-2 w-2 rounded-full bg-border transition-all hover:bg-fg-faint'
+            }
+          />
+        ))}
+      </div>
+      <button
+        type="button"
+        aria-label="Next slide"
+        disabled={slide === SLIDE_LABELS.length - 1}
+        onClick={() => onGo(slide + 1)}
+        className={arrowCls}
+      >
+        {navChevron('M9 6l6 6-6 6')}
+      </button>
+    </div>
+  )
+}
+
+const IntroSlides = ({ hidden, slide, onGo }: { hidden: boolean; slide: number; onGo: (i: number) => void }) => (
+  <section hidden={hidden} className="intro mx-auto flex min-h-[70vh] max-w-[1120px] flex-col justify-center gap-6">
     {/* Slide 1 — Why: the ecosystem around Notion (hub = source of truth) */}
-    <section className="py-2">
+    <section hidden={slide !== 0} className="w-full py-2">
       <div className="mb-1.5 text-[13px] text-fg-muted">Why</div>
       <h2 className="m-0 mb-6 text-[25px] font-bold tracking-tight">
         Notion, for users, developers, and agents
@@ -495,19 +578,21 @@ export const IntroPanel = ({ hidden }: { hidden: boolean }) => (
       </div>
     </section>
     {/* Slide 2 — How: building blocks that snap together */}
-    <section className="py-2">
+    <section hidden={slide !== 1} className="w-full py-2">
       <div className="mb-1.5 flex items-center gap-1.5 text-[13px] text-fg-muted">
         <span className="text-fg-muted">{iconLego}</span> How
       </div>
       <h2 className="m-0 mb-5 text-[25px] font-bold tracking-tight">
-        principled Notion building blocks for agents and developers
+        Principled Notion building blocks for agents and developers
       </h2>
       <HowGallery />
     </section>
     {/* Slide 3 — Disclaimer: these are inspiration, not a product. Copy left,
         full-color Notion-style "tinkerer's workbench" poster right. */}
-    <section className="py-2">
-      <div className="mb-1.5 text-[13px] text-fg-muted">Disclaimer</div>
+    <section hidden={slide !== 2} className="w-full py-2">
+      <div className="mb-1.5 flex items-center gap-1.5 text-[13px] text-fg-muted">
+        <span className="text-fg-muted">{iconBulb}</span> Disclaimer
+      </div>
       <h2 className="m-0 mb-6 text-[25px] font-bold tracking-tight">Inspiration, not a product.</h2>
       <div className="flex flex-wrap items-center gap-x-12 gap-y-8">
         {/* the three points — each maps to one beat of the message */}
@@ -546,5 +631,31 @@ export const IntroPanel = ({ hidden }: { hidden: boolean }) => (
         </div>
       </div>
     </section>
+    <IntroSlideNav slide={slide} onGo={onGo} />
   </section>
 )
+
+/**
+ * Intro deck: the first tab's three-slide "why → how → disclaimer" story, shown
+ * one slide at a time. Owns the current slide index and the ← / → keyboard nav
+ * (active only while the deck is visible), delegating the slide markup to
+ * IntroSlides. Slides stay mounted (HowGallery keeps its tab state) and toggle
+ * via `hidden`.
+ */
+export const IntroPanel = ({ hidden }: { hidden: boolean }) => {
+  const [slide, setSlide] = useState(0)
+  const go = useCallback((i: number) => setSlide(Math.max(0, Math.min(i, SLIDE_LABELS.length - 1))), [])
+  useEffect(() => {
+    if (hidden === true) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey === true || e.ctrlKey === true || e.altKey === true) return
+      const tag = (e.target as HTMLElement)?.tagName?.toLowerCase()
+      if (tag === 'input' || tag === 'textarea') return
+      if (e.key === 'ArrowRight') setSlide((c) => Math.min(c + 1, SLIDE_LABELS.length - 1))
+      else if (e.key === 'ArrowLeft') setSlide((c) => Math.max(c - 1, 0))
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [hidden])
+  return <IntroSlides hidden={hidden} slide={slide} onGo={go} />
+}
