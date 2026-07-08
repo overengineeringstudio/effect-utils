@@ -24,7 +24,9 @@ All notable changes to this project will be documented in this file.
   preserves Bun's source-module resolver semantics while still being owned by the
   Nix package. The packaged root now declares only the workspace packages and
   runtime sidecars the source-mode CLI needs at startup, keeping the dependency
-  surface explicit without carrying the old broad repair history from #887.
+  surface explicit without carrying the old broad repair history from #887. Refresh
+  the touched Nix pnpm fixed-output hashes to match that explicit package graph
+  so CI realizes the same dependency boundary from a cold store.
 - **genie / check**: make `bootstrap-closure:check` reusable by passing a
   `--root` to effect-utils' shared checker from the devenv task module.
   Downstream repos can import the shared task directly instead of maintaining a
