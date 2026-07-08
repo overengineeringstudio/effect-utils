@@ -77,9 +77,7 @@
             src = self;
             typeProofCompilerBin = "${tsgo.packages.${system}.tsgo}/bin/tsgo";
           };
-          genie-bootstrap-runner = import (
-            rootPath + "/packages/@overeng/genie/nix/bootstrap-runner.nix"
-          ) {
+          genie-bootstrap-runner = import (rootPath + "/packages/@overeng/genie/nix/bootstrap-runner.nix") {
             inherit
               pkgs
               gitRev
@@ -89,17 +87,17 @@
             src = self;
             typeProofCompilerBin = "${tsgo.packages.${system}.tsgo}/bin/tsgo";
           };
-          genie-bootstrap-closure-check = import (
-            rootPath + "/packages/@overeng/genie/nix/bootstrap-closure-check.nix"
-          ) {
-            inherit
-              pkgs
-              gitRev
-              commitTs
-              dirty
-              ;
-            src = self;
-          };
+          genie-bootstrap-closure-check =
+            import (rootPath + "/packages/@overeng/genie/nix/bootstrap-closure-check.nix")
+              {
+                inherit
+                  pkgs
+                  gitRev
+                  commitTs
+                  dirty
+                  ;
+                src = self;
+              };
           ci-tools = import (rootPath + "/packages/@overeng/ci-tools/nix/build.nix") {
             inherit
               pkgs
@@ -153,9 +151,7 @@
             dirty = true;
             typeProofCompilerBin = "${tsgo.packages.${system}.tsgo}/bin/tsgo";
           };
-          genie-bootstrap-runner = import (
-            rootPath + "/packages/@overeng/genie/nix/bootstrap-runner.nix"
-          ) {
+          genie-bootstrap-runner = import (rootPath + "/packages/@overeng/genie/nix/bootstrap-runner.nix") {
             inherit pkgs gitRev commitTs;
             src = self;
             dirty = true;
