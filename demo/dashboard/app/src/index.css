@@ -260,15 +260,14 @@ body {
 }
 
 /* slide-2 paired block */
+/* Flat, Notion-native: no frame around the pair — the two faux mocks keep their
+ * own window chrome (R6), they just sit directly on the canvas. */
 .intro-pair {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 14px;
-  padding: 16px;
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-  background: var(--color-bg-panel);
+  padding: 0;
 }
 .intro-pair .side {
   flex: 0 1 380px;
