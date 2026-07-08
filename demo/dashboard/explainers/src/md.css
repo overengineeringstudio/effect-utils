@@ -96,67 +96,63 @@
     color: var(--accent); margin-top: 8px; }
 
   /* beat 1: the problem — the same one-line change, three ways */
-  .ways { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 100%; }
-  .target-cap { font: 600 10.5px/1 var(--mono); letter-spacing: .04em; color: var(--muted); margin: 0 0 12px; }
+  .ways { display: flex; flex-direction: column; align-items: center; gap: 18px; width: 100%; }
+  .target-cap { font: 500 13px/1 var(--sans); color: var(--muted); margin: 0; }
 
   /* beat 2: center column — the notion md CLI terminal + the direction packet */
   .midcol { display: flex; flex-direction: column; align-items: center; gap: 10px; width: 208px; flex: none; }
-  .waylist { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 660px; }
-  .wayrow { display: flex; align-items: stretch; border: 1px solid var(--line); border-radius: 12px;
-    background: var(--panel-2); box-shadow: var(--shadow); overflow: hidden; }
-  .wayrow.win { border-color: var(--ok-line); background: var(--ok-soft); }
-  .waylabel { flex: none; width: 128px; padding: 12px 14px; display: flex; flex-direction: column; gap: 3px;
-    border-right: 1px solid var(--line-soft); background: var(--panel); }
-  .wayrow.win .waylabel { background: transparent; border-right-color: var(--ok-line); }
+  .waylist { display: flex; flex-direction: column; width: 100%; max-width: 660px; }
+  .wayrow { display: flex; align-items: stretch; gap: 22px; border-top: 1px solid var(--line); }
+  .waylist .wayrow:first-child { border-top: none; }
+  .waylabel { flex: none; width: 128px; padding: 16px 0; display: flex; flex-direction: column; gap: 3px; }
   .wayname { font: 700 13px/1.2 var(--sans); color: var(--ink); }
-  .waykind { font: 600 9px/1 var(--mono); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
-  .waymark { margin-top: 3px; font: 700 11px/1.2 var(--sans); color: var(--warn); }
+  .waykind { font: 500 11px/1 var(--sans); color: var(--muted); }
+  .waymark { margin-top: 3px; font: 600 11px/1.2 var(--sans); color: var(--warn); }
   .wayrow.win .waymark { color: var(--ok); }
-  .waycode { flex: 1; min-width: 0; padding: 12px 15px; font-family: var(--mono); font-size: 12px; line-height: 1.65;
+  .waycode { flex: 1; min-width: 0; padding: 16px 0; font-family: var(--mono); font-size: 12px; line-height: 1.65;
     color: var(--ink); display: flex; flex-direction: column; gap: 2px; overflow-x: auto; white-space: nowrap; }
   @media (max-width: 720px){
-    .wayrow { flex-direction: column; }
-    .waylabel { width: auto; flex-direction: row; align-items: center; gap: 8px; border-right: none;
-      border-bottom: 1px solid var(--line-soft); }
+    .wayrow { flex-direction: column; gap: 4px; }
+    .waylabel { width: auto; flex-direction: row; align-items: center; gap: 8px; padding: 14px 0 4px; }
+    .waycode { padding: 4px 0 16px; }
     .waymark { margin-top: 0; margin-left: auto; }
   }
 
-  /* beat 3: what it enables — 3-scenario grid (one per direction) */
-  .enables { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; width: 100%; }
-  .ecard { border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2); box-shadow: var(--shadow);
-    padding: 16px 16px 18px; display: flex; flex-direction: column; gap: 10px; }
+  /* beat 3: what it enables — a vertical list, one row per direction */
+  .enables { display: flex; flex-direction: column; width: 100%; }
+  .ecard { border-top: 1px solid var(--line); background: none; padding: 16px 0; display: flex; flex-direction: column; gap: 8px; }
+  .enables .ecard:first-child { border-top: none; }
   .ecard .edir { align-self: flex-start; font: 600 10px/1 var(--mono); letter-spacing: .04em; padding: 4px 8px; border-radius: 8px; }
   .ecard.local .edir { color: var(--accent); background: var(--accent-soft); }
   .ecard.notion .edir { color: var(--ink); background: var(--panel); border: 1px solid var(--line); }
   .ecard.shared .edir { color: var(--ok); background: var(--ok-soft); border: 1px solid var(--ok-line); }
   .ecard .etitle { font: 700 15px/1.25 var(--sans); letter-spacing: -.01em; color: var(--ink); }
   .ecard .ebody { font-size: 13px; line-height: 1.5; color: var(--muted); }
-  @media (max-width: 720px){ .enables { grid-template-columns: 1fr; } }
 
-  /* beat 4 (coda): the toolkit — feature grid + a compact fidelity strip */
-  .features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; width: 100%; max-width: 740px; margin: 0 auto; }
-  .fcard { border: 1px solid var(--line); border-radius: 11px; background: var(--panel-2); padding: 13px 14px;
+  /* beat 4 (coda): the toolkit — a vertical feature list + a compact fidelity strip */
+  .features { display: flex; flex-direction: column; width: 100%; max-width: 740px; margin: 0 auto; }
+  .fcard { border-top: 1px solid var(--line); background: none; padding: 12px 0;
     display: flex; flex-direction: column; gap: 6px; }
+  .features .fcard:first-child { border-top: none; }
   .fcard .ft { font: 700 13px/1.25 var(--sans); color: var(--ink); display: flex; align-items: baseline; gap: 7px; }
   .fico { color: var(--accent); font-size: 12px; line-height: 1; flex: none; }
   .fcard .fb { font-size: 12px; line-height: 1.5; color: var(--muted); }
-  .fidelity { width: 100%; max-width: 740px; margin: 16px auto 0; display: flex; flex-direction: column; gap: 8px; }
+  .fidelity { width: 100%; max-width: 740px; margin: 20px auto 0; display: flex; flex-direction: column; gap: 10px; }
   .fidrow { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
   .fidrow .blabel { flex: none; width: 92px; }
-  .blabel { font: 700 9.5px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ok); }
+  .blabel { font: 500 12px/1 var(--sans); color: var(--ok); }
   .blabel.muted { color: var(--muted); }
   .chips { display: flex; flex-wrap: wrap; gap: 7px; }
   .bchip { font: 600 11px/1 var(--sans); padding: 5px 10px; border-radius: 20px; color: var(--ok);
     background: var(--ok-soft); border: 1px solid var(--ok-line); }
   .bchip.q { color: var(--muted); background: var(--panel-2); border-color: var(--line); }
   .bchip.muted { color: var(--muted); background: var(--panel); border: 1px dashed var(--line); }
-  @media (max-width: 720px){ .features { grid-template-columns: 1fr 1fr; } }
 
   /* coda: guarded 3-way merge draft */
-  .coda-rule { display: flex; align-items: center; gap: 14px; margin: 0 20px; color: var(--muted); }
+  .coda-rule { display: flex; align-items: center; gap: 14px; margin: 4px 20px; color: var(--muted); }
   .coda-rule::before, .coda-rule::after { content: ""; height: 1px; background: var(--line); flex: 1; }
-  .coda-rule span { font: 600 11px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; }
-  .coda { border-style: dashed; background: var(--panel); }
+  .coda-rule span { font: 500 12px/1 var(--sans); color: var(--muted); }
+  .coda { border: none; background: none; box-shadow: none; }
   .coda .beat-tag { color: var(--accent); }
   .merge { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; }
   .merge .col { display: flex; flex-direction: column; gap: 14px; align-items: stretch; }
