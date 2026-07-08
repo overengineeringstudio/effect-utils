@@ -514,9 +514,18 @@ const IntroSlideNav = ({ slide, onGo }: { slide: number; onGo: (i: number) => vo
 }
 
 const IntroSlides = ({ hidden, slide, onGo }: { hidden: boolean; slide: number; onGo: (i: number) => void }) => (
-  <section hidden={hidden} className="intro mx-auto flex min-h-[70vh] max-w-[1120px] flex-col justify-center gap-6">
-    {/* Slide 1 — Why: the ecosystem around Notion (hub = source of truth) */}
-    <section hidden={slide !== 0} className="w-full py-2">
+  <section hidden={hidden} className="intro relative mx-auto min-h-[70vh] max-w-[1120px] pt-2">
+    {/* slide controls — pinned top-right so they never move between slides */}
+    <div className="absolute right-0 top-0 z-10">
+      <IntroSlideNav slide={slide} onGo={onGo} />
+    </div>
+    {/* stage: all three slides stacked in ONE grid cell, so the frame is always
+        as tall as the tallest slide and the kicker/headline never shift when
+        switching. Inactive slides use `invisible` (keeps layout → stable frame),
+        NOT `hidden` (which collapses the frame and makes the header jump). */}
+    <div className="grid">
+      {/* Slide 1 — Why: the ecosystem around Notion (hub = source of truth) */}
+      <section aria-hidden={slide !== 0} className={`col-start-1 row-start-1 w-full py-2 ${slide === 0 ? '' : 'invisible'}`}>
       <div className="mb-1.5 text-[13px] text-fg-muted">Why</div>
       <h2 className="m-0 mb-6 text-[25px] font-bold tracking-tight">
         Notion, for users, developers, and agents
@@ -577,8 +586,8 @@ const IntroSlides = ({ hidden, slide, onGo }: { hidden: boolean; slide: number; 
         </div>
       </div>
     </section>
-    {/* Slide 2 — How: building blocks that snap together */}
-    <section hidden={slide !== 1} className="w-full py-2">
+      {/* Slide 2 — How: building blocks that snap together */}
+      <section aria-hidden={slide !== 1} className={`col-start-1 row-start-1 w-full py-2 ${slide === 1 ? '' : 'invisible'}`}>
       <div className="mb-1.5 flex items-center gap-1.5 text-[13px] text-fg-muted">
         <span className="text-fg-muted">{iconLego}</span> How
       </div>
@@ -587,9 +596,9 @@ const IntroSlides = ({ hidden, slide, onGo }: { hidden: boolean; slide: number; 
       </h2>
       <HowGallery />
     </section>
-    {/* Slide 3 — Disclaimer: these are inspiration, not a product. Copy left,
-        full-color Notion-style "tinkerer's workbench" poster right. */}
-    <section hidden={slide !== 2} className="w-full py-2">
+      {/* Slide 3 — Disclaimer: these are inspiration, not a product. Copy left,
+          full-color Notion-style "tinkerer's workbench" poster right. */}
+      <section aria-hidden={slide !== 2} className={`col-start-1 row-start-1 w-full py-2 ${slide === 2 ? '' : 'invisible'}`}>
       <div className="mb-1.5 flex items-center gap-1.5 text-[13px] text-fg-muted">
         <span className="text-fg-muted">{iconBulb}</span> Disclaimer
       </div>
@@ -630,8 +639,8 @@ const IntroSlides = ({ hidden, slide, onGo }: { hidden: boolean; slide: number; 
           <WorkbenchPoster />
         </div>
       </div>
-    </section>
-    <IntroSlideNav slide={slide} onGo={onGo} />
+      </section>
+    </div>
   </section>
 )
 
