@@ -16,6 +16,50 @@ How the requirements are met. Kept current with the implementation.
   demos show the happy path; the safety/merge story lives in the explainer
   deep-dive (and is proven separately by a harness merge-proof run).
 
+## Visual design (control surface & kit)
+
+The whole frame — the control chrome AND the mockup kit — reads as **one coherent
+Notion, in Notion's app language**, so it never competes with the real Notion
+browser filmed beside it. Direction: **app language + selective accents** (not the
+marketing site's navy-AI hero treatment).
+
+- **One shared token system.** A single warm palette + type scale is the source of
+  truth for chrome, kit, and explainers (retires the former split between the cold
+  `--color-*` chrome tokens and the `--bg/--panel/--accent` kit tokens). Light is
+  the primary theme; dark reuses the kit's existing `#191919` family.
+- **Palette (light):** page `#f7f6f3` (warm off-white), card `#ffffff`, ink
+  `#37352f` (Notion's warm near-black), muted `#787774`, hairline `#e9e9e7`,
+  accent **Notion blue `#2383e2`**, secondary tint `#e7f2fb`, pop/orange
+  `#d9730d`, ok/green `#448361`. **Dark:** page `#191919`, card `#202020`, ink
+  `#ebebeb`, border `#373737`, accent `#529cca`. The cold developer-dashboard grays
+  (`#f6f7f9` / accent `#2f6bff`) are retired.
+- **Type:** `Inter, -apple-system, system-ui` (Notion ships "NotionInter"; we
+  approximate CSP-free with the system stack). Headlines are bold and tight
+  (weight 700, line-height ~1.05); eyebrows are small, uppercase, letter-spaced,
+  in the accent.
+- **Flat by default (Notion-native).** The dashboard adds **no card boxes around
+  content** — no nested `border`/`shadow`/`bg-panel` wrappers, no dashed group
+  boxes. Structure is carried by whitespace, hairline rules, and bold headings.
+  The **only** surfaces that keep real window chrome + a soft lift are the **faux
+  app surfaces** (NotionPage, MacWindow, Terminal, MiniIDE, DbBrowser) — because
+  those *are* the medium (R6). Everything else is flat on the warm canvas.
+- **Chrome:** calm, recessive, app-native. Tab nav is **plain text** — no filled
+  pills; the active tab reads via ink weight + a single accent underline, the
+  keyboard index is a hair-thin gray glyph (not a boxed kbd), and the demo group
+  hangs off a hairline. macOS traffic-dots on faux surfaces are desaturated so
+  they recede.
+- **Type & color discipline:** headlines big/bold/tight (700, tracking ~-.02em);
+  eyebrows are **structural → muted gray**, never accent blue. Blue is reserved for
+  links, buttons, and the active-tab underline only.
+- **Selective signatures:** a small **set** (4–6) of bright Notion-style mascot
+  chips — saturated circles carrying a **white line-icon of an object** (page,
+  sync, `{}`, database), never a literal smiley — plus **one hand-drawn,
+  monochrome line-art doodle** on the **intro/hero only**. Any mascot/line-art is
+  an **original approximation**, never a copied Notion asset.
+- **Kit fidelity (reinforces R6):** the shared surfaces (NotionPage, MacWindow,
+  Terminal, MiniIDE, DbBrowser) target real-Notion-app fidelity on the shared
+  tokens; verified in Storybook (`demo/dashboard/app/.storybook`).
+
 ## Driving model
 
 - On camera the presenter drives the **real CLIs** inside `devenv shell` (which
