@@ -28,47 +28,47 @@
 
 /* ---- explainer design tokens, scoped to the subtree (from kit-page.css) ---- */
 .explainer-root {
-  --bg: #ffffff; --panel: #f7f7f8; --panel-2: #ffffff; --ink: #1a1a1a; --muted: #6b6b70;
-  --line: #e3e3e6; --line-soft: #eeeef0;
-  --accent: #5b5bd6; --accent-soft: #ececfb;
-  --warn: #c0392b; --warn-soft: #fbe9e7; --warn-line: #f0b3aa;
-  --ok: #1a7f4b; --ok-soft: #e3f5ec; --ok-line: #a9dcc2;
-  --blue: #2f6fd6; --blue-soft: #e6effc; --blue-line: #bcd3f5;
-  --amber: #b25000; --amber-soft: #fbeede; --amber-line: #e6c48f;
+  --bg: #f7f6f3; --panel: #f1f0ee; --panel-2: #ffffff; --ink: #37352f; --muted: #787774;
+  --line: #e9e9e7; --line-soft: #efeeec;
+  --accent: #2383e2; --accent-soft: #e7f2fb;
+  --warn: #e03e3e; --warn-soft: #fdebea; --warn-line: #f4c4c1;
+  --ok: #448361; --ok-soft: #e7f2ec; --ok-line: #bcdcc9;
+  --blue: #2383e2; --blue-soft: #e7f2fb; --blue-line: #bcd8f5;
+  --amber: #d9730d; --amber-soft: #fbecd9; --amber-line: #eecb98;
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
-  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+  --sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.05);
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .explainer-root {
-    --bg: #191919; --panel: #202020; --panel-2: #242424; --ink: #ececee; --muted: #9a9aa0;
-    --line: #2f2f2f; --line-soft: #292929;
-    --accent: #9d9df0; --accent-soft: #26264a;
-    --warn: #f0796b; --warn-soft: #3a221e; --warn-line: #5c3029;
-    --ok: #4ec98a; --ok-soft: #1c2f26; --ok-line: #2c4c3c;
-    --blue: #6fa8f5; --blue-soft: #1b2a44; --blue-line: #2b4066;
-    --amber: #e0913f; --amber-soft: #35281a; --amber-line: #5c4526;
+    --bg: #191919; --panel: #202020; --panel-2: #252525; --ink: #e6e6e6; --muted: #9b9b9b;
+    --line: #373737; --line-soft: #2b2b2b;
+    --accent: #4a8bd6; --accent-soft: #28374d;
+    --warn: #d67670; --warn-soft: #3a2422; --warn-line: #5c322e;
+    --ok: #4caf7d; --ok-soft: #1f2f27; --ok-line: #305041;
+    --blue: #4a8bd6; --blue-soft: #28374d; --blue-line: #3a5372;
+    --amber: #d3a13c; --amber-soft: #352a19; --amber-line: #5a4526;
     --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
   }
 }
 :root[data-theme="dark"] .explainer-root {
-  --bg: #191919; --panel: #202020; --panel-2: #242424; --ink: #ececee; --muted: #9a9aa0;
-  --line: #2f2f2f; --line-soft: #292929;
-  --accent: #9d9df0; --accent-soft: #26264a;
-  --warn: #f0796b; --warn-soft: #3a221e; --warn-line: #5c3029;
-  --ok: #4ec98a; --ok-soft: #1c2f26; --ok-line: #2c4c3c;
-  --blue: #6fa8f5; --blue-soft: #1b2a44; --blue-line: #2b4066;
-  --amber: #e0913f; --amber-soft: #35281a; --amber-line: #5c4526;
+  --bg: #191919; --panel: #202020; --panel-2: #252525; --ink: #e6e6e6; --muted: #9b9b9b;
+  --line: #373737; --line-soft: #2b2b2b;
+  --accent: #4a8bd6; --accent-soft: #28374d;
+  --warn: #d67670; --warn-soft: #3a2422; --warn-line: #5c322e;
+  --ok: #4caf7d; --ok-soft: #1f2f27; --ok-line: #305041;
+  --blue: #4a8bd6; --blue-soft: #28374d; --blue-line: #3a5372;
+  --amber: #d3a13c; --amber-soft: #352a19; --amber-line: #5a4526;
   --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
 }
 :root[data-theme="light"] .explainer-root {
-  --bg: #ffffff; --panel: #f7f7f8; --panel-2: #ffffff; --ink: #1a1a1a; --muted: #6b6b70;
-  --line: #e3e3e6; --line-soft: #eeeef0;
-  --accent: #5b5bd6; --accent-soft: #ececfb;
-  --warn: #c0392b; --warn-soft: #fbe9e7; --warn-line: #f0b3aa;
-  --ok: #1a7f4b; --ok-soft: #e3f5ec; --ok-line: #a9dcc2;
-  --blue: #2f6fd6; --blue-soft: #e6effc; --blue-line: #bcd3f5;
-  --amber: #b25000; --amber-soft: #fbeede; --amber-line: #e6c48f;
+  --bg: #f7f6f3; --panel: #f1f0ee; --panel-2: #ffffff; --ink: #37352f; --muted: #787774;
+  --line: #e9e9e7; --line-soft: #efeeec;
+  --accent: #2383e2; --accent-soft: #e7f2fb;
+  --warn: #e03e3e; --warn-soft: #fdebea; --warn-line: #f4c4c1;
+  --ok: #448361; --ok-soft: #e7f2ec; --ok-line: #bcdcc9;
+  --blue: #2383e2; --blue-soft: #e7f2fb; --blue-line: #bcd8f5;
+  --amber: #d9730d; --amber-soft: #fbecd9; --amber-line: #eecb98;
   --shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.05);
 }
 
