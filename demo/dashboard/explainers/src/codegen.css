@@ -248,8 +248,8 @@
 /* ---- coda (beat 4): honest-framing doc cards ---- */
 .cg .coda-rule { display: flex; align-items: center; gap: 14px; margin: -14px 20px 20px; color: var(--muted); }
 .cg .coda-rule::before, .cg .coda-rule::after { content: ""; height: 1px; background: var(--line); flex: 1; }
-.cg .coda-rule span { font: 600 11px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; }
-.cg .coda { border-style: dashed; background: var(--panel); }
+.cg .coda-rule span { font: 500 12px/1 var(--sans); color: var(--muted); }
+.cg .coda { border: none; background: none; box-shadow: none; }
 .cg .coda .beat-tag { color: var(--accent); }
 .cg .doc { width: 326px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2);
   box-shadow: var(--shadow); overflow: hidden; }
@@ -287,27 +287,30 @@
 }
 
 /* beat 1: the problem — typed access two ways (mirrors md/sqlite .ways) */
-.cg .ways { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 100%; }
-.cg .target-cap { font: 600 10.5px/1 var(--mono); letter-spacing: .04em; color: var(--muted); margin: 0 0 12px; }
-.cg .waylist { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 680px; }
-.cg .wayrow { display: flex; align-items: stretch; border: 1px solid var(--line); border-radius: 12px;
-  background: var(--panel-2); box-shadow: var(--shadow); overflow: hidden; }
-.cg .wayrow.win { border-color: var(--ok-line); background: var(--ok-soft); }
-.cg .waylabel { flex: none; width: 128px; padding: 12px 14px; display: flex; flex-direction: column; gap: 3px;
-  border-right: 1px solid var(--line-soft); background: var(--panel); }
-.cg .wayrow.win .waylabel { background: transparent; border-right-color: var(--ok-line); }
+.cg .ways { display: flex; flex-direction: column; align-items: center; gap: 18px; width: 100%; }
+.cg .target-cap { font: 500 13px/1 var(--sans); color: var(--muted); margin: 0; }
+.cg .waylist { display: flex; flex-direction: column; width: 100%; max-width: 680px; }
+.cg .wayrow { display: flex; align-items: stretch; gap: 22px; border-top: 1px solid var(--line); }
+.cg .waylist .wayrow:first-child { border-top: none; }
+.cg .waylabel { flex: none; width: 128px; padding: 16px 0; display: flex; flex-direction: column; gap: 3px; }
 .cg .wayname { font: 700 13px/1.2 var(--sans); color: var(--ink); }
-.cg .waykind { font: 600 9px/1 var(--mono); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
-.cg .waymark { margin-top: 3px; font: 700 11px/1.2 var(--sans); color: var(--warn); }
+.cg .waykind { font: 500 11px/1 var(--sans); color: var(--muted); }
+.cg .waymark { margin-top: 3px; font: 600 11px/1.2 var(--sans); color: var(--warn); }
 .cg .wayrow.win .waymark { color: var(--ok); }
-.cg .waycode { flex: 1; min-width: 0; padding: 12px 15px; font-family: var(--mono); font-size: 12px; line-height: 1.65;
+.cg .waycode { flex: 1; min-width: 0; padding: 16px 0; font-family: var(--mono); font-size: 12px; line-height: 1.65;
   color: var(--ink); display: flex; flex-direction: column; gap: 3px; overflow-x: auto; white-space: nowrap; }
+@media (max-width: 720px) {
+  .cg .wayrow { flex-direction: column; gap: 4px; }
+  .cg .waylabel { width: auto; flex-direction: row; align-items: center; gap: 8px; padding: 14px 0 4px; }
+  .cg .waycode { padding: 4px 0 16px; }
+  .cg .waymark { margin-top: 0; margin-left: auto; }
+}
 
-/* beat 4 (coda): the toolkit — feature grid (mirrors md) */
-.cg .features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; width: 100%; max-width: 740px; margin: 0 auto; }
-.cg .fcard { border: 1px solid var(--line); border-radius: 11px; background: var(--panel-2); padding: 13px 14px;
+/* beat 4 (coda): the toolkit — feature list (mirrors md) */
+.cg .features { display: flex; flex-direction: column; width: 100%; max-width: 740px; margin: 0 auto; }
+.cg .fcard { border-top: 1px solid var(--line); background: none; padding: 12px 0;
   display: flex; flex-direction: column; gap: 6px; }
+.cg .features .fcard:first-child { border-top: none; }
 .cg .fcard .ft { font: 700 13px/1.25 var(--sans); color: var(--ink); display: flex; align-items: baseline; gap: 7px; }
 .cg .fico { color: var(--accent); font-size: 12px; line-height: 1; flex: none; }
 .cg .fcard .fb { font-size: 12px; line-height: 1.5; color: var(--muted); }
-@media (max-width: 720px){ .cg .features { grid-template-columns: 1fr 1fr; } }
