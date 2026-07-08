@@ -243,7 +243,7 @@ const HowGallery = () => {
   ]
   const b = blocks[active]!
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-10">
       {/* view tabs — Notion gallery/view-switcher pattern (underline active) */}
       <div className="flex flex-wrap items-center gap-1 border-b border-border">
         {blocks.map((blk, i) => (
