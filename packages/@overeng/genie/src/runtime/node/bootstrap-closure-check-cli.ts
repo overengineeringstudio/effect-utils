@@ -48,6 +48,9 @@ const discoverGenieFiles = (repoRoot: string): readonly string[] =>
     .filter((line) => line.length > 0)
     .map((relativePath) => path.join(repoRoot, relativePath))
 
+/**
+ * Runs the standalone bootstrap import-closure checker CLI.
+ */
 export const bootstrapClosureCheckMain = ({
   argv,
   defaultRepoRoot,
