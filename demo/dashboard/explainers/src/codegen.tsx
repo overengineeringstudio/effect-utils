@@ -29,7 +29,6 @@ import {
   Sequence,
   Terminal,
   TerminalLine,
-  WinTitle,
   nbsp,
   type IdeTreeItem,
   type NotionNav,
@@ -150,7 +149,7 @@ const SeeItWork = () => (
       <>
         {/* LEFT: the generated code (mini-IDE) + the terminal driving it — the EFFECT */}
         <div className="seq-col left">
-          <MiniIDE title={<WinTitle icon="◆" file="schema.gen.ts" />} tag="TS" tree={IDE_TREE} tab="schema.gen.ts">
+          <MiniIDE file="schema.gen.ts" tag="TS" tree={IDE_TREE} tab="schema.gen.ts">
             {/* step-1 placeholder — the gated effect's "before" state */}
             <div className="ide-empty only-1">
               <span className="big">◆</span>
@@ -207,7 +206,7 @@ const SeeItWork = () => (
             </div>
           </MiniIDE>
 
-          <Terminal title={<WinTitle icon="❯_" file="zsh — your repo" />}>
+          <Terminal file="zsh — your repo">
             <TerminalLine extra="only-1">
               <Prompt /> <span className="cur" />
             </TerminalLine>
@@ -244,7 +243,6 @@ const SeeItWork = () => (
         {/* RIGHT: Notion surface — the SOURCE OF TRUTH (never changes across steps 1–3) */}
         <div className="seq-col right">
           <NotionSurface
-            title={<WinTitle icon="◼" label="Notion" />}
             tag="source of truth"
             workspace={LABELS.workspace}
             workspaceInitial={LABELS.workspaceInitial}

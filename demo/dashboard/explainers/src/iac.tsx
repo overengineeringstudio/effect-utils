@@ -132,7 +132,7 @@ const DesiredStateCode = () => (
  *  to `Active` on the same row; this page keeps the canonical value). */
 const ProvisionedDB = () => (
   <NotionSurface
-    title={<WinTitle icon="▦" label="Tasks" />}
+    label="Tasks"
     workspace="Team"
     workspaceInitial="T"
     nav={NOTION_NAV}
@@ -185,7 +185,7 @@ const ProvisionedDB = () => (
 
 /** The empty parent page — no Tasks DB yet (the "before"). */
 const EmptyNotion = () => (
-  <MacWindow variant="ntn" title={<WinTitle icon="◼" label="Notion · Team workspace" />} tag="notion">
+  <MacWindow variant="ntn" title={<WinTitle logo="notion" label="Notion · Team workspace" />} tag="notion">
     <div className="ntn-empty">
       <div className="ico">▦</div>
       <div className="t1">No "Tasks" database yet</div>
@@ -204,7 +204,7 @@ const SeeItWork = () => (
         {/* LEFT: the declarative desired-state file (mini-IDE) + the terminal */}
         <div className="seq-col left">
           <MiniIDE
-            title={<WinTitle icon="◆" file="schema/tasks.notiondb.ts" />}
+            file="schema/tasks.notiondb.ts"
             tag="TS"
             tree={IDE_TREE}
             tab="tasks.notiondb.ts"
@@ -212,7 +212,7 @@ const SeeItWork = () => (
             <DesiredStateCode />
           </MiniIDE>
 
-          <Terminal title={<WinTitle icon="❯_" file="zsh — schema-iac" />}>
+          <Terminal file="zsh — schema-iac">
             {/* step 1 — idle prompt (block cursor) */}
             <TerminalLine extra="only-1">
               <span className="p">$</span> <Cursor />

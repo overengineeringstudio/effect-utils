@@ -36,7 +36,6 @@ import {
   Terminal,
   TerminalLine,
   Tg,
-  WinTitle,
   type IdeTreeItem,
   type NotionNav,
 } from '../../kit/components.tsx'
@@ -127,7 +126,7 @@ const SeeItWork = () => (
       <>
         {/* LEFT: the JSX program (mini-IDE) + the terminal running it */}
         <div className="seq-col left">
-          <MiniIDE title={<WinTitle icon="◧" file={LAUNCH.file} />} tag="tsx" tree={IDE_TREE} tab="page.tsx">
+          <MiniIDE file={LAUNCH.file} tag="tsx" tree={IDE_TREE} tab="page.tsx">
             {/* the edited line — its `budget` swap is the CAUSE (flips at step-3 entry) */}
             <div className="edit">
               <KW>const</KW> budget = <Swap was={<STR>{`"${budgetSwap.was}"`}</STR>} now={<STR>{`"${budgetSwap.now}"`}</STR>} />
@@ -185,7 +184,7 @@ const SeeItWork = () => (
             </div>
           </MiniIDE>
 
-          <Terminal title={<WinTitle icon="❯_" file="zsh — notion-react" />}>
+          <Terminal file="zsh — notion-react">
             <TerminalLine extra="only-1">
               <Prompt /> <Cursor />
             </TerminalLine>

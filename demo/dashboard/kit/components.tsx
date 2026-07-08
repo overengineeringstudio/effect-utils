@@ -11,6 +11,7 @@ import * as React from 'react'
 import type { Actor } from './actors.ts'
 import type { PriorityName, StatusName } from './fixtures.ts'
 import { PRIORITY_PILL } from './fixtures.ts'
+import { TechLogo, type LogoName } from './logos.tsx'
 import type { FlowDirection, Step } from './syncStory.ts'
 import { useStepPlayer } from './useStepPlayer.ts'
 
@@ -27,10 +28,51 @@ const Lights = () => (
   </div>
 )
 
-/** Title-bar inner for the `.macw-title` slot: an icon glyph + a mono filename and/or plain label. */
-export const WinTitle = ({ icon, file, label }: { icon?: React.ReactNode; file?: string; label?: string }) => (
+/**
+ * The marks that read clearly better in their OFFICIAL brand color at title-bar
+ * size (TypeScript blue, React cyan). Everything else stays `currentColor` so it
+ * inherits the title-bar text color and re-themes with the dashboard toggle —
+ * Notion/SQLite/GitHub/Markdown deliberately stay monochrome so they never clash
+ * on dark, and terminal/file have no brand color at all.
+ */
+const TITLE_LOGO_BRAND: ReadonlySet<LogoName> = new Set<LogoName>(['typescript', 'react'])
+
+/** Infer the title-bar logo from a filename/extension (mini-IDE default). */
+export const logoForFile = (name: string): LogoName => {
+  const n = name.toLowerCase()
+  if (n.endsWith('.tsx')) return 'react'
+  if (n.endsWith('.ts')) return 'typescript'
+  if (n.endsWith('.nmd') || n.endsWith('.md')) return 'markdown'
+  return 'file'
+}
+
+/**
+ * Title-bar inner for the `.macw-title` slot: an icon + a mono filename and/or
+ * plain label. `logo` renders the official inline-SVG brand mark (sized for the
+ * bar, `currentColor` so it re-themes, brand color only for react/typescript);
+ * `icon` is the raw-glyph / custom-node escape hatch (both are optional — pass
+ * whichever the frame supplies). The surrounding tag/label text names the tech,
+ * so the mark is `decorative` (aria-hidden) to avoid double-announcing.
+ */
+export const WinTitle = ({
+  icon,
+  logo,
+  file,
+  label,
+}: {
+  icon?: React.ReactNode
+  logo?: LogoName
+  file?: string
+  label?: string
+}) => (
   <>
-    {icon != null && <span className="ic">{icon}</span>}
+    {logo != null ? (
+      <span className="ic">
+        <TechLogo name={logo} size={14} brand={TITLE_LOGO_BRAND.has(logo)} decorative style={{ display: 'block' }} />
+      </span>
+    ) : (
+      icon != null && <span className="ic">{icon}</span>
+    )}
     {file != null && <span className="fn">{file}</span>}
     {label != null && <span>{label}</span>}
   </>
@@ -69,16 +111,24 @@ export interface DbTable {
 
 export const DbBrowser = ({
   title,
+  logo = 'sqlite',
+  file,
+  label,
   tag = 'sqlite',
   tables,
   children,
 }: {
-  title: React.ReactNode
+  /** Explicit title node — overrides the default logo + file/label title. */
+  title?: React.ReactNode
+  /** Default title-bar mark (SQLite). */
+  logo?: LogoName
+  file?: string
+  label?: string
   tag?: string
   tables: readonly DbTable[]
   children: React.ReactNode
 }) => (
-  <MacWindow variant="dbb" title={title} tag={tag}>
+  <MacWindow variant="dbb" title={title ?? <WinTitle logo={logo} file={file} label={label} />} tag={tag}>
     <div className="dbb-body">
       <div className="dbb-side">
         <div className="grp">Tables</div>
@@ -137,18 +187,32 @@ export const CodeLine = ({ role, children }: { role?: 'orig' | 'recv'; children:
  *  line-number gutter. `children` are the `.ide-code` lines (use <CodeLine/>). */
 export const MiniIDE = ({
   title,
+  logo,
+  file,
+  label,
   tag = 'editor',
   tree,
   tab,
   children,
 }: {
-  title: React.ReactNode
+  /** Explicit title node — overrides the inferred logo + file title. */
+  title?: React.ReactNode
+  /** Force a title-bar mark; otherwise inferred from `file`'s extension. */
+  logo?: LogoName
+  /** Filename shown in the bar; also drives the inferred logo (.tsx→react,
+   *  .ts→typescript, .nmd/.md→markdown, else the generic file mark). */
+  file?: string
+  label?: string
   tag?: string
   tree: readonly IdeTreeItem[]
   tab: React.ReactNode
   children: React.ReactNode
 }) => (
-  <MacWindow variant="ide" title={title} tag={tag}>
+  <MacWindow
+    variant="ide"
+    title={title ?? <WinTitle logo={logo ?? logoForFile(file ?? '')} file={file} label={label} />}
+    tag={tag}
+  >
     <div className="ide-body">
       <FileTree items={tree} />
       <div className="ide-main">
@@ -173,20 +237,29 @@ export interface NotionNav {
 
 export const NotionSurface = ({
   title,
+  logo = 'notion',
+  label = 'Notion',
+  file,
   tag = 'notion',
   workspace,
   workspaceInitial,
   nav,
   children,
 }: {
+  /** Explicit title node — overrides the default Notion mark + label title. */
   title?: React.ReactNode
+  /** Default title-bar mark (Notion). */
+  logo?: LogoName
+  /** Bar label beside the mark (default "Notion"). */
+  label?: string
+  file?: string
   tag?: string
   workspace: string
   workspaceInitial: string
   nav: readonly NotionNav[]
   children: React.ReactNode
 }) => (
-  <MacWindow variant="ntn" title={title ?? <WinTitle icon="◼" label="Notion" />} tag={tag}>
+  <MacWindow variant="ntn" title={title ?? <WinTitle logo={logo} file={file} label={label} />} tag={tag}>
     <div className="ntn-body">
       <div className="ntn-side">
         <div className="ws">
@@ -231,8 +304,21 @@ export const NotionBlock = ({ role, children }: { role?: 'orig' | 'recv'; childr
 )
 
 // ── Terminal ───────────────────────────────────────────────────────────────
-export const Terminal = ({ title, children }: { title?: React.ReactNode; children: React.ReactNode }) => (
-  <MacWindow variant="tmnl" title={title ?? <WinTitle icon="❯_" file="zsh — notion-db" />}>
+export const Terminal = ({
+  title,
+  logo = 'terminal',
+  file = 'zsh — notion-db',
+  children,
+}: {
+  /** Explicit title node — overrides the default terminal mark + file title. */
+  title?: React.ReactNode
+  /** Default title-bar mark (terminal). */
+  logo?: LogoName
+  /** Bar label (the shell/session name). */
+  file?: string
+  children: React.ReactNode
+}) => (
+  <MacWindow variant="tmnl" title={title ?? <WinTitle logo={logo} file={file} />}>
     <div className="tmnl-body">{children}</div>
   </MacWindow>
 )

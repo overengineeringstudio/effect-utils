@@ -33,7 +33,6 @@ import {
   Swap,
   Tg,
   TypingCaret,
-  WinTitle,
   type IdeTreeItem,
   type SubTab,
 } from '../../kit/components.tsx'
@@ -189,7 +188,7 @@ const ModeSequence = ({
       stage={
         <>
           {/* LEFT — the .nmd mini-IDE (fixed) */}
-          <MiniIDE title={<WinTitle icon="◧" file={ROADMAP.file} />} tree={TREE} tab={ROADMAP.file}>
+          <MiniIDE file={ROADMAP.file} tree={TREE} tab={ROADMAP.file}>
             <CodeLine>
               <Cm>---</Cm>
             </CodeLine>

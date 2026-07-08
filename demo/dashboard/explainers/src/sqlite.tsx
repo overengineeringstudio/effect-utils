@@ -30,7 +30,6 @@ import {
   Terminal,
   TerminalLine,
   TypingCaret,
-  WinTitle,
   nbsp,
 } from '../../kit/components.tsx'
 import { EDITED_TASK, LABELS, SQLITE_STORY, TASKS } from '../../kit/fixtures.ts'
@@ -86,7 +85,7 @@ const SeeItWork = () => (
         {/* LEFT: local SQLite DB browser + the terminal driving it */}
         <div className="seq-col left">
           <DbBrowser
-            title={<WinTitle icon="◧" file={LABELS.sqliteFile} />}
+            file={LABELS.sqliteFile}
             tables={DB_TABLES}
           >
             <table className="dbb-grid">
