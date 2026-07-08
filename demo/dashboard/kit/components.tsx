@@ -463,6 +463,12 @@ export const StepPlayer = ({ steps }: { steps: readonly Step[] }) => (
       {steps[0]?.caption}
     </p>
     <div className="seq-ctrl">
+      <button className="seq-btn" type="button" data-act="prev" aria-label="Previous step">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M15 5v14l-9-7z" />
+          <rect x="4" y="5" width="2.4" height="14" />
+        </svg>
+      </button>
       <button className="seq-btn" type="button" data-act="toggle" aria-label="Play or pause">
         <svg className="ic-play" viewBox="0 0 24 24" aria-hidden="true">
           <path d="M8 5v14l11-7z" />
@@ -471,19 +477,13 @@ export const StepPlayer = ({ steps }: { steps: readonly Step[] }) => (
           <path d="M6 5h4v14H6zM14 5h4v14h-4z" />
         </svg>
       </button>
-      <button className="seq-btn" type="button" data-act="prev" aria-label="Previous step">
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M15 5v14l-9-7z" />
-          <rect x="4" y="5" width="2.4" height="14" />
-        </svg>
-      </button>
-      <div className="seq-segs" data-segs="" />
       <button className="seq-btn" type="button" data-act="next" aria-label="Next step">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M9 5v14l9-7z" />
           <rect x="17.6" y="5" width="2.4" height="14" />
         </svg>
       </button>
+      <div className="seq-segs" data-segs="" />
       <span className="seq-count" data-count="">
         1 / {steps.length}
       </span>
