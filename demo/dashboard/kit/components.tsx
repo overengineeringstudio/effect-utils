@@ -11,7 +11,8 @@ import * as React from 'react'
 import type { Actor } from './actors.ts'
 import type { PriorityName, StatusName } from './fixtures.ts'
 import { PRIORITY_PILL } from './fixtures.ts'
-import type { Step } from './syncStory.ts'
+import type { FlowDirection, Step } from './syncStory.ts'
+import { useStepPlayer } from './useStepPlayer.ts'
 
 /** non-breaking space — keeps "In Progress" on one line, matches the hand-authored markup. */
 export const NB = ' '
@@ -93,6 +94,76 @@ export const DbBrowser = ({
   </MacWindow>
 )
 
+// ── mini-IDE (editor card) ─────────────────────────────────────────────────
+/** A file-tree row: a `fold` (folder header, twist glyph) or a `file`
+ *  (selectable, icon). Mirrors the DB-browser sidebar selection idiom. */
+export interface IdeTreeItem {
+  readonly kind: 'fold' | 'file'
+  readonly label: string
+  /** file icon (default ▸) or fold twist (default ▾) */
+  readonly icon?: string
+  readonly selected?: boolean
+}
+
+export const FileTree = ({ items }: { items: readonly IdeTreeItem[] }) => (
+  <div className="ide-tree">
+    {items.map((it) =>
+      it.kind === 'fold' ? (
+        <div key={it.label} className="ide-fold">
+          <span className="tw">{it.icon ?? '▾'}</span> {it.label}
+        </div>
+      ) : (
+        <div key={it.label} className={it.selected ? 'ide-file sel' : 'ide-file'}>
+          <span className="ic">{it.icon ?? '▸'}</span> {it.label}
+        </div>
+      ),
+    )}
+  </div>
+)
+
+/** IDE code syntax spans (`.tg` heading/frontmatter-key, `.cm` comment, `.at`
+ *  attr; `.str` frontmatter value is the shared `STR` above). */
+export const Tg = ({ children }: { children: React.ReactNode }) => <span className="tg">{children}</span>
+export const Cm = ({ children }: { children: React.ReactNode }) => <span className="cm">{children}</span>
+export const At = ({ children }: { children: React.ReactNode }) => <span className="at">{children}</span>
+
+/** One code line in the `.ide-code` gutter. `role` paints the causal band
+ *  (`orig` = edited-first/blue, `recv` = received/green); omit for a static line. */
+export const CodeLine = ({ role, children }: { role?: 'orig' | 'recv'; children: React.ReactNode }) => (
+  <div className={role}>{children}</div>
+)
+
+/** macOS-window mini-IDE: file-tree sidebar + a single tabbed editor with a
+ *  line-number gutter. `children` are the `.ide-code` lines (use <CodeLine/>). */
+export const MiniIDE = ({
+  title,
+  tag = 'editor',
+  tree,
+  tab,
+  children,
+}: {
+  title: React.ReactNode
+  tag?: string
+  tree: readonly IdeTreeItem[]
+  tab: React.ReactNode
+  children: React.ReactNode
+}) => (
+  <MacWindow variant="ide" title={title} tag={tag}>
+    <div className="ide-body">
+      <FileTree items={tree} />
+      <div className="ide-main">
+        <div className="ide-tabs">
+          <span className="ide-tab">
+            <span className="tdot" />
+            {tab}
+          </span>
+        </div>
+        <div className="ide-code">{children}</div>
+      </div>
+    </div>
+  </MacWindow>
+)
+
 // ── Notion surface (table variant) ─────────────────────────────────────────
 export interface NotionNav {
   readonly icon: string
@@ -134,6 +205,31 @@ export const NotionSurface = ({
   </MacWindow>
 )
 
+/** NotionSurface PAGE variant: a rendered page (real heading + text blocks, NOT
+ *  markdown syntax). Pass as NotionSurface children instead of an `.ntn-tbl`. */
+export const NotionPage = ({
+  emoji,
+  heading,
+  children,
+}: {
+  emoji: string
+  heading: React.ReactNode
+  children: React.ReactNode
+}) => (
+  <div className="ntn-page">
+    <div className="nh">
+      <span className="emoji">{emoji}</span>
+      {heading}
+    </div>
+    {children}
+  </div>
+)
+
+/** One rendered Notion block. `role` paints the causal band (`orig`/`recv`). */
+export const NotionBlock = ({ role, children }: { role?: 'orig' | 'recv'; children: React.ReactNode }) => (
+  <div className={role ? `blk ${role}` : 'blk'}>{children}</div>
+)
+
 // ── Terminal ───────────────────────────────────────────────────────────────
 export const Terminal = ({ title, children }: { title?: React.ReactNode; children: React.ReactNode }) => (
   <MacWindow variant="tmnl" title={title ?? <WinTitle icon="❯_" file="zsh — notion-db" />}>
@@ -161,8 +257,20 @@ export const OK = ({ children }: { children: React.ReactNode }) => <span classNa
 export const Cursor = () => <span className="cur" />
 
 // ── collaborator typing caret ──────────────────────────────────────────────
-export const TypingCaret = ({ actor, children }: { actor: Actor; children: React.ReactNode }) => (
-  <span className="type" data-actor={actor.name} style={{ ['--actor-color' as string]: actor.color } as React.CSSProperties}>
+/** A collaborator's typewriter + name-flag caret. `ch` sets the typewriter's
+ *  target width (default 33ch — a full terminal line); pass the text's own
+ *  length for short inline edits (e.g. `$30`) so the caret lands right after it. */
+export const TypingCaret = ({ actor, ch, children }: { actor: Actor; ch?: number; children: React.ReactNode }) => (
+  <span
+    className="type"
+    data-actor={actor.name}
+    style={
+      {
+        ['--actor-color' as string]: actor.color,
+        ...(ch != null ? { ['--type-ch' as string]: `${ch}ch` } : {}),
+      } as React.CSSProperties
+    }
+  >
     <span className="type-text">{children}</span>
     <span className="type-caret" aria-hidden="true">
       <span className="type-flag">{actor.name}</span>
@@ -220,6 +328,46 @@ export const Flow = ({
   </div>
 )
 
+// ── directional connector (push → · ← pull · ⇄ two) ────────────────────────
+/** The multi-way / reversed connector. `direction` drives the arrows and rails
+ *  independently of pane position (the .nmd stays LEFT, Notion stays RIGHT).
+ *  Distinct `.dflow*` classnames from <Flow> so the two never cross-style. */
+export const DirFlow = ({
+  direction,
+  badge,
+  note,
+}: {
+  direction: FlowDirection
+  badge: string
+  note: string
+}) => (
+  <div className={`dflow ${direction}`}>
+    <div className="dflow-badge">
+      <span className="dot" />
+      {nbsp(badge)}
+    </div>
+    <div className="dflow-rail">
+      {direction === 'two' ? (
+        <>
+          <span className="dtrack top" />
+          <span className="dtrack bot" />
+          <span className="dhead rr" />
+          <span className="dhead ll" />
+          <span className="dpkt fwd" />
+          <span className="dpkt rev" />
+        </>
+      ) : (
+        <>
+          <span className="dtrack" />
+          <span className={direction === 'push' ? 'dhead r' : 'dhead l'} />
+          <span className={direction === 'push' ? 'dpkt fwd' : 'dpkt rev'} />
+        </>
+      )}
+    </div>
+    <div className="dflow-note">{note}</div>
+  </div>
+)
+
 // ── sequence player (segmented bar controls) ───────────────────────────────
 /** The `.seq-live` control block the engine drives (play/pause, prev/next,
  *  segmented progress bar, count). Hidden until the engine sets data-mode="anim". */
@@ -257,9 +405,11 @@ export const StepPlayer = ({ steps }: { steps: readonly Step[] }) => (
   </div>
 )
 
-/** The static numbered legend — the caption SOURCE OF TRUTH the engine reads. */
+/** The static numbered legend — the caption SOURCE OF TRUTH the engine reads.
+ *  Wrapped in `.seq-legend-wrap` so BOTH the cap and the list hide in anim mode
+ *  and reappear together under reduced-motion / JS-off. */
 export const SeqLegend = ({ legendCap, steps }: { legendCap: string; steps: readonly Step[] }) => (
-  <div>
+  <div className="seq-legend-wrap">
     <p className="seq-legend-cap">{legendCap}</p>
     <ol className="seq-legend">
       {steps.map((s) => (
@@ -281,16 +431,93 @@ export const Sequence = ({
   steps,
   legendCap,
   stage,
+  after,
 }: {
   steps: readonly Step[]
   legendCap: string
   stage: React.ReactNode
+  /** optional `.seq-after` slot: terminal chips / warnings / conflict cards
+   *  revealed at late steps (via `.step-hide r3/.r3only/.r4`), below the stage. */
+  after?: React.ReactNode
+}) => {
+  // Per-sequence driver (engine.js ported). On the server this is a no-op (effects
+  // don't run), so the legacy SSG markup is unchanged; in the app it arms the
+  // segmented bar + data-step state machine and tears down cleanly on unmount/HMR.
+  const ref = React.useRef<HTMLDivElement>(null)
+  useStepPlayer(ref)
+  return (
+    <div className="seq" data-seq="" ref={ref}>
+      <div className="seq-stage">{stage}</div>
+      {after != null && <div className="seq-after">{after}</div>}
+      <StepPlayer steps={steps} />
+      <SeqLegend legendCap={legendCap} steps={steps} />
+    </div>
+  )
+}
+
+/**
+ * SubTabbedSequences — a pure-CSS (zero-JS) sub-tab switcher over N panels in
+ * ONE beat. Emits the radios + dual-line labels + `.mpanels` the kit's
+ * nth-of-type CSS switches; each panel is typically its own <Sequence> (an
+ * independent `[data-seq]` the engine's forEach auto-plays). Reusable by any
+ * port that needs source-of-truth / mode sub-tabs.
+ *
+ * The three fragment groups (inputs → `.tabbar` → `.mpanels`) MUST stay direct
+ * siblings in this order for the `~` combinator; rendering the fragment directly
+ * inside a beat satisfies that.
+ */
+export interface SubTab {
+  /** stable id fragment; the radio becomes `${group}-${id}` */
+  readonly id: string
+  /** direction glyph shown before the name (→ / ← / ⇄) */
+  readonly dir: string
+  readonly name: string
+  /** the mono `source:` chip under the name */
+  readonly chip: string
+  /** the panel body (usually a <Sequence>, optionally preceded by a subhead) */
+  readonly panel: React.ReactNode
+}
+
+export const SubTabbedSequences = ({
+  group,
+  tabs,
+  defaultId,
+}: {
+  /** radio-group name + id prefix (e.g. 'mdmode') */
+  readonly group: string
+  readonly tabs: readonly SubTab[]
+  /** which tab is checked initially (default: the first) */
+  readonly defaultId?: string
 }) => (
-  <div className="seq" data-seq="">
-    <div className="seq-stage">{stage}</div>
-    <StepPlayer steps={steps} />
-    <SeqLegend legendCap={legendCap} steps={steps} />
-  </div>
+  <>
+    {tabs.map((t, i) => (
+      <input
+        key={t.id}
+        type="radio"
+        name={group}
+        id={`${group}-${t.id}`}
+        className="mtabs"
+        defaultChecked={defaultId != null ? t.id === defaultId : i === 0}
+      />
+    ))}
+    <div className="tabbar" role="tablist">
+      {tabs.map((t) => (
+        <label key={t.id} className="tablabel" htmlFor={`${group}-${t.id}`} role="tab">
+          <span className="tl-top">
+            <span className="dirn">{t.dir}</span> {t.name}
+          </span>
+          <span className="tl-chip">{t.chip}</span>
+        </label>
+      ))}
+    </div>
+    <div className="mpanels">
+      {tabs.map((t) => (
+        <div key={t.id} className="mpanel">
+          {t.panel}
+        </div>
+      ))}
+    </div>
+  </>
 )
 
 // ── page scaffolding ───────────────────────────────────────────────────────

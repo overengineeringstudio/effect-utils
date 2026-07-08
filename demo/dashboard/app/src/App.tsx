@@ -1,4 +1,4 @@
-import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
+import { type FC, type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import type { RawSegment } from '../../screenplay.ts'
 import { DEMOS, type DemoModel, type ModelBeat, type Shot } from './model.gen.ts'
 import { InlineMd } from './inline-md.tsx'
@@ -19,6 +19,7 @@ import {
   TerminalLine,
   WinTitle,
 } from '../../kit/index.ts'
+import { EXPLAINERS } from '../../explainers/src/registry.tsx'
 
 // ---------------------------------------------------------------------------
 // pure helpers — ported byte-for-byte from build.ts
@@ -90,7 +91,12 @@ const fmtWhen = (iso?: string): string => {
   return `${mon} ${day} ${hh}:${mm}Z`
 }
 
-const canExplain = (d: DemoModel): boolean => !!d.explainerSrc
+// Inline explainer components, keyed by demo id (registry id === demo id for the
+// ported explainers). A demo is "explainable" iff a React explainer is registered
+// here — NOT whether a legacy .html exists — so unported demos (schema/react)
+// still fall through to the graceful "no explainer" affordance.
+const EXPLAINER_BY_ID: Record<string, FC> = Object.fromEntries(EXPLAINERS.map((e) => [e.id, e.Component]))
+const canExplain = (d: DemoModel): boolean => d.id in EXPLAINER_BY_ID
 const hasBackups = (d: DemoModel): boolean => d.beats.some((b) => b.images.length > 0)
 
 type View = 'instructions' | 'explanation'
@@ -339,52 +345,10 @@ const BeatCard = ({
 }
 
 // ---------------------------------------------------------------------------
-// explainer iframe — auto-height so the PAGE scrolls, never the iframe.
-//
-// The explainer pages are SAME-ORIGIN siblings (served from demo/explainers/),
-// so we read the loaded document's scrollHeight and pin the iframe to exactly
-// that — no inner scrollbar, single document scroll. Measurement is made
-// height-independent by first collapsing to 0 (scrollHeight can never report a
-// value smaller than the frame's own height), forcing a sync reflow, then
-// reading. Re-measures on load (fires after images) and on window resize
-// (rAF-debounced) since a width change reflows the content to a new height.
-// The explainers are normal-flow docs (no html/body 100vh sizing — verified),
-// so onLoad + resize is sufficient; no inner ResizeObserver needed.
+// (The former ExplainerFrame iframe + scrollHeight auto-height machinery was
+// removed: explainers now render INLINE as React components — see EXPLAINER_BY_ID
+// and the `.explainer-root` embed in DemoSection below. No iframe, no .next.html.)
 // ---------------------------------------------------------------------------
-
-const ExplainerFrame = ({ src, title }: { src?: string; title: string }) => {
-  const ref = useRef<HTMLIFrameElement>(null)
-  const measure = useCallback(() => {
-    const frame = ref.current
-    const doc = frame?.contentDocument
-    if (!frame || !doc) return
-    frame.style.height = '0px' // baseline: make the read independent of current height
-    const h = doc.documentElement.scrollHeight // forces sync reflow
-    if (h > 0) frame.style.height = `${h}px`
-  }, [])
-  useEffect(() => {
-    let raf = 0
-    const onResize = () => {
-      cancelAnimationFrame(raf)
-      raf = requestAnimationFrame(measure)
-    }
-    window.addEventListener('resize', onResize)
-    return () => {
-      cancelAnimationFrame(raf)
-      window.removeEventListener('resize', onResize)
-    }
-  }, [measure])
-  return (
-    <iframe
-      ref={ref}
-      title={title}
-      loading="lazy"
-      src={src}
-      onLoad={measure}
-      className="block w-full border-none bg-white"
-    />
-  )
-}
 
 // ---------------------------------------------------------------------------
 // demo section — one per demo, ALL kept mounted (build.ts renders every
@@ -398,7 +362,6 @@ const DemoSection = ({
   explainOpen,
   allShown,
   openBeats,
-  explainerLoaded,
   onToggleExplain,
   onCloseExplain,
   onToggleAllBackups,
@@ -410,7 +373,6 @@ const DemoSection = ({
   explainOpen: boolean
   allShown: boolean
   openBeats: Record<string, boolean>
-  explainerLoaded: Record<string, boolean>
   onToggleExplain: () => void
   onCloseExplain: () => void
   onToggleAllBackups: () => void
@@ -419,6 +381,7 @@ const DemoSection = ({
 }) => {
   const canExp = canExplain(d)
   const hasBk = hasBackups(d)
+  const Explainer = EXPLAINER_BY_ID[d.id]
   return (
     <section hidden={!active}>
       {/* PLANNED banner — aspirational demo; must be impossible to mistake for shipping */}
@@ -548,12 +511,16 @@ const DemoSection = ({
               ✕
             </button>
           </div>
-          {/* lazy: src set on first open, then persists (section never unmounts).
-              Auto-heights to its content so the page scrolls, never the iframe. */}
-          <ExplainerFrame
-            title={`${d.tab} explainer`}
-            src={explainerLoaded[d.id] ? d.explainerSrc ?? undefined : undefined}
-          />
+          {/* Inline React explainer — the SAME component the standalone page
+              renders, scoped under `.explainer-root x-<id>` so the kit CSS +
+              explainer tokens resolve without leaking into the dashboard chrome.
+              Mounted only while open so the step players' timers stay idle when
+              the explanation view is closed. */}
+          {explainOpen && Explainer && (
+            <div className={`explainer-root x-${d.id} overflow-x-auto`}>
+              <Explainer />
+            </div>
+          )}
         </aside>
       )}
     </section>
@@ -1191,9 +1158,6 @@ export const App = () => {
     seedOpen(state.demo, state.backups === 'shown'),
   )
 
-  // explainer iframes are lazy: only mount src once the demo has been explained.
-  const [explainerLoaded, setExplainerLoaded] = useState<Record<string, boolean>>({})
-
   // lightbox
   const [lightbox, setLightbox] = useState<string | null>(null)
 
@@ -1202,15 +1166,13 @@ export const App = () => {
   const commit = useCallback((next: UiState) => {
     const norm = normalize(next)
     setState(norm)
-    if (norm.view === 'explanation') setExplainerLoaded((m) => ({ ...m, [norm.demo]: true }))
     setOpenBeats(seedOpen(norm.demo, norm.backups === 'shown'))
     writeUrl(norm)
   }, [])
 
-  // init: write normalized URL, seed explainer if starting in explanation view.
+  // init: write the normalized URL on first mount.
   useEffect(() => {
     writeUrl(state)
-    if (state.view === 'explanation') setExplainerLoaded((m) => ({ ...m, [state.demo]: true }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -1354,7 +1316,6 @@ export const App = () => {
             explainOpen={d.id === state.demo && explainOpen && canExplain(d)}
             allShown={allShown}
             openBeats={openBeats}
-            explainerLoaded={explainerLoaded}
             onToggleExplain={toggleExplain}
             onCloseExplain={closeExplain}
             onToggleAllBackups={toggleAllBackups}

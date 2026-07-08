@@ -55,9 +55,11 @@ export const sqliteStory = syncStory({
   remote: { pane: 'notion', swap: { was: 'In Progress', now: 'Done', at: { step: 3, delay: 1450 } } },
 })
 
+// sqlite has a distinct local-pane flip (the DB cell), so `local` is present.
+const localSwap = sqliteStory.local!.swap
 // The gated confirmation lines derive their reveal class from the model, so the
 // terminal cannot claim "done" before its cause completes.
-const localDoneReveal = sqliteStory.gatedRevealClass(sqliteStory.local.swap.at) // → r2b
+const localDoneReveal = sqliteStory.gatedRevealClass(localSwap.at) // → r2b
 const remoteDoneReveal = sqliteStory.gatedRevealClass(sqliteStory.remote.swap.at) // → r3b
 
 const DB_TABLES = [
@@ -109,7 +111,7 @@ const SeeItWork = () => (
                   <td className="gut">1</td>
                   <td>{EDITED_TASK.name}</td>
                   <td className="edit">
-                    <Swap was={sqliteStory.local.swap.was} now={sqliteStory.local.swap.now} />
+                    <Swap was={localSwap.was} now={localSwap.now} />
                   </td>
                   <td>{EDITED_TASK.priority}</td>
                   <td>{EDITED_TASK.team}</td>

@@ -68,9 +68,19 @@
 .seq[data-mode="static"] .dbb-grid td.edit,
 .seq:not([data-mode]) .dbb-grid td.edit { box-shadow: inset 3px 0 0 var(--accent); background: var(--accent-soft) !important; }
 
-/* ---- variant: mini-IDE (notion-md / notion-react editor card) ---- */
+/* ---- variant: mini-IDE (notion-md / notion-react editor card) ----
+   File tree mirrors the DB-browser sidebar selection idiom (.dbb-side); the
+   line-number gutter (.ide-code ::before) mirrors the DB-browser row gutter.
+   Reused by md, react, codegen, iac. ---- */
 .ide { width: 100%; }
 .ide-body { display: flex; min-height: 214px; }
+.ide-tree { width: 118px; flex: none; border-right: 1px solid var(--line-soft); background: var(--panel); padding: 8px 0; }
+.ide-fold { display: flex; align-items: center; gap: 6px; padding: 4px 11px 6px; font: 600 10.5px/1 var(--sans); color: var(--ink); }
+.ide-fold .tw { color: var(--muted); font-size: 9px; }
+.ide-file { display: flex; align-items: center; gap: 7px; padding: 5px 11px 5px 22px; font: 500 11.5px/1 var(--sans); color: var(--muted); }
+.ide-file .ic { flex: none; opacity: .5; font-size: 10px; }
+.ide-file.sel { background: var(--accent-soft); color: var(--ink); font-weight: 600; box-shadow: inset 2px 0 0 var(--accent); }
+.ide-file.sel .ic { color: var(--accent); opacity: .9; }
 .ide-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .ide-tabs { display: flex; align-items: center; background: var(--panel); border-bottom: 1px solid var(--line-soft); padding: 0 6px; }
 .ide-tab { display: flex; align-items: center; gap: 8px; padding: 8px 10px; font: 500 10.5px/1 var(--mono); color: var(--ink);
@@ -111,6 +121,14 @@
 .pill-hi { color: var(--warn); background: var(--warn-soft); }
 .pill-md { color: var(--amber); background: var(--amber-soft); }
 
+/* ---- Notion surface: PAGE variant (rendered blocks, not a table) ----
+   md/react render a Notion PAGE: a real heading + text blocks, NOT markdown
+   syntax. Used as the .ntn-main child instead of .ntn-tbl. ---- */
+.ntn-page { display: flex; flex-direction: column; gap: 11px; }
+.ntn-page .nh { font: 700 16px/1.25 var(--sans); letter-spacing: -.012em; color: var(--ink); display: flex; align-items: center; gap: 8px; }
+.ntn-page .nh .emoji { font-size: 15px; }
+.ntn-page .blk { position: relative; font-size: 13px; color: var(--ink); }
+
 /* ---- status pill (round, with dot) — used in Notion surface swaps + mini grids ---- */
 .st { display: inline-flex; align-items: center; gap: 5px; font: 600 11px/1 var(--sans); padding: 3px 9px; border-radius: 20px; }
 .st::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
@@ -147,7 +165,10 @@
 .type-flag { position: absolute; left: -1px; bottom: calc(100% + 3px); background: var(--actor-color); color: #fff;
   font: 700 8px/1.35 var(--sans); letter-spacing: .02em; padding: 1.5px 5px; border-radius: 4px 4px 4px 0;
   white-space: nowrap; box-shadow: 0 1px 3px rgba(0,0,0,.22); }
-@keyframes typein { from { max-width: 0; } to { max-width: 33ch; } }
+/* typewriter target width defaults to 33ch (a full terminal line); short inline
+   edits (e.g. md's `$30` swap value) set `--type-ch` to their own length so the
+   caret lands right after the text instead of far to its right. */
+@keyframes typein { from { max-width: 0; } to { max-width: var(--type-ch, 33ch); } }
 @keyframes caretblink { 0%,55%{opacity:1;} 55.01%,100%{opacity:0;} }
 /* anim: caret only rides the EDIT step; text reveals only then, full otherwise */
 .seq[data-mode="anim"] .type-caret { display: none; }
@@ -170,6 +191,63 @@
   box-shadow: 0 0 0 4px var(--accent-soft); opacity: 0; }
 .flow-check { font: 700 11px/1 var(--sans); color: var(--ok); opacity: 1; transition: opacity .3s; }
 
+/* ---- DIRECTIONAL connector (.dflow) — DISTINCT namespace from .flow ----
+   The multi-way / reversed-direction connector for md (and react/codegen/iac):
+   direction is set per instance (.push → · .pull ← · .two ⇄ double-rail), the
+   .nmd stays LEFT and Notion stays RIGHT, only the arrows flip. Kept in its OWN
+   classnames (.dflow*, .dtrack, .dhead, .dpkt, .dflow-note) so NONE of the
+   sqlite `.flow*` step-3 choreography leaks onto it and vice-versa. */
+.dflow { width: 98px; flex: none; align-self: center; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.dflow-badge { display: inline-flex; align-items: center; gap: 6px; text-align: center; font: 600 9px/1.25 var(--mono);
+  letter-spacing: .02em; color: var(--accent); background: var(--accent-soft); border: 1px solid var(--accent);
+  border-radius: 20px; padding: 5px 9px; transition: all .35s ease; }
+.dflow-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex: none; }
+.dflow-rail { position: relative; width: 100%; height: 18px; }
+.dflow.two .dflow-rail { height: 30px; }
+.dflow .dtrack { position: absolute; left: 2px; right: 6px; height: 2px; top: 8px; background: var(--accent); border-radius: 2px; transition: background .35s; }
+.dflow.two .dtrack.top { top: 5px; } .dflow.two .dtrack.bot { top: 23px; }
+.dflow .dhead { position: absolute; top: 3px; width: 0; height: 0; border-top: 5px solid transparent; border-bottom: 5px solid transparent; transition: border-color .35s; }
+.dflow .dhead.r, .dflow .dhead.rr { right: 0; border-left: 8px solid var(--accent); }
+.dflow .dhead.l, .dflow .dhead.ll { left: 0; border-right: 8px solid var(--accent); }
+.dflow.two .dhead.rr { top: 0; } .dflow.two .dhead.ll { top: 18px; }
+.dflow .dpkt { position: absolute; top: 4px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); opacity: 0; }
+.dflow.two .dpkt.fwd { top: 1px; } .dflow.two .dpkt.rev { top: 19px; }
+.dflow-note { font: 600 9.5px/1 var(--mono); letter-spacing: .04em; color: var(--accent); }
+
+/* .dflow choreography — idle (muted) at steps 1–2; active (accent) at step 3;
+   the packet makes ONE gated pass (not an infinite loop) so effects can be
+   gated to its arrival. */
+.seq[data-mode="anim"][data-step="1"] .dflow-badge,
+.seq[data-mode="anim"][data-step="2"] .dflow-badge { color: var(--muted); background: var(--panel); border-color: var(--line); }
+.seq[data-mode="anim"][data-step="1"] .dflow-badge .dot,
+.seq[data-mode="anim"][data-step="2"] .dflow-badge .dot { background: var(--muted); }
+.seq[data-mode="anim"][data-step="1"] .dflow .dtrack,
+.seq[data-mode="anim"][data-step="2"] .dflow .dtrack { background: var(--line); }
+.seq[data-mode="anim"][data-step="1"] .dflow .dhead.r, .seq[data-mode="anim"][data-step="1"] .dflow .dhead.rr,
+.seq[data-mode="anim"][data-step="2"] .dflow .dhead.r, .seq[data-mode="anim"][data-step="2"] .dflow .dhead.rr { border-left-color: var(--line); }
+.seq[data-mode="anim"][data-step="1"] .dflow .dhead.l, .seq[data-mode="anim"][data-step="1"] .dflow .dhead.ll,
+.seq[data-mode="anim"][data-step="2"] .dflow .dhead.l, .seq[data-mode="anim"][data-step="2"] .dflow .dhead.ll { border-right-color: var(--line); }
+.seq[data-mode="anim"][data-step="1"] .dflow-note,
+.seq[data-mode="anim"][data-step="2"] .dflow-note { color: var(--muted); }
+.seq[data-mode="anim"][data-step="3"] .dflow-badge .dot { animation: blink .72s ease-in-out 2 both; }
+.seq[data-mode="anim"][data-step="3"] .dflow .dpkt.fwd { animation: dpkttravel 1.4s cubic-bezier(.45,0,.55,1) both; }
+.seq[data-mode="anim"][data-step="3"] .dflow .dpkt.rev { animation: dpkttravelRev 1.4s cubic-bezier(.45,0,.55,1) both; }
+@keyframes dpkttravel { 0%{ left: 0; opacity: 0; } 12%{ opacity: 1; } 82%{ opacity: 1; } 100%{ left: calc(100% - 12px); opacity: 0; } }
+@keyframes dpkttravelRev { 0%{ left: calc(100% - 12px); opacity: 0; } 12%{ opacity: 1; } 82%{ opacity: 1; } 100%{ left: 0; opacity: 0; } }
+
+/* recv effect gated to packet ARRIVAL (~1.15s into step 3), NOT step entry — the
+   intra-step gate multiSyncStory asserts. The received value crossfades and its
+   green band lights only when the courier lands. */
+.seq[data-mode="anim"][data-step="3"] .recv .s-now { animation: fadein .35s ease 1.15s both; }
+.seq[data-mode="anim"][data-step="3"] .recv .s-was { animation: fadeout .35s ease 1.15s both; }
+.seq[data-mode="anim"][data-step="3"] .ide-code > div.recv { animation: recvband 1s ease 1.15s both; }
+.seq[data-mode="anim"][data-step="3"] .ntn-page .blk.recv { animation: recvbandblk 1s ease 1.15s both; }
+@keyframes recvband { from { background: transparent; box-shadow: none; } to { background: var(--ok-soft); box-shadow: inset 3px 0 0 var(--ok); } }
+@keyframes recvbandblk { from { background: transparent; box-shadow: none; } to { background: var(--ok-soft); box-shadow: inset 2px 0 0 var(--ok); } }
+/* md terminal confirmations wait for arrival too: `pushed`/`pulled` land at
+   ~1.45s (reuse r3b); `shared-merged` (r3only) lands at ~1.35s. */
+.seq[data-mode="anim"][data-step="3"] .r3only { transition-delay: 1.35s; }
+
 /* ---- SEQUENCE ENGINE (data-driven, reusable) ----
    Base markup = the fully-resolved (union) view — this is what a
    no-JS or reduced-motion viewer sees. JS adds data-mode="anim"
@@ -179,6 +257,15 @@
 .seq-col { display: flex; flex-direction: column; gap: 12px; }
 .seq-col.left { width: 430px; flex: none; }
 .seq-col.right { width: 356px; flex: none; }
+
+/* ---- .seq-after: the terminal-chip / warning / conflict-card slot revealed at
+   late steps, laid out below the animated stage. Reusable (md, codegen, iac). ---- */
+.seq-after { display: flex; flex-direction: column; align-items: center; gap: 10px; min-height: 34px; }
+.term { display: inline-flex; align-items: center; gap: 8px; font: 600 11.5px/1 var(--mono); border-radius: 8px; padding: 7px 11px; }
+.term .pmt { color: var(--muted); font-weight: 600; }
+.term.g { color: var(--ok); background: var(--ok-soft); border: 1px solid var(--ok-line); }
+.term.b { color: var(--blue); background: var(--blue-soft); border: 1px solid var(--blue); }
+.term.w { color: var(--warn); background: var(--warn-soft); border: 1px solid var(--warn-line); }
 
 /* stepwise reveal helpers (only active in anim mode; opacity keeps layout stable) */
 .seq[data-mode="anim"] .step-hide { opacity: 0; transition: opacity .4s ease; }
@@ -199,6 +286,38 @@
 /* r3b: gated confirmation (e.g. `applied & verified`) lands only when the sync packet arrives (~1.45s) */
 .seq[data-mode="anim"][data-step="3"] .r3b { opacity: 1; transition-delay: 1.45s; }
 .seq[data-mode="anim"][data-step="4"] .r3b { opacity: 1; }
+/* r3only: a reveal that shows at EXACTLY step 3 (not cumulative) — e.g. md's
+   `shared-merged` chip, replaced by the `shared-conflict` warn at step 4. */
+.seq[data-mode="anim"][data-step="3"] .r3only { opacity: 1; }
+
+/* ---- role bands: editedFirst (orig, blue) / received (recv, green) ----
+   The reusable two-way causal primitive (md, react). A `.orig` element is the
+   side that edits FIRST (lit at step ≥2); a `.recv` element RECEIVES on sync
+   (lit at step ≥3, gated behind the sync/flow step). Direction is decoupled
+   from pane position — either the IDE or the Notion pane may carry `.orig`
+   (that swap IS the reversed-pull vs push distinction). Applied to a code line
+   (`.ide-code > div`) or a Notion block (`.ntn-page .blk`). */
+.ide-code > div.orig { background: var(--blue-soft); box-shadow: inset 3px 0 0 var(--blue); }
+.ide-code > div.recv { background: var(--ok-soft); box-shadow: inset 3px 0 0 var(--ok); }
+.ntn-page .blk.orig { border-radius: 6px; padding: 3px 7px; margin: -3px -7px; background: var(--blue-soft); box-shadow: inset 2px 0 0 var(--blue); }
+.ntn-page .blk.recv { border-radius: 6px; padding: 3px 7px; margin: -3px -7px; background: var(--ok-soft); box-shadow: inset 2px 0 0 var(--ok); }
+/* bands off at baseline; orig lights at step ≥2, recv at step ≥3 */
+.seq[data-mode="anim"][data-step="1"] .ide-code > div.orig,
+.seq[data-mode="anim"][data-step="1"] .ntn-page .blk.orig { background: transparent; box-shadow: none; }
+.seq[data-mode="anim"][data-step="1"] .ide-code > div.recv,
+.seq[data-mode="anim"][data-step="2"] .ide-code > div.recv,
+.seq[data-mode="anim"][data-step="1"] .ntn-page .blk.recv,
+.seq[data-mode="anim"][data-step="2"] .ntn-page .blk.recv { background: transparent; box-shadow: none; }
+/* swap gating by role: orig's new value appears at step 2 (the edit), recv's at
+   step 3 (the sync). This is the verified cause-before-effect gate `multiSyncStory`
+   asserts. Not scoped to a pane class, so it works for BOTH IDE-orig (push) and
+   Notion-orig (reversed pull). */
+.seq[data-mode="anim"][data-step="1"] .orig .s-now { opacity: 0; }
+.seq[data-mode="anim"][data-step="1"] .orig .s-was { opacity: 1; }
+.seq[data-mode="anim"][data-step="1"] .recv .s-now,
+.seq[data-mode="anim"][data-step="2"] .recv .s-now { opacity: 0; }
+.seq[data-mode="anim"][data-step="1"] .recv .s-was,
+.seq[data-mode="anim"][data-step="2"] .recv .s-was { opacity: 1; }
 
 /* status morphs: base shows the resolved (Done) state */
 .swap { display: inline-grid; }
@@ -289,7 +408,11 @@
   font: 700 10px/19px var(--mono); text-align: center; }
 .seq-legend-cap { font: 600 10px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 0 0 3px; }
 
-/* ---- sub-tab nav (radio driven, zero-JS switching — notion-md) ---- */
+/* ---- sub-tab nav (radio driven, zero-JS switching) ----
+   GENERAL: keyed on ORDER (nth-of-type), not per-explainer ids, so any port can
+   drop N radios + N .tablabel + N .mpanel (in that sibling order) and get pure-CSS
+   switching. The k-th checked radio reveals the k-th panel and lights the k-th
+   label. Rules provided for up to 5 sub-tabs (md uses 3). */
 input.mtabs { position: absolute; opacity: 0; pointer-events: none; }
 .tabbar { display: flex; gap: 8px; margin: 16px 0 6px; flex-wrap: wrap; }
 .tablabel { cursor: pointer; display: flex; flex-direction: column; gap: 3px; align-items: flex-start;
@@ -298,16 +421,23 @@ input.mtabs { position: absolute; opacity: 0; pointer-events: none; }
 .tablabel .tl-top .dirn { font-size: 13px; color: var(--muted); transition: color .15s; }
 .tablabel .tl-chip { font: 600 10px/1 var(--mono); letter-spacing: .02em; color: var(--muted); transition: color .15s; }
 .tablabel:hover { border-color: var(--accent); }
-#md-local:checked  ~ .tabbar label[for=md-local],
-#md-remote:checked ~ .tabbar label[for=md-remote],
-#md-shared:checked ~ .tabbar label[for=md-shared] { border-color: var(--accent); background: var(--accent-soft); }
-#md-local:checked  ~ .tabbar label[for=md-local]  .tl-chip, #md-local:checked  ~ .tabbar label[for=md-local]  .dirn,
-#md-remote:checked ~ .tabbar label[for=md-remote] .tl-chip, #md-remote:checked ~ .tabbar label[for=md-remote] .dirn,
-#md-shared:checked ~ .tabbar label[for=md-shared] .tl-chip, #md-shared:checked ~ .tabbar label[for=md-shared] .dirn { color: var(--accent); }
+/* active label highlight (k = 1..5) */
+.mtabs:nth-of-type(1):checked ~ .tabbar .tablabel:nth-of-type(1),
+.mtabs:nth-of-type(2):checked ~ .tabbar .tablabel:nth-of-type(2),
+.mtabs:nth-of-type(3):checked ~ .tabbar .tablabel:nth-of-type(3),
+.mtabs:nth-of-type(4):checked ~ .tabbar .tablabel:nth-of-type(4),
+.mtabs:nth-of-type(5):checked ~ .tabbar .tablabel:nth-of-type(5) { border-color: var(--accent); background: var(--accent-soft); }
+.mtabs:nth-of-type(1):checked ~ .tabbar .tablabel:nth-of-type(1) .tl-chip, .mtabs:nth-of-type(1):checked ~ .tabbar .tablabel:nth-of-type(1) .dirn,
+.mtabs:nth-of-type(2):checked ~ .tabbar .tablabel:nth-of-type(2) .tl-chip, .mtabs:nth-of-type(2):checked ~ .tabbar .tablabel:nth-of-type(2) .dirn,
+.mtabs:nth-of-type(3):checked ~ .tabbar .tablabel:nth-of-type(3) .tl-chip, .mtabs:nth-of-type(3):checked ~ .tabbar .tablabel:nth-of-type(3) .dirn,
+.mtabs:nth-of-type(4):checked ~ .tabbar .tablabel:nth-of-type(4) .tl-chip, .mtabs:nth-of-type(4):checked ~ .tabbar .tablabel:nth-of-type(4) .dirn,
+.mtabs:nth-of-type(5):checked ~ .tabbar .tablabel:nth-of-type(5) .tl-chip, .mtabs:nth-of-type(5):checked ~ .tabbar .tablabel:nth-of-type(5) .dirn { color: var(--accent); }
 .mpanel { display: none; }
-#md-local:checked  ~ .mpanels .mp-local  { display: block; }
-#md-remote:checked ~ .mpanels .mp-remote { display: block; }
-#md-shared:checked ~ .mpanels .mp-shared { display: block; }
+.mtabs:nth-of-type(1):checked ~ .mpanels .mpanel:nth-of-type(1),
+.mtabs:nth-of-type(2):checked ~ .mpanels .mpanel:nth-of-type(2),
+.mtabs:nth-of-type(3):checked ~ .mpanels .mpanel:nth-of-type(3),
+.mtabs:nth-of-type(4):checked ~ .mpanels .mpanel:nth-of-type(4),
+.mtabs:nth-of-type(5):checked ~ .mpanels .mpanel:nth-of-type(5) { display: block; }
 
 @media (prefers-reduced-motion: reduce) {
   /* Reduced-motion fallback that also works with JS OFF: the sequence
@@ -315,6 +445,7 @@ input.mtabs { position: absolute; opacity: 0; pointer-events: none; }
      with the captions shown as a static numbered legend. No auto-advance,
      no packet travel, no flashes. JS additionally swaps controls→legend. */
   .flow-rail .pkt, .flow-badge .dot { animation: none !important; }
+  .dflow .dpkt, .dflow-badge .dot { animation: none !important; }
   .seq .step-hide, .seq .only-1 { opacity: 1 !important; }
   .seq .only-1 { display: none; }
   .seq .swap .s-was { opacity: 0 !important; }

@@ -12,5 +12,12 @@ export interface Actor {
   readonly color: string
 }
 
-export const You: Actor = { name: 'You', color: '#5b5bd6' }
-export const Teammate: Actor = { name: 'Robin', color: '#0f9d8a' }
+/**
+ * You = BLUE, Teammate = ACCENT/purple. This mirrors the notion-md role-band
+ * semantics (spec §3.3): a locally-authored edit reads blue, a Notion/teammate
+ * edit reads accent/purple. Cross-port note: the sqlite pilot renders `You`'s
+ * caret, so its caret hue shifts purple→blue with this change (a .next rebuild,
+ * not a live-file edit) — blue-for-"You" is the intended, more-correct mapping.
+ */
+export const You: Actor = { name: 'You', color: '#2f6fd6' }
+export const Teammate: Actor = { name: 'Robin', color: '#5b5bd6' }

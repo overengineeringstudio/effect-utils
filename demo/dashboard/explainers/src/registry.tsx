@@ -4,6 +4,7 @@
  * file (in src/), inlined after the shared kit CSS.
  */
 import type * as React from 'react'
+import { Md } from './md.tsx'
 import { Sqlite } from './sqlite.tsx'
 
 export interface ExplainerEntry {
@@ -22,5 +23,11 @@ export const EXPLAINERS: readonly ExplainerEntry[] = [
     title: 'notion db — a visual thread',
     css: 'sqlite.css',
     Component: Sqlite,
+  },
+  {
+    id: 'md',
+    title: 'notion md — a visual thread',
+    css: 'md.css',
+    Component: Md,
   },
 ]

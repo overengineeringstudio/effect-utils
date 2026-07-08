@@ -81,3 +81,56 @@ source: local
 ## Pricing
 Enterprise tier — $30 / seat
 `
+
+/**
+ * ── notion-md canonical fixtures (axis D) ──────────────────────────────────
+ * ONE price story per doc, applied consistently across the thread so no beat
+ * contradicts another (spec §4.5/§5 flagged three drifting price sets + a
+ * phantom conflict draft; these fixtures are the single source of truth).
+ *
+ * roadmap.nmd  — the animated Beat 2 (sub-tabbed). Pricing $25→$30 is the primary
+ *                swap shown on screen; Enterprise contact-us→annual-plans is the
+ *                secondary swap (shared tab only). The conflict draft reuses the
+ *                on-screen $25/$30 values (+ one hypothetical remote $35), NOT the
+ *                old phantom $30/$40/$35 that never appeared.
+ * product-spec — the static Beats 1/3/4. "Your edit" is consistently $25; the
+ *                clobbered/base value is $20; a Notion edit is $30.
+ */
+export interface Swap2 {
+  readonly was: string
+  readonly now: string
+}
+
+export const ROADMAP = {
+  file: 'roadmap.nmd',
+  conflictFile: 'roadmap.nmd.conflict.roughdraft.md',
+  pageId: '24d…',
+  heading: 'Roadmap',
+  emoji: '🗺️',
+  navEmoji: '🗺',
+  unit: ' / mo',
+  /** primary swap (Pricing) — the value shown morphing in every sub-tab */
+  pricing: { was: '$25', now: '$30' } satisfies Swap2,
+  /** secondary swap (Enterprise) — exercised only in the shared sub-tab */
+  enterprise: { was: 'contact us', now: 'annual plans' } satisfies Swap2,
+  /** same-line conflict draft — base + local are on-screen values; remote is the
+   *  single hypothetical divergent edit (no phantom numbers). Notion untouched. */
+  conflict: { base: '$25', local: '$30', remote: '$35' },
+  workspace: LABELS.workspace,
+  workspaceInitial: LABELS.workspaceInitial,
+} as const
+
+export const PRODUCT_SPEC = {
+  fileMd: 'docs/product-spec.md',
+  fileNmd: 'product-spec.nmd',
+  conflictFile: 'product-spec.conflict.roughdraft.md',
+  heading: 'Product Spec',
+  todo: 'Finalize the API spec',
+  unit: ' / mo',
+  /** Beat 1 clobber: your $25 edit silently overwritten by the pasted $20. */
+  clobber: { yours: '$25', pasted: '$20' },
+  /** Beat 3 Notion view shows the surviving local value. */
+  view: '$25',
+  /** Coda same-line conflict: local $25 vs notion $30, over base $20. */
+  conflict: { base: '$20', local: '$25', notion: '$30' },
+} as const
