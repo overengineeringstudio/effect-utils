@@ -83,21 +83,20 @@
 
   /* thread header */
   .lead { text-align: left; padding: 0 20px; }
-  .lead .kicker { font: 600 12px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase;
-    color: var(--accent); margin: 0 0 10px; }
+  .lead .kicker { font: 500 14px/1 var(--sans); color: var(--muted); margin: 0 0 10px; }
   .lead h1 { font-size: 30px; line-height: 1.15; margin: 0 0 8px; letter-spacing: -.015em; color: var(--ink); }
   .lead h1 code { font-family: var(--mono); font-size: .74em; background: var(--accent-soft);
     color: var(--accent); padding: 3px 9px; border-radius: 7px; }
   .lead p { color: var(--muted); margin: 0; font-size: 16px; max-width: 64ch; }
   .lead p code { font-family: var(--mono); color: var(--accent); font-size: .92em; }
 
-  /* beat card */
-  .beat { width: 100%; border: 1px solid var(--line); border-radius: 16px; background: var(--panel);
-    box-shadow: var(--shadow); overflow: hidden; }
-  .beat-inner { padding: 26px 34px 28px; display: flex; flex-direction: column; }
+  /* beat — Notion-flat: no card box. Beats separate via the .thread 40px gap;
+   * the faux app surfaces inside .stage keep their own window chrome (R6). */
+  .beat { width: 100%; }
+  .beat-inner { padding: 0 20px; display: flex; flex-direction: column; }
   .beat-head { display: flex; align-items: baseline; gap: 12px; margin: 0 0 3px; }
   .beat-num { font: 700 13px/1 var(--mono); color: var(--accent); letter-spacing: .04em; }
-  .beat-tag { font: 600 11px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  .beat-tag { font: 500 12px/1 var(--sans); color: var(--muted); }
   .beat h2 { font-size: 25px; line-height: 1.2; margin: 4px 0 0; letter-spacing: -.01em; color: var(--ink); }
   .beat h2 em { font-style: normal; color: var(--accent); }
   .beat h2 code { font-family: var(--mono); font-size: .82em; background: var(--accent-soft); color: var(--accent);
