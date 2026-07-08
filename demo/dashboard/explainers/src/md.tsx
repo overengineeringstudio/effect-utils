@@ -480,9 +480,6 @@ export const Md = () => (
     </Beat>
 
     {/* CODA — GOING DEEPER */}
-    <div className="coda-rule">
-      <span>Going deeper · optional</span>
-    </div>
     <Beat num="04" tag="The toolkit" coda>
       <h2>
         Everything <em>notion md</em> does.

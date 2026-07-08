@@ -257,7 +257,6 @@ export const React = () => (
       </h2>
       <div className="stage">
         <div className="ways">
-          <div className="target-cap">change one line on a page · two ways to apply it</div>
           <div className="waylist">
             <div className="wayrow">
               <div className="waylabel">
@@ -404,9 +403,6 @@ export const React = () => (
     </Beat>
 
     {/* CODA — GOING DEEPER */}
-    <div className="coda-rule">
-      <span>Going deeper · optional</span>
-    </div>
     <Beat num="04" tag="The toolkit" coda>
       <h2>
         Everything <em>notion-react</em> does.
@@ -460,32 +456,6 @@ export const React = () => (
           </div>
         </div>
       </div>
-      <div className="fidelity">
-        <div className="fidrow">
-          <span className="blabel">Renders</span>
-          <span className="chips">
-            {['Headings', 'Paragraph', 'To-dos', 'Toggles', 'Lists', 'Code', 'Callouts', 'Quotes', 'Dividers'].map(
-              (b) => (
-                <span className="bchip" key={b}>
-                  {b}
-                </span>
-              ),
-            )}
-          </span>
-        </div>
-        <div className="fidrow">
-          <span className="blabel muted">Next</span>
-          <span className="chips">
-            <span className="bchip muted">pages.move · page-level ops</span>
-          </span>
-        </div>
-      </div>
     </Beat>
-
-    <p className="foot">
-      What first-class would look like: Notion offering a declarative, diffable page API — hand it a tree, get the
-      minimum ops. Until then, <code>notion-react</code> is that reconciler: JSX in, minimum block ops out, keyed on{' '}
-      <code>blockKey</code>.
-    </p>
   </div>
 )

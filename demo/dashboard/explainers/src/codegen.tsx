@@ -501,9 +501,6 @@ export const Codegen = () => (
     </Beat>
 
     {/* CODA — THE TOOLKIT */}
-    <div className="coda-rule">
-      <span>Going deeper · optional</span>
-    </div>
     <Beat num="04" tag="The toolkit" coda>
       <h2>
         Everything <em>notion schema</em> does.
@@ -560,13 +557,5 @@ export const Codegen = () => (
         </div>
       </div>
     </Beat>
-
-    <p className="foot">
-      This is the <b>DB → code</b> direction: Notion owns the shape, your types follow.
-      <span className="inv">
-        The honest inverse — declare the database in a file and provision Notion to match (<b>code → DB</b>) — is a
-        separate, <b>planned</b> capability: see <code>notion schema apply</code> (3.2, roadmap).
-      </span>
-    </p>
   </div>
 )

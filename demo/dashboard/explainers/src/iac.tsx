@@ -430,9 +430,6 @@ export const Iac = () => (
 
       {/* CODA — THE HONEST BOUNDARY. Section id gap preserved as content: this is
           the 3rd displayed beat ("03") though a beat was removed in decluttering. */}
-      <div className="coda-rule">
-        <span>The honest boundary · why it's safe to consider</span>
-      </div>
       <Beat num="03" tag="…and destructive fails closed" coda>
         <h2>
           It would only ever <em>add</em>. Anything that could lose data is <span className="w">refused</span>.
@@ -551,11 +548,6 @@ export const Iac = () => (
           </span>
         </p>
       </Beat>
-
-      <p className="foot">
-        The shipped inverse is <b>3.1 codegen</b> (<code>notion schema generate</code> · DB → code). This page is the
-        honest <b>code → DB</b> direction we'd build on top of the same engine.
-      </p>
     </div>
   </>
 )

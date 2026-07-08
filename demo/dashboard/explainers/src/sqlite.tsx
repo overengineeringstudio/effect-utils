@@ -454,9 +454,6 @@ export const Sqlite = () => (
     </Beat>
 
     {/* CODA — GOING DEEPER */}
-    <div className="coda-rule">
-      <span>Going deeper · optional</span>
-    </div>
     <Beat num="04" tag="The toolkit" coda>
       <h2>
         Everything <em>notion db</em> does.
@@ -536,10 +533,5 @@ export const Sqlite = () => (
         </div>
       </div>
     </Beat>
-
-    <p className="foot">
-      What first-class would look like: Notion exposing real transactional SQL over a typed database. Until then,{' '}
-      <code>notion db</code> gives you <code>sqlite3</code> plus a sync that refuses to corrupt your data.
-    </p>
   </div>
 )
