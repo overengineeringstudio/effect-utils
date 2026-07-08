@@ -79,10 +79,10 @@
   line-height: 1.5;
   padding: 8px 4px 24px;
 
-  .thread { max-width: 1000px; margin: 0 auto; display: flex; flex-direction: column; gap: 40px; }
+  .thread { max-width: 1000px; margin: 0 auto; display: flex; flex-direction: column; gap: 60px; }
 
   /* thread header */
-  .lead { text-align: left; padding: 0 20px; }
+  .lead { text-align: left; padding: 0 20px; margin-bottom: 12px; }
   .lead .kicker { font: 500 14px/1 var(--sans); color: var(--muted); margin: 0 0 10px; }
   .lead h1 { font-size: 30px; line-height: 1.15; margin: 0 0 8px; letter-spacing: -.015em; color: var(--ink); }
   .lead h1 code { font-family: var(--mono); font-size: .74em; background: var(--accent-soft);
@@ -90,24 +90,24 @@
   .lead p { color: var(--muted); margin: 0; font-size: 16px; max-width: 64ch; }
   .lead p code { font-family: var(--mono); color: var(--accent); font-size: .92em; }
 
-  /* beat — Notion-flat: no card box. Beats separate via the .thread 40px gap;
+  /* beat — Notion-flat: no card box. Beats separate via the .thread 60px gap;
    * the faux app surfaces inside .stage keep their own window chrome (R6). */
   .beat { width: 100%; }
   .beat-inner { padding: 0 20px; display: flex; flex-direction: column; }
-  .beat-head { display: flex; align-items: baseline; gap: 12px; margin: 0 0 3px; }
+  .beat-head { display: flex; align-items: baseline; gap: 12px; margin: 0 0 4px; }
   .beat-num { font: 700 13px/1 var(--mono); color: var(--accent); letter-spacing: .04em; }
   .beat-tag { font: 500 12px/1 var(--sans); color: var(--muted); }
   .beat h2 { font-size: 25px; line-height: 1.2; margin: 4px 0 0; letter-spacing: -.01em; color: var(--ink); }
   .beat h2 em { font-style: normal; color: var(--accent); }
   .beat h2 code { font-family: var(--mono); font-size: .82em; background: var(--accent-soft); color: var(--accent);
     padding: 2px 8px; border-radius: 6px; }
-  .stage { margin: 18px 0 14px; position: relative; display: flex; align-items: center;
+  .stage { margin: 28px 0 22px; position: relative; display: flex; align-items: center;
     justify-content: center; min-height: 236px; }
-  .caption { font-size: 15.5px; color: var(--ink); margin: 0; max-width: 82ch; }
+  .caption { font-size: 15.5px; line-height: 1.6; color: var(--ink); margin: 0; max-width: 78ch; }
   .caption b { font-weight: 600; }
   .caption .hint { color: var(--muted); }
   .caption code { font-family: var(--mono); color: var(--accent); font-size: .9em; }
-  .promise { margin-top: 14px; display: inline-flex; align-items: center; gap: 9px; align-self: flex-start;
+  .promise { margin-top: 20px; display: inline-flex; align-items: center; gap: 9px; align-self: flex-start;
     font: 600 13.5px/1 var(--sans); color: var(--ok); background: var(--ok-soft); border: 1px solid var(--ok-line);
     border-radius: 22px; padding: 9px 15px; }
   .promise .nxt { font: 600 10px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
