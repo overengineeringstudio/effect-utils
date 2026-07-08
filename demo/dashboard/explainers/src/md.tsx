@@ -335,7 +335,6 @@ export const Md = () => (
   <div className="thread">
     {/* LEAD */}
     <header className="lead">
-      <p className="kicker">Notion tooling · a thread</p>
       <h1>
         <code>notion md</code> — 2-way Markdown sync for Notion pages
       </h1>
@@ -351,63 +350,68 @@ export const Md = () => (
         The API is great for apps. For everyday jobs, a local <em>file</em> is easier.
       </h2>
       <div className="stage">
-        <div className="s1col">
-          <div className="s1">
-            {/* local doc — the file medium (LEFT) */}
-            <div className="doc local">
-              <div className="doc-bar">
-                <span className="doc-dot f" />
-                <span className="doc-name">{PRODUCT_SPEC.fileMd}</span>
-                <span className="doc-src">repo</span>
+        <div className="ways">
+          {/* the target — the real Notion page (production kit component) */}
+          <div className="target">
+            <NotionSurface workspace={ROADMAP.workspace} workspaceInitial={ROADMAP.workspaceInitial} nav={NAV}>
+              <NotionPage emoji={ROADMAP.emoji} heading={ROADMAP.heading}>
+                <NotionBlock>
+                  Pricing: {ROADMAP.pricing.was}
+                  {ROADMAP.unit}
+                </NotionBlock>
+                <NotionBlock>Enterprise: {ROADMAP.enterprise.was}</NotionBlock>
+              </NotionPage>
+            </NotionSurface>
+          </div>
+          <div className="target-cap">one Notion page · three ways to change one line</div>
+          {/* three ways to touch it: API (scripting) · CLI (ad-hoc) · a local file */}
+          <div className="waylist">
+            <div className="wayrow">
+              <div className="waylabel">
+                <span className="wayname">API</span>
+                <span className="waykind">scripting</span>
+                <span className="waymark">✗ verbose</span>
               </div>
-              <div className="doc-body">
-                <div className="dln">
-                  <span className="h"># {PRODUCT_SPEC.heading}</span>
+              <div className="waycode">
+                <div>
+                  <Tg>await</Tg> notion.blocks.children.list({'{ block_id }'})
                 </div>
-                <div className="dln">
-                  <span className="h">- [x]</span> {PRODUCT_SPEC.todo}
+                <div>
+                  <Cm>// find the Pricing block by hand, then…</Cm>
                 </div>
-                <div className="dln">Pricing: {PRODUCT_SPEC.view} / mo</div>
+                <div>
+                  <Tg>await</Tg> notion.blocks.update({'{ block_id, … }'})
+                </div>
               </div>
             </div>
-            {/* same content, two mediums — no first-class link between them */}
-            <div className="projarrow">
-              <div className="plabel">
-                same content
-                <br />
-                two mediums
+            <div className="wayrow">
+              <div className="waylabel">
+                <span className="wayname">CLI</span>
+                <span className="waykind">ad-hoc</span>
+                <span className="waymark">✗ clunky</span>
               </div>
-              <svg viewBox="0 0 110 26">
-                <path d="M4 13 H96" stroke="currentColor" strokeWidth="1.8" fill="none" />
-                <path d="M90 8 L100 13 L90 18 Z" fill="currentColor" />
-                <path d="M20 18 L10 13 L20 8" stroke="currentColor" strokeWidth="1.8" fill="none" />
-              </svg>
-            </div>
-            {/* Notion doc — rendered blocks, not raw markdown (RIGHT) */}
-            <div className="doc notion">
-              <div className="doc-bar">
-                <span className="doc-dot n" />
-                <span className="doc-name">{PRODUCT_SPEC.heading}</span>
-                <span className="doc-src">Notion</span>
-              </div>
-              <div className="doc-body">
-                <div className="nheading">{PRODUCT_SPEC.heading}</div>
-                <div className="ntodo done">
-                  <span className="ncheck on">
-                    <svg viewBox="0 0 12 12">
-                      <path
-                        d="M2 6.3 L4.7 9 L10 2.9"
-                        fill="none"
-                        stroke="#fff"
-                        strokeWidth="1.9"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  </span>
-                  <span className="t">{PRODUCT_SPEC.todo}</span>
+              <div className="waycode">
+                <div>
+                  <Cm>$</Cm> ntn block list &lt;page&gt; <Cm># hunt for the block id</Cm>
                 </div>
-                <div className="ntext">Pricing: {PRODUCT_SPEC.view} / mo</div>
+                <div>
+                  <Cm>$</Cm> ntn block update &lt;id&gt; --text <STR>"Pricing: $30 / mo"</STR>
+                </div>
+              </div>
+            </div>
+            <div className="wayrow win">
+              <div className="waylabel">
+                <span className="wayname">a file</span>
+                <span className="waykind">grep / edit</span>
+                <span className="waymark">✓ trivial</span>
+              </div>
+              <div className="waycode">
+                <div>
+                  <Cm>$</Cm> grep Pricing roadmap.md
+                </div>
+                <div>
+                  <Cm>$</Cm> sed -i <STR>'s/$25/$30/'</STR> roadmap.md <Cm># or just edit it · git diff</Cm>
+                </div>
               </div>
             </div>
           </div>
