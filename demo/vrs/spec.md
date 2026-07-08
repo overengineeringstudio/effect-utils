@@ -149,7 +149,7 @@ marketing site's navy-AI hero treatment).
 
 ## Explainers (R6)
 
-- Problem-first visual **threads**: 3 core beats (Problem → See-it → Insight) +
+- Problem-first visual **threads**: core beats (Problem → See-it-work → What-it-enables) +
   optional deep-dive coda; each = headline + a **native-chrome** visual + a one-line
   caption that doubles as tweet copy. Each medium is wrapped in its real chrome via a
   shared, reusable frame kit: a **macOS window** base with per-medium variants — a
@@ -157,51 +157,61 @@ marketing site's navy-AI hero treatment).
   SQLite file, a **Notion surface** (sidebar + select-pill DB / rendered page), and a
   **Terminal**. The **See-it-work** beat is a **stepped, auto-advancing animation**
   (play/pause + step dots; `prefers-reduced-motion` → all steps static) showing the
-  change propagate over time. The md explainer is organized by **source-of-truth
-  mode** (**local / notion / shared**; `notion` is `remote` in code). Today the mode
-  only **sub-tabs** the See-it-work beat; **intended (pending):** lift it to a
-  **page-level** selector scoping the whole explainer — the problem beat stays
-  mode-agnostic (the umbrella), the tab drives the concrete scene below (see *Explainer
-  problem framing*). **Invariant:** Notion is always on the **right**, the local/other
-  medium on the **left**; direction is shown by arrows, never by swapping sides.
+  change propagate over time. In the md explainer, the See-it-work beat is **sub-tabbed
+  by source-of-truth mode** (**local / notion / shared**; `notion` is `remote` in code);
+  the problem beat is a **concrete** problem (not a mode-agnostic umbrella) and Beat 3
+  (*What it enables*) is a **per-direction 3-card grid** (see *Explainer problem
+  framing*). **Invariant:** Notion is always on the **right**, the local/other medium on
+  the **left**; direction is shown by arrows, never by swapping sides.
 - **Local HTML is the SoT** (`demo/explainers/notion-<tool>.html`); the Notion
   explainer pages are superseded. Caption-less thread images + a hero GIF per
   tool for X. Ledger: `demo/explainers/README.md`.
 
 ## Explainer problem framing (per building block)
 
-The problem-first beat (R6) opens on the **durable why** the tool exists — not a
-naive-approach failure mode. Captured here as it's aligned per building block; the
-HTML/React component is the copy source of truth (this section is the intent behind
-it). Populated so far for **notion md**.
+The explainer opens **capability-first** — it leads with what the tool does, then
+the beats carry a **problem → enablement** arc (R6). Voice is modeled on the Notion
+dev product page (`notion.com/product/dev`): confident, concrete, peer-to-peer, and
+**never dissing Notion** — the API/CLI are legitimate tools, a local file is simply
+the easier medium for some jobs (vision.md forbids implying Notion is inadequate).
+Captured here as it's aligned per building block; the React component + its self-scoped
+`md.css` are the copy source of truth (this section is the intent behind it). Populated
+so far for **notion md**.
 
 ### notion md
 
-- **Root problem (umbrella, mode-agnostic):** a **medium mismatch**. Notion's API/UI
-  is the right medium for humans reading/editing in a rich UI — but for other jobs a
-  **file is the better medium** (agents, build pipelines, Git, `grep`). The bridge =
-  use the right medium per job and keep both in sync. Deliberately **not** framed as
-  "trapped behind an API" (imprisonment) or "you chose to duplicate a doc."
-- **Three concrete lives = the source-of-truth modes.** The umbrella is stated once
-  for everyone; the page-level SoT tab then picks the reader's world and drives the
-  concrete scene below:
-  - **local** (files → Notion mirror): an agent authors files / you publish repo docs
-    into Notion. Your source lives in Git; Notion is a published mirror.
-  - **notion** (Notion → files, derived): a blog build imports Notion; backup /
-    `git log` your pages. Notion content that can't otherwise feed a pipeline or be
-    versioned.
-  - **shared** (two-way, guarded): human in Notion + agent in files, live.
-- **Lead scene — agents (highest novelty):** *files are the ideal read/write API.* An
-  agent's toolchain already speaks files (`Edit` / `grep` / `git diff`) and a local
-  file is always current — versus reverse-engineering the block API and refetching to
-  guess remote state. The file **is** the API, and the best one.
-- **Clobber/drift is demoted** out of the problem beat to a **solution property**: two
-  live mediums ⇒ conflicts are possible ⇒ the guarded 3-way merge is why you can trust
-  it. It lives in the deep-dive coda (Beat 04) and earns its keep in **shared** mode —
-  it is *not* the reason to care in the first place.
-- **What native would look like:** Notion natively exposes any page/DB as a
-  **file-shaped, versionable, agent-editable surface** — *mount your workspace as
-  files*, first-class, not an export.
+- **Lead (capability-first):** *2-way Markdown sync for Notion pages.* State what it
+  is before any problem — the beats below then walk problem → enablement.
+- **Beat 01 · The Problem** — headline (theme): *working with files is easier than the
+  API/CLI in many cases*. Non-dissing: the API is right for building apps; the point is
+  only that a file wins for ad-hoc, human/agent-scale work.
+  - **Visual:** the **real Notion page** (reusing the production `NotionSurface` /
+    `NotionPage` / `NotionBlock` kit, as the intro slides do) is the shared target on
+    top. Below it, the **same one-line change** shown **three ways** against that page —
+    via the **API** (scripting; verbose), via the **CLI** (ad-hoc; clunky), via a
+    **local file** (`grep`/edit; trivial).
+  - **The point:** you usually **start with only the Notion page** — the local file
+    doesn't exist yet. Making that file trivial to read/edit **is** the motivation for
+    the tool. Clobber/drift is **not** in this beat.
+- **Beat 02 · See it work · pick the direction:** the See-it-work animation, sub-tabbed
+  by **source-of-truth mode** (**local / notion / shared**; `notion` = `remote` in
+  code). Invariant: Notion on the right, the file on the left; direction shown by arrows.
+- **Beat 03 · What it enables** (was "The shift"): a **3-card grid**, one card per
+  direction, each a real scenario:
+  - **local** (file is SoT): keep agent skills & docs as Markdown in a repo and
+    **mirror them into Notion**.
+  - **notion** (Notion is SoT): **Notion as a CMS** — sync content down into a website
+    build.
+  - **shared** (two-way, guarded): live collaboration between a **local agent** (file as
+    SoT) and a **user** (Notion UI as SoT), with a guarded merge.
+- **Beat 04 · The toolkit** (coda): a **broad feature overview**, not a round-trip
+  deep-dive — six glyphed cards (two-way sync, guarded merge, verified writes,
+  git-friendly state, watch mode, self-describing files) with the block round-trip
+  demoted to a **compact secondary fidelity strip** (Round-trips … / Edit in Notion …).
+  Clobber/guarded-merge lives here as one card, not the focus. Content is grounded in a
+  code-verified capability audit of `@overeng/notion-md` (R8: nothing overstated).
+- **Component note:** reuses the **production Notion kit** components (shared with the
+  intro slides); per-explainer styles live in the **self-scoped `md.css`**.
 
 ## Source-of-truth map
 
