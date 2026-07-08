@@ -7,9 +7,10 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 
 - **genie / bootstrap**: make the shared `bootstrap-closure:check` devenv task
-  run effect-utils' checker against the importing repo root via `--root`, so
-  downstream repos can reuse the zero-tolerance bootstrap gate without carrying
-  local wrapper scripts.
+  run a packaged effect-utils checker against the importing repo root via
+  `--root`, so downstream repos can reuse the zero-tolerance bootstrap gate
+  without carrying local wrapper scripts or relying on ambient Bun/package-manager
+  module resolution.
 - **notion-cli**: `schema generate <id> -o schema.gen.ts` now writes the file
   again. The `generate` command registered both a file `--output`/`-o` option
   and the shared TUI render-mode option, which also claimed `--output`/`-o`, so
@@ -51,6 +52,9 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **genie / bootstrap**: add a dedicated `genie-bootstrap-runner` Nix package
+  for the empirical cold proof, keeping the pre-install bootstrap runner
+  separate from the user-facing `genie` CLI and from any source-runtime package.
 - **genie / check**: bootstrap-safe import-closure gate (`bootstrap-closure:check`).
   A `.genie.ts` and everything it transitively imports at RUNTIME must be importable
   from a fresh checkout BEFORE install; a generator that reaches a runtime-only

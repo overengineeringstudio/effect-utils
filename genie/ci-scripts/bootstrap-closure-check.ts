@@ -23,74 +23,11 @@
  *   bun genie/ci-scripts/bootstrap-closure-check.ts --root "$PWD"   # check another repo
  */
 
-import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
 import path from 'node:path'
 
-import { parseGeneratorPhase } from '../../packages/@overeng/genie/src/core/phase.ts'
-import {
-  checkBootstrapClosure,
-  formatViolationChain,
-} from '../../packages/@overeng/genie/src/runtime/node/bootstrap-closure.ts'
+import { bootstrapClosureCheckMain } from '../../packages/@overeng/genie/src/runtime/node/bootstrap-closure-check-cli.ts'
 
-const defaultRepoRoot = path.resolve(import.meta.dir, '../..')
-
-const parseArgs = (argv: readonly string[]): { readonly repoRoot: string } => {
-  let repoRoot = defaultRepoRoot
-
-  for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index]!
-    if (arg === '--root') {
-      const value = argv[index + 1]
-      if (value === undefined || value.length === 0) {
-        throw new Error('--root requires a non-empty path')
-      }
-      repoRoot = path.resolve(value)
-      index += 1
-      continue
-    }
-    throw new Error(`unknown argument: ${arg}`)
-  }
-
-  return { repoRoot }
-}
-
-const discoverGenieFiles = (repoRoot: string): readonly string[] =>
-  execFileSync('git', ['-C', repoRoot, 'ls-files', '*.genie.ts'], { encoding: 'utf8' })
-    .trim()
-    .split('\n')
-    .filter((line) => line.length > 0)
-    .map((relativePath) => path.join(repoRoot, relativePath))
-
-const main = (): void => {
-  const { repoRoot } = parseArgs(process.argv.slice(2))
-  const allGenieFiles = discoverGenieFiles(repoRoot)
-  const bootstrapFiles = allGenieFiles.filter(
-    (file) => parseGeneratorPhase(readFileSync(file, 'utf8')) === 'bootstrap',
-  )
-
-  const { violations, checkedSources } = checkBootstrapClosure({ genieFiles: bootstrapFiles })
-
-  if (violations.length > 0) {
-    console.error(
-      `✗ bootstrap-closure: ${violations.length} bootstrap-phase generator(s) reach a runtime-only package:\n`,
-    )
-    for (const violation of violations) {
-      console.error(`  ${formatViolationChain({ violation, repoRoot })}\n`)
-    }
-    console.error(
-      'A `bootstrap`-phase `.genie.ts` must be importable from a fresh checkout BEFORE install. ' +
-        'Narrow the import (avoid wide barrels that reach runtime-only packages), or — if the ' +
-        'generator genuinely needs the runtime graph — remove its `// @genie-bootstrap` pragma ' +
-        'so it runs post-install as a design-time generator (and ensure no install step depends on its output).',
-    )
-    process.exit(1)
-  }
-
-  console.log(
-    `bootstrap-closure: OK — ${checkedSources.length} bootstrap-phase .genie.ts checked, no violations ` +
-      `(${allGenieFiles.length - bootstrapFiles.length} design-time generator(s) out of scope by declaration)`,
-  )
-}
-
-main()
+bootstrapClosureCheckMain({
+  argv: process.argv.slice(2),
+  defaultRepoRoot: path.resolve(import.meta.dir, '../..'),
+})

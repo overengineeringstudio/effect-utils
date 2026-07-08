@@ -24,6 +24,29 @@ in
     src = workspaceRoot;
     inherit typeProofCompilerBin;
   };
+  genie-bootstrap-runner = import (
+    workspaceRootPath + "/packages/@overeng/genie/nix/bootstrap-runner.nix"
+  ) {
+    inherit
+      pkgs
+      gitRev
+      commitTs
+      dirty
+      ;
+    src = workspaceRoot;
+    inherit typeProofCompilerBin;
+  };
+  genie-bootstrap-closure-check = import (
+    workspaceRootPath + "/packages/@overeng/genie/nix/bootstrap-closure-check.nix"
+  ) {
+    inherit
+      pkgs
+      gitRev
+      commitTs
+      dirty
+      ;
+    src = workspaceRoot;
+  };
   megarepo = import (workspaceRootPath + "/packages/@overeng/megarepo/nix/build.nix") {
     inherit
       pkgs

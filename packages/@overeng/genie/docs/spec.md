@@ -217,7 +217,7 @@ Satisfies R31 (generator phase) and R32 (empirical bootstrap verification); real
 
 **The cold-proof is the authority (R32).** `bootstrap:cold-proof` (`genie/ci-scripts/bootstrap-cold-proof.sh`, devenv task + CI lane) is the load-bearing enforcement:
 
-1. Realize the **self-contained nix genie** (`.#genie`) — a `bun --compile` binary with its deps baked into the store, so it runs with no `node_modules`. (Unlike source-mode genie, it can run cold.)
+1. Realize the **self-contained nix bootstrap runner** (`.#genie-bootstrap-runner`) — a `bun --compile` binary with its deps baked into the store, so it runs with no `node_modules`. (Unlike source-mode genie, it can run cold.)
 2. `git archive HEAD` a **`node_modules`-free tree** of the committed source into a temp dir _outside_ the repo (so bun/pnpm cannot walk up into the repo's `node_modules`).
 3. Run `genie --phase bootstrap` **cold** in that tree. Success proves every bootstrap generator's transitive runtime closure is importable pre-install — a reach into `effect`/`@effect/*`/`@overeng/otel-contract` would throw on import and fail this step. Non-vacuity is asserted by cross-checking the number of generators run (via `--output json`) against the `// @genie-bootstrap`-marked set counted independently from the tree, and by rejecting any per-file `error` status.
 4. Run `pnpm install --frozen-lockfile` in that tree. Success proves the cold-regenerated install inputs match the committed lockfile exactly.

@@ -7,9 +7,10 @@
 # authority for the bootstrap contract; `bootstrap-closure:check` (static) is fast local feedback.
 #
 # Mechanism:
-#   1. Realize the SELF-CONTAINED nix genie (`.#genie`) — a `bun --compile` binary with its deps
-#      baked into the store, so it needs no `node_modules` to run. (Override with
-#      GENIE_COLD_PROOF_BIN=/path/to/genie to reuse an already-built binary and skip the nix build.)
+#   1. Realize the SELF-CONTAINED nix bootstrap runner (`.#genie-bootstrap-runner`) — a
+#      `bun --compile` binary with its deps baked into the store, so it needs no `node_modules`
+#      to run. (Override with GENIE_COLD_PROOF_BIN=/path/to/runner to reuse an already-built
+#      binary and skip the nix build.)
 #   2. Materialize a `node_modules`-free tree of the COMMITTED repo source via `git archive HEAD`
 #      into a temp dir OUTSIDE the repo (so bun/pnpm cannot walk up into the repo's node_modules).
 #   3. Run `genie --phase bootstrap` COLD in that tree. Success proves every bootstrap generator's
@@ -21,7 +22,7 @@
 #
 # Usage:
 #   genie/ci-scripts/bootstrap-cold-proof.sh
-#   GENIE_COLD_PROOF_BIN=./result/bin/genie genie/ci-scripts/bootstrap-cold-proof.sh
+#   GENIE_COLD_PROOF_BIN=./result/bin/genie-bootstrap-runner genie/ci-scripts/bootstrap-cold-proof.sh
 #
 # Exit 0 iff BOTH the cold `genie --phase bootstrap` and the cold `pnpm install` succeed.
 
@@ -36,15 +37,15 @@ fail() {
 repo="${DEVENV_ROOT:-$(git rev-parse --show-toplevel)}"
 cd "$repo"
 
-# --- 1. Self-contained nix genie -------------------------------------------------------------------
+# --- 1. Self-contained nix bootstrap runner --------------------------------------------------------
 genie_bin="${GENIE_COLD_PROOF_BIN:-}"
 if [ -z "$genie_bin" ]; then
-  log "building the self-contained nix genie (.#genie) ..."
-  genie_out="$(nix build --no-link --print-out-paths "${repo}#genie")"
-  genie_bin="${genie_out}/bin/genie"
+  log "building the self-contained nix bootstrap runner (.#genie-bootstrap-runner) ..."
+  genie_out="$(nix build --no-link --print-out-paths "${repo}#genie-bootstrap-runner")"
+  genie_bin="${genie_out}/bin/genie-bootstrap-runner"
 fi
 [ -x "$genie_bin" ] || fail "genie binary is not executable: ${genie_bin}"
-log "using nix genie: ${genie_bin}"
+log "using nix genie bootstrap runner: ${genie_bin}"
 
 # --- 2. node_modules-free tree of the committed source (outside the repo) ---------------------------
 work="$(mktemp -d "${TMPDIR:-/tmp}/genie-cold-proof.XXXXXX")"

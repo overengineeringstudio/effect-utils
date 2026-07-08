@@ -17,19 +17,25 @@
 # feedback (R30); the empirical authority is `bootstrap:cold-proof` (R32), which runs the
 # bootstrap-phase generators in a no-`node_modules` checkout before install (decision 0004).
 #
-# The gate is a checker, not a bootstrap-phase generator: its entry imports the shared
-# `checkBootstrapClosure` walker, which uses the TypeScript compiler API (`import ts from 'typescript'`)
-# to analyse import edges statically. That npm dep must be installed for the checker to run, so the task
-# is ordered `after = [ "pnpm:install" ]`. Downstream members whose install task is named differently
-# pass their own `after`.
+# The gate is a checker, not a bootstrap-phase generator. The task runs a compiled Nix checker
+# package so `typescript` and the walker implementation are explicit package inputs, not ambient
+# Bun auto-install or downstream `node_modules` state.
 {
-  # Tasks that must run before the checker (it imports `typescript`, so it needs install state).
-  after ? [ "pnpm:install" ],
+  # Optional task prerequisites for repos that want local ordering. The checker itself is packaged
+  # and does not require package-manager install state.
+  after ? [ ],
 }:
 { lib, pkgs, ... }:
 let
   trace = import ../lib/trace.nix { inherit lib; };
-  effectUtilsSrc = ../../../..;
+  effectUtilsSrc = builtins.path {
+    path = ../../../..;
+    name = "effect-utils-source";
+  };
+  checkerPkg = import (effectUtilsSrc + "/packages/@overeng/genie/nix/bootstrap-closure-check.nix") {
+    inherit pkgs;
+    src = effectUtilsSrc;
+  };
 in
 {
   tasks = {
@@ -39,7 +45,7 @@ in
       exec = trace.exec "bootstrap-closure:check" ''
         set -uo pipefail
         root="''${DEVENV_ROOT:-$PWD}"
-        ${pkgs.bun}/bin/bun "${effectUtilsSrc}/genie/ci-scripts/bootstrap-closure-check.ts" --root "$root"
+        ${checkerPkg}/bin/genie-bootstrap-closure-check --root "$root"
       '';
     };
   };

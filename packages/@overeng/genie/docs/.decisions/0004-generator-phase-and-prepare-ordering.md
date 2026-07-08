@@ -34,8 +34,8 @@ with the static closure check as fast feedback.
   TypeScript pragma grammar (`@ts-nocheck`/`@ts-check`), read from raw source without importing the
   generator (importing a design-time generator would itself need `effect`).
 - **Enforcement is a real cold run, not a static proxy.** A CI job (`bootstrap:cold-proof`) checks out
-  fresh with no `node_modules`, runs the bootstrap-phase generators with the **self-contained nix genie**
-  (deps baked into the store, needs no install), then runs `pnpm:install`, asserting both succeed. This
+  fresh with no `node_modules`, runs the bootstrap-phase generators with the **self-contained nix
+  bootstrap runner** (`.#genie-bootstrap-runner`, deps baked into the store, needs no install), then runs `pnpm:install`, asserting both succeed. This
   exercises the exact pre-install path and turns bootstrap-safety from _asserted_ into _demonstrated_.
   (Proven feasible: a bootstrap generator's full closure bundles with zero
   `effect`/`@effect/*`/`@overeng/otel-contract`; the nix genie is store-only by construction.)
@@ -68,7 +68,7 @@ with the static closure check as fast feedback.
   no-orphan-seam pattern).** Rejected: still hardcodes "which outputs are install inputs." A static check
   cannot know what install needs.
 - **Empirical cold-proof (P2, chosen):** run marked generators in a fresh, no-`node_modules` tree with the
-  self-contained nix genie, then run frozen install. This is the strongest feasible proof in a committed-output
+  self-contained nix bootstrap runner, then run frozen install. This is the strongest feasible proof in a committed-output
   repo: it exercises the exact bootstrap execution path and install acceptance without adding a hot-path task edge.
 - **Structural ordering (P1).** Rejected/superseded: attractive in principle, but it did not enforce the
   contract here. Source-mode genie cannot run cold, and committed outputs let install succeed without proving
@@ -100,8 +100,8 @@ with the static closure check as fast feedback.
   regardless), while adding cost to every warm install and a new failure mode on the most-depended-on task.
   The devenv graph is now unchanged by this decision except for the additive `bootstrap:cold-proof` task.
 - **`bootstrap:cold-proof` (the empirical authority, R32).** `genie/ci-scripts/bootstrap-cold-proof.sh`
-  (devenv task + a dedicated CI lane in `ci.yml.genie.ts`): builds the self-contained nix genie (`.#genie`,
-  a `bun --compile` binary with deps baked into the store — it runs with no `node_modules`, unlike
+  (devenv task + a dedicated CI lane in `ci.yml.genie.ts`): builds the self-contained nix bootstrap runner
+  (`.#genie-bootstrap-runner`, a `bun --compile` binary with deps baked into the store — it runs with no `node_modules`, unlike
   source-mode genie), `git archive HEAD`s a `node_modules`-free tree of the committed source into a temp dir
   outside the repo, runs `genie --phase bootstrap` cold there (asserting the count of generators run matches
   the independently-counted `// @genie-bootstrap` set, via `--output json`, and that none errored), then runs
