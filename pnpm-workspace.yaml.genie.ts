@@ -21,6 +21,43 @@ export default pnpmWorkspaceYaml.root({
         '@opentui/core@0.4.1 exact-pins string-width@7.2.0; not force-overridden because string-width 8 changes emoji/wide-char width logic that the TUI renderer relies on',
       issue: '#821',
     },
+    {
+      package: 'strip-ansi',
+      // @opentui/core@0.4.1 (latest) pins strip-ansi@7.1.2 exactly while
+      // the catalog tracks 7.2.0 for direct consumers. Keep the catalog current
+      // for Genie's runtime closure, and do not force the renderer's dependency
+      // graph until OpenTUI moves.
+      reason:
+        '@opentui/core@0.4.1 exact-pins strip-ansi@7.1.2; not force-overridden because it is part of the upstream terminal renderer dependency graph',
+      issue: '#821',
+    },
+    {
+      package: 'ansi-regex',
+      // Legacy terminal formatting packages still pull ansi-regex@5.0.1 while
+      // the catalog tracks 6.2.2 for direct runtime consumers. Keep the direct
+      // Genie runtime closure explicit without forcing old transitive users.
+      reason:
+        'legacy terminal formatting dependencies still pull ansi-regex@5.0.1; not force-overridden because those are upstream transitive ranges',
+      issue: '#821',
+    },
+    {
+      package: 'ansi-styles',
+      // Legacy terminal formatting packages still pull ansi-styles@5.2.0 while
+      // slice-ansi@9 uses 6.2.3. Keep Genie's direct runtime closure explicit
+      // without forcing old transitive users.
+      reason:
+        'legacy terminal formatting dependencies still pull ansi-styles@5.2.0; not force-overridden because those are upstream transitive ranges',
+      issue: '#821',
+    },
+    {
+      package: 'ws',
+      // react-devtools-core@7.0.1 exact-pins ws@7.5.10, so pnpm dedupe cannot
+      // collapse it onto the catalog 8.x. Keep the catalog on ws 8.x for our
+      // direct consumers and revisit when react-devtools-core updates.
+      reason:
+        'react-devtools-core@7.0.1 exact-pins ws@7.5.10; not force-overridden because it is an upstream devtools transport dependency',
+      issue: '#821',
+    },
   ],
   ...commonPnpmWorkspaceData,
 })

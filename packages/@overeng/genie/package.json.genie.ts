@@ -12,19 +12,57 @@ import tuiReactPkg from '../tui-react/package.json.genie.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
+const packagedEffectRuntimeClosureDeps = [
+  // The packaged CLI can resolve Effect modules through nested workspace package node_modules
+  // (e.g. @overeng/utils/node_modules/@effect/platform). Expose the Effect-owned runtime
+  // closure at the packaged root so those nested imports do not depend on hoisted dev state.
+  '@effect/sql',
+  '@effect/typeclass',
+  'fast-check',
+  'find-my-way-ts',
+  'ini',
+  'mime',
+  'msgpackr',
+  'multipasta',
+  'pure-rand',
+  'toml',
+  'undici',
+  'ws',
+  'yaml',
+] as const
+
+const packagedTuiRuntimeClosureDeps = [
+  // @overeng/tui-react is injected into the packaged Genie workspace. Its direct deps are
+  // declared by tui-react; expose the terminal text runtime sidecars reached through
+  // cli-truncate/string-width at the packaged root.
+  'ansi-regex',
+  'ansi-styles',
+  'emoji-regex',
+  'get-east-asian-width',
+  'is-fullwidth-code-point',
+  'scheduler',
+  'slice-ansi',
+  'strip-ansi',
+] as const
+
 const supportDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/genie' }),
   dependencies: {
-    workspace: [otelContractPkg],
-    external: catalog.pick('typescript'),
+    workspace: [otelContractPkg, tuiReactPkg, utilsPkg],
+    external: catalog.pick(
+      'typescript',
+      ...packagedEffectRuntimeClosureDeps,
+      ...packagedTuiRuntimeClosureDeps,
+    ),
   },
   devDependencies: {
-    workspace: [tuiCorePkg, tuiReactPkg, utilsDevPkg, utilsPkg],
+    workspace: [tuiCorePkg, utilsDevPkg],
     external: {
       ...catalog.pick(
         '@effect/cli',
         '@effect/platform',
         '@effect/platform-node',
+        '@effect/platform-node-shared',
         '@effect/printer',
         '@effect/printer-ansi',
         '@effect/vitest',

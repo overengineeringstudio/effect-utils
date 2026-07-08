@@ -18,6 +18,17 @@ All notable changes to this project will be documented in this file.
 - **megarepo / CI**: refresh the nested `effect` lock to the reachable upstream
   `main` commit so downstream cold `mr apply --all` jobs no longer fail before
   tests with an unavailable locked commit.
+- **genie / nix**: make the packaged Genie executable run the Nix-installed Bun
+  source workspace instead of the compiled binary for normal CLI execution.
+  Genie dynamically imports downstream `.genie.ts` graphs, so the packaged CLI
+  preserves Bun's source-module resolver semantics while still being owned by the
+  Nix package. The packaged root now declares only the workspace packages and
+  runtime sidecars the source-mode CLI needs at startup, keeping the dependency
+  surface explicit without carrying the old broad repair history from #887.
+- **genie / check**: make `bootstrap-closure:check` reusable by passing a
+  `--root` to effect-utils' shared checker from the devenv task module.
+  Downstream repos can import the shared task directly instead of maintaining a
+  local wrapper script that duplicates discovery, phase filtering, and diagnostics.
 - **ci-tools / genie**: fix the mechanically-fixable bootstrap-closure violations
   at the source (this drove the interim baseline from 79 entries down to the 5
   `genie/weaver-registry/*.genie.ts` residual; the baseline is then removed

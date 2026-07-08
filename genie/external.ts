@@ -199,8 +199,10 @@ export const catalog = defineCatalog({
   '@effect/ai': '0.36.0',
   'effect-distributed-lock': '0.0.11',
   effect: '3.21.4',
+  ini: '4.1.3',
   '@effect/platform': '0.96.2',
   '@effect/platform-node': '0.107.0',
+  '@effect/platform-node-shared': '0.60.0',
   '@effect/cli': '0.75.2',
   '@effect/vitest': '0.29.0',
   '@effect/printer': '0.49.0',
@@ -212,6 +214,18 @@ export const catalog = defineCatalog({
   '@effect/workflow': '0.18.2',
   '@effect/rpc': '0.75.1',
   '@effect/opentelemetry': '0.63.0',
+  '@parcel/watcher': '2.5.6',
+  'fast-check': '3.23.2',
+  'pure-rand': '6.1.0',
+  'find-my-way-ts': '0.1.6',
+  msgpackr: '1.11.10',
+  mime: '3.0.0',
+  multipasta: '0.2.7',
+  toml: '3.0.0',
+  undici: '7.25.0',
+  uuid: '11.1.0',
+  ws: '8.21.0',
+  yaml: '2.8.3',
 
   // React ecosystem
   react: '19.2.7',
@@ -307,6 +321,7 @@ export const catalog = defineCatalog({
   // OpenTUI / Effect Atom (experimental)
   '@effect-atom/atom': '0.5.3',
   '@effect-atom/atom-react': '0.5.0',
+  scheduler: '0.27.0',
   '@opentui/core': '0.4.1',
   '@opentui/react': '0.4.1',
 
@@ -317,7 +332,14 @@ export const catalog = defineCatalog({
   'react-reconciler': '0.33.0',
   '@types/react-reconciler': '0.33.0',
   'yoga-layout': '3.2.1',
+  'get-east-asian-width': '1.5.0',
+  'is-fullwidth-code-point': '5.1.0',
+  'ansi-regex': '6.2.2',
+  'ansi-styles': '6.2.3',
+  'emoji-regex': '10.6.0',
   'string-width': '8.2.1',
+  'slice-ansi': '9.0.0',
+  'strip-ansi': '7.2.0',
   'cli-truncate': '6.0.0',
 
   // AI agent tooling

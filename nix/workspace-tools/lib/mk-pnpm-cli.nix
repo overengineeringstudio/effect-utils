@@ -326,7 +326,7 @@ let
   coerceSourceRoot =
     sourceRoot:
     if builtins.isAttrs sourceRoot && builtins.hasAttr "outPath" sourceRoot then
-      sourceRoot.outPath
+      sourceRoot
     else if builtins.isPath sourceRoot then
       sourceRoot
     else
@@ -335,6 +335,20 @@ let
   workspaceRootPath = coerceSourceRoot workspaceRoot;
   workspaceRootIsDerivationOutput = isDerivationOutput workspaceRoot;
   evalWorkspaceRootPath = coerceSourceRoot evalWorkspaceRoot;
+  sourceContextInputName =
+    prefix:
+    if prefix == null then
+      "workspaceRootSource"
+    else
+      "workspaceSource_${
+        builtins.replaceStrings [ "-" "." "+" ] [ "_" "_" "_" ] (lib.strings.sanitizeDerivationName prefix)
+      }";
+  sourceContextInputs = {
+    ${sourceContextInputName null} = workspaceRoot;
+  }
+  // lib.mapAttrs' (
+    prefix: sourceRoot: lib.nameValuePair (sourceContextInputName prefix) sourceRoot
+  ) workspaceSources;
 
   sourcePathFilter =
     path: type:
@@ -495,6 +509,17 @@ let
     else
       resolved.fullSourceRoot + "/${resolved.sourceRelPath}";
 
+  shellDirectorySourcePathFor =
+    relPath:
+    let
+      resolved = resolveSourceFor relPath;
+      sourceVar = sourceContextInputName resolved.prefix;
+    in
+    if resolved.sourceRelPath == "." then
+      "$" + sourceVar
+    else
+      "$" + sourceVar + "/${resolved.sourceRelPath}";
+
   # Read workspace closure dirs from the generated package.json ($genie.workspaceClosureDirs).
   # Pre-computed by genie at generation time, avoiding import-from-derivation (IFD).
   # Future alternative: NixOS/nix#15380 (builtins.wasm) could compute this natively at eval time.
@@ -603,7 +628,7 @@ let
     in
     if suffix == "" then "${packagesBlock}\n" else "${packagesBlock}\n\n${suffix}\n";
 
-  workspaceClosureDirs =
+  declaredWorkspaceClosureDirs =
     let
       genieData = packageJson."$genie" or { };
     in
@@ -613,6 +638,33 @@ let
       throw "mk-pnpm-cli: $genie.workspaceClosureDirs does not contain packageDir (${packageDir})"
     else
       genieData.workspaceClosureDirs;
+  expandWorkspaceClosureDirs =
+    seen: pending:
+    if pending == [ ] then
+      seen
+    else
+      let
+        dir = builtins.head pending;
+        rest = builtins.tail pending;
+        resolved = resolveSourceFor dir;
+        packageJsonPath = resolveEvalSourceFor "${dir}/package.json";
+        rawNestedDirs =
+          if builtins.pathExists packageJsonPath then
+            (builtins.fromJSON (builtins.readFile packageJsonPath))."$genie".workspaceClosureDirs or [ ]
+          else
+            [ ];
+        nestedDirs =
+          if resolved.prefix == null || resolved.prefix == "." || resolved.prefix == "" then
+            rawNestedDirs
+          else
+            map (nestedDir: "${resolved.prefix}/${nestedDir}") rawNestedDirs;
+        unseenNestedDirs = builtins.filter (nestedDir: !(lib.elem nestedDir seen)) nestedDirs;
+      in
+      if lib.elem dir seen then
+        expandWorkspaceClosureDirs seen rest
+      else
+        expandWorkspaceClosureDirs (seen ++ [ dir ]) (rest ++ unseenNestedDirs);
+  workspaceClosureDirs = expandWorkspaceClosureDirs [ ] declaredWorkspaceClosureDirs;
   workspaceMembers = builtins.filter (dir: dir != packageDir) workspaceClosureDirs;
 
   resolvedWorkspaceMembers = map (
@@ -907,11 +959,11 @@ let
   copyDirCmd =
     relPath:
     let
-      srcPath = absoluteDirectorySourcePathFor relPath;
+      srcPath = shellDirectorySourcePathFor relPath;
     in
     ''
       ${mkdirOutParentCmd relPath}
-      cp -R ${lib.escapeShellArg (toString srcPath)} "$out/${builtins.dirOf relPath}/"
+      cp -R "${srcPath}" "$out/${builtins.dirOf relPath}/"
       chmod -R +w "$out/${relPath}"
     '';
 
@@ -1072,7 +1124,7 @@ let
   # not delegated to nested install roots. It still stages external install-root
   # manifests so the aggregate lockfile can resolve linked workspace packages
   # against the exact member set that will exist in the final composed build.
-  rootDepsSrc = pkgs.runCommand "${name}-pnpm-deps-src" { } (
+  rootDepsSrc = pkgs.runCommand "${name}-pnpm-deps-src" sourceContextInputs (
     ''
       set -euo pipefail
       mkdir -p "$out"
@@ -1099,23 +1151,25 @@ let
   externalInstallRootDeps = map (
     root:
     let
-      depsSrc = pkgs.runCommand "${installRootDepsDerivationName root}-pnpm-deps-src" { } (
-        ''
-          set -euo pipefail
-          mkdir -p "$out"
-        ''
-        + stageExternalInstallRootManifestOnlyCmd root
-        + copyResolvedPatchFilesCmd {
-          sourcePrefix = "";
-          workspaceYamlContent = rootPnpmWorkspaceYaml;
-          targetPrefix = "${root.installDir}/.root-patches";
-        }
-        + ''
-          mkdir -p "$out/.root-patch-authority"
-          cp ${lib.escapeShellArg (toString (absoluteFileSourcePathFor "pnpm-lock.yaml"))} "$out/.root-patch-authority/pnpm-lock.yaml"
-          cp ${lib.escapeShellArg (toString (absoluteFileSourcePathFor "pnpm-workspace.yaml"))} "$out/.root-patch-authority/pnpm-workspace.yaml"
-        ''
-      );
+      depsSrc =
+        pkgs.runCommand "${installRootDepsDerivationName root}-pnpm-deps-src" sourceContextInputs
+          (
+            ''
+              set -euo pipefail
+              mkdir -p "$out"
+            ''
+            + stageExternalInstallRootManifestOnlyCmd root
+            + copyResolvedPatchFilesCmd {
+              sourcePrefix = "";
+              workspaceYamlContent = rootPnpmWorkspaceYaml;
+              targetPrefix = "${root.installDir}/.root-patches";
+            }
+            + ''
+              mkdir -p "$out/.root-patch-authority"
+              cp ${lib.escapeShellArg (toString (absoluteFileSourcePathFor "pnpm-lock.yaml"))} "$out/.root-patch-authority/pnpm-lock.yaml"
+              cp ${lib.escapeShellArg (toString (absoluteFileSourcePathFor "pnpm-workspace.yaml"))} "$out/.root-patch-authority/pnpm-workspace.yaml"
+            ''
+          );
       lockfilePath = installRootScopedPath root.installDir "pnpm-lock.yaml";
       depsBuild = pnpmDepsHelper.mkDeps {
         name = installRootDepsDerivationName root;
@@ -1248,7 +1302,7 @@ let
       nameSuffix,
       manifestOnly,
     }:
-    pkgs.runCommand "${name}-${nameSuffix}" { } (
+    pkgs.runCommand "${name}-${nameSuffix}" sourceContextInputs (
       ''
         set -euo pipefail
         mkdir -p "$out"
