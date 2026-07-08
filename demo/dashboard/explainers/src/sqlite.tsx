@@ -457,85 +457,84 @@ export const Sqlite = () => (
     <div className="coda-rule">
       <span>Going deeper · optional</span>
     </div>
-    <Beat num="04" tag="…and it fails closed" coda>
+    <Beat num="04" tag="The toolkit" coda>
       <h2>
-        A write Notion can't take safely? A typed <em>refusal</em> — never lost data.
+        More than SQL — the full <em>notion db</em> toolkit.
       </h2>
       <div className="stage">
-        <div className="guard">
-          <div className="col">
-            <div className="gedit bad">
-              <div className="gt">edit a formula column</div>
-              <div className="sql">
-                <span className="kw">update</span> rows <span className="kw">set</span>{' '}
-                <span className="str">"Total"</span>=999 …
-              </div>
+        <div className="features">
+          <div className="fcard">
+            <div className="ft">
+              <span className="fico">⌦</span> Track any database
             </div>
-            <div className="gedit bad">
-              <div className="gt">hard delete a row</div>
-              <div className="sql">
-                <span className="kw">delete from</span> rows <span className="kw">where</span> …
-              </div>
-            </div>
-            <div className="gedit good">
-              <div className="gt">edit a writable cell</div>
-              <div className="sql">
-                <span className="kw">update</span> rows <span className="kw">set</span>{' '}
-                <span className="str">"Status"</span>=<span className="str">'Done'</span>
-              </div>
+            <div className="fb">
+              <code>notion db track</code> pulls a Notion database into a local <code>.sqlite</code> file.
             </div>
           </div>
-          <div className="gate-core">
-            <div className="gate-arrows">
-              <svg viewBox="0 0 96 46">
-                <path d="M2 8 C42 8 40 23 80 23" stroke="var(--warn)" strokeWidth="1.6" fill="none" />
-                <path d="M2 38 C42 38 40 23 80 23" stroke="var(--warn)" strokeWidth="1.6" fill="none" />
-                <path d="M74 18 L84 23 L74 28 Z" fill="var(--warn)" />
-              </svg>
+          <div className="fcard">
+            <div className="ft">
+              <span className="fico">▤</span> Plain SQL
             </div>
-            <div className="gate-op">◆ guarded planner</div>
-            <div
-              style={{
-                font: '600 10px/1 var(--mono)',
-                letterSpacing: '.04em',
-                color: 'var(--muted)',
-                textAlign: 'center',
-              }}
-            >
-              plan · guard · verify · apply
+            <div className="fb">
+              Query and edit with any SQLite tool; <code>notion db sync</code> pushes the cells back.
             </div>
           </div>
-          <div className="col">
-            <div className="refusal">
-              <div className="refusal-bar">⚠ blocked · GuardBlocked</div>
-              <div className="refusal-body">
-                <div className="rerr">
-                  <span className="tag">ComputedPropertyWrite</span>
-                  <span className="msg">"Computed Notion properties cannot be written"</span>
-                </div>
-                <div className="rerr">
-                  <span className="tag">DeleteVsEdit</span>
-                  <span className="msg">
-                    hard DELETE refused — use <b>_in_trash=1</b>
-                  </span>
-                </div>
-              </div>
+          <div className="fcard">
+            <div className="ft">
+              <span className="fico">⇄</span> Two-way sync
             </div>
-            <div className="passed">
-              <div className="passed-bar">✓ allowed · applied</div>
-              <div className="passed-body">Status → Done · verified in Notion</div>
+            <div className="fb">
+              <code>--mode shared</code> syncs both directions; <code>local</code> / <code>remote</code> stay one-way.
+            </div>
+          </div>
+          <div className="fcard">
+            <div className="ft">
+              <span className="fico">◆</span> Fails closed
+            </div>
+            <div className="fb">
+              Formula/rollup writes and hard deletes are refused as a typed guard — never silently dropped.
+            </div>
+          </div>
+          <div className="fcard">
+            <div className="ft">
+              <span className="fico">◷</span> Watch mode
+            </div>
+            <div className="fb">
+              <code>sync --watch</code> reacts to local edits and re-checks Notion for remote changes.
+            </div>
+          </div>
+          <div className="fcard">
+            <div className="ft">
+              <span className="fico">▦</span> Status &amp; conflicts
+            </div>
+            <div className="fb">
+              <code>notion db status</code> shows drift; overlapping edits surface as conflicts, not overwrites.
             </div>
           </div>
         </div>
       </div>
-      <p className="caption">
-        <b>Every write is checked before it touches Notion.</b>{' '}
-        <span className="hint">
-          Formula/rollup writes and hard <code>DELETE</code>s are refused as a typed <code>GuardBlocked</code> event
-          with a named guard (<code>ComputedPropertyWrite</code>, <code>DeleteVsEdit</code>) — blocked until the
-          behavior is proven safe, never silently dropped. Writable cells sail through, verified.
-        </span>
-      </p>
+      <div className="fidelity">
+        <div className="fidrow">
+          <span className="blabel">Writable</span>
+          <span className="chips">
+            {['Text', 'Number', 'Select', 'Status', 'Multi-select', 'Date', 'Checkbox', 'URL'].map((b) => (
+              <span className="bchip" key={b}>
+                {b}
+              </span>
+            ))}
+          </span>
+        </div>
+        <div className="fidrow">
+          <span className="blabel muted">Edit in Notion</span>
+          <span className="chips">
+            {['Formula', 'Rollup', 'Created / edited time'].map((b) => (
+              <span className="bchip muted" key={b}>
+                {b}
+              </span>
+            ))}
+          </span>
+        </div>
+      </div>
     </Beat>
 
     <p className="foot">
