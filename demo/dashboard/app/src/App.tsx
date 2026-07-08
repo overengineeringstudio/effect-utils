@@ -538,7 +538,8 @@ interface UiState {
 }
 
 const readUrl = (): UiState => {
-  const s: UiState = { demo: TAB_IDS[0]!, view: 'instructions', backups: 'hidden' }
+  // default to the explanation (explainer) view; normalize() keeps intro / no-explainer demos on instructions
+  const s: UiState = { demo: TAB_IDS[0]!, view: 'explanation', backups: 'hidden' }
   const p = new URLSearchParams(location.hash.replace(/^#/, ''))
   const demo = p.get('demo')
   if (demo && TAB_IDS.includes(demo)) s.demo = demo
@@ -908,6 +909,20 @@ const MiniFlow = () => (
 // mini Notion DATABASE (a Notion surface, NOT SQLite chrome) — the shared left
 // side of the sqlite + schema blocks. `flip`/`react` animate a Status pill when
 // the arriving edit/IaC token lands here. This is what makes Notion visible.
+// a status-pill crossfade (was→now) keyed for the two-way sqlite sync animation.
+const SqSwap = ({ k, was, wasCls, now }: { k: string; was: string; wasCls: string; now: string }) => (
+  <span className={'swap ' + k}>
+    <span className="s-was">
+      <span className={'st ' + wasCls}>{was}</span>
+    </span>
+    <span className="s-now">
+      <span className="st st-done">{now}</span>
+    </span>
+  </span>
+)
+
+// mini Notion DATABASE (a Notion surface). `flip` (sqlite block) makes Ship v1 +
+// Fix deploy animate as the two-way replica syncs; schema uses the static form.
 const MiniNotionDb = ({ flip = false }: { flip?: boolean }) => (
   <NotionSurface
     title={notionTitle}
@@ -932,14 +947,7 @@ const MiniNotionDb = ({ flip = false }: { flip?: boolean }) => (
           </td>
           <td>
             {flip === true ? (
-              <span className="swap">
-                <span className="s-was">
-                  <span className="st st-prog">Todo</span>
-                </span>
-                <span className="s-now">
-                  <span className="st st-done">Done</span>
-                </span>
-              </span>
+              <SqSwap k="sq-n1" was="Todo" wasCls="st-prog" now="Done" />
             ) : (
               <span className="st st-done">Done</span>
             )}
@@ -950,7 +958,11 @@ const MiniNotionDb = ({ flip = false }: { flip?: boolean }) => (
             <span className="pg">▤</span>Fix deploy
           </td>
           <td>
-            <span className="st st-prog">In&nbsp;Progress</span>
+            {flip === true ? (
+              <SqSwap k="sq-n2" was={'In Progress'} wasCls="st-prog" now="Done" />
+            ) : (
+              <span className="st st-prog">In&nbsp;Progress</span>
+            )}
           </td>
         </tr>
         <tr>
@@ -1005,21 +1017,14 @@ const MiniSqliteDb = () => (
           <td className="gut">1</td>
           <td>Ship v1</td>
           <td>
-            <span className="swap sqlocal">
-              <span className="s-was">
-                <span className="st st-prog">Todo</span>
-              </span>
-              <span className="s-now">
-                <span className="st st-done">Done</span>
-              </span>
-            </span>
+            <SqSwap k="sq-l1" was="Todo" wasCls="st-prog" now="Done" />
           </td>
         </tr>
         <tr>
           <td className="gut">2</td>
           <td>Fix deploy</td>
           <td>
-            <span className="st st-prog">In&nbsp;Progress</span>
+            <SqSwap k="sq-l2" was={'In Progress'} wasCls="st-prog" now="Done" />
           </td>
         </tr>
       </tbody>
@@ -1358,7 +1363,7 @@ const IntroPanel = ({ hidden }: { hidden: boolean }) => (
             <div className="side">
               <MiniLocalSqlite />
             </div>
-            <Conn dir="→" action="synced to Notion" />
+            <Conn dir="⇄" action="live sync" />
             <div className="side">
               <MiniNotionDb flip />
             </div>
