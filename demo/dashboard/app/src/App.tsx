@@ -345,21 +345,12 @@ const DemoSection = ({
   const Explainer = EXPLAINER_BY_ID[d.id]
   return (
     <section hidden={!active}>
-      {/* PLANNED banner — aspirational demo; must be impossible to mistake for shipping */}
-      {d.planned && (
-        <div className="mb-3 flex items-center gap-3 rounded-lg border-2 border-amber bg-amber/15 px-4 py-3">
-          <span className="rounded bg-amber px-2 py-1 text-[11px] font-extrabold uppercase tracking-widest text-black">
-            Planned
-          </span>
-          <span className="text-[13.5px] font-semibold text-amber">
-            Not yet implemented — roadmap preview. The commands below are narrated and shown, NOT run; the
-            terminal output is illustrative mock, not a live harness.
-          </span>
-        </div>
-      )}
-      {/* view switcher — Instructions ⇄ Explanation (only when an explainer exists) */}
+      {/* Planned/mock demos (e.g. 3.2) stay labelled per-beat via StatusBadge
+          'mock' + narrated mock output (R8); the former heavy amber banner was
+          removed per design feedback. */}
+      {/* view switcher — Instructions ⇄ Explanation, Notion-native underline tabs */}
       {canExp && (
-        <div className="mb-3 inline-flex rounded-md border border-border bg-bg-panel p-0.5 text-[12px] font-medium">
+        <div className="mb-4 flex items-center gap-1 border-b border-border text-[13px]">
           <button
             type="button"
             onClick={() => {
@@ -367,8 +358,8 @@ const DemoSection = ({
             }}
             className={
               explainOpen
-                ? 'cursor-pointer rounded px-3 py-1 text-fg-muted hover:text-fg'
-                : 'rounded bg-accent px-3 py-1 text-accent-fg'
+                ? '-mb-px cursor-pointer border-b-2 border-transparent px-3 py-2 text-fg-muted hover:text-fg'
+                : '-mb-px border-b-2 border-accent px-3 py-2 font-medium text-fg'
             }
           >
             Instructions
@@ -380,8 +371,8 @@ const DemoSection = ({
             }}
             className={
               explainOpen
-                ? 'rounded bg-accent px-3 py-1 text-accent-fg'
-                : 'cursor-pointer rounded px-3 py-1 text-fg-muted hover:text-fg'
+                ? '-mb-px border-b-2 border-accent px-3 py-2 font-medium text-fg'
+                : '-mb-px cursor-pointer border-b-2 border-transparent px-3 py-2 text-fg-muted hover:text-fg'
             }
           >
             Explanation
@@ -408,16 +399,8 @@ const DemoSection = ({
         <aside
           className={explainOpen ? 'flex w-full flex-col' : 'hidden'}
         >
-          <div className="flex flex-none items-center justify-between border-b border-border px-3 py-2 text-[12.5px] font-semibold text-fg-muted">
-            <span>Explainer · {d.tab}</span>
-            <button
-              type="button"
-              onClick={onCloseExplain}
-              className="cursor-pointer rounded-md border border-border bg-bg-subtle px-2.5 py-1 text-[13px] text-fg-muted hover:bg-bg-panel hover:text-fg"
-            >
-              ✕
-            </button>
-          </div>
+          {/* Explainer header bar removed per design feedback — close is still
+              reachable via the Instructions/Explanation tabs above + the `e` key. */}
           {/* Inline React explainer — the SAME component the standalone page
               renders, scoped under `.explainer-root x-<id>` so the kit CSS +
               explainer tokens resolve without leaking into the dashboard chrome.
@@ -1358,6 +1341,108 @@ const HowGallery = () => {
   )
 }
 
+// Slide-3 "Disclaimer" poster — an ORIGINAL flat Notion-style illustration (a
+// tinkerer's workbench) rendered as self-contained inline SVG. Full-color on its
+// own warm cream inset (fixed in both themes, like Notion's marketing blocks), so
+// the internals use fixed colors, NOT theme tokens. The four gadgets on the bench
+// carry the SAME tool logos as Slide 2 (md / sqlite / schema / react) — the "these
+// are my bespoke daily-drivers" payoff. Figure is deliberately geometric/near-
+// faceless (Notion's character register) to stay legible at poster scale.
+const WorkbenchPoster = () => {
+  // Fixed illustration palette — reads on the cream poster in light AND dark.
+  const ink = '#37352f'
+  const skin = '#f2cfa8'
+  const hair = '#5b4636'
+  const shirt = '#2383e2'
+  const bulb = '#ffd34e'
+  const ray = '#e2952f'
+  const wood = '#e7d3ae'
+  const woodDark = '#d2b98d'
+  // gadget bodies (soft pastels) + their darker emblem inks
+  const G = [
+    { fill: '#cdbdf2', logo: mdLogo, lc: '#4b3f7a', lx: 186, ly: 217 },
+    { fill: '#a9d8bb', logo: sqliteLogo, lc: '#2f6b48', lx: 249, ly: 215 },
+    { fill: '#f4b3a2', logo: schemaMark, lc: '#a24a37', lx: 309, ly: 216 },
+    { fill: '#aeddec', logo: reactLogo, lc: undefined, lx: 372, ly: 215 },
+  ]
+  return (
+    <svg viewBox="0 0 460 300" className="w-full" role="img" aria-label="A tinkerer assembling bespoke Notion tools at a workbench, under a lightbulb">
+      {/* pendant cord + lamp glow */}
+      <line x1="228" y1="0" x2="228" y2="44" stroke={ink} strokeWidth="2" />
+      <circle cx="228" cy="70" r="52" fill={bulb} opacity="0.16" />
+      {/* inspiration rays */}
+      <g stroke={ray} strokeWidth="2.6" strokeLinecap="round">
+        <line x1="228" y1="30" x2="228" y2="18" />
+        <line x1="266" y1="42" x2="276" y2="34" />
+        <line x1="190" y1="42" x2="180" y2="34" />
+        <line x1="280" y1="72" x2="292" y2="72" />
+        <line x1="176" y1="72" x2="164" y2="72" />
+      </g>
+      {/* lightbulb */}
+      <g stroke={ink} strokeWidth="2.4" strokeLinejoin="round" strokeLinecap="round">
+        <circle cx="228" cy="70" r="26" fill={bulb} />
+        <path d="M228 58v9M221 63l7 4 7-4" fill="none" stroke={ink} strokeWidth="1.8" />
+        <path d="M218 92h20M220 98h16" fill="none" stroke={ink} strokeWidth="2" />
+      </g>
+      {/* character — geometric, near-faceless (Notion register); bench hides legs */}
+      <g strokeLinejoin="round" strokeLinecap="round">
+        {/* torso / shirt */}
+        <path d="M78 208c0-20 15-30 34-30s34 10 34 30v46H78z" fill={shirt} stroke={ink} strokeWidth="2.4" />
+        {/* left arm resting on bench */}
+        <path d="M82 214q-12 12-6 30" fill="none" stroke={shirt} strokeWidth="14" />
+        <circle cx="76" cy="243" r="8" fill={skin} stroke={ink} strokeWidth="2.2" />
+        {/* right arm reaching to gadget A */}
+        <path d="M142 206q26 0 40 8" fill="none" stroke={shirt} strokeWidth="14" />
+        <circle cx="190" cy="216" r="8" fill={skin} stroke={ink} strokeWidth="2.2" />
+        {/* screwdriver working the first gadget */}
+        <line x1="192" y1="212" x2="200" y2="200" stroke={ink} strokeWidth="3" />
+        <line x1="199" y1="201" x2="203" y2="196" stroke={ray} strokeWidth="4" />
+        {/* neck + head */}
+        <rect x="103" y="176" width="18" height="14" rx="4" fill={skin} stroke={ink} strokeWidth="2.2" />
+        <circle cx="112" cy="150" r="30" fill={skin} stroke={ink} strokeWidth="2.4" />
+        {/* hair cap */}
+        <path d="M83 152c0-27 58-27 58 0 0-11-13-18-29-18s-29 7-29 18z" fill={hair} stroke={ink} strokeWidth="2.2" />
+        {/* face */}
+        <circle cx="104" cy="151" r="2.6" fill={ink} />
+        <circle cx="121" cy="151" r="2.6" fill={ink} />
+        <path d="M104 161q8 6 15 0" fill="none" stroke={ink} strokeWidth="2" />
+      </g>
+      {/* workbench */}
+      <g stroke={ink} strokeWidth="2.4" strokeLinejoin="round">
+        <rect x="40" y="246" width="384" height="16" rx="6" fill={wood} />
+        <rect x="66" y="262" width="13" height="34" fill={woodDark} />
+        <rect x="386" y="262" width="13" height="34" fill={woodDark} />
+      </g>
+      {/* four bespoke gadgets — same logos as Slide 2's building blocks */}
+      {G.map((g, i) => {
+        const gx = 174 + i * 62
+        const cx = gx + 22
+        return (
+          <g key={i}>
+            {/* antenna */}
+            <line x1={cx} y1="202" x2={cx} y2="192" stroke={ink} strokeWidth="2.2" strokeLinecap="round" />
+            <circle cx={cx} cy="189" r="4" fill={g.fill} stroke={ink} strokeWidth="2.2" />
+            {/* body */}
+            <rect x={gx} y="202" width="44" height="44" rx="10" fill={g.fill} stroke={ink} strokeWidth="2.4" />
+            {/* label plate */}
+            <rect x={gx + 8} y="234" width="28" height="6" rx="3" fill="#ffffff" opacity="0.55" />
+            {/* emblem = the tool's own logo */}
+            <g transform={`translate(${g.lx} ${g.ly})`} color={g.lc}>
+              {g.logo}
+            </g>
+          </g>
+        )
+      })}
+      {/* being-assembled spark over gadget A + floating accents */}
+      <g stroke={ray} strokeWidth="2.4" strokeLinecap="round">
+        <path d="M168 190l0-9M163.5 185.5l9 0M165 183l6 6M171 183l-6 6" />
+        <path d="M330 150l0-7M326.5 146.5l7 0" opacity="0.8" />
+        <path d="M150 120l0-7M146.5 116.5l7 0" opacity="0.7" />
+      </g>
+    </svg>
+  )
+}
+
 const IntroPanel = ({ hidden }: { hidden: boolean }) => (
   <section hidden={hidden} className="intro flex max-w-[1120px] flex-col gap-20">
     {/* Slide 1 — Why: the ecosystem around Notion (hub = source of truth) */}
@@ -1427,6 +1512,46 @@ const IntroPanel = ({ hidden }: { hidden: boolean }) => (
       </div>
       <h2 className="m-0 mb-5 text-[25px] font-bold tracking-tight">principled Notion building blocks for agents and developers</h2>
       <HowGallery />
+    </section>
+    {/* Slide 3 — Disclaimer: these are inspiration, not a product. Copy left,
+        full-color Notion-style "tinkerer's workbench" poster right. */}
+    <section className="py-2">
+      <div className="mb-1.5 text-[13px] text-fg-muted">Disclaimer</div>
+      <h2 className="m-0 mb-6 text-[25px] font-bold tracking-tight">Inspiration, not a product.</h2>
+      <div className="flex flex-wrap items-center gap-x-12 gap-y-8">
+        {/* the three points — each maps to one beat of the message */}
+        <ol className="m-0 flex min-w-[300px] max-w-[460px] flex-1 list-none flex-col gap-5 p-0">
+          {[
+            {
+              num: '01',
+              title: 'My daily drivers, not a supported library',
+              desc: 'I use these every day — personal tools, not packages to install and depend on.',
+            },
+            {
+              num: '02',
+              title: 'Take the ideas, build your own',
+              desc: 'The patterns are the point. Adapt them to your stack rather than adopting my code.',
+            },
+            {
+              num: '03',
+              title: 'Ideally, absorbed into Notion',
+              desc: 'The real endgame: these become first-class Notion tools & APIs, so nobody has to build them.',
+            },
+          ].map((p) => (
+            <li key={p.num} className="flex items-start gap-3.5">
+              <span className="mt-0.5 flex-none text-[13px] font-bold tabular-nums text-accent">{p.num}</span>
+              <div className="min-w-0">
+                <div className="text-[14.5px] font-semibold leading-snug">{p.title}</div>
+                <p className="m-0 mt-1 text-[13px] leading-snug text-fg-muted">{p.desc}</p>
+              </div>
+            </li>
+          ))}
+        </ol>
+        {/* full-color poster on its own warm cream inset (fixed in both themes) */}
+        <div className="intro-poster min-w-[320px] flex-1">
+          <WorkbenchPoster />
+        </div>
+      </div>
     </section>
   </section>
 )
