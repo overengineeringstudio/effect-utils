@@ -133,8 +133,10 @@ const NAV = [
 const TREE: readonly IdeTreeItem[] = [
   { kind: 'fold', label: 'docs' },
   { kind: 'file', label: ROADMAP.file, icon: '◆', selected: true },
-  { kind: 'file', label: '.notion-md', icon: '▸' },
 ]
+
+// `.notion-md/` (the recorded base for two-way merge) only exists in shared mode.
+const SHARED_TREE: readonly IdeTreeItem[] = [...TREE, { kind: 'file', label: '.notion-md', icon: '▸' }]
 
 const actorFor = (from: string): Actor => (from === 'ide' ? You : Teammate)
 
@@ -188,7 +190,7 @@ const ModeSequence = ({
       stage={
         <>
           {/* LEFT — the .nmd mini-IDE (fixed) */}
-          <MiniIDE file={ROADMAP.file} tree={TREE} tab={ROADMAP.file}>
+          <MiniIDE file={ROADMAP.file} tree={source === 'shared' ? SHARED_TREE : TREE} tab={ROADMAP.file}>
             <CodeLine>
               <Cm>---</Cm>
             </CodeLine>
@@ -478,82 +480,77 @@ export const Md = () => (
     <div className="coda-rule">
       <span>Going deeper · optional</span>
     </div>
-    <Beat num="04" tag="The details" coda>
+    <Beat num="04" tag="The toolkit" coda>
       <h2>
-        Round-trips what it can — <em>refuses</em> what it can't.
+        More than a sync — the full <em>notion md</em> toolkit.
       </h2>
       <div className="stage">
         <div className="features">
           <div className="fcard">
-            <div className="ft">Two-way sync</div>
+            <div className="ft">
+              <span className="fico">⇄</span> Two-way sync
+            </div>
             <div className="fb">
-              One engine pushes and pulls; <code>source: shared</code> syncs both directions.
+              One engine, both directions — <code>source: local / remote / shared</code> picks the flow.
             </div>
           </div>
           <div className="fcard">
-            <div className="ft">Guarded 3-way merge</div>
+            <div className="ft">
+              <span className="fico">◆</span> Guarded merge
+            </div>
+            <div className="fb">Overlapping edits become a conflict file — never a silent overwrite.</div>
+          </div>
+          <div className="fcard">
+            <div className="ft">
+              <span className="fico">✓</span> Verified writes
+            </div>
+            <div className="fb">Re-reads the page after every push and asserts it matches before moving on.</div>
+          </div>
+          <div className="fcard">
+            <div className="ft">
+              <span className="fico">⎇</span> Git-friendly state
+            </div>
             <div className="fb">
-              Non-overlapping edits auto-merge; overlaps write a conflict file — never a silent overwrite.
+              A content-addressed base in a sidecar, keyed by page id — survives <code>git mv</code>.
             </div>
           </div>
           <div className="fcard">
-            <div className="ft">Content-addressed base</div>
-            <div className="fb">
-              Each clean pull is snapshotted in <code>.notion-md/</code> — merges check the exact bytes Notion last
-              returned.
+            <div className="ft">
+              <span className="fico">◷</span> Watch mode
             </div>
+            <div className="fb">Reacts to local saves instantly; polls Notion on an interval (30s default).</div>
           </div>
           <div className="fcard">
-            <div className="ft">Verified writes</div>
-            <div className="fb">After a push it re-reads the page, asserts it matches, then refreshes the base.</div>
-          </div>
-          <div className="fcard">
-            <div className="ft">Refuses lossy pages</div>
-            <div className="fb">Blocks that wouldn't survive a round-trip are refused at pull, not silently flattened.</div>
-          </div>
-          <div className="fcard">
-            <div className="ft">Watch mode</div>
-            <div className="fb">
-              <code>sync --watch</code> reacts to local saves instantly; polls Notion on an interval (30s default).
+            <div className="ft">
+              <span className="fico">⚑</span> Self-describing files
             </div>
+            <div className="fb">Frontmatter sets direction; an unbound local file creates the page on push.</div>
           </div>
         </div>
       </div>
-      <div className="blocks">
-        <div className="blockgroup">
-          <div className="blabel">Round-trips both ways</div>
-          <div className="chips">
-            {[
-              'Paragraph',
-              'Headings H1–H3',
-              'Bulleted list',
-              'Numbered list',
-              'To-do',
-              'Toggle',
-              'Quote',
-              'Callout',
-              'Code',
-              'Divider',
-              'Equation',
-              'Bold / italic',
-            ].map((b) => (
-              <span className="bchip" key={b}>
-                {b}
-              </span>
-            ))}
-            <span className="bchip q">Tables · normalized</span>
-            <span className="bchip q">Columns · beta</span>
-          </div>
+      <div className="fidelity">
+        <div className="fidrow">
+          <span className="blabel">Round-trips</span>
+          <span className="chips">
+            {['Headings', 'Lists', 'To-dos', 'Toggles', 'Quotes', 'Callouts', 'Code', 'Dividers', 'Equations'].map(
+              (b) => (
+                <span className="bchip" key={b}>
+                  {b}
+                </span>
+              ),
+            )}
+            <span className="bchip q">Tables · beta</span>
+          </span>
         </div>
-        <div className="blockgroup">
-          <div className="blabel muted">Edit in Notion</div>
-          <div className="chips">
-            {['Bookmarks', 'Embeds', 'Synced blocks', 'Databases', 'Table of contents'].map((b) => (
+        <div className="fidrow">
+          <span className="blabel muted">Edit in Notion</span>
+          <span className="chips">
+            {['Bookmarks', 'Embeds', 'Synced blocks', 'Databases'].map((b) => (
               <span className="bchip muted" key={b}>
                 {b}
               </span>
             ))}
-          </div>
+          </span>
         </div>
       </div>
     </Beat>
