@@ -15,6 +15,9 @@ All notable changes to this project will be documented in this file.
   test asserting `-o` resolves to the file path. (`introspect`/`diff`/
   `generate-config` keep the shared render-mode `--output`/`-o`; they have no
   file option to collide with.)
+- **megarepo / CI**: refresh the nested `effect` lock to the reachable upstream
+  `main` commit so downstream cold `mr apply --all` jobs no longer fail before
+  tests with an unavailable locked commit.
 - **ci-tools / genie**: fix the mechanically-fixable bootstrap-closure violations
   at the source (this drove the interim baseline from 79 entries down to the 5
   `genie/weaver-registry/*.genie.ts` residual; the baseline is then removed
