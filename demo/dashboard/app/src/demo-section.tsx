@@ -85,11 +85,9 @@ const CodeSegment = ({ seg }: { seg: Extract<RawSegment, { kind: 'code' }> }) =>
   const raw = seg.raw
   if (isNoCopy(seg)) {
     return (
-      <div className="rounded-lg border border-dashed border-fail bg-[color-mix(in_srgb,var(--color-fail)_8%,var(--color-bg-code))]">
-        <span className="block px-3 pt-1.5 text-[10px] font-bold uppercase tracking-wide text-fail">
-          expected output · not a command
-        </span>
-        <pre className="m-0 overflow-x-auto whitespace-pre px-3 pb-2.5 font-mono text-[13px] leading-normal text-[#ffb4b4]">
+      <div className="rounded-lg border border-border bg-bg-code">
+        <span className="block px-3 pt-1.5 text-[11px] text-fg-muted">Expected output</span>
+        <pre className="m-0 overflow-x-auto whitespace-pre px-3 pb-2.5 font-mono text-[13px] leading-normal text-code-fg">
           {raw}
         </pre>
       </div>
@@ -190,12 +188,12 @@ const BeatCard = ({
         <StatusBadge status={beat.status} />
       </div>
       {beat.narration && (
-        <p className="mb-2 rounded-md bg-say-bg px-2.5 py-1.5 text-[13.5px] text-say-fg">
-          <span className="mr-2 rounded bg-say-fg/15 px-1.5 py-0.5 text-[10px] font-bold tracking-wider">
-            SAY
+        <div className="mb-2 flex items-start gap-2 rounded-md bg-say-bg px-2.5 py-2 text-[13.5px] text-say-fg">
+          <span aria-hidden="true" className="mt-[1px] flex-none text-[13px] leading-none">
+            💬
           </span>
-          {beat.narration}
-        </p>
+          <p className="m-0">{beat.narration}</p>
+        </div>
       )}
       <div className="flex flex-col gap-2">
         {beat.segments.map((seg, j) => (
