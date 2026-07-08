@@ -77,7 +77,7 @@ All notable changes to this project will be documented in this file.
   restricts a run to the marked set (the 35 `package.json.genie.ts` + `pnpm-workspace.yaml.genie.ts`).
   Bootstrap-safety is now **demonstrated, not asserted**: `bootstrap:cold-proof`
   (`genie/ci-scripts/bootstrap-cold-proof.sh`, devenv task + CI lane) builds the
-  self-contained nix genie (`.#genie`, deps baked into the store), runs
+  self-contained nix bootstrap runner (`.#genie-bootstrap-runner`, deps baked into the store), runs
   `genie --phase bootstrap` in a fresh `node_modules`-free `git archive` tree, then
   `pnpm install --frozen-lockfile`, asserting both succeed and that the marked set
   actually ran. `bootstrap-closure:check` stays as fast local feedback in `check:all`.

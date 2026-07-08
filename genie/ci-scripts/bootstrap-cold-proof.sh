@@ -61,6 +61,11 @@ git -C "$repo" archive --format=tar HEAD | tar -x -C "$tree"
 case "$tree" in
   "${repo}"/*) fail "temp tree is inside the repo (${tree}); bun/pnpm would resolve the repo node_modules" ;;
 esac
+ancestor="$tree"
+while [ "$ancestor" != "/" ]; do
+  ancestor="$(dirname "$ancestor")"
+  [ ! -e "${ancestor}/node_modules" ] || fail "temp tree ancestor contains node_modules: ${ancestor}/node_modules"
+done
 
 # Independent ground truth: the bootstrap set is exactly the `// @genie-bootstrap`-marked sources.
 # Keep this detector byte-for-byte aligned with parseGeneratorPhase in
