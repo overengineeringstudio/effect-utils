@@ -107,12 +107,12 @@ const Segment = ({ seg }: { seg: RawSegment }) => {
   if (seg.kind === 'code') return <CodeSegment seg={seg} />
   if (seg.kind === 'say') {
     return (
-      <p className="py-1 text-[13px] italic text-fg-muted">
-        <span className="mr-2 rounded bg-bg-subtle px-1.5 py-0.5 text-[10px] font-bold not-italic tracking-wider text-fg-faint">
-          SAY
+      <div className="flex items-start gap-2 rounded-md bg-say-bg px-2.5 py-2 text-[13.5px] text-say-fg">
+        <span aria-hidden="true" className="mt-[1px] flex-none text-[13px] leading-none">
+          💬
         </span>
-        {seg.text}
-      </p>
+        <p className="m-0">{seg.text}</p>
+      </div>
     )
   }
   const isExpect = seg.isExpectation
