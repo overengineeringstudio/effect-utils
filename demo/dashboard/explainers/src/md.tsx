@@ -27,10 +27,14 @@ import {
   NotionBlock,
   NotionPage,
   NotionSurface,
+  OK,
+  Prompt,
   STR,
   Sequence,
   SubTabbedSequences,
   Swap,
+  Terminal,
+  TerminalLine,
   Tg,
   TypingCaret,
   type IdeTreeItem,
@@ -170,12 +174,14 @@ const ModeSequence = ({
   source,
   legendCap,
   flow,
+  term,
   after,
 }: {
   story: MultiSyncStory
   source: string
   legendCap: string
   flow: React.ReactNode
+  term: React.ReactNode
   after: React.ReactNode
 }) => {
   const idePrice = lineValue(story, 'pricing', 'ide', ROADMAP.pricing.was)
@@ -210,8 +216,16 @@ const ModeSequence = ({
             <CodeLine role={ideEnt.role}>Enterprise: {ideEnt.node}</CodeLine>
           </MiniIDE>
 
-          {/* CENTER — direction only lives here */}
-          {flow}
+          {/* CENTER — the notion md CLI drives it; the direction packet animates */}
+          <div className="midcol">
+            {flow}
+            <Terminal file="notion md">
+              <TerminalLine>
+                <Prompt /> notion md sync
+              </TerminalLine>
+              {term}
+            </Terminal>
+          </div>
 
           {/* RIGHT — the Notion page (fixed) */}
           <NotionSurface workspace={ROADMAP.workspace} workspaceInitial={ROADMAP.workspaceInitial} nav={NAV}>
@@ -240,11 +254,12 @@ const LocalPanel = (
       source="local"
       legendCap="The whole flow, in 3 steps"
       flow={<DirFlow direction="push" badge="local owns" note="push →" />}
-      after={
-        <span className="term g step-hide r3b">
-          <span className="pmt">notion md sync ›</span> pushed
-        </span>
+      term={
+        <TerminalLine out extra="step-hide r3b">
+          <OK>pushed</OK>
+        </TerminalLine>
       }
+      after={null}
     />
   </>
 )
@@ -263,16 +278,16 @@ const RemotePanel = (
       source="remote"
       legendCap="The whole flow, in 4 steps"
       flow={<DirFlow direction="pull" badge="notion owns" note="← pull" />}
+      term={
+        <TerminalLine out extra="step-hide r3b">
+          <OK>pulled</OK>
+        </TerminalLine>
+      }
       after={
-        <>
-          <span className="term b step-hide r3b">
-            <span className="pmt">notion md sync ›</span> pulled
-          </span>
-          <div className="warnnote step-hide r4">
-            ⚠ Hand-edit the file on a <code>source: remote</code> page? It’s <b>overwritten on the next pull</b> —
-            you’re warned. Switch to <code>shared</code> to keep both.
-          </div>
-        </>
+        <div className="warnnote step-hide r4">
+          ⚠ Hand-edit the file on a <code>source: remote</code> page? It’s <b>overwritten on the next pull</b> —
+          you’re warned. Switch to <code>shared</code> to keep both.
+        </div>
       }
     />
   </>
@@ -292,16 +307,16 @@ const SharedPanel = (
       source="shared"
       legendCap="Two-way, then the conflict escalation"
       flow={<DirFlow direction="two" badge="two-way" note="⇄ merge" />}
+      term={
+        <>
+          <TerminalLine out extra="step-hide r3only">
+            <OK>shared-merged</OK>
+          </TerminalLine>
+          <TerminalLine out extra="step-hide r4">same line → shared-conflict</TerminalLine>
+        </>
+      }
       after={
         <>
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
-            <span className="term g step-hide r3only">
-              <span className="pmt">notion md sync ›</span> shared-merged
-            </span>
-            <span className="term w step-hide r4">
-              <span className="pmt">same line ›</span> shared-conflict
-            </span>
-          </div>
           <div className="rdraft step-hide r4">
             <div className="rdraft-bar">⚠ {ROADMAP.conflictFile}</div>
             <div className="rdraft-body">
@@ -353,19 +368,7 @@ export const Md = () => (
       </h2>
       <div className="stage">
         <div className="ways">
-          {/* the target — the real Notion page (production kit component) */}
-          <div className="target">
-            <NotionSurface workspace={ROADMAP.workspace} workspaceInitial={ROADMAP.workspaceInitial} nav={NAV}>
-              <NotionPage emoji={ROADMAP.emoji} heading={ROADMAP.heading}>
-                <NotionBlock>
-                  Pricing: {ROADMAP.pricing.was}
-                  {ROADMAP.unit}
-                </NotionBlock>
-                <NotionBlock>Enterprise: {ROADMAP.enterprise.was}</NotionBlock>
-              </NotionPage>
-            </NotionSurface>
-          </div>
-          <div className="target-cap">one Notion page · three ways to change one line</div>
+          <div className="target-cap">the same one-line change to a Notion page, three ways</div>
           {/* three ways to touch it: API (scripting) · CLI (ad-hoc) · a local file */}
           <div className="waylist">
             <div className="wayrow">
@@ -428,8 +431,8 @@ export const Md = () => (
       </p>
     </Beat>
 
-    {/* BEAT 2 — SEE IT WORK (sub-tabbed by source-of-truth mode) */}
-    <Beat num="02" tag="See it work · pick the direction">
+    {/* BEAT 2 — HOW IT WORKS (sub-tabbed by source-of-truth mode) */}
+    <Beat num="02" tag="How it works · pick the direction">
       <h2>
         Edit a file — one <em>source:</em> field decides which way it flows.
       </h2>
