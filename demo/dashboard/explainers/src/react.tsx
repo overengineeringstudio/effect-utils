@@ -59,12 +59,6 @@ const LAUNCH = {
 } as const
 
 /** beat 4 — the blockKey → notion block id map (identity survives restarts). */
-const BLOCKKEY_MAP = [
-  { key: 'b:overview', id: 'block_a1b2…' },
-  { key: 'b:scope', id: 'block_c3d4…' },
-  { key: 'b:ship', id: 'block_e5f6…' },
-] as const
-
 // ── the declarative causal model (asserted at build time) ─────────────────────
 /** Constructing this asserts cause-before-effect; a violation throws
  *  `CausalityError` and fails the build (no html is written). The load-bearing
@@ -413,72 +407,79 @@ export const React = () => (
     <div className="coda-rule">
       <span>Going deeper · optional</span>
     </div>
-    <Beat num="04" tag="…and identity holds" coda>
+    <Beat num="04" tag="The toolkit" coda>
       <h2>
-        Every block carries a <em>blockKey</em>. That's how identity survives a restart.
+        More than a render — the full <em>notion-react</em> toolkit.
       </h2>
       <div className="stage">
-        <div className="keymap">
-          {/* blockKey → notion id map */}
-          <div className="keys">
-            <div className="keys-bar">blockKey → notion block id</div>
-            {BLOCKKEY_MAP.map((r) => (
-              <div key={r.key} className="keyrow">
-                <span className="bk">{r.key}</span>
-                <span className="arr">→</span>
-                <span className="id">{r.id}</span>
-              </div>
-            ))}
-          </div>
-          {/* persisted cache */}
-          <div className="cachebadge">
-            <svg viewBox="0 0 118 22">
-              <path d="M4 11 H104" stroke="currentColor" strokeWidth="1.6" fill="none" />
-              <path d="M98 6 L108 11 L98 16 Z" fill="currentColor" />
-              <path d="M20 16 L10 11 L20 6" stroke="currentColor" strokeWidth="1.6" fill="none" />
-            </svg>
-            <div className="cb">FsCache</div>
-            <div className="cl">
-              .notion-cache.json
-              <br />
-              persisted, atomic
+        <div className="features">
+          <div className="fcard">
+            <div className="ft">
+              <span className="fico">⚛</span> Page as a component
+            </div>
+            <div className="fb">
+              Author a Notion page as JSX; <code>bun run page.tsx</code> renders it to real blocks.
             </div>
           </div>
-          {/* diff outcomes */}
-          <div className="difftable">
-            <div className="dbar">match a key → reuse · else…</div>
-            <div className="drow">
-              <span className="lbl">add a block</span>
-              <span className="op c">create</span>
+          <div className="fcard">
+            <div className="ft">
+              <span className="fico">⇄</span> Block-level diff
             </div>
-            <div className="drow">
-              <span className="lbl">remove a block</span>
-              <span className="op a">archive</span>
+            <div className="fb">
+              Rerun applies only what changed (<code>updates: 1</code>) — no rebuild, no duplication.
             </div>
-            <div className="drow">
-              <span className="lbl">change props</span>
-              <span className="op u">update</span>
+          </div>
+          <div className="fcard">
+            <div className="ft">
+              <span className="fico">⎇</span> Stable identity
             </div>
-            <div className="drow">
-              <span className="lbl">move a {'<ChildPage>'}</span>
-              <span className="op m">
-                pages.move <span className="soon">contract</span>
-              </span>
+            <div className="fb">
+              Each block carries a <code>blockKey</code>; a persisted <code>.notion-cache.json</code> maps it to the
+              real Notion id, so identity survives restarts.
             </div>
+          </div>
+          <div className="fcard">
+            <div className="ft">
+              <span className="fico">✓</span> Precise ops
+            </div>
+            <div className="fb">add → create · remove → archive · change → update, with op counts surfaced.</div>
+          </div>
+          <div className="fcard">
+            <div className="ft">
+              <span className="fico">◷</span> Idempotent reruns
+            </div>
+            <div className="fb">
+              No change → a clean no-op (<code>appends:0 updates:0 removes:0</code>).
+            </div>
+          </div>
+          <div className="fcard">
+            <div className="ft">
+              <span className="fico">◆</span> Typed &amp; composable
+            </div>
+            <div className="fb">Plain React — typed components, props, and loops compose the page.</div>
           </div>
         </div>
       </div>
-      <p className="caption">
-        <b>
-          The diff is keyed on <code>blockKey</code>, not sibling position.
-        </b>{' '}
-        <span className="hint">
-          Each rendered block matches a previously-synced Notion block through the persisted <code>FsCache</code>{' '}
-          (<code>.notion-cache.json</code>) — so a match reuses the real block id, and identity holds across process
-          restarts. add→create, remove→archive, change→update. Page-level <code>pages.move</code> is the designed
-          contract (block ops ship today; page ops are next).
-        </span>
-      </p>
+      <div className="fidelity">
+        <div className="fidrow">
+          <span className="blabel">Renders</span>
+          <span className="chips">
+            {['Headings', 'Paragraph', 'To-dos', 'Toggles', 'Lists', 'Code', 'Callouts', 'Quotes', 'Dividers'].map(
+              (b) => (
+                <span className="bchip" key={b}>
+                  {b}
+                </span>
+              ),
+            )}
+          </span>
+        </div>
+        <div className="fidrow">
+          <span className="blabel muted">Next</span>
+          <span className="chips">
+            <span className="bchip muted">pages.move · page-level ops</span>
+          </span>
+        </div>
+      </div>
     </Beat>
 
     <p className="foot">
