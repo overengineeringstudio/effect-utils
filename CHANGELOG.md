@@ -15,6 +15,25 @@ All notable changes to this project will be documented in this file.
   test asserting `-o` resolves to the file path. (`introspect`/`diff`/
   `generate-config` keep the shared render-mode `--output`/`-o`; they have no
   file option to collide with.)
+- **megarepo / CI**: refresh the nested `effect` lock to the reachable upstream
+  `main` commit so downstream cold `mr apply --all` jobs no longer fail before
+  tests with an unavailable locked commit.
+- **ci-tools / genie**: fix the mechanically-fixable bootstrap-closure violations
+  at the source (this drove the interim baseline from 79 entries down to the 5
+  `genie/weaver-registry/*.genie.ts` residual; the baseline is then removed
+  entirely by the generator-phase change below). The wide `@overeng/ci-tools`
+  barrel (`src/mod.ts`) `export *`ed the runtime `./deploy-*` encoders alongside
+  the bootstrap-safe workflow-report constants/types, so genie helpers importing
+  the safe symbols dragged `effect` into their bootstrap closure (73 violations);
+  the safe surface is extracted into a new dependency-free
+  `ci-tools/src/workflow-report.ts` (re-exported by `mod.ts`, so runtime
+  consumers are unaffected) and the genie helpers repointed there. Separately,
+  `tsconfig.all.json.genie.ts` imported the wide `@overeng/genie/node` barrel
+  (which re-exports the `typescript`-importing closure walker), now narrowed to
+  the bootstrap-safe `node/tsconfig-from-packages.ts` module (1 violation). The
+  5 weaver-registry generators reach `effect` because the OTel semconv contracts
+  are Effect-Schema by design and render post-install; decision 0004 classes them
+  `design-time` (out of the bootstrap-closure scope by declaration, not baseline).
 - **CI / cargo**: move standalone Rust crate build/test/clippy/fmt semantics into
   the `cargo:check` devenv task and make the generated cargo CI lane call that
   task, ensuring the `node-cpuprofile` integration test runs with the devenv
@@ -28,6 +47,35 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **genie / check**: bootstrap-safe import-closure gate (`bootstrap-closure:check`).
+  A `.genie.ts` and everything it transitively imports at RUNTIME must be importable
+  from a fresh checkout BEFORE install; a generator that reaches a runtime-only
+  package (e.g. through a wide barrel that `export *`s a module importing `effect`)
+  breaks `genie:run` on a fresh clone. The shared `checkBootstrapClosure` walker
+  (reusing TypeScript's parser/resolver plus genie's own `#`/`#mr` resolution, and
+  excluding type-only edges) is exported from `@overeng/genie/node`; a bun entry
+  (`genie/ci-scripts/bootstrap-closure-check.ts`) runs it over the tracked
+  `// @genie-bootstrap`-marked `.genie.ts` sources with ZERO TOLERANCE (no baseline,
+  no allowlist — `design-time` generators are out of scope by declaration; see the
+  generator-phase entry below). Wired into `check:all` (not `check:quick`). The walker imports
+  genie's resolver via the effect-free `core/import-map/sync-resolver.ts` (only
+  `node:fs`/`node:path`), so it is itself importable pre-install (`typescript` +
+  node builtins only) and usable by nix-packaged-genie downstream members.
+
+- **genie / bootstrap**: generator phase + empirical cold-proof (decision 0004,
+  issue #884). Each `.genie.ts` declares its phase with a valueless `// @genie-bootstrap`
+  flag comment (mirroring `@ts-nocheck` grammar; `design-time` is the default, no
+  marker), read statically without importing the generator. `genie --phase bootstrap`
+  restricts a run to the marked set (the 35 `package.json.genie.ts` + `pnpm-workspace.yaml.genie.ts`).
+  Bootstrap-safety is now **demonstrated, not asserted**: `bootstrap:cold-proof`
+  (`genie/ci-scripts/bootstrap-cold-proof.sh`, devenv task + CI lane) builds the
+  self-contained nix genie (`.#genie`, deps baked into the store), runs
+  `genie --phase bootstrap` in a fresh `node_modules`-free `git archive` tree, then
+  `pnpm install --frozen-lockfile`, asserting both succeed and that the marked set
+  actually ran. `bootstrap-closure:check` stays as fast local feedback in `check:all`.
+  Supersedes the interim `genie:bootstrap`-before-`pnpm:install` task edge, which
+  arbitrated nothing (source-mode genie can't run cold; committed outputs satisfy
+  install regardless) and is removed.
 - **devenv / otel**: `otel-run` — a `time`-like wrapper that runs any command
   under a fresh root trace and prints its Grafana URL. Derives the root label
   from argv (`devenv tasks run X` → `X`), mints a fresh trace id (`--join` to
@@ -81,7 +129,7 @@ All notable changes to this project will be documented in this file.
   - `overeng/otel-contract-in-seam-file` oxlint rule (WARN-only) + the no-orphan-seam aggregator
     check make contract discoverability structural (decision 0005).
 - **genie semantic-conventions Rust target (M2) / @overeng/genie**: Finalized the Layer-1 Rust
-  emitter (`renderRustConstants`) for Rust telemetry *producers* (decision 0007). Emits idiomatic,
+  emitter (`renderRustConstants`) for Rust telemetry _producers_ (decision 0007). Emits idiomatic,
   deterministic (sorted), rustfmt-clean const modules — separate `attribute` / `span` / `metric`
   modules (collision-proof by construction) with a `pub const <SCREAMING_SNAKE>: &str` per name
   plus an `ALL: &[&str]` slice — covering own attribute keys, span ids, and metric names. Wired one
@@ -111,7 +159,7 @@ All notable changes to this project will be documented in this file.
   constant) and blocks a PR that REMOVES a shipped attribute/signal; it is JSON-payload based
   (`--format json`, block on `changes.*[].type == "removed"`) because `weaver registry diff` exits
   0 even for breaking changes. A rename recorded weaver-native — old key retained + `deprecated:
-  { reason: renamed, renamed_to }` — surfaces as `type: "renamed"` and passes with no custom gate
+{ reason: renamed, renamed_to }` — surfaces as `type: "renamed"` and passes with no custom gate
   logic (decision 0009). `weaver:live-check` (SC-R12) captures registry-conformant OTLP emitted
   from a first-party site and asserts `weaver registry live-check` accepts it. Both degrade to a
   warning when weaver/git is unavailable (GEN-R09); `weaver:diff` joins `check:all`, `live-check`

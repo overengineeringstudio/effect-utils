@@ -39,6 +39,9 @@ export const DEFAULT_REF_POLICY_CI_JOB_NAME = 'default-ref-policy' as const
 
 /** Additional CI job keys generated outside the core product-job block. */
 export const EXTRA_CI_JOB_NAMES = [
+  // Empirical bootstrap-safety authority (R32, issue #884): builds the self-contained nix genie and
+  // proves `genie --phase bootstrap` + `pnpm install` run cold (no node_modules). Merge-blocking.
+  'bootstrap-cold-proof',
   'devenv-perf',
   'nix-closure-sizes',
   'source-shape',

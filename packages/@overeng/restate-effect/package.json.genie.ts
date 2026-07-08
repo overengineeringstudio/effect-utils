@@ -1,3 +1,4 @@
+// @genie-bootstrap
 import { otelSdkDeps } from '../../../genie/external.ts'
 import {
   catalog,

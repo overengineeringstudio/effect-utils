@@ -67,6 +67,7 @@ let
     megarepo = import ./nix/devenv-modules/tasks/shared/megarepo.nix;
     nix-cli = import ./nix/devenv-modules/tasks/shared/nix-cli.nix;
     secretspec = import ./nix/devenv-modules/tasks/shared/secretspec.nix;
+    bootstrap-closure = import ./nix/devenv-modules/tasks/shared/bootstrap-closure.nix;
     weaver = import ./nix/devenv-modules/tasks/shared/weaver.nix;
     weaver-diff = import ./nix/devenv-modules/tasks/shared/weaver-diff.nix;
     weaver-live-check = import ./nix/devenv-modules/tasks/shared/weaver-live-check.nix;
@@ -371,6 +372,13 @@ in
     # Wire the additive weaver gate into `check:all` only (not `check:quick`, which stays fast):
     # `after` list options merge across modules, so this appends without redefining check:all.
     { tasks."check:all".after = [ "weaver:check" ]; }
+    # Bootstrap-safe import-closure gate (issue #884): fast local feedback for the bootstrap contract.
+    # Fails (zero-tolerance, no baseline) on ANY `// @genie-bootstrap` generator whose transitive
+    # runtime closure reaches a runtime-only package (which would break `genie --phase bootstrap` on a
+    # fresh pre-install clone). Wired into `check:all` only (kept out of `check:quick`). The empirical
+    # authority is `bootstrap:cold-proof` (R32); this static gate is its cheap pre-check.
+    (taskModules.bootstrap-closure { })
+    { tasks."check:all".after = [ "bootstrap-closure:check" ]; }
     # Compat-diff gate (SC-R11): blocks a PR that REMOVES a shipped registry attribute/signal.
     # PR-scoped (needs a merge-base baseline) — degrades to a warning locally on a fresh clone with
     # no `origin/main` merge-base; its load-bearing home is the CI `weaver` lane.
@@ -567,6 +575,30 @@ in
   tasks."mr:apply".after = [ "pnpm:install" ];
   tasks."mr:check".after = [ "pnpm:install" ];
   tasks."mr:source-policy-check".after = [ "pnpm:install" ];
+
+  # NOTE (decision 0004): there is deliberately NO `genie:bootstrap`-before-`pnpm:install` edge.
+  # An earlier form wired `pnpm:install.after = [ "genie:bootstrap" ]` so install would run
+  # `genie --phase bootstrap` first. Verified during implementation that this does NOT arbitrate
+  # bootstrap-safety: the source-mode `genie` on PATH needs `node_modules` (it cold-guarded to a
+  # no-op on a fresh clone), and committed outputs (T01) mean install succeeds with the on-disk
+  # `package.json` regardless — so the edge enforced nothing while adding cost to every warm install
+  # and a new failure mode. Bootstrap-safety is instead demonstrated empirically by
+  # `bootstrap:cold-proof` (R32, below), with `bootstrap-closure:check` as fast local feedback.
+
+  # bootstrap:cold-proof (R32) — the EMPIRICAL bootstrap-safety authority. In a fresh, no-node_modules
+  # tree of the committed source it runs the self-contained nix genie (`.#genie`, deps baked into the
+  # store) with `--phase bootstrap`, then `pnpm install --frozen-lockfile`, asserting both succeed.
+  # This exercises the exact pre-install path and turns bootstrap-safety from asserted into
+  # demonstrated. Heavy (nix build + full install) so it is a dedicated task/CI lane, NOT in
+  # `check:all`. Set GENIE_COLD_PROOF_BIN to reuse an already-built genie and skip the nix build.
+  tasks."bootstrap:cold-proof" = {
+    description = "Prove bootstrap-phase genie + pnpm install run cold (no node_modules) — R32 authority";
+    exec = trace.exec "bootstrap:cold-proof" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      exec bash "$root/genie/ci-scripts/bootstrap-cold-proof.sh"
+    '';
+  };
 
   tasks."pnpm:link-native-node-packages" = {
     after = [ "pnpm:install" ];

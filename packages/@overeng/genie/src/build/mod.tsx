@@ -2,7 +2,7 @@ import path from 'node:path'
 
 import * as Cli from '@effect/cli'
 import { FileSystem } from '@effect/platform'
-import { Effect, Either, Fiber, pipe, PubSub, Queue, Stream } from 'effect'
+import { Effect, Either, Fiber, Option, pipe, PubSub, Queue, Stream } from 'effect'
 import React from 'react'
 
 import { run } from '@overeng/tui-react'
@@ -21,6 +21,7 @@ import { GenieGenerationFailedError } from '../core/errors.ts'
 import { type GenieEvent, GenieEventBus } from '../core/events.ts'
 import { generateFile } from '../core/generation.ts'
 import { withCliModeSpan } from '../core/observability.ts'
+import { GENERATOR_PHASES, type GeneratorPhase } from '../core/phase.ts'
 import { createInitialGenieState, type GenieSummary, type GenieMode } from '../core/schema.ts'
 import { GenieApp } from './app.ts'
 import { GenieView } from './view.tsx'
@@ -85,6 +86,12 @@ export const genieCommand = Cli.Command.make(
       Cli.Options.withDescription('Preview changes without writing files'),
       Cli.Options.withDefault(false),
     ),
+    phase: Cli.Options.choice('phase', GENERATOR_PHASES).pipe(
+      Cli.Options.withDescription(
+        'Only run generators declaring this phase (bootstrap runs before install; default: all phases)',
+      ),
+      Cli.Options.optional,
+    ),
     oxfmtConfig: Cli.Options.file('oxfmt-config').pipe(
       Cli.Options.withDescription(
         `Path to oxfmt config file (default: ${OXFMT_CONFIG_CONVENTION_PATHS.join(' or ')})`,
@@ -93,8 +100,9 @@ export const genieCommand = Cli.Command.make(
     ),
     output: outputOption,
   },
-  ({ cwd, writeable, watch, check, dryRun, oxfmtConfig, output }) => {
+  ({ cwd, writeable, watch, check, dryRun, phase, oxfmtConfig, output }) => {
     const cliMode = watch ? 'watch' : check ? 'check' : dryRun ? 'dry-run' : 'generate'
+    const selectedPhase: GeneratorPhase | undefined = Option.getOrUndefined(phase)
     const handler = Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem
       const readOnly = !writeable
@@ -160,7 +168,7 @@ export const genieCommand = Cli.Command.make(
 
               yield* Effect.gen(function* () {
                 if (check) {
-                  yield* checkAll({ cwd: resolvedCwd, oxfmtConfigPath }).pipe(
+                  yield* checkAll({ cwd: resolvedCwd, oxfmtConfigPath, phase: selectedPhase }).pipe(
                     Effect.provideService(GenieEventBus, bus),
                     Effect.catchTag('GenieGenerationFailedError', (error) =>
                       syncStateFromGenerationError(error).pipe(Effect.zipRight(Effect.fail(error))),
@@ -172,6 +180,7 @@ export const genieCommand = Cli.Command.make(
                     readOnly,
                     dryRun,
                     oxfmtConfigPath,
+                    phase: selectedPhase,
                   }).pipe(
                     Effect.provideService(GenieEventBus, bus),
                     Effect.catchTag('GenieGenerationFailedError', (error) =>

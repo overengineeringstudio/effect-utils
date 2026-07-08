@@ -59,12 +59,41 @@ may not yet be installed.
 
 - **R05 Pre-install availability:** Repositories must be able to invoke Genie
   before `pnpm install` or equivalent JavaScript dependency materialization.
-- **R06 Runtime independence:** Code imported directly by `.genie.ts` files
-  must remain usable without depending on an already-installed npm dependency
-  graph.
-- **R07 Fresh-checkout safety:** A fresh checkout must be able to run Genie
-  successfully once its declared non-JS prerequisites are available, without
-  requiring a pre-existing generated state.
+- **R06 Runtime independence (bootstrap phase):** Every module in the
+  _transitive_ runtime import closure of a **bootstrap-phase** `.genie.ts` (R31) —
+  not only its direct imports — must remain usable without depending on an
+  already-installed npm dependency graph. In particular, a bootstrap-phase source
+  must not reach a runtime-only package through an intermediate helper or a wide
+  barrel that `export *`s runtime code. Design-time generators are exempt (they run
+  after install, R31/R32).
+- **R07 Fresh-checkout safety:** A fresh checkout must be able to run Genie's
+  bootstrap-phase generators successfully once its declared non-JS prerequisites
+  are available, without requiring a pre-existing generated state.
+- **R30 Bootstrap-closure enforcement (fast-feedback gate):** Genie must provide a
+  static check that detects, before generation, any **bootstrap-phase** `.genie.ts`
+  whose transitive runtime import closure reaches a package unavailable before
+  install, reporting each violation as a contract violation carrying the importer
+  chain (not an incidental package-resolution error); type-only edges are excluded.
+  This gate is fast local feedback for R32's ordering, scoped to bootstrap-phase
+  generators; it is not the sole authority.
+- **R31 Generator phase:** Each generator has a phase — `bootstrap` (runs before
+  package-manager install; must satisfy R06) or `design-time` (runs after install;
+  may depend on the runtime graph). The phase must be declarable and discoverable
+  **statically**, without importing the generator (importing a design-time
+  generator would itself require the runtime graph). `design-time` is the default;
+  `bootstrap` is opt-in.
+- **R32 Empirical bootstrap verification:** The pre-install requirement must be
+  _demonstrated_, not only statically asserted: the bootstrap-phase generators must
+  be verified to actually run before install in a fresh, no-`node_modules`
+  environment (using a self-contained runner) and to produce a state install
+  accepts. A bootstrap-phase generator that reaches a runtime-only package must fail
+  that cold run. This empirical check is the authority; the static closure gate (R30)
+  is fast feedback. No hardcoded catalog of "install-input" artifacts is permitted.
+  (Making install itself the completeness arbiter — failing on a missing generated
+  input — is out of scope: it is infeasible here because generated outputs are
+  committed (T01) and the runner is built from them. Consequently, whether every
+  install-input generator carries the bootstrap declaration is not structurally
+  enforced; see decision 0004's accepted residual.)
 
 ### Must support repository and megarepo composition
 

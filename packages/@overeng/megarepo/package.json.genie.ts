@@ -1,3 +1,4 @@
+// @genie-bootstrap
 import {
   catalog,
   workspaceMember,
