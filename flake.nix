@@ -77,16 +77,6 @@
             src = self;
             typeProofCompilerBin = "${tsgo.packages.${system}.tsgo}/bin/tsgo";
           };
-          genie-bootstrap-runner = import (rootPath + "/packages/@overeng/genie/nix/bootstrap-runner.nix") {
-            inherit
-              pkgs
-              gitRev
-              commitTs
-              dirty
-              ;
-            src = self;
-            typeProofCompilerBin = "${tsgo.packages.${system}.tsgo}/bin/tsgo";
-          };
           genie-bootstrap-closure-check =
             import (rootPath + "/packages/@overeng/genie/nix/bootstrap-closure-check.nix")
               {
@@ -151,12 +141,6 @@
             dirty = true;
             typeProofCompilerBin = "${tsgo.packages.${system}.tsgo}/bin/tsgo";
           };
-          genie-bootstrap-runner = import (rootPath + "/packages/@overeng/genie/nix/bootstrap-runner.nix") {
-            inherit pkgs gitRev commitTs;
-            src = self;
-            dirty = true;
-            typeProofCompilerBin = "${tsgo.packages.${system}.tsgo}/bin/tsgo";
-          };
           ci-tools = import (rootPath + "/packages/@overeng/ci-tools/nix/build.nix") {
             inherit pkgs gitRev commitTs;
             src = self;
@@ -193,8 +177,6 @@
             cli-build-stamp = cliBuildStamp.package;
             effect-tsgo = tsgo.packages.${system}.effect-tsgo;
             genie-dirty = cliPackagesDirty.genie;
-            genie-bootstrap-runner = cliPackages.genie-bootstrap-runner;
-            genie-bootstrap-runner-dirty = cliPackagesDirty.genie-bootstrap-runner;
             ci-tools = cliPackages.ci-tools;
             ci-tools-dirty = cliPackagesDirty.ci-tools;
             # Publish the FODs as first-class flake outputs so external tooling

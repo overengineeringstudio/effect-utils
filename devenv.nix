@@ -586,8 +586,8 @@ in
   # `bootstrap:cold-proof` (R32, below), with `bootstrap-closure:check` as fast local feedback.
 
   # bootstrap:cold-proof (R32) — the EMPIRICAL bootstrap-safety authority. In a fresh, no-node_modules
-  # tree of the committed source it runs the self-contained nix bootstrap runner
-  # (`.#genie-bootstrap-runner`, deps baked into the store) with `--phase bootstrap`, then
+  # tree of the committed source it runs the self-contained packaged Genie CLI
+  # (`.#genie`, deps baked into the store) with `--phase bootstrap`, then
   # `pnpm install --frozen-lockfile`, asserting both succeed.
   # This exercises the exact pre-install path and turns bootstrap-safety from asserted into
   # demonstrated. Heavy (nix build + full install) so it is a dedicated task/CI lane, NOT in
