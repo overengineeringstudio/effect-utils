@@ -15,8 +15,8 @@ const DASHBOARD_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 // DEV server exposure: `vite` runs on DEV_PORT (127.0.0.1) and a standing
 // `tailscale serve --https=TAILNET_PORT` fronts it with TLS at a clean tailnet
 // URL (no filename). Ports are fixed so the tailscale mapping always lines up.
-// New, distinct ports so this never disturbs the static control.html serve
-// (:52606 → tailnet :8443) or the SSG-explainer HMR serve (:52608 → :8444).
+// :5174 → tailnet :8445 is the single serve — the legacy static/SSG servers
+// (:8443/:8444) have been retired.
 const DEV_PORT = Number(process.env.DEMO_DASHBOARD_DEV_PORT ?? 5174)
 const TAILNET_HOST = process.env.DEMO_DASHBOARD_TAILNET_HOST ?? 'mbp2025.tail8108.ts.net'
 const TAILNET_PORT = Number(process.env.DEMO_DASHBOARD_TAILNET_PORT ?? 8445)

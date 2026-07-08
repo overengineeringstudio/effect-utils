@@ -1,7 +1,7 @@
 @import 'tailwindcss';
 
 /*
- * Design tokens ported from demo/explainers/control.html
+ * Design tokens for the control dashboard chrome
  * (:root / @media(prefers-color-scheme:dark) / :root[data-theme]).
  * CSS-first Tailwind v4: @theme registers --color-* tokens so utilities like
  * `bg-bg-panel` / `text-fg-muted` / `border-border` exist. Dark + explicit

@@ -6,6 +6,10 @@ Repeatable, live-drivable demos of the in-house Notion developer tooling, for a
 See the session VRS (goals, scope, driving model) in Notion:
 "Demo Session VRS — Notion Tooling Showcase".
 
+**Run the live control dashboard** (the single control surface — all explainers
+render inline): `demo/dashboard/app/dev.sh` → `https://…:8445/`. See
+`demo/RUNBOOK.md` for the full restart-safe runbook.
+
 ## Interface: drive the REAL CLIs
 
 On camera you type the actual tools — `notion-md`, `notion`, `ntn`, `sqlite3` —

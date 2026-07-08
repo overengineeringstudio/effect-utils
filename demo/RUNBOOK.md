@@ -6,10 +6,10 @@ Everything a fresh session/agent needs to run the demo. No hidden state.
 
 ```bash
 cd <repo-root>
-demo/serve.sh                       # serve on :52606 + regenerate on source change (safe for recording)
-# open the control dashboard:
-#   local:   http://127.0.0.1:52606/control.html
-#   tailnet: https://mbp2025.tail8108.ts.net:8443/control.html   (your devices only)
+demo/dashboard/app/dev.sh           # run THE control dashboard: Vite dev on :5174 + tailscale :8445
+# open the control dashboard (clean URL, no filename):
+#   local:   http://127.0.0.1:5174/
+#   tailnet: https://mbp2025.tail8108.ts.net:8445/   (your devices only)
 
 devenv shell                        # gives `notion` + NOTION_API_TOKEN (from 1Password)
 eval "$(demo/env/demo-env new --export)"   # fresh isolated demo env: DEMO_* vars + browser links
@@ -21,24 +21,22 @@ Notion pages open in the browser.
 
 ## Serving (why there's no real "deploy")
 
-- The dashboard `demo/explainers/control.html` is **generated** by
-  `demo/dashboard/build.ts` (from the four `SCREENPLAY.md` + md `timeline.json`).
-  It iframes the explainers (`notion-*.html`) and references evidence
-  (`<demo>-evidence/`). "Deploy" = just **regenerate + serve static files** — no
-  build pipeline, no upload.
-- Served statically from `demo/explainers/` on **fixed port 52606**.
-  `demo/serve.sh` (re)starts it idempotently (frees the port first) and **watches
-  sources by default** — it regenerates `control.html` on change and is otherwise
-  identical to a plain serve (idle = no reload), so it's safe for recording too.
-- Cross-machine: `tailscale serve --https=8443 → 127.0.0.1:52606` — a **standing
-  config that persists across sessions** (tailnet-only). Only re-run if reset:
-  `AGENT_POLICY_BYPASS=1 tailscale serve --bg --https=8443 http://127.0.0.1:52606`.
-- **Auto-reload while iterating:** `demo/serve.sh hmr` live-reloads the browser on
-  change (injects a reload client — use it for iterating, not the recording page).
-
-> Note: this session currently serves 52606 via a **devnet** caddy (equivalent —
-> the port happens to match). `demo/serve.sh` replaces that with a plain
-> fixed-port server; don't run both on 52606 at once.
+- The control dashboard is a **unified Vite + React 19 + Tailwind v4 app** at
+  `demo/dashboard/app/`. It is the SOLE control surface: all five explainers
+  render **inline** as React components (`demo/dashboard/explainers/src/`), the
+  demo status/evidence come from the SCREENPLAY→model codegen
+  (`scripts/gen-model.ts`), and nothing is iframed. There is no static-HTML / SSG
+  / singlefile path anymore.
+- Run it: `demo/dashboard/app/dev.sh` — starts `vite` dev on **fixed port 5174**
+  (127.0.0.1, idempotent: frees the port first) with native React/Tailwind HMR.
+  Native HMR is edit-safe while recording (idle = no reload).
+- Cross-machine: the script asserts a standing
+  `tailscale serve --https=8445 → 127.0.0.1:5174` (tailnet-only, persists across
+  sessions). Only re-run if reset:
+  `AGENT_POLICY_BYPASS=1 tailscale serve --bg --https=8445 http://127.0.0.1:5174`.
+- The causal-order guarantee for the inline explainers is unit-tested via
+  `cd demo/dashboard/app && bun run test` (vitest). Note: `demo/` is outside the
+  pnpm workspace, so this is NOT yet wired into the main repo ship gate.
 
 ## Fresh demo env (the `reset.sh` replacement)
 
@@ -63,8 +61,9 @@ old `demo/<tool>/stage` paths; rewiring them onto `$DEMO_*` is a pending step.)
 | Thing | Where |
 |-------|-------|
 | VRS | `demo/vrs/{vision,requirements,spec}.md` |
-| Explainers (canonical) | `demo/explainers/notion-<tool>.html` (ledger: `demo/explainers/README.md`) |
-| Dashboard | GENERATED `demo/explainers/control.html` ← `demo/dashboard/build.ts` (never hand-edit) |
+| Explainers (canonical) | React components `demo/dashboard/explainers/src/<id>.tsx` (+ `<id>.css`); ledger: `demo/explainers/README.md` |
+| Dashboard | unified Vite app `demo/dashboard/app/` (run via `demo/dashboard/app/dev.sh`) — explainers render inline |
+| Explainer design source | `demo/explainers/_design/` (X-thread copy `*.thread.md` + mermaid `mmd/*.mmd`) |
 | Screenplays | `demo/<tool>/SCREENPLAY.md` |
 | Harness storyboards | `demo/<tool>/e2e.spec.ts`; evidence `demo/<tool>/evidence/` |
 | Demo env provisioner | `demo/env/` (`demo-env`) |
@@ -84,6 +83,7 @@ old `demo/<tool>/stage` paths; rewiring them onto `$DEMO_*` is a pending step.)
 
 ## Don't-conflict rules
 
-- One server on :52606 only (`serve.sh` frees it first).
-- `control.html` is generated — edit `build.ts`, not the file.
+- One server on :5174 only (`demo/dashboard/app/dev.sh` frees it first).
+- Explainers are React components in `demo/dashboard/explainers/src/` rendered
+  inline by the app — edit those, not any generated HTML (there is none).
 - Never commit `storageState`, evidence, or `.demo-envs/` (all gitignored).

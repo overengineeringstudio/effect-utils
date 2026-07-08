@@ -7,8 +7,7 @@
  * React app does escaping + inline-markdown in JSX, not HTML strings). Emits
  * src/model.gen.ts. The browser never sees .md or the parser — only the data.
  *
- * Evidence/status parity with demo/dashboard/build.ts (the live control.html
- * generator): the md demo is enriched from the latest md evidence timeline.json
+ * Evidence/status: the md demo is enriched from the latest md evidence timeline.json
  * (per-beat pass/fail + run summary) and the globbed md-evidence/*.png backups
  * (bucketed per beat, terminal-first). Non-md demos carry no status/images and
  * render the "not yet harnessed" / "evidence pending" affordances.
@@ -44,13 +43,13 @@ interface DemoDef {
 }
 
 const DEMO_DEFS: DemoDef[] = [
-  { id: 'md', dir: 'md', tab: 'notion md', explainer: 'notion-md.html', displayNum: '1' },
-  { id: 'sqlite', dir: 'sqlite', tab: 'notion sqlite', explainer: 'notion-sqlite.html', displayNum: '2' },
+  { id: 'md', dir: 'md', tab: 'notion md', explainer: null, displayNum: '1' },
+  { id: 'sqlite', dir: 'sqlite', tab: 'notion sqlite', explainer: null, displayNum: '2' },
   {
     id: 'schema',
     dir: 'schema',
     tab: 'notion schema',
-    explainer: 'notion-schema-codegen.html',
+    explainer: null,
     displayNum: '3.1',
     groupId: 'schema',
     groupLabel: 'notion schema',
@@ -59,14 +58,14 @@ const DEMO_DEFS: DemoDef[] = [
     id: 'schema-iac',
     dir: 'schema-iac',
     tab: 'notion schema apply',
-    explainer: 'notion-schema-iac.html',
+    explainer: null,
     displayNum: '3.2',
     groupId: 'schema',
     groupLabel: 'notion schema',
     planned: true,
     evidence: 'mock',
   },
-  { id: 'react', dir: 'react', tab: 'notion-react', explainer: 'notion-react.html', displayNum: '4' },
+  { id: 'react', dir: 'react', tab: 'notion-react', explainer: null, displayNum: '4' },
 ]
 
 // ---------------------------------------------------------------------------
@@ -192,11 +191,10 @@ export const buildModel = (): DemoModel[] => {
           }
         : { harnessed: false, pass: 0, total: 0 }
 
-    // explainerSrc: only a plain RELATIVE sibling ref (served next to
-    // control.next.html) — Vite must never bundle it. Guard on existence like
-    // build.ts: the two new schema explainers may be authored in a PARALLEL
-    // task and absent at build time; a missing file must render "no explainer",
-    // NOT a 404 iframe.
+    // explainerSrc: legacy field — the explainers now render inline as React
+    // components (registry.tsx in dashboard/explainers/src), NOT as standalone
+    // HTML files, so `def.explainer` is null and this resolves to null. Kept in
+    // the emitted model for shape stability; consumed nowhere in the app.
     const explainerSrc = def.explainer && existsSync(join(EXPLAINERS, def.explainer)) ? def.explainer : null
 
     return {
