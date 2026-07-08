@@ -663,7 +663,7 @@ export const MiniReactPage = () => (
         <span className="tgl">▸</span> Q3 plan
       </div>
       <div className="blk nested" data-k="rbudget">
-        <span className="swap">
+        <span className="swap" data-k="rbudget">
           <span className="s-was">↳ budget…</span>
           <span className="s-now">↳ budget $42k</span>
         </span>
