@@ -30,8 +30,11 @@ export const readUrl = (): UiState => {
 }
 
 export const normalize = (s: UiState): UiState => {
-  // intro is not a demo — it has no explainer, so it is always instructions view
-  if (s.demo === INTRO_ID) return { ...s, view: 'instructions' }
+  // intro is not a demo and doesn't consume `view` (it renders its own panel
+  // regardless), so leave the stored view untouched — otherwise it would
+  // clobber it to 'instructions' and that stale value would stick once the
+  // user navigates on to a real demo.
+  if (s.demo === INTRO_ID) return s
   const d = DEMOS.find((x) => x.id === s.demo) ?? DEMOS[0]!
   // can't be in explanation view if the active demo has no explainer
   const view: View = s.view === 'explanation' && !canExplain(d) ? 'instructions' : s.view
