@@ -1,7 +1,12 @@
 /**
- * registry.tsx — the set of explainers the SSG build renders. Add one entry per
- * explainer; the build loops this list. `css` names a per-explainer content CSS
- * file (in src/), inlined after the shared kit CSS.
+ * registry.tsx — the id → React component map for the control dashboard's INLINE
+ * explainer render. App.tsx derives `EXPLAINER_BY_ID` from this list and mounts
+ * `EXPLAINER_BY_ID[d.id]` under `.explainer-root.x-<id>`. Add one entry per
+ * explainer.
+ *
+ * `css` records the per-explainer content CSS file (in src/). That CSS is now
+ * self-scoped at its source and imported DIRECTLY by app/src/main.tsx (NOT via
+ * this field) — the field is kept as documentation of the id ↔ css pairing.
  */
 import type * as React from 'react'
 import { Md } from './md.tsx'

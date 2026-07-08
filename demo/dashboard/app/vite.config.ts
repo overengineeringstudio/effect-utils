@@ -3,13 +3,13 @@ import { fileURLToPath } from 'node:url'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { defineConfig, type Plugin } from 'vite'
-import { viteSingleFile } from 'vite-plugin-singlefile'
 import { genModel } from './scripts/gen-model.ts'
 
-// This app imports the shared mockup kit from a SIBLING dir (../../kit). The dev
-// server must be allowed to serve those files (components + kit-components.css)
-// from outside the app root, or the mockups render unstyled. Allow the parent
-// dashboard dir (covers app + kit); the singlefile build inlines them regardless.
+// This app imports the shared mockup kit AND the per-explainer content CSS from a
+// SIBLING dir (../../kit, ../../explainers/src). Both the dev server AND the build
+// must be allowed to read those files from outside the app root, or the mockups +
+// explainers render unstyled. Allow the parent dashboard dir (covers app + kit +
+// explainers).
 const DASHBOARD_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
 // DEV server exposure: `vite` runs on DEV_PORT (127.0.0.1) and a standing
@@ -30,19 +30,22 @@ const screenplayModel = (): Plugin => ({
 })
 
 export default defineConfig({
-  // Build to a local dist/ then scripts/emit.ts copies dist/index.html to
-  // demo/explainers/control.next.html (avoids outside-root outDir friction).
-  plugins: [screenplayModel(), react(), tailwindcss(), viteSingleFile()],
+  // Native multi-chunk build (React + Tailwind). Dev is native Vite/HMR; there is
+  // no single-file / SSG step — the dev server is the authoring + recording surface.
+  plugins: [screenplayModel(), react(), tailwindcss()],
+  // The explainer components live in a SIBLING package (../../explainers/src) with
+  // its OWN node_modules/react. Without deduping, the production Rollup build bundles
+  // TWO React copies and hooks fail ("Cannot read properties of null (reading
+  // 'useRef')"). Force a single React instance (the app root's) for both dev + build.
+  resolve: { dedupe: ['react', 'react-dom'] },
   build: {
-    // Inline everything; ship a single self-contained HTML file (no hashed chunks).
-    assetsInlineLimit: Number.MAX_SAFE_INTEGER,
-    cssCodeSplit: false,
     outDir: 'dist',
     emptyOutDir: true,
   },
-  // DEV server config (ignored by the singlefile build).
+  // DEV server config.
   server: {
-    // Allow serving the sibling kit dir (kit-components.css + components) in dev.
+    // Allow serving the sibling kit + explainers dirs (kit-components.css +
+    // components + per-explainer .css) in dev.
     fs: { allow: [DASHBOARD_DIR] },
     // Bind IPv4 127.0.0.1 (not the default localhost→::1) so the standing
     // `tailscale serve … http://127.0.0.1:DEV_PORT` proxy can reach it.

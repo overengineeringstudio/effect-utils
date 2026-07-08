@@ -7,8 +7,8 @@
  * FIXED SIDES across all three tabs: the `.nmd` mini-IDE is always LEFT, the
  * Notion page always RIGHT — direction lives only in the center arrows
  * (push → / ← pull / ⇄ merge). Each mode's causality is declared as data via
- * `multiSyncStory`, which ASSERTS cause-before-effect and fails the build if a
- * mode is inverted (see scripts/causality-proof.ts for the negative test).
+ * `multiSyncStory`, which ASSERTS cause-before-effect and throws `CausalityError`
+ * if a mode is inverted (see app/test/causality.test.ts for the negative tests).
  *
  * Role bands (kit): a line/block edited FIRST reads blue (`orig`); a line/block
  * that RECEIVES on sync reads green (`recv`), gated behind the packet's arrival.

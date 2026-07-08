@@ -38,7 +38,7 @@ import { captionsToSteps, syncStory } from '../../kit/syncStory.ts'
 
 /**
  * The declarative causal model. Constructing it ASSERTS cause-before-effect and
- * fails the build on inversion (see scripts/causality-proof if wired). `local` is
+ * throws `CausalityError` on inversion (see app/test/causality.test.ts). `local` is
  * omitted — codegen has no pre-sync local-pane flip. The `generate`/read packet
  * departs at step-2 entry and travels ~1.35s; the generated code is the sole
  * effect, gated to that ARRIVAL (NOT step entry — that is the fixed [HIGH] bug).

@@ -1,7 +1,17 @@
 /* iac.css — per-explainer content CSS for notion-schema-iac (the PLANNED /
-   roadmap-preview explainer). Inlined AFTER the shared kit CSS by the SSG build,
-   so rules here override kit defaults on THIS page only (each explainer is a
-   separate HTML file — nothing here leaks onto sqlite/md).
+   roadmap-preview explainer).
+
+   SELF-SCOPED under `.explainer-root.x-schema-iac` (CSS nesting) — the app wraps
+   this explainer in `<div class="explainer-root x-schema-iac">`, so scoping here
+   lets main.tsx import this file DIRECTLY without its bare class names
+   (.code/.conn/.bound/.split/.ntn-swap/…) leaking onto the other explainers or the
+   dashboard chrome. This is the SINGLE source for iac's content CSS (no
+   transcription). Imported AFTER kit-components.css so equal-specificity kit
+   overrides win by source order.
+
+   The @keyframes below is hoisted to TOP LEVEL (keyframes can't be nested) and the
+   `:root[data-theme]` theme selectors are written via `&` (which resolves to
+   `.explainer-root.x-schema-iac`).
 
    What lives here:
      - the SINGLE sticky "roadmap preview" banner (the sole planned indicator)
@@ -14,217 +24,220 @@
    Color convention (kept disjoint): amber = PLANNED/preview only; warn/red =
    destructive + blocked only; the flow is neutral accent, NEVER green. */
 
-/* ============================================================
-   THE SOLE PLANNED INDICATOR — one sticky banner
-   ============================================================ */
-.banner { position: sticky; top: 0; z-index: 50; margin: 0; padding: 11px 22px;
-  background: var(--amber-soft); border-bottom: 2px solid var(--amber-line);
-  display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap;
-  text-align: center; box-shadow: 0 4px 14px rgba(0,0,0,.06); }
-.banner .bdg { font: 800 11px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase;
-  color: #fff; background: var(--amber); border-radius: 6px; padding: 6px 10px; white-space: nowrap; }
-@media (prefers-color-scheme: dark){ .banner .bdg { color: #191919; } }
-:root[data-theme="dark"] .banner .bdg { color: #191919; }
-.banner .msg { font: 600 13.5px/1.35 var(--sans); color: var(--amber); }
-.banner .msg b { font-weight: 800; }
-.banner .msg code { font-family: var(--mono); font-size: .9em; }
-.body-pad { height: 8px; }
-
-/* ---- lead direction pill (iac-local; kit-page has no .dir) ---- */
-.lead .kicker { display: inline-flex; align-items: center; gap: 9px; }
-.dir { margin-top: 14px; display: inline-flex; align-items: center; gap: 10px; font: 600 12px/1 var(--mono);
-  letter-spacing: .02em; color: var(--muted); background: var(--panel); border: 1px solid var(--line);
-  border-radius: 22px; padding: 8px 14px; }
-.dir b { color: var(--accent); }
-.dir .file { color: var(--ok); }
-.dir .db { color: var(--blue); }
-.dir svg { width: 26px; height: 12px; }
-
-/* ---- the amber PLANNED promise (override kit-page's green .promise) ---- */
-.promise { color: var(--amber); background: var(--amber-soft); border-color: var(--amber-line); }
-
-/* h2 warn accent (coda "refused") */
-.beat h2 .w { color: var(--warn); font-style: normal; }
-
-/* ============================================================
-   BEAT 1 — the gap (static)
-   ============================================================ */
-.s1 { display: flex; align-items: center; justify-content: center; gap: 0; flex-wrap: wrap; }
-
-/* desired-state file card */
-.code { width: 366px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2);
-  box-shadow: var(--shadow); overflow: hidden; flex: none; }
-.code-bar { display: flex; align-items: center; gap: 7px; padding: 9px 12px; border-bottom: 1px solid var(--line-soft);
-  background: var(--panel); font: 600 11.5px/1 var(--mono); color: var(--muted); box-shadow: inset 0 2px 0 var(--accent); }
-.code-bar .ro { margin-left: auto; font-size: 9px; letter-spacing: .05em; text-transform: uppercase; color: var(--accent); }
-.code-body { padding: 13px 15px 15px; font-family: var(--mono); font-size: 12px; line-height: 1.55;
-  display: flex; flex-direction: column; gap: 1px; }
-.code-body .kw { color: var(--accent); }
-.code-body .st-code { color: var(--ok); }
-.code-body .fn { color: var(--blue); }
-.code-body .cm { color: var(--muted); }
-.code-body .pv { color: var(--ink); }
-.code-body .indent { padding-left: 15px; }
-.code-body .indent2 { padding-left: 30px; }
-
-/* the missing command connector (amber dashed) */
-.conn { width: 150px; flex: none; display: flex; flex-direction: column; align-items: center; gap: 9px; color: var(--muted); }
-.conn .lbl { font: 600 10.5px/1.35 var(--mono); letter-spacing: .03em; text-align: center; color: var(--muted); }
-.conn .lbl b { color: var(--amber); }
-.conn svg { width: 108px; height: 24px; display: block; }
-
-/* empty parent page ("No Tasks DB yet") — reused by beat 1 + beat 2's .ntn-swap */
-.ntn-empty { min-height: 214px; display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 8px; text-align: center; padding: 20px 18px; color: var(--muted); }
-.ntn-empty .ico { font-size: 24px; opacity: .45; }
-.ntn-empty .t1 { font: 600 12.5px/1.4 var(--sans); color: var(--ink); }
-.ntn-empty .t2 { font: 500 11.5px/1.45 var(--sans); max-width: 32ch; }
-.s1 > .macw.ntn { width: 300px; flex: none; }
-
-/* ============================================================
-   BEAT 2 — the sequence (kit-integration deltas)
-   ============================================================ */
-
-/* extra terminal syntax spans the kit .tmnl-body lacks (narrated mock output) */
-.tmnl-body .c { color: var(--accent); font-weight: 700; }
-.tmnl-body .hd { color: var(--ink); font-weight: 700; }
-.tmnl-body .add { color: var(--ok); }
-.tmnl-body .chg { color: var(--blue); }
-.tmnl-body .blk { color: var(--warn); font-weight: 700; }
-.tmnl-body .ok { color: var(--ok); font-weight: 700; }
-.tmnl-body .path { color: var(--blue); }
-.tmnl-body .sum { color: var(--muted); margin-top: 3px; padding-top: 5px; border-top: 1px dashed var(--line); }
-
-/* the lock/state file reads amber (planned state model) */
-.ide-tree .ide-file:last-child { color: var(--amber); }
-.ide-tree .ide-file:last-child .ic { color: var(--amber); opacity: .9; }
-
-/* gray "Todo" status pill (kit StatusPill only knows Done/In-Progress) */
-.st-todo { color: var(--muted); background: var(--panel); border: 1px solid var(--line); }
-
-/* reconcile strip — the "delta on every run" idea */
-.recon { margin-top: 14px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-  background: var(--panel-2); border: 1px dashed var(--line); border-radius: 12px; padding: 12px 16px; }
-.recon .rt { font: 700 10px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
-.recon .rl { font-family: var(--mono); font-size: 12px; color: var(--ink); }
-.recon .rl .chg { color: var(--blue); }
-.recon .rl .add { color: var(--ok); }
-.recon .noop { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-left: auto; }
-.caption .add-ink { color: var(--ok); font-weight: 700; }
-.caption .chg-ink { color: var(--blue); font-weight: 700; }
-
-/* ---- DirFlow step-4 BLOCKED state (the non-positive flow the kit lacks) ----
-   idle (steps 1–2, muted) and applying (step 3, accent packet) come from the
-   shared kit; step 4 must NOT fall through to the base accent (that would read
-   positive during a refusal). Override to a warn/blocked, non-positive state —
-   never accent-positive, never green. The packet is already off at step 4. */
-.seq[data-mode="anim"][data-step="4"] .dflow-badge {
-  color: var(--warn); background: var(--warn-soft); border-color: var(--warn-line); }
-.seq[data-mode="anim"][data-step="4"] .dflow-badge .dot { background: var(--warn); }
-.seq[data-mode="anim"][data-step="4"] .dflow .dtrack { background: var(--warn-line); }
-.seq[data-mode="anim"][data-step="4"] .dflow .dhead.r { border-left-color: var(--warn-line); }
-.seq[data-mode="anim"][data-step="4"] .dflow-note { color: var(--warn); }
-
-/* ---- .ntn-swap: empty → provisioned. Base (no-JS / reduced-motion) shows the
-   PROVISIONED grid (the resolved view). The kit only gates the row-level .swap,
-   so this macro-swap is defined here. ---- */
-.ntn-swap { display: grid; }
-.ntn-swap > * { grid-area: 1/1; transition: opacity .45s ease; }
-.ntn-swap .s-was { opacity: 0; }
-.ntn-swap .s-now { opacity: 1; }
-/* steps 1–2: empty (no DB provisioned yet — plan makes no writes) */
-.seq[data-mode="anim"][data-step="1"] .ntn-swap .s-was,
-.seq[data-mode="anim"][data-step="2"] .ntn-swap .s-was { opacity: 1; }
-.seq[data-mode="anim"][data-step="1"] .ntn-swap .s-now,
-.seq[data-mode="anim"][data-step="2"] .ntn-swap .s-now { opacity: 0; }
-/* step 3: the DB provisions ONLY when the write packet lands (~1.4s) — GATED,
-   never at t=0. `both` holds the provisioned state through the rest of the step
-   and into step 4 (the refusal changes nothing). */
-.seq[data-mode="anim"][data-step="3"] .ntn-swap .s-was { animation: fadeout .4s ease 1.4s both; }
-.seq[data-mode="anim"][data-step="3"] .ntn-swap .s-now { animation: iac-provision .6s ease-out 1.4s both; }
 @keyframes iac-provision { 0%{ opacity: 0; transform: translateY(5px); } 100%{ opacity: 1; transform: none; } }
-/* step 4: not overridden → falls to base (.s-now visible) → the DB persists. */
 
-@media (prefers-reduced-motion: reduce) {
-  .ntn-swap .s-was { opacity: 0 !important; }
-  .ntn-swap .s-now { opacity: 1 !important; }
-}
+.explainer-root.x-schema-iac {
+  /* ============================================================
+     THE SOLE PLANNED INDICATOR — one sticky banner
+     ============================================================ */
+  .banner { position: sticky; top: 0; z-index: 50; margin: 0; padding: 11px 22px;
+    background: var(--amber-soft); border-bottom: 2px solid var(--amber-line);
+    display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap;
+    text-align: center; box-shadow: 0 4px 14px rgba(0,0,0,.06); }
+  .banner .bdg { font: 800 11px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase;
+    color: #fff; background: var(--amber); border-radius: 6px; padding: 6px 10px; white-space: nowrap; }
+  @media (prefers-color-scheme: dark){ .banner .bdg { color: #191919; } }
+  :root[data-theme="dark"] & .banner .bdg { color: #191919; }
+  .banner .msg { font: 600 13.5px/1.35 var(--sans); color: var(--amber); }
+  .banner .msg b { font-weight: 800; }
+  .banner .msg code { font-family: var(--mono); font-size: .9em; }
+  .body-pad { height: 8px; }
 
-/* ============================================================
-   CODA — the honest boundary (static)
-   ============================================================ */
-.coda-rule { display: flex; align-items: center; gap: 14px; margin: 0 20px; color: var(--muted); }
-.coda-rule::before, .coda-rule::after { content: ""; height: 1px; background: var(--line); flex: 1; }
-.coda-rule span { font: 600 11px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; }
-.coda { border-style: dashed; background: var(--panel); }
-.coda .beat-tag { color: var(--accent); }
+  /* ---- lead direction pill (iac-local; kit-page has no .dir) ---- */
+  .lead .kicker { display: inline-flex; align-items: center; gap: 9px; }
+  .dir { margin-top: 14px; display: inline-flex; align-items: center; gap: 10px; font: 600 12px/1 var(--mono);
+    letter-spacing: .02em; color: var(--muted); background: var(--panel); border: 1px solid var(--line);
+    border-radius: 22px; padding: 8px 14px; }
+  .dir b { color: var(--accent); }
+  .dir .file { color: var(--ok); }
+  .dir .db { color: var(--blue); }
+  .dir svg { width: 26px; height: 12px; }
 
-.bound-stage { min-height: 0; flex-direction: column; gap: 16px; align-items: stretch; }
+  /* ---- the amber PLANNED promise (override kit-page's green .promise) ---- */
+  .promise { color: var(--amber); background: var(--amber-soft); border-color: var(--amber-line); }
 
-/* in-scope / out-of-scope boundary columns */
-.bound { display: flex; gap: 16px; align-items: stretch; flex-wrap: wrap; justify-content: center; }
-.bcol { flex: 1 1 300px; min-width: 280px; border-radius: 12px; overflow: hidden; box-shadow: var(--shadow);
-  border: 1px solid var(--line); background: var(--panel-2); }
-.bcol.in { border-color: var(--ok-line); }
-.bcol.out { border-color: var(--warn-line); }
-.bcol-h { padding: 10px 14px; font: 700 11px/1 var(--mono); letter-spacing: .05em; text-transform: uppercase;
-  display: flex; align-items: center; gap: 8px; }
-.bcol.in .bcol-h { color: var(--ok); background: var(--ok-soft); border-bottom: 1px solid var(--ok-line); }
-.bcol.out .bcol-h { color: var(--warn); background: var(--warn-soft); border-bottom: 1px solid var(--warn-line); }
-.bcol-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 9px; font-size: 12.5px; }
-.brow { display: flex; align-items: flex-start; gap: 9px; }
-.brow .m { flex: none; font: 700 12px/1 var(--mono); width: 12px; text-align: center; margin-top: 1px; }
-.bcol.in .brow .m { color: var(--ok); }
-.bcol.out .brow .m { color: var(--warn); }
-.brow .t { color: var(--ink); }
-.brow .t b { font-family: var(--mono); font-weight: 700; }
-.brow .sub { color: var(--muted); }
-.brow .g { display: block; margin-top: 2px; font: 600 9.5px/1.3 var(--mono); color: var(--muted); }
-.bcol.out .brow .g { color: var(--warn); }
+  /* h2 warn accent (coda "refused") */
+  .beat h2 .w { color: var(--warn); font-style: normal; }
 
-/* refuse terminal (iac-local; DISTINCT from the kit .tmnl) */
-.rterm { width: 100%; max-width: 620px; align-self: center; border: 1px solid var(--line); border-radius: 12px;
-  background: var(--panel-2); box-shadow: var(--shadow); overflow: hidden; }
-.rterm-bar { display: flex; align-items: center; gap: 8px; padding: 9px 13px; border-bottom: 1px solid var(--line-soft);
-  background: var(--panel); font: 600 11px/1 var(--mono); color: var(--muted); }
-.rterm-dots { display: flex; gap: 5px; }
-.rterm-dots i { width: 9px; height: 9px; border-radius: 50%; display: block; background: var(--line); }
-.rterm-body { padding: 13px 16px; font-family: var(--mono); font-size: 12.5px; line-height: 1.5;
-  display: flex; flex-direction: column; gap: 4px; }
-.rterm-body .cmd .p { color: var(--accent); font-weight: 700; }
-.rterm-body .cmd .c { color: var(--accent); font-weight: 700; }
-.rterm-body .cmd .id { color: var(--ink); }
-.rterm-body .out { color: var(--muted); white-space: pre; }
-.rterm-body .blk { color: var(--warn); font-weight: 600; }
-.rterm-foot { padding: 10px 16px; border-top: 1px solid; font: 700 12px/1 var(--mono); display: flex;
-  align-items: center; gap: 9px; }
-.rterm-foot.stop { border-top-color: var(--warn-line); background: var(--warn-soft); color: var(--warn); }
-.rterm-foot .ex { margin-left: auto; font: 700 9.5px/1 var(--mono); color: #fff; border-radius: 5px; padding: 3px 6px;
-  background: var(--warn); }
-@media (prefers-color-scheme: dark){ .rterm-foot .ex { color: #191919; } }
-:root[data-theme="dark"] .rterm-foot .ex { color: #191919; }
+  /* ============================================================
+     BEAT 1 — the gap (static)
+     ============================================================ */
+  .s1 { display: flex; align-items: center; justify-content: center; gap: 0; flex-wrap: wrap; }
 
-/* credibility split: real engine (ok) vs planned front-end (amber) */
-.split { margin-top: 16px; display: flex; align-items: stretch; gap: 0; flex-wrap: wrap; border: 1px solid var(--line);
-  border-radius: 12px; overflow: hidden; }
-.split > div { flex: 1 1 260px; padding: 14px 16px; }
-.split .real { background: var(--ok-soft); border-right: 1px solid var(--line); }
-.split .planned { background: var(--amber-soft); }
-.split .lab { font: 700 10px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; margin-bottom: 8px;
-  display: flex; align-items: center; gap: 7px; }
-.split .real .lab { color: var(--ok); }
-.split .planned .lab { color: var(--amber); }
-.split p { margin: 0; font-size: 13px; color: var(--ink); }
-.split code { font-family: var(--mono); font-size: .9em; }
-.split .real code { color: var(--ok); }
-.split .planned code { color: var(--amber); }
-.coda-cap { margin-top: 16px; }
+  /* desired-state file card */
+  .code { width: 366px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2);
+    box-shadow: var(--shadow); overflow: hidden; flex: none; }
+  .code-bar { display: flex; align-items: center; gap: 7px; padding: 9px 12px; border-bottom: 1px solid var(--line-soft);
+    background: var(--panel); font: 600 11.5px/1 var(--mono); color: var(--muted); box-shadow: inset 0 2px 0 var(--accent); }
+  .code-bar .ro { margin-left: auto; font-size: 9px; letter-spacing: .05em; text-transform: uppercase; color: var(--accent); }
+  .code-body { padding: 13px 15px 15px; font-family: var(--mono); font-size: 12px; line-height: 1.55;
+    display: flex; flex-direction: column; gap: 1px; }
+  .code-body .kw { color: var(--accent); }
+  .code-body .st-code { color: var(--ok); }
+  .code-body .fn { color: var(--blue); }
+  .code-body .cm { color: var(--muted); }
+  .code-body .pv { color: var(--ink); }
+  .code-body .indent { padding-left: 15px; }
+  .code-body .indent2 { padding-left: 30px; }
 
-/* ============================================================
-   responsive
-   ============================================================ */
-@media (max-width: 820px) {
-  .s1 { flex-direction: column; }
-  .conn svg { transform: rotate(90deg); }
-  .code, .s1 > .macw.ntn { width: 100% !important; max-width: 420px; }
+  /* the missing command connector (amber dashed) */
+  .conn { width: 150px; flex: none; display: flex; flex-direction: column; align-items: center; gap: 9px; color: var(--muted); }
+  .conn .lbl { font: 600 10.5px/1.35 var(--mono); letter-spacing: .03em; text-align: center; color: var(--muted); }
+  .conn .lbl b { color: var(--amber); }
+  .conn svg { width: 108px; height: 24px; display: block; }
+
+  /* empty parent page ("No Tasks DB yet") — reused by beat 1 + beat 2's .ntn-swap */
+  .ntn-empty { min-height: 214px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 8px; text-align: center; padding: 20px 18px; color: var(--muted); }
+  .ntn-empty .ico { font-size: 24px; opacity: .45; }
+  .ntn-empty .t1 { font: 600 12.5px/1.4 var(--sans); color: var(--ink); }
+  .ntn-empty .t2 { font: 500 11.5px/1.45 var(--sans); max-width: 32ch; }
+  .s1 > .macw.ntn { width: 300px; flex: none; }
+
+  /* ============================================================
+     BEAT 2 — the sequence (kit-integration deltas)
+     ============================================================ */
+
+  /* extra terminal syntax spans the kit .tmnl-body lacks (narrated mock output) */
+  .tmnl-body .c { color: var(--accent); font-weight: 700; }
+  .tmnl-body .hd { color: var(--ink); font-weight: 700; }
+  .tmnl-body .add { color: var(--ok); }
+  .tmnl-body .chg { color: var(--blue); }
+  .tmnl-body .blk { color: var(--warn); font-weight: 700; }
+  .tmnl-body .ok { color: var(--ok); font-weight: 700; }
+  .tmnl-body .path { color: var(--blue); }
+  .tmnl-body .sum { color: var(--muted); margin-top: 3px; padding-top: 5px; border-top: 1px dashed var(--line); }
+
+  /* the lock/state file reads amber (planned state model) */
+  .ide-tree .ide-file:last-child { color: var(--amber); }
+  .ide-tree .ide-file:last-child .ic { color: var(--amber); opacity: .9; }
+
+  /* gray "Todo" status pill (kit StatusPill only knows Done/In-Progress) */
+  .st-todo { color: var(--muted); background: var(--panel); border: 1px solid var(--line); }
+
+  /* reconcile strip — the "delta on every run" idea */
+  .recon { margin-top: 14px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    background: var(--panel-2); border: 1px dashed var(--line); border-radius: 12px; padding: 12px 16px; }
+  .recon .rt { font: 700 10px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .recon .rl { font-family: var(--mono); font-size: 12px; color: var(--ink); }
+  .recon .rl .chg { color: var(--blue); }
+  .recon .rl .add { color: var(--ok); }
+  .recon .noop { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-left: auto; }
+  .caption .add-ink { color: var(--ok); font-weight: 700; }
+  .caption .chg-ink { color: var(--blue); font-weight: 700; }
+
+  /* ---- DirFlow step-4 BLOCKED state (the non-positive flow the kit lacks) ----
+     idle (steps 1–2, muted) and applying (step 3, accent packet) come from the
+     shared kit; step 4 must NOT fall through to the base accent (that would read
+     positive during a refusal). Override to a warn/blocked, non-positive state —
+     never accent-positive, never green. The packet is already off at step 4. */
+  .seq[data-mode="anim"][data-step="4"] .dflow-badge {
+    color: var(--warn); background: var(--warn-soft); border-color: var(--warn-line); }
+  .seq[data-mode="anim"][data-step="4"] .dflow-badge .dot { background: var(--warn); }
+  .seq[data-mode="anim"][data-step="4"] .dflow .dtrack { background: var(--warn-line); }
+  .seq[data-mode="anim"][data-step="4"] .dflow .dhead.r { border-left-color: var(--warn-line); }
+  .seq[data-mode="anim"][data-step="4"] .dflow-note { color: var(--warn); }
+
+  /* ---- .ntn-swap: empty → provisioned. Base (no-JS / reduced-motion) shows the
+     PROVISIONED grid (the resolved view). The kit only gates the row-level .swap,
+     so this macro-swap is defined here. ---- */
+  .ntn-swap { display: grid; }
+  .ntn-swap > * { grid-area: 1/1; transition: opacity .45s ease; }
+  .ntn-swap .s-was { opacity: 0; }
+  .ntn-swap .s-now { opacity: 1; }
+  /* steps 1–2: empty (no DB provisioned yet — plan makes no writes) */
+  .seq[data-mode="anim"][data-step="1"] .ntn-swap .s-was,
+  .seq[data-mode="anim"][data-step="2"] .ntn-swap .s-was { opacity: 1; }
+  .seq[data-mode="anim"][data-step="1"] .ntn-swap .s-now,
+  .seq[data-mode="anim"][data-step="2"] .ntn-swap .s-now { opacity: 0; }
+  /* step 3: the DB provisions ONLY when the write packet lands (~1.4s) — GATED,
+     never at t=0. `both` holds the provisioned state through the rest of the step
+     and into step 4 (the refusal changes nothing). */
+  .seq[data-mode="anim"][data-step="3"] .ntn-swap .s-was { animation: fadeout .4s ease 1.4s both; }
+  .seq[data-mode="anim"][data-step="3"] .ntn-swap .s-now { animation: iac-provision .6s ease-out 1.4s both; }
+  /* step 4: not overridden → falls to base (.s-now visible) → the DB persists. */
+
+  @media (prefers-reduced-motion: reduce) {
+    .ntn-swap .s-was { opacity: 0 !important; }
+    .ntn-swap .s-now { opacity: 1 !important; }
+  }
+
+  /* ============================================================
+     CODA — the honest boundary (static)
+     ============================================================ */
+  .coda-rule { display: flex; align-items: center; gap: 14px; margin: 0 20px; color: var(--muted); }
+  .coda-rule::before, .coda-rule::after { content: ""; height: 1px; background: var(--line); flex: 1; }
+  .coda-rule span { font: 600 11px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; }
+  .coda { border-style: dashed; background: var(--panel); }
+  .coda .beat-tag { color: var(--accent); }
+
+  .bound-stage { min-height: 0; flex-direction: column; gap: 16px; align-items: stretch; }
+
+  /* in-scope / out-of-scope boundary columns */
+  .bound { display: flex; gap: 16px; align-items: stretch; flex-wrap: wrap; justify-content: center; }
+  .bcol { flex: 1 1 300px; min-width: 280px; border-radius: 12px; overflow: hidden; box-shadow: var(--shadow);
+    border: 1px solid var(--line); background: var(--panel-2); }
+  .bcol.in { border-color: var(--ok-line); }
+  .bcol.out { border-color: var(--warn-line); }
+  .bcol-h { padding: 10px 14px; font: 700 11px/1 var(--mono); letter-spacing: .05em; text-transform: uppercase;
+    display: flex; align-items: center; gap: 8px; }
+  .bcol.in .bcol-h { color: var(--ok); background: var(--ok-soft); border-bottom: 1px solid var(--ok-line); }
+  .bcol.out .bcol-h { color: var(--warn); background: var(--warn-soft); border-bottom: 1px solid var(--warn-line); }
+  .bcol-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 9px; font-size: 12.5px; }
+  .brow { display: flex; align-items: flex-start; gap: 9px; }
+  .brow .m { flex: none; font: 700 12px/1 var(--mono); width: 12px; text-align: center; margin-top: 1px; }
+  .bcol.in .brow .m { color: var(--ok); }
+  .bcol.out .brow .m { color: var(--warn); }
+  .brow .t { color: var(--ink); }
+  .brow .t b { font-family: var(--mono); font-weight: 700; }
+  .brow .sub { color: var(--muted); }
+  .brow .g { display: block; margin-top: 2px; font: 600 9.5px/1.3 var(--mono); color: var(--muted); }
+  .bcol.out .brow .g { color: var(--warn); }
+
+  /* refuse terminal (iac-local; DISTINCT from the kit .tmnl) */
+  .rterm { width: 100%; max-width: 620px; align-self: center; border: 1px solid var(--line); border-radius: 12px;
+    background: var(--panel-2); box-shadow: var(--shadow); overflow: hidden; }
+  .rterm-bar { display: flex; align-items: center; gap: 8px; padding: 9px 13px; border-bottom: 1px solid var(--line-soft);
+    background: var(--panel); font: 600 11px/1 var(--mono); color: var(--muted); }
+  .rterm-dots { display: flex; gap: 5px; }
+  .rterm-dots i { width: 9px; height: 9px; border-radius: 50%; display: block; background: var(--line); }
+  .rterm-body { padding: 13px 16px; font-family: var(--mono); font-size: 12.5px; line-height: 1.5;
+    display: flex; flex-direction: column; gap: 4px; }
+  .rterm-body .cmd .p { color: var(--accent); font-weight: 700; }
+  .rterm-body .cmd .c { color: var(--accent); font-weight: 700; }
+  .rterm-body .cmd .id { color: var(--ink); }
+  .rterm-body .out { color: var(--muted); white-space: pre; }
+  .rterm-body .blk { color: var(--warn); font-weight: 600; }
+  .rterm-foot { padding: 10px 16px; border-top: 1px solid; font: 700 12px/1 var(--mono); display: flex;
+    align-items: center; gap: 9px; }
+  .rterm-foot.stop { border-top-color: var(--warn-line); background: var(--warn-soft); color: var(--warn); }
+  .rterm-foot .ex { margin-left: auto; font: 700 9.5px/1 var(--mono); color: #fff; border-radius: 5px; padding: 3px 6px;
+    background: var(--warn); }
+  @media (prefers-color-scheme: dark){ .rterm-foot .ex { color: #191919; } }
+  :root[data-theme="dark"] & .rterm-foot .ex { color: #191919; }
+
+  /* credibility split: real engine (ok) vs planned front-end (amber) */
+  .split { margin-top: 16px; display: flex; align-items: stretch; gap: 0; flex-wrap: wrap; border: 1px solid var(--line);
+    border-radius: 12px; overflow: hidden; }
+  .split > div { flex: 1 1 260px; padding: 14px 16px; }
+  .split .real { background: var(--ok-soft); border-right: 1px solid var(--line); }
+  .split .planned { background: var(--amber-soft); }
+  .split .lab { font: 700 10px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; margin-bottom: 8px;
+    display: flex; align-items: center; gap: 7px; }
+  .split .real .lab { color: var(--ok); }
+  .split .planned .lab { color: var(--amber); }
+  .split p { margin: 0; font-size: 13px; color: var(--ink); }
+  .split code { font-family: var(--mono); font-size: .9em; }
+  .split .real code { color: var(--ok); }
+  .split .planned code { color: var(--amber); }
+  .coda-cap { margin-top: 16px; }
+
+  /* ============================================================
+     responsive
+     ============================================================ */
+  @media (max-width: 820px) {
+    .s1 { flex-direction: column; }
+    .conn svg { transform: rotate(90deg); }
+    .code, .s1 > .macw.ntn { width: 100% !important; max-width: 420px; }
+  }
 }

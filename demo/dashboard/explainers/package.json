@@ -1,11 +1,8 @@
 {
-  "name": "demo-explainers-ssg",
+  "name": "demo-explainers",
   "private": true,
   "type": "module",
-  "version": "0.0.0",
   "scripts": {
-    "build": "bun run scripts/render.tsx",
-    "assert:causality": "bun run scripts/causality-proof.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
