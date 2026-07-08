@@ -1,3 +1,4 @@
+import { Agentation } from 'agentation'
 import * as React from 'react'
 import type { Decorator, Preview } from '@storybook/react'
 // CSS, in the SAME order the app mounts it (main.tsx), minus the dashboard's own
@@ -41,8 +42,21 @@ const withKitTheme: Decorator = (Story, context) => {
   )
 }
 
+/**
+ * Visual-feedback toolbar (agentation). Rendered as a sibling OUTSIDE the
+ * `.explainer-root` token wrapper so kit tokens never restyle it. Its toolbar
+ * lets you annotate any story element; annotations reach the coding agent over
+ * MCP (agentation-mcp on :4747). Placed after withKitTheme so it wraps outermost.
+ */
+const withAgentation: Decorator = (Story) => (
+  <>
+    <Story />
+    <Agentation />
+  </>
+)
+
 const preview: Preview = {
-  decorators: [withKitTheme],
+  decorators: [withKitTheme, withAgentation],
   globalTypes: {
     theme: {
       description: 'Kit design-token theme (light / dark)',
