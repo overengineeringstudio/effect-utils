@@ -499,7 +499,7 @@ export const SeqLegend = ({ legendCap, steps }: { legendCap: string; steps: read
     <p className="seq-legend-cap">{legendCap}</p>
     <ol className="seq-legend">
       {steps.map((s) => (
-        <li key={s.n} data-cap={s.caption}>
+        <li key={s.n} data-cap={s.caption} data-title={s.title}>
           <span className="n">{s.n}</span>
           {s.caption}
         </li>

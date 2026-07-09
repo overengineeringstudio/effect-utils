@@ -25,6 +25,10 @@
 export interface Step {
   readonly n: number
   readonly caption: string
+  /** Optional concise chapter title for the always-visible step strip (the
+   *  segmented player labels each segment with it; the full `caption` still
+   *  drives the live line). Absent → the segment stays an unlabelled bar. */
+  readonly title?: string
 }
 
 /** A point on the sequence timeline: an integer step plus an intra-step delay (ms). */
@@ -163,6 +167,13 @@ export function syncStory(opts: SyncStoryOpts): SyncStory {
 /** Convenience: build the `Step[]` from an ordered list of captions. */
 export const captionsToSteps = (captions: readonly string[]): readonly Step[] =>
   captions.map((caption, i) => ({ n: i + 1, caption }))
+
+/** Build the `Step[]` from ordered `[title, caption]` pairs — the concise
+ *  `title` labels each segment in the always-visible chapter strip, the
+ *  `caption` is the full live line. */
+export const chaptersToSteps = (
+  entries: readonly (readonly [title: string, caption: string])[],
+): readonly Step[] => entries.map(([title, caption], i) => ({ n: i + 1, title, caption }))
 
 /**
  * ── multiSyncStory — the generalized causal model (notion-md and the

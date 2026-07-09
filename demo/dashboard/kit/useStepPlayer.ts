@@ -40,6 +40,7 @@ export function useStepPlayer(ref: RefObject<HTMLDivElement | null>): void {
     const legendItems = seq.querySelectorAll<HTMLElement>('.seq-legend li')
     const steps = Array.from(legendItems).map((li, i) => ({
       caption: li.getAttribute('data-cap') || (li.textContent ?? '').trim(),
+      title: li.getAttribute('data-title') ?? '',
       state: String(i + 1),
     }))
     if (steps.length === 0) return
@@ -65,15 +66,25 @@ export function useStepPlayer(ref: RefObject<HTMLDivElement | null>): void {
     const fills: HTMLElement[] = []
     if (segsEl) {
       segsEl.innerHTML = ''
-      steps.forEach((_s, i) => {
+      steps.forEach((s, i) => {
         const seg = document.createElement('button')
         seg.type = 'button'
         seg.className = 'seq-seg'
         seg.setAttribute('data-i', String(i))
-        seg.setAttribute('aria-label', `Go to step ${i + 1}`)
+        seg.setAttribute('aria-label', s.title ? `Go to: ${s.title}` : `Go to step ${i + 1}`)
         const fill = document.createElement('span')
         fill.className = 'seq-seg-fill'
         seg.appendChild(fill)
+        // Concise chapter title (always visible; the active seg is highlighted via
+        // `.is-on` in kit-components.css). Only when the step declares a title —
+        // title-less sequences keep the plain unlabelled bar.
+        if (s.title) {
+          const label = document.createElement('span')
+          label.className = 'seq-seg-label'
+          label.textContent = s.title
+          seg.appendChild(label)
+          segsEl.classList.add('has-labels')
+        }
         segsEl.appendChild(seg)
         segs.push(seg)
         fills.push(fill)
@@ -201,7 +212,10 @@ export function useStepPlayer(ref: RefObject<HTMLDivElement | null>): void {
     return () => {
       clearTimer()
       seq.removeEventListener('click', onClick)
-      if (segsEl) segsEl.innerHTML = ''
+      if (segsEl) {
+        segsEl.innerHTML = ''
+        segsEl.classList.remove('has-labels')
+      }
       seq.removeAttribute('data-mode')
       seq.removeAttribute('data-step')
     }
