@@ -16,7 +16,8 @@
     box-shadow: var(--shadow); overflow: hidden; }
   .grid-bar { display: flex; align-items: center; gap: 8px; padding: 11px 13px; border-bottom: 1px solid var(--line-soft); background: var(--panel); }
   .grid-bar .doc-dot { width: 9px; height: 9px; border-radius: 50%; background: #000; }
-  @media (prefers-color-scheme: dark){ .grid-bar .doc-dot { background:#fff; } }
+  @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) & .grid-bar .doc-dot { background:#fff; } }
+  :root[data-theme="dark"] & .grid-bar .doc-dot { background:#fff; }
   .grid-bar .nm { font: 600 12px/1 var(--sans); }
   .grid-bar .src { margin-left: auto; font: 600 9.5px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
   .gtable { width: 100%; border-collapse: collapse; font-size: 12px; }
