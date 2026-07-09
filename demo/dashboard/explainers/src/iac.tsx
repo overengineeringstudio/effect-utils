@@ -283,6 +283,7 @@ export const Iac = () => (
     {/* THE SOLE PLANNED INDICATOR — a single sticky banner. Do NOT scatter
         additional planned/ghost/mock badges across the frames. */}
     <div className="banner">
+      <span className="ic" aria-hidden="true">🚧</span>
       <span className="bdg">Roadmap preview</span>
       <span className="msg">
         <b>Planned — not built yet.</b> <code>notion schema plan</code> and <code>notion schema apply</code>{' '}
