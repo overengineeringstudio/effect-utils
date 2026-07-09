@@ -354,8 +354,6 @@ in
     # Playwright browser drivers and environment setup
     inputs.playwright.devenvModules.default
     # Shared task modules
-    # genie is a standard module; the real is threaded via `_module.args.geniePkg`
-    # below so the guard owns `bin/genie` and exec's it by absolute store path.
     taskModules.genie
     (taskModules.ts { tsBinPkg = effectTsgo; })
     (taskModules.megarepo { mrPkg = mrSourceCli; })
@@ -487,19 +485,16 @@ in
     ./nix/devenv-modules/tasks/local/restate-integration-test.nix
   ];
 
-  # Thread the source-mode `genie` real into the (standard) genie task module so
-  # the cli-guard owns `bin/genie` and exec's it by absolute store path. The
-  # module declares `geniePkg` as an optional arg (defaulting to null → PATH-grep
-  # fallback), so the export stays a bare-path module for downstream consumers.
-  _module.args.geniePkg = genieSourceCli;
+  # The guarded `genie` command dispatches to the source-mode CLI in this repo;
+  # downstream consumers should normally set this to the packaged effect-utils
+  # Genie derivation.
+  effectUtils.genie.package = genieSourceCli;
 
   # Non-`.genie.ts` generator inputs (source-of-truth files a `.genie.ts` reads).
-  # Threaded into the genie task module so a change to one of these busts the
-  # `genie:run` warm-cache fingerprint (which otherwise tracks only `.genie.ts`
-  # sources + generated outputs, silently skipping JSON-only edits). Keep in sync
-  # with the analogous entries in `geniePatterns` below (which cover the
+  # These bust the `genie:run` warm-cache fingerprint. Keep in sync with the
+  # analogous entries in `geniePatterns` below (which cover the
   # `lint:check:genie` gate's `execIfModified`).
-  _module.args.genieInputGlobs = [
+  effectUtils.genie.extraInputGlobs = [
     "context/otel-scrape/telemetry-registry.json"
   ];
 
