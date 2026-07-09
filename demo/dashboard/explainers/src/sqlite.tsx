@@ -448,8 +448,7 @@ export const Sqlite = () => (
         </span>
       </p>
       <div className="promise">
-        ✓ …and it never corrupts your data — <b>unsafe writes are refused, not dropped</b>{' '}
-        <span className="nxt">here's how ↓</span>
+        ✓ …and it never corrupts your data — <b>unsafe writes are refused, not dropped</b>
       </div>
     </Beat>
 

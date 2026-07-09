@@ -399,8 +399,7 @@ export const React = () => (
         </span>
       </p>
       <div className="promise">
-        ✓ …and identity survives restarts — <b>the diff is keyed, not positional</b>{' '}
-        <span className="nxt">here's how ↓</span>
+        ✓ …and identity survives restarts — <b>the diff is keyed, not positional</b>
       </div>
     </Beat>
 
