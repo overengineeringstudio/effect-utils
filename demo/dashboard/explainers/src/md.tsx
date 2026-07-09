@@ -23,6 +23,7 @@ import {
   Cm,
   CodeLine,
   DirFlow,
+  KW,
   MiniIDE,
   NotionBlock,
   NotionPage,
@@ -379,13 +380,13 @@ export const Md = () => (
               </div>
               <div className="waycode">
                 <div>
-                  <Tg>await</Tg> notion.blocks.children.list({'{ block_id }'})
+                  <KW>await</KW> notion.blocks.children.list({'{ block_id }'})
                 </div>
                 <div>
                   <Cm>// find the Pricing block by hand, then…</Cm>
                 </div>
                 <div>
-                  <Tg>await</Tg> notion.blocks.update({'{ block_id, … }'})
+                  <KW>await</KW> notion.blocks.update({'{ block_id, … }'})
                 </div>
               </div>
             </div>

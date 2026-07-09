@@ -289,7 +289,9 @@ export const React = () => (
                 <div>
                   <Cm>// write the page you want:</Cm>
                 </div>
-                <div>const Page = () =&gt; &lt;Doc&gt;…&lt;/Doc&gt;</div>
+                <div>
+                  <KW>const</KW> <Tg>Page</Tg> = () =&gt; &lt;<Tg>Doc</Tg>&gt;…&lt;/<Tg>Doc</Tg>&gt;
+                </div>
                 <div>
                   <Cm>$</Cm> bun run page.tsx <Cm>// rerun → only the changed block: updates: 1</Cm>
                 </div>

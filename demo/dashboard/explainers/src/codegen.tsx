@@ -22,6 +22,7 @@
  */
 import {
   Beat,
+  KW,
   MiniIDE,
   NotionSurface,
   OK,
@@ -349,12 +350,13 @@ export const Codegen = () => (
                 <span className="waykind">untyped</span>
                 <span className="waymark">✗ runtime</span>
               </div>
-              <div className="waycode">
+              <div className="waycode code-body">
                 <div>
-                  page.properties.Status <span className="cm">// : any — no shape</span>
+                  page.properties.<span className="fn">Status</span>{' '}
+                  <span className="cm">// : any — no shape</span>
                 </div>
                 <div>
-                  task.Status = <span className="sv">"Doen"</span>{' '}
+                  task.<span className="fn">Status</span> = <span className="sv">"Doen"</span>{' '}
                   <span className="cm">// typo compiles → fails at runtime</span>
                 </div>
                 <div>
@@ -368,20 +370,22 @@ export const Codegen = () => (
                 <span className="waykind">typed</span>
                 <span className="waymark">✓ compile</span>
               </div>
-              <div className="waycode">
+              <div className="waycode code-body">
                 <div>
-                  <span className="cm">$</span> notion schema generate -o schema.gen.ts
+                  <span className="cm">$</span> notion schema <KW>generate</KW> -o schema.gen.ts
                 </div>
                 <div>
-                  Status: <span className="sv">"Todo"</span> | <span className="sv">"In Progress"</span> |{' '}
-                  <span className="sv">"Done"</span> <span className="cm">// literal union · autocomplete</span>
+                  <span className="fn">Status</span>: <span className="sv">"Todo"</span> |{' '}
+                  <span className="sv">"In Progress"</span> | <span className="sv">"Done"</span>{' '}
+                  <span className="cm">// literal union · autocomplete</span>
                 </div>
                 <div>
-                  task.Status = <span className="sv">"Doen"</span>{' '}
+                  task.<span className="fn">Status</span> = <span className="sv">"Doen"</span>{' '}
                   <span className="cm">// ✗ caught by tsc, before you ship</span>
                 </div>
                 <div>
-                  <span className="cm"># notion schema diff --exit-code → CI drift gate</span>
+                  <span className="cm">#</span> notion schema <KW>diff</KW> --exit-code{' '}
+                  <span className="cm">→ CI drift gate</span>
                 </div>
               </div>
             </div>
