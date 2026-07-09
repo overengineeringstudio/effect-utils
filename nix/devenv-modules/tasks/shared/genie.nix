@@ -12,27 +12,16 @@
 #   tasks."genie:watch".after = [ "pnpm:install:genie" ];
 #   tasks."genie:check".after = [ "pnpm:install:genie" ];
 #
-# This is a standard devenv module — downstream `imports = [ tasks.genie ]` keeps
-# working because `geniePkg` is an optional module argument defaulting to null.
-# Consumers that want the guard to own `bin/genie` thread the real `genie`
-# derivation by setting `_module.args.geniePkg` in their devenv config. When set,
-# the guard owns `bin/genie` and exec's the real by absolute path under
-# passthrough (see cli-guard.nix). Required for source-mode `genie` (no
-# node_modules/.bin fallback) so passthrough does not exit 127. When unset, the
-# guard falls back to grepping `$PATH`.
+# This is a standard devenv module. Consumers configure it through the
+# `effectUtils.genie.*` option namespace instead of raw `_module.args`.
 {
+  config,
   lib,
   pkgs,
-  geniePkg ? null,
-  # Extra, non-`.genie.ts` generator inputs (git pathspecs/globs) that genie
-  # reads as source-of-truth — e.g. a registry JSON consumed by a `.genie.ts`.
-  # These are folded into the `genie:run` warm-cache fingerprint so a change to
-  # such an input busts the cache and regenerates. Defaults to `[ ]`, so repos
-  # that only have `.genie.ts` inputs (the common case) are unaffected.
-  genieInputGlobs ? [ ],
   ...
 }:
 let
+  cfg = config.effectUtils.genie;
   trace = import ../lib/trace.nix { inherit lib; };
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
   megarepoStoreEnv = builtins.getEnv "MEGAREPO_STORE";
@@ -57,18 +46,18 @@ let
   # Enumerate the extra non-`.genie.ts` generator inputs so their content joins
   # the fingerprint. Mirrors the git-tracked/untracked-non-ignored view used for
   # `.genie.ts` sources, with a find fallback outside a git worktree.
-  enumerateGenieInputGlobs = lib.optionalString (genieInputGlobs != [ ]) ''
+  enumerateGenieInputGlobs = lib.optionalString (cfg.extraInputGlobs != [ ]) ''
     if ${pkgs.git}/bin/git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     ${lib.concatMapStringsSep "\n" (glob: ''
       ${pkgs.git}/bin/git ls-files -z -- ${lib.escapeShellArg glob} | tr '\0' '\n'
       ${pkgs.git}/bin/git ls-files -z --others --exclude-standard -- ${lib.escapeShellArg glob} | tr '\0' '\n'
-    '') genieInputGlobs}
+    '') cfg.extraInputGlobs}
     else
     ${lib.concatMapStringsSep "\n" (glob: ''
       ${pkgs.findutils}/bin/find . -type f -path ${lib.escapeShellArg "./${glob}"} \
         -not -path './.git/*' -not -path './.devenv/*' -not -path './node_modules/*' \
         -print 2>/dev/null || true
-    '') genieInputGlobs}
+    '') cfg.extraInputGlobs}
     fi
   '';
   computeGenieStateHash = ''
@@ -182,9 +171,33 @@ let
   };
 in
 {
-  packages = cliGuard.fromTasks {
-    inherit tasks;
-    reals = lib.optionalAttrs (geniePkg != null) { genie = geniePkg; };
+  options.effectUtils.genie = {
+    package = lib.mkOption {
+      type = lib.types.nullOr lib.types.package;
+      default = null;
+      description = ''
+        Real Genie package used by the guarded `genie` task commands. When set,
+        the module owns `bin/genie` and dispatches to this package by absolute
+        store path under `DEVENV_TASK_PASSTHROUGH=1`. Leave null only for repos
+        that intentionally resolve `genie` from PATH.
+      '';
+    };
+
+    extraInputGlobs = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      description = ''
+        Extra non-.genie.ts generator inputs, expressed as git pathspecs/globs,
+        that should participate in the `genie:run` warm-cache fingerprint.
+      '';
+    };
   };
-  tasks = cliGuard.stripGuards tasks;
+
+  config = {
+    packages = cliGuard.fromTasks {
+      inherit tasks;
+      reals = lib.optionalAttrs (cfg.package != null) { genie = cfg.package; };
+    };
+    tasks = cliGuard.stripGuards tasks;
+  };
 }

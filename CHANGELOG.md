@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **devenv / genie**: replace the shared Genie task module's raw
+  `_module.args.geniePkg` / `_module.args.genieInputGlobs` contract with
+  declared `effectUtils.genie.package` and `effectUtils.genie.extraInputGlobs`
+  options. This keeps packaged Genie consumption on a stable module API and lets
+  downstream repos import the module without compatibility shims.
 - **genie / bootstrap**: narrow the packaged `genie-bootstrap-closure-check`
   derivation to the checker entrypoint, its first-party runtime sources, Bun,
   and the TypeScript tarball declared by `@overeng/genie`. The checker now walks
