@@ -35,16 +35,16 @@ import {
 } from '../../kit/components.tsx'
 import { EDITED_TASK, LABELS, SQLITE_STORY, TASKS } from '../../kit/fixtures.ts'
 import { You } from '../../kit/actors.ts'
-import { captionsToSteps, syncStory } from '../../kit/syncStory.ts'
+import { chaptersToSteps, syncStory } from '../../kit/syncStory.ts'
 
 /** The declarative causal model. Constructing it asserts cause-before-effect;
  *  a violation throws `CausalityError` and fails the build. */
 export const sqliteStory = syncStory({
-  steps: captionsToSteps([
-    'Your Notion database, as a local SQLite file.',
-    'Edit a row with plain SQL — locally.',
-    'One guarded sync pushes it.',
-    '…and it lands in Notion, live.',
+  steps: chaptersToSteps([
+    ['Your DB, local', 'Your Notion database, as a local SQLite file.'],
+    ['Edit with SQL', 'Edit a row with plain SQL — locally.'],
+    ['Guarded sync', 'One guarded sync pushes it.'],
+    ['Live in Notion', '…and it lands in Notion, live.'],
   ]),
   // local SQLite cell: In Progress → Done at typing completion (~1.35s into step 2)
   local: { pane: 'db', swap: { was: 'In Progress', now: 'Done', at: { step: 2, delay: 1350 } } },

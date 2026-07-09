@@ -42,7 +42,7 @@ import {
   type SubTab,
 } from '../../kit/components.tsx'
 import { ROADMAP } from '../../kit/fixtures.ts'
-import { type MultiSyncStory, captionsToSteps, multiSyncStory } from '../../kit/syncStory.ts'
+import { type MultiSyncStory, chaptersToSteps, multiSyncStory } from '../../kit/syncStory.ts'
 
 // ── the three causal step-models (asserted at build time) ────────────────────
 // Shared timeline: the edit is authored at step 2; a single sync packet departs
@@ -54,10 +54,10 @@ const RECV_AT = { step: 3, delay: 1150 } as const
 
 /** LOCAL — source: local, push →. The IDE edits, Notion receives. (3 steps) */
 export const mdLocalStory = multiSyncStory({
-  steps: captionsToSteps([
-    'roadmap.nmd declares source: local — the file is the source of truth; the page is in sync.',
-    'Edit a line in the file (left). Local owns it.',
-    'notion md sync pushes it — the Notion page updates. pushed.',
+  steps: chaptersToSteps([
+    ['In sync', 'roadmap.nmd declares source: local — the file is the source of truth; the page is in sync.'],
+    ['Edit file', 'Edit a line in the file (left). Local owns it.'],
+    ['Push →', 'notion md sync pushes it — the Notion page updates. pushed.'],
   ]),
   sync: SYNC,
   direction: 'push',
@@ -76,11 +76,11 @@ export const mdLocalStory = multiSyncStory({
 /** NOTION — source: remote, ← pull. REVERSED: Notion edits, the IDE receives.
  *  Step 4 is the honest "overwritten on next pull" warning. (4 steps) */
 export const mdRemoteStory = multiSyncStory({
-  steps: captionsToSteps([
-    'source: remote — Notion is the source of truth; in sync.',
-    'A teammate edits the Notion page (right).',
-    'notion md sync pulls it — roadmap.nmd updates. pulled.',
-    'Hand-edit the file? It’s overwritten on the next pull — switch to shared to keep both.',
+  steps: chaptersToSteps([
+    ['In sync', 'source: remote — Notion is the source of truth; in sync.'],
+    ['Teammate edits', 'A teammate edits the Notion page (right).'],
+    ['← Pull', 'notion md sync pulls it — roadmap.nmd updates. pulled.'],
+    ['Overwrite warning', 'Hand-edit the file? It’s overwritten on the next pull — switch to shared to keep both.'],
   ]),
   sync: SYNC,
   direction: 'pull',
@@ -100,11 +100,11 @@ export const mdRemoteStory = multiSyncStory({
  *  Notion edits Enterprise (different lines → clean auto-merge). Step 4 is the
  *  same-line conflict escalation (a draft is written; Notion untouched). (4 steps) */
 export const mdSharedStory = multiSyncStory({
-  steps: captionsToSteps([
-    'source: shared — two-way; a base is recorded in .notion-md/.',
-    'Both sides edit different lines — Pricing here, Enterprise there.',
-    'Non-overlapping — clean auto-merge; both edits coexist. shared-merged.',
-    'Both edit the same line? A conflict roughdraft is written — Notion is left unchanged. shared-conflict.',
+  steps: chaptersToSteps([
+    ['Base recorded', 'source: shared — two-way; a base is recorded in .notion-md/.'],
+    ['Both edit', 'Both sides edit different lines — Pricing here, Enterprise there.'],
+    ['Auto-merge', 'Non-overlapping — clean auto-merge; both edits coexist. shared-merged.'],
+    ['Conflict draft', 'Both edit the same line? A conflict roughdraft is written — Notion is left unchanged. shared-conflict.'],
   ]),
   sync: SYNC,
   direction: 'two',

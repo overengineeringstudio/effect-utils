@@ -47,7 +47,7 @@ import {
   type IdeTreeItem,
   type NotionNav,
 } from '../../kit/components.tsx'
-import { captionsToSteps, syncStory } from '../../kit/syncStory.ts'
+import { chaptersToSteps, syncStory } from '../../kit/syncStory.ts'
 
 /**
  * The declarative causal model — the "apply" shape: a SINGLE gated hop with NO
@@ -58,11 +58,11 @@ import { captionsToSteps, syncStory } from '../../kit/syncStory.ts'
  * `CausalityError` and fails the build.
  */
 export const iacStory = syncStory({
-  steps: captionsToSteps([
-    'Declare the database you want — in a typed file.',
-    'Plan shows exactly what it would create — before touching anything.',
-    'Apply would provision it — reconciling the delta on every run.',
-    'Additive only; anything that could lose data is refused.',
+  steps: chaptersToSteps([
+    ['Declare', 'Declare the database you want — in a typed file.'],
+    ['Plan', 'Plan shows exactly what it would create — before touching anything.'],
+    ['Apply', 'Apply would provision it — reconciling the delta on every run.'],
+    ['Fails closed', 'Additive only; anything that could lose data is refused.'],
   ]),
   // the `apply` write packet departs at step-3 entry and travels ~1.4s (matches
   // the DirFlow `dpkttravel 1.4s` in the kit CSS + the iac.css ntn-swap gate).

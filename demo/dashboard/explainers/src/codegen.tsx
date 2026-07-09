@@ -35,7 +35,7 @@ import {
   type NotionNav,
 } from '../../kit/components.tsx'
 import { LABELS, PRIORITY_OPTIONS } from '../../kit/fixtures.ts'
-import { captionsToSteps, syncStory } from '../../kit/syncStory.ts'
+import { chaptersToSteps, syncStory } from '../../kit/syncStory.ts'
 
 /**
  * The declarative causal model. Constructing it ASSERTS cause-before-effect and
@@ -45,11 +45,11 @@ import { captionsToSteps, syncStory } from '../../kit/syncStory.ts'
  * effect, gated to that ARRIVAL (NOT step entry — that is the fixed [HIGH] bug).
  */
 export const codegenStory = syncStory({
-  steps: captionsToSteps([
-    'Point at a live Notion database.',
-    'Typed Effect schemas — generated, not written.',
-    'Real autocomplete, real compile errors.',
-    "A CI drift gate: the schema can't change without your build failing.",
+  steps: chaptersToSteps([
+    ['Point at Notion', 'Point at a live Notion database.'],
+    ['Generate types', 'Typed Effect schemas — generated, not written.'],
+    ['Real types', 'Real autocomplete, real compile errors.'],
+    ['Drift gate', "A CI drift gate: the schema can't change without your build failing."],
   ]),
   // the read packet: `notion schema generate` departs at step-2 entry, travels
   // ~1.35s (aligned to the kit CSS r2b gate that reveals the code on arrival).

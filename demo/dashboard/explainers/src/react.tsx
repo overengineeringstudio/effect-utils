@@ -40,7 +40,7 @@ import {
   type IdeTreeItem,
   type NotionNav,
 } from '../../kit/components.tsx'
-import { captionsToSteps, syncStory } from '../../kit/syncStory.ts'
+import { chaptersToSteps, syncStory } from '../../kit/syncStory.ts'
 
 // ── the fixture island (spec §3: react is its own island — NOT the shared Tasks
 //    rows; inlined here rather than in the shared fixtures.ts) ─────────────────
@@ -66,11 +66,11 @@ const LAUNCH = {
  *  (effect, gated to the ~1.45s packet arrival). Cause and effect SHARE step 3;
  *  the intra-step `{step,delay}` gate is what keeps the effect behind the cause. */
 export const reactStory = syncStory({
-  steps: captionsToSteps([
-    'A Notion page, written as a React component.',
-    'Run it → the whole page appears.',
-    'Change one line, rerun → only that block updates.',
-    'Unchanged → a genuine no-op (stable blockKey reconciliation).',
+  steps: chaptersToSteps([
+    ['Page as JSX', 'A Notion page, written as a React component.'],
+    ['Render', 'Run it → the whole page appears.'],
+    ['One-block diff', 'Change one line, rerun → only that block updates.'],
+    ['No-op', 'Unchanged → a genuine no-op (stable blockKey reconciliation).'],
   ]),
   // the IDE `budget` edit — the CAUSE, at step-3 entry (delay 0, ungated)
   local: { pane: 'ide', swap: { was: LAUNCH.budget.was, now: LAUNCH.budget.now, at: { step: 3 } } },
