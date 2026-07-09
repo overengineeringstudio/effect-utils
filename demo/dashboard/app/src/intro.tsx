@@ -27,53 +27,99 @@ import {
 // is handled as a special tab alongside DEMOS rather than through the model.
 // ---------------------------------------------------------------------------
 
-// slide-1 actor name icons (small, consistent line weight, accent, theme-aware)
-const svgIcon = (d: string) => (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={1.8}
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    {d.split('|').map((p) => (
-      <path key={p} d={p} />
-    ))}
+// Hand-drawn "ink" turbulence filters — feTurbulence + feDisplacementMap nudge
+// clean vectors into wobbly hand-drawn linework. `#intro-ink` (low displacement
+// relative to a big 200-unit viewBox) is for the large doodle; `#intro-ink2`
+// (higher displacement) is for the small 24-unit mascot glyphs. Defined ONCE for
+// the whole deck via a zero-size absolutely-positioned <svg> (NOT display:none —
+// filters inside a hidden subtree silently no-op in some engines).
+const InkDefs = () => (
+  <svg width="0" height="0" style={{ position: 'absolute' }} aria-hidden="true">
+    <defs>
+      <filter id="intro-ink" x="-20%" y="-20%" width="140%" height="140%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.018" numOctaves={2} seed={7} result="n" />
+        <feDisplacementMap in="SourceGraphic" in2="n" scale="3.6" xChannelSelector="R" yChannelSelector="G" />
+      </filter>
+      <filter id="intro-ink2" x="-20%" y="-20%" width="140%" height="140%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.03" numOctaves={2} seed={2} result="n" />
+        <feDisplacementMap in="SourceGraphic" in2="n" scale="1.6" />
+      </filter>
+    </defs>
   </svg>
 )
-const icUsers = svgIcon(
-  'M12 11.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4|M5.5 19.5a6.5 6.5 0 0 1 13 0',
+
+// Bright saturated Notion "mascot" chip holding a white line-icon. Notion's own
+// convention: rounded-SQUARES carry object icons, CIRCLES carry face/character
+// icons. `tone` picks one of the saturated mascot colors (--m-*, defined in CSS,
+// deliberately theme-INVARIANT so white strokes always read on the fill). Each
+// glyph runs through the `#intro-ink2` filter so it looks hand-inked.
+type MascotTone = 'blue' | 'gold' | 'purple' | 'teal' | 'green'
+const MascotChip = ({
+  tone,
+  round = false,
+  children,
+}: {
+  tone: MascotTone
+  round?: boolean
+  children: ReactNode
+}) => (
+  <span
+    className={round === true ? 'intro-mascot round' : 'intro-mascot'}
+    style={{ background: `var(--m-${tone})` }}
+    aria-hidden="true"
+  >
+    <svg
+      viewBox="0 0 24 24"
+      filter="url(#intro-ink2)"
+      fill="none"
+      stroke="#fff"
+      strokeWidth={2.1}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {children}
+    </svg>
+  </span>
 )
-const icSparkle = svgIcon(
-  'M11 3l1.5 4.2L16.7 9 12.5 10.5 11 15 9.5 10.5 5.3 9l4.2-1.8z|M18 14l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z',
+
+// The four actor mascots (+ automations). Left "Knowledge work" column reads as
+// characters → CIRCLES (a person avatar, a friendly bot face); right "Engineering"
+// column reads as objects → rounded-SQUARES (code braces, a terminal). Colors are
+// drawn from the mockup's blue / gold / purple / teal palette.
+const icUsers = (
+  <MascotChip tone="blue" round>
+    <circle cx="12" cy="8.4" r="3.4" />
+    <path d="M6 19a6 6 0 0 1 12 0" />
+  </MascotChip>
 )
-const icBraces = svgIcon('M9.5 6.5 5 12l4.5 5.5|M14.5 6.5 19 12l-4.5 5.5')
+const icSparkle = (
+  <MascotChip tone="gold" round>
+    <path d="M12 3.5v2" />
+    <circle cx="12" cy="3" r="0.6" fill="#fff" stroke="none" />
+    <rect x="5.6" y="6" width="12.8" height="12" rx="4" />
+    <circle cx="9.6" cy="12" r="1.05" fill="#fff" stroke="none" />
+    <circle cx="14.4" cy="12" r="1.05" fill="#fff" stroke="none" />
+    <path d="M9.6 15q2.4 1.9 4.8 0" />
+  </MascotChip>
+)
+const icBraces = (
+  <MascotChip tone="purple">
+    <path d="M9.5 5s-3.5 1.3-3.5 7 3.5 7 3.5 7" />
+    <path d="M14.5 5s3.5 1.3 3.5 7-3.5 7-3.5 7" />
+  </MascotChip>
+)
 const icTerminal = (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={1.8}
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <rect x="3" y="5" width="18" height="14" rx="2.5" />
-    <path d="M7 10l3 2.5-3 2.5M13 15.5h4" />
-  </svg>
+  <MascotChip tone="teal">
+    <rect x="4" y="5.5" width="16" height="13" rx="2.5" />
+    <path d="M7.5 10l3 2.4-3 2.4M12.6 15h4" />
+  </MascotChip>
 )
 const icGear = (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={1.8}
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <circle cx="12" cy="12" r="3.1" />
-    <path d="M12 2.2v3M12 18.8v3M4.4 4.4l2.1 2.1M17.5 17.5l2.1 2.1M2.2 12h3M18.8 12h3M4.4 19.6l2.1-2.1M17.5 6.5l2.1-2.1" />
-  </svg>
+  <MascotChip tone="green">
+    <path d="M4 8.5a7.5 7.5 0 0 1 12.2-2l1.8 1.9" />
+    <path d="M20 15.5a7.5 7.5 0 0 1-12.2 2l-1.8-1.9" />
+    <path d="M18.5 4.5v4h-4M5.5 19.5v-4h4" />
+  </MascotChip>
 )
 
 // lego brick — the "snap together" motif (How-slide kicker only).
@@ -115,6 +161,61 @@ const HandArrow = ({ vertical = false }: { vertical?: boolean }) => (
   </svg>
 )
 
+// Signature hand-drawn doodle for the "Why" hero: an inky browser window holding
+// a few Notion "blocks", with a little orange reader-mascot peeking from the top
+// corner. The linework is `currentColor` (theme-aware → inherits the slide's ink)
+// run through `#intro-ink` so it reads sketched, not vector-clean; only the mascot
+// face uses a fixed saturated fill. Purely decorative accent beside the headline.
+const WhyDoodle = ({ className }: { className?: string }) => (
+  <svg
+    className={className}
+    width="196"
+    height="150"
+    viewBox="0 0 212 176"
+    fill="none"
+    aria-hidden="true"
+    style={{ color: 'var(--color-fg-muted)' }}
+  >
+    <g
+      filter="url(#intro-ink)"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      fill="none"
+    >
+      {/* browser frame + address bar */}
+      <path
+        strokeWidth={2.4}
+        d="M20 44 q-2 -1 -3 3 l-1 92 q0 5 5 5 l150 -1 q5 0 5 -5 l1 -94 q0 -4 -5 -4 l-118 1"
+      />
+      <path strokeWidth={1.9} d="M15 66 l162 -1" />
+      <circle strokeWidth={1.9} cx="31" cy="55" r="2.4" />
+      <circle strokeWidth={1.9} cx="41" cy="55" r="2.2" />
+      <circle strokeWidth={1.9} cx="51" cy="55" r="2.5" />
+      {/* three Notion blocks: check + wobbly text lines */}
+      <rect strokeWidth={2} x="33" y="83" width="9" height="8" rx="1.6" />
+      <path strokeWidth={2.4} d="M52 87 q24 -4 47 -1 t45 2" />
+      <rect strokeWidth={2} x="33" y="101" width="8" height="9" rx="1.6" />
+      <path strokeWidth={2.1} d="M52 106 q20 -3 38 1 t36 0" />
+      <rect strokeWidth={2} x="33" y="120" width="9" height="8" rx="1.6" />
+      <path strokeWidth={2.6} d="M52 124 q26 -2 52 1 t48 -2" />
+      {/* a little cursor arrow */}
+      <path strokeWidth={2.4} fill="currentColor" d="M150 112 l18 9 l-7 2 l4 10 l-5 2 l-4 -10 l-6 5 z" />
+    </g>
+    {/* reader mascot: circle face, uneven glasses, inky (fixed saturated fill) */}
+    <g transform="translate(158 18)" filter="url(#intro-ink2)">
+      <circle cx="26" cy="26" r="25" fill="var(--m-gold)" />
+      <g stroke="#fff" strokeLinecap="round" fill="none">
+        <circle strokeWidth={2.5} cx="18" cy="25" r="6" />
+        <circle strokeWidth={2.5} cx="34" cy="24" r="5.3" />
+        <path strokeWidth={2.3} d="M24 25 q2 1 4 -0.5" />
+        <path strokeWidth={2.1} d="M9 22 q1 -5 7 -4 M39 20 q6 0 6 5" />
+        <path strokeWidth={2.4} d="M19 37 q7 4 14 -1" />
+      </g>
+    </g>
+  </svg>
+)
+
 // Slide-1 actor card: a miniature native-UI mockup + name + one-line role. `re`
 // right-aligns the caption for the Engineering column.
 // Slide-1 actor card: a miniature native-UI mockup + name. The mockup carries
@@ -135,7 +236,7 @@ const ActorCard = ({
     {mock}
     <span className="cap">
       <span className="nm">
-        <span className="ni">{icon}</span>
+        {icon}
         {name}
       </span>
     </span>
@@ -524,10 +625,15 @@ const Slide1 = ({ active }: { active: boolean }) => {
     `transition-opacity duration-300 ${i < revealed ? 'opacity-100' : 'invisible opacity-0'}`
   return (
     <div className="cursor-pointer" onClick={() => setRevealed((n) => Math.min(n + 1, SLIDE1_NODE_COUNT))}>
-      <div className="mb-1.5 text-[13px] text-fg-muted">Why</div>
-      <h2 className="m-0 mb-6 text-[25px] font-bold tracking-tight">
-        Notion, for users, developers, and agents
-      </h2>
+      <div className="mb-6 flex items-start justify-between gap-6">
+        <div>
+          <div className="mb-1.5 text-[13px] text-fg-muted">Why</div>
+          <h2 className="m-0 text-[25px] font-bold tracking-tight">
+            Notion, for users, developers, and agents
+          </h2>
+        </div>
+        <WhyDoodle className="-mt-1 hidden flex-none lg:block" />
+      </div>
       <div className="flex flex-wrap items-stretch justify-center gap-2">
         {/* Knowledge work — each actor has its own hand-drawn arrow to the hub */}
         <div className="flex min-w-[290px] flex-1 flex-col gap-2.5">
@@ -578,7 +684,7 @@ const Slide1 = ({ active }: { active: boolean }) => {
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-1.5 text-[13px] font-semibold">
-              <span className="ni">{icGear}</span>automations &amp; integrations
+              {icGear}automations &amp; integrations
             </div>
           </div>
         </div>
@@ -589,6 +695,8 @@ const Slide1 = ({ active }: { active: boolean }) => {
 
 const IntroSlides = ({ hidden, slide, onGo }: { hidden: boolean; slide: number; onGo: (i: number) => void }) => (
   <section hidden={hidden} className="intro relative mx-auto min-h-[70vh] max-w-[1120px] pt-2">
+    {/* hand-drawn "ink" filter defs — rendered once for the whole deck */}
+    <InkDefs />
     {/* slide controls — pinned top-right so they never move between slides */}
     <div className="absolute right-0 top-0 z-10">
       <IntroSlideNav slide={slide} onGo={onGo} />
