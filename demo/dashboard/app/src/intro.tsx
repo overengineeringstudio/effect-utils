@@ -1,4 +1,4 @@
-import { type ReactNode, useCallback, useEffect, useState } from 'react'
+import { type ReactNode, useEffect, useState } from 'react'
 
 import {
   MiniChat,
@@ -582,6 +582,8 @@ const ghLogo = (
 // Intro deck slide order — drives the nav dots, the ← / → bound, and which
 // <section> IntroSlides reveals. Index matches the three slides below.
 const SLIDE_LABELS = ['Why', 'How', 'Disclaimer'] as const
+/** Number of intro deck slides — the URL-state clamp bounds the encoded slide. */
+export const SLIDE_COUNT = SLIDE_LABELS.length
 
 // Chevron glyph for the prev/next buttons — module-scoped (captures nothing).
 const navChevron = (d: string) => (
@@ -834,20 +836,29 @@ const IntroSlides = ({ hidden, slide, onGo }: { hidden: boolean; slide: number; 
  * IntroSlides. Slides stay mounted (HowGallery keeps its tab state) and toggle
  * via `hidden`.
  */
-export const IntroPanel = ({ hidden }: { hidden: boolean }) => {
-  const [slide, setSlide] = useState(0)
-  const go = useCallback((i: number) => setSlide(Math.max(0, Math.min(i, SLIDE_LABELS.length - 1))), [])
+// Controlled: the deck slide lives in the app's URL-backed UiState (reload-safe,
+// shareable, back/forward), so IntroPanel holds no slide state of its own — it
+// renders `slide` and reports moves via `onGo` (clamped in url-state `normalize`).
+export const IntroPanel = ({
+  hidden,
+  slide,
+  onGo,
+}: {
+  hidden: boolean
+  slide: number
+  onGo: (i: number) => void
+}) => {
   useEffect(() => {
     if (hidden === true) return
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey === true || e.ctrlKey === true || e.altKey === true) return
       const tag = (e.target as HTMLElement)?.tagName?.toLowerCase()
       if (tag === 'input' || tag === 'textarea') return
-      if (e.key === 'ArrowRight') setSlide((c) => Math.min(c + 1, SLIDE_LABELS.length - 1))
-      else if (e.key === 'ArrowLeft') setSlide((c) => Math.max(c - 1, 0))
+      if (e.key === 'ArrowRight') onGo(slide + 1)
+      else if (e.key === 'ArrowLeft') onGo(slide - 1)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [hidden])
-  return <IntroSlides hidden={hidden} slide={slide} onGo={go} />
+  }, [hidden, slide, onGo])
+  return <IntroSlides hidden={hidden} slide={slide} onGo={onGo} />
 }

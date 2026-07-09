@@ -151,7 +151,11 @@ export const App = () => {
       </nav>
 
       <main className="px-5 pb-16 pt-4">
-        <IntroPanel hidden={!onIntro} />
+        <IntroPanel
+          hidden={!onIntro}
+          slide={state.slide}
+          onGo={(i) => commit({ ...state, slide: i })}
+        />
         {DEMOS.map((d) => (
           <DemoSection
             key={d.id}
