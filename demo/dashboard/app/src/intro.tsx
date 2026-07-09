@@ -37,8 +37,13 @@ const InkDefs = () => (
   <svg width="0" height="0" style={{ position: 'absolute' }} aria-hidden="true">
     <defs>
       <filter id="intro-ink" x="-20%" y="-20%" width="140%" height="140%">
-        <feTurbulence type="fractalNoise" baseFrequency="0.018" numOctaves={2} seed={7} result="n" />
-        <feDisplacementMap in="SourceGraphic" in2="n" scale="3.6" xChannelSelector="R" yChannelSelector="G" />
+        {/* LOW baseFrequency → the noise field varies slowly, so neighbouring
+            points on a stroke displace together and the line undulates like a
+            pen wobble instead of jumping in rectilinear "steps". A moderate
+            `scale` keeps that wobble continuous; the extra octave adds fine
+            grain without re-introducing jitter. */}
+        <feTurbulence type="fractalNoise" baseFrequency="0.011" numOctaves={3} seed={7} result="n" />
+        <feDisplacementMap in="SourceGraphic" in2="n" scale="2.7" xChannelSelector="R" yChannelSelector="G" />
       </filter>
       <filter id="intro-ink2" x="-20%" y="-20%" width="140%" height="140%">
         <feTurbulence type="fractalNoise" baseFrequency="0.03" numOctaves={2} seed={2} result="n" />
@@ -57,14 +62,16 @@ type MascotTone = 'blue' | 'gold' | 'purple' | 'teal' | 'green'
 const MascotChip = ({
   tone,
   round = false,
+  lg = false,
   children,
 }: {
   tone: MascotTone
   round?: boolean
+  lg?: boolean
   children: ReactNode
 }) => (
   <span
-    className={round === true ? 'intro-mascot round' : 'intro-mascot'}
+    className={['intro-mascot', round === true ? 'round' : '', lg === true ? 'lg' : ''].filter(Boolean).join(' ')}
     style={{ background: `var(--m-${tone})` }}
     aria-hidden="true"
   >
@@ -122,6 +129,38 @@ const icGear = (
   </MascotChip>
 )
 
+// Always-on "signature" hero cluster: a row of four BIG bright mascot chips that
+// sits directly under the slide-1 headline, so the intro's INITIAL state is
+// unmistakably Notion + colorful before the presenter clicks anything (the actor
+// mascots only appear on click-reveal). All four carry OBJECT icons, so per Notion
+// convention they're rounded-squares (no `round`): a page-with-check (blue), a
+// two-way sync cycle (teal), code braces (purple), a database cylinder (gold).
+// Each glyph is a white line-icon inked via `#intro-ink2`, same as the actor chips.
+const HeroMascots = () => (
+  <div className="intro-hero-mascots" aria-hidden="true">
+    <MascotChip tone="blue" lg>
+      <path d="M6.5 4.4a1.4 1.4 0 0 1 1.4-1.4H14l4 4v11.6a1.4 1.4 0 0 1-1.4 1.4H7.9a1.4 1.4 0 0 1-1.4-1.4z" />
+      <path d="M14 3v4h4" />
+      <path d="M8.7 13.2l2.2 2.2 4-4.4" />
+    </MascotChip>
+    <MascotChip tone="teal" lg>
+      <path d="M5 9.2a7 7 0 0 1 11.6-3.1L19 8.4" />
+      <path d="M19 14.8a7 7 0 0 1-11.6 3.1L5 15.6" />
+      <path d="M19 4.2v4.2h-4.2" />
+      <path d="M5 19.8v-4.2h4.2" />
+    </MascotChip>
+    <MascotChip tone="purple" lg>
+      <path d="M9.5 5s-3.5 1.3-3.5 7 3.5 7 3.5 7" />
+      <path d="M14.5 5s3.5 1.3 3.5 7-3.5 7-3.5 7" />
+    </MascotChip>
+    <MascotChip tone="gold" lg>
+      <ellipse cx="12" cy="6.2" rx="6.4" ry="2.8" />
+      <path d="M5.6 6.2v11.6c0 1.55 2.86 2.8 6.4 2.8s6.4-1.25 6.4-2.8V6.2" />
+      <path d="M5.6 12c0 1.55 2.86 2.8 6.4 2.8s6.4-1.25 6.4-2.8" />
+    </MascotChip>
+  </div>
+)
+
 // lego brick — the "snap together" motif (How-slide kicker only).
 const iconLego = (
   <svg
@@ -168,9 +207,10 @@ const HandArrow = ({ vertical = false }: { vertical?: boolean }) => (
 // face uses a fixed saturated fill. Purely decorative accent beside the headline.
 const WhyDoodle = ({ className }: { className?: string }) => (
   <svg
+    id="why-doodle"
     className={className}
-    width="196"
-    height="150"
+    width="168"
+    height="139"
     viewBox="0 0 212 176"
     fill="none"
     aria-hidden="true"
@@ -185,10 +225,10 @@ const WhyDoodle = ({ className }: { className?: string }) => (
     >
       {/* browser frame + address bar */}
       <path
-        strokeWidth={2.4}
+        strokeWidth={2.7}
         d="M20 44 q-2 -1 -3 3 l-1 92 q0 5 5 5 l150 -1 q5 0 5 -5 l1 -94 q0 -4 -5 -4 l-118 1"
       />
-      <path strokeWidth={1.9} d="M15 66 l162 -1" />
+      <path strokeWidth={2.1} d="M15 66 l162 -1" />
       <circle strokeWidth={1.9} cx="31" cy="55" r="2.4" />
       <circle strokeWidth={1.9} cx="41" cy="55" r="2.2" />
       <circle strokeWidth={1.9} cx="51" cy="55" r="2.5" />
@@ -631,8 +671,14 @@ const Slide1 = ({ active }: { active: boolean }) => {
           <h2 className="m-0 text-[25px] font-bold tracking-tight">
             Notion, for users, developers, and agents
           </h2>
+          {/* always-on signature: colourful Notion mascot chips, right under the
+              headline — the slide's default state is Notion from the first frame */}
+          <HeroMascots />
         </div>
-        <WhyDoodle className="-mt-1 hidden flex-none lg:block" />
+        {/* pushed down (mt-12) so its top-corner reader-mascot clears the slide
+            nav pinned top-right; smaller so it reads as a tucked hero accent
+            rather than fighting the new mascot cluster */}
+        <WhyDoodle className="mt-12 -mr-1 hidden flex-none lg:block" />
       </div>
       <div className="flex flex-wrap items-stretch justify-center gap-2">
         {/* Knowledge work — each actor has its own hand-drawn arrow to the hub */}
