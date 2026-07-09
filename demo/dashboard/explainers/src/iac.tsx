@@ -39,7 +39,6 @@ import {
   MacWindow,
   MiniIDE,
   NotionSurface,
-  PriorityPill,
   Sequence,
   Terminal,
   TerminalLine,
@@ -128,8 +127,9 @@ const DesiredStateCode = () => (
 
 // ── the provisioned Notion database (RIGHT, effect) ──────────────────────────
 /** The clean/normal provisioned Tasks DB — renders as a real Notion table, NOT
- *  ghosted/projected. `In Progress` is CANONICAL here (codegen overlays a rename
- *  to `Active` on the same row; this page keeps the canonical value). */
+ *  ghosted/projected. `apply` PROVISIONS the database and its properties only —
+ *  it never inserts row data — so the body renders intentionally EMPTY (columns
+ *  present, Notion's own "+ New" affordance in place of any rows). */
 const ProvisionedDB = () => (
   <NotionSurface
     label="Tasks"
@@ -140,7 +140,7 @@ const ProvisionedDB = () => (
     <div className="ntn-h">
       <span className="emoji">✅</span>Tasks
     </div>
-    <table className="ntn-tbl">
+    <table className="ntn-tbl ntn-tbl-empty">
       <colgroup>
         <col />
         <col style={{ width: '104px' }} />
@@ -160,26 +160,16 @@ const ProvisionedDB = () => (
         </tr>
       </thead>
       <tbody>
-        <tr>
-          <td className="nm">Launch pricing</td>
-          <td>
-            <span className="st st-prog">{nbsp('In Progress')}</span>
+        <tr className="ntn-new-row">
+          <td className="nm">
+            <span className="ntn-new">+ New</span>
           </td>
-          <td>
-            <PriorityPill priority="High" />
-          </td>
-        </tr>
-        <tr>
-          <td className="nm">Draft changelog</td>
-          <td>
-            <span className="st st-todo">Todo</span>
-          </td>
-          <td>
-            <PriorityPill priority="Medium" />
-          </td>
+          <td />
+          <td />
         </tr>
       </tbody>
     </table>
+    <div className="ntn-tbl-hint">No rows yet — the schema is provisioned, data isn't.</div>
   </NotionSurface>
 )
 

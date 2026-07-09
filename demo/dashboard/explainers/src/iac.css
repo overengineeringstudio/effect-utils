@@ -114,6 +114,15 @@
   /* gray "Todo" status pill (kit StatusPill only knows Done/In-Progress) */
   .st-todo { color: var(--muted); background: var(--panel); border: 1px solid var(--line); }
 
+  /* ---- provisioned-but-empty Tasks DB: `apply` creates the schema, not rows ----
+     the header/columns render normal (kit .ntn-tbl); the body is Notion's own
+     "+ New" add-row affordance, muted, plus a "no rows yet" hint below the
+     table — reads as "database exists, columns exist, no data" (distinct from
+     .ntn-empty, which is "no database at all"). */
+  .ntn-tbl-empty .ntn-new-row td { border-bottom: none; }
+  .ntn-new { font: 500 12px/1 var(--sans); color: var(--muted); opacity: .6; }
+  .ntn-tbl-hint { margin-top: 8px; font: 500 11px/1.4 var(--sans); color: var(--muted); opacity: .7; text-align: center; }
+
   /* reconcile strip — the "delta on every run" idea */
   .recon { margin-top: 20px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
     padding: 14px 0; border-top: 1px solid var(--line); }
