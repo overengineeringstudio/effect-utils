@@ -30,16 +30,16 @@
   /* ============================================================
      THE SOLE PLANNED INDICATOR — one sticky banner
      ============================================================ */
-  .banner { position: sticky; top: 0; z-index: 50; margin: 0; padding: 11px 22px;
-    background: var(--amber-soft); border-bottom: 2px solid var(--amber-line);
-    display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap;
-    text-align: center; box-shadow: 0 4px 14px rgba(0,0,0,.06); }
-  .banner .bdg { font: 800 11px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase;
-    color: #fff; background: var(--amber); border-radius: 6px; padding: 6px 10px; white-space: nowrap; }
-  @media (prefers-color-scheme: dark){ .banner .bdg { color: #191919; } }
-  :root[data-theme="dark"] & .banner .bdg { color: #191919; }
-  .banner .msg { font: 600 13.5px/1.35 var(--sans); color: var(--amber); }
-  .banner .msg b { font-weight: 800; }
+  .banner { position: sticky; top: 10px; z-index: 50; margin: 10px 22px 0;
+    background: var(--amber-soft); border: 1px solid var(--amber-line); border-radius: 8px;
+    padding: 10px 14px; display: flex; align-items: flex-start; justify-content: center; gap: 10px;
+    flex-wrap: wrap; text-align: left; box-shadow: 0 1px 3px rgba(0,0,0,.05); }
+  .banner .ic { font-size: 14px; line-height: 1.35; flex: none; }
+  .banner .bdg { font: 700 10.5px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase;
+    color: var(--amber); background: color-mix(in srgb, var(--amber) 14%, transparent);
+    border-radius: 4px; padding: 3px 7px; white-space: nowrap; align-self: flex-start; }
+  .banner .msg { font: 500 13px/1.35 var(--sans); color: var(--amber); }
+  .banner .msg b { font-weight: 700; }
   .banner .msg code { font-family: var(--mono); font-size: .9em; }
   .body-pad { height: 8px; }
 
