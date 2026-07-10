@@ -111,7 +111,7 @@ export const App = () => {
 
   return (
     <div className="min-h-screen">
-      <nav className="sticky top-0 z-10 flex flex-wrap items-center gap-1 border-b border-border bg-bg-panel px-4">
+      <nav className="sticky top-0 z-10 flex flex-wrap items-center gap-1 border-b border-border bg-bg px-4">
         <button
           type="button"
           onClick={() => setDemo(INTRO_ID)}
