@@ -682,7 +682,7 @@ const Slide1 = ({ active }: { active: boolean }) => {
             rather than fighting the new mascot cluster */}
         <WhyDoodle className="mt-12 -mr-1 hidden flex-none lg:block" />
       </div>
-      <div className="flex flex-wrap items-stretch justify-center gap-2">
+      <div className="flex flex-wrap items-center justify-center gap-2">
         {/* Knowledge work — each actor has its own hand-drawn arrow to the hub */}
         <div className="flex min-w-[290px] flex-1 flex-col gap-2.5">
           <div className="text-[11px] text-fg-faint">Knowledge work</div>
@@ -759,23 +759,29 @@ const IntroSlides = ({ hidden, slide, onGo }: { hidden: boolean; slide: number; 
       <Slide1 active={slide === 0} />
     </section>
       {/* Slide 2 — How: building blocks that snap together */}
-      <section aria-hidden={slide !== 1} className={`col-start-1 row-start-1 w-full py-2 ${slide === 1 ? '' : 'invisible'}`}>
+      <section aria-hidden={slide !== 1} className={`col-start-1 row-start-1 flex w-full flex-col py-2 ${slide === 1 ? '' : 'invisible'}`}>
       <div className="mb-1.5 flex items-center gap-1.5 text-[13px] text-fg-muted">
         <span className="text-fg-muted">{iconLego}</span> How
       </div>
       <h2 className="m-0 mb-5 text-[25px] font-bold tracking-tight">
         Principled Notion building blocks for agents and developers
       </h2>
-      <HowGallery />
+      {/* content is shorter than the shared frame (sized to the tallest slide) —
+          center it in the leftover space instead of leaving it top-heavy */}
+      <div className="flex flex-1 flex-col justify-center">
+        <HowGallery />
+      </div>
     </section>
       {/* Slide 3 — Disclaimer: these are inspiration, not a product. Copy left,
           full-color Notion-style "tinkerer's workbench" poster right. */}
-      <section aria-hidden={slide !== 2} className={`col-start-1 row-start-1 w-full py-2 ${slide === 2 ? '' : 'invisible'}`}>
+      <section aria-hidden={slide !== 2} className={`col-start-1 row-start-1 flex w-full flex-col py-2 ${slide === 2 ? '' : 'invisible'}`}>
       <div className="mb-1.5 flex items-center gap-1.5 text-[13px] text-fg-muted">
         <span className="text-fg-muted">{iconBulb}</span> Disclaimer
       </div>
       <h2 className="m-0 mb-6 text-[25px] font-bold tracking-tight">Inspiration, not a product.</h2>
-      <div className="flex flex-wrap items-center gap-x-12 gap-y-8">
+      {/* content is shorter than the shared frame (sized to the tallest slide) —
+          center it in the leftover space instead of leaving it top-heavy */}
+      <div className="flex flex-1 flex-wrap items-center justify-center gap-x-12 gap-y-8">
         {/* left column: the three points + a soft CTA to the source repo */}
         <div className="flex min-w-[300px] max-w-[460px] flex-1 flex-col gap-7">
           <ol className="m-0 flex list-none flex-col gap-5 p-0">
