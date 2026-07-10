@@ -22,7 +22,11 @@ import {
   utf8Bytes,
 } from '@overeng/content-address'
 
-import { OtelScrapeProfileLink, otelScrapeProfileLinkFromDescriptor } from '../mod.ts'
+import {
+  OtelScrapeProfileLink,
+  otelScrapeAttributeKeys,
+  otelScrapeProfileLinkFromDescriptor,
+} from '../mod.ts'
 
 const execFileAsync = promisify(execFile)
 
@@ -255,7 +259,18 @@ describe('otel-scrape profile links', () => {
 
       const inspect = await execFileAsync(
         otelite,
-        ['inspect', captureRoot, '--signal', 'traces', '--name', 'otel_scrape.command'],
+        [
+          'inspect',
+          captureRoot,
+          '--signal',
+          'traces',
+          '--service',
+          'otel-scrape-contract-e2e',
+          '--attr',
+          `${otelScrapeAttributeKeys.otelScrapeSpanOrigin}=otel-scrape`,
+          '--attr',
+          `${otelScrapeAttributeKeys.processExecutableName}=node`,
+        ],
         { maxBuffer: 1024 * 1024 * 10 },
       )
       const rows = inspect.stdout
@@ -267,7 +282,11 @@ describe('otel-scrape profile links', () => {
       expect(rows[0]).toMatchObject({
         schema: 'otelite.span/v1',
         service: 'otel-scrape-contract-e2e',
-        name: 'otel_scrape.command',
+        name: 'node',
+        attrs: {
+          [otelScrapeAttributeKeys.otelScrapeSpanOrigin]: 'otel-scrape',
+          [otelScrapeAttributeKeys.processExecutableName]: 'node',
+        },
       })
 
       const rawCapture = await readFile(join(captureRoot, 'traces.ndjson'), 'utf8')
@@ -278,7 +297,18 @@ describe('otel-scrape profile links', () => {
       const otlpPayload = JSON.parse(firstCaptureLine)
       const span =
         otlpPayload.resourceSpans[0].scopeSpans[0].spans.find(
-          (candidate: { readonly name?: unknown }) => candidate.name === 'otel_scrape.command',
+          (candidate: {
+            readonly attributes?: ReadonlyArray<{
+              readonly key?: unknown
+              readonly value?: Record<string, unknown>
+            }>
+            readonly name?: unknown
+          }) =>
+            candidate.name === 'node' &&
+            attrValue(candidate.attributes ?? [], otelScrapeAttributeKeys.otelScrapeSpanOrigin) ===
+              'otel-scrape' &&
+            attrValue(candidate.attributes ?? [], otelScrapeAttributeKeys.processExecutableName) ===
+              'node',
         ) ?? {}
       const event = span.events.find(
         (candidate: { readonly name?: unknown }) => candidate.name === 'otel_scrape.profile.link',
