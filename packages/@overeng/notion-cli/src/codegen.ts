@@ -1019,7 +1019,7 @@ export function generateApiCode(opts: GenerateApiCodeOptions): string {
     `    schema: ${pascalName}PageProperties,`,
     `  })`,
     ``,
-    `export type ${pascalName}Page = TypedPage<typeof ${pascalName}PageProperties.Type>`,
+    `export type ${pascalName}Page = TypedPage<${pascalName}PageProperties>`,
   ]
 
   // Add create/update if write schema is enabled
