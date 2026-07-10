@@ -318,7 +318,14 @@ exit 1
     apiMode = 'ok'
     const workspace = makeWorkspace()
     const reportFile = join(workspace.root, 'report.jsonl')
-    const workspaceFile = join(workspace.root, 'app', '.next', 'server', 'edge-chunks', 'chunk.wasm')
+    const workspaceFile = join(
+      workspace.root,
+      'app',
+      '.next',
+      'server',
+      'edge-chunks',
+      'chunk.wasm',
+    )
     try {
       mkdirSync(join(workspace.root, 'app', '.next', 'server', 'edge-chunks'), { recursive: true })
       writeFileSync(workspaceFile, 'wasm marker')
