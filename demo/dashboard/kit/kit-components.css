@@ -72,7 +72,7 @@
    Reused by md, react, codegen, iac. ---- */
 .ide { width: 100%; }
 .ide-body { display: flex; min-height: 214px; }
-.ide-tree { width: 118px; flex: none; border-right: 1px solid var(--line-soft); background: var(--panel); padding: 8px 0; }
+.ide-tree { width: 130px; flex: none; border-right: 1px solid var(--line-soft); background: var(--panel); padding: 8px 0; }
 .ide-fold { display: flex; align-items: center; gap: 6px; padding: 4px 11px 6px; font: 600 10.5px/1 var(--sans); color: var(--ink); }
 .ide-fold .tw { flex: none; width: 12px; text-align: center; color: var(--muted); font-size: 9px; }
 .ide-file { display: flex; align-items: center; gap: 7px; padding: 5px 11px 5px 22px; font: 500 11.5px/1 var(--sans); color: var(--muted); }
