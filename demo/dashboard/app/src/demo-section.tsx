@@ -69,7 +69,7 @@ const CopyButton = ({
         `inline-flex cursor-pointer items-center justify-center rounded-md border leading-none ${shape} ` +
         (copied
           ? 'border-ok bg-ok text-white'
-          : 'border-white/15 bg-white/5 text-[#cfd6e0] hover:bg-white/15 hover:text-white')
+          : 'border-border bg-bg-panel text-fg-muted hover:border-border-strong hover:text-fg')
       }
     >
       {copied ? '✓' : '⧉'}
