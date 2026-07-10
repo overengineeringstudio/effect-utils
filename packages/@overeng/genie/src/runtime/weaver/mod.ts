@@ -50,10 +50,17 @@ export type WeaverType =
   | { readonly members: ReadonlyArray<EnumMember> }
   | `template[${string}]`
 
+type DeprecationLifecycle = {
+  readonly since?: string
+  readonly remove_after?: string
+}
+
 /** weaver 0.23+ STRUCTURED deprecation (the string form was removed). */
-export type Deprecated =
-  | { readonly reason: 'renamed'; readonly renamed_to: string }
-  | { readonly reason: 'obsoleted' | 'uncategorized'; readonly note: string }
+export type Deprecated = DeprecationLifecycle &
+  (
+    | { readonly reason: 'renamed'; readonly renamed_to: string }
+    | { readonly reason: 'obsoleted' | 'uncategorized'; readonly note: string }
+  )
 
 /** How strongly an attribute reference is required on a signal (weaver `requirement_level`). */
 export type RequirementLevel =
@@ -114,6 +121,7 @@ export type SignalDef =
       readonly span_kind: SpanKind
       readonly brief: string
       readonly stability: Stability
+      readonly deprecated?: Deprecated
       readonly attributes: ReadonlyArray<AttrRef>
     }
   | {
@@ -124,6 +132,7 @@ export type SignalDef =
       readonly unit: string
       readonly brief: string
       readonly stability: Stability
+      readonly deprecated?: Deprecated
       readonly attributes: ReadonlyArray<AttrRef>
     }
 
@@ -222,6 +231,11 @@ const attrRefToObject = (r: AttrRef): Record<string, unknown> => {
 const byId = <T extends { id: string }>(xs: ReadonlyArray<T>): ReadonlyArray<T> =>
   xs.toSorted((a, b) => a.id.localeCompare(b.id))
 
+const deprecatedToNormativeObject = (deprecated: Deprecated): Record<string, unknown> =>
+  deprecated.reason === 'renamed'
+    ? { reason: deprecated.reason, renamed_to: deprecated.renamed_to }
+    : { reason: deprecated.reason, note: deprecated.note }
+
 const attributeGroupToObject = (g: AttributeGroup): Record<string, unknown> => ({
   id: `registry.${g.namespace}`,
   type: 'attribute_group',
@@ -240,6 +254,19 @@ const signalToObject = (sig: SignalDef): Record<string, unknown> => {
   }
   base['stability'] = sig.stability
   base['brief'] = sig.brief
+  if (sig.deprecated !== undefined) {
+    base['deprecated'] = deprecatedToNormativeObject(sig.deprecated)
+    if (sig.deprecated.since !== undefined || sig.deprecated.remove_after !== undefined) {
+      base['annotations'] = {
+        deprecated: {
+          ...(sig.deprecated.since !== undefined ? { since: sig.deprecated.since } : {}),
+          ...(sig.deprecated.remove_after !== undefined
+            ? { remove_after: sig.deprecated.remove_after }
+            : {}),
+        },
+      }
+    }
+  }
   base['attributes'] = sig.attributes.map(attrRefToObject)
   return base
 }

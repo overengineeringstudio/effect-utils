@@ -95,6 +95,51 @@ describe('Layer 2 → runtime encoder derivation (SC-R13/R14)', () => {
       }),
     ).toThrow(WeaverUnsupportedInstrumentError)
   })
+
+  it('carries full dated deprecation on metric and span SignalDefs', () => {
+    const label = attr.string({
+      key: 'acme.lifecycle.label',
+      cardinality: 'low',
+      brief: 'Lifecycle label.',
+      stability: 'development',
+      examples: ['x'],
+    })
+    const deprecated = {
+      reason: 'renamed',
+      renamed_to: 'acme.lifecycle.new',
+      since: '2026-07-10',
+      remove_after: '2026-10-10',
+    } as const
+    const contract = defineOtelContract({
+      memberPath: 'packages/acme/lifecycle',
+      displayName: 'Acme Lifecycle',
+      signals: [
+        metric({
+          id: 'metric.acme.lifecycle.old',
+          name: 'acme.lifecycle.old',
+          instrument: 'counter',
+          unit: '1',
+          brief: 'Old lifecycle metric.',
+          stability: 'development',
+          deprecated,
+          labels: { label: required(label) },
+        }),
+        span({
+          id: 'span.acme.lifecycle.old',
+          kind: 'internal',
+          brief: 'Old lifecycle span.',
+          stability: 'development',
+          deprecated,
+          attributes: { label: required(label) },
+        }),
+      ],
+    })
+
+    expect(fragment(contract).signals.map((signal) => signal.deprecated)).toEqual([
+      deprecated,
+      deprecated,
+    ])
+  })
 })
 
 describe('derived namespace + catalog (decision 0006)', () => {
