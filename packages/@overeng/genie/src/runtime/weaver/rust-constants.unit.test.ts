@@ -5,8 +5,8 @@ import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-import type { Provenance } from './mod.ts'
-import { renderRustConstants } from './mod.ts'
+import type { AttrDef, Provenance, Registry, SignalDef } from './mod.ts'
+import { renderAttributes, renderRustConstants, renderSignals } from './mod.ts'
 import { otelScrapeFixtureRegistry } from './otel-scrape.fixture.ts'
 
 // The synthetic otel-scrape registry is authored directly as dep-free Layer-1 data
@@ -54,6 +54,90 @@ const ALL_EXPECTED_NAMES = [
   ...EXPECTED_SPAN_IDS,
   ...EXPECTED_METRIC_NAMES,
 ]
+
+describe('renderSignals signal deprecation', () => {
+  it('keeps lifecycle dates in annotations and out of normative deprecated YAML', () => {
+    const signal: SignalDef = {
+      kind: 'metric',
+      id: 'metric.otel_scrape.old',
+      metric_name: 'otel_scrape.old',
+      instrument: 'counter',
+      unit: '1',
+      brief: 'Old scrape metric.',
+      stability: 'development',
+      deprecated: {
+        reason: 'renamed',
+        renamed_to: 'otel_scrape.new',
+        since: '2026-07-10',
+        remove_after: '2026-10-10',
+      },
+      attributes: [],
+    }
+
+    const yaml = renderSignals({ signals: [signal], provenance: FIXTURE_PROVENANCE })
+    const deprecatedStart = yaml.indexOf('  deprecated:')
+    const annotationsStart = yaml.indexOf('  annotations:')
+
+    expect(deprecatedStart).toBeGreaterThan(-1)
+    expect(annotationsStart).toBeGreaterThan(deprecatedStart)
+    expect(yaml.match(/\bsince:/g)).toHaveLength(1)
+    expect(yaml.match(/\bremove_after:/g)).toHaveLength(1)
+    expect(yaml.slice(deprecatedStart, annotationsStart).trimEnd()).toBe(
+      '  deprecated:\n      reason: renamed\n      renamed_to: otel_scrape.new',
+    )
+    expect(yaml.slice(annotationsStart)).toContain('overeng_policy:')
+    expect(yaml.slice(annotationsStart)).toContain('deprecated:')
+    expect(yaml.slice(annotationsStart)).toContain('since: 2026-07-10')
+    expect(yaml.slice(annotationsStart)).toContain('remove_after: 2026-10-10')
+  })
+})
+
+describe('renderAttributes attribute deprecation', () => {
+  it('keeps lifecycle dates in namespaced annotations and out of normative deprecated YAML', () => {
+    const attribute: AttrDef = {
+      id: 'otel_scrape.old_attribute',
+      type: 'string',
+      brief: 'Old scrape attribute.',
+      stability: 'development',
+      deprecated: {
+        reason: 'renamed',
+        renamed_to: 'otel_scrape.new_attribute',
+        since: '2026-07-10',
+        remove_after: '2026-10-10',
+      },
+    }
+    const registry: Registry = {
+      name: 'otel-scrape-test',
+      description: 'Test registry.',
+      schemaUrl: 'https://example.invalid/schema',
+      dependencies: [],
+      groups: [
+        {
+          namespace: 'otel_scrape',
+          displayName: 'OTel Scrape',
+          attributes: [attribute],
+        },
+      ],
+      signals: [],
+    }
+
+    const yaml = renderAttributes({ registry, provenance: FIXTURE_PROVENANCE })
+    const deprecatedStart = yaml.indexOf('      deprecated:')
+    const annotationsStart = yaml.indexOf('      annotations:')
+
+    expect(deprecatedStart).toBeGreaterThan(-1)
+    expect(annotationsStart).toBeGreaterThan(deprecatedStart)
+    expect(yaml.match(/\bsince:/g)).toHaveLength(1)
+    expect(yaml.match(/\bremove_after:/g)).toHaveLength(1)
+    expect(yaml.slice(deprecatedStart, annotationsStart).trimEnd()).toBe(
+      '      deprecated:\n          reason: renamed\n          renamed_to: otel_scrape.new_attribute',
+    )
+    expect(yaml.slice(annotationsStart)).toContain('overeng_policy:')
+    expect(yaml.slice(annotationsStart)).toContain('deprecated:')
+    expect(yaml.slice(annotationsStart)).toContain('since: 2026-07-10')
+    expect(yaml.slice(annotationsStart)).toContain('remove_after: 2026-10-10')
+  })
+})
 
 /** Resolve a binary from `$PATH` (rust tooling is provided by devenv/CI, absent in some sandboxes). */
 const onPath = (bin: string): string | undefined => {
