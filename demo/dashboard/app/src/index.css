@@ -11,8 +11,8 @@
   --color-bg: #f7f6f3;
   --color-bg-panel: #ffffff;
   --color-bg-subtle: #f1f0ee;
-  --color-bg-code: #191919;
-  --color-code-fg: #e6e6e6;
+  --color-bg-code: #f1f0ee;
+  --color-code-fg: #37352f;
   --color-fg: #37352f;
   --color-fg-muted: #787774;
   --color-fg-faint: #9b9a97;
@@ -60,8 +60,8 @@
   --color-bg: #f7f6f3;
   --color-bg-panel: #ffffff;
   --color-bg-subtle: #f1f0ee;
-  --color-bg-code: #191919;
-  --color-code-fg: #e6e6e6;
+  --color-bg-code: #f1f0ee;
+  --color-code-fg: #37352f;
   --color-fg: #37352f;
   --color-fg-muted: #787774;
   --color-fg-faint: #9b9a97;
@@ -197,6 +197,33 @@ body {
   --amber-soft: #35281a;
   --amber-line: #5c4526;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+
+/* -------------------------------------------------------------------
+ * Intro mockups render OUTSIDE `.explainer-root`, so without this scope
+ * the kit default `--accent:#5b5bd6` (purple, above) would win. Mirror
+ * explainer.css's Notion-blue kit tokens under `.intro` so the intro
+ * mockup accents (IDE tab underline, chat send button, avatars, icon
+ * strokes) match every other explainer: Notion blue #2383e2 light /
+ * #4a8bd6 dark. Same light/dark/data-theme pattern as the kit block.
+ * ------------------------------------------------------------------- */
+.intro {
+  --accent: #2383e2; --accent-soft: #e7f2fb;
+  --blue: #2383e2; --blue-soft: #e7f2fb; --blue-line: #bcd8f5;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .intro {
+    --accent: #4a8bd6; --accent-soft: #28374d;
+    --blue: #4a8bd6; --blue-soft: #28374d; --blue-line: #3a5372;
+  }
+}
+:root[data-theme='dark'] .intro {
+  --accent: #4a8bd6; --accent-soft: #28374d;
+  --blue: #4a8bd6; --blue-soft: #28374d; --blue-line: #3a5372;
+}
+:root[data-theme='light'] .intro {
+  --accent: #2383e2; --accent-soft: #e7f2fb;
+  --blue: #2383e2; --blue-soft: #e7f2fb; --blue-line: #bcd8f5;
 }
 
 /* ===================================================================
