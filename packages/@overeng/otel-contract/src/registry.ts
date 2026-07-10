@@ -69,10 +69,17 @@ export type WeaverType =
   | { readonly members: ReadonlyArray<EnumMember> }
   | `template[${string}]`
 
+type DeprecationLifecycle = {
+  readonly since?: string
+  readonly remove_after?: string
+}
+
 /** Weaver structured deprecation (the pre-0.23 string form was removed). */
-export type Deprecated =
-  | { readonly reason: 'renamed'; readonly renamed_to: string }
-  | { readonly reason: 'obsoleted' | 'uncategorized'; readonly note: string }
+export type Deprecated = DeprecationLifecycle &
+  (
+    | { readonly reason: 'renamed'; readonly renamed_to: string }
+    | { readonly reason: 'obsoleted' | 'uncategorized'; readonly note: string }
+  )
 
 /** Weaver attribute-ref requirement level (incl. the object forms). */
 export type RequirementLevel =
@@ -128,6 +135,7 @@ export type SignalDef =
       readonly span_kind: SpanKind
       readonly brief: string
       readonly stability: Stability
+      readonly deprecated?: Deprecated
       readonly attributes: ReadonlyArray<AttrRef>
     }
   | {
@@ -138,6 +146,7 @@ export type SignalDef =
       readonly unit: string
       readonly brief: string
       readonly stability: Stability
+      readonly deprecated?: Deprecated
       readonly attributes: ReadonlyArray<AttrRef>
     }
 
@@ -488,6 +497,7 @@ export const span = (o: {
   kind: SpanKind
   brief: string
   stability: Stability
+  deprecated?: Deprecated
   attributes: Record<string, FieldSpec>
 }): SpanContract => {
   const { fields, refList, refs } = buildFields(o.attributes)
@@ -503,6 +513,7 @@ export const span = (o: {
       span_kind: o.kind,
       brief: o.brief,
       stability: o.stability,
+      ...(o.deprecated !== undefined ? { deprecated: o.deprecated } : {}),
       attributes: refList,
     }),
   }
@@ -530,6 +541,7 @@ export const metric = (o: {
   unit: string
   brief: string
   stability: Stability
+  deprecated?: Deprecated
   boundaries?: ReadonlyArray<number>
   labels: Record<string, FieldSpec>
 }): MetricContract => {
@@ -576,6 +588,7 @@ export const metric = (o: {
       unit: o.unit,
       brief: o.brief,
       stability: o.stability,
+      ...(o.deprecated !== undefined ? { deprecated: o.deprecated } : {}),
       attributes: refList,
     }),
   }

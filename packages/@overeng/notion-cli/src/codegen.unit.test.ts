@@ -508,7 +508,7 @@ describe('codegen', () => {
       }
     })
 
-    it('should infer transforms from relation and rollup metadata', () => {
+    it('should infer cardinality-independent relation defaults and rollup metadata transforms', () => {
       const dbInfo: DatabaseInfo = {
         id: 'test',
         name: 'Test',
@@ -542,7 +542,7 @@ describe('codegen', () => {
       }
 
       const code = generateSchemaCode({ dbInfo, schemaName: 'Test' })
-      expect(code).toContain('Owner: NotionSchema.relationSingleOption')
+      expect(code).toContain('Owner: NotionSchema.relationIds')
       expect(code).toContain('Total: NotionSchema.rollupNumber')
     })
 

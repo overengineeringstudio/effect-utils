@@ -330,7 +330,12 @@ const preparePrebuiltOutput = Effect.fn('ci-tools.deploy.vercel.prepare-prebuilt
     readonly artifactKind: 'static' | 'prebuilt-output'
     readonly projectId: string
     readonly orgId: string
+    readonly localBuildWorkDir: string | undefined
   }) {
+    if (opts.artifactKind === 'prebuilt-output' && opts.localBuildWorkDir !== undefined) {
+      return { workDir: opts.localBuildWorkDir, cleanupWorkDir: false }
+    }
+
     const workDir = yield* Effect.sync(() => mkdtempSync(join(tmpdir(), 'ci-tools-vercel-')))
     const projectJson = yield* Schema.encode(VercelProjectFileJson)({
       projectId: opts.projectId,
@@ -352,7 +357,7 @@ const preparePrebuiltOutput = Effect.fn('ci-tools.deploy.vercel.prepare-prebuilt
         cpSync(opts.artifactDir, join(workDir, '.vercel', 'output'), { recursive: true })
       })
     }
-    return workDir
+    return { workDir, cleanupWorkDir: true }
   },
 )
 
@@ -975,11 +980,12 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
       )
     }
 
-    const workDir = yield* preparePrebuiltOutput({
+    const preparedOutput = yield* preparePrebuiltOutput({
       artifactDir: options.artifactDir,
       artifactKind: options.artifactKind,
       projectId,
       orgId,
+      localBuildWorkDir: options.buildPrebuiltOutput === true ? process.cwd() : undefined,
     })
 
     try {
@@ -990,7 +996,7 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
         },
         effect: runVercelCommand({
           vercelBin: options.vercelBin,
-          cwd: workDir,
+          cwd: preparedOutput.workDir,
           args: [
             'deploy',
             '--prebuilt',
@@ -1047,7 +1053,7 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
           },
           effect: runVercelCommand({
             vercelBin: options.vercelBin,
-            cwd: workDir,
+            cwd: preparedOutput.workDir,
             args: [
               'alias',
               rawDeployUrl,
@@ -1120,7 +1126,7 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
               target: input.target,
               alias,
               allowSharedProject: true,
-              workDir,
+              workDir: preparedOutput.workDir,
               vercelBin: options.vercelBin,
               authToken: authTokenValue,
               projectId,
@@ -1185,7 +1191,9 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
         urlEnvKey: options.urlEnvKey,
       })
     } finally {
-      rmSync(workDir, { recursive: true, force: true })
+      if (preparedOutput.cleanupWorkDir === true) {
+        rmSync(preparedOutput.workDir, { recursive: true, force: true })
+      }
     }
   } finally {
     if (cleanupLocalVercel === true) {
