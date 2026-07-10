@@ -1,5 +1,13 @@
 import { spawn } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { createServer, type Server } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -301,7 +309,7 @@ exit 1
       expect(log).toContain(
         'args=deploy --prebuilt --yes --prod --scope fake-scope --token fake-token',
       )
-      expect(log).toContain(`cwd=${workspace.root} VERCEL_PROJECT_ID=fake-project`)
+      expect(log).toContain(`cwd=${realpathSync(workspace.root)} VERCEL_PROJECT_ID=fake-project`)
       expect(existsSync(join(workspace.root, 'app', 'vercel.json'))).toBe(false)
       expect(existsSync(join(workspace.root, '.vercel'))).toBe(false)
       expect(readRecord(reportFile).data).toMatchObject({
@@ -360,7 +368,7 @@ exit 1
       }
       expect(result.status).toBe(0)
       const log = readFileSync(workspace.logPath, 'utf8')
-      expect(log).toContain(`cwd=${workspace.root} VERCEL_PROJECT_ID=fake-project`)
+      expect(log).toContain(`cwd=${realpathSync(workspace.root)} VERCEL_PROJECT_ID=fake-project`)
       expect(existsSync(join(workspace.root, '.vercel'))).toBe(false)
     } finally {
       rmSync(workspace.root, { recursive: true, force: true })
