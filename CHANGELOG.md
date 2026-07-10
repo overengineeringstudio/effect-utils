@@ -63,6 +63,10 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **genie / weaver**: TS constants generation now exports prefixed
+  `METRIC_*` and `SPAN_*` name constants, plus `MetricName` and `SpanName`
+  unions, so telemetry producers can import generated names without colliding
+  with existing unprefixed attribute-key constants.
 - **genie / check**: bootstrap-safe import-closure gate (`bootstrap-closure:check`).
   A `.genie.ts` and everything it transitively imports at RUNTIME must be importable
   from a fresh checkout BEFORE install; a generator that reaches a runtime-only

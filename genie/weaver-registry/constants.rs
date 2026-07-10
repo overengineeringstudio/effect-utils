@@ -1,7 +1,7 @@
 // Generated file - DO NOT EDIT
 // Source: constants.rs.genie.ts
 // registry-source: genie/weaver-registry/registry.ts
-// fingerprint: sha256:ddc3a85168adbefbada437799004cda0c6ea3b7dfb99c8c0048b8fa08c34750f
+// fingerprint: sha256:54d16d8ac5c1bacac63c7775d4927fcc09883fa10c97b17c3cbcbc75b4f82215
 // regen: devenv tasks run genie:run
 
 //! Generated OpenTelemetry semantic-convention name constants.

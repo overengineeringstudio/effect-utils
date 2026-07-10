@@ -414,6 +414,12 @@ const pascal = (key: string): string =>
     .map((seg) => seg.charAt(0).toUpperCase() + seg.slice(1))
     .join('')
 
+const namePascal = (key: string): string =>
+  key
+    .split(/[._\-:/]/)
+    .map((seg) => seg.charAt(0).toUpperCase() + seg.slice(1))
+    .join('')
+
 const screamingSnake = (key: string): string => key.replace(/[.\-:/]/g, '_').toUpperCase()
 
 /** Single-quoted string literal (matches the repo's oxfmt style, so no reformat is needed). */
@@ -421,6 +427,117 @@ const sq = (k: string): string => `'${k}'`
 
 const ownKeys = (r: Registry): ReadonlyArray<string> =>
   byId(r.groups.flatMap((g) => g.attributes)).map((a) => a.id)
+
+/** Runtime span names and metric names emitted by TS/Rust producer constants. */
+export const signalNames = (
+  registry: Registry,
+): {
+  readonly spanNames: ReadonlyArray<string>
+  readonly metricNames: ReadonlyArray<string>
+} => ({
+  spanNames: registry.signals
+    .filter((s): s is Extract<SignalDef, { kind: 'span' }> => s.kind === 'span')
+    // Emit the RUNTIME span name (what producers actually name spans), not the weaver group id.
+    // Plain spans carry no runtime name, so fall back to the id.
+    .map((s) => s.span_name ?? s.id)
+    .toSorted((a, b) => a.localeCompare(b)),
+  metricNames: registry.signals
+    .filter((s): s is Extract<SignalDef, { kind: 'metric' }> => s.kind === 'metric')
+    .map((s) => s.metric_name)
+    .toSorted((a, b) => a.localeCompare(b)),
+})
+
+const assertUniqueIdentifiers = ({
+  target,
+  kind,
+  names,
+  identifier,
+  valid,
+}: {
+  target: string
+  kind: string
+  names: ReadonlyArray<string>
+  identifier: (name: string) => string
+  valid: RegExp
+}): void => {
+  const seen = new Map<string, string>()
+  for (const name of names) {
+    const id = identifier(name)
+    if (valid.test(id) === false) {
+      throw new Error(
+        `weaver ${target} constants ${kind}: generated identifier ${JSON.stringify(id)} for ${JSON.stringify(name)} is invalid`,
+      )
+    }
+    const previous = seen.get(id)
+    if (previous !== undefined) {
+      throw new Error(
+        `weaver ${target} constants ${kind}: identifier collision ${JSON.stringify(id)} for ${JSON.stringify(previous)} and ${JSON.stringify(name)}`,
+      )
+    }
+    seen.set(id, name)
+  }
+}
+
+const assertUniqueTsConstIdentifiers = ({
+  attributeKeys,
+  spanNames,
+  metricNames,
+}: {
+  attributeKeys: ReadonlyArray<string>
+  spanNames: ReadonlyArray<string>
+  metricNames: ReadonlyArray<string>
+}): void => {
+  const entries = [
+    ...attributeKeys.map((name) => ({
+      source: `attribute key ${JSON.stringify(name)}`,
+      identifier: pascal(name),
+    })),
+    ...spanNames.map((name) => ({
+      source: `span name ${JSON.stringify(name)}`,
+      identifier: `SPAN_${namePascal(name)}`,
+    })),
+    ...metricNames.map((name) => ({
+      source: `metric name ${JSON.stringify(name)}`,
+      identifier: `METRIC_${namePascal(name)}`,
+    })),
+  ]
+  const seen = new Map<string, string>()
+  for (const { source, identifier } of entries) {
+    if (/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(identifier) === false) {
+      throw new Error(
+        `weaver TS constants: generated identifier ${JSON.stringify(identifier)} for ${source} is invalid`,
+      )
+    }
+    const previous = seen.get(identifier)
+    if (previous !== undefined) {
+      throw new Error(
+        `weaver TS constants: identifier collision ${JSON.stringify(identifier)} for ${previous} and ${source}`,
+      )
+    }
+    seen.set(identifier, source)
+  }
+}
+
+const tsConstLines = ({
+  prefix,
+  names,
+}: {
+  prefix: 'METRIC' | 'SPAN'
+  names: ReadonlyArray<string>
+}): ReadonlyArray<string> => {
+  return names.map((name) => `export const ${prefix}_${namePascal(name)} = ${sq(name)} as const`)
+}
+
+const unionLines = ({
+  typeName,
+  names,
+}: {
+  typeName: string
+  names: ReadonlyArray<string>
+}): ReadonlyArray<string> =>
+  names.length === 0
+    ? [`export type ${typeName} = never`]
+    : [`export type ${typeName} =`, ...names.map((k) => `  | ${sq(k)}`)]
 
 /**
  * TS name constants + a key union (own-namespace keys only — upstream-referenced keys come
@@ -433,10 +550,22 @@ export const renderTsConstants = ({
   registry: Registry
   provenance: Provenance
 }): string => {
-  const keys = ownKeys(registry)
+  const attributeKeys = ownKeys(registry)
+  const { spanNames, metricNames } = signalNames(registry)
+  assertUniqueTsConstIdentifiers({ attributeKeys, spanNames, metricNames })
   const lines: string[] = [provenanceComment({ provenance, prefix: '//' }).trimEnd(), '']
-  for (const k of keys) lines.push(`export const ${pascal(k)} = ${sq(k)} as const`)
-  lines.push('', 'export type AttributeKey =', ...keys.map((k) => `  | ${sq(k)}`), '')
+  for (const k of attributeKeys) lines.push(`export const ${pascal(k)} = ${sq(k)} as const`)
+  lines.push(...tsConstLines({ prefix: 'SPAN', names: spanNames }))
+  lines.push(...tsConstLines({ prefix: 'METRIC', names: metricNames }))
+  lines.push(
+    '',
+    ...unionLines({ typeName: 'AttributeKey', names: attributeKeys }),
+    '',
+    ...unionLines({ typeName: 'SpanName', names: spanNames }),
+    '',
+    ...unionLines({ typeName: 'MetricName', names: metricNames }),
+    '',
+  )
   return lines.join('\n')
 }
 
@@ -480,6 +609,13 @@ const rustModule = ({
 }): string => {
   const indent = '    '
   if (keys.length === 0) return [`/// ${doc}`, `pub mod ${name} {}`].join('\n')
+  assertUniqueIdentifiers({
+    target: 'Rust',
+    kind: name,
+    names: keys,
+    identifier: screamingSnake,
+    valid: /^[A-Z_][A-Z0-9_]*$/,
+  })
   const lines = [`/// ${doc}`, `pub mod ${name} {`]
   for (const k of keys) lines.push(`${indent}pub const ${screamingSnake(k)}: &str = ${rustStr(k)};`)
   lines.push('', ...rustAllSlice({ indent, keys }), '}')
@@ -493,8 +629,8 @@ const rustModule = ({
  * kind sorted) and rustfmt-clean. Upstream-referenced keys are excluded (they come from
  * upstream's own generated bindings — see spec.md §TS-constants scope, which applies equally to
  * Rust). The provenance fingerprint must cover attribute keys + span ids + metric names (the
- * exact names emitted here), split from the doc/TS fingerprints so a prose edit does not churn
- * this file (GEN-R07 §fingerprint granularity).
+ * exact names emitted here), split from the doc fingerprint so a prose edit does not churn this
+ * file (GEN-R07 §fingerprint granularity).
  */
 export const renderRustConstants = ({
   registry,
@@ -504,16 +640,7 @@ export const renderRustConstants = ({
   provenance: Provenance
 }): string => {
   const attributeKeys = ownKeys(registry)
-  const spanNames = registry.signals
-    .filter((s): s is Extract<SignalDef, { kind: 'span' }> => s.kind === 'span')
-    // Emit the RUNTIME span name (what producers actually name spans), not the weaver group id.
-    // Plain spans carry no runtime name, so fall back to the id.
-    .map((s) => s.span_name ?? s.id)
-    .toSorted((a, b) => a.localeCompare(b))
-  const metricNames = registry.signals
-    .filter((s): s is Extract<SignalDef, { kind: 'metric' }> => s.kind === 'metric')
-    .map((s) => s.metric_name)
-    .toSorted((a, b) => a.localeCompare(b))
+  const { spanNames, metricNames } = signalNames(registry)
   return [
     `// registry-source: ${provenance.source}`,
     `// fingerprint: ${provenance.fingerprint}`,
@@ -538,10 +665,10 @@ export const renderRustConstants = ({
 // ---------------------------------------------------------------------------
 
 /**
- * The complete design-time input for the builder family: the composed {@link Registry}, the three
- * split provenance fingerprints (doc / identity / rust — see GEN-R07 §fingerprint granularity),
- * and the whole-registry integrity {@link GenieValidationIssue}s. The aggregator constructs one
- * of these and every emitter consumes it.
+ * The complete design-time input for the builder family: the composed {@link Registry}, the split
+ * provenance fingerprints (doc / identity — see GEN-R07 §fingerprint granularity), and the
+ * whole-registry integrity {@link GenieValidationIssue}s. The aggregator constructs one of these
+ * and every emitter consumes it.
  *
  * NOTE: `issues` is carried here (a deviation from a provenance-only bundle) so `weaverManifest`
  * can surface namespace-collision / dangling-ref blocking via `validate` while keeping every
@@ -551,7 +678,6 @@ export type WeaverRegistryBundle = {
   readonly registry: Registry
   readonly docProvenance: Provenance
   readonly identityProvenance: Provenance
-  readonly rustProvenance: Provenance
   readonly issues: readonly GenieValidationIssue[]
 }
 
@@ -579,18 +705,19 @@ export const weaverSignals = (w: WeaverRegistryBundle): GenieOutput<ReadonlyArra
     stringify: () => renderSignals({ signals: w.registry.signals, provenance: w.docProvenance }),
   })
 
-/** `constants.ts` builder — TS name constants (identity/keys-only fingerprint). */
+/** `constants.ts` builder — TS name constants (identity fingerprint). */
 export const weaverTsConstants = (w: WeaverRegistryBundle): GenieOutput<Registry> =>
   createGenieOutput({
     data: w.registry,
     stringify: () => renderTsConstants({ registry: w.registry, provenance: w.identityProvenance }),
   })
 
-/** `constants.rs` builder — Rust name constants (rust-identity fingerprint: keys + signal names). */
+/** `constants.rs` builder — Rust name constants (identity fingerprint). */
 export const weaverRustConstants = (w: WeaverRegistryBundle): GenieOutput<Registry> =>
   createGenieOutput({
     data: w.registry,
-    stringify: () => renderRustConstants({ registry: w.registry, provenance: w.rustProvenance }),
+    stringify: () =>
+      renderRustConstants({ registry: w.registry, provenance: w.identityProvenance }),
   })
 
 // ---------------------------------------------------------------------------
