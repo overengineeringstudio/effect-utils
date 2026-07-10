@@ -62,6 +62,11 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **@overeng/notion-cli**: Default generated Notion relation properties to
+  `relationIds` even when Notion reports `single_property` relation metadata.
+  Explicit single-relation transforms remain available through transform
+  configuration for schemas that intentionally require scalar cardinality.
+
 - **Restate integration port allocation**: Bind in-process handler endpoints on
   port `0` and register the actual kernel-assigned URL, while keeping batch +
   retry allocation for the native `restate-server` child process ports that must

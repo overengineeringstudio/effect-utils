@@ -212,10 +212,6 @@ const inferRollupTransform = (property: PropertyInfo): string | undefined => {
 }
 
 const inferDefaultTransform = (property: PropertyInfo): string => {
-  if (property.type === 'relation' && property.relation?.type === 'single_property') {
-    return 'asSingleOption'
-  }
-
   if (property.type === 'rollup') {
     const rollupTransform = inferRollupTransform(property)
     if (rollupTransform !== undefined) return rollupTransform
