@@ -131,6 +131,7 @@ extract_vercel_static_task_script() {
                 projectIdEnv = \"VERCEL_PROJECT_ID_WEB\";
                 scopeEnv = \"VERCEL_SCOPE_WEB\";
                 aliasPrefix = \"web-preview\";
+                productionDomains = [ \"app.example.com\" ];
                 afterTask = null;
               }
             ];
@@ -174,6 +175,7 @@ extract_vercel_build_task_script() {
                 projectIdEnv = \"VERCEL_PROJECT_ID_APP\";
                 scopeEnv = \"VERCEL_SCOPE_APP\";
                 aliasPrefix = \"app-preview\";
+                productionDomains = [ \"app.example.com\" ];
               }
             ];
           }) {
@@ -465,6 +467,7 @@ assert_contains "$vercel_static_args" "--scope-env VERCEL_SCOPE_WEB" "Vercel sta
 assert_contains "$vercel_static_args" "--github-output-file $vercel_github_output" "Vercel static wrapper should pass GitHub output path"
 assert_contains "$vercel_static_args" "--url-env-key VERCEL_DEPLOY_URL_WEB" "Vercel static wrapper should pass default URL env key"
 assert_contains "$vercel_static_args" "--github-env-file $vercel_github_env" "Vercel static wrapper should pass GitHub env path"
+assert_contains "$vercel_static_args" "--production-domain app.example.com" "Vercel static wrapper should pass production domains"
 assert_json_field "https://web-preview-pr-123-team.vercel.app/" "$vercel_output_file" "value => value.devenv.env.VERCEL_DEPLOY_URL_WEB" "Vercel task output should be delegated through ci-tools"
 assert_json_field "vercel" "$vercel_report_file" "value => value.data.provider" "Vercel report record should be delegated through ci-tools"
 assert_contains "$(cat "$vercel_github_output")" "workflow_report_path=$vercel_report_file" "Vercel GitHub outputs should include report path from ci-tools"

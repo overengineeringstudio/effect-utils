@@ -55,6 +55,7 @@ export type VercelDeployCommandOptions = {
   readonly pr?: number | undefined
   readonly aliasPrefix?: string | undefined
   readonly aliasSuffix?: string | undefined
+  readonly productionDomains: readonly string[]
   readonly projectIdEnv: string
   readonly orgIdEnv: string
   readonly authTokenEnv: string
@@ -122,6 +123,11 @@ const vercelAlias = Effect.fn('ci-tools.deploy.vercel.alias')(function* (opts: {
       return undefined
   }
 })
+
+const vercelProductionDomains = (opts: {
+  readonly mode: 'prod' | 'pr' | 'preview'
+  readonly domains: readonly string[]
+}) => (opts.mode === 'prod' ? opts.domains : [])
 
 const decodeDeployInput = Effect.fn('ci-tools.deploy.vercel.decode-input')(function* (
   value: unknown,
@@ -813,6 +819,10 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
     pr: options.pr,
     aliasSuffix: options.aliasSuffix,
   })
+  const productionDomains = vercelProductionDomains({
+    mode: options.mode,
+    domains: options.productionDomains,
+  })
 
   const input = yield* decodeDeployInput({
     _tag: 'DeployInput',
@@ -823,6 +833,7 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
     mode: options.mode,
     artifactDir: options.artifactDir,
     alias,
+    productionDomains,
     pr: options.pr,
     workflowReportOutputFile: options.workflowReportOutputFile,
     e2e: {
@@ -1084,6 +1095,47 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
         finalUrl = `https://${aliasHost}`
       }
 
+      for (const productionDomain of productionDomains) {
+        const domainResult = yield* DeployProviderOperation.with({
+          attributes: {
+            provider: 'vercel',
+            target: input.target,
+          },
+          effect: runVercelCommand({
+            vercelBin: options.vercelBin,
+            cwd: preparedOutput.workDir,
+            args: [
+              'alias',
+              rawDeployUrl,
+              productionDomain,
+              ...vercelScopeArgs(scope),
+              '--token',
+              authTokenValue,
+            ],
+            env: {
+              VERCEL_PROJECT_ID: projectId,
+              VERCEL_ORG_ID: orgId,
+              ...(teamId === undefined ? {} : { VERCEL_TEAM_ID: teamId }),
+            },
+          }),
+        })
+        if (domainResult.status !== 0) {
+          return yield* failWithRecord(
+            classifyVercelFailure({
+              target: options.target,
+              status: domainResult.status,
+              stdout: domainResult.stdout,
+              stderr: domainResult.stderr,
+              authToken: authTokenValue,
+              operation: 'alias',
+            }),
+          )
+        }
+      }
+      if (productionDomains.length > 0) {
+        finalUrl = `https://${productionDomains[0]}`
+      }
+
       const preliminary = decodeResultEither({
         _tag: 'DeployResult',
         schemaVersion: 1,
@@ -1093,6 +1145,7 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
         rawDeployUrl,
         finalUrl,
         alias,
+        productionDomains,
         startedAtUtc: createdAtUtc,
         endedAtUtc: isoNow(),
         attempts: 1,
@@ -1145,6 +1198,7 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
         rawDeployUrl,
         finalUrl,
         alias,
+        productionDomains,
         startedAtUtc: createdAtUtc,
         endedAtUtc: isoNow(),
         attempts: 1,
