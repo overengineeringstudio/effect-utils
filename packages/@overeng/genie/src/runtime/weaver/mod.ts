@@ -179,6 +179,48 @@ export type RegistryFragment = {
 
 const POLICY_ANNOTATION_NS = 'overeng_policy'
 
+const deprecatedToNormativeObject = (deprecated: Deprecated): Record<string, unknown> =>
+  deprecated.reason === 'renamed'
+    ? { reason: deprecated.reason, renamed_to: deprecated.renamed_to }
+    : { reason: deprecated.reason, note: deprecated.note }
+
+const deprecatedToLifecycleAnnotation = (
+  deprecated: Deprecated,
+): Record<string, unknown> | undefined => {
+  const annotation = {
+    ...(deprecated.since !== undefined ? { since: deprecated.since } : {}),
+    ...(deprecated.remove_after !== undefined ? { remove_after: deprecated.remove_after } : {}),
+  }
+  return Object.keys(annotation).length > 0 ? annotation : undefined
+}
+
+const addPolicyAnnotation = ({
+  annotations,
+  fields,
+}: {
+  annotations: Record<string, unknown>
+  fields: Record<string, unknown>
+}): void => {
+  const existing = annotations[POLICY_ANNOTATION_NS] as Record<string, unknown> | undefined
+  annotations[POLICY_ANNOTATION_NS] = existing === undefined ? fields : { ...existing, ...fields }
+}
+
+const addDeprecatedToObject = ({
+  out,
+  annotations,
+  deprecated,
+}: {
+  out: Record<string, unknown>
+  annotations: Record<string, unknown>
+  deprecated: Deprecated
+}): void => {
+  out['deprecated'] = deprecatedToNormativeObject(deprecated)
+  const lifecycle = deprecatedToLifecycleAnnotation(deprecated)
+  if (lifecycle !== undefined) {
+    addPolicyAnnotation({ annotations, fields: { deprecated: lifecycle } })
+  }
+}
+
 const attrDefToObject = (a: AttrDef): Record<string, unknown> => {
   const out: Record<string, unknown> = {
     id: a.id,
@@ -199,13 +241,18 @@ const attrDefToObject = (a: AttrDef): Record<string, unknown> => {
   }
   if (a.note !== undefined) out['note'] = a.note
   if (a.examples !== undefined && a.examples.length > 0) out['examples'] = [...a.examples]
-  if (a.deprecated !== undefined) out['deprecated'] = { ...a.deprecated }
   const annotations: Record<string, unknown> = {}
+  if (a.deprecated !== undefined) {
+    addDeprecatedToObject({ out, annotations, deprecated: a.deprecated })
+  }
   if (a.policy?.cardinality !== undefined || a.policy?.encode !== undefined) {
-    annotations[POLICY_ANNOTATION_NS] = {
-      ...(a.policy.cardinality !== undefined ? { cardinality: a.policy.cardinality } : {}),
-      ...(a.policy.encode !== undefined ? { encode: a.policy.encode } : {}),
-    }
+    addPolicyAnnotation({
+      annotations,
+      fields: {
+        ...(a.policy.cardinality !== undefined ? { cardinality: a.policy.cardinality } : {}),
+        ...(a.policy.encode !== undefined ? { encode: a.policy.encode } : {}),
+      },
+    })
   }
   if (a.bridge !== undefined) {
     annotations['bridge'] = {
@@ -231,11 +278,6 @@ const attrRefToObject = (r: AttrRef): Record<string, unknown> => {
 const byId = <T extends { id: string }>(xs: ReadonlyArray<T>): ReadonlyArray<T> =>
   xs.toSorted((a, b) => a.id.localeCompare(b.id))
 
-const deprecatedToNormativeObject = (deprecated: Deprecated): Record<string, unknown> =>
-  deprecated.reason === 'renamed'
-    ? { reason: deprecated.reason, renamed_to: deprecated.renamed_to }
-    : { reason: deprecated.reason, note: deprecated.note }
-
 const attributeGroupToObject = (g: AttributeGroup): Record<string, unknown> => ({
   id: `registry.${g.namespace}`,
   type: 'attribute_group',
@@ -254,19 +296,11 @@ const signalToObject = (sig: SignalDef): Record<string, unknown> => {
   }
   base['stability'] = sig.stability
   base['brief'] = sig.brief
+  const annotations: Record<string, unknown> = {}
   if (sig.deprecated !== undefined) {
-    base['deprecated'] = deprecatedToNormativeObject(sig.deprecated)
-    if (sig.deprecated.since !== undefined || sig.deprecated.remove_after !== undefined) {
-      base['annotations'] = {
-        deprecated: {
-          ...(sig.deprecated.since !== undefined ? { since: sig.deprecated.since } : {}),
-          ...(sig.deprecated.remove_after !== undefined
-            ? { remove_after: sig.deprecated.remove_after }
-            : {}),
-        },
-      }
-    }
+    addDeprecatedToObject({ out: base, annotations, deprecated: sig.deprecated })
   }
+  if (Object.keys(annotations).length > 0) base['annotations'] = annotations
   base['attributes'] = sig.attributes.map(attrRefToObject)
   return base
 }
