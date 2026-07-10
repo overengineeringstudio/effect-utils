@@ -401,6 +401,10 @@ const vercelDeployCommand = Command.make(
       Options.withDescription('Optional suffix appended to Vercel aliases'),
       Options.optional,
     ),
+    productionDomain: Options.text('production-domain').pipe(
+      Options.withDescription('Production hostname to alias to the deployment (repeatable)'),
+      Options.repeated,
+    ),
     projectIdEnv: Options.text('project-id-env').pipe(
       Options.withDescription('Environment variable containing the Vercel project id'),
       Options.withDefault('VERCEL_PROJECT_ID'),
@@ -496,6 +500,7 @@ const vercelDeployCommand = Command.make(
       artifactKind: opts.artifactKind,
       aliasPrefix: optionToUndefined(opts.aliasPrefix),
       aliasSuffix: optionToUndefined(opts.aliasSuffix),
+      productionDomains: opts.productionDomain,
       teamIdEnv: optionToUndefined(opts.teamIdEnv),
       scopeEnv: optionToUndefined(opts.scopeEnv),
       protectionBypassEnv: optionToUndefined(opts.protectionBypassEnv),

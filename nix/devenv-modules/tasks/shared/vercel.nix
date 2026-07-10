@@ -50,6 +50,7 @@ let
       scopeEnv = deployment.scopeEnv or null;
       protectionBypassEnv = deployment.protectionBypassEnv or null;
       aliasPrefix = deployment.aliasPrefix or null;
+      productionDomains = deployment.productionDomains or [ ];
       urlEnvKey =
         deployment.urlEnvKey or "VERCEL_DEPLOY_URL_${
           lib.toUpper (builtins.replaceStrings [ "-" "." "/" ] [ "_" "_" "_" ] name)
@@ -102,6 +103,9 @@ let
           ${lib.optionalString (aliasPrefix != null) ''
             args+=(--alias-prefix ${lib.escapeShellArg aliasPrefix})
           ''}
+          ${lib.concatStringsSep "\n          " (
+            map (domain: "args+=(--production-domain ${lib.escapeShellArg domain})") productionDomains
+          )}
           ${lib.optionalString (teamIdEnv != null) ''
             args+=(--team-id-env ${lib.escapeShellArg teamIdEnv})
           ''}

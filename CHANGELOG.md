@@ -6,6 +6,14 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **ci-tools / Vercel**: add first-class production-domain support to the shared
+  Vercel deploy path. `ci-tools deploy vercel --production-domain <host>` now
+  aliases production deployments to canonical custom domains, reports those
+  domains in workflow-report evidence, and uses the canonical domain as the
+  final URL for live verification. The devenv Vercel task module threads
+  `deployment.productionDomains` through to `ci-tools`, so downstream repos can
+  keep custom domains in generated deploy-surface config instead of one-off
+  dashboard state.
 - **devenv / genie**: replace the shared Genie task module's raw
   `_module.args.geniePkg` / `_module.args.genieInputGlobs` contract with
   declared `effectUtils.genie.package` and `effectUtils.genie.extraInputGlobs`

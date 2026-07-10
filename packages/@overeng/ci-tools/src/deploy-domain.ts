@@ -50,6 +50,14 @@ export const DeployAlias = Schema.NonEmptyTrimmedString.pipe(
 )
 export type DeployAlias = typeof DeployAlias.Type
 
+export const DeployHostname = Schema.NonEmptyTrimmedString.pipe(
+  Schema.pattern(
+    /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/u,
+  ),
+  Schema.annotations({ identifier: 'CiTools.Deploy.Hostname' }),
+)
+export type DeployHostname = typeof DeployHostname.Type
+
 export const EnvVarName = Schema.NonEmptyTrimmedString.pipe(
   Schema.pattern(/^[A-Z_][A-Z0-9_]*$/u),
   Schema.annotations({ identifier: 'CiTools.Deploy.EnvVarName' }),
@@ -122,6 +130,7 @@ export const DeployInputV1 = Schema.TaggedStruct('DeployInput', {
   mode: DeployMode,
   artifactDir: Schema.NonEmptyTrimmedString,
   alias: Schema.optional(DeployAlias),
+  productionDomains: Schema.optional(Schema.Array(DeployHostname)),
   pr: Schema.optional(PositiveInt),
   gitSha: Schema.optional(Schema.NonEmptyTrimmedString),
   runId: Schema.optional(Schema.NonEmptyTrimmedString),
@@ -146,6 +155,7 @@ export const DeployResultV1 = Schema.TaggedStruct('DeployResult', {
   rawDeployUrl: HttpsUrl,
   finalUrl: HttpsUrl,
   alias: Schema.optional(DeployAlias),
+  productionDomains: Schema.optional(Schema.Array(DeployHostname)),
   startedAtUtc: Schema.DateTimeUtc,
   endedAtUtc: Schema.DateTimeUtc,
   attempts: PositiveInt,
@@ -428,6 +438,9 @@ export const deploySuccessRecord = (
       mode: opts.input.mode,
       attempts: opts.result.attempts,
       ...(opts.result.alias === undefined ? {} : { alias: opts.result.alias }),
+      ...(opts.result.productionDomains === undefined || opts.result.productionDomains.length === 0
+        ? {}
+        : { productionDomains: opts.result.productionDomains }),
       rawDeployUrl: opts.result.rawDeployUrl.toString(),
       finalUrl: opts.result.finalUrl.toString(),
       deployedAtUtc: encodeDateTimeUtc(opts.result.endedAtUtc),

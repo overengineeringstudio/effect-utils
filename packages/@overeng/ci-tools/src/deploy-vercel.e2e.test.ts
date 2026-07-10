@@ -285,6 +285,8 @@ exit 1
           'prebuilt-output',
           '--mode',
           'prod',
+          '--production-domain',
+          'app.example.com',
           '--build-prebuilt-output',
           '--vercel-root-directory',
           'app',
@@ -309,6 +311,9 @@ exit 1
       expect(log).toContain(
         'args=deploy --prebuilt --yes --prod --scope fake-scope --token fake-token',
       )
+      expect(log).toContain(
+        'args=alias https://deploy-web.vercel.app app.example.com --scope fake-scope',
+      )
       expect(log).toContain(`cwd=${realpathSync(workspace.root)} VERCEL_PROJECT_ID=fake-project`)
       expect(existsSync(join(workspace.root, 'app', 'vercel.json'))).toBe(false)
       expect(existsSync(join(workspace.root, '.vercel'))).toBe(false)
@@ -316,6 +321,8 @@ exit 1
         provider: 'vercel',
         target: 'app',
         mode: 'prod',
+        finalUrl: 'https://app.example.com/',
+        productionDomains: ['app.example.com'],
       })
     } finally {
       rmSync(workspace.root, { recursive: true, force: true })
