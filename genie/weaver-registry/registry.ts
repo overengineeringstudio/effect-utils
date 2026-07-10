@@ -26,6 +26,7 @@ import type {
   Provenance,
   WeaverRegistryBundle,
 } from '../../packages/@overeng/genie/src/runtime/weaver/mod.ts'
+import { signalNames } from '../../packages/@overeng/genie/src/runtime/weaver/mod.ts'
 import gitContract from '../../packages/@overeng/megarepo/src/git.contract.ts'
 import megarepoContract from '../../packages/@overeng/megarepo/src/megarepo.contract.ts'
 import nixContract from '../../packages/@overeng/megarepo/src/nix.contract.ts'
@@ -129,51 +130,25 @@ const versionInputs = {
   generator: GENERATOR_VERSION,
 }
 
-/** Identity = only the attribute keys the TS/Rust const targets encode (no doc prose). */
+/** Identity = the exact names the TS/Rust const targets encode (no doc prose). */
 const identityKeys = registry.groups
   .flatMap((g) => g.attributes.map((a) => a.id))
   .toSorted((a, b) => a.localeCompare(b))
+const identityNames = {
+  attributeKeys: identityKeys,
+  ...signalNames(registry),
+}
 
 /** Doc fingerprint: the FULL registry (brief/stability/examples/notes/deprecated) → YAML headers. */
 export const docFingerprint = sha256({ registry, ...versionInputs })
-/** Identity fingerprint: keys only → TS/Rust const headers (a prose edit must not churn these). */
-export const identityFingerprint = sha256({ keys: identityKeys, ...versionInputs })
+/** Identity fingerprint: constant names only → TS/Rust const headers (a prose edit must not churn these). */
+export const identityFingerprint = sha256({ ...identityNames, ...versionInputs })
 
 export const REGISTRY_SOURCE = 'genie/weaver-registry/registry.ts'
 export const docProvenance: Provenance = { source: REGISTRY_SOURCE, fingerprint: docFingerprint }
 export const identityProvenance: Provenance = {
   source: REGISTRY_SOURCE,
   fingerprint: identityFingerprint,
-}
-
-/**
- * Rust identity = the exact names the Rust const target encodes: attribute keys PLUS span ids
- * PLUS metric names (a Rust telemetry producer needs signal-name consts too). Kept SEPARATE
- * from {@link identityFingerprint} (attr-keys-only, for the TS `constants.ts`) so a span/metric
- * rename re-hashes the `.rs` without churning `constants.ts`, and a doc-only edit churns neither
- * (GEN-R07 §fingerprint granularity).
- */
-const rustIdentityNames = {
-  attributeKeys: identityKeys,
-  spanIds: registry.signals
-    .filter(
-      (s): s is Extract<(typeof registry.signals)[number], { kind: 'span' }> => s.kind === 'span',
-    )
-    // Hash the emitted Rust span-name consts (runtime names, id fallback), matching renderRustConstants.
-    .map((s) => s.span_name ?? s.id)
-    .toSorted((a, b) => a.localeCompare(b)),
-  metricNames: registry.signals
-    .filter(
-      (s): s is Extract<(typeof registry.signals)[number], { kind: 'metric' }> =>
-        s.kind === 'metric',
-    )
-    .map((s) => s.metric_name)
-    .toSorted((a, b) => a.localeCompare(b)),
-}
-export const rustIdentityFingerprint = sha256({ ...rustIdentityNames, ...versionInputs })
-export const rustProvenance: Provenance = {
-  source: REGISTRY_SOURCE,
-  fingerprint: rustIdentityFingerprint,
 }
 
 /** The own namespaces, all collapsed into ONE `attributes.yaml` (adding a namespace needs no new emitter). */
@@ -188,6 +163,5 @@ export const weaver: WeaverRegistryBundle = {
   registry,
   docProvenance,
   identityProvenance,
-  rustProvenance,
   issues: compositionIssues,
 }

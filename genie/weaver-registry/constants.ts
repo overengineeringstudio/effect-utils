@@ -1,7 +1,7 @@
 // Generated file - DO NOT EDIT
 // Source: constants.ts.genie.ts
 // registry-source: genie/weaver-registry/registry.ts
-// fingerprint: sha256:a29e00860a50e4d30a7d3870066445413b039a0048224272ef9c77f7afc2210a
+// fingerprint: sha256:54d16d8ac5c1bacac63c7775d4927fcc09883fa10c97b17c3cbcbc75b4f82215
 
 export const AcmeAttempt = 'acme.attempt' as const
 export const AcmeProbeLabel = 'acme.probe.label' as const
@@ -319,6 +319,90 @@ export const RestateStep = 'restate.step' as const
 export const RestateWorkflowId = 'restate.workflow.id' as const
 export const SemaphoreKey = 'semaphore.key' as const
 export const SemaphoreTarget_holder_id = 'semaphore.target_holder_id' as const
+export const SPAN_AcmeOperation = 'acme.operation' as const
+export const SPAN_AtomicWriteFile = 'atomicWriteFile' as const
+export const SPAN_CiToolsDeploy = 'ci-tools.deploy' as const
+export const SPAN_CiToolsDeployAttempt = 'ci-tools.deploy.attempt' as const
+export const SPAN_CiToolsDeployCleanup = 'ci-tools.deploy.cleanup' as const
+export const SPAN_CiToolsDeployProvider = 'ci-tools.deploy.provider' as const
+export const SPAN_CiToolsDeployVerify = 'ci-tools.deploy.verify' as const
+export const SPAN_CmdCollect = 'cmd.collect' as const
+export const SPAN_CmdRun = 'cmd.run' as const
+export const SPAN_CmdRunWithLogging = 'cmd.run-with-logging' as const
+export const SPAN_FileSystemBackingSemaphoreForceRevoke = 'FileSystemBacking.semaphore.forceRevoke' as const
+export const SPAN_FileSystemBackingSemaphoreKey = 'FileSystemBacking.semaphore.key' as const
+export const SPAN_GenieCommand = 'genie/command' as const
+export const SPAN_GenieFile = 'genie/file' as const
+export const SPAN_GenieOxfmt = 'genie/oxfmt' as const
+export const SPAN_GeniePath = 'genie/path' as const
+export const SPAN_GenieRunValidation = 'genie/runValidation' as const
+export const SPAN_GenieTargetLock = 'genie/target-lock' as const
+export const SPAN_GitDeleteBranch = 'git/delete-branch' as const
+export const SPAN_GitDetachWorktreeHead = 'git/detach-worktree-head' as const
+export const SPAN_MegarepoStoreGc = 'megarepo/store/gc' as const
+export const SPAN_MegarepoStoreGcArchiveWorktree = 'megarepo/store/gc/archive-worktree' as const
+export const SPAN_MegarepoStoreGcAssessLossless = 'megarepo/store/gc/assess-lossless' as const
+export const SPAN_MegarepoStoreGcColdReclaimRepo = 'megarepo/store/gc/cold-reclaim-repo' as const
+export const SPAN_MegarepoStoreGcReapArchive = 'megarepo/store/gc/reap-archive' as const
+export const SPAN_MegarepoStoreGcResolvePrState = 'megarepo/store/gc/resolve-pr-state' as const
+export const SPAN_MegarepoStoreGcScanArchives = 'megarepo/store/gc/scan-archives' as const
+export const SPAN_MegarepoStoreGcUnpushedCommitCount = 'megarepo/store/gc/unpushed-commit-count' as const
+export const SPAN_MegarepoSync = 'megarepo/sync' as const
+export const SPAN_MegarepoSyncMember = 'megarepo/sync/member' as const
+export const SPAN_MegarepoSyncMemberCloneOrFetch = 'megarepo/sync/member/clone-or-fetch' as const
+export const SPAN_MegarepoSyncMemberCreateWorktree = 'megarepo/sync/member/create-worktree' as const
+export const SPAN_MegarepoSyncMemberResolveRef = 'megarepo/sync/member/resolve-ref' as const
+export const SPAN_MegarepoTestStoreFixtureCreate = 'megarepo/test/store-fixture/create' as const
+export const SPAN_MegarepoTestStoreFixtureRepo = 'megarepo/test/store-fixture/repo' as const
+export const SPAN_MegarepoTraversal = 'megarepo/traversal' as const
+export const SPAN_NotionMdBatchWatch = 'notion-md.batch-watch' as const
+export const SPAN_NotionMdCat = 'notion-md.cat' as const
+export const SPAN_NotionMdCommentBoundary = 'notion-md.comment-boundary' as const
+export const SPAN_NotionMdDestructiveBody = 'notion-md.destructive-body' as const
+export const SPAN_NotionMdEdit = 'notion-md.edit' as const
+export const SPAN_NotionMdEstablishSidecar = 'notion-md.establish-sidecar' as const
+export const SPAN_NotionMdGatewayArchivePage = 'notion-md.gateway.archive-page' as const
+export const SPAN_NotionMdGatewayCreatePage = 'notion-md.gateway.create-page' as const
+export const SPAN_NotionMdGatewayListChildPages = 'notion-md.gateway.list-child-pages' as const
+export const SPAN_NotionMdGatewayMovePage = 'notion-md.gateway.move-page' as const
+export const SPAN_NotionMdGatewayPullPage = 'notion-md.gateway.pull-page' as const
+export const SPAN_NotionMdGatewayRetrieveDataSource = 'notion-md.gateway.retrieve-data-source' as const
+export const SPAN_NotionMdGatewayUpdateMarkdown = 'notion-md.gateway.update-markdown' as const
+export const SPAN_NotionMdGatewayUpdatePageMetadata = 'notion-md.gateway.update-page-metadata' as const
+export const SPAN_NotionMdGatewayUpdatePageProperties = 'notion-md.gateway.update-page-properties' as const
+export const SPAN_NotionMdMediaBoundary = 'notion-md.media-boundary' as const
+export const SPAN_NotionMdObjectGc = 'notion-md.object-gc' as const
+export const SPAN_NotionMdPlanPath = 'notion-md.plan-path' as const
+export const SPAN_NotionMdPullPage = 'notion-md.pull-page' as const
+export const SPAN_NotionMdPushPage = 'notion-md.push-page' as const
+export const SPAN_NotionMdPut = 'notion-md.put' as const
+export const SPAN_NotionMdStateReadNmd = 'notion-md.state.read-nmd' as const
+export const SPAN_NotionMdStateReadObject = 'notion-md.state.read-object' as const
+export const SPAN_NotionMdStateWriteObject = 'notion-md.state.write-object' as const
+export const SPAN_NotionMdStatusPage = 'notion-md.status-page' as const
+export const SPAN_NotionMdStatusPath = 'notion-md.status-path' as const
+export const SPAN_NotionMdSyncPage = 'notion-md.sync-page' as const
+export const SPAN_NotionMdSyncPath = 'notion-md.sync-path' as const
+export const SPAN_NotionMdSyncTree = 'notion-md.sync-tree' as const
+export const SPAN_NotionMdTrackPage = 'notion-md.track-page' as const
+export const SPAN_NotionMdWatch = 'notion-md.watch' as const
+export const SPAN_NotionMdWatchSyncPass = 'notion-md.watch.sync-pass' as const
+export const SPAN_NotionMdWebhookTrigger = 'notion-md.webhook.trigger' as const
+export const SPAN_NotionDatabasesQuery = 'NotionDatabases.query' as const
+export const SPAN_NotionPagesRetrieve = 'NotionPages.retrieve' as const
+export const SPAN_PtySessionMake = 'pty-session.make' as const
+export const SPAN_PwWaitUntil = 'pw.wait.until' as const
+export const SPAN_SpanAcmeProbe = 'span.acme.probe' as const
+export const SPAN_SpanNotionReactSync = 'span.notion-react.sync' as const
+export const METRIC_AcmeProbeDuration = 'acme.probe.duration' as const
+export const METRIC_AcmeProbes = 'acme.probes' as const
+export const METRIC_MegarepoStoreGcRssBytes = 'megarepo_store_gc_rss_bytes' as const
+export const METRIC_RestateAttemptsTotal = 'restate_attempts_total' as const
+export const METRIC_RestateAwakeableWaitMs = 'restate_awakeable_wait_ms' as const
+export const METRIC_RestateDurableStepsTotal = 'restate_durable_steps_total' as const
+export const METRIC_RestateInvocationDurationMs = 'restate_invocation_duration_ms' as const
+export const METRIC_RestateInvocationsTotal = 'restate_invocations_total' as const
+export const METRIC_RestatePollLoopCyclesTotal = 'restate_poll_loop_cycles_total' as const
 
 export type AttributeKey =
   | 'acme.attempt'
@@ -637,3 +721,91 @@ export type AttributeKey =
   | 'restate.workflow.id'
   | 'semaphore.key'
   | 'semaphore.target_holder_id'
+
+export type SpanName =
+  | 'acme.operation'
+  | 'atomicWriteFile'
+  | 'ci-tools.deploy'
+  | 'ci-tools.deploy.attempt'
+  | 'ci-tools.deploy.cleanup'
+  | 'ci-tools.deploy.provider'
+  | 'ci-tools.deploy.verify'
+  | 'cmd.collect'
+  | 'cmd.run'
+  | 'cmd.run-with-logging'
+  | 'FileSystemBacking.semaphore.forceRevoke'
+  | 'FileSystemBacking.semaphore.key'
+  | 'genie/command'
+  | 'genie/file'
+  | 'genie/oxfmt'
+  | 'genie/path'
+  | 'genie/runValidation'
+  | 'genie/target-lock'
+  | 'git/delete-branch'
+  | 'git/detach-worktree-head'
+  | 'megarepo/store/gc'
+  | 'megarepo/store/gc/archive-worktree'
+  | 'megarepo/store/gc/assess-lossless'
+  | 'megarepo/store/gc/cold-reclaim-repo'
+  | 'megarepo/store/gc/reap-archive'
+  | 'megarepo/store/gc/resolve-pr-state'
+  | 'megarepo/store/gc/scan-archives'
+  | 'megarepo/store/gc/unpushed-commit-count'
+  | 'megarepo/sync'
+  | 'megarepo/sync/member'
+  | 'megarepo/sync/member/clone-or-fetch'
+  | 'megarepo/sync/member/create-worktree'
+  | 'megarepo/sync/member/resolve-ref'
+  | 'megarepo/test/store-fixture/create'
+  | 'megarepo/test/store-fixture/repo'
+  | 'megarepo/traversal'
+  | 'notion-md.batch-watch'
+  | 'notion-md.cat'
+  | 'notion-md.comment-boundary'
+  | 'notion-md.destructive-body'
+  | 'notion-md.edit'
+  | 'notion-md.establish-sidecar'
+  | 'notion-md.gateway.archive-page'
+  | 'notion-md.gateway.create-page'
+  | 'notion-md.gateway.list-child-pages'
+  | 'notion-md.gateway.move-page'
+  | 'notion-md.gateway.pull-page'
+  | 'notion-md.gateway.retrieve-data-source'
+  | 'notion-md.gateway.update-markdown'
+  | 'notion-md.gateway.update-page-metadata'
+  | 'notion-md.gateway.update-page-properties'
+  | 'notion-md.media-boundary'
+  | 'notion-md.object-gc'
+  | 'notion-md.plan-path'
+  | 'notion-md.pull-page'
+  | 'notion-md.push-page'
+  | 'notion-md.put'
+  | 'notion-md.state.read-nmd'
+  | 'notion-md.state.read-object'
+  | 'notion-md.state.write-object'
+  | 'notion-md.status-page'
+  | 'notion-md.status-path'
+  | 'notion-md.sync-page'
+  | 'notion-md.sync-path'
+  | 'notion-md.sync-tree'
+  | 'notion-md.track-page'
+  | 'notion-md.watch'
+  | 'notion-md.watch.sync-pass'
+  | 'notion-md.webhook.trigger'
+  | 'NotionDatabases.query'
+  | 'NotionPages.retrieve'
+  | 'pty-session.make'
+  | 'pw.wait.until'
+  | 'span.acme.probe'
+  | 'span.notion-react.sync'
+
+export type MetricName =
+  | 'acme.probe.duration'
+  | 'acme.probes'
+  | 'megarepo_store_gc_rss_bytes'
+  | 'restate_attempts_total'
+  | 'restate_awakeable_wait_ms'
+  | 'restate_durable_steps_total'
+  | 'restate_invocation_duration_ms'
+  | 'restate_invocations_total'
+  | 'restate_poll_loop_cycles_total'
