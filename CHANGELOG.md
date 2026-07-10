@@ -206,6 +206,11 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **@overeng/notion-cli**: Default generated Notion relation properties to
+  `relationIds` even when Notion reports `single_property` relation metadata.
+  Explicit single-relation transforms remain available through transform
+  configuration for schemas that intentionally require scalar cardinality.
+
 - **otel-scrape**: Refactored the adapters into a per-tool module framework
   (`src/adapters/`): a `ToolAdapter` trait + `ADAPTERS` registry, with oxlint,
   vitest, and node-cpuprofile each in their own module. `lib.rs` dispatch is now
