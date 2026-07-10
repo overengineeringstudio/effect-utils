@@ -1,5 +1,13 @@
 import { spawn } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { createServer, type Server } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -157,6 +165,9 @@ if [ "\${1:-}" = "build" ]; then
 fi
 if [ "\${1:-}" = "deploy" ]; then
   test -f .vercel/output/static/index.html
+  if [ -n "\${FAKE_VERCEL_REQUIRE_WORKSPACE_FILE:-}" ]; then
+    test -f "\${FAKE_VERCEL_REQUIRE_WORKSPACE_FILE}"
+  fi
   if [ "\${FAKE_VERCEL_REQUIRE_DOTFILE:-1}" = "1" ]; then
     test -f .vercel/output/static/.well-known
   fi
@@ -298,6 +309,7 @@ exit 1
       expect(log).toContain(
         'args=deploy --prebuilt --yes --prod --scope fake-scope --token fake-token',
       )
+      expect(log).toContain(`cwd=${realpathSync(workspace.root)} VERCEL_PROJECT_ID=fake-project`)
       expect(existsSync(join(workspace.root, 'app', 'vercel.json'))).toBe(false)
       expect(existsSync(join(workspace.root, '.vercel'))).toBe(false)
       expect(readRecord(reportFile).data).toMatchObject({
@@ -305,6 +317,59 @@ exit 1
         target: 'app',
         mode: 'prod',
       })
+    } finally {
+      rmSync(workspace.root, { recursive: true, force: true })
+    }
+  })
+
+  it('keeps workspace-relative files available for locally built prebuilt deploys', async () => {
+    apiMode = 'ok'
+    const workspace = makeWorkspace()
+    const reportFile = join(workspace.root, 'report.jsonl')
+    const workspaceFile = join(
+      workspace.root,
+      'app',
+      '.next',
+      'server',
+      'edge-chunks',
+      'chunk.wasm',
+    )
+    try {
+      mkdirSync(join(workspace.root, 'app', '.next', 'server', 'edge-chunks'), { recursive: true })
+      writeFileSync(workspaceFile, 'wasm marker')
+      const result = await runCiTools({
+        workdir: workspace.root,
+        fakeVercelBin: workspace.fakeVercelBin,
+        reportFile,
+        args: [
+          '--target',
+          'app',
+          '--artifact-dir',
+          join(workspace.root, '.vercel', 'output'),
+          '--artifact-kind',
+          'prebuilt-output',
+          '--mode',
+          'prod',
+          '--build-prebuilt-output',
+          '--vercel-root-directory',
+          'app',
+          '--build-env',
+          'BUILD_MARKER=ci-tools',
+          '--scope-env',
+          'VERCEL_SCOPE',
+        ],
+        env: {
+          FAKE_VERCEL_REQUIRE_DOTFILE: '0',
+          FAKE_VERCEL_REQUIRE_WORKSPACE_FILE: 'app/.next/server/edge-chunks/chunk.wasm',
+        },
+      })
+      if (result.status !== 0) {
+        console.error({ stdout: result.stdout, stderr: result.stderr })
+      }
+      expect(result.status).toBe(0)
+      const log = readFileSync(workspace.logPath, 'utf8')
+      expect(log).toContain(`cwd=${realpathSync(workspace.root)} VERCEL_PROJECT_ID=fake-project`)
+      expect(existsSync(join(workspace.root, '.vercel'))).toBe(false)
     } finally {
       rmSync(workspace.root, { recursive: true, force: true })
     }
