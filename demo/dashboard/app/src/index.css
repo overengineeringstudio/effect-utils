@@ -347,6 +347,16 @@ body {
 .intro-pair .side > * {
   width: 100%;
 }
+/* sqlite variant: the local side stacks a db window + an overlapping terminal
+ * BELOW it, so the column runs taller than the right Notion window. Top-align the
+ * pair and drop the connector to the ~center of the top (db) window so the "LIVE
+ * SYNC" arrow reads level with the two primary windows, not the full stack. */
+.intro-pair.sqlite {
+  align-items: flex-start;
+}
+.intro-pair.sqlite .intro-arrow {
+  margin-top: 88px;
+}
 /* sqlite local side: the .db file with the terminal you edit it with, overlapping
  * (db behind, terminal floating in front) — reads as "a real local SQLite DB". */
 .intro .loc-sqlite {
