@@ -373,7 +373,19 @@ export const commonPnpmPolicySettings = {
   sideEffectsCache: false as const,
   verifyStoreIntegrity: true as const,
   strictStorePkgContentCheck: true as const,
-  ignoreScripts: true as const,
+  // NOTE: `ignoreScripts: true` was intentionally REMOVED here. It is a blanket
+  // switch that disables every dependency lifecycle script, and in pnpm 11 GVS
+  // it has an undocumented side effect: it also suppresses creation of the
+  // `node_modules/.bin` shims for packages whose subtree carries a build (e.g.
+  // vitest/vite/madge/astro), so downstream consumers that resolve tools via
+  // `node_modules/.bin` on PATH get "Executable not found in $PATH". The build
+  // gating we actually want is already provided by `allowBuilds` below (pnpm's
+  // native per-package build allowlist: `false` denies + acknowledges the
+  // build, so nothing builds unless explicitly allowed), which does NOT touch
+  // bin-shim creation. Keeping `ignoreScripts` was therefore redundant for
+  // gating and actively broke bin linking. See overengineeringstudio/effect-utils#917.
+  // This makes the `allowBuilds` allowlist live: `true` entries now actually
+  // build during install (previously ignoreScripts blanket-blocked them too).
   // This dependency refresh intentionally tracks the newest Effect 3 line and
   // Node 26 types. Keep minimum-release-age strict globally, but allow these
   // reviewed packages to advance immediately as part of the coordinated upgrade.

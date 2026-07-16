@@ -72,7 +72,6 @@
   },
   "installPolicy": {
     "dedupePeerDependents": true,
-    "ignoreScripts": true,
     "minimumReleaseAgeExclude": ["@effect/platform", "@types/node", "effect"],
     "optimisticRepeatInstall": false,
     "packageImportMethod": "clone-or-copy",

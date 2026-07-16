@@ -95,8 +95,6 @@ optimisticRepeatInstall: false
 
 verifyDepsBeforeRun: false
 
-ignoreScripts: true
-
 sideEffectsCache: false
 
 verifyStoreIntegrity: true
