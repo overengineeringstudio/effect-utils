@@ -14,7 +14,10 @@ const moduleDirs = (process.env.NODE_MODULES_DIRS || '')
 const existingModuleDirs = moduleDirs.filter((value) => fs.existsSync(value))
 
 const rootModulesYamlPath = process.env.PNPM_ROOT_MODULES_YAML || 'node_modules/.modules.yaml'
-const rootNodeModulesDir = path.resolve(moduleDirs[0] || path.dirname(rootModulesYamlPath))
+const rootNodeModulesPath = path.resolve(moduleDirs[0] || path.dirname(rootModulesYamlPath))
+const rootNodeModulesDir = fs.existsSync(rootNodeModulesPath)
+  ? fs.realpathSync(rootNodeModulesPath)
+  : rootNodeModulesPath
 const rootVirtualStoreDir = path.join(rootNodeModulesDir, '.pnpm')
 
 const isWithin = (parentPath, childPath) => {

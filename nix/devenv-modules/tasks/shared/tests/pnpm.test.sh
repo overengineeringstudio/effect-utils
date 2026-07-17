@@ -450,6 +450,17 @@ exit_code=$?
 set -e
 assert_exit_code 0 "$exit_code" "projection health passes"
 
+echo "Test 20b: Projection health canonicalizes an aliased materialization root"
+healthy_real_dir="$test_dir/healthy-real"
+healthy_alias_dir="$test_dir/healthy-alias"
+make_projection_fixture "$healthy_real_dir" 1
+ln -s "$healthy_real_dir" "$healthy_alias_dir"
+set +e
+check_node_modules_links_healthy node "$PROJECTION_SCRIPT" "$healthy_alias_dir/node_modules"
+exit_code=$?
+set -e
+assert_exit_code 0 "$exit_code" "projection health accepts canonical paths through a root alias"
+
 echo "Test 21: Projection health ignores packages that do not export ./package.json"
 exports_dir="$test_dir/exports"
 make_projection_fixture "$exports_dir" 1 1
