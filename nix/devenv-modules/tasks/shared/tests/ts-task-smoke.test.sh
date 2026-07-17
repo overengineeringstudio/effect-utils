@@ -17,6 +17,19 @@ assert_exit_code() {
   fi
 }
 
+assert_eq() {
+  local expected="$1"
+  local actual="$2"
+  local label="$3"
+
+  if [ "$expected" != "$actual" ]; then
+    echo "FAIL: $label"
+    echo "  expected: $expected"
+    echo "  actual:   $actual"
+    exit 1
+  fi
+}
+
 extract_ts_emit_script() {
   local attr="$1"
   local output_path="$2"
@@ -45,6 +58,22 @@ extract_ts_emit_script() {
     in evaluated.config.tasks.\"ts:emit\".${attr}
   " > "$output_path"
   chmod +x "$output_path"
+}
+
+eval_ts_package_count() {
+  nix eval --impure --raw --expr "
+    let
+      flake = builtins.getFlake (toString $ROOT);
+      pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
+      module = (import $ROOT/nix/devenv-modules/tasks/shared/ts.nix {
+        tsBinPkg = pkgs.writeShellScriptBin \"tsgo\" \"exit 0\";
+      }) {
+        pkgs = pkgs;
+        lib = pkgs.lib;
+        config = { };
+      };
+    in builtins.toString (builtins.length module.packages)
+  "
 }
 
 echo "Running ts task smoke test..."
@@ -213,6 +242,9 @@ echo "Test 1: ts:emit exec filters noEmit refs even with inline comments"
   bash "$tmpdir/ts-emit.exec.sh"
 )
 test -f "$TEST_CAPTURED_TSCONFIG"
+
+echo "Preflight: tsBinPkg is exec-only guard backing, not a profile package"
+assert_eq 2 "$(eval_ts_package_count)" "ts module packages should be bc plus tsgo guard only"
 
 echo "Test 2: ts:emit status uses the same filtered graph"
 (
