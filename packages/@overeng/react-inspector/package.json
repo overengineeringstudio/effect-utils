@@ -31,7 +31,7 @@
     "@types/is-dom": "1.1.2",
     "@types/react": "19.2.17",
     "@vitejs/plugin-react": "6.0.2",
-    "effect": "4.0.0-beta.98",
+    "effect": "4.0.0-beta.97",
     "happy-dom": "20.10.6",
     "react": "19.2.7",
     "react-dom": "19.2.7",
