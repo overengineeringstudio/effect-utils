@@ -106,4 +106,29 @@ describe('Effect 4 consumer schema compatibility', () => {
       pure: true,
     })
   })
+
+  it('decodes absent lineage metadata as omitted exact-optional properties', () => {
+    const schema = Schema.String.pipe(
+      Lineage.sourceOfTruth(),
+      Lineage.authority({ writers: [] }),
+      Lineage.freshness({}),
+      Lineage.foreignKey({ targetSchema: 'Consumer.Record' }),
+    )
+
+    const lineage = Lineage.getLineage(schema)
+    const authority = Lineage.getAuthority(schema)
+    const freshness = Lineage.getFreshness(schema)
+    const reference = Lineage.getReference(schema)
+
+    expect(lineage).toEqual({ _tag: 'SourceOfTruth' })
+    expect(Object.hasOwn(lineage ?? {}, 'owner')).toBe(false)
+    expect(Object.hasOwn(lineage ?? {}, 'system')).toBe(false)
+    expect(authority).toEqual({ writers: [] })
+    expect(Object.hasOwn(authority ?? {}, 'readers')).toBe(false)
+    expect(freshness).toEqual({})
+    expect(Object.hasOwn(freshness ?? {}, 'capturedAt')).toBe(false)
+    expect(Object.hasOwn(freshness ?? {}, 'maxAgeMs')).toBe(false)
+    expect(reference).toEqual({ _tag: 'ForeignKey', targetSchema: 'Consumer.Record' })
+    expect(Object.hasOwn(reference ?? {}, 'targetField')).toBe(false)
+  })
 })

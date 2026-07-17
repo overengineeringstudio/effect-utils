@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **react-inspector / Effect 4**: preserve exact-optional public metadata types
+  across Effect 4 schema decoding, and compile the migrated schema surface as a
+  strict downstream consumer in the workspace typecheck graph.
 - **react-inspector / Effect 4**: align the package's development and build
   runtime with its `^4.0.0-beta.97` peer contract so declarations and tests use
   the same Effect version as LiveStore DevTools.
