@@ -100,6 +100,20 @@ EOF
   ln -s ../store/v11/links/pkg/1.0.0/hash/node_modules/pkg "$root/node_modules/pkg"
 }
 
+make_exports_override_stale_main_fixture() {
+  local root="$1"
+  local package_root="$root/store/v11/links/pkg/1.0.0/hash/node_modules/pkg"
+
+  mkdir -p "$package_root/dist"
+  mkdir -p "$root/node_modules"
+  cat > "$package_root/package.json" <<'EOF'
+{"name":"pkg","files":["dist"],"main":"./dist/missing-legacy.cjs","exports":{".":{"import":"./dist/index.js","require":"./dist/index.cjs"}}}
+EOF
+  touch "$package_root/dist/index.js"
+  touch "$package_root/dist/index.cjs"
+  ln -s ../store/v11/links/pkg/1.0.0/hash/node_modules/pkg "$root/node_modules/pkg"
+}
+
 make_unshipped_conditional_export_fixture() {
   local root="$1"
   local package_root="$root/store/v11/links/pkg/1.0.0/hash/node_modules/pkg"
@@ -738,7 +752,20 @@ exit_code=$?
 set -e
 assert_exit_code 0 "$exit_code" "projection health ignores optional subpath exports"
 
-echo "Test 32: dependency materialization profile is stable for identical contracts"
+echo "Test 32: Projection health gives exports precedence over a stale legacy main target"
+exports_override_main_dir="$test_dir/exports-override-main"
+make_exports_override_stale_main_fixture "$exports_override_main_dir"
+set +e
+check_node_modules_links_healthy node "$PROJECTION_SCRIPT" "$exports_override_main_dir/node_modules" >/dev/null 2>&1
+exit_code=$?
+set -e
+assert_exit_code 0 "$exit_code" "projection health accepts valid exports despite a stale legacy main"
+assert_eq \
+  "index.cjs" \
+  "$(cd "$exports_override_main_dir" && node -e 'const path = require("node:path"); process.stdout.write(path.basename(require.resolve("pkg")))')" \
+  "Node resolves the exported require target instead of legacy main"
+
+echo "Test 33: dependency materialization profile is stable for identical contracts"
 profile_contract="$test_dir/profile-contract.json"
 cat > "$profile_contract" <<'EOF'
 {
@@ -809,7 +836,7 @@ assert_json_field \
   "(value) => value.authorities.gc" \
   "dependency profile records gc authority"
 
-echo "Test 33: source-only files are not dependency profile identity inputs"
+echo "Test 34: source-only files are not dependency profile identity inputs"
 mkdir -p "$test_dir/profile-source/packages/app/src"
 cp "$profile_contract" "$test_dir/profile-source/pnpm-install-contract.json"
 echo "export const value = 1" > "$test_dir/profile-source/packages/app/src/index.ts"
@@ -825,7 +852,7 @@ echo "export const value = 1" > "$test_dir/profile-source/packages/app/src/index
     "source-only mutations do not affect dependency profile identity"
 )
 
-echo "Test 34: manifest contract changes dependency profile identity"
+echo "Test 35: manifest contract changes dependency profile identity"
 manifest_contract="$test_dir/profile-contract-manifest-change.json"
 node - "$profile_contract" "$manifest_contract" <<'EOF'
 const fs = require('node:fs')
@@ -841,14 +868,14 @@ if [ "$(node -e "const fs = require('node:fs'); process.stdout.write(JSON.parse(
   exit 1
 fi
 
-echo "Test 35: unknown dependency materialization trait fails closed"
+echo "Test 36: unknown dependency materialization trait fails closed"
 set +e
 emit_dependency_materialization_profile node "$profile_contract" unknownTrait >/dev/null 2>&1
 exit_code=$?
 set -e
 assert_exit_code 1 "$exit_code" "unknown store trait should fail"
 
-echo "Test 36: store doctor refuses raw prune of a shared files pool"
+echo "Test 37: store doctor refuses raw prune of a shared files pool"
 doctor_registry="$test_dir/doctor-registry.json"
 shared_files="$test_dir/shared-files/v11"
 shared_root="$test_dir/profile-a/store/v11"
@@ -878,7 +905,7 @@ assert_json_field \
   "(value) => value.siblings.join(',')" \
   "shared pool doctor reports sibling profiles"
 
-echo "Test 37: store doctor allows isolated profile-local pool prune"
+echo "Test 38: store doctor allows isolated profile-local pool prune"
 isolated_files="$test_dir/isolated/store/v11/files"
 mkdir -p "$isolated_files"
 isolated_registry="$test_dir/isolated-registry.json"
@@ -900,7 +927,7 @@ assert_json_field \
   "(value) => value.decision" \
   "isolated local pool prune is allowed"
 
-echo "Test 38: repair plan targets every root sharing a files pool"
+echo "Test 39: repair plan targets every root sharing a files pool"
 repair_plan="$test_dir/repair-plan.json"
 dependency_materialization_repair_plan node "$doctor_registry" pool-shared > "$repair_plan"
 assert_json_field \
