@@ -521,14 +521,10 @@ let
           exit 1
         fi
 
-        if ! check_node_modules_links_healthy ${pkgs.nodejs}/bin/node ${lib.escapeShellArg nodeModulesProjectionScript} ${healthCheckNodeModulesPaths}; then
-          emit_pnpm_install_miss_span ${lib.escapeShellArg installTaskName} "projection"
-          exit 1
-        fi
-
         if [ "''${DEVENV_SETUP_OUTER_CACHE_HIT:-0}" = "1" ]; then
-          # Reuse the cached install-state proof only after validating the
-          # realized root-local topology above.
+          # The stored projection digest was written only after the full health
+          # oracle passed. Compare the complete realization evidence instead of
+          # repeating module resolution for every cached downstream task.
           ${computeProjectionStateHashFn}
           current_projection_hash="$(compute_projection_state_hash)"
           stored_projection_hash="$(cat "$projection_hash_file")"

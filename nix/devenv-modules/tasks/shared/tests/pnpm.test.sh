@@ -117,6 +117,18 @@ EOF
   ln -s .pnpm/pkg@1.0.0/node_modules/pkg "$root/node_modules/pkg"
 }
 
+make_default_files_fixture() {
+  local root="$1"
+  local package_root="$root/node_modules/.pnpm/pkg@1.0.0/node_modules/pkg"
+
+  mkdir -p "$package_root/dist" "$root/node_modules"
+  cat > "$package_root/package.json" <<'EOF'
+{"name":"pkg","main":"./dist/index.js"}
+EOF
+  touch "$package_root/dist/index.js"
+  ln -s .pnpm/pkg@1.0.0/node_modules/pkg "$root/node_modules/pkg"
+}
+
 make_unshipped_conditional_export_fixture() {
   local root="$1"
   local package_root="$root/node_modules/.pnpm/pkg@1.0.0/node_modules/pkg"
@@ -570,6 +582,18 @@ check_node_modules_links_healthy node "$PROJECTION_SCRIPT" "$missing_subpath_exp
 exit_code=$?
 set -e
 assert_exit_code 0 "$exit_code" "projection health ignores optional subpath exports"
+
+echo "Test 32: Projection digest supports npm's default package file set"
+default_files_dir="$test_dir/default-files"
+make_default_files_fixture "$default_files_dir"
+set +e
+NODE_MODULES_HELPER_MODE=projection-hash \
+  NODE_MODULES_DIRS="$default_files_dir/node_modules" \
+  PNPM_ROOT_MODULES_YAML="$default_files_dir/node_modules/.modules.yaml" \
+  node "$PROJECTION_SCRIPT" >/dev/null 2>&1
+exit_code=$?
+set -e
+assert_exit_code 0 "$exit_code" "projection digest handles packages without a files field"
 
 echo ""
 echo "All pnpm task helper tests passed"

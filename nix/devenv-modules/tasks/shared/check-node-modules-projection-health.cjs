@@ -36,8 +36,10 @@ const isPnpmPackageInstance = (packageDir) =>
 const collectProjectionEntryPaths = (nodeModulesDir) => {
   const result = []
   for (const entry of fs.readdirSync(nodeModulesDir, { withFileTypes: true })) {
+    if (entry.name === '.bin' || entry.name === '.pnpm') continue
+
     const entryPath = path.join(nodeModulesDir, entry.name)
-    if (entry.isDirectory()) {
+    if (entry.name.startsWith('@') && entry.isDirectory()) {
       for (const childEntry of fs.readdirSync(entryPath, { withFileTypes: true })) {
         result.push(path.join(entryPath, childEntry.name))
       }
@@ -46,6 +48,35 @@ const collectProjectionEntryPaths = (nodeModulesDir) => {
 
     result.push(entryPath)
   }
+  return result.sort()
+}
+
+const collectVirtualStoreDependencyEdgePaths = (virtualStoreDir) => {
+  if (!fs.existsSync(virtualStoreDir)) return []
+
+  const result = []
+  for (const locatorEntry of fs.readdirSync(virtualStoreDir, { withFileTypes: true })) {
+    if (!locatorEntry.isDirectory()) continue
+
+    const locatorNodeModulesDir = path.join(virtualStoreDir, locatorEntry.name, 'node_modules')
+    if (!fs.existsSync(locatorNodeModulesDir)) continue
+
+    for (const packageEntryPath of collectProjectionEntryPaths(locatorNodeModulesDir)) {
+      const packageEntryStat = fs.lstatSync(packageEntryPath)
+      if (packageEntryStat.isSymbolicLink()) {
+        result.push(packageEntryPath)
+        continue
+      }
+      if (!packageEntryStat.isDirectory()) continue
+
+      const nestedNodeModulesDir = path.join(packageEntryPath, 'node_modules')
+      if (!fs.existsSync(nestedNodeModulesDir)) continue
+      for (const dependencyEntryPath of collectProjectionEntryPaths(nestedNodeModulesDir)) {
+        if (fs.lstatSync(dependencyEntryPath).isSymbolicLink()) result.push(dependencyEntryPath)
+      }
+    }
+  }
+
   return result.sort()
 }
 
@@ -146,6 +177,11 @@ const packageTargetIsShipped = ({ includedFiles, target }) => {
   if (!target.startsWith('./')) return false
   if (target.includes('*')) return false
 
+  // npm includes package contents by default when `files` is omitted. An
+  // explicit non-empty allowlist is the only case where targets can be
+  // classified as outside the published package from manifest data alone.
+  if (!Array.isArray(includedFiles) || includedFiles.length === 0) return true
+
   const relativeTarget = target.slice(2)
   return includedFiles.some(
     (file) => file === relativeTarget || relativeTarget.startsWith(`${file}/`),
@@ -191,6 +227,44 @@ const runProjectionHash = () => {
     hash.update('\n')
   }
 
+  const appendSymlinkEvidence = (entryPath) => {
+    let target = ''
+    try {
+      target = fs.readlinkSync(entryPath)
+    } catch {}
+
+    appendLine(
+      `${fs.existsSync(entryPath) ? 'link' : 'broken-link'} ${entryPath} -> ${target}`,
+    )
+  }
+
+  const appendPackageContentEvidence = (entryPath) => {
+    let packageDir
+    try {
+      packageDir = fs.realpathSync(entryPath)
+    } catch {
+      return
+    }
+
+    const packageJsonPath = path.join(packageDir, 'package.json')
+    if (!fs.existsSync(packageJsonPath)) return
+    const packageJsonBytes = fs.readFileSync(packageJsonPath)
+    const pkg = JSON.parse(packageJsonBytes.toString('utf8'))
+    appendLine(
+      `package-json ${entryPath} ${crypto.createHash('sha256').update(packageJsonBytes).digest('hex')}`,
+    )
+
+    const includedFiles = Array.isArray(pkg.files) ? pkg.files : undefined
+    const runtimeTargets = [pkg.main, ...collectRootRuntimeExportTargets(pkg.exports)]
+      .filter((target) => typeof target === 'string')
+      .filter((target) => packageTargetIsShipped({ includedFiles, target }))
+    for (const target of [...new Set(runtimeTargets)].sort()) {
+      appendLine(
+        `runtime-target ${entryPath} ${target} ${targetExistsWithNodeResolution(packageDir, target) ? 'present' : 'missing'}`,
+      )
+    }
+  }
+
   for (const nodeModulesDir of moduleDirs) {
     if (fs.existsSync(nodeModulesDir) && fs.statSync(nodeModulesDir).isDirectory()) {
       appendLine(`dir ${nodeModulesDir}`)
@@ -209,17 +283,13 @@ const runProjectionHash = () => {
 
       if (!stat.isSymbolicLink()) continue
 
-      let target = ''
-      try {
-        target = fs.readlinkSync(entryPath)
-      } catch {}
-
-      if (fs.existsSync(entryPath)) {
-        appendLine(`link ${entryPath} -> ${target}`)
-      } else {
-        appendLine(`broken-link ${entryPath} -> ${target}`)
-      }
+      appendSymlinkEvidence(entryPath)
+      appendPackageContentEvidence(entryPath)
     }
+  }
+
+  for (const edgePath of collectVirtualStoreDependencyEdgePaths(rootVirtualStoreDir)) {
+    appendSymlinkEvidence(edgePath)
   }
 
   if (fs.existsSync(rootModulesYamlPath)) {
