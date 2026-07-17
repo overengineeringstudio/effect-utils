@@ -15,7 +15,7 @@ import { withSchemaSupport } from './SchemaAwareObjectInspector.tsx'
 import { SchemaProvider, useSchemaContext } from './SchemaContext.tsx'
 
 const ConsumerSchema = Schema.Struct({
-  id: Schema.Number.annotate({ description: 'Consumer-created identifier' }),
+  id: Schema.Finite.annotate({ description: 'Consumer-created identifier' }),
   name: Schema.String.annotate({ title: 'Display name' }),
 }).annotate({ identifier: 'Consumer.Record' })
 
@@ -67,7 +67,7 @@ describe('Effect 4 consumer schema compatibility', () => {
   })
 
   it('preserves custom pretty annotations and extracts Effect 4 check metadata', () => {
-    const schema = Schema.Number.pipe(
+    const schema = Schema.Finite.pipe(
       Schema.check(Schema.isInt()),
       Schema.check(Schema.isBetween({ minimum: 0, maximum: 150 })),
     ).annotate({ pretty: (value) => `${value} years` })
@@ -92,7 +92,7 @@ describe('Effect 4 consumer schema compatibility', () => {
   })
 
   it('attaches and reads Effect 4 lineage annotations with shorthand derivation kinds', () => {
-    const schema = Schema.Number.pipe(
+    const schema = Schema.Finite.pipe(
       Lineage.derivedFrom({ from: ['subtotal', 'tax'], how: 'Pure', pure: true }),
     )
 

@@ -94,7 +94,7 @@ export const getAnnotationsFromAST = (ast: SchemaAST.AST): SchemaAnnotations => 
       ? { description: annotations.description }
       : {}),
     ...(pretty === undefined ? {} : { pretty }),
-    ...(Array.isArray(annotations.examples) ? { examples: annotations.examples } : {}),
+    ...(Array.isArray(annotations.examples) === true ? { examples: annotations.examples } : {}),
     ...('default' in annotations ? { default: annotations.default } : {}),
     ...(asRecord(annotations.jsonSchema) === undefined
       ? {}
@@ -274,7 +274,10 @@ export const getPossibleValuesFromAST = (
   if (ast._tag === 'Literal') collected.push(stringifyShort(ast.literal))
   else if (ast._tag === 'Enum') {
     for (const value of ast.enums) collected.push(stringifyShort(value))
-  } else if (ast._tag === 'Union' && ast.types.every((member) => member._tag === 'Literal')) {
+  } else if (
+    ast._tag === 'Union' &&
+    ast.types.every((member) => member._tag === 'Literal') === true
+  ) {
     for (const member of ast.types) {
       if (member._tag === 'Literal') collected.push(stringifyShort(member.literal))
     }
@@ -318,7 +321,9 @@ const getContainerLabelForAST = (rawAst: SchemaAST.AST): string | undefined => {
     }
     if (ast.elements.length > 0) {
       const labels = ast.elements.map(getElementLabelForAST)
-      return labels.every((label) => label !== undefined) ? `[${labels.join(', ')}]` : undefined
+      return labels.every((label) => label !== undefined) === true
+        ? `[${labels.join(', ')}]`
+        : undefined
     }
   }
   if (ast._tag === 'Objects' && ast.propertySignatures.length === 0) {
@@ -424,7 +429,8 @@ export const getSchemaInfo = (schema: SchemaView): SchemaInfo => {
           ...(reference === undefined ? {} : { reference }),
         }
   const description =
-    annotations.description !== undefined && TRIVIAL_DESCRIPTIONS.has(annotations.description)
+    annotations.description !== undefined &&
+    TRIVIAL_DESCRIPTIONS.has(annotations.description) === true
       ? undefined
       : annotations.description
   const hasContent =
