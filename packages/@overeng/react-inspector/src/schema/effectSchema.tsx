@@ -409,6 +409,7 @@ export const getSchemaInfo = (schema: SchemaView): SchemaInfo => {
   const constraints = getConstraintsFromJSONSchema(rawAst)
   const possible = getPossibleValuesFromAST(rawAst)
   const containerLabel = getContainerLabelForAST(rawAst)
+  const typeKind = getTypeKind(rawAst)
   const lineageValue = Lineage.getLineage(schema)
   const authority = Lineage.getAuthority(schema)
   const freshness = Lineage.getFreshness(schema)
@@ -443,7 +444,7 @@ export const getSchemaInfo = (schema: SchemaView): SchemaInfo => {
     lineage !== undefined
   return {
     ...(displayName === undefined ? {} : { displayName }),
-    ...(getTypeKind(rawAst) === undefined ? {} : { typeKind: getTypeKind(rawAst) }),
+    ...(typeKind === undefined ? {} : { typeKind }),
     ...(description === undefined ? {} : { description }),
     ...(annotations.documentation === undefined
       ? {}

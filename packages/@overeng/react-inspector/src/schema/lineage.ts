@@ -76,38 +76,47 @@ const DerivationKindSchema = Schema.Union([
 
 const LineageSchema = Schema.Union([
   Schema.TaggedStruct('SourceOfTruth', {
-    owner: Schema.optional(Schema.String),
-    system: Schema.optional(Schema.String),
+    owner: Schema.optionalKey(Schema.String),
+    system: Schema.optionalKey(Schema.String),
   }),
   Schema.TaggedStruct('Derived', {
     from: Schema.Array(LineageRefSchema),
     how: DerivationKindSchema,
-    pure: Schema.optional(Schema.Boolean),
+    pure: Schema.optionalKey(Schema.Boolean),
   }),
   Schema.TaggedStruct('Projection', {
     of: LineageRefSchema,
-    stalenessMs: Schema.optional(Schema.Finite),
+    stalenessMs: Schema.optionalKey(Schema.Finite),
   }),
-  Schema.TaggedStruct('Cache', { of: LineageRefSchema, ttlMs: Schema.optional(Schema.Finite) }),
-  Schema.TaggedStruct('Mirror', { of: LineageRefSchema, system: Schema.optional(Schema.String) }),
-  Schema.TaggedStruct('External', { system: Schema.String, ref: Schema.optional(Schema.String) }),
+  Schema.TaggedStruct('Cache', {
+    of: LineageRefSchema,
+    ttlMs: Schema.optionalKey(Schema.Finite),
+  }),
+  Schema.TaggedStruct('Mirror', {
+    of: LineageRefSchema,
+    system: Schema.optionalKey(Schema.String),
+  }),
+  Schema.TaggedStruct('External', {
+    system: Schema.String,
+    ref: Schema.optionalKey(Schema.String),
+  }),
   Schema.TaggedStruct('Computed', {
-    fn: Schema.optional(Schema.String),
-    description: Schema.optional(Schema.String),
+    fn: Schema.optionalKey(Schema.String),
+    description: Schema.optionalKey(Schema.String),
   }),
 ])
 
 const AuthoritySchema = Schema.Struct({
   writers: Schema.Array(Schema.String),
-  readers: Schema.optional(Schema.Array(Schema.String)),
+  readers: Schema.optionalKey(Schema.Array(Schema.String)),
 })
 const FreshnessSchema = Schema.Struct({
-  capturedAt: Schema.optional(Schema.Literals(['now', 'event-time', 'snapshot'])),
-  maxAgeMs: Schema.optional(Schema.Finite),
+  capturedAt: Schema.optionalKey(Schema.Literals(['now', 'event-time', 'snapshot'])),
+  maxAgeMs: Schema.optionalKey(Schema.Finite),
 })
 const ReferenceSchema = Schema.TaggedStruct('ForeignKey', {
   targetSchema: Schema.String,
-  targetField: Schema.optional(Schema.String),
+  targetField: Schema.optionalKey(Schema.String),
 })
 
 type SchemaView = { readonly ast: SchemaAST.AST }
