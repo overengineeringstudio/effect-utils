@@ -347,11 +347,9 @@ const deniedLifecycleBuilds = Object.fromEntries(
  * This is the SSOT for pnpm strictness/layout policy. Every megarepo
  * root workspace should spread this so policy stays consistent.
  *
- * `enableGlobalVirtualStore` ensures identity convergence: equivalent
- * dependency graphs across standalone and composed topologies resolve to
- * the same physical instance via pnpm's global content-addressed store.
- * This eliminates duplicate-instance problems (TypeScript type identity,
- * JS runtime singletons) when consuming cross-repo packages via `link:`.
+ * The virtual dependency graph is always root-local. Cross-root reuse is
+ * limited to immutable content bytes; composed runtime identity is established
+ * by the composed workspace topology, never by shared writable graph state.
  */
 export const commonPnpmPolicySettings = {
   dedupePeerDependents: true as const,
@@ -367,7 +365,6 @@ export const commonPnpmPolicySettings = {
       vitest: '>=4.0.0',
     },
   },
-  enableGlobalVirtualStore: true as const,
   storeDir: '.devenv/pnpm-store-pure-v1',
   packageImportMethod: 'clone-or-copy' as const,
   sideEffectsCache: false as const,

@@ -29,8 +29,8 @@ evidence, and observability subsystems.
 ### Must cover correctness
 
 - **DMP.VER-R01 Fixture regressions:** Unit and smoke fixtures must cover
-  profile identity, strict install rejection, projection health, native package
-  classification, and doctor/repair decisions.
+  Materialization Profile identity, strict install rejection, projection
+  health, native package classification, and doctor/repair decisions.
   Refines: DMP-R16, DMP-R17, DMP-R20.
 - **DMP.VER-R02 Negative lifecycle proof:** At least one fixture must prove
   that managed materialization does not run dependency lifecycle scripts,
@@ -41,14 +41,17 @@ evidence, and observability subsystems.
   platform package directories, and leaked package-manager state.
   Refines: DMP-R05, DMP-R08, DMP-R18.
 - **DMP.VER-R04 Shared-store failure proof:** Store-authority changes must
-  preserve a proof that raw profile-local prune can break sibling offline
-  reinstall for shared pools and that coordinated repair targets every root.
-  Refines: DMP-R13, DMP-R14, DMP-R15.
+  preserve a proof that pruning a shared pool from one root can break sibling
+  offline reinstall, and prove that effect-utils-managed root operations refuse
+  that unsafe mutation. The proof must not imply that root health establishes
+  offline readiness.
+  Refines: DMP-R13, DMP-R14, DMP.STORE-R05.
 
 ### Must cover performance and sharing
 
-- **DMP.VER-R05 Benchmark matrix:** Store-trait changes must record cold,
-  warm, offline, concurrent, byte, file-count, and repair metrics.
+- **DMP.VER-R05 Benchmark matrix:** Storage-sharing changes must record cold,
+  warm, concurrent, byte, and file-count metrics. Offline and repair metrics
+  are required only for an explicit offline-readiness or repair claim.
   Refines: DMP-R16, DMP-R19, DMP.STORE-R08.
 - **DMP.VER-R06 Real-workload gate:** Default changes require at least one
   downstream real graph for each affected platform class, or an explicit
@@ -62,8 +65,8 @@ evidence, and observability subsystems.
 ### Must be auditable
 
 - **DMP.VER-R08 Machine-readable evidence:** Proofs and benchmarks must emit
-  stable records for status, inputs, platform, store trait, timings, sizes, and
-  skip reasons.
+  stable records for status, inputs, platform, writable-state scope,
+  content-pool scope, timings, sizes, and skip reasons.
   Refines: DMP-R19, DMP.OBS-R01, DMP.OBS-R02.
 - **DMP.VER-R09 Decision linkage:** Consequential DMP decisions must name the
   evidence category that justifies them and any evidence still pending.
@@ -76,9 +79,12 @@ evidence, and observability subsystems.
 
 ### Must prove dependency identity
 
-- **DMP.VER-R11 Dependency-identity proof:** Changes to materialization,
-  projection, or repair behavior must prove that same-name multi-version and
-  distinct peer-context package instances preserve their materializer-selected
-  identities across install order. The proof must include a negative
-  out-of-band edge override that the identity oracle detects.
+- **DMP.VER-R11 Package Instance identity proof:** Changes capable of selecting
+  or writing Dependency Edge identities must prove that same-name multi-version
+  and distinct peer-context Package Instances preserve their materializer-
+  selected identities. A validator that claims topology containment must prove
+  that it detects a negative out-of-band edge override across Materialization
+  Roots; it need not reimplement the materializer's exact locator selection.
+  Install-order permutations are required when mutable dependency state is
+  reused across installs.
   Refines: DMP-R11, DMP.LIVE-R07, DMP.PROJ-R09, DMP-R20.

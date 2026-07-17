@@ -39,9 +39,6 @@ const runtimeDeps = catalog.compose({
     workspace: [schemaFormPkg],
     external: catalog.pick(...peerDepNames),
   },
-  gvsTypeExtensions: {
-    'react-aria-components': catalog.pick('@types/react', '@types/react-dom'),
-  },
 })
 
 export default packageJson(

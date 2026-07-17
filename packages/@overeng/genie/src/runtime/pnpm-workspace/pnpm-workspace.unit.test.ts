@@ -238,42 +238,6 @@ describe('metadata-based workspace projections', () => {
   })
 })
 
-describe('declared package extensions', () => {
-  const repo = createTempRepo('packages/app')
-  const catalog = defineCatalog({ '@types/react': '19.2.14' })
-
-  it('projects package-owned type extensions into pnpm packageExtensions', () => {
-    const app = packageJson(
-      {
-        name: '@test/app',
-        version: '1.0.0',
-      },
-      catalog.compose({
-        workspace: workspace({
-          repoName: repo.repoName,
-          memberPath: 'packages/app',
-        }),
-        gvsTypeExtensions: {
-          'react-aria-components': catalog.pick('@types/react'),
-        },
-      }),
-    )
-
-    const workspaceFile = pnpmWorkspaceYaml.root({
-      packages: [app],
-      repoName: repo.repoName,
-    })
-
-    expect(workspaceFile.data.packageExtensions).toEqual({
-      'react-aria-components': {
-        dependencies: {
-          '@types/react': '19.2.14',
-        },
-      },
-    })
-  })
-})
-
 describe('root patch coverage validation', () => {
   const repo = createTempRepo('packages/utils', 'packages/app')
   const catalog = defineCatalog({})

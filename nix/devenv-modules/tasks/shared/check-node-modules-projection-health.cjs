@@ -13,6 +13,23 @@ const moduleDirs = (process.env.NODE_MODULES_DIRS || '')
 
 const existingModuleDirs = moduleDirs.filter((value) => fs.existsSync(value))
 
+const rootModulesYamlPath = process.env.PNPM_ROOT_MODULES_YAML || 'node_modules/.modules.yaml'
+const rootNodeModulesDir = path.resolve(moduleDirs[0] || path.dirname(rootModulesYamlPath))
+const rootVirtualStoreDir = path.join(rootNodeModulesDir, '.pnpm')
+
+const isWithin = (parentPath, childPath) => {
+  const relativePath = path.relative(parentPath, childPath)
+  return (
+    relativePath === '' ||
+    (!relativePath.startsWith(`..${path.sep}`) &&
+      relativePath !== '..' &&
+      !path.isAbsolute(relativePath))
+  )
+}
+
+const isPnpmPackageInstance = (packageDir) =>
+  packageDir.includes(`${path.sep}node_modules${path.sep}.pnpm${path.sep}`)
+
 const collectProjectionEntryPaths = (nodeModulesDir) => {
   const result = []
   for (const entry of fs.readdirSync(nodeModulesDir, { withFileTypes: true })) {
@@ -133,7 +150,7 @@ const packageTargetIsShipped = ({ includedFiles, target }) => {
 }
 
 const verifyPackageContent = ({ pkg, packageDir, entryPath, failures }) => {
-  if (!packageDir.includes('/v11/links/')) return
+  if (!packageDir.includes('/node_modules/.pnpm/')) return
 
   const includedFiles = Array.isArray(pkg.files)
     ? pkg.files.filter((file) => typeof file === 'string' && !file.startsWith('!'))
@@ -171,8 +188,6 @@ const runProjectionHash = () => {
     hash.update('\n')
   }
 
-  appendLine(`gvs-links-dir ${process.env.PNPM_GVS_LINKS_DIR || ''}`)
-
   for (const nodeModulesDir of moduleDirs) {
     if (fs.existsSync(nodeModulesDir) && fs.statSync(nodeModulesDir).isDirectory()) {
       appendLine(`dir ${nodeModulesDir}`)
@@ -204,7 +219,6 @@ const runProjectionHash = () => {
     }
   }
 
-  const rootModulesYamlPath = process.env.PNPM_ROOT_MODULES_YAML || 'node_modules/.modules.yaml'
   if (fs.existsSync(rootModulesYamlPath)) {
     appendLine(
       `modules-yaml ${crypto
@@ -221,6 +235,7 @@ const runProjectionHash = () => {
 
 const runHealthCheck = () => {
   const dependencyProjectionFailures = []
+  const packageIdentityFailures = []
   const packageContentFailures = []
 
   for (const nodeModulesDir of existingModuleDirs) {
@@ -245,6 +260,14 @@ const runHealthCheck = () => {
       if (!fs.existsSync(packageJsonPath)) continue
 
       const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'))
+
+      if (isPnpmPackageInstance(realPath) && !isWithin(rootVirtualStoreDir, realPath)) {
+        packageIdentityFailures.push(
+          `${pkg.name ?? entryPath} -> ${realPath} (expected within ${rootVirtualStoreDir})`,
+        )
+        continue
+      }
+
       verifyPackageContent({
         pkg,
         packageDir: realPath,
@@ -252,21 +275,38 @@ const runHealthCheck = () => {
         failures: packageContentFailures,
       })
 
-      if (!realPath.includes('/v11/links/')) continue
+      if (!realPath.includes('/node_modules/.pnpm/')) continue
 
-      const dependencyNames = Object.keys(pkg.dependencies ?? {})
+      const requiredDependencyNames = new Set(Object.keys(pkg.dependencies ?? {}))
+      const dependencyNames = [
+        ...new Set([...requiredDependencyNames, ...Object.keys(pkg.peerDependencies ?? {})]),
+      ]
       if (dependencyNames.length === 0) continue
 
       const requireFromPkg = createRequire(packageJsonPath)
       for (const dependencyName of dependencyNames) {
+        const dependencyRoot = resolveDependencyPackageRoot({
+          requireFromPkg,
+          dependencyName,
+        })
+        if (dependencyRoot === undefined) {
+          if (requiredDependencyNames.has(dependencyName)) {
+            dependencyProjectionFailures.push(
+              `${pkg.name ?? entryPath} -> ${dependencyName} (from ${nodeModulesDir})`,
+            )
+          }
+          continue
+        }
+
+        if (dependencyRoot === 'builtin') continue
+
+        const dependencyRealPath = fs.realpathSync(dependencyRoot)
         if (
-          resolveDependencyPackageRoot({
-            requireFromPkg,
-            dependencyName,
-          }) === undefined
+          isPnpmPackageInstance(dependencyRealPath) &&
+          !isWithin(rootVirtualStoreDir, dependencyRealPath)
         ) {
-          dependencyProjectionFailures.push(
-            `${pkg.name ?? entryPath} -> ${dependencyName} (from ${nodeModulesDir})`,
+          packageIdentityFailures.push(
+            `${pkg.name ?? entryPath} -> ${dependencyName} -> ${dependencyRealPath} (expected within ${rootVirtualStoreDir})`,
           )
         }
       }
@@ -276,11 +316,18 @@ const runHealthCheck = () => {
   for (const failure of dependencyProjectionFailures) {
     console.error(`[pnpm] Missing dependency projection: ${failure}`)
   }
+  for (const failure of packageIdentityFailures) {
+    console.error(`[pnpm] Foreign dependency package instance: ${failure}`)
+  }
   for (const failure of packageContentFailures) {
     console.error(`[pnpm] Missing package content: ${failure}`)
   }
 
-  if (dependencyProjectionFailures.length > 0 || packageContentFailures.length > 0) {
+  if (
+    dependencyProjectionFailures.length > 0 ||
+    packageIdentityFailures.length > 0 ||
+    packageContentFailures.length > 0
+  ) {
     process.exit(1)
   }
 }

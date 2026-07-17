@@ -29,7 +29,7 @@ let
     pnpm = pinnedPnpm;
   };
   packageDir = "packages/@overeng/oxc-config";
-  pnpmDepsHash = "sha256-KZtdAGoB9h/3/kRbCyTS4PuIO30BXMB3PHxU8MLkkKg=";
+  pnpmDepsHash = "sha256-sqBmdMWFL5hkiUUmTpSnY+Cy34rSfU3mQCq02CWXLDo=";
 
   srcPath =
     if builtins.isAttrs src && builtins.hasAttr "outPath" src then
@@ -88,8 +88,8 @@ let
 
       stripPrepLocalPnpmSettings =
         lines:
-        # The FOD must not inherit caller-local GVS/store paths; its private
-        # install root is part of the reproducible derivation boundary.
+        # The FOD must not inherit caller-local store paths or a legacy GVS
+        # override; its private install root is the reproducible boundary.
         builtins.filter (
           l:
           !(lib.hasPrefix "enableGlobalVirtualStore" (lib.trim l)) && !(lib.hasPrefix "storeDir" (lib.trim l))

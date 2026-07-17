@@ -9,18 +9,17 @@ graph is realized through several mechanisms: a live `node_modules` tree during
 development, a prepared dependency artifact in Nix, a job-local CI install, and
 eventually Buck2 evidence or actions.
 
-The VRS is shaped around one rule: dependency identity is shared, but mutation
-authority is not.
+The VRS is shaped around one rule: immutable dependency work may have a shared
+identity, but mutable realization state always belongs to one root.
 
 ```text
-                 dependency materialization profile
-                                |
-        +-----------------------+-----------------------+
-        |                       |                       |
-  live pnpm state        Nix prepared data        Buck2 evidence
-  mutable/repairable     immutable/restored       declared graph fact
-        |                       |                       |
-        +----------- projection + observability --------+
+  declared inputs                         prepared profileKey
+        |                                        |
+        v                                        v
+  live pnpm root                         Nix data + Buck2 evidence
+  mutable/repairable                     immutable/declared
+        |
+        +---- root-owned projection + observability
 ```
 
 pnpm may resolve and link package data, but effect-utils-managed paths do not

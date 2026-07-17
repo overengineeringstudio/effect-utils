@@ -1,47 +1,6 @@
 {
   "contract": "effect-utils/pnpm-install-contract",
-  "dependencyMaterializationProfile": {
-    "buck2Boundary": {
-      "consumesEvidence": true,
-      "ownsLiveMaterialization": false
-    },
-    "identityInputs": [
-      "packageManager",
-      "gvsLinkContract",
-      "installPolicy",
-      "storeContract",
-      "workspaceManifestContract"
-    ],
-    "nativeBuildPolicyInputs": {
-      "allowBuilds": "gvsLinkContract.allowBuilds",
-      "compilerEnv": ["CC", "CXX"]
-    },
-    "schema": "dependency-materialization-profile/v0",
-    "supportedTraits": {
-      "ciJobLocal": {
-        "gcAuthority": "profile-local",
-        "mutableState": "job-local",
-        "repairAuthority": "ci-job"
-      },
-      "darwinSplitCas": {
-        "gcAuthority": "shared-pool-coordinator",
-        "mutableState": "profile-local",
-        "repairAuthority": "devenv",
-        "sharedContent": "store/v11/files"
-      },
-      "isolated": {
-        "gcAuthority": "profile-local",
-        "mutableState": "profile-local",
-        "repairAuthority": "devenv"
-      },
-      "nixPreparedDeps": {
-        "gcAuthority": "nix-store",
-        "mutableState": "none",
-        "repairAuthority": "evergreen-fod"
-      }
-    }
-  },
-  "gvsLinkContract": {
+  "dependencyGraphContract": {
     "allowBuilds": {
       "@myobie/pty": false,
       "@parcel/watcher": false,
@@ -53,12 +12,6 @@
       "unix-dgram": false
     },
     "packageExtensions": {
-      "react-aria-components": {
-        "dependencies": {
-          "@types/react": "19.2.17",
-          "@types/react-dom": "19.2.3"
-        }
-      },
       "storybook": {
         "dependencies": {
           "@storybook/react-vite": "10.4.6"
@@ -104,13 +57,12 @@
       "consumeContractArtifact": true
     },
     "nixIntegration": {
-      "fixedOutputDependencyPrepUsesLiveGlobalVirtualStore": false,
-      "liveInstallUsesGlobalVirtualStore": true
+      "fixedOutputDependencyPrepUsesSameVirtualStoreScope": true,
+      "liveVirtualStoreScope": "materialization-root"
     },
     "pnpmStoreOwnership": {
       "filesLifecycle": "pnpm-owned content-addressed files store",
-      "linksLifecycle": "pnpm-owned rebuildable dependency-graph projection",
-      "projectsLifecycle": "pnpm-owned store prune reachability registry"
+      "virtualStoreLifecycle": "Materialization-Root-owned rebuildable dependency graph"
     }
   },
   "packageManager": {
@@ -119,16 +71,17 @@
   },
   "schemaVersion": 1,
   "storeContract": {
-    "globalVirtualStore": {
-      "enabled": true
-    },
     "layoutVersion": "v11",
     "owner": "pnpm",
     "sharedFilesStore": {
       "disabledInCi": true,
       "enabledForLocalDev": true
     },
-    "storeDir": ".devenv/pnpm-store-pure-v1"
+    "storeDir": ".devenv/pnpm-store-pure-v1",
+    "virtualStore": {
+      "path": "node_modules/.pnpm",
+      "scope": "materialization-root"
+    }
   },
   "workspaceManifestContract": {
     "allowUnusedPatches": true,

@@ -738,15 +738,6 @@ export interface PnpmWorkspaceData {
   injectWorkspacePackages?: boolean
 
   /**
-   * Store dependency contents in a global content-addressed store keyed by
-   * dependency graph hash. Required for identity convergence: equivalent
-   * standalone and composed dependency graphs for the same physical source
-   * tree collapse to one physical instance instead of topology-local duplicates.
-   * @see https://pnpm.io/settings#enable-global-virtual-store
-   */
-  enableGlobalVirtualStore?: boolean
-
-  /**
    * The location of the content-addressable store.
    * @see https://pnpm.io/settings#store-dir
    */
@@ -1026,10 +1017,6 @@ const buildPnpmWorkspaceYaml = <T extends PnpmWorkspaceData>({
     result.injectWorkspacePackages = data.injectWorkspacePackages
   }
 
-  if (data.enableGlobalVirtualStore !== undefined) {
-    result.enableGlobalVirtualStore = data.enableGlobalVirtualStore
-  }
-
   if (data.storeDir !== undefined) {
     result.storeDir = data.storeDir
   }
@@ -1220,38 +1207,9 @@ const rootPnpmWorkspaceYaml = ({
       ? projectedMembers
       : [...new Set([...projectedMembers, ...extraMembers])].toSorted((a, b) => a.localeCompare(b))
 
-  // Aggregate per-package gvsTypeExtensions into workspace-level packageExtensions.
-  // See: pnpm/pnpm#9739 — GVS stores real paths outside the project tree, breaking
-  // TypeScript's @types/* resolution. packageExtensions inject @types/* as deps of
-  // external packages so they appear as siblings in GVS node_modules/.
-  const aggregatedExtensions: PnpmWorkspaceData['packageExtensions'] = {}
-  for (const pkg of packages) {
-    if (pkg.gvsTypeExtensions === undefined) continue
-    for (const [target, deps] of Object.entries(pkg.gvsTypeExtensions)) {
-      const existing = aggregatedExtensions[target]
-      aggregatedExtensions[target] = {
-        ...existing,
-        dependencies: { ...existing?.dependencies, ...deps },
-      }
-    }
-  }
-  // Merge: user-provided config.packageExtensions overrides aggregated
-  const mergedExtensions = { ...aggregatedExtensions }
-  if (config.packageExtensions !== undefined) {
-    for (const [target, ext] of Object.entries(config.packageExtensions)) {
-      mergedExtensions[target] = {
-        ...mergedExtensions[target],
-        ...ext,
-        dependencies: { ...mergedExtensions[target]?.dependencies, ...ext.dependencies },
-      }
-    }
-  }
-  const hasExtensions = Object.keys(mergedExtensions).length > 0
-
   const fullConfig = {
     ...config,
     packages: allMembers,
-    ...(hasExtensions === true ? { packageExtensions: mergedExtensions } : {}),
   }
 
   return createGenieOutput({

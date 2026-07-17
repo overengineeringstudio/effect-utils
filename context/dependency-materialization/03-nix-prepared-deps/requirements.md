@@ -55,15 +55,16 @@ projection semantics from
   direct dependency boundary consumed by downstream Nix builds.
   Refines: DMP-R09, DMP-R10.
 - **DMP.NIX-R06 Per install root:** Composed workspaces must preserve one
-  prepared dependency boundary per authoritative install root unless a broader
-  shared profile is explicitly measured and accepted.
+  prepared dependency boundary per Materialization Root unless a single broader
+  Materialization Root and Materialization Profile are explicitly measured and
+  accepted.
   Refines: DMP-R09, DMP-R11, DMP-R16.
 - **DMP.NIX-R07 Restore without install:** Downstream builds must restore the
   prepared artifact and run projection/build steps without rerunning pnpm
   dependency materialization.
   Refines: DMP-R05, DMP-R15.
-- **DMP.NIX-R08 Evidence:** Each prepared artifact must emit profile evidence,
-  purity-scan results, and hash-measurement metadata.
+- **DMP.NIX-R08 Evidence:** Each prepared artifact must emit Materialization
+  Profile evidence, purity-scan results, and hash-measurement metadata.
   Refines: DMP-R10, DMP-R18, DMP-R19.
 
 ### Must remain operational

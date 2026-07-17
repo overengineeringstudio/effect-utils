@@ -39,7 +39,7 @@ fixture checks
 | Bin projection         | Manifest fixture plus pnpm-linker oracle cases; prove missing/stale bins are repaired without scripts.   | [02-projections](../02-projections/spec.md)                                                             |
 | Prepared deps          | Scan fixtures for `.bin`, leaked state, unexpected `*.node`, and known platform dirs.                    | [03-nix-prepared-deps](../03-nix-prepared-deps/spec.md)                                                 |
 | Native packages        | Lockfile-policy audit and graft-file existence checks.                                                   | [03-nix-prepared-deps/02-native-node-packages](../03-nix-prepared-deps/02-native-node-packages/spec.md) |
-| Shared store authority | Raw-prune failure repro, doctor refusal, all-root repair plan.                                           | [04-store-authority](../04-store-authority/spec.md)                                                     |
+| Shared store authority | Root-local topology proof, shared-content immutability, and raw-prune refusal.                           | [04-store-authority](../04-store-authority/spec.md)                                                     |
 | Buck2 evidence         | Stable declared-input evidence; no live pnpm mutation.                                                   | [05-buck2-evidence](../05-buck2-evidence/spec.md)                                                       |
 | Observability          | Fixture records for phase, timing, size, reuse, profile link, and safe paths.                            | [06-observability](../06-observability/spec.md)                                                         |
 
@@ -52,10 +52,11 @@ runs can share one parser:
 {
   "schema": "dependency-materialization-verification/v0",
   "kind": "benchmark",
-  "surface": "store-trait",
+  "surface": "storage-sharing",
   "workspace": "effect-utils",
   "platform": "aarch64-darwin",
-  "storeTrait": "darwinSplitCas",
+  "stateScope": "materialization-root",
+  "contentPoolScope": "host-shared",
   "phase": "offline-reinstall",
   "status": "ok",
   "timingsMs": { "coldA": 1234, "coldB": 640, "offline": 410 },
@@ -71,7 +72,7 @@ why work did not run:
 {
   "schema": "dependency-materialization-verification/v0",
   "kind": "benchmark",
-  "surface": "store-trait",
+  "surface": "storage-sharing",
   "status": "skipped",
   "reason": "low-disk",
   "availableGiB": 31,

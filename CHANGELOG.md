@@ -10,10 +10,20 @@ All notable changes to this project will be documented in this file.
   live package dependency edges. Dependency projection and repair may no
   longer invent nested links by scanning the store or choosing a target by
   package name; declared compatibility extensions continue through generated
-  `packageExtensions`. Repair now discards the package-manager-owned root and
-  GVS link projections before pnpm rematerializes them, while preserving the
-  shared content-addressed files pool. Record the mixed Effect 3/Effect 4
-  shared-GVS counterexample and add coverage for the supported extension path.
+  `packageExtensions`. Live virtual topology now lives exclusively under each
+  Materialization Root's `node_modules/.pnpm`; only immutable `v11/files`
+  content is shared. Repair discards one root-local graph and reinvokes its
+  canonical pnpm install, eliminating shared graph registries and coordinated
+  multi-root repair. Prepared workspace normalization now relinks injected
+  packages only through pnpm's exact locator mapping. Record the mixed Effect 3
+  / Effect 4 counterexample and
+  add coverage for root-local graph authority and the supported extension path.
+  Replace the flat dependency-materialization glossary with a federated
+  ontology that separates root-owned state, profile identity, graph authority,
+  projections, and storage policy. Remove the unused live profile artifact and
+  storage presets; Nix prepared-dependency and Buck2 evidence retain the existing
+  `profileKey` compatibility boundary. Remove the GVS-only
+  `enableGlobalVirtualStore` and `gvsTypeExtensions` generator APIs.
 - **ci-tools / Vercel**: add first-class production-domain support to the shared
   Vercel deploy path. `ci-tools deploy vercel --production-domain <host>` now
   aliases production deployments to canonical custom domains, reports those

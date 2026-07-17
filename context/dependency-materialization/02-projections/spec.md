@@ -45,7 +45,7 @@ realized package root
   -> resolve declared bins
   -> validate target is inside package root and exists
   -> select conflict winner
-  -> create profile-owned .bin entry
+  -> create .bin entry owned by Materialization Root
 ```
 
 The projector:

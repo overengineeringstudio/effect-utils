@@ -237,6 +237,67 @@
               fi
               printf '%s' "$actual" > "$out"
             '';
+        checks.prepared-workspace-injected-locator-identity =
+          pkgs.runCommand "mk-pnpm-cli-prepared-workspace-injected-locator-identity"
+            {
+              nativeBuildInputs = [ pkgs.nodejs ];
+            }
+            ''
+              fixture="$PWD/fixture"
+              mkdir -p \
+                "$fixture/sources/alpha" \
+                "$fixture/sources/bravo" \
+                "$fixture/node_modules/.pnpm/same@file+sources+alpha/node_modules/@fixture/same" \
+                "$fixture/node_modules/.pnpm/same@file+sources+bravo/node_modules/@fixture/same" \
+                "$fixture/node_modules/.pnpm/same@file+sources+unlisted/node_modules/@fixture/same"
+
+              cat > "$fixture/sources/alpha/package.json" <<'JSON'
+              {"name":"@fixture/same","fixtureIdentity":"source-alpha"}
+              JSON
+              cat > "$fixture/sources/bravo/package.json" <<'JSON'
+              {"name":"@fixture/same","fixtureIdentity":"source-bravo"}
+              JSON
+              cat > "$fixture/node_modules/.pnpm/same@file+sources+alpha/node_modules/@fixture/same/package.json" <<'JSON'
+              {"name":"@fixture/same","fixtureIdentity":"materialized-alpha"}
+              JSON
+              cat > "$fixture/node_modules/.pnpm/same@file+sources+bravo/node_modules/@fixture/same/package.json" <<'JSON'
+              {"name":"@fixture/same","fixtureIdentity":"materialized-bravo"}
+              JSON
+              cat > "$fixture/node_modules/.pnpm/same@file+sources+unlisted/node_modules/@fixture/same/package.json" <<'JSON'
+              {"name":"@fixture/same","fixtureIdentity":"materialized-unlisted"}
+              JSON
+              cat > "$fixture/node_modules/.modules.yaml" <<'YAML'
+              injectedDeps:
+                sources/alpha:
+                  - node_modules/.pnpm/same@file+sources+alpha/node_modules/@fixture/same
+                sources/bravo:
+                  - node_modules/.pnpm/same@file+sources+bravo/node_modules/@fixture/same
+              layoutVersion: 5
+              nodeLinker: isolated
+              YAML
+
+              (
+                cd "$fixture"
+                PREPARED_WORKSPACE_PLACEHOLDER=/__pnpm_prepared_workspace__ \
+                  node ${pureEvalFixture.passthru.depsBuildsByInstallRoot.root.rewritePreparedWorkspaceScript}
+              )
+
+              alpha_target="$fixture/node_modules/.pnpm/same@file+sources+alpha/node_modules/@fixture/same"
+              bravo_target="$fixture/node_modules/.pnpm/same@file+sources+bravo/node_modules/@fixture/same"
+              unlisted_target="$fixture/node_modules/.pnpm/same@file+sources+unlisted/node_modules/@fixture/same"
+
+              test -L "$alpha_target"
+              test "$(readlink -f "$alpha_target")" = "$fixture/sources/alpha"
+              test -L "$bravo_target"
+              test "$(readlink -f "$bravo_target")" = "$fixture/sources/bravo"
+
+              # A name/file+ directory scan would incorrectly rewrite this
+              # same-name package despite pnpm not assigning it a source locator.
+              test ! -L "$unlisted_target"
+              grep -q 'materialized-unlisted' "$unlisted_target/package.json"
+
+              touch "$out"
+            '';
       }
     );
 }

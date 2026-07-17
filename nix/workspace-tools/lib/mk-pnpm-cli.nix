@@ -1330,12 +1330,9 @@ let
     content-addressed (<name>@<version>_<peer-hash>), so matching names guarantee
     identical content — safe to deduplicate unconditionally.
 
-    Outside Nix, pnpm's Global Virtual Store (GVS) solves this by sharing a
-    single physical store across all install roots. Inside the Nix sandbox GVS
-    is unavailable (no global store) so it is stripped (see
-    stripPrepLocalPnpmSettings above),
-    leaving each root with its own isolated .pnpm store. This dedup step is
-    the sandbox equivalent of what GVS provides at dev time.
+    Each Nix install root owns an isolated .pnpm topology. This dedup step
+    shares already-selected immutable package content without creating a
+    second dependency-edge selector.
 
     Without this, bun's bundler treats each physical copy as a distinct module,
     creating duplicate singletons (TagProto, GenericTag, Context.Tag registries)

@@ -6,10 +6,13 @@ These requirements define the dependency materialization contract used by
 effect-utils live pnpm tasks, Nix prepared dependency artifacts, CI jobs, and
 future Buck2 dependency evidence.
 
+Canonical shared terms and relationships are defined in
+[ontology.md](./ontology.md).
+
 The contract is intentionally stricter than pnpm's default lifecycle model:
 pnpm resolves and links package contents, while executable projection, native
-tooling, and repair are owned by effect-utils, Nix, or explicit profile
-operations.
+tooling, and repair are owned by effect-utils, Nix, or an explicit realization
+authority.
 
 Subsystem requirements refine this root contract:
 
@@ -35,9 +38,10 @@ Subsystem requirements refine this root contract:
 - **A02 Nix authority:** Native tools, compiled native bindings, and runtime
   binaries that cannot be treated as pure package artifacts are supplied by Nix
   or explicit wrappers, not by pnpm lifecycle scripts.
-- **A03 Profile consumers:** Live installs, Nix prepared dependency artifacts,
-  CI jobs, and Buck2 evidence may realize dependencies differently, but they use
-  one shared profile vocabulary for identity, policy, and authority.
+- **A03 Materialization Profile consumers:** Prepared dependency artifacts and
+  Buck2 evidence use one immutable Materialization Profile vocabulary for
+  equivalent dependency inputs. Live installs use their declared inputs and
+  install contract directly.
 - **A04 Prepared artifacts are data:** Prepared pnpm dependency FODs are data
   artifacts. Build-time executable shims and native/build outputs are
   projection or build-layer concerns unless explicitly modeled as pure package
@@ -57,7 +61,8 @@ Subsystem requirements refine this root contract:
   convergent version bump is preferred over maintaining parallel legacy
   prepared-deps policies.
 - **T04 Conservative repair:** Repair and GC commands may refuse to mutate when
-  they cannot prove the correct profile, platform, or shared-store authority.
+  they cannot identify the Materialization Root or prove the required
+  shared-content authority.
 
 ## Requirements
 
@@ -88,43 +93,46 @@ Subsystem requirements refine this root contract:
   execute package code.
 - **DMP-R08 Native output rejection:** Prepared dependency validation must
   reject unexpected compiled native outputs and known platform-specific package
-  directories unless the profile explicitly classifies them as pure package
-  data.
+  directories unless the Materialization Profile explicitly classifies them as
+  pure package data.
 
 ### Must make materialization identity explicit
 
-- **DMP-R09 Profile identity:** Every dependency materialization root must have
-  a stable profile identity derived from topology, lockfile, package-manager
-  policy, toolchain inputs, platform trait, and projection namespace.
-- **DMP-R10 Shared schema:** Live pnpm tasks, Nix prepared dependency artifacts,
-  CI jobs, and Buck2 evidence must use the same profile fields when describing
-  equivalent dependency work.
-- **DMP-R11 Topology and edge authority:** A profile must name the authoritative
-  workspace topology and install owner. Package-local or sibling-root install
-  state must not become authoritative implicitly. Only the profile's
-  authoritative materializer may create, remove, or retarget package dependency
-  edges, and every realized edge must preserve its materializer-selected
-  package-instance identity, including resolved version and peer context.
-  Repair may discard derived dependency state and reinvoke the materializer but
-  must not write replacement edges itself.
+- **DMP-R09 Materialization Profile identity:** When prepared dependency or
+  Buck2 evidence groups equivalent immutable dependency work, its stable
+  Materialization Profile identity must derive from topology, dependency
+  inputs, package-manager policy, and toolchain inputs, not physical root or
+  storage placement.
+- **DMP-R10 Shared Materialization Profile schema:** Nix prepared dependency
+  artifacts and Buck2 evidence must use the same Materialization Profile fields
+  when describing equivalent dependency work.
+- **DMP-R11 Topology and edge authority:** Each Materialization Root must name
+  authoritative workspace topology and one Authoritative Materializer.
+  Package-local or sibling-root state must not become authoritative implicitly.
+  Only the Authoritative Materializer may
+  select or change the Package Instance targeted by a Dependency Edge. A
+  faithful restore may reproduce an already-selected edge, and repair may
+  discard an owned realization and reinvoke the Authoritative Materializer;
+  neither may select a replacement target.
 
 ### Must preserve correctness under sharing
 
-- **DMP-R12 Store trait:** A profile must declare one store trait such as
-  `ciJobLocal`, `darwinSplitCas`, `linuxSharedHardlink`, `isolated`,
-  `nixPreparedDeps`, or a proven future trait.
-- **DMP-R13 Shared CAS safety:** Any content-addressed store shared by multiple
-  profiles may be swept only by an authority that can mark from every active
-  root that references the shared pool.
-- **DMP-R14 Raw prune refusal:** A per-profile prune command must refuse to
-  mutate a shared files pool unless it is executing through the shared pool's
-  coordinated GC authority.
+- **DMP-R12 Root-owned writable state:** Writable Dependency Graph, virtual
+  store, and Projection State must remain inside one Materialization Root.
+  Cross-root sharing is limited to immutable content-addressed Dependency Data.
+- **DMP-R13 Shared CAS safety:** effect-utils must not expose or invoke managed
+  sweeping of a Shared Content Pool unless an authority can mark from every
+  active Materialization Root that references it.
+- **DMP-R14 Managed prune refusal:** An effect-utils-managed prune scoped to one
+  Materialization Root must refuse to mutate a Shared Content Pool unless it is
+  executing through the authority required by DMP-R13.
 - **DMP-R15 Repair determinism:** Repair commands must converge to the same
-  final dependency data and projection state for the same profile inputs.
+  final Dependency Graph, Dependency Data, and Projection State for the same
+  declared dependency inputs and materialization policy.
 
 ### Must be measured and verifiable
 
-- **DMP-R16 Real-repo gates:** Changes to store traits, prepared artifact
+- **DMP-R16 Real-repo gates:** Changes to storage sharing, prepared artifact
   purity, or projection ownership must be validated on at least one real
   downstream graph in addition to synthetic fixtures.
 - **DMP-R17 Negative lifecycle tests:** Test fixtures must prove that managed

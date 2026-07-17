@@ -159,6 +159,7 @@ let
   rewritePreparedWorkspaceScript = pkgs.writeText "rewrite-prepared-workspace.cjs" ''
     const fs = require("fs");
     const path = require("path");
+    const { execFileSync } = require("child_process");
 
     const workspaceRoot = process.cwd();
     const workspacePlaceholder = process.env.PREPARED_WORKSPACE_PLACEHOLDER;
@@ -177,95 +178,87 @@ let
         left.name.localeCompare(right.name)
       );
 
-    const workspacePackages = new Map();
-
-    const collectWorkspacePackages = (dirPath) => {
-      for (const entry of sortedDirEntries(dirPath)) {
-        if (!entry.isDirectory()) {
-          continue;
-        }
-
-        if (entry.name === "node_modules" || entry.name === ".git") {
-          continue;
-        }
-
-        const entryPath = path.join(dirPath, entry.name);
-        const packageJsonPath = path.join(entryPath, "package.json");
-        if (fs.existsSync(packageJsonPath)) {
-          const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
-          if (typeof packageJson.name === "string" && !workspacePackages.has(packageJson.name)) {
-            workspacePackages.set(packageJson.name, entryPath);
-          }
-        }
-
-        collectWorkspacePackages(entryPath);
-      }
+    const isWithin = (parentPath, childPath) => {
+      const relativePath = path.relative(parentPath, childPath);
+      return relativePath === "" ||
+        (!relativePath.startsWith(`..''${path.sep}`) && relativePath !== ".." && !path.isAbsolute(relativePath));
     };
 
-    const packageDirsInNodeModules = (nodeModulesPath) => {
-      if (!fs.existsSync(nodeModulesPath)) {
-        return [];
-      }
-
-      const packageDirs = [];
-      for (const entry of sortedDirEntries(nodeModulesPath)) {
-        if (!entry.isDirectory()) {
-          continue;
-        }
-
-        if (entry.name.startsWith("@")) {
-          const scopeDir = path.join(nodeModulesPath, entry.name);
-          for (const scopedEntry of sortedDirEntries(scopeDir)) {
-            if (scopedEntry.isDirectory()) {
-              packageDirs.push(path.join(scopeDir, scopedEntry.name));
-            }
-          }
-        } else {
-          packageDirs.push(path.join(nodeModulesPath, entry.name));
-        }
-      }
-
-      return packageDirs;
-    };
-
-    const relinkLocalVirtualPackages = (dirPath) => {
+    const relinkInjectedPackages = (dirPath, relinkedTargets = new Map()) => {
       for (const entry of sortedDirEntries(dirPath)) {
         if (!entry.isDirectory()) {
           continue;
         }
 
         const entryPath = path.join(dirPath, entry.name);
-        if (entry.name === ".pnpm") {
-          for (const virtualEntry of sortedDirEntries(entryPath)) {
-            if (!virtualEntry.isDirectory() || !virtualEntry.name.includes("file+")) {
-              continue;
+        if (entry.name === "node_modules") {
+          const modulesManifestPath = path.join(entryPath, ".modules.yaml");
+          if (!fs.existsSync(modulesManifestPath)) {
+            continue;
+          }
+
+          // pnpm records injected `file:` workspace packages in this manifest.
+          // Both the source-project key and every materialized target are
+          // relative to the lockfile directory (the parent of node_modules).
+          // This locator mapping is authoritative; package names are only
+          // labels and may legitimately collide across staged source roots.
+          const modulesManifest = JSON.parse(execFileSync(
+            "${pkgs.yq-go}/bin/yq",
+            ["--output-format=json", ".", modulesManifestPath],
+            { encoding: "utf8" }
+          ));
+          const injectedDeps = modulesManifest.injectedDeps ?? {};
+          const lockfileDir = path.dirname(entryPath);
+
+          for (const [sourceProjectId, targetIds] of Object.entries(injectedDeps)) {
+            if (!Array.isArray(targetIds)) {
+              throw new Error(`invalid injectedDeps targets for ''${sourceProjectId}: ''${modulesManifestPath}`);
             }
 
-            const virtualNodeModulesPath = path.join(entryPath, virtualEntry.name, "node_modules");
-            for (const packageDir of packageDirsInNodeModules(virtualNodeModulesPath)) {
-              const packageJsonPath = path.join(packageDir, "package.json");
-              if (!fs.existsSync(packageJsonPath)) {
-                continue;
+            const sourceProjectDir = path.resolve(lockfileDir, sourceProjectId);
+            if (!isWithin(workspaceRoot, sourceProjectDir)) {
+              throw new Error(`injected dependency source escaped prepared workspace: ''${sourceProjectDir}`);
+            }
+            if (!fs.existsSync(path.join(sourceProjectDir, "package.json"))) {
+              throw new Error(`injected dependency source is missing package.json: ''${sourceProjectDir}`);
+            }
+            if (!isWithin(workspaceRoot, fs.realpathSync(sourceProjectDir))) {
+              throw new Error(`injected dependency source resolved outside prepared workspace: ''${sourceProjectDir}`);
+            }
+
+            for (const targetId of targetIds) {
+              if (typeof targetId !== "string") {
+                throw new Error(`invalid injectedDeps target for ''${sourceProjectId}: ''${modulesManifestPath}`);
               }
 
-              const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
-              const workspacePackageDir = workspacePackages.get(packageJson.name);
-              if (!workspacePackageDir) {
-                continue;
+              const packageDir = path.resolve(lockfileDir, targetId);
+              if (!isWithin(entryPath, packageDir)) {
+                throw new Error(`injected dependency target escaped prepared node_modules: ''${packageDir}`);
+              }
+
+              const previousSource = relinkedTargets.get(packageDir);
+              if (previousSource && previousSource !== sourceProjectDir) {
+                throw new Error(
+                  `conflicting injected dependency locators for ''${packageDir}: ''${previousSource} and ''${sourceProjectDir}`
+                );
+              }
+              relinkedTargets.set(packageDir, sourceProjectDir);
+
+              if (!fs.existsSync(packageDir)) {
+                throw new Error(`injected dependency target is missing: ''${packageDir}`);
               }
 
               fs.rmSync(packageDir, { recursive: true, force: true });
-              fs.symlinkSync(path.relative(path.dirname(packageDir), workspacePackageDir), packageDir, "dir");
+              fs.symlinkSync(path.relative(path.dirname(packageDir), sourceProjectDir), packageDir, "dir");
             }
           }
         } else {
-          relinkLocalVirtualPackages(entryPath);
+          relinkInjectedPackages(entryPath, relinkedTargets);
         }
       }
     };
 
-    collectWorkspacePackages(workspaceRoot);
-    relinkLocalVirtualPackages(workspaceRoot);
+    relinkInjectedPackages(workspaceRoot);
 
     const rewriteBinScripts = (dirPath, visitedRealPaths = new Set()) => {
       let realDirPath;
@@ -481,7 +474,7 @@ in
       # strategy changes, even if the recursive output hash stays the same.
       # Self-hosted darwin runners can otherwise keep colliding with stale temp
       # output paths for earlier artifact layouts while evaluating the same FOD.
-      pname = "${name}-pnpm-deps-${srcFingerprint}-v17";
+      pname = "${name}-pnpm-deps-${srcFingerprint}-v18";
       version = "0.0.0";
 
       inherit src sourceRoot;
@@ -804,6 +797,10 @@ in
 
       outputHashMode = "recursive";
       outputHash = pnpmDepsHash;
+
+      passthru = {
+        inherit rewritePreparedWorkspaceScript;
+      };
     };
 
   # Generate a shell script snippet that restores a prepared workspace tree.

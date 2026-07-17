@@ -7,53 +7,62 @@ repair, prune, or garbage-collect it. It refines DMP-R12 through DMP-R15.
 
 ## Assumptions
 
-- **A01 pnpm mutable state:** pnpm metadata, links, side-effects cache, and
-  projection files are mutable local state unless a Nix artifact proves
-  otherwise.
+- **A01 pnpm mutable state:** pnpm metadata, virtual topology, side-effects
+  cache, and projection files are root-local mutable state unless a Nix artifact
+  proves otherwise.
 - **A02 Sharing is valuable:** Host-wide package-content sharing is a desired
   optimization when correctness and repair semantics are explicit.
 
 ## Acceptable Tradeoffs
 
-- **T01 Refuse unsafe repair:** Commands may fail closed when they cannot prove
-  authority over every active root.
-- **T02 Trait-specific defaults:** Darwin, Linux, CI, and Nix may use different
-  store traits under one profile vocabulary.
+- **T01 Refuse unsafe shared-pool mutation:** Commands may fail closed when they
+  cannot prove authority over every active root before sweeping a Shared Content
+  Pool.
+- **T02 Scope-specific placement:** Local development, CI, and Nix may place
+  immutable content differently while preserving the same ownership rules.
 
 ## Requirements
 
 ### Must declare authority
 
-- **DMP.STORE-R01 One trait:** Every profile must declare exactly one store
-  trait.
+- **DMP.STORE-R01 Independent storage facts:** Evidence and configuration must
+  state writable-state scope, content-pool scope, and system applicability as
+  independent facts rather than one preset name.
   Refines: DMP-R12.
 - **DMP.STORE-R02 Mutable owner:** Writable package-manager metadata and
-  projection state must have one owner.
+  Dependency Graph state and Projection State must be owned by exactly one
+  Materialization Root. A Shared Content Pool must not contain writable graph
+  topology.
   Refines: DMP-R12.
-- **DMP.STORE-R03 Shared pool root set:** A shared content pool may be swept
-  only by an authority that can enumerate every active root.
+- **DMP.STORE-R03 Shared pool GC authority:** effect-utils must not expose or
+  invoke managed Shared Content Pool GC unless an authority can enumerate every
+  active Materialization Root that references the pool.
   Refines: DMP-R13.
-- **DMP.STORE-R04 Raw prune refusal:** Profile-local prune must refuse when it
-  would sweep a shared content pool without root-set authority.
+- **DMP.STORE-R04 Managed prune refusal:** An effect-utils-managed operation
+  scoped to one Materialization Root must refuse to prune a Shared Content Pool
+  without the authority required by DMP.STORE-R03.
   Refines: DMP-R14.
 
 ### Must be repairable
 
-- **DMP.STORE-R05 Missing content detection:** Health checks must detect
-  missing shared content needed for offline reuse or projection.
-  Refines: DMP-R13, DMP-R15.
+- **DMP.STORE-R05 Explicit offline readiness:** Materialization Root health must
+  not imply Shared Content Pool completeness. Any offline-readiness claim must
+  name its declared inputs and carry separate no-network evidence.
+  Refines: DMP-R13, DMP-R19.
 - **DMP.STORE-R06 Deterministic repair:** Repair must rebuild from declared
   inputs and must not rewrite lockfiles.
   Refines: DMP-R15.
 - **DMP.STORE-R07 Low-disk safety:** Low-disk refusal and recovery must be
-  explicit rather than leaving a profile apparently healthy but unusable.
+  explicit rather than leaving a Materialization Root apparently healthy but
+  unusable.
   Refines: DMP-R15.
 
 ### Must be measured
 
-- **DMP.STORE-R08 Benchmark matrix:** Candidate traits must report cold, warm,
-  offline, concurrent, byte, and file-count metrics.
+- **DMP.STORE-R08 Benchmark evidence:** Changes to storage placement or sharing
+  must report the comparison evidence defined by the verification subsystem.
   Refines: DMP-R16.
-- **DMP.STORE-R09 Default gate:** A trait may become default only after proving
-  correctness and material cache-efficiency gains on real workspaces.
+- **DMP.STORE-R09 Default gate:** A sharing strategy may become default only
+  after proving correctness and material cache-efficiency gains on real
+  workspaces.
   Refines: DMP-R16.

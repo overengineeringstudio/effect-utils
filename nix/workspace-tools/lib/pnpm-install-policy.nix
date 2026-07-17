@@ -14,15 +14,15 @@ rec {
     "--child-concurrency=1"
     "--network-concurrency=4"
     "--config.package-import-method=clone-or-copy"
+    "--config.enable-global-virtual-store=false"
+    "--config.virtual-store-dir=node_modules/.pnpm"
     "--pm-on-fail=ignore"
   ];
 
   # The fixed-output builder writes policy through .npmrc because pnpm 11
   # rejects some workspace-scoped keys via `pnpm config set --global`. The
-  # prepared tree is restored directly by downstream builds. That makes FOD
-  # prep the deliberate exception to live GVS: a GVS node_modules tree points at
-  # <store>/v11/links, but the builder-local store is not part of the prepared
-  # output. Keep FOD prep isolated while live devenv installs fully use GVS.
+  # prepared tree is restored directly by downstream builds. Live and prepared
+  # installs therefore use the same root-local virtual topology.
   workspacePrepNpmrcLines = packageImportMethod: [
     "virtual-store-dir=node_modules/.pnpm"
     "package-import-method=${packageImportMethod}"

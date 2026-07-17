@@ -75,11 +75,6 @@ let
     if taskSuffix == null then "${taskNamePrefix}:clean" else "${taskNamePrefix}:clean:${taskSuffix}";
   doctorTaskName =
     if taskSuffix == null then "${taskNamePrefix}:doctor" else "${taskNamePrefix}:doctor:${taskSuffix}";
-  repairPlanTaskName =
-    if taskSuffix == null then
-      "${taskNamePrefix}:repair-plan"
-    else
-      "${taskNamePrefix}:repair-plan:${taskSuffix}";
   repairTaskName =
     if taskSuffix == null then "${taskNamePrefix}:repair" else "${taskNamePrefix}:repair:${taskSuffix}";
   resetLockFilesTaskName =
@@ -155,8 +150,8 @@ let
     source ${lib.escapeShellArg pnpmTaskHelpersScript}
   '';
   ensureLocalPnpmHomeFn = ''
-    # Keep pnpm's hot GVS projection workspace-local by default so local tasks
-    # match CI and don't inherit stale global link state from unrelated repos.
+    # Keep package-manager state workspace-local. Only immutable content bytes
+    # are shared across Materialization Roots.
     if [ ${lib.escapeShellArg workspaceRoot} = "." ]; then
       if [ -z "''${PNPM_HOME:-}" ]; then
         export PNPM_HOME=${lib.escapeShellArg defaultPnpmHome}
@@ -218,8 +213,9 @@ let
         if [ -d "$files_path" ] && [ -z "$(find "$files_path" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
           rmdir "$files_path"
         else
-          echo "[pnpm] $files_path is a non-empty local files store; leaving it for the coordinated migration runbook" >&2
-          return 0
+          echo "[pnpm] Refusing to replace non-empty legacy root-local content: $files_path" >&2
+          echo "[pnpm] One-time clean break required: archive or remove that directory explicitly, then rerun: devenv tasks run ${installTaskName}" >&2
+          exit 1
         fi
       fi
 
@@ -253,15 +249,11 @@ let
   computeInstallStateHashFn = ''
     compute_install_state_hash() {
       local workspace_state_hash
-      local gvs_links_dir
-
       workspace_state_hash="$(compute_workspace_state_hash)"
-      gvs_links_dir="$(resolve_gvs_links_dir)"
 
       {
         printf '%s\n' ${lib.escapeShellArg pkgs.pnpm.version}
         printf '%s\n' "$workspace_state_hash"
-        printf '%s\n' "''${gvs_links_dir:-}"
         printf '%s\n' ${lib.escapeShellArg (builtins.toJSON installFlags)}
         printf '%s\n' ${lib.escapeShellArg preInstall}
       } | compute_hash
@@ -274,7 +266,6 @@ let
       # ordered line stream that the previous bash implementation produced.
       NODE_MODULES_HELPER_MODE="projection-hash" \
       PNPM_ROOT_MODULES_YAML="node_modules/.modules.yaml" \
-      PNPM_GVS_LINKS_DIR="$(resolve_gvs_links_dir)" \
       NODE_MODULES_DIRS="$(printf '%s\n' node_modules ${nodeModulesPaths})" \
       ${pkgs.nodejs}/bin/node ${lib.escapeShellArg nodeModulesProjectionScript}
     }
@@ -298,6 +289,11 @@ let
           --strict-store-pkg-content-check=false | --no-strict-store-pkg-content-check | \
           --config.strict-store-pkg-content-check=false | --config.strict-store-pkg-content-check | \
           --config.manage-package-manager-versions=true | --config.manage-package-manager-versions | \
+          --config.enable-global-virtual-store=true | --enable-global-virtual-store | \
+          --config.global-virtual-store-dir=* | --config.global-virtual-store-dir | \
+          --global-virtual-store-dir=* | --global-virtual-store-dir | \
+          --config.virtual-store-dir=* | --config.virtual-store-dir | \
+          --virtual-store-dir=* | --virtual-store-dir | \
           --pm-on-fail=* | --pm-on-fail | --config.pm-on-fail=* | --config.pm-on-fail | \
           --config.package-import-method=* | --config.package-import-method | --package-import-method=* | --package-import-method | \
           --config.store-dir=* | --config.store-dir | --store-dir=* | --store-dir)
@@ -420,13 +416,10 @@ let
         ensure_shared_pnpm_files_store
         mkdir -p "${cacheRoot}"
         # This cache tracks the effective install state, not just workspace
-        # manifests. The fingerprint also includes the active GVS projection
-        # root because pnpm 11 bakes absolute paths into `links/`.
+        # manifests. The virtual dependency graph itself is root-local.
         hash_file="${cacheRoot}/install-state.hash"
         projection_hash_file="${cacheRoot}/projection-state.hash"
         contract_state_file="${cacheRoot}/pnpm-install-contract.json"
-        dependency_profile_file="${cacheRoot}/dependency-materialization-profile.json"
-        dependency_registry_file="${cacheRoot}/dependency-materialization-registry.json"
 
         lockfile="${cacheRoot}/pnpm-install.lock"
         exec 200>"$lockfile"
@@ -460,64 +453,21 @@ let
         ${preInstall}
         ${runPnpmInstallFn}
 
-        # pnpm 11 GVS: hash-based link invalidation. pnpm reuses existing GVS
-        # entries without re-resolving packageExtensions, so stale entries break
-        # TypeScript resolution. Only clear links/ when config changes.
-        # Content-addressable store (files/) is unaffected.
-        # See: pnpm/pnpm#9739
         _pnpm_install_contract_file="$(resolve_pnpm_install_contract_file "$PWD" || true)"
-        if [ -n "''${_pnpm_install_contract_file:-}" ]; then
-          _gvs_hash="$(compute_pnpm_contract_section_hash ${pkgs.nodejs}/bin/node "$_pnpm_install_contract_file" gvsLinkContract)"
-        else
+        if [ -z "''${_pnpm_install_contract_file:-}" ]; then
           ${lib.optionalString (workspaceRoot == ".") ''
             echo "[pnpm] Missing generated pnpm-install-contract.json at repo root" >&2
             echo "[pnpm] Run: devenv tasks run genie:run" >&2
             exit 1
           ''}
-          # Non-root downstream workspaces may not carry the generated contract
-          # yet. Keep the fallback deliberately coarse and structured: no YAML
-          # parsing, no partial pnpm-owned layout inference.
-          _gvs_hash="$(printf '%s\n' ${lib.escapeShellArg pkgs.pnpm.version} | compute_hash)"
+          : # A nested downstream root may not emit profile evidence yet.
         fi
 
-        _gvs_hash_file=""
-        _gvs_links_dir="$(resolve_gvs_links_dir)"
-        _purged_node_modules=false
         _force_install=false
 
-        if [ -n "''${_gvs_links_dir:-}" ]; then
-          _gvs_hash_file="$(dirname "$_gvs_links_dir")/.effect-utils-gvs-links.hash"
-          mkdir -p "$(dirname "$_gvs_links_dir")"
-          if [ ! -f "$_gvs_hash_file" ] || [ "$(cat "$_gvs_hash_file")" != "$_gvs_hash" ]; then
-            echo "[pnpm] GVS config changed, forcing current workspace relink"
-            purge_node_modules node_modules ${nodeModulesPaths}
-            # A workspace relink only rewrites node_modules. If the broken
-            # package projection is already cached under v11/links, pnpm can
-            # reuse that incomplete directory even for `pnpm install --force`.
-            # Dropping links/ keeps the content-addressed files/ store intact
-            # while forcing GVS to materialize fresh package link projections.
-            # See https://github.com/pnpm/pnpm/issues/11385.
-            # TODO(pnpm#11385): remove this links/ purge once forced installs
-            # rebuild incomplete GVS link projections.
-            rm -rf "$_gvs_links_dir"
-            _purged_node_modules=true
-            _force_install=true
-          fi
-        fi
-
-        if [ "$_purged_node_modules" != true ] && ! check_node_modules_links_healthy ${pkgs.nodejs}/bin/node ${lib.escapeShellArg nodeModulesProjectionScript} ${healthCheckNodeModulesPaths}; then
+        if ! check_node_modules_links_healthy ${pkgs.nodejs}/bin/node ${lib.escapeShellArg nodeModulesProjectionScript} ${healthCheckNodeModulesPaths}; then
           echo "[pnpm] node_modules projection is stale, purging install state"
           purge_node_modules node_modules ${nodeModulesPaths}
-          if [ -n "''${_gvs_links_dir:-}" ]; then
-            # The health check can fail while package symlinks and package.json
-            # still exist, e.g. an exported runtime file is missing inside a GVS
-            # link projection. Deleting node_modules alone would just reconnect
-            # the workspace to the same incomplete v11/links package directory.
-            # See https://github.com/pnpm/pnpm/issues/11385.
-            # TODO(pnpm#11385): remove this links/ purge once forced installs
-            # rebuild incomplete GVS link projections.
-            rm -rf "$_gvs_links_dir"
-          fi
           _force_install=true
         fi
 
@@ -532,32 +482,10 @@ let
           exit 1
         fi
 
-        # Persist GVS hash after successful install
-        if [ -n "''${_gvs_hash_file:-}" ]; then
-          echo "$_gvs_hash" > "$_gvs_hash_file"
-        fi
         if [ -n "''${_pnpm_install_contract_file:-}" ]; then
           rm -f "$contract_state_file"
           cp "$_pnpm_install_contract_file" "$contract_state_file"
           chmod u+w "$contract_state_file" 2>/dev/null || true
-          if pnpm_contract_supports_dependency_materialization_profile ${pkgs.nodejs}/bin/node "$_pnpm_install_contract_file"; then
-            if [ -n "''${CI:-}" ]; then
-              _dependency_materialization_trait="ciJobLocal"
-            elif [ -L "$npm_config_store_dir/v11/files" ]; then
-              _dependency_materialization_trait="darwinSplitCas"
-            else
-              _dependency_materialization_trait="isolated"
-            fi
-            emit_dependency_materialization_profile ${pkgs.nodejs}/bin/node "$_pnpm_install_contract_file" "$_dependency_materialization_trait" "$dependency_profile_file"
-            _dependency_shared_registry_file="$(dependency_materialization_shared_registry_file ${pkgs.nodejs}/bin/node "$npm_config_store_dir")"
-            mkdir -p "$(dirname "$_dependency_shared_registry_file")"
-            exec 203>"$_dependency_shared_registry_file.lock"
-            if ! ${flock} -w 600 203; then
-              echo "[pnpm] dependency materialization registry lock timeout after 600s: $_dependency_shared_registry_file.lock" >&2
-              exit 1
-            fi
-            write_dependency_materialization_registry ${pkgs.nodejs}/bin/node "$dependency_profile_file" "$PWD" "$npm_config_store_dir" "$dependency_registry_file" "$_dependency_shared_registry_file"
-          fi
         fi
 
         cache_value="$(compute_install_state_hash)"
@@ -577,8 +505,6 @@ let
         hash_file="${cacheRoot}/install-state.hash"
         projection_hash_file="${cacheRoot}/projection-state.hash"
         contract_state_file="${cacheRoot}/pnpm-install-contract.json"
-        dependency_profile_file="${cacheRoot}/dependency-materialization-profile.json"
-        dependency_registry_file="${cacheRoot}/dependency-materialization-registry.json"
 
         _pnpm_install_contract_file="$(resolve_pnpm_install_contract_file "$PWD" || true)"
         if [ -z "''${_pnpm_install_contract_file:-}" ]; then
@@ -595,16 +521,14 @@ let
           exit 1
         fi
 
-        if pnpm_contract_supports_dependency_materialization_profile ${pkgs.nodejs}/bin/node "$_pnpm_install_contract_file" && { [ ! -f "$dependency_profile_file" ] || [ ! -f "$dependency_registry_file" ]; }; then
-          emit_pnpm_install_miss_span ${lib.escapeShellArg installTaskName} "bootstrap"
+        if ! check_node_modules_links_healthy ${pkgs.nodejs}/bin/node ${lib.escapeShellArg nodeModulesProjectionScript} ${healthCheckNodeModulesPaths}; then
+          emit_pnpm_install_miss_span ${lib.escapeShellArg installTaskName} "projection"
           exit 1
         fi
 
         if [ "''${DEVENV_SETUP_OUTER_CACHE_HIT:-0}" = "1" ]; then
-          # Keep shell entry fast by reusing the cached install-state proof and
-          # only re-validating the realized projection structure here. The full
-          # semantic health check still runs in the exec path before install can
-          # be treated as clean again.
+          # Reuse the cached install-state proof only after validating the
+          # realized root-local topology above.
           ${computeProjectionStateHashFn}
           current_projection_hash="$(compute_projection_state_hash)"
           stored_projection_hash="$(cat "$projection_hash_file")"
@@ -691,10 +615,6 @@ let
         ensure_shared_pnpm_files_store
 
         purge_node_modules node_modules ${nodeModulesPaths}
-
-        # The GVS `links/` directory lives under the shared store-dir. Deleting
-        # it from one workspace would break node_modules projections in other
-        # workspaces that point at the same shared store.
       '';
     };
 
@@ -706,114 +626,33 @@ let
         cd ${lib.escapeShellArg workspaceRootAbs}
         ${loadPnpmTaskHelpersFn}
 
-        dependency_profile_file="${cacheRoot}/dependency-materialization-profile.json"
-        dependency_registry_file="${cacheRoot}/dependency-materialization-registry.json"
-        if [ ! -f "$dependency_profile_file" ] || [ ! -f "$dependency_registry_file" ]; then
-          echo "[pnpm] Missing dependency materialization evidence; run: ${installTaskName}" >&2
-          exit 1
+        if [ -d node_modules/.pnpm ] && check_node_modules_links_healthy ${pkgs.nodejs}/bin/node ${lib.escapeShellArg nodeModulesProjectionScript} ${healthCheckNodeModulesPaths}; then
+          doctor_decision="healthy"
+          doctor_reason="root-local-graph-healthy"
+        else
+          doctor_decision="repair-root"
+          doctor_reason="root-local-graph-unhealthy"
         fi
-
-        profile_id="$(dependency_materialization_profile_id ${pkgs.nodejs}/bin/node "$dependency_profile_file")"
-        dependency_materialization_store_doctor ${pkgs.nodejs}/bin/node "$dependency_registry_file" "$profile_id"
-      '';
-    };
-
-    "${repairPlanTaskName}" = {
-      guard = "pnpm";
-      description = "Plan repair from existing dependency materialization evidence for the pnpm workspace at ${workspaceRoot}";
-      exec = trace.exec repairPlanTaskName ''
-        set -euo pipefail
-        cd ${lib.escapeShellArg workspaceRootAbs}
-        ${loadPnpmTaskHelpersFn}
-
-        dependency_profile_file="${cacheRoot}/dependency-materialization-profile.json"
-        dependency_registry_file="${cacheRoot}/dependency-materialization-registry.json"
-        if [ ! -f "$dependency_profile_file" ] || [ ! -f "$dependency_registry_file" ]; then
-          echo "[pnpm] Missing dependency materialization evidence; run: ${installTaskName}" >&2
-          exit 1
-        fi
-
-        profile_id="$(dependency_materialization_profile_id ${pkgs.nodejs}/bin/node "$dependency_profile_file")"
-        profile_store_dir="$(dependency_materialization_profile_store_dir ${pkgs.nodejs}/bin/node "$dependency_registry_file" "$profile_id")"
-        shared_registry_file="$(dependency_materialization_shared_registry_file ${pkgs.nodejs}/bin/node "$profile_store_dir")"
-        repair_registry_file="$dependency_registry_file"
-        if [ -f "$shared_registry_file" ]; then
-          repair_registry_file="$shared_registry_file"
-        fi
-        if ! files_pool_id="$(dependency_materialization_profile_files_pool_id ${pkgs.nodejs}/bin/node "$repair_registry_file" "$profile_id")"; then
-          files_pool_id="$(dependency_materialization_profile_files_pool_id ${pkgs.nodejs}/bin/node "$dependency_registry_file" "$profile_id")"
-        fi
-        dependency_materialization_repair_plan ${pkgs.nodejs}/bin/node "$repair_registry_file" "$files_pool_id"
+        ${pkgs.nodejs}/bin/node - "$PWD" "$doctor_decision" "$doctor_reason" <<'EOF'
+        const [root, decision, reason] = process.argv.slice(2)
+        console.log(JSON.stringify({ phase: 'doctor', root, decision, reason }))
+        EOF
       '';
     };
 
     "${repairTaskName}" = {
       guard = "pnpm";
-      description = "Repair all registered pnpm workspaces sharing this dependency materialization files pool";
+      description = "Discard and rematerialize the root-local pnpm dependency graph at ${workspaceRoot}";
       exec = trace.exec repairTaskName ''
         set -euo pipefail
         cd ${lib.escapeShellArg workspaceRootAbs}
         ${loadPnpmTaskHelpersFn}
-
-        dependency_profile_file="${cacheRoot}/dependency-materialization-profile.json"
-        dependency_registry_file="${cacheRoot}/dependency-materialization-registry.json"
-        if [ ! -f "$dependency_profile_file" ] || [ ! -f "$dependency_registry_file" ]; then
-          echo "[pnpm] Missing dependency materialization evidence; run: ${installTaskName}" >&2
-          exit 1
-        fi
-
-        profile_id="$(dependency_materialization_profile_id ${pkgs.nodejs}/bin/node "$dependency_profile_file")"
-        profile_store_dir="$(dependency_materialization_profile_store_dir ${pkgs.nodejs}/bin/node "$dependency_registry_file" "$profile_id")"
-        shared_registry_file="$(dependency_materialization_shared_registry_file ${pkgs.nodejs}/bin/node "$profile_store_dir")"
-        repair_registry_file="$dependency_registry_file"
-        if [ -f "$shared_registry_file" ]; then
-          repair_registry_file="$shared_registry_file"
-        fi
-        if ! files_pool_id="$(dependency_materialization_profile_files_pool_id ${pkgs.nodejs}/bin/node "$repair_registry_file" "$profile_id")"; then
-          files_pool_id="$(dependency_materialization_profile_files_pool_id ${pkgs.nodejs}/bin/node "$dependency_registry_file" "$profile_id")"
-        fi
-        dependency_materialization_repair_plan ${pkgs.nodejs}/bin/node "$repair_registry_file" "$files_pool_id"
-
-        repaired_roots=0
-        while IFS=$'\t' read -r repair_project_dir repair_store_dir; do
-          if [ -z "''${repair_project_dir:-}" ]; then
-            continue
-          fi
-          if [ ! -d "$repair_project_dir" ] || [ ! -f "$repair_project_dir/pnpm-lock.yaml" ]; then
-            echo "[pnpm] Skipping stale dependency materialization root: $repair_project_dir" >&2
-            continue
-          fi
-
-          mkdir -p "$repair_store_dir"
-          repair_store_lockfile="$repair_store_dir/.effect-utils-pnpm-store.lock"
-          exec 204>"$repair_store_lockfile"
-          if ! ${flock} -w 600 204; then
-            echo "[pnpm] store-dir repair lock timeout after 600s: $repair_store_lockfile" >&2
-            exit 1
-          fi
-
-          echo "[pnpm] Repairing dependency materialization root: $repair_project_dir"
-          (
-            cd "$repair_project_dir"
-            export PNPM_STORE_DIR="$repair_store_dir"
-            export PNPM_CONFIG_STORE_DIR="$repair_store_dir"
-            export npm_config_store_dir="$repair_store_dir"
-            ${runPnpmInstallFn}
-            # pnpm can reuse a corrupt or incomplete GVS package instance even
-            # with --force. Discard the package-manager-owned projections while
-            # retaining the shared content-addressed files pool, then let pnpm
-            # select and materialize every dependency edge again.
-            purge_node_modules node_modules
-            rm -rf "$repair_store_dir/v11/links"
-            run_pnpm_install --force
-          )
-          repaired_roots=$((repaired_roots + 1))
-        done < <(dependency_materialization_repair_roots ${pkgs.nodejs}/bin/node "$repair_registry_file" "$files_pool_id")
-
-        if [ "$repaired_roots" -eq 0 ]; then
-          echo "[pnpm] No live dependency materialization roots were repaired" >&2
-          exit 1
-        fi
+        purge_node_modules node_modules ${nodeModulesPaths}
+        rm -f \
+          "${cacheRoot}/install-state.hash" \
+          "${cacheRoot}/projection-state.hash"
+        echo "[pnpm] Discarded root-local dependency graph; reinvoking ${installTaskName}"
+        exec devenv tasks run ${lib.escapeShellArg installTaskName}
       '';
     };
 

@@ -351,7 +351,8 @@ echo "Pinned devenv rev: $DEVENV_REV"`,
 
 /**
  * Export the canonical CI pnpm paths once so every later shell step shares the
- * same writable store and the same workspace-relative GVS projection.
+ * same job-local home and content store. Writable virtual topology stays under
+ * the workspace root.
  */
 export const pnpmStateSetupStep = {
   name: 'Isolate pnpm state',

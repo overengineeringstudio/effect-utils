@@ -46,12 +46,6 @@ type ComposeArgs<
    * `install`: also install inherited peer deps of workspace packages using explicit catalog versions.
    */
   mode?: 'manifest' | 'install'
-  /** GVS: inject @types/* deps into external packages that peer on typed base packages
-   * but don't ship their own type declarations.
-   * Keys = external package names, values = catalog.pick(...) of @types/* to inject.
-   * Aggregated into pnpm-workspace.yaml `packageExtensions` by `rootPnpmWorkspaceYaml`.
-   * See: pnpm/pnpm#9739 */
-  gvsTypeExtensions?: Record<string, CatalogInput>
 }
 
 type ComposeResult<
@@ -66,7 +60,6 @@ type ComposeResult<
   devDependencies: TDevDependenciesExternal & WorkspaceDependencyMap<TDevDependenciesWorkspace>
   peerDependencies: CatalogInput
   workspace: WorkspaceMetadata
-  gvsTypeExtensions?: Record<string, CatalogInput>
 } & {
   readonly [PackageJsonCompositionBrand]: true
 }
@@ -309,7 +302,6 @@ const createComposeFn =
     devDependencies,
     peerDependencies,
     mode = 'manifest',
-    gvsTypeExtensions,
   }: ComposeArgs<
     TDependenciesWorkspace,
     TDependenciesExternal,
@@ -380,7 +372,6 @@ const createComposeFn =
         ...workspace,
         deps: [...runtimeWorkspace, ...supportWorkspace, ...peerWorkspace],
       },
-      ...(gvsTypeExtensions !== undefined ? { gvsTypeExtensions } : {}),
       [PackageJsonCompositionBrand]: true as const,
     }
   }

@@ -272,30 +272,20 @@ export const withAppendedNixConfig = ({
 export const dollar = '$'
 
 /**
- * Keep pnpm's hot mutable content isolated per job while still allowing cache reuse across runs.
- *
- * In the pnpm 11 + GVS configuration we use today, the effective hot state lives
- * under `PNPM_HOME`, not `PNPM_STORE_DIR`. `PNPM_HOME` must stay
- * workspace-relative because the GVS links embed absolute paths and those need
- * to stay valid for relocatable artifacts like `vercel deploy --prebuilt`.
+ * Keep pnpm's auxiliary home state isolated per job.
  */
 export const jobLocalPnpmHome = '${{ github.workspace }}/.pnpm-home'
 
 /**
  * Keep pnpm's auxiliary mutable store content isolated per job.
  *
- * We still wire `PNPM_STORE_DIR` explicitly for pnpm, but the primary CI cache
- * target is `PNPM_HOME` because that is where pnpm 11 GVS keeps the reusable
- * links and metadata.
+ * The writable virtual topology remains under the workspace's
+ * `node_modules/.pnpm`; the store carries content and auxiliary metadata.
  */
 export const jobLocalPnpmStore = '${{ runner.temp }}/pnpm-store/${{ github.job }}'
 
 /**
- * Canonical pnpm CI state surface for pnpm 11 + GVS on self-hosted runners.
- *
- * `PNPM_HOME` carries the hot reusable links and metadata, while the
- * auxiliary mutable store content still lives under `PNPM_STORE_DIR`. The
- * supported cache contract restores both together under one exact key.
+ * Canonical job-local pnpm CI state surface on self-hosted runners.
  */
 export const jobLocalPnpmStatePaths = [jobLocalPnpmHome, jobLocalPnpmStore].join('\n')
 

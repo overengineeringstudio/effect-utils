@@ -10,8 +10,9 @@
 # A hardcoded CLI `--config.store-dir` has the highest pnpm precedence and would
 # override the CI env, splitting a single deploy job across two stores and
 # desyncing the root node_modules projection (the `next: command not found`
-# class of failure). `--force` performs the GVS relink. `--frozen-lockfile` is
-# explicit (not relying on pnpm's CI-only default for frozen) so a drifted
+# class of failure). `--force` refreshes the root-local virtual topology.
+# `--frozen-lockfile` is explicit (not relying on pnpm's CI-only default for
+# frozen) so a drifted
 # effect-utils lockfile fails loudly in both local and CI runs rather than being
 # silently rewritten.
 {

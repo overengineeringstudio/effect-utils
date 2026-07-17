@@ -40,7 +40,8 @@ imports = [
 - `pnpm.nix` - pnpm install tasks
   - Default live-worktree store namespace is `.devenv/pnpm-store-pure-v1`.
   - Local development may share only pnpm `v11/files`; mutable metadata,
-    GVS `links`, `projects`, temp state, and CI state remain local/job-local.
+    virtual topology, projections, temp state, and CI state remain
+    root-local/job-local.
   - Managed installs enforce mutation-isolating imports and reject writable
     hardlink or side-effects-cache overrides.
 - `setup.nix` - Setup tasks

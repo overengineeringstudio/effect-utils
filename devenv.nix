@@ -607,16 +607,10 @@ in
         local package_name="$1"
         local package_path="$2"
         local rel_path="$package_name"
-        local gvs_links_dir
         local search_roots=(node_modules)
 
         if [[ "$package_name" == @*/* ]]; then
           rel_path="$(dirname "$package_name")/$(basename "$package_name")"
-        fi
-
-        gvs_links_dir="$(resolve_gvs_links_dir)"
-        if [[ -n "$gvs_links_dir" && -d "$gvs_links_dir" ]]; then
-          search_roots+=("$gvs_links_dir")
         fi
 
         find "''${search_roots[@]}" \

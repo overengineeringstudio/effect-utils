@@ -24,11 +24,12 @@ export default projectionArtifact.json({
         enabledForLocalDev: true,
         disabledInCi: true,
       },
-      globalVirtualStore: {
-        enabled: workspaceData.enableGlobalVirtualStore,
+      virtualStore: {
+        scope: 'materialization-root',
+        path: 'node_modules/.pnpm',
       },
     },
-    gvsLinkContract: {
+    dependencyGraphContract: {
       packageManager: {
         name: 'pnpm',
         version: pnpmVersion,
@@ -60,57 +61,15 @@ export default projectionArtifact.json({
     metadata: {
       pnpmStoreOwnership: {
         filesLifecycle: 'pnpm-owned content-addressed files store',
-        linksLifecycle: 'pnpm-owned rebuildable dependency-graph projection',
-        projectsLifecycle: 'pnpm-owned store prune reachability registry',
+        virtualStoreLifecycle: 'Materialization-Root-owned rebuildable dependency graph',
       },
       nixIntegration: {
-        liveInstallUsesGlobalVirtualStore: true,
-        fixedOutputDependencyPrepUsesLiveGlobalVirtualStore: false,
+        liveVirtualStoreScope: 'materialization-root',
+        fixedOutputDependencyPrepUsesSameVirtualStoreScope: true,
       },
       buck2Integration: {
         consumeContractArtifact: true,
         avoidNodeModulesLayoutAsApi: true,
-      },
-    },
-    dependencyMaterializationProfile: {
-      schema: 'dependency-materialization-profile/v0',
-      identityInputs: [
-        'packageManager',
-        'gvsLinkContract',
-        'installPolicy',
-        'storeContract',
-        'workspaceManifestContract',
-      ],
-      supportedTraits: {
-        ciJobLocal: {
-          mutableState: 'job-local',
-          gcAuthority: 'profile-local',
-          repairAuthority: 'ci-job',
-        },
-        darwinSplitCas: {
-          mutableState: 'profile-local',
-          sharedContent: 'store/v11/files',
-          gcAuthority: 'shared-pool-coordinator',
-          repairAuthority: 'devenv',
-        },
-        isolated: {
-          mutableState: 'profile-local',
-          gcAuthority: 'profile-local',
-          repairAuthority: 'devenv',
-        },
-        nixPreparedDeps: {
-          mutableState: 'none',
-          gcAuthority: 'nix-store',
-          repairAuthority: 'evergreen-fod',
-        },
-      },
-      nativeBuildPolicyInputs: {
-        allowBuilds: 'gvsLinkContract.allowBuilds',
-        compilerEnv: ['CC', 'CXX'],
-      },
-      buck2Boundary: {
-        consumesEvidence: true,
-        ownsLiveMaterialization: false,
       },
     },
   },

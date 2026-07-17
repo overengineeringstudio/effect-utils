@@ -12,8 +12,8 @@ This spec defines:
 - live workspace topology authority;
 - managed install ownership;
 - mutable state boundaries for local development and CI;
-- the live install relation to pure projection, store traits, and profile
-  evidence.
+- the live install relation to pure projection, root-owned state, shared
+  content, and install evidence.
 
 This spec does not define Nix prepared dependency artifacts. Those are specified
 in [../03-nix-prepared-deps/spec.md](../03-nix-prepared-deps/spec.md).
@@ -35,7 +35,7 @@ selected workspace topology
   -> managed pnpm install with strict policy
   -> dependency data in live node_modules
   -> pure projection repair
-  -> profile evidence and health report
+  -> install evidence and health report
 ```
 
 The selected topology, not the current working directory, owns live install
@@ -49,7 +49,6 @@ Managed install entrypoints must compute or receive:
 - `topologyKind`: `standalone`, `composed`, or `packageClosure`;
 - `lockfile`: the authoritative lockfile for that owner;
 - `workspaceFile`: the workspace membership file for that owner;
-- `profileId`: the dependency materialization profile id.
 
 Package-directory installs are not supported when they would create
 package-local lockfiles, package-local `node_modules`, or a second dependency
@@ -76,17 +75,17 @@ runtime entrypoints must preserve the logical topology paths required by the
 runtime so linked packages resolve shared dependencies through the selected
 graph.
 
-The implementation may use pnpm GVS, hoisting, or future store traits as the
-path-collapsing primitive, but the profile must declare that trait and the
-doctor must validate it.
+Runtime identity is established by the selected standalone or composed
+workspace topology. Sharing storage is not an identity primitive: every live
+root owns `node_modules/.pnpm`, while roots may reuse immutable content bytes.
 
 ### Dependency edge selection authority
 
 pnpm owns dependency-edge selection and realization inside live `node_modules`
-and the selected virtual store. Managed repair discards the package-manager-owned
-root projection and affected virtual-store link projection, then asks pnpm to
-select and materialize the graph again. It preserves the content-addressed files
-pool and never selects or links a replacement target itself.
+and the root-local virtual store. Managed repair discards that root-owned graph,
+then asks the root's canonical pnpm install to select and materialize it again.
+It preserves the shared content-addressed files pool and never selects or links
+a replacement target itself.
 
 Missing dependency edges are corrected at a declared authority boundary:
 
@@ -104,21 +103,23 @@ dependency.
 
 ## CI State
 
-CI jobs use job-local writable pnpm home, store metadata, and projection state
-by default. A shared cache may seed content, but the job remains the mutation
-owner unless a stronger shared-state profile has explicit GC and repair
-authority.
+CI jobs use job-local writable pnpm home, store metadata, virtual topology, and
+projection state. A shared cache may seed immutable content, but the job remains
+the sole mutation owner.
 
 ## Health
 
-A live profile is healthy only when:
+A live Materialization Root is healthy only when:
 
-1. the selected topology inputs match the profile evidence;
-2. pnpm metadata exists for the declared store trait;
+1. the selected topology inputs match the generated install contract and
+   cached state;
+2. root-owned pnpm metadata exists;
 3. dependency data is present;
-4. expected pure projections exist;
-5. offline or no-network usability checks pass for the selected profile when
-   the store trait promises offline reuse.
+4. expected pure projections exist.
+
+Root health does not imply that a shared content pool contains every package
+needed for a future offline reinstall. Offline readiness is a separate claim
+that requires its own no-network evidence for the declared inputs.
 
 Exit-code downgrades such as pnpm teardown exits are allowed only after these
 checks prove materialization succeeded.
