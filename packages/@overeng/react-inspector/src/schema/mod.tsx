@@ -1,3 +1,5 @@
+/* oxlint-disable oxc/no-barrel-file -- This module is the package's intentional public schema API. */
+
 export {
   type LineageBundle,
   type SchemaAnnotations,
@@ -37,4 +39,4 @@ export { SchemaAwareObjectValue } from './SchemaAwareObjectValue.tsx'
 export { SchemaAwareObjectPreview } from './SchemaAwareObjectPreview.tsx'
 export { SchemaTooltip, type SchemaTooltipProps } from './SchemaTooltip.tsx'
 
-export { Lineage } from '@overeng/utils'
+export * as Lineage from './lineage.ts'

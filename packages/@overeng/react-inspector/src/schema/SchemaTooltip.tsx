@@ -1,9 +1,8 @@
 import React, { useCallback, useEffect, useId, useRef, useState } from 'react'
 import type { FC, ReactNode } from 'react'
 
-import type { Lineage } from '@overeng/utils'
-
 import type { LineageBundle, SchemaInfo } from './effectSchema.tsx'
+import type * as Lineage from './lineage.ts'
 
 export interface SchemaTooltipProps {
   /** Display-ready schema info; pass undefined to render children without a tooltip. */

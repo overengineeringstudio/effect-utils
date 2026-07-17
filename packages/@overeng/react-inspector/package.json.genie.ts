@@ -1,12 +1,33 @@
 // @genie-bootstrap
 import {
-  catalog,
+  catalog as repoCatalog,
+  defineCatalog,
   workspaceMember,
   exportEntry,
   packageJson,
   type PackageJsonInputData,
 } from '../../../genie/internal.ts'
-import utilsPkg from '../utils/package.json.genie.ts'
+
+const catalog = defineCatalog({
+  ...repoCatalog.pick(
+    'is-dom',
+    'react',
+    '@storybook/react',
+    '@storybook/react-vite',
+    '@testing-library/react',
+    '@testing-library/user-event',
+    '@types/is-dom',
+    '@types/react',
+    '@vitejs/plugin-react',
+    'happy-dom',
+    'react-dom',
+    'storybook',
+    'typescript',
+    'vite',
+    'vitest',
+  ),
+  effect: '4.0.0-beta.98',
+})
 
 const peerDepNames = ['effect', 'react'] as const
 const workspaceDeps = catalog.compose({
@@ -17,7 +38,6 @@ const workspaceDeps = catalog.compose({
     },
   },
   devDependencies: {
-    workspace: [utilsPkg],
     external: {
       ...catalog.pick(
         ...peerDepNames,
@@ -38,8 +58,10 @@ const workspaceDeps = catalog.compose({
     },
   },
   peerDependencies: {
-    workspace: [utilsPkg],
-    external: catalog.pick(...peerDepNames),
+    external: {
+      effect: '^4.0.0-beta.97',
+      ...catalog.pick('react'),
+    },
   },
 })
 
@@ -66,11 +88,6 @@ export default packageJson(
     scripts: {
       storybook: 'storybook dev -p 6011',
       'storybook:build': 'storybook build',
-    },
-    peerDependenciesMeta: {
-      effect: {
-        optional: true,
-      },
     },
   } satisfies PackageJsonInputData,
   workspaceDeps,

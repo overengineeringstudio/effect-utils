@@ -49,9 +49,5 @@
     "strictNullChecks": false
   },
   "include": ["src/**/*"],
-  "references": [
-    {
-      "path": "../utils"
-    }
-  ]
+  "references": []
 }

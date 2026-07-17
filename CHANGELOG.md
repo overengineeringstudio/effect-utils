@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **react-inspector / Effect 4**: migrate schema inspection, Lineage annotations,
+  and Storybook fixtures to Effect 4. The package now consumes the application's
+  Effect 4 instance through a peer dependency instead of bundling a private
+  Effect runtime, preventing cross-major schema AST crashes in LiveStore
+  Devtools.
 - **ci-tools / Vercel**: add first-class production-domain support to the shared
   Vercel deploy path. `ci-tools deploy vercel --production-domain <host>` now
   aliases production deployments to canonical custom domains, reports those

@@ -34,8 +34,8 @@ const UserSchema = Schema.Struct({
   id: Schema.Number,
   name: Schema.String,
   email: Schema.String,
-  createdAt: Schema.DateFromSelf,
-}).annotations({
+  createdAt: Schema.Date,
+}).annotate({
   identifier: 'User',
   title: 'User',
 })
@@ -55,7 +55,7 @@ export const BasicSchemaWithTitle = {
 }
 
 /** Product schema with pretty print annotation */
-const PriceSchema = Schema.Number.annotations({
+const PriceSchema = Schema.Number.annotate({
   identifier: 'Price',
   pretty: (value) => `$${(value as number).toFixed(2)}`,
 })
@@ -65,7 +65,7 @@ const ProductSchema = Schema.Struct({
   name: Schema.String,
   price: PriceSchema,
   quantity: Schema.Number,
-}).annotations({
+}).annotate({
   identifier: 'Product',
   title: 'Product',
 })
@@ -92,7 +92,7 @@ const AddressSchema = Schema.Struct({
   city: Schema.String,
   country: Schema.String,
   zip: Schema.String,
-}).annotations({
+}).annotate({
   identifier: 'Address',
   title: 'Address',
 })
@@ -102,7 +102,7 @@ const PersonSchema = Schema.Struct({
   id: Schema.Number,
   name: Schema.String,
   address: AddressSchema,
-}).annotations({
+}).annotate({
   identifier: 'Person',
   title: 'Person',
 })
@@ -126,7 +126,7 @@ export const NestedSchemaWithAnnotations = {
 }
 
 /** Temperature schema with pretty print for formatting */
-const TemperatureSchema = Schema.Number.annotations({
+const TemperatureSchema = Schema.Number.annotate({
   identifier: 'Temperature',
   pretty: (value) => `${value}°C`,
 })
@@ -135,11 +135,11 @@ const TemperatureSchema = Schema.Number.annotations({
 const WeatherReportSchema = Schema.Struct({
   location: Schema.String,
   temperature: TemperatureSchema,
-  humidity: Schema.Number.annotations({
+  humidity: Schema.Number.annotate({
     pretty: (value) => `${value}%`,
   }),
   conditions: Schema.String,
-}).annotations({
+}).annotate({
   identifier: 'WeatherReport',
   title: 'Weather Report',
 })
@@ -161,7 +161,7 @@ export const PrettyPrintForMultipleFields = {
 }
 
 /** Array of users example */
-const UsersArraySchema = Schema.Array(UserSchema).annotations({
+const UsersArraySchema = Schema.Array(UserSchema).annotate({
   identifier: 'Users',
   title: 'Users',
 })
@@ -200,7 +200,7 @@ export const WithoutSchema = {
 }
 
 /** Order schema with complex formatting */
-const MoneySchema = Schema.Number.annotations({
+const MoneySchema = Schema.Number.annotate({
   identifier: 'Money',
   pretty: (value) => {
     const num = value as number
@@ -216,7 +216,7 @@ const OrderItemSchema = Schema.Struct({
   name: Schema.String,
   price: MoneySchema,
   quantity: Schema.Number,
-}).annotations({
+}).annotate({
   identifier: 'OrderItem',
   title: 'Order Item',
 })
@@ -229,7 +229,7 @@ const OrderSchema = Schema.Struct({
   tax: MoneySchema,
   total: MoneySchema,
   status: Schema.String,
-}).annotations({
+}).annotate({
   identifier: 'Order',
   title: 'Order',
 })
@@ -255,12 +255,12 @@ export const ComplexOrderExample = {
 }
 
 /** Enum-like union type example */
-const StatusSchema = Schema.Union(
+const StatusSchema = Schema.Union([
   Schema.Literal('pending'),
   Schema.Literal('processing'),
   Schema.Literal('completed'),
   Schema.Literal('cancelled'),
-).annotations({
+]).annotate({
   identifier: 'OrderStatus',
   title: 'Order Status',
 })
@@ -269,7 +269,7 @@ const TaskSchema = Schema.Struct({
   id: Schema.Number,
   title: Schema.String,
   status: StatusSchema,
-  priority: Schema.Number.annotations({
+  priority: Schema.Number.annotate({
     pretty: (value) => {
       const num = value as number
       if (num >= 8) return 'High'
@@ -277,7 +277,7 @@ const TaskSchema = Schema.Struct({
       return 'Low'
     },
   }),
-}).annotations({
+}).annotate({
   identifier: 'Task',
   title: 'Task',
 })
@@ -300,7 +300,7 @@ export const TaskWithPriorityFormatting = {
 const PointSchema = Schema.Struct({
   x: Schema.Number,
   y: Schema.Number,
-}).annotations({
+}).annotate({
   identifier: 'Point',
   title: 'Point',
   pretty: (value) => {
@@ -345,38 +345,38 @@ export const UsingSchemaProviderDirectly = {
 
 /** Schema with description annotations - hover over fields to see tooltips */
 const DocumentedUserSchema = Schema.Struct({
-  id: Schema.Number.annotations({
+  id: Schema.Number.annotate({
     description: 'Unique identifier for the user in the database',
   }),
-  name: Schema.String.annotations({
+  name: Schema.String.annotate({
     description: 'Full legal name of the user',
   }),
-  email: Schema.String.annotations({
+  email: Schema.String.annotate({
     description: 'Primary email address used for authentication and notifications',
   }),
-  role: Schema.Union(
+  role: Schema.Union([
     Schema.Literal('admin'),
     Schema.Literal('moderator'),
     Schema.Literal('user'),
-  ).annotations({
+  ]).annotate({
     description: 'Access level determining permissions in the system',
   }),
   preferences: Schema.Struct({
-    theme: Schema.Union(Schema.Literal('light'), Schema.Literal('dark')).annotations({
+    theme: Schema.Union([Schema.Literal('light'), Schema.Literal('dark')]).annotate({
       description: 'UI color scheme preference',
     }),
-    notifications: Schema.Boolean.annotations({
+    notifications: Schema.Boolean.annotate({
       description: 'Whether to receive email notifications',
     }),
-    language: Schema.String.annotations({
+    language: Schema.String.annotate({
       description: 'Preferred language code (e.g., en-US, de-DE)',
     }),
-  }).annotations({
+  }).annotate({
     identifier: 'UserPreferences',
     title: 'User Preferences',
     description: 'User-configurable settings for the application',
   }),
-}).annotations({
+}).annotate({
   identifier: 'DocumentedUser',
   title: 'User',
   description: 'A registered user in the system with authentication credentials and preferences',
@@ -415,7 +415,7 @@ export const SchemaWithDescriptionTooltips = {
 
 /** API Response schema with detailed field descriptions */
 const ApiResponseSchema = Schema.Struct({
-  status: Schema.Number.annotations({
+  status: Schema.Number.annotate({
     description: 'HTTP status code of the response (e.g., 200, 404, 500)',
     pretty: (value) => {
       const code = value as number
@@ -427,44 +427,44 @@ const ApiResponseSchema = Schema.Struct({
   data: Schema.Struct({
     items: Schema.Array(
       Schema.Struct({
-        id: Schema.String.annotations({
+        id: Schema.String.annotate({
           description: 'UUID v4 identifier',
         }),
-        value: Schema.Number.annotations({
+        value: Schema.Number.annotate({
           description: 'Numeric value in base units',
           pretty: (v) => `${v} units`,
         }),
-      }).annotations({
+      }).annotate({
         identifier: 'DataItem',
         title: 'Data Item',
         description: 'Individual data record from the API',
       }),
-    ).annotations({
+    ).annotate({
       description: 'Array of data items returned by the query',
     }),
-    total: Schema.Number.annotations({
+    total: Schema.Number.annotate({
       description:
         'Total count of items matching the query (may exceed items.length due to pagination)',
     }),
-  }).annotations({
+  }).annotate({
     identifier: 'ResponseData',
     title: 'Response Data',
     description: 'Payload containing the requested data',
   }),
   meta: Schema.Struct({
-    requestId: Schema.String.annotations({
+    requestId: Schema.String.annotate({
       description: 'Unique identifier for tracing this request through logs',
     }),
-    duration: Schema.Number.annotations({
+    duration: Schema.Number.annotate({
       description: 'Server-side processing time in milliseconds',
       pretty: (v) => `${v}ms`,
     }),
-  }).annotations({
+  }).annotate({
     identifier: 'ResponseMeta',
     title: 'Metadata',
     description: 'Request metadata for debugging and monitoring',
   }),
-}).annotations({
+}).annotate({
   identifier: 'ApiResponse',
   title: 'API Response',
   description: 'Standard response envelope for all API endpoints',
@@ -541,17 +541,20 @@ const Hint: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 
 /** Refinement-driven constraints (NonEmpty + max length, Int + Between). */
 const UserHandleSchema = Schema.String.pipe(
-  Schema.nonEmptyString({ message: () => 'handle must not be empty' }),
-  Schema.maxLength(20),
-  Schema.pattern(/^[a-z0-9_]+$/i),
-).annotations({
+  Schema.check(Schema.isMinLength(1, { message: 'handle must not be empty' })),
+  Schema.check(Schema.isMaxLength(20)),
+  Schema.check(Schema.isPattern(/^[a-z0-9_]+$/i)),
+).annotate({
   identifier: 'UserHandle',
   title: 'Handle',
   description: 'Unique short alias used in URLs and @mentions',
   examples: ['alice', 'bob_42'],
 })
 
-const AgeSchema = Schema.Number.pipe(Schema.int(), Schema.between(0, 150)).annotations({
+const AgeSchema = Schema.Number.pipe(
+  Schema.check(Schema.isInt()),
+  Schema.check(Schema.isBetween({ minimum: 0, maximum: 150 })),
+).annotate({
   identifier: 'Age',
   title: 'Age',
   description: 'Age in whole years',
@@ -559,37 +562,39 @@ const AgeSchema = Schema.Number.pipe(Schema.int(), Schema.between(0, 150)).annot
   default: 0,
 })
 
-const RoleSchema = Schema.Union(
+const RoleSchema = Schema.Union([
   Schema.Literal('owner'),
   Schema.Literal('admin'),
   Schema.Literal('member'),
   Schema.Literal('guest'),
-).annotations({
+]).annotate({
   identifier: 'Role',
   title: 'Role',
   description: 'Access tier within the workspace',
   default: 'member',
 })
 
-const PrioritySchema = Schema.Enums({
+const PrioritySchema = Schema.Enum({
   Low: 0,
   Medium: 1,
   High: 2,
   Critical: 3,
-} as const).annotations({
+} as const).annotate({
   identifier: 'Priority',
   title: 'Priority',
   description: 'Numeric priority bucket',
 })
 
-const EmailSchema = Schema.String.pipe(Schema.pattern(/^[^@\s]+@[^@\s]+\.[^@\s]+$/)).annotations({
+const EmailSchema = Schema.String.pipe(
+  Schema.check(Schema.isPattern(/^[^@\s]+@[^@\s]+\.[^@\s]+$/)),
+).annotate({
   identifier: 'Email',
   title: 'Email',
   description: 'Primary contact email; verified at signup',
   examples: ['alice@example.com'],
 })
 
-const MoneyV2Schema = Schema.Number.annotations({
+const MoneyV2Schema = Schema.Number.annotate({
   identifier: 'Money',
   title: 'Money (USD)',
   description: 'Currency amount in US dollars',
@@ -606,10 +611,10 @@ const ShowcaseUserSchema = Schema.Struct({
   role: RoleSchema,
   priority: PrioritySchema,
   balance: MoneyV2Schema,
-  bio: Schema.String.pipe(Schema.maxLength(280)).annotations({
+  bio: Schema.String.pipe(Schema.check(Schema.isMaxLength(280))).annotate({
     description: 'Free-form profile bio. Limited to a single tweet.',
   }),
-}).annotations({
+}).annotate({
   identifier: 'ShowcaseUser',
   title: 'Showcase User',
   description: 'A user record that exercises every schema annotation kind the tooltip understands.',
@@ -690,8 +695,8 @@ export const SchemaTooltipKeyboardA11y = {
  * want a wall of values in the tooltip.
  */
 const ManyStatusesSchema = Schema.Union(
-  ...Array.from({ length: 20 }, (_, i) => Schema.Literal(`status_${i}` as const)),
-).annotations({
+  Array.from({ length: 20 }, (_, i) => Schema.Literal(`status_${i}` as const)),
+).annotate({
   identifier: 'ManyStatuses',
   title: 'Status',
   description: 'One of many possible statuses (truncated in tooltip).',
@@ -699,7 +704,7 @@ const ManyStatusesSchema = Schema.Union(
 
 const TruncationDemoSchema = Schema.Struct({
   status: ManyStatusesSchema,
-}).annotations({
+}).annotate({
   identifier: 'TruncationDemo',
   title: 'Truncation Demo',
 })
@@ -728,7 +733,7 @@ export const SchemaTooltipTruncatedPossibleValues = {
  */
 const PlainSchema = Schema.Struct({
   plainField: Schema.String,
-  withDescription: Schema.String.annotations({ description: 'Only this one has a tooltip.' }),
+  withDescription: Schema.String.annotate({ description: 'Only this one has a tooltip.' }),
 })
 
 export const SchemaTooltipMixedAnnotated = {
@@ -754,7 +759,7 @@ export const SchemaTooltipMixedAnnotated = {
 const ItemSchema = Schema.Struct({
   sku: Schema.String,
   qty: Schema.Number,
-}).annotations({
+}).annotate({
   identifier: 'Item',
   title: 'Item',
 })
@@ -763,16 +768,16 @@ const InventorySchema = Schema.Struct({
   /* Anonymous `Schema.Array(Item)` — label becomes `Array<Item>`. */
   defaultItems: Schema.Array(ItemSchema),
   /* Named array — its own identifier wins over the constructed label. */
-  pinnedItems: Schema.Array(ItemSchema).annotations({
+  pinnedItems: Schema.Array(ItemSchema).annotate({
     identifier: 'PinnedItems',
     title: 'Pinned Items',
     description: 'Items pinned to the top of the inventory view.',
   }),
   /* Record with a named value schema → `Record<string, Money>`. */
-  priceOverrides: Schema.Record({ key: Schema.String, value: MoneyV2Schema }),
+  priceOverrides: Schema.Record(Schema.String, MoneyV2Schema),
   /* Fixed tuple of primitives → `[number, number, number]`. */
-  rgb: Schema.Tuple(Schema.Number, Schema.Number, Schema.Number),
-}).annotations({
+  rgb: Schema.Tuple([Schema.Number, Schema.Number, Schema.Number]),
+}).annotate({
   identifier: 'Inventory',
   title: 'Inventory',
 })
@@ -820,12 +825,12 @@ export const ContainerLabels = {
 
 const StockMapSchema = Schema.Struct({
   /* `Map<string, Money>` — runtime is a real Map instance. */
-  pricesByLocation: Schema.MapFromSelf({ key: Schema.String, value: MoneyV2Schema }),
+  pricesByLocation: Schema.ReadonlyMap(Schema.String, MoneyV2Schema),
   /* `Set<Item>` — runtime is a real Set instance. */
-  uniqueItems: Schema.SetFromSelf(ItemSchema),
+  uniqueItems: Schema.ReadonlySet(ItemSchema),
   /* `ReadonlyMap<string, number>` — distinct prefix. */
-  readonlyCounts: Schema.ReadonlyMapFromSelf({ key: Schema.String, value: Schema.Number }),
-}).annotations({
+  readonlyCounts: Schema.ReadonlyMap(Schema.String, Schema.Number),
+}).annotate({
   identifier: 'StockMap',
   title: 'Stock Map',
 })
@@ -845,9 +850,8 @@ const sampleStockMap = {
 /**
  * Map/Set container labels — addresses #686.
  *
- * `Schema.MapFromSelf({ key, value })` renders as `Map<string, Money>(N)` and
- * `Schema.SetFromSelf(Item)` as `Set<Item>(N)`. `Schema.ReadonlyMapFromSelf`
- * keeps the `ReadonlyMap<...>` prefix.
+ * `Schema.ReadonlyMap(key, value)` renders as `ReadonlyMap<string, Money>(N)` and
+ * `Schema.ReadonlySet(Item)` as `ReadonlySet<Item>(N)`.
  */
 export const MapAndSetContainerLabels = {
   render: () => (
@@ -873,7 +877,7 @@ const EventCreatedSchema = Schema.Struct({
   _tag: Schema.Literal('Created'),
   id: Schema.String,
   createdAt: Schema.String,
-}).annotations({
+}).annotate({
   identifier: 'EventCreated',
   title: 'Created Event',
   description: 'A resource was created.',
@@ -883,7 +887,7 @@ const EventUpdatedSchema = Schema.Struct({
   _tag: Schema.Literal('Updated'),
   id: Schema.String,
   changedFields: Schema.Array(Schema.String),
-}).annotations({
+}).annotate({
   identifier: 'EventUpdated',
   title: 'Updated Event',
   description: 'An existing resource was modified.',
@@ -892,18 +896,18 @@ const EventUpdatedSchema = Schema.Struct({
 const EventDeletedSchema = Schema.Struct({
   _tag: Schema.Literal('Deleted'),
   id: Schema.String,
-}).annotations({
+}).annotate({
   identifier: 'EventDeleted',
   title: 'Deleted Event',
   description: 'A resource was removed.',
 })
 
-const EventSchema = Schema.Union(EventCreatedSchema, EventUpdatedSchema, EventDeletedSchema)
+const EventSchema = Schema.Union([EventCreatedSchema, EventUpdatedSchema, EventDeletedSchema])
 
 const AuditEntrySchema = Schema.Struct({
   actor: Schema.String,
   event: EventSchema,
-}).annotations({
+}).annotate({
   identifier: 'AuditEntry',
   title: 'Audit Entry',
 })
@@ -929,7 +933,7 @@ const sampleUpdated = {
 /**
  * Runtime tagged-union narrowing — addresses #686.
  *
- * The `event` field is a `Schema.Union(Created, Updated, Deleted)`. When the
+ * The `event` field is a `Schema.Union([Created, Updated, Deleted])`. When the
  * runtime value carries `_tag: 'Created'`, tooltips, badge, and field
  * annotations narrow to `EventCreated`; same for `'Updated'`.
  */
@@ -977,7 +981,7 @@ const OrderTotalsSchema = Schema.Struct({
     Lineage.freshness({ capturedAt: 'event-time', maxAgeMs: 5_000 }),
     Lineage.foreignKey({ targetSchema: 'Customer', targetField: 'id' }),
   ),
-}).annotations({
+}).annotate({
   identifier: 'OrderTotals',
   title: 'Order Totals',
   description: 'Money breakdown for an order; exercises every lineage kind.',
