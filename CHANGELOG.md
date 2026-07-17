@@ -6,6 +6,14 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **pnpm / dependency identity**: make pnpm the explicit authority for
+  live package dependency edges. Dependency projection and repair may no
+  longer invent nested links by scanning the store or choosing a target by
+  package name; declared compatibility extensions continue through generated
+  `packageExtensions`. Repair now discards the package-manager-owned root and
+  GVS link projections before pnpm rematerializes them, while preserving the
+  shared content-addressed files pool. Record the mixed Effect 3/Effect 4
+  shared-GVS counterexample and add coverage for the supported extension path.
 - **ci-tools / Vercel**: add first-class production-domain support to the shared
   Vercel deploy path. `ci-tools deploy vercel --production-domain <host>` now
   aliases production deployments to canonical custom domains, reports those

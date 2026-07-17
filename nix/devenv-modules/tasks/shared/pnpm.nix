@@ -799,6 +799,12 @@ let
             export PNPM_CONFIG_STORE_DIR="$repair_store_dir"
             export npm_config_store_dir="$repair_store_dir"
             ${runPnpmInstallFn}
+            # pnpm can reuse a corrupt or incomplete GVS package instance even
+            # with --force. Discard the package-manager-owned projections while
+            # retaining the shared content-addressed files pool, then let pnpm
+            # select and materialize every dependency edge again.
+            purge_node_modules node_modules
+            rm -rf "$repair_store_dir/v11/links"
             run_pnpm_install --force
           )
           repaired_roots=$((repaired_roots + 1))

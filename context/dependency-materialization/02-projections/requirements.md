@@ -3,16 +3,16 @@
 ## Context
 
 Projection is deterministic state derived after dependency data exists. It
-includes `node_modules/.bin` entries, workspace package links, and local
-metadata needed for tools to execute against a realized dependency graph.
+includes `node_modules/.bin` entries and local metadata needed for tools to
+execute against a realized dependency graph.
 
 Projection refines DMP-R05 through DMP-R08. Prepared dependency artifacts are
 data; projections are recreated and checked by effect-utils-managed steps.
 
 ## Assumptions
 
-- **A01 Data exists first:** Projection never resolves dependencies. It operates
-  on dependency data already materialized by live pnpm or restored from Nix.
+- **A01 Graph exists first:** The authoritative materializer has completed the
+  dependency graph before projection starts.
 - **A02 No package code:** Projection reads package metadata and filesystem
   state but does not execute package code or lifecycle scripts.
 
@@ -55,3 +55,7 @@ data; projections are recreated and checked by effect-utils-managed steps.
 - **DMP.PROJ-R08 Prepared-deps exclusion:** Prepared dependency FOD validation
   must reject archived `.bin` projections by default.
   Refines: DMP-R05, DMP-R06, DMP-R18.
+- **DMP.PROJ-R09 Dependency-edge non-authority:** Projection must not create,
+  remove, or retarget package dependency edges. It may read the realized graph
+  only to derive projection-owned outputs.
+  Refines: DMP-R11, DMP-R15.

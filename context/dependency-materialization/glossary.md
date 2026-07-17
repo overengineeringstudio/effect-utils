@@ -9,7 +9,12 @@ lifecycle code. Prepared dependency FODs contain dependency data, not live
 package-manager state.
 
 **Projection state:** Deterministic files derived after dependency data exists,
-such as `node_modules/.bin` entries and profile-owned workspace links.
+such as `node_modules/.bin` entries and profile-owned local metadata.
+
+**Package-instance identity:** The opaque identity selected by the authoritative
+materializer for one package dependency edge. It includes resolved version and
+peer context and may also distinguish patches, injected workspace instances,
+platform variants, or other package-manager semantics.
 
 **Dependency materialization profile:** Versioned evidence that names the
 topology, package-manager policy, toolchain inputs, store trait, authorities,

@@ -80,6 +80,28 @@ The implementation may use pnpm GVS, hoisting, or future store traits as the
 path-collapsing primitive, but the profile must declare that trait and the
 doctor must validate it.
 
+### Dependency edge selection authority
+
+pnpm owns dependency-edge selection and realization inside live `node_modules`
+and the selected virtual store. Managed repair discards the package-manager-owned
+root projection and affected virtual-store link projection, then asks pnpm to
+select and materialize the graph again. It preserves the content-addressed files
+pool and never selects or links a replacement target itself.
+
+Missing dependency edges are corrected at a declared authority boundary:
+
+- the consuming package manifest for real runtime dependencies;
+- pnpm `packageExtensions` for a declared package-manager compatibility
+  extension;
+- the generated workspace topology for local source membership.
+
+This distinction is especially important for peer-dependent packages. Two
+store entries with the same package name and version may still represent
+different package-instance identities because of peer context, patches,
+injected workspace copies, or platform selection. A filesystem repair that
+ignores that identity can override a correct pnpm edge with an incompatible
+dependency.
+
 ## CI State
 
 CI jobs use job-local writable pnpm home, store metadata, and projection state

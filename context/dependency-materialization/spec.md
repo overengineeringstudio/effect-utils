@@ -26,7 +26,7 @@ Subsystem specs refine this root model:
 ```text
 dependency-materialization/
   01-live-pnpm/              mutable worktree installs
-  02-projections/            deterministic .bin and workspace projection
+  02-projections/            deterministic executable and metadata projection
   03-nix-prepared-deps/      immutable Nix prepared dependency artifacts
     01-fod-hash-evidence/   cross-system FOD hash evidence
     02-native-node-packages/ native package classification and grafting

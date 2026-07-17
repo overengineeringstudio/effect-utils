@@ -16,7 +16,7 @@ Subsystem requirements refine this root contract:
 - [01-live-pnpm](./01-live-pnpm/requirements.md) defines mutable worktree
   installs and topology ownership.
 - [02-projections](./02-projections/requirements.md) defines deterministic
-  executable and workspace projection.
+  executable and local metadata projection.
 - [03-nix-prepared-deps](./03-nix-prepared-deps/requirements.md) defines
   immutable Nix prepared dependency artifacts.
 - [04-store-authority](./04-store-authority/requirements.md) defines shared
@@ -99,9 +99,14 @@ Subsystem requirements refine this root contract:
 - **DMP-R10 Shared schema:** Live pnpm tasks, Nix prepared dependency artifacts,
   CI jobs, and Buck2 evidence must use the same profile fields when describing
   equivalent dependency work.
-- **DMP-R11 Topology authority:** A profile must name the authoritative
+- **DMP-R11 Topology and edge authority:** A profile must name the authoritative
   workspace topology and install owner. Package-local or sibling-root install
-  state must not become authoritative implicitly.
+  state must not become authoritative implicitly. Only the profile's
+  authoritative materializer may create, remove, or retarget package dependency
+  edges, and every realized edge must preserve its materializer-selected
+  package-instance identity, including resolved version and peer context.
+  Repair may discard derived dependency state and reinvoke the materializer but
+  must not write replacement edges itself.
 
 ### Must preserve correctness under sharing
 

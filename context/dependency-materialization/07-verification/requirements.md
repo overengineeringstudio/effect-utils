@@ -3,9 +3,9 @@
 ## Context
 
 Verification defines the proof, benchmark, and regression architecture for
-dependency materialization. It refines DMP-R16 through DMP-R20 and composes the
-live pnpm, projection, Nix prepared-deps, store-authority, Buck2 evidence, and
-observability subsystems.
+dependency materialization. It refines DMP-R11 and DMP-R16 through DMP-R20 and
+composes the live pnpm, projection, Nix prepared-deps, store-authority, Buck2
+evidence, and observability subsystems.
 
 ## Assumptions
 
@@ -73,3 +73,12 @@ observability subsystems.
   requirement, implemented as a reusable proof or benchmark, recorded as
   pending evidence, or explicitly rejected with rationale.
   Refines: DMP-R20.
+
+### Must prove dependency identity
+
+- **DMP.VER-R11 Dependency-identity proof:** Changes to materialization,
+  projection, or repair behavior must prove that same-name multi-version and
+  distinct peer-context package instances preserve their materializer-selected
+  identities across install order. The proof must include a negative
+  out-of-band edge override that the identity oracle detects.
+  Refines: DMP-R11, DMP.LIVE-R07, DMP.PROJ-R09, DMP-R20.

@@ -60,9 +60,12 @@ dependency graph.
 - **DMP.LIVE-R06 Local source linkage:** Workspace and cross-repo local
   dependencies must resolve to live source when that is the selected topology.
   Refines: DMP-R11.
-- **DMP.LIVE-R07 Dependency truthfulness:** The linker/projection model must not
-  silently make undeclared dependencies valid.
-  Refines: DMP-R15, DMP-R16.
+- **DMP.LIVE-R07 Dependency truthfulness:** Every realized package dependency
+  edge must match the package-instance identity selected by pnpm, including its
+  resolved version and peer context. Projection must not add, remove, or
+  retarget those edges. Repair must discard the owned derived dependency state
+  and reinvoke pnpm rather than link a replacement.
+  Refines: DMP-R11, DMP-R15.
 
 ### Must remain pure and repairable
 

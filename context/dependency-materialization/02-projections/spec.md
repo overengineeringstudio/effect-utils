@@ -22,6 +22,7 @@ This spec defines deterministic projection after dependency data exists:
 | Report Shape            | DMP.PROJ-R07                                                                       |
 | Edge Cases              | DMP.PROJ-R02, DMP.PROJ-R04, DMP.PROJ-R05                                           |
 | Prepared-deps exclusion | DMP.PROJ-R08                                                                       |
+| Dependency authority    | DMP.PROJ-R09                                                                       |
 
 ## Bin Projection
 
@@ -61,6 +62,12 @@ The projector:
 
 The projector does not import package modules, execute package scripts, or call
 pnpm build commands.
+
+Package dependency edges are outside this projector's authority. It must not
+create, remove, or retarget `node_modules/<dependency>` links. It may read the
+realized graph only to derive projector-owned outputs such as `.bin` entries and
+reports. The owning materializer repairs an unhealthy dependency graph before
+projection runs.
 
 ## Conformance Oracle
 
