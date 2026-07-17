@@ -1,4 +1,4 @@
-import type { Schema as S } from 'effect'
+import type { Schema } from 'effect'
 import React, { useMemo } from 'react'
 import type { ComponentProps, FC } from 'react'
 
@@ -31,14 +31,14 @@ export const withSchemaSupport = <TInspector extends FC<any>>(
   deps: SchemaAwareObjectInspectorDeps,
 ): FC<
   ComponentProps<TInspector> & {
-    schema?: S.Schema.AnyNoContext
-    schemas?: S.Schema.AnyNoContext[]
+    schema?: Schema.Top
+    schemas?: Schema.Top[]
   }
 > => {
   const SchemaAwareObjectInspector: FC<
     ComponentProps<TInspector> & {
-      schema?: S.Schema.AnyNoContext
-      schemas?: S.Schema.AnyNoContext[]
+      schema?: Schema.Top
+      schemas?: Schema.Top[]
     }
   > = ({ schema, schemas, nodeRenderer, ...props }) => {
     const schemaNodeRenderer = useMemo(() => createSchemaAwareNodeRenderer(deps), [])
@@ -50,7 +50,7 @@ export const withSchemaSupport = <TInspector extends FC<any>>(
        * Forward `data` as `rootData` so the SchemaProvider can narrow
        * tagged unions at intermediate path segments using the runtime
        * value. Without this, only the leaf union narrows and children
-       * under a `Schema.Union(A, B, C)` field lose their variant schema.
+       * under a `Schema.Union([A, B, C])` field lose their variant schema.
        */
       const rootData = (props as { data?: unknown }).data
       return (
@@ -74,14 +74,14 @@ export const withSchemaContext = <TInspector extends FC<any>>(
   ObjectInspector: TInspector,
 ): FC<
   ComponentProps<TInspector> & {
-    schema?: S.Schema.AnyNoContext
-    schemas?: S.Schema.AnyNoContext[]
+    schema?: Schema.Top
+    schemas?: Schema.Top[]
   }
 > => {
   const SchemaAwareObjectInspector: FC<
     ComponentProps<TInspector> & {
-      schema?: S.Schema.AnyNoContext
-      schemas?: S.Schema.AnyNoContext[]
+      schema?: Schema.Top
+      schemas?: Schema.Top[]
     }
   > = ({ schema, schemas, ...props }) => {
     const inspector = <ObjectInspector {...(props as ComponentProps<TInspector>)} />

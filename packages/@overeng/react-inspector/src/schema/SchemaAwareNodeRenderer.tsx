@@ -76,7 +76,7 @@ export const createSchemaAwareNodeRenderer = ({
        * For arrays whose schema describes the element type, render
        * `Array<Element>(N)` instead of the default `Array(N)`. The array
        * schema's own `title`/`identifier` (e.g. `Schema.Array(Item)
-       * .annotations({ identifier: 'OrderItems' })`) wins over the
+       * .annotate({ identifier: 'OrderItems' })`) wins over the
        * constructed `Array<Element>` label.
        */
       const schemaDisplayName = schemaCtx.getDisplayName()
@@ -95,7 +95,7 @@ export const createSchemaAwareNodeRenderer = ({
 
     /*
      * Map/Set runtime values: when the schema describes the container (e.g.
-     * `Schema.Map({ key, value })` -> `Map<string, Money>`), surface the
+     * `Schema.ReadonlyMap(key, value)` -> `ReadonlyMap<string, Money>`), surface the
      * schema label in the type-badge slot followed by the runtime size.
      * Mirrors the array branch but reads `.size` instead of `.length`.
      */
