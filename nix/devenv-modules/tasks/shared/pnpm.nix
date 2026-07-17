@@ -25,8 +25,8 @@
   cleanAfter ? [ ],
   resetLockFilesAfter ? [ ],
   # Real derivation/path backing the `pnpm` guard. When set, the guard owns
-  # `bin/pnpm` and exec's this by absolute path under passthrough, so consumers
-  # do not need to list the real package with `lib.lowPrio`.
+  # `bin/pnpm` and exec's this by absolute path under passthrough (see
+  # cli-guard.nix).
   pnpmPkg ? null,
 }:
 {
