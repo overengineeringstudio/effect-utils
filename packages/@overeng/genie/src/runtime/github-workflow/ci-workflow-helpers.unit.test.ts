@@ -155,14 +155,10 @@ const validateNixStoreStepSource = extractSourceBlock(
   '/**\n * Upload diagnostics captured by `validateNixStoreStep` as a CI artifact.',
 )
 
-const resolveDevenvFnScript = extractSourceBlock(
-  generatedCiWorkflowYamlSource,
-  '          DEVENV_GC_ROOT_DIR="${RUNNER_TEMP:-/tmp}/genie-nix-gc-roots"',
-  '\n\n          # Temporary: capture diagnostics dir',
+const resolveDevenvFnScript = readFileSync(
+  new URL(['../../../../../../genie/ci-scripts', 'resolve-devenv.sh'].join('/'), import.meta.url),
+  'utf8',
 )
-  .split('\n')
-  .map((line) => line.replace(/^ {10}/, ''))
-  .join('\n')
 
 const applyMegarepoLockStepSource = extractSourceBlock(
   ciWorkflowSource,
@@ -515,6 +511,13 @@ printf '%s\\n' "$NIX_OUTPUT"
     )
     expect(validateNixStoreStepSource).toContain('[ ! "$DEVENV_GC_ROOT" -ef "$DEVENV_OUT" ]')
     expect(validateNixStoreStepSource).not.toContain('readlink -e')
+    expect(validateNixStoreStepSource).toContain(
+      '. ${shellSingleQuote(`${preparedCiRuntimeScriptsDir}/resolve-devenv.sh`)}',
+    )
+    expect(generatedCiWorkflowYamlSource).toContain(
+      ". '${{ runner.temp }}/genie-ci-scripts/resolve-devenv.sh'",
+    )
+    expect(generatedCiWorkflowYamlSource).not.toContain('resolve_devenv_once()')
   })
 
   it('resolves the locked megarepo CLI through a git flake URL', () => {

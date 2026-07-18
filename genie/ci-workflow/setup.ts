@@ -7,7 +7,6 @@ import {
   defaultCiRuntimeScriptsDir,
   jobLocalCiDiagnosticsDir,
   nixBinaryCachesExtraConf,
-  resolveDevenvFnScript,
   resolveDevenvRevScript,
   linuxX64Runner,
   runDevenvTasksBefore,
@@ -990,7 +989,7 @@ export const validateNixStoreStep = {
   name: 'Resolve devenv',
   run: `${resolveDevenvRevScript}
 
-${resolveDevenvFnScript}
+. ${shellSingleQuote(`${preparedCiRuntimeScriptsDir}/resolve-devenv.sh`)}
 
 # Temporary: capture diagnostics dir for #272 root-cause analysis.
 DIAG_ROOT="${'${RUNNER_TEMP:-/tmp}'}/nix-store-diagnostics-${'${GITHUB_JOB:-job}'}-${'${RUNNER_OS:-unknown}'}-${'${GITHUB_RUN_ATTEMPT:-0}'}"
