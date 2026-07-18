@@ -209,12 +209,12 @@ sources do not carry a second per-target witness file.
 
 ## Storage Ownership And Authorities
 
-| State                                     | Scope                         | Mutation authority       |
-| ----------------------------------------- | ----------------------------- | ------------------------ |
-| live dependency graph and virtual store   | one Materialization Root      | that root's pnpm install |
-| live executable projection                | one Materialization Root      | pure projection task     |
-| pnpm Store Cache                          | host-local or CI-job-local    | pnpm concurrency control |
-| prepared dependency data                  | immutable Nix store output    | Nix build                |
+| State                                   | Scope                      | Mutation authority       |
+| --------------------------------------- | -------------------------- | ------------------------ |
+| live dependency graph and virtual store | one Materialization Root   | that root's pnpm install |
+| live executable projection              | one Materialization Root   | pure projection task     |
+| pnpm Store Cache                        | host-local or CI-job-local | pnpm concurrency control |
+| prepared dependency data                | immutable Nix store output | Nix build                |
 
 The local-development Store Cache is shared only across mutually trusted roots
 owned by the same user. effect-utils exposes no Materialization-Root repair or

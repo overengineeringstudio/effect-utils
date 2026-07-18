@@ -91,12 +91,15 @@ let
 
   flock = "${pkgs.flock}/bin/flock";
   installFlagsString = lib.escapeShellArgs installFlags;
-  pureInstallFlags = [
-    (if frozenInCi then "--frozen-lockfile" else "--no-frozen-lockfile")
-  ]
-  ++ pnpmInstallPolicy.liveInstallPolicyFlags;
-  liveInstallPolicyFlagsString = lib.concatStringsSep " " pnpmInstallPolicy.liveInstallPolicyFlags;
-  pureInstallFlagsString = lib.concatStringsSep " " pureInstallFlags;
+  liveRealizationPolicyFlags = installFlags ++ pnpmInstallPolicy.liveInstallPolicyFlags;
+  liveRealizationPolicyFlagsString = lib.escapeShellArgs liveRealizationPolicyFlags;
+  pureInstallFlags =
+    installFlags
+    ++ [
+      (if frozenInCi then "--frozen-lockfile" else "--no-frozen-lockfile")
+    ]
+    ++ pnpmInstallPolicy.liveInstallPolicyFlags;
+  pureInstallFlagsString = lib.escapeShellArgs pureInstallFlags;
 
   packageNameToPath = builtins.listToAttrs (
     builtins.filter (x: x != null) (
@@ -171,6 +174,36 @@ let
       ${lib.escapeShellArg workspaceRootAbs} \
       ${lib.escapeShellArg legacyPnpmStoreDir} \
       ${lib.boolToString pkgs.stdenv.hostPlatform.isLinux}
+  '';
+  managedPnpmMutationPrologue = ''
+    ${loadPnpmTaskHelpersFn}
+    ${ensureLocalPnpmHomeFn}
+    ${configurePnpmStorageFn}
+    mkdir -p ${lib.escapeShellArg cacheRoot}
+
+    lockfile=${lib.escapeShellArg "${cacheRoot}/pnpm-install.lock"}
+    exec 200>"$lockfile"
+    if ! ${flock} -w 600 200; then
+      echo "[pnpm] Materialization-root mutation lock timeout after 600s: $lockfile" >&2
+      echo "[pnpm] Another managed pnpm mutation may be stuck" >&2
+      exit 1
+    fi
+
+    pnpm_home_lockfile="''${PNPM_HOME:-${cacheRoot}}/.effect-utils-pnpm-install.lock"
+    mkdir -p "$(dirname "$pnpm_home_lockfile")"
+    exec 201>"$pnpm_home_lockfile"
+    if ! ${flock} -w 600 201; then
+      echo "[pnpm] PNPM_HOME mutation lock timeout after 600s: $pnpm_home_lockfile" >&2
+      echo "[pnpm] Another managed pnpm mutation sharing this PNPM_HOME may be stuck" >&2
+      exit 1
+    fi
+
+    migrate_legacy_pnpm_store \
+      ${lib.escapeShellArg legacyPnpmStoreDir} \
+      "$npm_config_store_dir" \
+      node_modules \
+      ${nodeModulesPaths}
+    assert_pnpm_storage_capacity "$npm_config_store_dir"
   '';
 
   computeWorkspaceStateHash = ''
@@ -262,7 +295,6 @@ let
       install_args=(
         install
         "$@"
-        ${installFlagsString}
         ${pureInstallFlagsString}
         "--config.package-import-method=$PNPM_PACKAGE_IMPORT_METHOD"
         "--config.store-dir=$npm_config_store_dir"
@@ -368,40 +400,13 @@ let
       exec = trace.exec installTaskName ''
         set -euo pipefail
         cd ${lib.escapeShellArg workspaceRootAbs}
-        ${loadPnpmTaskHelpersFn}
-        ${ensureLocalPnpmHomeFn}
-        ${configurePnpmStorageFn}
-        mkdir -p "${cacheRoot}"
+        ${managedPnpmMutationPrologue}
         # This cache tracks the effective install state, not just workspace
         # manifests. The virtual dependency graph itself is root-local.
         hash_file="${cacheRoot}/install-state.hash"
         projection_hash_file="${cacheRoot}/projection-state.hash"
         contract_state_file="${cacheRoot}/pnpm-install-contract.json"
         storage_state_file="${cacheRoot}/pnpm-storage-state"
-
-        lockfile="${cacheRoot}/pnpm-install.lock"
-        exec 200>"$lockfile"
-        if ! ${flock} -w 600 200; then
-          echo "[pnpm] Install lock timeout after 600s: $lockfile" >&2
-          echo "[pnpm] Another pnpm install may be stuck; try: devenv tasks run pnpm:clean && devenv tasks run pnpm:install" >&2
-          exit 1
-        fi
-
-        pnpm_home_lockfile="''${PNPM_HOME:-${cacheRoot}}/.effect-utils-pnpm-install.lock"
-        mkdir -p "$(dirname "$pnpm_home_lockfile")"
-        exec 201>"$pnpm_home_lockfile"
-        if ! ${flock} -w 600 201; then
-          echo "[pnpm] PNPM_HOME lock timeout after 600s: $pnpm_home_lockfile" >&2
-          echo "[pnpm] Another pnpm install sharing this PNPM_HOME may be stuck" >&2
-          exit 1
-        fi
-
-        migrate_legacy_pnpm_store \
-          ${lib.escapeShellArg legacyPnpmStoreDir} \
-          "$npm_config_store_dir" \
-          node_modules \
-          ${nodeModulesPaths}
-        assert_pnpm_storage_capacity "$npm_config_store_dir"
 
         ${computeWorkspaceStateHash}
         ${computeInstallStateHashFn}
@@ -530,10 +535,10 @@ let
       exec = trace.exec updateTaskName ''
         set -euo pipefail
         cd ${lib.escapeShellArg workspaceRootAbs}
-        ${loadPnpmTaskHelpersFn}
-        ${ensureLocalPnpmHomeFn}
-        ${configurePnpmStorageFn}
-        pnpm install --fix-lockfile ${liveInstallPolicyFlagsString} --config.store-dir="$npm_config_store_dir"
+        ${managedPnpmMutationPrologue}
+        pnpm install --fix-lockfile ${liveRealizationPolicyFlagsString} \
+          --config.package-import-method="$PNPM_PACKAGE_IMPORT_METHOD" \
+          --config.store-dir="$npm_config_store_dir"
         echo "Repo-root lockfile updated. Refresh Nix FOD hashes with the repo workflow."
       '';
     };
@@ -549,10 +554,10 @@ let
       exec = trace.exec dedupeTaskName ''
         set -euo pipefail
         cd ${lib.escapeShellArg workspaceRootAbs}
-        ${loadPnpmTaskHelpersFn}
-        ${ensureLocalPnpmHomeFn}
-        ${configurePnpmStorageFn}
-        pnpm dedupe ${liveInstallPolicyFlagsString} --config.store-dir="$npm_config_store_dir"
+        ${managedPnpmMutationPrologue}
+        pnpm dedupe ${liveRealizationPolicyFlagsString} \
+          --config.package-import-method="$PNPM_PACKAGE_IMPORT_METHOD" \
+          --config.store-dir="$npm_config_store_dir"
         echo "Lockfile deduped. Re-run genie:check to verify the catalog duplicate gate; bless any upstream-locked residuals via catalogDuplicateExceptions."
       '';
     };

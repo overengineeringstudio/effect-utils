@@ -175,6 +175,40 @@ export interface PnpmInstallStorageContractV2 {
   }
 }
 
+/** Shared live/Nix storage authority for every megarepo install contract. */
+export const pnpmInstallStorageContractV2 = {
+  storeContract: {
+    owner: 'pnpm',
+    layoutVersion: 'v11',
+    localDevelopment: {
+      scope: 'host-user',
+      trustBoundary: 'same-os-user',
+      defaultPath: '~/.local/share/pnpm/store-shared-v1',
+      pathOverrideEnvironmentVariable: 'PNPM_SHARED_STORE_DIR',
+      contentAddressedFiles: 'shared',
+      derivedIndex: 'shared-pnpm-owned',
+    },
+    ci: {
+      scope: 'job',
+    },
+    virtualStore: {
+      scope: 'materialization-root',
+      path: 'node_modules/.pnpm',
+      global: false,
+    },
+  },
+  packageImportMethod: {
+    live: {
+      method: 'auto',
+      owner: 'pnpm',
+      linuxSameDeviceRequired: true,
+    },
+    nixPreparedDependencies: {
+      scope: 'independent-builder-policy',
+    },
+  },
+} satisfies PnpmInstallStorageContractV2
+
 // =============================================================================
 // Shared label catalog (consumed by per-repo `.github/labels.json.genie.ts`)
 // =============================================================================
@@ -382,8 +416,9 @@ const deniedLifecycleBuilds = Object.fromEntries(
  * root workspace should spread this so policy stays consistent.
  *
  * The virtual dependency graph is always root-local. Cross-root reuse is
- * limited to immutable content bytes; composed runtime identity is established
- * by the composed workspace topology, never by shared writable graph state.
+ * limited to pnpm's Store Cache inside one same-user trust boundary; composed
+ * runtime identity is established by the composed workspace topology, never by
+ * shared writable graph state.
  */
 export const commonPnpmPolicySettings = {
   dedupePeerDependents: true as const,
@@ -399,6 +434,8 @@ export const commonPnpmPolicySettings = {
       vitest: '>=4.0.0',
     },
   },
+  // Generator fallback and CI-local path. Managed live installs override this
+  // with pnpmInstallStorageContractV2's host-user Store Cache authority.
   storeDir: '.devenv/pnpm-store-pure-v1',
   packageImportMethod: 'auto' as const,
   sideEffectsCache: false as const,

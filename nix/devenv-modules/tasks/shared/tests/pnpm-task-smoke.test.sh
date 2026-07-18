@@ -446,11 +446,19 @@ echo "Test 2c: lockfile mutation entrypoints preserve the live topology policy"
   export HOME="$tmpdir/home"
   export PNPM_HOME="$workspace/.pnpm-home-a"
   : > "$tmpdir/pnpm.log"
+  : > "$tmpdir/flock.log"
   bash "$tmpdir/pnpm-update.exec.sh"
   bash "$tmpdir/pnpm-dedupe.exec.sh"
   policy_flags="--config.confirmModulesPurge=false --ignore-scripts --config.side-effects-cache=false --config.verify-store-integrity=true --config.strict-store-pkg-content-check=true --child-concurrency=1 --network-concurrency=4 --config.enable-global-virtual-store=false --config.virtual-store-dir=node_modules/.pnpm --pm-on-fail=ignore"
-  grep -qxF "install --fix-lockfile $policy_flags --config.store-dir=$tmpdir/home/.local/share/pnpm/store-shared-v1" "$tmpdir/pnpm.log"
-  grep -qxF "dedupe $policy_flags --config.store-dir=$tmpdir/home/.local/share/pnpm/store-shared-v1" "$tmpdir/pnpm.log"
+  grep -qxF "install --fix-lockfile $policy_flags --config.package-import-method=auto --config.store-dir=$tmpdir/home/.local/share/pnpm/store-shared-v1" "$tmpdir/pnpm.log"
+  grep -qxF "dedupe $policy_flags --config.package-import-method=auto --config.store-dir=$tmpdir/home/.local/share/pnpm/store-shared-v1" "$tmpdir/pnpm.log"
+  test "$(grep -cFx 'flock -w 600 200' "$tmpdir/flock.log")" -eq 2
+  test "$(grep -cFx 'flock -w 600 201' "$tmpdir/flock.log")" -eq 2
+  test "$(wc -l < "$tmpdir/flock.log")" -eq 4
+  grep -qF "migrate_legacy_pnpm_store" "$tmpdir/pnpm-update.exec.sh"
+  grep -qF "assert_pnpm_storage_capacity" "$tmpdir/pnpm-update.exec.sh"
+  grep -qF "migrate_legacy_pnpm_store" "$tmpdir/pnpm-dedupe.exec.sh"
+  grep -qF "assert_pnpm_storage_capacity" "$tmpdir/pnpm-dedupe.exec.sh"
 )
 
 echo "Test 3: status hits after install with the same root-local virtual topology"

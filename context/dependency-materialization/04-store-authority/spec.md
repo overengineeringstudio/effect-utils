@@ -14,14 +14,14 @@ repair, or host Store Cache garbage collection.
 
 ## Requirement Trace
 
-| Section              | Requirements                                           |
-| -------------------- | ------------------------------------------------------ |
-| Ownership model      | DMP.STORE-R01, DMP.STORE-R02, DMP.STORE-R03            |
-| Placement            | DMP.STORE-R03, DMP.STORE-R11, DMP.STORE-R12            |
-| Import policy        | DMP.STORE-R09, DMP.STORE-R10                            |
-| Concurrency          | DMP.STORE-R08                                           |
-| Health and repair    | DMP.STORE-R04, DMP.STORE-R05, DMP.STORE-R06, DMP.STORE-R07 |
-| Benchmark evidence   | DMP.STORE-R13, DMP.STORE-R14                            |
+| Section            | Requirements                                               |
+| ------------------ | ---------------------------------------------------------- |
+| Ownership model    | DMP.STORE-R01, DMP.STORE-R02, DMP.STORE-R03                |
+| Placement          | DMP.STORE-R03, DMP.STORE-R11, DMP.STORE-R12                |
+| Import policy      | DMP.STORE-R09, DMP.STORE-R10                               |
+| Concurrency        | DMP.STORE-R08                                              |
+| Health and repair  | DMP.STORE-R04, DMP.STORE-R05, DMP.STORE-R06, DMP.STORE-R07 |
+| Benchmark evidence | DMP.STORE-R13, DMP.STORE-R14                               |
 
 ## Ownership Model
 
@@ -77,12 +77,14 @@ package lifecycle mutation over imported dependency files.
 ## Concurrency
 
 pnpm owns concurrency inside its Store Cache. Materialization-root locks remain
-independent and protect each root's graph and projection. Installation therefore
-composes as:
+independent and protect each root's graph and projection. Every managed graph
+mutation (`install`, lockfile update, or deduplication) therefore composes as:
 
 ```text
-Materialization-Root lock
-  -> pnpm install
+Materialization-Root lock + package-manager-home lock
+  -> legacy-state reclamation
+  -> capacity gate
+  -> pnpm graph mutation under one realization policy
   -> root-local projection
 ```
 

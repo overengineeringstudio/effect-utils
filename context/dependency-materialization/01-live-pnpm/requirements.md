@@ -95,5 +95,8 @@ parallel Dependency Graph.
 - **DMP.LIVE-R12 Mutation parity:** Every managed pnpm entrypoint that installs,
   updates, or deduplicates an authoritative lockfile must preserve the same
   root-local virtual topology, lifecycle, integrity, and Store Cache policy.
-  Lockfile mutation must not silently select a second realization model.
+  Each entrypoint must acquire the same Materialization Root and package-
+  manager-home locks, reclaim legacy state before its capacity gate, and pass
+  the same realization-policy arguments. Lockfile mutation must not silently
+  select a second realization or concurrency model.
   Refines: DMP-R02, DMP-R11, DMP-R12.

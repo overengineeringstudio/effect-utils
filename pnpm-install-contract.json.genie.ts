@@ -1,6 +1,6 @@
 import {
+  pnpmInstallStorageContractV2 as storage,
   projectionArtifact,
-  type PnpmInstallStorageContractV2,
 } from './genie/external.ts'
 import rootPackageJson from './package.json.genie.ts'
 import rootPnpmWorkspaceYaml from './pnpm-workspace.yaml.genie.ts'
@@ -10,39 +10,6 @@ const pnpmVersion = packageManager.startsWith('pnpm@')
   ? packageManager.slice('pnpm@'.length)
   : packageManager
 const workspaceData = rootPnpmWorkspaceYaml.data
-const storage = {
-  storeContract: {
-    owner: 'pnpm',
-    layoutVersion: 'v11',
-    localDevelopment: {
-      scope: 'host-user',
-      trustBoundary: 'same-os-user',
-      defaultPath: '~/.local/share/pnpm/store-shared-v1',
-      pathOverrideEnvironmentVariable: 'PNPM_SHARED_STORE_DIR',
-      contentAddressedFiles: 'shared',
-      derivedIndex: 'shared-pnpm-owned',
-    },
-    ci: {
-      scope: 'job',
-    },
-    virtualStore: {
-      scope: 'materialization-root',
-      path: 'node_modules/.pnpm',
-      global: false,
-    },
-  },
-  packageImportMethod: {
-    live: {
-      method: 'auto',
-      owner: 'pnpm',
-      linuxSameDeviceRequired: true,
-    },
-    nixPreparedDependencies: {
-      scope: 'independent-builder-policy',
-    },
-  },
-} satisfies PnpmInstallStorageContractV2
-
 export default projectionArtifact.json({
   schemaVersion: 2,
   data: {
