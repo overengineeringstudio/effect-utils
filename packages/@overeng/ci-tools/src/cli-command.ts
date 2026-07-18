@@ -1,3 +1,5 @@
+/* oxlint-disable overeng/exports-first -- Public command trees must be assembled after their private leaf commands are initialized. */
+
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 
@@ -25,13 +27,6 @@ const nonEmptyTextOption = (opts: { readonly name: string; readonly description:
 const optionalTextOption = (opts: { readonly name: string; readonly description: string }) =>
   Options.text(opts.name).pipe(Options.withDescription(opts.description), Options.withDefault(''))
 
-const expectString = (opts: { readonly value: unknown; readonly path: string }) => {
-  if (typeof opts.value !== 'string' || opts.value.length === 0) {
-    throw new Error(`${opts.path} must be a non-empty string`)
-  }
-  return opts.value
-}
-
 const optionalString = (value: string) => (value.length === 0 ? undefined : value)
 
 const optionToUndefined = <A>(value: Option.Option<A>) =>
@@ -51,9 +46,10 @@ const readInputPaths = (inputPathsJson: string) => {
   if (Array.isArray(inputPaths) === false) {
     throw new Error('input paths JSON must decode to an array')
   }
-  return inputPaths.map((path, index) =>
-    expectString({ value: path, path: `inputPaths[${index}]` }),
-  )
+  return inputPaths.map((path, index) => {
+    if (typeof path !== 'string') throw new Error(`inputPaths[${index}] must be a string`)
+    return path
+  })
 }
 
 const latestCreatedAtUtc = (opts: {
@@ -103,8 +99,9 @@ const collectBundleCommand = Command.make(
     Effect.sync(() => {
       const sources = []
       for (const path of readInputPaths(inputPathsJson)) {
-        if (existsSync(path) === false) {
+        if (path.length === 0 || existsSync(path) === false) {
           if (allowMissingInput === true) continue
+          if (path.length === 0) throw new Error('workflow report input path must be non-empty')
           throw new Error(`workflow report input file does not exist: ${path}`)
         }
         sources.push(readFileSync(path, 'utf8'))
