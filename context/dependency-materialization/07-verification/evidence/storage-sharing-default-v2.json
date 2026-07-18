@@ -11,15 +11,25 @@
   "platforms": [
     {
       "platform": "x86_64-linux",
-      "status": "ok",
-      "workspace": "effect-utils and dotfiles",
+      "status": "pending-evidence",
+      "reason": "The real-workload comparison has timing, download, and physical-block evidence but lacks the absolute byte and file-count rows required to close DMP.VER-R05/R07/R08.",
+      "workspace": "effect-utils",
+      "provenance": {
+        "measurementHead": "a5c73d208c97790107ffa04104687180ac6332d8",
+        "ciRun": "https://github.com/overengineeringstudio/effect-utils/actions/runs/29638487194",
+        "packageManager": "pnpm@11.8.0",
+        "filesystem": "ext4",
+        "phase": "second-root-materialization"
+      },
       "evidence": {
         "realGraphPackages": 629,
         "secondRootDownloads": 0,
         "sharedStoreSeconds": [6.499, 7.264],
         "isolatedSeconds": [22.004, 27.399],
         "sharedProjectionBlocksPercent": 89.6
-      }
+      },
+      "evidenceGaps": ["absoluteBytes", "fileCounts", "coldWarmPhaseMatrix"],
+      "claimBoundary": "Do not present this record as a completed Linux default gate until the missing same-graph size and phase rows are attached."
     },
     {
       "platform": "aarch64-darwin",

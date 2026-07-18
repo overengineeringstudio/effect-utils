@@ -84,11 +84,12 @@ Default changes require same-workload comparisons against the current default
 and an isolated baseline. Cache-efficiency claims must report bytes and file
 counts, not only timing.
 
-The current package-store default gate is recorded in
+The current package-store default-gate evidence is recorded in
 [`evidence/storage-sharing-default-v2.json`](./evidence/storage-sharing-default-v2.json).
-Its Darwin pending-system record is a claim boundary: Linux timing, physical
-block sharing, and zero-copy observations must not be presented as Darwin
-results until a comparable Darwin real-workload record replaces it.
+Its Linux and Darwin pending records are claim boundaries. The Linux timing and
+block-sharing rows are real but do not close the required absolute byte,
+file-count, and phase matrix. Linux observations must not be presented as Darwin
+results until a comparable Darwin real-workload record replaces its marker.
 
 ## Evidence Intake And Graduation
 
