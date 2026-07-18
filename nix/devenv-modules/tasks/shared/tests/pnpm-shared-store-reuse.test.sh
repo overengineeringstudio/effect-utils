@@ -31,6 +31,39 @@ assert_contains() {
   fi
 }
 
+run_pnpm_logged() {
+  local workspace_root="$1"
+  local log_file="$2"
+  shift 2
+
+  local rc
+  set +e
+  if [ "$(uname -s)" = Darwin ]; then
+    NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--max-old-space-size=1536" "$@" > "$log_file" 2>&1
+  else
+    "$@" > "$log_file" 2>&1
+  fi
+  rc="$?"
+  set -e
+
+  if [ "$rc" -eq 0 ]; then
+    return
+  fi
+
+  # Mirror the production install policy: pnpm/Node can abort during Darwin
+  # teardown after completing materialization. Normalize only the exact abort
+  # with both pnpm completion evidence and a complete root-local projection.
+  if [ "$rc" -eq 134 ] && [ "$(uname -s)" = Darwin ] &&
+    grep -qE 'Progress: .* done$' "$log_file" &&
+    [ -d "$workspace_root/node_modules/.pnpm" ] &&
+    [ -f "$workspace_root/node_modules/.modules.yaml" ]; then
+    return
+  fi
+
+  cat "$log_file" >&2
+  return "$rc"
+}
+
 inode_id() {
   node -e 'const fs=require("node:fs"); const s=fs.statSync(process.argv[1]); process.stdout.write(`${s.dev}:${s.ino}`)' "$1"
 }
@@ -102,9 +135,9 @@ install_flags=(
   --reporter=append-only
 )
 
-"$PNPM" --dir "$tmpdir/root-a" install "${install_flags[@]}" > "$tmpdir/root-a.log" 2>&1
+run_pnpm_logged "$tmpdir/root-a" "$tmpdir/root-a.log" "$PNPM" --dir "$tmpdir/root-a" install "${install_flags[@]}"
 cp "$tmpdir/root-a/pnpm-lock.yaml" "$tmpdir/root-b/pnpm-lock.yaml"
-"$PNPM" --dir "$tmpdir/root-b" install --frozen-lockfile "${install_flags[@]}" > "$tmpdir/root-b.log" 2>&1
+run_pnpm_logged "$tmpdir/root-b" "$tmpdir/root-b.log" "$PNPM" --dir "$tmpdir/root-b" install --frozen-lockfile "${install_flags[@]}"
 
 assert_contains \
   "$tmpdir/root-b.log" \
@@ -117,8 +150,8 @@ if grep -Eq 'downloaded [1-9][0-9]*' "$tmpdir/root-b.log"; then
 fi
 
 test -f "$tmpdir/shared-store/v11/index.db"
-test "$(real_path "$tmpdir/root-a/node_modules/.pnpm")" = "$tmpdir/root-a/node_modules/.pnpm"
-test "$(real_path "$tmpdir/root-b/node_modules/.pnpm")" = "$tmpdir/root-b/node_modules/.pnpm"
+test "$(real_path "$tmpdir/root-a/node_modules/.pnpm")" = "$(real_path "$tmpdir/root-a")/node_modules/.pnpm"
+test "$(real_path "$tmpdir/root-b/node_modules/.pnpm")" = "$(real_path "$tmpdir/root-b")/node_modules/.pnpm"
 test "$(real_path "$tmpdir/root-a/node_modules/.pnpm")" != "$(real_path "$tmpdir/root-b/node_modules/.pnpm")"
 
 root_a_file="$tmpdir/root-a/node_modules/hardlink-proof/index.js"
@@ -159,7 +192,7 @@ if (modules.virtualStoreDir !== ".pnpm") {
 EOF
 
 rm -rf "$tmpdir/root-b/node_modules"
-"$PNPM" --dir "$tmpdir/root-b" install --offline --force --frozen-lockfile "${install_flags[@]}" > "$tmpdir/root-b-offline.log" 2>&1
+run_pnpm_logged "$tmpdir/root-b" "$tmpdir/root-b-offline.log" "$PNPM" --dir "$tmpdir/root-b" install --offline --force --frozen-lockfile "${install_flags[@]}"
 assert_contains \
   "$tmpdir/root-b-offline.log" \
   'Progress: resolved [0-9]+, reused [1-9][0-9]*, downloaded 0, added [1-9][0-9]*, done' \
@@ -193,9 +226,9 @@ concurrent_flags=(
   --reporter=append-only
 )
 
-"$PNPM" --dir "$tmpdir/concurrent-a" install "${concurrent_flags[@]}" > "$tmpdir/concurrent-a.log" 2>&1 &
+run_pnpm_logged "$tmpdir/concurrent-a" "$tmpdir/concurrent-a.log" "$PNPM" --dir "$tmpdir/concurrent-a" install "${concurrent_flags[@]}" &
 concurrent_a_pid=$!
-"$PNPM" --dir "$tmpdir/concurrent-b" install "${concurrent_flags[@]}" > "$tmpdir/concurrent-b.log" 2>&1 &
+run_pnpm_logged "$tmpdir/concurrent-b" "$tmpdir/concurrent-b.log" "$PNPM" --dir "$tmpdir/concurrent-b" install "${concurrent_flags[@]}" &
 concurrent_b_pid=$!
 if ! wait "$concurrent_a_pid"; then
   echo "FAIL: concurrent root A cold install" >&2
@@ -219,9 +252,9 @@ for root_name in concurrent-a concurrent-b; do
 done
 
 rm -rf "$tmpdir/concurrent-a/node_modules" "$tmpdir/concurrent-b/node_modules"
-"$PNPM" --dir "$tmpdir/concurrent-a" install --offline --force "${concurrent_flags[@]}" > "$tmpdir/concurrent-a-offline.log" 2>&1 &
+run_pnpm_logged "$tmpdir/concurrent-a" "$tmpdir/concurrent-a-offline.log" "$PNPM" --dir "$tmpdir/concurrent-a" install --offline --force "${concurrent_flags[@]}" &
 concurrent_a_pid=$!
-"$PNPM" --dir "$tmpdir/concurrent-b" install --offline --force "${concurrent_flags[@]}" > "$tmpdir/concurrent-b-offline.log" 2>&1 &
+run_pnpm_logged "$tmpdir/concurrent-b" "$tmpdir/concurrent-b-offline.log" "$PNPM" --dir "$tmpdir/concurrent-b" install --offline --force "${concurrent_flags[@]}" &
 concurrent_b_pid=$!
 if ! wait "$concurrent_a_pid"; then
   echo "FAIL: concurrent root A offline rematerialization" >&2
