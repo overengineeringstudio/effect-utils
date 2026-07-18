@@ -7,6 +7,7 @@ run_nix_gc_race_retry() {
   local task="$1"
   local max="${NIX_GC_RACE_MAX_RETRIES:-10}"
   local heartbeat="${CI_PROGRESS_HEARTBEAT_SECONDS:-60}"
+  local daemon_socket_retry_delay="${NIX_DAEMON_SOCKET_RETRY_DELAY_SECONDS:-2}"
   local attempt=1
   local log log_dir stdout_pipe stderr_pipe rc path start now elapsed hb_pid stdout_tee_pid stderr_tee_pid flattened saw_invalid_path saw_cachix_signature saw_fetch_signature saw_daemon_socket_failure had_errexit
 
@@ -100,7 +101,7 @@ run_nix_gc_race_retry() {
     fi
 
     if [ "$saw_daemon_socket_failure" = true ]; then
-      echo "::warning::Nix daemon socket failure detected for $task (attempt $attempt/$max); retrying without mutating the host daemon (host supervision owns recovery)"
+      echo "::warning::Nix daemon socket failure detected for $task (attempt $attempt/$max); waiting $daemon_socket_retry_delay s for host supervision before retrying without mutating the host daemon"
     elif [ "$saw_fetch_signature" = true ]; then
       echo "::warning::Nix source fetch corruption detected for $task (attempt $attempt/$max); retrying with a refreshed eval cache"
     elif [ "$saw_cachix_signature" = true ] && [ -n "$path" ]; then
@@ -113,6 +114,9 @@ run_nix_gc_race_retry() {
 
     [ -z "$path" ] || nix-store --realise "$path" 2>/dev/null || true
     rm -rf ~/.cache/nix/eval-cache-*
+    if [ "$saw_daemon_socket_failure" = true ] && [ "$attempt" -lt "$max" ]; then
+      sleep "$daemon_socket_retry_delay"
+    fi
     attempt=$((attempt + 1))
   done
 

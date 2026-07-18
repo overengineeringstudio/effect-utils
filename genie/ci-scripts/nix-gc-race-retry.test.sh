@@ -177,9 +177,16 @@ echo "daemon recovered"
 EOF
 chmod +x "$daemon_fixture"
 daemon_stdout="$test_dir/daemon-stdout"
-CI_PROGRESS_HEARTBEAT_SECONDS=1 NIX_GC_RACE_MAX_RETRIES=2 run_nix_gc_race_retry "daemon-fixture" "$daemon_fixture" >"$daemon_stdout"
+daemon_started_at="$(date +%s)"
+CI_PROGRESS_HEARTBEAT_SECONDS=60 NIX_DAEMON_SOCKET_RETRY_DELAY_SECONDS=1 NIX_GC_RACE_MAX_RETRIES=2 run_nix_gc_race_retry "daemon-fixture" "$daemon_fixture" >"$daemon_stdout"
+daemon_elapsed=$(( $(date +%s) - daemon_started_at ))
 assert_eq "2" "$(cat "$test_dir/daemon-attempt")" "Nix daemon socket retry count"
-assert_contains "host supervision owns recovery" "$daemon_stdout" "daemon recovery ownership"
+assert_contains "waiting 1 s for host supervision" "$daemon_stdout" "daemon recovery ownership"
+if [ "$daemon_elapsed" -lt 1 ]; then
+  echo "FAIL: daemon socket retry did not wait for host supervision"
+  echo "  elapsed: $daemon_elapsed s"
+  exit 1
+fi
 
 echo "Test 6: helper contains no host daemon mutation commands"
 assert_not_contains "sudo systemctl" "$SCRIPT" "systemd daemon mutation removed"
