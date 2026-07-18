@@ -113,7 +113,7 @@ assert_pnpm_storage_capacity() {
   while IFS= read -r boundary; do
     available_kib="$(df -Pk "$boundary" | awk 'NR == 2 { print $4 }')"
     if [ -z "$available_kib" ] || [ "$available_kib" -lt "$min_free_kib" ]; then
-      echo "[pnpm] Refusing materialization at $boundary with ${available_kib:-unknown} KiB free; require at least $min_free_kib KiB after legacy-state reclamation" >&2
+      echo "[pnpm] Refusing materialization at $boundary with ${available_kib:-unknown} KiB free; require at least $min_free_kib KiB" >&2
       return 1
     fi
   done < <("$node_bin" - "$store_dir" "$materialization_root" <<'EOF'
@@ -130,39 +130,6 @@ for (const path of paths) {
 }
 EOF
   )
-}
-
-migrate_legacy_pnpm_store() {
-  local legacy_store="$1"
-  local active_store="$2"
-  shift 2
-
-  if [ -n "${CI:-}" ] || [ ! -d "$legacy_store/v11" ]; then
-    return 0
-  fi
-
-  local legacy_store_physical
-  local active_store_physical
-  legacy_store_physical="$(cd "$legacy_store" && pwd -P)"
-  active_store_physical="$(cd "$active_store" && pwd -P)"
-  if [ "$legacy_store_physical" = "$active_store_physical" ]; then
-    return 0
-  fi
-
-  local legacy_files="$legacy_store/v11/files"
-  if [ -d "$legacy_files" ] && [ ! -L "$legacy_files" ] && [ -n "$(find "$legacy_files" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
-    echo "[pnpm] Refusing to discard non-empty legacy package content: $legacy_files" >&2
-    echo "[pnpm] Reconcile that cache into the shared store or remove it explicitly, then rerun the install" >&2
-    return 1
-  fi
-
-  # The old GVS/package index is disposable generated state. Purge every local
-  # projection that can still reference it before reclaiming the versioned
-  # store namespace, so cutover reduces disk before rematerialization.
-  purge_node_modules "$@"
-  rm -rf "$legacy_store/v11"
-  rm -f "$legacy_store/.effect-utils-pnpm-store.lock"
-  echo "[pnpm] Reclaimed legacy root-local store: $legacy_store/v11"
 }
 
 emit_dir_state() {

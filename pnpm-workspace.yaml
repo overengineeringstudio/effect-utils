@@ -81,8 +81,6 @@ strictPeerDependencies: true
 
 injectWorkspacePackages: true
 
-storeDir: .devenv/pnpm-store-pure-v1
-
 packageImportMethod: auto
 
 optimisticRepeatInstall: false

@@ -56,7 +56,7 @@ let
       "${config.devenv.root}/.devenv/pnpm-home"
     else
       "${config.devenv.root}/.devenv/pnpm-home/${workspaceCacheName}";
-  legacyPnpmStoreDir =
+  jobLocalPnpmStoreDir =
     if workspaceRoot == "." then
       "${config.devenv.root}/.devenv/pnpm-store-pure-v1"
     else
@@ -172,7 +172,7 @@ let
     configure_pnpm_storage \
       ${lib.escapeShellArg "${pkgs.nodejs}/bin/node"} \
       ${lib.escapeShellArg workspaceRootAbs} \
-      ${lib.escapeShellArg legacyPnpmStoreDir} \
+      ${lib.escapeShellArg jobLocalPnpmStoreDir} \
       ${lib.boolToString pkgs.stdenv.hostPlatform.isLinux}
   '';
   managedPnpmMutationPrologue = ''
@@ -203,11 +203,6 @@ let
     # never race pnpm while independent Materialization Roots stay concurrent.
     acquire_pnpm_store_cache_lease ${lib.escapeShellArg flock} shared "$npm_config_store_dir" 600
 
-    migrate_legacy_pnpm_store \
-      ${lib.escapeShellArg legacyPnpmStoreDir} \
-      "$npm_config_store_dir" \
-      node_modules \
-      ${nodeModulesPaths}
     assert_pnpm_storage_capacity \
       ${lib.escapeShellArg "${pkgs.nodejs}/bin/node"} \
       "$npm_config_store_dir" \

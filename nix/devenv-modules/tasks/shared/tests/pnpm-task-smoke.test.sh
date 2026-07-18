@@ -377,7 +377,7 @@ unset PNPM_STORE_DIR
 unset PNPM_CONFIG_STORE_DIR
 unset npm_config_store_dir
 
-echo "Test 0: install fails closed on non-empty legacy root-local content"
+echo "Test 0: install ignores disposable historical root-local cache content"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
@@ -385,16 +385,11 @@ echo "Test 0: install fails closed on non-empty legacy root-local content"
   legacy_files="$workspace/.devenv/pnpm-store-pure-v1/v11/files"
   mkdir -p "$legacy_files"
   printf 'preserve-me\n' > "$legacy_files/sentinel"
-  set +e
-  output="$(bash "$tmpdir/pnpm-install.exec.sh" 2>&1)"
-  exit_code=$?
-  set -e
-  assert_exit_code 1 "$exit_code" "install should refuse non-empty legacy root-local content"
+  bash "$tmpdir/pnpm-install.exec.sh"
   test -f "$legacy_files/sentinel"
   test ! -L "$legacy_files"
-  grep -qF "Refusing to discard non-empty legacy package content: $legacy_files" <<< "$output"
-  grep -qF "Reconcile that cache into the shared store or remove it explicitly" <<< "$output"
   rm -rf "$legacy_files"
+  rm -rf "$workspace/node_modules" "$workspace/vendor" "$workspace/.devenv/task-cache/pnpm-install"
 )
 
 echo "Test 1: status misses before install"
@@ -459,9 +454,9 @@ echo "Test 2c: lockfile mutation entrypoints preserve the live topology policy"
   test "$(grep -cFx 'flock --shared -w 600 202' "$tmpdir/flock.log")" -eq 2
   ! grep -qF -- '--exclusive' "$tmpdir/flock.log"
   test "$(wc -l < "$tmpdir/flock.log")" -eq 6
-  grep -qF "migrate_legacy_pnpm_store" "$tmpdir/pnpm-update.exec.sh"
+  ! grep -qF "migrate_legacy_pnpm_store" "$tmpdir/pnpm-update.exec.sh"
   grep -qF "assert_pnpm_storage_capacity" "$tmpdir/pnpm-update.exec.sh"
-  grep -qF "migrate_legacy_pnpm_store" "$tmpdir/pnpm-dedupe.exec.sh"
+  ! grep -qF "migrate_legacy_pnpm_store" "$tmpdir/pnpm-dedupe.exec.sh"
   grep -qF "assert_pnpm_storage_capacity" "$tmpdir/pnpm-dedupe.exec.sh"
 )
 

@@ -434,9 +434,6 @@ export const commonPnpmPolicySettings = {
       vitest: '>=4.0.0',
     },
   },
-  // Generator fallback and CI-local path. Managed live installs override this
-  // with pnpmInstallStorageContractV2's host-user Store Cache authority.
-  storeDir: '.devenv/pnpm-store-pure-v1',
   packageImportMethod: 'auto' as const,
   sideEffectsCache: false as const,
   verifyStoreIntegrity: true as const,

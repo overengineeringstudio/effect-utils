@@ -96,7 +96,9 @@ parallel Dependency Graph.
   updates, or deduplicates an authoritative lockfile must preserve the same
   root-local virtual topology, lifecycle, integrity, and Store Cache policy.
   Each entrypoint must acquire the same Materialization Root and package-
-  manager-home locks, reclaim legacy state before its capacity gate, and pass
-  the same realization-policy arguments. Lockfile mutation must not silently
-  select a second realization or concurrency model.
+  manager-home locks, select the same fresh Store Cache namespace before its
+  capacity gate, and pass the same realization-policy arguments. Disposable
+  historical caches must remain outside the managed mutation path and must
+  never block installation. Lockfile mutation must not silently select a
+  second realization or concurrency model.
   Refines: DMP-R02, DMP-R11, DMP-R12.

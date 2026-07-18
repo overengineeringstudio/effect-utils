@@ -88,7 +88,6 @@ composes as:
 ```text
 Materialization-Root lock + package-manager-home lock
   -> shared Store Cache admission lease
-  -> legacy-state reclamation
   -> capacity gate
   -> pnpm graph mutation under one realization policy
   -> root-local projection
