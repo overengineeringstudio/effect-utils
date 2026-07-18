@@ -11,9 +11,13 @@ const parseJsonl = (path) =>
     .trim()
     .split('\n')
     .map((line) => JSON.parse(line))
+// Assertion helpers form a compact verification DSL; positional actual/expected/label
+// call sites are more legible here than repeated object literals.
+// oxlint-disable-next-line overeng/named-args
 const assertEqual = (actual, expected, label) => {
   if (actual !== expected) throw new Error(`${label}: expected ${expected}, got ${actual}`)
 }
+// oxlint-disable-next-line overeng/named-args
 const assertTrue = (value, label) => assertEqual(value, true, label)
 const round1 = (value) => Math.round(value * 10) / 10
 const sizeKeys = ['physicalKiB', 'apparentKiB', 'files']
@@ -42,7 +46,13 @@ const sizePhases = [
   'concurrent-root-e-store',
   'concurrent-two-roots',
 ].map((name) => `size:${name}`)
-const requiredPhases = ['provenance', ...installPhases, ...sizePhases, 'concurrent-pair', 'correctness']
+const requiredPhases = [
+  'provenance',
+  ...installPhases,
+  ...sizePhases,
+  'concurrent-pair',
+  'correctness',
+]
 
 const summary = JSON.parse(read('storage-sharing-default-v2.json'))
 assertEqual(summary.schema, 'dependency-materialization-verification/v0', 'summary schema')
@@ -82,13 +92,18 @@ assertEqual(summary.platforms.length, Object.keys(platformInputs).length, 'platf
 for (const [platform, input] of Object.entries(platformInputs)) {
   assertTrue(input.summary !== undefined, `${platform} summary exists`)
   assertEqual(input.summary.status, 'ok', `${platform} summary status`)
-  assertEqual(input.summary.environment.filesystem, input.filesystem, `${platform} summary filesystem`)
+  assertEqual(
+    input.summary.environment.filesystem,
+    input.filesystem,
+    `${platform} summary filesystem`,
+  )
   assertEqual(sha256(input.artifact.path), input.artifact.sha256, `${platform} raw digest`)
   const records = parseJsonl(input.artifact.path)
   const byPhase = new Map(records.map((record) => [record.phase, record]))
   assertEqual(byPhase.size, records.length, `${platform} unique phases`)
   assertEqual(records.length, requiredPhases.length, `${platform} record count`)
-  for (const phaseName of requiredPhases) assertTrue(byPhase.has(phaseName), `${platform} ${phaseName}`)
+  for (const phaseName of requiredPhases)
+    assertTrue(byPhase.has(phaseName), `${platform} ${phaseName}`)
   for (const record of records) {
     assertEqual(record.schema, summary.schema, `${platform} ${record.phase} schema`)
     assertEqual(record.kind, 'benchmark', `${platform} ${record.phase} kind`)
@@ -150,7 +165,11 @@ for (const [platform, input] of Object.entries(platformInputs)) {
   for (const rawName of ['concurrent-root-d', 'concurrent-root-e']) {
     const raw = byPhase.get(rawName)
     assertEqual(raw.teardownExit, 0, `${platform} ${rawName} teardown exit`)
-    assertEqual(raw.completedMaterializationEvidence, false, `${platform} ${rawName} completion evidence`)
+    assertEqual(
+      raw.completedMaterializationEvidence,
+      false,
+      `${platform} ${rawName} completion evidence`,
+    )
   }
 
   const concurrent = phase.concurrentRootsDAndE
@@ -169,12 +188,19 @@ for (const [platform, input] of Object.entries(platformInputs)) {
   )
   for (const name of ['concurrent-root-d', 'concurrent-root-e']) {
     assertEqual(byPhase.get(name).reused, concurrent.eachReused, `${platform} ${name} reused`)
-    assertEqual(byPhase.get(name).downloads, concurrent.eachDownloaded, `${platform} ${name} downloads`)
+    assertEqual(
+      byPhase.get(name).downloads,
+      concurrent.eachDownloaded,
+      `${platform} ${name} downloads`,
+    )
   }
 
   for (const name of sizePhases) {
     for (const key of sizeKeys) {
-      assertTrue(Number.isSafeInteger(byPhase.get(name).sizes[key]), `${platform} ${name} ${key} integer`)
+      assertTrue(
+        Number.isSafeInteger(byPhase.get(name).sizes[key]),
+        `${platform} ${name} ${key} integer`,
+      )
       assertTrue(byPhase.get(name).sizes[key] > 0, `${platform} ${name} ${key} positive`)
     }
   }
@@ -205,7 +231,11 @@ for (const [platform, input] of Object.entries(platformInputs)) {
     )
   }
   assertEqual(
-    round1(((phase.isolatedRootC.durationMs - phase.secondSharedRootB.durationMs) / phase.isolatedRootC.durationMs) * 100),
+    round1(
+      ((phase.isolatedRootC.durationMs - phase.secondSharedRootB.durationMs) /
+        phase.isolatedRootC.durationMs) *
+        100,
+    ),
     input.summary.twoRootComparison.improvementPercent.secondRootDuration,
     `${platform} second-root improvement`,
   )
@@ -217,7 +247,11 @@ for (const [platform, input] of Object.entries(platformInputs)) {
     'ignoreScriptsConfigured',
     'sigkill137Accepted',
   ]) {
-    assertEqual(correctness[key], input.summary.correctness[key] ?? false, `${platform} correctness ${key}`)
+    assertEqual(
+      correctness[key],
+      input.summary.correctness[key] ?? false,
+      `${platform} correctness ${key}`,
+    )
   }
   assertEqual(correctness.distinctVirtualStores, true, `${platform} distinct virtual stores`)
   assertEqual(correctness.concurrentRoots, 2, `${platform} concurrent roots`)
@@ -256,7 +290,10 @@ for (const [host, capability] of Object.entries(summary.hostLifecycleCapability.
   assertTrue(raw.rootNlink >= 2, `${host} hardlink count`)
   assertEqual(raw.storeAliasFound, true, `${host} store inode alias`)
   assertEqual(raw.beforeKiB, raw.afterLivePruneKiB, `${host} live-root prune preserves cache`)
-  assertTrue(raw.afterRemovedPruneKiB < raw.afterLivePruneKiB, `${host} removed-root prune reclaims cache`)
+  assertTrue(
+    raw.afterRemovedPruneKiB < raw.afterLivePruneKiB,
+    `${host} removed-root prune reclaims cache`,
+  )
   assertEqual(raw.liveRootSurvivedPrune, true, `${host} live root survives`)
   assertEqual(raw.removedRootCacheEvicted, true, `${host} removed root evicted`)
   assertEqual(raw.destructivePruneSafe, true, `${host} destructive prune safety`)
