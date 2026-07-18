@@ -8,9 +8,10 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
-- **@overeng/utils / StoreLock**: patch `effect-distributed-lock` so scoped
-  semaphore keepAlive refreshes stop before holder release, preventing
-  file-system lock resurrection during `mr store gc`.
+- **@overeng/effect-distributed-lock**: vendor the used non-Redis
+  `effect-distributed-lock` subset as first-party source and stop scoped
+  semaphore keepAlive refreshes before holder release, preventing file-system
+  lock resurrection during `mr store gc`.
 - **react-inspector / Effect 4**: preserve exact-optional public metadata types
   across Effect 4 schema decoding, and compile the migrated schema surface as a
   strict downstream consumer in the workspace typecheck graph.
@@ -1875,7 +1876,7 @@ signal <NAME>`) on non-zero exit; bound `process.executable.name` / the span
 
 ### Changed
 
-- **@overeng/utils**: Updated `effect-distributed-lock` to 0.0.11 and patched root exports to avoid loading optional `ioredis` (see https://github.com/ethanniser/effect-distributed-lock/issues/10)
+- **@overeng/utils**: Updated the distributed-lock dependency and patched root exports to avoid loading optional Redis support.
 
 - **@overeng/notion-effect-cli**: Migrated config from JSON to TypeScript (breaking change)
   - Config file is now `notion-schema-gen.config.ts` instead of `.notion-schema-gen.json`

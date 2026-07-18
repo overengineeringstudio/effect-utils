@@ -226,6 +226,11 @@
       "description": "@overeng/effect-ai-claude-cli package · Set: manual"
     },
     {
+      "name": "system:effect-distributed-lock",
+      "color": "a371f7",
+      "description": "@overeng/effect-distributed-lock package · Set: manual"
+    },
+    {
       "name": "system:effect-path",
       "color": "a371f7",
       "description": "@overeng/effect-path package · Set: manual"

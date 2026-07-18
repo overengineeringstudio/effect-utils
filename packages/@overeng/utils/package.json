@@ -49,10 +49,9 @@
     "@effect/vitest": "0.29.0",
     "@noble/hashes": "2.2.0",
     "@opentelemetry/api": "1.9.1",
+    "@overeng/effect-distributed-lock": "workspace:^",
     "@overeng/otel-contract": "workspace:^",
     "effect": "3.21.4",
-    "effect-distributed-lock": "0.0.11",
-    "ioredis": "5.11.1",
     "vitest": "4.1.9"
   },
   "devDependencies": {
@@ -92,17 +91,12 @@
     "@playwright/test": "^1.61.0",
     "effect": "^3.21.4"
   },
-  "pnpm": {
-    "patchedDependencies": {
-      "@effect/platform@0.96.2": "patches/@effect__platform@0.96.0.patch",
-      "effect-distributed-lock@0.0.11": "patches/effect-distributed-lock@0.0.11.patch"
-    }
-  },
   "$genie": {
     "source": "package.json.genie.ts",
     "warning": "DO NOT EDIT - changes will be overwritten",
     "workspaceClosureDirs": [
       "packages/@overeng/content-address",
+      "packages/@overeng/effect-distributed-lock",
       "packages/@overeng/otel-contract",
       "packages/@overeng/utils",
       "packages/@overeng/utils-dev"

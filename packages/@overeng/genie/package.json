@@ -103,6 +103,7 @@
     "warning": "DO NOT EDIT - changes will be overwritten",
     "workspaceClosureDirs": [
       "packages/@overeng/content-address",
+      "packages/@overeng/effect-distributed-lock",
       "packages/@overeng/genie",
       "packages/@overeng/otel-contract",
       "packages/@overeng/tui-core",

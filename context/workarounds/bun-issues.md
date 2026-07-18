@@ -80,17 +80,17 @@ For Bun-only evaluation/build flows, a local workspace fork looks credible:
 Example:
 
 ```json
-// packages/vendor/effect-distributed-lock/package.json
+// packages/vendor/some-package/package.json
 {
-  "name": "effect-distributed-lock",
+  "name": "some-package",
   "version": "0.0.11"
 }
 
 // Bun-only generated manifest
 {
-  "workspaces": [".", "../vendor/effect-distributed-lock"],
+  "workspaces": [".", "../vendor/some-package"],
   "dependencies": {
-    "effect-distributed-lock": "workspace:*"
+    "some-package": "workspace:*"
   }
 }
 ```

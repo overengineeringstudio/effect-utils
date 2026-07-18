@@ -60,6 +60,13 @@ import {
   type WorkspacePackageLike,
 } from '../packages/@overeng/genie/src/runtime/mod.ts'
 /**
+ * Exceptional export: downstream repos that define `workspaceMember()` factories
+ * need this type for the optional `pnpmPackageClosure` parameter in `WorkspaceIdentity`.
+ * Prefer not using package closures unless your repo genuinely needs Nix-time
+ * workspace subsetting (currently only livestore).
+ */
+import type { PnpmPackageClosureConfig } from '../packages/@overeng/genie/src/runtime/pnpm-workspace/mod.ts'
+/**
  * Repo-context discovery is node-only (reads the filesystem via `import.meta.url`), but importing the broad
  * `@overeng/genie/node` entry also pulls engine validation internals into peer repo Genie files. Import the
  * repo-context surface directly so downstream authoring helpers stay free of engine-only dependencies.
@@ -68,13 +75,6 @@ import {
   defineRepoContext,
   type RepoContext,
 } from '../packages/@overeng/genie/src/runtime/repo-context/mod.ts'
-/**
- * Exceptional export: downstream repos that define `workspaceMember()` factories
- * need this type for the optional `pnpmPackageClosure` parameter in `WorkspaceIdentity`.
- * Prefer not using package closures unless your repo genuinely needs Nix-time
- * workspace subsetting (currently only livestore).
- */
-import type { PnpmPackageClosureConfig } from '../packages/@overeng/genie/src/runtime/pnpm-workspace/mod.ts'
 import {
   nativeDependencyPolicy,
   type NativeDependencyPolicyEntry,
@@ -197,7 +197,6 @@ export const catalog = defineCatalog({
 
   // Effect ecosystem
   '@effect/ai': '0.36.0',
-  'effect-distributed-lock': '0.0.11',
   effect: '3.21.4',
   '@effect/platform': '0.96.2',
   '@effect/platform-node': '0.107.0',
@@ -300,9 +299,6 @@ export const catalog = defineCatalog({
 
   // DOM utilities
   'is-dom': '1.1.0',
-
-  // Redis
-  ioredis: '5.11.1',
 
   // OpenTUI / Effect Atom (experimental)
   '@effect-atom/atom': '0.5.3',
@@ -483,7 +479,6 @@ export const createEffectUtilsRefs = (basePath: string) =>
 export const utilsPatches = definePatchedDependencies({
   location: 'packages/@overeng/utils',
   patches: {
-    'effect-distributed-lock@0.0.11': './patches/effect-distributed-lock@0.0.11.patch',
     /* Restrict `http.client` tracer span attribute emission to a small
        allowlist of response headers. Upstream hardcodes emission of every
        header, which for chatty APIs (Notion: ~31 headers per response)
