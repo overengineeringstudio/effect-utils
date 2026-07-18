@@ -8,10 +8,16 @@ PNPM_OUT="$({
     let
       flake = builtins.getFlake (toString $ROOT);
       pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
-    in pkgs.pnpm
+    in flake.lib.mkPnpm { inherit pkgs; }
   "
 })"
 PNPM="$PNPM_OUT/bin/pnpm"
+EXPECTED_PNPM_VERSION="$(node -e 'const packageManager=require(process.argv[1]).packageManager; process.stdout.write(packageManager.slice(packageManager.lastIndexOf("@") + 1))' "$ROOT/package.json")"
+ACTUAL_PNPM_VERSION="$($PNPM --version)"
+if [ "$ACTUAL_PNPM_VERSION" != "$EXPECTED_PNPM_VERSION" ]; then
+  echo "FAIL: shared-store proof pnpm version $ACTUAL_PNPM_VERSION != workspace authority $EXPECTED_PNPM_VERSION" >&2
+  exit 1
+fi
 
 assert_contains() {
   local file="$1"
