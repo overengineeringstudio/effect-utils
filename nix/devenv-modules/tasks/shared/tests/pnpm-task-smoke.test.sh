@@ -97,13 +97,15 @@ eval_pnpm_package_count() {
   "
 }
 
-eval_affected_lock_mutator() {
+eval_versioned_lock_mutator() {
+  local version="$1"
+
   nix-instantiate --eval --strict --expr "
     let
       flake = builtins.getFlake (toString $ROOT);
       pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
       affected = (pkgs.writeShellScriptBin \"pnpm\" \"exit 0\").overrideAttrs (_: {
-        version = \"11.8.0\";
+        version = \"$version\";
       });
       module = (import $ROOT/nix/devenv-modules/tasks/shared/pnpm.nix {
         packages = [ ];
@@ -947,13 +949,21 @@ echo "Test 30: clean leaves shared GVS links intact"
 
 echo "Test 31: affected pnpm 11 lock mutators are rejected at evaluation"
 set +e
-affected_output="$(eval_affected_lock_mutator 2>&1)"
+affected_output="$(eval_versioned_lock_mutator 11.8.0 2>&1)"
 affected_exit=$?
 set -e
 assert_exit_code 1 "$affected_exit" "affected lock mutator should fail module evaluation"
 grep -qF "pnpm lock mutator version 11.8.0 is not supported" <<< "$affected_output"
 
-echo "Test 32: unversioned lock mutator overrides fail closed"
+echo "Test 32: unverified pnpm 12 lock mutators are rejected at evaluation"
+set +e
+unverified_v12_output="$(eval_versioned_lock_mutator 12.0.0 2>&1)"
+unverified_v12_exit=$?
+set -e
+assert_exit_code 1 "$unverified_v12_exit" "unverified pnpm 12 mutator should fail module evaluation"
+grep -qF "pnpm lock mutator version 12.0.0 is not supported" <<< "$unverified_v12_output"
+
+echo "Test 33: unversioned lock mutator overrides fail closed"
 set +e
 unversioned_output="$(eval_unversioned_lock_mutator 2>&1)"
 unversioned_exit=$?
@@ -961,7 +971,7 @@ set -e
 assert_exit_code 1 "$unversioned_exit" "unversioned lock mutator should fail module evaluation"
 grep -qF "pnpm lock mutator version unknown is not supported" <<< "$unversioned_output"
 
-echo "Test 33: root update defers validation, mutates with the dedicated binary, then validates"
+echo "Test 34: root update defers validation, mutates with the dedicated binary, then validates"
 cat > "$workspace/pnpm-lock.yaml" <<'EOF'
 lockfileVersion: '9.0'
 settings: {}
@@ -988,7 +998,7 @@ EOF
   grep -qF "hasBin: true" pnpm-lock.yaml
 )
 
-echo "Test 34: metadata loss fails closed and restores the previous lockfile"
+echo "Test 35: metadata loss fails closed and restores the previous lockfile"
 cp "$workspace/pnpm-lock.yaml" "$tmpdir/pnpm-lock.before-strip.yaml"
 (
   cd "$workspace"
@@ -1004,7 +1014,7 @@ cp "$workspace/pnpm-lock.yaml" "$tmpdir/pnpm-lock.before-strip.yaml"
   cmp -s pnpm-lock.yaml "$tmpdir/pnpm-lock.before-strip.yaml"
 )
 
-echo "Test 35: nested updates use the safe mutator without invoking root Genie"
+echo "Test 36: nested updates use the safe mutator without invoking root Genie"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"

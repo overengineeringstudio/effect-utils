@@ -109,14 +109,7 @@ let
   pnpmLockMutatorOverrideVersion =
     if pnpmLockMutatorPkg == null then "11.5.1" else pnpmLockMutatorPkg.version or "unknown";
   pnpmLockMutatorOverrideIsSupported =
-    pnpmLockMutatorPkg == null
-    || (
-      pnpmLockMutatorOverrideVersion != "unknown"
-      && (
-        builtins.compareVersions pnpmLockMutatorOverrideVersion "11.5.2" < 0
-        || builtins.compareVersions pnpmLockMutatorOverrideVersion "12.0.0" >= 0
-      )
-    );
+    pnpmLockMutatorPkg == null || pnpmLockMutatorOverrideVersion == "11.5.1";
 
   flock = "${pkgs.flock}/bin/flock";
   installFlagsString = lib.escapeShellArgs installFlags;
@@ -927,8 +920,8 @@ let
 in
 assert lib.assertMsg pnpmLockMutatorOverrideIsSupported ''
   pnpm lock mutator version ${pnpmLockMutatorOverrideVersion} is not supported.
-  Set a derivation versioned as pnpm <= 11.5.1 or a verified pnpm >= 12 implementation;
-  pnpm 11.5.2 through 11.x are affected by pnpm/pnpm#6600.
+  Set a derivation versioned as the verified-safe pnpm 11.5.1 pin;
+  other versions require explicit verification and an allowlist change.
 '';
 {
   packages = cliGuard.fromTasks {
