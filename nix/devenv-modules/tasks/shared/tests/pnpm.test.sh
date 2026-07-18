@@ -626,6 +626,22 @@ echo "Test 34: Linux shared storage selects one full store and automatic zero-co
   test ! -L "$shared_store/v11/files"
 )
 
+echo "Test 34b: historical shared-files pools stay outside the managed store"
+(
+  storage_root="$test_dir/fresh-storage-root"
+  isolated_home="$test_dir/fresh-storage-home"
+  historical_pool="$isolated_home/.local/share/pnpm/shared-files/v11"
+  mkdir -p "$storage_root" "$historical_pool"
+  printf 'historical\n' > "$historical_pool/sentinel"
+  export HOME="$isolated_home"
+  unset CI PNPM_SHARED_STORE_DIR PNPM_SHARED_FILES_DIR PNPM_STORE_DIR PNPM_CONFIG_STORE_DIR npm_config_store_dir
+  configure_pnpm_storage node "$storage_root" "$test_dir/job-store" true
+  assert_eq "$isolated_home/.local/share/pnpm/store-shared-v1" "$npm_config_store_dir" "default local store uses its fresh namespace"
+  test -d "$npm_config_store_dir/v11/files"
+  test ! -L "$npm_config_store_dir/v11/files"
+  test -f "$historical_pool/sentinel"
+)
+
 echo "Test 35: Linux zero-copy storage fails closed across filesystems"
 if [ -d /dev/shm ] && [ "$(stat -c '%d' /dev/shm)" != "$(stat -c '%d' "$test_dir")" ]; then
   cross_device_store="$(mktemp -d /dev/shm/effect-utils-pnpm-store.XXXXXX)"

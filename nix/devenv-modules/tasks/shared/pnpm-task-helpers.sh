@@ -23,26 +23,15 @@ configure_pnpm_storage() {
   if [ -n "${CI:-}" ]; then
     store_dir="$job_local_store"
   else
-    local shared_store_was_explicit=false
     if [ -n "${PNPM_SHARED_STORE_DIR:-}" ]; then
       store_dir="$PNPM_SHARED_STORE_DIR"
-      shared_store_was_explicit=true
     else
       store_dir="$HOME/.local/share/pnpm/store-shared-v1"
     fi
 
     local store_version_dir="$store_dir/v11"
     local files_path="$store_version_dir/files"
-    mkdir -p "$store_version_dir"
-
-    if [ ! -e "$files_path" ] && [ ! -L "$files_path" ]; then
-      local legacy_shared_files="${PNPM_SHARED_FILES_DIR:-$HOME/.local/share/pnpm/shared-files}/v11"
-      if [ "$shared_store_was_explicit" = false ] && [ -d "$legacy_shared_files" ]; then
-        ln -s "$legacy_shared_files" "$files_path"
-      else
-        mkdir -p "$files_path"
-      fi
-    fi
+    mkdir -p "$files_path"
 
     if [ "$host_is_linux" = true ]; then
       "$node_bin" - "$materialization_root" "$files_path" <<'EOF'
