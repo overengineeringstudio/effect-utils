@@ -1,20 +1,16 @@
 import {
   baseTsconfigCompilerOptions,
-  packageTsconfigCompilerOptions,
   nodeTypes,
+  packageTsconfigCompilerOptions,
 } from '../../../genie/internal.ts'
 import { tsconfigJson, type TSConfigArgs } from '../genie/src/runtime/mod.ts'
 
 export default tsconfigJson({
   compilerOptions: {
     ...baseTsconfigCompilerOptions,
-    ...packageTsconfigCompilerOptions,
     ...nodeTypes,
+    ...packageTsconfigCompilerOptions,
   },
   include: ['src/**/*'],
-  references: [
-    { path: '../effect-distributed-lock' },
-    { path: '../otel-contract' },
-    { path: '../utils-dev' },
-  ],
+  references: [{ path: '../utils-dev' }],
 } satisfies TSConfigArgs)

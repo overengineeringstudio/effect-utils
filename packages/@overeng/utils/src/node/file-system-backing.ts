@@ -1,6 +1,10 @@
 import { FileSystem, Path } from '@effect/platform'
 import { Cause, Data, Duration, Effect, Layer, Option, Schema, Stream } from 'effect'
-import { DistributedSemaphoreBacking, SemaphoreBackingError } from 'effect-distributed-lock'
+
+import {
+  DistributedSemaphoreBacking,
+  SemaphoreBackingError,
+} from '@overeng/effect-distributed-lock'
 
 import {
   SemaphoreForceRevokeOperation as SemaphoreForceRevokeContract,

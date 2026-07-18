@@ -18,7 +18,7 @@ Bun reads `patchedDependencies` from source packages (packages referenced via `f
 - Source package `@overeng/utils` at `effect-utils/packages/@overeng/utils` has:
   ```json
   "patchedDependencies": {
-    "effect-distributed-lock@0.0.11": "../../../patches/effect-distributed-lock@0.0.11.patch"
+    "some-package@1.0.0": "../../../patches/some-package@1.0.0.patch"
   }
   ```
 - Consumer package `misc.schickling.dev` at `schickling.dev/apps/misc.schickling.dev` depends on `@overeng/utils` via `file:`
@@ -52,7 +52,7 @@ Instead of using bun's native `patchedDependencies` feature, we apply patches ou
    import { patches } from '../../genie/repo.ts'
 
    export default packageJson({
-     dependencies: { 'effect-distributed-lock': '0.0.11' },
+     dependencies: { 'some-package': '1.0.0' },
      patches, // Registry of all available patches
    })
    ```
@@ -61,7 +61,7 @@ Instead of using bun's native `patchedDependencies` feature, we apply patches ou
 
    ```json
    "scripts": {
-     "postinstall": "patch --forward -p1 -d node_modules/effect-distributed-lock < ../../patches/effect-distributed-lock@0.0.11.patch || true"
+     "postinstall": "patch --forward -p1 -d node_modules/some-package < ../../patches/some-package@1.0.0.patch || true"
    }
    ```
 
@@ -88,11 +88,11 @@ The `postinstall` approach can cause Bun cache corruption with `file:` protocol 
 ```
 ✗ Install packages/@overeng/notion-cli (12.2s)
   │ ENOENT: failed copying files from cache to destination for package @overeng/notion-effect-client
-  │ $ patch --forward -p1 -d node_modules/effect-distributed-lock < ../../../patches/effect-distributed-lock@0.0.11.patch || true
+  │ $ patch --forward -p1 -d node_modules/some-package < ../../../patches/some-package@1.0.0.patch || true
 
 ✗ Install scripts (12.6s)
   │ ENOENT: failed copying files from cache to destination for package @overeng/genie
-  │ $ patch --forward -p1 -d node_modules/effect-distributed-lock < ../patches/effect-distributed-lock@0.0.11.patch || true
+  │ $ patch --forward -p1 -d node_modules/some-package < ../patches/some-package@1.0.0.patch || true
 ```
 
 **Root cause:** Bun's cache-to-destination copy fails mid-operation for `file:` dependencies, leaving incomplete packages:

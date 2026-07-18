@@ -22,6 +22,9 @@
       "path": "./packages/@overeng/effect-ai-claude-cli"
     },
     {
+      "path": "./packages/@overeng/effect-distributed-lock"
+    },
+    {
       "path": "./packages/@overeng/effect-path"
     },
     {
