@@ -44,6 +44,11 @@ imports = [
     Materialization-Root-owned.
   - Managed installs use pnpm's `auto` import policy and reject cross-device
     Linux storage before materialization.
+  - Frozen installs use the current guarded pnpm runtime, while `pnpm:update`
+    uses a separate pnpm 11.5.1 lock mutator. Root updates generate projections
+    with validation deferred, repair the lock, then require `genie --check`;
+    retained package records are rejected transactionally if they lose
+    `hasBin` metadata.
 - `setup.nix` - Setup tasks
 - `test.nix` - Test tasks
 - `test-playwright.nix` - Playwright e2e tasks

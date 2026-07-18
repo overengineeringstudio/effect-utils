@@ -13,7 +13,10 @@ const workspaceDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/notion-core' }),
   devDependencies: {
     workspace: [utilsDevPkg],
-    external: catalog.pick('@types/node', 'typescript', 'vitest'),
+    // utils-dev is injected into this package's pnpm closure and peers on the
+    // repository's Effect 3 cohort. Pin that peer locally so pnpm cannot satisfy
+    // it with react-inspector's intentionally separate Effect 4 development copy.
+    external: catalog.pick('@types/node', 'effect', 'typescript', 'vitest'),
   },
 })
 

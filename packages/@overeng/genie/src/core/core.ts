@@ -80,6 +80,8 @@ export type CoreGenerateOptions = {
   oxfmtConfigPath: Option.Option<string>
   /** When set, restrict generation to generators declaring this phase (R31). Absent ⇒ all phases. */
   phase?: GeneratorPhase | undefined
+  /** Defer cross-file validation to a mandatory later step in a repair transaction. */
+  validate?: boolean | undefined
 }
 
 /** Internal options passed to the core check (up-to-date verification) pipeline. */
@@ -198,6 +200,7 @@ export const generateAll = ({
   dryRun,
   oxfmtConfigPath,
   phase,
+  validate = true,
 }: CoreGenerateOptions): Effect.Effect<
   GenieGenerateResult,
   GenieGenerationFailedError | PlatformError.PlatformError,
@@ -356,7 +359,7 @@ export const generateAll = ({
     }
 
     // Run validation hooks after successful generation
-    if (dryRun === false) {
+    if (dryRun === false && validate === true) {
       yield* runValidationOrFail({ cwd, genieFiles })
     }
 

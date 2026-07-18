@@ -28,6 +28,10 @@
   # `bin/pnpm` and exec's this by absolute path under passthrough (see
   # cli-guard.nix).
   pnpmPkg ? null,
+  # Dedicated binary allowed to rewrite pnpm-lock.yaml. The default is pinned
+  # independently from the current runtime pnpm because affected pnpm 11
+  # releases strip executable metadata under --fix-lockfile.
+  pnpmLockMutatorPkg ? null,
 }:
 {
   lib,
@@ -88,6 +92,19 @@ let
     builtins.readFile ./check-node-modules-projection-health.cjs
   );
   pnpmInstallPolicy = import ../../../workspace-tools/lib/pnpm-install-policy.nix { inherit lib; };
+  effectivePnpmLockMutatorPkg =
+    if pnpmLockMutatorPkg != null then
+      pnpmLockMutatorPkg
+    else
+      import ../../../pnpm-lock-mutator.nix { inherit pkgs; };
+  pnpmLockMutatorVersion = effectivePnpmLockMutatorPkg.version or "unknown";
+  # Only inspect caller-provided overrides eagerly. Forcing the default
+  # derivation here would force the module's `pkgs` argument while devenv is
+  # still assembling `_module.args`, causing an evaluation recursion.
+  pnpmLockMutatorOverrideVersion =
+    if pnpmLockMutatorPkg == null then "11.5.1" else pnpmLockMutatorPkg.version or "unknown";
+  pnpmLockMutatorOverrideIsSupported =
+    pnpmLockMutatorPkg == null || pnpmLockMutatorOverrideVersion == "11.5.1";
 
   flock = "${pkgs.flock}/bin/flock";
   installFlagsString = lib.escapeShellArgs installFlags;
@@ -394,6 +411,79 @@ let
       return "$rc"
     }
   '';
+  runPnpmLockMutatorFn = ''
+    collect_lockfile_package_records() {
+      local mode="$1"
+      local lockfile="$2"
+
+      [ -f "$lockfile" ] || return 0
+      awk -v mode="$mode" '
+        /^packages:$/ { in_packages = 1; next }
+        in_packages && /^[^ ]/ { exit }
+        in_packages && /^  [^ ]/ {
+          package_key = $0
+          sub(/^  /, "", package_key)
+          sub(/:$/, "", package_key)
+          if (mode == "all") print package_key
+          next
+        }
+        in_packages && /^    hasBin: true$/ && mode == "has-bin" { print package_key }
+      ' "$lockfile" | LC_ALL=C sort -u
+    }
+
+    run_pnpm_lock_mutator() {
+      local state_dir
+      local had_lockfile=0
+      local status
+
+      state_dir="$(mktemp -d)"
+      if [ -f pnpm-lock.yaml ]; then
+        had_lockfile=1
+        cp pnpm-lock.yaml "$state_dir/pnpm-lock.yaml.before"
+        collect_lockfile_package_records has-bin pnpm-lock.yaml > "$state_dir/has-bin.before"
+      else
+        : > "$state_dir/has-bin.before"
+      fi
+
+      set +e
+      ${lib.escapeShellArg "${effectivePnpmLockMutatorPkg}/bin/pnpm"} install --fix-lockfile \
+        ${liveRealizationPolicyFlagsString} \
+        --config.package-import-method="$PNPM_PACKAGE_IMPORT_METHOD" \
+        --config.store-dir="$npm_config_store_dir"
+      status=$?
+      set -e
+
+      if [ "$status" -ne 0 ]; then
+        if [ "$had_lockfile" -eq 1 ]; then
+          cp "$state_dir/pnpm-lock.yaml.before" pnpm-lock.yaml
+        else
+          rm -f pnpm-lock.yaml
+        fi
+        rm -rf "$state_dir"
+        return "$status"
+      fi
+
+      collect_lockfile_package_records all pnpm-lock.yaml > "$state_dir/packages.after"
+      collect_lockfile_package_records has-bin pnpm-lock.yaml > "$state_dir/has-bin.after"
+      comm -12 "$state_dir/has-bin.before" "$state_dir/packages.after" > "$state_dir/retained-has-bin"
+      comm -23 "$state_dir/retained-has-bin" "$state_dir/has-bin.after" > "$state_dir/stripped-has-bin"
+
+      if [ -s "$state_dir/stripped-has-bin" ]; then
+        echo "[pnpm] Lockfile mutator ${pnpmLockMutatorVersion} stripped hasBin from retained package records:" >&2
+        sed 's/^/  - /' "$state_dir/stripped-has-bin" >&2
+        echo "[pnpm] Restoring pnpm-lock.yaml; see https://github.com/pnpm/pnpm/issues/6600" >&2
+        if [ "$had_lockfile" -eq 1 ]; then
+          cp "$state_dir/pnpm-lock.yaml.before" pnpm-lock.yaml
+        else
+          rm -f pnpm-lock.yaml
+        fi
+        rm -rf "$state_dir"
+        return 1
+      fi
+
+      rm -rf "$state_dir"
+    }
+  '';
 
   allTasks = {
     "${installTaskName}" = {
@@ -538,14 +628,22 @@ let
     "${updateTaskName}" = {
       guard = "pnpm";
       description = "Update the authoritative pnpm lockfile at ${workspaceRoot}";
-      after = (if workspaceRoot == "." then [ "genie:run" ] else [ ]) ++ updateAfter;
+      after = updateAfter;
       exec = trace.exec updateTaskName ''
         set -euo pipefail
         cd ${lib.escapeShellArg workspaceRootAbs}
         ${managedPnpmMutationPrologue}
-        pnpm install --fix-lockfile ${liveRealizationPolicyFlagsString} \
-          --config.package-import-method="$PNPM_PACKAGE_IMPORT_METHOD" \
-          --config.store-dir="$npm_config_store_dir"
+        ${runPnpmLockMutatorFn}
+        ${lib.optionalString (workspaceRoot == ".") ''
+          # Projection can change the catalog that the lockfile must satisfy.
+          # Defer cross-file validation only until the safe mutator has repaired
+          # that lock; the final check below is mandatory.
+          genie --defer-validation
+        ''}
+        run_pnpm_lock_mutator
+        ${lib.optionalString (workspaceRoot == ".") ''
+          genie --check
+        ''}
         echo "Repo-root lockfile updated. Refresh Nix FOD hashes with the repo workflow."
       '';
     };
@@ -634,6 +732,11 @@ let
   };
 
 in
+assert lib.assertMsg pnpmLockMutatorOverrideIsSupported ''
+  pnpm lock mutator version ${pnpmLockMutatorOverrideVersion} is not supported.
+  Set a derivation versioned as the verified-safe pnpm 11.5.1 pin;
+  other versions require explicit verification and an allowlist change.
+'';
 {
   packages = cliGuard.fromTasks {
     tasks = allTasks;

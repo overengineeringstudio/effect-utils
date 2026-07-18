@@ -4,10 +4,22 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- **react-inspector / Effect 4**: align the development dependency and peer
+  floor to Effect `4.0.0-beta.99`, anchor injected test helpers to the separate
+  Effect 3 catalog, and fail generation if either cohort's exact identity drifts
+  (#937).
+
 - Fix megarepo Nix lock validation for current and legacy members that share one repository while preserving fail-closed ambiguity checks.
 
 ### Fixed
 
+- **devenv / pnpm**: separate frozen-install and lockfile-mutation pnpm
+  binaries. `pnpm:update` now uses the last verified-safe pnpm 11 lock mutator
+  (11.5.1), rejects affected 11.5.2-11.x overrides at Nix evaluation, and
+  fails closed with lock restoration if a retained package record loses
+  `hasBin`. Root updates also replace the Genie/catalog circular dependency
+  with an explicit transaction: generate projections with validation deferred,
+  repair the lock, then require full `genie --check` validation.
 - **react-inspector / Effect 4**: preserve exact-optional public metadata types
   across Effect 4 schema decoding, and compile the migrated schema surface as a
   strict downstream consumer in the workspace typecheck graph.

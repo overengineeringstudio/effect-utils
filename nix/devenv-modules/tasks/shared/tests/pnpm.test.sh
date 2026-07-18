@@ -661,6 +661,25 @@ echo "Test 34c: a preexisting external files bridge fails closed"
   test -L "$shared_store/v11/files"
 )
 
+echo "Test 34d: a preexisting external store-version bridge fails before mutation"
+(
+  storage_root="$test_dir/version-bridged-storage-root"
+  isolated_home="$test_dir/version-bridged-storage-home"
+  shared_store="$isolated_home/.local/share/pnpm/store-shared-v1"
+  external_version="$test_dir/external-store-version"
+  mkdir -p "$storage_root" "$shared_store" "$external_version"
+  ln -s "$external_version" "$shared_store/v11"
+  export HOME="$isolated_home"
+  unset CI PNPM_SHARED_STORE_DIR PNPM_SHARED_FILES_DIR PNPM_STORE_DIR PNPM_CONFIG_STORE_DIR npm_config_store_dir
+  set +e
+  output="$(set -e; configure_pnpm_storage node "$storage_root" "$test_dir/job-store" true 2>&1)"
+  exit_code=$?
+  set -e
+  assert_exit_code 1 "$exit_code" "external Store Cache version bridge should fail before creating files"
+  grep -qF "Refusing external pnpm Store Cache version bridge" <<< "$output"
+  test ! -e "$external_version/files"
+)
+
 echo "Test 35: Linux zero-copy storage fails closed across filesystems"
 if [ -d /dev/shm ] && [ "$(stat -c '%d' /dev/shm)" != "$(stat -c '%d' "$test_dir")" ]; then
   cross_device_store="$(mktemp -d /dev/shm/effect-utils-pnpm-store.XXXXXX)"
