@@ -80,6 +80,23 @@ extract_task_script() {
   chmod +x "$output_path"
 }
 
+eval_pnpm_package_count() {
+  nix eval --impure --raw --expr "
+    let
+      flake = builtins.getFlake (toString $ROOT);
+      pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
+      module = (import $ROOT/nix/devenv-modules/tasks/shared/pnpm.nix {
+        packages = [ ];
+        pnpmPkg = pkgs.writeShellScriptBin \"pnpm\" \"exit 0\";
+      }) {
+        pkgs = pkgs;
+        lib = pkgs.lib;
+        config = { devenv.root = \"$workspace\"; };
+      };
+    in builtins.toString (builtins.length module.packages)
+  "
+}
+
 extract_shared_task_script() {
   local module_path="$1"
   local task_name="$2"
@@ -145,6 +162,9 @@ trap 'if [ "${KEEP_PNPM_SMOKE_TMP:-0}" = "1" ]; then echo "pnpm smoke tmp: $tmpd
 
 workspace="$tmpdir/workspace"
 mkdir -p "$workspace/.devenv/task-cache" "$workspace/.pnpm-home-a/store/v11" "$workspace/.pnpm-home-b/store/v11" "$tmpdir/bin" "$workspace/packages/demo/node_modules/.bin" "$workspace/nested/pkg"
+
+echo "Preflight: pnpmPkg is exec-only guard backing, not a profile package"
+assert_eq 1 "$(eval_pnpm_package_count)" "pnpm module packages should contain the pnpm guard only"
 
 cat > "$workspace/package.json" <<'EOF'
 {"name":"smoke-workspace","private":true}

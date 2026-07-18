@@ -498,31 +498,7 @@ in
     "context/otel-scrape/telemetry-registry.json"
   ];
 
-  # Guarded-command ownership (issue #808):
-  #   Each cli-guard owns its `bin/<name>` and exec's the real binary by absolute
-  #   store path under DEVENV_TASK_PASSTHROUGH=1 (see nix/devenv-modules/tasks/lib/cli-guard.nix).
-  #   The reals are therefore threaded into the task modules as `*Pkg` args
-  #   rather than listed here as competing top-level providers, which removes the
-  #   nondeterministic buildEnv `collision between ...` warnings.
-  #
-  #   command  owner (real exec'd by guard)        why not a top-level package
-  #   -------  ---------------------------------    --------------------------------
-  #   genie    genieSourceCli  (mkSourceCli)        guard owns it; sole bin
-  #   mr       mrSourceCli     (mkSourceCli)        guard owns it; sole bin
-  #   oxlint   oxlintWithPlugins                    guard owns it; sole bin
-  #   oxfmt    pkgs.oxfmt                           guard owns it (in lint-oxc.nix); sole bin
-  #   nixfmt   pkgs.nixfmt-rfc-style                guard owns it (in lint-nix.nix); sole bin
-  #   deadnix  pkgs.deadnix                         guard owns it (in lint-nix.nix); sole bin
-  #   tsgo     effectTsgo                           lowPrio below: keeps `effect-tsgo` sibling
-  #   pnpm     pnpmPkg (nix/pnpm.nix)               lowPrio below: keeps `pnpx` sibling
-  #
-  #   tsc/tsserver stay real-owned via `pkgs.typescript` (no guard, no collision).
-  #   tui-stories is real-owned via mkSourceCli (no guard, no collision).
   packages = [
-    # lowPrio: the tsgo guard owns `bin/tsgo`; keep this for the `effect-tsgo` bin.
-    (lib.lowPrio effectTsgo)
-    # lowPrio: the pnpm guard owns `bin/pnpm`; keep this for the `pnpx` bin.
-    (lib.lowPrio pnpmPkg)
     pkgs.nodejs_24
     pkgs.bun
     pkgs.typescript

@@ -35,6 +35,10 @@ All notable changes to this project will be documented in this file.
   storage presets; Nix prepared-dependency and Buck2 evidence retain the existing
   `profileKey` compatibility boundary. Remove the GVS-only
   `enableGlobalVirtualStore` and `gvsTypeExtensions` generator APIs.
+- **devenv cli-guard ownership**: drop the remaining self-consumer
+  `lib.lowPrio effectTsgo` / `lib.lowPrio pnpmPkg` boilerplate. Passing
+  `tsBinPkg` / `pnpmPkg` to the task modules is sufficient because the guards
+  exec the real binaries by absolute store path under passthrough.
 - **ci-tools / Vercel**: add first-class production-domain support to the shared
   Vercel deploy path. `ci-tools deploy vercel --production-domain <host>` now
   aliases production deployments to canonical custom domains, reports those
