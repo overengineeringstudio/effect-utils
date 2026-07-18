@@ -445,7 +445,15 @@ const jobs: Record<
   // hashes that normal CI can otherwise mask via store/substituter reuse.
   'nix-fod-check': multiPlatformStrictNixJob(
     validateColdPnpmDepsStep({
-      flakeRefs: ['.#genie-pnpm-deps', '.#megarepo-pnpm-deps', '.#oxc-config-plugin-pnpm-deps'],
+      flakeRefs: [
+        '.#genie-pnpm-deps',
+        '.#ci-tools-pnpm-deps',
+        '.#megarepo-pnpm-deps',
+        '.#oxc-config-plugin-pnpm-deps',
+        '.#tui-stories-pnpm-deps',
+        '.#notion-cli-pnpm-deps',
+        '.#notion-md-pnpm-deps',
+      ],
       substituters: ['https://cache.nixos.org'],
     }),
   ),

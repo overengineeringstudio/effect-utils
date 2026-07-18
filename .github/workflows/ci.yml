@@ -1845,7 +1845,7 @@ jobs:
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/genie-ci-scripts/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'Cold pnpm deps validation' 'set -euo pipefail
-          for attr in '"'"'.#genie-pnpm-deps'"'"' '"'"'.#megarepo-pnpm-deps'"'"' '"'"'.#oxc-config-plugin-pnpm-deps'"'"'; do
+          for attr in '"'"'.#genie-pnpm-deps'"'"' '"'"'.#ci-tools-pnpm-deps'"'"' '"'"'.#megarepo-pnpm-deps'"'"' '"'"'.#oxc-config-plugin-pnpm-deps'"'"' '"'"'.#tui-stories-pnpm-deps'"'"' '"'"'.#notion-cli-pnpm-deps'"'"' '"'"'.#notion-md-pnpm-deps'"'"'; do
             echo "::group::rebuild-check $attr"
             # Step 1: Realize once (may substitute) so rebuild has a trusted output to compare against.
             nix build --no-link "$attr" --option substituters '"'"'https://cache.nixos.org'"'"'
