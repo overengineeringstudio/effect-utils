@@ -13,7 +13,6 @@ rec {
     "--config.strict-store-pkg-content-check=true"
     "--child-concurrency=1"
     "--network-concurrency=4"
-    "--config.package-import-method=clone-or-copy"
     "--config.enable-global-virtual-store=false"
     "--config.virtual-store-dir=node_modules/.pnpm"
     "--pm-on-fail=ignore"

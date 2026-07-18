@@ -12,6 +12,112 @@ ensure_local_pnpm_home_default() {
   fi
 }
 
+configure_pnpm_storage() {
+  local node_bin="$1"
+  local materialization_root="$2"
+  local job_local_store="$3"
+  local host_is_linux="$4"
+  local store_dir
+  local package_import_method="auto"
+
+  if [ -n "${CI:-}" ]; then
+    store_dir="$job_local_store"
+  else
+    local shared_store_was_explicit=false
+    if [ -n "${PNPM_SHARED_STORE_DIR:-}" ]; then
+      store_dir="$PNPM_SHARED_STORE_DIR"
+      shared_store_was_explicit=true
+    else
+      store_dir="$HOME/.local/share/pnpm/store-shared-v1"
+    fi
+
+    local store_version_dir="$store_dir/v11"
+    local files_path="$store_version_dir/files"
+    mkdir -p "$store_version_dir"
+
+    if [ ! -e "$files_path" ] && [ ! -L "$files_path" ]; then
+      local legacy_shared_files="${PNPM_SHARED_FILES_DIR:-$HOME/.local/share/pnpm/shared-files}/v11"
+      if [ "$shared_store_was_explicit" = false ] && [ -d "$legacy_shared_files" ]; then
+        ln -s "$legacy_shared_files" "$files_path"
+      else
+        mkdir -p "$files_path"
+      fi
+    fi
+
+    if [ "$host_is_linux" = true ]; then
+      "$node_bin" - "$materialization_root" "$files_path" <<'EOF'
+const fs = require('node:fs')
+
+const [materializationRoot, filesPath] = process.argv.slice(2)
+const rootDevice = fs.statSync(materializationRoot).dev
+const filesDevice = fs.statSync(filesPath).dev
+
+if (rootDevice !== filesDevice) {
+  console.error(
+    `[pnpm] Zero-copy pnpm storage requires one filesystem: root=${materializationRoot} store-files=${filesPath}`,
+  )
+  process.exit(1)
+}
+EOF
+    fi
+
+  fi
+
+  export PNPM_STORE_DIR="$store_dir"
+  export PNPM_CONFIG_STORE_DIR="$store_dir"
+  export npm_config_store_dir="$store_dir"
+  export PNPM_PACKAGE_IMPORT_METHOD="$package_import_method"
+}
+
+assert_pnpm_storage_capacity() {
+  local store_dir="$1"
+
+  if [ -n "${CI:-}" ]; then
+    return 0
+  fi
+
+  local min_free_kib="${PNPM_MIN_FREE_KIB:-2097152}"
+  local available_kib
+  available_kib="$(df -Pk "$store_dir" | awk 'NR == 2 { print $4 }')"
+  if [ -z "$available_kib" ] || [ "$available_kib" -lt "$min_free_kib" ]; then
+    echo "[pnpm] Refusing materialization with ${available_kib:-unknown} KiB free; require at least $min_free_kib KiB after legacy-state reclamation" >&2
+    return 1
+  fi
+}
+
+migrate_legacy_pnpm_store() {
+  local legacy_store="$1"
+  local active_store="$2"
+  shift 2
+
+  if [ -n "${CI:-}" ] || [ ! -d "$legacy_store/v11" ]; then
+    return 0
+  fi
+
+  local legacy_store_physical
+  local active_store_physical
+  legacy_store_physical="$(cd "$legacy_store" && pwd -P)"
+  active_store_physical="$(cd "$active_store" && pwd -P)"
+  if [ "$legacy_store_physical" = "$active_store_physical" ]; then
+    return 0
+  fi
+
+  local legacy_files="$legacy_store/v11/files"
+  if [ -d "$legacy_files" ] && [ ! -L "$legacy_files" ] && [ -n "$(find "$legacy_files" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
+    echo "[pnpm] Refusing to discard non-empty legacy package content: $legacy_files" >&2
+    echo "[pnpm] Reconcile that cache into the shared store or remove it explicitly, then rerun the install" >&2
+    return 1
+  fi
+
+  # The old GVS/package index is disposable generated state. Purge every local
+  # projection that can still reference it before reclaiming the versioned
+  # store namespace, so cutover reduces disk before rematerialization.
+  purge_node_modules "$@"
+  rm -rf "$legacy_store/v11"
+  rm -f "$legacy_store/.effect-utils-pnpm-store.lock"
+  echo "[pnpm] Reclaimed legacy root-local store: $legacy_store/v11"
+}
+
 emit_dir_state() {
   local dir="$1"
 

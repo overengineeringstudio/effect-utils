@@ -56,7 +56,7 @@ let
       "${config.devenv.root}/.devenv/pnpm-home"
     else
       "${config.devenv.root}/.devenv/pnpm-home/${workspaceCacheName}";
-  defaultPnpmStoreDir =
+  legacyPnpmStoreDir =
     if workspaceRoot == "." then
       "${config.devenv.root}/.devenv/pnpm-store-pure-v1"
     else
@@ -164,62 +164,12 @@ let
       esac
     fi
   '';
-  ensureLocalPnpmStoreDirFn = ''
-    _pnpm_store_dir="''${npm_config_store_dir:-''${PNPM_CONFIG_STORE_DIR:-''${PNPM_STORE_DIR:-}}}"
-    if [ ${lib.escapeShellArg workspaceRoot} != "." ] && [ -n "$_pnpm_store_dir" ]; then
-      case "$_pnpm_store_dir" in
-        */${workspaceCacheName}) ;;
-        *) _pnpm_store_dir="$_pnpm_store_dir/${workspaceCacheName}" ;;
-      esac
-    elif [ -n "$_pnpm_store_dir" ]; then
-      :
-    else
-      _pnpm_store_dir=${lib.escapeShellArg defaultPnpmStoreDir}
-    fi
-    export PNPM_STORE_DIR="$_pnpm_store_dir"
-    export PNPM_CONFIG_STORE_DIR="$_pnpm_store_dir"
-    export npm_config_store_dir="$_pnpm_store_dir"
-    unset _pnpm_store_dir
-  '';
-  ensureSharedPnpmFilesStoreFn = ''
-    ensure_shared_pnpm_files_store() {
-      if [ -n "''${CI:-}" ]; then
-        return 0
-      fi
-      if [ -z "''${npm_config_store_dir:-}" ]; then
-        echo "[pnpm] npm_config_store_dir is empty; cannot prepare split store" >&2
-        exit 1
-      fi
-
-      local store_version_dir
-      local files_path
-      local shared_files_path
-      store_version_dir="''${npm_config_store_dir}/v11"
-      files_path="$store_version_dir/files"
-      shared_files_path="''${PNPM_SHARED_FILES_DIR:-$HOME/.local/share/pnpm/shared-files}/v11"
-
-      mkdir -p "$store_version_dir" "$shared_files_path"
-
-      if [ -L "$files_path" ]; then
-        if [ "$(readlink "$files_path")" != "$shared_files_path" ]; then
-          echo "[pnpm] $files_path points at $(readlink "$files_path"), expected $shared_files_path" >&2
-          exit 1
-        fi
-        return 0
-      fi
-
-      if [ -e "$files_path" ]; then
-        if [ -d "$files_path" ] && [ -z "$(find "$files_path" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
-          rmdir "$files_path"
-        else
-          echo "[pnpm] Refusing to replace non-empty legacy root-local content: $files_path" >&2
-          echo "[pnpm] One-time clean break required: archive or remove that directory explicitly, then rerun: devenv tasks run ${installTaskName}" >&2
-          exit 1
-        fi
-      fi
-
-      ln -s "$shared_files_path" "$files_path"
-    }
+  configurePnpmStorageFn = ''
+    configure_pnpm_storage \
+      ${lib.escapeShellArg "${pkgs.nodejs}/bin/node"} \
+      ${lib.escapeShellArg workspaceRootAbs} \
+      ${lib.escapeShellArg legacyPnpmStoreDir} \
+      ${lib.boolToString pkgs.stdenv.hostPlatform.isLinux}
   '';
 
   computeWorkspaceStateHash = ''
@@ -253,6 +203,8 @@ let
       {
         printf '%s\n' ${lib.escapeShellArg pkgs.pnpm.version}
         printf '%s\n' "$workspace_state_hash"
+        printf '%s\n' "$npm_config_store_dir"
+        printf '%s\n' "$PNPM_PACKAGE_IMPORT_METHOD"
         printf '%s\n' ${lib.escapeShellArg (builtins.toJSON installFlags)}
         printf '%s\n' ${lib.escapeShellArg preInstall}
       } | compute_hash
@@ -306,7 +258,14 @@ let
     run_pnpm_install() {
       local install_args
       reject_impure_pnpm_install_args "$@" ${installFlagsString}
-      install_args=(install "$@" ${installFlagsString} ${pureInstallFlagsString} "--config.store-dir=$npm_config_store_dir")
+      install_args=(
+        install
+        "$@"
+        ${installFlagsString}
+        ${pureInstallFlagsString}
+        "--config.package-import-method=$PNPM_PACKAGE_IMPORT_METHOD"
+        "--config.store-dir=$npm_config_store_dir"
+      )
 
       ${lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
         if [ -n "''${CI:-}" ]; then
@@ -410,15 +369,14 @@ let
         cd ${lib.escapeShellArg workspaceRootAbs}
         ${loadPnpmTaskHelpersFn}
         ${ensureLocalPnpmHomeFn}
-        ${ensureLocalPnpmStoreDirFn}
-        ${ensureSharedPnpmFilesStoreFn}
-        ensure_shared_pnpm_files_store
+        ${configurePnpmStorageFn}
         mkdir -p "${cacheRoot}"
         # This cache tracks the effective install state, not just workspace
         # manifests. The virtual dependency graph itself is root-local.
         hash_file="${cacheRoot}/install-state.hash"
         projection_hash_file="${cacheRoot}/projection-state.hash"
         contract_state_file="${cacheRoot}/pnpm-install-contract.json"
+        storage_state_file="${cacheRoot}/pnpm-storage-state"
 
         lockfile="${cacheRoot}/pnpm-install.lock"
         exec 200>"$lockfile"
@@ -437,14 +395,12 @@ let
           exit 1
         fi
 
-        pnpm_store_lockfile="''${npm_config_store_dir:-${cacheRoot}}/.effect-utils-pnpm-store.lock"
-        mkdir -p "$(dirname "$pnpm_store_lockfile")"
-        exec 202>"$pnpm_store_lockfile"
-        if ! ${flock} -w 600 202; then
-          echo "[pnpm] store-dir lock timeout after 600s: $pnpm_store_lockfile" >&2
-          echo "[pnpm] Another pnpm install sharing this store-dir may be stuck" >&2
-          exit 1
-        fi
+        migrate_legacy_pnpm_store \
+          ${lib.escapeShellArg legacyPnpmStoreDir} \
+          "$npm_config_store_dir" \
+          node_modules \
+          ${nodeModulesPaths}
+        assert_pnpm_storage_capacity "$npm_config_store_dir"
 
         ${computeWorkspaceStateHash}
         ${computeInstallStateHashFn}
@@ -492,18 +448,20 @@ let
 
         cache_value="$(compute_projection_state_hash)"
         ${cache.writeCacheFile ''"$projection_hash_file"''}
+
+        cache_value="$(printf '%s\n%s\n' "$npm_config_store_dir" "$PNPM_PACKAGE_IMPORT_METHOD")"
+        ${cache.writeCacheFile ''"$storage_state_file"''}
       '';
       status = trace.status installTaskName "hash" ''
         set -euo pipefail
         cd ${lib.escapeShellArg workspaceRootAbs}
         ${loadPnpmTaskHelpersFn}
         ${ensureLocalPnpmHomeFn}
-        ${ensureLocalPnpmStoreDirFn}
-        ${ensureSharedPnpmFilesStoreFn}
-        ensure_shared_pnpm_files_store
+        ${configurePnpmStorageFn}
         hash_file="${cacheRoot}/install-state.hash"
         projection_hash_file="${cacheRoot}/projection-state.hash"
         contract_state_file="${cacheRoot}/pnpm-install-contract.json"
+        storage_state_file="${cacheRoot}/pnpm-storage-state"
 
         _pnpm_install_contract_file="$(resolve_pnpm_install_contract_file "$PWD" || true)"
         if [ -z "''${_pnpm_install_contract_file:-}" ]; then
@@ -515,8 +473,14 @@ let
           exit 1
         fi
 
-        if [ ! -d node_modules ] || [ ! -f pnpm-lock.yaml ] || [ ! -f "$hash_file" ] || [ ! -f "$projection_hash_file" ] || [ ! -f node_modules/.modules.yaml ]; then
+        if [ ! -d node_modules ] || [ ! -f pnpm-lock.yaml ] || [ ! -f "$hash_file" ] || [ ! -f "$projection_hash_file" ] || [ ! -f "$storage_state_file" ] || [ ! -f node_modules/.modules.yaml ]; then
           emit_pnpm_install_miss_span ${lib.escapeShellArg installTaskName} "bootstrap"
+          exit 1
+        fi
+
+        current_storage_state="$(printf '%s\n%s\n' "$npm_config_store_dir" "$PNPM_PACKAGE_IMPORT_METHOD")"
+        if [ "$current_storage_state" != "$(cat "$storage_state_file")" ]; then
+          emit_pnpm_install_miss_span ${lib.escapeShellArg installTaskName} "storage_policy"
           exit 1
         fi
 
@@ -567,9 +531,7 @@ let
         cd ${lib.escapeShellArg workspaceRootAbs}
         ${loadPnpmTaskHelpersFn}
         ${ensureLocalPnpmHomeFn}
-        ${ensureLocalPnpmStoreDirFn}
-        ${ensureSharedPnpmFilesStoreFn}
-        ensure_shared_pnpm_files_store
+        ${configurePnpmStorageFn}
         pnpm install --fix-lockfile --config.confirmModulesPurge=false --pm-on-fail=ignore --config.store-dir="$npm_config_store_dir"
         echo "Repo-root lockfile updated. Refresh Nix FOD hashes with the repo workflow."
       '';
@@ -588,9 +550,7 @@ let
         cd ${lib.escapeShellArg workspaceRootAbs}
         ${loadPnpmTaskHelpersFn}
         ${ensureLocalPnpmHomeFn}
-        ${ensureLocalPnpmStoreDirFn}
-        ${ensureSharedPnpmFilesStoreFn}
-        ensure_shared_pnpm_files_store
+        ${configurePnpmStorageFn}
         pnpm dedupe --config.confirmModulesPurge=false --pm-on-fail=ignore --config.store-dir="$npm_config_store_dir"
         echo "Lockfile deduped. Re-run genie:check to verify the catalog duplicate gate; bless any upstream-locked residuals via catalogDuplicateExceptions."
       '';
@@ -605,9 +565,7 @@ let
         cd ${lib.escapeShellArg workspaceRootAbs}
         ${loadPnpmTaskHelpersFn}
         ${ensureLocalPnpmHomeFn}
-        ${ensureLocalPnpmStoreDirFn}
-        ${ensureSharedPnpmFilesStoreFn}
-        ensure_shared_pnpm_files_store
+        ${configurePnpmStorageFn}
 
         purge_node_modules node_modules ${nodeModulesPaths}
       '';
@@ -645,7 +603,8 @@ let
         purge_node_modules node_modules ${nodeModulesPaths}
         rm -f \
           "${cacheRoot}/install-state.hash" \
-          "${cacheRoot}/projection-state.hash"
+          "${cacheRoot}/projection-state.hash" \
+          "${cacheRoot}/pnpm-storage-state"
         echo "[pnpm] Discarded root-local dependency graph; reinvoking ${installTaskName}"
         exec devenv tasks run ${lib.escapeShellArg installTaskName}
       '';
@@ -670,21 +629,10 @@ in
 
   enterShell = lib.mkIf (globalCache && workspaceRoot == ".") ''
     export PNPM_HOME="''${PNPM_HOME:-${config.devenv.root}/.devenv/pnpm-home}"
-    _pnpm_store_dir="''${npm_config_store_dir:-''${PNPM_CONFIG_STORE_DIR:-''${PNPM_STORE_DIR:-${defaultPnpmStoreDir}}}}"
-    export PNPM_STORE_DIR="$_pnpm_store_dir"
-    export PNPM_CONFIG_STORE_DIR="$_pnpm_store_dir"
-    export npm_config_store_dir="$_pnpm_store_dir"
+    source ${lib.escapeShellArg pnpmTaskHelpersScript}
+    ${configurePnpmStorageFn}
     export npm_config_cache="$HOME/.cache/pnpm"
     export npm_config_pm_on_fail=ignore
-    if [ -z "''${CI:-}" ]; then
-      _pnpm_shared_files="''${PNPM_SHARED_FILES_DIR:-$HOME/.local/share/pnpm/shared-files}/v11"
-      mkdir -p "$PNPM_STORE_DIR/v11" "$_pnpm_shared_files"
-      if [ ! -e "$PNPM_STORE_DIR/v11/files" ] && [ ! -L "$PNPM_STORE_DIR/v11/files" ]; then
-        ln -s "$_pnpm_shared_files" "$PNPM_STORE_DIR/v11/files"
-      fi
-      unset _pnpm_shared_files
-    fi
-    unset _pnpm_store_dir
   '';
 
   tasks = cliGuard.stripGuards allTasks;

@@ -141,6 +141,40 @@ export type {
 export { nativeDependencyPolicy }
 export type { NativeDependencyPolicyEntry }
 
+/** Storage portion of effect-utils/pnpm-install-contract schema v2. */
+export interface PnpmInstallStorageContractV2 {
+  readonly storeContract: {
+    readonly owner: 'pnpm'
+    readonly layoutVersion: 'v11'
+    readonly localDevelopment: {
+      readonly scope: 'host-user'
+      readonly trustBoundary: 'same-os-user'
+      readonly defaultPath: '~/.local/share/pnpm/store-shared-v1'
+      readonly pathOverrideEnvironmentVariable: 'PNPM_SHARED_STORE_DIR'
+      readonly contentAddressedFiles: 'shared'
+      readonly derivedIndex: 'shared-pnpm-owned'
+    }
+    readonly ci: {
+      readonly scope: 'job'
+    }
+    readonly virtualStore: {
+      readonly scope: 'materialization-root'
+      readonly path: 'node_modules/.pnpm'
+      readonly global: false
+    }
+  }
+  readonly packageImportMethod: {
+    readonly live: {
+      readonly method: 'auto'
+      readonly owner: 'pnpm'
+      readonly linuxSameDeviceRequired: true
+    }
+    readonly nixPreparedDependencies: {
+      readonly scope: 'independent-builder-policy'
+    }
+  }
+}
+
 // =============================================================================
 // Shared label catalog (consumed by per-repo `.github/labels.json.genie.ts`)
 // =============================================================================
@@ -366,7 +400,7 @@ export const commonPnpmPolicySettings = {
     },
   },
   storeDir: '.devenv/pnpm-store-pure-v1',
-  packageImportMethod: 'clone-or-copy' as const,
+  packageImportMethod: 'auto' as const,
   sideEffectsCache: false as const,
   verifyStoreIntegrity: true as const,
   strictStorePkgContentCheck: true as const,

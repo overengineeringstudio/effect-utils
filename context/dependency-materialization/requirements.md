@@ -118,14 +118,15 @@ Subsystem requirements refine this root contract:
 ### Must preserve correctness under sharing
 
 - **DMP-R12 Root-owned writable state:** Writable Dependency Graph, virtual
-  store, and Projection State must remain inside one Materialization Root.
-  Cross-root sharing is limited to immutable content-addressed Dependency Data.
-- **DMP-R13 Shared CAS safety:** effect-utils must not expose or invoke managed
-  sweeping of a Shared Content Pool unless an authority can mark from every
-  active Materialization Root that references it.
+  store, and Projection State must remain inside one Materialization Root. A
+  cross-root Store Cache may contain pnpm-owned derived indexes only when they
+  are disposable, synchronized, and cannot select or override Dependency
+  Edges.
+- **DMP-R13 Store Cache safety:** Loss or eviction of a Store Cache must not
+  corrupt an already-materialized Dependency Graph. Cache completeness must
+  not be treated as root health or as an offline-readiness guarantee.
 - **DMP-R14 Managed prune refusal:** An effect-utils-managed prune scoped to one
-  Materialization Root must refuse to mutate a Shared Content Pool unless it is
-  executing through the authority required by DMP-R13.
+  Materialization Root must not mutate a host-scoped Store Cache.
 - **DMP-R15 Repair determinism:** Repair commands must converge to the same
   final Dependency Graph, Dependency Data, and Projection State for the same
   declared dependency inputs and materialization policy.

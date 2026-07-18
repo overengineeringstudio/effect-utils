@@ -21,7 +21,7 @@ realization-specific language.
 This context owns **Dependency Materialization**, **Materialization Root**,
 **Materialization Profile**, **Authoritative Materializer**, **Dependency
 Graph**, **Package Instance**, **Dependency Edge**, **Dependency Data**,
-**Projection State**, **Shared Content Pool**, and **Repair**.
+**Projection State**, **Store Cache**, and **Repair**.
 
 ### Subsystem language
 
@@ -82,9 +82,11 @@ may observe dependency edges but may not write them.
 
 ### Storage and lifecycle
 
-**Shared Content Pool** is immutable content-addressed Dependency Data
-referenced by more than one Materialization Root. It contains no writable
-Dependency Graph or Projection State.
+**Store Cache** is a disposable, package-manager-owned cache used while
+materializing dependencies. It may contain immutable content-addressed package
+files and mutable package-manager-derived lookup indexes. Neither facet is
+authoritative Dependency Graph or Projection State. A Store Cache may be
+shared by mutually trusted Materialization Roots without sharing their graphs.
 
 **Repair** is the restoration of a materialization root from declared inputs.
 Repair may discard owned derived state and reinvoke the authoritative
@@ -114,11 +116,13 @@ The weight-bearing relations are:
 | Dependency Graph        | `partOf`    | Materialization Root                 |
 | Dependency Graph        | `dependsOn` | Authoritative Materializer           |
 | Projection State        | `dependsOn` | Dependency Graph                     |
-| Materialization Root    | `dependsOn` | Shared Content Pool                  |
+| Materialization Root    | `dependsOn` | Store Cache                          |
 | Repair                  | `dependsOn` | Authoritative Materializer           |
 
-The Shared Content Pool relation exists only for realizations that share
-content.
+Store placement is a facet of a realization: local development may use a
+host-scoped cache, CI may use a job-scoped cache, and Nix prepared dependencies
+may use an independent builder cache. Placement does not change Materialization
+Profile or Package Instance identity.
 
 ## Flagged ambiguities
 
@@ -131,5 +135,8 @@ content.
 - Qualify **authority** by the operation it governs. Materialization, repair,
   and garbage collection are separate authorities unless explicitly proven to
   coincide.
+- Use **Store Cache** for the whole pnpm store. Do not use **shared store** to
+  imply shared Dependency Graph state, and do not use **content pool** for a
+  store that also contains pnpm-owned derived indexes.
 - Use pnpm **package snapshot** only for the pnpm representation and **Package
   Instance** for the cross-realization concept.

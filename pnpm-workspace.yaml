@@ -83,7 +83,7 @@ injectWorkspacePackages: true
 
 storeDir: .devenv/pnpm-store-pure-v1
 
-packageImportMethod: clone-or-copy
+packageImportMethod: auto
 
 optimisticRepeatInstall: false
 

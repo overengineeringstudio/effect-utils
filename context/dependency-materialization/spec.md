@@ -209,15 +209,17 @@ sources do not carry a second per-target witness file.
 
 ## Storage Ownership And Authorities
 
-| State                                     | Scope                      | Mutation authority       |
-| ----------------------------------------- | -------------------------- | ------------------------ |
-| live dependency graph and virtual store   | one Materialization Root   | that root's pnpm install |
-| live executable projection                | one Materialization Root   | pure projection task     |
-| immutable content-addressed package files | root-local or host-shared  | pnpm content import      |
-| prepared dependency data                  | immutable Nix store output | Nix build                |
+| State                                     | Scope                         | Mutation authority       |
+| ----------------------------------------- | ----------------------------- | ------------------------ |
+| live dependency graph and virtual store   | one Materialization Root      | that root's pnpm install |
+| live executable projection                | one Materialization Root      | pure projection task     |
+| pnpm Store Cache                          | host-local or CI-job-local    | pnpm concurrency control |
+| prepared dependency data                  | immutable Nix store output    | Nix build                |
 
-effect-utils exposes no root-local operation that prunes a shared files pool. A
-future managed pool GC must mark from every active root before sweeping.
+The local-development Store Cache is shared only across mutually trusted roots
+owned by the same user. effect-utils exposes no Materialization-Root repair or
+prune operation that sweeps that host cache. Nix prepared-dependency production
+remains an independent immutable path and does not consume the live host cache.
 
 ## Doctor And Repair
 

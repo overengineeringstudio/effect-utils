@@ -385,8 +385,8 @@ echo "Test 0: install fails closed on non-empty legacy root-local content"
   assert_exit_code 1 "$exit_code" "install should refuse non-empty legacy root-local content"
   test -f "$legacy_files/sentinel"
   test ! -L "$legacy_files"
-  grep -qF "Refusing to replace non-empty legacy root-local content: $legacy_files" <<< "$output"
-  grep -qF "One-time clean break required" <<< "$output"
+  grep -qF "Refusing to discard non-empty legacy package content: $legacy_files" <<< "$output"
+  grep -qF "Reconcile that cache into the shared store or remove it explicitly" <<< "$output"
   rm -rf "$legacy_files"
 )
 
@@ -411,14 +411,15 @@ echo "Test 2: exec runs fake pnpm and populates cache"
   bash "$tmpdir/pnpm-install.exec.sh"
   test -f "$workspace/.devenv/task-cache/pnpm-install/install-state.hash"
   test -f "$workspace/.devenv/task-cache/pnpm-install/projection-state.hash"
+  test -f "$workspace/.devenv/task-cache/pnpm-install/pnpm-storage-state"
   test -d "$workspace/node_modules"
   test -f "$workspace/node_modules/.modules.yaml"
   grep -qxF "flock -w 600 200" "$tmpdir/flock.log"
   grep -qxF "flock -w 600 201" "$tmpdir/flock.log"
-  grep -qxF "flock -w 600 202" "$tmpdir/flock.log"
-  grep -qxF "install --frozen-lockfile --config.confirmModulesPurge=false --ignore-scripts --config.side-effects-cache=false --config.verify-store-integrity=true --config.strict-store-pkg-content-check=true --child-concurrency=1 --network-concurrency=4 --config.package-import-method=clone-or-copy --config.enable-global-virtual-store=false --config.virtual-store-dir=node_modules/.pnpm --pm-on-fail=ignore --config.store-dir=$workspace/.devenv/pnpm-store-pure-v1" "$tmpdir/pnpm.log"
+  test "$(wc -l < "$tmpdir/flock.log")" -eq 2
+  grep -qxF "install --frozen-lockfile --config.confirmModulesPurge=false --ignore-scripts --config.side-effects-cache=false --config.verify-store-integrity=true --config.strict-store-pkg-content-check=true --child-concurrency=1 --network-concurrency=4 --config.enable-global-virtual-store=false --config.virtual-store-dir=node_modules/.pnpm --pm-on-fail=ignore --config.package-import-method=auto --config.store-dir=$tmpdir/home/.local/share/pnpm/store-shared-v1" "$tmpdir/pnpm.log"
   grep -qF ".effect-utils-pnpm-install.lock" "$tmpdir/pnpm-install.exec.sh"
-  grep -qF ".effect-utils-pnpm-store.lock" "$tmpdir/pnpm-install.exec.sh"
+  ! grep -qF ".effect-utils-pnpm-store.lock" "$tmpdir/pnpm-install.exec.sh"
   test -w "$workspace/.devenv/task-cache/pnpm-install/pnpm-install-contract.json"
 )
 
@@ -509,11 +510,10 @@ echo "Test 7: exec defaults PNPM_HOME to a workspace-local projection"
   : > "$tmpdir/pnpm.log"
   bash "$tmpdir/pnpm-install.exec.sh"
   grep -qxF "PNPM_HOME=$workspace/.devenv/pnpm-home" "$tmpdir/pnpm.log"
-  grep -qxF "PNPM_STORE_DIR=$workspace/.devenv/pnpm-store-pure-v1" "$tmpdir/pnpm.log"
-  grep -qxF "PNPM_CONFIG_STORE_DIR=$workspace/.devenv/pnpm-store-pure-v1" "$tmpdir/pnpm.log"
-  grep -qxF "npm_config_store_dir=$workspace/.devenv/pnpm-store-pure-v1" "$tmpdir/pnpm.log"
-  test -L "$workspace/.devenv/pnpm-store-pure-v1/v11/files"
-  test "$(readlink "$workspace/.devenv/pnpm-store-pure-v1/v11/files")" = "$tmpdir/home/.local/share/pnpm/shared-files/v11"
+  grep -qxF "PNPM_STORE_DIR=$tmpdir/home/.local/share/pnpm/store-shared-v1" "$tmpdir/pnpm.log"
+  grep -qxF "PNPM_CONFIG_STORE_DIR=$tmpdir/home/.local/share/pnpm/store-shared-v1" "$tmpdir/pnpm.log"
+  grep -qxF "npm_config_store_dir=$tmpdir/home/.local/share/pnpm/store-shared-v1" "$tmpdir/pnpm.log"
+  test -d "$tmpdir/home/.local/share/pnpm/store-shared-v1/v11/files"
   doctor_decision="$(bash "$tmpdir/pnpm-doctor.exec.sh" | node -e 'const fs=require("node:fs"); process.stdout.write(JSON.parse(fs.readFileSync(0,"utf8")).decision)')"
   assert_eq "healthy" "$doctor_decision" "doctor validates the root-local graph"
   mkdir -p "$workspace/node_modules/corrupt-edge"
@@ -524,6 +524,12 @@ echo "Test 7: exec defaults PNPM_HOME to a workspace-local projection"
   test -f "$workspace/node_modules/.install-ok"
   grep -qxF "PWD=$workspace" "$tmpdir/pnpm.log"
   CI=1 bash "$tmpdir/pnpm-install.exec.sh"
+  set +e
+  bash "$tmpdir/pnpm-install.status.sh"
+  exit_code=$?
+  set -e
+  assert_exit_code 1 "$exit_code" "local status should miss after a CI job-local store install"
+  bash "$tmpdir/pnpm-install.exec.sh"
 )
 
 echo "Test 8: status hits after install with the default root-local topology"
@@ -567,7 +573,7 @@ echo "Test 10: status still hits when PNPM_HOME changes but store-dir stays shar
   assert_exit_code 0 "$exit_code" "status should hit when only PNPM_HOME changes"
 )
 
-echo "Test 11: a healthy root-local graph remains valid when the content-pool path changes"
+echo "Test 11: ambient pnpm store variables do not split the canonical host store"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
@@ -578,13 +584,13 @@ echo "Test 11: a healthy root-local graph remains valid when the content-pool pa
   bash "$tmpdir/pnpm-install.status.sh"
   exit_code=$?
   set -e
-  assert_exit_code 0 "$exit_code" "status should not bind root-local graph validity to the content-pool path"
+  assert_exit_code 0 "$exit_code" "status should retain the canonical host store"
 )
 
 echo "Test 12: exec invoked pnpm install"
 grep -q "^install " "$tmpdir/pnpm.log"
 
-echo "Test 13: nested workspace exec uses its own cwd, cache, PNPM_HOME, and store-dir"
+echo "Test 13: nested workspace exec uses its own cwd, cache, and PNPM_HOME with the host store"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
@@ -597,9 +603,9 @@ echo "Test 13: nested workspace exec uses its own cwd, cache, PNPM_HOME, and sto
   test -d "$workspace/nested/node_modules"
   grep -qxF "PWD=$workspace/nested" "$tmpdir/pnpm.log"
   grep -qxF "PNPM_HOME=$workspace/.devenv/pnpm-home/nested" "$tmpdir/pnpm.log"
-  grep -qxF "PNPM_STORE_DIR=$workspace/.devenv/pnpm-store-pure-v1/nested" "$tmpdir/pnpm.log"
-  grep -qxF "PNPM_CONFIG_STORE_DIR=$workspace/.devenv/pnpm-store-pure-v1/nested" "$tmpdir/pnpm.log"
-  grep -qxF "npm_config_store_dir=$workspace/.devenv/pnpm-store-pure-v1/nested" "$tmpdir/pnpm.log"
+  grep -qxF "PNPM_STORE_DIR=$tmpdir/home/.local/share/pnpm/store-shared-v1" "$tmpdir/pnpm.log"
+  grep -qxF "PNPM_CONFIG_STORE_DIR=$tmpdir/home/.local/share/pnpm/store-shared-v1" "$tmpdir/pnpm.log"
+  grep -qxF "npm_config_store_dir=$tmpdir/home/.local/share/pnpm/store-shared-v1" "$tmpdir/pnpm.log"
 )
 
 echo "Test 14: nested workspace status hits after nested install"
@@ -616,7 +622,7 @@ echo "Test 14: nested workspace status hits after nested install"
   assert_exit_code 0 "$exit_code" "nested status should hit after nested install"
 )
 
-echo "Test 15: nested workspace suffixes an inherited store-dir"
+echo "Test 15: nested workspace ignores ambient store-dir in favor of host authority"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
@@ -626,9 +632,9 @@ echo "Test 15: nested workspace suffixes an inherited store-dir"
   unset npm_config_store_dir
   : > "$tmpdir/pnpm.log"
   bash "$tmpdir/pnpm-install-nested.exec.sh"
-  grep -qxF "PNPM_STORE_DIR=$workspace/.inherited-pnpm-store/nested" "$tmpdir/pnpm.log"
-  grep -qxF "PNPM_CONFIG_STORE_DIR=$workspace/.inherited-pnpm-store/nested" "$tmpdir/pnpm.log"
-  grep -qxF "npm_config_store_dir=$workspace/.inherited-pnpm-store/nested" "$tmpdir/pnpm.log"
+  grep -qxF "PNPM_STORE_DIR=$tmpdir/home/.local/share/pnpm/store-shared-v1" "$tmpdir/pnpm.log"
+  grep -qxF "PNPM_CONFIG_STORE_DIR=$tmpdir/home/.local/share/pnpm/store-shared-v1" "$tmpdir/pnpm.log"
+  grep -qxF "npm_config_store_dir=$tmpdir/home/.local/share/pnpm/store-shared-v1" "$tmpdir/pnpm.log"
 )
 
 echo "Test 16: install flags and pre-install hooks are applied"
@@ -642,7 +648,7 @@ echo "Test 16: install flags and pre-install hooks are applied"
   : > "$tmpdir/pnpm.log"
   bash "$tmpdir/pnpm-install-flags.exec.sh"
   test -f .preinstall-marker
-  grep -qxF "install --config.public-hoist-pattern=* --frozen-lockfile --config.confirmModulesPurge=false --ignore-scripts --config.side-effects-cache=false --config.verify-store-integrity=true --config.strict-store-pkg-content-check=true --child-concurrency=1 --network-concurrency=4 --config.package-import-method=clone-or-copy --config.enable-global-virtual-store=false --config.virtual-store-dir=node_modules/.pnpm --pm-on-fail=ignore --config.store-dir=$workspace/.devenv/pnpm-store-pure-v1" "$tmpdir/pnpm.log"
+  grep -qxF "install --config.public-hoist-pattern=* --frozen-lockfile --config.confirmModulesPurge=false --ignore-scripts --config.side-effects-cache=false --config.verify-store-integrity=true --config.strict-store-pkg-content-check=true --child-concurrency=1 --network-concurrency=4 --config.enable-global-virtual-store=false --config.virtual-store-dir=node_modules/.pnpm --pm-on-fail=ignore --config.package-import-method=auto --config.store-dir=$tmpdir/home/.local/share/pnpm/store-shared-v1" "$tmpdir/pnpm.log"
 )
 
 echo "Test 17: impure no-frozen install flags are rejected before pnpm runs"
@@ -890,10 +896,10 @@ echo "Test 30: clean removes only root-owned topology and leaves shared content 
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
-  mkdir -p "$tmpdir/home/.local/share/pnpm/shared-files/v11/shared-pkg"
+  mkdir -p "$tmpdir/home/.local/share/pnpm/store-shared-v1/v11/files/shared-pkg"
   mkdir -p "$workspace/node_modules" "$workspace/packages/demo/node_modules"
   bash "$tmpdir/pnpm-clean.exec.sh"
-  test -d "$tmpdir/home/.local/share/pnpm/shared-files/v11/shared-pkg"
+  test -d "$tmpdir/home/.local/share/pnpm/store-shared-v1/v11/files/shared-pkg"
   test ! -e "$workspace/node_modules"
   test ! -e "$workspace/packages/demo/node_modules"
 )

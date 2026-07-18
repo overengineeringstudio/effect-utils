@@ -620,5 +620,109 @@ exit_code=$?
 set -e
 assert_exit_code 0 "$exit_code" "projection digest handles packages without a files field"
 
+echo "Test 34: Linux shared storage selects one full store and automatic zero-copy imports"
+(
+  storage_root="$test_dir/storage-root"
+  shared_store="$test_dir/shared-store"
+  mkdir -p "$storage_root"
+  unset CI PNPM_STORE_DIR PNPM_CONFIG_STORE_DIR npm_config_store_dir
+  export PNPM_SHARED_STORE_DIR="$shared_store"
+  export PNPM_MIN_FREE_KIB=0
+  configure_pnpm_storage node "$storage_root" "$test_dir/job-store" true
+  assert_eq "$shared_store" "$npm_config_store_dir" "local roots select the host-owned full store"
+  assert_eq "auto" "$PNPM_PACKAGE_IMPORT_METHOD" "Linux delegates safe zero-copy selection to pnpm"
+  test -d "$shared_store/v11/files"
+  test ! -L "$shared_store/v11/files"
+)
+
+echo "Test 35: Linux zero-copy storage fails closed across filesystems"
+if [ -d /dev/shm ] && [ "$(stat -c '%d' /dev/shm)" != "$(stat -c '%d' "$test_dir")" ]; then
+  cross_device_store="$(mktemp -d /dev/shm/effect-utils-pnpm-store.XXXXXX)"
+  trap 'rm -rf "$test_dir" "$cross_device_store"' EXIT
+  (
+    storage_root="$test_dir/cross-device-root"
+    mkdir -p "$storage_root"
+    unset CI PNPM_STORE_DIR PNPM_CONFIG_STORE_DIR npm_config_store_dir
+    export PNPM_SHARED_STORE_DIR="$cross_device_store"
+    export PNPM_MIN_FREE_KIB=0
+    set +e
+    output="$(set -e; configure_pnpm_storage node "$storage_root" "$test_dir/job-store" true 2>&1)"
+    exit_code=$?
+    set -e
+    assert_exit_code 1 "$exit_code" "cross-device zero-copy storage should fail before pnpm runs"
+    grep -qF "Zero-copy pnpm storage requires one filesystem" <<< "$output"
+    test ! -e "$cross_device_store/v11/index.db"
+  )
+  rm -rf "$cross_device_store"
+else
+  echo "SKIP: no writable second filesystem is available"
+fi
+
+echo "Test 35b: CI forces its declared job-local store"
+(
+  storage_root="$test_dir/ci-storage-root"
+  job_store="$test_dir/ci-job-store"
+  mkdir -p "$storage_root"
+  export CI=1
+  export PNPM_STORE_DIR="$test_dir/runner-shared-store"
+  export PNPM_CONFIG_STORE_DIR="$test_dir/runner-shared-store"
+  export npm_config_store_dir="$test_dir/runner-shared-store"
+  configure_pnpm_storage node "$storage_root" "$job_store" true
+  assert_eq "$job_store" "$npm_config_store_dir" "CI store authority remains job-local"
+  assert_eq "auto" "$PNPM_PACKAGE_IMPORT_METHOD" "CI uses the same native import policy"
+)
+
+echo "Test 36: legacy migration preserves non-empty root-local package content"
+(
+  legacy_store="$test_dir/legacy-nonempty"
+  active_store="$test_dir/active-store"
+  projected_modules="$test_dir/legacy-nonempty-node-modules"
+  mkdir -p "$legacy_store/v11/files" "$active_store/v11/files" "$projected_modules"
+  printf 'preserve-me\n' > "$legacy_store/v11/files/sentinel"
+  printf 'preserve-projection\n' > "$projected_modules/sentinel"
+  set +e
+  output="$(migrate_legacy_pnpm_store "$legacy_store" "$active_store" "$projected_modules" 2>&1)"
+  exit_code=$?
+  set -e
+  assert_exit_code 1 "$exit_code" "non-empty legacy package content should require explicit reconciliation"
+  grep -qF "Refusing to discard non-empty legacy package content" <<< "$output"
+  test -f "$legacy_store/v11/files/sentinel"
+  test -f "$projected_modules/sentinel"
+)
+
+echo "Test 37: legacy GVS cleanup removes only root-local state"
+(
+  legacy_store="$test_dir/legacy-gvs"
+  active_store="$test_dir/active-full-store"
+  shared_files="$test_dir/legacy-shared-files"
+  projected_modules="$test_dir/legacy-gvs-node-modules"
+  mkdir -p "$legacy_store/v11/links/stale-instance" "$active_store/v11/files" "$shared_files" "$projected_modules"
+  printf 'shared-content\n' > "$shared_files/sentinel"
+  printf 'legacy-index\n' > "$legacy_store/v11/index.db"
+  printf 'legacy-projection\n' > "$projected_modules/sentinel"
+  ln -s "$shared_files" "$legacy_store/v11/files"
+  migrate_legacy_pnpm_store "$legacy_store" "$active_store" "$projected_modules" >/dev/null
+  test ! -e "$legacy_store/v11"
+  test ! -e "$projected_modules"
+  test -f "$shared_files/sentinel"
+  test -d "$active_store/v11/files"
+)
+
+echo "Test 38: legacy migration never removes an aliased active store"
+(
+  physical_store="$test_dir/aliased-active-store"
+  projected_modules="$test_dir/aliased-active-node-modules"
+  mkdir -p "$physical_store/v11/files" "$projected_modules"
+  ln -s "$physical_store" "$test_dir/active-store-alias"
+  printf 'active-index\n' > "$physical_store/v11/index.db"
+  printf 'active-projection\n' > "$projected_modules/sentinel"
+  migrate_legacy_pnpm_store \
+    "$physical_store" \
+    "$test_dir/active-store-alias" \
+    "$projected_modules"
+  test -f "$physical_store/v11/index.db"
+  test -f "$projected_modules/sentinel"
+)
+
 echo ""
 echo "All pnpm task helper tests passed"

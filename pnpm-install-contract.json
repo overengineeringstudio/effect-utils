@@ -28,7 +28,16 @@
     "ignoreScripts": true,
     "minimumReleaseAgeExclude": ["@effect/platform", "@types/node", "effect"],
     "optimisticRepeatInstall": false,
-    "packageImportMethod": "clone-or-copy",
+    "packageImportMethod": {
+      "live": {
+        "linuxSameDeviceRequired": true,
+        "method": "auto",
+        "owner": "pnpm"
+      },
+      "nixPreparedDependencies": {
+        "scope": "independent-builder-policy"
+      }
+    },
     "peerDependencyRules": {
       "allowedVersions": {
         "@effect/experimental": ">=0.58.0",
@@ -61,7 +70,8 @@
       "liveVirtualStoreScope": "materialization-root"
     },
     "pnpmStoreOwnership": {
-      "filesLifecycle": "pnpm-owned content-addressed files store",
+      "cacheLifecycle": "pnpm-owned disposable Store Cache",
+      "derivedIndexLifecycle": "shared only inside one same-user trust boundary",
       "virtualStoreLifecycle": "Materialization-Root-owned rebuildable dependency graph"
     }
   },
@@ -69,16 +79,23 @@
     "name": "pnpm",
     "version": "11.8.0"
   },
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "storeContract": {
-    "layoutVersion": "v11",
-    "owner": "pnpm",
-    "sharedFilesStore": {
-      "disabledInCi": true,
-      "enabledForLocalDev": true
+    "ci": {
+      "scope": "job"
     },
-    "storeDir": ".devenv/pnpm-store-pure-v1",
+    "layoutVersion": "v11",
+    "localDevelopment": {
+      "contentAddressedFiles": "shared",
+      "defaultPath": "~/.local/share/pnpm/store-shared-v1",
+      "derivedIndex": "shared-pnpm-owned",
+      "pathOverrideEnvironmentVariable": "PNPM_SHARED_STORE_DIR",
+      "scope": "host-user",
+      "trustBoundary": "same-os-user"
+    },
+    "owner": "pnpm",
     "virtualStore": {
+      "global": false,
       "path": "node_modules/.pnpm",
       "scope": "materialization-root"
     }

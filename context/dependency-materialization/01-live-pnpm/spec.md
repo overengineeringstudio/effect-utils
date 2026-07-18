@@ -77,15 +77,16 @@ graph.
 
 Runtime identity is established by the selected standalone or composed
 workspace topology. Sharing storage is not an identity primitive: every live
-root owns `node_modules/.pnpm`, while roots may reuse immutable content bytes.
+root owns `node_modules/.pnpm`, while mutually trusted roots may reuse one
+pnpm-owned Store Cache.
 
 ### Dependency edge selection authority
 
 pnpm owns dependency-edge selection and realization inside live `node_modules`
 and the root-local virtual store. Managed repair discards that root-owned graph,
 then asks the root's canonical pnpm install to select and materialize it again.
-It preserves the shared content-addressed files pool and never selects or links
-a replacement target itself.
+It does not sweep the host Store Cache and never selects or links a replacement
+target itself.
 
 Missing dependency edges are corrected at a declared authority boundary:
 
@@ -103,9 +104,8 @@ dependency.
 
 ## CI State
 
-CI jobs use job-local writable pnpm home, store metadata, virtual topology, and
-projection state. A shared cache may seed immutable content, but the job remains
-the sole mutation owner.
+CI jobs use a job-local pnpm home, Store Cache, virtual topology, and projection
+state. The job remains the sole mutation owner for all of those paths.
 
 ## Health
 
@@ -117,7 +117,7 @@ A live Materialization Root is healthy only when:
 3. dependency data is present;
 4. expected pure projections exist.
 
-Root health does not imply that a shared content pool contains every package
+Root health does not imply that a Store Cache contains every package
 needed for a future offline reinstall. Offline readiness is a separate claim
 that requires its own no-network evidence for the declared inputs.
 

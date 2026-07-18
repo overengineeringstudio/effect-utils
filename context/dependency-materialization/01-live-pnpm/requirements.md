@@ -19,9 +19,10 @@ parallel Dependency Graph.
   topology and one Materialization Root before pnpm is invoked as its
   Authoritative Materializer.
 - **A03 Mutable realization:** Live `node_modules`, its root-local virtual
-  store, pnpm metadata, and package projections are mutable Materialization
+  store, graph metadata, and package projections are mutable Materialization
   Root state, not immutable dependency artifacts or state owned by a
-  Materialization Profile.
+  Materialization Profile. A pnpm-owned Store Cache is separate, disposable
+  state and is not graph authority.
 
 ## Acceptable Tradeoffs
 
@@ -29,9 +30,9 @@ parallel Dependency Graph.
   rather than accepting arbitrary package-directory installs.
 - **T02 Job-local CI:** CI may give up host-wide mutable-state reuse to keep
   concurrent jobs isolated.
-- **T03 Shared content with local metadata:** Local development may share
-  package content across Materialization Roots only when metadata, projection,
-  repair, and GC authority remain explicit.
+- **T03 Shared cache with local graphs:** Mutually trusted local development
+  roots may share a pnpm Store Cache while keeping graph, projection, and
+  repair authority root-local.
 
 ## Requirements
 
@@ -84,8 +85,9 @@ parallel Dependency Graph.
   responsibility under DMP.LIVE-R07; no secondary writer may retarget it.
   Refines: DMP-R06, DMP-R15.
 - **DMP.LIVE-R10 Safe concurrency:** CI and disposable task roots must keep
-  writable pnpm state job-local. Local development roots may share only an
-  immutable content-addressed pool; virtual topology remains root-local.
+  their Store Cache job-local. Mutually trusted local development roots may
+  share a synchronized host-scoped Store Cache; virtual topology and graph
+  metadata must remain root-local.
   Refines: DMP-R12, DMP-R13, DMP-R14.
 - **DMP.LIVE-R11 Observable reuse:** Install reuse, invalidation, repair, and
   projection decisions must emit machine-readable evidence.

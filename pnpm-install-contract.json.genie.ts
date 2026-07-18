@@ -1,4 +1,7 @@
-import { projectionArtifact } from './genie/external.ts'
+import {
+  projectionArtifact,
+  type PnpmInstallStorageContractV2,
+} from './genie/external.ts'
 import rootPackageJson from './package.json.genie.ts'
 import rootPnpmWorkspaceYaml from './pnpm-workspace.yaml.genie.ts'
 
@@ -7,28 +10,48 @@ const pnpmVersion = packageManager.startsWith('pnpm@')
   ? packageManager.slice('pnpm@'.length)
   : packageManager
 const workspaceData = rootPnpmWorkspaceYaml.data
+const storage = {
+  storeContract: {
+    owner: 'pnpm',
+    layoutVersion: 'v11',
+    localDevelopment: {
+      scope: 'host-user',
+      trustBoundary: 'same-os-user',
+      defaultPath: '~/.local/share/pnpm/store-shared-v1',
+      pathOverrideEnvironmentVariable: 'PNPM_SHARED_STORE_DIR',
+      contentAddressedFiles: 'shared',
+      derivedIndex: 'shared-pnpm-owned',
+    },
+    ci: {
+      scope: 'job',
+    },
+    virtualStore: {
+      scope: 'materialization-root',
+      path: 'node_modules/.pnpm',
+      global: false,
+    },
+  },
+  packageImportMethod: {
+    live: {
+      method: 'auto',
+      owner: 'pnpm',
+      linuxSameDeviceRequired: true,
+    },
+    nixPreparedDependencies: {
+      scope: 'independent-builder-policy',
+    },
+  },
+} satisfies PnpmInstallStorageContractV2
 
 export default projectionArtifact.json({
-  schemaVersion: 1,
+  schemaVersion: 2,
   data: {
     contract: 'effect-utils/pnpm-install-contract',
     packageManager: {
       name: 'pnpm',
       version: pnpmVersion,
     },
-    storeContract: {
-      owner: 'pnpm',
-      layoutVersion: 'v11',
-      storeDir: workspaceData.storeDir,
-      sharedFilesStore: {
-        enabledForLocalDev: true,
-        disabledInCi: true,
-      },
-      virtualStore: {
-        scope: 'materialization-root',
-        path: 'node_modules/.pnpm',
-      },
-    },
+    storeContract: storage.storeContract,
     dependencyGraphContract: {
       packageManager: {
         name: 'pnpm',
@@ -42,7 +65,7 @@ export default projectionArtifact.json({
       ignoreScripts: workspaceData.ignoreScripts,
       minimumReleaseAgeExclude: workspaceData.minimumReleaseAgeExclude,
       optimisticRepeatInstall: workspaceData.optimisticRepeatInstall,
-      packageImportMethod: workspaceData.packageImportMethod,
+      packageImportMethod: storage.packageImportMethod,
       peerDependencyRules: workspaceData.peerDependencyRules,
       pmOnFail: workspaceData.pmOnFail,
       sideEffectsCache: workspaceData.sideEffectsCache,
@@ -60,7 +83,8 @@ export default projectionArtifact.json({
     },
     metadata: {
       pnpmStoreOwnership: {
-        filesLifecycle: 'pnpm-owned content-addressed files store',
+        cacheLifecycle: 'pnpm-owned disposable Store Cache',
+        derivedIndexLifecycle: 'shared only inside one same-user trust boundary',
         virtualStoreLifecycle: 'Materialization-Root-owned rebuildable dependency graph',
       },
       nixIntegration: {

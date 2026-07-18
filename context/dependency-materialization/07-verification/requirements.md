@@ -40,11 +40,11 @@ evidence, and observability subsystems.
   must have fixtures that reject `.bin`, unexpected native output, known
   platform package directories, and leaked package-manager state.
   Refines: DMP-R05, DMP-R08, DMP-R18.
-- **DMP.VER-R04 Shared-store failure proof:** Store-authority changes must
-  preserve a proof that pruning a shared pool from one root can break sibling
-  offline reinstall, and prove that effect-utils-managed root operations refuse
-  that unsafe mutation. The proof must not imply that root health establishes
-  offline readiness.
+- **DMP.VER-R04 Store Cache eviction proof:** Store-authority changes must
+  preserve a proof that Store Cache eviction can break a future offline
+  reinstall while leaving an already-materialized root healthy, and prove that
+  effect-utils-managed root repair does not prune the host cache. The proof must
+  not imply that root health establishes offline readiness.
   Refines: DMP-R13, DMP-R14, DMP.STORE-R05.
 
 ### Must cover performance and sharing
@@ -52,7 +52,7 @@ evidence, and observability subsystems.
 - **DMP.VER-R05 Benchmark matrix:** Storage-sharing changes must record cold,
   warm, concurrent, byte, and file-count metrics. Offline and repair metrics
   are required only for an explicit offline-readiness or repair claim.
-  Refines: DMP-R16, DMP-R19, DMP.STORE-R08.
+  Refines: DMP-R16, DMP-R19, DMP.STORE-R13.
 - **DMP.VER-R06 Real-workload gate:** Default changes require at least one
   downstream real graph for each affected platform class, or an explicit
   pending-system marker that prevents overgeneralized conclusions.
@@ -60,7 +60,7 @@ evidence, and observability subsystems.
 - **DMP.VER-R07 Cache-efficiency comparison:** Claims about host-wide sharing
   must compare against an isolated baseline on the same graph and machine
   class.
-  Refines: DMP-R16, DMP.STORE-R09.
+  Refines: DMP-R16, DMP.STORE-R14.
 
 ### Must be auditable
 
