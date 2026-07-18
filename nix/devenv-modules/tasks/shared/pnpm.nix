@@ -95,6 +95,7 @@ let
     (if frozenInCi then "--frozen-lockfile" else "--no-frozen-lockfile")
   ]
   ++ pnpmInstallPolicy.liveInstallPolicyFlags;
+  liveInstallPolicyFlagsString = lib.concatStringsSep " " pnpmInstallPolicy.liveInstallPolicyFlags;
   pureInstallFlagsString = lib.concatStringsSep " " pureInstallFlags;
 
   packageNameToPath = builtins.listToAttrs (
@@ -532,7 +533,7 @@ let
         ${loadPnpmTaskHelpersFn}
         ${ensureLocalPnpmHomeFn}
         ${configurePnpmStorageFn}
-        pnpm install --fix-lockfile --config.confirmModulesPurge=false --pm-on-fail=ignore --config.store-dir="$npm_config_store_dir"
+        pnpm install --fix-lockfile ${liveInstallPolicyFlagsString} --config.store-dir="$npm_config_store_dir"
         echo "Repo-root lockfile updated. Refresh Nix FOD hashes with the repo workflow."
       '';
     };
@@ -551,7 +552,7 @@ let
         ${loadPnpmTaskHelpersFn}
         ${ensureLocalPnpmHomeFn}
         ${configurePnpmStorageFn}
-        pnpm dedupe --config.confirmModulesPurge=false --pm-on-fail=ignore --config.store-dir="$npm_config_store_dir"
+        pnpm dedupe ${liveInstallPolicyFlagsString} --config.store-dir="$npm_config_store_dir"
         echo "Lockfile deduped. Re-run genie:check to verify the catalog duplicate gate; bless any upstream-locked residuals via catalogDuplicateExceptions."
       '';
     };

@@ -256,6 +256,9 @@ YAML
   fi
   exit 0
 fi
+if [ "${1:-}" = "dedupe" ]; then
+  exit 0
+fi
 echo "unexpected fake pnpm invocation: $*" >&2
 exit 1
 EOF
@@ -316,6 +319,8 @@ extract_task_script "$workspace" "status" "$tmpdir/pnpm-install.status.sh"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-doctor.exec.sh" 'packages = [ ];' "pnpm:doctor"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-repair.exec.sh" 'packages = [ ];' "pnpm:repair"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-clean.exec.sh" 'packages = [ "packages/demo" ];' "pnpm:clean"
+extract_task_script "$workspace" "exec" "$tmpdir/pnpm-update.exec.sh" 'packages = [ ];' "pnpm:update"
+extract_task_script "$workspace" "exec" "$tmpdir/pnpm-dedupe.exec.sh" 'packages = [ ];' "pnpm:dedupe"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-nested.exec.sh" 'packages = [ "pkg" ]; workspaceRoot = "nested"; taskSuffix = "nested";' "pnpm:install:nested"
 extract_task_script "$workspace" "status" "$tmpdir/pnpm-install-nested.status.sh" 'packages = [ "pkg" ]; workspaceRoot = "nested"; taskSuffix = "nested";' "pnpm:install:nested"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-flags.exec.sh" 'packages = [ "." ]; installFlags = [ "--config.public-hoist-pattern=*" ]; preInstall = "touch .preinstall-marker";'
@@ -346,6 +351,8 @@ rewrite_unrealized_tool_paths "$tmpdir/pnpm-install.status.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-doctor.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-repair.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-clean.exec.sh"
+rewrite_unrealized_tool_paths "$tmpdir/pnpm-update.exec.sh"
+rewrite_unrealized_tool_paths "$tmpdir/pnpm-dedupe.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-nested.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-nested.status.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-flags.exec.sh"
@@ -431,6 +438,19 @@ echo "Test 2b: exec replaces a read-only cached generated contract snapshot"
   chmod 444 "$workspace/.devenv/task-cache/pnpm-install/pnpm-install-contract.json"
   bash "$tmpdir/pnpm-install.exec.sh"
   test -w "$workspace/.devenv/task-cache/pnpm-install/pnpm-install-contract.json"
+)
+
+echo "Test 2c: lockfile mutation entrypoints preserve the live topology policy"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  export PNPM_HOME="$workspace/.pnpm-home-a"
+  : > "$tmpdir/pnpm.log"
+  bash "$tmpdir/pnpm-update.exec.sh"
+  bash "$tmpdir/pnpm-dedupe.exec.sh"
+  policy_flags="--config.confirmModulesPurge=false --ignore-scripts --config.side-effects-cache=false --config.verify-store-integrity=true --config.strict-store-pkg-content-check=true --child-concurrency=1 --network-concurrency=4 --config.enable-global-virtual-store=false --config.virtual-store-dir=node_modules/.pnpm --pm-on-fail=ignore"
+  grep -qxF "install --fix-lockfile $policy_flags --config.store-dir=$tmpdir/home/.local/share/pnpm/store-shared-v1" "$tmpdir/pnpm.log"
+  grep -qxF "dedupe $policy_flags --config.store-dir=$tmpdir/home/.local/share/pnpm/store-shared-v1" "$tmpdir/pnpm.log"
 )
 
 echo "Test 3: status hits after install with the same root-local virtual topology"

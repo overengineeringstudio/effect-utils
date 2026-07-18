@@ -92,3 +92,8 @@ parallel Dependency Graph.
 - **DMP.LIVE-R11 Observable reuse:** Install reuse, invalidation, repair, and
   projection decisions must emit machine-readable evidence.
   Refines: DMP-R19.
+- **DMP.LIVE-R12 Mutation parity:** Every managed pnpm entrypoint that installs,
+  updates, or deduplicates an authoritative lockfile must preserve the same
+  root-local virtual topology, lifecycle, integrity, and Store Cache policy.
+  Lockfile mutation must not silently select a second realization model.
+  Refines: DMP-R02, DMP-R11, DMP-R12.
