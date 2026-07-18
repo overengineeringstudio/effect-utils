@@ -86,6 +86,12 @@ export const genieCommand = Cli.Command.make(
       Cli.Options.withDescription('Preview changes without writing files'),
       Cli.Options.withDefault(false),
     ),
+    deferValidation: Cli.Options.boolean('defer-validation').pipe(
+      Cli.Options.withDescription(
+        'Generate projections before a repair step; the caller must finish with genie --check',
+      ),
+      Cli.Options.withDefault(false),
+    ),
     phase: Cli.Options.choice('phase', GENERATOR_PHASES).pipe(
       Cli.Options.withDescription(
         'Only run generators declaring this phase (bootstrap runs before install; default: all phases)',
@@ -100,7 +106,7 @@ export const genieCommand = Cli.Command.make(
     ),
     output: outputOption,
   },
-  ({ cwd, writeable, watch, check, dryRun, phase, oxfmtConfig, output }) => {
+  ({ cwd, writeable, watch, check, dryRun, deferValidation, phase, oxfmtConfig, output }) => {
     const cliMode = watch ? 'watch' : check ? 'check' : dryRun ? 'dry-run' : 'generate'
     const selectedPhase: GeneratorPhase | undefined = Option.getOrUndefined(phase)
     const handler = Effect.gen(function* () {
@@ -181,6 +187,7 @@ export const genieCommand = Cli.Command.make(
                     dryRun,
                     oxfmtConfigPath,
                     phase: selectedPhase,
+                    validate: !deferValidation,
                   }).pipe(
                     Effect.provideService(GenieEventBus, bus),
                     Effect.catchTag('GenieGenerationFailedError', (error) =>
