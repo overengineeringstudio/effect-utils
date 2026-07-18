@@ -6,15 +6,26 @@ trap 'rm -rf "$tmp"' EXIT
 
 if [ -n "${SOURCE_TREE:-}" ]; then
   implementation_head="${IMPLEMENTATION_HEAD:?set IMPLEMENTATION_HEAD when SOURCE_TREE is used}"
-  source_mode=git-archive-tree
+  implementation_tree="${IMPLEMENTATION_TREE:?set IMPLEMENTATION_TREE when SOURCE_TREE is used}"
+  source_mode=verified-git-archive-tree
+  test ! -e "$SOURCE_TREE/.git"
   cp -R "$SOURCE_TREE" "$tmp/root-a"
   cp -R "$SOURCE_TREE" "$tmp/root-b"
   cp -R "$SOURCE_TREE" "$tmp/root-c"
   cp -R "$SOURCE_TREE" "$tmp/root-d"
   cp -R "$SOURCE_TREE" "$tmp/root-e"
+  git -C "$tmp/root-a" init --quiet
+  git -C "$tmp/root-a" add --force --all
+  measured_tree="$(git -C "$tmp/root-a" write-tree)"
+  rm -rf "$tmp/root-a/.git"
+  if [ "$measured_tree" != "$implementation_tree" ]; then
+    printf 'SOURCE_TREE mismatch: expected Git tree %s, measured %s\n' "$implementation_tree" "$measured_tree" >&2
+    exit 1
+  fi
 else
   source_repo="${SOURCE_REPO:-$(git rev-parse --show-toplevel)}"
   implementation_head="${IMPLEMENTATION_HEAD:-$(git -C "$source_repo" rev-parse HEAD)}"
+  implementation_tree="$(git -C "$source_repo" rev-parse "$implementation_head^{tree}")"
   source_mode=git-worktree
   git clone --quiet --no-checkout "$source_repo" "$tmp/repo"
   git -C "$tmp/repo" worktree add --quiet --detach "$tmp/root-a" "$implementation_head"
@@ -138,8 +149,8 @@ measure_combined() {
     "$platform" "$label" "$physical_kib" "$apparent_kib" "$files"
 }
 
-printf '{"schema":"dependency-materialization-verification/v0","kind":"benchmark","surface":"storage-sharing","platform":"%s","phase":"provenance","status":"ok","implementationHead":"%s","harnessSha256":"%s","sourceMode":"%s","filesystem":"%s","pnpm":"%s","node":"%s"}\n' \
-  "$platform" "$implementation_head" "$harness_sha256" "$source_mode" "$filesystem" "$("$pnpm_bin" --version)" "$("$node_bin" --version)"
+printf '{"schema":"dependency-materialization-verification/v0","kind":"benchmark","surface":"storage-sharing","platform":"%s","phase":"provenance","status":"ok","implementationHead":"%s","implementationTree":"%s","harnessSha256":"%s","sourceMode":"%s","filesystem":"%s","pnpm":"%s","node":"%s"}\n' \
+  "$platform" "$implementation_head" "$implementation_tree" "$harness_sha256" "$source_mode" "$filesystem" "$("$pnpm_bin" --version)" "$("$node_bin" --version)"
 
 install_root cold-root-a "$tmp/root-a" "$store"
 install_root second-root-b "$tmp/root-b" "$store"

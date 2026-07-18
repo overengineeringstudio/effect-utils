@@ -11,24 +11,25 @@
   "measurementMethod": {
     "date": "2026-07-18",
     "workspace": "effect-utils",
-    "implementationHead": "649741c6acdbc313882bcfd85a8230928be1f120",
+    "implementationHead": "02eb2b77a7beb02936db659383877bfa7040e633",
+    "implementationTree": "75cb4074b8fd82f4e4077a797079ab1f9ef7d397",
     "harness": {
       "path": "context/dependency-materialization/07-verification/evidence/measure-storage-sharing-default.sh",
-      "sha256": "e9866b6b9a7b6080441f0a03d0c28f57a5fb2a188bd29c7d0b7b62b738d1a6fd"
+      "sha256": "c5c0fead91f738aa1fd31462dc6c18a5ff41fc06a370da4d47bd377f30110f88"
     },
     "rawArtifacts": {
       "linux": {
         "path": "storage-sharing-default-v2-linux.jsonl",
-        "sha256": "a2eca363bff14ab0d5319278fb0a768862cac89fc4e56a2cd7bd953bc41276e4"
+        "sha256": "416c08cd585da28707ccc5f4ef41eb3efbf8367895396c4919cb9b266587bae5"
       },
       "darwin": {
         "path": "storage-sharing-default-v2-darwin.jsonl",
-        "sha256": "aa9b83d6e0b45079f40f93e2447f9946725824cadc83292ea761c52247a74f89"
+        "sha256": "9882c71f64cf916a5ca8f29a4f63f4c86361a089840f257e42a3add1d5bbec92"
       }
     },
     "sourcePreparation": {
       "linux": "five detached Git worktrees at implementationHead",
-      "darwin": "git archive of implementationHead extracted on mbp2025"
+      "darwin": "git archive whose reconstructed Git tree is verified against implementationTree on mbp2025"
     },
     "packageManager": "pnpm@11.8.0",
     "installPolicy": {
@@ -52,12 +53,19 @@
   "hostLifecycleCapability": {
     "harness": {
       "path": "context/dependency-materialization/07-verification/evidence/measure-prune-capability.sh",
-      "sha256": "38aad0cb8037a226e5c5d5d0fbc28233229476f8c44f09fd2ee013e74cf427ca"
+      "sha256": "646491a8f29146b1f60524c646c15cbc8d80e03c62f89b403cd15bb975ced6b3"
     },
     "hosts": {
       "dev3": {
         "rawArtifact": "prune-capability-dev3.jsonl",
-        "sha256": "f39e72e1ca6e75e50872cedb20945132ff4c628bff40490ac6a544dd09d5d840",
+        "sha256": "9ddcc46802efaf137e4d4207686e057e5e6123a7a0917d68d75b284495e713c1",
+        "platform": "x86_64-linux",
+        "filesystem": "ext4",
+        "pnpm": "11.8.0",
+        "rootBase": "/home/schickling/.megarepo",
+        "storeBase": "/home/schickling/.local/share/pnpm",
+        "rootDevice": 65024,
+        "storeDevice": 65024,
         "rootNlink": 2,
         "liveRootSurvivedPrune": true,
         "removedRootCacheEvicted": true,
@@ -65,7 +73,14 @@
       },
       "dev4": {
         "rawArtifact": "prune-capability-dev4.jsonl",
-        "sha256": "1678468eba2d56fbd901adcb040378adf9e051516b1f2e0785b42bf700ae9b6d",
+        "sha256": "2d80e956364516f19b65c8752e81619d368dc13578ffd196fea8317eed1c666f",
+        "platform": "aarch64-linux",
+        "filesystem": "ext4",
+        "pnpm": "11.8.0",
+        "rootBase": "/home/schickling/.megarepo",
+        "storeBase": "/home/schickling/.local/share/pnpm",
+        "rootDevice": 2050,
+        "storeDevice": 2050,
         "rootNlink": 2,
         "liveRootSurvivedPrune": true,
         "removedRootCacheEvicted": true,
@@ -83,69 +98,69 @@
       },
       "phaseMatrix": {
         "coldSharedRootA": {
-          "durationMs": 11459,
+            "durationMs": 10384,
           "reused": 12,
           "downloaded": 600,
           "rootNodeModules": {
-            "physicalKiB": 1072348,
+              "physicalKiB": 1072312,
             "apparentKiB": 927138,
             "files": 49833
           },
           "store": {
-            "physicalKiB": 1026652,
-            "apparentKiB": 907342,
+              "physicalKiB": 1026576,
+              "apparentKiB": 907346,
             "files": 40237
           }
         },
         "secondSharedRootB": {
-          "durationMs": 1718,
+            "durationMs": 1746,
           "reused": 612,
           "downloaded": 0
         },
         "warmSharedRootB": {
-          "durationMs": 1038,
+            "durationMs": 1013,
           "reused": 12,
           "downloaded": 0
         },
         "isolatedRootC": {
-          "durationMs": 9545,
+            "durationMs": 10364,
           "reused": 12,
           "downloaded": 600,
           "combinedStoreAndRoot": {
-            "physicalKiB": 1175504,
-            "apparentKiB": 1017574,
+              "physicalKiB": 1175696,
+              "apparentKiB": 1017594,
             "files": 90070
           }
         },
         "concurrentRootsDAndE": {
-          "durationMs": 2513,
-          "rootDDurationMs": 1774,
-          "rootEDurationMs": 1758,
+            "durationMs": 2512,
+            "rootDDurationMs": 1917,
+            "rootEDurationMs": 1918,
           "eachReused": 612,
           "eachDownloaded": 0,
           "combinedStoreAndRoots": {
-            "physicalKiB": 1324520,
-            "apparentKiB": 1127822,
+              "physicalKiB": 1324556,
+              "apparentKiB": 1127826,
             "files": 139903
           }
         }
       },
       "twoRootComparison": {
         "sharedMeasured": {
-          "physicalKiB": 1324248,
-          "apparentKiB": 1127822,
+            "physicalKiB": 1324272,
+            "apparentKiB": 1127826,
           "files": 139903
         },
         "isolatedComparator": {
-          "physicalKiB": 2351008,
-          "apparentKiB": 2035148,
+            "physicalKiB": 2351392,
+            "apparentKiB": 2035188,
           "files": 180140
         },
         "improvementPercent": {
           "physicalKiB": 43.7,
           "apparentKiB": 44.6,
           "files": 22.3,
-          "secondRootDuration": 82.0
+            "secondRootDuration": 83.2
         }
       },
       "correctness": {
@@ -164,7 +179,7 @@
       },
       "phaseMatrix": {
         "coldSharedRootA": {
-          "durationMs": 11610,
+            "durationMs": 13309,
           "reused": 12,
           "downloaded": 600,
           "teardownExit": 134,
@@ -175,65 +190,65 @@
             "files": 49833
           },
           "store": {
-            "physicalKiB": 1026208,
-            "apparentKiB": 916165,
+              "physicalKiB": 1025868,
+              "apparentKiB": 916366,
             "files": 40239
           }
         },
         "secondSharedRootB": {
-          "durationMs": 3361,
+            "durationMs": 3397,
           "reused": 612,
           "downloaded": 0,
           "teardownExit": 0
         },
         "warmSharedRootB": {
-          "durationMs": 707,
+            "durationMs": 679,
           "reused": 12,
           "downloaded": 0,
           "teardownExit": 134,
           "completedMaterializationEvidence": true
         },
         "isolatedRootC": {
-          "durationMs": 8968,
+            "durationMs": 10326,
           "reused": 12,
           "downloaded": 600,
           "teardownExit": 134,
           "completedMaterializationEvidence": true,
           "combinedStoreAndRoot": {
-            "physicalKiB": 2167976,
-            "apparentKiB": 1921975,
+              "physicalKiB": 2167068,
+              "apparentKiB": 1921819,
             "files": 90072
           }
         },
         "concurrentRootsDAndE": {
-          "durationMs": 10305,
-          "rootDDurationMs": 8455,
-          "rootEDurationMs": 8459,
+            "durationMs": 10177,
+            "rootDDurationMs": 8603,
+            "rootEDurationMs": 8420,
           "eachReused": 612,
           "eachDownloaded": 0,
           "combinedStoreAndRoots": {
-            "physicalKiB": 3299872,
-            "apparentKiB": 2918927,
+              "physicalKiB": 3299884,
+              "apparentKiB": 2918939,
             "files": 139903
           }
         }
       },
       "twoRootComparison": {
         "sharedMeasured": {
-          "physicalKiB": 3299872,
-          "apparentKiB": 2918927,
+            "physicalKiB": 3299884,
+            "apparentKiB": 2918939,
           "files": 139903
         },
         "isolatedComparator": {
-          "physicalKiB": 4335952,
-          "apparentKiB": 3843950,
+            "physicalKiB": 4334136,
+            "apparentKiB": 3843638,
           "files": 180144
         },
         "improvementPercent": {
           "physicalKiB": 23.9,
           "apparentKiB": 24.1,
           "files": 22.3,
-          "secondRootDuration": 62.5
+            "secondRootDuration": 67.1
         }
       },
       "correctness": {
