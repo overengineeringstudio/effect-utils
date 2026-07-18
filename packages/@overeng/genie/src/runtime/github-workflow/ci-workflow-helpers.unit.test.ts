@@ -513,7 +513,8 @@ printf '%s\\n' "$NIX_OUTPUT"
     expect(resolveDevenvFnScript).toContain(
       '${GITHUB_RUN_ID:-local-$$}-${GITHUB_RUN_ATTEMPT:-0}-${GITHUB_JOB:-job}',
     )
-    expect(validateNixStoreStepSource).toContain('readlink -e "$DEVENV_GC_ROOT"')
+    expect(validateNixStoreStepSource).toContain('[ ! "$DEVENV_GC_ROOT" -ef "$DEVENV_OUT" ]')
+    expect(validateNixStoreStepSource).not.toContain('readlink -e')
   })
 
   it('resolves the locked megarepo CLI through a git flake URL', () => {

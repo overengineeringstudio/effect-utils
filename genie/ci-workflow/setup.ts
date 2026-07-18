@@ -1031,7 +1031,7 @@ fi
 # resolve_devenv_once uses this out-link directly, so Nix registers the GC
 # root before a successful build returns. RUNNER_TEMP cleanup removes it after
 # the job; the run/attempt/job namespace prevents cross-job replacement.
-if [ ! -L "$DEVENV_GC_ROOT" ] || [ "$(readlink -e "$DEVENV_GC_ROOT")" != "$DEVENV_OUT" ]; then
+if [ ! -L "$DEVENV_GC_ROOT" ] || [ ! "$DEVENV_GC_ROOT" -ef "$DEVENV_OUT" ]; then
   echo "::error::devenv resolution did not publish the expected job-scoped GC root: $DEVENV_GC_ROOT"
   exit 1
 fi
