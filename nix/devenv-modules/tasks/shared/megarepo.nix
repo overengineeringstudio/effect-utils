@@ -75,45 +75,12 @@ let
 
     mismatches=$(${jq} -n \
       --slurpfile ml "$ml" \
-      --slurpfile lf "$lf" '
-      def repo_key($node):
-        if $node.locked?.type == "github" then
-          "\($node.locked.owner)/\($node.locked.repo)"
-        elif $node.locked?.type == "git" then
-          ($node.locked.url // $node.original.url // "") as $url |
-          if $url == "" then
-            empty
-          else
-            $url
-            | sub("^git\\+ssh://git@github.com/"; "")
-            | sub("^ssh://git@github.com/"; "")
-            | sub("^git@github.com:"; "")
-            | sub("^https://github.com/"; "")
-            | sub("\\.git$"; "")
-          end
-        else
-          empty
-        end;
-
-      [$lf[0].nodes | to_entries[] |
-        (repo_key(.value)) as $key |
-        select($key != null and $key != "") |
-        { key: $key, rev: .value.locked.rev, name: .key }
-      ] as $lock_inputs |
-      [$ml[0].members | to_entries[] |
-        (.value.url | split("/") | .[-2:] | join("/")) as $mkey |
-        .value.commit as $expected |
-        .key as $member |
-        $lock_inputs[] |
-        select(.key == $mkey) |
-        select(.rev != $expected) |
-        { member: $member, input: .name, expected: $expected, actual: .rev }
-      ] | unique_by(.input)
-    ')
+      --slurpfile lf "$lf" \
+      -f ${./megarepo-lock-sync.jq})
 
     count=$(echo "$mismatches" | ${jq} -r 'length')
     if [ "$count" -gt 0 ]; then
-      echo "$mismatches" | ${jq} -r '.[] | "  \(.member) (\(.input)): expected \(.expected[0:12])… got \(.actual[0:12])…"'
+      echo "$mismatches" | ${jq} -r '.[] | "  \(.member) (\(.input)): expected \(.expected[0:12])… got \(.actual[0:12])… [\(.reason)]"'
       return 1
     fi
     return 0
