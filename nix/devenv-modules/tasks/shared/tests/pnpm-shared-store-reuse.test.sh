@@ -29,6 +29,10 @@ inode_id() {
   node -e 'const fs=require("node:fs"); const s=fs.statSync(process.argv[1]); process.stdout.write(`${s.dev}:${s.ino}`)' "$1"
 }
 
+real_path() {
+  node -e 'const fs=require("node:fs"); process.stdout.write(fs.realpathSync(process.argv[1]))' "$1"
+}
+
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
 
@@ -107,9 +111,9 @@ if grep -Eq 'downloaded [1-9][0-9]*' "$tmpdir/root-b.log"; then
 fi
 
 test -f "$tmpdir/shared-store/v11/index.db"
-test "$(readlink -f "$tmpdir/root-a/node_modules/.pnpm")" = "$tmpdir/root-a/node_modules/.pnpm"
-test "$(readlink -f "$tmpdir/root-b/node_modules/.pnpm")" = "$tmpdir/root-b/node_modules/.pnpm"
-test "$(readlink -f "$tmpdir/root-a/node_modules/.pnpm")" != "$(readlink -f "$tmpdir/root-b/node_modules/.pnpm")"
+test "$(real_path "$tmpdir/root-a/node_modules/.pnpm")" = "$tmpdir/root-a/node_modules/.pnpm"
+test "$(real_path "$tmpdir/root-b/node_modules/.pnpm")" = "$tmpdir/root-b/node_modules/.pnpm"
+test "$(real_path "$tmpdir/root-a/node_modules/.pnpm")" != "$(real_path "$tmpdir/root-b/node_modules/.pnpm")"
 
 root_a_file="$tmpdir/root-a/node_modules/hardlink-proof/index.js"
 root_b_file="$tmpdir/root-b/node_modules/hardlink-proof/index.js"
@@ -199,7 +203,7 @@ if ! wait "$concurrent_b_pid"; then
 fi
 
 test -f "$tmpdir/concurrent-store/v11/index.db"
-test "$(readlink -f "$tmpdir/concurrent-a/node_modules/.pnpm")" != "$(readlink -f "$tmpdir/concurrent-b/node_modules/.pnpm")"
+test "$(real_path "$tmpdir/concurrent-a/node_modules/.pnpm")" != "$(real_path "$tmpdir/concurrent-b/node_modules/.pnpm")"
 for root_name in concurrent-a concurrent-b; do
   test "$(cat "$tmpdir/$root_name/node_modules/hardlink-proof/index.js")" = 'module.exports = "immutable"'
   test "$(cat "$tmpdir/$root_name/node_modules/native-mutator/index.js")" = 'module.exports = "native-original"'
