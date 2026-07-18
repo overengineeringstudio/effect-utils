@@ -24,7 +24,6 @@
     "is-dom": "1.1.0"
   },
   "devDependencies": {
-    "@overeng/utils": "workspace:^",
     "@storybook/react": "10.4.6",
     "@storybook/react-vite": "10.4.6",
     "@testing-library/react": "16.3.2",
@@ -32,7 +31,7 @@
     "@types/is-dom": "1.1.2",
     "@types/react": "19.2.17",
     "@vitejs/plugin-react": "6.0.2",
-    "effect": "3.21.4",
+    "effect": "4.0.0-beta.97",
     "happy-dom": "20.10.6",
     "react": "19.2.7",
     "react-dom": "19.2.7",
@@ -42,31 +41,14 @@
     "vitest": "4.1.9"
   },
   "peerDependencies": {
-    "@effect/cluster": "^0.59.0",
-    "@effect/experimental": "^0.60.0",
-    "@effect/opentelemetry": "^0.63.0",
-    "@effect/platform": "^0.96.2",
-    "@effect/platform-node": "^0.107.0",
-    "@effect/rpc": "^0.75.1",
-    "@effect/workflow": "^0.18.2",
-    "@playwright/test": "^1.61.0",
-    "effect": "^3.21.4",
+    "effect": "^4.0.0-beta.97",
     "react": "^19.2.7"
-  },
-  "peerDependenciesMeta": {
-    "effect": {
-      "optional": true
-    }
   },
   "$genie": {
     "source": "package.json.genie.ts",
     "warning": "DO NOT EDIT - changes will be overwritten",
     "workspaceClosureDirs": [
-      "packages/@overeng/content-address",
-      "packages/@overeng/otel-contract",
-      "packages/@overeng/react-inspector",
-      "packages/@overeng/utils",
-      "packages/@overeng/utils-dev"
+      "packages/@overeng/react-inspector"
     ]
   }
 }

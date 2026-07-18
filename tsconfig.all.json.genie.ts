@@ -8,4 +8,5 @@ export default tsconfigJsonFromPackages({
   packages: rootWorkspacePackages,
   repoName: 'effect-utils',
   files: [],
+  extraReferences: ['packages/@overeng/react-inspector/tsconfig.strict-consumer.json'],
 } satisfies TSConfigArgs)

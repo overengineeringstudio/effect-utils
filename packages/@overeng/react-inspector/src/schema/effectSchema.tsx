@@ -1,24 +1,10 @@
-import type { Schema as S, SchemaAST } from 'effect'
+import type { SchemaAST } from 'effect'
 
-import { Lineage } from '@overeng/utils'
+import * as Lineage from './lineage.ts'
 
-/** Symbols used by Effect Schema for annotations */
-const IdentifierAnnotationId = Symbol.for('effect/annotation/Identifier')
-const TitleAnnotationId = Symbol.for('effect/annotation/Title')
-const DescriptionAnnotationId = Symbol.for('effect/annotation/Description')
-const PrettyAnnotationId = Symbol.for('effect/annotation/Pretty')
-const ExamplesAnnotationId = Symbol.for('effect/annotation/Examples')
-const DefaultAnnotationId = Symbol.for('effect/annotation/Default')
-const JSONSchemaAnnotationId = Symbol.for('effect/annotation/JSONSchema')
-const DocumentationAnnotationId = Symbol.for('effect/annotation/Documentation')
-/**
- * Effect tags `Schema.MapFromSelf` / `Schema.SetFromSelf` (and the transform
- * variants `Schema.Map` / `Schema.Set` / `Schema.ReadonlyMap` /
- * `Schema.ReadonlySet`) with this annotation so consumers can distinguish
- * Map/Set declarations from arbitrary `Declaration` ASTs without string-
- * matching on descriptions.
- */
-const TypeConstructorAnnotationId = Symbol.for('effect/annotation/TypeConstructor')
+export interface SchemaView {
+  readonly ast: SchemaAST.AST
+}
 
 export interface SchemaAnnotations {
   identifier?: string | undefined
@@ -31,18 +17,11 @@ export interface SchemaAnnotations {
   documentation?: string | undefined
 }
 
-/** A constraint extracted from a JSON Schema annotation, ready for display. */
 export interface SchemaConstraint {
   label: string
   value: string
 }
 
-/**
- * Aggregated, display-ready schema information for a single tree node.
- *
- * `hasContent` is true when at least one field beyond `displayName`/`typeKind`
- * has content — callers use it to decide whether to render a tooltip at all.
- */
 export interface SchemaInfo {
   displayName?: string
   typeKind?: string
@@ -53,29 +32,11 @@ export interface SchemaInfo {
   constraints?: ReadonlyArray<SchemaConstraint>
   possibleValues?: ReadonlyArray<string>
   possibleValuesTruncated?: number
-  /**
-   * Schema-derived container label for arrays / records / tuples, e.g.
-   * `Array<Order Item>`, `Record<string, Money>`, `[A, B, C]`. Prefer this
-   * over the runtime constructor name (`Array`, `Object`) when rendering the
-   * type badge for a container. Falls back to `undefined` when the schema
-   * doesn't carry enough info.
-   */
   containerLabel?: string
-  /**
-   * Lineage annotation bundle, when present on the schema.
-   *
-   * @see https://github.com/overengineeringstudio/effect-utils/issues/687
-   */
   lineage?: LineageBundle
   hasContent: boolean
 }
 
-/**
- * Pre-resolved Lineage annotations for a single schema, paired with the
- * companion annotations (Authority, Freshness, Reference) when set.
- *
- * @see https://github.com/overengineeringstudio/effect-utils/issues/687
- */
 export interface LineageBundle {
   display: Lineage.LineageDisplay
   authority?: Lineage.Authority
@@ -83,174 +44,105 @@ export interface LineageBundle {
   reference?: Lineage.Reference
 }
 
-const isNullishAst = (ast: SchemaAST.AST): boolean => {
-  if (ast._tag === 'UndefinedKeyword' || ast._tag === 'VoidKeyword') return true
-  return ast._tag === 'Literal' && ast.literal === null
-}
+const view = (ast: SchemaAST.AST): SchemaView => ({ ast })
+
+const isNullishAst = (ast: SchemaAST.AST): boolean =>
+  ast._tag === 'Null' || ast._tag === 'Undefined' || ast._tag === 'Void'
 
 const unwrapAstForDisplay = (ast: SchemaAST.AST): SchemaAST.AST => {
-  switch (ast._tag) {
-    case 'Transformation':
-      return unwrapAstForDisplay(ast.to)
-    case 'Refinement':
-      return unwrapAstForDisplay(ast.from)
-    case 'Suspend':
-      return unwrapAstForDisplay(ast.f())
-    case 'Union': {
-      const nonNullish = ast.types.filter((member) => !isNullishAst(member))
-      if (nonNullish.length === 1) {
-        const [only] = nonNullish
-        if (only !== undefined) return unwrapAstForDisplay(only)
-      }
-      return ast
+  if (ast._tag === 'Suspend') return unwrapAstForDisplay(ast.thunk())
+  if (ast._tag === 'Union') {
+    const nonNullish = ast.types.filter((member) => isNullishAst(member) === false)
+    if (nonNullish.length === 1 && nonNullish[0] !== undefined) {
+      return unwrapAstForDisplay(nonNullish[0])
     }
-    default:
-      return ast
   }
+  return ast
 }
 
-/** Extract annotations from a Schema AST node */
+const asRecord = (value: unknown): Record<string, unknown> | undefined =>
+  value !== null && typeof value === 'object' ? (value as Record<string, unknown>) : undefined
+
 export const getAnnotationsFromAST = (ast: SchemaAST.AST): SchemaAnnotations => {
-  const annotations = ast.annotations
+  const annotations: Record<string, unknown> = {
+    ...ast.context?.annotations,
+    ...ast.annotations,
+  }
+  for (const check of ast.checks ?? []) Object.assign(annotations, check.annotations)
+  const customPretty = annotations.pretty
+  const formatterFactory = annotations.toFormatter
+  let pretty: ((value: unknown) => string) | undefined
+  if (typeof customPretty === 'function') {
+    pretty = (value) => {
+      const formatted = customPretty(value)
+      if (typeof formatted !== 'string')
+        throw new TypeError('pretty annotation must return a string')
+      return formatted
+    }
+  } else if (typeof formatterFactory === 'function') {
+    try {
+      const formatter = formatterFactory([])
+      if (typeof formatter === 'function') pretty = formatter
+    } catch {
+      // Some declaration formatters require type-parameter formatters.
+    }
+  }
   return {
-    identifier: annotations[IdentifierAnnotationId] as string | undefined,
-    title: annotations[TitleAnnotationId] as string | undefined,
-    description: annotations[DescriptionAnnotationId] as string | undefined,
-    pretty: annotations[PrettyAnnotationId] as ((value: unknown) => string) | undefined,
-    examples: annotations[ExamplesAnnotationId] as ReadonlyArray<unknown> | undefined,
-    default: annotations[DefaultAnnotationId],
-    jsonSchema: annotations[JSONSchemaAnnotationId] as Record<string, unknown> | undefined,
-    documentation: annotations[DocumentationAnnotationId] as string | undefined,
+    ...(typeof annotations.identifier === 'string' ? { identifier: annotations.identifier } : {}),
+    ...(typeof annotations.title === 'string' ? { title: annotations.title } : {}),
+    ...(typeof annotations.description === 'string'
+      ? { description: annotations.description }
+      : {}),
+    ...(pretty === undefined ? {} : { pretty }),
+    ...(Array.isArray(annotations.examples) === true ? { examples: annotations.examples } : {}),
+    ...('default' in annotations ? { default: annotations.default } : {}),
+    ...(asRecord(annotations.jsonSchema) === undefined
+      ? {}
+      : { jsonSchema: asRecord(annotations.jsonSchema) }),
+    ...(typeof annotations.documentation === 'string'
+      ? { documentation: annotations.documentation }
+      : {}),
   }
 }
 
-/** Extract annotations from a Schema */
-export const getAnnotations = (schema: S.Schema.AnyNoContext): SchemaAnnotations => {
-  return getAnnotationsFromAST(unwrapAstForDisplay(schema.ast))
-}
+export const getAnnotations = (schema: SchemaView): SchemaAnnotations =>
+  getAnnotationsFromAST(unwrapAstForDisplay(schema.ast))
 
-/** Get display name from schema annotations (prefer title, fallback to identifier) */
-export const getDisplayName = (annotations: SchemaAnnotations): string | undefined => {
-  return annotations.title ?? annotations.identifier
-}
+export const getDisplayName = (annotations: SchemaAnnotations): string | undefined =>
+  annotations.title ?? annotations.identifier
 
-/** Format a value using the schema's pretty annotation if available */
 export const formatWithPretty = (
   value: unknown,
   annotations: SchemaAnnotations,
 ): string | undefined => {
-  if (annotations.pretty !== undefined) {
-    try {
-      const result = annotations.pretty(value)
-      // Effect's built-in schemas may have pretty annotations that return functions (hooks)
-      // rather than formatted strings. Only return the result if it's actually a string.
-      if (typeof result === 'string') {
-        return result
-      }
-      return undefined
-    } catch {
-      return undefined
-    }
+  try {
+    return annotations.pretty?.(value)
+  } catch {
+    return undefined
   }
-  return undefined
 }
 
-/** Check if an object might be an Effect Schema (duck typing for optional dependency) */
-export const isEffectSchema = (obj: unknown): obj is S.Schema.AnyNoContext => {
-  return (
-    obj !== null &&
-    typeof obj === 'object' &&
-    'ast' in obj &&
-    typeof (obj as { ast: unknown }).ast === 'object' &&
-    (obj as { ast: { annotations?: unknown } }).ast !== null &&
-    'annotations' in ((obj as { ast: { annotations?: unknown } }).ast ?? {})
-  )
+export const isEffectSchema = (obj: unknown): obj is SchemaView => {
+  if (obj === null || typeof obj !== 'object' || !('ast' in obj)) return false
+  const ast = (obj as { readonly ast?: unknown }).ast
+  return ast !== null && typeof ast === 'object' && '_tag' in ast
 }
 
-/**
- * Apply field/property-level annotations on top of the field type's annotations.
- *
- * Why: Effect Schema lets users put `.annotations({ description: ... })` on
- * either the field itself (via `Schema.propertySignature(...).annotations(...)`)
- * or on the field's value type. We merge so the field-level annotations win,
- * which matches user intent — a field-specific description shouldn't be hidden
- * by a generic one on the value type.
- */
-const mergeAnnotations = (
-  base: SchemaAST.AST,
-  overrides: SchemaAST.AST['annotations'] | undefined,
-): SchemaAST.AST => {
-  if (overrides === undefined || Object.getOwnPropertySymbols(overrides).length === 0) {
-    return base
-  }
-  return {
-    ...base,
-    annotations: { ...base.annotations, ...overrides },
-  } as SchemaAST.AST
-}
-
-/**
- * Try to find a matching schema for a Struct field.
- *
- * Returns the field type's *raw* AST (with the PropertySignature's own
- * annotations merged on top). Refinement/Transformation/Union wrappers are
- * preserved so callers like {@link getSchemaInfo} can read user-supplied
- * annotations that live on those wrappers. Downstream traversals
- * (`getFieldSchema`, `getArrayElementSchema`) re-apply `unwrapAstForDisplay`
- * before pattern-matching, so the preserved wrapper doesn't block deeper
- * lookups.
- */
-export const getFieldSchema = (
-  schema: S.Schema.AnyNoContext,
-  fieldName: string,
-): S.Schema.AnyNoContext | undefined => {
+export const getFieldSchema = (schema: SchemaView, fieldName: string): SchemaView | undefined => {
   const ast = unwrapAstForDisplay(schema.ast)
-
-  if (ast._tag === 'TypeLiteral') {
-    const typeLiteralAst = ast as SchemaAST.TypeLiteral
-    const propSig = typeLiteralAst.propertySignatures.find((sig) => sig.name === fieldName)
-    if (propSig !== undefined) {
-      return {
-        ast: mergeAnnotations(propSig.type, propSig.annotations),
-      } as S.Schema.AnyNoContext
-    }
-    /*
-     * Record / `Schema.Record({ key, value })` case — no explicit
-     * propertySignature, but the index signature gives us the value type.
-     * Without this fallback, fields inside records would render without
-     * schema context (tooltip, pretty formatting, etc.).
-     */
-    const indexSig = typeLiteralAst.indexSignatures[0]
-    if (indexSig !== undefined) {
-      return { ast: indexSig.type } as S.Schema.AnyNoContext
-    }
-  }
-
-  return undefined
+  if (ast._tag !== 'Objects') return undefined
+  const property = ast.propertySignatures.find((signature) => signature.name === fieldName)
+  if (property !== undefined) return view(property.type)
+  const index = ast.indexSignatures[0]
+  return index === undefined ? undefined : view(index.type)
 }
 
-/** Get schema for array elements if the schema is an array/tuple. */
-export const getArrayElementSchema = (
-  schema: S.Schema.AnyNoContext,
-): S.Schema.AnyNoContext | undefined => {
+export const getArrayElementSchema = (schema: SchemaView): SchemaView | undefined => {
   const ast = unwrapAstForDisplay(schema.ast)
-
-  if (ast._tag === 'TupleType' && 'rest' in ast) {
-    const tupleAst = ast as SchemaAST.TupleType
-    if (tupleAst.rest.length > 0) {
-      const [firstRest] = tupleAst.rest
-      if (firstRest !== undefined) {
-        return { ast: firstRest.type } as S.Schema.AnyNoContext
-      }
-    }
-  }
-
-  return undefined
+  if (ast._tag !== 'Arrays') return undefined
+  const element = ast.rest[0] ?? ast.elements[0]
+  return element === undefined ? undefined : view(element)
 }
-
-/* --------------------------------------------------------------------------
- * Display-ready schema info (used by the tooltip)
- * -------------------------------------------------------------------------- */
 
 const stringifyShort = (value: unknown): string => {
   if (typeof value === 'string') return JSON.stringify(value)
@@ -266,58 +158,44 @@ const stringifyShort = (value: unknown): string => {
   }
 }
 
-const formatValueForDisplay = (value: unknown, annotations: SchemaAnnotations): string => {
-  return formatWithPretty(value, annotations) ?? stringifyShort(value)
-}
-
-/**
- * Human-friendly label for the AST kind. Surfaced as the small caps subtitle
- * in the tooltip header when no `title`/`identifier` is set, and as a hint
- * alongside `displayName` when one is set.
- */
-const getTypeKind = (rawAst: SchemaAST.AST): string | undefined => {
-  // Note: we read off the *raw* AST (before unwrap) so wrapper kinds like
-  // Refinement/Union are visible to the user when they would otherwise be
-  // silently unwrapped.
-  switch (rawAst._tag) {
-    case 'StringKeyword':
+const getTypeKind = (ast: SchemaAST.AST): string | undefined => {
+  switch (ast._tag) {
+    case 'String':
       return 'string'
-    case 'NumberKeyword':
+    case 'Number':
       return 'number'
-    case 'BooleanKeyword':
+    case 'Boolean':
       return 'boolean'
-    case 'BigIntKeyword':
+    case 'BigInt':
       return 'bigint'
-    case 'SymbolKeyword':
+    case 'Symbol':
       return 'symbol'
     case 'ObjectKeyword':
       return 'object'
-    case 'UnknownKeyword':
+    case 'Unknown':
       return 'unknown'
-    case 'AnyKeyword':
+    case 'Any':
       return 'any'
-    case 'NeverKeyword':
+    case 'Never':
       return 'never'
-    case 'VoidKeyword':
+    case 'Void':
       return 'void'
-    case 'UndefinedKeyword':
+    case 'Undefined':
       return 'undefined'
+    case 'Null':
+      return 'null'
     case 'Literal':
       return 'literal'
-    case 'Enums':
+    case 'Enum':
       return 'enum'
     case 'TemplateLiteral':
       return 'template literal'
-    case 'TupleType':
+    case 'Arrays':
       return 'array'
-    case 'TypeLiteral':
+    case 'Objects':
       return 'struct'
     case 'Union':
       return 'union'
-    case 'Refinement':
-      return 'refinement'
-    case 'Transformation':
-      return 'transform'
     case 'Suspend':
       return 'suspend'
     case 'Declaration':
@@ -327,146 +205,91 @@ const getTypeKind = (rawAst: SchemaAST.AST): string | undefined => {
   }
 }
 
-/* JSON Schema -> human constraint extraction.
- *
- * We deliberately only surface keys that have an obvious one-line rendering;
- * unknown keys are dropped rather than dumped as raw JSON. */
-const jsonSchemaConstraintRules: ReadonlyArray<
+const constraintRules: ReadonlyArray<
   [key: string, render: (value: unknown) => SchemaConstraint | undefined]
 > = [
-  ['minLength', (v) => ({ label: 'min length', value: String(v) })],
-  ['maxLength', (v) => ({ label: 'max length', value: String(v) })],
-  ['minItems', (v) => ({ label: 'min items', value: String(v) })],
-  ['maxItems', (v) => ({ label: 'max items', value: String(v) })],
-  ['minimum', (v) => ({ label: '≥', value: String(v) })],
-  ['maximum', (v) => ({ label: '≤', value: String(v) })],
-  ['exclusiveMinimum', (v) => ({ label: '>', value: String(v) })],
-  ['exclusiveMaximum', (v) => ({ label: '<', value: String(v) })],
-  ['multipleOf', (v) => ({ label: 'multiple of', value: String(v) })],
-  ['uniqueItems', (v) => (v === true ? { label: 'unique items', value: '' } : undefined)],
-  ['pattern', (v) => ({ label: 'pattern', value: `/${String(v)}/` })],
-  ['format', (v) => ({ label: 'format', value: String(v) })],
+  ['minLength', (value) => ({ label: 'min length', value: String(value) })],
+  ['maxLength', (value) => ({ label: 'max length', value: String(value) })],
+  ['minimum', (value) => ({ label: '≥', value: String(value) })],
+  ['maximum', (value) => ({ label: '≤', value: String(value) })],
+  ['exclusiveMinimum', (value) => ({ label: '>', value: String(value) })],
+  ['exclusiveMaximum', (value) => ({ label: '<', value: String(value) })],
+  ['multipleOf', (value) => ({ label: 'multiple of', value: String(value) })],
+  [
+    'pattern',
+    (value) => ({
+      label: 'pattern',
+      value: value instanceof RegExp ? value.toString() : `/${String(value)}/`,
+    }),
+  ],
+  ['integer', () => ({ label: 'integer', value: 'yes' })],
+  ['format', (value) => ({ label: 'format', value: String(value) })],
 ]
 
-/**
- * Walk Refinement chain to collect JSON Schema annotations, then map known
- * keys to human-readable constraints.
- *
- * Refinements stack (e.g. `Int.pipe(positive(), between(0, 10))`) and each
- * link can contribute its own JSON Schema fragment. We merge with later
- * (outer) refinements winning, since those are the user's most specific
- * intent.
- */
 export const getConstraintsFromJSONSchema = (
-  rawAst: SchemaAST.AST,
+  ast: SchemaAST.AST,
 ): ReadonlyArray<SchemaConstraint> => {
-  const fragments: Record<string, unknown> = {}
-  /*
-   * Guard against self-referential Suspend chains (e.g. recursive schemas
-   * defined via `Schema.suspend(() => SomeSchema)`). Without this guard,
-   * `collect` would recurse infinitely on identity-cycle schemas — try/catch
-   * around `ast.f()` wouldn't catch it because it's not a thrown error.
-   */
-  const seen = new WeakSet<SchemaAST.AST>()
+  const constraints: Record<string, unknown> = {
+    ...getAnnotationsFromAST(ast).jsonSchema,
+  }
+  for (const check of ast.checks ?? []) {
+    const arbitrary = asRecord(check.annotations?.arbitrary)
+    const constraint = asRecord(arbitrary?.constraint)
+    if (constraint !== undefined) Object.assign(constraints, constraint)
 
-  /*
-   * Recurse first, then write — so outer refinements win on duplicate keys.
-   * Example: `Schema.Number.pipe(between(0, 100), between(10, 50))`. The
-   * outermost refinement is `between(10, 50)`; the user's most specific
-   * intent. Walking inner→outer and using last-write-wins via Object.assign
-   * preserves that intent. Writing first (outer) then recursing into inner
-   * would let `between(0, 100)` clobber the tighter `between(10, 50)`.
-   */
-  const collect = (ast: SchemaAST.AST): void => {
-    if (seen.has(ast) === true) return
-    seen.add(ast)
-
-    if (ast._tag === 'Refinement') {
-      collect(ast.from)
-    } else if (ast._tag === 'Transformation') {
-      collect(ast.to)
-    } else if (ast._tag === 'Suspend') {
-      try {
-        collect(ast.f())
-      } catch {
-        /* ignore — Suspend may not be safe to evaluate eagerly */
-      }
-    }
-
-    const fragment = ast.annotations[JSONSchemaAnnotationId] as Record<string, unknown> | undefined
-    if (fragment !== undefined) {
-      Object.assign(fragments, fragment)
+    const meta = asRecord(check.annotations?.meta)
+    switch (meta?._tag) {
+      case 'isMinLength':
+        constraints.minLength = meta.minLength
+        break
+      case 'isMaxLength':
+        constraints.maxLength = meta.maxLength
+        break
+      case 'isPattern':
+        constraints.pattern = meta.regExp
+        break
+      case 'isInt':
+        constraints.integer = true
+        break
+      case 'isBetween':
+        constraints[meta.exclusiveMinimum === true ? 'exclusiveMinimum' : 'minimum'] = meta.minimum
+        constraints[meta.exclusiveMaximum === true ? 'exclusiveMaximum' : 'maximum'] = meta.maximum
+        break
     }
   }
-
-  collect(rawAst)
-
-  const out: SchemaConstraint[] = []
-  for (const [key, render] of jsonSchemaConstraintRules) {
-    if (key in fragments) {
-      const constraint = render(fragments[key])
-      if (constraint !== undefined) out.push(constraint)
-    }
-  }
-  return out
+  return constraintRules.flatMap(([key, render]) => {
+    if (!(key in constraints)) return []
+    const rendered = render(constraints[key])
+    return rendered === undefined ? [] : [rendered]
+  })
 }
 
 const MAX_POSSIBLE_VALUES = 12
 
-/** Detect literal/enum/union-of-literal ASTs and surface their allowed values. */
 export const getPossibleValuesFromAST = (
   rawAst: SchemaAST.AST,
 ): { values: ReadonlyArray<string>; truncated: number } | undefined => {
   const ast = unwrapAstForDisplay(rawAst)
-
   const collected: string[] = []
-  let valid = false
-
-  if (ast._tag === 'Literal') {
-    collected.push(stringifyShort(ast.literal))
-    valid = true
-  } else if (ast._tag === 'Enums') {
-    valid = true
-    for (const [, value] of ast.enums) {
-      collected.push(stringifyShort(value))
+  if (ast._tag === 'Literal') collected.push(stringifyShort(ast.literal))
+  else if (ast._tag === 'Enum') {
+    for (const value of ast.enums) collected.push(stringifyShort(value))
+  } else if (
+    ast._tag === 'Union' &&
+    ast.types.every((member) => member._tag === 'Literal') === true
+  ) {
+    for (const member of ast.types) {
+      if (member._tag === 'Literal') collected.push(stringifyShort(member.literal))
     }
-  } else if (ast._tag === 'Union') {
-    valid = ast.types.every((m) => m._tag === 'Literal')
-    if (valid === true) {
-      for (const member of ast.types) {
-        if (member._tag === 'Literal') {
-          collected.push(stringifyShort(member.literal))
-        }
-      }
-    }
-  } else if (ast._tag === 'TemplateLiteral') {
-    valid = true
-    collected.push(`\`${ast.toString()}\``)
+  } else if (ast._tag === 'TemplateLiteral') collected.push(`\`${ast.toString()}\``)
+  if (collected.length === 0) return undefined
+  return {
+    values: collected.slice(0, MAX_POSSIBLE_VALUES),
+    truncated: Math.max(0, collected.length - MAX_POSSIBLE_VALUES),
   }
-
-  if (valid === false || collected.length === 0) return undefined
-
-  if (collected.length > MAX_POSSIBLE_VALUES) {
-    return {
-      values: collected.slice(0, MAX_POSSIBLE_VALUES),
-      truncated: collected.length - MAX_POSSIBLE_VALUES,
-    }
-  }
-  return { values: collected, truncated: 0 }
 }
 
-/**
- * Effect's built-in primitive schemas (Schema.String, Schema.Number, etc.)
- * ship with trivial descriptions like "a string", "a number". These are
- * useless in a tooltip — they just repeat what the rendered value already
- * conveys. We exclude them from the `hasContent` decision so that fields
- * without any user-supplied annotations don't get a tooltip affordance.
- *
- * User-supplied descriptions that happen to match these strings are also
- * suppressed; that's an acceptable false negative for keeping the surface
- * clean.
- */
-const TRIVIAL_DESCRIPTIONS: ReadonlySet<string> = new Set([
+const TRIVIAL_DESCRIPTIONS = new Set([
   'a string',
   'a number',
   'a boolean',
@@ -479,365 +302,178 @@ const TRIVIAL_DESCRIPTIONS: ReadonlySet<string> = new Set([
   'void',
   'undefined',
   'null',
-  'a Date',
-  'a Date from a string',
-  'a Date from a number',
-  'an integer',
-  'a finite number',
 ])
 
-const isTrivialDescription = (description: string | undefined): boolean =>
-  description !== undefined && TRIVIAL_DESCRIPTIONS.has(description)
+const getElementLabelForAST = (rawAst: SchemaAST.AST): string | undefined => {
+  const displayName = getDisplayName(getAnnotationsFromAST(rawAst))
+  if (displayName !== undefined) return displayName
+  const ast = unwrapAstForDisplay(rawAst)
+  if (ast._tag === 'Literal') return stringifyShort(ast.literal)
+  return getTypeKind(ast)
+}
 
-/**
- * Build a schema-derived label for container kinds. Returns `undefined` when
- * the schema doesn't describe a container, or doesn't carry enough info to
- * produce a useful label (no named element / value).
- *
- * Examples:
- * - `Schema.Array(OrderItem)` → `Array<Order Item>`
- * - `Schema.Record({ key: String, value: Money })` → `Record<string, Money>`
- * - `Schema.Tuple(String, Number, Boolean)` → `[string, number, boolean]`
- */
 const getContainerLabelForAST = (rawAst: SchemaAST.AST): string | undefined => {
   const ast = unwrapAstForDisplay(rawAst)
-
-  if (ast._tag === 'TupleType') {
-    const tupleAst = ast as SchemaAST.TupleType
-    /* Array (TupleType with rest-only and no positional elements). */
-    if (tupleAst.elements.length === 0 && tupleAst.rest.length > 0) {
-      const restType = tupleAst.rest[0]?.type
-      if (restType === undefined) return undefined
-      const elementName = getElementLabelForAST(restType)
-      return elementName !== undefined ? `Array<${elementName}>` : undefined
+  if (ast._tag === 'Arrays') {
+    if (ast.elements.length === 0 && ast.rest[0] !== undefined) {
+      const label = getElementLabelForAST(ast.rest[0])
+      return label === undefined ? undefined : `Array<${label}>`
     }
-    /* Fixed tuple — render positional element labels. */
-    if (tupleAst.elements.length > 0) {
-      const parts: string[] = []
-      for (const el of tupleAst.elements) {
-        const label = getElementLabelForAST(el.type)
-        if (label === undefined) return undefined
-        parts.push(label)
-      }
-      return `[${parts.join(', ')}]`
-    }
-    return undefined
-  }
-
-  if (ast._tag === 'TypeLiteral') {
-    const typeLit = ast as SchemaAST.TypeLiteral
-    /* Record (only index signatures, no explicit properties). */
-    if (typeLit.propertySignatures.length === 0 && typeLit.indexSignatures.length > 0) {
-      const indexSig = typeLit.indexSignatures[0]!
-      const keyLabel = getElementLabelForAST(indexSig.parameter) ?? 'string'
-      const valueLabel = getElementLabelForAST(indexSig.type)
-      if (valueLabel === undefined) return undefined
-      return `Record<${keyLabel}, ${valueLabel}>`
+    if (ast.elements.length > 0) {
+      const labels = ast.elements.map(getElementLabelForAST)
+      return labels.every((label) => label !== undefined) === true
+        ? `[${labels.join(', ')}]`
+        : undefined
     }
   }
-
-  /*
-   * Map / Set declarations: identified by the `typeConstructor` annotation
-   * Effect attaches to `Schema.MapFromSelf` / `Schema.SetFromSelf` (and the
-   * transform variants `Schema.Map` / `Schema.Set` / `Schema.ReadonlyMap` /
-   * `Schema.ReadonlySet`, which `unwrapAstForDisplay` collapses to their
-   * `to` declaration). The annotation only carries `_tag: 'ReadonlyMap' |
-   * 'ReadonlySet'` — the mutable vs readonly distinction has to be inferred
-   * from the description string Effect produces (`Map<...>` /
-   * `ReadonlyMap<...>` / `Set<...>` / `ReadonlySet<...>`).
-   *
-   * @see https://github.com/overengineeringstudio/effect-utils/issues/686
-   */
+  if (ast._tag === 'Objects' && ast.propertySignatures.length === 0) {
+    const index = ast.indexSignatures[0]
+    if (index !== undefined) {
+      const key = getElementLabelForAST(index.parameter) ?? 'string'
+      const value = getElementLabelForAST(index.type)
+      return value === undefined ? undefined : `Record<${key}, ${value}>`
+    }
+  }
   if (ast._tag === 'Declaration') {
-    const declAst = ast as SchemaAST.Declaration
-    const typeCtor = declAst.annotations[TypeConstructorAnnotationId] as
-      | { _tag?: unknown }
-      | undefined
-    const ctorTag = typeCtor?._tag
-    if (ctorTag === 'ReadonlyMap' || ctorTag === 'ReadonlySet') {
-      const description = declAst.annotations[DescriptionAnnotationId] as string | undefined
-      if (ctorTag === 'ReadonlyMap' && declAst.typeParameters.length === 2) {
-        const [keyAst, valueAst] = declAst.typeParameters
-        if (keyAst !== undefined && valueAst !== undefined) {
-          const keyLabel = getElementLabelForAST(keyAst)
-          const valueLabel = getElementLabelForAST(valueAst)
-          if (keyLabel !== undefined && valueLabel !== undefined) {
-            const prefix = description?.startsWith('ReadonlyMap<') === true ? 'ReadonlyMap' : 'Map'
-            return `${prefix}<${keyLabel}, ${valueLabel}>`
-          }
-        }
-      }
-      if (ctorTag === 'ReadonlySet' && declAst.typeParameters.length === 1) {
-        const [valueAst] = declAst.typeParameters
-        if (valueAst !== undefined) {
-          const valueLabel = getElementLabelForAST(valueAst)
-          if (valueLabel !== undefined) {
-            const prefix = description?.startsWith('ReadonlySet<') === true ? 'ReadonlySet' : 'Set'
-            return `${prefix}<${valueLabel}>`
-          }
-        }
-      }
+    const typeConstructor = asRecord(ast.annotations?.typeConstructor)
+    if (typeConstructor?._tag === 'ReadonlyMap' && ast.typeParameters.length === 2) {
+      const key =
+        ast.typeParameters[0] === undefined
+          ? undefined
+          : getElementLabelForAST(ast.typeParameters[0])
+      const value =
+        ast.typeParameters[1] === undefined
+          ? undefined
+          : getElementLabelForAST(ast.typeParameters[1])
+      return key === undefined || value === undefined ? undefined : `ReadonlyMap<${key}, ${value}>`
+    }
+    if (typeConstructor?._tag === 'ReadonlySet' && ast.typeParameters[0] !== undefined) {
+      const value = getElementLabelForAST(ast.typeParameters[0])
+      return value === undefined ? undefined : `ReadonlySet<${value}>`
     }
   }
-
   return undefined
 }
 
-/**
- * Narrow a `Schema.Union(...)` of tagged structs to the member matching the
- * runtime value's `_tag`. Returns the original AST when the union isn't
- * discriminated by `_tag` or no member matches.
- *
- * Each member of the union is itself unwrapped (Refinement/Transformation/
- * Suspend) before we look for a `_tag` PropertySignature whose type is a
- * `Literal`. The returned AST is the matching member's *raw* AST so callers
- * keep its annotations (description, identifier, ...).
- *
- * @see https://github.com/overengineeringstudio/effect-utils/issues/686
- */
 export const narrowUnionByTag = (rawAst: SchemaAST.AST, value: unknown): SchemaAST.AST => {
-  if (
-    value === null ||
-    typeof value !== 'object' ||
-    !('_tag' in value) ||
-    typeof (value as { _tag: unknown })._tag !== 'string'
-  ) {
-    return rawAst
-  }
-
+  if (value === null || typeof value !== 'object' || !('_tag' in value)) return rawAst
   const ast = unwrapAstForDisplay(rawAst)
   if (ast._tag !== 'Union') return rawAst
-
-  const tagValue = (value as { _tag: string })._tag
-  const unionAst = ast as SchemaAST.Union
-
-  for (const member of unionAst.types) {
-    const memberDisplay = unwrapAstForDisplay(member)
-    if (memberDisplay._tag !== 'TypeLiteral') continue
-    const tagProp = (memberDisplay as SchemaAST.TypeLiteral).propertySignatures.find(
-      (sig) => sig.name === '_tag',
-    )
-    if (tagProp === undefined) continue
-    const tagPropType = unwrapAstForDisplay(tagProp.type)
-    if (tagPropType._tag !== 'Literal') continue
-    if ((tagPropType as SchemaAST.Literal).literal === tagValue) {
+  for (const member of ast.types) {
+    const candidate = unwrapAstForDisplay(member)
+    if (candidate._tag !== 'Objects') continue
+    const tag = candidate.propertySignatures.find((property) => property.name === '_tag')?.type
+    if (tag?._tag === 'Literal' && tag.literal === (value as { readonly _tag: unknown })._tag) {
       return member
     }
   }
-
   return rawAst
 }
 
-/**
- * Get the value schema for a `Schema.Map` / `Schema.ReadonlyMap` (key/value)
- * declaration. Returns `undefined` when the schema isn't a Map declaration or
- * when the type parameters can't be extracted.
- *
- * @see https://github.com/overengineeringstudio/effect-utils/issues/686
- */
 export const getMapKeyValueSchema = (
-  schema: S.Schema.AnyNoContext,
-): { key: S.Schema.AnyNoContext; value: S.Schema.AnyNoContext } | undefined => {
+  schema: SchemaView,
+): { key: SchemaView; value: SchemaView } | undefined => {
   const ast = unwrapAstForDisplay(schema.ast)
   if (ast._tag !== 'Declaration') return undefined
-  const declAst = ast as SchemaAST.Declaration
-  const typeCtor = declAst.annotations[TypeConstructorAnnotationId] as
-    | { _tag?: unknown }
-    | undefined
-  if (typeCtor?._tag !== 'ReadonlyMap') return undefined
-  if (declAst.typeParameters.length < 2) return undefined
-  const [keyAst, valueAst] = declAst.typeParameters
-  if (keyAst === undefined || valueAst === undefined) return undefined
-  return {
-    key: { ast: keyAst } as S.Schema.AnyNoContext,
-    value: { ast: valueAst } as S.Schema.AnyNoContext,
-  }
+  const typeConstructor = asRecord(ast.annotations?.typeConstructor)
+  if (typeConstructor?._tag !== 'ReadonlyMap') return undefined
+  const [key, value] = ast.typeParameters
+  return key === undefined || value === undefined
+    ? undefined
+    : { key: view(key), value: view(value) }
 }
 
-/**
- * Get the element schema for a `Schema.Set` / `Schema.ReadonlySet`
- * declaration. Returns `undefined` when the schema isn't a Set declaration.
- *
- * @see https://github.com/overengineeringstudio/effect-utils/issues/686
- */
-export const getSetElementSchema = (
-  schema: S.Schema.AnyNoContext,
-): S.Schema.AnyNoContext | undefined => {
+export const getSetElementSchema = (schema: SchemaView): SchemaView | undefined => {
   const ast = unwrapAstForDisplay(schema.ast)
   if (ast._tag !== 'Declaration') return undefined
-  const declAst = ast as SchemaAST.Declaration
-  const typeCtor = declAst.annotations[TypeConstructorAnnotationId] as
-    | { _tag?: unknown }
-    | undefined
-  if (typeCtor?._tag !== 'ReadonlySet') return undefined
-  if (declAst.typeParameters.length < 1) return undefined
-  const [valueAst] = declAst.typeParameters
-  if (valueAst === undefined) return undefined
-  return { ast: valueAst } as S.Schema.AnyNoContext
+  const typeConstructor = asRecord(ast.annotations?.typeConstructor)
+  const value = ast.typeParameters[0]
+  return typeConstructor?._tag === 'ReadonlySet' && value !== undefined ? view(value) : undefined
 }
 
-/**
- * Best-effort short label for an element/value/key AST inside a container
- * label. Prefers the user-set `title`/`identifier`, falls back to the type
- * kind (`string`, `number`, ...). Returns `undefined` for things we can't
- * name simply (anonymous structs, anonymous unions).
- */
-const getElementLabelForAST = (rawAst: SchemaAST.AST): string | undefined => {
-  const ast = unwrapAstForDisplay(rawAst)
-  const annotations = getAnnotationsFromAST(rawAst)
-  const display = getDisplayName(annotations)
-  if (display !== undefined) return display
-
-  switch (ast._tag) {
-    case 'StringKeyword':
-      return 'string'
-    case 'NumberKeyword':
-      return 'number'
-    case 'BooleanKeyword':
-      return 'boolean'
-    case 'BigIntKeyword':
-      return 'bigint'
-    case 'SymbolKeyword':
-      return 'symbol'
-    case 'UnknownKeyword':
-      return 'unknown'
-    case 'AnyKeyword':
-      return 'any'
-    case 'Literal':
-      return stringifyShort((ast as SchemaAST.Literal).literal)
-    default:
-      return undefined
-  }
-}
-
-/**
- * Build the display-ready info bundle for a schema.
- *
- * Returns even when the schema has no annotations — callers should check
- * `hasContent` to decide whether the tooltip is worth rendering.
- */
-export const getSchemaInfo = (schema: S.Schema.AnyNoContext): SchemaInfo => {
+export const getSchemaInfo = (schema: SchemaView): SchemaInfo => {
   const rawAst = schema.ast
   const displayAst = unwrapAstForDisplay(rawAst)
-
-  // Read annotations from both the raw and unwrapped AST so things like
-  // `description` set on a refinement wrapper are still surfaced.
-  const rawAnnotations = getAnnotationsFromAST(rawAst)
-  const displayAnnotations = getAnnotationsFromAST(displayAst)
-  const annotations: SchemaAnnotations = { ...displayAnnotations, ...rawAnnotations }
-
+  const annotations = {
+    ...getAnnotationsFromAST(displayAst),
+    ...getAnnotationsFromAST(rawAst),
+  }
   const displayName = getDisplayName(annotations)
-  const typeKind = getTypeKind(rawAst)
-
-  const examples =
-    annotations.examples !== undefined && annotations.examples.length > 0
-      ? annotations.examples.map((v) => formatValueForDisplay(v, annotations))
-      : undefined
-
+  const examples = annotations.examples?.map(
+    (value) => formatWithPretty(value, annotations) ?? stringifyShort(value),
+  )
   const defaultValue =
-    annotations.default !== undefined
-      ? formatValueForDisplay(annotations.default, annotations)
-      : undefined
-
+    annotations.default === undefined
+      ? undefined
+      : (formatWithPretty(annotations.default, annotations) ?? stringifyShort(annotations.default))
   const constraints = getConstraintsFromJSONSchema(rawAst)
   const possible = getPossibleValuesFromAST(rawAst)
   const containerLabel = getContainerLabelForAST(rawAst)
-
-  /*
-   * Lineage and its companion annotations are read off the raw schema (not the
-   * unwrapped AST) — same reason as other annotation reads: a user may attach
-   * lineage to the refinement wrapper, and unwrapping would lose it. The
-   * helpers themselves try raw-then-unwrapped so either layer wins.
-   */
+  const typeKind = getTypeKind(rawAst)
   const lineageValue = Lineage.getLineage(schema)
+  const authority = Lineage.getAuthority(schema)
+  const freshness = Lineage.getFreshness(schema)
+  const reference = Lineage.getReference(schema)
   const lineage: LineageBundle | undefined =
-    lineageValue !== undefined
-      ? (() => {
-          const authority = Lineage.getAuthority(schema)
-          const freshness = Lineage.getFreshness(schema)
-          const reference = Lineage.getReference(schema)
-          return {
-            display: Lineage.getLineageDisplay(lineageValue),
-            ...(authority !== undefined ? { authority } : {}),
-            ...(freshness !== undefined ? { freshness } : {}),
-            ...(reference !== undefined ? { reference } : {}),
-          }
-        })()
-      : (() => {
-          /* No primary Lineage but companion annotations may still exist. */
-          const authority = Lineage.getAuthority(schema)
-          const freshness = Lineage.getFreshness(schema)
-          const reference = Lineage.getReference(schema)
-          if (authority === undefined && freshness === undefined && reference === undefined) {
-            return undefined
-          }
-          return {
-            /* Synthesize a minimal display for companion-only annotations. */
-            display: {
-              badge: '',
-              badgeTitle: '',
-              kindLabel: '',
-              summary: '',
-            },
-            ...(authority !== undefined ? { authority } : {}),
-            ...(freshness !== undefined ? { freshness } : {}),
-            ...(reference !== undefined ? { reference } : {}),
-          }
-        })()
-
-  const meaningfulDescription =
-    isTrivialDescription(annotations.description) === true ? undefined : annotations.description
-
+    lineageValue === undefined &&
+    authority === undefined &&
+    freshness === undefined &&
+    reference === undefined
+      ? undefined
+      : {
+          display:
+            lineageValue === undefined
+              ? { badge: '', badgeTitle: '', kindLabel: '', summary: '' }
+              : Lineage.getLineageDisplay(lineageValue),
+          ...(authority === undefined ? {} : { authority }),
+          ...(freshness === undefined ? {} : { freshness }),
+          ...(reference === undefined ? {} : { reference }),
+        }
+  const description =
+    annotations.description !== undefined &&
+    TRIVIAL_DESCRIPTIONS.has(annotations.description) === true
+      ? undefined
+      : annotations.description
   const hasContent =
-    meaningfulDescription !== undefined ||
+    description !== undefined ||
     annotations.documentation !== undefined ||
     examples !== undefined ||
     defaultValue !== undefined ||
     constraints.length > 0 ||
     possible !== undefined ||
     lineage !== undefined
-
   return {
-    ...(displayName !== undefined ? { displayName } : {}),
-    ...(typeKind !== undefined ? { typeKind } : {}),
-    ...(meaningfulDescription !== undefined ? { description: meaningfulDescription } : {}),
-    ...(annotations.documentation !== undefined
-      ? { documentation: annotations.documentation }
-      : {}),
-    ...(examples !== undefined ? { examples } : {}),
-    ...(defaultValue !== undefined ? { defaultValue } : {}),
-    ...(constraints.length > 0 ? { constraints } : {}),
-    ...(possible !== undefined
-      ? { possibleValues: possible.values, possibleValuesTruncated: possible.truncated }
-      : {}),
-    ...(containerLabel !== undefined ? { containerLabel } : {}),
-    ...(lineage !== undefined ? { lineage } : {}),
+    ...(displayName === undefined ? {} : { displayName }),
+    ...(typeKind === undefined ? {} : { typeKind }),
+    ...(description === undefined ? {} : { description }),
+    ...(annotations.documentation === undefined
+      ? {}
+      : { documentation: annotations.documentation }),
+    ...(examples === undefined ? {} : { examples }),
+    ...(defaultValue === undefined ? {} : { defaultValue }),
+    ...(constraints.length === 0 ? {} : { constraints }),
+    ...(possible === undefined
+      ? {}
+      : { possibleValues: possible.values, possibleValuesTruncated: possible.truncated }),
+    ...(containerLabel === undefined ? {} : { containerLabel }),
+    ...(lineage === undefined ? {} : { lineage }),
     hasContent,
   }
 }
 
-export type SchemaRegistry = Map<string, S.Schema.AnyNoContext>
+export type SchemaRegistry = Map<string, SchemaView>
 
-/** Create a schema registry for matching schemas to constructor names */
 export const createSchemaRegistry = (): SchemaRegistry => new Map()
 
-/** Register a schema with its identifier/title for lookup */
 export const registerSchema = (
   registry: SchemaRegistry,
-  schema: S.Schema.AnyNoContext,
+  schema: SchemaView,
   name?: string,
 ): void => {
   const annotations = getAnnotations(schema)
   const key = name ?? annotations.identifier ?? annotations.title
-  if (key !== undefined) {
-    registry.set(key, schema)
-  }
+  if (key !== undefined) registry.set(key, schema)
 }
 
-/** Look up a schema by constructor name or other identifier */
-export const lookupSchema = (
-  registry: SchemaRegistry,
-  name: string,
-): S.Schema.AnyNoContext | undefined => {
-  return registry.get(name)
-}
+export const lookupSchema = (registry: SchemaRegistry, name: string): SchemaView | undefined =>
+  registry.get(name)

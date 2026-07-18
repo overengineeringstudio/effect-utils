@@ -6,6 +6,17 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **react-inspector / Effect 4**: preserve exact-optional public metadata types
+  across Effect 4 schema decoding, and compile the migrated schema surface as a
+  strict downstream consumer in the workspace typecheck graph.
+- **react-inspector / Effect 4**: align the package's development and build
+  runtime with its `^4.0.0-beta.97` peer contract so declarations and tests use
+  the same Effect version as LiveStore DevTools.
+- **react-inspector / Effect 4**: migrate schema inspection, Lineage annotations,
+  and Storybook fixtures to Effect 4. The package now consumes the application's
+  Effect 4 instance through a peer dependency instead of bundling a private
+  Effect runtime, preventing cross-major schema AST crashes in LiveStore
+  Devtools.
 - **pnpm / dependency identity**: make pnpm the explicit authority for
   live package dependency edges. Dependency projection and repair may no
   longer invent nested links by scanning the store or choosing a target by

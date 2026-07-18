@@ -1,5 +1,5 @@
 // Generated file - DO NOT EDIT
-// Source: tsconfig.json.genie.ts
+// Source: tsconfig.strict-consumer.json.genie.ts
 {
   "compilerOptions": {
     "target": "ES2024",
@@ -10,19 +10,19 @@
     "rewriteRelativeImportExtensions": true,
     "resolveJsonModule": true,
     "esModuleInterop": true,
-    "allowJs": true,
+    "allowJs": false,
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
-    "outDir": "./dist",
-    "strict": false,
-    "noUncheckedIndexedAccess": false,
-    "exactOptionalPropertyTypes": false,
-    "noImplicitReturns": false,
+    "outDir": "dist",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
     "noImplicitOverride": true,
     "isolatedModules": true,
-    "verbatimModuleSyntax": false,
+    "verbatimModuleSyntax": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "plugins": [
@@ -41,13 +41,11 @@
         }
       }
     ],
-    "rootDir": "src",
+    "rootDir": ".",
     "jsx": "react-jsx",
-    "checkJs": false,
     "composite": true,
-    "noImplicitAny": false,
-    "strictNullChecks": false
+    "noEmit": true
   },
-  "include": ["src/**/*"],
+  "include": ["src/schema/effectSchema.tsx", "src/schema/lineage.ts", "test-d/**/*"],
   "references": []
 }

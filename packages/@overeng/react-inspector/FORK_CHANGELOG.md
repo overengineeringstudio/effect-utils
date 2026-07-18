@@ -42,6 +42,14 @@ Each entry should include:
 
 ### Added
 
+#### Effect 4 Schema Support (2026-07-17, tracks #925)
+
+Migrated the schema-aware inspector and its Lineage annotations from Effect 3
+to Effect 4. `effect` is now a peer dependency, with the exact supported beta
+used only for package development, so consumer-created schemas are inspected by
+the same Effect runtime instance that created them. The Effect schema Storybook
+fixtures now use Effect 4 constructors, checks, and annotations throughout.
+
 #### Lineage Annotations (2026-05-25, addresses #687)
 
 New `Lineage` annotation namespace describing the epistemic status of a

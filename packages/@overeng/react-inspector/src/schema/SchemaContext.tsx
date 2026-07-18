@@ -1,5 +1,3 @@
-import type { Schema as S } from 'effect'
-import { pipe } from 'effect'
 import React, { createContext, useContext, useMemo } from 'react'
 import type { FC, ReactNode } from 'react'
 
@@ -7,6 +5,7 @@ import {
   type SchemaAnnotations,
   type SchemaInfo,
   type SchemaRegistry,
+  type SchemaView,
   getAnnotations,
   getFieldSchema,
   getArrayElementSchema,
@@ -21,9 +20,9 @@ import {
 
 export interface SchemaContextValue {
   /** The current schema for the data being inspected */
-  schema: S.Schema.AnyNoContext | undefined
+  schema: SchemaView | undefined
   /** The root schema (stays constant during tree traversal) */
-  rootSchema: S.Schema.AnyNoContext | undefined
+  rootSchema: SchemaView | undefined
   /** Registry of schemas for looking up by constructor name */
   registry: SchemaRegistry
   /** Get annotations for the current schema */
@@ -41,9 +40,9 @@ export interface SchemaContextValue {
   /** Get schema context for array elements */
   getElementContext: () => SchemaContextValue
   /** Look up a schema by name from registry */
-  lookupByName: (name: string) => S.Schema.AnyNoContext | undefined
+  lookupByName: (name: string) => SchemaView | undefined
   /** Get schema for a path like "$.address.street" or "$[0].name" */
-  getSchemaForPath: (path: string) => S.Schema.AnyNoContext | undefined
+  getSchemaForPath: (path: string) => SchemaView | undefined
   /** Get schema context for a path */
   getContextForPath: (path: string) => SchemaContextValue
   /**
@@ -81,13 +80,13 @@ const SchemaContext = createContext<SchemaContextValue>(defaultContextValue)
 export interface SchemaProviderProps {
   children: ReactNode
   /** Schema for the data being inspected */
-  schema?: S.Schema.AnyNoContext | undefined
+  schema?: SchemaView | undefined
   /** Additional schemas to register for lookup by name */
-  schemas?: S.Schema.AnyNoContext[] | undefined
+  schemas?: SchemaView[] | undefined
   /**
    * Root runtime value being inspected. When provided, path-based context
    * lookups walk the value in lockstep with the schema and narrow any
-   * intermediate tagged-union (`Schema.Union(A, B, C)` with `_tag`
+   * intermediate tagged-union (`Schema.Union([A, B, C])` with `_tag`
    * literals) to the matching variant. Without this, only the leaf union
    * gets narrowed.
    *
@@ -119,13 +118,13 @@ const parsePathSegments = (path: string): string[] => {
  * @see https://github.com/overengineeringstudio/effect-utils/issues/686
  */
 const resolveSchemaForSegments = (
-  rootSchema: S.Schema.AnyNoContext | undefined,
+  rootSchema: SchemaView | undefined,
   segments: string[],
   rootData: unknown,
   hasData: boolean,
-): S.Schema.AnyNoContext | undefined => {
+): SchemaView | undefined => {
   if (rootSchema === undefined) return undefined
-  let current: S.Schema.AnyNoContext | undefined = rootSchema
+  let current: SchemaView | undefined = rootSchema
   let value: unknown = rootData
 
   for (const segment of segments) {
@@ -134,7 +133,7 @@ const resolveSchemaForSegments = (
     if (hasData === true) {
       const narrowedAst = narrowUnionByTag(current.ast, value)
       if (narrowedAst !== current.ast) {
-        current = { ast: narrowedAst } as S.Schema.AnyNoContext
+        current = { ast: narrowedAst }
       }
     }
 
@@ -161,9 +160,9 @@ const resolveSchemaForSegments = (
 
 /** Create a context value for a given schema and registry */
 const createContextValue = (
-  schema: S.Schema.AnyNoContext | undefined,
+  schema: SchemaView | undefined,
   registry: SchemaRegistry,
-  rootSchema: S.Schema.AnyNoContext | undefined,
+  rootSchema: SchemaView | undefined,
   rootDataHolder: { hasData: boolean; data: unknown },
 ): SchemaContextValue => {
   const effectiveRootSchema = rootSchema ?? schema
@@ -174,7 +173,7 @@ const createContextValue = (
     registry,
     getAnnotations: () => (schema !== undefined ? getAnnotations(schema) : {}),
     getDisplayName: () =>
-      schema !== undefined ? pipe(schema, getAnnotations, getDisplayName) : undefined,
+      schema !== undefined ? getDisplayName(getAnnotations(schema)) : undefined,
     getDescription: () => (schema !== undefined ? getAnnotations(schema).description : undefined),
     getSchemaInfo: () => (schema !== undefined ? getSchemaInfo(schema) : undefined),
     formatValue: (value: unknown) =>
@@ -223,10 +222,7 @@ const createContextValue = (
         return createContextValue(undefined, registry, effectiveRootSchema, rootDataHolder)
       }
       const narrowedAst = narrowUnionByTag(pathSchema.ast, value)
-      const narrowedSchema =
-        narrowedAst === pathSchema.ast
-          ? pathSchema
-          : ({ ast: narrowedAst } as S.Schema.AnyNoContext)
+      const narrowedSchema = narrowedAst === pathSchema.ast ? pathSchema : { ast: narrowedAst }
       return createContextValue(narrowedSchema, registry, effectiveRootSchema, rootDataHolder)
     },
   }

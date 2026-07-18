@@ -196,7 +196,10 @@ const verifyPackageContent = ({ pkg, packageDir, entryPath, failures }) => {
     : []
   if (includedFiles.length === 0) return
 
-  if (typeof pkg.main === 'string') {
+  // Node gives `exports` precedence over the legacy `main` entry point. Some
+  // packages retain a stale `main` after moving their supported entry points
+  // behind `exports`, so only validate `main` when it is authoritative.
+  if (pkg.exports === undefined && typeof pkg.main === 'string') {
     if (
       packageTargetIsShipped({ includedFiles, target: pkg.main }) &&
       !targetExistsWithNodeResolution(packageDir, pkg.main)

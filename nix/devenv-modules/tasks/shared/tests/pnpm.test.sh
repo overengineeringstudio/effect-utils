@@ -129,6 +129,18 @@ EOF
   ln -s .pnpm/pkg@1.0.0/node_modules/pkg "$root/node_modules/pkg"
 }
 
+make_exports_override_stale_main_fixture() {
+  local root="$1"
+  local package_root="$root/node_modules/.pnpm/pkg@1.0.0/node_modules/pkg"
+
+  mkdir -p "$package_root/dist" "$root/node_modules"
+  cat > "$package_root/package.json" <<'EOF'
+{"name":"pkg","files":["dist"],"main":"./dist/missing-legacy.cjs","exports":{".":{"import":"./dist/index.js","require":"./dist/index.cjs"}}}
+EOF
+  touch "$package_root/dist/index.js" "$package_root/dist/index.cjs"
+  ln -s .pnpm/pkg@1.0.0/node_modules/pkg "$root/node_modules/pkg"
+}
+
 make_unshipped_conditional_export_fixture() {
   local root="$1"
   local package_root="$root/node_modules/.pnpm/pkg@1.0.0/node_modules/pkg"
@@ -583,7 +595,20 @@ exit_code=$?
 set -e
 assert_exit_code 0 "$exit_code" "projection health ignores optional subpath exports"
 
-echo "Test 32: Projection digest supports npm's default package file set"
+echo "Test 32: Projection health gives exports precedence over a stale legacy main target"
+exports_override_main_dir="$test_dir/exports-override-main"
+make_exports_override_stale_main_fixture "$exports_override_main_dir"
+set +e
+check_node_modules_links_healthy node "$PROJECTION_SCRIPT" "$exports_override_main_dir/node_modules" >/dev/null 2>&1
+exit_code=$?
+set -e
+assert_exit_code 0 "$exit_code" "projection health accepts valid exports despite a stale legacy main"
+assert_eq \
+  "index.cjs" \
+  "$(cd "$exports_override_main_dir" && node -e 'const path = require("node:path"); process.stdout.write(path.basename(require.resolve("pkg")))')" \
+  "Node resolves the exported require target instead of legacy main"
+
+echo "Test 33: Projection digest supports npm's default package file set"
 default_files_dir="$test_dir/default-files"
 make_default_files_fixture "$default_files_dir"
 set +e
