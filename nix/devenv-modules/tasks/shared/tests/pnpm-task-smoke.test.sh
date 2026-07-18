@@ -382,8 +382,8 @@ printf 'storybook-shim:%s\n' "$*"
 EOF
 chmod +x "$workspace/packages/demo/node_modules/.bin/storybook"
 
-extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install.exec.sh"
-extract_task_script "$workspace" "status" "$tmpdir/pnpm-install.status.sh"
+extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install.exec.sh" 'packages = [ ]; postInstallProjection = "touch .post-install-projection-marker";'
+extract_task_script "$workspace" "status" "$tmpdir/pnpm-install.status.sh" 'packages = [ ]; postInstallProjection = "touch .post-install-projection-marker";'
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-doctor.exec.sh" 'packages = [ ];' "pnpm:doctor"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-repair.exec.sh" 'packages = [ ];' "pnpm:repair"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-clean.exec.sh" 'packages = [ "packages/demo" ];' "pnpm:clean"
@@ -486,6 +486,7 @@ echo "Test 2: exec runs fake pnpm and populates cache"
   test -f "$workspace/.devenv/task-cache/pnpm-install/install-state.hash"
   test -f "$workspace/.devenv/task-cache/pnpm-install/projection-state.hash"
   test -f "$workspace/.devenv/task-cache/pnpm-install/pnpm-storage-state"
+  test -f "$workspace/.post-install-projection-marker"
   test -d "$workspace/node_modules"
   test -f "$workspace/node_modules/.modules.yaml"
   grep -qxF "flock -w 600 200" "$tmpdir/flock.log"

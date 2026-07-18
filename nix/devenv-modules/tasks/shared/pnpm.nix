@@ -19,6 +19,10 @@
   frozenInCi ? true,
   installFlags ? [ ],
   preInstall ? "",
+  # Root-owned immutable projections that must be part of the authoritative
+  # materialized topology. Runs after pnpm and its base health oracle, before
+  # the projection digest is committed.
+  postInstallProjection ? "",
   installAfter ? [ ],
   updateAfter ? [ ],
   dedupeAfter ? [ ],
@@ -261,6 +265,7 @@ let
         printf '%s\n' "$PNPM_PACKAGE_IMPORT_METHOD"
         printf '%s\n' ${lib.escapeShellArg (builtins.toJSON installFlags)}
         printf '%s\n' ${lib.escapeShellArg preInstall}
+        printf '%s\n' ${lib.escapeShellArg postInstallProjection}
       } | compute_hash
     }
   '';
@@ -534,6 +539,13 @@ let
 
         if ! check_node_modules_links_healthy ${pkgs.nodejs}/bin/node ${lib.escapeShellArg nodeModulesProjectionScript} ${healthCheckNodeModulesPaths}; then
           echo "[pnpm] node_modules projection is still unhealthy after install" >&2
+          exit 1
+        fi
+
+        ${postInstallProjection}
+
+        if ! check_node_modules_links_healthy ${pkgs.nodejs}/bin/node ${lib.escapeShellArg nodeModulesProjectionScript} ${healthCheckNodeModulesPaths}; then
+          echo "[pnpm] node_modules projection is unhealthy after the root-owned post-install projection" >&2
           exit 1
         fi
 
