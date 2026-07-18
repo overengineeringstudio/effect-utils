@@ -277,15 +277,6 @@ echo "Test 6: ensure_local_pnpm_home_default preserves an explicit PNPM_HOME"
     "ensure_local_pnpm_home_default keeps explicit PNPM_HOME"
 )
 
-echo "Test 8: resolve_pnpm_install_contract_file walks up to the repo contract"
-contract_fixture="$test_dir/contract-fixture"
-mkdir -p "$contract_fixture/packages/app"
-printf '{"schemaVersion":1}\n' > "$contract_fixture/pnpm-install-contract.json"
-assert_eq \
-  "$contract_fixture/pnpm-install-contract.json" \
-  "$(resolve_pnpm_install_contract_file "$contract_fixture/packages/app")" \
-  "resolve_pnpm_install_contract_file finds ancestor contract"
-
 echo "Test 9: pnpm contract section hashing is stable across JSON key order"
 contract_a="$test_dir/contract-a.json"
 contract_b="$test_dir/contract-b.json"
@@ -670,6 +661,30 @@ echo "Test 35b: CI forces its declared job-local store"
   configure_pnpm_storage node "$storage_root" "$job_store" true
   assert_eq "$job_store" "$npm_config_store_dir" "CI store authority remains job-local"
   assert_eq "auto" "$PNPM_PACKAGE_IMPORT_METHOD" "CI uses the same native import policy"
+)
+
+echo "Test 35c: capacity checks each distinct writable device exactly once"
+(
+  unset CI
+  export PNPM_MIN_FREE_KIB=0
+  capacity_log="$test_dir/capacity-df.log"
+  store_dir="$test_dir/capacity-store"
+  root_dir="$test_dir/capacity-root"
+  mkdir -p "$store_dir" "$root_dir"
+  df() {
+    printf '%s\n' "$*" >> "$capacity_log"
+    command df "$@"
+  }
+  assert_pnpm_storage_capacity node "$store_dir" "$root_dir"
+  assert_eq "1" "$(wc -l < "$capacity_log" | tr -d ' ')" "same-device boundaries are checked once"
+
+  if [ -d /dev/shm ] && [ "$(stat -c '%d' /dev/shm)" != "$(stat -c '%d' "$test_dir")" ]; then
+    second_device_root="$(mktemp -d /dev/shm/effect-utils-capacity-root.XXXXXX)"
+    : > "$capacity_log"
+    assert_pnpm_storage_capacity node "$store_dir" "$second_device_root"
+    assert_eq "2" "$(wc -l < "$capacity_log" | tr -d ' ')" "distinct devices are both checked"
+    rm -rf "$second_device_root"
+  fi
 )
 
 echo "Test 36: legacy migration preserves non-empty root-local package content"

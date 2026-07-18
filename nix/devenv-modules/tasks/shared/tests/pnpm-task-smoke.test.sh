@@ -423,7 +423,9 @@ echo "Test 2: exec runs fake pnpm and populates cache"
   test -f "$workspace/node_modules/.modules.yaml"
   grep -qxF "flock -w 600 200" "$tmpdir/flock.log"
   grep -qxF "flock -w 600 201" "$tmpdir/flock.log"
-  test "$(wc -l < "$tmpdir/flock.log")" -eq 2
+  grep -qxF "flock --shared -w 600 202" "$tmpdir/flock.log"
+  ! grep -qF -- '--exclusive' "$tmpdir/flock.log"
+  test "$(wc -l < "$tmpdir/flock.log")" -eq 3
   grep -qxF "install --frozen-lockfile --config.confirmModulesPurge=false --ignore-scripts --config.side-effects-cache=false --config.verify-store-integrity=true --config.strict-store-pkg-content-check=true --child-concurrency=1 --network-concurrency=4 --config.enable-global-virtual-store=false --config.virtual-store-dir=node_modules/.pnpm --pm-on-fail=ignore --config.package-import-method=auto --config.store-dir=$tmpdir/home/.local/share/pnpm/store-shared-v1" "$tmpdir/pnpm.log"
   grep -qF ".effect-utils-pnpm-install.lock" "$tmpdir/pnpm-install.exec.sh"
   ! grep -qF ".effect-utils-pnpm-store.lock" "$tmpdir/pnpm-install.exec.sh"
@@ -454,7 +456,9 @@ echo "Test 2c: lockfile mutation entrypoints preserve the live topology policy"
   grep -qxF "dedupe $policy_flags --config.package-import-method=auto --config.store-dir=$tmpdir/home/.local/share/pnpm/store-shared-v1" "$tmpdir/pnpm.log"
   test "$(grep -cFx 'flock -w 600 200' "$tmpdir/flock.log")" -eq 2
   test "$(grep -cFx 'flock -w 600 201' "$tmpdir/flock.log")" -eq 2
-  test "$(wc -l < "$tmpdir/flock.log")" -eq 4
+  test "$(grep -cFx 'flock --shared -w 600 202' "$tmpdir/flock.log")" -eq 2
+  ! grep -qF -- '--exclusive' "$tmpdir/flock.log"
+  test "$(wc -l < "$tmpdir/flock.log")" -eq 6
   grep -qF "migrate_legacy_pnpm_store" "$tmpdir/pnpm-update.exec.sh"
   grep -qF "assert_pnpm_storage_capacity" "$tmpdir/pnpm-update.exec.sh"
   grep -qF "migrate_legacy_pnpm_store" "$tmpdir/pnpm-dedupe.exec.sh"
@@ -628,6 +632,7 @@ echo "Test 13: nested workspace exec uses its own cwd, cache, and PNPM_HOME with
   : > "$tmpdir/pnpm.log"
   bash "$tmpdir/pnpm-install-nested.exec.sh"
   test -f "$workspace/.devenv/task-cache/pnpm-install/nested/install-state.hash"
+  test ! -e "$workspace/.devenv/task-cache/pnpm-install/nested/pnpm-install-contract.json"
   test -d "$workspace/nested/node_modules"
   grep -qxF "PWD=$workspace/nested" "$tmpdir/pnpm.log"
   grep -qxF "PNPM_HOME=$workspace/.devenv/pnpm-home/nested" "$tmpdir/pnpm.log"
@@ -648,6 +653,23 @@ echo "Test 14: nested workspace status hits after nested install"
   exit_code=$?
   set -e
   assert_exit_code 0 "$exit_code" "nested status should hit after nested install"
+)
+
+echo "Test 14b: root contract evidence is fail-closed and never inherited by nested roots"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  export PNPM_HOME="$workspace/.pnpm-home-a"
+  mv pnpm-install-contract.json pnpm-install-contract.json.hidden
+  set +e
+  output="$(bash "$tmpdir/pnpm-install.status.sh" 2>&1)"
+  exit_code=$?
+  set -e
+  mv pnpm-install-contract.json.hidden pnpm-install-contract.json
+  assert_exit_code 1 "$exit_code" "repo root requires root-local generated contract evidence"
+  grep -qF "Missing generated pnpm-install-contract.json at repo root" <<< "$output"
+
+  bash "$tmpdir/pnpm-install-nested.status.sh"
 )
 
 echo "Test 15: nested workspace ignores ambient store-dir in favor of host authority"
@@ -879,7 +901,7 @@ echo "Test 26: Darwin CI install accepts completed pnpm materialization after te
   test -f "$workspace/.devenv/task-cache/pnpm-install/install-state.hash"
 )
 
-echo "Test 27: Darwin CI install accepts completed pnpm materialization after teardown kill"
+echo "Test 27: Darwin CI install rejects SIGKILL even after apparent materialization"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
@@ -890,11 +912,15 @@ echo "Test 27: Darwin CI install accepts completed pnpm materialization after te
   unset PNPM_STORE_DIR
   unset npm_config_store_dir
   rm -f "$workspace/.devenv/task-cache/pnpm-install/install-state.hash"
+  set +e
   output="$(bash "$tmpdir/pnpm-install-darwin.exec.sh" 2>&1)"
+  exit_code=$?
+  set -e
   unset TEST_PNPM_DARWIN_TEARDOWN_STATUS
   unset CI
-  grep -qF "[pnpm] Install completed materialization before darwin install teardown; continuing after node teardown exit 137" <<< "$output"
-  test -f "$workspace/.devenv/task-cache/pnpm-install/install-state.hash"
+  assert_exit_code 137 "$exit_code" "SIGKILL must not be promoted to a successful shared-store install"
+  grep -qF "[pnpm] Install failed: pnpm install failure" <<< "$output"
+  test ! -f "$workspace/.devenv/task-cache/pnpm-install/install-state.hash"
 )
 
 echo "Test 28: generated test task runs vitest without pnpm exec"

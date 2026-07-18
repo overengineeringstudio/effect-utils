@@ -69,20 +69,67 @@ EOF
   export PNPM_PACKAGE_IMPORT_METHOD="$package_import_method"
 }
 
+acquire_pnpm_store_cache_lease() {
+  local flock_bin="$1"
+  local mode="$2"
+  local store_dir="$3"
+  local timeout_seconds="${4:-600}"
+  local lockfile="$store_dir/.effect-utils-pnpm-store-cache-maintenance.lock"
+  local flock_mode
+
+  case "$mode" in
+    shared) flock_mode="--shared" ;;
+    exclusive) flock_mode="--exclusive" ;;
+    *)
+      echo "[pnpm] Invalid Store Cache lease mode: $mode" >&2
+      return 2
+      ;;
+  esac
+
+  mkdir -p "$store_dir"
+  exec 202>"$lockfile"
+  if ! "$flock_bin" "$flock_mode" -w "$timeout_seconds" 202; then
+    echo "[pnpm] Store Cache $mode lease timeout after ${timeout_seconds}s: $lockfile" >&2
+    return 1
+  fi
+}
+
 assert_pnpm_storage_capacity() {
-  local store_dir="$1"
+  local node_bin="$1"
+  local store_dir="$2"
+  local materialization_root="$3"
 
   if [ -n "${CI:-}" ]; then
     return 0
   fi
 
   local min_free_kib="${PNPM_MIN_FREE_KIB:-2097152}"
+  local boundary
   local available_kib
-  available_kib="$(df -Pk "$store_dir" | awk 'NR == 2 { print $4 }')"
-  if [ -z "$available_kib" ] || [ "$available_kib" -lt "$min_free_kib" ]; then
-    echo "[pnpm] Refusing materialization with ${available_kib:-unknown} KiB free; require at least $min_free_kib KiB after legacy-state reclamation" >&2
-    return 1
-  fi
+
+  # pnpm `auto` may place cache files and a Materialization Root on distinct
+  # devices (notably Darwin clone/copy fallbacks). Check both physical write
+  # boundaries, but check a shared device only once.
+  while IFS= read -r boundary; do
+    available_kib="$(df -Pk "$boundary" | awk 'NR == 2 { print $4 }')"
+    if [ -z "$available_kib" ] || [ "$available_kib" -lt "$min_free_kib" ]; then
+      echo "[pnpm] Refusing materialization at $boundary with ${available_kib:-unknown} KiB free; require at least $min_free_kib KiB after legacy-state reclamation" >&2
+      return 1
+    fi
+  done < <("$node_bin" - "$store_dir" "$materialization_root" <<'EOF'
+const fs = require('node:fs')
+
+const paths = process.argv.slice(2)
+const seenDevices = new Set()
+for (const path of paths) {
+  const device = fs.statSync(path).dev.toString()
+  if (!seenDevices.has(device)) {
+    seenDevices.add(device)
+    process.stdout.write(`${path}\n`)
+  }
+}
+EOF
+  )
 }
 
 migrate_legacy_pnpm_store() {
@@ -142,21 +189,6 @@ emit_dir_state() {
       printf '%s ' "${file#"$dir"/}"
       sha256sum "$file" | awk '{print $1}'
     done
-}
-
-resolve_pnpm_install_contract_file() {
-  local dir="${1:-$PWD}"
-
-  while [ "$dir" != "/" ]; do
-    if [ -f "$dir/pnpm-install-contract.json" ]; then
-      printf '%s\n' "$dir/pnpm-install-contract.json"
-      return 0
-    fi
-
-    dir="$(dirname "$dir")"
-  done
-
-  return 1
 }
 
 pnpm_contract_section_json() {

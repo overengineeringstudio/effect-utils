@@ -10,7 +10,7 @@ Status: **Draft**
 This spec defines steady-state storage placement, graph isolation, package
 import selection, and root-repair boundaries. It does not define transitional
 legacy-store migration, a root registry, named storage profiles, all-root
-repair, or host Store Cache garbage collection.
+repair, or machine-specific Store Cache placement.
 
 ## Requirement Trace
 
@@ -22,6 +22,7 @@ repair, or host Store Cache garbage collection.
 | Concurrency        | DMP.STORE-R08                                              |
 | Health and repair  | DMP.STORE-R04, DMP.STORE-R05, DMP.STORE-R06, DMP.STORE-R07 |
 | Benchmark evidence | DMP.STORE-R13, DMP.STORE-R14                               |
+| Host lifecycle     | DMP.STORE-R15                                              |
 
 ## Ownership Model
 
@@ -77,11 +78,16 @@ package lifecycle mutation over imported dependency files.
 ## Concurrency
 
 pnpm owns concurrency inside its Store Cache. Materialization-root locks remain
-independent and protect each root's graph and projection. Every managed graph
-mutation (`install`, lockfile update, or deduplication) therefore composes as:
+independent and protect each root's graph and projection. A shared Store Cache
+admission lease composes pnpm mutation with host maintenance: every managed
+install takes a shared lease, while pruning takes its exclusive counterpart.
+Shared leases are compatible, so this is not a host-wide install mutex. Every
+managed graph mutation (`install`, lockfile update, or deduplication) therefore
+composes as:
 
 ```text
 Materialization-Root lock + package-manager-home lock
+  -> shared Store Cache admission lease
   -> legacy-state reclamation
   -> capacity gate
   -> pnpm graph mutation under one realization policy
@@ -90,6 +96,18 @@ Materialization-Root lock + package-manager-home lock
 
 No registry of roots is required: the Store Cache is disposable and does not
 own graph identity.
+
+## Host Lifecycle
+
+The host cache owner periodically measures the whole pnpm Store Cache and may
+trigger pnpm-native `store prune` on schedule or under disk pressure. It takes
+the exclusive Store Cache maintenance lease before measurement and pruning,
+then reports bytes before, bytes after, reclaimed bytes, outcome, and dry-run
+mode. Root-scoped repair never invokes this operation.
+
+The cache owner does not enumerate Materialization Roots and never deletes
+individual pnpm internals itself. Eviction may make a future offline install
+miss; it cannot change a declared graph or an already-materialized root.
 
 ## Health And Repair
 

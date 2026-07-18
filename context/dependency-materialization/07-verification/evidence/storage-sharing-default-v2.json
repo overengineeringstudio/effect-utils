@@ -1,0 +1,31 @@
+{
+  "schema": "dependency-materialization-verification/v0",
+  "kind": "default-gate",
+  "surface": "storage-sharing",
+  "policy": {
+    "packageStoreScope": "host-user",
+    "virtualStoreScope": "materialization-root",
+    "packageImportMethod": "auto",
+    "enableGlobalVirtualStore": false
+  },
+  "platforms": [
+    {
+      "platform": "x86_64-linux",
+      "status": "ok",
+      "workspace": "effect-utils and dotfiles",
+      "evidence": {
+        "realGraphPackages": 629,
+        "secondRootDownloads": 0,
+        "sharedStoreSeconds": [6.499, 7.264],
+        "isolatedSeconds": [22.004, 27.399],
+        "sharedProjectionBlocksPercent": 89.6
+      }
+    },
+    {
+      "platform": "aarch64-darwin",
+      "status": "pending-system",
+      "reason": "A comparable complete live-worktree graph has not yet completed under the full shared pnpm package-store policy.",
+      "claimBoundary": "Do not generalize Linux timing, block-sharing, or zero-copy observations to Darwin. Darwin uses pnpm auto capability selection and retains independent capacity and failure gates."
+    }
+  ]
+}

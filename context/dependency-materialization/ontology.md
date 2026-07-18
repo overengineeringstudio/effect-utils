@@ -88,6 +88,11 @@ files and mutable package-manager-derived lookup indexes. Neither facet is
 authoritative Dependency Graph or Projection State. A Store Cache may be
 shared by mutually trusted Materialization Roots without sharing their graphs.
 
+**Store Cache Lease** coordinates package-manager mutation with cache-owner
+maintenance. Its shared **admission** mode permits concurrent materialization;
+its exclusive **maintenance** mode excludes materialization while the Store
+Cache is pruned. _Avoid_: install lock, global install lock.
+
 **Repair** is the restoration of a materialization root from declared inputs.
 Repair may discard owned derived state and reinvoke the authoritative
 materializer; it may not synthesize replacement dependency edges.

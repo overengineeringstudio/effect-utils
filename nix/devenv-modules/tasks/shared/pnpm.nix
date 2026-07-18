@@ -153,8 +153,8 @@ let
     source ${lib.escapeShellArg pnpmTaskHelpersScript}
   '';
   ensureLocalPnpmHomeFn = ''
-    # Keep package-manager state workspace-local. Only immutable content bytes
-    # are shared across Materialization Roots.
+    # Keep root-owned package-manager state workspace-local. The complete pnpm
+    # package store is shared, including pnpm's concurrency-safe derived index.
     if [ ${lib.escapeShellArg workspaceRoot} = "." ]; then
       if [ -z "''${PNPM_HOME:-}" ]; then
         export PNPM_HOME=${lib.escapeShellArg defaultPnpmHome}
@@ -198,12 +198,20 @@ let
       exit 1
     fi
 
+    # Installs sharing a Store Cache take compatible shared admission leases.
+    # Host-owned maintenance takes the exclusive counterpart, so pruning can
+    # never race pnpm while independent Materialization Roots stay concurrent.
+    acquire_pnpm_store_cache_lease ${lib.escapeShellArg flock} shared "$npm_config_store_dir" 600
+
     migrate_legacy_pnpm_store \
       ${lib.escapeShellArg legacyPnpmStoreDir} \
       "$npm_config_store_dir" \
       node_modules \
       ${nodeModulesPaths}
-    assert_pnpm_storage_capacity "$npm_config_store_dir"
+    assert_pnpm_storage_capacity \
+      ${lib.escapeShellArg "${pkgs.nodejs}/bin/node"} \
+      "$npm_config_store_dir" \
+      ${lib.escapeShellArg workspaceRootAbs}
   '';
 
   computeWorkspaceStateHash = ''
@@ -414,8 +422,9 @@ let
         ${preInstall}
         ${runPnpmInstallFn}
 
-        _pnpm_install_contract_file="$(resolve_pnpm_install_contract_file "$PWD" || true)"
-        if [ -z "''${_pnpm_install_contract_file:-}" ]; then
+        _pnpm_install_contract_file="$PWD/pnpm-install-contract.json"
+        if [ ! -f "$_pnpm_install_contract_file" ]; then
+          _pnpm_install_contract_file=""
           ${lib.optionalString (workspaceRoot == ".") ''
             echo "[pnpm] Missing generated pnpm-install-contract.json at repo root" >&2
             echo "[pnpm] Run: devenv tasks run genie:run" >&2
@@ -447,6 +456,8 @@ let
           rm -f "$contract_state_file"
           cp "$_pnpm_install_contract_file" "$contract_state_file"
           chmod u+w "$contract_state_file" 2>/dev/null || true
+        else
+          rm -f "$contract_state_file"
         fi
 
         cache_value="$(compute_install_state_hash)"
@@ -469,14 +480,15 @@ let
         contract_state_file="${cacheRoot}/pnpm-install-contract.json"
         storage_state_file="${cacheRoot}/pnpm-storage-state"
 
-        _pnpm_install_contract_file="$(resolve_pnpm_install_contract_file "$PWD" || true)"
-        if [ -z "''${_pnpm_install_contract_file:-}" ]; then
+        _pnpm_install_contract_file="$PWD/pnpm-install-contract.json"
+        if [ ! -f "$_pnpm_install_contract_file" ]; then
+          _pnpm_install_contract_file=""
           ${lib.optionalString (workspaceRoot == ".") ''
             echo "[pnpm] Missing generated pnpm-install-contract.json at repo root" >&2
             echo "[pnpm] Run: devenv tasks run genie:run" >&2
+            emit_pnpm_install_miss_span ${lib.escapeShellArg installTaskName} "contract_missing"
+            exit 1
           ''}
-          emit_pnpm_install_miss_span ${lib.escapeShellArg installTaskName} "contract_missing"
-          exit 1
         fi
 
         if [ ! -d node_modules ] || [ ! -f pnpm-lock.yaml ] || [ ! -f "$hash_file" ] || [ ! -f "$projection_hash_file" ] || [ ! -f "$storage_state_file" ] || [ ! -f node_modules/.modules.yaml ]; then
@@ -512,7 +524,7 @@ let
         stored_hash="$(cat "$hash_file")"
         stored_projection_hash="$(cat "$projection_hash_file")"
         if [ "$current_hash" != "$stored_hash" ]; then
-          if [ -f "$contract_state_file" ]; then
+          if [ -f "$contract_state_file" ] && [ -n "''${_pnpm_install_contract_file:-}" ]; then
             _miss_reason="$(classify_pnpm_contract_change ${pkgs.nodejs}/bin/node "$contract_state_file" "$_pnpm_install_contract_file" || printf '%s\n' unknown)"
           else
             _miss_reason="unknown"
