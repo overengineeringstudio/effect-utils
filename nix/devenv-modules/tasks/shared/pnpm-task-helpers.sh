@@ -31,7 +31,30 @@ configure_pnpm_storage() {
 
     local store_version_dir="$store_dir/v11"
     local files_path="$store_version_dir/files"
+
+    if [ -L "$files_path" ]; then
+      echo "[pnpm] Refusing external pnpm Store Cache bridge at $files_path; discard and recreate the disposable $store_dir cache" >&2
+      return 1
+    fi
+
     mkdir -p "$files_path"
+
+    "$node_bin" - "$store_dir" "$files_path" <<'EOF'
+const fs = require('node:fs')
+const path = require('node:path')
+
+const [storeDir, filesPath] = process.argv.slice(2)
+const realStoreDir = fs.realpathSync(storeDir)
+const realFilesPath = fs.realpathSync(filesPath)
+const relative = path.relative(realStoreDir, realFilesPath)
+
+if (relative.startsWith('..' + path.sep) || path.isAbsolute(relative)) {
+  console.error(
+    `[pnpm] Refusing pnpm Store Cache files outside selected store: store=${realStoreDir} files=${realFilesPath}`,
+  )
+  process.exit(1)
+}
+EOF
 
     if [ "$host_is_linux" = true ]; then
       "$node_bin" - "$materialization_root" "$files_path" <<'EOF'

@@ -38,12 +38,12 @@ imports = [
 - `megarepo.nix` - Megarepo workspace tasks
 - `nix-cli.nix` - Nix CLI build/check tasks
 - `pnpm.nix` - pnpm install tasks
-  - Default live-worktree store namespace is `.devenv/pnpm-store-pure-v1`.
-  - Local development may share only pnpm `v11/files`; mutable metadata,
-    virtual topology, projections, temp state, and CI state remain
-    root-local/job-local.
-  - Managed installs enforce mutation-isolating imports and reject writable
-    hardlink or side-effects-cache overrides.
+  - Local development shares one complete pnpm Store Cache between trusted
+    roots of the same OS user; CI uses a job-local Store Cache.
+  - Dependency graphs, `node_modules/.pnpm`, projections, and repair remain
+    Materialization-Root-owned.
+  - Managed installs use pnpm's `auto` import policy and reject cross-device
+    Linux storage before materialization.
 - `setup.nix` - Setup tasks
 - `test.nix` - Test tasks
 - `test-playwright.nix` - Playwright e2e tasks

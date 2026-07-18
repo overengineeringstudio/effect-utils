@@ -642,6 +642,25 @@ echo "Test 34b: historical shared-files pools stay outside the managed store"
   test -f "$historical_pool/sentinel"
 )
 
+echo "Test 34c: a preexisting external files bridge fails closed"
+(
+  storage_root="$test_dir/bridged-storage-root"
+  isolated_home="$test_dir/bridged-storage-home"
+  shared_store="$isolated_home/.local/share/pnpm/store-shared-v1"
+  historical_pool="$isolated_home/.local/share/pnpm/shared-files/v11"
+  mkdir -p "$storage_root" "$shared_store/v11" "$historical_pool"
+  ln -s "$historical_pool" "$shared_store/v11/files"
+  export HOME="$isolated_home"
+  unset CI PNPM_SHARED_STORE_DIR PNPM_SHARED_FILES_DIR PNPM_STORE_DIR PNPM_CONFIG_STORE_DIR npm_config_store_dir
+  set +e
+  output="$(set -e; configure_pnpm_storage node "$storage_root" "$test_dir/job-store" true 2>&1)"
+  exit_code=$?
+  set -e
+  assert_exit_code 1 "$exit_code" "preexisting external Store Cache bridge should fail before pnpm runs"
+  grep -qF "Refusing external pnpm Store Cache bridge" <<< "$output"
+  test -L "$shared_store/v11/files"
+)
+
 echo "Test 35: Linux zero-copy storage fails closed across filesystems"
 if [ -d /dev/shm ] && [ "$(stat -c '%d' /dev/shm)" != "$(stat -c '%d' "$test_dir")" ]; then
   cross_device_store="$(mktemp -d /dev/shm/effect-utils-pnpm-store.XXXXXX)"
