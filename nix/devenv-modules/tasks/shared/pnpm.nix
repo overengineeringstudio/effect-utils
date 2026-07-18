@@ -26,8 +26,7 @@
   resetLockFilesAfter ? [ ],
   # Real derivation/path backing the `pnpm` guard. When set, the guard owns
   # `bin/pnpm` and exec's this by absolute path under passthrough (see
-  # cli-guard.nix). The real package may ship siblings (e.g. `pnpx`) that the
-  # consumer keeps on PATH separately.
+  # cli-guard.nix).
   pnpmPkg ? null,
 }:
 {

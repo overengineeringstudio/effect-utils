@@ -60,8 +60,8 @@
   tsBin ? "tsgo",
   tscBin ? "tsc",
   # Real derivation/path backing the `tsBin` guard. When set, the guard owns
-  # `bin/<tsBin>` and exec's this by absolute path under passthrough so the real
-  # need not be a competing top-level provider (see cli-guard.nix).
+  # `bin/<tsBin>` and exec's this by absolute path under passthrough (see
+  # cli-guard.nix).
   tsBinPkg ? null,
 }:
 {

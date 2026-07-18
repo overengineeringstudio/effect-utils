@@ -17,6 +17,10 @@ All notable changes to this project will be documented in this file.
   Effect 4 instance through a peer dependency instead of bundling a private
   Effect runtime, preventing cross-major schema AST crashes in LiveStore
   Devtools.
+- **devenv cli-guard ownership**: drop the remaining self-consumer
+  `lib.lowPrio effectTsgo` / `lib.lowPrio pnpmPkg` boilerplate. Passing
+  `tsBinPkg` / `pnpmPkg` to the task modules is sufficient because the guards
+  exec the real binaries by absolute store path under passthrough.
 - **ci-tools / Vercel**: add first-class production-domain support to the shared
   Vercel deploy path. `ci-tools deploy vercel --production-domain <host>` now
   aliases production deployments to canonical custom domains, reports those
