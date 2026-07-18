@@ -75,6 +75,54 @@ export const parseAllResolvedVersionsFromLockfile = (
   return result
 }
 
+/** Collect snapshot packages that resolve a direct dependency to each version. */
+export const parseSnapshotDependencyConsumers = ({
+  dependency,
+  yamlContent,
+}: {
+  dependency: string
+  yamlContent: string
+}): Map<string, Set<string>> => {
+  const result = new Map<string, Set<string>>()
+  const lines = yamlContent.split('\n')
+  let inSnapshots = false
+  let snapshot: string | undefined
+
+  for (const line of lines) {
+    if (line === 'snapshots:') {
+      inSnapshots = true
+      snapshot = undefined
+      continue
+    }
+    if (inSnapshots === false) continue
+    if (/^\S/.test(line) === true) {
+      inSnapshots = false
+      snapshot = undefined
+      continue
+    }
+
+    const snapshotMatch = line.match(/^  (?:(?:'([^']+)')|([^ ].*)):\s*$/)
+    if (snapshotMatch !== null) {
+      snapshot = snapshotMatch[1] ?? snapshotMatch[2]!
+      continue
+    }
+    if (snapshot === undefined) continue
+
+    const dependencyMatch = line.match(/^      ('?)([^']+)\1: (.+)$/)
+    if (dependencyMatch === null || dependencyMatch[2] !== dependency) continue
+
+    const version = dependencyMatch[3]!
+    const consumers = result.get(version)
+    if (consumers === undefined) {
+      result.set(version, new Set([snapshot]))
+    } else {
+      consumers.add(snapshot)
+    }
+  }
+
+  return result
+}
+
 // =============================================================================
 // Validation
 // =============================================================================
@@ -89,6 +137,10 @@ export const parseAllResolvedVersionsFromLockfile = (
 export type CatalogDuplicateException = {
   /** Catalog package name allowed to resolve to multiple versions. */
   package: string
+  /** When set, the duplicate must resolve to exactly this version set. */
+  versions?: readonly string[]
+  /** Versions that may be direct importer dependencies but never snapshot peers. */
+  isolatedVersions?: readonly string[]
   /** Why the duplicate is unavoidable (e.g. `@opentui/core` hard-pins 7.2.0). */
   reason: string
   /** Tracking issue, e.g. `#820`. */
@@ -119,6 +171,7 @@ export const validateCatalogDuplicates = ({
   exceptions = [],
 }: CatalogDuplicatesValidationArgs): GenieValidationIssue[] => {
   const resolved = parseAllResolvedVersionsFromLockfile(lockfileContent)
+  const snapshotConsumersByPackage = new Map<string, Map<string, Set<string>>>()
   const exceptionByPackage = new Map(exceptions.map((e) => [e.package, e]))
   const usedExceptions = new Set<string>()
 
@@ -147,6 +200,52 @@ export const validateCatalogDuplicates = ({
     const exception = exceptionByPackage.get(name)
     if (exception !== undefined) {
       usedExceptions.add(name)
+      if (exception.versions !== undefined) {
+        const expected = new Set(exception.versions)
+        const hasVersionDrift =
+          expected.size !== versions.size ||
+          [...expected].some((version) => versions.has(version) === false)
+
+        if (hasVersionDrift === true) {
+          issues.push({
+            severity: 'error',
+            packageName: '(catalog-duplicates)',
+            dependency: name,
+            message:
+              `${baseMessage} The exception permits exactly: ${exception.versions.join(', ')}. ` +
+              `Update the dependency graph and exception together (${exception.reason}${
+                exception.issue !== undefined ? ` — ${exception.issue}` : ''
+              }).`,
+            rule: 'catalog-duplicate-exception-version-drift',
+          })
+          continue
+        }
+      }
+      if (exception.isolatedVersions !== undefined) {
+        const consumersByVersion =
+          snapshotConsumersByPackage.get(name) ??
+          parseSnapshotDependencyConsumers({ dependency: name, yamlContent: lockfileContent })
+        snapshotConsumersByPackage.set(name, consumersByVersion)
+
+        const leaks = exception.isolatedVersions.flatMap((version) => {
+          const consumers = consumersByVersion.get(version)
+          return consumers === undefined
+            ? []
+            : [`${version} is consumed by ${[...consumers].toSorted().join(', ')}`]
+        })
+        if (leaks.length > 0) {
+          issues.push({
+            severity: 'error',
+            packageName: '(catalog-duplicates)',
+            dependency: name,
+            message:
+              `The intentional "${name}" cohort must remain importer-only, but ${leaks.join('; ')}. ` +
+              `Add the owning peer version to the leaking package instead of crossing cohorts.`,
+            rule: 'catalog-duplicate-isolated-version-leak',
+          })
+          continue
+        }
+      }
       issues.push({
         severity: 'warning',
         packageName: '(catalog-duplicates)',

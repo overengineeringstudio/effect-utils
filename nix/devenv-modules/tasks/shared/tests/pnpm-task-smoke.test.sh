@@ -97,6 +97,45 @@ eval_pnpm_package_count() {
   "
 }
 
+eval_versioned_lock_mutator() {
+  local version="$1"
+
+  nix-instantiate --eval --strict --expr "
+    let
+      flake = builtins.getFlake (toString $ROOT);
+      pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
+      affected = (pkgs.writeShellScriptBin \"pnpm\" \"exit 0\").overrideAttrs (_: {
+        version = \"$version\";
+      });
+      module = (import $ROOT/nix/devenv-modules/tasks/shared/pnpm.nix {
+        packages = [ ];
+        pnpmLockMutatorPkg = affected;
+      }) {
+        pkgs = pkgs;
+        lib = pkgs.lib;
+        config = { devenv.root = \"$workspace\"; };
+      };
+    in module.tasks.\"pnpm:update\".exec
+  "
+}
+
+eval_unversioned_lock_mutator() {
+  nix-instantiate --eval --strict --expr "
+    let
+      flake = builtins.getFlake (toString $ROOT);
+      pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
+      module = (import $ROOT/nix/devenv-modules/tasks/shared/pnpm.nix {
+        packages = [ ];
+        pnpmLockMutatorPkg = pkgs.writeShellScriptBin \"pnpm\" \"exit 0\";
+      }) {
+        pkgs = pkgs;
+        lib = pkgs.lib;
+        config = { devenv.root = \"$workspace\"; };
+      };
+    in module.tasks.\"pnpm:update\".exec
+  "
+}
+
 extract_shared_task_script() {
   local module_path="$1"
   local task_name="$2"
@@ -149,6 +188,7 @@ rewrite_unrealized_tool_paths() {
   perl -0pi -e '
     s#/nix/store/[^"\s]*/bin/flock#'"$tmpdir"'/bin/flock#g;
     s#/nix/store/[^"\s]*/bin/node#node#g;
+    s#/nix/store/[^"\s]*-pnpm-11\.5\.1/bin/pnpm#'"$tmpdir"'/bin/pnpm-lock-mutator#g;
     s#/nix/store/[^"\s]*-pnpm-task-helpers\.sh#'"$ROOT"'/nix/devenv-modules/tasks/shared/pnpm-task-helpers.sh#g;
     s#/nix/store/[^"\s]*-check-node-modules-projection-health\.cjs#'"$ROOT"'/nix/devenv-modules/tasks/shared/check-node-modules-projection-health.cjs#g;
   ' "$script_path"
@@ -281,6 +321,34 @@ exit 1
 EOF
 chmod +x "$tmpdir/bin/pnpm"
 
+cat > "$tmpdir/bin/pnpm-lock-mutator" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >> "${TEST_PNPM_MUTATOR_LOG:?}"
+printf 'PWD=%s\n' "$PWD" >> "${TEST_PNPM_MUTATOR_LOG:?}"
+if [ "${1:-}" = "--version" ]; then
+  echo "11.5.1"
+  exit 0
+fi
+if [ "${1:-}" = "install" ]; then
+  if [ "${TEST_PNPM_MUTATOR_STRIP_HAS_BIN:-0}" = "1" ]; then
+    perl -0pi -e 's/^    hasBin: true\n//mg' pnpm-lock.yaml
+  fi
+  exit 0
+fi
+echo "unexpected fake pnpm lock mutator invocation: $*" >&2
+exit 1
+EOF
+chmod +x "$tmpdir/bin/pnpm-lock-mutator"
+
+cat > "$tmpdir/bin/genie" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >> "${TEST_GENIE_LOG:?}"
+exit 0
+EOF
+chmod +x "$tmpdir/bin/genie"
+
 cat > "$tmpdir/bin/flock" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -326,6 +394,8 @@ extract_task_script "$workspace" "exec" "$tmpdir/pnpm-doctor.exec.sh" 'packages 
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-repair-plan.exec.sh" 'packages = [ ];' "pnpm:repair-plan"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-repair.exec.sh" 'packages = [ ];' "pnpm:repair"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-clean.exec.sh" 'packages = [ "packages/demo" ];' "pnpm:clean"
+extract_task_script "$workspace" "exec" "$tmpdir/pnpm-update.exec.sh" 'packages = [ ];' "pnpm:update"
+extract_task_script "$workspace" "exec" "$tmpdir/pnpm-update-nested.exec.sh" 'packages = [ ]; workspaceRoot = "nested"; taskSuffix = "nested";' "pnpm:update:nested"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-nested.exec.sh" 'packages = [ "pkg" ]; workspaceRoot = "nested"; taskSuffix = "nested";' "pnpm:install:nested"
 extract_task_script "$workspace" "status" "$tmpdir/pnpm-install-nested.status.sh" 'packages = [ "pkg" ]; workspaceRoot = "nested"; taskSuffix = "nested";' "pnpm:install:nested"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-flags.exec.sh" 'packages = [ "." ]; installFlags = [ "--config.public-hoist-pattern=*" ]; preInstall = "touch .preinstall-marker";'
@@ -356,6 +426,8 @@ rewrite_unrealized_tool_paths "$tmpdir/pnpm-doctor.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-repair-plan.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-repair.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-clean.exec.sh"
+rewrite_unrealized_tool_paths "$tmpdir/pnpm-update.exec.sh"
+rewrite_unrealized_tool_paths "$tmpdir/pnpm-update-nested.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-nested.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-nested.status.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-flags.exec.sh"
@@ -373,6 +445,8 @@ rewrite_unrealized_tool_paths "$tmpdir/storybook-demo.exec.sh"
 export PATH="$tmpdir/bin:$PATH"
 export TEST_PNPM_LOG="$tmpdir/pnpm.log"
 export TEST_FLOCK_LOG="$tmpdir/flock.log"
+export TEST_PNPM_MUTATOR_LOG="$tmpdir/pnpm-mutator.log"
+export TEST_GENIE_LOG="$tmpdir/genie.log"
 unset CI
 unset PNPM_STORE_DIR
 unset PNPM_CONFIG_STORE_DIR
@@ -871,6 +945,85 @@ echo "Test 30: clean leaves shared GVS links intact"
   test -d "$workspace/.devenv/pnpm-store-pure-v1/v11/links/shared-pkg"
   test ! -e "$workspace/node_modules"
   test ! -e "$workspace/packages/demo/node_modules"
+)
+
+echo "Test 31: affected pnpm 11 lock mutators are rejected at evaluation"
+set +e
+affected_output="$(eval_versioned_lock_mutator 11.8.0 2>&1)"
+affected_exit=$?
+set -e
+assert_exit_code 1 "$affected_exit" "affected lock mutator should fail module evaluation"
+grep -qF "pnpm lock mutator version 11.8.0 is not supported" <<< "$affected_output"
+
+echo "Test 32: unverified pnpm 12 lock mutators are rejected at evaluation"
+set +e
+unverified_v12_output="$(eval_versioned_lock_mutator 12.0.0 2>&1)"
+unverified_v12_exit=$?
+set -e
+assert_exit_code 1 "$unverified_v12_exit" "unverified pnpm 12 mutator should fail module evaluation"
+grep -qF "pnpm lock mutator version 12.0.0 is not supported" <<< "$unverified_v12_output"
+
+echo "Test 33: unversioned lock mutator overrides fail closed"
+set +e
+unversioned_output="$(eval_unversioned_lock_mutator 2>&1)"
+unversioned_exit=$?
+set -e
+assert_exit_code 1 "$unversioned_exit" "unversioned lock mutator should fail module evaluation"
+grep -qF "pnpm lock mutator version unknown is not supported" <<< "$unversioned_output"
+
+echo "Test 34: root update defers validation, mutates with the dedicated binary, then validates"
+cat > "$workspace/pnpm-lock.yaml" <<'EOF'
+lockfileVersion: '9.0'
+settings: {}
+importers: {}
+packages:
+  fake-tool@1.0.0:
+    resolution: {integrity: sha512-fixture}
+    hasBin: true
+snapshots: {}
+EOF
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  unset PNPM_HOME
+  unset PNPM_STORE_DIR
+  unset PNPM_CONFIG_STORE_DIR
+  unset npm_config_store_dir
+  : > "$tmpdir/pnpm-mutator.log"
+  : > "$tmpdir/genie.log"
+  bash "$tmpdir/pnpm-update.exec.sh"
+  grep -qxF -- "--defer-validation" "$tmpdir/genie.log"
+  grep -qxF -- "--check" "$tmpdir/genie.log"
+  grep -qxF "install --fix-lockfile --config.confirmModulesPurge=false --pm-on-fail=ignore --config.store-dir=$workspace/.devenv/pnpm-store-pure-v1" "$tmpdir/pnpm-mutator.log"
+  grep -qF "hasBin: true" pnpm-lock.yaml
+)
+
+echo "Test 35: metadata loss fails closed and restores the previous lockfile"
+cp "$workspace/pnpm-lock.yaml" "$tmpdir/pnpm-lock.before-strip.yaml"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  export TEST_PNPM_MUTATOR_STRIP_HAS_BIN=1
+  set +e
+  strip_output="$(bash "$tmpdir/pnpm-update.exec.sh" 2>&1)"
+  strip_exit=$?
+  set -e
+  assert_exit_code 1 "$strip_exit" "hasBin stripping should fail the update"
+  grep -qF "stripped hasBin from retained package records" <<< "$strip_output"
+  grep -qF "fake-tool@1.0.0" <<< "$strip_output"
+  cmp -s pnpm-lock.yaml "$tmpdir/pnpm-lock.before-strip.yaml"
+)
+
+echo "Test 36: nested updates use the safe mutator without invoking root Genie"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  unset TEST_PNPM_MUTATOR_STRIP_HAS_BIN
+  : > "$tmpdir/pnpm-mutator.log"
+  : > "$tmpdir/genie.log"
+  bash "$tmpdir/pnpm-update-nested.exec.sh"
+  grep -qxF "PWD=$workspace/nested" "$tmpdir/pnpm-mutator.log"
+  test ! -s "$tmpdir/genie.log"
 )
 
 echo ""

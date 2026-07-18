@@ -885,10 +885,13 @@ importers:
     devDependencies:
       '@overeng/utils-dev':
         specifier: workspace:^
-        version: file:packages/@overeng/utils-dev(f46c96fd0ba6842d351a38757c7eadf6)
+        version: link:../utils-dev
       '@types/node':
         specifier: 26.0.0
         version: 26.0.0
+      effect:
+        specifier: 3.21.4
+        version: 3.21.4
       typescript:
         specifier: 6.0.3
         version: 6.0.3
@@ -1457,8 +1460,8 @@ importers:
         specifier: 6.0.2
         version: 6.0.2(vite@8.0.16(@types/node@26.0.0)(esbuild@0.27.7)(jiti@2.7.0)(yaml@2.9.0))
       effect:
-        specifier: 4.0.0-beta.97
-        version: 4.0.0-beta.97
+        specifier: 4.0.0-beta.99
+        version: 4.0.0-beta.99
       happy-dom:
         specifier: 20.10.6
         version: 20.10.6
@@ -2598,16 +2601,6 @@ packages:
       react: '>=19.2.0'
       react-devtools-core: ^7.0.1
       ws: ^8.18.0
-
-  '@overeng/utils-dev@file:packages/@overeng/utils-dev':
-    resolution: {directory: packages/@overeng/utils-dev, type: directory}
-    peerDependencies:
-      '@effect/opentelemetry': ^0.63.0
-      '@effect/platform': ^0.96.2
-      '@effect/platform-node': ^0.107.0
-      '@effect/vitest': ^0.29.0
-      effect: ^3.21.4
-      vitest: ^4.1.9
 
   '@oxc-parser/binding-android-arm-eabi@0.127.0':
     resolution: {integrity: sha512-0LC7ye4hvqbIKxAzThzvswgHLFu2AURKzYLeSVvLdu2TBOYWQDmHnTqPLeA597BcUCxiLqLsS4CJ5uoI5WYWCQ==}
@@ -3902,11 +3895,8 @@ packages:
   effect@3.21.4:
     resolution: {integrity: sha512-B89v/xSgPbl1J2Ai2u18jxq3odpFauU1rC6/eSs4FeNHi72kwKdJp12VGigvRV2lK+kRnx+OOz41XV8guZd4gQ==}
 
-  effect@4.0.0-beta.97:
-    resolution: {integrity: sha512-pK03HpQVxGZOWdwDAy/iwvV8u3KYcUf2mOWyWqaut2zau8V2u6ejWP7b4BELjyUIiZWW1fl/s/VJpgZUcTjThg==}
-
-  effect@4.0.0-beta.98:
-    resolution: {integrity: sha512-oz+bsG5h+6RNrw4t5GMfQrk/xBS8ROoqkYsuvRhBr5O7mCOrpvH/hbw+QrDzvKIpX4HJClwm86F94c87W0sJxg==}
+  effect@4.0.0-beta.99:
+    resolution: {integrity: sha512-hP1C61uzINfLl/4kKMwcqksxd34s4sQ3VSjsWjhGrkx9CRlXaqnfOK9dpTEKynQ6rA7wU9rb3c+48eDYw7uzxA==}
 
   electron-to-chromium@1.5.344:
     resolution: {integrity: sha512-4MxfbmNDm+KPh066EZy+eUnkcDPcZ35wNmOWzFuh/ijvHsve6kbLTLURy88uCNK5FbpN+yk2nQY6BYh1GEt+wg==}
@@ -4725,8 +4715,8 @@ packages:
     resolution: {integrity: sha512-7++dFhtcx3353uBaq8DDR4NuxBetBzC7ZQOhmTQInHEd6bSrXdiEyzCvG07Z44UYdLShWUyXt5M/yhz8ekcb1A==}
     engines: {node: '>=8'}
 
-  shell-quote@1.8.3:
-    resolution: {integrity: sha512-ObmnIF4hXNg1BqhnHmgbDETF8dLPCggZWBjkQfhZpbszZnYur5DUljTcCHii5LC3J5E0yeO/1LIMyH+UvHQgyw==}
+  shell-quote@1.10.0:
+    resolution: {integrity: sha512-w1aiOKwKuRgtwAReIIj89puqg+I7GvX4IbLrvmhXbzQsj1+Zwi4VO3+fa6ZF91TWSjIxoEkKnMeHcLEODK5ZXA==}
     engines: {node: '>= 0.4'}
 
   shiki@4.2.0:
@@ -5077,8 +5067,8 @@ packages:
     resolution: {integrity: sha512-BN22B5eaMMI9UMtjrGd5g5eCYPpCPDUy0FJXbYsaT5zYxjFOckS53SQDE3pWkVoWpHXVb3BrYcEN4Twa55B5cA==}
     engines: {node: '>=0.10.0'}
 
-  ws@7.5.10:
-    resolution: {integrity: sha512-+dbF1tHwZpXcbOJdVOkzLDxZP1ailvSxM6ZweXTegylPny803bFhA+vqBYw4s31NSAk4S2Qz+AKXK9a4wkdjcQ==}
+  ws@7.5.12:
+    resolution: {integrity: sha512-1xGnbYN3zbog9CwuNDQULNRrTCLIn46/WmpR1f0w6PsCYQHkylZr5vkd6kfMZYV6pRnQkcPNRyiA8LsrNKyhpg==}
     engines: {node: '>=8.3.0'}
     peerDependencies:
       bufferutil: ^4.0.1
@@ -5292,25 +5282,10 @@ snapshots:
       effect: 3.21.4
       kubernetes-types: 1.30.0
 
-  '@effect/cluster@0.59.0(27d0be962b91e7dd2a108c42ccbb5803)':
-    dependencies:
-      '@effect/platform': 0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98)
-      '@effect/rpc': 0.75.1(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)
-      '@effect/sql': 0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98))(effect@4.0.0-beta.98))(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)
-      '@effect/workflow': 0.18.2(@effect/experimental@0.60.0(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98))(effect@4.0.0-beta.98))(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98))(@effect/rpc@0.75.1(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98))(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)
-      effect: 4.0.0-beta.98
-      kubernetes-types: 1.30.0
-
   '@effect/experimental@0.60.0(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.4))(effect@3.21.4)':
     dependencies:
       '@effect/platform': 0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.4)
       effect: 3.21.4
-      uuid: 11.1.0
-
-  '@effect/experimental@0.60.0(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)':
-    dependencies:
-      '@effect/platform': 0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98)
-      effect: 4.0.0-beta.98
       uuid: 11.1.0
 
   '@effect/opentelemetry@0.63.0(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.4))(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.8.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.219.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.8.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.8.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.8.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.8.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.41.1)(effect@3.21.4)':
@@ -5326,19 +5301,6 @@ snapshots:
       '@opentelemetry/semantic-conventions': 1.41.1
       effect: 3.21.4
 
-  '@effect/opentelemetry@0.63.0(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98))(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.8.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.219.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.8.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.8.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.8.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.8.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.41.1)(effect@4.0.0-beta.98)':
-    dependencies:
-      '@effect/platform': 0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98)
-      '@opentelemetry/api': 1.9.1
-      '@opentelemetry/resources': 2.8.0(@opentelemetry/api@1.9.1)
-      '@opentelemetry/sdk-logs': 0.219.0(@opentelemetry/api@1.9.1)
-      '@opentelemetry/sdk-metrics': 2.8.0(@opentelemetry/api@1.9.1)
-      '@opentelemetry/sdk-trace-base': 2.8.0(@opentelemetry/api@1.9.1)
-      '@opentelemetry/sdk-trace-node': 2.8.0(@opentelemetry/api@1.9.1)
-      '@opentelemetry/sdk-trace-web': 2.8.0(@opentelemetry/api@1.9.1)
-      '@opentelemetry/semantic-conventions': 1.41.1
-      effect: 4.0.0-beta.98
-
   '@effect/platform-node-shared@0.60.0(@effect/cluster@0.59.0(2726862cc6f36e3b086be9ebab8bdc40))(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.4))(@effect/rpc@0.75.1(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.4))(effect@3.21.4))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.4))(effect@3.21.4))(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.4))(effect@3.21.4))(effect@3.21.4)':
     dependencies:
       '@effect/cluster': 0.59.0(2726862cc6f36e3b086be9ebab8bdc40)
@@ -5347,20 +5309,6 @@ snapshots:
       '@effect/sql': 0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.4))(effect@3.21.4))(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.4))(effect@3.21.4)
       '@parcel/watcher': 2.5.6
       effect: 3.21.4
-      multipasta: 0.2.7
-      ws: 8.21.0
-    transitivePeerDependencies:
-      - bufferutil
-      - utf-8-validate
-
-  '@effect/platform-node-shared@0.60.0(@effect/cluster@0.59.0(27d0be962b91e7dd2a108c42ccbb5803))(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98))(@effect/rpc@0.75.1(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98))(effect@4.0.0-beta.98))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98))(effect@4.0.0-beta.98))(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98))(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)':
-    dependencies:
-      '@effect/cluster': 0.59.0(27d0be962b91e7dd2a108c42ccbb5803)
-      '@effect/platform': 0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98)
-      '@effect/rpc': 0.75.1(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)
-      '@effect/sql': 0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98))(effect@4.0.0-beta.98))(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)
-      '@parcel/watcher': 2.5.6
-      effect: 4.0.0-beta.98
       multipasta: 0.2.7
       ws: 8.21.0
     transitivePeerDependencies:
@@ -5382,31 +5330,9 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@effect/platform-node@0.107.0(@effect/cluster@0.59.0(27d0be962b91e7dd2a108c42ccbb5803))(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98))(@effect/rpc@0.75.1(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98))(effect@4.0.0-beta.98))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98))(effect@4.0.0-beta.98))(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98))(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)':
-    dependencies:
-      '@effect/cluster': 0.59.0(27d0be962b91e7dd2a108c42ccbb5803)
-      '@effect/platform': 0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98)
-      '@effect/platform-node-shared': 0.60.0(@effect/cluster@0.59.0(27d0be962b91e7dd2a108c42ccbb5803))(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98))(@effect/rpc@0.75.1(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98))(effect@4.0.0-beta.98))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98))(effect@4.0.0-beta.98))(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98))(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)
-      '@effect/rpc': 0.75.1(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)
-      '@effect/sql': 0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98))(effect@4.0.0-beta.98))(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)
-      effect: 4.0.0-beta.98
-      mime: 3.0.0
-      undici: 7.25.0
-      ws: 8.21.0
-    transitivePeerDependencies:
-      - bufferutil
-      - utf-8-validate
-
   '@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.4)':
     dependencies:
       effect: 3.21.4
-      find-my-way-ts: 0.1.6
-      msgpackr: 1.11.10
-      multipasta: 0.2.7
-
-  '@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98)':
-    dependencies:
-      effect: 4.0.0-beta.98
       find-my-way-ts: 0.1.6
       msgpackr: 1.11.10
       multipasta: 0.2.7
@@ -5428,24 +5354,11 @@ snapshots:
       effect: 3.21.4
       msgpackr: 1.11.10
 
-  '@effect/rpc@0.75.1(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)':
-    dependencies:
-      '@effect/platform': 0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98)
-      effect: 4.0.0-beta.98
-      msgpackr: 1.11.10
-
   '@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.4))(effect@3.21.4))(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.4))(effect@3.21.4)':
     dependencies:
       '@effect/experimental': 0.60.0(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.4))(effect@3.21.4)
       '@effect/platform': 0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.4)
       effect: 3.21.4
-      uuid: 11.1.0
-
-  '@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98))(effect@4.0.0-beta.98))(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)':
-    dependencies:
-      '@effect/experimental': 0.60.0(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)
-      '@effect/platform': 0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98)
-      effect: 4.0.0-beta.98
       uuid: 11.1.0
 
   '@effect/typeclass@0.40.0(effect@3.21.4)':
@@ -5457,24 +5370,12 @@ snapshots:
       effect: 3.21.4
       vitest: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.0.0)(happy-dom@20.10.6)(vite@8.0.16(@types/node@26.0.0)(esbuild@0.27.7)(jiti@2.7.0)(yaml@2.9.0))
 
-  '@effect/vitest@0.29.0(effect@4.0.0-beta.98)(vitest@4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.0.0)(happy-dom@20.10.6)(vite@8.0.16(@types/node@26.0.0)(esbuild@0.27.7)(jiti@2.7.0)(yaml@2.9.0)))':
-    dependencies:
-      effect: 4.0.0-beta.98
-      vitest: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.0.0)(happy-dom@20.10.6)(vite@8.0.16(@types/node@26.0.0)(esbuild@0.27.7)(jiti@2.7.0)(yaml@2.9.0))
-
   '@effect/workflow@0.18.2(@effect/experimental@0.60.0(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.4))(effect@3.21.4))(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.4))(@effect/rpc@0.75.1(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.4))(effect@3.21.4))(effect@3.21.4)':
     dependencies:
       '@effect/experimental': 0.60.0(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.4))(effect@3.21.4)
       '@effect/platform': 0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.4)
       '@effect/rpc': 0.75.1(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.4))(effect@3.21.4)
       effect: 3.21.4
-
-  '@effect/workflow@0.18.2(@effect/experimental@0.60.0(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98))(effect@4.0.0-beta.98))(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98))(@effect/rpc@0.75.1(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98))(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)':
-    dependencies:
-      '@effect/experimental': 0.60.0(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)
-      '@effect/platform': 0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98)
-      '@effect/rpc': 0.75.1(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)
-      effect: 4.0.0-beta.98
 
   '@emnapi/core@1.10.0':
     dependencies:
@@ -5877,15 +5778,6 @@ snapshots:
     transitivePeerDependencies:
       - typescript
       - web-tree-sitter
-
-  '@overeng/utils-dev@file:packages/@overeng/utils-dev(f46c96fd0ba6842d351a38757c7eadf6)':
-    dependencies:
-      '@effect/opentelemetry': 0.63.0(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98))(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.8.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.219.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.8.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.8.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.8.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.8.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.41.1)(effect@4.0.0-beta.98)
-      '@effect/platform': 0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98)
-      '@effect/platform-node': 0.107.0(@effect/cluster@0.59.0(27d0be962b91e7dd2a108c42ccbb5803))(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98))(@effect/rpc@0.75.1(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98))(effect@4.0.0-beta.98))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98))(effect@4.0.0-beta.98))(@effect/platform@0.96.2(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@4.0.0-beta.98))(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)
-      '@effect/vitest': 0.29.0(effect@4.0.0-beta.98)(vitest@4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.0.0)(happy-dom@20.10.6)(vite@8.0.16(@types/node@26.0.0)(esbuild@0.27.7)(jiti@2.7.0)(yaml@2.9.0)))
-      effect: 4.0.0-beta.98
-      vitest: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.0.0)(happy-dom@20.10.6)(vite@8.0.16(@types/node@26.0.0)(esbuild@0.27.7)(jiti@2.7.0)(yaml@2.9.0))
 
   '@oxc-parser/binding-android-arm-eabi@0.127.0':
     optional: true
@@ -7028,20 +6920,7 @@ snapshots:
       '@standard-schema/spec': 1.1.0
       fast-check: 3.23.2
 
-  effect@4.0.0-beta.97:
-    dependencies:
-      '@standard-schema/spec': 1.1.0
-      fast-check: 4.9.0
-      find-my-way-ts: 0.1.6
-      ini: 7.0.0
-      kubernetes-types: 1.30.0
-      msgpackr: 2.0.4
-      multipasta: 0.2.8
-      toml: 4.3.0
-      uuid: 14.0.1
-      yaml: 2.9.0
-
-  effect@4.0.0-beta.98:
+  effect@4.0.0-beta.99:
     dependencies:
       '@standard-schema/spec': 1.1.0
       fast-check: 4.9.0
@@ -7917,8 +7796,8 @@ snapshots:
 
   react-devtools-core@7.0.1:
     dependencies:
-      shell-quote: 1.8.3
-      ws: 7.5.10
+      shell-quote: 1.10.0
+      ws: 7.5.12
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
@@ -8056,7 +7935,7 @@ snapshots:
 
   shebang-regex@3.0.0: {}
 
-  shell-quote@1.8.3: {}
+  shell-quote@1.10.0: {}
 
   shiki@4.2.0:
     dependencies:
@@ -8353,7 +8232,7 @@ snapshots:
 
   word-wrap@1.2.5: {}
 
-  ws@7.5.10: {}
+  ws@7.5.12: {}
 
   ws@8.21.0: {}
 
