@@ -421,9 +421,10 @@ in
         workspaceFilter = true;
       }) packagesWithNetlifyPreview;
     })
-    (taskModules.workflow-report {
-      ciToolsBin = "${ciToolsSourceCli}/bin/ci-tools";
-    })
+    # Workflow reports run as standalone CI control-plane steps, including when
+    # a deploy is skipped. Use the hermetic package instead of relying on an
+    # ambient source-workspace node_modules projection.
+    (taskModules.workflow-report { })
     (taskModules.lint-oxc {
       oxlintPkg = oxlintWithPlugins;
       lintPaths = [
