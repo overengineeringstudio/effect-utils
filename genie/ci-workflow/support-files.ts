@@ -39,36 +39,6 @@ run_nix_gc_race_retry() {
     } >> "$GITHUB_STEP_SUMMARY"
   }
 
-  repair_nix_daemon() {
-    if [ "${dollar}{NIX_GC_RACE_SKIP_DAEMON_REPAIR:-0}" = 1 ]; then
-      echo "::warning::Nix daemon repair skipped by NIX_GC_RACE_SKIP_DAEMON_REPAIR=1"
-      return 0
-    fi
-
-    echo "::warning::Nix daemon socket is unavailable; attempting daemon restart before retry"
-
-    if command -v launchctl >/dev/null 2>&1; then
-      sudo launchctl kickstart -k system/org.nixos.nix-daemon >/dev/null 2>&1 || true
-    fi
-
-    if command -v systemctl >/dev/null 2>&1; then
-      sudo systemctl restart nix-daemon.socket >/dev/null 2>&1 || true
-      sudo systemctl restart nix-daemon.service >/dev/null 2>&1 || true
-      sudo systemctl restart nix-daemon >/dev/null 2>&1 || true
-    fi
-
-    if [ ! -S /nix/var/nix/daemon-socket/socket ] && [ -x /nix/var/nix/profiles/default/bin/nix-daemon ]; then
-      sudo /nix/var/nix/profiles/default/bin/nix-daemon --daemon >/tmp/nix-daemon-restart.log 2>&1 || true
-    fi
-
-    for _ in 1 2 3 4 5; do
-      [ -S /nix/var/nix/daemon-socket/socket ] && return 0
-      sleep 1
-    done
-
-    return 0
-  }
-
   while [ "$attempt" -le "$max" ]; do
     echo "::notice::[ci] starting $task (attempt $attempt/$max)"
     (
@@ -144,8 +114,7 @@ run_nix_gc_race_retry() {
     fi
 
     if [ "$saw_daemon_socket_failure" = true ]; then
-      repair_nix_daemon
-      echo "::warning::Nix daemon socket failure detected for $task (attempt $attempt/$max); retrying after daemon repair"
+      echo "::warning::Nix daemon socket failure detected for $task (attempt $attempt/$max); retrying without mutating the host daemon (host supervision owns recovery)"
     elif [ "$saw_fetch_signature" = true ]; then
       echo "::warning::Nix source fetch corruption detected for $task (attempt $attempt/$max); retrying with a refreshed eval cache"
     elif [ "$saw_cachix_signature" = true ] && [ -n "$path" ]; then

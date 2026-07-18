@@ -158,6 +158,10 @@ All notable changes to this project will be documented in this file.
   Effect 3 catalog, and fail generation if either cohort's exact identity drifts
   (#937).
 
+- Harden shared CI devenv resolution against host GC races: retry the proven
+  invalid-store-path signature once after client-local cache repair, root the
+  resolved closure for the job lifetime, and leave Nix daemon recovery to host
+  supervision instead of restarting the shared daemon from CI jobs.
 - Fix megarepo Nix lock validation for current and legacy members that share one repository while preserving fail-closed ambiguity checks.
 
 ### Fixed
