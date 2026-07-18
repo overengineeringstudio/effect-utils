@@ -111,6 +111,14 @@ The cache owner does not enumerate Materialization Roots and never deletes
 individual pnpm internals itself. Eviction may make a future offline install
 miss; it cannot change a declared graph or an already-materialized root.
 
+Legacy external `v11/files` bridges are not followed by managed installs. The
+explicit `pnpm:store:migrate-legacy` operation takes the exclusive maintenance
+lease, accepts only the declared historical files-pool target, and resets the
+disposable v11 metadata inside the selected Store Cache. It preserves the store
+root and maintenance-lock inode and leaves the external historical pool
+untouched. An already self-contained cache is a successful no-op; any unknown
+bridge fails closed.
+
 ## Health And Repair
 
 Store health checks verify:

@@ -44,6 +44,9 @@ imports = [
     Materialization-Root-owned.
   - Managed installs use pnpm's `auto` import policy and reject cross-device
     Linux storage before materialization.
+  - `pnpm:store:migrate-legacy` explicitly replaces only the recognized
+    historical `v11/files` bridge under the exclusive cache lease; normal
+    installs and unknown bridges fail closed.
   - Frozen installs use the current guarded pnpm runtime, while `pnpm:update`
     uses a separate pnpm 11.5.1 lock mutator. Root updates generate projections
     with validation deferred, repair the lock, then require `genie --check`;

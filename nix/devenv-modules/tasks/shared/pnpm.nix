@@ -84,6 +84,11 @@ let
     if taskSuffix == null then "${taskNamePrefix}:doctor" else "${taskNamePrefix}:doctor:${taskSuffix}";
   repairTaskName =
     if taskSuffix == null then "${taskNamePrefix}:repair" else "${taskNamePrefix}:repair:${taskSuffix}";
+  migrateLegacyStoreTaskName =
+    if taskSuffix == null then
+      "${taskNamePrefix}:store:migrate-legacy"
+    else
+      "${taskNamePrefix}:store:migrate-legacy:${taskSuffix}";
   resetLockFilesTaskName =
     if taskSuffix == null then
       "${taskNamePrefix}:reset-lock-files"
@@ -730,6 +735,23 @@ let
           "${cacheRoot}/pnpm-storage-state"
         echo "[pnpm] Discarded root-local dependency graph; reinvoking ${installTaskName}"
         exec devenv tasks run ${lib.escapeShellArg installTaskName}
+      '';
+    };
+
+    "${migrateLegacyStoreTaskName}" = {
+      guard = "pnpm";
+      description = "Replace the recognized legacy pnpm files bridge with a self-contained Store Cache";
+      exec = trace.exec migrateLegacyStoreTaskName ''
+        set -euo pipefail
+        if [ -n "''${CI:-}" ]; then
+          echo "[pnpm] Legacy host Store Cache migration is unavailable in CI" >&2
+          exit 1
+        fi
+        ${loadPnpmTaskHelpersFn}
+        store_dir="''${PNPM_SHARED_STORE_DIR:-$HOME/.local/share/pnpm/store-shared-v1}"
+        expected_legacy_files="$HOME/.local/share/pnpm/shared-files/v11"
+        acquire_pnpm_store_cache_lease ${lib.escapeShellArg flock} exclusive "$store_dir" 600
+        migrate_legacy_pnpm_store_cache "$store_dir" "$expected_legacy_files"
       '';
     };
 

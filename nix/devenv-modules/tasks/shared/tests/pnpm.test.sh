@@ -680,6 +680,44 @@ echo "Test 34d: a preexisting external store-version bridge fails before mutatio
   test ! -e "$external_version/files"
 )
 
+echo "Test 34e: recognized legacy files bridge migrates in place under the stable store root"
+(
+  isolated_home="$test_dir/migration-home"
+  shared_store="$isolated_home/.local/share/pnpm/store-shared-v1"
+  historical_pool="$isolated_home/.local/share/pnpm/shared-files/v11"
+  mkdir -p "$shared_store/v11/projects" "$historical_pool"
+  printf 'historical\n' > "$historical_pool/sentinel"
+  printf 'stale\n' > "$shared_store/v11/index.db"
+  ln -s "$historical_pool" "$shared_store/v11/files"
+  acquire_pnpm_store_cache_lease flock exclusive "$shared_store" 10
+  lock_inode_before="$(stat -c %i "$shared_store/.effect-utils-pnpm-store-cache-maintenance.lock")"
+  migrate_legacy_pnpm_store_cache "$shared_store" "$historical_pool"
+  lock_inode_after="$(stat -c %i "$shared_store/.effect-utils-pnpm-store-cache-maintenance.lock")"
+  assert_eq "$lock_inode_before" "$lock_inode_after" "migration preserves the maintenance-lock inode"
+  test -d "$shared_store/v11/files"
+  test ! -L "$shared_store/v11/files"
+  test ! -e "$shared_store/v11/index.db"
+  test ! -e "$shared_store/v11/projects"
+  test -f "$historical_pool/sentinel"
+  migrate_legacy_pnpm_store_cache "$shared_store" "$historical_pool"
+)
+
+echo "Test 34f: unknown legacy files bridge remains untouched"
+(
+  shared_store="$test_dir/unknown-migration-store"
+  expected_pool="$test_dir/expected-migration-pool"
+  unknown_pool="$test_dir/unknown-migration-pool"
+  mkdir -p "$shared_store/v11" "$expected_pool" "$unknown_pool"
+  ln -s "$unknown_pool" "$shared_store/v11/files"
+  set +e
+  output="$(migrate_legacy_pnpm_store_cache "$shared_store" "$expected_pool" 2>&1)"
+  exit_code=$?
+  set -e
+  assert_exit_code 1 "$exit_code" "unknown legacy bridge must fail closed"
+  grep -qF "Refusing unknown legacy Store Cache bridge" <<< "$output"
+  test -L "$shared_store/v11/files"
+)
+
 echo "Test 35: Linux zero-copy storage fails closed across filesystems"
 if [ -d /dev/shm ] && [ "$(stat -c '%d' /dev/shm)" != "$(stat -c '%d' "$test_dir")" ]; then
   cross_device_store="$(mktemp -d /dev/shm/effect-utils-pnpm-store.XXXXXX)"

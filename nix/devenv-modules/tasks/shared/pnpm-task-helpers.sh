@@ -114,6 +114,42 @@ acquire_pnpm_store_cache_lease() {
   fi
 }
 
+migrate_legacy_pnpm_store_cache() {
+  local store_dir="$1"
+  local expected_legacy_files="$2"
+  local store_version_dir="$store_dir/v11"
+  local files_path="$store_version_dir/files"
+
+  if [ -L "$store_version_dir" ]; then
+    echo "[pnpm] Refusing to migrate a linked Store Cache version directory: $store_version_dir" >&2
+    return 1
+  fi
+  if [ ! -L "$files_path" ]; then
+    if [ -d "$files_path" ]; then
+      echo "[pnpm] Store Cache is already self-contained: $store_dir"
+      return 0
+    fi
+    echo "[pnpm] No recognized legacy Store Cache bridge exists at $files_path" >&2
+    return 1
+  fi
+
+  local actual_legacy_files
+  local expected_legacy_real
+  actual_legacy_files="$(readlink -f "$files_path")"
+  expected_legacy_real="$(readlink -f "$expected_legacy_files")"
+  if [ "$actual_legacy_files" != "$expected_legacy_real" ]; then
+    echo "[pnpm] Refusing unknown legacy Store Cache bridge: expected=$expected_legacy_real actual=$actual_legacy_files" >&2
+    return 1
+  fi
+
+  # The caller holds the exclusive Store Cache lease. Reset only pnpm's
+  # disposable versioned metadata in place: the store root and maintenance-lock
+  # inode stay stable, and the historical external content pool is untouched.
+  find "$store_version_dir" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+  mkdir -p "$files_path"
+  echo "[pnpm] Migrated legacy Store Cache bridge to a self-contained cache: $store_dir"
+}
+
 assert_pnpm_storage_capacity() {
   local node_bin="$1"
   local store_dir="$2"

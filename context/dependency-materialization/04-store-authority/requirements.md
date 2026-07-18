@@ -111,3 +111,11 @@ repair, prune, or garbage-collect it. It refines DMP-R12 through DMP-R15.
   outcome, and dry-run mode, and serialize maintenance against managed installs
   without serializing installs against one another.
   Refines: DMP-R13, DMP-R14, DMP-R15.
+- **DMP.STORE-R16 Explicit legacy-cache migration:** A legacy Store Cache that
+  bridges package files outside its selected store must fail closed during
+  normal installs. Migration must be an explicit, idempotent host-cache-owner
+  operation under the exclusive Store Cache lease; it may recognize only a
+  declared legacy target, must preserve the maintenance-lock identity and the
+  external legacy pool, and must reset disposable pnpm metadata in place.
+  Unknown bridges must remain untouched.
+  Refines: DMP-R13, DMP-R14, DMP-R15.
