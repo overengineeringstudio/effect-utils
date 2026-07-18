@@ -4,11 +4,13 @@ import * as path from 'node:path'
 
 import { FileSystem, Path } from '@effect/platform'
 import { NodeContext } from '@effect/platform-node'
-import { Duration, Effect, Layer, Schema, Stream } from 'effect'
+import { Context, Deferred, Duration, Effect, Layer, Schema, Stream } from 'effect'
 import { DistributedSemaphoreBacking } from 'effect-distributed-lock'
 import { expect } from 'vitest'
 
+import { DistributedSemaphore } from '@overeng/utils'
 import { Vitest } from '@overeng/utils-dev/node-vitest'
+import { FileSystemBacking as ReexportedFileSystemBacking } from '@overeng/utils/node'
 
 import * as FileSystemBacking from './file-system-backing.ts'
 
@@ -90,6 +92,83 @@ const makeNodeFsLayer = (): Layer.Layer<FileSystem.FileSystem | Path.Path> => {
 const TestLayer = makeNodeFsLayer()
 
 Vitest.describe('FileSystemBacking', () => {
+  Vitest.describe('DistributedSemaphore finalizers', () => {
+    Vitest.it.effect('interrupts keepAlive before releasing the holder lock', () =>
+      Effect.gen(function* () {
+        const fsService = yield* FileSystem.FileSystem
+        const tempDir = yield* fsService.makeTempDirectory()
+        const lockDir = `${tempDir}/locks`
+        const key = 'finalizer-order'
+        const holderId = 'holder-a'
+        const holderPath = `${lockDir}/${encodeURIComponent(key)}/${encodeURIComponent(holderId)}.lock`
+        const events: Array<string> = []
+        const refreshStarted = yield* Deferred.make<void>()
+        const resumeRefresh = yield* Deferred.make<void>()
+
+        const baseContext = yield* Layer.build(ReexportedFileSystemBacking.layer({ lockDir })).pipe(
+          Effect.scoped,
+        )
+        const baseBacking = Context.get(baseContext, DistributedSemaphoreBacking)
+        const observedBacking = {
+          ...baseBacking,
+          release: (releaseKey: string, releaseHolderId: string, permits: number) =>
+            Effect.sync(() => {
+              events.push('release')
+            }).pipe(Effect.zipRight(baseBacking.release(releaseKey, releaseHolderId, permits))),
+          refresh: (
+            refreshKey: string,
+            refreshHolderId: string,
+            ttl: Duration.Duration,
+            limit: number,
+            permits: number,
+          ) =>
+            Effect.gen(function* () {
+              events.push('refresh-started')
+              yield* Deferred.succeed(refreshStarted, undefined)
+              yield* Deferred.await(resumeRefresh)
+              events.push('refresh-resumed')
+              return yield* baseBacking.refresh(refreshKey, refreshHolderId, ttl, limit, permits)
+            }).pipe(
+              Effect.onInterrupt(() =>
+                Effect.sync(() => {
+                  events.push('refresh-interrupted')
+                }),
+              ),
+            ),
+        } satisfies DistributedSemaphoreBacking
+
+        const observedBackingLayer = Layer.succeed(DistributedSemaphoreBacking, observedBacking)
+
+        yield* Effect.gen(function* () {
+          const semaphore = yield* DistributedSemaphore.make(key, {
+            limit: 1,
+            ttl: Duration.minutes(5),
+            refreshInterval: Duration.millis(1),
+          })
+
+          yield* semaphore.withPermits(1, { identifier: holderId })(Deferred.await(refreshStarted))
+        }).pipe(Effect.provide(observedBackingLayer), Effect.timeout(Duration.seconds(5)))
+
+        expect(events).toEqual(['refresh-started', 'refresh-interrupted', 'release'])
+        expect(fs.existsSync(holderPath)).toBe(false)
+
+        yield* Effect.gen(function* () {
+          const semaphore = yield* DistributedSemaphore.make(key, {
+            limit: 1,
+            ttl: Duration.minutes(5),
+          })
+          const acquired = yield* semaphore.withPermitsIfAvailable(1, { identifier: 'holder-b' })(
+            Effect.succeed('acquired'),
+          )
+          expect(acquired._tag).toBe('Some')
+          expect(
+            acquired.pipe((option) => (option._tag === 'Some' ? option.value : undefined)),
+          ).toBe('acquired')
+        }).pipe(Effect.provide(ReexportedFileSystemBacking.layer({ lockDir })))
+      }).pipe(Effect.provide(TestLayer), Effect.scoped),
+    )
+  })
+
   Vitest.describe('tryAcquire', () => {
     Vitest.it.effect('acquires permits when available', () =>
       Effect.gen(function* () {

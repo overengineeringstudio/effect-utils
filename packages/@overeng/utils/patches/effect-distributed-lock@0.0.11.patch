@@ -25,3 +25,22 @@ index 3ce62a6..e75babe 100644
 \ No newline at end of file
 +//# sourceMappingURL=index.js.map
 \ No newline at end of file
+diff --git a/dist/DistributedSemaphore.js b/dist/DistributedSemaphore.js
+index 7457818..d2b0202 100644
+--- a/dist/DistributedSemaphore.js
++++ b/dist/DistributedSemaphore.js
+@@ -70,12 +70,12 @@ export const make = (key, config = {}) => Effect.gen(function* () {
+         if (!acquired) {
+             return Option.none();
+         }
+-        // Start keepalive fiber, tied to this scope
+-        const keepAliveFiber = yield* Effect.forkScoped(keepAlive(identifier, permits));
+         // Add finalizer to release permits when scope closes
+         yield* Effect.addFinalizer(() => backing
+             .release(key, identifier, permits)
+             .pipe(withBackingErrorRetry, Effect.ignore));
++        // Start keepalive fiber, tied to this scope
++        const keepAliveFiber = yield* Effect.forkScoped(keepAlive(identifier, permits));
+         return Option.some(keepAliveFiber);
+     });
+     // Acquire permits with retry, returns fiber when acquired

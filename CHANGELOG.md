@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/utils / StoreLock**: patch `effect-distributed-lock` so scoped
+  semaphore keepAlive refreshes stop before holder release, preventing
+  file-system lock resurrection during `mr store gc`.
 - **react-inspector / Effect 4**: preserve exact-optional public metadata types
   across Effect 4 schema decoding, and compile the migrated schema surface as a
   strict downstream consumer in the workspace typecheck graph.

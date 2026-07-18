@@ -10,7 +10,7 @@ packageExtensionsChecksum: sha256-gJVbGKCzsiTLmVnQ74k2GtcbKOOuGvVsGVwXhM0lg4Q=
 patchedDependencies:
   '@effect/platform@0.96.2': 08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32
   '@myobie/pty@0.10.0': e6d9b2f6990efbb98235e6e4018e3e9bb5ac94bc54ea6764364857206b6b95a5
-  effect-distributed-lock@0.0.11: a365d5c8857e3a421ea3b83b6be483433a5a75b344072aa68c4c984b14ec5a0b
+  effect-distributed-lock@0.0.11: 91151edc783847d8d186cf91511155b3a474c33143f1c67358b078002b7b2e3a
 
 importers:
 
@@ -1810,7 +1810,7 @@ importers:
         version: 3.21.4
       effect-distributed-lock:
         specifier: 0.0.11
-        version: 0.0.11(patch_hash=a365d5c8857e3a421ea3b83b6be483433a5a75b344072aa68c4c984b14ec5a0b)(effect@3.21.4)(ioredis@5.11.1)(typescript@6.0.3)
+        version: 0.0.11(patch_hash=91151edc783847d8d186cf91511155b3a474c33143f1c67358b078002b7b2e3a)(effect@3.21.4)(ioredis@5.11.1)(typescript@6.0.3)
       ioredis:
         specifier: 5.11.1
         version: 5.11.1
@@ -6437,7 +6437,7 @@ snapshots:
       '@overeng/otel-contract': file:packages/@overeng/otel-contract(effect@3.21.4)
       '@playwright/test': 1.61.0
       effect: 3.21.4
-      effect-distributed-lock: 0.0.11(patch_hash=a365d5c8857e3a421ea3b83b6be483433a5a75b344072aa68c4c984b14ec5a0b)(effect@3.21.4)(ioredis@5.11.1)(typescript@6.0.3)
+      effect-distributed-lock: 0.0.11(patch_hash=91151edc783847d8d186cf91511155b3a474c33143f1c67358b078002b7b2e3a)(effect@3.21.4)(ioredis@5.11.1)(typescript@6.0.3)
       ioredis: 5.11.1
       vitest: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.0.0)(happy-dom@20.10.6)(vite@8.0.16(@types/node@26.0.0)(esbuild@0.27.7)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.9.0))
     transitivePeerDependencies:
@@ -7742,7 +7742,7 @@ snapshots:
 
   dom-accessibility-api@0.6.3: {}
 
-  effect-distributed-lock@0.0.11(patch_hash=a365d5c8857e3a421ea3b83b6be483433a5a75b344072aa68c4c984b14ec5a0b)(effect@3.21.4)(ioredis@5.11.1)(typescript@6.0.3):
+  effect-distributed-lock@0.0.11(patch_hash=91151edc783847d8d186cf91511155b3a474c33143f1c67358b078002b7b2e3a)(effect@3.21.4)(ioredis@5.11.1)(typescript@6.0.3):
     dependencies:
       effect: 3.21.4
       typescript: 6.0.3
