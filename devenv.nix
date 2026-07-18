@@ -705,7 +705,18 @@ in
     '';
   };
 
-  tasks."check:all".after = [ "cargo:check" ];
+  tasks."dependency-materialization:evidence:check" = {
+    description = "Validate committed dependency-materialization benchmark and host-capability evidence";
+    exec = trace.exec "dependency-materialization:evidence:check" ''
+      ${pkgs.nodejs}/bin/node \
+        context/dependency-materialization/07-verification/evidence/validate-storage-sharing-default.mjs
+    '';
+  };
+
+  tasks."check:all".after = [
+    "cargo:check"
+    "dependency-materialization:evidence:check"
+  ];
 
   # Keep git-hook installation out of the shell-entry path.
   # If needed, install with `devenv tasks run devenv:git-hooks:install`.
