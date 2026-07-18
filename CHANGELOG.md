@@ -13,6 +13,9 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/utils**: restore the downstream `@effect/platform` patch
+  projection in the generated package manifest after vendoring
+  `effect-distributed-lock`.
 - **@overeng/effect-distributed-lock**: vendor the used non-Redis
   `effect-distributed-lock` subset as first-party source and stop scoped
   semaphore keepAlive refreshes before holder release, preventing file-system
