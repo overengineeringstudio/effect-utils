@@ -1,4 +1,5 @@
 import { createGenieOutput, type GenieOutput } from '../../packages/@overeng/genie/src/runtime/core.ts'
+import { resolveDevenvFnScript } from './shared.ts'
 
 const withTrailingNewline = (content: string) => (content.endsWith('\n') ? content : `${content}\n`)
 const dollar = '$'
@@ -12,6 +13,7 @@ const textArtifact = (content: string): GenieOutput<string> =>
 export const ciWorkflowNixGcRaceRetryScriptPath = 'genie/ci-scripts/nix-gc-race-retry.sh'
 export const ciWorkflowNixGcRaceRetryWrapperPath =
   'genie/ci-scripts/run-with-nix-gc-race-retry.sh'
+export const ciWorkflowResolveDevenvScriptPath = 'genie/ci-scripts/resolve-devenv.sh'
 
 export const ciWorkflowNixGcRaceRetryScript = String.raw`#!/usr/bin/env bash
 
@@ -156,6 +158,10 @@ script_dir="$(cd -- "$(dirname -- "${dollar}{BASH_SOURCE[0]}")" && pwd)"
 run_nix_gc_race_retry "$label" bash -euo pipefail -c "$command"`
 
 export const ciWorkflowSupportFiles = {
+  resolveDevenv: {
+    path: ciWorkflowResolveDevenvScriptPath,
+    output: textArtifact(`#!/usr/bin/env bash\n\n${resolveDevenvFnScript}`),
+  },
   nixGcRaceRetry: {
     path: ciWorkflowNixGcRaceRetryScriptPath,
     output: textArtifact(ciWorkflowNixGcRaceRetryScript),
