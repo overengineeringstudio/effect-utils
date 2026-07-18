@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- Fix megarepo Nix lock validation for current and legacy members that share one repository while preserving fail-closed ambiguity checks.
+
 ### Fixed
 
 - **react-inspector / Effect 4**: preserve exact-optional public metadata types
