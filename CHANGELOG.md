@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- **react-inspector / Effect 4**: align the development dependency and peer
+  floor to Effect `4.0.0-beta.99`, anchor injected test helpers to the separate
+  Effect 3 catalog, and fail generation if either cohort's exact identity drifts
+  (#937).
+
 - Fix megarepo Nix lock validation for current and legacy members that share one repository while preserving fail-closed ambiguity checks.
 
 ### Fixed

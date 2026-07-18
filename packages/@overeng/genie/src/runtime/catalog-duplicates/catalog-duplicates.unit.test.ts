@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-import { parseAllResolvedVersionsFromLockfile, validateCatalogDuplicates } from './mod.ts'
+import {
+  parseAllResolvedVersionsFromLockfile,
+  parseSnapshotDependencyConsumers,
+  validateCatalogDuplicates,
+} from './mod.ts'
 
 const makeLockfileYaml = (packages: string[]) => {
   const lines = ["lockfileVersion: '9.0'", '', 'packages:', '']
@@ -41,6 +45,26 @@ describe('parseAllResolvedVersionsFromLockfile', () => {
     ]
     const result = parseAllResolvedVersionsFromLockfile(lines.join('\n'))
     expect(result.get('@effect/platform')).toEqual(new Set(['0.96.0']))
+  })
+})
+
+describe('parseSnapshotDependencyConsumers', () => {
+  it('finds peer resolutions inside hashed injected workspace snapshots', () => {
+    const yaml = [
+      "lockfileVersion: '9.0'",
+      '',
+      'snapshots:',
+      '',
+      "  '@overeng/utils-dev@file:packages/@overeng/utils-dev(hash)':",
+      '    dependencies:',
+      '      effect: 4.0.0-beta.99',
+      '',
+    ].join('\n')
+    expect(parseSnapshotDependencyConsumers({ dependency: 'effect', yamlContent: yaml })).toEqual(
+      new Map([
+        ['4.0.0-beta.99', new Set(['@overeng/utils-dev@file:packages/@overeng/utils-dev(hash)'])],
+      ]),
+    )
   })
 })
 
@@ -86,6 +110,71 @@ describe('validateCatalogDuplicates', () => {
     expect(issues[0]!.rule).toBe('catalog-duplicate-version-acknowledged')
     expect(issues[0]!.message).toContain('@opentui/core hard-pins 7.2.0')
     expect(issues[0]!.message).toContain('#820')
+  })
+
+  it('accepts an exact version set for an intentional multi-major graph', () => {
+    const yaml = makeLockfileYaml(['effect@3.21.4', 'effect@4.0.0-beta.99'])
+    const issues = validateCatalogDuplicates({
+      catalog,
+      lockfileContent: yaml,
+      exceptions: [
+        {
+          package: 'effect',
+          versions: ['3.21.4', '4.0.0-beta.99'],
+          isolatedVersions: ['4.0.0-beta.99'],
+          reason: 'separate Effect 3 and Effect 4 package cohorts',
+        },
+      ],
+    })
+    expect(issues).toHaveLength(1)
+    expect(issues[0]!.severity).toBe('warning')
+    expect(issues[0]!.rule).toBe('catalog-duplicate-version-acknowledged')
+  })
+
+  it('errors when an acknowledged multi-major graph drifts from its exact version set', () => {
+    const yaml = makeLockfileYaml(['effect@3.21.4', 'effect@4.0.0-beta.98', 'effect@4.0.0-beta.99'])
+    const issues = validateCatalogDuplicates({
+      catalog,
+      lockfileContent: yaml,
+      exceptions: [
+        {
+          package: 'effect',
+          versions: ['3.21.4', '4.0.0-beta.99'],
+          reason: 'separate Effect 3 and Effect 4 package cohorts',
+          issue: '#937',
+        },
+      ],
+    })
+    expect(issues).toHaveLength(1)
+    expect(issues[0]!.severity).toBe('error')
+    expect(issues[0]!.rule).toBe('catalog-duplicate-exception-version-drift')
+    expect(issues[0]!.message).toContain('permits exactly: 3.21.4, 4.0.0-beta.99')
+  })
+
+  it('errors when an importer-only version leaks into a snapshot peer graph', () => {
+    const yaml = [
+      makeLockfileYaml(['effect@3.21.4', 'effect@4.0.0-beta.99']),
+      "  '@overeng/utils-dev@file:packages/@overeng/utils-dev(hash)':",
+      '    dependencies:',
+      '      effect: 4.0.0-beta.99',
+      '',
+    ].join('\n')
+    const issues = validateCatalogDuplicates({
+      catalog,
+      lockfileContent: yaml,
+      exceptions: [
+        {
+          package: 'effect',
+          versions: ['3.21.4', '4.0.0-beta.99'],
+          isolatedVersions: ['4.0.0-beta.99'],
+          reason: 'separate Effect 3 and Effect 4 package cohorts',
+        },
+      ],
+    })
+    expect(issues).toHaveLength(1)
+    expect(issues[0]!.severity).toBe('error')
+    expect(issues[0]!.rule).toBe('catalog-duplicate-isolated-version-leak')
+    expect(issues[0]!.message).toContain('@overeng/utils-dev')
   })
 
   it('flags a stale exception that no longer matches a duplicate', () => {
