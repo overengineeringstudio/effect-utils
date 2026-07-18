@@ -103,7 +103,11 @@ repair, prune, or garbage-collect it. It refines DMP-R12 through DMP-R15.
   real workspaces.
   Refines: DMP-R16.
 - **DMP.STORE-R15 Bounded host lifecycle:** The host Store Cache owner must
-  provide periodic and pressure-triggerable pnpm-native pruning, report cache
-  bytes and reclaimed bytes, and serialize pruning against managed installs
+  periodically and pressure-triggerably measure cache bytes. Destructive
+  pnpm-native pruning may be enabled only where the host has measured that its
+  effective import semantics preserve live-root reachability (for example,
+  hardlinks); clone, copy, CoW, or otherwise unproven hosts must remain
+  measurement-only. Every run must report cache bytes, reclaimed bytes,
+  outcome, and dry-run mode, and serialize maintenance against managed installs
   without serializing installs against one another.
   Refines: DMP-R13, DMP-R14, DMP-R15.

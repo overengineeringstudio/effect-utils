@@ -100,10 +100,13 @@ own graph identity.
 ## Host Lifecycle
 
 The host cache owner periodically measures the whole pnpm Store Cache and may
-trigger pnpm-native `store prune` on schedule or under disk pressure. It takes
-the exclusive Store Cache maintenance lease before measurement and pruning,
-then reports bytes before, bytes after, reclaimed bytes, outcome, and dry-run
-mode. Root-scoped repair never invokes this operation.
+trigger pnpm-native `store prune` on schedule or under disk pressure only
+after host-specific evidence proves that the effective import method exposes
+live-root reachability to pnpm's pruning semantics. Measured hardlink hosts may
+enable destructive pruning; clone, copy, CoW, and unproven hosts remain
+measurement-only. Maintenance takes the exclusive Store Cache lease, then
+reports bytes before, bytes after, reclaimed bytes, outcome, and dry-run mode.
+Root-scoped repair never invokes this operation.
 
 The cache owner does not enumerate Materialization Roots and never deletes
 individual pnpm internals itself. Eviction may make a future offline install

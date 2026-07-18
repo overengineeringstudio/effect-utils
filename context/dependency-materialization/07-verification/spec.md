@@ -86,10 +86,9 @@ counts, not only timing.
 
 The current package-store default-gate evidence is recorded in
 [`evidence/storage-sharing-default-v2.json`](./evidence/storage-sharing-default-v2.json).
-Its Linux and Darwin pending records are claim boundaries. The Linux timing and
-block-sharing rows are real but do not close the required absolute byte,
-file-count, and phase matrix. Linux observations must not be presented as Darwin
-results until a comparable Darwin real-workload record replaces its marker.
+It records separate real-workload Linux/ext4 and Darwin/APFS phase matrices.
+Results remain platform-specific: neither platform's timing, allocation, or
+effective import behavior may be generalized to another filesystem.
 
 ## Evidence Intake And Graduation
 

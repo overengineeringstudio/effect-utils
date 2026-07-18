@@ -8,34 +8,176 @@
     "packageImportMethod": "auto",
     "enableGlobalVirtualStore": false
   },
+  "measurementMethod": {
+    "date": "2026-07-18",
+    "workspace": "effect-utils",
+    "harness": "context/dependency-materialization/07-verification/evidence/measure-storage-sharing-default.sh",
+    "implementationHead": "6cf8c22f79d76d4ab2611980fcdf14b6119cfeb5",
+    "sourcePreparation": {
+      "linux": "three detached worktrees at implementationHead from the local Git source",
+      "darwin": "clean implementationHead tree transferred to mbp2025; harness invoked with SOURCE_TREE and IMPLEMENTATION_HEAD"
+    },
+    "packageManager": "pnpm@11.8.0",
+    "installPolicy": {
+      "frozenLockfile": true,
+      "ignoreScripts": true,
+      "sideEffectsCache": false,
+      "verifyStoreIntegrity": true,
+      "strictStorePackageContentCheck": true,
+      "childConcurrency": 1,
+      "networkConcurrency": 4
+    },
+    "phases": [
+      "empty shared store into root A",
+      "same shared store into root B",
+      "warm root B",
+      "empty isolated store into root C"
+    ],
+    "sizeMethod": "du physical and apparent KiB plus regular-file counts; the two-isolated-root comparator is twice the measured one-root isolated baseline",
+    "ciRun": "https://github.com/overengineeringstudio/effect-utils/actions/runs/29647498209"
+  },
   "platforms": [
     {
       "platform": "x86_64-linux",
-      "status": "pending-evidence",
-      "reason": "The real-workload comparison has timing, download, and physical-block evidence but lacks the absolute byte and file-count rows required to close DMP.VER-R05/R07/R08.",
-      "workspace": "effect-utils",
-      "provenance": {
-        "measurementHead": "a5c73d208c97790107ffa04104687180ac6332d8",
-        "ciRun": "https://github.com/overengineeringstudio/effect-utils/actions/runs/29638487194",
-        "packageManager": "pnpm@11.8.0",
+      "status": "ok",
+      "environment": {
         "filesystem": "ext4",
-        "phase": "second-root-materialization"
+        "node": "v24.15.0"
       },
-      "evidence": {
-        "realGraphPackages": 629,
-        "secondRootDownloads": 0,
-        "sharedStoreSeconds": [6.499, 7.264],
-        "isolatedSeconds": [22.004, 27.399],
-        "sharedProjectionBlocksPercent": 89.6
+      "phaseMatrix": {
+        "coldSharedRootA": {
+          "durationMs": 11061,
+          "reused": 12,
+          "downloaded": 600,
+          "rootNodeModules": {
+            "physicalKiB": 1072336,
+            "apparentKiB": 927138,
+            "files": 49833
+          },
+          "store": {
+            "physicalKiB": 1026628,
+            "apparentKiB": 907358,
+            "files": 40237
+          }
+        },
+        "secondSharedRootB": {
+          "durationMs": 2054,
+          "reused": 612,
+          "downloaded": 0
+        },
+        "warmSharedRootB": {
+          "durationMs": 974,
+          "reused": 12,
+          "downloaded": 0
+        },
+        "isolatedRootC": {
+          "durationMs": 11087,
+          "reused": 12,
+          "downloaded": 600,
+          "combinedStoreAndRoot": {
+            "physicalKiB": 1175360,
+            "apparentKiB": 1017594,
+            "files": 90070
+          }
+        }
       },
-      "evidenceGaps": ["absoluteBytes", "fileCounts", "coldWarmPhaseMatrix"],
-      "claimBoundary": "Do not present this record as a completed Linux default gate until the missing same-graph size and phase rows are attached."
+      "twoRootComparison": {
+        "sharedMeasured": {
+          "physicalKiB": 1324292,
+          "apparentKiB": 1127838,
+          "files": 139903
+        },
+        "isolatedComparator": {
+          "physicalKiB": 2350720,
+          "apparentKiB": 2035188,
+          "files": 180140
+        },
+        "improvementPercent": {
+          "physicalKiB": 43.7,
+          "apparentKiB": 44.6,
+          "files": 22.3,
+          "secondRootDuration": 81.5
+        }
+      },
+      "correctness": {
+        "distinctVirtualStores": true,
+        "lifecycleScriptsRan": 0
+      }
     },
     {
       "platform": "aarch64-darwin",
-      "status": "pending-system",
-      "reason": "A comparable complete live-worktree graph has not yet completed under the full shared pnpm package-store policy.",
-      "claimBoundary": "Do not generalize Linux timing, block-sharing, or zero-copy observations to Darwin. Darwin uses pnpm auto capability selection and retains independent capacity and failure gates."
+      "status": "ok",
+      "environment": {
+        "host": "mbp2025",
+        "filesystem": "apfs",
+        "node": "v24.15.0"
+      },
+      "phaseMatrix": {
+        "coldSharedRootA": {
+          "durationMs": 11394,
+          "reused": 12,
+          "downloaded": 600,
+          "teardownExit": 134,
+          "completedMaterializationEvidence": true,
+          "rootNodeModules": {
+            "physicalKiB": 1161628,
+            "apparentKiB": 1020887,
+            "files": 52174
+          },
+          "store": {
+            "physicalKiB": 1025708,
+            "apparentKiB": 916032,
+            "files": 40239
+          }
+        },
+        "secondSharedRootB": {
+          "durationMs": 3988,
+          "reused": 612,
+          "downloaded": 0,
+          "teardownExit": 0
+        },
+        "warmSharedRootB": {
+          "durationMs": 1175,
+          "reused": 12,
+          "downloaded": 0,
+          "teardownExit": 134,
+          "completedMaterializationEvidence": true
+        },
+        "isolatedRootC": {
+          "durationMs": 9310,
+          "reused": 12,
+          "downloaded": 600,
+          "teardownExit": 0,
+          "combinedStoreAndRoot": {
+            "physicalKiB": 2178412,
+            "apparentKiB": 1928240,
+            "files": 92411
+          }
+        }
+      },
+      "twoRootComparison": {
+        "sharedMeasured": {
+          "physicalKiB": 3340052,
+          "apparentKiB": 2949139,
+          "files": 144585
+        },
+        "isolatedComparator": {
+          "physicalKiB": 4356824,
+          "apparentKiB": 3856480,
+          "files": 184822
+        },
+        "improvementPercent": {
+          "physicalKiB": 23.3,
+          "apparentKiB": 23.5,
+          "files": 21.8,
+          "secondRootDuration": 57.2
+        }
+      },
+      "correctness": {
+        "distinctVirtualStores": true,
+        "lifecycleScriptsRan": 0,
+        "sigkill137Accepted": false
+      }
     }
   ]
 }
