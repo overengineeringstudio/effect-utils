@@ -11,11 +11,24 @@
   "measurementMethod": {
     "date": "2026-07-18",
     "workspace": "effect-utils",
-    "harness": "context/dependency-materialization/07-verification/evidence/measure-storage-sharing-default.sh",
-    "implementationHead": "6cf8c22f79d76d4ab2611980fcdf14b6119cfeb5",
+    "implementationHead": "649741c6acdbc313882bcfd85a8230928be1f120",
+    "harness": {
+      "path": "context/dependency-materialization/07-verification/evidence/measure-storage-sharing-default.sh",
+      "sha256": "e9866b6b9a7b6080441f0a03d0c28f57a5fb2a188bd29c7d0b7b62b738d1a6fd"
+    },
+    "rawArtifacts": {
+      "linux": {
+        "path": "storage-sharing-default-v2-linux.jsonl",
+        "sha256": "a2eca363bff14ab0d5319278fb0a768862cac89fc4e56a2cd7bd953bc41276e4"
+      },
+      "darwin": {
+        "path": "storage-sharing-default-v2-darwin.jsonl",
+        "sha256": "aa9b83d6e0b45079f40f93e2447f9946725824cadc83292ea761c52247a74f89"
+      }
+    },
     "sourcePreparation": {
-      "linux": "three detached worktrees at implementationHead from the local Git source",
-      "darwin": "clean implementationHead tree transferred to mbp2025; harness invoked with SOURCE_TREE and IMPLEMENTATION_HEAD"
+      "linux": "five detached Git worktrees at implementationHead",
+      "darwin": "git archive of implementationHead extracted on mbp2025"
     },
     "packageManager": "pnpm@11.8.0",
     "installPolicy": {
@@ -31,10 +44,34 @@
       "empty shared store into root A",
       "same shared store into root B",
       "warm root B",
-      "empty isolated store into root C"
+      "empty isolated store into root C",
+      "simultaneous roots D and E against the populated shared store"
     ],
-    "sizeMethod": "du physical and apparent KiB plus regular-file counts; the two-isolated-root comparator is twice the measured one-root isolated baseline",
-    "ciRun": "https://github.com/overengineeringstudio/effect-utils/actions/runs/29647498209"
+    "sizeMethod": "du allocated-block and apparent KiB plus regular-file counts; physicalKiB is an allocated-block comparator, not APFS unique-extent accounting; the two-isolated-root comparator is twice the measured one-root isolated baseline"
+  },
+  "hostLifecycleCapability": {
+    "harness": {
+      "path": "context/dependency-materialization/07-verification/evidence/measure-prune-capability.sh",
+      "sha256": "38aad0cb8037a226e5c5d5d0fbc28233229476f8c44f09fd2ee013e74cf427ca"
+    },
+    "hosts": {
+      "dev3": {
+        "rawArtifact": "prune-capability-dev3.jsonl",
+        "sha256": "f39e72e1ca6e75e50872cedb20945132ff4c628bff40490ac6a544dd09d5d840",
+        "rootNlink": 2,
+        "liveRootSurvivedPrune": true,
+        "removedRootCacheEvicted": true,
+        "destructivePruneSafe": true
+      },
+      "dev4": {
+        "rawArtifact": "prune-capability-dev4.jsonl",
+        "sha256": "1678468eba2d56fbd901adcb040378adf9e051516b1f2e0785b42bf700ae9b6d",
+        "rootNlink": 2,
+        "liveRootSurvivedPrune": true,
+        "removedRootCacheEvicted": true,
+        "destructivePruneSafe": true
+      }
+    }
   },
   "platforms": [
     {
@@ -46,62 +83,75 @@
       },
       "phaseMatrix": {
         "coldSharedRootA": {
-          "durationMs": 11061,
+          "durationMs": 11459,
           "reused": 12,
           "downloaded": 600,
           "rootNodeModules": {
-            "physicalKiB": 1072336,
+            "physicalKiB": 1072348,
             "apparentKiB": 927138,
             "files": 49833
           },
           "store": {
-            "physicalKiB": 1026628,
-            "apparentKiB": 907358,
+            "physicalKiB": 1026652,
+            "apparentKiB": 907342,
             "files": 40237
           }
         },
         "secondSharedRootB": {
-          "durationMs": 2054,
+          "durationMs": 1718,
           "reused": 612,
           "downloaded": 0
         },
         "warmSharedRootB": {
-          "durationMs": 974,
+          "durationMs": 1038,
           "reused": 12,
           "downloaded": 0
         },
         "isolatedRootC": {
-          "durationMs": 11087,
+          "durationMs": 9545,
           "reused": 12,
           "downloaded": 600,
           "combinedStoreAndRoot": {
-            "physicalKiB": 1175360,
-            "apparentKiB": 1017594,
+            "physicalKiB": 1175504,
+            "apparentKiB": 1017574,
             "files": 90070
+          }
+        },
+        "concurrentRootsDAndE": {
+          "durationMs": 2513,
+          "rootDDurationMs": 1774,
+          "rootEDurationMs": 1758,
+          "eachReused": 612,
+          "eachDownloaded": 0,
+          "combinedStoreAndRoots": {
+            "physicalKiB": 1324520,
+            "apparentKiB": 1127822,
+            "files": 139903
           }
         }
       },
       "twoRootComparison": {
         "sharedMeasured": {
-          "physicalKiB": 1324292,
-          "apparentKiB": 1127838,
+          "physicalKiB": 1324248,
+          "apparentKiB": 1127822,
           "files": 139903
         },
         "isolatedComparator": {
-          "physicalKiB": 2350720,
-          "apparentKiB": 2035188,
+          "physicalKiB": 2351008,
+          "apparentKiB": 2035148,
           "files": 180140
         },
         "improvementPercent": {
           "physicalKiB": 43.7,
           "apparentKiB": 44.6,
           "files": 22.3,
-          "secondRootDuration": 81.5
+          "secondRootDuration": 82.0
         }
       },
       "correctness": {
         "distinctVirtualStores": true,
-        "lifecycleScriptsRan": 0
+        "concurrentRoots": 2,
+        "ignoreScriptsConfigured": true
       }
     },
     {
@@ -114,68 +164,82 @@
       },
       "phaseMatrix": {
         "coldSharedRootA": {
-          "durationMs": 11394,
+          "durationMs": 11610,
           "reused": 12,
           "downloaded": 600,
           "teardownExit": 134,
           "completedMaterializationEvidence": true,
           "rootNodeModules": {
-            "physicalKiB": 1161628,
-            "apparentKiB": 1020887,
-            "files": 52174
+            "physicalKiB": 1141552,
+            "apparentKiB": 1005795,
+            "files": 49833
           },
           "store": {
-            "physicalKiB": 1025708,
-            "apparentKiB": 916032,
+            "physicalKiB": 1026208,
+            "apparentKiB": 916165,
             "files": 40239
           }
         },
         "secondSharedRootB": {
-          "durationMs": 3988,
+          "durationMs": 3361,
           "reused": 612,
           "downloaded": 0,
           "teardownExit": 0
         },
         "warmSharedRootB": {
-          "durationMs": 1175,
+          "durationMs": 707,
           "reused": 12,
           "downloaded": 0,
           "teardownExit": 134,
           "completedMaterializationEvidence": true
         },
         "isolatedRootC": {
-          "durationMs": 9310,
+          "durationMs": 8968,
           "reused": 12,
           "downloaded": 600,
-          "teardownExit": 0,
+          "teardownExit": 134,
+          "completedMaterializationEvidence": true,
           "combinedStoreAndRoot": {
-            "physicalKiB": 2178412,
-            "apparentKiB": 1928240,
-            "files": 92411
+            "physicalKiB": 2167976,
+            "apparentKiB": 1921975,
+            "files": 90072
+          }
+        },
+        "concurrentRootsDAndE": {
+          "durationMs": 10305,
+          "rootDDurationMs": 8455,
+          "rootEDurationMs": 8459,
+          "eachReused": 612,
+          "eachDownloaded": 0,
+          "combinedStoreAndRoots": {
+            "physicalKiB": 3299872,
+            "apparentKiB": 2918927,
+            "files": 139903
           }
         }
       },
       "twoRootComparison": {
         "sharedMeasured": {
-          "physicalKiB": 3340052,
-          "apparentKiB": 2949139,
-          "files": 144585
+          "physicalKiB": 3299872,
+          "apparentKiB": 2918927,
+          "files": 139903
         },
         "isolatedComparator": {
-          "physicalKiB": 4356824,
-          "apparentKiB": 3856480,
-          "files": 184822
+          "physicalKiB": 4335952,
+          "apparentKiB": 3843950,
+          "files": 180144
         },
         "improvementPercent": {
-          "physicalKiB": 23.3,
-          "apparentKiB": 23.5,
-          "files": 21.8,
-          "secondRootDuration": 57.2
+          "physicalKiB": 23.9,
+          "apparentKiB": 24.1,
+          "files": 22.3,
+          "secondRootDuration": 62.5
         }
       },
       "correctness": {
         "distinctVirtualStores": true,
-        "lifecycleScriptsRan": 0,
+        "concurrentRoots": 2,
+        "ignoreScriptsConfigured": true,
         "sigkill137Accepted": false
       }
     }

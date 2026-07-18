@@ -86,9 +86,13 @@ counts, not only timing.
 
 The current package-store default-gate evidence is recorded in
 [`evidence/storage-sharing-default-v2.json`](./evidence/storage-sharing-default-v2.json).
-It records separate real-workload Linux/ext4 and Darwin/APFS phase matrices.
-Results remain platform-specific: neither platform's timing, allocation, or
-effective import behavior may be generalized to another filesystem.
+It is machine-validated against committed raw JSONL records and records
+separate real-workload Linux/ext4 and Darwin/APFS cold, warm, isolated,
+second-root, and concurrent phase matrices. The same evidence bundle carries
+per-host hardlink/prune capability records for hosts that enable destructive
+maintenance. Results remain platform- and host-specific: neither platform's
+timing, allocation, effective import behavior, nor prune safety may be
+generalized to another filesystem or host.
 
 ## Evidence Intake And Graduation
 
