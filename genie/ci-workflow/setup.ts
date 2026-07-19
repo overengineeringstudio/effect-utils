@@ -550,29 +550,38 @@ export const saveNixCacheStep = (opts?: { restoreStepId?: string; path?: string 
 /**
  * Shared pnpm-state cache contract version.
  *
- * Restore and save both key off this one constant so a bump lands atomically
- * across the stack. Bumping it forces a one-time cold rebuild for every
- * consumer, so treat a change as a coordinated stack-wide event.
+ * Composed into every pnpm-state key as `${keyPrefix}-${version}-...`, so one
+ * bump here flips the cold-rebuild for the whole stack at once while each repo
+ * keeps its own `keyPrefix` namespace (e.g. `livestore-pnpm-state`). Bumping
+ * forces a one-time cold rebuild for every consumer, so treat a change as a
+ * coordinated stack-wide event.
  */
-export const pnpmStateCacheKeyPrefix = 'pnpm-state-v2'
+export const pnpmStateCacheVersion = 'v2'
+
+/** Default pnpm-state key namespace when a repo does not set its own. */
+export const defaultPnpmStateKeyPrefix = 'pnpm-state'
 
 const pnpmStateCachePrimaryKey = (keyPrefix: string) =>
-  `${keyPrefix}-${'${{ runner.os }}'}-${'${{ runner.arch }}'}-${"${{ hashFiles('**/pnpm-lock.yaml') }}"}`
+  `${keyPrefix}-${pnpmStateCacheVersion}-${'${{ runner.os }}'}-${'${{ runner.arch }}'}-${"${{ hashFiles('**/pnpm-lock.yaml') }}"}`
 
 /**
- * Restore the job-local pnpm state snapshot before any install work runs.
+ * Restore the workspace-local pnpm state snapshot before any install work runs.
  *
  * Live pnpm state must use exact-key semantics. Prefix fallback restore keys
  * are not part of the supported contract for mutable pnpm state because they
  * blur the authority boundary between the current lockfile graph and older
  * warmed state.
+ *
+ * Order this AFTER checkout: the workspace-relative store (`.pnpm-store` /
+ * `.pnpm-home`) is gitignored, so a restore placed before checkout would be
+ * wiped by checkout's clean.
  */
 export const restorePnpmStateStep = (opts?: {
   keyPrefix?: string
   stepId?: string
   path?: string
 }) => {
-  const keyPrefix = opts?.keyPrefix ?? pnpmStateCacheKeyPrefix
+  const keyPrefix = opts?.keyPrefix ?? defaultPnpmStateKeyPrefix
   const path = opts?.path ?? workspaceLocalPnpmStatePaths
 
   return {
@@ -599,7 +608,7 @@ export const savePnpmStateStep = (opts?: {
   restoreStepId?: string
   path?: string
 }) => {
-  const keyPrefix = opts?.keyPrefix ?? pnpmStateCacheKeyPrefix
+  const keyPrefix = opts?.keyPrefix ?? defaultPnpmStateKeyPrefix
   const restoreStepId = opts?.restoreStepId ?? 'restore-pnpm-state'
   const path = opts?.path ?? workspaceLocalPnpmStatePaths
 
@@ -662,6 +671,10 @@ export const standardSelfHostedPnpmCiPostSteps = (opts?: {
    * name its ONE canonical-install publisher; every other job restores only.
    * Forgetting to name a publisher degrades to cold installs (slower CI), never
    * to the concurrent multi-writer saves that exhaust self-hosted runner disk.
+   *
+   * Matrix / multi-lockfile-graph repos may designate several publishers (one
+   * per closure) by setting this on each such job; the default single-publisher
+   * shape targets the self-hosted disk-risk tier without a second code path.
    */
   savePnpmState?: boolean
   savePnpmStateOptions?: Parameters<typeof savePnpmStateStep>[0]
