@@ -24,7 +24,7 @@ repair, or machine-specific Store Cache placement.
 | Benchmark evidence | DMP.STORE-R13, DMP.STORE-R14                               |
 | Host lifecycle     | DMP.STORE-R15                                              |
 | Legacy migration   | DMP.STORE-R16                                              |
-| Optimization order | DMP.STORE-R03, DMP.STORE-R09, DMP.STORE-R14               |
+| Optimization order | DMP.STORE-R03, DMP.STORE-R09, DMP.STORE-R14                |
 
 ## Ownership Model
 

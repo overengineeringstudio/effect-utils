@@ -140,17 +140,17 @@ declared dependency inputs + Materialization Root
 
 The weight-bearing relations are:
 
-| Subject                 | Relation    | Object                               |
-| ----------------------- | ----------- | ------------------------------------ |
-| Package Instance        | `partOf`    | Dependency Graph                     |
-| Dependency Edge         | `partOf`    | Dependency Graph                     |
-| Materialization Profile | `describes` | equivalent immutable dependency work |
-| Dependency Graph        | `partOf`    | Materialization Root                 |
-| Dependency Graph        | `dependsOn` | Authoritative Materializer           |
-| Projection State        | `dependsOn` | Dependency Graph                     |
-| Materialization Root    | `dependsOn` | Store Cache                          |
-| Repair                  | `dependsOn` | Authoritative Materializer           |
-| Content-addressed Package Data | `partOf` | Store Cache                       |
+| Subject                        | Relation    | Object                               |
+| ------------------------------ | ----------- | ------------------------------------ |
+| Package Instance               | `partOf`    | Dependency Graph                     |
+| Dependency Edge                | `partOf`    | Dependency Graph                     |
+| Materialization Profile        | `describes` | equivalent immutable dependency work |
+| Dependency Graph               | `partOf`    | Materialization Root                 |
+| Dependency Graph               | `dependsOn` | Authoritative Materializer           |
+| Projection State               | `dependsOn` | Dependency Graph                     |
+| Materialization Root           | `dependsOn` | Store Cache                          |
+| Repair                         | `dependsOn` | Authoritative Materializer           |
+| Content-addressed Package Data | `partOf`    | Store Cache                          |
 
 Store placement is a facet of a realization: local development may use a
 host-scoped cache, CI may use a job-scoped cache, and Nix prepared dependencies

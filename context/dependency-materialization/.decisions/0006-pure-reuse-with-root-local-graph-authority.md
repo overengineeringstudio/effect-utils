@@ -35,13 +35,13 @@ does not present root-local rematerialization as the long-term ideal.
 
 ## Options
 
-| Option | Tradeoffs |
-| --- | --- |
-| A. Shared Store Cache with root-local virtual topology | Maximizes proven package-data reuse while keeping graph mutation and repair independently bounded; repeats some topology materialization. |
-| B. Shared Store Cache with one shared GVS | May reuse more topology work, but shares writable graph realization and expands one-root repair/fault scope. |
-| C. Shared Store Cache with GVS partitioned by declared graph identity | Narrows coupling relative to B but still shares mutable topology within a partition and adds lifecycle complexity. |
-| D. Fully isolated stores and topology | Simplest isolation, but discards large proven byte/file-count and second-root reuse gains. |
-| E. Hermetic Dependency Artifact | Reuses content and topology by complete declared-input identity with immutable, atomic results; requires a producer, compatibility projection, ownership, and GC contract not exposed by current live pnpm. |
+| Option                                                                | Tradeoffs                                                                                                                                                                                                   |
+| --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A. Shared Store Cache with root-local virtual topology                | Maximizes proven package-data reuse while keeping graph mutation and repair independently bounded; repeats some topology materialization.                                                                   |
+| B. Shared Store Cache with one shared GVS                             | May reuse more topology work, but shares writable graph realization and expands one-root repair/fault scope.                                                                                                |
+| C. Shared Store Cache with GVS partitioned by declared graph identity | Narrows coupling relative to B but still shares mutable topology within a partition and adds lifecycle complexity.                                                                                          |
+| D. Fully isolated stores and topology                                 | Simplest isolation, but discards large proven byte/file-count and second-root reuse gains.                                                                                                                  |
+| E. Hermetic Dependency Artifact                                       | Reuses content and topology by complete declared-input identity with immutable, atomic results; requires a producer, compatibility projection, ownership, and GC contract not exposed by current live pnpm. |
 
 ## Decision
 

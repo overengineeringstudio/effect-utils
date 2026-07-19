@@ -22,11 +22,11 @@ nodes refine each realization.
 
 ## Options
 
-| Option | Tradeoffs |
-| --- | --- |
-| effect-utils owns reusable DMP intent | Co-locates contract and implementation; downstream fleet docs must reference rather than restate it. |
-| dotfiles owns DMP intent | Keeps the original research location but makes private orchestration authoritative for reusable tooling. |
-| duplicate synchronized VRS roots | Local convenience at the cost of inevitable drift and ambiguous authority. |
+| Option                                | Tradeoffs                                                                                                |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| effect-utils owns reusable DMP intent | Co-locates contract and implementation; downstream fleet docs must reference rather than restate it.     |
+| dotfiles owns DMP intent              | Keeps the original research location but makes private orchestration authoritative for reusable tooling. |
+| duplicate synchronized VRS roots      | Local convenience at the cost of inevitable drift and ambiguous authority.                               |
 
 ## Decision
 

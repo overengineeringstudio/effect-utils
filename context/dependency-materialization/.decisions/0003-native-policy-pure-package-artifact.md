@@ -19,11 +19,11 @@ realization: Nix fixed-output prepared dependencies.
 
 ## Options
 
-| Option | Tradeoffs |
-| --- | --- |
-| `pure-package-artifact` | Names the cross-realization property; requires specs to state each concrete proof. |
-| `fod-accepted-prebuilt` | Mechanically precise today but leaks Nix FOD realization into the public ontology. |
-| one generic native exception | Simpler vocabulary but erases the purity/build distinction. |
+| Option                       | Tradeoffs                                                                          |
+| ---------------------------- | ---------------------------------------------------------------------------------- |
+| `pure-package-artifact`      | Names the cross-realization property; requires specs to state each concrete proof. |
+| `fod-accepted-prebuilt`      | Mechanically precise today but leaks Nix FOD realization into the public ontology. |
+| one generic native exception | Simpler vocabulary but erases the purity/build distinction.                        |
 
 ## Decision
 

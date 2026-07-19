@@ -19,11 +19,11 @@ install root, and the profile identity already available through evaluation.
 
 ## Options
 
-| Option | Tradeoffs |
-| --- | --- |
-| evaluated repair metadata plus run evidence | One committed authority with operational measurement kept truthful. |
-| per-target witness files | Easy source review but duplicates Nix metadata and drifts. |
-| source parsing only | Avoids a producer contract but is brittle and loses evaluated identity. |
+| Option                                      | Tradeoffs                                                               |
+| ------------------------------------------- | ----------------------------------------------------------------------- |
+| evaluated repair metadata plus run evidence | One committed authority with operational measurement kept truthful.     |
+| per-target witness files                    | Easy source review but duplicates Nix metadata and drifts.              |
+| source parsing only                         | Avoids a producer contract but is brittle and loses evaluated identity. |
 
 ## Decision
 

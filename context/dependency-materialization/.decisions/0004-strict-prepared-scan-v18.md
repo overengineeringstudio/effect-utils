@@ -21,11 +21,11 @@ transition necessarily creates fixed-output hash churn.
 
 ## Options
 
-| Option | Tradeoffs |
-| --- | --- |
-| one strict v18 boundary | Converges immediately with mechanical hash churn. |
-| report-only transition | Reduces initial disruption but permits known-impure artifacts indefinitely. |
-| parallel strict/legacy profiles | Supports gradual adoption but doubles policy and hash authority. |
+| Option                          | Tradeoffs                                                                   |
+| ------------------------------- | --------------------------------------------------------------------------- |
+| one strict v18 boundary         | Converges immediately with mechanical hash churn.                           |
+| report-only transition          | Reduces initial disruption but permits known-impure artifacts indefinitely. |
+| parallel strict/legacy profiles | Supports gradual adoption but doubles policy and hash authority.            |
 
 ## Decision
 

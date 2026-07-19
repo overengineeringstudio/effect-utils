@@ -21,11 +21,11 @@ of the trust boundary.
 
 ## Options
 
-| Option | Tradeoffs |
-| --- | --- |
-| effect-utils pure projector | Stable lifecycle-free authority with explicit compatibility responsibility. |
+| Option                           | Tradeoffs                                                                       |
+| -------------------------------- | ------------------------------------------------------------------------------- |
+| effect-utils pure projector      | Stable lifecycle-free authority with explicit compatibility responsibility.     |
 | pnpm linker as runtime authority | Maximum upstream behavior reuse but imports unstable internal/runtime coupling. |
-| lifecycle-generated bins | Delegates behavior but violates the purity boundary. |
+| lifecycle-generated bins         | Delegates behavior but violates the purity boundary.                            |
 
 ## Decision
 

@@ -45,7 +45,7 @@ its named live profiles, shared-files registry, and coordinated all-root repair.
 | ------------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
 | Shared-store prune  | Profile-local prune can delete files required by sibling roots sharing `v11/files`.                                   | store authority and verification     |
 | Store status limits | `pnpm store status` can report clean after sibling prune even though offline reinstall fails.                         | store authority health checks        |
-| Doctor/repair       | Historical split-files repair model used registry-backed all-root repair; current whole-cache repair supersedes it. | store authority and live pnpm repair |
+| Doctor/repair       | Historical split-files repair model used registry-backed all-root repair; current whole-cache repair supersedes it.   | store authority and live pnpm repair |
 | Store traits        | Shared/split stores preserve large host-wide byte and file-count wins over isolated stores.                           | verification benchmark matrix        |
 | CI isolation        | Job-local pnpm stores avoid sibling corruption and stay the CI default.                                               | store trait contract                 |
 | Low disk            | Broad proofs must fail before mutation and emit machine-readable skip evidence.                                       | verification skip records            |
