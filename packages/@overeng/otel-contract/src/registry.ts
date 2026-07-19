@@ -106,6 +106,15 @@ export type AttrDef = {
   readonly deprecated?: Deprecated
   readonly policy?: { readonly cardinality?: Cardinality; readonly encode?: Encode }
   readonly bridge?: Bridge
+  /**
+   * Per-entry catalog metadata carried for downstream consumers (mirror-elimination). All
+   * additive/optional: `owner` (team/person accountable), `source` (originating file/system),
+   * `constName` (override for the derived generated const name — genie otherwise derives
+   * `pascal(id)`; supply only to override that default).
+   */
+  readonly owner?: string
+  readonly source?: string
+  readonly constName?: string
 }
 
 /** A signal reference to a catalog attribute + its requirement level. */
@@ -121,9 +130,21 @@ export type SpanKind = 'internal' | 'client' | 'server' | 'producer' | 'consumer
 /** OpenTelemetry metric instrument kind. */
 export type Instrument = 'counter' | 'updowncounter' | 'gauge' | 'histogram'
 
+/**
+ * Per-entry signal metadata carried for downstream consumers (mirror-elimination). All
+ * additive/optional: `owner` (team/person accountable), `source` (originating file/system),
+ * `constName` (override for the derived generated const name — genie otherwise derives
+ * `SPAN_${namePascal(name)}` / `METRIC_${namePascal(name)}`; supply only to override).
+ */
+type SignalMeta = {
+  readonly owner?: string
+  readonly source?: string
+  readonly constName?: string
+}
+
 /** A span or metric signal group (references the catalog). */
 export type SignalDef =
-  | {
+  | ({
       readonly kind: 'span'
       readonly id: string
       /**
@@ -137,8 +158,8 @@ export type SignalDef =
       readonly stability: Stability
       readonly deprecated?: Deprecated
       readonly attributes: ReadonlyArray<AttrRef>
-    }
-  | {
+    } & SignalMeta)
+  | ({
       readonly kind: 'metric'
       readonly id: string
       readonly metric_name: string
@@ -148,7 +169,7 @@ export type SignalDef =
       readonly stability: Stability
       readonly deprecated?: Deprecated
       readonly attributes: ReadonlyArray<AttrRef>
-    }
+    } & SignalMeta)
 
 /** One member’s registry slice (mirrors genie Layer-1 `RegistryFragment`). */
 export type RegistryFragment = {
@@ -217,6 +238,10 @@ export type WeaverAttrMeta = {
   readonly note?: string
   readonly deprecated?: Deprecated
   readonly bridge?: Bridge
+  /** Per-entry catalog metadata (see {@link AttrDef}); additive/optional. */
+  readonly owner?: string
+  readonly source?: string
+  readonly constName?: string
 }
 
 /**
@@ -232,6 +257,9 @@ type WeaverAttrMetaInput = {
   readonly note?: string | undefined
   readonly deprecated?: Deprecated | undefined
   readonly bridge?: Bridge | undefined
+  readonly owner?: string | undefined
+  readonly source?: string | undefined
+  readonly constName?: string | undefined
 }
 
 /** deep annotation read (mirrors otel-contract's own walk through Refinement/Transformation/Union). */
@@ -271,17 +299,43 @@ const keyOf = (schema: Attribute): string => {
 // attr.* — attribute builders. Return REAL annotated Effect Schemas.
 // ---------------------------------------------------------------------------
 
+/**
+ * Per-entry metadata accepted by every `attr.*` / signal builder. All optional/additive:
+ * `owner`/`source`/`constName` (see {@link AttrDef}). Contract-level `owner`/`source` defaults
+ * (via `defineOtelContract`) fill entries that omit them.
+ */
+export type EntryMetaInput = {
+  readonly owner?: string
+  readonly source?: string
+  readonly constName?: string
+}
+
+/**
+ * Thread the optional per-entry metadata onto a weaver meta record. The return allows explicit
+ * `| undefined` (mirroring {@link WeaverAttrMetaInput}) so it composes under
+ * `exactOptionalPropertyTypes`; `toAttrDef` strips the undefineds when projecting.
+ */
+const entryMeta = (
+  o: EntryMetaInput,
+): {
+  readonly owner?: string | undefined
+  readonly source?: string | undefined
+  readonly constName?: string | undefined
+} => ({ owner: o.owner, source: o.source, constName: o.constName })
+
 /** Attribute builders. Each returns a REAL annotated Effect Schema (otel + weaver metadata). */
 export const attr = {
-  string: (o: {
-    key: string
-    cardinality: Cardinality
-    brief: string
-    stability: Stability
-    examples: ReadonlyArray<string>
-    note?: string
-    deprecated?: Deprecated
-  }) =>
+  string: (
+    o: {
+      key: string
+      cardinality: Cardinality
+      brief: string
+      stability: Stability
+      examples: ReadonlyArray<string>
+      note?: string
+      deprecated?: Deprecated
+    } & EntryMetaInput,
+  ) =>
     annotateWeaver({
       schema: OtelAttr.string({ key: o.key, metadata: { cardinality: o.cardinality } }),
       meta: {
@@ -291,18 +345,21 @@ export const attr = {
         examples: o.examples,
         note: o.note,
         deprecated: o.deprecated,
+        ...entryMeta(o),
       },
     }),
 
-  number: (o: {
-    key: string
-    weaverType?: 'int' | 'double'
-    cardinality?: Cardinality
-    brief: string
-    stability: Stability
-    examples?: ReadonlyArray<number>
-    note?: string
-  }) =>
+  number: (
+    o: {
+      key: string
+      weaverType?: 'int' | 'double'
+      cardinality?: Cardinality
+      brief: string
+      stability: Stability
+      examples?: ReadonlyArray<number>
+      note?: string
+    } & EntryMetaInput,
+  ) =>
     annotateWeaver({
       schema: OtelAttr.number({
         key: o.key,
@@ -314,24 +371,35 @@ export const attr = {
         weaverType: o.weaverType ?? 'double',
         examples: o.examples,
         note: o.note,
+        ...entryMeta(o),
       },
     }),
 
-  boolean: (o: { key: string; brief: string; stability: Stability; note?: string }) =>
+  boolean: (
+    o: { key: string; brief: string; stability: Stability; note?: string } & EntryMetaInput,
+  ) =>
     annotateWeaver({
       schema: OtelAttr.boolean({ key: o.key }),
-      meta: { brief: o.brief, stability: o.stability, weaverType: 'boolean', note: o.note },
+      meta: {
+        brief: o.brief,
+        stability: o.stability,
+        weaverType: 'boolean',
+        note: o.note,
+        ...entryMeta(o),
+      },
     }),
 
-  enum: <const V extends readonly [string, ...string[]]>(o: {
-    key: string
-    values: V
-    briefs: Record<V[number], string>
-    brief: string
-    stability: Stability
-    note?: string
-    deprecated?: Deprecated
-  }) =>
+  enum: <const V extends readonly [string, ...string[]]>(
+    o: {
+      key: string
+      values: V
+      briefs: Record<V[number], string>
+      brief: string
+      stability: Stability
+      note?: string
+      deprecated?: Deprecated
+    } & EntryMetaInput,
+  ) =>
     annotateWeaver({
       schema: OtelAttr.literal(o.key, ...o.values) as unknown as Schema.Schema<V[number]>,
       meta: {
@@ -348,6 +416,7 @@ export const attr = {
         },
         note: o.note,
         deprecated: o.deprecated,
+        ...entryMeta(o),
       },
     }),
 
@@ -356,15 +425,17 @@ export const attr = {
    * schema underneath is a plain string; the weaver type is carried explicitly because it cannot
    * be reconstructed from the AST.
    */
-  template: (o: {
-    key: string
-    templateType: 'string' | 'string[]' | 'int' | 'boolean'
-    cardinality: Cardinality
-    brief: string
-    stability: Stability
-    examples?: ReadonlyArray<string>
-    note?: string
-  }) =>
+  template: (
+    o: {
+      key: string
+      templateType: 'string' | 'string[]' | 'int' | 'boolean'
+      cardinality: Cardinality
+      brief: string
+      stability: Stability
+      examples?: ReadonlyArray<string>
+      note?: string
+    } & EntryMetaInput,
+  ) =>
     annotateWeaver({
       schema: OtelAttr.string({ key: o.key, metadata: { cardinality: o.cardinality } }),
       meta: {
@@ -373,6 +444,7 @@ export const attr = {
         weaverType: `template[${o.templateType}]` as WeaverType,
         examples: o.examples,
         note: o.note,
+        ...entryMeta(o),
       },
     }),
 } as const
@@ -477,6 +549,13 @@ const structOf = (fields: Record<string, Schema.Struct.Field>): Schema.Schema.An
 // span / metric / operation — compose refs, derive the runtime encoder + weaver signal.
 // ---------------------------------------------------------------------------
 
+/** Conditional-spread the per-entry metadata onto a `SignalDef` (keeps `undefined` keys off). */
+const signalMetaSpread = (o: EntryMetaInput): SignalMeta => ({
+  ...(o.owner !== undefined ? { owner: o.owner } : {}),
+  ...(o.source !== undefined ? { source: o.source } : {}),
+  ...(o.constName !== undefined ? { constName: o.constName } : {}),
+})
+
 /** A span contract: derived encoder + weaver signal projection. */
 export type SpanContract = {
   readonly kind: 'span'
@@ -492,14 +571,16 @@ export type SpanContract = {
  * `OtelAttrs.defineSync` (the same field plan `OtelSpan.define` would compile) and `span.label`
  * stays runtime-only, filtered from the registry projection.
  */
-export const span = (o: {
-  id: string
-  kind: SpanKind
-  brief: string
-  stability: Stability
-  deprecated?: Deprecated
-  attributes: Record<string, FieldSpec>
-}): SpanContract => {
+export const span = (
+  o: {
+    id: string
+    kind: SpanKind
+    brief: string
+    stability: Stability
+    deprecated?: Deprecated
+    attributes: Record<string, FieldSpec>
+  } & EntryMetaInput,
+): SpanContract => {
   const { fields, refList, refs } = buildFields(o.attributes)
   const encoder = OtelAttrs.defineSync(structOf(fields))
   return {
@@ -514,6 +595,7 @@ export const span = (o: {
       brief: o.brief,
       stability: o.stability,
       ...(o.deprecated !== undefined ? { deprecated: o.deprecated } : {}),
+      ...signalMetaSpread(o),
       attributes: refList,
     }),
   }
@@ -534,17 +616,19 @@ export type MetricContract = {
  * same-concept-same-key, namespaced). The metric label `restate.service` IS the catalog entry
  * `restate.service` — no short-key metric namespace.
  */
-export const metric = (o: {
-  id: string
-  name: string
-  instrument: Instrument
-  unit: string
-  brief: string
-  stability: Stability
-  deprecated?: Deprecated
-  boundaries?: ReadonlyArray<number>
-  labels: Record<string, FieldSpec>
-}): MetricContract => {
+export const metric = (
+  o: {
+    id: string
+    name: string
+    instrument: Instrument
+    unit: string
+    brief: string
+    stability: Stability
+    deprecated?: Deprecated
+    boundaries?: ReadonlyArray<number>
+    labels: Record<string, FieldSpec>
+  } & EntryMetaInput,
+): MetricContract => {
   const { fields, refList, refs } = buildFields(o.labels)
   const labelStruct = structOf(fields)
   // `OtelMetric` has no `updowncounter` constructor. Reject at author time rather than silently
@@ -589,6 +673,7 @@ export const metric = (o: {
       brief: o.brief,
       stability: o.stability,
       ...(o.deprecated !== undefined ? { deprecated: o.deprecated } : {}),
+      ...signalMetaSpread(o),
       attributes: refList,
     }),
   }
@@ -611,16 +696,18 @@ export type OperationContract = {
 export const operation = <
   F extends Record<string, FieldSpec>,
   L extends Record<string, Schema.Schema.AnyNoContext>,
->(o: {
-  id: string
-  name: string
-  brief: string
-  stability: Stability
-  span_kind?: SpanKind
-  attributes: F
-  labelFields?: L
-  label: (value: never) => string
-}): OperationContract => {
+>(
+  o: {
+    id: string
+    name: string
+    brief: string
+    stability: Stability
+    span_kind?: SpanKind
+    attributes: F
+    labelFields?: L
+    label: (value: never) => string
+  } & EntryMetaInput,
+): OperationContract => {
   const { fields, refList, refs } = buildFields(o.attributes)
   // runtime-only label-source fields — NOT catalog refs, absent from the registry.
   for (const [field, schema] of Object.entries(o.labelFields ?? {})) {
@@ -643,6 +730,7 @@ export const operation = <
       span_kind: o.span_kind ?? 'internal',
       brief: o.brief,
       stability: o.stability,
+      ...signalMetaSpread(o),
       attributes: refList,
     }),
   }
@@ -662,6 +750,13 @@ export type OtelContract = {
   readonly displayName: string
   readonly signals: ReadonlyArray<Signal>
   readonly docOnlyAttributes: ReadonlyArray<Attribute>
+  /**
+   * Contract-level metadata defaults (mirror-elimination). `owner` is naturally contract-uniform
+   * and `source` is often per-file; both are applied to every projected entry that does NOT carry
+   * its own value (per-entry always wins). Additive/optional.
+   */
+  readonly defaultOwner?: string
+  readonly defaultSource?: string
 }
 
 /** Project one annotated attribute Schema → Layer 1 `AttrDef` (reads AST annotations). */
@@ -687,6 +782,9 @@ export const toAttrDef = (schema: Attribute): AttrDef => {
     ...(weaver.note !== undefined ? { note: weaver.note } : {}),
     ...(weaver.deprecated !== undefined ? { deprecated: weaver.deprecated } : {}),
     ...(weaver.bridge !== undefined ? { bridge: weaver.bridge } : {}),
+    ...(weaver.owner !== undefined ? { owner: weaver.owner } : {}),
+    ...(weaver.source !== undefined ? { source: weaver.source } : {}),
+    ...(weaver.constName !== undefined ? { constName: weaver.constName } : {}),
     policy,
   }
 }
@@ -725,6 +823,9 @@ export const defineOtelContract = (o: {
   displayName: string
   signals: ReadonlyArray<Signal>
   docOnlyAttributes?: ReadonlyArray<Attribute>
+  /** Contract-level metadata defaults; see {@link OtelContract}. Applied in {@link fragment}. */
+  defaultOwner?: string
+  defaultSource?: string
 }): OtelContract => {
   const doc = o.docOnlyAttributes ?? []
   const ownKeys = new Set<string>()
@@ -739,12 +840,36 @@ export const defineOtelContract = (o: {
     displayName: o.displayName,
     signals: o.signals,
     docOnlyAttributes: doc,
+    ...(o.defaultOwner !== undefined ? { defaultOwner: o.defaultOwner } : {}),
+    ...(o.defaultSource !== undefined ? { defaultSource: o.defaultSource } : {}),
   }
 }
 
 // ---------------------------------------------------------------------------
 // The projector (design-time): OtelContract → RegistryFragment.
 // ---------------------------------------------------------------------------
+
+/**
+ * Fill contract-level `owner`/`source` defaults onto a projected entry that omits its own value
+ * (per-entry always wins). Preserves the conditional-spread idiom so no `undefined` key leaks in.
+ */
+const applyMetaDefaults = <T extends { readonly owner?: string; readonly source?: string }>({
+  entry,
+  defaultOwner,
+  defaultSource,
+}: {
+  entry: T
+  defaultOwner: string | undefined
+  defaultSource: string | undefined
+}): T => {
+  const owner = entry.owner ?? defaultOwner
+  const source = entry.source ?? defaultSource
+  return {
+    ...entry,
+    ...(owner !== undefined ? { owner } : {}),
+    ...(source !== undefined ? { source } : {}),
+  }
+}
 
 /** Project a contract to a Layer-1 registry fragment (reads annotations; derives catalog). */
 export const fragment = (contract: OtelContract): RegistryFragment => {
@@ -759,8 +884,10 @@ export const fragment = (contract: OtelContract): RegistryFragment => {
   }
   for (const a of contract.docOnlyAttributes) ownByKey.set(keyOf(a), a)
 
+  const defaults = { defaultOwner: contract.defaultOwner, defaultSource: contract.defaultSource }
   const ownCatalog = [...ownByKey.values()]
     .map(toAttrDef)
+    .map((entry) => applyMetaDefaults({ entry, ...defaults }))
     .toSorted((a, b) => a.id.localeCompare(b.id))
   return {
     namespace: contract.namespace,
@@ -768,6 +895,6 @@ export const fragment = (contract: OtelContract): RegistryFragment => {
     displayName: contract.displayName,
     attributes: ownCatalog,
     foreignRefs: [...foreignRefs].toSorted((a, b) => a.localeCompare(b)),
-    signals: contract.signals.map((s) => s.signal()),
+    signals: contract.signals.map((s) => applyMetaDefaults({ entry: s.signal(), ...defaults })),
   }
 }

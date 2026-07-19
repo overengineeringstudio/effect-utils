@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- **@overeng/otel-contract**: add additive, optional per-entry `owner` / `source` /
+  `constName` metadata to the `./registry` authoring surface (`AttrDef`, `SignalDef`,
+  `WeaverAttrMeta`, every `attr.*` / `span` / `metric` / `operation` builder, plus
+  `toAttrDef` and the `fragment` projection). `defineOtelContract` accepts contract-level
+  `defaultOwner` / `defaultSource` defaults applied to every projected entry that does not
+  override them. `@overeng/genie`'s Layer-1 `AttrDef` / `SignalDef` carry the same additive
+  optional fields so the metadata stays typed through `registryFromMembers` composition into
+  the registry downstream consumers read; the fields are non-normative to weaver (renderers
+  ignore them) so generated YAML/TS/Rust output is unchanged. Fully backward compatible — the
+  projected registry is byte-identical for contracts that set none of the new fields.
+
 - **react-inspector / Effect 4**: align the development dependency and peer
   floor to Effect `4.0.0-beta.99`, anchor injected test helpers to the separate
   Effect 3 catalog, and fail generation if either cohort's exact identity drifts

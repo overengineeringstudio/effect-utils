@@ -92,6 +92,16 @@ export type AttrDef = {
   /** machine-readable policy annotations (non-normative to upstream weaver). */
   readonly policy?: { readonly cardinality?: Cardinality; readonly encode?: Encode }
   readonly bridge?: Bridge
+  /**
+   * Per-entry catalog metadata carried through composition for downstream consumers (telemetry
+   * mirror elimination). All additive/optional and NON-NORMATIVE to weaver — the renderers pick
+   * emitted fields explicitly, so these never enter the generated YAML/TS/Rust. `owner`
+   * (accountable team/person), `source` (originating file/system), `constName` (override for the
+   * derived generated const name). Mirrored by `@overeng/otel-contract` `./registry` Layer 2.
+   */
+  readonly owner?: string
+  readonly source?: string
+  readonly constName?: string
 }
 
 /** A signal's REFERENCE to an attribute defined elsewhere, refining its requirement level. */
@@ -107,9 +117,20 @@ export type SpanKind = 'internal' | 'client' | 'server' | 'producer' | 'consumer
 /** OTel metric instrument for a `metric` signal (weaver `instrument`). */
 export type Instrument = 'counter' | 'updowncounter' | 'gauge' | 'histogram'
 
+/**
+ * Per-entry signal metadata carried through composition for downstream consumers (telemetry mirror
+ * elimination). All additive/optional and NON-NORMATIVE to weaver (renderers ignore them, so they
+ * never enter generated output). Mirrored by `@overeng/otel-contract` `./registry` Layer 2.
+ */
+type SignalMeta = {
+  readonly owner?: string
+  readonly source?: string
+  readonly constName?: string
+}
+
 /** A `span` or `metric` signal definition (a weaver group carrying attribute references). */
 export type SignalDef =
-  | {
+  | ({
       readonly kind: 'span'
       readonly id: string
       /**
@@ -123,8 +144,8 @@ export type SignalDef =
       readonly stability: Stability
       readonly deprecated?: Deprecated
       readonly attributes: ReadonlyArray<AttrRef>
-    }
-  | {
+    } & SignalMeta)
+  | ({
       readonly kind: 'metric'
       readonly id: string
       readonly metric_name: string
@@ -134,7 +155,7 @@ export type SignalDef =
       readonly stability: Stability
       readonly deprecated?: Deprecated
       readonly attributes: ReadonlyArray<AttrRef>
-    }
+    } & SignalMeta)
 
 /** A namespaced cluster of attribute definitions (weaver `attribute_group`). */
 export type AttributeGroup = {
