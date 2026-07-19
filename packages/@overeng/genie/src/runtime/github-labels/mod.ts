@@ -69,18 +69,19 @@ export interface GithubLabelsArgs {
 /**
  * Creates a GitHub labels JSON configuration.
  *
- * Returns a `GenieOutput` whose `.data` is the desired-state record consumed
- * by `mq-cli repo labels`. Compose freely with shared catalog exports (e.g.
- * `commonLabels`, `mqLabels`, `andonLabels` from `effect-utils/genie/external.ts`).
+ * Returns a `GenieOutput` whose `.data` is the desired-state record reconciled
+ * to live GitHub by the `gh:apply-labels` task. Compose freely with shared
+ * catalog exports (e.g. `commonLabels`, `andonLabels` from
+ * `effect-utils/genie/external.ts`).
  *
  * @example
  * ```ts
- * import { githubLabels, commonLabels, mqLabels } from '<effect-utils>/genie/external.ts'
+ * import { githubLabels, commonLabels, andonLabels } from '<effect-utils>/genie/external.ts'
  *
  * export default githubLabels({
  *   labels: [
  *     ...commonLabels,
- *     ...mqLabels,
+ *     ...andonLabels,
  *     { name: 'area:my-thing', description: 'My subsystem', color: '1d76db' },
  *   ],
  *   deprecated: ['bug', 'enhancement', 'documentation'],

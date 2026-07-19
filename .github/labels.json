@@ -106,81 +106,6 @@
       "description": "Temporary PR validates CI measurement/reporting behavior · Set: manual"
     },
     {
-      "name": "mq:agent-active",
-      "color": "0969da",
-      "description": "Hypermerge has dispatched an agent · Set: Hypermerge daemon"
-    },
-    {
-      "name": "mq:blocked",
-      "color": "b60205",
-      "description": "Hypermerge is not currently advancing this PR · Set: Hypermerge daemon"
-    },
-    {
-      "name": "mq:ci-admitted",
-      "color": "1f883d",
-      "description": "Hypermerge admitted this PR to scarce-runner CI · Set: Hypermerge daemon"
-    },
-    {
-      "name": "mq:enrolled",
-      "color": "5319e7",
-      "description": "PR is enrolled in Hypermerge · Set: manual (mirrors GH auto-merge)"
-    },
-    {
-      "name": "mq:merge-held",
-      "color": "bfd4f2",
-      "description": "Hypermerge may prove this PR green but must not merge it · Set: manual"
-    },
-    {
-      "name": "mq:needs-agent",
-      "color": "d93f0b",
-      "description": "Hypermerge needs agentic intervention · Set: Hypermerge daemon"
-    },
-    {
-      "name": "mq:needs-human",
-      "color": "8250df",
-      "description": "Hypermerge needs human review · Set: Hypermerge daemon"
-    },
-    {
-      "name": "mq:priority-0",
-      "color": "0e8a16",
-      "description": "Hypermerge priority mirror · Set: manual (via mq-cli)"
-    },
-    {
-      "name": "mq:priority-1",
-      "color": "0e8a16",
-      "description": "Hypermerge priority mirror · Set: manual (via mq-cli)"
-    },
-    {
-      "name": "mq:priority-10",
-      "color": "0e8a16",
-      "description": "Hypermerge priority mirror · Set: manual (via mq-cli)"
-    },
-    {
-      "name": "mq:priority-100",
-      "color": "0e8a16",
-      "description": "Hypermerge priority mirror · Set: manual (via mq-cli)"
-    },
-    {
-      "name": "mq:priority-20",
-      "color": "0e8a16",
-      "description": "Hypermerge priority mirror · Set: manual (via mq-cli)"
-    },
-    {
-      "name": "mq:priority-30",
-      "color": "0e8a16",
-      "description": "Hypermerge priority mirror · Set: manual (via mq-cli)"
-    },
-    {
-      "name": "mq:queue-head",
-      "color": "fbca04",
-      "description": "Current Hypermerge head for this repository · Set: Hypermerge daemon"
-    },
-    {
-      "name": "mq:status",
-      "color": "5319e7",
-      "description": "Pinned Hypermerge status issue · Set: Hypermerge daemon"
-    },
-    {
       "name": "origin:agent",
       "color": "6f42c1",
       "description": "Filed or primarily produced by an AI agent · Set: AI agent or manual"
@@ -194,6 +119,16 @@
       "name": "state:blocked",
       "color": "6e7781",
       "description": "Blocked on an external dependency or decision · Set: manual"
+    },
+    {
+      "name": "state:declined",
+      "color": "6e7781",
+      "description": "Reviewed and declined; will not be acted on · Set: manual"
+    },
+    {
+      "name": "state:duplicate",
+      "color": "6e7781",
+      "description": "Duplicate of an existing item; tracked elsewhere · Set: manual"
     },
     {
       "name": "state:needs-research",
@@ -388,7 +323,7 @@
     {
       "name": "type:chore",
       "color": "bfd4e2",
-      "description": "Maintenance, cleanup, dependencies, CI, or refactoring · Set: manual"
+      "description": "Maintenance, cleanup, dependencies, or CI · Set: manual"
     },
     {
       "name": "type:docs",
@@ -397,7 +332,7 @@
     },
     {
       "name": "type:epic",
-      "color": "1d76db",
+      "color": "8250df",
       "description": "Large tracking issue with child tasks · Set: manual"
     },
     {
@@ -414,6 +349,16 @@
       "name": "type:rca",
       "color": "5319e7",
       "description": "Root-cause analysis or investigation record · Set: manual"
+    },
+    {
+      "name": "type:refactor",
+      "color": "c5def5",
+      "description": "Behavior-preserving code restructuring · Set: manual"
+    },
+    {
+      "name": "type:task",
+      "color": "bfd4e2",
+      "description": "Scoped implementation/follow-up work (not bug/feature/docs/incident/RCA/epic) · Set: manual"
     }
   ],
   "deprecated": [
@@ -423,6 +368,21 @@
     "duplicate",
     "enhancement",
     "invalid",
+    "mq:agent-active",
+    "mq:blocked",
+    "mq:ci-admitted",
+    "mq:enrolled",
+    "mq:merge-held",
+    "mq:needs-agent",
+    "mq:needs-human",
+    "mq:priority-0",
+    "mq:priority-1",
+    "mq:priority-10",
+    "mq:priority-100",
+    "mq:priority-20",
+    "mq:priority-30",
+    "mq:queue-head",
+    "mq:status",
     "nix-hash",
     "question",
     "wontfix"

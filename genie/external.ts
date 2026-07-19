@@ -218,8 +218,10 @@ export {
   commonLabels,
   deprecatedDefaults,
   legacyMigrations,
-  mqLabels,
+  mqDeprecated,
 } from './labels.ts'
+
+export { deriveSystemLabels, systemLabelColor, type DeriveSystemLabelsArgs } from './system-labels.ts'
 
 /**
  * Catalog versions - single source of truth for dependency versions
