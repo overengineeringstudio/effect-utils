@@ -133,5 +133,5 @@ outcomes:
    obsolete assumption.
 
 Research may be retired once every durable finding has one of those outcomes.
-Historical source links belong in `.research/` or `.experiments/`, not in the
-normative spec.
+Historical source material belongs in `.reference/`; project-generated
+validation evidence belongs in focused `.experiments/` records.
