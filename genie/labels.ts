@@ -2,14 +2,13 @@
  * Shared GitHub label catalog reused across primary megarepo members.
  *
  * Composed by each repo's `.github/labels.json.genie.ts`. Consumers spread the
- * relevant axes (`commonLabels`, `mqLabels`, `andonLabels`) and add their own
- * repo-local `area:*` labels.
+ * relevant axes (`commonLabels`, `andonLabels`) and add their own repo-local
+ * `area:*`/`system:*` labels (see `deriveSystemLabels` in `./system-labels.ts`).
  *
- * Source of truth for `mq:*` colors/descriptions: kept loosely aligned with
- * `flakes/merge-queue/crates/mq-core/src/gh_client.rs` in dotfiles, which is
- * the runtime safety net for lazy label creation. The `devenv tasks run gh:apply-labels`
- * task is the canonical writer; `devenv tasks run gh:check-labels` reports drift without
- * applying.
+ * The merge-queue `mq:*` axis is retired (see `mqDeprecated` below); Hypermerge's
+ * `hy:*` labels live in dotfiles' hypermerge flake (only enrolled repo). The
+ * `devenv tasks run gh:apply-labels` task is the canonical writer;
+ * `devenv tasks run gh:check-labels` reports drift without applying.
  *
  * Every description includes a trailing `· Set: <who>` clause naming the
  * party responsible for applying the label (manual, Hypermerge daemon,
@@ -44,6 +43,10 @@ const colors = {
   grey: 'bfd4e2',
   lightGrey: 'ededed',
   pale: 'bfd4f2',
+  /* Distinct light blue for `type:refactor` so it reads apart from the grey `type:chore` chip. */
+  iceBlue: 'c5def5',
+  /* Pale lavender-grey for `type:task`, distinct from `type:chore` grey and `type:refactor` iceBlue. */
+  dust: 'cdc5e2',
   /* Neutral slate used as the single, axis-consistent color for all `state:*` labels. */
   slate: '6e7781',
 } as const
@@ -54,8 +57,9 @@ const colors = {
 
 const typeLabels: readonly LabelDef[] = [
   {
+    // brightPurple (not brightBlue) so an epic chip is distinct from every `area:*` chip.
     name: 'type:epic',
-    color: colors.brightBlue,
+    color: colors.brightPurple,
     description: 'Large tracking issue with child tasks · Set: manual',
   },
   {
@@ -76,7 +80,20 @@ const typeLabels: readonly LabelDef[] = [
   {
     name: 'type:chore',
     color: colors.grey,
-    description: 'Maintenance, cleanup, dependencies, CI, or refactoring · Set: manual',
+    description: 'Maintenance, cleanup, dependencies, or CI · Set: manual',
+  },
+  {
+    // Behavior-preserving restructuring — a distinct kind of work from `type:chore`
+    // (deps/CI/tooling). Boundary: if runtime behavior is intentionally unchanged, it's refactor.
+    name: 'type:refactor',
+    color: colors.iceBlue,
+    description: 'Behavior-preserving code restructuring · Set: manual',
+  },
+  {
+    name: 'type:task',
+    color: colors.dust,
+    description:
+      'Scoped implementation/follow-up work (not bug/feature/docs/incident/RCA/epic) · Set: manual',
   },
   {
     name: 'type:agent-tooling',
@@ -114,6 +131,16 @@ const stateLabels: readonly LabelDef[] = [
     name: 'state:needs-research',
     color: colors.slate,
     description: 'Needs research / investigation before scope or approach is clear · Set: manual',
+  },
+  {
+    name: 'state:declined',
+    color: colors.slate,
+    description: 'Reviewed and declined; will not be acted on · Set: manual',
+  },
+  {
+    name: 'state:duplicate',
+    color: colors.slate,
+    description: 'Duplicate of an existing item; tracked elsewhere · Set: manual',
   },
 ]
 
@@ -174,6 +201,11 @@ const sharedAreaLabels: readonly LabelDef[] = [
     color: colors.brightBlue,
     description: 'Developer tooling, scripts, and utilities · Set: manual',
   },
+  {
+    name: 'area:megarepo',
+    color: colors.brightBlue,
+    description: 'megarepo CLI and conventions · Set: manual',
+  },
 ]
 
 // ============================================================================
@@ -189,71 +221,38 @@ const sharedAreaLabels: readonly LabelDef[] = [
 // ============================================================================
 
 // ============================================================================
-// mq:* — Hypermerge / merge-queue lifecycle labels
-//   Must stay loosely aligned with mq_label_color / mq_label_description in
-//   dotfiles/flakes/merge-queue/crates/mq-core/src/gh_client.rs.
+// mq:* — RETIRED merge-queue labels (cleanup only)
+//   The merge-queue runtime that owned these (`flakes/merge-queue/crates/mq-core`)
+//   is deleted; its successor Hypermerge uses `hy:req/*` + `hy:state/*` (defined in
+//   dotfiles' hypermerge flake) and deprecates every `mq:*`. No runtime acts on
+//   `mq:*` anymore, so the catalog no longer *provisions* them — it only exports
+//   their names as `mqDeprecated` so each repo can DELETE the vestigial live labels
+//   by composing them into its `deprecated` list. Do not re-add `mqLabels`.
 // ============================================================================
 
-const mqStaticLabels: readonly LabelDef[] = [
-  {
-    name: 'mq:enrolled',
-    color: colors.purple,
-    description: 'PR is enrolled in Hypermerge · Set: manual (mirrors GH auto-merge)',
-  },
-  {
-    name: 'mq:merge-held',
-    color: colors.pale,
-    description: 'Hypermerge may prove this PR green but must not merge it · Set: manual',
-  },
-  {
-    name: 'mq:blocked',
-    color: colors.red,
-    description: 'Hypermerge is not currently advancing this PR · Set: Hypermerge daemon',
-  },
-  {
-    name: 'mq:needs-agent',
-    color: colors.orange,
-    description: 'Hypermerge needs agentic intervention · Set: Hypermerge daemon',
-  },
-  {
-    name: 'mq:agent-active',
-    color: colors.blue,
-    description: 'Hypermerge has dispatched an agent · Set: Hypermerge daemon',
-  },
-  {
-    name: 'mq:needs-human',
-    color: colors.brightPurple,
-    description: 'Hypermerge needs human review · Set: Hypermerge daemon',
-  },
-  {
-    name: 'mq:ci-admitted',
-    color: colors.brightGreen,
-    description: 'Hypermerge admitted this PR to scarce-runner CI · Set: Hypermerge daemon',
-  },
-  {
-    name: 'mq:queue-head',
-    color: colors.yellow,
-    description: 'Current Hypermerge head for this repository · Set: Hypermerge daemon',
-  },
-  {
-    name: 'mq:status',
-    color: colors.purple,
-    description: 'Pinned Hypermerge status issue · Set: Hypermerge daemon',
-  },
+const mqPriorityLevels = [0, 1, 10, 20, 30, 100] as const
+
+/** Every `mq:*` label name, for repos cleaning up the retired merge-queue labels. */
+export const mqDeprecated: readonly string[] = [
+  'mq:enrolled',
+  'mq:merge-held',
+  'mq:blocked',
+  'mq:needs-agent',
+  'mq:agent-active',
+  'mq:needs-human',
+  'mq:ci-admitted',
+  'mq:queue-head',
+  'mq:status',
+  ...mqPriorityLevels.map((n) => `mq:priority-${n}`),
 ]
 
 /**
- * Canonical priority levels mirrored by Hypermerge. The runtime can create
- * additional `mq:priority-N` labels on demand (lazy `ensure_repo_label`); the
- * set below is what gets pre-created so triage UIs show consistent options.
+ * @deprecated The `mq:*` axis is retired — no labels are provisioned anymore. This is
+ * kept as an empty array purely so existing `...mqLabels` spreads / `mqLabels.map(...)`
+ * in consumer repos keep evaluating (non-breaking) until they migrate to `mqDeprecated`.
+ * Remove once no consumer references it.
  */
-const mqPriorityLevels = [0, 1, 10, 20, 30, 100] as const
-
-const mqPriorityLabels: readonly LabelDef[] = mqPriorityLevels.map((n) => ({
-  name: `mq:priority-${n}`,
-  color: colors.green,
-  description: 'Hypermerge priority mirror · Set: manual (via mq-cli)',
-}))
+export const mqLabels: readonly LabelDef[] = []
 
 // ============================================================================
 // andon:* — cross-machine incident states (see /sk-andon)
@@ -299,9 +298,6 @@ export const commonLabels: readonly LabelDef[] = [
   ...originLabels,
   ...sharedAreaLabels,
 ]
-
-/** Hypermerge merge-queue labels including the canonical priority levels. */
-export const mqLabels: readonly LabelDef[] = [...mqStaticLabels, ...mqPriorityLabels]
 
 /** Andon cross-machine incident state labels. */
 export const andonLabels: readonly LabelDef[] = andonStateLabels
