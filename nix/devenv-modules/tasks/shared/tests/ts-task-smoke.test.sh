@@ -87,6 +87,7 @@ mkdir -p \
   "$workspace/node_modules/typescript" \
   "$workspace/packages/no-emit" \
   "$workspace/packages/emit" \
+  "$workspace/packages/dotted.name" \
   "$tmpdir/bin"
 
 cat > "$workspace/tsconfig.all.json" <<'EOF'
@@ -96,7 +97,8 @@ cat > "$workspace/tsconfig.all.json" <<'EOF'
   "references": [
     { "path": "packages/no-emit/tsconfig.json" }, // explicit file path
     // This mid-file comment used to break the old JSON.parse path.
-    { "path": "packages/emit" }
+    { "path": "packages/emit" },
+    { "path": "packages/dotted.name" }
   ]
 }
 EOF
@@ -116,6 +118,15 @@ cat > "$workspace/packages/emit/tsconfig.json" <<'EOF'
   "compilerOptions": {
     "composite": true,
     // Keep this project in the emit graph.
+    "declaration": true
+  }
+}
+EOF
+
+cat > "$workspace/packages/dotted.name/tsconfig.json" <<'EOF'
+{
+  "compilerOptions": {
+    "composite": true,
     "declaration": true
   }
 }
@@ -223,6 +234,9 @@ if (paths.includes('packages/no-emit/tsconfig.json')) {
 if (!paths.includes('packages/emit')) {
   throw new Error('emit project should remain in generated emit tsconfig')
 }
+if (!paths.includes('packages/dotted.name')) {
+  throw new Error('dotted directory reference should remain in generated emit tsconfig')
+}
 
 fs.copyFileSync(configPath, process.env.TEST_CAPTURED_TSCONFIG)
 NODE
@@ -259,6 +273,31 @@ echo "Test 2: ts:emit status uses the same filtered graph"
 )
 test -f "$TEST_CAPTURED_TSCONFIG"
 grep -q -- '--dry --noCheck --verbose --pretty false' "$TEST_TSC_LOG"
+
+echo "Test 3: ts:emit succeeds without invoking tsc when every referenced project is noEmit"
+cat > "$workspace/tsconfig.all.json" <<'EOF'
+{
+  "files": [],
+  "references": [
+    { "path": "packages/no-emit" }
+  ]
+}
+EOF
+(
+  cd "$workspace"
+  : > "$TEST_TSC_LOG"
+  rm -f "$TEST_CAPTURED_TSCONFIG"
+  bash "$tmpdir/ts-emit.exec.sh" > "$tmpdir/no-work.out"
+  grep -qF "ts:emit: no emit-capable referenced projects" "$tmpdir/no-work.out"
+  assert_eq "" "$(cat "$TEST_TSC_LOG")" "ts:emit exec should not invoke tsc for all-noEmit graph"
+
+  set +e
+  bash "$tmpdir/ts-emit.status.sh"
+  exit_code=$?
+  set -e
+  assert_exit_code 0 "$exit_code" "ts:emit status should succeed for all-noEmit graph"
+  assert_eq "" "$(cat "$TEST_TSC_LOG")" "ts:emit status should not invoke tsc for all-noEmit graph"
+)
 
 echo ""
 echo "ts task smoke test passed"
