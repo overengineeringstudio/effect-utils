@@ -29,11 +29,6 @@ export {
   useSchemaDisplayInfo,
 } from './SchemaContext.tsx'
 
-export {
-  withSchemaSupport,
-  withSchemaContext,
-  type SchemaAwareObjectInspectorDeps,
-} from './SchemaAwareObjectInspector.tsx'
 export { createSchemaAwareNodeRenderer } from './SchemaAwareNodeRenderer.tsx'
 export { SchemaAwareObjectValue } from './SchemaAwareObjectValue.tsx'
 export { SchemaAwareObjectPreview } from './SchemaAwareObjectPreview.tsx'

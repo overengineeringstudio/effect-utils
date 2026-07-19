@@ -2,32 +2,12 @@ import type { Meta } from '@storybook/react'
 import { Schema } from 'effect'
 import React from 'react'
 
-import {
-  Inspector,
-  ObjectInspector,
-  ObjectRootLabel,
-  ObjectLabel,
-  ObjectName,
-  ObjectValue,
-  ObjectPreview,
-  withSchemaSupport,
-  SchemaProvider,
-  Lineage,
-} from '../src'
+import { Inspector, ObjectInspector, SchemaProvider, Lineage } from '../src'
 
 export default {
   title: 'Effect Schema',
   component: Inspector,
 } satisfies Meta<typeof Inspector>
-
-/** Create a schema-aware version of ObjectInspector using the HOC */
-const SchemaObjectInspector = withSchemaSupport(ObjectInspector, {
-  ObjectRootLabel,
-  ObjectLabel,
-  ObjectName,
-  ObjectValue,
-  ObjectPreview,
-})
 
 /** User schema with title annotation */
 const UserSchema = Schema.Struct({
@@ -51,14 +31,13 @@ const sampleUser: User = {
 
 /** Schema with title annotation */
 export const BasicSchemaWithTitle = {
-  render: () => <SchemaObjectInspector data={sampleUser} schema={UserSchema} expandLevel={1} />,
+  render: () => <ObjectInspector data={sampleUser} schema={UserSchema} expandLevel={1} />,
 }
 
 /** Product schema with pretty print annotation */
 const PriceSchema = Schema.Number.annotate({
   identifier: 'Price',
-  pretty: (value) => `$${(value as number).toFixed(2)}`,
-})
+}).pipe(Schema.overrideToFormatter(() => (value) => `$${value.toFixed(2)}`))
 
 const ProductSchema = Schema.Struct({
   id: Schema.Number,
@@ -81,9 +60,7 @@ const sampleProduct: Product = {
 
 /** Schema with pretty print annotation */
 export const SchemaWithPrettyPrint = {
-  render: () => (
-    <SchemaObjectInspector data={sampleProduct} schema={ProductSchema} expandLevel={1} />
-  ),
+  render: () => <ObjectInspector data={sampleProduct} schema={ProductSchema} expandLevel={1} />,
 }
 
 /** Address schema for nested structures */
@@ -122,22 +99,19 @@ const samplePerson: Person = {
 
 /** Nested schema with annotations */
 export const NestedSchemaWithAnnotations = {
-  render: () => <SchemaObjectInspector data={samplePerson} schema={PersonSchema} expandLevel={2} />,
+  render: () => <ObjectInspector data={samplePerson} schema={PersonSchema} expandLevel={2} />,
 }
 
 /** Temperature schema with pretty print for formatting */
 const TemperatureSchema = Schema.Number.annotate({
   identifier: 'Temperature',
-  pretty: (value) => `${value}°C`,
-})
+}).pipe(Schema.overrideToFormatter(() => (value) => `${value}°C`))
 
 /** Weather report schema */
 const WeatherReportSchema = Schema.Struct({
   location: Schema.String,
   temperature: TemperatureSchema,
-  humidity: Schema.Number.annotate({
-    pretty: (value) => `${value}%`,
-  }),
+  humidity: Schema.Number.pipe(Schema.overrideToFormatter(() => (value) => `${value}%`)),
   conditions: Schema.String,
 }).annotate({
   identifier: 'WeatherReport',
@@ -156,7 +130,7 @@ const sampleWeather: WeatherReport = {
 /** Pretty print for multiple fields */
 export const PrettyPrintForMultipleFields = {
   render: () => (
-    <SchemaObjectInspector data={sampleWeather} schema={WeatherReportSchema} expandLevel={1} />
+    <ObjectInspector data={sampleWeather} schema={WeatherReportSchema} expandLevel={1} />
   ),
 }
 
@@ -189,9 +163,7 @@ const sampleUsers: User[] = [
 
 /** Array of schema items */
 export const ArrayOfSchemaItems = {
-  render: () => (
-    <SchemaObjectInspector data={sampleUsers} schema={UsersArraySchema} expandLevel={2} />
-  ),
+  render: () => <ObjectInspector data={sampleUsers} schema={UsersArraySchema} expandLevel={2} />,
 }
 
 /** Without schema (for comparison) */
@@ -202,14 +174,14 @@ export const WithoutSchema = {
 /** Order schema with complex formatting */
 const MoneySchema = Schema.Number.annotate({
   identifier: 'Money',
-  pretty: (value) => {
-    const num = value as number
+}).pipe(
+  Schema.overrideToFormatter(() => (value) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
-    }).format(num)
-  },
-})
+    }).format(value)
+  }),
+)
 
 const OrderItemSchema = Schema.Struct({
   productId: Schema.Number,
@@ -251,7 +223,7 @@ const sampleOrder: Order = {
 
 /** Complex order with currency formatting */
 export const ComplexOrderExample = {
-  render: () => <SchemaObjectInspector data={sampleOrder} schema={OrderSchema} expandLevel={3} />,
+  render: () => <ObjectInspector data={sampleOrder} schema={OrderSchema} expandLevel={3} />,
 }
 
 /** Enum-like union type example */
@@ -269,14 +241,13 @@ const TaskSchema = Schema.Struct({
   id: Schema.Number,
   title: Schema.String,
   status: StatusSchema,
-  priority: Schema.Number.annotate({
-    pretty: (value) => {
-      const num = value as number
-      if (num >= 8) return 'High'
-      if (num >= 4) return 'Medium'
+  priority: Schema.Number.pipe(
+    Schema.overrideToFormatter(() => (value) => {
+      if (value >= 8) return 'High'
+      if (value >= 4) return 'Medium'
       return 'Low'
-    },
-  }),
+    }),
+  ),
 }).annotate({
   identifier: 'Task',
   title: 'Task',
@@ -293,21 +264,19 @@ const sampleTask: Task = {
 
 /** Task with priority formatting */
 export const TaskWithPriorityFormatting = {
-  render: () => <SchemaObjectInspector data={sampleTask} schema={TaskSchema} expandLevel={1} />,
+  render: () => <ObjectInspector data={sampleTask} schema={TaskSchema} expandLevel={1} />,
 }
 
 /** Using top-level pretty print for an entire object */
 const PointSchema = Schema.Struct({
   x: Schema.Number,
   y: Schema.Number,
-}).annotate({
-  identifier: 'Point',
-  title: 'Point',
-  pretty: (value) => {
-    const point = value as { x: number; y: number }
-    return `(${point.x}, ${point.y})`
-  },
 })
+  .annotate({
+    identifier: 'Point',
+    title: 'Point',
+  })
+  .pipe(Schema.overrideToFormatter(() => (value) => `(${value.x}, ${value.y})`))
 
 type Point = typeof PointSchema.Type
 
@@ -315,7 +284,7 @@ const samplePoint: Point = { x: 10, y: 20 }
 
 /** Object with top-level pretty print */
 export const ObjectWithTopLevelPrettyPrint = {
-  render: () => <SchemaObjectInspector data={samplePoint} schema={PointSchema} />,
+  render: () => <ObjectInspector data={samplePoint} schema={PointSchema} />,
 }
 
 /** Comparison: with and without schema */
@@ -324,7 +293,7 @@ export const ComparisonWithAndWithoutSchema = {
     <div style={{ display: 'flex', gap: '40px' }}>
       <div>
         <h4 style={{ marginBottom: '8px' }}>With Schema</h4>
-        <SchemaObjectInspector data={sampleOrder} schema={OrderSchema} expandLevel={2} />
+        <ObjectInspector data={sampleOrder} schema={OrderSchema} expandLevel={2} />
       </div>
       <div>
         <h4 style={{ marginBottom: '8px' }}>Without Schema</h4>
@@ -404,11 +373,7 @@ export const SchemaWithDescriptionTooltips = {
         Hover over (or keyboard-focus, via Tab) any field name or type badge to see its description
         and other schema annotations.
       </p>
-      <SchemaObjectInspector
-        data={sampleDocumentedUser}
-        schema={DocumentedUserSchema}
-        expandLevel={2}
-      />
+      <ObjectInspector data={sampleDocumentedUser} schema={DocumentedUserSchema} expandLevel={2} />
     </div>
   ),
 }
@@ -417,13 +382,13 @@ export const SchemaWithDescriptionTooltips = {
 const ApiResponseSchema = Schema.Struct({
   status: Schema.Number.annotate({
     description: 'HTTP status code of the response (e.g., 200, 404, 500)',
-    pretty: (value) => {
-      const code = value as number
-      if (code >= 200 && code < 300) return `✓ ${code}`
-      if (code >= 400 && code < 500) return `⚠ ${code}`
-      return `✗ ${code}`
-    },
-  }),
+  }).pipe(
+    Schema.overrideToFormatter(() => (value) => {
+      if (value >= 200 && value < 300) return `✓ ${value}`
+      if (value >= 400 && value < 500) return `⚠ ${value}`
+      return `✗ ${value}`
+    }),
+  ),
   data: Schema.Struct({
     items: Schema.Array(
       Schema.Struct({
@@ -432,8 +397,7 @@ const ApiResponseSchema = Schema.Struct({
         }),
         value: Schema.Number.annotate({
           description: 'Numeric value in base units',
-          pretty: (v) => `${v} units`,
-        }),
+        }).pipe(Schema.overrideToFormatter(() => (value) => `${value} units`)),
       }).annotate({
         identifier: 'DataItem',
         title: 'Data Item',
@@ -457,8 +421,7 @@ const ApiResponseSchema = Schema.Struct({
     }),
     duration: Schema.Number.annotate({
       description: 'Server-side processing time in milliseconds',
-      pretty: (v) => `${v}ms`,
-    }),
+    }).pipe(Schema.overrideToFormatter(() => (value) => `${value}ms`)),
   }).annotate({
     identifier: 'ResponseMeta',
     title: 'Metadata',
@@ -495,7 +458,7 @@ export const ApiResponseWithDescriptions = {
         Complex nested schema with descriptions and pretty formatting. Hover over fields for
         documentation.
       </p>
-      <SchemaObjectInspector data={sampleApiResponse} schema={ApiResponseSchema} expandLevel={3} />
+      <ObjectInspector data={sampleApiResponse} schema={ApiResponseSchema} expandLevel={3} />
     </div>
   ),
 }
@@ -518,14 +481,14 @@ export const ExpandedVsCollapsedPreview = {
             Order {'{'} orderId: "...", customer: "...", ... {'}'}
           </code>
         </p>
-        <SchemaObjectInspector data={sampleOrder} schema={OrderSchema} expandLevel={0} />
+        <ObjectInspector data={sampleOrder} schema={OrderSchema} expandLevel={0} />
       </div>
       <div>
         <h4 style={{ marginBottom: '8px' }}>Expanded (expandLevel=1)</h4>
         <p style={{ fontSize: '12px', color: '#666', marginBottom: '8px' }}>
           Shows only identifier: <code>Order</code> (children visible below)
         </p>
-        <SchemaObjectInspector data={sampleOrder} schema={OrderSchema} expandLevel={1} />
+        <ObjectInspector data={sampleOrder} schema={OrderSchema} expandLevel={1} />
       </div>
     </div>
   ),
@@ -598,11 +561,14 @@ const MoneyV2Schema = Schema.Number.annotate({
   identifier: 'Money',
   title: 'Money (USD)',
   description: 'Currency amount in US dollars',
-  pretty: (v) =>
-    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(v as number),
   examples: [9.99, 1234.5],
   default: 0,
-})
+}).pipe(
+  Schema.overrideToFormatter(
+    () => (value) =>
+      new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value),
+  ),
+)
 
 const ShowcaseUserSchema = Schema.Struct({
   handle: UserHandleSchema,
@@ -655,11 +621,7 @@ export const SchemaTooltipFull = {
         constraints from refinements (min/max/pattern), and possible values for literal unions and
         enums.
       </Hint>
-      <SchemaObjectInspector
-        data={sampleShowcaseUser}
-        schema={ShowcaseUserSchema}
-        expandLevel={2}
-      />
+      <ObjectInspector data={sampleShowcaseUser} schema={ShowcaseUserSchema} expandLevel={2} />
     </div>
   ),
 }
@@ -678,11 +640,7 @@ export const SchemaTooltipKeyboardA11y = {
         Press <kbd>Tab</kbd> repeatedly — tooltips should appear on focus, not only on hover. Each
         focused field announces its description via <code>aria-describedby</code>.
       </Hint>
-      <SchemaObjectInspector
-        data={sampleShowcaseUser}
-        schema={ShowcaseUserSchema}
-        expandLevel={2}
-      />
+      <ObjectInspector data={sampleShowcaseUser} schema={ShowcaseUserSchema} expandLevel={2} />
     </div>
   ),
 }
@@ -716,9 +674,9 @@ export const SchemaTooltipTruncatedPossibleValues = {
         The <code>status</code> field's tooltip shows only the first 12 allowed values with a{' '}
         <code>… +8 more</code> suffix.
       </Hint>
-      <SchemaObjectInspector
+      <ObjectInspector
         data={{ status: 'status_3' as const }}
-        schema={TruncationDemoSchema as unknown as typeof ShowcaseUserSchema}
+        schema={TruncationDemoSchema}
         expandLevel={1}
       />
     </div>
@@ -743,7 +701,7 @@ export const SchemaTooltipMixedAnnotated = {
         Only fields with annotations get a tooltip-bearing affordance. The <code>plainField</code>{' '}
         field below has no underline and no tooltip.
       </Hint>
-      <SchemaObjectInspector
+      <ObjectInspector
         data={{ plainField: 'no annotations here', withDescription: 'hover me' }}
         schema={PlainSchema}
         expandLevel={1}
@@ -810,11 +768,7 @@ export const ContainerLabels = {
         Arrays, records, and tuples now surface their schema-derived type in the type-badge slot.
         Compare with <code>ArrayOfSchemaItems</code> for the array-only path.
       </Hint>
-      <SchemaObjectInspector
-        data={sampleInventory}
-        schema={InventorySchema as unknown as typeof ShowcaseUserSchema}
-        expandLevel={2}
-      />
+      <ObjectInspector data={sampleInventory} schema={InventorySchema} expandLevel={2} />
     </div>
   ),
 }
@@ -860,11 +814,7 @@ export const MapAndSetContainerLabels = {
         Map and Set fields take their schema-derived label (e.g.{' '}
         <code>Map&lt;string, Money&gt;(2)</code>) in the type-badge slot.
       </Hint>
-      <SchemaObjectInspector
-        data={sampleStockMap}
-        schema={StockMapSchema as unknown as typeof ShowcaseUserSchema}
-        expandLevel={2}
-      />
+      <ObjectInspector data={sampleStockMap} schema={StockMapSchema} expandLevel={2} />
     </div>
   ),
 }
@@ -946,16 +896,8 @@ export const RuntimeTaggedUnionNarrowing = {
         based on the runtime <code>_tag</code>.
       </Hint>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        <SchemaObjectInspector
-          data={sampleCreated}
-          schema={AuditEntrySchema as unknown as typeof ShowcaseUserSchema}
-          expandLevel={2}
-        />
-        <SchemaObjectInspector
-          data={sampleUpdated}
-          schema={AuditEntrySchema as unknown as typeof ShowcaseUserSchema}
-          expandLevel={2}
-        />
+        <ObjectInspector data={sampleCreated} schema={AuditEntrySchema} expandLevel={2} />
+        <ObjectInspector data={sampleUpdated} schema={AuditEntrySchema} expandLevel={2} />
       </div>
     </div>
   ),
@@ -1017,11 +959,7 @@ export const LineageAnnotations = {
         last field exercises the companion <code>Authority</code> / <code>Freshness</code> /{' '}
         <code>ForeignKey</code> annotations together.
       </Hint>
-      <SchemaObjectInspector
-        data={sampleOrderTotals}
-        schema={OrderTotalsSchema as unknown as typeof ShowcaseUserSchema}
-        expandLevel={2}
-      />
+      <ObjectInspector data={sampleOrderTotals} schema={OrderTotalsSchema} expandLevel={2} />
     </div>
   ),
 }

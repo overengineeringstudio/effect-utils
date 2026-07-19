@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- **@overeng/react-inspector v9**: make Effect 4 schema inspection native to
+  the public `ObjectInspector`; `schema` remains optional for ordinary values.
+  Remove the coexistence HOCs and avoid a permanent Effect-specific adapter
+  package. Consumers that still require Effect 3 remain on the independent v8
+  release line until they upgrade.
+
 - **@overeng/otel-contract**: add additive, optional per-entry `owner` / `source` /
   `constName` metadata to the `./registry` authoring surface (`AttrDef`, `SignalDef`,
   `WeaverAttrMeta`, every `attr.*` / `span` / `metric` / `operation` builder, plus

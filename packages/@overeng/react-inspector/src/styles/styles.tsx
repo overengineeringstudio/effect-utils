@@ -22,14 +22,17 @@ export const useStyles = (baseStylesKey: string): any => {
  * components.
  * @param {Object} WrappedComponent - React component to be wrapped
  */
-export const themeAcceptor = (WrappedComponent: React.FC<any>) => {
+export interface ThemeAcceptorProps {
+  theme?: string | object
+}
+
+export const themeAcceptor = <Props extends object>(
+  WrappedComponent: React.FC<Props>,
+): React.FC<Props & ThemeAcceptorProps> => {
   const ThemeAcceptor = ({
     theme = DEFAULT_THEME_NAME,
     ...restProps
-  }: {
-    theme?: string | object
-    [key: string]: unknown
-  }) => {
+  }: Props & ThemeAcceptorProps) => {
     const themeStyles = useMemo(() => {
       switch (Object.prototype.toString.call(theme)) {
         case '[object String]':
@@ -43,7 +46,7 @@ export const themeAcceptor = (WrappedComponent: React.FC<any>) => {
 
     return (
       <ThemeContext.Provider value={themeStyles}>
-        <WrappedComponent {...restProps} />
+        <WrappedComponent {...(restProps as Props)} />
       </ThemeContext.Provider>
     )
   }

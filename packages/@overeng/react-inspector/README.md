@@ -26,30 +26,27 @@ const data = {
 <ObjectInspector data={data} />
 ```
 
-### With Effect Schema Support
+### With Effect 4 Schema Support
 
 ```tsx
-import { ObjectInspector, withSchemaSupport, SchemaProvider } from '@overeng/react-inspector'
+import { ObjectInspector } from '@overeng/react-inspector'
 import { Schema } from 'effect'
 
 const UserSchema = Schema.Struct({
   id: Schema.Number,
   name: Schema.String,
-}).annotations({ title: 'User' })
+}).annotate({ title: 'User' })
 
-// Option 1: Using HOC
-const SchemaInspector = withSchemaSupport(ObjectInspector)
-<SchemaInspector data={user} schema={UserSchema} />
-
-// Option 2: Using SchemaProvider directly
-<SchemaProvider schema={UserSchema}>
-  <ObjectInspector data={user} />
-</SchemaProvider>
+<ObjectInspector data={user} schema={UserSchema} />
 ```
+
+`schema` is optional, so the same component handles both ordinary JavaScript
+values and Effect 4 schemas. Package v8 remains the Effect 3 release line;
+package v9 is the Effect 4 release line.
 
 ### Schema Annotation Tooltips
 
-When using `withSchemaSupport`, hovering or keyboard-focusing a field name (or
+When a schema is provided, hovering or keyboard-focusing a field name (or
 the type badge on a struct) shows a rich tooltip with the schema's
 annotations:
 
@@ -68,7 +65,10 @@ Fields with only Effect's built-in primitive descriptions ("a string",
 trigger one.
 
 ```tsx
-const AgeSchema = Schema.Number.pipe(Schema.int(), Schema.between(0, 150)).annotations({
+const AgeSchema = Schema.Number.pipe(
+  Schema.check(Schema.isInt()),
+  Schema.check(Schema.isBetween({ minimum: 0, maximum: 150 })),
+).annotate({
   identifier: 'Age',
   title: 'Age',
   description: 'Age in whole years',

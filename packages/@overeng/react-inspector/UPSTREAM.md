@@ -35,7 +35,7 @@ See `FORK_CHANGELOG.md` for detailed documentation of all changes made in this f
 
 1. **Effect Schema Support** (`src/schema/`)
    - Schema-aware object inspection with Effect annotations
-   - `withSchemaSupport()` HOC and `SchemaProvider` context
+   - Native schema-aware `ObjectInspector` and `SchemaProvider` context
 
 2. **React 19 Compatibility**
    - Type fixes for React 19 compatibility
