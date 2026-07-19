@@ -24,7 +24,7 @@ All common tasks run under `packages/@overeng/notion-react/`:
 | Live E2E (real Notion)        | `pnpm --filter @overeng/notion-react test:integration:e2e` |
 | Storybook dev server          | `pnpm --filter @overeng/notion-react storybook`            |
 | Storybook static build        | `pnpm --filter @overeng/notion-react storybook:build`      |
-| Type-check                    | `tsc --build --watch tsconfig.all.json` (from repo root)   |
+| Type-check                    | `tsc --build --watch tsconfig.check.json` (from repo root) |
 | Lint                          | `oxlint`                                                   |
 | Format check / fix            | `oxfmt --check` / `oxfmt`                                  |
 
@@ -33,7 +33,7 @@ see [Testing](./testing.md#pointing-at-a-different-notion-workspace).
 
 ## Edit / test loop
 
-Run `tsc --build --watch tsconfig.all.json` in one pane and
+Run `tsc --build --watch tsconfig.check.json` in one pane and
 `pnpm vitest` in another. Use Storybook when changing web-renderer
 visuals. For renderer changes, the mock-client integration tests
 (`pnpm --filter @overeng/notion-react test:integration`) are the

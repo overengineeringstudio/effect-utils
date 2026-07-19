@@ -453,7 +453,7 @@ in
       ];
       genieCoverageDirs = [ "packages" ];
       # Type-aware linting for typescript/no-deprecated rule
-      tsconfig = "tsconfig.all.json";
+      tsconfig = "tsconfig.check.json";
       # Warning cleanup is complete: every oxlint rule is at zero repo-wide
       # (swept + key rules promoted to error; non-API surfaces exempted by
       # override). Lint is now fatal on ANY warning so the gate can never

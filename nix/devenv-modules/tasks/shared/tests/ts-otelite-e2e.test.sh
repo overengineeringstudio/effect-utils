@@ -63,7 +63,7 @@ extract_ts_check_exec() {
             options.packages = pkgs.lib.mkOption { type = pkgs.lib.types.listOf pkgs.lib.types.anything; default = [ ]; };
           })
           ((import $ROOT/nix/devenv-modules/tasks/shared/ts.nix {
-            tsconfigFile = \"tsconfig.all.json\";
+            tsconfigFile = \"tsconfig.check.json\";
           }) {
             pkgs = pkgs;
             lib = pkgs.lib;

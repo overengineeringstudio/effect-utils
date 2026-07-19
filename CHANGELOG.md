@@ -15,6 +15,12 @@ All notable changes to this project will be documented in this file.
   ignore them) so generated YAML/TS/Rust output is unchanged. Fully backward compatible — the
   projected registry is byte-identical for contracts that set none of the new fields.
 
+- **devenv / ts:emit**: move no-check emit to tsgo and split the aggregate
+  TypeScript graph into `tsconfig.check.json` for full type-check coverage and
+  `tsconfig.emit.json` for emit-capable projects only. This removes the
+  `tscBin` task-module argument and the JS TypeScript runtime parser from
+  `ts.nix` while preserving noEmit project coverage in `ts:check` (#943).
+
 - **react-inspector / Effect 4**: align the development dependency and peer
   floor to Effect `4.0.0-beta.99`, anchor injected test helpers to the separate
   Effect 3 catalog, and fail generation if either cohort's exact identity drifts

@@ -20,7 +20,7 @@
 #   in {
 #     # Simple exec tracing (no cache tracking):
 #     tasks."ts:check" = {
-#       exec = trace.exec "ts:check" "tsc --build tsconfig.all.json";
+#       exec = trace.exec "ts:check" "tsc --build tsconfig.check.json";
 #     };
 #
 #     # With cache tracking and method attribute:

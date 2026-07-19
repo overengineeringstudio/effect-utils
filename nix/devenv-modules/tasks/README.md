@@ -56,7 +56,7 @@ imports = [
 - `test.nix` - Test tasks
 - `test-playwright.nix` - Playwright e2e tasks
 - `ts.nix` - TypeScript tasks (`ts:check`, `ts:check:strict`, build/watch/clean helpers)
-  - `ts:check`, `ts:check:strict`, `ts:build`, `ts:build-watch`, and `ts:clean` default to the Nix-managed `tsgo` binary; `ts:emit` keeps using JavaScript `tsc` for compiler-API-backed tsconfig filtering and no-check emit.
+  - `ts:check`, `ts:check:strict`, `ts:build`, `ts:build-watch`, `ts:emit`, and `ts:clean` default to the Nix-managed `tsgo` binary; `ts:emit` uses a dedicated emit graph for no-check emit.
   - `ts:check:strict` inherits repo-local `ts:check.after` hooks so strict CI stays aligned with consumer generators
 - `vercel.nix` - Vercel deploy tasks
   - Static and build-mode deploys delegate provider behavior to `ci-tools deploy vercel`.
