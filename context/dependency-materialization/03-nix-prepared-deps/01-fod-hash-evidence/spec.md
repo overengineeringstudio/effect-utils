@@ -116,3 +116,25 @@ which covered systems diverged.
 Hash reconciliation rebuilds the direct prepared dependency artifact for each
 covered system, records the measured output, and only then selects shared or
 split hash mode. Missing systems are evidence, not absence.
+
+## Completeness As Shared-Hash Soundness
+
+Traces: DMP.NIX.FOD-R03, DMP.NIX-R03.
+
+A shared FOD hash across covered systems is sound only if the prepared tree is
+host-invariant. For a root that carries optional native bindings, host-invariance
+holds **iff** the binding closure is complete across all declared triples: under
+`all-declared-triples` completeness, pnpm materializes the same union of platform
+bindings regardless of the building host, so the recursive output hash is
+identical cross-host.
+
+This makes the completeness assertion (`02-native-node-packages`,
+`DMP.NIX.NATIVE-R08`) the eval-time soundness guard for `DMP.NIX.FOD-R03`: it
+fails exactly on the host-variant tree that would make a shared hash unsound. The
+per-system split hash (`DMP.NIX.FOD-R04`) remains the sanctioned fallback for a
+future family that cannot achieve all-triple coverage (`build-platform` mode).
+
+Cross-system equality itself stays measured evidence, not an in-FOD assertion:
+realize the artifact on each covered system and confirm equal output hash
+(`DMP.NIX.FOD-R03`), rather than attempting cross-system comparison inside one
+FOD build.

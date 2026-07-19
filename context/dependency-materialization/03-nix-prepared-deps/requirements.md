@@ -30,6 +30,11 @@ projection semantics from
 - **T03 Explicit native grafts:** Platform-specific native packages may be
   grafted during the platform-specific build phase instead of living in the
   platform-neutral FOD.
+- **T04 Opt-in hash churn:** Turning on optional binding inclusion for a root is
+  a lockfile-scope change to that root's prepared artifact and moves its
+  fixed-output hash. This churn is absorbed by the FOD hash-repair contract
+  (`0005`, `01-fod-hash-evidence`) rather than avoided with a parallel
+  binding-only artifact.
 
 ## Requirements
 
@@ -66,6 +71,13 @@ projection semantics from
 - **DMP.NIX-R08 Evidence:** Each prepared artifact must emit Materialization
   Profile evidence, purity-scan results, and hash-measurement metadata.
   Refines: DMP-R10, DMP-R18, DMP-R19.
+- **DMP.NIX-R11 Optional binding opt-in:** A prepared install root may opt into
+  materializing its optional native binding families into the prepared
+  artifact. The opt-in is declared per install root and defaults off. When set,
+  the artifact must satisfy declared-triple completeness
+  (`DMP.NIX.NATIVE-R08`); when unset, the artifact remains binding-free and the
+  purity scan rejects native outputs as today.
+  Refines: DMP-R04, DMP-R09, DMP.NIX-R04.
 
 ### Must remain operational
 
