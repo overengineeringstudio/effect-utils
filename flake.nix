@@ -256,6 +256,9 @@
           bun = import ./nix/devenv-modules/tasks/shared/bun.nix;
           changesets = import ./nix/devenv-modules/tasks/shared/changesets.nix;
           github-ruleset = import ./nix/devenv-modules/tasks/shared/github-ruleset.nix;
+          # gh:apply-labels / gh:check-labels — reconcile .github/labels.json with live labels.
+          # Parameterized by `{ repo = "owner/name"; }`; consumed like the other task modules.
+          gh-labels = import ./nix/devenv-modules/gh-labels.nix;
           pnpm = import ./nix/devenv-modules/tasks/shared/pnpm.nix;
           nix-cli = import ./nix/devenv-modules/tasks/shared/nix-cli.nix;
           secretspec = import ./nix/devenv-modules/tasks/shared/secretspec.nix;

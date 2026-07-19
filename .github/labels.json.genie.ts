@@ -1,4 +1,3 @@
-import { readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import {
@@ -6,14 +5,15 @@ import {
   commonLabels,
   deprecatedDefaults,
   legacyMigrations,
-  mqLabels,
+  mqDeprecated,
 } from '../genie/labels.ts'
+import { deriveSystemLabels } from '../genie/system-labels.ts'
 import { githubLabels, type LabelDef } from '../packages/@overeng/genie/src/runtime/mod.ts'
 
 /**
  * Repo-local `area:*` labels specific to effect-utils. Cross-repo concerns
  * (area:nix, area:typescript, area:ci, area:storybook, area:effect, area:devenv,
- * area:tooling) live in `genie/labels.ts` as `commonLabels`.
+ * area:tooling, area:megarepo) live in `genie/labels.ts` as `commonLabels`.
  */
 const effectUtilsAreaLabels: readonly LabelDef[] = [
   { name: 'area:rust', color: '1d76db', description: 'Rust code and tooling · Set: manual' },
@@ -43,33 +43,21 @@ const effectUtilsAreaLabels: readonly LabelDef[] = [
     color: '1d76db',
     description: 'genie config generator runtime + CLI · Set: manual',
   },
-  {
-    name: 'area:megarepo',
-    color: '1d76db',
-    description: 'megarepo CLI and conventions · Set: manual',
-  },
 ]
 
 /**
  * Repo-local `system:*` labels — one per concrete `@overeng/*` package. A
  * `system:*` value names a thing with its own identity that issues and feedback
  * are attributed *to*, distinct from the cross-cutting `area:*` concern axis.
- * Derived from the package directories (derive-don't-author) so the catalog
- * tracks the workspace automatically; the genie freshness gate regenerates and
- * diffs `labels.json`, so adding/removing a package is always reflected here.
+ * Derived from the package directories (derive-don't-author) via the shared
+ * `deriveSystemLabels` helper so the catalog tracks the workspace automatically;
+ * the genie freshness gate regenerates and diffs `labels.json`, so adding or
+ * removing a package is always reflected here.
  */
-const effectUtilsSystemLabels: readonly LabelDef[] = readdirSync(
-  fileURLToPath(new URL('../packages/@overeng', import.meta.url)),
-  { withFileTypes: true },
-)
-  .filter((entry) => entry.isDirectory())
-  .map((entry) => entry.name)
-  .sort()
-  .map((pkg) => ({
-    name: `system:${pkg}`,
-    color: 'a371f7',
-    description: `@overeng/${pkg} package · Set: manual`,
-  }))
+const effectUtilsSystemLabels: readonly LabelDef[] = deriveSystemLabels({
+  dir: fileURLToPath(new URL('../packages/@overeng', import.meta.url)),
+  describe: (pkg) => `@overeng/${pkg} package`,
+})
 
 /** Repo-local utility labels used by automation in this repo. */
 const effectUtilsAutomationLabels: readonly LabelDef[] = [
@@ -100,12 +88,12 @@ const repoLocalLegacyMigrations = [
 export default githubLabels({
   labels: [
     ...commonLabels,
-    ...mqLabels,
     ...andonLabels,
     ...effectUtilsAreaLabels,
     ...effectUtilsSystemLabels,
     ...effectUtilsAutomationLabels,
   ],
-  deprecated: [...deprecatedDefaults, ...repoLocalDeprecated],
+  // Retire the vestigial `mq:*` labels (no runtime acts on them) alongside the GitHub defaults.
+  deprecated: [...deprecatedDefaults, ...mqDeprecated, ...repoLocalDeprecated],
   legacyMigrations: [...legacyMigrations, ...repoLocalLegacyMigrations],
 })
