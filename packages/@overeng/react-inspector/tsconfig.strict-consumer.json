@@ -38,7 +38,8 @@
           "schemaUnionOfLiterals": "warning",
           "anyUnknownInErrorContext": "warning",
           "preferSchemaOverJson": "warning"
-        }
+        },
+        "allowedDuplicatedPackages": ["effect"]
       }
     ],
     "rootDir": ".",

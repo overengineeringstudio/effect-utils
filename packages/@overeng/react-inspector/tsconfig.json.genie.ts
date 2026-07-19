@@ -19,6 +19,12 @@ export default tsconfigJson({
     noUncheckedIndexedAccess: false,
     verbatimModuleSyntax: false,
     noImplicitReturns: false,
+    // The compatibility suite intentionally installs Effect 3 and Effect 4 in
+    // this project. Production dependencies remain Effect-free.
+    plugins: baseTsconfigCompilerOptions.plugins.map((plugin) => ({
+      ...plugin,
+      allowedDuplicatedPackages: ['effect'],
+    })),
   },
   include: ['src/**/*'],
   references: [],

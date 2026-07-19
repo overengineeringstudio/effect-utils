@@ -9,6 +9,11 @@ export default tsconfigJson({
     ...reactJsx,
     composite: true,
     noEmit: true,
+    // This project shares react-inspector's intentional Effect 3/4 test matrix.
+    plugins: baseTsconfigCompilerOptions.plugins.map((plugin) => ({
+      ...plugin,
+      allowedDuplicatedPackages: ['effect'],
+    })),
   },
   include: ['src/schema/effectSchema.tsx', 'src/schema/lineage.ts', 'test-d/**/*'],
   references: [],

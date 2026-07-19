@@ -6,8 +6,7 @@ import { getAnnotations, getFieldSchema, getSchemaInfo, narrowUnionByTag } from 
 import * as Lineage from './lineage.ts'
 import type { SchemaProviderProps } from './SchemaContext.tsx'
 
-const schema3 = Schema3.Struct({
-  _tag: Schema3.Literal('Consumer'),
+const schema3 = Schema3.TaggedStruct('Consumer', {
   id: Schema3.Number.annotations({ description: 'Effect 3 identifier' }),
 }).annotations({ identifier: 'Effect3.Consumer' })
 
