@@ -196,7 +196,29 @@ echo "Test 3: ts:emit status detects pending emit work"
   assert_exit_code 1 "$exit_code" "ts:emit status should fail when dry-run reports pending work"
 )
 
-echo "Test 4: ts:emit succeeds without invoking tsgo when the emit graph is empty"
+echo "Test 4: ts:emit fails when the emit graph is missing"
+(
+  cd "$workspace"
+  : > "$TEST_TSGO_LOG"
+  mv tsconfig.emit.json tsconfig.emit.json.bak
+
+  set +e
+  bash "$tmpdir/ts-emit.exec.sh" > "$tmpdir/missing-exec.out" 2> "$tmpdir/missing-exec.err"
+  exec_exit_code=$?
+  bash "$tmpdir/ts-emit.status.sh" > "$tmpdir/missing-status.out" 2> "$tmpdir/missing-status.err"
+  status_exit_code=$?
+  set -e
+
+  assert_exit_code 1 "$exec_exit_code" "ts:emit exec should fail when the emit graph is missing"
+  assert_exit_code 1 "$status_exit_code" "ts:emit status should fail when the emit graph is missing"
+  grep -qF "ts:emit: emit tsconfig tsconfig.emit.json is missing or unreadable; run genie:run to generate it" "$tmpdir/missing-exec.err"
+  grep -qF "ts:emit: emit tsconfig tsconfig.emit.json is missing or unreadable; run genie:run to generate it" "$tmpdir/missing-status.err"
+  assert_eq "" "$(cat "$TEST_TSGO_LOG")" "ts:emit should not invoke tsgo when the emit graph is missing"
+
+  mv tsconfig.emit.json.bak tsconfig.emit.json
+)
+
+echo "Test 5: ts:emit succeeds without invoking tsgo when the emit graph is empty"
 cat > "$workspace/tsconfig.emit.json" <<'EOF'
 {
   "files": [],

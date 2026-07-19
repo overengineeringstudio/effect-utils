@@ -74,6 +74,12 @@ let
       "genie:run"
       "pnpm:install"
     ];
+  requireEmitTsconfig = ''
+    if [ ! -r ${lib.escapeShellArg emitTsconfigFile} ]; then
+      echo "ts:emit: emit tsconfig ${lib.escapeShellArg emitTsconfigFile} is missing or unreadable; run genie:run to generate it" >&2
+      exit 1
+    fi
+  '';
   emitGraphHasReferences = "grep -q '\"path\"[[:space:]]*:' ${lib.escapeShellArg emitTsconfigFile}";
 
   # Script that runs the selected TypeScript compiler with --extendedDiagnostics --verbose,
@@ -341,6 +347,7 @@ let
       # trace-audit-allow: raw exec - argument to trace.withStatus "ts:emit" above.
       exec = ''
         set -euo pipefail
+        ${requireEmitTsconfig}
         if ! ${emitGraphHasReferences}; then
           echo "ts:emit: no emit-capable referenced projects"
           exit 0
@@ -350,6 +357,7 @@ let
       # trace-audit-allow: raw status - argument to trace.withStatus "ts:emit" above.
       status = ''
         set -euo pipefail
+        ${requireEmitTsconfig}
         if ! ${emitGraphHasReferences}; then
           exit 0
         fi
