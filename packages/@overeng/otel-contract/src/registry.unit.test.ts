@@ -539,6 +539,154 @@ describe('metric derivation + label invariants (SC-R14)', () => {
   })
 })
 
+// ---------------------------------------------------------------------------
+// Per-entry owner/source/constName metadata (eu#1316 Track 2 — mirror elimination).
+// All additive/optional: they must round-trip authoring → fragment projection, honour
+// contract-level defaults with per-entry override, and leave existing entries byte-identical.
+// ---------------------------------------------------------------------------
+
+describe('per-entry owner/source/constName metadata (additive)', () => {
+  const ownedAttr = attr.string({
+    key: 'acme.owned',
+    cardinality: 'low',
+    brief: 'owned attr',
+    stability: 'development',
+    examples: ['x'],
+    owner: 'team-attr',
+    source: 'acme/owned.ts',
+    constName: 'OWNED',
+  })
+  const plainAttr = attr.string({
+    key: 'acme.plain',
+    cardinality: 'low',
+    brief: 'plain attr',
+    stability: 'development',
+    examples: ['x'],
+  })
+
+  it('round-trips owner/source/constName through toAttrDef', () => {
+    const def = toAttrDef(ownedAttr)
+    expect(def.owner).toBe('team-attr')
+    expect(def.source).toBe('acme/owned.ts')
+    expect(def.constName).toBe('OWNED')
+  })
+
+  it('omits the metadata keys entirely when absent (no undefined pollution / byte-identical)', () => {
+    const def = toAttrDef(plainAttr)
+    expect('owner' in def).toBe(false)
+    expect('source' in def).toBe(false)
+    expect('constName' in def).toBe(false)
+    // full-shape equality: an unadorned attr projects exactly as before this feature.
+    expect(def).toEqual({
+      id: 'acme.plain',
+      type: 'string',
+      brief: 'plain attr',
+      stability: 'development',
+      examples: ['x'],
+      policy: { cardinality: 'low' },
+    })
+  })
+
+  it('projects per-entry metadata onto span and metric SignalDefs', () => {
+    const contract = defineOtelContract({
+      memberPath: 'packages/acme',
+      displayName: 'Acme',
+      signals: [
+        span({
+          id: 'span.acme.owned',
+          kind: 'internal',
+          brief: 'owned span',
+          stability: 'development',
+          owner: 'team-span',
+          source: 'acme/span.ts',
+          constName: 'PROBE',
+          attributes: { owned: required(ownedAttr) },
+        }),
+        metric({
+          id: 'metric.acme.owned',
+          name: 'acme.owned',
+          instrument: 'counter',
+          unit: '1',
+          brief: 'owned metric',
+          stability: 'development',
+          owner: 'team-metric',
+          labels: { owned: required(ownedAttr) },
+        }),
+      ],
+    })
+    const byId = new Map(fragment(contract).signals.map((s) => [s.id, s]))
+    const spanSig = byId.get('span.acme.owned')!
+    expect(spanSig.owner).toBe('team-span')
+    expect(spanSig.source).toBe('acme/span.ts')
+    expect(spanSig.constName).toBe('PROBE')
+    const metricSig = byId.get('metric.acme.owned')!
+    expect(metricSig.owner).toBe('team-metric')
+    expect('source' in metricSig).toBe(false) // per-entry omitted → key absent
+    expect('constName' in metricSig).toBe(false)
+  })
+
+  it('applies contract-level defaultOwner/defaultSource, with per-entry override winning', () => {
+    const contract = defineOtelContract({
+      memberPath: 'packages/acme',
+      displayName: 'Acme',
+      defaultOwner: 'team-default',
+      defaultSource: 'acme/default.ts',
+      signals: [
+        span({
+          id: 'span.acme.override',
+          kind: 'internal',
+          brief: 'span overriding owner',
+          stability: 'development',
+          owner: 'team-override', // wins over defaultOwner; source falls back to default
+          attributes: { owned: required(ownedAttr), plain: required(plainAttr) },
+        }),
+      ],
+      docOnlyAttributes: [
+        attr.string({
+          key: 'acme.doc',
+          cardinality: 'low',
+          brief: 'doc-only attr',
+          stability: 'development',
+          examples: ['x'],
+        }),
+      ],
+    })
+    const frag = fragment(contract)
+    const attrById = new Map(frag.attributes.map((a) => [a.id, a]))
+
+    // per-entry attr metadata WINS over the contract default:
+    expect(attrById.get('acme.owned')!.owner).toBe('team-attr')
+    expect(attrById.get('acme.owned')!.source).toBe('acme/owned.ts')
+    // an attr with no own metadata inherits BOTH contract defaults:
+    expect(attrById.get('acme.plain')!.owner).toBe('team-default')
+    expect(attrById.get('acme.plain')!.source).toBe('acme/default.ts')
+    // constName is NEVER contract-defaulted (per-entry override only):
+    expect('constName' in attrById.get('acme.plain')!).toBe(false)
+    // doc-only attrs receive the defaults too:
+    expect(attrById.get('acme.doc')!.owner).toBe('team-default')
+    expect(attrById.get('acme.doc')!.source).toBe('acme/default.ts')
+
+    // signal: per-entry owner override wins; source falls back to the contract default.
+    const sig = frag.signals.find((s) => s.id === 'span.acme.override')!
+    expect(sig.owner).toBe('team-override')
+    expect(sig.source).toBe('acme/default.ts')
+  })
+
+  it('leaves the demo contract projection free of metadata keys (backward compatible)', () => {
+    const frag = fragment(demoContract)
+    for (const a of frag.attributes) {
+      expect('owner' in a).toBe(false)
+      expect('source' in a).toBe(false)
+      expect('constName' in a).toBe(false)
+    }
+    for (const s of frag.signals) {
+      expect('owner' in s).toBe(false)
+      expect('source' in s).toBe(false)
+      expect('constName' in s).toBe(false)
+    }
+  })
+})
+
 describe('operation label extractor: trim + non-finite rejection (SC-R14 mechanism parity)', () => {
   const op = operation({
     id: 'span.acme.op2',
