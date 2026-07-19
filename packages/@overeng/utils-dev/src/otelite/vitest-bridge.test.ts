@@ -4,7 +4,7 @@ import { NodeContext } from '@effect/platform-node'
 import { describe, expect, it, layer } from '@effect/vitest'
 import { Effect, Layer } from 'effect'
 
-import { otlpTracesUrl } from '../node-vitest/Vitest.ts'
+import { otlpTracesUrl } from './otlp-url.ts'
 import { Otelite } from './Otelite.ts'
 import { flushCaptureSpans, makeOteliteCaptureLayer, OteliteCapture } from './vitest-bridge.ts'
 

@@ -26,6 +26,8 @@ import {
   type Scope,
 } from 'effect'
 
+import { otlpTracesUrl } from '../otelite/otlp-url.ts'
+
 // ============================================================================
 // Environment Detection
 // ============================================================================
@@ -59,22 +61,7 @@ export interface OtelVitestConfig {
   exportInterval?: number
 }
 
-/**
- * Builds the full OTLP/HTTP traces URL from a base endpoint.
- *
- * `OtlpTracer.layer({ url })` POSTs to `url` VERBATIM — the per-signal layer
- * does NOT append a signal path (only the combined `Otlp.layer({ baseUrl })`
- * does, via `appendUrl(baseUrl, '/v1/traces')`). The same is true of
- * `OtlpLogger.layer` / `OtlpMetrics.layer`: each takes a full `url` and POSTs
- * it verbatim through the shared `otlpExporter` (`HttpClientRequest.post(url)`).
- * So a bare base endpoint must get the `/v1/traces` suffix here, or the
- * exporter POSTs to the receiver root, 404s, and self-disables silently.
- *
- * Exported so the suffix is one source of truth (the bridge + a regression test
- * lock it).
- */
-export const otlpTracesUrl = (baseEndpoint: string): string =>
-  `${baseEndpoint.replace(/\/$/, '')}/v1/traces`
+export { otlpTracesUrl } from '../otelite/otlp-url.ts'
 
 /**
  * Creates an OTEL layer for Vitest tests.
