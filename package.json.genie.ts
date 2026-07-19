@@ -6,6 +6,7 @@ import agentSessionIngestPkg from './packages/@overeng/agent-session-ingest/pack
 import ciToolsPkg from './packages/@overeng/ci-tools/package.json.genie.ts'
 import contentAddressPkg from './packages/@overeng/content-address/package.json.genie.ts'
 import effectAiClaudeCliPkg from './packages/@overeng/effect-ai-claude-cli/package.json.genie.ts'
+import effectDistributedLockPkg from './packages/@overeng/effect-distributed-lock/package.json.genie.ts'
 import effectPathPkg from './packages/@overeng/effect-path/package.json.genie.ts'
 import effectReactPkg from './packages/@overeng/effect-react/package.json.genie.ts'
 import effectRpcTanstackBasicPkg from './packages/@overeng/effect-rpc-tanstack/examples/basic/package.json.genie.ts'
@@ -41,6 +42,7 @@ export const rootWorkspacePackages = [
   contentAddressPkg,
   effectSocketPkg,
   effectAiClaudeCliPkg,
+  effectDistributedLockPkg,
   effectPathPkg,
   effectReactPkg,
   effectRpcTanstackBasicPkg,

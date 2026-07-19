@@ -144,10 +144,10 @@ export const prefixPatchPaths = <T extends Record<string, string>>(args: {
  * export const utilsPatches = definePatchedDependencies({
  *   location: 'packages/@overeng/utils',
  *   patches: {
- *     'effect-distributed-lock@0.0.11': './patches/effect-distributed-lock@0.0.11.patch',
+ *     'some-package@1.0.0': './patches/some-package@1.0.0.patch',
  *   },
  * })
- * // => { 'effect-distributed-lock@0.0.11': 'packages/@overeng/utils/patches/effect-distributed-lock@0.0.11.patch' }
+ * // => { 'some-package@1.0.0': 'packages/@overeng/utils/patches/some-package@1.0.0.patch' }
  *
  * // In scripts/package.json.genie.ts (downstream)
  * export default packageJson({

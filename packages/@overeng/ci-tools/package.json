@@ -51,6 +51,7 @@
     "workspaceClosureDirs": [
       "packages/@overeng/ci-tools",
       "packages/@overeng/content-address",
+      "packages/@overeng/effect-distributed-lock",
       "packages/@overeng/otel-contract",
       "packages/@overeng/utils",
       "packages/@overeng/utils-dev"

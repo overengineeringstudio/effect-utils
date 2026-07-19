@@ -12,6 +12,7 @@ export const internalPackages = [
   'agent-session-ingest',
   'content-address',
   'effect-ai-claude-cli',
+  'effect-distributed-lock',
   'effect-path',
   'effect-react',
   'effect-rpc-tanstack',

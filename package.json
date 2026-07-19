@@ -8,6 +8,7 @@
     "packages/@overeng/ci-tools",
     "packages/@overeng/content-address",
     "packages/@overeng/effect-ai-claude-cli",
+    "packages/@overeng/effect-distributed-lock",
     "packages/@overeng/effect-path",
     "packages/@overeng/effect-react",
     "packages/@overeng/effect-rpc-tanstack",
