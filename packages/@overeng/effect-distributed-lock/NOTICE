@@ -1,5 +1,5 @@
-@overeng/effect-distributed-lock vendors the used non-Redis subset of
-effect-distributed-lock 0.0.11:
+@overeng/effect-distributed-lock is a maintained permanent first-party fork of
+the used non-Redis subset of effect-distributed-lock 0.0.11:
 
   https://github.com/ethanniser/effect-distributed-lock
 
@@ -9,3 +9,6 @@ Original copyright: Copyright (c) 2025 Ethan Niser
 This package keeps Backing, DistributedSemaphore, Errors, and the public index
 surface as first-party source in effect-utils. RedisBacking and its optional
 Redis client peer dependency are intentionally not vendored.
+
+Upstream PR #14 is a courtesy contribution; this package does not depend on
+upstream accepting or releasing it.

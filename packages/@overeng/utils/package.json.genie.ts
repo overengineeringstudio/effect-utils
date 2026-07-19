@@ -75,6 +75,7 @@ export default packageJson(
       './node/storybook/config': exportEntry('./src/node/storybook/config/mod.ts', {
         environment: 'node',
       }),
+      './lock': exportEntry('./src/lock/mod.ts', { environment: 'node' }),
       './browser': exportEntry('./src/browser/mod.ts', { environment: 'browser' }),
       './cuid': exportEntry(
         {
@@ -101,6 +102,7 @@ export default packageJson(
         './node/playwright/config': './dist/node/playwright/config/mod.js',
         './node/storybook': './dist/node/storybook/mod.js',
         './node/storybook/config': './dist/node/storybook/config/mod.js',
+        './lock': './dist/lock/mod.js',
         './browser': './dist/browser/mod.js',
         './cuid': {
           browser: './dist/cuid/cuid.browser.js',

@@ -2,7 +2,7 @@ import { it } from '@effect/vitest'
 import { Effect, Ref } from 'effect'
 import { describe, expect } from 'vitest'
 
-import { InMemoryBacking } from '@overeng/utils'
+import { InMemoryBacking } from '@overeng/utils/lock'
 
 import { makeStoreLockLayerFromBacking, StoreLock } from './store-lock.ts'
 
