@@ -126,7 +126,7 @@ stable span names and low-cardinality attributes instead of synthetic services.
 ```nix
 # In task modules (e.g., ts.nix):
 trace = import ../lib/trace.nix { inherit lib; };
-exec = trace.exec "ts:check" "tsc --build tsconfig.all.json";
+exec = trace.exec "ts:check" "tsc --build tsconfig.check.json";
 ```
 
 **Compiler measurement spans**: TypeScript build diagnostics emit children of
@@ -161,7 +161,7 @@ under the task span.
 | `compiler.name`   | string    | TypeScript compiler binary            | `tsgo`, `tsc`                                 |
 | `ts.project`      | string    | Repo-relative TypeScript project path | `context/effect/socket`                       |
 | `ts.project.name` | string    | Short TypeScript project label        | `socket`                                      |
-| `tsconfig.path`   | string    | TypeScript build config               | `tsconfig.all.json`                           |
+| `tsconfig.path`   | string    | TypeScript build config               | `tsconfig.check.json`                         |
 | `typescript.*`    | typed     | Compiler timings/counters             | `typescript.total_time_s`, `typescript.files` |
 
 `trace.exec` adds `task.cached=false` for executed tasks. `trace.status` derives

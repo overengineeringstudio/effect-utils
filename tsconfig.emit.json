@@ -1,14 +1,8 @@
 // Generated file - DO NOT EDIT
-// Source: tsconfig.all.json.genie.ts
+// Source: tsconfig.emit.json.genie.ts
 {
   "files": [],
   "references": [
-    {
-      "path": "./context/effect/socket"
-    },
-    {
-      "path": "./context/opentui"
-    },
     {
       "path": "./packages/@overeng/agent-session-ingest"
     },
@@ -32,9 +26,6 @@
     },
     {
       "path": "./packages/@overeng/effect-rpc-tanstack"
-    },
-    {
-      "path": "./packages/@overeng/effect-rpc-tanstack/examples/basic"
     },
     {
       "path": "./packages/@overeng/effect-schema-form"
@@ -89,9 +80,6 @@
     },
     {
       "path": "./packages/@overeng/react-inspector"
-    },
-    {
-      "path": "./packages/@overeng/react-inspector/tsconfig.strict-consumer.json"
     },
     {
       "path": "./packages/@overeng/restate-effect"

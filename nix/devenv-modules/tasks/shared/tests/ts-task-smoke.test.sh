@@ -46,8 +46,8 @@ extract_ts_emit_script() {
             options.packages = pkgs.lib.mkOption { type = pkgs.lib.types.listOf pkgs.lib.types.anything; default = [ ]; };
           })
           ((import $ROOT/nix/devenv-modules/tasks/shared/ts.nix {
-            tsconfigFile = \"tsconfig.all.json\";
-            tscBin = \"tsc\";
+            tsconfigFile = \"tsconfig.check.json\";
+            emitTsconfigFile = \"tsconfig.emit.json\";
           }) {
             pkgs = pkgs;
             lib = pkgs.lib;
@@ -84,19 +84,16 @@ trap 'rm -rf "$tmpdir"' EXIT
 
 workspace="$tmpdir/workspace"
 mkdir -p \
-  "$workspace/node_modules/typescript" \
   "$workspace/packages/no-emit" \
   "$workspace/packages/emit" \
   "$workspace/packages/dotted.name" \
   "$tmpdir/bin"
 
-cat > "$workspace/tsconfig.all.json" <<'EOF'
+cat > "$workspace/tsconfig.check.json" <<'EOF'
 {
-  // Root-level comment should be ignored
   "files": [],
   "references": [
-    { "path": "packages/no-emit/tsconfig.json" }, // explicit file path
-    // This mid-file comment used to break the old JSON.parse path.
+    { "path": "packages/no-emit/tsconfig.json" },
     { "path": "packages/emit" },
     { "path": "packages/dotted.name" }
   ]
@@ -132,171 +129,115 @@ cat > "$workspace/packages/dotted.name/tsconfig.json" <<'EOF'
 }
 EOF
 
-cat > "$workspace/node_modules/typescript/package.json" <<'EOF'
-{"name":"typescript","main":"./index.js"}
-EOF
-
-cat > "$workspace/node_modules/typescript/index.js" <<'EOF'
-const stripLineComments = (source) => {
-  let result = ''
-  let inString = false
-  let escaped = false
-
-  for (let index = 0; index < source.length; index += 1) {
-    const char = source[index]
-    const next = source[index + 1]
-
-    if (inString) {
-      result += char
-      if (escaped) {
-        escaped = false
-      } else if (char === '\\\\') {
-        escaped = true
-      } else if (char === '"') {
-        inString = false
-      }
-      continue
-    }
-
-    if (char === '"') {
-      inString = true
-      result += char
-      continue
-    }
-
-    if (char === '/' && next === '/') {
-      while (index < source.length && source[index] !== '\n') {
-        index += 1
-      }
-      if (index < source.length) {
-        result += '\n'
-      }
-      continue
-    }
-
-    result += char
-  }
-
-  return result
-}
-
-const parseJsonc = (source) =>
-  JSON.parse(
-    stripLineComments(source)
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .replace(/,\s*([}\]])/g, '$1')
-  )
-
-exports.readConfigFile = (filePath, readFile) => {
-  try {
-    return { config: parseJsonc(readFile(filePath)) }
-  } catch (error) {
-    return { error: { messageText: String(error.message ?? error) } }
-  }
+cat > "$workspace/tsconfig.emit.json" <<'EOF'
+{
+  "files": [],
+  "references": [
+    { "path": "packages/emit" },
+    { "path": "packages/dotted.name" }
+  ]
 }
 EOF
 
-cat > "$tmpdir/bin/tsc" <<'EOF'
+cat > "$tmpdir/bin/tsgo" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
-printf '%s\n' "$*" >> "${TEST_TSC_LOG:?}"
+printf '%s\n' "$*" >> "${TEST_TSGO_LOG:?}"
 
-config_path=""
-prev=""
-for arg in "$@"; do
-  if [ "$prev" = "--build" ]; then
-    config_path="$arg"
-    break
-  fi
-  prev="$arg"
-done
-
-if [ -z "$config_path" ]; then
-  echo "missing --build tsconfig path" >&2
-  exit 1
+if [[ " $* " == *" --dry "* ]] && [ "${TEST_TSGO_STALE:-0}" = "1" ]; then
+  echo "A non-dry build would build project 'packages/emit/tsconfig.json'"
 fi
 
-TEST_CAPTURED_TSCONFIG="${TEST_CAPTURED_TSCONFIG:?}" \
-node - "$config_path" <<'NODE'
-const fs = require('node:fs')
-
-const [configPath] = process.argv.slice(2)
-const config = JSON.parse(fs.readFileSync(configPath, 'utf8'))
-
-if (!Array.isArray(config.references)) {
-  throw new Error('references missing from generated emit tsconfig')
-}
-
-const paths = config.references.map((reference) => reference.path)
-if (paths.includes('packages/no-emit/tsconfig.json')) {
-  throw new Error('noEmit project should be removed from generated emit tsconfig')
-}
-if (!paths.includes('packages/emit')) {
-  throw new Error('emit project should remain in generated emit tsconfig')
-}
-if (!paths.includes('packages/dotted.name')) {
-  throw new Error('dotted directory reference should remain in generated emit tsconfig')
-}
-
-fs.copyFileSync(configPath, process.env.TEST_CAPTURED_TSCONFIG)
-NODE
+for arg in "$@"; do
+  if [ "$arg" = "tsconfig.check.json" ]; then
+    echo "ts:emit should not use the check graph" >&2
+    exit 1
+  fi
+done
 EOF
-chmod +x "$tmpdir/bin/tsc"
+chmod +x "$tmpdir/bin/tsgo"
 
 extract_ts_emit_script "exec" "$tmpdir/ts-emit.exec.sh"
 extract_ts_emit_script "status" "$tmpdir/ts-emit.status.sh"
 
 export PATH="$tmpdir/bin:$PATH"
-export TEST_TSC_LOG="$tmpdir/tsc.log"
-export TEST_CAPTURED_TSCONFIG="$tmpdir/captured-tsconfig.json"
+export TEST_TSGO_LOG="$tmpdir/tsgo.log"
 
-echo "Test 1: ts:emit exec filters noEmit refs even with inline comments"
+echo "Test 1: ts:emit exec uses tsgo with the static emit graph"
 (
   cd "$workspace"
   bash "$tmpdir/ts-emit.exec.sh"
 )
-test -f "$TEST_CAPTURED_TSCONFIG"
+grep -q -- '--build tsconfig.emit.json --noCheck' "$TEST_TSGO_LOG"
 
 echo "Preflight: tsBinPkg is exec-only guard backing, not a profile package"
 assert_eq 2 "$(eval_ts_package_count)" "ts module packages should be bc plus tsgo guard only"
 
-echo "Test 2: ts:emit status uses the same filtered graph"
+echo "Test 2: ts:emit status uses the static emit graph"
 (
   cd "$workspace"
-  : > "$TEST_TSC_LOG"
-  rm -f "$TEST_CAPTURED_TSCONFIG"
+  : > "$TEST_TSGO_LOG"
   set +e
   bash "$tmpdir/ts-emit.status.sh"
   exit_code=$?
   set -e
-  assert_exit_code 0 "$exit_code" "ts:emit status should succeed for an already-clean filtered graph"
+  assert_exit_code 0 "$exit_code" "ts:emit status should succeed for an already-clean emit graph"
 )
-test -f "$TEST_CAPTURED_TSCONFIG"
-grep -q -- '--dry --noCheck --verbose --pretty false' "$TEST_TSC_LOG"
+grep -q -- '--build tsconfig.emit.json --dry --noCheck --verbose --pretty false' "$TEST_TSGO_LOG"
 
-echo "Test 3: ts:emit succeeds without invoking tsc when every referenced project is noEmit"
-cat > "$workspace/tsconfig.all.json" <<'EOF'
+echo "Test 3: ts:emit status detects pending emit work"
+(
+  cd "$workspace"
+  : > "$TEST_TSGO_LOG"
+  set +e
+  TEST_TSGO_STALE=1 bash "$tmpdir/ts-emit.status.sh"
+  exit_code=$?
+  set -e
+  assert_exit_code 1 "$exit_code" "ts:emit status should fail when dry-run reports pending work"
+)
+
+echo "Test 4: ts:emit fails when the emit graph is missing"
+(
+  cd "$workspace"
+  : > "$TEST_TSGO_LOG"
+  mv tsconfig.emit.json tsconfig.emit.json.bak
+
+  set +e
+  bash "$tmpdir/ts-emit.exec.sh" > "$tmpdir/missing-exec.out" 2> "$tmpdir/missing-exec.err"
+  exec_exit_code=$?
+  bash "$tmpdir/ts-emit.status.sh" > "$tmpdir/missing-status.out" 2> "$tmpdir/missing-status.err"
+  status_exit_code=$?
+  set -e
+
+  assert_exit_code 1 "$exec_exit_code" "ts:emit exec should fail when the emit graph is missing"
+  assert_exit_code 1 "$status_exit_code" "ts:emit status should fail when the emit graph is missing"
+  grep -qF "ts:emit: emit tsconfig tsconfig.emit.json is missing or unreadable; run genie:run to generate it" "$tmpdir/missing-exec.err"
+  grep -qF "ts:emit: emit tsconfig tsconfig.emit.json is missing or unreadable; run genie:run to generate it" "$tmpdir/missing-status.err"
+  assert_eq "" "$(cat "$TEST_TSGO_LOG")" "ts:emit should not invoke tsgo when the emit graph is missing"
+
+  mv tsconfig.emit.json.bak tsconfig.emit.json
+)
+
+echo "Test 5: ts:emit succeeds without invoking tsgo when the emit graph is empty"
+cat > "$workspace/tsconfig.emit.json" <<'EOF'
 {
   "files": [],
-  "references": [
-    { "path": "packages/no-emit" }
-  ]
+  "references": []
 }
 EOF
 (
   cd "$workspace"
-  : > "$TEST_TSC_LOG"
-  rm -f "$TEST_CAPTURED_TSCONFIG"
+  : > "$TEST_TSGO_LOG"
   bash "$tmpdir/ts-emit.exec.sh" > "$tmpdir/no-work.out"
   grep -qF "ts:emit: no emit-capable referenced projects" "$tmpdir/no-work.out"
-  assert_eq "" "$(cat "$TEST_TSC_LOG")" "ts:emit exec should not invoke tsc for all-noEmit graph"
+  assert_eq "" "$(cat "$TEST_TSGO_LOG")" "ts:emit exec should not invoke tsgo for an empty emit graph"
 
   set +e
   bash "$tmpdir/ts-emit.status.sh"
   exit_code=$?
   set -e
-  assert_exit_code 0 "$exit_code" "ts:emit status should succeed for all-noEmit graph"
-  assert_eq "" "$(cat "$TEST_TSC_LOG")" "ts:emit status should not invoke tsc for all-noEmit graph"
+  assert_exit_code 0 "$exit_code" "ts:emit status should succeed for an empty emit graph"
+  assert_eq "" "$(cat "$TEST_TSGO_LOG")" "ts:emit status should not invoke tsgo for an empty emit graph"
 )
 
 echo ""

@@ -22,7 +22,7 @@
 #   generators also run in strict mode.
 #   `ts:clean` remains available as a heavier escape hatch when you suspect
 #   corrupted build metadata. Ensure all packages are listed in
-#   tsconfig.all.json references.
+#   tsconfig.check.json references.
 #
 # Effect-LSP gate (issue #811):
 #   The `@effect/language-service` gate is ENABLED (see `effectDiagnosticsGate`
@@ -40,10 +40,6 @@
 #   Path to the TypeScript build/check binary. Defaults to "tsgo" so normal
 #   workspace checks use Nix-managed TypeScript 7.
 #
-# tscBin:
-#   Path to the JavaScript TypeScript compiler. Defaults to "tsc" and is kept
-#   for ts:emit and tsconfig parsing helpers that need the JS compiler API.
-#
 # OTEL tracing:
 #   When OTEL is available, ts:check and ts:build run with --extendedDiagnostics
 #   --verbose (adds ~3% overhead) and emit per-project child spans with timing
@@ -54,11 +50,11 @@
 #   Effect lints are always re-surfaced.
 #
 # Status checks:
-#   - ts:emit uses `tsc --build --dry --noCheck` to skip when no outputs would be produced.
+#   - ts:emit uses `tsgo --build --dry --noCheck` to skip when no outputs would be produced.
 {
-  tsconfigFile ? "tsconfig.all.json",
+  tsconfigFile ? "tsconfig.check.json",
+  emitTsconfigFile ? "tsconfig.emit.json",
   tsBin ? "tsgo",
-  tscBin ? "tsc",
   # Real derivation/path backing the `tsBin` guard. When set, the guard owns
   # `bin/<tsBin>` and exec's this by absolute path under passthrough (see
   # cli-guard.nix).
@@ -78,81 +74,13 @@ let
       "genie:run"
       "pnpm:install"
     ];
-  emitTsconfigHelper = ''
-        generate_emit_tsconfig() {
-          local source_tsconfig="$1"
-          local target_tsconfig="$2"
-
-          # `tsc --build --dry --noCheck` still treats `noEmit` references as emit
-          # work, which made `ts:emit` look perpetually stale. Build a filtered
-          # graph just for this task instead of mutating the checked-in config.
-          ${pkgs.nodejs}/bin/node - "$source_tsconfig" "$target_tsconfig" <<'NODE'
-    const fs = require('node:fs')
-    const path = require('node:path')
-
-    const [sourceTsconfig, targetTsconfig] = process.argv.slice(2)
-
-    const loadTypescript = () => {
-      try {
-        return require(require.resolve('typescript', { paths: [path.dirname(sourceTsconfig), process.cwd()] }))
-      } catch (error) {
-        throw new Error(
-          'Unable to resolve TypeScript while preparing ts:emit: ' +
-            String(error?.message ?? error)
-        )
-      }
-    }
-
-    const typescript = loadTypescript()
-
-    const readTsconfig = (filePath) => {
-      const parsed = typescript.readConfigFile(filePath, (path) => fs.readFileSync(path, 'utf8'))
-      if (parsed.error) {
-        const message = typeof parsed.error.messageText === 'string'
-          ? parsed.error.messageText
-          : JSON.stringify(parsed.error.messageText)
-        throw new Error('Failed to parse ' + filePath + ': ' + message)
-      }
-      return parsed.config
-    }
-
-    const resolveReferenceTsconfig = (referencePath) => {
-      const resolvedPath = path.resolve(baseDir, referencePath)
-      try {
-        return fs.statSync(resolvedPath).isDirectory()
-          ? path.join(resolvedPath, 'tsconfig.json')
-          : resolvedPath
-      } catch {
-        return path.basename(resolvedPath).endsWith('.json')
-          ? resolvedPath
-          : path.join(resolvedPath, 'tsconfig.json')
-      }
-    }
-
-    const rootConfig = readTsconfig(sourceTsconfig)
-    const baseDir = path.dirname(sourceTsconfig)
-
-    rootConfig.references = (rootConfig.references ?? []).filter((reference) => {
-      const refTsconfig = resolveReferenceTsconfig(reference.path)
-      if (!fs.existsSync(refTsconfig)) {
-        return true
-      }
-
-      const refConfig = readTsconfig(refTsconfig)
-      return refConfig.compilerOptions?.noEmit !== true
-    })
-
-    if (
-      rootConfig.references.length === 0 &&
-      (!Array.isArray(rootConfig.files) || rootConfig.files.length === 0)
-    ) {
-      rootConfig.__effectUtilsTsEmitNoWork = true
-    }
-
-    fs.writeFileSync(targetTsconfig, JSON.stringify(rootConfig))
-    NODE
-        }
+  requireEmitTsconfig = ''
+    if [ ! -r ${lib.escapeShellArg emitTsconfigFile} ]; then
+      echo "ts:emit: emit tsconfig ${lib.escapeShellArg emitTsconfigFile} is missing or unreadable; run genie:run to generate it" >&2
+      exit 1
+    fi
   '';
+  emitGraphHasReferences = "grep -q '\"path\"[[:space:]]*:' ${lib.escapeShellArg emitTsconfigFile}";
 
   # Script that runs the selected TypeScript compiler with --extendedDiagnostics --verbose,
   # parses per-project timing, and emits OTEL child spans.
@@ -376,7 +304,9 @@ let
     "ts:check" = {
       guard = tsBin;
       description = "Type check the whole workspace (tsgo --build)";
-      exec = trace.exec "ts:check" (tscWithDiagnostics "ts:check" tsBin "--build ${tsconfigFile}" "");
+      exec = trace.exec "ts:check" (
+        tscWithDiagnostics "ts:check" tsBin "--build ${lib.escapeShellArg tsconfigFile}" ""
+      );
       after = [
         "genie:run"
         "pnpm:install"
@@ -386,14 +316,16 @@ let
       guard = tsBin;
       description = "Type check the whole workspace without incremental reuse (tsgo --build --force)";
       exec = trace.exec "ts:check:strict" (
-        tscWithDiagnostics "ts:check:strict" tsBin "--build --force ${tsconfigFile}" ""
+        tscWithDiagnostics "ts:check:strict" tsBin "--build --force ${lib.escapeShellArg tsconfigFile}" ""
       );
       after = inheritedCheckAfter;
     };
     "ts:build" = {
       guard = tsBin;
       description = "Build all packages with type checking (tsgo --build)";
-      exec = trace.exec "ts:build" (tscWithDiagnostics "ts:build" tsBin "--build ${tsconfigFile}" "");
+      exec = trace.exec "ts:build" (
+        tscWithDiagnostics "ts:build" tsBin "--build ${lib.escapeShellArg tsconfigFile}" ""
+      );
       after = [
         "genie:run"
         "pnpm:install"
@@ -404,45 +336,32 @@ let
   otherTasks = {
     "ts:build-watch" = {
       description = "Build all packages in watch mode (tsgo --build --watch)";
-      exec = trace.exec "ts:build-watch" "${tsBin} --build --watch ${tsconfigFile}";
+      exec = trace.exec "ts:build-watch" "${tsBin} --build --watch ${lib.escapeShellArg tsconfigFile}";
       after = [
         "genie:run"
         "pnpm:install"
       ];
     };
     "ts:emit" = trace.withStatus "ts:emit" "binary" {
-      description = "Emit build outputs without full type checking (tsc --build --noCheck)";
+      description = "Emit build outputs without full type checking (tsgo --build --noCheck)";
       # trace-audit-allow: raw exec - argument to trace.withStatus "ts:emit" above.
       exec = ''
         set -euo pipefail
-        ${emitTsconfigHelper}
-        # Create the filtered config next to the source tsconfig so referenced
-        # project paths stay relative to the workspace instead of `/tmp`.
-        _emit_tmpdir="$(dirname "${tsconfigFile}")"
-        _emit_tsconfig="$(mktemp "$_emit_tmpdir/.ts-emit-XXXXXX.json")"
-        trap 'rm -f "$_emit_tsconfig"' EXIT
-        generate_emit_tsconfig "${tsconfigFile}" "$_emit_tsconfig"
-        if ${pkgs.nodejs}/bin/node -e 'const fs = require("node:fs"); process.exit(JSON.parse(fs.readFileSync(process.argv[1], "utf8")).__effectUtilsTsEmitNoWork === true ? 0 : 1)' "$_emit_tsconfig"; then
+        ${requireEmitTsconfig}
+        if ! ${emitGraphHasReferences}; then
           echo "ts:emit: no emit-capable referenced projects"
           exit 0
         fi
-        ${tscWithDiagnostics "ts:emit" tscBin "--build \"$_emit_tsconfig\"" "--noCheck"}
+        ${tscWithDiagnostics "ts:emit" tsBin "--build ${lib.escapeShellArg emitTsconfigFile}" "--noCheck"}
       '';
       # trace-audit-allow: raw status - argument to trace.withStatus "ts:emit" above.
       status = ''
         set -euo pipefail
-        ${emitTsconfigHelper}
-
-        # Reuse the same filtered graph for the dry-run status check so warm
-        # caching answers the same question as the real emit command.
-        _emit_tmpdir="$(dirname "${tsconfigFile}")"
-        _emit_tsconfig="$(mktemp "$_emit_tmpdir/.ts-emit-XXXXXX.json")"
-        trap 'rm -f "$_emit_tsconfig"' EXIT
-        generate_emit_tsconfig "${tsconfigFile}" "$_emit_tsconfig"
-        if ${pkgs.nodejs}/bin/node -e 'const fs = require("node:fs"); process.exit(JSON.parse(fs.readFileSync(process.argv[1], "utf8")).__effectUtilsTsEmitNoWork === true ? 0 : 1)' "$_emit_tsconfig"; then
+        ${requireEmitTsconfig}
+        if ! ${emitGraphHasReferences}; then
           exit 0
         fi
-        _out="$(${tscBin} --build "$_emit_tsconfig" --dry --noCheck --verbose --pretty false 2>&1)" || exit 1
+        _out="$(${tsBin} --build ${lib.escapeShellArg emitTsconfigFile} --dry --noCheck --verbose --pretty false 2>&1)" || exit 1
         # tsc --build --dry reports pending work as:
         # - "A non-dry build would build project ..."
         # - "A non-dry build would update timestamps for output of project ..."
@@ -457,7 +376,7 @@ let
     };
     "ts:clean" = {
       description = "Remove TypeScript build artifacts";
-      exec = trace.exec "ts:clean" "${tsBin} --build --clean ${tsconfigFile}";
+      exec = trace.exec "ts:clean" "${tsBin} --build --clean ${lib.escapeShellArg tsconfigFile}";
     };
   };
 in

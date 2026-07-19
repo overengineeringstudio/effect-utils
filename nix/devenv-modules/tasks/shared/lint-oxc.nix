@@ -20,7 +20,7 @@
 #       # Config file names to check for genie coverage (default: package.json + tsconfig.json)
 #       genieCoverageFiles = [ "package.json" "tsconfig.json" ];  # optional
 #       # Path to tsconfig for type-aware linting (enables typescript/no-deprecated etc)
-#       tsconfig = "tsconfig.all.json";  # optional
+#       tsconfig = "tsconfig.check.json";  # optional
 #       # Whether to fail on warnings (default: true for CI strictness)
 #       # denyWarnings = false;  # optional
 #     })

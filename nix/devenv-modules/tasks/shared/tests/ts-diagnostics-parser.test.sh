@@ -40,7 +40,7 @@ nix eval --impure --raw --expr "
           options.packages = pkgs.lib.mkOption { type = pkgs.lib.types.listOf pkgs.lib.types.anything; default = [ ]; };
         })
         ((import $ROOT/nix/devenv-modules/tasks/shared/ts.nix {
-          tsconfigFile = \"tsconfig.all.json\";
+          tsconfigFile = \"tsconfig.check.json\";
         }) {
           pkgs = pkgs;
           lib = pkgs.lib;
@@ -200,7 +200,7 @@ echo "$flat" | grep -q '"tool.name","value":{"stringValue":"typescript"}' \
   || fail "span missing tool.name=typescript"
 echo "$flat" | grep -q '"ts.project.name","value":{"stringValue":"socket"}' \
   || fail "project span missing typed project name"
-echo "$flat" | grep -q '"tsconfig.path","value":{"stringValue":"tsconfig.all.json"}' \
+echo "$flat" | grep -q '"tsconfig.path","value":{"stringValue":"tsconfig.check.json"}' \
   || fail "project span missing typed tsconfig path"
 
 # 5. No per-project span should carry the aggregate total. (grep may match
