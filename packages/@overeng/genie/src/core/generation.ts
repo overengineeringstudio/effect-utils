@@ -14,7 +14,7 @@ import {
 } from '@effect/platform'
 import { Duration, Effect, Either, Option, Schema } from 'effect'
 
-import { DistributedSemaphore } from '@overeng/utils'
+import { DistributedSemaphore } from '@overeng/utils/lock'
 import { FileSystemBacking } from '@overeng/utils/node'
 
 import type { GenieOutput } from '../runtime/mod.ts'

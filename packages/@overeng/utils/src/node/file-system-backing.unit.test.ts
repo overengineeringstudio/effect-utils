@@ -8,8 +8,8 @@ import { Context, Deferred, Duration, Effect, Layer, Schema, Stream } from 'effe
 import { expect } from 'vitest'
 
 import { DistributedSemaphoreBacking } from '@overeng/effect-distributed-lock'
-import { DistributedSemaphore } from '@overeng/utils'
 import { Vitest } from '@overeng/utils-dev/node-vitest'
+import { DistributedSemaphore } from '@overeng/utils/lock'
 import { FileSystemBacking as ReexportedFileSystemBacking } from '@overeng/utils/node'
 
 import * as FileSystemBacking from './file-system-backing.ts'

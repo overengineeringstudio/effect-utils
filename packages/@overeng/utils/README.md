@@ -15,11 +15,11 @@ bun add @overeng/utils
 - Workspace-aware command helpers (`cmd`, `cmdText`) with optional logging and retention
 - Effect-native access to current working directory via `CurrentWorkingDirectory`
 - Workspace root service backed by `WORKSPACE_ROOT` via `EffectUtilsWorkspace`
-- File system-backed distributed locks with TTL expiration and atomic operations
+- File system-backed distributed locks with TTL expiration and atomic operations via `@overeng/utils/lock`
 
 ### Distributed Lock / Semaphore
 
-This package re-exports the first-party `@overeng/effect-distributed-lock` core package and adds Node.js file-system backing implementations.
+The `@overeng/utils/lock` subpath re-exports the first-party `@overeng/effect-distributed-lock` core package. `@overeng/utils/node` adds Node.js file-system backing implementations.
 
 #### File System Backing
 
@@ -27,7 +27,7 @@ For single-machine scenarios where you need to coordinate locks across multiple 
 
 ```typescript
 import { FileSystemBacking } from '@overeng/utils/node'
-import { DistributedSemaphore } from '@overeng/utils'
+import { DistributedSemaphore } from '@overeng/utils/lock'
 import { Effect, Duration } from 'effect'
 import { NodeContext } from '@effect/platform-node'
 
@@ -101,7 +101,7 @@ After a force revoke, the victim holder's next TTL refresh will fail, triggering
 
 ## Exports
 
-### Isomorphic (`@overeng/utils`)
+### Lock (`@overeng/utils/lock`)
 
 Re-exports from `@overeng/effect-distributed-lock`:
 

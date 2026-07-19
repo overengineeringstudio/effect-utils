@@ -21,6 +21,10 @@ All notable changes to this project will be documented in this file.
   `tscBin` task-module argument and the JS TypeScript runtime parser from
   `ts.nix` while preserving noEmit project coverage in `ts:check` (#943).
 
+- **@overeng/utils**: move distributed-lock exports behind the
+  `@overeng/utils/lock` subpath so the general isomorphic barrel no longer
+  forces lock dependencies on unrelated consumers.
+
 - **react-inspector / Effect 4**: align the development dependency and peer
   floor to Effect `4.0.0-beta.99`, anchor injected test helpers to the separate
   Effect 3 catalog, and fail generation if either cohort's exact identity drifts

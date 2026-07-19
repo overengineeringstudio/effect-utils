@@ -20,7 +20,7 @@ import { createHash } from 'node:crypto'
 import { Context, Duration, Effect, Layer, SynchronizedRef } from 'effect'
 
 import type { AbsoluteDirPath } from '@overeng/effect-path'
-import { DistributedSemaphore, DistributedSemaphoreBacking } from '@overeng/utils'
+import { DistributedSemaphore, DistributedSemaphoreBacking } from '@overeng/utils/lock'
 import { FileSystemBacking } from '@overeng/utils/node'
 
 /** Default TTL for store locks (auto-expires if process crashes) */
