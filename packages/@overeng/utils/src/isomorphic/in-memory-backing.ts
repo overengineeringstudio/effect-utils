@@ -1,5 +1,6 @@
 import { Duration, Effect, Layer } from 'effect'
-import { DistributedSemaphoreBacking } from 'effect-distributed-lock'
+
+import { DistributedSemaphoreBacking } from '@overeng/effect-distributed-lock'
 
 /**
  * In-memory DistributedSemaphoreBacking — useful for tests where filesystem

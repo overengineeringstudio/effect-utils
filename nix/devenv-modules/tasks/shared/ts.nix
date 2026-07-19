@@ -118,7 +118,15 @@ let
 
     const resolveReferenceTsconfig = (referencePath) => {
       const resolvedPath = path.resolve(baseDir, referencePath)
-      return path.extname(resolvedPath) ? resolvedPath : path.join(resolvedPath, 'tsconfig.json')
+      try {
+        return fs.statSync(resolvedPath).isDirectory()
+          ? path.join(resolvedPath, 'tsconfig.json')
+          : resolvedPath
+      } catch {
+        return path.basename(resolvedPath).endsWith('.json')
+          ? resolvedPath
+          : path.join(resolvedPath, 'tsconfig.json')
+      }
     }
 
     const rootConfig = readTsconfig(sourceTsconfig)
@@ -133,6 +141,13 @@ let
       const refConfig = readTsconfig(refTsconfig)
       return refConfig.compilerOptions?.noEmit !== true
     })
+
+    if (
+      rootConfig.references.length === 0 &&
+      (!Array.isArray(rootConfig.files) || rootConfig.files.length === 0)
+    ) {
+      rootConfig.__effectUtilsTsEmitNoWork = true
+    }
 
     fs.writeFileSync(targetTsconfig, JSON.stringify(rootConfig))
     NODE
@@ -407,6 +422,10 @@ let
         _emit_tsconfig="$(mktemp "$_emit_tmpdir/.ts-emit-XXXXXX.json")"
         trap 'rm -f "$_emit_tsconfig"' EXIT
         generate_emit_tsconfig "${tsconfigFile}" "$_emit_tsconfig"
+        if ${pkgs.nodejs}/bin/node -e 'const fs = require("node:fs"); process.exit(JSON.parse(fs.readFileSync(process.argv[1], "utf8")).__effectUtilsTsEmitNoWork === true ? 0 : 1)' "$_emit_tsconfig"; then
+          echo "ts:emit: no emit-capable referenced projects"
+          exit 0
+        fi
         ${tscWithDiagnostics "ts:emit" tscBin "--build \"$_emit_tsconfig\"" "--noCheck"}
       '';
       # trace-audit-allow: raw status - argument to trace.withStatus "ts:emit" above.
@@ -420,6 +439,9 @@ let
         _emit_tsconfig="$(mktemp "$_emit_tmpdir/.ts-emit-XXXXXX.json")"
         trap 'rm -f "$_emit_tsconfig"' EXIT
         generate_emit_tsconfig "${tsconfigFile}" "$_emit_tsconfig"
+        if ${pkgs.nodejs}/bin/node -e 'const fs = require("node:fs"); process.exit(JSON.parse(fs.readFileSync(process.argv[1], "utf8")).__effectUtilsTsEmitNoWork === true ? 0 : 1)' "$_emit_tsconfig"; then
+          exit 0
+        fi
         _out="$(${tscBin} --build "$_emit_tsconfig" --dry --noCheck --verbose --pretty false 2>&1)" || exit 1
         # tsc --build --dry reports pending work as:
         # - "A non-dry build would build project ..."

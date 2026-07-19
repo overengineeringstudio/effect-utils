@@ -13,6 +13,17 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **devenv / ts:emit**: resolve project references with filesystem directory
+  checks so dotted directory names map to `tsconfig.json`, and treat an
+  all-`noEmit` reference graph as successful no-work instead of invoking the
+  compiler with an empty build root.
+- **@overeng/utils**: restore the downstream `@effect/platform` patch
+  projection in the generated package manifest after vendoring
+  `effect-distributed-lock`.
+- **@overeng/effect-distributed-lock**: vendor the used non-Redis
+  `effect-distributed-lock` subset as first-party source and stop scoped
+  semaphore keepAlive refreshes before holder release, preventing file-system
+  lock resurrection during `mr store gc`.
 - **devenv / pnpm**: separate frozen-install and lockfile-mutation pnpm
   binaries. `pnpm:update` now uses the last verified-safe pnpm 11 lock mutator
   (11.5.1), rejects affected 11.5.2-11.x overrides at Nix evaluation, and
@@ -1914,7 +1925,7 @@ signal <NAME>`) on non-zero exit; bound `process.executable.name` / the span
 
 ### Changed
 
-- **@overeng/utils**: Updated `effect-distributed-lock` to 0.0.11 and patched root exports to avoid loading optional `ioredis` (see https://github.com/ethanniser/effect-distributed-lock/issues/10)
+- **@overeng/utils**: Updated the distributed-lock dependency and patched root exports to avoid loading optional Redis support.
 
 - **@overeng/notion-effect-cli**: Migrated config from JSON to TypeScript (breaking change)
   - Config file is now `notion-schema-gen.config.ts` instead of `.notion-schema-gen.json`

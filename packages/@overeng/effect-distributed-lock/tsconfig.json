@@ -41,19 +41,13 @@
         }
       }
     ],
+    "types": ["node"],
     "composite": true,
     "rootDir": ".",
-    "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo",
-    "types": ["node"]
+    "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo"
   },
   "include": ["src/**/*"],
   "references": [
-    {
-      "path": "../effect-distributed-lock"
-    },
-    {
-      "path": "../otel-contract"
-    },
     {
       "path": "../utils-dev"
     }

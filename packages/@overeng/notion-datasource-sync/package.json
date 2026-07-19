@@ -117,6 +117,7 @@
     "warning": "DO NOT EDIT - changes will be overwritten",
     "workspaceClosureDirs": [
       "packages/@overeng/content-address",
+      "packages/@overeng/effect-distributed-lock",
       "packages/@overeng/notion-core",
       "packages/@overeng/notion-datasource-sync",
       "packages/@overeng/notion-effect-client",

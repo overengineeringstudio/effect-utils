@@ -153,6 +153,7 @@ let
     "packages/@overeng/utils"
     "packages/@overeng/utils-dev"
     "packages/@overeng/effect-ai-claude-cli"
+    "packages/@overeng/effect-distributed-lock"
     "packages/@overeng/effect-path"
     "packages/@overeng/effect-react"
     "packages/@overeng/effect-rpc-tanstack"
@@ -194,6 +195,10 @@ let
     {
       path = "packages/@overeng/effect-ai-claude-cli";
       name = "effect-ai-claude-cli";
+    }
+    {
+      path = "packages/@overeng/effect-distributed-lock";
+      name = "effect-distributed-lock";
     }
     {
       path = "packages/@overeng/effect-path";

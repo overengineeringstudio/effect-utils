@@ -249,7 +249,7 @@ type Funding =
  * @example
  * ```ts
  * const patches: PatchesRegistry = {
- *   'effect-distributed-lock@0.0.11': 'patches/effect-distributed-lock@0.0.11.patch',
+ *   'some-package@1.0.0': 'patches/some-package@1.0.0.patch',
  * }
  * ```
  */

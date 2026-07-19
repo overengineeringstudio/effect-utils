@@ -19,7 +19,7 @@ bun add @overeng/utils
 
 ### Distributed Lock / Semaphore
 
-This package re-exports and extends [effect-distributed-lock](https://github.com/ethanniser/effect-distributed-lock) with additional backing implementations.
+This package re-exports the first-party `@overeng/effect-distributed-lock` core package and adds Node.js file-system backing implementations.
 
 #### File System Backing
 
@@ -94,18 +94,16 @@ const allRevoked = yield * FileSystemBacking.forceRevokeAll(options, 'my-resourc
 
 After a force revoke, the victim holder's next TTL refresh will fail, triggering `LockLostError` in their `withPermits` scope.
 
-See upstream feature request: https://github.com/ethanniser/effect-distributed-lock/issues/9
-
 #### Limitations
 
 - **Eventually consistent permit counting**: While individual lock file operations are atomic, the total permit count across holders is read from multiple files
-- **Single machine only**: For distributed systems across multiple machines, use the Redis backing from [`effect-distributed-lock`](https://github.com/ethanniser/effect-distributed-lock)
+- **Single machine only**: The file-system backing coordinates processes on one shared filesystem. Multi-machine deployments need a separate backing implementation.
 
 ## Exports
 
 ### Isomorphic (`@overeng/utils`)
 
-Re-exports from [`effect-distributed-lock`](https://github.com/ethanniser/effect-distributed-lock):
+Re-exports from `@overeng/effect-distributed-lock`:
 
 - `DistributedSemaphore` - Main semaphore interface
 - `DistributedSemaphoreBacking` - Backing store service interface
@@ -334,9 +332,3 @@ const logViewer = logStream.pipe(
   Stream.runForEach((entry) => Effect.sync(() => console.log(formatLogEntry(entry)))),
 )
 ```
-
-## Upstream Contribution
-
-The `FileSystemBacking` implementation in this package has been proposed for inclusion in the upstream [`effect-distributed-lock`](https://github.com/ethanniser/effect-distributed-lock) package.
-
-See: https://github.com/ethanniser/effect-distributed-lock/issues/8
