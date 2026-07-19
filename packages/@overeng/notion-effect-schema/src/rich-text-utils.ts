@@ -76,8 +76,16 @@ const applyAnnotations = (opts: { text: string; steps: readonly AnnotationStep[]
 /** Apply markdown formatting based on annotations */
 const applyMarkdownAnnotations = (opts: { text: string; annotations: TextAnnotations }): string => {
   const { text, annotations } = opts
-  return applyAnnotations({
-    text,
+  // CommonMark emphasis/strong delimiters must directly hug non-whitespace (the
+  // "flanking" rule): `** bold **` is not parsed as emphasis and renders the
+  // literal asterisks. Notion bold/italic runs frequently include a trailing (or
+  // leading) space in `plain_text`, so hoist any surrounding whitespace outside
+  // the wrappers to keep the delimiters valid. An all-whitespace run gets no
+  // wrappers at all.
+  const [, leading = '', core = '', trailing = ''] = text.match(/^(\s*)([\s\S]*?)(\s*)$/) ?? []
+  if (core === '') return text
+  const wrapped = applyAnnotations({
+    text: core,
     steps: [
       { active: annotations.code, wrap: (s) => `\`${s}\`` },
       { active: annotations.strikethrough, wrap: (s) => `~~${s}~~` },
@@ -87,6 +95,7 @@ const applyMarkdownAnnotations = (opts: { text: string; annotations: TextAnnotat
       { active: annotations.underline, wrap: (s) => `<u>${s}</u>` },
     ],
   })
+  return `${leading}${wrapped}${trailing}`
 }
 
 /** Convert a single text rich text element to markdown */

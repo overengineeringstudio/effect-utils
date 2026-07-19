@@ -182,6 +182,37 @@ describe('toMarkdown', () => {
     expect(toMarkdown(richText)).toBe('***Hello***')
   })
 
+  // Notion runs often carry a trailing/leading space inside the formatted run.
+  // `** bold **` violates CommonMark flanking rules and renders literal
+  // asterisks, so surrounding whitespace must sit outside the delimiters.
+  it('hoists a trailing space outside bold delimiters', () => {
+    const richText: RichTextArray = [makeText('18 Uhr ', { bold: true })]
+    expect(toMarkdown(richText)).toBe('**18 Uhr** ')
+  })
+
+  it('hoists a leading space outside bold delimiters', () => {
+    const richText: RichTextArray = [makeText(' Romantik', { bold: true })]
+    expect(toMarkdown(richText)).toBe(' **Romantik**')
+  })
+
+  it('hoists surrounding whitespace outside italic delimiters', () => {
+    const richText: RichTextArray = [makeText('  emphasis  ', { italic: true })]
+    expect(toMarkdown(richText)).toBe('  *emphasis*  ')
+  })
+
+  it('keeps a bold run and following text joinable without stray asterisks', () => {
+    const richText: RichTextArray = [
+      makeText('„Romantik - was ist das?" ', { bold: true }),
+      makeText('Musik - Dichtung - Gebet - Traum'),
+    ]
+    expect(toMarkdown(richText)).toBe('**„Romantik - was ist das?"** Musik - Dichtung - Gebet - Traum')
+  })
+
+  it('drops delimiters for an all-whitespace formatted run', () => {
+    const richText: RichTextArray = [makeText('   ', { bold: true })]
+    expect(toMarkdown(richText)).toBe('   ')
+  })
+
   it('converts links', () => {
     const richText: RichTextArray = [makeText('click here', { href: 'https://example.com' })]
     expect(toMarkdown(richText)).toBe('[click here](https://example.com)')
