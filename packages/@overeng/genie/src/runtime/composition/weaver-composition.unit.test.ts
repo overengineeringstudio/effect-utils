@@ -88,6 +88,57 @@ describe('registryFromMembers (SC-R08/R09)', () => {
     expect(issues.some((i) => i.rule === 'weaver/dangling-ref')).toBe(true)
   })
 
+  it('carries per-entry owner/source/constName through composition into the registry (typed)', () => {
+    // Mirror-elimination flow-through: the additive per-entry metadata must survive from a member
+    // fragment into the COMPOSED registry that downstream consumers read — TYPED, not cast.
+    const owned: RegistryFragment = {
+      namespace: 'owned',
+      memberPath: 'packages/owned',
+      displayName: 'Owned',
+      attributes: [
+        {
+          id: 'owned.k',
+          type: 'string',
+          brief: 'k',
+          stability: 'development',
+          examples: ['x'],
+          owner: 'team-a',
+          source: 'owned/k.ts',
+          constName: 'OWNED_K',
+        },
+      ],
+      foreignRefs: [],
+      signals: [
+        {
+          kind: 'metric',
+          id: 'metric.owned.m',
+          metric_name: 'owned.m',
+          instrument: 'counter',
+          unit: '1',
+          brief: 'm',
+          stability: 'development',
+          owner: 'team-b',
+          constName: 'OWNED_M',
+          attributes: [{ ref: 'owned.k', requirement_level: 'required' }],
+        },
+      ],
+    }
+    const { registry } = registryFromMembers({
+      members: [member(owned)],
+      name: 'r',
+      description: 'd',
+      schemaUrl: 's',
+    })
+    const attribute = registry.groups[0]!.attributes[0]!
+    expect(attribute.owner).toBe('team-a')
+    expect(attribute.source).toBe('owned/k.ts')
+    expect(attribute.constName).toBe('OWNED_K')
+    const signal = registry.signals[0]!
+    expect(signal.owner).toBe('team-b')
+    expect(signal.constName).toBe('OWNED_M')
+    expect('source' in signal).toBe(false)
+  })
+
   it('defers upstream-namespaced refs to weaver (no dangling issue)', () => {
     const withUpstream: RegistryFragment = {
       ...acme,
