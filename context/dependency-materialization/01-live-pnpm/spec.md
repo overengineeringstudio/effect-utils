@@ -27,6 +27,7 @@ in [../03-nix-prepared-deps/spec.md](../03-nix-prepared-deps/spec.md).
 | Runtime Identity  | DMP.LIVE-R05, DMP.LIVE-R06, DMP.LIVE-R07               |
 | CI State          | DMP.LIVE-R10                                           |
 | Health            | DMP.LIVE-R09, DMP.LIVE-R11                             |
+| Mutation Parity   | DMP.LIVE-R12                                           |
 
 ## Model
 
@@ -66,6 +67,25 @@ repos/effect-utils
 
 The parent may link source from a nested root, but it must not silently repair
 or mutate the nested root's dependency state.
+
+## Mutation Parity
+
+Every managed entrypoint that can mutate an authoritative lockfile or graph
+uses the same realization transaction:
+
+```text
+Materialization-Root lock + package-manager-home lock
+  -> selected fresh Store Cache namespace
+  -> shared Store Cache admission lease
+  -> capacity gate
+  -> canonical policy arguments
+  -> pnpm mutation
+  -> root-local projection
+```
+
+Install, update, and deduplicate operations cannot select separate topology,
+lifecycle, cache, or concurrency policies. Historical cache namespaces remain
+outside the transaction and cannot block current materialization.
 
 ## Runtime Identity
 

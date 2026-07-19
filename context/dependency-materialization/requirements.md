@@ -63,6 +63,9 @@ Subsystem requirements refine this root contract:
 - **T04 Conservative repair:** Repair and GC commands may refuse to mutate when
   they cannot identify the Materialization Root or prove the required
   shared-content authority.
+- **T05 Purity before reuse:** Work that cannot be derived deterministically
+  from declared inputs without lifecycle mutation remains outside the shared
+  reuse boundary, even when isolating or rebuilding it costs more time or disk.
 
 ## Requirements
 
@@ -118,10 +121,9 @@ Subsystem requirements refine this root contract:
 ### Must preserve correctness under sharing
 
 - **DMP-R12 Root-owned writable state:** Writable Dependency Graph, virtual
-  store, and Projection State must remain inside one Materialization Root. A
-  cross-root Store Cache may contain pnpm-owned derived indexes only when they
-  are disposable, synchronized, and cannot select or override Dependency
-  Edges.
+  store, and Projection State must remain inside one Materialization Root.
+  Cross-root reusable state must satisfy DMP-R21; package-manager control-plane
+  metadata is not made pure merely by being disposable or non-authoritative.
 - **DMP-R13 Store Cache safety:** Loss or eviction of a Store Cache must not
   corrupt an already-materialized Dependency Graph. Cache completeness must
   not be treated as root health or as an offline-readiness guarantee.
@@ -148,3 +150,29 @@ Subsystem requirements refine this root contract:
 - **DMP-R20 Verification architecture:** Changes to dependency materialization
   behavior must map to explicit fixture, proof, benchmark, or real-workload
   evidence before they become defaults.
+
+### Must maximize reuse inside a pure boundary
+
+- **DMP-R21 Pure reusable state:** Cross-root reusable state must be
+  deterministic, content-addressed or equivalently integrity-addressed, derived
+  only from declared inputs, and treated as immutable. Dependency lifecycle
+  scripts, ambient downloads, source compilation, and mutable native/build
+  outputs must not enter that reuse boundary.
+- **DMP-R22 Safety-gated optimization:** Correct dependency identity, declared
+  graph authority, lifecycle purity, data safety, and bounded repair/failure
+  scope are hard admissibility constraints. Among designs that satisfy every
+  constraint, defaults must seek a non-dominated operating point across
+  physical bytes, repeated work, cold/warm latency, concurrency, and operational
+  complexity among evaluated admissible candidates rather than maximizing
+  shared mutable state. New admissible candidates remain open challengers.
+- **DMP-R23 Reuse/authority separation:** Reuse Scope and Authority Scope must
+  remain independent. Equivalent immutable data or work may be reused as
+  broadly as evidence permits, while writable graph, projection, repair, and
+  lifecycle authority stays at the smallest independently recoverable scope.
+- **DMP-R24 Hermetic topology reuse:** Repeated dependency resolution or
+  topology work must graduate into a cross-root reusable artifact only when
+  its complete identity is derived from declared inputs, construction is
+  lifecycle-free and atomic, consumers cannot mutate the result, and corruption
+  or eviction can be repaired without coordinating those consumers. Root-local
+  mutable realization is a compatibility boundary, not the long-term reuse
+  ideal.

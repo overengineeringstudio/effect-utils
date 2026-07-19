@@ -88,3 +88,12 @@ evidence, and observability subsystems.
   Install-order permutations are required when mutable dependency state is
   reused across installs.
   Refines: DMP-R11, DMP.LIVE-R07, DMP.PROJ-R09, DMP-R20.
+- **DMP.VER-R12 Topology-reuse comparison:** Repeated topology work must be
+  measured on the same real workloads and platform classes across root-local,
+  shared Global Virtual Store, identity-partitioned Global Virtual Store, and
+  isolated baselines. The comparison must include physical
+  bytes, repeated work, cold/second/warm/offline/repair/concurrent latency,
+  graph identity, lock contention, fault injection, and one-root repair scope.
+  Results may motivate a Hermetic Dependency Artifact but must not override the
+  purity and authority gates or make a mutable shared topology admissible.
+  Refines: DMP-R16, DMP-R20, DMP-R22, DMP-R23, DMP-R24, DMP.STORE-R14.

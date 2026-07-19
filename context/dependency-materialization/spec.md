@@ -49,6 +49,7 @@ dependency-materialization/
 | Doctor And Repair                                | DMP-R15                                     |
 | Benchmark And Acceptance Gates                   | DMP-R16, DMP-R17, DMP-R18, DMP-R19          |
 | Verification Architecture                        | DMP-R16, DMP-R17, DMP-R18, DMP-R19, DMP-R20 |
+| Pure Reuse Boundary                              | DMP-R21, DMP-R22, DMP-R23, DMP-R24          |
 
 ## Model
 
@@ -63,6 +64,13 @@ canonical workspace inputs
 
 pnpm is responsible for resolving and linking package contents. It is not the
 authority for executing package lifecycle code in effect-utils-managed paths.
+
+The long-term reuse unit is a hermetic dependency artifact keyed by every input
+that can affect package identity and topology. It is constructed atomically,
+never mutated by consumers, and may be reused as broadly as compatibility
+permits. Today's root-local pnpm graph is the mutable compatibility boundary
+used where pnpm cannot yet expose that artifact; it is not the architectural
+ceiling.
 
 ## Strict pnpm Install Policy
 
@@ -216,10 +224,36 @@ sources do not carry a second per-target witness file.
 | pnpm Store Cache                        | host-local or CI-job-local | pnpm concurrency control |
 | prepared dependency data                | immutable Nix store output | Nix build                |
 
-The local-development Store Cache is shared only across mutually trusted roots
-owned by the same user. effect-utils exposes no Materialization-Root repair or
-prune operation that sweeps that host cache. Nix prepared-dependency production
-remains an independent immutable path and does not consume the live host cache.
+The current local-development pnpm compatibility realization shares one whole
+Store Cache across mutually trusted roots owned by the same user. Because that
+cache includes mutable pnpm indexes, it does not satisfy the pure reusable-state
+boundary; the divergence is explicit in
+[DELTA-001](./.delta/DELTA-001-whole-store-mutable-index.md). effect-utils
+exposes no Materialization-Root repair or prune operation that sweeps that host
+cache. Nix prepared-dependency production remains an independent immutable path
+and does not consume the live host cache.
+
+## Pure Reuse Boundary
+
+Dependency work becomes eligible for cross-root reuse only after it is derived
+from declared inputs without lifecycle execution and has an immutable,
+integrity-addressed identity. Package contents that satisfy that boundary may
+be reused across every compatible root. Mutable package-manager indexes, graph
+edges, projections, repair state, ambient downloads, lifecycle output, and
+unclassified native/build output do not become reusable merely because they
+can be placed in a shared directory or discarded after failure.
+
+The optimization order is lexicographic:
+
+1. preserve dependency identity, declared authority, purity, data safety, and
+   independently bounded repair;
+2. within that feasible set, minimize physical bytes and repeated work;
+3. select a non-dominated latency/concurrency/complexity operating point among
+   evaluated admissible candidates while leaving the challenger set open.
+
+This is the same structural property exploited by Nix and hermetic build graphs:
+make the reusable unit pure and addressable first, then widen reuse without
+widening mutation authority.
 
 ## Doctor And Repair
 
@@ -263,7 +297,3 @@ A materialization policy change is accepted only when it proves:
 The [verification subsystem](./07-verification/spec.md) owns the evidence
 matrix, proof tiers, benchmark record shape, and regression-gate routing for
 these acceptance gates.
-
-## Open Design Questions
-
-No open design questions remain for this milestone.

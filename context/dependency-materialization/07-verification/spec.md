@@ -13,6 +13,8 @@ Status: **Draft**
 | Benchmark Matrix | DMP.VER-R05, DMP.VER-R06, DMP.VER-R07              |
 | Evidence Records | DMP.VER-R08, DMP.VER-R09                           |
 | Evidence Intake  | DMP.VER-R10                                        |
+| Dependency Identity | DMP.VER-R11                                     |
+| Topology Reuse   | DMP.VER-R12                                        |
 
 ## Evidence Tiers
 
@@ -84,9 +86,28 @@ Default changes require same-workload comparisons against the current default
 and an isolated baseline. Cache-efficiency claims must report bytes and file
 counts, not only timing.
 
-The current package-store default-gate evidence is recorded in
+To quantify repeated topology work and evaluate a future Hermetic Dependency
+Artifact, the same commit, graph, and machine class must compare:
+
+1. shared Store Cache with root-local virtual stores;
+2. shared Store Cache with one shared Global Virtual Store;
+3. shared Store Cache with Global Virtual Stores partitioned by declared graph
+   or lock identity;
+4. isolated Store Cache with root-local virtual stores.
+
+The matrix runs on effect-utils and the real dotfiles/Vista graph across ext4
+and APFS. It records extent-aware physical allocation where available, apparent
+bytes, files/inodes, downloads, cold/second/warm/offline/repair/concurrent
+latency, lock wait, peer/Package Instance identity, injected missing/corrupt
+edges, and the scope required to repair one root. Options that fail purity,
+identity, data-safety, concurrency, or bounded-repair gates are inadmissible
+regardless of their byte or latency result.
+
+The measured package-store policy evidence is recorded in
 [`evidence/storage-sharing-default-v2.json`](./evidence/storage-sharing-default-v2.json).
-It is machine-validated against committed raw JSONL records and records
+It is pinned to its recorded implementation head and harness checksum rather
+than silently acting as a current-head performance baseline. It is
+machine-validated against committed raw JSONL records and records
 separate real-workload Linux/ext4 and Darwin/APFS cold, warm, isolated,
 second-root, and concurrent phase matrices. The same evidence bundle carries
 per-host hardlink/prune capability records for hosts that enable destructive

@@ -88,6 +88,33 @@ files and mutable package-manager-derived lookup indexes. Neither facet is
 authoritative Dependency Graph or Projection State. A Store Cache may be
 shared by mutually trusted Materialization Roots without sharing their graphs.
 
+**Content-addressed Package Data** is the immutable byte layer whose identity is
+derived from content. It may be reused across every compatible Materialization
+Root. It is part of a Store Cache but does not include that cache's mutable
+derived indexes. _Avoid_: CAS when referring to the whole pnpm Store Cache.
+
+**Reuse Scope** is the set of compatible consumers allowed to reuse equivalent
+immutable data or deterministic work. It is an independent facet from Authority
+Scope: widening reuse does not grant mutation or repair authority.
+
+**Authority Scope** is the smallest boundary within which one owner may mutate,
+repair, or discard state without coordinating independent consumers. A live
+Dependency Graph has Materialization-Root Authority Scope even when its package
+data has host-user Reuse Scope.
+
+**Global Virtual Store** is pnpm's cross-project virtual-store realization. It
+shares graph/topology realization state and is therefore distinct from sharing
+a Store Cache or Content-addressed Package Data. _Avoid_: GVS as a synonym for
+cache reuse or dependency identity.
+
+**Hermetic Dependency Artifact** is an immutable dependency-data and topology
+result keyed by the complete declared graph, platform, package-manager policy,
+and every other identity-affecting input. Construction is lifecycle-free and
+atomic; consumers cannot mutate it. It may have broad Reuse Scope without
+granting graph or repair authority, analogous to a Nix derivation result or a
+build-system action result. A mutable pnpm Global Virtual Store is not such an
+artifact.
+
 **Store Cache Lease** coordinates package-manager mutation with cache-owner
 maintenance. Its shared **admission** mode permits concurrent materialization;
 its exclusive **maintenance** mode excludes materialization while the Store
@@ -123,6 +150,7 @@ The weight-bearing relations are:
 | Projection State        | `dependsOn` | Dependency Graph                     |
 | Materialization Root    | `dependsOn` | Store Cache                          |
 | Repair                  | `dependsOn` | Authoritative Materializer           |
+| Content-addressed Package Data | `partOf` | Store Cache                       |
 
 Store placement is a facet of a realization: local development may use a
 host-scoped cache, CI may use a job-scoped cache, and Nix prepared dependencies
@@ -143,5 +171,10 @@ Profile or Package Instance identity.
 - Use **Store Cache** for the whole pnpm store. Do not use **shared store** to
   imply shared Dependency Graph state, and do not use **content pool** for a
   store that also contains pnpm-owned derived indexes.
+- Use **CAS** only for a system with an explicit content-address/ownership/GC
+  contract. For pnpm, say **Content-addressed Package Data** for the byte layer
+  and **Store Cache** for the whole package-manager-owned cache.
+- State **Reuse Scope** and **Authority Scope** independently; a broader reuse
+  scope is not evidence for broader graph, mutation, or repair authority.
 - Use pnpm **package snapshot** only for the pnpm representation and **Package
   Instance** for the cross-realization concept.

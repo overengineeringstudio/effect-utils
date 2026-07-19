@@ -6,6 +6,11 @@ the current contract.
 
 ## Shared Store Authority
 
+The split-files fixtures below preserve historical failure evidence. Their
+registry/all-roots repair proposal is superseded by decision 0006: the current
+whole Store Cache has one package-manager-owned index, while graph repair stays
+inside one Materialization Root.
+
 ### Split store prune hazard
 
 Hypothesis: a macOS-style split store with profile-local metadata and shared
@@ -77,8 +82,11 @@ Registry model:
 {"phase":"empty-repair-plan","status":"refuse","reason":"no-registered-roots"}
 ```
 
-Conclusion: production repair can be a deterministic registry lookup,
-files-pool classification, sibling enumeration, and all-roots repair plan.
+Historical conclusion: the explored split-files realization proposed a
+registry lookup, files-pool classification, sibling enumeration, and all-roots
+repair plan. Current architecture rejects that complexity: it shares the whole
+pnpm Store Cache, delegates cache lifecycle to pnpm, and repairs only root-owned
+graph/projection state.
 
 ## Store-Trait Benchmarks
 
@@ -108,8 +116,10 @@ All copy and hardlink phases passed offline reinstall. Total benchmark tree
 footprint dropped from 273 MiB with copy import to 135 MiB with hardlink
 import.
 
-Conclusion: `linuxSharedHardlink` is a first-class candidate trait, but it
-still needs real-repo and concurrent-run proof before becoming a default.
+Historical conclusion: `linuxSharedHardlink` was a candidate named trait.
+Decision 0006 supersedes named live store traits with independent reuse,
+authority, import, and platform facts; the current spec uses pnpm `auto` behind
+a Linux same-device zero-copy gate.
 
 ### Downstream monorepo APFS real profile
 
@@ -130,9 +140,10 @@ Footprint after two cold materializations:
 Offline reinstall reused 998 packages, downloaded 0 packages, and completed for
 all traits.
 
-Conclusion: the sharing motivation holds at real graph scale. The correct
-direction is coordinated all-roots authority for shared content, not a blanket
-fallback to isolated stores.
+Conclusion: the sharing motivation holds at real graph scale. The imported
+branch proposed coordinated all-roots authority, but current evidence and
+decision 0006 preserve the byte-sharing result with a whole Store Cache and
+root-local graph authority instead.
 
 ### effect-utils APFS real profile
 

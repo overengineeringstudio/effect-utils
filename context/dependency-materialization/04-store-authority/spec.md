@@ -23,6 +23,8 @@ repair, or machine-specific Store Cache placement.
 | Health and repair  | DMP.STORE-R04, DMP.STORE-R05, DMP.STORE-R06, DMP.STORE-R07 |
 | Benchmark evidence | DMP.STORE-R13, DMP.STORE-R14                               |
 | Host lifecycle     | DMP.STORE-R15                                              |
+| Legacy migration   | DMP.STORE-R16                                              |
+| Optimization order | DMP.STORE-R03, DMP.STORE-R09, DMP.STORE-R14               |
 
 ## Ownership Model
 
@@ -43,10 +45,18 @@ Nix builder
 ```
 
 The pnpm Store Cache is a performance cache, not a dependency-identity or
-availability authority. Its mutable index is safe to share inside the same-user
-trust boundary because pnpm owns its format and managed installs synchronize
-mutation internally. Dependency edges and peer-context topology remain in each root's
+availability authority. The current compatibility realization shares its
+mutable index inside the same-user trust boundary under pnpm synchronization,
+but that index is not part of the pure reusable layer and remains an explicit
+[implementation delta](../.delta/DELTA-001-whole-store-mutable-index.md).
+Dependency edges and peer-context topology remain in each root's
 `node_modules/.pnpm` with `enable-global-virtual-store=false`.
+
+This is the current admissible pnpm baseline, not the long-term reuse ideal.
+Current GVS realizations share mutable topology and repair state and therefore
+fail the pure reuse and bounded-authority gates even if they save bytes or time.
+The verification contract still measures them to quantify repeated topology
+work and inform a future immutable, graph-addressed dependency artifact.
 
 ## Placement
 
@@ -74,6 +84,11 @@ copy and turn a zero-copy goal into per-worktree duplication. On a filesystem
 without clone support, pnpm's native `auto` policy may select hardlinks inside
 the explicitly mutually trusted same-user boundary. Managed installs never run
 package lifecycle mutation over imported dependency files.
+
+The managed contract treats imported dependency files as immutable even when
+the operating-system user could deliberately change permissions and mutate a
+hardlinked inode. Such direct mutation is outside the trust boundary, while
+integrity checks and rematerialization detect or replace corrupted data.
 
 ## Concurrency
 

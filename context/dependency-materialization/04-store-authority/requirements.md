@@ -10,11 +10,12 @@ repair, prune, or garbage-collect it. It refines DMP-R12 through DMP-R15.
 - **A01 pnpm Store Cache:** A pnpm Store Cache contains immutable
   content-addressed package files and pnpm-owned mutable derived indexes. Both
   are disposable cache state; neither is Dependency Graph authority.
+  The mutable indexes do not satisfy the pure cross-root reuse boundary.
 - **A02 Local trust boundary:** Local development roots that share a Store
   Cache run as one mutually trusted operating-system user.
-- **A03 Sharing is valuable:** Cross-worktree Store Cache reuse is a desired
-  optimization when graph ownership, concurrency, and import semantics remain
-  explicit.
+- **A03 Safety-gated reuse objective:** Cross-worktree reuse is optimized only
+  after dependency identity, purity, data safety, graph ownership, concurrency,
+  and bounded repair scope are satisfied as hard constraints.
 
 ## Acceptable Tradeoffs
 
@@ -40,14 +41,17 @@ repair, prune, or garbage-collect it. It refines DMP-R12 through DMP-R15.
   as independent facts rather than one preset or profile name.
   Refines: DMP-R12.
 - **DMP.STORE-R02 Root-local graph owner:** Writable Dependency Graph state,
-  the pnpm virtual store, and Projection State must be owned by exactly one
-  Materialization Root. Managed installs must disable pnpm's Global Virtual
-  Store and keep `node_modules/.pnpm` inside that root.
+  virtual topology, and Projection State must be owned by exactly one
+  Materialization Root and independently discardable without coordinating
+  sibling roots. A storage-reuse mechanism must not expand that authority scope.
   Refines: DMP-R12.
-- **DMP.STORE-R03 Host Store Cache:** Local development must reuse one
-  host-scoped pnpm Store Cache across mutually trusted Materialization Roots,
-  including its content-addressed files and pnpm-owned derived index.
-  Refines: DMP-R12, DMP-R13.
+- **DMP.STORE-R03 Maximal safe cache reuse:** Local development must maximize
+  cross-root reuse of eligible immutable package data within one declared trust
+  boundary. Mutable package-manager indexes must remain outside the claimed
+  reusable layer. Duplicate immutable-data realizations require measured
+  justification and must not become graph, lifecycle, repair, or availability
+  authority.
+  Refines: DMP-R12, DMP-R13, DMP-R21, DMP-R22, DMP-R23.
 - **DMP.STORE-R04 Root operation boundary:** An effect-utils-managed operation
   scoped to one Materialization Root must not prune or sweep a host-scoped
   Store Cache.
@@ -68,29 +72,28 @@ repair, prune, or garbage-collect it. It refines DMP-R12 through DMP-R15.
   and must fail explicitly when the configured free-space floor is not met.
   Refines: DMP-R15.
 - **DMP.STORE-R08 Concurrent cache mutation:** Concurrent managed installs that
-  share a Store Cache must use pnpm's proven store-concurrency boundary while
-  retaining independent root-local locks and graphs. Managed callers must not
-  add a host-wide install lock without evidence of a pnpm concurrency defect.
+  share a Store Cache must retain independent root-local locks and graphs and
+  must not serialize independent roots without evidence that the cache owner's
+  native concurrency boundary is insufficient.
   Refines: DMP-R12, DMP-R15.
-- **DMP.STORE-R09 Native import policy:** Managed live installs must use pnpm's
-  `auto` package import policy so the package manager selects clone, hardlink,
-  or copy according to filesystem capability. Imported package files remain
-  immutable under the lifecycle policy, and verification must disclose the
-  effective inode-alias behavior rather than claiming unconditional isolation.
-  Refines: DMP-R01, DMP-R12.
-- **DMP.STORE-R10 Linux device invariant:** Before a Linux local install uses
-  zero-copy imports, it must prove that the Store Cache package files and
-  Materialization Root are on the same filesystem device and fail closed when
-  they are not.
-  Refines: DMP-R12.
+- **DMP.STORE-R09 Capability-optimal import:** Managed live installs must select
+  the most reuse-efficient import mechanism proven compatible with the host
+  filesystem and purity boundary. Imported package files are immutable by
+  contract; verification must disclose effective byte/inode aliasing rather
+  than claiming unconditional physical isolation.
+  Refines: DMP-R01, DMP-R12, DMP-R21, DMP-R22.
+- **DMP.STORE-R10 Zero-copy invariant:** A local install that claims zero-copy
+  reuse must prove its placement and filesystem prerequisites before mutation
+  and fail closed instead of silently degrading to per-root byte duplication.
+  Refines: DMP-R12, DMP-R22.
 - **DMP.STORE-R11 CI job cache:** CI installs must use a job-local Store Cache;
   one job's cleanup must not mutate another job's
   cache or graph.
   Refines: DMP-R12, DMP-R13.
 - **DMP.STORE-R12 Independent Nix cache:** Nix prepared-dependency production
-  must use its builder-owned store and import policy rather than the live
-  host-scoped Store Cache.
-  Refines: DMP-R05, DMP-R09.
+  must use its builder-owned immutable/content-addressed boundary rather than
+  mutable live host cache state.
+  Refines: DMP-R05, DMP-R09, DMP-R21, DMP-R23.
 
 ### Must be measured
 
@@ -99,23 +102,21 @@ repair, prune, or garbage-collect it. It refines DMP-R12 through DMP-R15.
   verification subsystem.
   Refines: DMP-R16.
 - **DMP.STORE-R14 Default gate:** A sharing or import strategy may become
-  default only after proving correctness and material cache-efficiency gains on
-  real workspaces.
-  Refines: DMP-R16.
+  default only after satisfying the hard gates in DMP-R21 through DMP-R23 and
+  proving a non-dominated operating point among evaluated admissible candidates
+  on real workspaces across physical bytes, repeated work, latency, concurrency,
+  and operational complexity. New admissible candidates remain challengers.
+  Refines: DMP-R16, DMP-R21, DMP-R22, DMP-R23.
 - **DMP.STORE-R15 Bounded host lifecycle:** The host Store Cache owner must
-  periodically and pressure-triggerably measure cache bytes. Destructive
-  pnpm-native pruning may be enabled only where the host has measured that its
-  effective import semantics preserve live-root reachability (for example,
-  hardlinks); clone, copy, CoW, or otherwise unproven hosts must remain
-  measurement-only. Every run must report cache bytes, reclaimed bytes,
-  outcome, and dry-run mode, and serialize maintenance against managed installs
-  without serializing installs against one another.
+  measure cache bytes periodically and under pressure. Destructive reclamation
+  may be enabled only when evidence proves it cannot invalidate live roots;
+  otherwise it remains measurement-only. Every run must report cache bytes,
+  reclaimed bytes, outcome, and dry-run mode. Maintenance must exclude cache
+  mutation without serializing independent installs against one another.
   Refines: DMP-R13, DMP-R14, DMP-R15.
 - **DMP.STORE-R16 Explicit legacy-cache migration:** A legacy Store Cache that
-  bridges package files outside its selected store must fail closed during
-  normal installs. Migration must be an explicit, idempotent host-cache-owner
-  operation under the exclusive Store Cache lease; it may recognize only a
-  declared legacy target, must preserve the maintenance-lock identity and the
-  external legacy pool, and must reset disposable pnpm metadata in place.
-  Unknown bridges must remain untouched.
+  bridges package data outside its selected ownership boundary must fail closed
+  during normal installs. Only an explicit, idempotent cache-owner migration may
+  transform a recognized legacy shape; unknown state and the external legacy
+  data source must remain untouched.
   Refines: DMP-R13, DMP-R14, DMP-R15.
