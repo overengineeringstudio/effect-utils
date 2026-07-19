@@ -1,14 +1,17 @@
-import { Schema } from 'effect'
-
 import { type SchemaInfo, getSchemaInfo } from '../src/schema/effectSchema.tsx'
 import * as Lineage from '../src/schema/lineage.ts'
 
-const schema = Schema.String.pipe(
-  Lineage.sourceOfTruth(),
-  Lineage.authority({ writers: [] }),
-  Lineage.freshness({}),
-  Lineage.foreignKey({ targetSchema: 'Consumer.Record' }),
-)
+const schema = {
+  ast: {
+    _tag: 'String',
+    annotations: {
+      '@overeng/lineage': { _tag: 'SourceOfTruth' },
+      '@overeng/authority': { writers: [] },
+      '@overeng/freshness': {},
+      '@overeng/reference': { _tag: 'ForeignKey', targetSchema: 'Consumer.Record' },
+    },
+  },
+}
 
 const schemaInfo: SchemaInfo = getSchemaInfo(schema)
 const lineage: Lineage.Lineage | undefined = Lineage.getLineage(schema)

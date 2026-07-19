@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- **react-inspector / Effect-major boundary**: make the shipped inspector and
+  Lineage runtime independent of Effect package identity. The public schema
+  contract is now the minimal structural `{ ast: { _tag } }` view; one
+  introspection engine handles Effect 3 and Effect 4 AST/annotation dialects,
+  while real dual-cohort tests prevent either API from drifting. Effect is a
+  test-only dependency, not a runtime or peer dependency.
+
 - **react-inspector / Effect 4**: align the development dependency and peer
   floor to Effect `4.0.0-beta.99`, anchor injected test helpers to the separate
   Effect 3 catalog, and fail generation if either cohort's exact identity drifts

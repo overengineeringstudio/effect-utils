@@ -27,9 +27,10 @@ const catalog = defineCatalog({
     'vitest',
   ),
   effect: '4.0.0-beta.99',
+  effect3: 'npm:effect@3.21.4',
 })
 
-const peerDepNames = ['effect', 'react'] as const
+const peerDepNames = ['react'] as const
 const workspaceDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/react-inspector' }),
   dependencies: {
@@ -41,6 +42,8 @@ const workspaceDeps = catalog.compose({
     external: {
       ...catalog.pick(
         ...peerDepNames,
+        'effect',
+        'effect3',
         '@storybook/react',
         '@storybook/react-vite',
         '@testing-library/react',
@@ -59,7 +62,6 @@ const workspaceDeps = catalog.compose({
   },
   peerDependencies: {
     external: {
-      effect: '^4.0.0-beta.99',
       ...catalog.pick('react'),
     },
   },

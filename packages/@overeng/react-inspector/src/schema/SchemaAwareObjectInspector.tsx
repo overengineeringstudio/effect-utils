@@ -1,7 +1,7 @@
-import type { Schema } from 'effect'
 import React, { useMemo } from 'react'
 import type { ComponentProps, FC } from 'react'
 
+import type { SchemaView } from './effectSchema.tsx'
 import { createSchemaAwareNodeRenderer } from './SchemaAwareNodeRenderer.tsx'
 import { SchemaProvider } from './SchemaContext.tsx'
 
@@ -31,14 +31,14 @@ export const withSchemaSupport = <TInspector extends FC<any>>(
   deps: SchemaAwareObjectInspectorDeps,
 ): FC<
   ComponentProps<TInspector> & {
-    schema?: Schema.Top
-    schemas?: Schema.Top[]
+    schema?: SchemaView
+    schemas?: SchemaView[]
   }
 > => {
   const SchemaAwareObjectInspector: FC<
     ComponentProps<TInspector> & {
-      schema?: Schema.Top
-      schemas?: Schema.Top[]
+      schema?: SchemaView
+      schemas?: SchemaView[]
     }
   > = ({ schema, schemas, nodeRenderer, ...props }) => {
     const schemaNodeRenderer = useMemo(() => createSchemaAwareNodeRenderer(deps), [])
@@ -74,14 +74,14 @@ export const withSchemaContext = <TInspector extends FC<any>>(
   ObjectInspector: TInspector,
 ): FC<
   ComponentProps<TInspector> & {
-    schema?: Schema.Top
-    schemas?: Schema.Top[]
+    schema?: SchemaView
+    schemas?: SchemaView[]
   }
 > => {
   const SchemaAwareObjectInspector: FC<
     ComponentProps<TInspector> & {
-      schema?: Schema.Top
-      schemas?: Schema.Top[]
+      schema?: SchemaView
+      schemas?: SchemaView[]
     }
   > = ({ schema, schemas, ...props }) => {
     const inspector = <ObjectInspector {...(props as ComponentProps<TInspector>)} />

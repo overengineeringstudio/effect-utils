@@ -1,9 +1,39 @@
-import type { SchemaAST } from 'effect'
-
 import * as Lineage from './lineage.ts'
 
+export interface SchemaAstView {
+  readonly _tag: string
+}
+
+export interface SchemaAst extends SchemaAstView {
+  readonly annotations?: object
+  readonly context?: { readonly annotations?: object }
+  readonly checks?: ReadonlyArray<{
+    readonly annotations?: object
+  }>
+  readonly types?: ReadonlyArray<SchemaAst>
+  readonly propertySignatures?: ReadonlyArray<{
+    readonly name: PropertyKey
+    readonly type: SchemaAst
+    readonly annotations?: object
+  }>
+  readonly indexSignatures?: ReadonlyArray<{
+    readonly parameter: SchemaAst
+    readonly type: SchemaAst
+  }>
+  readonly elements?: ReadonlyArray<SchemaAst | { readonly type: SchemaAst }>
+  readonly rest?: ReadonlyArray<SchemaAst | { readonly type: SchemaAst }>
+  readonly literal?: unknown
+  readonly enums?: ReadonlyArray<unknown | readonly [string, unknown]>
+  readonly typeParameters?: ReadonlyArray<SchemaAst>
+  readonly thunk?: () => SchemaAst
+  readonly f?: () => SchemaAst
+  readonly from?: SchemaAst
+  readonly to?: SchemaAst
+  readonly toString: () => string
+}
+
 export interface SchemaView {
-  readonly ast: SchemaAST.AST
+  readonly ast: SchemaAstView
 }
 
 export interface SchemaAnnotations {
@@ -44,14 +74,27 @@ export interface LineageBundle {
   reference?: Lineage.Reference
 }
 
-const view = (ast: SchemaAST.AST): SchemaView => ({ ast })
+const details = (ast: SchemaAstView): SchemaAst => ast
 
-const isNullishAst = (ast: SchemaAST.AST): boolean =>
-  ast._tag === 'Null' || ast._tag === 'Undefined' || ast._tag === 'Void'
+const view = (ast: SchemaAstView): SchemaView => ({ ast })
 
-const unwrapAstForDisplay = (ast: SchemaAST.AST): SchemaAST.AST => {
-  if (ast._tag === 'Suspend') return unwrapAstForDisplay(ast.thunk())
-  if (ast._tag === 'Union') {
+const isNullishAst = (ast: SchemaAst): boolean =>
+  ast._tag === 'Null' ||
+  ast._tag === 'Undefined' ||
+  ast._tag === 'Void' ||
+  ast._tag === 'UndefinedKeyword' ||
+  ast._tag === 'VoidKeyword' ||
+  (ast._tag === 'Literal' && ast.literal === null)
+
+const unwrapAstForDisplay = (rawAst: SchemaAstView): SchemaAst => {
+  const ast = details(rawAst)
+  if (ast._tag === 'Transformation' && ast.to !== undefined) return unwrapAstForDisplay(ast.to)
+  if (ast._tag === 'Refinement' && ast.from !== undefined) return unwrapAstForDisplay(ast.from)
+  if (ast._tag === 'Suspend') {
+    const suspended = ast.thunk ?? ast.f
+    if (suspended !== undefined) return unwrapAstForDisplay(suspended())
+  }
+  if (ast._tag === 'Union' && ast.types !== undefined) {
     const nonNullish = ast.types.filter((member) => isNullishAst(member) === false)
     if (nonNullish.length === 1 && nonNullish[0] !== undefined) {
       return unwrapAstForDisplay(nonNullish[0])
@@ -63,14 +106,30 @@ const unwrapAstForDisplay = (ast: SchemaAST.AST): SchemaAST.AST => {
 const asRecord = (value: unknown): Record<string, unknown> | undefined =>
   value !== null && typeof value === 'object' ? (value as Record<string, unknown>) : undefined
 
-export const getAnnotationsFromAST = (ast: SchemaAST.AST): SchemaAnnotations => {
-  const annotations: Record<string, unknown> = {
+const effect3AnnotationKeys = {
+  identifier: Symbol.for('effect/annotation/Identifier'),
+  title: Symbol.for('effect/annotation/Title'),
+  description: Symbol.for('effect/annotation/Description'),
+  pretty: Symbol.for('effect/annotation/Pretty'),
+  examples: Symbol.for('effect/annotation/Examples'),
+  default: Symbol.for('effect/annotation/Default'),
+  jsonSchema: Symbol.for('effect/annotation/JSONSchema'),
+  documentation: Symbol.for('effect/annotation/Documentation'),
+  typeConstructor: Symbol.for('effect/annotation/TypeConstructor'),
+} as const
+
+const readAnnotation = (annotations: object, key: keyof typeof effect3AnnotationKeys): unknown =>
+  Reflect.get(annotations, key) ?? Reflect.get(annotations, effect3AnnotationKeys[key])
+
+export const getAnnotationsFromAST = (rawAst: SchemaAstView): SchemaAnnotations => {
+  const ast = details(rawAst)
+  const annotations = {
     ...ast.context?.annotations,
     ...ast.annotations,
   }
   for (const check of ast.checks ?? []) Object.assign(annotations, check.annotations)
-  const customPretty = annotations.pretty
-  const formatterFactory = annotations.toFormatter
+  const customPretty = readAnnotation(annotations, 'pretty')
+  const formatterFactory = Reflect.get(annotations, 'toFormatter')
   let pretty: ((value: unknown) => string) | undefined
   if (typeof customPretty === 'function') {
     pretty = (value) => {
@@ -88,19 +147,27 @@ export const getAnnotationsFromAST = (ast: SchemaAST.AST): SchemaAnnotations => 
     }
   }
   return {
-    ...(typeof annotations.identifier === 'string' ? { identifier: annotations.identifier } : {}),
-    ...(typeof annotations.title === 'string' ? { title: annotations.title } : {}),
-    ...(typeof annotations.description === 'string'
-      ? { description: annotations.description }
+    ...(typeof readAnnotation(annotations, 'identifier') === 'string'
+      ? { identifier: readAnnotation(annotations, 'identifier') as string }
+      : {}),
+    ...(typeof readAnnotation(annotations, 'title') === 'string'
+      ? { title: readAnnotation(annotations, 'title') as string }
+      : {}),
+    ...(typeof readAnnotation(annotations, 'description') === 'string'
+      ? { description: readAnnotation(annotations, 'description') as string }
       : {}),
     ...(pretty === undefined ? {} : { pretty }),
-    ...(Array.isArray(annotations.examples) === true ? { examples: annotations.examples } : {}),
-    ...('default' in annotations ? { default: annotations.default } : {}),
-    ...(asRecord(annotations.jsonSchema) === undefined
+    ...(Array.isArray(readAnnotation(annotations, 'examples')) === true
+      ? { examples: readAnnotation(annotations, 'examples') as ReadonlyArray<unknown> }
+      : {}),
+    ...(readAnnotation(annotations, 'default') === undefined
       ? {}
-      : { jsonSchema: asRecord(annotations.jsonSchema) }),
-    ...(typeof annotations.documentation === 'string'
-      ? { documentation: annotations.documentation }
+      : { default: readAnnotation(annotations, 'default') }),
+    ...(asRecord(readAnnotation(annotations, 'jsonSchema')) === undefined
+      ? {}
+      : { jsonSchema: asRecord(readAnnotation(annotations, 'jsonSchema')) }),
+    ...(typeof readAnnotation(annotations, 'documentation') === 'string'
+      ? { documentation: readAnnotation(annotations, 'documentation') as string }
       : {}),
   }
 }
@@ -130,18 +197,27 @@ export const isEffectSchema = (obj: unknown): obj is SchemaView => {
 
 export const getFieldSchema = (schema: SchemaView, fieldName: string): SchemaView | undefined => {
   const ast = unwrapAstForDisplay(schema.ast)
-  if (ast._tag !== 'Objects') return undefined
-  const property = ast.propertySignatures.find((signature) => signature.name === fieldName)
-  if (property !== undefined) return view(property.type)
-  const index = ast.indexSignatures[0]
+  if (ast._tag !== 'Objects' && ast._tag !== 'TypeLiteral') return undefined
+  const property = ast.propertySignatures?.find((signature) => signature.name === fieldName)
+  if (property !== undefined) {
+    const annotations = property.annotations
+    if (annotations === undefined) return view(property.type)
+    const merged: SchemaAst = {
+      ...property.type,
+      annotations: { ...property.type.annotations, ...annotations },
+    }
+    return view(merged)
+  }
+  const index = ast.indexSignatures?.[0]
   return index === undefined ? undefined : view(index.type)
 }
 
 export const getArrayElementSchema = (schema: SchemaView): SchemaView | undefined => {
   const ast = unwrapAstForDisplay(schema.ast)
-  if (ast._tag !== 'Arrays') return undefined
-  const element = ast.rest[0] ?? ast.elements[0]
-  return element === undefined ? undefined : view(element)
+  if (ast._tag !== 'Arrays' && ast._tag !== 'TupleType') return undefined
+  const element = ast.rest?.[0] ?? ast.elements?.[0]
+  if (element === undefined) return undefined
+  return view('type' in element ? element.type : element)
 }
 
 const stringifyShort = (value: unknown): string => {
@@ -158,25 +234,33 @@ const stringifyShort = (value: unknown): string => {
   }
 }
 
-const getTypeKind = (ast: SchemaAST.AST): string | undefined => {
+const getTypeKind = (ast: SchemaAst): string | undefined => {
   switch (ast._tag) {
     case 'String':
+    case 'StringKeyword':
       return 'string'
     case 'Number':
+    case 'NumberKeyword':
       return 'number'
     case 'Boolean':
+    case 'BooleanKeyword':
       return 'boolean'
     case 'BigInt':
+    case 'BigIntKeyword':
       return 'bigint'
     case 'Symbol':
+    case 'SymbolKeyword':
       return 'symbol'
     case 'ObjectKeyword':
       return 'object'
     case 'Unknown':
+    case 'UnknownKeyword':
       return 'unknown'
     case 'Any':
+    case 'AnyKeyword':
       return 'any'
     case 'Never':
+    case 'NeverKeyword':
       return 'never'
     case 'Void':
       return 'void'
@@ -187,17 +271,24 @@ const getTypeKind = (ast: SchemaAST.AST): string | undefined => {
     case 'Literal':
       return 'literal'
     case 'Enum':
+    case 'Enums':
       return 'enum'
     case 'TemplateLiteral':
       return 'template literal'
     case 'Arrays':
+    case 'TupleType':
       return 'array'
     case 'Objects':
+    case 'TypeLiteral':
       return 'struct'
     case 'Union':
       return 'union'
     case 'Suspend':
       return 'suspend'
+    case 'Refinement':
+      return 'refinement'
+    case 'Transformation':
+      return 'transform'
     case 'Declaration':
       return 'declaration'
     default:
@@ -227,17 +318,22 @@ const constraintRules: ReadonlyArray<
 ]
 
 export const getConstraintsFromJSONSchema = (
-  ast: SchemaAST.AST,
+  rawAst: SchemaAstView,
 ): ReadonlyArray<SchemaConstraint> => {
+  const ast = details(rawAst)
   const constraints: Record<string, unknown> = {
     ...getAnnotationsFromAST(ast).jsonSchema,
   }
   for (const check of ast.checks ?? []) {
-    const arbitrary = asRecord(check.annotations?.arbitrary)
+    const arbitrary = asRecord(
+      check.annotations === undefined ? undefined : Reflect.get(check.annotations, 'arbitrary'),
+    )
     const constraint = asRecord(arbitrary?.constraint)
     if (constraint !== undefined) Object.assign(constraints, constraint)
 
-    const meta = asRecord(check.annotations?.meta)
+    const meta = asRecord(
+      check.annotations === undefined ? undefined : Reflect.get(check.annotations, 'meta'),
+    )
     switch (meta?._tag) {
       case 'isMinLength':
         constraints.minLength = meta.minLength
@@ -267,18 +363,20 @@ export const getConstraintsFromJSONSchema = (
 const MAX_POSSIBLE_VALUES = 12
 
 export const getPossibleValuesFromAST = (
-  rawAst: SchemaAST.AST,
+  rawAst: SchemaAstView,
 ): { values: ReadonlyArray<string>; truncated: number } | undefined => {
   const ast = unwrapAstForDisplay(rawAst)
   const collected: string[] = []
   if (ast._tag === 'Literal') collected.push(stringifyShort(ast.literal))
-  else if (ast._tag === 'Enum') {
-    for (const value of ast.enums) collected.push(stringifyShort(value))
+  else if ((ast._tag === 'Enum' || ast._tag === 'Enums') && ast.enums !== undefined) {
+    for (const entry of ast.enums) {
+      collected.push(stringifyShort(Array.isArray(entry) === true ? entry[1] : entry))
+    }
   } else if (
     ast._tag === 'Union' &&
-    ast.types.every((member) => member._tag === 'Literal') === true
+    ast.types?.every((member) => member._tag === 'Literal') === true
   ) {
-    for (const member of ast.types) {
+    for (const member of ast.types ?? []) {
       if (member._tag === 'Literal') collected.push(stringifyShort(member.literal))
     }
   } else if (ast._tag === 'TemplateLiteral') collected.push(`\`${ast.toString()}\``)
@@ -304,7 +402,7 @@ const TRIVIAL_DESCRIPTIONS = new Set([
   'null',
 ])
 
-const getElementLabelForAST = (rawAst: SchemaAST.AST): string | undefined => {
+const getElementLabelForAST = (rawAst: SchemaAstView): string | undefined => {
   const displayName = getDisplayName(getAnnotationsFromAST(rawAst))
   if (displayName !== undefined) return displayName
   const ast = unwrapAstForDisplay(rawAst)
@@ -312,22 +410,30 @@ const getElementLabelForAST = (rawAst: SchemaAST.AST): string | undefined => {
   return getTypeKind(ast)
 }
 
-const getContainerLabelForAST = (rawAst: SchemaAST.AST): string | undefined => {
+const elementAst = (element: SchemaAst | { readonly type: SchemaAst }): SchemaAst =>
+  'type' in element ? element.type : element
+
+const getContainerLabelForAST = (rawAst: SchemaAstView): string | undefined => {
   const ast = unwrapAstForDisplay(rawAst)
-  if (ast._tag === 'Arrays') {
-    if (ast.elements.length === 0 && ast.rest[0] !== undefined) {
-      const label = getElementLabelForAST(ast.rest[0])
+  if (ast._tag === 'Arrays' || ast._tag === 'TupleType') {
+    if ((ast.elements?.length ?? 0) === 0 && ast.rest?.[0] !== undefined) {
+      const label = getElementLabelForAST(elementAst(ast.rest[0]))
       return label === undefined ? undefined : `Array<${label}>`
     }
-    if (ast.elements.length > 0) {
-      const labels = ast.elements.map(getElementLabelForAST)
+    if ((ast.elements?.length ?? 0) > 0) {
+      const labels = (ast.elements ?? []).map((element) =>
+        getElementLabelForAST(elementAst(element)),
+      )
       return labels.every((label) => label !== undefined) === true
         ? `[${labels.join(', ')}]`
         : undefined
     }
   }
-  if (ast._tag === 'Objects' && ast.propertySignatures.length === 0) {
-    const index = ast.indexSignatures[0]
+  if (
+    (ast._tag === 'Objects' || ast._tag === 'TypeLiteral') &&
+    (ast.propertySignatures?.length ?? 0) === 0
+  ) {
+    const index = ast.indexSignatures?.[0]
     if (index !== undefined) {
       const key = getElementLabelForAST(index.parameter) ?? 'string'
       const value = getElementLabelForAST(index.type)
@@ -335,8 +441,8 @@ const getContainerLabelForAST = (rawAst: SchemaAST.AST): string | undefined => {
     }
   }
   if (ast._tag === 'Declaration') {
-    const typeConstructor = asRecord(ast.annotations?.typeConstructor)
-    if (typeConstructor?._tag === 'ReadonlyMap' && ast.typeParameters.length === 2) {
+    const typeConstructor = asRecord(readAnnotation(ast.annotations ?? {}, 'typeConstructor'))
+    if (typeConstructor?._tag === 'ReadonlyMap' && ast.typeParameters?.length === 2) {
       const key =
         ast.typeParameters[0] === undefined
           ? undefined
@@ -347,7 +453,7 @@ const getContainerLabelForAST = (rawAst: SchemaAST.AST): string | undefined => {
           : getElementLabelForAST(ast.typeParameters[1])
       return key === undefined || value === undefined ? undefined : `ReadonlyMap<${key}, ${value}>`
     }
-    if (typeConstructor?._tag === 'ReadonlySet' && ast.typeParameters[0] !== undefined) {
+    if (typeConstructor?._tag === 'ReadonlySet' && ast.typeParameters?.[0] !== undefined) {
       const value = getElementLabelForAST(ast.typeParameters[0])
       return value === undefined ? undefined : `ReadonlySet<${value}>`
     }
@@ -355,14 +461,14 @@ const getContainerLabelForAST = (rawAst: SchemaAST.AST): string | undefined => {
   return undefined
 }
 
-export const narrowUnionByTag = (rawAst: SchemaAST.AST, value: unknown): SchemaAST.AST => {
+export const narrowUnionByTag = (rawAst: SchemaAstView, value: unknown): SchemaAstView => {
   if (value === null || typeof value !== 'object' || !('_tag' in value)) return rawAst
   const ast = unwrapAstForDisplay(rawAst)
   if (ast._tag !== 'Union') return rawAst
-  for (const member of ast.types) {
+  for (const member of ast.types ?? []) {
     const candidate = unwrapAstForDisplay(member)
-    if (candidate._tag !== 'Objects') continue
-    const tag = candidate.propertySignatures.find((property) => property.name === '_tag')?.type
+    if (candidate._tag !== 'Objects' && candidate._tag !== 'TypeLiteral') continue
+    const tag = candidate.propertySignatures?.find((property) => property.name === '_tag')?.type
     if (tag?._tag === 'Literal' && tag.literal === (value as { readonly _tag: unknown })._tag) {
       return member
     }
@@ -375,9 +481,9 @@ export const getMapKeyValueSchema = (
 ): { key: SchemaView; value: SchemaView } | undefined => {
   const ast = unwrapAstForDisplay(schema.ast)
   if (ast._tag !== 'Declaration') return undefined
-  const typeConstructor = asRecord(ast.annotations?.typeConstructor)
+  const typeConstructor = asRecord(readAnnotation(ast.annotations ?? {}, 'typeConstructor'))
   if (typeConstructor?._tag !== 'ReadonlyMap') return undefined
-  const [key, value] = ast.typeParameters
+  const [key, value] = ast.typeParameters ?? []
   return key === undefined || value === undefined
     ? undefined
     : { key: view(key), value: view(value) }
@@ -386,8 +492,8 @@ export const getMapKeyValueSchema = (
 export const getSetElementSchema = (schema: SchemaView): SchemaView | undefined => {
   const ast = unwrapAstForDisplay(schema.ast)
   if (ast._tag !== 'Declaration') return undefined
-  const typeConstructor = asRecord(ast.annotations?.typeConstructor)
-  const value = ast.typeParameters[0]
+  const typeConstructor = asRecord(readAnnotation(ast.annotations ?? {}, 'typeConstructor'))
+  const value = ast.typeParameters?.[0]
   return typeConstructor?._tag === 'ReadonlySet' && value !== undefined ? view(value) : undefined
 }
 

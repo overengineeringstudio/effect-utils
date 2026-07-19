@@ -1462,6 +1462,9 @@ importers:
       effect:
         specifier: 4.0.0-beta.99
         version: 4.0.0-beta.99
+      effect3:
+        specifier: npm:effect@3.21.4
+        version: effect@3.21.4
       happy-dom:
         specifier: 20.10.6
         version: 20.10.6

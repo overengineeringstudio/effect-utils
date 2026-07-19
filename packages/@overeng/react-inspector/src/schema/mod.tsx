@@ -2,10 +2,12 @@
 
 export {
   type LineageBundle,
+  type SchemaAstView,
   type SchemaAnnotations,
   type SchemaConstraint,
   type SchemaInfo,
   type SchemaRegistry,
+  type SchemaView,
   getAnnotations,
   getAnnotationsFromAST,
   getConstraintsFromJSONSchema,

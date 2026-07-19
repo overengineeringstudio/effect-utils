@@ -1,4 +1,4 @@
-import { Schema, type SchemaAST } from 'effect'
+import type { SchemaAst, SchemaAstView } from './effectSchema.tsx'
 
 export type LineageRef =
   | { readonly _tag: 'Field'; readonly path: string }
@@ -59,100 +59,162 @@ const annotationKeys = {
   reference: '@overeng/reference',
 } as const
 
-const LineageRefSchema = Schema.Union([
-  Schema.TaggedStruct('Field', { path: Schema.String }),
-  Schema.TaggedStruct('Schema', { identifier: Schema.String }),
-  Schema.TaggedStruct('External', { system: Schema.String, ref: Schema.String }),
-])
+const effect3AnnotationKeys = {
+  lineage: Symbol.for('effect/annotation/Lineage'),
+  authority: Symbol.for('effect/annotation/Authority'),
+  freshness: Symbol.for('effect/annotation/Freshness'),
+  reference: Symbol.for('effect/annotation/Reference'),
+} as const
 
-const DerivationKindSchema = Schema.Union([
-  Schema.TaggedStruct('Pure', {}),
-  Schema.TaggedStruct('Aggregation', {
-    op: Schema.Literals(['sum', 'count', 'min', 'max', 'avg', 'custom']),
-  }),
-  Schema.TaggedStruct('Reduction', { description: Schema.String }),
-  Schema.TaggedStruct('External', { service: Schema.String }),
-])
+type SchemaView = { readonly ast: SchemaAstView }
 
-const LineageSchema = Schema.Union([
-  Schema.TaggedStruct('SourceOfTruth', {
-    owner: Schema.optionalKey(Schema.String),
-    system: Schema.optionalKey(Schema.String),
-  }),
-  Schema.TaggedStruct('Derived', {
-    from: Schema.Array(LineageRefSchema),
-    how: DerivationKindSchema,
-    pure: Schema.optionalKey(Schema.Boolean),
-  }),
-  Schema.TaggedStruct('Projection', {
-    of: LineageRefSchema,
-    stalenessMs: Schema.optionalKey(Schema.Finite),
-  }),
-  Schema.TaggedStruct('Cache', {
-    of: LineageRefSchema,
-    ttlMs: Schema.optionalKey(Schema.Finite),
-  }),
-  Schema.TaggedStruct('Mirror', {
-    of: LineageRefSchema,
-    system: Schema.optionalKey(Schema.String),
-  }),
-  Schema.TaggedStruct('External', {
-    system: Schema.String,
-    ref: Schema.optionalKey(Schema.String),
-  }),
-  Schema.TaggedStruct('Computed', {
-    fn: Schema.optionalKey(Schema.String),
-    description: Schema.optionalKey(Schema.String),
-  }),
-])
-
-const AuthoritySchema = Schema.Struct({
-  writers: Schema.Array(Schema.String),
-  readers: Schema.optionalKey(Schema.Array(Schema.String)),
-})
-const FreshnessSchema = Schema.Struct({
-  capturedAt: Schema.optionalKey(Schema.Literals(['now', 'event-time', 'snapshot'])),
-  maxAgeMs: Schema.optionalKey(Schema.Finite),
-})
-const ReferenceSchema = Schema.TaggedStruct('ForeignKey', {
-  targetSchema: Schema.String,
-  targetField: Schema.optionalKey(Schema.String),
-})
-
-type SchemaView = { readonly ast: SchemaAST.AST }
-
-const annotation = (schema: SchemaView, key: string): unknown => {
-  let value = schema.ast.context?.annotations?.[key] ?? schema.ast.annotations?.[key]
-  for (const check of schema.ast.checks ?? []) {
-    if (key in (check.annotations ?? {})) value = check.annotations?.[key]
+const annotation = (schema: SchemaView, key: keyof typeof annotationKeys): unknown => {
+  const ast: SchemaAst = schema.ast
+  const effect3Key = effect3AnnotationKeys[key]
+  let value =
+    (ast.context?.annotations === undefined
+      ? undefined
+      : Reflect.get(ast.context.annotations, annotationKeys[key])) ??
+    (ast.annotations === undefined
+      ? undefined
+      : Reflect.get(ast.annotations, annotationKeys[key])) ??
+    (ast.annotations === undefined ? undefined : Reflect.get(ast.annotations, effect3Key))
+  for (const check of ast.checks ?? []) {
+    const annotations = check.annotations ?? {}
+    if (annotationKeys[key] in annotations) value = Reflect.get(annotations, annotationKeys[key])
+    if (effect3Key in annotations) value = Reflect.get(annotations, effect3Key)
   }
   return value
 }
 
-const decode = <S extends Schema.ConstraintDecoder<unknown>>(
-  decoder: S,
-  value: unknown,
-): S['Type'] | undefined =>
-  Schema.decodeUnknownOption(decoder)(value).pipe((option) =>
-    option._tag === 'Some' ? option.value : undefined,
-  )
+const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
+  value !== null && typeof value === 'object'
+
+const isOptionalString = (value: unknown): boolean =>
+  value === undefined || typeof value === 'string'
+const isOptionalBoolean = (value: unknown): boolean =>
+  value === undefined || typeof value === 'boolean'
+const isOptionalFinite = (value: unknown): boolean =>
+  value === undefined || (typeof value === 'number' && Number.isFinite(value))
+const isStringArray = (value: unknown): value is ReadonlyArray<string> =>
+  Array.isArray(value) === true && value.every((item) => typeof item === 'string')
+
+const isLineageRef = (value: unknown): value is LineageRef => {
+  if (isRecord(value) === false) return false
+  switch (value._tag) {
+    case 'Field':
+      return typeof value.path === 'string'
+    case 'Schema':
+      return typeof value.identifier === 'string'
+    case 'External':
+      return typeof value.system === 'string' && typeof value.ref === 'string'
+    default:
+      return false
+  }
+}
+
+const isDerivationKind = (value: unknown): value is DerivationKind => {
+  if (isRecord(value) === false) return false
+  switch (value._tag) {
+    case 'Pure':
+      return true
+    case 'Aggregation':
+      return (
+        typeof value.op === 'string' &&
+        ['sum', 'count', 'min', 'max', 'avg', 'custom'].includes(value.op)
+      )
+    case 'Reduction':
+      return typeof value.description === 'string'
+    case 'External':
+      return typeof value.service === 'string'
+    default:
+      return false
+  }
+}
+
+const isLineage = (value: unknown): value is Lineage => {
+  if (isRecord(value) === false) return false
+  switch (value._tag) {
+    case 'SourceOfTruth':
+      return isOptionalString(value.owner) && isOptionalString(value.system)
+    case 'Derived':
+      return (
+        Array.isArray(value.from) === true &&
+        value.from.every(isLineageRef) &&
+        isDerivationKind(value.how) &&
+        isOptionalBoolean(value.pure)
+      )
+    case 'Projection':
+      return isLineageRef(value.of) && isOptionalFinite(value.stalenessMs)
+    case 'Cache':
+      return isLineageRef(value.of) && isOptionalFinite(value.ttlMs)
+    case 'Mirror':
+      return isLineageRef(value.of) && isOptionalString(value.system)
+    case 'External':
+      return typeof value.system === 'string' && isOptionalString(value.ref)
+    case 'Computed':
+      return isOptionalString(value.fn) && isOptionalString(value.description)
+    default:
+      return false
+  }
+}
+
+const isAuthority = (value: unknown): value is Authority =>
+  isRecord(value) === true &&
+  isStringArray(value.writers) &&
+  (value.readers === undefined || isStringArray(value.readers))
+
+const isFreshness = (value: unknown): value is Freshness =>
+  isRecord(value) === true &&
+  isOptionalFinite(value.maxAgeMs) &&
+  (value.capturedAt === undefined ||
+    value.capturedAt === 'now' ||
+    value.capturedAt === 'event-time' ||
+    value.capturedAt === 'snapshot')
+
+const isReference = (value: unknown): value is Reference =>
+  isRecord(value) === true &&
+  value._tag === 'ForeignKey' &&
+  typeof value.targetSchema === 'string' &&
+  (value.targetField === undefined || typeof value.targetField === 'string')
+
+const validatedAnnotation = <A>(
+  schema: SchemaView,
+  key: keyof typeof annotationKeys,
+  validate: (value: unknown) => value is A,
+): A | undefined => {
+  const value = annotation(schema, key)
+  return validate(value) === true ? value : undefined
+}
 
 export const getLineage = (schema: SchemaView): Lineage | undefined =>
-  decode(LineageSchema, annotation(schema, annotationKeys.lineage))
+  validatedAnnotation(schema, 'lineage', isLineage)
 
 export const getAuthority = (schema: SchemaView): Authority | undefined =>
-  decode(AuthoritySchema, annotation(schema, annotationKeys.authority))
+  validatedAnnotation(schema, 'authority', isAuthority)
 
 export const getFreshness = (schema: SchemaView): Freshness | undefined =>
-  decode(FreshnessSchema, annotation(schema, annotationKeys.freshness))
+  validatedAnnotation(schema, 'freshness', isFreshness)
 
 export const getReference = (schema: SchemaView): Reference | undefined =>
-  decode(ReferenceSchema, annotation(schema, annotationKeys.reference))
+  validatedAnnotation(schema, 'reference', isReference)
+
+interface AnnotatableSchema extends SchemaView {
+  readonly annotate?: (annotations: Readonly<Record<string, unknown>>) => AnnotatableSchema
+  readonly annotations?: (annotations: Readonly<Record<PropertyKey, unknown>>) => AnnotatableSchema
+}
 
 const annotate =
-  <V>(key: string, value: V) =>
-  <S extends Schema.Top>(schema: S): S['Rebuild'] =>
-    schema.annotate({ [key]: value })
+  <V>(key: keyof typeof annotationKeys, value: V) =>
+  <S extends AnnotatableSchema>(schema: S): S => {
+    if (schema.annotate !== undefined) {
+      return schema.annotate({ [annotationKeys[key]]: value }) as S
+    }
+    if (schema.annotations !== undefined) {
+      return schema.annotations({ [effect3AnnotationKeys[key]]: value }) as S
+    }
+    throw new TypeError('Schema does not expose an Effect 3 or Effect 4 annotation method')
+  }
 
 const fieldRef = (path: string): LineageRef => ({
   _tag: 'Field',
@@ -180,14 +242,14 @@ const coerceDerivationKind = (
 }
 
 export const sourceOfTruth = (opts: { owner?: string; system?: string } = {}) =>
-  annotate(annotationKeys.lineage, { _tag: 'SourceOfTruth', ...opts } satisfies Lineage)
+  annotate('lineage', { _tag: 'SourceOfTruth', ...opts } satisfies Lineage)
 
 export const derivedFrom = (args: {
   from: ReadonlyArray<string | LineageRef>
   how?: DerivationKind | DerivationKind['_tag']
   pure?: boolean
 }) =>
-  annotate(annotationKeys.lineage, {
+  annotate('lineage', {
     _tag: 'Derived',
     from: args.from.map(coerceRef),
     how: coerceDerivationKind(args.how),
@@ -195,40 +257,40 @@ export const derivedFrom = (args: {
   } satisfies Lineage)
 
 export const projection = (args: { of: string | LineageRef; stalenessMs?: number }) =>
-  annotate(annotationKeys.lineage, {
+  annotate('lineage', {
     _tag: 'Projection',
     of: coerceRef(args.of),
     ...(args.stalenessMs === undefined ? {} : { stalenessMs: args.stalenessMs }),
   } satisfies Lineage)
 
 export const cache = (args: { of: string | LineageRef; ttlMs?: number }) =>
-  annotate(annotationKeys.lineage, {
+  annotate('lineage', {
     _tag: 'Cache',
     of: coerceRef(args.of),
     ...(args.ttlMs === undefined ? {} : { ttlMs: args.ttlMs }),
   } satisfies Lineage)
 
 export const mirror = (args: { of: string | LineageRef; system?: string }) =>
-  annotate(annotationKeys.lineage, {
+  annotate('lineage', {
     _tag: 'Mirror',
     of: coerceRef(args.of),
     ...(args.system === undefined ? {} : { system: args.system }),
   } satisfies Lineage)
 
 export const external = (args: { system: string; ref?: string }) =>
-  annotate(annotationKeys.lineage, {
+  annotate('lineage', {
     _tag: 'External',
     system: args.system,
     ...(args.ref === undefined ? {} : { ref: args.ref }),
   } satisfies Lineage)
 
 export const computed = (opts: { fn?: string; description?: string } = {}) =>
-  annotate(annotationKeys.lineage, { _tag: 'Computed', ...opts } satisfies Lineage)
+  annotate('lineage', { _tag: 'Computed', ...opts } satisfies Lineage)
 
-export const authority = (value: Authority) => annotate(annotationKeys.authority, value)
-export const freshness = (value: Freshness) => annotate(annotationKeys.freshness, value)
+export const authority = (value: Authority) => annotate('authority', value)
+export const freshness = (value: Freshness) => annotate('freshness', value)
 export const foreignKey = (args: { targetSchema: string; targetField?: string }) =>
-  annotate(annotationKeys.reference, {
+  annotate('reference', {
     _tag: 'ForeignKey',
     targetSchema: args.targetSchema,
     ...(args.targetField === undefined ? {} : { targetField: args.targetField }),

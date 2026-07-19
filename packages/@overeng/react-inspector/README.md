@@ -28,6 +28,10 @@ const data = {
 
 ### With Effect Schema Support
 
+Schema inspection is runtime-neutral and accepts schemas created by either
+Effect 3 or Effect 4. The package does not install or peer on Effect; the
+application's own schema remains the sole runtime identity.
+
 ```tsx
 import { ObjectInspector, withSchemaSupport, SchemaProvider } from '@overeng/react-inspector'
 import { Schema } from 'effect'
