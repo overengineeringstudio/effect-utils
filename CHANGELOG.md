@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- **megarepo / StoreLock**: add a deterministic filesystem-backed regression
+  test for the distributed-lock finalizer ordering that prevents holder-file
+  resurrection between consecutive store lock acquisitions.
+
 - **react-inspector / Effect 4**: align the development dependency and peer
   floor to Effect `4.0.0-beta.99`, anchor injected test helpers to the separate
   Effect 3 catalog, and fail generation if either cohort's exact identity drifts
