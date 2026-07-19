@@ -5,9 +5,6 @@ import {
   bashShellDefaults,
   cachixHostsFromBinaryCaches,
   jobLocalCiDiagnosticsDir,
-  jobLocalPnpmHome,
-  jobLocalPnpmStatePaths,
-  jobLocalPnpmStore,
   nixBinaryCachesExtraConf,
   resolveDevenvFnScript,
   resolveDevenvRevScript,
@@ -18,6 +15,9 @@ import {
   withGcRaceRetry,
   workspaceLocalNixCachePath,
   workspaceLocalNixCacheRoot,
+  workspaceLocalPnpmHome,
+  workspaceLocalPnpmStatePaths,
+  workspaceLocalPnpmStore,
   type NixBinaryCache,
 } from './shared.ts'
 
@@ -337,9 +337,9 @@ export const pnpmStateSetupStep = {
   name: 'Isolate pnpm state',
   shell: 'bash',
   run: [
-    `echo "PNPM_STORE_DIR=${jobLocalPnpmStore}" >> "$GITHUB_ENV"`,
-    `echo "PNPM_CONFIG_STORE_DIR=${jobLocalPnpmStore}" >> "$GITHUB_ENV"`,
-    `echo "PNPM_HOME=${jobLocalPnpmHome}" >> "$GITHUB_ENV"`,
+    `echo "PNPM_STORE_DIR=${workspaceLocalPnpmStore}" >> "$GITHUB_ENV"`,
+    `echo "PNPM_CONFIG_STORE_DIR=${workspaceLocalPnpmStore}" >> "$GITHUB_ENV"`,
+    `echo "PNPM_HOME=${workspaceLocalPnpmHome}" >> "$GITHUB_ENV"`,
   ].join('\n'),
 } as const
 
@@ -547,6 +547,15 @@ export const saveNixCacheStep = (opts?: { restoreStepId?: string; path?: string 
   }
 }
 
+/**
+ * Shared pnpm-state cache contract version.
+ *
+ * Restore and save both key off this one constant so a bump lands atomically
+ * across the stack. Bumping it forces a one-time cold rebuild for every
+ * consumer, so treat a change as a coordinated stack-wide event.
+ */
+export const pnpmStateCacheKeyPrefix = 'pnpm-state-v2'
+
 const pnpmStateCachePrimaryKey = (keyPrefix: string) =>
   `${keyPrefix}-${'${{ runner.os }}'}-${'${{ runner.arch }}'}-${"${{ hashFiles('**/pnpm-lock.yaml') }}"}`
 
@@ -563,8 +572,8 @@ export const restorePnpmStateStep = (opts?: {
   stepId?: string
   path?: string
 }) => {
-  const keyPrefix = opts?.keyPrefix ?? 'pnpm-state-v1'
-  const path = opts?.path ?? jobLocalPnpmStatePaths
+  const keyPrefix = opts?.keyPrefix ?? pnpmStateCacheKeyPrefix
+  const path = opts?.path ?? workspaceLocalPnpmStatePaths
 
   return {
     id: opts?.stepId ?? 'restore-pnpm-state',
@@ -590,9 +599,9 @@ export const savePnpmStateStep = (opts?: {
   restoreStepId?: string
   path?: string
 }) => {
-  const keyPrefix = opts?.keyPrefix ?? 'pnpm-state-v1'
+  const keyPrefix = opts?.keyPrefix ?? pnpmStateCacheKeyPrefix
   const restoreStepId = opts?.restoreStepId ?? 'restore-pnpm-state'
-  const path = opts?.path ?? jobLocalPnpmStatePaths
+  const path = opts?.path ?? workspaceLocalPnpmStatePaths
 
   return {
     name: 'Save pnpm state',
@@ -645,12 +654,22 @@ export const standardSelfHostedPnpmCiPrepSteps = (opts?: {
  * pnpm / runner diagnostics attached to the finished job.
  */
 export const standardSelfHostedPnpmCiPostSteps = (opts?: {
-  savePnpmState?: Parameters<typeof savePnpmStateStep>[0]
+  /**
+   * Designate this job as the single pnpm-state publisher.
+   *
+   * pnpm state uses exact-key, single-writer semantics: exactly one job per
+   * `(os, arch, lockfile)` key should save. Defaults to `false` so a repo must
+   * name its ONE canonical-install publisher; every other job restores only.
+   * Forgetting to name a publisher degrades to cold installs (slower CI), never
+   * to the concurrent multi-writer saves that exhaust self-hosted runner disk.
+   */
+  savePnpmState?: boolean
+  savePnpmStateOptions?: Parameters<typeof savePnpmStateStep>[0]
   saveNixCache?: Parameters<typeof saveNixCacheStep>[0]
   includeDiagnosticsArtifact?: boolean
 }) =>
   [
-    savePnpmStateStep(opts?.savePnpmState),
+    ...(opts?.savePnpmState === true ? [savePnpmStateStep(opts?.savePnpmStateOptions)] : []),
     saveNixCacheStep(opts?.saveNixCache),
     ...(opts?.includeDiagnosticsArtifact === false ? [] : [ciDiagnosticsArtifactStep()]),
   ] as const

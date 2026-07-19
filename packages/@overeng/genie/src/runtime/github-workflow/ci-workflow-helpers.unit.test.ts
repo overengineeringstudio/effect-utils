@@ -150,32 +150,49 @@ describe('ci workflow reporting helpers', () => {
 describe('ci workflow pnpm cache defaults', () => {
   it('keeps the shared pnpm home workspace-relative', () => {
     expect(ciWorkflowSource).toContain(
-      "export const jobLocalPnpmHome = '${{ github.workspace }}/.pnpm-home'",
+      "export const workspaceLocalPnpmHome = '${{ github.workspace }}/.pnpm-home'",
     )
   })
 
   it('defaults the pnpm state helpers to restoring both home and auxiliary store state', () => {
     expect(ciWorkflowSource).toContain(
-      "export const jobLocalPnpmStatePaths = [jobLocalPnpmHome, jobLocalPnpmStore].join('\\n')",
+      "export const workspaceLocalPnpmStatePaths = [workspaceLocalPnpmHome, workspaceLocalPnpmStore].join(',
     )
-    expect(ciWorkflowSource).toContain('const path = opts?.path ?? jobLocalPnpmStatePaths')
+    expect(ciWorkflowSource).toContain('const path = opts?.path ?? workspaceLocalPnpmStatePaths')
   })
 
   it('exports PNPM_CONFIG_STORE_DIR alongside pnpm store state', () => {
     expect(ciWorkflowSource).toContain(
-      '`echo "PNPM_CONFIG_STORE_DIR=${jobLocalPnpmStore}" >> "$GITHUB_ENV"`',
+      '`echo "PNPM_CONFIG_STORE_DIR=${workspaceLocalPnpmStore}" >> "$GITHUB_ENV"`',
     )
     expect(ciWorkflowSource).toContain(
-      'PNPM_CONFIG_STORE_DIR="\\${PNPM_CONFIG_STORE_DIR:-${jobLocalPnpmStore}}"',
+      'PNPM_CONFIG_STORE_DIR="\\${PNPM_CONFIG_STORE_DIR:-${workspaceLocalPnpmStore}}"',
     )
   })
 
   it('uses exact-key pnpm state restore semantics with an explicit versioned prefix', () => {
     expect(restorePnpmStateStepSource).toContain(
-      "const keyPrefix = opts?.keyPrefix ?? 'pnpm-state-v1'",
+      'const keyPrefix = opts?.keyPrefix ?? pnpmStateCacheKeyPrefix',
     )
     expect(restorePnpmStateStepSource).toContain("name: 'Restore pnpm state'")
     expect(restorePnpmStateStepSource).not.toContain("'restore-keys':")
+  })
+
+  it('centralizes the pnpm state cache contract version at v2', () => {
+    expect(ciWorkflowSource).toContain("export const pnpmStateCacheKeyPrefix = 'pnpm-state-v2'")
+  })
+
+  it('defaults the pnpm store to a workspace-relative path stable across jobs', () => {
+    expect(ciWorkflowSource).toContain(
+      "export const workspaceLocalPnpmStore = '${{ github.workspace }}/.pnpm-store'",
+    )
+    expect(ciWorkflowSource).not.toContain('runner.temp }}/pnpm-store')
+  })
+
+  it('makes pnpm-state save opt-in so exactly one publisher writes per key', () => {
+    expect(ciWorkflowSource).toContain(
+      '...(opts?.savePnpmState === true ? [savePnpmStateStep(opts?.savePnpmStateOptions)] : [])',
+    )
   })
 
   it('only saves pnpm state after prior steps succeed', () => {
