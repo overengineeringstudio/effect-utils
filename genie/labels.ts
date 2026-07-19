@@ -43,8 +43,10 @@ const colors = {
   grey: 'bfd4e2',
   lightGrey: 'ededed',
   pale: 'bfd4f2',
-  /* Distinct light blue for `type:refactor` so it reads apart from the grey `type:chore`/`type:task` chips. */
+  /* Distinct light blue for `type:refactor` so it reads apart from the grey `type:chore` chip. */
   iceBlue: 'c5def5',
+  /* Pale lavender-grey for `type:task`, distinct from `type:chore` grey and `type:refactor` iceBlue. */
+  dust: 'cdc5e2',
   /* Neutral slate used as the single, axis-consistent color for all `state:*` labels. */
   slate: '6e7781',
 } as const
@@ -89,7 +91,7 @@ const typeLabels: readonly LabelDef[] = [
   },
   {
     name: 'type:task',
-    color: colors.grey,
+    color: colors.dust,
     description:
       'Scoped implementation/follow-up work (not bug/feature/docs/incident/RCA/epic) · Set: manual',
   },
@@ -243,6 +245,14 @@ export const mqDeprecated: readonly string[] = [
   'mq:status',
   ...mqPriorityLevels.map((n) => `mq:priority-${n}`),
 ]
+
+/**
+ * @deprecated The `mq:*` axis is retired — no labels are provisioned anymore. This is
+ * kept as an empty array purely so existing `...mqLabels` spreads / `mqLabels.map(...)`
+ * in consumer repos keep evaluating (non-breaking) until they migrate to `mqDeprecated`.
+ * Remove once no consumer references it.
+ */
+export const mqLabels: readonly LabelDef[] = []
 
 // ============================================================================
 // andon:* — cross-machine incident states (see /sk-andon)

@@ -357,7 +357,7 @@
     },
     {
       "name": "type:task",
-      "color": "bfd4e2",
+      "color": "cdc5e2",
       "description": "Scoped implementation/follow-up work (not bug/feature/docs/incident/RCA/epic) · Set: manual"
     }
   ],
