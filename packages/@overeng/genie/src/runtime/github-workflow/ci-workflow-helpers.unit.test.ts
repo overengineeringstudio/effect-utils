@@ -191,10 +191,13 @@ describe('ci workflow pnpm cache defaults', () => {
     expect(ciWorkflowSource).not.toContain('runner.temp }}/pnpm-store')
   })
 
-  it('makes pnpm-state save opt-in so exactly one publisher writes per key', () => {
+  it('exposes a callable single-publisher primitive and delegates the composer to it', () => {
+    expect(ciWorkflowSource).toContain('export const pnpmStatePublisherPostSteps = (opts?: {')
+    expect(ciWorkflowSource).toContain('export const withSinglePnpmStatePublisher = <')
     expect(ciWorkflowSource).toContain(
-      '...(opts?.savePnpmState === true ? [savePnpmStateStep(opts?.savePnpmStateOptions)] : [])',
+      'opts?.publish === true ? [savePnpmStateStep(opts?.save)] : []',
     )
+    expect(ciWorkflowSource).toContain('...pnpmStatePublisherPostSteps({')
   })
 
   it('only saves pnpm state after prior steps succeed', () => {

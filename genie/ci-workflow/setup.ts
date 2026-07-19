@@ -628,6 +628,27 @@ export const savePnpmStateStep = (opts?: {
 }
 
 /**
+ * pnpm-state publisher post-steps for a repo's own hand-rolled `job()` factory.
+ *
+ * Returns the save step only when this job is the designated publisher, else
+ * `[]`, so a local factory can gate its single save call by spreading:
+ *
+ *   steps: [...baseSteps, step, ...pnpmStatePublisherPostSteps({ publish })]
+ *
+ * pnpm state uses exact-key, single-writer semantics: exactly one job per
+ * `(os, arch, lockfile)` key should publish; every other job restores only.
+ * Defaults to `publish: false` so a repo must name its publisher — forgetting
+ * degrades to cold installs (slower CI), never to the concurrent multi-writer
+ * saves that exhaust self-hosted runner disk. Matrix / multi-lockfile-graph
+ * repos may publish from several jobs (one per closure).
+ */
+export const pnpmStatePublisherPostSteps = (opts?: {
+  publish?: boolean
+  save?: Parameters<typeof savePnpmStateStep>[0]
+}): readonly ReturnType<typeof savePnpmStateStep>[] =>
+  opts?.publish === true ? [savePnpmStateStep(opts?.save)] : []
+
+/**
  * Shared self-hosted CI setup for repos that prepare a devenv workspace,
  * restore warmed mutable state, and run `pnpm:install` before the main task.
  *
@@ -664,17 +685,11 @@ export const standardSelfHostedPnpmCiPrepSteps = (opts?: {
  */
 export const standardSelfHostedPnpmCiPostSteps = (opts?: {
   /**
-   * Designate this job as the single pnpm-state publisher.
-   *
-   * pnpm state uses exact-key, single-writer semantics: exactly one job per
-   * `(os, arch, lockfile)` key should save. Defaults to `false` so a repo must
-   * name its ONE canonical-install publisher; every other job restores only.
-   * Forgetting to name a publisher degrades to cold installs (slower CI), never
-   * to the concurrent multi-writer saves that exhaust self-hosted runner disk.
-   *
-   * Matrix / multi-lockfile-graph repos may designate several publishers (one
-   * per closure) by setting this on each such job; the default single-publisher
-   * shape targets the self-hosted disk-risk tier without a second code path.
+   * Designate this job as a pnpm-state publisher. Delegates to
+   * `pnpmStatePublisherPostSteps`; defaults to `false` (restore-only). This
+   * only reaches repos that compose their job via this shared helper — repos
+   * with a hand-rolled `job()` factory must call `pnpmStatePublisherPostSteps`
+   * (or `withSinglePnpmStatePublisher`) directly.
    */
   savePnpmState?: boolean
   savePnpmStateOptions?: Parameters<typeof savePnpmStateStep>[0]
@@ -682,7 +697,10 @@ export const standardSelfHostedPnpmCiPostSteps = (opts?: {
   includeDiagnosticsArtifact?: boolean
 }) =>
   [
-    ...(opts?.savePnpmState === true ? [savePnpmStateStep(opts?.savePnpmStateOptions)] : []),
+    ...pnpmStatePublisherPostSteps({
+      publish: opts?.savePnpmState,
+      save: opts?.savePnpmStateOptions,
+    }),
     saveNixCacheStep(opts?.saveNixCache),
     ...(opts?.includeDiagnosticsArtifact === false ? [] : [ciDiagnosticsArtifactStep()]),
   ] as const
@@ -727,6 +745,41 @@ export const standardSelfHostedDevenvTaskJob = ({
   ],
   ...jobOptions,
 })
+
+/**
+ * Stamp EXACTLY ONE job in a workflow job map as the pnpm-state publisher.
+ *
+ * Appends the save step to the named publisher and leaves every other job
+ * restore-only, centralizing the single-writer invariant so a repo declares its
+ * publisher once and cannot save on many jobs or none. Throws if the named job
+ * is absent, or if any job already saves pnpm state (so this helper is the sole
+ * authority). Repos whose jobs share one closure use this; matrix repos needing
+ * several publishers spread `pnpmStatePublisherPostSteps` per job instead.
+ */
+export const withSinglePnpmStatePublisher = <
+  TJobs extends Record<string, { steps: readonly WorkflowStep[] }>,
+>(
+  jobs: TJobs,
+  opts: { publisher: keyof TJobs & string; save?: Parameters<typeof savePnpmStateStep>[0] },
+): TJobs => {
+  const publisher = jobs[opts.publisher]
+  if (publisher === undefined) {
+    throw new Error(
+      `withSinglePnpmStatePublisher: publisher job '${opts.publisher}' is not in the job map`,
+    )
+  }
+  for (const [name, job] of Object.entries(jobs)) {
+    if (job.steps.some((step) => (step as { name?: string }).name === 'Save pnpm state')) {
+      throw new Error(
+        `withSinglePnpmStatePublisher: job '${name}' already saves pnpm state; remove per-job saves so exactly one publisher writes`,
+      )
+    }
+  }
+  return {
+    ...jobs,
+    [opts.publisher]: { ...publisher, steps: [...publisher.steps, savePnpmStateStep(opts.save)] },
+  } as TJobs
+}
 
 /**
  * Upload CI diagnostics captured during the pnpm install / runner-pressure
