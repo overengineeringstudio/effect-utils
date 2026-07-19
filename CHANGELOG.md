@@ -13,6 +13,10 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **devenv / ts:emit**: resolve project references with filesystem directory
+  checks so dotted directory names map to `tsconfig.json`, and treat an
+  all-`noEmit` reference graph as successful no-work instead of invoking the
+  compiler with an empty build root.
 - **@overeng/utils**: restore the downstream `@effect/platform` patch
   projection in the generated package manifest after vendoring
   `effect-distributed-lock`.
