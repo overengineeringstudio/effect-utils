@@ -19,7 +19,11 @@ the pnpm/Nix/Buck2 relationship stayed implicit:
 - Nix prepared dependency freshness could drift from the same dependency inputs
   used by live installs.
 
-## Design Decisions Captured
+## Historical Design Decisions Captured
+
+The following list records the imported branch's conclusions, not the current
+normative architecture. Decision 0006 and the current subsystem specs supersede
+its named live profiles, shared-files registry, and coordinated all-root repair.
 
 - Nix/devenv remains the owner of live mutable pnpm materialization and repair.
 - Buck2 consumes declared dependency profile evidence first; it does not run
@@ -41,7 +45,7 @@ the pnpm/Nix/Buck2 relationship stayed implicit:
 | ------------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
 | Shared-store prune  | Profile-local prune can delete files required by sibling roots sharing `v11/files`.                                   | store authority and verification     |
 | Store status limits | `pnpm store status` can report clean after sibling prune even though offline reinstall fails.                         | store authority health checks        |
-| Doctor/repair       | Correct repair is registry-backed all-root repair, not a thin prune wrapper.                                          | store authority and live pnpm repair |
+| Doctor/repair       | Historical split-files repair model used registry-backed all-root repair; current whole-cache repair supersedes it.   | store authority and live pnpm repair |
 | Store traits        | Shared/split stores preserve large host-wide byte and file-count wins over isolated stores.                           | verification benchmark matrix        |
 | CI isolation        | Job-local pnpm stores avoid sibling corruption and stay the CI default.                                               | store trait contract                 |
 | Low disk            | Broad proofs must fail before mutation and emit machine-readable skip evidence.                                       | verification skip records            |
@@ -50,7 +54,11 @@ the pnpm/Nix/Buck2 relationship stayed implicit:
 | Nix FOD freshness   | FOD freshness can use profile identity plus FOD input digest instead of parallel stale-hash heuristics.               | Nix prepared deps and FOD evidence   |
 | Buck2 evidence      | Buck2 should consume deterministic evidence and keep mutable materialization outside watched source roots.            | Buck2 evidence subsystem             |
 
-## Open Gaps Preserved
+## Historical Open Gaps
+
+These gaps describe the imported research snapshot. Current status is owned by
+the verification requirements, evidence bundle, and store-authority open
+questions rather than this reference note.
 
 - Linux real-workload numbers were still pending; the Linux runner shape was
   proven locally by emitting a deterministic non-Linux skip.

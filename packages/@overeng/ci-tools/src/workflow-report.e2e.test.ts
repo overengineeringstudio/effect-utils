@@ -53,6 +53,28 @@ const sampleRecord: WorkflowReportRecord = {
 }
 
 describe('workflow-report CLI E2E', () => {
+  it('treats an absent optional producer output as a missing input', () => {
+    const workspace = mkdtempSync(join(tmpdir(), 'workflow-report-missing-input-e2e-'))
+    const bundlePath = join(workspace, 'bundle.json')
+
+    runWorkflowReport([
+      'collect-bundle',
+      '--bundle-id',
+      'deploy-preview',
+      '--input-paths-json',
+      JSON.stringify(['']),
+      '--output-path',
+      bundlePath,
+      '--allow-missing-input',
+    ])
+
+    expect(decodeWorkflowReportBundleJson(readFileSync(bundlePath, 'utf8'))).toMatchObject({
+      _tag: 'WorkflowReportBundle',
+      bundleId: 'deploy-preview',
+      records: [],
+    })
+  })
+
   it('collects marked records, renders managed comments, and locates prior comments', () => {
     const workspace = mkdtempSync(join(tmpdir(), 'workflow-report-e2e-'))
     const inputPath = join(workspace, 'deploy.log')

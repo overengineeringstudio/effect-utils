@@ -7,12 +7,14 @@ Status: **Draft**
 
 ## Requirement Trace
 
-| Section          | Requirements                                       |
-| ---------------- | -------------------------------------------------- |
-| Evidence Tiers   | DMP.VER-R01, DMP.VER-R02, DMP.VER-R03, DMP.VER-R04 |
-| Benchmark Matrix | DMP.VER-R05, DMP.VER-R06, DMP.VER-R07              |
-| Evidence Records | DMP.VER-R08, DMP.VER-R09                           |
-| Evidence Intake  | DMP.VER-R10                                        |
+| Section             | Requirements                                       |
+| ------------------- | -------------------------------------------------- |
+| Evidence Tiers      | DMP.VER-R01, DMP.VER-R02, DMP.VER-R03, DMP.VER-R04 |
+| Benchmark Matrix    | DMP.VER-R05, DMP.VER-R06, DMP.VER-R07              |
+| Evidence Records    | DMP.VER-R08, DMP.VER-R09                           |
+| Evidence Intake     | DMP.VER-R10                                        |
+| Dependency Identity | DMP.VER-R11                                        |
+| Topology Reuse      | DMP.VER-R12                                        |
 
 ## Evidence Tiers
 
@@ -32,15 +34,16 @@ fixture checks
 
 ## Correctness Matrix
 
-| Surface                | Required evidence                                                                                      | Owning subsystem                                                                                        |
-| ---------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
-| Strict pnpm policy     | Reject lifecycle/build override flags before pnpm runs; prove sentinel scripts do not run.             | [01-live-pnpm](../01-live-pnpm/spec.md)                                                                 |
-| Bin projection         | Manifest fixture plus pnpm-linker oracle cases; prove missing/stale bins are repaired without scripts. | [02-projections](../02-projections/spec.md)                                                             |
-| Prepared deps          | Scan fixtures for `.bin`, leaked state, unexpected `*.node`, and known platform dirs.                  | [03-nix-prepared-deps](../03-nix-prepared-deps/spec.md)                                                 |
-| Native packages        | Lockfile-policy audit and graft-file existence checks.                                                 | [03-nix-prepared-deps/02-native-node-packages](../03-nix-prepared-deps/02-native-node-packages/spec.md) |
-| Shared store authority | Raw-prune failure repro, doctor refusal, all-root repair plan.                                         | [04-store-authority](../04-store-authority/spec.md)                                                     |
-| Buck2 evidence         | Stable declared-input evidence; no live pnpm mutation.                                                 | [05-buck2-evidence](../05-buck2-evidence/spec.md)                                                       |
-| Observability          | Fixture records for phase, timing, size, reuse, profile link, and safe paths.                          | [06-observability](../06-observability/spec.md)                                                         |
+| Surface                | Required evidence                                                                                        | Owning subsystem                                                                                        |
+| ---------------------- | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Strict pnpm policy     | Reject lifecycle/build override flags before pnpm runs; prove sentinel scripts do not run.               | [01-live-pnpm](../01-live-pnpm/spec.md)                                                                 |
+| Dependency identity    | Install incompatible peer graphs in both orders; prove pnpm-selected edges and type identity are stable. | [01-live-pnpm](../01-live-pnpm/spec.md)                                                                 |
+| Bin projection         | Manifest fixture plus pnpm-linker oracle cases; prove missing/stale bins are repaired without scripts.   | [02-projections](../02-projections/spec.md)                                                             |
+| Prepared deps          | Scan fixtures for `.bin`, leaked state, unexpected `*.node`, and known platform dirs.                    | [03-nix-prepared-deps](../03-nix-prepared-deps/spec.md)                                                 |
+| Native packages        | Lockfile-policy audit and graft-file existence checks.                                                   | [03-nix-prepared-deps/02-native-node-packages](../03-nix-prepared-deps/02-native-node-packages/spec.md) |
+| Shared store authority | Root-local topology proof, shared-content immutability, and raw-prune refusal.                           | [04-store-authority](../04-store-authority/spec.md)                                                     |
+| Buck2 evidence         | Stable declared-input evidence; no live pnpm mutation.                                                   | [05-buck2-evidence](../05-buck2-evidence/spec.md)                                                       |
+| Observability          | Fixture records for phase, timing, size, reuse, profile link, and safe paths.                            | [06-observability](../06-observability/spec.md)                                                         |
 
 ## Benchmark Matrix
 
@@ -51,10 +54,11 @@ runs can share one parser:
 {
   "schema": "dependency-materialization-verification/v0",
   "kind": "benchmark",
-  "surface": "store-trait",
+  "surface": "storage-sharing",
   "workspace": "effect-utils",
   "platform": "aarch64-darwin",
-  "storeTrait": "darwinSplitCas",
+  "stateScope": "materialization-root",
+  "contentPoolScope": "host-shared",
   "phase": "offline-reinstall",
   "status": "ok",
   "timingsMs": { "coldA": 1234, "coldB": 640, "offline": 410 },
@@ -70,7 +74,7 @@ why work did not run:
 {
   "schema": "dependency-materialization-verification/v0",
   "kind": "benchmark",
-  "surface": "store-trait",
+  "surface": "storage-sharing",
   "status": "skipped",
   "reason": "low-disk",
   "availableGiB": 31,
@@ -81,6 +85,35 @@ why work did not run:
 Default changes require same-workload comparisons against the current default
 and an isolated baseline. Cache-efficiency claims must report bytes and file
 counts, not only timing.
+
+To quantify repeated topology work and evaluate a future Hermetic Dependency
+Artifact, the same commit, graph, and machine class must compare:
+
+1. shared Store Cache with root-local virtual stores;
+2. shared Store Cache with one shared Global Virtual Store;
+3. shared Store Cache with Global Virtual Stores partitioned by declared graph
+   or lock identity;
+4. isolated Store Cache with root-local virtual stores.
+
+The matrix runs on effect-utils and the real dotfiles/Vista graph across ext4
+and APFS. It records extent-aware physical allocation where available, apparent
+bytes, files/inodes, downloads, cold/second/warm/offline/repair/concurrent
+latency, lock wait, peer/Package Instance identity, injected missing/corrupt
+edges, and the scope required to repair one root. Options that fail purity,
+identity, data-safety, concurrency, or bounded-repair gates are inadmissible
+regardless of their byte or latency result.
+
+The measured package-store policy evidence is recorded in
+[`evidence/storage-sharing-default-v2.json`](./evidence/storage-sharing-default-v2.json).
+It is pinned to its recorded implementation head and harness checksum rather
+than silently acting as a current-head performance baseline. It is
+machine-validated against committed raw JSONL records and records
+separate real-workload Linux/ext4 and Darwin/APFS cold, warm, isolated,
+second-root, and concurrent phase matrices. The same evidence bundle carries
+per-host hardlink/prune capability records for hosts that enable destructive
+maintenance. Results remain platform- and host-specific: neither platform's
+timing, allocation, effective import behavior, nor prune safety may be
+generalized to another filesystem or host.
 
 ## Evidence Intake And Graduation
 
@@ -100,5 +133,5 @@ outcomes:
    obsolete assumption.
 
 Research may be retired once every durable finding has one of those outcomes.
-Historical source links belong in `.research/` or `.experiments/`, not in the
-normative spec.
+Historical source material belongs in `.reference/`; project-generated
+validation evidence belongs in focused `.experiments/` records.

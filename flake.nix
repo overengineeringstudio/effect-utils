@@ -329,12 +329,6 @@
       # Usage: effectUtils.lib.mkPnpm { inherit pkgs; }
       lib.mkPnpm = { pkgs }: import ./nix/pnpm.nix { inherit pkgs; };
 
-      # Cross-repo effect-utils source relink install command, with the pnpm
-      # store-dir resolved from the CI-exported env so the relink shares one
-      # store with the root install (avoids a two-store split in deploy jobs).
-      # Usage: effectUtils.lib.mkEffectUtilsInstall { root = config.devenv.root; }
-      lib.mkEffectUtilsInstall = import ./nix/devenv-modules/tasks/lib/effect-utils-install.nix;
-
       # Note: mkSourceCli is internal-only (not exported).
       # For consuming CLIs from other repos, use:
       #   effectUtils.packages.${system}.genie

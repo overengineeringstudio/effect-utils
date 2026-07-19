@@ -1,6 +1,6 @@
 # 0005 FOD Repair Targets Are Eval Metadata
 
-Status: **Accepted**
+Status: accepted
 
 ## Context
 
@@ -8,6 +8,22 @@ Prepared dependency fixed-output hashes need cross-system repair and review
 evidence. A committed per-target witness file would make evidence visible in
 source, but it would duplicate package Nix metadata, the declared hash, the
 install root, and the profile identity already available through evaluation.
+
+## Evidence and Argument
+
+- Nix evaluation already exposes the asserted hash, derivation, install root,
+  profile identity, and freshness inputs at the owning boundary.
+- A checked-in witness would duplicate those fields and introduce another stale
+  authority.
+- Cross-system measurement is run evidence unavailable at pure evaluation time.
+
+## Options
+
+| Option                                      | Tradeoffs                                                               |
+| ------------------------------------------- | ----------------------------------------------------------------------- |
+| evaluated repair metadata plus run evidence | One committed authority with operational measurement kept truthful.     |
+| per-target witness files                    | Easy source review but duplicates Nix metadata and drifts.              |
+| source parsing only                         | Avoids a producer contract but is brittle and loses evaluated identity. |
 
 ## Decision
 
@@ -22,17 +38,6 @@ record measured outputs as generated run evidence.
 
 Do not add checked-in JSON, YAML, or Markdown witness files per prepared
 dependency target.
-
-## Rationale
-
-- Nix fixed-output derivations already place the asserted hash at the
-  derivation boundary; a parallel source file is another stale authority.
-- Evaluated metadata can include the profile key, install root, declared hash,
-  derivation path, freshness inputs, and update path without asking package
-  authors to maintain another artifact.
-- Cross-system measurement is an operation, not a static fact available at
-  evaluation time. Keeping it in run evidence prevents accidental shared-hash
-  collapse while avoiding source churn.
 
 ## Consequences
 

@@ -48,10 +48,8 @@ export type InternalPackageName = (typeof internalPackages)[number]
 
 /**
  * Generate catalog entries for all internal packages.
- * Using `workspace:^` (not `workspace:*`) so pnpm resolves the actual version
- * from package.json. This is critical for GVS: with `workspace:*`, pnpm stores
- * workspace packages with `undefined` as version in the global link store,
- * breaking TypeScript resolution through GVS real paths.
+ * Using `workspace:^` (not `workspace:*`) so pnpm resolves and records the
+ * actual version from package.json in every standalone and composed topology.
  */
 export const internalPackageCatalogEntries = Object.fromEntries(
   internalPackages.map((name) => [`@overeng/${name}`, 'workspace:^'] as const),

@@ -42,6 +42,36 @@ All notable changes to this project will be documented in this file.
   Effect 4 instance through a peer dependency instead of bundling a private
   Effect runtime, preventing cross-major schema AST crashes in LiveStore
   Devtools.
+- **pnpm / dependency identity**: make pnpm the explicit authority for
+  live package dependency edges. Dependency projection and repair may no
+  longer invent nested links by scanning the store or choosing a target by
+  package name; declared compatibility extensions continue through generated
+  `packageExtensions`. Live virtual topology now lives exclusively under each
+  Materialization Root's `node_modules/.pnpm`. Repair discards one root-local
+  graph and reinvokes its
+  canonical pnpm install, eliminating shared graph registries and coordinated
+  multi-root repair. The complete disposable pnpm Store Cache may be shared
+  inside one same-user trust boundary, but it never owns dependency edges.
+  Prepared workspace normalization now relinks injected
+  packages only through pnpm's exact locator mapping. Record the mixed Effect 3
+  / Effect 4 counterexample and
+  add coverage for root-local graph authority and the supported extension path.
+  Replace the flat dependency-materialization glossary with a federated
+  ontology that separates root-owned state, profile identity, graph authority,
+  projections, and storage policy. Remove the unused live profile artifact and
+  storage presets; Nix prepared-dependency and Buck2 evidence retain the existing
+  `profileKey` compatibility boundary. Remove the GVS-only
+  `enableGlobalVirtualStore` and `gvsTypeExtensions` generator APIs.
+- **pnpm / cross-worktree cache reuse**: share pnpm's complete disposable Store
+  Cache (content-addressed files plus its derived index) across mutually trusted
+  local worktrees while keeping GVS disabled and every dependency graph under
+  its own root. Let pnpm's native `auto` import policy select clone, hardlink, or
+  copy, fail closed on Linux when the cache cannot provide same-device zero-copy
+  reuse, keep CI caches job-local, and leave Nix prepared dependencies on their
+  independent content-addressed path. Root repair never prunes the host cache;
+  focused two-root tests prove zero-download reuse, distinct virtual stores,
+  offline rematerialization, native-package isolation, and the explicit
+  same-user hardlink trust boundary.
 - **devenv cli-guard ownership**: drop the remaining self-consumer
   `lib.lowPrio effectTsgo` / `lib.lowPrio pnpmPkg` boilerplate. Passing
   `tsBinPkg` / `pnpmPkg` to the task modules is sufficient because the guards

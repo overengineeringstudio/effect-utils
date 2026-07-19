@@ -9,7 +9,7 @@
 # Why we want bun:
 #   - Significantly faster installs (when not hitting bugs)
 #   - bun's file: protocol works like pnpm's link: (symlinks with own deps)
-#   - No need for enableGlobalVirtualStore workaround
+#   - Root-local dependency topology by default
 #
 # See: context/workarounds/bun-issues.md
 #

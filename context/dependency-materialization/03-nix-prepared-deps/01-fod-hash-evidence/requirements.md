@@ -45,8 +45,8 @@ into package source.
 - **DMP.NIX.FOD-R05 Direct attr:** Evidence must name the direct prepared deps
   attr to rebuild.
   Refines: DMP.NIX-R09.
-- **DMP.NIX.FOD-R06 Inputs digest:** Evidence must include the prepared profile
-  id and policy/artifact version digests.
+- **DMP.NIX.FOD-R06 Inputs digest:** Evidence must include the prepared
+  Materialization Profile identity and policy/artifact version digests.
   Refines: DMP.NIX-R08.
 - **DMP.NIX.FOD-R07 Diagnostic text:** Stale hash failures must point at the
   direct dependency artifact, not only the final package.

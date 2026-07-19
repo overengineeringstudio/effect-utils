@@ -13,16 +13,15 @@ rec {
     "--config.strict-store-pkg-content-check=true"
     "--child-concurrency=1"
     "--network-concurrency=4"
-    "--config.package-import-method=clone-or-copy"
+    "--config.enable-global-virtual-store=false"
+    "--config.virtual-store-dir=node_modules/.pnpm"
     "--pm-on-fail=ignore"
   ];
 
   # The fixed-output builder writes policy through .npmrc because pnpm 11
   # rejects some workspace-scoped keys via `pnpm config set --global`. The
-  # prepared tree is restored directly by downstream builds. That makes FOD
-  # prep the deliberate exception to live GVS: a GVS node_modules tree points at
-  # <store>/v11/links, but the builder-local store is not part of the prepared
-  # output. Keep FOD prep isolated while live devenv installs fully use GVS.
+  # prepared tree is restored directly by downstream builds. Live and prepared
+  # installs therefore use the same root-local virtual topology.
   workspacePrepNpmrcLines = packageImportMethod: [
     "virtual-store-dir=node_modules/.pnpm"
     "package-import-method=${packageImportMethod}"
@@ -97,10 +96,9 @@ rec {
     export NODE_OPTIONS="''${NODE_OPTIONS:+$NODE_OPTIONS }--max-old-space-size=1536"
   '';
 
-  # Accept only the Darwin teardown failures we have observed after pnpm proves
-  # materialization finished. Exit 137 is SIGKILL; exit 134 is libuv's abort path
-  # (`uv__io_poll` assertion). The node_modules checks keep genuine failed or
-  # partial installs on the normal error path.
+  # Accept only the Darwin teardown abort that has been observed and recovered
+  # with the complete shared pnpm store. SIGKILL (137) is deliberately not
+  # normalized: it provides no exact shared-index recovery evidence.
   darwinCompletedMaterializationCheckShell =
     {
       statusVar,
@@ -111,5 +109,5 @@ rec {
       statusRef = "$" + statusVar;
       logFileRef = "$" + logFileVar;
     in
-    ''{ [ "${statusRef}" -eq 137 ] || [ "${statusRef}" -eq 134 ]; } && [ ${isDarwinShell} = "1" ] && grep -qE 'Progress: .* done$' "${logFileRef}" && [ -d node_modules/.pnpm ] && [ -f node_modules/.modules.yaml ]'';
+    ''[ "${statusRef}" -eq 134 ] && [ ${isDarwinShell} = "1" ] && grep -qE 'Progress: .* done$' "${logFileRef}" && [ -d node_modules/.pnpm ] && [ -f node_modules/.modules.yaml ]'';
 }

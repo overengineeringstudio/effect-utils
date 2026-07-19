@@ -21,7 +21,7 @@ let
     lockfileMode = "frozen";
     lifecycleScripts = "ignored";
     optionalDependencies = "excluded";
-    globalVirtualStore = "disabled-in-nix-prep";
+    virtualStoreScope = "materialization-root";
     liveStoreState = "purged-from-output";
   };
 in

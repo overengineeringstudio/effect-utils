@@ -1,47 +1,6 @@
 {
   "contract": "effect-utils/pnpm-install-contract",
-  "dependencyMaterializationProfile": {
-    "buck2Boundary": {
-      "consumesEvidence": true,
-      "ownsLiveMaterialization": false
-    },
-    "identityInputs": [
-      "packageManager",
-      "gvsLinkContract",
-      "installPolicy",
-      "storeContract",
-      "workspaceManifestContract"
-    ],
-    "nativeBuildPolicyInputs": {
-      "allowBuilds": "gvsLinkContract.allowBuilds",
-      "compilerEnv": ["CC", "CXX"]
-    },
-    "schema": "dependency-materialization-profile/v0",
-    "supportedTraits": {
-      "ciJobLocal": {
-        "gcAuthority": "profile-local",
-        "mutableState": "job-local",
-        "repairAuthority": "ci-job"
-      },
-      "darwinSplitCas": {
-        "gcAuthority": "shared-pool-coordinator",
-        "mutableState": "profile-local",
-        "repairAuthority": "devenv",
-        "sharedContent": "store/v11/files"
-      },
-      "isolated": {
-        "gcAuthority": "profile-local",
-        "mutableState": "profile-local",
-        "repairAuthority": "devenv"
-      },
-      "nixPreparedDeps": {
-        "gcAuthority": "nix-store",
-        "mutableState": "none",
-        "repairAuthority": "evergreen-fod"
-      }
-    }
-  },
-  "gvsLinkContract": {
+  "dependencyGraphContract": {
     "allowBuilds": {
       "@myobie/pty": false,
       "@parcel/watcher": false,
@@ -53,12 +12,6 @@
       "unix-dgram": false
     },
     "packageExtensions": {
-      "react-aria-components": {
-        "dependencies": {
-          "@types/react": "19.2.17",
-          "@types/react-dom": "19.2.3"
-        }
-      },
       "storybook": {
         "dependencies": {
           "@storybook/react-vite": "10.4.6"
@@ -75,7 +28,16 @@
     "ignoreScripts": true,
     "minimumReleaseAgeExclude": ["@effect/platform", "@types/node", "effect"],
     "optimisticRepeatInstall": false,
-    "packageImportMethod": "clone-or-copy",
+    "packageImportMethod": {
+      "live": {
+        "linuxSameDeviceRequired": true,
+        "method": "auto",
+        "owner": "pnpm"
+      },
+      "nixPreparedDependencies": {
+        "scope": "independent-builder-policy"
+      }
+    },
     "peerDependencyRules": {
       "allowedVersions": {
         "@effect/experimental": ">=0.58.0",
@@ -104,31 +66,39 @@
       "consumeContractArtifact": true
     },
     "nixIntegration": {
-      "fixedOutputDependencyPrepUsesLiveGlobalVirtualStore": false,
-      "liveInstallUsesGlobalVirtualStore": true
+      "fixedOutputDependencyPrepUsesSameVirtualStoreScope": true,
+      "liveVirtualStoreScope": "materialization-root"
     },
     "pnpmStoreOwnership": {
-      "filesLifecycle": "pnpm-owned content-addressed files store",
-      "linksLifecycle": "pnpm-owned rebuildable dependency-graph projection",
-      "projectsLifecycle": "pnpm-owned store prune reachability registry"
+      "cacheLifecycle": "pnpm-owned disposable Store Cache",
+      "derivedIndexLifecycle": "shared only inside one same-user trust boundary",
+      "virtualStoreLifecycle": "Materialization-Root-owned rebuildable dependency graph"
     }
   },
   "packageManager": {
     "name": "pnpm",
     "version": "11.8.0"
   },
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "storeContract": {
-    "globalVirtualStore": {
-      "enabled": true
+    "ci": {
+      "scope": "job"
     },
     "layoutVersion": "v11",
-    "owner": "pnpm",
-    "sharedFilesStore": {
-      "disabledInCi": true,
-      "enabledForLocalDev": true
+    "localDevelopment": {
+      "contentAddressedFiles": "shared",
+      "defaultPath": "~/.local/share/pnpm/store-shared-v1",
+      "derivedIndex": "shared-pnpm-owned",
+      "pathOverrideEnvironmentVariable": "PNPM_SHARED_STORE_DIR",
+      "scope": "host-user",
+      "trustBoundary": "same-os-user"
     },
-    "storeDir": ".devenv/pnpm-store-pure-v1"
+    "owner": "pnpm",
+    "virtualStore": {
+      "global": false,
+      "path": "node_modules/.pnpm",
+      "scope": "materialization-root"
+    }
   },
   "workspaceManifestContract": {
     "allowUnusedPatches": true,

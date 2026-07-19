@@ -141,6 +141,74 @@ export type {
 export { nativeDependencyPolicy }
 export type { NativeDependencyPolicyEntry }
 
+/** Storage portion of effect-utils/pnpm-install-contract schema v2. */
+export interface PnpmInstallStorageContractV2 {
+  readonly storeContract: {
+    readonly owner: 'pnpm'
+    readonly layoutVersion: 'v11'
+    readonly localDevelopment: {
+      readonly scope: 'host-user'
+      readonly trustBoundary: 'same-os-user'
+      readonly defaultPath: '~/.local/share/pnpm/store-shared-v1'
+      readonly pathOverrideEnvironmentVariable: 'PNPM_SHARED_STORE_DIR'
+      readonly contentAddressedFiles: 'shared'
+      readonly derivedIndex: 'shared-pnpm-owned'
+    }
+    readonly ci: {
+      readonly scope: 'job'
+    }
+    readonly virtualStore: {
+      readonly scope: 'materialization-root'
+      readonly path: 'node_modules/.pnpm'
+      readonly global: false
+    }
+  }
+  readonly packageImportMethod: {
+    readonly live: {
+      readonly method: 'auto'
+      readonly owner: 'pnpm'
+      readonly linuxSameDeviceRequired: true
+    }
+    readonly nixPreparedDependencies: {
+      readonly scope: 'independent-builder-policy'
+    }
+  }
+}
+
+/** Shared live/Nix storage authority for every megarepo install contract. */
+export const pnpmInstallStorageContractV2 = {
+  storeContract: {
+    owner: 'pnpm',
+    layoutVersion: 'v11',
+    localDevelopment: {
+      scope: 'host-user',
+      trustBoundary: 'same-os-user',
+      defaultPath: '~/.local/share/pnpm/store-shared-v1',
+      pathOverrideEnvironmentVariable: 'PNPM_SHARED_STORE_DIR',
+      contentAddressedFiles: 'shared',
+      derivedIndex: 'shared-pnpm-owned',
+    },
+    ci: {
+      scope: 'job',
+    },
+    virtualStore: {
+      scope: 'materialization-root',
+      path: 'node_modules/.pnpm',
+      global: false,
+    },
+  },
+  packageImportMethod: {
+    live: {
+      method: 'auto',
+      owner: 'pnpm',
+      linuxSameDeviceRequired: true,
+    },
+    nixPreparedDependencies: {
+      scope: 'independent-builder-policy',
+    },
+  },
+} satisfies PnpmInstallStorageContractV2
+
 // =============================================================================
 // Shared label catalog (consumed by per-repo `.github/labels.json.genie.ts`)
 // =============================================================================
@@ -343,11 +411,10 @@ const deniedLifecycleBuilds = Object.fromEntries(
  * This is the SSOT for pnpm strictness/layout policy. Every megarepo
  * root workspace should spread this so policy stays consistent.
  *
- * `enableGlobalVirtualStore` ensures identity convergence: equivalent
- * dependency graphs across standalone and composed topologies resolve to
- * the same physical instance via pnpm's global content-addressed store.
- * This eliminates duplicate-instance problems (TypeScript type identity,
- * JS runtime singletons) when consuming cross-repo packages via `link:`.
+ * The virtual dependency graph is always root-local. Cross-root reuse is
+ * limited to pnpm's Store Cache inside one same-user trust boundary; composed
+ * runtime identity is established by the composed workspace topology, never by
+ * shared writable graph state.
  */
 export const commonPnpmPolicySettings = {
   dedupePeerDependents: true as const,
@@ -363,9 +430,7 @@ export const commonPnpmPolicySettings = {
       vitest: '>=4.0.0',
     },
   },
-  enableGlobalVirtualStore: true as const,
-  storeDir: '.devenv/pnpm-store-pure-v1',
-  packageImportMethod: 'clone-or-copy' as const,
+  packageImportMethod: 'auto' as const,
   sideEffectsCache: false as const,
   verifyStoreIntegrity: true as const,
   strictStorePkgContentCheck: true as const,

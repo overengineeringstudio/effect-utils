@@ -5,7 +5,7 @@ settings:
   excludeLinksFromLockfile: false
   injectWorkspacePackages: true
 
-packageExtensionsChecksum: sha256-gJVbGKCzsiTLmVnQ74k2GtcbKOOuGvVsGVwXhM0lg4Q=
+packageExtensionsChecksum: sha256-4HimX0luQTvo3jbLtYHagQKuv0eSu+BxzCFfrE1bdnM=
 
 patchedDependencies:
   '@effect/platform@0.96.2': 08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32
@@ -7772,8 +7772,6 @@ snapshots:
       '@internationalized/date': 3.12.2
       '@react-types/shared': 3.36.0(react@19.2.7)
       '@swc/helpers': 0.5.21
-      '@types/react': 19.2.17
-      '@types/react-dom': 19.2.3(@types/react@19.2.17)
       client-only: 0.0.1
       react: 19.2.7
       react-aria: 3.50.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)

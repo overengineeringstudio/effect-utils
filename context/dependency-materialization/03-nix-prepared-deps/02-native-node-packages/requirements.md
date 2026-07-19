@@ -27,7 +27,7 @@ of lifecycle scripts.
   Refines: DMP-R04.
 - **DMP.NIX.NATIVE-R03 Pure artifact exception:** A platform package may remain
   in dependency data only when classified as pure package data for that
-  profile.
+  Materialization Profile.
   Refines: DMP-R04, DMP-R08.
 - **DMP.NIX.NATIVE-R04 No optional smuggling:** Optional dependencies must not
   smuggle platform-native outputs into platform-neutral prepared artifacts.

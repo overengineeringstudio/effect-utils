@@ -198,7 +198,7 @@ echo "Running pnpm task smoke test..."
 echo ""
 
 tmpdir="$(mktemp -d)"
-trap 'rm -rf "$tmpdir"' EXIT
+trap 'if [ "${KEEP_PNPM_SMOKE_TMP:-0}" = "1" ]; then echo "pnpm smoke tmp: $tmpdir" >&2; else rm -rf "$tmpdir"; fi' EXIT
 
 workspace="$tmpdir/workspace"
 mkdir -p "$workspace/.devenv/task-cache" "$workspace/.pnpm-home-a/store/v11" "$workspace/.pnpm-home-b/store/v11" "$tmpdir/bin" "$workspace/packages/demo/node_modules/.bin" "$workspace/nested/pkg"
@@ -222,36 +222,10 @@ cat > "$workspace/pnpm-install-contract.json" <<'EOF'
 {
   "schemaVersion": 1,
   "packageManager": {"name": "pnpm", "version": "11.3.0"},
-  "gvsLinkContract": {"allowBuilds": {}, "packageExtensions": {}, "packageManager": {"name": "pnpm", "version": "11.3.0"}},
+  "dependencyGraphContract": {"allowBuilds": {}, "packageExtensions": {}, "packageManager": {"name": "pnpm", "version": "11.3.0"}, "virtualStore": {"scope": "materialization-root", "path": "node_modules/.pnpm"}},
   "installPolicy": {"ignoreScripts": true},
   "storeContract": {"layoutVersion": "v11", "owner": "pnpm", "storeDir": ".devenv/pnpm-store-pure-v1"},
-  "workspaceManifestContract": {"packages": []},
-  "dependencyMaterializationProfile": {
-    "schema": "dependency-materialization-profile/v0",
-    "identityInputs": ["packageManager", "gvsLinkContract", "installPolicy", "storeContract", "workspaceManifestContract"],
-    "supportedTraits": {
-      "ciJobLocal": {
-        "mutableState": "job-local",
-        "gcAuthority": "profile-local",
-        "repairAuthority": "ci-job"
-      },
-      "darwinSplitCas": {
-        "mutableState": "profile-local",
-        "sharedContent": "store/v11/files",
-        "gcAuthority": "shared-pool-coordinator",
-        "repairAuthority": "devenv"
-      },
-      "isolated": {
-        "mutableState": "profile-local",
-        "gcAuthority": "profile-local",
-        "repairAuthority": "devenv"
-      }
-    },
-    "nativeBuildPolicyInputs": {
-      "allowBuilds": "gvsLinkContract.allowBuilds",
-      "compilerEnv": ["CC", "CXX"]
-    }
-  }
+  "workspaceManifestContract": {"packages": []}
 }
 EOF
 chmod 444 "$workspace/pnpm-install-contract.json"
@@ -295,17 +269,23 @@ if [ "${1:-}" = "install" ]; then
     echo "ERR_PNPM_META_FETCH_FAIL GET https://registry.npmjs.org/demo: request to https://registry.npmjs.org/demo failed, reason: Socket timeout" >&2
     exit 42
   fi
-  mkdir -p node_modules/.pnpm vendor/pkg-v1
+  mkdir -p \
+    node_modules/.pnpm/pkg@1.0.0/node_modules/pkg/node_modules \
+    node_modules/.pnpm/dep@1.0.0/node_modules/dep \
+    vendor/foreign-root/node_modules/.pnpm/dep@2.0.0/node_modules/dep
   touch node_modules/.install-ok
-  printf '{"name":"pkg","version":"1.0.0"}\n' > vendor/pkg-v1/package.json
-  ln -snf ../vendor/pkg-v1 node_modules/pkg
+  printf '{"name":"pkg","version":"1.0.0","dependencies":{"dep":"1.0.0"}}\n' > node_modules/.pnpm/pkg@1.0.0/node_modules/pkg/package.json
+  printf '{"name":"dep","version":"1.0.0"}\n' > node_modules/.pnpm/dep@1.0.0/node_modules/dep/package.json
+  printf '{"name":"dep","version":"2.0.0"}\n' > vendor/foreign-root/node_modules/.pnpm/dep@2.0.0/node_modules/dep/package.json
+  ln -snf .pnpm/pkg@1.0.0/node_modules/pkg node_modules/pkg
+  ln -snf ../../../../dep@1.0.0/node_modules/dep node_modules/.pnpm/pkg@1.0.0/node_modules/pkg/node_modules/dep
   # The warm-path status now fingerprints the root projection metadata that
   # pnpm always writes on a real install. Keep the smoke fixture aligned with
   # that contract so the test still exercises the task logic instead of
   # failing on an unrealistically incomplete fake install.
   cat > node_modules/.modules.yaml <<YAML
 hoistPattern: []
-enableGlobalVirtualStore: true
+enableGlobalVirtualStore: false
 nodeLinker: hoisted
 storeDir: ${npm_config_store_dir}
 virtualStoreDir: node_modules/.pnpm
@@ -316,10 +296,24 @@ YAML
   fi
   exit 0
 fi
+if [ "${1:-}" = "dedupe" ]; then
+  exit 0
+fi
 echo "unexpected fake pnpm invocation: $*" >&2
 exit 1
 EOF
 chmod +x "$tmpdir/bin/pnpm"
+
+cat > "$tmpdir/bin/devenv" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+if [ "$*" != "tasks run pnpm:install" ]; then
+  echo "unexpected fake devenv invocation: $*" >&2
+  exit 1
+fi
+exec bash "${TEST_INSTALL_SCRIPT:?}"
+EOF
+chmod +x "$tmpdir/bin/devenv"
 
 cat > "$tmpdir/bin/pnpm-lock-mutator" <<'EOF'
 #!/usr/bin/env bash
@@ -388,13 +382,13 @@ printf 'storybook-shim:%s\n' "$*"
 EOF
 chmod +x "$workspace/packages/demo/node_modules/.bin/storybook"
 
-extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install.exec.sh"
-extract_task_script "$workspace" "status" "$tmpdir/pnpm-install.status.sh"
+extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install.exec.sh" 'packages = [ ]; postInstallProjection = "touch .post-install-projection-marker";'
+extract_task_script "$workspace" "status" "$tmpdir/pnpm-install.status.sh" 'packages = [ ]; postInstallProjection = "touch .post-install-projection-marker";'
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-doctor.exec.sh" 'packages = [ ];' "pnpm:doctor"
-extract_task_script "$workspace" "exec" "$tmpdir/pnpm-repair-plan.exec.sh" 'packages = [ ];' "pnpm:repair-plan"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-repair.exec.sh" 'packages = [ ];' "pnpm:repair"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-clean.exec.sh" 'packages = [ "packages/demo" ];' "pnpm:clean"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-update.exec.sh" 'packages = [ ];' "pnpm:update"
+extract_task_script "$workspace" "exec" "$tmpdir/pnpm-dedupe.exec.sh" 'packages = [ ];' "pnpm:dedupe"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-update-nested.exec.sh" 'packages = [ ]; workspaceRoot = "nested"; taskSuffix = "nested";' "pnpm:update:nested"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-nested.exec.sh" 'packages = [ "pkg" ]; workspaceRoot = "nested"; taskSuffix = "nested";' "pnpm:install:nested"
 extract_task_script "$workspace" "status" "$tmpdir/pnpm-install-nested.status.sh" 'packages = [ "pkg" ]; workspaceRoot = "nested"; taskSuffix = "nested";' "pnpm:install:nested"
@@ -408,6 +402,7 @@ extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-impure-strict-stor
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-impure-pm-on-fail.exec.sh" 'packages = [ "." ]; installFlags = [ "--pm-on-fail=download" ];' "pnpm:install"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-impure-ignore-scripts.exec.sh" 'packages = [ "." ]; installFlags = [ "--config.ignore-scripts=false" ];' "pnpm:install"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-impure-ignore-dep-scripts.exec.sh" 'packages = [ "." ]; installFlags = [ "--config.ignore-dep-scripts=false" ];' "pnpm:install"
+extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-impure-gvs.exec.sh" 'packages = [ "." ]; installFlags = [ "--config.enable-global-virtual-store=true" ];' "pnpm:install"
 extract_shared_task_script \
   "nix/devenv-modules/tasks/shared/test.nix" \
   "test:demo" \
@@ -423,10 +418,10 @@ extract_shared_task_script \
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install.status.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-doctor.exec.sh"
-rewrite_unrealized_tool_paths "$tmpdir/pnpm-repair-plan.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-repair.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-clean.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-update.exec.sh"
+rewrite_unrealized_tool_paths "$tmpdir/pnpm-dedupe.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-update-nested.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-nested.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-nested.status.sh"
@@ -439,18 +434,35 @@ rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-impure-strict-store.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-impure-pm-on-fail.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-impure-ignore-scripts.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-impure-ignore-dep-scripts.exec.sh"
+rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-impure-gvs.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/test-demo.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/storybook-demo.exec.sh"
 
 export PATH="$tmpdir/bin:$PATH"
 export TEST_PNPM_LOG="$tmpdir/pnpm.log"
 export TEST_FLOCK_LOG="$tmpdir/flock.log"
+export TEST_INSTALL_SCRIPT="$tmpdir/pnpm-install.exec.sh"
 export TEST_PNPM_MUTATOR_LOG="$tmpdir/pnpm-mutator.log"
 export TEST_GENIE_LOG="$tmpdir/genie.log"
 unset CI
 unset PNPM_STORE_DIR
 unset PNPM_CONFIG_STORE_DIR
 unset npm_config_store_dir
+
+echo "Test 0: install ignores disposable historical root-local cache content"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  unset PNPM_HOME
+  legacy_files="$workspace/.devenv/pnpm-store-pure-v1/v11/files"
+  mkdir -p "$legacy_files"
+  printf 'preserve-me\n' > "$legacy_files/sentinel"
+  bash "$tmpdir/pnpm-install.exec.sh"
+  test -f "$legacy_files/sentinel"
+  test ! -L "$legacy_files"
+  rm -rf "$legacy_files"
+  rm -rf "$workspace/node_modules" "$workspace/vendor" "$workspace/.devenv/task-cache/pnpm-install"
+)
 
 echo "Test 1: status misses before install"
 (
@@ -473,14 +485,18 @@ echo "Test 2: exec runs fake pnpm and populates cache"
   bash "$tmpdir/pnpm-install.exec.sh"
   test -f "$workspace/.devenv/task-cache/pnpm-install/install-state.hash"
   test -f "$workspace/.devenv/task-cache/pnpm-install/projection-state.hash"
+  test -f "$workspace/.devenv/task-cache/pnpm-install/pnpm-storage-state"
+  test -f "$workspace/.post-install-projection-marker"
   test -d "$workspace/node_modules"
   test -f "$workspace/node_modules/.modules.yaml"
   grep -qxF "flock -w 600 200" "$tmpdir/flock.log"
   grep -qxF "flock -w 600 201" "$tmpdir/flock.log"
-  grep -qxF "flock -w 600 202" "$tmpdir/flock.log"
-  grep -qxF "install --force --frozen-lockfile --config.confirmModulesPurge=false --ignore-scripts --config.side-effects-cache=false --config.verify-store-integrity=true --config.strict-store-pkg-content-check=true --child-concurrency=1 --network-concurrency=4 --config.package-import-method=clone-or-copy --pm-on-fail=ignore --config.store-dir=$workspace/.devenv/pnpm-store-pure-v1" "$tmpdir/pnpm.log"
+  grep -qxF "flock --shared -w 600 202" "$tmpdir/flock.log"
+  ! grep -qF -- '--exclusive' "$tmpdir/flock.log"
+  test "$(wc -l < "$tmpdir/flock.log")" -eq 3
+  grep -qxF "install --frozen-lockfile --config.confirmModulesPurge=false --ignore-scripts --config.side-effects-cache=false --config.verify-store-integrity=true --config.strict-store-pkg-content-check=true --child-concurrency=1 --network-concurrency=4 --config.enable-global-virtual-store=false --config.virtual-store-dir=node_modules/.pnpm --pm-on-fail=ignore --config.package-import-method=auto --config.store-dir=$tmpdir/home/.local/share/pnpm/store-shared-v1" "$tmpdir/pnpm.log"
   grep -qF ".effect-utils-pnpm-install.lock" "$tmpdir/pnpm-install.exec.sh"
-  grep -qF ".effect-utils-pnpm-store.lock" "$tmpdir/pnpm-install.exec.sh"
+  ! grep -qF ".effect-utils-pnpm-store.lock" "$tmpdir/pnpm-install.exec.sh"
   test -w "$workspace/.devenv/task-cache/pnpm-install/pnpm-install-contract.json"
 )
 
@@ -494,7 +510,31 @@ echo "Test 2b: exec replaces a read-only cached generated contract snapshot"
   test -w "$workspace/.devenv/task-cache/pnpm-install/pnpm-install-contract.json"
 )
 
-echo "Test 3: status hits after install with same GVS path"
+echo "Test 2c: lockfile mutation entrypoints preserve the live topology policy"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  export PNPM_HOME="$workspace/.pnpm-home-a"
+  : > "$tmpdir/pnpm.log"
+  : > "$tmpdir/pnpm-mutator.log"
+  : > "$tmpdir/flock.log"
+  bash "$tmpdir/pnpm-update.exec.sh"
+  bash "$tmpdir/pnpm-dedupe.exec.sh"
+  policy_flags="--config.confirmModulesPurge=false --ignore-scripts --config.side-effects-cache=false --config.verify-store-integrity=true --config.strict-store-pkg-content-check=true --child-concurrency=1 --network-concurrency=4 --config.enable-global-virtual-store=false --config.virtual-store-dir=node_modules/.pnpm --pm-on-fail=ignore"
+  grep -qxF "install --fix-lockfile $policy_flags --config.package-import-method=auto --config.store-dir=$tmpdir/home/.local/share/pnpm/store-shared-v1" "$tmpdir/pnpm-mutator.log"
+  grep -qxF "dedupe $policy_flags --config.package-import-method=auto --config.store-dir=$tmpdir/home/.local/share/pnpm/store-shared-v1" "$tmpdir/pnpm.log"
+  test "$(grep -cFx 'flock -w 600 200' "$tmpdir/flock.log")" -eq 2
+  test "$(grep -cFx 'flock -w 600 201' "$tmpdir/flock.log")" -eq 2
+  test "$(grep -cFx 'flock --shared -w 600 202' "$tmpdir/flock.log")" -eq 2
+  ! grep -qF -- '--exclusive' "$tmpdir/flock.log"
+  test "$(wc -l < "$tmpdir/flock.log")" -eq 6
+  ! grep -qF "migrate_legacy_pnpm_store" "$tmpdir/pnpm-update.exec.sh"
+  grep -qF "assert_pnpm_storage_capacity" "$tmpdir/pnpm-update.exec.sh"
+  ! grep -qF "migrate_legacy_pnpm_store" "$tmpdir/pnpm-dedupe.exec.sh"
+  grep -qF "assert_pnpm_storage_capacity" "$tmpdir/pnpm-dedupe.exec.sh"
+)
+
+echo "Test 3: status hits after install with the same root-local virtual topology"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
@@ -504,6 +544,22 @@ echo "Test 3: status hits after install with same GVS path"
   exit_code=$?
   set -e
   assert_exit_code 0 "$exit_code" "status should hit after install"
+)
+
+echo "Test 3b: cached status rejects a nested dependency edge outside the root-local topology"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  export PNPM_HOME="$workspace/.pnpm-home-a"
+  export DEVENV_SETUP_OUTER_CACHE_HIT=1
+  ln -snf "$workspace/vendor/foreign-root/node_modules/.pnpm/dep@2.0.0/node_modules/dep" node_modules/.pnpm/pkg@1.0.0/node_modules/pkg/node_modules/dep
+  set +e
+  bash "$tmpdir/pnpm-install.status.sh"
+  exit_code=$?
+  set -e
+  unset DEVENV_SETUP_OUTER_CACHE_HIT
+  assert_exit_code 1 "$exit_code" "cached status should reject a foreign nested dependency edge"
+  ln -snf ../../../../dep@1.0.0/node_modules/dep node_modules/.pnpm/pkg@1.0.0/node_modules/pkg/node_modules/dep
 )
 
 echo "Test 4: outer cache hit still misses when projection metadata is missing"
@@ -555,41 +611,29 @@ echo "Test 7: exec defaults PNPM_HOME to a workspace-local projection"
   : > "$tmpdir/pnpm.log"
   bash "$tmpdir/pnpm-install.exec.sh"
   grep -qxF "PNPM_HOME=$workspace/.devenv/pnpm-home" "$tmpdir/pnpm.log"
-  grep -qxF "PNPM_STORE_DIR=$workspace/.devenv/pnpm-store-pure-v1" "$tmpdir/pnpm.log"
-  grep -qxF "PNPM_CONFIG_STORE_DIR=$workspace/.devenv/pnpm-store-pure-v1" "$tmpdir/pnpm.log"
-  grep -qxF "npm_config_store_dir=$workspace/.devenv/pnpm-store-pure-v1" "$tmpdir/pnpm.log"
-  test -L "$workspace/.devenv/pnpm-store-pure-v1/v11/files"
-  test "$(readlink "$workspace/.devenv/pnpm-store-pure-v1/v11/files")" = "$tmpdir/home/.local/share/pnpm/shared-files/v11"
-  profile_file="$workspace/.devenv/task-cache/pnpm-install/dependency-materialization-profile.json"
-  registry_file="$workspace/.devenv/task-cache/pnpm-install/dependency-materialization-registry.json"
-  test -f "$profile_file"
-  test -f "$registry_file"
-  profile_id="$(node -e 'const fs=require("node:fs"); process.stdout.write(JSON.parse(fs.readFileSync(process.argv[1],"utf8")).profileId)' "$profile_file")"
-  assert_json_field "dependency-materialization-profile/v0" "$profile_file" "value => value.schema" "live profile schema"
-  assert_json_field "true" "$profile_file" "value => value.profileId.startsWith('pnpm:')" "live profile id prefix"
-  assert_json_field "darwinSplitCas" "$profile_file" "value => value.store.trait" "live profile split store trait"
-  assert_json_field "shared-pool-coordinator" "$profile_file" "value => value.authorities.gc" "live profile gc authority"
-  assert_json_field "pnpm-install-contract.json" "$profile_file" "value => value.evidence.contractPath" "live profile relative contract path"
-  assert_json_field "dependency-materialization-registry/v0" "$registry_file" "value => value.schema" "live registry schema"
-  assert_json_field "$profile_id" "$registry_file" "value => value.profiles[0].profileId" "live registry profile id"
-  assert_json_field "$workspace" "$registry_file" "value => value.profiles[0].project" "live registry project"
-  assert_json_field "$workspace/.devenv/pnpm-store-pure-v1" "$registry_file" "value => value.profiles[0].store" "live registry store"
-  assert_json_field "$workspace/.devenv/pnpm-store-pure-v1/v11/files" "$registry_file" "value => value.pools[0].filesPath" "live registry files path"
+  grep -qxF "PNPM_STORE_DIR=$tmpdir/home/.local/share/pnpm/store-shared-v1" "$tmpdir/pnpm.log"
+  grep -qxF "PNPM_CONFIG_STORE_DIR=$tmpdir/home/.local/share/pnpm/store-shared-v1" "$tmpdir/pnpm.log"
+  grep -qxF "npm_config_store_dir=$tmpdir/home/.local/share/pnpm/store-shared-v1" "$tmpdir/pnpm.log"
+  test -d "$tmpdir/home/.local/share/pnpm/store-shared-v1/v11/files"
   doctor_decision="$(bash "$tmpdir/pnpm-doctor.exec.sh" | node -e 'const fs=require("node:fs"); process.stdout.write(JSON.parse(fs.readFileSync(0,"utf8")).decision)')"
-  assert_eq "refuse-raw-prune" "$doctor_decision" "doctor refuses raw prune for shared files pool"
-  repair_decision="$(bash "$tmpdir/pnpm-repair-plan.exec.sh" | node -e 'const fs=require("node:fs"); const value=JSON.parse(fs.readFileSync(0,"utf8")); process.stdout.write(`${value.decision}:${value.roots.length}`)')"
-  assert_eq "repair-all-roots:1" "$repair_decision" "repair plan covers registered root"
+  assert_eq "healthy" "$doctor_decision" "doctor validates the root-local graph"
+  mkdir -p "$workspace/node_modules/corrupt-edge"
+  touch "$workspace/node_modules/corrupt-edge/sentinel"
   : > "$tmpdir/pnpm.log"
-  : > "$tmpdir/flock.log"
   bash "$tmpdir/pnpm-repair.exec.sh" >/dev/null
-  grep -qxF "install --force --frozen-lockfile --config.confirmModulesPurge=false --ignore-scripts --config.side-effects-cache=false --config.verify-store-integrity=true --config.strict-store-pkg-content-check=true --child-concurrency=1 --network-concurrency=4 --config.package-import-method=clone-or-copy --pm-on-fail=ignore --config.store-dir=$workspace/.devenv/pnpm-store-pure-v1" "$tmpdir/pnpm.log"
+  test ! -e "$workspace/node_modules/corrupt-edge"
+  test -f "$workspace/node_modules/.install-ok"
   grep -qxF "PWD=$workspace" "$tmpdir/pnpm.log"
-  grep -qxF "flock -w 600 204" "$tmpdir/flock.log"
   CI=1 bash "$tmpdir/pnpm-install.exec.sh"
-  assert_json_field "ciJobLocal" "$profile_file" "value => value.store.trait" "CI install records CI-local profile trait"
+  set +e
+  bash "$tmpdir/pnpm-install.status.sh"
+  exit_code=$?
+  set -e
+  assert_exit_code 1 "$exit_code" "local status should miss after a CI job-local store install"
+  bash "$tmpdir/pnpm-install.exec.sh"
 )
 
-echo "Test 8: status hits after install with the default GVS path"
+echo "Test 8: status hits after install with the default root-local topology"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
@@ -630,7 +674,7 @@ echo "Test 10: status still hits when PNPM_HOME changes but store-dir stays shar
   assert_exit_code 0 "$exit_code" "status should hit when only PNPM_HOME changes"
 )
 
-echo "Test 11: status misses after effective store-dir changes"
+echo "Test 11: ambient pnpm store variables do not split the canonical host store"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
@@ -641,13 +685,13 @@ echo "Test 11: status misses after effective store-dir changes"
   bash "$tmpdir/pnpm-install.status.sh"
   exit_code=$?
   set -e
-  assert_exit_code 1 "$exit_code" "status should miss when store-dir changes"
+  assert_exit_code 0 "$exit_code" "status should retain the canonical host store"
 )
 
 echo "Test 12: exec invoked pnpm install"
 grep -q "^install " "$tmpdir/pnpm.log"
 
-echo "Test 13: nested workspace exec uses its own cwd, cache, PNPM_HOME, and store-dir"
+echo "Test 13: nested workspace exec uses its own cwd, cache, and PNPM_HOME with the host store"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
@@ -657,12 +701,13 @@ echo "Test 13: nested workspace exec uses its own cwd, cache, PNPM_HOME, and sto
   : > "$tmpdir/pnpm.log"
   bash "$tmpdir/pnpm-install-nested.exec.sh"
   test -f "$workspace/.devenv/task-cache/pnpm-install/nested/install-state.hash"
+  test ! -e "$workspace/.devenv/task-cache/pnpm-install/nested/pnpm-install-contract.json"
   test -d "$workspace/nested/node_modules"
   grep -qxF "PWD=$workspace/nested" "$tmpdir/pnpm.log"
   grep -qxF "PNPM_HOME=$workspace/.devenv/pnpm-home/nested" "$tmpdir/pnpm.log"
-  grep -qxF "PNPM_STORE_DIR=$workspace/.devenv/pnpm-store-pure-v1/nested" "$tmpdir/pnpm.log"
-  grep -qxF "PNPM_CONFIG_STORE_DIR=$workspace/.devenv/pnpm-store-pure-v1/nested" "$tmpdir/pnpm.log"
-  grep -qxF "npm_config_store_dir=$workspace/.devenv/pnpm-store-pure-v1/nested" "$tmpdir/pnpm.log"
+  grep -qxF "PNPM_STORE_DIR=$tmpdir/home/.local/share/pnpm/store-shared-v1" "$tmpdir/pnpm.log"
+  grep -qxF "PNPM_CONFIG_STORE_DIR=$tmpdir/home/.local/share/pnpm/store-shared-v1" "$tmpdir/pnpm.log"
+  grep -qxF "npm_config_store_dir=$tmpdir/home/.local/share/pnpm/store-shared-v1" "$tmpdir/pnpm.log"
 )
 
 echo "Test 14: nested workspace status hits after nested install"
@@ -679,7 +724,24 @@ echo "Test 14: nested workspace status hits after nested install"
   assert_exit_code 0 "$exit_code" "nested status should hit after nested install"
 )
 
-echo "Test 15: nested workspace suffixes an inherited store-dir"
+echo "Test 14b: root contract evidence is fail-closed and never inherited by nested roots"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  export PNPM_HOME="$workspace/.pnpm-home-a"
+  mv pnpm-install-contract.json pnpm-install-contract.json.hidden
+  set +e
+  output="$(bash "$tmpdir/pnpm-install.status.sh" 2>&1)"
+  exit_code=$?
+  set -e
+  mv pnpm-install-contract.json.hidden pnpm-install-contract.json
+  assert_exit_code 1 "$exit_code" "repo root requires root-local generated contract evidence"
+  grep -qF "Missing generated pnpm-install-contract.json at repo root" <<< "$output"
+
+  bash "$tmpdir/pnpm-install-nested.status.sh"
+)
+
+echo "Test 15: nested workspace ignores ambient store-dir in favor of host authority"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
@@ -689,9 +751,9 @@ echo "Test 15: nested workspace suffixes an inherited store-dir"
   unset npm_config_store_dir
   : > "$tmpdir/pnpm.log"
   bash "$tmpdir/pnpm-install-nested.exec.sh"
-  grep -qxF "PNPM_STORE_DIR=$workspace/.inherited-pnpm-store/nested" "$tmpdir/pnpm.log"
-  grep -qxF "PNPM_CONFIG_STORE_DIR=$workspace/.inherited-pnpm-store/nested" "$tmpdir/pnpm.log"
-  grep -qxF "npm_config_store_dir=$workspace/.inherited-pnpm-store/nested" "$tmpdir/pnpm.log"
+  grep -qxF "PNPM_STORE_DIR=$tmpdir/home/.local/share/pnpm/store-shared-v1" "$tmpdir/pnpm.log"
+  grep -qxF "PNPM_CONFIG_STORE_DIR=$tmpdir/home/.local/share/pnpm/store-shared-v1" "$tmpdir/pnpm.log"
+  grep -qxF "npm_config_store_dir=$tmpdir/home/.local/share/pnpm/store-shared-v1" "$tmpdir/pnpm.log"
 )
 
 echo "Test 16: install flags and pre-install hooks are applied"
@@ -705,7 +767,7 @@ echo "Test 16: install flags and pre-install hooks are applied"
   : > "$tmpdir/pnpm.log"
   bash "$tmpdir/pnpm-install-flags.exec.sh"
   test -f .preinstall-marker
-  grep -qxF "install --config.public-hoist-pattern=* --frozen-lockfile --config.confirmModulesPurge=false --ignore-scripts --config.side-effects-cache=false --config.verify-store-integrity=true --config.strict-store-pkg-content-check=true --child-concurrency=1 --network-concurrency=4 --config.package-import-method=clone-or-copy --pm-on-fail=ignore --config.store-dir=$workspace/.devenv/pnpm-store-pure-v1" "$tmpdir/pnpm.log"
+  grep -qxF "install --config.public-hoist-pattern=* --frozen-lockfile --config.confirmModulesPurge=false --ignore-scripts --config.side-effects-cache=false --config.verify-store-integrity=true --config.strict-store-pkg-content-check=true --child-concurrency=1 --network-concurrency=4 --config.enable-global-virtual-store=false --config.virtual-store-dir=node_modules/.pnpm --pm-on-fail=ignore --config.package-import-method=auto --config.store-dir=$tmpdir/home/.local/share/pnpm/store-shared-v1" "$tmpdir/pnpm.log"
 )
 
 echo "Test 17: impure no-frozen install flags are rejected before pnpm runs"
@@ -852,6 +914,20 @@ echo "Test 24: impure ignore-dep-scripts overrides are rejected before pnpm runs
   fi
 )
 
+echo "Test 24b: shared writable virtual topology overrides are rejected before pnpm runs"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  : > "$tmpdir/pnpm.log"
+  set +e
+  output="$(bash "$tmpdir/pnpm-install-impure-gvs.exec.sh" 2>&1)"
+  exit_code=$?
+  set -e
+  assert_exit_code 1 "$exit_code" "GVS override should be rejected"
+  grep -qF "Refusing impure install argument: --config.enable-global-virtual-store=true" <<< "$output"
+  test ! -s "$tmpdir/pnpm.log"
+)
+
 echo "Test 25: CI install failures preserve and classify the pnpm log"
 (
   cd "$workspace"
@@ -894,7 +970,7 @@ echo "Test 26: Darwin CI install accepts completed pnpm materialization after te
   test -f "$workspace/.devenv/task-cache/pnpm-install/install-state.hash"
 )
 
-echo "Test 27: Darwin CI install accepts completed pnpm materialization after teardown kill"
+echo "Test 27: Darwin CI install rejects SIGKILL even after apparent materialization"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
@@ -905,11 +981,15 @@ echo "Test 27: Darwin CI install accepts completed pnpm materialization after te
   unset PNPM_STORE_DIR
   unset npm_config_store_dir
   rm -f "$workspace/.devenv/task-cache/pnpm-install/install-state.hash"
+  set +e
   output="$(bash "$tmpdir/pnpm-install-darwin.exec.sh" 2>&1)"
+  exit_code=$?
+  set -e
   unset TEST_PNPM_DARWIN_TEARDOWN_STATUS
   unset CI
-  grep -qF "[pnpm] Install completed materialization before darwin install teardown; continuing after node teardown exit 137" <<< "$output"
-  test -f "$workspace/.devenv/task-cache/pnpm-install/install-state.hash"
+  assert_exit_code 137 "$exit_code" "SIGKILL must not be promoted to a successful shared-store install"
+  grep -qF "[pnpm] Install failed: pnpm install failure" <<< "$output"
+  test ! -f "$workspace/.devenv/task-cache/pnpm-install/install-state.hash"
 )
 
 echo "Test 28: generated test task runs vitest without pnpm exec"
@@ -935,14 +1015,14 @@ echo "Test 29: generated storybook task runs storybook without pnpm exec"
   [ "$output" = "storybook-shim:build" ]
 )
 
-echo "Test 30: clean leaves shared GVS links intact"
+echo "Test 30: clean removes only root-owned topology and leaves shared content intact"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
-  mkdir -p "$workspace/.devenv/pnpm-store-pure-v1/v11/links/shared-pkg"
+  mkdir -p "$tmpdir/home/.local/share/pnpm/store-shared-v1/v11/files/shared-pkg"
   mkdir -p "$workspace/node_modules" "$workspace/packages/demo/node_modules"
   bash "$tmpdir/pnpm-clean.exec.sh"
-  test -d "$workspace/.devenv/pnpm-store-pure-v1/v11/links/shared-pkg"
+  test -d "$tmpdir/home/.local/share/pnpm/store-shared-v1/v11/files/shared-pkg"
   test ! -e "$workspace/node_modules"
   test ! -e "$workspace/packages/demo/node_modules"
 )
@@ -994,7 +1074,8 @@ EOF
   bash "$tmpdir/pnpm-update.exec.sh"
   grep -qxF -- "--defer-validation" "$tmpdir/genie.log"
   grep -qxF -- "--check" "$tmpdir/genie.log"
-  grep -qxF "install --fix-lockfile --config.confirmModulesPurge=false --pm-on-fail=ignore --config.store-dir=$workspace/.devenv/pnpm-store-pure-v1" "$tmpdir/pnpm-mutator.log"
+  policy_flags="--config.confirmModulesPurge=false --ignore-scripts --config.side-effects-cache=false --config.verify-store-integrity=true --config.strict-store-pkg-content-check=true --child-concurrency=1 --network-concurrency=4 --config.enable-global-virtual-store=false --config.virtual-store-dir=node_modules/.pnpm --pm-on-fail=ignore"
+  grep -qxF "install --fix-lockfile $policy_flags --config.package-import-method=auto --config.store-dir=$tmpdir/home/.local/share/pnpm/store-shared-v1" "$tmpdir/pnpm-mutator.log"
   grep -qF "hasBin: true" pnpm-lock.yaml
 )
 

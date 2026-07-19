@@ -1,0 +1,262 @@
+{
+  "schema": "dependency-materialization-verification/v0",
+  "kind": "default-gate",
+  "surface": "storage-sharing",
+  "policy": {
+    "packageStoreScope": "host-user",
+    "virtualStoreScope": "materialization-root",
+    "packageImportMethod": "auto",
+    "enableGlobalVirtualStore": false
+  },
+  "measurementMethod": {
+    "date": "2026-07-18",
+    "workspace": "effect-utils",
+    "implementationHead": "02eb2b77a7beb02936db659383877bfa7040e633",
+    "implementationTree": "75cb4074b8fd82f4e4077a797079ab1f9ef7d397",
+    "harness": {
+      "path": "context/dependency-materialization/07-verification/evidence/measure-storage-sharing-default.sh",
+      "sha256": "c5c0fead91f738aa1fd31462dc6c18a5ff41fc06a370da4d47bd377f30110f88"
+    },
+    "rawArtifacts": {
+      "linux": {
+        "path": "storage-sharing-default-v2-linux.jsonl",
+        "sha256": "416c08cd585da28707ccc5f4ef41eb3efbf8367895396c4919cb9b266587bae5"
+      },
+      "darwin": {
+        "path": "storage-sharing-default-v2-darwin.jsonl",
+        "sha256": "9882c71f64cf916a5ca8f29a4f63f4c86361a089840f257e42a3add1d5bbec92"
+      }
+    },
+    "sourcePreparation": {
+      "linux": "five detached Git worktrees at implementationHead",
+      "darwin": "git archive whose reconstructed Git tree is verified against implementationTree on mbp2025"
+    },
+    "packageManager": "pnpm@11.8.0",
+    "installPolicy": {
+      "frozenLockfile": true,
+      "ignoreScripts": true,
+      "sideEffectsCache": false,
+      "verifyStoreIntegrity": true,
+      "strictStorePackageContentCheck": true,
+      "childConcurrency": 1,
+      "networkConcurrency": 4
+    },
+    "phases": [
+      "empty shared store into root A",
+      "same shared store into root B",
+      "warm root B",
+      "empty isolated store into root C",
+      "simultaneous roots D and E against the populated shared store"
+    ],
+    "sizeMethod": "du allocated-block and apparent KiB plus regular-file counts; physicalKiB is an allocated-block comparator, not APFS unique-extent accounting; the two-isolated-root comparator is twice the measured one-root isolated baseline"
+  },
+  "hostLifecycleCapability": {
+    "harness": {
+      "path": "context/dependency-materialization/07-verification/evidence/measure-prune-capability.sh",
+      "sha256": "646491a8f29146b1f60524c646c15cbc8d80e03c62f89b403cd15bb975ced6b3"
+    },
+    "hosts": {
+      "dev3": {
+        "rawArtifact": "prune-capability-dev3.jsonl",
+        "sha256": "9ddcc46802efaf137e4d4207686e057e5e6123a7a0917d68d75b284495e713c1",
+        "platform": "x86_64-linux",
+        "filesystem": "ext4",
+        "pnpm": "11.8.0",
+        "rootBase": "/home/schickling/.megarepo",
+        "storeBase": "/home/schickling/.local/share/pnpm",
+        "rootDevice": 65024,
+        "storeDevice": 65024,
+        "rootNlink": 2,
+        "liveRootSurvivedPrune": true,
+        "removedRootCacheEvicted": true,
+        "destructivePruneSafe": true
+      },
+      "dev4": {
+        "rawArtifact": "prune-capability-dev4.jsonl",
+        "sha256": "2d80e956364516f19b65c8752e81619d368dc13578ffd196fea8317eed1c666f",
+        "platform": "aarch64-linux",
+        "filesystem": "ext4",
+        "pnpm": "11.8.0",
+        "rootBase": "/home/schickling/.megarepo",
+        "storeBase": "/home/schickling/.local/share/pnpm",
+        "rootDevice": 2050,
+        "storeDevice": 2050,
+        "rootNlink": 2,
+        "liveRootSurvivedPrune": true,
+        "removedRootCacheEvicted": true,
+        "destructivePruneSafe": true
+      }
+    }
+  },
+  "platforms": [
+    {
+      "platform": "x86_64-linux",
+      "status": "ok",
+      "environment": {
+        "filesystem": "ext4",
+        "node": "v24.15.0"
+      },
+      "phaseMatrix": {
+        "coldSharedRootA": {
+          "durationMs": 10384,
+          "reused": 12,
+          "downloaded": 600,
+          "rootNodeModules": {
+            "physicalKiB": 1072312,
+            "apparentKiB": 927138,
+            "files": 49833
+          },
+          "store": {
+            "physicalKiB": 1026576,
+            "apparentKiB": 907346,
+            "files": 40237
+          }
+        },
+        "secondSharedRootB": {
+          "durationMs": 1746,
+          "reused": 612,
+          "downloaded": 0
+        },
+        "warmSharedRootB": {
+          "durationMs": 1013,
+          "reused": 12,
+          "downloaded": 0
+        },
+        "isolatedRootC": {
+          "durationMs": 10364,
+          "reused": 12,
+          "downloaded": 600,
+          "combinedStoreAndRoot": {
+            "physicalKiB": 1175696,
+            "apparentKiB": 1017594,
+            "files": 90070
+          }
+        },
+        "concurrentRootsDAndE": {
+          "durationMs": 2512,
+          "rootDDurationMs": 1917,
+          "rootEDurationMs": 1918,
+          "eachReused": 612,
+          "eachDownloaded": 0,
+          "combinedStoreAndRoots": {
+            "physicalKiB": 1324556,
+            "apparentKiB": 1127826,
+            "files": 139903
+          }
+        }
+      },
+      "twoRootComparison": {
+        "sharedMeasured": {
+          "physicalKiB": 1324272,
+          "apparentKiB": 1127826,
+          "files": 139903
+        },
+        "isolatedComparator": {
+          "physicalKiB": 2351392,
+          "apparentKiB": 2035188,
+          "files": 180140
+        },
+        "improvementPercent": {
+          "physicalKiB": 43.7,
+          "apparentKiB": 44.6,
+          "files": 22.3,
+          "secondRootDuration": 83.2
+        }
+      },
+      "correctness": {
+        "distinctVirtualStores": true,
+        "concurrentRoots": 2,
+        "ignoreScriptsConfigured": true
+      }
+    },
+    {
+      "platform": "aarch64-darwin",
+      "status": "ok",
+      "environment": {
+        "host": "mbp2025",
+        "filesystem": "apfs",
+        "node": "v24.15.0"
+      },
+      "phaseMatrix": {
+        "coldSharedRootA": {
+          "durationMs": 13309,
+          "reused": 12,
+          "downloaded": 600,
+          "teardownExit": 134,
+          "completedMaterializationEvidence": true,
+          "rootNodeModules": {
+            "physicalKiB": 1141552,
+            "apparentKiB": 1005795,
+            "files": 49833
+          },
+          "store": {
+            "physicalKiB": 1025868,
+            "apparentKiB": 916366,
+            "files": 40239
+          }
+        },
+        "secondSharedRootB": {
+          "durationMs": 3397,
+          "reused": 612,
+          "downloaded": 0,
+          "teardownExit": 0
+        },
+        "warmSharedRootB": {
+          "durationMs": 679,
+          "reused": 12,
+          "downloaded": 0,
+          "teardownExit": 134,
+          "completedMaterializationEvidence": true
+        },
+        "isolatedRootC": {
+          "durationMs": 10326,
+          "reused": 12,
+          "downloaded": 600,
+          "teardownExit": 134,
+          "completedMaterializationEvidence": true,
+          "combinedStoreAndRoot": {
+            "physicalKiB": 2167068,
+            "apparentKiB": 1921819,
+            "files": 90072
+          }
+        },
+        "concurrentRootsDAndE": {
+          "durationMs": 10177,
+          "rootDDurationMs": 8603,
+          "rootEDurationMs": 8420,
+          "eachReused": 612,
+          "eachDownloaded": 0,
+          "combinedStoreAndRoots": {
+            "physicalKiB": 3299884,
+            "apparentKiB": 2918939,
+            "files": 139903
+          }
+        }
+      },
+      "twoRootComparison": {
+        "sharedMeasured": {
+          "physicalKiB": 3299884,
+          "apparentKiB": 2918939,
+          "files": 139903
+        },
+        "isolatedComparator": {
+          "physicalKiB": 4334136,
+          "apparentKiB": 3843638,
+          "files": 180144
+        },
+        "improvementPercent": {
+          "physicalKiB": 23.9,
+          "apparentKiB": 24.1,
+          "files": 22.3,
+          "secondRootDuration": 67.1
+        }
+      },
+      "correctness": {
+        "distinctVirtualStores": true,
+        "concurrentRoots": 2,
+        "ignoreScriptsConfigured": true,
+        "sigkill137Accepted": false
+      }
+    }
+  ]
+}

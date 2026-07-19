@@ -38,11 +38,15 @@ imports = [
 - `megarepo.nix` - Megarepo workspace tasks
 - `nix-cli.nix` - Nix CLI build/check tasks
 - `pnpm.nix` - pnpm install tasks
-  - Default live-worktree store namespace is `.devenv/pnpm-store-pure-v1`.
-  - Local development may share only pnpm `v11/files`; mutable metadata,
-    GVS `links`, `projects`, temp state, and CI state remain local/job-local.
-  - Managed installs enforce mutation-isolating imports and reject writable
-    hardlink or side-effects-cache overrides.
+  - Local development shares one complete pnpm Store Cache between trusted
+    roots of the same OS user; CI uses a job-local Store Cache.
+  - Dependency graphs, `node_modules/.pnpm`, projections, and repair remain
+    Materialization-Root-owned.
+  - Managed installs use pnpm's `auto` import policy and reject cross-device
+    Linux storage before materialization.
+  - `pnpm:store:migrate-legacy` explicitly replaces only the recognized
+    historical `v11/files` bridge under the exclusive cache lease; normal
+    installs and unknown bridges fail closed.
   - Frozen installs use the current guarded pnpm runtime, while `pnpm:update`
     uses a separate pnpm 11.5.1 lock mutator. Root updates generate projections
     with validation deferred, repair the lock, then require `genie --check`;

@@ -12,6 +12,7 @@
 }:
 
 let
+  mkSharedHash = hash: { inherit hash; };
   pnpm = import ../../../../nix/pnpm.nix { inherit pkgs; };
   mkPnpmCli = import ../../../../nix/workspace-tools/lib/mk-pnpm-cli.nix { inherit pkgs pnpm; };
   opentuiCoreNative = import ../../../../nix/opentui-core-native.nix { inherit pkgs; };
@@ -23,9 +24,7 @@ let
     workspaceRoot = src;
     # Managed by the repo FOD refresh workflow — do not edit manually.
     depsBuilds = {
-      "." = {
-        hash = "sha256-8+b4+ExV+O5vQD88oIpaa89SSQpFMl/HytRP9iaiNaU=";
-      };
+      "." = mkSharedHash "sha256-MiQGQDimBg4ME5mH7kq9s+zwAyzdEzWDtYQn8dbkukM=";
     };
     nativeNodePackages = opentuiCoreNative.packages;
     smokeTestArgs = [ "--help" ];

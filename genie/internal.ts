@@ -150,8 +150,7 @@ export const commonPnpmWorkspaceData = {
   packageExtensions: {
     ...commonPnpmPolicySettings.packageExtensions,
     // Storybook loads the configured framework preset dynamically from the
-    // storybook package. Under pnpm's global virtual store, that import cannot
-    // see the workspace package's dev dependency unless the edge is explicit.
+    // storybook package, so the dependency edge must be explicit.
     storybook: {
       dependencies: {
         '@storybook/react-vite': '10.4.6',

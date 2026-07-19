@@ -3,13 +3,13 @@
 This file records non-normative evidence for dependency materialization
 verification. Normative behavior lives in [../spec.md](../spec.md).
 
-## Hypothesis
+## Question
 
 The downstream pnpm/Nix/Buck2 research package can be retired once every durable
 finding is represented in effect-utils as a VRS requirement, spec rule,
 fixture/proof, benchmark shape, pending evidence marker, or explicit rejection.
 
-## Source Material
+## Method
 
 The imported research is preserved in this tree:
 
@@ -20,7 +20,7 @@ The imported research is preserved in this tree:
 
 The research package contains durable proof categories:
 
-- split shared-CAS prune failure;
+- split shared-files-pool prune failure;
 - store-status false-clean evidence;
 - guard, doctor, and repair decision models;
 - synthetic and real-workload store-trait benchmarks;
@@ -48,3 +48,17 @@ The reusable long-term shape belongs in effect-utils as verification
 requirements, fixtures, proof harnesses, benchmark records, and pending
 evidence markers. The downstream branch no longer needs to remain a parallel
 VRS source of truth once its production-relevant findings are represented here.
+
+The imported registry-backed all-root repair conclusion is superseded for the
+whole Store Cache realization. Its split-files-pool corruption proof remains
+valid; current repair keeps graphs root-local and delegates whole-cache lifecycle
+to the package manager under the cache-owner boundary.
+
+## VRS Impact
+
+- The split-pool failure remains negative evidence for DMP.STORE-R03 and
+  DMP.STORE-R16.
+- Current Store Cache lifecycle and repair semantics live in
+  [04-store-authority](../../04-store-authority/spec.md) and decision 0006.
+- Historical named live profiles, raw shared-CAS language, root registries, and
+  coordinated all-root repair are not current normative architecture.

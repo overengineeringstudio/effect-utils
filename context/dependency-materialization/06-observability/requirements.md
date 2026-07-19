@@ -26,8 +26,8 @@ translate them into spans, events, dashboards, or review evidence.
 - **DMP.OBS-R03 Reuse outcome:** Cache hit, reuse, invalidation, bypass, and
   repair decisions must be explicit.
   Refines: DMP-R19.
-- **DMP.OBS-R04 Stable profile linkage:** Facts must include profile ids or
-  safe profile references when available.
+- **DMP.OBS-R04 Stable profile linkage:** Facts must include Materialization
+  Profile identities or safe Materialization Profile references when available.
   Refines: DMP-R10, DMP-R19.
 
 ### Must be machine-readable

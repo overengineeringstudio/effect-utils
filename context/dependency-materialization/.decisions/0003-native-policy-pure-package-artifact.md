@@ -1,6 +1,6 @@
 # 0003 Native Policy Uses Pure Package Artifact
 
-Status: **Accepted**
+Status: accepted
 
 ## Context
 
@@ -8,6 +8,22 @@ The native package VRS used `pure-package-artifact` for package contents that
 may remain dependency data without lifecycle execution. The implementation used
 `fod-accepted-prebuilt`, which tied the public classification to one current
 realization: Nix fixed-output prepared dependencies.
+
+## Evidence and Argument
+
+- The public DMP contract spans live pnpm, Nix, CI, and future Buck2 evidence;
+  `fod-accepted-prebuilt` incorrectly named one current realization.
+- Current accepted prebuilts are still locked and scanned by prepared-deps
+  policy, so the broader name does not weaken the purity gate.
+- The term aligns with DMP-R04 and DMP.NIX.NATIVE-R03.
+
+## Options
+
+| Option                       | Tradeoffs                                                                          |
+| ---------------------------- | ---------------------------------------------------------------------------------- |
+| `pure-package-artifact`      | Names the cross-realization property; requires specs to state each concrete proof. |
+| `fod-accepted-prebuilt`      | Mechanically precise today but leaks Nix FOD realization into the public ontology. |
+| one generic native exception | Simpler vocabulary but erases the purity/build distinction.                        |
 
 ## Decision
 
@@ -20,15 +36,6 @@ Native package families are classified as:
 | `nix-grafted`            | Native output is supplied by Nix or an explicit wrapper.           |
 | `pure-package-artifact`  | Package contents are accepted as data without lifecycle execution. |
 | `denied-lifecycle-build` | Package requires scripts/builds and is rejected until integrated.  |
-
-## Rationale
-
-- The DMP contract spans live pnpm, Nix prepared deps, CI jobs, and Buck2
-  evidence. A public tag should describe the dependency-materialization
-  boundary, not only the fixed-output derivation mechanism.
-- Current accepted prebuilts are still locked and scanned by prepared-deps
-  policy; that mechanism belongs in the owning spec and implementation details.
-- The term matches DMP-R04 and DMP.NIX.NATIVE-R03.
 
 ## Consequences
 

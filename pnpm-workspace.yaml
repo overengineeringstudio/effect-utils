@@ -45,10 +45,6 @@ patchedDependencies:
 allowUnusedPatches: true
 
 packageExtensions:
-  react-aria-components:
-    dependencies:
-      '@types/react': 19.2.17
-      '@types/react-dom': 19.2.3
   storybook:
     dependencies:
       '@storybook/react-vite': 10.4.6
@@ -85,11 +81,7 @@ strictPeerDependencies: true
 
 injectWorkspacePackages: true
 
-enableGlobalVirtualStore: true
-
-storeDir: .devenv/pnpm-store-pure-v1
-
-packageImportMethod: clone-or-copy
+packageImportMethod: auto
 
 optimisticRepeatInstall: false
 

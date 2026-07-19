@@ -2529,6 +2529,7 @@ fn node_cpuprofile_adapter_writes_resolvable_profile_without_leaking_private_inp
     let summary = dir.path().join("summary.json");
     let cas_root = dir.path().join("cas");
     let private_arg = "PRIVATE_ARG_MARKER";
+    let private_source = "PRIVATE_SOURCE_MARKER";
 
     let out = otel_scrape()
         .args(["--adapter", "node-cpuprofile"])
@@ -2541,7 +2542,7 @@ fn node_cpuprofile_adapter_writes_resolvable_profile_without_leaking_private_inp
             "--",
             "node",
             "-e",
-            "for (let i = 0; i < 100000; i++) Math.sqrt(i); console.log(process.argv[1])",
+            "/* PRIVATE_SOURCE_MARKER */ for (let i = 0; i < 100000; i++) Math.sqrt(i); console.log(process.argv[1])",
             private_arg,
         ])
         .output()
@@ -2588,9 +2589,9 @@ fn node_cpuprofile_adapter_writes_resolvable_profile_without_leaking_private_inp
     let summary_json = serde_json::to_string(&summary).unwrap();
     let body_json = serde_json::to_string(&body).unwrap();
     assert!(!summary_json.contains(private_arg));
-    assert!(!summary_json.contains("100000"));
+    assert!(!summary_json.contains(private_source));
     assert!(!body_json.contains(private_arg));
-    assert!(!body_json.contains("100000"));
+    assert!(!body_json.contains(private_source));
 
     let span = &body["resourceSpans"][0]["scopeSpans"][0]["spans"][0];
     let events = span["events"].as_array().unwrap();

@@ -694,7 +694,7 @@ const renderRecordsTable = (records: readonly WorkflowReportRecord[], timeZone: 
   ),
 ]
 
-export const renderWorkflowReportCommentBody = (opts: {
+const renderWorkflowReportCommentBodyUnbounded = (opts: {
   readonly title: string
   readonly noRecordsMessage: string
   readonly state: WorkflowReportManagedState
@@ -741,4 +741,37 @@ export const renderWorkflowReportCommentBody = (opts: {
         ]
 
   return `${visibleLines.join('\n')}\n\n${renderWorkflowReportManagedState(opts.state)}\n`
+}
+
+const githubCommentBodyMaxLength = 65_536
+const workflowReportCommentBodyMaxLength = 60_000
+
+export const renderWorkflowReportCommentBody = (opts: {
+  readonly title: string
+  readonly noRecordsMessage: string
+  readonly state: WorkflowReportManagedState
+  readonly includeHistory?: boolean
+}) => {
+  let retainedEntries = opts.state.entries
+
+  while (retainedEntries.length > 1) {
+    const body = renderWorkflowReportCommentBodyUnbounded({
+      ...opts,
+      state: { ...opts.state, entries: retainedEntries },
+    })
+    if (body.length <= workflowReportCommentBodyMaxLength) return body
+    retainedEntries = retainedEntries.slice(0, -1)
+  }
+
+  const body = renderWorkflowReportCommentBodyUnbounded({
+    ...opts,
+    state: { ...opts.state, entries: retainedEntries },
+  })
+  if (body.length > githubCommentBodyMaxLength) {
+    throw new Error(
+      `Current workflow report entry exceeds the GitHub comment limit (${body.length} > ${githubCommentBodyMaxLength} characters)`,
+    )
+  }
+
+  return body
 }

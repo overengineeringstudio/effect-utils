@@ -3,9 +3,9 @@
 ## Context
 
 Verification defines the proof, benchmark, and regression architecture for
-dependency materialization. It refines DMP-R16 through DMP-R20 and composes the
-live pnpm, projection, Nix prepared-deps, store-authority, Buck2 evidence, and
-observability subsystems.
+dependency materialization. It refines DMP-R11 and DMP-R16 through DMP-R20 and
+composes the live pnpm, projection, Nix prepared-deps, store-authority, Buck2
+evidence, and observability subsystems.
 
 ## Assumptions
 
@@ -29,8 +29,8 @@ observability subsystems.
 ### Must cover correctness
 
 - **DMP.VER-R01 Fixture regressions:** Unit and smoke fixtures must cover
-  profile identity, strict install rejection, projection health, native package
-  classification, and doctor/repair decisions.
+  Materialization Profile identity, strict install rejection, projection
+  health, native package classification, and doctor/repair decisions.
   Refines: DMP-R16, DMP-R17, DMP-R20.
 - **DMP.VER-R02 Negative lifecycle proof:** At least one fixture must prove
   that managed materialization does not run dependency lifecycle scripts,
@@ -40,16 +40,19 @@ observability subsystems.
   must have fixtures that reject `.bin`, unexpected native output, known
   platform package directories, and leaked package-manager state.
   Refines: DMP-R05, DMP-R08, DMP-R18.
-- **DMP.VER-R04 Shared-store failure proof:** Store-authority changes must
-  preserve a proof that raw profile-local prune can break sibling offline
-  reinstall for shared pools and that coordinated repair targets every root.
-  Refines: DMP-R13, DMP-R14, DMP-R15.
+- **DMP.VER-R04 Store Cache eviction proof:** Store-authority changes must
+  preserve a proof that Store Cache eviction can break a future offline
+  reinstall while leaving an already-materialized root healthy, and prove that
+  effect-utils-managed root repair does not prune the host cache. The proof must
+  not imply that root health establishes offline readiness.
+  Refines: DMP-R13, DMP-R14, DMP.STORE-R05.
 
 ### Must cover performance and sharing
 
-- **DMP.VER-R05 Benchmark matrix:** Store-trait changes must record cold,
-  warm, offline, concurrent, byte, file-count, and repair metrics.
-  Refines: DMP-R16, DMP-R19, DMP.STORE-R08.
+- **DMP.VER-R05 Benchmark matrix:** Storage-sharing changes must record cold,
+  warm, concurrent, byte, and file-count metrics. Offline and repair metrics
+  are required only for an explicit offline-readiness or repair claim.
+  Refines: DMP-R16, DMP-R19, DMP.STORE-R13.
 - **DMP.VER-R06 Real-workload gate:** Default changes require at least one
   downstream real graph for each affected platform class, or an explicit
   pending-system marker that prevents overgeneralized conclusions.
@@ -57,13 +60,13 @@ observability subsystems.
 - **DMP.VER-R07 Cache-efficiency comparison:** Claims about host-wide sharing
   must compare against an isolated baseline on the same graph and machine
   class.
-  Refines: DMP-R16, DMP.STORE-R09.
+  Refines: DMP-R16, DMP.STORE-R14.
 
 ### Must be auditable
 
 - **DMP.VER-R08 Machine-readable evidence:** Proofs and benchmarks must emit
-  stable records for status, inputs, platform, store trait, timings, sizes, and
-  skip reasons.
+  stable records for status, inputs, platform, writable-state scope,
+  content-pool scope, timings, sizes, and skip reasons.
   Refines: DMP-R19, DMP.OBS-R01, DMP.OBS-R02.
 - **DMP.VER-R09 Decision linkage:** Consequential DMP decisions must name the
   evidence category that justifies them and any evidence still pending.
@@ -73,3 +76,24 @@ observability subsystems.
   requirement, implemented as a reusable proof or benchmark, recorded as
   pending evidence, or explicitly rejected with rationale.
   Refines: DMP-R20.
+
+### Must prove dependency identity
+
+- **DMP.VER-R11 Package Instance identity proof:** Changes capable of selecting
+  or writing Dependency Edge identities must prove that same-name multi-version
+  and distinct peer-context Package Instances preserve their materializer-
+  selected identities. A validator that claims topology containment must prove
+  that it detects a negative out-of-band edge override across Materialization
+  Roots; it need not reimplement the materializer's exact locator selection.
+  Install-order permutations are required when mutable dependency state is
+  reused across installs.
+  Refines: DMP-R11, DMP.LIVE-R07, DMP.PROJ-R09, DMP-R20.
+- **DMP.VER-R12 Topology-reuse comparison:** Repeated topology work must be
+  measured on the same real workloads and platform classes across root-local,
+  shared Global Virtual Store, identity-partitioned Global Virtual Store, and
+  isolated baselines. The comparison must include physical
+  bytes, repeated work, cold/second/warm/offline/repair/concurrent latency,
+  graph identity, lock contention, fault injection, and one-root repair scope.
+  Results may motivate a Hermetic Dependency Artifact but must not override the
+  purity and authority gates or make a mutable shared topology admissible.
+  Refines: DMP-R16, DMP-R20, DMP-R22, DMP-R23, DMP-R24, DMP.STORE-R14.

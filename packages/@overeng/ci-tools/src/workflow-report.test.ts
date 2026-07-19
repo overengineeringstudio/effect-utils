@@ -16,6 +16,7 @@ import {
   workflowReportBundleJsonSchema,
   workflowReportManagedMarker,
   workflowReportRecordLineMarker,
+  type WorkflowReportManagedState,
   type WorkflowReportRecord,
 } from './mod.ts'
 
@@ -201,5 +202,43 @@ describe('managed workflow report comments', () => {
 
     expect(nextState.recordOrder).toEqual(['web', 'app'])
     expect(nextState.entries.map((entry) => entry.entryId)).toEqual(['commit-b', 'commit-a'])
+  })
+
+  it('evicts oldest history to keep the managed comment below the GitHub limit', () => {
+    const records = Array.from({ length: 5 }, (_, index) => ({
+      ...sampleRecord,
+      id: `deploy-${index}`,
+      subject: { id: `subject-${index}` },
+      summary: 'x'.repeat(500),
+    }))
+    const priorState = Array.from({ length: 20 }).reduce<WorkflowReportManagedState>(
+      (state, _, index) =>
+        deriveWorkflowReportManagedState({
+          stateId: 'deploy-preview',
+          priorState: state,
+          entryId: `commit-${index}`,
+          entryLabel: `Commit ${index}`,
+          createdAtUtc: `2026-05-31T15:${String(index).padStart(2, '0')}:00Z`,
+          records,
+        }),
+      deriveWorkflowReportManagedState({
+        stateId: 'deploy-preview',
+        entryId: 'initial',
+        entryLabel: 'Initial',
+        createdAtUtc: '2026-05-31T15:00:00Z',
+        records,
+      }),
+    )
+
+    const body = renderWorkflowReportCommentBody({
+      title: 'Deploy Previews',
+      noRecordsMessage: 'No previews were deployed.',
+      state: priorState,
+    })
+    const retainedState = extractWorkflowReportManagedState(body, { stateId: 'deploy-preview' })
+
+    expect(body.length).toBeLessThanOrEqual(60_000)
+    expect(retainedState?.entries[0]?.entryId).toBe('commit-19')
+    expect(retainedState?.entries.length).toBeLessThan(priorState.entries.length)
   })
 })

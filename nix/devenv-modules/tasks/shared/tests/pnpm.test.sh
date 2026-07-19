@@ -51,14 +51,14 @@ make_projection_fixture() {
   local root="$1"
   local with_dep="$2"
   local dep_blocks_package_json_export="${3:-0}"
-  local package_root="$root/store/v11/links/pkg/1.0.0/hash/node_modules/pkg"
+  local package_root="$root/node_modules/.pnpm/pkg@1.0.0/node_modules/pkg"
 
   mkdir -p "$package_root"
   mkdir -p "$root/node_modules"
   cat > "$package_root/package.json" <<'EOF'
 {"name":"pkg","dependencies":{"dep":"1.0.0"}}
 EOF
-  ln -s ../store/v11/links/pkg/1.0.0/hash/node_modules/pkg "$root/node_modules/pkg"
+  ln -s .pnpm/pkg@1.0.0/node_modules/pkg "$root/node_modules/pkg"
 
   if [ "$with_dep" = "1" ]; then
     mkdir -p "$package_root/node_modules/dep"
@@ -88,35 +88,62 @@ EOF
   ln -s ../source/pkg "$root/node_modules/pkg"
 }
 
+make_foreign_package_instance_fixture() {
+  local root="$1"
+  local sibling_root="$2"
+  local package_root="$root/node_modules/.pnpm/pkg@1.0.0/node_modules/pkg"
+  local dependency_root="$sibling_root/node_modules/.pnpm/dep@2.0.0/node_modules/dep"
+
+  mkdir -p "$package_root/node_modules" "$dependency_root" "$root/node_modules"
+  cat > "$package_root/package.json" <<'EOF'
+{"name":"pkg","peerDependencies":{"dep":"^2.0.0"}}
+EOF
+  cat > "$dependency_root/package.json" <<'EOF'
+{"name":"dep","version":"2.0.0"}
+EOF
+  ln -s .pnpm/pkg@1.0.0/node_modules/pkg "$root/node_modules/pkg"
+  ln -s "$dependency_root" "$package_root/node_modules/dep"
+}
+
 make_missing_export_fixture() {
   local root="$1"
-  local package_root="$root/store/v11/links/pkg/1.0.0/hash/node_modules/pkg"
+  local package_root="$root/node_modules/.pnpm/pkg@1.0.0/node_modules/pkg"
 
   mkdir -p "$package_root"
   mkdir -p "$root/node_modules"
   cat > "$package_root/package.json" <<'EOF'
 {"name":"pkg","files":["src"],"exports":{".":{"default":"./src/index.js"}}}
 EOF
-  ln -s ../store/v11/links/pkg/1.0.0/hash/node_modules/pkg "$root/node_modules/pkg"
+  ln -s .pnpm/pkg@1.0.0/node_modules/pkg "$root/node_modules/pkg"
+}
+
+make_default_files_fixture() {
+  local root="$1"
+  local package_root="$root/node_modules/.pnpm/pkg@1.0.0/node_modules/pkg"
+
+  mkdir -p "$package_root/dist" "$root/node_modules"
+  cat > "$package_root/package.json" <<'EOF'
+{"name":"pkg","main":"./dist/index.js"}
+EOF
+  touch "$package_root/dist/index.js"
+  ln -s .pnpm/pkg@1.0.0/node_modules/pkg "$root/node_modules/pkg"
 }
 
 make_exports_override_stale_main_fixture() {
   local root="$1"
-  local package_root="$root/store/v11/links/pkg/1.0.0/hash/node_modules/pkg"
+  local package_root="$root/node_modules/.pnpm/pkg@1.0.0/node_modules/pkg"
 
-  mkdir -p "$package_root/dist"
-  mkdir -p "$root/node_modules"
+  mkdir -p "$package_root/dist" "$root/node_modules"
   cat > "$package_root/package.json" <<'EOF'
 {"name":"pkg","files":["dist"],"main":"./dist/missing-legacy.cjs","exports":{".":{"import":"./dist/index.js","require":"./dist/index.cjs"}}}
 EOF
-  touch "$package_root/dist/index.js"
-  touch "$package_root/dist/index.cjs"
-  ln -s ../store/v11/links/pkg/1.0.0/hash/node_modules/pkg "$root/node_modules/pkg"
+  touch "$package_root/dist/index.js" "$package_root/dist/index.cjs"
+  ln -s .pnpm/pkg@1.0.0/node_modules/pkg "$root/node_modules/pkg"
 }
 
 make_unshipped_conditional_export_fixture() {
   local root="$1"
-  local package_root="$root/store/v11/links/pkg/1.0.0/hash/node_modules/pkg"
+  local package_root="$root/node_modules/.pnpm/pkg@1.0.0/node_modules/pkg"
 
   mkdir -p "$package_root/dist"
   mkdir -p "$root/node_modules"
@@ -124,12 +151,12 @@ make_unshipped_conditional_export_fixture() {
 {"name":"pkg","files":["dist"],"exports":{".":{"custom-condition":"./src/index.ts","default":"./dist/index.js"}}}
 EOF
   touch "$package_root/dist/index.js"
-  ln -s ../store/v11/links/pkg/1.0.0/hash/node_modules/pkg "$root/node_modules/pkg"
+  ln -s .pnpm/pkg@1.0.0/node_modules/pkg "$root/node_modules/pkg"
 }
 
 make_missing_conditional_export_alternative_fixture() {
   local root="$1"
-  local package_root="$root/store/v11/links/pkg/1.0.0/hash/node_modules/pkg"
+  local package_root="$root/node_modules/.pnpm/pkg@1.0.0/node_modules/pkg"
 
   mkdir -p "$package_root/build"
   mkdir -p "$root/node_modules"
@@ -138,12 +165,12 @@ make_missing_conditional_export_alternative_fixture() {
 EOF
   touch "$package_root/build/pkg.esm.js"
   touch "$package_root/build/pkg.min.js"
-  ln -s ../store/v11/links/pkg/1.0.0/hash/node_modules/pkg "$root/node_modules/pkg"
+  ln -s .pnpm/pkg@1.0.0/node_modules/pkg "$root/node_modules/pkg"
 }
 
 make_missing_type_export_fixture() {
   local root="$1"
-  local package_root="$root/store/v11/links/pkg/1.0.0/hash/node_modules/pkg"
+  local package_root="$root/node_modules/.pnpm/pkg@1.0.0/node_modules/pkg"
 
   mkdir -p "$package_root/dist"
   mkdir -p "$root/node_modules"
@@ -151,7 +178,7 @@ make_missing_type_export_fixture() {
 {"name":"pkg","files":["dist"],"exports":{"./internal/module-runner":{"types":"./dist/module-runner.d.ts","default":"./dist/module-runner.js"}}}
 EOF
   touch "$package_root/dist/module-runner.js"
-  ln -s ../store/v11/links/pkg/1.0.0/hash/node_modules/pkg "$root/node_modules/pkg"
+  ln -s .pnpm/pkg@1.0.0/node_modules/pkg "$root/node_modules/pkg"
 }
 
 make_builtin_dependency_fixture() {
@@ -167,7 +194,7 @@ EOF
 
 make_extensionless_main_fixture() {
   local root="$1"
-  local package_root="$root/store/v11/links/pkg/1.0.0/hash/node_modules/pkg"
+  local package_root="$root/node_modules/.pnpm/pkg@1.0.0/node_modules/pkg"
 
   mkdir -p "$package_root/lib"
   mkdir -p "$root/node_modules"
@@ -175,12 +202,12 @@ make_extensionless_main_fixture() {
 {"name":"pkg","files":["lib"],"main":"./lib/index","exports":{".":{"default":"./lib/index"}}}
 EOF
   touch "$package_root/lib/index.js"
-  ln -s ../store/v11/links/pkg/1.0.0/hash/node_modules/pkg "$root/node_modules/pkg"
+  ln -s .pnpm/pkg@1.0.0/node_modules/pkg "$root/node_modules/pkg"
 }
 
 make_missing_subpath_export_fixture() {
   local root="$1"
-  local package_root="$root/store/v11/links/pkg/1.0.0/hash/node_modules/pkg"
+  local package_root="$root/node_modules/.pnpm/pkg@1.0.0/node_modules/pkg"
 
   mkdir -p "$package_root/dist"
   mkdir -p "$root/node_modules"
@@ -188,7 +215,7 @@ make_missing_subpath_export_fixture() {
 {"name":"pkg","files":["dist"],"main":"./dist/index.js","exports":{".":{"default":"./dist/index.js"},"./optional":{"default":"./dist/optional.js"}}}
 EOF
   touch "$package_root/dist/index.js"
-  ln -s ../store/v11/links/pkg/1.0.0/hash/node_modules/pkg "$root/node_modules/pkg"
+  ln -s .pnpm/pkg@1.0.0/node_modules/pkg "$root/node_modules/pkg"
 }
 
 make_bin_fixture() {
@@ -230,59 +257,6 @@ echo ""
 test_dir="$(mktemp -d)"
 trap 'rm -rf "$test_dir"' EXIT
 
-echo "Test 1: explicit store-dir takes precedence for GVS links path"
-mkdir -p "$test_dir/pnpm-store/v11" "$test_dir/pnpm-home/store/v11" "$test_dir/xdg/pnpm/store/v11" "$test_dir/home/.local/share/pnpm/store/v11"
-(
-  export HOME="$test_dir/home"
-  export npm_config_store_dir="$test_dir/pnpm-store"
-  export PNPM_STORE_DIR="$test_dir/ignored-pnpm-store"
-  export PNPM_HOME="$test_dir/pnpm-home"
-  export XDG_DATA_HOME="$test_dir/xdg"
-  assert_eq \
-    "$test_dir/pnpm-store/v11/links" \
-    "$(resolve_gvs_links_dir)" \
-    "resolve_gvs_links_dir prefers npm_config_store_dir"
-)
-
-echo "Test 2: PNPM_STORE_DIR is used when npm_config_store_dir is unset"
-(
-  export HOME="$test_dir/home"
-  unset npm_config_store_dir
-  export PNPM_STORE_DIR="$test_dir/pnpm-store"
-  export PNPM_HOME="$test_dir/pnpm-home"
-  export XDG_DATA_HOME="$test_dir/xdg"
-  assert_eq \
-    "$test_dir/pnpm-store/v11/links" \
-    "$(resolve_gvs_links_dir)" \
-    "resolve_gvs_links_dir uses PNPM_STORE_DIR"
-)
-
-echo "Test 3: PNPM_HOME is used when store-dir is unset"
-(
-  export HOME="$test_dir/home"
-  unset npm_config_store_dir
-  unset PNPM_STORE_DIR
-  export PNPM_HOME="$test_dir/pnpm-home"
-  export XDG_DATA_HOME="$test_dir/xdg"
-  assert_eq \
-    "$test_dir/pnpm-home/store/v11/links" \
-    "$(resolve_gvs_links_dir)" \
-    "resolve_gvs_links_dir falls back to PNPM_HOME"
-)
-
-echo "Test 4: XDG_DATA_HOME is used when PNPM_HOME is unset"
-(
-  export HOME="$test_dir/home"
-  unset npm_config_store_dir
-  unset PNPM_STORE_DIR
-  unset PNPM_HOME
-  export XDG_DATA_HOME="$test_dir/xdg"
-  assert_eq \
-    "$test_dir/xdg/pnpm/store/v11/links" \
-    "$(resolve_gvs_links_dir)" \
-    "resolve_gvs_links_dir uses XDG_DATA_HOME"
-)
-
 echo "Test 5: ensure_local_pnpm_home_default sets a workspace-local default"
 (
   unset PNPM_HOME
@@ -303,49 +277,32 @@ echo "Test 6: ensure_local_pnpm_home_default preserves an explicit PNPM_HOME"
     "ensure_local_pnpm_home_default keeps explicit PNPM_HOME"
 )
 
-echo "Test 7: Cache fingerprint changes when GVS path changes"
-fingerprint_a="$(cache_fingerprint "workspace-hash" "/tmp/a/store/v11/links")"
-fingerprint_b="$(cache_fingerprint "workspace-hash" "/tmp/b/store/v11/links")"
-if [ "$fingerprint_a" = "$fingerprint_b" ]; then
-  echo "FAIL: cache fingerprint should change when GVS path changes"
-  exit 1
-fi
-
-echo "Test 8: resolve_pnpm_install_contract_file walks up to the repo contract"
-contract_fixture="$test_dir/contract-fixture"
-mkdir -p "$contract_fixture/packages/app"
-printf '{"schemaVersion":1}\n' > "$contract_fixture/pnpm-install-contract.json"
-assert_eq \
-  "$contract_fixture/pnpm-install-contract.json" \
-  "$(resolve_pnpm_install_contract_file "$contract_fixture/packages/app")" \
-  "resolve_pnpm_install_contract_file finds ancestor contract"
-
 echo "Test 9: pnpm contract section hashing is stable across JSON key order"
 contract_a="$test_dir/contract-a.json"
 contract_b="$test_dir/contract-b.json"
 cat > "$contract_a" <<'EOF'
-{"schemaVersion":1,"gvsLinkContract":{"packageExtensions":{"storybook":{"dependencies":{"@storybook/react-vite":"10.4.6"}}},"allowBuilds":{"esbuild":false}}}
+{"schemaVersion":1,"dependencyGraphContract":{"packageExtensions":{"storybook":{"dependencies":{"@storybook/react-vite":"10.4.6"}}},"allowBuilds":{"esbuild":false}}}
 EOF
 cat > "$contract_b" <<'EOF'
-{"gvsLinkContract":{"allowBuilds":{"esbuild":false},"packageExtensions":{"storybook":{"dependencies":{"@storybook/react-vite":"10.4.6"}}}},"schemaVersion":1}
+{"dependencyGraphContract":{"allowBuilds":{"esbuild":false},"packageExtensions":{"storybook":{"dependencies":{"@storybook/react-vite":"10.4.6"}}}},"schemaVersion":1}
 EOF
 assert_eq \
-  "$(compute_pnpm_contract_section_hash node "$contract_a" gvsLinkContract)" \
-  "$(compute_pnpm_contract_section_hash node "$contract_b" gvsLinkContract)" \
+  "$(compute_pnpm_contract_section_hash node "$contract_a" dependencyGraphContract)" \
+  "$(compute_pnpm_contract_section_hash node "$contract_b" dependencyGraphContract)" \
   "contract section hash ignores JSON object key order"
 
-echo "Test 10: policy-only contract changes do not classify as GVS link drift"
+echo "Test 10: policy-only contract changes classify as policy drift"
 contract_policy_old="$test_dir/contract-policy-old.json"
 contract_policy_new="$test_dir/contract-policy-new.json"
 cat > "$contract_policy_old" <<'EOF'
 {
   "schemaVersion": 1,
   "packageManager": {"name": "pnpm", "version": "11.8.0"},
-  "gvsLinkContract": {"allowBuilds": {"esbuild": false}, "packageExtensions": {}},
-  "installPolicy": {"enableGlobalVirtualStore": true},
+  "dependencyGraphContract": {"allowBuilds": {"esbuild": false}, "packageExtensions": {}},
+  "installPolicy": {"verifyStoreIntegrity": true},
   "storeContract": {"storeDir": ".devenv/pnpm-store-pure-v1"},
   "workspaceManifestContract": {"packages": ["packages/app"]},
-  "nixIntegration": {"fixedOutputDependencyPrepUsesLiveGlobalVirtualStore": false},
+  "nixIntegration": {"liveVirtualStoreScope": "materialization-root"},
   "buck2Integration": {"consumeContractArtifact": true}
 }
 EOF
@@ -353,37 +310,37 @@ cat > "$contract_policy_new" <<'EOF'
 {
   "schemaVersion": 1,
   "packageManager": {"name": "pnpm", "version": "11.8.0"},
-  "gvsLinkContract": {"allowBuilds": {"esbuild": false}, "packageExtensions": {}},
-  "installPolicy": {"enableGlobalVirtualStore": false},
+  "dependencyGraphContract": {"allowBuilds": {"esbuild": false}, "packageExtensions": {}},
+  "installPolicy": {"verifyStoreIntegrity": false},
   "storeContract": {"storeDir": ".devenv/pnpm-store-pure-v1"},
   "workspaceManifestContract": {"packages": ["packages/app"]},
-  "nixIntegration": {"fixedOutputDependencyPrepUsesLiveGlobalVirtualStore": false},
+  "nixIntegration": {"liveVirtualStoreScope": "materialization-root"},
   "buck2Integration": {"consumeContractArtifact": true}
 }
 EOF
 assert_eq \
   "policy" \
   "$(classify_pnpm_contract_change node "$contract_policy_old" "$contract_policy_new")" \
-  "policy-only contract changes are not gvs-link changes"
+  "policy-only contract changes classify as policy"
 
-echo "Test 11: packageExtensions changes classify as GVS link drift"
-contract_gvs_new="$test_dir/contract-gvs-new.json"
-cat > "$contract_gvs_new" <<'EOF'
+echo "Test 11: packageExtensions changes classify as dependency-graph drift"
+contract_graph_new="$test_dir/contract-graph-new.json"
+cat > "$contract_graph_new" <<'EOF'
 {
   "schemaVersion": 1,
   "packageManager": {"name": "pnpm", "version": "11.8.0"},
-  "gvsLinkContract": {"allowBuilds": {"esbuild": false}, "packageExtensions": {"storybook": {"dependencies": {"@storybook/react-vite": "10.4.6"}}}},
-  "installPolicy": {"enableGlobalVirtualStore": true},
+  "dependencyGraphContract": {"allowBuilds": {"esbuild": false}, "packageExtensions": {"storybook": {"dependencies": {"@storybook/react-vite": "10.4.6"}}}},
+  "installPolicy": {"verifyStoreIntegrity": true},
   "storeContract": {"storeDir": ".devenv/pnpm-store-pure-v1"},
   "workspaceManifestContract": {"packages": ["packages/app"]},
-  "nixIntegration": {"fixedOutputDependencyPrepUsesLiveGlobalVirtualStore": false},
+  "nixIntegration": {"liveVirtualStoreScope": "materialization-root"},
   "buck2Integration": {"consumeContractArtifact": true}
 }
 EOF
 assert_eq \
-  "gvs-link" \
-  "$(classify_pnpm_contract_change node "$contract_policy_old" "$contract_gvs_new")" \
-  "packageExtensions changes are gvs-link changes"
+  "dependency_graph" \
+  "$(classify_pnpm_contract_change node "$contract_policy_old" "$contract_graph_new")" \
+  "packageExtensions changes are dependency-graph changes"
 
 echo "Test 12: unchanged classified sections report an unknown miss reason"
 contract_unknown_new="$test_dir/contract-unknown-new.json"
@@ -391,11 +348,11 @@ cat > "$contract_unknown_new" <<'EOF'
 {
   "schemaVersion": 2,
   "packageManager": {"name": "pnpm", "version": "11.8.0"},
-  "gvsLinkContract": {"allowBuilds": {"esbuild": false}, "packageExtensions": {}},
-  "installPolicy": {"enableGlobalVirtualStore": true},
+  "dependencyGraphContract": {"allowBuilds": {"esbuild": false}, "packageExtensions": {}},
+  "installPolicy": {"verifyStoreIntegrity": true},
   "storeContract": {"storeDir": ".devenv/pnpm-store-pure-v1"},
   "workspaceManifestContract": {"packages": ["packages/app"]},
-  "nixIntegration": {"fixedOutputDependencyPrepUsesLiveGlobalVirtualStore": true},
+  "nixIntegration": {"liveVirtualStoreScope": "materialization-root", "changedMetadata": true},
   "buck2Integration": {"consumeContractArtifact": false}
 }
 EOF
@@ -410,11 +367,11 @@ cat > "$contract_toolchain_new" <<'EOF'
 {
   "schemaVersion": 1,
   "packageManager": {"name": "pnpm", "version": "11.9.0"},
-  "gvsLinkContract": {"allowBuilds": {"esbuild": false}, "packageExtensions": {}},
-  "installPolicy": {"enableGlobalVirtualStore": true},
+  "dependencyGraphContract": {"allowBuilds": {"esbuild": false}, "packageExtensions": {}},
+  "installPolicy": {"verifyStoreIntegrity": true},
   "storeContract": {"storeDir": ".devenv/pnpm-store-pure-v1"},
   "workspaceManifestContract": {"packages": ["packages/app"]},
-  "nixIntegration": {"fixedOutputDependencyPrepUsesLiveGlobalVirtualStore": false},
+  "nixIntegration": {"liveVirtualStoreScope": "materialization-root"},
   "buck2Integration": {"consumeContractArtifact": true}
 }
 EOF
@@ -429,11 +386,11 @@ cat > "$contract_store_new" <<'EOF'
 {
   "schemaVersion": 1,
   "packageManager": {"name": "pnpm", "version": "11.8.0"},
-  "gvsLinkContract": {"allowBuilds": {"esbuild": false}, "packageExtensions": {}},
-  "installPolicy": {"enableGlobalVirtualStore": true},
+  "dependencyGraphContract": {"allowBuilds": {"esbuild": false}, "packageExtensions": {}},
+  "installPolicy": {"verifyStoreIntegrity": true},
   "storeContract": {"storeDir": ".devenv/pnpm-store-pure-v2"},
   "workspaceManifestContract": {"packages": ["packages/app"]},
-  "nixIntegration": {"fixedOutputDependencyPrepUsesLiveGlobalVirtualStore": false},
+  "nixIntegration": {"liveVirtualStoreScope": "materialization-root"},
   "buck2Integration": {"consumeContractArtifact": true}
 }
 EOF
@@ -448,11 +405,11 @@ cat > "$contract_manifest_new" <<'EOF'
 {
   "schemaVersion": 1,
   "packageManager": {"name": "pnpm", "version": "11.8.0"},
-  "gvsLinkContract": {"allowBuilds": {"esbuild": false}, "packageExtensions": {}},
-  "installPolicy": {"enableGlobalVirtualStore": true},
+  "dependencyGraphContract": {"allowBuilds": {"esbuild": false}, "packageExtensions": {}},
+  "installPolicy": {"verifyStoreIntegrity": true},
   "storeContract": {"storeDir": ".devenv/pnpm-store-pure-v1"},
   "workspaceManifestContract": {"packages": ["packages/app", "packages/lib"]},
-  "nixIntegration": {"fixedOutputDependencyPrepUsesLiveGlobalVirtualStore": false},
+  "nixIntegration": {"liveVirtualStoreScope": "materialization-root"},
   "buck2Integration": {"consumeContractArtifact": true}
 }
 EOF
@@ -467,154 +424,10 @@ cat > "$contract_missing" <<'EOF'
 {"schemaVersion":1}
 EOF
 set +e
-compute_pnpm_contract_section_hash node "$contract_missing" gvsLinkContract >/dev/null 2>&1
+compute_pnpm_contract_section_hash node "$contract_missing" dependencyGraphContract >/dev/null 2>&1
 exit_code=$?
 set -e
 assert_exit_code 1 "$exit_code" "missing section hash should fail"
-
-echo "Test 16a: dependency materialization profile emission is stable and trait-aware"
-contract_profile="$test_dir/contract-profile.json"
-profile_output="$test_dir/profile.json"
-cat > "$contract_profile" <<'EOF'
-{
-  "schemaVersion": 1,
-  "packageManager": {"name": "pnpm", "version": "11.8.0"},
-  "gvsLinkContract": {"allowBuilds": {}, "packageExtensions": {}, "packageManager": {"name": "pnpm", "version": "11.8.0"}},
-  "installPolicy": {"ignoreScripts": true, "verifyStoreIntegrity": true},
-  "storeContract": {"owner": "pnpm", "layoutVersion": "v11", "storeDir": ".devenv/pnpm-store-pure-v1"},
-  "workspaceManifestContract": {"packages": ["packages/app"]},
-  "dependencyMaterializationProfile": {
-    "schema": "dependency-materialization-profile/v0",
-    "identityInputs": ["packageManager", "gvsLinkContract", "installPolicy", "storeContract", "workspaceManifestContract"],
-    "supportedTraits": {
-      "darwinSplitCas": {
-        "mutableState": "profile-local",
-        "sharedContent": "store/v11/files",
-        "gcAuthority": "shared-pool-coordinator",
-        "repairAuthority": "devenv"
-      },
-      "isolated": {
-        "mutableState": "profile-local",
-        "gcAuthority": "profile-local",
-        "repairAuthority": "devenv"
-      }
-    },
-    "nativeBuildPolicyInputs": {
-      "allowBuilds": "gvsLinkContract.allowBuilds",
-      "compilerEnv": ["CC", "CXX"]
-    }
-  }
-}
-EOF
-emit_dependency_materialization_profile node "$contract_profile" darwinSplitCas "$profile_output"
-node - "$profile_output" <<'EOF'
-const fs = require('node:fs')
-const profile = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'))
-if (profile.schema !== 'dependency-materialization-profile/v0') throw new Error('schema drift')
-if (!profile.profileId.startsWith('pnpm:')) throw new Error('missing pnpm profile id prefix')
-if (profile.store.trait !== 'darwinSplitCas') throw new Error('wrong store trait')
-if (profile.authorities.gc !== 'shared-pool-coordinator') throw new Error('wrong gc authority')
-if (profile.authorities.repair !== 'devenv') throw new Error('wrong repair authority')
-if (!profile.policy.nativeBuildPolicyInputs.compilerEnv.includes('CXX')) throw new Error('missing native compiler policy')
-if (profile.evidence.sectionDigests.storeContract.length !== 64) throw new Error('missing section digest')
-if (profile.evidence.contractPath.startsWith('/')) throw new Error('contract path should be relative')
-EOF
-pnpm_contract_supports_dependency_materialization_profile node "$contract_profile"
-set +e
-pnpm_contract_supports_dependency_materialization_profile node "$contract_missing" >/dev/null 2>&1
-exit_code=$?
-set -e
-assert_exit_code 1 "$exit_code" "old contract should not require dependency materialization evidence"
-set +e
-emit_dependency_materialization_profile node "$contract_profile" unknownTrait >/dev/null 2>&1
-exit_code=$?
-set -e
-assert_exit_code 1 "$exit_code" "unsupported profile trait should fail"
-
-echo "Test 16b: dependency materialization doctor refuses shared pools and plans coordinated repair"
-doctor_root="$test_dir/profile-doctor"
-mkdir -p "$doctor_root/profile-a-store/v11" "$doctor_root/profile-b-store/v11" "$doctor_root/shared-files/v11" "$doctor_root/isolated-store/v11/files"
-ln -s "$doctor_root/shared-files/v11" "$doctor_root/profile-a-store/v11/files"
-ln -s "$doctor_root/shared-files/v11" "$doctor_root/profile-b-store/v11/files"
-registry_file="$doctor_root/registry.json"
-cat > "$registry_file" <<EOF
-{
-  "profiles": [
-    {"id": "profile-a", "filesPoolId": "shared", "project": "$doctor_root/work-a", "store": "$doctor_root/profile-a-store"},
-    {"id": "profile-b", "filesPoolId": "shared", "project": "$doctor_root/work-b", "store": "$doctor_root/profile-b-store"},
-    {"id": "profile-c", "filesPoolId": "isolated", "project": "$doctor_root/work-c", "store": "$doctor_root/isolated-store"}
-  ],
-  "pools": [
-    {"id": "shared", "filesPath": "$doctor_root/profile-a-store/v11/files"},
-    {"id": "isolated", "filesPath": "$doctor_root/isolated-store/v11/files"}
-  ]
-}
-EOF
-shared_decision="$(dependency_materialization_store_doctor node "$registry_file" profile-a | node -e 'const fs=require("node:fs"); process.stdout.write(JSON.parse(fs.readFileSync(0,"utf8")).decision)')"
-assert_eq "refuse-raw-prune" "$shared_decision" "shared files pool refuses raw prune"
-isolated_decision="$(dependency_materialization_store_doctor node "$registry_file" profile-c | node -e 'const fs=require("node:fs"); process.stdout.write(JSON.parse(fs.readFileSync(0,"utf8")).decision)')"
-assert_eq "allow-profile-local-prune" "$isolated_decision" "isolated files pool allows profile-local prune"
-repair_decision="$(dependency_materialization_repair_plan node "$registry_file" shared | node -e 'const fs=require("node:fs"); const plan=JSON.parse(fs.readFileSync(0,"utf8")); process.stdout.write(`${plan.decision}:${plan.roots.length}`)')"
-assert_eq "repair-all-roots:2" "$repair_decision" "shared files pool repair covers all registered roots"
-
-echo "Test 16c: dependency materialization registry records live profile and files pool"
-registry_root="$test_dir/profile-registry"
-mkdir -p "$registry_root/store/v11" "$registry_root/second-store/v11" "$registry_root/shared-files/v11" "$registry_root/workspace" "$registry_root/second-workspace"
-ln -s "$registry_root/shared-files/v11" "$registry_root/store/v11/files"
-ln -s "$registry_root/shared-files/v11" "$registry_root/second-store/v11/files"
-live_registry="$registry_root/registry.json"
-shared_registry="$(dependency_materialization_shared_registry_file node "$registry_root/store")"
-write_dependency_materialization_registry node "$profile_output" "$registry_root/workspace" "$registry_root/store" "$live_registry" "$shared_registry"
-registry_profile_id="$(node -e 'const fs=require("node:fs"); process.stdout.write(JSON.parse(fs.readFileSync(process.argv[1],"utf8")).profileId)' "$profile_output")"
-assert_json_field \
-  "dependency-materialization-registry/v0" \
-  "$live_registry" \
-  "value => value.schema" \
-  "registry schema"
-assert_json_field \
-  "$registry_profile_id" \
-  "$live_registry" \
-  "value => value.profiles[0].profileId" \
-  "registry profile id"
-assert_json_field \
-  "refuse-raw-prune" \
-  <(dependency_materialization_store_doctor node "$live_registry" "$registry_profile_id") \
-  "value => value.decision" \
-  "registry shared pool doctor decision"
-second_registry="$registry_root/second-registry.json"
-write_dependency_materialization_registry node "$profile_output" "$registry_root/second-workspace" "$registry_root/second-store" "$second_registry" "$shared_registry"
-assert_json_field \
-  "2" \
-  "$second_registry" \
-  "value => value.profiles.length" \
-  "shared registry aggregates sibling roots with the same dependency profile"
-assert_eq \
-  "2" \
-  "$(dependency_materialization_repair_roots node "$second_registry" "$(dependency_materialization_profile_files_pool_id node "$second_registry" "$registry_profile_id")" | wc -l | tr -d ' ')" \
-  "repair roots include every workspace sharing the files pool"
-discovered_profile_store_dir="$(dependency_materialization_profile_store_dir node "$second_registry" "$registry_profile_id")"
-case "$discovered_profile_store_dir" in
-  "$registry_root/store" | "$registry_root/second-store") ;;
-  *)
-    echo "FAIL: profile store dir is discoverable for shared registry refresh"
-    echo "  actual: $discovered_profile_store_dir"
-    exit 1
-    ;;
-esac
-stale_local_registry="$registry_root/stale-local-registry.json"
-write_dependency_materialization_registry node "$profile_output" "$registry_root/workspace" "$registry_root/store" "$stale_local_registry"
-assert_eq \
-  "2" \
-  "$(dependency_materialization_repair_roots node "$shared_registry" "$(dependency_materialization_profile_files_pool_id node "$stale_local_registry" "$registry_profile_id")" | wc -l | tr -d ' ')" \
-  "shared registry carries sibling roots missing from stale local registry"
-changed_profile="$registry_root/changed-profile.json"
-node -e 'const fs=require("node:fs"); const profile=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); profile.profileId += ":changed"; fs.writeFileSync(process.argv[2], JSON.stringify(profile, null, 2) + "\n")' "$profile_output" "$changed_profile"
-write_dependency_materialization_registry node "$changed_profile" "$registry_root/workspace" "$registry_root/store" "$live_registry" "$shared_registry"
-assert_json_field \
-  "2" \
-  "$shared_registry" \
-  "value => value.profiles.length" \
-  "changed profile replaces existing root row instead of adding duplicate sibling"
 
 echo "Test 17: resolve_package_bin prefers package-local .bin shims"
 bin_fixture="$test_dir/bin-fixture"
@@ -652,6 +465,17 @@ exit_code=$?
 set -e
 assert_exit_code 0 "$exit_code" "projection health passes"
 
+echo "Test 20b: Projection health canonicalizes an aliased materialization root"
+healthy_real_dir="$test_dir/healthy-real"
+healthy_alias_dir="$test_dir/healthy-alias"
+make_projection_fixture "$healthy_real_dir" 1
+ln -s "$healthy_real_dir" "$healthy_alias_dir"
+set +e
+check_node_modules_links_healthy node "$PROJECTION_SCRIPT" "$healthy_alias_dir/node_modules"
+exit_code=$?
+set -e
+assert_exit_code 0 "$exit_code" "projection health accepts canonical paths through a root alias"
+
 echo "Test 21: Projection health ignores packages that do not export ./package.json"
 exports_dir="$test_dir/exports"
 make_projection_fixture "$exports_dir" 1 1
@@ -678,6 +502,16 @@ check_node_modules_links_healthy node "$PROJECTION_SCRIPT" "$source_link_dir/nod
 exit_code=$?
 set -e
 assert_exit_code 0 "$exit_code" "projection health skips source link dependency resolution"
+
+echo "Test 23b: Projection health rejects a dependency edge to a foreign sibling pnpm package instance"
+foreign_root_dir="$test_dir/foreign-root"
+foreign_sibling_dir="$test_dir/foreign-sibling"
+make_foreign_package_instance_fixture "$foreign_root_dir" "$foreign_sibling_dir"
+set +e
+check_node_modules_links_healthy node "$PROJECTION_SCRIPT" "$foreign_root_dir/node_modules" >/dev/null 2>&1
+exit_code=$?
+set -e
+assert_exit_code 1 "$exit_code" "projection health rejects foreign sibling package instance"
 
 echo "Test 24: Broken node_modules symlink is rejected before projection checks"
 broken_dir="$test_dir/broken"
@@ -765,181 +599,185 @@ assert_eq \
   "$(cd "$exports_override_main_dir" && node -e 'const path = require("node:path"); process.stdout.write(path.basename(require.resolve("pkg")))')" \
   "Node resolves the exported require target instead of legacy main"
 
-echo "Test 33: dependency materialization profile is stable for identical contracts"
-profile_contract="$test_dir/profile-contract.json"
-cat > "$profile_contract" <<'EOF'
-{
-  "schemaVersion": 1,
-  "packageManager": {"name": "pnpm", "version": "11.8.0"},
-  "storeContract": {
-    "owner": "pnpm",
-    "layoutVersion": "v11",
-    "storeDir": ".devenv/pnpm-store-pure-v1",
-    "sharedFilesStore": {"enabledForLocalDev": true, "disabledInCi": true},
-    "globalVirtualStore": {"enabled": true}
-  },
-  "gvsLinkContract": {
-    "packageManager": {"name": "pnpm", "version": "11.8.0"},
-    "allowBuilds": {"esbuild": false},
-    "packageExtensions": {}
-  },
-  "installPolicy": {
-    "ignoreScripts": true,
-    "packageImportMethod": "clone-or-copy",
-    "verifyStoreIntegrity": true
-  },
-  "workspaceManifestContract": {
-    "injectWorkspacePackages": true,
-    "packages": ["packages/app", "packages/lib"],
-    "patchedDependencies": {}
-  },
-  "dependencyMaterializationProfile": {
-    "schema": "dependency-materialization-profile/v0",
-    "identityInputs": [
-      "packageManager",
-      "gvsLinkContract",
-      "installPolicy",
-      "storeContract",
-      "workspaceManifestContract"
-    ],
-    "supportedTraits": {
-      "darwinSplitCas": {
-        "mutableState": "profile-local",
-        "sharedContent": "store/v11/files",
-        "gcAuthority": "shared-pool-coordinator",
-        "repairAuthority": "devenv"
-      },
-      "isolated": {
-        "mutableState": "profile-local",
-        "gcAuthority": "profile-local",
-        "repairAuthority": "devenv"
-      }
-    },
-    "nativeBuildPolicyInputs": {
-      "allowBuilds": "gvsLinkContract.allowBuilds",
-      "compilerEnv": ["CC", "CXX"]
-    }
-  }
-}
-EOF
-profile_a="$test_dir/profile-a.json"
-profile_b="$test_dir/profile-b.json"
-emit_dependency_materialization_profile node "$profile_contract" darwinSplitCas "$profile_a"
-emit_dependency_materialization_profile node "$profile_contract" darwinSplitCas "$profile_b"
-assert_eq \
-  "$(compute_hash < "$profile_a")" \
-  "$(compute_hash < "$profile_b")" \
-  "dependency profile output is stable"
-assert_json_field \
-  "shared-pool-coordinator" \
-  "$profile_a" \
-  "(value) => value.authorities.gc" \
-  "dependency profile records gc authority"
-
-echo "Test 34: source-only files are not dependency profile identity inputs"
-mkdir -p "$test_dir/profile-source/packages/app/src"
-cp "$profile_contract" "$test_dir/profile-source/pnpm-install-contract.json"
-echo "export const value = 1" > "$test_dir/profile-source/packages/app/src/index.ts"
-(
-  cd "$test_dir/profile-source"
-  emit_dependency_materialization_profile node pnpm-install-contract.json darwinSplitCas profile-before.json
-  echo "export const value = 2" > packages/app/src/index.ts
-  emit_dependency_materialization_profile node pnpm-install-contract.json darwinSplitCas profile-after.json
-  assert_json_field \
-    "$(node -e "const fs = require('node:fs'); process.stdout.write(JSON.parse(fs.readFileSync('profile-before.json','utf8')).profileId)")" \
-    profile-after.json \
-    "(value) => value.profileId" \
-    "source-only mutations do not affect dependency profile identity"
-)
-
-echo "Test 35: manifest contract changes dependency profile identity"
-manifest_contract="$test_dir/profile-contract-manifest-change.json"
-node - "$profile_contract" "$manifest_contract" <<'EOF'
-const fs = require('node:fs')
-const [from, to] = process.argv.slice(2)
-const contract = JSON.parse(fs.readFileSync(from, 'utf8'))
-contract.workspaceManifestContract.packages.push('packages/new-member')
-fs.writeFileSync(to, `${JSON.stringify(contract, null, 2)}\n`)
-EOF
-profile_manifest="$test_dir/profile-manifest.json"
-emit_dependency_materialization_profile node "$manifest_contract" darwinSplitCas "$profile_manifest"
-if [ "$(node -e "const fs = require('node:fs'); process.stdout.write(JSON.parse(fs.readFileSync(process.argv[1], 'utf8')).profileId)" "$profile_a")" = "$(node -e "const fs = require('node:fs'); process.stdout.write(JSON.parse(fs.readFileSync(process.argv[1], 'utf8')).profileId)" "$profile_manifest")" ]; then
-  echo "FAIL: manifest contract changes dependency profile identity"
-  exit 1
-fi
-
-echo "Test 36: unknown dependency materialization trait fails closed"
+echo "Test 33: Projection digest supports npm's default package file set"
+default_files_dir="$test_dir/default-files"
+make_default_files_fixture "$default_files_dir"
 set +e
-emit_dependency_materialization_profile node "$profile_contract" unknownTrait >/dev/null 2>&1
+NODE_MODULES_HELPER_MODE=projection-hash \
+  NODE_MODULES_DIRS="$default_files_dir/node_modules" \
+  PNPM_ROOT_MODULES_YAML="$default_files_dir/node_modules/.modules.yaml" \
+  node "$PROJECTION_SCRIPT" >/dev/null 2>&1
 exit_code=$?
 set -e
-assert_exit_code 1 "$exit_code" "unknown store trait should fail"
+assert_exit_code 0 "$exit_code" "projection digest handles packages without a files field"
 
-echo "Test 37: store doctor refuses raw prune of a shared files pool"
-doctor_registry="$test_dir/doctor-registry.json"
-shared_files="$test_dir/shared-files/v11"
-shared_root="$test_dir/profile-a/store/v11"
-mkdir -p "$shared_files" "$shared_root"
-ln -s "$shared_files" "$shared_root/files"
-cat > "$doctor_registry" <<EOF
-{
-  "profiles": [
-    {"id": "profile-a", "project": "a", "store": "$test_dir/profile-a/store", "filesPoolId": "pool-shared"},
-    {"id": "profile-b", "project": "b", "store": "$test_dir/profile-b/store", "filesPoolId": "pool-shared"}
-  ],
-  "pools": [
-    {"id": "pool-shared", "filesPath": "$shared_root/files"}
-  ]
-}
-EOF
-doctor_shared="$test_dir/doctor-shared.json"
-dependency_materialization_store_doctor node "$doctor_registry" profile-a > "$doctor_shared"
-assert_json_field \
-  "refuse-raw-prune" \
-  "$doctor_shared" \
-  "(value) => value.decision" \
-  "shared pool raw prune is refused"
-assert_json_field \
-  "profile-a,profile-b" \
-  "$doctor_shared" \
-  "(value) => value.siblings.join(',')" \
-  "shared pool doctor reports sibling profiles"
+echo "Test 34: Linux shared storage selects one full store and automatic zero-copy imports"
+(
+  storage_root="$test_dir/storage-root"
+  shared_store="$test_dir/shared-store"
+  mkdir -p "$storage_root"
+  unset CI PNPM_STORE_DIR PNPM_CONFIG_STORE_DIR npm_config_store_dir
+  export PNPM_SHARED_STORE_DIR="$shared_store"
+  export PNPM_MIN_FREE_KIB=0
+  configure_pnpm_storage node "$storage_root" "$test_dir/job-store" true
+  assert_eq "$shared_store" "$npm_config_store_dir" "local roots select the host-owned full store"
+  assert_eq "auto" "$PNPM_PACKAGE_IMPORT_METHOD" "Linux delegates safe zero-copy selection to pnpm"
+  test -d "$shared_store/v11/files"
+  test ! -L "$shared_store/v11/files"
+)
 
-echo "Test 38: store doctor allows isolated profile-local pool prune"
-isolated_files="$test_dir/isolated/store/v11/files"
-mkdir -p "$isolated_files"
-isolated_registry="$test_dir/isolated-registry.json"
-cat > "$isolated_registry" <<EOF
-{
-  "profiles": [
-    {"id": "isolated", "project": "isolated", "store": "$test_dir/isolated/store", "filesPoolId": "pool-isolated"}
-  ],
-  "pools": [
-    {"id": "pool-isolated", "filesPath": "$isolated_files"}
-  ]
-}
-EOF
-doctor_isolated="$test_dir/doctor-isolated.json"
-dependency_materialization_store_doctor node "$isolated_registry" isolated > "$doctor_isolated"
-assert_json_field \
-  "allow-profile-local-prune" \
-  "$doctor_isolated" \
-  "(value) => value.decision" \
-  "isolated local pool prune is allowed"
+echo "Test 34b: historical shared-files pools stay outside the managed store"
+(
+  storage_root="$test_dir/fresh-storage-root"
+  isolated_home="$test_dir/fresh-storage-home"
+  historical_pool="$isolated_home/.local/share/pnpm/shared-files/v11"
+  mkdir -p "$storage_root" "$historical_pool"
+  printf 'historical\n' > "$historical_pool/sentinel"
+  export HOME="$isolated_home"
+  unset CI PNPM_SHARED_STORE_DIR PNPM_SHARED_FILES_DIR PNPM_STORE_DIR PNPM_CONFIG_STORE_DIR npm_config_store_dir
+  configure_pnpm_storage node "$storage_root" "$test_dir/job-store" true
+  assert_eq "$isolated_home/.local/share/pnpm/store-shared-v1" "$npm_config_store_dir" "default local store uses its fresh namespace"
+  test -d "$npm_config_store_dir/v11/files"
+  test ! -L "$npm_config_store_dir/v11/files"
+  test -f "$historical_pool/sentinel"
+)
 
-echo "Test 39: repair plan targets every root sharing a files pool"
-repair_plan="$test_dir/repair-plan.json"
-dependency_materialization_repair_plan node "$doctor_registry" pool-shared > "$repair_plan"
-assert_json_field \
-  "repair-all-roots" \
-  "$repair_plan" \
-  "(value) => value.decision" \
-  "shared pool repair plans coordinated rebuild"
-assert_json_field \
-  "profile-a,profile-b" \
-  "$repair_plan" \
-  "(value) => value.roots.map((root) => root.profile).join(',')" \
-  "shared pool repair plan lists all roots"
+echo "Test 34c: a preexisting external files bridge fails closed"
+(
+  storage_root="$test_dir/bridged-storage-root"
+  isolated_home="$test_dir/bridged-storage-home"
+  shared_store="$isolated_home/.local/share/pnpm/store-shared-v1"
+  historical_pool="$isolated_home/.local/share/pnpm/shared-files/v11"
+  mkdir -p "$storage_root" "$shared_store/v11" "$historical_pool"
+  ln -s "$historical_pool" "$shared_store/v11/files"
+  export HOME="$isolated_home"
+  unset CI PNPM_SHARED_STORE_DIR PNPM_SHARED_FILES_DIR PNPM_STORE_DIR PNPM_CONFIG_STORE_DIR npm_config_store_dir
+  set +e
+  output="$(set -e; configure_pnpm_storage node "$storage_root" "$test_dir/job-store" true 2>&1)"
+  exit_code=$?
+  set -e
+  assert_exit_code 1 "$exit_code" "preexisting external Store Cache bridge should fail before pnpm runs"
+  grep -qF "Refusing external pnpm Store Cache bridge" <<< "$output"
+  test -L "$shared_store/v11/files"
+)
+
+echo "Test 34d: a preexisting external store-version bridge fails before mutation"
+(
+  storage_root="$test_dir/version-bridged-storage-root"
+  isolated_home="$test_dir/version-bridged-storage-home"
+  shared_store="$isolated_home/.local/share/pnpm/store-shared-v1"
+  external_version="$test_dir/external-store-version"
+  mkdir -p "$storage_root" "$shared_store" "$external_version"
+  ln -s "$external_version" "$shared_store/v11"
+  export HOME="$isolated_home"
+  unset CI PNPM_SHARED_STORE_DIR PNPM_SHARED_FILES_DIR PNPM_STORE_DIR PNPM_CONFIG_STORE_DIR npm_config_store_dir
+  set +e
+  output="$(set -e; configure_pnpm_storage node "$storage_root" "$test_dir/job-store" true 2>&1)"
+  exit_code=$?
+  set -e
+  assert_exit_code 1 "$exit_code" "external Store Cache version bridge should fail before creating files"
+  grep -qF "Refusing external pnpm Store Cache version bridge" <<< "$output"
+  test ! -e "$external_version/files"
+)
+
+echo "Test 34e: recognized legacy files bridge migrates in place under the stable store root"
+(
+  isolated_home="$test_dir/migration-home"
+  shared_store="$isolated_home/.local/share/pnpm/store-shared-v1"
+  historical_pool="$isolated_home/.local/share/pnpm/shared-files/v11"
+  mkdir -p "$shared_store/v11/projects" "$historical_pool"
+  printf 'historical\n' > "$historical_pool/sentinel"
+  printf 'stale\n' > "$shared_store/v11/index.db"
+  ln -s "$historical_pool" "$shared_store/v11/files"
+  acquire_pnpm_store_cache_lease flock exclusive "$shared_store" 10
+  lock_inode_before="$(stat -c %i "$shared_store/.effect-utils-pnpm-store-cache-maintenance.lock")"
+  migrate_legacy_pnpm_store_cache "$shared_store" "$historical_pool"
+  lock_inode_after="$(stat -c %i "$shared_store/.effect-utils-pnpm-store-cache-maintenance.lock")"
+  assert_eq "$lock_inode_before" "$lock_inode_after" "migration preserves the maintenance-lock inode"
+  test -d "$shared_store/v11/files"
+  test ! -L "$shared_store/v11/files"
+  test ! -e "$shared_store/v11/index.db"
+  test ! -e "$shared_store/v11/projects"
+  test -f "$historical_pool/sentinel"
+  migrate_legacy_pnpm_store_cache "$shared_store" "$historical_pool"
+)
+
+echo "Test 34f: unknown legacy files bridge remains untouched"
+(
+  shared_store="$test_dir/unknown-migration-store"
+  expected_pool="$test_dir/expected-migration-pool"
+  unknown_pool="$test_dir/unknown-migration-pool"
+  mkdir -p "$shared_store/v11" "$expected_pool" "$unknown_pool"
+  ln -s "$unknown_pool" "$shared_store/v11/files"
+  set +e
+  output="$(migrate_legacy_pnpm_store_cache "$shared_store" "$expected_pool" 2>&1)"
+  exit_code=$?
+  set -e
+  assert_exit_code 1 "$exit_code" "unknown legacy bridge must fail closed"
+  grep -qF "Refusing unknown legacy Store Cache bridge" <<< "$output"
+  test -L "$shared_store/v11/files"
+)
+
+echo "Test 35: Linux zero-copy storage fails closed across filesystems"
+if [ -d /dev/shm ] && [ "$(stat -c '%d' /dev/shm)" != "$(stat -c '%d' "$test_dir")" ]; then
+  cross_device_store="$(mktemp -d /dev/shm/effect-utils-pnpm-store.XXXXXX)"
+  trap 'rm -rf "$test_dir" "$cross_device_store"' EXIT
+  (
+    storage_root="$test_dir/cross-device-root"
+    mkdir -p "$storage_root"
+    unset CI PNPM_STORE_DIR PNPM_CONFIG_STORE_DIR npm_config_store_dir
+    export PNPM_SHARED_STORE_DIR="$cross_device_store"
+    export PNPM_MIN_FREE_KIB=0
+    set +e
+    output="$(set -e; configure_pnpm_storage node "$storage_root" "$test_dir/job-store" true 2>&1)"
+    exit_code=$?
+    set -e
+    assert_exit_code 1 "$exit_code" "cross-device zero-copy storage should fail before pnpm runs"
+    grep -qF "Zero-copy pnpm storage requires one filesystem" <<< "$output"
+    test ! -e "$cross_device_store/v11/index.db"
+  )
+  rm -rf "$cross_device_store"
+else
+  echo "SKIP: no writable second filesystem is available"
+fi
+
+echo "Test 35b: CI forces its declared job-local store"
+(
+  storage_root="$test_dir/ci-storage-root"
+  job_store="$test_dir/ci-job-store"
+  mkdir -p "$storage_root"
+  export CI=1
+  export PNPM_STORE_DIR="$test_dir/runner-shared-store"
+  export PNPM_CONFIG_STORE_DIR="$test_dir/runner-shared-store"
+  export npm_config_store_dir="$test_dir/runner-shared-store"
+  configure_pnpm_storage node "$storage_root" "$job_store" true
+  assert_eq "$job_store" "$npm_config_store_dir" "CI store authority remains job-local"
+  assert_eq "auto" "$PNPM_PACKAGE_IMPORT_METHOD" "CI uses the same native import policy"
+)
+
+echo "Test 35c: capacity checks each distinct writable device exactly once"
+(
+  unset CI
+  export PNPM_MIN_FREE_KIB=0
+  capacity_log="$test_dir/capacity-df.log"
+  store_dir="$test_dir/capacity-store"
+  root_dir="$test_dir/capacity-root"
+  mkdir -p "$store_dir" "$root_dir"
+  df() {
+    printf '%s\n' "$*" >> "$capacity_log"
+    command df "$@"
+  }
+  assert_pnpm_storage_capacity node "$store_dir" "$root_dir"
+  assert_eq "1" "$(wc -l < "$capacity_log" | tr -d ' ')" "same-device boundaries are checked once"
+
+  if [ -d /dev/shm ] && [ "$(stat -c '%d' /dev/shm)" != "$(stat -c '%d' "$test_dir")" ]; then
+    second_device_root="$(mktemp -d /dev/shm/effect-utils-capacity-root.XXXXXX)"
+    : > "$capacity_log"
+    assert_pnpm_storage_capacity node "$store_dir" "$second_device_root"
+    assert_eq "2" "$(wc -l < "$capacity_log" | tr -d ' ')" "distinct devices are both checked"
+    rm -rf "$second_device_root"
+  fi
+)
 
 echo ""
 echo "All pnpm task helper tests passed"

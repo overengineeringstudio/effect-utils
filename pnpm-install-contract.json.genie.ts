@@ -1,4 +1,7 @@
-import { projectionArtifact } from './genie/external.ts'
+import {
+  pnpmInstallStorageContractV2 as storage,
+  projectionArtifact,
+} from './genie/external.ts'
 import rootPackageJson from './package.json.genie.ts'
 import rootPnpmWorkspaceYaml from './pnpm-workspace.yaml.genie.ts'
 
@@ -7,28 +10,16 @@ const pnpmVersion = packageManager.startsWith('pnpm@')
   ? packageManager.slice('pnpm@'.length)
   : packageManager
 const workspaceData = rootPnpmWorkspaceYaml.data
-
 export default projectionArtifact.json({
-  schemaVersion: 1,
+  schemaVersion: 2,
   data: {
     contract: 'effect-utils/pnpm-install-contract',
     packageManager: {
       name: 'pnpm',
       version: pnpmVersion,
     },
-    storeContract: {
-      owner: 'pnpm',
-      layoutVersion: 'v11',
-      storeDir: workspaceData.storeDir,
-      sharedFilesStore: {
-        enabledForLocalDev: true,
-        disabledInCi: true,
-      },
-      globalVirtualStore: {
-        enabled: workspaceData.enableGlobalVirtualStore,
-      },
-    },
-    gvsLinkContract: {
+    storeContract: storage.storeContract,
+    dependencyGraphContract: {
       packageManager: {
         name: 'pnpm',
         version: pnpmVersion,
@@ -41,7 +32,7 @@ export default projectionArtifact.json({
       ignoreScripts: workspaceData.ignoreScripts,
       minimumReleaseAgeExclude: workspaceData.minimumReleaseAgeExclude,
       optimisticRepeatInstall: workspaceData.optimisticRepeatInstall,
-      packageImportMethod: workspaceData.packageImportMethod,
+      packageImportMethod: storage.packageImportMethod,
       peerDependencyRules: workspaceData.peerDependencyRules,
       pmOnFail: workspaceData.pmOnFail,
       sideEffectsCache: workspaceData.sideEffectsCache,
@@ -59,58 +50,17 @@ export default projectionArtifact.json({
     },
     metadata: {
       pnpmStoreOwnership: {
-        filesLifecycle: 'pnpm-owned content-addressed files store',
-        linksLifecycle: 'pnpm-owned rebuildable dependency-graph projection',
-        projectsLifecycle: 'pnpm-owned store prune reachability registry',
+        cacheLifecycle: 'pnpm-owned disposable Store Cache',
+        derivedIndexLifecycle: 'shared only inside one same-user trust boundary',
+        virtualStoreLifecycle: 'Materialization-Root-owned rebuildable dependency graph',
       },
       nixIntegration: {
-        liveInstallUsesGlobalVirtualStore: true,
-        fixedOutputDependencyPrepUsesLiveGlobalVirtualStore: false,
+        liveVirtualStoreScope: 'materialization-root',
+        fixedOutputDependencyPrepUsesSameVirtualStoreScope: true,
       },
       buck2Integration: {
         consumeContractArtifact: true,
         avoidNodeModulesLayoutAsApi: true,
-      },
-    },
-    dependencyMaterializationProfile: {
-      schema: 'dependency-materialization-profile/v0',
-      identityInputs: [
-        'packageManager',
-        'gvsLinkContract',
-        'installPolicy',
-        'storeContract',
-        'workspaceManifestContract',
-      ],
-      supportedTraits: {
-        ciJobLocal: {
-          mutableState: 'job-local',
-          gcAuthority: 'profile-local',
-          repairAuthority: 'ci-job',
-        },
-        darwinSplitCas: {
-          mutableState: 'profile-local',
-          sharedContent: 'store/v11/files',
-          gcAuthority: 'shared-pool-coordinator',
-          repairAuthority: 'devenv',
-        },
-        isolated: {
-          mutableState: 'profile-local',
-          gcAuthority: 'profile-local',
-          repairAuthority: 'devenv',
-        },
-        nixPreparedDeps: {
-          mutableState: 'none',
-          gcAuthority: 'nix-store',
-          repairAuthority: 'evergreen-fod',
-        },
-      },
-      nativeBuildPolicyInputs: {
-        allowBuilds: 'gvsLinkContract.allowBuilds',
-        compilerEnv: ['CC', 'CXX'],
-      },
-      buck2Boundary: {
-        consumesEvidence: true,
-        ownsLiveMaterialization: false,
       },
     },
   },

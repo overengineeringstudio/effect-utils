@@ -23,8 +23,9 @@ Result summary:
 - shared-pool GC must mark from every active root or refuse to sweep;
 - isolated stores are simpler but lose a large host-wide byte and file-count
   win;
-- Darwin pnpm can exit 134/137 after materialization, so wrappers classify
-  those exits only after projection health checks.
+- Historical Darwin runs produced exits 134/137 after apparent materialization.
+  The complete shared-store policy normalizes only the recovered exit-134 path;
+  SIGKILL 137 remains failure until exact shared-index recovery is proven.
 
 Conclusion:
 

@@ -426,9 +426,10 @@ in
         workspaceFilter = true;
       }) packagesWithNetlifyPreview;
     })
-    (taskModules.workflow-report {
-      ciToolsBin = "${ciToolsSourceCli}/bin/ci-tools";
-    })
+    # Workflow reports run as standalone CI control-plane steps, including when
+    # a deploy is skipped. Use the hermetic package instead of relying on an
+    # ambient source-workspace node_modules projection.
+    (taskModules.workflow-report { })
     (taskModules.lint-oxc {
       oxlintPkg = oxlintWithPlugins;
       lintPaths = [
@@ -588,16 +589,10 @@ in
         local package_name="$1"
         local package_path="$2"
         local rel_path="$package_name"
-        local gvs_links_dir
         local search_roots=(node_modules)
 
         if [[ "$package_name" == @*/* ]]; then
           rel_path="$(dirname "$package_name")/$(basename "$package_name")"
-        fi
-
-        gvs_links_dir="$(resolve_gvs_links_dir)"
-        if [[ -n "$gvs_links_dir" && -d "$gvs_links_dir" ]]; then
-          search_roots+=("$gvs_links_dir")
         fi
 
         find "''${search_roots[@]}" \
@@ -715,7 +710,18 @@ in
     '';
   };
 
-  tasks."check:all".after = [ "cargo:check" ];
+  tasks."dependency-materialization:evidence:check" = {
+    description = "Validate committed dependency-materialization benchmark and host-capability evidence";
+    exec = trace.exec "dependency-materialization:evidence:check" ''
+      ${pkgs.nodejs}/bin/node \
+        context/dependency-materialization/07-verification/evidence/validate-storage-sharing-default.mjs
+    '';
+  };
+
+  tasks."check:all".after = [
+    "cargo:check"
+    "dependency-materialization:evidence:check"
+  ];
 
   # Keep git-hook installation out of the shell-entry path.
   # If needed, install with `devenv tasks run devenv:git-hooks:install`.

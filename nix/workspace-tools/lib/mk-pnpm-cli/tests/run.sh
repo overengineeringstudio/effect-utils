@@ -285,6 +285,11 @@ run_downstream_pure_eval_regression() {
     exit 1
   fi
 
+  echo "Check: prepared workspace relinks injected packages by pnpm locator identity"
+  nix build --no-link --no-write-lock-file \
+    --override-input effect-utils "path:$WORKSPACE_REAL/repos/effect-utils" \
+    "path:$DOWNSTREAM_DIR#checks.$SYSTEM.prepared-workspace-injected-locator-identity"
+
   echo "Check: downstream staged pnpm-workspace.yaml strips live-worktree pnpm settings"
   local deps_src
   deps_src="$(nix build --no-link --no-write-lock-file --print-out-paths \

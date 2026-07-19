@@ -12,6 +12,182 @@ ensure_local_pnpm_home_default() {
   fi
 }
 
+configure_pnpm_storage() {
+  local node_bin="$1"
+  local materialization_root="$2"
+  local job_local_store="$3"
+  local host_is_linux="$4"
+  local store_dir
+  local package_import_method="auto"
+
+  if [ -n "${CI:-}" ]; then
+    store_dir="$job_local_store"
+  else
+    if [ -n "${PNPM_SHARED_STORE_DIR:-}" ]; then
+      store_dir="$PNPM_SHARED_STORE_DIR"
+    else
+      store_dir="$HOME/.local/share/pnpm/store-shared-v1"
+    fi
+
+    local store_version_dir="$store_dir/v11"
+    local files_path="$store_version_dir/files"
+
+    if [ -L "$store_version_dir" ]; then
+      echo "[pnpm] Refusing external pnpm Store Cache version bridge at $store_version_dir; discard and recreate the disposable $store_dir cache" >&2
+      return 1
+    fi
+
+    if [ -L "$files_path" ]; then
+      echo "[pnpm] Refusing external pnpm Store Cache bridge at $files_path; discard and recreate the disposable $store_dir cache" >&2
+      return 1
+    fi
+
+    mkdir -p "$files_path"
+
+    if ! "$node_bin" - "$store_dir" "$files_path" <<'EOF'
+const fs = require('node:fs')
+const path = require('node:path')
+
+const [storeDir, filesPath] = process.argv.slice(2)
+const realStoreDir = fs.realpathSync(storeDir)
+const realFilesPath = fs.realpathSync(filesPath)
+const relative = path.relative(realStoreDir, realFilesPath)
+
+if (relative.startsWith('..' + path.sep) || path.isAbsolute(relative)) {
+  console.error(
+    `[pnpm] Refusing pnpm Store Cache files outside selected store: store=${realStoreDir} files=${realFilesPath}`,
+  )
+  process.exit(1)
+}
+EOF
+    then
+      return 1
+    fi
+
+    if [ "$host_is_linux" = true ]; then
+      "$node_bin" - "$materialization_root" "$files_path" <<'EOF'
+const fs = require('node:fs')
+
+const [materializationRoot, filesPath] = process.argv.slice(2)
+const rootDevice = fs.statSync(materializationRoot).dev
+const filesDevice = fs.statSync(filesPath).dev
+
+if (rootDevice !== filesDevice) {
+  console.error(
+    `[pnpm] Zero-copy pnpm storage requires one filesystem: root=${materializationRoot} store-files=${filesPath}`,
+  )
+  process.exit(1)
+}
+EOF
+    fi
+
+  fi
+
+  export PNPM_STORE_DIR="$store_dir"
+  export PNPM_CONFIG_STORE_DIR="$store_dir"
+  export npm_config_store_dir="$store_dir"
+  export PNPM_PACKAGE_IMPORT_METHOD="$package_import_method"
+}
+
+acquire_pnpm_store_cache_lease() {
+  local flock_bin="$1"
+  local mode="$2"
+  local store_dir="$3"
+  local timeout_seconds="${4:-600}"
+  local lockfile="$store_dir/.effect-utils-pnpm-store-cache-maintenance.lock"
+  local flock_mode
+
+  case "$mode" in
+    shared) flock_mode="--shared" ;;
+    exclusive) flock_mode="--exclusive" ;;
+    *)
+      echo "[pnpm] Invalid Store Cache lease mode: $mode" >&2
+      return 2
+      ;;
+  esac
+
+  mkdir -p "$store_dir"
+  exec 202>"$lockfile"
+  if ! "$flock_bin" "$flock_mode" -w "$timeout_seconds" 202; then
+    echo "[pnpm] Store Cache $mode lease timeout after ${timeout_seconds}s: $lockfile" >&2
+    return 1
+  fi
+}
+
+migrate_legacy_pnpm_store_cache() {
+  local store_dir="$1"
+  local expected_legacy_files="$2"
+  local store_version_dir="$store_dir/v11"
+  local files_path="$store_version_dir/files"
+
+  if [ -L "$store_version_dir" ]; then
+    echo "[pnpm] Refusing to migrate a linked Store Cache version directory: $store_version_dir" >&2
+    return 1
+  fi
+  if [ ! -L "$files_path" ]; then
+    if [ -d "$files_path" ]; then
+      echo "[pnpm] Store Cache is already self-contained: $store_dir"
+      return 0
+    fi
+    echo "[pnpm] No recognized legacy Store Cache bridge exists at $files_path" >&2
+    return 1
+  fi
+
+  local actual_legacy_files
+  local expected_legacy_real
+  actual_legacy_files="$(readlink -f "$files_path")"
+  expected_legacy_real="$(readlink -f "$expected_legacy_files")"
+  if [ "$actual_legacy_files" != "$expected_legacy_real" ]; then
+    echo "[pnpm] Refusing unknown legacy Store Cache bridge: expected=$expected_legacy_real actual=$actual_legacy_files" >&2
+    return 1
+  fi
+
+  # The caller holds the exclusive Store Cache lease. Reset only pnpm's
+  # disposable versioned metadata in place: the store root and maintenance-lock
+  # inode stay stable, and the historical external content pool is untouched.
+  find "$store_version_dir" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+  mkdir -p "$files_path"
+  echo "[pnpm] Migrated legacy Store Cache bridge to a self-contained cache: $store_dir"
+}
+
+assert_pnpm_storage_capacity() {
+  local node_bin="$1"
+  local store_dir="$2"
+  local materialization_root="$3"
+
+  if [ -n "${CI:-}" ]; then
+    return 0
+  fi
+
+  local min_free_kib="${PNPM_MIN_FREE_KIB:-2097152}"
+  local boundary
+  local available_kib
+
+  # pnpm `auto` may place cache files and a Materialization Root on distinct
+  # devices (notably Darwin clone/copy fallbacks). Check both physical write
+  # boundaries, but check a shared device only once.
+  while IFS= read -r boundary; do
+    available_kib="$(df -Pk "$boundary" | awk 'NR == 2 { print $4 }')"
+    if [ -z "$available_kib" ] || [ "$available_kib" -lt "$min_free_kib" ]; then
+      echo "[pnpm] Refusing materialization at $boundary with ${available_kib:-unknown} KiB free; require at least $min_free_kib KiB" >&2
+      return 1
+    fi
+  done < <("$node_bin" - "$store_dir" "$materialization_root" <<'EOF'
+const fs = require('node:fs')
+
+const paths = process.argv.slice(2)
+const seenDevices = new Set()
+for (const path of paths) {
+  const device = fs.statSync(path).dev.toString()
+  if (!seenDevices.has(device)) {
+    seenDevices.add(device)
+    process.stdout.write(`${path}\n`)
+  }
+}
+EOF
+  )
+}
+
 emit_dir_state() {
   local dir="$1"
 
@@ -36,52 +212,6 @@ emit_dir_state() {
       printf '%s ' "${file#"$dir"/}"
       sha256sum "$file" | awk '{print $1}'
     done
-}
-
-resolve_gvs_links_dir() {
-  # pnpm 11 stores the GVS links under the effective store-dir. Prefer the
-  # explicit store setting when tasks share storage across isolated PNPM_HOME
-  # directories.
-  if [ -n "${npm_config_store_dir:-}" ]; then
-    printf '%s\n' "${npm_config_store_dir}/v11/links"
-  elif [ -n "${PNPM_STORE_DIR:-}" ]; then
-    printf '%s\n' "${PNPM_STORE_DIR}/v11/links"
-  elif [ -n "${PNPM_HOME:-}" ]; then
-    printf '%s\n' "${PNPM_HOME}/store/v11/links"
-  elif [ -n "${XDG_DATA_HOME:-}" ] && [ -d "${XDG_DATA_HOME}/pnpm/store/v11" ]; then
-    printf '%s\n' "${XDG_DATA_HOME}/pnpm/store/v11/links"
-  elif [ -d "$HOME/.local/share/pnpm/store/v11" ]; then
-    printf '%s\n' "$HOME/.local/share/pnpm/store/v11/links"
-  elif [ -d "$HOME/Library/pnpm/store/v11" ]; then
-    printf '%s\n' "$HOME/Library/pnpm/store/v11/links"
-  fi
-}
-
-cache_fingerprint() {
-  local workspace_state_hash="$1"
-  local gvs_links_dir="$2"
-
-  # pnpm 11 bakes absolute paths into the live GVS projection, so two installs
-  # with identical manifests but different projection roots are not equivalent.
-  {
-    printf '%s\n' "$workspace_state_hash"
-    printf '%s\n' "$gvs_links_dir"
-  } | compute_hash
-}
-
-resolve_pnpm_install_contract_file() {
-  local dir="${1:-$PWD}"
-
-  while [ "$dir" != "/" ]; do
-    if [ -f "$dir/pnpm-install-contract.json" ]; then
-      printf '%s\n' "$dir/pnpm-install-contract.json"
-      return 0
-    fi
-
-    dir="$(dirname "$dir")"
-  done
-
-  return 1
 }
 
 pnpm_contract_section_json() {
@@ -128,424 +258,6 @@ compute_pnpm_contract_section_hash() {
   pnpm_contract_section_json "$node_bin" "$contract_file" "$section" | compute_hash
 }
 
-pnpm_contract_supports_dependency_materialization_profile() {
-  local node_bin="$1"
-  local contract_file="$2"
-
-  "$node_bin" - "$contract_file" <<'EOF'
-const fs = require('node:fs')
-
-const [contractFile] = process.argv.slice(2)
-const contract = JSON.parse(fs.readFileSync(contractFile, 'utf8'))
-
-process.exit(
-  contract.dependencyMaterializationProfile?.schema === 'dependency-materialization-profile/v0'
-    ? 0
-    : 1,
-)
-EOF
-}
-
-emit_dependency_materialization_profile() {
-  local node_bin="$1"
-  local contract_file="$2"
-  local store_trait="$3"
-  local output_file="${4:-}"
-
-  "$node_bin" - "$contract_file" "$store_trait" "$output_file" <<'EOF'
-const crypto = require('node:crypto')
-const fs = require('node:fs')
-const path = require('node:path')
-
-const [contractFile, storeTrait, outputFile] = process.argv.slice(2)
-const contract = JSON.parse(fs.readFileSync(contractFile, 'utf8'))
-const evidenceContractPath = path.isAbsolute(contractFile)
-  ? path.relative(fs.realpathSync(process.cwd()), fs.realpathSync(contractFile))
-  : contractFile
-
-const stableJson = (value) => {
-  if (Array.isArray(value)) {
-    return value.map(stableJson)
-  }
-
-  if (value === null || typeof value !== 'object') {
-    return value
-  }
-
-  return Object.fromEntries(
-    Object.entries(value)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, nested]) => [key, stableJson(nested)]),
-  )
-}
-
-const digest = (value) =>
-  crypto
-    .createHash('sha256')
-    .update(`${JSON.stringify(stableJson(value))}\n`)
-    .digest('hex')
-
-const profileContract = contract.dependencyMaterializationProfile
-if (profileContract?.schema !== 'dependency-materialization-profile/v0') {
-  console.error(`[pnpm] ${contractFile} has no dependencyMaterializationProfile schema`)
-  process.exit(1)
-}
-
-const trait = profileContract.supportedTraits?.[storeTrait]
-if (trait === undefined) {
-  console.error(`[pnpm] unsupported dependency materialization store trait '${storeTrait}'`)
-  process.exit(1)
-}
-
-const inputSections = Object.fromEntries(
-  profileContract.identityInputs.map((section) => {
-    if (!Object.prototype.hasOwnProperty.call(contract, section)) {
-      console.error(`[pnpm] ${contractFile} has no identity section '${section}'`)
-      process.exit(1)
-    }
-    return [section, contract[section]]
-  }),
-)
-
-const sectionDigests = Object.fromEntries(
-  Object.entries(inputSections).map(([section, value]) => [section, digest(value)]),
-)
-const topologyDigest = digest({
-  packageManager: inputSections.packageManager,
-  workspaceManifestContract: inputSections.workspaceManifestContract,
-})
-const policyDigest = digest({
-  gvsLinkContract: inputSections.gvsLinkContract,
-  installPolicy: inputSections.installPolicy,
-})
-const storeDigest = digest({
-  storeContract: inputSections.storeContract,
-  storeTrait,
-  trait,
-})
-
-const profile = {
-  schema: 'dependency-materialization-profile/v0',
-  profileId: `pnpm:${topologyDigest}:${policyDigest}:${storeDigest}:${storeTrait}`,
-  store: {
-    trait: storeTrait,
-    contract: inputSections.storeContract,
-  },
-  authorities: {
-    gc: trait.gcAuthority,
-    repair: trait.repairAuthority,
-  },
-  topology: {
-    digest: topologyDigest,
-    workspaceManifestContractDigest: sectionDigests.workspaceManifestContract,
-  },
-  policy: {
-    digest: policyDigest,
-    gvsLinkContractDigest: sectionDigests.gvsLinkContract,
-    installPolicyDigest: sectionDigests.installPolicy,
-    nativeBuildPolicyInputs: profileContract.nativeBuildPolicyInputs,
-  },
-  evidence: {
-    contractPath: evidenceContractPath,
-    sectionDigests,
-  },
-}
-
-const rendered = `${JSON.stringify(profile, null, 2)}\n`
-if (outputFile) {
-  fs.writeFileSync(outputFile, rendered)
-} else {
-  process.stdout.write(rendered)
-}
-EOF
-}
-
-write_dependency_materialization_registry() {
-  local node_bin="$1"
-  local profile_file="$2"
-  local project_dir="$3"
-  local store_dir="$4"
-  local output_file="$5"
-  local shared_registry_file="${6:-}"
-
-  "$node_bin" - "$profile_file" "$project_dir" "$store_dir" "$output_file" "$shared_registry_file" <<'EOF'
-const crypto = require('node:crypto')
-const fs = require('node:fs')
-const path = require('node:path')
-
-const [profileFile, projectDir, storeDir, outputFile, sharedRegistryFile] = process.argv.slice(2)
-const profile = JSON.parse(fs.readFileSync(profileFile, 'utf8'))
-const storeLayoutVersion = 'v11'
-const filesPath = path.join(storeDir, storeLayoutVersion, 'files')
-
-const realFilesPath = (() => {
-  try {
-    return fs.realpathSync(filesPath)
-  } catch {
-    return filesPath
-  }
-})()
-
-const poolId = crypto
-  .createHash('sha256')
-  .update(`${realFilesPath}\n`)
-  .digest('hex')
-const rootId = crypto
-  .createHash('sha256')
-  .update(`${profile.profileId}\n${projectDir}\n${storeDir}\n`)
-  .digest('hex')
-
-const singletonRegistry = {
-  schema: 'dependency-materialization-registry/v0',
-  profiles: [
-    {
-      id: rootId,
-      profileId: profile.profileId,
-      project: projectDir,
-      store: storeDir,
-      filesPoolId: poolId,
-    },
-  ],
-  pools: [
-    {
-      id: poolId,
-      filesPath,
-    },
-  ],
-}
-
-const readRegistry = (file) => {
-  if (!file || !fs.existsSync(file)) {
-    return { schema: 'dependency-materialization-registry/v0', profiles: [], pools: [] }
-  }
-
-  const registry = JSON.parse(fs.readFileSync(file, 'utf8'))
-  return {
-    schema: 'dependency-materialization-registry/v0',
-    profiles: Array.isArray(registry.profiles) ? registry.profiles : [],
-    pools: Array.isArray(registry.pools) ? registry.pools : [],
-  }
-}
-
-const upsertBy = (rows, row, key) => [
-  ...rows.filter((candidate) => candidate[key] !== row[key]),
-  row,
-].sort((left, right) => left[key].localeCompare(right[key]))
-
-const merged = readRegistry(sharedRegistryFile)
-const nextProfile = singletonRegistry.profiles[0]
-const withoutSameRoot = merged.profiles.filter(
-  (candidate) => candidate.project !== nextProfile.project || candidate.store !== nextProfile.store,
-)
-merged.profiles = upsertBy(withoutSameRoot, nextProfile, 'id')
-merged.pools = upsertBy(merged.pools, singletonRegistry.pools[0], 'id')
-
-const rendered = `${JSON.stringify(merged, null, 2)}\n`
-if (sharedRegistryFile) {
-  fs.mkdirSync(path.dirname(sharedRegistryFile), { recursive: true })
-  const tmpFile = `${sharedRegistryFile}.${process.pid}.tmp`
-  fs.writeFileSync(tmpFile, rendered)
-  fs.renameSync(tmpFile, sharedRegistryFile)
-}
-fs.writeFileSync(outputFile, rendered)
-EOF
-}
-
-dependency_materialization_shared_registry_file() {
-  local node_bin="$1"
-  local store_dir="$2"
-
-  "$node_bin" - "$store_dir" <<'EOF'
-const fs = require('node:fs')
-const path = require('node:path')
-
-const [storeDir] = process.argv.slice(2)
-const storeLayoutVersion = 'v11'
-const filesPath = path.join(storeDir, storeLayoutVersion, 'files')
-const realFilesPath = (() => {
-  try {
-    return fs.realpathSync(filesPath)
-  } catch {
-    return filesPath
-  }
-})()
-
-process.stdout.write(path.join(
-  path.dirname(realFilesPath),
-  `.effect-utils-dependency-materialization-registry-${storeLayoutVersion}.json`,
-))
-EOF
-}
-
-dependency_materialization_profile_id() {
-  local node_bin="$1"
-  local profile_file="$2"
-
-  "$node_bin" - "$profile_file" <<'EOF'
-const fs = require('node:fs')
-
-const [profileFile] = process.argv.slice(2)
-const profile = JSON.parse(fs.readFileSync(profileFile, 'utf8'))
-process.stdout.write(profile.profileId)
-EOF
-}
-
-dependency_materialization_profile_files_pool_id() {
-  local node_bin="$1"
-  local registry_file="$2"
-  local profile_id="$3"
-
-  "$node_bin" - "$registry_file" "$profile_id" <<'EOF'
-const fs = require('node:fs')
-
-const [registryFile, profileId] = process.argv.slice(2)
-const registry = JSON.parse(fs.readFileSync(registryFile, 'utf8'))
-const profiles = Array.isArray(registry.profiles) ? registry.profiles : []
-const profile = profiles.find((row) => row.id === profileId || row.profileId === profileId)
-
-if (profile === undefined || typeof profile.filesPoolId !== 'string') {
-  process.exit(1)
-}
-
-process.stdout.write(profile.filesPoolId)
-EOF
-}
-
-dependency_materialization_profile_store_dir() {
-  local node_bin="$1"
-  local registry_file="$2"
-  local profile_id="$3"
-
-  "$node_bin" - "$registry_file" "$profile_id" <<'EOF'
-const fs = require('node:fs')
-
-const [registryFile, profileId] = process.argv.slice(2)
-const registry = JSON.parse(fs.readFileSync(registryFile, 'utf8'))
-const profiles = Array.isArray(registry.profiles) ? registry.profiles : []
-const profile = profiles.find((row) => row.id === profileId || row.profileId === profileId)
-
-if (profile === undefined || typeof profile.store !== 'string') {
-  process.exit(1)
-}
-
-process.stdout.write(profile.store)
-EOF
-}
-
-dependency_materialization_repair_roots() {
-  local node_bin="$1"
-  local registry_file="$2"
-  local files_pool_id="$3"
-
-  "$node_bin" - "$registry_file" "$files_pool_id" <<'EOF'
-const fs = require('node:fs')
-
-const [registryFile, filesPoolId] = process.argv.slice(2)
-const registry = JSON.parse(fs.readFileSync(registryFile, 'utf8'))
-const profiles = Array.isArray(registry.profiles) ? registry.profiles : []
-
-for (const profile of profiles
-  .filter((row) => row.filesPoolId === filesPoolId)
-  .sort((left, right) => left.id.localeCompare(right.id))) {
-  process.stdout.write(`${profile.project}\t${profile.store}\n`)
-}
-EOF
-}
-
-dependency_materialization_store_doctor() {
-  local node_bin="$1"
-  local registry_file="$2"
-  local profile_id="$3"
-
-  "$node_bin" - "$registry_file" "$profile_id" <<'EOF'
-const fs = require('node:fs')
-const path = require('node:path')
-
-const [registryFile, profileId] = process.argv.slice(2)
-const registry = JSON.parse(fs.readFileSync(registryFile, 'utf8'))
-
-const classifyPool = (pool) => {
-  if (pool.filesKind !== undefined) return pool.filesKind
-  if (typeof pool.filesPath !== 'string') return 'missing'
-
-  try {
-    const stat = fs.lstatSync(pool.filesPath)
-    if (stat.isSymbolicLink()) {
-      const target = fs.realpathSync(pool.filesPath)
-      const localRoot = path.dirname(path.dirname(pool.filesPath))
-      return target.startsWith(`${localRoot}${path.sep}`)
-        ? 'profile-local-symlink'
-        : 'shared-symlink'
-    }
-    if (stat.isDirectory()) return 'directory'
-    return 'invalid'
-  } catch {
-    return 'missing'
-  }
-}
-
-const profiles = Array.isArray(registry.profiles) ? registry.profiles : []
-const pools = Array.isArray(registry.pools) ? registry.pools : []
-const profile = profiles.find((row) => row.id === profileId || row.profileId === profileId)
-
-if (profile === undefined) {
-  console.log(JSON.stringify({ phase: 'doctor', profileId, decision: 'refuse', reason: 'unknown-profile', siblings: [] }))
-  process.exit(0)
-}
-
-const pool = pools.find((row) => row.id === profile.filesPoolId)
-if (pool === undefined) {
-  console.log(JSON.stringify({ phase: 'doctor', profileId, filesPoolId: profile.filesPoolId, decision: 'refuse', reason: 'unknown-files-pool', siblings: [] }))
-  process.exit(0)
-}
-
-const filesKind = classifyPool(pool)
-const siblings = profiles
-  .filter((row) => row.filesPoolId === pool.id)
-  .map((row) => row.id)
-  .sort()
-
-if ((filesKind === 'directory' || filesKind === 'profile-local-symlink') && siblings.length === 1) {
-  console.log(JSON.stringify({ phase: 'doctor', profileId, filesPoolId: pool.id, decision: 'allow-profile-local-prune', reason: 'profile-local-files-pool', siblings, filesKind }))
-  process.exit(0)
-}
-
-console.log(JSON.stringify({
-  phase: 'doctor',
-  profileId,
-  filesPoolId: pool.id,
-  decision: 'refuse-raw-prune',
-  reason: filesKind === 'shared-symlink' ? 'shared-files-pool' : 'invalid-files-pool',
-  siblings,
-  filesKind,
-}))
-EOF
-}
-
-dependency_materialization_repair_plan() {
-  local node_bin="$1"
-  local registry_file="$2"
-  local files_pool_id="$3"
-
-  "$node_bin" - "$registry_file" "$files_pool_id" <<'EOF'
-const fs = require('node:fs')
-
-const [registryFile, filesPoolId] = process.argv.slice(2)
-const registry = JSON.parse(fs.readFileSync(registryFile, 'utf8'))
-const profiles = Array.isArray(registry.profiles) ? registry.profiles : []
-const roots = profiles
-  .filter((profile) => profile.filesPoolId === filesPoolId)
-  .map((profile) => ({ profile: profile.id, project: profile.project, store: profile.store }))
-  .sort((left, right) => left.profile.localeCompare(right.profile))
-
-if (roots.length === 0) {
-  console.log(JSON.stringify({ phase: 'repair-plan', filesPoolId, decision: 'refuse', reason: 'no-registered-roots', roots }))
-} else {
-  console.log(JSON.stringify({ phase: 'repair-plan', filesPoolId, decision: 'repair-all-roots', reason: 'registered-roots', roots }))
-}
-EOF
-}
-
 classify_pnpm_contract_change() {
   local node_bin="$1"
   local previous_contract="$2"
@@ -590,7 +302,7 @@ const currentContract = JSON.parse(fs.readFileSync(currentContractFile, 'utf8'))
 
 for (const [section, reason] of [
   ['packageManager', 'toolchain'],
-  ['gvsLinkContract', 'gvs-link'],
+  ['dependencyGraphContract', 'dependency_graph'],
   ['installPolicy', 'policy'],
   ['storeContract', 'store'],
   ['workspaceManifestContract', 'manifest_config'],

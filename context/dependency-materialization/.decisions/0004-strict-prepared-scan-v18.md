@@ -1,6 +1,6 @@
 # 0004 Strict Prepared Scan Uses One Version Bump
 
-Status: **Accepted**
+Status: accepted
 
 ## Context
 
@@ -9,6 +9,23 @@ Prepared dependency artifacts currently need a stricter data boundary: archived
 outputs, and unclassified platform package directories should fail the prepared
 artifact scan. Removing `.bin` changes recursive output hashes, so the
 transition necessarily creates fixed-output hash churn.
+
+## Evidence and Argument
+
+- Prepared artifacts are dependency data; archived `.bin`, package-manager
+  state, and unclassified native output violate that boundary.
+- Removing `.bin` necessarily changes recursive fixed-output hashes, making the
+  transition versioned regardless of rollout shape.
+- Projection and native output already have separate owners, so a parallel
+  lenient policy would preserve ambiguity rather than compatibility.
+
+## Options
+
+| Option                          | Tradeoffs                                                                   |
+| ------------------------------- | --------------------------------------------------------------------------- |
+| one strict v18 boundary         | Converges immediately with mechanical hash churn.                           |
+| report-only transition          | Reduces initial disruption but permits known-impure artifacts indefinitely. |
+| parallel strict/legacy profiles | Supports gradual adoption but doubles policy and hash authority.            |
 
 ## Decision
 
@@ -25,15 +42,6 @@ The next strict prepared-deps purity transition:
 
 Do not introduce a report-only phase, and do not keep old and new scan policies
 active behind profile gates once `v18` lands.
-
-## Rationale
-
-- Prepared dependency artifacts are data artifacts. Carrying a lenient legacy
-  scan beside the strict scan would keep the most important ambiguity alive.
-- The hash churn is real but mechanical. It is better handled as an explicit
-  versioned boundary than as piecemeal report-only drift.
-- Projection and native output ownership are already modeled separately, so the
-  strict scan is the clearest convergence point for the Nix-prepared realization.
 
 ## Consequences
 
