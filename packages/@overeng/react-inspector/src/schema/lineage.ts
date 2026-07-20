@@ -143,10 +143,7 @@ const annotation = (schema: SchemaView, key: string): unknown => {
   return value
 }
 
-const decode = <A>(
-  decoder: unknown,
-  value: unknown,
-): A | undefined =>
+const decode = <A>(decoder: unknown, value: unknown): A | undefined =>
   Schema.decodeUnknownOption(decoder as Schema.ConstraintDecoder<unknown>)(value).pipe((option) =>
     option._tag === 'Some' ? (option.value as A) : undefined,
   )
