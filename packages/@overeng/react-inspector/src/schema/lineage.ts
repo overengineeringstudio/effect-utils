@@ -68,7 +68,14 @@ const LineageRefSchema = Schema.Union([
 const DerivationKindSchema = Schema.Union([
   Schema.TaggedStruct('Pure', {}),
   Schema.TaggedStruct('Aggregation', {
-    op: Schema.Literals(['sum', 'count', 'min', 'max', 'avg', 'custom']),
+    op: Schema.Union([
+      Schema.Literal('sum'),
+      Schema.Literal('count'),
+      Schema.Literal('min'),
+      Schema.Literal('max'),
+      Schema.Literal('avg'),
+      Schema.Literal('custom'),
+    ]),
   }),
   Schema.TaggedStruct('Reduction', { description: Schema.String }),
   Schema.TaggedStruct('External', { service: Schema.String }),
@@ -111,7 +118,9 @@ const AuthoritySchema = Schema.Struct({
   readers: Schema.optionalKey(Schema.Array(Schema.String)),
 })
 const FreshnessSchema = Schema.Struct({
-  capturedAt: Schema.optionalKey(Schema.Literals(['now', 'event-time', 'snapshot'])),
+  capturedAt: Schema.optionalKey(
+    Schema.Union([Schema.Literal('now'), Schema.Literal('event-time'), Schema.Literal('snapshot')]),
+  ),
   maxAgeMs: Schema.optionalKey(Schema.Finite),
 })
 const ReferenceSchema = Schema.TaggedStruct('ForeignKey', {
