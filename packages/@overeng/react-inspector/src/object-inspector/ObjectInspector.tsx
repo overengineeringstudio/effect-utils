@@ -1,11 +1,17 @@
-import React from 'react'
+import type { Schema } from 'effect'
+import React, { useMemo } from 'react'
 import type { FC } from 'react'
 
+import { ObjectName } from '../object/ObjectName.tsx'
+import { ObjectValue } from '../object/ObjectValue.tsx'
+import { createSchemaAwareNodeRenderer } from '../schema/SchemaAwareNodeRenderer.tsx'
+import { SchemaProvider } from '../schema/SchemaContext.tsx'
 import { themeAcceptor } from '../styles/index.tsx'
 import { TreeView } from '../tree-view/TreeView.tsx'
 import { propertyIsEnumerable } from '../utils/objectPrototype.tsx'
 import { getPropertyValue } from '../utils/propertyUtils.tsx'
 import { ObjectLabel } from './ObjectLabel.tsx'
+import { ObjectPreview } from './ObjectPreview.tsx'
 import { ObjectRootLabel } from './ObjectRootLabel.tsx'
 
 const createIterator = (showNonenumerable: any, sortObjectKeys: any) => {
@@ -96,16 +102,63 @@ const defaultNodeRenderer = ({ depth, name, data, isNonenumerable }: any) =>
 /**
  * Tree-view for objects
  */
-const ObjectInspector: FC<any> = ({
+export interface ObjectInspectorNodeRendererProps {
+  depth: number
+  path: string
+  expanded: boolean
+  name?: string
+  data: unknown
+  isNonenumerable?: boolean
+}
+
+export interface ObjectInspectorProps {
+  name?: string
+  data?: unknown
+  expandLevel?: number
+  expandPaths?: string | ReadonlyArray<string>
+  showNonenumerable?: boolean
+  sortObjectKeys?: boolean | ((left: string, right: string) => number)
+  nodeRenderer?: FC<ObjectInspectorNodeRendererProps>
+  schema?: Schema.Top
+  schemas?: ReadonlyArray<Schema.Top>
+}
+
+const ObjectInspector: FC<ObjectInspectorProps> = ({
   showNonenumerable = false,
   sortObjectKeys,
   nodeRenderer,
+  schema,
+  schemas,
   ...treeViewProps
 }) => {
   const dataIterator = createIterator(showNonenumerable, sortObjectKeys)
-  const renderer = nodeRenderer !== undefined ? nodeRenderer : defaultNodeRenderer
+  const schemaNodeRenderer = useMemo(
+    () =>
+      createSchemaAwareNodeRenderer({
+        ObjectName,
+        ObjectValue,
+        ObjectPreview,
+      }),
+    [],
+  )
+  const hasSchema = schema !== undefined || (schemas?.length ?? 0) > 0
+  const renderer =
+    hasSchema === true
+      ? schemaNodeRenderer
+      : nodeRenderer !== undefined
+        ? nodeRenderer
+        : defaultNodeRenderer
+  const inspector = (
+    <TreeView nodeRenderer={renderer} dataIterator={dataIterator} {...treeViewProps} />
+  )
 
-  return <TreeView nodeRenderer={renderer} dataIterator={dataIterator} {...treeViewProps} />
+  return hasSchema === true ? (
+    <SchemaProvider schema={schema} schemas={schemas} rootData={treeViewProps.data}>
+      {inspector}
+    </SchemaProvider>
+  ) : (
+    inspector
+  )
 }
 
 // ObjectInspector.propTypes = {

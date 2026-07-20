@@ -82,7 +82,7 @@ export interface SchemaProviderProps {
   /** Schema for the data being inspected */
   schema?: SchemaView | undefined
   /** Additional schemas to register for lookup by name */
-  schemas?: SchemaView[] | undefined
+  schemas?: ReadonlyArray<SchemaView> | undefined
   /**
    * Root runtime value being inspected. When provided, path-based context
    * lookups walk the value in lockstep with the schema and narrow any

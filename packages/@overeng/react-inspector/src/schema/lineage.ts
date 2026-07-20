@@ -59,10 +59,10 @@ const annotationKeys = {
   reference: '@overeng/reference',
 } as const
 
-const union = (...members: ReadonlyArray<Schema.Top>): any =>
-  (Schema.Union as (...schemas: ReadonlyArray<Schema.Top>) => unknown)(...members)
+const union = <const Members extends ReadonlyArray<Schema.Top>>(...members: Members) =>
+  Schema.Union(members)
 
-const optional = (schema: Schema.Top): any => Schema.optional(schema)
+const optional = <S extends Schema.Top>(schema: S) => Schema.optional(schema)
 
 const LineageRefSchema = union(
   Schema.TaggedStruct('Field', { path: Schema.String }),

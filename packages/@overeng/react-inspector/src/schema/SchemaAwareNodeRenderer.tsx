@@ -39,10 +39,6 @@ const LineageBadge: FC<{ lineage: LineageBundle | undefined }> = ({ lineage }) =
 }
 
 export interface SchemaAwareNodeRendererProps {
-  /** Original ObjectRootLabel component */
-  ObjectRootLabel: FC<{ name?: string; data: unknown }>
-  /** Original ObjectLabel component */
-  ObjectLabel: FC<{ name: string; data: unknown; isNonenumerable?: boolean }>
   /** Original ObjectName component */
   ObjectName: FC<{ name: string; dimmed?: boolean }>
   /** Original ObjectValue component */

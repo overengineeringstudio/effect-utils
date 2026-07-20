@@ -15,5 +15,8 @@ const lineage: Lineage.Lineage | undefined = Lineage.getLineage(schema)
 const authority: Lineage.Authority | undefined = Lineage.getAuthority(schema)
 const freshness: Lineage.Freshness | undefined = Lineage.getFreshness(schema)
 const reference: Lineage.Reference | undefined = Lineage.getReference(schema)
+const formattedNumber = Schema.Finite.pipe(
+  Schema.overrideToFormatter(() => (value) => value.toFixed(2)),
+)
 
-void [schemaInfo, lineage, authority, freshness, reference]
+void [schemaInfo, lineage, authority, freshness, reference, formattedNumber]

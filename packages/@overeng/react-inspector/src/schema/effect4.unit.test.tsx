@@ -3,29 +3,15 @@ import { Schema } from 'effect'
 import React from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
-import { ObjectInspector } from '../object-inspector/ObjectInspector.tsx'
-import { ObjectLabel } from '../object-inspector/ObjectLabel.tsx'
-import { ObjectPreview } from '../object-inspector/ObjectPreview.tsx'
-import { ObjectRootLabel } from '../object-inspector/ObjectRootLabel.tsx'
-import { ObjectName } from '../object/ObjectName.tsx'
-import { ObjectValue } from '../object/ObjectValue.tsx'
+import { ObjectInspector } from '../index.tsx'
 import { formatWithPretty, getAnnotations, getSchemaInfo } from './effectSchema.tsx'
 import * as Lineage from './lineage.ts'
-import { withSchemaSupport } from './SchemaAwareObjectInspector.tsx'
 import { SchemaProvider, useSchemaContext } from './SchemaContext.tsx'
 
 const ConsumerSchema = Schema.Struct({
   id: Schema.Finite.annotate({ description: 'Consumer-created identifier' }),
   name: Schema.String.annotate({ title: 'Display name' }),
 }).annotate({ identifier: 'Consumer.Record' })
-
-const ConsumerSchemaInspector = withSchemaSupport(ObjectInspector, {
-  ObjectRootLabel,
-  ObjectLabel,
-  ObjectName,
-  ObjectValue,
-  ObjectPreview,
-})
 
 const SchemaProbe = () => {
   const schema = useSchemaContext()
@@ -42,11 +28,7 @@ describe('Effect 4 consumer schema compatibility', () => {
 
     expect(() =>
       render(
-        <ConsumerSchemaInspector
-          data={{ id: 1, name: 'Ada' }}
-          schema={ConsumerSchema}
-          expandLevel={2}
-        />,
+        <ObjectInspector data={{ id: 1, name: 'Ada' }} schema={ConsumerSchema} expandLevel={2} />,
       ),
     ).not.toThrow()
 
@@ -70,7 +52,8 @@ describe('Effect 4 consumer schema compatibility', () => {
     const schema = Schema.Finite.pipe(
       Schema.check(Schema.isInt()),
       Schema.check(Schema.isBetween({ minimum: 0, maximum: 150 })),
-    ).annotate({ pretty: (value) => `${value} years` })
+      Schema.overrideToFormatter(() => (value) => `${value} years`),
+    )
 
     expect(formatWithPretty(42, getAnnotations(schema))).toBe('42 years')
     expect(getSchemaInfo(schema).constraints).toEqual([
