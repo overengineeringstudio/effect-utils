@@ -30,18 +30,18 @@ export type Lineage =
 
 export interface Authority {
   readonly writers: ReadonlyArray<string>
-  readonly readers?: ReadonlyArray<string>
+  readonly readers?: ReadonlyArray<string> | undefined
 }
 
 export interface Freshness {
-  readonly capturedAt?: 'now' | 'event-time' | 'snapshot'
-  readonly maxAgeMs?: number
+  readonly capturedAt?: 'now' | 'event-time' | 'snapshot' | undefined
+  readonly maxAgeMs?: number | undefined
 }
 
 export interface Reference {
   readonly _tag: 'ForeignKey'
   readonly targetSchema: string
-  readonly targetField?: string
+  readonly targetField?: string | undefined
 }
 
 export interface LineageDisplay {
@@ -59,73 +59,78 @@ const annotationKeys = {
   reference: '@overeng/reference',
 } as const
 
-const LineageRefSchema = Schema.Union([
+const union = (...members: ReadonlyArray<Schema.Top>): any =>
+  (Schema.Union as (...schemas: ReadonlyArray<Schema.Top>) => unknown)(...members)
+
+const optional = (schema: Schema.Top): any => Schema.optional(schema)
+
+const LineageRefSchema = union(
   Schema.TaggedStruct('Field', { path: Schema.String }),
   Schema.TaggedStruct('Schema', { identifier: Schema.String }),
   Schema.TaggedStruct('External', { system: Schema.String, ref: Schema.String }),
-])
+)
 
-const DerivationKindSchema = Schema.Union([
+const DerivationKindSchema = union(
   Schema.TaggedStruct('Pure', {}),
   Schema.TaggedStruct('Aggregation', {
-    op: Schema.Union([
+    op: union(
       Schema.Literal('sum'),
       Schema.Literal('count'),
       Schema.Literal('min'),
       Schema.Literal('max'),
       Schema.Literal('avg'),
       Schema.Literal('custom'),
-    ]),
+    ),
   }),
   Schema.TaggedStruct('Reduction', { description: Schema.String }),
   Schema.TaggedStruct('External', { service: Schema.String }),
-])
+)
 
-const LineageSchema = Schema.Union([
+const LineageSchema = union(
   Schema.TaggedStruct('SourceOfTruth', {
-    owner: Schema.optionalKey(Schema.String),
-    system: Schema.optionalKey(Schema.String),
+    owner: optional(Schema.String),
+    system: optional(Schema.String),
   }),
   Schema.TaggedStruct('Derived', {
     from: Schema.Array(LineageRefSchema),
     how: DerivationKindSchema,
-    pure: Schema.optionalKey(Schema.Boolean),
+    pure: optional(Schema.Boolean),
   }),
   Schema.TaggedStruct('Projection', {
     of: LineageRefSchema,
-    stalenessMs: Schema.optionalKey(Schema.Finite),
+    stalenessMs: optional(Schema.Finite),
   }),
   Schema.TaggedStruct('Cache', {
     of: LineageRefSchema,
-    ttlMs: Schema.optionalKey(Schema.Finite),
+    ttlMs: optional(Schema.Finite),
   }),
   Schema.TaggedStruct('Mirror', {
     of: LineageRefSchema,
-    system: Schema.optionalKey(Schema.String),
+    system: optional(Schema.String),
   }),
   Schema.TaggedStruct('External', {
     system: Schema.String,
-    ref: Schema.optionalKey(Schema.String),
+    ref: optional(Schema.String),
   }),
   Schema.TaggedStruct('Computed', {
-    fn: Schema.optionalKey(Schema.String),
-    description: Schema.optionalKey(Schema.String),
+    fn: optional(Schema.String),
+    description: optional(Schema.String),
   }),
-])
+)
 
 const AuthoritySchema = Schema.Struct({
   writers: Schema.Array(Schema.String),
-  readers: Schema.optionalKey(Schema.Array(Schema.String)),
+  readers: optional(Schema.Array(Schema.String)),
 })
 const FreshnessSchema = Schema.Struct({
-  capturedAt: Schema.optionalKey(
-    Schema.Union([Schema.Literal('now'), Schema.Literal('event-time'), Schema.Literal('snapshot')]),
+  capturedAt: optional(
+    union(Schema.Literal('now'), Schema.Literal('event-time'), Schema.Literal('snapshot')),
   ),
-  maxAgeMs: Schema.optionalKey(Schema.Finite),
+  maxAgeMs: optional(Schema.Finite),
 })
 const ReferenceSchema = Schema.TaggedStruct('ForeignKey', {
   targetSchema: Schema.String,
-  targetField: Schema.optionalKey(Schema.String),
+  targetField: optional(Schema.String),
 })
 
 type SchemaView = { readonly ast: SchemaAST.AST }
@@ -138,25 +143,25 @@ const annotation = (schema: SchemaView, key: string): unknown => {
   return value
 }
 
-const decode = <S extends Schema.ConstraintDecoder<unknown>>(
-  decoder: S,
+const decode = <A>(
+  decoder: unknown,
   value: unknown,
-): S['Type'] | undefined =>
-  Schema.decodeUnknownOption(decoder)(value).pipe((option) =>
-    option._tag === 'Some' ? option.value : undefined,
+): A | undefined =>
+  Schema.decodeUnknownOption(decoder as Schema.ConstraintDecoder<unknown>)(value).pipe((option) =>
+    option._tag === 'Some' ? (option.value as A) : undefined,
   )
 
 export const getLineage = (schema: SchemaView): Lineage | undefined =>
-  decode(LineageSchema, annotation(schema, annotationKeys.lineage))
+  decode<Lineage>(LineageSchema, annotation(schema, annotationKeys.lineage))
 
 export const getAuthority = (schema: SchemaView): Authority | undefined =>
-  decode(AuthoritySchema, annotation(schema, annotationKeys.authority))
+  decode<Authority>(AuthoritySchema, annotation(schema, annotationKeys.authority))
 
 export const getFreshness = (schema: SchemaView): Freshness | undefined =>
-  decode(FreshnessSchema, annotation(schema, annotationKeys.freshness))
+  decode<Freshness>(FreshnessSchema, annotation(schema, annotationKeys.freshness))
 
 export const getReference = (schema: SchemaView): Reference | undefined =>
-  decode(ReferenceSchema, annotation(schema, annotationKeys.reference))
+  decode<Reference>(ReferenceSchema, annotation(schema, annotationKeys.reference))
 
 const annotate =
   <V>(key: string, value: V) =>
