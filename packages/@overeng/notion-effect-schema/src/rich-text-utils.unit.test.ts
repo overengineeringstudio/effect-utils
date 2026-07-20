@@ -205,7 +205,9 @@ describe('toMarkdown', () => {
       makeText('„Romantik - was ist das?" ', { bold: true }),
       makeText('Musik - Dichtung - Gebet - Traum'),
     ]
-    expect(toMarkdown(richText)).toBe('**„Romantik - was ist das?"** Musik - Dichtung - Gebet - Traum')
+    expect(toMarkdown(richText)).toBe(
+      '**„Romantik - was ist das?"** Musik - Dichtung - Gebet - Traum',
+    )
   })
 
   it('drops delimiters for an all-whitespace formatted run', () => {
