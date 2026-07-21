@@ -35,9 +35,20 @@ let
   # Closure-completeness guardrail (#807). Partially applied with the shared
   # native-optional-families detector source; each install root gets a check
   # derivation exposed via passthru.nativeBindingClosureChecks.<attrName>.
+  # Filtered genie source so the check's sibling imports resolve during
+  # `bun build`: `../native-dependency-policy.ts` (the single policy registry)
+  # and `./native-dep-policy-lib.ts` (shared key helpers). A bare file
+  # store-path cannot see its siblings inside the pkgs.bun check derivation.
   nativeBindingClosureCheckFactory = import ./mk-native-binding-closure-check.nix {
     inherit pkgs;
-    checkSource = ../../../genie/ci-scripts/native-binding-closure-check.ts;
+    genieSrc = lib.fileset.toSource {
+      root = ../../../genie;
+      fileset = lib.fileset.unions [
+        ../../../genie/native-dependency-policy.ts
+        ../../../genie/ci-scripts/native-dep-policy-lib.ts
+        ../../../genie/ci-scripts/native-binding-closure-check.ts
+      ];
+    };
   };
   inheritRootPatchedDependenciesScript = pkgs.writeText "inherit-root-patched-dependencies.cjs" ''
     const fs = require("node:fs");

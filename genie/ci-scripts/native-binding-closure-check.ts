@@ -10,14 +10,22 @@
  * output), EVERY platform binding within the declared `supportedArchitectures`
  * must be physically present in that tree.
  *
- * It exists because the deps FOD (`mk-pnpm-deps.nix`) installs with
- * `--no-optional` by default, which silently produces a tree with the consumer
- * package (e.g. `rolldown`) but ZERO native bindings. That tree builds and
- * caches happily on the build host, then fails at `vite build` / runtime on a
- * platform whose binding was never fetched (the `@rolldown/binding-linux-arm64-gnu`
- * gap on aarch64-linux). Nothing in the closure hash catches this: the hash
- * faithfully describes a bindingless tree. This check makes the gap a hard,
- * precisely-named build failure instead of a silent ship.
+ * It exists because the deps FOD (`mk-pnpm-deps.nix`) installs without carrying
+ * optional native bindings by default, which silently produces a tree with the
+ * consumer package (e.g. `rolldown`) but ZERO native bindings. That tree builds
+ * and caches happily on the build host, then fails at `vite build` / runtime on
+ * a platform whose binding was never fetched (the
+ * `@rolldown/binding-linux-arm64-gnu` gap on aarch64-linux). Nothing in the
+ * closure hash catches this: the hash faithfully describes a bindingless tree.
+ * This check makes the gap a hard, precisely-named build failure instead of a
+ * silent ship.
+ *
+ * SCOPE (honest guarantee): this check enforces closure-COMPLETENESS for a root
+ * that opts into carrying optional bindings — every declared triple of an active
+ * family is present. It does NOT decide whether a root that needs bindings has
+ * opted in; a non-opted-in root runs in advisory (warn) mode. The separate
+ * downstream gate (a real cross-platform `vite build` in CI) is what catches a
+ * needs-binding root that forgot to opt in.
  *
  * Data-driven: families come from `nativeDependencyPolicy` (pure-package-artifact
  * entries) + the lockfile, never a hardcoded package list. Triples come from the
@@ -32,211 +40,111 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
-// NOTE (prototype): in-repo this imports from the shared modules; the exports
-// `stripYamlQuotes`, `stripVersion`, `familyFor` are added to
-// `native-dep-policy-audit.ts`, and `nativeDependencyPolicy` from
-// `genie/native-dependency-policy.ts`. Inlined here so the prototype runs
-// standalone against experiment trees.
-type NativeDependencyPolicyEntry =
-  | { readonly _tag: 'nix-grafted'; readonly graft: 'link' | 'fetch-only'; readonly via: string }
-  | { readonly _tag: 'denied-lifecycle-build'; readonly defensive?: boolean }
-  | { readonly _tag: 'pure-package-artifact' }
+import {
+  type NativeDependencyPolicyEntry,
+  nativeDependencyPolicy,
+} from '../native-dependency-policy.ts'
+import { familyFor, stripPeerSuffix, stripVersion } from './native-dep-policy-lib.ts'
 
-const nativeDependencyPolicy = {
-  '@parcel/watcher': { _tag: 'denied-lifecycle-build' },
-  '@myobie/pty': { _tag: 'denied-lifecycle-build' },
-  esbuild: { _tag: 'denied-lifecycle-build' },
-  fsevents: { _tag: 'denied-lifecycle-build' },
-  'msgpackr-extract': { _tag: 'denied-lifecycle-build' },
-  'node-pty': { _tag: 'nix-grafted', graft: 'link', via: 'nix/node-pty-native.nix' },
-  sharp: { _tag: 'denied-lifecycle-build', defensive: true },
-  'unix-dgram': { _tag: 'denied-lifecycle-build', defensive: true },
-  '@opentui/core': { _tag: 'nix-grafted', graft: 'fetch-only', via: 'nix/opentui-core-native.nix' },
-  '@rollup/rollup': { _tag: 'pure-package-artifact' },
-  '@rolldown/binding': { _tag: 'pure-package-artifact' },
-  '@esbuild': { _tag: 'pure-package-artifact' },
-  '@msgpackr-extract': { _tag: 'pure-package-artifact' },
-  lightningcss: { _tag: 'pure-package-artifact' },
-  '@oxc-parser/binding': { _tag: 'pure-package-artifact' },
-  '@oxc-resolver/binding': { _tag: 'pure-package-artifact' },
-  '@tailwindcss/oxide': { _tag: 'pure-package-artifact' },
-  '@oxlint-tsgolint': { _tag: 'pure-package-artifact' },
-} as const satisfies Record<string, NativeDependencyPolicyEntry>
+// ---- YAML parse (real multi-document parse, not a line scanner) ----
 
-// ---- shared parser helpers (in-repo: import from native-dep-policy-audit.ts) ----
+/**
+ * pnpm lockfiles are multi-document YAML (a `---`-separated pnpm-CLI bootstrap
+ * document can precede the workspace document, each with its own
+ * `packages:`/`snapshots:`). `Bun.YAML.parse` returns an array for a
+ * multi-document input and a single object otherwise. The hand-rolled line
+ * scanner this replaces was the source of the multi-document vacuous-pass
+ * class: it
+ * stopped at the first document boundary and never reached the workspace's
+ * rolldown snapshot. A real parse removes that class entirely.
+ */
+const parseYaml = (text: string): unknown =>
+  (Bun as unknown as { YAML: { parse: (input: string) => unknown } }).YAML.parse(text)
 
-const stripYamlQuotes = (value: string): string => {
-  const trimmed = value.trim()
-  if (
-    (trimmed.startsWith("'") === true && trimmed.endsWith("'") === true) ||
-    (trimmed.startsWith('"') === true && trimmed.endsWith('"') === true)
-  ) {
-    return trimmed.slice(1, -1)
-  }
-  return trimmed
+const asRecord = (value: unknown): Record<string, unknown> =>
+  typeof value === 'object' && value !== null && Array.isArray(value) === false
+    ? (value as Record<string, unknown>)
+    : {}
+
+/** Normalize a scalar-or-list YAML field to a string array (multi-value safe). */
+const asStringArray = (value: unknown): string[] =>
+  Array.isArray(value) === true
+    ? value.map((v) => String(v))
+    : value === undefined
+      ? []
+      : [String(value)]
+
+/** Split a lockfile into its documents as records (single-doc -> one element). */
+export const parseLockfileDocs = (text: string): Record<string, unknown>[] => {
+  const raw = parseYaml(text)
+  const docs = Array.isArray(raw) === true ? raw : [raw]
+  return docs.map((d) => asRecord(d))
 }
 
-const stripVersion = (key: string): string => key.replace(/@[^@]+$/, '')
+// ---- triple / support types ----
 
-const familyFor = ({
-  pkgName,
-  policyKeys,
-}: {
-  pkgName: string
-  policyKeys: readonly string[]
-}): string | undefined => {
-  for (const key of policyKeys) {
-    if (pkgName === key) return key
-    if (pkgName.startsWith(`${key}-`) === true || pkgName.startsWith(`${key}/`) === true) {
-      return key
-    }
-  }
-  return undefined
-}
-
-// ---- new parsing: cpu/os/libc VALUES + snapshot optionalDependencies ----
-
-export type BindingTriple = { os?: string; cpu?: string; libc?: string }
+/**
+ * A binding's declared platform surface. Arrays (not a single value) so a
+ * binding that legitimately declares multiple cpus/oses/libcs is checked in
+ * full rather than by its first value only.
+ */
+export type BindingTriple = { os: string[]; cpu: string[]; libc: string[] }
 export type SupportedArchitectures = {
   os: readonly string[]
   cpu: readonly string[]
   libc: readonly string[]
 }
-
-/** Parse a single `[a, b]` inline YAML list. */
-const parseInlineList = (value: string): string[] => {
-  const trimmed = value.trim()
-  const inner =
-    trimmed.startsWith('[') === true && trimmed.endsWith(']') === true
-      ? trimmed.slice(1, -1)
-      : trimmed
-  return inner
-    .split(',')
-    .map((v) => stripYamlQuotes(v))
-    .filter((v) => v !== '')
-}
+/** The build host's concrete platform, for `build-platform` completeness mode. */
+export type BuildPlatformTriple = { os?: string; cpu?: string; libc?: string }
 
 /**
- * Parse the `packages:` section for each key's cpu/os/libc VALUES (the audit's
- * own parser only records presence). Returns name@version -> triple.
+ * Parse `packages:` across every document -> `name@version` -> cpu/os/libc
+ * VALUES (the audit's own parser only records presence).
  */
 export const parseBindingTriples = (text: string): Record<string, BindingTriple> => {
   const out: Record<string, BindingTriple> = {}
-  let inPackages = false
-  let current: string | undefined
-  for (const line of text.split('\n')) {
-    if (line === 'packages:') {
-      inPackages = true
-      continue
-    }
-    if (inPackages === false) continue
-    // A top-level key ends the `packages:` section — but the pnpm lockfile is a
-    // MULTI-DOCUMENT YAML (a `---`-separated pnpm-CLI bootstrap document precedes
-    // the workspace document, each with its own `packages:`/`snapshots:`). So we
-    // must LEAVE the section and keep scanning, re-entering at the next
-    // document's `packages:`. A `break` here stops at the first document boundary
-    // and never reaches the workspace's rolldown/lightningcss bindings (the
-    // multi-document vacuous-pass defect).
-    if (/^[^\s].*:/.test(line) === true) {
-      inPackages = false
-      current = undefined
-      continue
-    }
-
-    const pkgMatch = /^  (.+):(?:\s*\{\})?\s*$/.exec(line)
-    if (pkgMatch !== null) {
-      current = stripYamlQuotes(pkgMatch[1]!)
-      out[current] = {}
-      continue
-    }
-    const fieldMatch = /^    (cpu|os|libc):\s*(.+)$/.exec(line)
-    if (fieldMatch !== null && current !== undefined) {
-      const values = parseInlineList(fieldMatch[2]!)
-      if (values[0] !== undefined) out[current]![fieldMatch[1] as 'cpu' | 'os' | 'libc'] = values[0]
+  for (const doc of parseLockfileDocs(text)) {
+    const packages = asRecord(doc.packages)
+    for (const [key, meta] of Object.entries(packages)) {
+      const m = asRecord(meta)
+      out[key] = { os: asStringArray(m.os), cpu: asStringArray(m.cpu), libc: asStringArray(m.libc) }
     }
   }
   return out
 }
 
 /**
- * Parse the `snapshots:` section: consumer name@version -> its
- * optionalDependencies as { depName -> version }. This is where pnpm lockfile
+ * Parse `snapshots:` across every document: consumer key -> its
+ * optionalDependencies as `{ depName -> version }`. This is where pnpm lockfile
  * v9 records which native binding families each consumer pulls in.
  */
 export const parseSnapshotOptionalDependencies = (
   text: string,
 ): Record<string, Record<string, string>> => {
   const out: Record<string, Record<string, string>> = {}
-  const lines = text.split('\n')
-  let inSnapshots = false
-  let current: string | undefined
-  let inOptional = false
-  for (const line of lines) {
-    if (line === 'snapshots:') {
-      inSnapshots = true
-      continue
-    }
-    if (inSnapshots === false) continue
-    // Multi-document lockfile: leave the section on a top-level key and re-enter
-    // at the next document's `snapshots:` rather than `break`ing at the first
-    // document boundary (see parseBindingTriples for the full rationale). Without
-    // this, only the pnpm-CLI bootstrap document's ~20 snapshots are seen and the
-    // workspace's `rolldown@1.0.3` snapshot is never reached — the vacuous pass.
-    if (/^[^\s].*:/.test(line) === true) {
-      inSnapshots = false
-      current = undefined
-      inOptional = false
-      continue
-    }
-
-    const snapMatch = /^  (\S.*):(?:\s*\{\})?\s*$/.exec(line)
-    if (snapMatch !== null) {
-      current = stripYamlQuotes(snapMatch[1]!)
-      out[current] = {}
-      inOptional = false
-      continue
-    }
-    if (/^    optionalDependencies:\s*$/.test(line) === true) {
-      inOptional = true
-      continue
-    }
-    if (/^    \S/.test(line) === true) {
-      // any other 4-space section (dependencies:, transitivePeerDependencies:, …)
-      inOptional = false
-      continue
-    }
-    if (inOptional === true && current !== undefined) {
-      const depMatch = /^      (.+):\s*(.+)$/.exec(line)
-      if (depMatch !== null) {
-        out[current]![stripYamlQuotes(depMatch[1]!)] = stripYamlQuotes(depMatch[2]!)
-      }
+  for (const doc of parseLockfileDocs(text)) {
+    const snapshots = asRecord(doc.snapshots)
+    for (const [key, body] of Object.entries(snapshots)) {
+      const optional = asRecord(asRecord(body).optionalDependencies)
+      const deps: Record<string, string> = {}
+      for (const [depName, version] of Object.entries(optional)) deps[depName] = String(version)
+      out[key] = deps
     }
   }
   return out
 }
 
-/** Parse `supportedArchitectures:` from a pnpm-workspace.yaml. */
+/** Parse `supportedArchitectures:` from a (single-document) pnpm-workspace.yaml. */
 export const parseSupportedArchitectures = (text: string): SupportedArchitectures => {
-  const lines = text.split('\n')
-  const result: { os: string[]; cpu: string[]; libc: string[] } = { os: [], cpu: [], libc: [] }
-  let inBlock = false
-  for (const line of lines) {
-    if (line.trimEnd() === 'supportedArchitectures:') {
-      inBlock = true
-      continue
-    }
-    if (inBlock === false) continue
-    if (/^\S/.test(line) === true) break
-    const fieldMatch = /^  (os|cpu|libc):\s*(.+)$/.exec(line)
-    if (fieldMatch !== null)
-      result[fieldMatch[1] as 'os' | 'cpu' | 'libc'] = parseInlineList(fieldMatch[2]!)
-  }
-  return result
+  const sa = asRecord(asRecord(parseYaml(text)).supportedArchitectures)
+  return { os: asStringArray(sa.os), cpu: asStringArray(sa.cpu), libc: asStringArray(sa.libc) }
 }
 
 /**
- * A binding is "required" when its triple is fully within the declared support.
- * Darwin bindings carry no libc, so libc is only checked when the binding has one.
+ * A binding is "required" when its whole declared surface is within the declared
+ * support. Every declared os/cpu/libc value must be supported (a binding that
+ * targets an unsupported arch is not one we require). Darwin bindings carry no
+ * libc, so libc only constrains when the binding declares one.
  */
 const isWithinSupport = ({
   triple,
@@ -245,11 +153,30 @@ const isWithinSupport = ({
   triple: BindingTriple
   support: SupportedArchitectures
 }): boolean => {
-  if (triple.os !== undefined && support.os.includes(triple.os) === false) return false
-  if (triple.cpu !== undefined && support.cpu.includes(triple.cpu) === false) return false
-  if (triple.libc !== undefined && support.libc.includes(triple.libc) === false) return false
-  // Must actually be a platform-gated binding (has at least os or cpu).
-  return triple.os !== undefined || triple.cpu !== undefined
+  // Must actually be a platform-gated binding (declares at least os or cpu).
+  if (triple.os.length === 0 && triple.cpu.length === 0) return false
+  if (triple.os.some((v) => support.os.includes(v) === false) === true) return false
+  if (triple.cpu.some((v) => support.cpu.includes(v) === false) === true) return false
+  if (triple.libc.some((v) => support.libc.includes(v) === false) === true) return false
+  return true
+}
+
+/** Whether a pure-artifact binding dir (any triple) is present anywhere in the tree. */
+const treeHasPureArtifactBinding = ({
+  pnpmEntries,
+  policyKeys,
+  pureFamilies,
+}: {
+  pnpmEntries: Set<string>
+  policyKeys: readonly string[]
+  pureFamilies: ReadonlySet<string>
+}): boolean => {
+  for (const entry of pnpmEntries) {
+    const name = stripVersion(entry)
+    const family = familyFor({ pkgName: name.replace(/\+/g, '/'), policyKeys })
+    if (family !== undefined && pureFamilies.has(family) === true) return true
+  }
+  return false
 }
 
 /** Collect every `.pnpm/<entry>` directory basename anywhere in the tree. */
@@ -284,7 +211,7 @@ const collectPnpmEntries = (root: string): Set<string> => {
   return entries
 }
 
-/** pnpm virtual-store entry name: `/` -> `+`, then `@version[_peerhash]`. */
+/** pnpm virtual-store entry name: `/` -> `+`, then `@version[_peers]`. */
 const flatName = (name: string): string => name.replace(/\//g, '+')
 
 const presentInTree = ({
@@ -299,11 +226,20 @@ const presentInTree = ({
   const prefix = `${flatName(name)}@${version}`
   if (pnpmEntries.has(prefix) === true) return true
   for (const entry of pnpmEntries) {
-    // peer-suffixed entries: `<name>@<version>_<hash>` or `<version>(<peers>)`
+    // Peer-bearing consumers materialize under an underscore-joined dir name
+    // (`vite@8.0.16_@types+node@26.0.0_...`); the paren form is a defensive
+    // fallback for any variant encoding.
     if (entry.startsWith(`${prefix}_`) === true || entry.startsWith(`${prefix}(`) === true)
       return true
   }
   return false
+}
+
+/** Split a (possibly peer-suffixed) snapshot key into its bare name + version. */
+const consumerNameVersion = (consumerKey: string): { name: string; version: string } => {
+  const bare = stripPeerSuffix(consumerKey)
+  const name = stripVersion(bare)
+  return { name, version: bare.slice(name.length + 1) }
 }
 
 export type ClosureProblem = {
@@ -327,6 +263,44 @@ export type ClosureProblem = {
  */
 export type CompletenessMode = 'all-declared-triples' | 'build-platform'
 
+/**
+ * A reason-carrying, triple-scoped waiver (decision 0007, DMP.NIX.NATIVE-R11).
+ * `triple` undefined waives the whole family; a `triple` (e.g. `linux-arm64-musl`)
+ * waives only that binding — a waiver must not silently expand to triples it does
+ * not name. `reason` is recorded in the report as an audit trail.
+ */
+export type Waiver = { readonly family: string; readonly triple?: string; readonly reason?: string }
+
+/** Parse `family[@os-cpu-libc][=reason]` entries joined by `;`. */
+export const parseWaivers = (raw: string): Waiver[] =>
+  raw
+    .split(';')
+    .map((s) => s.trim())
+    .filter((s) => s !== '')
+    .map((entry) => {
+      const eq = entry.indexOf('=')
+      const spec = (eq === -1 ? entry : entry.slice(0, eq)).trim()
+      const reason = eq === -1 ? undefined : entry.slice(eq + 1).trim()
+      // Family may be scoped (`@scope/name`), so the triple separator is the
+      // first `@` PAST a leading scope `@`, not `indexOf('@')` (which would grab
+      // the scope marker). A triple never contains `@`.
+      const at = spec.indexOf('@', spec.startsWith('@') === true ? 1 : 0)
+      return at === -1
+        ? { family: spec, reason }
+        : { family: spec.slice(0, at), triple: spec.slice(at + 1), reason }
+    })
+
+const isWaived = ({
+  waivers,
+  family,
+  tripleStr,
+}: {
+  waivers: readonly Waiver[]
+  family: string
+  tripleStr: string
+}): Waiver | undefined =>
+  waivers.find((w) => w.family === family && (w.triple === undefined || w.triple === tripleStr))
+
 export type ClosureAuditOptions = {
   readonly preparedTreeDir: string
   readonly lockfileText: string
@@ -334,15 +308,17 @@ export type ClosureAuditOptions = {
   readonly policy?: Record<string, NativeDependencyPolicyEntry>
   readonly completenessMode?: CompletenessMode
   /** Required when completenessMode === 'build-platform'. */
-  readonly buildPlatformTriple?: BindingTriple
+  readonly buildPlatformTriple?: BuildPlatformTriple
   /**
    * Escape hatch (by design): the assertion is ALWAYS-ON and
    * auto-derives required families from the resolved closure — a consumer never
-   * hand-lists what to require (that would reintroduce that omission). These
-   * families are the only documented way to intentionally EXCLUDE a family whose
-   * absence is genuinely intended (a waiver). Everything else auto-fails.
+   * hand-lists what to require (that would reintroduce the multi-document
+   * vacuous-pass omission).
+   * Waivers are the only documented way to intentionally EXCLUDE a
+   * family/triple whose absence is genuinely intended; each is reason-carrying
+   * and scoped to the triple it names. Everything else auto-fails.
    */
-  readonly waiveFamilies?: readonly string[]
+  readonly waivers?: readonly Waiver[]
 }
 
 const tripleMatchesBuildPlatform = ({
@@ -350,21 +326,23 @@ const tripleMatchesBuildPlatform = ({
   build,
 }: {
   triple: BindingTriple
-  build: BindingTriple
+  build: BuildPlatformTriple
 }): boolean =>
-  (build.os === undefined || triple.os === build.os) &&
-  (build.cpu === undefined || triple.cpu === build.cpu) &&
+  (build.os === undefined || triple.os.length === 0 || triple.os.includes(build.os)) &&
+  (build.cpu === undefined || triple.cpu.length === 0 || triple.cpu.includes(build.cpu)) &&
   // libc only constrains when the binding declares one (darwin bindings don't).
-  (triple.libc === undefined || build.libc === undefined || triple.libc === build.libc)
+  (triple.libc.length === 0 || build.libc === undefined || triple.libc.includes(build.libc))
+
+const pureFamilyKeys = (policy: Record<string, NativeDependencyPolicyEntry>): string[] =>
+  Object.entries(policy)
+    .filter(([, e]) => e._tag === 'pure-package-artifact')
+    .map(([k]) => k)
 
 export const auditNativeBindingClosure = (opts: ClosureAuditOptions): ClosureProblem[] => {
   const policy = opts.policy ?? nativeDependencyPolicy
   const mode = opts.completenessMode ?? 'all-declared-triples'
-  const waived = new Set(opts.waiveFamilies ?? [])
-  const pureFamilies = Object.entries(policy)
-    .filter(([, e]) => e._tag === 'pure-package-artifact')
-    .map(([k]) => k)
-    .filter((k) => waived.has(k) === false)
+  const waivers = opts.waivers ?? []
+  const pureFamilies = pureFamilyKeys(policy)
   const policyKeys = Object.keys(policy)
 
   const triples = parseBindingTriples(opts.lockfileText)
@@ -375,8 +353,7 @@ export const auditNativeBindingClosure = (opts: ClosureAuditOptions): ClosurePro
   const problems: ClosureProblem[] = []
 
   for (const [consumerKey, optionalDeps] of Object.entries(snapshots)) {
-    const consumerName = stripVersion(consumerKey)
-    const consumerVersion = consumerKey.slice(consumerName.length + 1)
+    const { name: consumerName, version: consumerVersion } = consumerNameVersion(consumerKey)
     // Only enforce for consumers actually materialized in THIS prepared tree.
     if (presentInTree({ pnpmEntries, name: consumerName, version: consumerVersion }) === false)
       continue
@@ -396,15 +373,25 @@ export const auditNativeBindingClosure = (opts: ClosureAuditOptions): ClosurePro
         continue // build-platform mode: only require this host's triple
       }
 
+      const tripleStr = [...triple.os, ...triple.cpu, ...triple.libc].join('-')
+      const waiver = isWaived({ waivers, family, tripleStr })
+      if (waiver !== undefined) {
+        // Reason-carrying waiver: this family/triple is intentionally excluded.
+        console.log(
+          `native binding closure check: waived ${family} :: ${tripleStr}` +
+            (waiver.reason !== undefined && waiver.reason !== '' ? ` — ${waiver.reason}` : ''),
+        )
+        continue
+      }
+
       if (presentInTree({ pnpmEntries, name: depName, version: depVersion }) === false) {
-        const tripleStr = [triple.os, triple.cpu, triple.libc].filter(Boolean).join('-')
         problems.push({
           kind: 'missing-native-binding',
           family,
           consumer: consumerKey,
           binding: `${depName}@${depVersion}`,
           triple: tripleStr,
-          detail: `consumer "${consumerKey}" is present but its supported-architecture binding "${depName}@${depVersion}" (${tripleStr}) is absent from the prepared dependency tree. The deps FOD was built without this optional native binding (likely --no-optional / includeOptionalDependencies=false). Enable optional dependencies for this install root's deps build so pnpm fetches every supportedArchitectures triple.`,
+          detail: `consumer "${consumerKey}" is present but its supported-architecture binding "${depName}@${depVersion}" (${tripleStr}) is absent from the prepared dependency tree. The deps FOD was built without this optional native binding (the root did not carry optional native bindings for its declared triples). Enable optional-binding inclusion for this install root's deps build so every supportedArchitectures triple is materialized.`,
         })
       }
     }
@@ -418,7 +405,7 @@ export const auditNativeBindingClosure = (opts: ClosureAuditOptions): ClosurePro
  * actually materialized in this prepared tree. This IS `requiredNativeFamilies`
  * — computed, never hand-listed (by design). Over-approximates
  * safely: a family in-closure but not build-loaded (e.g. lightningcss via the
- * PostCSS path) is still listed; enabling includeOptionalDependencies
+ * PostCSS path) is still listed; enabling optional-binding inclusion
  * materializes its bindings for free, so all-declared-triples passes cleanly.
  */
 export const detectActiveFamilies = (opts: ClosureAuditOptions): string[] => {
@@ -433,8 +420,7 @@ export const detectActiveFamilies = (opts: ClosureAuditOptions): string[] => {
   const pnpmEntries = collectPnpmEntries(opts.preparedTreeDir)
   const active = new Set<string>()
   for (const [consumerKey, optionalDeps] of Object.entries(snapshots)) {
-    const consumerName = stripVersion(consumerKey)
-    const consumerVersion = consumerKey.slice(consumerName.length + 1)
+    const { name: consumerName, version: consumerVersion } = consumerNameVersion(consumerKey)
     if (presentInTree({ pnpmEntries, name: consumerName, version: consumerVersion }) === false)
       continue
     for (const depName of Object.keys(optionalDeps)) {
@@ -443,6 +429,102 @@ export const detectActiveFamilies = (opts: ClosureAuditOptions): string[] => {
     }
   }
   return [...active].sort()
+}
+
+/**
+ * Fail-closed floor (compensating control). Even with a real YAML parse, the
+ * check must never PASS vacuously: a green result on a tree it could not
+ * actually inspect is worse than a loud failure. Returns human-readable reasons
+ * the check could not have observed what it claims. The caller hard-fails on any
+ * reason in fail (opted-in) mode and reports them as warnings otherwise.
+ */
+export const lockfileFloorViolations = (opts: ClosureAuditOptions): string[] => {
+  const policy = opts.policy ?? nativeDependencyPolicy
+  const policyKeys = Object.keys(policy)
+  const pureFamilies = new Set(pureFamilyKeys(policy))
+  const docs = parseLockfileDocs(opts.lockfileText)
+  const violations: string[] = []
+
+  const hasPackages = docs.some((d) => 'packages' in d)
+  const hasSnapshots = docs.some((d) => 'snapshots' in d)
+  const versions = docs
+    .map((d) => d.lockfileVersion)
+    .filter((v) => v !== undefined)
+    .map((v) => String(v))
+  const majors = versions
+    .map((v) => Number.parseInt(v, 10))
+    .filter((n) => Number.isNaN(n) === false)
+
+  // (1) Unrecognized: no packages AND no snapshots -> not a pnpm lockfile shape.
+  if (hasPackages === false && hasSnapshots === false) {
+    violations.push(
+      'lockfile has neither a `packages:` nor a `snapshots:` section — unrecognized format; cannot verify binding closure',
+    )
+    return violations // nothing else is meaningful
+  }
+
+  // (2) Pre-v9: no `snapshots:` model (optionalDependencies live elsewhere) ->
+  // this check cannot resolve which consumer pulls which binding. Fail closed.
+  if (hasSnapshots === false || (majors.length > 0 && majors.every((n) => n < 9) === true)) {
+    violations.push(
+      `lockfile version ${versions.join(', ') || '(unstated)'} predates the pnpm v9 \`snapshots:\` model — binding-closure verification is unsupported for this lockfile`,
+    )
+  }
+
+  const snapshots = parseSnapshotOptionalDependencies(opts.lockfileText)
+  const consumerCount = Object.keys(snapshots).length
+
+  // (3) A `snapshots:` section exists but parsed to zero consumers -> the parse
+  // is blind; a green result would be vacuous.
+  if (hasSnapshots === true && consumerCount === 0) {
+    violations.push(
+      'a `snapshots:` section is present but zero consumer entries parsed — refusing to pass vacuously',
+    )
+  }
+
+  // (3b) Within-support pure-artifact binding packages exist in `packages:` but
+  // NO parsed snapshot optionalDependency references any pure-artifact family ->
+  // the snapshot/optionalDependencies parse dropped the references.
+  const triples = parseBindingTriples(opts.lockfileText)
+  const support = parseSupportedArchitectures(opts.workspaceYamlText)
+  const hasSupportedPureBindingPackage = Object.entries(triples).some(([key, triple]) => {
+    const family = familyFor({ pkgName: stripVersion(key), policyKeys })
+    return (
+      family !== undefined &&
+      pureFamilies.has(family) === true &&
+      isWithinSupport({ triple, support })
+    )
+  })
+  const anyOptionalReferencesPureFamily = Object.values(snapshots).some((deps) =>
+    Object.keys(deps).some((depName) => {
+      const family = familyFor({ pkgName: depName, policyKeys })
+      return family !== undefined && pureFamilies.has(family)
+    }),
+  )
+  if (
+    hasSupportedPureBindingPackage === true &&
+    anyOptionalReferencesPureFamily === false &&
+    consumerCount > 0
+  ) {
+    violations.push(
+      'lockfile declares supported-architecture pure-artifact binding packages, but no parsed snapshot optionalDependency references any of them — the optionalDependencies parse dropped the references',
+    )
+  }
+
+  // (4) Tree/parse mismatch: the prepared tree materializes pure-artifact binding
+  // dirs, yet no active family was derived from the lockfile -> the check is
+  // blind to a tree that plainly carries native families.
+  const pnpmEntries = collectPnpmEntries(opts.preparedTreeDir)
+  if (
+    treeHasPureArtifactBinding({ pnpmEntries, policyKeys, pureFamilies }) === true &&
+    detectActiveFamilies(opts).length === 0
+  ) {
+    violations.push(
+      'prepared tree contains pure-artifact binding directories, but no active family was derived from the lockfile — the check is not seeing the tree it is inspecting',
+    )
+  }
+
+  return violations
 }
 
 const formatReport = ({
@@ -479,6 +561,16 @@ const resolveInput = ({
   return resolve(treeDir, base)
 }
 
+const parseBuildPlatformTripleEnv = (raw: string | undefined): BuildPlatformTriple | undefined => {
+  if (raw === undefined || raw.trim() === '') return undefined
+  const [os, cpu, libc] = raw.split(',').map((s) => s.trim())
+  const triple: BuildPlatformTriple = {}
+  if (os !== undefined && os !== '') triple.os = os
+  if (cpu !== undefined && cpu !== '') triple.cpu = cpu
+  if (libc !== undefined && libc !== '') triple.libc = libc
+  return triple
+}
+
 const main = (): void => {
   const treeDir = process.argv[2]
   if (treeDir === undefined) {
@@ -494,21 +586,41 @@ const main = (): void => {
     base: 'pnpm-workspace.yaml',
   })
 
-  // Engagement phasing (rollout-safety guard): 'warn' reports but exits 0 so a
-  // repin of a root that has NOT opted into includeOptionalDependencies never
-  // breaks; 'fail' exits nonzero. The Nix wrapper sets NBCC_ENGAGEMENT=fail for
-  // roots that opted in (phase 1) and flips the default to fail in phase 2.
+  // Engagement (decision 0009): 'warn' reports but exits 0, so a repin of a root
+  // that has NOT opted into optional-binding inclusion is never broken by this
+  // check; 'fail' exits nonzero. The Nix wrapper sets NBCC_ENGAGEMENT=fail for
+  // roots that opted in. There is no global "flip the default" phase: making
+  // inclusion the default for a class of roots is a deliberate versioned
+  // prepared-deps transition, not a mode flag here (see 0009).
   const engagement = process.env.NBCC_ENGAGEMENT === 'warn' ? 'warn' : 'fail'
-  const waiveFamilies = (process.env.NBCC_WAIVE_FAMILIES ?? '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter((s) => s !== '')
+  const waivers = parseWaivers(process.env.NBCC_WAIVERS ?? '')
+  const completenessMode: CompletenessMode =
+    process.env.NBCC_COMPLETENESS_MODE === 'build-platform'
+      ? 'build-platform'
+      : 'all-declared-triples'
+  const buildPlatformTriple = parseBuildPlatformTripleEnv(process.env.NBCC_BUILD_PLATFORM_TRIPLE)
 
   const auditOpts: ClosureAuditOptions = {
     preparedTreeDir: treeDir,
     lockfileText: readFileSync(lockfilePath, 'utf8'),
     workspaceYamlText: readFileSync(workspaceYamlPath, 'utf8'),
-    waiveFamilies,
+    waivers,
+    completenessMode,
+    buildPlatformTriple,
+  }
+
+  // Fail-closed floor: refuse to pass vacuously. In fail mode any floor
+  // violation is a hard error; in warn (non-opted-in) mode it is reported but
+  // does not gate the build (decision 0009 — the root's bindings are advisory).
+  const floor = lockfileFloorViolations(auditOpts)
+  if (floor.length > 0) {
+    const header = `native binding closure check: cannot verify closure for ${treeDir}`
+    console.error([header, ...floor.map((f) => `  - ${f}`)].join('\n'))
+    if (engagement === 'warn') {
+      console.error('native binding closure check: engagement=warn — reporting only, not failing.')
+      return
+    }
+    process.exit(1)
   }
 
   // Optional defense-in-depth tripwire (off by default): consumer declares the
@@ -546,7 +658,7 @@ const main = (): void => {
   console.error(report)
   if (engagement === 'warn') {
     console.error(
-      `native binding closure check: engagement=warn — reporting only, not failing (root has not opted into includeOptionalDependencies).`,
+      `native binding closure check: engagement=warn — reporting only, not failing (root has not opted into optional-binding inclusion).`,
     )
     return
   }

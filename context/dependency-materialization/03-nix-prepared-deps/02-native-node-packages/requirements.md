@@ -31,10 +31,14 @@ of lifecycle scripts.
   Refines: DMP-R04, DMP-R08.
 - **DMP.NIX.NATIVE-R04 No partial optional smuggling:** Optional dependencies
   must not smuggle a _host-selected subset_ of platform-native outputs into a
-  platform-neutral prepared artifact. A prepared artifact may carry an optional
-  native family only when the root opts in (`DMP.NIX-R11`) and the family is
-  complete across all declared triples (`DMP.NIX.NATIVE-R08`), which keeps the
-  artifact platform-neutral and host-invariant.
+  prepared artifact. A prepared artifact may carry an optional native family
+  only when the root opts in (`DMP.NIX-R11`) and the family is complete across
+  all declared triples (`DMP.NIX.NATIVE-R08`). Completeness — not neutrality — is
+  the property that keeps such an artifact sound to share: an opt-in artifact is
+  not platform-neutral (it carries every declared platform's binding), but it is
+  platform-COMPLETE and therefore host-invariant, so a single shared FOD hash
+  stays valid. A root that does not opt in stays binding-free and
+  platform-neutral as before.
   Refines: DMP-R05, DMP-R08.
 
 ### Must be auditable
@@ -60,6 +64,10 @@ of lifecycle scripts.
   _classified_ — an unclassified family fails per `DMP.NIX.NATIVE-R06`, a
   classified `pure-package-artifact` family must be _complete_ per this
   requirement.
+  This guarantees an opt-in root is _complete_; it does NOT decide whether a root
+  that needs bindings has opted in. A needs-binding root that never opts in is
+  out of scope here and is caught downstream by a real cross-platform build (a
+  `vite build` gate), not by this requirement.
   Refines: DMP.NIX.NATIVE-R03, DMP.NIX.NATIVE-R04, DMP.NIX.NATIVE-R06, DMP-R08.
 - **DMP.NIX.NATIVE-R09 Auto-derived family set:** The required-family set must be
   derived from the resolved closure, not from a hand-maintained per-consumer
