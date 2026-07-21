@@ -32,6 +32,24 @@ let
   lib = pkgs.lib;
   pnpmDepsHelper = import ./mk-pnpm-deps.nix { inherit pkgs pnpm; };
   dependencyProfile = import ./dependency-materialization-profile.nix { inherit lib; };
+  # Closure-completeness guardrail (#807). Partially applied with the shared
+  # native-optional-families detector source; each install root gets a check
+  # derivation exposed via passthru.nativeBindingClosureChecks.<attrName>.
+  # Filtered genie source so the check's sibling imports resolve during
+  # `bun build`: `../native-dependency-policy.ts` (the single policy registry)
+  # and `./native-dep-policy-lib.ts` (shared key helpers). A bare file
+  # store-path cannot see its siblings inside the pkgs.bun check derivation.
+  nativeBindingClosureCheckFactory = import ./mk-native-binding-closure-check.nix {
+    inherit pkgs;
+    genieSrc = lib.fileset.toSource {
+      root = ../../../genie;
+      fileset = lib.fileset.unions [
+        ../../../genie/native-dependency-policy.ts
+        ../../../genie/ci-scripts/native-dep-policy-lib.ts
+        ../../../genie/ci-scripts/native-binding-closure-check.ts
+      ];
+    };
+  };
   inheritRootPatchedDependenciesScript = pkgs.writeText "inherit-root-patched-dependencies.cjs" ''
     const fs = require("node:fs");
     const path = require("node:path");
@@ -889,6 +907,22 @@ let
       else
         entry.hash;
 
+  # Per-install-root opt-in: carry the workspace's declared optional native
+  # bindings (pure-package-artifact families: @rolldown/binding-*, @esbuild/*,
+  # lightningcss, oxc, ...) into this root's prepared deps FOD by dropping
+  # `--no-optional`, bounded by pnpm-workspace.yaml `supportedArchitectures`.
+  # Default stays false so bun-built CLIs that never load a native binding keep
+  # small, platform-neutral prepared trees (backward-compatible). A consumer
+  # whose build or runtime resolves such a binding from the isolated pnpm store
+  # (e.g. `vite build` -> rolldown) sets this true; the native-binding closure
+  # check then asserts every declared triple is present.
+  includeOptionalDependenciesForInstallRoot =
+    installDir:
+    let
+      entry = builtins.getAttr installDir depsBuilds;
+    in
+    entry.includeOptionalDependencies or false;
+
   mkdirOutParentCmd =
     relPath:
     let
@@ -1133,6 +1167,7 @@ let
           ${pkgs.nodejs}/bin/node ${inheritRootPatchedDependenciesScript} .root-patch-authority ${lib.escapeShellArg root.installDir}
           rm -rf .root-patch-authority
         '';
+        includeOptionalDependencies = includeOptionalDependenciesForInstallRoot root.installDir;
         pnpmDepsHash = depsBuildHashForInstallRoot root.installDir;
       };
     in
@@ -1161,6 +1196,7 @@ let
       # Ask pnpm to materialize the target package's dependency closure, not every
       # importer visible in that staged workspace.
       pnpmFilters = [ "${packageJson.name}..." ];
+      includeOptionalDependencies = includeOptionalDependenciesForInstallRoot ".";
       # Fixed-output dependency preparation must be a pure materialization of
       # the staged manifests and lockfile. Unfrozen installs can rewrite the
       # effective dependency graph and produce hash ping-pong across builders.
@@ -1460,6 +1496,21 @@ pkgs.stdenv.mkDerivation {
       hash = depsBuildHashForInstallRoot root.installDir;
       freshness = (installRootProfile root).freshness;
     }) depsInstallRoots;
+    # One closure-completeness check per install root, keyed by the same
+    # normalized attrName as depsBuildsByInstallRoot (installDir "." -> "root").
+    # Consumers wire e.g. `checks.<system>.<name> = cli.nativeBindingClosureChecks.root;`.
+    # Engagement is warn-mode unless the root opted into includeOptionalDependencies.
+    nativeBindingClosureChecks = builtins.listToAttrs (
+      map (root: {
+        name = root.attrName;
+        value = nativeBindingClosureCheckFactory {
+          depsBuild = root.depsBuild;
+          name = "${name}-${root.attrName}";
+          installDir = root.installDir;
+          includeOptionalDependencies = includeOptionalDependenciesForInstallRoot root.installDir;
+        };
+      }) depsInstallRoots
+    );
   };
 
   buildPhase = ''

@@ -28,6 +28,7 @@ import {
   type NativeDependencyPolicyEntry,
   nativeDependencyPolicy,
 } from '../native-dependency-policy.ts'
+import { familyFor, stripVersion, stripYamlQuotes } from './native-dep-policy-lib.ts'
 
 const repoRoot = resolve(import.meta.dir, '../..')
 
@@ -48,17 +49,6 @@ type NativePackageMeta = {
   cpu?: true
   os?: true
   libc?: true
-}
-
-const stripYamlQuotes = (value: string): string => {
-  const trimmed = value.trim()
-  if (
-    (trimmed.startsWith("'") === true && trimmed.endsWith("'") === true) ||
-    (trimmed.startsWith('"') === true && trimmed.endsWith('"') === true)
-  ) {
-    return trimmed.slice(1, -1)
-  }
-  return trimmed
 }
 
 /**
@@ -93,30 +83,6 @@ const parseLockfilePackages = (text: string): Record<string, NativePackageMeta> 
   }
 
   return packages
-}
-
-/** Strip the trailing `@<version>` from a lockfile package key. */
-const stripVersion = (key: string): string => key.replace(/@[^@]+$/, '')
-
-/**
- * Map a versioned lockfile package name to its policy family key, if any policy
- * key is a prefix at a `-`/`/` boundary. Prefix matching keeps `esbuild`
- * (denied) distinct from `@esbuild/*` (fod-accepted).
- */
-const familyFor = ({
-  pkgName,
-  policyKeys,
-}: {
-  pkgName: string
-  policyKeys: readonly string[]
-}): string | undefined => {
-  for (const key of policyKeys) {
-    if (pkgName === key) return key
-    if (pkgName.startsWith(`${key}-`) === true || pkgName.startsWith(`${key}/`) === true) {
-      return key
-    }
-  }
-  return undefined
 }
 
 /** A lockfile package is "native-gated" if it carries cpu/os/libc constraints. */
