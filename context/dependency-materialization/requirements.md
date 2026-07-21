@@ -30,6 +30,9 @@ Subsystem requirements refine this root contract:
   for materialization telemetry.
 - [07-verification](./07-verification/requirements.md) defines the proof,
   benchmark, and regression architecture for dependency materialization.
+- [08-ci-store-cache](./08-ci-store-cache/requirements.md) defines the CI-profile
+  pnpm store persistence contract: workspace-relative store placement, versioned
+  per-repo cache keys, and single-publisher write coordination.
 
 ## Assumptions
 
