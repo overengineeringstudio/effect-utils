@@ -273,6 +273,13 @@
       # CLI guard helpers: .mkCliGuard for single guards, .fromTasks/.stripGuards for task-driven guards
       lib.cliGuard = { pkgs }: import ./nix/devenv-modules/tasks/lib/cli-guard.nix { inherit pkgs; };
 
+      # Resolve a megarepo member for Nix evaluation while enforcing that a
+      # commit-pinned checkout matches megarepo.lock (see nix/megarepo-member.nix).
+      # Consumers MUST load this from the pinned flake input rather than from the
+      # materialized checkout, otherwise resolving the member would require the
+      # member to already be resolved.
+      lib.megarepoMember = { lib }: import ./nix/megarepo-member.nix { inherit lib; };
+
       # Builder function for external repos to create their own Bun CLIs
       lib.mkBunCli = { pkgs }: import ./nix/workspace-tools/lib/mk-bun-cli.nix { inherit pkgs; };
 
