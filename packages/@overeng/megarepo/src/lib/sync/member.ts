@@ -114,6 +114,31 @@ const createSymlink = ({ target, link }: { target: string; link: string }) =>
     yield* fs.symlink(target.replace(/\/$/, ''), link.replace(/\/$/, ''))
   })
 
+/** A pinned materialization that disagrees with the lock entry that produced it. */
+type PinnedDrift = { materialized: string; locked: string }
+
+/**
+ * Apply promises Lock → Workspace. When it cannot deliver that for a member, reporting
+ * `skipped` exits 0 and leaves the workspace silently disagreeing with the lock — the
+ * failure mode behind #962. Report the drift instead so the exit code is honest.
+ */
+const applyDriftError = ({
+  name,
+  reason,
+  drift,
+}: {
+  name: string
+  reason: string
+  drift: PinnedDrift
+}): MemberSyncResult => ({
+  name,
+  status: 'error',
+  message:
+    `${reason}\n` +
+    `  workspace is at ${drift.materialized.slice(0, 8)} but megarepo.lock records ${drift.locked.slice(0, 8)}\n` +
+    `  hint: commit or discard the changes in the worktree, then re-run 'mr apply' (or use --force to discard them)`,
+})
+
 /**
  * Sync a single member: use bare repo + worktree pattern
  *
@@ -317,6 +342,22 @@ export const syncMember = <R = never>({
       .pipe(Effect.orElseSucceed(() => null))
     const memberExists = currentLink !== null
 
+    // A commit worktree (`refs/commits/<sha>`) is a pinned materialization: apply put it there
+    // to satisfy an exact lock entry, and nothing else legitimately moves it. So if its sha
+    // disagrees with the lock, the workspace is wrong no matter why apply could not fix it.
+    //
+    // Branch worktrees are deliberately excluded. Co-development moves HEAD ahead of the lock
+    // on purpose, so failing on that would break the normal local loop.
+    const currentSymlinkRef =
+      currentLink !== null ? extractRefFromSymlinkPath(currentLink.replace(/\/$/, '')) : undefined
+    const pinnedDrift: PinnedDrift | undefined =
+      isApplyMode === true &&
+      currentSymlinkRef?.type === 'commit' &&
+      lockedMember !== undefined &&
+      currentSymlinkRef.ref !== lockedMember.commit
+        ? { materialized: currentSymlinkRef.ref, locked: lockedMember.commit }
+        : undefined
+
     // In lock and apply modes, if member exists, check if symlink points to correct ref
     if (memberExists === true && (isLockMode === true || isApplyMode === true)) {
       const currentLinkNormalized = currentLink?.replace(/\/$/, '')
@@ -391,14 +432,13 @@ export const syncMember = <R = never>({
           })),
         )
         if (worktreeStatus.isDirty === true || worktreeStatus.hasUnpushed === true) {
-          return {
-            name,
-            status: 'skipped',
-            message:
-              worktreeStatus.isDirty === true
-                ? `ref changed but old worktree has ${worktreeStatus.changesCount} uncommitted changes (use --force to override)`
-                : 'ref changed but old worktree has unpushed commits (use --force to override)',
-          } satisfies MemberSyncResult
+          const reason =
+            worktreeStatus.isDirty === true
+              ? `ref changed but old worktree has ${worktreeStatus.changesCount} uncommitted changes (use --force to override)`
+              : 'ref changed but old worktree has unpushed commits (use --force to override)'
+          return pinnedDrift !== undefined
+            ? applyDriftError({ name, reason, drift: pinnedDrift })
+            : ({ name, status: 'skipped', message: reason } satisfies MemberSyncResult)
         }
       }
       // Fall through to content-aware worktree selection
@@ -417,14 +457,13 @@ export const syncMember = <R = never>({
         (worktreeStatus.isDirty === true || worktreeStatus.hasUnpushed === true) &&
         force === false
       ) {
-        return {
-          name,
-          status: 'skipped',
-          message:
-            worktreeStatus.isDirty === true
-              ? `${worktreeStatus.changesCount} uncommitted changes (use --force to override)`
-              : 'has unpushed commits (use --force to override)',
-        } satisfies MemberSyncResult
+        const reason =
+          worktreeStatus.isDirty === true
+            ? `${worktreeStatus.changesCount} uncommitted changes (use --force to override)`
+            : 'has unpushed commits (use --force to override)'
+        return pinnedDrift !== undefined
+          ? applyDriftError({ name, reason, drift: pinnedDrift })
+          : ({ name, status: 'skipped', message: reason } satisfies MemberSyncResult)
       }
     }
 
