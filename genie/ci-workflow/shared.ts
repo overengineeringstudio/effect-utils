@@ -272,22 +272,33 @@ export const withAppendedNixConfig = ({
 export const dollar = '$'
 
 /**
- * Keep pnpm's auxiliary home state isolated per job.
+ * Workspace-local pnpm hot mutable home state, stable across jobs and runners.
+ *
+ * `PNPM_HOME` must stay workspace-relative because the pnpm 11 + GVS links embed
+ * absolute paths and those need to stay valid for relocatable artifacts like
+ * `vercel deploy --prebuilt`.
  */
-export const jobLocalPnpmHome = '${{ github.workspace }}/.pnpm-home'
+export const workspaceLocalPnpmHome = '${{ github.workspace }}/.pnpm-home'
 
 /**
- * Keep pnpm's auxiliary mutable store content isolated per job.
+ * Workspace-local pnpm auxiliary mutable store content.
  *
- * The writable virtual topology remains under the workspace's
+ * Kept workspace-relative (not `runner.temp/<job>`) so the store is stable
+ * across every job and runner in a run: one cache version per
+ * `(os, arch, lockfile)` key instead of a per-job archive that every job
+ * re-derives and re-saves. The per-job archive is what drove concurrent
+ * multi-GB saves and a downstream self-hosted consumer's CI runner disk
+ * exhaustion. The writable virtual topology remains under the workspace's
  * `node_modules/.pnpm`; the store carries content and auxiliary metadata.
  */
-export const jobLocalPnpmStore = '${{ runner.temp }}/pnpm-store/${{ github.job }}'
+export const workspaceLocalPnpmStore = '${{ github.workspace }}/.pnpm-store'
 
 /**
- * Canonical job-local pnpm CI state surface on self-hosted runners.
+ * Canonical workspace-local pnpm CI state surface on self-hosted runners.
  */
-export const jobLocalPnpmStatePaths = [jobLocalPnpmHome, jobLocalPnpmStore].join('\n')
+export const workspaceLocalPnpmStatePaths = [workspaceLocalPnpmHome, workspaceLocalPnpmStore].join(
+  '\n',
+)
 
 /** Job-local CI diagnostics directory used for runner pressure snapshots and install logs. */
 export const jobLocalCiDiagnosticsDir = '${{ runner.temp }}/ci-diagnostics/${{ github.job }}'
@@ -304,7 +315,7 @@ export const workspaceLocalNixCachePath = `${workspaceLocalNixCacheRoot}/nix`
  * downstream callers while effect-utils centralizes the preferred setup step.
  */
 export const withCiPnpmState = (command: string) =>
-  `PNPM_HOME="\${PNPM_HOME:-${jobLocalPnpmHome}}" PNPM_STORE_DIR="\${PNPM_STORE_DIR:-${jobLocalPnpmStore}}" PNPM_CONFIG_STORE_DIR="\${PNPM_CONFIG_STORE_DIR:-${jobLocalPnpmStore}}" ${command}`
+  `PNPM_HOME="\${PNPM_HOME:-${workspaceLocalPnpmHome}}" PNPM_STORE_DIR="\${PNPM_STORE_DIR:-${workspaceLocalPnpmStore}}" PNPM_CONFIG_STORE_DIR="\${PNPM_CONFIG_STORE_DIR:-${workspaceLocalPnpmStore}}" ${command}`
 
 export const runDevenvTasksBeforeWithOptions = (
   opts: NixConfigOptions,

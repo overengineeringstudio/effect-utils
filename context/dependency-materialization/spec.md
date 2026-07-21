@@ -33,6 +33,7 @@ dependency-materialization/
   05-buck2-evidence/         Buck2 evidence-only boundary
   06-observability/          producer facts and build-log bridge records
   07-verification/           proof, benchmark, and regression architecture
+  08-ci-store-cache/         CI-profile pnpm store persistence and write coordination
 ```
 
 ## Requirement Trace
