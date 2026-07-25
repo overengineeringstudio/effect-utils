@@ -7,11 +7,13 @@ All notable changes to this project will be documented in this file.
 - **@overeng/megarepo**: make the git subprocess deadline operation-aware. A single flat
   30s bound killed large bare clones (e.g. `effect-ts/effect`, ~140MB pack) that
   legitimately run longer under CI contention, while still needing to stay tight for
-  local ops. Network subcommands (`clone`/`fetch`/`pull`/`push`/`ls-remote`) now get a
-  generous 10min default (`MEGAREPO_GIT_NETWORK_TIMEOUT_MS`); local ops keep 30s
-  (`MEGAREPO_GIT_COMMAND_TIMEOUT_MS`, which still also raises network for backward
-  compatibility). Fixes intermittent `git clone ... timed out after 30000ms` failures in
-  downstream consumers (livestore#1473).
+  local ops. Each operation class now has its own default and one override env var, with
+  no cross-class fallback: network subcommands (`clone`/`fetch`/`pull`/`push`/`ls-remote`)
+  get a generous 10min default (`MEGAREPO_GIT_NETWORK_TIMEOUT_MS`); local ops keep 30s
+  (`MEGAREPO_GIT_LOCAL_TIMEOUT_MS`). Renames the prior flat-era `MEGAREPO_GIT_COMMAND_TIMEOUT_MS`
+  knob (its only consumer, the cold-GC test task, is migrated in this change). Fixes
+  intermittent `git clone ... timed out after 30000ms` failures in downstream consumers
+  (livestore#1473).
 
 - **@overeng/react-inspector v9**: make Effect 4 schema inspection native to
   the public `ObjectInspector`; `schema` remains optional for ordinary values.

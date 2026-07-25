@@ -216,7 +216,7 @@ describe('git', () => {
   })
 
   describe('gitCommandTimeoutMillis', () => {
-    const ENV_KEYS = ['MEGAREPO_GIT_COMMAND_TIMEOUT_MS', 'MEGAREPO_GIT_NETWORK_TIMEOUT_MS'] as const
+    const ENV_KEYS = ['MEGAREPO_GIT_LOCAL_TIMEOUT_MS', 'MEGAREPO_GIT_NETWORK_TIMEOUT_MS'] as const
     const clone = ['clone', '--bare', 'https://example.com/repo', 'target']
     const revParse = ['rev-parse', 'HEAD']
 
@@ -229,22 +229,23 @@ describe('git', () => {
       expect(gitCommandTimeoutMillis(revParse)).toBe(30_000)
     })
 
-    it('MEGAREPO_GIT_COMMAND_TIMEOUT_MS overrides local and (legacy) network', () => {
-      process.env['MEGAREPO_GIT_COMMAND_TIMEOUT_MS'] = '5000'
+    it('each override bounds only its own class — no cross-class effect', () => {
+      process.env['MEGAREPO_GIT_LOCAL_TIMEOUT_MS'] = '5000'
+      process.env['MEGAREPO_GIT_NETWORK_TIMEOUT_MS'] = '900000'
       expect(gitCommandTimeoutMillis(revParse)).toBe(5000)
-      // Legacy override still bounds network so an existing stopgap keeps working.
-      expect(gitCommandTimeoutMillis(clone)).toBe(5000)
+      expect(gitCommandTimeoutMillis(clone)).toBe(900_000)
     })
 
-    it('MEGAREPO_GIT_NETWORK_TIMEOUT_MS overrides only network, wins over the legacy var', () => {
-      process.env['MEGAREPO_GIT_COMMAND_TIMEOUT_MS'] = '5000'
-      process.env['MEGAREPO_GIT_NETWORK_TIMEOUT_MS'] = '900000'
-      expect(gitCommandTimeoutMillis(clone)).toBe(900_000)
-      expect(gitCommandTimeoutMillis(revParse)).toBe(5000)
+    it('a local override does not affect network (and vice versa)', () => {
+      process.env['MEGAREPO_GIT_LOCAL_TIMEOUT_MS'] = '5000'
+      expect(gitCommandTimeoutMillis(clone)).toBe(600_000)
+      delete process.env['MEGAREPO_GIT_LOCAL_TIMEOUT_MS']
+      process.env['MEGAREPO_GIT_NETWORK_TIMEOUT_MS'] = '1'
+      expect(gitCommandTimeoutMillis(revParse)).toBe(30_000)
     })
 
     it('ignores invalid / non-positive overrides and falls back to defaults', () => {
-      process.env['MEGAREPO_GIT_COMMAND_TIMEOUT_MS'] = 'not-a-number'
+      process.env['MEGAREPO_GIT_LOCAL_TIMEOUT_MS'] = 'not-a-number'
       process.env['MEGAREPO_GIT_NETWORK_TIMEOUT_MS'] = '0'
       expect(gitCommandTimeoutMillis(clone)).toBe(600_000)
       expect(gitCommandTimeoutMillis(revParse)).toBe(30_000)
