@@ -4,6 +4,44 @@ import { shellSingleQuote } from './shared.ts'
 export const jobLocalMegarepoStore =
   '${{ runner.temp }}/megarepo-store/${{ github.run_id }}/${{ github.run_attempt }}/${{ github.job }}'
 
+/**
+ * GitHub Actions cache key for the megarepo store, keyed on the consumer's root
+ * `megarepo.lock`. A hit means {@link applyMegarepoLockStep} finds every pinned member
+ * commit already present in the restored store and no-ops — no cold clone of large
+ * members (e.g. `effect-ts/effect`) from GitHub. The key changes only when a member
+ * commit moves. Caches are per-repository in GitHub Actions, so the shared prefix is safe.
+ */
+const megarepoStoreCacheKey = "megarepo-store-v1-${{ runner.os }}-${{ hashFiles('megarepo.lock') }}"
+
+/**
+ * Restore the job-local megarepo store BEFORE the sync step so `mr apply` reuses cached
+ * bares instead of cloning. Pairs with {@link saveMegarepoStoreStep} and addresses each
+ * job cold-cloning every member on every run.
+ *
+ * {@link jobLocalMegarepoStore} embeds `run_id`, so the store lands at a new absolute path
+ * each run and git worktrees embed absolute paths — but a relocated store re-applies
+ * cleanly (git/mr repair the moved worktrees and reuse the bares with zero re-clones), so
+ * the run-scoped path is irrelevant to the lock-keyed cache content.
+ */
+export const restoreMegarepoStoreStep = {
+  name: 'Restore megarepo store',
+  id: 'restore-megarepo-store',
+  uses: 'actions/cache/restore@v4',
+  with: { path: jobLocalMegarepoStore, key: megarepoStoreCacheKey },
+} as const
+
+/**
+ * Save the megarepo store AFTER the sync step. Guarded on a cold restore, so on a shared
+ * key only the first job to finish writes it and the rest no-op (`cache-hit` was false but
+ * the key now exists). Place immediately after {@link applyMegarepoLockStep}.
+ */
+export const saveMegarepoStoreStep = {
+  name: 'Save megarepo store',
+  if: "${{ success() && steps.restore-megarepo-store.outputs.cache-hit != 'true' }}",
+  uses: 'actions/cache/save@v4',
+  with: { path: jobLocalMegarepoStore, key: megarepoStoreCacheKey },
+} as const
+
 const appendGitHubPathLine = (valueExpression: string) =>
   `printf '%s\\n' ${valueExpression} >> "$GITHUB_PATH"`
 
