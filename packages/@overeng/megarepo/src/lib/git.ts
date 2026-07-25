@@ -111,7 +111,7 @@ export class GitCommandTimeoutError extends GitCommandError {
  * allowed to hang for minutes. So the deadline is classified per operation: local ops
  * keep the tight bound, network ops (clone/fetch/pull/push/ls-remote) get a generous one.
  */
-const DEFAULT_GIT_LOCAL_TIMEOUT_MILLIS = 30_000
+const LOCAL_GIT_TIMEOUT_MILLIS = 30_000
 const DEFAULT_GIT_NETWORK_TIMEOUT_MILLIS = 600_000
 
 /**
@@ -140,20 +140,17 @@ const parsePositiveIntEnv = (name: string): number | undefined => {
 }
 
 /**
- * Deadline (ms) for a git invocation, chosen by operation class. Each class has exactly
- * one override env var and its own default — no cross-class fallback.
+ * Deadline (ms) for a git invocation, chosen by operation class.
  *
- * - Network ops: `MEGAREPO_GIT_NETWORK_TIMEOUT_MS`, else {@link DEFAULT_GIT_NETWORK_TIMEOUT_MILLIS}.
- * - Local ops: `MEGAREPO_GIT_LOCAL_TIMEOUT_MS`, else {@link DEFAULT_GIT_LOCAL_TIMEOUT_MILLIS}.
+ * Local ops keep a fixed {@link LOCAL_GIT_TIMEOUT_MILLIS} liveness bound. Network ops —
+ * whose honest runtime scales with transfer size / remote latency — get a generous
+ * default, tunable via the single `MEGAREPO_GIT_NETWORK_TIMEOUT_MS` knob (also the test
+ * seam). Nobody has needed to tune the local bound; add a knob back if that changes.
  */
-export const gitCommandTimeoutMillis = (args: ReadonlyArray<string>): number => {
-  if (isNetworkGitCommand(args) === true) {
-    return (
-      parsePositiveIntEnv('MEGAREPO_GIT_NETWORK_TIMEOUT_MS') ?? DEFAULT_GIT_NETWORK_TIMEOUT_MILLIS
-    )
-  }
-  return parsePositiveIntEnv('MEGAREPO_GIT_LOCAL_TIMEOUT_MS') ?? DEFAULT_GIT_LOCAL_TIMEOUT_MILLIS
-}
+export const gitCommandTimeoutMillis = (args: ReadonlyArray<string>): number =>
+  isNetworkGitCommand(args) === true
+    ? (parsePositiveIntEnv('MEGAREPO_GIT_NETWORK_TIMEOUT_MS') ?? DEFAULT_GIT_NETWORK_TIMEOUT_MILLIS)
+    : LOCAL_GIT_TIMEOUT_MILLIS
 
 const withGitCommandTimeout =
   <A, E, R>({ args, timeoutMillis }: { args: ReadonlyArray<string>; timeoutMillis: number }) =>
