@@ -154,7 +154,7 @@ const gitSubcommand = (args: ReadonlyArray<string>): string | undefined => {
   while (index < args.length) {
     const token = args[index]!
     if (token.startsWith('-') === false) return token
-    index += GIT_GLOBAL_OPTS_WITH_VALUE.has(token) ? 2 : 1
+    index += GIT_GLOBAL_OPTS_WITH_VALUE.has(token) === true ? 2 : 1
   }
   return undefined
 }
