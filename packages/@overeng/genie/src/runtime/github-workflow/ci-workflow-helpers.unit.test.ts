@@ -145,7 +145,7 @@ const validateNixStoreStepSource = extractSourceBlock(
 
 const applyMegarepoLockStepSource = extractSourceBlock(
   ciWorkflowSource,
-  'export const applyMegarepoLockStep = (opts?: { skip?: string[] }) => {',
+  'export const applyMegarepoLockStep = (opts?: { skip?: string[]; cacheableStore?: boolean }) => {',
   'export type DefaultRefPolicyCheckStepOptions = {',
 )
 const defaultRefPolicyCheckStepSource = extractSourceBlock(
