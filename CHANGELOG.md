@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- **genie/ci-workflow**: add opt-in megarepo store caching — `applyMegarepoLockStep({ cacheableStore: true })`
+  pins `MEGAREPO_STORE` to a stable `cacheableMegarepoStore` path, and reusable
+  `restoreMegarepoStoreStep` / `saveMegarepoStoreStep` (actions/cache keyed on the consumer's
+  `megarepo.lock`) go around it so CI jobs stop cold-cloning large members (e.g. `effect-ts/effect`)
+  every run. The default `jobLocalMegarepoStore` (run-scoped) is unchanged; caching requires the stable
+  path because GitHub derives an actions/cache *version* from the path, so a run-scoped path never
+  restores. Validated end-to-end in a consumer (restore hits, one deduped cache). Default behavior for
+  existing consumers is untouched.
+
 - **@overeng/megarepo**: make the git subprocess deadline operation-aware. A single flat
   30s bound killed large bare clones (e.g. `effect-ts/effect`, ~140MB pack) that
   legitimately run longer under CI contention, while still needing to stay tight for

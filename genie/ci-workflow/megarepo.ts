@@ -4,6 +4,43 @@ import { shellSingleQuote } from './shared.ts'
 export const jobLocalMegarepoStore =
   '${{ runner.temp }}/megarepo-store/${{ github.run_id }}/${{ github.run_attempt }}/${{ github.job }}'
 
+/**
+ * Stable megarepo store path for consumers that cache the store (see {@link restoreMegarepoStoreStep}).
+ *
+ * GitHub derives an `actions/cache` *version* from the cache `path`, so a run-scoped path
+ * (like {@link jobLocalMegarepoStore}) yields a new version every run and restores **never hit**;
+ * each job also writes a duplicate. A stable path — mirroring the pnpm-state cache's
+ * `${{ github.workspace }}` path — keeps the version stable across runs, so restores hit and
+ * GitHub's reserve dedups the concurrent saves. Safe: GitHub runs one job per (ephemeral) runner,
+ * so `runner.temp` is already per-job; a persistent runner's sequential jobs just reuse the warm
+ * store. Opt in via `applyMegarepoLockStep({ cacheableStore: true })`.
+ */
+export const cacheableMegarepoStore = '${{ runner.temp }}/megarepo-store'
+
+/** `actions/cache` key for the megarepo store, keyed on the consumer's root `megarepo.lock`. */
+const megarepoStoreCacheKey = "megarepo-store-v1-${{ runner.os }}-${{ hashFiles('megarepo.lock') }}"
+
+/**
+ * Restore the {@link cacheableMegarepoStore} BEFORE the sync step (use with
+ * `applyMegarepoLockStep({ cacheableStore: true })`). On a hit `mr apply` finds the pinned member
+ * commits already present and no-ops instead of cold-cloning large members from GitHub. Pairs with
+ * {@link saveMegarepoStoreStep}. A restored store re-applies cleanly (git/mr reuse the bares).
+ */
+export const restoreMegarepoStoreStep = {
+  name: 'Restore megarepo store',
+  id: 'restore-megarepo-store',
+  uses: 'actions/cache/restore@v4',
+  with: { path: cacheableMegarepoStore, key: megarepoStoreCacheKey },
+} as const
+
+/** Save the {@link cacheableMegarepoStore} AFTER the sync step, guarded on a cold restore. */
+export const saveMegarepoStoreStep = {
+  name: 'Save megarepo store',
+  if: "${{ success() && steps.restore-megarepo-store.outputs.cache-hit != 'true' }}",
+  uses: 'actions/cache/save@v4',
+  with: { path: cacheableMegarepoStore, key: megarepoStoreCacheKey },
+} as const
+
 const appendGitHubPathLine = (valueExpression: string) =>
   `printf '%s\\n' ${valueExpression} >> "$GITHUB_PATH"`
 
@@ -70,7 +107,9 @@ ${args.join(' ')}`,
  * Resolves the CLI inline with `nix run` to avoid `nix profile install`
  * conflicts on self-hosted runners.
  */
-export const applyMegarepoLockStep = (opts?: { skip?: string[] }) => {
+export const applyMegarepoLockStep = (opts?: { skip?: string[]; cacheableStore?: boolean }) => {
+  const megarepoStore =
+    opts?.cacheableStore === true ? cacheableMegarepoStore : jobLocalMegarepoStore
   const skipCsv = opts?.skip?.join(',') ?? ''
   const skipArgs = skipCsv === '' ? '' : `--skip ${shellSingleQuote(skipCsv)}`
   const quotedSkipCsv = shellSingleQuote(skipCsv)
@@ -82,7 +121,7 @@ export const applyMegarepoLockStep = (opts?: { skip?: string[] }) => {
 fi`
   return {
     name: 'Sync megarepo dependencies',
-    env: { MEGAREPO_STORE: jobLocalMegarepoStore },
+    env: { MEGAREPO_STORE: megarepoStore },
     run: `EU_REV=$(jq -r '.members["effect-utils"].commit' megarepo.lock)
 if [ -z "$EU_REV" ] || [ "$EU_REV" = "null" ]; then
   echo '::error::megarepo.lock missing members["effect-utils"].commit'

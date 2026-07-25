@@ -195,8 +195,11 @@ export {
 export {
   applyMegarepoLockStep,
   defaultRefPolicyCheckStep,
+  cacheableMegarepoStore,
   installMegarepoStep,
   jobLocalMegarepoStore,
+  restoreMegarepoStoreStep,
+  saveMegarepoStoreStep,
   syncMegarepoWorkspaceStep,
   type DefaultRefPolicyCheckStepOptions,
 } from './ci-workflow/megarepo.ts'
