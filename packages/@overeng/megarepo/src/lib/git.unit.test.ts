@@ -1,8 +1,10 @@
 import { Option } from 'effect'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 
 import {
   GitCommandError,
+  gitCommandTimeoutMillis,
+  isNetworkGitCommand,
   isTransientGitError,
   parseGitRemoteUrl,
   type ParsedGitRemote,
@@ -190,6 +192,62 @@ describe('git', () => {
       'fatal: unable to access: SSL certificate problem: certificate rejected',
     ])('should classify as non-transient: %s', (stderr) => {
       expect(isTransientGitError(mkError(stderr))).toBe(false)
+    })
+  })
+
+  describe('isNetworkGitCommand', () => {
+    it.each([['clone'], ['fetch'], ['pull'], ['push'], ['ls-remote']])(
+      'classifies %s as network',
+      (sub) => {
+        expect(isNetworkGitCommand([sub, '--flag', 'arg'])).toBe(true)
+      },
+    )
+
+    it.each([['status'], ['rev-parse'], ['worktree'], ['config'], ['remote'], ['checkout']])(
+      'classifies %s as local',
+      (sub) => {
+        expect(isNetworkGitCommand([sub, 'x'])).toBe(false)
+      },
+    )
+
+    it('classifies empty args as local', () => {
+      expect(isNetworkGitCommand([])).toBe(false)
+    })
+  })
+
+  describe('gitCommandTimeoutMillis', () => {
+    const ENV_KEYS = ['MEGAREPO_GIT_COMMAND_TIMEOUT_MS', 'MEGAREPO_GIT_NETWORK_TIMEOUT_MS'] as const
+    const clone = ['clone', '--bare', 'https://example.com/repo', 'target']
+    const revParse = ['rev-parse', 'HEAD']
+
+    afterEach(() => {
+      for (const key of ENV_KEYS) delete process.env[key]
+    })
+
+    it('defaults: network gets the generous bound, local the tight one', () => {
+      expect(gitCommandTimeoutMillis(clone)).toBe(600_000)
+      expect(gitCommandTimeoutMillis(revParse)).toBe(30_000)
+    })
+
+    it('MEGAREPO_GIT_COMMAND_TIMEOUT_MS overrides local and (legacy) network', () => {
+      process.env['MEGAREPO_GIT_COMMAND_TIMEOUT_MS'] = '5000'
+      expect(gitCommandTimeoutMillis(revParse)).toBe(5000)
+      // Legacy override still bounds network so an existing stopgap keeps working.
+      expect(gitCommandTimeoutMillis(clone)).toBe(5000)
+    })
+
+    it('MEGAREPO_GIT_NETWORK_TIMEOUT_MS overrides only network, wins over the legacy var', () => {
+      process.env['MEGAREPO_GIT_COMMAND_TIMEOUT_MS'] = '5000'
+      process.env['MEGAREPO_GIT_NETWORK_TIMEOUT_MS'] = '900000'
+      expect(gitCommandTimeoutMillis(clone)).toBe(900_000)
+      expect(gitCommandTimeoutMillis(revParse)).toBe(5000)
+    })
+
+    it('ignores invalid / non-positive overrides and falls back to defaults', () => {
+      process.env['MEGAREPO_GIT_COMMAND_TIMEOUT_MS'] = 'not-a-number'
+      process.env['MEGAREPO_GIT_NETWORK_TIMEOUT_MS'] = '0'
+      expect(gitCommandTimeoutMillis(clone)).toBe(600_000)
+      expect(gitCommandTimeoutMillis(revParse)).toBe(30_000)
     })
   })
 })
