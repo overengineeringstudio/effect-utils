@@ -17,29 +17,50 @@ export const jobLocalMegarepoStore =
  */
 export const cacheableMegarepoStore = '${{ runner.temp }}/megarepo-store'
 
-/** `actions/cache` key for the megarepo store, keyed on the consumer's root `megarepo.lock`. */
-const megarepoStoreCacheKey = "megarepo-store-v1-${{ runner.os }}-${{ hashFiles('megarepo.lock') }}"
+/**
+ * `actions/cache` key for the megarepo store, keyed on the consumer's root `megarepo.lock` and
+ * **partitioned by the skip set**. Jobs that skip different members produce different store
+ * contents; without partitioning they collide on one key, so a partial store (from a skipping
+ * job) would be restored by a full job that then re-clones the omitted member — and, because the
+ * exact restore reports `cache-hit=true`, never republishes the enriched store, re-cloning every
+ * run. Pass the SAME `skip` here as to {@link applyMegarepoLockStep}.
+ */
+const megarepoStoreCacheKey = (skip?: readonly string[]): string => {
+  const scope =
+    skip === undefined || skip.length === 0
+      ? 'full'
+      : `skip-${[...skip]
+          .sort()
+          .join('.')
+          .replace(/[^a-zA-Z0-9._-]/g, '_')}`
+  // Concatenate (not a template literal) so the GitHub `${{ … }}` expressions stay literal.
+  return 'megarepo-store-v1-${{ runner.os }}-' + scope + "-${{ hashFiles('megarepo.lock') }}"
+}
 
 /**
  * Restore the {@link cacheableMegarepoStore} BEFORE the sync step (use with
  * `applyMegarepoLockStep({ cacheableStore: true })`). On a hit `mr apply` finds the pinned member
- * commits already present and no-ops instead of cold-cloning large members from GitHub. Pairs with
+ * commits already present and no-ops instead of cold-cloning large members from GitHub. Pass the
+ * same `skip` as the sync step so the cache identity matches the store contents. Pairs with
  * {@link saveMegarepoStoreStep}. A restored store re-applies cleanly (git/mr reuse the bares).
  */
-export const restoreMegarepoStoreStep = {
+export const restoreMegarepoStoreStep = (opts?: { skip?: readonly string[] }) => ({
   name: 'Restore megarepo store',
   id: 'restore-megarepo-store',
   uses: 'actions/cache/restore@v4',
-  with: { path: cacheableMegarepoStore, key: megarepoStoreCacheKey },
-} as const
+  with: { path: cacheableMegarepoStore, key: megarepoStoreCacheKey(opts?.skip) },
+})
 
-/** Save the {@link cacheableMegarepoStore} AFTER the sync step, guarded on a cold restore. */
-export const saveMegarepoStoreStep = {
+/**
+ * Save the {@link cacheableMegarepoStore} AFTER the sync step, guarded on a cold restore. Pass the
+ * same `skip` as {@link restoreMegarepoStoreStep} / {@link applyMegarepoLockStep}.
+ */
+export const saveMegarepoStoreStep = (opts?: { skip?: readonly string[] }) => ({
   name: 'Save megarepo store',
   if: "${{ success() && steps.restore-megarepo-store.outputs.cache-hit != 'true' }}",
   uses: 'actions/cache/save@v4',
-  with: { path: cacheableMegarepoStore, key: megarepoStoreCacheKey },
-} as const
+  with: { path: cacheableMegarepoStore, key: megarepoStoreCacheKey(opts?.skip) },
+})
 
 const appendGitHubPathLine = (valueExpression: string) =>
   `printf '%s\\n' ${valueExpression} >> "$GITHUB_PATH"`

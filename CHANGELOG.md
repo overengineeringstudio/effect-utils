@@ -6,8 +6,9 @@ All notable changes to this project will be documented in this file.
 
 - **genie/ci-workflow**: add opt-in megarepo store caching — `applyMegarepoLockStep({ cacheableStore: true })`
   pins `MEGAREPO_STORE` to a stable `cacheableMegarepoStore` path, and reusable
-  `restoreMegarepoStoreStep` / `saveMegarepoStoreStep` (actions/cache keyed on the consumer's
-  `megarepo.lock`) go around it so CI jobs stop cold-cloning large members (e.g. `effect-ts/effect`)
+  `restoreMegarepoStoreStep({ skip })` / `saveMegarepoStoreStep({ skip })` (actions/cache keyed on the
+  consumer's `megarepo.lock`, partitioned by the `skip` set so a partial store never poisons a full
+  job) go around it so CI jobs stop cold-cloning large members (e.g. `effect-ts/effect`)
   every run. The default `jobLocalMegarepoStore` (run-scoped) is unchanged; caching requires the stable
   path because GitHub derives an actions/cache *version* from the path, so a run-scoped path never
   restores. Validated end-to-end in a consumer (restore hits, one deduped cache). Default behavior for
