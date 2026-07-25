@@ -223,7 +223,11 @@ export {
   mqLabels,
 } from './labels.ts'
 
-export { deriveSystemLabels, systemLabelColor, type DeriveSystemLabelsArgs } from './system-labels.ts'
+export {
+  deriveSystemLabels,
+  systemLabelColor,
+  type DeriveSystemLabelsArgs,
+} from './system-labels.ts'
 
 /**
  * Catalog versions - single source of truth for dependency versions
@@ -880,6 +884,9 @@ export {
   standardCIEnv,
   syncMegarepoWorkspaceStep,
   applyMegarepoLockStep,
+  cacheableMegarepoStore,
+  restoreMegarepoStoreStep,
+  saveMegarepoStoreStep,
   RUNNER_PROFILES,
   type CiMeasurementDescriptor,
   type DevenvPerfJobOptions,
