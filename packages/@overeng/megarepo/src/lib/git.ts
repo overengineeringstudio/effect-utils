@@ -101,17 +101,56 @@ export class GitCommandTimeoutError extends GitCommandError {
 // Git Commands
 // =============================================================================
 
-const DEFAULT_GIT_COMMAND_TIMEOUT_MILLIS = 30_000
+/**
+ * The git command deadline is a LIVENESS bound: it kills a wedged subprocess so a
+ * hung git can never wedge the calling fiber (paired with the SIGKILL finalizer in
+ * {@link startGitProcess}). A single flat value cannot serve both a millisecond-scale
+ * local op (`rev-parse`, `status`) and a network transfer whose honest duration scales
+ * with repo size — a bare clone of a large member (e.g. `effect-ts/effect`, ~140MB
+ * pack) legitimately exceeds 30s under CI contention, yet a hung `rev-parse` must not be
+ * allowed to hang for minutes. So the deadline is classified per operation: local ops
+ * keep the tight bound, network ops (clone/fetch/pull/push/ls-remote) get a generous one.
+ */
+const LOCAL_GIT_TIMEOUT_MILLIS = 30_000
+const DEFAULT_GIT_NETWORK_TIMEOUT_MILLIS = 600_000
 
-const gitCommandTimeoutMillis = (): number => {
-  const raw = process.env['MEGAREPO_GIT_COMMAND_TIMEOUT_MS']
-  if (raw === undefined) return DEFAULT_GIT_COMMAND_TIMEOUT_MILLIS
+/**
+ * git subcommands that perform network I/O, so their honest runtime is bounded by
+ * transfer size / remote latency rather than local CPU. Classification is by `args[0]`,
+ * which is reliably the subcommand — `Command.make('git', ...args)` never prepends global
+ * flags, and every call site in this module passes the subcommand first.
+ */
+const NETWORK_GIT_SUBCOMMANDS: ReadonlySet<string> = new Set([
+  'clone',
+  'fetch',
+  'pull',
+  'push',
+  'ls-remote',
+])
 
+/** Whether a git invocation performs network I/O (see {@link NETWORK_GIT_SUBCOMMANDS}). */
+export const isNetworkGitCommand = (args: ReadonlyArray<string>): boolean =>
+  args.length > 0 && NETWORK_GIT_SUBCOMMANDS.has(args[0]!)
+
+const parsePositiveIntEnv = (name: string): number | undefined => {
+  const raw = process.env[name]
+  if (raw === undefined) return undefined
   const parsed = Number.parseInt(raw, 10)
-  return Number.isInteger(parsed) === true && parsed > 0
-    ? parsed
-    : DEFAULT_GIT_COMMAND_TIMEOUT_MILLIS
+  return Number.isInteger(parsed) === true && parsed > 0 ? parsed : undefined
 }
+
+/**
+ * Deadline (ms) for a git invocation, chosen by operation class.
+ *
+ * Local ops keep a fixed {@link LOCAL_GIT_TIMEOUT_MILLIS} liveness bound. Network ops —
+ * whose honest runtime scales with transfer size / remote latency — get a generous
+ * default, tunable via the single `MEGAREPO_GIT_NETWORK_TIMEOUT_MS` knob (also the test
+ * seam). Nobody has needed to tune the local bound; add a knob back if that changes.
+ */
+export const gitCommandTimeoutMillis = (args: ReadonlyArray<string>): number =>
+  isNetworkGitCommand(args) === true
+    ? (parsePositiveIntEnv('MEGAREPO_GIT_NETWORK_TIMEOUT_MS') ?? DEFAULT_GIT_NETWORK_TIMEOUT_MILLIS)
+    : LOCAL_GIT_TIMEOUT_MILLIS
 
 const withGitCommandTimeout =
   <A, E, R>({ args, timeoutMillis }: { args: ReadonlyArray<string>; timeoutMillis: number }) =>
@@ -174,7 +213,7 @@ const startGitProcess = ({ args, cwd }: { args: ReadonlyArray<string>; cwd?: str
  */
 const runGitCommand = ({ args, cwd }: { args: ReadonlyArray<string>; cwd?: string }) =>
   (() => {
-    const timeoutMillis = gitCommandTimeoutMillis()
+    const timeoutMillis = gitCommandTimeoutMillis(args)
     return Effect.gen(function* () {
       const process = yield* startGitProcess(cwd !== undefined ? { args, cwd } : { args })
 
@@ -238,7 +277,7 @@ const streamGitCommandLines = <A>({
   sink: Sink.Sink<A, string>
 }) =>
   (() => {
-    const timeoutMillis = gitCommandTimeoutMillis()
+    const timeoutMillis = gitCommandTimeoutMillis(args)
     return Effect.gen(function* () {
       const process = yield* startGitProcess(cwd !== undefined ? { args, cwd } : { args })
 
