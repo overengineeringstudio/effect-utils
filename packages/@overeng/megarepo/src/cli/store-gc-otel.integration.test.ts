@@ -192,9 +192,17 @@ describe('mr store gc — OTEL instrumentation contract', () => {
         })
         trace.expectSome({ name: 'megarepo/test/store-fixture/init-source' })
         trace.expectSome({ name: 'megarepo/test/store-fixture/fetch-store-bare' })
+        // Operation-aware git deadline is wired through the real subprocess path: a LOCAL
+        // op (`init`) carries the tight 30s bound, a NETWORK op (`fetch`) the generous 10min
+        // one. This exercises the classification end-to-end (against a local remote, no
+        // actual network), not just the pure `gitCommandTimeoutMillis` helper.
         trace.expectSome({
           name: 'git/cmd',
-          attrs: { 'git.subcommand': 'init', 'git.timeout_ms': attr.present() },
+          attrs: { 'git.subcommand': 'init', 'git.timeout_ms': attr.int(30_000) },
+        })
+        trace.expectSome({
+          name: 'git/cmd',
+          attrs: { 'git.subcommand': 'fetch', 'git.timeout_ms': attr.int(600_000) },
         })
       }).pipe(Effect.provide(Layer.mergeAll(OteliteTestHarness.Default, NodeContext.layer))),
     30_000,

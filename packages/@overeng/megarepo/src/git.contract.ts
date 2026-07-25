@@ -54,7 +54,7 @@ export const GitTimeoutMs = attr.number({
   cardinality: 'low',
   brief: 'Configured timeout (milliseconds) for a git subprocess.',
   stability: 'development',
-  examples: [30000],
+  examples: [30000, 600000],
 })
 
 /** Total output size (bytes) a git subprocess produced. */

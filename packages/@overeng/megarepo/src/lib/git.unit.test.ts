@@ -1,8 +1,10 @@
 import { Option } from 'effect'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 
 import {
   GitCommandError,
+  gitCommandTimeoutMillis,
+  isNetworkGitCommand,
   isTransientGitError,
   parseGitRemoteUrl,
   type ParsedGitRemote,
@@ -190,6 +192,70 @@ describe('git', () => {
       'fatal: unable to access: SSL certificate problem: certificate rejected',
     ])('should classify as non-transient: %s', (stderr) => {
       expect(isTransientGitError(mkError(stderr))).toBe(false)
+    })
+  })
+
+  describe('isNetworkGitCommand', () => {
+    it.each([['clone'], ['fetch'], ['pull'], ['push'], ['ls-remote']])(
+      'classifies %s as network',
+      (sub) => {
+        expect(isNetworkGitCommand([sub, '--flag', 'arg'])).toBe(true)
+      },
+    )
+
+    it.each([['status'], ['rev-parse'], ['worktree'], ['config'], ['remote'], ['checkout']])(
+      'classifies %s as local',
+      (sub) => {
+        expect(isNetworkGitCommand([sub, 'x'])).toBe(false)
+      },
+    )
+
+    it('classifies empty args as local', () => {
+      expect(isNetworkGitCommand([])).toBe(false)
+    })
+
+    it('skips leading global options when locating the subcommand', () => {
+      // `-c name=value` / `-C <path>` consume a following value arg
+      expect(isNetworkGitCommand(['-c', 'http.extraHeader=x', 'clone', 'url', 'target'])).toBe(true)
+      expect(isNetworkGitCommand(['-C', '/repo', 'fetch', '--prune'])).toBe(true)
+      expect(isNetworkGitCommand(['-c', 'a=b', '--namespace', 'ns', 'push'])).toBe(true)
+      // `--opt=value` is a single token, skipped as a flag
+      expect(isNetworkGitCommand(['--git-dir=/x/.git', 'ls-remote'])).toBe(true)
+      // global options before a LOCAL op stay local
+      expect(isNetworkGitCommand(['-c', 'a=b', 'status'])).toBe(false)
+      // options with no trailing subcommand
+      expect(isNetworkGitCommand(['-c', 'a=b'])).toBe(false)
+    })
+  })
+
+  describe('gitCommandTimeoutMillis', () => {
+    const clone = ['clone', '--bare', 'https://example.com/repo', 'target']
+    const revParse = ['rev-parse', 'HEAD']
+
+    afterEach(() => {
+      delete process.env['MEGAREPO_GIT_NETWORK_TIMEOUT_MS']
+    })
+
+    it('defaults: network gets the generous bound, local the fixed one', () => {
+      expect(gitCommandTimeoutMillis(clone)).toBe(600_000)
+      expect(gitCommandTimeoutMillis(revParse)).toBe(30_000)
+    })
+
+    it('classifies through leading global options (`-c … clone` → network)', () => {
+      expect(gitCommandTimeoutMillis(['-c', 'http.extraHeader=x', ...clone])).toBe(600_000)
+    })
+
+    it('MEGAREPO_GIT_NETWORK_TIMEOUT_MS tunes network only; local stays fixed', () => {
+      process.env['MEGAREPO_GIT_NETWORK_TIMEOUT_MS'] = '900000'
+      expect(gitCommandTimeoutMillis(clone)).toBe(900_000)
+      expect(gitCommandTimeoutMillis(revParse)).toBe(30_000)
+    })
+
+    it('ignores an invalid / non-positive network override', () => {
+      process.env['MEGAREPO_GIT_NETWORK_TIMEOUT_MS'] = '0'
+      expect(gitCommandTimeoutMillis(clone)).toBe(600_000)
+      process.env['MEGAREPO_GIT_NETWORK_TIMEOUT_MS'] = 'not-a-number'
+      expect(gitCommandTimeoutMillis(clone)).toBe(600_000)
     })
   })
 })

@@ -611,7 +611,6 @@ in
     exec = trace.exec "test:megarepo-cold-gc" ''
       set -euo pipefail
       source ${lib.escapeShellArg pnpmTaskHelpersScript}
-      export MEGAREPO_GIT_COMMAND_TIMEOUT_MS="5000"
       run_package_bin vitest vitest run src/cli/store-gc-cold.integration.test.ts --reporter verbose --testTimeout 240000
     '';
     execIfModified = [
