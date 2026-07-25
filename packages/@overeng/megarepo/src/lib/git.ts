@@ -116,9 +116,7 @@ const DEFAULT_GIT_NETWORK_TIMEOUT_MILLIS = 600_000
 
 /**
  * git subcommands that perform network I/O, so their honest runtime is bounded by
- * transfer size / remote latency rather than local CPU. Classification is by `args[0]`,
- * which is reliably the subcommand — `Command.make('git', ...args)` never prepends global
- * flags, and every call site in this module passes the subcommand first.
+ * transfer size / remote latency rather than local CPU.
  */
 const NETWORK_GIT_SUBCOMMANDS: ReadonlySet<string> = new Set([
   'clone',
@@ -128,9 +126,44 @@ const NETWORK_GIT_SUBCOMMANDS: ReadonlySet<string> = new Set([
   'ls-remote',
 ])
 
+/**
+ * git global options (before the subcommand) that consume the FOLLOWING arg as a
+ * separate value, e.g. `-c name=value`, `-C <path>`. The subcommand scan skips both the
+ * option and its value. The `--opt=value` forms are single tokens and are skipped as
+ * ordinary flags.
+ */
+const GIT_GLOBAL_OPTS_WITH_VALUE: ReadonlySet<string> = new Set([
+  '-C',
+  '-c',
+  '--git-dir',
+  '--work-tree',
+  '--namespace',
+  '--config-env',
+  '--attr-source',
+])
+
+/**
+ * The git subcommand within `args`, skipping any leading global options — git's documented
+ * form is `git [<global options>] <command> [<args>]`. Every internal call site passes the
+ * subcommand first, but `runCommand` is part of the public API (re-exported from `mod.ts`),
+ * so a caller may legitimately prepend `-c name=value` / `-C <path>`; classifying on a raw
+ * `args[0]` would misread the option as the subcommand and pick the wrong deadline.
+ */
+const gitSubcommand = (args: ReadonlyArray<string>): string | undefined => {
+  let index = 0
+  while (index < args.length) {
+    const token = args[index]!
+    if (token.startsWith('-') === false) return token
+    index += GIT_GLOBAL_OPTS_WITH_VALUE.has(token) ? 2 : 1
+  }
+  return undefined
+}
+
 /** Whether a git invocation performs network I/O (see {@link NETWORK_GIT_SUBCOMMANDS}). */
-export const isNetworkGitCommand = (args: ReadonlyArray<string>): boolean =>
-  args.length > 0 && NETWORK_GIT_SUBCOMMANDS.has(args[0]!)
+export const isNetworkGitCommand = (args: ReadonlyArray<string>): boolean => {
+  const subcommand = gitSubcommand(args)
+  return subcommand !== undefined && NETWORK_GIT_SUBCOMMANDS.has(subcommand)
+}
 
 const parsePositiveIntEnv = (name: string): number | undefined => {
   const raw = process.env[name]

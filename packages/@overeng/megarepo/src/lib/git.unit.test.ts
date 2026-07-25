@@ -213,6 +213,19 @@ describe('git', () => {
     it('classifies empty args as local', () => {
       expect(isNetworkGitCommand([])).toBe(false)
     })
+
+    it('skips leading global options when locating the subcommand', () => {
+      // `-c name=value` / `-C <path>` consume a following value arg
+      expect(isNetworkGitCommand(['-c', 'http.extraHeader=x', 'clone', 'url', 'target'])).toBe(true)
+      expect(isNetworkGitCommand(['-C', '/repo', 'fetch', '--prune'])).toBe(true)
+      expect(isNetworkGitCommand(['-c', 'a=b', '--namespace', 'ns', 'push'])).toBe(true)
+      // `--opt=value` is a single token, skipped as a flag
+      expect(isNetworkGitCommand(['--git-dir=/x/.git', 'ls-remote'])).toBe(true)
+      // global options before a LOCAL op stay local
+      expect(isNetworkGitCommand(['-c', 'a=b', 'status'])).toBe(false)
+      // options with no trailing subcommand
+      expect(isNetworkGitCommand(['-c', 'a=b'])).toBe(false)
+    })
   })
 
   describe('gitCommandTimeoutMillis', () => {
@@ -226,6 +239,10 @@ describe('git', () => {
     it('defaults: network gets the generous bound, local the fixed one', () => {
       expect(gitCommandTimeoutMillis(clone)).toBe(600_000)
       expect(gitCommandTimeoutMillis(revParse)).toBe(30_000)
+    })
+
+    it('classifies through leading global options (`-c … clone` → network)', () => {
+      expect(gitCommandTimeoutMillis(['-c', 'http.extraHeader=x', ...clone])).toBe(600_000)
     })
 
     it('MEGAREPO_GIT_NETWORK_TIMEOUT_MS tunes network only; local stays fixed', () => {
