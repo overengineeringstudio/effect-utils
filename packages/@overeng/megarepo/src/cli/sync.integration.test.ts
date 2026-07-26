@@ -125,19 +125,41 @@ const runMrCommand = ({
         }),
     )
 
+    /**
+     * A member-level failure is a reported result, not an Effect failure, so the command still
+     * succeeds. The non-zero exit comes from the TUI app's `exitCode` mapper, which assigns
+     * `process.exitCode` on unmount — so that is what has to be observed here.
+     *
+     * `process.exitCode` is global: it is cleared before the run and restored afterwards, or a
+     * command that legitimately exits non-zero would also fail the vitest process itself.
+     */
+    const processExitCode = yield* Effect.acquireRelease(
+      Effect.sync(() => {
+        const previous = process.exitCode
+        process.exitCode = undefined
+        return { previous }
+      }),
+      ({ previous }) =>
+        Effect.sync(() => {
+          process.exitCode = previous
+        }),
+    )
+
     const argv = ['node', 'mr', ...command, ...args]
     const effect = Cli.Command.run(mrCommand, { name: 'mr', version: 'test' })(argv).pipe(
       Effect.provideService(Cwd, cwd),
       Effect.provide(consoleLayer),
     )
     const exit = yield* Effect.exit(effect)
+    const reportedExitCode = process.exitCode
     void envCapture
+    void processExitCode
 
     return {
       exit,
       stdout: (yield* getStdoutLines).join('\n'),
       stderr: [stderrCapture.stderrChunks.join(''), ...(yield* getStderrLines)].join('\n'),
-      exitCode: Exit.isSuccess(exit) === true ? 0 : 1,
+      exitCode: Exit.isSuccess(exit) === false ? 1 : Number(reportedExitCode ?? 0),
     }
   }).pipe(Effect.scoped)
 
@@ -2009,6 +2031,148 @@ describe('mr lock', () => {
         Effect.provide(NodeContext.layer),
         Effect.scoped,
       ),
+    )
+
+    /**
+     * A commit worktree is a pinned materialization: apply put it there to satisfy an exact
+     * lock entry. Leaving one at the wrong sha means apply did not deliver Lock → Workspace,
+     * so reporting `skipped` would exit 0 and hide a workspace that disagrees with the lock
+     * that produced it (#962).
+     */
+    it.effect(
+      'should fail when a dirty commit worktree leaves the member drifted from the lock',
+      Effect.fnUntraced(
+        function* () {
+          const fs = yield* FileSystem.FileSystem
+          const store = yield* createStoreFixture([
+            { host: 'example.com', owner: 'acme', repo: 'lib', branches: ['main'] },
+          ])
+          const mainWorktree = store.worktreePaths['example.com/acme/lib#main']
+          if (mainWorktree === undefined) throw new Error('Missing main worktree')
+          const lockedCommit = (yield* runGitCommand(mainWorktree, 'rev-parse', 'HEAD')).trim()
+
+          const { workspacePath } = yield* createWorkspaceWithLock({
+            members: { lib: 'https://example.com/acme/lib#main' },
+            lockEntries: {
+              lib: { url: 'https://example.com/acme/lib', ref: 'main', commit: lockedCommit },
+            },
+          })
+          const env = { MEGAREPO_STORE: store.storePath.slice(0, -1) }
+
+          // Materialize the pinned commit worktree the lock currently names.
+          yield* runApplyCommand({ cwd: workspacePath, args: ['--worktree-mode', 'commit'], env })
+
+          const symlinkPath = EffectPath.ops.join(
+            workspacePath,
+            EffectPath.unsafe.relativeFile('repos/lib'),
+          )
+          const pinnedLink = yield* fs.readLink(symlinkPath)
+          expect(pinnedLink).toContain(`/refs/commits/${lockedCommit}`)
+
+          // Move the lock on to a second real commit, then dirty the pinned worktree so apply
+          // cannot switch away from it.
+          yield* fs.writeFileString(
+            EffectPath.ops.join(mainWorktree, EffectPath.unsafe.relativeFile('next.txt')),
+            'next\n',
+          )
+          yield* addCommit({ repoPath: mainWorktree, message: 'Advance main' })
+          const newCommit = (yield* runGitCommand(mainWorktree, 'rev-parse', 'HEAD')).trim()
+
+          yield* writeLockFile({
+            lockPath: EffectPath.ops.join(
+              workspacePath,
+              EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
+            ),
+            lockFile: updateLockedMember({
+              lockFile: createEmptyLockFile(),
+              memberName: 'lib',
+              member: createLockedMember({
+                url: 'https://example.com/acme/lib',
+                ref: 'main',
+                commit: newCommit,
+              }),
+            }),
+          })
+
+          yield* fs.writeFileString(
+            EffectPath.unsafe.absoluteFile(`${pinnedLink.replace(/\/$/, '')}/dirty.txt`),
+            'uncommitted work\n',
+          )
+
+          const result = yield* runApplyCommand({
+            cwd: workspacePath,
+            args: ['--worktree-mode', 'commit', '--output', 'json'],
+            env,
+          })
+          const json = decodeSyncJsonOutput(result.stdout.trim())
+
+          expect(json.results[0]?.status).toBe('error')
+          expect(json.results[0]?.message).toContain(lockedCommit.slice(0, 8))
+          expect(json.results[0]?.message).toContain(newCommit.slice(0, 8))
+          expect(result.exitCode).toBe(1)
+
+          // The uncommitted work is still protected — apply reports, it does not clobber.
+          expect(yield* fs.readLink(symlinkPath)).toBe(pinnedLink)
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+      { timeout: 15_000 },
+    )
+
+    /**
+     * Branch worktrees are the co-development surface: local commits deliberately move HEAD
+     * ahead of the lock. Failing on that would break the normal local loop, so a dirty branch
+     * worktree stays a skip even when its commit disagrees with the lock.
+     */
+    it.effect(
+      'should still skip, not fail, when a dirty branch worktree disagrees with the lock',
+      Effect.fnUntraced(
+        function* () {
+          const fs = yield* FileSystem.FileSystem
+          const store = yield* createStoreFixture([
+            { host: 'example.com', owner: 'acme', repo: 'lib', branches: ['main'] },
+          ])
+          const mainWorktree = store.worktreePaths['example.com/acme/lib#main']
+          if (mainWorktree === undefined) throw new Error('Missing main worktree')
+
+          // Advance the branch past the commit the lock will record, so the branch worktree is
+          // legitimately ahead — exactly the co-development shape.
+          const staleCommit = (yield* runGitCommand(mainWorktree, 'rev-parse', 'HEAD')).trim()
+          yield* fs.writeFileString(
+            EffectPath.ops.join(mainWorktree, EffectPath.unsafe.relativeFile('wip.txt')),
+            'wip\n',
+          )
+          yield* addCommit({ repoPath: mainWorktree, message: 'Local work' })
+
+          const { workspacePath } = yield* createWorkspaceWithLock({
+            members: { lib: 'https://example.com/acme/lib#main' },
+            lockEntries: {
+              lib: { url: 'https://example.com/acme/lib', ref: 'main', commit: staleCommit },
+            },
+          })
+          const env = { MEGAREPO_STORE: store.storePath.slice(0, -1) }
+
+          yield* runApplyCommand({ cwd: workspacePath, args: ['--worktree-mode', 'tracking'], env })
+          yield* fs.writeFileString(
+            EffectPath.ops.join(mainWorktree, EffectPath.unsafe.relativeFile('dirty.txt')),
+            'uncommitted work\n',
+          )
+
+          const result = yield* runApplyCommand({
+            cwd: workspacePath,
+            args: ['--worktree-mode', 'tracking', '--output', 'json'],
+            env,
+          })
+          const json = decodeSyncJsonOutput(result.stdout.trim())
+
+          expect(json.results[0]?.status).not.toBe('error')
+          expect(result.exitCode).toBe(0)
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+      { timeout: 15_000 },
     )
 
     it.effect(
