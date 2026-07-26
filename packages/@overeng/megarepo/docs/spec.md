@@ -473,6 +473,29 @@ Strict mode that guarantees exact reproducibility from the lock file:
 - **Clones and fetches if needed** - lock apply will clone bare repos and fetch updates to materialize the locked state; it only prevents _updating_ the lock file
 - **Never modifies lock file** - the lock is read-only, all state comes from the committed lock
 
+**Postcondition — Lock → Workspace:** when apply exits successfully, every member
+it handled is materialized at the revision `megarepo.lock` records. A commit
+worktree (`refs/commits/<sha>/`) is a pinned materialization: apply put it there
+to satisfy an exact lock entry, and nothing else legitimately moves it. If apply
+cannot bring such a worktree to the locked revision — for example because it holds
+uncommitted work and `--force` was not given — it reports an **error** naming both
+revisions, not a skip, and exits non-zero.
+
+Branch worktrees are exempt. Co-development deliberately moves `HEAD` ahead of the
+lock, so a branch worktree that disagrees stays a skip.
+
+This postcondition matters because the drift is otherwise invisible: `repos/` is
+gitignored, so `git status` stays clean, and `mr:lock-sync-check` compares
+`devenv.lock` against `megarepo.lock` — lock against lock, never workspace against
+lock.
+
+```
+lib  ref changed but old worktree has 1 uncommitted changes (use --force to override)
+       workspace is at b2a37b45 but megarepo.lock records 35f9c042
+       hint: commit or discard the changes in the worktree, then re-run 'mr apply'
+             (or use --force to discard them)
+```
+
 **Worktree modes** (`--worktree-mode`):
 
 | Mode       | Worktree path          | Behavior                                                                                                      |
