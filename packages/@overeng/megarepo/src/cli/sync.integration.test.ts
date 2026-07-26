@@ -125,19 +125,41 @@ const runMrCommand = ({
         }),
     )
 
+    /**
+     * A member-level failure is a reported result, not an Effect failure, so the command still
+     * succeeds. The non-zero exit comes from the TUI app's `exitCode` mapper, which assigns
+     * `process.exitCode` on unmount — so that is what has to be observed here.
+     *
+     * `process.exitCode` is global: it is cleared before the run and restored afterwards, or a
+     * command that legitimately exits non-zero would also fail the vitest process itself.
+     */
+    const processExitCode = yield* Effect.acquireRelease(
+      Effect.sync(() => {
+        const previous = process.exitCode
+        process.exitCode = undefined
+        return { previous }
+      }),
+      ({ previous }) =>
+        Effect.sync(() => {
+          process.exitCode = previous
+        }),
+    )
+
     const argv = ['node', 'mr', ...command, ...args]
     const effect = Cli.Command.run(mrCommand, { name: 'mr', version: 'test' })(argv).pipe(
       Effect.provideService(Cwd, cwd),
       Effect.provide(consoleLayer),
     )
     const exit = yield* Effect.exit(effect)
+    const reportedExitCode = process.exitCode
     void envCapture
+    void processExitCode
 
     return {
       exit,
       stdout: (yield* getStdoutLines).join('\n'),
       stderr: [stderrCapture.stderrChunks.join(''), ...(yield* getStderrLines)].join('\n'),
-      exitCode: Exit.isSuccess(exit) === true ? 0 : 1,
+      exitCode: Exit.isSuccess(exit) === false ? 1 : Number(reportedExitCode ?? 0),
     }
   }).pipe(Effect.scoped)
 
