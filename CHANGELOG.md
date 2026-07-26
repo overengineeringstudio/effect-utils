@@ -4,13 +4,23 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- **@overeng/megarepo**: `mr apply` now fails when it leaves a pinned member drifted from
+  `megarepo.lock`. Previously every path returning `skipped` exited 0, so apply could report
+  success over a workspace that disagreed with the lock that produced it — invisible because
+  `repos/` is gitignored and `mr:lock-sync-check` compares lock against lock, never workspace
+  against lock. Commit and tag worktrees are pinned materializations and now report an error
+  naming both revisions; branch worktrees stay a skip, since co-development deliberately moves
+  `HEAD` ahead of the lock. The dirty-worktree protection is unchanged — apply still refuses to
+  clobber uncommitted work, it just no longer claims success while doing so. Fixes #962; this is
+  the root cause behind livestorejs/livestore#1467 and #1168.
+
 - **genie/ci-workflow**: add opt-in megarepo store caching — `applyMegarepoLockStep({ cacheableStore: true })`
   pins `MEGAREPO_STORE` to a stable `cacheableMegarepoStore` path, and reusable
   `restoreMegarepoStoreStep({ skip })` / `saveMegarepoStoreStep({ skip })` (actions/cache keyed on the
   consumer's `megarepo.lock`, partitioned by the `skip` set so a partial store never poisons a full
   job) go around it so CI jobs stop cold-cloning large members (e.g. `effect-ts/effect`)
   every run. The default `jobLocalMegarepoStore` (run-scoped) is unchanged; caching requires the stable
-  path because GitHub derives an actions/cache *version* from the path, so a run-scoped path never
+  path because GitHub derives an actions/cache _version_ from the path, so a run-scoped path never
   restores. Validated end-to-end in a consumer (restore hits, one deduped cache). Default behavior for
   existing consumers is untouched.
 

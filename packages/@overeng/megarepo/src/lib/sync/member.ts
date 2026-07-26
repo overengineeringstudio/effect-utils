@@ -114,8 +114,47 @@ const createSymlink = ({ target, link }: { target: string; link: string }) =>
     yield* fs.symlink(target.replace(/\/$/, ''), link.replace(/\/$/, ''))
   })
 
-/** A pinned materialization that disagrees with the lock entry that produced it. */
+/**
+ * A pinned materialization that disagrees with the lock entry that produced it.
+ *
+ * Both sides are already display-formatted: commit worktrees are identified by sha and are
+ * abbreviated, tag worktrees by tag name and are shown whole.
+ */
 type PinnedDrift = { materialized: string; locked: string }
+
+/**
+ * Whether a materialized worktree contradicts the lock entry that produced it.
+ *
+ * Commit (`refs/commits/<sha>`) and tag (`refs/tags/<tag>`) worktrees are pinned: apply put
+ * them there to satisfy an exact lock entry, and nothing else legitimately moves them. Branch
+ * worktrees are excluded — co-development moves `HEAD` ahead of the lock on purpose.
+ *
+ * The two pinned kinds compare on different fields, because a commit worktree is named by sha
+ * and a tag worktree by tag name. Comparing a tag against `lockedMember.commit` would report
+ * drift for every correctly-materialized tag.
+ */
+export const computePinnedDrift = ({
+  symlinkRef,
+  lockedMember,
+}: {
+  symlinkRef: { ref: string; type: 'branch' | 'tag' | 'commit' } | undefined
+  lockedMember: { ref: string; commit: string } | undefined
+}): PinnedDrift | undefined => {
+  if (symlinkRef === undefined || lockedMember === undefined) return undefined
+
+  switch (symlinkRef.type) {
+    case 'commit':
+      return symlinkRef.ref !== lockedMember.commit
+        ? { materialized: symlinkRef.ref.slice(0, 8), locked: lockedMember.commit.slice(0, 8) }
+        : undefined
+    case 'tag':
+      return symlinkRef.ref !== lockedMember.ref
+        ? { materialized: symlinkRef.ref, locked: lockedMember.ref }
+        : undefined
+    case 'branch':
+      return undefined
+  }
+}
 
 /**
  * Apply promises Lock → Workspace. When it cannot deliver that for a member, reporting
@@ -135,7 +174,7 @@ const applyDriftError = ({
   status: 'error',
   message:
     `${reason}\n` +
-    `  workspace is at ${drift.materialized.slice(0, 8)} but megarepo.lock records ${drift.locked.slice(0, 8)}\n` +
+    `  workspace is at ${drift.materialized} but megarepo.lock records ${drift.locked}\n` +
     `  hint: commit or discard the changes in the worktree, then re-run 'mr apply' (or use --force to discard them)`,
 })
 
@@ -342,20 +381,22 @@ export const syncMember = <R = never>({
       .pipe(Effect.orElseSucceed(() => null))
     const memberExists = currentLink !== null
 
-    // A commit worktree (`refs/commits/<sha>`) is a pinned materialization: apply put it there
-    // to satisfy an exact lock entry, and nothing else legitimately moves it. So if its sha
-    // disagrees with the lock, the workspace is wrong no matter why apply could not fix it.
+    // Commit (`refs/commits/<sha>`) and tag (`refs/tags/<tag>`) worktrees are pinned
+    // materializations: apply put them there to satisfy an exact lock entry, and nothing else
+    // legitimately moves them. So if one disagrees with the lock, the workspace is wrong no
+    // matter why apply could not fix it.
     //
     // Branch worktrees are deliberately excluded. Co-development moves HEAD ahead of the lock
     // on purpose, so failing on that would break the normal local loop.
+    //
+    // The two are compared on different fields: a commit worktree is named by sha, a tag
+    // worktree by tag name. Comparing a tag against `lockedMember.commit` would mismatch on
+    // every correctly-materialized tag.
     const currentSymlinkRef =
       currentLink !== null ? extractRefFromSymlinkPath(currentLink.replace(/\/$/, '')) : undefined
-    const pinnedDrift: PinnedDrift | undefined =
-      isApplyMode === true &&
-      currentSymlinkRef?.type === 'commit' &&
-      lockedMember !== undefined &&
-      currentSymlinkRef.ref !== lockedMember.commit
-        ? { materialized: currentSymlinkRef.ref, locked: lockedMember.commit }
+    const pinnedDrift =
+      isApplyMode === true
+        ? computePinnedDrift({ symlinkRef: currentSymlinkRef, lockedMember })
         : undefined
 
     // In lock and apply modes, if member exists, check if symlink points to correct ref
