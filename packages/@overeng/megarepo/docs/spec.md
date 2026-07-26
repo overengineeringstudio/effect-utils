@@ -482,7 +482,8 @@ uncommitted work and `--force` was not given — it reports an **error** naming 
 revisions, not a skip, and exits non-zero.
 
 Branch worktrees are exempt. Co-development deliberately moves `HEAD` ahead of the
-lock, so a branch worktree that disagrees stays a skip.
+lock, so a branch worktree that disagrees stays a skip. See
+[decision 0009](./decisions/0009-apply-drift-postcondition.md).
 
 This postcondition matters because the drift is otherwise invisible: `repos/` is
 gitignored, so `git status` stays clean, and `mr:lock-sync-check` compares
