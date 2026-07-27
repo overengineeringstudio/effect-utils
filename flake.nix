@@ -133,6 +133,15 @@
               ;
             src = self;
           };
+          npm-release = import (rootPath + "/packages/@overeng/npm-release/nix/build.nix") {
+            inherit
+              pkgs
+              gitRev
+              commitTs
+              dirty
+              ;
+            src = self;
+          };
         };
         cliPackagesDirty = {
           genie = import (rootPath + "/packages/@overeng/genie/nix/build.nix") {
@@ -166,6 +175,11 @@
             src = self;
             dirty = true;
           };
+          npm-release = import (rootPath + "/packages/@overeng/npm-release/nix/build.nix") {
+            inherit pkgs gitRev commitTs;
+            src = self;
+            dirty = true;
+          };
         };
       in
       {
@@ -194,6 +208,9 @@
             notion-md = cliPackages.notion-md;
             notion-md-dirty = cliPackagesDirty.notion-md;
             "notion-md-pnpm-deps" = cliPackages.notion-md.passthru.depsBuildsByInstallRoot.root;
+            npm-release = cliPackages.npm-release;
+            npm-release-dirty = cliPackagesDirty.npm-release;
+            "npm-release-pnpm-deps" = cliPackages.npm-release.passthru.depsBuildsByInstallRoot.root;
             "oxc-config-plugin-pnpm-deps" = oxlintNpm.pluginBundle.passthru.pnpmDeps;
             # npm oxlint with NAPI bindings + pre-bundled @overeng/oxc-config plugin
             oxlint-npm = oxlintNpm;
