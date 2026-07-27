@@ -1,8 +1,11 @@
 # Lightweight, repository-agnostic devenv observability.
 #
-# This module deliberately keeps capture orchestration in effect-utils while
-# leaving domain assertions in the owning repository. It joins native devenv
-# OTLP/gRPC spans and effect-utils OTLP/HTTP task spans in one otelite capture.
+# This module deliberately keeps hermetic capture, verification, and backend
+# composition in effect-utils while leaving domain assertions in the owning
+# repository. Native devenv owns orchestration tracing; the Effect task bridge
+# temporarily preserves status-versus-exec phase detail until devenv can export
+# Debug task activities without coupling them to global CLI verbosity:
+# https://github.com/cachix/devenv/issues/3037
 {
   project,
   backend ? "ambient",
@@ -34,6 +37,8 @@ let
     else
       throw "effect-utils observability: backend must be one of ${builtins.concatStringsSep ", " validBackends}";
 
+  # Temporary compatibility producer for task-phase detail. Keep otelite and
+  # the profile/verify surface after this producer can be retired.
   otelSpan = import ./otel/otel-span.nix { inherit pkgs; };
   otelite = import (../../packages + "/@overeng/otelite/nix/build.nix") { inherit pkgs; };
 
@@ -57,8 +62,8 @@ let
           summary_file="$capture_dir/summary.json"
           spans_file="$capture_dir/spans.ndjson"
 
-          # Native devenv uses OTLP/gRPC while effect-utils shell spans use
-          # OTLP/HTTP. Otelite owns both isolated receivers for this invocation.
+          # Native devenv uses OTLP/gRPC while the temporary task-phase
+          # producer uses OTLP/HTTP. Otelite owns the isolated capture.
           # shellcheck disable=SC2016
           env \
             -u DEVENV_TRACE_TO \
