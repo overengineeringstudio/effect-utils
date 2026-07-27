@@ -100,6 +100,28 @@ Helper functions used by task modules:
 - `cli-guard.nix` - Guarded task-owned CLI wrappers
 - `trace.nix` - Task tracing wrappers
 
+## Task Output
+
+devenv does not forward a task's **stdout** to the caller — on success or on
+failure, and regardless of `--show-output` or `DEVENV_TASK_PASSTHROUGH`. Its
+**stderr** is forwarded in every case.
+
+So anything a task emits for the operator, and every GitHub workflow command,
+must go to stderr:
+
+```nix
+echo "::warning::pnpm store was rebuilt from scratch" >&2
+```
+
+On stdout the same line is silently discarded: it never reaches the job log, and
+GitHub never turns it into an annotation or a log group. `lint:nix:workflow-commands`
+fails the build on any `echo "::…"` here that is missing `>&2`.
+
+Stdout is not a reliable channel in either direction: a direct `devenv tasks run`
+of a failing task discarded its stdout too, while a failing *dependency* task's
+stdout does appear in devenv's error summary in CI. Rather than depend on which
+case applies, put anything you need to read on stderr.
+
 ## Adding New Tasks
 
 ### For Shared Tasks:
