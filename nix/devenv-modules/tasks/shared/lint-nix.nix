@@ -98,11 +98,6 @@ let
     # never reaches the runner and never becomes an annotation or a log group.
     # stderr is forwarded, so that is where these have to go. Without this guard
     # the mistake is invisible: the emit looks correct and simply does nothing.
-    #
-    # This enforces a workaround, not a best practice — GitHub documents workflow
-    # commands on stdout, and on a plain shell step that works.
-    # TODO(cachix/devenv#3038): remove this task once devenv forwards task stdout
-    # and the fixed version is pinned everywhere.
     "lint:nix:workflow-commands" = {
       description = "Check GitHub workflow commands in task definitions go to stderr";
       exec = trace.exec "lint:nix:workflow-commands" ''

@@ -61,7 +61,6 @@
     ],
     "overeng/explicit-boolean-compare": "error",
     "overeng/exports-first": "error",
-    "overeng/no-stdout-workflow-command": "error",
     "overeng/jsdoc-require-exports": "error",
     "typescript/consistent-type-imports": "warn",
     "overeng/no-raw-otel-primitives": "off",

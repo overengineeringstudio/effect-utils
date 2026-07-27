@@ -23,15 +23,6 @@ All notable changes to this project will be documented in this file.
   emits the `::warning::` annotation on **stderr** — devenv discards a task's stdout, so an
   annotation written there never reaches the runner.
 
-- **@overeng/oxc-config**: add `overeng/no-stdout-workflow-command` (enabled as `error` in the base
-  config), flagging GitHub workflow commands passed to `console.log`/`console.info` or
-  `process.stdout.write`. This is the TypeScript counterpart to `lint:nix:workflow-commands`: the
-  mistake is invisible without a guard, since the emit reads as correct and simply does nothing. A
-  `::` arriving from an interpolated value is not flagged — only a literal at the start of the
-  emitted string is a workflow command. This is a workaround, not a general best practice:
-  GitHub documents workflow commands on stdout, and stderr is required only because devenv
-  drops task stdout (cachix/devenv#3038). Refs livestorejs/livestore#968.
-
 - **devenv-modules**: GitHub workflow commands emitted by tasks now go to stderr. devenv does not
   forward a task's stdout, so `echo "::warning::…"` there never reached the runner — it produced no
   annotation and no log group. That silently affected the two `::notice::` emits in

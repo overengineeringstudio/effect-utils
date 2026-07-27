@@ -37,7 +37,7 @@ ledger (source of truth)  ──JSON──▶  validate  ───────�
 test invocation fails
   under a stated policy   ──argv──▶  announce  ──┬──▶ job summary file  (R06)
   key + label                                    │
-                                                 └──▶ annotation, stderr (R07)
+                                                 └──▶ annotation, stdout (R07)
                                         │
                                         └─ resolve: key exists (R03)
                                                     entry.target == label (R02)
@@ -100,23 +100,16 @@ A tolerated failure is announced twice, with different jobs:
 | Channel          | Content                                                                          | Role                                    |
 | ---------------- | -------------------------------------------------------------------------------- | --------------------------------------- |
 | Job summary file | `- Quarantined failure: <label> — <reason> Tracking <issue>, expires <expires>.` | Durable record, survives log truncation |
-| stderr           | `::warning title=Quarantined test failure::<same summary>`                       | Surfaces in the run's annotations       |
+| stdout           | `::warning title=Quarantined test failure::<same summary>`                       | Surfaces in the run's annotations       |
 
 Both carry the full summary, so either alone is readable (R06). The summary file
 path comes from `--summary-file`, defaulting to `$GITHUB_STEP_SUMMARY`; when
 neither is set, only the annotation is emitted.
 
-**The annotation goes to stderr, and that is a workaround.** GitHub documents
-workflow commands on stdout, and on a plain shell step that works. stderr is
-required only because devenv discards a task's stdout (A04,
-[cachix/devenv#3038](https://github.com/cachix/devenv/issues/3038)), which the
-upstream reproduction also shows carries no protocol data — task outputs travel
-via `DEVENV_TASK_OUTPUT_FILE`.
-
-<!-- TODO(cachix/devenv#3038): when devenv forwards task stdout and the fixed
-     version is pinned everywhere, drop T02, restate R07 as "the documented
-     stdout channel", and retire `overeng/no-stdout-workflow-command` and
-     `lint:nix:workflow-commands`. Tracked in the Blockers database. -->
+The annotation is written to stdout, which is the channel GitHub documents for
+workflow commands. A devenv task's stdout does reach the runner: measured on a
+GitHub runner, a `::warning::` emitted from a task became an annotation with no
+output opt-in, indistinguishable from one emitted by the step itself.
 
 Announcement failure is fatal (R08): the caller is expected to propagate a
 non-zero exit rather than continue tolerating the failure.

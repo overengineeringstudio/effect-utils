@@ -25,10 +25,6 @@ not of the contract.
 - **A03 Consumer owns the policy decision:** Whether a given invocation is
   blocking or quarantined is decided by the consumer, which knows its own test
   lanes. This subsystem is reached only once a tolerated failure has occurred.
-- **A04 devenv discards task stdout:** A GitHub workflow command written to a
-  devenv task's stdout never reaches the runner; stderr is forwarded. Tracked as
-  [cachix/devenv#3038](https://github.com/cachix/devenv/issues/3038) — an
-  upstream defect, not a property worth preserving. See T02.
 
 ## Acceptable Tradeoffs
 
@@ -37,11 +33,6 @@ not of the contract.
   failure and forbids sharing types directly, in exchange for consumers needing
   no npm dependency on this package. Tolerated failures are rare by
   construction.
-- **T02 Non-canonical emit channel:** The annotation is written to stderr even
-  though GitHub documents workflow commands on stdout. This is a workaround for
-  A04, not a preference. When that is fixed and the fixed devenv is pinned
-  everywhere, the requirement to use stderr is retired and R07 is satisfied by
-  the documented channel instead.
 
 ## Requirements
 
@@ -69,9 +60,9 @@ not of the contract.
 - **R06 Announcement is self-contained:** A tolerated failure is announced with
   the target, reason, tracking issue, and expiry, so the record is readable
   without consulting the ledger.
-- **R07 Announcement reaches the runner:** The announcement is emitted on a
-  channel the CI runner actually reads, so a tolerated failure is
-  distinguishable from a genuine pass.
+- **R07 Announcement reaches the runner:** The announcement is emitted as a
+  GitHub workflow command on stdout, so a tolerated failure becomes an
+  annotation and stays distinguishable from a genuine pass.
 - **R08 Failing to announce fails the run:** If the announcement cannot be made,
   the run fails rather than tolerating the failure silently. Suppressing a
   failure while losing its signal is the outcome this subsystem exists to

@@ -590,10 +590,10 @@ const quarantineAnnounceCommand = Command.make(
         appendFileSync(summaryPath, renderQuarantineSummaryLine(summary))
       }
 
-      // stderr, not stdout: `devenv tasks run` discards a task's stdout, so an annotation
-      // written there never reaches the runner (#969).
-      // TODO(cachix/devenv#3038): stdout is the documented channel; revisit once devenv forwards it.
-      process.stderr.write(`${renderQuarantineAnnotation(summary)}\n`)
+      // stdout is GitHub's documented channel for workflow commands, and a devenv task's
+      // stdout does reach the runner (measured; see the quarantine spec).
+      process.stdout.write(`${renderQuarantineAnnotation(summary)}
+`)
     }),
 ).pipe(
   Command.withDescription(

@@ -94,15 +94,7 @@ export const resolveQuarantineEntry = (args: {
   return entry
 }
 
-/**
- * The GitHub annotation form of an announcement.
- *
- * Callers must write this to **stderr**. `devenv tasks run` does not forward a task's stdout,
- * so an annotation emitted there never reaches the runner (effect-utils#969). GitHub itself
- * documents workflow commands on stdout — stderr is a devenv workaround.
- *
- * TODO(cachix/devenv#3038): drop the stderr requirement once devenv forwards task stdout.
- */
+/** The GitHub annotation form of an announcement. */
 export const renderQuarantineAnnotation = (summary: string): string =>
   `::warning title=Quarantined test failure::${summary}`
 
