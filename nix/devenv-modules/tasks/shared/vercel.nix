@@ -148,6 +148,11 @@ let
     };
 in
 {
+  # The generated deploy workflow always collects and publishes the records
+  # emitted by this task. Keep that dependency inside the reusable module so a
+  # consumer cannot compose a deploy job with missing report tasks.
+  imports = [ ./workflow-report-module.nix ];
+
   tasks = lib.mkMerge (
     (if hasDeployments then map mkDeployTask deployments else [ ])
     ++ [

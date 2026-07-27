@@ -63,6 +63,53 @@ assert_json_field() {
   fi
 }
 
+assert_deploy_modules_include_workflow_report_tasks() {
+  local task_names
+
+  task_names="$(
+    nix-instantiate --eval --strict --json --expr "
+      let
+        flake = builtins.getFlake (toString $ROOT);
+        pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
+        evaluated = pkgs.lib.evalModules {
+          modules = [
+            ({ ... }: {
+              config._module.args.pkgs = pkgs;
+              options.tasks = pkgs.lib.mkOption {
+                type = pkgs.lib.types.attrsOf pkgs.lib.types.anything;
+                default = { };
+              };
+              options.processes = pkgs.lib.mkOption {
+                type = pkgs.lib.types.attrsOf pkgs.lib.types.anything;
+                default = { };
+              };
+              options.packages = pkgs.lib.mkOption {
+                type = pkgs.lib.types.listOf pkgs.lib.types.anything;
+                default = [ ];
+              };
+            })
+            (import $ROOT/nix/devenv-modules/tasks/shared/netlify.nix {
+              siteName = \"fake-site\";
+              ciToolsBin = \"$tmpdir/ci-tools-wrapper\";
+              netlifyBin = \"$tmpdir/fake-netlify-pkg/bin/netlify\";
+            })
+            (import $ROOT/nix/devenv-modules/tasks/shared/vercel.nix {
+              ciToolsBin = \"$tmpdir/ci-tools-wrapper\";
+              vercelBin = \"$tmpdir/fake-vercel\";
+            })
+          ];
+        };
+      in builtins.attrNames evaluated.config.tasks
+    " | jq -r '.[]'
+  )"
+
+  assert_contains "$task_names" "netlify:deploy" "Netlify module should expose its aggregate task"
+  assert_contains "$task_names" "vercel:deploy" "Vercel module should expose its aggregate task"
+  assert_contains "$task_names" "workflow-report:collect-bundle" "Deploy modules should compose report collection"
+  assert_contains "$task_names" "workflow-report:render-comment-body" "Deploy modules should compose report rendering"
+  assert_contains "$task_names" "workflow-report:publish" "Deploy modules should compose report publication"
+}
+
 extract_netlify_task_script() {
   local static_dir="$1"
   local output_path="$2"
@@ -372,6 +419,9 @@ case "\${1:-}:\${2:-}" in
 esac
 EOF
 chmod +x "$tmpdir/ci-tools-wrapper"
+
+echo "Test 0: deploy modules compose their workflow-report task dependency"
+assert_deploy_modules_include_workflow_report_tasks
 
 extract_netlify_task_script "$workspace/storybook-static" "$tmpdir/netlify-deploy.sh"
 extract_vercel_static_task_script "$workspace/static" "$tmpdir/vercel-static-deploy.sh"
