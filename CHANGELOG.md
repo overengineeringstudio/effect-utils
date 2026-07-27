@@ -13,6 +13,15 @@ All notable changes to this project will be documented in this file.
   The shared setup module also gains `skipNonInteractive`, removing the need
   for consumers to replace `setup:gate` (and accidentally drop its tracing)
   just to keep non-interactive shell entry cheap.
+- **@overeng/ci-tools**: add `ci-tools quarantine validate|announce`, so a repo can hold a
+  known-failing test target non-blocking without its required check lying about it. The repo owns
+  the ledger contents; ci-tools owns what an entry means — the schema (target, reason, tracking
+  issue, expiry), the expiry rule, and the announcement. A malformed `expires` counts as expired:
+  comparison is lexicographic, so a free-form string would otherwise sort above every real date and
+  turn a typo into a permanent quarantine. `announce` resolves the key against the ledger and
+  rejects an entry applied to a target it does not declare, then writes the job-summary line and
+  emits the `::warning::` annotation on stdout, the channel GitHub documents for workflow
+  commands.
 
 - **devenv-modules**: GitHub workflow commands emitted by tasks now go to stderr. devenv does not
   forward a task's stdout, so `echo "::warning::…"` there never reached the runner — it produced no

@@ -1,6 +1,6 @@
 /* oxlint-disable overeng/exports-first -- Public command trees must be assembled after their private leaf commands are initialized. */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 
 import { Command, Options } from '@effect/cli'
@@ -20,6 +20,14 @@ import {
   workflowReportRecordLineMarker,
   type WorkflowReportManagedComment,
 } from './mod.ts'
+import {
+  decodeQuarantineLedgerJson,
+  expiredQuarantineEntries,
+  renderQuarantineAnnotation,
+  renderQuarantineAnnouncement,
+  renderQuarantineSummaryLine,
+  resolveQuarantineEntry,
+} from './quarantine.ts'
 
 const nonEmptyTextOption = (opts: { readonly name: string; readonly description: string }) =>
   Options.text(opts.name).pipe(Options.withDescription(opts.description))
@@ -514,6 +522,91 @@ const vercelDeployCommand = Command.make(
     }),
 ).pipe(Command.withDescription('Deploy a local static directory to Vercel'))
 
+const readLedger = (path: string) => {
+  if (existsSync(path) === false) throw new Error(`quarantine ledger does not exist: ${path}`)
+  return decodeQuarantineLedgerJson(readFileSync(path, 'utf8'))
+}
+
+const quarantineValidateCommand = Command.make(
+  'validate',
+  {
+    ledger: nonEmptyTextOption({
+      name: 'ledger',
+      description: 'Path to the quarantine ledger JSON',
+    }),
+    today: Options.text('today').pipe(
+      Options.withDescription(
+        'Evaluate expiry against this YYYY-MM-DD date instead of the current day',
+      ),
+      Options.withDefault(''),
+    ),
+  },
+  ({ ledger, today }) =>
+    Effect.sync(() => {
+      const expired = expiredQuarantineEntries({
+        ledger: readLedger(ledger),
+        today: optionalString(today) ?? new Date().toISOString().slice(0, 10),
+      })
+
+      if (expired.length === 0) return
+
+      const detail = expired
+        .map(
+          ([key, entry]) => `  ${key} (${entry.target}) expired ${entry.expires} — ${entry.issue}`,
+        )
+        .join('\n')
+      throw new Error(`Expired quarantine entries; renew or remove them:\n${detail}`)
+    }),
+).pipe(Command.withDescription('Fail when a quarantine ledger holds expired or malformed entries'))
+
+const quarantineAnnounceCommand = Command.make(
+  'announce',
+  {
+    ledger: nonEmptyTextOption({
+      name: 'ledger',
+      description: 'Path to the quarantine ledger JSON',
+    }),
+    key: nonEmptyTextOption({
+      name: 'key',
+      description: 'Quarantine key naming the ledger entry that tolerates this failure',
+    }),
+    label: nonEmptyTextOption({
+      name: 'label',
+      description: 'Test target whose failure was tolerated; must match the entry target',
+    }),
+    summaryFile: Options.text('summary-file').pipe(
+      Options.withDescription('Job summary file to append to (defaults to $GITHUB_STEP_SUMMARY)'),
+      Options.withDefault(''),
+    ),
+  },
+  ({ ledger, key, label, summaryFile }) =>
+    Effect.sync(() => {
+      const entry = resolveQuarantineEntry({ ledger: readLedger(ledger), key, label })
+      const summary = renderQuarantineAnnouncement({ label, entry })
+
+      const summaryPath =
+        optionalString(summaryFile) ?? optionalString(process.env.GITHUB_STEP_SUMMARY ?? '')
+      if (summaryPath !== undefined) {
+        appendFileSync(summaryPath, renderQuarantineSummaryLine(summary))
+      }
+
+      // stdout is GitHub's documented channel for workflow commands, and a devenv task's
+      // stdout does reach the runner (measured; see the quarantine spec).
+      process.stdout.write(`${renderQuarantineAnnotation(summary)}
+`)
+    }),
+).pipe(
+  Command.withDescription(
+    'Announce a tolerated test failure to the job summary and as an annotation',
+  ),
+)
+
+/** CLI command for declaring and checking tolerated test failures. */
+export const quarantineCommand = Command.make('quarantine').pipe(
+  Command.withSubcommands([quarantineValidateCommand, quarantineAnnounceCommand]),
+  Command.withDescription('Quarantine ledger validation and tolerated-failure announcements'),
+)
+
 /** CLI command for deploy preview provider operations. */
 export const deployCommand = Command.make('deploy').pipe(
   Command.withSubcommands([netlifyDeployCommand, vercelDeployCommand]),
@@ -528,6 +621,6 @@ export const workflowReportCommand = Command.make('workflow-report').pipe(
 
 /** Root CLI command for CI automation helpers. */
 export const ciToolsCommand = Command.make('ci-tools').pipe(
-  Command.withSubcommands([workflowReportCommand, deployCommand]),
+  Command.withSubcommands([workflowReportCommand, deployCommand, quarantineCommand]),
   Command.withDescription('CI automation helpers'),
 )

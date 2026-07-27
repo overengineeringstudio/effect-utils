@@ -4,6 +4,18 @@
 runtime behavior such as workflow-report rendering and deploy preview
 execution.
 
+**Quarantine:** A declared, expiring allowance for a known-failing test target to
+stay non-blocking. Reachable only through a ledger entry recording what is
+suppressed, why, the tracking issue, and when the allowance lapses.
+
+**Quarantine ledger:** The set of a repository's quarantine entries, keyed by
+quarantine key. Owned by the consuming repository; `ci-tools` defines what an
+entry means, never which targets are in it.
+
+**Tolerated failure:** A test target failure that a quarantine allows to pass
+without failing the job. Always announced, so it stays distinguishable from a
+genuine pass.
+
 **Deploy preview:** A deployed static artifact produced by local repository
 tasks and uploaded to a provider for review.
 
