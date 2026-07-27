@@ -20,6 +20,11 @@ This spec defines:
 - hermetic and live E2E test boundaries
 - the remaining role of generated workflows and Nix tasks
 
+Subsystems, each with its own requirements and spec:
+
+- [01-quarantine/](./01-quarantine/spec.md) — what it means to hold a
+  known-failing test target non-blocking, and how CI is told about one
+
 This spec does not define:
 
 - the Netlify or Vercel provider API protocols beyond the adapter operations
@@ -27,6 +32,8 @@ This spec does not define:
 - provider project identifiers or secret values
 - Storybook build behavior, except that Storybook output is a local artifact
   consumed by deploy previews
+- quarantine entry semantics, expiry, or announcement channels
+  ([01-quarantine/](./01-quarantine/spec.md))
 
 ## Architecture
 

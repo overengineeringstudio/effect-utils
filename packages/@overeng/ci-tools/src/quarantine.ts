@@ -11,6 +11,8 @@
  *   issue, and expiry, and the announcement is written where CI actually reads it.
  *
  * The repo owns the ledger contents; this module owns what a ledger entry means.
+ *
+ * Contract: `context/ci-tools/01-quarantine/` (requirements R01–R08, spec).
  */
 
 import { Schema } from 'effect'
