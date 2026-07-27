@@ -142,6 +142,12 @@ On stdout the same line is silently discarded: it never reaches the job log, and
 GitHub never turns it into an annotation or a log group. `lint:nix:workflow-commands`
 fails the build on any `echo "::…"` here that is missing `>&2`.
 
+This is a devenv limitation, not the way workflow commands are meant to be written —
+GitHub documents them on stdout, and on a plain shell step that works. Reported as
+[cachix/devenv#3038](https://github.com/cachix/devenv/issues/3038), with a reproduction
+showing stdout carries no protocol data (task outputs travel via `DEVENV_TASK_OUTPUT_FILE`).
+If that is fixed and the fixed version is pinned everywhere, this rule can be retired.
+
 Stdout is not a reliable channel in either direction: a direct `devenv tasks run`
 of a failing task discarded its stdout too, while a failing *dependency* task's
 stdout does appear in devenv's error summary in CI. Rather than depend on which

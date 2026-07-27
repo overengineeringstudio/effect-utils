@@ -115,7 +115,8 @@ export const baseOxlintRules = {
 
   // Ban GitHub workflow commands on stdout. Enforced (error): devenv discards a task's
   // stdout, so the emit silently does nothing — a mistake no test catches, because the
-  // code runs fine and the annotation just never appears.
+  // code runs fine and the annotation just never appears. Workaround for cachix/devenv#3038,
+  // not a general best practice; GitHub's documented form writes these to stdout.
   'overeng/no-stdout-workflow-command': 'error',
 
   // Require JSDoc comments on exported declarations. Enforced (error): every
