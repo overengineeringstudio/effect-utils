@@ -19,6 +19,29 @@ imports = [
 ];
 ```
 
+## Observability
+
+Import the sibling observability module once to capture native devenv spans
+and effect-utils task spans as one otelite trace:
+
+```nix
+imports = [
+  (inputs.effect-utils.devenvModules.observability {
+    project = "my-repo";
+    # Optional: compose the full Collector/Tempo/Grafana stack.
+    backend = "auto";
+    # Optional: gate an existing aggregate task on the hermetic shape check.
+    wireInto = [ "check:all" ];
+  })
+];
+```
+
+The default `backend = "ambient"` adds only `otel-span`, otelite, and the
+`otel:profile:setup` / `otel:verify:setup` tasks. It intentionally avoids the
+full local observability stack. Override `profile` to capture a different task
+graph, or set `profile = null` when only the packages and project attribution
+are needed.
+
 ### Characteristics:
 
 - **Configurable** via function parameters

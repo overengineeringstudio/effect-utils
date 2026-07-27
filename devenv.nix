@@ -354,6 +354,12 @@ in
     (taskModules.worktree-guard { })
     # OpenTelemetry observability stack (Collector + Tempo + Grafana)
     (import ./nix/devenv-modules/otel.nix { })
+    # Hermetic native-devenv + effect-utils task-tree capture. Ambient mode
+    # composes with the full stack above without importing it a second time.
+    (import ./nix/devenv-modules/observability.nix {
+      project = "effect-utils";
+      wireInto = [ "check:all" ];
+    })
     # gh:apply-labels / gh:check-labels — reconcile .github/labels.json with live labels
     (import ./nix/devenv-modules/gh-labels.nix { repo = "overengineeringstudio/effect-utils"; })
     # Playwright browser drivers and environment setup

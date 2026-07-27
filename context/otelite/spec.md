@@ -267,6 +267,28 @@ exercise the real receiver and the real binary (per house rules).
   transports) is shared across Rust integration tests and the Effect wrapper
   tests, so both layers test against the same known input.
 
+### Devenv adapter
+
+`devenvModules.observability` is the reusable adapter between native devenv
+task tracing and otelite. A consumer supplies a stable project name and,
+optionally, a task profile. The module:
+
+- adds the bootstrap-safe `otel-span` and Nix-built `otelite` binaries;
+- sends native devenv spans over OTLP/gRPC and effect-utils task spans over
+  OTLP/HTTP to one invocation-scoped otelite capture;
+- emits low-cardinality `devenv.project.name` on effect-utils task spans;
+- provides `otel:profile:<name>` for retained diagnostic captures and
+  `otel:verify:<name>` for a hermetic, automatically cleaned shape check; and
+- optionally composes the existing Collector/Tempo/Grafana module through
+  `backend = "auto" | "local" | "system"`.
+
+The default `ambient` backend does not add the production-like local stack, so
+repositories can adopt the common capture contract without pulling
+Collector/Tempo/Grafana into their development closure. The adapter owns
+transport and lifecycle mechanics only; repository-specific performance and
+correctness assertions continue to consume `spans.ndjson` with `jq` or the
+typed Effect wrapper.
+
 ## Trace-derived metrics (spanmetrics)
 
 `inspect --signal traces --derive-metrics` projects captured spans into RED
