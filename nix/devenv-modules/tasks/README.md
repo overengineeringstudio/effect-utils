@@ -76,6 +76,8 @@ are needed.
     retained package records are rejected transactionally if they lose
     `hasBin` metadata.
 - `setup.nix` - Setup tasks
+  - `skipNonInteractive = true` keeps automatic shell entry cheap for
+    non-interactive callers; `DEVENV_FORCE_SETUP=1` explicitly overrides it.
 - `test.nix` - Test tasks
 - `test-playwright.nix` - Playwright e2e tasks
 - `ts.nix` - TypeScript tasks (`ts:check`, `ts:check:strict`, build/watch/clean helpers)

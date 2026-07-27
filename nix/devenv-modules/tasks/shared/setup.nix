@@ -31,6 +31,7 @@
   optionalTasks ? [ ],
   completionsCliNames ? [ ],
   skipDuringRebase ? true,
+  skipNonInteractive ? false,
 }:
 {
   lib,
@@ -322,6 +323,14 @@ in
         ];
         exec = trace.exec "setup:gate" ''
           set -euo pipefail
+
+          if ${lib.boolToString skipNonInteractive} \
+            && [ "''${DEVENV_FORCE_SETUP:-}" != "1" ] \
+            && { [ ! -t 0 ] || [ ! -t 1 ]; }; then
+            echo "Skipping shell-entry setup for non-interactive devenv invocation"
+            exit 0
+          fi
+
           ${setupFingerprintEnv}
 
           _git_dir=$(${git} rev-parse --git-dir 2>/dev/null)
