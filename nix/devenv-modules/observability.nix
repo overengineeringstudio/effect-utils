@@ -64,12 +64,15 @@ let
 
           # Native devenv uses OTLP/gRPC while the temporary task-phase
           # producer uses OTLP/HTTP. Otelite owns the isolated capture.
+          # Nested devenv tasks must use the module-owned bridge even when
+          # the caller's shell does not expose otel-span.
           # shellcheck disable=SC2016
           env \
             -u DEVENV_TRACE_TO \
             -u OTEL_TASK_TRACEPARENT \
             -u TRACEPARENT \
             -u OTEL_SHELL_ENTRY_NS \
+            PATH=${lib.makeBinPath [ otelSpan ]}:"$PATH" \
             ${otelite}/bin/otelite run \
               --out "$capture_dir/capture" \
               --protocol grpc \
