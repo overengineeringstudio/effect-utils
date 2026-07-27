@@ -113,6 +113,11 @@ export const baseOxlintRules = {
   // Enforce exported declarations come before non-exported declarations. Enforced (error).
   'overeng/exports-first': 'error',
 
+  // Ban GitHub workflow commands on stdout. Enforced (error): devenv discards a task's
+  // stdout, so the emit silently does nothing — a mistake no test catches, because the
+  // code runs fine and the annotation just never appears.
+  'overeng/no-stdout-workflow-command': 'error',
+
   // Require JSDoc comments on exported declarations. Enforced (error): every
   // published package `src` export must carry JSDoc. Non-API surfaces (test
   // files, stories, config, genie tooling, examples, incubation waivers) are

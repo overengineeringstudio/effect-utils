@@ -10,6 +10,7 @@
  * - no-raw-nondeterminism: Ban raw nondeterminism outside a journaled Restate.run closure
  * - no-non-durable-wait: Ban non-durable Effect.sleep/Effect.timeout outside a journaled Restate.run closure
  * - no-raw-otel-primitives: Ban raw Effect/Stream OTEL span primitives outside contract boundaries
+ * - no-stdout-workflow-command: Ban GitHub workflow commands on stdout, which devenv discards
  *
  * It also provides native reimplementations of selected Storybook CSF best-practice
  * rules under the `overeng/storybook/*` namespace (reimplemented from
@@ -37,6 +38,7 @@ import { noExternalImportsRule } from './no-external-imports.ts'
 import { noNonDurableWaitRule } from './no-non-durable-wait.ts'
 import { noRawNondeterminismRule } from './no-raw-nondeterminism.ts'
 import { noRawOtelPrimitivesRule } from './no-raw-otel-primitives.ts'
+import { noStdoutWorkflowCommandRule } from './no-stdout-workflow-command.ts'
 import { otelContractInSeamFileRule } from './otel-contract-in-seam-file.ts'
 import { csfComponentRule } from './storybook/csf-component.ts'
 import { defaultExportsRule } from './storybook/default-exports.ts'
@@ -55,6 +57,7 @@ type Rules = {
   'no-non-durable-wait': typeof noNonDurableWaitRule
   'no-raw-nondeterminism': typeof noRawNondeterminismRule
   'no-raw-otel-primitives': typeof noRawOtelPrimitivesRule
+  'no-stdout-workflow-command': typeof noStdoutWorkflowCommandRule
   'otel-contract-in-seam-file': typeof otelContractInSeamFileRule
   'storybook/meta-satisfies-type': typeof metaSatisfiesTypeRule
   'storybook/default-exports': typeof defaultExportsRule
@@ -75,6 +78,7 @@ const rules: Rules = {
   'no-non-durable-wait': noNonDurableWaitRule,
   'no-raw-nondeterminism': noRawNondeterminismRule,
   'no-raw-otel-primitives': noRawOtelPrimitivesRule,
+  'no-stdout-workflow-command': noStdoutWorkflowCommandRule,
   'otel-contract-in-seam-file': otelContractInSeamFileRule,
 
   // Native storybook rules (use as overeng/storybook/*)

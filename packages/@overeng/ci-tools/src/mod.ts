@@ -11,4 +11,5 @@
 export * from './deploy-domain.ts'
 export * from './deploy-netlify.ts'
 export * from './deploy-vercel.ts'
+export * from './quarantine.ts'
 export * from './workflow-report.ts'
