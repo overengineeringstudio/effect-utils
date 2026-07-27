@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- **devenv-modules**: GitHub workflow commands emitted by tasks now go to stderr. devenv does not
+  forward a task's stdout, so `echo "::warning::…"` there never reached the runner — it produced no
+  annotation and no log group. That silently affected the two `::notice::` emits in
+  `workflow-report` and the `::group::`/`::endgroup::` pairs in `context` and `pnpm`, so CI log
+  grouping from inside a task had never worked. Adds `lint:nix:workflow-commands` (wired into
+  `lint:nix`) to fail on any unredirected emit under `nix/devenv-modules`, and documents the
+  channel in `nix/devenv-modules/tasks/README.md`. Consumers writing their own tasks should apply
+  the same rule. Fixes #968.
+
 - **@overeng/megarepo**: `mr apply` now fails when it leaves a pinned member drifted from
   `megarepo.lock`. Previously every path returning `skipped` exited 0, so apply could report
   success over a workspace that disagreed with the lock that produced it — invisible because

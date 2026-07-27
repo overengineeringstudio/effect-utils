@@ -102,7 +102,7 @@ let
       description = "Check GitHub workflow commands in task definitions go to stderr";
       exec = trace.exec "lint:nix:workflow-commands" ''
         offenders=$(${git} ls-files 'nix/devenv-modules/*.nix' 'nix/devenv-modules/*.sh' \
-          | xargs grep -nE 'echo +"::' \
+          | xargs grep -nE "(echo|printf)( +-[A-Za-z]+)* +['\"]::" \
           | grep -v '>&2' || true)
 
         if [ -n "$offenders" ]; then
