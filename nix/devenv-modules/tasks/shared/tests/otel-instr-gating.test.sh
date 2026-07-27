@@ -77,7 +77,7 @@ nix eval --impure --raw --expr "
 custom_otel_span="$tmpdir/custom-otel-span"
 cat > "$custom_otel_span" <<'EOF'
 #!/usr/bin/env bash
-printf '%s\n' "$*" > "$OTEL_TEST_MARKER"
+printf 'endpoint=%s\nargs=%s\n' "$OTEL_EXPORTER_OTLP_ENDPOINT" "$*" > "$OTEL_TEST_MARKER"
 EOF
 chmod +x "$custom_otel_span"
 
@@ -85,10 +85,13 @@ marker="$tmpdir/task-bridge-marker"
 env -i \
   PATH="$(dirname "$BASH")" \
   OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318 \
+  OTELITE_HTTP_ENDPOINT=http://127.0.0.1:9876 \
   OTEL_SPAN_BIN="$custom_otel_span" \
   OTEL_TEST_MARKER="$marker" \
   "$BASH" "$task_exec"
-grep -q '^run effect-utils-devenv devenv.task.exec ' "$marker" \
+grep -q '^endpoint=http://127.0.0.1:9876$' "$marker" \
+  || fail "task/capture-endpoint: trace.exec should prefer the invocation-scoped otelite endpoint"
+grep -q '^args=run effect-utils-devenv devenv.task.exec ' "$marker" \
   || fail "task/pinned-bridge: trace.exec should invoke OTEL_SPAN_BIN outside PATH"
 
 # Common env for the "binaries present + delivery available" baseline. Each case

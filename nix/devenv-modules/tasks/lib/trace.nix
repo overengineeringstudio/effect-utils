@@ -40,7 +40,7 @@
 #
 { lib }:
 let
-  otelCanEmitShell = ''command -v "''${OTEL_SPAN_BIN:-otel-span}" >/dev/null 2>&1 && { [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] || { [ -n "''${OTEL_SPAN_SPOOL_DIR:-}" ] && [ -d "''${OTEL_SPAN_SPOOL_DIR:-}" ]; }; }'';
+  otelCanEmitShell = ''command -v "''${OTEL_SPAN_BIN:-otel-span}" >/dev/null 2>&1 && { [ -n "''${OTELITE_HTTP_ENDPOINT:-''${OTEL_EXPORTER_OTLP_ENDPOINT:-}}" ] || { [ -n "''${OTEL_SPAN_SPOOL_DIR:-}" ] && [ -d "''${OTEL_SPAN_SPOOL_DIR:-}" ]; }; }'';
 
   # Shell condition: an OTEL task trace context is actually ACTIVE — OTEL delivery
   # is available (otelCanEmitShell) AND a well-formed W3C traceparent is present
@@ -171,7 +171,8 @@ let
       if [ -n "''${OTEL_DEVENV_PROJECT:-}" ]; then
         _otel_project_attr=(--attr "devenv.project.name=$OTEL_DEVENV_PROJECT")
       fi
-      "''${OTEL_SPAN_BIN:-otel-span}" run "effect-utils-devenv" "devenv.task.exec" \
+      OTEL_EXPORTER_OTLP_ENDPOINT="''${OTELITE_HTTP_ENDPOINT:-''${OTEL_EXPORTER_OTLP_ENDPOINT:-}}" \
+        "''${OTEL_SPAN_BIN:-otel-span}" run "effect-utils-devenv" "devenv.task.exec" \
         "''${_otel_project_attr[@]}" \
         --attr "tool.name=devenv" \
         --attr "task.name=${taskName}" \
@@ -196,7 +197,8 @@ let
       if [ -n "''${OTEL_DEVENV_PROJECT:-}" ]; then
         _otel_project_attr=(--attr "devenv.project.name=$OTEL_DEVENV_PROJECT")
       fi
-      "''${OTEL_SPAN_BIN:-otel-span}" run "effect-utils-devenv" "devenv.task.status" \
+      OTEL_EXPORTER_OTLP_ENDPOINT="''${OTELITE_HTTP_ENDPOINT:-''${OTEL_EXPORTER_OTLP_ENDPOINT:-}}" \
+        "''${OTEL_SPAN_BIN:-otel-span}" run "effect-utils-devenv" "devenv.task.status" \
         "''${_otel_project_attr[@]}" \
         --attr "tool.name=devenv" \
         --attr "task.name=${taskName}" \

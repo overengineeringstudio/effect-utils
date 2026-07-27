@@ -277,7 +277,8 @@ optionally, a task profile. The module:
   exports the store-pinned `OTEL_SPAN_BIN` used by shared task wrappers so
   nested devenv evaluation does not depend on ambient `PATH`;
 - sends native devenv spans over OTLP/gRPC and effect-utils task spans over
-  OTLP/HTTP to one invocation-scoped otelite capture;
+  OTLP/HTTP to one invocation-scoped otelite capture, preferring otelite's
+  per-invocation HTTP endpoint over any ambient collector endpoint;
 - emits low-cardinality `devenv.project.name` on effect-utils task spans;
 - provides `otel:profile:<name>` for retained diagnostic captures and
   `otel:verify:<name>` for a hermetic, automatically cleaned shape check; and
