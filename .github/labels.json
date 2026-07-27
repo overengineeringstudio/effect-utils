@@ -251,6 +251,11 @@
       "description": "@overeng/notion-react package · Set: manual"
     },
     {
+      "name": "system:npm-release",
+      "color": "a371f7",
+      "description": "@overeng/npm-release package · Set: manual"
+    },
+    {
       "name": "system:otel-contract",
       "color": "a371f7",
       "description": "@overeng/otel-contract package · Set: manual"

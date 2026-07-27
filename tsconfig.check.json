@@ -79,6 +79,9 @@
       "path": "./packages/@overeng/notion-react"
     },
     {
+      "path": "./packages/@overeng/npm-release"
+    },
+    {
       "path": "./packages/@overeng/otel-contract"
     },
     {

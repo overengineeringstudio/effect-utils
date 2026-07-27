@@ -12,6 +12,7 @@ import effectRpcTanstackBasicTsconfig from '../packages/@overeng/effect-rpc-tans
 import effectRpcTanstackTsconfig from '../packages/@overeng/effect-rpc-tanstack/tsconfig.json.genie.ts'
 import effectSchemaFormAriaTsconfig from '../packages/@overeng/effect-schema-form-aria/tsconfig.json.genie.ts'
 import effectSchemaFormTsconfig from '../packages/@overeng/effect-schema-form/tsconfig.json.genie.ts'
+import type { GenieOutput, TSConfigArgs } from '../packages/@overeng/genie/src/runtime/mod.ts'
 import genieTsconfig from '../packages/@overeng/genie/tsconfig.json.genie.ts'
 import kdlEffectTsconfig from '../packages/@overeng/kdl-effect/tsconfig.json.genie.ts'
 import kdlTsconfig from '../packages/@overeng/kdl/tsconfig.json.genie.ts'
@@ -24,6 +25,7 @@ import notionEffectSchemaTsconfig from '../packages/@overeng/notion-effect-schem
 import notionMdTsconfig from '../packages/@overeng/notion-md/tsconfig.json.genie.ts'
 import notionPropertyWriteTsconfig from '../packages/@overeng/notion-property-write/tsconfig.json.genie.ts'
 import notionReactTsconfig from '../packages/@overeng/notion-react/tsconfig.json.genie.ts'
+import npmReleaseTsconfig from '../packages/@overeng/npm-release/tsconfig.json.genie.ts'
 import otelContractTsconfig from '../packages/@overeng/otel-contract/tsconfig.json.genie.ts'
 import oxcConfigTsconfig from '../packages/@overeng/oxc-config/tsconfig.json.genie.ts'
 import ptyEffectTsconfig from '../packages/@overeng/pty-effect/tsconfig.json.genie.ts'
@@ -35,7 +37,6 @@ import tuiReactTsconfig from '../packages/@overeng/tui-react/tsconfig.json.genie
 import tuiStoriesTsconfig from '../packages/@overeng/tui-stories/tsconfig.json.genie.ts'
 import utilsDevTsconfig from '../packages/@overeng/utils-dev/tsconfig.json.genie.ts'
 import utilsTsconfig from '../packages/@overeng/utils/tsconfig.json.genie.ts'
-import type { GenieOutput, TSConfigArgs } from '../packages/@overeng/genie/src/runtime/mod.ts'
 
 export type RootTsconfigProject = {
   path: string
@@ -61,6 +62,7 @@ const workspaceTsconfigsByPath = new Map<string, GenieOutput<TSConfigArgs>>([
   ['packages/@overeng/kdl-effect', kdlEffectTsconfig],
   ['packages/@overeng/megarepo', megarepoTsconfig],
   ['packages/@overeng/notion-cli', notionCliTsconfig],
+  ['packages/@overeng/npm-release', npmReleaseTsconfig],
   ['packages/@overeng/notion-core', notionCoreTsconfig],
   ['packages/@overeng/notion-datasource-sync', notionDatasourceSyncTsconfig],
   ['packages/@overeng/notion-effect-client', notionEffectClientTsconfig],
@@ -80,9 +82,7 @@ const workspaceTsconfigsByPath = new Map<string, GenieOutput<TSConfigArgs>>([
   ['packages/@overeng/utils-dev', utilsDevTsconfig],
 ])
 
-const rootWorkspacePackagePaths = rootWorkspacePackages.map(
-  (pkg) => pkg.meta.workspace.memberPath,
-)
+const rootWorkspacePackagePaths = rootWorkspacePackages.map((pkg) => pkg.meta.workspace.memberPath)
 
 const missingTsconfigPaths = rootWorkspacePackagePaths.filter(
   (path) => workspaceTsconfigsByPath.has(path) === false,

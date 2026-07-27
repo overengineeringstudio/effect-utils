@@ -1352,6 +1352,18 @@ importers:
         specifier: 8.0.16
         version: 8.0.16(@types/node@26.0.0)(esbuild@0.27.7)(jiti@2.7.0)(yaml@2.9.0)
 
+  packages/@overeng/npm-release:
+    devDependencies:
+      '@types/node':
+        specifier: 26.0.0
+        version: 26.0.0
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: 4.1.9
+        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.0.0)(happy-dom@20.10.6)(vite@8.0.16(@types/node@26.0.0)(esbuild@0.27.7)(jiti@2.7.0)(yaml@2.9.0))
+
   packages/@overeng/otel-contract:
     dependencies:
       '@overeng/content-address':

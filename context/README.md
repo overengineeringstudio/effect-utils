@@ -17,6 +17,8 @@ implementation details.
   content-addressed descriptors, stores, resolvers, and artifact URIs
 - [effect/](./effect/) - Effect socket examples and related package files
 - [opentui/](./opentui/) - OpenTUI integration example
+- [npm-release/](./npm-release/) - VRS for verifying that an npm registry
+  actually serves what a release published (version, tarball digest, dist-tag)
 - [otel.md](./otel.md) - OpenTelemetry notes
 - [otel-scrape/](./otel-scrape/) - VRS for wrapping build/dev tools into
   OTEL spans, events, metrics, and profile links
