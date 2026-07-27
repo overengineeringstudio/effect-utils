@@ -1,0 +1,47 @@
+// @genie-bootstrap
+import {
+  catalog,
+  exportEntry,
+  packageJson,
+  privatePackageDefaults,
+  type PackageJsonInputData,
+  workspaceMember,
+} from '../../../genie/internal.ts'
+
+/**
+ * The `.` export is the decision layer and imports nothing at runtime, so consumers
+ * that only classify registry state pull in no dependencies. Effect appears here for
+ * the `./cli` entry, which is bundled into a standalone binary at build time.
+ */
+const peerDepNames = ['@effect/cli', '@effect/platform', '@effect/platform-node', 'effect'] as const
+
+const workspaceDeps = catalog.compose({
+  workspace: workspaceMember({ memberPath: 'packages/@overeng/npm-release' }),
+  devDependencies: {
+    external: {
+      ...catalog.pick(...peerDepNames, '@types/node', 'typescript', 'vitest'),
+    },
+  },
+  peerDependencies: {
+    external: catalog.pick(...peerDepNames),
+  },
+})
+
+export default packageJson(
+  {
+    name: '@overeng/npm-release',
+    ...privatePackageDefaults,
+    exports: {
+      '.': exportEntry('./src/mod.ts', { environment: 'isomorphic-es2024' }),
+      './cli': exportEntry('./src/cli.ts', { environment: 'bun' }),
+    },
+    publishConfig: {
+      access: 'public',
+      exports: {
+        '.': './dist/mod.js',
+        './cli': './dist/cli.js',
+      },
+    },
+  } satisfies PackageJsonInputData,
+  workspaceDeps,
+)

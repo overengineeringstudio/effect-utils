@@ -1,0 +1,39 @@
+{
+  "name": "@overeng/npm-release",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/mod.ts",
+    "./cli": "./src/cli.ts"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": "./dist/mod.js",
+      "./cli": "./dist/cli.js"
+    }
+  },
+  "devDependencies": {
+    "@effect/cli": "0.75.2",
+    "@effect/platform": "0.96.2",
+    "@effect/platform-node": "0.107.0",
+    "@types/node": "26.0.0",
+    "effect": "3.21.4",
+    "typescript": "6.0.3",
+    "vitest": "4.1.9"
+  },
+  "peerDependencies": {
+    "@effect/cli": "^0.75.2",
+    "@effect/platform": "^0.96.2",
+    "@effect/platform-node": "^0.107.0",
+    "effect": "^3.21.4"
+  },
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten",
+    "workspaceClosureDirs": [
+      "packages/@overeng/npm-release"
+    ]
+  }
+}

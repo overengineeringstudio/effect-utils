@@ -1,4 +1,4 @@
-# Nix derivation that builds notion-md CLI binary.
+# Nix derivation that builds the npm-release CLI binary.
 # Uses bun build --compile for native platform.
 {
   pkgs,
@@ -13,23 +13,23 @@ let
   pnpm = import ../../../../nix/pnpm.nix { inherit pkgs; };
   mkPnpmCli = import ../../../../nix/workspace-tools/lib/mk-pnpm-cli.nix { inherit pkgs pnpm; };
   unwrapped = mkPnpmCli {
-    name = "notion-md-unwrapped";
-    entry = "packages/@overeng/notion-md/src/cli.ts";
-    binaryName = "notion-md";
-    packageDir = "packages/@overeng/notion-md";
+    name = "npm-release-unwrapped";
+    entry = "packages/@overeng/npm-release/src/cli.ts";
+    binaryName = "npm-release";
+    packageDir = "packages/@overeng/npm-release";
     workspaceRoot = src;
     # Managed by the repo FOD refresh workflow — do not edit manually.
     depsBuilds = {
-      "." = mkSharedHash "sha256-fj+Jd7wOTIi/kJtMYzHgFaWsXr3Vjli9/PMv1mkdadI=";
+      "." = mkSharedHash "sha256-U3SzvoQUzLyM9EPQBdleezcDvIEpUZLQctXS0039NZw=";
     };
     smokeTestArgs = [ "--help" ];
     inherit gitRev commitTs dirty;
   };
 in
-pkgs.runCommand "notion-md"
+pkgs.runCommand "npm-release"
   {
     nativeBuildInputs = [ pkgs.makeWrapper ];
-    meta.mainProgram = "notion-md";
+    meta.mainProgram = "npm-release";
     passthru = {
       inherit (unwrapped.passthru)
         depsBuildEntries
@@ -41,5 +41,8 @@ pkgs.runCommand "notion-md"
   }
   ''
     mkdir -p $out/bin
-    makeWrapper ${unwrapped}/bin/notion-md $out/bin/notion-md
+    # The CLI shells out to `npm`, so the wrapper guarantees node/npm on PATH rather
+    # than inheriting whatever the calling repo happens to expose.
+    makeWrapper ${unwrapped}/bin/npm-release $out/bin/npm-release \
+      --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.nodejs ]}
   ''

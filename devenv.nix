@@ -172,6 +172,7 @@ let
     "packages/@overeng/notion-md"
     "packages/@overeng/notion-property-write"
     "packages/@overeng/notion-react"
+    "packages/@overeng/npm-release"
     "packages/@overeng/otel-contract"
     "packages/@overeng/oxc-config"
     "packages/@overeng/pty-effect"

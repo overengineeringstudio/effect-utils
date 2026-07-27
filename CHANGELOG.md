@@ -31,7 +31,18 @@ All notable changes to this project will be documented in this file.
   rejects an entry applied to a target it does not declare, then writes the job-summary line and
   emits the `::warning::` annotation on stdout, the channel GitHub documents for workflow
   commands.
-
+- **npm-release**: New `@overeng/npm-release` package — the decision layer for verifying that an
+  npm registry actually serves what a release published. `npm publish` exiting zero does not mean
+  the release is live: the version may not have propagated, the served tarball may not be the
+  artifact that was packed, or the dist-tag may still resolve to the previous version, so
+  `npm install` keeps serving the old release. `registryVerification` classifies those into `ok` /
+  `pending` / `mismatch`, separating retryable propagation from terminal disagreement (a published
+  npm version is immutable, so a wrong artifact can never become right). Zero dependencies and no
+  `effect` peer, following the `@overeng/kdl` / `@overeng/kdl-effect` split — the classification is
+  pure logic, testable offline and reusable from any publisher regardless of its runtime or Effect
+  major. VRS in `context/npm-release/`. Extracted from three separate hand-rolled implementations
+  across livestore and livestore-contrib, two of which were missing the dist-tag check entirely
+  (livestorejs/livestore#1504, livestorejs/livestore-contrib#27).
 - **devenv-modules**: GitHub workflow commands emitted by tasks now go to stderr. devenv does not
   forward a task's stdout, so `echo "::warning::…"` there never reached the runner — it produced no
   annotation and no log group. That silently affected the two `::notice::` emits in
