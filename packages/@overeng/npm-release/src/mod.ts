@@ -130,26 +130,3 @@ export const registryVerification = ({
 
   return { _tag: 'ok' }
 }
-
-/**
- * Subresource integrity string for a packed tarball, in the form npm reports as
- * `dist.integrity` — base64 SHA-512, algorithm-prefixed.
- *
- * Takes the already-read bytes rather than a path so this stays free of any
- * filesystem or crypto runtime; callers hash with whatever their platform offers.
- */
-export const integrityFromBase64Sha512 = (base64Sha512: string): string => `sha512-${base64Sha512}`
-
-/**
- * Whether npm's `--provenance` flag should be passed for this publish.
- *
- * Provenance is minted from the CI job's OIDC identity, so it is only available
- * on a supported CI provider and is meaningless for a dry run.
- */
-export const shouldPublishWithProvenance = ({
-  dryRun,
-  isGithubActions,
-}: {
-  readonly dryRun: boolean
-  readonly isGithubActions: boolean
-}): boolean => dryRun === false && isGithubActions === true

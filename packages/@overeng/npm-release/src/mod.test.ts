@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import {
-  integrityFromBase64Sha512,
-  type RemoteRegistryState,
-  registryVerification,
-  shouldPublishWithProvenance,
-} from './mod.ts'
+import { type RemoteRegistryState, registryVerification } from './mod.ts'
 
 describe('registryVerification', () => {
   const base = { pkg: '@scope/pkg', version: '1.2.0', npmTag: 'latest' }
@@ -115,25 +110,5 @@ describe('registryVerification', () => {
         remote,
       }),
     ).toEqual({ _tag: 'ok' })
-  })
-})
-
-describe('shouldPublishWithProvenance', () => {
-  it.each([
-    { dryRun: false, isGithubActions: true, expected: true },
-    { dryRun: true, isGithubActions: true, expected: false },
-    { dryRun: false, isGithubActions: false, expected: false },
-    { dryRun: true, isGithubActions: false, expected: false },
-  ])(
-    'dryRun=$dryRun isGithubActions=$isGithubActions -> $expected',
-    ({ dryRun, isGithubActions, expected }) => {
-      expect(shouldPublishWithProvenance({ dryRun, isGithubActions })).toBe(expected)
-    },
-  )
-})
-
-describe('integrityFromBase64Sha512', () => {
-  it('formats a digest the way npm reports dist.integrity', () => {
-    expect(integrityFromBase64Sha512('abc123==')).toBe('sha512-abc123==')
   })
 })

@@ -84,7 +84,7 @@ Repair is followed by re-verification (R13); issuing the correction is not evide
 
 ## Provenance
 
-Publishing emits provenance wherever the environment can mint it (R15) — that is, on a CI provider with an OIDC identity, and never for a dry run, where it would be meaningless.
+Publishing emits provenance wherever the environment can mint it (R15) — on a CI provider with an OIDC identity, and never for a dry run, where it would be meaningless. That decision belongs to the publish stage, which is not implemented here yet; each publisher makes it locally until then (see [.delta/DELTA-001](./.delta/DELTA-001-decision-layer-only.md)).
 
 ## Design questions
 
