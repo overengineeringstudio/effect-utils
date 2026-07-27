@@ -59,7 +59,9 @@ ci-tools Effect CLI
 
 The Effect CLI is the source of truth for deploy semantics. Generated workflows
 and Nix tasks are launchers that provide configuration and preserve existing
-entrypoint names.
+entrypoint names. Each reusable provider task module composes the shared
+workflow-report tasks required by its generated deploy workflow; consumers do
+not need a second import to make record collection and publication available.
 
 Requirement trace: R01, R02, R03, R04, R24.
 

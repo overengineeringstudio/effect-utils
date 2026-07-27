@@ -75,7 +75,7 @@ const vercelTaskModuleSource = readFileSync(
 )
 const workflowReportTaskModuleSource = readFileSync(
   new URL(
-    ['../../../../../../nix/devenv-modules/tasks/shared', 'workflow-report.nix'].join('/'),
+    ['../../../../../../nix/devenv-modules/tasks/shared', 'workflow-report-module.nix'].join('/'),
     import.meta.url,
   ),
   'utf8',

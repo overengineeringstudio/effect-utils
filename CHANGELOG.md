@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- **devenv deploy tasks**: make the reusable Netlify and Vercel task modules
+  compose their shared workflow-report task dependency. Generated preview
+  workflows can now collect and publish deploy records without every consumer
+  duplicating a `workflow-report.nix` import.
+
 - **@overeng/ci-tools / Netlify previews**: add an explicit
   `unauthorizedPolicy=skip` task input for optional PR previews. Unauthorized
   provider responses still fail by default and for production deploys; shared
