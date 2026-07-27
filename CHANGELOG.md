@@ -20,8 +20,8 @@ All notable changes to this project will be documented in this file.
   comparison is lexicographic, so a free-form string would otherwise sort above every real date and
   turn a typo into a permanent quarantine. `announce` resolves the key against the ledger and
   rejects an entry applied to a target it does not declare, then writes the job-summary line and
-  emits the `::warning::` annotation on **stderr** — devenv discards a task's stdout, so an
-  annotation written there never reaches the runner.
+  emits the `::warning::` annotation on stdout, the channel GitHub documents for workflow
+  commands.
 
 - **devenv-modules**: GitHub workflow commands emitted by tasks now go to stderr. devenv does not
   forward a task's stdout, so `echo "::warning::…"` there never reached the runner — it produced no
