@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- **devenv-modules**: remove `lint:nix:workflow-commands` and correct the task-output
+  documentation. The guard was added on the belief that devenv discards a task's stdout, so a
+  workflow command emitted there never reached the runner. That was measured in a shell with
+  `CLAUDECODE=1`, which puts devenv in implicit AI-agent quiet mode — a mode that never applies
+  on a GitHub runner. Measured on `ubuntu-latest`: a `::warning::` from a task's stdout becomes
+  an annotation with no opt-in at all, identically to one from stderr or from the step itself.
+  The existing `>&2` redirects are kept — stderr is a fine channel for diagnostics and churning
+  them back would buy nothing — but they are a style choice now, not a requirement.
+
 - **devenv observability**: add a lightweight `devenvModules.observability`
   adapter that captures native devenv OTLP/gRPC and effect-utils OTLP/HTTP task
   spans in one isolated otelite trace. Consumers get consistent

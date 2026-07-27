@@ -127,25 +127,23 @@ Helper functions used by task modules:
 
 ## Task Output
 
-devenv does not forward a task's **stdout** to the caller — on success or on
-failure, and regardless of `--show-output` or `DEVENV_TASK_PASSTHROUGH`. Its
-**stderr** is forwarded in every case.
+devenv renders a task's **stderr** by default. Its **stdout** is rendered only
+when the run opts in — `showOutput = true` on the task, `--show-output`, or
+`--verbose`.
 
-So anything a task emits for the operator, and every GitHub workflow command,
-must go to stderr:
+That is about what devenv prints to a console, not about what escapes the
+process. **Both streams reach a GitHub runner.** Measured on `ubuntu-latest`
+with devenv 2.1.2: a `::warning::` emitted from a task became an annotation from
+stdout with no opt-in, from stdout with `showOutput = true`, and from stderr —
+all three indistinguishable from one emitted by the step itself. So workflow
+commands work from either stream, and log grouping does too.
 
-```nix
-echo "::warning::pnpm store was rebuilt from scratch" >&2
-```
-
-On stdout the same line is silently discarded: it never reaches the job log, and
-GitHub never turns it into an annotation or a log group. `lint:nix:workflow-commands`
-fails the build on any `echo "::…"` here that is missing `>&2`.
-
-Stdout is not a reliable channel in either direction: a direct `devenv tasks run`
-of a failing task discarded its stdout too, while a failing *dependency* task's
-stdout does appear in devenv's error summary in CI. Rather than depend on which
-case applies, put anything you need to read on stderr.
+One caveat worth knowing when debugging locally: devenv selects quiet verbosity
+when it detects `CLAUDECODE` / `OPENCODE_CLIENT` / `AI_AGENT`, and in 2.1.2 that
+also suppresses `showOutput`
+([cachix/devenv#3038](https://github.com/cachix/devenv/issues/3038)). A task's
+stdout can therefore look missing inside a coding agent while being perfectly
+visible in CI. Use `DEVENV_NO_AI_AGENT=1` or `--verbose` when measuring.
 
 ## Adding New Tasks
 
