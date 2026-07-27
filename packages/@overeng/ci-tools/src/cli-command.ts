@@ -592,6 +592,7 @@ const quarantineAnnounceCommand = Command.make(
 
       // stderr, not stdout: `devenv tasks run` discards a task's stdout, so an annotation
       // written there never reaches the runner (#969).
+      // TODO(cachix/devenv#3038): stdout is the documented channel; revisit once devenv forwards it.
       process.stderr.write(`${renderQuarantineAnnotation(summary)}\n`)
     }),
 ).pipe(

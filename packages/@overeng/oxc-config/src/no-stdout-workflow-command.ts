@@ -15,8 +15,10 @@
  * This rule is a **workaround, not a general best practice.** GitHub's documented form writes
  * workflow commands to stdout, and on a plain shell step that works. stderr is required only
  * because devenv drops task stdout — reported as cachix/devenv#3038, where stdout is also shown
- * to carry no protocol data (task outputs travel via `DEVENV_TASK_OUTPUT_FILE`). Retire this
- * rule if that is fixed and the fixed version is pinned everywhere.
+ * to carry no protocol data (task outputs travel via `DEVENV_TASK_OUTPUT_FILE`).
+ *
+ * TODO(cachix/devenv#3038): remove this rule, its test, and the `>&2` redirects in the shared
+ * task modules once devenv forwards task stdout and the fixed version is pinned everywhere.
  *
  * @example
  * // ✅ Good
