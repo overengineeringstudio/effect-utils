@@ -113,12 +113,14 @@ in
         : "''${WORKFLOW_REPORT_PR_NUMBER:?WORKFLOW_REPORT_PR_NUMBER is required for workflow-report PR publishing}"
 
         if [ "''${WORKFLOW_REPORT_HEAD_REPO:-$GH_REPO}" != "$GH_REPO" ]; then
-          echo "::notice::workflow report PR comment skipped for fork pull request; summary remains available in the job summary"
+          # stderr, not stdout: devenv does not forward a task's stdout to the
+          # caller, so a workflow command echoed there never reaches the runner.
+          echo "::notice::workflow report PR comment skipped for fork pull request; summary remains available in the job summary" >&2
           exit 0
         fi
 
         if [ ! -s "$WORKFLOW_REPORT_COMMENT_BODY_PATH" ]; then
-          echo "::notice::workflow report comment body is empty; skipping PR comment"
+          echo "::notice::workflow report comment body is empty; skipping PR comment" >&2
           exit 0
         fi
 
