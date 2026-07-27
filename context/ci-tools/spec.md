@@ -216,8 +216,12 @@ Unexpected defects remain defects. They are not converted into expected domain
 errors unless the boundary has enough information to classify them.
 
 Netlify static deploys may emit a skipped record when an optional static output
-directory is absent. Vercel deploys treat missing configured artifact output as
-`MissingBuildOutput` because the artifact path is the deploy input.
+directory is absent. An optional Netlify PR-preview workflow may also opt into
+`unauthorizedPolicy=skip`: both API lookup and CLI rejection then emit the same
+structured skipped record. The default remains `fail`, and production workflow
+composition never opts into this policy. Vercel deploys treat missing
+configured artifact output as `MissingBuildOutput` because the artifact path is
+the deploy input.
 
 Requirement trace: R05, R06, R08.
 
@@ -261,6 +265,12 @@ The adapter classifies the known Netlify CLI failure
 `Project not found. Please rerun "netlify link"` as
 `ProviderProjectLookupFailed` unless direct API diagnostics prove a more
 specific cause.
+
+Unauthorized project access is classified identically at the API and CLI
+boundaries. With the default `unauthorizedPolicy=fail`, it emits a failure
+record and exits non-zero. With the explicit `skip` policy used by optional PR
+previews, it emits a skipped record and exits zero. The policy never changes
+the classification or retryability of the underlying provider response.
 
 The Netlify task launcher passes `--workspace-filter` when a deployment opts
 into workspace filtering and a package name can be derived from the artifact
@@ -409,6 +419,8 @@ Required cases:
 - success record is emitted
 - known provider lookup failure is classified and marked retryable
 - unauthorized auth is classified and not retried
+- unauthorized optional previews emit a skipped record only under the explicit
+  skip policy
 - invalid provider output fails as `InvalidProviderOutput`
 - unsafe E2E alias is refused
 - no secret-like value appears in logs or records

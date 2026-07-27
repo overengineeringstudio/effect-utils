@@ -31,6 +31,11 @@ export const MissingAuthPolicy = Schema.Literal('fail', 'skip').annotations({
 })
 export type MissingAuthPolicy = typeof MissingAuthPolicy.Type
 
+export const UnauthorizedPolicy = Schema.Literal('fail', 'skip').annotations({
+  identifier: 'CiTools.Deploy.UnauthorizedPolicy',
+})
+export type UnauthorizedPolicy = typeof UnauthorizedPolicy.Type
+
 export const PositiveInt = Schema.Number.pipe(
   Schema.int(),
   Schema.positive(),

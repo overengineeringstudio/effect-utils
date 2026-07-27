@@ -330,6 +330,12 @@ const netlifyDeployCommand = Command.make(
       Options.withDescription('Whether missing Netlify auth fails or emits a skipped record'),
       Options.withDefault('fail' as const),
     ),
+    unauthorizedPolicy: Options.choice('unauthorized-policy', ['fail', 'skip']).pipe(
+      Options.withDescription(
+        'Whether unauthorized Netlify credentials fail or emit a skipped record',
+      ),
+      Options.withDefault('fail' as const),
+    ),
     createdAtUtc: Options.text('created-at-utc').pipe(
       Options.withDescription('Override record creation timestamp for deterministic tests'),
       Options.optional,

@@ -414,4 +414,38 @@ printf '{"deploy_id":"deploy123","site_name":"fake-site","deploy_url":"https://d
       rmSync(workspace.root, { recursive: true, force: true })
     }
   })
+
+  it('emits a skipped record when preview credentials cannot retrieve the project', async () => {
+    apiMode = 'unauthorized'
+    const workspace = makeWorkspace()
+    const reportFile = join(workspace.root, 'report.jsonl')
+    try {
+      const result = await runCiTools({
+        workdir: workspace.root,
+        fakeNetlifyBin: workspace.fakeNetlifyBin,
+        reportFile,
+        args: [
+          '--target',
+          'storybook',
+          '--artifact-dir',
+          workspace.artifactDir,
+          '--mode',
+          'pr',
+          '--pr',
+          '42',
+          '--unauthorized-policy',
+          'skip',
+        ],
+      })
+      expect(result.status).toBe(0)
+      expect(readRecord(reportFile)).toMatchObject({
+        status: 'skipped',
+        summary: expect.stringContaining('cannot retrieve the project'),
+      })
+      expect(existsSync(workspace.logPath)).toBe(false)
+    } finally {
+      apiMode = 'ok'
+      rmSync(workspace.root, { recursive: true, force: true })
+    }
+  })
 })

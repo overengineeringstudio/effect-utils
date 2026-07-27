@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- **@overeng/ci-tools / Netlify previews**: add an explicit
+  `unauthorizedPolicy=skip` task input for optional PR previews. Unauthorized
+  provider responses still fail by default and for production deploys; shared
+  PR workflow composition opts into a structured skipped record so consumers
+  no longer duplicate provider-error string matching in workflow generators.
+
 - **devenv-modules**: remove `lint:nix:workflow-commands` and correct the task-output
   documentation. The guard was added on the belief that devenv discards a task's stdout, so a
   workflow command emitted there never reached the runner. That was measured in a shell with
