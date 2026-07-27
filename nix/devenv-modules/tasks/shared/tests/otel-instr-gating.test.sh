@@ -62,6 +62,35 @@ vitest_prelude="$tmpdir/prelude-vitest.sh"
 eval_instr_prelude oxlint > "$oxlint_prelude"
 eval_instr_prelude vitest > "$vitest_prelude"
 
+# Task-level wrappers must honor the module-pinned bridge even when no
+# `otel-span` command is available through PATH. This models nested devenv task
+# evaluation, which may reconstruct PATH independently of its parent process.
+task_exec="$tmpdir/task-exec.sh"
+nix eval --impure --raw --expr "
+  let
+    flake = builtins.getFlake (toString $ROOT);
+    pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
+    trace = import $ROOT/nix/devenv-modules/tasks/lib/trace.nix { lib = pkgs.lib; };
+  in trace.exec \"test:task\" \"exit 0\"
+" > "$task_exec"
+
+custom_otel_span="$tmpdir/custom-otel-span"
+cat > "$custom_otel_span" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" > "$OTEL_TEST_MARKER"
+EOF
+chmod +x "$custom_otel_span"
+
+marker="$tmpdir/task-bridge-marker"
+env -i \
+  PATH="$(dirname "$BASH")" \
+  OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318 \
+  OTEL_SPAN_BIN="$custom_otel_span" \
+  OTEL_TEST_MARKER="$marker" \
+  "$BASH" "$task_exec"
+grep -q '^run effect-utils-devenv devenv.task.exec ' "$marker" \
+  || fail "task/pinned-bridge: trace.exec should invoke OTEL_SPAN_BIN outside PATH"
+
 # Common env for the "binaries present + delivery available" baseline. Each case
 # below overrides exactly one trigger.
 base_env=(

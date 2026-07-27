@@ -37,10 +37,11 @@ imports = [
 ```
 
 The default `backend = "ambient"` adds only `otel-span`, otelite, and the
-`otel:profile:setup` / `otel:verify:setup` tasks. It intentionally avoids the
-full local observability stack. Override `profile` to capture a different task
-graph, or set `profile = null` when only the packages and project attribution
-are needed.
+`otel:profile:setup` / `otel:verify:setup` tasks. Task wrappers resolve the
+module-owned bridge through `OTEL_SPAN_BIN`, so nested devenv task environments
+do not depend on ambient `PATH`. The module intentionally avoids the full local
+observability stack. Override `profile` to capture a different task graph, or
+set `profile = null` when only the packages and project attribution are needed.
 
 ### Characteristics:
 
