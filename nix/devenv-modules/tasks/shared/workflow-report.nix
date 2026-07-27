@@ -5,9 +5,10 @@
 {
   ciToolsBin ? null,
 }:
-{ ... }:
+{ pkgs, ... }:
 {
   imports = [ ./workflow-report-module.nix ];
 
   effectUtils.workflowReport.ciToolsBin = ciToolsBin;
+  effectUtils.workflowReport.ghBin = "${pkgs.gh}/bin/gh";
 }

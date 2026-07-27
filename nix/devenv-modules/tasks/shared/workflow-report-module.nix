@@ -4,7 +4,6 @@
 # variables; record collection, comment rendering, and publication live here.
 {
   config,
-  pkgs,
   lib,
   ...
 }:
@@ -12,21 +11,34 @@ let
   cfg = config.effectUtils.workflowReport;
   trace = import ../lib/trace.nix { inherit lib; };
   root = ../../../..;
+  pinnedPkgs = import (builtins.getFlake (toString root)).inputs.nixpkgs {
+    system = builtins.currentSystem;
+  };
   ciToolsPkg = import (root + "/packages/@overeng/ci-tools/nix/build.nix") {
-    inherit pkgs;
+    pkgs = pinnedPkgs;
     src = root;
     dirty = true;
   };
-  resolvedCiToolsBin = if cfg.ciToolsBin == null then "${ciToolsPkg}/bin/ci-tools" else cfg.ciToolsBin;
+  resolvedCiToolsBin =
+    if cfg.ciToolsBin == null then "${ciToolsPkg}/bin/ci-tools" else cfg.ciToolsBin;
   ciTools = lib.escapeShellArg resolvedCiToolsBin;
-  gh = "${pkgs.gh}/bin/gh";
+  gh = if cfg.ghBin == null then "${pinnedPkgs.gh}/bin/gh" else cfg.ghBin;
 in
 {
-  options.effectUtils.workflowReport.ciToolsBin = lib.mkOption {
-    type = lib.types.nullOr lib.types.str;
-    default = null;
-    internal = true;
-    description = "Absolute ci-tools binary used by the shared workflow-report tasks.";
+  options.effectUtils.workflowReport = {
+    ciToolsBin = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      internal = true;
+      description = "Absolute ci-tools binary used by the shared workflow-report tasks.";
+    };
+
+    ghBin = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      internal = true;
+      description = "Absolute GitHub CLI binary used by the shared workflow-report tasks.";
+    };
   };
 
   config.tasks = {
