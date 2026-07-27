@@ -21,7 +21,7 @@ in
           local server_script="$2"
           shift 2
           
-          echo "::group::$label"
+          echo "::group::$label" >&2
           
           # Start server in background
           bun "$SOCKET_DIR/$server_script" &
@@ -38,7 +38,7 @@ in
           kill $SERVER_PID 2>/dev/null || true
           trap - EXIT
           
-          echo "::endgroup::"
+          echo "::endgroup::" >&2
         }
 
         # WS echo

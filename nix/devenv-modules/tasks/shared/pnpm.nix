@@ -388,7 +388,7 @@ let
       fi
 
       if [ -n "''${GITHUB_ACTIONS:-}" ]; then
-        echo "::group::pnpm install failure diagnostics"
+        echo "::group::pnpm install failure diagnostics" >&2
       fi
 
       echo "[pnpm] Install failed: $classification" >&2
@@ -415,7 +415,7 @@ let
       fi
 
       if [ -n "''${GITHUB_ACTIONS:-}" ]; then
-        echo "::endgroup::"
+        echo "::endgroup::" >&2
       fi
 
       return "$rc"

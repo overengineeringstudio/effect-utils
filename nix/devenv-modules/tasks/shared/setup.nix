@@ -326,7 +326,6 @@ in
 
           # TEMPORARY PROBE for #968 — remove before merge.
           echo "::notice title=stderr-probe::PROBE-968 emitted from a succeeding devenv task via stderr" >&2
-          echo "::notice title=stdout-probe::PROBE-968-STDOUT should not appear"
 
           _git_dir=$(${git} rev-parse --git-dir 2>/dev/null)
           if [ -d "$_git_dir/rebase-merge" ] || [ -d "$_git_dir/rebase-apply" ]; then
