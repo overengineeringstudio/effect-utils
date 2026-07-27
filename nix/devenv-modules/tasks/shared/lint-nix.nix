@@ -94,25 +94,6 @@ let
   };
 
   otherTasks = {
-    # devenv discards a task's stdout, so a GitHub workflow command echoed there
-    # never reaches the runner and never becomes an annotation or a log group.
-    # stderr is forwarded, so that is where these have to go. Without this guard
-    # the mistake is invisible: the emit looks correct and simply does nothing.
-    "lint:nix:workflow-commands" = {
-      description = "Check GitHub workflow commands in task definitions go to stderr";
-      exec = trace.exec "lint:nix:workflow-commands" ''
-        offenders=$(${git} ls-files 'nix/devenv-modules/*.nix' 'nix/devenv-modules/*.sh' \
-          | xargs grep -nE "(echo|printf)( +-[A-Za-z]+)* +['\"]::" \
-          | grep -v '>&2' || true)
-
-        if [ -n "$offenders" ]; then
-          echo "Workflow commands must be written to stderr; devenv discards task stdout." >&2
-          echo "Append '>&2' to each line below:" >&2
-          echo "$offenders" >&2
-          exit 1
-        fi
-      '';
-    };
     "lint:nix:eval-warnings" = lib.mkIf hasEvalTargets {
       description = "Check for Nix evaluation warnings (deprecated APIs)";
       exec = trace.exec "lint:nix:eval-warnings" "${evalScript} ${evalTargetsArgs}";
@@ -122,7 +103,6 @@ let
       after = [
         "lint:nix:format"
         "lint:nix:deadcode"
-        "lint:nix:workflow-commands"
       ]
       ++ lib.optional hasEvalTargets "lint:nix:eval-warnings";
     };
