@@ -10,6 +10,7 @@ import {
   DeployInputV1,
   type DeployFailure,
   type MissingAuthPolicy,
+  type UnauthorizedPolicy,
   DeployProviderOperation,
   DeployResultV1,
   InvalidProviderOutput,
@@ -52,6 +53,7 @@ export type NetlifyDeployCommandOptions = {
   readonly netlifyBin: string
   readonly netlifyApiBaseUrl: string
   readonly missingAuthPolicy: MissingAuthPolicy
+  readonly unauthorizedPolicy: UnauthorizedPolicy
   readonly createdAtUtc?: string | undefined
   readonly e2eAllowSharedProject: boolean
   readonly e2eReservedAliasPrefix: string
@@ -486,6 +488,19 @@ export const runNetlifyDeploy = Effect.fn('ci-tools.deploy.netlify')(function* (
         secretValues: authTokenValue === undefined ? [] : [authTokenValue],
       }),
     }).pipe(Effect.zipRight(Effect.fail(failure)))
+  const skipWithRecord = (reason: string) =>
+    emitWorkflowReportRecord({
+      workflowReportOutputFile: options.workflowReportOutputFile,
+      record: deploySkippedRecord({ input, reason, createdAtUtc }),
+    }).pipe(
+      Effect.flatMap((recordJson) =>
+        writeGithubWorkflowReportOutput({
+          recordJson,
+          workflowReportOutputFile: options.workflowReportOutputFile,
+          githubOutputFile: options.githubOutputFile,
+        }),
+      ),
+    )
 
   if ((options.e2eVerifyPath === undefined) !== (options.e2eVerifyText === undefined)) {
     return yield* failWithRecord(
@@ -525,19 +540,9 @@ export const runNetlifyDeploy = Effect.fn('ci-tools.deploy.netlify')(function* (
 
   if (authTokenValue === undefined) {
     if (options.missingAuthPolicy === 'skip') {
-      const recordJson = yield* emitWorkflowReportRecord({
-        workflowReportOutputFile: options.workflowReportOutputFile,
-        record: deploySkippedRecord({
-          input,
-          reason: `Skipping ${options.target} deploy because ${options.authTokenEnv} is not available.`,
-          createdAtUtc,
-        }),
-      })
-      yield* writeGithubWorkflowReportOutput({
-        recordJson,
-        workflowReportOutputFile: options.workflowReportOutputFile,
-        githubOutputFile: options.githubOutputFile,
-      })
+      yield* skipWithRecord(
+        `Skipping ${options.target} deploy because ${options.authTokenEnv} is not available.`,
+      )
       return
     }
     return yield* failWithRecord(
@@ -551,12 +556,22 @@ export const runNetlifyDeploy = Effect.fn('ci-tools.deploy.netlify')(function* (
   }
 
   const siteId = envValue(options.siteIdEnv)
-  const resolvedSite = yield* resolveNetlifySite({
+  const resolvedSiteResult = yield* resolveNetlifySite({
     target: options.target,
     siteId,
     authToken: authTokenValue,
     apiBaseUrl: options.netlifyApiBaseUrl,
-  }).pipe(Effect.catchAll(failWithRecord))
+  }).pipe(Effect.either)
+  if (Either.isLeft(resolvedSiteResult) === true) {
+    if (resolvedSiteResult.left._tag === 'Unauthorized' && options.unauthorizedPolicy === 'skip') {
+      yield* skipWithRecord(
+        `Skipping ${options.target} deploy because the configured Netlify credentials cannot retrieve the project.`,
+      )
+      return
+    }
+    return yield* failWithRecord(resolvedSiteResult.left)
+  }
+  const resolvedSite = resolvedSiteResult.right
 
   const siteName = options.siteName ?? resolvedSite.siteName
   const args = [
@@ -583,15 +598,20 @@ export const runNetlifyDeploy = Effect.fn('ci-tools.deploy.netlify')(function* (
   })
 
   if (result.status !== 0) {
-    return yield* failWithRecord(
-      classifyNetlifyDeployFailure({
-        target: options.target,
-        status: result.status,
-        stdout: result.stdout,
-        stderr: result.stderr,
-        authToken: authTokenValue,
-      }),
-    )
+    const failure = classifyNetlifyDeployFailure({
+      target: options.target,
+      status: result.status,
+      stdout: result.stdout,
+      stderr: result.stderr,
+      authToken: authTokenValue,
+    })
+    if (failure._tag === 'Unauthorized' && options.unauthorizedPolicy === 'skip') {
+      yield* skipWithRecord(
+        `Skipping ${options.target} deploy because the configured Netlify credentials cannot retrieve the project.`,
+      )
+      return
+    }
+    return yield* failWithRecord(failure)
   }
 
   const deployJson = yield* parseDeployJson({

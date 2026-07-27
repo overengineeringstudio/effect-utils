@@ -52,6 +52,7 @@ let
           input="''${DEVENV_TASK_INPUT:-"{}"}"
           deploy_type="$(${pkgs.jq}/bin/jq -r '.type // "draft"' <<<"$input")"
           missing_auth_policy="$(${pkgs.jq}/bin/jq -r '.missingAuthPolicy // .missing_auth_policy // "fail"' <<<"$input")"
+          unauthorized_policy="$(${pkgs.jq}/bin/jq -r '.unauthorizedPolicy // .unauthorized_policy // "fail"' <<<"$input")"
           url_env_key="$(${pkgs.jq}/bin/jq -r '.urlEnvKey // .url_env_key // ${builtins.toJSON urlEnvKey}' <<<"$input")"
           case "$deploy_type" in
             prod|pr|draft) ;;
@@ -67,6 +68,13 @@ let
               exit 1
               ;;
           esac
+          case "$unauthorized_policy" in
+            fail|skip) ;;
+            *)
+              echo "Error: Unknown Netlify unauthorized policy '$unauthorized_policy'. Use: fail, skip" >&2
+              exit 1
+              ;;
+          esac
 
           args=(
             deploy netlify
@@ -79,6 +87,7 @@ let
             --auth-token-env NETLIFY_AUTH_TOKEN
             --netlify-bin ${lib.escapeShellArg resolvedNetlifyBin}
             --missing-auth-policy "$missing_auth_policy"
+            --unauthorized-policy "$unauthorized_policy"
           )
 
           if [ "$deploy_type" = "pr" ]; then

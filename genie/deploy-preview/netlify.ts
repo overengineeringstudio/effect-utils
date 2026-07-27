@@ -15,7 +15,7 @@ export const netlifyDeployStep = (runDevenvTasksBefore: RunTasksBefore) => ({
     `  ${runDevenvTasksBefore('netlify:deploy', '--show-output', '--input', 'type=prod', '--input', 'missingAuthPolicy=skip', '--input', 'urlEnvKey=NETLIFY_DEPLOY_URL_STORYBOOK')}`,
     'elif [ "${{ github.event_name }}" = "pull_request" ]; then',
     '  deploy_ran=1',
-    `  ${runDevenvTasksBefore('netlify:deploy', '--show-output', '--input', 'type=pr', '--input', 'pr=${{ github.event.pull_request.number }}', '--input', 'missingAuthPolicy=skip', '--input', 'urlEnvKey=NETLIFY_DEPLOY_URL_STORYBOOK')}`,
+    `  ${runDevenvTasksBefore('netlify:deploy', '--show-output', '--input', 'type=pr', '--input', 'pr=${{ github.event.pull_request.number }}', '--input', 'missingAuthPolicy=skip', '--input', 'unauthorizedPolicy=skip', '--input', 'urlEnvKey=NETLIFY_DEPLOY_URL_STORYBOOK')}`,
     'fi',
     'if [ "$deploy_ran" = "1" ] && [ ! -s "$workflow_report_path" ]; then',
     '  echo "Error: ci-tools did not emit a Netlify workflow report record." >&2',
