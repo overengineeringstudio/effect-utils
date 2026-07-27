@@ -146,6 +146,7 @@ This is a devenv limitation, not the way workflow commands are meant to be writt
 GitHub documents them on stdout, and on a plain shell step that works. Reported as
 [cachix/devenv#3038](https://github.com/cachix/devenv/issues/3038), with a reproduction
 showing stdout carries no protocol data (task outputs travel via `DEVENV_TASK_OUTPUT_FILE`).
+
 <!-- TODO(cachix/devenv#3038): drop this section's workaround framing, the `>&2` redirects in
      context.nix / pnpm.nix / workflow-report.nix, `lint:nix:workflow-commands`, and
      `overeng/no-stdout-workflow-command` once devenv forwards task stdout everywhere. -->
@@ -154,7 +155,7 @@ If that is fixed and the fixed version is pinned everywhere, both this rule and
 `overeng/no-stdout-workflow-command` can be retired.
 
 Stdout is not a reliable channel in either direction: a direct `devenv tasks run`
-of a failing task discarded its stdout too, while a failing *dependency* task's
+of a failing task discarded its stdout too, while a failing _dependency_ task's
 stdout does appear in devenv's error summary in CI. Rather than depend on which
 case applies, put anything you need to read on stderr.
 

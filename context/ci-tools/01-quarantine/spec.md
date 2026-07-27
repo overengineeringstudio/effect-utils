@@ -43,8 +43,8 @@ test invocation fails
                                                     entry.target == label (R02)
 ```
 
-The consumer decides *whether* a failure is tolerated; this subsystem decides
-*what that means* and *what CI is told*. The two commands are independent — a
+The consumer decides _whether_ a failure is tolerated; this subsystem decides
+_what that means_ and _what CI is told_. The two commands are independent — a
 repository with no tolerated failures still runs `validate`.
 
 ## Entry and Ledger
@@ -83,11 +83,11 @@ requirement.
 
 `announce` resolves a key against the ledger before emitting anything:
 
-| Condition | Result |
-| --- | --- |
-| key has no entry | error (R03) |
+| Condition               | Result      |
+| ----------------------- | ----------- |
+| key has no entry        | error (R03) |
 | `entry.target != label` | error (R02) |
-| otherwise | announce |
+| otherwise               | announce    |
 
 A consumer's type checker may already reject an unknown key, but a cast, a
 JavaScript caller, or a hand-written CLI invocation reaches here regardless —
@@ -97,10 +97,10 @@ so the guards are enforced at this boundary rather than assumed upstream.
 
 A tolerated failure is announced twice, with different jobs:
 
-| Channel | Content | Role |
-| --- | --- | --- |
+| Channel          | Content                                                                          | Role                                    |
+| ---------------- | -------------------------------------------------------------------------------- | --------------------------------------- |
 | Job summary file | `- Quarantined failure: <label> — <reason> Tracking <issue>, expires <expires>.` | Durable record, survives log truncation |
-| stderr | `::warning title=Quarantined test failure::<same summary>` | Surfaces in the run's annotations |
+| stderr           | `::warning title=Quarantined test failure::<same summary>`                       | Surfaces in the run's annotations       |
 
 Both carry the full summary, so either alone is readable (R06). The summary file
 path comes from `--summary-file`, defaulting to `$GITHUB_STEP_SUMMARY`; when
@@ -129,10 +129,10 @@ ci-tools quarantine announce --ledger <path> --key <key> --label <label>
                              [--summary-file <path>]
 ```
 
-| Command | Exit 0 | Exit ≠ 0 |
-| --- | --- | --- |
-| `validate` | no entry expired | an entry expired or malformed; message names each with its issue |
-| `announce` | announced on both channels | key unknown, target mismatch, or ledger unreadable |
+| Command    | Exit 0                     | Exit ≠ 0                                                         |
+| ---------- | -------------------------- | ---------------------------------------------------------------- |
+| `validate` | no entry expired           | an entry expired or malformed; message names each with its issue |
+| `announce` | announced on both channels | key unknown, target mismatch, or ledger unreadable               |
 
 `--today` exists so the expiry rule is testable without waiting for a date to
 pass; it defaults to the current UTC day.
