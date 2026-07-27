@@ -231,6 +231,9 @@
     // {
       # Devenv modules for importing into other repos
       devenvModules = {
+        # Lightweight native-devenv + effect-utils capture, optionally composed
+        # with the full Collector/Tempo/Grafana stack.
+        observability = import ./nix/devenv-modules/observability.nix;
         # OpenTelemetry observability stack (Collector + Tempo + Grafana)
         otel = import ./nix/devenv-modules/otel.nix;
         # Shared task modules (parameterized) - meant for reuse in other repos

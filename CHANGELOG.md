@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- **devenv observability**: add a lightweight `devenvModules.observability`
+  adapter that captures native devenv OTLP/gRPC and effect-utils OTLP/HTTP task
+  spans in one isolated otelite trace. Consumers get consistent
+  `otel:profile:<name>` / `otel:verify:<name>` tasks and project attribution
+  without copying shell/Nix orchestration or importing the full local
+  Collector/Tempo/Grafana stack.
+  The shared setup module also gains `skipNonInteractive`, removing the need
+  for consumers to replace `setup:gate` (and accidentally drop its tracing)
+  just to keep non-interactive shell entry cheap.
+
 - **devenv-modules**: GitHub workflow commands emitted by tasks now go to stderr. devenv does not
   forward a task's stdout, so `echo "::warning::…"` there never reached the runner — it produced no
   annotation and no log group. That silently affected the two `::notice::` emits in

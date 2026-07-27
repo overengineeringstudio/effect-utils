@@ -2,75 +2,41 @@
 
 ## Active Workarounds
 
-### DEVENV-02: Task tracing lacks OTLP export and observability features
+### DEVENV-02: Detailed OTLP task phases require global CLI verbosity
 
-**Issue:** https://github.com/cachix/devenv/issues/2415 (OTEL support feature request)
+**Issue:** https://github.com/cachix/devenv/issues/3037
 
-**Related:**
+**Resolved foundation:**
 
-- https://github.com/cachix/devenv/issues/2456 (docs: clarify `--trace-output` requirement)
-- https://github.com/cachix/devenv/issues/1457 (Task Server Protocol - proposes JSON-RPC with timestamps)
+- https://github.com/cachix/devenv/issues/2415
+- https://github.com/cachix/devenv/pull/2740
 
-**Affected repos:** All repos using devenv tasks that need CI observability
+**Affected repos:** Repositories using shared effect-utils setup profiling
 
-**Symptoms:**
+Devenv 2.1 natively exports root, evaluation, build, task, and process spans to
+OTLP. It also propagates `TRACEPARENT` and `TRACESTATE` to subprocesses, so
+instrumented tools can join the native trace. Native orchestration tracing is
+therefore no longer a workaround owned by effect-utils.
 
-- No native OTLP export to observability systems (Datadog, Honeycomb, etc.)
-- No summary statistics (total wall time, parallelism efficiency, cache hit rates)
-- No historical metrics tracking across CI runs
+The remaining gap is narrower. Devenv creates `check status` and
+`execute command` child activities, but marks them as Debug. Normal OTLP
+captures expose only aggregate task duration. `--verbose` exposes both phases
+but also changes console/TUI verbosity and exports unrelated debug activity.
 
-**Current capabilities (devenv 2.0.0):**
+**Current workaround:** The shared observability module joins native devenv
+OTLP/gRPC spans with Effect task-phase OTLP/HTTP spans in one isolated otelite
+capture. This preserves status-versus-execution timing until devenv can select
+OTLP detail independently from human-facing verbosity.
 
-JSON traces are available but require `--trace-output` (traces are disabled by default):
+**Deletion criterion:** After #3037 ships in a tagged devenv release and the
+native task → status/exec → instrumented-child hierarchy passes the shared
+otelite proof, remove only the `otel-span` task-phase producer, HTTP bridge, and
+Effect-parent assertion.
 
-```bash
-# Enable JSON traces to a file
-devenv tasks run <task> --no-tui --trace-output file:/tmp/trace.json --trace-format json
-
-# Or output to stdout/stderr
-devenv tasks run <task> --no-tui --trace-output stdout --trace-format json
-```
-
-JSON trace output includes:
-
-- Per-task start/complete events with timestamps
-- Span context with parent/child relationships (span_id, parent_id)
-- Activity kinds: task, command, evaluate, operation
-- Outcomes: success, cached, failure
-- Command paths executed
-
-Example trace event:
-
-```json
-{
-  "fields": {
-    "event": {
-      "activity_kind": "task",
-      "event": "complete",
-      "id": 9223372036854775817,
-      "name": "ts:check",
-      "outcome": "success",
-      "timestamp": "2026-02-03T14:08:00.556348000Z"
-    }
-  },
-  "span_context": { "span_id": 274877906946, "parent_id": 274877906945 }
-}
-```
-
-**R10 requirements gap analysis:**
-
-| Requirement                       | Status       | Notes                                             |
-| --------------------------------- | ------------ | ------------------------------------------------- |
-| (a) Per-task timing               | ✅ Available | Via `--trace-output` JSON with timestamps         |
-| (b) Dependency visualization      | ✅ Available | Via span parent/child relationships in JSON       |
-| (c) Stdout/stderr capture         | ⚠️ Partial   | Available with `--show-output`, not in trace JSON |
-| (d) Structured export (JSON/OTLP) | ⚠️ Partial   | JSON available, OTLP not yet implemented          |
-| (e) Summary statistics            | ❌ Missing   | Must be computed from raw trace events            |
-| (f) Metrics over time             | ❌ Missing   | No built-in cross-run tracking                    |
-
-**Workaround:** Use `--trace-output file:<path> --trace-format json` to get structured traces, then post-process for observability platforms.
-
-**Potential upstream contribution:** Issue #2415 proposes adding native OTLP export using `tracing-opentelemetry` crate.
+The rest of `nix/devenv-modules/observability.nix` is durable shared tooling:
+otelite lifecycle, hermetic capture, inspection assertions, profile/verify task
+generation, project conventions, backend selection, and check wiring remain
+effect-utils responsibilities.
 
 ---
 

@@ -167,7 +167,12 @@ let
   # adapter records where the structured-source contract is met).
   traceExec = taskName: execBody: ''
     if ${otelCanEmitShell}; then
+      _otel_project_attr=()
+      if [ -n "''${OTEL_DEVENV_PROJECT:-}" ]; then
+        _otel_project_attr=(--attr "devenv.project.name=$OTEL_DEVENV_PROJECT")
+      fi
       otel-span run "effect-utils-devenv" "devenv.task.exec" \
+        "''${_otel_project_attr[@]}" \
         --attr "tool.name=devenv" \
         --attr "task.name=${taskName}" \
         --attr "task.phase=exec" \
@@ -187,7 +192,12 @@ let
   traceStatus = taskName: method: statusBody: ''
     if ${otelCanEmitShell}; then
       _status_exit=0
+      _otel_project_attr=()
+      if [ -n "''${OTEL_DEVENV_PROJECT:-}" ]; then
+        _otel_project_attr=(--attr "devenv.project.name=$OTEL_DEVENV_PROJECT")
+      fi
       otel-span run "effect-utils-devenv" "devenv.task.status" \
+        "''${_otel_project_attr[@]}" \
         --attr "tool.name=devenv" \
         --attr "task.name=${taskName}" \
         --attr "task.phase=status" \
