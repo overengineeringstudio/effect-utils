@@ -186,7 +186,12 @@ in
     }
   );
 
-  env.OTEL_DEVENV_PROJECT = project;
+  env = {
+    OTEL_DEVENV_PROJECT = project;
+    # Devenv task execution may reconstruct PATH independently of the capture
+    # process, so task wrappers resolve the module-owned bridge explicitly.
+    OTEL_SPAN_BIN = "${otelSpan}/bin/otel-span";
+  };
   packages = [
     otelSpan
     otelite
