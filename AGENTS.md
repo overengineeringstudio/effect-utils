@@ -10,7 +10,7 @@ Use `devenv tasks run <task>` (devenv tasks) to execute tasks with dependencies:
 - **Linting**: `devenv tasks run lint:check` or `devenv tasks run lint:fix`
 - **Testing**: `devenv tasks run test:run` (all) or `devenv tasks run test:<pkg>` (single package) or `devenv tasks run test:watch` or `devenv tasks run test:integration`
 - **Build**: `devenv tasks run ts:build`
-- **Install**: `devenv tasks run bun:install`
+- **Install**: `devenv tasks run pnpm:install`
 - **Genie**: `devenv tasks run genie:run` or `devenv tasks run genie:watch` or `devenv tasks run genie:check`
 - **Check all**: `devenv tasks run check:quick` (ts + lint) or `devenv tasks run check:all` (ts + lint + test)
 
