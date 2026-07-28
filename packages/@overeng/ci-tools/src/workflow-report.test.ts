@@ -135,12 +135,14 @@ describe('ci-tools workflow-report wire baselines (cross-major invariant)', () =
     },
   })
 
+  // TODO(live-migration:effect-3-4): Effect 4 reassigns Schema.Date and tightens date handling; preserve timestamp wire strings and keep impossibleDate opaque rather than refreshing this line.
   it('encodes marked report lines as byte-identical JSON', () => {
     expect(encodeWorkflowReportRecordLine(wireRecord)).toMatchInlineSnapshot(
       `"WORKFLOW_REPORT_V1: {"_tag":"WorkflowReportRecord","schemaVersion":1,"id":"deploy-web:世界","kind":"deploy-preview","subject":{"id":"web","label":"Website | Primary"},"status":"failure","title":"Preview failed","summary":"Line 1\\r\\nLine 2 résumé","createdAtUtc":"2026-07-28T08:00:00.000Z","links":[{"label":"Log","url":"https://example.invalid/log?attempt=1","primary":false},{"label":"Preview","url":"https://preview.example.invalid","primary":true}],"data":{"empty":"","nullable":null,"unicode":"東京","impossibleDate":"2026-02-31","largeInteger":9007199254740991}}"`,
     )
   })
 
+  // TODO(live-migration:effect-3-4): Effect 4 reassigns Schema.Date and tightens date handling; preserve timestamp wire strings and keep impossibleDate opaque rather than refreshing this bundle.
   it('encodes report bundles as byte-identical pretty JSON', () => {
     const bundle = createWorkflowReportBundle({
       bundleId: 'deploy-preview',
@@ -194,6 +196,7 @@ describe('ci-tools workflow-report wire baselines (cross-major invariant)', () =
     `)
   })
 
+  // TODO(live-migration:effect-3-4): Effect 4 reassigns Schema.Date and tightens date handling; preserve timestamp wire strings and keep impossibleDate opaque in the hidden managed state.
   it('encodes managed comment state as byte-identical Markdown', () => {
     const state = deriveWorkflowReportManagedState({
       stateId: 'deploy-preview',
@@ -289,6 +292,7 @@ describe('ci-tools workflow-report wire baselines (cross-major invariant)', () =
     `)
   })
 
+  // TODO(live-migration:effect-3-4): Effect 4 reassigns Schema.Date; keep generatedAtUtc as the existing ISO wire contract while preserving this custom failure message.
   it('captures workflow-report decode failures as stable JSON', () => {
     let failureJson = '{"_tag":"UnexpectedSuccess"}'
     try {
