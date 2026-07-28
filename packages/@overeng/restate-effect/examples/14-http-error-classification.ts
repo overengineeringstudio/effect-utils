@@ -36,7 +36,7 @@
  * upstream returning controlled statuses, and asserts each union member lands in the
  * right channel. Skips when no native server is available.
  */
-import { HttpClient, HttpClientRequest, type HttpClientResponse } from '@effect/platform'
+import { HttpClient, HttpClientRequest, type HttpClientResponse } from 'effect'
 import { Effect, ParseResult, Schema } from 'effect'
 
 import { Restate, RestateService } from '../src/mod.ts'

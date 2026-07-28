@@ -1,9 +1,9 @@
 import os from 'node:os'
 import path from 'node:path'
 
-import { type Error as PlatformError, FileSystem } from '@effect/platform'
-import type * as CommandExecutor from '@effect/platform/CommandExecutor'
-import type { Path } from '@effect/platform/Path'
+import { type Error as PlatformError, FileSystem } from 'effect'
+import type * as CommandExecutor from 'effect/unstable/process/CommandExecutor'
+import type { Path } from 'effect/Path'
 import { Effect, Either, Option, Ref } from 'effect'
 
 import { assertNever } from '@overeng/utils'

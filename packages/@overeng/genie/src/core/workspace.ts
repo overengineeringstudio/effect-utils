@@ -1,4 +1,4 @@
-import { FileSystem, Path } from '@effect/platform'
+import { FileSystem, Path } from 'effect'
 import { Effect } from 'effect'
 
 import { matchesAnyPattern } from '../runtime/package-json/validation.ts'

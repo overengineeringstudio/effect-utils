@@ -22,16 +22,7 @@ const deps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/oxc-config' }),
   devDependencies: {
     external: {
-      ...catalog.pick(
-        '@types/eslint',
-        '@typescript-eslint/parser',
-        '@typescript-eslint/rule-tester',
-        '@typescript-eslint/utils',
-        'eslint',
-        'typescript',
-        'vitest',
-        'oxlint-tsgolint',
-      ),
+      ...catalog.pick('@types/eslint', '@typescript-eslint/parser', '@typescript-eslint/rule-tester', '@typescript-eslint/utils', 'eslint', 'typescript', 'vitest', 'oxlint-tsgolint'),
     },
   },
 })

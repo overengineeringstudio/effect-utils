@@ -2,7 +2,7 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-import { FileSystem } from '@effect/platform'
+import { FileSystem } from 'effect'
 import { NodeFileSystem } from '@effect/platform-node'
 import { Effect, Option, Schema } from 'effect'
 import { afterEach, beforeEach, expect, it } from 'vitest'

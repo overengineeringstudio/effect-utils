@@ -9,8 +9,8 @@
  * assertions read the raw per-signal `*.ndjson` and walk the resource block.
  */
 
-import { FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import { FileSystem } from 'effect'
+import { NodeServices } from '@effect/platform-node'
 import { Effect, Layer, Metric, Option, Schema, type Scope } from 'effect'
 import { expect } from 'vitest'
 
@@ -143,7 +143,7 @@ Vitest.describe('makeOtelCliLayer — typed ServiceIdentity', () => {
           expect(attrs[signal]?.['service.namespace']).toBe('overeng.test')
           expect(attrs[signal]?.['service.version']).toBe('9.9.9')
         }
-      }).pipe(Effect.provide(Layer.provideMerge(Otelite.Default, NodeContext.layer))),
+      }).pipe(Effect.provide(Layer.provideMerge(Otelite.Default, NodeServices.layer))),
   )
 
   Vitest.it.scoped(
@@ -171,7 +171,7 @@ Vitest.describe('makeOtelCliLayer — typed ServiceIdentity', () => {
         expect(attrs['traces']?.['deployment.environment']).toBe('ci-test')
         // Explicit identity wins over the colliding env value.
         expect(attrs['traces']?.['service.namespace']).toBe('overeng.test')
-      }).pipe(Effect.provide(Layer.provideMerge(Otelite.Default, NodeContext.layer))),
+      }).pipe(Effect.provide(Layer.provideMerge(Otelite.Default, NodeServices.layer))),
   )
 
   Vitest.it.effect('rejects a raw-string name on the typed identity path', () =>

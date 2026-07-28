@@ -1,7 +1,7 @@
 import { mkdir, rename, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 
-import { NodeContext } from '@effect/platform-node'
+import { NodeServices } from '@effect/platform-node'
 import { Effect, Layer, Schema, Stream } from 'effect'
 
 import type { ContentDescriptor } from '@overeng/content-address'
@@ -409,7 +409,7 @@ export const makeNotionMdPageBodySyncPort = ({
             expectedLocalBodyHash: command.nextBodyHash,
           }).pipe(
             provideNotionMdGatewayAndStateStore({ gateway, stateStore }),
-            Effect.provide(NodeContext.layer),
+            Effect.provide(NodeServices.layer),
           )
           yield* writeDatasourceSyncBodySidecar({
             root,
@@ -552,7 +552,7 @@ export const makeNotionMdMaterializingLocalWorkspacePort = ({
           ...(plan.writableProperties === undefined ? {} : { properties: plan.writableProperties }),
         }).pipe(
           provideNotionMdGatewayAndStateStore({ gateway, stateStore }),
-          Effect.provide(NodeContext.layer),
+          Effect.provide(NodeServices.layer),
           Effect.mapError(
             (cause) =>
               new LocalStoreError({

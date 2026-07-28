@@ -6,9 +6,9 @@
  * - `runCommand` — CLI orchestration: TUI rendering, fetch-before-apply, error merging
  */
 
-import { Prompt } from '@effect/cli'
-import type { CommandExecutor, Terminal } from '@effect/platform'
-import { FileSystem, type Error as PlatformError } from '@effect/platform'
+import { Prompt } from 'effect/unstable/cli'
+import type { CommandExecutor, Terminal } from 'effect'
+import { FileSystem, type Error as PlatformError } from 'effect'
 import { Clock, Effect, Option, type ParseResult } from 'effect'
 import React from 'react'
 

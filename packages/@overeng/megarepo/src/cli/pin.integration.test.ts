@@ -5,8 +5,8 @@
  * These tests use direct function calls instead of CLI subprocess to avoid timeouts.
  */
 
-import { FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import { FileSystem } from 'effect'
+import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Effect, Option, Schema } from 'effect'
 import { expect } from 'vitest'
@@ -110,7 +110,7 @@ describe('mr config pin', () => {
           const finalConfig = yield* readConfig(workspacePath)
           expect(finalConfig.members['test-repo']).toBe('test-owner/test-repo#feature-branch')
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -152,7 +152,7 @@ describe('mr config pin', () => {
             expect(Option.getOrNull(source.ref)).toBe('main')
           }
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -202,7 +202,7 @@ describe('mr config pin', () => {
             expect(member?.pinned).toBe(true)
           }
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -257,7 +257,7 @@ describe('mr config pin', () => {
             expect(member?.pinned).toBe(true)
           }
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )

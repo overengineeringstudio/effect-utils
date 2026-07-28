@@ -13,7 +13,7 @@
  *   absent-layer case).
  */
 
-import { NodeContext } from '@effect/platform-node'
+import { NodeServices } from '@effect/platform-node'
 import { Effect, Layer, Metric, Option, Schema } from 'effect'
 import { expect } from 'vitest'
 
@@ -89,7 +89,7 @@ Vitest.describe('withTelemetry — typed front door', () => {
         expect(rows.length).toBeGreaterThan(0)
         expect(rows.every((r) => r.service === SERVICE)).toBe(true)
       }
-    }).pipe(Effect.provide(Layer.provideMerge(Otelite.Default, NodeContext.layer))),
+    }).pipe(Effect.provide(Layer.provideMerge(Otelite.Default, NodeServices.layer))),
   )
 })
 
@@ -116,7 +116,7 @@ Vitest.describe('sampleGauge / telemetryEnabled — sampler primitive', () => {
         type: 'gauge',
         value: 1234,
       })
-    }).pipe(Effect.provide(Layer.provideMerge(Otelite.Default, NodeContext.layer))),
+    }).pipe(Effect.provide(Layer.provideMerge(Otelite.Default, NodeServices.layer))),
   )
 
   Vitest.it.scoped('is a true no-op (never reads, never forks) when telemetry is off', () =>

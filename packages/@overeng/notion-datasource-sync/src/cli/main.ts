@@ -6,8 +6,8 @@ import { existsSync, mkdirSync } from 'node:fs'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 
-import { FetchHttpClient } from '@effect/platform'
-import { NodeContext, NodeRuntime } from '@effect/platform-node'
+import { FetchHttpClient } from 'effect'
+import { NodeServices, NodeRuntime } from '@effect/platform-node'
 import { Effect, Either, Layer, Option, Redacted, Schema, Stream } from 'effect'
 
 import {
@@ -2990,7 +2990,7 @@ export const makeCliRuntimeLayer = ({
       ? undefined
       : Layer.mergeAll(
           NotionMdGatewayLive.pipe(Layer.provide(liveBaseLayer)),
-          NmdStateStoreLive.pipe(Layer.provide(NodeContext.layer)),
+          NmdStateStoreLive.pipe(Layer.provide(NodeServices.layer)),
         )
   const gatewayLayer =
     options.gateway !== undefined

@@ -12,19 +12,9 @@ import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
 /** Runtime + type peer deps — consumers must have these to use and type-check tui-react's .tsx source exports */
-const peerDepNames = [
-  'effect',
-  'react',
-  'react-dom',
-  'react-reconciler',
-  '@effect/platform-node',
-  '@effect/cli',
-  /** Required for consumers to type-check imported .tsx source (not compiled .d.ts) */
-  '@types/react',
-  '@types/react-reconciler',
-  /** The ./storybook export is consumed by other packages that already have storybook */
-  '@storybook/react',
-] as const
+const peerDepNames = ['effect', 'react', 'react-dom', 'react-reconciler', '@effect/platform-node', /** Required for consumers to type-check imported .tsx source (not compiled .d.ts) */
+  '@types/react', '@types/react-reconciler', /** The ./storybook export is consumed by other packages that already have storybook */
+  '@storybook/react'] as const
 const effectAtomDeps = ['@effect-atom/atom', '@effect-atom/atom-react'] as const
 const opentuiDeps = ['@opentui/core', '@opentui/react'] as const
 
@@ -32,38 +22,12 @@ const runtimeDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/tui-react' }),
   dependencies: {
     workspace: [tuiCorePkg, utilsPkg],
-    external: catalog.pick(
-      'yoga-layout',
-      'string-width',
-      'cli-truncate',
-      '@xterm/xterm',
-      '@xterm/headless',
-      '@xterm/addon-fit',
-      '@xterm/addon-webgl',
-    ),
+    external: catalog.pick('yoga-layout', 'string-width', 'cli-truncate', '@xterm/xterm', '@xterm/headless', '@xterm/addon-fit', '@xterm/addon-webgl'),
   },
   devDependencies: {
     workspace: [utilsDevPkg],
     external: {
-      ...catalog.pick(
-        ...peerDepNames,
-        '@types/node',
-        '@types/react',
-        '@types/react-reconciler',
-        'vitest',
-        '@effect/vitest',
-        '@playwright/test',
-        'effect',
-        '@effect/platform',
-        ...effectAtomDeps,
-        ...opentuiDeps,
-        'storybook',
-        '@storybook/react',
-        '@storybook/react-vite',
-        'vite',
-        '@vitejs/plugin-react',
-        'typescript',
-      ),
+      ...catalog.pick(...peerDepNames, '@types/node', '@types/react', '@types/react-reconciler', 'vitest', '@effect/vitest', '@playwright/test', 'effect', ...effectAtomDeps, ...opentuiDeps, 'storybook', '@storybook/react', '@storybook/react-vite', 'vite', '@vitejs/plugin-react', 'typescript'),
     },
   },
   peerDependencies: {

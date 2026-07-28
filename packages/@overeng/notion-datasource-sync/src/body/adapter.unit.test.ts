@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { NodeContext } from '@effect/platform-node'
+import { NodeServices } from '@effect/platform-node'
 import { Chunk, Effect, Layer, Schema, Stream } from 'effect'
 import { describe, expect, it } from 'vitest'
 
@@ -164,7 +164,7 @@ const runWithNmdStateStore = <TValue, TError>(
   effect: Effect.Effect<TValue, TError, NmdStateStore>,
 ) =>
   Effect.runPromise(
-    effect.pipe(Effect.provide(NmdStateStoreLive.pipe(Layer.provide(NodeContext.layer)))),
+    effect.pipe(Effect.provide(NmdStateStoreLive.pipe(Layer.provide(NodeServices.layer)))),
   )
 
 describe('body adapter contract', () => {

@@ -1,4 +1,4 @@
-import { HttpClient } from '@effect/platform'
+import { HttpClient } from 'effect'
 import { Context, Effect, Layer, Option, Schema, type Scope, Stream } from 'effect'
 
 import {

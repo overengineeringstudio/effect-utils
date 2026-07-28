@@ -7,7 +7,7 @@
  * unknown/invalid files fall back to the defaults (never fail the gc path).
  */
 
-import { FileSystem, type Error as PlatformError } from '@effect/platform'
+import { FileSystem, type Error as PlatformError } from 'effect'
 import { Effect, Schema } from 'effect'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'

@@ -1,6 +1,6 @@
 import { basename, dirname, resolve } from 'node:path'
 
-import { Args, Command, Options } from '@effect/cli'
+import { Args, Command, Options } from 'effect/unstable/cli'
 import { FetchHttpClient, FileSystem, Path } from '@effect/platform'
 import { Cause, Console, Duration, Effect, Layer, Option, Queue, Schema, Stream } from 'effect'
 

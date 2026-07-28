@@ -5,7 +5,7 @@
  * With `--apply`, also applies lock to workspace afterward.
  */
 
-import * as Cli from '@effect/cli'
+import * as Cli from 'effect/unstable/cli'
 
 import { outputOption, verboseOption } from '../context.ts'
 import { runCommand, type LockSyncMode } from './engine.ts'

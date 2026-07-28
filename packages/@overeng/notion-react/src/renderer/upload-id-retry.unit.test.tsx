@@ -1,4 +1,4 @@
-import type { HttpClient } from '@effect/platform'
+import type { HttpClient } from 'effect'
 import { Cause, Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 

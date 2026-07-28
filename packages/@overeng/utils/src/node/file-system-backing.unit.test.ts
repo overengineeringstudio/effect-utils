@@ -2,8 +2,8 @@ import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
 
-import { FileSystem, Path } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import { FileSystem, Path } from 'effect'
+import { NodeServices } from '@effect/platform-node'
 import { Context, Deferred, Duration, Effect, Layer, Schema, Stream } from 'effect'
 import { expect } from 'vitest'
 
@@ -921,7 +921,7 @@ Vitest.describe('FileSystemBacking', () => {
           // Stream should complete (not hang) — the 5s timeout is a safety net
           yield* stream.pipe(Stream.runDrain, Effect.timeout(Duration.seconds(5)))
         }).pipe(Effect.provide(backingLayer))
-      }).pipe(Effect.provide(NodeContext.layer), Effect.scoped),
+      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
     )
   })
 })

@@ -19,7 +19,7 @@
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 
-import { FetchHttpClient } from '@effect/platform'
+import { FetchHttpClient } from 'effect'
 import { it } from '@effect/vitest'
 import { Effect } from 'effect'
 import { afterAll, beforeAll, describe, expect } from 'vitest'

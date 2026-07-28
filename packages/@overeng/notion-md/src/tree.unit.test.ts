@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { NodeContext } from '@effect/platform-node'
+import { NodeServices } from '@effect/platform-node'
 import { Effect, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
@@ -251,8 +251,8 @@ const run = <A, E>(
       Effect.provide(
         Layer.mergeAll(
           fake.layer,
-          NmdStateStoreLive.pipe(Layer.provide(NodeContext.layer)),
-          NodeContext.layer,
+          NmdStateStoreLive.pipe(Layer.provide(NodeServices.layer)),
+          NodeServices.layer,
         ),
       ),
     ),
@@ -790,8 +790,8 @@ describe('notion-md tree reconcile lifecycle', () => {
           Effect.provide(
             Layer.mergeAll(
               fake.layer,
-              NmdStateStoreLive.pipe(Layer.provide(NodeContext.layer)),
-              NodeContext.layer,
+              NmdStateStoreLive.pipe(Layer.provide(NodeServices.layer)),
+              NodeServices.layer,
             ),
           ),
         ),

@@ -8,7 +8,7 @@
  * the error channel. It never reimplements capture/inspect logic.
  *
  * Requires a `CommandExecutor` + `FileSystem` in context (e.g.
- * `NodeContext.layer` from `@effect/platform-node`) and the `otelite` binary on
+ * `NodeServices.layer` from `@effect/platform-node`) and the `otelite` binary on
  * `PATH`, or an absolute binary path in `OTELITE_BIN`.
  */
 export { Otelite } from './Otelite.ts'
