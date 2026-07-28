@@ -399,7 +399,7 @@ describe('canonical decode (golden byte-identity)', () => {
   })
 })
 
-describe('canonical wire baselines (Effect 3)', () => {
+describe('canonical wire baselines (cross-major invariant)', () => {
   it('decodes a representative property map to byte-identical canonical JSON', async () => {
     const decoded = await Effect.runPromise(
       codec.decodePageProperties({
