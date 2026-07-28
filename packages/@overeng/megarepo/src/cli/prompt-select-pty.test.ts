@@ -1,14 +1,12 @@
+import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
-import { Effect, Schedule } from 'effect'
 import { describe, expect, it } from 'vitest'
-
-import { makePtySession, PtySpec_ } from '@overeng/pty-effect'
 
 type PromptCase = {
   readonly id: 'select' | 'interrupt'
   readonly readiness: string
-  readonly inputs: ReadonlyArray<string>
+  readonly inputs: ReadonlyArray<Buffer>
 }
 
 type PromptTrace =
@@ -29,68 +27,101 @@ type PtyResult = {
 }
 
 const fixturePath = fileURLToPath(new URL('./prompt-select-pty-fixture.ts', import.meta.url))
-const traceMarker = 'TRACE:'
+const traceMarker = Buffer.from('TRACE:')
 const readinessTimeoutMillis = 5_000
 const inputDelayMillis = 90
-const pollSchedule = Schedule.spaced('20 millis')
+
+const shellQuote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`
 
 const runPromptCase = (testCase: PromptCase): Promise<PtyResult> =>
-  Effect.runPromise(
-    Effect.scoped(
-      Effect.gen(function* () {
-        const session = yield* makePtySession(
-          PtySpec_.spawn({
-            command: process.execPath,
-            args: [fixturePath, testCase.id],
-            size: { rows: 24, cols: 80 },
-          }),
-        )
+  new Promise((resolve, reject) => {
+    const command = `stty cols 80 rows 24; exec bun ${shellQuote(fixturePath)} ${testCase.id}`
+    const child = spawn('script', ['-qfec', command, '/dev/null'], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
+    const stdout: Buffer[] = []
+    const stderr: Buffer[] = []
+    let readinessObserved = false
+    let settled = false
 
-        const readiness = yield* session
-          .waitForText({ needle: testCase.readiness, schedule: pollSchedule })
-          .pipe(
-            Effect.timeoutFail({
-              duration: readinessTimeoutMillis,
-              onTimeout: () =>
-                new Error(
-                  `PTY prompt did not reach visible readiness string ${JSON.stringify(testCase.readiness)}`,
-                ),
-            }),
-          )
+    const fail = (error: Error) => {
+      if (settled === true) return
+      settled = true
+      clearTimeout(timeout)
+      child.kill('SIGKILL')
+      reject(error)
+    }
 
+    const timeout = setTimeout(
+      () =>
+        fail(
+          new Error(
+            `PTY prompt did not reach visible readiness string ${JSON.stringify(testCase.readiness)}`,
+          ),
+        ),
+      readinessTimeoutMillis,
+    )
+
+    child.stdout.on('data', (chunk: Buffer) => {
+      stdout.push(chunk)
+      if (readinessObserved === true) return
+
+      const output = Buffer.concat(stdout).toString('utf8')
+      if (output.includes(testCase.readiness) === false) return
+
+      readinessObserved = true
+      void (async () => {
         for (const input of testCase.inputs) {
-          yield* session.write({ data: input })
-          yield* Effect.sleep(inputDelayMillis)
-        }
-
-        const completed = yield* session
-          .waitForText({ needle: traceMarker, schedule: pollSchedule })
-          .pipe(
-            Effect.timeoutFail({
-              duration: readinessTimeoutMillis,
-              onTimeout: () => new Error(`PTY prompt did not emit a structured trace`),
-            }),
+          child.stdin.write(input)
+          await new Promise((continueAfterDelay) =>
+            setTimeout(continueAfterDelay, inputDelayMillis),
           )
-        const markerIndex = completed.text.indexOf(traceMarker)
-        const encodedTrace = completed.text
-          .slice(markerIndex + traceMarker.length)
-          .replaceAll(/\s/g, '')
-        const trace = JSON.parse(Buffer.from(encodedTrace, 'base64').toString('utf8')) as PromptTrace
-
-        return {
-          readinessObserved: readiness.text.includes(testCase.readiness),
-          trace,
         }
-      }),
-    ),
-  )
+      })()
+    })
+    child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk))
+    child.on('error', (error) => fail(error))
+    child.on('close', (code) => {
+      if (settled === true) return
+      clearTimeout(timeout)
+
+      if (readinessObserved === false) {
+        fail(
+          new Error(
+            `PTY prompt exited before visible readiness string ${JSON.stringify(testCase.readiness)}`,
+          ),
+        )
+        return
+      }
+
+      const output = Buffer.concat(stdout)
+      const markerIndex = output.indexOf(traceMarker)
+      if (code !== 0 || markerIndex === -1) {
+        fail(
+          new Error(
+            `PTY prompt exited ${code} without a structured trace\n${Buffer.concat(stderr).toString('utf8')}`,
+          ),
+        )
+        return
+      }
+
+      const encodedTrace = output
+        .subarray(markerIndex + traceMarker.length)
+        .toString('utf8')
+        .trim()
+      const trace = JSON.parse(Buffer.from(encodedTrace, 'base64').toString('utf8')) as PromptTrace
+
+      settled = true
+      resolve({ readinessObserved, trace })
+    })
+  })
 
 describe('Prompt.select real-PTY semantics', () => {
   it('selects the second value and restores cooked mode', async () => {
     const result = await runPromptCase({
       id: 'select',
       readiness: 'Choose missing-ref action',
-      inputs: ['\u001b[B', '\r'],
+      inputs: [Buffer.from('\u001b[B'), Buffer.from('\r')],
     })
 
     expect(result).toEqual({
@@ -103,7 +134,7 @@ describe('Prompt.select real-PTY semantics', () => {
     const result = await runPromptCase({
       id: 'interrupt',
       readiness: 'Abort missing-ref action',
-      inputs: ['\u0003'],
+      inputs: [Buffer.from('\u0003')],
     })
 
     expect(result).toEqual({

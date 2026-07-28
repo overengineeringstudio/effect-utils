@@ -10,7 +10,6 @@ import effectPathPkg from '../effect-path/package.json.genie.ts'
 import kdlEffectPkg from '../kdl-effect/package.json.genie.ts'
 import kdlPkg from '../kdl/package.json.genie.ts'
 import otelContractPkg from '../otel-contract/package.json.genie.ts'
-import ptyEffectPkg from '../pty-effect/package.json.genie.ts'
 import tuiCorePkg from '../tui-core/package.json.genie.ts'
 import tuiReactPkg from '../tui-react/package.json.genie.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
@@ -32,7 +31,7 @@ const runtimeDeps = catalog.compose({
     external: catalog.pick('react'),
   },
   devDependencies: {
-    workspace: [ptyEffectPkg, tuiCorePkg, utilsDevPkg],
+    workspace: [tuiCorePkg, utilsDevPkg],
     external: {
       ...catalog.pick(
         ...peerDepNames,
