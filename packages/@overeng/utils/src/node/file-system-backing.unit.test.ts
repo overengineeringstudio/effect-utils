@@ -910,7 +910,7 @@ Vitest.describe('FileSystemBacking', () => {
     )
   })
 
-  Vitest.describe('onPermitsReleased', () => {
+  Vitest.describe('FileSystem.watch membership', () => {
     Vitest.it.effect('watches direct children but not nested children without recursion', () =>
       Effect.gen(function* () {
         const fsService = yield* FileSystem.FileSystem
@@ -1009,7 +1009,9 @@ Vitest.describe('FileSystemBacking', () => {
         expect(observedPathNames).not.toContain(nestedChild)
       }).pipe(Effect.provide(NodeContext.layer), Effect.scoped),
     )
+  })
 
+  Vitest.describe('onPermitsReleased', () => {
     Vitest.it.effect('completes when watched directory is deleted (no hang)', () =>
       Effect.gen(function* () {
         const fsService = yield* FileSystem.FileSystem
