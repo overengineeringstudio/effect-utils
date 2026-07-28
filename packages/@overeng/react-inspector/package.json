@@ -8,14 +8,7 @@
     ".": "./src/index.tsx"
   },
   "publishConfig": {
-    "access": "public",
-    "exports": {
-      ".": {
-        "types": "./dist/index.d.ts",
-        "require": "./dist/index.cjs",
-        "import": "./dist/index.js"
-      }
-    }
+    "access": "public"
   },
   "scripts": {
     "storybook": "storybook dev -p 6011",

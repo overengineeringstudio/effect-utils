@@ -81,15 +81,18 @@ export default packageJson(
     exports: {
       '.': exportEntry('./src/index.tsx', { environment: 'browser' }),
     },
+    /**
+     * Ships TypeScript source. The previous `publishConfig.exports` pointed at
+     * `./dist/index.{js,cjs,d.ts}`, but no script builds `dist` — a published
+     * package would have resolved to nothing. Publishing source keeps the
+     * published contract identical to the in-repo one and matches how the
+     * consuming `@livestore/devtools-react` ships (livestorejs/livestore#1497).
+     *
+     * Consumers therefore need a bundler that compiles TSX out of node_modules.
+     * Vite does; that is the supported target.
+     */
     publishConfig: {
       access: 'public',
-      exports: {
-        '.': {
-          types: './dist/index.d.ts',
-          require: './dist/index.cjs',
-          import: './dist/index.js',
-        },
-      },
     },
     scripts: {
       storybook: 'storybook dev -p 6011',
