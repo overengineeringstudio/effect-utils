@@ -689,6 +689,14 @@ in
     "dependency-materialization:evidence:check"
   ];
 
+  # `test:run` executes after its package-task dependencies, so both Effect 4
+  # gates see the complete managed-test summary directory in CI.
+  tasks."test:run".exec = trace.exec "test:run" ''
+    set -euo pipefail
+    ${pkgs.bun}/bin/bun context/effect-4/check-baseline-migration-markers.ts
+    ${pkgs.bun}/bin/bun context/effect-4/check-baseline-test-collection.ts
+  '';
+
   # Keep git-hook installation out of the shell-entry path.
   # If needed, install with `devenv tasks run devenv:git-hooks:install`.
   # TODO(cachix/git-hooks.nix#688): remove this once the upstream git-hooks.nix issue
