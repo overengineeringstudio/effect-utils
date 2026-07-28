@@ -399,6 +399,134 @@ describe('canonical decode (golden byte-identity)', () => {
   })
 })
 
+describe('canonical wire baselines (cross-major invariant)', () => {
+  // TODO(live-migration:effect-3-4): Effect 4 may reject v3's raw 2026-02-31 date (effect#6608); adjudicate the date contract instead of refreshing this baseline.
+  it('decodes a representative property map to byte-identical canonical JSON', async () => {
+    const decoded = await Effect.runPromise(
+      codec.decodePageProperties({
+        Title: {
+          id: 'title-id',
+          type: 'title',
+          title: [{ plain_text: 'Hello ' }, { plain_text: '世界' }],
+        },
+        Due: {
+          id: 'date-id',
+          type: 'date',
+          date: { start: '2026-05-25T10:15:30.000Z' },
+        },
+        'Impossible Date': {
+          id: 'bad-date-id',
+          type: 'date',
+          date: { start: '2026-02-31' },
+        },
+        'Absent Date': {
+          id: 'empty-date-id',
+          type: 'date',
+          date: null,
+        },
+        Select: {
+          id: 'select-id',
+          type: 'select',
+          select: { id: 'option-id', name: '', color: 'blue' },
+        },
+        'Select Without Option Id': {
+          id: 'select-name-id',
+          type: 'select',
+          select: { name: 'Backlog' },
+        },
+        Email: {
+          id: 'email-id',
+          type: 'email',
+          email: null,
+        },
+        File: {
+          id: 'file-id',
+          type: 'files',
+          files: [{ name: 'résumé.pdf', external: { url: 'https://example.com/résumé.pdf' } }],
+        },
+        'Dropped Unsupported': {
+          id: 'button-id',
+          type: 'button',
+          button: {},
+        },
+      }),
+    )
+
+    expect(JSON.stringify(decoded)).toMatchInlineSnapshot(
+      `"{"Title":{"_tag":"title","plainText":"Hello 世界"},"Due":{"_tag":"date","start":"2026-05-25T10:15:30.000Z","end":null},"Impossible Date":{"_tag":"date","start":"2026-02-31","end":null},"Absent Date":{"_tag":"empty"},"Select":{"_tag":"select","option":{"_tag":"CanonicalOptionValue","id":"option-id","name":"","color":"blue"}},"Select Without Option Id":{"_tag":"select","option":{"_tag":"CanonicalOptionValue","name":"Backlog"}},"Email":{"_tag":"email","value":null},"File":{"_tag":"files","files":[{"_tag":"CanonicalFileValue","name":"résumé.pdf","identityHash":"sha256:06673ae69feae64882e27bccbd3a018924435dc16321bcf11613cbaad6952dd1","externalUrl":"https://example.com/résumé.pdf"}]}}"`,
+    )
+  })
+
+  // TODO(live-migration:effect-3-4): Effect 4 reassigns Schema.Date; preserve these ISO Notion wire strings with the approved DateFromString mapping rather than refreshing the bytes.
+  it('encodes a representative write patch to byte-identical Notion JSON', async () => {
+    const patch = await Effect.runPromise(
+      encodeCanonicalPatch({
+        title: { _tag: 'title', plainText: 'Hello 世界' },
+        dateWithEnd: {
+          _tag: 'date',
+          start: dateTimeUtc('2026-05-25T10:15:30.000Z'),
+          end: dateTimeUtc('2026-05-26T10:15:30.000Z'),
+        },
+        dateWithoutEnd: {
+          _tag: 'date',
+          start: dateTimeUtc('2026-05-25T00:00:00.000Z'),
+          end: null,
+        },
+        selectFull: { _tag: 'select', option: opt('', { id: 'option-id', color: 'blue' }) },
+        selectNameOnly: { _tag: 'select', option: opt('Backlog') },
+        selectNull: { _tag: 'select', option: null },
+        multi: {
+          _tag: 'multi_select',
+          options: [opt('Plain'), opt('Colored', { id: 'colored-id', color: 'green' })],
+        },
+        emailNull: { _tag: 'email', value: null },
+        file: {
+          _tag: 'files',
+          files: [
+            {
+              _tag: 'CanonicalFileValue',
+              name: 'résumé.pdf',
+              identityHash: 'sha256:ignored-by-encoder',
+              externalUrl: 'https://example.com/résumé.pdf',
+            },
+          ],
+        },
+      }),
+    )
+
+    expect(JSON.stringify(patch)).toMatchInlineSnapshot(
+      `"{"title":{"title":[{"type":"text","text":{"content":"Hello 世界"}}]},"dateWithEnd":{"date":{"start":"2026-05-25T10:15:30.000Z","end":"2026-05-26T10:15:30.000Z"}},"dateWithoutEnd":{"date":{"start":"2026-05-25T00:00:00.000Z"}},"selectFull":{"select":{"id":"option-id","name":"","color":"blue"}},"selectNameOnly":{"select":{"name":"Backlog"}},"selectNull":{"select":null},"multi":{"multi_select":[{"name":"Plain"},{"id":"colored-id","name":"Colored","color":"green"}]},"emailNull":{"email":null},"file":{"files":[{"type":"external","name":"résumé.pdf","external":{"url":"https://example.com/résumé.pdf"}}]}}"`,
+    )
+  })
+
+  it('captures the encode failure partition as stable JSON', async () => {
+    const failureJson = async (value: CanonicalPropertyValue) => {
+      const exit = await Effect.runPromiseExit(encodeCanonicalPatch({ value }))
+      const error =
+        Exit.isFailure(exit) === true
+          ? (exit.cause as { error?: CanonicalEncodeError }).error
+          : undefined
+      expect(error).toBeInstanceOf(CanonicalEncodeError)
+      return JSON.stringify({
+        _tag: error?._tag,
+        tag: error?.tag,
+        reason: error?.reason,
+        message: error?.message,
+      })
+    }
+
+    expect(await failureJson({ _tag: 'computed', valueHash: 'sha256:abc' })).toMatchInlineSnapshot(
+      `"{"_tag":"Notion.CanonicalEncodeError","tag":"computed","reason":"computed","message":"Computed Notion properties cannot be written"}"`,
+    )
+    expect(await failureJson({ _tag: 'files', files: [] })).toMatchInlineSnapshot(
+      `"{"_tag":"Notion.CanonicalEncodeError","tag":"files","reason":"unsupported_remote_shape","message":"Files property writes require explicit external URL or modeled file_upload identity for every file"}"`,
+    )
+    expect(await failureJson({ _tag: 'empty' })).toMatchInlineSnapshot(
+      `"{"_tag":"Notion.CanonicalEncodeError","tag":"empty","reason":"unsupported_remote_shape","message":"Canonical empty property writes need additional remote shape information"}"`,
+    )
+  })
+})
+
 const dateTimeUtc = (iso: string): DateTime.Utc => Schema.decodeSync(Schema.DateTimeUtc)(iso)
 
 type Opt = Extract<CanonicalPropertyValue, { _tag: 'select' }>['option'] & object
