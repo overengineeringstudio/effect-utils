@@ -39,7 +39,7 @@ describe('makeSubscriptionRefStore', () => {
     await Effect.runPromise(Effect.yieldNow())
 
     expect(store.getSnapshot()).toBe(2)
-    expect(notifications).toEqual([2])
+    expect(notifications).toEqual([1, 2])
 
     unsubscribe()
   })
