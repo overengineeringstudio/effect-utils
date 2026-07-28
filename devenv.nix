@@ -186,128 +186,73 @@ let
     "context/effect/socket"
   ];
 
-  # Packages that have vitest tests (subset of allPackages)
-  # Each package uses its own vitest from node_modules (self-contained)
-  packagesWithTests = [
-    {
-      path = "packages/@overeng/agent-session-ingest";
-      name = "agent-session-ingest";
-    }
-    {
-      path = "packages/@overeng/content-address";
-      name = "content-address";
-    }
-    {
-      path = "packages/@overeng/effect-ai-claude-cli";
-      name = "effect-ai-claude-cli";
-    }
-    {
-      path = "packages/@overeng/effect-distributed-lock";
-      name = "effect-distributed-lock";
-    }
-    {
-      path = "packages/@overeng/effect-path";
-      name = "effect-path";
-    }
-    {
-      path = "packages/@overeng/effect-rpc-tanstack";
-      name = "effect-rpc-tanstack";
-    }
-    {
-      path = "packages/@overeng/effect-schema-form";
-      name = "effect-schema-form";
-    }
-    {
-      path = "packages/@overeng/effect-schema-form-aria";
-      name = "effect-schema-form-aria";
-    }
-    {
-      path = "packages/@overeng/genie";
-      name = "genie";
-    }
-    {
-      path = "packages/@overeng/kdl";
-      name = "kdl";
-    }
-    {
-      path = "packages/@overeng/kdl-effect";
-      name = "kdl-effect";
-    }
-    {
-      path = "packages/@overeng/megarepo";
-      name = "megarepo";
+  packageTestQuarantine = { };
+  validatedPackageTestQuarantine = lib.mapAttrs (
+    name: quarantine:
+    if quarantine ? reason && quarantine ? issue then
+      quarantine
+    else
+      throw "packageTestQuarantine.${name} must include reason and issue"
+  ) packageTestQuarantine;
+  packageTestOverrides = {
+    megarepo = {
       vitestArgs = "--exclude src/cli/store-gc-cold.integration.test.ts";
-    }
-    {
-      path = "packages/@overeng/notion-cli";
-      name = "notion-cli";
-    }
-    {
-      path = "packages/@overeng/notion-datasource-sync";
-      name = "notion-datasource-sync";
-    }
-    {
-      path = "packages/@overeng/notion-effect-client";
-      name = "notion-effect-client";
-    }
-    {
-      path = "packages/@overeng/notion-effect-schema";
-      name = "notion-effect-schema";
-    }
-    {
-      path = "packages/@overeng/notion-md";
-      name = "notion-md";
-    }
-    {
-      path = "packages/@overeng/notion-property-write";
-      name = "notion-property-write";
-    }
-    {
-      path = "packages/@overeng/notion-react";
-      name = "notion-react";
-    }
-    {
-      path = "packages/@overeng/npm-release";
-      name = "npm-release";
-    }
-    {
-      path = "packages/@overeng/oxc-config";
-      name = "oxc-config";
-    }
-    {
-      path = "packages/@overeng/pty-effect";
-      name = "pty-effect";
+    };
+    pty-effect = {
       after = [ "pnpm:link-native-node-packages" ];
-    }
-    {
-      path = "packages/@overeng/restate-effect";
-      name = "restate-effect";
-    }
-    {
-      path = "packages/@overeng/tui-core";
-      name = "tui-core";
-    }
-    {
-      path = "packages/@overeng/tui-react";
-      name = "tui-react";
-    }
-    {
-      path = "packages/@overeng/tui-stories";
-      name = "tui-stories";
-    }
-    {
-      path = "packages/@overeng/utils";
-      name = "utils";
-    }
-    {
-      path = "packages/@overeng/utils-dev";
-      name = "utils-dev";
-    }
-    {
-      path = "packages/@overeng/ci-tools";
-      name = "ci-tools";
-    }
-  ];
+    };
+  };
+  packagesRoot = ./. + "/packages/@overeng";
+  hasTestFiles =
+    root:
+    let
+      scan =
+        dir:
+        if builtins.pathExists dir then
+          let
+            entries = builtins.readDir dir;
+            names = builtins.attrNames entries;
+          in
+          builtins.any (
+            name:
+            let
+              entryType = entries.${name};
+              child = dir + "/${name}";
+            in
+            if entryType == "regular" then
+              builtins.match ".*\\.test\\.tsx?" name != null
+            else if entryType == "directory" then
+              scan child
+            else
+              false
+          ) names
+        else
+          false;
+    in
+    scan (root + "/src") || scan (root + "/test");
+  # Packages that have Vitest tests are discovered from the filesystem. If a
+  # package with tests is excluded, it must be visible debt in packageTestQuarantine.
+  packagesWithTests =
+    let
+      packageNames = builtins.filter (
+        name:
+        let
+          root = packagesRoot + "/${name}";
+        in
+        (builtins.readDir packagesRoot).${name} == "directory"
+        && builtins.pathExists (root + "/package.json")
+        && hasTestFiles root
+        && !(builtins.hasAttr name validatedPackageTestQuarantine)
+      ) (builtins.attrNames (builtins.readDir packagesRoot));
+    in
+    map (
+      name:
+      {
+        path = "packages/@overeng/${name}";
+        inherit name;
+      }
+      // (packageTestOverrides.${name} or { })
+    ) packageNames;
 
   # Packages that have storybook (subset of allPackages)
   packagesWithStorybook = [
