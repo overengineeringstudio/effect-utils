@@ -90,6 +90,7 @@ export {
   nixBinaryCachesExtraConf,
   nixExtraConf,
   preparedCiRuntimeScriptsDir,
+  prepareJobLocalRustState,
   runDevenvTasksBefore,
   standardCIEnv,
   workspaceLocalNixCachePath,
@@ -148,6 +149,8 @@ export {
   type WorkflowReportPublisherStepOptions,
 } from './ci-workflow/reporting.ts'
 export {
+  ciWorkflowJobLocalRustStateScript,
+  ciWorkflowJobLocalRustStateScriptPath,
   ciWorkflowNixGcRaceRetryScriptPath,
   ciWorkflowNixGcRaceRetryWrapperPath,
   ciWorkflowSupportFiles,
