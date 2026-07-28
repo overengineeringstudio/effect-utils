@@ -116,7 +116,9 @@ const runPromptCase = (testCase: PromptCase): Promise<PtyResult> =>
     })
   })
 
-describe('Prompt.select real-PTY semantics', () => {
+// This harness requires util-linux `script`; BSD `script` on macOS takes incompatible arguments.
+// The gate pins platform-independent Effect Prompt semantics, so Linux execution covers its migration scope.
+describe.skipIf(process.platform === 'darwin')('Prompt.select real-PTY semantics', () => {
   it('selects the second value and restores cooked mode', async () => {
     const result = await runPromptCase({
       id: 'select',
