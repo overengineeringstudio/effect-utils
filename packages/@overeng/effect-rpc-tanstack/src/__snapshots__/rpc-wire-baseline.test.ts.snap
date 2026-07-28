@@ -1,0 +1,351 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`effect-rpc-tanstack RPC wire baselines (cross-major invariant) > captures HTTP RPC NDJSON bytes and failure partition 1`] = `
+{
+  "requestWire": {
+    "byteIdentical": true,
+    "decoded": {
+      "domainFailure": "{"_tag":"Request","id":"2","tag":"GetGreeting","payload":{"userId":"","note":""},"headers":[]}
+",
+      "invalidEnvelope": "{"_tag":"Request","id":"5"}
+",
+      "invalidId": "{"_tag":"Request","id":"req-invalid-id","tag":"GetGreeting","payload":{"userId":"ada-ß","note":null},"headers":[]}
+",
+      "invalidPayload": "{"_tag":"Request","id":"3","tag":"GetGreeting","payload":{"userId":123},"headers":[]}
+",
+      "success": "{"_tag":"Request","id":"1","tag":"GetGreeting","payload":{"userId":"ada-ß","note":null},"headers":[]}
+",
+      "unknownTag": "{"_tag":"Request","id":"4","tag":"UnknownRpc","payload":{},"headers":[]}
+",
+    },
+    "encoded": "{
+  "success": "{\\"_tag\\":\\"Request\\",\\"id\\":\\"1\\",\\"tag\\":\\"GetGreeting\\",\\"payload\\":{\\"userId\\":\\"ada-ß\\",\\"note\\":null},\\"headers\\":[]}\\n",
+  "domainFailure": "{\\"_tag\\":\\"Request\\",\\"id\\":\\"2\\",\\"tag\\":\\"GetGreeting\\",\\"payload\\":{\\"userId\\":\\"\\",\\"note\\":\\"\\"},\\"headers\\":[]}\\n",
+  "invalidPayload": "{\\"_tag\\":\\"Request\\",\\"id\\":\\"3\\",\\"tag\\":\\"GetGreeting\\",\\"payload\\":{\\"userId\\":123},\\"headers\\":[]}\\n",
+  "unknownTag": "{\\"_tag\\":\\"Request\\",\\"id\\":\\"4\\",\\"tag\\":\\"UnknownRpc\\",\\"payload\\":{},\\"headers\\":[]}\\n",
+  "invalidEnvelope": "{\\"_tag\\":\\"Request\\",\\"id\\":\\"5\\"}\\n",
+  "invalidId": "{\\"_tag\\":\\"Request\\",\\"id\\":\\"req-invalid-id\\",\\"tag\\":\\"GetGreeting\\",\\"payload\\":{\\"userId\\":\\"ada-ß\\",\\"note\\":null},\\"headers\\":[]}\\n"
+}",
+    "reencoded": "{
+  "success": "{\\"_tag\\":\\"Request\\",\\"id\\":\\"1\\",\\"tag\\":\\"GetGreeting\\",\\"payload\\":{\\"userId\\":\\"ada-ß\\",\\"note\\":null},\\"headers\\":[]}\\n",
+  "domainFailure": "{\\"_tag\\":\\"Request\\",\\"id\\":\\"2\\",\\"tag\\":\\"GetGreeting\\",\\"payload\\":{\\"userId\\":\\"\\",\\"note\\":\\"\\"},\\"headers\\":[]}\\n",
+  "invalidPayload": "{\\"_tag\\":\\"Request\\",\\"id\\":\\"3\\",\\"tag\\":\\"GetGreeting\\",\\"payload\\":{\\"userId\\":123},\\"headers\\":[]}\\n",
+  "unknownTag": "{\\"_tag\\":\\"Request\\",\\"id\\":\\"4\\",\\"tag\\":\\"UnknownRpc\\",\\"payload\\":{},\\"headers\\":[]}\\n",
+  "invalidEnvelope": "{\\"_tag\\":\\"Request\\",\\"id\\":\\"5\\"}\\n",
+  "invalidId": "{\\"_tag\\":\\"Request\\",\\"id\\":\\"req-invalid-id\\",\\"tag\\":\\"GetGreeting\\",\\"payload\\":{\\"userId\\":\\"ada-ß\\",\\"note\\":null},\\"headers\\":[]}\\n"
+}",
+  },
+  "requests": {
+    "domainFailure": "{"_tag":"Request","id":"2","tag":"GetGreeting","payload":{"userId":"","note":""},"headers":[]}
+",
+    "invalidEnvelope": "{"_tag":"Request","id":"5"}
+",
+    "invalidId": "{"_tag":"Request","id":"req-invalid-id","tag":"GetGreeting","payload":{"userId":"ada-ß","note":null},"headers":[]}
+",
+    "invalidPayload": "{"_tag":"Request","id":"3","tag":"GetGreeting","payload":{"userId":123},"headers":[]}
+",
+    "success": "{"_tag":"Request","id":"1","tag":"GetGreeting","payload":{"userId":"ada-ß","note":null},"headers":[]}
+",
+    "unknownTag": "{"_tag":"Request","id":"4","tag":"UnknownRpc","payload":{},"headers":[]}
+",
+  },
+  "responseWire": {
+    "byteIdentical": true,
+    "decoded": {
+      "domainFailure": {
+        "body": "{"_tag":"Exit","requestId":"2","exit":{"_tag":"Failure","cause":{"_tag":"Fail","error":{"reason":"missing-user","userId":"","_tag":"GreetingError"}}}}
+",
+        "contentType": "application/ndjson",
+        "status": 200,
+      },
+      "invalidEnvelope": {
+        "body": "{"_tag":"Defect","defect":"Unknown request tag: "}
+",
+        "contentType": "application/ndjson",
+        "status": 200,
+      },
+      "invalidId": {
+        "body": "{"_tag":"Defect","defect":{"name":"SyntaxError","message":"Cannot convert req-invalid-id to a BigInt"}}
+",
+        "contentType": "application/ndjson",
+        "status": 200,
+      },
+      "invalidPayload": {
+        "body": "{"_tag":"Exit","requestId":"3","exit":{"_tag":"Failure","cause":{"_tag":"Die","defect":"{ readonly userId: string; readonly note: string | null }\\n└─ [\\"userId\\"]\\n   └─ Expected string, actual 123"}}}
+",
+        "contentType": "application/ndjson",
+        "status": 200,
+      },
+      "success": {
+        "body": "{"_tag":"Exit","requestId":"1","exit":{"_tag":"Success","value":{"message":"hello ada-ß","empty":"","unicode":"Grüße ß"}}}
+",
+        "contentType": "application/ndjson",
+        "status": 200,
+      },
+      "unknownTag": {
+        "body": "{"_tag":"Defect","defect":"Unknown request tag: UnknownRpc"}
+",
+        "contentType": "application/ndjson",
+        "status": 200,
+      },
+    },
+    "encoded": "{
+  "success": {
+    "status": 200,
+    "contentType": "application/ndjson",
+    "body": "{\\"_tag\\":\\"Exit\\",\\"requestId\\":\\"1\\",\\"exit\\":{\\"_tag\\":\\"Success\\",\\"value\\":{\\"message\\":\\"hello ada-ß\\",\\"empty\\":\\"\\",\\"unicode\\":\\"Grüße ß\\"}}}\\n"
+  },
+  "domainFailure": {
+    "status": 200,
+    "contentType": "application/ndjson",
+    "body": "{\\"_tag\\":\\"Exit\\",\\"requestId\\":\\"2\\",\\"exit\\":{\\"_tag\\":\\"Failure\\",\\"cause\\":{\\"_tag\\":\\"Fail\\",\\"error\\":{\\"reason\\":\\"missing-user\\",\\"userId\\":\\"\\",\\"_tag\\":\\"GreetingError\\"}}}}\\n"
+  },
+  "invalidPayload": {
+    "status": 200,
+    "contentType": "application/ndjson",
+    "body": "{\\"_tag\\":\\"Exit\\",\\"requestId\\":\\"3\\",\\"exit\\":{\\"_tag\\":\\"Failure\\",\\"cause\\":{\\"_tag\\":\\"Die\\",\\"defect\\":\\"{ readonly userId: string; readonly note: string | null }\\\\n└─ [\\\\\\"userId\\\\\\"]\\\\n   └─ Expected string, actual 123\\"}}}\\n"
+  },
+  "unknownTag": {
+    "status": 200,
+    "contentType": "application/ndjson",
+    "body": "{\\"_tag\\":\\"Defect\\",\\"defect\\":\\"Unknown request tag: UnknownRpc\\"}\\n"
+  },
+  "invalidEnvelope": {
+    "status": 200,
+    "contentType": "application/ndjson",
+    "body": "{\\"_tag\\":\\"Defect\\",\\"defect\\":\\"Unknown request tag: \\"}\\n"
+  },
+  "invalidId": {
+    "status": 200,
+    "contentType": "application/ndjson",
+    "body": "{\\"_tag\\":\\"Defect\\",\\"defect\\":{\\"name\\":\\"SyntaxError\\",\\"message\\":\\"Cannot convert req-invalid-id to a BigInt\\"}}\\n"
+  }
+}",
+    "reencoded": "{
+  "success": {
+    "status": 200,
+    "contentType": "application/ndjson",
+    "body": "{\\"_tag\\":\\"Exit\\",\\"requestId\\":\\"1\\",\\"exit\\":{\\"_tag\\":\\"Success\\",\\"value\\":{\\"message\\":\\"hello ada-ß\\",\\"empty\\":\\"\\",\\"unicode\\":\\"Grüße ß\\"}}}\\n"
+  },
+  "domainFailure": {
+    "status": 200,
+    "contentType": "application/ndjson",
+    "body": "{\\"_tag\\":\\"Exit\\",\\"requestId\\":\\"2\\",\\"exit\\":{\\"_tag\\":\\"Failure\\",\\"cause\\":{\\"_tag\\":\\"Fail\\",\\"error\\":{\\"reason\\":\\"missing-user\\",\\"userId\\":\\"\\",\\"_tag\\":\\"GreetingError\\"}}}}\\n"
+  },
+  "invalidPayload": {
+    "status": 200,
+    "contentType": "application/ndjson",
+    "body": "{\\"_tag\\":\\"Exit\\",\\"requestId\\":\\"3\\",\\"exit\\":{\\"_tag\\":\\"Failure\\",\\"cause\\":{\\"_tag\\":\\"Die\\",\\"defect\\":\\"{ readonly userId: string; readonly note: string | null }\\\\n└─ [\\\\\\"userId\\\\\\"]\\\\n   └─ Expected string, actual 123\\"}}}\\n"
+  },
+  "unknownTag": {
+    "status": 200,
+    "contentType": "application/ndjson",
+    "body": "{\\"_tag\\":\\"Defect\\",\\"defect\\":\\"Unknown request tag: UnknownRpc\\"}\\n"
+  },
+  "invalidEnvelope": {
+    "status": 200,
+    "contentType": "application/ndjson",
+    "body": "{\\"_tag\\":\\"Defect\\",\\"defect\\":\\"Unknown request tag: \\"}\\n"
+  },
+  "invalidId": {
+    "status": 200,
+    "contentType": "application/ndjson",
+    "body": "{\\"_tag\\":\\"Defect\\",\\"defect\\":{\\"name\\":\\"SyntaxError\\",\\"message\\":\\"Cannot convert req-invalid-id to a BigInt\\"}}\\n"
+  }
+}",
+  },
+  "responses": {
+    "domainFailure": {
+      "body": "{"_tag":"Exit","requestId":"2","exit":{"_tag":"Failure","cause":{"_tag":"Fail","error":{"reason":"missing-user","userId":"","_tag":"GreetingError"}}}}
+",
+      "contentType": "application/ndjson",
+      "status": 200,
+    },
+    "invalidEnvelope": {
+      "body": "{"_tag":"Defect","defect":"Unknown request tag: "}
+",
+      "contentType": "application/ndjson",
+      "status": 200,
+    },
+    "invalidId": {
+      "body": "{"_tag":"Defect","defect":{"name":"SyntaxError","message":"Cannot convert req-invalid-id to a BigInt"}}
+",
+      "contentType": "application/ndjson",
+      "status": 200,
+    },
+    "invalidPayload": {
+      "body": "{"_tag":"Exit","requestId":"3","exit":{"_tag":"Failure","cause":{"_tag":"Die","defect":"{ readonly userId: string; readonly note: string | null }\\n└─ [\\"userId\\"]\\n   └─ Expected string, actual 123"}}}
+",
+      "contentType": "application/ndjson",
+      "status": 200,
+    },
+    "success": {
+      "body": "{"_tag":"Exit","requestId":"1","exit":{"_tag":"Success","value":{"message":"hello ada-ß","empty":"","unicode":"Grüße ß"}}}
+",
+      "contentType": "application/ndjson",
+      "status": 200,
+    },
+    "unknownTag": {
+      "body": "{"_tag":"Defect","defect":"Unknown request tag: UnknownRpc"}
+",
+      "contentType": "application/ndjson",
+      "status": 200,
+    },
+  },
+}
+`;
+
+exports[`effect-rpc-tanstack RPC wire baselines (cross-major invariant) > captures SSR Exit JSON bytes and re-encoded identity 1`] = `
+{
+  "decoded": {
+    "defectMatch": {
+      "_tag": "defect",
+      "message": "loader defect ß",
+    },
+    "failureError": {
+      "_id": "Option",
+      "_tag": "Some",
+      "value": {
+        "_tag": "GreetingError",
+        "reason": "missing-user",
+        "userId": "",
+      },
+    },
+    "failureMatch": {
+      "_tag": "GreetingError",
+      "reason": "missing-user",
+      "userId": "",
+    },
+    "successGetOrThrow": {
+      "empty": "",
+      "message": "hello ß",
+      "nested": {
+        "absentIsOmitted": undefined,
+        "explicitNull": null,
+      },
+    },
+  },
+  "failures": {
+    "invalidExitTag": {
+      "_tag": "failed",
+      "error": "(ExitEncoded<unknown, unknown, Defect> <-> Exit<unknown, unknown>)
+└─ Encoded side transformation failure
+   └─ ExitEncoded<unknown, unknown, Defect>
+      └─ { readonly _tag: "Failure" | "Success" }
+         └─ ["_tag"]
+            └─ Expected "Failure" | "Success", actual "NotAnExit"",
+    },
+    "missingFailureCause": {
+      "_tag": "failed",
+      "error": "(ExitEncoded<unknown, unknown, Defect> <-> Exit<unknown, unknown>)
+└─ Encoded side transformation failure
+   └─ ExitEncoded<unknown, unknown, Defect>
+      └─ { readonly _tag: "Failure"; readonly cause: CauseEncoded<unknown> }
+         └─ ["cause"]
+            └─ is missing",
+    },
+  },
+  "wire": {
+    "byteIdentical": true,
+    "decoded": {
+      "defect": {
+        "_tag": "Failure",
+        "cause": {
+          "_tag": "Die",
+          "defect": {
+            "message": "loader defect ß",
+            "name": "Error",
+          },
+        },
+      },
+      "failure": {
+        "_tag": "Failure",
+        "cause": {
+          "_tag": "Fail",
+          "error": {
+            "_tag": "GreetingError",
+            "reason": "missing-user",
+            "userId": "",
+          },
+        },
+      },
+      "success": {
+        "_tag": "Success",
+        "value": {
+          "empty": "",
+          "message": "hello ß",
+          "nested": {
+            "explicitNull": null,
+          },
+        },
+      },
+    },
+    "encoded": "{
+  "success": {
+    "_tag": "Success",
+    "value": {
+      "message": "hello ß",
+      "empty": "",
+      "nested": {
+        "explicitNull": null
+      }
+    }
+  },
+  "failure": {
+    "_tag": "Failure",
+    "cause": {
+      "_tag": "Fail",
+      "error": {
+        "reason": "missing-user",
+        "userId": "",
+        "_tag": "GreetingError"
+      }
+    }
+  },
+  "defect": {
+    "_tag": "Failure",
+    "cause": {
+      "_tag": "Die",
+      "defect": {
+        "name": "Error",
+        "message": "loader defect ß"
+      }
+    }
+  }
+}",
+    "reencoded": "{
+  "success": {
+    "_tag": "Success",
+    "value": {
+      "message": "hello ß",
+      "empty": "",
+      "nested": {
+        "explicitNull": null
+      }
+    }
+  },
+  "failure": {
+    "_tag": "Failure",
+    "cause": {
+      "_tag": "Fail",
+      "error": {
+        "reason": "missing-user",
+        "userId": "",
+        "_tag": "GreetingError"
+      }
+    }
+  },
+  "defect": {
+    "_tag": "Failure",
+    "cause": {
+      "_tag": "Die",
+      "defect": {
+        "name": "Error",
+        "message": "loader defect ß"
+      }
+    }
+  }
+}",
+  },
+}
+`;
