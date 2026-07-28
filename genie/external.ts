@@ -536,9 +536,14 @@ export const createEffectUtilsRefs = (basePath: string) =>
  */
 export const utilsPatches = definePatchedDependencies({
   location: 'packages/@overeng/utils',
-  // LIVE-MIGRATION BRIDGE effect-3-4 B3 — DELETE at contraction.
-  // TODO(live-migration:effect-3-4): Re-express the removed @effect/platform header-redaction patch in Effect 4 core before merge; span attribute header cardinality is behavior.
-  patches: {},
+  patches: {
+    /* LIVE-MIGRATION BRIDGE effect-3-4 B3 — DELETE at contraction — https://github.com/Effect-TS/effect/pull/6697
+       Effect 4 beta.102 emits every redacted request/response header name as an
+       HTTP client span attribute. Preserve the v3 telemetry allowlist until
+       upstream exposes HttpClient.TracerHeaderFilter and we adopt that beta. */
+    'effect@4.0.0-beta.102': './patches/effect@4.0.0-beta.102.patch',
+    /* LIVE-MIGRATION END effect-3-4 */
+  },
 })
 
 /** Repo-local patches that should not be projected into downstream consumers. */
