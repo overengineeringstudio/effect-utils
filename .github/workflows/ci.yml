@@ -62,6 +62,7 @@ jobs:
           DEFAULT_REFS_JSON: '{"livestorejs/livestore":"dev"}'
           VERIFY_REACHABLE: '0'
           NORMALIZE_GIT_BRANCH_REFS: '0'
+          ALLOW_LEGACY_MEMBER_COMMIT_REFS: '0'
         run: |
           nix shell nixpkgs#nodejs_24 -c node <<'NODE'
           const fs = require('node:fs')
@@ -74,6 +75,7 @@ jobs:
           const defaultRef = process.env.DEFAULT_REF || 'main'
           const defaultRefs = new Map(Object.entries(JSON.parse(process.env.DEFAULT_REFS_JSON || '{}')).map(([repo, ref]) => [repo.toLowerCase(), ref]))
           const verifyReachable = process.env.VERIFY_REACHABLE === '1'
+          const allowLegacyMemberCommitRefs = process.env.ALLOW_LEGACY_MEMBER_COMMIT_REFS === '1'
           const violations = []
 
           const repoKey = (repo) => repo.owner.toLowerCase() + '/' + repo.repo.toLowerCase()
@@ -81,6 +83,12 @@ jobs:
           const normalizeGitBranchRefs = process.env.NORMALIZE_GIT_BRANCH_REFS === '1'
           const normalizeRef = (ref) => normalizeGitBranchRefs && ref.startsWith('refs/heads/') ? ref.slice('refs/heads/'.length) : ref
           const expectedRefFor = (repo) => normalizeRef(defaultRefs.get(repoKey(repo)) || defaultRef)
+          const immutableCommitRef = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i
+          const isAllowedLegacyMemberRef = ({ memberName, ref }) =>
+            allowLegacyMemberCommitRefs &&
+            typeof memberName === 'string' &&
+            memberName.endsWith('-legacy') &&
+            immutableCommitRef.test(ref)
 
           const githubRepoFromUrl = (url) => {
             const match = url.match(/github\.com[/:]([^/]+)\/([^/#?]+?)(?:\.git)?(?:[#?].*)?$/)
@@ -135,6 +143,7 @@ jobs:
             const expectedRef = expectedRefFor(repo)
             const normalizedRef = normalizeRef(ref)
             if (normalizedRef === expectedRef) return
+            if (isAllowedLegacyMemberRef({ memberName, ref: normalizedRef })) return
             violations.push({
               type: 'ref',
               file,
@@ -360,6 +369,12 @@ jobs:
             for (const [memberName, member] of Object.entries((lock && lock.members) || {})) {
               const repo = typeof member.url === 'string' ? githubRepoFromUrl(member.url) : undefined
               if (!repo || !isFirstParty(repo)) continue
+              if (
+                typeof member.ref === 'string' &&
+                isAllowedLegacyMemberRef({ memberName, ref: normalizeRef(member.ref) })
+              ) {
+                continue
+              }
               const expectedRef = expectedRefFor(repo)
               const remote = 'https://github.com/' + repo.owner + '/' + repo.repo + '.git'
               const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'default-ref-policy-'))

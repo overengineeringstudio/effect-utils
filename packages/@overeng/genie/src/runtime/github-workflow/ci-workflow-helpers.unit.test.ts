@@ -421,6 +421,18 @@ describe('ci workflow pnpm cache defaults', () => {
     expect(defaultRefPolicyCheckStepSource).toContain("ref.startsWith('refs/heads/')")
   })
 
+  it('allows only explicitly opted-in immutable legacy member refs', () => {
+    expect(defaultRefPolicyCheckStepSource).toContain('allowLegacyMemberCommitRefs?: boolean')
+    expect(defaultRefPolicyCheckStepSource).toContain('ALLOW_LEGACY_MEMBER_COMMIT_REFS')
+    expect(defaultRefPolicyCheckStepSource).toContain("memberName.endsWith('-legacy')")
+    expect(defaultRefPolicyCheckStepSource).toContain(
+      'const immutableCommitRef = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i',
+    )
+    expect(defaultRefPolicyCheckStepSource).toContain(
+      'isAllowedLegacyMemberRef({ memberName, ref: normalizedRef })',
+    )
+  })
+
   it('retries temporary git repository cleanup after reachability checks', () => {
     expect(defaultRefPolicyCheckStepSource).toContain(
       'fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })',
