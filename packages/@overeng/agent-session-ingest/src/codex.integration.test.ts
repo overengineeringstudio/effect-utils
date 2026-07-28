@@ -205,3 +205,76 @@ Vitest.describe('codex adapter integration', () => {
       }).pipe(Effect.scoped, Effect.provide(TestLayer)),
   )
 })
+
+Vitest.describe('codex adapter wire baselines (cross-major invariant)', () => {
+  Vitest.it.effect('ingests representative Codex JSONL records as byte-identical JSON', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const sessionsRoot = yield* fs.makeTempDirectoryScoped()
+      const artifactPath = nodePath.join(sessionsRoot, '2026', '07', '28', 'rollout.jsonl')
+      yield* fs.makeDirectory(nodePath.dirname(artifactPath), { recursive: true })
+
+      const jsonl = [
+        '{"timestamp":"2026-07-28T08:00:00.000Z","type":"session_meta","payload":{"id":"sess_世界","timestamp":"2026-07-28T08:00:00.000Z","cwd":"/tmp/repo with spaces","originator":"","cli_version":"0.145.0","instructions":""}}',
+        '{"timestamp":"2026-07-28T08:00:01.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Line 1\\r\\nLine 2 résumé"},{"type":"input_image","detail":"high","file_id":"file_123"}]}}',
+        '{"timestamp":"2026-07-28T08:00:02.000Z","type":"response_item","payload":{"type":"function_call","name":"mcp__server__tool","arguments":"{\\"empty\\":\\"\\",\\"nullable\\":null,\\"unicode\\":\\"東京\\",\\"nan\\":\\"NaN\\",\\"impossibleDate\\":\\"2026-02-31\\"}","call_id":"call_1"}}',
+        '{"timestamp":"2026-07-28T08:00:03.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":9007199254740991},"last_token_usage":null,"model_context_window":200000}}}',
+        '{"timestamp":"2026-07-28T08:00:04.000Z","type":"turn_context","payload":{"cwd":"/tmp/repo","approval_policy":"never","sandbox_policy":{"mode":"danger-full-access"},"model":"codex-baseline","effort":""}}',
+        '',
+      ].join('\n')
+      yield* fs.writeFileString(artifactPath, jsonl)
+
+      const adapter = makeCodexAdapter({ sessionsRoot })
+      const artifact = yield* expectSingleArtifact(adapter)
+      const ingested = yield* adapter.ingestArtifact({ artifact, checkpoint: undefined })
+
+      expect(jsonl).toMatchInlineSnapshot(`
+        "{"timestamp":"2026-07-28T08:00:00.000Z","type":"session_meta","payload":{"id":"sess_世界","timestamp":"2026-07-28T08:00:00.000Z","cwd":"/tmp/repo with spaces","originator":"","cli_version":"0.145.0","instructions":""}}
+        {"timestamp":"2026-07-28T08:00:01.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Line 1\\r\\nLine 2 résumé"},{"type":"input_image","detail":"high","file_id":"file_123"}]}}
+        {"timestamp":"2026-07-28T08:00:02.000Z","type":"response_item","payload":{"type":"function_call","name":"mcp__server__tool","arguments":"{\\"empty\\":\\"\\",\\"nullable\\":null,\\"unicode\\":\\"東京\\",\\"nan\\":\\"NaN\\",\\"impossibleDate\\":\\"2026-02-31\\"}","call_id":"call_1"}}
+        {"timestamp":"2026-07-28T08:00:03.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":9007199254740991},"last_token_usage":null,"model_context_window":200000}}}
+        {"timestamp":"2026-07-28T08:00:04.000Z","type":"turn_context","payload":{"cwd":"/tmp/repo","approval_policy":"never","sandbox_policy":{"mode":"danger-full-access"},"model":"codex-baseline","effort":""}}
+        "
+      `)
+      expect(stringifyJson(ingested.records)).toMatchInlineSnapshot(
+        `"[{"timestamp":"2026-07-28T08:00:00.000Z","type":"session_meta","payload":{"id":"sess_世界","timestamp":"2026-07-28T08:00:00.000Z","cwd":"/tmp/repo with spaces","originator":"","cli_version":"0.145.0","instructions":""}},{"timestamp":"2026-07-28T08:00:01.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Line 1\\r\\nLine 2 résumé"},{"type":"input_image","file_id":"file_123","detail":"high"}]}},{"timestamp":"2026-07-28T08:00:02.000Z","type":"response_item","payload":{"type":"function_call","name":"mcp__server__tool","arguments":"{\\"empty\\":\\"\\",\\"nullable\\":null,\\"unicode\\":\\"東京\\",\\"nan\\":\\"NaN\\",\\"impossibleDate\\":\\"2026-02-31\\"}","call_id":"call_1"}},{"timestamp":"2026-07-28T08:00:03.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":9007199254740991},"last_token_usage":null,"model_context_window":200000}}},{"timestamp":"2026-07-28T08:00:04.000Z","type":"turn_context","payload":{"cwd":"/tmp/repo","approval_policy":"never","sandbox_policy":{"mode":"danger-full-access"},"model":"codex-baseline","effort":""}}]"`,
+      )
+    }).pipe(Effect.scoped, Effect.provide(TestLayer)),
+  )
+
+  Vitest.it.effect('captures the Codex JSONL decode failure partition as stable JSON', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const sessionsRoot = yield* fs.makeTempDirectoryScoped()
+      const artifactPath = nodePath.join(sessionsRoot, 'bad.jsonl')
+      yield* fs.writeFileString(
+        artifactPath,
+        '{"timestamp":null,"type":"response_item","payload":{"type":"function_call","name":"tool","arguments":"{}","call_id":"call_bad"}}\n',
+      )
+
+      const adapter = makeCodexAdapter({ sessionsRoot })
+      const artifact = yield* expectSingleArtifact(adapter)
+      const result = yield* adapter
+        .ingestArtifact({ artifact, checkpoint: undefined })
+        .pipe(Effect.either)
+
+      expect(result._tag).toBe('Left')
+      if (result._tag === 'Left') {
+        expect(result.left._tag).toBe('SessionArtifactDecodeError')
+      }
+      if (result._tag === 'Left' && result.left._tag === 'SessionArtifactDecodeError') {
+        expect(
+          stringifyJson({
+            _tag: result.left._tag,
+            message: result.left.message,
+            sourceId: result.left.sourceId,
+            artifactId: result.left.artifactId,
+            rawRecord: result.left.rawRecord,
+          }),
+        ).toMatchInlineSnapshot(
+          `"{"_tag":"SessionArtifactDecodeError","message":"Failed to decode Codex session record","sourceId":"codex","artifactId":"bad","rawRecord":"{\\"timestamp\\":null,\\"type\\":\\"response_item\\",\\"payload\\":{\\"type\\":\\"function_call\\",\\"name\\":\\"tool\\",\\"arguments\\":\\"{}\\",\\"call_id\\":\\"call_bad\\"}}"}"`,
+        )
+      }
+    }).pipe(Effect.scoped, Effect.provide(TestLayer)),
+  )
+})
