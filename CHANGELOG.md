@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **@overeng/effect-rpc-tanstack**: capture Effect 3 cross-major baselines for
+  SSR `Exit` JSON encoding and native HTTP RPC NDJSON request/response failure
+  partitions.
+
 ### Fixed
 
 - **@overeng/utils-dev/otelite**: make live capture inspection poll for the
