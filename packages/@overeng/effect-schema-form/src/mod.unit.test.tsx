@@ -217,7 +217,7 @@ describe('effect-schema-form baselines (cross-major invariant)', () => {
           }}
         />,
       ),
-    ).toThrowError('renderer boom')
+    ).toThrow('renderer boom')
   })
 
   it('formats representative and awkward literal labels byte-identically', () => {
