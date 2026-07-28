@@ -12,6 +12,8 @@ const textArtifact = (content: string): GenieOutput<string> =>
 export const ciWorkflowNixGcRaceRetryScriptPath = 'genie/ci-scripts/nix-gc-race-retry.sh'
 export const ciWorkflowNixGcRaceRetryWrapperPath =
   'genie/ci-scripts/run-with-nix-gc-race-retry.sh'
+export const ciWorkflowJobLocalRustStateScriptPath =
+  'genie/ci-scripts/prepare-job-local-rust-state.sh'
 
 export const ciWorkflowNixGcRaceRetryScript = String.raw`#!/usr/bin/env bash
 
@@ -182,7 +184,31 @@ script_dir="$(cd -- "$(dirname -- "${dollar}{BASH_SOURCE[0]}")" && pwd)"
 
 run_nix_gc_race_retry "$label" bash -euo pipefail -c "$command"`
 
+export const ciWorkflowJobLocalRustStateScript = String.raw`#!/usr/bin/env bash
+
+# Source this helper at the task boundary. Ambient job-level Cargo state can be
+# materialized during environment bootstrap by a different process identity.
+: "${dollar}{RUNNER_TEMP:?RUNNER_TEMP is required}"
+: "${dollar}{GITHUB_RUN_ID:?GITHUB_RUN_ID is required}"
+: "${dollar}{GITHUB_RUN_ATTEMPT:?GITHUB_RUN_ATTEMPT is required}"
+: "${dollar}{GITHUB_JOB:?GITHUB_JOB is required}"
+: "${dollar}{RUNNER_NAME:?RUNNER_NAME is required}"
+
+export CARGO_TARGET_DIR="${dollar}RUNNER_TEMP/cargo-target-${dollar}GITHUB_RUN_ID-${dollar}GITHUB_RUN_ATTEMPT-${dollar}GITHUB_JOB"
+mkdir -p "$CARGO_TARGET_DIR"
+
+# sccache's default TCP server is host-wide. A short per-runner UDS prevents a
+# server owned by one self-hosted runner identity from creating another job's
+# Cargo artifacts while retaining reuse through the shared cache directory.
+sccache_server_key="$(printf '%s' "${dollar}GITHUB_RUN_ID-${dollar}GITHUB_RUN_ATTEMPT-${dollar}GITHUB_JOB-${dollar}RUNNER_NAME" | git hash-object --stdin | cut -c1-16)"
+export SCCACHE_SERVER_UDS="${dollar}RUNNER_TEMP/sc-${dollar}sccache_server_key.sock"
+unset sccache_server_key`
+
 export const ciWorkflowSupportFiles = {
+  jobLocalRustState: {
+    path: ciWorkflowJobLocalRustStateScriptPath,
+    output: textArtifact(ciWorkflowJobLocalRustStateScript),
+  },
   nixGcRaceRetry: {
     path: ciWorkflowNixGcRaceRetryScriptPath,
     output: textArtifact(ciWorkflowNixGcRaceRetryScript),

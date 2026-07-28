@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- Add a shared CI helper for job-local Cargo targets and `sccache` servers on
+  multi-identity self-hosted runners.
+
 ### Fixed
 
 - **@overeng/utils-dev/otelite**: make live capture inspection poll for the
