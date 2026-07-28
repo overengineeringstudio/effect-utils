@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file.
 
 - Add a shared CI helper for job-local Cargo targets and `sccache` servers on
   multi-identity self-hosted runners.
+- **@overeng/effect-rpc-tanstack**: capture Effect 3 cross-major baselines for
+  SSR `Exit` JSON encoding and native HTTP RPC NDJSON request/response failure
+  partitions.
 
 ### Fixed
 
