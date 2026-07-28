@@ -6,7 +6,7 @@
 
 import os from 'node:os'
 
-import { Command, FileSystem } from '@effect/platform'
+import { Command, FileSystem } from 'effect'
 import { Effect, Schema } from 'effect'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'

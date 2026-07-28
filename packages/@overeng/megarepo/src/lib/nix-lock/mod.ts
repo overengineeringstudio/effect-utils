@@ -13,7 +13,7 @@ import {
   type CommandExecutor,
   FileSystem,
   type Error as PlatformError,
-} from '@effect/platform'
+} from 'effect'
 import { Effect, Option, Schema, type ParseResult } from 'effect'
 
 import { EffectPath, type AbsoluteDirPath, type AbsoluteFilePath } from '@overeng/effect-path'

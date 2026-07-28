@@ -1,7 +1,7 @@
 import { basename } from 'node:path'
 
-import type { Path } from '@effect/platform'
-import { FileSystem } from '@effect/platform'
+import type { Path } from 'effect'
+import { FileSystem } from 'effect'
 import { Effect } from 'effect'
 
 import type { BatchResult } from './batch.ts'

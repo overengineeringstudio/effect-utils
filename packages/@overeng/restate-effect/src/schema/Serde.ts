@@ -1,5 +1,5 @@
 import * as restate from '@restatedev/restate-sdk'
-import { JSONSchema, Option, ParseResult, Schema } from 'effect'
+import { JsonSchema, Option, ParseResult, Schema } from 'effect'
 
 import { textEncodeToArrayBuffer } from '@overeng/utils'
 
@@ -35,7 +35,7 @@ const decoder = new TextDecoder()
  * transforms break the contract and are unsupported (docs/vrs/02-schema-serde/spec.md §1).
  *
  * `contentType` / `jsonSchema` default to `application/json` /
- * `JSONSchema.make`, overridable via the `Restate.serde` annotation
+ * `JsonSchema.make`, overridable via the `Restate.serde` annotation
  * ([.decisions/0011](../../docs/vrs/.decisions/0011-restate-schema-annotations.md)).
  *
  * The `slot` controls decode-failure classification: an `ingress` decode
@@ -75,7 +75,7 @@ export const effectSerde = <A, I>({
     Option.getOrElse(() => (isVoid === true ? undefined : 'application/json')),
   )
   const jsonSchema = Option.flatMap(overrides, (o) => Option.fromNullable(o.jsonSchema)).pipe(
-    Option.getOrElse(() => JSONSchema.make(schema) as object),
+    Option.getOrElse(() => JsonSchema.make(schema) as object),
   )
   return {
     /* Omit `contentType` entirely when unset (void payload), per `exactOptionalPropertyTypes`. */

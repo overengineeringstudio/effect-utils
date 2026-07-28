@@ -6,8 +6,8 @@
  * Matching is done by canonical URL (org/repo), not by member name.
  */
 
-import * as Cli from '@effect/cli'
-import { FileSystem } from '@effect/platform'
+import * as Cli from 'effect/unstable/cli'
+import { FileSystem } from 'effect'
 import { Effect, Option } from 'effect'
 import React from 'react'
 

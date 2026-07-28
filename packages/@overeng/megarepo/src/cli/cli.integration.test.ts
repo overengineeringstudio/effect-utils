@@ -5,9 +5,9 @@
  * These tests verify the core logic without invoking the CLI directly.
  */
 
-import * as Cli from '@effect/cli'
-import { FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import * as Cli from 'effect/unstable/cli'
+import { FileSystem } from 'effect'
+import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Effect, Exit, Option, Schema } from 'effect'
 import { expect } from 'vitest'
@@ -94,7 +94,7 @@ describe('mr init', () => {
         expect(config.members).toEqual({})
         expect(config.$schema).toBeDefined()
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -133,7 +133,7 @@ describe('mr init', () => {
         const configAfter = yield* readConfig(workDir)
         expect(configAfter.members['existing-lib']).toBe('owner/existing-lib')
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -167,7 +167,7 @@ describe('mr root', () => {
         expect(Option.isSome(root)).toBe(true)
         expect(Option.getOrNull(root)).toBe(workDir)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -196,7 +196,7 @@ describe('mr root', () => {
         expect(Option.isSome(root)).toBe(true)
         expect(Option.getOrNull(root)).toBe(workDir)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -235,7 +235,7 @@ describe('mr root', () => {
         expect(Option.isSome(root)).toBe(true)
         expect(Option.getOrNull(root)).toBe(outerDir)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -255,7 +255,7 @@ describe('mr root', () => {
         const root = yield* findMegarepoRoot(workDir)
         expect(Option.isNone(root)).toBe(true)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -307,7 +307,7 @@ describe('mr add', () => {
         const finalConfig = yield* readConfig(workDir)
         expect(finalConfig.members['effect']).toBe('effect-ts/effect')
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -347,7 +347,7 @@ describe('mr add', () => {
         const finalConfig = yield* readConfig(workDir)
         expect(finalConfig.members['effect-v3']).toBe('effect-ts/effect#v3.0.0')
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -391,7 +391,7 @@ describe('mr add', () => {
         // In real CLI, this would fail with "Member already exists"
         expect(memberName in config.members).toBe(true)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -437,7 +437,7 @@ describe('megarepo.json parsing', () => {
         expect(parsed.members['github-ref']).toBe('owner/repo#main')
         expect(parsed.members['local']).toBe('./packages/local')
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -470,7 +470,7 @@ describe('megarepo.json parsing', () => {
         expect(parsed.generators?.vscode?.enabled).toBe(true)
         expect(parsed.generators?.vscode?.exclude).toEqual(['large-repo'])
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -538,7 +538,7 @@ describe('--cwd option', () => {
           expect(state!.root).toBe(workDir)
         }
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -558,7 +558,7 @@ describe('--cwd option', () => {
         expect(state).toBeDefined()
         expect(state!._tag).toBe('Error')
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -578,7 +578,7 @@ describe('--cwd option', () => {
 
         expect(Exit.isFailure(exit)).toBe(true)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )

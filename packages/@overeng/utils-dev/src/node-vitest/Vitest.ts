@@ -12,7 +12,7 @@
 import * as inspector from 'node:inspector'
 
 import { OtlpSerialization, OtlpTracer } from '@effect/opentelemetry'
-import { FetchHttpClient } from '@effect/platform'
+import { FetchHttpClient } from 'effect'
 import type * as Vitest from '@effect/vitest'
 import type { Duration } from 'effect'
 import {
@@ -132,7 +132,7 @@ export type WithTestCtxParams<ROut, E1, RIn> = {
  * const withTestCtx = makeWithTestCtx({
  *   timeout: Duration.minutes(2),
  *   makeLayer: (testContext) => Layer.mergeAll(
- *     NodeContext.layer,
+ *     NodeServices.layer,
  *     MyService.layer,
  *   ),
  * })

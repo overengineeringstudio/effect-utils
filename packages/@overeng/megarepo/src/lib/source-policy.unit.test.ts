@@ -1,5 +1,5 @@
-import { FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import { FileSystem } from 'effect'
+import { NodeServices } from '@effect/platform-node'
 import { Effect, type Scope } from 'effect'
 import { describe, expect, it } from 'vitest'
 
@@ -30,7 +30,7 @@ const makeLockFile = (): LockFile =>
   }) as LockFile
 
 const runWithContext = <A, E>(effect: Effect.Effect<A, E, NodeContext.NodeContext | Scope.Scope>) =>
-  Effect.runPromise(effect.pipe(Effect.scoped, Effect.provide(NodeContext.layer)))
+  Effect.runPromise(effect.pipe(Effect.scoped, Effect.provide(NodeServices.layer)))
 
 const writeFile = ({
   root,

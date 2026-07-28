@@ -1,4 +1,4 @@
-import { Rpc, RpcGroup } from '@effect/rpc'
+import { Rpc, RpcGroup } from 'effect/unstable/rpc'
 import { Effect, Schema } from 'effect'
 import * as Stream from 'effect/Stream'
 import { describe, expect, it } from 'vitest'

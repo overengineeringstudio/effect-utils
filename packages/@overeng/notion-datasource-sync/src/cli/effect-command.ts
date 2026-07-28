@@ -1,4 +1,4 @@
-import { Args, Command, Options } from '@effect/cli'
+import { Args, Command, Options } from 'effect/unstable/cli'
 import { Effect } from 'effect'
 
 /** Handler used by the import-safe command descriptor for executable leaf commands. */

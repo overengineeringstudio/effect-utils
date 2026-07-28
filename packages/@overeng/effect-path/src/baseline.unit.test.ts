@@ -1,4 +1,4 @@
-import { NodeContext } from '@effect/platform-node'
+import { NodeServices } from '@effect/platform-node'
 import { Effect, Either, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
@@ -152,7 +152,7 @@ describe('effect-path baselines (cross-major invariant)', () => {
           left(fileFromDirectoryConvention),
           left(invalidPath),
         ].map(summarizeConventionError)
-      }).pipe(Effect.provide(NodeContext.layer)),
+      }).pipe(Effect.provide(NodeServices.layer)),
     )
 
     expect(result).toMatchInlineSnapshot(`

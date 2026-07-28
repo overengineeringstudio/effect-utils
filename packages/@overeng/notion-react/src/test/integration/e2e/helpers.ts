@@ -1,4 +1,4 @@
-import { FetchHttpClient, type HttpClient } from '@effect/platform'
+import { FetchHttpClient, type HttpClient } from 'effect'
 import { Duration, Effect, Layer, Redacted, Schedule } from 'effect'
 
 import type { NotionApiError } from '@overeng/notion-effect-client'

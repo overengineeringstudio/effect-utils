@@ -5,7 +5,7 @@
  */
 
 import * as Cli from '@effect/cli'
-import { FileSystem } from '@effect/platform'
+import { FileSystem } from 'effect'
 import { Clock, Effect, Layer, Option } from 'effect'
 import React from 'react'
 

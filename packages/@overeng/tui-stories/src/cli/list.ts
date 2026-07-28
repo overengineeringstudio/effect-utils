@@ -1,4 +1,4 @@
-import { Command, Options } from '@effect/cli'
+import { Command, Options } from 'effect/unstable/cli'
 import { Effect } from 'effect'
 import React from 'react'
 

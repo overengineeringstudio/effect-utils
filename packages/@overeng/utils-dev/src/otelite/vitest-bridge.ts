@@ -22,7 +22,7 @@
  * @module
  */
 
-import { NodeContext } from '@effect/platform-node'
+import { NodeServices } from '@effect/platform-node'
 import { Context, Effect, Layer } from 'effect'
 
 import { makeOtelVitestLayer } from '../node-vitest/Vitest.ts'
@@ -70,7 +70,7 @@ export interface OteliteCaptureLayerOptions extends CaptureOptions {
  * the captured receiver.
  *
  * Requires `Otelite` + a `CommandExecutor`/`FileSystem` (e.g.
- * {@link NodeContext.layer}) in context, both of which it provides internally
+ * {@link NodeServices.layer}) in context, both of which it provides internally
  * via {@link Otelite.Default} so the returned layer is self-contained.
  */
 export const makeOteliteCaptureLayer = (
@@ -88,7 +88,7 @@ export const makeOteliteCaptureLayer = (
       const otelite = yield* Otelite
       return yield* otelite.capture(captureOptions)
     }),
-  ).pipe(Layer.provide(Otelite.Default), Layer.provide(NodeContext.layer))
+  ).pipe(Layer.provide(Otelite.Default), Layer.provide(NodeServices.layer))
 
   // Point the OTLP trace exporter at the captured receiver. Built from the
   // handle so the URL is the captured endpoint + the locked `/v1/traces` suffix.

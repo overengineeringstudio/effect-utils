@@ -95,7 +95,7 @@ export type StateValueType<F> =
  * `PropertySignature` AST (`.type` is the `value | undefined` union) with the
  * `undefined` member STRIPPED — a SET value is always the present `T` (the
  * "unset → undefined" case never reaches the serde, the State combinator returns
- * `undefined` directly), and keeping `undefined` would break `JSONSchema.make`.
+ * `undefined` directly), and keeping `undefined` would break `JsonSchema.make`.
  */
 export const normalizeStateSchema = (
   field: Schema.Schema<any, any> | Schema.PropertySignature.All,

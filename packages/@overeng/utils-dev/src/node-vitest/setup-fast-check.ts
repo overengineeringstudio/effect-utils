@@ -1,4 +1,4 @@
-import * as FastCheck from 'effect/FastCheck'
+import * as FastCheck from 'effect/testing/FastCheck'
 
 type FastCheckGlobalParameters = Parameters<typeof FastCheck.configureGlobal>[0]
 

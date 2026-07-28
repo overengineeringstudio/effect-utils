@@ -4,7 +4,7 @@
  * Record current worktree HEAD commits into megarepo.lock. No network, no workspace changes.
  */
 
-import * as Cli from '@effect/cli'
+import * as Cli from 'effect/unstable/cli'
 
 import { outputOption, verboseOption } from '../context.ts'
 import { runCommand } from './engine.ts'

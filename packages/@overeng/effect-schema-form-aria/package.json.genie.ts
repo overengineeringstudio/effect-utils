@@ -18,22 +18,7 @@ const runtimeDeps = catalog.compose({
   devDependencies: {
     workspace: [utilsPkg],
     external: {
-      ...catalog.pick(
-        ...peerDepNames,
-        'effect',
-        'react',
-        '@storybook/react',
-        '@storybook/react-vite',
-        '@tailwindcss/vite',
-        '@types/react',
-        '@types/react-dom',
-        '@vitejs/plugin-react',
-        'storybook',
-        'tailwindcss',
-        'typescript',
-        'vite',
-        'vitest',
-      ),
+      ...catalog.pick(...peerDepNames, 'effect', 'react', '@storybook/react', '@storybook/react-vite', '@tailwindcss/vite', '@types/react', '@types/react-dom', '@vitejs/plugin-react', 'storybook', 'tailwindcss', 'typescript', 'vite', 'vitest'),
     },
   },
   peerDependencies: {

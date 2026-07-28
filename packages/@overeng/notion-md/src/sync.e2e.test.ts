@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
-import { NodeContext } from '@effect/platform-node'
+import { NodeServices } from '@effect/platform-node'
 import { Deferred, Effect, Fiber, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
@@ -493,14 +493,14 @@ const withTempDir = async <T>(fn: (dir: string) => Promise<T>): Promise<T> => {
   }
 }
 
-const stateStoreLayer = NmdStateStoreLive.pipe(Layer.provide(NodeContext.layer))
+const stateStoreLayer = NmdStateStoreLive.pipe(Layer.provide(NodeServices.layer))
 
 const runWithFake = <A, E>(
   effect: Effect.Effect<A, E, NodeContext.NodeContext | NotionMdGateway | NmdStateStore>,
   fake: FakeNotion,
 ) =>
   Effect.runPromise(
-    effect.pipe(Effect.provide(Layer.mergeAll(fake.layer, stateStoreLayer, NodeContext.layer))),
+    effect.pipe(Effect.provide(Layer.mergeAll(fake.layer, stateStoreLayer, NodeServices.layer))),
   )
 
 const runEitherWithFake = <A, E>(
@@ -510,7 +510,7 @@ const runEitherWithFake = <A, E>(
   Effect.runPromise(
     effect.pipe(
       Effect.either,
-      Effect.provide(Layer.mergeAll(fake.layer, stateStoreLayer, NodeContext.layer)),
+      Effect.provide(Layer.mergeAll(fake.layer, stateStoreLayer, NodeServices.layer)),
     ),
   )
 
@@ -781,7 +781,7 @@ describe('notion-md e2e prototype', () => {
               yield* Deferred.await(pushed)
               yield* Fiber.interrupt(fiber)
             }),
-          ).pipe(Effect.provide(Layer.mergeAll(fake.layer, stateStoreLayer, NodeContext.layer))),
+          ).pipe(Effect.provide(Layer.mergeAll(fake.layer, stateStoreLayer, NodeServices.layer))),
           { inspect: { service: 'notion-md-test' } },
         ),
       )

@@ -4,7 +4,7 @@
  * Provides Effect-wrapped git operations for cloning, fetching, and managing worktrees.
  */
 
-import { Command } from '@effect/platform'
+import { Command } from 'effect'
 import { Cause, Chunk, Duration, Effect, Option, Schedule, Sink, Stream } from 'effect'
 
 import * as Observability from './observability.ts'

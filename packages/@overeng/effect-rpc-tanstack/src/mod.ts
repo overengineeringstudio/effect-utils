@@ -67,4 +67,4 @@ export * from './router.ts'
 /**
  * Re-export RPC primitives for direct access
  */
-export { RpcClient, RpcClientError, RpcSerialization, RpcServer } from '@effect/rpc'
+export { RpcClient, RpcClientError, RpcSerialization, RpcServer } from 'effect/unstable/rpc'

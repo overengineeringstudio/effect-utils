@@ -5,13 +5,13 @@ import os from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-import type { Path } from '@effect/platform'
+import type { Path } from 'effect'
 import {
   Command,
   type CommandExecutor,
   type Error as PlatformError,
   FileSystem,
-} from '@effect/platform'
+} from 'effect'
 import { Duration, Effect, Either, Option, Schema } from 'effect'
 
 import { DistributedSemaphore } from '@overeng/utils/lock'

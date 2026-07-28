@@ -19,9 +19,9 @@
  * clock (the old clock-coupled sampler would hot-loop and hang).
  */
 
-import * as Cli from '@effect/cli'
-import { Command, FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import * as Cli from 'effect/unstable/cli'
+import { Command, FileSystem } from 'effect'
+import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Clock, Effect, Layer, Option, Ref, Schema } from 'effect'
 import { expect } from 'vitest'
@@ -204,7 +204,7 @@ describe('mr store gc — OTEL instrumentation contract', () => {
           name: 'git/cmd',
           attrs: { 'git.subcommand': 'fetch', 'git.timeout_ms': attr.int(600_000) },
         })
-      }).pipe(Effect.provide(Layer.mergeAll(OteliteTestHarness.Default, NodeContext.layer))),
+      }).pipe(Effect.provide(Layer.mergeAll(OteliteTestHarness.Default, NodeServices.layer))),
     30_000,
   )
 
@@ -290,7 +290,7 @@ describe('mr store gc — OTEL instrumentation contract', () => {
           value: metricValue.predicate('rss > 0', (rss) => rss > 0),
           attrs: { 'megarepo.store.gc.repo_concurrency': telemetryAttr.present() },
         })
-      }).pipe(Effect.provide(Layer.mergeAll(OteliteTestHarness.Default, NodeContext.layer))),
+      }).pipe(Effect.provide(Layer.mergeAll(OteliteTestHarness.Default, NodeServices.layer))),
     60_000,
   )
 })
