@@ -90,6 +90,78 @@ const AppNoInterrupt = createTuiApp({
   reducer: testReducerNoInterrupt,
 })
 
+const WireState = Schema.TaggedStruct('WireState', {
+  phase: Schema.Literal('idle', 'done'),
+  text: Schema.String,
+  nullable: Schema.NullOr(Schema.String),
+  note: Schema.optional(Schema.String),
+  items: Schema.Array(
+    Schema.Struct({
+      id: Schema.String,
+      value: Schema.String,
+    }),
+  ),
+})
+
+type WireState = typeof WireState.Type
+
+const WireAction = Schema.Union(Schema.TaggedStruct('SetWireState', { next: WireState }))
+type WireAction = typeof WireAction.Type
+
+const WireEvent = Schema.TaggedStruct('WireEvent', {
+  from: Schema.Literal('idle', 'done'),
+  to: Schema.Literal('idle', 'done'),
+  text: Schema.String,
+})
+
+const FailurePartitionWire = Schema.parseJson(
+  Schema.Struct({
+    _tag: Schema.Literal('Failure', 'Success'),
+    cause: Schema.NullOr(Schema.String),
+  }),
+)
+
+const initialWireState: WireState = {
+  _tag: 'WireState',
+  phase: 'idle',
+  text: '',
+  nullable: null,
+  items: [],
+}
+
+const finalWireState: WireState = {
+  _tag: 'WireState',
+  phase: 'done',
+  text: 'Line 1\r\nLine 2 世界 NaN 2026-02-31',
+  nullable: null,
+  note: '',
+  items: [
+    { id: 'α', value: '' },
+    { id: 'big', value: '9007199254740991' },
+  ],
+}
+
+const createWireApp = (options?: { readonly eventNdjson?: boolean }) =>
+  createTuiApp<WireState, WireAction>({
+    stateSchema: WireState,
+    actionSchema: WireAction,
+    initial: initialWireState,
+    reducer: ({ action }) => action.next,
+    ...(options?.eventNdjson === true && {
+      ndjson: {
+        eventSchema: WireEvent,
+        fromAction: ({ action, prevState }: { action: WireAction; prevState: WireState }) => [
+          {
+            _tag: 'WireEvent' as const,
+            from: prevState.phase,
+            to: action.next.phase,
+            text: action.next.text,
+          },
+        ],
+      },
+    }),
+  })
+
 // =============================================================================
 // Exit Mode Tests (using createRoot directly)
 // =============================================================================
@@ -418,6 +490,102 @@ describe('Final state output', () => {
       }),
     )
   })
+})
+
+describe('tui-react JSON/NDJSON wire baselines (cross-major invariant)', () => {
+  let originalLog: typeof console.log
+  let capturedOutput: string[]
+
+  beforeEach(() => {
+    originalLog = console.log
+    capturedOutput = []
+    console.log = (msg: string) => {
+      capturedOutput.push(msg)
+    }
+  })
+
+  afterEach(() => {
+    console.log = originalLog
+  })
+
+  it.effect('emits final JSON as byte-identical raw state', () =>
+    Effect.gen(function* () {
+      const app = createWireApp()
+      const tui = yield* app.run()
+      tui.dispatch({ _tag: 'SetWireState', next: finalWireState })
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(testModeLayer('json')),
+      Effect.andThen(() => {
+        expect(capturedOutput).toMatchInlineSnapshot(`
+          [
+            "{"_tag":"WireState","phase":"done","text":"Line 1\\r\\nLine 2 世界 NaN 2026-02-31","nullable":null,"note":"","items":[{"id":"α","value":""},{"id":"big","value":"9007199254740991"}]}",
+          ]
+        `)
+      }),
+    ),
+  )
+
+  it.effect('emits progressive NDJSON snapshots as byte-identical lines', () =>
+    Effect.gen(function* () {
+      const app = createWireApp()
+      const tui = yield* app.run()
+      tui.dispatch({ _tag: 'SetWireState', next: finalWireState })
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(testModeLayer('ndjson')),
+      Effect.andThen(() => {
+        expect(capturedOutput.join('\n')).toMatchInlineSnapshot(`
+          "{"_tag":"WireState","phase":"idle","text":"","nullable":null,"items":[]}
+          {"_tag":"WireState","phase":"done","text":"Line 1\\r\\nLine 2 世界 NaN 2026-02-31","nullable":null,"note":"","items":[{"id":"α","value":""},{"id":"big","value":"9007199254740991"}]}"
+        `)
+      }),
+    ),
+  )
+
+  it.effect('emits event-mapped progressive NDJSON as byte-identical lines', () =>
+    Effect.gen(function* () {
+      const app = createWireApp({ eventNdjson: true })
+      const tui = yield* app.run()
+      tui.dispatch({ _tag: 'SetWireState', next: finalWireState })
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(testModeLayer('ndjson')),
+      Effect.andThen(() => {
+        expect(capturedOutput.join('\n')).toMatchInlineSnapshot(`
+          "{"_tag":"WireState","phase":"idle","text":"","nullable":null,"items":[]}
+          {"_tag":"WireEvent","from":"idle","to":"done","text":"Line 1\\r\\nLine 2 世界 NaN 2026-02-31"}"
+        `)
+      }),
+    ),
+  )
+
+  it.effect('captures JSON encode failures as stable failure JSON', () =>
+    Effect.gen(function* () {
+      const InvalidApp = createTuiApp({
+        stateSchema: WireState,
+        actionSchema: Schema.Struct({ next: Schema.Unknown }),
+        initial: initialWireState,
+        reducer: ({ action }) => action.next as WireState,
+      })
+      const exit = yield* Effect.gen(function* () {
+        const tui = yield* InvalidApp.run()
+        tui.dispatch({ next: { ...finalWireState, text: null } })
+      }).pipe(Effect.scoped, Effect.provide(testModeLayer('json')), Effect.exit)
+      const failureBytes = yield* Schema.encode(FailurePartitionWire)({
+        _tag: exit._tag,
+        cause:
+          exit._tag === 'Failure' && exit.cause !== undefined
+            ? (String(exit.cause).split('\n    at ')[0] ?? '')
+            : null,
+      })
+
+      expect(capturedOutput).toMatchInlineSnapshot(`[]`)
+      expect(failureBytes).toMatchInlineSnapshot(
+        `"{"_tag":"Failure","cause":"ParseError: (parseJson <-> { readonly _tag: \\"WireState\\"; readonly phase: \\"idle\\" | \\"done\\"; readonly text: string; readonly nullable: string | null; readonly note?: string | undefined; readonly items: ReadonlyArray<{ readonly id: string; readonly value: string }> })\\n└─ Type side transformation failure\\n   └─ { readonly _tag: \\"WireState\\"; readonly phase: \\"idle\\" | \\"done\\"; readonly text: string; readonly nullable: string | null; readonly note?: string | undefined; readonly items: ReadonlyArray<{ readonly id: string; readonly value: string }> }\\n      └─ [\\"text\\"]\\n         └─ Expected string, actual null"}"`,
+      )
+    }),
+  )
 })
 
 // =============================================================================
