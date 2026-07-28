@@ -110,12 +110,17 @@ export default packageJson(
       },
     },
     scripts: {
-      build: 'tsc --build tsconfig.json',
       /**
-       * npm and pnpm run `prepack` before packing, which is what makes `dist`
-       * a guaranteed input rather than a leftover from whoever last typechecked.
+       * The declared way to produce the `publishConfig.exports` target. Whoever
+       * packs this package must run it first — pnpm 11 runs neither `prepack`
+       * nor `prepare` on `pnpm pack` (verified against 11.8.0), so a lifecycle
+       * script here would assert a guarantee that does not hold.
+       *
+       * The guarantee lives at the layer that packs: livestore-contrib's
+       * `release/simulate-publish.mjs` builds each package with this same
+       * command and then fails if the declared outputs are missing.
        */
-      prepack: 'tsc --build tsconfig.json',
+      build: 'tsc --build tsconfig.json',
       storybook: 'storybook dev -p 6011',
       'storybook:build': 'storybook build',
     },

@@ -21,7 +21,6 @@
   },
   "scripts": {
     "build": "tsc --build tsconfig.json",
-    "prepack": "tsc --build tsconfig.json",
     "storybook": "storybook dev -p 6011",
     "storybook:build": "storybook build"
   },
