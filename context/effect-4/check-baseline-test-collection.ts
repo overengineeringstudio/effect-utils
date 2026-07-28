@@ -75,6 +75,9 @@ const metricValue = ({
   readonly records: readonly SummaryRecord[]
 }) => records.find((record) => record.name === metric)?.value
 
+const missingSummaryError = () =>
+  `missing managed-task summary in ${summaryDirectory}; was the test task run in an installed worktree?`
+
 const readPackageResult = async (packageName: string): Promise<PackageResult> => {
   const summaries =
     existsSync(summaryDirectory) === false
@@ -88,7 +91,7 @@ const readPackageResult = async (packageName: string): Promise<PackageResult> =>
 
   if (summaries.length === 0) {
     return {
-      error: `missing managed-task summary in ${summaryDirectory}`,
+      error: missingSummaryError(),
       packageName,
     }
   }
@@ -106,7 +109,7 @@ const readPackageResult = async (packageName: string): Promise<PackageResult> =>
   const summary = summariesByNewest[0]?.summary
   if (summary === undefined) {
     return {
-      error: `missing managed-task summary in ${summaryDirectory}`,
+      error: missingSummaryError(),
       packageName,
     }
   }
