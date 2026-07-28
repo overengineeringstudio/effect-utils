@@ -136,3 +136,221 @@ describe('notion-md frontmatter — property_descriptors standalone validity (R0
     await expect(parse(tampered)).rejects.toThrow('Failed to parse strict .nmd frontmatter')
   })
 })
+
+describe('notion-md frontmatter wire baselines (cross-major invariant)', () => {
+  const richFrontmatter: NmdFrontmatterV2 = {
+    notion_md: {
+      version: 2,
+      api_version: '2026-03-11',
+      object: 'page',
+      source: 'shared',
+      page_id: pageId,
+      url: null,
+      parent: { _tag: 'data_source', id: dataSourceId, database_id: pageId },
+      page: {
+        title: 'Frontmatter 世界',
+        icon: null,
+        cover: {
+          type: 'file',
+          file: {
+            url: 'https://example.com/cover.png',
+            expiry_time: '2026-02-31T00:00:00.000Z',
+          },
+        },
+        in_trash: false,
+        is_locked: false,
+      },
+      properties: {
+        Name: { _tag: 'title', value: 'Frontmatter 世界' },
+        Due: {
+          _tag: 'date',
+          value: { start: '2026-02-31', end: null, time_zone: null },
+        },
+        Window: {
+          _tag: 'date',
+          value: { start: '2026-05-25T10:15:30.000Z', end: '2026-05-26', time_zone: null },
+        },
+        EmptySelect: { _tag: 'select', value: '' },
+        NullStatus: { _tag: 'status', value: null },
+        NaNAsText: { _tag: 'rich_text', value: 'NaN' },
+        Attachments: {
+          _tag: 'files',
+          value: [
+            {
+              _tag: 'local_file',
+              path: 'assets/résumé.pdf',
+              content_hash: `sha256:${'1'.repeat(64)}`,
+            },
+            { _tag: 'external_url', url: 'https://example.com/résumé.pdf' },
+          ],
+        },
+      },
+      property_descriptors: descriptors,
+    },
+  }
+
+  const rendered = () =>
+    renderNmdFile({
+      frontmatter: richFrontmatter,
+      body: '# Frontmatter 世界\r\n\r\nBody with unicode résumé.\r\n',
+    })
+
+  // TODO(live-migration:effect-3-4): Effect 4 may reject v3's raw impossible date strings (effect#6608); preserve the frontmatter bytes or explicitly adjudicate the contract.
+  it('renders the persisted .nmd envelope to byte-identical JSON frontmatter', () => {
+    expect(rendered()).toMatchInlineSnapshot(`
+      "---
+      {
+        "notion_md": {
+          "version": 2,
+          "api_version": "2026-03-11",
+          "object": "page",
+          "source": "shared",
+          "page_id": "00000000-0000-4000-8000-000000000001",
+          "url": null,
+          "parent": {
+            "_tag": "data_source",
+            "id": "00000000-0000-4000-8000-000000000010",
+            "database_id": "00000000-0000-4000-8000-000000000001"
+          },
+          "page": {
+            "title": "Frontmatter 世界",
+            "icon": null,
+            "cover": {
+              "type": "file",
+              "file": {
+                "url": "https://example.com/cover.png",
+                "expiry_time": "2026-02-31T00:00:00.000Z"
+              }
+            },
+            "in_trash": false,
+            "is_locked": false
+          },
+          "properties": {
+            "Name": {
+              "_tag": "title",
+              "value": "Frontmatter 世界"
+            },
+            "Due": {
+              "_tag": "date",
+              "value": {
+                "start": "2026-02-31",
+                "end": null,
+                "time_zone": null
+              }
+            },
+            "Window": {
+              "_tag": "date",
+              "value": {
+                "start": "2026-05-25T10:15:30.000Z",
+                "end": "2026-05-26",
+                "time_zone": null
+              }
+            },
+            "EmptySelect": {
+              "_tag": "select",
+              "value": ""
+            },
+            "NullStatus": {
+              "_tag": "status",
+              "value": null
+            },
+            "NaNAsText": {
+              "_tag": "rich_text",
+              "value": "NaN"
+            },
+            "Attachments": {
+              "_tag": "files",
+              "value": [
+                {
+                  "_tag": "local_file",
+                  "path": "assets/résumé.pdf",
+                  "content_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+                },
+                {
+                  "_tag": "external_url",
+                  "url": "https://example.com/résumé.pdf"
+                }
+              ]
+            }
+          },
+          "property_descriptors": {
+            "Status": {
+              "property_id": "prop_status_abc",
+              "property_name": "Status",
+              "property_type": "select",
+              "data_source_id": "00000000-0000-4000-8000-000000000010",
+              "config_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            }
+          }
+        }
+      }
+      ---
+
+      # Frontmatter 世界
+
+      Body with unicode résumé.
+      "
+    `)
+  })
+
+  // TODO(live-migration:effect-3-4): Effect 4 may reject v3's raw impossible date strings (effect#6608); preserve the frontmatter bytes or explicitly adjudicate the contract.
+  it('parses the persisted .nmd envelope and re-renders byte-identically', async () => {
+    const parsed = await parse(rendered().replaceAll('\n', '\r\n'))
+    expect(JSON.stringify(parsed.frontmatter)).toMatchInlineSnapshot(
+      `"{"notion_md":{"version":2,"api_version":"2026-03-11","object":"page","source":"shared","page_id":"00000000-0000-4000-8000-000000000001","url":null,"parent":{"_tag":"data_source","id":"00000000-0000-4000-8000-000000000010","database_id":"00000000-0000-4000-8000-000000000001"},"page":{"title":"Frontmatter 世界","icon":null,"cover":{"type":"file","file":{"url":"https://example.com/cover.png","expiry_time":"2026-02-31T00:00:00.000Z"}},"in_trash":false,"is_locked":false},"properties":{"Name":{"_tag":"title","value":"Frontmatter 世界"},"Due":{"_tag":"date","value":{"start":"2026-02-31","end":null,"time_zone":null}},"Window":{"_tag":"date","value":{"start":"2026-05-25T10:15:30.000Z","end":"2026-05-26","time_zone":null}},"EmptySelect":{"_tag":"select","value":""},"NullStatus":{"_tag":"status","value":null},"NaNAsText":{"_tag":"rich_text","value":"NaN"},"Attachments":{"_tag":"files","value":[{"_tag":"local_file","path":"assets/résumé.pdf","content_hash":"sha256:1111111111111111111111111111111111111111111111111111111111111111"},{"_tag":"external_url","url":"https://example.com/résumé.pdf"}]}},"property_descriptors":{"Status":{"property_id":"prop_status_abc","property_name":"Status","property_type":"select","data_source_id":"00000000-0000-4000-8000-000000000010","config_hash":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}}}}"`,
+    )
+    expect(renderNmdFile(parsed)).toBe(rendered())
+  })
+
+  it('captures the parse failure partition as stable JSON', async () => {
+    const failureJson = async (content: string) => {
+      try {
+        await parse(content)
+      } catch (error) {
+        const frontmatterError = error as {
+          readonly _tag?: string
+          readonly path?: string
+          readonly message?: string
+          readonly cause?: unknown
+        }
+        const cause = String(frontmatterError.cause)
+        return JSON.stringify({ message: frontmatterError.message, cause })
+      }
+      throw new Error('Expected parse failure')
+    }
+    const invalidCases = {
+      malformedJson: '---\n{"notion_md": \n---\n',
+      remoteWithoutPageId: rendered()
+        .replace('"source": "shared"', '"source": "remote"')
+        .replace(`"page_id": "${pageId}"`, '"page_id": null'),
+      descriptorExcessProperty: rendered().replace(
+        '"config_hash":',
+        '"extra": true,\n          "config_hash":',
+      ),
+      invalidRelativePath: rendered().replace('assets/résumé.pdf', '../résumé.pdf'),
+      invalidSha256: rendered().replace(`sha256:${'1'.repeat(64)}`, 'sha256:not-hex'),
+    }
+
+    expect(await failureJson('# Missing frontmatter\n')).toMatchInlineSnapshot(
+      `"{"message":"Failed to parse strict .nmd frontmatter in probe.nmd","cause":"undefined"}"`,
+    )
+    expect(
+      Object.fromEntries(
+        await Promise.all(
+          Object.entries(invalidCases).map(async ([name, content]) => [
+            name,
+            await failureJson(content),
+          ]),
+        ),
+      ),
+    ).toMatchInlineSnapshot(`
+      {
+        "descriptorExcessProperty": "{"message":"Failed to parse strict .nmd frontmatter in probe.nmd","cause":"undefined"}",
+        "invalidRelativePath": "{"message":"Failed to parse strict .nmd frontmatter in probe.nmd","cause":"undefined"}",
+        "invalidSha256": "{"message":"Failed to parse strict .nmd frontmatter in probe.nmd","cause":"undefined"}",
+        "malformedJson": "{"message":"Failed to parse strict .nmd frontmatter in probe.nmd","cause":"undefined"}",
+        "remoteWithoutPageId": "{"message":"Failed to parse strict .nmd frontmatter in probe.nmd","cause":"undefined"}",
+      }
+    `)
+  })
+})
