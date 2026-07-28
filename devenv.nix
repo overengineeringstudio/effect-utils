@@ -253,6 +253,14 @@ let
       }
       // (packageTestOverrides.${name} or { })
     ) packageNames;
+  baselineTestTaskRegistry = pkgs.writeText "effect4-baseline-test-task-registry.json" (
+    builtins.toJSON (
+      map (pkg: {
+        packagePath = pkg.path;
+        taskName = "test:${pkg.name}";
+      }) packagesWithTests
+    )
+  );
 
   # Packages that have storybook (subset of allPackages)
   packagesWithStorybook = [
@@ -696,7 +704,8 @@ in
     trace.exec "test:run" ''
       set -euo pipefail
       ${pkgs.bun}/bin/bun context/effect-4/check-baseline-migration-markers.ts
-      ${pkgs.bun}/bin/bun context/effect-4/check-baseline-test-collection.ts
+      ${pkgs.bun}/bin/bun context/effect-4/check-baseline-test-collection.ts \
+        --task-registry ${baselineTestTaskRegistry}
     ''
   );
 

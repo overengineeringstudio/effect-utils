@@ -6,7 +6,7 @@ import { basename, isAbsolute, relative, resolve, sep } from 'node:path'
 
 type BaselineFile = {
   readonly file: string
-  readonly packageName: string
+  readonly registration?: TestTaskRegistration
 }
 
 type FileResult =
@@ -26,6 +26,11 @@ type VitestFileResult = {
   readonly name?: unknown
 }
 
+type TestTaskRegistration = {
+  readonly packagePath: string
+  readonly taskName: string
+}
+
 const argumentValue = (name: string) => {
   const index = process.argv.indexOf(name)
   return index === -1 ? undefined : process.argv[index + 1]
@@ -33,6 +38,27 @@ const argumentValue = (name: string) => {
 
 const root = resolve(argumentValue('--root') ?? process.cwd())
 const reportDirectory = resolve(root, argumentValue('--report-dir') ?? 'tmp/otel-scrape/summaries')
+const taskRegistryPath = argumentValue('--task-registry')
+if (taskRegistryPath === undefined) {
+  throw new Error('--task-registry is required')
+}
+
+const decodedTaskRegistry: unknown = await Bun.file(taskRegistryPath).json()
+if (
+  Array.isArray(decodedTaskRegistry) === false ||
+  decodedTaskRegistry.some(
+    (registration) =>
+      typeof registration !== 'object' ||
+      registration === null ||
+      !('packagePath' in registration) ||
+      typeof registration.packagePath !== 'string' ||
+      !('taskName' in registration) ||
+      typeof registration.taskName !== 'string',
+  ) === true
+) {
+  throw new Error(`${taskRegistryPath} is not a valid baseline test task registry`)
+}
+const taskRegistry = decodedTaskRegistry as readonly TestTaskRegistration[]
 
 const testGlobs = [
   'packages/@overeng/**/*.test.ts',
@@ -43,8 +69,6 @@ const testGlobs = [
 
 const baselineDescribePattern =
   /(?:^|[^\w$])(?:[A-Za-z_$][\w$]*\.)?describe(?:\.\w+)*\s*\(\s*(['"`])((?:(?!\1)[\s\S])*?)\1/g
-
-const packageNameFrom = (file: string) => file.split('/')[2]
 
 const testFiles = (
   await Promise.all(
@@ -58,93 +82,59 @@ const testFileSources = await Promise.all(
   testFiles.map(async (file) => [file, await Bun.file(resolve(root, file)).text()] as const),
 )
 
+const registrationFor = (file: string) =>
+  taskRegistry
+    .filter(({ packagePath }) => file.startsWith(`${packagePath}/`))
+    .toSorted((left, right) => right.packagePath.length - left.packagePath.length)[0]
+
 const baselineFiles = testFileSources
   .filter(([, source]) =>
     Array.from(source.matchAll(baselineDescribePattern)).some((match) =>
       /(?:baseline|cross-major)/i.test(match[2] ?? ''),
     ),
   )
-  .map(([file]): BaselineFile | undefined => {
-    const packageName = packageNameFrom(file)
-    return packageName === undefined ? undefined : { file, packageName }
-  })
-  .filter((file): file is BaselineFile => file !== undefined)
+  .map(([file]): BaselineFile => ({ file, registration: registrationFor(file) }))
   .toSorted((left, right) => left.file.localeCompare(right.file))
 
-const baselineFilesByPackage = Map.groupBy(baselineFiles, (file) => file.packageName)
-
-const missingReportError = (packageName: string) =>
-  `missing managed Vitest JSON report for test:${packageName} in ${reportDirectory}; was the test task run in an installed worktree?`
-
-const newestReportFor = async (packageName: string) => {
-  const reports =
-    existsSync(reportDirectory) === false
-      ? []
-      : await Array.fromAsync(
-          new Bun.Glob(`test-${packageName}*.vitest.json`).scan({
-            absolute: true,
-            cwd: reportDirectory,
-          }),
-        )
-
-  const reportsByNewest = await Promise.all(
-    reports.map(async (report) => ({
-      modifiedAt: (await Bun.file(report).stat()).mtimeMs,
-      report,
-    })),
-  )
-  reportsByNewest.sort(
-    (left, right) => right.modifiedAt - left.modifiedAt || right.report.localeCompare(left.report),
-  )
-  return reportsByNewest[0]?.report
-}
-
-const repoPathFromReportName = ({
-  name,
-  packageName,
-}: {
-  readonly name: string
-  readonly packageName: string
-}) => {
+const repoPathFromReportName = (name: string) => {
   const normalizedName = name.replaceAll('\\', '/')
   const absolute =
     isAbsolute(name) === true
       ? name
       : normalizedName.startsWith('packages/') === true
         ? resolve(root, normalizedName)
-        : resolve(root, 'packages', '@overeng', packageName, normalizedName)
+        : undefined
+  if (absolute === undefined) return undefined
   const repoPath = relative(root, absolute).split(sep).join('/')
   return repoPath.startsWith('../') === true ? undefined : repoPath
 }
 
-const failFiles = ({
-  files,
-  error,
-}: {
-  readonly error: string
-  readonly files: readonly BaselineFile[]
-}): readonly FileResult[] => files.map(({ file }) => ({ error, file }))
+const taskFileStem = (taskName: string) =>
+  taskName.replaceAll(':', '-').replaceAll('/', '-').replaceAll(' ', '-').replaceAll('.', '_')
 
-const readPackageResults = async ({
-  packageName,
+const readTaskResults = async ({
   files,
+  registration,
 }: {
   readonly files: readonly BaselineFile[]
-  readonly packageName: string
+  readonly registration: TestTaskRegistration
 }): Promise<readonly FileResult[]> => {
-  const report = await newestReportFor(packageName)
-  if (report === undefined) {
-    return failFiles({ files, error: missingReportError(packageName) })
+  const report = resolve(reportDirectory, `${taskFileStem(registration.taskName)}.vitest.json`)
+  if (existsSync(report) === false) {
+    return files.map(({ file }) => ({
+      error: `missing exact report ${basename(report)} for registered task ${registration.taskName}`,
+      file,
+    }))
   }
 
   let decoded: unknown
   try {
     decoded = await Bun.file(report).json()
   } catch (cause) {
-    return failFiles({
-      files,
+    return files.map(({ file }) => ({
       error: `${basename(report)} is not valid JSON: ${String(cause)}`,
-    })
+      file,
+    }))
   }
 
   const testResults =
@@ -155,10 +145,10 @@ const readPackageResults = async ({
       ? (decoded.testResults as readonly VitestFileResult[])
       : undefined
   if (testResults === undefined) {
-    return failFiles({
-      files,
+    return files.map(({ file }) => ({
       error: `${basename(report)} has no testResults array`,
-    })
+      file,
+    }))
   }
 
   const collectedByFile = new Map<string, number>()
@@ -169,7 +159,7 @@ const readPackageResults = async ({
     ) {
       continue
     }
-    const file = repoPathFromReportName({ name: testResult.name, packageName })
+    const file = repoPathFromReportName(testResult.name)
     if (file === undefined) continue
     collectedByFile.set(file, (collectedByFile.get(file) ?? 0) + testResult.assertionResults.length)
   }
@@ -186,7 +176,7 @@ const readPackageResults = async ({
     if (collectedTests === 0) {
       return {
         collectedTests,
-        error: `${basename(report)} reports zero collected tests for this baseline file (${reportTests} tests collected across the package)`,
+        error: `${basename(report)} reports zero collected tests for this baseline file (${reportTests} tests collected across the registered task)`,
         file,
       }
     }
@@ -198,15 +188,29 @@ const readPackageResults = async ({
   })
 }
 
-const results = (
+const unregisteredResults: readonly FileResult[] = baselineFiles
+  .filter(({ registration }) => registration === undefined)
+  .map(({ file }) => ({
+    error: 'no registered managed test task owns this baseline file',
+    file,
+  }))
+const filesByTask = Map.groupBy(
+  baselineFiles.filter(
+    (file): file is BaselineFile & { readonly registration: TestTaskRegistration } =>
+      file.registration !== undefined,
+  ),
+  ({ registration }) => registration.taskName,
+)
+const registeredResults = (
   await Promise.all(
-    [...baselineFilesByPackage.entries()].map(([packageName, files]) =>
-      readPackageResults({ packageName, files }),
+    [...filesByTask.values()].map((files) =>
+      readTaskResults({ files, registration: files[0]!.registration }),
     ),
   )
+).flat()
+const results = [...unregisteredResults, ...registeredResults].toSorted((left, right) =>
+  left.file.localeCompare(right.file),
 )
-  .flat()
-  .toSorted((left, right) => left.file.localeCompare(right.file))
 const failed = results.filter((result) => 'error' in result)
 
 for (const result of results) {

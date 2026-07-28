@@ -101,7 +101,7 @@ let
         _vitest_collection_args=(
           --reporter=default
           --reporter=json
-          "--outputFile.json=$_vitest_collection_dir/${taskFileStem name}.$$.vitest.json"
+          "--outputFile.json=$_vitest_collection_dir/${taskFileStem name}.vitest.json"
         )
       ''}
       "''${_otel_instr[@]}" "$(resolve_package_bin vitest vitest)" run --testTimeout 30000 --hookTimeout 30000 "''${_vitest_collection_args[@]}" ${extraArgs}
