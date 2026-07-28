@@ -10,6 +10,8 @@ const cliPath = fileURLToPath(new URL('../bin/mr.ts', import.meta.url))
  * usage, and error prose are captured for review but may be re-baselined by the megarepo owner
  * during Effect 4 repair with an alignment-register entry.
  * ANSI control bytes are normalized, so colour/styling changes are not gated by this baseline.
+ * The local-source version suffix is normalized, so version-string content is not gated by this
+ * baseline.
  */
 const stripAnsi = (output: string) =>
   output.replace(
@@ -17,6 +19,9 @@ const stripAnsi = (output: string) =>
     /[\u001b\u009b][[\]()#;?]*(?:(?:(?:[a-zA-Z\d]*(?:;[a-zA-Z\d]*)*)?\u0007)|(?:(?:\d{1,4}(?:;\d{0,4})*)?[\dA-PR-TZcf-nq-uy=><~]))/gu,
     '',
   )
+
+const normalizeOutput = (output: string) =>
+  stripAnsi(output).replace(/ — running from local source \([^)]+\)/gu, '')
 
 const runCli = (...args: ReadonlyArray<string>) => {
   const result = spawnSync('bun', [cliPath, ...args], {
@@ -27,8 +32,8 @@ const runCli = (...args: ReadonlyArray<string>) => {
   return {
     status: result.status,
     signal: result.signal,
-    stdout: stripAnsi(result.stdout),
-    stderr: stripAnsi(result.stderr),
+    stdout: normalizeOutput(result.stdout),
+    stderr: normalizeOutput(result.stderr),
   }
 }
 
