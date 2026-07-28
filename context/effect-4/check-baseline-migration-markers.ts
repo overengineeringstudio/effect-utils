@@ -36,6 +36,11 @@ const riskSignatures = [
     why: 'Effect 4 changes the rejected-status wrapper and reason shape.',
   },
   {
+    registerEntry: 'cli-A-nested-terminator-loss',
+    regex: /\bargs\s*:\s*\[\s*["']add["']\s*,\s*["']--["']/g,
+    why: 'Effect 4 drops operands after -- for the nested megarepo add command.',
+  },
+  {
     registerEntry: 'fork-copied-options',
     regex: /\b(?:startImmediately|uninterruptible)\b/g,
     why: 'Copied fork options change scheduling and must have a local justification.',
@@ -54,6 +59,16 @@ const riskSignatures = [
     registerEntry: 'layer-memoization-default',
     regex: /\b(?:build|construction|acquisition)Count\b[^\r\n]*\.(?:toBe|toEqual)\(\s*\d+\s*\)/g,
     why: 'Construction-count assertions can change under Effect 4 layer memoization.',
+  },
+  {
+    registerEntry: 'layer-memoization-freshness-opt-outs',
+    regex: /\bLayer\.fresh\b/g,
+    why: 'Layer.fresh explicitly opts out of shared layer memoization.',
+  },
+  {
+    registerEntry: 'layer-memoization-freshness-opt-outs',
+    regex: /\bEffect\.provide\([\s\S]{0,300}\blocal\s*:\s*true\b/g,
+    why: 'A local provide creates an isolated memoization scope.',
   },
   {
     registerEntry: 'rpc-failure-cause-wire-shape',
@@ -83,14 +98,9 @@ const riskSignatures = [
  */
 const noSignatures = [
   {
-    registerEntry: 'cli-A-nested-terminator-loss',
-    noSignature:
-      'The risk depends on argv parsing semantics, not a distinctive baseline byte sequence.',
-  },
-  {
     registerEntry: 'cli-B-accepted-grammar-improvements',
     noSignature:
-      'The accepted grammar cases have no shared textual footprint across CLI baselines.',
+      'Four unrelated grammar forms are accepted; each contract needs its own case-specific signature.',
   },
   {
     registerEntry: 'cli-C-rendering-and-stdout-breakage',
@@ -105,17 +115,12 @@ const noSignatures = [
   {
     registerEntry: 'equality-structural-default',
     noSignature:
-      'Structural equality depends on runtime values and assertions, not stable baseline text.',
-  },
-  {
-    registerEntry: 'layer-memoization-freshness-opt-outs',
-    noSignature:
-      'Freshness opt-outs are API choices whose observable counts are covered by the related signature.',
+      'Structural equality depends on runtime value types, and the register audit found no production Effect equality site.',
   },
   {
     registerEntry: 'effect-never-idle-timer',
     noSignature:
-      'Timer registration is a runtime side effect with no reliable baseline-text fingerprint.',
+      'Process liveness is a runtime side effect; Effect.never is also used as unrelated test-only suspension control, with no production liveness site.',
   },
 ] as const
 
@@ -329,13 +334,27 @@ const findCalls = ({
   const calls: CallBlock[] = []
 
   for (const match of source.matchAll(namePattern)) {
-    const openingOffset = source.indexOf('(', match.index)
-    const end = findMatchingDelimiter({ source, openingOffset, opening: '(', closing: ')' })
+    let openingOffset = source.indexOf('(', match.index)
+    let end = findMatchingDelimiter({ source, openingOffset, opening: '(', closing: ')' })
     if (end === undefined) continue
 
     let titleOffset = openingOffset + 1
     while (/\s/.test(source[titleOffset] ?? '') === true) titleOffset++
-    const title = readStaticString({ source, offset: titleOffset })
+    let title = readStaticString({ source, offset: titleOffset })
+
+    if (title === undefined && callName === 'test' && match[0].includes('.each') === true) {
+      openingOffset = end
+      while (/\s/.test(source[openingOffset] ?? '') === true) openingOffset++
+      if (source[openingOffset] !== '(') continue
+
+      end = findMatchingDelimiter({ source, openingOffset, opening: '(', closing: ')' })
+      if (end === undefined) continue
+
+      titleOffset = openingOffset + 1
+      while (/\s/.test(source[titleOffset] ?? '') === true) titleOffset++
+      title = readStaticString({ source, offset: titleOffset })
+    }
+
     if (title === undefined || title.value.includes('${') === true) continue
 
     const start = match.index + (match[0].match(/^[^\w$]/)?.[0].length ?? 0)
