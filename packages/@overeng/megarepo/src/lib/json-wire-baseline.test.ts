@@ -36,6 +36,7 @@ const decodeFailure = <A, I>(schema: Schema.Schema<A, I, never>, encoded: string
 }
 
 describe('megarepo wire baselines (cross-major invariant)', () => {
+  // TODO(live-migration:effect-3-4): Effect 4 renders SchemaError(...) for these failures; preserve the structural partition and adjudicate internal-only text before re-baselining.
   it('captures megarepo config JSON bytes and failure partition', () => {
     expect(
       roundTrip(MegarepoConfig, {
@@ -107,6 +108,7 @@ describe('megarepo wire baselines (cross-major invariant)', () => {
     }).toMatchSnapshot()
   })
 
+  // TODO(live-migration:effect-3-4): Effect 4 renders SchemaError(...) for these failures; preserve the structural partition and adjudicate internal-only text before re-baselining.
   it('captures megarepo store state JSON bytes and failure partition', () => {
     expect(
       roundTrip(StoreState, {
