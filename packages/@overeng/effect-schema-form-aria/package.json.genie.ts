@@ -26,6 +26,7 @@ const runtimeDeps = catalog.compose({
         '@storybook/react-vite',
         '@tailwindcss/vite',
         '@types/react',
+        '@types/react-dom',
         '@vitejs/plugin-react',
         'storybook',
         'tailwindcss',
