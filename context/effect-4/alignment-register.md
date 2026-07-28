@@ -43,6 +43,12 @@
 - **Difference:** under a nested command, v4 beta.99 and beta.102 drop all argv after `--`. A
   required child positional supplied after the terminator becomes missing; an already-satisfied
   child silently loses its trailing operands.
+- **Measured Effect 3 baseline:** `mr add` delivers the first token after `--` byte-for-byte to
+  its positional handler, including dash-prefixed values and values matching parent or child flag
+  names. It does not unconditionally accept every trailing token: because `add` declares one
+  positional, multiple tokens preserve order only until that arity is exhausted, then the second
+  token is rejected as an unknown argument. Bare `mr add --` remains the distinct missing-argument
+  case.
 - **Source confirmation:** the lexer preserves trailing operands
   (`effect/src/unstable/cli/internal/lexer.ts:24-40`), but parser recursion constructs the child
   input with `trailingOperands: []` (`internal/parser.ts:87`) and attaches the originals to the
