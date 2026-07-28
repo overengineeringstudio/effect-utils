@@ -971,6 +971,7 @@ Vitest.describe('FileSystemBacking', () => {
         const watchFiber = yield* fsService
           .watch(watchDir)
           .pipe(Stream.runForEach(recordEvent), Effect.fork)
+        yield* Effect.yieldNow()
 
         const directBeforeFiber = yield* awaitObservedPath(directBefore).pipe(Effect.fork)
         yield* fsService.writeFileString(path.join(watchDir, directBefore), 'direct')
