@@ -21,7 +21,7 @@ let
     workspaceRoot = src;
     # Managed by the repo FOD refresh workflow — do not edit manually.
     depsBuilds = {
-      "." = mkSharedHash "sha256-ZMWlEBQRD+IzISeJjQgH5RDoaDSp0kprWlcn3FkB9xI=";
+      "." = mkSharedHash "sha256-GQws7Ps69dmhmiA/NzegY7KPN3NVvCS/Gq486U0ur4g=";
     };
     nativeNodePackages = opentuiCoreNative.packages;
     inherit gitRev commitTs dirty;
