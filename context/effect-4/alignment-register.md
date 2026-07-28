@@ -1,0 +1,219 @@
+# Alignment Register
+
+## schema-date
+
+- **Difference:** v4 `Schema.Date` validates Date instances, while v3 `Schema.Date`
+  represented ISO-string wire encoding.
+- **Proposed decision:** Treat this as no intended behaviour change. Migrate v3
+  `Schema.Date` wire sites to `Schema.DateFromString` on effect `4.0.0-beta.102`.
+- **Blast radius:** Date wire codecs and custom transforms in session ingestion,
+  Notion property codecs, and path/schema helpers.
+- **Status:** proven for accepted ISO input and encoded wire string on beta.102;
+  the earlier beta.99 `Schema.isDateValid` mapping is stale because the check is
+  no longer exported and `Schema.Date` now rejects invalid Date instances.
+
+## schema-date-invalid-message
+
+- **Difference:** Invalid Date/null parse messages differ. v3 emits parse tree
+  text; v4 emits `SchemaError(...)` text.
+- **Proposed decision:** Do not treat this as a globally accepted difference.
+  Accept only for internal structural failure checks. For user-facing or
+  snapshotted boundaries, add an explicit formatter/normalizer or preserve the
+  old text before flipping.
+- **Blast radius:** schema decode errors and tests that assert exact parse
+  messages.
+- **Audit evidence:** Repo grep found no snapshots containing the specific v3
+  Date parse-tree text or v4 `SchemaError(...)` text. A focused multiline grep
+  across `notion-effect-schema`, `notion-datasource-sync`, `notion-cli`, and
+  `tui-react` found snapshots of generated code, canonical JSON, renderer output,
+  and store/event projections, but none of schema parse-error text. Structural
+  decode-failure tests in `notion-effect-schema` and `notion-property-write`
+  assert failure shape only. User-facing/stringified-error boundaries do exist:
+  `notion-cli` TUI `SetError` paths stringify errors, `notion-datasource-sync`
+  JSON error envelopes and manifest namespace diagnostics stringify failures,
+  `tui-react` renders tagged/stringified errors, and `restate-effect` formats
+  `ParseError` via `ParseResult.TreeFormatter`.
+- **Status:** allowlisted only as a harness classification in
+  `patterns/schema-date/scenario.json`; migration acceptance requires auditing
+  the user-facing boundaries above.
+
+## cli-A-nested-terminator-loss
+
+- **Bucket:** A — SUSPECTED V4 BUG.
+- **Difference:** under a nested command, v4 beta.99 and beta.102 drop all argv after `--`. A
+  required child positional supplied after the terminator becomes missing; an already-satisfied
+  child silently loses its trailing operands.
+- **Source confirmation:** the lexer preserves trailing operands
+  (`effect/src/unstable/cli/internal/lexer.ts:24-40`), but parser recursion constructs the child
+  input with `trailingOperands: []` (`internal/parser.ts:87`) and attaches the originals to the
+  parent parse record (`internal/parser.ts:97`).
+- **Decision:** report upstream and do not migrate affected commands until fixed upstream or
+  locally patched.
+- **Blast radius:** dash-prefixed positional values in nested commands, including `megarepo`
+  add/exec/pin/store, Notion database/schema commands, and TUI story render/inspect.
+- **Status:** ESCALATED to the orchestrator with a minimal deterministic reproduction; confirmed
+  against beta.102 after the related positional-overflow fix `c917bb94a` (#6561), which did not
+  touch `internal/parser.ts`. Four exact diff paths are allowlisted only to freeze the
+  characterization.
+
+## cli-B-accepted-grammar-improvements
+
+- **Bucket:** B — INTENDED V4 IMPROVEMENT WE ACCEPT.
+- **Differences accepted:** reject separated negative domain integers; accept clustered short
+  aliases; accept `--flag=value` for repeated flags; strictly reject unknown flags after a
+  variadic positional.
+- **Decision:** accept these grammar changes. Current integer options model counts, delays, widths,
+  timestamps, concurrency, limits, and PR numbers. No tracked effect-utils command uses variadic
+  positional `Args`, so the strict-unknown variadic case has no current production consumer.
+- **Blast radius:** negative integer invocations in `npm-release`, `ci-tools`, `tui-stories`,
+  Notion/TUI helpers; newly valid alias clusters in `megarepo`, `notion-cli`, and `tui-stories`;
+  newly valid equals-form repeated flags in `ci-tools` and `tui-stories`.
+- **Status:** ACCEPTED for migration planning; 17 exact trace paths document the new grammar.
+
+## cli-C-rendering-and-stdout-breakage
+
+- **Bucket:** C — REAL BREAKAGE WE MUST PRESERVE OR SHIM.
+- **Difference:** v4 changes root/nested help, version bytes, validation wording, ANSI, newline
+  count, and stdout/stderr placement. Validation failures print full help to stdout where v3
+  stdout was empty.
+- **Decision:** preserve with compatibility rendering or explicitly rebaseline per CLI owner.
+  Regardless of wording, keep validation help off stdout for JSON/NDJSON-producing commands.
+- **Blast radius:** all audited binaries: `megarepo`, `notion-cli`, `genie`, `ci-tools`,
+  `npm-release`, and `tui-stories`. `notion-cli` already preserves root version bytes via its own
+  fast path; the other five delegate version rendering to Effect CLI.
+- **Status:** REQUIRED COMPATIBILITY WORK; 13 exact output paths are gated on beta.102. Two were
+  added for excess-positional rejection: both v3 and v4 exit `1`, but diagnostics and
+  help-on-stdout differ. No existing path changed bucket from beta.99.
+
+## platform-error-wrapper
+
+- **Difference:** FileSystem ENOENT, EEXIST, and EACCES failures change outer `_tag` from v3
+  `SystemError` to v4 `PlatformError`.
+- **Proposed decision:** Accept the v4 wrapper and rewrite error handling to match the wrapper then
+  inspect its reason. Preserve the inner reason tag, module, and method; the probe shows those
+  fields remain identical for all three errors.
+- **Blast radius:** process/filesystem error branches in `agent-session-ingest`, `megarepo`,
+  `restate-effect`, `ci-tools`, `effect-path`, `utils`, and their tests.
+- **Status:** allowlisted at exactly three outer-tag paths; all successful Path/read/write/stat
+  observations and inner error fields are identical.
+
+## http-client-status-error-wrapper
+
+- **Difference:** `HttpClientResponse.filterStatusOk` changes a rejected 418 from v3
+  `ResponseError` / `reason: "StatusCode"` to v4 `HttpClientError` /
+  `reason._tag: "StatusCodeError"`.
+- **Proposed decision:** Accept the v4 wrapper and rewrite every response-error handler to inspect
+  the wrapped reason. Preserve the status and body behavior; the 200 status/body and rejected 418
+  status are identical in the local-server probe.
+- **Blast radius:** HTTP retry, telemetry, and response classification branches using
+  `catchTag("ResponseError")` or string reason checks.
+- **Status:** two error-shape paths allowlisted; success behavior and numeric status are identical.
+
+## fork-defaults
+
+- **Difference:** No default startup-order difference was observed for v3
+  `Effect.fork` vs v4 `Effect.forkChild`.
+- **Proposed decision:** Migrate default child forks mechanically without adding
+  `{ startImmediately: true, uninterruptible: "inherit" }`.
+- **Blast radius:** background workers, RPC/websocket helpers, process wrappers,
+  Playwright helpers, and tests that rely on startup order.
+- **Status:** default case proven identical.
+
+## fork-copied-options
+
+- **Difference:** Copying `{ startImmediately: true }` to v4 moves `child-start`
+  before the parent records `after-fork`.
+- **Proposed decision:** Treat blanket copied options as a behaviour change and
+  remove them unless the call site explicitly wants immediate startup.
+- **Blast radius:** any migrated fork where a worker copied options to preserve
+  imagined v3 behaviour.
+- **Status:** allowlisted as a negative-control diff in
+  `patterns/fork-defaults/scenario.json`.
+
+## equality-structural-default
+
+- **Difference:** v4 structurally compares plain objects, arrays, maps, sets,
+  dates, and regexps; v3 used reference equality for these values.
+- **Proposed decision:** Accept structural equality as the v4 default, but audit
+  dedup/cache/change-detection code for identity-sensitive sites.
+- **Blast radius:** Effect `HashSet`/`HashMap`, `Equal.equals`, cache keys, and
+  any custom collection membership checks.
+- **Status:** allowlisted in `patterns/equality/scenario.json`.
+
+## equality-nan
+
+- **Difference:** v4 treats `NaN` as equal to `NaN`; v3 did not.
+- **Proposed decision:** Accept unless a numeric cache or validation path used
+  `NaN` inequality as a sentinel.
+- **Blast radius:** numeric dedup, cache invalidation, and schema/property tests
+  with `NaN` sentinels.
+- **Status:** allowlisted in `patterns/equality/scenario.json`.
+
+## equality-by-reference-opt-out
+
+- **Difference:** v4 adds `Equal.byReference` as an explicit identity-equality
+  opt-out, returning a Proxy rather than the original object.
+- **Proposed decision:** Use only where identity equality is load-bearing; prefer
+  `byReference` for safety and `byReferenceUnsafe` only when the proxy identity
+  cost is unacceptable and object mutation is controlled.
+- **Blast radius:** identity-sensitive caches and sets.
+- **Status:** documented in `patterns/equality/RECIPE.md`.
+
+## layer-memoization-default
+
+- **Difference:** v3 rebuilt the same layer twice across separate
+  `Effect.provide` calls; v4 memoizes across those provides and builds once.
+- **Proposed decision:** Accept v4 shared memoization for application wiring, but
+  audit tests/resource factories for call sites where fresh construction is
+  observable.
+- **Blast radius:** test layers, scoped resources, process/RPC clients, caches,
+  and service factories.
+- **Status:** allowlisted in `patterns/layer-memoization/scenario.json`.
+
+## layer-memoization-freshness-opt-outs
+
+- **Difference:** v4 adds `{ local: true }`; `Layer.fresh` remains the portable
+  freshness escape hatch.
+- **Proposed decision:** Use `Layer.fresh` for a local layer that must rebuild;
+  use `{ local: true }` when an entire provided layer subtree needs its own memo
+  map.
+- **Blast radius:** test harnesses and per-request/per-run resources.
+- **Status:** `Layer.fresh` matches v3 count; `{ local: true }` documented as
+  v4-only.
+
+## rpc-failure-cause-wire-shape
+
+- **Difference:** v3 RPC failure envelopes encode Cause as a recursive object;
+  v4 encodes the flattened Cause reasons array. A tagged failure therefore
+  changes bytes from `{"cause":{"_tag":"Fail",...}}` to
+  `{"cause":[{"_tag":"Fail",...}]}`.
+- **Proposed decision:** Accept the v4 envelope only for atomically upgraded
+  internal peers. Require an explicit protocol version or compatibility adapter
+  anywhere peers can run different majors or envelopes are persisted.
+- **Blast radius:** every RPC error response, including unary exits and streaming
+  exits.
+- **Status:** allowlisted in `patterns/rpc-payload-codecs/scenario.json`;
+  payload bytes and decoded handler values are otherwise identical.
+
+## browser-testing-barrel
+
+- **Difference:** a static re-export from v4 `effect/testing` reaches
+  `node:assert`; the representative v3 runtime/testing facade remained
+  browser-bundleable.
+- **Proposed decision:** Remove testing exports from public runtime/browser
+  facades and use direct `effect/testing/*` imports in test files.
+- **Blast radius:** all browser-facing packages and any shared Effect facade.
+- **Status:** allowlisted characterization in
+  `patterns/browser-builtin-leakage/scenario.json`; the runtime-only facade
+  passes the Node-builtin-forbidden bundle gate on both majors.
+
+## effect-never-idle-timer
+
+- **Difference:** v3 `Effect.never` registers one long interval; v4 parks the
+  fiber without a timer.
+- **Proposed decision:** Accept the v4 runtime improvement. Do not recreate the
+  timer; use the platform main runner or a real owned resource when a process
+  must stay alive.
+- **Blast radius:** long-lived PTY, Restate, and agent-ingestion processes plus
+  idle/hibernating runtimes.
+- **Status:** allowlisted in `patterns/effect-never-idle/scenario.json`.
