@@ -4,7 +4,18 @@ import * as path from 'node:path'
 
 import { FileSystem, Path } from '@effect/platform'
 import { NodeContext } from '@effect/platform-node'
-import { Context, Deferred, Duration, Effect, Layer, Schema, Stream } from 'effect'
+import {
+  Chunk,
+  Context,
+  Data,
+  Deferred,
+  Duration,
+  Effect,
+  Layer,
+  Queue,
+  Schema,
+  Stream,
+} from 'effect'
 import { expect } from 'vitest'
 
 import { DistributedSemaphoreBacking } from '@overeng/effect-distributed-lock'
@@ -90,6 +101,13 @@ const makeNodeFsLayer = (): Layer.Layer<FileSystem.FileSystem | Path.Path> => {
 }
 
 const TestLayer = makeNodeFsLayer()
+
+const watchEventPath = (event: FileSystem.WatchEvent): string | undefined =>
+  'path' in event && typeof event.path === 'string' ? event.path : undefined
+
+class WatchEventTimeout extends Data.TaggedError('WatchEventTimeout')<{
+  readonly fileName: string
+}> {}
 
 Vitest.describe('FileSystemBacking', () => {
   Vitest.describe('DistributedSemaphore finalizers', () => {
@@ -898,6 +916,65 @@ Vitest.describe('FileSystemBacking', () => {
   })
 
   Vitest.describe('onPermitsReleased', () => {
+    Vitest.it.effect('watches direct children but not nested children without recursion', () =>
+      Effect.gen(function* () {
+        const fsService = yield* FileSystem.FileSystem
+        const watchDir = yield* fsService.makeTempDirectory()
+        const nestedDir = path.join(watchDir, 'sub')
+        const directBefore = 'direct-before.lock'
+        const directAfter = 'direct-after.lock'
+        const nestedChild = 'nested-child.lock'
+        const events = yield* Queue.unbounded<FileSystem.WatchEvent>()
+        const observed: Array<FileSystem.WatchEvent> = []
+
+        const awaitObservedPath = (
+          fileName: string,
+        ): Effect.Effect<FileSystem.WatchEvent, WatchEventTimeout> =>
+          Effect.gen(function* () {
+            const event = yield* Queue.take(events).pipe(
+              Effect.timeoutFail({
+                duration: Duration.seconds(5),
+                onTimeout: () => new WatchEventTimeout({ fileName }),
+              }),
+            )
+            observed.push(event)
+
+            if (path.basename(watchEventPath(event) ?? '') === fileName) {
+              return event
+            }
+
+            return yield* awaitObservedPath(fileName)
+          })
+
+        yield* fsService.watch(watchDir).pipe(
+          Stream.runForEach((event) => Queue.offer(events, event)),
+          Effect.forkScoped,
+        )
+
+        yield* fsService.writeFileString(path.join(watchDir, directBefore), 'direct')
+        yield* awaitObservedPath(directBefore)
+
+        yield* fsService.makeDirectory(nestedDir)
+        yield* fsService.writeFileString(path.join(nestedDir, nestedChild), 'nested')
+        yield* fsService.writeFileString(path.join(watchDir, directAfter), 'settled')
+        yield* awaitObservedPath(directAfter)
+
+        const queued = Chunk.toReadonlyArray(yield* Queue.takeAll(events))
+        const observedPathNames = [...observed, ...queued]
+          .map(watchEventPath)
+          .filter((eventPath): eventPath is string => eventPath !== undefined)
+          .map((eventPath) => path.basename(eventPath))
+
+        expect(observedPathNames).toContain(directBefore)
+        expect(observedPathNames).toContain(directAfter)
+        // TODO(live-migration:effect-3-4): beta.102 removes the recursive option and always watches
+        // recursively — this nested-child assertion is EXPECTED to fail at the flip. Do NOT rebaseline:
+        // it is the signal that the compatibility shim (register entry
+        // filesystem-watch-recursive-option-removed) is still owed.
+        expect(observedPathNames).not.toContain(nestedChild)
+      }).pipe(Effect.provide(NodeContext.layer), Effect.scoped),
+    )
+
     Vitest.it.effect('completes when watched directory is deleted (no hang)', () =>
       Effect.gen(function* () {
         const fsService = yield* FileSystem.FileSystem
