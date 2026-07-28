@@ -13,7 +13,14 @@ const deps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/effect-schema-form' }),
   devDependencies: {
     external: {
-      ...catalog.pick(...peerDepNames, '@types/react', 'typescript', 'vitest'),
+      ...catalog.pick(
+        ...peerDepNames,
+        '@types/react',
+        '@types/react-dom',
+        'react-dom',
+        'typescript',
+        'vitest',
+      ),
     },
   },
   peerDependencies: {
