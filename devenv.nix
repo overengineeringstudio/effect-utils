@@ -378,6 +378,7 @@ in
       packages = packagesWithTests;
       extraTests = [ "devenv-modules:test" ];
       packageConcurrency = 4;
+      retainVitestJson = true;
     })
     (taskModules.storybook {
       packages = packagesWithStorybook;
