@@ -217,3 +217,36 @@
 - **Blast radius:** long-lived PTY, Restate, and agent-ingestion processes plus
   idle/hibernating runtimes.
 - **Status:** allowlisted in `patterns/effect-never-idle/scenario.json`.
+
+## filesystem-watch-recursive-option-removed
+
+- **Bucket:** C — REAL BREAKAGE WE MUST PRESERVE OR SHIM.
+- **Difference:** v3 `FileSystem.watch(path, { recursive: false })` observes only direct children.
+  In beta.102 the option is removed from both `FileSystem.watch` and `WatchBackend.register`, and
+  the shared Node implementation calls `node:fs.watch` with `{ recursive: true }`
+  unconditionally. The Bun FileSystem layer delegates to that implementation.
+- **Decision:** do not accept the widened watch scope. Restore recursive control upstream or
+  preserve non-recursive behavior with a compatibility FileSystem/watch shim before migrating
+  affected loops.
+- **Blast radius:** `megarepo` and `genie` watch modes. Unexpected nested events can trigger
+  spurious rebuilds or watch loops and present as timing flakiness rather than a clear migration
+  failure.
+- **Status:** REQUIRED COMPATIBILITY WORK; allowlisted at the one stable nested-path membership
+  trace path. Raw event ordering is deliberately not gated after five same-major runs produced
+  four unique v3 traces and three unique v4 traces. No matching upstream issue was found; a draft
+  report is in `recipes/filesystem-watch-ordering.md` pending orchestrator duplicate review.
+
+## prompt-pty-ansi-rendering
+
+- **Bucket:** C — REAL BYTE DIFFERENCE REQUIRING OWNER REVIEW.
+- **Difference:** under a real PTY, beta.102 `Prompt.select` emits shorter ANSI SGR/reset sequences.
+  The selection transcript changes from 452 to 356 bytes and the Ctrl-C transcript from 136 to
+  104 bytes.
+- **Decision:** do not blanket-rebaseline. Preserve exact bytes for raw-terminal parsers and
+  snapshots; a package may accept the v4 rendering only after its PTY, inline-renderer, cleanup,
+  and visual contracts pass.
+- **Blast radius:** `tui-react`, `pty-effect`, and any CLI snapshot or terminal parser built on
+  Effect Prompt.
+- **Status:** two exact transcript paths allowlisted. Raw-mode lifecycle, key and Escape decoding,
+  resize 80x24 -> 101x37, selected value, Quit behavior, bell, cursor restoration, and cleanup are
+  identical across five same-major repetitions.
