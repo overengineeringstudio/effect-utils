@@ -508,6 +508,7 @@ describe('tui-react JSON/NDJSON wire baselines (cross-major invariant)', () => {
     console.log = originalLog
   })
 
+  // TODO(live-migration:effect-3-4): Effect 4 tightens date handling; keep the 2026-02-31 sentinel opaque inside Schema.String rather than normalizing or refreshing these JSON bytes.
   it.effect('emits final JSON as byte-identical raw state', () =>
     Effect.gen(function* () {
       const app = createWireApp()
@@ -526,6 +527,7 @@ describe('tui-react JSON/NDJSON wire baselines (cross-major invariant)', () => {
     ),
   )
 
+  // TODO(live-migration:effect-3-4): Effect 4 tightens date handling; keep the 2026-02-31 sentinel opaque inside Schema.String rather than normalizing or refreshing these NDJSON bytes.
   it.effect('emits progressive NDJSON snapshots as byte-identical lines', () =>
     Effect.gen(function* () {
       const app = createWireApp()
@@ -543,6 +545,7 @@ describe('tui-react JSON/NDJSON wire baselines (cross-major invariant)', () => {
     ),
   )
 
+  // TODO(live-migration:effect-3-4): Effect 4 tightens date handling; keep the 2026-02-31 sentinel opaque inside Schema.String rather than normalizing or refreshing these event bytes.
   it.effect('emits event-mapped progressive NDJSON as byte-identical lines', () =>
     Effect.gen(function* () {
       const app = createWireApp({ eventNdjson: true })
