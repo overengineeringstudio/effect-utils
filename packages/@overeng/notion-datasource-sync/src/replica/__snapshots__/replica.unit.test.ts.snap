@@ -1,0 +1,1165 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`notion-datasource-sync replica wire baselines (cross-major invariant) > captures _nds_replica table SQL bytes and re-encoded identity 1`] = `
+{
+  "byteIdentical": true,
+  "decoded": [
+    {
+      "name": "_nds_replica_bodies",
+      "sql": "CREATE TABLE _nds_replica_bodies (
+      page_id TEXT PRIMARY KEY,
+      path TEXT NOT NULL,
+      base_hash TEXT NOT NULL,
+      current_hash TEXT NOT NULL,
+      sidecar_identity_proven INTEGER NOT NULL,
+      body_projection_json TEXT NOT NULL,
+      observed_event_id TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )",
+    },
+    {
+      "name": "_nds_replica_body_changes",
+      "sql": "CREATE TABLE _nds_replica_body_changes (
+      change_id TEXT PRIMARY KEY,
+      page_id TEXT NOT NULL,
+      body_path TEXT,
+      local_body_hash TEXT NOT NULL,
+      local_body_content TEXT,
+      base_hash TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (
+        'pending',
+        'queued',
+        'planned',
+        'applied',
+        'conflict',
+        'unsupported',
+        'rejected',
+        'needs_reconciliation'
+      )),
+      unsupported_reason TEXT,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    )",
+    },
+    {
+      "name": "_nds_replica_cell_changes",
+      "sql": "CREATE TABLE _nds_replica_cell_changes (
+      change_id TEXT PRIMARY KEY,
+      data_source_id TEXT NOT NULL,
+      page_id TEXT NOT NULL,
+      property_id TEXT NOT NULL,
+      value_json TEXT NOT NULL,
+      base_hash TEXT,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (
+        'pending',
+        'queued',
+        'planned',
+        'applied',
+        'conflict',
+        'unsupported',
+        'rejected',
+        'needs_reconciliation'
+      )),
+      unsupported_reason TEXT,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    )",
+    },
+    {
+      "name": "_nds_replica_cells",
+      "sql": "CREATE TABLE _nds_replica_cells (
+      data_source_id TEXT NOT NULL,
+      page_id TEXT NOT NULL,
+      property_id TEXT NOT NULL,
+      property_name TEXT NOT NULL,
+      property_type TEXT NOT NULL,
+      value_json TEXT,
+      value_text TEXT,
+      value_number REAL,
+      value_boolean INTEGER CHECK (value_boolean IN (0, 1) OR value_boolean IS NULL),
+      base_hash TEXT NOT NULL,
+      remote_hash TEXT NOT NULL,
+      -- Name-only convergence hash of the observed value (id/color stripped from
+      -- select/status options, cleared number/date folded to empty), so the
+      -- pristine base compares in the SAME space the .nmd frontmatter surface can
+      -- reach. Distinct from remote_hash (the full-canonical remote-write base).
+      -- SM5c local convergence; see convergenceFormHash.
+      convergence_hash TEXT,
+      availability TEXT NOT NULL,
+      write_class TEXT NOT NULL,
+      observed_event_id TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (page_id, property_id)
+    )",
+    },
+    {
+      "name": "_nds_replica_conflict_resolutions",
+      "sql": "CREATE TABLE _nds_replica_conflict_resolutions (
+      resolution_id TEXT PRIMARY KEY,
+      conflict_id TEXT NOT NULL,
+      action TEXT NOT NULL CHECK (action IN ('choose_remote', 'abandon_local', 'retry_after_refresh', 'choose_local', 'manual_value')),
+      value_json TEXT,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (
+        'pending',
+        'queued',
+        'planned',
+        'applied',
+        'conflict',
+        'unsupported',
+        'rejected',
+        'needs_reconciliation'
+      )),
+      unsupported_reason TEXT,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      CHECK (value_json IS NULL OR json_valid(value_json))
+    )",
+    },
+    {
+      "name": "_nds_replica_conflicts",
+      "sql": "CREATE TABLE _nds_replica_conflicts (
+      conflict_id TEXT PRIMARY KEY,
+      page_id TEXT,
+      property_id TEXT,
+      state TEXT NOT NULL,
+      base_hash TEXT,
+      local_hash TEXT,
+      remote_hash TEXT,
+      opened_event_id TEXT NOT NULL,
+      resolution_event_id TEXT,
+      updated_at TEXT NOT NULL
+    )",
+    },
+    {
+      "name": "_nds_replica_data_sources",
+      "sql": "CREATE TABLE _nds_replica_data_sources (
+      data_source_id TEXT PRIMARY KEY,
+      root_id TEXT NOT NULL,
+      parent_database_id TEXT,
+      schema_hash TEXT NOT NULL,
+      metadata_hash TEXT,
+      metadata_json TEXT,
+      title_plain_text TEXT,
+      description_plain_text TEXT,
+      observed_event_id TEXT NOT NULL,
+      observed_at TEXT,
+      updated_at TEXT NOT NULL,
+      -- Materialized from the control-plane _nds_workspace_binding at projection
+      -- time so the public schema view stays standalone-queryable once the
+      -- control plane moves to .notion/v1/state.sqlite (DD-A/DD-B, decision 0020).
+      workspace_binding_database_id TEXT,
+      workspace_root TEXT
+    )",
+    },
+    {
+      "name": "_nds_replica_databases",
+      "sql": "CREATE TABLE _nds_replica_databases (
+      database_id TEXT PRIMARY KEY,
+      data_source_id TEXT NOT NULL,
+      root_id TEXT NOT NULL,
+      metadata_hash TEXT NOT NULL,
+      metadata_json TEXT NOT NULL,
+      title_plain_text TEXT,
+      description_plain_text TEXT,
+      observed_event_id TEXT NOT NULL,
+      observed_at TEXT,
+      updated_at TEXT NOT NULL
+    )",
+    },
+    {
+      "name": "_nds_replica_file_assets",
+      "sql": "CREATE TABLE _nds_replica_file_assets (
+      asset_id TEXT PRIMARY KEY,
+      source_type TEXT NOT NULL CHECK (source_type IN ('external_url', 'local_upload')),
+      name TEXT NOT NULL,
+      external_url TEXT,
+      local_path TEXT,
+      content_hash TEXT,
+      byte_length INTEGER,
+      mime_type TEXT,
+      _nds_replica_file_upload_id TEXT,
+      upload_status TEXT,
+      expires_at TEXT,
+      retry_count INTEGER NOT NULL DEFAULT 0,
+      last_error TEXT,
+      status TEXT NOT NULL DEFAULT 'ready' CHECK (status IN ('ready', 'pending_upload', 'uploaded', 'expired', 'failed', 'unsupported')),
+      unsupported_reason TEXT,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      CHECK (
+        (source_type = 'external_url' AND external_url IS NOT NULL AND _nds_replica_file_upload_id IS NULL)
+        OR (source_type = 'local_upload' AND local_path IS NOT NULL AND content_hash IS NOT NULL)
+      )
+    )",
+    },
+    {
+      "name": "_nds_replica_file_changes",
+      "sql": "CREATE TABLE _nds_replica_file_changes (
+      change_id TEXT PRIMARY KEY,
+      asset_id TEXT NOT NULL,
+      action TEXT NOT NULL CHECK (action IN ('attach_external_url', 'attach_upload')),
+      data_source_id TEXT NOT NULL,
+      page_id TEXT NOT NULL,
+      property_id TEXT NOT NULL,
+      base_hash TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (
+        'pending',
+        'queued',
+        'planned',
+        'applied',
+        'conflict',
+        'unsupported',
+        'rejected',
+        'needs_reconciliation'
+      )),
+      unsupported_reason TEXT,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    )",
+    },
+    {
+      "name": "_nds_replica_local_changes",
+      "sql": "CREATE TABLE _nds_replica_local_changes (
+      change_id TEXT PRIMARY KEY,
+      kind TEXT NOT NULL CHECK (kind IN (
+        'cell_patch',
+        'row_archive',
+        'row_restore',
+        'row_create',
+        'body_patch',
+        'metadata_patch',
+        'schema_patch',
+        'file_attach',
+        'view_change',
+        'conflict_resolution'
+      )),
+      data_source_id TEXT NOT NULL,
+      page_id TEXT,
+      property_id TEXT,
+      value_json TEXT,
+      base_hash TEXT,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (
+        'pending',
+        'queued',
+        'planned',
+        'applied',
+        'conflict',
+        'unsupported',
+        'rejected',
+        'needs_reconciliation'
+      )),
+      unsupported_reason TEXT,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    )",
+    },
+    {
+      "name": "_nds_replica_metadata_changes",
+      "sql": "CREATE TABLE _nds_replica_metadata_changes (
+      change_id TEXT PRIMARY KEY,
+      data_source_id TEXT NOT NULL,
+      database_id TEXT,
+      resource_type TEXT NOT NULL DEFAULT 'data_source' CHECK (resource_type IN ('data_source', 'database')),
+      title_plain_text TEXT,
+      description_plain_text TEXT,
+      base_hash TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (
+        'pending',
+        'queued',
+        'planned',
+        'applied',
+        'conflict',
+        'unsupported',
+        'rejected',
+        'needs_reconciliation'
+      )),
+      unsupported_reason TEXT,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      CHECK (title_plain_text IS NOT NULL OR description_plain_text IS NOT NULL)
+    )",
+    },
+    {
+      "name": "_nds_replica_properties",
+      "sql": "CREATE TABLE _nds_replica_properties (
+      data_source_id TEXT NOT NULL,
+      property_id TEXT NOT NULL,
+      property_name TEXT NOT NULL,
+      property_type TEXT NOT NULL,
+      config_hash TEXT NOT NULL,
+      schema_hash TEXT NOT NULL,
+      write_class TEXT NOT NULL,
+      schema_ordinal INTEGER NOT NULL DEFAULT 0,
+      config_json TEXT,
+      observed_event_id TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (data_source_id, property_id)
+    )",
+    },
+    {
+      "name": "_nds_replica_property_column_plan",
+      "sql": "CREATE TABLE _nds_replica_property_column_plan (
+      data_source_id TEXT NOT NULL,
+      property_id TEXT NOT NULL,
+      property_name TEXT NOT NULL,
+      column_name TEXT NOT NULL,
+      property_type TEXT NOT NULL,
+      write_class TEXT NOT NULL,
+      ordinal INTEGER NOT NULL,
+      is_scalar_read_supported INTEGER NOT NULL CHECK (is_scalar_read_supported IN (0, 1)),
+      is_rows_write_supported INTEGER NOT NULL CHECK (is_rows_write_supported IN (0, 1)),
+      null_write_behavior TEXT NOT NULL,
+      config_json TEXT,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (data_source_id, property_id),
+      UNIQUE (data_source_id, column_name)
+    )",
+    },
+    {
+      "name": "_nds_replica_relation_targets",
+      "sql": "CREATE TABLE _nds_replica_relation_targets (
+      data_source_id TEXT NOT NULL,
+      property_id TEXT NOT NULL,
+      target_page_id TEXT NOT NULL,
+      observed_from_page_id TEXT NOT NULL,
+      observed_event_id TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (data_source_id, property_id, target_page_id)
+    )",
+    },
+    {
+      "name": "_nds_replica_row_changes",
+      "sql": "CREATE TABLE _nds_replica_row_changes (
+      change_id TEXT PRIMARY KEY,
+      kind TEXT NOT NULL CHECK (kind IN ('row_archive', 'row_restore', 'row_create')),
+      data_source_id TEXT NOT NULL,
+      page_id TEXT,
+      value_json TEXT,
+      base_hash TEXT,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (
+        'pending',
+        'queued',
+        'planned',
+        'applied',
+        'conflict',
+        'unsupported',
+        'rejected',
+        'needs_reconciliation'
+      )),
+      unsupported_reason TEXT,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    )",
+    },
+    {
+      "name": "_nds_replica_row_creates",
+      "sql": "CREATE TABLE _nds_replica_row_creates (
+      change_id TEXT PRIMARY KEY,
+      data_source_id TEXT NOT NULL,
+      local_row_id TEXT NOT NULL,
+      client_request_key TEXT NOT NULL,
+      initial_values_json TEXT NOT NULL CHECK (json_valid(initial_values_json)),
+      base_schema_hash TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (
+        'pending',
+        'queued',
+        'planned',
+        'applied',
+        'conflict',
+        'unsupported',
+        'rejected',
+        'needs_reconciliation'
+      )),
+      remote_page_id TEXT,
+      unsupported_reason TEXT,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      UNIQUE (data_source_id, local_row_id),
+      UNIQUE (data_source_id, client_request_key)
+    )",
+    },
+    {
+      "name": "_nds_replica_rows",
+      "sql": "CREATE TABLE _nds_replica_rows (
+      data_source_id TEXT NOT NULL,
+      page_id TEXT PRIMARY KEY,
+      properties_hash TEXT NOT NULL,
+      in_trash INTEGER NOT NULL CHECK (in_trash IN (0, 1)),
+      moved_out INTEGER NOT NULL CHECK (moved_out IN (0, 1)),
+      local_delete_candidate INTEGER NOT NULL CHECK (local_delete_candidate IN (0, 1)),
+      observed_event_id TEXT NOT NULL,
+      observed_at TEXT,
+      updated_at TEXT NOT NULL
+    )",
+    },
+    {
+      "name": "_nds_replica_schema_changes",
+      "sql": "CREATE TABLE _nds_replica_schema_changes (
+      change_id TEXT PRIMARY KEY,
+      data_source_id TEXT NOT NULL,
+      operation_json TEXT NOT NULL,
+      base_hash TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (
+        'pending',
+        'queued',
+        'planned',
+        'applied',
+        'conflict',
+        'unsupported',
+        'rejected',
+        'needs_reconciliation'
+      )),
+      unsupported_reason TEXT,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      CHECK (json_valid(operation_json))
+    )",
+    },
+    {
+      "name": "_nds_replica_sync_status",
+      "sql": "CREATE TABLE _nds_replica_sync_status (
+      root_id TEXT PRIMARY KEY,
+      data_sources INTEGER NOT NULL,
+      pages INTEGER NOT NULL,
+      cells INTEGER NOT NULL,
+      bodies INTEGER NOT NULL,
+      conflicts_open INTEGER NOT NULL,
+      pending_local_changes INTEGER NOT NULL,
+      -- Control-plane aggregate counts materialized from state.sqlite at
+      -- projection time (DD-B, decision 0020): the sync_status view reads ONLY this
+      -- projection table so the data file never ATTACHes the control plane.
+      pending_outbox INTEGER NOT NULL DEFAULT 0,
+      blocked_outbox INTEGER NOT NULL DEFAULT 0,
+      guard_blocks INTEGER NOT NULL DEFAULT 0,
+      unclassified_tombstones INTEGER NOT NULL DEFAULT 0,
+      unsupported_capabilities INTEGER NOT NULL DEFAULT 0,
+      incomplete_hydration INTEGER NOT NULL DEFAULT 0,
+      -- Resolved workspace root, materialized so the view keeps move-detection
+      -- (pragma_database_list self-join) without joining the control plane.
+      workspace_root TEXT,
+      updated_at TEXT NOT NULL
+    )",
+    },
+    {
+      "name": "_nds_replica_view_changes",
+      "sql": "CREATE TABLE _nds_replica_view_changes (
+      change_id TEXT PRIMARY KEY,
+      action TEXT NOT NULL CHECK (action IN ('create', 'update', 'delete')),
+      view_id TEXT,
+      database_id TEXT,
+      data_source_id TEXT,
+      view_name TEXT,
+      view_type TEXT,
+      filter_json TEXT,
+      sorts_json TEXT,
+      configuration_json TEXT,
+      base_hash TEXT,
+      destructive_ack TEXT,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (
+        'pending',
+        'queued',
+        'planned',
+        'applied',
+        'conflict',
+        'unsupported',
+        'rejected',
+        'needs_reconciliation'
+      )),
+      unsupported_reason TEXT,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      CHECK (filter_json IS NULL OR json_valid(filter_json)),
+      CHECK (sorts_json IS NULL OR json_valid(sorts_json)),
+      CHECK (configuration_json IS NULL OR json_valid(configuration_json))
+    )",
+    },
+    {
+      "name": "_nds_replica_views",
+      "sql": "CREATE TABLE _nds_replica_views (
+      view_id TEXT PRIMARY KEY,
+      database_id TEXT NOT NULL,
+      data_source_id TEXT NOT NULL,
+      root_id TEXT NOT NULL,
+      view_name TEXT NOT NULL,
+      view_type TEXT NOT NULL,
+      view_hash TEXT NOT NULL,
+      view_json TEXT NOT NULL,
+      observed_event_id TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )",
+    },
+  ],
+  "encoded": "[
+  {
+    "name": "_nds_replica_bodies",
+    "sql": "CREATE TABLE _nds_replica_bodies (\\n      page_id TEXT PRIMARY KEY,\\n      path TEXT NOT NULL,\\n      base_hash TEXT NOT NULL,\\n      current_hash TEXT NOT NULL,\\n      sidecar_identity_proven INTEGER NOT NULL,\\n      body_projection_json TEXT NOT NULL,\\n      observed_event_id TEXT NOT NULL,\\n      updated_at TEXT NOT NULL\\n    )"
+  },
+  {
+    "name": "_nds_replica_body_changes",
+    "sql": "CREATE TABLE _nds_replica_body_changes (\\n      change_id TEXT PRIMARY KEY,\\n      page_id TEXT NOT NULL,\\n      body_path TEXT,\\n      local_body_hash TEXT NOT NULL,\\n      local_body_content TEXT,\\n      base_hash TEXT NOT NULL,\\n      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (\\n        'pending',\\n        'queued',\\n        'planned',\\n        'applied',\\n        'conflict',\\n        'unsupported',\\n        'rejected',\\n        'needs_reconciliation'\\n      )),\\n      unsupported_reason TEXT,\\n      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),\\n      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))\\n    )"
+  },
+  {
+    "name": "_nds_replica_cell_changes",
+    "sql": "CREATE TABLE _nds_replica_cell_changes (\\n      change_id TEXT PRIMARY KEY,\\n      data_source_id TEXT NOT NULL,\\n      page_id TEXT NOT NULL,\\n      property_id TEXT NOT NULL,\\n      value_json TEXT NOT NULL,\\n      base_hash TEXT,\\n      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (\\n        'pending',\\n        'queued',\\n        'planned',\\n        'applied',\\n        'conflict',\\n        'unsupported',\\n        'rejected',\\n        'needs_reconciliation'\\n      )),\\n      unsupported_reason TEXT,\\n      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),\\n      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))\\n    )"
+  },
+  {
+    "name": "_nds_replica_cells",
+    "sql": "CREATE TABLE _nds_replica_cells (\\n      data_source_id TEXT NOT NULL,\\n      page_id TEXT NOT NULL,\\n      property_id TEXT NOT NULL,\\n      property_name TEXT NOT NULL,\\n      property_type TEXT NOT NULL,\\n      value_json TEXT,\\n      value_text TEXT,\\n      value_number REAL,\\n      value_boolean INTEGER CHECK (value_boolean IN (0, 1) OR value_boolean IS NULL),\\n      base_hash TEXT NOT NULL,\\n      remote_hash TEXT NOT NULL,\\n      -- Name-only convergence hash of the observed value (id/color stripped from\\n      -- select/status options, cleared number/date folded to empty), so the\\n      -- pristine base compares in the SAME space the .nmd frontmatter surface can\\n      -- reach. Distinct from remote_hash (the full-canonical remote-write base).\\n      -- SM5c local convergence; see convergenceFormHash.\\n      convergence_hash TEXT,\\n      availability TEXT NOT NULL,\\n      write_class TEXT NOT NULL,\\n      observed_event_id TEXT NOT NULL,\\n      updated_at TEXT NOT NULL,\\n      PRIMARY KEY (page_id, property_id)\\n    )"
+  },
+  {
+    "name": "_nds_replica_conflict_resolutions",
+    "sql": "CREATE TABLE _nds_replica_conflict_resolutions (\\n      resolution_id TEXT PRIMARY KEY,\\n      conflict_id TEXT NOT NULL,\\n      action TEXT NOT NULL CHECK (action IN ('choose_remote', 'abandon_local', 'retry_after_refresh', 'choose_local', 'manual_value')),\\n      value_json TEXT,\\n      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (\\n        'pending',\\n        'queued',\\n        'planned',\\n        'applied',\\n        'conflict',\\n        'unsupported',\\n        'rejected',\\n        'needs_reconciliation'\\n      )),\\n      unsupported_reason TEXT,\\n      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),\\n      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),\\n      CHECK (value_json IS NULL OR json_valid(value_json))\\n    )"
+  },
+  {
+    "name": "_nds_replica_conflicts",
+    "sql": "CREATE TABLE _nds_replica_conflicts (\\n      conflict_id TEXT PRIMARY KEY,\\n      page_id TEXT,\\n      property_id TEXT,\\n      state TEXT NOT NULL,\\n      base_hash TEXT,\\n      local_hash TEXT,\\n      remote_hash TEXT,\\n      opened_event_id TEXT NOT NULL,\\n      resolution_event_id TEXT,\\n      updated_at TEXT NOT NULL\\n    )"
+  },
+  {
+    "name": "_nds_replica_data_sources",
+    "sql": "CREATE TABLE _nds_replica_data_sources (\\n      data_source_id TEXT PRIMARY KEY,\\n      root_id TEXT NOT NULL,\\n      parent_database_id TEXT,\\n      schema_hash TEXT NOT NULL,\\n      metadata_hash TEXT,\\n      metadata_json TEXT,\\n      title_plain_text TEXT,\\n      description_plain_text TEXT,\\n      observed_event_id TEXT NOT NULL,\\n      observed_at TEXT,\\n      updated_at TEXT NOT NULL,\\n      -- Materialized from the control-plane _nds_workspace_binding at projection\\n      -- time so the public schema view stays standalone-queryable once the\\n      -- control plane moves to .notion/v1/state.sqlite (DD-A/DD-B, decision 0020).\\n      workspace_binding_database_id TEXT,\\n      workspace_root TEXT\\n    )"
+  },
+  {
+    "name": "_nds_replica_databases",
+    "sql": "CREATE TABLE _nds_replica_databases (\\n      database_id TEXT PRIMARY KEY,\\n      data_source_id TEXT NOT NULL,\\n      root_id TEXT NOT NULL,\\n      metadata_hash TEXT NOT NULL,\\n      metadata_json TEXT NOT NULL,\\n      title_plain_text TEXT,\\n      description_plain_text TEXT,\\n      observed_event_id TEXT NOT NULL,\\n      observed_at TEXT,\\n      updated_at TEXT NOT NULL\\n    )"
+  },
+  {
+    "name": "_nds_replica_file_assets",
+    "sql": "CREATE TABLE _nds_replica_file_assets (\\n      asset_id TEXT PRIMARY KEY,\\n      source_type TEXT NOT NULL CHECK (source_type IN ('external_url', 'local_upload')),\\n      name TEXT NOT NULL,\\n      external_url TEXT,\\n      local_path TEXT,\\n      content_hash TEXT,\\n      byte_length INTEGER,\\n      mime_type TEXT,\\n      _nds_replica_file_upload_id TEXT,\\n      upload_status TEXT,\\n      expires_at TEXT,\\n      retry_count INTEGER NOT NULL DEFAULT 0,\\n      last_error TEXT,\\n      status TEXT NOT NULL DEFAULT 'ready' CHECK (status IN ('ready', 'pending_upload', 'uploaded', 'expired', 'failed', 'unsupported')),\\n      unsupported_reason TEXT,\\n      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),\\n      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),\\n      CHECK (\\n        (source_type = 'external_url' AND external_url IS NOT NULL AND _nds_replica_file_upload_id IS NULL)\\n        OR (source_type = 'local_upload' AND local_path IS NOT NULL AND content_hash IS NOT NULL)\\n      )\\n    )"
+  },
+  {
+    "name": "_nds_replica_file_changes",
+    "sql": "CREATE TABLE _nds_replica_file_changes (\\n      change_id TEXT PRIMARY KEY,\\n      asset_id TEXT NOT NULL,\\n      action TEXT NOT NULL CHECK (action IN ('attach_external_url', 'attach_upload')),\\n      data_source_id TEXT NOT NULL,\\n      page_id TEXT NOT NULL,\\n      property_id TEXT NOT NULL,\\n      base_hash TEXT NOT NULL,\\n      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (\\n        'pending',\\n        'queued',\\n        'planned',\\n        'applied',\\n        'conflict',\\n        'unsupported',\\n        'rejected',\\n        'needs_reconciliation'\\n      )),\\n      unsupported_reason TEXT,\\n      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),\\n      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))\\n    )"
+  },
+  {
+    "name": "_nds_replica_local_changes",
+    "sql": "CREATE TABLE _nds_replica_local_changes (\\n      change_id TEXT PRIMARY KEY,\\n      kind TEXT NOT NULL CHECK (kind IN (\\n        'cell_patch',\\n        'row_archive',\\n        'row_restore',\\n        'row_create',\\n        'body_patch',\\n        'metadata_patch',\\n        'schema_patch',\\n        'file_attach',\\n        'view_change',\\n        'conflict_resolution'\\n      )),\\n      data_source_id TEXT NOT NULL,\\n      page_id TEXT,\\n      property_id TEXT,\\n      value_json TEXT,\\n      base_hash TEXT,\\n      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (\\n        'pending',\\n        'queued',\\n        'planned',\\n        'applied',\\n        'conflict',\\n        'unsupported',\\n        'rejected',\\n        'needs_reconciliation'\\n      )),\\n      unsupported_reason TEXT,\\n      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),\\n      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))\\n    )"
+  },
+  {
+    "name": "_nds_replica_metadata_changes",
+    "sql": "CREATE TABLE _nds_replica_metadata_changes (\\n      change_id TEXT PRIMARY KEY,\\n      data_source_id TEXT NOT NULL,\\n      database_id TEXT,\\n      resource_type TEXT NOT NULL DEFAULT 'data_source' CHECK (resource_type IN ('data_source', 'database')),\\n      title_plain_text TEXT,\\n      description_plain_text TEXT,\\n      base_hash TEXT NOT NULL,\\n      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (\\n        'pending',\\n        'queued',\\n        'planned',\\n        'applied',\\n        'conflict',\\n        'unsupported',\\n        'rejected',\\n        'needs_reconciliation'\\n      )),\\n      unsupported_reason TEXT,\\n      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),\\n      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),\\n      CHECK (title_plain_text IS NOT NULL OR description_plain_text IS NOT NULL)\\n    )"
+  },
+  {
+    "name": "_nds_replica_properties",
+    "sql": "CREATE TABLE _nds_replica_properties (\\n      data_source_id TEXT NOT NULL,\\n      property_id TEXT NOT NULL,\\n      property_name TEXT NOT NULL,\\n      property_type TEXT NOT NULL,\\n      config_hash TEXT NOT NULL,\\n      schema_hash TEXT NOT NULL,\\n      write_class TEXT NOT NULL,\\n      schema_ordinal INTEGER NOT NULL DEFAULT 0,\\n      config_json TEXT,\\n      observed_event_id TEXT NOT NULL,\\n      updated_at TEXT NOT NULL,\\n      PRIMARY KEY (data_source_id, property_id)\\n    )"
+  },
+  {
+    "name": "_nds_replica_property_column_plan",
+    "sql": "CREATE TABLE _nds_replica_property_column_plan (\\n      data_source_id TEXT NOT NULL,\\n      property_id TEXT NOT NULL,\\n      property_name TEXT NOT NULL,\\n      column_name TEXT NOT NULL,\\n      property_type TEXT NOT NULL,\\n      write_class TEXT NOT NULL,\\n      ordinal INTEGER NOT NULL,\\n      is_scalar_read_supported INTEGER NOT NULL CHECK (is_scalar_read_supported IN (0, 1)),\\n      is_rows_write_supported INTEGER NOT NULL CHECK (is_rows_write_supported IN (0, 1)),\\n      null_write_behavior TEXT NOT NULL,\\n      config_json TEXT,\\n      updated_at TEXT NOT NULL,\\n      PRIMARY KEY (data_source_id, property_id),\\n      UNIQUE (data_source_id, column_name)\\n    )"
+  },
+  {
+    "name": "_nds_replica_relation_targets",
+    "sql": "CREATE TABLE _nds_replica_relation_targets (\\n      data_source_id TEXT NOT NULL,\\n      property_id TEXT NOT NULL,\\n      target_page_id TEXT NOT NULL,\\n      observed_from_page_id TEXT NOT NULL,\\n      observed_event_id TEXT NOT NULL,\\n      updated_at TEXT NOT NULL,\\n      PRIMARY KEY (data_source_id, property_id, target_page_id)\\n    )"
+  },
+  {
+    "name": "_nds_replica_row_changes",
+    "sql": "CREATE TABLE _nds_replica_row_changes (\\n      change_id TEXT PRIMARY KEY,\\n      kind TEXT NOT NULL CHECK (kind IN ('row_archive', 'row_restore', 'row_create')),\\n      data_source_id TEXT NOT NULL,\\n      page_id TEXT,\\n      value_json TEXT,\\n      base_hash TEXT,\\n      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (\\n        'pending',\\n        'queued',\\n        'planned',\\n        'applied',\\n        'conflict',\\n        'unsupported',\\n        'rejected',\\n        'needs_reconciliation'\\n      )),\\n      unsupported_reason TEXT,\\n      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),\\n      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))\\n    )"
+  },
+  {
+    "name": "_nds_replica_row_creates",
+    "sql": "CREATE TABLE _nds_replica_row_creates (\\n      change_id TEXT PRIMARY KEY,\\n      data_source_id TEXT NOT NULL,\\n      local_row_id TEXT NOT NULL,\\n      client_request_key TEXT NOT NULL,\\n      initial_values_json TEXT NOT NULL CHECK (json_valid(initial_values_json)),\\n      base_schema_hash TEXT NOT NULL,\\n      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (\\n        'pending',\\n        'queued',\\n        'planned',\\n        'applied',\\n        'conflict',\\n        'unsupported',\\n        'rejected',\\n        'needs_reconciliation'\\n      )),\\n      remote_page_id TEXT,\\n      unsupported_reason TEXT,\\n      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),\\n      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),\\n      UNIQUE (data_source_id, local_row_id),\\n      UNIQUE (data_source_id, client_request_key)\\n    )"
+  },
+  {
+    "name": "_nds_replica_rows",
+    "sql": "CREATE TABLE _nds_replica_rows (\\n      data_source_id TEXT NOT NULL,\\n      page_id TEXT PRIMARY KEY,\\n      properties_hash TEXT NOT NULL,\\n      in_trash INTEGER NOT NULL CHECK (in_trash IN (0, 1)),\\n      moved_out INTEGER NOT NULL CHECK (moved_out IN (0, 1)),\\n      local_delete_candidate INTEGER NOT NULL CHECK (local_delete_candidate IN (0, 1)),\\n      observed_event_id TEXT NOT NULL,\\n      observed_at TEXT,\\n      updated_at TEXT NOT NULL\\n    )"
+  },
+  {
+    "name": "_nds_replica_schema_changes",
+    "sql": "CREATE TABLE _nds_replica_schema_changes (\\n      change_id TEXT PRIMARY KEY,\\n      data_source_id TEXT NOT NULL,\\n      operation_json TEXT NOT NULL,\\n      base_hash TEXT NOT NULL,\\n      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (\\n        'pending',\\n        'queued',\\n        'planned',\\n        'applied',\\n        'conflict',\\n        'unsupported',\\n        'rejected',\\n        'needs_reconciliation'\\n      )),\\n      unsupported_reason TEXT,\\n      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),\\n      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),\\n      CHECK (json_valid(operation_json))\\n    )"
+  },
+  {
+    "name": "_nds_replica_sync_status",
+    "sql": "CREATE TABLE _nds_replica_sync_status (\\n      root_id TEXT PRIMARY KEY,\\n      data_sources INTEGER NOT NULL,\\n      pages INTEGER NOT NULL,\\n      cells INTEGER NOT NULL,\\n      bodies INTEGER NOT NULL,\\n      conflicts_open INTEGER NOT NULL,\\n      pending_local_changes INTEGER NOT NULL,\\n      -- Control-plane aggregate counts materialized from state.sqlite at\\n      -- projection time (DD-B, decision 0020): the sync_status view reads ONLY this\\n      -- projection table so the data file never ATTACHes the control plane.\\n      pending_outbox INTEGER NOT NULL DEFAULT 0,\\n      blocked_outbox INTEGER NOT NULL DEFAULT 0,\\n      guard_blocks INTEGER NOT NULL DEFAULT 0,\\n      unclassified_tombstones INTEGER NOT NULL DEFAULT 0,\\n      unsupported_capabilities INTEGER NOT NULL DEFAULT 0,\\n      incomplete_hydration INTEGER NOT NULL DEFAULT 0,\\n      -- Resolved workspace root, materialized so the view keeps move-detection\\n      -- (pragma_database_list self-join) without joining the control plane.\\n      workspace_root TEXT,\\n      updated_at TEXT NOT NULL\\n    )"
+  },
+  {
+    "name": "_nds_replica_view_changes",
+    "sql": "CREATE TABLE _nds_replica_view_changes (\\n      change_id TEXT PRIMARY KEY,\\n      action TEXT NOT NULL CHECK (action IN ('create', 'update', 'delete')),\\n      view_id TEXT,\\n      database_id TEXT,\\n      data_source_id TEXT,\\n      view_name TEXT,\\n      view_type TEXT,\\n      filter_json TEXT,\\n      sorts_json TEXT,\\n      configuration_json TEXT,\\n      base_hash TEXT,\\n      destructive_ack TEXT,\\n      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (\\n        'pending',\\n        'queued',\\n        'planned',\\n        'applied',\\n        'conflict',\\n        'unsupported',\\n        'rejected',\\n        'needs_reconciliation'\\n      )),\\n      unsupported_reason TEXT,\\n      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),\\n      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),\\n      CHECK (filter_json IS NULL OR json_valid(filter_json)),\\n      CHECK (sorts_json IS NULL OR json_valid(sorts_json)),\\n      CHECK (configuration_json IS NULL OR json_valid(configuration_json))\\n    )"
+  },
+  {
+    "name": "_nds_replica_views",
+    "sql": "CREATE TABLE _nds_replica_views (\\n      view_id TEXT PRIMARY KEY,\\n      database_id TEXT NOT NULL,\\n      data_source_id TEXT NOT NULL,\\n      root_id TEXT NOT NULL,\\n      view_name TEXT NOT NULL,\\n      view_type TEXT NOT NULL,\\n      view_hash TEXT NOT NULL,\\n      view_json TEXT NOT NULL,\\n      observed_event_id TEXT NOT NULL,\\n      updated_at TEXT NOT NULL\\n    )"
+  }
+]",
+  "reencoded": "[
+  {
+    "name": "_nds_replica_bodies",
+    "sql": "CREATE TABLE _nds_replica_bodies (\\n      page_id TEXT PRIMARY KEY,\\n      path TEXT NOT NULL,\\n      base_hash TEXT NOT NULL,\\n      current_hash TEXT NOT NULL,\\n      sidecar_identity_proven INTEGER NOT NULL,\\n      body_projection_json TEXT NOT NULL,\\n      observed_event_id TEXT NOT NULL,\\n      updated_at TEXT NOT NULL\\n    )"
+  },
+  {
+    "name": "_nds_replica_body_changes",
+    "sql": "CREATE TABLE _nds_replica_body_changes (\\n      change_id TEXT PRIMARY KEY,\\n      page_id TEXT NOT NULL,\\n      body_path TEXT,\\n      local_body_hash TEXT NOT NULL,\\n      local_body_content TEXT,\\n      base_hash TEXT NOT NULL,\\n      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (\\n        'pending',\\n        'queued',\\n        'planned',\\n        'applied',\\n        'conflict',\\n        'unsupported',\\n        'rejected',\\n        'needs_reconciliation'\\n      )),\\n      unsupported_reason TEXT,\\n      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),\\n      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))\\n    )"
+  },
+  {
+    "name": "_nds_replica_cell_changes",
+    "sql": "CREATE TABLE _nds_replica_cell_changes (\\n      change_id TEXT PRIMARY KEY,\\n      data_source_id TEXT NOT NULL,\\n      page_id TEXT NOT NULL,\\n      property_id TEXT NOT NULL,\\n      value_json TEXT NOT NULL,\\n      base_hash TEXT,\\n      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (\\n        'pending',\\n        'queued',\\n        'planned',\\n        'applied',\\n        'conflict',\\n        'unsupported',\\n        'rejected',\\n        'needs_reconciliation'\\n      )),\\n      unsupported_reason TEXT,\\n      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),\\n      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))\\n    )"
+  },
+  {
+    "name": "_nds_replica_cells",
+    "sql": "CREATE TABLE _nds_replica_cells (\\n      data_source_id TEXT NOT NULL,\\n      page_id TEXT NOT NULL,\\n      property_id TEXT NOT NULL,\\n      property_name TEXT NOT NULL,\\n      property_type TEXT NOT NULL,\\n      value_json TEXT,\\n      value_text TEXT,\\n      value_number REAL,\\n      value_boolean INTEGER CHECK (value_boolean IN (0, 1) OR value_boolean IS NULL),\\n      base_hash TEXT NOT NULL,\\n      remote_hash TEXT NOT NULL,\\n      -- Name-only convergence hash of the observed value (id/color stripped from\\n      -- select/status options, cleared number/date folded to empty), so the\\n      -- pristine base compares in the SAME space the .nmd frontmatter surface can\\n      -- reach. Distinct from remote_hash (the full-canonical remote-write base).\\n      -- SM5c local convergence; see convergenceFormHash.\\n      convergence_hash TEXT,\\n      availability TEXT NOT NULL,\\n      write_class TEXT NOT NULL,\\n      observed_event_id TEXT NOT NULL,\\n      updated_at TEXT NOT NULL,\\n      PRIMARY KEY (page_id, property_id)\\n    )"
+  },
+  {
+    "name": "_nds_replica_conflict_resolutions",
+    "sql": "CREATE TABLE _nds_replica_conflict_resolutions (\\n      resolution_id TEXT PRIMARY KEY,\\n      conflict_id TEXT NOT NULL,\\n      action TEXT NOT NULL CHECK (action IN ('choose_remote', 'abandon_local', 'retry_after_refresh', 'choose_local', 'manual_value')),\\n      value_json TEXT,\\n      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (\\n        'pending',\\n        'queued',\\n        'planned',\\n        'applied',\\n        'conflict',\\n        'unsupported',\\n        'rejected',\\n        'needs_reconciliation'\\n      )),\\n      unsupported_reason TEXT,\\n      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),\\n      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),\\n      CHECK (value_json IS NULL OR json_valid(value_json))\\n    )"
+  },
+  {
+    "name": "_nds_replica_conflicts",
+    "sql": "CREATE TABLE _nds_replica_conflicts (\\n      conflict_id TEXT PRIMARY KEY,\\n      page_id TEXT,\\n      property_id TEXT,\\n      state TEXT NOT NULL,\\n      base_hash TEXT,\\n      local_hash TEXT,\\n      remote_hash TEXT,\\n      opened_event_id TEXT NOT NULL,\\n      resolution_event_id TEXT,\\n      updated_at TEXT NOT NULL\\n    )"
+  },
+  {
+    "name": "_nds_replica_data_sources",
+    "sql": "CREATE TABLE _nds_replica_data_sources (\\n      data_source_id TEXT PRIMARY KEY,\\n      root_id TEXT NOT NULL,\\n      parent_database_id TEXT,\\n      schema_hash TEXT NOT NULL,\\n      metadata_hash TEXT,\\n      metadata_json TEXT,\\n      title_plain_text TEXT,\\n      description_plain_text TEXT,\\n      observed_event_id TEXT NOT NULL,\\n      observed_at TEXT,\\n      updated_at TEXT NOT NULL,\\n      -- Materialized from the control-plane _nds_workspace_binding at projection\\n      -- time so the public schema view stays standalone-queryable once the\\n      -- control plane moves to .notion/v1/state.sqlite (DD-A/DD-B, decision 0020).\\n      workspace_binding_database_id TEXT,\\n      workspace_root TEXT\\n    )"
+  },
+  {
+    "name": "_nds_replica_databases",
+    "sql": "CREATE TABLE _nds_replica_databases (\\n      database_id TEXT PRIMARY KEY,\\n      data_source_id TEXT NOT NULL,\\n      root_id TEXT NOT NULL,\\n      metadata_hash TEXT NOT NULL,\\n      metadata_json TEXT NOT NULL,\\n      title_plain_text TEXT,\\n      description_plain_text TEXT,\\n      observed_event_id TEXT NOT NULL,\\n      observed_at TEXT,\\n      updated_at TEXT NOT NULL\\n    )"
+  },
+  {
+    "name": "_nds_replica_file_assets",
+    "sql": "CREATE TABLE _nds_replica_file_assets (\\n      asset_id TEXT PRIMARY KEY,\\n      source_type TEXT NOT NULL CHECK (source_type IN ('external_url', 'local_upload')),\\n      name TEXT NOT NULL,\\n      external_url TEXT,\\n      local_path TEXT,\\n      content_hash TEXT,\\n      byte_length INTEGER,\\n      mime_type TEXT,\\n      _nds_replica_file_upload_id TEXT,\\n      upload_status TEXT,\\n      expires_at TEXT,\\n      retry_count INTEGER NOT NULL DEFAULT 0,\\n      last_error TEXT,\\n      status TEXT NOT NULL DEFAULT 'ready' CHECK (status IN ('ready', 'pending_upload', 'uploaded', 'expired', 'failed', 'unsupported')),\\n      unsupported_reason TEXT,\\n      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),\\n      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),\\n      CHECK (\\n        (source_type = 'external_url' AND external_url IS NOT NULL AND _nds_replica_file_upload_id IS NULL)\\n        OR (source_type = 'local_upload' AND local_path IS NOT NULL AND content_hash IS NOT NULL)\\n      )\\n    )"
+  },
+  {
+    "name": "_nds_replica_file_changes",
+    "sql": "CREATE TABLE _nds_replica_file_changes (\\n      change_id TEXT PRIMARY KEY,\\n      asset_id TEXT NOT NULL,\\n      action TEXT NOT NULL CHECK (action IN ('attach_external_url', 'attach_upload')),\\n      data_source_id TEXT NOT NULL,\\n      page_id TEXT NOT NULL,\\n      property_id TEXT NOT NULL,\\n      base_hash TEXT NOT NULL,\\n      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (\\n        'pending',\\n        'queued',\\n        'planned',\\n        'applied',\\n        'conflict',\\n        'unsupported',\\n        'rejected',\\n        'needs_reconciliation'\\n      )),\\n      unsupported_reason TEXT,\\n      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),\\n      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))\\n    )"
+  },
+  {
+    "name": "_nds_replica_local_changes",
+    "sql": "CREATE TABLE _nds_replica_local_changes (\\n      change_id TEXT PRIMARY KEY,\\n      kind TEXT NOT NULL CHECK (kind IN (\\n        'cell_patch',\\n        'row_archive',\\n        'row_restore',\\n        'row_create',\\n        'body_patch',\\n        'metadata_patch',\\n        'schema_patch',\\n        'file_attach',\\n        'view_change',\\n        'conflict_resolution'\\n      )),\\n      data_source_id TEXT NOT NULL,\\n      page_id TEXT,\\n      property_id TEXT,\\n      value_json TEXT,\\n      base_hash TEXT,\\n      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (\\n        'pending',\\n        'queued',\\n        'planned',\\n        'applied',\\n        'conflict',\\n        'unsupported',\\n        'rejected',\\n        'needs_reconciliation'\\n      )),\\n      unsupported_reason TEXT,\\n      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),\\n      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))\\n    )"
+  },
+  {
+    "name": "_nds_replica_metadata_changes",
+    "sql": "CREATE TABLE _nds_replica_metadata_changes (\\n      change_id TEXT PRIMARY KEY,\\n      data_source_id TEXT NOT NULL,\\n      database_id TEXT,\\n      resource_type TEXT NOT NULL DEFAULT 'data_source' CHECK (resource_type IN ('data_source', 'database')),\\n      title_plain_text TEXT,\\n      description_plain_text TEXT,\\n      base_hash TEXT NOT NULL,\\n      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (\\n        'pending',\\n        'queued',\\n        'planned',\\n        'applied',\\n        'conflict',\\n        'unsupported',\\n        'rejected',\\n        'needs_reconciliation'\\n      )),\\n      unsupported_reason TEXT,\\n      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),\\n      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),\\n      CHECK (title_plain_text IS NOT NULL OR description_plain_text IS NOT NULL)\\n    )"
+  },
+  {
+    "name": "_nds_replica_properties",
+    "sql": "CREATE TABLE _nds_replica_properties (\\n      data_source_id TEXT NOT NULL,\\n      property_id TEXT NOT NULL,\\n      property_name TEXT NOT NULL,\\n      property_type TEXT NOT NULL,\\n      config_hash TEXT NOT NULL,\\n      schema_hash TEXT NOT NULL,\\n      write_class TEXT NOT NULL,\\n      schema_ordinal INTEGER NOT NULL DEFAULT 0,\\n      config_json TEXT,\\n      observed_event_id TEXT NOT NULL,\\n      updated_at TEXT NOT NULL,\\n      PRIMARY KEY (data_source_id, property_id)\\n    )"
+  },
+  {
+    "name": "_nds_replica_property_column_plan",
+    "sql": "CREATE TABLE _nds_replica_property_column_plan (\\n      data_source_id TEXT NOT NULL,\\n      property_id TEXT NOT NULL,\\n      property_name TEXT NOT NULL,\\n      column_name TEXT NOT NULL,\\n      property_type TEXT NOT NULL,\\n      write_class TEXT NOT NULL,\\n      ordinal INTEGER NOT NULL,\\n      is_scalar_read_supported INTEGER NOT NULL CHECK (is_scalar_read_supported IN (0, 1)),\\n      is_rows_write_supported INTEGER NOT NULL CHECK (is_rows_write_supported IN (0, 1)),\\n      null_write_behavior TEXT NOT NULL,\\n      config_json TEXT,\\n      updated_at TEXT NOT NULL,\\n      PRIMARY KEY (data_source_id, property_id),\\n      UNIQUE (data_source_id, column_name)\\n    )"
+  },
+  {
+    "name": "_nds_replica_relation_targets",
+    "sql": "CREATE TABLE _nds_replica_relation_targets (\\n      data_source_id TEXT NOT NULL,\\n      property_id TEXT NOT NULL,\\n      target_page_id TEXT NOT NULL,\\n      observed_from_page_id TEXT NOT NULL,\\n      observed_event_id TEXT NOT NULL,\\n      updated_at TEXT NOT NULL,\\n      PRIMARY KEY (data_source_id, property_id, target_page_id)\\n    )"
+  },
+  {
+    "name": "_nds_replica_row_changes",
+    "sql": "CREATE TABLE _nds_replica_row_changes (\\n      change_id TEXT PRIMARY KEY,\\n      kind TEXT NOT NULL CHECK (kind IN ('row_archive', 'row_restore', 'row_create')),\\n      data_source_id TEXT NOT NULL,\\n      page_id TEXT,\\n      value_json TEXT,\\n      base_hash TEXT,\\n      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (\\n        'pending',\\n        'queued',\\n        'planned',\\n        'applied',\\n        'conflict',\\n        'unsupported',\\n        'rejected',\\n        'needs_reconciliation'\\n      )),\\n      unsupported_reason TEXT,\\n      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),\\n      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))\\n    )"
+  },
+  {
+    "name": "_nds_replica_row_creates",
+    "sql": "CREATE TABLE _nds_replica_row_creates (\\n      change_id TEXT PRIMARY KEY,\\n      data_source_id TEXT NOT NULL,\\n      local_row_id TEXT NOT NULL,\\n      client_request_key TEXT NOT NULL,\\n      initial_values_json TEXT NOT NULL CHECK (json_valid(initial_values_json)),\\n      base_schema_hash TEXT NOT NULL,\\n      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (\\n        'pending',\\n        'queued',\\n        'planned',\\n        'applied',\\n        'conflict',\\n        'unsupported',\\n        'rejected',\\n        'needs_reconciliation'\\n      )),\\n      remote_page_id TEXT,\\n      unsupported_reason TEXT,\\n      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),\\n      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),\\n      UNIQUE (data_source_id, local_row_id),\\n      UNIQUE (data_source_id, client_request_key)\\n    )"
+  },
+  {
+    "name": "_nds_replica_rows",
+    "sql": "CREATE TABLE _nds_replica_rows (\\n      data_source_id TEXT NOT NULL,\\n      page_id TEXT PRIMARY KEY,\\n      properties_hash TEXT NOT NULL,\\n      in_trash INTEGER NOT NULL CHECK (in_trash IN (0, 1)),\\n      moved_out INTEGER NOT NULL CHECK (moved_out IN (0, 1)),\\n      local_delete_candidate INTEGER NOT NULL CHECK (local_delete_candidate IN (0, 1)),\\n      observed_event_id TEXT NOT NULL,\\n      observed_at TEXT,\\n      updated_at TEXT NOT NULL\\n    )"
+  },
+  {
+    "name": "_nds_replica_schema_changes",
+    "sql": "CREATE TABLE _nds_replica_schema_changes (\\n      change_id TEXT PRIMARY KEY,\\n      data_source_id TEXT NOT NULL,\\n      operation_json TEXT NOT NULL,\\n      base_hash TEXT NOT NULL,\\n      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (\\n        'pending',\\n        'queued',\\n        'planned',\\n        'applied',\\n        'conflict',\\n        'unsupported',\\n        'rejected',\\n        'needs_reconciliation'\\n      )),\\n      unsupported_reason TEXT,\\n      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),\\n      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),\\n      CHECK (json_valid(operation_json))\\n    )"
+  },
+  {
+    "name": "_nds_replica_sync_status",
+    "sql": "CREATE TABLE _nds_replica_sync_status (\\n      root_id TEXT PRIMARY KEY,\\n      data_sources INTEGER NOT NULL,\\n      pages INTEGER NOT NULL,\\n      cells INTEGER NOT NULL,\\n      bodies INTEGER NOT NULL,\\n      conflicts_open INTEGER NOT NULL,\\n      pending_local_changes INTEGER NOT NULL,\\n      -- Control-plane aggregate counts materialized from state.sqlite at\\n      -- projection time (DD-B, decision 0020): the sync_status view reads ONLY this\\n      -- projection table so the data file never ATTACHes the control plane.\\n      pending_outbox INTEGER NOT NULL DEFAULT 0,\\n      blocked_outbox INTEGER NOT NULL DEFAULT 0,\\n      guard_blocks INTEGER NOT NULL DEFAULT 0,\\n      unclassified_tombstones INTEGER NOT NULL DEFAULT 0,\\n      unsupported_capabilities INTEGER NOT NULL DEFAULT 0,\\n      incomplete_hydration INTEGER NOT NULL DEFAULT 0,\\n      -- Resolved workspace root, materialized so the view keeps move-detection\\n      -- (pragma_database_list self-join) without joining the control plane.\\n      workspace_root TEXT,\\n      updated_at TEXT NOT NULL\\n    )"
+  },
+  {
+    "name": "_nds_replica_view_changes",
+    "sql": "CREATE TABLE _nds_replica_view_changes (\\n      change_id TEXT PRIMARY KEY,\\n      action TEXT NOT NULL CHECK (action IN ('create', 'update', 'delete')),\\n      view_id TEXT,\\n      database_id TEXT,\\n      data_source_id TEXT,\\n      view_name TEXT,\\n      view_type TEXT,\\n      filter_json TEXT,\\n      sorts_json TEXT,\\n      configuration_json TEXT,\\n      base_hash TEXT,\\n      destructive_ack TEXT,\\n      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (\\n        'pending',\\n        'queued',\\n        'planned',\\n        'applied',\\n        'conflict',\\n        'unsupported',\\n        'rejected',\\n        'needs_reconciliation'\\n      )),\\n      unsupported_reason TEXT,\\n      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),\\n      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),\\n      CHECK (filter_json IS NULL OR json_valid(filter_json)),\\n      CHECK (sorts_json IS NULL OR json_valid(sorts_json)),\\n      CHECK (configuration_json IS NULL OR json_valid(configuration_json))\\n    )"
+  },
+  {
+    "name": "_nds_replica_views",
+    "sql": "CREATE TABLE _nds_replica_views (\\n      view_id TEXT PRIMARY KEY,\\n      database_id TEXT NOT NULL,\\n      data_source_id TEXT NOT NULL,\\n      root_id TEXT NOT NULL,\\n      view_name TEXT NOT NULL,\\n      view_type TEXT NOT NULL,\\n      view_hash TEXT NOT NULL,\\n      view_json TEXT NOT NULL,\\n      observed_event_id TEXT NOT NULL,\\n      updated_at TEXT NOT NULL\\n    )"
+  }
+]",
+}
+`;
+
+exports[`notion-datasource-sync replica wire baselines (cross-major invariant) > captures pending replica change JSON bytes and SQLite failure partition 1`] = `
+{
+  "failures": {
+    "invalidJsonCheck": {
+      "_tag": "failed",
+      "message": "CHECK constraint failed: json_valid(operation_json)",
+      "name": "Error",
+    },
+    "invalidStatusCheck": {
+      "_tag": "failed",
+      "message": "CHECK constraint failed: status IN (
+        'pending',
+        'queued',
+        'planned',
+        'applied',
+        'conflict',
+        'unsupported',
+        'rejected',
+        'needs_reconciliation'
+      )",
+      "name": "Error",
+    },
+    "missingNotNullValueJson": {
+      "_tag": "failed",
+      "message": "NOT NULL constraint failed: _nds_replica_cell_changes.value_json",
+      "name": "Error",
+    },
+  },
+  "pendingChanges": [
+    {
+      "baseHash": "hash-cell-base",
+      "bodyPath": undefined,
+      "changeId": "change-cell-unicode",
+      "clientRequestKey": undefined,
+      "conflictId": undefined,
+      "dataSourceId": "ds-unicode-ß",
+      "databaseId": undefined,
+      "descriptionPlainText": undefined,
+      "fileAction": undefined,
+      "fileAssetId": undefined,
+      "fileExternalUrl": undefined,
+      "fileName": undefined,
+      "kind": "cell_patch",
+      "localBodyContent": undefined,
+      "localBodyHash": undefined,
+      "localRowId": undefined,
+      "metadataResourceType": undefined,
+      "pageId": "page-1",
+      "propertyId": "prop-title",
+      "remotePageId": undefined,
+      "resolutionAction": undefined,
+      "schemaOperationJson": undefined,
+      "status": "pending",
+      "titlePlainText": undefined,
+      "valueJson": "{"plainText":"","_tag":"title","annotations":{"bold":false},"unicode":"ß"}",
+    },
+    {
+      "baseHash": "hash-schema-base",
+      "bodyPath": undefined,
+      "changeId": "change-row-create",
+      "clientRequestKey": "",
+      "conflictId": undefined,
+      "dataSourceId": "ds-unicode-ß",
+      "databaseId": undefined,
+      "descriptionPlainText": undefined,
+      "fileAction": undefined,
+      "fileAssetId": undefined,
+      "fileExternalUrl": undefined,
+      "fileName": undefined,
+      "kind": "row_create",
+      "localBodyContent": undefined,
+      "localBodyHash": undefined,
+      "localRowId": "local-row-empty",
+      "metadataResourceType": undefined,
+      "pageId": undefined,
+      "propertyId": undefined,
+      "remotePageId": undefined,
+      "resolutionAction": undefined,
+      "schemaOperationJson": undefined,
+      "status": "queued",
+      "titlePlainText": undefined,
+      "valueJson": "{"prop-null":null,"prop-absent":{},"prop-empty":"","prop-unicode":"Grüße"}",
+    },
+    {
+      "baseHash": "hash-body-base",
+      "bodyPath": undefined,
+      "changeId": "change-body-null-content",
+      "clientRequestKey": undefined,
+      "conflictId": undefined,
+      "dataSourceId": "",
+      "databaseId": undefined,
+      "descriptionPlainText": undefined,
+      "fileAction": undefined,
+      "fileAssetId": undefined,
+      "fileExternalUrl": undefined,
+      "fileName": undefined,
+      "kind": "body_patch",
+      "localBodyContent": undefined,
+      "localBodyHash": "hash-body-local",
+      "localRowId": undefined,
+      "metadataResourceType": undefined,
+      "pageId": "page-body",
+      "propertyId": undefined,
+      "remotePageId": undefined,
+      "resolutionAction": undefined,
+      "schemaOperationJson": undefined,
+      "status": "pending",
+      "titlePlainText": undefined,
+      "valueJson": undefined,
+    },
+    {
+      "baseHash": "hash-metadata-base",
+      "bodyPath": undefined,
+      "changeId": "change-metadata-title",
+      "clientRequestKey": undefined,
+      "conflictId": undefined,
+      "dataSourceId": "ds-unicode-ß",
+      "databaseId": "db-1",
+      "descriptionPlainText": undefined,
+      "fileAction": undefined,
+      "fileAssetId": undefined,
+      "fileExternalUrl": undefined,
+      "fileName": undefined,
+      "kind": "metadata_patch",
+      "localBodyContent": undefined,
+      "localBodyHash": undefined,
+      "localRowId": undefined,
+      "metadataResourceType": "database",
+      "pageId": undefined,
+      "propertyId": undefined,
+      "remotePageId": undefined,
+      "resolutionAction": undefined,
+      "schemaOperationJson": undefined,
+      "status": "pending",
+      "titlePlainText": "Neue Datenbank",
+      "valueJson": undefined,
+    },
+    {
+      "baseHash": "hash-schema-change-base",
+      "bodyPath": undefined,
+      "changeId": "change-schema-json",
+      "clientRequestKey": undefined,
+      "conflictId": undefined,
+      "dataSourceId": "ds-unicode-ß",
+      "databaseId": undefined,
+      "descriptionPlainText": undefined,
+      "fileAction": undefined,
+      "fileAssetId": undefined,
+      "fileExternalUrl": undefined,
+      "fileName": undefined,
+      "kind": "schema_patch",
+      "localBodyContent": undefined,
+      "localBodyHash": undefined,
+      "localRowId": undefined,
+      "metadataResourceType": undefined,
+      "pageId": undefined,
+      "propertyId": undefined,
+      "remotePageId": undefined,
+      "resolutionAction": undefined,
+      "schemaOperationJson": "{"op":"rename_property","propertyId":"prop-title","name":"Titel ß"}",
+      "status": "pending",
+      "titlePlainText": undefined,
+      "valueJson": undefined,
+    },
+    {
+      "baseHash": "hash-file-base",
+      "bodyPath": undefined,
+      "changeId": "change-file-attach",
+      "clientRequestKey": undefined,
+      "conflictId": undefined,
+      "dataSourceId": "ds-unicode-ß",
+      "databaseId": undefined,
+      "descriptionPlainText": undefined,
+      "fileAction": "attach_external_url",
+      "fileAssetId": "asset-external",
+      "fileExternalUrl": "https://example.invalid/f%C3%B6%C3%B6.txt",
+      "fileName": "föö.txt",
+      "kind": "file_attach",
+      "localBodyContent": undefined,
+      "localBodyHash": undefined,
+      "localRowId": undefined,
+      "metadataResourceType": undefined,
+      "pageId": "page-1",
+      "propertyId": "prop-files",
+      "remotePageId": undefined,
+      "resolutionAction": undefined,
+      "schemaOperationJson": undefined,
+      "status": "pending",
+      "titlePlainText": undefined,
+      "valueJson": undefined,
+    },
+    {
+      "baseHash": "hash-view-base",
+      "bodyPath": undefined,
+      "changeId": "change-view-update",
+      "clientRequestKey": undefined,
+      "conflictId": undefined,
+      "dataSourceId": "ds-unicode-ß",
+      "databaseId": "db-1",
+      "descriptionPlainText": undefined,
+      "fileAction": undefined,
+      "fileAssetId": undefined,
+      "fileExternalUrl": undefined,
+      "fileName": undefined,
+      "kind": "view_change",
+      "localBodyContent": undefined,
+      "localBodyHash": undefined,
+      "localRowId": undefined,
+      "metadataResourceType": undefined,
+      "pageId": undefined,
+      "propertyId": undefined,
+      "remotePageId": undefined,
+      "resolutionAction": undefined,
+      "schemaOperationJson": undefined,
+      "status": "queued",
+      "titlePlainText": undefined,
+      "valueJson": "{"action":"update","view_id":"view-1","database_id":"db-1","view_name":"Alle Einträge","view_type":"table","filter_json":null,"sorts_json":"[]","configuration_json":"{\\"columns\\":[\\"prop-title\\",\\"prop-empty\\"]}","destructive_ack":null}",
+    },
+    {
+      "baseHash": undefined,
+      "bodyPath": undefined,
+      "changeId": "change-conflict-resolution",
+      "clientRequestKey": undefined,
+      "conflictId": "conflict-1",
+      "dataSourceId": "",
+      "databaseId": undefined,
+      "descriptionPlainText": undefined,
+      "fileAction": undefined,
+      "fileAssetId": undefined,
+      "fileExternalUrl": undefined,
+      "fileName": undefined,
+      "kind": "conflict_resolution",
+      "localBodyContent": undefined,
+      "localBodyHash": undefined,
+      "localRowId": undefined,
+      "metadataResourceType": undefined,
+      "pageId": undefined,
+      "propertyId": undefined,
+      "remotePageId": undefined,
+      "resolutionAction": "manual_value",
+      "schemaOperationJson": undefined,
+      "status": "pending",
+      "titlePlainText": undefined,
+      "valueJson": "null",
+    },
+  ],
+  "wire": {
+    "byteIdentical": true,
+    "decoded": [
+      {
+        "baseHash": "hash-cell-base",
+        "changeId": "change-cell-unicode",
+        "dataSourceId": "ds-unicode-ß",
+        "kind": "cell_patch",
+        "pageId": "page-1",
+        "propertyId": "prop-title",
+        "status": "pending",
+        "valueJson": "{"plainText":"","_tag":"title","annotations":{"bold":false},"unicode":"ß"}",
+      },
+      {
+        "baseHash": "hash-schema-base",
+        "changeId": "change-row-create",
+        "clientRequestKey": "",
+        "dataSourceId": "ds-unicode-ß",
+        "kind": "row_create",
+        "localRowId": "local-row-empty",
+        "status": "queued",
+        "valueJson": "{"prop-null":null,"prop-absent":{},"prop-empty":"","prop-unicode":"Grüße"}",
+      },
+      {
+        "baseHash": "hash-body-base",
+        "changeId": "change-body-null-content",
+        "dataSourceId": "",
+        "kind": "body_patch",
+        "localBodyHash": "hash-body-local",
+        "pageId": "page-body",
+        "status": "pending",
+      },
+      {
+        "baseHash": "hash-metadata-base",
+        "changeId": "change-metadata-title",
+        "dataSourceId": "ds-unicode-ß",
+        "databaseId": "db-1",
+        "kind": "metadata_patch",
+        "metadataResourceType": "database",
+        "status": "pending",
+        "titlePlainText": "Neue Datenbank",
+      },
+      {
+        "baseHash": "hash-schema-change-base",
+        "changeId": "change-schema-json",
+        "dataSourceId": "ds-unicode-ß",
+        "kind": "schema_patch",
+        "schemaOperationJson": "{"op":"rename_property","propertyId":"prop-title","name":"Titel ß"}",
+        "status": "pending",
+      },
+      {
+        "baseHash": "hash-file-base",
+        "changeId": "change-file-attach",
+        "dataSourceId": "ds-unicode-ß",
+        "fileAction": "attach_external_url",
+        "fileAssetId": "asset-external",
+        "fileExternalUrl": "https://example.invalid/f%C3%B6%C3%B6.txt",
+        "fileName": "föö.txt",
+        "kind": "file_attach",
+        "pageId": "page-1",
+        "propertyId": "prop-files",
+        "status": "pending",
+      },
+      {
+        "baseHash": "hash-view-base",
+        "changeId": "change-view-update",
+        "dataSourceId": "ds-unicode-ß",
+        "databaseId": "db-1",
+        "kind": "view_change",
+        "status": "queued",
+        "valueJson": "{"action":"update","view_id":"view-1","database_id":"db-1","view_name":"Alle Einträge","view_type":"table","filter_json":null,"sorts_json":"[]","configuration_json":"{\\"columns\\":[\\"prop-title\\",\\"prop-empty\\"]}","destructive_ack":null}",
+      },
+      {
+        "changeId": "change-conflict-resolution",
+        "conflictId": "conflict-1",
+        "dataSourceId": "",
+        "kind": "conflict_resolution",
+        "resolutionAction": "manual_value",
+        "status": "pending",
+        "valueJson": "null",
+      },
+    ],
+    "encoded": "[
+  {
+    "changeId": "change-cell-unicode",
+    "kind": "cell_patch",
+    "dataSourceId": "ds-unicode-ß",
+    "pageId": "page-1",
+    "propertyId": "prop-title",
+    "valueJson": "{\\"plainText\\":\\"\\",\\"_tag\\":\\"title\\",\\"annotations\\":{\\"bold\\":false},\\"unicode\\":\\"ß\\"}",
+    "baseHash": "hash-cell-base",
+    "status": "pending"
+  },
+  {
+    "changeId": "change-row-create",
+    "kind": "row_create",
+    "dataSourceId": "ds-unicode-ß",
+    "valueJson": "{\\"prop-null\\":null,\\"prop-absent\\":{},\\"prop-empty\\":\\"\\",\\"prop-unicode\\":\\"Grüße\\"}",
+    "baseHash": "hash-schema-base",
+    "status": "queued",
+    "localRowId": "local-row-empty",
+    "clientRequestKey": ""
+  },
+  {
+    "changeId": "change-body-null-content",
+    "kind": "body_patch",
+    "dataSourceId": "",
+    "pageId": "page-body",
+    "baseHash": "hash-body-base",
+    "status": "pending",
+    "localBodyHash": "hash-body-local"
+  },
+  {
+    "changeId": "change-metadata-title",
+    "kind": "metadata_patch",
+    "dataSourceId": "ds-unicode-ß",
+    "baseHash": "hash-metadata-base",
+    "status": "pending",
+    "metadataResourceType": "database",
+    "databaseId": "db-1",
+    "titlePlainText": "Neue Datenbank"
+  },
+  {
+    "changeId": "change-schema-json",
+    "kind": "schema_patch",
+    "dataSourceId": "ds-unicode-ß",
+    "baseHash": "hash-schema-change-base",
+    "status": "pending",
+    "schemaOperationJson": "{\\"op\\":\\"rename_property\\",\\"propertyId\\":\\"prop-title\\",\\"name\\":\\"Titel ß\\"}"
+  },
+  {
+    "changeId": "change-file-attach",
+    "kind": "file_attach",
+    "dataSourceId": "ds-unicode-ß",
+    "pageId": "page-1",
+    "propertyId": "prop-files",
+    "baseHash": "hash-file-base",
+    "status": "pending",
+    "fileAssetId": "asset-external",
+    "fileAction": "attach_external_url",
+    "fileName": "föö.txt",
+    "fileExternalUrl": "https://example.invalid/f%C3%B6%C3%B6.txt"
+  },
+  {
+    "changeId": "change-view-update",
+    "kind": "view_change",
+    "dataSourceId": "ds-unicode-ß",
+    "valueJson": "{\\"action\\":\\"update\\",\\"view_id\\":\\"view-1\\",\\"database_id\\":\\"db-1\\",\\"view_name\\":\\"Alle Einträge\\",\\"view_type\\":\\"table\\",\\"filter_json\\":null,\\"sorts_json\\":\\"[]\\",\\"configuration_json\\":\\"{\\\\\\"columns\\\\\\":[\\\\\\"prop-title\\\\\\",\\\\\\"prop-empty\\\\\\"]}\\",\\"destructive_ack\\":null}",
+    "baseHash": "hash-view-base",
+    "status": "queued",
+    "databaseId": "db-1"
+  },
+  {
+    "changeId": "change-conflict-resolution",
+    "kind": "conflict_resolution",
+    "dataSourceId": "",
+    "valueJson": "null",
+    "status": "pending",
+    "conflictId": "conflict-1",
+    "resolutionAction": "manual_value"
+  }
+]",
+    "reencoded": "[
+  {
+    "changeId": "change-cell-unicode",
+    "kind": "cell_patch",
+    "dataSourceId": "ds-unicode-ß",
+    "pageId": "page-1",
+    "propertyId": "prop-title",
+    "valueJson": "{\\"plainText\\":\\"\\",\\"_tag\\":\\"title\\",\\"annotations\\":{\\"bold\\":false},\\"unicode\\":\\"ß\\"}",
+    "baseHash": "hash-cell-base",
+    "status": "pending"
+  },
+  {
+    "changeId": "change-row-create",
+    "kind": "row_create",
+    "dataSourceId": "ds-unicode-ß",
+    "valueJson": "{\\"prop-null\\":null,\\"prop-absent\\":{},\\"prop-empty\\":\\"\\",\\"prop-unicode\\":\\"Grüße\\"}",
+    "baseHash": "hash-schema-base",
+    "status": "queued",
+    "localRowId": "local-row-empty",
+    "clientRequestKey": ""
+  },
+  {
+    "changeId": "change-body-null-content",
+    "kind": "body_patch",
+    "dataSourceId": "",
+    "pageId": "page-body",
+    "baseHash": "hash-body-base",
+    "status": "pending",
+    "localBodyHash": "hash-body-local"
+  },
+  {
+    "changeId": "change-metadata-title",
+    "kind": "metadata_patch",
+    "dataSourceId": "ds-unicode-ß",
+    "baseHash": "hash-metadata-base",
+    "status": "pending",
+    "metadataResourceType": "database",
+    "databaseId": "db-1",
+    "titlePlainText": "Neue Datenbank"
+  },
+  {
+    "changeId": "change-schema-json",
+    "kind": "schema_patch",
+    "dataSourceId": "ds-unicode-ß",
+    "baseHash": "hash-schema-change-base",
+    "status": "pending",
+    "schemaOperationJson": "{\\"op\\":\\"rename_property\\",\\"propertyId\\":\\"prop-title\\",\\"name\\":\\"Titel ß\\"}"
+  },
+  {
+    "changeId": "change-file-attach",
+    "kind": "file_attach",
+    "dataSourceId": "ds-unicode-ß",
+    "pageId": "page-1",
+    "propertyId": "prop-files",
+    "baseHash": "hash-file-base",
+    "status": "pending",
+    "fileAssetId": "asset-external",
+    "fileAction": "attach_external_url",
+    "fileName": "föö.txt",
+    "fileExternalUrl": "https://example.invalid/f%C3%B6%C3%B6.txt"
+  },
+  {
+    "changeId": "change-view-update",
+    "kind": "view_change",
+    "dataSourceId": "ds-unicode-ß",
+    "valueJson": "{\\"action\\":\\"update\\",\\"view_id\\":\\"view-1\\",\\"database_id\\":\\"db-1\\",\\"view_name\\":\\"Alle Einträge\\",\\"view_type\\":\\"table\\",\\"filter_json\\":null,\\"sorts_json\\":\\"[]\\",\\"configuration_json\\":\\"{\\\\\\"columns\\\\\\":[\\\\\\"prop-title\\\\\\",\\\\\\"prop-empty\\\\\\"]}\\",\\"destructive_ack\\":null}",
+    "baseHash": "hash-view-base",
+    "status": "queued",
+    "databaseId": "db-1"
+  },
+  {
+    "changeId": "change-conflict-resolution",
+    "kind": "conflict_resolution",
+    "dataSourceId": "",
+    "valueJson": "null",
+    "status": "pending",
+    "conflictId": "conflict-1",
+    "resolutionAction": "manual_value"
+  }
+]",
+  },
+}
+`;

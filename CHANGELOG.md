@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **@overeng/notion-datasource-sync**: capture Effect 3 SQLite replica wire
+  baselines for `_nds_replica_*` table DDL, pending replica-change JSON, and
+  SQLite constraint failure partitions.
+
 ### Fixed
 
 - **@overeng/utils-dev/otelite**: make live capture inspection poll for the
