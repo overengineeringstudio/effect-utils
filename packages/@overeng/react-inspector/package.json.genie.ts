@@ -82,14 +82,25 @@ export default packageJson(
       '.': exportEntry('./src/index.tsx', { environment: 'browser' }),
     },
     /**
-     * Ships TypeScript source. The previous `publishConfig.exports` pointed at
-     * `./dist/index.{js,cjs,d.ts}`, but no script builds `dist` — a published
-     * package would have resolved its sole export to a file that does not exist.
+     * Pin the packed contents. `dist/` is a gitignored side effect of
+     * `tsc --build` on this package's own `tsconfig.json`, and npm only consults
+     * a *package-local* ignore file — this one lists `.vercel` only — so the repo
+     * root's `dist` entry does not apply at pack time. The tarball therefore
+     * varied by 169 files depending on whether a typecheck had run: 236 entries
+     * after `ts:check`, 67 from a clean checkout.
+     */
+    files: ['package.json', 'src'],
+    /**
+     * Ship TypeScript source rather than the `tsc --build` output. The previous
+     * `publishConfig.exports` mapped `.` into that `dist/`, which made the
+     * published entry point depend on build order — and its `require` condition
+     * named `./dist/index.cjs`, which nothing has ever emitted.
      *
-     * Publishing source keeps the published contract identical to the in-repo
-     * one and matches how the consuming `@livestore/devtools-react` ships
-     * (livestorejs/livestore#1497). Consumers need a bundler that compiles TSX
-     * out of node_modules; Vite does, and that is the supported target.
+     * Publishing source keeps the packed contract identical to the in-repo one,
+     * so the two cannot drift, and matches how the consuming
+     * `@livestore/devtools-react` ships (livestorejs/livestore#1497). Consumers
+     * need a bundler that compiles TSX out of node_modules; Vite does, and that
+     * is the supported target.
      */
     publishConfig: {
       access: 'public',
