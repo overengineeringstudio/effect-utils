@@ -36,6 +36,11 @@ const riskSignatures = [
     why: 'Effect 4 changes the rejected-status wrapper and reason shape.',
   },
   {
+    registerEntry: 'cli-A-nested-terminator-loss',
+    regex: /\bargs\s*:\s*\[\s*["']add["']\s*,\s*["']--["']/g,
+    why: 'Effect 4 drops operands after -- for the nested megarepo add command.',
+  },
+  {
     registerEntry: 'fork-copied-options',
     regex: /\b(?:startImmediately|uninterruptible)\b/g,
     why: 'Copied fork options change scheduling and must have a local justification.',
@@ -56,6 +61,16 @@ const riskSignatures = [
     why: 'Construction-count assertions can change under Effect 4 layer memoization.',
   },
   {
+    registerEntry: 'layer-memoization-freshness-opt-outs',
+    regex: /\bLayer\.fresh\b/g,
+    why: 'Layer.fresh explicitly opts out of shared layer memoization.',
+  },
+  {
+    registerEntry: 'layer-memoization-freshness-opt-outs',
+    regex: /\bEffect\.provide\([\s\S]{0,300}\blocal\s*:\s*true\b/g,
+    why: 'A local provide creates an isolated memoization scope.',
+  },
+  {
     registerEntry: 'rpc-failure-cause-wire-shape',
     regex: /(?:\\+)?"cause(?:\\+)?"\s*:\s*(?:\\+)?\{/g,
     why: 'Effect 3 encodes RPC failure cause as an object; Effect 4 uses an array.',
@@ -74,6 +89,38 @@ const riskSignatures = [
     registerEntry: 'prompt-pty-ansi-rendering',
     regex: /(?:\\u001b|\\x1b|\\x1B)\[[0-9;?]*[ -/]*[@-~]/g,
     why: 'Effect 4 Prompt changes exact PTY ANSI rendering bytes.',
+  },
+] as const
+
+/**
+ * Register entries whose risks have no reliable textual fingerprint in a
+ * baseline. Each exception must explain why a signature would be misleading.
+ */
+const noSignatures = [
+  {
+    registerEntry: 'cli-B-accepted-grammar-improvements',
+    noSignature:
+      'Four unrelated grammar forms are accepted; each contract needs its own case-specific signature.',
+  },
+  {
+    registerEntry: 'cli-C-rendering-and-stdout-breakage',
+    noSignature:
+      'CLI-owned prose and ANSI bytes are intentionally varied and cannot use one safe signature.',
+  },
+  {
+    registerEntry: 'fork-defaults',
+    noSignature:
+      'The identical default scheduling behavior has no changed baseline text to detect.',
+  },
+  {
+    registerEntry: 'equality-structural-default',
+    noSignature:
+      'Structural equality depends on runtime value types, and the register audit found no production Effect equality site.',
+  },
+  {
+    registerEntry: 'effect-never-idle-timer',
+    noSignature:
+      'Process liveness is a runtime side effect; Effect.never is also used as unrelated test-only suspension control, with no production liveness site.',
   },
 ] as const
 
@@ -98,6 +145,55 @@ const root =
   rootArgumentIndex === -1
     ? process.cwd()
     : resolve(process.argv[rootArgumentIndex + 1] ?? process.cwd())
+
+const registerFile = 'context/effect-4/alignment-register.md'
+let registerSource: string
+
+try {
+  registerSource = await Bun.file(resolve(root, registerFile)).text()
+} catch (error) {
+  const code =
+    typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : 'unknown'
+  console.error(`FAIL: cannot read ${registerFile} (${code}).`)
+  process.exit(1)
+}
+
+const registerEntries = new Set(
+  [...registerSource.matchAll(/^## ([a-z0-9][a-zA-Z0-9-]*)\s*$/gm)].map((match) => match[1]!),
+)
+const signatureEntries = new Set(riskSignatures.map(({ registerEntry }) => registerEntry))
+const noSignatureEntries = new Set(noSignatures.map(({ registerEntry }) => registerEntry))
+const declaredEntries = new Set([...signatureEntries, ...noSignatureEntries])
+
+const unmappedEntries = [...registerEntries]
+  .filter((entry) => declaredEntries.has(entry) === false)
+  .toSorted()
+const missingRegisterEntries = [...declaredEntries]
+  .filter((entry) => registerEntries.has(entry) === false)
+  .toSorted()
+const conflictingEntries = [...signatureEntries]
+  .filter((entry) => noSignatureEntries.has(entry))
+  .toSorted()
+
+if (
+  unmappedEntries.length > 0 ||
+  missingRegisterEntries.length > 0 ||
+  conflictingEntries.length > 0
+) {
+  for (const entry of unmappedEntries) {
+    console.error(
+      `UNMAPPED: register entry "${entry}" needs a risk signature or justified noSignature declaration.`,
+    )
+  }
+  for (const entry of missingRegisterEntries) {
+    console.error(`STALE: checker declaration references missing register entry "${entry}".`)
+  }
+  for (const entry of conflictingEntries) {
+    console.error(`CONFLICT: register entry "${entry}" has both a signature and noSignature.`)
+  }
+  console.error('FAIL: alignment register and marker checker declarations are inconsistent.')
+  process.exit(1)
+}
 
 const lineAndColumnAt = ({
   source,
@@ -238,13 +334,27 @@ const findCalls = ({
   const calls: CallBlock[] = []
 
   for (const match of source.matchAll(namePattern)) {
-    const openingOffset = source.indexOf('(', match.index)
-    const end = findMatchingDelimiter({ source, openingOffset, opening: '(', closing: ')' })
+    let openingOffset = source.indexOf('(', match.index)
+    let end = findMatchingDelimiter({ source, openingOffset, opening: '(', closing: ')' })
     if (end === undefined) continue
 
     let titleOffset = openingOffset + 1
     while (/\s/.test(source[titleOffset] ?? '') === true) titleOffset++
-    const title = readStaticString({ source, offset: titleOffset })
+    let title = readStaticString({ source, offset: titleOffset })
+
+    if (title === undefined && callName === 'test' && match[0].includes('.each') === true) {
+      openingOffset = end
+      while (/\s/.test(source[openingOffset] ?? '') === true) openingOffset++
+      if (source[openingOffset] !== '(') continue
+
+      end = findMatchingDelimiter({ source, openingOffset, opening: '(', closing: ')' })
+      if (end === undefined) continue
+
+      titleOffset = openingOffset + 1
+      while (/\s/.test(source[titleOffset] ?? '') === true) titleOffset++
+      title = readStaticString({ source, offset: titleOffset })
+    }
+
     if (title === undefined || title.value.includes('${') === true) continue
 
     const start = match.index + (match[0].match(/^[^\w$]/)?.[0].length ?? 0)
