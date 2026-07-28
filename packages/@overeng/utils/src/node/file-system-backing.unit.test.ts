@@ -4,18 +4,7 @@ import * as path from 'node:path'
 
 import { FileSystem, Path } from '@effect/platform'
 import { NodeContext } from '@effect/platform-node'
-import {
-  Chunk,
-  Context,
-  Data,
-  Deferred,
-  Duration,
-  Effect,
-  Layer,
-  Queue,
-  Schema,
-  Stream,
-} from 'effect'
+import { Context, Data, Deferred, Duration, Effect, Fiber, Layer, Schema, Stream } from 'effect'
 import { expect } from 'vitest'
 
 import { DistributedSemaphoreBacking } from '@overeng/effect-distributed-lock'
@@ -108,6 +97,12 @@ const watchEventPath = (event: FileSystem.WatchEvent): string | undefined =>
 class WatchEventTimeout extends Data.TaggedError('WatchEventTimeout')<{
   readonly fileName: string
 }> {}
+
+interface WatchWaiter {
+  readonly fileName: string
+  readonly resume: (effect: Effect.Effect<FileSystem.WatchEvent, WatchEventTimeout>) => void
+  timeout: ReturnType<typeof setTimeout>
+}
 
 Vitest.describe('FileSystemBacking', () => {
   Vitest.describe('DistributedSemaphore finalizers', () => {
@@ -924,43 +919,71 @@ Vitest.describe('FileSystemBacking', () => {
         const directBefore = 'direct-before.lock'
         const directAfter = 'direct-after.lock'
         const nestedChild = 'nested-child.lock'
-        const events = yield* Queue.unbounded<FileSystem.WatchEvent>()
         const observed: Array<FileSystem.WatchEvent> = []
+        const waiters: Array<WatchWaiter> = []
 
         const awaitObservedPath = (
           fileName: string,
         ): Effect.Effect<FileSystem.WatchEvent, WatchEventTimeout> =>
-          Effect.gen(function* () {
-            const event = yield* Queue.take(events).pipe(
-              Effect.timeoutFail({
-                duration: Duration.seconds(5),
-                onTimeout: () => new WatchEventTimeout({ fileName }),
-              }),
-            )
-            observed.push(event)
-
-            if (path.basename(watchEventPath(event) ?? '') === fileName) {
-              return event
+          Effect.async<FileSystem.WatchEvent, WatchEventTimeout>((resume) => {
+            const waiter: WatchWaiter = {
+              fileName,
+              resume,
+              timeout: setTimeout(
+                () => {
+                  const index = waiters.indexOf(waiter)
+                  if (index >= 0) {
+                    waiters.splice(index, 1)
+                  }
+                  resume(Effect.fail(new WatchEventTimeout({ fileName })))
+                },
+                Duration.toMillis(Duration.seconds(5)),
+              ),
             }
 
-            return yield* awaitObservedPath(fileName)
+            waiters.push(waiter)
+
+            return Effect.sync(() => {
+              clearTimeout(waiter.timeout)
+              const index = waiters.indexOf(waiter)
+              if (index >= 0) {
+                waiters.splice(index, 1)
+              }
+            })
           })
 
-        yield* fsService.watch(watchDir).pipe(
-          Stream.runForEach((event) => Queue.offer(events, event)),
-          Effect.forkScoped,
-        )
+        const recordEvent = (event: FileSystem.WatchEvent): Effect.Effect<void> =>
+          Effect.sync(() => {
+            observed.push(event)
 
+            const eventName = path.basename(watchEventPath(event) ?? '')
+            const matchingWaiters = waiters.filter((waiter) => waiter.fileName === eventName)
+            for (const waiter of matchingWaiters) {
+              clearTimeout(waiter.timeout)
+              const index = waiters.indexOf(waiter)
+              if (index >= 0) {
+                waiters.splice(index, 1)
+              }
+              waiter.resume(Effect.succeed(event))
+            }
+          })
+
+        const watchFiber = yield* fsService
+          .watch(watchDir)
+          .pipe(Stream.runForEach(recordEvent), Effect.fork)
+
+        const directBeforeFiber = yield* awaitObservedPath(directBefore).pipe(Effect.fork)
         yield* fsService.writeFileString(path.join(watchDir, directBefore), 'direct')
-        yield* awaitObservedPath(directBefore)
+        yield* Fiber.join(directBeforeFiber)
 
+        const directAfterFiber = yield* awaitObservedPath(directAfter).pipe(Effect.fork)
         yield* fsService.makeDirectory(nestedDir)
         yield* fsService.writeFileString(path.join(nestedDir, nestedChild), 'nested')
         yield* fsService.writeFileString(path.join(watchDir, directAfter), 'settled')
-        yield* awaitObservedPath(directAfter)
+        yield* Fiber.join(directAfterFiber)
+        yield* Fiber.interrupt(watchFiber)
 
-        const queued = Chunk.toReadonlyArray(yield* Queue.takeAll(events))
-        const observedPathNames = [...observed, ...queued]
+        const observedPathNames = observed
           .map(watchEventPath)
           .filter((eventPath): eventPath is string => eventPath !== undefined)
           .map((eventPath) => path.basename(eventPath))
