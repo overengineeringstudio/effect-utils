@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **@overeng/tui-stories**: add Effect 3 cross-major baselines for schema-encoded
+  JSON, NDJSON timeline output, and durable output-state decode failures.
+
 - Add a shared CI helper for job-local Cargo targets and `sccache` servers on
   multi-identity self-hosted runners.
 
