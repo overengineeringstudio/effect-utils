@@ -4,7 +4,7 @@ import * as path from 'node:path'
 
 import { FileSystem, Path } from '@effect/platform'
 import { NodeContext } from '@effect/platform-node'
-import { Context, Deferred, Duration, Effect, Layer, Schema, Stream } from 'effect'
+import { Context, Data, Deferred, Duration, Effect, Fiber, Layer, Schema, Stream } from 'effect'
 import { expect } from 'vitest'
 
 import { DistributedSemaphoreBacking } from '@overeng/effect-distributed-lock'
@@ -90,6 +90,19 @@ const makeNodeFsLayer = (): Layer.Layer<FileSystem.FileSystem | Path.Path> => {
 }
 
 const TestLayer = makeNodeFsLayer()
+
+const watchEventPath = (event: FileSystem.WatchEvent): string | undefined =>
+  'path' in event && typeof event.path === 'string' ? event.path : undefined
+
+class WatchEventTimeout extends Data.TaggedError('WatchEventTimeout')<{
+  readonly fileName: string
+}> {}
+
+interface WatchWaiter {
+  readonly fileName: string
+  readonly resume: (effect: Effect.Effect<FileSystem.WatchEvent, WatchEventTimeout>) => void
+  timeout: ReturnType<typeof setTimeout>
+}
 
 Vitest.describe('FileSystemBacking', () => {
   Vitest.describe('DistributedSemaphore finalizers', () => {
@@ -894,6 +907,107 @@ Vitest.describe('FileSystemBacking', () => {
         })
         expect(revoked).toEqual([])
       }).pipe(Effect.provide(TestLayer), Effect.scoped),
+    )
+  })
+
+  Vitest.describe('FileSystem.watch membership', () => {
+    Vitest.it.effect('watches direct children but not nested children without recursion', () =>
+      Effect.gen(function* () {
+        const fsService = yield* FileSystem.FileSystem
+        const watchDir = yield* fsService.makeTempDirectory()
+        const nestedDir = path.join(watchDir, 'sub')
+        const directBefore = 'direct-before.lock'
+        const directAfter = 'direct-after.lock'
+        const nestedChild = 'nested-child.lock'
+        const observed: Array<FileSystem.WatchEvent> = []
+        const waiters: Array<WatchWaiter> = []
+
+        const awaitObservedPath = (
+          fileName: string,
+        ): Effect.Effect<FileSystem.WatchEvent, WatchEventTimeout> =>
+          Effect.async<FileSystem.WatchEvent, WatchEventTimeout>((resume) => {
+            const waiter: WatchWaiter = {
+              fileName,
+              resume,
+              timeout: setTimeout(
+                () => {
+                  const index = waiters.indexOf(waiter)
+                  if (index >= 0) {
+                    waiters.splice(index, 1)
+                  }
+                  resume(Effect.fail(new WatchEventTimeout({ fileName })))
+                },
+                Duration.toMillis(Duration.seconds(5)),
+              ),
+            }
+
+            waiters.push(waiter)
+
+            return Effect.sync(() => {
+              clearTimeout(waiter.timeout)
+              const index = waiters.indexOf(waiter)
+              if (index >= 0) {
+                waiters.splice(index, 1)
+              }
+            })
+          })
+
+        const recordEvent = (event: FileSystem.WatchEvent): Effect.Effect<void> =>
+          Effect.sync(() => {
+            observed.push(event)
+
+            const eventName = path.basename(watchEventPath(event) ?? '')
+            const matchingWaiters = waiters.filter((waiter) => waiter.fileName === eventName)
+            for (const waiter of matchingWaiters) {
+              clearTimeout(waiter.timeout)
+              const index = waiters.indexOf(waiter)
+              if (index >= 0) {
+                waiters.splice(index, 1)
+              }
+              waiter.resume(Effect.succeed(event))
+            }
+          })
+
+        const watchFiber = yield* fsService
+          .watch(watchDir)
+          .pipe(Stream.runForEach(recordEvent), Effect.fork)
+        yield* Effect.yieldNow()
+
+        const writeDirectFileUntilObserved = (fileName: string, content: string) =>
+          Effect.gen(function* () {
+            const eventFiber = yield* awaitObservedPath(fileName).pipe(Effect.fork)
+
+            for (const attempt of [1, 2, 3, 4, 5]) {
+              yield* fsService.writeFileString(
+                path.join(watchDir, fileName),
+                `${content}-${attempt}`,
+              )
+              yield* Effect.yieldNow()
+            }
+
+            return yield* Fiber.join(eventFiber)
+          })
+
+        yield* writeDirectFileUntilObserved(directBefore, 'direct')
+
+        yield* fsService.makeDirectory(nestedDir)
+        yield* fsService.writeFileString(path.join(nestedDir, nestedChild), 'nested')
+        yield* writeDirectFileUntilObserved(directAfter, 'settled')
+        yield* Fiber.interrupt(watchFiber)
+
+        const observedPathNames = observed
+          .map(watchEventPath)
+          .filter((eventPath): eventPath is string => eventPath !== undefined)
+          .map((eventPath) => path.basename(eventPath))
+
+        expect(observedPathNames).toContain(directBefore)
+        expect(observedPathNames).toContain(directAfter)
+        // TODO(live-migration:effect-3-4): beta.102 removes the recursive option and always watches
+        // recursively — this nested-child assertion is EXPECTED to fail at the flip. Do NOT rebaseline:
+        // it is the signal that the compatibility shim (register entry
+        // filesystem-watch-recursive-option-removed) is still owed.
+        expect(observedPathNames).not.toContain(nestedChild)
+      }).pipe(Effect.provide(NodeContext.layer), Effect.scoped),
     )
   })
 

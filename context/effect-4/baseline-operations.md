@@ -27,6 +27,11 @@ Read the newest `tmp/otel-scrape/summaries/test-<pkg>*.summary.json` and check `
 embed `running from local source (<sha>, <age>)` in help and version output, absent in a dirty
 tree. PR #991 passed when opened and failed later for exactly this reason.
 
+**Repeated task runs can be cached.** When proving flake resistance with multiple invocations, the
+devenv task cache can silently return a stale empty `{}` result after the first real run. Use
+`--refresh-task-cache` for counted repeats, and still read each fresh summary JSON before trusting
+the pass rate.
+
 ## Test tasks must exist
 
 `devenv.nix` generates a `test:<pkg>` task only for packages listed in `packagesWithTests`. There is
