@@ -3,7 +3,7 @@
  */
 
 import { Args, Command } from '@effect/cli'
-import { FetchHttpClient } from '@effect/platform'
+import { FetchHttpClient } from 'effect'
 import { Effect, Layer } from 'effect'
 import React from 'react'
 
@@ -19,7 +19,7 @@ import { InfoView } from '../../renderers/InfoOutput/view.tsx'
 /** Re-export internal types for TypeScript declaration emit */
 export type { Cause, Channel, Sink, Stream } from 'effect'
 export type { NodeInspectSymbol } from 'effect/Inspectable'
-export type { PlatformError } from '@effect/platform/Error'
+export type { PlatformError } from 'effect/Error'
 
 import { NotionConfig, NotionDatabases, NotionDataSources } from '@overeng/notion-effect-client'
 import { run } from '@overeng/tui-react'

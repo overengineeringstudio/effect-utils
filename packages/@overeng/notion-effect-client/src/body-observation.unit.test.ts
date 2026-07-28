@@ -1,4 +1,4 @@
-import type { HttpClientRequest } from '@effect/platform'
+import type { HttpClientRequest } from 'effect'
 import { Effect, Either } from 'effect'
 import { describe, expect, it } from 'vitest'
 

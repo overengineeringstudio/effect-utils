@@ -1,4 +1,4 @@
-import { HttpClient, HttpClientResponse } from '@effect/platform'
+import { HttpClient, HttpClientResponse } from 'effect'
 import { Effect, Exit, Layer, Redacted } from 'effect'
 import { describe, expect, it } from 'vitest'
 

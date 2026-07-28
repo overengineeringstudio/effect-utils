@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { NodeContext } from '@effect/platform-node'
+import { NodeServices } from '@effect/platform-node'
 import { Effect, Layer, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
@@ -178,7 +178,7 @@ const runWithNmdStateStore = <TValue, TError>(
   effect: Effect.Effect<TValue, TError, NmdStateStore>,
 ) =>
   Effect.runPromise(
-    effect.pipe(Effect.provide(NmdStateStoreLive.pipe(Layer.provide(NodeContext.layer)))),
+    effect.pipe(Effect.provide(NmdStateStoreLive.pipe(Layer.provide(NodeServices.layer)))),
   )
 
 const assertNoGatewayMutations = (ledger: ReturnType<typeof makeFakeGatewayHarness>['ledger']) => {
@@ -1068,7 +1068,7 @@ describe('body adapter E2E boundary', () => {
         statusFile({ path: absoluteBodyPath }).pipe(
           Effect.provideService(NotionMdGateway, notionMdGateway),
           Effect.provideService(NmdStateStore, stateStore),
-          Effect.provide(NodeContext.layer),
+          Effect.provide(NodeServices.layer),
         ),
       )
       expect(nmdStatus.status).toBe('in-sync')

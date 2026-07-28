@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 
-import * as Cli from '@effect/cli'
-import { FetchHttpClient } from '@effect/platform'
-import { NodeContext, NodeRuntime } from '@effect/platform-node'
+import * as Cli from 'effect/unstable/cli'
+import { FetchHttpClient } from 'effect'
+import { NodeServices, NodeRuntime } from '@effect/platform-node'
 import { Effect, Layer, Schema } from 'effect'
 
 import { ServiceIdentity } from '@overeng/otel-contract'
@@ -35,7 +35,7 @@ const program = Effect.gen(function* () {
     CliVersion.enrichErrors,
     Effect.provideService(CliVersion, { name: 'ci-tools', version }),
     Effect.provide(
-      Layer.mergeAll(NodeContext.layer, withTelemetry({ identity, shape: 'cli', endpoint })),
+      Layer.mergeAll(NodeServices.layer, withTelemetry({ identity, shape: 'cli', endpoint })),
     ),
   )
 }).pipe(Effect.provide(FetchHttpClient.layer))

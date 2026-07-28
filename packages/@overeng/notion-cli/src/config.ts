@@ -1,4 +1,4 @@
-import { FileSystem } from '@effect/platform'
+import { FileSystem } from 'effect'
 import { Effect, Schema } from 'effect'
 
 import { EffectPath, type AbsoluteDirPath, type AbsoluteFilePath } from '@overeng/effect-path'

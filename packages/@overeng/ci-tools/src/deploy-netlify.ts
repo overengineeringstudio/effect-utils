@@ -3,7 +3,7 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 
-import { HttpClient, HttpClientRequest } from '@effect/platform'
+import { HttpClient, HttpClientRequest } from 'effect'
 import { Effect, Either, Schema } from 'effect'
 
 import {

@@ -9,8 +9,8 @@
  * and `megarepo`.
  */
 
-import { Command as Cli, Options } from '@effect/cli'
-import { NodeContext, NodeRuntime } from '@effect/platform-node'
+import { Command as Cli, Options } from 'effect/unstable/cli'
+import { NodeServices, NodeRuntime } from '@effect/platform-node'
 import { Cause, Duration, Effect, Option, Schedule } from 'effect'
 
 import { readPlan, verifyPlan, type VerifyFailure } from './verify.ts'
@@ -107,7 +107,7 @@ const isRendered = (error: unknown) =>
 if (import.meta.main) {
   cli(process.argv).pipe(
     Effect.tapErrorCause(reportUnexpected),
-    Effect.provide(NodeContext.layer),
+    Effect.provide(NodeServices.layer),
     NodeRuntime.runMain({ disableErrorReporting: true }),
   )
 }

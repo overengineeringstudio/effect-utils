@@ -9,7 +9,7 @@
  * Note: Local path sources are NOT in the lock file - they're already local.
  */
 
-import { FileSystem, type Error as PlatformError } from '@effect/platform'
+import { FileSystem, type Error as PlatformError } from 'effect'
 import type { ParseResult } from 'effect'
 import { Effect, Option, Schema } from 'effect'
 

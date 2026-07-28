@@ -1,6 +1,6 @@
 import path from 'node:path'
 
-import * as Cli from '@effect/cli'
+import * as Cli from 'effect/unstable/cli'
 import { FileSystem } from '@effect/platform'
 import { Effect, Either, Fiber, Option, pipe, PubSub, Queue, Stream } from 'effect'
 import React from 'react'

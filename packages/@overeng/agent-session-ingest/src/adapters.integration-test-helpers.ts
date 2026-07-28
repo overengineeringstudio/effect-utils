@@ -1,8 +1,8 @@
 import { appendFile } from 'node:fs/promises'
 import * as nodePath from 'node:path'
 
-import { FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import { FileSystem } from 'effect'
+import { NodeServices } from '@effect/platform-node'
 import { Effect, Schema } from 'effect'
 import { expect } from 'vitest'
 
@@ -25,7 +25,7 @@ const encodeJson = Schema.encodeSync(Schema.parseJson())
 export const stringifyJson = (value: unknown): string => encodeJson(value)
 
 /** Shared Node runtime layer for adapter integration tests. */
-export const TestLayer = NodeContext.layer
+export const TestLayer = NodeServices.layer
 
 /** Ensures the adapter discovers exactly one artifact and returns it. */
 export const expectSingleArtifact = <TRecord>(adapter: SessionSourceAdapter<TRecord>) =>

@@ -1,4 +1,4 @@
-import type { HttpClient } from '@effect/platform'
+import type { HttpClient } from 'effect'
 import { Chunk, Effect, Option, Schema, Stream } from 'effect'
 
 import { type Block, BlockSchema, type BlockType } from '@overeng/notion-effect-schema'

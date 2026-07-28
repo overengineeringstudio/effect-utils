@@ -4,7 +4,7 @@
  * Provides helpers for creating test stores with bare repos and worktrees.
  */
 
-import { FileSystem } from '@effect/platform'
+import { FileSystem } from 'effect'
 import { Effect, Option, Schema } from 'effect'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'

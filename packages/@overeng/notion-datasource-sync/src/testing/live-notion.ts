@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
-import { FetchHttpClient, HttpClient } from '@effect/platform'
+import { FetchHttpClient, HttpClient } from 'effect'
 import { Chunk, Effect, Layer, Redacted, Schema, Stream } from 'effect'
 
 import {

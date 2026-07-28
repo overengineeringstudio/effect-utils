@@ -6,8 +6,8 @@
 
 import { resolve } from 'node:path'
 
-import * as Cli from '@effect/cli'
-import { FileSystem } from '@effect/platform'
+import * as Cli from 'effect/unstable/cli'
+import { FileSystem } from 'effect'
 import { Context, Effect, Layer, Option } from 'effect'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'

@@ -1,9 +1,9 @@
 import fs from 'node:fs'
 
-import * as Command from '@effect/platform/Command'
-import type * as CommandExecutor from '@effect/platform/CommandExecutor'
-import type { Process } from '@effect/platform/CommandExecutor'
-import type { PlatformError } from '@effect/platform/Error'
+import * as Command from 'effect/unstable/process/Command'
+import type * as CommandExecutor from 'effect/unstable/process/CommandExecutor'
+import type { Process } from 'effect/unstable/process/CommandExecutor'
+import type { PlatformError } from 'effect/Error'
 import type { Scope } from 'effect'
 import {
   Cause,

@@ -1,5 +1,5 @@
-import { Command } from '@effect/cli'
-import { NodeContext } from '@effect/platform-node'
+import { Command } from 'effect/unstable/cli'
+import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Effect } from 'effect'
 import { expect } from 'vitest'
@@ -39,6 +39,6 @@ describe('schema generate option resolution', () => {
       expect(captured!.output).toBe('schema.gen.ts')
       // The TUI render mode falls back to its default rather than swallowing `-o`.
       expect(captured!.tuiOutput).toBe('auto')
-    }).pipe(Effect.provide(NodeContext.layer)),
+    }).pipe(Effect.provide(NodeServices.layer)),
   )
 })

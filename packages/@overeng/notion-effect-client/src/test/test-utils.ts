@@ -1,4 +1,4 @@
-import { HttpClient, type HttpClientRequest, HttpClientResponse } from '@effect/platform'
+import { HttpClient, type HttpClientRequest, HttpClientResponse } from 'effect'
 import { Chunk, Effect, Layer, Redacted, Schema, Stream } from 'effect'
 
 import { type NotionClientConfig, NotionConfig } from '../config.ts'

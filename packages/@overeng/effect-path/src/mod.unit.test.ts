@@ -1,5 +1,5 @@
-import { FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import { FileSystem } from 'effect'
+import { NodeServices } from '@effect/platform-node'
 import { Effect, Either, Schema } from 'effect'
 import { expect, it } from 'vitest'
 
@@ -23,7 +23,7 @@ Vitest.describe('convention parsing', () => {
       Effect.gen(function* () {
         const result = yield* EffectPath.convention.absoluteFile('/home/user/file.txt')
         expect(result).toBe('/home/user/file.txt')
-      }).pipe(Effect.provide(NodeContext.layer)),
+      }).pipe(Effect.provide(NodeServices.layer)),
     )
 
     Vitest.it.effect('fails on relative path', () =>
@@ -32,7 +32,7 @@ Vitest.describe('convention parsing', () => {
           .absoluteFile('relative/path.txt')
           .pipe(Effect.either)
         expect(Either.isLeft(result)).toBe(true)
-      }).pipe(Effect.provide(NodeContext.layer)),
+      }).pipe(Effect.provide(NodeServices.layer)),
     )
 
     Vitest.it.effect('fails on directory path (trailing slash)', () =>
@@ -41,7 +41,7 @@ Vitest.describe('convention parsing', () => {
           .absoluteFile('/path/to/dir/')
           .pipe(Effect.either)
         expect(Either.isLeft(result)).toBe(true)
-      }).pipe(Effect.provide(NodeContext.layer)),
+      }).pipe(Effect.provide(NodeServices.layer)),
     )
   })
 
@@ -50,14 +50,14 @@ Vitest.describe('convention parsing', () => {
       Effect.gen(function* () {
         const result = yield* EffectPath.convention.absoluteDir('/home/user/')
         expect(result).toBe('/home/user/')
-      }).pipe(Effect.provide(NodeContext.layer)),
+      }).pipe(Effect.provide(NodeServices.layer)),
     )
 
     Vitest.it.effect('fails on file path (no trailing slash)', () =>
       Effect.gen(function* () {
         const result = yield* EffectPath.convention.absoluteDir('/path/to/file').pipe(Effect.either)
         expect(Either.isLeft(result)).toBe(true)
-      }).pipe(Effect.provide(NodeContext.layer)),
+      }).pipe(Effect.provide(NodeServices.layer)),
     )
   })
 
@@ -66,7 +66,7 @@ Vitest.describe('convention parsing', () => {
       Effect.gen(function* () {
         const result = yield* EffectPath.convention.relativeFile('src/mod.ts')
         expect(result).toBe('src/mod.ts')
-      }).pipe(Effect.provide(NodeContext.layer)),
+      }).pipe(Effect.provide(NodeServices.layer)),
     )
   })
 
@@ -75,7 +75,7 @@ Vitest.describe('convention parsing', () => {
       Effect.gen(function* () {
         const result = yield* EffectPath.convention.relativeDir('src/components/')
         expect(result).toBe('src/components/')
-      }).pipe(Effect.provide(NodeContext.layer)),
+      }).pipe(Effect.provide(NodeServices.layer)),
     )
   })
 
@@ -86,7 +86,7 @@ Vitest.describe('convention parsing', () => {
         expect(result.normalized).toBe('/home/user/file.txt')
         expect(result.baseName).toBe('file')
         expect(result.extension).toBe('txt')
-      }).pipe(Effect.provide(NodeContext.layer)),
+      }).pipe(Effect.provide(NodeServices.layer)),
     )
 
     Vitest.it.effect('parses file with multiple extensions', () =>
@@ -95,7 +95,7 @@ Vitest.describe('convention parsing', () => {
         expect(result.baseName).toBe('archive')
         expect(result.extension).toBe('gz')
         expect(result.fullExtension).toBe('tar.gz')
-      }).pipe(Effect.provide(NodeContext.layer)),
+      }).pipe(Effect.provide(NodeServices.layer)),
     )
   })
 
@@ -106,7 +106,7 @@ Vitest.describe('convention parsing', () => {
         expect(result.normalized).toBe('/home/user/')
         expect(result.baseName).toBe('user')
         expect(result.extension).toBeUndefined()
-      }).pipe(Effect.provide(NodeContext.layer)),
+      }).pipe(Effect.provide(NodeServices.layer)),
     )
   })
 })
@@ -294,7 +294,7 @@ Vitest.describe('normalization', () => {
         const path = EffectPath.unsafe.absoluteFile('/home/user/../admin/file.txt')
         const result = yield* EffectPath.normalize.lexical(path)
         expect(result).toBe('/home/admin/file.txt')
-      }).pipe(Effect.provide(NodeContext.layer)),
+      }).pipe(Effect.provide(NodeServices.layer)),
     )
   })
 })
@@ -539,7 +539,7 @@ Vitest.describe('edge cases', () => {
       Effect.gen(function* () {
         const result = yield* EffectPath.convention.absoluteFile('').pipe(Effect.either)
         expect(Either.isLeft(result)).toBe(true)
-      }).pipe(Effect.provide(NodeContext.layer)),
+      }).pipe(Effect.provide(NodeServices.layer)),
     )
 
     Vitest.it.effect('rejects path with null byte', () =>
@@ -548,7 +548,7 @@ Vitest.describe('edge cases', () => {
           .absoluteFile('/path/to\0file.txt')
           .pipe(Effect.either)
         expect(Either.isLeft(result)).toBe(true)
-      }).pipe(Effect.provide(NodeContext.layer)),
+      }).pipe(Effect.provide(NodeServices.layer)),
     )
   })
 
@@ -605,6 +605,6 @@ Vitest.describe('symlink', () => {
 
       const chain = yield* EffectPath.symlink.chain(link)
       expect(chain).toEqual([link, target])
-    }).pipe(Effect.scoped, Effect.provide(NodeContext.layer)),
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   )
 })

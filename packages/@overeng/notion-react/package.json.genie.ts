@@ -20,28 +20,12 @@ const workspaceDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/notion-react' }),
   dependencies: {
     workspace: [notionEffectClientPkg, notionEffectSchemaPkg, otelContractPkg],
-    external: catalog.pick('@effect/platform'),
+    external: catalog.pick('effect'),
   },
   devDependencies: {
     workspace: [utilsDevPkg, utilsPkg],
     external: {
-      ...catalog.pick(
-        ...peerDepNames,
-        ...optionalPeerDepNames,
-        '@effect/vitest',
-        '@storybook/react',
-        '@storybook/react-vite',
-        '@types/katex',
-        '@types/node',
-        '@types/react',
-        '@types/react-dom',
-        '@types/react-reconciler',
-        'react-dom',
-        'storybook',
-        'typescript',
-        'vite',
-        'vitest',
-      ),
+      ...catalog.pick(...peerDepNames, ...optionalPeerDepNames, '@effect/vitest', '@storybook/react', '@storybook/react-vite', '@types/katex', '@types/node', '@types/react', '@types/react-dom', '@types/react-reconciler', 'react-dom', 'storybook', 'typescript', 'vite', 'vitest'),
     },
   },
   peerDependencies: {

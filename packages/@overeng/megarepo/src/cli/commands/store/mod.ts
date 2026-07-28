@@ -5,7 +5,7 @@
  */
 
 import * as Cli from '@effect/cli'
-import { FileSystem, type Error as PlatformError } from '@effect/platform'
+import { FileSystem, type Error as PlatformError } from 'effect'
 import { Clock, Effect, Option, Schedule, Stream } from 'effect'
 import React from 'react'
 

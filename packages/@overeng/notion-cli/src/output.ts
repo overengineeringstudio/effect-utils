@@ -1,5 +1,5 @@
-import { FileSystem } from '@effect/platform'
-import type * as CommandExecutor from '@effect/platform/CommandExecutor'
+import { FileSystem } from 'effect'
+import type * as CommandExecutor from 'effect/unstable/process/CommandExecutor'
 import { Data, Effect } from 'effect'
 
 import { EffectPath, type AbsoluteFilePath } from '@overeng/effect-path'

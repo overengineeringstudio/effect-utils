@@ -1,4 +1,4 @@
-import { Rpc, RpcGroup, RpcClient } from '@effect/rpc'
+import { Rpc, RpcGroup, RpcClient } from 'effect/unstable/rpc'
 import { Chunk, Effect, Schema, Stream } from 'effect'
 import { describe, expect, it, vi } from 'vitest'
 

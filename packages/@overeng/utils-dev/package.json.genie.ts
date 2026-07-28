@@ -8,14 +8,7 @@ import {
 } from '../../../genie/internal.ts'
 
 /** Packages exposed as peer deps (consumers provide) + included in devDeps (for local dev/test) */
-const peerDepNames = [
-  '@effect/opentelemetry',
-  '@effect/platform',
-  '@effect/platform-node',
-  '@effect/vitest',
-  'effect',
-  'vitest',
-] as const
+const peerDepNames = ['@effect/opentelemetry', 'effect', '@effect/platform-node', '@effect/vitest', 'vitest'] as const
 
 const deps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/utils-dev' }),

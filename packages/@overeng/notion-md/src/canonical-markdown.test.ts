@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from '@effect/vitest'
-import * as fc from 'effect/FastCheck'
+import * as fc from 'effect/testing/FastCheck'
 
 import { canonicalizeBlockMarkdown, semanticEquivalent } from './canonical-markdown.ts'
 import { sha256Digest } from './hash.ts'

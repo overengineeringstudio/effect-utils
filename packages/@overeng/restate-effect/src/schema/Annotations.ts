@@ -44,7 +44,7 @@ export type ErrorClass =
   | { readonly _tag: 'terminal'; readonly errorCode: number }
   | { readonly _tag: 'retryable'; readonly retryAfter?: RetryAfter }
 
-/** Override the default `application/json` content type / `JSONSchema.make`. */
+/** Override the default `application/json` content type / `JsonSchema.make`. */
 export interface SerdeOptions {
   readonly contentType?: string
   readonly jsonSchema?: object

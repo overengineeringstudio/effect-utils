@@ -1,5 +1,5 @@
-import { Command, FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import { Command, FileSystem } from 'effect'
+import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Effect } from 'effect'
 import { expect } from 'vitest'
@@ -46,7 +46,7 @@ describe('store-setup fixtures', () => {
         const unpushed = yield* git(bare, 'rev-list', head, '--not', '--remotes')
         expect(unpushed).toBe('')
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -78,7 +78,7 @@ describe('store-setup fixtures', () => {
         const list = yield* git(bare, 'worktree', 'list', '--porcelain')
         expect(list).toContain(archivePath.replace(/\/+$/, ''))
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -112,7 +112,7 @@ describe('store-setup fixtures', () => {
         )
         expect(yield* fs.exists(registryDir)).toBe(false)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )

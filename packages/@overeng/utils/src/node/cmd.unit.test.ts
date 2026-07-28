@@ -1,8 +1,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-import { NodeContext } from '@effect/platform-node'
-import * as CommandExecutor from '@effect/platform/CommandExecutor'
+import { NodeServices } from '@effect/platform-node'
+import * as CommandExecutor from 'effect/unstable/process/CommandExecutor'
 import { Effect, Layer } from 'effect'
 import { expect } from 'vitest'
 
@@ -12,7 +12,7 @@ import { shouldNeverHappen } from '../isomorphic/mod.ts'
 import { cmd, cmdCollect } from './cmd.ts'
 import { CurrentWorkingDirectory } from './workspace.ts'
 
-const TestLayer = Layer.mergeAll(NodeContext.layer, CurrentWorkingDirectory.live)
+const TestLayer = Layer.mergeAll(NodeServices.layer, CurrentWorkingDirectory.live)
 
 Vitest.describe('cmd helper', () => {
   const ansiRegex = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g')

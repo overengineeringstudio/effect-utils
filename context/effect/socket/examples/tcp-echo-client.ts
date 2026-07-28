@@ -1,6 +1,6 @@
 import { NodeRuntime } from '@effect/platform-node'
 import { makeNet } from '@effect/platform-node/NodeSocket'
-import { CloseEvent } from '@effect/platform/Socket'
+import { CloseEvent } from 'effect/unstable/socket/Socket'
 import { Duration, Effect, Fiber } from 'effect'
 
 /**

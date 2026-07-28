@@ -6,7 +6,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 
-import { NodeContext } from '@effect/platform-node'
+import { NodeServices } from '@effect/platform-node'
 import { Cause, Effect, Exit, Layer, Option, Schema, Stream } from 'effect'
 import { describe, expect, it } from 'vitest'
 
@@ -317,7 +317,7 @@ const runWithNmdStateStore = <TValue, TError>(
   effect: Effect.Effect<TValue, TError, NmdStateStore>,
 ) =>
   Effect.runPromise(
-    effect.pipe(Effect.provide(NmdStateStoreLive.pipe(Layer.provide(NodeContext.layer)))),
+    effect.pipe(Effect.provide(NmdStateStoreLive.pipe(Layer.provide(NodeServices.layer)))),
   )
 
 const createBoundSqlite = async ({

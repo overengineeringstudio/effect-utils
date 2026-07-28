@@ -9,16 +9,7 @@ import {
 } from '../../../genie/internal.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
-const peerDepNames = [
-  '@effect/platform',
-  '@effect/platform-node',
-  '@effect/rpc',
-  '@tanstack/react-router',
-  '@tanstack/react-start',
-  'effect',
-  'react',
-  'react-dom',
-] as const
+const peerDepNames = ['effect', '@effect/platform-node', '@tanstack/react-router', '@tanstack/react-start', 'react', 'react-dom'] as const
 const workspaceDeps = catalog.compose({
   workspace: workspaceMember({
     memberPath: 'packages/@overeng/effect-rpc-tanstack',
@@ -29,15 +20,7 @@ const workspaceDeps = catalog.compose({
   devDependencies: {
     workspace: [utilsPkg],
     external: {
-      ...catalog.pick(
-        ...peerDepNames,
-        '@effect/experimental',
-        '@effect/sql',
-        '@types/react',
-        'typescript',
-        'vite',
-        'vitest',
-      ),
+      ...catalog.pick(...peerDepNames, 'effect', '@types/react', 'typescript', 'vite', 'vitest'),
     },
   },
   peerDependencies: {

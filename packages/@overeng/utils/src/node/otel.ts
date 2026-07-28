@@ -12,8 +12,8 @@
  * @module
  */
 
-import * as Otlp from '@effect/opentelemetry/Otlp'
-import { FetchHttpClient } from '@effect/platform'
+import * as Otlp from 'effect/unstable/observability/Otlp'
+import { FetchHttpClient } from 'effect'
 import type { MetricLabel } from 'effect'
 import {
   Clock,
@@ -209,7 +209,7 @@ const defaultShutdownTimeoutMs = (): number => (process.stdout.isTTY === true ? 
  *   name: 'my-cli', namespace: 'overeng', version,
  * })
  * const baseLayer = Layer.mergeAll(
- *   NodeContext.layer,
+ *   NodeServices.layer,
  *   makeOtelCliLayer({ identity }),
  * )
  *

@@ -9,21 +9,14 @@ import {
 } from '../../../genie/internal.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 
-const peerDepNames = ['@effect/platform', 'effect'] as const
+const peerDepNames = ['effect'] as const
 
 const workspaceDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/effect-path' }),
   devDependencies: {
     workspace: [utilsDevPkg],
     external: {
-      ...catalog.pick(
-        ...peerDepNames,
-        '@effect/platform-node',
-        '@effect/vitest',
-        '@types/node',
-        'typescript',
-        'vitest',
-      ),
+      ...catalog.pick(...peerDepNames, '@effect/platform-node', '@effect/vitest', '@types/node', 'typescript', 'vitest'),
     },
   },
   peerDependencies: {

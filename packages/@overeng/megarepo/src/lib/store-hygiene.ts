@@ -5,8 +5,8 @@
  * Used by pre-flight checks (sync/lock/pin) and `mr store fix`.
  */
 
-import { FileSystem, type Error as PlatformError } from '@effect/platform'
-import type { CommandExecutor } from '@effect/platform'
+import { FileSystem, type Error as PlatformError } from 'effect'
+import type { CommandExecutor } from 'effect'
 import { Effect, Option, Schema } from 'effect'
 
 import {

@@ -13,7 +13,7 @@
  */
 
 import { OtlpSerialization, OtlpTracer, Tracer } from '@effect/opentelemetry'
-import { FetchHttpClient } from '@effect/platform'
+import { FetchHttpClient } from 'effect'
 import { Effect, Layer, Schema } from 'effect'
 
 /**

@@ -23,7 +23,7 @@
  * @module
  */
 
-import { Options } from '@effect/cli'
+import { Options } from 'effect/unstable/cli'
 import { Cause, Effect, Exit, Layer, Logger, Option } from 'effect'
 
 import { createLogCapture } from './LogCapture.ts'

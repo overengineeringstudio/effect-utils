@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
-import { Command } from '@effect/cli'
-import { NodeContext, NodeRuntime } from '@effect/platform-node'
+import { Command } from 'effect/unstable/cli'
+import { NodeServices, NodeRuntime } from '@effect/platform-node'
 import { Effect } from 'effect'
 
 import { runTuiMain } from '@overeng/tui-react/node'
@@ -26,6 +26,6 @@ cli(rewriteHelpSubcommand(process.argv)).pipe(
   Effect.scoped,
   CliVersion.enrichErrors,
   Effect.provideService(CliVersion, { name: 'tui-stories', version }),
-  Effect.provide(NodeContext.layer),
+  Effect.provide(NodeServices.layer),
   runTuiMain(NodeRuntime),
 )

@@ -46,15 +46,7 @@ const workspaceDeps = catalog.compose({
      * locally. */
     workspace: [utilsDevPkg, utilsPkg],
     external: {
-      ...catalog.pick(
-        ...peerDepNames,
-        ...otelPeerDepNames,
-        ...otelSdkDeps,
-        '@effect/vitest',
-        '@types/node',
-        'typescript',
-        'vitest',
-      ),
+      ...catalog.pick(...peerDepNames, ...otelPeerDepNames, ...otelSdkDeps, '@effect/vitest', '@types/node', 'typescript', 'vitest'),
     },
   },
   peerDependencies: {

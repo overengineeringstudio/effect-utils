@@ -2,8 +2,8 @@ import * as crypto from 'node:crypto'
 import * as os from 'node:os'
 import nodePath from 'node:path'
 
-import { Command, FileSystem, Path } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import { Command, FileSystem, Path } from 'effect'
+import { NodeServices } from '@effect/platform-node'
 import { Chunk, Effect, Schema, Stream } from 'effect'
 import { expect } from 'vitest'
 
@@ -26,7 +26,7 @@ type TestEnv = {
   cleanup: () => Effect.Effect<void, never>
 }
 
-const TestLayer = NodeContext.layer
+const TestLayer = NodeServices.layer
 
 const createTestEnv = Effect.fnUntraced(function* () {
   const fs = yield* FileSystem.FileSystem

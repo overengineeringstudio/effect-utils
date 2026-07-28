@@ -4,7 +4,7 @@
  * Find and print the megarepo root directory.
  */
 
-import * as Cli from '@effect/cli'
+import * as Cli from 'effect/unstable/cli'
 import { Effect, Option } from 'effect'
 import React from 'react'
 

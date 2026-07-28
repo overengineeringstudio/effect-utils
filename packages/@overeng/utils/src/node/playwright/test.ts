@@ -7,8 +7,8 @@
  * @module
  */
 
-import { FetchHttpClient } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import { FetchHttpClient } from 'effect'
+import { NodeServices } from '@effect/platform-node'
 import type { BrowserContext, Page } from '@playwright/test'
 import { test } from '@playwright/test'
 import { ConfigProvider, Effect, Layer, Logger, LogLevel, type Config } from 'effect'
@@ -76,7 +76,7 @@ export interface WithTestCtxParams<ROut, E1> {
 /**
  * Platform layers for filesystem, path, and HTTP client access.
  */
-const DefaultLayers = Layer.mergeAll(NodeContext.layer, FetchHttpClient.layer, TestEnvConfigLive)
+const DefaultLayers = Layer.mergeAll(NodeServices.layer, FetchHttpClient.layer, TestEnvConfigLive)
 
 /** Default timeout for Playwright tests (2 minutes). */
 const DEFAULT_TIMEOUT_MS = 120_000
@@ -116,7 +116,7 @@ export const makeWithTestCtx =
  * Provides default layers:
  * - `PwPage` + `PwBrowserContext` (from Playwright fixtures)
  * - `OtelPlaywrightLive` (tracing, when OTEL endpoint is configured)
- * - `NodeContext.layer` (filesystem, path, etc.)
+ * - `NodeServices.layer` (filesystem, path, etc.)
  * - `FetchHttpClient.layer`
  * - `Logger.minimumLogLevel(LogLevel.Debug)` (debug logs enabled by default)
  *

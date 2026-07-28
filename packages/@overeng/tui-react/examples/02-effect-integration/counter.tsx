@@ -16,8 +16,8 @@
  *   bun examples/03-effect-integration/counter.tsx --help
  */
 
-import { Command } from '@effect/cli'
-import { NodeContext, NodeRuntime } from '@effect/platform-node'
+import { Command } from 'effect/unstable/cli'
+import { NodeServices, NodeRuntime } from '@effect/platform-node'
 import { Duration, Effect } from 'effect'
 import React from 'react'
 
@@ -91,4 +91,4 @@ const cli = Command.run(counter, {
 })
 
 // Run with Effect CLI (handles SIGINT/SIGTERM properly)
-cli(process.argv).pipe(Effect.provide(NodeContext.layer), NodeRuntime.runMain)
+cli(process.argv).pipe(Effect.provide(NodeServices.layer), NodeRuntime.runMain)

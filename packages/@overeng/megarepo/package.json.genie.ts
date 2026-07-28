@@ -15,14 +15,7 @@ import tuiReactPkg from '../tui-react/package.json.genie.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
-const peerDepNames = [
-  '@effect/cli',
-  '@effect/platform',
-  '@effect/platform-node',
-  '@effect/printer',
-  '@effect/printer-ansi',
-  'effect',
-] as const
+const peerDepNames = ['effect', '@effect/platform-node'] as const
 
 const runtimeDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/megarepo' }),
@@ -33,24 +26,7 @@ const runtimeDeps = catalog.compose({
   devDependencies: {
     workspace: [tuiCorePkg, utilsDevPkg],
     external: {
-      ...catalog.pick(
-        ...peerDepNames,
-        '@effect/vitest',
-        '@types/bun',
-        '@types/node',
-        '@types/react',
-        'vitest',
-        'storybook',
-        '@storybook/react',
-        '@storybook/react-vite',
-        '@xterm/xterm',
-        '@xterm/addon-fit',
-        'react-dom',
-        'react-reconciler',
-        'typescript',
-        'vite',
-        '@vitejs/plugin-react',
-      ),
+      ...catalog.pick(...peerDepNames, '@effect/vitest', '@types/bun', '@types/node', '@types/react', 'vitest', 'storybook', '@storybook/react', '@storybook/react-vite', '@xterm/xterm', '@xterm/addon-fit', 'react-dom', 'react-reconciler', 'typescript', 'vite', '@vitejs/plugin-react'),
     },
   },
   peerDependencies: {

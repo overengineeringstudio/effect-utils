@@ -1,11 +1,11 @@
 import { NodeRuntime } from '@effect/platform-node'
-import type { Socket as SocketType } from '@effect/platform/Socket'
+import type { Socket as SocketType } from 'effect/unstable/socket/Socket'
 import {
   CloseEvent,
   layerWebSocketConstructorGlobal,
   makeWebSocket,
   toChannelString,
-} from '@effect/platform/Socket'
+} from 'effect/unstable/socket/Socket'
 import { Duration, Effect, Fiber, Schema, Stream } from 'effect'
 
 /**

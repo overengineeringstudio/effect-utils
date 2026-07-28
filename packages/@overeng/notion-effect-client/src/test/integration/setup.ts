@@ -1,4 +1,4 @@
-import { FetchHttpClient, type HttpClient } from '@effect/platform'
+import { FetchHttpClient, type HttpClient } from 'effect'
 import { Effect, Layer, Redacted } from 'effect'
 
 import { NotionBlocks } from '../../blocks.ts'

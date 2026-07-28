@@ -4,8 +4,8 @@
  * List all members in the megarepo.
  */
 
-import * as Cli from '@effect/cli'
-import { FileSystem, type Error as PlatformError } from '@effect/platform'
+import * as Cli from 'effect/unstable/cli'
+import { FileSystem, type Error as PlatformError } from 'effect'
 import { Effect, Option, type ParseResult } from 'effect'
 import React from 'react'
 

@@ -1,4 +1,4 @@
-import { FileSystem, type Error as PlatformError } from '@effect/platform'
+import { FileSystem, type Error as PlatformError } from 'effect'
 import { Effect, Option } from 'effect'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'

@@ -18,7 +18,7 @@ import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
 /** Effect packages not already in @overeng/utils or @overeng/tui-react */
-const ownPeerDepNames = ['@effect/cli', '@effect/sql', '@effect/typeclass'] as const
+const ownPeerDepNames = ['effect'] as const
 const runtimeDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/notion-cli' }),
   dependencies: {
@@ -37,19 +37,7 @@ const runtimeDeps = catalog.compose({
   devDependencies: {
     workspace: [utilsDevPkg],
     external: {
-      ...catalog.pick(
-        ...ownPeerDepNames,
-        '@effect/vitest',
-        '@storybook/react',
-        '@storybook/react-vite',
-        '@types/node',
-        '@types/react',
-        '@vitejs/plugin-react',
-        'storybook',
-        'typescript',
-        'vite',
-        'vitest',
-      ),
+      ...catalog.pick(...ownPeerDepNames, '@effect/vitest', '@storybook/react', '@storybook/react-vite', '@types/node', '@types/react', '@vitejs/plugin-react', 'storybook', 'typescript', 'vite', 'vitest'),
     },
   },
   peerDependencies: {

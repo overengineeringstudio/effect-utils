@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { NodeContext, NodeRuntime } from '@effect/platform-node'
+import { NodeServices, NodeRuntime } from '@effect/platform-node'
 import { Effect, type Exit, Layer, Schema } from 'effect'
 
 import { ServiceIdentity } from '@overeng/otel-contract'
@@ -22,7 +22,7 @@ export const runCliMain = ({
       Effect.tapErrorCause(renderCliError),
       Effect.scoped,
       Effect.provide(
-        Layer.mergeAll(NodeContext.layer, withTelemetry({ identity, shape: 'cli', endpoint })),
+        Layer.mergeAll(NodeServices.layer, withTelemetry({ identity, shape: 'cli', endpoint })),
       ),
     )
   })

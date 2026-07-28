@@ -4,9 +4,9 @@
  * Show workspace status and member states.
  */
 
-import * as Cli from '@effect/cli'
-import type { CommandExecutor } from '@effect/platform'
-import { FileSystem, type Error as PlatformError } from '@effect/platform'
+import * as Cli from 'effect/unstable/cli'
+import type { CommandExecutor } from 'effect'
+import { FileSystem, type Error as PlatformError } from 'effect'
 import { Clock, Effect, Option, type ParseResult } from 'effect'
 import React from 'react'
 

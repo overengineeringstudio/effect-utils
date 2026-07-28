@@ -2,7 +2,7 @@ import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import path from 'node:path'
 
-import { NodeContext } from '@effect/platform-node'
+import { NodeServices } from '@effect/platform-node'
 import { Duration, Effect, Either, Option, PubSub } from 'effect'
 import { describe, expect, it } from 'vitest'
 
@@ -166,7 +166,7 @@ export default {
             oxfmtConfigPath: Option.none(),
           }).pipe(
             Effect.provideService(GenieEventBus, bus),
-            Effect.provide(NodeContext.layer),
+            Effect.provide(NodeServices.layer),
             Effect.timeout(Duration.seconds(2)),
             Effect.either,
           )

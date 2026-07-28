@@ -6,7 +6,7 @@ import { basename } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { Args, Command, Options } from '@effect/cli'
-import { FetchHttpClient, FileSystem } from '@effect/platform'
+import { FetchHttpClient, FileSystem } from 'effect'
 import { Effect, Layer, Option, Schema } from 'effect'
 import React from 'react'
 
@@ -30,7 +30,7 @@ import { IntrospectView } from '../../renderers/IntrospectOutput/view.tsx'
 import { resolveNotionToken, tokenOption } from '../shared.ts'
 
 /** Re-export internal types for TypeScript declaration emit */
-export type { PlatformError } from '@effect/platform/Error'
+export type { PlatformError } from 'effect/Error'
 
 import { type GenerateOptions, generateApiCode, generateSchemaCode } from '../../codegen.ts'
 import { loadConfig } from '../../config.ts'

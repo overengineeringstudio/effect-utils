@@ -16,7 +16,7 @@
  */
 
 import type { Atom } from '@effect-atom/atom'
-import { NodeContext, NodeRuntime } from '@effect/platform-node'
+import { NodeServices, NodeRuntime } from '@effect/platform-node'
 import { Effect, Schema } from 'effect'
 import React, { useMemo } from 'react'
 
@@ -357,4 +357,4 @@ const program = Effect.gen(function* () {
   }
 }).pipe(Effect.provide(outputModeLayer('tty')))
 
-program.pipe(Effect.provide(NodeContext.layer), NodeRuntime.runMain)
+program.pipe(Effect.provide(NodeServices.layer), NodeRuntime.runMain)

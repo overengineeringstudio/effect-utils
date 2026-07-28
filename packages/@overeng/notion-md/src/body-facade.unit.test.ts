@@ -1,5 +1,5 @@
-import type { FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import type { FileSystem } from 'effect'
+import { NodeServices } from '@effect/platform-node'
 import { Effect, Layer, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
@@ -210,7 +210,7 @@ const runWithGatewayAndStore = <A, E>(
   store: FakeStore,
 ) =>
   Effect.runPromise(
-    effect.pipe(Effect.provide(Layer.mergeAll(gateway.layer, store.layer, NodeContext.layer))),
+    effect.pipe(Effect.provide(Layer.mergeAll(gateway.layer, store.layer, NodeServices.layer))),
   )
 
 describe('notion-md body facade', () => {

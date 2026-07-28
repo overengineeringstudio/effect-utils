@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 
-import { FileSystem, Path } from '@effect/platform'
+import { FileSystem, Path } from 'effect'
 import { Context, Effect, Layer, type ParseResult, Schema } from 'effect'
 
 import {

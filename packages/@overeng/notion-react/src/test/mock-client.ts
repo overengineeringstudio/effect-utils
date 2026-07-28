@@ -1,4 +1,4 @@
-import { HttpClient, type HttpClientRequest, HttpClientResponse } from '@effect/platform'
+import { HttpClient, type HttpClientRequest, HttpClientResponse } from 'effect'
 import { Effect, Layer, Redacted, Schema } from 'effect'
 
 import { NotionConfig } from '@overeng/notion-effect-client'

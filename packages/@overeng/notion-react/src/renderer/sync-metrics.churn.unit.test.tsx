@@ -1,4 +1,4 @@
-import type { HttpClient } from '@effect/platform'
+import type { HttpClient } from 'effect'
 import { Effect } from 'effect'
 import { Fragment, type ReactNode } from 'react'
 import { describe, expect, it } from 'vitest'

@@ -1,4 +1,4 @@
-import { Rpc, RpcGroup } from '@effect/rpc'
+import { Rpc, RpcGroup } from 'effect/unstable/rpc'
 import { Effect, Exit, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 

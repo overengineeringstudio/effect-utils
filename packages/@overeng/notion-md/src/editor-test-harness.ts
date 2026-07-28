@@ -4,7 +4,7 @@
  * the engine through one fake instead of duplicating ~100 lines. Lives in a
  * non-`.test.ts` module so vitest does not collect it as a suite.
  */
-import { FileSystem } from '@effect/platform'
+import { FileSystem } from 'effect'
 import { Effect, Layer } from 'effect'
 
 import type { BodyCompleteness } from '@overeng/notion-core'

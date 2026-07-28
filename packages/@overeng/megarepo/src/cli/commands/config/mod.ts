@@ -2,7 +2,7 @@
  * Config subcommand group — push-refs, pin, unpin
  */
 
-import * as Cli from '@effect/cli'
+import * as Cli from 'effect/unstable/cli'
 
 import { pinCommand, unpinCommand } from '../pin.ts'
 import { pushRefsCommand } from './push-refs.ts'

@@ -1,7 +1,7 @@
 import { access } from 'node:fs/promises'
 
-import { Command } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import { Command } from 'effect'
+import { NodeServices } from '@effect/platform-node'
 import { describe, expect, it } from '@effect/vitest'
 import { Effect, Exit, Layer, Schema } from 'effect'
 
@@ -43,7 +43,7 @@ const captureSpanPayload = (name: string, service: string) =>
   })
 
 /** Real otelite binary (from `PATH`, see README) + Node platform layer. */
-const TestLayer = Otelite.Default.pipe(Layer.provideMerge(NodeContext.layer))
+const TestLayer = Otelite.Default.pipe(Layer.provideMerge(NodeServices.layer))
 
 const tracesFixture = new URL('./fixtures/traces.ndjson', import.meta.url).pathname
 const emitter = new URL('./emitter.ts', import.meta.url).pathname

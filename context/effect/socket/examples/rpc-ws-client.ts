@@ -1,7 +1,7 @@
 import { NodeRuntime } from '@effect/platform-node'
-import { layerWebSocket, layerWebSocketConstructorGlobal } from '@effect/platform/Socket'
-import { layerProtocolSocket, make as makeRpcClient } from '@effect/rpc/RpcClient'
-import { layerJson } from '@effect/rpc/RpcSerialization'
+import { layerWebSocket, layerWebSocketConstructorGlobal } from 'effect/unstable/socket/Socket'
+import { layerProtocolSocket, make as makeRpcClient } from 'effect/unstable/rpc/RpcClient'
+import { layerJson } from 'effect/unstable/rpc/RpcSerialization'
 import { Effect, Layer } from 'effect'
 
 import { Api } from './rpc-schema.ts'

@@ -13,8 +13,8 @@
  * - Local path: "./path", "../path", "/absolute/path"
  */
 
-import { FileSystem } from '@effect/platform'
-import { Effect, JSONSchema, Option, Schema } from 'effect'
+import { FileSystem } from 'effect'
+import { Effect, JsonSchema, Option, Schema } from 'effect'
 
 import {
   EffectPath,
@@ -294,7 +294,7 @@ export const writeMegarepoConfig = ({
 // =============================================================================
 
 /** Generate JSON Schema from Effect Schema */
-export const generateJsonSchema = () => JSONSchema.make(MegarepoConfig)
+export const generateJsonSchema = () => JsonSchema.make(MegarepoConfig)
 
 // =============================================================================
 // Member Name Validation

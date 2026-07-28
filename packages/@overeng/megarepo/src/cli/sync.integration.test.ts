@@ -1,8 +1,8 @@
 import { pathToFileURL } from 'node:url'
 
-import * as Cli from '@effect/cli'
-import { FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import * as Cli from 'effect/unstable/cli'
+import { FileSystem } from 'effect'
+import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Cause, Chunk, Effect, Exit, Option, Schema } from 'effect'
 import { expect } from 'vitest'
@@ -250,7 +250,7 @@ describe('mr apply', () => {
           // Note: Actually running the sync command would require more setup
           // (proper CLI runner, etc). This test verifies the workspace fixture works.
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -294,7 +294,7 @@ describe('mr apply', () => {
           // The link target should be the repo path without trailing slash
           expect(linkTarget).toBe(repoPaths['repo1']?.slice(0, -1))
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -457,7 +457,7 @@ describe('lock apply mode', () => {
           // Should not be stale - lock apply mode would succeed
           expect(result.isStale).toBe(false)
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -499,7 +499,7 @@ describe('lock apply mode', () => {
           expect(result.isStale).toBe(true)
           expect(result.addedMembers).toContain('lib2')
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -545,7 +545,7 @@ describe('lock apply mode', () => {
           expect(result.isStale).toBe(true)
           expect(result.removedMembers).toContain('old-lib')
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -590,7 +590,7 @@ describe('lock apply mode', () => {
           const result = checkLockStaleness({ lockFile, configMemberNames })
           expect(result.isStale).toBe(false)
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -707,7 +707,7 @@ describe('--all sync mode', () => {
           )
           expect(parentConfig.members['child-megarepo']).toBe(childPath)
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -737,7 +737,7 @@ describe('--all sync mode', () => {
           )
           expect(yield* fs.exists(grandchildConfigPath)).toBe(false)
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -830,7 +830,7 @@ describe('--all nested error reporting', () => {
           expect(nestedResults.some((r) => r.name === 'bad' && r.status === 'error')).toBe(true)
         }
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -982,7 +982,7 @@ describe('--all sync deduplication', () => {
         // Both children reference the SAME path
         expect(childAConfig.members['shared-lib']).toBe(childBConfig.members['shared-lib'])
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -1388,7 +1388,7 @@ describe('nested megarepo.lock sync scope', () => {
         const afterNestedLock = Option.getOrThrow(afterNestedLockOpt)
         expect(afterNestedLock.members['shared']?.commit).toBe(staleNestedCommit)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
     { timeout: 15_000 },
@@ -1424,7 +1424,7 @@ describe('nested megarepo.lock sync scope', () => {
         const afterNestedLock = Option.getOrThrow(afterNestedLockOpt)
         expect(afterNestedLock.members['shared']?.commit).toBe(staleNestedCommit)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
     { timeout: 15_000 },
@@ -1460,7 +1460,7 @@ describe('nested megarepo.lock sync scope', () => {
         const afterNestedLock = Option.getOrThrow(afterNestedLockOpt)
         expect(afterNestedLock.members['shared']?.commit).toBe(sharedCommit)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
     { timeout: 15_000 },
@@ -1503,7 +1503,7 @@ describe('nested megarepo.lock sync scope', () => {
         expect(result.exitCode).toBe(0)
         expect(result.stderr).not.toContain('invalid reference')
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
     { timeout: 15_000 },
@@ -1539,7 +1539,7 @@ describe('nested megarepo.lock sync scope', () => {
         const afterNestedLock = Option.getOrThrow(afterNestedLockOpt)
         expect(afterNestedLock.members['shared']?.commit).toBe(staleNestedCommit)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
     { timeout: 15_000 },
@@ -1575,7 +1575,7 @@ describe('nested megarepo.lock sync scope', () => {
         const afterNestedLock = Option.getOrThrow(afterNestedLockOpt)
         expect(afterNestedLock.members['shared']?.commit).toBe(staleNestedCommit)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
     { timeout: 15_000 },
@@ -1611,7 +1611,7 @@ describe('nested megarepo.lock sync scope', () => {
         const afterNestedLock = Option.getOrThrow(afterNestedLockOpt)
         expect(afterNestedLock.members['shared-dev']?.commit).toBe(devCommit)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
     { timeout: 15_000 },
@@ -1647,7 +1647,7 @@ describe('nested megarepo.lock sync scope', () => {
         const afterNestedLock = Option.getOrThrow(afterNestedLockOpt)
         expect(afterNestedLock.members['shared']?.commit).toBe(sharedCommit)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
     { timeout: 15_000 },
@@ -1707,7 +1707,7 @@ describe('mr lock', () => {
           // For local paths, status is 'synced' since they create symlinks
           expect(['synced', 'recorded', 'already_synced']).toContain(memberResult?.status)
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -1761,7 +1761,7 @@ describe('mr lock', () => {
           // After first sync, should be already_synced or synced
           expect(['synced', 'already_synced']).toContain(memberResult?.status)
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -1815,7 +1815,7 @@ describe('mr lock', () => {
           // The command should complete (might error on clone attempt, but shouldn't hang on fetch)
           expect(result.exitCode).toBeDefined()
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -1937,7 +1937,7 @@ describe('mr lock', () => {
           expect(featureFileInFeature).toBe(true)
           expect(updatedLink.replace(/\/$/, '')).toBe(featureRepoPath.replace(/\/$/, ''))
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -2028,7 +2028,7 @@ describe('mr lock', () => {
           const currentLink = yield* fs.readLink(symlinkPath)
           expect(currentLink.replace(/\/$/, '')).toBe(mainRepoPath.replace(/\/$/, ''))
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -2114,7 +2114,7 @@ describe('mr lock', () => {
           // The uncommitted work is still protected — apply reports, it does not clobber.
           expect(yield* fs.readLink(symlinkPath)).toBe(pinnedLink)
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
       { timeout: 15_000 },
@@ -2169,7 +2169,7 @@ describe('mr lock', () => {
           expect(json.results[0]?.status).not.toBe('error')
           expect(result.exitCode).toBe(0)
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
       { timeout: 15_000 },
@@ -2257,7 +2257,7 @@ describe('mr lock', () => {
           const currentLink = yield* fs.readLink(symlinkPath)
           expect(currentLink.replace(/\/$/, '')).toBe(featureRepoPath.replace(/\/$/, ''))
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -2323,7 +2323,7 @@ describe('mr fetch', () => {
           // Should complete without error
           expect(result.exitCode).toBeDefined()
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -2385,7 +2385,7 @@ describe('mr fetch', () => {
           expect(json.results).toHaveLength(1)
           // Note: Local path sources behave differently, but this documents the behavior
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -2423,7 +2423,7 @@ describe('mr fetch', () => {
           expect(lockFile.members['test-repo']?.commit).toBe(currentCommit)
           expect(lockFile.members['test-repo']?.pinned).toBe(true)
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -2450,7 +2450,7 @@ describe('mr fetch', () => {
           expect(memberResult.status).toBe('skipped')
           expect(memberResult.message).toContain('pinned')
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -2479,7 +2479,7 @@ describe('mr fetch', () => {
           expect(memberResult.message).toContain(`'${staleCommit.slice(0, 8)}'`)
           expect(memberResult.message).toContain('not available locally or on the remote')
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -2605,7 +2605,7 @@ describe('mr fetch', () => {
           const worktreeHeadAfter = yield* runGitCommand(worktreePath, 'rev-parse', 'HEAD')
           expect(worktreeHeadAfter).toBe(newCommit)
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
       { timeout: 30_000 },
@@ -2672,7 +2672,7 @@ describe('sync status types', () => {
         // For local paths, first sync creates a symlink - status is 'synced'
         expect(memberResult?.status).toBe('synced')
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -2749,7 +2749,7 @@ describe('sync error handling', () => {
             memberResult?.message?.toLowerCase().includes('auth'),
         ).toBe(true)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -2824,7 +2824,7 @@ describe('sync member filtering', () => {
           expect(json.results).toHaveLength(1)
           expect(json.results[0]?.name).toBe('repo1')
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
       20_000,
@@ -2895,7 +2895,7 @@ describe('sync member filtering', () => {
           expect(json.results).toHaveLength(1)
           expect(json.results[0]?.name).toBe('repo1')
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
       20_000,
@@ -2955,7 +2955,7 @@ describe('sync member filtering', () => {
             expect(failureMessages.toLowerCase()).toContain('mutually exclusive')
           }
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -3087,7 +3087,7 @@ describe('sync worktree ref mismatch detection', () => {
         // It proceeds (possibly falling back to commit worktree) instead of returning 'skipped'.
         expect(memberResult?.status).not.toBe('skipped')
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
     { timeout: 15_000 },
@@ -3192,7 +3192,7 @@ describe('sync worktree ref mismatch detection', () => {
         // It proceeds (possibly falling back to commit worktree) instead of returning 'skipped'.
         expect(memberResult?.status).not.toBe('skipped')
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
     { timeout: 15_000 },
@@ -3303,7 +3303,7 @@ describe('sync member removal detection', () => {
         // Verify repo2 symlink was removed
         expect(yield* fs.exists(repo2Symlink)).toBe(false)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -3397,7 +3397,7 @@ describe('sync member removal detection', () => {
         )
         expect(yield* fs.exists(repo2Symlink)).toBe(true)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -3475,7 +3475,7 @@ describe('sync member removal detection', () => {
         )
         expect(yield* fs.exists(repo2Symlink)).toBe(true)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -3552,7 +3552,7 @@ describe('sync member removal detection', () => {
         // The directory should still exist
         expect(yield* fs.exists(orphanDirPath)).toBe(true)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )

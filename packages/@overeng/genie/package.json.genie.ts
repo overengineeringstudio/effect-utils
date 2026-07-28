@@ -21,28 +21,12 @@ const supportDeps = catalog.compose({
   devDependencies: {
     workspace: [tuiCorePkg, tuiReactPkg, utilsDevPkg, utilsPkg],
     external: {
-      ...catalog.pick(
-        '@effect/cli',
-        '@effect/platform',
-        '@effect/platform-node',
-        '@effect/printer',
-        '@effect/printer-ansi',
-        '@effect/vitest',
-        '@types/node',
-        '@types/bun',
-        'vitest',
-        '@storybook/react',
-        '@storybook/react-vite',
-        'storybook',
-        '@types/react',
-        '@types/react-reconciler',
-        'prettier',
-      ),
+      ...catalog.pick('effect', '@effect/platform-node', '@effect/vitest', '@types/node', '@types/bun', 'vitest', '@storybook/react', '@storybook/react-vite', 'storybook', '@types/react', '@types/react-reconciler', 'prettier'),
     },
   },
   peerDependencies: {
     workspace: [utilsPkg, tuiReactPkg],
-    external: catalog.pick('@effect/cli'),
+    external: catalog.pick('effect'),
   },
   mode: 'install',
 })

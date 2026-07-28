@@ -13,7 +13,7 @@ import {
  * that only classify registry state pull in no dependencies. Effect appears here for
  * the `./cli` entry, which is bundled into a standalone binary at build time.
  */
-const peerDepNames = ['@effect/cli', '@effect/platform', '@effect/platform-node', 'effect'] as const
+const peerDepNames = ['@effect/platform-node', 'effect'] as const
 
 const workspaceDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/npm-release' }),

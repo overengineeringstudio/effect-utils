@@ -1,4 +1,4 @@
-import type { FileSystem } from '@effect/platform'
+import type { FileSystem } from 'effect'
 import { Effect, Schema } from 'effect'
 
 import type { SessionSourceDiscoveryError } from '../errors.ts'

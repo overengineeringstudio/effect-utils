@@ -1,4 +1,4 @@
-import type { HttpClientRequest } from '@effect/platform'
+import type { HttpClientRequest } from 'effect'
 import { Effect, Fiber, Option, Redacted, Schema, TestClock, Tracer } from 'effect'
 import { expect } from 'vitest'
 

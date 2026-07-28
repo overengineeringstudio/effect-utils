@@ -6,7 +6,7 @@
  * Raw traversal paths can grow forever in symlink cycles.
  */
 
-import { FileSystem, type Error as PlatformError } from '@effect/platform'
+import { FileSystem, type Error as PlatformError } from 'effect'
 import { Effect, Ref, Schema, type ParseResult } from 'effect'
 
 import type { AbsoluteDirPath } from '@overeng/effect-path'

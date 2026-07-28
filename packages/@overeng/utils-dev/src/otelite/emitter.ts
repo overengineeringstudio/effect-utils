@@ -10,7 +10,7 @@
  * The trace uses the default OTel-SDK JSON dialect the receiver decodes:
  * 32-hex `traceId`, 16-hex `spanId`, integer `kind`, string int64 nanos.
  */
-import { FetchHttpClient, HttpClient, HttpClientRequest } from '@effect/platform'
+import { FetchHttpClient, HttpClient, HttpClientRequest } from 'effect'
 import { Effect } from 'effect'
 
 /** Distinctive span name so the test's assertion is unambiguous. */

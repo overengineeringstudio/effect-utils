@@ -1,4 +1,4 @@
-import { Options } from '@effect/cli'
+import { Options } from 'effect/unstable/cli'
 import { Effect, Option, Redacted } from 'effect'
 
 import { resolveNotionToken as resolveNotionTokenFromEnv } from '@overeng/notion-effect-client'

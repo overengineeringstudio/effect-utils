@@ -1,8 +1,8 @@
 import { NodeRuntime } from '@effect/platform-node'
 import { layer } from '@effect/platform-node/NodeSocketServer'
-import type { Socket as SocketType } from '@effect/platform/Socket'
-import type { Address } from '@effect/platform/SocketServer'
-import { SocketServer } from '@effect/platform/SocketServer'
+import type { Socket as SocketType } from 'effect/unstable/socket/Socket'
+import type { Address } from 'effect/unstable/socket/SocketServer'
+import { SocketServer } from 'effect/unstable/socket/SocketServer'
 import { Effect } from 'effect'
 
 /**

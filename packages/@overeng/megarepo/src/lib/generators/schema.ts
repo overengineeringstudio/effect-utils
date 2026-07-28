@@ -5,7 +5,7 @@
  * Output: schema/megarepo.schema.json in the specified location.
  */
 
-import { FileSystem } from '@effect/platform'
+import { FileSystem } from 'effect'
 import { Effect } from 'effect'
 
 import {

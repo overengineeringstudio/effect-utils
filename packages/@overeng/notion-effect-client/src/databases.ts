@@ -1,4 +1,4 @@
-import type { HttpClient } from '@effect/platform'
+import type { HttpClient } from 'effect'
 import { Effect, Option, type Schema, Stream } from 'effect'
 
 import type { DataSourceSchema, Page } from '@overeng/notion-effect-schema'

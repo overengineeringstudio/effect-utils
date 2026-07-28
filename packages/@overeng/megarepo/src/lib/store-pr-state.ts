@@ -20,7 +20,7 @@
  * directly with fake gh output so no real `gh`/network is needed.
  */
 
-import { Command, CommandExecutor } from '@effect/platform'
+import { Command, CommandExecutor } from 'effect'
 import { Context, Duration, Effect, Layer, Option, Schema } from 'effect'
 
 import type { RelativeDirPath } from '@overeng/effect-path'

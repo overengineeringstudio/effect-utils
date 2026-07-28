@@ -4,7 +4,7 @@
  * Main CLI entry point for the `mr` command.
  */
 
-import * as Cli from '@effect/cli'
+import * as Cli from 'effect/unstable/cli'
 import { Option } from 'effect'
 
 import { rewriteHelpSubcommand } from '@overeng/utils/node/cli-help-rewrite'

@@ -3,7 +3,7 @@ import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import path from 'node:path'
 
-import { NodeContext } from '@effect/platform-node'
+import { NodeServices } from '@effect/platform-node'
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 
@@ -54,7 +54,7 @@ describe('findGenieFiles', () => {
       })
 
       const discovered = await Effect.runPromise(
-        findGenieFiles(root).pipe(Effect.provide(NodeContext.layer)),
+        findGenieFiles(root).pipe(Effect.provide(NodeServices.layer)),
       )
       const relative = await toCanonicalRelative({ root, files: discovered })
 
@@ -102,7 +102,7 @@ describe('findGenieFiles', () => {
       )
 
       const discovered = await Effect.runPromise(
-        findGenieFiles(root).pipe(Effect.provide(NodeContext.layer)),
+        findGenieFiles(root).pipe(Effect.provide(NodeServices.layer)),
       )
       const relative = await toCanonicalRelative({ root, files: discovered })
 
@@ -125,7 +125,7 @@ describe('findGenieFiles', () => {
       })
 
       const discovered = await Effect.runPromise(
-        findGenieFiles(symlinkRoot).pipe(Effect.provide(NodeContext.layer)),
+        findGenieFiles(symlinkRoot).pipe(Effect.provide(NodeServices.layer)),
       )
       const relative = await toCanonicalRelative({ root: symlinkRoot, files: discovered })
 

@@ -1,4 +1,4 @@
-import type { FileSystem } from '@effect/platform'
+import type { FileSystem } from 'effect'
 import type { Effect } from 'effect'
 import { Schema } from 'effect'
 

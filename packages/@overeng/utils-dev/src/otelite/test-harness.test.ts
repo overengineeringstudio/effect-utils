@@ -1,5 +1,5 @@
-import { FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import { FileSystem } from 'effect'
+import { NodeServices } from '@effect/platform-node'
 import { describe, expect, it } from '@effect/vitest'
 import { Effect, Layer, Metric, MetricLabel, Schema } from 'effect'
 
@@ -105,7 +105,7 @@ describe('OteliteTestHarness', () => {
         expect(traceJson.schema).toBe('otelite.trace-json/v1')
         expect(traceJson.summary.span_count).toBeGreaterThanOrEqual(2)
         expect(traceJson.spans.some((span) => span.name === 'otelite-diagnostics.child')).toBe(true)
-      }).pipe(Effect.provide(Layer.mergeAll(OteliteTestHarness.Default, NodeContext.layer))),
+      }).pipe(Effect.provide(Layer.mergeAll(OteliteTestHarness.Default, NodeServices.layer))),
     30_000,
   )
 
