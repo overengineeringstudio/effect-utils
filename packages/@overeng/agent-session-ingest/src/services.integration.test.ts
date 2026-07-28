@@ -1,9 +1,11 @@
+import { FileSystem } from '@effect/platform'
 import { NodeContext } from '@effect/platform-node'
 import { Layer, Ref, Schema, Effect } from 'effect'
 import { expect } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'
 
+import { stringifyJson } from './adapters.integration-test-helpers.ts'
 import type { IngestionCheckpoint, SessionSourceAdapter } from './schema/core.ts'
 import {
   ArtifactDescriptor,
@@ -11,7 +13,11 @@ import {
   IngestionCheckpoint as IngestionCheckpointSchema,
   SourceId,
 } from './schema/core.ts'
-import { buildCheckpointKey, CheckpointStore } from './services/CheckpointStore.ts'
+import {
+  buildCheckpointKey,
+  CheckpointStore,
+  makeFileCheckpointStore,
+} from './services/CheckpointStore.ts'
 import { ingestSource } from './services/SessionIngestor.ts'
 
 const makeCheckpoint = (options: {
@@ -124,5 +130,95 @@ Vitest.describe('agent-session-ingest services', () => {
       ).toBe('AppendOnlyCursor')
       expect(saved.find((checkpoint) => checkpoint.artifactId === 'target-artifact')).toBeDefined()
     }),
+  )
+})
+
+Vitest.describe('checkpoint store wire baselines (cross-major invariant)', () => {
+  Vitest.it.effect('persists and reloads checkpoint JSONL as byte-identical records', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const tempDir = yield* fs.makeTempDirectoryScoped()
+      const checkpointPath = `${tempDir}/checkpoints.jsonl`
+
+      const checkpointStore = yield* makeFileCheckpointStore({ path: checkpointPath })
+      const checkpoints = [
+        yield* Schema.decodeUnknown(IngestionCheckpointSchema)({
+          sourceId: 'codex',
+          artifactId: '2026/07/28/rollout',
+          path: '/var/lib/agent/sessions/2026/07/28/rollout.jsonl',
+          status: 'stable',
+          cursor: {
+            _tag: 'AppendOnlyCursor',
+            offsetBytes: 321,
+            contentVersion: {
+              sizeBytes: 654,
+              modifiedAtEpochMs: 1785225600123,
+              headHash: 'fnv1a:00000000',
+              tailHash: 'fnv1a:ffffffff',
+            },
+          },
+          updatedAtEpochMs: 1785225600456,
+        }),
+        yield* Schema.decodeUnknown(IngestionCheckpointSchema)({
+          sourceId: 'opencode',
+          artifactId: 'thread:世界',
+          path: '/var/lib/agent/opencode.db',
+          status: 'open',
+          cursor: {
+            _tag: 'UpdatedAtCursor',
+            updatedAtEpochMs: 1785225600789,
+            lastRecordKey: '',
+            contentVersion: {
+              sizeBytes: 9007199254740991,
+              modifiedAtEpochMs: 1785225600999,
+              tailHash: 'fnv1a:résumé',
+            },
+          },
+          updatedAtEpochMs: 1785225601111,
+        }),
+      ]
+
+      yield* checkpointStore.saveAll(checkpoints)
+
+      const bytes = yield* fs.readFileString(checkpointPath)
+      const loaded = yield* checkpointStore.list()
+      expect(bytes).toMatchInlineSnapshot(`
+        "{"sourceId":"codex","artifactId":"2026/07/28/rollout","path":"/var/lib/agent/sessions/2026/07/28/rollout.jsonl","status":"stable","cursor":{"_tag":"AppendOnlyCursor","offsetBytes":321,"contentVersion":{"sizeBytes":654,"modifiedAtEpochMs":1785225600123,"headHash":"fnv1a:00000000","tailHash":"fnv1a:ffffffff"}},"updatedAtEpochMs":1785225600456}
+        {"sourceId":"opencode","artifactId":"thread:世界","path":"/var/lib/agent/opencode.db","status":"open","cursor":{"_tag":"UpdatedAtCursor","updatedAtEpochMs":1785225600789,"lastRecordKey":"","contentVersion":{"sizeBytes":9007199254740991,"modifiedAtEpochMs":1785225600999,"tailHash":"fnv1a:résumé"}},"updatedAtEpochMs":1785225601111}"
+      `)
+      expect(stringifyJson(loaded)).toMatchInlineSnapshot(
+        `"[{"sourceId":"codex","artifactId":"2026/07/28/rollout","path":"/var/lib/agent/sessions/2026/07/28/rollout.jsonl","status":"stable","cursor":{"_tag":"AppendOnlyCursor","offsetBytes":321,"contentVersion":{"sizeBytes":654,"modifiedAtEpochMs":1785225600123,"headHash":"fnv1a:00000000","tailHash":"fnv1a:ffffffff"}},"updatedAtEpochMs":1785225600456},{"sourceId":"opencode","artifactId":"thread:世界","path":"/var/lib/agent/opencode.db","status":"open","cursor":{"_tag":"UpdatedAtCursor","updatedAtEpochMs":1785225600789,"lastRecordKey":"","contentVersion":{"sizeBytes":9007199254740991,"modifiedAtEpochMs":1785225600999,"tailHash":"fnv1a:résumé"}},"updatedAtEpochMs":1785225601111}]"`,
+      )
+    }).pipe(Effect.scoped, Effect.provide(NodeContext.layer)),
+  )
+
+  Vitest.it.effect('captures checkpoint decode failures as stable JSON', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const tempDir = yield* fs.makeTempDirectoryScoped()
+      const checkpointPath = `${tempDir}/checkpoints.jsonl`
+      yield* fs.writeFileString(
+        checkpointPath,
+        [
+          '{"sourceId":"codex","artifactId":"","path":"/tmp/session.jsonl","status":"stable","cursor":{"_tag":"AppendOnlyCursor","offsetBytes":0,"contentVersion":{"sizeBytes":0,"modifiedAtEpochMs":0,"tailHash":"fnv1a:0"}},"updatedAtEpochMs":0}',
+          '',
+        ].join('\n'),
+      )
+
+      const checkpointStore = yield* makeFileCheckpointStore({ path: checkpointPath })
+      const result = yield* checkpointStore.list().pipe(Effect.either)
+
+      expect(result._tag).toBe('Left')
+      if (result._tag === 'Left') {
+        expect(
+          stringifyJson({
+            _tag: result.left._tag,
+            message: result.left.message,
+          }),
+        ).toMatchInlineSnapshot(
+          `"{"_tag":"SessionCheckpointDecodeError","message":"Failed to decode checkpoint entry"}"`,
+        )
+      }
+    }).pipe(Effect.scoped, Effect.provide(NodeContext.layer)),
   )
 })
