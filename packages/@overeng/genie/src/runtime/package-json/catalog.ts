@@ -13,7 +13,10 @@ import type { WorkspaceIdentity, WorkspaceMetadata, WorkspacePackageLike } from 
 export type CatalogInput = Record<string, string>
 
 type WorkspaceDependencyMap<TWorkspace extends readonly WorkspacePackageLike[]> = {
-  [TPkg in TWorkspace[number] as Extract<TPkg['data']['name'], string>]: 'workspace:^'
+  [TPkg in TWorkspace[number] as Extract<TPkg['data']['name'], string>]:
+    | 'workspace:^'
+    | `link:repos/${string}`
+    | `file:repos/${string}`
 }
 
 type DependencyBucket<
@@ -21,6 +24,15 @@ type DependencyBucket<
   TExternal extends CatalogInput,
 > = {
   workspace?: TWorkspace
+  /**
+   * Protocol overrides for dependencies owned by another repository.
+   *
+   * Use `file` when pnpm must materialize the package with the consumer's peer
+   * graph instead of following a source symlink with its repository-local peers.
+   */
+  crossRepoProtocols?: Partial<
+    Record<Extract<TWorkspace[number]['data']['name'], string>, 'link' | 'file'>
+  >
   /** Already-picked external dependencies, typically from `catalog.pick(...)`. */
   external?: TExternal
 }
@@ -325,18 +337,47 @@ const createComposeFn =
     const runtimeExternal = dependencies?.external ?? ({} as TDependenciesExternal)
     const supportExternal = devDependencies?.external ?? ({} as TDevDependenciesExternal)
     const peerExternal = peerDependencies?.external ?? ({} as TPeerDependenciesExternal)
-    const workspaceDepVersion = (pkg: WorkspacePackageLike): string =>
-      pkg.meta.workspace.repoName === workspace.repoName
-        ? 'workspace:^'
-        : `link:repos/${pkg.meta.workspace.repoName}/${pkg.meta.workspace.memberPath}`
+    const workspaceDepVersion = ({
+      pkg,
+      crossRepoProtocols,
+    }: {
+      pkg: WorkspacePackageLike
+      crossRepoProtocols: Partial<Record<string, 'link' | 'file'>> | undefined
+    }): string => {
+      if (pkg.meta.workspace.repoName === workspace.repoName) return 'workspace:^'
+
+      const protocol =
+        pkg.data.name === undefined ? 'link' : (crossRepoProtocols?.[pkg.data.name] ?? 'link')
+      return `${protocol}:repos/${pkg.meta.workspace.repoName}/${pkg.meta.workspace.memberPath}`
+    }
     const runtimeWorkspaceDependencies = Object.fromEntries(
       runtimeWorkspace.flatMap((pkg) =>
-        pkg.data.name === undefined ? [] : [[pkg.data.name, workspaceDepVersion(pkg)] as const],
+        pkg.data.name === undefined
+          ? []
+          : [
+              [
+                pkg.data.name,
+                workspaceDepVersion({
+                  pkg,
+                  crossRepoProtocols: dependencies?.crossRepoProtocols,
+                }),
+              ] as const,
+            ],
       ),
     ) as WorkspaceDependencyMap<TDependenciesWorkspace>
     const supportWorkspaceDependencies = Object.fromEntries(
       supportWorkspace.flatMap((pkg) =>
-        pkg.data.name === undefined ? [] : [[pkg.data.name, workspaceDepVersion(pkg)] as const],
+        pkg.data.name === undefined
+          ? []
+          : [
+              [
+                pkg.data.name,
+                workspaceDepVersion({
+                  pkg,
+                  crossRepoProtocols: devDependencies?.crossRepoProtocols,
+                }),
+              ] as const,
+            ],
       ),
     ) as WorkspaceDependencyMap<TDevDependenciesWorkspace>
     /** Workspace packages already listed as explicit deps — skip their registry versions from inherited peers */

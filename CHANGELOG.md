@@ -9,6 +9,12 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/genie/package-json**: allow consumers to materialize selected
+  cross-repository workspace dependencies with the `file:` protocol. This lets
+  pnpm resolve singleton peers such as Effect from the consuming install graph
+  instead of following a foreign repository symlink with a second physical
+  peer installation.
+
 - **@overeng/utils-dev/otelite**: make live capture inspection poll for the
   observable row condition for up to 500 ms. This absorbs exporter scheduling
   and OTLP round-trip delay on contended CI hosts without consumer-specific

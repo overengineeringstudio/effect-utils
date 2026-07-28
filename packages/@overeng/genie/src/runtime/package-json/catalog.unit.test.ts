@@ -408,6 +408,44 @@ describe('defineCatalog', () => {
       })
     })
 
+    it('materializes selected cross-repo dependencies for consumer peer resolution', () => {
+      const foreignRepo = createTempRepo('packages/shared')
+      const shared = packageJson(
+        {
+          name: '@foreign/shared',
+          version: '1.0.0',
+        },
+        catalog.compose({
+          workspace: workspace({
+            repoName: foreignRepo.repoName,
+            memberPath: 'packages/shared',
+          }),
+          peerDependencies: {
+            external: catalog.pick('effect'),
+          },
+        }),
+      )
+
+      const composed = catalog.compose({
+        workspace: workspace({
+          repoName: repo.repoName,
+          memberPath: 'packages/app',
+        }),
+        dependencies: {
+          workspace: [shared],
+          crossRepoProtocols: {
+            '@foreign/shared': 'file',
+          },
+        },
+        mode: 'install',
+      })
+
+      expect(composed.dependencies).toEqual({
+        '@foreign/shared': `file:repos/${foreignRepo.repoName}/packages/shared`,
+        effect: '3.19.14',
+      })
+    })
+
     it('installs inherited peers explicitly in install mode', () => {
       const utilsComposition = catalog.compose({
         workspace: workspace({
