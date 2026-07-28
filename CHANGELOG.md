@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **@overeng/effect-react**: capture Effect 3 cross-major runtime baselines for
+  provider layer construction/provision, scope teardown, retry behavior, and
+  external-store subscriber observations.
+
 ### Fixed
 
 - **@overeng/utils-dev/otelite**: make live capture inspection poll for the
