@@ -13,6 +13,7 @@ const cliPath = fileURLToPath(new URL('./cli.ts', import.meta.url))
  * The local-source version suffix and log timestamps are normalized, so version-string content and
  * log timing are not gated by this baseline.
  */
+// LIVE-MIGRATION BRIDGE effect-3-4 — DELETE at contraction — https://github.com/overengineeringstudio/effect-utils/issues/925
 const stripAnsi = (output: string) =>
   output.replace(
     // eslint-disable-next-line no-control-regex -- CLI contract snapshots intentionally normalize terminal control bytes.
@@ -24,6 +25,7 @@ const normalizeOutput = (output: string) =>
   stripAnsi(output)
     .replace(/ — running from local source \([^)]+\)/gu, '')
     .replace(/^\[\d{2}:\d{2}:\d{2}\.\d{3}\]/gmu, '[time]')
+// LIVE-MIGRATION END effect-3-4
 
 const runCli = (...args: ReadonlyArray<string>) => {
   const result = spawnSync('bun', [cliPath, ...args], {
@@ -34,8 +36,10 @@ const runCli = (...args: ReadonlyArray<string>) => {
   return {
     status: result.status,
     signal: result.signal,
+    // LIVE-MIGRATION BRIDGE effect-3-4 — DELETE at contraction — https://github.com/overengineeringstudio/effect-utils/issues/925
     stdout: normalizeOutput(result.stdout),
     stderr: normalizeOutput(result.stderr),
+    // LIVE-MIGRATION END effect-3-4
   }
 }
 
