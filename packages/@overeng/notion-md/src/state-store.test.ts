@@ -128,6 +128,7 @@ const decodeFailure = <A, I>(schema: Schema.Schema<A, I, never>, encoded: string
 }
 
 describe('notion-md wire baselines (cross-major invariant)', () => {
+  // TODO(live-migration:effect-3-4): Effect 4 reassigns Schema.Date and renders SchemaError(...); preserve ISO state bytes and adjudicate internal failure text before re-baselining.
   it('captures state-store sync state JSON bytes and failure partition', () => {
     const baseContent = 'Base body\r\nunicode ß\n'
     const storageContent = '{"comments":["c-1"],"note":"Grüße 東京"}\n'
@@ -493,6 +494,7 @@ describe('notion-md wire baselines (cross-major invariant)', () => {
     `)
   })
 
+  // TODO(live-migration:effect-3-4): Effect 4 reassigns Schema.Date and renders SchemaError(...); preserve ISO object bytes and adjudicate internal failure text before re-baselining.
   it('captures state-store object JSON bytes and failure partition', () => {
     const baseSnapshot: NmdBaseSnapshotV2 = {
       version: 2,
@@ -803,6 +805,7 @@ describe('notion-md wire baselines (cross-major invariant)', () => {
     `)
   })
 
+  // TODO(live-migration:effect-3-4): Effect 4 renders SchemaError(...) for these failures; preserve the tree-index structural partition and adjudicate internal-only text before re-baselining.
   it('captures tree-index JSON bytes and failure partition', () => {
     expect(
       roundTripFileJson(TreeIndex, {
