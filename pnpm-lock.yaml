@@ -10,6 +10,7 @@ packageExtensionsChecksum: sha256-4HimX0luQTvo3jbLtYHagQKuv0eSu+BxzCFfrE1bdnM=
 patchedDependencies:
   '@effect/platform@0.96.2': 08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32
   '@myobie/pty@0.10.0': e6d9b2f6990efbb98235e6e4018e3e9bb5ac94bc54ea6764364857206b6b95a5
+  effect@4.0.0-beta.102: 0e466320200ea28a3acd29dbedb9e0d8be0ce5659bfac9e4a17a96ad6235e63f
 
 importers:
 
