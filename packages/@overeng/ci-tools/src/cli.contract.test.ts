@@ -19,7 +19,8 @@ const stripAnsi = (output: string) =>
     '',
   )
 
-const normalizeOutput = (output: string) => stripAnsi(output)
+const normalizeOutput = (output: string) =>
+  stripAnsi(output).replace(/ — running from local source \([^)]+\)/gu, '')
 // LIVE-MIGRATION END effect-3-4
 
 const runCli = (...args: ReadonlyArray<string>) => {
