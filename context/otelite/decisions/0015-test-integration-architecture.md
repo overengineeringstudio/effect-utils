@@ -46,11 +46,13 @@ infeasible — an in-process receiver cannot cross forked workers.
 ## Read-after-write visibility (cross-cutting)
 
 Under heavy CPU oversubscription an independent `inspect` reader can transiently
-see 0 rows although the span is already durably written (write-before-ack);
-recovered by a ~2 ms retry, and 0 failures single-threaded. So the capture/assert
-helper does a **bounded short-poll retry** (~tens of ms). Follow-up: confirm the
-sink flushes per line so live mid-capture reads are coherent without leaning on
-the retry (the more principled fix). Capture itself never lost a span in any run.
+see 0 rows. The receiver still writes before acknowledging each export, but the
+producer's batch timer and OTLP POST can be delayed before that acknowledgement;
+this is not only filesystem read-after-write latency. The capture/assert helper
+therefore polls the observable row condition for a bounded 500 ms, returning as
+soon as a row is visible. This avoids consumer-owned sleeps while preserving a
+finite failure bound for genuinely empty captures. Capture itself never lost a
+span in any run.
 
 ## D3 coupling: consumer-owned, one demonstrator
 
