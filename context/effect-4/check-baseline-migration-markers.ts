@@ -77,6 +77,48 @@ const riskSignatures = [
   },
 ] as const
 
+/**
+ * Register entries whose risks have no reliable textual fingerprint in a
+ * baseline. Each exception must explain why a signature would be misleading.
+ */
+const noSignatures = [
+  {
+    registerEntry: 'cli-A-nested-terminator-loss',
+    noSignature:
+      'The risk depends on argv parsing semantics, not a distinctive baseline byte sequence.',
+  },
+  {
+    registerEntry: 'cli-B-accepted-grammar-improvements',
+    noSignature:
+      'The accepted grammar cases have no shared textual footprint across CLI baselines.',
+  },
+  {
+    registerEntry: 'cli-C-rendering-and-stdout-breakage',
+    noSignature:
+      'CLI-owned prose and ANSI bytes are intentionally varied and cannot use one safe signature.',
+  },
+  {
+    registerEntry: 'fork-defaults',
+    noSignature:
+      'The identical default scheduling behavior has no changed baseline text to detect.',
+  },
+  {
+    registerEntry: 'equality-structural-default',
+    noSignature:
+      'Structural equality depends on runtime values and assertions, not stable baseline text.',
+  },
+  {
+    registerEntry: 'layer-memoization-freshness-opt-outs',
+    noSignature:
+      'Freshness opt-outs are API choices whose observable counts are covered by the related signature.',
+  },
+  {
+    registerEntry: 'effect-never-idle-timer',
+    noSignature:
+      'Timer registration is a runtime side effect with no reliable baseline-text fingerprint.',
+  },
+] as const
+
 type CallBlock = {
   readonly end: number
   readonly leadingStart: number
@@ -98,6 +140,55 @@ const root =
   rootArgumentIndex === -1
     ? process.cwd()
     : resolve(process.argv[rootArgumentIndex + 1] ?? process.cwd())
+
+const registerFile = 'context/effect-4/alignment-register.md'
+let registerSource: string
+
+try {
+  registerSource = await Bun.file(resolve(root, registerFile)).text()
+} catch (error) {
+  const code =
+    typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : 'unknown'
+  console.error(`FAIL: cannot read ${registerFile} (${code}).`)
+  process.exit(1)
+}
+
+const registerEntries = new Set(
+  [...registerSource.matchAll(/^## ([a-z0-9][a-zA-Z0-9-]*)\s*$/gm)].map((match) => match[1]!),
+)
+const signatureEntries = new Set(riskSignatures.map(({ registerEntry }) => registerEntry))
+const noSignatureEntries = new Set(noSignatures.map(({ registerEntry }) => registerEntry))
+const declaredEntries = new Set([...signatureEntries, ...noSignatureEntries])
+
+const unmappedEntries = [...registerEntries]
+  .filter((entry) => declaredEntries.has(entry) === false)
+  .toSorted()
+const missingRegisterEntries = [...declaredEntries]
+  .filter((entry) => registerEntries.has(entry) === false)
+  .toSorted()
+const conflictingEntries = [...signatureEntries]
+  .filter((entry) => noSignatureEntries.has(entry))
+  .toSorted()
+
+if (
+  unmappedEntries.length > 0 ||
+  missingRegisterEntries.length > 0 ||
+  conflictingEntries.length > 0
+) {
+  for (const entry of unmappedEntries) {
+    console.error(
+      `UNMAPPED: register entry "${entry}" needs a risk signature or justified noSignature declaration.`,
+    )
+  }
+  for (const entry of missingRegisterEntries) {
+    console.error(`STALE: checker declaration references missing register entry "${entry}".`)
+  }
+  for (const entry of conflictingEntries) {
+    console.error(`CONFLICT: register entry "${entry}" has both a signature and noSignature.`)
+  }
+  console.error('FAIL: alignment register and marker checker declarations are inconsistent.')
+  process.exit(1)
+}
 
 const lineAndColumnAt = ({
   source,
