@@ -140,11 +140,150 @@ type Finding = {
   readonly why: string
 }
 
+type ContractionMarker = {
+  readonly bridgeId: string
+  readonly file: string
+  readonly kind: 'BRIDGE' | 'END' | 'TARGET' | 'TODO'
+  readonly line: number
+}
+
 const rootArgumentIndex = process.argv.indexOf('--root')
 const root =
   rootArgumentIndex === -1
     ? process.cwd()
     : resolve(process.argv[rootArgumentIndex + 1] ?? process.cwd())
+
+const liveMigrationName = ['LIVE', 'MIGRATION'].join('-')
+const todoMigrationName = ['TODO(', 'live-migration:'].join('')
+const todoMigrationPattern = ['TODO\\(', 'live-migration:'].join('')
+const blockMarkerPattern = new RegExp(
+  `${liveMigrationName}\\s+(BRIDGE|TARGET|END)(?:\\s+([a-z0-9][a-z0-9._-]*))?`,
+  'gi',
+)
+const todoMarkerPattern = new RegExp(`${todoMigrationPattern}([a-z0-9][a-z0-9._-]*)?\\)`, 'gi')
+
+/**
+ * Ignore only the three permanent grammar-definition sites. File plus line
+ * shape keeps the exception narrow: any executable marker elsewhere in either
+ * context file is still a contraction survivor.
+ */
+const isContractionDefinitionSite = ({
+  file,
+  sourceLine,
+}: {
+  readonly file: string
+  readonly sourceLine: string
+}) => {
+  if (
+    file === 'context/effect-4/check-baseline-migration-markers.ts' &&
+    sourceLine.trimStart().startsWith('const marker = ') === true
+  ) {
+    return true
+  }
+
+  if (file !== 'context/effect-4/baseline-operations.md') return false
+
+  return (
+    sourceLine.includes(`carry no \`${liveMigrationName} BRIDGE\` block`) ||
+    sourceLine.trimStart().startsWith(`\`${todoMigrationName}`)
+  )
+}
+
+const repositoryFiles = async () => {
+  const gitProcess = Bun.spawn(
+    ['git', '-C', root, 'ls-files', '--cached', '--others', '--exclude-standard', '-z'],
+    {
+      stderr: 'pipe',
+      stdout: 'pipe',
+    },
+  )
+  const [exitCode, stderr, stdout] = await Promise.all([
+    gitProcess.exited,
+    new Response(gitProcess.stderr).text(),
+    new Response(gitProcess.stdout).text(),
+  ])
+
+  if (exitCode !== 0) {
+    console.error(`FAIL: cannot enumerate repository files for contraction sweep: ${stderr.trim()}`)
+    process.exit(1)
+  }
+
+  return [...new Set(stdout.split('\0').filter((file) => file.length > 0))].toSorted(
+    (left, right) => left.localeCompare(right),
+  )
+}
+
+const runContractionCheck = async () => {
+  const markers: ContractionMarker[] = []
+  let definitionMarkers = 0
+  const fileEntries = await Promise.all(
+    (await repositoryFiles()).map(
+      async (file) => [file, await Bun.file(resolve(root, file)).text()] as const,
+    ),
+  )
+
+  for (const [file, source] of fileEntries) {
+    for (const [lineIndex, sourceLine] of source.split('\n').entries()) {
+      const blockMatches = [...sourceLine.matchAll(blockMarkerPattern)]
+      const todoMatches = [...sourceLine.matchAll(todoMarkerPattern)]
+
+      if (isContractionDefinitionSite({ file, sourceLine }) === true) {
+        definitionMarkers++
+        continue
+      }
+
+      for (const match of blockMatches) {
+        markers.push({
+          bridgeId: match[2] ?? '<missing-id>',
+          file,
+          kind: match[1]!.toUpperCase() as 'BRIDGE' | 'END' | 'TARGET',
+          line: lineIndex + 1,
+        })
+      }
+      for (const match of todoMatches) {
+        markers.push({
+          bridgeId: match[1] ?? '<missing-id>',
+          file,
+          kind: 'TODO',
+          line: lineIndex + 1,
+        })
+      }
+    }
+  }
+
+  markers.sort(
+    (left, right) =>
+      left.file.localeCompare(right.file) ||
+      left.line - right.line ||
+      left.kind.localeCompare(right.kind),
+  )
+
+  if (markers.length === 0) {
+    console.log(
+      `PASS: contraction sweep found no live migration markers (${definitionMarkers} permanent grammar definitions excluded).`,
+    )
+    return
+  }
+
+  for (const survivor of markers) {
+    const action = survivor.kind === 'TODO' ? 'RESOLVE TODO' : `DELETE BLOCK (${survivor.kind})`
+    console.error(`${survivor.file}:${survivor.line} ${action} ${survivor.bridgeId}`)
+  }
+
+  const fileCount = new Set(markers.map(({ file }) => file)).size
+  const bridgeBlockCount = markers.filter(({ kind }) => kind === 'BRIDGE').length
+  const blockMarkerCount = markers.filter(({ kind }) => kind !== 'TODO').length
+  const todoCount = markers.length - blockMarkerCount
+  console.error(
+    `FAIL: contraction blocked by ${markers.length} markers across ${fileCount} files: ${bridgeBlockCount} BRIDGE blocks (${blockMarkerCount} block marker lines) to delete, ${todoCount} TODO markers to resolve; ${definitionMarkers} permanent grammar definitions excluded.`,
+  )
+  process.exitCode = 1
+}
+
+if (process.argv.includes('--contraction') === true) {
+  await runContractionCheck()
+  process.exit(process.exitCode ?? 0)
+}
 
 const registerFile = 'context/effect-4/alignment-register.md'
 let registerSource: string
