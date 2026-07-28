@@ -7,6 +7,7 @@ import {
   EffectPath,
   type AbsoluteFileInfo,
   type InvalidPathError,
+  type NotAFileError,
   type NotAbsoluteError,
   type NotRelativeError,
   type ConventionError,
@@ -96,7 +97,14 @@ const summarizePlatformError = (error: PlatformError.PlatformError) => ({
   method: error.method,
 })
 
-const summarizePathError = (error: PathNotFoundError | PermissionError, normalizeRoot: string) => {
+type VerifiedFileBaselineError =
+  | InvalidPathError
+  | NotAFileError
+  | NotAbsoluteError
+  | PathNotFoundError
+  | PermissionError
+
+const summarizePathError = (error: VerifiedFileBaselineError, normalizeRoot: string) => {
   switch (error._tag) {
     case 'PathNotFoundError':
       return {
@@ -110,6 +118,8 @@ const summarizePathError = (error: PathNotFoundError | PermissionError, normaliz
         operation: error.operation,
         message: error.message.replace(normalizeRoot, '<tmp>'),
       }
+    default:
+      throw new Error(`expected filesystem failure, received ${error._tag}`)
   }
 }
 
