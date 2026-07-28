@@ -123,6 +123,7 @@ describe('effectSerde wire baselines (cross-major invariant)', () => {
     expect(serde.deserialize(new Uint8Array())).toBeUndefined()
   })
 
+  // TODO(live-migration:effect-3-4): Effect 4 renders SchemaError(...) here; use #978's stable error envelope instead of refreshing the v3 HTTP 400 parser text.
   it('captures ingress decode failure transport bytes for invalid input', () => {
     const serde = ingressSerde({ schema: Schema.Struct({ n: Schema.Number }) })
     const cases = {
