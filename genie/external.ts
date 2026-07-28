@@ -536,6 +536,8 @@ export const createEffectUtilsRefs = (basePath: string) =>
  */
 export const utilsPatches = definePatchedDependencies({
   location: 'packages/@overeng/utils',
+  // LIVE-MIGRATION BRIDGE effect-3-4 B3 — DELETE at contraction.
+  // TODO(live-migration:effect-3-4): Re-express the removed @effect/platform header-redaction patch in Effect 4 core before merge; span attribute header cardinality is behavior.
   patches: {},
 })
 
