@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
 import { existsSync } from 'node:fs'
+import { appendFile } from 'node:fs/promises'
 import { basename, resolve } from 'node:path'
 
 type SummaryRecord = {
@@ -17,7 +18,9 @@ type PackageResult =
     }
   | {
       readonly error: string
+      readonly failures?: number
       readonly packageName: string
+      readonly tests?: number
     }
 
 const argumentValue = (name: string) => {
@@ -162,7 +165,9 @@ const readPackageResult = async (packageName: string): Promise<PackageResult> =>
   if (tests === 0) {
     return {
       error: `${basename(summary)} reports vitest.tests=0 (vitest.failures=${failures})`,
+      failures,
       packageName,
+      tests,
     }
   }
 
@@ -188,6 +193,39 @@ for (const result of results) {
     )
   }
 }
+
+const markdownCell = (value: string) =>
+  value.replaceAll('\\', '\\\\').replaceAll('|', '\\|').replaceAll('\n', ' ')
+
+const appendGitHubStepSummary = async () => {
+  const stepSummary = process.env.GITHUB_STEP_SUMMARY
+  if (stepSummary === undefined || stepSummary.length === 0) return
+
+  const rows = results.map((result) => {
+    const tests = typeof result.tests === 'number' ? String(result.tests) : '-'
+    const failures = typeof result.failures === 'number' ? String(result.failures) : '-'
+    const evidence = 'error' in result ? `FAIL: ${result.error}` : `PASS: ${result.summary}`
+    return `| ${markdownCell(result.packageName)} | ${tests} | ${failures} | ${markdownCell(evidence)} |`
+  })
+  const table = [
+    '## Effect 4 baseline test collection',
+    '',
+    '| Package | vitest.tests | vitest.failures | Evidence |',
+    '| --- | ---: | ---: | --- |',
+    ...rows,
+    '',
+  ].join('\n')
+
+  try {
+    await appendFile(stepSummary, table)
+  } catch (cause) {
+    console.warn(
+      `WARN: could not append Effect 4 baseline counts to GITHUB_STEP_SUMMARY; gate enforcement is unchanged: ${String(cause)}`,
+    )
+  }
+}
+
+await appendGitHubStepSummary()
 
 if (failed.length === 0) {
   console.log(
