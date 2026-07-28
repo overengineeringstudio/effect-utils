@@ -505,15 +505,7 @@ jobs:
             exit 1
           fi
 
-          resolve_devenv() {
-            nix build \
-              --accept-flake-config \
-              --option extra-substituters https://devenv.cachix.org \
-              --option extra-trusted-public-keys devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw= \
-              --no-link \
-              --print-out-paths \
-              "github:cachix/devenv/$DEVENV_REV#devenv"
-          }
+          . '${{ runner.temp }}/genie-ci-scripts/resolve-devenv.sh'
 
           # Temporary: capture diagnostics dir for #272 root-cause analysis.
           DIAG_ROOT="${RUNNER_TEMP:-/tmp}/nix-store-diagnostics-${GITHUB_JOB:-job}-${RUNNER_OS:-unknown}-${GITHUB_RUN_ATTEMPT:-0}"
@@ -550,6 +542,15 @@ jobs:
             fi
             DEVENV_BIN="$DEVENV_OUT/bin/devenv"
           fi
+
+          # resolve_devenv_once uses this out-link directly, so Nix registers the GC
+          # root before a successful build returns. RUNNER_TEMP cleanup removes it after
+          # the job; the run/attempt/job namespace prevents cross-job replacement.
+          if [ ! -L "$DEVENV_GC_ROOT" ] || [ ! "$DEVENV_GC_ROOT" -ef "$DEVENV_OUT" ]; then
+            echo "::error::devenv resolution did not publish the expected job-scoped GC root: $DEVENV_GC_ROOT"
+            exit 1
+          fi
+          echo "DEVENV_GC_ROOT=$DEVENV_GC_ROOT" >> "$GITHUB_ENV"
 
           echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
           "$DEVENV_BIN" version | tee "$DIAG_ROOT/devenv-version.txt"
@@ -781,15 +782,7 @@ jobs:
             exit 1
           fi
 
-          resolve_devenv() {
-            nix build \
-              --accept-flake-config \
-              --option extra-substituters https://devenv.cachix.org \
-              --option extra-trusted-public-keys devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw= \
-              --no-link \
-              --print-out-paths \
-              "github:cachix/devenv/$DEVENV_REV#devenv"
-          }
+          . '${{ runner.temp }}/genie-ci-scripts/resolve-devenv.sh'
 
           # Temporary: capture diagnostics dir for #272 root-cause analysis.
           DIAG_ROOT="${RUNNER_TEMP:-/tmp}/nix-store-diagnostics-${GITHUB_JOB:-job}-${RUNNER_OS:-unknown}-${GITHUB_RUN_ATTEMPT:-0}"
@@ -826,6 +819,15 @@ jobs:
             fi
             DEVENV_BIN="$DEVENV_OUT/bin/devenv"
           fi
+
+          # resolve_devenv_once uses this out-link directly, so Nix registers the GC
+          # root before a successful build returns. RUNNER_TEMP cleanup removes it after
+          # the job; the run/attempt/job namespace prevents cross-job replacement.
+          if [ ! -L "$DEVENV_GC_ROOT" ] || [ ! "$DEVENV_GC_ROOT" -ef "$DEVENV_OUT" ]; then
+            echo "::error::devenv resolution did not publish the expected job-scoped GC root: $DEVENV_GC_ROOT"
+            exit 1
+          fi
+          echo "DEVENV_GC_ROOT=$DEVENV_GC_ROOT" >> "$GITHUB_ENV"
 
           echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
           "$DEVENV_BIN" version | tee "$DIAG_ROOT/devenv-version.txt"
@@ -1044,15 +1046,7 @@ jobs:
             exit 1
           fi
 
-          resolve_devenv() {
-            nix build \
-              --accept-flake-config \
-              --option extra-substituters https://devenv.cachix.org \
-              --option extra-trusted-public-keys devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw= \
-              --no-link \
-              --print-out-paths \
-              "github:cachix/devenv/$DEVENV_REV#devenv"
-          }
+          . '${{ runner.temp }}/genie-ci-scripts/resolve-devenv.sh'
 
           # Temporary: capture diagnostics dir for #272 root-cause analysis.
           DIAG_ROOT="${RUNNER_TEMP:-/tmp}/nix-store-diagnostics-${GITHUB_JOB:-job}-${RUNNER_OS:-unknown}-${GITHUB_RUN_ATTEMPT:-0}"
@@ -1089,6 +1083,15 @@ jobs:
             fi
             DEVENV_BIN="$DEVENV_OUT/bin/devenv"
           fi
+
+          # resolve_devenv_once uses this out-link directly, so Nix registers the GC
+          # root before a successful build returns. RUNNER_TEMP cleanup removes it after
+          # the job; the run/attempt/job namespace prevents cross-job replacement.
+          if [ ! -L "$DEVENV_GC_ROOT" ] || [ ! "$DEVENV_GC_ROOT" -ef "$DEVENV_OUT" ]; then
+            echo "::error::devenv resolution did not publish the expected job-scoped GC root: $DEVENV_GC_ROOT"
+            exit 1
+          fi
+          echo "DEVENV_GC_ROOT=$DEVENV_GC_ROOT" >> "$GITHUB_ENV"
 
           echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
           "$DEVENV_BIN" version | tee "$DIAG_ROOT/devenv-version.txt"
@@ -1304,15 +1307,7 @@ jobs:
             exit 1
           fi
 
-          resolve_devenv() {
-            nix build \
-              --accept-flake-config \
-              --option extra-substituters https://devenv.cachix.org \
-              --option extra-trusted-public-keys devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw= \
-              --no-link \
-              --print-out-paths \
-              "github:cachix/devenv/$DEVENV_REV#devenv"
-          }
+          . '${{ runner.temp }}/genie-ci-scripts/resolve-devenv.sh'
 
           # Temporary: capture diagnostics dir for #272 root-cause analysis.
           DIAG_ROOT="${RUNNER_TEMP:-/tmp}/nix-store-diagnostics-${GITHUB_JOB:-job}-${RUNNER_OS:-unknown}-${GITHUB_RUN_ATTEMPT:-0}"
@@ -1349,6 +1344,15 @@ jobs:
             fi
             DEVENV_BIN="$DEVENV_OUT/bin/devenv"
           fi
+
+          # resolve_devenv_once uses this out-link directly, so Nix registers the GC
+          # root before a successful build returns. RUNNER_TEMP cleanup removes it after
+          # the job; the run/attempt/job namespace prevents cross-job replacement.
+          if [ ! -L "$DEVENV_GC_ROOT" ] || [ ! "$DEVENV_GC_ROOT" -ef "$DEVENV_OUT" ]; then
+            echo "::error::devenv resolution did not publish the expected job-scoped GC root: $DEVENV_GC_ROOT"
+            exit 1
+          fi
+          echo "DEVENV_GC_ROOT=$DEVENV_GC_ROOT" >> "$GITHUB_ENV"
 
           echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
           "$DEVENV_BIN" version | tee "$DIAG_ROOT/devenv-version.txt"
@@ -1567,15 +1571,7 @@ jobs:
             exit 1
           fi
 
-          resolve_devenv() {
-            nix build \
-              --accept-flake-config \
-              --option extra-substituters https://devenv.cachix.org \
-              --option extra-trusted-public-keys devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw= \
-              --no-link \
-              --print-out-paths \
-              "github:cachix/devenv/$DEVENV_REV#devenv"
-          }
+          . '${{ runner.temp }}/genie-ci-scripts/resolve-devenv.sh'
 
           # Temporary: capture diagnostics dir for #272 root-cause analysis.
           DIAG_ROOT="${RUNNER_TEMP:-/tmp}/nix-store-diagnostics-${GITHUB_JOB:-job}-${RUNNER_OS:-unknown}-${GITHUB_RUN_ATTEMPT:-0}"
@@ -1612,6 +1608,15 @@ jobs:
             fi
             DEVENV_BIN="$DEVENV_OUT/bin/devenv"
           fi
+
+          # resolve_devenv_once uses this out-link directly, so Nix registers the GC
+          # root before a successful build returns. RUNNER_TEMP cleanup removes it after
+          # the job; the run/attempt/job namespace prevents cross-job replacement.
+          if [ ! -L "$DEVENV_GC_ROOT" ] || [ ! "$DEVENV_GC_ROOT" -ef "$DEVENV_OUT" ]; then
+            echo "::error::devenv resolution did not publish the expected job-scoped GC root: $DEVENV_GC_ROOT"
+            exit 1
+          fi
+          echo "DEVENV_GC_ROOT=$DEVENV_GC_ROOT" >> "$GITHUB_ENV"
 
           echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
           "$DEVENV_BIN" version | tee "$DIAG_ROOT/devenv-version.txt"
@@ -1806,15 +1811,7 @@ jobs:
             exit 1
           fi
 
-          resolve_devenv() {
-            nix build \
-              --accept-flake-config \
-              --option extra-substituters https://devenv.cachix.org \
-              --option extra-trusted-public-keys devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw= \
-              --no-link \
-              --print-out-paths \
-              "github:cachix/devenv/$DEVENV_REV#devenv"
-          }
+          . '${{ runner.temp }}/genie-ci-scripts/resolve-devenv.sh'
 
           # Temporary: capture diagnostics dir for #272 root-cause analysis.
           DIAG_ROOT="${RUNNER_TEMP:-/tmp}/nix-store-diagnostics-${GITHUB_JOB:-job}-${RUNNER_OS:-unknown}-${GITHUB_RUN_ATTEMPT:-0}"
@@ -1851,6 +1848,15 @@ jobs:
             fi
             DEVENV_BIN="$DEVENV_OUT/bin/devenv"
           fi
+
+          # resolve_devenv_once uses this out-link directly, so Nix registers the GC
+          # root before a successful build returns. RUNNER_TEMP cleanup removes it after
+          # the job; the run/attempt/job namespace prevents cross-job replacement.
+          if [ ! -L "$DEVENV_GC_ROOT" ] || [ ! "$DEVENV_GC_ROOT" -ef "$DEVENV_OUT" ]; then
+            echo "::error::devenv resolution did not publish the expected job-scoped GC root: $DEVENV_GC_ROOT"
+            exit 1
+          fi
+          echo "DEVENV_GC_ROOT=$DEVENV_GC_ROOT" >> "$GITHUB_ENV"
 
           echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
           "$DEVENV_BIN" version | tee "$DIAG_ROOT/devenv-version.txt"
@@ -2008,15 +2014,7 @@ jobs:
             exit 1
           fi
 
-          resolve_devenv() {
-            nix build \
-              --accept-flake-config \
-              --option extra-substituters https://devenv.cachix.org \
-              --option extra-trusted-public-keys devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw= \
-              --no-link \
-              --print-out-paths \
-              "github:cachix/devenv/$DEVENV_REV#devenv"
-          }
+          . '${{ runner.temp }}/genie-ci-scripts/resolve-devenv.sh'
 
           # Temporary: capture diagnostics dir for #272 root-cause analysis.
           DIAG_ROOT="${RUNNER_TEMP:-/tmp}/nix-store-diagnostics-${GITHUB_JOB:-job}-${RUNNER_OS:-unknown}-${GITHUB_RUN_ATTEMPT:-0}"
@@ -2053,6 +2051,15 @@ jobs:
             fi
             DEVENV_BIN="$DEVENV_OUT/bin/devenv"
           fi
+
+          # resolve_devenv_once uses this out-link directly, so Nix registers the GC
+          # root before a successful build returns. RUNNER_TEMP cleanup removes it after
+          # the job; the run/attempt/job namespace prevents cross-job replacement.
+          if [ ! -L "$DEVENV_GC_ROOT" ] || [ ! "$DEVENV_GC_ROOT" -ef "$DEVENV_OUT" ]; then
+            echo "::error::devenv resolution did not publish the expected job-scoped GC root: $DEVENV_GC_ROOT"
+            exit 1
+          fi
+          echo "DEVENV_GC_ROOT=$DEVENV_GC_ROOT" >> "$GITHUB_ENV"
 
           echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
           "$DEVENV_BIN" version | tee "$DIAG_ROOT/devenv-version.txt"
@@ -2319,15 +2326,7 @@ jobs:
             exit 1
           fi
 
-          resolve_devenv() {
-            nix build \
-              --accept-flake-config \
-              --option extra-substituters https://devenv.cachix.org \
-              --option extra-trusted-public-keys devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw= \
-              --no-link \
-              --print-out-paths \
-              "github:cachix/devenv/$DEVENV_REV#devenv"
-          }
+          . '${{ runner.temp }}/genie-ci-scripts/resolve-devenv.sh'
 
           # Temporary: capture diagnostics dir for #272 root-cause analysis.
           DIAG_ROOT="${RUNNER_TEMP:-/tmp}/nix-store-diagnostics-${GITHUB_JOB:-job}-${RUNNER_OS:-unknown}-${GITHUB_RUN_ATTEMPT:-0}"
@@ -2364,6 +2363,15 @@ jobs:
             fi
             DEVENV_BIN="$DEVENV_OUT/bin/devenv"
           fi
+
+          # resolve_devenv_once uses this out-link directly, so Nix registers the GC
+          # root before a successful build returns. RUNNER_TEMP cleanup removes it after
+          # the job; the run/attempt/job namespace prevents cross-job replacement.
+          if [ ! -L "$DEVENV_GC_ROOT" ] || [ ! "$DEVENV_GC_ROOT" -ef "$DEVENV_OUT" ]; then
+            echo "::error::devenv resolution did not publish the expected job-scoped GC root: $DEVENV_GC_ROOT"
+            exit 1
+          fi
+          echo "DEVENV_GC_ROOT=$DEVENV_GC_ROOT" >> "$GITHUB_ENV"
 
           echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
           "$DEVENV_BIN" version | tee "$DIAG_ROOT/devenv-version.txt"
@@ -2581,15 +2589,7 @@ jobs:
             exit 1
           fi
 
-          resolve_devenv() {
-            nix build \
-              --accept-flake-config \
-              --option extra-substituters https://devenv.cachix.org \
-              --option extra-trusted-public-keys devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw= \
-              --no-link \
-              --print-out-paths \
-              "github:cachix/devenv/$DEVENV_REV#devenv"
-          }
+          . '${{ runner.temp }}/genie-ci-scripts/resolve-devenv.sh'
 
           # Temporary: capture diagnostics dir for #272 root-cause analysis.
           DIAG_ROOT="${RUNNER_TEMP:-/tmp}/nix-store-diagnostics-${GITHUB_JOB:-job}-${RUNNER_OS:-unknown}-${GITHUB_RUN_ATTEMPT:-0}"
@@ -2626,6 +2626,15 @@ jobs:
             fi
             DEVENV_BIN="$DEVENV_OUT/bin/devenv"
           fi
+
+          # resolve_devenv_once uses this out-link directly, so Nix registers the GC
+          # root before a successful build returns. RUNNER_TEMP cleanup removes it after
+          # the job; the run/attempt/job namespace prevents cross-job replacement.
+          if [ ! -L "$DEVENV_GC_ROOT" ] || [ ! "$DEVENV_GC_ROOT" -ef "$DEVENV_OUT" ]; then
+            echo "::error::devenv resolution did not publish the expected job-scoped GC root: $DEVENV_GC_ROOT"
+            exit 1
+          fi
+          echo "DEVENV_GC_ROOT=$DEVENV_GC_ROOT" >> "$GITHUB_ENV"
 
           echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
           "$DEVENV_BIN" version | tee "$DIAG_ROOT/devenv-version.txt"
@@ -2841,15 +2850,7 @@ jobs:
             exit 1
           fi
 
-          resolve_devenv() {
-            nix build \
-              --accept-flake-config \
-              --option extra-substituters https://devenv.cachix.org \
-              --option extra-trusted-public-keys devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw= \
-              --no-link \
-              --print-out-paths \
-              "github:cachix/devenv/$DEVENV_REV#devenv"
-          }
+          . '${{ runner.temp }}/genie-ci-scripts/resolve-devenv.sh'
 
           # Temporary: capture diagnostics dir for #272 root-cause analysis.
           DIAG_ROOT="${RUNNER_TEMP:-/tmp}/nix-store-diagnostics-${GITHUB_JOB:-job}-${RUNNER_OS:-unknown}-${GITHUB_RUN_ATTEMPT:-0}"
@@ -2886,6 +2887,15 @@ jobs:
             fi
             DEVENV_BIN="$DEVENV_OUT/bin/devenv"
           fi
+
+          # resolve_devenv_once uses this out-link directly, so Nix registers the GC
+          # root before a successful build returns. RUNNER_TEMP cleanup removes it after
+          # the job; the run/attempt/job namespace prevents cross-job replacement.
+          if [ ! -L "$DEVENV_GC_ROOT" ] || [ ! "$DEVENV_GC_ROOT" -ef "$DEVENV_OUT" ]; then
+            echo "::error::devenv resolution did not publish the expected job-scoped GC root: $DEVENV_GC_ROOT"
+            exit 1
+          fi
+          echo "DEVENV_GC_ROOT=$DEVENV_GC_ROOT" >> "$GITHUB_ENV"
 
           echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
           "$DEVENV_BIN" version | tee "$DIAG_ROOT/devenv-version.txt"
@@ -3101,15 +3111,7 @@ jobs:
             exit 1
           fi
 
-          resolve_devenv() {
-            nix build \
-              --accept-flake-config \
-              --option extra-substituters https://devenv.cachix.org \
-              --option extra-trusted-public-keys devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw= \
-              --no-link \
-              --print-out-paths \
-              "github:cachix/devenv/$DEVENV_REV#devenv"
-          }
+          . '${{ runner.temp }}/genie-ci-scripts/resolve-devenv.sh'
 
           # Temporary: capture diagnostics dir for #272 root-cause analysis.
           DIAG_ROOT="${RUNNER_TEMP:-/tmp}/nix-store-diagnostics-${GITHUB_JOB:-job}-${RUNNER_OS:-unknown}-${GITHUB_RUN_ATTEMPT:-0}"
@@ -3146,6 +3148,15 @@ jobs:
             fi
             DEVENV_BIN="$DEVENV_OUT/bin/devenv"
           fi
+
+          # resolve_devenv_once uses this out-link directly, so Nix registers the GC
+          # root before a successful build returns. RUNNER_TEMP cleanup removes it after
+          # the job; the run/attempt/job namespace prevents cross-job replacement.
+          if [ ! -L "$DEVENV_GC_ROOT" ] || [ ! "$DEVENV_GC_ROOT" -ef "$DEVENV_OUT" ]; then
+            echo "::error::devenv resolution did not publish the expected job-scoped GC root: $DEVENV_GC_ROOT"
+            exit 1
+          fi
+          echo "DEVENV_GC_ROOT=$DEVENV_GC_ROOT" >> "$GITHUB_ENV"
 
           echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
           "$DEVENV_BIN" version | tee "$DIAG_ROOT/devenv-version.txt"
@@ -3368,15 +3379,7 @@ jobs:
             exit 1
           fi
 
-          resolve_devenv() {
-            nix build \
-              --accept-flake-config \
-              --option extra-substituters https://devenv.cachix.org \
-              --option extra-trusted-public-keys devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw= \
-              --no-link \
-              --print-out-paths \
-              "github:cachix/devenv/$DEVENV_REV#devenv"
-          }
+          . '${{ runner.temp }}/genie-ci-scripts/resolve-devenv.sh'
 
           # Temporary: capture diagnostics dir for #272 root-cause analysis.
           DIAG_ROOT="${RUNNER_TEMP:-/tmp}/nix-store-diagnostics-${GITHUB_JOB:-job}-${RUNNER_OS:-unknown}-${GITHUB_RUN_ATTEMPT:-0}"
@@ -3413,6 +3416,15 @@ jobs:
             fi
             DEVENV_BIN="$DEVENV_OUT/bin/devenv"
           fi
+
+          # resolve_devenv_once uses this out-link directly, so Nix registers the GC
+          # root before a successful build returns. RUNNER_TEMP cleanup removes it after
+          # the job; the run/attempt/job namespace prevents cross-job replacement.
+          if [ ! -L "$DEVENV_GC_ROOT" ] || [ ! "$DEVENV_GC_ROOT" -ef "$DEVENV_OUT" ]; then
+            echo "::error::devenv resolution did not publish the expected job-scoped GC root: $DEVENV_GC_ROOT"
+            exit 1
+          fi
+          echo "DEVENV_GC_ROOT=$DEVENV_GC_ROOT" >> "$GITHUB_ENV"
 
           echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
           "$DEVENV_BIN" version | tee "$DIAG_ROOT/devenv-version.txt"
@@ -3638,15 +3650,7 @@ jobs:
             exit 1
           fi
 
-          resolve_devenv() {
-            nix build \
-              --accept-flake-config \
-              --option extra-substituters https://devenv.cachix.org \
-              --option extra-trusted-public-keys devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw= \
-              --no-link \
-              --print-out-paths \
-              "github:cachix/devenv/$DEVENV_REV#devenv"
-          }
+          . '${{ runner.temp }}/genie-ci-scripts/resolve-devenv.sh'
 
           # Temporary: capture diagnostics dir for #272 root-cause analysis.
           DIAG_ROOT="${RUNNER_TEMP:-/tmp}/nix-store-diagnostics-${GITHUB_JOB:-job}-${RUNNER_OS:-unknown}-${GITHUB_RUN_ATTEMPT:-0}"
@@ -3683,6 +3687,15 @@ jobs:
             fi
             DEVENV_BIN="$DEVENV_OUT/bin/devenv"
           fi
+
+          # resolve_devenv_once uses this out-link directly, so Nix registers the GC
+          # root before a successful build returns. RUNNER_TEMP cleanup removes it after
+          # the job; the run/attempt/job namespace prevents cross-job replacement.
+          if [ ! -L "$DEVENV_GC_ROOT" ] || [ ! "$DEVENV_GC_ROOT" -ef "$DEVENV_OUT" ]; then
+            echo "::error::devenv resolution did not publish the expected job-scoped GC root: $DEVENV_GC_ROOT"
+            exit 1
+          fi
+          echo "DEVENV_GC_ROOT=$DEVENV_GC_ROOT" >> "$GITHUB_ENV"
 
           echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
           "$DEVENV_BIN" version | tee "$DIAG_ROOT/devenv-version.txt"
@@ -4490,15 +4503,7 @@ jobs:
             exit 1
           fi
 
-          resolve_devenv() {
-            nix build \
-              --accept-flake-config \
-              --option extra-substituters https://devenv.cachix.org \
-              --option extra-trusted-public-keys devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw= \
-              --no-link \
-              --print-out-paths \
-              "github:cachix/devenv/$DEVENV_REV#devenv"
-          }
+          . '${{ runner.temp }}/genie-ci-scripts/resolve-devenv.sh'
 
           # Temporary: capture diagnostics dir for #272 root-cause analysis.
           DIAG_ROOT="${RUNNER_TEMP:-/tmp}/nix-store-diagnostics-${GITHUB_JOB:-job}-${RUNNER_OS:-unknown}-${GITHUB_RUN_ATTEMPT:-0}"
@@ -4535,6 +4540,15 @@ jobs:
             fi
             DEVENV_BIN="$DEVENV_OUT/bin/devenv"
           fi
+
+          # resolve_devenv_once uses this out-link directly, so Nix registers the GC
+          # root before a successful build returns. RUNNER_TEMP cleanup removes it after
+          # the job; the run/attempt/job namespace prevents cross-job replacement.
+          if [ ! -L "$DEVENV_GC_ROOT" ] || [ ! "$DEVENV_GC_ROOT" -ef "$DEVENV_OUT" ]; then
+            echo "::error::devenv resolution did not publish the expected job-scoped GC root: $DEVENV_GC_ROOT"
+            exit 1
+          fi
+          echo "DEVENV_GC_ROOT=$DEVENV_GC_ROOT" >> "$GITHUB_ENV"
 
           echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
           "$DEVENV_BIN" version | tee "$DIAG_ROOT/devenv-version.txt"
@@ -7999,15 +8013,7 @@ jobs:
             exit 1
           fi
 
-          resolve_devenv() {
-            nix build \
-              --accept-flake-config \
-              --option extra-substituters https://devenv.cachix.org \
-              --option extra-trusted-public-keys devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw= \
-              --no-link \
-              --print-out-paths \
-              "github:cachix/devenv/$DEVENV_REV#devenv"
-          }
+          . '${{ runner.temp }}/genie-ci-scripts/resolve-devenv.sh'
 
           # Temporary: capture diagnostics dir for #272 root-cause analysis.
           DIAG_ROOT="${RUNNER_TEMP:-/tmp}/nix-store-diagnostics-${GITHUB_JOB:-job}-${RUNNER_OS:-unknown}-${GITHUB_RUN_ATTEMPT:-0}"
@@ -8044,6 +8050,15 @@ jobs:
             fi
             DEVENV_BIN="$DEVENV_OUT/bin/devenv"
           fi
+
+          # resolve_devenv_once uses this out-link directly, so Nix registers the GC
+          # root before a successful build returns. RUNNER_TEMP cleanup removes it after
+          # the job; the run/attempt/job namespace prevents cross-job replacement.
+          if [ ! -L "$DEVENV_GC_ROOT" ] || [ ! "$DEVENV_GC_ROOT" -ef "$DEVENV_OUT" ]; then
+            echo "::error::devenv resolution did not publish the expected job-scoped GC root: $DEVENV_GC_ROOT"
+            exit 1
+          fi
+          echo "DEVENV_GC_ROOT=$DEVENV_GC_ROOT" >> "$GITHUB_ENV"
 
           echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
           "$DEVENV_BIN" version | tee "$DIAG_ROOT/devenv-version.txt"
@@ -8262,15 +8277,7 @@ jobs:
             exit 1
           fi
 
-          resolve_devenv() {
-            nix build \
-              --accept-flake-config \
-              --option extra-substituters https://devenv.cachix.org \
-              --option extra-trusted-public-keys devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw= \
-              --no-link \
-              --print-out-paths \
-              "github:cachix/devenv/$DEVENV_REV#devenv"
-          }
+          . '${{ runner.temp }}/genie-ci-scripts/resolve-devenv.sh'
 
           # Temporary: capture diagnostics dir for #272 root-cause analysis.
           DIAG_ROOT="${RUNNER_TEMP:-/tmp}/nix-store-diagnostics-${GITHUB_JOB:-job}-${RUNNER_OS:-unknown}-${GITHUB_RUN_ATTEMPT:-0}"
@@ -8307,6 +8314,15 @@ jobs:
             fi
             DEVENV_BIN="$DEVENV_OUT/bin/devenv"
           fi
+
+          # resolve_devenv_once uses this out-link directly, so Nix registers the GC
+          # root before a successful build returns. RUNNER_TEMP cleanup removes it after
+          # the job; the run/attempt/job namespace prevents cross-job replacement.
+          if [ ! -L "$DEVENV_GC_ROOT" ] || [ ! "$DEVENV_GC_ROOT" -ef "$DEVENV_OUT" ]; then
+            echo "::error::devenv resolution did not publish the expected job-scoped GC root: $DEVENV_GC_ROOT"
+            exit 1
+          fi
+          echo "DEVENV_GC_ROOT=$DEVENV_GC_ROOT" >> "$GITHUB_ENV"
 
           echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
           "$DEVENV_BIN" version | tee "$DIAG_ROOT/devenv-version.txt"
@@ -8558,15 +8574,7 @@ jobs:
             exit 1
           fi
 
-          resolve_devenv() {
-            nix build \
-              --accept-flake-config \
-              --option extra-substituters https://devenv.cachix.org \
-              --option extra-trusted-public-keys devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw= \
-              --no-link \
-              --print-out-paths \
-              "github:cachix/devenv/$DEVENV_REV#devenv"
-          }
+          . '${{ runner.temp }}/genie-ci-scripts/resolve-devenv.sh'
 
           # Temporary: capture diagnostics dir for #272 root-cause analysis.
           DIAG_ROOT="${RUNNER_TEMP:-/tmp}/nix-store-diagnostics-${GITHUB_JOB:-job}-${RUNNER_OS:-unknown}-${GITHUB_RUN_ATTEMPT:-0}"
@@ -8603,6 +8611,15 @@ jobs:
             fi
             DEVENV_BIN="$DEVENV_OUT/bin/devenv"
           fi
+
+          # resolve_devenv_once uses this out-link directly, so Nix registers the GC
+          # root before a successful build returns. RUNNER_TEMP cleanup removes it after
+          # the job; the run/attempt/job namespace prevents cross-job replacement.
+          if [ ! -L "$DEVENV_GC_ROOT" ] || [ ! "$DEVENV_GC_ROOT" -ef "$DEVENV_OUT" ]; then
+            echo "::error::devenv resolution did not publish the expected job-scoped GC root: $DEVENV_GC_ROOT"
+            exit 1
+          fi
+          echo "DEVENV_GC_ROOT=$DEVENV_GC_ROOT" >> "$GITHUB_ENV"
 
           echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
           "$DEVENV_BIN" version | tee "$DIAG_ROOT/devenv-version.txt"
@@ -8845,15 +8862,7 @@ jobs:
             exit 1
           fi
 
-          resolve_devenv() {
-            nix build \
-              --accept-flake-config \
-              --option extra-substituters https://devenv.cachix.org \
-              --option extra-trusted-public-keys devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw= \
-              --no-link \
-              --print-out-paths \
-              "github:cachix/devenv/$DEVENV_REV#devenv"
-          }
+          . '${{ runner.temp }}/genie-ci-scripts/resolve-devenv.sh'
 
           # Temporary: capture diagnostics dir for #272 root-cause analysis.
           DIAG_ROOT="${RUNNER_TEMP:-/tmp}/nix-store-diagnostics-${GITHUB_JOB:-job}-${RUNNER_OS:-unknown}-${GITHUB_RUN_ATTEMPT:-0}"
@@ -8890,6 +8899,15 @@ jobs:
             fi
             DEVENV_BIN="$DEVENV_OUT/bin/devenv"
           fi
+
+          # resolve_devenv_once uses this out-link directly, so Nix registers the GC
+          # root before a successful build returns. RUNNER_TEMP cleanup removes it after
+          # the job; the run/attempt/job namespace prevents cross-job replacement.
+          if [ ! -L "$DEVENV_GC_ROOT" ] || [ ! "$DEVENV_GC_ROOT" -ef "$DEVENV_OUT" ]; then
+            echo "::error::devenv resolution did not publish the expected job-scoped GC root: $DEVENV_GC_ROOT"
+            exit 1
+          fi
+          echo "DEVENV_GC_ROOT=$DEVENV_GC_ROOT" >> "$GITHUB_ENV"
 
           echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
           "$DEVENV_BIN" version | tee "$DIAG_ROOT/devenv-version.txt"

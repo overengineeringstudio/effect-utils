@@ -1,4 +1,16 @@
-import { readFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readlinkSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
@@ -143,6 +155,11 @@ const validateNixStoreStepSource = extractSourceBlock(
   '/**\n * Upload diagnostics captured by `validateNixStoreStep` as a CI artifact.',
 )
 
+const resolveDevenvFnScript = readFileSync(
+  new URL(['../../../../../../genie/ci-scripts', 'resolve-devenv.sh'].join('/'), import.meta.url),
+  'utf8',
+)
+
 const applyMegarepoLockStepSource = extractSourceBlock(
   ciWorkflowSource,
   'export const applyMegarepoLockStep = (opts?: { skip?: string[]; cacheableStore?: boolean }) => {',
@@ -194,7 +211,9 @@ describe('ci workflow retry helpers', () => {
     expect(nixGcRaceRetryScriptSource).toContain('"$@" > "$stdout_pipe" 2> "$stderr_pipe"')
     expect(nixGcRaceRetryScriptSource).not.toContain('eval "$command"')
     expect(nixGcRaceRetryScriptSource).toContain("tr '\\r\\n' '  ' < \"$log\"")
-    expect(nixGcRaceRetryScriptSource).toContain('repair_nix_daemon')
+    expect(nixGcRaceRetryScriptSource).not.toContain('repair_nix_daemon')
+    expect(nixGcRaceRetryScriptSource).not.toContain('sudo systemctl')
+    expect(nixGcRaceRetryScriptSource).not.toContain('sudo launchctl')
     expect(nixGcRaceRetryScriptSource).not.toContain("awk 'BEGIN { ORS=")
   })
 
@@ -359,6 +378,146 @@ describe('ci workflow pnpm cache defaults', () => {
     expect(validateNixStoreStepSource).toContain(
       'rm -rf "${\'${XDG_CACHE_HOME:-$HOME/.cache}\'}"/nix/eval-cache-* ~/.cache/nix/eval-cache-*',
     )
+  })
+
+  it('retries initial devenv resolution once only for an extracted invalid store path', () => {
+    expect(resolveDevenvFnScript).toContain('[ -n "$invalid_path" ] || return "$rc"')
+    expect(resolveDevenvFnScript.match(/resolve_devenv_once/g)).toHaveLength(3)
+    expect(resolveDevenvFnScript).toContain('nix-store --repair-path "$invalid_path"')
+    expect(resolveDevenvFnScript).not.toContain('Failed to convert config.cachix to JSON')
+    expect(resolveDevenvFnScript).not.toContain('Truncated tar archive')
+  })
+
+  it('preserves a non-signature resolution failure status without retrying', () => {
+    const root = mkdtempSync(join(tmpdir(), 'genie-resolve-devenv-no-retry-'))
+    const bin = join(root, 'bin')
+    const attempts = join(root, 'attempts')
+    const existingOutput = join(root, 'existing-output')
+    const existingRootDir = join(root, 'genie-nix-gc-roots')
+    const existingRoot = join(existingRootDir, 'devenv-no-retry-1-unit')
+    mkdirSync(bin)
+    mkdirSync(existingOutput)
+    mkdirSync(existingRootDir)
+    symlinkSync(existingOutput, existingRoot)
+    writeFileSync(
+      join(bin, 'nix'),
+      `#!/usr/bin/env bash\nprintf 'attempt\\n' >> "$NIX_ATTEMPTS"\necho 'ordinary failure' >&2\nexit 23\n`,
+    )
+    chmodSync(join(bin, 'nix'), 0o755)
+    try {
+      const result = spawnSync(
+        'bash',
+        ['-c', `${resolveDevenvFnScript}\nDEVENV_REV=fixture\nresolve_devenv`],
+        {
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            GITHUB_JOB: 'unit',
+            GITHUB_RUN_ATTEMPT: '1',
+            GITHUB_RUN_ID: 'no-retry',
+            NIX_ATTEMPTS: attempts,
+            PATH: `${bin}:${process.env.PATH ?? ''}`,
+            RUNNER_TEMP: root,
+          },
+        },
+      )
+      expect(result.status).toBe(23)
+      expect(readFileSync(attempts, 'utf8')).toBe('attempt\n')
+      expect(readlinkSync(existingRoot)).toBe(existingOutput)
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
+  })
+
+  it('repairs an invalid path and atomically roots the successful retry', () => {
+    const root = mkdtempSync(join(tmpdir(), 'genie-resolve-devenv-retry-'))
+    const bin = join(root, 'bin')
+    const attempts = join(root, 'attempts')
+    const roots = join(root, 'roots')
+    const repairs = join(root, 'repairs')
+    const summary = join(root, 'summary')
+    const output = join(root, 'devenv-output')
+    mkdirSync(bin)
+    mkdirSync(output)
+    writeFileSync(
+      join(bin, 'nix'),
+      `#!/usr/bin/env bash
+set -euo pipefail
+attempt=1
+if [ -f "$NIX_ATTEMPTS" ]; then attempt=$(( $(wc -l < "$NIX_ATTEMPTS") + 1 )); fi
+printf 'attempt\\n' >> "$NIX_ATTEMPTS"
+out_link=''
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = '--out-link' ]; then out_link="$2"; shift 2; else shift; fi
+done
+printf '%s\\n' "$out_link" >> "$NIX_ROOTS"
+if [ "$attempt" -eq 1 ]; then
+  echo "error: path '/nix/store/missing-fixture.drv' is not valid" >&2
+  exit 17
+fi
+ln -s "$NIX_OUTPUT" "$out_link"
+printf '%s\\n' "$NIX_OUTPUT"
+`,
+    )
+    writeFileSync(
+      join(bin, 'nix-store'),
+      `#!/usr/bin/env bash\nprintf '%s\\n' "$*" >> "$NIX_REPAIRS"\nexit 0\n`,
+    )
+    chmodSync(join(bin, 'nix'), 0o755)
+    chmodSync(join(bin, 'nix-store'), 0o755)
+    try {
+      const result = spawnSync(
+        'bash',
+        ['-c', `${resolveDevenvFnScript}\nDEVENV_REV=fixture\nresolve_devenv`],
+        {
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            GITHUB_JOB: 'unit',
+            GITHUB_RUN_ATTEMPT: '1',
+            GITHUB_RUN_ID: 'retry',
+            GITHUB_STEP_SUMMARY: summary,
+            NIX_ATTEMPTS: attempts,
+            NIX_OUTPUT: output,
+            NIX_REPAIRS: repairs,
+            NIX_ROOTS: roots,
+            PATH: `${bin}:${process.env.PATH ?? ''}`,
+            RUNNER_TEMP: root,
+          },
+        },
+      )
+      expect(result.status, result.stderr).toBe(0)
+      expect(result.stdout).toBe(`${output}\n`)
+      expect(readFileSync(attempts, 'utf8')).toBe('attempt\nattempt\n')
+      const [firstRoot, secondRoot] = readFileSync(roots, 'utf8').trim().split('\n')
+      expect(firstRoot).toBe(secondRoot)
+      expect(readFileSync(repairs, 'utf8')).toContain(
+        '--repair-path /nix/store/missing-fixture.drv',
+      )
+      expect(readlinkSync(firstRoot!)).toBe(output)
+      expect(readFileSync(summary, 'utf8')).toContain('### Recovered Nix store lifecycle incident')
+      expect(readFileSync(summary, 'utf8')).toContain('- Attempts: 2/2')
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
+  })
+
+  it('roots the resolved devenv closure in runner job scratch space', () => {
+    expect(resolveDevenvFnScript).toContain('${RUNNER_TEMP:-/tmp}/genie-nix-gc-roots')
+    expect(resolveDevenvFnScript).toContain('--out-link "$DEVENV_GC_ROOT"')
+    expect(resolveDevenvFnScript).not.toContain('rm -f "$DEVENV_GC_ROOT"')
+    expect(resolveDevenvFnScript).toContain(
+      '${GITHUB_RUN_ID:-local-$$}-${GITHUB_RUN_ATTEMPT:-0}-${GITHUB_JOB:-job}',
+    )
+    expect(validateNixStoreStepSource).toContain('[ ! "$DEVENV_GC_ROOT" -ef "$DEVENV_OUT" ]')
+    expect(validateNixStoreStepSource).not.toContain('readlink -e')
+    expect(validateNixStoreStepSource).toContain(
+      '. ${shellSingleQuote(`${preparedCiRuntimeScriptsDir}/resolve-devenv.sh`)}',
+    )
+    expect(generatedCiWorkflowYamlSource).toContain(
+      ". '${{ runner.temp }}/genie-ci-scripts/resolve-devenv.sh'",
+    )
+    expect(generatedCiWorkflowYamlSource).not.toContain('resolve_devenv_once()')
   })
 
   it('resolves the locked megarepo CLI through a git flake URL', () => {
