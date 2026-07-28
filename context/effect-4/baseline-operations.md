@@ -44,7 +44,7 @@ verification-only worktree rather than stacking the wiring into the baseline PR:
 ## Vitest collection
 
 Include patterns are **package-relative and differ per package**. Invoking Vitest from the repo root
-can report *no tests* while appearing to pass. Observed: `tui-stories` uses `test/**`,
+can report _no tests_ while appearing to pass. Observed: `tui-stories` uses `test/**`,
 `notion-datasource-sync` uses `src/**/*.test.ts`.
 
 Most packages need **no** `vitest.config.ts` — repo convention is that it exists only where genuinely

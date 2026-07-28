@@ -1,23 +1,23 @@
 # Pattern: terminal-prompt-pty
 
-**Area:** Platform / Terminal / CLI Prompt  **Kind:** semantic  **Our usage:** `tui-react` and
+**Area:** Platform / Terminal / CLI Prompt **Kind:** semantic **Our usage:** `tui-react` and
 `pty-effect` depend on raw-mode lifecycle, key decoding, resize behavior, interrupts, and terminal
 control bytes.
 
 ## v3
 
 ```ts
-import { Prompt } from "@effect/cli"
-import { Terminal } from "@effect/platform"
-import { NodeContext } from "@effect/platform-node"
+import { Prompt } from '@effect/cli'
+import { Terminal } from '@effect/platform'
+import { NodeContext } from '@effect/platform-node'
 ```
 
 ## v4
 
 ```ts
-import { Terminal } from "effect"
-import { Prompt } from "effect/unstable/cli"
-import { NodeServices } from "@effect/platform-node"
+import { Terminal } from 'effect'
+import { Prompt } from 'effect/unstable/cli'
+import { NodeServices } from '@effect/platform-node'
 ```
 
 ## Equivalence

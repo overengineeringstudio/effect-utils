@@ -1,35 +1,31 @@
 # Pattern: runtime-fiber-context
 
-**Area:** Runtime and FiberRef  **Kind:** semantic  **Our usage:** runtime calls are concentrated in
+**Area:** Runtime and FiberRef **Kind:** semantic **Our usage:** runtime calls are concentrated in
 `restate-effect` (30 lexical sites), `effect-react` (11), and `tui-react` (11); the custom
 FiberRef is localized to `utils`.
 
 ## v3
 
 ```ts
-const Local = FiberRef.unsafeMake("default")
+const Local = FiberRef.unsafeMake('default')
 
-const runtime = yield* Effect.runtime<AppServices>()
+const runtime = yield * Effect.runtime<AppServices>()
 const fiber = Runtime.runFork(runtime)(program)
 
-const child = yield* Effect.fork(
-  program.pipe(Effect.locally(Local, "child"))
-)
+const child = yield * Effect.fork(program.pipe(Effect.locally(Local, 'child')))
 ```
 
 ## v4
 
 ```ts
-const Local = Context.Reference("Local", {
-  defaultValue: () => "default"
+const Local = Context.Reference('Local', {
+  defaultValue: () => 'default',
 })
 
-const services = yield* Effect.context<AppServices>()
+const services = yield * Effect.context<AppServices>()
 const fiber = Effect.runForkWith(services)(program)
 
-const child = yield* Effect.forkChild(
-  program.pipe(Effect.provideService(Local, "child"))
-)
+const child = yield * Effect.forkChild(program.pipe(Effect.provideService(Local, 'child')))
 ```
 
 ## Equivalence

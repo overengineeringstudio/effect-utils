@@ -1,28 +1,28 @@
 # Pattern: platform-filesystem
 
-**Area:** Platform  **Kind:** semantic  **Our usage:** the platform family has 183 imports; process
+**Area:** Platform **Kind:** semantic **Our usage:** the platform family has 183 imports; process
 and filesystem-heavy packages include `agent-session-ingest`, `megarepo`, `restate-effect`,
 `ci-tools`, `effect-path`, and `utils`.
 
 ## v3
 
 ```ts
-import { FileSystem, Path } from "@effect/platform"
-import { NodeContext } from "@effect/platform-node"
+import { FileSystem, Path } from '@effect/platform'
+import { NodeContext } from '@effect/platform-node'
 
-const fs = yield* FileSystem.FileSystem
-const path = yield* Path.Path
+const fs = yield * FileSystem.FileSystem
+const path = yield * Path.Path
 const program = effect.pipe(Effect.provide(NodeContext.layer))
 ```
 
 ## v4
 
 ```ts
-import { FileSystem, Path } from "effect"
-import { NodeServices } from "@effect/platform-node"
+import { FileSystem, Path } from 'effect'
+import { NodeServices } from '@effect/platform-node'
 
-const fs = yield* FileSystem.FileSystem
-const path = yield* Path.Path
+const fs = yield * FileSystem.FileSystem
+const path = yield * Path.Path
 const program = effect.pipe(Effect.provide(NodeServices.layer))
 ```
 

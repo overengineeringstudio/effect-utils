@@ -1,6 +1,6 @@
 # Pattern: effect-never-idle
 
-**Area:** Runtime / process lifetime  **Kind:** semantic  **Our usage:** long-lived workers in
+**Area:** Runtime / process lifetime **Kind:** semantic **Our usage:** long-lived workers in
 `pty-effect`, `restate-effect`, and `agent-session-ingest`.
 
 ## v3

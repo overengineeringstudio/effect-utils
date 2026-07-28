@@ -8,21 +8,20 @@ An independent pass attacked every entry in `alignment-register.md`, trying to *
 user-facing, durable, or cross-process boundary.
 
 An allowlist entry claims a difference does not matter. Several entries carried caveats —
-*"allow only where callers do not snapshot the parser message"*, *"accept only for atomically
-upgraded internal peers"* — that had never been checked against this repository. This pass
+_"allow only where callers do not snapshot the parser message"_, _"accept only for atomically
+upgraded internal peers"_ — that had never been checked against this repository. This pass
 checked them.
 
 **Result: 10 UPHELD, 2 REFUTED-PARTIAL.**
 
 ## Must reclassify before migration starts
 
-| entry | why it is not an accepted difference |
-| --- | --- |
+| entry                          | why it is not an accepted difference                                                               |
+| ------------------------------ | -------------------------------------------------------------------------------------------------- |
 | `rpc-failure-cause-wire-shape` | browser/server HTTP protocol, independent deploys, no version field; **both** cross-decodes reject |
-| `schema-date-invalid-message` | parser text embedded verbatim in an HTTP 400 payload, making it an API surface |
+| `schema-date-invalid-message`  | parser text embedded verbatim in an HTTP 400 payload, making it an API surface                     |
 
 ---
-
 
 Adversarial verification of every entry in `alignment-register.md`. `UPHELD`
 means the repository search found no user-facing, durable, or cross-process
@@ -312,20 +311,20 @@ No process currently relies on `Effect.never`'s incidental v3 timer handle.
 
 ## Summary
 
-| Entry | Verdict | Boundary found |
-| --- | --- | --- |
-| `schema-date` | UPHELD | Exact ISO durable bytes preserved by proposed mapping |
-| `schema-date-invalid-message` | REFUTED-PARTIAL | Restate caller-facing HTTP error text |
-| `fork-defaults` | UPHELD | None |
-| `fork-copied-options` | UPHELD | None; negative control remains valid |
-| `equality-structural-default` | UPHELD | None |
-| `equality-nan` | UPHELD | None |
-| `equality-by-reference-opt-out` | UPHELD | None |
-| `layer-memoization-default` | UPHELD | None matching duplicate nested provide |
-| `layer-memoization-freshness-opt-outs` | UPHELD | No justified opt-out site |
-| `rpc-failure-cause-wire-shape` | REFUTED-PARTIAL | HTTP RPC and SSR browser/server protocol |
-| `browser-testing-barrel` | UPHELD | No browser testing-barrel contamination |
-| `effect-never-idle-timer` | UPHELD | None |
+| Entry                                  | Verdict         | Boundary found                                        |
+| -------------------------------------- | --------------- | ----------------------------------------------------- |
+| `schema-date`                          | UPHELD          | Exact ISO durable bytes preserved by proposed mapping |
+| `schema-date-invalid-message`          | REFUTED-PARTIAL | Restate caller-facing HTTP error text                 |
+| `fork-defaults`                        | UPHELD          | None                                                  |
+| `fork-copied-options`                  | UPHELD          | None; negative control remains valid                  |
+| `equality-structural-default`          | UPHELD          | None                                                  |
+| `equality-nan`                         | UPHELD          | None                                                  |
+| `equality-by-reference-opt-out`        | UPHELD          | None                                                  |
+| `layer-memoization-default`            | UPHELD          | None matching duplicate nested provide                |
+| `layer-memoization-freshness-opt-outs` | UPHELD          | No justified opt-out site                             |
+| `rpc-failure-cause-wire-shape`         | REFUTED-PARTIAL | HTTP RPC and SSR browser/server protocol              |
+| `browser-testing-barrel`               | UPHELD          | No browser testing-barrel contamination               |
+| `effect-never-idle-timer`              | UPHELD          | None                                                  |
 
 ## Entries that must be reclassified before migration starts
 

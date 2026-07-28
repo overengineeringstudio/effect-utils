@@ -1,12 +1,12 @@
 # Pattern: browser-builtin-leakage
 
-**Area:** Browser bundling  **Kind:** semantic CI gate  **Our usage:** browser entries in
+**Area:** Browser bundling **Kind:** semantic CI gate **Our usage:** browser entries in
 `effect-react`, `notion-react`, `tui-react`, `react-inspector`, and `effect-schema-form*`.
 
 ## v3
 
 ```ts
-export { Schema, TestClock } from "effect"
+export { Schema, TestClock } from 'effect'
 ```
 
 The representative v3 facade bundles for the browser without resolving a Node builtin.
@@ -15,10 +15,10 @@ The representative v3 facade bundles for the browser without resolving a Node bu
 
 ```ts
 // Runtime facade:
-export { Schema } from "effect"
+export { Schema } from 'effect'
 
 // Tests import directly; never re-export this from a runtime/browser facade:
-import { TestSchema } from "effect/testing"
+import { TestSchema } from 'effect/testing'
 ```
 
 ## Equivalence

@@ -1,6 +1,6 @@
 # Pattern: rpc-payload-codecs
 
-**Area:** RPC boundary  **Kind:** semantic  **Our usage:** 11 `@effect/rpc` import sites plus
+**Area:** RPC boundary **Kind:** semantic **Our usage:** 11 `@effect/rpc` import sites plus
 `effect-rpc-tanstack`.
 
 ## v3
@@ -51,7 +51,7 @@ failure and message.
   JSON-projected schemas. Payload-only coverage is incomplete.
 - Compare `JSON.stringify(encoded)` or transport bytes, not only decoded values.
 - `Rpc.fromTaggedRequest` was removed. Rebuild the RPC explicitly with `Rpc.make(tag, { payload,
-  success, error })`; do not cast the old tagged request class into the new API.
+success, error })`; do not cast the old tagged request class into the new API.
 - Real clone/native-RPC transports need a separate real-runtime byte-boundary test; this in-process
   prototype cannot prove structured-clone compatibility.
 

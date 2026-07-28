@@ -1,14 +1,14 @@
 # Pattern: filesystem-watch-ordering
 
-**Area:** Platform / FileSystem watch  **Kind:** semantic / real breakage  **Our usage:**
+**Area:** Platform / FileSystem watch **Kind:** semantic / real breakage **Our usage:**
 `megarepo` and `genie` watch modes depend on event membership and non-recursive boundaries.
 
 ## v3
 
 ```ts
-import { FileSystem } from "@effect/platform"
+import { FileSystem } from '@effect/platform'
 
-const fs = yield* FileSystem.FileSystem
+const fs = yield * FileSystem.FileSystem
 const directChildren = fs.watch(root, { recursive: false })
 const wholeTree = fs.watch(root, { recursive: true })
 ```
@@ -16,9 +16,9 @@ const wholeTree = fs.watch(root, { recursive: true })
 ## v4
 
 ```ts
-import { FileSystem } from "effect"
+import { FileSystem } from 'effect'
 
-const fs = yield* FileSystem.FileSystem
+const fs = yield * FileSystem.FileSystem
 const wholeTree = fs.watch(root)
 ```
 
@@ -62,7 +62,7 @@ described in the harness README.
 
 Upstream duplicate check found no issue describing this beta.102 regression. The closest issues
 are Effect-TS/effect#2986, the closed request that originally added the option, and #5913, an open
-v3 issue about accidentally falling back to *non-recursive* watching through layer order. Neither
+v3 issue about accidentally falling back to _non-recursive_ watching through layer order. Neither
 covers removal plus forced recursion.
 
 ### Draft upstream report (do not file without orchestrator review)

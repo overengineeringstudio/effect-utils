@@ -1,6 +1,6 @@
 # Pattern: equality
 
-**Area:** Equality and HashSet/HashMap membership  **Kind:** semantic  **Our usage:** direct
+**Area:** Equality and HashSet/HashMap membership **Kind:** semantic **Our usage:** direct
 `Equal.equals` is low-volume, but equality semantics flow into dedup, cache keys,
 set membership, and change detection.
 
@@ -42,5 +42,5 @@ dates, regexps, `NaN`, and HashSet membership/dedup outcomes.
 - JavaScript `Set`/`Map` still use JS identity semantics; Effect `HashSet` and
   `HashMap` use Effect equality.
 - `Equal.byReference` returns a Proxy. The probe records `proxySameReference:
-  false`, so code relying on object identity should prefer `byReferenceUnsafe`
+false`, so code relying on object identity should prefer `byReferenceUnsafe`
   only after checking mutation/ownership risk.

@@ -1,6 +1,6 @@
 # Pattern: schema-date
 
-**Area:** Schema wire format  **Kind:** semantic (conditional rewrite)  **Our usage:** `Schema.DateTimeUtc`,
+**Area:** Schema wire format **Kind:** semantic (conditional rewrite) **Our usage:** `Schema.DateTimeUtc`,
 `Schema.DateFromSelf`, and date transforms appear in agent-session, Notion codecs, and path schemas.
 
 ## v3

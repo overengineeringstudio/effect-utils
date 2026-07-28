@@ -1,32 +1,40 @@
 # Pattern: cli-contract
 
-**Area:** CLI  **Kind:** semantic  **Our usage:** 53 `@effect/cli` imports across operator-facing
+**Area:** CLI **Kind:** semantic **Our usage:** 53 `@effect/cli` imports across operator-facing
 CLIs including `megarepo`, `notion-cli`, `genie`, `ci-tools`, `npm-release`, and TUI packages.
 
 ## v3
 
 ```ts
-import { Args, Command, Options } from "@effect/cli"
+import { Args, Command, Options } from '@effect/cli'
 
-const command = Command.make("deploy", {
-  target: Args.text({ name: "target" }),
-  mode: Options.choice("mode", ["fast", "safe"])
-}, handler)
+const command = Command.make(
+  'deploy',
+  {
+    target: Args.text({ name: 'target' }),
+    mode: Options.choice('mode', ['fast', 'safe']),
+  },
+  handler,
+)
 
-const program = Command.run(command, { name: "tool", version: "1.2.3" })(process.argv)
+const program = Command.run(command, { name: 'tool', version: '1.2.3' })(process.argv)
 ```
 
 ## v4
 
 ```ts
-import { Argument, Command, Flag } from "effect/unstable/cli"
+import { Argument, Command, Flag } from 'effect/unstable/cli'
 
-const command = Command.make("deploy", {
-  target: Argument.string("target"),
-  mode: Flag.choice("mode", ["fast", "safe"])
-}, handler)
+const command = Command.make(
+  'deploy',
+  {
+    target: Argument.string('target'),
+    mode: Flag.choice('mode', ['fast', 'safe']),
+  },
+  handler,
+)
 
-const program = Command.runWith(command, { version: "1.2.3" })(process.argv.slice(2))
+const program = Command.runWith(command, { version: '1.2.3' })(process.argv.slice(2))
 ```
 
 ## Equivalence
@@ -49,15 +57,15 @@ not turn category A or C into accepted migration behavior.
 
 Observed changes:
 
-| Bucket | Cases | Exact paths | Decision |
-| --- | --- | --- | --- |
-| A: suspected v4 bug | `--` under nested subcommands, with variadic or required child positional | `$[5].stdout`, `$[12].{exitCode,stderr,stdout}` | Report upstream; do not migrate affected commands until fixed or locally patched |
-| B: accept improvement | reject separated negative integers | `$[6].{exitCode,stderr,stdout}`, `$[13].{exitCode,stderr,stdout}` | Accept for current domain integers: counts, delays, widths, timestamps, concurrency, limits, and PR numbers |
-| B: accept improvement | clustered aliases (`-vq`) | `$[7].stdout`, `$[14].{exitCode,stderr,stdout}` | Accept standard clustered-short grammar |
-| B: accept improvement | equals-form repeated flags | `$[4].stdout`, `$[15].{exitCode,stderr,stdout}` | Accept standard `--flag=value` grammar |
-| B: accept improvement | strict unknown flag after a variadic positional | `$[9].{exitCode,stderr,stdout}` | Accept; no tracked effect-utils command uses variadic positional `Args` |
-| C: preserve or shim | root/nested help and version bytes | `$[0].stdout`, `$[1].stdout`, `$[2].stdout` | Preserve/rebaseline per CLI owner; exact stdout is a public contract |
-| C: preserve or shim | validation diagnostics and stdout placement | `$[8].{stderr,stdout}`, `$[10].{stderr,stdout}`, `$[11].{stderr,stdout}`, `$[16].{stderr,stdout}` | Keep validation failures off machine-readable stdout; compatibility-format or explicitly rebaseline stderr |
+| Bucket                | Cases                                                                     | Exact paths                                                                                       | Decision                                                                                                    |
+| --------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| A: suspected v4 bug   | `--` under nested subcommands, with variadic or required child positional | `$[5].stdout`, `$[12].{exitCode,stderr,stdout}`                                                   | Report upstream; do not migrate affected commands until fixed or locally patched                            |
+| B: accept improvement | reject separated negative integers                                        | `$[6].{exitCode,stderr,stdout}`, `$[13].{exitCode,stderr,stdout}`                                 | Accept for current domain integers: counts, delays, widths, timestamps, concurrency, limits, and PR numbers |
+| B: accept improvement | clustered aliases (`-vq`)                                                 | `$[7].stdout`, `$[14].{exitCode,stderr,stdout}`                                                   | Accept standard clustered-short grammar                                                                     |
+| B: accept improvement | equals-form repeated flags                                                | `$[4].stdout`, `$[15].{exitCode,stderr,stdout}`                                                   | Accept standard `--flag=value` grammar                                                                      |
+| B: accept improvement | strict unknown flag after a variadic positional                           | `$[9].{exitCode,stderr,stdout}`                                                                   | Accept; no tracked effect-utils command uses variadic positional `Args`                                     |
+| C: preserve or shim   | root/nested help and version bytes                                        | `$[0].stdout`, `$[1].stdout`, `$[2].stdout`                                                       | Preserve/rebaseline per CLI owner; exact stdout is a public contract                                        |
+| C: preserve or shim   | validation diagnostics and stdout placement                               | `$[8].{stderr,stdout}`, `$[10].{stderr,stdout}`, `$[11].{stderr,stdout}`, `$[16].{stderr,stdout}` | Keep validation failures off machine-readable stdout; compatibility-format or explicitly rebaseline stderr  |
 
 ### Category A source confirmation
 
@@ -70,15 +78,15 @@ missing-required failure when the escaped positional is the required child argum
 
 ### Actual effect-utils command audit
 
-| Behavior | Commands with observable exposure | Evidence and impact |
-| --- | --- | --- |
-| help bytes | all six audited binaries | `megarepo/src/cli/mod.ts:51-80`, `notion-cli/src/cli.ts:63-80`, `genie/bin/genie.tsx:29-44`, `ci-tools/bin/ci-tools.ts:25-39`, `npm-release/src/cli.ts:58-84`, `tui-stories/bin/tui-stories.tsx:20-31`; Nix smoke tests execute help for `megarepo`, `notion-cli`, `ci-tools`, and `npm-release` but mostly assert success/presence, not bytes |
-| version bytes | `megarepo`, `genie`, `ci-tools`, `npm-release`, `tui-stories` | all delegate `--version` to Effect CLI and would change to `name v<version>`; `notion-cli` is protected by its explicit one-line root-version fast path at `notion-cli/src/cli.ts:33-38,173-180` |
-| nested `--` data loss | `megarepo`, `notion-cli`, `tui-stories` positional subcommands | required positionals exist at `megarepo/src/cli/commands/{add.ts:58-63,exec.ts:23-29,pin.ts:59-63}`, `notion-cli/src/commands/{db/mod.ts:29-35,schema/mod.ts:84-87}`, and `tui-stories/src/cli/{render.ts:14-17,inspect.ts:13-16}`; a dash-prefixed value supplied via `--` becomes missing |
-| negative integers | `npm-release`, `ci-tools`, `tui-stories`, plus Notion/TUI helpers | concrete flags: `npm-release` attempts/delay, `ci-tools` PR number, `tui-stories` width/timeline `at`; workspace-wide integer search also finds Notion poll/concurrency/limit and TUI example durations |
-| clustered aliases | `megarepo`, `notion-cli`, `tui-stories` | these own multiple short aliases; formerly-invalid clusters can now invoke handlers. `genie`, `ci-tools`, and `npm-release` define no command aliases in the audited sources |
-| equals repeated flags | `ci-tools`, `tui-stories` | v4 newly accepts equals form for `ci-tools` production-domain/build-env and `tui-stories --arg`; existing separate-form invocations are unchanged |
-| unknown flags | every command | tracked commands have no variadic positional `Args`, so exit remains 1; the real change is v4 full help on stdout plus new stderr wording |
+| Behavior              | Commands with observable exposure                                 | Evidence and impact                                                                                                                                                                                                                                                                                                                            |
+| --------------------- | ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| help bytes            | all six audited binaries                                          | `megarepo/src/cli/mod.ts:51-80`, `notion-cli/src/cli.ts:63-80`, `genie/bin/genie.tsx:29-44`, `ci-tools/bin/ci-tools.ts:25-39`, `npm-release/src/cli.ts:58-84`, `tui-stories/bin/tui-stories.tsx:20-31`; Nix smoke tests execute help for `megarepo`, `notion-cli`, `ci-tools`, and `npm-release` but mostly assert success/presence, not bytes |
+| version bytes         | `megarepo`, `genie`, `ci-tools`, `npm-release`, `tui-stories`     | all delegate `--version` to Effect CLI and would change to `name v<version>`; `notion-cli` is protected by its explicit one-line root-version fast path at `notion-cli/src/cli.ts:33-38,173-180`                                                                                                                                               |
+| nested `--` data loss | `megarepo`, `notion-cli`, `tui-stories` positional subcommands    | required positionals exist at `megarepo/src/cli/commands/{add.ts:58-63,exec.ts:23-29,pin.ts:59-63}`, `notion-cli/src/commands/{db/mod.ts:29-35,schema/mod.ts:84-87}`, and `tui-stories/src/cli/{render.ts:14-17,inspect.ts:13-16}`; a dash-prefixed value supplied via `--` becomes missing                                                    |
+| negative integers     | `npm-release`, `ci-tools`, `tui-stories`, plus Notion/TUI helpers | concrete flags: `npm-release` attempts/delay, `ci-tools` PR number, `tui-stories` width/timeline `at`; workspace-wide integer search also finds Notion poll/concurrency/limit and TUI example durations                                                                                                                                        |
+| clustered aliases     | `megarepo`, `notion-cli`, `tui-stories`                           | these own multiple short aliases; formerly-invalid clusters can now invoke handlers. `genie`, `ci-tools`, and `npm-release` define no command aliases in the audited sources                                                                                                                                                                   |
+| equals repeated flags | `ci-tools`, `tui-stories`                                         | v4 newly accepts equals form for `ci-tools` production-domain/build-env and `tui-stories --arg`; existing separate-form invocations are unchanged                                                                                                                                                                                              |
+| unknown flags         | every command                                                     | tracked commands have no variadic positional `Args`, so exit remains 1; the real change is v4 full help on stdout plus new stderr wording                                                                                                                                                                                                      |
 
 `megarepo`'s `rewriteHelpSubcommand(process.argv)` does not mitigate the terminator bug. It returns
 non-`help` argv unchanged (`utils/src/node/cli-help-rewrite.ts:2-8`), so

@@ -1,16 +1,14 @@
 # Pattern: platform-http-status
 
-**Area:** Platform / HttpClient  **Kind:** semantic  **Our usage:** direct HttpClient imports are
+**Area:** Platform / HttpClient **Kind:** semantic **Our usage:** direct HttpClient imports are
 low-volume, but HTTP failure matching is a control-flow boundary in clients and telemetry.
 
 ## v3
 
 ```ts
-import { HttpClient, HttpClientResponse } from "@effect/platform"
+import { HttpClient, HttpClientResponse } from '@effect/platform'
 
-const response = yield* HttpClient.get(url).pipe(
-  Effect.flatMap(HttpClientResponse.filterStatusOk)
-)
+const response = yield * HttpClient.get(url).pipe(Effect.flatMap(HttpClientResponse.filterStatusOk))
 ```
 
 Rejected status fails with `ResponseError`, `reason: "StatusCode"`.
@@ -18,11 +16,9 @@ Rejected status fails with `ResponseError`, `reason: "StatusCode"`.
 ## v4
 
 ```ts
-import { HttpClient, HttpClientResponse } from "effect/unstable/http"
+import { HttpClient, HttpClientResponse } from 'effect/unstable/http'
 
-const response = yield* HttpClient.get(url).pipe(
-  Effect.flatMap(HttpClientResponse.filterStatusOk)
-)
+const response = yield * HttpClient.get(url).pipe(Effect.flatMap(HttpClientResponse.filterStatusOk))
 ```
 
 Rejected status fails with `HttpClientError` wrapping `StatusCodeError`.

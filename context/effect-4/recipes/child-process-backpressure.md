@@ -1,19 +1,19 @@
 # Pattern: child-process-backpressure
 
-**Area:** Platform / child process  **Kind:** semantic  **Our usage:** `pty-effect` and `megarepo`
+**Area:** Platform / child process **Kind:** semantic **Our usage:** `pty-effect` and `megarepo`
 consume long-running child stdout/stderr streams and must not lose, reorder, or deadlock output.
 
 ## v3
 
 ```ts
-const executor = yield* CommandExecutor.CommandExecutor
-const child = yield* executor.start(Command.make("bun", "producer.ts", ...args))
+const executor = yield * CommandExecutor.CommandExecutor
+const child = yield * executor.start(Command.make('bun', 'producer.ts', ...args))
 ```
 
 ## v4
 
 ```ts
-const child = yield* ChildProcess.make("bun", ["producer.ts", ...args])
+const child = yield * ChildProcess.make('bun', ['producer.ts', ...args])
 ```
 
 Both sides consume stdout, stderr, and exit status concurrently inside the child scope.

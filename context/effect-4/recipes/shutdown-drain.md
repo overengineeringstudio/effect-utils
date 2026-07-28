@@ -1,6 +1,6 @@
 # Pattern: shutdown-drain
 
-**Area:** Runtime shutdown and interruption  **Kind:** semantic  **Our usage:** background pushers,
+**Area:** Runtime shutdown and interruption **Kind:** semantic **Our usage:** background pushers,
 queues, and single-owner drains.
 
 ## v3
@@ -8,7 +8,7 @@ queues, and single-owner drains.
 ```ts
 // Application-level close state plus an in-band sentinel:
 closed = true
-yield* Queue.offer(queue, End)
+yield * Queue.offer(queue, End)
 ```
 
 The sole consumer finishes the in-flight item and every item ahead of the sentinel. Producers
@@ -17,8 +17,8 @@ reject offers after `closed` becomes true.
 ## v4
 
 ```ts
-const queue = yield* Queue.unbounded<Item, Cause.Done>()
-yield* Queue.end(queue)
+const queue = yield * Queue.unbounded<Item, Cause.Done>()
+yield * Queue.end(queue)
 ```
 
 `Queue.end` stops new offers while retaining queued items for the sole consumer to drain.

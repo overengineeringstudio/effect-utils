@@ -133,10 +133,7 @@ Add a client tracing configuration hook used by both internal loops, for
 example a context reference receiving direction and normalized header name:
 
 ```ts
-type HeaderAttributePredicate = (
-  direction: "request" | "response",
-  name: string
-) => boolean
+type HeaderAttributePredicate = (direction: 'request' | 'response', name: string) => boolean
 ```
 
 It can default to `true` for compatibility. Effect-utils would provide a

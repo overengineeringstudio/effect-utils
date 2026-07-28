@@ -6,13 +6,13 @@ Identity: `org.schickling.eu.effect-4.tsgo`
 
 VERIFIED: the current Nix-pinned `effect-tsgo` is sufficient for the Effect 4 migration blocker.
 
-| Question | Answer | Evidence |
-| --- | --- | --- |
-| Current pin handles `effect@4.0.0-beta.102` module layout? | Yes | Probe dependency is `effect` `4.0.0-beta.102`; package exports include `effect/testing`, `effect/unstable/cli`, `effect/unstable/http`, `effect/unstable/httpapi`, `effect/unstable/observability`, `effect/unstable/process`, `effect/unstable/rpc`, plus wildcard root subpaths such as `effect/Schema` and `effect/Result`. See `tmp/tsgo-probe/q1/node_modules/effect/package.json:2-4`, `:29-55`; probe imports at `tmp/tsgo-probe/q1/src/index.ts:1-10`. |
-| Current pin emits Effect diagnostics under v4? | Yes | Hardened probe emitted warning, suggestion, and error diagnostics under `effect@4.0.0-beta.102`; see command/output below. |
-| Gate degraded to errors-only? | No | Warning-only and suggestion-only category probes each exited `2`, proving both categories still affect `tsgo --build` exit code when the repo-equivalent ignore flags are `false`. |
-| Minimum viable tsgo revision | Current pin suffices | Locked rev remains viable: `flake.lock:98-104` pins `Effect-TS/tsgo` `8d34c0a2d603a4b963b85ffccd4322c0ef74f472`; evaluated current attr was `/nix/store/m59qqc61pdii7xfjnpfzjas5fx0z2ggx-effect-tsgo`, version `7.0.0-dev+effect-tsgo.0.14.5`. |
-| Effect 3 advisory delta from newer tsgo | NOT MEASURED | De-scoped by orchestrator after Q1: since current pin works, a tsgo bump is not on the Effect 4 critical path. No candidate tsgo build and no whole-repo Effect 3 typecheck were run. |
+| Question                                                   | Answer               | Evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ---------------------------------------------------------- | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Current pin handles `effect@4.0.0-beta.102` module layout? | Yes                  | Probe dependency is `effect` `4.0.0-beta.102`; package exports include `effect/testing`, `effect/unstable/cli`, `effect/unstable/http`, `effect/unstable/httpapi`, `effect/unstable/observability`, `effect/unstable/process`, `effect/unstable/rpc`, plus wildcard root subpaths such as `effect/Schema` and `effect/Result`. See `tmp/tsgo-probe/q1/node_modules/effect/package.json:2-4`, `:29-55`; probe imports at `tmp/tsgo-probe/q1/src/index.ts:1-10`. |
+| Current pin emits Effect diagnostics under v4?             | Yes                  | Hardened probe emitted warning, suggestion, and error diagnostics under `effect@4.0.0-beta.102`; see command/output below.                                                                                                                                                                                                                                                                                                                                     |
+| Gate degraded to errors-only?                              | No                   | Warning-only and suggestion-only category probes each exited `2`, proving both categories still affect `tsgo --build` exit code when the repo-equivalent ignore flags are `false`.                                                                                                                                                                                                                                                                             |
+| Minimum viable tsgo revision                               | Current pin suffices | Locked rev remains viable: `flake.lock:98-104` pins `Effect-TS/tsgo` `8d34c0a2d603a4b963b85ffccd4322c0ef74f472`; evaluated current attr was `/nix/store/m59qqc61pdii7xfjnpfzjas5fx0z2ggx-effect-tsgo`, version `7.0.0-dev+effect-tsgo.0.14.5`.                                                                                                                                                                                                                 |
+| Effect 3 advisory delta from newer tsgo                    | NOT MEASURED         | De-scoped by orchestrator after Q1: since current pin works, a tsgo bump is not on the Effect 4 critical path. No candidate tsgo build and no whole-repo Effect 3 typecheck were run.                                                                                                                                                                                                                                                                          |
 
 ## Probe Setup
 
@@ -39,11 +39,11 @@ VERIFIED: the probe is throwaway and outside tracked files (`tmp/tsgo-probe/q1`)
 
 Repo source evidence for the same derived config:
 
-| File | Lines | Meaning |
-| --- | ---: | --- |
-| `genie/external.ts` | 736, 772-775 | `effectDiagnosticsGate = { warnings: true, suggestions: true }`; the generated ignore flags are `!effectDiagnosticsGate.*`, so both warning and suggestion ignore flags derive to `false`; errors ignore flag is hardcoded `false`. |
-| `tmp/tsgo-probe/tsgo-source/internal/effectconfigraw/hooks.go` | 76-83 | tsgo reads `ignoreEffectSuggestionsInTscExitCode`, `ignoreEffectWarningsInTscExitCode`, and `ignoreEffectErrorsInTscExitCode` from the plugin entry when present. |
-| `tmp/tsgo-probe/tsgo-source/testdata/baselines/reference/README.md` | 214-231 | tsgo docs: `includeSuggestionsInTsc` controls suggestion visibility; `ignoreEffectSuggestionsInTscExitCode`, `ignoreEffectWarningsInTscExitCode`, and `ignoreEffectErrorsInTscExitCode` control whether each category affects the tsc exit code. |
+| File                                                                |        Lines | Meaning                                                                                                                                                                                                                                          |
+| ------------------------------------------------------------------- | -----------: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `genie/external.ts`                                                 | 736, 772-775 | `effectDiagnosticsGate = { warnings: true, suggestions: true }`; the generated ignore flags are `!effectDiagnosticsGate.*`, so both warning and suggestion ignore flags derive to `false`; errors ignore flag is hardcoded `false`.              |
+| `tmp/tsgo-probe/tsgo-source/internal/effectconfigraw/hooks.go`      |        76-83 | tsgo reads `ignoreEffectSuggestionsInTscExitCode`, `ignoreEffectWarningsInTscExitCode`, and `ignoreEffectErrorsInTscExitCode` from the plugin entry when present.                                                                                |
+| `tmp/tsgo-probe/tsgo-source/testdata/baselines/reference/README.md` |      214-231 | tsgo docs: `includeSuggestionsInTsc` controls suggestion visibility; `ignoreEffectSuggestionsInTscExitCode`, `ignoreEffectWarningsInTscExitCode`, and `ignoreEffectErrorsInTscExitCode` control whether each category affects the tsc exit code. |
 
 ## Q1 Commands And Output
 
@@ -89,12 +89,12 @@ Category-isolated gate probes:
 
 VERIFIED: the real relaxation knobs are the `ignoreEffect*InTscExitCode` plugin fields, not `diagnosticSeverity`.
 
-| Desired gate | Values |
-| --- | --- |
-| Strict current repo gate | `ignoreEffectWarningsInTscExitCode: false`, `ignoreEffectSuggestionsInTscExitCode: false`, `ignoreEffectErrorsInTscExitCode: false` |
-| Errors-only waiver | `ignoreEffectWarningsInTscExitCode: true`, `ignoreEffectSuggestionsInTscExitCode: true`, `ignoreEffectErrorsInTscExitCode: false` |
-| Keep suggestion output visible while waiving exit-code impact | Leave `includeSuggestionsInTsc: true` |
-| Source change that would produce the waiver | In `genie/external.ts`, set `effectDiagnosticsGate` to `{ warnings: false, suggestions: false }`; generated plugin values at `:772-775` then become `true`, `true`, `false`. Do not edit generated `package.json`/`tsconfig` files directly. |
+| Desired gate                                                  | Values                                                                                                                                                                                                                                       |
+| ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Strict current repo gate                                      | `ignoreEffectWarningsInTscExitCode: false`, `ignoreEffectSuggestionsInTscExitCode: false`, `ignoreEffectErrorsInTscExitCode: false`                                                                                                          |
+| Errors-only waiver                                            | `ignoreEffectWarningsInTscExitCode: true`, `ignoreEffectSuggestionsInTscExitCode: true`, `ignoreEffectErrorsInTscExitCode: false`                                                                                                            |
+| Keep suggestion output visible while waiving exit-code impact | Leave `includeSuggestionsInTsc: true`                                                                                                                                                                                                        |
+| Source change that would produce the waiver                   | In `genie/external.ts`, set `effectDiagnosticsGate` to `{ warnings: false, suggestions: false }`; generated plugin values at `:772-775` then become `true`, `true`, `false`. Do not edit generated `package.json`/`tsconfig` files directly. |
 
 The comment at `genie/external.ts:724-725` is misleading: it says "both fields are true" while the derived plugin fields at `genie/external.ts:772-775` are the inverse ignore flags. The current strict behavior is produced by those generated ignore fields being `false`.
 

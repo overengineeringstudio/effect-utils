@@ -1,39 +1,37 @@
 # Pattern: services-context
 
-**Area:** Services and Layers  **Kind:** semantic  **Our usage:** service definitions occur in
+**Area:** Services and Layers **Kind:** semantic **Our usage:** service definitions occur in
 14 packages; the densest slices are `restate-effect`, `utils`, `megarepo`, and Notion packages.
 
 ## v3
 
 ```ts
-class Greeter extends Effect.Service<Greeter>()("Greeter", {
+class Greeter extends Effect.Service<Greeter>()('Greeter', {
   accessors: true,
   dependencies: [Prefix.Default],
-  effect: Effect.gen(function*() {
+  effect: Effect.gen(function* () {
     const prefix = yield* Prefix
     return { greet: (name: string) => Effect.succeed(`${prefix.value}, ${name}`) }
-  })
+  }),
 }) {}
 
-const result = yield* Greeter.greet("Ada")
+const result = yield * Greeter.greet('Ada')
 const program = effect.pipe(Effect.provide(Greeter.Default))
 ```
 
 ## v4
 
 ```ts
-class Greeter extends Context.Service<Greeter>()("Greeter", {
-  make: Effect.gen(function*() {
+class Greeter extends Context.Service<Greeter>()('Greeter', {
+  make: Effect.gen(function* () {
     const prefix = yield* Prefix
     return { greet: (name: string) => Effect.succeed(`${prefix.value}, ${name}`) }
-  })
+  }),
 }) {
-  static readonly layer = Layer.effect(this, this.make).pipe(
-    Layer.provide(Prefix.layer)
-  )
+  static readonly layer = Layer.effect(this, this.make).pipe(Layer.provide(Prefix.layer))
 }
 
-const result = yield* Greeter.use((greeter) => greeter.greet("Ada"))
+const result = yield * Greeter.use((greeter) => greeter.greet('Ada'))
 const program = effect.pipe(Effect.provide(Greeter.layer))
 ```
 

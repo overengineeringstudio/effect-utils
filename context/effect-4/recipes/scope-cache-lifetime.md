@@ -1,17 +1,17 @@
 # Pattern: scope-cache-lifetime
 
-**Area:** Scope and finalizers  **Kind:** semantic  **Our usage:** cached and pooled clients,
+**Area:** Scope and finalizers **Kind:** semantic **Our usage:** cached and pooled clients,
 especially `effect-distributed-lock`.
 
 ## v3
 
 ```ts
 Effect.scoped(
-  Effect.gen(function*() {
+  Effect.gen(function* () {
     const cached = yield* Effect.acquireRelease(acquireClient, releaseClient)
     yield* Effect.scoped(handleRequest(cached))
     yield* handleRequest(cached)
-  })
+  }),
 )
 ```
 
@@ -19,11 +19,11 @@ Effect.scoped(
 
 ```ts
 Effect.scoped(
-  Effect.gen(function*() {
+  Effect.gen(function* () {
     const cached = yield* Effect.acquireRelease(acquireClient, releaseClient)
     yield* Effect.scoped(handleRequest(cached))
     yield* handleRequest(cached)
-  })
+  }),
 )
 ```
 

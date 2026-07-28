@@ -10,22 +10,22 @@ is explicit. Public paths below are repository-relative.
 
 Ranked by value, not by raw site count.
 
-| rank | pattern | coupling | verified local surface | recommendation | owner decision |
-| ---: | --- | --- | --- | --- | --- |
-| 1 | Preserve Schema encoded contracts while adopting v4 codecs/checks | MUST-CHANGE | 234 wire-sensitive occurrences / 91 files / 22 packages; broader Schema-shape surface is 723 / 160 / 24 | **ADOPT-DURING** | approve / reject |
-| 2 | `Context.Service` + explicit named layers + direct `yield*` | MUST-CHANGE | 57 service definitions/usages / 42 files / 13 packages | **ADOPT-DURING** | approve / reject |
-| 3 | Yield Effectable child-process commands; delete executor/start plumbing | TOUCHING-ANYWAY | 47 command/executor occurrences across 17 files / 7 packages | **ADOPT-DURING** | approve / reject |
-| 4 | Use v4 fork defaults; add options only when a two-major probe requires them | TOUCHING-ANYWAY | 48 fork/forkScoped sites / 28 files / 12 packages | **ADOPT-DURING** | approve / reject |
-| 5 | Replace unsafe `FiberRef` toggle with `Context.Reference` | MUST-CHANGE | 3 operations in one `utils` file | **ADOPT-DURING** | approve / reject |
-| 6 | `Effect.async` -> `Effect.callback`, preserving cancellation registration | MUST-CHANGE | 15 sites / 8 files / 4 packages | **ADOPT-DURING** | approve / reject |
-| 7 | Native v4 Schema class/array/check/annotation forms | MUST-CHANGE | includes 187 `Schema.TaggedError` sites / 63 files / 21 packages | **ADOPT-DURING** | approve / reject |
-| 8 | Canonical v4 catch names, without reason-model redesign | MUST-CHANGE | 112 `catchAll` + 7 `catchAllCause`, 52 files / 14 packages | **ADOPT-DURING** | approve / reject |
-| 9 | Module-owned concurrency constructors (`Semaphore.make`) | MUST-CHANGE | 2 sites / 2 packages | **ADOPT-DURING** | approve / reject |
-| 10 | Broad layer-graph composition cleanup | INDEPENDENT | 795 `Effect.provide` occurrences / 202 files; heat concentrated in megarepo, Restate, Notion, TUI | **ADOPT-AFTER** | approve / reject |
-| 11 | Convert functions returning `Effect.gen` to named `Effect.fn` | INDEPENDENT | 35 clear sites / 23 files / 9 packages; 519 `Effect.fn` sites already exist | **ADOPT-AFTER** | approve / reject |
-| 12 | Replace existing errors with reason-bearing errors | INDEPENDENT | no bounded mechanical surface; error-heavy packages span most of repo | **SKIP** for migration | approve / reject |
-| 13 | Add an Effect facade analogous to `@livestore/utils/effect` | INDEPENDENT | no equivalent facade; Effect imports span 31 packages | **SKIP** | approve / reject |
-| 14 | Broadly rewrite combinator pipelines into `Effect.gen` | INDEPENDENT | `Effect.gen` already occurs in 314 files | **SKIP** | approve / reject |
+| rank | pattern                                                                     | coupling        | verified local surface                                                                                  | recommendation         | owner decision   |
+| ---: | --------------------------------------------------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------- | ---------------------- | ---------------- |
+|    1 | Preserve Schema encoded contracts while adopting v4 codecs/checks           | MUST-CHANGE     | 234 wire-sensitive occurrences / 91 files / 22 packages; broader Schema-shape surface is 723 / 160 / 24 | **ADOPT-DURING**       | approve / reject |
+|    2 | `Context.Service` + explicit named layers + direct `yield*`                 | MUST-CHANGE     | 57 service definitions/usages / 42 files / 13 packages                                                  | **ADOPT-DURING**       | approve / reject |
+|    3 | Yield Effectable child-process commands; delete executor/start plumbing     | TOUCHING-ANYWAY | 47 command/executor occurrences across 17 files / 7 packages                                            | **ADOPT-DURING**       | approve / reject |
+|    4 | Use v4 fork defaults; add options only when a two-major probe requires them | TOUCHING-ANYWAY | 48 fork/forkScoped sites / 28 files / 12 packages                                                       | **ADOPT-DURING**       | approve / reject |
+|    5 | Replace unsafe `FiberRef` toggle with `Context.Reference`                   | MUST-CHANGE     | 3 operations in one `utils` file                                                                        | **ADOPT-DURING**       | approve / reject |
+|    6 | `Effect.async` -> `Effect.callback`, preserving cancellation registration   | MUST-CHANGE     | 15 sites / 8 files / 4 packages                                                                         | **ADOPT-DURING**       | approve / reject |
+|    7 | Native v4 Schema class/array/check/annotation forms                         | MUST-CHANGE     | includes 187 `Schema.TaggedError` sites / 63 files / 21 packages                                        | **ADOPT-DURING**       | approve / reject |
+|    8 | Canonical v4 catch names, without reason-model redesign                     | MUST-CHANGE     | 112 `catchAll` + 7 `catchAllCause`, 52 files / 14 packages                                              | **ADOPT-DURING**       | approve / reject |
+|    9 | Module-owned concurrency constructors (`Semaphore.make`)                    | MUST-CHANGE     | 2 sites / 2 packages                                                                                    | **ADOPT-DURING**       | approve / reject |
+|   10 | Broad layer-graph composition cleanup                                       | INDEPENDENT     | 795 `Effect.provide` occurrences / 202 files; heat concentrated in megarepo, Restate, Notion, TUI       | **ADOPT-AFTER**        | approve / reject |
+|   11 | Convert functions returning `Effect.gen` to named `Effect.fn`               | INDEPENDENT     | 35 clear sites / 23 files / 9 packages; 519 `Effect.fn` sites already exist                             | **ADOPT-AFTER**        | approve / reject |
+|   12 | Replace existing errors with reason-bearing errors                          | INDEPENDENT     | no bounded mechanical surface; error-heavy packages span most of repo                                   | **SKIP** for migration | approve / reject |
+|   13 | Add an Effect facade analogous to `@livestore/utils/effect`                 | INDEPENDENT     | no equivalent facade; Effect imports span 31 packages                                                   | **SKIP**               | approve / reject |
+|   14 | Broadly rewrite combinator pipelines into `Effect.gen`                      | INDEPENDENT     | `Effect.gen` already occurs in 314 files                                                                | **SKIP**               | approve / reject |
 
 ## Cheapest high-value set: approve these five
 
@@ -51,36 +51,36 @@ whose success criterion would be “looks nicer.”
 `#1321` are closed migration **issues**, not PRs (`gh pr view` cannot resolve them; `gh issue view`
 does). The actual package PRs, listed by landing PR #1383, are:
 
-| issue | actual PR | slice |
-| ---: | ---: | --- |
-| #1319 | #1342 | webmesh |
-| #1314 | #1343 | common |
-| #1339 | #1349 | common-cf |
-| #1317 | #1350 | sync-cf |
-| #1340 | #1344 | effect-playwright |
-| #1341 | #1345 | sqlite-wasm |
-| #1316 | #1352 | adapter-web |
-| #1315 | #1353 | livestore core |
-| #1318 | #1354 | react |
-| #1320 | #1355 | docs/examples/tests/perf |
-| #1321 | #1359 | finalization |
+| issue | actual PR | slice                    |
+| ----: | --------: | ------------------------ |
+| #1319 |     #1342 | webmesh                  |
+| #1314 |     #1343 | common                   |
+| #1339 |     #1349 | common-cf                |
+| #1317 |     #1350 | sync-cf                  |
+| #1340 |     #1344 | effect-playwright        |
+| #1341 |     #1345 | sqlite-wasm              |
+| #1316 |     #1352 | adapter-web              |
+| #1315 |     #1353 | livestore core           |
+| #1318 |     #1354 | react                    |
+| #1320 |     #1355 | docs/examples/tests/perf |
+| #1321 |     #1359 | finalization             |
 
 PRs #1322, #1323, and #1332 are correctly numbered in the brief. The complete landing PR is #1383.
 
 ### Adopted versus deferred
 
-| LiveStore choice | evidence | implication here |
-| --- | --- | --- |
-| Adopted direct import topology and mechanical API names first | PR #1323; commits `c96100d11`, `11fe7d887` | Keep mechanical rewrites separate from judgment-heavy recipes. |
-| Adopted `Context.Service`, callback constructors, RPC-native workers, and explicit layers where v4 required structural change | PR #1332; `utils/src/browser/Opfs/Opfs.ts:222-226`; `utils/src/browser/WebLock.ts:49-73` | These are admissible during migration when the v3 behavior trace is locked first. |
-| Adopted v4 layer composition in worker boot paths | PR #1352 | Restrict to touched/required graphs; do not use this as license for repo-wide graph redesign. |
-| Changed an async-iterator implementation when the old bridge raced under v4 | PR #1353 | This is a behavior repair, not an idiom precedent; it required focused tests. |
-| Deferred fork-option audit | #1356 / PR #1369, commit `87fecd4a` | The copied compatibility options were unnecessary; probe before adding any. |
-| Deferred and then deleted v3 MessageChannel scheduler | #1357 / PR #1370, commit `55bf025f` | Delete a local runtime shim only when v4 owns the same policy and callers do not require a distinct one. |
-| Deferred Vitest config work | #1358 / PR #1368 | Tool config is separable follow-up work, not an Effect source idiom. |
-| Deferred Schema-native table redesign | recovered `contributor-docs/effect-4.md`; open PR #1308 still exists | Redesign is not behavior-preserving migration work. |
-| Did not broadly adopt `Effect.fn` | local lexical comparison: dev 116 -> main 84 `Effect.fn`; functions returning `Effect.gen` 20 -> 18 | Upstream preference was not treated as migration scope. |
-| Retained and adapted the facade rather than newly choosing it | facade imports dev 372 -> main 299; current facade `utils/src/effect/mod.ts:3-129` | A pre-existing boundary is not evidence that effect-utils should introduce one. |
+| LiveStore choice                                                                                                              | evidence                                                                                            | implication here                                                                                         |
+| ----------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| Adopted direct import topology and mechanical API names first                                                                 | PR #1323; commits `c96100d11`, `11fe7d887`                                                          | Keep mechanical rewrites separate from judgment-heavy recipes.                                           |
+| Adopted `Context.Service`, callback constructors, RPC-native workers, and explicit layers where v4 required structural change | PR #1332; `utils/src/browser/Opfs/Opfs.ts:222-226`; `utils/src/browser/WebLock.ts:49-73`            | These are admissible during migration when the v3 behavior trace is locked first.                        |
+| Adopted v4 layer composition in worker boot paths                                                                             | PR #1352                                                                                            | Restrict to touched/required graphs; do not use this as license for repo-wide graph redesign.            |
+| Changed an async-iterator implementation when the old bridge raced under v4                                                   | PR #1353                                                                                            | This is a behavior repair, not an idiom precedent; it required focused tests.                            |
+| Deferred fork-option audit                                                                                                    | #1356 / PR #1369, commit `87fecd4a`                                                                 | The copied compatibility options were unnecessary; probe before adding any.                              |
+| Deferred and then deleted v3 MessageChannel scheduler                                                                         | #1357 / PR #1370, commit `55bf025f`                                                                 | Delete a local runtime shim only when v4 owns the same policy and callers do not require a distinct one. |
+| Deferred Vitest config work                                                                                                   | #1358 / PR #1368                                                                                    | Tool config is separable follow-up work, not an Effect source idiom.                                     |
+| Deferred Schema-native table redesign                                                                                         | recovered `contributor-docs/effect-4.md`; open PR #1308 still exists                                | Redesign is not behavior-preserving migration work.                                                      |
+| Did not broadly adopt `Effect.fn`                                                                                             | local lexical comparison: dev 116 -> main 84 `Effect.fn`; functions returning `Effect.gen` 20 -> 18 | Upstream preference was not treated as migration scope.                                                  |
+| Retained and adapted the facade rather than newly choosing it                                                                 | facade imports dev 372 -> main 299; current facade `utils/src/effect/mod.ts:3-129`                  | A pre-existing boundary is not evidence that effect-utils should introduce one.                          |
 
 The first three deferred items were handled immediately after the landing stack. That supports a
 short, named post-migration idiom phase; it does not support mixing redesign into the green-up
@@ -127,12 +127,13 @@ auto-generated `.Default`, and inline `dependencies`
 **v4 form:**
 
 ```ts
-class Otelite extends Context.Service<Otelite, Service>()("...") {
+class Otelite extends Context.Service<Otelite, Service>()('...') {
   static readonly layer = Layer.effect(this, make).pipe(Layer.provide(NodeContext.layer))
 }
-const otelite = yield* Otelite
-yield* otelite.capture(options)
+const otelite = yield * Otelite
+yield * otelite.capture(options)
 ```
+
 **Why better:** v4 deletes accessor proxies that erase generic/overloaded method types and deletes
 implicit dependency wiring. The resulting service requirement and layer graph are explicit and
 locally typechecked (`effect/migration/services.md:63-140,142-199`). LiveStore used this structural
@@ -156,10 +157,14 @@ call `Command.exitCode`.
 **v4 form:**
 
 ```ts
-const handle = yield* ChildProcess.make("claude", args, {
-  stdin: "pipe", stdout: "pipe", stderr: "pipe"
-})
-const exitCode = yield* handle.exitCode
+const handle =
+  yield *
+  ChildProcess.make('claude', args, {
+    stdin: 'pipe',
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+const exitCode = yield * handle.exitCode
 ```
 
 Use `ChildProcessSpawner` only for its higher-level collection helpers or a custom spawn
@@ -210,12 +215,13 @@ must cite its differential trace.
 **v4 form:**
 
 ```ts
-const ScopeDebugEnabled = Context.Reference<boolean>(".../ScopeDebugEnabled", {
-  defaultValue: () => false
+const ScopeDebugEnabled = Context.Reference<boolean>('.../ScopeDebugEnabled', {
+  defaultValue: () => false,
 })
-const enabled = yield* ScopeDebugEnabled
+const enabled = yield * ScopeDebugEnabled
 const run = Effect.provideService(effect, ScopeDebugEnabled, true)
 ```
+
 **Why better:** removes unsafe construction and models fiber-local configuration through the v4
 context/reference mechanism. This is precisely the v4 replacement for FiberRef-based application
 state (`migration/fiberref.md:1-10,50-82`).
@@ -386,15 +392,15 @@ rewrite makes the old structure materially harder to read.
 
 ## Dangerous during-migration attractions
 
-| attractive change | why dangerous | rule |
-| --- | --- | --- |
-| Named `Effect.fn` everywhere | intentionally adds spans / changes stacks | separate post-migration telemetry change |
-| Compose every layer graph | v4 memoization can change acquisition count even if types pass | instrument constructors/finalizers first |
-| Add fork compatibility options | LiveStore proved its copied options unnecessary; scheduling is subtle | defaults unless a two-major trace fails |
-| “Improve” Schema models while changing constructors | wire/default/null/optional behavior can typecheck and drift | preserve encoded fixtures byte-for-byte |
-| Introduce reason errors | changes public and encoded error shape | separate API design |
-| Add a facade | changes dependency/bundle/public-type boundaries | reject for effect-utils |
-| Copy `react-inspector`'s variadic `union` helper | hides v4 native array form and perpetuates v3 calling style | use native arrays directly |
+| attractive change                                   | why dangerous                                                         | rule                                     |
+| --------------------------------------------------- | --------------------------------------------------------------------- | ---------------------------------------- |
+| Named `Effect.fn` everywhere                        | intentionally adds spans / changes stacks                             | separate post-migration telemetry change |
+| Compose every layer graph                           | v4 memoization can change acquisition count even if types pass        | instrument constructors/finalizers first |
+| Add fork compatibility options                      | LiveStore proved its copied options unnecessary; scheduling is subtle | defaults unless a two-major trace fails  |
+| “Improve” Schema models while changing constructors | wire/default/null/optional behavior can typecheck and drift           | preserve encoded fixtures byte-for-byte  |
+| Introduce reason errors                             | changes public and encoded error shape                                | separate API design                      |
+| Add a facade                                        | changes dependency/bundle/public-type boundaries                      | reject for effect-utils                  |
+| Copy `react-inspector`'s variadic `union` helper    | hides v4 native array form and perpetuates v3 calling style           | use native arrays directly               |
 
 ## What `react-inspector` should teach the rest of the repo
 

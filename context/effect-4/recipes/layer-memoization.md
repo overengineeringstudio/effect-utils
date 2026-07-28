@@ -1,6 +1,6 @@
 # Pattern: layer-memoization
 
-**Area:** Services and Layers  **Kind:** semantic  **Our usage:** tests and runtime setup use
+**Area:** Services and Layers **Kind:** semantic **Our usage:** tests and runtime setup use
 `Effect.provide`, `Layer.effect`, `Layer.scoped`, and composed live/test layers.
 
 ## v3

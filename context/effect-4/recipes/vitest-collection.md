@@ -1,20 +1,22 @@
 # Pattern: vitest-collection
 
-**Area:** Testing  **Kind:** semantic CI gate  **Our usage:** 63 `@effect/vitest` import sites and
+**Area:** Testing **Kind:** semantic CI gate **Our usage:** 63 `@effect/vitest` import sites and
 Schema-derived property tests.
 
 ## v3
 
 ```ts
-live.prop("record", { count: Schema.Int, payload: Payload }, ({ count, payload }) =>
-  Effect.sync(() => assertPayload(count, payload)))
+live.prop('record', { count: Schema.Int, payload: Payload }, ({ count, payload }) =>
+  Effect.sync(() => assertPayload(count, payload)),
+)
 ```
 
 ## v4
 
 ```ts
-live.prop("record", { count: Schema.Int, payload: Payload }, ({ count, payload }) =>
-  Effect.sync(() => assertPayload(count, payload)))
+live.prop('record', { count: Schema.Int, payload: Payload }, ({ count, payload }) =>
+  Effect.sync(() => assertPayload(count, payload)),
+)
 ```
 
 At beta.99 the public form is unchanged; `@effect/vitest` normalizes record values with

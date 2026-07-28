@@ -1,25 +1,25 @@
 # Pattern: platform-child-process
 
-**Area:** Platform / process  **Kind:** semantic  **Our usage:** process and command APIs are
+**Area:** Platform / process **Kind:** semantic **Our usage:** process and command APIs are
 load-bearing in `utils`, `megarepo`, `ci-tools`, `agent-session-ingest`, and integration tests.
 
 ## v3
 
 ```ts
-import { Command, CommandExecutor } from "@effect/platform"
+import { Command, CommandExecutor } from '@effect/platform'
 
-const executor = yield* CommandExecutor.CommandExecutor
-const child = yield* executor.start(Command.make("tool", ...args))
-const code = yield* child.exitCode
+const executor = yield * CommandExecutor.CommandExecutor
+const child = yield * executor.start(Command.make('tool', ...args))
+const code = yield * child.exitCode
 ```
 
 ## v4
 
 ```ts
-import { ChildProcess } from "effect/unstable/process"
+import { ChildProcess } from 'effect/unstable/process'
 
-const child = yield* ChildProcess.make("tool", args)
-const code = yield* child.exitCode
+const child = yield * ChildProcess.make('tool', args)
+const code = yield * child.exitCode
 ```
 
 ## Equivalence

@@ -1,12 +1,12 @@
 # Pattern: tracer-span-shape
 
-**Area:** Observability boundary  **Kind:** semantic CI gate  **Our usage:** `otel-contract`,
+**Area:** Observability boundary **Kind:** semantic CI gate **Our usage:** `otel-contract`,
 OpenTelemetry integration, and published weaver semantic conventions.
 
 ## v3
 
 ```ts
-import * as OtelTracer from "@effect/opentelemetry/Tracer"
+import * as OtelTracer from '@effect/opentelemetry/Tracer'
 
 const tracerService = Layer.succeed(OtelTracer.OtelTracer, otelTracer)
 const tracing = OtelTracer.layerWithoutOtelTracer.pipe(Layer.provideMerge(tracerService))
@@ -16,7 +16,7 @@ program.pipe(Effect.provide(tracing))
 ## v4
 
 ```ts
-import * as OtelTracer from "@effect/opentelemetry/OtelTracer"
+import * as OtelTracer from '@effect/opentelemetry/OtelTracer'
 
 const tracerService = Layer.succeed(OtelTracer.OtelTracer, otelTracer)
 const tracing = OtelTracer.layerWithoutOtelTracer.pipe(Layer.provideMerge(tracerService))

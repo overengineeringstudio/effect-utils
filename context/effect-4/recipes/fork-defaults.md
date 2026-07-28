@@ -1,19 +1,19 @@
 # Pattern: fork-defaults
 
-**Area:** Forking and scheduler startup  **Kind:** semantic  **Our usage:** `Effect.fork`,
+**Area:** Forking and scheduler startup **Kind:** semantic **Our usage:** `Effect.fork`,
 `forkScoped`, and daemon-like background work appear in process, RPC, Playwright,
 TUI, and integration-test code.
 
 ## v3
 
 ```ts
-const fiber = yield* effect.pipe(Effect.fork)
+const fiber = yield * effect.pipe(Effect.fork)
 ```
 
 ## v4
 
 ```ts
-const fiber = yield* effect.pipe(Effect.forkChild)
+const fiber = yield * effect.pipe(Effect.forkChild)
 ```
 
 ## Equivalence
