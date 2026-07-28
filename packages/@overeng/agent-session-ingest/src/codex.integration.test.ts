@@ -207,6 +207,7 @@ Vitest.describe('codex adapter integration', () => {
 })
 
 Vitest.describe('codex adapter wire baselines (cross-major invariant)', () => {
+  // TODO(live-migration:effect-3-4): Effect 4 reassigns Schema.Date and tightens date handling; preserve timestamp wire strings and keep impossibleDate opaque rather than refreshing these JSONL bytes.
   Vitest.it.effect('ingests representative Codex JSONL records as byte-identical JSON', () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem
