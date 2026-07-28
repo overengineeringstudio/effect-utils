@@ -1,0 +1,77 @@
+diff --git a/dist/unstable/http/HttpClient.js b/dist/unstable/http/HttpClient.js
+index 6dc8ad5..28aa227 100644
+--- a/dist/unstable/http/HttpClient.js
++++ b/dist/unstable/http/HttpClient.js
+@@ -25,4 +25,8 @@ import * as HttpMethod from "./HttpMethod.js";
+ import * as TraceContext from "./HttpTraceContext.js";
+ import * as Url from "./Url.js";
++// LIVE-MIGRATION BRIDGE effect-3-4 B3 - DELETE at contraction - https://github.com/Effect-TS/effect/pull/6697
++// Preserve effect-utils v3 HTTP client span-attribute allowlist until upstream TracerHeaderFilter is adopted.
++const HTTP_HEADER_ATTR_ALLOWLIST = new Set(["content-type", "content-length", "date", "x-request-id", "x-notion-request-id", "retry-after", "x-ratelimit-remaining"]);
++// LIVE-MIGRATION END effect-3-4
+ const TypeId = "~effect/http/HttpClient";
+ /**
+@@ -262,6 +266,9 @@ export const make = f => makeWith(effect => Effect.flatMap(effect, request => Ef
+     const redactedHeaderNames = fiber.getRef(Headers.CurrentRedactedNames);
+     const redactedHeaders = Headers.redact(request.headers, redactedHeaderNames);
+     for (const name in redactedHeaders) {
++      // LIVE-MIGRATION BRIDGE effect-3-4 B3 - DELETE at contraction - https://github.com/Effect-TS/effect/pull/6697
++      if (HTTP_HEADER_ATTR_ALLOWLIST.has(name.toLowerCase()) === false) continue;
++      // LIVE-MIGRATION END effect-3-4
+       span.attribute(`http.request.header.${name}`, String(redactedHeaders[name]));
+     }
+     request = fiber.getRef(TracerPropagationEnabled) ? HttpClientRequest.setHeaders(request, TraceContext.toHeaders(span)) : request;
+@@ -272,6 +279,9 @@ export const make = f => makeWith(effect => Effect.flatMap(effect, request => Ef
+         span.attribute("http.response.status_code", response.status);
+         const redactedHeaders = Headers.redact(response.headers, redactedHeaderNames);
+         for (const name in redactedHeaders) {
++          // LIVE-MIGRATION BRIDGE effect-3-4 B3 - DELETE at contraction - https://github.com/Effect-TS/effect/pull/6697
++          if (HTTP_HEADER_ATTR_ALLOWLIST.has(name.toLowerCase()) === false) continue;
++          // LIVE-MIGRATION END effect-3-4
+           span.attribute(`http.response.header.${name}`, String(redactedHeaders[name]));
+         }
+         if (scopedController) return Effect.succeed(response);
+diff --git a/src/unstable/http/HttpClient.ts b/src/unstable/http/HttpClient.ts
+index 3f45ece..e016152 100644
+--- a/src/unstable/http/HttpClient.ts
++++ b/src/unstable/http/HttpClient.ts
+@@ -42,6 +42,19 @@ import * as HttpMethod from "./HttpMethod.ts"
+ import * as TraceContext from "./HttpTraceContext.ts"
+ import * as Url from "./Url.ts"
+ 
++// LIVE-MIGRATION BRIDGE effect-3-4 B3 - DELETE at contraction - https://github.com/Effect-TS/effect/pull/6697
++// Preserve effect-utils v3 HTTP client span-attribute allowlist until upstream TracerHeaderFilter is adopted.
++const HTTP_HEADER_ATTR_ALLOWLIST = new Set([
++  "content-type",
++  "content-length",
++  "date",
++  "x-request-id",
++  "x-notion-request-id",
++  "retry-after",
++  "x-ratelimit-remaining"
++])
++// LIVE-MIGRATION END effect-3-4
++
+ const TypeId = "~effect/http/HttpClient"
+ 
+ /**
+@@ -841,6 +854,9 @@ export const make = (
+             const redactedHeaderNames = fiber.getRef(Headers.CurrentRedactedNames)
+             const redactedHeaders = Headers.redact(request.headers, redactedHeaderNames)
+             for (const name in redactedHeaders) {
++              // LIVE-MIGRATION BRIDGE effect-3-4 B3 - DELETE at contraction - https://github.com/Effect-TS/effect/pull/6697
++              if (HTTP_HEADER_ATTR_ALLOWLIST.has(name.toLowerCase()) === false) continue
++              // LIVE-MIGRATION END effect-3-4
+               span.attribute(`http.request.header.${name}`, String(redactedHeaders[name]))
+             }
+             request = fiber.getRef(TracerPropagationEnabled)
+@@ -854,6 +870,9 @@ export const make = (
+                     span.attribute("http.response.status_code", response.status)
+                     const redactedHeaders = Headers.redact(response.headers, redactedHeaderNames)
+                     for (const name in redactedHeaders) {
++                      // LIVE-MIGRATION BRIDGE effect-3-4 B3 - DELETE at contraction - https://github.com/Effect-TS/effect/pull/6697
++                      if (HTTP_HEADER_ATTR_ALLOWLIST.has(name.toLowerCase()) === false) continue
++                      // LIVE-MIGRATION END effect-3-4
+                       span.attribute(`http.response.header.${name}`, String(redactedHeaders[name]))
+                     }
+ 
