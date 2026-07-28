@@ -23,7 +23,7 @@
  * This file is `*.e2e.test.ts`, exempt from `overeng/no-raw-otel-primitives`, so it
  * may read raw `Metric` values to assert the OtelMetric-emitted counters moved.
  */
-import { HttpClient } from '@effect/platform'
+import { HttpClient } from 'effect'
 import { Effect, Fiber, Metric, Redacted, Schema, TestClock, Tracer } from 'effect'
 import { expect } from 'vitest'
 

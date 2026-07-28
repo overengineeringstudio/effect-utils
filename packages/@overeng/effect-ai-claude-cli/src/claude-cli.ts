@@ -4,10 +4,10 @@
  * Implements the LanguageModel interface by delegating to the `claude` CLI,
  * allowing use without API keys by re-using Claude CLI authentication.
  */
-import { AiError, LanguageModel, type Prompt, type Response } from '@effect/ai'
-import { Command, CommandExecutor } from '@effect/platform'
-import type { PlatformError } from '@effect/platform/Error'
-import { Effect, Exit, flow, JSONSchema, Layer, Ref, Scope, Stream } from 'effect'
+import { AiError, LanguageModel, type Prompt, type Response } from 'effect/unstable/ai'
+import { Command, CommandExecutor } from 'effect'
+import type { PlatformError } from 'effect/Error'
+import { Effect, Exit, flow, JsonSchema, Layer, Ref, Scope, Stream } from 'effect'
 
 import {
   ClaudeCliAuthError,
@@ -78,7 +78,7 @@ const promptToString = (opts: {
 
   // Add JSON schema instructions if JSON response format is requested
   if (opts.responseFormat.type === 'json') {
-    const jsonSchema = JSONSchema.make(opts.responseFormat.schema)
+    const jsonSchema = JsonSchema.make(opts.responseFormat.schema)
     parts.push(
       `[System]: CRITICAL: Your response must be ONLY raw JSON. Do NOT use markdown code blocks (\`\`\`). Do NOT add any explanation before or after. Start your response with { and end with }. The JSON must conform to this schema:\n${JSON.stringify(jsonSchema, null, 2)}`,
     )

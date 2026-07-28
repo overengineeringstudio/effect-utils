@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { NodeContext } from '@effect/platform-node'
+import { NodeServices } from '@effect/platform-node'
 import { Deferred, Effect, Fiber, Stream } from 'effect'
 import { describe, expect, it } from 'vitest'
 
@@ -155,7 +155,7 @@ describe('Notion webhook trigger ingestion', () => {
             yield* Deferred.await(webhookSynced)
             yield* Fiber.interrupt(fiber)
           }),
-        ).pipe(Effect.provide(NodeContext.layer)),
+        ).pipe(Effect.provide(NodeServices.layer)),
       )
 
       expect(events).toContainEqual(

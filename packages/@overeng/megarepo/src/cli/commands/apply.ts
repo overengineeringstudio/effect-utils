@@ -4,7 +4,7 @@
  * Create worktrees from lock, symlink, nix lock sync, generators. Never writes lock.
  */
 
-import * as Cli from '@effect/cli'
+import * as Cli from 'effect/unstable/cli'
 
 import { outputOption, verboseOption } from '../context.ts'
 import { runCommand, type LockSyncMode } from './engine.ts'

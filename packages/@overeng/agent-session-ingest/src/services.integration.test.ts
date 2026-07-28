@@ -1,5 +1,5 @@
-import { FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import { FileSystem } from 'effect'
+import { NodeServices } from '@effect/platform-node'
 import { Layer, Ref, Schema, Effect } from 'effect'
 import { expect } from 'vitest'
 
@@ -117,7 +117,7 @@ Vitest.describe('agent-session-ingest services', () => {
       }
 
       yield* ingestSource(adapter).pipe(
-        Effect.provide(Layer.mergeAll(NodeContext.layer, checkpointLayer)),
+        Effect.provide(Layer.mergeAll(NodeServices.layer, checkpointLayer)),
       )
 
       const saved = yield* Ref.get(savedRef)
@@ -189,7 +189,7 @@ Vitest.describe('checkpoint store wire baselines (cross-major invariant)', () =>
       expect(stringifyJson(loaded)).toMatchInlineSnapshot(
         `"[{"sourceId":"codex","artifactId":"2026/07/28/rollout","path":"/var/lib/agent/sessions/2026/07/28/rollout.jsonl","status":"stable","cursor":{"_tag":"AppendOnlyCursor","offsetBytes":321,"contentVersion":{"sizeBytes":654,"modifiedAtEpochMs":1785225600123,"headHash":"fnv1a:00000000","tailHash":"fnv1a:ffffffff"}},"updatedAtEpochMs":1785225600456},{"sourceId":"opencode","artifactId":"thread:世界","path":"/var/lib/agent/opencode.db","status":"open","cursor":{"_tag":"UpdatedAtCursor","updatedAtEpochMs":1785225600789,"lastRecordKey":"","contentVersion":{"sizeBytes":9007199254740991,"modifiedAtEpochMs":1785225600999,"tailHash":"fnv1a:résumé"}},"updatedAtEpochMs":1785225601111}]"`,
       )
-    }).pipe(Effect.scoped, Effect.provide(NodeContext.layer)),
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   )
 
   Vitest.it.effect('captures checkpoint decode failures as stable JSON', () =>
@@ -219,6 +219,6 @@ Vitest.describe('checkpoint store wire baselines (cross-major invariant)', () =>
           `"{"_tag":"SessionCheckpointDecodeError","message":"Failed to decode checkpoint entry"}"`,
         )
       }
-    }).pipe(Effect.scoped, Effect.provide(NodeContext.layer)),
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   )
 })

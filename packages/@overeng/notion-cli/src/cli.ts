@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
-import { Command } from '@effect/cli'
-import { NodeContext, NodeRuntime } from '@effect/platform-node'
+import { Command } from 'effect/unstable/cli'
+import { NodeServices, NodeRuntime } from '@effect/platform-node'
 import { Cause, Effect, type Exit, Layer, Option, Schema } from 'effect'
 
 import { editorExitCode } from '@overeng/notion-md'
@@ -150,7 +150,7 @@ const runRootCli = async (argv: ReadonlyArray<string>) => {
       Effect.provideService(CliVersion, { name: 'notion', version }),
       Effect.provide(
         Layer.mergeAll(
-          NodeContext.layer,
+          NodeServices.layer,
           CurrentWorkingDirectory.live,
           withTelemetry({ identity, shape: 'cli', endpoint }),
         ),

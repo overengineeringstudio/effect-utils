@@ -94,7 +94,7 @@ const Cursor = State.for(CursorState)
 
 /* `peek` returns the watermark inside a STRUCT with an optional property (a valid
  * JSON schema), since a top-level `Schema.UndefinedOr` handler return breaks
- * `JSONSchema.make` at endpoint registration — State, not handler I/O, is the
+ * `JsonSchema.make` at endpoint registration — State, not handler I/O, is the
  * nullable surface (#1). */
 const PeekOutput = Schema.Struct({ highWatermark: Schema.optional(Schema.Number) })
 

@@ -5,9 +5,9 @@
  */
 
 import { NodeHttpServer } from '@effect/platform-node'
-import type * as HttpApp from '@effect/platform/HttpApp'
-import type * as HttpRouter from '@effect/platform/HttpRouter'
-import { type Rpc, type RpcGroup, RpcSerialization, RpcServer } from '@effect/rpc'
+import type * as HttpApp from 'effect/unstable/http/HttpApp'
+import type * as HttpRouter from 'effect/unstable/http/HttpRouter'
+import { type Rpc, type RpcGroup, RpcSerialization, RpcServer } from 'effect/unstable/rpc'
 import type * as Context from 'effect/Context'
 import * as Layer from 'effect/Layer'
 

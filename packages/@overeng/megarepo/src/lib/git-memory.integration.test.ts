@@ -22,8 +22,8 @@ import { platform } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { Command } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import { Command } from 'effect'
+import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Effect, Schema } from 'effect'
 import { expect } from 'vitest'
@@ -95,7 +95,7 @@ describe('git memory regression', () => {
         const growthKb = result.vmHwmKb - result.rssStartKb
         expect(result.changesCount).toBe(UNTRACKED_FILE_COUNT)
         expect(growthKb).toBeLessThan(MAX_GROWTH_KB)
-      }).pipe(Effect.provide(NodeContext.layer)),
+      }).pipe(Effect.provide(NodeServices.layer)),
     { timeout: 120_000 },
   )
 })

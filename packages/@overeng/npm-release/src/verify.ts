@@ -8,7 +8,7 @@
 
 import { createHash } from 'node:crypto'
 
-import { Command, FileSystem } from '@effect/platform'
+import { Command, FileSystem } from 'effect'
 import { Effect, Schema } from 'effect'
 import type { Schedule } from 'effect'
 

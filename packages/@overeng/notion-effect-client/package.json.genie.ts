@@ -20,30 +20,12 @@ const runtimeDeps = catalog.compose({
     // must be a real runtime dependency — not a dev/peer dep that a standalone
     // consumer could fail to provide.
     workspace: [contentAddressPkg, notionCorePkg, notionEffectSchemaPkg, otelContractPkg, utilsPkg],
-    external: catalog.pick(
-      'mdast-util-gfm-strikethrough',
-      'mdast-util-gfm-table',
-      'mdast-util-gfm-task-list-item',
-      'micromark-extension-gfm-strikethrough',
-      'micromark-extension-gfm-table',
-      'micromark-extension-gfm-task-list-item',
-      'remark-parse',
-      'remark-stringify',
-      'unified',
-      'unist-util-visit',
-    ),
+    external: catalog.pick('mdast-util-gfm-strikethrough', 'mdast-util-gfm-table', 'mdast-util-gfm-task-list-item', 'micromark-extension-gfm-strikethrough', 'micromark-extension-gfm-table', 'micromark-extension-gfm-task-list-item', 'remark-parse', 'remark-stringify', 'unified', 'unist-util-visit'),
   },
   devDependencies: {
     workspace: [utilsDevPkg],
     external: {
-      ...catalog.pick(
-        '@effect/platform',
-        '@effect/vitest',
-        '@types/node',
-        'effect',
-        'typescript',
-        'vitest',
-      ),
+      ...catalog.pick('effect', '@effect/vitest', '@types/node', 'typescript', 'vitest'),
     },
   },
   // `@overeng/utils` is a runtime workspace dep that carries peer dependencies

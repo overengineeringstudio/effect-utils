@@ -1,4 +1,4 @@
-import type { FileSystem } from '@effect/platform'
+import type { FileSystem } from 'effect'
 import { Effect, Schema } from 'effect'
 
 import { descriptorForUtf8, type ContentDescriptor } from '@overeng/content-address'

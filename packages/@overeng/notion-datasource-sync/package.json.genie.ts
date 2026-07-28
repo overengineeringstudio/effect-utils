@@ -17,18 +17,7 @@ import otelContractPkg from '../otel-contract/package.json.genie.ts'
 import tuiReactPkg from '../tui-react/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
-const peerDepNames = [
-  '@effect/cli',
-  '@effect/cluster',
-  '@effect/experimental',
-  '@effect/opentelemetry',
-  '@effect/platform',
-  '@effect/platform-node',
-  '@effect/rpc',
-  '@effect/workflow',
-  '@playwright/test',
-  'effect',
-] as const
+const peerDepNames = ['effect', '@effect/opentelemetry', '@effect/platform-node', '@playwright/test'] as const
 
 const workspaceDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/notion-datasource-sync' }),
@@ -48,22 +37,7 @@ const workspaceDeps = catalog.compose({
   },
   devDependencies: {
     external: {
-      ...catalog.pick(
-        ...peerDepNames,
-        '@effect-atom/atom',
-        '@effect-atom/atom-react',
-        '@effect/vitest',
-        '@opentui/core',
-        '@opentui/react',
-        '@storybook/react',
-        '@types/node',
-        '@types/react',
-        '@types/react-reconciler',
-        'react-dom',
-        'react-reconciler',
-        'typescript',
-        'vitest',
-      ),
+      ...catalog.pick(...peerDepNames, '@effect-atom/atom', '@effect-atom/atom-react', '@effect/vitest', '@opentui/core', '@opentui/react', '@storybook/react', '@types/node', '@types/react', '@types/react-reconciler', 'react-dom', 'react-reconciler', 'typescript', 'vitest'),
     },
   },
   peerDependencies: {

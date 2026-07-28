@@ -1,6 +1,6 @@
 import { join } from 'node:path'
 
-import { Command as PlatformCommand, type CommandExecutor, FileSystem } from '@effect/platform'
+import { Command as PlatformCommand, type CommandExecutor, FileSystem } from 'effect'
 import { Console, Effect } from 'effect'
 
 import { describeBodyLossyRefusal } from '@overeng/notion-core'

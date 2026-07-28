@@ -15,13 +15,7 @@ const workspaceDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/effect-distributed-lock' }),
   devDependencies: {
     workspace: [utilsDevPkg],
-    external: catalog.pick(
-      ...peerDepNames,
-      '@effect/vitest',
-      '@types/node',
-      'typescript',
-      'vitest',
-    ),
+    external: catalog.pick(...peerDepNames, '@effect/vitest', '@types/node', 'typescript', 'vitest'),
   },
   peerDependencies: {
     external: catalog.pick(...peerDepNames),

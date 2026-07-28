@@ -7,9 +7,9 @@
  * - commitDrift field
  */
 
-import * as Cli from '@effect/cli'
-import { FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import * as Cli from 'effect/unstable/cli'
+import { FileSystem } from 'effect'
+import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Effect, Exit, Schema } from 'effect'
 import { expect } from 'vitest'
@@ -173,7 +173,7 @@ describe('mr status --output json', () => {
           expect(status!.syncNeeded).toBe(false)
           expect(status!.syncReasons).toEqual([])
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -202,7 +202,7 @@ describe('mr status --output json', () => {
           expect(status!.syncNeeded).toBe(true)
           expect(status!.syncReasons).toContain("Member 'effect' symlink missing")
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -224,7 +224,7 @@ describe('mr status --output json', () => {
           expect(status!.syncNeeded).toBe(true)
           expect(status!.syncReasons).toContain('Lock file missing')
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
       { timeout: 20000 },
@@ -257,7 +257,7 @@ describe('mr status --output json', () => {
           expect(status!.syncNeeded).toBe(true)
           expect(status!.syncReasons).toContain("Member 'another-lib' not in lock file")
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -294,7 +294,7 @@ describe('mr status --output json', () => {
           expect(member).toBeDefined()
           expect(member!.symlinkExists).toBe(true)
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -323,7 +323,7 @@ describe('mr status --output json', () => {
           expect(member).toBeDefined()
           expect(member!.symlinkExists).toBe(false)
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -373,7 +373,7 @@ describe('mr status --output json', () => {
           expect(member!.commitDrift!.localCommit).toBe(actualCommit)
           expect(member!.commitDrift!.lockedCommit).toBe(lockedCommit)
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -414,7 +414,7 @@ describe('mr status --output json', () => {
           expect(member).toBeDefined()
           expect(member!.commitDrift).toBeUndefined()
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -447,7 +447,7 @@ describe('mr status --output json', () => {
           expect(member!.isLocal).toBe(true)
           expect(member!.commitDrift).toBeUndefined()
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -510,7 +510,7 @@ describe('mr status --output json', () => {
           expect(status!.syncNeeded).toBe(true)
           expect(status!.syncReasons).toContain("Member 'remote-lib' symlink missing")
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -576,7 +576,7 @@ describe('mr status --output json', () => {
           expect(cycleClosingMember?.isMegarepo).toBe(true)
           expect(cycleClosingMember?.nestedMembers).toEqual([])
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )

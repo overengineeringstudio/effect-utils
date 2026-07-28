@@ -4,7 +4,7 @@
  * Print environment variables for shell integration.
  */
 
-import * as Cli from '@effect/cli'
+import * as Cli from 'effect/unstable/cli'
 import { Effect } from 'effect'
 import React from 'react'
 

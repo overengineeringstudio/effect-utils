@@ -1,4 +1,4 @@
-import { Command, CommandExecutor, FileSystem } from '@effect/platform'
+import { Command, CommandExecutor, FileSystem } from 'effect'
 import { Deferred, Effect, Fiber, Ref, Schedule, Schema, type Scope, Stream } from 'effect'
 
 import {

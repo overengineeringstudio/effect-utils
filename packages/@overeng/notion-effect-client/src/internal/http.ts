@@ -3,7 +3,7 @@ import {
   type HttpClientError,
   HttpClientRequest,
   type HttpClientResponse,
-} from '@effect/platform'
+} from 'effect'
 import {
   Context,
   Effect,

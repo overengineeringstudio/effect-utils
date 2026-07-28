@@ -19,7 +19,7 @@
  * `Effect.withSpan` and the hook emit into the one in-memory exporter.
  */
 import * as Resource from '@effect/opentelemetry/Resource'
-import * as EffectTracer from '@effect/opentelemetry/Tracer'
+import * as EffectTracer from '@effect/opentelemetry/OtelTracer'
 import { context, type SpanContext, trace } from '@opentelemetry/api'
 import {
   InMemorySpanExporter,

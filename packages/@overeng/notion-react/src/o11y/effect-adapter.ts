@@ -1,4 +1,4 @@
-import type { HttpClient } from '@effect/platform'
+import type { HttpClient } from 'effect'
 /**
  * Effect-native OTEL adapter layering on the core `onEvent` hook.
  *

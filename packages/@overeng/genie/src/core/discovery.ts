@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { type Error as PlatformError, FileSystem, Path } from '@effect/platform'
+import { type Error as PlatformError, FileSystem, Path } from 'effect'
 import { Effect, Option } from 'effect'
 
 import { resolveImportMapSpecifierForImporterSync } from './import-map/mod.ts'

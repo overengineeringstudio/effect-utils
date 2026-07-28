@@ -14,8 +14,8 @@
  * used to break for large members.
  */
 
-import { Command, FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import { Command, FileSystem } from 'effect'
+import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Effect } from 'effect'
 import { expect } from 'vitest'
@@ -92,7 +92,7 @@ describe('git operation-aware timeout', () => {
       // Sanity: the clone actually populated a usable bare repo.
       const commit = yield* Git.getCurrentCommit(target)
       expect(commit).toMatch(/^[0-9a-f]{40}$/)
-    }).pipe(Effect.provide(NodeContext.layer)),
+    }).pipe(Effect.provide(NodeServices.layer)),
   )
 
   it.scopedLive('a network op is bounded by the network budget (1ms → times out)', () =>
@@ -106,7 +106,7 @@ describe('git operation-aware timeout', () => {
       ).pipe(Effect.flip)
       expect(error).toBeInstanceOf(GitCommandTimeoutError)
       expect((error as GitCommandTimeoutError).timeoutMillis).toBe(1)
-    }).pipe(Effect.provide(NodeContext.layer)),
+    }).pipe(Effect.provide(NodeServices.layer)),
   )
 
   it.scopedLive('the network budget does NOT bound a local op (rev-parse still succeeds)', () =>
@@ -121,6 +121,6 @@ describe('git operation-aware timeout', () => {
         Git.getCurrentCommit(target),
       )
       expect(commit).toMatch(/^[0-9a-f]{40}$/)
-    }).pipe(Effect.provide(NodeContext.layer)),
+    }).pipe(Effect.provide(NodeServices.layer)),
   )
 })

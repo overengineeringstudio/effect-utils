@@ -1,5 +1,5 @@
-import type { Error as PlatformError, FileSystem, Path } from '@effect/platform'
-import type * as CommandExecutor from '@effect/platform/CommandExecutor'
+import type { Error as PlatformError, FileSystem, Path } from 'effect'
+import type * as CommandExecutor from 'effect/unstable/process/CommandExecutor'
 import type { Option } from 'effect'
 
 import type { OutputModeValue } from '@overeng/tui-react/node'
