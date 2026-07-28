@@ -81,17 +81,46 @@ export default packageJson(
     exports: {
       '.': exportEntry('./src/index.tsx', { environment: 'browser' }),
     },
+    /**
+     * Pin the packed contents. Without this, the tarball varied by 169 files
+     * depending on whether a typecheck had run — 236 entries after `ts:check`,
+     * 67 from a clean checkout — because `dist/` is only ignored by the *repo
+     * root* `.gitignore`, and npm consults a package-local ignore file (here:
+     * `.vercel` only). `src` ships alongside `dist` so the declaration maps and
+     * source maps resolve.
+     *
+     * The `.tsbuildinfo` is excluded because its contents embed absolute paths,
+     * which would make the tarball differ between machines.
+     */
+    files: ['package.json', 'dist', 'src', '!dist/**/*.tsbuildinfo'],
+    /**
+     * `exports` resolves to source for workspace consumers; `publishConfig.exports`
+     * swaps in the built entry at pack time, matching every other `@overeng/*`
+     * package. This is the first package in the repo that is actually packed, so
+     * it is the first place that mapping has to be real rather than declarative.
+     *
+     * The previous map was neither: it was a conditions object rather than the
+     * repo's plain-string form, and its `require` condition named
+     * `./dist/index.cjs`, which nothing has ever emitted.
+     */
     publishConfig: {
       access: 'public',
       exports: {
-        '.': {
-          types: './dist/index.d.ts',
-          require: './dist/index.cjs',
-          import: './dist/index.js',
-        },
+        '.': './dist/index.js',
       },
     },
     scripts: {
+      /**
+       * The declared way to produce the `publishConfig.exports` target. Whoever
+       * packs this package must run it first — pnpm 11 runs neither `prepack`
+       * nor `prepare` on `pnpm pack` (verified against 11.8.0), so a lifecycle
+       * script here would assert a guarantee that does not hold.
+       *
+       * The guarantee lives at the layer that packs: livestore-contrib's
+       * `release/simulate-publish.mjs` builds each package with this same
+       * command and then fails if the declared outputs are missing.
+       */
+      build: 'tsc --build tsconfig.json',
       storybook: 'storybook dev -p 6011',
       'storybook:build': 'storybook build',
     },
