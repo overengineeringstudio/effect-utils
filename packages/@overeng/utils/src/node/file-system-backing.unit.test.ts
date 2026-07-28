@@ -973,15 +973,26 @@ Vitest.describe('FileSystemBacking', () => {
           .pipe(Stream.runForEach(recordEvent), Effect.fork)
         yield* Effect.yieldNow()
 
-        const directBeforeFiber = yield* awaitObservedPath(directBefore).pipe(Effect.fork)
-        yield* fsService.writeFileString(path.join(watchDir, directBefore), 'direct')
-        yield* Fiber.join(directBeforeFiber)
+        const writeDirectFileUntilObserved = (fileName: string, content: string) =>
+          Effect.gen(function* () {
+            const eventFiber = yield* awaitObservedPath(fileName).pipe(Effect.fork)
 
-        const directAfterFiber = yield* awaitObservedPath(directAfter).pipe(Effect.fork)
+            for (const attempt of [1, 2, 3, 4, 5]) {
+              yield* fsService.writeFileString(
+                path.join(watchDir, fileName),
+                `${content}-${attempt}`,
+              )
+              yield* Effect.yieldNow()
+            }
+
+            return yield* Fiber.join(eventFiber)
+          })
+
+        yield* writeDirectFileUntilObserved(directBefore, 'direct')
+
         yield* fsService.makeDirectory(nestedDir)
         yield* fsService.writeFileString(path.join(nestedDir, nestedChild), 'nested')
-        yield* fsService.writeFileString(path.join(watchDir, directAfter), 'settled')
-        yield* Fiber.join(directAfterFiber)
+        yield* writeDirectFileUntilObserved(directAfter, 'settled')
         yield* Fiber.interrupt(watchFiber)
 
         const observedPathNames = observed
