@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **@overeng/effect-path**: add Effect 3 cross-major baselines for PathInfo schema
+  encoding, convention parser failure partitions, and path operation byte output.
+
 - Add a shared CI helper for job-local Cargo targets and `sccache` servers on
   multi-identity self-hosted runners.
 
