@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Allow pnpm-state cache consumers to narrow the lockfile hash expression, avoiding recursive workspace scans after dependency projection.
+
 - **devenv deploy tasks**: make the reusable Netlify and Vercel task modules
   compose their shared workflow-report task dependency. Generated preview
   workflows can now collect and publish deploy records without every consumer

@@ -582,8 +582,10 @@ export const pnpmStateCacheVersion = 'v2'
 /** Default pnpm-state key namespace when a repo does not set its own. */
 export const defaultPnpmStateKeyPrefix = 'pnpm-state'
 
-const pnpmStateCachePrimaryKey = (keyPrefix: string) =>
-  `${keyPrefix}-${pnpmStateCacheVersion}-${'${{ runner.os }}'}-${'${{ runner.arch }}'}-${"${{ hashFiles('**/pnpm-lock.yaml') }}"}`
+const defaultPnpmStateHashFilesExpression = "${{ hashFiles('**/pnpm-lock.yaml') }}"
+
+const pnpmStateCachePrimaryKey = (keyPrefix: string, hashFilesExpression: string) =>
+  `${keyPrefix}-${pnpmStateCacheVersion}-${'${{ runner.os }}'}-${'${{ runner.arch }}'}-${hashFilesExpression}`
 
 /**
  * Restore the workspace-local pnpm state snapshot before any install work runs.
@@ -599,10 +601,12 @@ const pnpmStateCachePrimaryKey = (keyPrefix: string) =>
  */
 export const restorePnpmStateStep = (opts?: {
   keyPrefix?: string
+  hashFilesExpression?: string
   stepId?: string
   path?: string
 }) => {
   const keyPrefix = opts?.keyPrefix ?? defaultPnpmStateKeyPrefix
+  const hashFilesExpression = opts?.hashFilesExpression ?? defaultPnpmStateHashFilesExpression
   const path = opts?.path ?? workspaceLocalPnpmStatePaths
 
   return {
@@ -613,7 +617,7 @@ export const restorePnpmStateStep = (opts?: {
       path,
       // The fetched state contents are platform-specific, so the cache must
       // isolate both OS and CPU architecture to avoid cross-platform corruption.
-      key: pnpmStateCachePrimaryKey(keyPrefix),
+      key: pnpmStateCachePrimaryKey(keyPrefix, hashFilesExpression),
     },
   }
 }
@@ -626,10 +630,12 @@ export const restorePnpmStateStep = (opts?: {
  */
 export const savePnpmStateStep = (opts?: {
   keyPrefix?: string
+  hashFilesExpression?: string
   restoreStepId?: string
   path?: string
 }) => {
   const keyPrefix = opts?.keyPrefix ?? defaultPnpmStateKeyPrefix
+  const hashFilesExpression = opts?.hashFilesExpression ?? defaultPnpmStateHashFilesExpression
   const restoreStepId = opts?.restoreStepId ?? 'restore-pnpm-state'
   const path = opts?.path ?? workspaceLocalPnpmStatePaths
 
@@ -643,7 +649,7 @@ export const savePnpmStateStep = (opts?: {
       // not allow nesting `${{ ... }}` inside a fallback string of another
       // expression, so deriving the key once in TypeScript keeps the emitted
       // workflow expression valid.
-      key: pnpmStateCachePrimaryKey(keyPrefix),
+      key: pnpmStateCachePrimaryKey(keyPrefix, hashFilesExpression),
     },
   }
 }
