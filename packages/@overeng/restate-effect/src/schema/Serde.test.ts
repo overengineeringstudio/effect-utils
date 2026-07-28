@@ -92,6 +92,7 @@ describe('effectSerde wire baselines (cross-major invariant)', () => {
     }),
   })
 
+  // TODO(live-migration:effect-3-4): Effect 4 reassigns Schema.Date; use the approved DateFromString mapping to preserve the ISO wire bytes instead of refreshing this baseline.
   it('serializes representative input bytes with stable key order and null/absent partition', () => {
     const serde = effectSerde({ schema: WireBaseline })
     const value = {
@@ -155,6 +156,7 @@ describe('effectSerde wire baselines (cross-major invariant)', () => {
     `)
   })
 
+  // TODO(live-migration:effect-3-4): Effect 4 renders SchemaError(...) here; re-baseline only after confirming this remains an internal structural failure outside #978's stable ingress envelope.
   it('keeps internal decode failures out of the ingress 400 transport partition', () => {
     const serde = internalSerde({ schema: Schema.Struct({ n: Schema.Number }) })
 
