@@ -11,9 +11,15 @@ All notable changes to this project will be documented in this file.
 
 - Add a shared CI helper for job-local Cargo targets and `sccache` servers on
   multi-identity self-hosted runners.
+<<<<<<< HEAD
 - **@overeng/effect-rpc-tanstack**: capture Effect 3 cross-major baselines for
   SSR `Exit` JSON encoding and native HTTP RPC NDJSON request/response failure
   partitions.
+=======
+- **@overeng/effect-react**: capture Effect 3 cross-major runtime baselines for
+  provider layer construction/provision, scope teardown, retry behavior, and
+  external-store subscriber observations.
+>>>>>>> c14154ac1 (test(effect-react): capture runtime baselines)
 
 ### Fixed
 
