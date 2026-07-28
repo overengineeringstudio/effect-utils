@@ -71,6 +71,12 @@ export default packageJson(
     /** Forked from react-inspector v8.0.0 (https://github.com/nicksenger/react-inspector) */
     version: '9.0.0',
     description: 'Browser DevTools-style React inspectors with native Effect 4 Schema support',
+    /**
+     * Fork of react-inspector, MIT (c) 2017 Xiaoyi Chen. The upstream notice is
+     * required in all copies, so `LICENSE` ships with the package — the standalone
+     * fork repo carries both and this copy had dropped them during a sync.
+     */
+    license: 'MIT',
     type: 'module',
     exports: {
       '.': exportEntry('./src/index.tsx', { environment: 'browser' }),
