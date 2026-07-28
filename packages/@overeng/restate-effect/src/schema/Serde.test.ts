@@ -8,6 +8,9 @@ import { Restate } from './Annotations.ts'
 import { aesGcmCipher } from './Redaction.ts'
 import { effectSerde, ingressSerde, internalSerde } from './Serde.ts'
 
+const textDecoder = new TextDecoder()
+const textEncoder = new TextEncoder()
+
 describe('effectSerde', () => {
   it('round-trips a plain struct', () => {
     const schema = Schema.Struct({ name: Schema.String, age: Schema.Number })
@@ -72,6 +75,100 @@ describe('effectSerde', () => {
       expect.unreachable('expected a thrown defect')
     } catch (error) {
       expect(error).not.toBeInstanceOf(restate.TerminalError)
+    }
+  })
+})
+
+describe('effectSerde wire baselines (cross-major invariant)', () => {
+  const WireBaseline = Schema.Struct({
+    at: Schema.Date,
+    note: Schema.optional(Schema.String),
+    nullable: Schema.NullOr(Schema.String),
+    empty: Schema.String,
+    tags: Schema.Array(Schema.String),
+    nested: Schema.Struct({
+      impossibleDate: Schema.String,
+      unicode: Schema.String,
+    }),
+  })
+
+  it('serializes representative input bytes with stable key order and null/absent partition', () => {
+    const serde = effectSerde({ schema: WireBaseline })
+    const value = {
+      at: new Date('2026-06-08T12:00:00.000Z'),
+      nullable: null,
+      empty: '',
+      tags: ['alpha', 'ümlaut', '2026-02-31'],
+      nested: {
+        impossibleDate: '2026-02-31',
+        unicode: 'Grüße 東京',
+      },
+    }
+
+    const bytes = serde.serialize(value)
+
+    expect(textDecoder.decode(bytes)).toMatchInlineSnapshot(
+      `"{"at":"2026-06-08T12:00:00.000Z","nullable":null,"empty":"","tags":["alpha","ümlaut","2026-02-31"],"nested":{"impossibleDate":"2026-02-31","unicode":"Grüße 東京"}}"`,
+    )
+    expect(JSON.stringify(serde.deserialize(bytes))).toMatchInlineSnapshot(
+      `"{"at":"2026-06-08T12:00:00.000Z","nullable":null,"empty":"","tags":["alpha","ümlaut","2026-02-31"],"nested":{"impossibleDate":"2026-02-31","unicode":"Grüße 東京"}}"`,
+    )
+  })
+
+  it('serializes undefined input as empty bytes without a JSON content type', () => {
+    const serde = effectSerde({ schema: Schema.Void })
+
+    expect(serde.contentType).toBeUndefined()
+    expect(textDecoder.decode(serde.serialize(undefined))).toMatchInlineSnapshot(`""`)
+    expect(serde.deserialize(new Uint8Array())).toBeUndefined()
+  })
+
+  it('captures ingress decode failure transport bytes for invalid input', () => {
+    const serde = ingressSerde({ schema: Schema.Struct({ n: Schema.Number }) })
+    const cases = {
+      wrongType: JSON.stringify({ n: 'not-a-number' }),
+      malformedJson: '{"n":',
+    } as const
+    const failures: Record<string, string> = {}
+
+    for (const [name, wire] of Object.entries(cases)) {
+      try {
+        serde.deserialize(textEncoder.encode(wire))
+        expect.unreachable(`expected TerminalError for ${name}`)
+      } catch (error) {
+        expect(error).toBeInstanceOf(restate.TerminalError)
+        const terminal = error as restate.TerminalError
+        failures[name] = JSON.stringify({
+          code: terminal.code,
+          message: terminal.message,
+          metadata: terminal.metadata ?? null,
+        })
+      }
+    }
+
+    expect(failures).toMatchInlineSnapshot(`
+      {
+        "malformedJson": "{"code":400,"message":"serde decode failed: Unexpected end of JSON input","metadata":{}}",
+        "wrongType": "{"code":400,"message":"serde decode failed: { readonly n: number }\\n└─ [\\"n\\"]\\n   └─ Expected number, actual \\"not-a-number\\"","metadata":{}}",
+      }
+    `)
+  })
+
+  it('keeps internal decode failures out of the ingress 400 transport partition', () => {
+    const serde = internalSerde({ schema: Schema.Struct({ n: Schema.Number }) })
+
+    try {
+      serde.deserialize(textEncoder.encode(JSON.stringify({ n: 'not-a-number' })))
+      expect.unreachable('expected a raw parse failure')
+    } catch (error) {
+      expect(
+        JSON.stringify({
+          terminal: error instanceof restate.TerminalError,
+          message: error instanceof Error ? error.message : String(error),
+        }),
+      ).toMatchInlineSnapshot(
+        `"{"terminal":false,"message":"{ readonly n: number }\\n└─ [\\"n\\"]\\n   └─ Expected number, actual \\"not-a-number\\""}"`,
+      )
     }
   })
 })

@@ -59,6 +59,13 @@ const simulateIngressFailure = (error: NotFound): RestateError => {
   })
 }
 
+const terminalEnvelopeBytes = (terminal: restate.TerminalError): string =>
+  JSON.stringify({
+    code: terminal.code,
+    message: terminal.message,
+    metadata: terminal.metadata,
+  })
+
 describe('error transport (contract layer, server-free)', () => {
   it('toTerminal encodes the _tag + fields in the body with the per-error errorCode', () => {
     const terminal = toTerminal({
@@ -200,5 +207,74 @@ describe('error transport (contract layer, server-free)', () => {
     })
     expect(out).not.toBeInstanceOf(restate.TerminalError)
     expect(out).toBeInstanceOf(Foreign)
+  })
+})
+
+describe('error transport wire baselines (cross-major invariant)', () => {
+  it('encodes declared terminal errors into stable terminal message bytes', () => {
+    const terminal = toTerminal({
+      cause: Cause.fail(new NotFound({ id: 'x_1' })),
+      errorSchema: NotFoundSchema,
+    })
+
+    expect(terminal).toBeInstanceOf(restate.TerminalError)
+    const t = terminal as restate.TerminalError
+    expect(
+      JSON.stringify({
+        code: t.code,
+        message: t.message,
+        metadata: t.metadata,
+      }),
+    ).toMatchInlineSnapshot(
+      `"{"code":404,"message":"{\\"id\\":\\"x_1\\",\\"_tag\\":\\"NotFound\\"}","metadata":{"_tag":"NotFound"}}"`,
+    )
+  })
+
+  it('wraps terminal errors in stable ingress envelope bytes', () => {
+    const terminal = toTerminal({
+      cause: Cause.fail(new NotFound({ id: 'x_2' })),
+      errorSchema: NotFoundSchema,
+    })
+
+    expect(terminal).toBeInstanceOf(restate.TerminalError)
+    expect(terminalEnvelopeBytes(terminal as restate.TerminalError)).toMatchInlineSnapshot(
+      `"{"code":404,"message":"{\\"id\\":\\"x_2\\",\\"_tag\\":\\"NotFound\\"}","metadata":{"_tag":"NotFound"}}"`,
+    )
+  })
+
+  it('keeps invalid terminal bodies in the raw transport failure partition', async () => {
+    const invalidEnvelope = JSON.stringify({
+      code: 500,
+      message: JSON.stringify({ _tag: 'NotFound', id: null }),
+      metadata: { _tag: 'NotFound' },
+    })
+    const unrelated = new RestateError({
+      reason: 'IngressFailed',
+      method: 'call(registry.lookup)',
+      cause: new clients.HttpCallError(500, invalidEnvelope, 'Request failed: 500'),
+    })
+    const exit = await Effect.runPromiseExit(
+      Effect.fail(unrelated).pipe(decodeTerminalError({ contract: Registry, method: 'lookup' })),
+    )
+
+    expect(Exit.isFailure(exit)).toBe(true)
+    if (Exit.isFailure(exit) === true) {
+      const failure = Cause.failureOption(exit.cause)
+      expect(failure._tag).toBe('Some')
+      if (failure._tag === 'Some') {
+        expect(failure.value).toBeInstanceOf(RestateError)
+        expect(
+          JSON.stringify({
+            responseText:
+              failure.value instanceof RestateError &&
+              failure.value.cause instanceof clients.HttpCallError
+                ? failure.value.cause.responseText
+                : null,
+          }),
+        ).toMatchInlineSnapshot(
+          `"{"responseText":"{\\"code\\":500,\\"message\\":\\"{\\\\\\"_tag\\\\\\":\\\\\\"NotFound\\\\\\",\\\\\\"id\\\\\\":null}\\",\\"metadata\\":{\\"_tag\\":\\"NotFound\\"}}"}"`,
+        )
+      }
+    }
   })
 })
