@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/utils-dev/otelite**: make live capture inspection poll for the
+  observable row condition for up to 500 ms. This absorbs exporter scheduling
+  and OTLP round-trip delay on contended CI hosts without consumer-specific
+  sleeps, while still bounding genuinely empty captures.
+
 - Allow pnpm-state cache consumers to narrow the lockfile hash expression, avoiding recursive workspace scans after dependency projection.
 
 - **devenv deploy tasks**: make the reusable Netlify and Vercel task modules

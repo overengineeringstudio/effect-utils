@@ -313,13 +313,14 @@ export class Otelite extends Effect.Service<Otelite>()('@overeng/utils-dev/oteli
      * The sink writes each export with a raw `write_all` to the file *before*
      * acking (no `BufWriter`), so a captured span is durable in the file the
      * instant the POST returns. But an independent reader process started right
-     * after can still transiently observe 0 rows for a few ms — pure scheduler /
-     * fs-visibility latency between the writing process's `write_all` and the
-     * reader's `open`+`read` landing. So we re-read a handful of times over a few
-     * tens of ms before concluding the capture is genuinely empty. A real empty
-     * capture costs the full (still small, bounded) budget exactly once.
+     * after can still transiently observe 0 rows. Under host contention that
+     * window includes exporter scheduling and the OTLP POST round-trip, not only
+     * filesystem visibility after `write_all`. Poll the observable condition for
+     * a bounded 500 ms instead of assuming the producer finishes within a fixed
+     * sleep. A non-empty capture returns on its first visible row; a genuinely
+     * empty live capture pays the bounded budget exactly once.
      */
-    const liveRowRetry = Schedule.recurs(5).pipe(Schedule.addDelay(() => '8 millis'))
+    const liveRowRetry = Schedule.recurs(20).pipe(Schedule.addDelay(() => '25 millis'))
 
     /**
      * A scoped, receiver-only capture (`otelite capture`). Yields a
