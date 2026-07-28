@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file.
 
 - Add a shared CI helper for job-local Cargo targets and `sccache` servers on
   multi-identity self-hosted runners.
+- **genie/ci-workflow**: let default-ref policy consumers explicitly admit
+  immutable commit refs for named `*-legacy` megarepo members, while keeping
+  branches, tags, and ordinary members on the canonical default ref.
 
 ### Fixed
 
