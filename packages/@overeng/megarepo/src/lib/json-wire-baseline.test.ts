@@ -73,6 +73,7 @@ describe('megarepo wire baselines (cross-major invariant)', () => {
     }).toMatchSnapshot()
   })
 
+  // TODO(live-migration:effect-3-4): Keep lockedAt as a persisted plain string; normalizing it during Effect 4 repair would remove this gate's coverage.
   it('captures megarepo lock JSON bytes and failure partition', () => {
     expect(
       roundTrip(LockFile, {
