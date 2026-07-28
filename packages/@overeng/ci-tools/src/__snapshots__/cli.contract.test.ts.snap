@@ -1,0 +1,194 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`ci-tools CLI contract baselines (status/signal invariant, prose owner-rebaselinable) > invalid deploy mode 1`] = `
+{
+  "signal": null,
+  "status": 1,
+  "stderr": "Expected one of the following cases: prod, pr, draft
+
+",
+  "stdout": "",
+}
+`;
+
+exports[`ci-tools CLI contract baselines (status/signal invariant, prose owner-rebaselinable) > missing required bundle id 1`] = `
+{
+  "signal": null,
+  "status": 1,
+  "stderr": "Expected to find option: '--bundle-id'
+
+Expected to find option: '--input-paths-json'
+
+Expected to find option: '--output-path'
+
+",
+  "stdout": "",
+}
+`;
+
+exports[`ci-tools CLI contract baselines (status/signal invariant, prose owner-rebaselinable) > root help 1`] = `
+{
+  "signal": null,
+  "status": 0,
+  "stderr": "",
+  "stdout": "ci-tools
+
+ci-tools 0.1.0
+
+USAGE
+
+$ ci-tools
+
+DESCRIPTION
+
+CI automation helpers
+
+OPTIONS
+
+--completions sh | bash | fish | zsh
+
+  One of the following: sh, bash, fish, zsh
+
+  Generate a completion script for a specific shell.
+
+  This setting is optional.
+
+--log-level all | trace | debug | info | warning | error | fatal | none
+
+  One of the following: all, trace, debug, info, warning, error, fatal, none
+
+  Sets the minimum log level for a command.
+
+  This setting is optional.
+
+(-h, --help)
+
+  A true or false value.
+
+  Show the help documentation for a command.
+
+  This setting is optional.
+
+--wizard
+
+  A true or false value.
+
+  Start wizard mode for a command.
+
+  This setting is optional.
+
+--version
+
+  A true or false value.
+
+  Show the version of the application.
+
+  This setting is optional.
+
+COMMANDS
+
+  - workflow-report                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         Workflow report bundle, render, and comment-state helpers
+
+  - workflow-report collect-bundle --bundle-id text --input-paths-json text --output-path text [--record-marker text] [--allow-missing-input]                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               Collect marked workflow report records into a bundle
+
+  - workflow-report render-comment-body --bundle-path text --comments-path text --comment-body-path text --summary-path text --title text --no-records-message text --state-id text --entry-id text --entry-label text [--created-at-utc text] [--time-zone text] [--managed-marker text]                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   Render a managed workflow report comment body
+
+  - workflow-report find-comment --comments-path text --comment-body-path text --comment-id-path text --state-id text [--managed-marker text]                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               Find the existing managed workflow report comment
+
+  - deploy                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  Deploy preview provider operations
+
+  - deploy netlify --target text --artifact-dir text [--mode prod | pr | draft] [--display-name text] [--pr integer] [--site-name text] [--site-id-env text] [--auth-token-env text] [--account-slug-env text] [--workspace-filter text] [--workflow-report-output-file text] [--github-output-file text] [--github-env-file text] [--url-env-key text] [--netlify-bin text] [--netlify-api-base-url text] [--missing-auth-policy fail | skip] [--unauthorized-policy fail | skip] [--created-at-utc text] [--e2e-allow-shared-project] [--e2e-reserved-alias-prefix text] [--e2e-verify-path text] [--e2e-verify-text text]                                                                                                                                                Deploy a local static directory to Netlify
+
+  - deploy vercel --target text --artifact-dir text [--artifact-kind static | prebuilt-output] [--mode prod | pr | preview] [--display-name text] [--pr integer] [--alias-prefix text] [--alias-suffix text] --production-domain text... [--project-id-env text] [--org-id-env text] [--auth-token-env text] [--team-id-env text] [--scope-env text] [--protection-bypass-env text] [--workflow-report-output-file text] [--github-output-file text] [--github-env-file text] [--url-env-key text] [--build-prebuilt-output] [--vercel-root-directory text] --build-env text... [--vercel-bin text] [--vercel-api-base-url text] [--created-at-utc text] [--e2e-allow-shared-project] [--e2e-reserved-alias-prefix text] [--e2e-verify-path text] [--e2e-verify-text text]  Deploy a local static directory to Vercel
+
+  - quarantine                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              Quarantine ledger validation and tolerated-failure announcements
+
+  - quarantine validate --ledger text [--today text]                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        Fail when a quarantine ledger holds expired or malformed entries
+
+  - quarantine announce --ledger text --key text --label text [--summary-file text]                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         Announce a tolerated test failure to the job summary and as an annotation
+
+",
+}
+`;
+
+exports[`ci-tools CLI contract baselines (status/signal invariant, prose owner-rebaselinable) > version 1`] = `
+{
+  "signal": null,
+  "status": 0,
+  "stderr": "",
+  "stdout": "0.1.0
+
+",
+}
+`;
+
+exports[`ci-tools CLI contract baselines (status/signal invariant, prose owner-rebaselinable) > workflow-report help 1`] = `
+{
+  "signal": null,
+  "status": 0,
+  "stderr": "",
+  "stdout": "ci-tools
+
+ci-tools 0.1.0
+
+USAGE
+
+$ workflow-report
+
+DESCRIPTION
+
+Workflow report bundle, render, and comment-state helpers
+
+OPTIONS
+
+--completions sh | bash | fish | zsh
+
+  One of the following: sh, bash, fish, zsh
+
+  Generate a completion script for a specific shell.
+
+  This setting is optional.
+
+--log-level all | trace | debug | info | warning | error | fatal | none
+
+  One of the following: all, trace, debug, info, warning, error, fatal, none
+
+  Sets the minimum log level for a command.
+
+  This setting is optional.
+
+(-h, --help)
+
+  A true or false value.
+
+  Show the help documentation for a command.
+
+  This setting is optional.
+
+--wizard
+
+  A true or false value.
+
+  Start wizard mode for a command.
+
+  This setting is optional.
+
+--version
+
+  A true or false value.
+
+  Show the version of the application.
+
+  This setting is optional.
+
+COMMANDS
+
+  - collect-bundle --bundle-id text --input-paths-json text --output-path text [--record-marker text] [--allow-missing-input]                                                                                                                                              Collect marked workflow report records into a bundle
+
+  - render-comment-body --bundle-path text --comments-path text --comment-body-path text --summary-path text --title text --no-records-message text --state-id text --entry-id text --entry-label text [--created-at-utc text] [--time-zone text] [--managed-marker text]  Render a managed workflow report comment body
+
+  - find-comment --comments-path text --comment-body-path text --comment-id-path text --state-id text [--managed-marker text]                                                                                                                                              Find the existing managed workflow report comment
+
+",
+}
+`;
