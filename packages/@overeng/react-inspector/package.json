@@ -5,16 +5,23 @@
   "license": "MIT",
   "files": [
     "package.json",
-    "src"
+    "dist",
+    "src",
+    "!dist/**/*.tsbuildinfo"
   ],
   "type": "module",
   "exports": {
     ".": "./src/index.tsx"
   },
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "exports": {
+      ".": "./dist/index.js"
+    }
   },
   "scripts": {
+    "build": "tsc --build tsconfig.json",
+    "prepack": "tsc --build tsconfig.json",
     "storybook": "storybook dev -p 6011",
     "storybook:build": "storybook build"
   },

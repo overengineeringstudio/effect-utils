@@ -82,30 +82,40 @@ export default packageJson(
       '.': exportEntry('./src/index.tsx', { environment: 'browser' }),
     },
     /**
-     * Pin the packed contents. `dist/` is a gitignored side effect of
-     * `tsc --build` on this package's own `tsconfig.json`, and npm only consults
-     * a *package-local* ignore file — this one lists `.vercel` only — so the repo
-     * root's `dist` entry does not apply at pack time. The tarball therefore
-     * varied by 169 files depending on whether a typecheck had run: 236 entries
-     * after `ts:check`, 67 from a clean checkout.
-     */
-    files: ['package.json', 'src'],
-    /**
-     * Ship TypeScript source rather than the `tsc --build` output. The previous
-     * `publishConfig.exports` mapped `.` into that `dist/`, which made the
-     * published entry point depend on build order — and its `require` condition
-     * named `./dist/index.cjs`, which nothing has ever emitted.
+     * Pin the packed contents. Without this, the tarball varied by 169 files
+     * depending on whether a typecheck had run — 236 entries after `ts:check`,
+     * 67 from a clean checkout — because `dist/` is only ignored by the *repo
+     * root* `.gitignore`, and npm consults a package-local ignore file (here:
+     * `.vercel` only). `src` ships alongside `dist` so the declaration maps and
+     * source maps resolve.
      *
-     * Publishing source keeps the packed contract identical to the in-repo one,
-     * so the two cannot drift, and matches how the consuming
-     * `@livestore/devtools-react` ships (livestorejs/livestore#1497). Consumers
-     * need a bundler that compiles TSX out of node_modules; Vite does, and that
-     * is the supported target.
+     * The `.tsbuildinfo` is excluded because its contents embed absolute paths,
+     * which would make the tarball differ between machines.
+     */
+    files: ['package.json', 'dist', 'src', '!dist/**/*.tsbuildinfo'],
+    /**
+     * `exports` resolves to source for workspace consumers; `publishConfig.exports`
+     * swaps in the built entry at pack time, matching every other `@overeng/*`
+     * package. This is the first package in the repo that is actually packed, so
+     * it is the first place that mapping has to be real rather than declarative.
+     *
+     * The previous map was neither: it was a conditions object rather than the
+     * repo's plain-string form, and its `require` condition named
+     * `./dist/index.cjs`, which nothing has ever emitted.
      */
     publishConfig: {
       access: 'public',
+      exports: {
+        '.': './dist/index.js',
+      },
     },
     scripts: {
+      build: 'tsc --build tsconfig.json',
+      /**
+       * npm and pnpm run `prepack` before packing, which is what makes `dist`
+       * a guaranteed input rather than a leftover from whoever last typechecked.
+       */
+      prepack: 'tsc --build tsconfig.json',
       storybook: 'storybook dev -p 6011',
       'storybook:build': 'storybook build',
     },
