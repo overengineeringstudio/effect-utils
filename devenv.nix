@@ -190,6 +190,10 @@ let
   # Each package uses its own vitest from node_modules (self-contained)
   packagesWithTests = [
     {
+      path = "packages/@overeng/agent-session-ingest";
+      name = "agent-session-ingest";
+    }
+    {
       path = "packages/@overeng/content-address";
       name = "content-address";
     }
@@ -208,6 +212,14 @@ let
     {
       path = "packages/@overeng/effect-rpc-tanstack";
       name = "effect-rpc-tanstack";
+    }
+    {
+      path = "packages/@overeng/effect-schema-form";
+      name = "effect-schema-form";
+    }
+    {
+      path = "packages/@overeng/effect-schema-form-aria";
+      name = "effect-schema-form-aria";
     }
     {
       path = "packages/@overeng/genie";
@@ -254,7 +266,10 @@ let
       path = "packages/@overeng/notion-react";
       name = "notion-react";
     }
-
+    {
+      path = "packages/@overeng/npm-release";
+      name = "npm-release";
+    }
     {
       path = "packages/@overeng/oxc-config";
       name = "oxc-config";
