@@ -457,6 +457,7 @@ describe('canonical wire baselines (cross-major invariant)', () => {
     )
   })
 
+  // TODO(live-migration:effect-3-4): Effect 4 reassigns Schema.Date; preserve these ISO Notion wire strings with the approved DateFromString mapping rather than refreshing the bytes.
   it('encodes a representative write patch to byte-identical Notion JSON', async () => {
     const patch = await Effect.runPromise(
       encodeCanonicalPatch({
