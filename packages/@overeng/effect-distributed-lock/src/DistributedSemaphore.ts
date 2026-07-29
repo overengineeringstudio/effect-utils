@@ -226,8 +226,7 @@ export const make = (
             Effect.flatMap(
               Option.match({
                 onSome: Effect.succeed,
-                onNone: () =>
-                  Effect.die(new Error('Invariant violated: the stream should never return `None`')),
+                onNone: () => Effect.never,
               }),
             ),
           )
