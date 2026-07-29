@@ -31,7 +31,7 @@ const command = Cli.Command.provide(genieCommand, CurrentWorkingDirectory.live)
 const program = Effect.gen(function* () {
   const endpoint = yield* otelEndpointFromConfig()
 
-  yield* Cli.Command.run(command, {
+  yield* Cli.Command.runWith(command, {
     name: 'genie',
     version,
   })(rewriteHelpSubcommand(process.argv)).pipe(
