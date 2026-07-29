@@ -6,6 +6,7 @@ import {
   Fiber,
   type Layer,
   ManagedRuntime,
+  Result,
   Runtime,
   Schema,
   type Scope,
@@ -319,9 +320,9 @@ export const extractErrorMessage = (cause: Cause.Cause<unknown>): string => {
     if (typeof err === 'string') return err
     return String(err)
   }
-  const defect = Cause.dieOption(cause)
-  if (defect._tag === 'Some') {
-    const d = defect.value
+  const defect = Cause.findDefect(cause)
+  if (Result.isSuccess(defect) === true) {
+    const d = defect.success
     if (d instanceof Error) return d.message
     return String(d)
   }

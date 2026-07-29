@@ -5,6 +5,7 @@ import {
   Effect,
   Layer,
   Option,
+  Result,
   Schema,
   Stream,
 } from 'effect'
@@ -90,7 +91,8 @@ const readHolderLock = Effect.fn('FileSystemBacking.readHolderLock')(function* (
         return Effect.void
       }
 
-      const defect = Cause.dieOption(cause).pipe(Option.getOrUndefined)
+      const defectResult = Cause.findDefect(cause)
+      const defect = Result.isSuccess(defectResult) ? defectResult.success : undefined
       if (defect !== undefined && isNotFoundError(defect) === true) {
         return Effect.void
       }

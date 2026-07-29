@@ -127,7 +127,7 @@ export const make = (
         Schedule.spaced(refreshInterval),
       ).pipe(
         Effect.andThen(
-          Effect.dieMessage('Invariant violated: `keepAlive` should never return a value'),
+          Effect.die(new Error('Invariant violated: `keepAlive` should never return a value')),
         ),
       )
 
@@ -209,8 +209,10 @@ export const make = (
 
         const pushBasedAcquire = Effect.gen(function* () {
           if (backing.onPermitsReleased === undefined) {
-            return yield* Effect.dieMessage(
-              'Invariant violated: `onPermitsReleased` is not provided when it was expected',
+            return yield* Effect.die(
+              new Error(
+                'Invariant violated: `onPermitsReleased` is not provided when it was expected',
+              ),
             )
           }
           return yield* backing.onPermitsReleased(key).pipe(
@@ -225,7 +227,7 @@ export const make = (
               Option.match({
                 onSome: Effect.succeed,
                 onNone: () =>
-                  Effect.dieMessage('Invariant violated: the stream should never return `None`'),
+                  Effect.die(new Error('Invariant violated: the stream should never return `None`')),
               }),
             ),
           )
