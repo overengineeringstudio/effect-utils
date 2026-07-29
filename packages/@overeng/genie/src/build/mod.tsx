@@ -1,6 +1,6 @@
 import path from 'node:path'
 
-import { Effect, Fiber, Option, pipe, PubSub, Queue, Result, Stream } from 'effect'
+import { Effect, Fiber, Option, pipe, PubSub, Result, Stream } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import * as Cli from 'effect/unstable/cli'
 import React from 'react'
@@ -143,7 +143,7 @@ export const genieCommand = Cli.Command.make(
               // Create event bus and subscribe for TUI progress
               const bus = yield* PubSub.unbounded<GenieEvent>()
               const sub = yield* PubSub.subscribe(bus)
-              const consumerFiber = yield* Queue.take(sub).pipe(
+              const consumerFiber = yield* PubSub.take(sub).pipe(
                 Effect.tap((event) => Effect.sync(() => dispatchEvent(tui, event))),
                 Effect.forever,
                 Effect.forkScoped,
@@ -294,7 +294,7 @@ export const genieCommand = Cli.Command.make(
                 Effect.ensuring(
                   Effect.gen(function* () {
                     const _ = yield* Fiber.interrupt(consumerFiber)
-                    const pendingEvents = yield* Queue.takeAll(sub)
+                    const pendingEvents = yield* PubSub.takeAll(sub)
                     for (const event of pendingEvents) {
                       yield* Effect.sync(() => dispatchEvent(tui, event))
                     }
