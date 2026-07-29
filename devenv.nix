@@ -327,6 +327,7 @@ in
     # composes with the full stack above without importing it a second time.
     (import ./nix/devenv-modules/observability.nix {
       project = "effect-utils";
+      commandInstrumentation = true;
       wireInto = [ "check:all" ];
     })
     # gh:apply-labels / gh:check-labels — reconcile .github/labels.json with live labels
@@ -491,7 +492,6 @@ in
     repoFlake.packages.${currentSystem}.notion-cli
     # Rust binaries on PATH for local smoke tests and downstream wrappers.
     repoFlake.packages.${currentSystem}.otelite
-    repoFlake.packages.${currentSystem}.otel-scrape
     cliBuildStamp.package
     ciToolsSourceCli
     (mkSourceCli {
