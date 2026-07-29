@@ -14,8 +14,8 @@ open/close). A large verb surface would blur `otel-wrap` with `otel-scrape`
 - **`otel-wrap [--root|--join|--attr k=v] -- <cmd>`** — wrap one command.
   Composes the wrap primitive + mint/join precedence: `--join` forces join of an
   inbound `traceparent`, `--root` forces a fresh root, absent flags follow the
-  mint/join precedence; `--attr k=v` adds attributes to the command span. This is
-  the task-layer floor: `otel-wrap --attr task.name=… -- <task-body>`.
+  mint/join precedence; `--attr k=v` adds attributes to the command span. This
+  is the floor only when no native orchestrator already owns the command.
 - **`otel-wrap root begin|end`** — stateless open/close of a persisted root span.
   `begin` mints (or joins) a root and persists it as an open span in the
   `sessions/` store; `end` closes it. The two invocations share only the
@@ -34,3 +34,12 @@ keeps the floor minimal and the role boundary clean.
 - Both verbs consume the shared mint/join precedence, so `otel-wrap`'s root
   behavior is the same rule `otel-scrape` uses (requirement R14), not a divergent
   copy.
+
+## Amendment: devenv owns its task layer
+
+Native devenv OTLP and `devenvModules.observability` now own repository task
+orchestration and capture. `otel-wrap` MUST NOT wrap a devenv task or mint a
+competing root. The temporary effect-utils status/exec bridge remains scoped to
+the shared adapter until
+[cachix/devenv#3037](https://github.com/cachix/devenv/issues/3037) exposes those
+phase children natively.

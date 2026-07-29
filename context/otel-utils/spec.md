@@ -14,7 +14,8 @@ Draft.
 `otel-wrap`, `otel-scrape`, and `otelite` compose those primitives; the shared
 state-dir contract (`cas/` + `sessions/`) and the CAS-vs-session addressing
 distinction; the family relationship to the top-level `content-address` contract
-and the weaver telemetry seams.
+and the weaver telemetry seams; and the boundary between these primitives and
+the shared devenv capture adapter.
 
 **Does not define:** the internals each subsystem owns — see
 [otel-core/spec.md](./otel-core/spec.md), [otel-wrap/spec.md](./otel-wrap/spec.md),
@@ -126,6 +127,24 @@ exporter takes attributes as **data**; the telemetry _vocabulary_ lives in the
 weaver seams and is supplied by the bins at their call sites (e.g. the
 `otel_scrape` registry). `otel-core` bakes in no registry.
 
+## Devenv Integration Boundary
+
+`devenvModules.observability` is the only family-owned repository adapter for
+devenv capture. It composes native devenv OTLP with the `otelite` receiver and
+owns the reusable `otel:profile:*` / `otel:verify:*` task surface. Repositories
+configure that module; they do not carry local capture scripts.
+
+Native devenv owns the orchestration root and its evaluation/task spans. The
+adapter temporarily joins the effect-utils status/exec bridge beneath each
+native task because devenv does not expose those existing debug activities to
+OTLP independently of global CLI verbosity. This compatibility seam remains
+until [cachix/devenv#3037](https://github.com/cachix/devenv/issues/3037) provides
+stable phase children.
+
+`otel-wrap` does not wrap devenv tasks or mint a competing devenv root. It is
+only the floor for commands and sessions that have no native orchestrator. This
+keeps generic command wrapping separate from repository capture orchestration.
+
 ## State-Dir Contract
 
 One state-dir root holds two passive stores. Both are on-disk, read and written
@@ -188,3 +207,9 @@ only shared state is the `sessions/` file; that persisted open span _is_ the
   the weaver Rust encoder together leave room for metrics/logs attribute
   encoding without a second seam. Resolved when one metric or log signal is
   encoded end-to-end through the seam. See [open-questions.md](./open-questions.md).
+- **DQ3 — native devenv phase detail.** Native devenv exports the orchestration
+  root and aggregate task spans, but its status and execution activities require
+  global debug verbosity. The shared adapter retains the task-phase bridge until
+  upstream exposes those children through a tracing-specific policy. Resolved
+  when the adapter's hermetic verification passes with the bridge disabled. See
+  [open-questions.md](./open-questions.md).

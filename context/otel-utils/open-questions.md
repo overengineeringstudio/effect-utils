@@ -47,3 +47,21 @@ attribute encoding for spans.
 **Resolves when.** One metric or one log signal is encoded end-to-end through the
 serializer seam and the generated encoder, confirming (or falsifying) that no
 second seam is needed.
+
+## DQ3 — native devenv task-phase detail
+
+Links [spec.md DQ3](./spec.md#open-design-questions).
+
+**Question.** When can the shared observability adapter remove its effect-utils
+status/exec bridge and rely exclusively on native devenv OTLP?
+
+**Constraint.** Devenv 2.1.2 exports the root, evaluation, aggregate task span,
+and cache outcome. Its existing `check status` and `execute command` child
+activities are debug-level, so exporting them also changes global CLI verbosity.
+The current bridge preserves those phase timings without changing terminal
+output. [cachix/devenv#3037](https://github.com/cachix/devenv/issues/3037)
+tracks a tracing-specific detail policy and stable phase contract.
+
+**Resolves when.** `otel:verify:setup` can disable the compatibility producer
+and still assert native task-parented status and execution children, including
+cached, cache-miss, and failure outcomes.

@@ -122,3 +122,21 @@ decision 0006). Consequences:
   `TRACEPARENT`, export `OTEL_TASK_TRACEPARENT`, root-surface when root) are now
   `otel-core` primitives shared across the family, so `otel-wrap` and
   `otel-scrape` follow one mint/join precedence, not two.
+
+## Amendment (shared devenv adapter, 2026-07-29)
+
+The 2026-07-04 premise inversion is superseded for devenv orchestration. Native
+devenv 2.1.2 now emits usable OTLP root, evaluation, and aggregate task spans.
+The effect-utils-owned `devenvModules.observability` module is the single shared
+repository adapter: it composes native devenv with otelite capture and provides
+the reusable profile/verification tasks adopted by consumers.
+
+`otel-wrap` remains the generic floor only where no native orchestrator exists;
+it does not wrap devenv tasks. The module's effect-utils status/exec producer is
+a narrow compatibility bridge, not competing orchestration. It remains until
+[cachix/devenv#3037](https://github.com/cachix/devenv/issues/3037) exposes native
+phase children without coupling OTLP detail to global CLI verbosity.
+
+The stack and fleet-wide deployment policy remain dotfiles-owned. The reusable
+adapter belongs in effect-utils because it is consumer-independent composition
+over effect-utils' otelite and task modules.

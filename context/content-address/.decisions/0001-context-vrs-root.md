@@ -14,7 +14,7 @@ The repo already has `packages/@overeng/content-address`, which implements descr
 
 Define `content-address` as a cross-cutting VRS root under `context/content-address/`.
 
-`packages/@overeng/content-address` is the first implementation package, not the VRS owner. Product VRS documents such as `context/otel-scrape` reference this VRS for artifact identity and retrieval.
+`packages/@overeng/content-address` is the first implementation package, not the VRS owner. Product VRS documents such as `context/otel-utils/otel-scrape` reference this VRS for artifact identity and retrieval.
 
 ## Consequences
 

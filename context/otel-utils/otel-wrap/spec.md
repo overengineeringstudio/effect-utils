@@ -49,11 +49,11 @@ otel-wrap [--root|--join] [--attr k=v]... -- <cmd...>:
   exit code = child's exit code
 ```
 
-This is the task-layer floor. A task body is wrapped as
-`otel-wrap --attr task.name=<name> -- <task-body>`, replacing the legacy
-`otel-run` / `otel-span run` path (requirement R09). Because it composes the same
-mint/join precedence as `otel-scrape`, a nested `otel-scrape` command joins the
-`otel-wrap` command span with no post-hoc stitching.
+This is the floor for a command with no native orchestrator. It MUST NOT wrap a
+devenv task: native devenv already owns that task's orchestration span, and
+`devenvModules.observability` owns repository capture. For a non-devenv command,
+a nested `otel-scrape` command joins the `otel-wrap` command span through the
+shared mint/join precedence with no post-hoc stitching.
 
 ### Root/session verb
 
@@ -94,13 +94,14 @@ R01/R14).
 
 - **otel-run** → the command verb. `otel-run`'s root minting is the command verb's
   root-or-join.
-- **otel-span run** → the command verb with `--attr task.name=…`. The task-layer
-  span is a `otel-wrap` command span.
+- **otel-span run outside devenv** → the command verb. Devenv task-phase
+  compatibility remains in `devenvModules.observability` until
+  [cachix/devenv#3037](https://github.com/cachix/devenv/issues/3037) lands.
 - **otel-span (standalone emit)** → dropped. Emitting a structured span from tool
   output moves to `otel-scrape` adapters (requirement R03).
 - **spool transport** → dropped. Root/session state is a persisted open span in
   `sessions/`, not a file spool.
 
-The replacement is not gated on native devenv OTLP; `devenv --trace-to` becomes a
-later optional upgrade the universal root model (family decision 0006) already
-admits as a principled native root.
+Native devenv OTLP is the current repository-orchestration path. This package
+does not replace or wrap it; the universal root model applies `otel-wrap` only
+where no principled native root exists.
