@@ -34,7 +34,7 @@ export const buildPackageJsonValidationContext = Effect.fn(
   for (const packageJsonPath of packageJsonPaths) {
     const content = yield* fs
       .readFileString(packageJsonPath)
-      .pipe(Effect.catchAll(() => Effect.void))
+      .pipe(Effect.catch(() => Effect.void))
     if (content === undefined) continue
     const parsed = Effect.try({
       try: () => decodePackageJson(content) as Omit<PackageInfo, 'path'>,

@@ -73,7 +73,7 @@ export const runGenieValidation = ({
         }
         return loadGenieFile({ genieFilePath, cwd })
       })().pipe(
-        Effect.catchAll((error) => {
+        Effect.catch((error) => {
           issues.push({
             severity: 'error',
             packageName: 'genie',

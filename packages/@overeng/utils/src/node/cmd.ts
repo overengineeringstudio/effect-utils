@@ -619,7 +619,7 @@ const sendSignalToProcessGroup = (opts: {
         })
       },
     }).pipe(
-      Effect.catchAll((e) => {
+      Effect.catch((e) => {
         // ESRCH = no such process (already dead) - that's fine
         if (Option.getOrUndefined(e.code) === 'ESRCH') return Effect.void
         // Other errors: fall back to individual kill (ignore errors)
