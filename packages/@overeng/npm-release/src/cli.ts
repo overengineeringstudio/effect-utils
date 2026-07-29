@@ -91,7 +91,7 @@ const cli = Cli.run(Cli.make('npm-release').pipe(Cli.withSubcommands([verifyComm
 const reportUnexpected = (cause: Cause.Cause<unknown>) =>
   Cause.isInterruptedOnly(cause) === true
     ? Effect.void
-    : Option.match(Cause.failureOption(cause), {
+    : Option.match(Cause.findErrorOption(cause), {
         onNone: () => Effect.logError(Cause.pretty(cause)),
         onSome: (error) =>
           isRendered(error) === true ? Effect.void : Effect.logError(String(error)),

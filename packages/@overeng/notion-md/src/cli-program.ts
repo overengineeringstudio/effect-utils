@@ -1071,7 +1071,7 @@ export const cli = Command.run(notionMdCommand, {
 export const renderCliError = (cause: Cause.Cause<unknown>) =>
   Cause.isInterruptedOnly(cause) === true
     ? Effect.void
-    : Option.match(Cause.failureOption(cause), {
+    : Option.match(Cause.findErrorOption(cause), {
         onNone: () => Effect.logError(cause),
         onSome: (error) => Effect.logError(error),
       })

@@ -1040,8 +1040,8 @@ describe('CLI command surface', () => {
       )
       expect(Exit.isFailure(exit)).toBe(true)
       if (Exit.isFailure(exit) === true) {
-        const failure = Cause.failureOption(exit.cause)
-        // A defect would land in `Cause.defects`, not `Cause.failureOption`.
+        const failure = Cause.findErrorOption(exit.cause)
+        // A defect would land in `Cause.defects`, not `Cause.findErrorOption`.
         expect(Option.isSome(failure)).toBe(true)
         expect(Cause.defects(exit.cause)).toHaveLength(0)
         if (Option.isSome(failure) === true) {

@@ -200,7 +200,7 @@ const runFailure = async <A, E>(
     effect.pipe(Effect.provide(Layer.mergeAll(fake.layer, stateStoreLayer, NodeServices.layer))),
   )
   if (Exit.isSuccess(exit) === true) throw new Error('expected the effect to fail')
-  const failure = Cause.failureOption(exit.cause)
+  const failure = Cause.findErrorOption(exit.cause)
   if (Option.isNone(failure) === true) throw new Error('expected an expected failure, got a defect')
   return failure.value
 }

@@ -305,7 +305,7 @@ const defaultErrorHandler: ErrorHandler = (cause) => {
  * Extract a user-friendly error message from a Cause.
  */
 export const extractErrorMessage = (cause: Cause.Cause<unknown>): string => {
-  const failure = Cause.failureOption(cause)
+  const failure = Cause.findErrorOption(cause)
   if (failure._tag === 'Some') {
     const err = failure.value
     if (

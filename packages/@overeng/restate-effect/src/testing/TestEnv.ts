@@ -265,7 +265,7 @@ const classifyMockExit = ({
     outcome.errorTag !== undefined &&
     errorSchema !== undefined
   ) {
-    const failure = Cause.failureOption(exit.cause)
+    const failure = Cause.findErrorOption(exit.cause)
     if (Option.isSome(failure) === true) {
       return Schema.encodeUnknown(errorSchema)(failure.value).pipe(
         Effect.flatMap((encoded) => Schema.decodeUnknown(errorSchema)(encoded)),

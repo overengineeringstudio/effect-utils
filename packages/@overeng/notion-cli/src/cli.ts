@@ -136,7 +136,7 @@ const runRootCli = async (argv: ReadonlyArray<string>) => {
           return Effect.void
         }
 
-        return Option.match(Cause.failureOption(cause), {
+        return Option.match(Cause.findErrorOption(cause), {
           onNone: () => Effect.logError(cause),
           onSome: (error) => {
             const unknownError: unknown = error

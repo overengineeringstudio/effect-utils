@@ -669,7 +669,7 @@ const runSyncOrThrow = <A, E>(effect: Effect.Effect<A, E>): A =>
   Exit.match(Effect.runSyncExit(effect), {
     onSuccess: (value) => value,
     onFailure: (cause) => {
-      const failure = Option.getOrUndefined(Cause.failureOption(cause))
+      const failure = Option.getOrUndefined(Cause.findErrorOption(cause))
       if (failure !== undefined) throw failure
       throw Cause.squash(cause)
     },

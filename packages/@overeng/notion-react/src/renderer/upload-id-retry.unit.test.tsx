@@ -81,7 +81,7 @@ describe('onUploadIdRejected hook', () => {
     expect(callCount).toBe(1)
     // The retry attempt also failed — surfaces as upload-id-rejected reason.
     if (exit._tag === 'Failure') {
-      const err = Cause.failureOption(exit.cause)
+      const err = Cause.findErrorOption(exit.cause)
       expect(err._tag).toBe('Some')
       if (err._tag === 'Some') {
         expect((err.value as NotionSyncError).reason).toBe('notion-upload-id-rejected')
@@ -101,7 +101,7 @@ describe('onUploadIdRejected hook', () => {
     )
     expect(exit._tag).toBe('Failure')
     if (exit._tag === 'Failure') {
-      const err = Cause.failureOption(exit.cause)
+      const err = Cause.findErrorOption(exit.cause)
       expect(err._tag).toBe('Some')
       if (err._tag === 'Some') {
         expect((err.value as NotionSyncError).reason).toBe('notion-upload-id-rejected')
@@ -151,7 +151,7 @@ describe('onUploadIdRejected hook', () => {
     )
     expect(exit._tag).toBe('Failure')
     if (exit._tag === 'Failure') {
-      const err = Cause.failureOption(exit.cause)
+      const err = Cause.findErrorOption(exit.cause)
       expect(err._tag).toBe('Some')
       if (err._tag === 'Some') {
         expect((err.value as NotionSyncError).reason).toBe('consumer-reupload-failed')
