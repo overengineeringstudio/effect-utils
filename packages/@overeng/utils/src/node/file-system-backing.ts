@@ -386,7 +386,7 @@ export const layer = (
         return fs.watch(keyDir).pipe(
           Stream.filter((event) => event._tag === 'Update' || event._tag === 'Remove'),
           Stream.map((): void => undefined),
-          Stream.catchAll(() => Stream.empty),
+          Stream.catch(() => Stream.empty),
         )
       }),
     )
