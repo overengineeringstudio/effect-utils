@@ -84,6 +84,7 @@
   },
   "pnpm": {
     "patchedDependencies": {
+      "@effect/platform-node-shared@4.0.0-beta.102": "patches/@effect__platform-node-shared@4.0.0-beta.102.patch",
       "effect@4.0.0-beta.102": "patches/effect@4.0.0-beta.102.patch"
     }
   },

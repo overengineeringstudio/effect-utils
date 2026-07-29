@@ -536,10 +536,16 @@ export const createEffectUtilsRefs = (basePath: string) =>
 export const utilsPatches = definePatchedDependencies({
   location: 'packages/@overeng/utils',
   patches: {
+    /* LIVE-MIGRATION BRIDGE effect-3-4 — DELETE at contraction — https://github.com/Effect-TS/effect/pull/6705
+       beta.102 made FileSystem.watch recursive unconditionally. Restore the
+       upstream non-recursive default and explicit recursive option until the
+       cohort advances to a release containing PR #6705. */
+    '@effect/platform-node-shared@4.0.0-beta.102':
+      './patches/@effect__platform-node-shared@4.0.0-beta.102.patch',
     /* LIVE-MIGRATION BRIDGE effect-3-4 B3 — DELETE at contraction — https://github.com/Effect-TS/effect/pull/6697
-       Effect 4 beta.102 emits every redacted request/response header name as an
-       HTTP client span attribute. Preserve the v3 telemetry allowlist until
-       upstream exposes HttpClient.TracerHeaderFilter and we adopt that beta. */
+       The Effect patch carries both the FileSystem.watch type surface from
+       PR #6705 and the v3 HTTP telemetry allowlist until upstream exposes
+       HttpClient.TracerHeaderFilter and we adopt that beta. */
     'effect@4.0.0-beta.102': './patches/effect@4.0.0-beta.102.patch',
     /* LIVE-MIGRATION END effect-3-4 */
   },

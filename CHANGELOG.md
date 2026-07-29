@@ -25,6 +25,9 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/utils**: preserve the non-recursive `FileSystem.watch` default on
+  Effect 4 beta.102 while retaining explicit recursive watches.
+
 - **@overeng/genie/package-json**: allow consumers to materialize selected
   cross-repository workspace dependencies with the `file:` protocol. This lets
   pnpm resolve singleton peers such as Effect from the consuming install graph

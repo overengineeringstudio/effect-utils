@@ -40,6 +40,7 @@ packages:
   - packages/@overeng/utils-dev
 
 patchedDependencies:
+  '@effect/platform-node-shared@4.0.0-beta.102': packages/@overeng/utils/patches/@effect__platform-node-shared@4.0.0-beta.102.patch
   '@myobie/pty@0.10.0': packages/@overeng/utils/patches/@myobie__pty@0.10.0.patch
   effect@4.0.0-beta.102: packages/@overeng/utils/patches/effect@4.0.0-beta.102.patch
 
