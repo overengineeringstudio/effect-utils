@@ -17,8 +17,18 @@ const peerDepNames = [
   'vitest',
 ] as const
 
+const otelRuntimeDepNames = [
+  '@opentelemetry/api',
+  '@opentelemetry/exporter-trace-otlp-http',
+  '@opentelemetry/sdk-trace-base',
+  '@opentelemetry/sdk-trace-node',
+] as const
+
 const deps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/utils-dev' }),
+  dependencies: {
+    external: catalog.pick(...otelRuntimeDepNames),
+  },
   devDependencies: {
     external: {
       ...catalog.pick(...peerDepNames, '@types/node', 'typescript'),

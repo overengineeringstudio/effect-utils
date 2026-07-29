@@ -25,7 +25,7 @@
 import { NodeContext } from '@effect/platform-node'
 import { Context, Effect, Layer } from 'effect'
 
-import { makeOtelVitestLayer } from '../node-vitest/Vitest.ts'
+import { makeOtelVitestLayer, SuppressVitestParentBridge } from '../node-vitest/Vitest.ts'
 import type { OteliteCliError, OteliteDecodeError, OteliteSpawnError } from './errors.ts'
 import { Otelite } from './Otelite.ts'
 import type { CaptureHandle, CaptureOptions } from './Otelite.ts'
@@ -110,7 +110,12 @@ export const makeOteliteCaptureLayer = (
     ),
   )
 
-  return exporterLayer.pipe(Layer.provideMerge(handleLayer))
+  return exporterLayer.pipe(
+    Layer.provideMerge(handleLayer),
+    // A capture assertion must not change shape depending on whether the outer
+    // Vitest run happened to enable native runner telemetry.
+    Layer.provideMerge(Layer.succeed(SuppressVitestParentBridge, true as const)),
+  )
 }
 
 /**

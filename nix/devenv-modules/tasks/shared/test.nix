@@ -22,6 +22,13 @@
 #   # Bound package-level fan-out for large repos / constrained CI runners:
 #   imports = [ (inputs.effect-utils.devenvModules.tasks.test { packageConcurrency = 4; }) ];
 #
+#   # Optional: run package tasks through a root Vitest workspace. The default
+#   # remains package-local so downstream repos do not need a root config:
+#   imports = [ (inputs.effect-utils.devenvModules.tasks.test {
+#     packages = [ { path = "packages/demo"; name = "demo"; } ];
+#     vitestWorkspaceRoot = ".";
+#   }) ];
+#
 # Each package must have:
 #   - vitest as a devDependency in package.json
 #   - vitest.config.ts in the package root
@@ -37,6 +44,7 @@
   extraTests ? [ ],
   packageConcurrency ? null,
   retainVitestJson ? false,
+  vitestWorkspaceRoot ? null,
 }:
 { lib, pkgs, ... }:
 let
@@ -86,6 +94,7 @@ let
     {
       name,
       extraArgs ? "",
+      rootWorkspace ? false,
     }:
     ''
       set -euo pipefail
@@ -104,7 +113,22 @@ let
           "--outputFile.json=$_vitest_collection_dir/${taskFileStem name}.vitest.json"
         )
       ''}
-      "''${_otel_instr[@]}" "$(resolve_package_bin vitest vitest)" run --testTimeout 30000 --hookTimeout 30000 "''${_vitest_collection_args[@]}" ${extraArgs}
+      ${
+        if rootWorkspace == false then
+          ''
+            "''${_otel_instr[@]}" "$(resolve_package_bin vitest vitest)" run --testTimeout 30000 --hookTimeout 30000 "''${_vitest_collection_args[@]}" ${extraArgs}
+          ''
+        else
+          ''
+            _vitest_bin="$(resolve_package_bin vitest vitest)"
+            _project_name="$("''${NODE_BIN:-node}" -p "require('$PWD/package.json').name")"
+            if [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
+              export VITEST_OTEL_RUNNER=1
+            fi
+            cd "''${DEVENV_ROOT:?}/${vitestWorkspaceRoot}"
+            "''${_otel_instr[@]}" "$_vitest_bin" run --testTimeout 30000 --hookTimeout 30000 "''${_vitest_collection_args[@]}" --project "$_project_name" ${extraArgs}
+          ''
+      }
     '';
   vitestWatchExec = ''
     set -euo pipefail
@@ -135,6 +159,7 @@ let
         exec = trace.exec "test:${pkg.name}" (vitestExec {
           name = "test:${pkg.name}";
           extraArgs = pkg.vitestArgs or "";
+          rootWorkspace = vitestWorkspaceRoot != null;
         });
         cwd = pkg.path;
         execIfModified = [

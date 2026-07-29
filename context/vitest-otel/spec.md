@@ -3,9 +3,10 @@ Effect product spans under it. It builds on [requirements.md](./requirements.md)
 
 ## Status
 
-Draft. Validated end-to-end in an isolated prototype (see
-[.experiments/prototype-validation.md](./.experiments/prototype-validation.md));
-not yet landed on the mainline harness.
+Implemented by the shared test module, root Vitest config, and
+`@overeng/utils-dev` bridge. The original behavior was validated end-to-end in
+an isolated prototype (see
+[.experiments/prototype-validation.md](./.experiments/prototype-validation.md)).
 
 ## Scope
 
@@ -14,14 +15,16 @@ Defines:
 - The shared Vitest `sdkPath` module and how native OTEL is enabled (R01–R05).
 - The Vitest→Effect parent bridge and its placement in `withTestCtx` (R06–R09).
 - Capture-lane suppression (R10–R12).
+- Independent runner/product teardown budgets (decision
+  [0003](./.decisions/0003-product-span-flush-budget.md)).
 
 Does not define:
 
 - The Effect-native `OtlpTracer` / `makeOtelVitestLayer` export path — see
   `@overeng/utils-dev` `node-vitest`.
 - The otelite receiver / assertion API — see `@overeng/utils-dev` `otelite`.
-- The devenv OTEL collector, endpoint, or `TRACEPARENT` injection — see
-  `nix/devenv-modules/otel.nix`.
+- The observability backend lifecycle, endpoint, or `TRACEPARENT` injection —
+  see `devenvModules.observability` and its otelite profiles.
 
 ## Two lanes
 
@@ -45,12 +48,16 @@ root vitest.config.ts
     : (absent)
 ```
 
-- `VITEST_OTEL_RUNNER` is the collector-context switch (R01, R03); the devenv
-  test task sets it when `OTEL_EXPORTER_OTLP_ENDPOINT` is configured. Bare local
-  and watch runs leave it unset → native OTEL absent (A03). It is also the
+- `VITEST_OTEL_RUNNER` is the collector-context switch (R01, R03). A consumer
+  opts its shared test module into root-workspace execution with
+  `vitestWorkspaceRoot`; those tasks set the switch when
+  `OTEL_EXPORTER_OTLP_ENDPOINT` is configured. Package-local tasks, bare local
+  runs, and watch runs leave it unset → native OTEL absent (A03). It is also the
   single disable switch (R05).
-- Enablement is global config, applied to every project run with no per-package
-  edit (R02).
+- Enablement is global config, applied to every opted-in project run with no
+  per-package config edit (R02). Package-local execution remains the reusable
+  module's default (decision
+  [0002](./.decisions/0002-default-safe-root-workspace.md)).
 
 ### sdkPath module (R04)
 
