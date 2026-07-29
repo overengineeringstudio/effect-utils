@@ -13,7 +13,15 @@ import * as inspector from 'node:inspector'
 
 import type * as Vitest from '@effect/vitest'
 import type { Duration } from 'effect'
-import { type Cause, Effect, identity, Layer, type Schema, type Scope } from 'effect'
+import {
+  type Cause,
+  ConfigProvider,
+  Effect,
+  identity,
+  Layer,
+  type Schema,
+  type Scope,
+} from 'effect'
 import type * as FC from 'effect/testing/FastCheck'
 import { FetchHttpClient } from 'effect/unstable/http'
 import { OtlpSerialization, OtlpTracer } from 'effect/unstable/observability'
@@ -89,6 +97,19 @@ export const makeOtelVitestLayer = (
       resource: { serviceName },
       exportInterval,
     }).pipe(
+      // LIVE-MIGRATION BRIDGE effect-3-4 B9 — DELETE at contraction
+      // Effect 4 reversed OTLP resource precedence: ambient OTEL_SERVICE_NAME
+      // overrides explicitly configured service name (v3: explicit serviceName >
+      // service.name attr > OTEL_RESOURCE_ATTRIBUTES > OTEL_SERVICE_NAME).
+      // Retire when upstream restores explicit-wins precedence and we adopt that
+      // beta. Upstream issue NOT YET FILED — see context/effect-4/ findings;
+      // filing is owed.
+      Layer.provide(
+        ConfigProvider.layerAdd(ConfigProvider.fromUnknown({ OTEL_SERVICE_NAME: serviceName }), {
+          asPrimary: true,
+        }),
+      ),
+      // LIVE-MIGRATION END effect-3-4 B9
       Layer.provideMerge(FetchHttpClient.layer),
       Layer.provideMerge(OtlpSerialization.layerJson),
     )

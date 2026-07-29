@@ -25,6 +25,10 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/utils-dev**: preserve explicitly configured OTLP service identity
+  under Effect 4 when the surrounding environment also defines
+  `OTEL_SERVICE_NAME`.
+
 - **@overeng/genie/package-json**: allow consumers to materialize selected
   cross-repository workspace dependencies with the `file:` protocol. This lets
   pnpm resolve singleton peers such as Effect from the consuming install graph

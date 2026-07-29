@@ -1,5 +1,5 @@
 import { NodeServices } from '@effect/platform-node'
-import { Context, Effect, Layer, Semaphore, type Scope } from 'effect'
+import { ConfigProvider, Context, Effect, Layer, Semaphore, type Scope } from 'effect'
 import { FetchHttpClient } from 'effect/unstable/http'
 import { OtlpSerialization, OtlpTracer } from 'effect/unstable/observability'
 import * as Otlp from 'effect/unstable/observability/Otlp'
@@ -148,6 +148,20 @@ const makeInProcessLayer = (
     resource: { serviceName: options.serviceName },
     exportInterval: options.exportInterval,
   }).pipe(
+    // LIVE-MIGRATION BRIDGE effect-3-4 B9 — DELETE at contraction
+    // Effect 4 reversed OTLP resource precedence: ambient OTEL_SERVICE_NAME
+    // overrides explicitly configured service name (v3: explicit serviceName >
+    // service.name attr > OTEL_RESOURCE_ATTRIBUTES > OTEL_SERVICE_NAME).
+    // Retire when upstream restores explicit-wins precedence and we adopt that
+    // beta. Upstream issue NOT YET FILED — see context/effect-4/ findings;
+    // filing is owed.
+    Layer.provide(
+      ConfigProvider.layerAdd(
+        ConfigProvider.fromUnknown({ OTEL_SERVICE_NAME: options.serviceName }),
+        { asPrimary: true },
+      ),
+    ),
+    // LIVE-MIGRATION END effect-3-4 B9
     Layer.provideMerge(FetchHttpClient.layer),
     Layer.provideMerge(OtlpSerialization.layerJson),
   )
@@ -194,7 +208,23 @@ const makeInProcessAllSignalsLayer = (
       // a hung receiver fails fast in a test (was omitted before, relying on
       // scope-close alone).
       shutdownTimeout: 2000,
-    }).pipe(Layer.provide(FetchHttpClient.layer)),
+    }).pipe(
+      // LIVE-MIGRATION BRIDGE effect-3-4 B9 — DELETE at contraction
+      // Effect 4 reversed OTLP resource precedence: ambient OTEL_SERVICE_NAME
+      // overrides explicitly configured service name (v3: explicit serviceName >
+      // service.name attr > OTEL_RESOURCE_ATTRIBUTES > OTEL_SERVICE_NAME).
+      // Retire when upstream restores explicit-wins precedence and we adopt that
+      // beta. Upstream issue NOT YET FILED — see context/effect-4/ findings;
+      // filing is owed.
+      Layer.provide(
+        ConfigProvider.layerAdd(
+          ConfigProvider.fromUnknown({ OTEL_SERVICE_NAME: options.serviceName }),
+          { asPrimary: true },
+        ),
+      ),
+      // LIVE-MIGRATION END effect-3-4 B9
+      Layer.provide(FetchHttpClient.layer),
+    ),
   )
 
 /** Effect service whose `capture` boots a scoped otelite receiver and yields an {@link OteliteTestHandle}; provides its own `Otelite.layer`. */
