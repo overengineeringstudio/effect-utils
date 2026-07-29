@@ -7,9 +7,7 @@
  * All operations within a sandbox are guaranteed to stay within the root directory.
  */
 
-import { FileSystem } from 'effect/FileSystem'
-import type { Path as PlatformPath } from 'effect/Path'
-import { Effect, Either } from 'effect'
+import { Effect, FileSystem, type Path as PlatformPath, Result } from 'effect'
 
 import type { AbsoluteDirPath, AbsolutePath, RelativePath } from './brands.ts'
 import { PathNotFoundError, PermissionError, TraversalError, type SandboxError } from './errors.ts'
@@ -41,7 +39,7 @@ export interface Sandbox {
    *
    * @returns The normalized relative path, or TraversalError if it escapes
    */
-  validate(path: RelativePath): Either.Either<RelativePath, TraversalError>
+  validate(path: RelativePath): Result.Result<RelativePath, TraversalError>
 
   /**
    * Resolve a relative path to an absolute path within the sandbox.
@@ -49,7 +47,7 @@ export interface Sandbox {
    *
    * @returns The absolute path, or TraversalError if it escapes
    */
-  resolve(path: RelativePath): Either.Either<AbsolutePath, TraversalError>
+  resolve(path: RelativePath): Result.Result<AbsolutePath, TraversalError>
 
   /**
    * Check if an absolute path is contained within this sandbox.
@@ -112,13 +110,13 @@ export const sandbox = (root: AbsoluteDirPath): Sandbox => {
    * Validate that a path doesn't escape the sandbox.
    * Returns the normalized relative path.
    */
-  const validate = (path: RelativePath): Either.Either<RelativePath, TraversalError> => {
+  const validate = (path: RelativePath): Result.Result<RelativePath, TraversalError> => {
     // Normalize the path first
     const normalized = lexicalPure(path)
 
     // Reject absolute paths (POSIX semantics)
     if (normalized.startsWith('/') === true) {
-      return Either.left(
+      return Result.fail(
         new TraversalError({
           path,
           message: `Expected relative path (must not start with '/'): ${path}`,
@@ -148,7 +146,7 @@ export const sandbox = (root: AbsoluteDirPath): Sandbox => {
     }
 
     if (escapingSegments.length > 0) {
-      return Either.left(
+      return Result.fail(
         new TraversalError({
           path,
           message: `Path escapes sandbox root: ${path}`,
@@ -161,24 +159,24 @@ export const sandbox = (root: AbsoluteDirPath): Sandbox => {
 
     // Preserve trailing slash
     if (hasTrailingSlash(path) === true) {
-      return Either.right(ensureTrailingSlash(normalized) as RelativePath)
+      return Result.succeed(ensureTrailingSlash(normalized) as RelativePath)
     }
-    return Either.right(normalized as RelativePath)
+    return Result.succeed(normalized as RelativePath)
   }
 
   /**
    * Resolve a relative path to absolute within the sandbox.
    */
-  const resolve = (path: RelativePath): Either.Either<AbsolutePath, TraversalError> => {
+  const resolve = (path: RelativePath): Result.Result<AbsolutePath, TraversalError> => {
     const validatedResult = validate(path)
-    if (Either.isLeft(validatedResult) === true) {
-      return Either.left(validatedResult.left)
+    if (Result.isFailure(validatedResult) === true) {
+      return Result.fail(validatedResult.failure)
     }
 
-    const validated = validatedResult.right
+    const validated = validatedResult.success
     const relativePart = removeTrailingSlash(validated)
     if (relativePart === '.') {
-      return Either.right(ensureTrailingSlash(normalizedRoot) as AbsolutePath)
+      return Result.succeed(ensureTrailingSlash(normalizedRoot) as AbsolutePath)
     }
 
     const normalizedRelative = relativePart.replace(/^\/+/, '')
@@ -186,9 +184,9 @@ export const sandbox = (root: AbsoluteDirPath): Sandbox => {
       normalizedRoot === '/' ? `/${normalizedRelative}` : `${normalizedRoot}/${normalizedRelative}`
 
     if (hasTrailingSlash(validated) === true) {
-      return Either.right(ensureTrailingSlash(absolutePath) as AbsolutePath)
+      return Result.succeed(ensureTrailingSlash(absolutePath) as AbsolutePath)
     }
-    return Either.right(absolutePath as AbsolutePath)
+    return Result.succeed(absolutePath as AbsolutePath)
   }
 
   /**
@@ -247,32 +245,30 @@ export const sandbox = (root: AbsoluteDirPath): Sandbox => {
   const getSafeRealPath = Effect.fnUntraced(function* (path: RelativePath) {
     // First do lexical validation
     const resolveResult = resolve(path)
-    if (Either.isLeft(resolveResult) === true) {
-      return yield* resolveResult.left
+    if (Result.isFailure(resolveResult) === true) {
+      return yield* resolveResult.failure
     }
-    const resolved = resolveResult.right
+    const resolved = resolveResult.success
 
     const fs = yield* FileSystem.FileSystem
 
     // Get real path (follows symlinks)
     const realPath = yield* fs.realPath(resolved).pipe(
       Effect.mapError((error) => {
-        if (error._tag === 'SystemError') {
-          if (error.reason === 'NotFound') {
-            return new PathNotFoundError({
-              path: resolved,
-              message: `Path not found: ${resolved}`,
-              nearestExisting: undefined,
-              expectedType: 'any',
-            })
-          }
-          if (error.reason === 'PermissionDenied') {
-            return new PermissionError({
-              path: resolved,
-              message: `Permission denied: ${resolved}`,
-              operation: 'stat',
-            })
-          }
+        if (error.reason._tag === 'NotFound') {
+          return new PathNotFoundError({
+            path: resolved,
+            message: `Path not found: ${resolved}`,
+            nearestExisting: undefined,
+            expectedType: 'any',
+          })
+        }
+        if (error.reason._tag === 'PermissionDenied') {
+          return new PermissionError({
+            path: resolved,
+            message: `Permission denied: ${resolved}`,
+            operation: 'stat',
+          })
         }
         return new PathNotFoundError({
           path: resolved,
@@ -325,12 +321,12 @@ export const sandbox = (root: AbsoluteDirPath): Sandbox => {
 
     exists: Effect.fnUntraced(function* (path) {
       const resolveResult = resolve(path)
-      if (Either.isLeft(resolveResult) === true) {
-        return yield* resolveResult.left
+      if (Result.isFailure(resolveResult) === true) {
+        return yield* resolveResult.failure
       }
-      const resolved = resolveResult.right
+      const resolved = resolveResult.success
       const fs = yield* FileSystem.FileSystem
-      const exists = yield* fs.exists(resolved).pipe(Effect.orElse(() => Effect.succeed(false)))
+      const exists = yield* fs.exists(resolved).pipe(Effect.catch(() => Effect.succeed(false)))
       if (exists === false) {
         return false
       }
@@ -339,7 +335,7 @@ export const sandbox = (root: AbsoluteDirPath): Sandbox => {
         Effect.flatMap((realPath) =>
           validateRealPath({ originalPath: path, realPath }).pipe(Effect.as(true)),
         ),
-        Effect.orElse(() => Effect.succeed(false)),
+        Effect.catch(() => Effect.succeed(false)),
       )
     }),
 
@@ -363,7 +359,7 @@ export const sandbox = (root: AbsoluteDirPath): Sandbox => {
       const fs = yield* FileSystem.FileSystem
       return yield* fs.stat(safePath).pipe(
         Effect.mapError((error) => {
-          if (error._tag === 'SystemError' && error.reason === 'NotFound') {
+          if (error.reason._tag === 'NotFound') {
             return new PathNotFoundError({
               path: safePath,
               message: `Path not found: ${safePath}`,
@@ -401,7 +397,7 @@ export const withSandbox = <A, E, R>(args: {
 export const validatePath = (args: {
   readonly root: AbsoluteDirPath
   readonly path: RelativePath
-}): Either.Either<RelativePath, TraversalError> => sandbox(args.root).validate(args.path)
+}): Result.Result<RelativePath, TraversalError> => sandbox(args.root).validate(args.path)
 
 /**
  * Check if a path would stay within a directory.
