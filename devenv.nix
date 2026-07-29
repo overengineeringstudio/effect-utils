@@ -93,10 +93,10 @@ let
     name = "mr";
     entry = "packages/@overeng/megarepo/bin/mr.ts";
   };
-  # LIVE-MIGRATION BRIDGE effect-3-4 B8 — DELETE at contraction after Phase 4 repairs ci-tools and otel-contract to Effect 4 — https://github.com/overengineeringstudio/effect-utils/pull/1019
-  ciToolsSourceCli =
-    (builtins.getFlake "github:overengineeringstudio/effect-utils/49c45f197c056b40d993da5e5847029d5e0d9bfb")
-    .packages.${currentSystem}.ci-tools;
+  # LIVE-MIGRATION BRIDGE effect-3-4 B8 — DELETE at contraction after Phase 4 repairs ci-tools/otel-contract and notion-cli/notion-md to Effect 4 — https://github.com/overengineeringstudio/effect-utils/pull/1019
+  preFlipEffectUtils = builtins.getFlake "github:overengineeringstudio/effect-utils/49c45f197c056b40d993da5e5847029d5e0d9bfb";
+  ciToolsSourceCli = preFlipEffectUtils.packages.${currentSystem}.ci-tools;
+  notionCliBridgePkg = preFlipEffectUtils.packages.${currentSystem}.notion-cli;
   # LIVE-MIGRATION END effect-3-4
 
   # CLI packages built with Nix (for hash management)
@@ -398,7 +398,7 @@ in
     # a deploy is skipped. Use the hermetic package instead of relying on an
     # ambient source-workspace node_modules projection.
     (taskModules.workflow-report {
-      # LIVE-MIGRATION BRIDGE effect-3-4 B8 — DELETE at contraction after Phase 4 repairs ci-tools and otel-contract to Effect 4 — https://github.com/overengineeringstudio/effect-utils/pull/1019
+      # LIVE-MIGRATION BRIDGE effect-3-4 B8 — DELETE at contraction after Phase 4 repairs ci-tools/otel-contract and notion-cli/notion-md to Effect 4 — https://github.com/overengineeringstudio/effect-utils/pull/1019
       ciToolsBin = "${ciToolsSourceCli}/bin/ci-tools";
       # LIVE-MIGRATION END effect-3-4
     })
@@ -483,8 +483,9 @@ in
     pkgs.flock # Cross-process locking for setup tasks (see setup.nix)
     # restate-server (+ restate CLI) on $PATH for restate-effect integration tests.
     restate
-    # Use the packaged wrapper so `notion db ...` runs on Node 24 with node:sqlite.
-    repoFlake.packages.${currentSystem}.notion-cli
+    # LIVE-MIGRATION BRIDGE effect-3-4 B8 — DELETE at contraction after Phase 4 repairs ci-tools/otel-contract and notion-cli/notion-md to Effect 4 — https://github.com/overengineeringstudio/effect-utils/pull/1019
+    notionCliBridgePkg
+    # LIVE-MIGRATION END effect-3-4
     # Rust binaries on PATH for local smoke tests and downstream wrappers.
     repoFlake.packages.${currentSystem}.otelite
     repoFlake.packages.${currentSystem}.otel-scrape
