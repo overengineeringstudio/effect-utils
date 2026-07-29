@@ -2,8 +2,11 @@ import { Schema } from 'effect'
 
 /** Source location within a KDL document */
 export const KdlLocation = Schema.Struct({
+  // @effect-diagnostics-next-line schemaNumber:off -- preserve the public v3 schema's unrestricted numeric input domain during the behavior-neutral port.
   offset: Schema.Number,
+  // @effect-diagnostics-next-line schemaNumber:off -- preserve the public v3 schema's unrestricted numeric input domain during the behavior-neutral port.
   line: Schema.Number,
+  // @effect-diagnostics-next-line schemaNumber:off -- preserve the public v3 schema's unrestricted numeric input domain during the behavior-neutral port.
   column: Schema.Number,
 }).annotate({ identifier: 'Kdl.Location' })
 
