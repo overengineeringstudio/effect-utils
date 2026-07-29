@@ -10,8 +10,8 @@ import { LockLostError, LockNotAcquiredError } from './Errors.ts'
 /** Runtime tuning for distributed semaphore acquisition and refresh. */
 export interface DistributedSemaphoreConfig {
   readonly limit?: number
-  readonly ttl?: Duration.DurationInput
-  readonly refreshInterval?: Duration.DurationInput
+  readonly ttl?: Duration.Input
+  readonly refreshInterval?: Duration.Input
   readonly acquireRetryPolicy?: Schedule.Schedule<unknown>
   readonly backingFailureRetryPolicy?: Schedule.Schedule<unknown>
 }
@@ -72,10 +72,10 @@ type FullyResolvedConfig = {
 
 const fullyResolveConfig = (config: DistributedSemaphoreConfig): FullyResolvedConfig => {
   const limit = config.limit ?? DEFAULT_LIMIT
-  const ttl = config.ttl !== undefined ? Duration.decode(config.ttl) : DEFAULT_TTL
+  const ttl = config.ttl !== undefined ? Duration.fromInputUnsafe(config.ttl) : DEFAULT_TTL
   const refreshInterval =
     config.refreshInterval !== undefined
-      ? Duration.decode(config.refreshInterval)
+      ? Duration.fromInputUnsafe(config.refreshInterval)
       : Duration.millis(Duration.toMillis(ttl) / 3)
   const acquireRetryPolicy = config.acquireRetryPolicy ?? DEFAULT_ACQUIRE_RETRY_POLICY
   const backingFailureRetryPolicy = config.backingFailureRetryPolicy ?? DEFAULT_FAILURE_RETRY_POLICY

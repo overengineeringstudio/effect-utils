@@ -30,8 +30,8 @@ import * as SchemaAST from 'effect/SchemaAST'
  * `undefined` to fall back to Restate's default backoff for that instance.
  */
 export type RetryAfter =
-  | Duration.DurationInput
-  | ((error: unknown) => Duration.DurationInput | undefined)
+  | Duration.Input
+  | ((error: unknown) => Duration.Input | undefined)
 
 /**
  * The error-boundary classification for a domain `Schema.TaggedErrorClass`, read by
@@ -53,14 +53,14 @@ export interface SerdeOptions {
 /**
  * Retention/visibility facts carried on a contract or handler value schema and
  * mapped to the SDK service/handler options at `materialize` (decision 0011,
- * docs/vrs/01-authoring/spec.md §4.1). Durations are `Duration.DurationInput` (decoded to millis at the boundary).
+ * docs/vrs/01-authoring/spec.md §4.1). Durations are `Duration.Input` (decoded to millis at the boundary).
  * `journal`/`idempotency` apply to any construct; `workflow` only to a Workflow
  * (it is dropped for Services/Objects).
  */
 export interface RetentionOptions {
-  readonly idempotency?: Duration.DurationInput
-  readonly journal?: Duration.DurationInput
-  readonly workflow?: Duration.DurationInput
+  readonly idempotency?: Duration.Input
+  readonly journal?: Duration.Input
+  readonly workflow?: Duration.Input
 }
 
 /* ── symbol ids ─────────────────────────────────────────────────────────── */
@@ -124,8 +124,8 @@ export const Restate = {
   }: {
     self: S
     retryAfter?:
-      | Duration.DurationInput
-      | ((error: Schema.Schema.Type<S>) => Duration.DurationInput | undefined)
+      | Duration.Input
+      | ((error: Schema.Schema.Type<S>) => Duration.Input | undefined)
   }): S =>
     annotate<ErrorClass>(ErrorClassId)({
       self,
@@ -211,7 +211,7 @@ export const readRetryAfterMillis = ({
     typeof retryAfter === 'function' ? safeProject({ project: retryAfter, error }) : retryAfter
   if (value === undefined) return undefined
   try {
-    return Duration.toMillis(Duration.decode(value))
+    return Duration.toMillis(Duration.fromInputUnsafe(value))
   } catch {
     return undefined
   }
@@ -221,9 +221,9 @@ const safeProject = ({
   project,
   error,
 }: {
-  project: (error: unknown) => Duration.DurationInput | undefined
+  project: (error: unknown) => Duration.Input | undefined
   error: unknown
-}): Duration.DurationInput | undefined => {
+}): Duration.Input | undefined => {
   try {
     return project(error)
   } catch {

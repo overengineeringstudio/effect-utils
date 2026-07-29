@@ -230,7 +230,7 @@ const mapRetention = ({
   retention: RetentionOptions
   includeWorkflow: boolean
 }): Record<string, unknown> => {
-  const toMillis = (d: Duration.DurationInput): number => Duration.toMillis(Duration.decode(d))
+  const toMillis = (d: Duration.Input): number => Duration.toMillis(Duration.fromInputUnsafe(d))
   return {
     ...(retention.idempotency !== undefined
       ? { idempotencyRetention: toMillis(retention.idempotency) }
