@@ -423,7 +423,7 @@ class ProcessSignalError extends Schema.TaggedErrorClass<ProcessSignalError>()(
   'ProcessSignalError',
   {
     cause: Schema.Defect(),
-    code: Schema.optionalWith(Schema.String, { as: 'Option' }),
+    code: Schema.OptionFromOptional(Schema.String),
   },
 ) {}
 
