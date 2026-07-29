@@ -334,6 +334,10 @@ violations }` (the offending `DiffOp[]`); block ops and page content
   ordinary-block child scopes keep full mixed-kind ordering. The persisted
   `CacheTree` exactly reflects the identities left live and an immediate
   identical sync emits zero mutations.
+
+- **@overeng/genie/semver**: match trailing `x`, `X`, and `*` range wildcards
+  by their specified major and minor components.
+
 - **Nix prepared dependencies**: normalize ordinary, non-injected local
   `file:` packages through pnpm's exact package-map locator before removing
   transient Source Input aliases. Restored CLI workspaces now resolve the
