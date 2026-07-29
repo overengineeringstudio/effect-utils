@@ -436,7 +436,7 @@ export const telemetryEnabled: Effect.Effect<boolean> = Effect.serviceOption(Ote
  */
 export const whenTelemetryEnabled = <A, E, R>(
   effect: Effect.Effect<A, E, R>,
-): Effect.Effect<void, E, R> => Effect.whenEffect(effect, telemetryEnabled).pipe(Effect.asVoid)
+): Effect.Effect<void, E, R> => effect.pipe(Effect.when(telemetryEnabled), Effect.asVoid)
 
 /** Inputs to {@link sampleResource}: the per-tick `sample` effect and its real-wall-time `interval`. */
 export interface SampleResourceOptions {
@@ -461,11 +461,11 @@ export interface SampleResourceOptions {
  *    {@link OtelConfig} marker), so when no endpoint is configured the fiber is
  *    never forked — "zero overhead when unset" means not paying the periodic cost,
  *    not merely a metric going nowhere.
-   * 2. **Ticks on real wall time.** The live `Clock.Clock.defaultValue()` overrides
-   *    the contextual (possibly test/fixed) decision clock that `Schedule.spaced`
-   *    resolves through — placed BEFORE `forkScoped` so it wraps the forked fiber,
-   *    not the fork action. Without this, a zero-sleep decision clock turns the
-   *    sampler into a hot loop.
+ * 2. **Ticks on real wall time.** The live `Clock.Clock.defaultValue()` overrides
+ *    the contextual (possibly test/fixed) decision clock that `Schedule.spaced`
+ *    resolves through — placed BEFORE `forkScoped` so it wraps the forked fiber,
+ *    not the fork action. Without this, a zero-sleep decision clock turns the
+ *    sampler into a hot loop.
  *
  * @example
  * ```typescript
@@ -498,7 +498,7 @@ export interface SampleGaugeOptions {
    * constructor and `Metric.set` are NOT in the raw-OTEL banned set, unlike
    * `Metric.counter`/`histogram`/`update`/`increment*`).
    */
-  readonly gauge: Metric.Metric.Gauge<number>
+  readonly gauge: Metric.Gauge<number>
   /** Reads the current value on each tick (e.g. `() => process.memoryUsage().rss`). */
   readonly read: () => number
   /**
@@ -521,6 +521,7 @@ export const sampleGauge = (
   const { gauge, read, labels, interval } = options
   const target = labels === undefined ? gauge : gauge.pipe(Metric.withAttributes(labels))
   return sampleResource({
+    // oxlint-disable-next-line overeng/no-raw-otel-primitives -- this schema-first utility is the package's deliberate boundary that encapsulates the raw gauge update for consumers.
     sample: Effect.sync(read).pipe(Effect.flatMap((value) => Metric.update(target, value))),
     ...(interval === undefined ? {} : { interval }),
   })

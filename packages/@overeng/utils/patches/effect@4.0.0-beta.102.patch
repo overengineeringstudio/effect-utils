@@ -2,10 +2,11 @@ diff --git a/dist/FileSystem.d.ts b/dist/FileSystem.d.ts
 index 3d4e8aa70ef1691fdf2694101a55273e4ecbbd09..373bfd538305292a2108b8ae0a7e9db0ab36792b 100644
 --- a/dist/FileSystem.d.ts
 +++ b/dist/FileSystem.d.ts
-@@ -254,9 +254,15 @@ export interface FileSystem {
-      */
-     readonly utimes: (path: string, atime: Date | number, mtime: Date | number) => Effect.Effect<void, PlatformError>;
-     /**
+@@ -254,9 +254,16 @@ export interface FileSystem {
+     */
+    readonly utimes: (path: string, atime: Date | number, mtime: Date | number) => Effect.Effect<void, PlatformError>;
++    // LIVE-MIGRATION BRIDGE effect-3-4 - DELETE at contraction - https://github.com/Effect-TS/effect/pull/6705
+    /**
 -     * Watch a directory or file for changes
 +     * Watch a directory or file for changes.
 +     *
@@ -20,7 +21,7 @@ index 3d4e8aa70ef1691fdf2694101a55273e4ecbbd09..373bfd538305292a2108b8ae0a7e9db0
      /**
       * Write data to a file at `path`.
       */
-@@ -969,6 +975,18 @@ export declare const FileDescriptor: Brand.Constructor<File.Descriptor>;
+@@ -969,6 +976,18 @@ export declare const FileDescriptor: Brand.Constructor<File.Descriptor>;
   * @since 4.0.0
   */
  export type SeekMode = "start" | "current";
@@ -39,13 +40,14 @@ index 3d4e8aa70ef1691fdf2694101a55273e4ecbbd09..373bfd538305292a2108b8ae0a7e9db0
  /**
   * Represents file system events emitted when watching files or directories.
   *
-@@ -1041,7 +1059,7 @@ export declare namespace WatchEvent {
+@@ -1041,7 +1060,8 @@ export declare namespace WatchEvent {
      }
  }
  declare const WatchBackend_base: Context.ServiceClass<WatchBackend, "effect/platform/FileSystem/WatchBackend", {
 -    readonly register: (path: string, stat: File.Info) => Option.Option<Stream.Stream<WatchEvent, PlatformError>>;
 +    readonly register: (path: string, stat: File.Info, options?: WatchOptions) => Option.Option<Stream.Stream<WatchEvent, PlatformError>>;
  }>;
++// LIVE-MIGRATION END effect-3-4
  /**
   * Service key for file system watch backend implementations.
 diff --git a/dist/unstable/http/HttpClient.js b/dist/unstable/http/HttpClient.js
@@ -87,9 +89,10 @@ diff --git a/src/FileSystem.ts b/src/FileSystem.ts
 index beadaa7a2f7a1179c23d39e79924a31ac7db62d0..517499c22dccd9fec83f91ae085f53af5aaeb0d5 100644
 --- a/src/FileSystem.ts
 +++ b/src/FileSystem.ts
-@@ -341,9 +341,15 @@ export interface FileSystem {
+@@ -341,9 +341,16 @@ export interface FileSystem {
      mtime: Date | number
    ) => Effect.Effect<void, PlatformError>
++  // LIVE-MIGRATION BRIDGE effect-3-4 - DELETE at contraction - https://github.com/Effect-TS/effect/pull/6705
    /**
 -   * Watch a directory or file for changes
 +   * Watch a directory or file for changes.
@@ -105,7 +108,7 @@ index beadaa7a2f7a1179c23d39e79924a31ac7db62d0..517499c22dccd9fec83f91ae085f53af
    /**
     * Write data to a file at `path`.
     */
-@@ -1287,6 +1293,19 @@ export const FileDescriptor = Brand.nominal<File.Descriptor>()
+@@ -1287,6 +1294,19 @@ export const FileDescriptor = Brand.nominal<File.Descriptor>()
   */
  export type SeekMode = "start" | "current"
 
@@ -125,7 +128,7 @@ index beadaa7a2f7a1179c23d39e79924a31ac7db62d0..517499c22dccd9fec83f91ae085f53af
  /**
   * Represents file system events emitted when watching files or directories.
   *
-@@ -1403,5 +1422,9 @@ export declare namespace WatchEvent {
+@@ -1403,5 +1423,10 @@ export declare namespace WatchEvent {
   * @since 4.0.0
   */
  export class WatchBackend extends Context.Service<WatchBackend, {
@@ -136,6 +139,7 @@ index beadaa7a2f7a1179c23d39e79924a31ac7db62d0..517499c22dccd9fec83f91ae085f53af
 +    options?: WatchOptions
 +  ) => Option.Option<Stream.Stream<WatchEvent, PlatformError>>
  }>()("effect/platform/FileSystem/WatchBackend") {}
++// LIVE-MIGRATION END effect-3-4
 diff --git a/src/unstable/http/HttpClient.ts b/src/unstable/http/HttpClient.ts
 index 3f45ece547db0ace00bd43b2e402651dd26a55fe..e016152314ad6e07c51f0f75d1ca3879eeca9a1a 100644
 --- a/src/unstable/http/HttpClient.ts

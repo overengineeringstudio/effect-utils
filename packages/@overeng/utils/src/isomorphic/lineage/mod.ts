@@ -125,19 +125,14 @@ export const ReferenceAnnotationId = Symbol.for('effect/annotation/Reference')
  * outer or inner layer are discoverable.
  */
 const isNullishAst = (ast: SchemaAST.AST): boolean => {
-  if (ast._tag === 'UndefinedKeyword' || ast._tag === 'VoidKeyword') return true
-  return ast._tag === 'Literal' && ast.literal === null
+  return ast._tag === 'Null' || ast._tag === 'Undefined' || ast._tag === 'Void'
 }
 
 const unwrapAst = (ast: SchemaAST.AST): SchemaAST.AST => {
   switch (ast._tag) {
-    case 'Transformation':
-      return unwrapAst(ast.to)
-    case 'Refinement':
-      return unwrapAst(ast.from)
     case 'Suspend':
       try {
-        return unwrapAst(ast.f())
+        return unwrapAst(ast.thunk())
       } catch {
         return ast
       }
@@ -167,14 +162,17 @@ const readAnnotation = <A>(args: {
 }): A | undefined => {
   const { schema, id, decoder } = args
   const decode = Schema.decodeUnknownOption(decoder)
-  const raw = schema.ast.annotations[id]
+  // `SchemaAST.resolve` gives check annotations precedence in v4. For a
+  // checked primitive that would hide annotations already attached to the
+  // schema itself, so inspect the node's own annotations first.
+  const raw = (schema.ast.annotations as unknown as Record<symbol, unknown> | undefined)?.[id]
   if (raw !== undefined) {
     const decoded = decode(raw)
     if (Option.isSome(decoded) === true) return decoded.value
   }
   const unwrapped = unwrapAst(schema.ast)
   if (unwrapped !== schema.ast) {
-    const innerRaw = unwrapped.annotations[id]
+    const innerRaw = (unwrapped.annotations as unknown as Record<symbol, unknown> | undefined)?.[id]
     if (innerRaw !== undefined) {
       const decoded = decode(innerRaw)
       if (Option.isSome(decoded) === true) return decoded.value
@@ -184,26 +182,19 @@ const readAnnotation = <A>(args: {
 }
 
 /** Read the `Lineage` annotation from a schema, if present. */
-export const getLineage = (
-  schema: Schema.Codec<any, any, never, never>,
-): Lineage | undefined => readAnnotation({ schema, id: LineageAnnotationId, decoder: Lineage })
+export const getLineage = (schema: Schema.Codec<any, any, never, never>): Lineage | undefined =>
+  readAnnotation({ schema, id: LineageAnnotationId, decoder: Lineage })
 
 /** Read the `Authority` annotation from a schema, if present. */
-export const getAuthority = (
-  schema: Schema.Codec<any, any, never, never>,
-): Authority | undefined =>
+export const getAuthority = (schema: Schema.Codec<any, any, never, never>): Authority | undefined =>
   readAnnotation({ schema, id: AuthorityAnnotationId, decoder: Authority })
 
 /** Read the `Freshness` annotation from a schema, if present. */
-export const getFreshness = (
-  schema: Schema.Codec<any, any, never, never>,
-): Freshness | undefined =>
+export const getFreshness = (schema: Schema.Codec<any, any, never, never>): Freshness | undefined =>
   readAnnotation({ schema, id: FreshnessAnnotationId, decoder: Freshness })
 
 /** Read the `Reference` annotation from a schema, if present. */
-export const getReference = (
-  schema: Schema.Codec<any, any, never, never>,
-): Reference | undefined =>
+export const getReference = (schema: Schema.Codec<any, any, never, never>): Reference | undefined =>
   readAnnotation({ schema, id: ReferenceAnnotationId, decoder: Reference })
 
 /* --------------------------------------------------------------------------

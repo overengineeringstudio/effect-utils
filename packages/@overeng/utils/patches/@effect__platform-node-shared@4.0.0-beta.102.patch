@@ -2,10 +2,11 @@ diff --git a/dist/NodeFileSystem.js b/dist/NodeFileSystem.js
 index f2230ae56a9161e2d45d3cf9f2c0a79d8d08a61c..d347332d8e5fa852d8127fe4707212e37a79f792 100644
 --- a/dist/NodeFileSystem.js
 +++ b/dist/NodeFileSystem.js
-@@ -335,9 +335,9 @@ const utimes = /*#__PURE__*/(() => {
+@@ -335,9 +335,10 @@ const utimes = /*#__PURE__*/(() => {
    return (path, atime, mtime) => nodeUtimes(path, atime, mtime);
  })();
  // == watch
++// LIVE-MIGRATION BRIDGE effect-3-4 - DELETE at contraction - https://github.com/Effect-TS/effect/pull/6705
 -const watchNode = path => Stream.callback(queue => Effect.acquireRelease(Effect.sync(() => {
 +const watchNode = (path, options) => Stream.callback(queue => Effect.acquireRelease(Effect.sync(() => {
    const watcher = NFS.watch(path, {
@@ -14,7 +15,7 @@ index f2230ae56a9161e2d45d3cf9f2c0a79d8d08a61c..d347332d8e5fa852d8127fe4707212e3
    }, (event, path) => {
      if (!path) return;
      switch (event) {
-@@ -379,7 +379,7 @@ const watchNode = path => Stream.callback(queue => Effect.acquireRelease(Effect.
+@@ -379,7 +380,7 @@ const watchNode = path => Stream.callback(queue => Effect.acquireRelease(Effect.
    });
    return watcher;
  }), watcher => Effect.sync(() => watcher.close())));
@@ -23,7 +24,7 @@ index f2230ae56a9161e2d45d3cf9f2c0a79d8d08a61c..d347332d8e5fa852d8127fe4707212e3
  // == writeFile
  const writeFile = (path, data, options) => Effect.callback((resume, signal) => {
    try {
-@@ -422,8 +422,8 @@ const makeFileSystem = /*#__PURE__*/Effect.map(/*#__PURE__*/Effect.serviceOption
+@@ -422,8 +423,9 @@ const makeFileSystem = /*#__PURE__*/Effect.map(/*#__PURE__*/Effect.serviceOption
    symlink,
    truncate,
    utimes,
@@ -32,16 +33,18 @@ index f2230ae56a9161e2d45d3cf9f2c0a79d8d08a61c..d347332d8e5fa852d8127fe4707212e3
 +  watch(path, options) {
 +    return watch(backend, path, options);
    },
++  // LIVE-MIGRATION END effect-3-4
    writeFile
  }));
 diff --git a/src/NodeFileSystem.ts b/src/NodeFileSystem.ts
 index fe7dd6314935ac8969f6e3b8ae4c2c6d3b229655..c9a7ecb4fa1a791faf43cd4ed2c1a13bf057b65c 100644
 --- a/src/NodeFileSystem.ts
 +++ b/src/NodeFileSystem.ts
-@@ -550,12 +550,12 @@ const utimes = (() => {
+@@ -550,12 +550,13 @@ const utimes = (() => {
  
  // == watch
  
++// LIVE-MIGRATION BRIDGE effect-3-4 - DELETE at contraction - https://github.com/Effect-TS/effect/pull/6705
 -const watchNode = (path: string) =>
 +const watchNode = (path: string, options?: FileSystem.WatchOptions) =>
    Stream.callback<FileSystem.WatchEvent, Error.PlatformError>((queue) =>
@@ -53,7 +56,7 @@ index fe7dd6314935ac8969f6e3b8ae4c2c6d3b229655..c9a7ecb4fa1a791faf43cd4ed2c1a13b
          }, (event, path) => {
            if (!path) return
            switch (event) {
-@@ -595,12 +595,16 @@ const watchNode = (path: string) =>
+@@ -595,12 +596,16 @@ const watchNode = (path: string) =>
      )
    )
  
@@ -73,7 +76,7 @@ index fe7dd6314935ac8969f6e3b8ae4c2c6d3b229655..c9a7ecb4fa1a791faf43cd4ed2c1a13b
        )
      ),
      Stream.unwrap
-@@ -652,8 +656,8 @@ const makeFileSystem = Effect.map(Effect.serviceOption(FileSystem.WatchBackend),
+@@ -652,8 +657,9 @@ const makeFileSystem = Effect.map(Effect.serviceOption(FileSystem.WatchBackend),
      symlink,
      truncate,
      utimes,
@@ -82,5 +85,6 @@ index fe7dd6314935ac8969f6e3b8ae4c2c6d3b229655..c9a7ecb4fa1a791faf43cd4ed2c1a13b
 +    watch(path, options) {
 +      return watch(backend, path, options)
      },
++    // LIVE-MIGRATION END effect-3-4
      writeFile
    }))

@@ -1,4 +1,4 @@
-import { Chunk, Effect, Exit, Layer, Logger, Ref } from 'effect'
+import { Chunk, Effect, Exit, Layer, Logger, Ref, References } from 'effect'
 import { expect } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'
@@ -17,7 +17,10 @@ const makeTestLogger = Effect.fnUntraced(function* () {
 
   const getLogs = Ref.get(logs).pipe(Effect.map(Chunk.toArray))
 
-  const loggerLayer = Layer.merge(Logger.layer([logger]), Logger.minimumLogLevel('All'))
+  const loggerLayer = Layer.merge(
+    Logger.layer([logger]),
+    Layer.succeed(References.MinimumLogLevel, 'All'),
+  )
 
   return { logger, getLogs, loggerLayer } as const
 })

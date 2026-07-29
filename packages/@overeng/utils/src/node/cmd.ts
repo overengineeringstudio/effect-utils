@@ -1,17 +1,7 @@
 import fs from 'node:fs'
 
 import type { Scope } from 'effect'
-import {
-  Cause,
-  type Duration,
-  Effect,
-  Fiber,
-  HashMap,
-  LogLevel,
-  Option,
-  Schema,
-  Stream,
-} from 'effect'
+import { Cause, type Duration, Effect, Fiber, Option, Schema, Stream } from 'effect'
 import type { PlatformError } from 'effect/PlatformError'
 import { ChildProcess, ChildProcessSpawner } from 'effect/unstable/process'
 
@@ -42,7 +32,7 @@ const trustOtelContract = <A, E, R>(
   effect.pipe(Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)))
 
 const trustedWith =
-  <S extends Schema.Codec<any, any, never, never>>({
+  <S extends Schema.Codec<any, any, any, any>>({
     operation,
     attributes,
   }: {
@@ -308,6 +298,7 @@ export const cmdText: (
   const child = ChildProcess.make(command, args, {
     cwd,
     env: options?.env ?? {},
+    extendEnv: true,
     shell: options?.runInShell === true,
     stderr: options?.stderr ?? 'inherit',
   })
@@ -509,18 +500,18 @@ const runWithLogging = ({
       })
 
       const appendLog = ({ channel, content }: { channel: 'stdout' | 'stderr'; content: string }) =>
-        Effect.sync(() => {
-          const formatted = prettyLogger.log({
-            fiberId: undefined,
-            logLevel: channel === 'stdout' ? 'Info' : 'Warn',
-            message: [`[${channel}]${content.length > 0 ? ` ${content}` : ''}`],
-            cause: Cause.empty,
-            spans: [],
-            annotations: HashMap.empty(),
-            date: new Date(),
-          })
-          fs.writeSync(logFile, formatted)
-        })
+        Effect.withFiber((fiber) =>
+          Effect.sync(() => {
+            const formatted = prettyLogger.log({
+              fiber,
+              logLevel: channel === 'stdout' ? 'Info' : 'Warn',
+              message: [`[${channel}]${content.length > 0 ? ` ${content}` : ''}`],
+              cause: Cause.empty,
+              date: new Date(),
+            })
+            fs.writeSync(logFile, formatted)
+          }),
+        )
 
       const command = buildCommand({
         input: commandInput,
@@ -677,16 +668,16 @@ const buildCommand = (opts: {
   if (Array.isArray(input) === true) {
     const [command, ...args] = input
     if (command === undefined) throw new Error('Command cannot be empty')
-    return ChildProcess.make(command, args, { ...options, shell: useShell })
+    return ChildProcess.make(command, args, { extendEnv: true, ...options, shell: useShell })
   }
 
   if (useShell === true) {
-    return ChildProcess.make(input, [], { ...options, shell: true })
+    return ChildProcess.make(input, [], { extendEnv: true, ...options, shell: true })
   }
 
   const [command, ...args] = input.split(' ')
   if (command === undefined) throw new Error('Command cannot be empty')
-  return ChildProcess.make(command, args, { ...options, shell: false })
+  return ChildProcess.make(command, args, { extendEnv: true, ...options, shell: false })
 }
 
 type TLineTerminator = 'newline' | 'carriage-return' | 'none'

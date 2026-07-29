@@ -42,7 +42,7 @@ const trustOtelContract = <A, E, R>(
   effect.pipe(Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)))
 
 const trustedWith =
-  <S extends Schema.Codec<any, any, never, never>>({
+  <S extends Schema.Codec<any, any, any, any>>({
     operation,
     attributes,
   }: {
@@ -100,7 +100,7 @@ export const step: {
           .step(name, async () => {
             const exit = await Effect.runPromiseExitWith(context)(traced)
             resume(
-              Exit.matchEffect(exit, {
+              Exit.match(exit, {
                 onFailure: (cause) => Effect.failCause(cause),
                 onSuccess: (value) => Effect.succeed(value),
               }),

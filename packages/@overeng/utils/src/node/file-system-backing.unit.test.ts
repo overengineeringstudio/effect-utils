@@ -64,7 +64,7 @@ const makeNodeFsLayer = (): Layer.Layer<FileSystem.FileSystem | Path.Path> => {
     writeFile: () => Effect.void,
     writeFileString: (filePath: string, content: string) =>
       Effect.sync(() => fs.writeFileSync(filePath, content)),
-  } as FileSystem.FileSystem
+  } as unknown as FileSystem.FileSystem
 
   const nodePath = {
     [Path.TypeId]: Path.TypeId,
@@ -976,7 +976,7 @@ Vitest.describe('FileSystemBacking', () => {
         const watchFiber = yield* fsService
           .watch(watchDir)
           .pipe(Stream.runForEach(recordEvent), Effect.forkChild)
-        yield* Effect.yieldNow()
+        yield* Effect.yieldNow
 
         const writeDirectFileUntilObserved = (fileName: string, content: string) =>
           Effect.gen(function* () {
@@ -987,7 +987,7 @@ Vitest.describe('FileSystemBacking', () => {
                 path.join(watchDir, fileName),
                 `${content}-${attempt}`,
               )
-              yield* Effect.yieldNow()
+              yield* Effect.yieldNow
             }
 
             return yield* Fiber.join(eventFiber)
