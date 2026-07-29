@@ -15,7 +15,7 @@
   "devDependencies": {
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
-    "effect": "3.21.4",
+    "effect": "4.0.0-beta.102",
     "react": "19.2.7",
     "react-dom": "19.2.7",
     "typescript": "6.0.3",

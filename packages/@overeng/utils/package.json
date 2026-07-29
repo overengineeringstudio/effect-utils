@@ -45,15 +45,15 @@
     }
   },
   "dependencies": {
-    "@effect/opentelemetry": "0.63.0",
+    "@effect/opentelemetry": "4.0.0-beta.102",
     "@effect/platform": "0.96.2",
-    "@effect/platform-node": "0.107.0",
-    "@effect/vitest": "0.29.0",
+    "@effect/platform-node": "4.0.0-beta.102",
+    "@effect/vitest": "4.0.0-beta.102",
     "@noble/hashes": "2.2.0",
     "@opentelemetry/api": "1.9.1",
     "@overeng/effect-distributed-lock": "workspace:^",
     "@overeng/otel-contract": "workspace:^",
-    "effect": "3.21.4",
+    "effect": "4.0.0-beta.102",
     "vitest": "4.1.9"
   },
   "devDependencies": {

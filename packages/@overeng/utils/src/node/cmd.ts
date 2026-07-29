@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 
-import * as Command from 'effect/unstable/process/Command'
+import { ChildProcess as Command } from 'effect/unstable/process'
 import type * as CommandExecutor from 'effect/unstable/process/CommandExecutor'
 import type { Process } from 'effect/unstable/process/CommandExecutor'
 import type { PlatformError } from 'effect/Error'

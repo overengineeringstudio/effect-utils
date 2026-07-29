@@ -1,5 +1,4 @@
-import { FileSystem, Path } from '@effect/platform'
-import { Cause, Data, Duration, Effect, Layer, Option, Schema, Stream } from 'effect'
+import { Cause, Data, Duration, Effect, FileSystem, Layer, Option, Path, Schema, Stream } from 'effect'
 
 import {
   DistributedSemaphoreBacking,

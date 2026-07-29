@@ -1,8 +1,7 @@
 import path from 'node:path'
 
 import * as Cli from 'effect/unstable/cli'
-import { FileSystem } from '@effect/platform'
-import { Effect, Either, Fiber, Option, pipe, PubSub, Queue, Stream } from 'effect'
+import { Effect, Either, Fiber, FileSystem, Option, pipe, PubSub, Queue, Stream } from 'effect'
 import React from 'react'
 
 import { run } from '@overeng/tui-react'
