@@ -117,12 +117,20 @@ const noSignatures = [
   {
     registerEntry: 'equality-structural-default',
     noSignature:
-      'Structural equality depends on runtime value types, and the register audit found no production Effect equality site.',
+      'Structural equality depends on runtime value types; production sources are asserted to contain no Equal.equals call.',
+    productionAbsence: {
+      regex: /\bEqual\s*\.\s*equals\s*\(/g,
+      site: 'Equal.equals(...)',
+    },
   },
   {
     registerEntry: 'effect-never-idle-timer',
     noSignature:
-      'Process liveness is a runtime side effect; Effect.never is also used as unrelated test-only suspension control, with no production liveness site.',
+      'Process liveness is a runtime side effect; production sources are asserted to contain no Effect.never site.',
+    productionAbsence: {
+      regex: /\bEffect\s*\.\s*never\b/g,
+      site: 'Effect.never',
+    },
   },
 ] as const
 
@@ -147,6 +155,14 @@ type ContractionMarker = {
   readonly file: string
   readonly kind: 'BRIDGE' | 'END' | 'TARGET' | 'TODO'
   readonly line: number
+}
+
+type ExpiredNoSignature = {
+  readonly column: number
+  readonly file: string
+  readonly line: number
+  readonly registerEntry: string
+  readonly site: string
 }
 
 const rootArgumentIndex = process.argv.indexOf('--root')
@@ -206,7 +222,7 @@ const repositoryFiles = async () => {
   ])
 
   if (exitCode !== 0) {
-    console.error(`FAIL: cannot enumerate repository files for contraction sweep: ${stderr.trim()}`)
+    console.error(`FAIL: cannot enumerate repository files: ${stderr.trim()}`)
     process.exit(1)
   }
 
@@ -498,6 +514,101 @@ const lineAndColumnAt = ({
     line: lines.length,
   }
 }
+
+const productionAbsenceAssertions = noSignatures.flatMap((declaration) =>
+  'productionAbsence' in declaration
+    ? [
+        {
+          ...declaration.productionAbsence,
+          registerEntry: declaration.registerEntry,
+        },
+      ]
+    : [],
+)
+
+const isProductionSource = (file: string) => {
+  if (file.startsWith('packages/') === false || /\.(?:[cm]?[jt]sx?)$/.test(file) === false) {
+    return false
+  }
+
+  if (
+    /(?:^|\/)(?:__tests__|e2e|examples?|fixtures?|mocks?|stories?|test|tests|testing)(?:\/|$)/i.test(
+      file,
+    ) === true
+  ) {
+    return false
+  }
+
+  const fileName = file.slice(file.lastIndexOf('/') + 1)
+  return (
+    /(?:^|[.-])(?:e2e|fixture|mock|spec|stories|test)(?:[.-]|$)/i.test(fileName) === false &&
+    fileName.includes('.genie.') === false
+  )
+}
+
+/**
+ * Preserve offsets while excluding prose that can name an API without using
+ * it. Template literals are excluded in full; production API calls belong in
+ * executable expressions rather than fixture-like string bytes.
+ */
+const maskCommentsAndStrings = (source: string) =>
+  source.replace(/(["'`])(?:\\[\s\S]|(?!\1)[^\\])*\1|\/\*[\s\S]*?(?:\*\/|$)|\/\/[^\n]*/g, (text) =>
+    text.replace(/[^\n]/g, ' '),
+  )
+
+const runProductionAbsenceChecks = async () => {
+  const productionFiles = (await repositoryFiles()).filter(isProductionSource)
+  const productionEntries = await Promise.all(
+    productionFiles.map(
+      async (file) => [file, await Bun.file(resolve(root, file)).text()] as const,
+    ),
+  )
+  const expired: ExpiredNoSignature[] = []
+
+  for (const [file, source] of productionEntries) {
+    const executableSource = maskCommentsAndStrings(source)
+
+    for (const assertion of productionAbsenceAssertions) {
+      for (const match of executableSource.matchAll(assertion.regex)) {
+        expired.push({
+          ...lineAndColumnAt({ source, offset: match.index }),
+          file,
+          registerEntry: assertion.registerEntry,
+          site: assertion.site,
+        })
+      }
+    }
+  }
+
+  expired.sort(
+    (left, right) =>
+      left.file.localeCompare(right.file) ||
+      left.line - right.line ||
+      left.column - right.column ||
+      left.registerEntry.localeCompare(right.registerEntry),
+  )
+
+  if (expired.length === 0) {
+    console.log(
+      `PASS: ${productionAbsenceAssertions.length} noSignature production-absence justifications remain valid across ${productionFiles.length} source files.`,
+    )
+    return
+  }
+
+  for (const finding of expired) {
+    console.error(
+      `${finding.file}:${finding.line}:${finding.column} EXPIRED noSignature "${finding.registerEntry}": found production site ${finding.site}; this entry needs a real risk signature.`,
+    )
+  }
+  const expiredEntries = new Set(expired.map(({ registerEntry }) => registerEntry)).size
+  const expiredFiles = new Set(expired.map(({ file }) => file)).size
+  console.error(
+    `FAIL: ${expiredEntries} noSignature production-absence justifications expired at ${expired.length} sites across ${expiredFiles} source files.`,
+  )
+  process.exit(1)
+}
+
+await runProductionAbsenceChecks()
 
 const findMatchingDelimiter = ({
   source,
