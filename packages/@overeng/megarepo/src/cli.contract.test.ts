@@ -22,7 +22,7 @@ afterAll(() => {
  * The local-source version suffix is normalized, so version-string content is not gated by this
  * baseline.
  */
-// LIVE-MIGRATION BRIDGE effect-3-4 — DELETE at contraction — https://github.com/overengineeringstudio/effect-utils/issues/925
+// LIVE-MIGRATION BRIDGE effect-3-4 B7 — DELETE at contraction — https://github.com/overengineeringstudio/effect-utils/issues/925
 const stripAnsi = (output: string) =>
   output.replace(
     // eslint-disable-next-line no-control-regex -- CLI contract snapshots intentionally normalize terminal control bytes.
@@ -43,7 +43,7 @@ const runCli = (...args: ReadonlyArray<string>) => {
   return {
     status: result.status,
     signal: result.signal,
-    // LIVE-MIGRATION BRIDGE effect-3-4 — DELETE at contraction — https://github.com/overengineeringstudio/effect-utils/issues/925
+    // LIVE-MIGRATION BRIDGE effect-3-4 B7 — DELETE at contraction — https://github.com/overengineeringstudio/effect-utils/issues/925
     stdout: normalizeOutput(result.stdout),
     stderr: normalizeOutput(result.stderr),
     // LIVE-MIGRATION END effect-3-4
