@@ -53,7 +53,7 @@ describe('OTEL schema names', () => {
       ),
     ).resolves.toMatchObject({
       _tag: 'Failure',
-      left: expect.any(OtelAttrPlanError),
+      failure: expect.any(OtelAttrPlanError),
     })
 
     const SpanAttrs = OtelAttrs.defineSync(
@@ -260,7 +260,7 @@ describe('OtelAttrs', () => {
       ),
     ).resolves.toMatchObject({
       _tag: 'Failure',
-      left: expect.any(OtelAttrPlanError),
+      failure: expect.any(OtelAttrPlanError),
     })
 
     await expect(
@@ -275,7 +275,7 @@ describe('OtelAttrs', () => {
       ),
     ).resolves.toMatchObject({
       _tag: 'Failure',
-      left: expect.any(OtelAttrPlanError),
+      failure: expect.any(OtelAttrPlanError),
     })
 
     await expect(
@@ -290,7 +290,7 @@ describe('OtelAttrs', () => {
       ),
     ).resolves.toMatchObject({
       _tag: 'Failure',
-      left: expect.any(OtelAttrPlanError),
+      failure: expect.any(OtelAttrPlanError),
     })
   })
 
@@ -333,7 +333,7 @@ describe('OtelAttrs', () => {
       ),
     ).resolves.toMatchObject({
       _tag: 'Failure',
-      left: expect.any(OtelAttrPlanError),
+      failure: expect.any(OtelAttrPlanError),
     })
 
     const attrs = await Effect.runPromise(
@@ -361,7 +361,7 @@ describe('OtelAttrs', () => {
       Effect.runPromise(Effect.result(attrs.encode({ count: Number.NaN }))),
     ).resolves.toMatchObject({
       _tag: 'Failure',
-      left: expect.any(OtelAttrEncodeError),
+      failure: expect.any(OtelAttrEncodeError),
     })
   })
 
@@ -446,7 +446,7 @@ describe('OtelAttrs', () => {
     for (const result of results) {
       expect(result).toMatchObject({
         _tag: 'Failure',
-        left: expect.any(OtelAttrEncodeError),
+        failure: expect.any(OtelAttrEncodeError),
       })
     }
   })
@@ -513,12 +513,11 @@ describe('OtelAttrs', () => {
     expect(attrs.fields).toMatchInlineSnapshot(`
       [
         {
-          "astTag": "Refinement",
+          "astTag": "String",
           "attrKey": "span.label",
           "encodePolicy": "auto",
           "optional": false,
           "role": "span.label",
-          "schemaIdentifier": "NonEmptyTrimmedString",
           "sourceKey": "label",
         },
         {
@@ -530,7 +529,7 @@ describe('OtelAttrs', () => {
           "sourceKey": "outcome",
         },
         {
-          "astTag": "BooleanKeyword",
+          "astTag": "Boolean",
           "attrKey": "op.cache_hit",
           "cardinality": "low",
           "encodePolicy": "auto",
@@ -538,7 +537,7 @@ describe('OtelAttrs', () => {
           "sourceKey": "cacheHit",
         },
         {
-          "astTag": "StringKeyword",
+          "astTag": "String",
           "attrKey": "request.id",
           "cardinality": "high",
           "encodePolicy": "auto",
@@ -546,7 +545,7 @@ describe('OtelAttrs', () => {
           "sourceKey": "requestId",
         },
         {
-          "astTag": "TypeLiteral",
+          "astTag": "Objects",
           "attrKey": "op.payload",
           "encodePolicy": "json",
           "optional": false,
@@ -629,7 +628,7 @@ describe('OtelSpan', () => {
       ),
     ).resolves.toMatchObject({
       _tag: 'Failure',
-      left: expect.any(OtelAttrEncodeError),
+      failure: expect.any(OtelAttrEncodeError),
     })
   })
 
@@ -738,7 +737,7 @@ describe('OtelOperation', () => {
       Effect.runPromise(Effect.result(Operation.encode({ value: 'ok' }))),
     ).resolves.toMatchObject({
       _tag: 'Failure',
-      left: expect.any(OtelAttrEncodeError),
+      failure: expect.any(OtelAttrEncodeError),
     })
   })
 
@@ -820,7 +819,7 @@ describe('OtelMetric', () => {
         ],
         "labels": [
           {
-            "astTag": "StringKeyword",
+            "astTag": "String",
             "attrKey": "restate.service",
             "cardinality": "bounded",
             "encodePolicy": "auto",
@@ -828,7 +827,7 @@ describe('OtelMetric', () => {
             "sourceKey": "service",
           },
           {
-            "astTag": "StringKeyword",
+            "astTag": "String",
             "attrKey": "restate.handler",
             "cardinality": "bounded",
             "encodePolicy": "auto",
@@ -844,7 +843,7 @@ describe('OtelMetric', () => {
             "sourceKey": "outcome",
           },
           {
-            "astTag": "BooleanKeyword",
+            "astTag": "Boolean",
             "attrKey": "restate.cache_hit",
             "cardinality": "low",
             "encodePolicy": "auto",
