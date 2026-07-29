@@ -3,8 +3,8 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import type { Error as PlatformError } from 'effect'
-import { FileSystem } from 'effect/FileSystem'
-import { Path } from 'effect/Path'
+import * as FileSystem from 'effect/FileSystem'
+import * as Path from 'effect/Path'
 import { Effect, Option } from 'effect'
 
 import { resolveImportMapSpecifierForImporterSync } from './import-map/mod.ts'

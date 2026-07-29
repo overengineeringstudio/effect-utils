@@ -10,7 +10,7 @@
  */
 
 import { NodeServices } from '@effect/platform-node'
-import { FileSystem } from 'effect/FileSystem'
+import * as FileSystem from 'effect/FileSystem'
 import { Effect, Layer, Metric, Option, Schema, type Scope } from 'effect'
 import { expect } from 'vitest'
 

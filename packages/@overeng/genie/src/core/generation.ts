@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url'
 
 import type { Path } from 'effect/Path'
 import type { PlatformError } from 'effect'
-import { FileSystem } from 'effect/FileSystem'
+import * as FileSystem from 'effect/FileSystem'
 import { Duration, Effect, Option, Result, Schema } from 'effect'
 import { ChildProcess as Command } from 'effect/unstable/process'
 import type { ChildProcessSpawner } from 'effect/unstable/process'

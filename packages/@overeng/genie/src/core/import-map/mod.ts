@@ -14,7 +14,7 @@
 import * as path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-import { FileSystem } from 'effect/FileSystem'
+import * as FileSystem from 'effect/FileSystem'
 import { Effect, Option } from 'effect'
 
 import * as Observability from '../observability.ts'

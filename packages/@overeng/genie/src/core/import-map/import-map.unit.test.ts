@@ -3,7 +3,7 @@ import * as path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 import { NodeFileSystem } from '@effect/platform-node'
-import { FileSystem } from 'effect/FileSystem'
+import * as FileSystem from 'effect/FileSystem'
 import { Effect, Option, Schema } from 'effect'
 import { afterEach, beforeEach, expect, it } from 'vitest'
 

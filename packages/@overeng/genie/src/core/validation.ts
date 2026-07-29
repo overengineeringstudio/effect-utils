@@ -1,6 +1,6 @@
 import type { Error as PlatformError } from 'effect'
-import { FileSystem } from 'effect/FileSystem'
-import { Path } from 'effect/Path'
+import * as FileSystem from 'effect/FileSystem'
+import * as Path from 'effect/Path'
 import { Effect } from 'effect'
 import ts from 'typescript'
 

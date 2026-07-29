@@ -3,13 +3,13 @@ import {
   Data,
   Duration,
   Effect,
-  FileSystem,
   Layer,
   Option,
-  Path,
   Schema,
   Stream,
 } from 'effect'
+import * as FileSystem from 'effect/FileSystem'
+import * as Path from 'effect/Path'
 
 import {
   DistributedSemaphoreBacking,
