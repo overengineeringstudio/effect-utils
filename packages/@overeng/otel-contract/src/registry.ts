@@ -188,7 +188,7 @@ export type RegistryFragment = {
 /** An attribute Schema is missing the otel key annotation and/or the weaver metadata. */
 export class WeaverMissingAnnotationError extends Schema.TaggedErrorClass<WeaverMissingAnnotationError>()(
   'WeaverMissingAnnotationError',
-  { key: Schema.optional(Schema.String), missing: Schema.Literal('otelKey', 'weaverMeta') },
+  { key: Schema.optional(Schema.String), missing: Schema.Literals(['otelKey', 'weaverMeta']) },
 ) {}
 
 /**

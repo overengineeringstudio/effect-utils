@@ -1,21 +1,21 @@
 import { Either, Schema } from 'effect'
 
 /** Stable keys for the durable Notion datasource-sync demo domains. */
-export const NotionDatasourceSyncDemoDataSourceKey = Schema.Literal(
+export const NotionDatasourceSyncDemoDataSourceKey = Schema.Literals([
   'projects',
   'incidents',
   'customers',
   'activity',
-)
+])
 
 export type NotionDatasourceSyncDemoDataSourceKey =
   typeof NotionDatasourceSyncDemoDataSourceKey.Type
 
 /** Separates read-only verification from the guarded public synthetic fixture provisioner. */
-export const NotionDatasourceSyncLiveFixtureLane = Schema.Literal(
+export const NotionDatasourceSyncLiveFixtureLane = Schema.Literals([
   'read-only-verifier',
   'provisioner',
-)
+])
 
 export type NotionDatasourceSyncLiveFixtureLane = typeof NotionDatasourceSyncLiveFixtureLane.Type
 

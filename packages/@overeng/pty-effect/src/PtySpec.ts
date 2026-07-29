@@ -27,7 +27,7 @@ export const PtySpawnSpec = Schema.Struct({
   command: Schema.String,
   args: Schema.optional(Schema.Array(Schema.String)),
   cwd: Schema.optional(Schema.String),
-  env: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),
+  env: Schema.optional(Schema.Record(Schema.String, Schema.String)),
   size: Schema.optional(TerminalSize),
 })
 export type PtySpawnSpec = typeof PtySpawnSpec.Type

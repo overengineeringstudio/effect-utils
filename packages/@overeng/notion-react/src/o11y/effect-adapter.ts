@@ -60,8 +60,8 @@ const shortId = (id: string): string => id.replaceAll('-', '').slice(0, 8)
 /** Milliseconds → nanoseconds (bigint) for Tracer.Span APIs. */
 const msToNs = (ms: number): bigint => BigInt(Math.trunc(ms * 1_000_000))
 
-const OpKind = Schema.Literal('append', 'update', 'delete', 'retrieve')
-const CacheKind = Schema.Literal('hit', 'miss', 'drift', 'page-id-drift')
+const OpKind = Schema.Literals(['append', 'update', 'delete', 'retrieve'])
+const CacheKind = Schema.Literals(['hit', 'miss', 'drift', 'page-id-drift'])
 
 // Bundles are REBUILT from the registered `notion-react.*` catalog schemas (SC-R13/R14 — the
 // contract is the single SSOT for the projection AND these runtime encoders). `service.name`

@@ -1,8 +1,8 @@
 import { lstatSync } from 'node:fs'
 import * as nodePath from 'node:path'
 
-import { FileSystem } from 'effect/FileSystem'
 import { Effect, Option, Schema } from 'effect'
+import { FileSystem } from 'effect/FileSystem'
 
 import { SessionSourceDiscoveryError } from '../errors.ts'
 import type { SessionSourceAdapter } from '../schema/core.ts'
@@ -11,7 +11,7 @@ import { makeAppendOnlyJsonlAdapter } from './jsonl.ts'
 
 const QueueOperationRecord = Schema.Struct({
   type: Schema.Literal('queue-operation'),
-  operation: Schema.Literal('enqueue', 'dequeue'),
+  operation: Schema.Literals(['enqueue', 'dequeue']),
   timestamp: Schema.DateTimeUtc,
   sessionId: Schema.String,
   content: Schema.optional(Schema.String),

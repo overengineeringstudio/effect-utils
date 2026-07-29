@@ -17,7 +17,7 @@ const OteliteExecAttrs = Schema.Struct({
 
 const OteliteSignalAttrs = Schema.Struct({
   label: Schema.NonEmptyString,
-  signal: Schema.Literal('traces', 'metrics', 'logs'),
+  signal: Schema.Literals(['traces', 'metrics', 'logs']),
 })
 
 const encodeLabelAttrs = Schema.decodeSync(OteliteLabelAttrs)

@@ -29,7 +29,7 @@ export const PinCheckingState = Schema.TaggedStruct('Checking', {
  */
 export const PinSuccessState = Schema.TaggedStruct('Success', {
   member: Schema.String,
-  action: Schema.Literal('pin', 'unpin'),
+  action: Schema.Literals(['pin', 'unpin']),
   ref: Schema.optional(Schema.String),
   commit: Schema.optional(Schema.String),
 })
@@ -39,7 +39,7 @@ export const PinSuccessState = Schema.TaggedStruct('Success', {
  */
 export const PinAlreadyState = Schema.TaggedStruct('Already', {
   member: Schema.String,
-  action: Schema.Literal('pin', 'unpin'),
+  action: Schema.Literals(['pin', 'unpin']),
   commit: Schema.optional(Schema.String),
 })
 
@@ -48,7 +48,7 @@ export const PinAlreadyState = Schema.TaggedStruct('Already', {
  */
 export const PinDryRunState = Schema.TaggedStruct('DryRun', {
   member: Schema.String,
-  action: Schema.Literal('pin', 'unpin'),
+  action: Schema.Literals(['pin', 'unpin']),
   ref: Schema.optional(Schema.String),
   commit: Schema.optional(Schema.String),
   currentSource: Schema.optional(Schema.String),
@@ -65,7 +65,7 @@ export const PinDryRunState = Schema.TaggedStruct('DryRun', {
  * Warning state - for non-fatal issues
  */
 export const PinWarningState = Schema.TaggedStruct('Warning', {
-  warning: Schema.Literal('worktree_not_available', 'member_removed_from_config'),
+  warning: Schema.Literals(['worktree_not_available', 'member_removed_from_config']),
   member: Schema.optional(Schema.String),
   message: Schema.optional(Schema.String),
 })
@@ -127,18 +127,18 @@ export const PinAction = Schema.Union([
   Schema.TaggedStruct('SetChecking', { member: Schema.String }),
   Schema.TaggedStruct('SetSuccess', {
     member: Schema.String,
-    action: Schema.Literal('pin', 'unpin'),
+    action: Schema.Literals(['pin', 'unpin']),
     ref: Schema.optional(Schema.String),
     commit: Schema.optional(Schema.String),
   }),
   Schema.TaggedStruct('SetAlready', {
     member: Schema.String,
-    action: Schema.Literal('pin', 'unpin'),
+    action: Schema.Literals(['pin', 'unpin']),
     commit: Schema.optional(Schema.String),
   }),
   Schema.TaggedStruct('SetDryRun', {
     member: Schema.String,
-    action: Schema.Literal('pin', 'unpin'),
+    action: Schema.Literals(['pin', 'unpin']),
     ref: Schema.optional(Schema.String),
     commit: Schema.optional(Schema.String),
     currentSource: Schema.optional(Schema.String),
@@ -151,7 +151,7 @@ export const PinAction = Schema.Union([
     worktreeNotAvailable: Schema.optional(Schema.Boolean),
   }),
   Schema.TaggedStruct('SetWarning', {
-    warning: Schema.Literal('worktree_not_available', 'member_removed_from_config'),
+    warning: Schema.Literals(['worktree_not_available', 'member_removed_from_config']),
     member: Schema.optional(Schema.String),
     message: Schema.optional(Schema.String),
   }),

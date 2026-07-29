@@ -17,7 +17,7 @@ import { type PropertyAvailability, type PropertyWriteClass } from '../core/guar
 import { PROJECTOR_VERSION } from './schema.ts'
 
 /** All possible lifecycle states of an outbox command row. */
-export const OutboxState = Schema.Literal(
+export const OutboxState = Schema.Literals([
   'queued',
   'running',
   'retryable',
@@ -25,7 +25,7 @@ export const OutboxState = Schema.Literal(
   'settled',
   'fenced',
   'ambiguous',
-).annotate({ identifier: 'NotionDatasourceSync.OutboxState' })
+]).annotate({ identifier: 'NotionDatasourceSync.OutboxState' })
 export type OutboxState = typeof OutboxState.Type
 
 /** Minimal event fields needed to compute a deterministic projection digest. */
@@ -66,28 +66,28 @@ export const isCompactionBlockingOutboxState = (state: OutboxState): boolean =>
   state === 'queued' || state === 'running' || state === 'retryable' || state === 'ambiguous'
 
 /** Schema-encoded write-class literal stored in `schema_property_projection`. */
-export const ProjectionPropertyWriteClass = Schema.Literal(
+export const ProjectionPropertyWriteClass = Schema.Literals([
   'writable',
   'computed',
   'unsupported',
-).annotate({ identifier: 'NotionDatasourceSync.ProjectionPropertyWriteClass' })
+]).annotate({ identifier: 'NotionDatasourceSync.ProjectionPropertyWriteClass' })
 /** TypeScript alias for `PropertyWriteClass` — re-exported alongside the Schema literal for symmetry. */
 export type ProjectionPropertyWriteClass = PropertyWriteClass
 
 /** Schema-encoded availability literal stored in `property_shadow_projection`. */
-export const ProjectionPropertyAvailability = Schema.Literal(
+export const ProjectionPropertyAvailability = Schema.Literals([
   'complete',
   'computed',
   'unsupported',
   'paginated-incomplete',
   'relation-target-inaccessible',
   'related-data-source-unshared',
-).annotate({ identifier: 'NotionDatasourceSync.ProjectionPropertyAvailability' })
+]).annotate({ identifier: 'NotionDatasourceSync.ProjectionPropertyAvailability' })
 /** TypeScript alias for `PropertyAvailability` — re-exported alongside the Schema literal for symmetry. */
 export type ProjectionPropertyAvailability = PropertyAvailability
 
 /** Schema-encoded direct-retrieve outcome stored in `query_absence_projection`. */
-export const ProjectionDirectRetrieve = Schema.Literal(
+export const ProjectionDirectRetrieve = Schema.Literals([
   'not-run',
   'accessible',
   'in-trash',
@@ -95,7 +95,7 @@ export const ProjectionDirectRetrieve = Schema.Literal(
   'permission-ambiguous',
   'inaccessible',
   'unknown',
-).annotate({ identifier: 'NotionDatasourceSync.ProjectionDirectRetrieve' })
+]).annotate({ identifier: 'NotionDatasourceSync.ProjectionDirectRetrieve' })
 export type ProjectionDirectRetrieve = typeof ProjectionDirectRetrieve.Type
 
 /** Auxiliary JSON payload stored alongside `data_source_projection` rows (schema property list). */

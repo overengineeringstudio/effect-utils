@@ -35,7 +35,7 @@ export type LineageRef = typeof LineageRef.Type
 export const DerivationKind = Schema.Union([
   Schema.TaggedStruct('Pure', {}),
   Schema.TaggedStruct('Aggregation', {
-    op: Schema.Literal('sum', 'count', 'min', 'max', 'avg', 'custom'),
+    op: Schema.Literals(['sum', 'count', 'min', 'max', 'avg', 'custom']),
   }),
   Schema.TaggedStruct('Reduction', { description: Schema.String }),
   Schema.TaggedStruct('External', { service: Schema.String }),
@@ -89,7 +89,7 @@ export type Authority = typeof Authority.Type
 
 /** Temporal freshness of a captured value. */
 export const Freshness = Schema.Struct({
-  capturedAt: Schema.optional(Schema.Literal('now', 'event-time', 'snapshot')),
+  capturedAt: Schema.optional(Schema.Literals(['now', 'event-time', 'snapshot'])),
   maxAgeMs: Schema.optional(Schema.Number),
 })
 export type Freshness = typeof Freshness.Type

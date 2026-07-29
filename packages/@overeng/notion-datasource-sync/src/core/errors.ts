@@ -74,11 +74,11 @@ export class SyncGuardError extends Schema.TaggedErrorClass<SyncGuardError>()('S
 export class WorkspaceNamespaceError extends Schema.TaggedErrorClass<WorkspaceNamespaceError>()(
   'WorkspaceNamespaceError',
   {
-    guard: Schema.Literal(
+    guard: Schema.Literals([
       'UnknownWorkspaceNamespace',
       'MixedWorkspaceNamespace',
       'InvalidLinkedView',
-    ),
+    ]),
     message: Schema.String,
   },
 ) {}

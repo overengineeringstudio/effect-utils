@@ -31,7 +31,7 @@
  */
 
 import type { Layer, Scope } from 'effect'
-import { Effect, Fiber, Inspectable, Logger, Runtime, Stream, SubscriptionRef } from 'effect'
+import { Effect, Fiber, Inspectable, Logger, Stream, SubscriptionRef } from 'effect'
 import React, { createContext, type ReactNode } from 'react'
 
 import { useContext, useSyncExternalStore } from './hooks.tsx'
@@ -174,8 +174,6 @@ export const createLogCapture = (options?: {
     // Create the SubscriptionRef for log entries
     const logsRef = yield* SubscriptionRef.make<readonly TuiLogEntry[]>([])
 
-    const runtime = yield* Effect.runtime<never>()
-
     // Helper to append a log entry (fire and forget)
     const appendLog = (entry: TuiLogEntry) =>
       SubscriptionRef.update(logsRef, (logs) => {
@@ -184,7 +182,7 @@ export const createLogCapture = (options?: {
       })
 
     const appendLogSync = (entry: TuiLogEntry): void => {
-      void Runtime.runFork(runtime)(appendLog(entry))
+      void Effect.runFork(appendLog(entry))
     }
 
     // Create Effect Logger that captures instead of printing

@@ -7,15 +7,15 @@
  */
 
 import type { Error as PlatformError } from 'effect'
-import { FileSystem } from 'effect/FileSystem'
 import { Effect, Ref, Schema, type ParseResult } from 'effect'
+import { FileSystem } from 'effect/FileSystem'
 
 import type { AbsoluteDirPath } from '@overeng/effect-path'
 
 import * as Observability from './observability.ts'
 
 /** Known command/operation families that perform nested megarepo traversal. */
-export const MegarepoTraversalPurpose = Schema.Literal('status', 'ls', 'sync').annotate({
+export const MegarepoTraversalPurpose = Schema.Literals(['status', 'ls', 'sync']).annotate({
   identifier: 'Megarepo.Traversal.Purpose',
 })
 export type MegarepoTraversalPurpose = typeof MegarepoTraversalPurpose.Type

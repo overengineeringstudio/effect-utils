@@ -41,7 +41,7 @@ describe('effect-schema-form baselines (cross-major invariant)', () => {
       description: 'Shown to other people',
     }),
     age: Schema.optional(Schema.Int.annotate({ title: 'Age' })),
-    role: Schema.Literal('admin', 'guest'),
+    role: Schema.Literals(['admin', 'guest']),
     active: Schema.Boolean,
     unsupported: Schema.Tuple([Schema.String]),
   })
@@ -60,7 +60,7 @@ describe('effect-schema-form baselines (cross-major invariant)', () => {
         Schema.String.annotate({ title: 'Title', description: 'Description' }),
       ),
       optionalInt: analyzeSchema(Schema.UndefinedOr(Schema.Int)),
-      literalUnion: analyzeSchema(Schema.Literal('', 'kebab-case', '東京')),
+      literalUnion: analyzeSchema(Schema.Literals(['', 'kebab-case', '東京'])),
       struct: analyzeSchema(Schema.Struct({ value: Schema.String })),
       tuple: analyzeSchema(Schema.Tuple([Schema.String])),
       unknown: analyzeSchema(Schema.Unknown),

@@ -1,7 +1,7 @@
 import { Context, Effect, Option, Schema } from 'effect'
 
 /** Coarse operation phases emitted by sync code for CLI/TUI progress. */
-export const SyncProgressPhase = Schema.Literal(
+export const SyncProgressPhase = Schema.Literals([
   'preparing',
   'pulling',
   'querying',
@@ -12,7 +12,7 @@ export const SyncProgressPhase = Schema.Literal(
   'projecting',
   'watching',
   'complete',
-)
+])
 
 export type SyncProgressPhase = typeof SyncProgressPhase.Type
 

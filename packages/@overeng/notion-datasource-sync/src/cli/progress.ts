@@ -5,7 +5,7 @@ import { Box, Text, createTuiApp, useTuiAtomValue, type TuiApp } from '@overeng/
 
 import type { SyncProgressEvent, SyncProgressPhase } from '../core/progress.ts'
 
-const Phase = Schema.Literal(
+const Phase = Schema.Literals([
   'preparing',
   'pulling',
   'querying',
@@ -16,7 +16,7 @@ const Phase = Schema.Literal(
   'projecting',
   'watching',
   'complete',
-)
+])
 
 const SyncProgressState = Schema.Struct({
   command: Schema.String,

@@ -31,7 +31,7 @@ export const SignalKind = Schema.Literal('remote-change').annotate({
 export type SignalKind = typeof SignalKind.Type
 
 /** Durable inbox lifecycle for signal processing. */
-export const SignalState = Schema.Literal('pending', 'claimed', 'processed', 'failed').annotate({
+export const SignalState = Schema.Literals(['pending', 'claimed', 'processed', 'failed']).annotate({
   identifier: 'NotionDatasourceSync.SignalState',
 })
 export type SignalState = typeof SignalState.Type

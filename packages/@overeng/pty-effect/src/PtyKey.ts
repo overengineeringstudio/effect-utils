@@ -7,7 +7,7 @@ import { Schema } from 'effect'
  * named key the upstream adds should be added here so it's reachable from
  * the typed `Key` schema rather than via a free string.
  */
-export const NamedKey = Schema.Literal(
+export const NamedKey = Schema.Literals([
   'return',
   'enter',
   'tab',
@@ -36,7 +36,7 @@ export const NamedKey = Schema.Literal(
   'f10',
   'f11',
   'f12',
-)
+])
 export type NamedKey = typeof NamedKey.Type
 
 /**

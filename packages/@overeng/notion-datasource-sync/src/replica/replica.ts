@@ -3747,7 +3747,7 @@ export const readPendingReplicaChanges = (replicaPath: string): readonly Replica
     ).map((row) => ({
       changeId: readString({ row, key: 'change_id' }),
       kind: Schema.decodeUnknownSync(
-        Schema.Literal(
+        Schema.Literals([
           'cell_patch',
           'row_archive',
           'row_restore',
@@ -3758,7 +3758,7 @@ export const readPendingReplicaChanges = (replicaPath: string): readonly Replica
           'file_attach',
           'view_change',
           'conflict_resolution',
-        ),
+        ]),
       )(readString({ row, key: 'kind' })),
       dataSourceId: readString({ row, key: 'data_source_id' }),
       pageId: readOptionalString({ row, key: 'page_id' }),

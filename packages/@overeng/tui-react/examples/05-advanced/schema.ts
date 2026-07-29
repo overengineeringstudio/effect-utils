@@ -142,7 +142,7 @@ const WindowSchema = Schema.Struct({
   width: Schema.Number,
   height: Schema.Number,
   title: Schema.String,
-  color: Schema.Literal('red', 'green', 'yellow', 'blue', 'magenta', 'cyan'),
+  color: Schema.Literals(['red', 'green', 'yellow', 'blue', 'magenta', 'cyan']),
   stats: Schema.Struct({
     cpu: Schema.Number,
     mem: Schema.Number,

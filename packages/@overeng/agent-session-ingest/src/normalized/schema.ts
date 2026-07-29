@@ -67,7 +67,7 @@ export const ToolCallEnd = Schema.TaggedStruct('ToolCallEnd', {
 export const StepBoundary = Schema.TaggedStruct('StepBoundary', {
   sourceId: Schema.String,
   sessionId: Schema.optional(Schema.String),
-  kind: Schema.Literal('start', 'finish'),
+  kind: Schema.Literals(['start', 'finish']),
   cost: Schema.optional(Schema.Number),
   tokens: Schema.optional(Schema.Unknown),
   reason: Schema.optional(Schema.String),

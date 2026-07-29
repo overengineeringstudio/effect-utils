@@ -832,7 +832,7 @@ const SchemaPropertyObservationJson = Schema.Struct({
   name: Schema.optional(Schema.Trimmed.check(Schema.isNonEmpty())),
   type: Schema.optional(Schema.Trimmed.check(Schema.isNonEmpty())),
   configHash: Hash,
-  writeClass: Schema.Literal('writable', 'computed', 'unsupported'),
+  writeClass: Schema.Literals(['writable', 'computed', 'unsupported']),
   configJson: Schema.optional(Schema.String),
 }).annotate({ identifier: 'NotionDatasourceSync.Cli.SchemaPropertyObservationJson' })
 

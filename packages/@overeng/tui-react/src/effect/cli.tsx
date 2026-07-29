@@ -153,7 +153,7 @@ export const outputModeLayer = (value: OutputModeValue): Layer.Layer<OutputModeT
 
   // For progressive React modes, capture logs to prevent TUI corruption
   if (isReact(mode) === true && mode.timing === 'progressive') {
-    return Layer.unwrapScoped(
+    return Layer.unwrap(
       Effect.gen(function* () {
         const { handle, loggerLayer } = yield* createLogCapture()
 

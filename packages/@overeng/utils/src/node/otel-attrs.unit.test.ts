@@ -16,7 +16,7 @@ describe('OtelAttrs', () => {
     const Attrs = Schema.Struct({
       label: Schema.Trimmed.check(Schema.isNonEmpty()).pipe(OtelAttr.spanLabel()),
       requestId: Schema.UUID.pipe(OtelAttr.key({ key: 'request.id' })),
-      outcome: Schema.Literal('approved', 'denied', 'timeout').pipe(
+      outcome: Schema.Literals(['approved', 'denied', 'timeout']).pipe(
         OtelAttr.key({ key: 'op.outcome' }),
       ),
       count: Schema.Natural.pipe(OtelAttr.key({ key: 'op.count' })),

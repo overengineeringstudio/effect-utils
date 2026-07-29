@@ -48,7 +48,7 @@ export type RuntimeError = Schema.Schema.Type<typeof RuntimeError>
  * Cancelled error - for user cancellation, timeout, or signal.
  */
 export const CancelledError = Schema.TaggedStruct('CommandError.Cancelled', {
-  reason: Schema.Literal('user', 'timeout', 'signal'),
+  reason: Schema.Literals(['user', 'timeout', 'signal']),
 })
 /** Inferred type for a cancellation error (user, timeout, or signal). */
 export type CancelledError = Schema.Schema.Type<typeof CancelledError>

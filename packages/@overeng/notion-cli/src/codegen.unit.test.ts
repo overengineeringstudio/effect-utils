@@ -812,13 +812,13 @@ describe('codegen', () => {
         // -----------------------------------------------------------------------------
 
         /** Options for "Status" property */
-        export const TestStatusOption = Schema.Literal('Done', 'In Progress', 'Not Started').annotate({
+        export const TestStatusOption = Schema.Literals(['Done', 'In Progress', 'Not Started']).annotate({
           identifier: 'TestStatusOption'
         })
         export type TestStatusOption = typeof TestStatusOption.Type
 
         /** Options for "Priority" property */
-        export const TestPriorityOption = Schema.Literal('High', 'Low').annotate({
+        export const TestPriorityOption = Schema.Literals(['High', 'Low']).annotate({
           identifier: 'TestPriorityOption'
         })
         export type TestPriorityOption = typeof TestPriorityOption.Type

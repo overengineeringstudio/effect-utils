@@ -40,7 +40,7 @@ export const EventCodecVersion = Schema.Literal('v1').annotate({
 export type EventCodecVersion = typeof EventCodecVersion.Type
 
 /** High-level classification of a sync event; used for filtering and projection without needing to decode the full payload. */
-export const EventFamily = Schema.Literal(
+export const EventFamily = Schema.Literals([
   'RemoteObserved',
   'SyncRootBound',
   'CompatibilityChecked',
@@ -55,7 +55,7 @@ export const EventFamily = Schema.Literal(
   'GuardBlocked',
   'RepairObserved',
   'StorageMigrated',
-).annotate({ identifier: 'NotionDatasourceSync.EventFamily' })
+]).annotate({ identifier: 'NotionDatasourceSync.EventFamily' })
 export type EventFamily = typeof EventFamily.Type
 
 /** Branded key that ensures a command or event is applied at most once even if retried. */
@@ -203,7 +203,7 @@ export const RemoteWriteAttempted = Schema.TaggedStruct('RemoteWriteAttempted', 
   ...eventEnvelopeFields({ family: 'CommandAttempted', eventType: 'RemoteWriteAttempted' }),
   commandId: CommandId,
   attempt: Schema.Natural,
-  attemptState: Schema.Literal('running', 'retryable', 'blocked', 'fenced', 'ambiguous'),
+  attemptState: Schema.Literals(['running', 'retryable', 'blocked', 'fenced', 'ambiguous']),
   leaseToken: Schema.optional(Schema.Trimmed.check(Schema.isNonEmpty())),
   guard: Schema.optional(GuardName),
   retryAfterMillis: Schema.optional(Schema.Natural),
@@ -220,7 +220,7 @@ export const RemoteWriteSettled = Schema.TaggedStruct('RemoteWriteSettled', {
   observedHash: Hash,
   bodyPointer: Schema.optional(BodyPointer),
   createdPageId: Schema.optional(PageId),
-  settlementKind: Schema.Literal('verified-success', 'verified-no-op'),
+  settlementKind: Schema.Literals(['verified-success', 'verified-no-op']),
 }).annotate({ identifier: 'NotionDatasourceSync.RemoteWriteSettled' })
 export type RemoteWriteSettled = typeof RemoteWriteSettled.Type
 
@@ -266,7 +266,7 @@ export const ConflictResolved = Schema.TaggedStruct('ConflictResolved', {
   conflictId: SyncEventId,
   pageId: PageId,
   propertyId: Schema.optional(PropertyId),
-  resolutionChoice: Schema.Literal('keep-local', 'keep-remote', 'manual'),
+  resolutionChoice: Schema.Literals(['keep-local', 'keep-remote', 'manual']),
   followupCommandId: Schema.optional(CommandId),
 }).annotate({ identifier: 'NotionDatasourceSync.ConflictResolved' })
 export type ConflictResolved = typeof ConflictResolved.Type
@@ -347,7 +347,7 @@ export const PathClaimed = Schema.TaggedStruct('PathClaimed', {
   ...eventEnvelopeFields({ family: 'LocalIntentAccepted', eventType: 'PathClaimed' }),
   pageId: PageId,
   relativePath: Schema.Trimmed.check(Schema.isNonEmpty()),
-  claimState: Schema.Literal('active', 'released', 'conflict'),
+  claimState: Schema.Literals(['active', 'released', 'conflict']),
 }).annotate({ identifier: 'NotionDatasourceSync.PathClaimed' })
 export type PathClaimed = typeof PathClaimed.Type
 

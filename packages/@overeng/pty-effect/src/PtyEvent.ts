@@ -2,7 +2,7 @@ import { Schema } from 'effect'
 
 import { PtyName } from './PtySpec.ts'
 
-const Tags = Schema.Record({ key: Schema.String, value: Schema.String })
+const Tags = Schema.Record(Schema.String, Schema.String)
 
 const Base = {
   session: PtyName,
@@ -30,7 +30,7 @@ export const NotificationEvent = Schema.Struct({
   type: Schema.Literal('notification'),
   title: Schema.optional(Schema.String),
   body: Schema.optional(Schema.String),
-  source: Schema.optional(Schema.Literal('osc9', 'osc99', 'osc777')),
+  source: Schema.optional(Schema.Literals(['osc9', 'osc99', 'osc777'])),
 })
 export type NotificationEvent = typeof NotificationEvent.Type
 

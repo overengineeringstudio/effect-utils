@@ -10,7 +10,7 @@ import {
 
 import { NOTION_API_VERSION } from './config.ts'
 
-const BodyCompletenessEvidence = Schema.Literal('complete', 'lossy').annotate({
+const BodyCompletenessEvidence = Schema.Literals(['complete', 'lossy']).annotate({
   identifier: 'NotionBodyEvidence.BodyCompleteness',
 })
 type BodyCompletenessEvidence = typeof BodyCompletenessEvidence.Type

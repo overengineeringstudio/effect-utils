@@ -245,7 +245,7 @@ export type LinkPreviewMention = typeof LinkPreviewMention.Type
  */
 export const TemplateMentionDate = Schema.Struct({
   type: Schema.Literal('template_mention_date'),
-  template_mention_date: Schema.Literal('today', 'now'),
+  template_mention_date: Schema.Literals(['today', 'now']),
 }).annotate({
   identifier: 'Notion.TemplateMentionDate',
   title: 'Template Mention Date',

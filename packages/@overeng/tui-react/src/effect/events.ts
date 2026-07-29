@@ -196,7 +196,7 @@ export type FocusEventEncoded = Schema.Schema.Encoded<typeof FocusEvent>
 /**
  * Mouse button identifier
  */
-export const MouseButton = Schema.Literal('left', 'middle', 'right', 'wheelUp', 'wheelDown')
+export const MouseButton = Schema.Literals(['left', 'middle', 'right', 'wheelUp', 'wheelDown'])
 
 /**
  * Type for MouseButton
@@ -224,7 +224,7 @@ export const MouseEvent = Schema.TaggedStruct('Event.Mouse', {
   /**
    * The type of mouse action
    */
-  action: Schema.Literal('press', 'release', 'move'),
+  action: Schema.Literals(['press', 'release', 'move']),
 
   /**
    * The button involved (if any)

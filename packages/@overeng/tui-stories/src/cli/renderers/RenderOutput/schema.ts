@@ -29,7 +29,7 @@ export const RenderState = Schema.Union([
 export type RenderStateType = typeof RenderState.Type
 
 /** Actions for the render output */
-export const RenderAction = Schema.Union(Schema.TaggedStruct('SetState', { state: RenderState }))
+export const RenderAction = Schema.Union([Schema.TaggedStruct('SetState', { state: RenderState })])
 
 export type RenderActionType = typeof RenderAction.Type
 

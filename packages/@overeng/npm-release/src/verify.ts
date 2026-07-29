@@ -8,10 +8,10 @@
 
 import { createHash } from 'node:crypto'
 
-import { ChildProcess as Command } from 'effect/unstable/process'
-import { FileSystem } from 'effect/FileSystem'
 import { Effect, Schema } from 'effect'
 import type { Schedule } from 'effect'
+import { FileSystem } from 'effect/FileSystem'
+import { ChildProcess as Command } from 'effect/unstable/process'
 
 import { registryVerification, type RemoteRegistryState } from './mod.ts'
 
@@ -65,7 +65,7 @@ const RegistryManifest = Schema.Struct({
   dist: Schema.optional(Schema.Struct({ integrity: Schema.optional(Schema.String) })),
 })
 
-const RegistryDistTags = Schema.Record({ key: Schema.String, value: Schema.String })
+const RegistryDistTags = Schema.Record(Schema.String, Schema.String)
 
 /**
  * `npm view --json`, with every failure mode reported as absent data.

@@ -10,9 +10,9 @@
  */
 
 import type { Error as PlatformError } from 'effect'
-import { FileSystem } from 'effect/FileSystem'
 import type { ParseResult } from 'effect'
 import { Effect, Option, Schema } from 'effect'
+import { FileSystem } from 'effect/FileSystem'
 
 import type { AbsoluteFilePath } from '@overeng/effect-path'
 
@@ -54,7 +54,7 @@ export class LockFile extends Schema.Class<LockFile>('LockFile')({
   version: Schema.Number,
 
   /** Locked members (name -> entry) */
-  members: Schema.Record({ key: Schema.String, value: LockedMember }),
+  members: Schema.Record(Schema.String, LockedMember),
 }) {}
 
 // =============================================================================

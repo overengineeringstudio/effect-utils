@@ -290,7 +290,7 @@ const normalizePropOptions = <Arbs extends Vitest.Vitest.Arbitraries>(
  *
  * @example
  * ```typescript
- * const StorageType = Schema.Literal('memory', 'fs')
+ * const StorageType = Schema.Literals(['memory', 'fs'])
  * const Count = Schema.Int.pipe(Schema.between(1, 100))
  *
  * Vitest.asProp(

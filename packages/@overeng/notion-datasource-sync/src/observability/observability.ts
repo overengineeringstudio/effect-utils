@@ -152,7 +152,7 @@ export const spanContracts = Object.fromEntries(
 }
 
 const StatusSpanAttributesSchema = Schema.Struct({
-  state: Schema.Literal('clean', 'pending', 'conflict', 'blocked').pipe(
+  state: Schema.Literals(['clean', 'pending', 'conflict', 'blocked']).pipe(
     OtelAttr.key({ key: spanAttr.statusState }),
   ),
   blockedCount: Schema.Natural.pipe(OtelAttr.key({ key: spanAttr.blockedCount })),

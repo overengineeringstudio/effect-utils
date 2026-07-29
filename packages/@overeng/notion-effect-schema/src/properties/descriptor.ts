@@ -96,10 +96,9 @@ export type PropertyDescriptor = typeof PropertyDescriptor.Type
  * Phase 3 proof provider against fresh remote schema (spec.md ~207), not at this
  * schema layer. Decode via {@link decodePropertyDescriptors} to stay fail-closed.
  */
-export const PropertyDescriptors = Schema.Record({
-  key: PropertyName,
-  value: PropertyDescriptor,
-}).annotate({ identifier: 'Notion.PropertyDescriptors' })
+export const PropertyDescriptors = Schema.Record(PropertyName, PropertyDescriptor).annotate({
+  identifier: 'Notion.PropertyDescriptors',
+})
 export type PropertyDescriptors = typeof PropertyDescriptors.Type
 
 /**

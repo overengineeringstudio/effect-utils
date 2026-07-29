@@ -20,8 +20,11 @@
  * directly with fake gh output so no real `gh`/network is needed.
  */
 
-import { ChildProcess as Command, ChildProcessSpawner as CommandExecutor } from 'effect/unstable/process'
 import { Context, Duration, Effect, Layer, Option, Schema } from 'effect'
+import {
+  ChildProcess as Command,
+  ChildProcessSpawner as CommandExecutor,
+} from 'effect/unstable/process'
 
 import type { RelativeDirPath } from '@overeng/effect-path'
 
@@ -97,7 +100,7 @@ export const parseRepoCoordinates = (
 const GhPr = Schema.Struct({
   number: Schema.Number,
   /** gh emits uppercase `MERGED`/`CLOSED`/`OPEN`. */
-  state: Schema.Literal('MERGED', 'CLOSED', 'OPEN'),
+  state: Schema.Literals(['MERGED', 'CLOSED', 'OPEN']),
   headRefName: Schema.String,
   /** ISO 8601, or `null` when not merged. */
   mergedAt: Schema.NullOr(Schema.String),

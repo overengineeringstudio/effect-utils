@@ -112,19 +112,19 @@ export class FlakeLockNode extends Schema.Class<FlakeLockNode>('FlakeLockNode')(
    * Resolved/locked input data
    * Contains the exact revision and optional integrity info (narHash, lastModified)
    */
-  locked: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+  locked: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
 
   /**
    * Original input specification (as written in flake.nix)
    * Preserved for reference but not used during evaluation
    */
-  original: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+  original: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
 
   /**
    * Map of input names to node names in this lock file
    * Used to resolve transitive dependencies
    */
-  inputs: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+  inputs: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
 
   /**
    * Whether this input is a flake (default: true)
@@ -145,7 +145,7 @@ export class FlakeLock extends Schema.Class<FlakeLock>('FlakeLock')({
    * Map of node names to node data
    * The "root" node is special and represents the flake itself
    */
-  nodes: Schema.Record({ key: Schema.String, value: FlakeLockNode }),
+  nodes: Schema.Record(Schema.String, FlakeLockNode),
 
   /**
    * Name of the root node (always "root" in practice)

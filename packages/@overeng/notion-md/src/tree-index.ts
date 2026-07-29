@@ -1,7 +1,7 @@
 import { dirname, join, relative, resolve } from 'node:path'
 
-import { FileSystem } from 'effect/FileSystem'
 import { Effect, Schema } from 'effect'
+import { FileSystem } from 'effect/FileSystem'
 
 import { NmdCliError, NmdFileSystemError, type NmdError } from './errors.ts'
 
@@ -12,7 +12,7 @@ export const TreeIndex = Schema.Struct({
   /** Root-file basename, so a later run reconstructs the same layout. */
   root_file: Schema.String,
   /** posix relativePath (from root) → page_id; derived from frontmatter each run. */
-  pages: Schema.Record({ key: Schema.String, value: Schema.String }),
+  pages: Schema.Record(Schema.String, Schema.String),
 }).annotate({ identifier: 'NotionMd.TreeIndex' })
 
 export type TreeIndex = typeof TreeIndex.Type

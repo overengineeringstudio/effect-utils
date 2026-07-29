@@ -22,7 +22,7 @@ export const EnvSuccessState = Schema.TaggedStruct('Success', {
   /** Global store location */
   MEGAREPO_STORE: Schema.String,
   /** Shell type for output formatting (only used in TTY mode) */
-  shell: Schema.optional(Schema.Literal('bash', 'zsh', 'fish')),
+  shell: Schema.optional(Schema.Literals(['bash', 'zsh', 'fish'])),
 })
 
 /**
@@ -64,7 +64,7 @@ export const EnvAction = Schema.Union([
   /** Set success state */
   Schema.TaggedStruct('SetEnv', {
     MEGAREPO_STORE: Schema.String,
-    shell: Schema.optional(Schema.Literal('bash', 'zsh', 'fish')),
+    shell: Schema.optional(Schema.Literals(['bash', 'zsh', 'fish'])),
   }),
   /** Set error state */
   Schema.TaggedStruct('SetError', { error: Schema.String, message: Schema.String }),

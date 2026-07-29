@@ -1,8 +1,8 @@
 import { lstatSync } from 'node:fs'
 import * as nodePath from 'node:path'
 
-import { FileSystem } from 'effect/FileSystem'
 import { Effect, Option, Schema } from 'effect'
+import { FileSystem } from 'effect/FileSystem'
 
 import { SessionSourceDiscoveryError } from '../errors.ts'
 import type { SessionSourceAdapter } from '../schema/core.ts'
@@ -10,7 +10,7 @@ import { ArtifactDescriptor, SourceId } from '../schema/core.ts'
 import { makeAppendOnlyJsonlAdapter } from './jsonl.ts'
 
 const TextPart = Schema.Struct({
-  type: Schema.Literal('input_text', 'output_text'),
+  type: Schema.Literals(['input_text', 'output_text']),
   text: Schema.String,
 })
 
@@ -23,7 +23,7 @@ const InputImagePart = Schema.Struct({
 
 const MessageResponsePayload = Schema.Struct({
   type: Schema.Literal('message'),
-  role: Schema.Literal('assistant', 'developer', 'system', 'user'),
+  role: Schema.Literals(['assistant', 'developer', 'system', 'user']),
   content: Schema.Array(Schema.Union([TextPart, InputImagePart])),
 })
 

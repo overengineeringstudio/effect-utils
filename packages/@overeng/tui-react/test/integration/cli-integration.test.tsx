@@ -13,14 +13,7 @@ import { detectOutputMode } from '../../src/effect/OutputMode.node.ts'
 import { createTuiApp, run, useTuiAtomValue, Box, Text, testModeLayer } from '../../src/mod.tsx'
 
 const parseJson = (json: string) =>
-  Schema.decodeSync(
-    Schema.fromJsonString(
-      Schema.Record({
-        key: Schema.String,
-        value: Schema.Unknown,
-      }),
-    ),
-  )(json)
+  Schema.decodeSync(Schema.fromJsonString(Schema.Record(Schema.String, Schema.Unknown)))(json)
 
 // =============================================================================
 // Test State Schema (simulating a deploy command)
@@ -35,7 +28,7 @@ const DeployState = Schema.Union([
     services: Schema.Array(
       Schema.Struct({
         name: Schema.String,
-        status: Schema.Literal('pending', 'deploying', 'healthy'),
+        status: Schema.Literals(['pending', 'deploying', 'healthy']),
       }),
     ),
     logs: Schema.Array(Schema.String),
@@ -44,7 +37,7 @@ const DeployState = Schema.Union([
     services: Schema.Array(
       Schema.Struct({
         name: Schema.String,
-        result: Schema.Literal('updated', 'unchanged'),
+        result: Schema.Literals(['updated', 'unchanged']),
         duration: Schema.Number,
       }),
     ),
@@ -64,20 +57,20 @@ const DeployAction = Schema.Union([
     services: Schema.Array(
       Schema.Struct({
         name: Schema.String,
-        status: Schema.Literal('pending', 'deploying', 'healthy'),
+        status: Schema.Literals(['pending', 'deploying', 'healthy']),
       }),
     ),
     logs: Schema.Array(Schema.String),
   }),
   Schema.TaggedStruct('UpdateService', {
     index: Schema.Number,
-    status: Schema.Literal('pending', 'deploying', 'healthy'),
+    status: Schema.Literals(['pending', 'deploying', 'healthy']),
   }),
   Schema.TaggedStruct('Complete', {
     services: Schema.Array(
       Schema.Struct({
         name: Schema.String,
-        result: Schema.Literal('updated', 'unchanged'),
+        result: Schema.Literals(['updated', 'unchanged']),
         duration: Schema.Number,
       }),
     ),

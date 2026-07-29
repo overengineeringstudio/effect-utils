@@ -13,7 +13,7 @@ import { Schema } from 'effect'
 // =============================================================================
 
 /** Schema for task status values. */
-export const TaskStatus = Schema.Literal('pending', 'running', 'done', 'error')
+export const TaskStatus = Schema.Literals(['pending', 'running', 'done', 'error'])
 
 /** Schema for a single task item with name and status. */
 export const TaskItem = Schema.Struct({

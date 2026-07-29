@@ -31,7 +31,7 @@ export class CanonicalDecodeError extends Schema.TaggedErrorClass<CanonicalDecod
   'Notion.CanonicalDecodeError',
   {
     propertyType: Schema.String,
-    reason: Schema.Literal('unsupported_type', 'malformed_payload'),
+    reason: Schema.Literals(['unsupported_type', 'malformed_payload']),
     message: Schema.String,
   },
 ) {}
@@ -41,7 +41,7 @@ export class CanonicalEncodeError extends Schema.TaggedErrorClass<CanonicalEncod
   'Notion.CanonicalEncodeError',
   {
     tag: Schema.String,
-    reason: Schema.Literal('computed', 'unsupported_remote_shape'),
+    reason: Schema.Literals(['computed', 'unsupported_remote_shape']),
     message: Schema.String,
   },
 ) {}

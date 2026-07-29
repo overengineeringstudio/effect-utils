@@ -230,14 +230,14 @@ const Approval = DurablePromise.for(Decision)
 const Approve = RestateWorkflow.contract({
   name: 'approve',
   def: {
-    state: { status: Schema.Literal('pending', 'approved', 'rejected') },
+    state: { status: Schema.Literals(['pending', 'approved', 'rejected']) },
     payload: { input: Schema.String, success: Schema.Boolean },
     signals: { approve: { input: Decision, success: Schema.Void } },
     queries: { status: { input: Schema.Void, success: Schema.String } },
   },
 })
 const ApproveState = State.for({
-  status: Schema.Literal('pending', 'approved', 'rejected'),
+  status: Schema.Literals(['pending', 'approved', 'rejected']),
 })
 
 /* POSITIVE: `run` writes State + awaits a durable promise; the signal resolves it

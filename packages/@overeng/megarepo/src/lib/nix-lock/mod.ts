@@ -9,9 +9,12 @@
  */
 
 import type { Error as PlatformError } from 'effect'
-import { ChildProcess as Command, type ChildProcessSpawner as CommandExecutor } from 'effect/unstable/process'
-import { FileSystem } from 'effect/FileSystem'
 import { Effect, Option, Schema, type ParseResult } from 'effect'
+import { FileSystem } from 'effect/FileSystem'
+import {
+  ChildProcess as Command,
+  type ChildProcessSpawner as CommandExecutor,
+} from 'effect/unstable/process'
 
 import { EffectPath, type AbsoluteDirPath, type AbsoluteFilePath } from '@overeng/effect-path'
 
@@ -128,10 +131,7 @@ const RawFlakeLockJson = Schema.fromJsonString(
   Schema.mutable(
     Schema.Struct({
       nodes: Schema.mutable(
-        Schema.Record({
-          key: Schema.String,
-          value: Schema.mutable(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
-        }),
+        Schema.Record(Schema.String, Schema.mutable(Schema.Record(Schema.String, Schema.Unknown))),
       ),
       root: Schema.String,
       version: Schema.Number,
@@ -147,7 +147,7 @@ const RawFlakeLockJson = Schema.fromJsonString(
  * output byte-for-byte.
  */
 const RawLockJson = Schema.fromJsonString(
-  Schema.mutable(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+  Schema.mutable(Schema.Record(Schema.String, Schema.Unknown)),
   { space: 2 },
 )
 

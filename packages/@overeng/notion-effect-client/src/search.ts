@@ -17,7 +17,7 @@ import {
 
 /** Search result can be a page or data source */
 const SearchResultSchema = Schema.Struct({
-  object: Schema.Literal('page', 'data_source'),
+  object: Schema.Literals(['page', 'data_source']),
   id: Schema.String,
 }).annotate({ identifier: 'SearchResult' })
 

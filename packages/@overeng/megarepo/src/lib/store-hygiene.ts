@@ -6,9 +6,9 @@
  */
 
 import type { Error as PlatformError } from 'effect'
+import { Effect, Option, Schema } from 'effect'
 import { FileSystem } from 'effect/FileSystem'
 import type { ChildProcessSpawner as CommandExecutor } from 'effect/unstable/process'
-import { Effect, Option, Schema } from 'effect'
 
 import {
   type MegarepoConfig,
@@ -75,7 +75,7 @@ export class StoreHygieneError extends Schema.TaggedErrorClass<StoreHygieneError
     message: Schema.String,
     issues: Schema.Array(
       Schema.Struct({
-        severity: Schema.Literal('error', 'warning', 'info'),
+        severity: Schema.Literals(['error', 'warning', 'info']),
         type: Schema.String,
         memberName: Schema.String,
         message: Schema.String,

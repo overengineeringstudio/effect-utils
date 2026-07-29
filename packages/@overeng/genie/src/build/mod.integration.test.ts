@@ -3,10 +3,10 @@ import * as os from 'node:os'
 import nodePath from 'node:path'
 
 import { NodeServices } from '@effect/platform-node'
-import { ChildProcess as Command } from 'effect/unstable/process'
+import { Chunk, Effect, Schema, Stream } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import * as Path from 'effect/Path'
-import { Chunk, Effect, Schema, Stream } from 'effect'
+import { ChildProcess as Command } from 'effect/unstable/process'
 import { expect } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'
@@ -16,7 +16,7 @@ import { GenieApp } from './app.ts'
 /** Schema for parsing generated package.json in tests */
 const GeneratedPackageJson = Schema.Struct({
   _genieLocation: Schema.optional(Schema.String),
-  dependencies: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+  dependencies: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
 })
 
 const decodeGeneratedPackageJson = Schema.decodeUnknownSync(

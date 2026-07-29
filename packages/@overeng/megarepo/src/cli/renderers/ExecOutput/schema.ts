@@ -16,7 +16,7 @@ export const MemberExecStatus = Schema.Struct({
   /** Member name */
   name: Schema.String,
   /** Current execution status */
-  status: Schema.Literal('pending', 'running', 'success', 'error', 'skipped'),
+  status: Schema.Literals(['pending', 'running', 'success', 'error', 'skipped']),
   /** Exit code (0 = success, non-zero = error) */
   exitCode: Schema.optional(Schema.Number),
   /** Combined stdout output */
@@ -40,7 +40,7 @@ export const ExecRunningState = Schema.TaggedStruct('Running', {
   /** Command being executed */
   command: Schema.String,
   /** Execution mode */
-  mode: Schema.Literal('parallel', 'sequential'),
+  mode: Schema.Literals(['parallel', 'sequential']),
   /** Verbose mode enabled */
   verbose: Schema.Boolean,
   /** All member statuses */
@@ -55,7 +55,7 @@ export const ExecCompleteState = Schema.TaggedStruct('Complete', {
   /** Command that was executed */
   command: Schema.String,
   /** Execution mode used */
-  mode: Schema.Literal('parallel', 'sequential'),
+  mode: Schema.Literals(['parallel', 'sequential']),
   /** Verbose mode enabled */
   verbose: Schema.Boolean,
   /** All member results */
@@ -105,7 +105,7 @@ export const ExecAction = Schema.Union([
   /** Initialize exec with members */
   Schema.TaggedStruct('Start', {
     command: Schema.String,
-    mode: Schema.Literal('parallel', 'sequential'),
+    mode: Schema.Literals(['parallel', 'sequential']),
     verbose: Schema.Boolean,
     members: Schema.Array(Schema.String),
   }),
@@ -113,7 +113,7 @@ export const ExecAction = Schema.Union([
   /** Update a member's status */
   Schema.TaggedStruct('UpdateMember', {
     name: Schema.String,
-    status: Schema.Literal('pending', 'running', 'success', 'error', 'skipped'),
+    status: Schema.Literals(['pending', 'running', 'success', 'error', 'skipped']),
     exitCode: Schema.optional(Schema.Number),
     stdout: Schema.optional(Schema.String),
     stderr: Schema.optional(Schema.String),

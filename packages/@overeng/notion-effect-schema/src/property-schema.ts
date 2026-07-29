@@ -31,7 +31,7 @@ export const StatusGroupConfig = Schema.Struct({
 export type StatusGroupConfig = typeof StatusGroupConfig.Type
 
 /** Number format options */
-export const NumberFormat = Schema.Literal(
+export const NumberFormat = Schema.Literals([
   'number',
   'number_with_commas',
   'percent',
@@ -71,14 +71,14 @@ export const NumberFormat = Schema.Literal(
   'argentine_peso',
   'uruguayan_peso',
   'singapore_dollar',
-).annotate({
+]).annotate({
   identifier: 'Notion.NumberFormat',
 })
 
 export type NumberFormat = typeof NumberFormat.Type
 
 /** Rollup function options */
-export const RollupFunction = Schema.Literal(
+export const RollupFunction = Schema.Literals([
   'count',
   'count_values',
   'empty',
@@ -101,7 +101,7 @@ export const RollupFunction = Schema.Literal(
   'percent_checked',
   'percent_unchecked',
   'show_original',
-).annotate({
+]).annotate({
   identifier: 'Notion.RollupFunction',
 })
 
@@ -302,7 +302,7 @@ export const RelationPropertySchema = Schema.extend(
   Schema.TaggedStruct('relation', {
     relation: Schema.Struct({
       database_id: NotionUUID,
-      type: Schema.Literal('single_property', 'dual_property'),
+      type: Schema.Literals(['single_property', 'dual_property']),
       single_property: Schema.optional(Schema.Struct({})),
       dual_property: Schema.optional(
         Schema.Struct({

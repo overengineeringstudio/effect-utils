@@ -146,7 +146,7 @@ describe('effect-schema-form-aria baselines (cross-major invariant)', () => {
       name: Schema.String.annotate({ title: 'Name', description: 'Unicode accepted' }),
       count: Schema.optional(Schema.Number).annotate({ title: 'Count' }),
       enabled: Schema.Boolean,
-      mode: Schema.Literal('email', 'push-notification'),
+      mode: Schema.Literals(['email', 'push-notification']),
       items: Schema.Tuple([Schema.String]),
     })
 

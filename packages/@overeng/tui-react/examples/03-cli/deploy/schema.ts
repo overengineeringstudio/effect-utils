@@ -12,14 +12,14 @@ import { Effect, Schema } from 'effect'
 // =============================================================================
 
 /** Schema for the lifecycle status of a service during deployment. */
-export const ServiceStatus = Schema.Literal(
+export const ServiceStatus = Schema.Literals([
   'pending',
   'pulling',
   'starting',
   'healthcheck',
   'healthy',
   'failed',
-)
+])
 /** Inferred type for a service's deployment lifecycle status. */
 export type ServiceStatus = Schema.Schema.Type<typeof ServiceStatus>
 
@@ -39,7 +39,7 @@ export type ServiceProgress = Schema.Schema.Type<typeof ServiceProgress>
 /** Schema for a service's final deployment result (updated, unchanged, rolled-back, or failed). */
 export const ServiceResult = Schema.Struct({
   name: Schema.String,
-  result: Schema.Literal('updated', 'unchanged', 'rolled-back', 'failed'),
+  result: Schema.Literals(['updated', 'unchanged', 'rolled-back', 'failed']),
   duration: Schema.Number,
   error: Schema.optional(Schema.String),
 })
@@ -53,7 +53,7 @@ export type ServiceResult = Schema.Schema.Type<typeof ServiceResult>
 /** Schema for a timestamped log entry with level, message, and optional service context. */
 export const LogEntry = Schema.Struct({
   timestamp: Schema.String,
-  level: Schema.Literal('info', 'warn', 'error', 'debug'),
+  level: Schema.Literals(['info', 'warn', 'error', 'debug']),
   message: Schema.String,
   service: Schema.optional(Schema.String),
 })
@@ -164,14 +164,14 @@ export type DeployResult = Schema.Schema.Type<typeof DeployResult>
 /** Events emitted in NDJSON mode instead of full state snapshots */
 export const DeployNdjsonEvent = Schema.Union([
   Schema.TaggedStruct('PhaseChanged', {
-    phase: Schema.Literal(
+    phase: Schema.Literals([
       'Validating',
       'Progress',
       'Complete',
       'Failed',
       'RollingBack',
       'Interrupted',
-    ),
+    ]),
   }),
   Schema.TaggedStruct('ServiceStatusChanged', {
     name: Schema.String,

@@ -232,7 +232,7 @@ describe('log capture integration', () => {
       const Schema = yield* Effect.promise(() => import('effect').then((m) => m.Schema))
       const App = createTuiApp({
         stateSchema: Schema.Struct({ count: Schema.Number }),
-        actionSchema: Schema.Union(Schema.TaggedStruct('Inc', {})),
+        actionSchema: Schema.Union([Schema.TaggedStruct('Inc', {})]),
         initial: { count: 0 },
         reducer: ({ state, action }) => {
           switch (action._tag) {

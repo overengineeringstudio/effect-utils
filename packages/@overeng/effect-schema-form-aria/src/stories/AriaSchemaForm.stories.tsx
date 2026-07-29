@@ -24,7 +24,7 @@ const UserSchema = Schema.Struct({
     title: 'Age',
     description: 'Optional',
   }),
-  role: Schema.Literal('admin', 'user', 'guest').annotate({ title: 'Role' }),
+  role: Schema.Literals(['admin', 'user', 'guest']).annotate({ title: 'Role' }),
 })
 
 type User = typeof UserSchema.Type
@@ -67,7 +67,7 @@ const LinkedInSchema = Schema.TaggedStruct('linkedin-contacts', {
     title: 'Include Connections',
     description: 'Import your LinkedIn connections',
   }),
-  syncFrequency: Schema.Literal('hourly', 'daily', 'weekly').annotate({
+  syncFrequency: Schema.Literals(['hourly', 'daily', 'weekly']).annotate({
     title: 'Sync Frequency',
   }),
 })
@@ -138,7 +138,7 @@ const SettingsSchema = Schema.Struct({
     description: 'Enable dark theme',
   }),
   notifications: Schema.Boolean.annotate({ title: 'Notifications' }),
-  language: Schema.Literal('en', 'es', 'fr', 'de').annotate({
+  language: Schema.Literals(['en', 'es', 'fr', 'de']).annotate({
     title: 'Language',
   }),
 })
@@ -164,7 +164,7 @@ export const SettingsForm: StoryObj<typeof AriaSchemaForm<Settings>> = {
 // ============================================================================
 
 const CountrySchema = Schema.Struct({
-  country: Schema.Literal('us', 'uk', 'de', 'fr', 'es', 'it', 'nl', 'be', 'at', 'ch').annotate({
+  country: Schema.Literals(['us', 'uk', 'de', 'fr', 'es', 'it', 'nl', 'be', 'at', 'ch']).annotate({
     title: 'Country',
     description: 'Select your country',
   }),
@@ -200,17 +200,17 @@ const ComplexSchema = Schema.Struct({
     title: 'Subscribe to newsletter',
     description: 'Receive weekly updates',
   }),
-  plan: Schema.Literal('free', 'pro', 'enterprise').annotate({
+  plan: Schema.Literals(['free', 'pro', 'enterprise']).annotate({
     title: 'Plan',
   }),
-  region: Schema.Literal(
+  region: Schema.Literals([
     'us-east',
     'us-west',
     'eu-west',
     'eu-central',
     'ap-south',
     'ap-east',
-  ).annotate({
+  ]).annotate({
     title: 'Region',
     description: 'Primary deployment region',
   }),

@@ -39,7 +39,7 @@ export interface AriaSchemaFormProps<T extends Record<string, unknown>> {
  * const UserSchema = Schema.Struct({
  *   name: Schema.String.annotate({ title: 'Name' }),
  *   age: Schema.optional(Schema.Number).annotate({ title: 'Age' }),
- *   role: Schema.Literal('admin', 'user', 'guest'),
+ *   role: Schema.Literals(['admin', 'user', 'guest']),
  * })
  *
  * <AriaSchemaForm

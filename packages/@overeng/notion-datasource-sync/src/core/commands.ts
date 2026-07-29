@@ -24,16 +24,16 @@ import {
 } from './domain.ts'
 
 /** Defines how row membership is determined: `all-data-source-rows` treats any absence as potential removal; `explicit-filter` limits absence proofs to the filter scope. */
-export const QueryMembershipScope = Schema.Literal(
+export const QueryMembershipScope = Schema.Literals([
   'all-data-source-rows',
   'explicit-filter',
-).annotate({ identifier: 'NotionDatasourceSync.QueryMembershipScope' })
+]).annotate({ identifier: 'NotionDatasourceSync.QueryMembershipScope' })
 export type QueryMembershipScope = typeof QueryMembershipScope.Type
 
 /** Canonical sort specification for a Notion query: property-based with an explicit direction. */
 export const CanonicalNotionSort = Schema.TaggedStruct('CanonicalNotionSort', {
   propertyId: PropertyId,
-  direction: Schema.Literal('ascending', 'descending'),
+  direction: Schema.Literals(['ascending', 'descending']),
 }).annotate({ identifier: 'NotionDatasourceSync.CanonicalNotionSort' })
 export type CanonicalNotionSort = typeof CanonicalNotionSort.Type
 
@@ -88,7 +88,7 @@ export type CanonicalDataSourceMetadata = typeof CanonicalDataSourceMetadata.Typ
 export const CanonicalDataSourceProperty = Schema.TaggedStruct('CanonicalDataSourceProperty', {
   propertyId: PropertyId,
   name: PropertyName,
-  type: Schema.Literal(
+  type: Schema.Literals([
     'title',
     'rich_text',
     'number',
@@ -109,7 +109,7 @@ export const CanonicalDataSourceProperty = Schema.TaggedStruct('CanonicalDataSou
     'created_by',
     'last_edited_time',
     'last_edited_by',
-  ),
+  ]),
   configHash: Hash,
 }).annotate({ identifier: 'NotionDatasourceSync.CanonicalDataSourceProperty' })
 export type CanonicalDataSourceProperty = typeof CanonicalDataSourceProperty.Type
@@ -119,7 +119,7 @@ export const CanonicalNotionFilter = Schema.Union([
   Schema.TaggedStruct('none', {}),
   Schema.TaggedStruct('property_value', {
     propertyId: PropertyId,
-    operator: Schema.Literal(
+    operator: Schema.Literals([
       'equals',
       'does_not_equal',
       'contains',
@@ -132,11 +132,11 @@ export const CanonicalNotionFilter = Schema.Union([
       'less_than',
       'on_or_before',
       'on_or_after',
-    ),
+    ]),
     value: Schema.NullOr(CanonicalPropertyValue),
   }),
   Schema.TaggedStruct('compound_hash', {
-    kind: Schema.Literal('and', 'or'),
+    kind: Schema.Literals(['and', 'or']),
     expressionHash: Hash,
   }),
 ]).annotate({ identifier: 'NotionDatasourceSync.CanonicalNotionFilter' })
@@ -171,7 +171,7 @@ export const QueryRowsPage = Schema.TaggedStruct('QueryRowsPage', {
       pageId: PageId,
       dataSourceId: Schema.optional(DataSourceId),
       propertiesHash: Hash,
-      propertyValuesJson: Schema.optional(Schema.Record({ key: PropertyId, value: Schema.String })),
+      propertyValuesJson: Schema.optional(Schema.Record(PropertyId, Schema.String)),
       lastEditedTime: Schema.DateTimeUtc,
       inTrash: Schema.Boolean,
     }),
@@ -208,7 +208,7 @@ export const PatchPagePropertiesCommand = Schema.TaggedStruct('PatchPageProperti
   commandId: CommandId,
   pageId: PageId,
   basePropertiesHash: Hash,
-  propertyPatch: Schema.Record({ key: PropertyId, value: CanonicalPropertyValue }),
+  propertyPatch: Schema.Record(PropertyId, CanonicalPropertyValue),
 }).annotate({ identifier: 'NotionDatasourceSync.PatchPagePropertiesCommand' })
 export type PatchPagePropertiesCommand = typeof PatchPagePropertiesCommand.Type
 
@@ -218,7 +218,7 @@ export const CreatePageCommand = Schema.TaggedStruct('CreatePageCommand', {
   dataSourceId: DataSourceId,
   clientRequestKey: Schema.Trimmed.check(Schema.isNonEmpty()),
   baseSchemaHash: Hash,
-  initialProperties: Schema.Record({ key: PropertyId, value: CanonicalPropertyValue }),
+  initialProperties: Schema.Record(PropertyId, CanonicalPropertyValue),
 }).annotate({ identifier: 'NotionDatasourceSync.CreatePageCommand' })
 export type CreatePageCommand = typeof CreatePageCommand.Type
 
@@ -283,7 +283,7 @@ export const SchemaPatchOperation = Schema.Union([
   }),
   Schema.TaggedStruct('AddSelectOptions', {
     propertyId: PropertyId,
-    propertyType: Schema.Literal('select', 'multi_select'),
+    propertyType: Schema.Literals(['select', 'multi_select']),
     existingOptions: Schema.Array(CanonicalOptionValue),
     newOptions: Schema.Array(CanonicalOptionValue),
   }),
@@ -304,11 +304,9 @@ export const PatchDataSourceSchemaCommand = Schema.TaggedStruct('PatchDataSource
   commandId: CommandId,
   dataSourceId: DataSourceId,
   baseSchemaHash: Hash,
-  schemaPatch: Schema.Record({ key: PropertyId, value: CanonicalDataSourceProperty }),
+  schemaPatch: Schema.Record(PropertyId, CanonicalDataSourceProperty),
   operations: Schema.Array(SchemaPatchOperation).pipe(
-    Schema.withDecodingDefaultType(
-      Effect.sync(() => [] as ReadonlyArray<SchemaPatchOperation>),
-    ),
+    Schema.withDecodingDefaultType(Effect.sync(() => [] as ReadonlyArray<SchemaPatchOperation>)),
     Schema.withConstructorDefault(Effect.sync(() => [] as ReadonlyArray<SchemaPatchOperation>)),
   ),
 }).annotate({ identifier: 'NotionDatasourceSync.PatchDataSourceSchemaCommand' })
@@ -385,7 +383,7 @@ export const BodyIntent = Schema.TaggedStruct('BodyIntent', {
 export type BodyIntent = typeof BodyIntent.Type
 
 /** Named reason for a body conflict; maps directly to the `GuardName` values that can block a body push. */
-export const BodyConflictReason = Schema.Literal(
+export const BodyConflictReason = Schema.Literals([
   'StaleSurfaceBase',
   'BodyLossyRemote',
   'MarkdownUnknownBlocksAmbiguous',
@@ -394,7 +392,7 @@ export const BodyConflictReason = Schema.Literal(
   'MarkdownSyncedPageUnsupported',
   'BodyAdapterConflict',
   'BodyAdapterNonBodyMutation',
-).annotate({ identifier: 'NotionDatasourceSync.BodyConflictReason' })
+]).annotate({ identifier: 'NotionDatasourceSync.BodyConflictReason' })
 export type BodyConflictReason = typeof BodyConflictReason.Type
 
 /** Conflict detected by the body adapter between local and remote body states; prevents the push from proceeding without resolution. */

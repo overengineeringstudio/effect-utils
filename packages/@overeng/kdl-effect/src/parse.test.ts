@@ -17,7 +17,7 @@ describe('parseKdl', () => {
 
     it('decodes nested struct', () => {
       const MySchema = Schema.Struct({
-        members: Schema.Record({ key: Schema.String, value: Schema.String }),
+        members: Schema.Record(Schema.String, Schema.String),
       })
 
       const result = Schema.decodeUnknownSync(parseKdl(MySchema))(
@@ -96,7 +96,7 @@ describe('parseKdl', () => {
 
     it('round-trips nested struct', () => {
       const MySchema = Schema.Struct({
-        members: Schema.Record({ key: Schema.String, value: Schema.String }),
+        members: Schema.Record(Schema.String, Schema.String),
       })
 
       const original = { members: { foo: 'bar', baz: 'qux' } }
@@ -131,7 +131,7 @@ describe('parseKdl', () => {
   describe('edge cases', () => {
     it('decodes empty children block as empty object', () => {
       const MySchema = Schema.Struct({
-        settings: Schema.Record({ key: Schema.String, value: Schema.Unknown }),
+        settings: Schema.Record(Schema.String, Schema.Unknown),
       })
 
       const result = Schema.decodeUnknownSync(parseKdl(MySchema))('settings {}')
@@ -160,7 +160,7 @@ describe('parseKdl', () => {
 
     it('normalizes record values with array schemas', () => {
       const MySchema = Schema.Struct({
-        groups: Schema.Record({ key: Schema.String, value: Schema.Array(Schema.String) }),
+        groups: Schema.Record(Schema.String, Schema.Array(Schema.String)),
       })
 
       const result = Schema.decodeUnknownSync(parseKdl(MySchema))('groups {\n  admin "alice"\n}')

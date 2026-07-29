@@ -18,7 +18,7 @@ import { fidelityCorpusData } from './corpus/fidelity-corpus.ts'
  */
 
 /** R33 relation an entry asserts against its own round-trip or a sibling. */
-export const CorpusRelation = Schema.Literal('equal', 'distinct_from').annotate({
+export const CorpusRelation = Schema.Literals(['equal', 'distinct_from']).annotate({
   identifier: 'NotionMd.Corpus.Relation',
 })
 

@@ -88,9 +88,10 @@ export const reservedGuardNames = [
 export type ReservedGuardName = (typeof reservedGuardNames)[number]
 
 /** Exhaustive set of named safety guards; each guard represents a distinct safety check the sync engine may enforce. */
-export const GuardName = Schema.Literal(...propertyWriteGuardNames, ...syncOnlyGuardNames).annotate(
-  { identifier: 'NotionDatasourceSync.GuardName' },
-)
+export const GuardName = Schema.Literals([
+  ...propertyWriteGuardNames,
+  ...syncOnlyGuardNames,
+]).annotate({ identifier: 'NotionDatasourceSync.GuardName' })
 export type GuardName = typeof GuardName.Type
 
 /** Tagged-union outcome of a guard evaluation: `allowed` means the operation may proceed; `blocked` carries the guard name and reason. */
@@ -106,7 +107,7 @@ export type GuardDecision = typeof GuardDecision.Type
 /** Structured diagnostic payload attached to a guard block; provides a human-readable summary and key/value evidence for debugging. */
 export const SafeDiagnostic = Schema.TaggedStruct('SafeDiagnostic', {
   summary: Schema.Trimmed.check(Schema.isNonEmpty()),
-  evidence: Schema.Record({ key: Schema.String, value: Schema.String }),
+  evidence: Schema.Record(Schema.String, Schema.String),
 }).annotate({ identifier: 'NotionDatasourceSync.SafeDiagnostic' })
 export type SafeDiagnostic = typeof SafeDiagnostic.Type
 

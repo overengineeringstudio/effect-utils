@@ -89,7 +89,7 @@ const trackOutPathArg = Args.string('path').pipe(
   Args.optional,
 )
 
-const SourceLiteral = Schema.Literal('local', 'remote', 'shared').annotate({
+const SourceLiteral = Schema.Literals(['local', 'remote', 'shared']).annotate({
   identifier: 'NotionMd.Cli.Source',
 })
 

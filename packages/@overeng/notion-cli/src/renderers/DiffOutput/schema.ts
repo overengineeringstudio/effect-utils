@@ -2,7 +2,7 @@ import { Schema } from 'effect'
 
 const PropertyChange = Schema.Struct({
   name: Schema.String,
-  type: Schema.Literal('added', 'removed', 'type_changed'),
+  type: Schema.Literals(['added', 'removed', 'type_changed']),
   liveType: Schema.optional(Schema.String),
   liveTransform: Schema.optional(Schema.String),
   generatedTransformKey: Schema.optional(Schema.String),

@@ -147,7 +147,7 @@ export type NoticonColor = typeof NoticonColor.Type
  * Can be used in date filters where absolute dates are accepted,
  * e.g. `{ property: "Due Date", date: { on_or_after: "today" } }`.
  */
-export const RelativeDate = Schema.Literal(
+export const RelativeDate = Schema.Literals([
   'today',
   'tomorrow',
   'yesterday',
@@ -155,7 +155,7 @@ export const RelativeDate = Schema.Literal(
   'one_week_from_now',
   'one_month_ago',
   'one_month_from_now',
-).annotate({
+]).annotate({
   identifier: 'Notion.RelativeDate',
   title: 'Relative Date',
   description: 'Relative date values for database query filters.',

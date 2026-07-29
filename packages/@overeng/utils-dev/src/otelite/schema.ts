@@ -14,7 +14,7 @@ import { Schema } from 'effect'
  * - `trace_id` / `span_id` / `parent_span_id` are nullable on row schemas.
  */
 
-const Attrs = Schema.Record({ key: Schema.String, value: Schema.String }).annotate({
+const Attrs = Schema.Record(Schema.String, Schema.String).annotate({
   identifier: 'Otelite.Attrs',
 })
 
@@ -197,7 +197,7 @@ export type MetricSummary = typeof MetricSummary.Type
 export const LogSummary = Schema.Struct({
   schema: Schema.Literal('otelite.log-summary/v1'),
   total: Schema.Number,
-  by_service: Schema.Record({ key: Schema.String, value: Schema.Number }),
-  by_severity: Schema.Record({ key: Schema.String, value: Schema.Number }),
+  by_service: Schema.Record(Schema.String, Schema.Number),
+  by_severity: Schema.Record(Schema.String, Schema.Number),
 }).annotate({ identifier: 'Otelite.LogSummary' })
 export type LogSummary = typeof LogSummary.Type

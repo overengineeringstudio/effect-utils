@@ -1,5 +1,5 @@
-import type { FileSystem } from 'effect/FileSystem'
 import { Effect, Schema } from 'effect'
+import type { FileSystem } from 'effect/FileSystem'
 
 import { descriptorForUtf8, type ContentDescriptor } from '@overeng/content-address'
 import { describeBodyLossyRefusal, type BodyCompleteness } from '@overeng/notion-core'
@@ -23,7 +23,7 @@ import { NmdStateStore } from './state-store.ts'
 export class NotionMdBodyConflictError extends Schema.TaggedErrorClass<NotionMdBodyConflictError>()(
   'NotionMdBodyConflictError',
   {
-    operation: Schema.Literal('replace_remote_body_verified', 'settle_verified_body_push'),
+    operation: Schema.Literals(['replace_remote_body_verified', 'settle_verified_body_push']),
     page_id: Schema.String,
     path: Schema.optional(Schema.String),
     expected_body_hash: Schema.String,

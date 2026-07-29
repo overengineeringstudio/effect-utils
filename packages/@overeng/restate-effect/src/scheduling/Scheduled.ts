@@ -148,7 +148,7 @@ export type WakePayload = Schema.Schema.Type<typeof WakePayload>
  * `cycle` body reads/writes via the typed `state` it is handed.
  * ════════════════════════════════════════════════════════════════════════ */
 
-const StatusSchema = Schema.Literal('idle', 'running', 'stopped', 'failed', 'completed')
+const StatusSchema = Schema.Literals(['idle', 'running', 'stopped', 'failed', 'completed'])
 
 /** The loop control-plane state, persisted in the Object's typed K/V State. */
 const ControlState = {

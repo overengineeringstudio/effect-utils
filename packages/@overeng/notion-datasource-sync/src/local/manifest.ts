@@ -42,7 +42,7 @@ export const hiddenStateDirectoryName = join('.notion', NAMESPACE_VERSION)
  * Authority mode recorded in the manifest. Governs whether local edits, remote
  * state, or a converged shared view is authoritative for a workspace.
  */
-export const AuthorityMode = Schema.Literal('local', 'remote', 'shared').annotate({
+export const AuthorityMode = Schema.Literals(['local', 'remote', 'shared']).annotate({
   identifier: 'NotionDatasourceSync.AuthorityMode',
 })
 export type AuthorityMode = typeof AuthorityMode.Type

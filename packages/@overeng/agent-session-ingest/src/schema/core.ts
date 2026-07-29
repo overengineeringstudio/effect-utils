@@ -1,6 +1,6 @@
-import type { FileSystem } from 'effect/FileSystem'
 import type { Effect } from 'effect'
 import { Schema } from 'effect'
+import type { FileSystem } from 'effect/FileSystem'
 
 import type { SessionIngestError, SessionSourceDiscoveryError } from '../errors.ts'
 
@@ -28,7 +28,7 @@ export const ArtifactPath = Schema.String.pipe(
 export type ArtifactPath = typeof ArtifactPath.Type
 
 /** Artifact lifecycle classification used to decide how aggressively to reprocess it. */
-export const ArtifactStatus = Schema.Literal('open', 'stable', 'finalized').annotate({
+export const ArtifactStatus = Schema.Literals(['open', 'stable', 'finalized']).annotate({
   identifier: 'AgentSessionIngest.ArtifactStatus',
 })
 export type ArtifactStatus = typeof ArtifactStatus.Type

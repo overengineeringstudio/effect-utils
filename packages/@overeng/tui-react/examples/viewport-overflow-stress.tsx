@@ -214,7 +214,7 @@ const VerticalState = Schema.Union([
   Schema.TaggedStruct('Showing', { count: Schema.Number }),
   Schema.TaggedStruct('Interrupted', {}),
 ])
-const VerticalAction = Schema.Union(Schema.TaggedStruct('Interrupted', {}))
+const VerticalAction = Schema.Union([Schema.TaggedStruct('Interrupted', {})])
 const verticalReducer = ({
   state,
   action,

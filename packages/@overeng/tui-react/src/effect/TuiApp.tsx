@@ -353,10 +353,7 @@ const createInterruptedAction = <A,>(schema: Schema.ConstraintCodec<A>): A | nul
  * ```typescript
  * const CounterApp = createTuiApp({
  *   stateSchema: Schema.Struct({ count: Schema.Number }),
- *   actionSchema: Schema.Union(
- *     Schema.TaggedStruct('Inc', {}),
- *     Schema.TaggedStruct('Dec', {}),
- *   ),
+ *   actionSchema: Schema.Union([*     Schema.TaggedStruct('Inc', {}), *     Schema.TaggedStruct('Dec', {}), *]),
  *   initial: { count: 0 },
  *   reducer: ({ state, action }) => {
  *     switch (action._tag) {

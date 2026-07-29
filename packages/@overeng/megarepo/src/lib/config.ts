@@ -13,8 +13,8 @@
  * - Local path: "./path", "../path", "/absolute/path"
  */
 
-import { FileSystem } from 'effect/FileSystem'
 import { Effect, JsonSchema, Option, Schema } from 'effect'
+import { FileSystem } from 'effect/FileSystem'
 
 import {
   EffectPath,
@@ -91,7 +91,7 @@ export class VscodeGeneratorConfig extends Schema.Class<VscodeGeneratorConfig>(
    *
    * @example { "editor.formatOnSave": true }
    */
-  settings: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+  settings: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
 }) {}
 
 /**
@@ -152,7 +152,7 @@ export class MegarepoConfig extends Schema.Class<MegarepoConfig>('MegarepoConfig
   $schema: Schema.optional(Schema.String),
 
   /** Members: repos to include in this megarepo (name -> source string) */
-  members: Schema.Record({ key: Schema.String, value: Schema.String }),
+  members: Schema.Record(Schema.String, Schema.String),
 
   /** Generators: optional config file generation */
   generators: Schema.optional(GeneratorsConfig),

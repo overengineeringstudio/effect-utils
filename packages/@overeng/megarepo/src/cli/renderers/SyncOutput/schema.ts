@@ -20,7 +20,7 @@ import {
 
 /** Schema for a store hygiene issue shown in pre-flight failure output */
 export const PreflightIssue = Schema.Struct({
-  severity: Schema.Literal('error', 'warning', 'info'),
+  severity: Schema.Literals(['error', 'warning', 'info']),
   type: Schema.String,
   memberName: Schema.String,
   message: Schema.String,
@@ -81,7 +81,7 @@ export type LockSyncUpdate = Schema.Schema.Type<typeof LockSyncUpdate>
 
 /** Schema for lock file sync result */
 export const LockFileSyncResult = Schema.Struct({
-  type: Schema.Literal('flake.lock', 'devenv.lock', 'megarepo.lock', 'flake.nix', 'devenv.yaml'),
+  type: Schema.Literals(['flake.lock', 'devenv.lock', 'megarepo.lock', 'flake.nix', 'devenv.yaml']),
   updatedInputs: Schema.Array(LockFileUpdate),
 })
 /** Inferred type for a lock file sync result. */
@@ -102,13 +102,13 @@ export type MemberLockSyncResult = Schema.Schema.Type<typeof MemberLockSyncResul
 // =============================================================================
 
 /** Schema for the sync command outcome/progress state. */
-export const SyncOutcome = Schema.Literal(
+export const SyncOutcome = Schema.Literals([
   'Syncing',
   'Success',
   'Error',
   'Interrupted',
   'PreflightFailed',
-)
+])
 /** Inferred type for sync outcome literals. */
 export type SyncOutcome = Schema.Schema.Type<typeof SyncOutcome>
 
@@ -119,7 +119,7 @@ export type SyncOutcome = Schema.Schema.Type<typeof SyncOutcome>
 /** Schema for a log entry displayed during TTY progress output. */
 export const SyncLogEntry = Schema.Struct({
   id: Schema.String,
-  type: Schema.Literal('info', 'warn', 'error'),
+  type: Schema.Literals(['info', 'warn', 'error']),
   message: Schema.String,
 })
 /** Inferred type for a sync log entry. */
@@ -230,7 +230,7 @@ export const SyncAction = Schema.Union([
 
   /** Add a log entry */
   Schema.TaggedStruct('AddLog', {
-    type: Schema.Literal('info', 'warn', 'error'),
+    type: Schema.Literals(['info', 'warn', 'error']),
     message: Schema.String,
   }),
 

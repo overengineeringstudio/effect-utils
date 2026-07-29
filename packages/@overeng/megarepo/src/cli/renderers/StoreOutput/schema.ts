@@ -22,7 +22,7 @@ export type StoreRepo = Schema.Schema.Type<typeof StoreRepo>
 /** Schema for the result of fetching a single repository in the store. */
 export const StoreFetchResult = Schema.Struct({
   path: Schema.String,
-  status: Schema.Literal('fetched', 'error'),
+  status: Schema.Literals(['fetched', 'error']),
   message: Schema.optional(Schema.String),
 })
 
@@ -38,7 +38,7 @@ export type StoreFetchResult = Schema.Schema.Type<typeof StoreFetchResult>
  * `reaped` (an archive past retention hard-deleted), and `kept` (a cold named
  * worktree deliberately left in place, e.g. live/not-stale/lossless/grace).
  */
-export const StoreGcResultStatus = Schema.Literal(
+export const StoreGcResultStatus = Schema.Literals([
   'removed',
   'skipped_dirty',
   'skipped_in_use',
@@ -46,7 +46,7 @@ export const StoreGcResultStatus = Schema.Literal(
   'archived',
   'reaped',
   'kept',
-)
+])
 
 /** Inferred type for a GC result status. */
 export type StoreGcResultStatus = Schema.Schema.Type<typeof StoreGcResultStatus>
@@ -55,7 +55,7 @@ export type StoreGcResultStatus = Schema.Schema.Type<typeof StoreGcResultStatus>
 export const StoreGcResult = Schema.Struct({
   repo: Schema.String,
   ref: Schema.String,
-  refType: Schema.Literal('heads', 'tags', 'commits'),
+  refType: Schema.Literals(['heads', 'tags', 'commits']),
   path: Schema.String,
   status: StoreGcResultStatus,
   message: Schema.optional(Schema.String),
@@ -78,15 +78,15 @@ export type StoreGcResult = Schema.Schema.Type<typeof StoreGcResult>
 
 /** Schema for a health issue detected on a worktree (dirty, unpushed, orphaned, etc.). */
 export const StoreWorktreeIssue = Schema.Struct({
-  type: Schema.Literal(
+  type: Schema.Literals([
     'dirty',
     'unpushed',
     'ref_mismatch',
     'missing_bare',
     'broken_worktree',
     'orphaned',
-  ),
-  severity: Schema.Literal('error', 'warning', 'info'),
+  ]),
+  severity: Schema.Literals(['error', 'warning', 'info']),
   message: Schema.String,
 })
 
@@ -97,7 +97,7 @@ export type StoreWorktreeIssue = Schema.Schema.Type<typeof StoreWorktreeIssue>
 export const StoreWorktreeStatus = Schema.Struct({
   repo: Schema.String,
   ref: Schema.String,
-  refType: Schema.Literal('heads', 'tags', 'commits'),
+  refType: Schema.Literals(['heads', 'tags', 'commits']),
   path: Schema.String,
   issues: Schema.Array(StoreWorktreeIssue),
 })
@@ -107,7 +107,7 @@ export type StoreWorktreeStatus = Schema.Schema.Type<typeof StoreWorktreeStatus>
 
 /** Schema for warnings shown before garbage collection (e.g., not in megarepo). */
 export const StoreGcWarning = Schema.Struct({
-  type: Schema.Literal('not_in_megarepo', 'only_current_megarepo', 'custom'),
+  type: Schema.Literals(['not_in_megarepo', 'only_current_megarepo', 'custom']),
   message: Schema.optional(Schema.String),
 })
 
@@ -169,7 +169,7 @@ export const StoreGcState = Schema.TaggedStruct('Gc', {
  * Add state - add to store
  */
 export const StoreAddState = Schema.TaggedStruct('Add', {
-  status: Schema.Literal('added', 'already_exists', 'created'),
+  status: Schema.Literals(['added', 'already_exists', 'created']),
   source: Schema.String,
   ref: Schema.String,
   commit: Schema.optional(Schema.String),
@@ -180,7 +180,7 @@ export const StoreAddState = Schema.TaggedStruct('Add', {
 export const StoreFixResult = Schema.Struct({
   memberName: Schema.String,
   issueType: Schema.String,
-  status: Schema.Literal('fixed', 'skipped', 'error'),
+  status: Schema.Literals(['fixed', 'skipped', 'error']),
   message: Schema.String,
 })
 
@@ -316,7 +316,7 @@ export const StoreAction = Schema.Union([
     interrupted: Schema.optional(Schema.Boolean),
   }),
   Schema.TaggedStruct('SetAdd', {
-    status: Schema.Literal('added', 'already_exists', 'created'),
+    status: Schema.Literals(['added', 'already_exists', 'created']),
     source: Schema.String,
     ref: Schema.String,
     commit: Schema.optional(Schema.String),

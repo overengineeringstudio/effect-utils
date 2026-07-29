@@ -28,7 +28,7 @@ const State = Schema.Union([
 ])
 type State = typeof State.Type
 
-const Action = Schema.Union(Schema.TaggedStruct('Approve', { output: Schema.String }))
+const Action = Schema.Union([Schema.TaggedStruct('Approve', { output: Schema.String })])
 type Action = typeof Action.Type
 
 const App: TuiApp<State, Action> = createTuiApp({

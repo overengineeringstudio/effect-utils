@@ -3,7 +3,7 @@ import { Schema } from 'effect'
 const DatabaseEntry = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
-  status: Schema.Literal('pending', 'introspecting', 'generating', 'writing', 'done', 'error'),
+  status: Schema.Literals(['pending', 'introspecting', 'generating', 'writing', 'done', 'error']),
   outputPath: Schema.optional(Schema.String),
 })
 
@@ -41,7 +41,7 @@ export const GenerateConfigAction = Schema.Union([
   }),
   Schema.TaggedStruct('UpdateDatabase', {
     id: Schema.String,
-    status: Schema.Literal('pending', 'introspecting', 'generating', 'writing', 'done', 'error'),
+    status: Schema.Literals(['pending', 'introspecting', 'generating', 'writing', 'done', 'error']),
     name: Schema.optional(Schema.String),
   }),
   Schema.TaggedStruct('SetDone', {

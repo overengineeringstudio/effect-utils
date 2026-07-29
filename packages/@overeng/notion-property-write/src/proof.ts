@@ -39,7 +39,7 @@ import {
  * established (e.g. shared mode sets `settlement: 'present'`, local mode sets
  * `settlement: 'not-required'`).
  */
-export const PropertyWriteMode = Schema.Literal('local', 'remote', 'shared').annotate({
+export const PropertyWriteMode = Schema.Literals(['local', 'remote', 'shared']).annotate({
   identifier: 'Notion.PropertyWrite.Mode',
 })
 export type PropertyWriteMode = typeof PropertyWriteMode.Type
@@ -85,24 +85,24 @@ export type PropertyWriteBaseCompleteness = typeof PropertyWriteBaseCompleteness
 
 /** Availability of relation targets referenced by the write (explicit literal, never optional). */
 export const PropertyWriteRelationAvailability = Schema.Struct({
-  status: Schema.Literal(
+  status: Schema.Literals([
     'not-applicable',
     'all-available',
     'targets-unavailable',
     'related-data-source-unshared',
-  ),
+  ]),
 }).annotate({ identifier: 'Notion.PropertyWrite.RelationAvailability' })
 export type PropertyWriteRelationAvailability = typeof PropertyWriteRelationAvailability.Type
 
 /** Whether the local surface agrees with the freshly observed remote surface (explicit literal). */
 export const PropertyWriteLocalConvergence = Schema.Struct({
-  status: Schema.Literal('not-applicable', 'converged', 'disagrees'),
+  status: Schema.Literals(['not-applicable', 'converged', 'disagrees']),
 }).annotate({ identifier: 'Notion.PropertyWrite.LocalConvergence' })
 export type PropertyWriteLocalConvergence = typeof PropertyWriteLocalConvergence.Type
 
 /** Whether a required read-after-write settlement is present (explicit literal). */
 export const PropertyWriteSettlement = Schema.Struct({
-  status: Schema.Literal('not-required', 'present', 'missing'),
+  status: Schema.Literals(['not-required', 'present', 'missing']),
 }).annotate({ identifier: 'Notion.PropertyWrite.Settlement' })
 export type PropertyWriteSettlement = typeof PropertyWriteSettlement.Type
 

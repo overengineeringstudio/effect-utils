@@ -229,7 +229,7 @@ export const DataSourceSchema = Schema.Struct({
   /** The top-level parent of the owning database (page, block, or workspace) */
   database_parent: DatabaseParent,
   /** Property schema definitions */
-  properties: Schema.Record({ key: Schema.String, value: Schema.Unknown }),
+  properties: Schema.Record(Schema.String, Schema.Unknown),
   is_inline: Schema.Boolean,
   in_trash: Schema.Boolean,
   url: Schema.String,
@@ -271,7 +271,7 @@ export const DatabaseSchema = Schema.Struct({
   /** Data sources (collections) within the database */
   data_sources: Schema.optional(Schema.Array(DataSourceRef)),
   /** Property schema definitions - moved to data source level but may still appear */
-  properties: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+  properties: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
 }).annotate({
   identifier: 'Notion.DatabaseSchema',
   [docsPath]: 'database',
@@ -303,7 +303,7 @@ export const Page = Schema.Struct({
   url: Schema.String,
   public_url: Schema.NullOr(Schema.String),
   /** Page properties - structure depends on parent type */
-  properties: Schema.Record({ key: Schema.String, value: Schema.Unknown }),
+  properties: Schema.Record(Schema.String, Schema.Unknown),
 }).annotate({
   identifier: 'Notion.Page',
   [docsPath]: 'page',
@@ -318,7 +318,7 @@ export const PagePropertyItem = Schema.extend(
     id: Schema.String,
     type: Schema.String,
   }),
-  Schema.Record({ key: Schema.String, value: Schema.Unknown }),
+  Schema.Record(Schema.String, Schema.Unknown),
 ).annotate({
   identifier: 'Notion.PagePropertyItem',
   [docsPath]: 'page-property-item',
@@ -354,7 +354,7 @@ export type PagePropertyItemResponse = typeof PagePropertyItemResponse.Type
 // -----------------------------------------------------------------------------
 
 /** All supported block types */
-export const BlockType = Schema.Literal(
+export const BlockType = Schema.Literals([
   // Text & Content
   'paragraph',
   'heading_1',
@@ -363,21 +363,18 @@ export const BlockType = Schema.Literal(
   'heading_4',
   'quote',
   'callout',
-  'code',
-  // Lists
+  'code', // Lists
   'bulleted_list_item',
   'numbered_list_item',
   'to_do',
-  'toggle',
-  // Media
+  'toggle', // Media
   'image',
   'video',
   'audio',
   'file',
   'pdf',
   'embed',
-  'bookmark',
-  // Organization
+  'bookmark', // Organization
   'table',
   'table_row',
   'column_list',
@@ -385,8 +382,7 @@ export const BlockType = Schema.Literal(
   'divider',
   'table_of_contents',
   'breadcrumb',
-  'tab',
-  // Advanced
+  'tab', // Advanced
   'synced_block',
   'child_page',
   'child_database',
@@ -394,10 +390,9 @@ export const BlockType = Schema.Literal(
   'template',
   'link_preview',
   'link_to_page',
-  'meeting_notes',
-  // System
+  'meeting_notes', // System
   'unsupported',
-).annotate({
+]).annotate({
   identifier: 'Notion.BlockType',
   [docsPath]: 'block#block-types',
 })
@@ -431,7 +426,7 @@ const BlockBase = Schema.Struct({
  */
 export const Block = Schema.extend(
   BlockBase,
-  Schema.Record({ key: Schema.String, value: Schema.Unknown }),
+  Schema.Record(Schema.String, Schema.Unknown),
 ).annotate({
   identifier: 'Notion.Block',
   [docsPath]: 'block',
@@ -686,7 +681,7 @@ export type Comment = typeof Comment.Type
 // -----------------------------------------------------------------------------
 
 /** Database view types */
-export const ViewType = Schema.Literal(
+export const ViewType = Schema.Literals([
   'table',
   'board',
   'list',
@@ -695,7 +690,7 @@ export const ViewType = Schema.Literal(
   'gallery',
   'form',
   'chart',
-).annotate({
+]).annotate({
   identifier: 'Notion.ViewType',
 })
 

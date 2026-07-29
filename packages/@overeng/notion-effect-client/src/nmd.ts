@@ -71,12 +71,12 @@ export const nmdSyncStateRelativePath = (pageId: string): RelativePath =>
   decodeRelativePath(`${NMD_SYNC_DIRECTORY}/${pageId}.json`)
 
 /** Role of a content-addressed local object referenced by `.nmd` frontmatter. */
-export const NmdObjectRole = Schema.Literal(
+export const NmdObjectRole = Schema.Literals([
   'base_snapshot',
   'storage_payload',
   'file_payload',
   'comment_payload',
-).annotate({
+]).annotate({
   identifier: 'NotionMd.ObjectRole',
 })
 
@@ -126,7 +126,7 @@ export const makeNmdObjectRef = (opts: {
  * - `shared` — bidirectional. The ONLY value that engages the base snapshot +
  *   3-way merge apparatus (R32); must carry a `page_id`.
  */
-export const NmdSource = Schema.Literal('local', 'remote', 'shared').annotate({
+export const NmdSource = Schema.Literals(['local', 'remote', 'shared']).annotate({
   identifier: 'NotionMd.Source',
 })
 
@@ -323,7 +323,7 @@ export const NmdDataSourceBinding = Schema.Struct({
   data_source_id: NotionUUID,
   schema_hash: Sha256Digest,
   title_property: Schema.String,
-  property_ids: Schema.Record({ key: Schema.String, value: Schema.String }),
+  property_ids: Schema.Record(Schema.String, Schema.String),
   read_only_properties: Schema.Array(Schema.String),
 }).annotate({
   identifier: 'NotionMd.DataSourceBinding',
@@ -356,7 +356,7 @@ export type NmdUnsupportedBlockUnit = typeof NmdUnsupportedBlockUnit.Type
 /** File/upload lifecycle unit small enough to keep in frontmatter. */
 export const NmdFileUnit = Schema.TaggedStruct('file_unit', {
   id: Schema.String,
-  role: Schema.Literal('property_file', 'block_file', 'block_image', 'upload'),
+  role: Schema.Literals(['property_file', 'block_file', 'block_image', 'upload']),
   filename: Schema.String,
   content_type: Schema.optional(Schema.String),
   content_length: Schema.optional(Schema.Number),
@@ -415,7 +415,7 @@ export const NmdFrontmatterV1 = Schema.Struct({
     body: NmdBodyState,
     page: NmdPageState,
     data_source: Schema.NullOr(NmdDataSourceBinding),
-    properties: Schema.Record({ key: Schema.String, value: NmdPropertyValue }),
+    properties: Schema.Record(Schema.String, NmdPropertyValue),
     storage: NmdStorage,
   }),
 }).annotate({
@@ -479,7 +479,7 @@ const NmdFrontmatterBody = Schema.Struct({
   url: Schema.optional(Schema.NullOr(Schema.String)),
   parent: NmdParentRef,
   page: NmdPageState,
-  properties: Schema.Record({ key: Schema.String, value: NmdWritablePropertyValue }),
+  properties: Schema.Record(Schema.String, NmdWritablePropertyValue),
   /**
    * Optional compact, non-authoritative property identity hints (R09–R14).
    * Keyed by visible property name; each descriptor carries the stable
@@ -520,13 +520,13 @@ export const NmdSyncStateV1 = Schema.Struct({
   page_id: NotionUUID,
   body: NmdBodyState,
   storage: NmdStorage,
-  read_only_properties: Schema.Record({
-    key: Schema.String,
-    value: Schema.Struct({
+  read_only_properties: Schema.Record(
+    Schema.String,
+    Schema.Struct({
       property_type: Schema.String,
       value: Schema.Unknown,
     }),
-  }),
+  ),
   data_source: Schema.NullOr(NmdDataSourceBinding),
 }).annotate({ identifier: 'NotionMd.SyncStateV1' })
 

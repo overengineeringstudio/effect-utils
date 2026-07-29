@@ -108,7 +108,7 @@ export const BodyEvidenceFingerprint = ContentDigest.pipe(
 export type BodyEvidenceFingerprint = typeof BodyEvidenceFingerprint.Type
 
 /** Completeness classification carried by a remote body evidence-backed identity. */
-export const BodyCompletenessEvidence = Schema.Literal('complete', 'lossy').annotate({
+export const BodyCompletenessEvidence = Schema.Literals(['complete', 'lossy']).annotate({
   identifier: 'NotionDatasourceSync.BodyCompletenessEvidence',
 })
 export type BodyCompletenessEvidence = typeof BodyCompletenessEvidence.Type
@@ -154,7 +154,7 @@ export const NotionPageSize = Schema.Number.pipe(
 export type NotionPageSize = typeof NotionPageSize.Type
 
 /** Named Notion API capability checked during preflight; governs which operations the sync engine may attempt. */
-export const CapabilityName = Schema.Literal(
+export const CapabilityName = Schema.Literals([
   'data_source_retrieve',
   'data_source_query',
   'data_source_metadata_update',
@@ -166,7 +166,7 @@ export const CapabilityName = Schema.Literal(
   'schema_update',
   'page_trash',
   'page_restore',
-).annotate({ identifier: 'NotionDatasourceSync.CapabilityName' })
+]).annotate({ identifier: 'NotionDatasourceSync.CapabilityName' })
 export type CapabilityName = typeof CapabilityName.Type
 
 /** Observed Notion API contract: the version reported by the gateway and the set of capabilities it declared as supported. */
@@ -194,11 +194,11 @@ export const CapabilityPreflightResult = Schema.TaggedStruct('CapabilityPrefligh
 export type CapabilityPreflightResult = typeof CapabilityPreflightResult.Type
 
 /** Observed write behavior for a Notion data-source property. */
-export const DataSourcePropertyWriteClass = Schema.Literal(
+export const DataSourcePropertyWriteClass = Schema.Literals([
   'writable',
   'computed',
   'unsupported',
-).annotate({ identifier: 'NotionDatasourceSync.DataSourcePropertyWriteClass' })
+]).annotate({ identifier: 'NotionDatasourceSync.DataSourcePropertyWriteClass' })
 export type DataSourcePropertyWriteClass = typeof DataSourcePropertyWriteClass.Type
 
 /** Ordered typed schema descriptor observed from Notion's data-source properties map. */
@@ -249,18 +249,18 @@ export const PageSnapshot = Schema.TaggedStruct('PageSnapshot', {
   requestId: NotionRequestId,
   observedAt: Schema.DateTimeUtc,
   propertiesHash: Hash,
-  propertyValuesJson: Schema.optional(Schema.Record({ key: PropertyId, value: Schema.String })),
+  propertyValuesJson: Schema.optional(Schema.Record(PropertyId, Schema.String)),
   inTrash: Schema.Boolean,
 }).annotate({ identifier: 'NotionDatasourceSync.PageSnapshot' })
 export type PageSnapshot = typeof PageSnapshot.Type
 
 /** Reason why a body block could not be fully represented during observation; drives body-safety guard decisions. */
-export const BodyUnknownBlockCause = Schema.Literal(
+export const BodyUnknownBlockCause = Schema.Literals([
   'truncation',
   'permission',
   'unsupported',
   'unknown',
-).annotate({ identifier: 'NotionDatasourceSync.BodyUnknownBlockCause' })
+]).annotate({ identifier: 'NotionDatasourceSync.BodyUnknownBlockCause' })
 export type BodyUnknownBlockCause = typeof BodyUnknownBlockCause.Type
 
 /**
@@ -269,7 +269,7 @@ export type BodyUnknownBlockCause = typeof BodyUnknownBlockCause.Type
  * The `guardBodySafety` and `guardBodyAdapterBoundary` guards reject commands whose adapter
  * touched any surface other than `'body'`.
  */
-export const BodyAdapterMutationSurface = Schema.Literal(
+export const BodyAdapterMutationSurface = Schema.Literals([
   'body',
   'row-property',
   'schema',
@@ -279,14 +279,14 @@ export const BodyAdapterMutationSurface = Schema.Literal(
   'cover',
   'page-metadata',
   'membership',
-).annotate({ identifier: 'NotionDatasourceSync.BodyAdapterMutationSurface' })
+]).annotate({ identifier: 'NotionDatasourceSync.BodyAdapterMutationSurface' })
 export type BodyAdapterMutationSurface = typeof BodyAdapterMutationSurface.Type
 
 /** Safety assessment of a page body at the time it was observed; the `guardBodySafety` guard consumes this to decide whether a push is safe. */
 export const BodySafetySnapshot = Schema.Struct({
   truncated: Schema.Boolean,
   unknownBlockCause: Schema.optional(BodyUnknownBlockCause),
-  selection: Schema.Literal('safe', 'ambiguous'),
+  selection: Schema.Literals(['safe', 'ambiguous']),
   wouldDeleteChildren: Schema.Boolean,
   syncedPageUnsupported: Schema.Boolean,
   adapterConflict: Schema.Boolean,
@@ -433,7 +433,7 @@ export const LocalArtifactObservation = Schema.TaggedStruct('LocalArtifactObserv
   contentHash: Hash,
   bodyContent: Schema.optional(Schema.String),
   observedAt: Schema.DateTimeUtc,
-  state: Schema.Literal('present', 'delete-candidate'),
+  state: Schema.Literals(['present', 'delete-candidate']),
   ownWriteSuppressionToken: Schema.optional(OwnWriteSuppressionToken),
 }).annotate({ identifier: 'NotionDatasourceSync.LocalArtifactObservation' })
 export type LocalArtifactObservation = typeof LocalArtifactObservation.Type
@@ -473,9 +473,7 @@ export const MaterializePlan = Schema.TaggedStruct('MaterializePlan', {
    * that do not supply schema/cell evidence), which keeps the empty-`properties`
    * behavior.
    */
-  writableProperties: Schema.optional(
-    Schema.Record({ key: Schema.String, value: NmdWritablePropertyValueSchema }),
-  ),
+  writableProperties: Schema.optional(Schema.Record(Schema.String, NmdWritablePropertyValueSchema)),
 }).annotate({ identifier: 'NotionDatasourceSync.MaterializePlan' })
 export type MaterializePlan = typeof MaterializePlan.Type
 

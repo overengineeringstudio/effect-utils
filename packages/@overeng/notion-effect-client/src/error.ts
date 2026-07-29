@@ -5,7 +5,7 @@ import { Option, Schema } from 'effect'
  *
  * @see https://developers.notion.com/reference/errors
  */
-export const NotionErrorCode = Schema.Literal(
+export const NotionErrorCode = Schema.Literals([
   'invalid_json',
   'invalid_request_url',
   'invalid_request',
@@ -20,7 +20,7 @@ export const NotionErrorCode = Schema.Literal(
   'service_unavailable',
   'database_connection_unavailable',
   'gateway_timeout',
-)
+])
 
 export type NotionErrorCode = typeof NotionErrorCode.Type
 

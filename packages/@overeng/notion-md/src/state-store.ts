@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto'
 
+import { Context, Effect, Layer, type ParseResult, Schema } from 'effect'
 import { FileSystem } from 'effect/FileSystem'
 import { Path } from 'effect/Path'
-import { Context, Effect, Layer, type ParseResult, Schema } from 'effect'
 
 import {
   makeNmdObjectRef,
@@ -34,7 +34,7 @@ const objectRefs = (syncState: NmdSyncStateV1): readonly NmdObjectRef[] => [
 export const NmdStorageObjectV2 = Schema.Struct({
   version: Schema.Literal(2),
   page_id: Schema.String,
-  reason: Schema.Literal('too_large', 'volatile_url'),
+  reason: Schema.Literals(['too_large', 'volatile_url']),
   storage: NmdStorageSchema,
 }).annotate({ identifier: 'NotionMd.StorageObjectV2' })
 

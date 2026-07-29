@@ -11,7 +11,7 @@ import { Schema } from 'effect'
 /** Schema for the running counter state with count, loading status, and action history. */
 export const RunningState = Schema.TaggedStruct('Running', {
   count: Schema.Number,
-  status: Schema.Literal('idle', 'loading'),
+  status: Schema.Literals(['idle', 'loading']),
   history: Schema.Array(Schema.String),
 })
 
