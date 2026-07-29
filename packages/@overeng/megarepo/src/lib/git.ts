@@ -4,7 +4,7 @@
  * Provides Effect-wrapped git operations for cloning, fetching, and managing worktrees.
  */
 
-import { Command } from 'effect'
+import { ChildProcess as Command } from 'effect/unstable/process'
 import { Cause, Chunk, Duration, Effect, Option, Schedule, Sink, Stream } from 'effect'
 
 import * as Observability from './observability.ts'

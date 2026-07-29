@@ -1,7 +1,7 @@
 import { lstatSync } from 'node:fs'
 import * as nodePath from 'node:path'
 
-import { FileSystem } from 'effect'
+import { FileSystem } from 'effect/FileSystem'
 import { Effect, Option, Schema } from 'effect'
 
 import { SessionSourceDiscoveryError } from '../errors.ts'

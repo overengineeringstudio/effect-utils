@@ -14,7 +14,8 @@
  * used to break for large members.
  */
 
-import { Command, FileSystem } from 'effect'
+import { ChildProcess as Command } from 'effect/unstable/process'
+import { FileSystem } from 'effect/FileSystem'
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Effect } from 'effect'

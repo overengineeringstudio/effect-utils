@@ -7,7 +7,8 @@
  * 3. Canonical - Full resolution including symlinks (requires FileSystem)
  */
 
-import { FileSystem, Path as PlatformPath } from 'effect'
+import { FileSystem } from 'effect/FileSystem'
+import { Path as PlatformPath } from 'effect/Path'
 import { Effect } from 'effect'
 
 import type { AbsolutePath, Path, RelativePath } from './brands.ts'

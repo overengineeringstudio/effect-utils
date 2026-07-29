@@ -1,4 +1,5 @@
-import { FileSystem, Path } from 'effect'
+import { FileSystem } from 'effect/FileSystem'
+import { Path } from 'effect/Path'
 import { Effect } from 'effect'
 
 import { matchesAnyPattern } from '../runtime/package-json/validation.ts'

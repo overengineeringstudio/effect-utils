@@ -4,7 +4,8 @@
  * Commands for managing the shared git store.
  */
 
-import { FileSystem, type Error as PlatformError } from 'effect'
+import type { Error as PlatformError } from 'effect'
+import { FileSystem } from 'effect/FileSystem'
 import { Clock, Effect, Option, Schedule, Stream } from 'effect'
 import * as Cli from 'effect/unstable/cli'
 import React from 'react'

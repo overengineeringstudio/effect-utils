@@ -1,4 +1,5 @@
-import { FileSystem, Path } from 'effect'
+import { FileSystem } from 'effect/FileSystem'
+import { Path } from 'effect/Path'
 import { Effect, Schema } from 'effect'
 
 import type { PackageInfo } from '../common/types.ts'

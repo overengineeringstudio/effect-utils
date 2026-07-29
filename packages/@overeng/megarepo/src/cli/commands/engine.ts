@@ -7,8 +7,10 @@
  */
 
 import { Prompt } from 'effect/unstable/cli'
-import type { CommandExecutor, Terminal } from 'effect'
-import { FileSystem, type Error as PlatformError } from 'effect'
+import type { ChildProcessSpawner as CommandExecutor } from 'effect/unstable/process'
+import type { Terminal } from 'effect/Terminal'
+import type { Error as PlatformError } from 'effect'
+import { FileSystem } from 'effect/FileSystem'
 import { Clock, Effect, Option, type ParseResult } from 'effect'
 import React from 'react'
 

@@ -7,7 +7,8 @@
  * All operations within a sandbox are guaranteed to stay within the root directory.
  */
 
-import { FileSystem, type Path as PlatformPath } from 'effect'
+import { FileSystem } from 'effect/FileSystem'
+import type { Path as PlatformPath } from 'effect/Path'
 import { Effect, Either } from 'effect'
 
 import type { AbsoluteDirPath, AbsolutePath, RelativePath } from './brands.ts'

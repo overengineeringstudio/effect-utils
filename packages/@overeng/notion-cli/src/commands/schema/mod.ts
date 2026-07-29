@@ -5,7 +5,7 @@
 import { basename } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { FileSystem } from 'effect'
+import { FileSystem } from 'effect/FileSystem'
 import { Effect, Layer, Option, Schema } from 'effect'
 import { Argument as Args, Command, Flag as Options } from 'effect/unstable/cli'
 import { FetchHttpClient } from 'effect/unstable/http'

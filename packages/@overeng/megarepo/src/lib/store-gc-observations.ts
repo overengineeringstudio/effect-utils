@@ -23,7 +23,8 @@
  * conservatively re-arms all grace windows.
  */
 
-import { FileSystem, type Error as PlatformError } from 'effect'
+import type { Error as PlatformError } from 'effect'
+import { FileSystem } from 'effect/FileSystem'
 import { Effect, Schema, type ParseResult } from 'effect'
 
 import { EffectPath, type AbsoluteDirPath, type AbsoluteFilePath } from '@overeng/effect-path'

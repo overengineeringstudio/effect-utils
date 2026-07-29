@@ -1,4 +1,6 @@
-import type { Error as PlatformError, FileSystem, Path } from 'effect'
+import type { Error as PlatformError } from 'effect'
+import type { FileSystem } from 'effect/FileSystem'
+import type { Path } from 'effect/Path'
 import type { Option } from 'effect'
 import type { ChildProcessSpawner } from 'effect/unstable/process'
 

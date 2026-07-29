@@ -6,7 +6,8 @@
 
 import os from 'node:os'
 
-import { Command, FileSystem } from 'effect'
+import { ChildProcess as Command } from 'effect/unstable/process'
+import { FileSystem } from 'effect/FileSystem'
 import { Effect, Schema } from 'effect'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'

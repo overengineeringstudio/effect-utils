@@ -1,6 +1,6 @@
 import * as nodePath from 'node:path'
 
-import { FileSystem } from 'effect'
+import { FileSystem } from 'effect/FileSystem'
 import { Context, Effect, Layer, Schema } from 'effect'
 
 import { SessionCheckpointDecodeError, SessionCheckpointWriteError } from '../errors.ts'

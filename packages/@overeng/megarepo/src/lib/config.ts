@@ -13,7 +13,7 @@
  * - Local path: "./path", "../path", "/absolute/path"
  */
 
-import { FileSystem } from 'effect'
+import { FileSystem } from 'effect/FileSystem'
 import { Effect, JsonSchema, Option, Schema } from 'effect'
 
 import {

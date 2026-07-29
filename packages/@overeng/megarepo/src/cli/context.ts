@@ -6,7 +6,7 @@
 
 import { resolve } from 'node:path'
 
-import { FileSystem } from 'effect'
+import { FileSystem } from 'effect/FileSystem'
 import { Context, Effect, Layer, Option } from 'effect'
 import * as Cli from 'effect/unstable/cli'
 

@@ -1,4 +1,4 @@
-import type { FileSystem } from 'effect'
+import type { FileSystem } from 'effect/FileSystem'
 import type { Effect } from 'effect'
 import { Schema } from 'effect'
 

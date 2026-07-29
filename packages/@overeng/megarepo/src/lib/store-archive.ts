@@ -31,8 +31,9 @@
  * on this persistence path.
  */
 
-import type { CommandExecutor } from 'effect'
-import { FileSystem, type Error as PlatformError } from 'effect'
+import type { ChildProcessSpawner as CommandExecutor } from 'effect/unstable/process'
+import type { Error as PlatformError } from 'effect'
+import { FileSystem } from 'effect/FileSystem'
 import { Effect, Option } from 'effect'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'

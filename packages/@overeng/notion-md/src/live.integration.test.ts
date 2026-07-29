@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { NodeServices } from '@effect/platform-node'
-import type { FileSystem } from 'effect'
+import type { FileSystem } from 'effect/FileSystem'
 import { Chunk, Effect, Layer, Redacted, Schema, Stream } from 'effect'
 import { FetchHttpClient, type HttpClient } from 'effect/unstable/http'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'

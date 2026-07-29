@@ -1,6 +1,6 @@
 import { NodeServices } from '@effect/platform-node'
 import { describe, expect, it } from '@effect/vitest'
-import { FileSystem } from 'effect'
+import { FileSystem } from 'effect/FileSystem'
 import { Effect, Layer, Metric, MetricLabel, Schema } from 'effect'
 
 import { TraceJson, writeCaptureDiagnostics } from './diagnostics.ts'

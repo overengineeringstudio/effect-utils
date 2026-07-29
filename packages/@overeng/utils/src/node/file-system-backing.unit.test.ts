@@ -3,7 +3,8 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 
 import { NodeServices } from '@effect/platform-node'
-import { FileSystem, Path } from 'effect'
+import { FileSystem } from 'effect/FileSystem'
+import { Path } from 'effect/Path'
 import { Context, Deferred, Duration, Effect, Layer, Schema, Stream } from 'effect'
 import { expect } from 'vitest'
 

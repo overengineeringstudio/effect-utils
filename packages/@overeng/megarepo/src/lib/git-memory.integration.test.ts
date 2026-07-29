@@ -24,7 +24,7 @@ import { fileURLToPath } from 'node:url'
 
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Command } from 'effect'
+import { ChildProcess as Command } from 'effect/unstable/process'
 import { Effect, Schema } from 'effect'
 import { expect } from 'vitest'
 

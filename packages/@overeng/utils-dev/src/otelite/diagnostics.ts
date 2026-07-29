@@ -1,6 +1,6 @@
 import * as NodePath from 'node:path'
 
-import { FileSystem } from 'effect'
+import { FileSystem } from 'effect/FileSystem'
 import { Effect, Schema } from 'effect'
 
 import type { CaptureHandle } from './Otelite.ts'

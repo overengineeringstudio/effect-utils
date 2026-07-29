@@ -1,6 +1,6 @@
 import { access } from 'node:fs/promises'
 
-import { Command } from 'effect'
+import { ChildProcess as Command } from 'effect/unstable/process'
 import { NodeServices } from '@effect/platform-node'
 import { describe, expect, it } from '@effect/vitest'
 import { Effect, Exit, Layer, Schema } from 'effect'

@@ -4,7 +4,7 @@
  * Commands to pin and unpin members to specific refs.
  */
 
-import { FileSystem } from 'effect'
+import { FileSystem } from 'effect/FileSystem'
 import { Clock, Effect, Layer, Option } from 'effect'
 import * as Cli from 'effect/unstable/cli'
 import React from 'react'

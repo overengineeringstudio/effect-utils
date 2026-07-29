@@ -1,4 +1,4 @@
-import type { FileSystem } from 'effect'
+import type { FileSystem } from 'effect/FileSystem'
 import { Schedule, Stream } from 'effect'
 
 import type { SessionIngestError, SessionSourceDiscoveryError } from './errors.ts'

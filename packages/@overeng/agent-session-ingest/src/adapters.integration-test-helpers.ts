@@ -2,7 +2,7 @@ import { appendFile } from 'node:fs/promises'
 import * as nodePath from 'node:path'
 
 import { NodeServices } from '@effect/platform-node'
-import { FileSystem } from 'effect'
+import { FileSystem } from 'effect/FileSystem'
 import { Effect, Schema } from 'effect'
 import { expect } from 'vitest'
 

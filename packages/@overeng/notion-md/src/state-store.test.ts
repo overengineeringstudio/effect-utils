@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
 import { NodeServices } from '@effect/platform-node'
-import { Path } from 'effect'
+import { Path } from 'effect/Path'
 import { Effect, Layer, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 

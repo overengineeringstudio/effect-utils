@@ -8,7 +8,8 @@
 
 import { createHash } from 'node:crypto'
 
-import { Command, FileSystem } from 'effect'
+import { ChildProcess as Command } from 'effect/unstable/process'
+import { FileSystem } from 'effect/FileSystem'
 import { Effect, Schema } from 'effect'
 import type { Schedule } from 'effect'
 

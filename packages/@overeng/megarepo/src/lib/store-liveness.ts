@@ -9,7 +9,8 @@
 
 import { createHash } from 'node:crypto'
 
-import { FileSystem, type Error as PlatformError } from 'effect'
+import type { Error as PlatformError } from 'effect'
+import { FileSystem } from 'effect/FileSystem'
 import { Effect, Option, Schema, type ParseResult } from 'effect'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'

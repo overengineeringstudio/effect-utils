@@ -20,7 +20,7 @@
  * directly with fake gh output so no real `gh`/network is needed.
  */
 
-import { Command, CommandExecutor } from 'effect'
+import { ChildProcess as Command, ChildProcessSpawner as CommandExecutor } from 'effect/unstable/process'
 import { Context, Duration, Effect, Layer, Option, Schema } from 'effect'
 
 import type { RelativeDirPath } from '@overeng/effect-path'

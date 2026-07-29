@@ -1,4 +1,4 @@
-import { FileSystem } from 'effect'
+import { FileSystem } from 'effect/FileSystem'
 import type * as CommandExecutor from 'effect/unstable/process/CommandExecutor'
 import { Data, Effect } from 'effect'
 

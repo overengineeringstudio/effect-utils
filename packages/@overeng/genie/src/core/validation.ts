@@ -1,4 +1,6 @@
-import { type Error as PlatformError, FileSystem, Path } from 'effect'
+import type { Error as PlatformError } from 'effect'
+import { FileSystem } from 'effect/FileSystem'
+import { Path } from 'effect/Path'
 import { Effect } from 'effect'
 import ts from 'typescript'
 

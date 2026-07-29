@@ -1,6 +1,6 @@
 import { basename, dirname, extname, join, relative, resolve } from 'node:path'
 
-import { FileSystem } from 'effect'
+import { FileSystem } from 'effect/FileSystem'
 import { Effect } from 'effect'
 
 import { describeBodyLossyRefusal, tolerateTreeChildPages } from '@overeng/notion-core'

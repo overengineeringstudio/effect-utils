@@ -8,7 +8,9 @@
  * source of truth for dependency versions.
  */
 
-import { Command, type CommandExecutor, FileSystem, type Error as PlatformError } from 'effect'
+import type { Error as PlatformError } from 'effect'
+import { ChildProcess as Command, type ChildProcessSpawner as CommandExecutor } from 'effect/unstable/process'
+import { FileSystem } from 'effect/FileSystem'
 import { Effect, Option, Schema, type ParseResult } from 'effect'
 
 import { EffectPath, type AbsoluteDirPath, type AbsoluteFilePath } from '@overeng/effect-path'

@@ -5,7 +5,8 @@
  * which megarepo members are referenced as inputs by other members.
  */
 
-import { FileSystem, type Error as PlatformError } from 'effect'
+import type { Error as PlatformError } from 'effect'
+import { FileSystem } from 'effect/FileSystem'
 import { Effect } from 'effect'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'

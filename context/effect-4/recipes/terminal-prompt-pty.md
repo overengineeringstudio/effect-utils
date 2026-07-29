@@ -15,7 +15,7 @@ import { NodeContext } from '@effect/platform-node'
 ## v4
 
 ```ts
-import { Terminal } from 'effect'
+import { Terminal } from 'effect/Terminal'
 import { Prompt } from 'effect/unstable/cli'
 import { NodeServices } from '@effect/platform-node'
 ```

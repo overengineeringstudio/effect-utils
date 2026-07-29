@@ -18,7 +18,8 @@ const program = effect.pipe(Effect.provide(NodeContext.layer))
 ## v4
 
 ```ts
-import { FileSystem, Path } from 'effect'
+import { FileSystem } from 'effect/FileSystem'
+import { Path } from 'effect/Path'
 import { NodeServices } from '@effect/platform-node'
 
 const fs = yield * FileSystem.FileSystem

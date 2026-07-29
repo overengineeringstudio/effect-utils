@@ -25,7 +25,7 @@
  * that would assert non-existent attributes.
  */
 
-import { FileSystem } from 'effect'
+import { FileSystem } from 'effect/FileSystem'
 import { NodeServices } from '@effect/platform-node'
 import { expect, layer } from '@effect/vitest'
 import { Effect, Layer } from 'effect'

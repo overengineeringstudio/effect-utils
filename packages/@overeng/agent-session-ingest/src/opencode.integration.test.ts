@@ -1,7 +1,7 @@
 import * as nodePath from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 
-import { FileSystem } from 'effect'
+import { FileSystem } from 'effect/FileSystem'
 import { Effect } from 'effect'
 import { expect } from 'vitest'
 

@@ -16,7 +16,7 @@ const wholeTree = fs.watch(root, { recursive: true })
 ## v4
 
 ```ts
-import { FileSystem } from 'effect'
+import { FileSystem } from 'effect/FileSystem'
 
 const fs = yield * FileSystem.FileSystem
 const wholeTree = fs.watch(root)

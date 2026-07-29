@@ -1,6 +1,6 @@
 import { dirname, join, relative, resolve } from 'node:path'
 
-import { FileSystem } from 'effect'
+import { FileSystem } from 'effect/FileSystem'
 import { Effect, Schema } from 'effect'
 
 import { NmdCliError, NmdFileSystemError, type NmdError } from './errors.ts'

@@ -5,7 +5,9 @@
  * the actual filesystem to ensure they exist and are of the correct type.
  */
 
-import { FileSystem, Path as PlatformPath, type Error as PlatformError } from 'effect'
+import type { Error as PlatformError } from 'effect'
+import { FileSystem } from 'effect/FileSystem'
+import { Path as PlatformPath } from 'effect/Path'
 import { Effect } from 'effect'
 
 import type {

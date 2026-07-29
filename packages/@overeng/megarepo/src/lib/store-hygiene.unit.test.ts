@@ -1,4 +1,4 @@
-import { FileSystem } from 'effect'
+import { FileSystem } from 'effect/FileSystem'
 import { NodeServices } from '@effect/platform-node'
 import { Effect, Option } from 'effect'
 import { describe, expect, it } from 'vitest'

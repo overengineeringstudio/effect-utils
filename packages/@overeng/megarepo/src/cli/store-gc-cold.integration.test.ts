@@ -28,7 +28,8 @@
 
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Command, FileSystem } from 'effect'
+import { ChildProcess as Command } from 'effect/unstable/process'
+import { FileSystem } from 'effect/FileSystem'
 import { Clock, Effect, Exit, Layer, Schema } from 'effect'
 import * as Cli from 'effect/unstable/cli'
 import { expect, vi } from 'vitest'

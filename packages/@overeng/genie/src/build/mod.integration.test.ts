@@ -3,7 +3,9 @@ import * as os from 'node:os'
 import nodePath from 'node:path'
 
 import { NodeServices } from '@effect/platform-node'
-import { Command, FileSystem, Path } from 'effect'
+import { ChildProcess as Command } from 'effect/unstable/process'
+import { FileSystem } from 'effect/FileSystem'
+import { Path } from 'effect/Path'
 import { Chunk, Effect, Schema, Stream } from 'effect'
 import { expect } from 'vitest'
 

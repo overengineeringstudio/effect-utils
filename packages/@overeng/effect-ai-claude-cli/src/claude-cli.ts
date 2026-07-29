@@ -5,7 +5,7 @@
  * allowing use without API keys by re-using Claude CLI authentication.
  */
 import { AiError, LanguageModel, type Prompt, type Response } from 'effect/unstable/ai'
-import { Command, CommandExecutor } from 'effect'
+import { ChildProcess as Command, ChildProcessSpawner as CommandExecutor } from 'effect/unstable/process'
 import type { PlatformError } from 'effect/Error'
 import { Effect, Exit, flow, JsonSchema, Layer, Ref, Scope, Stream } from 'effect'
 

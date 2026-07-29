@@ -4,7 +4,8 @@
  * Execute a command in member directories.
  */
 
-import { Command, FileSystem } from 'effect'
+import { ChildProcess as Command } from 'effect/unstable/process'
+import { FileSystem } from 'effect/FileSystem'
 import { Effect, Option } from 'effect'
 import * as Cli from 'effect/unstable/cli'
 import React from 'react'

@@ -14,7 +14,8 @@
  * contain `-`/`--`/`/`; only a trailing valid ISO8601 instant is a timestamp).
  */
 
-import { Command, FileSystem } from 'effect'
+import { ChildProcess as Command } from 'effect/unstable/process'
+import { FileSystem } from 'effect/FileSystem'
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Effect, Option } from 'effect'

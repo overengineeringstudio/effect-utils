@@ -1,4 +1,5 @@
-import { Command, CommandExecutor, FileSystem } from 'effect'
+import { ChildProcess as Command, ChildProcessSpawner as CommandExecutor } from 'effect/unstable/process'
+import { FileSystem } from 'effect/FileSystem'
 import { Deferred, Effect, Fiber, Ref, Schedule, Schema, type Scope, Stream } from 'effect'
 
 import {
