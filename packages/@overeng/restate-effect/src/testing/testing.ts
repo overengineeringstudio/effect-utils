@@ -147,7 +147,7 @@ export { RestateTestEnv, type RestateTestEnvService } from './TestEnv.ts'
  * ```
  */
 export const liveSleep = (millis: number): Effect.Effect<void> =>
-  Effect.sleep(millis).pipe(Effect.withClock(Clock.make()))
+  Effect.sleep(millis).pipe(Effect.provideService(Clock.Clock, Clock.Clock.defaultValue()))
 
 /**
  * Run `effect` under a LIVE `Clock` (ignoring the ambient `it.effect`
@@ -156,7 +156,7 @@ export const liveSleep = (millis: number): Effect.Effect<void> =>
  * with the real server in wall-clock time.
  */
 export const withLiveClock = <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
-  effect.pipe(Effect.withClock(Clock.make()))
+  effect.pipe(Effect.provideService(Clock.Clock, Clock.Clock.defaultValue()))
 
 /* ════════════════════════════════════════════════════════════════════════
  * Native server lifecycle (productized from `test/restate-server.ts`).

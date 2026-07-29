@@ -41,7 +41,7 @@ const AwakeablePayload = Schema.Struct({ token: Schema.String })
  * which `Effect.sleep` is virtual and never advances). We coordinate with a real
  * native server across suspend/resume, so wall-clock waits must actually elapse. */
 const liveSleep = (millis: number): Effect.Effect<void> =>
-  Effect.sleep(millis).pipe(Effect.withClock(Clock.make()))
+  Effect.sleep(millis).pipe(Effect.provideService(Clock.Clock, Clock.Clock.defaultValue()))
 
 describe.skipIf(!serverAvailable)('examples (verified end-to-end)', () => {
   it.layer(GreeterHarness, { timeout: 90_000 })('01-service', (it) => {
