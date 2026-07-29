@@ -13,11 +13,6 @@
     "@types/node": "26.0.0",
     "@types/react": "19.2.17"
   },
-  "pnpm": {
-    "overrides": {
-      "effect": "4.0.0-beta.102"
-    }
-  },
   "$genie": {
     "source": "package.json.genie.ts",
     "warning": "DO NOT EDIT - changes will be overwritten",
