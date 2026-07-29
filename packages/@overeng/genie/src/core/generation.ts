@@ -9,7 +9,7 @@ import type { Path } from 'effect'
 import { FileSystem, type PlatformError } from 'effect'
 import { Duration, Effect, Option, Result, Schema } from 'effect'
 import { ChildProcess as Command } from 'effect/unstable/process'
-import type * as CommandExecutor from 'effect/unstable/process/CommandExecutor'
+import type { ChildProcessSpawner } from 'effect/unstable/process'
 
 import { DistributedSemaphore } from '@overeng/utils/lock'
 import { FileSystemBacking } from '@overeng/utils/node'
@@ -773,7 +773,7 @@ export const generateFile = ({
 }): Effect.Effect<
   GenerateSuccess,
   GenieFileError,
-  FileSystem.FileSystem | CommandExecutor.CommandExecutor | Path.Path
+  FileSystem.FileSystem | ChildProcessSpawner.ChildProcessSpawner | Path.Path
 > =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
@@ -888,7 +888,7 @@ export const checkFile = ({
 }): Effect.Effect<
   void,
   GenieCheckError | GenieImportError | PlatformError.PlatformError,
-  FileSystem.FileSystem | CommandExecutor.CommandExecutor
+  FileSystem.FileSystem | ChildProcessSpawner.ChildProcessSpawner
 > => checkFileDetailed({ genieFilePath, cwd, oxfmtConfigPath }).pipe(Effect.asVoid)
 
 /** Check a generated file and return the loaded genie module for downstream validation reuse. */
@@ -903,7 +903,7 @@ export const checkFileDetailed = ({
 }): Effect.Effect<
   { targetFilePath: string; loadedGenieFile: LoadedGenieFile },
   GenieCheckError | GenieImportError | PlatformError.PlatformError,
-  FileSystem.FileSystem | CommandExecutor.CommandExecutor
+  FileSystem.FileSystem | ChildProcessSpawner.ChildProcessSpawner
 > =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem

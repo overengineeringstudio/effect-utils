@@ -4,7 +4,7 @@ import path from 'node:path'
 import { type Error as PlatformError, FileSystem } from 'effect'
 import { Effect, Result, Option, Ref } from 'effect'
 import type { Path } from 'effect/Path'
-import type * as CommandExecutor from 'effect/unstable/process/CommandExecutor'
+import type { ChildProcessSpawner } from 'effect/unstable/process'
 
 import { assertNever } from '@overeng/utils'
 
@@ -204,7 +204,7 @@ export const generateAll = ({
 }: CoreGenerateOptions): Effect.Effect<
   GenieGenerateResult,
   GenieGenerationFailedError | PlatformError.PlatformError,
-  FileSystem.FileSystem | Path | CommandExecutor.CommandExecutor | GenieEventBus
+  FileSystem.FileSystem | Path | ChildProcessSpawner.ChildProcessSpawner | GenieEventBus
 > =>
   Effect.gen(function* () {
     const genieFiles = yield* discoverAndValidate(cwd, phase)
@@ -382,7 +382,7 @@ export const checkAll = ({
 }: CoreCheckOptions): Effect.Effect<
   void,
   GenieGenerationFailedError | PlatformError.PlatformError,
-  FileSystem.FileSystem | Path | CommandExecutor.CommandExecutor | GenieEventBus
+  FileSystem.FileSystem | Path | ChildProcessSpawner.ChildProcessSpawner | GenieEventBus
 > =>
   Effect.gen(function* () {
     const checkConcurrency = Math.max(
