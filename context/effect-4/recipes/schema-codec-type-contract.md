@@ -1,71 +1,86 @@
 # Pattern: schema-codec-type-contract
 
-**Area:** Schema type-level contracts **Kind:** shape change **Our usage:** 23 multi-parameter
-references in `notion-effect-schema`
+**Area:** Schema type-level contracts **Kind:** shape change **Our usage:** generic codec helpers
+throughout the repository, including 23 multi-parameter references in `notion-effect-schema` and
+one-parameter public return types in `otel-contract`.
 
 ## Shape change
 
-Effect 3 used one `Schema.Schema` type for bidirectional codecs:
+Effect 3 used one `Schema.Schema` type for both value-only schemas and bidirectional codecs:
 
 ```ts
 Schema.Schema<Type, Encoded, Context>
 ```
 
-Effect 4 separates the value-only interface from the bidirectional codec interface. Preserve the
-old contract as:
+Effect 4's `Schema.Schema<Type>` is a different, weaker interface that carries only the decoded
+type. The faithful replacement is `Schema.Codec` at **every arity**:
 
-```ts
-Schema.Codec<Type, Encoded, Context, Context>
-```
+| v3                       | v4                         |
+| ------------------------ | -------------------------- |
+| `Schema.Schema<T>`       | `Schema.Codec<T>`          |
+| `Schema.Schema<T, E>`    | `Schema.Codec<T, E>`       |
+| `Schema.Schema<T, E, R>` | `Schema.Codec<T, E, R, R>` |
 
-The third and fourth parameters are decoding and encoding services respectively. Effect 3's single
-`Context` parameter applied in both directions, so it must be copied into both slots.
+`Codec` defaults `E = T`, `RD = never`, and `RE = never`, exactly matching the omitted Effect 3
+parameters. For the three-parameter form, Effect 3's single `Context` applied in both directions,
+so it must be copied into v4's decoding and encoding service slots.
 
-The rule applies at every arity. In particular, the safe-looking one-parameter form is also a real
-migration:
-
-```ts
-// Effect 3 defaults: Encoded = Type, Context = never
-Schema.Schema<Type>
-
-// Effect 4 preserves those defaults
-Schema.Codec<Type>
-```
-
-Effect 4's `Schema<Type>` is a different, weaker interface carrying only the decoded Type. It does
-not preserve Effect 3's implicit encoded type or bidirectional service contract.
+All interface shapes and defaults above are **VERIFIED** against the real
+`effect@4.0.0-beta.102` tarball (SHA-1
+`f51092854960f60cbdb06bd59e788acbc8ee8492`).
 
 ## Why the alternatives are not equivalent
 
-- `Schema.Schema<Type>` is not the Effect 3 one-parameter contract; it drops the implicit encoded
-  type and bidirectional codec guarantee.
-- `Schema.Codec<Type, Encoded, Context, never>` narrows the encoding requirement.
-- `Schema.Codec<Type, Encoded, never, Context>` narrows the decoding requirement.
-- `Schema.ConstraintCodec` belongs to the constraint hierarchy rather than the concrete Schema
-  hierarchy.
+- `Schema.Schema<T>` drops the encoded type and both service requirements, even when the v3 type
+  used only one explicit parameter.
+- `Schema.Codec<T, E, R, never>` narrows the encoding requirement.
+- `Schema.Codec<T, E, never, R>` narrows the decoding requirement.
+- `Schema.ConstraintCodec` is only for APIs that read type views and do not require the full schema
+  protocol.
 - `Schema.Decoder` and `Schema.Encoder` are deliberately one-directional.
 
-Even when a current helper only exercises one direction, narrowing the other direction is a
+Even when a current helper exercises only one direction, narrowing the other direction is a
 refactor rather than a faithful port and belongs in follow-up work.
+
+## `AnyNoContext`
+
+The replacement for v3 `Schema.Schema.AnyNoContext` is:
+
+```ts
+Schema.Codec<any, any, never, never>
+```
+
+Do **not** use `Schema.Top`. `Top` erases both service slots to `unknown` and therefore admits
+codecs that require decoding or encoding services; v3 `AnyNoContext` rejected them.
+
+This bound is **VERIFIED** from both tarball declarations:
+
+```text
+v3 AnyNoContext = Schema<any, any, never>
+v4 Codec<any, any, never, never>
+v4 Top = decoded/encoded/services all unknown
+```
+
+Use `Schema.ConstraintCodec<any, any, never, never>` only when the generic utility merely reads
+type views and does not call schema methods. A direct port of a v3 `Schema` bound should retain the
+full protocol with `Codec`.
 
 ## Equivalence
 
-The `Schema`, `Codec`, `ConstraintCodec`, `Decoder`, and `Encoder` interfaces and their service
-parameters were verified against the `effect@4.0.0-beta.102` tarball. The migration preserves the
-Effect 3 type contract exactly by retaining the same service requirement for decoding and encoding.
-
-Owning slices must still replay codec behavior in both directions; this recipe only settles the
-type-level mapping.
+This recipe preserves the v3 compile-time encoded and service contracts. It does not apply a
+repository migration or establish runtime codec equivalence. Owning slices must replay decoding
+and encoding with exact encoded bytes and both service environments.
 
 ## Gotchas
 
+- The apparently safe one-parameter spelling is the easiest trap: v4 `Schema<T>` is not v3
+  `Schema<T>` with fewer visible parameters.
 - The two service slots are easy to confuse because both default to `never`.
 - A green typecheck after narrowing one slot does not prove the old public contract was preserved.
-- One-parameter references are the easiest to miss because both old and new names accept one type
-  argument while meaning different things.
+- `Top` is the existential any-schema bound, not the service-free-codec bound.
 
 ## Codemod rule
 
-One-parameter `Schema.Schema<T>` references mechanically become `Schema.Codec<T>`.
-Three-parameter `Schema.Schema<T, E, R>` references mechanically become
-`Schema.Codec<T, E, R, R>`. Constraint-position types require site review.
+All v3 `Schema.Schema<...>` type references become `Schema.Codec<...>`. Duplicate the third v3
+parameter into both v4 service slots. Replace `Schema.Schema.AnyNoContext` with
+`Schema.Codec<any, any, never, never>`.

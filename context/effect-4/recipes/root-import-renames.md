@@ -36,15 +36,15 @@ MetricBoundaries -> Metric.boundariesFromIterable / Metric.linearBoundaries / Me
 
 These came from package moves, not from root removals:
 
-| v3 package/source | v4 package/source | Notes |
-| --- | --- | --- |
-| `@effect/cli/Args` | `effect/unstable/cli` `Argument` | Namespace renamed. |
-| `@effect/cli/Options` | `effect/unstable/cli` `Flag` | `text()` became `string()`. |
-| `@effect/cli/Command` | `effect/unstable/cli` `Command` | Do not import from root. |
-| `@effect/cli` namespace | `effect/unstable/cli` namespace | Use `Cli.Argument` / `Cli.Flag`. |
-| `@effect/platform/HttpClient*` | `effect/unstable/http` | `HttpClient`, `HttpClientRequest`, `HttpClientResponse`, `HttpClientError`, `FetchHttpClient`. |
-| `@effect/platform/Command` | `effect/unstable/process` `ChildProcess` | Existing local alias can preserve call-site name. |
-| `@effect/platform/CommandExecutor` | `effect/unstable/process` `ChildProcessSpawner` | Service type is `ChildProcessSpawner.ChildProcessSpawner`. |
+| v3 package/source                  | v4 package/source                               | Notes                                                                                          |
+| ---------------------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `@effect/cli/Args`                 | `effect/unstable/cli` `Argument`                | Namespace renamed.                                                                             |
+| `@effect/cli/Options`              | `effect/unstable/cli` `Flag`                    | `text()` became `string()`.                                                                    |
+| `@effect/cli/Command`              | `effect/unstable/cli` `Command`                 | Do not import from root.                                                                       |
+| `@effect/cli` namespace            | `effect/unstable/cli` namespace                 | Use `Cli.Argument` / `Cli.Flag`.                                                               |
+| `@effect/platform/HttpClient*`     | `effect/unstable/http`                          | `HttpClient`, `HttpClientRequest`, `HttpClientResponse`, `HttpClientError`, `FetchHttpClient`. |
+| `@effect/platform/Command`         | `effect/unstable/process` `ChildProcess`        | Existing local alias can preserve call-site name.                                              |
+| `@effect/platform/CommandExecutor` | `effect/unstable/process` `ChildProcessSpawner` | Service type is `ChildProcessSpawner.ChildProcessSpawner`.                                     |
 
 `FileSystem`, `Path`, and `PlatformError` are present in beta.102 root exports. If they appear in a
 Category A provenance scan, classify them as rewrite audit hazards rather than genuine root removals.
@@ -142,25 +142,52 @@ semantics unless a separate slice records and proves a behavior change.
 
 These were verified against `effect@4.0.0-beta.102` while chasing `genie:run` module-load blockers.
 
-| v3 shape | beta.102 shape | Notes |
-| --- | --- | --- |
-| `Schema.NonEmptyTrimmedString` | `Schema.Trimmed.check(Schema.isNonEmpty())` | Value helper removed. |
-| `Schema.NonNegativeInt` | `Schema.Natural` | `Schema.Int` still exists; `Natural` is `Int >= 0`. |
-| `Schema.NonNegativeBigInt` | `Schema.BigInt.check(Schema.isGreaterThanOrEqualToBigInt(0n))` | No `NaturalBigInt` export observed. |
-| `Schema.TaggedError` | `Schema.TaggedErrorClass` | Same class-style call family. |
-| `Schema.Defect` | `Schema.Defect()` | Became a schema factory function. |
-| `Schema.parseJson(schema)` | `Schema.fromJsonString(schema)` | Zero-arg form becomes `Schema.fromJsonString(Schema.Unknown)`. Pretty-print options are not carried by this helper. |
-| `Schema.maxLength(n)` / `Schema.minLength(n)` | `Schema.check(Schema.isMaxLength(n))` / `Schema.check(Schema.isMinLength(n))` | Filters are not pipe functions by themselves. |
-| `Schema.isPattern(re)` in `.pipe(...)` | `Schema.check(Schema.isPattern(re))` | Direct `.check(Schema.isPattern(re))` is already valid. |
-| `Schema.Union(A, B)` | `Schema.Union([A, B])` | Existing array calls stay unchanged. |
-| `Schema.Tuple(A, B)` | `Schema.Tuple([A, B])` | Existing array calls stay unchanged. |
-| `Schema.fromBrand(ctor)(schema)` | `Schema.fromBrand(identifier, ctor)(schema)` | Bare constructor overload removed. |
-| `Schema.transform(from, to, options)` | `from.pipe(Schema.decodeTo(to, options))` | For effectful transforms use `SchemaTransformation.transformOrFail(...)`. |
-| `SchemaAST.getAnnotation<T>(ast, id)` | `SchemaAST.resolveAt<T>(id)(ast)` | Returns `T | undefined`, not `Option<T>`. |
-| `SchemaAST.getAnnotation<T>(id)(ast)` | `SchemaAST.resolveAt<T>(id)(ast)` | Remove `Option.isSome` / `Option.getOrUndefined` wrappers. |
-| `Context.Tag("id")<Self, Service>()` | `Context.Service<Self, Service>()("id")` | Class-style service tags. |
-| `Logger.prettyLogger()` | `Logger.consolePretty()` | Console pretty logger constructor. |
-| `Logger.replace(Logger.defaultLogger, logger)` | `Logger.layer([logger])` | To keep default plus custom logger use `Logger.layer([Logger.defaultLogger, logger])`. |
+| v3 shape                                       | beta.102 shape                                                                | Notes                                                                                                               |
+| ---------------------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| `Schema.NonEmptyTrimmedString`                 | `Schema.Trimmed.check(Schema.isNonEmpty())`                                   | Value helper removed.                                                                                               |
+| `Schema.NonNegativeInt`                        | `Schema.Natural`                                                              | `Schema.Int` still exists; `Natural` is `Int >= 0`.                                                                 |
+| `Schema.NonNegativeBigInt`                     | `Schema.BigInt.check(Schema.isGreaterThanOrEqualToBigInt(0n))`                | No `NaturalBigInt` export observed.                                                                                 |
+| `Schema.TaggedError`                           | `Schema.TaggedErrorClass`                                                     | Same class-style call family.                                                                                       |
+| `Schema.Defect`                                | `Schema.Defect()`                                                             | Became a schema factory function.                                                                                   |
+| `Schema.parseJson(schema)`                     | `Schema.fromJsonString(schema)`                                               | Zero-arg form becomes `Schema.fromJsonString(Schema.Unknown)`. Pretty-print options are not carried by this helper. |
+| `Schema.maxLength(n)` / `Schema.minLength(n)`  | `Schema.check(Schema.isMaxLength(n))` / `Schema.check(Schema.isMinLength(n))` | Filters are not pipe functions by themselves.                                                                       |
+| `Schema.isPattern(re)` in `.pipe(...)`         | `Schema.check(Schema.isPattern(re))`                                          | Direct `.check(Schema.isPattern(re))` is already valid.                                                             |
+| `Schema.Union(A, B)`                           | `Schema.Union([A, B])`                                                        | Existing array calls stay unchanged.                                                                                |
+| `Schema.Tuple(A, B)`                           | `Schema.Tuple([A, B])`                                                        | Existing array calls stay unchanged.                                                                                |
+| `Schema.fromBrand(ctor)(schema)`               | `Schema.fromBrand(identifier, ctor)(schema)`                                  | Bare constructor overload removed.                                                                                  |
+| `Schema.transform(from, to, options)`          | `from.pipe(Schema.decodeTo(to, options))`                                     | For effectful transforms use `SchemaTransformation.transformOrFail(...)`.                                           |
+| `SchemaAST.getAnnotation<T>(ast, stringKey)`   | `SchemaAST.resolveAt<T>(stringKey)(ast)`                                      | String keys only; returns `T                                                                                        | undefined`, not `Option<T>`. |
+| `SchemaAST.getAnnotation<T>(symbolKey)(ast)`   | `SchemaAST.resolve(ast)?.[symbolKey] as T \| undefined`                       | `resolveAt` does not accept symbols.                                                                                |
+| `Context.Tag("id")<Self, Service>()`           | `Context.Service<Self, Service>()("id")`                                      | Class-style service tags.                                                                                           |
+| `Logger.prettyLogger()`                        | `Logger.consolePretty()`                                                      | Console pretty logger constructor.                                                                                  |
+| `Logger.replace(Logger.defaultLogger, logger)` | `Logger.layer([logger])`                                                      | To keep default plus custom logger use `Logger.layer([Logger.defaultLogger, logger])`.                              |
 
 Known remaining source search after this batch: `Logger.replaceScoped` in browser broadcast logging
 was not on the `genie:run` loader path and was not ported in this slice.
+
+## SchemaAST annotation-key split
+
+`SchemaAST.resolveAt` is only the replacement for **string-keyed** annotations. Beta.102 declares
+its key parameter as `string`; passing a `unique symbol` is not a valid migration.
+
+For symbol-keyed annotations, resolve the annotation object and index it with the original symbol:
+
+```ts
+const annotated = SchemaAST.resolve(schema.ast)?.[optionValueSchema] as
+  | Schema.Codec<Value>
+  | undefined
+
+if (annotated !== undefined) {
+  use(annotated)
+}
+```
+
+This is **VERIFIED** against the real beta.102 runtime: a schema annotated under a unique symbol was
+recovered by `SchemaAST.resolve(ast)?.[symbol]`, while `resolveAt(symbol.description)` returned
+`undefined`. `resolve` follows beta.102's checked-schema rule by reading the last check's
+annotations when checks are present.
+
+The cast is required because beta.102's public `Annotations.Annotations` interface has only a
+string index signature even though the runtime preserves symbol properties. Remove v3
+`Option.isSome`, `.value`, and `Option.getOrUndefined` handling; both `resolveAt` and direct symbol
+indexing use `undefined` for absence.

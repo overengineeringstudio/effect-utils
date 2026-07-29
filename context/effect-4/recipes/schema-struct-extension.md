@@ -1,29 +1,26 @@
 # Pattern: schema-struct-extension
 
 **Area:** Schema struct composition **Kind:** shape change **Our usage:** 27 sites in
-`notion-effect-schema`
+`notion-effect-schema`.
 
 ## Shape change first
 
-Effect 4 has no standalone `Schema.extend`. There are two replacements for the repository's
-current sites, depending on whether the right-hand schema is another struct or a record index
-signature.
+Effect 4 has no standalone `Schema.extend`. There are two replacements, selected by the right-hand
+schema's shape.
 
 ### Plain field merge
 
-For two plain structs, merge their fields explicitly:
+For two plain structs:
 
 ```ts
+// v3
 Schema.extend(A, B)
-```
 
-becomes:
-
-```ts
+// v4
 Schema.Struct({ ...A.fields, ...B.fields })
 ```
 
-This is the same field merge used internally by the Effect 4 Class API's static `extend` method.
+This mirrors the field merge used internally by Effect 4's Class `static extend` implementation.
 It applies to plain `Struct` and `TaggedStruct` values; it does not require or create a Class.
 
 ### Struct plus index signature
@@ -31,46 +28,40 @@ It applies to plain `Struct` and `TaggedStruct` values; it does not require or c
 For a struct extended with a record:
 
 ```ts
-Schema.extend(BlockBase, Schema.Record(Schema.String, Schema.Unknown))
-```
+// v3
+Schema.extend(BlockBase, Schema.Record({ key: Schema.String, value: Schema.Unknown }))
 
-use:
-
-```ts
+// v4
 Schema.StructWithRest(BlockBase, [Schema.Record(Schema.String, Schema.Unknown)])
 ```
 
-`Schema.Record` returns `$Record`, not `Struct`. It has no `.fields` to spread. Treating it like a
+`Schema.Record` returns `$Record`, not `Struct`, and has no `.fields` to spread. Treating it like a
 plain struct silently drops the index signature and changes excess-property decoding.
 
 ## Not a replacement: `extendTo`
 
-Do not replace a plain merge with `Schema.extendTo`. `extendTo(fields, derive)` is a transforming
-schema operation: it computes derived fields from the original decoded input using
-`Option`-returning callbacks. It is not a struct merge.
+Do not replace a plain merge with `Schema.extendTo`. `extendTo(fields, derive)` computes derived
+fields from decoded input using `Option`-returning callbacks. It is a transforming schema
+operation, not a struct merge.
 
 ## Equivalence
 
-The two Effect 4 APIs and their implementation shapes were verified against the
-`effect@4.0.0-beta.102` tarball. The 27 `notion-effect-schema` sites were categorized as:
+Both replacements and Effect 4's own Class merge implementation are **VERIFIED** against the real
+`effect@4.0.0-beta.102` tarball.
 
-- 23 plain `Struct` plus `TaggedStruct` field merges;
-- 2 plain `Struct` plus `Struct` field merges;
-- 2 `Struct` plus `Record` index-signature extensions;
-- 0 derived-field extensions.
-
-Owning slices must replay encoded baselines. For `StructWithRest`, include an input with an
-additional property and verify that decode and encode preserve the same key and bytes.
+The measured 27 `notion-effect-schema` sites comprise 25 plain struct/tagged-struct merges and two
+struct-plus-record extensions. Owning slices must replay encoded baselines. For `StructWithRest`,
+include an additional property and verify that decode and encode preserve the same key and bytes.
 
 ## Gotchas
 
-- `Schema.Record(...).fields` is not a valid field merge; `Record` is not a `Struct`.
+- `Schema.Record(...).fields` is not a valid merge; `Record` is not a `Struct`.
 - `Schema.extendTo` can typecheck while implementing different runtime behavior.
 - Field order follows object spread order. Preserve the original left-to-right extension order.
 - When both structs define the same key, the right-hand fields continue to win.
 
 ## Codemod rule
 
-Only plain `Struct`/`TaggedStruct` pairs may use the field-spread rewrite. Every right-hand operand
-must be classified first. Record/index-signature operands require `StructWithRest`; Class and
-genuinely derived-field sites require separate adjudication.
+Only plain `Struct`/`TaggedStruct` pairs may use the field-spread rewrite. Classify every right-hand
+operand first. Record/index-signature operands require `StructWithRest`; Class and genuinely
+derived-field sites require separate adjudication.
