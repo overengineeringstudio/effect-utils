@@ -137,6 +137,13 @@ the `ts:check`/`ts:build` task span with stable operation names:
 `devenv.task.*` spans, and compiler diagnostics emit child measurement spans
 under the task span.
 
+Tasks that compute environment for downstream tasks use
+`trace.execWithExports`. It persists the named values through devenv's task
+output channel from inside the traced child; a regular shell `export` cannot
+cross the `otel-span` process boundary. Callers using this helper do not also
+set devenv's `exports` option, whose parent-shell epilogue cannot observe values
+created in the child.
+
 ## Span Conventions
 
 ### Resource Attributes

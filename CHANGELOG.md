@@ -25,6 +25,11 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **devenv setup**: persist setup-gate cache and trace exports from inside the
+  traced task body. This lets warm downstream status probes use the shared
+  outer-cache verdict without losing stale-install or generated-file checks,
+  and preserves an active trace context instead of replacing it.
+
 - **@overeng/genie/package-json**: allow consumers to materialize selected
   cross-repository workspace dependencies with the `file:` protocol. This lets
   pnpm resolve singleton peers such as Effect from the consuming install graph

@@ -23,6 +23,12 @@
 #       exec = trace.exec "ts:check" "tsc --build tsconfig.check.json";
 #     };
 #
+#     # Export values computed inside the traced child to downstream tasks:
+#     tasks."setup:gate".exec = trace.execWithExports
+#       "setup:gate"
+#       [ "DEVENV_SETUP_OUTER_CACHE_HIT" ]
+#       "export DEVENV_SETUP_OUTER_CACHE_HIT=1";
+#
 #     # With cache tracking and method attribute:
 #     tasks."pnpm:install:foo" = trace.withStatus "pnpm:install:foo" "hash" {
 #       exec = "pnpm install";
@@ -185,6 +191,31 @@ let
     fi
   '';
 
+  # Devenv normally persists `tasks.<name>.exports` after the task command
+  # returns. A traced exec adds an `otel-span -> bash -c` process boundary, so
+  # values exported by the body cannot reach devenv's generated parent-shell
+  # epilogue. Persist them from inside the traced body instead.
+  #
+  # Consumers must not also set the task's `exports` option: doing so would let
+  # the generated parent epilogue append stale inherited values after these.
+  traceExecWithExports =
+    taskName: exportNames: execBody:
+    traceExec taskName ''
+      ${execBody}
+
+      if [ -n "''${DEVENV_TASK_EXPORTS_FILE:-}" ]; then
+        for _effect_utils_export_name in ${lib.concatMapStringsSep " " lib.escapeShellArg exportNames}; do
+          if [ -n "''${!_effect_utils_export_name+x}" ]; then
+            _effect_utils_export_value_b64="$(printf '%s' "''${!_effect_utils_export_name}" | base64 -w0)"
+            printf '%s\0%s\0' \
+              "$_effect_utils_export_name" \
+              "$_effect_utils_export_value_b64" \
+              >> "$DEVENV_TASK_EXPORTS_FILE"
+          fi
+        done
+      fi
+    '';
+
   # Trace status scripts so cached/skipped decisions become visible in traces.
   # The status body runs INSIDE otel-span so sub-programs (e.g. genie --check,
   # mr status) inherit TRACEPARENT and produce sub-traces.
@@ -228,6 +259,7 @@ in
   inherit otelCanEmitShell;
   inherit otelTraceContextActive;
   exec = traceExec;
+  execWithExports = traceExecWithExports;
   status = traceStatus;
   withStatus = withStatus;
   instr = instr;
