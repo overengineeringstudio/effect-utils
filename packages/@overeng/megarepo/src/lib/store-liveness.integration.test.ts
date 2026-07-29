@@ -1,4 +1,4 @@
-import { ChildProcess as Command } from 'effect/unstable/process'
+import { ChildProcess as Command, ChildProcessSpawner } from 'effect/unstable/process'
 import * as FileSystem from 'effect/FileSystem'
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
@@ -26,8 +26,9 @@ const normalizePath = (path: string): string => path.replace(/\/+$/, '')
 
 const runGitCommand = (cwd: string, ...args: ReadonlyArray<string>) =>
   Effect.gen(function* () {
-    const command = Command.make('git', ...args).pipe(Command.workingDirectory(cwd))
-    const result = yield* Command.string(command)
+    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
+    const command = Command.make('git', args, { cwd })
+    const result = yield* spawner.string(command)
     return result.trim()
   })
 

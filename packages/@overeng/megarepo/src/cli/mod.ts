@@ -73,7 +73,6 @@ export const mrCommand = Cli.Command.make('mr', { cwd: cwdOption }).pipe(
 )
 
 /** Exported CLI for external use */
-export const cli = Cli.Command.run(mrCommand, {
-  name: 'mr',
+export const cli = Cli.Command.runWith(mrCommand, {
   version: MR_VERSION,
-})(rewriteHelpSubcommand(process.argv))
+})(rewriteHelpSubcommand(process.argv).slice(2))

@@ -20,7 +20,7 @@
  * ```
  */
 
-import type { Error as PlatformError } from 'effect'
+import * as PlatformError from 'effect/PlatformError'
 import * as FileSystem from 'effect/FileSystem'
 import { Context, Effect, Layer, Option } from 'effect'
 
@@ -489,7 +489,7 @@ export const StoreLayer = Layer.effect(
 ).pipe((storeOnly) => {
   /* Derive basePath at provision time for the lock layer.
    * We read the env var again (same as storeOnly) so both use the same path. */
-  const lockLayer = Layer.scoped(
+  const lockLayer = Layer.effect(
     StoreLock,
     Effect.gen(function* () {
       const store = yield* Store

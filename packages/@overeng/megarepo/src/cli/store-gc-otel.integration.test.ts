@@ -21,7 +21,7 @@
 
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { ChildProcess as Command } from 'effect/unstable/process'
+import { ChildProcess as Command, ChildProcessSpawner } from 'effect/unstable/process'
 import * as FileSystem from 'effect/FileSystem'
 import { Clock, Effect, Layer, Option, Ref, Schema } from 'effect'
 import * as Cli from 'effect/unstable/cli'
@@ -44,14 +44,15 @@ const NOW = Date.parse('2026-06-11T12:00:00.000Z')
 
 const git = (cwd: string, ...args: ReadonlyArray<string>) =>
   Effect.gen(function* () {
-    const command = Command.make('git', ...args).pipe(Command.workingDirectory(cwd))
-    return (yield* Command.string(command)).trim()
+    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
+    const command = Command.make('git', args, { cwd })
+    return (yield* spawner.string(command)).trim()
   })
 
 /**
  * Deterministic DECISION clock — `currentTime{Millis,Nanos}` are pinned to
  * `nowMs` so every grace/retention decision is reproducible — but `sleep`
- * delegates to a REAL live clock (`Clock.make()`) instead of the cold test's
+ * delegates to a REAL live clock (`Clock.Clock.defaultValue()`) instead of the cold test's
  * `() => Effect.void`.
  *
  * Why real sleep here: this test runs the gc with the OTEL exporter active, and
@@ -61,15 +62,14 @@ const git = (cwd: string, ...args: ReadonlyArray<string>) =>
  * still fixed) lets the infra timers tick on wall time while keeping gc decisions
  * deterministic — the root-cause fix, with no production workaround.
  */
-const liveClock = Clock.make()
+const liveClock = Clock.Clock.defaultValue()
 const fixedClockLayer = (nowMs: number) =>
-  Layer.setClock({
-    [Clock.ClockTypeId]: Clock.ClockTypeId,
+  Layer.succeed(Clock.Clock, {
     currentTimeMillis: Effect.succeed(nowMs),
     currentTimeNanos: Effect.succeed(BigInt(nowMs) * 1_000_000n),
     sleep: (duration) => liveClock.sleep(duration),
-    unsafeCurrentTimeMillis: () => nowMs,
-    unsafeCurrentTimeNanos: () => BigInt(nowMs) * 1_000_000n,
+    currentTimeMillisUnsafe: () => nowMs,
+    currentTimeNanosUnsafe: () => BigInt(nowMs) * 1_000_000n,
   })
 
 const REPO = { host: 'github.com', owner: 'acme', repo: 'widget' } as const
@@ -129,7 +129,7 @@ const runGc = ({
     process.env['MEGAREPO_STORE'] = storePath
 
     const argv = ['node', 'mr', 'store', 'gc', '--output', 'json']
-    yield* Cli.Command.run(mrCommand, { name: 'mr', version: 'test' })(argv).pipe(
+    yield* Cli.Command.runWith(mrCommand, { version: 'test' })(argv.slice(2)).pipe(
       Effect.provideService(Cwd, cwd),
       Effect.provideService(OtelConfig, { endpoint: telemetry }),
       Effect.provide(

@@ -289,7 +289,7 @@ export const writeMegarepoConfig = ({
     const content =
       format === 'kdl'
         ? yield* Schema.encodeEffect(MegarepoConfigFromKdl)(config)
-        : (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(config)) + '\n'
+        : JSON.stringify(yield* Schema.encodeEffect(MegarepoConfig)(config), null, 2) + '\n'
 
     yield* fs.writeFileString(configPath, content)
   })

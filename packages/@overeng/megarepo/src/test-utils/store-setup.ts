@@ -10,6 +10,7 @@ import { Effect, Option, Schema } from 'effect'
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
 import { MegarepoConfig } from '../lib/config.ts'
+import { encodePrettyJson } from '../lib/json.ts'
 import * as Git from '../lib/git.ts'
 import {
   createLockedMember,
@@ -389,7 +390,7 @@ export const createWorkspaceWithLock = (args: {
     const config: MegarepoConfig = {
       members: args.members,
     }
-    const configContent = yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
+    const configContent = yield* encodePrettyJson(MegarepoConfig)(
       config,
     )
     yield* fs.writeFileString(

@@ -19,6 +19,7 @@ import {
   MegarepoConfig,
   parseSourceString,
 } from '../lib/config.ts'
+import { encodePrettyJson } from '../lib/json.ts'
 import {
   createLockedMember,
   LOCK_FILE_NAME,
@@ -52,7 +53,7 @@ const createMinimalTestSetup = () =>
         'test-repo': 'test-owner/test-repo',
       },
     }
-    const configContent = yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
+    const configContent = yield* encodePrettyJson(MegarepoConfig)(
       config,
     )
     yield* fs.writeFileString(
@@ -101,9 +102,7 @@ describe('mr config pin', () => {
             workspacePath,
             EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
           )
-          const newConfigContent = yield* Schema.encodeEffect(
-            Schema.fromJsonString(MegarepoConfig, { space: 2 }),
-          )(updatedConfig)
+          const newConfigContent = yield* encodePrettyJson(MegarepoConfig)(updatedConfig)
           yield* fs.writeFileString(configPath, newConfigContent + '\n')
 
           // Verify the update
@@ -135,7 +134,7 @@ describe('mr config pin', () => {
           }
           yield* fs.writeFileString(
             configPath,
-            (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(config1)) +
+            (yield* encodePrettyJson(MegarepoConfig)(config1)) +
               '\n',
           )
 

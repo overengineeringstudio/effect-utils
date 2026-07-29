@@ -5,7 +5,7 @@
  * which megarepo members are referenced as inputs by other members.
  */
 
-import type { Error as PlatformError } from 'effect'
+import * as PlatformError from 'effect/PlatformError'
 import * as FileSystem from 'effect/FileSystem'
 import { Effect } from 'effect'
 

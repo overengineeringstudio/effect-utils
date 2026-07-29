@@ -9,7 +9,7 @@
  * not.
  */
 
-import { ChildProcess as Command } from 'effect/unstable/process'
+import { ChildProcess as Command, ChildProcessSpawner } from 'effect/unstable/process'
 import * as FileSystem from 'effect/FileSystem'
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
@@ -25,8 +25,9 @@ const GIT_USER = ['-c', 'user.email=test@example.com', '-c', 'user.name=Test Use
 /** Run git in `cwd`, returning trimmed stdout. */
 const git = (cwd: string, ...args: ReadonlyArray<string>) =>
   Effect.gen(function* () {
-    const command = Command.make('git', ...GIT_USER, ...args).pipe(Command.workingDirectory(cwd))
-    const result = yield* Command.string(command)
+    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
+    const command = Command.make('git', [...GIT_USER, ...args], { cwd })
+    const result = yield* spawner.string(command)
     return result.trim()
   })
 
@@ -39,11 +40,13 @@ const git = (cwd: string, ...args: ReadonlyArray<string>) =>
  */
 const createStash = (worktreeCwd: string) =>
   Effect.gen(function* () {
-    const command = Command.make('git', ...GIT_USER, 'stash').pipe(
-      Command.workingDirectory(worktreeCwd),
-      Command.env({ AGENT_POLICY_BYPASS: '1' }),
-    )
-    yield* Command.string(command)
+    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
+    const command = Command.make('git', [...GIT_USER, 'stash'], {
+      cwd: worktreeCwd,
+      env: { AGENT_POLICY_BYPASS: '1' },
+      extendEnv: true,
+    })
+    yield* spawner.string(command)
   })
 
 /**
