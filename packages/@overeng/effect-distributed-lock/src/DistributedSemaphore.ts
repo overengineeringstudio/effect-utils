@@ -1,7 +1,7 @@
 /** Vendored from effect-distributed-lock 0.0.11 (MIT, Copyright (c) 2025 Ethan Niser). See NOTICE. */
 /* oxlint-disable overeng/named-args -- Preserve the upstream positional semaphore API. */
 import type { Scope } from 'effect'
-import { Duration, Effect, Fiber, Function, Option, Schedule, Semaphore, Stream } from 'effect'
+import { Duration, Effect, Fiber, Option, Result, Schedule, Semaphore, Stream } from 'effect'
 
 import type { SemaphoreBackingError } from './Backing.ts'
 import { DistributedSemaphoreBacking } from './Backing.ts'
@@ -183,14 +183,14 @@ export const make = (
         const pushBasedAcquireEnabled = backing.onPermitsReleased !== undefined
 
         const pollBasedAcquire = Effect.gen(function* () {
-          const maybeAcquired = yield* tryTake(permits, resolvedOptions).pipe(
+          const acquire = tryTake(permits, resolvedOptions)
+          const maybeAcquired =
             pushBasedAcquireEnabled === true
-              ? Function.compose(
+              ? yield* acquire.pipe(
                   acquireSemaphore.withPermitsIfAvailable(1),
                   Effect.map(Option.flatten),
                 )
-              : Function.identity,
-          )
+              : yield* acquire
           if (Option.isNone(maybeAcquired) === true) {
             return yield* new LockNotAcquiredError({ key })
           }
@@ -220,12 +220,13 @@ export const make = (
               tryTake(permits, resolvedOptions).pipe(
                 acquireSemaphore.withPermitsIfAvailable(1),
                 Effect.map(Option.flatten),
+                Effect.map(Result.fromOption(() => undefined)),
               ),
             ),
             Stream.runHead,
             Effect.flatMap(
               Option.match({
-                onSome: Effect.succeed,
+                onSome: (fiber) => Effect.succeed(fiber),
                 onNone: () => Effect.never,
               }),
             ),
