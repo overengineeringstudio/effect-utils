@@ -822,14 +822,15 @@ export class RestateTestHarness extends Context.Service<
           services,
           appLayer,
           endpointScope,
+          memoMap,
         }: {
           services: ReadonlyArray<AnyImplementation<AppR2>>
           appLayer: Layer.Layer<AppR2, never, RIn2>
           endpointScope: Scope.Scope
+          memoMap?: Layer.MemoMap
         }): Effect.Effect<string, RestateError, RIn2> =>
           Effect.gen(function* () {
-            const endpointContext = yield* Layer.buildWithScope(
-              layerWithBoundEndpoint({
+            const endpointLayer = layerWithBoundEndpoint({
                 services,
                 port: 0,
                 ...(opts.hooks !== undefined ? { hooks: opts.hooks } : {}),
@@ -839,9 +840,10 @@ export class RestateTestHarness extends Context.Service<
                   : {}),
                 identityKeys: [server.requestIdentityPublicKey],
                 sdkLogger,
-              }).pipe(Layer.provide(appLayer)),
-              endpointScope,
-            ).pipe(
+              }).pipe(Layer.provide(appLayer))
+            const endpointContext = yield* (memoMap === undefined
+              ? Layer.buildWithScope(endpointLayer, endpointScope)
+              : Layer.buildWithMemoMap(endpointLayer, memoMap, endpointScope)).pipe(
               /* The endpoint layer's channel is `RestateError | ConfigError`, but
                * the `ConfigError` arm fires ONLY for a `Config<number>` port — here
                * the port is literal `0`, so it is structurally impossible.
@@ -860,27 +862,31 @@ export class RestateTestHarness extends Context.Service<
             return uri
           })
 
-        /* MEMOIZE the primary `appLayer` so it is built EXACTLY ONCE into the
-         * harness scope and shared by (a) the served endpoint and (b) the redaction
-         * read below — no double-acquisition of resourceful app services. The
-         * memoized layer is provided to the endpoint AND read for `RestateRedaction`,
-         * so the harness uses the SAME cipher instance the handlers do. */
+        /* Use one explicit memo map for the primary `appLayer` so it is built
+         * EXACTLY ONCE into the harness scope and shared by (a) the served endpoint
+         * and (b) the redaction read below — no double-acquisition of resourceful
+         * app services. Secondary deployments intentionally use independent maps. */
         const harnessScope = yield* Effect.scope
-        const memoAppLayer = yield* Layer.memoize(opts.appLayer)
+        const primaryMemoMap = yield* Layer.makeMemoMap
 
         /* 2.+3. Serve + register the primary deployment into the harness scope. */
         yield* serveAndRegister({
           services: opts.services,
-          appLayer: memoAppLayer,
+          appLayer: opts.appLayer,
           endpointScope: harnessScope,
+          memoMap: primaryMemoMap,
         })
 
         /* Resolve the OPTIONAL `RestateRedaction` cipher from the consumer's
          * `appLayer` — the SAME cipher the served endpoint resolves (decision 0020),
          * so the harness ingress + `stateOf` use the IDENTICAL contract-invocation
          * policy as production rather than a parallel `effectSerde` path (closes the
-         * harness-drift gap). Read from the memoized build; absent → no cipher. */
-        const redaction = yield* Layer.build(memoAppLayer).pipe(
+         * harness-drift gap). Read through the primary memo map; absent → no cipher. */
+        const redaction = yield* Layer.buildWithMemoMap(
+          opts.appLayer,
+          primaryMemoMap,
+          harnessScope,
+        ).pipe(
           Effect.map((ctx) => Context.getOption(ctx, RestateRedaction).pipe(Option.getOrUndefined)),
         )
 
