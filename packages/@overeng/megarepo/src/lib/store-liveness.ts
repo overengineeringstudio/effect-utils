@@ -10,7 +10,7 @@
 import { createHash } from 'node:crypto'
 
 import type { Error as PlatformError } from 'effect'
-import { FileSystem } from 'effect/FileSystem'
+import * as FileSystem from 'effect/FileSystem'
 import { Effect, Option, Schema, type ParseResult } from 'effect'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
@@ -240,7 +240,7 @@ export const refreshWorkspaceRegistry = ({
 
     const registryDir = workspaceRegistryDir(store)
     yield* fs.makeDirectory(registryDir, { recursive: true })
-    const content = yield* Schema.encode(Schema.fromJsonString(StoreWorkspaceRecord, { space: 2 }))(
+    const content = yield* Schema.encodeEffect(Schema.fromJsonString(StoreWorkspaceRecord, { space: 2 }))(
       record,
     )
     // Atomic (write-temp-then-rename): a concurrent reader (e.g. an under-lock
@@ -306,7 +306,7 @@ const readRegistryRecords = ({
       const recordPath = EffectPath.ops.join(registryDir, EffectPath.unsafe.relativeFile(entry))
       const parsed = yield* fs.readFileString(recordPath).pipe(
         Effect.flatMap((content) =>
-          Schema.decodeUnknown(Schema.fromJsonString(StoreWorkspaceRecord))(content),
+          Schema.decodeUnknownEffect(Schema.fromJsonString(StoreWorkspaceRecord))(content),
         ),
         Effect.orElseSucceed(() => null),
       )
@@ -321,7 +321,7 @@ const readRegistryRecords = ({
       // present-but-unreadable workspace must never be pruned.
       if (workspaceExists === false) {
         if (pruneStale === true) {
-          yield* fs.remove(recordPath).pipe(Effect.catchAll(() => Effect.void))
+          yield* fs.remove(recordPath).pipe(Effect.catch(() => Effect.void))
         }
         continue
       }
@@ -345,7 +345,7 @@ const readRegistryRecords = ({
           updatedAt: new Date(reconcile.now).toISOString(),
           livePaths: [...reconciled.paths].toSorted(),
         }
-        const content = yield* Schema.encode(
+        const content = yield* Schema.encodeEffect(
           Schema.fromJsonString(StoreWorkspaceRecord, { space: 2 }),
         )(record)
         // Atomic rewrite so a concurrent reader never sees a torn record and

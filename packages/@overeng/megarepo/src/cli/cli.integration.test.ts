@@ -7,7 +7,7 @@
 
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { FileSystem } from 'effect/FileSystem'
+import * as FileSystem from 'effect/FileSystem'
 import { Effect, Exit, Option, Schema } from 'effect'
 import * as Cli from 'effect/unstable/cli'
 import { expect } from 'vitest'
@@ -81,7 +81,7 @@ describe('mr init', () => {
             'https://raw.githubusercontent.com/overengineeringstudio/megarepo/main/schema/megarepo.schema.json',
           members: {},
         }
-        const configContent = yield* Schema.encode(
+        const configContent = yield* Schema.encodeEffect(
           Schema.fromJsonString(MegarepoConfig, { space: 2 }),
         )(initialConfig)
         yield* fs.writeFileString(configPath, configContent + '\n')
@@ -119,7 +119,7 @@ describe('mr init', () => {
           workDir,
           EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
         )
-        const configContent = yield* Schema.encode(
+        const configContent = yield* Schema.encodeEffect(
           Schema.fromJsonString(MegarepoConfig, { space: 2 }),
         )(existingConfig)
         yield* fs.writeFileString(configPath, configContent + '\n')
@@ -283,7 +283,7 @@ describe('mr add', () => {
           EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
         )
         const initialConfig: MegarepoConfig = { members: {} }
-        const initialContent = yield* Schema.encode(
+        const initialContent = yield* Schema.encodeEffect(
           Schema.fromJsonString(MegarepoConfig, { space: 2 }),
         )(initialConfig)
         yield* fs.writeFileString(configPath, initialContent + '\n')
@@ -298,7 +298,7 @@ describe('mr add', () => {
           ...config,
           members: { ...config.members, [memberName]: memberSource },
         }
-        const updatedContent = yield* Schema.encode(
+        const updatedContent = yield* Schema.encodeEffect(
           Schema.fromJsonString(MegarepoConfig, { space: 2 }),
         )(updatedConfig)
         yield* fs.writeFileString(configPath, updatedContent + '\n')
@@ -339,7 +339,7 @@ describe('mr add', () => {
           ...config,
           members: { ...config.members, [customName]: memberSource },
         }
-        const updatedContent = yield* Schema.encode(
+        const updatedContent = yield* Schema.encodeEffect(
           Schema.fromJsonString(MegarepoConfig, { space: 2 }),
         )(updatedConfig)
         yield* fs.writeFileString(configPath, updatedContent + '\n')
@@ -379,7 +379,7 @@ describe('mr add', () => {
         const initialConfig: MegarepoConfig = {
           members: { effect: 'effect-ts/effect' },
         }
-        const initialContent = yield* Schema.encode(
+        const initialContent = yield* Schema.encodeEffect(
           Schema.fromJsonString(MegarepoConfig, { space: 2 }),
         )(initialConfig)
         yield* fs.writeFileString(configPath, initialContent + '\n')
@@ -428,7 +428,7 @@ describe('megarepo.json parsing', () => {
             local: './packages/local',
           },
         }
-        const content = yield* Schema.encode(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
+        const content = yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
           config,
         )
         yield* fs.writeFileString(configPath, content + '\n')
@@ -465,7 +465,7 @@ describe('megarepo.json parsing', () => {
             vscode: { enabled: true, exclude: ['large-repo'] },
           },
         }
-        const content = yield* Schema.encode(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
+        const content = yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
           config,
         )
         yield* fs.writeFileString(configPath, content + '\n')
@@ -505,7 +505,7 @@ const runRootWithCwd = ({ cwdPath }: { cwdPath: string }) =>
 
     let state: RootState | undefined
     if (stdout.trim() !== '') {
-      state = yield* Schema.decodeUnknown(Schema.fromJsonString(RootState))(stdout)
+      state = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(RootState))(stdout)
     }
 
     return {

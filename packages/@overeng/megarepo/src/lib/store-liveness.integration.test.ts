@@ -1,5 +1,5 @@
 import { ChildProcess as Command } from 'effect/unstable/process'
-import { FileSystem } from 'effect/FileSystem'
+import * as FileSystem from 'effect/FileSystem'
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Effect, Option } from 'effect'
@@ -333,7 +333,7 @@ describe('store-liveness', () => {
           store,
         }).pipe(Effect.either)
         // Restore perms regardless of assertion outcome so scoped cleanup works.
-        yield* fs.chmod(reposDir, 0o755).pipe(Effect.catchAll(() => Effect.void))
+        yield* fs.chmod(reposDir, 0o755).pipe(Effect.catch(() => Effect.void))
         // Re-break for the reconcile-all assertion below.
         yield* fs.chmod(reposDir, 0o000)
         expect(strictResult._tag).toBe('Left')
@@ -345,7 +345,7 @@ describe('store-liveness', () => {
           reconcileAllWorkspaces: true,
           now: 1_700_000_002_000,
         })
-        yield* fs.chmod(reposDir, 0o755).pipe(Effect.catchAll(() => Effect.void))
+        yield* fs.chmod(reposDir, 0o755).pipe(Effect.catch(() => Effect.void))
 
         expect(reconciled.paths).toContain(normalizePath(mainWorktreePath))
         expect([...reconciled.uncleanReconcilePaths]).toContain(normalizePath(mainWorktreePath))

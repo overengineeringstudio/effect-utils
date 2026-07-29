@@ -8,7 +8,7 @@
 
 import type { Error as PlatformError } from 'effect'
 import { Effect, Ref, Schema, type ParseResult } from 'effect'
-import { FileSystem } from 'effect/FileSystem'
+import * as FileSystem from 'effect/FileSystem'
 
 import type { AbsoluteDirPath } from '@overeng/effect-path'
 
@@ -79,7 +79,7 @@ const canonicalizeRoot = Effect.fn('megarepo/traversal/canonicalize-root')(funct
     Effect.map(stripTrailingSlashesPreservingRoot),
     Effect.orElseSucceed(() => normalizedRoot),
   )
-  const key = yield* Schema.decodeUnknown(MegarepoTraversalNodeKey)(resolvedRoot)
+  const key = yield* Schema.decodeUnknownEffect(MegarepoTraversalNodeKey)(resolvedRoot)
   return { key, resolvedRoot }
 })
 

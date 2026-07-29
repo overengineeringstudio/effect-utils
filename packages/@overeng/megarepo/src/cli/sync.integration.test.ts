@@ -2,7 +2,7 @@ import { pathToFileURL } from 'node:url'
 
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { FileSystem } from 'effect/FileSystem'
+import * as FileSystem from 'effect/FileSystem'
 import { Cause, Chunk, Effect, Exit, Option, Schema } from 'effect'
 import * as Cli from 'effect/unstable/cli'
 import { expect } from 'vitest'
@@ -632,7 +632,7 @@ const createNestedMegarepoFixture = () =>
         'grandchild-lib': grandchildPath,
       },
     }
-    const childConfigContent = yield* Schema.encode(
+    const childConfigContent = yield* Schema.encodeEffect(
       Schema.fromJsonString(MegarepoConfig, { space: 2 }),
     )(childConfig)
     yield* fs.writeFileString(
@@ -658,7 +658,7 @@ const createNestedMegarepoFixture = () =>
         'child-megarepo': childPath,
       },
     }
-    const parentConfigContent = yield* Schema.encode(
+    const parentConfigContent = yield* Schema.encodeEffect(
       Schema.fromJsonString(MegarepoConfig, { space: 2 }),
     )(parentConfig)
     yield* fs.writeFileString(
@@ -702,7 +702,7 @@ describe('--all sync mode', () => {
 
           // Read parent config and verify it points to child
           const parentConfigContent = yield* fs.readFileString(parentConfigPath)
-          const parentConfig = yield* Schema.decodeUnknown(Schema.fromJsonString(MegarepoConfig))(
+          const parentConfig = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(MegarepoConfig))(
             parentConfigContent,
           )
           expect(parentConfig.members['child-megarepo']).toBe(childPath)
@@ -725,7 +725,7 @@ describe('--all sync mode', () => {
             EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
           )
           const childConfigContent = yield* fs.readFileString(childConfigPath)
-          const childConfig = yield* Schema.decodeUnknown(Schema.fromJsonString(MegarepoConfig))(
+          const childConfig = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(MegarepoConfig))(
             childConfigContent,
           )
           expect(childConfig.members['grandchild-lib']).toBe(grandchildPath)
@@ -763,7 +763,7 @@ describe('--all nested error reporting', () => {
         yield* initGitRepo(childPath)
         yield* fs.writeFileString(
           EffectPath.ops.join(childPath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON)),
-          (yield* Schema.encode(Schema.fromJsonString(MegarepoConfig, { space: 2 }))({
+          (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))({
             members: {
               bad: 'not-a-valid-source',
             },
@@ -780,7 +780,7 @@ describe('--all nested error reporting', () => {
         yield* initGitRepo(parentPath)
         yield* fs.writeFileString(
           EffectPath.ops.join(parentPath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON)),
-          (yield* Schema.encode(Schema.fromJsonString(MegarepoConfig, { space: 2 }))({
+          (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))({
             members: {
               child: childPath,
             },
@@ -806,7 +806,7 @@ describe('--all nested error reporting', () => {
           syncErrors: Schema.Array(SyncErrorItem),
           syncTree: MegarepoSyncTree,
         })
-        const out = yield* Schema.decodeUnknown(Schema.fromJsonString(SyncOutput))(
+        const out = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(SyncOutput))(
           result.stdout.trim(),
         )
 
@@ -878,7 +878,7 @@ const createDiamondDependencyFixture = () =>
     const childAConfig: MegarepoConfig = {
       members: { 'shared-lib': sharedLibPath },
     }
-    const childAConfigContent = yield* Schema.encode(
+    const childAConfigContent = yield* Schema.encodeEffect(
       Schema.fromJsonString(MegarepoConfig, { space: 2 }),
     )(childAConfig)
     yield* fs.writeFileString(
@@ -897,7 +897,7 @@ const createDiamondDependencyFixture = () =>
     const childBConfig: MegarepoConfig = {
       members: { 'shared-lib': sharedLibPath },
     }
-    const childBConfigContent = yield* Schema.encode(
+    const childBConfigContent = yield* Schema.encodeEffect(
       Schema.fromJsonString(MegarepoConfig, { space: 2 }),
     )(childBConfig)
     yield* fs.writeFileString(
@@ -919,7 +919,7 @@ const createDiamondDependencyFixture = () =>
         'child-b': childBPath,
       },
     }
-    const rootConfigContent = yield* Schema.encode(
+    const rootConfigContent = yield* Schema.encodeEffect(
       Schema.fromJsonString(MegarepoConfig, { space: 2 }),
     )(rootConfig)
     yield* fs.writeFileString(
@@ -954,7 +954,7 @@ describe('--all sync deduplication', () => {
           EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
         )
         const rootConfigContent = yield* fs.readFileString(rootConfigPath)
-        const rootConfig = yield* Schema.decodeUnknown(Schema.fromJsonString(MegarepoConfig))(
+        const rootConfig = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(MegarepoConfig))(
           rootConfigContent,
         )
         expect(rootConfig.members['child-a']).toBe(childAPath)
@@ -966,7 +966,7 @@ describe('--all sync deduplication', () => {
           EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
         )
         const childAConfigContent = yield* fs.readFileString(childAConfigPath)
-        const childAConfig = yield* Schema.decodeUnknown(Schema.fromJsonString(MegarepoConfig))(
+        const childAConfig = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(MegarepoConfig))(
           childAConfigContent,
         )
         expect(childAConfig.members['shared-lib']).toBe(sharedLibPath)
@@ -976,7 +976,7 @@ describe('--all sync deduplication', () => {
           EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
         )
         const childBConfigContent = yield* fs.readFileString(childBConfigPath)
-        const childBConfig = yield* Schema.decodeUnknown(Schema.fromJsonString(MegarepoConfig))(
+        const childBConfig = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(MegarepoConfig))(
           childBConfigContent,
         )
         expect(childBConfig.members['shared-lib']).toBe(sharedLibPath)
@@ -1002,7 +1002,7 @@ const createPinnedStaleCommitPullFixture = (options?: { readonly useCommitRef?: 
     yield* fs.makeDirectory(sourceRepoPath, { recursive: true })
     yield* initGitRepo(sourceRepoPath)
     yield* runGitCommand(sourceRepoPath, 'checkout', '-b', 'main').pipe(
-      Effect.catchAll(() => Effect.void),
+      Effect.catch(() => Effect.void),
     )
     yield* fs.writeFileString(
       EffectPath.ops.join(sourceRepoPath, EffectPath.unsafe.relativeFile('README.md')),
@@ -1020,7 +1020,7 @@ const createPinnedStaleCommitPullFixture = (options?: { readonly useCommitRef?: 
     yield* runGitCommand(sourceRepoPath, 'push', '-u', 'origin', 'main')
 
     yield* runGitCommand(sourceRepoPath, 'checkout', '--orphan', 'rewritten-main')
-    yield* runGitCommand(sourceRepoPath, 'rm', '-rf', '.').pipe(Effect.catchAll(() => Effect.void))
+    yield* runGitCommand(sourceRepoPath, 'rm', '-rf', '.').pipe(Effect.catch(() => Effect.void))
     yield* fs.writeFileString(
       EffectPath.ops.join(sourceRepoPath, EffectPath.unsafe.relativeFile('README.md')),
       '# Rewritten history\n',
@@ -1119,7 +1119,7 @@ const createNestedWorkspaceFixtureFromStore = (store: StoreFixtureResult) =>
     yield* initGitRepo(childPath)
     yield* fs.writeFileString(
       EffectPath.ops.join(childPath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON)),
-      (yield* Schema.encode(Schema.fromJsonString(MegarepoConfig, { space: 2 }))({
+      (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))({
         members: {
           shared: 'https://example.com/acme/shared#main',
         },
@@ -1146,7 +1146,7 @@ const createNestedWorkspaceFixtureFromStore = (store: StoreFixtureResult) =>
     yield* initGitRepo(parentPath)
     yield* fs.writeFileString(
       EffectPath.ops.join(parentPath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON)),
-      (yield* Schema.encode(Schema.fromJsonString(MegarepoConfig, { space: 2 }))({
+      (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))({
         members: {
           shared: 'https://example.com/acme/shared#main',
           child: childPath,
@@ -1204,7 +1204,7 @@ const createAliasWorkspaceFixture = () =>
       EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
     )
     const parentConfigContent = yield* fs.readFileString(parentConfigPath)
-    const parentConfig = yield* Schema.decodeUnknown(Schema.fromJsonString(MegarepoConfig))(
+    const parentConfig = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(MegarepoConfig))(
       parentConfigContent,
     )
     const updatedConfig = {
@@ -1216,7 +1216,7 @@ const createAliasWorkspaceFixture = () =>
     }
     yield* fs.writeFileString(
       parentConfigPath,
-      (yield* Schema.encode(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(updatedConfig)) +
+      (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(updatedConfig)) +
         '\n',
     )
 
@@ -1286,7 +1286,7 @@ const createNestedMegarepoLockRefMatchFixture = () =>
     yield* initGitRepo(childPath)
     yield* fs.writeFileString(
       EffectPath.ops.join(childPath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON)),
-      (yield* Schema.encode(Schema.fromJsonString(MegarepoConfig, { space: 2 }))({
+      (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))({
         members: {
           'shared-dev': 'https://example.com/acme/shared#dev',
         },
@@ -1313,7 +1313,7 @@ const createNestedMegarepoLockRefMatchFixture = () =>
     yield* initGitRepo(parentPath)
     yield* fs.writeFileString(
       EffectPath.ops.join(parentPath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON)),
-      (yield* Schema.encode(Schema.fromJsonString(MegarepoConfig, { space: 2 }))({
+      (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))({
         members: {
           'shared-main': 'https://example.com/acme/shared#main',
           'shared-dev': 'https://example.com/acme/shared#dev',
@@ -1793,7 +1793,7 @@ describe('mr lock', () => {
               effect: 'effect-ts/effect',
             },
           }
-          const configContent = yield* Schema.encode(
+          const configContent = yield* Schema.encodeEffect(
             Schema.fromJsonString(MegarepoConfig, { space: 2 }),
           )(config)
           yield* fs.writeFileString(
@@ -1875,7 +1875,7 @@ describe('mr lock', () => {
           )
           yield* fs.writeFileString(
             configPath,
-            (yield* Schema.encode(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
+            (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
               initialConfig,
             )) + '\n',
           )
@@ -1911,7 +1911,7 @@ describe('mr lock', () => {
           }
           yield* fs.writeFileString(
             configPath,
-            (yield* Schema.encode(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
+            (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
               updatedConfig,
             )) + '\n',
           )
@@ -1990,7 +1990,7 @@ describe('mr lock', () => {
           )
           yield* fs.writeFileString(
             configPath,
-            (yield* Schema.encode(Schema.fromJsonString(MegarepoConfig, { space: 2 }))({
+            (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))({
               members: { 'my-lib': mainRepoPath },
             })) + '\n',
           )
@@ -2008,7 +2008,7 @@ describe('mr lock', () => {
           // Update config to point to feature branch
           yield* fs.writeFileString(
             configPath,
-            (yield* Schema.encode(Schema.fromJsonString(MegarepoConfig, { space: 2 }))({
+            (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))({
               members: { 'my-lib': featureRepoPath },
             })) + '\n',
           )
@@ -2220,7 +2220,7 @@ describe('mr lock', () => {
           )
           yield* fs.writeFileString(
             configPath,
-            (yield* Schema.encode(Schema.fromJsonString(MegarepoConfig, { space: 2 }))({
+            (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))({
               members: { 'my-lib': mainRepoPath },
             })) + '\n',
           )
@@ -2238,7 +2238,7 @@ describe('mr lock', () => {
           // Update config
           yield* fs.writeFileString(
             configPath,
-            (yield* Schema.encode(Schema.fromJsonString(MegarepoConfig, { space: 2 }))({
+            (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))({
               members: { 'my-lib': featureRepoPath },
             })) + '\n',
           )
@@ -2509,7 +2509,7 @@ describe('mr fetch', () => {
           yield* initGitRepo(sourceRepoPath)
           // Force branch name to 'main' regardless of git config default
           yield* runGitCommand(sourceRepoPath, 'checkout', '-b', 'main').pipe(
-            Effect.catchAll(() => Effect.void),
+            Effect.catch(() => Effect.void),
           )
           yield* fs.writeFileString(
             EffectPath.ops.join(sourceRepoPath, EffectPath.unsafe.relativeFile('README.md')),
@@ -2652,7 +2652,7 @@ describe('sync status types', () => {
             'new-lib': localRepoPath,
           },
         }
-        const configContent = yield* Schema.encode(
+        const configContent = yield* Schema.encodeEffect(
           Schema.fromJsonString(MegarepoConfig, { space: 2 }),
         )(config)
         yield* fs.writeFileString(
@@ -2711,7 +2711,7 @@ describe('sync error handling', () => {
             'non-existent-repo': pathToFileURL(missingRemotePath).href,
           },
         }
-        const configContent = yield* Schema.encode(
+        const configContent = yield* Schema.encodeEffect(
           Schema.fromJsonString(MegarepoConfig, { space: 2 }),
         )(config)
         yield* fs.writeFileString(
@@ -2803,7 +2803,7 @@ describe('sync member filtering', () => {
               repo2: repo2Path,
             },
           }
-          const configContent = yield* Schema.encode(
+          const configContent = yield* Schema.encodeEffect(
             Schema.fromJsonString(MegarepoConfig, { space: 2 }),
           )(config)
           yield* fs.writeFileString(
@@ -2874,7 +2874,7 @@ describe('sync member filtering', () => {
               repo2: repo2Path,
             },
           }
-          const configContent = yield* Schema.encode(
+          const configContent = yield* Schema.encodeEffect(
             Schema.fromJsonString(MegarepoConfig, { space: 2 }),
           )(config)
           yield* fs.writeFileString(
@@ -2928,7 +2928,7 @@ describe('sync member filtering', () => {
               repo1: 'owner/repo1',
             },
           }
-          const configContent = yield* Schema.encode(
+          const configContent = yield* Schema.encodeEffect(
             Schema.fromJsonString(MegarepoConfig, { space: 2 }),
           )(config)
           yield* fs.writeFileString(
@@ -3027,7 +3027,7 @@ describe('sync worktree ref mismatch detection', () => {
             'test-repo': 'https://example.com/org/test-repo#main',
           },
         }
-        const configContent = yield* Schema.encode(
+        const configContent = yield* Schema.encodeEffect(
           Schema.fromJsonString(MegarepoConfig, { space: 2 }),
         )(config)
         yield* fs.writeFileString(
@@ -3133,7 +3133,7 @@ describe('sync worktree ref mismatch detection', () => {
             'test-repo': 'https://example.com/org/test-repo#main',
           },
         }
-        const configContent = yield* Schema.encode(
+        const configContent = yield* Schema.encodeEffect(
           Schema.fromJsonString(MegarepoConfig, { space: 2 }),
         )(config)
         yield* fs.writeFileString(
@@ -3250,7 +3250,7 @@ describe('sync member removal detection', () => {
         }
         yield* fs.writeFileString(
           configPath,
-          (yield* Schema.encode(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
+          (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
             initialConfig,
           )) + '\n',
         )
@@ -3283,7 +3283,7 @@ describe('sync member removal detection', () => {
         }
         yield* fs.writeFileString(
           configPath,
-          (yield* Schema.encode(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
+          (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
             updatedConfig,
           )) + '\n',
         )
@@ -3360,7 +3360,7 @@ describe('sync member removal detection', () => {
         }
         yield* fs.writeFileString(
           configPath,
-          (yield* Schema.encode(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
+          (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
             initialConfig,
           )) + '\n',
         )
@@ -3380,7 +3380,7 @@ describe('sync member removal detection', () => {
         }
         yield* fs.writeFileString(
           configPath,
-          (yield* Schema.encode(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
+          (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
             updatedConfig,
           )) + '\n',
         )
@@ -3456,7 +3456,7 @@ describe('sync member removal detection', () => {
         }
         yield* fs.writeFileString(
           configPath,
-          (yield* Schema.encode(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(config)) +
+          (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(config)) +
             '\n',
         )
         yield* addCommit({
@@ -3527,7 +3527,7 @@ describe('sync member removal detection', () => {
         }
         yield* fs.writeFileString(
           configPath,
-          (yield* Schema.encode(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(config)) +
+          (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(config)) +
             '\n',
         )
         yield* addCommit({

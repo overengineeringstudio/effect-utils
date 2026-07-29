@@ -10,7 +10,7 @@ import { Prompt } from 'effect/unstable/cli'
 import type { ChildProcessSpawner as CommandExecutor } from 'effect/unstable/process'
 import type { Terminal } from 'effect/Terminal'
 import type { Error as PlatformError } from 'effect'
-import { FileSystem } from 'effect/FileSystem'
+import * as FileSystem from 'effect/FileSystem'
 import { Clock, Effect, Option, type ParseResult } from 'effect'
 import React from 'react'
 
@@ -325,7 +325,7 @@ export const syncMegarepo = <R = never>({
 
             if (linkTarget !== null) {
               if (dryRun === false) {
-                yield* fs.remove(entryPath).pipe(Effect.catchAll(() => Effect.void))
+                yield* fs.remove(entryPath).pipe(Effect.catch(() => Effect.void))
               }
               return {
                 name: entry,
@@ -511,7 +511,7 @@ export const syncMegarepo = <R = never>({
                   ...(onMissingRef !== undefined ? { onMissingRef } : {}),
                 })
               }).pipe(
-                Effect.catchAll((error) =>
+                Effect.catch((error) =>
                   Effect.succeed({
                     root: nestedRoot,
                     results: [

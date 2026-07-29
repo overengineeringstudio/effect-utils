@@ -9,7 +9,7 @@
 
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { FileSystem } from 'effect/FileSystem'
+import * as FileSystem from 'effect/FileSystem'
 import { Effect, Exit, Schema } from 'effect'
 import * as Cli from 'effect/unstable/cli'
 import { expect } from 'vitest'
@@ -53,7 +53,7 @@ const runStatusCommand = ({
     // Parse JSON output
     let status: StatusState | undefined
     if (stdout.trim() !== '') {
-      status = yield* Schema.decodeUnknown(Schema.fromJsonString(StatusState))(stdout)
+      status = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(StatusState))(stdout)
     }
 
     return {
@@ -89,7 +89,7 @@ const createTestWorkspace = (args: {
     const config: MegarepoConfig = {
       members: args.members,
     }
-    const configContent = yield* Schema.encode(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
+    const configContent = yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
       config,
     )
     yield* fs.writeFileString(
@@ -533,7 +533,7 @@ describe('mr status --output json', () => {
 
           const writeConfig = (workspacePath: AbsoluteDirPath, members: Record<string, string>) =>
             Effect.gen(function* () {
-              const configContent = yield* Schema.encode(
+              const configContent = yield* Schema.encodeEffect(
                 Schema.fromJsonString(MegarepoConfig, { space: 2 }),
               )({ members })
               yield* fs.writeFileString(
