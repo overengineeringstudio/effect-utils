@@ -48,6 +48,32 @@ const NumberFromString = Schema.String.pipe(
 The source schema is piped into `decodeTo`; the target schema is its first argument. The old `strict`
 option is not copied.
 
+### Decode-only pure transformations
+
+When an unsupported encode callback only throws, its inferred return type is `never`. Do not leave
+the transformation's encoded type to inference: state both transformation types and annotate the
+throwing callback's return type.
+
+```ts
+const DecodeOnly = Schema.String.pipe(
+  Schema.decodeTo(
+    Target,
+    SchemaTransformation.transform<TargetType, string>({
+      decode: (input) => decodeInput(input),
+      encode: (_value): string => {
+        throw new Error('This codec only supports decoding')
+      },
+    }),
+  ),
+)
+```
+
+This explicit form is **VERIFIED** to compile against the
+`effect@4.0.0-beta.102` declarations and retains the encoded `string` contract. Prefer
+`transformOrFail` with a `SchemaIssue.Forbidden` failure when the old codec represented unsupported
+encoding in the typed error channel. Whether throwing or typed failure is faithful depends on the
+v3 call site; do not change that boundary merely to satisfy inference.
+
 ## Fallible transformations and issues
 
 ### v3
@@ -118,6 +144,34 @@ Use `Schema.refine(typeGuard)` when the callback narrows the TypeScript type. `m
 a string, a `SchemaIssue.Issue`, `{ path, issue }`, or an array of issues when error structure must be
 preserved.
 
+### Filter messages are no longer lazy
+
+V3 filter/refinement annotations accepted `message: () => string`. Beta.102
+`Annotations.Filter.message` is a plain `string`; there is no lazy annotation form. This is
+**VERIFIED** from the beta.102 declaration.
+
+For the repository's closures that return a constant string, preserve the text as a constant:
+
+```ts
+// v3
+Schema.filter(predicate, { message: () => 'must be valid' })
+
+// v4
+Schema.refine(predicate, { message: 'must be valid' })
+```
+
+Do not mechanically invoke a stateful or expensive closure while constructing the schema. That
+changes evaluation from failure-time to schema-construction-time. If narrowing is not required, a
+lazy failure string can instead be produced by the check itself:
+
+```ts
+Schema.check(Schema.makeFilter((value) => predicate(value) || message()))
+```
+
+That form does not preserve a type-guard narrowing. A stateful/expensive type-guard message
+therefore needs explicit design review; beta.102 has no direct replacement that preserves both
+narrowing and lazy message evaluation.
+
 ## Affected inventory
 
 The AST audit measured 27 `ParseResult` references in 15 files and 7 packages. The namespace-member
@@ -153,12 +207,16 @@ SHA-1 `f51092854960f60cbdb06bd59e788acbc8ee8492`.
 
 - `SchemaTransformation.transform` is only for pure, infallible conversions. Returning an `Effect`
   from it creates the wrong decoded value.
+- Give decode-only pure transformations explicit `<Type, Encoded>` parameters and an encoded return
+  annotation on a throwing callback; otherwise `never` can erase the intended direction.
 - `SchemaTransformation.transformOrFail` callbacks return `Effect`; throwing bypasses the typed issue
   channel.
 - `Schema.decodeUnknownEffect` exposes `SchemaError`, while transformation callbacks operate on
   `SchemaIssue.Issue`.
 - A formatter rewrite can change user-visible text even when decoding behavior is otherwise
   equivalent.
+- V4 filter annotation messages are eager strings. Only constant closures can be collapsed without
+  a timing/value review.
 
 ## Codemod rule
 
