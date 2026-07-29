@@ -254,6 +254,14 @@ let
       }
       // (packageTestOverrides.${name} or { })
     ) packageNames;
+  baselineTestTaskRegistry = pkgs.writeText "effect4-baseline-test-task-registry.json" (
+    builtins.toJSON (
+      map (pkg: {
+        packagePath = pkg.path;
+        taskName = "test:${pkg.name}";
+      }) packagesWithTests
+    )
+  );
 
   # Packages that have storybook (subset of allPackages)
   packagesWithStorybook = [
@@ -379,6 +387,7 @@ in
       packages = packagesWithTests;
       extraTests = [ "devenv-modules:test" ];
       packageConcurrency = 4;
+      retainVitestJson = true;
     })
     (taskModules.storybook {
       packages = packagesWithStorybook;
@@ -694,6 +703,17 @@ in
     "cargo:check"
     "dependency-materialization:evidence:check"
   ];
+
+  # `test:run` executes after its package-task dependencies, so both Effect 4
+  # gates see the complete managed-test summary directory in CI.
+  tasks."test:run".exec = lib.mkForce (
+    trace.exec "test:run" ''
+      set -euo pipefail
+      ${pkgs.bun}/bin/bun context/effect-4/check-baseline-migration-markers.ts
+      ${pkgs.bun}/bin/bun context/effect-4/check-baseline-test-collection.ts \
+        --task-registry ${baselineTestTaskRegistry}
+    ''
+  );
 
   # Keep git-hook installation out of the shell-entry path.
   # If needed, install with `devenv tasks run devenv:git-hooks:install`.

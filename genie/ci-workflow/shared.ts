@@ -234,14 +234,54 @@ if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
   exit 1
 fi`
 
-export const resolveDevenvFnScript = `resolve_devenv() {
+export const resolveDevenvFnScript = `DEVENV_GC_ROOT_DIR="${'${RUNNER_TEMP:-/tmp}'}/genie-nix-gc-roots"
+DEVENV_GC_ROOT_ID=$(printf '%s' "${'${GITHUB_RUN_ID:-local-$$}'}-${'${GITHUB_RUN_ATTEMPT:-0}'}-${'${GITHUB_JOB:-job}'}" | tr -c 'A-Za-z0-9._-' '_')
+DEVENV_GC_ROOT="$DEVENV_GC_ROOT_DIR/devenv-$DEVENV_GC_ROOT_ID"
+
+resolve_devenv_once() {
+  mkdir -p "$DEVENV_GC_ROOT_DIR"
   nix build \\
     --accept-flake-config \\
     --option extra-substituters ${devenvBinaryCache.uri} \\
     --option extra-trusted-public-keys ${devenvBinaryCache.publicKey} \\
-    --no-link \\
+    --out-link "$DEVENV_GC_ROOT" \\
     --print-out-paths \\
     "github:cachix/devenv/$DEVENV_REV#devenv"
+}
+
+resolve_devenv() {
+  local invalid_path
+  local log
+  local rc
+
+  log=$(mktemp)
+  if resolve_devenv_once 2>"$log"; then
+    cat "$log" >&2
+    rm -f "$log"
+    return 0
+  else
+    rc=$?
+  fi
+  cat "$log" >&2
+  invalid_path=$(grep -o "error:[[:space:]]*path '/nix/store/[^']*'[[:space:]]*is not valid" "$log" |
+    head -1 | grep -o "/nix/store/[^']*" || true)
+  rm -f "$log"
+  [ -n "$invalid_path" ] || return "$rc"
+
+  echo "::warning::devenv resolution hit an invalid Nix store path; clearing the client eval cache and retrying once: $invalid_path" >&2
+  rm -rf "${'${XDG_CACHE_HOME:-$HOME/.cache}'}/nix/eval-cache-"* ~/.cache/nix/eval-cache-*
+  nix-store --repair-path "$invalid_path" >/dev/null 2>&1 ||
+    nix-store --realise "$invalid_path" >/dev/null 2>&1 || true
+  if resolve_devenv_once; then
+    if [ -n "${'${GITHUB_STEP_SUMMARY:-}'}" ]; then
+      echo '### Recovered Nix store lifecycle incident' >> "$GITHUB_STEP_SUMMARY"
+      echo "- Invalid path: $invalid_path" >> "$GITHUB_STEP_SUMMARY"
+      echo '- Attempts: 2/2' >> "$GITHUB_STEP_SUMMARY"
+    fi
+    return 0
+  else
+    return $?
+  fi
 }`
 
 export const shellSingleQuote = (value: string) => `'${value.replaceAll("'", `'"'"'`)}'`
@@ -348,14 +388,14 @@ export type GcRaceRetryOptions = {
  * those as the same root cause and retry after realizing the missing path and
  * clearing the eval cache.
  *
- * Some namespace runners also lose the multi-user Nix daemon socket after
- * setup; retry those after a best-effort daemon restart. This daemon-socket
- * sub-case is a distinct runner-side failure mode and is NOT covered by the
- * two upstream store-race refs below — it has no tracked upstream fix yet.
+ * Some runners also lose the multi-user Nix daemon socket after setup. Retry
+ * those passively so host supervision can restore service; CI jobs must not
+ * mutate the shared daemon. This daemon-socket sub-case is a distinct
+ * runner-side failure mode and is not covered by the upstream refs below.
  *
  * TODO: Remove the store-validity-race retry once NixOS/nix#15469 and
- * DeterminateSystems/nix-src#395 are released. The daemon-socket repair branch
- * must be reassessed separately (see `repair_nix_daemon`).
+ * DeterminateSystems/nix-src#395 are released. Reassess the daemon-socket retry
+ * separately when host supervision exposes a stronger availability contract.
  * @see https://github.com/NixOS/nix/pull/15469
  * @see https://github.com/DeterminateSystems/nix-src/issues/395
  */

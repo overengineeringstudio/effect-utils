@@ -1,5 +1,7 @@
 #!/usr/bin/env bun
 
+import { mkdir, mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 
 const marker = 'TODO(live-migration:effect-3-4)'
@@ -36,6 +38,11 @@ const riskSignatures = [
     why: 'Effect 4 changes the rejected-status wrapper and reason shape.',
   },
   {
+    registerEntry: 'cli-A-nested-terminator-loss',
+    regex: /\bargs\s*:\s*\[\s*["']add["']\s*,\s*["']--["']/g,
+    why: 'Effect 4 drops operands after -- for the nested megarepo add command.',
+  },
+  {
     registerEntry: 'fork-copied-options',
     regex: /\b(?:startImmediately|uninterruptible)\b/g,
     why: 'Copied fork options change scheduling and must have a local justification.',
@@ -54,6 +61,16 @@ const riskSignatures = [
     registerEntry: 'layer-memoization-default',
     regex: /\b(?:build|construction|acquisition)Count\b[^\r\n]*\.(?:toBe|toEqual)\(\s*\d+\s*\)/g,
     why: 'Construction-count assertions can change under Effect 4 layer memoization.',
+  },
+  {
+    registerEntry: 'layer-memoization-freshness-opt-outs',
+    regex: /\bLayer\.fresh\b/g,
+    why: 'Layer.fresh explicitly opts out of shared layer memoization.',
+  },
+  {
+    registerEntry: 'layer-memoization-freshness-opt-outs',
+    regex: /\bEffect\.provide\([\s\S]{0,300}\blocal\s*:\s*true\b/g,
+    why: 'A local provide creates an isolated memoization scope.',
   },
   {
     registerEntry: 'rpc-failure-cause-wire-shape',
@@ -77,6 +94,46 @@ const riskSignatures = [
   },
 ] as const
 
+/**
+ * Register entries whose risks have no reliable textual fingerprint in a
+ * baseline. Each exception must explain why a signature would be misleading.
+ */
+const noSignatures = [
+  {
+    registerEntry: 'cli-B-accepted-grammar-improvements',
+    noSignature:
+      'Four unrelated grammar forms are accepted; each contract needs its own case-specific signature.',
+  },
+  {
+    registerEntry: 'cli-C-rendering-and-stdout-breakage',
+    noSignature:
+      'CLI-owned prose and ANSI bytes are intentionally varied and cannot use one safe signature.',
+  },
+  {
+    registerEntry: 'fork-defaults',
+    noSignature:
+      'The identical default scheduling behavior has no changed baseline text to detect.',
+  },
+  {
+    registerEntry: 'equality-structural-default',
+    noSignature:
+      'Structural equality depends on runtime value types; production sources are asserted to contain no Equal.equals call.',
+    productionAbsence: {
+      regex: /\bEqual\s*\.\s*equals\s*\(/g,
+      site: 'Equal.equals(...)',
+    },
+  },
+  {
+    registerEntry: 'effect-never-idle-timer',
+    noSignature:
+      'Process liveness is a runtime side effect; production sources are asserted to contain no Effect.never site.',
+    productionAbsence: {
+      regex: /\bEffect\s*\.\s*never\b/g,
+      site: 'Effect.never',
+    },
+  },
+] as const
+
 type CallBlock = {
   readonly end: number
   readonly leadingStart: number
@@ -93,11 +150,355 @@ type Finding = {
   readonly why: string
 }
 
+type ContractionMarker = {
+  readonly bridgeId: string
+  readonly file: string
+  readonly kind: 'BRIDGE' | 'END' | 'TARGET' | 'TODO'
+  readonly line: number
+}
+
+type ExpiredNoSignature = {
+  readonly column: number
+  readonly file: string
+  readonly line: number
+  readonly registerEntry: string
+  readonly site: string
+}
+
 const rootArgumentIndex = process.argv.indexOf('--root')
 const root =
   rootArgumentIndex === -1
     ? process.cwd()
     : resolve(process.argv[rootArgumentIndex + 1] ?? process.cwd())
+
+const liveMigrationName = ['LIVE', 'MIGRATION'].join('-')
+const todoMigrationName = ['TODO(', 'live-migration:'].join('')
+const todoMigrationPattern = ['TODO\\(', 'live-migration:'].join('')
+const blockMarkerPattern = new RegExp(
+  `${liveMigrationName}\\s+(BRIDGE|TARGET|END)(?:\\s+([a-z0-9][a-z0-9._-]*))?`,
+  'gi',
+)
+const todoMarkerPattern = new RegExp(`${todoMigrationPattern}([a-z0-9][a-z0-9._-]*)?\\)`, 'gi')
+
+/**
+ * Ignore only the three permanent grammar-definition sites. File plus line
+ * shape keeps the exception narrow: any executable marker elsewhere in either
+ * context file is still a contraction survivor.
+ */
+const isContractionDefinitionSite = ({
+  file,
+  sourceLine,
+}: {
+  readonly file: string
+  readonly sourceLine: string
+}) => {
+  if (
+    file === 'context/effect-4/check-baseline-migration-markers.ts' &&
+    sourceLine.trimStart().startsWith('const marker = ') === true
+  ) {
+    return true
+  }
+
+  if (file !== 'context/effect-4/baseline-operations.md') return false
+
+  return (
+    sourceLine.includes(`carry no \`${liveMigrationName} BRIDGE\` block`) ||
+    sourceLine.trimStart().startsWith(`\`${todoMigrationName}`)
+  )
+}
+
+const repositoryFiles = async () => {
+  const gitProcess = Bun.spawn(
+    ['git', '-C', root, 'ls-files', '--cached', '--others', '--exclude-standard', '-z'],
+    {
+      stderr: 'pipe',
+      stdout: 'pipe',
+    },
+  )
+  const [exitCode, stderr, stdout] = await Promise.all([
+    gitProcess.exited,
+    new Response(gitProcess.stderr).text(),
+    new Response(gitProcess.stdout).text(),
+  ])
+
+  if (exitCode !== 0) {
+    console.error(`FAIL: cannot enumerate repository files: ${stderr.trim()}`)
+    process.exit(1)
+  }
+
+  return [...new Set(stdout.split('\0').filter((file) => file.length > 0))].toSorted(
+    (left, right) => left.localeCompare(right),
+  )
+}
+
+const runProcess = async ({
+  command,
+  cwd,
+}: {
+  readonly command: readonly string[]
+  readonly cwd: string
+}) => {
+  const child = Bun.spawn(command, {
+    cwd,
+    stderr: 'pipe',
+    stdout: 'pipe',
+  })
+  const [exitCode, stderr, stdout] = await Promise.all([
+    child.exited,
+    new Response(child.stderr).text(),
+    new Response(child.stdout).text(),
+  ])
+
+  return { exitCode, stderr, stdout }
+}
+
+const writeContractionFixture = async ({
+  fixtureRoot,
+  includeSurvivors,
+}: {
+  readonly fixtureRoot: string
+  readonly includeSurvivors: boolean
+}) => {
+  const contextRoot = resolve(fixtureRoot, 'context/effect-4')
+  await mkdir(contextRoot, { recursive: true })
+  await Bun.write(
+    resolve(contextRoot, 'check-baseline-migration-markers.ts'),
+    `const marker = '${todoMigrationName}effect-3-4)'\n`,
+  )
+  await Bun.write(
+    resolve(contextRoot, 'baseline-operations.md'),
+    [
+      `Baseline files carry no \`${liveMigrationName} BRIDGE\` block after contraction.`,
+      `\`${todoMigrationName}<bridge-id>)\` identifies a migration assertion.`,
+      '',
+    ].join('\n'),
+  )
+
+  if (includeSurvivors === true) {
+    await mkdir(resolve(fixtureRoot, 'src'), { recursive: true })
+    await Bun.write(
+      resolve(fixtureRoot, 'src/survivors.ts'),
+      [
+        `// ${liveMigrationName} BRIDGE fixture-bridge`,
+        `// ${todoMigrationName}fixture-todo): resolve the retained assertion`,
+        '',
+      ].join('\n'),
+    )
+  }
+
+  const initialized = await runProcess({
+    command: ['git', 'init', '--quiet'],
+    cwd: fixtureRoot,
+  })
+  const added = await runProcess({
+    command: ['git', 'add', '--all'],
+    cwd: fixtureRoot,
+  })
+  if (initialized.exitCode !== 0 || added.exitCode !== 0) {
+    const detail = [initialized.stderr, added.stderr].join('').trim()
+    throw new Error(`cannot initialize contraction fixture repository: ${detail}`)
+  }
+}
+
+const runContractionFixtureCheck = async () => {
+  const fixtureRoot = await mkdtemp(resolve(tmpdir(), 'effect4-contraction-fixtures-'))
+  const definitionOnlyRoot = resolve(fixtureRoot, 'definition-only')
+  const survivorRoot = resolve(fixtureRoot, 'survivors')
+  let failure: string | undefined
+
+  try {
+    await Promise.all([
+      writeContractionFixture({ fixtureRoot: definitionOnlyRoot, includeSurvivors: false }),
+      writeContractionFixture({ fixtureRoot: survivorRoot, includeSurvivors: true }),
+    ])
+
+    const [definitionOnly, survivors] = await Promise.all([
+      runProcess({
+        command: [
+          process.execPath,
+          import.meta.path,
+          '--contraction',
+          '--root',
+          definitionOnlyRoot,
+        ],
+        cwd: root,
+      }),
+      runProcess({
+        command: [process.execPath, import.meta.path, '--contraction', '--root', survivorRoot],
+        cwd: root,
+      }),
+    ])
+    const expectedDefinitionOnly =
+      'PASS: contraction sweep found no live migration markers (3 permanent grammar definitions excluded).\n'
+    const expectedSurvivors = [
+      'src/survivors.ts:1 DELETE BLOCK (BRIDGE) fixture-bridge',
+      'src/survivors.ts:2 RESOLVE TODO fixture-todo',
+      'FAIL: contraction blocked by 2 markers across 1 files: 1 BRIDGE blocks (1 block marker lines) to delete, 1 TODO markers to resolve; 3 permanent grammar definitions excluded.',
+      '',
+    ].join('\n')
+
+    if (
+      definitionOnly.exitCode !== 0 ||
+      definitionOnly.stdout !== expectedDefinitionOnly ||
+      definitionOnly.stderr !== ''
+    ) {
+      failure = [
+        'FAIL: contraction definition-only fixture did not pass with the expected report.',
+        `exit: ${definitionOnly.exitCode}`,
+        `stdout: ${JSON.stringify(definitionOnly.stdout)}`,
+        `stderr: ${JSON.stringify(definitionOnly.stderr)}`,
+      ].join('\n')
+    } else if (
+      survivors.exitCode !== 1 ||
+      survivors.stdout !== '' ||
+      survivors.stderr !== expectedSurvivors
+    ) {
+      failure = [
+        'FAIL: contraction survivor fixture did not fail with the expected report.',
+        `exit: ${survivors.exitCode}`,
+        `stdout: ${JSON.stringify(survivors.stdout)}`,
+        `stderr: ${JSON.stringify(survivors.stderr)}`,
+      ].join('\n')
+    }
+  } catch (error) {
+    failure = `FAIL: contraction fixture lane could not run: ${String(error)}`
+  } finally {
+    await rm(fixtureRoot, { force: true, recursive: true })
+  }
+
+  if (failure !== undefined) {
+    console.error(failure)
+    return false
+  }
+
+  console.log(
+    'PASS: contraction fixtures cover definition exclusions and actionable survivor reporting.',
+  )
+  return true
+}
+
+const runContractionCheck = async () => {
+  const markers: ContractionMarker[] = []
+  let definitionMarkers = 0
+  const fileEntries = await Promise.all(
+    (await repositoryFiles()).map(
+      async (file) => [file, await Bun.file(resolve(root, file)).text()] as const,
+    ),
+  )
+
+  for (const [file, source] of fileEntries) {
+    for (const [lineIndex, sourceLine] of source.split('\n').entries()) {
+      const blockMatches = [...sourceLine.matchAll(blockMarkerPattern)]
+      const todoMatches = [...sourceLine.matchAll(todoMarkerPattern)]
+
+      if (isContractionDefinitionSite({ file, sourceLine }) === true) {
+        definitionMarkers++
+        continue
+      }
+
+      for (const match of blockMatches) {
+        markers.push({
+          bridgeId: match[2] ?? '<missing-id>',
+          file,
+          kind: match[1]!.toUpperCase() as 'BRIDGE' | 'END' | 'TARGET',
+          line: lineIndex + 1,
+        })
+      }
+      for (const match of todoMatches) {
+        markers.push({
+          bridgeId: match[1] ?? '<missing-id>',
+          file,
+          kind: 'TODO',
+          line: lineIndex + 1,
+        })
+      }
+    }
+  }
+
+  markers.sort(
+    (left, right) =>
+      left.file.localeCompare(right.file) ||
+      left.line - right.line ||
+      left.kind.localeCompare(right.kind),
+  )
+
+  if (markers.length === 0) {
+    console.log(
+      `PASS: contraction sweep found no live migration markers (${definitionMarkers} permanent grammar definitions excluded).`,
+    )
+    return
+  }
+
+  for (const survivor of markers) {
+    const action = survivor.kind === 'TODO' ? 'RESOLVE TODO' : `DELETE BLOCK (${survivor.kind})`
+    console.error(`${survivor.file}:${survivor.line} ${action} ${survivor.bridgeId}`)
+  }
+
+  const fileCount = new Set(markers.map(({ file }) => file)).size
+  const bridgeBlockCount = markers.filter(({ kind }) => kind === 'BRIDGE').length
+  const blockMarkerCount = markers.filter(({ kind }) => kind !== 'TODO').length
+  const todoCount = markers.length - blockMarkerCount
+  console.error(
+    `FAIL: contraction blocked by ${markers.length} markers across ${fileCount} files: ${bridgeBlockCount} BRIDGE blocks (${blockMarkerCount} block marker lines) to delete, ${todoCount} TODO markers to resolve; ${definitionMarkers} permanent grammar definitions excluded.`,
+  )
+  process.exitCode = 1
+}
+
+if (process.argv.includes('--contraction') === true) {
+  await runContractionCheck()
+  process.exit(process.exitCode ?? 0)
+}
+
+if ((await runContractionFixtureCheck()) === false) process.exit(1)
+
+const registerFile = 'context/effect-4/alignment-register.md'
+let registerSource: string
+
+try {
+  registerSource = await Bun.file(resolve(root, registerFile)).text()
+} catch (error) {
+  const code =
+    typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : 'unknown'
+  console.error(`FAIL: cannot read ${registerFile} (${code}).`)
+  process.exit(1)
+}
+
+const registerEntries = new Set(
+  [...registerSource.matchAll(/^## ([a-z0-9][a-zA-Z0-9-]*)\s*$/gm)].map((match) => match[1]!),
+)
+const signatureEntries = new Set(riskSignatures.map(({ registerEntry }) => registerEntry))
+const noSignatureEntries = new Set(noSignatures.map(({ registerEntry }) => registerEntry))
+const declaredEntries = new Set([...signatureEntries, ...noSignatureEntries])
+
+const unmappedEntries = [...registerEntries]
+  .filter((entry) => declaredEntries.has(entry) === false)
+  .toSorted()
+const missingRegisterEntries = [...declaredEntries]
+  .filter((entry) => registerEntries.has(entry) === false)
+  .toSorted()
+const conflictingEntries = [...signatureEntries]
+  .filter((entry) => noSignatureEntries.has(entry))
+  .toSorted()
+
+if (
+  unmappedEntries.length > 0 ||
+  missingRegisterEntries.length > 0 ||
+  conflictingEntries.length > 0
+) {
+  for (const entry of unmappedEntries) {
+    console.error(
+      `UNMAPPED: register entry "${entry}" needs a risk signature or justified noSignature declaration.`,
+    )
+  }
+  for (const entry of missingRegisterEntries) {
+    console.error(`STALE: checker declaration references missing register entry "${entry}".`)
+  }
+  for (const entry of conflictingEntries) {
+    console.error(`CONFLICT: register entry "${entry}" has both a signature and noSignature.`)
+  }
+  console.error('FAIL: alignment register and marker checker declarations are inconsistent.')
+  process.exit(1)
+}
 
 const lineAndColumnAt = ({
   source,
@@ -113,6 +514,199 @@ const lineAndColumnAt = ({
     line: lines.length,
   }
 }
+
+const productionAbsenceAssertions = noSignatures.flatMap((declaration) =>
+  'productionAbsence' in declaration
+    ? [
+        {
+          ...declaration.productionAbsence,
+          registerEntry: declaration.registerEntry,
+        },
+      ]
+    : [],
+)
+
+const isProductionSource = (file: string) => {
+  if (file.startsWith('packages/') === false || /\.(?:[cm]?[jt]sx?)$/.test(file) === false) {
+    return false
+  }
+
+  if (
+    /(?:^|\/)(?:__tests__|e2e|examples?|fixtures?|mocks?|stories?|test|tests|testing)(?:\/|$)/i.test(
+      file,
+    ) === true
+  ) {
+    return false
+  }
+
+  const fileName = file.slice(file.lastIndexOf('/') + 1)
+  return (
+    /(?:^|[.-])(?:e2e|fixture|mock|spec|stories|test)(?:[.-]|$)/i.test(fileName) === false &&
+    fileName.includes('.genie.') === false
+  )
+}
+
+/**
+ * Preserve offsets while excluding prose that can name an API without using
+ * it. Template text is masked while interpolation expressions remain
+ * executable and searchable.
+ */
+const maskCommentsAndStrings = (source: string) => {
+  const masked = source.split('')
+  const templateBraceDepth: number[] = []
+  let escaped = false
+  let mode: 'blockComment' | 'code' | 'doubleQuote' | 'lineComment' | 'singleQuote' | 'template' =
+    'code'
+
+  const mask = (index: number) => {
+    if (masked[index] !== '\n') masked[index] = ' '
+  }
+
+  for (let index = 0; index < source.length; index++) {
+    const character = source[index]
+    const next = source[index + 1]
+
+    if (mode === 'lineComment') {
+      mask(index)
+      if (character === '\n') mode = 'code'
+      continue
+    }
+    if (mode === 'blockComment') {
+      mask(index)
+      if (character === '*' && next === '/') {
+        mask(index + 1)
+        mode = 'code'
+        index++
+      }
+      continue
+    }
+    if (mode === 'singleQuote' || mode === 'doubleQuote') {
+      mask(index)
+      if (escaped === true) {
+        escaped = false
+      } else if (character === '\\') {
+        escaped = true
+      } else if (
+        (mode === 'singleQuote' && character === "'") ||
+        (mode === 'doubleQuote' && character === '"')
+      ) {
+        mode = 'code'
+      }
+      continue
+    }
+    if (mode === 'template') {
+      mask(index)
+      if (escaped === true) {
+        escaped = false
+      } else if (character === '\\') {
+        escaped = true
+      } else if (character === '`') {
+        mode = 'code'
+      } else if (character === '$' && next === '{') {
+        mask(index + 1)
+        templateBraceDepth.push(0)
+        mode = 'code'
+        index++
+      }
+      continue
+    }
+    if (character === '/' && next === '/') {
+      mask(index)
+      mask(index + 1)
+      mode = 'lineComment'
+      index++
+      continue
+    }
+    if (character === '/' && next === '*') {
+      mask(index)
+      mask(index + 1)
+      mode = 'blockComment'
+      index++
+      continue
+    }
+    if (character === "'" || character === '"') {
+      mask(index)
+      escaped = false
+      mode = character === "'" ? 'singleQuote' : 'doubleQuote'
+      continue
+    }
+    if (character === '`') {
+      mask(index)
+      escaped = false
+      mode = 'template'
+      continue
+    }
+    if (templateBraceDepth.length > 0 && character === '{') {
+      const depthIndex = templateBraceDepth.length - 1
+      templateBraceDepth[depthIndex] = templateBraceDepth[depthIndex]! + 1
+    } else if (templateBraceDepth.length > 0 && character === '}') {
+      const depthIndex = templateBraceDepth.length - 1
+      if (templateBraceDepth[depthIndex] === 0) {
+        mask(index)
+        templateBraceDepth.pop()
+        mode = 'template'
+      } else {
+        templateBraceDepth[depthIndex] = templateBraceDepth[depthIndex]! - 1
+      }
+    }
+  }
+
+  return masked.join('')
+}
+
+const runProductionAbsenceChecks = async () => {
+  const productionFiles = (await repositoryFiles()).filter(isProductionSource)
+  const productionEntries = await Promise.all(
+    productionFiles.map(
+      async (file) => [file, await Bun.file(resolve(root, file)).text()] as const,
+    ),
+  )
+  const expired: ExpiredNoSignature[] = []
+
+  for (const [file, source] of productionEntries) {
+    const executableSource = maskCommentsAndStrings(source)
+
+    for (const assertion of productionAbsenceAssertions) {
+      for (const match of executableSource.matchAll(assertion.regex)) {
+        expired.push({
+          ...lineAndColumnAt({ source, offset: match.index }),
+          file,
+          registerEntry: assertion.registerEntry,
+          site: assertion.site,
+        })
+      }
+    }
+  }
+
+  expired.sort(
+    (left, right) =>
+      left.file.localeCompare(right.file) ||
+      left.line - right.line ||
+      left.column - right.column ||
+      left.registerEntry.localeCompare(right.registerEntry),
+  )
+
+  if (expired.length === 0) {
+    console.log(
+      `PASS: ${productionAbsenceAssertions.length} noSignature production-absence justifications remain valid across ${productionFiles.length} source files.`,
+    )
+    return
+  }
+
+  for (const finding of expired) {
+    console.error(
+      `${finding.file}:${finding.line}:${finding.column} EXPIRED noSignature "${finding.registerEntry}": found production site ${finding.site}; this entry needs a real risk signature.`,
+    )
+  }
+  const expiredEntries = new Set(expired.map(({ registerEntry }) => registerEntry)).size
+  const expiredFiles = new Set(expired.map(({ file }) => file)).size
+  console.error(
+    `FAIL: ${expiredEntries} noSignature production-absence justifications expired at ${expired.length} sites across ${expiredFiles} source files.`,
+  )
+  process.exit(1)
+}
+
+await runProductionAbsenceChecks()
 
 const findMatchingDelimiter = ({
   source,
@@ -238,13 +832,27 @@ const findCalls = ({
   const calls: CallBlock[] = []
 
   for (const match of source.matchAll(namePattern)) {
-    const openingOffset = source.indexOf('(', match.index)
-    const end = findMatchingDelimiter({ source, openingOffset, opening: '(', closing: ')' })
+    let openingOffset = source.indexOf('(', match.index)
+    let end = findMatchingDelimiter({ source, openingOffset, opening: '(', closing: ')' })
     if (end === undefined) continue
 
     let titleOffset = openingOffset + 1
     while (/\s/.test(source[titleOffset] ?? '') === true) titleOffset++
-    const title = readStaticString({ source, offset: titleOffset })
+    let title = readStaticString({ source, offset: titleOffset })
+
+    if (title === undefined && callName === 'test' && match[0].includes('.each') === true) {
+      openingOffset = end
+      while (/\s/.test(source[openingOffset] ?? '') === true) openingOffset++
+      if (source[openingOffset] !== '(') continue
+
+      end = findMatchingDelimiter({ source, openingOffset, opening: '(', closing: ')' })
+      if (end === undefined) continue
+
+      titleOffset = openingOffset + 1
+      while (/\s/.test(source[titleOffset] ?? '') === true) titleOffset++
+      title = readStaticString({ source, offset: titleOffset })
+    }
+
     if (title === undefined || title.value.includes('${') === true) continue
 
     const start = match.index + (match[0].match(/^[^\w$]/)?.[0].length ?? 0)

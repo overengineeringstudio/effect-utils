@@ -1,14 +1,19 @@
 import { NodeServices } from '@effect/platform-node'
+import type { Error as PlatformError } from 'effect'
 import { Effect, Either, Schema } from 'effect'
+import { FileSystem } from 'effect/FileSystem'
 import { describe, expect, it } from 'vitest'
 
 import {
   EffectPath,
   type AbsoluteFileInfo,
   type InvalidPathError,
+  type NotAFileError,
   type NotAbsoluteError,
   type NotRelativeError,
   type ConventionError,
+  type PathNotFoundError,
+  type PermissionError,
   type TraversalError,
   type RelativePath,
 } from './mod.ts'
@@ -79,6 +84,46 @@ const summarizeTraversalError = (error: TraversalError) => ({
   sandboxRoot: error.sandboxRoot,
 })
 
+const left = <A, E>(either: Either.Either<A, E>, message = 'expected failure'): E => {
+  if (Either.isRight(either) === true) {
+    throw new Error(message)
+  }
+  return either.left
+}
+
+const summarizePlatformError = (error: PlatformError.PlatformError) => ({
+  _tag: error._tag,
+  reason: error._tag === 'SystemError' ? error.reason : undefined,
+  module: error.module,
+  method: error.method,
+})
+
+type VerifiedFileBaselineError =
+  | InvalidPathError
+  | NotAFileError
+  | NotAbsoluteError
+  | PathNotFoundError
+  | PermissionError
+
+const summarizePathError = (error: VerifiedFileBaselineError, normalizeRoot: string) => {
+  switch (error._tag) {
+    case 'PathNotFoundError':
+      return {
+        _tag: error._tag,
+        expectedType: error.expectedType,
+        message: error.message.replace(normalizeRoot, '<tmp>'),
+      }
+    case 'PermissionError':
+      return {
+        _tag: error._tag,
+        operation: error.operation,
+        message: error.message.replace(normalizeRoot, '<tmp>'),
+      }
+    default:
+      throw new Error(`expected filesystem failure, received ${error._tag}`)
+  }
+}
+
 describe('effect-path baselines (cross-major invariant)', () => {
   it('pins PathInfo schema encoded bytes and re-encoded identity', async () => {
     const result = await Effect.runPromise(
@@ -138,13 +183,6 @@ describe('effect-path baselines (cross-major invariant)', () => {
         const invalidPath = yield* EffectPath.convention
           .relativeFile('bad\0path.txt')
           .pipe(Effect.either)
-
-        const left = <A>(either: Either.Either<A, ConventionBaselineError>) => {
-          if (Either.isRight(either) === true) {
-            throw new Error('expected parser failure')
-          }
-          return either.left
-        }
 
         return [
           left(absoluteFileFromRelative),
@@ -219,4 +257,110 @@ describe('effect-path baselines (cross-major invariant)', () => {
       }
     `)
   })
+
+  it('pins real ENOENT and EEXIST platform failure fields and the public missing-path partition', async () => {
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+        const root = yield* fs.makeTempDirectoryScoped()
+        const missing = `${root}/missing.txt`
+
+        const enoent = left(yield* fs.stat(missing).pipe(Effect.either))
+        const missingPath = left(
+          yield* EffectPath.verified.absoluteFile(missing).pipe(Effect.either),
+        )
+        // effect-path has no public create/write API or EEXIST branch. This real failure pins the
+        // platform wrapper fields only; it does not claim a package-owned EEXIST partition.
+        const eexist = left(yield* fs.makeDirectory(root).pipe(Effect.either))
+
+        return {
+          enoent: {
+            platform: summarizePlatformError(enoent),
+            public: summarizePathError(missingPath, root),
+          },
+          eexist: {
+            platform: summarizePlatformError(eexist),
+          },
+        }
+      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    )
+
+    // TODO(live-migration:effect-3-4): v4 replaces SystemError with PlatformError (register entry
+    // platform-error-wrapper). Resolve by updating the tag while keeping this partition and these
+    // inner fields identical — a change in WHICH branch fires is a real regression, not a rename.
+    expect(result).toMatchInlineSnapshot(`
+      {
+        "eexist": {
+          "platform": {
+            "_tag": "SystemError",
+            "method": "makeDirectory",
+            "module": "FileSystem",
+            "reason": "AlreadyExists",
+          },
+        },
+        "enoent": {
+          "platform": {
+            "_tag": "SystemError",
+            "method": "stat",
+            "module": "FileSystem",
+            "reason": "NotFound",
+          },
+          "public": {
+            "_tag": "PathNotFoundError",
+            "expectedType": "any",
+            "message": "Path not found: <tmp>/missing.txt",
+          },
+        },
+      }
+    `)
+  })
+
+  it.skipIf(process.getuid?.() === 0)(
+    'pins real EACCES platform fields and the public permission partition',
+    async () => {
+      const result = await Effect.runPromise(
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem
+          const root = yield* fs.makeTempDirectoryScoped()
+          const blocked = `${root}/blocked`
+          const blockedFile = `${blocked}/data.txt`
+
+          yield* fs.makeDirectory(blocked)
+          yield* fs.writeFileString(blockedFile, 'blocked')
+          yield* fs.chmod(blocked, 0o000)
+
+          return yield* Effect.gen(function* () {
+            const eacces = left(yield* fs.stat(blockedFile).pipe(Effect.either))
+            const permission = left(
+              yield* EffectPath.verified.absoluteFile(blockedFile).pipe(Effect.either),
+            )
+
+            return {
+              platform: summarizePlatformError(eacces),
+              public: summarizePathError(permission, root),
+            }
+          }).pipe(Effect.ensuring(fs.chmod(blocked, 0o700).pipe(Effect.ignore)))
+        }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+      )
+
+      // TODO(live-migration:effect-3-4): v4 replaces SystemError with PlatformError (register entry
+      // platform-error-wrapper). Resolve by updating the tag while keeping this partition and these
+      // inner fields identical — a change in WHICH branch fires is a real regression, not a rename.
+      expect(result).toMatchInlineSnapshot(`
+        {
+          "platform": {
+            "_tag": "SystemError",
+            "method": "stat",
+            "module": "FileSystem",
+            "reason": "PermissionDenied",
+          },
+          "public": {
+            "_tag": "PermissionError",
+            "message": "Permission denied: <tmp>/blocked/data.txt",
+            "operation": "stat",
+          },
+        }
+      `)
+    },
+  )
 })

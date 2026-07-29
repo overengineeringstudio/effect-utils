@@ -158,7 +158,7 @@ chmod +x "$fetch_fixture"
 CI_PROGRESS_HEARTBEAT_SECONDS=1 NIX_GC_RACE_MAX_RETRIES=2 run_nix_gc_race_retry "fetch-fixture" "$fetch_fixture" >/dev/null
 assert_eq "2" "$(cat "$test_dir/fetch-attempt")" "truncated tarball retry count"
 
-echo "Test 5: retries missing Nix daemon socket failures"
+echo "Test 5: retries missing Nix daemon socket failures without host mutation"
 daemon_fixture="$test_dir/daemon-fixture.sh"
 cat > "$daemon_fixture" <<EOF
 #!/usr/bin/env bash
@@ -176,10 +176,24 @@ fi
 echo "daemon recovered"
 EOF
 chmod +x "$daemon_fixture"
-CI_PROGRESS_HEARTBEAT_SECONDS=1 NIX_GC_RACE_MAX_RETRIES=2 NIX_GC_RACE_SKIP_DAEMON_REPAIR=1 run_nix_gc_race_retry "daemon-fixture" "$daemon_fixture" >/dev/null
+daemon_stdout="$test_dir/daemon-stdout"
+daemon_started_at="$(date +%s)"
+CI_PROGRESS_HEARTBEAT_SECONDS=60 NIX_DAEMON_SOCKET_RETRY_DELAY_SECONDS=1 NIX_GC_RACE_MAX_RETRIES=2 run_nix_gc_race_retry "daemon-fixture" "$daemon_fixture" >"$daemon_stdout"
+daemon_elapsed=$(( $(date +%s) - daemon_started_at ))
 assert_eq "2" "$(cat "$test_dir/daemon-attempt")" "Nix daemon socket retry count"
+assert_contains "waiting 1 s for host supervision" "$daemon_stdout" "daemon recovery ownership"
+if [ "$daemon_elapsed" -lt 1 ]; then
+  echo "FAIL: daemon socket retry did not wait for host supervision"
+  echo "  elapsed: $daemon_elapsed s"
+  exit 1
+fi
 
-echo "Test 6: does not retry when literal signature strings appear outside Nix error context"
+echo "Test 6: helper contains no host daemon mutation commands"
+assert_not_contains "sudo systemctl" "$SCRIPT" "systemd daemon mutation removed"
+assert_not_contains "sudo launchctl" "$SCRIPT" "launchd daemon mutation removed"
+assert_not_contains "nix-daemon --daemon" "$SCRIPT" "manual daemon mutation removed"
+
+echo "Test 7: does not retry when literal signature strings appear outside Nix error context"
 false_positive_fixture="$test_dir/false-positive-fixture.sh"
 cat > "$false_positive_fixture" <<'EOF'
 #!/usr/bin/env bash
@@ -196,7 +210,7 @@ exit_code=$?
 set -e
 assert_exit_code 9 "$exit_code" "non-error-context strings do not trigger retries"
 
-echo "Test 7: preserves the original exit code when no retry signature is present"
+echo "Test 8: preserves the original exit code when no retry signature is present"
 non_retry_fixture="$test_dir/non-retry-fixture.sh"
 cat > "$non_retry_fixture" <<'EOF'
 #!/usr/bin/env bash
@@ -211,7 +225,7 @@ exit_code=$?
 set -e
 assert_exit_code 7 "$exit_code" "non-signature failures keep their exit code"
 
-echo "Test 8: executes argv without shell eval"
+echo "Test 9: executes argv without shell eval"
 argv_fixture="$test_dir/argv-fixture.sh"
 argv_output="$test_dir/argv-output"
 cat > "$argv_fixture" <<'EOF'
@@ -223,7 +237,7 @@ chmod +x "$argv_fixture"
 CI_PROGRESS_HEARTBEAT_SECONDS=1 NIX_GC_RACE_MAX_RETRIES=1 run_nix_gc_race_retry "argv-fixture" "$argv_fixture" 'literal $HOME value' "$argv_output" >/dev/null
 assert_eq 'literal $HOME value' "$(cat "$argv_output")" "argv command arguments are not shell-expanded"
 
-echo "Test 9: preserves stdout and stderr while capturing retry signatures"
+echo "Test 10: preserves stdout and stderr while capturing retry signatures"
 stdio_fixture="$test_dir/stdio-fixture.sh"
 stdio_stdout="$test_dir/stdio-stdout"
 stdio_stderr="$test_dir/stdio-stderr"
@@ -244,7 +258,7 @@ assert_contains "stdout-marker" "$stdio_stdout" "stdout marker remains on stdout
 assert_contains "stderr-marker" "$stdio_stderr" "stderr marker remains on stderr"
 assert_not_contains "stderr-marker" "$stdio_stdout" "stderr marker does not move to stdout"
 
-echo "Test 10: wrapper script delegates shell commands to the retry helper"
+echo "Test 11: wrapper script delegates shell commands to the retry helper"
 wrapper_attempt_file="$test_dir/wrapper-attempt"
 wrapper_command=$(cat <<EOF
 attempt=1

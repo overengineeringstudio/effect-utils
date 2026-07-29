@@ -165,6 +165,12 @@ export type DefaultRefPolicyCheckStepOptions = {
   readonly defaultRefs?: Readonly<Record<string, string>>
   readonly verifyReachable?: boolean
   readonly normalizeGitBranchRefs?: boolean
+  /**
+   * Permit an explicitly named `*-legacy` megarepo member to use an immutable
+   * 40- or 64-character commit ref. This is intentionally narrower than a
+   * general ref allowlist: branch refs and non-legacy members still fail.
+   */
+  readonly allowLegacyMemberCommitRefs?: boolean
 }
 
 const defaultRefPolicyCheckScript = String.raw`const fs = require('node:fs')
@@ -177,6 +183,7 @@ const firstPartyOwners = new Set(JSON.parse(process.env.FIRST_PARTY_OWNERS_JSON)
 const defaultRef = process.env.DEFAULT_REF || 'main'
 const defaultRefs = new Map(Object.entries(JSON.parse(process.env.DEFAULT_REFS_JSON || '{}')).map(([repo, ref]) => [repo.toLowerCase(), ref]))
 const verifyReachable = process.env.VERIFY_REACHABLE === '1'
+const allowLegacyMemberCommitRefs = process.env.ALLOW_LEGACY_MEMBER_COMMIT_REFS === '1'
 const violations = []
 
 const repoKey = (repo) => repo.owner.toLowerCase() + '/' + repo.repo.toLowerCase()
@@ -184,6 +191,12 @@ const isFirstParty = (repo) => firstPartyOwners.has(repo.owner.toLowerCase())
 const normalizeGitBranchRefs = process.env.NORMALIZE_GIT_BRANCH_REFS === '1'
 const normalizeRef = (ref) => normalizeGitBranchRefs && ref.startsWith('refs/heads/') ? ref.slice('refs/heads/'.length) : ref
 const expectedRefFor = (repo) => normalizeRef(defaultRefs.get(repoKey(repo)) || defaultRef)
+const immutableCommitRef = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i
+const isAllowedLegacyMemberRef = ({ memberName, ref }) =>
+  allowLegacyMemberCommitRefs &&
+  typeof memberName === 'string' &&
+  memberName.endsWith('-legacy') &&
+  immutableCommitRef.test(ref)
 
 const githubRepoFromUrl = (url) => {
   const match = url.match(/github\.com[/:]([^/]+)\/([^/#?]+?)(?:\.git)?(?:[#?].*)?$/)
@@ -238,6 +251,7 @@ const addRefViolation = ({ file, repo, ref, field, inputName, memberName }) => {
   const expectedRef = expectedRefFor(repo)
   const normalizedRef = normalizeRef(ref)
   if (normalizedRef === expectedRef) return
+  if (isAllowedLegacyMemberRef({ memberName, ref: normalizedRef })) return
   violations.push({
     type: 'ref',
     file,
@@ -463,6 +477,12 @@ if (verifyReachable) {
   for (const [memberName, member] of Object.entries((lock && lock.members) || {})) {
     const repo = typeof member.url === 'string' ? githubRepoFromUrl(member.url) : undefined
     if (!repo || !isFirstParty(repo)) continue
+    if (
+      typeof member.ref === 'string' &&
+      isAllowedLegacyMemberRef({ memberName, ref: normalizeRef(member.ref) })
+    ) {
+      continue
+    }
     const expectedRef = expectedRefFor(repo)
     const remote = 'https://github.com/' + repo.owner + '/' + repo.repo + '.git'
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'default-ref-policy-'))
@@ -514,6 +534,7 @@ export const defaultRefPolicyCheckStep = (opts: DefaultRefPolicyCheckStepOptions
     DEFAULT_REFS_JSON: JSON.stringify(opts.defaultRefs ?? {}),
     VERIFY_REACHABLE: opts.verifyReachable === true ? '1' : '0',
     NORMALIZE_GIT_BRANCH_REFS: opts.normalizeGitBranchRefs === true ? '1' : '0',
+    ALLOW_LEGACY_MEMBER_COMMIT_REFS: opts.allowLegacyMemberCommitRefs === true ? '1' : '0',
   },
   run: `nix shell nixpkgs#nodejs_24 -c node <<'NODE'
 ${defaultRefPolicyCheckScript}
