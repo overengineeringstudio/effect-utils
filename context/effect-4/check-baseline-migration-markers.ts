@@ -548,13 +548,111 @@ const isProductionSource = (file: string) => {
 
 /**
  * Preserve offsets while excluding prose that can name an API without using
- * it. Template literals are excluded in full; production API calls belong in
- * executable expressions rather than fixture-like string bytes.
+ * it. Template text is masked while interpolation expressions remain
+ * executable and searchable.
  */
-const maskCommentsAndStrings = (source: string) =>
-  source.replace(/(["'`])(?:\\[\s\S]|(?!\1)[^\\])*\1|\/\*[\s\S]*?(?:\*\/|$)|\/\/[^\n]*/g, (text) =>
-    text.replace(/[^\n]/g, ' '),
-  )
+const maskCommentsAndStrings = (source: string) => {
+  const masked = source.split('')
+  const templateBraceDepth: number[] = []
+  let escaped = false
+  let mode: 'blockComment' | 'code' | 'doubleQuote' | 'lineComment' | 'singleQuote' | 'template' =
+    'code'
+
+  const mask = (index: number) => {
+    if (masked[index] !== '\n') masked[index] = ' '
+  }
+
+  for (let index = 0; index < source.length; index++) {
+    const character = source[index]
+    const next = source[index + 1]
+
+    if (mode === 'lineComment') {
+      mask(index)
+      if (character === '\n') mode = 'code'
+      continue
+    }
+    if (mode === 'blockComment') {
+      mask(index)
+      if (character === '*' && next === '/') {
+        mask(index + 1)
+        mode = 'code'
+        index++
+      }
+      continue
+    }
+    if (mode === 'singleQuote' || mode === 'doubleQuote') {
+      mask(index)
+      if (escaped === true) {
+        escaped = false
+      } else if (character === '\\') {
+        escaped = true
+      } else if (
+        (mode === 'singleQuote' && character === "'") ||
+        (mode === 'doubleQuote' && character === '"')
+      ) {
+        mode = 'code'
+      }
+      continue
+    }
+    if (mode === 'template') {
+      mask(index)
+      if (escaped === true) {
+        escaped = false
+      } else if (character === '\\') {
+        escaped = true
+      } else if (character === '`') {
+        mode = 'code'
+      } else if (character === '$' && next === '{') {
+        mask(index + 1)
+        templateBraceDepth.push(0)
+        mode = 'code'
+        index++
+      }
+      continue
+    }
+    if (character === '/' && next === '/') {
+      mask(index)
+      mask(index + 1)
+      mode = 'lineComment'
+      index++
+      continue
+    }
+    if (character === '/' && next === '*') {
+      mask(index)
+      mask(index + 1)
+      mode = 'blockComment'
+      index++
+      continue
+    }
+    if (character === "'" || character === '"') {
+      mask(index)
+      escaped = false
+      mode = character === "'" ? 'singleQuote' : 'doubleQuote'
+      continue
+    }
+    if (character === '`') {
+      mask(index)
+      escaped = false
+      mode = 'template'
+      continue
+    }
+    if (templateBraceDepth.length > 0 && character === '{') {
+      const depthIndex = templateBraceDepth.length - 1
+      templateBraceDepth[depthIndex] = templateBraceDepth[depthIndex]! + 1
+    } else if (templateBraceDepth.length > 0 && character === '}') {
+      const depthIndex = templateBraceDepth.length - 1
+      if (templateBraceDepth[depthIndex] === 0) {
+        mask(index)
+        templateBraceDepth.pop()
+        mode = 'template'
+      } else {
+        templateBraceDepth[depthIndex] = templateBraceDepth[depthIndex]! - 1
+      }
+    }
+  }
+
+  return masked.join('')
+}
 
 const runProductionAbsenceChecks = async () => {
   const productionFiles = (await repositoryFiles()).filter(isProductionSource)
