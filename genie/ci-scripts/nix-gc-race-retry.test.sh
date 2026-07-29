@@ -63,7 +63,7 @@ trap 'rm -rf "$test_dir"' EXIT
 echo "Running nix GC race retry helper tests..."
 echo ""
 
-echo "Test 1: standalone helper stays aligned with workflow helper source"
+echo "Test 1: standalone helper stays aligned with the composed workflow support source"
 node - "$ROOT" <<'NODE'
 const { readFileSync } = require('node:fs')
 const { join } = require('node:path')
@@ -88,8 +88,21 @@ const normalizedStandalone = standalone.replace(
   /^#!\/usr\/bin\/env bash\n# Generated file - DO NOT EDIT\n# Source: nix-gc-race-retry\.sh\.genie\.ts\n\n/,
   '#!/usr/bin/env bash\n',
 ).trimEnd()
-if (normalizedStandalone !== embedded) {
-  console.error('FAIL: standalone helper drifted from workflow helper source')
+const resolverBoundary = '\n\nDEVENV_GC_ROOT_DIR='
+const resolverIndex = normalizedStandalone.indexOf(resolverBoundary)
+if (resolverIndex === -1) {
+  console.error('FAIL: standalone helper is missing the composed devenv resolver')
+  process.exit(1)
+}
+
+const retryHelper = normalizedStandalone.slice(0, resolverIndex)
+if (retryHelper !== embedded) {
+  console.error('FAIL: standalone retry helper drifted from workflow helper source')
+  process.exit(1)
+}
+if (!normalizedStandalone.includes('\nresolve_devenv_once() {') ||
+    !normalizedStandalone.includes('\nresolve_devenv() {')) {
+  console.error('FAIL: standalone helper is missing a composed devenv resolver function')
   process.exit(1)
 }
 NODE
