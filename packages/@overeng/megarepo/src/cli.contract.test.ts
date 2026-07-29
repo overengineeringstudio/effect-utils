@@ -1,9 +1,18 @@
 import { spawnSync } from 'node:child_process'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it } from 'vitest'
 
 const cliPath = fileURLToPath(new URL('../bin/mr.ts', import.meta.url))
+const workspaceRoot = mkdtempSync(join(tmpdir(), 'megarepo-cli-contract-'))
+writeFileSync(join(workspaceRoot, 'megarepo.kdl'), 'members {\n}\n')
+
+afterAll(() => {
+  rmSync(workspaceRoot, { recursive: true, force: true })
+})
 
 /**
  * CLI contract capture: `status` and `signal` are cross-major invariants; stdout/stderr help,
@@ -50,5 +59,54 @@ describe('megarepo CLI contract baselines (status/signal invariant, prose owner-
     ['invalid shell', ['env', '--shell', 'nope']],
   ] as const)('%s', (_name, args) => {
     expect(runCli(...args)).toMatchSnapshot()
+  })
+
+  it.each([
+    {
+      name: 'dash-prefixed operand',
+      args: ['add', '--', '--not-a-flag'],
+      stdout:
+        '{"_tag":"Error","error":"invalid_repo","message":"Invalid repo reference: --not-a-flag"}\n',
+      stderr: 'AddCommandError: Invalid repo reference (mr 0.1.0)\n',
+    },
+    {
+      name: 'parent flag-name collision',
+      args: ['add', '--', '--cwd'],
+      stdout: '{"_tag":"Error","error":"invalid_repo","message":"Invalid repo reference: --cwd"}\n',
+      stderr: 'AddCommandError: Invalid repo reference (mr 0.1.0)\n',
+    },
+    {
+      name: 'subcommand flag-name collision',
+      args: ['add', '--', '--name'],
+      stdout:
+        '{"_tag":"Error","error":"invalid_repo","message":"Invalid repo reference: --name"}\n',
+      stderr: 'AddCommandError: Invalid repo reference (mr 0.1.0)\n',
+    },
+    {
+      name: 'multiple operands preserve order until positional arity is exhausted',
+      args: ['add', '--', '--first', '--name', '--last'],
+      stdout: '',
+      stderr:
+        `Received unknown argument: '--name'\n\n` +
+        `Error: {"_tag":"InvalidValue","error":{"_tag":"Paragraph","value":` +
+        `{"_tag":"Text","value":"Received unknown argument: '--name'"}}}\n`,
+    },
+    {
+      name: 'empty trailing operands',
+      args: ['add', '--'],
+      stdout: '',
+      stderr:
+        'Missing argument <repo>\n\nError: {"_tag":"MissingValue","error":{"_tag":"Paragraph","value":{"_tag":"Text","value":"Missing argument <repo>"}}}\n',
+    },
+  ])('retains nested terminator argv: $name', ({ args, stdout, stderr }) => {
+    // TODO(live-migration:effect-3-4): v4 beta.102 drops argv after `--` for nested commands
+    // (effect#6690). Do NOT rebaseline — this failing is the gate working. Resolve by landing the
+    // upstream fix or the local parser patch, then re-run; the values here should be unchanged.
+    expect(runCli('--cwd', workspaceRoot, ...args)).toEqual({
+      status: 1,
+      signal: null,
+      stdout,
+      stderr,
+    })
   })
 })

@@ -13,15 +13,15 @@ All notable changes to this project will be documented in this file.
 
 - Add a shared CI helper for job-local Cargo targets and `sccache` servers on
   multi-identity self-hosted runners.
-<<<<<<< HEAD
+- **genie/ci-workflow**: let default-ref policy consumers explicitly admit
+  immutable commit refs for named `*-legacy` megarepo members, while keeping
+  branches, tags, and ordinary members on the canonical default ref.
 - **@overeng/effect-rpc-tanstack**: capture Effect 3 cross-major baselines for
   SSR `Exit` JSON encoding and native HTTP RPC NDJSON request/response failure
   partitions.
-=======
 - **@overeng/effect-react**: capture Effect 3 cross-major runtime baselines for
   provider layer construction/provision, scope teardown, retry behavior, and
   external-store subscriber observations.
->>>>>>> c14154ac1 (test(effect-react): capture runtime baselines)
 
 ### Fixed
 
@@ -158,6 +158,10 @@ All notable changes to this project will be documented in this file.
   Effect 3 catalog, and fail generation if either cohort's exact identity drifts
   (#937).
 
+- Harden shared CI devenv resolution against host GC races: retry the proven
+  invalid-store-path signature once after client-local cache repair, root the
+  resolved closure for the job lifetime, and leave Nix daemon recovery to host
+  supervision instead of restarting the shared daemon from CI jobs.
 - Fix megarepo Nix lock validation for current and legacy members that share one repository while preserving fail-closed ambiguity checks.
 
 ### Fixed
