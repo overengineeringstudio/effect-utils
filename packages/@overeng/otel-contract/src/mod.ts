@@ -8,9 +8,10 @@ import {
   Metric,
   MetricBoundaries,
   Option,
-  ParseResult,
   Redacted,
   Schema,
+  SchemaIssue,
+  SchemaParser,
   Stream,
 } from 'effect'
 import * as AST from 'effect/SchemaAST'
@@ -113,18 +114,35 @@ export type ServiceNameParts = typeof ServiceNameParts.Type
 export const ServiceNameFromParts = Schema.transformOrFail(ServiceNameParts, OtelServiceName, {
   strict: true,
   decode: (parts, _options, ast) =>
-    ParseResult.decodeUnknown(OtelServiceName)(`${parts.project}-${parts.role}`).pipe(
+    SchemaParser.decodeUnknownEffect(OtelServiceName)(`${parts.project}-${parts.role}`).pipe(
       Effect.mapError(
         (issue) =>
-          new ParseResult.Type(ast, parts, ParseResult.TreeFormatter.formatIssueSync(issue)),
+          new SchemaIssue.Encoding(
+            ast,
+            Option.some(parts),
+            new SchemaIssue.InvalidValue(Option.some(parts), {
+              message: SchemaIssue.defaultFormatter(issue),
+            }),
+          ),
       ),
     ),
   encode: (name, _options, ast) =>
-    ParseResult.fail(
-      new ParseResult.Forbidden(
-        ast,
-        name,
-        'A composed service name cannot be split back into parts',
+    Effect.fail(
+      new SchemaIssue.Forbidden(
+        Option.some(name),
+        {
+          message:
+            'A composed service name cannot be split back into parts',
+        },
+      ),
+    ).pipe(
+      Effect.mapError(
+        (issue) =>
+          new SchemaIssue.Encoding(
+            ast,
+            Option.some(name),
+            issue,
+          ),
       ),
     ),
 }).annotations({ identifier: 'Otel.ServiceNameFromParts' })
@@ -159,7 +177,7 @@ export interface FleetServiceBinding {
  */
 export const serviceIdentityFromBinding = (
   binding: FleetServiceBinding,
-): Effect.Effect<ServiceIdentity, ParseResult.ParseError> =>
+): Effect.Effect<ServiceIdentity, Schema.SchemaError> =>
   Effect.gen(function* () {
     const name = yield* Schema.decode(ServiceNameFromParts)({
       project: binding.project,
