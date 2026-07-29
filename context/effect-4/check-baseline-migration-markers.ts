@@ -1,5 +1,7 @@
 #!/usr/bin/env bun
 
+import { mkdir, mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 
 const marker = 'TODO(live-migration:effect-3-4)'
@@ -213,6 +215,152 @@ const repositoryFiles = async () => {
   )
 }
 
+const runProcess = async ({
+  command,
+  cwd,
+}: {
+  readonly command: readonly string[]
+  readonly cwd: string
+}) => {
+  const child = Bun.spawn(command, {
+    cwd,
+    stderr: 'pipe',
+    stdout: 'pipe',
+  })
+  const [exitCode, stderr, stdout] = await Promise.all([
+    child.exited,
+    new Response(child.stderr).text(),
+    new Response(child.stdout).text(),
+  ])
+
+  return { exitCode, stderr, stdout }
+}
+
+const writeContractionFixture = async ({
+  fixtureRoot,
+  includeSurvivors,
+}: {
+  readonly fixtureRoot: string
+  readonly includeSurvivors: boolean
+}) => {
+  const contextRoot = resolve(fixtureRoot, 'context/effect-4')
+  await mkdir(contextRoot, { recursive: true })
+  await Bun.write(
+    resolve(contextRoot, 'check-baseline-migration-markers.ts'),
+    `const marker = '${todoMigrationName}effect-3-4)'\n`,
+  )
+  await Bun.write(
+    resolve(contextRoot, 'baseline-operations.md'),
+    [
+      `Baseline files carry no \`${liveMigrationName} BRIDGE\` block after contraction.`,
+      `\`${todoMigrationName}<bridge-id>)\` identifies a migration assertion.`,
+      '',
+    ].join('\n'),
+  )
+
+  if (includeSurvivors === true) {
+    await mkdir(resolve(fixtureRoot, 'src'), { recursive: true })
+    await Bun.write(
+      resolve(fixtureRoot, 'src/survivors.ts'),
+      [
+        `// ${liveMigrationName} BRIDGE fixture-bridge`,
+        `// ${todoMigrationName}fixture-todo): resolve the retained assertion`,
+        '',
+      ].join('\n'),
+    )
+  }
+
+  const initialized = await runProcess({
+    command: ['git', 'init', '--quiet'],
+    cwd: fixtureRoot,
+  })
+  const added = await runProcess({
+    command: ['git', 'add', '--all'],
+    cwd: fixtureRoot,
+  })
+  if (initialized.exitCode !== 0 || added.exitCode !== 0) {
+    const detail = [initialized.stderr, added.stderr].join('').trim()
+    throw new Error(`cannot initialize contraction fixture repository: ${detail}`)
+  }
+}
+
+const runContractionFixtureCheck = async () => {
+  const fixtureRoot = await mkdtemp(resolve(tmpdir(), 'effect4-contraction-fixtures-'))
+  const definitionOnlyRoot = resolve(fixtureRoot, 'definition-only')
+  const survivorRoot = resolve(fixtureRoot, 'survivors')
+  let failure: string | undefined
+
+  try {
+    await Promise.all([
+      writeContractionFixture({ fixtureRoot: definitionOnlyRoot, includeSurvivors: false }),
+      writeContractionFixture({ fixtureRoot: survivorRoot, includeSurvivors: true }),
+    ])
+
+    const [definitionOnly, survivors] = await Promise.all([
+      runProcess({
+        command: [
+          process.execPath,
+          import.meta.path,
+          '--contraction',
+          '--root',
+          definitionOnlyRoot,
+        ],
+        cwd: root,
+      }),
+      runProcess({
+        command: [process.execPath, import.meta.path, '--contraction', '--root', survivorRoot],
+        cwd: root,
+      }),
+    ])
+    const expectedDefinitionOnly =
+      'PASS: contraction sweep found no live migration markers (3 permanent grammar definitions excluded).\n'
+    const expectedSurvivors = [
+      'src/survivors.ts:1 DELETE BLOCK (BRIDGE) fixture-bridge',
+      'src/survivors.ts:2 RESOLVE TODO fixture-todo',
+      'FAIL: contraction blocked by 2 markers across 1 files: 1 BRIDGE blocks (1 block marker lines) to delete, 1 TODO markers to resolve; 3 permanent grammar definitions excluded.',
+      '',
+    ].join('\n')
+
+    if (
+      definitionOnly.exitCode !== 0 ||
+      definitionOnly.stdout !== expectedDefinitionOnly ||
+      definitionOnly.stderr !== ''
+    ) {
+      failure = [
+        'FAIL: contraction definition-only fixture did not pass with the expected report.',
+        `exit: ${definitionOnly.exitCode}`,
+        `stdout: ${JSON.stringify(definitionOnly.stdout)}`,
+        `stderr: ${JSON.stringify(definitionOnly.stderr)}`,
+      ].join('\n')
+    } else if (
+      survivors.exitCode !== 1 ||
+      survivors.stdout !== '' ||
+      survivors.stderr !== expectedSurvivors
+    ) {
+      failure = [
+        'FAIL: contraction survivor fixture did not fail with the expected report.',
+        `exit: ${survivors.exitCode}`,
+        `stdout: ${JSON.stringify(survivors.stdout)}`,
+        `stderr: ${JSON.stringify(survivors.stderr)}`,
+      ].join('\n')
+    }
+  } catch (error) {
+    failure = `FAIL: contraction fixture lane could not run: ${String(error)}`
+  } finally {
+    await rm(fixtureRoot, { force: true, recursive: true })
+  }
+
+  if (failure !== undefined) {
+    console.error(failure)
+    return false
+  }
+
+  console.log(
+    'PASS: contraction fixtures cover definition exclusions and actionable survivor reporting.',
+  )
+  return true
+}
+
 const runContractionCheck = async () => {
   const markers: ContractionMarker[] = []
   let definitionMarkers = 0
@@ -284,6 +432,8 @@ if (process.argv.includes('--contraction') === true) {
   await runContractionCheck()
   process.exit(process.exitCode ?? 0)
 }
+
+if ((await runContractionFixtureCheck()) === false) process.exit(1)
 
 const registerFile = 'context/effect-4/alignment-register.md'
 let registerSource: string
