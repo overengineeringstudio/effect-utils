@@ -35,7 +35,7 @@ const decoder = new TextDecoder()
  * transforms break the contract and are unsupported (docs/vrs/02-schema-serde/spec.md §1).
  *
  * `contentType` / `jsonSchema` default to `application/json` /
- * `JsonSchema.make`, overridable via the `Restate.serde` annotation
+ * a canonical JSON Schema Draft 2020-12 document, overridable via the `Restate.serde` annotation
  * ([.decisions/0011](../../docs/vrs/.decisions/0011-restate-schema-annotations.md)).
  *
  * The `slot` controls decode-failure classification: an `ingress` decode
@@ -75,7 +75,14 @@ export const effectSerde = <A, I>({
     Option.getOrElse(() => (isVoid === true ? undefined : 'application/json')),
   )
   const jsonSchema = Option.flatMap(overrides, (o) => Option.fromNullishOr(o.jsonSchema)).pipe(
-    Option.getOrElse(() => JsonSchema.make(schema) as object),
+    Option.getOrElse(() => {
+      const document = Schema.toJsonSchemaDocument(schema)
+      return {
+        $schema: JsonSchema.META_SCHEMA_URI_DRAFT_2020_12,
+        ...document.schema,
+        ...(Object.keys(document.definitions).length > 0 ? { $defs: document.definitions } : {}),
+      }
+    }),
   )
   return {
     /* Omit `contentType` entirely when unset (void payload), per `exactOptionalPropertyTypes`. */
