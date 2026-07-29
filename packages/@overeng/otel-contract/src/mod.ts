@@ -687,7 +687,7 @@ const encodeUnknown = ({
   readonly schema: Schema.Schema<unknown, unknown, never>
   readonly value: unknown
 }) =>
-  effectFromEither(Schema.encodeUnknownEither(schema)(value)).pipe(
+  effectFromEither(Schema.encodeUnknownResult(schema)(value)).pipe(
     Effect.mapError((cause) => encodeFailure({ key, cause })),
   )
 
