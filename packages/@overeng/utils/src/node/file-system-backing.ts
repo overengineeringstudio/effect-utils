@@ -70,6 +70,14 @@ const isNotFoundError = (cause: unknown): boolean => {
   if (typeof cause !== 'object' || cause === null) return false
   const record = cause as Record<string, unknown>
   if (record._tag === 'SystemError' && record.reason === 'NotFound') return true
+  if (
+    record._tag === 'PlatformError' &&
+    typeof record.reason === 'object' &&
+    record.reason !== null &&
+    (record.reason as Record<string, unknown>)._tag === 'NotFound'
+  ) {
+    return true
+  }
   if (record.code === 'ENOENT') return true
   return false
 }
