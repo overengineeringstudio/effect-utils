@@ -1,8 +1,8 @@
-import { OtlpSerialization, OtlpTracer } from '@effect/opentelemetry'
 import { NodeServices } from '@effect/platform-node'
 import { describe, expect, it, layer } from '@effect/vitest'
 import { Effect, Layer } from 'effect'
 import { FetchHttpClient } from 'effect/unstable/http'
+import { OtlpSerialization, OtlpTracer } from 'effect/unstable/observability'
 
 import { Otelite } from './Otelite.ts'
 import { otlpTracesUrl } from './otlp-url.ts'
