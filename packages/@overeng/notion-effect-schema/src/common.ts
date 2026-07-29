@@ -196,11 +196,11 @@ export const shouldNeverHappen = (msg?: string, ...args: unknown[]): never => {
 // ---------------------------------------------------------------------------
 
 const getOptionValueSchema = <TValue, TInput, TContext>(
-  schema: Schema.Schema<Option.Option<TValue>, TInput, TContext>,
-): Schema.Schema<TValue, TValue, never> => {
-  const annotated = SchemaAST.resolveAt<Schema.Schema<TValue, TValue, never>>(optionValueSchema)(
-    schema.ast,
-  )
+  schema: Schema.Codec<Option.Option<TValue>, TInput, TContext, TContext>,
+): Schema.Codec<TValue, TValue, never, never> => {
+  const annotated = SchemaAST.resolveAt<Schema.Codec<TValue, TValue, never, never>>(
+    optionValueSchema,
+  )(schema.ast)
 
   if (Option.isSome(annotated) === true) {
     return annotated.value
@@ -212,9 +212,9 @@ const getOptionValueSchema = <TValue, TInput, TContext>(
 }
 
 const getOptionNameSchema = <TName extends string, TValue, TInput, TContext>(
-  schema: Schema.Schema<TValue, TInput, TContext>,
-): Schema.Schema<TName, TName, never> => {
-  const annotated = SchemaAST.resolveAt<Schema.Schema<TName, TName, never>>(optionNameSchema)(
+  schema: Schema.Codec<TValue, TInput, TContext, TContext>,
+): Schema.Codec<TName, TName, never, never> => {
+  const annotated = SchemaAST.resolveAt<Schema.Codec<TName, TName, never, never>>(optionNameSchema)(
     schema.ast,
   )
 
@@ -229,16 +229,16 @@ const getOptionNameSchema = <TName extends string, TValue, TInput, TContext>(
 
 /** Annotates an Option schema with its inner value schema for extraction */
 export const withOptionValueSchema = <TValue, TInput, TContext>(options: {
-  schema: Schema.Schema<Option.Option<TValue>, TInput, TContext>
-  valueSchema: Schema.Schema<TValue, TValue, never>
-}): Schema.Schema<Option.Option<TValue>, TInput, TContext> =>
+  schema: Schema.Codec<Option.Option<TValue>, TInput, TContext, TContext>
+  valueSchema: Schema.Codec<TValue, TValue, never, never>
+}): Schema.Codec<Option.Option<TValue>, TInput, TContext, TContext> =>
   options.schema.annotate({ [optionValueSchema]: options.valueSchema })
 
 /** Annotates a schema with the name schema for select/status option extraction */
 export const withOptionNameSchema = <TValue, TInput, TContext, TName extends string>(options: {
-  schema: Schema.Schema<TValue, TInput, TContext>
-  nameSchema: Schema.Schema<TName, TName, never>
-}): Schema.Schema<TValue, TInput, TContext> =>
+  schema: Schema.Codec<TValue, TInput, TContext, TContext>
+  nameSchema: Schema.Codec<TName, TName, never, never>
+}): Schema.Codec<TValue, TInput, TContext, TContext> =>
   options.schema.annotate({ [optionNameSchema]: options.nameSchema })
 
 /**
@@ -253,8 +253,8 @@ export const withOptionNameSchema = <TValue, TInput, TContext, TName extends str
  * Typed options are enforced via the upstream schema. Decode-only; use write helpers for updates.
  */
 export const asName = <TName extends string, TOption extends { name: TName }, TInput, TContext>(
-  schema: Schema.Schema<Option.Option<TOption>, TInput, TContext>,
-): Schema.Schema<Option.Option<TName>, TInput, TContext> => {
+  schema: Schema.Codec<Option.Option<TOption>, TInput, TContext, TContext>,
+): Schema.Codec<Option.Option<TName>, TInput, TContext, TContext> => {
   const nameSchema = getOptionNameSchema<TName, Option.Option<TOption>, TInput, TContext>(schema)
 
   return withOptionValueSchema({
@@ -282,8 +282,8 @@ export const asName = <TName extends string, TOption extends { name: TName }, TI
  * Typed options are enforced via the upstream schema. Decode-only; use write helpers for updates.
  */
 export const asNames = <TName extends string, TOption extends { name: TName }, TInput, TContext>(
-  schema: Schema.Schema<ReadonlyArray<TOption>, TInput, TContext>,
-): Schema.Schema<ReadonlyArray<TName>, TInput, TContext> => {
+  schema: Schema.Codec<ReadonlyArray<TOption>, TInput, TContext, TContext>,
+): Schema.Codec<ReadonlyArray<TName>, TInput, TContext, TContext> => {
   const nameSchema = getOptionNameSchema<TName, ReadonlyArray<TOption>, TInput, TContext>(schema)
 
   return Schema.transform(schema, Schema.Array(nameSchema), {
@@ -302,8 +302,8 @@ export const asNames = <TName extends string, TOption extends { name: TName }, T
  * Expects a schema created by notion-effect-schema Option helpers.
  */
 export const asNullable = <TValue, TInput, TContext>(
-  schema: Schema.Schema<Option.Option<TValue>, TInput, TContext>,
-): Schema.Schema<TValue | null, TInput, TContext> => {
+  schema: Schema.Codec<Option.Option<TValue>, TInput, TContext, TContext>,
+): Schema.Codec<TValue | null, TInput, TContext, TContext> => {
   const valueSchema = getOptionValueSchema(schema)
 
   return Schema.transform(schema, Schema.NullOr(valueSchema), {
@@ -318,8 +318,8 @@ export const Required = {
   some:
     (message = 'Value is required') =>
     <TValue, TInput, TOutputContext>(
-      schema: Schema.Schema<Option.Option<TValue>, TInput, TOutputContext>,
-    ): Schema.Schema<TValue, TInput, TOutputContext> => {
+      schema: Schema.Codec<Option.Option<TValue>, TInput, TOutputContext, TOutputContext>,
+    ): Schema.Codec<TValue, TInput, TOutputContext, TOutputContext> => {
       const valueSchema = getOptionValueSchema(schema)
       return Schema.transform(
         schema.pipe(
@@ -337,12 +337,12 @@ export const Required = {
     },
   nullable:
     <TValue, TContext>(options: {
-      valueSchema: Schema.Schema<TValue, TValue, TContext>
+      valueSchema: Schema.Codec<TValue, TValue, TContext, TContext>
       message?: string
     }) =>
     <TInput, TOutputContext>(
-      schema: Schema.Schema<TValue | null, TInput, TOutputContext>,
-    ): Schema.Schema<TValue, TInput, TContext | TOutputContext> => {
+      schema: Schema.Codec<TValue | null, TInput, TOutputContext, TOutputContext>,
+    ): Schema.Codec<TValue, TInput, TContext | TOutputContext, TContext | TOutputContext> => {
       const message = options.message ?? 'Value is required'
       return Schema.transform(
         schema.pipe(
