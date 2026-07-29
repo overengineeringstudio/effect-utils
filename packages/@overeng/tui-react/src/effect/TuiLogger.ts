@@ -36,6 +36,7 @@ import {
   Layer,
   Logger,
   LogLevel,
+  References,
   Stream,
   SubscriptionRef,
   Fiber,
@@ -83,7 +84,7 @@ export interface TuiLoggerOptions {
   /**
    * Minimum log level to capture.
    * Logs below this level are not captured.
-   * @default LogLevel.All
+   * @default "All"
    */
   minLevel?: LogLevel.LogLevel
 
@@ -147,7 +148,7 @@ export const createTuiLogger = (
   options: TuiLoggerOptions = {},
 ): Effect.Effect<TuiLoggerResult, never, Scope.Scope> =>
   Effect.gen(function* () {
-    const { maxEntries = 100, minLevel = LogLevel.All, logToConsole = true } = options
+    const { maxEntries = 100, minLevel = 'All', logToConsole = true } = options
 
     // Create the logs SubscriptionRef
     const logsRef = yield* SubscriptionRef.make<readonly TuiLogEntry[]>([])
@@ -160,35 +161,38 @@ export const createTuiLogger = (
         return newLogs.length > maxEntries ? newLogs.slice(-maxEntries) : newLogs
       })
     // Create the TUI logger
-    const tuiLogger = Logger.make<unknown, void>(
-      ({ logLevel, message, date, fiberId, annotations, spans }) => {
-        // Check minimum level
-        if (LogLevel.greaterThanEqual(logLevel, minLevel) === true) {
-          const spanLabel = spans._tag === 'Cons' ? spans.head.label : undefined
-          const entry: TuiLogEntry = {
-            id: ++logEntryId,
-            level: logLevel.label,
-            message: String(message),
-            timestamp: date,
-            fiberId: formatFiberId(fiberId),
-            annotations: Object.fromEntries(annotations),
-            ...(spanLabel !== undefined ? { span: spanLabel } : {}),
-          }
-
-          // Fire and forget - we don't want logging to block
-          void Effect.runFork(appendLog(entry))
+    const tuiLogger = Logger.make<unknown, void>(({ logLevel, message, date, fiber }) => {
+      // Check minimum level
+      if (LogLevel.isGreaterThanOrEqualTo(logLevel, minLevel) === true) {
+        const annotations = fiber.getRef(References.CurrentLogAnnotations)
+        const spans = fiber.getRef(References.CurrentLogSpans)
+        const spanLabel = spans[0]?.[0]
+        const entry: TuiLogEntry = {
+          id: ++logEntryId,
+          level: logLevel.toUpperCase(),
+          message: String(message),
+          timestamp: date,
+          fiberId: formatFiberId(fiber.id),
+          annotations: { ...annotations },
+          ...(spanLabel !== undefined ? { span: spanLabel } : {}),
         }
-      },
-    )
+
+        // Fire and forget - we don't want logging to block
+        void Effect.runFork(appendLog(entry))
+      }
+    })
 
     // Create the layer - either TUI only or combined with console
     const layer =
       logToConsole === true
         ? Layer.merge(
             Logger.layer([Logger.defaultLogger, tuiLogger]),
-            Logger.minimumLogLevel(minLevel),
+            Layer.succeed(References.MinimumLogLevel, minLevel),
           )
-        : Layer.merge(Logger.layer([tuiLogger]), Logger.minimumLogLevel(minLevel))
+        : Layer.merge(
+            Logger.layer([tuiLogger]),
+            Layer.succeed(References.MinimumLogLevel, minLevel),
+          )
 
     // Clear function
     const clear = SubscriptionRef.set(logsRef, [])
@@ -246,7 +250,7 @@ export const useTuiLogs = (
   // Subscribe to changes
   const subscribe = (onStoreChange: () => void): (() => void) => {
     const fiber = Effect.runFork(
-      logsRef.changes.pipe(
+      SubscriptionRef.changes(logsRef).pipe(
         Stream.runForEach(() =>
           Effect.sync(() => {
             onStoreChange()

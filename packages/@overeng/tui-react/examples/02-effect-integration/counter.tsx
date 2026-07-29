@@ -16,9 +16,9 @@
  *   bun examples/03-effect-integration/counter.tsx --help
  */
 
-import { Command } from 'effect/unstable/cli'
 import { NodeServices, NodeRuntime } from '@effect/platform-node'
 import { Duration, Effect } from 'effect'
+import { Command } from 'effect/unstable/cli'
 import React from 'react'
 
 import { createTuiApp, run } from '../../src/mod.tsx'
@@ -85,10 +85,9 @@ const counter = Command.make('counter', { output: outputOption }, ({ output }) =
   runCounter.pipe(Effect.provide(outputModeLayer(output))),
 )
 
-const cli = Command.run(counter, {
-  name: 'counter',
+const cli = Command.runWith(counter, {
   version: '1.0.0',
 })
 
 // Run with Effect CLI (handles SIGINT/SIGTERM properly)
-cli(process.argv).pipe(Effect.provide(NodeServices.layer), NodeRuntime.runMain)
+cli(process.argv.slice(2)).pipe(Effect.provide(NodeServices.layer), NodeRuntime.runMain)

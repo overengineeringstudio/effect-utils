@@ -103,10 +103,9 @@ const deploy = Command.make(
 // CLI Runner
 // =============================================================================
 
-const cli = Command.run(deploy, {
-  name: 'deploy',
+const cli = Command.runWith(deploy, {
   version: '1.0.0',
 })
 
 // Run with Effect CLI (handles SIGINT/SIGTERM properly)
-cli(process.argv).pipe(Effect.provide(NodeServices.layer), NodeRuntime.runMain)
+cli(process.argv.slice(2)).pipe(Effect.provide(NodeServices.layer), NodeRuntime.runMain)

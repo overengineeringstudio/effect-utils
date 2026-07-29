@@ -26,7 +26,7 @@
 
 import type { Readable } from 'node:stream'
 
-import { Effect, PubSub, Runtime, Stream } from 'effect'
+import { Effect, PubSub, Stream } from 'effect'
 
 import { type KeyEvent, keyEvent, resizeEvent, type InputEvent } from './events.ts'
 
@@ -507,7 +507,7 @@ export const createTerminalInput = Effect.fn('TerminalInput.create')(function* (
 
   // Create event PubSub
   const pubsub = yield* PubSub.unbounded<InputEvent>()
-  const runtime = yield* Effect.runtime<never>()
+  const context = yield* Effect.context<never>()
 
   // Track if raw mode was set
   let didEnableRawMode = false
@@ -562,7 +562,7 @@ export const createTerminalInput = Effect.fn('TerminalInput.create')(function* (
         for (const event of events) {
           // Publish events synchronously and let the consuming Effect decide
           // whether Ctrl+C should interrupt the current fiber.
-          void Runtime.runFork(runtime)(PubSub.publish(pubsub, event))
+          void Effect.runForkWith(context)(PubSub.publish(pubsub, event))
         }
       }
 
@@ -578,7 +578,7 @@ export const createTerminalInput = Effect.fn('TerminalInput.create')(function* (
         resizeHandler = () => {
           const cols = output.columns ?? 80
           const rows = output.rows ?? 24
-          void Runtime.runFork(runtime)(PubSub.publish(pubsub, resizeEvent({ cols, rows })))
+          void Effect.runForkWith(context)(PubSub.publish(pubsub, resizeEvent({ cols, rows })))
         }
 
         process.on('SIGWINCH', resizeHandler)
@@ -654,7 +654,7 @@ export const createTerminalResize = Effect.fn('TerminalResize.create')(function*
 ) {
   // Create PubSub for resize events
   const pubsub = yield* PubSub.unbounded<{ cols: number; rows: number }>()
-  const runtime = yield* Effect.runtime<never>()
+  const context = yield* Effect.context<never>()
 
   // Get dimensions helper
   const getDimensions = (): { cols: number; rows: number } => ({
@@ -666,7 +666,7 @@ export const createTerminalResize = Effect.fn('TerminalResize.create')(function*
     // Set up resize handler
     const resizeHandler = () => {
       const dims = getDimensions()
-      void Runtime.runFork(runtime)(PubSub.publish(pubsub, dims))
+      void Effect.runForkWith(context)(PubSub.publish(pubsub, dims))
     }
 
     yield* Effect.acquireRelease(

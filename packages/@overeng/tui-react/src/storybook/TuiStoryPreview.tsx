@@ -37,11 +37,11 @@
 // oxlint-disable-next-line typescript-eslint(triple-slash-reference) -- intentional: an ambient-only .d.ts cannot be an ES import
 /// <reference path="./asset-modules.d.ts" />
 
-import { Atom, AtomRegistry } from 'effect/unstable/reactivity'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { Terminal } from '@xterm/xterm'
 import { Schema } from 'effect'
+import { Atom, AtomRegistry } from 'effect/unstable/reactivity'
 // oxlint-disable-next-line eslint-plugin-import(no-unassigned-import) -- deliberate bundler stylesheet
 import '@xterm/xterm/css/xterm.css'
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
@@ -82,8 +82,8 @@ export interface TuiStoryPreviewProps<S, A> {
   /** A TuiApp instance (or any object with a compatible config) */
   app: {
     config: {
-      stateSchema: Schema.Schema<S>
-      actionSchema: Schema.Schema<A>
+      stateSchema: Schema.ConstraintCodec<S>
+      actionSchema: Schema.ConstraintCodec<A>
       initial: S
       reducer: (args: { state: S; action: A }) => S
     }

@@ -64,7 +64,7 @@ const runStressTest = (durationMs: number) => {
     (tui) =>
       Effect.gen(function* () {
         // Run the animation loop
-        const animationFiber = yield* Effect.fork(
+        const animationFiber = yield* Effect.forkChild(
           Effect.gen(function* () {
             while (tui.getState()._tag === 'Running') {
               tui.dispatch({ _tag: 'Tick' })
@@ -102,10 +102,9 @@ const stressTestCommand = Command.make(
     runStressTest(duration * 1000).pipe(Effect.provide(outputModeLayer(output))),
 )
 
-const cli = Command.run(stressTestCommand, {
-  name: 'Rapid Updates Stress Test',
+const cli = Command.runWith(stressTestCommand, {
   version: '1.0.0',
 })
 
 // Run with Effect CLI (handles SIGINT/SIGTERM properly)
-cli(process.argv).pipe(Effect.provide(NodeServices.layer), NodeRuntime.runMain)
+cli(process.argv.slice(2)).pipe(Effect.provide(NodeServices.layer), NodeRuntime.runMain)
