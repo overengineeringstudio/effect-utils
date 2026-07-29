@@ -87,7 +87,7 @@ export const isTuiApp = (u: unknown): u is TuiApp<unknown, unknown> =>
   typeof u === 'object' && u !== null && TuiAppTypeId in u
 
 /** Internal tag to skip mode-specific output when standalone run() handles output */
-const SkipModeOutputTag = Context.GenericTag<boolean>('@overeng/tui-react/SkipModeOutput')
+const SkipModeOutputTag = Context.Service<boolean>('@overeng/tui-react/SkipModeOutput')
 
 // =============================================================================
 // TUI AtomRegistry Context (avoids multiple React instance issues with @effect/atom-react)
