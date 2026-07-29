@@ -712,6 +712,7 @@ const unwrapRefinement = (ast: AST.AST): AST.AST =>
 
 const isUndefinedAst = (ast: AST.AST): boolean =>
   ast._tag === 'UndefinedKeyword' ||
+  ast._tag === 'Undefined' ||
   (ast._tag === 'Union' && ast.types.some((member) => isUndefinedAst(member)))
 
 const isPrimitiveAst = (ast: AST.AST): boolean => {
@@ -720,6 +721,9 @@ const isPrimitiveAst = (ast: AST.AST): boolean => {
     case 'StringKeyword':
     case 'NumberKeyword':
     case 'BooleanKeyword':
+    case 'String':
+    case 'Number':
+    case 'Boolean':
       return true
     case 'Literal':
       return isPrimitive(unwrapped.literal)
@@ -740,6 +744,7 @@ const inferCardinality = (
   const unwrapped = unwrapRefinement(ast)
   switch (unwrapped._tag) {
     case 'BooleanKeyword':
+    case 'Boolean':
       return 'low'
     case 'Literal':
       return typeof unwrapped.literal === 'boolean' ? 'low' : 'bounded'
@@ -759,7 +764,13 @@ const inferCardinality = (
 const rootTypeLiteral = (schema: Schema.Schema.AnyNoContext) => {
   const ast = schema.ast
   if (ast._tag === 'TypeLiteral') return ast
-  if (ast._tag === 'Transformation' && ast.to._tag === 'TypeLiteral') return ast.to
+  if (ast._tag === 'Objects') return ast
+  if (
+    ast._tag === 'Transformation' &&
+    (ast.to._tag === 'TypeLiteral' || ast.to._tag === 'Objects')
+  ) {
+    return ast.to
+  }
   return undefined
 }
 
@@ -810,12 +821,12 @@ const compileAutoEncoder = ({
   if (tag === 'effect/DateTime.Utc') {
     return Effect.succeed((value) => Effect.succeed(DateTime.formatIso(value as DateTime.Utc)))
   }
-  if (ast._tag === 'TypeLiteral') {
+  if (ast._tag === 'TypeLiteral' || ast._tag === 'Objects') {
     return Effect.fail(
       unsupported({ path, message: 'Nested Struct attributes require an explicit encoder' }),
     )
   }
-  if (ast._tag === 'TupleType') {
+  if (ast._tag === 'TupleType' || ast._tag === 'Arrays') {
     return Effect.fail(
       unsupported({
         path,
