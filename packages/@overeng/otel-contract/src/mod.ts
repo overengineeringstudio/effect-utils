@@ -3,15 +3,15 @@ import {
   DateTime,
   Duration,
   Effect,
-  Either,
   Exit,
   Metric,
-  MetricBoundaries,
   Option,
   Redacted,
+  Result,
   Schema,
   SchemaIssue,
   SchemaParser,
+  SchemaTransformation,
   Stream,
 } from 'effect'
 import * as AST from 'effect/SchemaAST'
@@ -111,41 +111,28 @@ export type ServiceNameParts = typeof ServiceNameParts.Type
  * the composition root, never a backend surprise. Decode it like any other brand:
  * `Schema.decode(ServiceNameFromParts)({ project, role })`.
  */
-export const ServiceNameFromParts = Schema.transformOrFail(ServiceNameParts, OtelServiceName, {
-  strict: true,
-  decode: (parts, _options, ast) =>
-    SchemaParser.decodeUnknownEffect(OtelServiceName)(`${parts.project}-${parts.role}`).pipe(
-      Effect.mapError(
-        (issue) =>
-          new SchemaIssue.Encoding(
-            ast,
-            Option.some(parts),
-            new SchemaIssue.InvalidValue(Option.some(parts), {
-              message: SchemaIssue.defaultFormatter(issue),
-            }),
+export const ServiceNameFromParts = ServiceNameParts.pipe(
+  Schema.decodeTo(
+    OtelServiceName,
+    SchemaTransformation.transformOrFail({
+      decode: (parts) =>
+        SchemaParser.decodeUnknownEffect(OtelServiceName)(`${parts.project}-${parts.role}`).pipe(
+          Effect.mapError(
+            (issue) =>
+              new SchemaIssue.InvalidValue(Option.some(parts), {
+                message: SchemaIssue.defaultFormatter(issue),
+              }),
           ),
-      ),
-    ),
-  encode: (name, _options, ast) =>
-    Effect.fail(
-      new SchemaIssue.Forbidden(
-        Option.some(name),
-        {
-          message:
-            'A composed service name cannot be split back into parts',
-        },
-      ),
-    ).pipe(
-      Effect.mapError(
-        (issue) =>
-          new SchemaIssue.Encoding(
-            ast,
-            Option.some(name),
-            issue,
-          ),
-      ),
-    ),
-}).annotations({ identifier: 'Otel.ServiceNameFromParts' })
+        ),
+      encode: (name) =>
+        Effect.fail(
+          new SchemaIssue.Forbidden(Option.some(name), {
+            message: 'A composed service name cannot be split back into parts',
+          }),
+        ),
+    }),
+  ),
+).annotations({ identifier: 'Otel.ServiceNameFromParts' })
 
 /**
  * The SHAPE a private fleet configuration supplies to produce a
@@ -247,8 +234,8 @@ const decodeNameSync = <A>(options: {
   readonly kind: string
 }): A => {
   const decoded = decodeNameEither(options)
-  if (Either.isRight(decoded) === true) return decoded.right
-  throw decoded.left
+  if (Result.isSuccess(decoded) === true) return decoded.success
+  throw decoded.failure
 }
 
 const decodeNameEither = <A>(options: {
@@ -256,9 +243,9 @@ const decodeNameEither = <A>(options: {
   readonly value: string
   readonly path: ReadonlyArray<PropertyKey>
   readonly kind: string
-}): Either.Either<A, OtelAttrPlanError> =>
-  Schema.decodeUnknownEither(options.schema)(options.value).pipe(
-    Either.mapLeft(() =>
+}): Result.Result<A, OtelAttrPlanError> =>
+  Schema.decodeUnknownResult(options.schema)(options.value).pipe(
+    Result.mapError(() =>
       unsupported({
         path: options.path,
         message: `Invalid OTEL ${options.kind}: ${options.value}`,
@@ -663,7 +650,7 @@ const primitiveFromUnknown = ({
   readonly value: unknown
 }) => {
   if (typeof value === 'number' && isFiniteOtelNumber(value) === false) {
-    return Either.left(
+    return Result.fail(
       new OtelAttrEncodeError({
         key,
         message: `OTEL number attribute ${key} must be finite`,
@@ -671,12 +658,12 @@ const primitiveFromUnknown = ({
     )
   }
   return isPrimitive(value) === true
-    ? Either.right(value)
-    : Either.left(primitiveEncodeError({ key, value }))
+    ? Result.succeed(value)
+    : Result.fail(primitiveEncodeError({ key, value }))
 }
 
-const effectFromEither = <A, E>(either: Either.Either<A, E>): Effect.Effect<A, E> =>
-  Either.isRight(either) === true ? Effect.succeed(either.right) : Effect.fail(either.left)
+const effectFromEither = <A, E>(either: Result.Result<A, E>): Effect.Effect<A, E> =>
+  Result.isSuccess(either) === true ? Effect.succeed(either.success) : Effect.fail(either.failure)
 
 const runSyncOrThrow = <A, E>(effect: Effect.Effect<A, E>): A =>
   Exit.match(Effect.runSyncExit(effect), {
@@ -1123,17 +1110,17 @@ const spanMetadata = <S extends Schema.Schema.AnyNoContext>(
   hasSpanLabel: options.attributes.hasSpanLabel,
 })
 
-const normalizeSpanLabel = (label: string): Either.Either<string, OtelAttrEncodeError> => {
+const normalizeSpanLabel = (label: string): Result.Result<string, OtelAttrEncodeError> => {
   const normalized = label.trim()
   if (normalized.length === 0) {
-    return Either.left(
+    return Result.fail(
       new OtelAttrEncodeError({
         key: 'span.label',
         message: 'OtelOperation label must be a non-empty string',
       }),
     )
   }
-  return Either.right(normalized)
+  return Result.succeed(normalized)
 }
 
 const operationMetadata = <S extends Schema.Schema.AnyNoContext>(options: {
@@ -1580,11 +1567,10 @@ const effectCounter = <S extends Schema.Schema.AnyNoContext>(
 const effectHistogram = <S extends Schema.Schema.AnyNoContext>(
   definition: OtelHistogramDefinition<S>,
 ): OtelEffectHistogram<S> => {
-  const metric = Metric.histogram(
-    definition.name,
-    MetricBoundaries.fromIterable(definition.boundaries ?? []),
-    definition.description,
-  )
+  const metric = Metric.histogram(definition.name, {
+    boundaries: Metric.boundariesFromIterable(definition.boundaries ?? []),
+    description: definition.description,
+  })
   const record = ({ labels, value }: { labels: Schema.Schema.Type<S>; value: number }) =>
     Effect.gen(function* () {
       const tags = yield* definition.tagPairs(labels)
