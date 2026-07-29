@@ -454,7 +454,7 @@ const formatWithOxfmt = Effect.fn('formatWithOxfmt')(function* ({
     return content
   }
 
-  const optionsResult = yield* loadOxfmtConfig({ configPath }).pipe(Effect.either)
+  const optionsResult = yield* loadOxfmtConfig({ configPath }).pipe(Effect.result)
   if (Result.isFailure(optionsResult) === true) {
     return content
   }

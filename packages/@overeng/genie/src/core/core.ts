@@ -175,7 +175,7 @@ const runValidationOrFail = Effect.fn('genie/runValidationOrFail')(function* ({
     cwd,
     ...(genieFiles !== undefined ? { genieFiles } : {}),
     ...(preloadedFiles !== undefined ? { preloadedFiles } : {}),
-  }).pipe(Effect.either)
+  }).pipe(Effect.result)
   if (Result.isFailure(validationResult) === true) {
     const error = validationResult.failure
     const message = error instanceof Error ? error.message : String(error)
@@ -236,7 +236,7 @@ export const generateAll = ({
             readOnly,
             dryRun,
             oxfmtConfigPath,
-          }).pipe(Effect.either)
+          }).pipe(Effect.result)
 
           if (Result.isSuccess(result) === true) {
             const status = mapResultToStatus(result.success)
@@ -282,7 +282,7 @@ export const generateAll = ({
       }> = []
 
       for (const genieFilePath of genieFiles) {
-        const result = yield* checkFile({ genieFilePath, cwd, oxfmtConfigPath }).pipe(Effect.either)
+        const result = yield* checkFile({ genieFilePath, cwd, oxfmtConfigPath }).pipe(Effect.result)
 
         if (Result.isFailure(result) === true) {
           revalidateErrors.push({
@@ -475,7 +475,7 @@ export const checkAll = ({
           yield* emit({ _tag: 'FileStarted', path: genieFilePath })
 
           const result = yield* checkFileDetailed({ genieFilePath, cwd, oxfmtConfigPath }).pipe(
-            Effect.either,
+            Effect.result,
           )
 
           if (Result.isSuccess(result) === true) {
@@ -508,7 +508,7 @@ export const checkAll = ({
           })
         }),
       { concurrency: checkConcurrency },
-    ).pipe(Effect.either)
+    ).pipe(Effect.result)
 
     if (Result.isFailure(checkResult) === true) {
       const completedPaths = yield* Ref.get(completedPathsRef)

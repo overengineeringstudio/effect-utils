@@ -232,7 +232,7 @@ export const genieCommand = Cli.Command.make(
                           cwd: resolvedCwd,
                           readOnly,
                           oxfmtConfigPath,
-                        }).pipe(Effect.either)
+                        }).pipe(Effect.result)
 
                         if (Result.isSuccess(result)) {
                           const message =
