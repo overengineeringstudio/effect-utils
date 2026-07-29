@@ -152,17 +152,27 @@ describe('determinism layer', () => {
     expect(value).toBe(Math.floor(0.5 * Number.MAX_SAFE_INTEGER))
   })
 
-  it('two runs over the same journaled source produce identical output (replay-stable)', async () => {
-    const make = () => fakeCtx({ dateBase: 1_000, randValues: [0.11, 0.22, 0.33] })
+  it('two runs, including a length-4 shuffle, consume the same journaled draws', async () => {
+    const make = () => fakeCtx({ dateBase: 1_000, randValues: [0.1, 0.6, 0.9, 0.33, 0.44] })
     const program = (ctx: restate.Context) =>
       Effect.gen(function* () {
         const t = yield* Clock.currentTimeMillis
+        /* Both the v3 custom Fisher-Yates and v4's derived shuffle consume
+         * exactly length - 1 draws. The following reads pin that the length-4
+         * shuffle consumed three queue entries, not two or four. */
+        const shuffled = yield* Random.shuffle(['a', 'b', 'c', 'd'])
         const r1 = yield* Random.next
         const r2 = yield* Random.next
-        return { t, r1, r2 }
+        return { t, shuffled: Array.from(shuffled), r1, r2 }
       }).pipe(Effect.provide(determinismLayer({ ctx, frozenBaseMillis: 1_000 })))
     const first = await Effect.runPromise(program(make()))
     const second = await Effect.runPromise(program(make()))
+    expect(first).toEqual({
+      t: 1_000,
+      shuffled: ['d', 'c', 'b', 'a'],
+      r1: 0.33,
+      r2: 0.44,
+    })
     /* A replayed attempt over the same journal observes identical values. */
     expect(second).toEqual(first)
   })
