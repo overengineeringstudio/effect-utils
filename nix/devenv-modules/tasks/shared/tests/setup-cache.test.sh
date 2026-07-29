@@ -56,11 +56,13 @@ PY
 }
 
 simulate_setup_otel_seed() {
-  unset TRACEPARENT OTEL_SHELL_ENTRY_NS
-
   if [ -n "${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] || { [ -n "${OTEL_SPAN_SPOOL_DIR:-}" ] && [ -d "${OTEL_SPAN_SPOOL_DIR:-}" ]; }; then
-    export TRACEPARENT="00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01"
-    export OTEL_SHELL_ENTRY_NS="1234567890000000000"
+    if [ -z "${TRACEPARENT:-}" ]; then
+      export TRACEPARENT="00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01"
+    fi
+    if [ -z "${OTEL_SHELL_ENTRY_NS:-}" ]; then
+      export OTEL_SHELL_ENTRY_NS="1234567890000000000"
+    fi
   fi
 }
 
@@ -176,6 +178,7 @@ echo "Test 10: OTEL setup root context is seeded for endpoint delivery"
 (
   export OTEL_EXPORTER_OTLP_ENDPOINT="http://collector.example:4318"
   unset OTEL_SPAN_SPOOL_DIR
+  unset TRACEPARENT OTEL_SHELL_ENTRY_NS
   simulate_setup_otel_seed
   [[ "${TRACEPARENT:-}" =~ ^00-[0-9a-f]{32}-[0-9a-f]{16}-01$ ]] || {
     echo "FAIL: endpoint delivery should seed TRACEPARENT"
@@ -194,6 +197,7 @@ echo "Test 11: OTEL setup root context is seeded for spool-only delivery"
   unset OTEL_EXPORTER_OTLP_ENDPOINT
   export OTEL_SPAN_SPOOL_DIR="$test_dir/otel-spool"
   mkdir -p "$OTEL_SPAN_SPOOL_DIR"
+  unset TRACEPARENT OTEL_SHELL_ENTRY_NS
   simulate_setup_otel_seed
   [[ "${TRACEPARENT:-}" =~ ^00-[0-9a-f]{32}-[0-9a-f]{16}-01$ ]] || {
     echo "FAIL: spool-only delivery should seed TRACEPARENT"
@@ -211,6 +215,7 @@ echo "Test 12: Missing spool directory does not seed setup root context"
 (
   unset OTEL_EXPORTER_OTLP_ENDPOINT
   export OTEL_SPAN_SPOOL_DIR="$test_dir/missing-spool"
+  unset TRACEPARENT OTEL_SHELL_ENTRY_NS
   simulate_setup_otel_seed
   [ -z "${TRACEPARENT:-}" ] || {
     echo "FAIL: missing spool dir should not seed TRACEPARENT"
@@ -222,6 +227,25 @@ echo "Test 12: Missing spool directory does not seed setup root context"
   }
 )
 echo "  ok: missing spool dir does not seed setup root context"
+
+echo ""
+echo "Test 13: Active trace context is preserved"
+(
+  export OTEL_EXPORTER_OTLP_ENDPOINT="http://collector.example:4318"
+  unset OTEL_SPAN_SPOOL_DIR
+  export TRACEPARENT="00-0123456789abcdef0123456789abcdef-0123456789abcdef-01"
+  export OTEL_SHELL_ENTRY_NS="9876543210000000000"
+  simulate_setup_otel_seed
+  [ "$TRACEPARENT" = "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01" ] || {
+    echo "FAIL: active TRACEPARENT should be preserved"
+    exit 1
+  }
+  [ "$OTEL_SHELL_ENTRY_NS" = "9876543210000000000" ] || {
+    echo "FAIL: active OTEL_SHELL_ENTRY_NS should be preserved"
+    exit 1
+  }
+)
+echo "  ok: active setup trace context is preserved"
 
 echo ""
 echo "All setup-cache tests passed"

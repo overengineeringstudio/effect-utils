@@ -155,9 +155,8 @@ const validateNixStoreStepSource = extractSourceBlock(
   '/**\n * Upload diagnostics captured by `validateNixStoreStep` as a CI artifact.',
 )
 
-const resolveDevenvFnScript = readFileSync(
-  new URL(['../../../../../../genie/ci-scripts', 'resolve-devenv.sh'].join('/'), import.meta.url),
-  'utf8',
+const resolveDevenvFnScript = nixGcRaceRetryScriptSource.slice(
+  nixGcRaceRetryScriptSource.indexOf('DEVENV_GC_ROOT_DIR='),
 )
 
 const applyMegarepoLockStepSource = extractSourceBlock(
@@ -512,12 +511,37 @@ printf '%s\\n' "$NIX_OUTPUT"
     expect(validateNixStoreStepSource).toContain('[ ! "$DEVENV_GC_ROOT" -ef "$DEVENV_OUT" ]')
     expect(validateNixStoreStepSource).not.toContain('readlink -e')
     expect(validateNixStoreStepSource).toContain(
-      '. ${shellSingleQuote(`${preparedCiRuntimeScriptsDir}/resolve-devenv.sh`)}',
+      '. ${shellSingleQuote(`${preparedCiRuntimeScriptsDir}/nix-gc-race-retry.sh`)}',
     )
     expect(generatedCiWorkflowYamlSource).toContain(
-      ". '${{ runner.temp }}/genie-ci-scripts/resolve-devenv.sh'",
+      ". '${{ runner.temp }}/genie-ci-scripts/nix-gc-race-retry.sh'",
     )
     expect(generatedCiWorkflowYamlSource).not.toContain('resolve_devenv_once()')
+  })
+
+  it('ships the resolver in the support artifact a thin consumer already materializes', () => {
+    const root = mkdtempSync(join(tmpdir(), 'genie-ci-support-consumer-'))
+    const supportScript = join(root, 'nix-gc-race-retry.sh')
+
+    try {
+      writeFileSync(supportScript, nixGcRaceRetryScriptSource)
+      const result = spawnSync(
+        'bash',
+        [
+          '-euo',
+          'pipefail',
+          '-c',
+          '. "$1"; declare -F run_nix_gc_race_retry >/dev/null; declare -F resolve_devenv >/dev/null',
+          'consumer-smoke',
+          supportScript,
+        ],
+        { cwd: root, encoding: 'utf8' },
+      )
+
+      expect(result.status, result.stderr).toBe(0)
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
   })
 
   it('resolves the locked megarepo CLI through a git flake URL', () => {

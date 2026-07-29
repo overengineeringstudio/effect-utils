@@ -310,55 +310,61 @@ in
       # The gate exports its computed cache metadata through devenv's native
       # task export channel so every dependent status/exec sees the same
       # `DEVENV_SETUP_*` values without re-running the fingerprint logic.
-      # This keeps us aligned with upstream task plumbing instead of carrying a
-      # parallel ad-hoc output protocol in this repo.
+      # `trace.execWithExports` writes from inside the traced child because a
+      # child process cannot mutate the generated parent-shell export epilogue.
       "setup:gate" = lib.mkIf skipDuringRebase {
         description = "Check if setup should run (fails during rebase to skip setup)";
-        exports = [
-          "DEVENV_SETUP_OUTER_CACHE_HIT"
-          "DEVENV_SETUP_FINGERPRINT"
-          "DEVENV_SETUP_GIT_HASH"
-          "TRACEPARENT"
-          "OTEL_SHELL_ENTRY_NS"
-        ];
-        exec = trace.exec "setup:gate" ''
-          set -euo pipefail
+        exec =
+          trace.execWithExports "setup:gate"
+            [
+              "DEVENV_SETUP_OUTER_CACHE_HIT"
+              "DEVENV_SETUP_FINGERPRINT"
+              "DEVENV_SETUP_GIT_HASH"
+              "TRACEPARENT"
+              "OTEL_SHELL_ENTRY_NS"
+            ]
+            ''
+              set -euo pipefail
 
-          if ${lib.boolToString skipNonInteractive} \
-            && [ "''${DEVENV_FORCE_SETUP:-}" != "1" ] \
-            && { [ ! -t 0 ] || [ ! -t 1 ]; }; then
-            echo "Skipping shell-entry setup for non-interactive devenv invocation"
-            exit 0
-          fi
+              if ${lib.boolToString skipNonInteractive} \
+                && [ "''${DEVENV_FORCE_SETUP:-}" != "1" ] \
+                && { [ ! -t 0 ] || [ ! -t 1 ]; }; then
+                echo "Skipping shell-entry setup for non-interactive devenv invocation"
+                exit 0
+              fi
 
-          ${setupFingerprintEnv}
+              ${setupFingerprintEnv}
 
-          _git_dir=$(${git} rev-parse --git-dir 2>/dev/null)
-          if [ -d "$_git_dir/rebase-merge" ] || [ -d "$_git_dir/rebase-apply" ]; then
-            echo "Skipping setup during git rebase/cherry-pick"
-            echo "Run 'devenv tasks run setup:run' manually if needed"
-            exit 1
-          fi
+              _git_dir=$(${git} rev-parse --git-dir 2>/dev/null)
+              if [ -d "$_git_dir/rebase-merge" ] || [ -d "$_git_dir/rebase-apply" ]; then
+                echo "Skipping setup during git rebase/cherry-pick"
+                echo "Run 'devenv tasks run setup:run' manually if needed"
+                exit 1
+              fi
 
-          _setup_current_fingerprint="$(compute_setup_fingerprint)"
-          _setup_git_hash=$(${git} rev-parse HEAD 2>/dev/null || echo "no-git")
-          if setup_outer_cache_hit "$_setup_current_fingerprint"; then
-            _setup_outer_cache_hit="1"
-          else
-            _setup_outer_cache_hit="0"
-          fi
+              _setup_current_fingerprint="$(compute_setup_fingerprint)"
+              _setup_git_hash=$(${git} rev-parse HEAD 2>/dev/null || echo "no-git")
+              if setup_outer_cache_hit "$_setup_current_fingerprint"; then
+                _setup_outer_cache_hit="1"
+              else
+                _setup_outer_cache_hit="0"
+              fi
 
-          export DEVENV_SETUP_OUTER_CACHE_HIT="$_setup_outer_cache_hit"
-          export DEVENV_SETUP_FINGERPRINT="$_setup_current_fingerprint"
-          export DEVENV_SETUP_GIT_HASH="$_setup_git_hash"
+              export DEVENV_SETUP_OUTER_CACHE_HIT="$_setup_outer_cache_hit"
+              export DEVENV_SETUP_FINGERPRINT="$_setup_current_fingerprint"
+              export DEVENV_SETUP_GIT_HASH="$_setup_git_hash"
 
-          if [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] || { [ -n "''${OTEL_SPAN_SPOOL_DIR:-}" ] && [ -d "''${OTEL_SPAN_SPOOL_DIR:-}" ]; }; then
-            _root_trace=$(${pkgs.coreutils}/bin/od -An -tx1 -N16 /dev/urandom | tr -d ' \n')
-            _root_span=$(${pkgs.coreutils}/bin/od -An -tx1 -N8 /dev/urandom | tr -d ' \n')
-            export TRACEPARENT="00-''${_root_trace:0:32}-''${_root_span:0:16}-01"
-            export OTEL_SHELL_ENTRY_NS="$(${pkgs.coreutils}/bin/date +%s%N)"
-          fi
-        '';
+              if { [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] || { [ -n "''${OTEL_SPAN_SPOOL_DIR:-}" ] && [ -d "''${OTEL_SPAN_SPOOL_DIR:-}" ]; }; } \
+                && [ -z "''${TRACEPARENT:-}" ]; then
+                _root_trace=$(${pkgs.coreutils}/bin/od -An -tx1 -N16 /dev/urandom | tr -d ' \n')
+                _root_span=$(${pkgs.coreutils}/bin/od -An -tx1 -N8 /dev/urandom | tr -d ' \n')
+                export TRACEPARENT="00-''${_root_trace:0:32}-''${_root_span:0:16}-01"
+              fi
+              if { [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] || { [ -n "''${OTEL_SPAN_SPOOL_DIR:-}" ] && [ -d "''${OTEL_SPAN_SPOOL_DIR:-}" ]; }; } \
+                && [ -z "''${OTEL_SHELL_ENTRY_NS:-}" ]; then
+                export OTEL_SHELL_ENTRY_NS="$(${pkgs.coreutils}/bin/date +%s%N)"
+              fi
+            '';
         # This makes setup:gate run BEFORE each setup task
         # If gate fails, the tasks will be "skipped due to dependency failure"
         before = allSetupTasks;
