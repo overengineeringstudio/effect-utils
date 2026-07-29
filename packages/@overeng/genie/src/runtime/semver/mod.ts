@@ -38,6 +38,18 @@ const satisfiesSingle = (version: string, range: string): boolean => {
 
   if (trimmed === '*') return true
 
+  const parts = trimmed.split('.')
+  const wildcardIndex = parts.findIndex((part) => part === 'x' || part === 'X' || part === '*')
+  if (
+    wildcardIndex !== -1 &&
+    parts.length <= 3 &&
+    parts.slice(0, wildcardIndex).every((part) => /^(?:0|[1-9]\d*)$/.test(part)) === true &&
+    parts.slice(wildcardIndex).every((part) => part === 'x' || part === 'X' || part === '*') ===
+      true
+  ) {
+    return parts.slice(0, wildcardIndex).every((part, index) => v[index] === Number(part))
+  }
+
   if (trimmed.startsWith('^') === true) {
     const r = parseVersion(trimmed.slice(1))
     if (gte(v, r) === false) return false

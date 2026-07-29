@@ -123,10 +123,31 @@ describe('satisfiesRange', () => {
     })
   })
 
-  describe('wildcard', () => {
-    it('matches anything', () => {
+  describe('X-ranges', () => {
+    it('matches any version for a bare wildcard', () => {
       expect(satisfiesRange('0.0.1', '*')).toBe(true)
       expect(satisfiesRange('99.99.99', '*')).toBe(true)
+      expect(satisfiesRange('19.2.3', 'x')).toBe(true)
+      expect(satisfiesRange('19.2.3', 'X')).toBe(true)
+    })
+
+    it('matches the specified major for a minor wildcard', () => {
+      expect(satisfiesRange('19.2.3', '19.x')).toBe(true)
+      expect(satisfiesRange('19.2.3', '19.X')).toBe(true)
+      expect(satisfiesRange('19.2.3', '19.*')).toBe(true)
+      expect(satisfiesRange('20.0.0', '19.x')).toBe(false)
+    })
+
+    it('matches the specified major and minor for a patch wildcard', () => {
+      expect(satisfiesRange('19.2.3', '19.2.x')).toBe(true)
+      expect(satisfiesRange('19.2.3', '19.2.X')).toBe(true)
+      expect(satisfiesRange('19.2.3', '19.2.*')).toBe(true)
+      expect(satisfiesRange('19.3.0', '19.2.x')).toBe(false)
+    })
+
+    it('composes wildcard ranges in disjunctions', () => {
+      expect(satisfiesRange('19.2.3', '18.x || 19.2.x')).toBe(true)
+      expect(satisfiesRange('20.0.0', '18.x || 19.2.x')).toBe(false)
     })
   })
 

@@ -25,6 +25,9 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/genie/semver**: match trailing `x`, `X`, and `*` range wildcards
+  by their specified major and minor components.
+
 - **@overeng/genie/package-json**: allow consumers to materialize selected
   cross-repository workspace dependencies with the `file:` protocol. This lets
   pnpm resolve singleton peers such as Effect from the consuming install graph
