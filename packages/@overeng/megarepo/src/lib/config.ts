@@ -14,7 +14,7 @@
  */
 
 import { Effect, JsonSchema, Option, Schema } from 'effect'
-import { FileSystem } from 'effect/FileSystem'
+import * as FileSystem from 'effect/FileSystem'
 
 import {
   EffectPath,
@@ -261,7 +261,7 @@ export const readMegarepoConfig = (megarepoRoot: AbsoluteDirPath) =>
       const content = yield* fs.readFileString(configPath)
       const format: ConfigFormat = fileName.endsWith('.kdl') === true ? 'kdl' : 'json'
 
-      const config = yield* Schema.decodeUnknown(
+      const config = yield* Schema.decodeUnknownEffect(
         format === 'kdl' ? MegarepoConfigFromKdl : Schema.fromJsonString(MegarepoConfig),
       )(content)
 
@@ -288,8 +288,8 @@ export const writeMegarepoConfig = ({
 
     const content =
       format === 'kdl'
-        ? yield* Schema.encode(MegarepoConfigFromKdl)(config)
-        : (yield* Schema.encode(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(config)) + '\n'
+        ? yield* Schema.encodeEffect(MegarepoConfigFromKdl)(config)
+        : (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(config)) + '\n'
 
     yield* fs.writeFileString(configPath, content)
   })

@@ -5,7 +5,7 @@
  */
 
 import type { Error as PlatformError } from 'effect'
-import { FileSystem } from 'effect/FileSystem'
+import * as FileSystem from 'effect/FileSystem'
 import { Effect, Option, type ParseResult } from 'effect'
 import * as Cli from 'effect/unstable/cli'
 import React from 'react'

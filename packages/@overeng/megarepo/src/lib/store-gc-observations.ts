@@ -25,7 +25,7 @@
 
 import type { Error as PlatformError } from 'effect'
 import { Effect, Schema, type ParseResult } from 'effect'
-import { FileSystem } from 'effect/FileSystem'
+import * as FileSystem from 'effect/FileSystem'
 
 import { EffectPath, type AbsoluteDirPath, type AbsoluteFilePath } from '@overeng/effect-path'
 
@@ -87,7 +87,7 @@ export const readObservationLedger = ({
     const path = ledgerPath(storeBasePath)
     return yield* fs.readFileString(path).pipe(
       Effect.flatMap((content) =>
-        Schema.decodeUnknown(Schema.fromJsonString(GcObservationLedger))(content),
+        Schema.decodeUnknownEffect(Schema.fromJsonString(GcObservationLedger))(content),
       ),
       Effect.orElseSucceed(() => ({}) as GcObservationLedger),
     )
@@ -115,7 +115,7 @@ const writeObservationLedger = ({
     const path = ledgerPath(storeBasePath)
     const stateDir = EffectPath.ops.join(storeBasePath, EffectPath.unsafe.relativeDir('.state/'))
     yield* fs.makeDirectory(stateDir, { recursive: true })
-    const content = yield* Schema.encode(Schema.fromJsonString(GcObservationLedger, { space: 2 }))(
+    const content = yield* Schema.encodeEffect(Schema.fromJsonString(GcObservationLedger, { space: 2 }))(
       ledger,
     )
     yield* writeFileAtomic({ path, content: content + '\n' })

@@ -6,7 +6,7 @@
 
 import type { ChildProcessSpawner as CommandExecutor } from 'effect/unstable/process'
 import type { Error as PlatformError } from 'effect'
-import { FileSystem } from 'effect/FileSystem'
+import * as FileSystem from 'effect/FileSystem'
 import { Clock, Effect, Option, type ParseResult } from 'effect'
 import * as Cli from 'effect/unstable/cli'
 import React from 'react'
@@ -404,7 +404,7 @@ export const statusCommand = Cli.Command.make(
               })
               const memberRealPath = yield* fs
                 .realPath(memberSymlinkPath.replace(/\/$/, ''))
-                .pipe(Effect.catchAll(() => Effect.void))
+                .pipe(Effect.catch(() => Effect.void))
 
               if (memberRealPath !== undefined) {
                 const memberRealPathNorm = memberRealPath.replace(/\/$/, '')

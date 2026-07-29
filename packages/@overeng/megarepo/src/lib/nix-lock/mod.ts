@@ -10,7 +10,7 @@
 
 import type { Error as PlatformError } from 'effect'
 import { Effect, Option, Schema, type ParseResult } from 'effect'
-import { FileSystem } from 'effect/FileSystem'
+import * as FileSystem from 'effect/FileSystem'
 import {
   ChildProcess as Command,
   type ChildProcessSpawner as CommandExecutor,
@@ -220,7 +220,7 @@ export const fetchNixFlakeMetadata = ({
     }
 
     // Attempt to parse the JSON output
-    const parsed = yield* Schema.decodeUnknown(NixFlakePrefetchOutput)(result).pipe(
+    const parsed = yield* Schema.decodeUnknownEffect(NixFlakePrefetchOutput)(result).pipe(
       Effect.mapError((parseError) => {
         // Check if output looks like a nix error message (shouldn't normally happen
         // since nix errors go to stderr, but handle defensively)
@@ -348,7 +348,7 @@ const syncSingleLockFile = ({
 
     // Read and parse the lock file (Schema.parseJson handles both parsing and validation)
     const content = yield* fs.readFileString(lockPath)
-    const rawJson = yield* Schema.decodeUnknown(RawFlakeLockJson)(content)
+    const rawJson = yield* Schema.decodeUnknownEffect(RawFlakeLockJson)(content)
 
     // First pass: collect all nodes that need metadata fetching
     const nodesToUpdate: NodeUpdateInfo[] = []
@@ -498,7 +498,7 @@ const syncSingleLockFile = ({
 
     // Write updated lock file if any changes were made
     if (updatedInputs.length > 0 || schemeNormalized === true) {
-      const updatedContent = yield* Schema.encode(RawFlakeLockJson)(rawJson)
+      const updatedContent = yield* Schema.encodeEffect(RawFlakeLockJson)(rawJson)
       yield* fs.writeFileString(lockPath, updatedContent + '\n')
     }
 
@@ -776,7 +776,7 @@ const validateSharedInputSource = ({
     }
 
     const sourceContent = yield* fs.readFileString(sourceLockPath)
-    const sourceJson = yield* Schema.decodeUnknown(RawLockJson)(sourceContent).pipe(
+    const sourceJson = yield* Schema.decodeUnknownEffect(RawLockJson)(sourceContent).pipe(
       Effect.catchTag(
         'ParseError',
         () =>

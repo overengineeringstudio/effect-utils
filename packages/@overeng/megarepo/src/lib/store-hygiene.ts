@@ -7,7 +7,7 @@
 
 import type { Error as PlatformError } from 'effect'
 import { Effect, Option, Schema } from 'effect'
-import { FileSystem } from 'effect/FileSystem'
+import * as FileSystem from 'effect/FileSystem'
 import type { ChildProcessSpawner as CommandExecutor } from 'effect/unstable/process'
 
 import {
@@ -447,13 +447,13 @@ export const fixStoreIssues = ({
           // Remove existing broken worktree
           yield* fs
             .remove(worktreePath, { recursive: true })
-            .pipe(Effect.catchAll(() => Effect.void))
+            .pipe(Effect.catch(() => Effect.void))
 
           // Recreate the worktree
           yield* Effect.gen(function* () {
             yield* fs
               .makeDirectory(worktreePath, { recursive: true })
-              .pipe(Effect.catchAll(() => Effect.void))
+              .pipe(Effect.catch(() => Effect.void))
 
             const parsed = parseWorktreeRef(worktreePath)
 
@@ -487,7 +487,7 @@ export const fixStoreIssues = ({
               })
             }
           }).pipe(
-            Effect.catchAll((err) => {
+            Effect.catch((err) => {
               results.push({
                 memberName: issue.memberName,
                 issueType: issue.type,
@@ -553,7 +553,7 @@ export const fixStoreIssues = ({
               message: `cloned bare repo from ${cloneUrl}`,
             })
           }).pipe(
-            Effect.catchAll((err) => {
+            Effect.catch((err) => {
               results.push({
                 memberName: issue.memberName,
                 issueType: issue.type,

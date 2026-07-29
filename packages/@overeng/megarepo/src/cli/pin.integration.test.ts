@@ -7,7 +7,7 @@
 
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { FileSystem } from 'effect/FileSystem'
+import * as FileSystem from 'effect/FileSystem'
 import { Effect, Option, Schema } from 'effect'
 import { expect } from 'vitest'
 
@@ -52,7 +52,7 @@ const createMinimalTestSetup = () =>
         'test-repo': 'test-owner/test-repo',
       },
     }
-    const configContent = yield* Schema.encode(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
+    const configContent = yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
       config,
     )
     yield* fs.writeFileString(
@@ -101,7 +101,7 @@ describe('mr config pin', () => {
             workspacePath,
             EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
           )
-          const newConfigContent = yield* Schema.encode(
+          const newConfigContent = yield* Schema.encodeEffect(
             Schema.fromJsonString(MegarepoConfig, { space: 2 }),
           )(updatedConfig)
           yield* fs.writeFileString(configPath, newConfigContent + '\n')
@@ -135,7 +135,7 @@ describe('mr config pin', () => {
           }
           yield* fs.writeFileString(
             configPath,
-            (yield* Schema.encode(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(config1)) +
+            (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(config1)) +
               '\n',
           )
 

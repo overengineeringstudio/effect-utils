@@ -7,7 +7,7 @@
  *   no `.tmp-*` sibling lingering as garbage (the `tapError` cleanup branch).
  */
 
-import { FileSystem } from 'effect/FileSystem'
+import * as FileSystem from 'effect/FileSystem'
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Effect } from 'effect'

@@ -6,7 +6,7 @@
 
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { FileSystem } from 'effect/FileSystem'
+import * as FileSystem from 'effect/FileSystem'
 import { Effect, Exit, Option, Schema } from 'effect'
 import * as Cli from 'effect/unstable/cli'
 import { expect } from 'vitest'
@@ -525,7 +525,7 @@ describe('store discovery is bounded to the layout', () => {
           .remove(EffectPath.ops.join(wt, EffectPath.unsafe.relativeFile('.git')), {
             recursive: true,
           })
-          .pipe(Effect.catchAll(() => Effect.void))
+          .pipe(Effect.catch(() => Effect.void))
         for (const sub of ['node_modules/a/b/c', 'src/x/y', 'dist/p/q']) {
           yield* fs.makeDirectory(
             EffectPath.ops.join(wt, EffectPath.unsafe.relativeDir(`${sub}/`)),

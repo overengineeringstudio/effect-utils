@@ -33,7 +33,7 @@
 
 import type { ChildProcessSpawner as CommandExecutor } from 'effect/unstable/process'
 import type { Error as PlatformError } from 'effect'
-import { FileSystem } from 'effect/FileSystem'
+import * as FileSystem from 'effect/FileSystem'
 import { Effect, Option } from 'effect'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
@@ -202,7 +202,7 @@ export const archiveWorktree = (args: {
       Effect.flatMap(() =>
         Git.deleteBranch({ repoPath: args.bareRepoPath, branch: args.branch, force: true }),
       ),
-      Effect.catchAll((error) =>
+      Effect.catch((error) =>
         Effect.sync(() => {
           warnings.push(
             `branch '${args.branch}' could not be freed (re-add may fail until cleaned up): ${error.message}`,
@@ -221,7 +221,7 @@ export const archiveWorktree = (args: {
     yield* fs.readFileString(readmePath).pipe(
       Effect.orElseSucceed(() => ''),
       Effect.flatMap((existing) => writeFileAtomic({ path: readmePath, content: existing + line })),
-      Effect.catchAll((error) =>
+      Effect.catch((error) =>
         Effect.sync(() => {
           warnings.push(`archive README metadata not recorded: ${error.message}`)
         }),
@@ -285,7 +285,7 @@ export const archiveRefMismatchWorktree = (args: {
     const warnings: Array<string> = []
 
     yield* Git.detachWorktreeHead({ worktreePath: destPath }).pipe(
-      Effect.catchAll((error) =>
+      Effect.catch((error) =>
         Effect.sync(() => {
           warnings.push(
             `archived worktree HEAD could not be detached (branch refs were preserved): ${error.message}`,
@@ -302,7 +302,7 @@ export const archiveRefMismatchWorktree = (args: {
     yield* fs.readFileString(readmePath).pipe(
       Effect.orElseSucceed(() => ''),
       Effect.flatMap((existing) => writeFileAtomic({ path: readmePath, content: existing + line })),
-      Effect.catchAll((error) =>
+      Effect.catch((error) =>
         Effect.sync(() => {
           warnings.push(`archive README metadata not recorded: ${error.message}`)
         }),

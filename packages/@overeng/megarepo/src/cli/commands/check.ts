@@ -63,7 +63,7 @@ export const checkCommand = Cli.Command.make(
       }
 
       if (json === true) {
-        yield* Console.log(yield* Schema.encode(CheckReportJson)(result))
+        yield* Console.log(yield* Schema.encodeEffect(CheckReportJson)(result))
       } else if (result.violations.length === 0) {
         yield* Console.log('Megarepo checks OK')
       } else {

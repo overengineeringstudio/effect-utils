@@ -78,7 +78,7 @@ const trustOtelContract = <A, E, R>(
   effect: Effect.Effect<A, E | OtelAttrEncodeError, R>,
 ): Effect.Effect<A, E, R> =>
   effect.pipe(
-    Effect.catchAll((error) =>
+    Effect.catch((error) =>
       typeof error === 'object' &&
       error !== null &&
       '_tag' in error &&
