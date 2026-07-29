@@ -1,4 +1,4 @@
-import { Effect, ParseResult, Schema } from 'effect'
+import { Effect, Schema } from 'effect'
 /**
  * Classifying real HTTP outcomes from an `HttpClient` call (Molty consumer recipe
  * #3 — the union-member classification, made concrete). A handler that calls an
@@ -159,7 +159,7 @@ const decodeWidget = (
       (e) =>
         new MalformedUpstream({
           detail:
-            ParseResult.isParseError(e) === true ? 'body did not match Widget schema' : String(e),
+            Schema.isSchemaError(e) === true ? 'body did not match Widget schema' : String(e),
         }),
     ),
   )

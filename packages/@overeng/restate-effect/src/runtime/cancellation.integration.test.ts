@@ -135,9 +135,9 @@ describe('restate-effect cancellation ↔ interruption', () => {
        * the durable timer) before cancelling — otherwise we'd race the start. */
       await Effect.runPromise(
         Deferred.await(gateFor(key)).pipe(
-          Effect.timeoutFail({
+          Effect.timeoutOrElse({
             duration: '30 seconds',
-            onTimeout: () => new HandlerNeverAcquired(),
+            orElse: () => Effect.fail(new HandlerNeverAcquired()),
           }),
         ),
       )

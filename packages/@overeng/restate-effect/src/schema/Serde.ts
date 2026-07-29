@@ -1,5 +1,5 @@
 import * as restate from '@restatedev/restate-sdk'
-import { JsonSchema, Option, ParseResult, Schema } from 'effect'
+import { JsonSchema, Option, Schema } from 'effect'
 
 import { textEncodeToArrayBuffer } from '@overeng/utils'
 
@@ -136,8 +136,8 @@ const classifyDecodeFailure = (input: {
   if (input.cause instanceof restate.TerminalError) return input.cause
   if (input.slot === 'internal') return input.cause
   const detail =
-    ParseResult.isParseError(input.cause) === true
-      ? ParseResult.TreeFormatter.formatErrorSync(input.cause)
+    Schema.isSchemaError(input.cause) === true
+      ? input.cause.message
       : input.cause instanceof Error
         ? input.cause.message
         : String(input.cause)

@@ -1,6 +1,6 @@
 import * as restate from '@restatedev/restate-sdk'
 import type { Brand, Exit } from 'effect'
-import { Context, Effect, Option, Runtime, Schema } from 'effect'
+import { Context, Effect, Option, Schema } from 'effect'
 import * as SchemaAST from 'effect/SchemaAST'
 
 import { contractSerdeFactory, invocationIdempotencyKey } from '../clients/InvocationPolicy.ts'
@@ -99,7 +99,7 @@ const stripUndefined = (ast: SchemaAST.AST): SchemaAST.AST => {
   if (ast._tag !== 'Union') return ast
   const members = ast.types.filter((t) => t._tag !== 'Undefined')
   if (members.length === ast.types.length) return ast
-  return members.length === 1 ? members[0]! : SchemaAST.Union.make(members)
+  return members.length === 1 ? members[0]! : new SchemaAST.Union(members, ast.mode)
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
@@ -326,13 +326,13 @@ export const run = <A, R>({
 }): Effect.Effect<A, never, Exclude<R, DurableCaps> | RestateContext> =>
   Effect.gen(function* () {
     const ctx = yield* RestateContext
-    const runtime = yield* Effect.runtime<Exclude<R, DurableCaps>>()
+    const runtime = yield* Effect.context<Exclude<R, DurableCaps>>()
     /* The `[R] extends [Exclude<R, DurableCaps>]` guard guarantees `R` carries no
      * durable capability, so the captured `Exclude<R, DurableCaps>` runtime can
      * run it; the cast just reconciles the conditional type. The inner runs to a
      * raw `A` (journaled by the SDK); a defect rejects the step. */
     const inner = effect as Effect.Effect<A, never, Exclude<R, DurableCaps>>
-    const action = (): Promise<A> => Runtime.runPromise(runtime)(inner)
+    const action = (): Promise<A> => Effect.runPromiseWith(runtime)(inner)
     const result = yield* awaitDurable({
       thunk: () =>
         options !== undefined

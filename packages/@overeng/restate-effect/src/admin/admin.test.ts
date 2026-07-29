@@ -187,12 +187,10 @@ describe('RestateAdmin auth + config', () => {
   })
 
   it('layerConfig reads RESTATE_ADMIN_URL / RESTATE_ADMIN_KEY', async () => {
-    const provider = ConfigProvider.fromMap(
-      new Map([
-        ['RESTATE_ADMIN_URL', 'http://admin.local:9070'],
-        ['RESTATE_ADMIN_KEY', 'k3y'],
-      ]),
-    )
+    const provider = ConfigProvider.fromUnknown({
+      RESTATE_ADMIN_URL: 'http://admin.local:9070',
+      RESTATE_ADMIN_KEY: 'k3y',
+    })
     await run(
       (a) => a.cancel('inv_1'),
       RestateAdmin.layerConfig().pipe(Layer.provide(ConfigProvider.layer(provider))),

@@ -12,7 +12,7 @@
  * returns a `'compensated'` outcome — the failure never escapes.
  */
 import { it } from '@effect/vitest'
-import { Cause, Effect, Exit, Layer, Schema } from 'effect'
+import { Cause, Effect, Exit, Layer, Result, Schema } from 'effect'
 import { describe, expect } from 'vitest'
 
 import { Restate, RestateService } from '../mod.ts'
@@ -53,7 +53,7 @@ const ChargeLive = RestateService.implement<typeof Charge>({
         if (Exit.isFailure(payExit) === true) {
           /* The failure rode as a `Cause.Die` carrying the wrapper `RestateError`
            * (a durable-op infra defect, not a domain `E`). The saga seam: read it. */
-          const die = Cause.dieOption(payExit.cause)
+          const die = Result.getSuccess(Cause.findDefect(payExit.cause))
           const isRestateDefect = die._tag === 'Some' && die.value instanceof RestateError
 
           /* Compensate with a durable `refund` step, then report. */

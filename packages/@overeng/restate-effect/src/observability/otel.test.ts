@@ -170,12 +170,10 @@ describe('RestateOtel.layerConfig (Config-driven, decision 0016/0014)', () => {
   it('reads OTEL_SERVICE_NAME / OTEL_EXPORTER_OTLP_ENDPOINT and feeds build', async () => {
     const inMemory = new InMemorySpanExporter()
     let resolved: { endpoint: string | undefined; serviceName: string } | undefined
-    const provider = ConfigProvider.fromMap(
-      new Map([
-        ['OTEL_SERVICE_NAME', 'svc-from-env'],
-        ['OTEL_EXPORTER_OTLP_ENDPOINT', 'http://collector:4318'],
-      ]),
-    )
+    const provider = ConfigProvider.fromUnknown({
+      OTEL_SERVICE_NAME: 'svc-from-env',
+      OTEL_EXPORTER_OTLP_ENDPOINT: 'http://collector:4318',
+    })
     const layer = RestateOtel.layerConfig({
       base: { resource: { serviceName: 'fallback' } },
       build: (r) => {
@@ -196,7 +194,7 @@ describe('RestateOtel.layerConfig (Config-driven, decision 0016/0014)', () => {
   it('falls back to base.resource.serviceName when OTEL_SERVICE_NAME is unset', async () => {
     const inMemory = new InMemorySpanExporter()
     let resolved: { endpoint: string | undefined; serviceName: string } | undefined
-    const provider = ConfigProvider.fromMap(new Map())
+    const provider = ConfigProvider.fromUnknown({})
     const layer = RestateOtel.layerConfig({
       base: { resource: { serviceName: 'fallback-name' } },
       build: (r) => {

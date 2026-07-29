@@ -482,7 +482,7 @@ export const RestateScheduled = {
       config.cycle(args).pipe(
         Effect.map((r): CycleOutcome => ({ _tag: 'ok', stop: isStop(r) })),
         Effect.catchCause((cause) =>
-          Cause.isInterruptedOnly(cause) === true
+          Cause.hasInterruptsOnly(cause) === true
             ? /* An interrupt-only cause carries NO typed error (the declared `E` is
                * absent here), so re-raising it keeps the outcome channel `never` — the
                * `Cause<never>` narrowing is sound under `isInterruptedOnly`. */

@@ -193,7 +193,7 @@ const RetryingHarness = RestateTestHarness.layer({
   appLayer: Layer.empty,
 })
 
-type Harness = Effect.Effect.Success<typeof RestateTestHarness>
+type Harness = Effect.Success<typeof RestateTestHarness>
 
 /** Poll the shared `awakeableId` query until the parked handler has stored it. */
 const pollForAwakeableId = (harness: Harness, key: string): Effect.Effect<string> =>

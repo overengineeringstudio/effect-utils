@@ -33,7 +33,7 @@ import {
 import { RestateTestHarness } from '../testing/testing.ts'
 
 /** The harness service value (for the `pollForId` helper's parameter type). */
-type Harness = Effect.Effect.Success<typeof RestateTestHarness>
+type Harness = Effect.Success<typeof RestateTestHarness>
 
 const AwakeablePayload = Schema.Struct({ token: Schema.String })
 

@@ -1,5 +1,5 @@
 import * as restate from '@restatedev/restate-sdk'
-import { Cause, Chunk, Effect, Option, Schema } from 'effect'
+import { Cause, Effect, Exit, Option, Schema } from 'effect'
 
 import { DurablePromise, ObjectKey, StateRead, StateWrite } from '../authoring/RestateContext.ts'
 import { readErrorClass, readRetryAfterMillis } from '../schema/Annotations.ts'
@@ -59,8 +59,8 @@ const resolveErrorMember = ({
   const ast = errorSchema.ast
   if (ast._tag !== 'Union') return errorSchema
   for (const member of ast.types) {
-    const memberSchema = Schema.make(member)
-    if (Schema.encodeUnknownEither(memberSchema)(error)._tag === 'Right') return memberSchema
+    const memberSchema = Schema.make<Schema.Codec<any, any>>(member)
+    if (Exit.isSuccess(Schema.encodeUnknownExit(memberSchema)(error)) === true) return memberSchema
   }
   return errorSchema
 }
@@ -97,11 +97,12 @@ export const classifyOutcome = ({
    * `awaitDurable`). Re-throw it AS-IS so the SDK suspends/resumes — never
    * terminalize or retry it (R15). Checked first: a suspension defect is not a
    * domain failure. */
-  const suspensionDefect = Chunk.findFirst(Cause.defects(cause), (d) =>
-    restate.internal.isSuspendedError(d),
-  )
-  if (Option.isSome(suspensionDefect) === true) {
-    return { _tag: 'suspended', thrown: suspensionDefect.value }
+  const suspensionDefect = cause.reasons
+    .filter(Cause.isDieReason)
+    .map((reason) => reason.defect)
+    .find((defect) => restate.internal.isSuspendedError(defect))
+  if (suspensionDefect !== undefined) {
+    return { _tag: 'suspended', thrown: suspensionDefect }
   }
 
   const failure = Cause.findErrorOption(cause)
@@ -118,8 +119,8 @@ export const classifyOutcome = ({
      * error) — surface it as a DEFECT (no silent mis-encode), so the SDK retries
      * and the bug is visible, rather than encoding garbage into the terminal body. */
     const encoded =
-      errorSchema !== undefined ? Schema.encodeUnknownEither(errorSchema)(error) : undefined
-    if (errorSchema !== undefined && encoded !== undefined && encoded._tag === 'Left') {
+      errorSchema !== undefined ? Schema.encodeUnknownExit(errorSchema)(error) : undefined
+    if (errorSchema !== undefined && encoded !== undefined && Exit.isFailure(encoded) === true) {
       return { _tag: 'defect', thrown: Cause.squash(cause) }
     }
 
@@ -150,7 +151,7 @@ export const classifyOutcome = ({
     }
 
     const errorCode = classification?._tag === 'terminal' ? classification.errorCode : 500
-    const body = encoded !== undefined && encoded._tag === 'Right' ? encoded.right : error
+    const body = encoded !== undefined && Exit.isSuccess(encoded) === true ? encoded.value : error
     return {
       _tag: 'terminal',
       errorTag: tag,
@@ -165,7 +166,7 @@ export const classifyOutcome = ({
    * a domain failure nor a defect: finalizers/compensations already ran.
    * Terminalize as a `CancelledError` so the SDK does NOT retry it (R31, docs/vrs/04-error-boundary/spec.md §2).
    * (A suspension is already handled above as a defect, never reaching here.) */
-  if (Cause.isInterrupted(cause) === true) {
+  if (Cause.hasInterrupts(cause) === true) {
     return { _tag: 'cancelled', thrown: new restate.CancelledError() }
   }
   /* Defect → let the SDK retry. */

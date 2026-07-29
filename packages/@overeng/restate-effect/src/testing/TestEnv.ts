@@ -30,7 +30,7 @@
  * admin-cancel, idempotency-keyed result attach, OTel attempt-span reparenting.
  */
 import type { Scope } from 'effect'
-import { Cause, Context, Effect, Exit, Layer, Option, Runtime, Schema } from 'effect'
+import { Cause, Context, Effect, Exit, Layer, Option, Schema } from 'effect'
 
 import {
   normalizeStateSchema,
@@ -192,8 +192,12 @@ export class RestateTestEnv extends Context.Service<RestateTestEnv, RestateTestE
     readonly alwaysReplay?: boolean
     readonly disableRetries?: boolean
   }): Layer.Layer<RestateTestEnv, RestateError, RIn> =>
-    Layer.map(RestateTestHarness.layer(opts), (ctx) =>
-      Context.make(RestateTestEnv, realEnv(Context.get(ctx, RestateTestHarness))),
+    RestateTestHarness.layer(opts).pipe(
+      Layer.flatMap((ctx) =>
+        Layer.succeedContext(
+          Context.make(RestateTestEnv, realEnv(Context.get(ctx, RestateTestHarness))),
+        ),
+      ),
     )
 }
 
@@ -365,7 +369,7 @@ const makeMockEnv = <AppR, RIn>(opts: {
     /* 1. Capture the application `Runtime<AppR>` ONCE from `appLayer`, into the env
      * scope (so its scoped resources are torn down with the env — the ambient
      * `Scope.Scope` is provided by the `Layer.effect` this runs under). */
-    const runtime = yield* Layer.toRuntime(opts.appLayer)
+    const runtime = yield* Layer.build(opts.appLayer)
 
     /* 2. Per-key State: `${service}/${key}` → the inner State `Map` (so object /
      * workflow key isolation is free). `stateOf` reads/writes the SAME inner map. */
@@ -467,7 +471,7 @@ const makeMockEnv = <AppR, RIn>(opts: {
         }).pipe(Effect.provide(determinismLayer({ ctx: handle.context, frozenBaseMillis })))
         const exit = yield* Effect.promise(() =>
           // @effect-diagnostics-next-line anyUnknownInErrorContext:off
-          Runtime.runPromiseExit(runtime)(program as Effect.Effect<unknown, unknown, AppR>),
+          Effect.runPromiseExitWith(runtime)(program as Effect.Effect<unknown, unknown, AppR>),
         )
         // @effect-diagnostics-next-line anyUnknownInErrorContext:off
         return yield* classifyMockExit({ exit, errorSchema: params.spec.error })
