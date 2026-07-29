@@ -8,7 +8,7 @@ import { pathToFileURL } from 'node:url'
 import type { Path } from 'effect/Path'
 import type { PlatformError } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
-import { Duration, Effect, Option, Result, Schema } from 'effect'
+import { Duration, Effect, Option, Result, Schema, Stream } from 'effect'
 import { ChildProcess as Command } from 'effect/unstable/process'
 import type { ChildProcessSpawner } from 'effect/unstable/process'
 
@@ -464,8 +464,9 @@ const formatWithOxfmt = Effect.fn('formatWithOxfmt')(function* ({
     onSome: (cfg) => ['-c', cfg, '--stdin-filepath', targetFilePath],
   })
 
-  const result = yield* Command.make('oxfmt', ...args).pipe(
-    Command.feed(content),
+  const result = yield* Command.make('oxfmt', args, {
+    stdin: Stream.make(new TextEncoder().encode(content)),
+  }).pipe(
     Command.string,
     Effect.orElseSucceed(() => content),
   )
