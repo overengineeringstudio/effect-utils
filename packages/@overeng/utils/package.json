@@ -83,7 +83,9 @@
     "effect": "^4.0.0-beta.102"
   },
   "pnpm": {
-    "patchedDependencies": {}
+    "patchedDependencies": {
+      "effect@4.0.0-beta.102": "patches/effect@4.0.0-beta.102.patch"
+    }
   },
   "$genie": {
     "source": "package.json.genie.ts",
