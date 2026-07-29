@@ -292,7 +292,7 @@ export class TuiLoggerService extends Context.Service<TuiLoggerService, TuiLogge
  */
 export const TuiLoggerServiceLayer = (
   options: TuiLoggerOptions = {},
-): Layer.Layer<TuiLoggerService> => Layer.scoped(TuiLoggerService, createTuiLogger(options))
+): Layer.Layer<TuiLoggerService> => Layer.effect(TuiLoggerService, createTuiLogger(options))
 
 // =============================================================================
 // Utility Functions

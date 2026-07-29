@@ -110,7 +110,7 @@ export class TuiRenderer extends Context.Service<TuiRenderer, TuiRendererService
   static scoped = (
     terminal?: Terminal | TerminalLike,
   ): Layer.Layer<TuiRenderer, never, Scope.Scope> =>
-    Layer.scoped(
+    Layer.effect(
       TuiRenderer,
       Effect.gen(function* () {
         const target = terminal ?? process.stdout
