@@ -8,10 +8,10 @@
 
 ```ts
 // v3
-yield* Effect.yieldNow()
+yield * Effect.yieldNow()
 
 // v4
-yield* Effect.yieldNow
+yield * Effect.yieldNow
 ```
 
 Effect 4 also exposes `Effect.yieldNowWith(priority?)` when a site needs to construct a yield with an

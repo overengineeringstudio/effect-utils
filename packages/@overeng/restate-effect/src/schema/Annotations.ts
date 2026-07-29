@@ -29,9 +29,7 @@ import * as SchemaAST from 'effect/SchemaAST'
  * mirroring `idempotencyKey` (decision 0011, #3). The projection returns
  * `undefined` to fall back to Restate's default backoff for that instance.
  */
-export type RetryAfter =
-  | Duration.Input
-  | ((error: unknown) => Duration.Input | undefined)
+export type RetryAfter = Duration.Input | ((error: unknown) => Duration.Input | undefined)
 
 /**
  * The error-boundary classification for a domain `Schema.TaggedErrorClass`, read by
@@ -97,13 +95,7 @@ export const Restate = {
    * `errorCode` (e.g. 404/409). Default classification — `toTerminal` falls
    * back to `terminal` + 500 when no annotation is present.
    */
-  terminal: <S extends Schema.Top>({
-    self,
-    errorCode,
-  }: {
-    self: S
-    errorCode?: number
-  }): S =>
+  terminal: <S extends Schema.Top>({ self, errorCode }: { self: S; errorCode?: number }): S =>
     annotate<ErrorClass>(ErrorClassId)({
       self,
       value: { _tag: 'terminal', errorCode: errorCode ?? 500 },
@@ -123,9 +115,7 @@ export const Restate = {
     retryAfter,
   }: {
     self: S
-    retryAfter?:
-      | Duration.Input
-      | ((error: Schema.Schema.Type<S>) => Duration.Input | undefined)
+    retryAfter?: Duration.Input | ((error: Schema.Schema.Type<S>) => Duration.Input | undefined)
   }): S =>
     annotate<ErrorClass>(ErrorClassId)({
       self,
@@ -136,13 +126,8 @@ export const Restate = {
     }),
 
   /** Override the serde `contentType` / `jsonSchema` for a value schema. */
-  serde: <S extends Schema.Top>({
-    self,
-    options,
-  }: {
-    self: S
-    options: SerdeOptions
-  }): S => annotate<SerdeOptions>(SerdeId)({ self, value: options }),
+  serde: <S extends Schema.Top>({ self, options }: { self: S; options: SerdeOptions }): S =>
+    annotate<SerdeOptions>(SerdeId)({ self, value: options }),
 
   /**
    * Mark an input-struct FIELD as the idempotency-key source (decision 0011). Its
@@ -160,13 +145,8 @@ export const Restate = {
    * to setting the matching builder `options`, but kept WITH the schema so the
    * fact has one home. Builder `options` win when both are present.
    */
-  retention: <S extends Schema.Top>({
-    self,
-    options,
-  }: {
-    self: S
-    options: RetentionOptions
-  }): S => annotate<RetentionOptions>(RetentionId)({ self, value: options }),
+  retention: <S extends Schema.Top>({ self, options }: { self: S; options: RetentionOptions }): S =>
+    annotate<RetentionOptions>(RetentionId)({ self, value: options }),
 
   /**
    * Mark a struct FIELD `sensitive` (alias `redacted`): `effectSerde` consumes it
@@ -186,14 +166,20 @@ export const Restate = {
 
 /* ── annotation readers ─────────────────────────────────────────────────── */
 
-const resolveAnnotation = <T>(ast: SchemaAST.AST, annotationId: symbol): T | undefined =>
+const resolveAnnotation = <T>({
+  ast,
+  annotationId,
+}: {
+  ast: SchemaAST.AST
+  annotationId: symbol
+}): T | undefined =>
   (SchemaAST.resolve(ast) as unknown as Record<PropertyKey, unknown> | undefined)?.[
     annotationId
   ] as T | undefined
 
 /** Read the error classification from a schema's AST (`None` if unannotated). */
 export const readErrorClass = (ast: SchemaAST.AST): Option.Option<ErrorClass> =>
-  Option.fromNullishOr(resolveAnnotation<ErrorClass>(ast, ErrorClassId))
+  Option.fromNullishOr(resolveAnnotation<ErrorClass>({ ast, annotationId: ErrorClassId }))
 
 /**
  * Resolve a `retryable` classification's `retryAfter` floor against the ACTUAL
@@ -238,11 +224,11 @@ const safeProject = ({
 
 /** Read the serde options from a schema's AST (`None` if unannotated). */
 export const readSerdeOptions = (ast: SchemaAST.AST): Option.Option<SerdeOptions> =>
-  Option.fromNullishOr(resolveAnnotation<SerdeOptions>(ast, SerdeId))
+  Option.fromNullishOr(resolveAnnotation<SerdeOptions>({ ast, annotationId: SerdeId }))
 
 /** Read the retention options from a schema's AST (`None` if unannotated). */
 export const readRetention = (ast: SchemaAST.AST): Option.Option<RetentionOptions> =>
-  Option.fromNullishOr(resolveAnnotation<RetentionOptions>(ast, RetentionId))
+  Option.fromNullishOr(resolveAnnotation<RetentionOptions>({ ast, annotationId: RetentionId }))
 
 /**
  * Find the name of the input-struct field carrying the `idempotencyKey`
@@ -255,7 +241,12 @@ export const findIdempotencyKeyField = (ast: SchemaAST.AST): Option.Option<strin
   if (ast._tag !== 'Objects') return Option.none()
   for (const prop of ast.propertySignatures) {
     if (typeof prop.name !== 'string') continue
-    if (resolveAnnotation<true>(prop.type, IdempotencyKeyId) === true) {
+    if (
+      resolveAnnotation<true>({
+        ast: prop.type,
+        annotationId: IdempotencyKeyId,
+      }) === true
+    ) {
       return Option.some(prop.name)
     }
   }
@@ -296,7 +287,12 @@ const allIdempotencyKeyFields = (ast: SchemaAST.AST): ReadonlyArray<string> => {
   const fields: string[] = []
   for (const prop of ast.propertySignatures) {
     if (typeof prop.name !== 'string') continue
-    if (resolveAnnotation<true>(prop.type, IdempotencyKeyId) === true) {
+    if (
+      resolveAnnotation<true>({
+        ast: prop.type,
+        annotationId: IdempotencyKeyId,
+      }) === true
+    ) {
       fields.push(prop.name)
     }
   }
@@ -315,8 +311,8 @@ const structLevelFieldAnnotation = (
 ): { readonly idempotencyKey: boolean; readonly sensitive: boolean } => {
   if (ast._tag !== 'Objects') return { idempotencyKey: false, sensitive: false }
   return {
-    idempotencyKey: resolveAnnotation<true>(ast, IdempotencyKeyId) === true,
-    sensitive: resolveAnnotation<true>(ast, SensitiveId) === true,
+    idempotencyKey: resolveAnnotation<true>({ ast, annotationId: IdempotencyKeyId }) === true,
+    sensitive: resolveAnnotation<true>({ ast, annotationId: SensitiveId }) === true,
   }
 }
 

@@ -8,10 +8,10 @@ Effect 4 removes operation methods from Fiber instances. Use the module-level fu
 
 ```ts
 // v3
-const exit = yield* fiber.await
+const exit = yield * fiber.await
 
 // v4
-const exit = yield* Fiber.await(fiber)
+const exit = yield * Fiber.await(fiber)
 ```
 
 The same distinction between awaiting and joining remains: `Fiber.await(fiber)` succeeds with the

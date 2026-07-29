@@ -10,22 +10,22 @@ Effect 3's `Random.nextIntBetween(min, max)` is half-open: it can return `min` b
 Effect 4 beta.102 makes the upper bound inclusive by default and adds an explicit option for the
 old behavior.
 
-| operation | lower bound | upper bound |
-| --- | --- | --- |
-| v3 `Random.nextIntBetween(min, max)` | inclusive | exclusive |
-| v4 default `Random.nextIntBetween(min, max)` | inclusive | inclusive |
-| v4 `Random.nextIntBetween(min, max, { halfOpen: true })` | inclusive | exclusive |
+| operation                                                | lower bound | upper bound |
+| -------------------------------------------------------- | ----------- | ----------- |
+| v3 `Random.nextIntBetween(min, max)`                     | inclusive   | exclusive   |
+| v4 default `Random.nextIntBetween(min, max)`             | inclusive   | inclusive   |
+| v4 `Random.nextIntBetween(min, max, { halfOpen: true })` | inclusive   | exclusive   |
 
 ## v3
 
 ```ts
-const index = yield* Random.nextIntBetween(0, values.length)
+const index = yield * Random.nextIntBetween(0, values.length)
 ```
 
 ## v4
 
 ```ts
-const index = yield* Random.nextIntBetween(0, values.length, { halfOpen: true })
+const index = yield * Random.nextIntBetween(0, values.length, { halfOpen: true })
 ```
 
 Do not omit the option when porting a v3 call. An inclusive result equal to `values.length` can
@@ -48,7 +48,7 @@ const nextInt = Effect.map(next, (n) => Math.floor(n * Number.MAX_SAFE_INTEGER))
 The equivalent v4 primitive service is:
 
 ```ts
-const journaledRandom: (typeof Random.Random)["Service"] = {
+const journaledRandom: (typeof Random.Random)['Service'] = {
   nextDoubleUnsafe: () => ctx.rand.random(),
   nextIntUnsafe: () => Math.floor(ctx.rand.random() * Number.MAX_SAFE_INTEGER),
 }

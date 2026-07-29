@@ -37,11 +37,7 @@ import { Effect, Schema } from 'effect'
  * upstream returning controlled statuses, and asserts each union member lands in the
  * right channel. Skips when no native server is available.
  */
-import {
-  HttpClient,
-  HttpClientRequest,
-  type HttpClientResponse,
-} from 'effect/unstable/http'
+import { HttpClient, HttpClientRequest, type HttpClientResponse } from 'effect/unstable/http'
 
 import { Restate, RestateService } from '../src/mod.ts'
 
@@ -162,8 +158,7 @@ const decodeWidget = (
     Effect.catch(
       (e) =>
         new MalformedUpstream({
-          detail:
-            Schema.isSchemaError(e) === true ? 'body did not match Widget schema' : String(e),
+          detail: Schema.isSchemaError(e) === true ? 'body did not match Widget schema' : String(e),
         }),
     ),
   )

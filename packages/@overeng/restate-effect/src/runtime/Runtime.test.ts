@@ -122,9 +122,7 @@ describe('determinism layer', () => {
     const journaled = await Effect.runPromise(
       Effect.gen(function* () {
         return yield* Random.Random
-      }).pipe(
-        Effect.provide(determinismLayer({ ctx, frozenBaseMillis: 0 })),
-      ),
+      }).pipe(Effect.provide(determinismLayer({ ctx, frozenBaseMillis: 0 }))),
     )
     const expected = ['nextDoubleUnsafe', 'nextIntUnsafe']
     expect(Object.keys(journaled).sort()).toStrictEqual(expected)

@@ -272,8 +272,6 @@ describe('materialize REJECTS misplaced field annotations (decision 0020)', () =
       },
       impl: { go: () => Effect.void },
     })
-    expect(() =>
-      materialize({ implementation: impl, runtime: Context.empty() }),
-    ).not.toThrow()
+    expect(() => materialize({ implementation: impl, runtime: Context.empty() })).not.toThrow()
   })
 })

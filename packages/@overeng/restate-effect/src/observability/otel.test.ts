@@ -1,3 +1,4 @@
+import * as EffectTracer from '@effect/opentelemetry/OtelTracer'
 /**
  * Server-free contract-layer test of the OTel bridge (docs/vrs/08-observability/spec.md + docs/vrs/09-testing/spec.md §3, decision
  * 0007). Uses an in-memory `SpanExporter` and drives the real
@@ -19,7 +20,6 @@
  * `Effect.withSpan` and the hook emit into the one in-memory exporter.
  */
 import * as Resource from '@effect/opentelemetry/Resource'
-import * as EffectTracer from '@effect/opentelemetry/OtelTracer'
 import { context, type SpanContext, trace } from '@opentelemetry/api'
 import {
   InMemorySpanExporter,

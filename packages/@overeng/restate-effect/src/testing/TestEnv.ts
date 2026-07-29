@@ -319,7 +319,9 @@ const mockStateProxy = <S extends StateSchemas>({
           Effect.succeed(undefined),
     getAll: () =>
       Effect.forEach([...state.entries()], ([k, v]) =>
-        Schema.decodeUnknownEffect(schemaFor(k))(v).pipe(Effect.map((decoded) => [k, decoded] as const)),
+        Schema.decodeUnknownEffect(schemaFor(k))(v).pipe(
+          Effect.map((decoded) => [k, decoded] as const),
+        ),
       ).pipe(
         Effect.map(
           (pairs) =>

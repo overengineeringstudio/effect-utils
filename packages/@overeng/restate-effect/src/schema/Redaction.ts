@@ -1,6 +1,6 @@
 import * as crypto from 'node:crypto'
 
-import { Context, Layer, Option } from 'effect'
+import { Context, Layer } from 'effect'
 import * as SchemaAST from 'effect/SchemaAST'
 
 import { SensitiveId } from './Annotations.ts'

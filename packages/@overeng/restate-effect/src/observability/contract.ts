@@ -79,11 +79,13 @@ export const BoundaryOutcomeAttrs = OtelAttrs.defineSync(
  */
 export const RestateMetrics = {
   invocationsTotal: InvocationsTotalMetric.metric,
-  invocationDurationMs:
-    InvocationDurationMsMetric.metric as OtelHistogramDefinition<Schema.Codec<unknown, unknown, never, never>>,
+  invocationDurationMs: InvocationDurationMsMetric.metric as OtelHistogramDefinition<
+    Schema.Codec<unknown, unknown, never, never>
+  >,
   attemptsTotal: AttemptsTotalMetric.metric,
   durableStepsTotal: DurableStepsTotalMetric.metric,
-  awakeableWaitMs:
-    AwakeableWaitMsMetric.metric as OtelHistogramDefinition<Schema.Codec<unknown, unknown, never, never>>,
+  awakeableWaitMs: AwakeableWaitMsMetric.metric as OtelHistogramDefinition<
+    Schema.Codec<unknown, unknown, never, never>
+  >,
   pollLoopCyclesTotal: PollLoopCyclesTotalMetric.metric,
 } as const

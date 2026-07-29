@@ -13,7 +13,7 @@ For sites that only carry or catch the error opaquely, replace the v3 module/typ
 `Config.ConfigError`:
 
 ```ts
-import { Config } from "effect"
+import { Config } from 'effect'
 
 declare const layer: Layer.Layer<Service, Config.ConfigError>
 ```

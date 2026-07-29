@@ -83,15 +83,9 @@ export const annotatedGreet = (name: string) =>
  * provided. `OtelLayer` MUST be present (it registers the global provider the hook
  * and bridge read).
  */
-export const TracedEndpointLayer: Layer.Layer<
-  never,
-  RestateError | Config.ConfigError,
-  never
-> = layer(tracedEndpointOptions).pipe(Layer.provide(Layer.merge(Greeting.Default, OtelLayer)))
+export const TracedEndpointLayer: Layer.Layer<never, RestateError | Config.ConfigError, never> =
+  layer(tracedEndpointOptions).pipe(Layer.provide(Layer.merge(Greeting.Default, OtelLayer)))
 
 /** The traced `serve` form (wrap with `NodeRuntime.runMain` in production). */
-export const tracedServeProgram: Effect.Effect<
-  never,
-  RestateError | Config.ConfigError,
-  never
-> = serve(tracedEndpointOptions).pipe(Effect.provide(Layer.merge(Greeting.Default, OtelLayer)))
+export const tracedServeProgram: Effect.Effect<never, RestateError | Config.ConfigError, never> =
+  serve(tracedEndpointOptions).pipe(Effect.provide(Layer.merge(Greeting.Default, OtelLayer)))

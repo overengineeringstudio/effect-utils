@@ -78,8 +78,7 @@ export type DurableCaps = RestateContext | StateRead | StateWrite | DurablePromi
 export type StateSchemas = Record<string, Schema.Codec<any, any>>
 
 /** The decoded value type of a State field (`T | undefined` for an optional field). */
-export type StateValueType<F> =
-  F extends Schema.Codec<infer A, any> ? A : never
+export type StateValueType<F> = F extends Schema.Codec<infer A, any> ? A : never
 
 /**
  * Normalize a State field to a plain value `Schema` for serde. Effect 4 optional
@@ -90,7 +89,7 @@ export type StateValueType<F> =
  * context and passes through unchanged.
  */
 export const normalizeStateSchema = (field: Schema.Codec<any, any>): Schema.Codec<any, any> =>
-  SchemaAST.isOptional(field.ast)
+  SchemaAST.isOptional(field.ast) === true
     ? Schema.make<Schema.Codec<any, any>>(stripUndefined(field.ast))
     : field
 

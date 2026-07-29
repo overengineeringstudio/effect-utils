@@ -17,19 +17,19 @@ the wire representation.
 
 ## Node and property mappings
 
-| Effect 3 | Effect 4 |
-| --- | --- |
-| `StringKeyword` | `String` |
-| `NumberKeyword` | `Number` |
-| `BooleanKeyword` | `Boolean` |
-| `UndefinedKeyword` | `Undefined` |
-| `TupleType` | `Arrays` |
-| `TypeLiteral` | `Objects` |
-| `Enums` | `Enum` |
-| `Refinement.from` | no node traversal; checks are attached to the decoded node |
-| `Transformation.to` | `SchemaAST.toType(ast)` |
-| `PropertySignature.isOptional` | `SchemaAST.isOptional(property.type)` |
-| `PropertySignature.annotations` | `property.type.context?.annotations` |
+| Effect 3                        | Effect 4                                                   |
+| ------------------------------- | ---------------------------------------------------------- |
+| `StringKeyword`                 | `String`                                                   |
+| `NumberKeyword`                 | `Number`                                                   |
+| `BooleanKeyword`                | `Boolean`                                                  |
+| `UndefinedKeyword`              | `Undefined`                                                |
+| `TupleType`                     | `Arrays`                                                   |
+| `TypeLiteral`                   | `Objects`                                                  |
+| `Enums`                         | `Enum`                                                     |
+| `Refinement.from`               | no node traversal; checks are attached to the decoded node |
+| `Transformation.to`             | `SchemaAST.toType(ast)`                                    |
+| `PropertySignature.isOptional`  | `SchemaAST.isOptional(property.type)`                      |
+| `PropertySignature.annotations` | `property.type.context?.annotations`                       |
 
 `Objects.propertySignatures` retains declaration order and each property remains a `{ name, type }`
 pair.

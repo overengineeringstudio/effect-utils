@@ -831,19 +831,21 @@ export class RestateTestHarness extends Context.Service<
         }): Effect.Effect<string, RestateError, RIn2> =>
           Effect.gen(function* () {
             const endpointLayer = layerWithBoundEndpoint({
-                services,
-                port: 0,
-                ...(opts.hooks !== undefined ? { hooks: opts.hooks } : {}),
-                ...(opts.inboundBridge !== undefined ? { inboundBridge: opts.inboundBridge } : {}),
-                ...(opts.boundaryObserver !== undefined
-                  ? { boundaryObserver: opts.boundaryObserver }
-                  : {}),
-                identityKeys: [server.requestIdentityPublicKey],
-                sdkLogger,
-              }).pipe(Layer.provide(appLayer))
-            const endpointContext = yield* (memoMap === undefined
-              ? Layer.buildWithScope(endpointLayer, endpointScope)
-              : Layer.buildWithMemoMap(endpointLayer, memoMap, endpointScope)).pipe(
+              services,
+              port: 0,
+              ...(opts.hooks !== undefined ? { hooks: opts.hooks } : {}),
+              ...(opts.inboundBridge !== undefined ? { inboundBridge: opts.inboundBridge } : {}),
+              ...(opts.boundaryObserver !== undefined
+                ? { boundaryObserver: opts.boundaryObserver }
+                : {}),
+              identityKeys: [server.requestIdentityPublicKey],
+              sdkLogger,
+            }).pipe(Layer.provide(appLayer))
+            const endpointContext = yield* (
+              memoMap === undefined
+                ? Layer.buildWithScope(endpointLayer, endpointScope)
+                : Layer.buildWithMemoMap(endpointLayer, memoMap, endpointScope)
+            ).pipe(
               /* The endpoint layer's channel is `RestateError | ConfigError`, but
                * the `ConfigError` arm fires ONLY for a `Config<number>` port — here
                * the port is literal `0`, so it is structurally impossible.

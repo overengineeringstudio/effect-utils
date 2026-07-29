@@ -871,6 +871,5 @@ export const layer = <const S extends ReadonlyArray<AnyImplementation<any>>>(
  */
 export const serve = <const S extends ReadonlyArray<AnyImplementation<any>>>(
   opts: Omit<EndpointOptions<AppROf<S>>, 'services'> & { readonly services: S },
-): Effect.Effect<never, RestateError | Config.ConfigError, AppROf<S>> =>
-  Layer.launch(layer(opts))
+): Effect.Effect<never, RestateError | Config.ConfigError, AppROf<S>> => Layer.launch(layer(opts))
 /* eslint-enable @typescript-eslint/no-explicit-any */
