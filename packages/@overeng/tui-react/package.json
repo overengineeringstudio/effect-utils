@@ -42,8 +42,7 @@
     "yoga-layout": "3.2.1"
   },
   "devDependencies": {
-    "@effect-atom/atom": "0.5.3",
-    "@effect-atom/atom-react": "0.5.0",
+    "@effect/atom-react": "4.0.0-beta.102",
     "@effect/platform-node": "4.0.0-beta.102",
     "@effect/vitest": "4.0.0-beta.102",
     "@opentui/core": "0.4.1",
@@ -66,8 +65,7 @@
     "vitest": "4.1.9"
   },
   "peerDependencies": {
-    "@effect-atom/atom": "^0.5.3",
-    "@effect-atom/atom-react": "^0.5.0",
+    "@effect/atom-react": "^4.0.0-beta.102",
     "@effect/platform-node": "^4.0.0-beta.102",
     "@opentui/core": "^0.4.1",
     "@opentui/react": "^0.4.1",

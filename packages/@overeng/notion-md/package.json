@@ -34,7 +34,7 @@
     "@overeng/utils": "workspace:^"
   },
   "devDependencies": {
-    "@effect-atom/atom": "0.5.3",
+    "@effect/atom-react": "4.0.0-beta.102",
     "@effect/opentelemetry": "4.0.0-beta.102",
     "@effect/platform-node": "4.0.0-beta.102",
     "@effect/vitest": "4.0.0-beta.102",

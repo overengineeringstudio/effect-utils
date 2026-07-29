@@ -85,7 +85,7 @@ From.pipe(
     To,
     SchemaTransformation.transformOrFail({
       decode: (encoded) => SchemaParser.decodeUnknownEffect(To)(encoded),
-      encode: (decoded) => Effect.fail(new SchemaIssue.Forbidden(Option.some(decoded))),
+      encode: () => Effect.fail(new SchemaIssue.Forbidden(Option.none())),
     }),
   ),
 )
