@@ -173,9 +173,8 @@ its key parameter as `string`; passing a `unique symbol` is not a valid migratio
 For symbol-keyed annotations, resolve the annotation object and index it with the original symbol:
 
 ```ts
-const annotated = SchemaAST.resolve(schema.ast)?.[optionValueSchema] as
-  | Schema.Codec<Value>
-  | undefined
+const annotations = SchemaAST.resolve(schema.ast) as { readonly [key: symbol]: unknown } | undefined
+const annotated = annotations?.[optionValueSchema] as Schema.Codec<Value> | undefined
 
 if (annotated !== undefined) {
   use(annotated)
@@ -187,7 +186,8 @@ recovered by `SchemaAST.resolve(ast)?.[symbol]`, while `resolveAt(symbol.descrip
 `undefined`. `resolve` follows beta.102's checked-schema rule by reading the last check's
 annotations when checks are present.
 
-The cast is required because beta.102's public `Annotations.Annotations` interface has only a
-string index signature even though the runtime preserves symbol properties. Remove v3
+The pre-index cast is required because beta.102's public `Annotations.Annotations` interface has
+only a string index signature even though the runtime preserves symbol properties. A trailing cast
+on the indexed result is too late: TypeScript rejects the symbol indexing operation first. Remove v3
 `Option.isSome`, `.value`, and `Option.getOrUndefined` handling; both `resolveAt` and direct symbol
 indexing use `undefined` for absence.

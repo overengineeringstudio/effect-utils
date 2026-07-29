@@ -52,7 +52,7 @@ export type TitleWrite = typeof TitleWrite.Type
 export const TitleWriteFromString = Schema.String.pipe(
   Schema.decodeTo(
     TitleWrite,
-    SchemaTransformation.transform({
+    SchemaTransformation.transform<TitleWrite, string>({
       decode: (str) => ({
         title: [{ type: 'text', text: { content: str } }],
       }),
@@ -75,9 +75,9 @@ export const Title = {
   raw: TitleProperty.pipe(
     Schema.decodeTo(
       RichTextArray,
-      SchemaTransformation.transform({
+      SchemaTransformation.transform<RichTextArray, TitleProperty>({
         decode: (prop) => prop.title,
-        encode: () =>
+        encode: (): TitleProperty =>
           shouldNeverHappen(
             'Title.raw encode is not supported. Use TitleWrite / TitleWriteFromString.',
           ),
@@ -89,9 +89,9 @@ export const Title = {
   asString: TitleProperty.pipe(
     Schema.decodeTo(
       Schema.String,
-      SchemaTransformation.transform({
+      SchemaTransformation.transform<string, TitleProperty>({
         decode: (prop) => prop.title.map((rt) => rt.plain_text).join(''),
-        encode: () =>
+        encode: (): TitleProperty =>
           shouldNeverHappen(
             'Title.asString encode is not supported. Use TitleWrite / TitleWriteFromString.',
           ),
@@ -153,7 +153,7 @@ export type RichTextWrite = typeof RichTextWrite.Type
 export const RichTextWriteFromString = Schema.String.pipe(
   Schema.decodeTo(
     RichTextWrite,
-    SchemaTransformation.transform({
+    SchemaTransformation.transform<RichTextWrite, string>({
       decode: (str) => ({
         rich_text: [{ type: 'text', text: { content: str } }],
       }),
@@ -176,9 +176,9 @@ export const RichTextProp = {
   raw: RichTextProperty.pipe(
     Schema.decodeTo(
       RichTextArray,
-      SchemaTransformation.transform({
+      SchemaTransformation.transform<RichTextArray, RichTextProperty>({
         decode: (prop) => prop.rich_text,
-        encode: () =>
+        encode: (): RichTextProperty =>
           shouldNeverHappen(
             'RichTextProp.raw encode is not supported. Use RichTextWrite / RichTextWriteFromString.',
           ),
@@ -190,9 +190,9 @@ export const RichTextProp = {
   asString: RichTextProperty.pipe(
     Schema.decodeTo(
       Schema.String,
-      SchemaTransformation.transform({
+      SchemaTransformation.transform<string, RichTextProperty>({
         decode: (prop) => prop.rich_text.map((rt) => rt.plain_text).join(''),
-        encode: () =>
+        encode: (): RichTextProperty =>
           shouldNeverHappen(
             'RichTextProp.asString encode is not supported. Use RichTextWrite / RichTextWriteFromString.',
           ),
@@ -209,15 +209,15 @@ export const RichTextProp = {
             .map((rt) => rt.plain_text)
             .join('')
             .trim() !== '',
-        { message: () => 'Rich text must not be empty' },
+        { message: 'Rich text must not be empty' },
       ),
     ),
   ).pipe(
     Schema.decodeTo(
       Schema.String,
-      SchemaTransformation.transform({
+      SchemaTransformation.transform<string, RichTextProperty>({
         decode: (prop) => prop.rich_text.map((rt) => rt.plain_text).join(''),
-        encode: () =>
+        encode: (): RichTextProperty =>
           shouldNeverHappen(
             'RichTextProp.asNonEmptyString encode is not supported. Use RichTextWrite / RichTextWriteFromString.',
           ),
@@ -230,12 +230,12 @@ export const RichTextProp = {
     schema: RichTextProperty.pipe(
       Schema.decodeTo(
         Schema.Option(Schema.String),
-        SchemaTransformation.transform({
+        SchemaTransformation.transform<Option.Option<string>, RichTextProperty>({
           decode: (prop) => {
             const text = prop.rich_text.map((rt) => rt.plain_text).join('')
             return text.trim() === '' ? Option.none() : Option.some(text)
           },
-          encode: () =>
+          encode: (): RichTextProperty =>
             shouldNeverHappen(
               'RichTextProp.asOption encode is not supported. Use RichTextWrite / RichTextWriteFromString.',
             ),

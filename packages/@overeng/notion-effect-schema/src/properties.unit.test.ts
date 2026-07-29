@@ -4,6 +4,7 @@ import { expect } from 'vitest'
 import { Vitest } from '@overeng/utils-dev/node-vitest'
 
 import { NotionSchema } from './mod.ts'
+import { User } from './users.ts'
 
 // -----------------------------------------------------------------------------
 // Title Property Tests
@@ -276,8 +277,8 @@ Vitest.describe('RichText Property', () => {
         const emptyProp = { ...sampleRichTextProperty, rich_text: [] }
         const result = yield* Schema.decodeUnknownEffect(NotionSchema.richTextNonEmpty)(
           emptyProp,
-        ).pipe(Effect.either)
-        expect(result._tag).toBe('Left')
+        ).pipe(Effect.result)
+        expect(result._tag).toBe('Failure')
       }),
     )
   })
@@ -499,8 +500,8 @@ Vitest.describe('Select Property', () => {
         }
         const result = yield* Schema.decodeUnknownEffect(
           NotionSchema.select(Allowed).pipe(NotionSchema.asName),
-        )(invalidProperty).pipe(Effect.either)
-        expect(result._tag).toBe('Left')
+        )(invalidProperty).pipe(Effect.result)
+        expect(result._tag).toBe('Failure')
       }),
     )
   })
@@ -614,8 +615,8 @@ Vitest.describe('MultiSelect Property', () => {
         }
         const result = yield* Schema.decodeUnknownEffect(
           NotionSchema.multiSelect(Allowed).pipe(NotionSchema.asNames),
-        )(invalidProperty).pipe(Effect.either)
-        expect(result._tag).toBe('Left')
+        )(invalidProperty).pipe(Effect.result)
+        expect(result._tag).toBe('Failure')
       }),
     )
   })
@@ -713,8 +714,8 @@ Vitest.describe('Status Property', () => {
         }
         const result = yield* Schema.decodeUnknownEffect(
           NotionSchema.status(Allowed).pipe(NotionSchema.asName),
-        )(invalidProperty).pipe(Effect.either)
-        expect(result._tag).toBe('Left')
+        )(invalidProperty).pipe(Effect.result)
+        expect(result._tag).toBe('Failure')
       }),
     )
   })
@@ -819,8 +820,8 @@ Vitest.describe('Formula Property', () => {
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknownEffect(NotionSchema.formulaNumber)(
           stringFormulaProperty,
-        ).pipe(Effect.either)
-        expect(result._tag).toBe('Left')
+        ).pipe(Effect.result)
+        expect(result._tag).toBe('Failure')
       }),
     )
   })
@@ -839,8 +840,8 @@ Vitest.describe('Formula Property', () => {
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknownEffect(NotionSchema.formulaString)(
           numberFormulaProperty,
-        ).pipe(Effect.either)
-        expect(result._tag).toBe('Left')
+        ).pipe(Effect.result)
+        expect(result._tag).toBe('Failure')
       }),
     )
   })
@@ -936,8 +937,8 @@ Vitest.describe('Rollup Property', () => {
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknownEffect(NotionSchema.rollupNumber)(
           stringRollupProperty,
-        ).pipe(Effect.either)
-        expect(result._tag).toBe('Left')
+        ).pipe(Effect.result)
+        expect(result._tag).toBe('Failure')
       }),
     )
   })
@@ -1039,9 +1040,9 @@ Vitest.describe('Date Property', () => {
     Vitest.it.effect('fails for null date', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknownEffect(schema)(nullDateProperty).pipe(
-          Effect.either,
+          Effect.result,
         )
-        expect(result._tag).toBe('Left')
+        expect(result._tag).toBe('Failure')
       }),
     )
   })
@@ -1107,8 +1108,8 @@ Vitest.describe('NotionSchema.nullable', () => {
 
   Vitest.it.effect('fails for null', () =>
     Effect.gen(function* () {
-      const result = yield* Schema.decodeUnknownEffect(schema)(null).pipe(Effect.either)
-      expect(result._tag).toBe('Left')
+      const result = yield* Schema.decodeUnknownEffect(schema)(null).pipe(Effect.result)
+      expect(result._tag).toBe('Failure')
     }),
   )
 })
@@ -1289,6 +1290,46 @@ Vitest.describe('PhoneNumber Property', () => {
 })
 
 // -----------------------------------------------------------------------------
+// People Property Tests
+// -----------------------------------------------------------------------------
+
+Vitest.describe('People Property', () => {
+  const peopleProperty = {
+    id: 'people',
+    type: 'people' as const,
+    people: [
+      {
+        object: 'user' as const,
+        id: 'person-1',
+        type: 'person' as const,
+        person: {},
+      },
+      {
+        object: 'user' as const,
+        id: 'bot-1',
+        type: 'bot' as const,
+        name: 'Example Bot',
+        bot: {
+          owner: {
+            type: 'workspace' as const,
+            workspace: true as const,
+          },
+        },
+      },
+    ],
+  }
+
+  Vitest.it.effect('preserves user wire bytes while decoding raw people', () =>
+    Effect.gen(function* () {
+      const decoded = yield* Schema.decodeUnknownEffect(NotionSchema.peopleRaw)(peopleProperty)
+      const reencoded = yield* Schema.encodeEffect(Schema.Array(User))(decoded)
+
+      expect(JSON.stringify(reencoded)).toBe(JSON.stringify(peopleProperty.people))
+    }),
+  )
+})
+
+// -----------------------------------------------------------------------------
 // Relation Property Tests
 // -----------------------------------------------------------------------------
 
@@ -1328,8 +1369,8 @@ Vitest.describe('Relation Property', () => {
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknownEffect(NotionSchema.relationSingle)(
           relationProperty,
-        ).pipe(Effect.either)
-        expect(result._tag).toBe('Left')
+        ).pipe(Effect.result)
+        expect(result._tag).toBe('Failure')
       }),
     )
   })
@@ -1348,8 +1389,8 @@ Vitest.describe('Relation Property', () => {
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknownEffect(NotionSchema.relationSingleId)(
           relationProperty,
-        ).pipe(Effect.either)
-        expect(result._tag).toBe('Left')
+        ).pipe(Effect.result)
+        expect(result._tag).toBe('Failure')
       }),
     )
   })
@@ -1380,8 +1421,8 @@ Vitest.describe('Relation Property', () => {
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknownEffect(NotionSchema.relationSingleOption)(
           relationProperty,
-        ).pipe(Effect.either)
-        expect(result._tag).toBe('Left')
+        ).pipe(Effect.result)
+        expect(result._tag).toBe('Failure')
       }),
     )
   })
@@ -1412,8 +1453,8 @@ Vitest.describe('Relation Property', () => {
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknownEffect(NotionSchema.relationSingleIdOption)(
           relationProperty,
-        ).pipe(Effect.either)
-        expect(result._tag).toBe('Left')
+        ).pipe(Effect.result)
+        expect(result._tag).toBe('Failure')
       }),
     )
   })

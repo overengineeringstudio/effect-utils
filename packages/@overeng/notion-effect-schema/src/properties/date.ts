@@ -95,7 +95,7 @@ export type DateWrite = typeof DateWrite.Type
 export const DateWriteFromStart = Schema.String.pipe(
   Schema.decodeTo(
     DateWrite,
-    SchemaTransformation.transform({
+    SchemaTransformation.transform<DateWrite, string>({
       decode: (start) => ({ date: { start } }),
       encode: (write) => {
         if (write.date === null) {
@@ -122,9 +122,9 @@ export const DateProp = {
   raw: DateProperty.pipe(
     Schema.decodeTo(
       Schema.NullOr(DateValue),
-      SchemaTransformation.transform({
+      SchemaTransformation.transform<DateValue | null, DateProperty>({
         decode: (prop) => prop.date,
-        encode: () =>
+        encode: (): DateProperty =>
           shouldNeverHappen(
             'DateProp.raw encode is not supported. Use DateWrite / DateWriteFromStart.',
           ),
@@ -137,9 +137,9 @@ export const DateProp = {
     schema: DateProperty.pipe(
       Schema.decodeTo(
         Schema.Option(DateValue),
-        SchemaTransformation.transform({
+        SchemaTransformation.transform<Option.Option<DateValue>, DateProperty>({
           decode: (prop) => (prop.date === null ? Option.none() : Option.some(prop.date)),
-          encode: () =>
+          encode: (): DateProperty =>
             shouldNeverHappen(
               'DateProp.asOption encode is not supported. Use DateWrite / DateWriteFromStart.',
             ),
@@ -154,10 +154,10 @@ export const DateProp = {
     schema: DateProperty.pipe(
       Schema.decodeTo(
         Schema.Option(Schema.Date),
-        SchemaTransformation.transform({
+        SchemaTransformation.transform<Option.Option<Date>, DateProperty>({
           decode: (prop) =>
             prop.date === null ? Option.none() : Option.some(new Date(prop.date.start)),
-          encode: () =>
+          encode: (): DateProperty =>
             shouldNeverHappen(
               'DateProp.asDate encode is not supported. Use DateWrite / DateWriteFromStart.',
             ),

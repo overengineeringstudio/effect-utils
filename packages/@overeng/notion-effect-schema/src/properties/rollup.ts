@@ -77,9 +77,9 @@ export const Rollup = {
   raw: RollupProperty.pipe(
     Schema.decodeTo(
       RollupValue,
-      SchemaTransformation.transform({
+      SchemaTransformation.transform<RollupValue, RollupProperty>({
         decode: (prop) => prop.rollup,
-        encode: () =>
+        encode: (): RollupProperty =>
           shouldNeverHappen('Rollup.raw encode is not supported (rollup is read-only).'),
       }),
     ),
@@ -90,14 +90,17 @@ export const Rollup = {
     Schema.refine(
       (p): p is typeof p & { rollup: { type: 'number'; number: number } } =>
         p.rollup.type === 'number' && p.rollup.number !== null,
-      { message: () => 'Rollup must be a non-null number' },
+      { message: 'Rollup must be a non-null number' },
     ),
   ).pipe(
     Schema.decodeTo(
       Schema.Number,
-      SchemaTransformation.transform({
+      SchemaTransformation.transform<
+        number,
+        RollupProperty & { rollup: { type: 'number'; number: number } }
+      >({
         decode: (prop) => prop.rollup.number,
-        encode: () =>
+        encode: (): RollupProperty & { rollup: { type: 'number'; number: number } } =>
           shouldNeverHappen('Rollup.asNumber encode is not supported (rollup is read-only).'),
       }),
     ),
@@ -108,14 +111,17 @@ export const Rollup = {
     Schema.refine(
       (p): p is typeof p & { rollup: { type: 'string'; string: string } } =>
         p.rollup.type === 'string' && p.rollup.string !== null,
-      { message: () => 'Rollup must be a non-null string' },
+      { message: 'Rollup must be a non-null string' },
     ),
   ).pipe(
     Schema.decodeTo(
       Schema.String,
-      SchemaTransformation.transform({
+      SchemaTransformation.transform<
+        string,
+        RollupProperty & { rollup: { type: 'string'; string: string } }
+      >({
         decode: (prop) => prop.rollup.string,
-        encode: () =>
+        encode: (): RollupProperty & { rollup: { type: 'string'; string: string } } =>
           shouldNeverHappen('Rollup.asString encode is not supported (rollup is read-only).'),
       }),
     ),
@@ -126,14 +132,17 @@ export const Rollup = {
     Schema.refine(
       (p): p is typeof p & { rollup: { type: 'boolean'; boolean: boolean } } =>
         p.rollup.type === 'boolean' && p.rollup.boolean !== null,
-      { message: () => 'Rollup must be a non-null boolean' },
+      { message: 'Rollup must be a non-null boolean' },
     ),
   ).pipe(
     Schema.decodeTo(
       Schema.Boolean,
-      SchemaTransformation.transform({
+      SchemaTransformation.transform<
+        boolean,
+        RollupProperty & { rollup: { type: 'boolean'; boolean: boolean } }
+      >({
         decode: (prop) => prop.rollup.boolean,
-        encode: () =>
+        encode: (): RollupProperty & { rollup: { type: 'boolean'; boolean: boolean } } =>
           shouldNeverHappen('Rollup.asBoolean encode is not supported (rollup is read-only).'),
       }),
     ),
@@ -144,14 +153,17 @@ export const Rollup = {
     Schema.refine(
       (p): p is typeof p & { rollup: { type: 'date'; date: DateValue } } =>
         p.rollup.type === 'date' && p.rollup.date !== null,
-      { message: () => 'Rollup must be a non-null date' },
+      { message: 'Rollup must be a non-null date' },
     ),
   ).pipe(
     Schema.decodeTo(
       DateValue,
-      SchemaTransformation.transform({
+      SchemaTransformation.transform<
+        DateValue,
+        RollupProperty & { rollup: { type: 'date'; date: DateValue } }
+      >({
         decode: (prop) => prop.rollup.date,
-        encode: () =>
+        encode: (): RollupProperty & { rollup: { type: 'date'; date: DateValue } } =>
           shouldNeverHappen('Rollup.asDate encode is not supported (rollup is read-only).'),
       }),
     ),
@@ -165,15 +177,19 @@ export const Rollup = {
       ): p is typeof p & {
         rollup: { type: 'array'; array: Array<unknown> }
       } => p.rollup.type === 'array',
-      { message: () => 'Rollup must be an array' },
+      { message: 'Rollup must be an array' },
     ),
   ).pipe(
     Schema.decodeTo(
       Schema.Array(Schema.Unknown),
-      SchemaTransformation.transform({
+      SchemaTransformation.transform<
+        ReadonlyArray<unknown>,
+        RollupProperty & { rollup: { type: 'array'; array: Array<unknown> } }
+      >({
         decode: (prop) => prop.rollup.array,
-        encode: () =>
-          shouldNeverHappen('Rollup.asArray encode is not supported (rollup is read-only).'),
+        encode: (): RollupProperty & {
+          rollup: { type: 'array'; array: Array<unknown> }
+        } => shouldNeverHappen('Rollup.asArray encode is not supported (rollup is read-only).'),
       }),
     ),
   ),

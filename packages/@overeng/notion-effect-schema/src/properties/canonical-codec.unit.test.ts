@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 
-import { type DateTime, Effect, Exit, Option, Schema } from 'effect'
+import { Cause, type DateTime, Effect, Exit, Option, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -504,7 +504,7 @@ describe('canonical wire baselines (cross-major invariant)', () => {
       const exit = await Effect.runPromiseExit(encodeCanonicalPatch({ value }))
       const error =
         Exit.isFailure(exit) === true
-          ? (exit.cause as { error?: CanonicalEncodeError }).error
+          ? Option.getOrUndefined(Cause.findErrorOption(exit.cause))
           : undefined
       expect(error).toBeInstanceOf(CanonicalEncodeError)
       return JSON.stringify({
@@ -632,7 +632,7 @@ describe('canonical encode (Notion write-payload matrix)', () => {
     expect(Exit.isFailure(exit)).toBe(true)
     const error =
       Exit.isFailure(exit) === true
-        ? (exit.cause as { error?: CanonicalEncodeError }).error
+        ? Option.getOrUndefined(Cause.findErrorOption(exit.cause))
         : undefined
     expect(error).toBeInstanceOf(CanonicalEncodeError)
     expect(error?.reason).toBe('computed')
@@ -645,7 +645,7 @@ describe('canonical encode (Notion write-payload matrix)', () => {
     expect(Exit.isFailure(exit)).toBe(true)
     const error =
       Exit.isFailure(exit) === true
-        ? (exit.cause as { error?: CanonicalEncodeError }).error
+        ? Option.getOrUndefined(Cause.findErrorOption(exit.cause))
         : undefined
     expect(error).toBeInstanceOf(CanonicalEncodeError)
     expect(error?.reason).toBe('unsupported_remote_shape')
@@ -656,7 +656,7 @@ describe('canonical encode (Notion write-payload matrix)', () => {
     expect(Exit.isFailure(exit)).toBe(true)
     const error =
       Exit.isFailure(exit) === true
-        ? (exit.cause as { error?: CanonicalEncodeError }).error
+        ? Option.getOrUndefined(Cause.findErrorOption(exit.cause))
         : undefined
     expect(error?.reason).toBe('unsupported_remote_shape')
   })

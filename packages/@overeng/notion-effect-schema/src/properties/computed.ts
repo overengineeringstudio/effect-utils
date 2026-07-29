@@ -69,9 +69,9 @@ export const Formula = {
   raw: FormulaProperty.pipe(
     Schema.decodeTo(
       FormulaValue,
-      SchemaTransformation.transform({
+      SchemaTransformation.transform<FormulaValue, FormulaProperty>({
         decode: (prop) => prop.formula,
-        encode: () =>
+        encode: (): FormulaProperty =>
           shouldNeverHappen('Formula.raw encode is not supported (formula is read-only).'),
       }),
     ),
@@ -82,14 +82,17 @@ export const Formula = {
     Schema.refine(
       (p): p is typeof p & { formula: { type: 'number'; number: number } } =>
         p.formula.type === 'number' && p.formula.number !== null,
-      { message: () => 'Formula must be a non-null number' },
+      { message: 'Formula must be a non-null number' },
     ),
   ).pipe(
     Schema.decodeTo(
       Schema.Number,
-      SchemaTransformation.transform({
+      SchemaTransformation.transform<
+        number,
+        FormulaProperty & { formula: { type: 'number'; number: number } }
+      >({
         decode: (prop) => prop.formula.number,
-        encode: () =>
+        encode: (): FormulaProperty & { formula: { type: 'number'; number: number } } =>
           shouldNeverHappen('Formula.asNumber encode is not supported (formula is read-only).'),
       }),
     ),
@@ -100,14 +103,17 @@ export const Formula = {
     Schema.refine(
       (p): p is typeof p & { formula: { type: 'string'; string: string } } =>
         p.formula.type === 'string' && p.formula.string !== null,
-      { message: () => 'Formula must be a non-null string' },
+      { message: 'Formula must be a non-null string' },
     ),
   ).pipe(
     Schema.decodeTo(
       Schema.String,
-      SchemaTransformation.transform({
+      SchemaTransformation.transform<
+        string,
+        FormulaProperty & { formula: { type: 'string'; string: string } }
+      >({
         decode: (prop) => prop.formula.string,
-        encode: () =>
+        encode: (): FormulaProperty & { formula: { type: 'string'; string: string } } =>
           shouldNeverHappen('Formula.asString encode is not supported (formula is read-only).'),
       }),
     ),
@@ -118,14 +124,17 @@ export const Formula = {
     Schema.refine(
       (p): p is typeof p & { formula: { type: 'boolean'; boolean: boolean } } =>
         p.formula.type === 'boolean' && p.formula.boolean !== null,
-      { message: () => 'Formula must be a non-null boolean' },
+      { message: 'Formula must be a non-null boolean' },
     ),
   ).pipe(
     Schema.decodeTo(
       Schema.Boolean,
-      SchemaTransformation.transform({
+      SchemaTransformation.transform<
+        boolean,
+        FormulaProperty & { formula: { type: 'boolean'; boolean: boolean } }
+      >({
         decode: (prop) => prop.formula.boolean,
-        encode: () =>
+        encode: (): FormulaProperty & { formula: { type: 'boolean'; boolean: boolean } } =>
           shouldNeverHappen('Formula.asBoolean encode is not supported (formula is read-only).'),
       }),
     ),
@@ -136,14 +145,17 @@ export const Formula = {
     Schema.refine(
       (p): p is typeof p & { formula: { type: 'date'; date: DateValue } } =>
         p.formula.type === 'date' && p.formula.date !== null,
-      { message: () => 'Formula must be a non-null date' },
+      { message: 'Formula must be a non-null date' },
     ),
   ).pipe(
     Schema.decodeTo(
       DateValue,
-      SchemaTransformation.transform({
+      SchemaTransformation.transform<
+        DateValue,
+        FormulaProperty & { formula: { type: 'date'; date: DateValue } }
+      >({
         decode: (prop) => prop.formula.date,
-        encode: () =>
+        encode: (): FormulaProperty & { formula: { type: 'date'; date: DateValue } } =>
           shouldNeverHappen('Formula.asDate encode is not supported (formula is read-only).'),
       }),
     ),
@@ -196,12 +208,12 @@ export const UniqueId = {
   asString: UniqueIdProperty.pipe(
     Schema.decodeTo(
       Schema.String,
-      SchemaTransformation.transform({
+      SchemaTransformation.transform<string, UniqueIdProperty>({
         decode: (prop) => {
           const { prefix, number } = prop.unique_id
           return prefix !== null ? `${prefix}-${number}` : String(number)
         },
-        encode: () =>
+        encode: (): UniqueIdProperty =>
           shouldNeverHappen('UniqueId.asString encode is not supported (unique_id is read-only).'),
       }),
     ),
@@ -211,9 +223,9 @@ export const UniqueId = {
   asNumber: UniqueIdProperty.pipe(
     Schema.decodeTo(
       Schema.Number,
-      SchemaTransformation.transform({
+      SchemaTransformation.transform<number, UniqueIdProperty>({
         decode: (prop) => prop.unique_id.number,
-        encode: () =>
+        encode: (): UniqueIdProperty =>
           shouldNeverHappen('UniqueId.asNumber encode is not supported (unique_id is read-only).'),
       }),
     ),

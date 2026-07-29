@@ -198,12 +198,15 @@ export const shouldNeverHappen = (msg?: string, ...args: unknown[]): never => {
 const getOptionValueSchema = <TValue, TInput, TContext>(
   schema: Schema.Codec<Option.Option<TValue>, TInput, TContext, TContext>,
 ): Schema.Codec<TValue, TValue, never, never> => {
-  const annotated = SchemaAST.resolveAt<Schema.Codec<TValue, TValue, never, never>>(
-    optionValueSchema,
-  )(schema.ast)
+  const annotations = SchemaAST.resolve(schema.ast) as
+    | { readonly [key: symbol]: unknown }
+    | undefined
+  const annotated = annotations?.[optionValueSchema] as
+    | Schema.Codec<TValue, TValue, never, never>
+    | undefined
 
-  if (Option.isSome(annotated) === true) {
-    return annotated.value
+  if (annotated !== undefined) {
+    return annotated
   }
 
   return shouldNeverHappen(
@@ -214,12 +217,15 @@ const getOptionValueSchema = <TValue, TInput, TContext>(
 const getOptionNameSchema = <TName extends string, TValue, TInput, TContext>(
   schema: Schema.Codec<TValue, TInput, TContext, TContext>,
 ): Schema.Codec<TName, TName, never, never> => {
-  const annotated = SchemaAST.resolveAt<Schema.Codec<TName, TName, never, never>>(optionNameSchema)(
-    schema.ast,
-  )
+  const annotations = SchemaAST.resolve(schema.ast) as
+    | { readonly [key: symbol]: unknown }
+    | undefined
+  const annotated = annotations?.[optionNameSchema] as
+    | Schema.Codec<TName, TName, never, never>
+    | undefined
 
-  if (Option.isSome(annotated) === true) {
-    return annotated.value
+  if (annotated !== undefined) {
+    return annotated
   }
 
   return shouldNeverHappen(
@@ -261,9 +267,9 @@ export const asName = <TName extends string, TOption extends { name: TName }, TI
     schema: schema.pipe(
       Schema.decodeTo(
         Schema.Option(nameSchema),
-        SchemaTransformation.transform({
+        SchemaTransformation.transform<Option.Option<TName>, Option.Option<TOption>>({
           decode: (opt) => Option.map(opt, (value) => value.name),
-          encode: () =>
+          encode: (): Option.Option<TOption> =>
             shouldNeverHappen(
               'NotionSchema.asName encode is not supported. Use the write helpers for updates.',
             ),
@@ -293,9 +299,9 @@ export const asNames = <TName extends string, TOption extends { name: TName }, T
   return schema.pipe(
     Schema.decodeTo(
       Schema.Array(nameSchema),
-      SchemaTransformation.transform({
+      SchemaTransformation.transform<ReadonlyArray<TName>, ReadonlyArray<TOption>>({
         decode: (options) => options.map((option) => option.name),
-        encode: () =>
+        encode: (): ReadonlyArray<TOption> =>
           shouldNeverHappen(
             'NotionSchema.asNames encode is not supported. Use the write helpers for updates.',
           ),
@@ -336,15 +342,21 @@ export const Required = {
       return schema
         .pipe(
           Schema.refine((opt): opt is Option.Some<TValue> => Option.isSome(opt), {
-            message: () => message,
+            message,
           }),
         )
         .pipe(
           Schema.decodeTo(
             valueSchema,
-            SchemaTransformation.transform({
+            SchemaTransformation.transform<TValue, Option.Some<TValue>>({
               decode: (opt) => Option.getOrThrow(opt),
-              encode: (value) => Option.some(value),
+              encode: (value): Option.Some<TValue> => {
+                const option = Option.some(value)
+                if (Option.isSome(option) === true) {
+                  return option
+                }
+                return shouldNeverHappen('Option.some unexpectedly returned None.')
+              },
             }),
           ),
         )
@@ -361,13 +373,16 @@ export const Required = {
       return schema
         .pipe(
           Schema.refine((value): value is TValue => value !== null, {
-            message: () => message,
+            message,
           }),
         )
         .pipe(
           Schema.decodeTo(
             options.valueSchema,
-            SchemaTransformation.transform({ decode: (value) => value, encode: (value) => value }),
+            SchemaTransformation.transform<TValue, TValue>({
+              decode: (value) => value,
+              encode: (value) => value,
+            }),
           ),
         )
     },

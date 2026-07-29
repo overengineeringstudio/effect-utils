@@ -48,6 +48,37 @@ const NumberFromString = Schema.String.pipe(
 The source schema is piped into `decodeTo`; the target schema is its first argument. The old `strict`
 option is not copied.
 
+### The transformation targets `To["Encoded"]`
+
+`Schema.decodeTo(To, transformation)` requires the transformation's decoded output to be
+`To["Encoded"]`, not `To["Type"]`. The target codec then decodes that encoded representation.
+Examples such as `NumberFromString`, where the target's `Type` and `Encoded` are both `number`, do
+not exercise this distinction.
+
+For a transformed target codec, produce its encoded representation by using the target's encoder
+instead of rebuilding its decoded value:
+
+```ts
+const Users = Schema.Array(User)
+const encodeUsers = Schema.encodeSync(Users)
+
+const People = PeopleProperty.pipe(
+  Schema.decodeTo(
+    Users,
+    SchemaTransformation.transform<typeof Users.Encoded, typeof PeopleProperty.Type>({
+      decode: (property) => encodeUsers(property.people),
+      encode: (_users): typeof PeopleProperty.Type => {
+        throw new Error('This codec only supports decoding')
+      },
+    }),
+  ),
+)
+```
+
+This contract is **VERIFIED** against the beta.102 `Schema.decodeTo` declaration. For transformed
+targets, typechecking is not sufficient: replay exact encoded bytes, especially for optional fields
+whose absent representation may be omitted or encoded as `null`.
+
 ### Decode-only pure transformations
 
 When an unsupported encode callback only throws, its inferred return type is `never`. Do not leave
@@ -73,6 +104,10 @@ This explicit form is **VERIFIED** to compile against the
 `transformOrFail` with a `SchemaIssue.Forbidden` failure when the old codec represented unsupported
 encoding in the typed error channel. Whether throwing or typed failure is faithful depends on the
 v3 call site; do not change that boundary merely to satisfy inference.
+
+One-directional codecs with deliberately throwing encoders are legitimate existing contracts. A
+successful encode can be a regression when the old boundary intentionally rejected that direction;
+preserve the throw and prove only the supported direction.
 
 ## Fallible transformations and issues
 

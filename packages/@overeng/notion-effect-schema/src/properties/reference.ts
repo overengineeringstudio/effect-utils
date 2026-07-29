@@ -35,6 +35,9 @@ export const PeopleProperty = Schema.Struct({
 
 export type PeopleProperty = typeof PeopleProperty.Type
 
+const PeopleArray = Schema.Array(User)
+const encodePeopleArray = Schema.encodeSync(PeopleArray)
+
 /**
  * People property write payload (for create/update page requests).
  * Notion expects an array of user references (by id).
@@ -61,7 +64,7 @@ export const PeopleWriteFromIds = Schema.Array(NotionUUID)
   .pipe(
     Schema.decodeTo(
       PeopleWrite,
-      SchemaTransformation.transform({
+      SchemaTransformation.transform<PeopleWrite, ReadonlyArray<NotionUUID>>({
         decode: (ids) => ({
           people: ids.map((id) => ({ id })),
         }),
@@ -84,10 +87,10 @@ export const People = {
   /** Transform to raw array of Users. */
   raw: PeopleProperty.pipe(
     Schema.decodeTo(
-      Schema.Array(User),
-      SchemaTransformation.transform({
-        decode: (prop) => prop.people,
-        encode: () =>
+      PeopleArray,
+      SchemaTransformation.transform<typeof PeopleArray.Encoded, PeopleProperty>({
+        decode: (prop) => encodePeopleArray(prop.people),
+        encode: (): PeopleProperty =>
           shouldNeverHappen(
             'People.raw encode is not supported. Use PeopleWrite / PeopleWriteFromIds.',
           ),
@@ -99,9 +102,9 @@ export const People = {
   asIds: PeopleProperty.pipe(
     Schema.decodeTo(
       Schema.Array(Schema.String),
-      SchemaTransformation.transform({
+      SchemaTransformation.transform<ReadonlyArray<string>, PeopleProperty>({
         decode: (prop) => prop.people.map((u) => u.id),
-        encode: () =>
+        encode: (): PeopleProperty =>
           shouldNeverHappen(
             'People.asIds encode is not supported. Use PeopleWrite / PeopleWriteFromIds.',
           ),
@@ -178,7 +181,7 @@ export const RelationWriteFromIds = Schema.Array(NotionUUID)
   .pipe(
     Schema.decodeTo(
       RelationWrite,
-      SchemaTransformation.transform({
+      SchemaTransformation.transform<RelationWrite, ReadonlyArray<NotionUUID>>({
         decode: (ids) => ({
           relation: ids.map((id) => ({ id })),
         }),
@@ -202,9 +205,9 @@ export const Relation = {
   asIds: RelationProperty.pipe(
     Schema.decodeTo(
       Schema.Array(Schema.String),
-      SchemaTransformation.transform({
+      SchemaTransformation.transform<ReadonlyArray<string>, RelationProperty>({
         decode: (prop) => prop.relation.map((r) => r.id),
-        encode: () =>
+        encode: (): RelationProperty =>
           shouldNeverHappen(
             'Relation.asIds encode is not supported. Use RelationWrite / RelationWriteFromIds.',
           ),
@@ -215,14 +218,17 @@ export const Relation = {
   /** Transform to a single relation object (fails if not exactly one). */
   asSingle: RelationProperty.pipe(
     Schema.refine((p): p is typeof p & { relation: [{ id: string }] } => p.relation.length === 1, {
-      message: () => 'Relation must have exactly one item',
+      message: 'Relation must have exactly one item',
     }),
   ).pipe(
     Schema.decodeTo(
       Schema.Struct({ id: NotionUUID }),
-      SchemaTransformation.transform({
+      SchemaTransformation.transform<
+        { readonly id: NotionUUID },
+        RelationProperty & { relation: [{ id: string }] }
+      >({
         decode: (prop) => prop.relation[0],
-        encode: () =>
+        encode: (): RelationProperty & { relation: [{ id: string }] } =>
           shouldNeverHappen(
             'Relation.asSingle encode is not supported. Use RelationWrite / RelationWriteFromIds.',
           ),
@@ -233,18 +239,20 @@ export const Relation = {
   /** Transform to a single related page ID (fails if not exactly one). */
   asSingleId: RelationProperty.pipe(
     Schema.refine((p): p is typeof p & { relation: [{ id: string }] } => p.relation.length === 1, {
-      message: () => 'Relation must have exactly one item',
+      message: 'Relation must have exactly one item',
     }),
   ).pipe(
     Schema.decodeTo(
       NotionUUID,
-      SchemaTransformation.transform({
-        decode: (prop) => prop.relation[0].id,
-        encode: () =>
-          shouldNeverHappen(
-            'Relation.asSingleId encode is not supported. Use RelationWrite / RelationWriteFromIds.',
-          ),
-      }),
+      SchemaTransformation.transform<NotionUUID, RelationProperty & { relation: [{ id: string }] }>(
+        {
+          decode: (prop) => prop.relation[0].id,
+          encode: (): RelationProperty & { relation: [{ id: string }] } =>
+            shouldNeverHappen(
+              'Relation.asSingleId encode is not supported. Use RelationWrite / RelationWriteFromIds.',
+            ),
+        },
+      ),
     ),
   ),
 
@@ -252,15 +260,15 @@ export const Relation = {
   asSingleOption: RelationProperty.pipe(
     Schema.check(
       Schema.makeFilter((p) => p.relation.length <= 1, {
-        message: () => 'Relation must have at most one item',
+        message: 'Relation must have at most one item',
       }),
     ),
   ).pipe(
     Schema.decodeTo(
       Schema.Option(Schema.Struct({ id: NotionUUID })),
-      SchemaTransformation.transform({
+      SchemaTransformation.transform<Option.Option<{ readonly id: NotionUUID }>, RelationProperty>({
         decode: (prop) => Option.fromNullishOr(prop.relation[0]),
-        encode: () =>
+        encode: (): RelationProperty =>
           shouldNeverHappen(
             'Relation.asSingleOption encode is not supported. Use RelationWrite / RelationWriteFromIds.',
           ),
@@ -272,15 +280,15 @@ export const Relation = {
   asSingleIdOption: RelationProperty.pipe(
     Schema.check(
       Schema.makeFilter((p) => p.relation.length <= 1, {
-        message: () => 'Relation must have at most one item',
+        message: 'Relation must have at most one item',
       }),
     ),
   ).pipe(
     Schema.decodeTo(
       Schema.Option(NotionUUID),
-      SchemaTransformation.transform({
+      SchemaTransformation.transform<Option.Option<NotionUUID>, RelationProperty>({
         decode: (prop) => Option.fromNullishOr(prop.relation[0]?.id),
-        encode: () =>
+        encode: (): RelationProperty =>
           shouldNeverHappen(
             'Relation.asSingleIdOption encode is not supported. Use RelationWrite / RelationWriteFromIds.',
           ),
@@ -402,7 +410,7 @@ export const FilesWriteFromUrls = Schema.Array(Schema.String)
   .pipe(
     Schema.decodeTo(
       FilesWrite,
-      SchemaTransformation.transform({
+      SchemaTransformation.transform<FilesWrite, ReadonlyArray<string>>({
         decode: (urls) => ({
           files: urls.map((url) => ({
             type: 'external' as const,
@@ -429,9 +437,9 @@ export const Files = {
   raw: FilesProperty.pipe(
     Schema.decodeTo(
       Schema.Array(FileObject),
-      SchemaTransformation.transform({
+      SchemaTransformation.transform<ReadonlyArray<FileObject>, FilesProperty>({
         decode: (prop) => prop.files,
-        encode: () =>
+        encode: (): FilesProperty =>
           shouldNeverHappen(
             'Files.raw encode is not supported. Use FilesWrite / FilesWriteFromUrls.',
           ),
@@ -443,10 +451,10 @@ export const Files = {
   asUrls: FilesProperty.pipe(
     Schema.decodeTo(
       Schema.Array(Schema.String),
-      SchemaTransformation.transform({
+      SchemaTransformation.transform<ReadonlyArray<string>, FilesProperty>({
         decode: (prop) =>
           prop.files.map((f) => (f.type === 'external' ? f.external.url : f.file.url)),
-        encode: () =>
+        encode: (): FilesProperty =>
           shouldNeverHappen(
             'Files.asUrls encode is not supported. Use FilesWrite / FilesWriteFromUrls.',
           ),

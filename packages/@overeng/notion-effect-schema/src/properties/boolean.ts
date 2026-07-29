@@ -71,9 +71,9 @@ export const Checkbox = {
   raw: CheckboxProperty.pipe(
     Schema.decodeTo(
       Schema.Boolean,
-      SchemaTransformation.transform({
+      SchemaTransformation.transform<boolean, CheckboxProperty>({
         decode: (prop) => prop.checkbox,
-        encode: () =>
+        encode: (): CheckboxProperty =>
           shouldNeverHappen(
             'Checkbox.raw encode is not supported. Use CheckboxWrite / CheckboxWriteFromBoolean.',
           ),
@@ -85,9 +85,9 @@ export const Checkbox = {
   asBoolean: CheckboxProperty.pipe(
     Schema.decodeTo(
       Schema.Boolean,
-      SchemaTransformation.transform({
+      SchemaTransformation.transform<boolean, CheckboxProperty>({
         decode: (prop) => prop.checkbox,
-        encode: () =>
+        encode: (): CheckboxProperty =>
           shouldNeverHappen(
             'Checkbox.asBoolean encode is not supported. Use CheckboxWrite / CheckboxWriteFromBoolean.',
           ),

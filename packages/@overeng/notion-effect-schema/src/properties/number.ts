@@ -74,9 +74,9 @@ export const Num = {
   raw: NumberProperty.pipe(
     Schema.decodeTo(
       Schema.NullOr(Schema.Number),
-      SchemaTransformation.transform({
+      SchemaTransformation.transform<number | null, NumberProperty>({
         decode: (prop) => prop.number,
-        encode: () =>
+        encode: (): NumberProperty =>
           shouldNeverHappen(
             'Num.raw encode is not supported. Use NumberWrite / NumberWriteFromNumber.',
           ),
@@ -89,9 +89,9 @@ export const Num = {
     schema: NumberProperty.pipe(
       Schema.decodeTo(
         Schema.Option(Schema.Number),
-        SchemaTransformation.transform({
+        SchemaTransformation.transform<Option.Option<number>, NumberProperty>({
           decode: (prop) => (prop.number === null ? Option.none() : Option.some(prop.number)),
-          encode: () =>
+          encode: (): NumberProperty =>
             shouldNeverHappen(
               'Num.asOption encode is not supported. Use NumberWrite / NumberWriteFromNumber.',
             ),
@@ -104,14 +104,14 @@ export const Num = {
   /** Transform to required number (fails if null). */
   asNumber: NumberProperty.pipe(
     Schema.refine((p): p is typeof p & { number: number } => p.number !== null, {
-      message: () => 'Number is required',
+      message: 'Number is required',
     }),
   ).pipe(
     Schema.decodeTo(
       Schema.Number,
-      SchemaTransformation.transform({
+      SchemaTransformation.transform<number, NumberProperty & { number: number }>({
         decode: (prop) => prop.number,
-        encode: () =>
+        encode: (): NumberProperty & { number: number } =>
           shouldNeverHappen(
             'Num.asNumber encode is not supported. Use NumberWrite / NumberWriteFromNumber.',
           ),

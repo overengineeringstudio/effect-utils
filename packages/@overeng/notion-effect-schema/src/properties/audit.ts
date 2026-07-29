@@ -41,9 +41,9 @@ export const CreatedTime = {
   raw: CreatedTimeProperty.pipe(
     Schema.decodeTo(
       Schema.String,
-      SchemaTransformation.transform({
+      SchemaTransformation.transform<string, CreatedTimeProperty>({
         decode: (prop) => prop.created_time,
-        encode: () =>
+        encode: (): CreatedTimeProperty =>
           shouldNeverHappen('CreatedTime.raw encode is not supported (created_time is read-only).'),
       }),
     ),
@@ -53,9 +53,9 @@ export const CreatedTime = {
   asDate: CreatedTimeProperty.pipe(
     Schema.decodeTo(
       Schema.Date,
-      SchemaTransformation.transform({
+      SchemaTransformation.transform<Date, CreatedTimeProperty>({
         decode: (prop) => new Date(prop.created_time),
-        encode: () =>
+        encode: (): CreatedTimeProperty =>
           shouldNeverHappen(
             'CreatedTime.asDate encode is not supported (created_time is read-only).',
           ),
@@ -101,9 +101,9 @@ export const CreatedBy = {
   raw: CreatedByProperty.pipe(
     Schema.decodeTo(
       PartialUser,
-      SchemaTransformation.transform({
+      SchemaTransformation.transform<PartialUser, CreatedByProperty>({
         decode: (prop) => prop.created_by,
-        encode: () =>
+        encode: (): CreatedByProperty =>
           shouldNeverHappen('CreatedBy.raw encode is not supported (created_by is read-only).'),
       }),
     ),
@@ -113,9 +113,9 @@ export const CreatedBy = {
   asId: CreatedByProperty.pipe(
     Schema.decodeTo(
       Schema.String,
-      SchemaTransformation.transform({
+      SchemaTransformation.transform<string, CreatedByProperty>({
         decode: (prop) => prop.created_by.id,
-        encode: () =>
+        encode: (): CreatedByProperty =>
           shouldNeverHappen('CreatedBy.asId encode is not supported (created_by is read-only).'),
       }),
     ),
@@ -160,9 +160,9 @@ export const LastEditedTime = {
   raw: LastEditedTimeProperty.pipe(
     Schema.decodeTo(
       Schema.String,
-      SchemaTransformation.transform({
+      SchemaTransformation.transform<string, LastEditedTimeProperty>({
         decode: (prop) => prop.last_edited_time,
-        encode: () =>
+        encode: (): LastEditedTimeProperty =>
           shouldNeverHappen(
             'LastEditedTime.raw encode is not supported (last_edited_time is read-only).',
           ),
@@ -174,9 +174,9 @@ export const LastEditedTime = {
   asDate: LastEditedTimeProperty.pipe(
     Schema.decodeTo(
       Schema.Date,
-      SchemaTransformation.transform({
+      SchemaTransformation.transform<Date, LastEditedTimeProperty>({
         decode: (prop) => new Date(prop.last_edited_time),
-        encode: () =>
+        encode: (): LastEditedTimeProperty =>
           shouldNeverHappen(
             'LastEditedTime.asDate encode is not supported (last_edited_time is read-only).',
           ),
@@ -222,9 +222,9 @@ export const LastEditedBy = {
   raw: LastEditedByProperty.pipe(
     Schema.decodeTo(
       PartialUser,
-      SchemaTransformation.transform({
+      SchemaTransformation.transform<PartialUser, LastEditedByProperty>({
         decode: (prop) => prop.last_edited_by,
-        encode: () =>
+        encode: (): LastEditedByProperty =>
           shouldNeverHappen(
             'LastEditedBy.raw encode is not supported (last_edited_by is read-only).',
           ),
@@ -236,9 +236,9 @@ export const LastEditedBy = {
   asId: LastEditedByProperty.pipe(
     Schema.decodeTo(
       Schema.String,
-      SchemaTransformation.transform({
+      SchemaTransformation.transform<string, LastEditedByProperty>({
         decode: (prop) => prop.last_edited_by.id,
-        encode: () =>
+        encode: (): LastEditedByProperty =>
           shouldNeverHappen(
             'LastEditedBy.asId encode is not supported (last_edited_by is read-only).',
           ),
