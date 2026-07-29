@@ -7,8 +7,7 @@ import { bytesToHex } from '@noble/hashes/utils.js'
 import { Effect, Schema } from 'effect'
 
 /** Branded SHA-256 content digest in lowercase-hex `sha256:<64 hex>` form. */
-export const ContentDigest = Schema.String.check(
-  Schema.check(Schema.isPattern(/^sha256:[a-f0-9]{64}$/)),
+export const ContentDigest = Schema.String.check(Schema.isPattern(/^sha256:[a-f0-9]{64}$/)).pipe(
   Schema.brand('ContentAddress.ContentDigest'),
   Schema.annotate({ identifier: 'ContentAddress.ContentDigest' }),
 )
@@ -16,7 +15,8 @@ export type ContentDigest = typeof ContentDigest.Type
 
 /** Location-independent CAS retrieval URI in `cas:sha256/<byte>/<rest>` form. */
 export const CasUri = Schema.String.check(
-  Schema.check(Schema.isPattern(/^cas:sha256\/[a-f0-9]{2}\/[a-f0-9]{62}$/)),
+  Schema.isPattern(/^cas:sha256\/[a-f0-9]{2}\/[a-f0-9]{62}$/),
+).pipe(
   Schema.brand('ContentAddress.CasUri'),
   Schema.annotate({ identifier: 'ContentAddress.CasUri' }),
 )
@@ -273,7 +273,7 @@ const canonicalizeJson = (value: unknown): string => {
 }
 
 /** Encode `value` and render it as canonical JSON with object keys sorted, for stable hashing across key-insertion order. */
-export const canonicalJsonString = <TSchema extends Schema.Schema.AnyNoContext>({
+export const canonicalJsonString = <TSchema extends Schema.Codec<any, any, never, never>>({
   schema,
   value,
 }: {
@@ -282,7 +282,7 @@ export const canonicalJsonString = <TSchema extends Schema.Schema.AnyNoContext>(
 }): string => canonicalizeJson(Schema.encodeSync(schema)(value))
 
 /** UTF-8 bytes of {@link canonicalJsonString} — the exact bytes that get hashed. */
-export const canonicalJsonBytes = <TSchema extends Schema.Schema.AnyNoContext>({
+export const canonicalJsonBytes = <TSchema extends Schema.Codec<any, any, never, never>>({
   schema,
   value,
 }: {
@@ -291,7 +291,7 @@ export const canonicalJsonBytes = <TSchema extends Schema.Schema.AnyNoContext>({
 }): Uint8Array => utf8Bytes(canonicalJsonString({ schema, value }))
 
 /** Content digest of a value's canonical-JSON encoding; stable regardless of object key order. */
-export const hashCanonicalJson = <TSchema extends Schema.Schema.AnyNoContext>({
+export const hashCanonicalJson = <TSchema extends Schema.Codec<any, any, never, never>>({
   schema,
   value,
 }: {
@@ -340,7 +340,7 @@ export const descriptorForUtf8 = ({
   })
 
 /** Build a descriptor for a value's canonical-JSON encoding; stamps the canonical-JSON codec and media type and requires an explicit `schemaVersion`. */
-export const descriptorForCanonicalJson = <TSchema extends Schema.Schema.AnyNoContext>({
+export const descriptorForCanonicalJson = <TSchema extends Schema.Codec<any, any, never, never>>({
   schema,
   value,
   schemaVersion,

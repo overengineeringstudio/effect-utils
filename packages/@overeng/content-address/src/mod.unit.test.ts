@@ -40,6 +40,7 @@ import {
 const Payload = Schema.Struct({
   alpha: Schema.String,
   nested: Schema.Struct({
+    // @effect-diagnostics-next-line schemaNumber:off -- this test preserves the existing unrestricted-number codec contract; narrowing it to finite numbers would be a behavior change.
     zed: Schema.Number,
     beta: Schema.Array(Schema.String),
   }),
@@ -59,6 +60,7 @@ describe('@overeng/content-address', () => {
     // Keys where locale order diverges from code-unit order: en-US collation sorts
     // 'a' before 'B', but UTF-16 code units put 'B' (66) before 'a' (97). A
     // locale-sensitive comparator would canonicalize this differently per machine.
+    // @effect-diagnostics-next-line schemaNumber:off -- canonical JSON ordering is under test, and narrowing the existing arbitrary-number value schema would change the accepted input domain.
     const Record = Schema.Record(Schema.String, Schema.Number)
     const rendered = canonicalJsonString({ schema: Record, value: { a: 1, B: 0 } })
 
@@ -89,11 +91,11 @@ describe('@overeng/content-address', () => {
       Effect.runPromise(verifyDescriptor({ descriptor, bytes: utf8Bytes('hello') })),
     ).resolves.toBeUndefined()
     const mismatch = await Effect.runPromise(
-      verifyDescriptor({ descriptor, bytes: utf8Bytes('HELLO') }).pipe(Effect.either),
+      verifyDescriptor({ descriptor, bytes: utf8Bytes('HELLO') }).pipe(Effect.result),
     )
-    expect(mismatch._tag).toBe('Left')
-    if (mismatch._tag === 'Left') {
-      expect(mismatch.left).toBeInstanceOf(ContentDescriptorMismatchError)
+    expect(mismatch._tag).toBe('Failure')
+    if (mismatch._tag === 'Failure') {
+      expect(mismatch.failure).toBeInstanceOf(ContentDescriptorMismatchError)
     }
   })
 
@@ -138,12 +140,12 @@ describe('@overeng/content-address', () => {
       )
 
       const mismatch = await Effect.runPromise(
-        resolveCasUri({ store, uri: casUriForDescriptor(other), descriptor }).pipe(Effect.either),
+        resolveCasUri({ store, uri: casUriForDescriptor(other), descriptor }).pipe(Effect.result),
       )
 
-      expect(mismatch._tag).toBe('Left')
-      if (mismatch._tag === 'Left') {
-        expect(mismatch.left).toBeInstanceOf(CasUriDescriptorMismatchError)
+      expect(mismatch._tag).toBe('Failure')
+      if (mismatch._tag === 'Failure') {
+        expect(mismatch.failure).toBeInstanceOf(CasUriDescriptorMismatchError)
       }
     } finally {
       await rm(root, { recursive: true, force: true })
@@ -159,12 +161,12 @@ describe('@overeng/content-address', () => {
       )
 
       const invalid = await Effect.runPromise(
-        resolveCasUri({ store, uri: 'cas:sha256/aa/not-enough', descriptor }).pipe(Effect.either),
+        resolveCasUri({ store, uri: 'cas:sha256/aa/not-enough', descriptor }).pipe(Effect.result),
       )
 
-      expect(invalid._tag).toBe('Left')
-      if (invalid._tag === 'Left') {
-        expect(invalid.left).toBeInstanceOf(InvalidCasUriError)
+      expect(invalid._tag).toBe('Failure')
+      if (invalid._tag === 'Failure') {
+        expect(invalid.failure).toBeInstanceOf(InvalidCasUriError)
       }
     } finally {
       await rm(root, { recursive: true, force: true })
@@ -180,21 +182,21 @@ describe('@overeng/content-address', () => {
       )
 
       const unsupportedScheme = await Effect.runPromise(
-        resolveCasUri({ store, uri: 'file:///tmp/profile', descriptor }).pipe(Effect.either),
+        resolveCasUri({ store, uri: 'file:///tmp/profile', descriptor }).pipe(Effect.result),
       )
       const unsupportedAlgorithm = await Effect.runPromise(
         resolveCasUri({ store, uri: `cas:blake3/${'a'.repeat(64)}`, descriptor }).pipe(
-          Effect.either,
+          Effect.result,
         ),
       )
 
-      expect(unsupportedScheme._tag).toBe('Left')
-      if (unsupportedScheme._tag === 'Left') {
-        expect(unsupportedScheme.left).toBeInstanceOf(UnsupportedCasSchemeError)
+      expect(unsupportedScheme._tag).toBe('Failure')
+      if (unsupportedScheme._tag === 'Failure') {
+        expect(unsupportedScheme.failure).toBeInstanceOf(UnsupportedCasSchemeError)
       }
-      expect(unsupportedAlgorithm._tag).toBe('Left')
-      if (unsupportedAlgorithm._tag === 'Left') {
-        expect(unsupportedAlgorithm.left).toBeInstanceOf(UnsupportedDigestAlgorithmError)
+      expect(unsupportedAlgorithm._tag).toBe('Failure')
+      if (unsupportedAlgorithm._tag === 'Failure') {
+        expect(unsupportedAlgorithm.failure).toBeInstanceOf(UnsupportedDigestAlgorithmError)
       }
     } finally {
       await rm(root, { recursive: true, force: true })
@@ -210,12 +212,12 @@ describe('@overeng/content-address', () => {
       )
 
       const invalid = await Effect.runPromise(
-        resolveCasUri({ store, uri: 'cas:sha256/not-enough', descriptor }).pipe(Effect.either),
+        resolveCasUri({ store, uri: 'cas:sha256/not-enough', descriptor }).pipe(Effect.result),
       )
 
-      expect(invalid._tag).toBe('Left')
-      if (invalid._tag === 'Left') {
-        expect(invalid.left).toBeInstanceOf(InvalidCasUriError)
+      expect(invalid._tag).toBe('Failure')
+      if (invalid._tag === 'Failure') {
+        expect(invalid.failure).toBeInstanceOf(InvalidCasUriError)
       }
     } finally {
       await rm(root, { recursive: true, force: true })
@@ -259,26 +261,26 @@ describe('@overeng/content-address', () => {
         putBytes({ store, bytes: utf8Bytes('profile'), mediaType: 'application/octet-stream' }),
       )
       const unsafe = await Effect.runPromise(
-        pinManifest({ store, name: '../escape', manifestDescriptor: artifact }).pipe(Effect.either),
+        pinManifest({ store, name: '../escape', manifestDescriptor: artifact }).pipe(Effect.result),
       )
       const dot = await Effect.runPromise(
-        pinManifest({ store, name: '.', manifestDescriptor: artifact }).pipe(Effect.either),
+        pinManifest({ store, name: '.', manifestDescriptor: artifact }).pipe(Effect.result),
       )
       const dotted = await Effect.runPromise(
-        pinManifest({ store, name: 'runs/.', manifestDescriptor: artifact }).pipe(Effect.either),
+        pinManifest({ store, name: 'runs/.', manifestDescriptor: artifact }).pipe(Effect.result),
       )
 
-      expect(unsafe._tag).toBe('Left')
-      if (unsafe._tag === 'Left') {
-        expect(unsafe.left).toBeInstanceOf(UnsafePinNameError)
+      expect(unsafe._tag).toBe('Failure')
+      if (unsafe._tag === 'Failure') {
+        expect(unsafe.failure).toBeInstanceOf(UnsafePinNameError)
       }
-      expect(dot._tag).toBe('Left')
-      if (dot._tag === 'Left') {
-        expect(dot.left).toBeInstanceOf(UnsafePinNameError)
+      expect(dot._tag).toBe('Failure')
+      if (dot._tag === 'Failure') {
+        expect(dot.failure).toBeInstanceOf(UnsafePinNameError)
       }
-      expect(dotted._tag).toBe('Left')
-      if (dotted._tag === 'Left') {
-        expect(dotted.left).toBeInstanceOf(UnsafePinNameError)
+      expect(dotted._tag).toBe('Failure')
+      if (dotted._tag === 'Failure') {
+        expect(dotted.failure).toBeInstanceOf(UnsafePinNameError)
       }
     } finally {
       await rm(root, { recursive: true, force: true })
@@ -314,13 +316,13 @@ describe('@overeng/content-address', () => {
       )
       const invalidPin = await Effect.runPromise(
         pinManifest({ store, name: 'runs/run-1', manifestDescriptor: artifact }).pipe(
-          Effect.either,
+          Effect.result,
         ),
       )
 
-      expect(invalidPin._tag).toBe('Left')
-      if (invalidPin._tag === 'Left') {
-        expect(invalidPin.left).toBeInstanceOf(InvalidManifestDescriptorError)
+      expect(invalidPin._tag).toBe('Failure')
+      if (invalidPin._tag === 'Failure') {
+        expect(invalidPin.failure).toBeInstanceOf(InvalidManifestDescriptorError)
       }
     } finally {
       await rm(root, { recursive: true, force: true })
@@ -344,13 +346,13 @@ describe('@overeng/content-address', () => {
 
       const invalidPin = await Effect.runPromise(
         pinManifest({ store, name: 'runs/run-1', manifestDescriptor: missingDescriptor }).pipe(
-          Effect.either,
+          Effect.result,
         ),
       )
 
-      expect(invalidPin._tag).toBe('Left')
-      if (invalidPin._tag === 'Left') {
-        expect(invalidPin.left).toBeInstanceOf(ContentObjectMissingError)
+      expect(invalidPin._tag).toBe('Failure')
+      if (invalidPin._tag === 'Failure') {
+        expect(invalidPin.failure).toBeInstanceOf(ContentObjectMissingError)
       }
     } finally {
       await rm(root, { recursive: true, force: true })
@@ -376,12 +378,12 @@ describe('@overeng/content-address', () => {
           store,
           name: 'runs/run-1',
           manifestDescriptor: malformedManifestDescriptor,
-        }).pipe(Effect.either),
+        }).pipe(Effect.result),
       )
 
-      expect(invalidPin._tag).toBe('Left')
-      if (invalidPin._tag === 'Left') {
-        expect(invalidPin.left).toBeInstanceOf(InvalidManifestRecordError)
+      expect(invalidPin._tag).toBe('Failure')
+      if (invalidPin._tag === 'Failure') {
+        expect(invalidPin.failure).toBeInstanceOf(InvalidManifestRecordError)
       }
     } finally {
       await rm(root, { recursive: true, force: true })
@@ -414,12 +416,12 @@ describe('@overeng/content-address', () => {
           store,
           name: 'runs/run-1',
           manifestDescriptor: nonCanonicalManifestDescriptor,
-        }).pipe(Effect.either),
+        }).pipe(Effect.result),
       )
 
-      expect(invalidPin._tag).toBe('Left')
-      if (invalidPin._tag === 'Left') {
-        expect(invalidPin.left).toBeInstanceOf(InvalidManifestRecordError)
+      expect(invalidPin._tag).toBe('Failure')
+      if (invalidPin._tag === 'Failure') {
+        expect(invalidPin.failure).toBeInstanceOf(InvalidManifestRecordError)
       }
     } finally {
       await rm(root, { recursive: true, force: true })
