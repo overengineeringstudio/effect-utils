@@ -21,6 +21,12 @@ export default pnpmWorkspaceYaml.root({
         '@opentui/core@0.4.1 exact-pins string-width@7.2.0; not force-overridden because string-width 8 changes emoji/wide-char width logic that the TUI renderer relies on',
       issue: '#821',
     },
+    {
+      package: '@opentelemetry/semantic-conventions',
+      versions: ['1.43.0', '1.41.1'],
+      reason:
+        '@effect/opentelemetry@4.0.0-beta.102 resolves semconv 1.43.0 in some injected workspace peer snapshots while the OTEL SDK cohort stays pinned to 1.41.1',
+    },
   ],
   ...commonPnpmWorkspaceData,
 })

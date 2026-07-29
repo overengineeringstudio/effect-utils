@@ -16,6 +16,10 @@ describe('parseVersion', () => {
   it('handles two-part versions', () => {
     expect(parseVersion('3.19')).toEqual([3, 19, 0])
   })
+
+  it('ignores prerelease suffixes for catalog peer range validation', () => {
+    expect(parseVersion('4.0.0-beta.102')).toEqual([4, 0, 0])
+  })
 })
 
 describe('satisfiesRange', () => {
@@ -43,6 +47,7 @@ describe('satisfiesRange', () => {
         expect(satisfiesRange('3.21.0', '^3.19.15')).toBe(true)
         expect(satisfiesRange('3.21.0', '^3.21.0')).toBe(true)
         expect(satisfiesRange('3.99.0', '^3.0.0')).toBe(true)
+        expect(satisfiesRange('4.0.0-beta.102', '^4.0.0-beta.102')).toBe(true)
       })
 
       it('does not satisfy across major', () => {
