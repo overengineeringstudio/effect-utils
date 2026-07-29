@@ -2,17 +2,7 @@ import * as fs from 'node:fs'
 import path from 'node:path'
 import util from 'node:util'
 
-import {
-  Cause,
-  Effect,
-  HashMap,
-  Inspectable,
-  Layer,
-  List,
-  Logger,
-  type LogLevel,
-  LogSpan,
-} from 'effect'
+import { Cause, Effect, HashMap, Inspectable, Layer, Logger, type LogLevel } from 'effect'
 import * as EffectArray from 'effect/Array'
 
 const formatFiberId = (fiberId: unknown): string =>
@@ -189,11 +179,10 @@ export const prettyLoggerTty = (options: {
         ` ${color(logLevel.label, ...logLevelColors[logLevel._tag])}` +
         ` (${formatFiberId(fiberId)})`
 
-      if (List.isCons(spans) === true) {
+      if (spans.length > 0) {
         const now = date.getTime()
-        const render = LogSpan.render(now)
-        for (const span of spans) {
-          firstLine += ` ${render(span)}`
+        for (const [label, timestamp] of spans) {
+          firstLine += ` ${label} (${now - timestamp}ms)`
         }
       }
 

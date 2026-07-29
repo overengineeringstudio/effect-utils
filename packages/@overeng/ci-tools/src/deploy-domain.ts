@@ -11,27 +11,27 @@ import {
 } from './deploy-domain.contract.ts'
 import type { WorkflowReportRecord } from './mod.ts'
 
-export const DeployProvider = Schema.Literal('netlify', 'vercel').annotations({
+export const DeployProvider = Schema.Literal('netlify', 'vercel').annotate({
   identifier: 'CiTools.Deploy.Provider',
 })
 export type DeployProvider = typeof DeployProvider.Type
 
-export const DeployMode = Schema.Literal('prod', 'pr', 'draft', 'preview').annotations({
+export const DeployMode = Schema.Literal('prod', 'pr', 'draft', 'preview').annotate({
   identifier: 'CiTools.Deploy.Mode',
 })
 export type DeployMode = typeof DeployMode.Type
 
-export const DeployStatus = Schema.Literal('success', 'failure', 'skipped').annotations({
+export const DeployStatus = Schema.Literal('success', 'failure', 'skipped').annotate({
   identifier: 'CiTools.Deploy.Status',
 })
 export type DeployStatus = typeof DeployStatus.Type
 
-export const MissingAuthPolicy = Schema.Literal('fail', 'skip').annotations({
+export const MissingAuthPolicy = Schema.Literal('fail', 'skip').annotate({
   identifier: 'CiTools.Deploy.MissingAuthPolicy',
 })
 export type MissingAuthPolicy = typeof MissingAuthPolicy.Type
 
-export const UnauthorizedPolicy = Schema.Literal('fail', 'skip').annotations({
+export const UnauthorizedPolicy = Schema.Literal('fail', 'skip').annotate({
   identifier: 'CiTools.Deploy.UnauthorizedPolicy',
 })
 export type UnauthorizedPolicy = typeof UnauthorizedPolicy.Type
@@ -39,39 +39,39 @@ export type UnauthorizedPolicy = typeof UnauthorizedPolicy.Type
 export const PositiveInt = Schema.Number.pipe(
   Schema.int(),
   Schema.positive(),
-  Schema.annotations({ identifier: 'CiTools.Deploy.PositiveInt' }),
+  Schema.annotate({ identifier: 'CiTools.Deploy.PositiveInt' }),
 )
 export type PositiveInt = typeof PositiveInt.Type
 
-export const DeployTarget = Schema.NonEmptyTrimmedString.pipe(
-  Schema.pattern(/^[A-Za-z0-9._/-]+$/u),
-  Schema.annotations({ identifier: 'CiTools.Deploy.Target' }),
+export const DeployTarget = Schema.NonEmptyTrimmedString.check(
+  Schema.isPattern(/^[A-Za-z0-9._/-]+$/u),
+  Schema.annotate({ identifier: 'CiTools.Deploy.Target' }),
 )
 export type DeployTarget = typeof DeployTarget.Type
 
-export const DeployAlias = Schema.NonEmptyTrimmedString.pipe(
-  Schema.pattern(/^[a-z0-9][a-z0-9-]{0,62}$/u),
-  Schema.annotations({ identifier: 'CiTools.Deploy.Alias' }),
+export const DeployAlias = Schema.NonEmptyTrimmedString.check(
+  Schema.isPattern(/^[a-z0-9][a-z0-9-]{0,62}$/u),
+  Schema.annotate({ identifier: 'CiTools.Deploy.Alias' }),
 )
 export type DeployAlias = typeof DeployAlias.Type
 
-export const DeployHostname = Schema.NonEmptyTrimmedString.pipe(
-  Schema.pattern(
+export const DeployHostname = Schema.NonEmptyTrimmedString.check(
+  Schema.isPattern(
     /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/u,
   ),
-  Schema.annotations({ identifier: 'CiTools.Deploy.Hostname' }),
+  Schema.annotate({ identifier: 'CiTools.Deploy.Hostname' }),
 )
 export type DeployHostname = typeof DeployHostname.Type
 
-export const EnvVarName = Schema.NonEmptyTrimmedString.pipe(
-  Schema.pattern(/^[A-Z_][A-Z0-9_]*$/u),
-  Schema.annotations({ identifier: 'CiTools.Deploy.EnvVarName' }),
+export const EnvVarName = Schema.NonEmptyTrimmedString.check(
+  Schema.isPattern(/^[A-Z_][A-Z0-9_]*$/u),
+  Schema.annotate({ identifier: 'CiTools.Deploy.EnvVarName' }),
 )
 export type EnvVarName = typeof EnvVarName.Type
 
-export const RelativeHttpPath = Schema.NonEmptyTrimmedString.pipe(
-  Schema.pattern(/^\/(?!\/)/u),
-  Schema.annotations({ identifier: 'CiTools.Deploy.RelativeHttpPath' }),
+export const RelativeHttpPath = Schema.NonEmptyTrimmedString.check(
+  Schema.isPattern(/^\/(?!\/)/u),
+  Schema.annotate({ identifier: 'CiTools.Deploy.RelativeHttpPath' }),
 )
 export type RelativeHttpPath = typeof RelativeHttpPath.Type
 
@@ -79,14 +79,14 @@ export const HttpsUrl = Schema.URL.pipe(
   Schema.filter((url) => url.protocol === 'https:', {
     message: () => 'URL must use https:',
   }),
-  Schema.annotations({ identifier: 'CiTools.Deploy.HttpsUrl' }),
+  Schema.annotate({ identifier: 'CiTools.Deploy.HttpsUrl' }),
 )
 export type HttpsUrl = typeof HttpsUrl.Type
 
 export const DeployDiagnostic = Schema.Record({
   key: Schema.NonEmptyTrimmedString,
   value: Schema.NonEmptyTrimmedString,
-}).annotations({ identifier: 'CiTools.Deploy.Diagnostic' })
+}).annotate({ identifier: 'CiTools.Deploy.Diagnostic' })
 export type DeployDiagnostic = typeof DeployDiagnostic.Type
 
 export const NetlifyProviderConfig = Schema.TaggedStruct('NetlifyProviderConfig', {
@@ -95,7 +95,7 @@ export const NetlifyProviderConfig = Schema.TaggedStruct('NetlifyProviderConfig'
   authTokenEnv: EnvVarName,
   accountSlugEnv: Schema.optional(EnvVarName),
   apiBaseUrlEnv: Schema.optional(EnvVarName),
-}).annotations({ identifier: 'CiTools.Deploy.NetlifyProviderConfig' })
+}).annotate({ identifier: 'CiTools.Deploy.NetlifyProviderConfig' })
 export type NetlifyProviderConfig = typeof NetlifyProviderConfig.Type
 
 export const VercelProviderConfig = Schema.TaggedStruct('VercelProviderConfig', {
@@ -105,13 +105,13 @@ export const VercelProviderConfig = Schema.TaggedStruct('VercelProviderConfig', 
   teamIdEnv: Schema.optional(EnvVarName),
   scopeEnv: Schema.optional(EnvVarName),
   protectionBypassEnv: Schema.optional(EnvVarName),
-}).annotations({ identifier: 'CiTools.Deploy.VercelProviderConfig' })
+}).annotate({ identifier: 'CiTools.Deploy.VercelProviderConfig' })
 export type VercelProviderConfig = typeof VercelProviderConfig.Type
 
 export const DeployProviderConfig = Schema.Union(
   NetlifyProviderConfig,
   VercelProviderConfig,
-).annotations({ identifier: 'CiTools.Deploy.ProviderConfig' })
+).annotate({ identifier: 'CiTools.Deploy.ProviderConfig' })
 export type DeployProviderConfig = typeof DeployProviderConfig.Type
 
 export const DeployE2EConfig = Schema.TaggedStruct('DeployE2EConfig', {
@@ -122,9 +122,9 @@ export const DeployE2EConfig = Schema.TaggedStruct('DeployE2EConfig', {
     Schema.TaggedStruct('DeployVerifyContent', {
       path: RelativeHttpPath,
       expectedText: Schema.NonEmptyTrimmedString,
-    }).annotations({ identifier: 'CiTools.Deploy.VerifyContent' }),
+    }).annotate({ identifier: 'CiTools.Deploy.VerifyContent' }),
   ),
-}).annotations({ identifier: 'CiTools.Deploy.E2EConfig' })
+}).annotate({ identifier: 'CiTools.Deploy.E2EConfig' })
 export type DeployE2EConfig = typeof DeployE2EConfig.Type
 
 export const DeployInputV1 = Schema.TaggedStruct('DeployInput', {
@@ -142,13 +142,13 @@ export const DeployInputV1 = Schema.TaggedStruct('DeployInput', {
   workflowReportOutputFile: Schema.optional(Schema.NonEmptyTrimmedString),
   e2e: Schema.optional(DeployE2EConfig),
   providerConfig: DeployProviderConfig,
-}).annotations({ identifier: 'CiTools.Deploy.InputV1' })
+}).annotate({ identifier: 'CiTools.Deploy.InputV1' })
 export type DeployInputV1 = typeof DeployInputV1.Type
 
 export const CleanupResult = Schema.TaggedStruct('CleanupResult', {
   status: Schema.Literal('succeeded', 'failed', 'skipped'),
   message: Schema.optional(Schema.NonEmptyTrimmedString),
-}).annotations({ identifier: 'CiTools.Deploy.CleanupResult' })
+}).annotate({ identifier: 'CiTools.Deploy.CleanupResult' })
 export type CleanupResult = typeof CleanupResult.Type
 
 export const DeployResultV1 = Schema.TaggedStruct('DeployResult', {
@@ -165,7 +165,7 @@ export const DeployResultV1 = Schema.TaggedStruct('DeployResult', {
   endedAtUtc: Schema.DateTimeUtc,
   attempts: PositiveInt,
   cleanup: Schema.optional(CleanupResult),
-}).annotations({ identifier: 'CiTools.Deploy.ResultV1' })
+}).annotate({ identifier: 'CiTools.Deploy.ResultV1' })
 export type DeployResultV1 = typeof DeployResultV1.Type
 
 const encodeDateTimeUtc = Schema.encodeSync(Schema.DateTimeUtc)
@@ -312,7 +312,7 @@ export const DeployFailure = Schema.Union(
   ProviderOperationFailed,
   UnsafeE2EAlias,
   VerificationFailed,
-).annotations({ identifier: 'CiTools.Deploy.Failure' })
+).annotate({ identifier: 'CiTools.Deploy.Failure' })
 export type DeployFailure = typeof DeployFailure.Type
 
 export const deployFailureRetryability = (failure: DeployFailure): boolean => {
@@ -338,23 +338,23 @@ export type DeployRecordContext = {
 const DeployWorkflowReportSubject = Schema.Struct({
   id: Schema.NonEmptyTrimmedString,
   label: Schema.optional(Schema.NonEmptyTrimmedString),
-}).annotations({ identifier: 'CiTools.Deploy.WorkflowReportSubject' })
+}).annotate({ identifier: 'CiTools.Deploy.WorkflowReportSubject' })
 
-const DeployWorkflowReportHttpsUrlString = Schema.NonEmptyTrimmedString.pipe(
-  Schema.pattern(/^https:\/\/[^\s]+$/u),
-  Schema.annotations({ identifier: 'CiTools.Deploy.WorkflowReportHttpsUrlString' }),
+const DeployWorkflowReportHttpsUrlString = Schema.NonEmptyTrimmedString.check(
+  Schema.isPattern(/^https:\/\/[^\s]+$/u),
+  Schema.annotate({ identifier: 'CiTools.Deploy.WorkflowReportHttpsUrlString' }),
 )
 
 const DeployWorkflowReportLink = Schema.Struct({
   label: Schema.NonEmptyTrimmedString,
   url: DeployWorkflowReportHttpsUrlString,
   primary: Schema.optional(Schema.Boolean),
-}).annotations({ identifier: 'CiTools.Deploy.WorkflowReportLink' })
+}).annotate({ identifier: 'CiTools.Deploy.WorkflowReportLink' })
 
 const DeployWorkflowReportRecordData = Schema.Record({
   key: Schema.NonEmptyTrimmedString,
   value: Schema.Unknown,
-}).annotations({ identifier: 'CiTools.Deploy.WorkflowReportRecordData' })
+}).annotate({ identifier: 'CiTools.Deploy.WorkflowReportRecordData' })
 
 const DeployWorkflowReportRecord = Schema.TaggedStruct('WorkflowReportRecord', {
   schemaVersion: Schema.Literal(1),
@@ -364,12 +364,12 @@ const DeployWorkflowReportRecord = Schema.TaggedStruct('WorkflowReportRecord', {
   status: Schema.Literal('success', 'failure', 'skipped', 'neutral'),
   title: Schema.NonEmptyTrimmedString,
   summary: Schema.optional(Schema.String),
-  createdAtUtc: Schema.NonEmptyTrimmedString.pipe(
-    Schema.pattern(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u),
+  createdAtUtc: Schema.NonEmptyTrimmedString.check(
+    Schema.isPattern(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u),
   ),
   links: Schema.optional(Schema.Array(DeployWorkflowReportLink)),
   data: Schema.optional(DeployWorkflowReportRecordData),
-}).annotations({ identifier: 'CiTools.Deploy.WorkflowReportRecord' })
+}).annotate({ identifier: 'CiTools.Deploy.WorkflowReportRecord' })
 
 const validateWorkflowReportRecord = (record: WorkflowReportRecord): WorkflowReportRecord =>
   Schema.decodeUnknownSync(DeployWorkflowReportRecord)(record) as WorkflowReportRecord
@@ -515,13 +515,13 @@ export const DeploySpanName = Schema.Literal(
   'ci-tools.deploy.attempt',
   'ci-tools.deploy.verify',
   'ci-tools.deploy.cleanup',
-).annotations({ identifier: 'CiTools.Deploy.SpanName' })
+).annotate({ identifier: 'CiTools.Deploy.SpanName' })
 export type DeploySpanName = typeof DeploySpanName.Type
 
 export const DeploySpanAttributes = Schema.Struct({
   'span.label': Schema.NonEmptyTrimmedString.pipe(
     Schema.maxLength(40),
-    Schema.annotations({ identifier: 'CiTools.Deploy.SpanLabel' }),
+    Schema.annotate({ identifier: 'CiTools.Deploy.SpanLabel' }),
   ),
   'ci_tools.deploy.provider': DeployProvider,
   'ci_tools.deploy.target': DeployTarget,
@@ -536,7 +536,7 @@ export const DeploySpanAttributes = Schema.Struct({
     Schema.Literal('succeeded', 'failed', 'skipped'),
   ),
   'ci_tools.deploy.url_host': Schema.optional(Schema.NonEmptyTrimmedString),
-}).annotations({ identifier: 'CiTools.Deploy.SpanAttributes' })
+}).annotate({ identifier: 'CiTools.Deploy.SpanAttributes' })
 export type DeploySpanAttributes = typeof DeploySpanAttributes.Type
 
 const shortSpanLabel = (value: string) => value.slice(0, 40)

@@ -13,8 +13,8 @@
  */
 
 import { OtlpSerialization, OtlpTracer, Tracer } from '@effect/opentelemetry'
-import { FetchHttpClient } from 'effect'
 import { Effect, Layer, Schema } from 'effect'
+import { FetchHttpClient } from 'effect/unstable/http'
 
 /**
  * Minimal parent span context needed to join an existing trace across process boundaries.
@@ -28,7 +28,7 @@ import { Effect, Layer, Schema } from 'effect'
 export const ParentSpanContextSchema = Schema.Struct({
   traceId: Schema.String,
   spanId: Schema.String,
-}).annotations({ identifier: 'ParentSpanContext' })
+}).annotate({ identifier: 'ParentSpanContext' })
 
 export type ParentSpanContext = typeof ParentSpanContextSchema.Type
 

@@ -5,9 +5,10 @@
 import { basename } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { Args, Command, Options } from '@effect/cli'
-import { FetchHttpClient, FileSystem } from 'effect'
+import { FileSystem } from 'effect'
 import { Effect, Layer, Option, Schema } from 'effect'
+import { Argument as Args, Command, Flag as Options } from 'effect/unstable/cli'
+import { FetchHttpClient } from 'effect/unstable/http'
 import React from 'react'
 
 import { EffectPath } from '@overeng/effect-path'
@@ -81,7 +82,7 @@ const getGeneratorVersion = Effect.gen(function* () {
 // Generate Command
 // -----------------------------------------------------------------------------
 
-const generateDatabaseIdArg = Args.text({ name: 'database-id' }).pipe(
+const generateDatabaseIdArg = Args.string('database-id').pipe(
   Args.withDescription('The Notion database ID to generate schema from'),
 )
 
@@ -103,7 +104,7 @@ const tuiOutputModeOption = Options.choice('output-mode', OUTPUT_MODE_VALUES).pi
   Options.withDefault('auto' as (typeof OUTPUT_MODE_VALUES)[number]),
 )
 
-const nameOption = Options.text('name').pipe(
+const nameOption = Options.string('name').pipe(
   Options.withAlias('n'),
   Options.withDescription('Name for the generated schema (defaults to database title)'),
   Options.optional,
@@ -317,7 +318,7 @@ export const generateCommand = Command.make(
 // Introspect Command
 // -----------------------------------------------------------------------------
 
-const introspectDatabaseIdArg = Args.text({ name: 'database-id' }).pipe(
+const introspectDatabaseIdArg = Args.string('database-id').pipe(
   Args.withDescription('The Notion database ID to introspect'),
 )
 
@@ -546,7 +547,7 @@ const generateFromConfigCommand = Command.make(
 // Diff Command
 // -----------------------------------------------------------------------------
 
-const diffDatabaseIdArg = Args.text({ name: 'database-id' }).pipe(
+const diffDatabaseIdArg = Args.string('database-id').pipe(
   Args.withDescription('The Notion database ID to compare against'),
 )
 

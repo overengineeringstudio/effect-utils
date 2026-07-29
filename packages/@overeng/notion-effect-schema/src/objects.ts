@@ -22,7 +22,7 @@ export const DatabaseParent = Schema.Union(
     type: Schema.Literal('workspace'),
     workspace: Schema.Literal(true),
   }),
-).annotations({
+).annotate({
   identifier: 'Notion.DatabaseParent',
   [docsPath]: 'database#database-parent',
 })
@@ -60,7 +60,7 @@ export const PageParent = Schema.Union(
     type: Schema.Literal('agent_id'),
     agent_id: NotionUUID,
   }),
-).annotations({
+).annotate({
   identifier: 'Notion.PageParent',
   [docsPath]: 'page#page-parent',
 })
@@ -89,7 +89,7 @@ export const BlockParent = Schema.Union(
     type: Schema.Literal('workspace'),
     workspace: Schema.Literal(true),
   }),
-).annotations({
+).annotate({
   identifier: 'Notion.BlockParent',
   [docsPath]: 'block#block-parent',
 })
@@ -106,7 +106,7 @@ export const ExternalFile = Schema.Struct({
   external: Schema.Struct({
     url: Schema.String,
   }),
-}).annotations({
+}).annotate({
   identifier: 'Notion.ExternalFile',
   [docsPath]: 'file-object',
 })
@@ -120,7 +120,7 @@ export const NotionFile = Schema.Struct({
     url: Schema.String,
     expiry_time: ISO8601DateTime,
   }),
-}).annotations({
+}).annotate({
   identifier: 'Notion.NotionFile',
   [docsPath]: 'file-object',
 })
@@ -128,7 +128,7 @@ export const NotionFile = Schema.Struct({
 export type NotionFile = typeof NotionFile.Type
 
 /** File object (external or Notion-hosted) */
-export const FileObject = Schema.Union(ExternalFile, NotionFile).annotations({
+export const FileObject = Schema.Union(ExternalFile, NotionFile).annotate({
   identifier: 'Notion.FileObject',
   [docsPath]: 'file-object',
 })
@@ -139,7 +139,7 @@ export type FileObject = typeof FileObject.Type
 export const EmojiIcon = Schema.Struct({
   type: Schema.Literal('emoji'),
   emoji: Schema.String,
-}).annotations({
+}).annotate({
   identifier: 'Notion.EmojiIcon',
   [docsPath]: 'emoji-object',
 })
@@ -154,7 +154,7 @@ export const CustomEmojiIcon = Schema.Struct({
     name: Schema.optional(Schema.String),
     url: Schema.optional(Schema.String),
   }),
-}).annotations({
+}).annotate({
   identifier: 'Notion.CustomEmojiIcon',
 })
 
@@ -167,7 +167,7 @@ export const NamedIcon = Schema.Struct({
     name: Schema.String,
     color: NoticonColor,
   }),
-}).annotations({
+}).annotate({
   identifier: 'Notion.NamedIcon',
   [docsPath]: 'icon-object',
 })
@@ -181,7 +181,7 @@ export const Icon = Schema.Union(
   NamedIcon,
   ExternalFile,
   NotionFile,
-).annotations({
+).annotate({
   identifier: 'Notion.Icon',
 })
 
@@ -195,7 +195,7 @@ export type Icon = typeof Icon.Type
 export const DataSourceRef = Schema.Struct({
   id: NotionUUID,
   name: Schema.optional(Schema.String),
-}).annotations({
+}).annotate({
   identifier: 'Notion.DataSourceRef',
   [docsPath]: 'data-source',
 })
@@ -206,7 +206,7 @@ export type DataSourceRef = typeof DataSourceRef.Type
 export const DataSourceParent = Schema.Struct({
   type: Schema.Literal('database_id'),
   database_id: NotionUUID,
-}).annotations({
+}).annotate({
   identifier: 'Notion.DataSourceParent',
 })
 
@@ -238,7 +238,7 @@ export const DataSourceSchema = Schema.Struct({
   created_by: PartialUser,
   last_edited_time: ISO8601DateTime,
   last_edited_by: PartialUser,
-}).annotations({
+}).annotate({
   identifier: 'Notion.DataSourceSchema',
   [docsPath]: 'data-source',
 })
@@ -272,7 +272,7 @@ export const DatabaseSchema = Schema.Struct({
   data_sources: Schema.optional(Schema.Array(DataSourceRef)),
   /** Property schema definitions - moved to data source level but may still appear */
   properties: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
-}).annotations({
+}).annotate({
   identifier: 'Notion.DatabaseSchema',
   [docsPath]: 'database',
 })
@@ -304,7 +304,7 @@ export const Page = Schema.Struct({
   public_url: Schema.NullOr(Schema.String),
   /** Page properties - structure depends on parent type */
   properties: Schema.Record({ key: Schema.String, value: Schema.Unknown }),
-}).annotations({
+}).annotate({
   identifier: 'Notion.Page',
   [docsPath]: 'page',
 })
@@ -319,7 +319,7 @@ export const PagePropertyItem = Schema.extend(
     type: Schema.String,
   }),
   Schema.Record({ key: Schema.String, value: Schema.Unknown }),
-).annotations({
+).annotate({
   identifier: 'Notion.PagePropertyItem',
   [docsPath]: 'page-property-item',
 })
@@ -333,7 +333,7 @@ export const PagePropertyItemList = Schema.Struct({
   results: Schema.Array(PagePropertyItem),
   next_cursor: Schema.NullOr(Schema.String),
   has_more: Schema.Boolean,
-}).annotations({
+}).annotate({
   identifier: 'Notion.PagePropertyItemList',
   [docsPath]: 'retrieve-a-page-property',
 })
@@ -343,7 +343,7 @@ export type PagePropertyItemList = typeof PagePropertyItemList.Type
 export const PagePropertyItemResponse = Schema.Union(
   PagePropertyItem,
   PagePropertyItemList,
-).annotations({
+).annotate({
   identifier: 'Notion.PagePropertyItemResponse',
   [docsPath]: 'retrieve-a-page-property',
 })
@@ -397,7 +397,7 @@ export const BlockType = Schema.Literal(
   'meeting_notes',
   // System
   'unsupported',
-).annotations({
+).annotate({
   identifier: 'Notion.BlockType',
   [docsPath]: 'block#block-types',
 })
@@ -432,7 +432,7 @@ const BlockBase = Schema.Struct({
 export const Block = Schema.extend(
   BlockBase,
   Schema.Record({ key: Schema.String, value: Schema.Unknown }),
-).annotations({
+).annotate({
   identifier: 'Notion.Block',
   [docsPath]: 'block',
 })
@@ -444,7 +444,7 @@ export type Block = typeof Block.Type
 // -----------------------------------------------------------------------------
 
 /** Rich text array accepted in Notion block create payloads. */
-export const RichTextCreateArray = Schema.Array(TextRichTextCreate).annotations({
+export const RichTextCreateArray = Schema.Array(TextRichTextCreate).annotate({
   identifier: 'Notion.RichTextCreateArray',
   [docsPath]: 'rich-text',
 })
@@ -541,7 +541,7 @@ export const TableRowBlockCreate = Schema.Struct({
   table_row: Schema.Struct({
     cells: Schema.Array(RichTextCreateArray),
   }),
-}).annotations({
+}).annotate({
   identifier: 'Notion.TableRowBlockCreate',
   [docsPath]: 'block#table-row',
 })
@@ -612,7 +612,7 @@ export const NotionBlockCreate: Schema.Schema<NotionBlockCreateType> = Schema.su
     CodeBlockCreate,
     DividerBlockCreate,
     TableBlockCreate,
-  ).annotations({
+  ).annotate({
     identifier: 'Notion.BlockCreate',
     [docsPath]: 'block',
   }),
@@ -634,7 +634,7 @@ export const PageMarkdown = Schema.Struct({
   markdown: Schema.String,
   truncated: Schema.Boolean,
   unknown_block_ids: Schema.Array(Schema.String),
-}).annotations({
+}).annotate({
   identifier: 'Notion.PageMarkdown',
 })
 
@@ -654,7 +654,7 @@ export const CommentParent = Schema.Union(
     type: Schema.Literal('block_id'),
     block_id: NotionUUID,
   }),
-).annotations({
+).annotate({
   identifier: 'Notion.CommentParent',
 })
 
@@ -674,7 +674,7 @@ export const Comment = Schema.Struct({
   created_time: ISO8601DateTime,
   created_by: PartialUser,
   last_edited_time: ISO8601DateTime,
-}).annotations({
+}).annotate({
   identifier: 'Notion.Comment',
   [docsPath]: 'comment-object',
 })
@@ -695,7 +695,7 @@ export const ViewType = Schema.Literal(
   'gallery',
   'form',
   'chart',
-).annotations({
+).annotate({
   identifier: 'Notion.ViewType',
 })
 
@@ -730,7 +730,7 @@ export const View = Schema.Struct({
   sorts: Schema.optional(Schema.NullOr(Schema.Unknown)),
   quick_filters: Schema.optional(Schema.NullOr(Schema.Unknown)),
   configuration: Schema.optional(Schema.Unknown),
-}).annotations({
+}).annotate({
   identifier: 'Notion.View',
   [docsPath]: 'view-object',
 })

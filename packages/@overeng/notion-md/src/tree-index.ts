@@ -13,7 +13,7 @@ export const TreeIndex = Schema.Struct({
   root_file: Schema.String,
   /** posix relativePath (from root) → page_id; derived from frontmatter each run. */
   pages: Schema.Record({ key: Schema.String, value: Schema.String }),
-}).annotations({ identifier: 'NotionMd.TreeIndex' })
+}).annotate({ identifier: 'NotionMd.TreeIndex' })
 
 export type TreeIndex = typeof TreeIndex.Type
 

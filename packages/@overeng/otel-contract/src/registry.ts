@@ -284,7 +284,7 @@ const annotateWeaver = <S extends Schema.Annotable.All>({
 }: {
   schema: S
   meta: WeaverAttrMetaInput
-}): S => schema.annotations({ [WeaverAttrAnnotationId]: meta }) as S
+}): S => schema.annotate({ [WeaverAttrAnnotationId]: meta }) as S
 
 /** An attribute is an annotated Effect Schema (otel + weaver metadata carried on its AST). */
 export type Attribute = Schema.Schema.AnyNoContext

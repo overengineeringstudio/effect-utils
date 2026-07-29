@@ -1,8 +1,8 @@
 import { writeFileSync, mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
-import type { HttpClient } from 'effect'
 import { Effect } from 'effect'
+import type { HttpClient } from 'effect/unstable/http'
 import { Fragment, type ReactNode } from 'react'
 import { afterAll, describe, expect, it } from 'vitest'
 

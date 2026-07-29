@@ -49,7 +49,7 @@ export const propertyWriteGuardNames = [
 ] as const
 
 /** A single property-write guard name. */
-export const PropertyWriteGuardName = Schema.Literal(...propertyWriteGuardNames).annotations({
+export const PropertyWriteGuardName = Schema.Literal(...propertyWriteGuardNames).annotate({
   identifier: 'Notion.PropertyWrite.GuardName',
 })
 export type PropertyWriteGuardName = typeof PropertyWriteGuardName.Type
@@ -68,7 +68,7 @@ export const PropertyWriteGuardDecision = Schema.Union(
     guard: PropertyWriteGuardName,
     message: Schema.String,
   }),
-).annotations({ identifier: 'Notion.PropertyWrite.GuardDecision' })
+).annotate({ identifier: 'Notion.PropertyWrite.GuardDecision' })
 export type PropertyWriteGuardDecision = typeof PropertyWriteGuardDecision.Type
 
 /** Constructs the `allowed` decision (the write may proceed). */

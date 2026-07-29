@@ -7,11 +7,11 @@
  * @module
  */
 
-import { FetchHttpClient } from 'effect'
 import { NodeServices } from '@effect/platform-node'
 import type { BrowserContext, Page } from '@playwright/test'
 import { test } from '@playwright/test'
 import { ConfigProvider, Effect, Layer, Logger, LogLevel, type Config } from 'effect'
+import { FetchHttpClient } from 'effect/unstable/http'
 
 import { OtelPlaywrightLive } from './otel.ts'
 import { PwBrowserContext, PwPage } from './tags.ts'

@@ -16,7 +16,7 @@ export const ConflictKind = Schema.Literal(
   'path-collision',
   'lossy-body',
   'permission-ambiguous',
-).annotations({ identifier: 'NotionDatasourceSync.ConflictKind' })
+).annotate({ identifier: 'NotionDatasourceSync.ConflictKind' })
 export type ConflictKind = typeof ConflictKind.Type
 
 /** A change surface representing a property-value mutation on a specific page; carries base and next hashes for three-way merge. */

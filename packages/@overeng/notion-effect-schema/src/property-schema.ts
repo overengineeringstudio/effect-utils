@@ -12,7 +12,7 @@ export const SelectOptionConfig = Schema.Struct({
   name: Schema.String,
   color: SelectColor,
   description: Schema.optional(Schema.NullOr(Schema.String)),
-}).annotations({
+}).annotate({
   identifier: 'Notion.SelectOptionConfig',
 })
 
@@ -24,7 +24,7 @@ export const StatusGroupConfig = Schema.Struct({
   name: Schema.String,
   color: SelectColor,
   option_ids: Schema.Array(NotionUUID),
-}).annotations({
+}).annotate({
   identifier: 'Notion.StatusGroupConfig',
 })
 
@@ -71,7 +71,7 @@ export const NumberFormat = Schema.Literal(
   'argentine_peso',
   'uruguayan_peso',
   'singapore_dollar',
-).annotations({
+).annotate({
   identifier: 'Notion.NumberFormat',
 })
 
@@ -101,7 +101,7 @@ export const RollupFunction = Schema.Literal(
   'percent_checked',
   'percent_unchecked',
   'show_original',
-).annotations({
+).annotate({
   identifier: 'Notion.RollupFunction',
 })
 
@@ -125,7 +125,7 @@ const PropertySchemaBase = Schema.Struct({
 export const TitlePropertySchema = Schema.extend(
   PropertySchemaBase,
   Schema.TaggedStruct('title', {}),
-).annotations({
+).annotate({
   identifier: 'Notion.TitlePropertySchema',
   [docsPath]: 'database-property#title',
 })
@@ -136,7 +136,7 @@ export type TitlePropertySchema = typeof TitlePropertySchema.Type
 export const RichTextPropertySchema = Schema.extend(
   PropertySchemaBase,
   Schema.TaggedStruct('rich_text', {}),
-).annotations({
+).annotate({
   identifier: 'Notion.RichTextPropertySchema',
   [docsPath]: 'database-property#rich-text',
 })
@@ -151,7 +151,7 @@ export const NumberPropertySchema = Schema.extend(
       format: NumberFormat,
     }),
   }),
-).annotations({
+).annotate({
   identifier: 'Notion.NumberPropertySchema',
   [docsPath]: 'database-property#number',
 })
@@ -166,7 +166,7 @@ export const SelectPropertySchema = Schema.extend(
       options: Schema.Array(SelectOptionConfig),
     }),
   }),
-).annotations({
+).annotate({
   identifier: 'Notion.SelectPropertySchema',
   [docsPath]: 'database-property#select',
 })
@@ -181,7 +181,7 @@ export const MultiSelectPropertySchema = Schema.extend(
       options: Schema.Array(SelectOptionConfig),
     }),
   }),
-).annotations({
+).annotate({
   identifier: 'Notion.MultiSelectPropertySchema',
   [docsPath]: 'database-property#multi-select',
 })
@@ -197,7 +197,7 @@ export const StatusPropertySchema = Schema.extend(
       groups: Schema.Array(StatusGroupConfig),
     }),
   }),
-).annotations({
+).annotate({
   identifier: 'Notion.StatusPropertySchema',
   [docsPath]: 'database-property#status',
 })
@@ -208,7 +208,7 @@ export type StatusPropertySchema = typeof StatusPropertySchema.Type
 export const DatePropertySchema = Schema.extend(
   PropertySchemaBase,
   Schema.TaggedStruct('date', {}),
-).annotations({
+).annotate({
   identifier: 'Notion.DatePropertySchema',
   [docsPath]: 'database-property#date',
 })
@@ -219,7 +219,7 @@ export type DatePropertySchema = typeof DatePropertySchema.Type
 export const PeoplePropertySchema = Schema.extend(
   PropertySchemaBase,
   Schema.TaggedStruct('people', {}),
-).annotations({
+).annotate({
   identifier: 'Notion.PeoplePropertySchema',
   [docsPath]: 'database-property#people',
 })
@@ -230,7 +230,7 @@ export type PeoplePropertySchema = typeof PeoplePropertySchema.Type
 export const FilesPropertySchema = Schema.extend(
   PropertySchemaBase,
   Schema.TaggedStruct('files', {}),
-).annotations({
+).annotate({
   identifier: 'Notion.FilesPropertySchema',
   [docsPath]: 'database-property#files',
 })
@@ -241,7 +241,7 @@ export type FilesPropertySchema = typeof FilesPropertySchema.Type
 export const CheckboxPropertySchema = Schema.extend(
   PropertySchemaBase,
   Schema.TaggedStruct('checkbox', {}),
-).annotations({
+).annotate({
   identifier: 'Notion.CheckboxPropertySchema',
   [docsPath]: 'database-property#checkbox',
 })
@@ -252,7 +252,7 @@ export type CheckboxPropertySchema = typeof CheckboxPropertySchema.Type
 export const UrlPropertySchema = Schema.extend(
   PropertySchemaBase,
   Schema.TaggedStruct('url', {}),
-).annotations({
+).annotate({
   identifier: 'Notion.UrlPropertySchema',
   [docsPath]: 'database-property#url',
 })
@@ -263,7 +263,7 @@ export type UrlPropertySchema = typeof UrlPropertySchema.Type
 export const EmailPropertySchema = Schema.extend(
   PropertySchemaBase,
   Schema.TaggedStruct('email', {}),
-).annotations({
+).annotate({
   identifier: 'Notion.EmailPropertySchema',
   [docsPath]: 'database-property#email',
 })
@@ -274,7 +274,7 @@ export type EmailPropertySchema = typeof EmailPropertySchema.Type
 export const PhoneNumberPropertySchema = Schema.extend(
   PropertySchemaBase,
   Schema.TaggedStruct('phone_number', {}),
-).annotations({
+).annotate({
   identifier: 'Notion.PhoneNumberPropertySchema',
   [docsPath]: 'database-property#phone-number',
 })
@@ -289,7 +289,7 @@ export const FormulaPropertySchema = Schema.extend(
       expression: Schema.String,
     }),
   }),
-).annotations({
+).annotate({
   identifier: 'Notion.FormulaPropertySchema',
   [docsPath]: 'database-property#formula',
 })
@@ -312,7 +312,7 @@ export const RelationPropertySchema = Schema.extend(
       ),
     }),
   }),
-).annotations({
+).annotate({
   identifier: 'Notion.RelationPropertySchema',
   [docsPath]: 'database-property#relation',
 })
@@ -331,7 +331,7 @@ export const RollupPropertySchema = Schema.extend(
       function: RollupFunction,
     }),
   }),
-).annotations({
+).annotate({
   identifier: 'Notion.RollupPropertySchema',
   [docsPath]: 'database-property#rollup',
 })
@@ -342,7 +342,7 @@ export type RollupPropertySchema = typeof RollupPropertySchema.Type
 export const CreatedTimePropertySchema = Schema.extend(
   PropertySchemaBase,
   Schema.TaggedStruct('created_time', {}),
-).annotations({
+).annotate({
   identifier: 'Notion.CreatedTimePropertySchema',
   [docsPath]: 'database-property#created-time',
 })
@@ -353,7 +353,7 @@ export type CreatedTimePropertySchema = typeof CreatedTimePropertySchema.Type
 export const CreatedByPropertySchema = Schema.extend(
   PropertySchemaBase,
   Schema.TaggedStruct('created_by', {}),
-).annotations({
+).annotate({
   identifier: 'Notion.CreatedByPropertySchema',
   [docsPath]: 'database-property#created-by',
 })
@@ -364,7 +364,7 @@ export type CreatedByPropertySchema = typeof CreatedByPropertySchema.Type
 export const LastEditedTimePropertySchema = Schema.extend(
   PropertySchemaBase,
   Schema.TaggedStruct('last_edited_time', {}),
-).annotations({
+).annotate({
   identifier: 'Notion.LastEditedTimePropertySchema',
   [docsPath]: 'database-property#last-edited-time',
 })
@@ -375,7 +375,7 @@ export type LastEditedTimePropertySchema = typeof LastEditedTimePropertySchema.T
 export const LastEditedByPropertySchema = Schema.extend(
   PropertySchemaBase,
   Schema.TaggedStruct('last_edited_by', {}),
-).annotations({
+).annotate({
   identifier: 'Notion.LastEditedByPropertySchema',
   [docsPath]: 'database-property#last-edited-by',
 })
@@ -390,7 +390,7 @@ export const UniqueIdPropertySchema = Schema.extend(
       prefix: Schema.NullOr(Schema.String),
     }),
   }),
-).annotations({
+).annotate({
   identifier: 'Notion.UniqueIdPropertySchema',
   [docsPath]: 'database-property#unique-id',
 })
@@ -401,7 +401,7 @@ export type UniqueIdPropertySchema = typeof UniqueIdPropertySchema.Type
 export const VerificationPropertySchema = Schema.extend(
   PropertySchemaBase,
   Schema.TaggedStruct('verification', {}),
-).annotations({
+).annotate({
   identifier: 'Notion.VerificationPropertySchema',
 })
 
@@ -411,7 +411,7 @@ export type VerificationPropertySchema = typeof VerificationPropertySchema.Type
 export const ButtonPropertySchema = Schema.extend(
   PropertySchemaBase,
   Schema.TaggedStruct('button', {}),
-).annotations({
+).annotate({
   identifier: 'Notion.ButtonPropertySchema',
 })
 
@@ -449,7 +449,7 @@ export const PropertySchema = Schema.Union(
   UniqueIdPropertySchema,
   VerificationPropertySchema,
   ButtonPropertySchema,
-).annotations({
+).annotate({
   identifier: 'Notion.PropertySchema',
   description: 'Database property schema configuration (discriminated union)',
 })

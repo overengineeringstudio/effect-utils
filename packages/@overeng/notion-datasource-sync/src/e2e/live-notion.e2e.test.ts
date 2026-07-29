@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 
-import { FetchHttpClient, type HttpClient } from 'effect'
 import { Chunk, Effect, Layer, Option, Redacted, Schema, Stream } from 'effect'
+import { FetchHttpClient, type HttpClient } from 'effect/unstable/http'
 import { describe, expect, it } from 'vitest'
 
 import {

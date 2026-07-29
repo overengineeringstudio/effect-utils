@@ -6,9 +6,9 @@ import { existsSync, mkdirSync } from 'node:fs'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 
-import { FetchHttpClient } from 'effect'
 import { NodeServices, NodeRuntime } from '@effect/platform-node'
 import { Effect, Either, Layer, Option, Redacted, Schema, Stream } from 'effect'
+import { FetchHttpClient } from 'effect/unstable/http'
 
 import {
   NOTION_API_VERSION,
@@ -831,7 +831,7 @@ const SchemaPropertyObservationJson = Schema.Struct({
   configHash: Hash,
   writeClass: Schema.Literal('writable', 'computed', 'unsupported'),
   configJson: Schema.optional(Schema.String),
-}).annotations({ identifier: 'NotionDatasourceSync.Cli.SchemaPropertyObservationJson' })
+}).annotate({ identifier: 'NotionDatasourceSync.Cli.SchemaPropertyObservationJson' })
 
 const capabilityNames = new Set<CapabilityName>(allGatewayCapabilities)
 

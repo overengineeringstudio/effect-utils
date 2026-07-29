@@ -1,5 +1,5 @@
-import { HttpClient, type HttpClientRequest, HttpClientResponse } from 'effect'
 import { Effect, Layer, Redacted, Schema } from 'effect'
+import { HttpClient, type HttpClientRequest, HttpClientResponse } from 'effect/unstable/http'
 
 import { NotionConfig } from '@overeng/notion-effect-client'
 

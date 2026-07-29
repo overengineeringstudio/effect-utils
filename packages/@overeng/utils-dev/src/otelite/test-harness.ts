@@ -1,8 +1,8 @@
 import { OtlpSerialization, OtlpTracer } from '@effect/opentelemetry'
-import * as Otlp from 'effect/unstable/observability/Otlp'
-import { FetchHttpClient } from 'effect'
 import { NodeServices } from '@effect/platform-node'
 import { Effect, Layer, type Scope } from 'effect'
+import { FetchHttpClient } from 'effect/unstable/http'
+import * as Otlp from 'effect/unstable/observability/Otlp'
 
 import type { OteliteCliError, OteliteDecodeError, OteliteSpawnError } from './errors.ts'
 import { withOteliteLabelSpan, withOteliteRootSpan } from './otel.ts'

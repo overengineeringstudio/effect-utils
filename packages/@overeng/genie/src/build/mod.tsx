@@ -65,43 +65,43 @@ const dispatchEvent = (tui: { dispatch: (action: any) => void }, event: GenieEve
 export const genieCommand = Cli.Command.make(
   'genie',
   {
-    cwd: Cli.Options.text('cwd').pipe(
-      Cli.Options.withDescription('Working directory to search for .genie.ts files'),
-      Cli.Options.withDefault('.'),
+    cwd: Cli.Flag.string('cwd').pipe(
+      Cli.Flag.withDescription('Working directory to search for .genie.ts files'),
+      Cli.Flag.withDefault('.'),
     ),
-    watch: Cli.Options.boolean('watch').pipe(
-      Cli.Options.withDescription('Watch for changes and regenerate automatically'),
-      Cli.Options.withDefault(false),
+    watch: Cli.Flag.boolean('watch').pipe(
+      Cli.Flag.withDescription('Watch for changes and regenerate automatically'),
+      Cli.Flag.withDefault(false),
     ),
-    writeable: Cli.Options.boolean('writeable').pipe(
-      Cli.Options.withDescription('Generate files as writable (default: read-only)'),
-      Cli.Options.withDefault(false),
+    writeable: Cli.Flag.boolean('writeable').pipe(
+      Cli.Flag.withDescription('Generate files as writable (default: read-only)'),
+      Cli.Flag.withDefault(false),
     ),
-    check: Cli.Options.boolean('check').pipe(
-      Cli.Options.withDescription('Check if generated files are up to date (for CI)'),
-      Cli.Options.withDefault(false),
+    check: Cli.Flag.boolean('check').pipe(
+      Cli.Flag.withDescription('Check if generated files are up to date (for CI)'),
+      Cli.Flag.withDefault(false),
     ),
-    dryRun: Cli.Options.boolean('dry-run').pipe(
-      Cli.Options.withDescription('Preview changes without writing files'),
-      Cli.Options.withDefault(false),
+    dryRun: Cli.Flag.boolean('dry-run').pipe(
+      Cli.Flag.withDescription('Preview changes without writing files'),
+      Cli.Flag.withDefault(false),
     ),
-    deferValidation: Cli.Options.boolean('defer-validation').pipe(
-      Cli.Options.withDescription(
+    deferValidation: Cli.Flag.boolean('defer-validation').pipe(
+      Cli.Flag.withDescription(
         'Generate projections before a repair step; the caller must finish with genie --check',
       ),
-      Cli.Options.withDefault(false),
+      Cli.Flag.withDefault(false),
     ),
-    phase: Cli.Options.choice('phase', GENERATOR_PHASES).pipe(
-      Cli.Options.withDescription(
+    phase: Cli.Flag.choice('phase', GENERATOR_PHASES).pipe(
+      Cli.Flag.withDescription(
         'Only run generators declaring this phase (bootstrap runs before install; default: all phases)',
       ),
-      Cli.Options.optional,
+      Cli.Flag.optional,
     ),
-    oxfmtConfig: Cli.Options.file('oxfmt-config').pipe(
-      Cli.Options.withDescription(
+    oxfmtConfig: Cli.Flag.file('oxfmt-config').pipe(
+      Cli.Flag.withDescription(
         `Path to oxfmt config file (default: ${OXFMT_CONFIG_CONVENTION_PATHS.join(' or ')})`,
       ),
-      Cli.Options.optional,
+      Cli.Flag.optional,
     ),
     output: outputOption,
   },

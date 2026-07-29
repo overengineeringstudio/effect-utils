@@ -17,9 +17,9 @@
  *   bun examples/06-advanced/bouncing-windows.tsx --help
  */
 
-import { Command, Options } from 'effect/unstable/cli'
 import { NodeServices, NodeRuntime } from '@effect/platform-node'
 import { Effect, Fiber } from 'effect'
+import { Command, Flag as Options } from 'effect/unstable/cli'
 import React from 'react'
 
 import { createTuiApp, run } from '../../src/mod.tsx'

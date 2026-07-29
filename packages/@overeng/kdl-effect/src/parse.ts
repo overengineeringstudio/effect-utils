@@ -15,7 +15,7 @@ import { objectToKdlDocument } from './encode.ts'
  * following the same pattern as Effect's `Schema.parseJson`.
  */
 const ParseKdl = Schema.transformOrFail(
-  Schema.String.annotations({ description: 'a KDL string to be decoded' }),
+  Schema.String.annotate({ description: 'a KDL string to be decoded' }),
   Schema.Unknown,
   {
     strict: true,
@@ -36,7 +36,7 @@ const ParseKdl = Schema.transformOrFail(
         catch: (e) => new ParseResult.Type(ast, value, e instanceof Error ? e.message : String(e)),
       }),
   },
-).annotations({ title: 'parseKdl' })
+).annotate({ title: 'parseKdl' })
 
 /**
  * Create a Schema that decodes KDL text into the target type.

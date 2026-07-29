@@ -9,9 +9,9 @@
  * and `megarepo`.
  */
 
-import { Command as Cli, Options } from 'effect/unstable/cli'
 import { NodeServices, NodeRuntime } from '@effect/platform-node'
 import { Cause, Duration, Effect, Option, Schedule } from 'effect'
+import { Command as Cli, Flag as Options } from 'effect/unstable/cli'
 
 import { readPlan, verifyPlan, type VerifyFailure } from './verify.ts'
 
@@ -21,7 +21,7 @@ const planOption = Options.file('plan').pipe(
   ),
 )
 
-const registryOption = Options.text('registry').pipe(
+const registryOption = Options.string('registry').pipe(
   Options.withDefault('https://registry.npmjs.org'),
   Options.withDescription('Registry to query'),
 )

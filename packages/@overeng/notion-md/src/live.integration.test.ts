@@ -2,10 +2,10 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import type { FileSystem } from 'effect'
-import { FetchHttpClient, type HttpClient } from 'effect'
 import { NodeServices } from '@effect/platform-node'
+import type { FileSystem } from 'effect'
 import { Chunk, Effect, Layer, Redacted, Schema, Stream } from 'effect'
+import { FetchHttpClient, type HttpClient } from 'effect/unstable/http'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import {

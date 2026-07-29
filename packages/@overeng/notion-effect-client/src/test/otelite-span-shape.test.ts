@@ -21,9 +21,9 @@
  * 401, not 200).
  */
 
-import { HttpClient, HttpClientResponse } from 'effect'
 import { expect, layer } from '@effect/vitest'
 import { Effect, Layer, Redacted } from 'effect'
+import { HttpClient, HttpClientResponse } from 'effect/unstable/http'
 
 import {
   flushCaptureSpans,

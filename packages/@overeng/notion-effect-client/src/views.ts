@@ -1,5 +1,5 @@
-import type { HttpClient } from 'effect'
 import { Effect, Option, Schema, type Stream } from 'effect'
+import type { HttpClient } from 'effect/unstable/http'
 
 import { type View, type ViewType, ViewSchema } from '@overeng/notion-effect-schema'
 

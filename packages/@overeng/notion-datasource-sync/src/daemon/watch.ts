@@ -201,7 +201,7 @@ const WatchDaemonStateSchema = Schema.Struct({
     }),
   ),
   lastStatus: Schema.optional(Schema.Unknown),
-}).annotations({ identifier: 'NotionDatasourceSync.WatchDaemonState' })
+}).annotate({ identifier: 'NotionDatasourceSync.WatchDaemonState' })
 
 const decodeState = Schema.decodeUnknownSync(WatchDaemonStateSchema)
 const decodeStateJson = Schema.decodeUnknownSync(Schema.parseJson(WatchDaemonStateSchema))

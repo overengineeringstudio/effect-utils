@@ -1,5 +1,5 @@
-import { HttpClient, type HttpClientRequest, HttpClientResponse } from 'effect'
 import { Chunk, Effect, Layer, Redacted, Schema, Stream } from 'effect'
+import { HttpClient, type HttpClientRequest, HttpClientResponse } from 'effect/unstable/http'
 
 import { type NotionClientConfig, NotionConfig } from '../config.ts'
 

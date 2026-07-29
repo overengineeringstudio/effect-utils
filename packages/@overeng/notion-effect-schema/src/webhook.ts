@@ -1,6 +1,6 @@
 import { Schema } from 'effect'
 
-const NonEmptyWebhookString = Schema.NonEmptyTrimmedString.annotations({
+const NonEmptyWebhookString = Schema.NonEmptyTrimmedString.annotate({
   identifier: 'NotionWebhook.NonEmptyString',
 })
 
@@ -8,7 +8,7 @@ const NonEmptyWebhookString = Schema.NonEmptyTrimmedString.annotations({
 export const NotionWebhookEntity = Schema.Struct({
   id: NonEmptyWebhookString,
   type: NonEmptyWebhookString,
-}).annotations({ identifier: 'NotionWebhook.Entity' })
+}).annotate({ identifier: 'NotionWebhook.Entity' })
 
 export type NotionWebhookEntity = typeof NotionWebhookEntity.Type
 
@@ -17,14 +17,14 @@ export const NotionWebhookParent = Schema.Struct({
   page_id: Schema.optional(NonEmptyWebhookString),
   data_source_id: Schema.optional(NonEmptyWebhookString),
   database_id: Schema.optional(NonEmptyWebhookString),
-}).annotations({ identifier: 'NotionWebhook.Parent' })
+}).annotate({ identifier: 'NotionWebhook.Parent' })
 
 export type NotionWebhookParent = typeof NotionWebhookParent.Type
 
 /** `data` envelope nested on a Notion webhook event. */
 export const NotionWebhookData = Schema.Struct({
   parent: Schema.optional(NotionWebhookParent),
-}).annotations({ identifier: 'NotionWebhook.Data' })
+}).annotate({ identifier: 'NotionWebhook.Data' })
 
 export type NotionWebhookData = typeof NotionWebhookData.Type
 
@@ -48,7 +48,7 @@ export const NotionWebhookPayload = Schema.Struct({
   is_aggregated: Schema.optional(Schema.Boolean),
   entity: Schema.optional(NotionWebhookEntity),
   data: Schema.optional(NotionWebhookData),
-}).annotations({ identifier: 'NotionWebhook.Payload' })
+}).annotate({ identifier: 'NotionWebhook.Payload' })
 
 export type NotionWebhookPayload = typeof NotionWebhookPayload.Type
 

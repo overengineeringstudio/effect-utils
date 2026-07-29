@@ -35,7 +35,7 @@ export const NmdStorageObjectV2 = Schema.Struct({
   page_id: Schema.String,
   reason: Schema.Literal('too_large', 'volatile_url'),
   storage: NmdStorageSchema,
-}).annotations({ identifier: 'NotionMd.StorageObjectV2' })
+}).annotate({ identifier: 'NotionMd.StorageObjectV2' })
 
 export type NmdStorageObjectV2 = typeof NmdStorageObjectV2.Type
 
@@ -45,7 +45,7 @@ export const NmdBaseSnapshotV2 = Schema.Struct({
   page_id: Schema.String,
   body_hash: Sha256DigestSchema,
   body: Schema.String,
-}).annotations({ identifier: 'NotionMd.BaseSnapshotV2' })
+}).annotate({ identifier: 'NotionMd.BaseSnapshotV2' })
 
 export type NmdBaseSnapshotV2 = typeof NmdBaseSnapshotV2.Type
 

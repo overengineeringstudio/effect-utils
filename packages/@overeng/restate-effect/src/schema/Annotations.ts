@@ -85,7 +85,7 @@ export const SensitiveId: unique symbol = id('sensitive') as typeof SensitiveId
 const annotate =
   <Value>(annotationId: symbol) =>
   <S extends Schema.Annotable.All>({ self, value }: { self: S; value: Value }): S =>
-    self.annotations({ [annotationId]: value }) as S
+    self.annotate({ [annotationId]: value }) as S
 
 /**
  * The `Restate` Schema-annotation namespace. Each applier attaches a

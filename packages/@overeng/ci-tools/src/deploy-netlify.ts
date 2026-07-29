@@ -3,8 +3,8 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 
-import { HttpClient, HttpClientRequest } from 'effect'
 import { Effect, Either, Schema } from 'effect'
+import { HttpClient, HttpClientRequest } from 'effect/unstable/http'
 
 import {
   DeployInputV1,
@@ -61,21 +61,21 @@ export type NetlifyDeployCommandOptions = {
   readonly e2eVerifyText?: string | undefined
 }
 
-const HttpsUrlString = Schema.NonEmptyTrimmedString.pipe(
-  Schema.pattern(/^https:\/\/[^\s]+$/u),
-  Schema.annotations({ identifier: 'CiTools.Netlify.HttpsUrlString' }),
+const HttpsUrlString = Schema.NonEmptyTrimmedString.check(
+  Schema.isPattern(/^https:\/\/[^\s]+$/u),
+  Schema.annotate({ identifier: 'CiTools.Netlify.HttpsUrlString' }),
 )
 
 const NetlifyDeployJson = Schema.Struct({
   deploy_id: Schema.NonEmptyTrimmedString,
   site_name: Schema.NonEmptyTrimmedString,
   deploy_url: HttpsUrlString,
-}).annotations({ identifier: 'CiTools.Netlify.DeployJson' })
+}).annotate({ identifier: 'CiTools.Netlify.DeployJson' })
 
 const NetlifySiteJson = Schema.Struct({
   name: Schema.optional(Schema.NonEmptyTrimmedString),
   account_slug: Schema.optional(Schema.NonEmptyTrimmedString),
-}).annotations({ identifier: 'CiTools.Netlify.SiteJson' })
+}).annotate({ identifier: 'CiTools.Netlify.SiteJson' })
 
 const isoNow = () => new Date().toISOString()
 

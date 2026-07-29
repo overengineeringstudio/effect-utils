@@ -4,9 +4,9 @@
  * Commands to pin and unpin members to specific refs.
  */
 
-import * as Cli from '@effect/cli'
 import { FileSystem } from 'effect'
 import { Clock, Effect, Layer, Option } from 'effect'
+import * as Cli from 'effect/unstable/cli'
 import React from 'react'
 
 import { EffectPath } from '@overeng/effect-path'
@@ -59,15 +59,15 @@ import { PinApp, PinView } from '../renderers/PinOutput/mod.ts'
 export const pinCommand = Cli.Command.make(
   'pin',
   {
-    member: Cli.Args.text({ name: 'member' }).pipe(Cli.Args.withDescription('Member to pin')),
-    checkout: Cli.Options.text('checkout').pipe(
-      Cli.Options.withAlias('c'),
-      Cli.Options.withDescription('Ref to switch to (branch, tag, or commit SHA)'),
-      Cli.Options.optional,
+    member: Cli.Argument.string('member').pipe(Cli.Argument.withDescription('Member to pin')),
+    checkout: Cli.Flag.string('checkout').pipe(
+      Cli.Flag.withAlias('c'),
+      Cli.Flag.withDescription('Ref to switch to (branch, tag, or commit SHA)'),
+      Cli.Flag.optional,
     ),
-    dryRun: Cli.Options.boolean('dry-run').pipe(
-      Cli.Options.withDescription('Show what would be changed without making changes'),
-      Cli.Options.withDefault(false),
+    dryRun: Cli.Flag.boolean('dry-run').pipe(
+      Cli.Flag.withDescription('Show what would be changed without making changes'),
+      Cli.Flag.withDefault(false),
     ),
     output: outputOption,
   },
@@ -530,7 +530,7 @@ const shortenPath = (path: string): string => {
 export const unpinCommand = Cli.Command.make(
   'unpin',
   {
-    member: Cli.Args.text({ name: 'member' }).pipe(Cli.Args.withDescription('Member to unpin')),
+    member: Cli.Argument.string('member').pipe(Cli.Argument.withDescription('Member to unpin')),
     output: outputOption,
   },
   ({ member, output }) =>

@@ -1,5 +1,5 @@
-import type { HttpClient } from 'effect'
 import { Effect } from 'effect'
+import type { HttpClient } from 'effect/unstable/http'
 import type { ReactNode } from 'react'
 
 import type { NotionApiError } from '@overeng/notion-effect-client'

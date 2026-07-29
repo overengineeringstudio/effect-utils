@@ -36,11 +36,11 @@ const propertyBytes = (properties: readonly PropertyInfo[]): string =>
 
 describe('effect-schema-form baselines (cross-major invariant)', () => {
   const Contact = Schema.TaggedStruct('Contact', {
-    name: Schema.String.annotations({
+    name: Schema.String.annotate({
       title: 'Display name',
       description: 'Shown to other people',
     }),
-    age: Schema.optional(Schema.Int.annotations({ title: 'Age' })),
+    age: Schema.optional(Schema.Int.annotate({ title: 'Age' })),
     role: Schema.Literal('admin', 'guest'),
     active: Schema.Boolean,
     unsupported: Schema.Tuple(Schema.String),
@@ -57,7 +57,7 @@ describe('effect-schema-form baselines (cross-major invariant)', () => {
   it('encodes schema introspection metadata with the current optional and unknown partitions', () => {
     const cases = {
       annotatedString: analyzeSchema(
-        Schema.String.annotations({ title: 'Title', description: 'Description' }),
+        Schema.String.annotate({ title: 'Title', description: 'Description' }),
       ),
       optionalInt: analyzeSchema(Schema.UndefinedOr(Schema.Int)),
       literalUnion: analyzeSchema(Schema.Literal('', 'kebab-case', '東京')),

@@ -20,16 +20,16 @@ import { SelectOption, SelectOptionWrite } from './common.ts'
  * @see https://developers.notion.com/reference/property-value-object#select
  */
 export const SelectProperty = Schema.Struct({
-  id: Schema.String.annotations({
+  id: Schema.String.annotate({
     description: 'Property identifier.',
   }),
-  type: Schema.Literal('select').annotations({
+  type: Schema.Literal('select').annotate({
     description: 'Property type identifier.',
   }),
-  select: Schema.NullOr(SelectOption).annotations({
+  select: Schema.NullOr(SelectOption).annotate({
     description: 'The selected option, or null if none selected.',
   }),
-}).annotations({
+}).annotate({
   identifier: 'Notion.SelectProperty',
   title: 'Select Property',
   description: 'A select property value.',
@@ -45,7 +45,7 @@ export type SelectProperty = typeof SelectProperty.Type
  */
 export const SelectWrite = Schema.Struct({
   select: Schema.NullOr(SelectOptionWrite),
-}).annotations({
+}).annotate({
   identifier: 'Notion.SelectWrite',
   title: 'Select (Write)',
   description: 'Write payload for a select property (used in page create/update).',
@@ -71,7 +71,7 @@ export const SelectWriteFromName = Schema.transform(Schema.NullOr(Schema.String)
 
     return shouldNeverHappen('SelectWriteFromName cannot encode option referenced by id.')
   },
-}).annotations({
+}).annotate({
   identifier: 'Notion.SelectWriteFromName',
   title: 'Select (Write) From Name',
   description: 'Transform an option name (or null) into a select write payload.',
@@ -222,16 +222,16 @@ export const Select = {
  * @see https://developers.notion.com/reference/property-value-object#multi-select
  */
 export const MultiSelectProperty = Schema.Struct({
-  id: Schema.String.annotations({
+  id: Schema.String.annotate({
     description: 'Property identifier.',
   }),
-  type: Schema.Literal('multi_select').annotations({
+  type: Schema.Literal('multi_select').annotate({
     description: 'Property type identifier.',
   }),
-  multi_select: Schema.Array(SelectOption).annotations({
+  multi_select: Schema.Array(SelectOption).annotate({
     description: 'Array of selected options.',
   }),
-}).annotations({
+}).annotate({
   identifier: 'Notion.MultiSelectProperty',
   title: 'Multi-Select Property',
   description: 'A multi-select property value.',
@@ -247,7 +247,7 @@ export type MultiSelectProperty = typeof MultiSelectProperty.Type
  */
 export const MultiSelectWrite = Schema.Struct({
   multi_select: Schema.Array(SelectOptionWrite),
-}).annotations({
+}).annotate({
   identifier: 'Notion.MultiSelectWrite',
   title: 'Multi-Select (Write)',
   description: 'Write payload for a multi-select property (used in page create/update).',
@@ -274,7 +274,7 @@ export const MultiSelectWriteFromNames = Schema.transform(
         return shouldNeverHappen('MultiSelectWriteFromNames cannot encode option referenced by id.')
       }),
   },
-).annotations({
+).annotate({
   identifier: 'Notion.MultiSelectWriteFromNames',
   title: 'Multi-Select (Write) From Names',
   description: 'Transform option names into a multi-select write payload.',
@@ -395,16 +395,16 @@ export const MultiSelect = {
  * @see https://developers.notion.com/reference/property-value-object#status
  */
 export const StatusProperty = Schema.Struct({
-  id: Schema.String.annotations({
+  id: Schema.String.annotate({
     description: 'Property identifier.',
   }),
-  type: Schema.Literal('status').annotations({
+  type: Schema.Literal('status').annotate({
     description: 'Property type identifier.',
   }),
-  status: Schema.NullOr(SelectOption).annotations({
+  status: Schema.NullOr(SelectOption).annotate({
     description: 'The current status, or null if none.',
   }),
-}).annotations({
+}).annotate({
   identifier: 'Notion.StatusProperty',
   title: 'Status Property',
   description: 'A status property value.',
@@ -420,7 +420,7 @@ export type StatusProperty = typeof StatusProperty.Type
  */
 export const StatusWrite = Schema.Struct({
   status: Schema.NullOr(SelectOptionWrite),
-}).annotations({
+}).annotate({
   identifier: 'Notion.StatusWrite',
   title: 'Status (Write)',
   description: 'Write payload for a status property (used in page create/update).',
@@ -446,7 +446,7 @@ export const StatusWriteFromName = Schema.transform(Schema.NullOr(Schema.String)
 
     return shouldNeverHappen('StatusWriteFromName cannot encode option referenced by id.')
   },
-}).annotations({
+}).annotate({
   identifier: 'Notion.StatusWriteFromName',
   title: 'Status (Write) From Name',
   description: 'Transform a status name (or null) into a status write payload.',

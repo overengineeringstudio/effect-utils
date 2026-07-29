@@ -18,7 +18,7 @@ import { registryVerification, type RemoteRegistryState } from './mod.ts'
 export const PlanPackage = Schema.Struct({
   name: Schema.NonEmptyTrimmedString,
   tarball: Schema.optional(Schema.NonEmptyTrimmedString),
-}).annotations({ identifier: 'NpmRelease.PlanPackage' })
+}).annotate({ identifier: 'NpmRelease.PlanPackage' })
 
 /** The release a caller wants the registry to agree with. */
 export const VerifyPlan = Schema.Struct({
@@ -26,7 +26,7 @@ export const VerifyPlan = Schema.Struct({
   version: Schema.NonEmptyTrimmedString,
   npmTag: Schema.NonEmptyTrimmedString,
   packages: Schema.NonEmptyArray(PlanPackage),
-}).annotations({ identifier: 'NpmRelease.VerifyPlan' })
+}).annotate({ identifier: 'NpmRelease.VerifyPlan' })
 
 export type VerifyPlan = typeof VerifyPlan.Type
 
@@ -35,7 +35,7 @@ export const VerifyFailure = Schema.Struct({
   package: Schema.String,
   reason: Schema.String,
   terminal: Schema.Boolean,
-}).annotations({ identifier: 'NpmRelease.VerifyFailure' })
+}).annotate({ identifier: 'NpmRelease.VerifyFailure' })
 
 export type VerifyFailure = typeof VerifyFailure.Type
 

@@ -15,14 +15,14 @@ const QueueOperationRecord = Schema.Struct({
   timestamp: Schema.DateTimeUtc,
   sessionId: Schema.String,
   content: Schema.optional(Schema.String),
-}).annotations({ identifier: 'AgentSessionIngest.ClaudeQueueOperationRecord' })
+}).annotate({ identifier: 'AgentSessionIngest.ClaudeQueueOperationRecord' })
 
 const HookProgressData = Schema.Struct({
   type: Schema.String,
   hookEvent: Schema.optional(Schema.String),
   hookName: Schema.optional(Schema.String),
   command: Schema.optional(Schema.String),
-}).annotations({ identifier: 'AgentSessionIngest.ClaudeHookProgressData' })
+}).annotate({ identifier: 'AgentSessionIngest.ClaudeHookProgressData' })
 
 const ProgressRecord = Schema.Struct({
   type: Schema.Literal('progress'),
@@ -40,7 +40,7 @@ const ProgressRecord = Schema.Struct({
   uuid: Schema.String,
   timestamp: Schema.DateTimeUtc,
   data: HookProgressData,
-}).annotations({ identifier: 'AgentSessionIngest.ClaudeProgressRecord' })
+}).annotate({ identifier: 'AgentSessionIngest.ClaudeProgressRecord' })
 
 const ClaudeTextBlock = Schema.Struct({
   type: Schema.Literal('text'),
@@ -92,7 +92,7 @@ export const ClaudeAssistantContentBlock = Schema.Union(
   ClaudeServerToolUseBlock,
   ClaudeServerToolResultBlock,
   ClaudeGenericContentBlock,
-).annotations({ identifier: 'AgentSessionIngest.ClaudeAssistantContentBlock' })
+).annotate({ identifier: 'AgentSessionIngest.ClaudeAssistantContentBlock' })
 export type ClaudeAssistantContentBlock = typeof ClaudeAssistantContentBlock.Type
 
 /** Content block types in Claude user messages (tool results and text). */
@@ -108,12 +108,12 @@ export const ClaudeUserContentBlock = Schema.Union(
     text: Schema.String,
   }),
   ClaudeGenericContentBlock,
-).annotations({ identifier: 'AgentSessionIngest.ClaudeUserContentBlock' })
+).annotate({ identifier: 'AgentSessionIngest.ClaudeUserContentBlock' })
 
 const MessageEnvelope = Schema.Struct({
   role: Schema.String,
   content: Schema.Unknown,
-}).annotations({ identifier: 'AgentSessionIngest.ClaudeMessageEnvelope' })
+}).annotate({ identifier: 'AgentSessionIngest.ClaudeMessageEnvelope' })
 
 const UserRecord = Schema.Struct({
   type: Schema.Literal('user'),
@@ -132,7 +132,7 @@ const UserRecord = Schema.Struct({
   sourceToolAssistantUUID: Schema.optional(Schema.String),
   toolUseResult: Schema.optional(Schema.Unknown),
   message: MessageEnvelope,
-}).annotations({ identifier: 'AgentSessionIngest.ClaudeUserRecord' })
+}).annotate({ identifier: 'AgentSessionIngest.ClaudeUserRecord' })
 
 const AssistantMessagePayload = Schema.Struct({
   model: Schema.optional(Schema.String),
@@ -143,7 +143,7 @@ const AssistantMessagePayload = Schema.Struct({
   stop_reason: Schema.optional(Schema.NullOr(Schema.String)),
   stop_sequence: Schema.optional(Schema.NullOr(Schema.String)),
   usage: Schema.optional(Schema.Unknown),
-}).annotations({ identifier: 'AgentSessionIngest.ClaudeAssistantMessagePayload' })
+}).annotate({ identifier: 'AgentSessionIngest.ClaudeAssistantMessagePayload' })
 
 const AssistantRecord = Schema.Struct({
   type: Schema.Literal('assistant'),
@@ -160,7 +160,7 @@ const AssistantRecord = Schema.Struct({
   uuid: Schema.String,
   timestamp: Schema.DateTimeUtc,
   message: AssistantMessagePayload,
-}).annotations({ identifier: 'AgentSessionIngest.ClaudeAssistantRecord' })
+}).annotate({ identifier: 'AgentSessionIngest.ClaudeAssistantRecord' })
 
 const SystemRecord = Schema.Struct({
   type: Schema.Literal('system'),
@@ -173,13 +173,13 @@ const SystemRecord = Schema.Struct({
   uuid: Schema.String,
   timestamp: Schema.DateTimeUtc,
   content: Schema.Unknown,
-}).annotations({ identifier: 'AgentSessionIngest.ClaudeSystemRecord' })
+}).annotate({ identifier: 'AgentSessionIngest.ClaudeSystemRecord' })
 
 const GenericClaudeRecord = Schema.Struct({
   type: Schema.String,
   sessionId: Schema.optional(Schema.String),
   timestamp: Schema.optional(Schema.DateTimeUtc),
-}).annotations({ identifier: 'AgentSessionIngest.ClaudeGenericRecord' })
+}).annotate({ identifier: 'AgentSessionIngest.ClaudeGenericRecord' })
 
 /**
  * Source-of-truth record union for Claude project/subagent transcript JSONL artifacts.
@@ -195,7 +195,7 @@ export const ClaudeSessionRecord = Schema.Union(
   AssistantRecord,
   SystemRecord,
   GenericClaudeRecord,
-).annotations({ identifier: 'AgentSessionIngest.ClaudeSessionRecord' })
+).annotate({ identifier: 'AgentSessionIngest.ClaudeSessionRecord' })
 export type ClaudeSessionRecord = typeof ClaudeSessionRecord.Type
 
 const listClaudeJsonlFiles = Effect.fn('AgentSessionIngest.Claude.listClaudeJsonlFiles')(

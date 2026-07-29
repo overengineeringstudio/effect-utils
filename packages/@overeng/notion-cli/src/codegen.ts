@@ -474,7 +474,7 @@ const generatePropertyField = (options: {
     )
     const metaSuffix =
       schemaMeta === true
-        ? `.annotations({ [notionPropertyMeta]: ${formatMetaValue(buildPropertyMeta(property))} })`
+        ? `.annotate({ [notionPropertyMeta]: ${formatMetaValue(buildPropertyMeta(property))} })`
         : ''
     if (transform === 'asName') {
       return `${base}.pipe(NotionSchema.asName)${metaSuffix}`
@@ -493,7 +493,7 @@ const generatePropertyField = (options: {
     )
     const metaSuffix =
       schemaMeta === true
-        ? `.annotations({ [notionPropertyMeta]: ${formatMetaValue(buildPropertyMeta(property))} })`
+        ? `.annotate({ [notionPropertyMeta]: ${formatMetaValue(buildPropertyMeta(property))} })`
         : ''
     if (transform === 'asName') {
       return `${base}.pipe(NotionSchema.asName)${metaSuffix}`
@@ -512,7 +512,7 @@ const generatePropertyField = (options: {
     )
     const metaSuffix =
       schemaMeta === true
-        ? `.annotations({ [notionPropertyMeta]: ${formatMetaValue(buildPropertyMeta(property))} })`
+        ? `.annotate({ [notionPropertyMeta]: ${formatMetaValue(buildPropertyMeta(property))} })`
         : ''
     if (transform === 'asNames') {
       return `${base}.pipe(NotionSchema.asNames)${metaSuffix}`
@@ -527,7 +527,7 @@ const generatePropertyField = (options: {
 
   const value = `NotionSchema.${transformKey}`
   return schemaMeta === true
-    ? `${value}.annotations({ [notionPropertyMeta]: ${formatMetaValue(buildPropertyMeta(property))} })`
+    ? `${value}.annotate({ [notionPropertyMeta]: ${formatMetaValue(buildPropertyMeta(property))} })`
     : value
 }
 
@@ -583,7 +583,7 @@ const generateTypedOptions = (opts: {
     property.description !== undefined
       ? `,\n  description: ${toSingleQuotedStringLiteral(property.description)},`
       : ''
-  const code = `export const ${typeName} = Schema.Literal(${literals}).annotations({
+  const code = `export const ${typeName} = Schema.Literal(${literals}).annotate({
   identifier: '${typeName}'${descPart}
 })
 export type ${typeName} = typeof ${typeName}.Type`
@@ -819,7 +819,7 @@ export function generateSchemaCode(opts: GenerateSchemaCodeOptions): string {
   lines.push(` */`)
   lines.push(`export const ${pascalName}PageProperties = Schema.Struct({`)
   lines.push(readPropertyFields)
-  lines.push(`}).annotations({`)
+  lines.push(`}).annotate({`)
   lines.push(`  identifier: '${pascalName}PageProperties',`)
   lines.push(`  description: 'Read schema for ${dbInfo.name} database pages',`)
   lines.push(`})`)
@@ -855,7 +855,7 @@ export function generateSchemaCode(opts: GenerateSchemaCodeOptions): string {
     lines.push(` */`)
     lines.push(`export const ${pascalName}PageWrite = Schema.Struct({`)
     lines.push(writePropertyFields)
-    lines.push(`}).annotations({`)
+    lines.push(`}).annotate({`)
     lines.push(`  identifier: '${pascalName}PageWrite',`)
     lines.push(`  description: 'Write schema for ${dbInfo.name} database pages',`)
     lines.push(`})`)

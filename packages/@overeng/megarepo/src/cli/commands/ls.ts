@@ -4,9 +4,9 @@
  * List all members in the megarepo.
  */
 
-import * as Cli from 'effect/unstable/cli'
 import { FileSystem, type Error as PlatformError } from 'effect'
 import { Effect, Option, type ParseResult } from 'effect'
+import * as Cli from 'effect/unstable/cli'
 import React from 'react'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
@@ -118,9 +118,9 @@ export const lsCommand = Cli.Command.make(
   'ls',
   {
     output: outputOption,
-    all: Cli.Options.boolean('all').pipe(
-      Cli.Options.withDescription('Recursively list members from nested megarepos'),
-      Cli.Options.withDefault(false),
+    all: Cli.Flag.boolean('all').pipe(
+      Cli.Flag.withDescription('Recursively list members from nested megarepos'),
+      Cli.Flag.withDefault(false),
     ),
   },
   ({ output, all }) =>

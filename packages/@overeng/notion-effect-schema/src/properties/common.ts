@@ -13,17 +13,17 @@ import { TextLink } from '../rich-text.ts'
  * @see https://developers.notion.com/reference/property-value-object#select
  */
 export const SelectOption = Schema.Struct({
-  id: NotionUUID.annotations({
+  id: NotionUUID.annotate({
     description: 'Unique identifier for this option.',
   }),
-  name: Schema.String.annotations({
+  name: Schema.String.annotate({
     description: 'Name of the option as displayed in Notion.',
     examples: ['High', 'Medium', 'Low'],
   }),
-  color: SelectColor.annotations({
+  color: SelectColor.annotate({
     description: 'Color of the option.',
   }),
-}).annotations({
+}).annotate({
   identifier: 'Notion.SelectOption',
   title: 'Select Option',
   description: 'An option in a select or multi-select property.',
@@ -41,7 +41,7 @@ export type SelectOption = typeof SelectOption.Type
 export const SelectOptionWrite = Schema.Union(
   Schema.Struct({ id: NotionUUID }),
   Schema.Struct({ name: Schema.String }),
-).annotations({
+).annotate({
   identifier: 'Notion.SelectOptionWrite',
   title: 'Select Option (Write)',
   description: 'A select option reference for write requests.',
@@ -65,7 +65,7 @@ export const TextRichTextWrite = Schema.Struct({
     content: Schema.String,
     link: Schema.optional(Schema.NullOr(TextLink)),
   }),
-}).annotations({
+}).annotate({
   identifier: 'Notion.TextRichTextWrite',
   title: 'Text Rich Text (Write)',
   description: 'Minimal text rich text object accepted in Notion write requests.',

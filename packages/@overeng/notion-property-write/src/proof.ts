@@ -39,7 +39,7 @@ import {
  * established (e.g. shared mode sets `settlement: 'present'`, local mode sets
  * `settlement: 'not-required'`).
  */
-export const PropertyWriteMode = Schema.Literal('local', 'remote', 'shared').annotations({
+export const PropertyWriteMode = Schema.Literal('local', 'remote', 'shared').annotate({
   identifier: 'Notion.PropertyWrite.Mode',
 })
 export type PropertyWriteMode = typeof PropertyWriteMode.Type
@@ -51,7 +51,7 @@ export const PropertyWriteIdentity = Schema.Struct({
   evidenceSource: PropertyIdentityEvidenceSource,
   /** `false` when the resolved display name maps ambiguously to multiple properties. */
   displayNameUnambiguous: Schema.Boolean,
-}).annotations({ identifier: 'Notion.PropertyWrite.Identity' })
+}).annotate({ identifier: 'Notion.PropertyWrite.Identity' })
 export type PropertyWriteIdentity = typeof PropertyWriteIdentity.Type
 
 /**
@@ -74,13 +74,13 @@ export const PropertyWriteSchemaConsistency = Schema.Struct({
   expectedConfigHash: Schema.optional(ConfigHash),
   propertyType: NotionPropertyType,
   writeClass: PropertyWriteClass,
-}).annotations({ identifier: 'Notion.PropertyWrite.SchemaConsistency' })
+}).annotate({ identifier: 'Notion.PropertyWrite.SchemaConsistency' })
 export type PropertyWriteSchemaConsistency = typeof PropertyWriteSchemaConsistency.Type
 
 /** Whether the property's current value surface was completely materialized. */
 export const PropertyWriteBaseCompleteness = Schema.Struct({
   surfaceComplete: Schema.Boolean,
-}).annotations({ identifier: 'Notion.PropertyWrite.BaseCompleteness' })
+}).annotate({ identifier: 'Notion.PropertyWrite.BaseCompleteness' })
 export type PropertyWriteBaseCompleteness = typeof PropertyWriteBaseCompleteness.Type
 
 /** Availability of relation targets referenced by the write (explicit literal, never optional). */
@@ -91,19 +91,19 @@ export const PropertyWriteRelationAvailability = Schema.Struct({
     'targets-unavailable',
     'related-data-source-unshared',
   ),
-}).annotations({ identifier: 'Notion.PropertyWrite.RelationAvailability' })
+}).annotate({ identifier: 'Notion.PropertyWrite.RelationAvailability' })
 export type PropertyWriteRelationAvailability = typeof PropertyWriteRelationAvailability.Type
 
 /** Whether the local surface agrees with the freshly observed remote surface (explicit literal). */
 export const PropertyWriteLocalConvergence = Schema.Struct({
   status: Schema.Literal('not-applicable', 'converged', 'disagrees'),
-}).annotations({ identifier: 'Notion.PropertyWrite.LocalConvergence' })
+}).annotate({ identifier: 'Notion.PropertyWrite.LocalConvergence' })
 export type PropertyWriteLocalConvergence = typeof PropertyWriteLocalConvergence.Type
 
 /** Whether a required read-after-write settlement is present (explicit literal). */
 export const PropertyWriteSettlement = Schema.Struct({
   status: Schema.Literal('not-required', 'present', 'missing'),
-}).annotations({ identifier: 'Notion.PropertyWrite.Settlement' })
+}).annotate({ identifier: 'Notion.PropertyWrite.Settlement' })
 export type PropertyWriteSettlement = typeof PropertyWriteSettlement.Type
 
 /**
@@ -123,7 +123,7 @@ export const PropertyWriteProof = Schema.Struct({
   relationAvailability: PropertyWriteRelationAvailability,
   localConvergence: PropertyWriteLocalConvergence,
   settlement: PropertyWriteSettlement,
-}).annotations({ identifier: 'Notion.PropertyWrite.Proof' })
+}).annotate({ identifier: 'Notion.PropertyWrite.Proof' })
 export type PropertyWriteProof = typeof PropertyWriteProof.Type
 
 /**
@@ -136,7 +136,7 @@ export const DesiredPropertyWrite = Schema.Struct({
   propertyId: PropertyId,
   dataSourceId: DataSourceId,
   value: CanonicalPropertyValue,
-}).annotations({ identifier: 'Notion.PropertyWrite.Desired' })
+}).annotate({ identifier: 'Notion.PropertyWrite.Desired' })
 export type DesiredPropertyWrite = typeof DesiredPropertyWrite.Type
 
 /**

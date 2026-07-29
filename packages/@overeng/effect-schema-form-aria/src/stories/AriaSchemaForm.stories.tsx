@@ -15,16 +15,16 @@ export default {
 // ============================================================================
 
 const UserSchema = Schema.Struct({
-  name: Schema.String.annotations({
+  name: Schema.String.annotate({
     title: 'Name',
     description: 'Your full name',
   }),
-  email: Schema.String.annotations({ title: 'Email' }),
-  age: Schema.optional(Schema.Number).annotations({
+  email: Schema.String.annotate({ title: 'Email' }),
+  age: Schema.optional(Schema.Number).annotate({
     title: 'Age',
     description: 'Optional',
   }),
-  role: Schema.Literal('admin', 'user', 'guest').annotations({ title: 'Role' }),
+  role: Schema.Literal('admin', 'user', 'guest').annotate({ title: 'Role' }),
 })
 
 type User = typeof UserSchema.Type
@@ -63,11 +63,11 @@ export const WithValues: StoryObj<typeof AriaSchemaForm<User>> = {
 // ============================================================================
 
 const LinkedInSchema = Schema.TaggedStruct('linkedin-contacts', {
-  includeConnections: Schema.optional(Schema.Boolean).annotations({
+  includeConnections: Schema.optional(Schema.Boolean).annotate({
     title: 'Include Connections',
     description: 'Import your LinkedIn connections',
   }),
-  syncFrequency: Schema.Literal('hourly', 'daily', 'weekly').annotations({
+  syncFrequency: Schema.Literal('hourly', 'daily', 'weekly').annotate({
     title: 'Sync Frequency',
   }),
 })
@@ -133,12 +133,12 @@ export const EmptyTaggedStruct: StoryObj<typeof AriaSchemaForm<SimpleAction>> = 
 // ============================================================================
 
 const SettingsSchema = Schema.Struct({
-  darkMode: Schema.Boolean.annotations({
+  darkMode: Schema.Boolean.annotate({
     title: 'Dark Mode',
     description: 'Enable dark theme',
   }),
-  notifications: Schema.Boolean.annotations({ title: 'Notifications' }),
-  language: Schema.Literal('en', 'es', 'fr', 'de').annotations({
+  notifications: Schema.Boolean.annotate({ title: 'Notifications' }),
+  language: Schema.Literal('en', 'es', 'fr', 'de').annotate({
     title: 'Language',
   }),
 })
@@ -164,7 +164,7 @@ export const SettingsForm: StoryObj<typeof AriaSchemaForm<Settings>> = {
 // ============================================================================
 
 const CountrySchema = Schema.Struct({
-  country: Schema.Literal('us', 'uk', 'de', 'fr', 'es', 'it', 'nl', 'be', 'at', 'ch').annotations({
+  country: Schema.Literal('us', 'uk', 'de', 'fr', 'es', 'it', 'nl', 'be', 'at', 'ch').annotate({
     title: 'Country',
     description: 'Select your country',
   }),
@@ -189,18 +189,18 @@ export const DropdownField: StoryObj<typeof AriaSchemaForm<Country>> = {
 // ============================================================================
 
 const ComplexSchema = Schema.Struct({
-  firstName: Schema.String.annotations({ title: 'First Name' }),
-  lastName: Schema.String.annotations({ title: 'Last Name' }),
-  email: Schema.String.annotations({
+  firstName: Schema.String.annotate({ title: 'First Name' }),
+  lastName: Schema.String.annotate({ title: 'Last Name' }),
+  email: Schema.String.annotate({
     title: 'Email Address',
     description: 'Primary contact email',
   }),
-  age: Schema.optional(Schema.Number).annotations({ title: 'Age' }),
-  subscribe: Schema.Boolean.annotations({
+  age: Schema.optional(Schema.Number).annotate({ title: 'Age' }),
+  subscribe: Schema.Boolean.annotate({
     title: 'Subscribe to newsletter',
     description: 'Receive weekly updates',
   }),
-  plan: Schema.Literal('free', 'pro', 'enterprise').annotations({
+  plan: Schema.Literal('free', 'pro', 'enterprise').annotate({
     title: 'Plan',
   }),
   region: Schema.Literal(
@@ -210,7 +210,7 @@ const ComplexSchema = Schema.Struct({
     'eu-central',
     'ap-south',
     'ap-east',
-  ).annotations({
+  ).annotate({
     title: 'Region',
     description: 'Primary deployment region',
   }),

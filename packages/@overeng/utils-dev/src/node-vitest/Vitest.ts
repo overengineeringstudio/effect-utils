@@ -12,7 +12,6 @@
 import * as inspector from 'node:inspector'
 
 import { OtlpSerialization, OtlpTracer } from '@effect/opentelemetry'
-import { FetchHttpClient } from 'effect'
 import type * as Vitest from '@effect/vitest'
 import type { Duration } from 'effect'
 import {
@@ -25,6 +24,7 @@ import {
   type Schema,
   type Scope,
 } from 'effect'
+import { FetchHttpClient } from 'effect/unstable/http'
 
 import { otlpTracesUrl } from '../otelite/otlp-url.ts'
 

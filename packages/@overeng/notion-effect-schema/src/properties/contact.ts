@@ -12,17 +12,17 @@ import { docsPath, shouldNeverHappen, withOptionValueSchema } from '../common.ts
  * @see https://developers.notion.com/reference/property-value-object#url
  */
 export const UrlProperty = Schema.Struct({
-  id: Schema.String.annotations({
+  id: Schema.String.annotate({
     description: 'Property identifier.',
   }),
-  type: Schema.Literal('url').annotations({
+  type: Schema.Literal('url').annotate({
     description: 'Property type identifier.',
   }),
-  url: Schema.NullOr(Schema.String).annotations({
+  url: Schema.NullOr(Schema.String).annotate({
     description: 'The URL value, or null if empty.',
     examples: ['https://example.com'],
   }),
-}).annotations({
+}).annotate({
   identifier: 'Notion.UrlProperty',
   title: 'URL Property',
   description: 'A URL property value.',
@@ -38,7 +38,7 @@ export type UrlProperty = typeof UrlProperty.Type
  */
 export const UrlWrite = Schema.Struct({
   url: Schema.NullOr(Schema.String),
-}).annotations({
+}).annotate({
   identifier: 'Notion.UrlWrite',
   title: 'URL (Write)',
   description: 'Write payload for a URL property (used in page create/update).',
@@ -52,7 +52,7 @@ export const UrlWriteFromString = Schema.transform(Schema.NullOr(Schema.String),
   strict: false,
   decode: (url) => ({ url }),
   encode: (write) => write.url,
-}).annotations({
+}).annotate({
   identifier: 'Notion.UrlWriteFromString',
   title: 'URL (Write) From String',
   description: 'Transform a URL string (or null) into a URL write payload.',
@@ -119,17 +119,17 @@ export const Url = {
  * @see https://developers.notion.com/reference/property-value-object#email
  */
 export const EmailProperty = Schema.Struct({
-  id: Schema.String.annotations({
+  id: Schema.String.annotate({
     description: 'Property identifier.',
   }),
-  type: Schema.Literal('email').annotations({
+  type: Schema.Literal('email').annotate({
     description: 'Property type identifier.',
   }),
-  email: Schema.NullOr(Schema.String).annotations({
+  email: Schema.NullOr(Schema.String).annotate({
     description: 'The email address, or null if empty.',
     examples: ['user@example.com'],
   }),
-}).annotations({
+}).annotate({
   identifier: 'Notion.EmailProperty',
   title: 'Email Property',
   description: 'An email property value.',
@@ -145,7 +145,7 @@ export type EmailProperty = typeof EmailProperty.Type
  */
 export const EmailWrite = Schema.Struct({
   email: Schema.NullOr(Schema.String),
-}).annotations({
+}).annotate({
   identifier: 'Notion.EmailWrite',
   title: 'Email (Write)',
   description: 'Write payload for an email property (used in page create/update).',
@@ -159,7 +159,7 @@ export const EmailWriteFromString = Schema.transform(Schema.NullOr(Schema.String
   strict: false,
   decode: (email) => ({ email }),
   encode: (write) => write.email,
-}).annotations({
+}).annotate({
   identifier: 'Notion.EmailWriteFromString',
   title: 'Email (Write) From String',
   description: 'Transform an email string (or null) into an email write payload.',
@@ -228,17 +228,17 @@ export const Email = {
  * @see https://developers.notion.com/reference/property-value-object#phone-number
  */
 export const PhoneNumberProperty = Schema.Struct({
-  id: Schema.String.annotations({
+  id: Schema.String.annotate({
     description: 'Property identifier.',
   }),
-  type: Schema.Literal('phone_number').annotations({
+  type: Schema.Literal('phone_number').annotate({
     description: 'Property type identifier.',
   }),
-  phone_number: Schema.NullOr(Schema.String).annotations({
+  phone_number: Schema.NullOr(Schema.String).annotate({
     description: 'The phone number, or null if empty.',
     examples: ['+1 555-123-4567'],
   }),
-}).annotations({
+}).annotate({
   identifier: 'Notion.PhoneNumberProperty',
   title: 'Phone Number Property',
   description: 'A phone number property value.',
@@ -254,7 +254,7 @@ export type PhoneNumberProperty = typeof PhoneNumberProperty.Type
  */
 export const PhoneNumberWrite = Schema.Struct({
   phone_number: Schema.NullOr(Schema.String),
-}).annotations({
+}).annotate({
   identifier: 'Notion.PhoneNumberWrite',
   title: 'Phone Number (Write)',
   description: 'Write payload for a phone number property (used in page create/update).',
@@ -272,7 +272,7 @@ export const PhoneNumberWriteFromString = Schema.transform(
     decode: (phone_number) => ({ phone_number }),
     encode: (write) => write.phone_number,
   },
-).annotations({
+).annotate({
   identifier: 'Notion.PhoneNumberWriteFromString',
   title: 'Phone Number (Write) From String',
   description: 'Transform a phone number string (or null) into a phone number write payload.',

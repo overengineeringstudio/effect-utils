@@ -12,25 +12,25 @@ import { docsPath, NotionColor, NotionUUID } from './common.ts'
  * @see https://developers.notion.com/reference/rich-text#the-annotation-object
  */
 export const TextAnnotations = Schema.Struct({
-  bold: Schema.Boolean.annotations({
+  bold: Schema.Boolean.annotate({
     description: 'Whether the text is bolded.',
   }),
-  italic: Schema.Boolean.annotations({
+  italic: Schema.Boolean.annotate({
     description: 'Whether the text is italicized.',
   }),
-  strikethrough: Schema.Boolean.annotations({
+  strikethrough: Schema.Boolean.annotate({
     description: 'Whether the text has a strikethrough.',
   }),
-  underline: Schema.Boolean.annotations({
+  underline: Schema.Boolean.annotate({
     description: 'Whether the text is underlined.',
   }),
-  code: Schema.Boolean.annotations({
+  code: Schema.Boolean.annotate({
     description: 'Whether the text is formatted as inline code.',
   }),
-  color: NotionColor.annotations({
+  color: NotionColor.annotate({
     description: 'Color of the text or background.',
   }),
-}).annotations({
+}).annotate({
   identifier: 'Notion.TextAnnotations',
   title: 'Text Annotations',
   description: 'Styling properties applied to rich text content.',
@@ -52,7 +52,7 @@ export const TextAnnotationsCreate = Schema.Struct({
   underline: Schema.optional(Schema.Boolean),
   code: Schema.optional(Schema.Boolean),
   color: Schema.optional(NotionColor),
-}).annotations({
+}).annotate({
   identifier: 'Notion.TextAnnotationsCreate',
   title: 'Text Annotations (Create)',
   description: 'Optional styling properties accepted in Notion rich text create payloads.',
@@ -69,11 +69,11 @@ export type TextAnnotationsCreate = typeof TextAnnotationsCreate.Type
  * Link object for text content.
  */
 export const TextLink = Schema.Struct({
-  url: Schema.String.annotations({
+  url: Schema.String.annotate({
     description: 'The URL the text links to.',
     examples: ['https://example.com'],
   }),
-}).annotations({
+}).annotate({
   identifier: 'Notion.TextLink',
   title: 'Text Link',
   description: 'A hyperlink associated with text content.',
@@ -88,26 +88,26 @@ export type TextLink = typeof TextLink.Type
  * @see https://developers.notion.com/reference/rich-text#text
  */
 export const TextRichText = Schema.Struct({
-  type: Schema.Literal('text').annotations({
+  type: Schema.Literal('text').annotate({
     description: 'Type identifier for text rich text.',
   }),
   text: Schema.Struct({
-    content: Schema.String.annotations({
+    content: Schema.String.annotate({
       description: 'The actual text content.',
       examples: ['Hello, world!'],
     }),
-    link: Schema.NullOr(TextLink).annotations({
+    link: Schema.NullOr(TextLink).annotate({
       description: 'Optional link for the text.',
     }),
   }),
   annotations: TextAnnotations,
-  plain_text: Schema.String.annotations({
+  plain_text: Schema.String.annotate({
     description: 'Plain text without styling.',
   }),
-  href: Schema.NullOr(Schema.String).annotations({
+  href: Schema.NullOr(Schema.String).annotate({
     description: 'URL if this text is a link.',
   }),
-}).annotations({
+}).annotate({
   identifier: 'Notion.TextRichText',
   title: 'Text Rich Text',
   description: 'Rich text content of type text.',
@@ -128,7 +128,7 @@ export const TextRichTextCreate = Schema.Struct({
     link: Schema.optional(Schema.NullOr(TextLink)),
   }),
   annotations: Schema.optional(TextAnnotationsCreate),
-}).annotations({
+}).annotate({
   identifier: 'Notion.TextRichTextCreate',
   title: 'Text Rich Text (Create)',
   description: 'Minimal text rich text object accepted in Notion create/update requests.',
@@ -149,7 +149,7 @@ export const DatabaseMention = Schema.Struct({
   database: Schema.Struct({
     id: NotionUUID,
   }),
-}).annotations({
+}).annotate({
   identifier: 'Notion.DatabaseMention',
   title: 'Database Mention',
   description: 'A mention referencing a Notion database.',
@@ -166,7 +166,7 @@ export const PageMention = Schema.Struct({
   page: Schema.Struct({
     id: NotionUUID,
   }),
-}).annotations({
+}).annotate({
   identifier: 'Notion.PageMention',
   title: 'Page Mention',
   description: 'A mention referencing a Notion page.',
@@ -184,7 +184,7 @@ export const UserMention = Schema.Struct({
     object: Schema.Literal('user'),
     id: NotionUUID,
   }),
-}).annotations({
+}).annotate({
   identifier: 'Notion.UserMention',
   title: 'User Mention',
   description: 'A mention referencing a Notion user.',
@@ -199,19 +199,19 @@ export type UserMention = typeof UserMention.Type
 export const DateMention = Schema.Struct({
   type: Schema.Literal('date'),
   date: Schema.Struct({
-    start: Schema.String.annotations({
+    start: Schema.String.annotate({
       description: 'Start date in ISO 8601 format.',
       examples: ['2024-01-15'],
     }),
-    end: Schema.NullOr(Schema.String).annotations({
+    end: Schema.NullOr(Schema.String).annotate({
       description: 'Optional end date for date ranges.',
     }),
-    time_zone: Schema.NullOr(Schema.String).annotations({
+    time_zone: Schema.NullOr(Schema.String).annotate({
       description: 'Optional IANA time zone.',
       examples: ['America/New_York'],
     }),
   }),
-}).annotations({
+}).annotate({
   identifier: 'Notion.DateMention',
   title: 'Date Mention',
   description: 'A mention referencing a date or date range.',
@@ -226,12 +226,12 @@ export type DateMention = typeof DateMention.Type
 export const LinkPreviewMention = Schema.Struct({
   type: Schema.Literal('link_preview'),
   link_preview: Schema.Struct({
-    url: Schema.String.annotations({
+    url: Schema.String.annotate({
       description: 'The URL being previewed.',
       examples: ['https://github.com/example/repo'],
     }),
   }),
-}).annotations({
+}).annotate({
   identifier: 'Notion.LinkPreviewMention',
   title: 'Link Preview Mention',
   description: 'A mention displaying a link preview.',
@@ -246,7 +246,7 @@ export type LinkPreviewMention = typeof LinkPreviewMention.Type
 export const TemplateMentionDate = Schema.Struct({
   type: Schema.Literal('template_mention_date'),
   template_mention_date: Schema.Literal('today', 'now'),
-}).annotations({
+}).annotate({
   identifier: 'Notion.TemplateMentionDate',
   title: 'Template Mention Date',
   description: 'A template mention for dynamic dates.',
@@ -261,7 +261,7 @@ export type TemplateMentionDate = typeof TemplateMentionDate.Type
 export const TemplateMentionUser = Schema.Struct({
   type: Schema.Literal('template_mention_user'),
   template_mention_user: Schema.Literal('me'),
-}).annotations({
+}).annotate({
   identifier: 'Notion.TemplateMentionUser',
   title: 'Template Mention User',
   description: 'A template mention for the current user.',
@@ -276,7 +276,7 @@ export type TemplateMentionUser = typeof TemplateMentionUser.Type
 export const TemplateMention = Schema.Struct({
   type: Schema.Literal('template_mention'),
   template_mention: Schema.Union(TemplateMentionDate, TemplateMentionUser),
-}).annotations({
+}).annotate({
   identifier: 'Notion.TemplateMention',
   title: 'Template Mention',
   description: 'A template mention for dynamic content.',
@@ -295,7 +295,7 @@ export const MentionContent = Schema.Union(
   DateMention,
   LinkPreviewMention,
   TemplateMention,
-).annotations({
+).annotate({
   identifier: 'Notion.MentionContent',
   title: 'Mention Content',
   description: 'The content of a mention, varying by mention type.',
@@ -310,18 +310,18 @@ export type MentionContent = typeof MentionContent.Type
  * @see https://developers.notion.com/reference/rich-text#mention
  */
 export const MentionRichText = Schema.Struct({
-  type: Schema.Literal('mention').annotations({
+  type: Schema.Literal('mention').annotate({
     description: 'Type identifier for mention rich text.',
   }),
   mention: MentionContent,
   annotations: TextAnnotations,
-  plain_text: Schema.String.annotations({
+  plain_text: Schema.String.annotate({
     description: 'Plain text representation of the mention.',
   }),
-  href: Schema.NullOr(Schema.String).annotations({
+  href: Schema.NullOr(Schema.String).annotate({
     description: 'URL if this mention links somewhere.',
   }),
-}).annotations({
+}).annotate({
   identifier: 'Notion.MentionRichText',
   title: 'Mention Rich Text',
   description: 'Rich text content containing an inline mention.',
@@ -340,23 +340,23 @@ export type MentionRichText = typeof MentionRichText.Type
  * @see https://developers.notion.com/reference/rich-text#equation
  */
 export const EquationRichText = Schema.Struct({
-  type: Schema.Literal('equation').annotations({
+  type: Schema.Literal('equation').annotate({
     description: 'Type identifier for equation rich text.',
   }),
   equation: Schema.Struct({
-    expression: Schema.String.annotations({
+    expression: Schema.String.annotate({
       description: 'The LaTeX expression for the equation.',
       examples: ['E = mc^2'],
     }),
   }),
   annotations: TextAnnotations,
-  plain_text: Schema.String.annotations({
+  plain_text: Schema.String.annotate({
     description: 'Plain text representation of the equation.',
   }),
-  href: Schema.NullOr(Schema.String).annotations({
+  href: Schema.NullOr(Schema.String).annotate({
     description: 'Always null for equations.',
   }),
-}).annotations({
+}).annotate({
   identifier: 'Notion.EquationRichText',
   title: 'Equation Rich Text',
   description: 'Rich text content containing a LaTeX equation.',
@@ -374,7 +374,7 @@ export type EquationRichText = typeof EquationRichText.Type
  *
  * @see https://developers.notion.com/reference/rich-text
  */
-export const RichText = Schema.Union(TextRichText, MentionRichText, EquationRichText).annotations({
+export const RichText = Schema.Union(TextRichText, MentionRichText, EquationRichText).annotate({
   identifier: 'Notion.RichText',
   title: 'Rich Text',
   description: 'Rich text content supporting text, mentions, and equations.',
@@ -386,7 +386,7 @@ export type RichText = typeof RichText.Type
 /**
  * Array of rich text elements.
  */
-export const RichTextArray = Schema.Array(RichText).annotations({
+export const RichTextArray = Schema.Array(RichText).annotate({
   identifier: 'Notion.RichTextArray',
   title: 'Rich Text Array',
   description: 'An array of rich text elements.',
@@ -420,7 +420,7 @@ export const RichTextArrayAsString = Schema.transform(RichTextArray, Schema.Stri
       href: null,
     },
   ],
-}).annotations({
+}).annotate({
   identifier: 'Notion.RichTextArrayAsString',
   title: 'Rich Text as String',
   description: 'Transform rich text array to/from plain string.',

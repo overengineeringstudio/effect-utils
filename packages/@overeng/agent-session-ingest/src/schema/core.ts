@@ -8,7 +8,7 @@ import type { SessionIngestError, SessionSourceDiscoveryError } from '../errors.
 export const SourceId = Schema.String.pipe(
   Schema.minLength(1),
   Schema.brand('SourceId'),
-  Schema.annotations({ identifier: 'AgentSessionIngest.SourceId' }),
+  Schema.annotate({ identifier: 'AgentSessionIngest.SourceId' }),
 )
 export type SourceId = typeof SourceId.Type
 
@@ -16,19 +16,19 @@ export type SourceId = typeof SourceId.Type
 export const ArtifactId = Schema.String.pipe(
   Schema.minLength(1),
   Schema.brand('ArtifactId'),
-  Schema.annotations({ identifier: 'AgentSessionIngest.ArtifactId' }),
+  Schema.annotate({ identifier: 'AgentSessionIngest.ArtifactId' }),
 )
 export type ArtifactId = typeof ArtifactId.Type
 
 /** Filesystem path to a discovered source artifact. */
 export const ArtifactPath = Schema.String.pipe(
   Schema.minLength(1),
-  Schema.annotations({ identifier: 'AgentSessionIngest.ArtifactPath' }),
+  Schema.annotate({ identifier: 'AgentSessionIngest.ArtifactPath' }),
 )
 export type ArtifactPath = typeof ArtifactPath.Type
 
 /** Artifact lifecycle classification used to decide how aggressively to reprocess it. */
-export const ArtifactStatus = Schema.Literal('open', 'stable', 'finalized').annotations({
+export const ArtifactStatus = Schema.Literal('open', 'stable', 'finalized').annotate({
   identifier: 'AgentSessionIngest.ArtifactStatus',
 })
 export type ArtifactStatus = typeof ArtifactStatus.Type
@@ -39,7 +39,7 @@ export const ArtifactDescriptor = Schema.Struct({
   artifactId: ArtifactId,
   path: ArtifactPath,
   status: ArtifactStatus,
-}).annotations({ identifier: 'AgentSessionIngest.ArtifactDescriptor' })
+}).annotate({ identifier: 'AgentSessionIngest.ArtifactDescriptor' })
 export type ArtifactDescriptor = typeof ArtifactDescriptor.Type
 
 /** Compact content signature used to detect artifact growth, rewrites, or truncation. */
@@ -48,20 +48,20 @@ export const ContentVersion = Schema.Struct({
   modifiedAtEpochMs: Schema.NonNegativeInt,
   headHash: Schema.optional(Schema.NonEmptyTrimmedString),
   tailHash: Schema.NonEmptyTrimmedString,
-}).annotations({ identifier: 'AgentSessionIngest.ContentVersion' })
+}).annotate({ identifier: 'AgentSessionIngest.ContentVersion' })
 export type ContentVersion = typeof ContentVersion.Type
 
 /** Cursor for append-only artifacts that can be resumed from a byte offset. */
 export const AppendOnlyCursor = Schema.TaggedStruct('AppendOnlyCursor', {
   offsetBytes: Schema.NonNegativeInt,
   contentVersion: ContentVersion,
-}).annotations({ identifier: 'AgentSessionIngest.AppendOnlyCursor' })
+}).annotate({ identifier: 'AgentSessionIngest.AppendOnlyCursor' })
 export type AppendOnlyCursor = typeof AppendOnlyCursor.Type
 
 /** Cursor for mutable artifacts that are re-read when the content signature changes. */
 export const ContentVersionCursor = Schema.TaggedStruct('ContentVersionCursor', {
   contentVersion: ContentVersion,
-}).annotations({ identifier: 'AgentSessionIngest.ContentVersionCursor' })
+}).annotate({ identifier: 'AgentSessionIngest.ContentVersionCursor' })
 export type ContentVersionCursor = typeof ContentVersionCursor.Type
 
 /** Cursor for ordered mutable artifacts that support incremental replay via an update watermark. */
@@ -69,7 +69,7 @@ export const UpdatedAtCursor = Schema.TaggedStruct('UpdatedAtCursor', {
   updatedAtEpochMs: Schema.NonNegativeInt,
   lastRecordKey: Schema.optional(Schema.String),
   contentVersion: ContentVersion,
-}).annotations({ identifier: 'AgentSessionIngest.UpdatedAtCursor' })
+}).annotate({ identifier: 'AgentSessionIngest.UpdatedAtCursor' })
 export type UpdatedAtCursor = typeof UpdatedAtCursor.Type
 
 /** Unified cursor union used by checkpoint persistence. */
@@ -77,7 +77,7 @@ export const ArtifactCursor = Schema.Union(
   AppendOnlyCursor,
   ContentVersionCursor,
   UpdatedAtCursor,
-).annotations({ identifier: 'AgentSessionIngest.ArtifactCursor' })
+).annotate({ identifier: 'AgentSessionIngest.ArtifactCursor' })
 export type ArtifactCursor = typeof ArtifactCursor.Type
 
 /** Persisted checkpoint entry for one source artifact. */
@@ -88,11 +88,11 @@ export const IngestionCheckpoint = Schema.Struct({
   status: ArtifactStatus,
   cursor: ArtifactCursor,
   updatedAtEpochMs: Schema.NonNegativeInt,
-}).annotations({ identifier: 'AgentSessionIngest.IngestionCheckpoint' })
+}).annotate({ identifier: 'AgentSessionIngest.IngestionCheckpoint' })
 export type IngestionCheckpoint = typeof IngestionCheckpoint.Type
 
 /** JSONL codec used for checkpoint files on disk. */
-export const IngestionCheckpointJsonLine = Schema.parseJson(IngestionCheckpoint).annotations({
+export const IngestionCheckpointJsonLine = Schema.parseJson(IngestionCheckpoint).annotate({
   identifier: 'AgentSessionIngest.IngestionCheckpointJsonLine',
 })
 

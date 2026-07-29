@@ -1,5 +1,5 @@
-import * as Cli from 'effect/unstable/cli'
 import { Console, Effect, Option, Schema } from 'effect'
+import * as Cli from 'effect/unstable/cli'
 
 import { EffectPath } from '@overeng/effect-path'
 
@@ -13,9 +13,9 @@ import * as Observability from '../observability.ts'
 /** Encodes the structured check result as pretty-printed JSON for `--json` output. */
 const CheckReportJson = Schema.parseJson(Schema.Unknown, { space: 2 })
 
-const allOption = Cli.Options.boolean('all').pipe(
-  Cli.Options.withDescription('Check member source and lock files in repos/ as well as the root'),
-  Cli.Options.withDefault(false),
+const allOption = Cli.Flag.boolean('all').pipe(
+  Cli.Flag.withDescription('Check member source and lock files in repos/ as well as the root'),
+  Cli.Flag.withDefault(false),
 )
 
 /** Check that the megarepo is structurally valid. */

@@ -7,32 +7,32 @@ import { bytesToHex } from '@noble/hashes/utils.js'
 import { Effect, Schema } from 'effect'
 
 /** Branded SHA-256 content digest in lowercase-hex `sha256:<64 hex>` form. */
-export const ContentDigest = Schema.String.pipe(
-  Schema.pattern(/^sha256:[a-f0-9]{64}$/),
+export const ContentDigest = Schema.String.check(
+  Schema.isPattern(/^sha256:[a-f0-9]{64}$/),
   Schema.brand('ContentAddress.ContentDigest'),
-  Schema.annotations({ identifier: 'ContentAddress.ContentDigest' }),
+  Schema.annotate({ identifier: 'ContentAddress.ContentDigest' }),
 )
 export type ContentDigest = typeof ContentDigest.Type
 
 /** Location-independent CAS retrieval URI in `cas:sha256/<byte>/<rest>` form. */
-export const CasUri = Schema.String.pipe(
-  Schema.pattern(/^cas:sha256\/[a-f0-9]{2}\/[a-f0-9]{62}$/),
+export const CasUri = Schema.String.check(
+  Schema.isPattern(/^cas:sha256\/[a-f0-9]{2}\/[a-f0-9]{62}$/),
   Schema.brand('ContentAddress.CasUri'),
-  Schema.annotations({ identifier: 'ContentAddress.CasUri' }),
+  Schema.annotate({ identifier: 'ContentAddress.CasUri' }),
 )
 export type CasUri = typeof CasUri.Type
 
 /** Branded non-empty media (MIME) type describing the encoded byte payload. */
 export const MediaType = Schema.NonEmptyTrimmedString.pipe(
   Schema.brand('ContentAddress.MediaType'),
-  Schema.annotations({ identifier: 'ContentAddress.MediaType' }),
+  Schema.annotate({ identifier: 'ContentAddress.MediaType' }),
 )
 export type MediaType = typeof MediaType.Type
 
 /** Branded codec tag naming the byte-encoding scheme (e.g. `canonical-json`). */
 export const Codec = Schema.NonEmptyTrimmedString.pipe(
   Schema.brand('ContentAddress.Codec'),
-  Schema.annotations({ identifier: 'ContentAddress.Codec' }),
+  Schema.annotate({ identifier: 'ContentAddress.Codec' }),
 )
 export type Codec = typeof Codec.Type
 
@@ -43,7 +43,7 @@ export const ContentDescriptor = Schema.TaggedStruct('ContentDescriptor', {
   mediaType: MediaType,
   codec: Schema.optional(Codec),
   schemaVersion: Schema.optional(Schema.NonNegativeInt),
-}).annotations({ identifier: 'ContentAddress.ContentDescriptor' })
+}).annotate({ identifier: 'ContentAddress.ContentDescriptor' })
 export type ContentDescriptor = typeof ContentDescriptor.Type
 
 /** One child object referenced by a manifest, optionally with a stable logical path and role. */
@@ -51,7 +51,7 @@ export const ContentManifestEntry = Schema.Struct({
   descriptor: ContentDescriptor,
   logicalPath: Schema.optional(Schema.NonEmptyTrimmedString),
   role: Schema.optional(Schema.NonEmptyTrimmedString),
-}).annotations({ identifier: 'ContentAddress.ContentManifestEntry' })
+}).annotate({ identifier: 'ContentAddress.ContentManifestEntry' })
 export type ContentManifestEntry = typeof ContentManifestEntry.Type
 
 /** Versioned CAS manifest containing descriptors for a logical artifact or artifact set. */
@@ -60,14 +60,14 @@ export const ContentManifest = Schema.TaggedStruct('ContentManifest', {
   role: Schema.NonEmptyTrimmedString,
   createdAt: Schema.optional(Schema.DateTimeUtc),
   entries: Schema.Array(ContentManifestEntry),
-}).annotations({ identifier: 'ContentAddress.ContentManifest' })
+}).annotate({ identifier: 'ContentAddress.ContentManifest' })
 export type ContentManifest = typeof ContentManifest.Type
 
 /** Durable pin record that points a mutable name at an immutable manifest descriptor. */
 export const ContentPin = Schema.TaggedStruct('ContentPin', {
   schemaVersion: Schema.Literal(1),
   target: ContentDescriptor,
-}).annotations({ identifier: 'ContentAddress.ContentPin' })
+}).annotate({ identifier: 'ContentAddress.ContentPin' })
 export type ContentPin = typeof ContentPin.Type
 
 /** Local filesystem-backed content store rooted at an absolute directory. */

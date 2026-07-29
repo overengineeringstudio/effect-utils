@@ -9,7 +9,6 @@ import {
   Fiber,
   HashMap,
   identity,
-  List,
   LogLevel,
   Option,
   Schema,
@@ -509,7 +508,7 @@ const runWithLogging = ({
             logLevel: channel === 'stdout' ? LogLevel.Info : LogLevel.Warning,
             message: [`[${channel}]${content.length > 0 ? ` ${content}` : ''}`],
             cause: Cause.empty,
-            spans: List.empty(),
+            spans: [],
             annotations: HashMap.empty(),
             date: new Date(),
           })

@@ -19,11 +19,13 @@ export const NotionDatasourceSyncLiveFixtureLane = Schema.Literal(
 
 export type NotionDatasourceSyncLiveFixtureLane = typeof NotionDatasourceSyncLiveFixtureLane.Type
 
-const NotionId = Schema.String.pipe(
-  Schema.pattern(/^[0-9a-f]{32}$|^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i),
+const NotionId = Schema.String.check(
+  Schema.isPattern(
+    /^[0-9a-f]{32}$|^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+  ),
 )
 
-const NotionUrl = Schema.String.pipe(Schema.pattern(/^https:\/\/www\.notion\.so\//))
+const NotionUrl = Schema.String.check(Schema.isPattern(/^https:\/\/www\.notion\.so\//))
 
 /** Expected live Notion database/data-source shape for one demo domain. */
 export const NotionDatasourceSyncDemoDataSourceSchema = Schema.Struct({
@@ -35,7 +37,7 @@ export const NotionDatasourceSyncDemoDataSourceSchema = Schema.Struct({
   expectedRows: Schema.Number,
   expectedPropertyNames: Schema.Array(Schema.NonEmptyTrimmedString),
   fastReplica: Schema.Boolean,
-}).annotations({ identifier: 'NotionDatasourceSync.DemoDataSource' })
+}).annotate({ identifier: 'NotionDatasourceSync.DemoDataSource' })
 
 export type NotionDatasourceSyncDemoDataSource =
   typeof NotionDatasourceSyncDemoDataSourceSchema.Type
@@ -47,7 +49,7 @@ export const NotionDatasourceSyncDemoProvisionerContractSchema = Schema.Struct({
   writes: Schema.Literal('public-synthetic-fixtures-only'),
   emittedIds: Schema.Literal('env-or-public-synthetic-manifest'),
   requiredMarker: Schema.NonEmptyTrimmedString,
-}).annotations({ identifier: 'NotionDatasourceSync.DemoProvisionerContract' })
+}).annotate({ identifier: 'NotionDatasourceSync.DemoProvisionerContract' })
 
 /** Durable online demo page plus every child data source the package verifies. */
 export const NotionDatasourceSyncDemoManifestSchema = Schema.Struct({
@@ -62,7 +64,7 @@ export const NotionDatasourceSyncDemoManifestSchema = Schema.Struct({
   }),
   provisionerContract: NotionDatasourceSyncDemoProvisionerContractSchema,
   dataSources: Schema.Array(NotionDatasourceSyncDemoDataSourceSchema),
-}).annotations({ identifier: 'NotionDatasourceSync.DemoManifest' })
+}).annotate({ identifier: 'NotionDatasourceSync.DemoManifest' })
 
 export type NotionDatasourceSyncDemoManifest = typeof NotionDatasourceSyncDemoManifestSchema.Type
 
@@ -78,7 +80,7 @@ const NotionApiFailureBodySchema = Schema.Struct({
   status: Schema.optional(Schema.Number),
   code: Schema.optional(Schema.String),
   message: Schema.optional(Schema.String),
-}).annotations({ identifier: 'NotionDatasourceSync.DemoApiFailureBody' })
+}).annotate({ identifier: 'NotionDatasourceSync.DemoApiFailureBody' })
 
 const decodeNotionApiFailureBody = (
   body: string | undefined,

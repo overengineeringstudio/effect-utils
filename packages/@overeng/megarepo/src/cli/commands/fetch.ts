@@ -10,47 +10,47 @@ import * as Cli from 'effect/unstable/cli'
 import { outputOption, verboseOption } from '../context.ts'
 import { runCommand, type LockSyncMode } from './engine.ts'
 
-const lockSyncOption = Cli.Options.choice('lock-sync', ['auto', 'off', 'direct', 'recursive']).pipe(
-  Cli.Options.withDescription(
+const lockSyncOption = Cli.Flag.choice('lock-sync', ['auto', 'off', 'direct', 'recursive']).pipe(
+  Cli.Flag.withDescription(
     'Lock-file rewrite policy for the apply phase: auto, off, direct members only, or recursive nested megarepos',
   ),
-  Cli.Options.withDefault('auto' as LockSyncMode),
+  Cli.Flag.withDefault('auto' as LockSyncMode),
 )
 
 const sharedOptions = {
   output: outputOption,
-  dryRun: Cli.Options.boolean('dry-run').pipe(
-    Cli.Options.withDescription('Show what would be done without making changes'),
-    Cli.Options.withDefault(false),
+  dryRun: Cli.Flag.boolean('dry-run').pipe(
+    Cli.Flag.withDescription('Show what would be done without making changes'),
+    Cli.Flag.withDefault(false),
   ),
-  force: Cli.Options.boolean('force').pipe(
-    Cli.Options.withAlias('f'),
-    Cli.Options.withDescription('Force lock operation even when members are pinned or need repair'),
-    Cli.Options.withDefault(false),
+  force: Cli.Flag.boolean('force').pipe(
+    Cli.Flag.withAlias('f'),
+    Cli.Flag.withDescription('Force lock operation even when members are pinned or need repair'),
+    Cli.Flag.withDefault(false),
   ),
-  all: Cli.Options.boolean('all').pipe(
-    Cli.Options.withDescription('Recursively operate on nested megarepos'),
-    Cli.Options.withDefault(false),
+  all: Cli.Flag.boolean('all').pipe(
+    Cli.Flag.withDescription('Recursively operate on nested megarepos'),
+    Cli.Flag.withDefault(false),
   ),
-  only: Cli.Options.text('only').pipe(
-    Cli.Options.withDescription('Only operate on specified members (comma-separated)'),
-    Cli.Options.optional,
+  only: Cli.Flag.string('only').pipe(
+    Cli.Flag.withDescription('Only operate on specified members (comma-separated)'),
+    Cli.Flag.optional,
   ),
-  skip: Cli.Options.text('skip').pipe(
-    Cli.Options.withDescription('Skip specified members (comma-separated)'),
-    Cli.Options.optional,
+  skip: Cli.Flag.string('skip').pipe(
+    Cli.Flag.withDescription('Skip specified members (comma-separated)'),
+    Cli.Flag.optional,
   ),
-  gitProtocol: Cli.Options.choice('git-protocol', ['ssh', 'https', 'auto']).pipe(
-    Cli.Options.withDescription(
+  gitProtocol: Cli.Flag.choice('git-protocol', ['ssh', 'https', 'auto']).pipe(
+    Cli.Flag.withDescription(
       'Git protocol for cloning: ssh (default for new clones), https, or auto (use lock file URL if available)',
     ),
-    Cli.Options.withDefault('auto' as const),
+    Cli.Flag.withDefault('auto' as const),
   ),
-  worktreeMode: Cli.Options.choice('worktree-mode', ['commit', 'tracking', 'auto']).pipe(
-    Cli.Options.withDescription(
+  worktreeMode: Cli.Flag.choice('worktree-mode', ['commit', 'tracking', 'auto']).pipe(
+    Cli.Flag.withDescription(
       'Worktree strategy: commit (deterministic), tracking (branch worktrees), auto (commit in CI, tracking otherwise)',
     ),
-    Cli.Options.withDefault('auto' as const),
+    Cli.Flag.withDefault('auto' as const),
   ),
   lockSync: lockSyncOption,
   verbose: verboseOption,
@@ -61,15 +61,15 @@ export const fetchCommand = Cli.Command.make(
   'fetch',
   {
     ...sharedOptions,
-    apply: Cli.Options.boolean('apply').pipe(
-      Cli.Options.withDescription(
+    apply: Cli.Flag.boolean('apply').pipe(
+      Cli.Flag.withDescription(
         'After fetching, also apply the lock to the workspace (fetch + apply)',
       ),
-      Cli.Options.withDefault(false),
+      Cli.Flag.withDefault(false),
     ),
-    createBranches: Cli.Options.boolean('create-branches').pipe(
-      Cli.Options.withDescription('Create branches that do not exist (from default branch)'),
-      Cli.Options.withDefault(false),
+    createBranches: Cli.Flag.boolean('create-branches').pipe(
+      Cli.Flag.withDescription('Create branches that do not exist (from default branch)'),
+      Cli.Flag.withDefault(false),
     ),
   },
   ({

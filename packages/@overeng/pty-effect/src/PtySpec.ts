@@ -4,8 +4,8 @@ import { Schema } from 'effect'
  * Pty session names per upstream's `validateName`: `[a-zA-Z0-9._-]{1,255}`.
  * Branded so misuse fails at the schema layer rather than inside upstream.
  */
-export const PtyName = Schema.String.pipe(
-  Schema.pattern(/^[a-zA-Z0-9._-]{1,255}$/),
+export const PtyName = Schema.String.check(
+  Schema.isPattern(/^[a-zA-Z0-9._-]{1,255}$/),
   Schema.brand('@overeng/pty-effect/PtyName'),
 )
 export type PtyName = typeof PtyName.Type

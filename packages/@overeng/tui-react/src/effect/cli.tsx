@@ -11,7 +11,7 @@
  * import { outputOption, outputModeLayer } from "@overeng/tui-react"
  *
  * const myCommand = Command.make("my-cmd", {
- *   name: Options.text("name"),
+ *   name: Options.string("name"),
  *   output: outputOption,
  * }, ({ name, output }) =>
  *   myProgram(name).pipe(
@@ -23,8 +23,8 @@
  * @module
  */
 
-import { Options } from 'effect/unstable/cli'
 import { Cause, Effect, Exit, Layer, Logger, Option } from 'effect'
+import { Flag as Options } from 'effect/unstable/cli'
 
 import { createLogCapture } from './LogCapture.ts'
 import { detectOutputMode, viewOutputStreamStdoutLayer } from './OutputMode.node.ts'

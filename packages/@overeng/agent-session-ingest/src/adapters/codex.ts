@@ -160,7 +160,7 @@ export const CodexSessionRecord = Schema.Union(
   LegacySessionMetaRecord,
   LegacyStateRecord,
   LegacyTopLevelRecord,
-).annotations({ identifier: 'AgentSessionIngest.CodexSessionRecord' })
+).annotate({ identifier: 'AgentSessionIngest.CodexSessionRecord' })
 export type CodexSessionRecord = typeof CodexSessionRecord.Type
 
 /**
@@ -174,7 +174,7 @@ export const CodexSessionIndexEntry = Schema.Struct({
   id: Schema.String,
   thread_name: Schema.String,
   updated_at: Schema.String,
-}).annotations({ identifier: 'AgentSessionIngest.CodexSessionIndexEntry' })
+}).annotate({ identifier: 'AgentSessionIngest.CodexSessionIndexEntry' })
 export type CodexSessionIndexEntry = typeof CodexSessionIndexEntry.Type
 
 const listJsonlFiles = Effect.fn('AgentSessionIngest.Codex.listJsonlFiles')(

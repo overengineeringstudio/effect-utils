@@ -42,7 +42,7 @@ export const hiddenStateDirectoryName = join('.notion', NAMESPACE_VERSION)
  * Authority mode recorded in the manifest. Governs whether local edits, remote
  * state, or a converged shared view is authoritative for a workspace.
  */
-export const AuthorityMode = Schema.Literal('local', 'remote', 'shared').annotations({
+export const AuthorityMode = Schema.Literal('local', 'remote', 'shared').annotate({
   identifier: 'NotionDatasourceSync.AuthorityMode',
 })
 export type AuthorityMode = typeof AuthorityMode.Type
@@ -57,7 +57,7 @@ export const WorkspaceManifestDataSourceV1 = Schema.Struct({
   data_file: Schema.NonEmptyTrimmedString,
   /** Workspace-relative path to the source's page directory, e.g. `pages/v1/<name>`. */
   pages_dir: Schema.NonEmptyTrimmedString,
-}).annotations({ identifier: 'NotionDatasourceSync.WorkspaceManifestDataSourceV1' })
+}).annotate({ identifier: 'NotionDatasourceSync.WorkspaceManifestDataSourceV1' })
 export type WorkspaceManifestDataSourceV1 = typeof WorkspaceManifestDataSourceV1.Type
 
 /**
@@ -70,7 +70,7 @@ export const WorkspaceManifestLinkedViewV1 = Schema.Struct({
   view_id: Schema.NonEmptyTrimmedString,
   data_source_id: DataSourceId,
   mode: Schema.Literal('projection'),
-}).annotations({ identifier: 'NotionDatasourceSync.WorkspaceManifestLinkedViewV1' })
+}).annotate({ identifier: 'NotionDatasourceSync.WorkspaceManifestLinkedViewV1' })
 export type WorkspaceManifestLinkedViewV1 = typeof WorkspaceManifestLinkedViewV1.Type
 
 /**
@@ -86,7 +86,7 @@ export const WorkspaceManifestV1 = Schema.Struct({
   authority_mode: AuthorityMode,
   data_sources: Schema.Array(WorkspaceManifestDataSourceV1),
   linked_views: Schema.optional(Schema.Array(WorkspaceManifestLinkedViewV1)),
-}).annotations({ identifier: 'NotionDatasourceSync.WorkspaceManifestV1' })
+}).annotate({ identifier: 'NotionDatasourceSync.WorkspaceManifestV1' })
 export type WorkspaceManifestV1 = typeof WorkspaceManifestV1.Type
 
 const decode = <TSchema extends Schema.Schema.AnyNoContext>({

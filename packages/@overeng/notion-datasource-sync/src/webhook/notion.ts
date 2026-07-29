@@ -96,7 +96,7 @@ const NotionWebhookVerificationStruct = Schema.Struct({
   // intentionally fails this decode and falls through to the HMAC gate rather than
   // being treated as a (meaningless) verification challenge.
   verification_token: Schema.NonEmptyTrimmedString,
-}).annotations({ identifier: 'NotionWebhook.VerificationStruct' })
+}).annotate({ identifier: 'NotionWebhook.VerificationStruct' })
 
 const decodeVerification = Schema.decodeUnknownEither(NotionWebhookVerificationStruct, {
   onExcessProperty: 'preserve',

@@ -2,9 +2,9 @@
  * Database subcommand - database information plus Node-backed replica commands.
  */
 
-import { Args, Command } from '@effect/cli'
-import { FetchHttpClient } from 'effect'
 import { Effect, Layer } from 'effect'
+import { Argument as Args, Command } from 'effect/unstable/cli'
+import { FetchHttpClient } from 'effect/unstable/http'
 import React from 'react'
 
 import {
@@ -26,7 +26,7 @@ import { run } from '@overeng/tui-react'
 
 import { resolveNotionToken, tokenOption } from '../shared.ts'
 
-const databaseIdArg = Args.text({ name: 'database-id' }).pipe(
+const databaseIdArg = Args.string('database-id').pipe(
   Args.withDescription('The Notion database ID to operate on'),
 )
 

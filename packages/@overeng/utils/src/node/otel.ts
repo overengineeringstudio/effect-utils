@@ -12,8 +12,6 @@
  * @module
  */
 
-import * as Otlp from 'effect/unstable/observability/Otlp'
-import { FetchHttpClient } from 'effect'
 import type { MetricLabel } from 'effect'
 import {
   Clock,
@@ -28,6 +26,8 @@ import {
   type Scope,
   Tracer,
 } from 'effect'
+import { FetchHttpClient } from 'effect/unstable/http'
+import * as Otlp from 'effect/unstable/observability/Otlp'
 
 import { ServiceIdentity } from '@overeng/otel-contract'
 

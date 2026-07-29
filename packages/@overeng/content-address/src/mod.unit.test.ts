@@ -43,7 +43,7 @@ const Payload = Schema.Struct({
     zed: Schema.Number,
     beta: Schema.Array(Schema.String),
   }),
-}).annotations({ identifier: 'ContentAddressTest.Payload' })
+}).annotate({ identifier: 'ContentAddressTest.Payload' })
 
 describe('@overeng/content-address', () => {
   it('hashes canonical JSON independent of object key insertion order', () => {

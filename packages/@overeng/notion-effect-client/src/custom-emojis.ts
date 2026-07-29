@@ -10,14 +10,14 @@ const CustomEmojiSchema = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
   url: Schema.String,
-}).annotations({ identifier: 'CustomEmoji' })
+}).annotate({ identifier: 'CustomEmoji' })
 
 export type CustomEmoji = typeof CustomEmojiSchema.Type
 
 const CustomEmojisResponseSchema = Schema.Struct({
   object: Schema.Literal('list'),
   results: Schema.Array(CustomEmojiSchema),
-}).annotations({ identifier: 'CustomEmojisResponse' })
+}).annotate({ identifier: 'CustomEmojisResponse' })
 
 // -----------------------------------------------------------------------------
 // Service Implementation

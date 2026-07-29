@@ -15,8 +15,8 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { HttpClient, HttpClientRequest } from 'effect'
 import { Effect, Either, Schema } from 'effect'
+import { HttpClient, HttpClientRequest } from 'effect/unstable/http'
 
 import {
   DeployInputV1,
@@ -81,7 +81,7 @@ export type VercelDeployCommandOptions = {
 const VercelProjectJson = Schema.Struct({
   id: Schema.optional(Schema.NonEmptyTrimmedString),
   name: Schema.optional(Schema.NonEmptyTrimmedString),
-}).annotations({ identifier: 'CiTools.Vercel.ProjectJson' })
+}).annotate({ identifier: 'CiTools.Vercel.ProjectJson' })
 
 const VercelProjectFileJson = Schema.parseJson(
   Schema.Struct({

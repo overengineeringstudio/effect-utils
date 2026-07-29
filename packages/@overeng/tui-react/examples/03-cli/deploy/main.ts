@@ -16,9 +16,9 @@
  *   bun examples/03-cli/deploy/main.ts --help
  */
 
-import { Command, Options } from 'effect/unstable/cli'
 import { NodeServices, NodeRuntime } from '@effect/platform-node'
 import { Effect } from 'effect'
+import { Command, Flag as Options } from 'effect/unstable/cli'
 
 import { outputOption, outputModeLayer } from '../../../src/node/mod.ts'
 import { DeployError, runDeploy } from './deploy.tsx'
@@ -27,12 +27,12 @@ import { DeployError, runDeploy } from './deploy.tsx'
 // Command Options
 // =============================================================================
 
-const services = Options.text('services').pipe(
+const services = Options.string('services').pipe(
   Options.withAlias('s'),
   Options.withDescription('Comma-separated list of services to deploy'),
 )
 
-const env = Options.text('env').pipe(
+const env = Options.string('env').pipe(
   Options.withAlias('e'),
   Options.withDefault('production'),
   Options.withDescription('Environment to deploy to'),

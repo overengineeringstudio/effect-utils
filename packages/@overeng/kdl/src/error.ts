@@ -5,7 +5,7 @@ export const KdlLocation = Schema.Struct({
   offset: Schema.Number,
   line: Schema.Number,
   column: Schema.Number,
-}).annotations({ identifier: 'Kdl.Location' })
+}).annotate({ identifier: 'Kdl.Location' })
 
 export type KdlLocation = typeof KdlLocation.Type
 

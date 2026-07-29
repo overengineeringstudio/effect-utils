@@ -1,5 +1,5 @@
-import { FetchHttpClient, type HttpClient } from 'effect'
 import { Duration, Effect, Layer, Redacted, Schedule } from 'effect'
+import { FetchHttpClient, type HttpClient } from 'effect/unstable/http'
 
 import type { NotionApiError } from '@overeng/notion-effect-client'
 import { NotionBlocks, NotionConfig, NotionPages } from '@overeng/notion-effect-client'

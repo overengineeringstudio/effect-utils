@@ -93,7 +93,7 @@ export const GenericLockedInput = Schema.Struct({
   rev: Schema.optional(Schema.String),
   narHash: Schema.optional(Schema.String),
   lastModified: Schema.optional(Schema.Number),
-}).pipe(Schema.annotations({ identifier: 'GenericLockedInput' }))
+}).pipe(Schema.annotate({ identifier: 'GenericLockedInput' }))
 export type GenericLockedInput = typeof GenericLockedInput.Type
 
 // =============================================================================

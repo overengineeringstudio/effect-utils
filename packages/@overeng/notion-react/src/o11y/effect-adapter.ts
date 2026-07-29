@@ -1,4 +1,3 @@
-import type { HttpClient } from 'effect'
 /**
  * Effect-native OTEL adapter layering on the core `onEvent` hook.
  *
@@ -20,6 +19,7 @@ import type { HttpClient } from 'effect'
  */
 import { Cause, Context, Effect, Exit, Option, Schema } from 'effect'
 import type { Tracer } from 'effect'
+import type { HttpClient } from 'effect/unstable/http'
 import type { ReactNode } from 'react'
 
 import type { NotionConfig } from '@overeng/notion-effect-client'

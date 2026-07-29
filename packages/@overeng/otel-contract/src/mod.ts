@@ -24,36 +24,36 @@ type OtelPrimitive = string | number | boolean
 /** Branded OTel attribute key: letter-led, `[A-Za-z0-9_.:-]`, ≤255 chars — the canonical key shape shared by resource and span attributes. */
 export const OtelAttributeKey = Schema.NonEmptyTrimmedString.pipe(
   Schema.maxLength(255),
-  Schema.pattern(/^[A-Za-z][A-Za-z0-9_.:-]*$/),
+  Schema.isPattern(/^[A-Za-z][A-Za-z0-9_.:-]*$/),
   Schema.brand('OtelAttributeKey'),
-  Schema.annotations({ identifier: 'Otel.AttributeKey' }),
+  Schema.annotate({ identifier: 'Otel.AttributeKey' }),
 )
 export type OtelAttributeKey = typeof OtelAttributeKey.Type
 
 /** Branded span name: any printable ASCII (`[ -~]`, so spaces/punctuation allowed unlike keys), ≤255 chars. */
 export const OtelSpanName = Schema.NonEmptyTrimmedString.pipe(
   Schema.maxLength(255),
-  Schema.pattern(/^[ -~]+$/),
+  Schema.isPattern(/^[ -~]+$/),
   Schema.brand('OtelSpanName'),
-  Schema.annotations({ identifier: 'Otel.SpanName' }),
+  Schema.annotate({ identifier: 'Otel.SpanName' }),
 )
 export type OtelSpanName = typeof OtelSpanName.Type
 
 /** Branded metric name: Prometheus-style, may lead with `_` or `:` (not just a letter), ≤255 chars. */
 export const OtelMetricName = Schema.NonEmptyTrimmedString.pipe(
   Schema.maxLength(255),
-  Schema.pattern(/^[A-Za-z_:][A-Za-z0-9_.:-]*$/),
+  Schema.isPattern(/^[A-Za-z_:][A-Za-z0-9_.:-]*$/),
   Schema.brand('OtelMetricName'),
-  Schema.annotations({ identifier: 'Otel.MetricName' }),
+  Schema.annotate({ identifier: 'Otel.MetricName' }),
 )
 export type OtelMetricName = typeof OtelMetricName.Type
 
 /** Branded `service.name` resource value: letter-led, `[A-Za-z0-9_.:-]`, ≤255 chars — the telemetry service identity. */
 export const OtelServiceName = Schema.NonEmptyTrimmedString.pipe(
   Schema.maxLength(255),
-  Schema.pattern(/^[A-Za-z][A-Za-z0-9_.:-]*$/),
+  Schema.isPattern(/^[A-Za-z][A-Za-z0-9_.:-]*$/),
   Schema.brand('OtelServiceName'),
-  Schema.annotations({ identifier: 'Otel.ServiceName' }),
+  Schema.annotate({ identifier: 'Otel.ServiceName' }),
 )
 export type OtelServiceName = typeof OtelServiceName.Type
 
@@ -61,7 +61,7 @@ export type OtelServiceName = typeof OtelServiceName.Type
 export const OtelServiceNamespace = Schema.NonEmptyTrimmedString.pipe(
   Schema.maxLength(255),
   Schema.brand('OtelServiceNamespace'),
-  Schema.annotations({ identifier: 'Otel.ServiceNamespace' }),
+  Schema.annotate({ identifier: 'Otel.ServiceNamespace' }),
 )
 export type OtelServiceNamespace = typeof OtelServiceNamespace.Type
 
@@ -69,7 +69,7 @@ export type OtelServiceNamespace = typeof OtelServiceNamespace.Type
 export const OtelServiceVersion = Schema.NonEmptyTrimmedString.pipe(
   Schema.maxLength(255),
   Schema.brand('OtelServiceVersion'),
-  Schema.annotations({ identifier: 'Otel.ServiceVersion' }),
+  Schema.annotate({ identifier: 'Otel.ServiceVersion' }),
 )
 export type OtelServiceVersion = typeof OtelServiceVersion.Type
 
@@ -83,7 +83,7 @@ export const ServiceIdentity = Schema.Struct({
   name: OtelServiceName,
   namespace: OtelServiceNamespace,
   version: OtelServiceVersion,
-}).annotations({ identifier: 'Otel.ServiceIdentity' })
+}).annotate({ identifier: 'Otel.ServiceIdentity' })
 export type ServiceIdentity = typeof ServiceIdentity.Type
 
 /**
@@ -100,7 +100,7 @@ export type ServiceIdentity = typeof ServiceIdentity.Type
 export const ServiceNameParts = Schema.Struct({
   project: Schema.NonEmptyTrimmedString,
   role: Schema.NonEmptyTrimmedString,
-}).annotations({ identifier: 'Otel.ServiceNameParts' })
+}).annotate({ identifier: 'Otel.ServiceNameParts' })
 export type ServiceNameParts = typeof ServiceNameParts.Type
 
 /**
@@ -132,7 +132,7 @@ export const ServiceNameFromParts = ServiceNameParts.pipe(
         ),
     }),
   ),
-).annotations({ identifier: 'Otel.ServiceNameFromParts' })
+).annotate({ identifier: 'Otel.ServiceNameFromParts' })
 
 /**
  * The SHAPE a private fleet configuration supplies to produce a

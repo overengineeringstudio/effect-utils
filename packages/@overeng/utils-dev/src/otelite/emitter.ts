@@ -1,3 +1,4 @@
+import { Effect } from 'effect'
 /**
  * A hand-instrumented Effect emitter, run as the child under `otelite run` by
  * the end-to-end test. It reads the receiver endpoint otelite injects and POSTs
@@ -10,8 +11,7 @@
  * The trace uses the default OTel-SDK JSON dialect the receiver decodes:
  * 32-hex `traceId`, 16-hex `spanId`, integer `kind`, string int64 nanos.
  */
-import { FetchHttpClient, HttpClient, HttpClientRequest } from 'effect'
-import { Effect } from 'effect'
+import { FetchHttpClient, HttpClient, HttpClientRequest } from 'effect/unstable/http'
 
 /** Distinctive span name so the test's assertion is unambiguous. */
 export const SPAN_NAME = 'otelite-effect-e2e-span'

@@ -1,10 +1,4 @@
 import {
-  HttpClient,
-  type HttpClientError,
-  HttpClientRequest,
-  type HttpClientResponse,
-} from 'effect'
-import {
   Context,
   Effect,
   Option,
@@ -14,6 +8,12 @@ import {
   ScheduleInterval,
   Schema,
 } from 'effect'
+import {
+  HttpClient,
+  type HttpClientError,
+  HttpClientRequest,
+  type HttpClientResponse,
+} from 'effect/unstable/http'
 
 import { NOTION_API_BASE_URL, NOTION_API_VERSION, NotionConfig } from '../config.ts'
 import { NotionApiError, NotionErrorResponse } from '../error.ts'

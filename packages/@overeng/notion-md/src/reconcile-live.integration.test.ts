@@ -2,10 +2,11 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import type { FileSystem, HttpClient } from 'effect'
-import { FetchHttpClient } from 'effect'
 import { NodeServices } from '@effect/platform-node'
+import type { FileSystem } from 'effect'
 import { Deferred, Effect, Fiber, Layer, Redacted } from 'effect'
+import type { HttpClient } from 'effect/unstable/http'
+import { FetchHttpClient } from 'effect/unstable/http'
 import { afterAll, describe, expect, it } from 'vitest'
 
 import { NotionConfigLive, NotionPages, type NotionConfig } from '@overeng/notion-effect-client'

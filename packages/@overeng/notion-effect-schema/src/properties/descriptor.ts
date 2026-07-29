@@ -20,7 +20,7 @@ import { Schema } from 'effect'
 import { DataSourceId, NotionPropertyType, PropertyId, PropertyName } from './canonical.ts'
 
 /** Validated `sha256:<hex64>` content-hash form shared by the descriptor identity hashes. */
-const Sha256Hash = Schema.NonEmptyTrimmedString.pipe(Schema.pattern(/^sha256:[0-9a-f]{64}$/))
+const Sha256Hash = Schema.NonEmptyTrimmedString.check(Schema.isPattern(/^sha256:[0-9a-f]{64}$/))
 
 /**
  * Identity of a property's current schema *configuration* (options, format,
@@ -29,7 +29,7 @@ const Sha256Hash = Schema.NonEmptyTrimmedString.pipe(Schema.pattern(/^sha256:[0-
  */
 export const ConfigHash = Sha256Hash.pipe(
   Schema.brand('Notion.ConfigHash'),
-  Schema.annotations({ identifier: 'Notion.ConfigHash' }),
+  Schema.annotate({ identifier: 'Notion.ConfigHash' }),
 )
 export type ConfigHash = typeof ConfigHash.Type
 
@@ -43,7 +43,7 @@ export type ConfigHash = typeof ConfigHash.Type
  */
 export const SchemaHash = Sha256Hash.pipe(
   Schema.brand('Notion.SchemaHash'),
-  Schema.annotations({ identifier: 'Notion.SchemaHash' }),
+  Schema.annotate({ identifier: 'Notion.SchemaHash' }),
 )
 export type SchemaHash = typeof SchemaHash.Type
 
@@ -63,7 +63,7 @@ export const PropertyIdentityEvidenceSource = Schema.Union(
   Schema.TaggedStruct('descriptor', {}),
   Schema.TaggedStruct('workspace_state', {}),
   Schema.TaggedStruct('live_schema', {}),
-).annotations({ identifier: 'Notion.PropertyIdentityEvidenceSource' })
+).annotate({ identifier: 'Notion.PropertyIdentityEvidenceSource' })
 export type PropertyIdentityEvidenceSource = typeof PropertyIdentityEvidenceSource.Type
 
 /**
@@ -81,7 +81,7 @@ export const PropertyDescriptor = Schema.Struct({
   property_type: NotionPropertyType,
   data_source_id: DataSourceId,
   config_hash: ConfigHash,
-}).annotations({ identifier: 'Notion.PropertyDescriptor' })
+}).annotate({ identifier: 'Notion.PropertyDescriptor' })
 export type PropertyDescriptor = typeof PropertyDescriptor.Type
 
 /**
@@ -97,7 +97,7 @@ export type PropertyDescriptor = typeof PropertyDescriptor.Type
 export const PropertyDescriptors = Schema.Record({
   key: PropertyName,
   value: PropertyDescriptor,
-}).annotations({ identifier: 'Notion.PropertyDescriptors' })
+}).annotate({ identifier: 'Notion.PropertyDescriptors' })
 export type PropertyDescriptors = typeof PropertyDescriptors.Type
 
 /**

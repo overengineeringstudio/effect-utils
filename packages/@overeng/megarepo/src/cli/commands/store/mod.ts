@@ -4,9 +4,9 @@
  * Commands for managing the shared git store.
  */
 
-import * as Cli from '@effect/cli'
 import { FileSystem, type Error as PlatformError } from 'effect'
 import { Clock, Effect, Option, Schedule, Stream } from 'effect'
+import * as Cli from 'effect/unstable/cli'
 import React from 'react'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
@@ -1261,18 +1261,18 @@ const storeGcCommand = Cli.Command.make(
   'gc',
   {
     output: outputOption,
-    dryRun: Cli.Options.boolean('dry-run').pipe(
-      Cli.Options.withDescription('Show what would be removed without removing'),
-      Cli.Options.withDefault(false),
+    dryRun: Cli.Flag.boolean('dry-run').pipe(
+      Cli.Flag.withDescription('Show what would be removed without removing'),
+      Cli.Flag.withDefault(false),
     ),
-    force: Cli.Options.boolean('force').pipe(
-      Cli.Options.withAlias('f'),
-      Cli.Options.withDescription('Remove dirty worktrees (with uncommitted changes)'),
-      Cli.Options.withDefault(false),
+    force: Cli.Flag.boolean('force').pipe(
+      Cli.Flag.withAlias('f'),
+      Cli.Flag.withDescription('Remove dirty worktrees (with uncommitted changes)'),
+      Cli.Flag.withDefault(false),
     ),
-    all: Cli.Options.boolean('all').pipe(
-      Cli.Options.withDescription('Remove all worktrees (not just unused ones)'),
-      Cli.Options.withDefault(false),
+    all: Cli.Flag.boolean('all').pipe(
+      Cli.Flag.withDescription('Remove all worktrees (not just unused ones)'),
+      Cli.Flag.withDefault(false),
     ),
   },
   ({ output, dryRun, force, all }) =>
@@ -1836,8 +1836,8 @@ const storeGcCommand = Cli.Command.make(
 const storeAddCommand = Cli.Command.make(
   'add',
   {
-    source: Cli.Args.text({ name: 'source' }).pipe(
-      Cli.Args.withDescription('Repository source (owner/repo, URL, or owner/repo#ref)'),
+    source: Cli.Argument.string('source').pipe(
+      Cli.Argument.withDescription('Repository source (owner/repo, URL, or owner/repo#ref)'),
     ),
     output: outputOption,
   },
@@ -1996,13 +1996,13 @@ const storeFixCommand = Cli.Command.make(
   'fix',
   {
     output: outputOption,
-    member: Cli.Args.text({ name: 'member' }).pipe(
-      Cli.Args.withDescription('Member to fix (optional, fixes all if omitted)'),
-      Cli.Args.optional,
+    member: Cli.Argument.string('member').pipe(
+      Cli.Argument.withDescription('Member to fix (optional, fixes all if omitted)'),
+      Cli.Argument.optional,
     ),
-    dryRun: Cli.Options.boolean('dry-run').pipe(
-      Cli.Options.withDescription('Show what would be fixed without making changes'),
-      Cli.Options.withDefault(false),
+    dryRun: Cli.Flag.boolean('dry-run').pipe(
+      Cli.Flag.withDescription('Show what would be fixed without making changes'),
+      Cli.Flag.withDefault(false),
     ),
   },
   ({ output, member, dryRun }) =>
@@ -2119,26 +2119,26 @@ const storeFixCommand = Cli.Command.make(
 const storeWorktreeNewCommand = Cli.Command.make(
   'new',
   {
-    repo: Cli.Args.text({ name: 'repo' }).pipe(
-      Cli.Args.withDescription('Repository (owner/repo, URL, or store-relative path)'),
+    repo: Cli.Argument.string('repo').pipe(
+      Cli.Argument.withDescription('Repository (owner/repo, URL, or store-relative path)'),
     ),
-    ref: Cli.Options.text('ref').pipe(
-      Cli.Options.withDescription('Branch or tag name to check out'),
-      Cli.Options.optional,
+    ref: Cli.Flag.string('ref').pipe(
+      Cli.Flag.withDescription('Branch or tag name to check out'),
+      Cli.Flag.optional,
     ),
-    base: Cli.Options.text('base').pipe(
-      Cli.Options.withDescription('Base ref for creating a new branch (used with --ref)'),
-      Cli.Options.optional,
+    base: Cli.Flag.string('base').pipe(
+      Cli.Flag.withDescription('Base ref for creating a new branch (used with --ref)'),
+      Cli.Flag.optional,
     ),
-    commit: Cli.Options.text('commit').pipe(
-      Cli.Options.withDescription('Commit SHA to check out (detached HEAD)'),
-      Cli.Options.optional,
+    commit: Cli.Flag.string('commit').pipe(
+      Cli.Flag.withDescription('Commit SHA to check out (detached HEAD)'),
+      Cli.Flag.optional,
     ),
-    porcelain: Cli.Options.boolean('porcelain').pipe(
-      Cli.Options.withDescription(
+    porcelain: Cli.Flag.boolean('porcelain').pipe(
+      Cli.Flag.withDescription(
         'Output only the worktree path for scripting (e.g. cd $(mr store worktree new ... --porcelain))',
       ),
-      Cli.Options.withDefault(false),
+      Cli.Flag.withDefault(false),
     ),
     output: outputOption,
   },

@@ -4,10 +4,10 @@
  * Show workspace status and member states.
  */
 
-import * as Cli from 'effect/unstable/cli'
 import type { CommandExecutor } from 'effect'
 import { FileSystem, type Error as PlatformError } from 'effect'
 import { Clock, Effect, Option, type ParseResult } from 'effect'
+import * as Cli from 'effect/unstable/cli'
 import React from 'react'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
@@ -285,9 +285,9 @@ export const statusCommand = Cli.Command.make(
   'status',
   {
     output: outputOption,
-    all: Cli.Options.boolean('all').pipe(
-      Cli.Options.withDescription('Recursively show status of nested megarepos'),
-      Cli.Options.withDefault(false),
+    all: Cli.Flag.boolean('all').pipe(
+      Cli.Flag.withDescription('Recursively show status of nested megarepos'),
+      Cli.Flag.withDefault(false),
     ),
   },
   ({ output, all }) =>

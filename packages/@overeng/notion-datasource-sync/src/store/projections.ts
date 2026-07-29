@@ -25,7 +25,7 @@ export const OutboxState = Schema.Literal(
   'settled',
   'fenced',
   'ambiguous',
-).annotations({ identifier: 'NotionDatasourceSync.OutboxState' })
+).annotate({ identifier: 'NotionDatasourceSync.OutboxState' })
 export type OutboxState = typeof OutboxState.Type
 
 /** Minimal event fields needed to compute a deterministic projection digest. */
@@ -70,7 +70,7 @@ export const ProjectionPropertyWriteClass = Schema.Literal(
   'writable',
   'computed',
   'unsupported',
-).annotations({ identifier: 'NotionDatasourceSync.ProjectionPropertyWriteClass' })
+).annotate({ identifier: 'NotionDatasourceSync.ProjectionPropertyWriteClass' })
 /** TypeScript alias for `PropertyWriteClass` — re-exported alongside the Schema literal for symmetry. */
 export type ProjectionPropertyWriteClass = PropertyWriteClass
 
@@ -82,7 +82,7 @@ export const ProjectionPropertyAvailability = Schema.Literal(
   'paginated-incomplete',
   'relation-target-inaccessible',
   'related-data-source-unshared',
-).annotations({ identifier: 'NotionDatasourceSync.ProjectionPropertyAvailability' })
+).annotate({ identifier: 'NotionDatasourceSync.ProjectionPropertyAvailability' })
 /** TypeScript alias for `PropertyAvailability` — re-exported alongside the Schema literal for symmetry. */
 export type ProjectionPropertyAvailability = PropertyAvailability
 
@@ -95,7 +95,7 @@ export const ProjectionDirectRetrieve = Schema.Literal(
   'permission-ambiguous',
   'inaccessible',
   'unknown',
-).annotations({ identifier: 'NotionDatasourceSync.ProjectionDirectRetrieve' })
+).annotate({ identifier: 'NotionDatasourceSync.ProjectionDirectRetrieve' })
 export type ProjectionDirectRetrieve = typeof ProjectionDirectRetrieve.Type
 
 /** Auxiliary JSON payload stored alongside `data_source_projection` rows (schema property list). */
@@ -114,7 +114,7 @@ export const DataSourceProjectionPayload = Schema.Struct({
       }),
     ),
   ),
-}).annotations({ identifier: 'NotionDatasourceSync.DataSourceProjectionPayload' })
+}).annotate({ identifier: 'NotionDatasourceSync.DataSourceProjectionPayload' })
 export type DataSourceProjectionPayload = typeof DataSourceProjectionPayload.Type
 
 /** Auxiliary JSON payload stored alongside `row_projection` rows (body path, move status, sidecar identity). */
@@ -124,7 +124,7 @@ export const RowProjectionPayload = Schema.Struct({
   bodyPath: Schema.optional(Schema.NonEmptyTrimmedString),
   sidecarIdentityProven: Schema.optional(Schema.Boolean),
   ownWriteMaterializationIds: Schema.optional(Schema.Array(Schema.NonEmptyTrimmedString)),
-}).annotations({ identifier: 'NotionDatasourceSync.RowProjectionPayload' })
+}).annotate({ identifier: 'NotionDatasourceSync.RowProjectionPayload' })
 export type RowProjectionPayload = typeof RowProjectionPayload.Type
 
 /** Auxiliary JSON payload stored alongside `page_property_checkpoint` rows (base hash, availability). */
@@ -132,14 +132,14 @@ export const PropertyCheckpointProjectionPayload = Schema.Struct({
   baseHash: Schema.optional(Hash),
   availability: Schema.optional(ProjectionPropertyAvailability),
   valueJson: Schema.optional(Schema.String),
-}).annotations({ identifier: 'NotionDatasourceSync.PropertyCheckpointProjectionPayload' })
+}).annotate({ identifier: 'NotionDatasourceSync.PropertyCheckpointProjectionPayload' })
 export type PropertyCheckpointProjectionPayload = typeof PropertyCheckpointProjectionPayload.Type
 
 /** Auxiliary JSON payload stored alongside `query_scan_checkpoint` rows (cap/contract-change flags). */
 export const QueryCheckpointProjectionPayload = Schema.Struct({
   cappedAtLimit: Schema.optional(Schema.Boolean),
   contractChanged: Schema.optional(Schema.Boolean),
-}).annotations({ identifier: 'NotionDatasourceSync.QueryCheckpointProjectionPayload' })
+}).annotate({ identifier: 'NotionDatasourceSync.QueryCheckpointProjectionPayload' })
 export type QueryCheckpointProjectionPayload = typeof QueryCheckpointProjectionPayload.Type
 
 /** Auxiliary JSON payload stored alongside `query_absence_projection` rows (absence classification details). */
@@ -151,7 +151,7 @@ export const QueryAbsenceProjectionPayload = Schema.Struct({
   membershipScope: Schema.optional(QueryMembershipScope),
   filtered: Schema.optional(Schema.Boolean),
   directRetrieve: Schema.optional(ProjectionDirectRetrieve),
-}).annotations({ identifier: 'NotionDatasourceSync.QueryAbsenceProjectionPayload' })
+}).annotate({ identifier: 'NotionDatasourceSync.QueryAbsenceProjectionPayload' })
 export type QueryAbsenceProjectionPayload = typeof QueryAbsenceProjectionPayload.Type
 
 /** Materialization metadata stored with a body pointer projection. */
@@ -159,7 +159,7 @@ export const BodyProjectionMaterialization = Schema.Struct({
   path: WorkspaceRelativePath,
   sidecarIdentityProven: Schema.Boolean,
   ownWriteMaterializationIds: Schema.Array(Schema.NonEmptyTrimmedString),
-}).annotations({ identifier: 'NotionDatasourceSync.BodyProjectionMaterialization' })
+}).annotate({ identifier: 'NotionDatasourceSync.BodyProjectionMaterialization' })
 export type BodyProjectionMaterialization = typeof BodyProjectionMaterialization.Type
 
 /** Auxiliary JSON payload stored alongside `body_pointer_projection` rows. */
@@ -168,5 +168,5 @@ export const BodyProjectionPayload = Schema.TaggedStruct('BodyProjectionPayload'
   pointer: BodyPointer,
   safety: BodySafetySnapshot,
   materialization: BodyProjectionMaterialization,
-}).annotations({ identifier: 'NotionDatasourceSync.BodyProjectionPayload' })
+}).annotate({ identifier: 'NotionDatasourceSync.BodyProjectionPayload' })
 export type BodyProjectionPayload = typeof BodyProjectionPayload.Type

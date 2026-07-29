@@ -235,7 +235,7 @@ const coerceDerivationKind = (
 const annotate =
   <V>(args: { id: symbol; value: V }) =>
   <S extends Schema.Schema.AnyNoContext>(schema: S): S =>
-    schema.annotations({ [args.id]: args.value }) as S
+    schema.annotate({ [args.id]: args.value }) as S
 
 const lineageAnnotation =
   (value: Lineage) =>

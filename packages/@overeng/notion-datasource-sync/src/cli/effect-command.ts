@@ -1,5 +1,5 @@
-import { Args, Command, Options } from 'effect/unstable/cli'
 import { Effect } from 'effect'
+import { Argument as Args, Command, Flag as Options } from 'effect/unstable/cli'
 
 /** Handler used by the import-safe command descriptor for executable leaf commands. */
 export type DatasourceDbCommandHandler = (command: string) => Effect.Effect<void>
@@ -9,7 +9,7 @@ export type CompletionShell = 'bash' | 'fish' | 'sh' | 'zsh'
 
 const defaultHandler: DatasourceDbCommandHandler = () => Effect.void
 
-const workspaceRootArg = Args.text({ name: 'workspace-root' }).pipe(
+const workspaceRootArg = Args.string('workspace-root').pipe(
   Args.withDescription('Workspace root or SQLite replica path'),
   Args.optional,
 )
@@ -29,12 +29,12 @@ const sqliteOption = Options.file('sqlite').pipe(
   Options.optional,
 )
 
-const rootIdOption = Options.text('root-id').pipe(
+const rootIdOption = Options.string('root-id').pipe(
   Options.withDescription('Sync root id'),
   Options.optional,
 )
 
-const dataSourceIdOption = Options.text('data-source-id').pipe(
+const dataSourceIdOption = Options.string('data-source-id').pipe(
   Options.withDescription('Notion data source id'),
   Options.optional,
 )
@@ -132,7 +132,7 @@ export const makeDatasourceDbSubcommands = (
         description: 'Resolve a conflict',
         handler,
         extraConfig: {
-          conflictId: Options.text('conflict-id').pipe(
+          conflictId: Options.string('conflict-id').pipe(
             Options.withDescription('Conflict id to resolve'),
             Options.optional,
           ),
@@ -140,7 +140,7 @@ export const makeDatasourceDbSubcommands = (
             Options.withDescription('Conflict resolution strategy'),
             Options.optional,
           ),
-          valueJson: Options.text('value-json').pipe(
+          valueJson: Options.string('value-json').pipe(
             Options.withDescription('Manual resolution value as JSON'),
             Options.optional,
           ),
@@ -155,7 +155,7 @@ export const makeDatasourceDbSubcommands = (
     'track',
     {
       ...commonOptions,
-      remoteRef: Args.text({ name: 'remote-ref' }).pipe(
+      remoteRef: Args.string('remote-ref').pipe(
         Args.withDescription('Notion data source or database URL to adopt'),
         Args.optional,
       ),
@@ -216,7 +216,7 @@ export const makeDatasourceDbSubcommands = (
       description: 'Archive or forget a page locally',
       handler,
       extraConfig: {
-        pageId: Options.text('page-id').pipe(
+        pageId: Options.string('page-id').pipe(
           Options.withDescription('Notion page id'),
           Options.optional,
         ),
@@ -228,7 +228,7 @@ export const makeDatasourceDbSubcommands = (
       description: 'Restore a forgotten page locally',
       handler,
       extraConfig: {
-        pageId: Options.text('page-id').pipe(
+        pageId: Options.string('page-id').pipe(
           Options.withDescription('Notion page id'),
           Options.optional,
         ),

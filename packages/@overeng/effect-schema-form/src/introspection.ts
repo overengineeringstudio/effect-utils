@@ -220,7 +220,7 @@ export const getStructProperties = (
     const meta = analyzeSchema(propSchema)
 
     // Use property-level annotations if available, fall back to type annotations
-    // Note: annotations from Schema.optional(X).annotations({...}) are on prop, not prop.type
+    // Note: annotations from Schema.optional(X).annotate({...}) are on prop, not prop.type
     const propTitle = getTitle(prop) ?? getTitle(prop.type)
     const propDescription = getDescription(prop) ?? getDescription(prop.type)
 

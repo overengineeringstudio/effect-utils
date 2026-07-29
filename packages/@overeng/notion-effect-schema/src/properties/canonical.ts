@@ -31,21 +31,21 @@ import {
 /** Branded Notion property ID (stable identifier within a database schema). */
 export const PropertyId = Schema.NonEmptyTrimmedString.pipe(
   Schema.brand('Notion.PropertyId'),
-  Schema.annotations({ identifier: 'Notion.PropertyId' }),
+  Schema.annotate({ identifier: 'Notion.PropertyId' }),
 )
 export type PropertyId = typeof PropertyId.Type
 
 /** Branded human-readable Notion property name (mutable; distinct from the stable `PropertyId`). */
 export const PropertyName = Schema.NonEmptyTrimmedString.pipe(
   Schema.brand('Notion.PropertyName'),
-  Schema.annotations({ identifier: 'Notion.PropertyName' }),
+  Schema.annotate({ identifier: 'Notion.PropertyName' }),
 )
 export type PropertyName = typeof PropertyName.Type
 
 /** Branded Notion page ID. */
 export const PageId = Schema.NonEmptyTrimmedString.pipe(
   Schema.brand('Notion.PageId'),
-  Schema.annotations({ identifier: 'Notion.PageId' }),
+  Schema.annotate({ identifier: 'Notion.PageId' }),
 )
 export type PageId = typeof PageId.Type
 
@@ -58,12 +58,12 @@ export type PageId = typeof PageId.Type
  */
 export const DataSourceId = Schema.NonEmptyTrimmedString.pipe(
   Schema.brand('Notion.DataSourceId'),
-  Schema.annotations({ identifier: 'Notion.DataSourceId' }),
+  Schema.annotate({ identifier: 'Notion.DataSourceId' }),
 )
 export type DataSourceId = typeof DataSourceId.Type
 
 /** Opaque content-hash string (e.g. `sha256:…`). Computed by the caller, not here. */
-export const CanonicalHash = Schema.String.annotations({ identifier: 'Notion.Canonical.Hash' })
+export const CanonicalHash = Schema.String.annotate({ identifier: 'Notion.Canonical.Hash' })
 export type CanonicalHash = typeof CanonicalHash.Type
 
 /** Canonical select/multi-select/status option, normalized for stable hash comparison. */
@@ -71,7 +71,7 @@ export const CanonicalOptionValue = Schema.TaggedStruct('CanonicalOptionValue', 
   id: Schema.optional(PropertyId),
   name: PropertyName,
   color: Schema.optional(Schema.NonEmptyTrimmedString),
-}).annotations({ identifier: 'Notion.Canonical.OptionValue' })
+}).annotate({ identifier: 'Notion.Canonical.OptionValue' })
 export type CanonicalOptionValue = typeof CanonicalOptionValue.Type
 
 /** Canonical file attachment: name plus a stable identity hash used for change detection. */
@@ -79,7 +79,7 @@ export const CanonicalFileValue = Schema.TaggedStruct('CanonicalFileValue', {
   name: Schema.NonEmptyTrimmedString,
   identityHash: CanonicalHash,
   externalUrl: Schema.optional(Schema.NonEmptyTrimmedString),
-}).annotations({ identifier: 'Notion.Canonical.FileValue' })
+}).annotate({ identifier: 'Notion.Canonical.FileValue' })
 export type CanonicalFileValue = typeof CanonicalFileValue.Type
 
 /** Normalized representation of any Notion property value; the `_tag` discriminates the variant. Computed properties carry only their hash. */
@@ -131,17 +131,17 @@ export const CanonicalPropertyValue = Schema.Union(
   Schema.TaggedStruct('computed', {
     valueHash: CanonicalHash,
   }),
-).annotations({ identifier: 'Notion.Canonical.PropertyValue' })
+).annotate({ identifier: 'Notion.Canonical.PropertyValue' })
 export type CanonicalPropertyValue = typeof CanonicalPropertyValue.Type
 
 /** Every Notion property *type* tag the API can return. */
-export const NotionPropertyType = Schema.Literal(...NOTION_PROPERTY_TYPES).annotations({
+export const NotionPropertyType = Schema.Literal(...NOTION_PROPERTY_TYPES).annotate({
   identifier: 'Notion.PropertyType',
 })
 export type NotionPropertyType = typeof NotionPropertyType.Type
 
 /** How a property value may be written back to Notion. */
-export const PropertyWriteClass = Schema.Literal(...PROPERTY_WRITE_CLASSES).annotations({
+export const PropertyWriteClass = Schema.Literal(...PROPERTY_WRITE_CLASSES).annotate({
   identifier: 'Notion.PropertyWriteClass',
 })
 export type PropertyWriteClass = typeof PropertyWriteClass.Type
