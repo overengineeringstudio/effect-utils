@@ -117,12 +117,20 @@ const noSignatures = [
   {
     registerEntry: 'equality-structural-default',
     noSignature:
-      'Structural equality depends on runtime value types, and the register audit found no production Effect equality site.',
+      'Structural equality depends on runtime value types; production sources are asserted to contain no Equal.equals call.',
+    productionAbsence: {
+      regex: /\bEqual\s*\.\s*equals\s*\(/g,
+      site: 'Equal.equals(...)',
+    },
   },
   {
     registerEntry: 'effect-never-idle-timer',
     noSignature:
-      'Process liveness is a runtime side effect; Effect.never is also used as unrelated test-only suspension control, with no production liveness site.',
+      'Process liveness is a runtime side effect; production sources are asserted to contain no Effect.never site.',
+    productionAbsence: {
+      regex: /\bEffect\s*\.\s*never\b/g,
+      site: 'Effect.never',
+    },
   },
 ] as const
 
@@ -147,6 +155,14 @@ type ContractionMarker = {
   readonly file: string
   readonly kind: 'BRIDGE' | 'END' | 'TARGET' | 'TODO'
   readonly line: number
+}
+
+type ExpiredNoSignature = {
+  readonly column: number
+  readonly file: string
+  readonly line: number
+  readonly registerEntry: string
+  readonly site: string
 }
 
 const rootArgumentIndex = process.argv.indexOf('--root')
@@ -206,7 +222,7 @@ const repositoryFiles = async () => {
   ])
 
   if (exitCode !== 0) {
-    console.error(`FAIL: cannot enumerate repository files for contraction sweep: ${stderr.trim()}`)
+    console.error(`FAIL: cannot enumerate repository files: ${stderr.trim()}`)
     process.exit(1)
   }
 
@@ -498,6 +514,199 @@ const lineAndColumnAt = ({
     line: lines.length,
   }
 }
+
+const productionAbsenceAssertions = noSignatures.flatMap((declaration) =>
+  'productionAbsence' in declaration
+    ? [
+        {
+          ...declaration.productionAbsence,
+          registerEntry: declaration.registerEntry,
+        },
+      ]
+    : [],
+)
+
+const isProductionSource = (file: string) => {
+  if (file.startsWith('packages/') === false || /\.(?:[cm]?[jt]sx?)$/.test(file) === false) {
+    return false
+  }
+
+  if (
+    /(?:^|\/)(?:__tests__|e2e|examples?|fixtures?|mocks?|stories?|test|tests|testing)(?:\/|$)/i.test(
+      file,
+    ) === true
+  ) {
+    return false
+  }
+
+  const fileName = file.slice(file.lastIndexOf('/') + 1)
+  return (
+    /(?:^|[.-])(?:e2e|fixture|mock|spec|stories|test)(?:[.-]|$)/i.test(fileName) === false &&
+    fileName.includes('.genie.') === false
+  )
+}
+
+/**
+ * Preserve offsets while excluding prose that can name an API without using
+ * it. Template text is masked while interpolation expressions remain
+ * executable and searchable.
+ */
+const maskCommentsAndStrings = (source: string) => {
+  const masked = source.split('')
+  const templateBraceDepth: number[] = []
+  let escaped = false
+  let mode: 'blockComment' | 'code' | 'doubleQuote' | 'lineComment' | 'singleQuote' | 'template' =
+    'code'
+
+  const mask = (index: number) => {
+    if (masked[index] !== '\n') masked[index] = ' '
+  }
+
+  for (let index = 0; index < source.length; index++) {
+    const character = source[index]
+    const next = source[index + 1]
+
+    if (mode === 'lineComment') {
+      mask(index)
+      if (character === '\n') mode = 'code'
+      continue
+    }
+    if (mode === 'blockComment') {
+      mask(index)
+      if (character === '*' && next === '/') {
+        mask(index + 1)
+        mode = 'code'
+        index++
+      }
+      continue
+    }
+    if (mode === 'singleQuote' || mode === 'doubleQuote') {
+      mask(index)
+      if (escaped === true) {
+        escaped = false
+      } else if (character === '\\') {
+        escaped = true
+      } else if (
+        (mode === 'singleQuote' && character === "'") ||
+        (mode === 'doubleQuote' && character === '"')
+      ) {
+        mode = 'code'
+      }
+      continue
+    }
+    if (mode === 'template') {
+      mask(index)
+      if (escaped === true) {
+        escaped = false
+      } else if (character === '\\') {
+        escaped = true
+      } else if (character === '`') {
+        mode = 'code'
+      } else if (character === '$' && next === '{') {
+        mask(index + 1)
+        templateBraceDepth.push(0)
+        mode = 'code'
+        index++
+      }
+      continue
+    }
+    if (character === '/' && next === '/') {
+      mask(index)
+      mask(index + 1)
+      mode = 'lineComment'
+      index++
+      continue
+    }
+    if (character === '/' && next === '*') {
+      mask(index)
+      mask(index + 1)
+      mode = 'blockComment'
+      index++
+      continue
+    }
+    if (character === "'" || character === '"') {
+      mask(index)
+      escaped = false
+      mode = character === "'" ? 'singleQuote' : 'doubleQuote'
+      continue
+    }
+    if (character === '`') {
+      mask(index)
+      escaped = false
+      mode = 'template'
+      continue
+    }
+    if (templateBraceDepth.length > 0 && character === '{') {
+      const depthIndex = templateBraceDepth.length - 1
+      templateBraceDepth[depthIndex] = templateBraceDepth[depthIndex]! + 1
+    } else if (templateBraceDepth.length > 0 && character === '}') {
+      const depthIndex = templateBraceDepth.length - 1
+      if (templateBraceDepth[depthIndex] === 0) {
+        mask(index)
+        templateBraceDepth.pop()
+        mode = 'template'
+      } else {
+        templateBraceDepth[depthIndex] = templateBraceDepth[depthIndex]! - 1
+      }
+    }
+  }
+
+  return masked.join('')
+}
+
+const runProductionAbsenceChecks = async () => {
+  const productionFiles = (await repositoryFiles()).filter(isProductionSource)
+  const productionEntries = await Promise.all(
+    productionFiles.map(
+      async (file) => [file, await Bun.file(resolve(root, file)).text()] as const,
+    ),
+  )
+  const expired: ExpiredNoSignature[] = []
+
+  for (const [file, source] of productionEntries) {
+    const executableSource = maskCommentsAndStrings(source)
+
+    for (const assertion of productionAbsenceAssertions) {
+      for (const match of executableSource.matchAll(assertion.regex)) {
+        expired.push({
+          ...lineAndColumnAt({ source, offset: match.index }),
+          file,
+          registerEntry: assertion.registerEntry,
+          site: assertion.site,
+        })
+      }
+    }
+  }
+
+  expired.sort(
+    (left, right) =>
+      left.file.localeCompare(right.file) ||
+      left.line - right.line ||
+      left.column - right.column ||
+      left.registerEntry.localeCompare(right.registerEntry),
+  )
+
+  if (expired.length === 0) {
+    console.log(
+      `PASS: ${productionAbsenceAssertions.length} noSignature production-absence justifications remain valid across ${productionFiles.length} source files.`,
+    )
+    return
+  }
+
+  for (const finding of expired) {
+    console.error(
+      `${finding.file}:${finding.line}:${finding.column} EXPIRED noSignature "${finding.registerEntry}": found production site ${finding.site}; this entry needs a real risk signature.`,
+    )
+  }
+  const expiredEntries = new Set(expired.map(({ registerEntry }) => registerEntry)).size
+  const expiredFiles = new Set(expired.map(({ file }) => file)).size
+  console.error(
+    `FAIL: ${expiredEntries} noSignature production-absence justifications expired at ${expired.length} sites across ${expiredFiles} source files.`,
+  )
+  process.exit(1)
+}
+
+await runProductionAbsenceChecks()
 
 const findMatchingDelimiter = ({
   source,
