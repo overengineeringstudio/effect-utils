@@ -52,7 +52,6 @@ import {
   Logger,
   Option,
   PubSub,
-  Runtime,
   Schema,
   Stream,
 } from 'effect'
@@ -413,8 +412,6 @@ export const createTuiApp = <S, A>(config: TuiAppConfig<S, A>): TuiApp<S, A> => 
 
       // Create action PubSub for streaming
       const actionPubSub = yield* PubSub.unbounded<A>()
-      const runtime = yield* Effect.runtime<never>()
-
       // Mutable ref for NDJSON event emitter (set after setupMode when ndjson config is active)
       let eventEmitterRef: ((args: { action: A; prevState: S }) => void) | undefined
 
@@ -426,7 +423,7 @@ export const createTuiApp = <S, A>(config: TuiAppConfig<S, A>): TuiApp<S, A> => 
         // Emit NDJSON events if configured
         if (eventEmitterRef !== undefined) eventEmitterRef({ action, prevState: prevState! })
         // Also publish to PubSub for action stream
-        void Runtime.runFork(runtime)(PubSub.publish(actionPubSub, action))
+        void Effect.runFork(PubSub.publish(actionPubSub, action))
       }
 
       // Track root for manual unmount
@@ -735,8 +732,6 @@ const setupProgressiveJsonWithAtom = <S,>({
   registry: AtomRegistry.AtomRegistry
 }): Effect.Effect<void, never, Scope.Scope> =>
   Effect.gen(function* () {
-    const runtime = yield* Effect.runtime<never>()
-
     // Initial snapshot for bootstrapping.
     const initialState = registry.get(stateAtom)
     const initialJson = yield* Schema.encode(Schema.fromJsonString(stateSchema))(initialState).pipe(
@@ -746,7 +741,7 @@ const setupProgressiveJsonWithAtom = <S,>({
 
     // Subscribe to subsequent state changes.
     const unsubscribe = registry.subscribe(stateAtom, (state) => {
-      Runtime.runSync(runtime)(
+      Effect.runSync(
         Schema.encode(Schema.fromJsonString(stateSchema))(state).pipe(
           Effect.flatMap((jsonString) => Console.log(jsonString)),
           Effect.orDie,
@@ -779,7 +774,6 @@ const setupProgressiveJsonWithEvents = <S, E>({
   ndjsonConfig: NdjsonConfig<S, any, E>
 }): Effect.Effect<(args: { action: any; prevState: S }) => void, never, Scope.Scope> =>
   Effect.gen(function* () {
-    const runtime = yield* Effect.runtime<never>()
     const { eventSchema, fromAction } = ndjsonConfig
 
     const initialState = registry.get(stateAtom)
@@ -791,7 +785,7 @@ const setupProgressiveJsonWithEvents = <S, E>({
     const emitter = ({ action, prevState }: { action: any; prevState: S }): void => {
       const events = fromAction({ action, prevState })
       for (const event of events) {
-        Runtime.runSync(runtime)(
+        Effect.runSync(
           Schema.encode(Schema.fromJsonString(eventSchema))(event).pipe(
             Effect.flatMap((jsonString) => Console.log(jsonString)),
             Effect.orDie,
