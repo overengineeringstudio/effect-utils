@@ -461,12 +461,11 @@ export interface SampleResourceOptions {
  *    {@link OtelConfig} marker), so when no endpoint is configured the fiber is
  *    never forked — "zero overhead when unset" means not paying the periodic cost,
  *    not merely a metric going nowhere.
- * 2. **Ticks on real wall time.** `Effect.withClock(Clock.make())` overrides the
- *    contextual (possibly test/fixed) decision clock that `Schedule.spaced`
- *    resolves through — placed BEFORE `forkScoped` so it wraps the forked fiber,
- *    not the fork action. `provideService` does NOT work for `Clock` (it is a
- *    default service read via `clockWith`, not from `R`). Without this, a
- *    zero-sleep decision clock turns the sampler into a hot loop.
+   * 2. **Ticks on real wall time.** The live `Clock.Clock.defaultValue()` overrides
+   *    the contextual (possibly test/fixed) decision clock that `Schedule.spaced`
+   *    resolves through — placed BEFORE `forkScoped` so it wraps the forked fiber,
+   *    not the fork action. Without this, a zero-sleep decision clock turns the
+   *    sampler into a hot loop.
  *
  * @example
  * ```typescript
@@ -483,9 +482,9 @@ export const sampleResource = (
     sample.pipe(
       Effect.repeat(Schedule.spaced(interval)),
       // Decouple from any ambient (test/fixed) decision clock — this sampler is
-      // infrastructure and must tick on real wall time. `withClock` is placed
+      // infrastructure and must tick on real wall time. Provisioning is placed
       // BEFORE `forkScoped` so it wraps the forked fiber, not the fork action.
-      Effect.withClock(Clock.make()),
+      Effect.provideService(Clock.Clock, Clock.Clock.defaultValue()),
       Effect.forkScoped,
       Effect.asVoid,
     ),
