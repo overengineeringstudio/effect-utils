@@ -33,7 +33,6 @@ import type { Scope } from 'effect'
 import {
   Context,
   Effect,
-  FiberId,
   Layer,
   Logger,
   LogLevel,
@@ -43,6 +42,9 @@ import {
   Runtime,
 } from 'effect'
 import { useSyncExternalStore } from 'react'
+
+const formatFiberId = (fiberId: unknown): string =>
+  typeof fiberId === 'number' ? `#${fiberId}` : String(fiberId ?? 'unknown')
 
 // =============================================================================
 // Types
@@ -172,7 +174,7 @@ export const createTuiLogger = (
             level: logLevel.label,
             message: String(message),
             timestamp: date,
-            fiberId: FiberId.threadName(fiberId),
+            fiberId: formatFiberId(fiberId),
             annotations: Object.fromEntries(annotations),
             ...(spanLabel !== undefined ? { span: spanLabel } : {}),
           }

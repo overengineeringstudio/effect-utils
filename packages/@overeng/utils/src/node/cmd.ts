@@ -1,9 +1,5 @@
 import fs from 'node:fs'
 
-import { ChildProcess as Command } from 'effect/unstable/process'
-import type * as CommandExecutor from 'effect/unstable/process/CommandExecutor'
-import type { Process } from 'effect/unstable/process/CommandExecutor'
-import type { PlatformError } from 'effect/Error'
 import type { Scope } from 'effect'
 import {
   Cause,
@@ -11,8 +7,6 @@ import {
   type Duration,
   Effect,
   Fiber,
-  FiberId,
-  FiberRefs,
   HashMap,
   identity,
   List,
@@ -21,6 +15,10 @@ import {
   Schema,
   Stream,
 } from 'effect'
+import type { PlatformError } from 'effect/Error'
+import { ChildProcess as Command } from 'effect/unstable/process'
+import type * as CommandExecutor from 'effect/unstable/process/CommandExecutor'
+import type { Process } from 'effect/unstable/process/CommandExecutor'
 
 import { type OtelAttrEncodeError, type OtelOperationDefinition } from '@overeng/otel-contract'
 
@@ -507,11 +505,10 @@ const runWithLogging = ({
       const appendLog = ({ channel, content }: { channel: 'stdout' | 'stderr'; content: string }) =>
         Effect.sync(() => {
           const formatted = prettyLogger.log({
-            fiberId: FiberId.none,
+            fiberId: undefined,
             logLevel: channel === 'stdout' ? LogLevel.Info : LogLevel.Warning,
             message: [`[${channel}]${content.length > 0 ? ` ${content}` : ''}`],
             cause: Cause.empty,
-            context: FiberRefs.empty(),
             spans: List.empty(),
             annotations: HashMap.empty(),
             date: new Date(),

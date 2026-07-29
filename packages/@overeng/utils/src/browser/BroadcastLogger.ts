@@ -69,18 +69,7 @@
  *
  * @module
  */
-import {
-  Cause,
-  Effect,
-  FiberId,
-  HashMap,
-  Layer,
-  Logger,
-  LogLevel,
-  Schema,
-  Scope,
-  Stream,
-} from 'effect'
+import { Cause, Effect, HashMap, Layer, Logger, LogLevel, Schema, Scope, Stream } from 'effect'
 
 import {
   OtelAttr,
@@ -88,6 +77,9 @@ import {
   type OtelAttrEncodeError,
   type OtelOperationDefinition,
 } from '@overeng/otel-contract'
+
+const formatFiberId = (fiberId: unknown): string =>
+  typeof fiberId === 'number' ? `#${fiberId}` : String(fiberId ?? 'unknown')
 
 /** Channel name for broadcasting logs */
 export const BROADCAST_CHANNEL_NAME = 'effect-debug-logs'
@@ -182,7 +174,7 @@ const makeBroadcastLoggerFromChannel = ({
       timestamp: date.getTime(),
       level: logLevel.label,
       message: (Array.isArray(message) === true ? message : [message]).map(sanitizeForBroadcast),
-      fiberId: FiberId.threadName(fiberId),
+      fiberId: formatFiberId(fiberId),
       spans: [...spans].map((span) => span.label),
       annotations: Object.fromEntries(
         HashMap.toEntries(annotations).map(([k, v]) => [k, sanitizeForBroadcast(v)]),

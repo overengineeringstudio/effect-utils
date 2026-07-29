@@ -31,20 +31,14 @@
  */
 
 import type { Layer, Scope } from 'effect'
-import {
-  Effect,
-  Fiber,
-  FiberId,
-  Inspectable,
-  Logger,
-  Runtime,
-  Stream,
-  SubscriptionRef,
-} from 'effect'
+import { Effect, Fiber, Inspectable, Logger, Runtime, Stream, SubscriptionRef } from 'effect'
 import React, { createContext, type ReactNode } from 'react'
 
 import { useContext, useSyncExternalStore } from './hooks.tsx'
 import type { TuiLogEntry } from './TuiLogger.ts'
+
+const formatFiberId = (fiberId: unknown): string =>
+  typeof fiberId === 'number' ? `#${fiberId}` : String(fiberId ?? 'unknown')
 
 // =============================================================================
 // Types
@@ -202,7 +196,7 @@ export const createLogCapture = (options?: {
           level: logLevel.label,
           message: String(message),
           timestamp: date,
-          fiberId: FiberId.threadName(fiberId),
+          fiberId: formatFiberId(fiberId),
           annotations: Object.fromEntries(annotations),
           ...(spanLabel !== undefined ? { span: spanLabel } : {}),
         }

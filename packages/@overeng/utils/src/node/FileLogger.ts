@@ -5,7 +5,6 @@ import util from 'node:util'
 import {
   Cause,
   Effect,
-  FiberId,
   HashMap,
   Inspectable,
   Layer,
@@ -15,6 +14,9 @@ import {
   LogSpan,
 } from 'effect'
 import * as EffectArray from 'effect/Array'
+
+const formatFiberId = (fiberId: unknown): string =>
+  typeof fiberId === 'number' ? `#${fiberId}` : String(fiberId ?? 'unknown')
 
 /**
  * Creates a Layer that replaces the default logger with a pretty-printed file logger.
@@ -185,7 +187,7 @@ export const prettyLoggerTty = (options: {
       let firstLine =
         color(`[${options.formatDate(date)}]`, colors.white) +
         ` ${color(logLevel.label, ...logLevelColors[logLevel._tag])}` +
-        ` (${FiberId.threadName(fiberId)})`
+        ` (${formatFiberId(fiberId)})`
 
       if (List.isCons(spans) === true) {
         const now = date.getTime()
