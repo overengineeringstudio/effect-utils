@@ -32,9 +32,8 @@ const program = Effect.gen(function* () {
   const endpoint = yield* otelEndpointFromConfig()
 
   yield* Cli.Command.runWith(command, {
-    name: 'genie',
     version,
-  })(rewriteHelpSubcommand(process.argv)).pipe(
+  })([...rewriteHelpSubcommand(process.argv).slice(2)]).pipe(
     Effect.scoped,
     CliVersion.enrichErrors,
     Effect.provideService(CliVersion, { name: 'genie', version }),
