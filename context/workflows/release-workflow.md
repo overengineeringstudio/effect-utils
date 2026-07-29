@@ -162,6 +162,14 @@ the only job that writes contents and pull-requests.
 - `source-policy` — optional first-party ref policy job (LiveStore
   uses `livestoreDefaultRefPolicyJob`). Omitted when
   `sourcePolicyJob: false`.
+
+The shared default-ref policy remains strict by default. A megarepo that must
+compose an older dependency major may opt into
+`allowLegacyMemberCommitRefs`; the exception applies only to `*-legacy`
+megarepo members whose refs are immutable 40- or 64-character commit IDs.
+Named branches, tags, and ordinary members remain subject to the configured
+default-ref policy.
+
 - `create-release-pr` — runs only on `workflow_dispatch` with
   `mode == create-release-pr`. Runs `setupSteps`, generates the
   release plan from Changesets, opens or refreshes the

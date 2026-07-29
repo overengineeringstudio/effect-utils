@@ -14,9 +14,11 @@ const encode = Schema.encodeEither(Schema.Date)
 
 ```ts
 const DateWire = Schema.DateFromString
-const decode = Schema.decodeUnknownEither(DateWire)
-const encode = Schema.encodeEither(DateWire)
+const decode = Schema.decodeUnknownExit(DateWire)
+const encode = Schema.encodeExit(DateWire)
 ```
+
+The v4 codecs return `Exit`, not `Either`; callers must handle the changed result shape.
 
 ## Equivalence
 
