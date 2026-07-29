@@ -1,7 +1,7 @@
 /** Vendored from effect-distributed-lock 0.0.11 (MIT, Copyright (c) 2025 Ethan Niser). See NOTICE. */
 /* oxlint-disable overeng/named-args -- Preserve the upstream positional semaphore API. */
 import type { Scope } from 'effect'
-import { Duration, Effect, Fiber, Function, Option, Schedule, Stream } from 'effect'
+import { Duration, Effect, Fiber, Function, Option, Schedule, Semaphore, Stream } from 'effect'
 
 import type { SemaphoreBackingError } from './Backing.ts'
 import { DistributedSemaphoreBacking } from './Backing.ts'
@@ -179,7 +179,7 @@ export const make = (
             ? { identifier }
             : { identifier, acquiredExternally: options.acquiredExternally }
 
-        const acquireSemaphore = yield* Effect.makeSemaphore(1)
+        const acquireSemaphore = yield* Semaphore.make(1)
         const pushBasedAcquireEnabled = backing.onPermitsReleased !== undefined
 
         const pollBasedAcquire = Effect.gen(function* () {
