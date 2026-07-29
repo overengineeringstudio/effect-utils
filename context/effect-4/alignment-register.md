@@ -115,6 +115,19 @@
   `catchTag("ResponseError")` or string reason checks.
 - **Status:** two error-shape paths allowlisted; success behavior and numeric status are identical.
 
+## otlp-log-severity-text
+
+- **Bucket:** C — REAL BREAKAGE WE MUST PRESERVE OR SHIM.
+- **Difference:** Effect 4 beta.102 emits title-cased OTLP log `severityText` values such as `Info`;
+  Effect 3 emitted the conventional uppercase spelling `INFO`.
+- **Decision:** preserve the Effect 3 text through a local serialization-layer bridge until
+  [Effect-TS/effect#6749](https://github.com/Effect-TS/effect/issues/6749) is released. Do not weaken
+  log assertions or patch the Effect dependency for this normalization.
+- **Blast radius:** log filters, dashboards, alerts, and tests matching `severity_text`. The numeric
+  `severityNumber` mapping is unchanged (`Info` still maps to OTLP severity number `9`).
+- **Status:** REQUIRED COMPATIBILITY WORK; the `utils-dev` all-signals harness pins the uppercase
+  text and the bridge is contraction-marked.
+
 ## fork-defaults
 
 - **Difference:** No default startup-order difference was observed for v3
