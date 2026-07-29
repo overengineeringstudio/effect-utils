@@ -64,7 +64,7 @@ export const writeCaptureDiagnostics = Effect.fn('otelite.diagnostics.write', {
   includeMetrics = false,
   includeLogs = false,
 }: WriteCaptureDiagnosticsOptions) {
-  const fs = yield* FileSystem.FileSystem
+  const fs = yield* FileSystem
   yield* fs.makeDirectory(outDir, { recursive: true })
 
   const traceSummary = yield* capture.inspect({
@@ -164,4 +164,4 @@ const encodeJson =
     Schema.encodeSync(Schema.fromJsonString(schema, { space: 2 }))(value)
 
 const writeJson = ({ path, content }: { readonly path: string; readonly content: string }) =>
-  FileSystem.FileSystem.pipe(Effect.flatMap((fs) => fs.writeFileString(path, `${content}\n`)))
+  FileSystem.pipe(Effect.flatMap((fs) => fs.writeFileString(path, `${content}\n`)))

@@ -1,4 +1,4 @@
-import { Either, Schema } from 'effect'
+import { Exit, Schema } from 'effect'
 
 import type { SpanRow } from './schema.ts'
 
@@ -80,22 +80,22 @@ export const attr = {
     description,
     predicate,
   }),
-  schema: <A, I>(
-    schema: Schema.Schema<A, I, never>,
-    description = String(schema.ast.annotations.identifier ?? 'schema'),
+  schema: <A>(
+    schema: Schema.Codec<A, unknown>,
+    description = String(schema.ast.annotations?.identifier ?? 'schema'),
   ): AttrMatcher => ({
     _tag: 'Schema',
     description,
-    matches: (actual) => Either.isRight(Schema.decodeUnknownEither(schema)(actual)),
+    matches: (actual) => Exit.isSuccess(Schema.decodeUnknownExit(schema)(actual)),
   }),
-  json: <A, I>(
-    schema: Schema.Schema<A, I, never>,
-    description = String(schema.ast.annotations.identifier ?? 'json schema'),
+  json: <A>(
+    schema: Schema.Codec<A, unknown>,
+    description = String(schema.ast.annotations?.identifier ?? 'json schema'),
   ): AttrMatcher => ({
     _tag: 'Schema',
     description,
     matches: (actual) =>
-      Either.isRight(Schema.decodeUnknownEither(Schema.fromJsonString(schema))(actual)),
+      Exit.isSuccess(Schema.decodeUnknownExit(Schema.fromJsonString(schema))(actual)),
   }),
 } as const
 

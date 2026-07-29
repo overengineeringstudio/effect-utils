@@ -85,7 +85,7 @@ layer(CaptureLayer, { excludeTestServices: true })('OteliteCapture bridge', (it)
  * nothing lands. The contrasting suffixed path is the main bridge test above
  * (which DOES capture). Together they prove the suffix is load-bearing.
  */
-const BareTestLayer = Otelite.Default.pipe(Layer.provideMerge(NodeServices.layer))
+const BareTestLayer = Otelite.layer.pipe(Layer.provideMerge(NodeServices.layer))
 
 describe('OteliteCapture bridge — suffix regression', () => {
   it.scopedLive(

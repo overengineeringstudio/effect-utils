@@ -40,7 +40,7 @@ describe('OteliteTestHarness', () => {
         expect(trace.expectSameTrace([{ name: root.name }, { name: child.name }])).toBe(
           child.trace_id,
         )
-      }).pipe(Effect.provide(OteliteTestHarness.Default)),
+      }).pipe(Effect.provide(OteliteTestHarness.layer)),
     30_000,
   )
 
@@ -75,7 +75,7 @@ describe('OteliteTestHarness', () => {
     'writes reusable trace diagnostics JSON from a capture',
     () =>
       Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem
+        const fs = yield* FileSystem
         const outDir = yield* fs.makeTempDirectoryScoped()
         const harness = yield* OteliteTestHarness
         const otel = yield* harness.capture({
@@ -99,13 +99,13 @@ describe('OteliteTestHarness', () => {
           service: 'otelite-diagnostics',
         })
 
-        const traceJson = yield* Schema.decodeUnknown(Schema.fromJsonString(TraceJson))(
+        const traceJson = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(TraceJson))(
           yield* fs.readFileString(files.traceJson),
         )
         expect(traceJson.schema).toBe('otelite.trace-json/v1')
         expect(traceJson.summary.span_count).toBeGreaterThanOrEqual(2)
         expect(traceJson.spans.some((span) => span.name === 'otelite-diagnostics.child')).toBe(true)
-      }).pipe(Effect.provide(Layer.mergeAll(OteliteTestHarness.Default, NodeServices.layer))),
+      }).pipe(Effect.provide(Layer.mergeAll(OteliteTestHarness.layer, NodeServices.layer))),
     30_000,
   )
 
@@ -150,7 +150,7 @@ describe('OteliteTestHarness', () => {
         expect(process.env.OTELITE_TEST_ENDPOINT).toBe(previousCustomEndpoint)
         expect(process.env.OTELITE_TEST_SERVICE).toBe(previousCustomService)
         expect(process.env.OTELITE_TEST_EXTRA).toBe(previousExtra)
-      }).pipe(Effect.provide(OteliteTestHarness.Default)),
+      }).pipe(Effect.provide(OteliteTestHarness.layer)),
     30_000,
   )
 

@@ -1,5 +1,5 @@
 import { NodeServices } from '@effect/platform-node'
-import { Effect, Layer, type Scope } from 'effect'
+import { Context, Effect, Layer, Semaphore, type Scope } from 'effect'
 import { FetchHttpClient } from 'effect/unstable/http'
 import { OtlpSerialization, OtlpTracer } from 'effect/unstable/observability'
 import * as Otlp from 'effect/unstable/observability/Otlp'
@@ -107,7 +107,7 @@ export interface OteliteTestHandle {
   ) => Effect.Effect<TraceExpect, E | OteliteSpawnError | OteliteCliError | OteliteDecodeError, R>
 }
 
-const envSemaphore = Effect.unsafeMakeSemaphore(1)
+const envSemaphore = Semaphore.makeUnsafe(1)
 
 const scopedEnv = (
   values: Readonly<Record<string, string | undefined>>,
@@ -197,12 +197,11 @@ const makeInProcessAllSignalsLayer = (
     }).pipe(Layer.provide(FetchHttpClient.layer)),
   )
 
-/** Effect service whose `capture` boots a scoped otelite receiver and yields an {@link OteliteTestHandle}; provides its own `Otelite.Default`. */
-export class OteliteTestHarness extends Effect.Service<OteliteTestHarness>()(
+/** Effect service whose `capture` boots a scoped otelite receiver and yields an {@link OteliteTestHandle}; provides its own `Otelite.layer`. */
+export class OteliteTestHarness extends Context.Service<OteliteTestHarness>()(
   '@overeng/utils-dev/otelite/OteliteTestHarness',
   {
-    accessors: true,
-    effect: Effect.gen(function* () {
+    make: Effect.gen(function* () {
       const otelite = yield* Otelite
 
       const capture = (
@@ -259,7 +258,7 @@ export class OteliteTestHarness extends Effect.Service<OteliteTestHarness>()(
                     captureHandle.endpoints.http,
                   [envOptions.serviceNameVar ?? 'OTEL_SERVICE_NAME']: options.serviceName,
                   ...envOptions.extra,
-                }).pipe(Effect.zipRight(effect)),
+                }).pipe(Effect.andThen(effect)),
               ),
             )
 
@@ -278,8 +277,8 @@ export class OteliteTestHarness extends Effect.Service<OteliteTestHarness>()(
             R
           > =>
             runInProcess(effect).pipe(
-              Effect.zipRight(flushCaptureSpans({ exportInterval })),
-              Effect.zipRight(trace(traceOptions)),
+              Effect.andThen(flushCaptureSpans({ exportInterval })),
+              Effect.andThen(trace(traceOptions)),
             )
 
           const runInProcessAllSignals = <A, E, R>(
@@ -332,8 +331,8 @@ export class OteliteTestHarness extends Effect.Service<OteliteTestHarness>()(
             R
           > =>
             withEnv(effect, envOptions).pipe(
-              Effect.zipRight(flushCaptureSpans({ exportInterval })),
-              Effect.zipRight(trace(traceOptions)),
+              Effect.andThen(flushCaptureSpans({ exportInterval })),
+              Effect.andThen(trace(traceOptions)),
             )
 
           return {
@@ -355,18 +354,24 @@ export class OteliteTestHarness extends Effect.Service<OteliteTestHarness>()(
 
       return { capture } as const
     }),
-    dependencies: [Otelite.Default.pipe(Layer.provide(NodeServices.layer))],
   },
-) {}
+) {
+  static readonly layer = Layer.effect(this, this.make).pipe(
+    Layer.provide(Otelite.layer.pipe(Layer.provide(NodeServices.layer))),
+  )
+}
 
-/** Scoped one-shot {@link OteliteTestHandle}: provides `OteliteTestHarness.Default` so callers needn't wire the layer. */
+/** Scoped one-shot {@link OteliteTestHandle}: provides `OteliteTestHarness.layer` so callers needn't wire the layer. */
 export const captureTest = (
   options: OteliteTestHarnessOptions,
 ): Effect.Effect<
   OteliteTestHandle,
   OteliteSpawnError | OteliteCliError | OteliteDecodeError,
   Scope.Scope
-> => OteliteTestHarness.capture(options).pipe(Effect.provide(OteliteTestHarness.Default))
+> =>
+  OteliteTestHarness.use((service) => service.capture(options)).pipe(
+    Effect.provide(OteliteTestHarness.layer),
+  )
 
 /** All-in-one: boot a capture, run `effect` through the in-process traces exporter, flush, and return a {@link TraceExpect}. */
 export const captureInProcessTrace = <A, E, R>(

@@ -43,7 +43,7 @@ const captureSpanPayload = (name: string, service: string) =>
   })
 
 /** Real otelite binary (from `PATH`, see README) + Node platform layer. */
-const TestLayer = Otelite.Default.pipe(Layer.provideMerge(NodeServices.layer))
+const TestLayer = Otelite.layer.pipe(Layer.provideMerge(NodeServices.layer))
 
 const tracesFixture = new URL('./fixtures/traces.ndjson', import.meta.url).pathname
 const emitter = new URL('./emitter.ts', import.meta.url).pathname

@@ -16,13 +16,12 @@ import type { Duration } from 'effect'
 import {
   type Cause,
   Effect,
-  type FastCheck as FC,
   identity,
   Layer,
-  Predicate,
   type Schema,
   type Scope,
 } from 'effect'
+import type * as FC from 'effect/testing/FastCheck'
 import { FetchHttpClient } from 'effect/unstable/http'
 import { OtlpSerialization, OtlpTracer } from 'effect/unstable/observability'
 
@@ -119,7 +118,7 @@ export type WithTestCtxParams<ROut, E1, RIn> = {
   /** Factory to create a layer for the test. */
   makeLayer?: (testContext: Vitest.TestContext) => Layer.Layer<ROut, E1, RIn | Scope.Scope>
   /** Test timeout. @default 60_000ms in CI, 10_000ms locally */
-  timeout?: Duration.DurationInput
+  timeout?: Duration.Input
   /** Force OTEL tracing even when not in debugger. @default false */
   forceOtel?: boolean
 }
@@ -150,7 +149,7 @@ export const makeWithTestCtx: <ROut = never, E1 = never, RIn = never>(
   self: Effect.Effect<A, E, R>,
 ) => Effect.Effect<
   A,
-  E | E1 | Cause.TimeoutException,
+  E | E1 | Cause.TimeoutError,
   // Exclude dependencies provided by `withTestCtx` from the layer dependencies
   | Exclude<RIn, Scope.Scope>
   // Exclude dependencies provided by `withTestCtx` **and** dependencies produced
@@ -176,7 +175,7 @@ export const withTestCtx =
       self: Effect.Effect<A, E, R>,
     ): Effect.Effect<
       A,
-      E | E1 | Cause.TimeoutException,
+      E | E1 | Cause.TimeoutError,
       // Exclude dependencies provided internally from the provided layer's dependencies
       | Exclude<RIn, Scope.Scope>
       // Exclude dependencies provided internally **and** dependencies produced by the
@@ -242,16 +241,24 @@ const normalizePropOptions = <Arbs extends Vitest.Vitest.Arbitraries>(
     | number
     | (Vitest.TestOptions & {
         fastCheck?: FC.Parameters<{
-          [K in keyof Arbs]: Arbs[K] extends FC.Arbitrary<infer T> ? T : Schema.Schema.Type<Arbs[K]>
+          [K in keyof Arbs]: Arbs[K] extends FC.Arbitrary<infer T>
+            ? T
+            : Arbs[K] extends Schema.Schema<infer T>
+              ? T
+              : never
         }>
       }),
 ): Vitest.TestOptions & {
   fastCheck?: FC.Parameters<{
-    [K in keyof Arbs]: Arbs[K] extends FC.Arbitrary<infer T> ? T : Schema.Schema.Type<Arbs[K]>
+    [K in keyof Arbs]: Arbs[K] extends FC.Arbitrary<infer T>
+      ? T
+      : Arbs[K] extends Schema.Schema<infer T>
+        ? T
+        : never
   }>
 } => {
   // If it's a number, treat as timeout and add our default fastCheck
-  if (Predicate.isObject(propOptions) === false) {
+  if (typeof propOptions === 'number') {
     return {
       timeout: propOptions,
       fastCheck: { numRuns: 100 },
@@ -259,7 +266,7 @@ const normalizePropOptions = <Arbs extends Vitest.Vitest.Arbitraries>(
   }
 
   // If no fastCheck property, add it with our default numRuns
-  if (propOptions.fastCheck === undefined) {
+  if (propOptions.fastCheck == null) {
     return {
       ...propOptions,
       fastCheck: { numRuns: 100 },
@@ -267,7 +274,7 @@ const normalizePropOptions = <Arbs extends Vitest.Vitest.Arbitraries>(
   }
 
   // If fastCheck exists but no numRuns, add our default
-  if (propOptions.fastCheck !== undefined && propOptions.fastCheck.numRuns == null) {
+  if (propOptions.fastCheck.numRuns == null) {
     return {
       ...propOptions,
       fastCheck: {
@@ -321,7 +328,11 @@ export const asProp = <Arbs extends Vitest.Vitest.Arbitraries, A, E, R>(
     R,
     [
       {
-        [K in keyof Arbs]: Arbs[K] extends FC.Arbitrary<infer T> ? T : Schema.Schema.Type<Arbs[K]>
+        [K in keyof Arbs]: Arbs[K] extends FC.Arbitrary<infer T>
+          ? T
+          : Arbs[K] extends Schema.Schema<infer T>
+            ? T
+            : never
       },
       Vitest.TestContext,
       EnhancedTestContext,
@@ -331,7 +342,11 @@ export const asProp = <Arbs extends Vitest.Vitest.Arbitraries, A, E, R>(
     | number
     | (Vitest.TestOptions & {
         fastCheck?: FC.Parameters<{
-          [K in keyof Arbs]: Arbs[K] extends FC.Arbitrary<infer T> ? T : Schema.Schema.Type<Arbs[K]>
+          [K in keyof Arbs]: Arbs[K] extends FC.Arbitrary<infer T>
+            ? T
+            : Arbs[K] extends Schema.Schema<infer T>
+              ? T
+              : never
         }>
       }),
 ) => {
