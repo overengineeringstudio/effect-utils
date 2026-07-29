@@ -19,7 +19,7 @@ import { Cause, Effect, Exit, type Layer, Option, Schema } from 'effect'
 const ExitSchema = Schema.Exit({
   success: Schema.Unknown,
   failure: Schema.Unknown,
-  defect: Schema.Defect,
+  defect: Schema.Defect(),
 })
 
 /**

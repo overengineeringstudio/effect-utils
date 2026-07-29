@@ -98,7 +98,7 @@ const scratchTitlePrefix = 'notion-md e2e: '
 const ledgerTitle = 'notion-md e2e run ledger'
 
 /** Raised when live cleanup targets a parent page outside the test allowlist. */
-class DisallowedTestParentPageError extends Schema.TaggedError<DisallowedTestParentPageError>()(
+class DisallowedTestParentPageError extends Schema.TaggedErrorClass<DisallowedTestParentPageError>()(
   'DisallowedTestParentPageError',
   {
     message: Schema.String,

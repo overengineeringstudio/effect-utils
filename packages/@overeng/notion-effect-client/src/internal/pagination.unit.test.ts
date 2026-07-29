@@ -11,7 +11,7 @@ import {
   toPaginatedResult,
 } from './pagination.ts'
 
-class PaginationNetworkError extends Schema.TaggedError<PaginationNetworkError>()(
+class PaginationNetworkError extends Schema.TaggedErrorClass<PaginationNetworkError>()(
   'PaginationNetworkError',
   {
     message: Schema.String,

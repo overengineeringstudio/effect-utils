@@ -12,7 +12,7 @@ import { Schema } from 'effect'
 // =============================================================================
 
 /** Error when not in a megarepo directory */
-export class NotInMegarepoError extends Schema.TaggedError<NotInMegarepoError>()(
+export class NotInMegarepoError extends Schema.TaggedErrorClass<NotInMegarepoError>()(
   'NotInMegarepoError',
   {
     message: Schema.String,
@@ -20,12 +20,12 @@ export class NotInMegarepoError extends Schema.TaggedError<NotInMegarepoError>()
 ) {}
 
 /** Error when not in a git repository */
-export class NotGitRepoError extends Schema.TaggedError<NotGitRepoError>()('NotGitRepoError', {
+export class NotGitRepoError extends Schema.TaggedErrorClass<NotGitRepoError>()('NotGitRepoError', {
   message: Schema.String,
 }) {}
 
 /** Error when a member is not found */
-export class MemberNotFoundError extends Schema.TaggedError<MemberNotFoundError>()(
+export class MemberNotFoundError extends Schema.TaggedErrorClass<MemberNotFoundError>()(
   'MemberNotFoundError',
   {
     message: Schema.String,
@@ -38,7 +38,7 @@ export class MemberNotFoundError extends Schema.TaggedError<MemberNotFoundError>
 // =============================================================================
 
 /** Error when lock file is required but missing */
-export class LockFileRequiredError extends Schema.TaggedError<LockFileRequiredError>()(
+export class LockFileRequiredError extends Schema.TaggedErrorClass<LockFileRequiredError>()(
   'LockFileRequiredError',
   {
     message: Schema.String,
@@ -46,12 +46,12 @@ export class LockFileRequiredError extends Schema.TaggedError<LockFileRequiredEr
 ) {}
 
 /** Error when lock file is missing */
-export class NoLockFileError extends Schema.TaggedError<NoLockFileError>()('NoLockFileError', {
+export class NoLockFileError extends Schema.TaggedErrorClass<NoLockFileError>()('NoLockFileError', {
   message: Schema.String,
 }) {}
 
 /** Error when lock file is stale */
-export class StaleLockFileError extends Schema.TaggedError<StaleLockFileError>()(
+export class StaleLockFileError extends Schema.TaggedErrorClass<StaleLockFileError>()(
   'StaleLockFileError',
   {
     message: Schema.String,
@@ -65,7 +65,7 @@ export class StaleLockFileError extends Schema.TaggedError<StaleLockFileError>()
 // =============================================================================
 
 /** Error when source string is invalid */
-export class InvalidSourceError extends Schema.TaggedError<InvalidSourceError>()(
+export class InvalidSourceError extends Schema.TaggedErrorClass<InvalidSourceError>()(
   'InvalidSourceError',
   {
     message: Schema.String,
@@ -74,7 +74,7 @@ export class InvalidSourceError extends Schema.TaggedError<InvalidSourceError>()
 ) {}
 
 /** Error when trying to use local path where remote is required */
-export class CannotUseLocalPathError extends Schema.TaggedError<CannotUseLocalPathError>()(
+export class CannotUseLocalPathError extends Schema.TaggedErrorClass<CannotUseLocalPathError>()(
   'CannotUseLocalPathError',
   {
     message: Schema.String,
@@ -82,7 +82,7 @@ export class CannotUseLocalPathError extends Schema.TaggedError<CannotUseLocalPa
 ) {}
 
 /** Error when clone URL cannot be determined */
-export class CannotGetCloneUrlError extends Schema.TaggedError<CannotGetCloneUrlError>()(
+export class CannotGetCloneUrlError extends Schema.TaggedErrorClass<CannotGetCloneUrlError>()(
   'CannotGetCloneUrlError',
   {
     message: Schema.String,
@@ -94,7 +94,7 @@ export class CannotGetCloneUrlError extends Schema.TaggedError<CannotGetCloneUrl
 // =============================================================================
 
 /** Error when member is not synced */
-export class MemberNotSyncedError extends Schema.TaggedError<MemberNotSyncedError>()(
+export class MemberNotSyncedError extends Schema.TaggedErrorClass<MemberNotSyncedError>()(
   'MemberNotSyncedError',
   {
     message: Schema.String,
@@ -103,14 +103,14 @@ export class MemberNotSyncedError extends Schema.TaggedError<MemberNotSyncedErro
 ) {}
 
 /** Error when sync operations fail */
-export class SyncFailedError extends Schema.TaggedError<SyncFailedError>()('SyncFailedError', {
+export class SyncFailedError extends Schema.TaggedErrorClass<SyncFailedError>()('SyncFailedError', {
   message: Schema.String,
   errorCount: Schema.Number,
   failedMembers: Schema.Array(Schema.String),
 }) {}
 
 /** Error when invalid options are provided */
-export class InvalidOptionsError extends Schema.TaggedError<InvalidOptionsError>()(
+export class InvalidOptionsError extends Schema.TaggedErrorClass<InvalidOptionsError>()(
   'InvalidOptionsError',
   {
     message: Schema.String,
@@ -122,7 +122,7 @@ export class InvalidOptionsError extends Schema.TaggedError<InvalidOptionsError>
 // =============================================================================
 
 /** Error when --cwd path is invalid (doesn't exist or not a directory) */
-export class InvalidCwdError extends Schema.TaggedError<InvalidCwdError>()('InvalidCwdError', {
+export class InvalidCwdError extends Schema.TaggedErrorClass<InvalidCwdError>()('InvalidCwdError', {
   message: Schema.String,
   path: Schema.String,
 }) {}
@@ -132,22 +132,25 @@ export class InvalidCwdError extends Schema.TaggedError<InvalidCwdError>()('Inva
 // =============================================================================
 
 /** Error in add command */
-export class AddCommandError extends Schema.TaggedError<AddCommandError>()('AddCommandError', {
+export class AddCommandError extends Schema.TaggedErrorClass<AddCommandError>()('AddCommandError', {
   message: Schema.String,
 }) {}
 
 /** Error in exec command */
-export class ExecCommandError extends Schema.TaggedError<ExecCommandError>()('ExecCommandError', {
-  message: Schema.String,
-}) {}
+export class ExecCommandError extends Schema.TaggedErrorClass<ExecCommandError>()(
+  'ExecCommandError',
+  {
+    message: Schema.String,
+  },
+) {}
 
 /** Error in generate command */
-export class GenerateError extends Schema.TaggedError<GenerateError>()('GenerateError', {
+export class GenerateError extends Schema.TaggedErrorClass<GenerateError>()('GenerateError', {
   message: Schema.String,
 }) {}
 
 /** Error in store command */
-export class StoreCommandError extends Schema.TaggedError<StoreCommandError>()(
+export class StoreCommandError extends Schema.TaggedErrorClass<StoreCommandError>()(
   'StoreCommandError',
   {
     message: Schema.String,
@@ -155,7 +158,7 @@ export class StoreCommandError extends Schema.TaggedError<StoreCommandError>()(
 ) {}
 
 /** Error when megarepo structural checks fail */
-export class CheckCommandError extends Schema.TaggedError<CheckCommandError>()(
+export class CheckCommandError extends Schema.TaggedErrorClass<CheckCommandError>()(
   'CheckCommandError',
   {
     message: Schema.String,

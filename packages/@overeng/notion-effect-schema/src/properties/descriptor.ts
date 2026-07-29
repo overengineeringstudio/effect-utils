@@ -20,7 +20,9 @@ import { Schema } from 'effect'
 import { DataSourceId, NotionPropertyType, PropertyId, PropertyName } from './canonical.ts'
 
 /** Validated `sha256:<hex64>` content-hash form shared by the descriptor identity hashes. */
-const Sha256Hash = Schema.NonEmptyTrimmedString.check(Schema.isPattern(/^sha256:[0-9a-f]{64}$/))
+const Sha256Hash = Schema.Trimmed.check(Schema.isNonEmpty()).check(
+  Schema.check(Schema.isPattern(/^sha256:[0-9a-f]{64}$/)),
+)
 
 /**
  * Identity of a property's current schema *configuration* (options, format,

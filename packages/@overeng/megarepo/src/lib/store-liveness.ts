@@ -239,7 +239,7 @@ export const refreshWorkspaceRegistry = ({
 
     const registryDir = workspaceRegistryDir(store)
     yield* fs.makeDirectory(registryDir, { recursive: true })
-    const content = yield* Schema.encode(Schema.parseJson(StoreWorkspaceRecord, { space: 2 }))(
+    const content = yield* Schema.encode(Schema.fromJsonString(StoreWorkspaceRecord, { space: 2 }))(
       record,
     )
     // Atomic (write-temp-then-rename): a concurrent reader (e.g. an under-lock
@@ -305,7 +305,7 @@ const readRegistryRecords = ({
       const recordPath = EffectPath.ops.join(registryDir, EffectPath.unsafe.relativeFile(entry))
       const parsed = yield* fs.readFileString(recordPath).pipe(
         Effect.flatMap((content) =>
-          Schema.decodeUnknown(Schema.parseJson(StoreWorkspaceRecord))(content),
+          Schema.decodeUnknown(Schema.fromJsonString(StoreWorkspaceRecord))(content),
         ),
         Effect.orElseSucceed(() => null),
       )
@@ -344,9 +344,9 @@ const readRegistryRecords = ({
           updatedAt: new Date(reconcile.now).toISOString(),
           livePaths: [...reconciled.paths].toSorted(),
         }
-        const content = yield* Schema.encode(Schema.parseJson(StoreWorkspaceRecord, { space: 2 }))(
-          record,
-        )
+        const content = yield* Schema.encode(
+          Schema.fromJsonString(StoreWorkspaceRecord, { space: 2 }),
+        )(record)
         // Atomic rewrite so a concurrent reader never sees a torn record and
         // drops a live workspace's veto right before deletion (decision 0010).
         yield* writeFileAtomic({ path: recordPath, content: content + '\n' })

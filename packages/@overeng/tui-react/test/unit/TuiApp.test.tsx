@@ -11,7 +11,7 @@ import { testModeLayer } from '../../src/effect/testing.tsx'
 import { createTuiApp, run, runResult, useTuiAtomValue, Box, Text } from '../../src/mod.tsx'
 
 const decodeJson = <A, I>(schema: Schema.Schema<A, I, never>, json: string): A =>
-  Schema.decodeSync(Schema.parseJson(schema))(json)
+  Schema.decodeSync(Schema.fromJsonString(schema))(json)
 
 // =============================================================================
 // Test State and Actions
@@ -470,7 +470,7 @@ describe('Issue #129: typed errors do not mask final state', () => {
     console.log = originalLog
   })
 
-  class GenerationFailed extends Schema.TaggedError<GenerationFailed>()('GenerationFailed', {
+  class GenerationFailed extends Schema.TaggedErrorClass<GenerationFailed>()('GenerationFailed', {
     message: Schema.String,
     failedCount: Schema.Number,
   }) {}
@@ -557,7 +557,7 @@ describe('run (standalone dual API)', () => {
     console.log = originalLog
   })
 
-  class TestError extends Schema.TaggedError<TestError>()('TestError', {
+  class TestError extends Schema.TaggedErrorClass<TestError>()('TestError', {
     message: Schema.String,
   }) {}
 
@@ -847,7 +847,7 @@ describe('runResult', () => {
   })
 
   describe('error handling', () => {
-    class ReadError extends Schema.TaggedError<ReadError>()('ReadError', {
+    class ReadError extends Schema.TaggedErrorClass<ReadError>()('ReadError', {
       message: Schema.String,
     }) {}
 

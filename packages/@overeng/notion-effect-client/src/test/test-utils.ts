@@ -4,7 +4,7 @@ import { HttpClient, type HttpClientRequest, HttpClientResponse } from 'effect/u
 import { type NotionClientConfig, NotionConfig } from '../config.ts'
 
 /** Encodes an arbitrary mock body to a JSON string (mirrors `JSON.stringify`). */
-const encodeJson = Schema.encodeSync(Schema.parseJson(Schema.Unknown))
+const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
 
 /** Mock response configuration */
 export interface MockResponse {

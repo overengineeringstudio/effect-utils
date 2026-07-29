@@ -7,12 +7,12 @@ import { Schema } from 'effect'
  */
 
 /** Failed to spawn the `otelite` binary at all (e.g. not on `PATH`). */
-export class OteliteSpawnError extends Schema.TaggedError<OteliteSpawnError>(
+export class OteliteSpawnError extends Schema.TaggedErrorClass<OteliteSpawnError>(
   '@overeng/utils-dev/otelite/OteliteSpawnError',
 )('OteliteSpawnError', {
   /** The full argv otelite was invoked with. */
   argv: Schema.Array(Schema.String),
-  cause: Schema.optional(Schema.Defect),
+  cause: Schema.optional(Schema.Defect()),
 }) {
   override get message(): string {
     return `failed to spawn otelite (${this.argv.join(' ')})`
@@ -24,7 +24,7 @@ export class OteliteSpawnError extends Schema.TaggedError<OteliteSpawnError>(
  * happy-path exit code passthrough — otelite's own failures surface as
  * {@link OteliteCliError} instead, disambiguated by otelite's empty stdout.
  */
-export class OteliteChildFailed extends Schema.TaggedError<OteliteChildFailed>(
+export class OteliteChildFailed extends Schema.TaggedErrorClass<OteliteChildFailed>(
   '@overeng/utils-dev/otelite/OteliteChildFailed',
 )('OteliteChildFailed', {
   /** The child's exit code (a signal-killed child is reported as `128 + signo`). */
@@ -42,7 +42,7 @@ export class OteliteChildFailed extends Schema.TaggedError<OteliteChildFailed>(
  * missing source, bind/write failure, drain timeout, internal bug). Mapped
  * from the otelite exit-code table.
  */
-export class OteliteCliError extends Schema.TaggedError<OteliteCliError>(
+export class OteliteCliError extends Schema.TaggedErrorClass<OteliteCliError>(
   '@overeng/utils-dev/otelite/OteliteCliError',
 )('OteliteCliError', {
   /** The raw otelite exit code (one of the `sysexits.h` values). */
@@ -68,7 +68,7 @@ export class OteliteCliError extends Schema.TaggedError<OteliteCliError>(
 }
 
 /** otelite stdout did not decode against the expected `Schema`. */
-export class OteliteDecodeError extends Schema.TaggedError<OteliteDecodeError>(
+export class OteliteDecodeError extends Schema.TaggedErrorClass<OteliteDecodeError>(
   '@overeng/utils-dev/otelite/OteliteDecodeError',
 )('OteliteDecodeError', {
   /** Which CLI output we tried to decode. */
@@ -83,7 +83,7 @@ export class OteliteDecodeError extends Schema.TaggedError<OteliteDecodeError>(
   ),
   /** The raw line/stdout that failed to decode. */
   raw: Schema.String,
-  cause: Schema.optional(Schema.Defect),
+  cause: Schema.optional(Schema.Defect()),
 }) {
   override get message(): string {
     return `failed to decode otelite ${this.kind} output`

@@ -5,7 +5,7 @@ import { Schema } from 'effect'
  * Branded so misuse fails at the schema layer rather than inside upstream.
  */
 export const PtyName = Schema.String.check(
-  Schema.isPattern(/^[a-zA-Z0-9._-]{1,255}$/),
+  Schema.check(Schema.isPattern(/^[a-zA-Z0-9._-]{1,255}$/)),
   Schema.brand('@overeng/pty-effect/PtyName'),
 )
 export type PtyName = typeof PtyName.Type

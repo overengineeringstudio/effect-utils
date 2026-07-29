@@ -42,7 +42,9 @@ export interface StoreLockService {
 }
 
 /** Distributed semaphore service for serializing concurrent access to shared store resources */
-export class StoreLock extends Context.Tag('megarepo/StoreLock')<StoreLock, StoreLockService>() {}
+export class StoreLock extends Context.Service<StoreLock, StoreLockService>()(
+  'megarepo/StoreLock',
+) {}
 
 type DistributedSem = Effect.Effect.Success<ReturnType<typeof DistributedSemaphore.make>>
 

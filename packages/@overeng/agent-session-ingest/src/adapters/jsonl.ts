@@ -68,7 +68,7 @@ export const makeAppendOnlyJsonlAdapter = <A, I>(
         })
 
         const records = yield* Effect.forEach(splitCompleteJsonlRecords(read.text), (line) =>
-          Schema.decodeUnknown(Schema.parseJson(options.recordSchema))(line).pipe(
+          Schema.decodeUnknown(Schema.fromJsonString(options.recordSchema))(line).pipe(
             Effect.mapError(
               (cause) =>
                 new SessionArtifactDecodeError({

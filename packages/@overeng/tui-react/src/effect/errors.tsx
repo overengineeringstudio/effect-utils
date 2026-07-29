@@ -111,7 +111,7 @@ export const cancelledError = (reason: 'user' | 'timeout' | 'signal'): Cancelled
  * Used in JSON mode to maintain modal consistency.
  */
 export const outputJsonError = (error: CommandError): Effect.Effect<void> =>
-  Schema.encode(Schema.parseJson(CommandError))(error).pipe(
+  Schema.encode(Schema.fromJsonString(CommandError))(error).pipe(
     Effect.flatMap((jsonString) => Console.log(jsonString)),
     Effect.orDie, // Schema encoding of our own types should never fail
   )

@@ -161,7 +161,7 @@ export const writeCaptureDiagnostics = Effect.fn('otelite.diagnostics.write', {
 const encodeJson =
   <A, I>(schema: Schema.Schema<A, I, never>) =>
   (value: A): string =>
-    Schema.encodeSync(Schema.parseJson(schema, { space: 2 }))(value)
+    Schema.encodeSync(Schema.fromJsonString(schema, { space: 2 }))(value)
 
 const writeJson = ({ path, content }: { readonly path: string; readonly content: string }) =>
   FileSystem.FileSystem.pipe(Effect.flatMap((fs) => fs.writeFileString(path, `${content}\n`)))

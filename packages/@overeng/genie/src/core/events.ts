@@ -31,10 +31,9 @@ export const GenieEvent = Schema.Union(
 export type GenieEvent = typeof GenieEvent.Type
 
 /** PubSub for genie progress events, injected via Context. */
-export class GenieEventBus extends Context.Tag('@overeng/genie/EventBus')<
-  GenieEventBus,
-  PubSub.PubSub<GenieEvent>
->() {}
+export class GenieEventBus extends Context.Service<GenieEventBus, PubSub.PubSub<GenieEvent>>()(
+  '@overeng/genie/EventBus',
+) {}
 
 /** Publish a GenieEvent to the bus from Context. */
 export const emit = (event: GenieEvent): Effect.Effect<boolean, never, GenieEventBus> =>

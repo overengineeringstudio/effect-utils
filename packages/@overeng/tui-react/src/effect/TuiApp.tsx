@@ -41,7 +41,6 @@
 
 import { Console as NodeConsole } from 'node:console'
 
-import { Atom, AtomRegistry } from 'effect/unstable/reactivity'
 import type { Scope } from 'effect'
 import {
   Cause,
@@ -57,6 +56,7 @@ import {
   Schema,
   Stream,
 } from 'effect'
+import { Atom, AtomRegistry } from 'effect/unstable/reactivity'
 import React, { type ReactElement, type ReactNode, createContext } from 'react'
 
 import { renderToString } from '../renderToString.ts'
@@ -713,7 +713,7 @@ const setupFinalJsonWithAtom = <S,>({
   Effect.addFinalizer(() =>
     Effect.gen(function* () {
       const finalState = registry.get(stateAtom)
-      const jsonString = yield* Schema.encode(Schema.parseJson(stateSchema))(finalState)
+      const jsonString = yield* Schema.encode(Schema.fromJsonString(stateSchema))(finalState)
       yield* Console.log(jsonString)
     }).pipe(Effect.orDie),
   )
@@ -739,7 +739,7 @@ const setupProgressiveJsonWithAtom = <S,>({
 
     // Initial snapshot for bootstrapping.
     const initialState = registry.get(stateAtom)
-    const initialJson = yield* Schema.encode(Schema.parseJson(stateSchema))(initialState).pipe(
+    const initialJson = yield* Schema.encode(Schema.fromJsonString(stateSchema))(initialState).pipe(
       Effect.orDie,
     )
     yield* Console.log(initialJson)
@@ -747,7 +747,7 @@ const setupProgressiveJsonWithAtom = <S,>({
     // Subscribe to subsequent state changes.
     const unsubscribe = registry.subscribe(stateAtom, (state) => {
       Runtime.runSync(runtime)(
-        Schema.encode(Schema.parseJson(stateSchema))(state).pipe(
+        Schema.encode(Schema.fromJsonString(stateSchema))(state).pipe(
           Effect.flatMap((jsonString) => Console.log(jsonString)),
           Effect.orDie,
         ),
@@ -783,7 +783,7 @@ const setupProgressiveJsonWithEvents = <S, E>({
     const { eventSchema, fromAction } = ndjsonConfig
 
     const initialState = registry.get(stateAtom)
-    const initialJson = yield* Schema.encode(Schema.parseJson(stateSchema))(initialState).pipe(
+    const initialJson = yield* Schema.encode(Schema.fromJsonString(stateSchema))(initialState).pipe(
       Effect.orDie,
     )
     yield* Console.log(initialJson)
@@ -792,7 +792,7 @@ const setupProgressiveJsonWithEvents = <S, E>({
       const events = fromAction({ action, prevState })
       for (const event of events) {
         Runtime.runSync(runtime)(
-          Schema.encode(Schema.parseJson(eventSchema))(event).pipe(
+          Schema.encode(Schema.fromJsonString(eventSchema))(event).pipe(
             Effect.flatMap((jsonString) => Console.log(jsonString)),
             Effect.orDie,
           ),
@@ -961,7 +961,7 @@ const writeResult = <O,>({
         process.stdout.write(str)
         if (str.length > 0 && str.endsWith('\n') === false) process.stdout.write('\n')
       })
-    : Schema.encode(Schema.parseJson(schema))(value).pipe(
+    : Schema.encode(Schema.fromJsonString(schema))(value).pipe(
         Effect.flatMap((json) =>
           Effect.sync(() => {
             process.stdout.write(json)

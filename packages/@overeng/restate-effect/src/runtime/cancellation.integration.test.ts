@@ -38,7 +38,7 @@ const acquireGate = new Map<string, Deferred.Deferred<void>>()
 /* The handler never reached its acquire gate within the deadline — the test setup
  * raced the cancel ahead of the suspend point. A typed failure (not a global
  * `Error`) so the `timeoutFail` failure channel stays type-safe. */
-class HandlerNeverAcquired extends Schema.TaggedError<HandlerNeverAcquired>()(
+class HandlerNeverAcquired extends Schema.TaggedErrorClass<HandlerNeverAcquired>()(
   'HandlerNeverAcquired',
   {},
 ) {}

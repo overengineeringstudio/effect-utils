@@ -189,12 +189,12 @@ describe('serviceIdentityFromBinding', () => {
 describe('OtelAttrs', () => {
   it('derives primitive, literal, uuid, option, date, duration, and explicit array attributes', async () => {
     const Attrs = Schema.Struct({
-      label: Schema.NonEmptyTrimmedString.pipe(OtelAttr.spanLabel()),
+      label: Schema.Trimmed.check(Schema.isNonEmpty()).pipe(OtelAttr.spanLabel()),
       requestId: Schema.UUID.pipe(OtelAttr.key({ key: 'request.id' })),
       outcome: Schema.Literal('approved', 'denied', 'timeout').pipe(
         OtelAttr.key({ key: 'op.outcome' }),
       ),
-      count: Schema.NonNegativeInt.pipe(OtelAttr.key({ key: 'op.count' })),
+      count: Schema.Natural.pipe(OtelAttr.key({ key: 'op.count' })),
       cacheHit: Schema.Boolean.pipe(OtelAttr.key({ key: 'op.cache_hit' })),
       maybeShard: Schema.OptionFromNullOr(Schema.String).pipe(OtelAttr.key({ key: 'op.shard' })),
       at: Schema.DateTimeUtc.pipe(OtelAttr.key({ key: 'op.at' })),
@@ -391,8 +391,8 @@ describe('OtelAttrs', () => {
       asJson: Schema.Struct({ id: Schema.String }).pipe(
         OtelAttr.key({ key: 'json', encode: 'json' }),
       ),
-      asString: Schema.NonNegativeInt.pipe(OtelAttr.key({ key: 'string', encode: 'string' })),
-      asNumber: Schema.NonNegativeInt.pipe(OtelAttr.key({ key: 'number', encode: 'number' })),
+      asString: Schema.Natural.pipe(OtelAttr.key({ key: 'string', encode: 'string' })),
+      asNumber: Schema.Natural.pipe(OtelAttr.key({ key: 'number', encode: 'number' })),
       asBoolean: Schema.Boolean.pipe(OtelAttr.key({ key: 'boolean', encode: 'boolean' })),
       secret: Schema.Redacted(Schema.String).pipe(
         OtelAttr.key({ key: 'secret', encode: 'redacted' }),
@@ -456,7 +456,7 @@ describe('OtelAttrs', () => {
       OtelAttrs.define(
         Schema.Struct({
           label: Schema.String.pipe(OtelAttr.spanLabel()),
-          count: Schema.NonNegativeInt.pipe(OtelAttr.key({ key: 'retry.count' })),
+          count: Schema.Natural.pipe(OtelAttr.key({ key: 'retry.count' })),
         }),
       ),
     )
@@ -498,7 +498,7 @@ describe('OtelAttrs', () => {
     const attrs = await Effect.runPromise(
       OtelAttrs.define(
         Schema.Struct({
-          label: Schema.NonEmptyTrimmedString.pipe(OtelAttr.spanLabel()),
+          label: Schema.Trimmed.check(Schema.isNonEmpty()).pipe(OtelAttr.spanLabel()),
           outcome: OtelAttr.literal('op.outcome', 'success', 'retryable', 'terminal'),
           cacheHit: OtelAttr.boolean({ key: 'op.cache_hit' }),
           requestId: OtelAttr.string({ key: 'request.id', metadata: { cardinality: 'high' } }),

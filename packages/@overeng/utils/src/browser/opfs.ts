@@ -21,7 +21,7 @@ declare global {
 /**
  * Error thrown when OPFS is not supported in the current environment.
  */
-export class OPFSNotSupportedError extends Schema.TaggedError<OPFSNotSupportedError>()(
+export class OPFSNotSupportedError extends Schema.TaggedErrorClass<OPFSNotSupportedError>()(
   'OPFSNotSupportedError',
   {
     message: Schema.String,
@@ -35,7 +35,7 @@ export class OPFSNotSupportedError extends Schema.TaggedError<OPFSNotSupportedEr
 /**
  * Error thrown when an OPFS operation fails.
  */
-export class OPFSError extends Schema.TaggedError<OPFSError>()('OPFSError', {
+export class OPFSError extends Schema.TaggedErrorClass<OPFSError>()('OPFSError', {
   operation: Schema.String,
   path: Schema.optional(Schema.String),
   cause: Schema.optional(Schema.Unknown),

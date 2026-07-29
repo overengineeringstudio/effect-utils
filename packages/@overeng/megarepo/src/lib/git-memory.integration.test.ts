@@ -22,9 +22,9 @@ import { platform } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { Command } from 'effect'
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
+import { Command } from 'effect'
 import { Effect, Schema } from 'effect'
 import { expect } from 'vitest'
 
@@ -40,7 +40,7 @@ const ProbeOutput = Schema.Struct({
   vmHwmKb: Schema.Number,
   changesCount: Schema.Number,
 })
-const decodeProbe = Schema.decodeUnknownSync(Schema.parseJson(ProbeOutput))
+const decodeProbe = Schema.decodeUnknownSync(Schema.fromJsonString(ProbeOutput))
 
 const probeScript = fileURLToPath(new URL('../test-utils/memory-probe.ts', import.meta.url))
 

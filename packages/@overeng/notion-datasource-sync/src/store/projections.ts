@@ -105,11 +105,11 @@ export const DataSourceProjectionPayload = Schema.Struct({
       Schema.Struct({
         _tag: Schema.optional(Schema.Literal('DataSourcePropertySnapshot')),
         propertyId: PropertyId,
-        name: Schema.optional(Schema.NonEmptyTrimmedString),
-        type: Schema.optional(Schema.NonEmptyTrimmedString),
+        name: Schema.optional(Schema.Trimmed.check(Schema.isNonEmpty())),
+        type: Schema.optional(Schema.Trimmed.check(Schema.isNonEmpty())),
         configHash: Hash,
         writeClass: ProjectionPropertyWriteClass,
-        ordinal: Schema.optional(Schema.NonNegativeInt),
+        ordinal: Schema.optional(Schema.Natural),
         configJson: Schema.optional(Schema.String),
       }),
     ),
@@ -121,9 +121,11 @@ export type DataSourceProjectionPayload = typeof DataSourceProjectionPayload.Typ
 export const RowProjectionPayload = Schema.Struct({
   movedOut: Schema.optional(Schema.Boolean),
   localDeleteCandidate: Schema.optional(Schema.Boolean),
-  bodyPath: Schema.optional(Schema.NonEmptyTrimmedString),
+  bodyPath: Schema.optional(Schema.Trimmed.check(Schema.isNonEmpty())),
   sidecarIdentityProven: Schema.optional(Schema.Boolean),
-  ownWriteMaterializationIds: Schema.optional(Schema.Array(Schema.NonEmptyTrimmedString)),
+  ownWriteMaterializationIds: Schema.optional(
+    Schema.Array(Schema.Trimmed.check(Schema.isNonEmpty())),
+  ),
 }).annotate({ identifier: 'NotionDatasourceSync.RowProjectionPayload' })
 export type RowProjectionPayload = typeof RowProjectionPayload.Type
 
@@ -158,7 +160,7 @@ export type QueryAbsenceProjectionPayload = typeof QueryAbsenceProjectionPayload
 export const BodyProjectionMaterialization = Schema.Struct({
   path: WorkspaceRelativePath,
   sidecarIdentityProven: Schema.Boolean,
-  ownWriteMaterializationIds: Schema.Array(Schema.NonEmptyTrimmedString),
+  ownWriteMaterializationIds: Schema.Array(Schema.Trimmed.check(Schema.isNonEmpty())),
 }).annotate({ identifier: 'NotionDatasourceSync.BodyProjectionMaterialization' })
 export type BodyProjectionMaterialization = typeof BodyProjectionMaterialization.Type
 

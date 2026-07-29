@@ -782,9 +782,12 @@ export type CliErrorEnvelope = {
 }
 
 /** Thrown during argument parsing when a required flag is missing, invalid, or unsupported. */
-export class CliArgumentError extends Schema.TaggedError<CliArgumentError>()('CliArgumentError', {
-  message: Schema.String,
-}) {}
+export class CliArgumentError extends Schema.TaggedErrorClass<CliArgumentError>()(
+  'CliArgumentError',
+  {
+    message: Schema.String,
+  },
+) {}
 
 /**
  * Narrow a thrown value from the synchronous CLI parsers into the typed
@@ -826,8 +829,8 @@ export const serviceNameForCliCommand = (command: CliCommand): string =>
 
 const SchemaPropertyObservationJson = Schema.Struct({
   propertyId: PropertyId,
-  name: Schema.optional(Schema.NonEmptyTrimmedString),
-  type: Schema.optional(Schema.NonEmptyTrimmedString),
+  name: Schema.optional(Schema.Trimmed.check(Schema.isNonEmpty())),
+  type: Schema.optional(Schema.Trimmed.check(Schema.isNonEmpty())),
   configHash: Hash,
   writeClass: Schema.Literal('writable', 'computed', 'unsupported'),
   configJson: Schema.optional(Schema.String),
@@ -851,7 +854,7 @@ const decodeJson = <TSchema extends Schema.Schema.AnyNoContext>({
   readonly value: string
 }): typeof schema.Type =>
   Schema.decodeUnknownSync(schema)(
-    Schema.decodeUnknownSync(Schema.parseJson(Schema.Unknown))(value),
+    Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown))(value),
   )
 
 const withOptionalRuntimeOptions = (context: CliContext) => ({

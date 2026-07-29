@@ -11,7 +11,7 @@ import { NOTION_API_VERSION } from './config.ts'
 
 /** SHA-256 digest string used for canonical body and file content identity. */
 export const Sha256Digest = Schema.String.check(
-  Schema.isPattern(/^sha256:[a-f0-9]{64}$/i),
+  Schema.check(Schema.isPattern(/^sha256:[a-f0-9]{64}$/i)),
 ).annotate({
   identifier: 'NotionMd.Sha256Digest',
 })
@@ -88,7 +88,7 @@ export const NmdObjectRef = Schema.TaggedStruct('object_ref', {
   hash: Sha256Digest,
   path: RelativePath,
   media_type: Schema.String,
-  byte_length: Schema.NonNegativeInt,
+  byte_length: Schema.Natural,
 }).annotate({
   identifier: 'NotionMd.ObjectRef',
 })
@@ -597,7 +597,7 @@ export type NmdLocalState =
     }
 
 /** Reason a frontmatter + sidecar pair violates the statelessness gate. */
-export class NmdStatelessnessError extends Schema.TaggedError<NmdStatelessnessError>()(
+export class NmdStatelessnessError extends Schema.TaggedErrorClass<NmdStatelessnessError>()(
   'NotionMd.StatelessnessError',
   {
     source: NmdSource,

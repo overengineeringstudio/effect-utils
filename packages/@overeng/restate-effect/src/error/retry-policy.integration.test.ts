@@ -25,7 +25,7 @@ import { liveSleep, RestateTestHarness, serverAvailable } from '../testing/testi
 
 /* A retryable domain error with a SHORT `retryAfter` floor projected from the error
  * instance (so the retries elapse quickly + the projection path is exercised). */
-class Throttled extends Schema.TaggedError<Throttled>('retry/Throttled')('Throttled', {
+class Throttled extends Schema.TaggedErrorClass<Throttled>('retry/Throttled')('Throttled', {
   retryAfterMillis: Schema.Number,
 }) {}
 const ThrottledRetryable = Restate.retryable({

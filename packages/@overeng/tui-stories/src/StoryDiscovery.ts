@@ -106,7 +106,7 @@ export const discoverStories = (options: {
 // =============================================================================
 
 /** Effect service for story discovery (enables dependency injection in tests) */
-export class StoryDiscovery extends Context.Tag('StoryDiscovery')<
+export class StoryDiscovery extends Context.Service<
   StoryDiscovery,
   {
     readonly discover: (options: {
@@ -114,7 +114,7 @@ export class StoryDiscovery extends Context.Tag('StoryDiscovery')<
       readonly patterns?: readonly string[]
     }) => Effect.Effect<DiscoverStoriesResult>
   }
->() {
+>()('StoryDiscovery') {
   static readonly live = StoryDiscovery.of({
     discover: discoverStories,
   })

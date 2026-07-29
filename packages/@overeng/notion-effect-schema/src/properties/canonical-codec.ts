@@ -27,7 +27,7 @@ import {
 } from './canonical.ts'
 
 /** A raw Notion property value could not be projected to canonical form. */
-export class CanonicalDecodeError extends Schema.TaggedError<CanonicalDecodeError>()(
+export class CanonicalDecodeError extends Schema.TaggedErrorClass<CanonicalDecodeError>()(
   'Notion.CanonicalDecodeError',
   {
     propertyType: Schema.String,
@@ -37,7 +37,7 @@ export class CanonicalDecodeError extends Schema.TaggedError<CanonicalDecodeErro
 ) {}
 
 /** A canonical value cannot be expressed as a Notion write payload. */
-export class CanonicalEncodeError extends Schema.TaggedError<CanonicalEncodeError>()(
+export class CanonicalEncodeError extends Schema.TaggedErrorClass<CanonicalEncodeError>()(
   'Notion.CanonicalEncodeError',
   {
     tag: Schema.String,

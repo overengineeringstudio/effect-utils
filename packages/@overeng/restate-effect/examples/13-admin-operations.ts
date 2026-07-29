@@ -97,7 +97,7 @@ const Release = DurablePromise.for(Schema.Struct({ go: Schema.Boolean }))
  * failing error (a 429's `retryAfterMillis`). Exported as the annotated schema the
  * contract's `error` references (the binding reads the annotation at the boundary).
  */
-export class DiscordUnavailable extends Schema.TaggedError<DiscordUnavailable>(
+export class DiscordUnavailable extends Schema.TaggedErrorClass<DiscordUnavailable>(
   'example/DiscordUnavailable',
 )('DiscordUnavailable', { retryAfterMillis: Schema.Number }) {}
 

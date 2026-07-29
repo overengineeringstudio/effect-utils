@@ -1,7 +1,7 @@
 /**
  * JSON helpers for tests.
  *
- * Thin wrappers over `Schema.parseJson(Schema.Unknown)` so test fixtures encode
+ * Thin wrappers over `Schema.fromJsonString(Schema.Unknown)` so test fixtures encode
  * and assertions decode JSON through the schema path (no raw `JSON.parse` /
  * `JSON.stringify`). Behavior matches the plain JSON primitives for the opaque
  * fixture shapes exercised here.
@@ -9,7 +9,7 @@
 
 import { Schema } from 'effect'
 
-const JsonValue = Schema.parseJson(Schema.Unknown)
+const JsonValue = Schema.fromJsonString(Schema.Unknown)
 
 /** Encode an arbitrary JSON-serializable value to a JSON string (no indentation). */
 export const encodeJson = (value: unknown): string => Schema.encodeSync(JsonValue)(value)

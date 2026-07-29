@@ -218,7 +218,7 @@ export const getMemberPath = ({
 // =============================================================================
 
 /** Error when no megarepo config file is found */
-export class ConfigNotFoundError extends Schema.TaggedError<ConfigNotFoundError>()(
+export class ConfigNotFoundError extends Schema.TaggedErrorClass<ConfigNotFoundError>()(
   'ConfigNotFoundError',
   {
     megarepoRoot: Schema.String,
@@ -257,7 +257,7 @@ export const readMegarepoConfig = (megarepoRoot: AbsoluteDirPath) =>
       const format: ConfigFormat = fileName.endsWith('.kdl') === true ? 'kdl' : 'json'
 
       const config = yield* Schema.decodeUnknown(
-        format === 'kdl' ? MegarepoConfigFromKdl : Schema.parseJson(MegarepoConfig),
+        format === 'kdl' ? MegarepoConfigFromKdl : Schema.fromJsonString(MegarepoConfig),
       )(content)
 
       return { config, format, path: configPath } as const
@@ -284,7 +284,7 @@ export const writeMegarepoConfig = ({
     const content =
       format === 'kdl'
         ? yield* Schema.encode(MegarepoConfigFromKdl)(config)
-        : (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(config)) + '\n'
+        : (yield* Schema.encode(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(config)) + '\n'
 
     yield* fs.writeFileString(configPath, content)
   })

@@ -4,21 +4,21 @@ import { DataSourceId, PageId } from './domain.ts'
 import { SyncRootId } from './events.ts'
 
 /** Stable local identifier for a durable wake signal in the SQLite inbox. */
-export const SignalId = Schema.NonEmptyTrimmedString.pipe(
+export const SignalId = Schema.Trimmed.check(Schema.isNonEmpty()).pipe(
   Schema.brand('NotionDatasourceSync.SignalId'),
   Schema.annotate({ identifier: 'NotionDatasourceSync.SignalId' }),
 )
 export type SignalId = typeof SignalId.Type
 
 /** Provider or transport that delivered the signal, for example a webhook bridge or manual test source. */
-export const SignalProvider = Schema.NonEmptyTrimmedString.pipe(
+export const SignalProvider = Schema.Trimmed.check(Schema.isNonEmpty()).pipe(
   Schema.brand('NotionDatasourceSync.SignalProvider'),
   Schema.annotate({ identifier: 'NotionDatasourceSync.SignalProvider' }),
 )
 export type SignalProvider = typeof SignalProvider.Type
 
 /** Provider-scoped idempotency key for deduping repeated signal deliveries. */
-export const SignalExternalId = Schema.NonEmptyTrimmedString.pipe(
+export const SignalExternalId = Schema.Trimmed.check(Schema.isNonEmpty()).pipe(
   Schema.brand('NotionDatasourceSync.SignalExternalId'),
   Schema.annotate({ identifier: 'NotionDatasourceSync.SignalExternalId' }),
 )
@@ -53,7 +53,7 @@ export const SignalInboxRecord = Schema.Struct({
   state: SignalState,
   dataSourceId: Schema.optional(DataSourceId),
   pageId: Schema.optional(PageId),
-  attemptCount: Schema.NonNegativeInt,
+  attemptCount: Schema.Natural,
   leaseToken: Schema.optional(Schema.String),
   claimedAt: Schema.optional(Schema.String),
   processedAt: Schema.optional(Schema.String),
@@ -65,10 +65,10 @@ export type SignalInboxRecord = typeof SignalInboxRecord.Type
 
 /** Aggregated signal inbox counters used by daemon wake decisions and health/status reporting. */
 export const SignalInboxStatus = Schema.Struct({
-  pending: Schema.NonNegativeInt,
-  claimed: Schema.NonNegativeInt,
-  processed: Schema.NonNegativeInt,
-  failed: Schema.NonNegativeInt,
+  pending: Schema.Natural,
+  claimed: Schema.Natural,
+  processed: Schema.Natural,
+  failed: Schema.Natural,
 }).annotate({ identifier: 'NotionDatasourceSync.SignalInboxStatus' })
 export type SignalInboxStatus = typeof SignalInboxStatus.Type
 

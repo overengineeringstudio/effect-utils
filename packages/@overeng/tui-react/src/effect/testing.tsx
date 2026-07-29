@@ -19,9 +19,9 @@
  * ```
  */
 
-import { Atom, AtomRegistry } from 'effect/unstable/reactivity'
 import type { Scope } from 'effect'
 import { Effect, type Exit, Layer, PubSub, Runtime, Schema, Stream } from 'effect'
+import { Atom, AtomRegistry } from 'effect/unstable/reactivity'
 
 import {
   type OutputMode,
@@ -152,7 +152,7 @@ export const runTestCommand = async <S, Args, E>({
   }
 
   // Parse and validate JSON output using schema
-  const jsonSchema = Schema.parseJson(options.schema)
+  const jsonSchema = Schema.fromJsonString(options.schema)
   const parsedStates = jsonOutput
     .map((line) => {
       const result = Schema.decodeUnknownEither(jsonSchema)(line)
@@ -314,7 +314,7 @@ export const assertJsonMatchesSchema = <S, I>({
   jsonString: string
   schema: Schema.Schema<S, I>
 }): S => {
-  return Schema.decodeSync(Schema.parseJson(schema))(jsonString)
+  return Schema.decodeSync(Schema.fromJsonString(schema))(jsonString)
 }
 
 /**

@@ -22,52 +22,52 @@ export * from './otel-scrape/profile-link.ts'
 type OtelPrimitive = string | number | boolean
 
 /** Branded OTel attribute key: letter-led, `[A-Za-z0-9_.:-]`, ≤255 chars — the canonical key shape shared by resource and span attributes. */
-export const OtelAttributeKey = Schema.NonEmptyTrimmedString.pipe(
-  Schema.maxLength(255),
-  Schema.isPattern(/^[A-Za-z][A-Za-z0-9_.:-]*$/),
+export const OtelAttributeKey = Schema.Trimmed.check(Schema.isNonEmpty()).pipe(
+  Schema.check(Schema.isMaxLength(255)),
+  Schema.check(Schema.isPattern(/^[A-Za-z][A-Za-z0-9_.:-]*$/)),
   Schema.brand('OtelAttributeKey'),
   Schema.annotate({ identifier: 'Otel.AttributeKey' }),
 )
 export type OtelAttributeKey = typeof OtelAttributeKey.Type
 
 /** Branded span name: any printable ASCII (`[ -~]`, so spaces/punctuation allowed unlike keys), ≤255 chars. */
-export const OtelSpanName = Schema.NonEmptyTrimmedString.pipe(
-  Schema.maxLength(255),
-  Schema.isPattern(/^[ -~]+$/),
+export const OtelSpanName = Schema.Trimmed.check(Schema.isNonEmpty()).pipe(
+  Schema.check(Schema.isMaxLength(255)),
+  Schema.check(Schema.isPattern(/^[ -~]+$/)),
   Schema.brand('OtelSpanName'),
   Schema.annotate({ identifier: 'Otel.SpanName' }),
 )
 export type OtelSpanName = typeof OtelSpanName.Type
 
 /** Branded metric name: Prometheus-style, may lead with `_` or `:` (not just a letter), ≤255 chars. */
-export const OtelMetricName = Schema.NonEmptyTrimmedString.pipe(
-  Schema.maxLength(255),
-  Schema.isPattern(/^[A-Za-z_:][A-Za-z0-9_.:-]*$/),
+export const OtelMetricName = Schema.Trimmed.check(Schema.isNonEmpty()).pipe(
+  Schema.check(Schema.isMaxLength(255)),
+  Schema.check(Schema.isPattern(/^[A-Za-z_:][A-Za-z0-9_.:-]*$/)),
   Schema.brand('OtelMetricName'),
   Schema.annotate({ identifier: 'Otel.MetricName' }),
 )
 export type OtelMetricName = typeof OtelMetricName.Type
 
 /** Branded `service.name` resource value: letter-led, `[A-Za-z0-9_.:-]`, ≤255 chars — the telemetry service identity. */
-export const OtelServiceName = Schema.NonEmptyTrimmedString.pipe(
-  Schema.maxLength(255),
-  Schema.isPattern(/^[A-Za-z][A-Za-z0-9_.:-]*$/),
+export const OtelServiceName = Schema.Trimmed.check(Schema.isNonEmpty()).pipe(
+  Schema.check(Schema.isMaxLength(255)),
+  Schema.check(Schema.isPattern(/^[A-Za-z][A-Za-z0-9_.:-]*$/)),
   Schema.brand('OtelServiceName'),
   Schema.annotate({ identifier: 'Otel.ServiceName' }),
 )
 export type OtelServiceName = typeof OtelServiceName.Type
 
 /** Resource attribute key `service.namespace` — a logical grouping for related services. */
-export const OtelServiceNamespace = Schema.NonEmptyTrimmedString.pipe(
-  Schema.maxLength(255),
+export const OtelServiceNamespace = Schema.Trimmed.check(Schema.isNonEmpty()).pipe(
+  Schema.check(Schema.isMaxLength(255)),
   Schema.brand('OtelServiceNamespace'),
   Schema.annotate({ identifier: 'Otel.ServiceNamespace' }),
 )
 export type OtelServiceNamespace = typeof OtelServiceNamespace.Type
 
 /** Resource attribute key `service.version` — the build/release version of the service. */
-export const OtelServiceVersion = Schema.NonEmptyTrimmedString.pipe(
-  Schema.maxLength(255),
+export const OtelServiceVersion = Schema.Trimmed.check(Schema.isNonEmpty()).pipe(
+  Schema.check(Schema.isMaxLength(255)),
   Schema.brand('OtelServiceVersion'),
   Schema.annotate({ identifier: 'Otel.ServiceVersion' }),
 )
@@ -88,7 +88,7 @@ export type ServiceIdentity = typeof ServiceIdentity.Type
 
 /**
  * Pre-validation parts of the conventional `<project>-<role>` service name. The
- * parts are plain {@link Schema.NonEmptyTrimmedString} rather than dedicated
+ * parts are plain non-empty trimmed strings rather than dedicated
  * brands: that is the LIGHTEST typing that still rejects empty/whitespace parts,
  * and it is load-bearing for correctness. {@link OtelServiceName}'s pattern
  * (`^[A-Za-z][A-Za-z0-9_.:-]*$`) admits a TRAILING hyphen, so an empty `role`
@@ -98,8 +98,8 @@ export type ServiceIdentity = typeof ServiceIdentity.Type
  * naming law (shared with the rest of the contract) still applies.
  */
 export const ServiceNameParts = Schema.Struct({
-  project: Schema.NonEmptyTrimmedString,
-  role: Schema.NonEmptyTrimmedString,
+  project: Schema.Trimmed.check(Schema.isNonEmpty()),
+  role: Schema.Trimmed.check(Schema.isNonEmpty()),
 }).annotate({ identifier: 'Otel.ServiceNameParts' })
 export type ServiceNameParts = typeof ServiceNameParts.Type
 
@@ -205,7 +205,7 @@ export interface OtelAttrMetadata {
 export const OtelAttrAnnotationId: unique symbol = Symbol.for('@overeng/utils/otel/Attr')
 
 /** Raised when `OtelAttrs.define` cannot derive a safe field plan from a schema. */
-export class OtelAttrPlanError extends Schema.TaggedError<OtelAttrPlanError>()(
+export class OtelAttrPlanError extends Schema.TaggedErrorClass<OtelAttrPlanError>()(
   'OtelAttrPlanError',
   {
     path: Schema.Array(Schema.String),
@@ -214,12 +214,12 @@ export class OtelAttrPlanError extends Schema.TaggedError<OtelAttrPlanError>()(
 ) {}
 
 /** Raised when a value cannot be encoded as an OTEL attribute. */
-export class OtelAttrEncodeError extends Schema.TaggedError<OtelAttrEncodeError>()(
+export class OtelAttrEncodeError extends Schema.TaggedErrorClass<OtelAttrEncodeError>()(
   'OtelAttrEncodeError',
   {
     key: Schema.String,
     message: Schema.String,
-    cause: Schema.optional(Schema.Defect),
+    cause: Schema.optional(Schema.Defect()),
   },
 ) {}
 
@@ -676,7 +676,7 @@ const runSyncOrThrow = <A, E>(effect: Effect.Effect<A, E>): A =>
   })
 
 /** Codec whose encode side mirrors `JSON.stringify` for arbitrary values. */
-const jsonStringFromUnknown = Schema.parseJson(Schema.Unknown)
+const jsonStringFromUnknown = Schema.fromJsonString(Schema.Unknown)
 
 const encodeUnknown = ({
   key,
@@ -863,7 +863,7 @@ const compilePolicyEncoder = ({
       return (value) =>
         encodeUnknown({ key: attrKey, schema, value }).pipe(
           Effect.flatMap((encoded) =>
-            // `Schema.parseJson(Schema.Unknown)` encodes via `JSON.stringify`, but
+            // `Schema.fromJsonString(Schema.Unknown)` encodes via `JSON.stringify`, but
             // fails with a `ParseError` exactly when the result would be `undefined`
             // (functions, bare `undefined`, ...) instead of returning `undefined`.
             Schema.encode(jsonStringFromUnknown)(encoded).pipe(

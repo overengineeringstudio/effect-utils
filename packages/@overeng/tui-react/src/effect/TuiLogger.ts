@@ -278,10 +278,9 @@ export const useTuiLogs = (
  * Service tag for TUI Logger result.
  * Use this when you want to inject the logger via the Effect context.
  */
-export class TuiLoggerService extends Context.Tag('TuiLogger')<
-  TuiLoggerService,
-  TuiLoggerResult
->() {}
+export class TuiLoggerService extends Context.Service<TuiLoggerService, TuiLoggerResult>()(
+  'TuiLogger',
+) {}
 
 /**
  * Create a layer that provides TuiLoggerService.

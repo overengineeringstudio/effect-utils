@@ -2,8 +2,8 @@ import * as crypto from 'node:crypto'
 import * as os from 'node:os'
 import nodePath from 'node:path'
 
-import { Command, FileSystem, Path } from 'effect'
 import { NodeServices } from '@effect/platform-node'
+import { Command, FileSystem, Path } from 'effect'
 import { Chunk, Effect, Schema, Stream } from 'effect'
 import { expect } from 'vitest'
 
@@ -17,7 +17,9 @@ const GeneratedPackageJson = Schema.Struct({
   dependencies: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
 })
 
-const decodeGeneratedPackageJson = Schema.decodeUnknownSync(Schema.parseJson(GeneratedPackageJson))
+const decodeGeneratedPackageJson = Schema.decodeUnknownSync(
+  Schema.fromJsonString(GeneratedPackageJson),
+)
 
 type TestEnv = {
   root: string
@@ -118,7 +120,7 @@ Vitest.describe('genie cli', () => {
         yield* withTestEnv((env) =>
           Effect.gen(function* () {
             const packageJsonContent = yield* Schema.encode(
-              Schema.parseJson(Schema.Unknown, { space: 2 }),
+              Schema.fromJsonString(Schema.Unknown, { space: 2 }),
             )({ name: 'genie-cli-test', private: true })
 
             yield* env.writeFile({
@@ -676,7 +678,7 @@ export default { data: {}, stringify: () => '{}' }`,
             // Flat JSON contract: final stdout line is the raw state (no envelope).
             // Exit code signals failure; per-file error details are carried in state.
             const state = yield* Schema.decodeUnknown(
-              Schema.parseJson(GenieApp.config.stateSchema),
+              Schema.fromJsonString(GenieApp.config.stateSchema),
             )(stdout.trim())
 
             // Bug #135: files array must NOT be empty
@@ -762,7 +764,7 @@ export default { data: {}, stringify: () => '{}' }`,
             // authoritative end state (no trailing Failure envelope).
             const lines = stdout.trim().split('\n')
             const finalState = yield* Schema.decodeUnknown(
-              Schema.parseJson(GenieApp.config.stateSchema),
+              Schema.fromJsonString(GenieApp.config.stateSchema),
             )(lines[lines.length - 1]!)
 
             expect(finalState.files.length).toBe(2)

@@ -90,9 +90,10 @@ export type NotionDataSourceGatewayShape = {
 }
 
 /** Effect service tag for the Notion API gateway; inject an implementation to connect the sync core to the real Notion HTTP API. */
-export class NotionDataSourceGateway extends Context.Tag(
-  '@overeng/notion-datasource-sync/NotionDataSourceGateway',
-)<NotionDataSourceGateway, NotionDataSourceGatewayShape>() {}
+export class NotionDataSourceGateway extends Context.Service<
+  NotionDataSourceGateway,
+  NotionDataSourceGatewayShape
+>()('@overeng/notion-datasource-sync/NotionDataSourceGateway') {}
 
 /** Contract for the body-sync adapter: observe, plan local changes against, push, and repair the markdown body of a Notion page. */
 export type PageBodySyncPortShape = {
@@ -107,9 +108,9 @@ export type PageBodySyncPortShape = {
 }
 
 /** Effect service tag for the page body sync adapter; implementations translate between `BodyPointer` and the actual file/Notion content representation. */
-export class PageBodySyncPort extends Context.Tag(
+export class PageBodySyncPort extends Context.Service<PageBodySyncPort, PageBodySyncPortShape>()(
   '@overeng/notion-datasource-sync/PageBodySyncPort',
-)<PageBodySyncPort, PageBodySyncPortShape>() {}
+) {}
 
 /** Contract for local filesystem interactions: scan for artifact observations, claim paths for pages, and materialize body content as files. */
 export type LocalWorkspacePortShape = {
@@ -121,9 +122,10 @@ export type LocalWorkspacePortShape = {
 }
 
 /** Effect service tag for the local workspace adapter; inject to connect the sync core to the real filesystem implementation. */
-export class LocalWorkspacePort extends Context.Tag(
-  '@overeng/notion-datasource-sync/LocalWorkspacePort',
-)<LocalWorkspacePort, LocalWorkspacePortShape>() {}
+export class LocalWorkspacePort extends Context.Service<
+  LocalWorkspacePort,
+  LocalWorkspacePortShape
+>()('@overeng/notion-datasource-sync/LocalWorkspacePort') {}
 
 /** Contract for the append-only sync event store: `append` persists new events and `replay` streams all recorded events for projection rebuilding. */
 export type SyncEventStoreShape = {
@@ -132,7 +134,6 @@ export type SyncEventStoreShape = {
 }
 
 /** Effect service tag for the sync event store; the store is the authoritative source of truth for all sync state. */
-export class SyncEventStore extends Context.Tag('@overeng/notion-datasource-sync/SyncEventStore')<
-  SyncEventStore,
-  SyncEventStoreShape
->() {}
+export class SyncEventStore extends Context.Service<SyncEventStore, SyncEventStoreShape>()(
+  '@overeng/notion-datasource-sync/SyncEventStore',
+) {}

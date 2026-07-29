@@ -66,10 +66,10 @@ export type CanonicalPropertyValue = typeof CanonicalPropertyValue.Type
 export const CanonicalDataSourceIcon = Schema.Union(
   Schema.TaggedStruct('none', {}),
   Schema.TaggedStruct('emoji', { emoji: Schema.String }),
-  Schema.TaggedStruct('custom_emoji', { id: Schema.NonEmptyTrimmedString }),
+  Schema.TaggedStruct('custom_emoji', { id: Schema.Trimmed.check(Schema.isNonEmpty()) }),
   Schema.TaggedStruct('notion_icon', {
-    name: Schema.NonEmptyTrimmedString,
-    color: Schema.optional(Schema.NonEmptyTrimmedString),
+    name: Schema.Trimmed.check(Schema.isNonEmpty()),
+    color: Schema.optional(Schema.Trimmed.check(Schema.isNonEmpty())),
   }),
   Schema.TaggedStruct('external', { urlHash: Hash }),
   Schema.TaggedStruct('transient_file', {}),
@@ -216,7 +216,7 @@ export type PatchPagePropertiesCommand = typeof PatchPagePropertiesCommand.Type
 export const CreatePageCommand = Schema.TaggedStruct('CreatePageCommand', {
   commandId: CommandId,
   dataSourceId: DataSourceId,
-  clientRequestKey: Schema.NonEmptyTrimmedString,
+  clientRequestKey: Schema.Trimmed.check(Schema.isNonEmpty()),
   baseSchemaHash: Hash,
   initialProperties: Schema.Record({ key: PropertyId, value: CanonicalPropertyValue }),
 }).annotate({ identifier: 'NotionDatasourceSync.CreatePageCommand' })

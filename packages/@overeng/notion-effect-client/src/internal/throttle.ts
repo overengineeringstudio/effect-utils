@@ -21,10 +21,10 @@ export interface NotionThrottleOptions {
  * `apply` wraps one logical request (the whole retry loop) so a single token is
  * consumed per request, not per retry attempt.
  */
-export class NotionThrottle extends Context.Tag('@overeng/notion-effect-client/NotionThrottle')<
+export class NotionThrottle extends Context.Service<
   NotionThrottle,
   { readonly apply: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R> }
->() {}
+>()('@overeng/notion-effect-client/NotionThrottle') {}
 
 /**
  * Build a scoped {@link NotionThrottle} layer from an Effect-native

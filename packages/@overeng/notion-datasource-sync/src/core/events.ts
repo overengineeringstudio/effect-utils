@@ -20,14 +20,14 @@ import {
 import { GuardName } from './guards.ts'
 
 /** Branded unique identifier for a single event in the sync event log. */
-export const SyncEventId = Schema.NonEmptyTrimmedString.pipe(
+export const SyncEventId = Schema.Trimmed.check(Schema.isNonEmpty()).pipe(
   Schema.brand('NotionDatasourceSync.SyncEventId'),
   Schema.annotate({ identifier: 'NotionDatasourceSync.SyncEventId' }),
 )
 export type SyncEventId = typeof SyncEventId.Type
 
 /** Branded identifier for a sync root (a single data-source ↔ workspace binding); partitions the event log. */
-export const SyncRootId = Schema.NonEmptyTrimmedString.pipe(
+export const SyncRootId = Schema.Trimmed.check(Schema.isNonEmpty()).pipe(
   Schema.brand('NotionDatasourceSync.SyncRootId'),
   Schema.annotate({ identifier: 'NotionDatasourceSync.SyncRootId' }),
 )
@@ -59,14 +59,14 @@ export const EventFamily = Schema.Literal(
 export type EventFamily = typeof EventFamily.Type
 
 /** Branded key that ensures a command or event is applied at most once even if retried. */
-export const IdempotencyKey = Schema.NonEmptyTrimmedString.pipe(
+export const IdempotencyKey = Schema.Trimmed.check(Schema.isNonEmpty()).pipe(
   Schema.brand('NotionDatasourceSync.IdempotencyKey'),
   Schema.annotate({ identifier: 'NotionDatasourceSync.IdempotencyKey' }),
 )
 export type IdempotencyKey = typeof IdempotencyKey.Type
 
 /** Branded composite key identifying the sync surface an event or conflict applies to (e.g. `page:<id>:body`). */
-export const SurfaceKey = Schema.NonEmptyTrimmedString.pipe(
+export const SurfaceKey = Schema.Trimmed.check(Schema.isNonEmpty()).pipe(
   Schema.brand('NotionDatasourceSync.SurfaceKey'),
   Schema.annotate({ identifier: 'NotionDatasourceSync.SurfaceKey' }),
 )
@@ -90,7 +90,7 @@ export const eventEnvelopeFields = <TFamily extends EventFamily, TEventType exte
   ({
     eventId: SyncEventId,
     rootId: SyncRootId,
-    sequence: Schema.NonNegativeBigInt,
+    sequence: Schema.BigInt.check(Schema.isGreaterThanOrEqualToBigInt(0n)),
     codecVersion: EventCodecVersion,
     family: Schema.Literal(family),
     eventType: Schema.Literal(eventType),
@@ -107,7 +107,7 @@ export const SyncBindingRecorded = Schema.TaggedStruct('SyncBindingRecorded', {
   ...eventEnvelopeFields({ family: 'SyncRootBound', eventType: 'SyncBindingRecorded' }),
   dataSourceId: DataSourceId,
   workspaceRoot: AbsolutePath,
-  storeIdentity: Schema.NonEmptyTrimmedString,
+  storeIdentity: Schema.Trimmed.check(Schema.isNonEmpty()),
 }).annotate({ identifier: 'NotionDatasourceSync.SyncBindingRecorded' })
 export type SyncBindingRecorded = typeof SyncBindingRecorded.Type
 
@@ -158,7 +158,7 @@ export const DataSourceViewObserved = Schema.TaggedStruct('DataSourceViewObserve
   viewId: ViewId,
   requestId: NotionRequestId,
   viewName: Schema.String,
-  viewType: Schema.NonEmptyTrimmedString,
+  viewType: Schema.Trimmed.check(Schema.isNonEmpty()),
   viewHash: Hash,
   viewJson: Schema.String,
 }).annotate({ identifier: 'NotionDatasourceSync.DataSourceViewObserved' })
@@ -202,11 +202,11 @@ export type RemoteWritePlanned = typeof RemoteWritePlanned.Type
 export const RemoteWriteAttempted = Schema.TaggedStruct('RemoteWriteAttempted', {
   ...eventEnvelopeFields({ family: 'CommandAttempted', eventType: 'RemoteWriteAttempted' }),
   commandId: CommandId,
-  attempt: Schema.NonNegativeInt,
+  attempt: Schema.Natural,
   attemptState: Schema.Literal('running', 'retryable', 'blocked', 'fenced', 'ambiguous'),
-  leaseToken: Schema.optional(Schema.NonEmptyTrimmedString),
+  leaseToken: Schema.optional(Schema.Trimmed.check(Schema.isNonEmpty())),
   guard: Schema.optional(GuardName),
-  retryAfterMillis: Schema.optional(Schema.NonNegativeInt),
+  retryAfterMillis: Schema.optional(Schema.Natural),
 }).annotate({ identifier: 'NotionDatasourceSync.RemoteWriteAttempted' })
 export type RemoteWriteAttempted = typeof RemoteWriteAttempted.Type
 
@@ -346,7 +346,7 @@ export type PagePropertyCheckpointRecorded = typeof PagePropertyCheckpointRecord
 export const PathClaimed = Schema.TaggedStruct('PathClaimed', {
   ...eventEnvelopeFields({ family: 'LocalIntentAccepted', eventType: 'PathClaimed' }),
   pageId: PageId,
-  relativePath: Schema.NonEmptyTrimmedString,
+  relativePath: Schema.Trimmed.check(Schema.isNonEmpty()),
   claimState: Schema.Literal('active', 'released', 'conflict'),
 }).annotate({ identifier: 'NotionDatasourceSync.PathClaimed' })
 export type PathClaimed = typeof PathClaimed.Type
@@ -372,7 +372,7 @@ export type DecodeDriftBlocked = typeof DecodeDriftBlocked.Type
 export const GuardBlocked = Schema.TaggedStruct('GuardBlocked', {
   ...eventEnvelopeFields({ family: 'GuardBlocked', eventType: 'GuardBlocked' }),
   guard: GuardName,
-  message: Schema.NonEmptyTrimmedString,
+  message: Schema.Trimmed.check(Schema.isNonEmpty()),
 }).annotate({ identifier: 'NotionDatasourceSync.GuardBlocked' })
 export type GuardBlocked = typeof GuardBlocked.Type
 

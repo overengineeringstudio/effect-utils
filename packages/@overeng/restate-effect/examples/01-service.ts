@@ -13,10 +13,9 @@ import { Restate, RestateService } from '../src/mod.ts'
 /* ── 1. The application service the handler depends on (ordinary Effect) ──── */
 
 /** An injected greeting prefix — satisfied from the application Layer, not per call. */
-export class Greeting extends Context.Tag('example/Greeting')<
-  Greeting,
-  { readonly prefix: string }
->() {
+export class Greeting extends Context.Service<Greeting, { readonly prefix: string }>()(
+  'example/Greeting',
+) {
   static readonly Default = Layer.succeed(Greeting, { prefix: 'Hello' })
 }
 
@@ -27,7 +26,7 @@ export const GreetSuccess = Schema.Struct({ message: Schema.String, id: Schema.S
 
 /** A declared business failure. It crosses the wire as a terminal error and
  * decodes back into THIS tagged error on the caller side (the typed boundary). */
-export class EmptyName extends Schema.TaggedError<EmptyName>('example/EmptyName')(
+export class EmptyName extends Schema.TaggedErrorClass<EmptyName>('example/EmptyName')(
   'EmptyName',
   {},
 ) {}

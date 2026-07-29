@@ -37,7 +37,7 @@ export interface NotionBodyObservation {
 }
 
 /** Raised when a live body observation cannot find a stable page metadata window. */
-export class NotionBodyObservationChangedError extends Schema.TaggedError<NotionBodyObservationChangedError>()(
+export class NotionBodyObservationChangedError extends Schema.TaggedErrorClass<NotionBodyObservationChangedError>()(
   'NotionBodyObservationChangedError',
   {
     pageId: Schema.String,

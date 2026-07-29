@@ -4,11 +4,11 @@
  * Tests the store GC, ls, and fetch commands with realistic store fixtures.
  */
 
-import * as Cli from 'effect/unstable/cli'
-import { FileSystem } from 'effect'
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
+import { FileSystem } from 'effect'
 import { Effect, Exit, Option, Schema } from 'effect'
+import * as Cli from 'effect/unstable/cli'
 import { expect } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
@@ -39,7 +39,7 @@ const StoreGcJsonOutput = Schema.Struct({
   ),
 })
 
-const decodeStoreGcJsonOutput = Schema.decodeUnknownSync(Schema.parseJson(StoreGcJsonOutput))
+const decodeStoreGcJsonOutput = Schema.decodeUnknownSync(Schema.fromJsonString(StoreGcJsonOutput))
 
 type StoreGcJsonResult = Schema.Schema.Type<typeof StoreGcJsonOutput>['results'][number]
 

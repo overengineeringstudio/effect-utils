@@ -8,7 +8,7 @@ import { objectToKdlDocument } from './encode.ts'
 /**
  * Base KDL transformation: `string ↔ unknown`
  *
- * Analogous to how `Schema.parseJson()` wraps `JSON.parse`/`JSON.stringify`,
+ * Analogous to how `Schema.fromJsonString(Schema.Unknown)` wraps `JSON.parse`/`JSON.stringify`,
  * this wraps `parse`/`format` from `@overeng/kdl`.
  *
  * Parse errors are mapped to `ParseResult.Type` issues (not thrown),
@@ -40,7 +40,7 @@ const ParseKdl = Schema.transformOrFail(
 
 /**
  * Create a Schema that decodes KDL text into the target type.
- * Analogous to `Schema.parseJson(schema)`.
+ * Analogous to `Schema.fromJsonString(schema)`.
  *
  * Uses `Schema.compose` to chain: `string → unknown` (via KDL parse) then `unknown → A` (via schema).
  * Array normalization is applied between the two steps using the target schema's AST.

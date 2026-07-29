@@ -177,7 +177,7 @@ export type NotionGatewayClient = {
 }
 
 /** Tagged error raised when the live gateway is asked to perform an operation it cannot map onto the underlying Notion client. */
-export class UnsupportedAdapterOperation extends Schema.TaggedError<UnsupportedAdapterOperation>()(
+export class UnsupportedAdapterOperation extends Schema.TaggedErrorClass<UnsupportedAdapterOperation>()(
   'UnsupportedAdapterOperation',
   {
     operation: Schema.String,

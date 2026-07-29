@@ -14,7 +14,7 @@ import { createTuiApp, run, useTuiAtomValue, Box, Text, testModeLayer } from '..
 
 const parseJson = (json: string) =>
   Schema.decodeSync(
-    Schema.parseJson(
+    Schema.fromJsonString(
       Schema.Record({
         key: Schema.String,
         value: Schema.Unknown,

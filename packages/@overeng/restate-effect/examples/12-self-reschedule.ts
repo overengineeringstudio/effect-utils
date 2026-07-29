@@ -231,7 +231,7 @@ const defaultComposedSource: ComposedSourceBehavior = (cursor) => ({
  * instance (`e.retryAfterMillis`) — exactly the Notion 429 shape (decision 0011).
  * The loop reads this projection (via `classifyOutcome`) to set the re-arm delay.
  */
-export class RateLimited extends Schema.TaggedError<RateLimited>()('RateLimited', {
+export class RateLimited extends Schema.TaggedErrorClass<RateLimited>()('RateLimited', {
   retryAfterMillis: Schema.Number,
 }) {}
 const RateLimitedRetryable = Restate.retryable({
@@ -240,7 +240,7 @@ const RateLimitedRetryable = Restate.retryable({
 })
 
 /** A terminal source failure: NON-retryable, governed by the `onCycleError` policy. */
-export class SourceFailed extends Schema.TaggedError<SourceFailed>()('SourceFailed', {
+export class SourceFailed extends Schema.TaggedErrorClass<SourceFailed>()('SourceFailed', {
   message: Schema.String,
 }) {}
 const SourceFailedTerminal = Restate.terminal({ self: SourceFailed })

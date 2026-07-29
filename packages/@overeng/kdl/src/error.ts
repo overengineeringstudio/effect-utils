@@ -10,7 +10,7 @@ export const KdlLocation = Schema.Struct({
 export type KdlLocation = typeof KdlLocation.Type
 
 /** Error thrown when invalid KDL is encountered */
-export class KdlParseError extends Schema.TaggedError<KdlParseError>()('KdlParseError', {
+export class KdlParseError extends Schema.TaggedErrorClass<KdlParseError>()('KdlParseError', {
   message: Schema.String,
   start: Schema.optionalWith(KdlLocation, { as: 'Option' }),
   end: Schema.optionalWith(KdlLocation, { as: 'Option' }),

@@ -37,7 +37,7 @@ type Equals<A, B> =
 
 const GreetInput = Schema.Struct({ name: Schema.String })
 const GreetSuccess = Schema.Struct({ message: Schema.String, id: Schema.String })
-class EmptyName extends Schema.TaggedError<EmptyName>('test/EmptyName')('EmptyName', {}) {}
+class EmptyName extends Schema.TaggedErrorClass<EmptyName>('test/EmptyName')('EmptyName', {}) {}
 
 const Greeter = RestateService.contract({
   name: 'greeter',

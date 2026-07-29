@@ -123,8 +123,8 @@ type InspectRow<S extends Signal> = S extends 'traces'
     ? MetricRow
     : LogRow
 
-const decodeSummary = Schema.decodeUnknown(Schema.parseJson(Summary))
-const decodeEndpointsEvent = Schema.decodeUnknown(Schema.parseJson(EndpointsEvent))
+const decodeSummary = Schema.decodeUnknown(Schema.fromJsonString(Summary))
+const decodeEndpointsEvent = Schema.decodeUnknown(Schema.fromJsonString(EndpointsEvent))
 
 const rowSchema = { traces: SpanRow, metrics: MetricRow, logs: LogRow } as const
 const rowKind = { traces: 'span', metrics: 'metric', logs: 'log' } as const
@@ -287,14 +287,14 @@ export class Otelite extends Effect.Service<Otelite>()('@overeng/utils-dev/oteli
         const schema = summarySchema[signal]
         const kind = summaryKind[signal]
         return runCli(args, (stdout) =>
-          Schema.decodeUnknown(Schema.parseJson(schema))(stdout).pipe(
+          Schema.decodeUnknown(Schema.fromJsonString(schema))(stdout).pipe(
             Effect.mapError((cause) => new OteliteDecodeError({ kind, raw: stdout, cause })),
           ),
         ).pipe(withOteliteInspectSummarySpan(signal))
       }
       const schema = rowSchema[signal]
       const kind = rowKind[signal]
-      const decodeRow = Schema.decodeUnknown(Schema.parseJson(schema))
+      const decodeRow = Schema.decodeUnknown(Schema.fromJsonString(schema))
       return runCli(args, (stdout) =>
         Effect.forEach(
           stdout.split('\n').filter((line) => line.trim() !== ''),

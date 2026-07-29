@@ -17,7 +17,7 @@ type BodyCompletenessEvidence = typeof BodyCompletenessEvidence.Type
 
 /** `sha256:<hex>` branded fingerprint of a body observation's identity evidence (excludes `observedAt`, so re-observing unchanged content yields the same value). */
 export const BodyEvidenceFingerprint = Schema.String.check(
-  Schema.isPattern(/^sha256:[a-f0-9]{64}$/),
+  Schema.check(Schema.isPattern(/^sha256:[a-f0-9]{64}$/)),
   Schema.brand('NotionBodyEvidence.BodyEvidenceFingerprint'),
   Schema.annotate({ identifier: 'NotionBodyEvidence.BodyEvidenceFingerprint' }),
 )
@@ -26,8 +26,8 @@ export type BodyEvidenceFingerprint = typeof BodyEvidenceFingerprint.Type
 /** Content-addressed evidence for one remote page body observation: endpoint markdown, block tree, rendered body, and inventory as content descriptors plus the stability window. */
 export const RemoteBodyObservationEvidence = Schema.TaggedStruct('RemoteBodyObservationEvidence', {
   schemaVersion: Schema.Literal(1),
-  notionApiVersion: Schema.NonEmptyTrimmedString,
-  pageId: Schema.NonEmptyTrimmedString,
+  notionApiVersion: Schema.Trimmed.check(Schema.isNonEmpty()),
+  pageId: Schema.Trimmed.check(Schema.isNonEmpty()),
   observedAt: Schema.DateTimeUtc,
   observationWindow: Schema.Struct({
     beforeLastEditedTime: Schema.DateTimeUtc,
@@ -43,8 +43,8 @@ export type RemoteBodyObservationEvidence = typeof RemoteBodyObservationEvidence
 
 const RemoteBodyObservationIdentityEvidence = Schema.TaggedStruct('RemoteBodyObservationEvidence', {
   schemaVersion: Schema.Literal(1),
-  notionApiVersion: Schema.NonEmptyTrimmedString,
-  pageId: Schema.NonEmptyTrimmedString,
+  notionApiVersion: Schema.Trimmed.check(Schema.isNonEmpty()),
+  pageId: Schema.Trimmed.check(Schema.isNonEmpty()),
   observationWindow: Schema.Struct({
     beforeLastEditedTime: Schema.DateTimeUtc,
     afterLastEditedTime: Schema.DateTimeUtc,
@@ -64,7 +64,7 @@ const BlockInventoryEntryEvidence = Schema.Struct({
 }).annotate({ identifier: 'NotionBodyEvidence.BlockInventoryEntry' })
 
 const BlockTreeEntryEvidence = Schema.Struct({
-  depth: Schema.NonNegativeInt,
+  depth: Schema.Natural,
   id: Schema.String,
   type: Schema.String,
   hasChildren: Schema.Boolean,

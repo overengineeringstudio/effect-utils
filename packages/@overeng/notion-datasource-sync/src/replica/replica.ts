@@ -43,7 +43,7 @@ import type { NotionSyncStore } from '../store/store.ts'
 
 type SqlRow = Record<string, unknown>
 const decodeBodyProjectionPayloadJson = Schema.decodeUnknownSync(
-  Schema.parseJson(BodyProjectionPayload),
+  Schema.fromJsonString(BodyProjectionPayload),
 )
 
 /** Schema version stored in the replica's `PRAGMA user_version`. */
@@ -4561,7 +4561,7 @@ export const replicaChangesToPlannerIntents = ({
             dataSourceId = decode({ schema: DataSourceId, value: dataSourceIdString })
             baseMetadataHash = decode({ schema: Hash, value: change.baseHash })
             currentMetadata = Schema.decodeUnknownSync(
-              Schema.parseJson(CanonicalDataSourceMetadata),
+              Schema.fromJsonString(CanonicalDataSourceMetadata),
             )(metadataJson)
           } catch {
             markChange({
@@ -4679,9 +4679,9 @@ export const replicaChangesToPlannerIntents = ({
         try {
           dataSourceId = decode({ schema: DataSourceId, value: change.dataSourceId })
           baseMetadataHash = decode({ schema: Hash, value: change.baseHash })
-          currentMetadata = Schema.decodeUnknownSync(Schema.parseJson(CanonicalDataSourceMetadata))(
-            metadataJson,
-          )
+          currentMetadata = Schema.decodeUnknownSync(
+            Schema.fromJsonString(CanonicalDataSourceMetadata),
+          )(metadataJson)
         } catch {
           markChange({
             replicaPath,
@@ -4972,7 +4972,7 @@ export const replicaChangesToPlannerIntents = ({
         } else {
           try {
             currentValue = decode({
-              schema: Schema.parseJson(CanonicalPropertyValue),
+              schema: Schema.fromJsonString(CanonicalPropertyValue),
               value: currentValueJson,
             })
           } catch {
@@ -5266,7 +5266,7 @@ export const replicaChangesToPlannerIntents = ({
         }
         let value: CanonicalPropertyValue
         try {
-          value = Schema.decodeUnknownSync(Schema.parseJson(CanonicalPropertyValue))(
+          value = Schema.decodeUnknownSync(Schema.fromJsonString(CanonicalPropertyValue))(
             change.valueJson,
           )
         } catch {
@@ -5314,7 +5314,7 @@ export const replicaChangesToPlannerIntents = ({
           }
           let baseValue: CanonicalPropertyValue
           try {
-            baseValue = Schema.decodeUnknownSync(Schema.parseJson(CanonicalPropertyValue))(
+            baseValue = Schema.decodeUnknownSync(Schema.fromJsonString(CanonicalPropertyValue))(
               readString({ row: cell, key: 'value_json' }),
             )
           } catch {

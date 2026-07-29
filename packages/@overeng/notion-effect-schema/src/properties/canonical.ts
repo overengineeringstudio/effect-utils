@@ -29,21 +29,21 @@ import {
 } from '@overeng/notion-core'
 
 /** Branded Notion property ID (stable identifier within a database schema). */
-export const PropertyId = Schema.NonEmptyTrimmedString.pipe(
+export const PropertyId = Schema.Trimmed.check(Schema.isNonEmpty()).pipe(
   Schema.brand('Notion.PropertyId'),
   Schema.annotate({ identifier: 'Notion.PropertyId' }),
 )
 export type PropertyId = typeof PropertyId.Type
 
 /** Branded human-readable Notion property name (mutable; distinct from the stable `PropertyId`). */
-export const PropertyName = Schema.NonEmptyTrimmedString.pipe(
+export const PropertyName = Schema.Trimmed.check(Schema.isNonEmpty()).pipe(
   Schema.brand('Notion.PropertyName'),
   Schema.annotate({ identifier: 'Notion.PropertyName' }),
 )
 export type PropertyName = typeof PropertyName.Type
 
 /** Branded Notion page ID. */
-export const PageId = Schema.NonEmptyTrimmedString.pipe(
+export const PageId = Schema.Trimmed.check(Schema.isNonEmpty()).pipe(
   Schema.brand('Notion.PageId'),
   Schema.annotate({ identifier: 'Notion.PageId' }),
 )
@@ -56,7 +56,7 @@ export type PageId = typeof PageId.Type
  * from Notion database/data-source IDs whose surface form is not contractually
  * UUID here, and the brand already carries the meaning.
  */
-export const DataSourceId = Schema.NonEmptyTrimmedString.pipe(
+export const DataSourceId = Schema.Trimmed.check(Schema.isNonEmpty()).pipe(
   Schema.brand('Notion.DataSourceId'),
   Schema.annotate({ identifier: 'Notion.DataSourceId' }),
 )
@@ -70,15 +70,15 @@ export type CanonicalHash = typeof CanonicalHash.Type
 export const CanonicalOptionValue = Schema.TaggedStruct('CanonicalOptionValue', {
   id: Schema.optional(PropertyId),
   name: PropertyName,
-  color: Schema.optional(Schema.NonEmptyTrimmedString),
+  color: Schema.optional(Schema.Trimmed.check(Schema.isNonEmpty())),
 }).annotate({ identifier: 'Notion.Canonical.OptionValue' })
 export type CanonicalOptionValue = typeof CanonicalOptionValue.Type
 
 /** Canonical file attachment: name plus a stable identity hash used for change detection. */
 export const CanonicalFileValue = Schema.TaggedStruct('CanonicalFileValue', {
-  name: Schema.NonEmptyTrimmedString,
+  name: Schema.Trimmed.check(Schema.isNonEmpty()),
   identityHash: CanonicalHash,
-  externalUrl: Schema.optional(Schema.NonEmptyTrimmedString),
+  externalUrl: Schema.optional(Schema.Trimmed.check(Schema.isNonEmpty())),
 }).annotate({ identifier: 'Notion.Canonical.FileValue' })
 export type CanonicalFileValue = typeof CanonicalFileValue.Type
 
@@ -114,7 +114,7 @@ export const CanonicalPropertyValue = Schema.Union(
     pageIds: Schema.Array(PageId),
   }),
   Schema.TaggedStruct('people', {
-    userIds: Schema.Array(Schema.NonEmptyTrimmedString),
+    userIds: Schema.Array(Schema.Trimmed.check(Schema.isNonEmpty())),
   }),
   Schema.TaggedStruct('files', {
     files: Schema.Array(CanonicalFileValue),

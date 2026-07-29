@@ -67,10 +67,9 @@ export interface PrStateResolverService {
 }
 
 /** PR-state resolver service tag. */
-export class PrStateResolver extends Context.Tag('megarepo/PrStateResolver')<
-  PrStateResolver,
-  PrStateResolverService
->() {}
+export class PrStateResolver extends Context.Service<PrStateResolver, PrStateResolverService>()(
+  'megarepo/PrStateResolver',
+) {}
 
 // =============================================================================
 // Pure seams (unit-tested directly with fake gh output)
@@ -118,7 +117,7 @@ const GhPrList = Schema.Array(GhPr)
  * non-zero leaving empty stdout) ⇒ `none`, which the caller maps to keep.
  */
 export const decodePrListJson = (raw: string): Option.Option<ReadonlyArray<GhPr>> =>
-  Schema.decodeUnknownOption(Schema.parseJson(GhPrList))(raw)
+  Schema.decodeUnknownOption(Schema.fromJsonString(GhPrList))(raw)
 
 /** ISO 8601 ⇒ epoch ms; `null`/unparseable ⇒ `undefined`. */
 const isoToMs = (iso: string | null): number | undefined => {

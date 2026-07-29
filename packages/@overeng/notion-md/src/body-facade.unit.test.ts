@@ -1,5 +1,5 @@
-import type { FileSystem } from 'effect'
 import { NodeServices } from '@effect/platform-node'
+import type { FileSystem } from 'effect'
 import { Effect, Layer, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
@@ -32,7 +32,7 @@ import { NmdStateStore, type NmdStateStoreShape } from './state-store.ts'
 const pageId = '00000000-0000-4000-8000-000000000001'
 const path = '/tmp/page.nmd'
 
-const encodeJson = Schema.encodeSync(Schema.parseJson())
+const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
 
 const emptyStorage = (): NmdStorage => ({
   _tag: 'self_contained',

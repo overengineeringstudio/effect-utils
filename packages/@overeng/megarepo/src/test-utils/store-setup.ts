@@ -389,7 +389,7 @@ export const createWorkspaceWithLock = (args: {
     const config: MegarepoConfig = {
       members: args.members,
     }
-    const configContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
+    const configContent = yield* Schema.encode(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
       config,
     )
     yield* fs.writeFileString(

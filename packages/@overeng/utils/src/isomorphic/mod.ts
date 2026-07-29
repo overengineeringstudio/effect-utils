@@ -14,7 +14,7 @@ import { Schema } from 'effect'
  * Generic error class for wrapping unknown error causes.
  * Useful when catching errors of unknown type and wrapping them in a typed Effect error.
  */
-export class UnknownError extends Schema.TaggedError<UnknownError>()('UnknownError', {
+export class UnknownError extends Schema.TaggedErrorClass<UnknownError>()('UnknownError', {
   cause: Schema.Unknown,
   payload: Schema.optional(Schema.Unknown),
 }) {}

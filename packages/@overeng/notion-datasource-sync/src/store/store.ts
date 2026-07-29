@@ -288,7 +288,7 @@ export type WorkspaceBindingRow = {
   readonly storeIdentity: string
 }
 
-const decodeEventFromJson = Schema.decodeSync(Schema.parseJson(SyncEvent))
+const decodeEventFromJson = Schema.decodeSync(Schema.fromJsonString(SyncEvent))
 const encodeEvent = Schema.encodeSync(SyncEvent)
 const decodeCapabilityName = Schema.decodeUnknownSync(CapabilityName)
 const decodeDataSourceId = Schema.decodeSync(DataSourceId)
@@ -300,30 +300,32 @@ const decodePropertyId = Schema.decodeSync(PropertyId)
 const decodeQueryCursor = Schema.decodeSync(QueryCursor)
 const decodeWorkspaceRelativePath = Schema.decodeUnknownSync(WorkspaceRelativePath)
 const decodeRemoteWritePlanPayload = Schema.decodeUnknownSync(
-  Schema.parseJson(RemoteWritePlanPayload),
+  Schema.fromJsonString(RemoteWritePlanPayload),
 )
 const decodeSurfaceKey = Schema.decodeUnknownSync(SurfaceKey)
 const decodeSyncEventId = Schema.decodeSync(SyncEventId)
 const decodeDataSourceProjectionPayload = Schema.decodeUnknownSync(
-  Schema.parseJson(DataSourceProjectionPayload),
+  Schema.fromJsonString(DataSourceProjectionPayload),
 )
-const decodeRowProjectionPayload = Schema.decodeUnknownSync(Schema.parseJson(RowProjectionPayload))
+const decodeRowProjectionPayload = Schema.decodeUnknownSync(
+  Schema.fromJsonString(RowProjectionPayload),
+)
 const decodeBodyProjectionPayload = Schema.decodeUnknownSync(
-  Schema.parseJson(BodyProjectionPayload),
+  Schema.fromJsonString(BodyProjectionPayload),
 )
 const encodeBodyProjectionPayload = Schema.encodeSync(BodyProjectionPayload)
 const encodeBodyPointer = Schema.encodeSync(BodyPointer)
 const decodePropertyCheckpointProjectionPayload = Schema.decodeUnknownSync(
-  Schema.parseJson(PropertyCheckpointProjectionPayload),
+  Schema.fromJsonString(PropertyCheckpointProjectionPayload),
 )
 const decodeQueryCheckpointProjectionPayload = Schema.decodeUnknownSync(
-  Schema.parseJson(QueryCheckpointProjectionPayload),
+  Schema.fromJsonString(QueryCheckpointProjectionPayload),
 )
 const decodeQueryAbsenceProjectionPayload = Schema.decodeUnknownSync(
-  Schema.parseJson(QueryAbsenceProjectionPayload),
+  Schema.fromJsonString(QueryAbsenceProjectionPayload),
 )
 const decodeConflictPayloadMessage = Schema.decodeUnknownSync(
-  Schema.parseJson(Schema.Struct({ message: Schema.optional(Schema.String) })),
+  Schema.fromJsonString(Schema.Struct({ message: Schema.optional(Schema.String) })),
 )
 
 const projectionName = 'core'
@@ -695,7 +697,7 @@ export class NotionSyncStore {
             ? undefined
             : decodeHash(readString({ row: row, key: 'base_hash' })),
         desiredHash: decodeHash(readString({ row: row, key: 'desired_hash' })),
-        preflight: Schema.decodeSync(Schema.parseJson(Schema.Array(GuardName)))(
+        preflight: Schema.decodeSync(Schema.fromJsonString(Schema.Array(GuardName)))(
           readString({ row: row, key: 'preflight_json' }),
         ),
         attempt,
@@ -1567,7 +1569,7 @@ export class NotionSyncStore {
             pointer: payload.pointer,
             sidecarIdentityProven: readBoolean({ row: row, key: 'sidecar_identity_proven' }),
             ownWriteMaterializationIds: Schema.decodeSync(
-              Schema.parseJson(Schema.Array(Schema.String)),
+              Schema.fromJsonString(Schema.Array(Schema.String)),
             )(readString({ row: row, key: 'own_write_materialization_ids_json' })),
             safety: payload.safety,
           }

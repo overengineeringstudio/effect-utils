@@ -77,7 +77,7 @@ const RelationVerificationPayload = Schema.TaggedStruct('relation', {
 }).annotate({ identifier: 'NotionDatasourceSync.RelationVerificationPayload' })
 
 const encodeRelationVerificationJson = Schema.encodeSync(
-  Schema.parseJson(RelationVerificationPayload),
+  Schema.fromJsonString(RelationVerificationPayload),
 )
 
 const relationPatchVerificationHash = (

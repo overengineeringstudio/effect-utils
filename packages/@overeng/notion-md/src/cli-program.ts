@@ -55,7 +55,7 @@ import {
 import type { SyncOptions } from './sync.ts'
 import { NOTION_MD_VERSION } from './version.ts'
 
-const NonEmptyCliText = Schema.NonEmptyTrimmedString.annotate({
+const NonEmptyCliText = Schema.Trimmed.check(Schema.isNonEmpty()).annotate({
   identifier: 'NotionMd.Cli.NonEmptyText',
 })
 
@@ -683,7 +683,7 @@ export const readAllSyncStates = (
     )
     const strictOptions = { errors: 'all', onExcessProperty: 'error' } as const
     const decodeSyncState = Schema.decodeUnknown(
-      Schema.parseJson(NmdSyncStateV1Schema),
+      Schema.fromJsonString(NmdSyncStateV1Schema),
       strictOptions,
     )
     const syncStates: NmdSyncStateV1[] = []

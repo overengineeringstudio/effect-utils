@@ -25,7 +25,7 @@ import {
 import { DeployView } from './view.tsx'
 
 /** Tagged error type for deployment failures. */
-export class DeployError extends Schema.TaggedError<DeployError>()('DeployError', {
+export class DeployError extends Schema.TaggedErrorClass<DeployError>()('DeployError', {
   message: Schema.String,
 }) {}
 

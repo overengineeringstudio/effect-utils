@@ -46,7 +46,7 @@ export { resolveNotionToken, tokenOption } from '../shared.ts'
 // -----------------------------------------------------------------------------
 
 /** Error thrown when a generated schema file cannot be parsed for drift detection */
-export class GeneratedSchemaFileParseError extends Schema.TaggedError<GeneratedSchemaFileParseError>()(
+export class GeneratedSchemaFileParseError extends Schema.TaggedErrorClass<GeneratedSchemaFileParseError>()(
   'GeneratedSchemaFileParseError',
   {
     file: Schema.String,
@@ -55,7 +55,7 @@ export class GeneratedSchemaFileParseError extends Schema.TaggedError<GeneratedS
 ) {}
 
 /** Error thrown when generated schema differs from existing file during check mode */
-export class SchemaDriftDetectedError extends Schema.TaggedError<SchemaDriftDetectedError>()(
+export class SchemaDriftDetectedError extends Schema.TaggedErrorClass<SchemaDriftDetectedError>()(
   'SchemaDriftDetectedError',
   {
     databaseId: Schema.String,
@@ -74,7 +74,9 @@ const getGeneratorVersion = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem
   const pkgJsonPath = fileURLToPath(new URL('../../../package.json', import.meta.url))
   const content = yield* fs.readFileString(pkgJsonPath)
-  const pkg = yield* Schema.decodeUnknown(Schema.parseJson(GeneratorPackageJsonSchema))(content)
+  const pkg = yield* Schema.decodeUnknown(Schema.fromJsonString(GeneratorPackageJsonSchema))(
+    content,
+  )
   return pkg.version
 }).pipe(Effect.orElseSucceed(() => 'unknown'))
 

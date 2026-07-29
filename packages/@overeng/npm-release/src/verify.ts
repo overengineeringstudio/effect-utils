@@ -16,15 +16,15 @@ import { registryVerification, type RemoteRegistryState } from './mod.ts'
 
 /** One package to verify. `tarball` is absent when this run did not pack it. */
 export const PlanPackage = Schema.Struct({
-  name: Schema.NonEmptyTrimmedString,
-  tarball: Schema.optional(Schema.NonEmptyTrimmedString),
+  name: Schema.Trimmed.check(Schema.isNonEmpty()),
+  tarball: Schema.optional(Schema.Trimmed.check(Schema.isNonEmpty())),
 }).annotate({ identifier: 'NpmRelease.PlanPackage' })
 
 /** The release a caller wants the registry to agree with. */
 export const VerifyPlan = Schema.Struct({
   schemaVersion: Schema.Literal(1),
-  version: Schema.NonEmptyTrimmedString,
-  npmTag: Schema.NonEmptyTrimmedString,
+  version: Schema.Trimmed.check(Schema.isNonEmpty()),
+  npmTag: Schema.Trimmed.check(Schema.isNonEmpty()),
   packages: Schema.NonEmptyArray(PlanPackage),
 }).annotate({ identifier: 'NpmRelease.VerifyPlan' })
 
@@ -40,13 +40,13 @@ export const VerifyFailure = Schema.Struct({
 export type VerifyFailure = typeof VerifyFailure.Type
 
 /** Raised when the plan file cannot be read or does not decode. */
-export class PlanError extends Schema.TaggedError<PlanError>()('PlanError', {
+export class PlanError extends Schema.TaggedErrorClass<PlanError>()('PlanError', {
   path: Schema.String,
   message: Schema.String,
 }) {}
 
 /** Raised when the registry does not serve the release the plan describes. */
-export class VerificationFailed extends Schema.TaggedError<VerificationFailed>()(
+export class VerificationFailed extends Schema.TaggedErrorClass<VerificationFailed>()(
   'VerificationFailed',
   {
     failures: Schema.Array(VerifyFailure),
@@ -55,7 +55,7 @@ export class VerificationFailed extends Schema.TaggedError<VerificationFailed>()
 ) {}
 
 /** Registry state has not converged yet; retried until the budget is spent. */
-class NotConverged extends Schema.TaggedError<NotConverged>()('NotConverged', {
+class NotConverged extends Schema.TaggedErrorClass<NotConverged>()('NotConverged', {
   reason: Schema.String,
 }) {}
 
@@ -83,7 +83,7 @@ const npmViewJson = Effect.fn('npmViewJson')(function* <A, I>(
     Effect.orElseSucceed(() => ''),
   )
 
-  return yield* Schema.decodeUnknown(Schema.parseJson(schema))(raw.trim()).pipe(
+  return yield* Schema.decodeUnknown(Schema.fromJsonString(schema))(raw.trim()).pipe(
     Effect.orElseSucceed(() => undefined),
   )
 })
@@ -244,7 +244,7 @@ export const readPlan = Effect.fn('readPlan')(function* (path: string) {
       ),
     )
 
-  return yield* Schema.decodeUnknown(Schema.parseJson(VerifyPlan))(content).pipe(
+  return yield* Schema.decodeUnknown(Schema.fromJsonString(VerifyPlan))(content).pipe(
     Effect.mapError((cause) => new PlanError({ path, message: `Invalid plan: ${cause}` })),
   )
 })

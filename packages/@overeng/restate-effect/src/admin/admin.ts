@@ -259,10 +259,9 @@ const toClientConfig = (opts: {
  * `RestateIngress` Tag/layer pattern — but points at the admin URL, NOT the
  * ingress URL, and carries the admin-API trust boundary (see the module doc).
  */
-export class RestateAdmin extends Context.Tag('@overeng/restate-effect/RestateAdmin')<
-  RestateAdmin,
-  RestateAdminService
->() {
+export class RestateAdmin extends Context.Service<RestateAdmin, RestateAdminService>()(
+  '@overeng/restate-effect/RestateAdmin',
+) {
   /**
    * Build a `RestateAdmin` layer bound to a `restate-server` ADMIN URL (the
    * PRIMITIVE form). For a SECURED / Restate Cloud admin endpoint, pass `apiKey`

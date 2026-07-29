@@ -1,4 +1,5 @@
 import { NodeRuntime } from '@effect/platform-node'
+import { Duration, Effect, Fiber, Schema, Stream } from 'effect'
 import type { Socket as SocketType } from 'effect/unstable/socket/Socket'
 import {
   CloseEvent,
@@ -6,7 +7,6 @@ import {
   makeWebSocket,
   toChannelString,
 } from 'effect/unstable/socket/Socket'
-import { Duration, Effect, Fiber, Schema, Stream } from 'effect'
 
 /**
  * Example: WebSocket JSON client with schema validation.
@@ -52,14 +52,14 @@ type ServerMessage = typeof ServerMessageSchema.Type
 
 /** Encode a typed client message to JSON. */
 const encodeClientMessage = Effect.fn('ws-json.encode')(function* (message: ClientMessage) {
-  return yield* Schema.encode(Schema.parseJson(ClientMessageSchema))(message)
+  return yield* Schema.encode(Schema.fromJsonString(ClientMessageSchema))(message)
 })
 
 /** Decode a JSON string into a typed server response. */
 const decodeServerMessage = Effect.fn('ws-json.decode')(function* (raw: string) {
-  const message: ServerMessage = yield* Schema.decodeUnknown(Schema.parseJson(ServerMessageSchema))(
-    raw,
-  )
+  const message: ServerMessage = yield* Schema.decodeUnknown(
+    Schema.fromJsonString(ServerMessageSchema),
+  )(raw)
   return message
 })
 

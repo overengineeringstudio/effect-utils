@@ -17,8 +17,8 @@ export const TreeIndex = Schema.Struct({
 
 export type TreeIndex = typeof TreeIndex.Type
 
-const encodeTreeIndexJson = Schema.encodeSync(Schema.parseJson(TreeIndex, { space: 2 }))
-const decodeTreeIndexJson = Schema.decodeUnknown(Schema.parseJson(TreeIndex), {
+const encodeTreeIndexJson = Schema.encodeSync(Schema.fromJsonString(TreeIndex, { space: 2 }))
+const decodeTreeIndexJson = Schema.decodeUnknown(Schema.fromJsonString(TreeIndex), {
   errors: 'all',
   onExcessProperty: 'error',
 } as const)

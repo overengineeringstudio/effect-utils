@@ -273,7 +273,7 @@ export interface PtyClientSession {
 /* ───────────────────────────── service ──────────────────────────── */
 
 /** Effect service wrapping the detached `@myobie/pty/client` API. */
-export class PtyClient extends Context.Tag('@overeng/pty-effect/PtyClient')<
+export class PtyClient extends Context.Service<
   PtyClient,
   {
     readonly spawnDaemon: (spec: PtyDaemonSpec) => Effect.Effect<void, PtyError>
@@ -296,7 +296,7 @@ export class PtyClient extends Context.Tag('@overeng/pty-effect/PtyClient')<
     readonly followEvents: (spec: PtyFollowEventsSpec) => Stream.Stream<PtyEvent, PtyError>
     readonly kill: (input: { readonly name: PtyName }) => Effect.Effect<void, PtyError>
   }
->() {}
+>()('@overeng/pty-effect/PtyClient') {}
 
 /* ─────────────────────────── implementation ─────────────────────── */
 

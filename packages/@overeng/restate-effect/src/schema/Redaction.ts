@@ -44,10 +44,9 @@ export interface RedactionCipher {
  * `RestateRedaction` is provided, encode/decode FAILS with a clear error rather
  * than silently passing plaintext (see {@link withRedaction}).
  */
-export class RestateRedaction extends Context.Tag('@overeng/restate-effect/RestateRedaction')<
-  RestateRedaction,
-  RedactionCipher
->() {}
+export class RestateRedaction extends Context.Service<RestateRedaction, RedactionCipher>()(
+  '@overeng/restate-effect/RestateRedaction',
+) {}
 
 /* ── reference AES-256-GCM cipher (node:crypto) ──────────────────────────── */
 

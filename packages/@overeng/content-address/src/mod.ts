@@ -8,7 +8,7 @@ import { Effect, Schema } from 'effect'
 
 /** Branded SHA-256 content digest in lowercase-hex `sha256:<64 hex>` form. */
 export const ContentDigest = Schema.String.check(
-  Schema.isPattern(/^sha256:[a-f0-9]{64}$/),
+  Schema.check(Schema.isPattern(/^sha256:[a-f0-9]{64}$/)),
   Schema.brand('ContentAddress.ContentDigest'),
   Schema.annotate({ identifier: 'ContentAddress.ContentDigest' }),
 )
@@ -16,21 +16,21 @@ export type ContentDigest = typeof ContentDigest.Type
 
 /** Location-independent CAS retrieval URI in `cas:sha256/<byte>/<rest>` form. */
 export const CasUri = Schema.String.check(
-  Schema.isPattern(/^cas:sha256\/[a-f0-9]{2}\/[a-f0-9]{62}$/),
+  Schema.check(Schema.isPattern(/^cas:sha256\/[a-f0-9]{2}\/[a-f0-9]{62}$/)),
   Schema.brand('ContentAddress.CasUri'),
   Schema.annotate({ identifier: 'ContentAddress.CasUri' }),
 )
 export type CasUri = typeof CasUri.Type
 
 /** Branded non-empty media (MIME) type describing the encoded byte payload. */
-export const MediaType = Schema.NonEmptyTrimmedString.pipe(
+export const MediaType = Schema.Trimmed.check(Schema.isNonEmpty()).pipe(
   Schema.brand('ContentAddress.MediaType'),
   Schema.annotate({ identifier: 'ContentAddress.MediaType' }),
 )
 export type MediaType = typeof MediaType.Type
 
 /** Branded codec tag naming the byte-encoding scheme (e.g. `canonical-json`). */
-export const Codec = Schema.NonEmptyTrimmedString.pipe(
+export const Codec = Schema.Trimmed.check(Schema.isNonEmpty()).pipe(
   Schema.brand('ContentAddress.Codec'),
   Schema.annotate({ identifier: 'ContentAddress.Codec' }),
 )
@@ -39,25 +39,25 @@ export type Codec = typeof Codec.Type
 /** Self-describing content-address record: digest + byte length + media type (optional codec/schema version). */
 export const ContentDescriptor = Schema.TaggedStruct('ContentDescriptor', {
   digest: ContentDigest,
-  byteLength: Schema.NonNegativeInt,
+  byteLength: Schema.Natural,
   mediaType: MediaType,
   codec: Schema.optional(Codec),
-  schemaVersion: Schema.optional(Schema.NonNegativeInt),
+  schemaVersion: Schema.optional(Schema.Natural),
 }).annotate({ identifier: 'ContentAddress.ContentDescriptor' })
 export type ContentDescriptor = typeof ContentDescriptor.Type
 
 /** One child object referenced by a manifest, optionally with a stable logical path and role. */
 export const ContentManifestEntry = Schema.Struct({
   descriptor: ContentDescriptor,
-  logicalPath: Schema.optional(Schema.NonEmptyTrimmedString),
-  role: Schema.optional(Schema.NonEmptyTrimmedString),
+  logicalPath: Schema.optional(Schema.Trimmed.check(Schema.isNonEmpty())),
+  role: Schema.optional(Schema.Trimmed.check(Schema.isNonEmpty())),
 }).annotate({ identifier: 'ContentAddress.ContentManifestEntry' })
 export type ContentManifestEntry = typeof ContentManifestEntry.Type
 
 /** Versioned CAS manifest containing descriptors for a logical artifact or artifact set. */
 export const ContentManifest = Schema.TaggedStruct('ContentManifest', {
   schemaVersion: Schema.Literal(1),
-  role: Schema.NonEmptyTrimmedString,
+  role: Schema.Trimmed.check(Schema.isNonEmpty()),
   createdAt: Schema.optional(Schema.DateTimeUtc),
   entries: Schema.Array(ContentManifestEntry),
 }).annotate({ identifier: 'ContentAddress.ContentManifest' })
@@ -77,20 +77,20 @@ export interface FileSystemContentStore {
 }
 
 /** Raised by {@link verifyDescriptor} when bytes fail the descriptor's digest or byte-length check (fail-closed). */
-export class ContentDescriptorMismatchError extends Schema.TaggedError<ContentDescriptorMismatchError>()(
+export class ContentDescriptorMismatchError extends Schema.TaggedErrorClass<ContentDescriptorMismatchError>()(
   'ContentDescriptorMismatchError',
   {
     expectedDigest: ContentDigest,
     actualDigest: ContentDigest,
-    expectedByteLength: Schema.NonNegativeInt,
-    actualByteLength: Schema.NonNegativeInt,
+    expectedByteLength: Schema.Natural,
+    actualByteLength: Schema.Natural,
     mediaType: MediaType,
     message: Schema.String,
   },
 ) {}
 
 /** Raised when an object addressed by a descriptor is absent from the store. */
-export class ContentObjectMissingError extends Schema.TaggedError<ContentObjectMissingError>()(
+export class ContentObjectMissingError extends Schema.TaggedErrorClass<ContentObjectMissingError>()(
   'ContentObjectMissingError',
   {
     path: Schema.String,
@@ -100,7 +100,7 @@ export class ContentObjectMissingError extends Schema.TaggedError<ContentObjectM
 ) {}
 
 /** Raised when a mutable pin name has no record in the store. */
-export class ContentPinMissingError extends Schema.TaggedError<ContentPinMissingError>()(
+export class ContentPinMissingError extends Schema.TaggedErrorClass<ContentPinMissingError>()(
   'ContentPinMissingError',
   {
     name: Schema.String,
@@ -110,18 +110,18 @@ export class ContentPinMissingError extends Schema.TaggedError<ContentPinMissing
 ) {}
 
 /** Raised when filesystem access fails while reading or writing the store. */
-export class ContentStoreIoError extends Schema.TaggedError<ContentStoreIoError>()(
+export class ContentStoreIoError extends Schema.TaggedErrorClass<ContentStoreIoError>()(
   'ContentStoreIoError',
   {
     operation: Schema.String,
     path: Schema.String,
-    cause: Schema.Defect,
+    cause: Schema.Defect(),
     message: Schema.String,
   },
 ) {}
 
 /** Raised when a CAS URI and caller-provided descriptor identify different objects. */
-export class CasUriDescriptorMismatchError extends Schema.TaggedError<CasUriDescriptorMismatchError>()(
+export class CasUriDescriptorMismatchError extends Schema.TaggedErrorClass<CasUriDescriptorMismatchError>()(
   'CasUriDescriptorMismatchError',
   {
     uri: CasUri,
@@ -132,17 +132,17 @@ export class CasUriDescriptorMismatchError extends Schema.TaggedError<CasUriDesc
 ) {}
 
 /** Raised when a `cas:` URI has the right scheme and algorithm but invalid object-path syntax. */
-export class InvalidCasUriError extends Schema.TaggedError<InvalidCasUriError>()(
+export class InvalidCasUriError extends Schema.TaggedErrorClass<InvalidCasUriError>()(
   'InvalidCasUriError',
   {
     uri: Schema.String,
-    cause: Schema.Defect,
+    cause: Schema.Defect(),
     message: Schema.String,
   },
 ) {}
 
 /** Raised when resolving a URI whose scheme is not `cas`. */
-export class UnsupportedCasSchemeError extends Schema.TaggedError<UnsupportedCasSchemeError>()(
+export class UnsupportedCasSchemeError extends Schema.TaggedErrorClass<UnsupportedCasSchemeError>()(
   'UnsupportedCasSchemeError',
   {
     uri: Schema.String,
@@ -152,7 +152,7 @@ export class UnsupportedCasSchemeError extends Schema.TaggedError<UnsupportedCas
 ) {}
 
 /** Raised when resolving a CAS URI whose digest algorithm is not supported. */
-export class UnsupportedDigestAlgorithmError extends Schema.TaggedError<UnsupportedDigestAlgorithmError>()(
+export class UnsupportedDigestAlgorithmError extends Schema.TaggedErrorClass<UnsupportedDigestAlgorithmError>()(
   'UnsupportedDigestAlgorithmError',
   {
     uri: Schema.String,
@@ -162,7 +162,7 @@ export class UnsupportedDigestAlgorithmError extends Schema.TaggedError<Unsuppor
 ) {}
 
 /** Raised when a pin name is empty, absolute, or contains unsafe path segments. */
-export class UnsafePinNameError extends Schema.TaggedError<UnsafePinNameError>()(
+export class UnsafePinNameError extends Schema.TaggedErrorClass<UnsafePinNameError>()(
   'UnsafePinNameError',
   {
     name: Schema.String,
@@ -171,34 +171,34 @@ export class UnsafePinNameError extends Schema.TaggedError<UnsafePinNameError>()
 ) {}
 
 /** Raised when a pin target is not a canonical JSON ContentManifest descriptor. */
-export class InvalidManifestDescriptorError extends Schema.TaggedError<InvalidManifestDescriptorError>()(
+export class InvalidManifestDescriptorError extends Schema.TaggedErrorClass<InvalidManifestDescriptorError>()(
   'InvalidManifestDescriptorError',
   {
     digest: ContentDigest,
     mediaType: MediaType,
     codec: Schema.optional(Codec),
-    schemaVersion: Schema.optional(Schema.NonNegativeInt),
+    schemaVersion: Schema.optional(Schema.Natural),
     message: Schema.String,
   },
 ) {}
 
 /** Raised when a pin file cannot be decoded as a versioned ContentPin record. */
-export class InvalidPinRecordError extends Schema.TaggedError<InvalidPinRecordError>()(
+export class InvalidPinRecordError extends Schema.TaggedErrorClass<InvalidPinRecordError>()(
   'InvalidPinRecordError',
   {
     name: Schema.String,
     path: Schema.String,
-    cause: Schema.Defect,
+    cause: Schema.Defect(),
     message: Schema.String,
   },
 ) {}
 
 /** Raised when descriptor-addressed manifest bytes cannot be decoded as a ContentManifest. */
-export class InvalidManifestRecordError extends Schema.TaggedError<InvalidManifestRecordError>()(
+export class InvalidManifestRecordError extends Schema.TaggedErrorClass<InvalidManifestRecordError>()(
   'InvalidManifestRecordError',
   {
     digest: ContentDigest,
-    cause: Schema.Defect,
+    cause: Schema.Defect(),
     message: Schema.String,
   },
 ) {}
@@ -545,8 +545,8 @@ const verifyManifestDescriptor = Effect.fn('ContentAddress.verifyManifestDescrip
   }
 })
 
-const decodeContentPinJson = Schema.decodeUnknownSync(Schema.parseJson(ContentPin))
-const decodeContentManifestJson = Schema.decodeUnknownSync(Schema.parseJson(ContentManifest))
+const decodeContentPinJson = Schema.decodeUnknownSync(Schema.fromJsonString(ContentPin))
+const decodeContentManifestJson = Schema.decodeUnknownSync(Schema.fromJsonString(ContentManifest))
 
 /** Store bytes under their descriptor-derived object path and return the descriptor. */
 export const putBytes = Effect.fn('ContentAddress.putBytes')(function* ({

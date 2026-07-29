@@ -20,7 +20,7 @@ import { trackPage, type TrackResult } from './reconcile.ts'
 import { NmdStateStore } from './state-store.ts'
 
 /** Raised when the body-only facade refuses a stale verified operation. */
-export class NotionMdBodyConflictError extends Schema.TaggedError<NotionMdBodyConflictError>()(
+export class NotionMdBodyConflictError extends Schema.TaggedErrorClass<NotionMdBodyConflictError>()(
   'NotionMdBodyConflictError',
   {
     operation: Schema.Literal('replace_remote_body_verified', 'settle_verified_body_push'),

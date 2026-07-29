@@ -18,7 +18,7 @@ export type WorkspaceProvider = {
 const normalizePath = (input: string): string => input.replace(/\\/g, '/')
 
 /** Permissive JSON decode for package.json files (shape is cast, not validated). */
-const decodePackageJson = Schema.decodeUnknownSync(Schema.parseJson(Schema.Unknown))
+const decodePackageJson = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown))
 
 /** Build validation context by reading all workspace package.json files into a lookup map */
 export const buildPackageJsonValidationContext = Effect.fn(

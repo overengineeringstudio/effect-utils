@@ -11,7 +11,7 @@ import * as SchemaAST from 'effect/SchemaAST'
  * read by walking `ast.propertySignatures`. See
  * [.decisions/0011](../../docs/vrs/.decisions/0011-restate-schema-annotations.md).
  *
- * Phase 1 implements `terminal` / `retryable` (on a `Schema.TaggedError`) and
+ * Phase 1 implements `terminal` / `retryable` (on a `Schema.TaggedErrorClass`) and
  * `serde` (on a value schema). Phase 2 wires `idempotencyKey` (on an input struct
  * FIELD) — the SINGLE source of a call/send's idempotency key, read by walking the
  * input schema's `propertySignatures` (decision 0011). The final annotation set
@@ -34,7 +34,7 @@ export type RetryAfter =
   | ((error: unknown) => Duration.DurationInput | undefined)
 
 /**
- * The error-boundary classification for a domain `Schema.TaggedError`, read by
+ * The error-boundary classification for a domain `Schema.TaggedErrorClass`, read by
  * `toTerminal`. `terminal` (the default) maps to a non-retryable
  * `TerminalError` with the given `errorCode` (default 500); `retryable` maps to
  * a non-terminal throw so Restate retries, with an optional `retryAfter` floor
@@ -93,7 +93,7 @@ const annotate =
  */
 export const Restate = {
   /**
-   * Mark a `Schema.TaggedError` terminal (non-retryable) with an explicit
+   * Mark a `Schema.TaggedErrorClass` terminal (non-retryable) with an explicit
    * `errorCode` (e.g. 404/409). Default classification — `toTerminal` falls
    * back to `terminal` + 500 when no annotation is present.
    */
@@ -110,7 +110,7 @@ export const Restate = {
     }),
 
   /**
-   * Mark a `Schema.TaggedError` retryable: `toTerminal` throws it non-terminally
+   * Mark a `Schema.TaggedErrorClass` retryable: `toTerminal` throws it non-terminally
    * so Restate retries, honoring an optional `retryAfter` floor. `retryAfter` is
    * either a STATIC value (literal shorthand, e.g. `'30 seconds'`) or an INSTANCE
    * PROJECTION `(error) => DurationInput | undefined` read from the actual failing

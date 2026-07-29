@@ -7,16 +7,16 @@
 import { Schema } from 'effect'
 
 /** Claude CLI binary not found or not executable */
-export class ClaudeCliNotFoundError extends Schema.TaggedError<ClaudeCliNotFoundError>()(
+export class ClaudeCliNotFoundError extends Schema.TaggedErrorClass<ClaudeCliNotFoundError>()(
   'ClaudeCliNotFoundError',
   {
     message: Schema.String,
-    cause: Schema.Defect,
+    cause: Schema.Defect(),
   },
 ) {}
 
 /** User not logged in to Claude CLI */
-export class ClaudeCliNotLoggedInError extends Schema.TaggedError<ClaudeCliNotLoggedInError>()(
+export class ClaudeCliNotLoggedInError extends Schema.TaggedErrorClass<ClaudeCliNotLoggedInError>()(
   'ClaudeCliNotLoggedInError',
   {
     message: Schema.String,
@@ -24,16 +24,16 @@ export class ClaudeCliNotLoggedInError extends Schema.TaggedError<ClaudeCliNotLo
 ) {}
 
 /** Authentication expired or invalid */
-export class ClaudeCliAuthError extends Schema.TaggedError<ClaudeCliAuthError>()(
+export class ClaudeCliAuthError extends Schema.TaggedErrorClass<ClaudeCliAuthError>()(
   'ClaudeCliAuthError',
   {
     message: Schema.String,
-    cause: Schema.optional(Schema.Defect),
+    cause: Schema.optional(Schema.Defect()),
   },
 ) {}
 
 /** CLI exited with non-zero code (fallback for unrecognized errors) */
-export class ClaudeCliExitError extends Schema.TaggedError<ClaudeCliExitError>()(
+export class ClaudeCliExitError extends Schema.TaggedErrorClass<ClaudeCliExitError>()(
   'ClaudeCliExitError',
   {
     message: Schema.String,
@@ -45,17 +45,17 @@ export class ClaudeCliExitError extends Schema.TaggedError<ClaudeCliExitError>()
 ) {}
 
 /** Failed to parse JSON response from CLI */
-export class ClaudeCliParseError extends Schema.TaggedError<ClaudeCliParseError>()(
+export class ClaudeCliParseError extends Schema.TaggedErrorClass<ClaudeCliParseError>()(
   'ClaudeCliParseError',
   {
     message: Schema.String,
     rawOutput: Schema.String,
-    cause: Schema.optional(Schema.Defect),
+    cause: Schema.optional(Schema.Defect()),
   },
 ) {}
 
 /** Rate limited by Claude API */
-export class ClaudeCliRateLimitError extends Schema.TaggedError<ClaudeCliRateLimitError>()(
+export class ClaudeCliRateLimitError extends Schema.TaggedErrorClass<ClaudeCliRateLimitError>()(
   'ClaudeCliRateLimitError',
   {
     message: Schema.String,

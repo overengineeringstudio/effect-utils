@@ -79,7 +79,7 @@ export const readLockFile = (
     }
 
     const content = yield* fs.readFileString(lockPath)
-    const parsed = yield* Schema.decodeUnknown(Schema.parseJson(LockFile))(content)
+    const parsed = yield* Schema.decodeUnknown(Schema.fromJsonString(LockFile))(content)
     return Option.some(parsed)
   })
 
@@ -99,7 +99,7 @@ export const writeLockFile = ({
 > =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
-    const content = yield* Schema.encode(Schema.parseJson(LockFile, { space: 2 }))(lockFile)
+    const content = yield* Schema.encode(Schema.fromJsonString(LockFile, { space: 2 }))(lockFile)
     yield* fs.writeFileString(lockPath, content + '\n')
   })
 

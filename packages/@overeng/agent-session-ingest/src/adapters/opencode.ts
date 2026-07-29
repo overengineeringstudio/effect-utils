@@ -16,29 +16,29 @@ const OpenCodeSessionRow = Schema.Struct({
   directory: Schema.String,
   title: Schema.String,
   version: Schema.String,
-  time_created: Schema.NonNegativeInt,
-  time_updated: Schema.NonNegativeInt,
-  time_archived: Schema.optional(Schema.NullOr(Schema.NonNegativeInt)),
+  time_created: Schema.Natural,
+  time_updated: Schema.Natural,
+  time_archived: Schema.optional(Schema.NullOr(Schema.Natural)),
 }).annotate({ identifier: 'AgentSessionIngest.OpenCodeSessionRow' })
 
 const OpenCodeSessionDiscoveryRow = Schema.Struct({
   id: Schema.String,
-  time_archived: Schema.NullOr(Schema.NonNegativeInt),
+  time_archived: Schema.NullOr(Schema.Natural),
 }).annotate({ identifier: 'AgentSessionIngest.OpenCodeSessionDiscoveryRow' })
 
 const OpenCodeMessageRow = Schema.Struct({
   id: Schema.String,
   session_id: Schema.String,
-  time_created: Schema.NonNegativeInt,
-  time_updated: Schema.NonNegativeInt,
+  time_created: Schema.Natural,
+  time_updated: Schema.Natural,
   data: Schema.Unknown,
 }).annotate({ identifier: 'AgentSessionIngest.OpenCodeMessageRow' })
 
 const OpenCodePartRow = Schema.Struct({
   id: Schema.String,
   session_id: Schema.String,
-  time_created: Schema.NonNegativeInt,
-  time_updated: Schema.NonNegativeInt,
+  time_created: Schema.Natural,
+  time_updated: Schema.Natural,
   data: Schema.Unknown,
 }).annotate({ identifier: 'AgentSessionIngest.OpenCodePartRow' })
 
@@ -62,8 +62,8 @@ const OpenCodeMessageData = Schema.Struct({
 const OpenCodeMessageRecord = Schema.TaggedStruct('OpenCodeMessage', {
   id: Schema.String,
   sessionId: Schema.String,
-  timeCreated: Schema.NonNegativeInt,
-  timeUpdated: Schema.NonNegativeInt,
+  timeCreated: Schema.Natural,
+  timeUpdated: Schema.Natural,
   data: OpenCodeMessageData,
 }).annotate({ identifier: 'AgentSessionIngest.OpenCodeMessageRecord' })
 
@@ -147,8 +147,8 @@ const OpenCodePartData = Schema.Union(
 const OpenCodePartRecord = Schema.TaggedStruct('OpenCodePart', {
   id: Schema.String,
   sessionId: Schema.String,
-  timeCreated: Schema.NonNegativeInt,
-  timeUpdated: Schema.NonNegativeInt,
+  timeCreated: Schema.Natural,
+  timeUpdated: Schema.Natural,
   data: OpenCodePartData,
 }).annotate({ identifier: 'AgentSessionIngest.OpenCodePartRecord' })
 
@@ -335,7 +335,7 @@ const parseOpenCodeRowData = Effect.fn('AgentSessionIngest.OpenCode.parseOpenCod
     readonly rawData: unknown
     readonly message: string
   }) =>
-    Schema.decodeUnknown(Schema.parseJson(Schema.Unknown))(String(options.rawData)).pipe(
+    Schema.decodeUnknown(Schema.fromJsonString(Schema.Unknown))(String(options.rawData)).pipe(
       Effect.mapError(
         (cause) =>
           new SessionArtifactDecodeError({

@@ -79,17 +79,17 @@ export type VercelDeployCommandOptions = {
 }
 
 const VercelProjectJson = Schema.Struct({
-  id: Schema.optional(Schema.NonEmptyTrimmedString),
-  name: Schema.optional(Schema.NonEmptyTrimmedString),
+  id: Schema.optional(Schema.Trimmed.check(Schema.isNonEmpty())),
+  name: Schema.optional(Schema.Trimmed.check(Schema.isNonEmpty())),
 }).annotate({ identifier: 'CiTools.Vercel.ProjectJson' })
 
-const VercelProjectFileJson = Schema.parseJson(
+const VercelProjectFileJson = Schema.fromJsonString(
   Schema.Struct({
-    projectId: Schema.NonEmptyTrimmedString,
-    orgId: Schema.NonEmptyTrimmedString,
+    projectId: Schema.Trimmed.check(Schema.isNonEmpty()),
+    orgId: Schema.Trimmed.check(Schema.isNonEmpty()),
   }),
 )
-const JsonUnknown = Schema.parseJson(Schema.Unknown)
+const JsonUnknown = Schema.fromJsonString(Schema.Unknown)
 
 const isoNow = () => new Date().toISOString()
 
@@ -303,7 +303,9 @@ const resolveVercelProject = Effect.fn('ci-tools.deploy.vercel.resolve-project')
     })
   }
 
-  const decoded = Schema.decodeUnknownEither(Schema.parseJson(VercelProjectJson))(response.text)
+  const decoded = Schema.decodeUnknownEither(Schema.fromJsonString(VercelProjectJson))(
+    response.text,
+  )
   if (Either.isLeft(decoded) === true) {
     return yield* new ProviderProjectLookupFailed({
       provider: 'vercel',

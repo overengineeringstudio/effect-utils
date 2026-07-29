@@ -66,9 +66,10 @@ export type NotionHttpTelemetryReporter = {
 }
 
 /** Optional Effect service used by callers that want realtime HTTP/rate-limit visibility. */
-export class NotionHttpTelemetry extends Context.Tag(
-  '@overeng/notion-effect-client/NotionHttpTelemetry',
-)<NotionHttpTelemetry, NotionHttpTelemetryReporter>() {}
+export class NotionHttpTelemetry extends Context.Service<
+  NotionHttpTelemetry,
+  NotionHttpTelemetryReporter
+>()('@overeng/notion-effect-client/NotionHttpTelemetry') {}
 
 /** Options for building a Notion API request */
 export interface BuildRequestOptions {

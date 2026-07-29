@@ -1,6 +1,6 @@
 import { Schema } from 'effect'
 
-const NonEmptyWebhookString = Schema.NonEmptyTrimmedString.annotate({
+const NonEmptyWebhookString = Schema.Trimmed.check(Schema.isNonEmpty()).annotate({
   identifier: 'NotionWebhook.NonEmptyString',
 })
 
@@ -41,7 +41,7 @@ export const NotionWebhookPayload = Schema.Struct({
   timestamp: Schema.optional(NonEmptyWebhookString),
   created_time: Schema.optional(NonEmptyWebhookString),
   api_version: Schema.optional(NonEmptyWebhookString),
-  attempt_number: Schema.optional(Schema.NonNegativeInt),
+  attempt_number: Schema.optional(Schema.Natural),
   subscription_id: Schema.optional(NonEmptyWebhookString),
   workspace_id: Schema.optional(NonEmptyWebhookString),
   integration_id: Schema.optional(NonEmptyWebhookString),

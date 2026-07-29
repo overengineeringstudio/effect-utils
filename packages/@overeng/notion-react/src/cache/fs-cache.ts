@@ -15,10 +15,10 @@ const decode = Schema.decodeUnknown(CacheTree)
  * well-formed-but-stale payload can still be treated as a cold cache by the
  * separate schema `decode` below.
  */
-const parseJson = Schema.decode(Schema.parseJson())
+const parseJson = Schema.decode(Schema.fromJsonString(Schema.Unknown))
 
 /** Encode a `CacheTree` to its on-disk JSON string (compact, schema field order). */
-const encodeJson = Schema.encode(Schema.parseJson(CacheTree))
+const encodeJson = Schema.encode(Schema.fromJsonString(CacheTree))
 
 const readIfExists = (filePath: string): Effect.Effect<string | undefined, CacheError> =>
   Effect.tryPromise({

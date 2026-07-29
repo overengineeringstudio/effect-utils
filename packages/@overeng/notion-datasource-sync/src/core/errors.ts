@@ -4,7 +4,7 @@ import { CommandId, DataSourceId, PageId, SupportedNotionApiVersion } from './do
 import { GuardName } from './guards.ts'
 
 /** Raised when the Notion API version is nominally supported but no compatibility proof has been recorded yet for this client version. */
-export class ApiVersionCompatibilityMissing extends Schema.TaggedError<ApiVersionCompatibilityMissing>()(
+export class ApiVersionCompatibilityMissing extends Schema.TaggedErrorClass<ApiVersionCompatibilityMissing>()(
   'ApiVersionCompatibilityMissing',
   {
     requestedVersion: Schema.String,
@@ -14,7 +14,7 @@ export class ApiVersionCompatibilityMissing extends Schema.TaggedError<ApiVersio
 ) {}
 
 /** Raised when the Notion workspace does not support a capability required by the planned operation. */
-export class UnsupportedCapabilityError extends Schema.TaggedError<UnsupportedCapabilityError>()(
+export class UnsupportedCapabilityError extends Schema.TaggedErrorClass<UnsupportedCapabilityError>()(
   'UnsupportedCapabilityError',
   {
     dataSourceId: DataSourceId,
@@ -24,7 +24,7 @@ export class UnsupportedCapabilityError extends Schema.TaggedError<UnsupportedCa
 ) {}
 
 /** Transport or semantic error returned by the Notion API gateway; includes operation context and optional guard annotation. */
-export class NotionGatewayError extends Schema.TaggedError<NotionGatewayError>()(
+export class NotionGatewayError extends Schema.TaggedErrorClass<NotionGatewayError>()(
   'NotionGatewayError',
   {
     operation: Schema.String,
@@ -32,32 +32,32 @@ export class NotionGatewayError extends Schema.TaggedError<NotionGatewayError>()
     pageId: Schema.optional(PageId),
     requestId: Schema.optional(Schema.String),
     guard: Schema.optional(GuardName),
-    retryAfterMillis: Schema.optional(Schema.NonNegativeInt),
+    retryAfterMillis: Schema.optional(Schema.Natural),
     message: Schema.String,
-    cause: Schema.optional(Schema.Defect),
+    cause: Schema.optional(Schema.Defect()),
   },
 ) {}
 
 /** I/O or integrity error from the local event store or projection storage. */
-export class LocalStoreError extends Schema.TaggedError<LocalStoreError>()('LocalStoreError', {
+export class LocalStoreError extends Schema.TaggedErrorClass<LocalStoreError>()('LocalStoreError', {
   operation: Schema.String,
   message: Schema.String,
-  cause: Schema.optional(Schema.Defect),
+  cause: Schema.optional(Schema.Defect()),
 }) {}
 
 /** Alias for `LocalStoreError`; used in port signatures that deal with filesystem-level storage. */
 export type LocalStorageError = LocalStoreError
 
 /** Error from the body-sync port (observe, push, or repair) for a specific page. */
-export class BodySyncError extends Schema.TaggedError<BodySyncError>()('BodySyncError', {
+export class BodySyncError extends Schema.TaggedErrorClass<BodySyncError>()('BodySyncError', {
   operation: Schema.String,
   pageId: PageId,
   message: Schema.String,
-  cause: Schema.optional(Schema.Defect),
+  cause: Schema.optional(Schema.Defect()),
 }) {}
 
 /** Raised when a sync guard blocks an operation that would normally be a defect; carries the guard name and optional command context. */
-export class SyncGuardError extends Schema.TaggedError<SyncGuardError>()('SyncGuardError', {
+export class SyncGuardError extends Schema.TaggedErrorClass<SyncGuardError>()('SyncGuardError', {
   guard: GuardName,
   commandId: Schema.optional(CommandId),
   message: Schema.String,
@@ -71,7 +71,7 @@ export class SyncGuardError extends Schema.TaggedError<SyncGuardError>()('SyncGu
  * rewrites, or reinterprets local artifacts under an unrecognized or
  * inconsistent namespace.
  */
-export class WorkspaceNamespaceError extends Schema.TaggedError<WorkspaceNamespaceError>()(
+export class WorkspaceNamespaceError extends Schema.TaggedErrorClass<WorkspaceNamespaceError>()(
   'WorkspaceNamespaceError',
   {
     guard: Schema.Literal(
@@ -89,7 +89,7 @@ export class WorkspaceNamespaceError extends Schema.TaggedError<WorkspaceNamespa
  * workspace simply is not tracked yet, and the message tells the user how to
  * establish it.
  */
-export class WorkspaceNotTracked extends Schema.TaggedError<WorkspaceNotTracked>()(
+export class WorkspaceNotTracked extends Schema.TaggedErrorClass<WorkspaceNotTracked>()(
   'WorkspaceNotTracked',
   {
     message: Schema.String,

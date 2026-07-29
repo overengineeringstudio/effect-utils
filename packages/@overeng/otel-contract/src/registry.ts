@@ -24,7 +24,7 @@
  *     (referenced own attrs ∪ doc-only); foreign refs are opt-out marked (`refExternal`).
  *   - `fragment(contract)` projects to a Layer-1 registry fragment by reading AST annotations.
  *
- * Author-time failures raise `Schema.TaggedError`s (not plain `throw`, unlike the prototype).
+ * Author-time failures raise `Schema.TaggedErrorClass`s (not plain `throw`, unlike the prototype).
  */
 import { Option, Schema } from 'effect'
 import * as AST from 'effect/SchemaAST'
@@ -186,7 +186,7 @@ export type RegistryFragment = {
 // ---------------------------------------------------------------------------
 
 /** An attribute Schema is missing the otel key annotation and/or the weaver metadata. */
-export class WeaverMissingAnnotationError extends Schema.TaggedError<WeaverMissingAnnotationError>()(
+export class WeaverMissingAnnotationError extends Schema.TaggedErrorClass<WeaverMissingAnnotationError>()(
   'WeaverMissingAnnotationError',
   { key: Schema.optional(Schema.String), missing: Schema.Literal('otelKey', 'weaverMeta') },
 ) {}
@@ -197,13 +197,13 @@ export class WeaverMissingAnnotationError extends Schema.TaggedError<WeaverMissi
  * been `refExternal(...)` — i.e. this covers both the "stray-namespace-key" and the
  * "unmarked-foreign" cases (they are indistinguishable at derivation; decision 0006).
  */
-export class WeaverStrayNamespaceKeyError extends Schema.TaggedError<WeaverStrayNamespaceKeyError>()(
+export class WeaverStrayNamespaceKeyError extends Schema.TaggedErrorClass<WeaverStrayNamespaceKeyError>()(
   'WeaverStrayNamespaceKeyError',
   { key: Schema.String, derivedNamespace: Schema.String },
 ) {}
 
 /** A contract has no own attributes, so a namespace cannot be derived. */
-export class WeaverEmptyContractError extends Schema.TaggedError<WeaverEmptyContractError>()(
+export class WeaverEmptyContractError extends Schema.TaggedErrorClass<WeaverEmptyContractError>()(
   'WeaverEmptyContractError',
   { memberPath: Schema.String },
 ) {}
@@ -213,7 +213,7 @@ export class WeaverEmptyContractError extends Schema.TaggedError<WeaverEmptyCont
  * `updowncounter` constructor, so mapping it to `gauge` would make runtime emission disagree with
  * the semconv registry (which still reports `updowncounter`). Rejected at author time instead.
  */
-export class WeaverUnsupportedInstrumentError extends Schema.TaggedError<WeaverUnsupportedInstrumentError>()(
+export class WeaverUnsupportedInstrumentError extends Schema.TaggedErrorClass<WeaverUnsupportedInstrumentError>()(
   'WeaverUnsupportedInstrumentError',
   { metricName: Schema.String, instrument: Schema.String },
 ) {

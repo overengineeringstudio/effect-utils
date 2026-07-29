@@ -1,10 +1,10 @@
 import { NodeRuntime } from '@effect/platform-node'
 import { layerWebSocket } from '@effect/platform-node/NodeSocketServer'
+import { Effect, Schema, Stream } from 'effect'
 import type { CloseEvent, Socket as SocketType } from 'effect/unstable/socket/Socket'
 import { toChannelString } from 'effect/unstable/socket/Socket'
 import type { Address } from 'effect/unstable/socket/SocketServer'
 import { SocketServer } from 'effect/unstable/socket/SocketServer'
-import { Effect, Schema, Stream } from 'effect'
 
 /**
  * Example: WebSocket JSON server with schema validation.
@@ -15,10 +15,10 @@ import { Effect, Schema, Stream } from 'effect'
  * - error logging on invalid payloads
  */
 /** Error surfaced when the client payload does not match the schema. */
-class InvalidClientMessageError extends Schema.TaggedError<InvalidClientMessageError>()(
+class InvalidClientMessageError extends Schema.TaggedErrorClass<InvalidClientMessageError>()(
   'InvalidClientMessageError',
   {
-    cause: Schema.Defect,
+    cause: Schema.Defect(),
     message: Schema.String,
     raw: Schema.String,
   },
@@ -51,7 +51,7 @@ type ServerMessage = typeof ServerMessageSchema.Type
 
 /** Decode a JSON string into a typed client message. */
 const decodeClientMessage = Effect.fn('ws-json.decode')(function* (raw: string) {
-  return yield* Schema.decodeUnknown(Schema.parseJson(ClientMessageSchema))(raw).pipe(
+  return yield* Schema.decodeUnknown(Schema.fromJsonString(ClientMessageSchema))(raw).pipe(
     Effect.map((message) => {
       const decoded: ClientMessage = message
       return decoded
@@ -69,7 +69,7 @@ const decodeClientMessage = Effect.fn('ws-json.decode')(function* (raw: string) 
 
 /** Encode a typed server message to JSON. */
 const encodeServerMessage = Effect.fn('ws-json.encode')(function* (message: ServerMessage) {
-  return yield* Schema.encode(Schema.parseJson(ServerMessageSchema))(message)
+  return yield* Schema.encode(Schema.fromJsonString(ServerMessageSchema))(message)
 })
 
 /** Normalize socket address for logs. */

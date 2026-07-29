@@ -51,17 +51,23 @@ export type Widget = Schema.Schema.Type<typeof Widget>
  * ════════════════════════════════════════════════════════════════════════ */
 
 /** TERMINAL: a deterministic bad request (HTTP 400). No retry can help. */
-export class BadRequest extends Schema.TaggedError<BadRequest>('http/BadRequest')('BadRequest', {
-  detail: Schema.String,
-}) {}
+export class BadRequest extends Schema.TaggedErrorClass<BadRequest>('http/BadRequest')(
+  'BadRequest',
+  {
+    detail: Schema.String,
+  },
+) {}
 export const BadRequestTerminal = Restate.terminal({ self: BadRequest, errorCode: 400 })
 
 /** TERMINAL: not authorized (HTTP 403). */
-export class Forbidden extends Schema.TaggedError<Forbidden>('http/Forbidden')('Forbidden', {}) {}
+export class Forbidden extends Schema.TaggedErrorClass<Forbidden>('http/Forbidden')(
+  'Forbidden',
+  {},
+) {}
 export const ForbiddenTerminal = Restate.terminal({ self: Forbidden, errorCode: 403 })
 
 /** TERMINAL: the resource does not exist (HTTP 404). */
-export class NotFound extends Schema.TaggedError<NotFound>('http/NotFound')('NotFound', {
+export class NotFound extends Schema.TaggedErrorClass<NotFound>('http/NotFound')('NotFound', {
   widgetId: Schema.String,
 }) {}
 export const NotFoundTerminal = Restate.terminal({ self: NotFound, errorCode: 404 })
@@ -72,7 +78,7 @@ export const NotFoundTerminal = Restate.terminal({ self: NotFound, errorCode: 40
  * terminal DOMAIN error (a 502-style "bad gateway from us to our caller"), NOT a
  * retryable one — distinct from a transient 5xx.
  */
-export class MalformedUpstream extends Schema.TaggedError<MalformedUpstream>(
+export class MalformedUpstream extends Schema.TaggedErrorClass<MalformedUpstream>(
   'http/MalformedUpstream',
 )('MalformedUpstream', { detail: Schema.String }) {}
 export const MalformedUpstreamTerminal = Restate.terminal({
@@ -88,7 +94,7 @@ export const MalformedUpstreamTerminal = Restate.terminal({
  * header is decoded into `retryAfterMillis` and becomes the next attempt's floor
  * (a 5xx / timeout carries `0`, falling back to Restate's default backoff).
  */
-export class UpstreamUnavailable extends Schema.TaggedError<UpstreamUnavailable>(
+export class UpstreamUnavailable extends Schema.TaggedErrorClass<UpstreamUnavailable>(
   'http/UpstreamUnavailable',
 )('UpstreamUnavailable', {
   status: Schema.Number,

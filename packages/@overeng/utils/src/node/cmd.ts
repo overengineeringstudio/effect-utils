@@ -419,13 +419,16 @@ export const cmdCollect = <R = never>(opts: {
   )
 
 /** Internal error for process signal operations */
-class ProcessSignalError extends Schema.TaggedError<ProcessSignalError>()('ProcessSignalError', {
-  cause: Schema.Defect,
-  code: Schema.optionalWith(Schema.String, { as: 'Option' }),
-}) {}
+class ProcessSignalError extends Schema.TaggedErrorClass<ProcessSignalError>()(
+  'ProcessSignalError',
+  {
+    cause: Schema.Defect(),
+    code: Schema.optionalWith(Schema.String, { as: 'Option' }),
+  },
+) {}
 
 /** Error thrown when a shell command exits with non-zero status */
-export class CmdError extends Schema.TaggedError<CmdError>()('CmdError', {
+export class CmdError extends Schema.TaggedErrorClass<CmdError>()('CmdError', {
   command: Schema.String,
   args: Schema.Array(Schema.String),
   cwd: Schema.String,

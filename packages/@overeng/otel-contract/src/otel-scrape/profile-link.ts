@@ -9,7 +9,7 @@ import {
 } from '@overeng/content-address'
 
 /** Opaque native profile kind, e.g. `cpuprofile`, `tsc-trace`, or `cargo-timings`. */
-export const OtelScrapeProfileType = Schema.NonEmptyTrimmedString.pipe(
+export const OtelScrapeProfileType = Schema.Trimmed.check(Schema.isNonEmpty()).pipe(
   Schema.brand('OtelScrape.ProfileType'),
   Schema.annotate({ identifier: 'OtelScrape.ProfileType' }),
 )
@@ -20,11 +20,11 @@ export const OtelScrapeProfileLink = Schema.Struct({
   type: OtelScrapeProfileType,
   digest: ContentDigest,
   uri: CasUri,
-  byteLength: Schema.NonNegativeInt,
+  byteLength: Schema.Natural,
   mediaType: MediaType,
   codec: Schema.optional(Codec),
-  schemaVersion: Schema.optional(Schema.NonNegativeInt),
-  ui: Schema.optional(Schema.NonEmptyTrimmedString),
+  schemaVersion: Schema.optional(Schema.Natural),
+  ui: Schema.optional(Schema.Trimmed.check(Schema.isNonEmpty())),
 }).annotate({ identifier: 'OtelScrape.ProfileLink' })
 export type OtelScrapeProfileLink = typeof OtelScrapeProfileLink.Type
 

@@ -50,13 +50,13 @@ export type AuthorityMode = typeof AuthorityMode.Type
 /** One tracked data source entry in the workspace manifest. */
 export const WorkspaceManifestDataSourceV1 = Schema.Struct({
   /** Stable workspace-local name for the source; doubles as the data-file/page-dir stem. */
-  name: Schema.NonEmptyTrimmedString,
+  name: Schema.Trimmed.check(Schema.isNonEmpty()),
   data_source_id: DataSourceId,
-  database_id: Schema.NonEmptyTrimmedString,
+  database_id: Schema.Trimmed.check(Schema.isNonEmpty()),
   /** Workspace-relative path to the source's SQLite data file, e.g. `data/v1/<name>.sqlite`. */
-  data_file: Schema.NonEmptyTrimmedString,
+  data_file: Schema.Trimmed.check(Schema.isNonEmpty()),
   /** Workspace-relative path to the source's page directory, e.g. `pages/v1/<name>`. */
-  pages_dir: Schema.NonEmptyTrimmedString,
+  pages_dir: Schema.Trimmed.check(Schema.isNonEmpty()),
 }).annotate({ identifier: 'NotionDatasourceSync.WorkspaceManifestDataSourceV1' })
 export type WorkspaceManifestDataSourceV1 = typeof WorkspaceManifestDataSourceV1.Type
 
@@ -66,8 +66,8 @@ export type WorkspaceManifestDataSourceV1 = typeof WorkspaceManifestDataSourceV1
  * contexts over a tracked `data_source_id`.
  */
 export const WorkspaceManifestLinkedViewV1 = Schema.Struct({
-  name: Schema.NonEmptyTrimmedString,
-  view_id: Schema.NonEmptyTrimmedString,
+  name: Schema.Trimmed.check(Schema.isNonEmpty()),
+  view_id: Schema.Trimmed.check(Schema.isNonEmpty()),
   data_source_id: DataSourceId,
   mode: Schema.Literal('projection'),
 }).annotate({ identifier: 'NotionDatasourceSync.WorkspaceManifestLinkedViewV1' })

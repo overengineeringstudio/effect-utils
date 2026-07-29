@@ -104,7 +104,7 @@ export interface MegarepoStore {
 }
 
 /** Store service tag */
-export class Store extends Context.Tag('megarepo/Store')<Store, MegarepoStore>() {}
+export class Store extends Context.Service<Store, MegarepoStore>()('megarepo/Store') {}
 
 // =============================================================================
 // Store Implementation

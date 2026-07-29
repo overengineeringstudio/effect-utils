@@ -105,7 +105,7 @@ export type GuardDecision = typeof GuardDecision.Type
 
 /** Structured diagnostic payload attached to a guard block; provides a human-readable summary and key/value evidence for debugging. */
 export const SafeDiagnostic = Schema.TaggedStruct('SafeDiagnostic', {
-  summary: Schema.NonEmptyTrimmedString,
+  summary: Schema.Trimmed.check(Schema.isNonEmpty()),
   evidence: Schema.Record({ key: Schema.String, value: Schema.String }),
 }).annotate({ identifier: 'NotionDatasourceSync.SafeDiagnostic' })
 export type SafeDiagnostic = typeof SafeDiagnostic.Type

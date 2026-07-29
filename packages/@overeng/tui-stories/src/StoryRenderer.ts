@@ -7,8 +7,8 @@
  * - ndjson: Timeline events as newline-delimited JSON
  */
 
-import { Atom, AtomRegistry } from 'effect/unstable/reactivity'
 import { Effect, Schema } from 'effect'
+import { Atom, AtomRegistry } from 'effect/unstable/reactivity'
 import React from 'react'
 
 import {
@@ -185,9 +185,9 @@ const renderReact = ({
 // =============================================================================
 
 /** Encode an arbitrary (already schema-encoded) value to a JSON string. */
-const encodeJson = Schema.encodeSync(Schema.parseJson(Schema.Unknown))
+const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
 /** Same, but pretty-printed with a 2-space indent (json output mode). */
-const encodeJsonPretty = Schema.encodeSync(Schema.parseJson(Schema.Unknown, { space: 2 }))
+const encodeJsonPretty = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown, { space: 2 }))
 
 /** Encode state as JSON via the app's stateSchema */
 const renderJson = ({

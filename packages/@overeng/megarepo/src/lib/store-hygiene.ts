@@ -68,7 +68,7 @@ export type StoreIssueMeta =
 // =============================================================================
 
 /** Tagged error raised when store pre-flight checks detect blocking issues */
-export class StoreHygieneError extends Schema.TaggedError<StoreHygieneError>()(
+export class StoreHygieneError extends Schema.TaggedErrorClass<StoreHygieneError>()(
   'StoreHygieneError',
   {
     message: Schema.String,

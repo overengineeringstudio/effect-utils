@@ -745,10 +745,9 @@ export interface EndpointServer {
 }
 
 /** Context service carrying the actual address of a scoped endpoint server. */
-export class BoundEndpoint extends Context.Tag('@overeng/restate-effect/BoundEndpoint')<
-  BoundEndpoint,
-  EndpointServer
->() {}
+export class BoundEndpoint extends Context.Service<BoundEndpoint, EndpointServer>()(
+  '@overeng/restate-effect/BoundEndpoint',
+) {}
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- the services-tuple AppR extractor */
 /**

@@ -24,7 +24,7 @@ export const CorpusRelation = Schema.Literal('equal', 'distinct_from').annotate(
 
 /** One historically-broken Notion body shape and the relation it must hold. */
 export const CorpusEntry = Schema.Struct({
-  id: Schema.NonEmptyTrimmedString,
+  id: Schema.Trimmed.check(Schema.isNonEmpty()),
   issue: Schema.String,
   description: Schema.String,
   /** What a user authors locally. */

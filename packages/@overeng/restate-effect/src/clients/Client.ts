@@ -58,10 +58,9 @@ export interface RestateIngressService {
  * env-driven `RestateIngress.layerConfig`) and `yield* RestateIngress` (or thread
  * `call` / `callTyped`, which require it in `R`).
  */
-export class RestateIngress extends Context.Tag('@overeng/restate-effect/RestateIngress')<
-  RestateIngress,
-  RestateIngressService
->() {
+export class RestateIngress extends Context.Service<RestateIngress, RestateIngressService>()(
+  '@overeng/restate-effect/RestateIngress',
+) {
   /**
    * Build a `RestateIngress` layer bound to a `restate-server` ingress URL. The
    * PRIMITIVE form (a thin wrapper over `clients.connect`).

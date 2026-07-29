@@ -275,7 +275,7 @@ describe('PtySession (server mode)', () => {
 })
 
 describe('PtyError', () => {
-  it('is a Schema.TaggedError instance', () => {
+  it('is a Schema.TaggedErrorClass instance', () => {
     const err = new PtyError({ reason: 'Timeout', method: 'unit-test' })
     expect(err._tag).toBe('PtyError')
     expect(err.reason).toBe('Timeout')

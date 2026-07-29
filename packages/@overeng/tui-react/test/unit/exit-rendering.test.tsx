@@ -114,7 +114,7 @@ const WireEvent = Schema.TaggedStruct('WireEvent', {
   text: Schema.String,
 })
 
-const FailurePartitionWire = Schema.parseJson(
+const FailurePartitionWire = Schema.fromJsonString(
   Schema.Struct({
     _tag: Schema.Literal('Failure', 'Success'),
     cause: Schema.NullOr(Schema.String),

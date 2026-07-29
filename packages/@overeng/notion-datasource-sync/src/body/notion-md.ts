@@ -201,16 +201,19 @@ const provideNotionMdGatewayAndStateStore =
     )
 
 /** Raised when atomically encoding/writing a JSON sidecar to the workspace fails. */
-class JsonFileWriteError extends Schema.TaggedError<JsonFileWriteError>()('JsonFileWriteError', {
-  path: Schema.String,
-  message: Schema.String,
-  cause: Schema.Defect,
-}) {}
+class JsonFileWriteError extends Schema.TaggedErrorClass<JsonFileWriteError>()(
+  'JsonFileWriteError',
+  {
+    path: Schema.String,
+    message: Schema.String,
+    cause: Schema.Defect(),
+  },
+) {}
 
 /**
  * Atomically writes a schema-encoded JSON file via a `.tmp` rename.
  *
- * The value is encoded through `Schema.parseJson(schema, { space: 2 })` so the
+ * The value is encoded through `Schema.fromJsonString(schema, { space: 2 })` so the
  * persisted JSON is the schema's canonical encoding rather than a raw
  * `JSON.stringify`, and any I/O failure is surfaced as a typed
  * {@link JsonFileWriteError}.
@@ -243,7 +246,7 @@ const writeJsonFile = <A>({
     })
   })
 
-const sidecarJson = Schema.parseJson(FilesystemWorkspaceSidecar, { space: 2 })
+const sidecarJson = Schema.fromJsonString(FilesystemWorkspaceSidecar, { space: 2 })
 
 const writeDatasourceSyncBodySidecar = ({
   root,

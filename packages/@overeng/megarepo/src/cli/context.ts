@@ -30,7 +30,7 @@ import { InvalidCwdError } from './errors.ts'
  * - $PWD: logical path (preserves symlinks) - set by the shell
  * - process.cwd(): physical path (resolves symlinks)
  */
-export class Cwd extends Context.Tag('megarepo/Cwd')<Cwd, AbsoluteDirPath>() {
+export class Cwd extends Context.Service<Cwd, AbsoluteDirPath>()('megarepo/Cwd') {
   static live = Layer.effect(
     Cwd,
     Effect.sync(() => {

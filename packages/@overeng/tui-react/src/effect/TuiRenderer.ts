@@ -80,7 +80,7 @@ export interface TuiRendererService {
  * })
  * ```
  */
-export class TuiRenderer extends Context.Tag('TuiRenderer')<TuiRenderer, TuiRendererService>() {
+export class TuiRenderer extends Context.Service<TuiRenderer, TuiRendererService>()('TuiRenderer') {
   /**
    * Render a React element to the terminal.
    */

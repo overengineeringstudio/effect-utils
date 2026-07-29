@@ -79,7 +79,7 @@ const rawBodyText = (rawBody: string | Uint8Array): string =>
   typeof rawBody === 'string' ? rawBody : textDecoder.decode(rawBody)
 
 /** Decode a raw body string into a JSON value, returning Either. */
-const decodeJson = Schema.decodeUnknownEither(Schema.parseJson())
+const decodeJson = Schema.decodeUnknownEither(Schema.fromJsonString(Schema.Unknown))
 
 /** Decode a JSON value into `NotionWebhookPayload`, returning Either. */
 const decodePayload = Schema.decodeUnknownEither(
@@ -95,7 +95,7 @@ const NotionWebhookVerificationStruct = Schema.Struct({
   // NonEmptyTrimmedString trims then checks: a whitespace-only token (e.g. "   ")
   // intentionally fails this decode and falls through to the HMAC gate rather than
   // being treated as a (meaningless) verification challenge.
-  verification_token: Schema.NonEmptyTrimmedString,
+  verification_token: Schema.Trimmed.check(Schema.isNonEmpty()),
 }).annotate({ identifier: 'NotionWebhook.VerificationStruct' })
 
 const decodeVerification = Schema.decodeUnknownEither(NotionWebhookVerificationStruct, {

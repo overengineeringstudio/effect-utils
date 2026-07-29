@@ -1,4 +1,15 @@
-import { Cause, Data, Duration, Effect, FileSystem, Layer, Option, Path, Schema, Stream } from 'effect'
+import {
+  Cause,
+  Data,
+  Duration,
+  Effect,
+  FileSystem,
+  Layer,
+  Option,
+  Path,
+  Schema,
+  Stream,
+} from 'effect'
 
 import {
   DistributedSemaphoreBacking,
@@ -104,7 +115,7 @@ const readHolderLock = Effect.fn('FileSystemBacking.readHolderLock')(function* (
     return undefined
   }
 
-  const parsed = yield* Schema.decodeUnknown(Schema.parseJson(HolderLockSchema))(content).pipe(
+  const parsed = yield* Schema.decodeUnknown(Schema.fromJsonString(HolderLockSchema))(content).pipe(
     Effect.mapError((cause) => new SemaphoreBackingError({ operation: 'parseJson', cause })),
   )
 
@@ -137,7 +148,7 @@ const writeHolderLock = Effect.fn('FileSystemBacking.writeHolderLock')(function*
       Effect.mapError((cause) => new SemaphoreBackingError({ operation: 'makeDirectory', cause })),
     )
 
-  const json = yield* Schema.encode(Schema.parseJson(HolderLockSchema))(content).pipe(
+  const json = yield* Schema.encode(Schema.fromJsonString(HolderLockSchema))(content).pipe(
     Effect.mapError((cause) => new SemaphoreBackingError({ operation: 'encodeJson', cause })),
   )
 

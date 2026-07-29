@@ -19,11 +19,11 @@
  * clock (the old clock-coupled sampler would hot-loop and hang).
  */
 
-import * as Cli from 'effect/unstable/cli'
-import { Command, FileSystem } from 'effect'
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
+import { Command, FileSystem } from 'effect'
 import { Clock, Effect, Layer, Option, Ref, Schema } from 'effect'
+import * as Cli from 'effect/unstable/cli'
 import { expect } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath, type RelativeDirPath } from '@overeng/effect-path'
@@ -94,7 +94,7 @@ const StoreGcJsonOutput = Schema.Struct({
     }),
   ),
 })
-const decodeGc = Schema.decodeUnknownSync(Schema.parseJson(StoreGcJsonOutput))
+const decodeGc = Schema.decodeUnknownSync(Schema.fromJsonString(StoreGcJsonOutput))
 type GcResults = (typeof StoreGcJsonOutput.Type)['results']
 
 /**

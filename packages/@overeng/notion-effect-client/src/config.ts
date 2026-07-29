@@ -17,7 +17,9 @@ export interface NotionClientConfig {
 }
 
 /** Context tag for NotionClientConfig */
-export class NotionConfig extends Context.Tag('NotionConfig')<NotionConfig, NotionClientConfig>() {}
+export class NotionConfig extends Context.Service<NotionConfig, NotionClientConfig>()(
+  'NotionConfig',
+) {}
 
 /**
  * Environment variable names checked for the Notion API token, in precedence order.
@@ -27,7 +29,7 @@ export class NotionConfig extends Context.Tag('NotionConfig')<NotionConfig, Noti
 export const NOTION_TOKEN_ENV_VARS = ['NOTION_API_TOKEN', 'NOTION_TOKEN'] as const
 
 /** Raised when no Notion API token is available from any checked source. */
-export class NotionTokenMissing extends Schema.TaggedError<NotionTokenMissing>()(
+export class NotionTokenMissing extends Schema.TaggedErrorClass<NotionTokenMissing>()(
   'NotionTokenMissing',
   {
     message: Schema.String,

@@ -2,8 +2,8 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
-import { Path } from 'effect'
 import { NodeServices } from '@effect/platform-node'
+import { Path } from 'effect'
 import { Effect, Layer, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
@@ -59,7 +59,9 @@ describe('notion-md state store path safety', () => {
 const stateStoreLayer = NmdStateStoreLive.pipe(Layer.provide(NodeServices.layer))
 
 const runStore = <A, E>(effect: Effect.Effect<A, E, NodeContext.NodeContext | NmdStateStore>) =>
-  Effect.runPromise(effect.pipe(Effect.provide(Layer.mergeAll(stateStoreLayer, NodeServices.layer))))
+  Effect.runPromise(
+    effect.pipe(Effect.provide(Layer.mergeAll(stateStoreLayer, NodeServices.layer))),
+  )
 
 const withTempDir = async <T>(fn: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await mkdtemp(join(tmpdir(), 'notion-md-state-store-'))
@@ -92,10 +94,10 @@ const syncStateFor = (opts: {
 })
 
 const encodeJson = <A, I>(schema: Schema.Schema<A, I, never>, value: A): string =>
-  Schema.encodeSync(Schema.parseJson(schema, { space: 2 }))(value)
+  Schema.encodeSync(Schema.fromJsonString(schema, { space: 2 }))(value)
 
 const decodeJson = <A, I>(schema: Schema.Schema<A, I, never>, encoded: string): A =>
-  Schema.decodeUnknownSync(Schema.parseJson(schema), {
+  Schema.decodeUnknownSync(Schema.fromJsonString(schema), {
     errors: 'all',
     onExcessProperty: 'error',
   } as const)(encoded)

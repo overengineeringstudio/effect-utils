@@ -26,11 +26,11 @@
  * (`status`/`reason` in the JSON document and the on-disk effect).
  */
 
-import * as Cli from 'effect/unstable/cli'
-import { Command, FileSystem } from 'effect'
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
+import { Command, FileSystem } from 'effect'
 import { Clock, Effect, Exit, Layer, Schema } from 'effect'
+import * as Cli from 'effect/unstable/cli'
 import { expect, vi } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath, type RelativeDirPath } from '@overeng/effect-path'
@@ -99,7 +99,7 @@ const StoreGcJsonOutput = Schema.Struct({
     }),
   ),
 })
-const decodeGc = Schema.decodeUnknownSync(Schema.parseJson(StoreGcJsonOutput))
+const decodeGc = Schema.decodeUnknownSync(Schema.fromJsonString(StoreGcJsonOutput))
 type GcResult = Schema.Schema.Type<typeof StoreGcJsonOutput>['results'][number]
 
 const findByRef = (results: ReadonlyArray<GcResult>, ref: string) =>

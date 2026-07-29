@@ -30,12 +30,12 @@ const NotionUrl = Schema.String.check(Schema.isPattern(/^https:\/\/www\.notion\.
 /** Expected live Notion database/data-source shape for one demo domain. */
 export const NotionDatasourceSyncDemoDataSourceSchema = Schema.Struct({
   key: NotionDatasourceSyncDemoDataSourceKey,
-  title: Schema.NonEmptyTrimmedString,
+  title: Schema.Trimmed.check(Schema.isNonEmpty()),
   databaseId: NotionId,
   databaseUrl: NotionUrl,
   dataSourceId: NotionId,
   expectedRows: Schema.Number,
-  expectedPropertyNames: Schema.Array(Schema.NonEmptyTrimmedString),
+  expectedPropertyNames: Schema.Array(Schema.Trimmed.check(Schema.isNonEmpty())),
   fastReplica: Schema.Boolean,
 }).annotate({ identifier: 'NotionDatasourceSync.DemoDataSource' })
 
@@ -48,7 +48,7 @@ export const NotionDatasourceSyncDemoProvisionerContractSchema = Schema.Struct({
   ownedBy: Schema.Literal('notion-datasource-sync-demo-provisioner'),
   writes: Schema.Literal('public-synthetic-fixtures-only'),
   emittedIds: Schema.Literal('env-or-public-synthetic-manifest'),
-  requiredMarker: Schema.NonEmptyTrimmedString,
+  requiredMarker: Schema.Trimmed.check(Schema.isNonEmpty()),
 }).annotate({ identifier: 'NotionDatasourceSync.DemoProvisionerContract' })
 
 /** Durable online demo page plus every child data source the package verifies. */
@@ -86,7 +86,9 @@ const decodeNotionApiFailureBody = (
   body: string | undefined,
 ): typeof NotionApiFailureBodySchema.Type | undefined => {
   if (body === undefined) return undefined
-  const decoded = Schema.decodeUnknownEither(Schema.parseJson(NotionApiFailureBodySchema))(body)
+  const decoded = Schema.decodeUnknownEither(Schema.fromJsonString(NotionApiFailureBodySchema))(
+    body,
+  )
   return Either.isRight(decoded) === true ? decoded.right : undefined
 }
 

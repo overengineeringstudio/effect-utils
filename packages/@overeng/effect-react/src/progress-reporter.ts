@@ -18,7 +18,7 @@ export const initialProgress: Progress = { total: 0, completed: 0 }
 /**
  * Service for reporting progress during Effect execution.
  */
-export class ProgressReporter extends Context.Tag('ProgressReporter')<
+export class ProgressReporter extends Context.Service<
   ProgressReporter,
   {
     /** Set progress to a specific state. */
@@ -26,7 +26,7 @@ export class ProgressReporter extends Context.Tag('ProgressReporter')<
     /** Stream of progress changes. */
     readonly changes: SubscriptionRef.SubscriptionRef<Progress>['changes']
   }
->() {
+>()('ProgressReporter') {
   /**
    * Set progress to a specific state.
    */

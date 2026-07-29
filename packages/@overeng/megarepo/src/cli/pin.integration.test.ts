@@ -5,9 +5,9 @@
  * These tests use direct function calls instead of CLI subprocess to avoid timeouts.
  */
 
-import { FileSystem } from 'effect'
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
+import { FileSystem } from 'effect'
 import { Effect, Option, Schema } from 'effect'
 import { expect } from 'vitest'
 
@@ -52,7 +52,7 @@ const createMinimalTestSetup = () =>
         'test-repo': 'test-owner/test-repo',
       },
     }
-    const configContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
+    const configContent = yield* Schema.encode(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
       config,
     )
     yield* fs.writeFileString(
@@ -102,7 +102,7 @@ describe('mr config pin', () => {
             EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
           )
           const newConfigContent = yield* Schema.encode(
-            Schema.parseJson(MegarepoConfig, { space: 2 }),
+            Schema.fromJsonString(MegarepoConfig, { space: 2 }),
           )(updatedConfig)
           yield* fs.writeFileString(configPath, newConfigContent + '\n')
 
@@ -135,7 +135,8 @@ describe('mr config pin', () => {
           }
           yield* fs.writeFileString(
             configPath,
-            (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(config1)) + '\n',
+            (yield* Schema.encode(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(config1)) +
+              '\n',
           )
 
           // Now switch to main

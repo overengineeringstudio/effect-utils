@@ -552,7 +552,7 @@ const TableBlockCreate = Schema.Struct({
   object: Schema.Literal('block'),
   type: Schema.Literal('table'),
   table: Schema.Struct({
-    table_width: Schema.NonNegativeInt,
+    table_width: Schema.Natural,
     has_column_header: Schema.Boolean,
     has_row_header: Schema.Boolean,
     children: Schema.Array(TableRowBlockCreate),

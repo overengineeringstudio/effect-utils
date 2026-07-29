@@ -23,11 +23,11 @@ import { PwExpectAttrs, PwOp, PwTryAttrs } from './pw.contract.ts'
  * Any direct call into Playwright that can fail due to a closed page/context or timing issues should
  * be wrapped so tests receive structured errors and spans.
  */
-export class PwOpError extends Schema.TaggedError<PwOpError>()('PwOpError', {
+export class PwOpError extends Schema.TaggedErrorClass<PwOpError>()('PwOpError', {
   /** Stable operation identifier (e.g. `pw.page.goto`, `pw.context.cookies`). */
   op: Schema.String,
   /** Underlying Playwright/Node defect. */
-  cause: Schema.Defect,
+  cause: Schema.Defect(),
 }) {}
 
 // DYNAMIC-NAME BRIDGE: the span name is the runtime `op` string, so it has no stable single-signal

@@ -39,7 +39,7 @@ export type QuarantineLedger = typeof QuarantineLedger.Type
 
 /** Parses ledger JSON, rejecting entries that omit a target, reason, issue, or expiry. */
 export const decodeQuarantineLedgerJson = Schema.decodeUnknownSync(
-  Schema.parseJson(QuarantineLedger),
+  Schema.fromJsonString(QuarantineLedger),
 )
 
 /**

@@ -11,7 +11,7 @@ import { CheckCommandError, LockFileRequiredError, NotInMegarepoError } from '..
 import * as Observability from '../observability.ts'
 
 /** Encodes the structured check result as pretty-printed JSON for `--json` output. */
-const CheckReportJson = Schema.parseJson(Schema.Unknown, { space: 2 })
+const CheckReportJson = Schema.fromJsonString(Schema.Unknown, { space: 2 })
 
 const allOption = Cli.Flag.boolean('all').pipe(
   Cli.Flag.withDescription('Check member source and lock files in repos/ as well as the root'),

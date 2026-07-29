@@ -21,7 +21,7 @@ export const SupportedNotionApiVersion = Schema.Literal(NOTION_API_VERSION).anno
 export type SupportedNotionApiVersion = typeof SupportedNotionApiVersion.Type
 
 /** Branded version string identifying the datasource-sync client build. */
-export const ClientVersion = Schema.NonEmptyTrimmedString.pipe(
+export const ClientVersion = Schema.Trimmed.check(Schema.isNonEmpty()).pipe(
   Schema.brand('NotionDatasourceSync.ClientVersion'),
   Schema.annotate({ identifier: 'NotionDatasourceSync.ClientVersion' }),
 )
@@ -35,7 +35,7 @@ export const DataSourceId = SchemaDataSourceId
 export type DataSourceId = typeof DataSourceId.Type
 
 /** Branded Notion database/container ID; distinct from a v2 data-source ID. */
-export const DatabaseId = Schema.NonEmptyTrimmedString.pipe(
+export const DatabaseId = Schema.Trimmed.check(Schema.isNonEmpty()).pipe(
   Schema.brand('NotionDatasourceSync.DatabaseId'),
   Schema.annotate({ identifier: 'NotionDatasourceSync.DatabaseId' }),
 )
@@ -59,7 +59,7 @@ export const PropertyId = SchemaPropertyId
 export type PropertyId = typeof PropertyId.Type
 
 /** Branded Notion view ID, distinct from local generated SQLite projection views. */
-export const ViewId = Schema.NonEmptyTrimmedString.pipe(
+export const ViewId = Schema.Trimmed.check(Schema.isNonEmpty()).pipe(
   Schema.brand('NotionDatasourceSync.ViewId'),
   Schema.annotate({ identifier: 'NotionDatasourceSync.ViewId' }),
 )
@@ -73,21 +73,21 @@ export const PropertyName = SchemaPropertyName
 export type PropertyName = typeof PropertyName.Type
 
 /** Branded ID that uniquely identifies a remote-write command in the outbox. */
-export const CommandId = Schema.NonEmptyTrimmedString.pipe(
+export const CommandId = Schema.Trimmed.check(Schema.isNonEmpty()).pipe(
   Schema.brand('NotionDatasourceSync.CommandId'),
   Schema.annotate({ identifier: 'NotionDatasourceSync.CommandId' }),
 )
 export type CommandId = typeof CommandId.Type
 
 /** Branded opaque cursor returned by paginated Notion query endpoints. */
-export const QueryCursor = Schema.NonEmptyTrimmedString.pipe(
+export const QueryCursor = Schema.Trimmed.check(Schema.isNonEmpty()).pipe(
   Schema.brand('NotionDatasourceSync.QueryCursor'),
   Schema.annotate({ identifier: 'NotionDatasourceSync.QueryCursor' }),
 )
 export type QueryCursor = typeof QueryCursor.Type
 
 /** Branded request ID returned by the Notion API; used for idempotency tracking and audit trails. */
-export const NotionRequestId = Schema.NonEmptyTrimmedString.pipe(
+export const NotionRequestId = Schema.Trimmed.check(Schema.isNonEmpty()).pipe(
   Schema.brand('NotionDatasourceSync.NotionRequestId'),
   Schema.annotate({ identifier: 'NotionDatasourceSync.NotionRequestId' }),
 )
@@ -114,14 +114,14 @@ export const BodyCompletenessEvidence = Schema.Literal('complete', 'lossy').anno
 export type BodyCompletenessEvidence = typeof BodyCompletenessEvidence.Type
 
 /** Branded absolute filesystem path to the workspace root or a local artifact. */
-export const AbsolutePath = Schema.NonEmptyTrimmedString.pipe(
+export const AbsolutePath = Schema.Trimmed.check(Schema.isNonEmpty()).pipe(
   Schema.brand('NotionDatasourceSync.AbsolutePath'),
   Schema.annotate({ identifier: 'NotionDatasourceSync.AbsolutePath' }),
 )
 export type AbsolutePath = typeof AbsolutePath.Type
 
 /** Branded path relative to the sync workspace root, used in path-claim and materialization operations. */
-export const WorkspaceRelativePath = Schema.NonEmptyTrimmedString.pipe(
+export const WorkspaceRelativePath = Schema.Trimmed.check(Schema.isNonEmpty()).pipe(
   Schema.brand('NotionDatasourceSync.WorkspaceRelativePath'),
   Schema.annotate({ identifier: 'NotionDatasourceSync.WorkspaceRelativePath' }),
 )
@@ -131,7 +131,7 @@ export type WorkspaceRelativePath = typeof WorkspaceRelativePath.Type
  * Token written alongside a materialized file that suppresses a spurious local-change event
  * when the sync engine itself is the author of the filesystem write.
  */
-export const OwnWriteSuppressionToken = Schema.NonEmptyTrimmedString.pipe(
+export const OwnWriteSuppressionToken = Schema.Trimmed.check(Schema.isNonEmpty()).pipe(
   Schema.brand('NotionDatasourceSync.OwnWriteSuppressionToken'),
   Schema.annotate({ identifier: 'NotionDatasourceSync.OwnWriteSuppressionToken' }),
 )
@@ -205,10 +205,10 @@ export type DataSourcePropertyWriteClass = typeof DataSourcePropertyWriteClass.T
 export const DataSourcePropertySnapshot = Schema.TaggedStruct('DataSourcePropertySnapshot', {
   propertyId: PropertyId,
   name: PropertyName,
-  type: Schema.NonEmptyTrimmedString,
+  type: Schema.Trimmed.check(Schema.isNonEmpty()),
   configHash: Hash,
   writeClass: DataSourcePropertyWriteClass,
-  ordinal: Schema.NonNegativeInt,
+  ordinal: Schema.Natural,
   configJson: Schema.optional(Schema.String),
 }).annotate({ identifier: 'NotionDatasourceSync.DataSourcePropertySnapshot' })
 export type DataSourcePropertySnapshot = typeof DataSourcePropertySnapshot.Type
@@ -236,7 +236,7 @@ export const DataSourceViewSnapshot = Schema.TaggedStruct('DataSourceViewSnapsho
   requestId: NotionRequestId,
   observedAt: Schema.DateTimeUtc,
   name: Schema.String,
-  viewType: Schema.NonEmptyTrimmedString,
+  viewType: Schema.Trimmed.check(Schema.isNonEmpty()),
   viewHash: Hash,
   viewJson: Schema.String,
 }).annotate({ identifier: 'NotionDatasourceSync.DataSourceViewSnapshot' })

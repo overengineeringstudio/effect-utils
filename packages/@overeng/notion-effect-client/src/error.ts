@@ -32,7 +32,7 @@ export type NotionErrorCode = typeof NotionErrorCode.Type
  *
  * @see https://developers.notion.com/reference/errors
  */
-export class NotionApiError extends Schema.TaggedError<NotionApiError>()('NotionApiError', {
+export class NotionApiError extends Schema.TaggedErrorClass<NotionApiError>()('NotionApiError', {
   /** HTTP status code */
   status: Schema.Number,
   /** Notion-specific error code */

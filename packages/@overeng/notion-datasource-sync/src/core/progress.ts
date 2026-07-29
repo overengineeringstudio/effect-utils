@@ -57,10 +57,9 @@ export type SyncProgressReporter = {
 }
 
 /** Optional Effect service used by CLI/TUI surfaces to observe sync progress. */
-export class SyncProgress extends Context.Tag('@overeng/notion-datasource-sync/SyncProgress')<
-  SyncProgress,
-  SyncProgressReporter
->() {}
+export class SyncProgress extends Context.Service<SyncProgress, SyncProgressReporter>()(
+  '@overeng/notion-datasource-sync/SyncProgress',
+) {}
 
 /** Emits a sync progress event when the optional progress service is available. */
 export const reportSyncProgress = (event: SyncProgressEvent): Effect.Effect<void> =>

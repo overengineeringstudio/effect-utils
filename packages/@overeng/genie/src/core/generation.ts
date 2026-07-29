@@ -312,7 +312,7 @@ const oxfmtSupportedExtensions = new Set(['.json', '.jsonc', '.yml', '.yaml'])
 type OxfmtConfig = Readonly<Record<string, unknown>>
 
 /** Permissive JSON decode for an oxfmt config (shape is cast, not validated). */
-const decodeOxfmtConfig = Schema.decodeUnknownSync(Schema.parseJson(Schema.Unknown))
+const decodeOxfmtConfig = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown))
 
 const loadOxfmtConfig = Effect.fn('loadOxfmtConfig')(function* ({
   configPath,

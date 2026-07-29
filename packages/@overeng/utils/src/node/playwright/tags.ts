@@ -12,7 +12,7 @@ import { Context, Layer } from 'effect'
  *
  * Provide this in Playwright tests to avoid threading `page` through every helper call.
  */
-export class PwPage extends Context.Tag('PwPage')<PwPage, Page>() {
+export class PwPage extends Context.Service<PwPage, Page>()('PwPage') {
   static layer = (page: Page) => Layer.succeed(PwPage, page)
 }
 
@@ -21,10 +21,9 @@ export class PwPage extends Context.Tag('PwPage')<PwPage, Page>() {
  *
  * Provide this in Playwright tests to avoid threading `context` through every helper call.
  */
-export class PwBrowserContext extends Context.Tag('PwBrowserContext')<
-  PwBrowserContext,
-  BrowserContext
->() {
+export class PwBrowserContext extends Context.Service<PwBrowserContext, BrowserContext>()(
+  'PwBrowserContext',
+) {
   static layer = (context: BrowserContext) => Layer.succeed(PwBrowserContext, context)
 }
 

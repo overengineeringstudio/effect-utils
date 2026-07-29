@@ -774,7 +774,7 @@ export const makeFakeNotionDataSourceGateway = (
                   descriptionPlainText: snapshot.metadataDescriptionPlainText ?? '',
                   icon: { _tag: 'none' },
                 } satisfies CanonicalDataSourceMetadata)
-              : Schema.decodeUnknownSync(Schema.parseJson(CanonicalDataSourceMetadata))(
+              : Schema.decodeUnknownSync(Schema.fromJsonString(CanonicalDataSourceMetadata))(
                   snapshot.metadataJson,
                 )
           const nextMetadata: CanonicalDataSourceMetadata = {
@@ -836,7 +836,7 @@ export const makeFakeNotionDataSourceGateway = (
                   descriptionPlainText: snapshot.metadataDescriptionPlainText ?? '',
                   icon: { _tag: 'none' },
                 } satisfies CanonicalDataSourceMetadata)
-              : Schema.decodeUnknownSync(Schema.parseJson(CanonicalDataSourceMetadata))(
+              : Schema.decodeUnknownSync(Schema.fromJsonString(CanonicalDataSourceMetadata))(
                   snapshot.metadataJson,
                 )
           const nextMetadata: CanonicalDataSourceMetadata = {

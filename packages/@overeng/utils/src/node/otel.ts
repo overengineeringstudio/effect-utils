@@ -51,10 +51,10 @@ export * from './otel-attrs.ts'
  * it with {@link Effect.serviceOption} so commands stay runnable without the
  * layer (absent tag ≡ telemetry disabled), keeping the tag out of their `R`.
  */
-export class OtelConfig extends Context.Tag('@overeng/utils/OtelConfig')<
+export class OtelConfig extends Context.Service<
   OtelConfig,
   { readonly endpoint: Option.Option<string> }
->() {}
+>()('@overeng/utils/OtelConfig') {}
 
 /**
  * Resolve the OTLP endpoint at a binary's composition root via Effect `Config`,

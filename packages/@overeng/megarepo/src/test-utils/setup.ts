@@ -194,7 +194,7 @@ export const createWorkspace = (fixture?: WorkspaceFixture) =>
     const config: MegarepoConfig = {
       members: fixture?.members ?? {},
     }
-    const configContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
+    const configContent = yield* Schema.encode(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
       config,
     )
     yield* fs.writeFileString(
@@ -331,7 +331,7 @@ export const readConfig = (workspacePath: AbsoluteDirPath) =>
       EffectPath.unsafe.relativeFile('megarepo.json'),
     )
     const content = yield* fs.readFileString(configPath)
-    return yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(content)
+    return yield* Schema.decodeUnknown(Schema.fromJsonString(MegarepoConfig))(content)
   })
 
 /** Generate a megarepo.json config object */

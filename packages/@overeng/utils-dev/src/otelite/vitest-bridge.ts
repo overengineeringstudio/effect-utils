@@ -40,10 +40,9 @@ import type { CaptureHandle, CaptureOptions } from './Otelite.ts'
  * const spans = yield* cap.inspect({ signal: 'traces', name: mySpanName })
  * ```
  */
-export class OteliteCapture extends Context.Tag('@overeng/utils-dev/otelite/OteliteCapture')<
-  OteliteCapture,
-  CaptureHandle
->() {}
+export class OteliteCapture extends Context.Service<OteliteCapture, CaptureHandle>()(
+  '@overeng/utils-dev/otelite/OteliteCapture',
+) {}
 
 /** Options for {@link makeOteliteCaptureLayer}. */
 export interface OteliteCaptureLayerOptions extends CaptureOptions {
