@@ -13,14 +13,7 @@ import * as inspector from 'node:inspector'
 
 import type * as Vitest from '@effect/vitest'
 import type { Duration } from 'effect'
-import {
-  type Cause,
-  Effect,
-  identity,
-  Layer,
-  type Schema,
-  type Scope,
-} from 'effect'
+import { type Cause, Effect, identity, Layer, type Schema, type Scope } from 'effect'
 import type * as FC from 'effect/testing/FastCheck'
 import { FetchHttpClient } from 'effect/unstable/http'
 import { OtlpSerialization, OtlpTracer } from 'effect/unstable/observability'
@@ -136,7 +129,7 @@ export type WithTestCtxParams<ROut, E1, RIn> = {
  *   ),
  * })
  *
- * Vitest.scopedLive('test name', (test) =>
+ * Vitest.live('test name', (test) =>
  *   Effect.gen(function* () {
  *     // test body
  *   }).pipe(withTestCtx()(test))
@@ -301,7 +294,7 @@ const normalizePropOptions = <Arbs extends Vitest.Vitest.Arbitraries>(
  * const Count = Schema.Int.pipe(Schema.between(1, 100))
  *
  * Vitest.asProp(
- *   Vitest.scopedLive,
+ *   Vitest.live,
  *   'syncs data between clients',
  *   { storageType: StorageType, count: Count },
  *   ({ storageType, count }, test, enhanced) =>

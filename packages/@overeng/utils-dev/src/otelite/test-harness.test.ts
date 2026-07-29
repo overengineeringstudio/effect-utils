@@ -1,7 +1,7 @@
 import { NodeServices } from '@effect/platform-node'
 import { describe, expect, it } from '@effect/vitest'
-import { FileSystem } from 'effect/FileSystem'
 import { Effect, Layer, Metric, MetricLabel, Schema } from 'effect'
+import { FileSystem } from 'effect/FileSystem'
 
 import { TraceJson, writeCaptureDiagnostics } from './diagnostics.ts'
 import {
@@ -11,7 +11,7 @@ import {
 } from './test-harness.ts'
 
 describe('OteliteTestHarness', () => {
-  it.scopedLive(
+  it.live(
     'captures in-process spans through the provided OTLP layer',
     () =>
       Effect.gen(function* () {
@@ -44,7 +44,7 @@ describe('OteliteTestHarness', () => {
     30_000,
   )
 
-  it.scopedLive(
+  it.live(
     'returns trace expectations from the ergonomic capture helper',
     () =>
       Effect.gen(function* () {
@@ -71,7 +71,7 @@ describe('OteliteTestHarness', () => {
     30_000,
   )
 
-  it.scopedLive(
+  it.live(
     'writes reusable trace diagnostics JSON from a capture',
     () =>
       Effect.gen(function* () {
@@ -109,7 +109,7 @@ describe('OteliteTestHarness', () => {
     30_000,
   )
 
-  it.scopedLive(
+  it.live(
     'restores endpoint environment after scoped use',
     () =>
       Effect.gen(function* () {
@@ -154,7 +154,7 @@ describe('OteliteTestHarness', () => {
     30_000,
   )
 
-  it.scopedLive(
+  it.live(
     'captures traces + metrics + logs in one in-process run',
     () => {
       const service = 'otelite-all-signals'

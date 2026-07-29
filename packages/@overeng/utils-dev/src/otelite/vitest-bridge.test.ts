@@ -88,7 +88,7 @@ layer(CaptureLayer, { excludeTestServices: true })('OteliteCapture bridge', (it)
 const BareTestLayer = Otelite.layer.pipe(Layer.provideMerge(NodeServices.layer))
 
 describe('OteliteCapture bridge — suffix regression', () => {
-  it.scopedLive(
+  it.live(
     'a bare (un-suffixed) exporter URL captures nothing',
     () =>
       Effect.gen(function* () {

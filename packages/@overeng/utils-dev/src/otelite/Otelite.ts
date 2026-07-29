@@ -1,6 +1,17 @@
-import { ChildProcess as Command, ChildProcessSpawner } from 'effect/unstable/process'
+import {
+  Context,
+  Deferred,
+  Effect,
+  Fiber,
+  Layer,
+  Ref,
+  Schedule,
+  Schema,
+  type Scope,
+  Stream,
+} from 'effect'
 import { FileSystem } from 'effect/FileSystem'
-import { Context, Deferred, Effect, Fiber, Layer, Ref, Schedule, Schema, type Scope, Stream } from 'effect'
+import { ChildProcess as Command, ChildProcessSpawner } from 'effect/unstable/process'
 
 import {
   cliReasonForExitCode,
@@ -149,7 +160,7 @@ const summaryKind = {
  */
 export class Otelite extends Context.Service<Otelite>()('@overeng/utils-dev/otelite/Otelite', {
   make: Effect.gen(function* () {
-    const executor = yield* ChildProcessSpawner
+    const executor = yield* ChildProcessSpawner.ChildProcessSpawner
     const fs = yield* FileSystem
 
     const binary = process.env.OTELITE_BIN ?? 'otelite'
@@ -162,12 +173,12 @@ export class Otelite extends Context.Service<Otelite>()('@overeng/utils-dev/otel
       Effect.scoped(
         Effect.gen(function* () {
           const process = yield* executor.spawn(Command.make(binary, args))
-          const collect = (stream: typeof process.stdout) =>
+          const collect = (stream: NonNullable<typeof process.stdout>) =>
             Stream.runCollect(Stream.decodeText(stream)).pipe(
               Effect.map((chunks) => Array.from(chunks).join('')),
             )
           const [exitCode, stdout, stderr] = yield* Effect.all(
-            [process.exitCode, collect(process.stdout), collect(process.stderr)],
+            [process.exitCode, collect(process.stdout!), collect(process.stderr!)],
             { concurrency: 'unbounded' },
           )
           return { exitCode, stdout, stderr }
@@ -375,7 +386,7 @@ export class Otelite extends Context.Service<Otelite>()('@overeng/utils-dev/otel
 
         // Drain the entire tagged event stream; resolve `ready` on the first line
         // (decoded as `otelite.endpoints/v1`), keep the latest line for the summary.
-        const drain = yield* process.stdout.pipe(
+        const drain = yield* process.stdout!.pipe(
           Stream.decodeText(),
           Stream.splitLines,
           Stream.filter((line) => line.trim() !== ''),
@@ -426,10 +437,10 @@ export class Otelite extends Context.Service<Otelite>()('@overeng/utils-dev/otel
             orElse: () =>
               Effect.fail(
                 new OteliteCliError({
-                exitCode: 74,
-                reason: 'io-err',
-                argv: [binary, ...flags],
-                stderr: 'otelite capture did not emit endpoints within the readiness bound',
+                  exitCode: 74,
+                  reason: 'io-err',
+                  argv: [binary, ...flags],
+                  stderr: 'otelite capture did not emit endpoints within the readiness bound',
                 }),
               ),
           }),
