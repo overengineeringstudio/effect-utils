@@ -858,7 +858,7 @@ export const generateFile = ({
           underlyingError instanceof Error ? underlyingError : new Error(safeErrorString(cause)),
       })
     }),
-    Effect.catchAllDefect((defect) => {
+    Effect.catchDefect((defect) => {
       const targetFilePath = genieFilePath.replace('.genie.ts', '')
       return Effect.fail(
         new GenieFileError({
