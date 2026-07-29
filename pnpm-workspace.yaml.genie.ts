@@ -9,17 +9,6 @@ export default pnpmWorkspaceYaml.root({
   catalogVersions: catalog,
   catalogDuplicateExceptions: [
     {
-      package: 'effect',
-      versions: ['3.21.4', '4.0.0-beta.99'],
-      isolatedVersions: ['4.0.0-beta.99'],
-      // The inspector directly consumes Effect 4 schemas from LiveStore. Keep
-      // an exact Effect 4 development install for its tests while the published
-      // package uses the consumer's peer instance; never cast across majors.
-      reason:
-        '@overeng/react-inspector tests against Effect 4 while the repository catalog remains on Effect 3; published consumers provide Effect through its peer contract',
-      issue: '#937',
-    },
-    {
       package: 'string-width',
       // @opentui/core@0.4.1 (latest) pins string-width@7.2.0 exactly, so pnpm
       // dedupe cannot collapse it onto the catalog 8.x. We deliberately do NOT

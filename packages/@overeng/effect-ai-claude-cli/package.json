@@ -13,8 +13,6 @@
     }
   },
   "devDependencies": {
-    "@effect/ai": "0.36.0",
-    "@effect/platform": "0.96.2",
     "@effect/vitest": "4.0.0-beta.102",
     "@overeng/utils-dev": "workspace:^",
     "effect": "4.0.0-beta.102",
@@ -23,9 +21,7 @@
     "vitest": "4.1.9"
   },
   "peerDependencies": {
-    "@effect/ai": "^0.36.0",
-    "@effect/platform": "^0.96.2",
-    "effect": "^3.21.4"
+    "effect": "^4.0.0-beta.102"
   },
   "$genie": {
     "source": "package.json.genie.ts",

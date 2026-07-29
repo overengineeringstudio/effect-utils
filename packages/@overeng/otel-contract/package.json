@@ -25,7 +25,7 @@
     "vitest": "4.1.9"
   },
   "peerDependencies": {
-    "effect": "^3.21.4"
+    "effect": "^4.0.0-beta.102"
   },
   "$genie": {
     "source": "package.json.genie.ts",

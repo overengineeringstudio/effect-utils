@@ -34,14 +34,9 @@
     "test:integration:e2e": "vitest run --config vitest.integration.config.ts e2e"
   },
   "dependencies": {
-    "@effect/cluster": "0.59.0",
-    "@effect/experimental": "0.60.0",
     "@effect/opentelemetry": "4.0.0-beta.102",
-    "@effect/platform": "0.96.2",
     "@effect/platform-node": "4.0.0-beta.102",
-    "@effect/rpc": "0.75.1",
     "@effect/vitest": "4.0.0-beta.102",
-    "@effect/workflow": "0.18.2",
     "@overeng/notion-effect-client": "workspace:^",
     "@overeng/notion-effect-schema": "workspace:^",
     "@overeng/otel-contract": "workspace:^",
@@ -50,7 +45,7 @@
     "vitest": "4.1.9"
   },
   "devDependencies": {
-    "@effect/vitest": "0.29.0",
+    "@effect/vitest": "4.0.0-beta.102",
     "@opentelemetry/api": "1.9.1",
     "@overeng/utils": "workspace:^",
     "@overeng/utils-dev": "workspace:^",
@@ -61,7 +56,7 @@
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
     "@types/react-reconciler": "0.33.0",
-    "effect": "3.21.4",
+    "effect": "4.0.0-beta.102",
     "katex": "0.17.0",
     "react": "19.2.7",
     "react-dom": "19.2.7",
@@ -74,7 +69,7 @@
   },
   "peerDependencies": {
     "@opentelemetry/api": "^1.9.1",
-    "effect": "^3.21.4",
+    "effect": "^4.0.0-beta.102",
     "katex": "^0.17.0",
     "react": "^19.2.7",
     "react-reconciler": "^0.33.0",

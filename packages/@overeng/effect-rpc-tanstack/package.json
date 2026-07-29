@@ -19,11 +19,7 @@
     }
   },
   "devDependencies": {
-    "@effect/experimental": "0.60.0",
-    "@effect/platform": "0.96.2",
     "@effect/platform-node": "4.0.0-beta.102",
-    "@effect/rpc": "0.75.1",
-    "@effect/sql": "0.51.1",
     "@overeng/utils": "workspace:^",
     "@tanstack/react-router": "1.170.16",
     "@tanstack/react-start": "1.168.26",
@@ -36,12 +32,10 @@
     "vitest": "4.1.9"
   },
   "peerDependencies": {
-    "@effect/platform": "^0.96.2",
-    "@effect/platform-node": "^0.107.0",
-    "@effect/rpc": "^0.75.1",
+    "@effect/platform-node": "^4.0.0-beta.102",
     "@tanstack/react-router": "^1.170.16",
     "@tanstack/react-start": "^1.168.26",
-    "effect": "^3.21.4",
+    "effect": "^4.0.0-beta.102",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },

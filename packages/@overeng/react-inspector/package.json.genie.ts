@@ -26,7 +26,7 @@ const catalog = defineCatalog({
     'vite',
     'vitest',
   ),
-  effect: '4.0.0-beta.99',
+  effect: '4.0.0-beta.102',
 })
 
 const peerDepNames = ['effect', 'react'] as const

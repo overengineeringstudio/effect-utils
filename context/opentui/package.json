@@ -16,10 +16,7 @@
   },
   "pnpm": {
     "overrides": {
-      "effect": "3.21.4",
-      "@effect/platform": "0.96.2",
-      "@effect/experimental": "0.60.0",
-      "@effect/rpc": "0.75.1"
+      "effect": "4.0.0-beta.102"
     }
   },
   "$genie": {
