@@ -312,13 +312,13 @@ export const Page = Schema.Struct({
 export type Page = typeof Page.Type
 
 /** Single property item returned by `GET /v1/pages/{page_id}/properties/{property_id}` — schema mirrors the Notion API page-property item object. */
-export const PagePropertyItem = Schema.extend(
+export const PagePropertyItem = Schema.StructWithRest(
   Schema.Struct({
     object: Schema.Literal('property_item'),
     id: Schema.String,
     type: Schema.String,
   }),
-  Schema.Record(Schema.String, Schema.Unknown),
+  [Schema.Record(Schema.String, Schema.Unknown)],
 ).annotate({
   identifier: 'Notion.PagePropertyItem',
   [docsPath]: 'page-property-item',
@@ -424,10 +424,9 @@ const BlockBase = Schema.Struct({
  *
  * @see https://developers.notion.com/reference/block
  */
-export const Block = Schema.extend(
-  BlockBase,
+export const Block = Schema.StructWithRest(BlockBase, [
   Schema.Record(Schema.String, Schema.Unknown),
-).annotate({
+]).annotate({
   identifier: 'Notion.Block',
   [docsPath]: 'block',
 })
@@ -450,7 +449,7 @@ const RichTextBlockCreateContent = Schema.Struct({
   rich_text: RichTextCreateArray,
 })
 
-const RichTextBlockCreateContentWithChildren: Schema.Schema<RichTextBlockCreateContentWithChildrenType> =
+const RichTextBlockCreateContentWithChildren: Schema.Codec<RichTextBlockCreateContentWithChildrenType> =
   Schema.suspend(() =>
     Schema.Struct({
       rich_text: RichTextCreateArray,
@@ -494,7 +493,7 @@ const NumberedListItemBlockCreate = Schema.Struct({
   numbered_list_item: RichTextBlockCreateContentWithChildren,
 })
 
-const ToDoBlockCreate: Schema.Schema<
+const ToDoBlockCreate: Schema.Codec<
   BlockCreatePayload<'to_do', 'to_do', ToDoBlockCreateContentType>
 > = Schema.suspend(() =>
   Schema.Struct({
@@ -594,7 +593,7 @@ type NotionBlockCreateType =
  * This is intentionally narrower than the read-side `Block` schema: create
  * payloads omit ids, timestamps, parents, and other server-populated fields.
  */
-export const NotionBlockCreate: Schema.Schema<NotionBlockCreateType> = Schema.suspend(() =>
+export const NotionBlockCreate: Schema.Codec<NotionBlockCreateType> = Schema.suspend(() =>
   Schema.Union([
     ParagraphBlockCreate,
     Heading1BlockCreate,

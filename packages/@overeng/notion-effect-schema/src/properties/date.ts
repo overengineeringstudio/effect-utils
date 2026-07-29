@@ -1,4 +1,4 @@
-import { Option, Schema } from 'effect'
+import { Option, Schema, SchemaTransformation } from 'effect'
 
 import { docsPath, shouldNeverHappen, withOptionValueSchema } from '../common.ts'
 
@@ -92,17 +92,21 @@ export const DateWrite = Schema.Struct({
 export type DateWrite = typeof DateWrite.Type
 
 /** Transform schema for converting start date string to DateWrite payload */
-export const DateWriteFromStart = Schema.transform(Schema.String, DateWrite, {
-  strict: false,
-  decode: (start) => ({ date: { start } }),
-  encode: (write) => {
-    if (write.date === null) {
-      return ''
-    }
+export const DateWriteFromStart = Schema.String.pipe(
+  Schema.decodeTo(
+    DateWrite,
+    SchemaTransformation.transform({
+      decode: (start) => ({ date: { start } }),
+      encode: (write) => {
+        if (write.date === null) {
+          return ''
+        }
 
-    return write.date.start
-  },
-}).annotate({
+        return write.date.start
+      },
+    }),
+  ),
+).annotate({
   identifier: 'Notion.DateWriteFromStart',
   title: 'Date (Write) From Start',
   description: 'Transform a start date/time string into a date write payload.',
@@ -115,40 +119,52 @@ export const DateProp = {
   Property: DateProperty,
 
   /** Transform to raw nullable DateValue. */
-  raw: Schema.transform(DateProperty, Schema.NullOr(DateValue), {
-    strict: false,
-    decode: (prop) => prop.date,
-    encode: () =>
-      shouldNeverHappen(
-        'DateProp.raw encode is not supported. Use DateWrite / DateWriteFromStart.',
-      ),
-  }),
+  raw: DateProperty.pipe(
+    Schema.decodeTo(
+      Schema.NullOr(DateValue),
+      SchemaTransformation.transform({
+        decode: (prop) => prop.date,
+        encode: () =>
+          shouldNeverHappen(
+            'DateProp.raw encode is not supported. Use DateWrite / DateWriteFromStart.',
+          ),
+      }),
+    ),
+  ),
 
   /** Transform to Option<DateValue>. */
   asOption: withOptionValueSchema({
-    schema: Schema.transform(DateProperty, Schema.OptionFromSelf(DateValue), {
-      strict: false,
-      decode: (prop) => (prop.date === null ? Option.none() : Option.some(prop.date)),
-      encode: () =>
-        shouldNeverHappen(
-          'DateProp.asOption encode is not supported. Use DateWrite / DateWriteFromStart.',
-        ),
-    }),
+    schema: DateProperty.pipe(
+      Schema.decodeTo(
+        Schema.Option(DateValue),
+        SchemaTransformation.transform({
+          decode: (prop) => (prop.date === null ? Option.none() : Option.some(prop.date)),
+          encode: () =>
+            shouldNeverHappen(
+              'DateProp.asOption encode is not supported. Use DateWrite / DateWriteFromStart.',
+            ),
+        }),
+      ),
+    ),
     valueSchema: DateValue,
   }),
 
   /** Transform to Option<Date> (start date only, parsed). */
   asDate: withOptionValueSchema({
-    schema: Schema.transform(DateProperty, Schema.OptionFromSelf(Schema.DateFromSelf), {
-      strict: false,
-      decode: (prop) =>
-        prop.date === null ? Option.none() : Option.some(new Date(prop.date.start)),
-      encode: () =>
-        shouldNeverHappen(
-          'DateProp.asDate encode is not supported. Use DateWrite / DateWriteFromStart.',
-        ),
-    }),
-    valueSchema: Schema.DateFromSelf,
+    schema: DateProperty.pipe(
+      Schema.decodeTo(
+        Schema.Option(Schema.Date),
+        SchemaTransformation.transform({
+          decode: (prop) =>
+            prop.date === null ? Option.none() : Option.some(new Date(prop.date.start)),
+          encode: () =>
+            shouldNeverHappen(
+              'DateProp.asDate encode is not supported. Use DateWrite / DateWriteFromStart.',
+            ),
+        }),
+      ),
+    ),
+    valueSchema: Schema.Date,
   }),
 
   Write: {

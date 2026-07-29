@@ -98,8 +98,8 @@ export const CanonicalPropertyValue = Schema.Union([
     checked: Schema.Boolean,
   }),
   Schema.TaggedStruct('date', {
-    start: Schema.DateTimeUtc,
-    end: Schema.NullOr(Schema.DateTimeUtc),
+    start: Schema.DateTimeUtcFromString,
+    end: Schema.NullOr(Schema.DateTimeUtcFromString),
   }),
   Schema.TaggedStruct('select', {
     option: Schema.NullOr(CanonicalOptionValue),
@@ -135,13 +135,13 @@ export const CanonicalPropertyValue = Schema.Union([
 export type CanonicalPropertyValue = typeof CanonicalPropertyValue.Type
 
 /** Every Notion property *type* tag the API can return. */
-export const NotionPropertyType = Schema.Literal(...NOTION_PROPERTY_TYPES).annotate({
+export const NotionPropertyType = Schema.Literals(NOTION_PROPERTY_TYPES).annotate({
   identifier: 'Notion.PropertyType',
 })
 export type NotionPropertyType = typeof NotionPropertyType.Type
 
 /** How a property value may be written back to Notion. */
-export const PropertyWriteClass = Schema.Literal(...PROPERTY_WRITE_CLASSES).annotate({
+export const PropertyWriteClass = Schema.Literals(PROPERTY_WRITE_CLASSES).annotate({
   identifier: 'Notion.PropertyWriteClass',
 })
 export type PropertyWriteClass = typeof PropertyWriteClass.Type
