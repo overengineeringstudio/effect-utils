@@ -360,7 +360,7 @@ const runTuiMainImpl = <E, A>({
   const formatError = options?.formatError ?? defaultFormatError
 
   effect.pipe(
-    Effect.catchAllCause((cause) =>
+    Effect.catchCause((cause) =>
       Effect.sync(() => {
         if (Cause.isInterruptedOnly(cause) === true) {
           process.exitCode = 130

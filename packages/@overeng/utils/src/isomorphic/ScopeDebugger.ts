@@ -101,7 +101,7 @@ export const addTracedFinalizer = Effect.fn('ScopeDebugger.addTracedFinalizer')(
         durationMs,
       })
     },
-    Effect.catchAllCause((cause) =>
+    Effect.catchCause((cause) =>
       Effect.logError(`Finalizer failed: ${name}`, {
         finalizer: name,
         cause,
