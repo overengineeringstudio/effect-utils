@@ -15,7 +15,6 @@ export const ciWorkflowNixGcRaceRetryWrapperPath =
   'genie/ci-scripts/run-with-nix-gc-race-retry.sh'
 export const ciWorkflowJobLocalRustStateScriptPath =
   'genie/ci-scripts/prepare-job-local-rust-state.sh'
-export const ciWorkflowResolveDevenvScriptPath = 'genie/ci-scripts/resolve-devenv.sh'
 
 export const ciWorkflowNixGcRaceRetryScript = String.raw`#!/usr/bin/env bash
 
@@ -184,13 +183,13 @@ export const ciWorkflowSupportFiles = {
     path: ciWorkflowJobLocalRustStateScriptPath,
     output: textArtifact(ciWorkflowJobLocalRustStateScript),
   },
-  resolveDevenv: {
-    path: ciWorkflowResolveDevenvScriptPath,
-    output: textArtifact(`#!/usr/bin/env bash\n\n${resolveDevenvFnScript}`),
-  },
   nixGcRaceRetry: {
     path: ciWorkflowNixGcRaceRetryScriptPath,
-    output: textArtifact(ciWorkflowNixGcRaceRetryScript),
+    // Keep CI runtime functions in the support artifact that existing
+    // consumers already materialize. Adding a sibling artifact silently
+    // breaks source-linked consumers because Genie discovers entrypoints in
+    // the consumer repository, not in imported generator packages.
+    output: textArtifact(`${ciWorkflowNixGcRaceRetryScript}\n\n${resolveDevenvFnScript}`),
   },
   nixGcRaceRetryWrapper: {
     path: ciWorkflowNixGcRaceRetryWrapperPath,

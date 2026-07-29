@@ -7,8 +7,9 @@ set -euo pipefail
 #   - tsgo prints the captured extendedDiagnostics fixture
 
 TESTS_DIR="$(cd "$(dirname "$0")" && pwd)"
-ROOT="$(cd "$TESTS_DIR/../../../../.." && pwd)"
-FIXTURE="$TESTS_DIR/fixtures/tsgo-extended-diagnostics.txt"
+SOURCE_ROOT="${EFFECT_UTILS_SOURCE_ROOT:-$(cd "$TESTS_DIR/../../../../.." && pwd)}"
+TS_MODULE="${EFFECT_UTILS_TS_MODULE:-$SOURCE_ROOT/nix/devenv-modules/tasks/shared/ts.nix}"
+FIXTURE="${EFFECT_UTILS_OTELITE_FIXTURE:-$TESTS_DIR/fixtures/tsgo-extended-diagnostics.txt}"
 
 fail() {
   echo "FAIL: $1" >&2
@@ -21,7 +22,7 @@ resolve_otelite() {
   elif command -v otelite >/dev/null 2>&1; then
     command -v otelite
   else
-    printf '%s/bin/otelite\n' "$(nix build --no-link --print-out-paths "$ROOT#otelite")"
+    printf '%s/bin/otelite\n' "$(nix build --no-link --print-out-paths "$SOURCE_ROOT#otelite")"
   fi
 }
 
@@ -33,9 +34,9 @@ resolve_otel_span() {
   else
     nix build --no-link --print-out-paths --impure --expr "
       let
-        flake = builtins.getFlake (toString $ROOT);
+        flake = builtins.getFlake (toString $SOURCE_ROOT);
         pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
-      in import $ROOT/nix/devenv-modules/otel/otel-span.nix { inherit pkgs; }
+      in import $SOURCE_ROOT/nix/devenv-modules/otel/otel-span.nix { inherit pkgs; }
     " | sed 's|$|/bin/otel-span|'
   fi
 }
@@ -46,15 +47,20 @@ resolve_otel_scrape() {
   elif command -v otel-scrape >/dev/null 2>&1; then
     command -v otel-scrape
   else
-    printf '%s/bin/otel-scrape\n' "$(nix build --no-link --print-out-paths "$ROOT#otel-scrape")"
+    printf '%s/bin/otel-scrape\n' "$(nix build --no-link --print-out-paths "$SOURCE_ROOT#otel-scrape")"
   fi
 }
 
 extract_ts_check_exec() {
+  if [ -n "${EFFECT_UTILS_NIXPKGS_PATH:-}" ]; then
+    pkgs_expr="import $EFFECT_UTILS_NIXPKGS_PATH { system = builtins.currentSystem; }"
+  else
+    pkgs_expr="let flake = builtins.getFlake (toString $SOURCE_ROOT); in import flake.inputs.nixpkgs { system = builtins.currentSystem; }"
+  fi
+
   nix eval --impure --raw --expr "
     let
-      flake = builtins.getFlake (toString $ROOT);
-      pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
+      pkgs = $pkgs_expr;
       evaluated = pkgs.lib.evalModules {
         modules = [
           ({ ... }: {
@@ -62,7 +68,7 @@ extract_ts_check_exec() {
             options.processes = pkgs.lib.mkOption { type = pkgs.lib.types.attrsOf pkgs.lib.types.anything; default = { }; };
             options.packages = pkgs.lib.mkOption { type = pkgs.lib.types.listOf pkgs.lib.types.anything; default = [ ]; };
           })
-          ((import $ROOT/nix/devenv-modules/tasks/shared/ts.nix {
+          ((import $TS_MODULE {
             tsconfigFile = \"tsconfig.check.json\";
           }) {
             pkgs = pkgs;

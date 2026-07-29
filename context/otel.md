@@ -142,7 +142,9 @@ Tasks that compute environment for downstream tasks use
 output channel from inside the traced child; a regular shell `export` cannot
 cross the `otel-span` process boundary. Callers using this helper do not also
 set devenv's `exports` option, whose parent-shell epilogue cannot observe values
-created in the child.
+created in the child. Export persistence is body-success-gated: a failing body
+retains its original exit status and publishes none of its partial values, and
+a persistence failure is surfaced as a task failure.
 
 ## Span Conventions
 
@@ -174,6 +176,11 @@ created in the child.
 `trace.exec` adds `task.cached=false` for executed tasks. `trace.status` derives
 `task.cached` from the status command exit code. Raw command arguments and
 compiler output are not recorded as span attributes.
+
+Imported observability tasks own their executable scripts and fixtures through
+Nix store paths. They must not resolve repository-relative paths against the
+consumer's working directory; consumer repositories should only select and run
+the shared task.
 
 ## Dashboards
 

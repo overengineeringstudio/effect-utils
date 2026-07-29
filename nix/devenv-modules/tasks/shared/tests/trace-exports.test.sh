@@ -87,4 +87,55 @@ DEVENV_TASK_EXPORTS_FILE="$exports_file" \
 [ ! -s "$exports_file" ] \
   || fail "trace.execWithExports must not invent an unset export"
 
+failure_exec="$tmpdir/failure-exec.sh"
+nix eval --impure --raw --expr "
+  let
+    flake = builtins.getFlake (toString $ROOT);
+    pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
+    trace = import $ROOT/nix/devenv-modules/tasks/lib/trace.nix { lib = pkgs.lib; };
+  in trace.execWithExports \"test:export\" [ \"EXPORTED_VALUE\" ] \"export EXPORTED_VALUE=partial; false\"
+" > "$failure_exec"
+
+for mode in traced bare; do
+  exports_file="$tmpdir/$mode-failure.exports"
+  : > "$exports_file"
+  if [ "$mode" = traced ]; then
+    endpoint="http://127.0.0.1:4318"
+  else
+    endpoint=""
+  fi
+
+  set +e
+  DEVENV_TASK_EXPORTS_FILE="$exports_file" \
+    OTEL_EXPORTER_OTLP_ENDPOINT="$endpoint" \
+    OTEL_SPAN_BIN="$fake_otel_span" \
+    bash "$failure_exec"
+  rc=$?
+  set -e
+
+  [ "$rc" -eq 1 ] \
+    || fail "trace.execWithExports must preserve the $mode body failure (got $rc)"
+  [ ! -s "$exports_file" ] \
+    || fail "trace.execWithExports must not persist partial exports after a $mode failure"
+done
+
+for mode in traced bare; do
+  if [ "$mode" = traced ]; then
+    endpoint="http://127.0.0.1:4318"
+  else
+    endpoint=""
+  fi
+
+  set +e
+  DEVENV_TASK_EXPORTS_FILE="/dev/full" \
+    OTEL_EXPORTER_OTLP_ENDPOINT="$endpoint" \
+    OTEL_SPAN_BIN="$fake_otel_span" \
+    bash "$traced_exec" >/dev/null 2>&1
+  rc=$?
+  set -e
+
+  [ "$rc" -ne 0 ] \
+    || fail "trace.execWithExports must surface a $mode export persistence failure"
+done
+
 echo "traced task export tests passed"

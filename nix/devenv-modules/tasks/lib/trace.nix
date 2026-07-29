@@ -201,19 +201,44 @@ let
   traceExecWithExports =
     taskName: exportNames: execBody:
     traceExec taskName ''
-      ${execBody}
+      _effect_utils_finish_exports() {
+        _effect_utils_body_exit=$?
+        _effect_utils_persist_exit=0
+        trap - EXIT
 
-      if [ -n "''${DEVENV_TASK_EXPORTS_FILE:-}" ]; then
-        for _effect_utils_export_name in ${lib.concatMapStringsSep " " lib.escapeShellArg exportNames}; do
-          if [ -n "''${!_effect_utils_export_name+x}" ]; then
-            _effect_utils_export_value_b64="$(printf '%s' "''${!_effect_utils_export_name}" | base64 -w0)"
-            printf '%s\0%s\0' \
-              "$_effect_utils_export_name" \
-              "$_effect_utils_export_value_b64" \
-              >> "$DEVENV_TASK_EXPORTS_FILE"
-          fi
-        done
-      fi
+        # A failed task must neither publish partial state nor be masked by a
+        # successful trailing export loop. Preserve the body's exact status.
+        if [ "$_effect_utils_body_exit" -eq 0 ] \
+          && [ -n "''${DEVENV_TASK_EXPORTS_FILE:-}" ]; then
+          for _effect_utils_export_name in ${
+            lib.concatMapStringsSep " " lib.escapeShellArg exportNames
+          }; do
+            if [ -n "''${!_effect_utils_export_name+x}" ]; then
+              _effect_utils_export_value_b64="$(printf '%s' "''${!_effect_utils_export_name}" | base64 -w0)" \
+                || {
+                  _effect_utils_persist_exit=$?
+                  break
+                }
+              printf '%s\0%s\0' \
+                "$_effect_utils_export_name" \
+                "$_effect_utils_export_value_b64" \
+                >> "$DEVENV_TASK_EXPORTS_FILE" \
+                || {
+                  _effect_utils_persist_exit=$?
+                  break
+                }
+            fi
+          done
+        fi
+
+        if [ "$_effect_utils_persist_exit" -ne 0 ]; then
+          exit "$_effect_utils_persist_exit"
+        fi
+        exit "$_effect_utils_body_exit"
+      }
+      trap _effect_utils_finish_exports EXIT
+
+      ${execBody}
     '';
 
   # Trace status scripts so cached/skipped decisions become visible in traces.

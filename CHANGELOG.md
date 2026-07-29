@@ -71,7 +71,9 @@ All notable changes to this project will be documented in this file.
   Collector/Tempo/Grafana stack.
   The shared setup module also gains `skipNonInteractive`, removing the need
   for consumers to replace `setup:gate` (and accidentally drop its tracing)
-  just to keep non-interactive shell entry cheap.
+  just to keep non-interactive shell entry cheap. Traced task exports now
+  preserve the wrapped body's exact failure status and publish no partial
+  values when that body fails.
 - **@overeng/ci-tools**: add `ci-tools quarantine validate|announce`, so a repo can hold a
   known-failing test target non-blocking without its required check lying about it. The repo owns
   the ledger contents; ci-tools owns what an entry means — the schema (target, reason, tracking
@@ -995,6 +997,12 @@ signal <NAME>`) on non-zero exit; bound `process.executable.name` / the span
   the source of truth (#807).
 
 ### Fixed
+
+- **Portable imported observability/CI support**: Package the
+  `otel:test:devenv-e2e` entrypoint and fixtures in the Nix store instead of
+  resolving them relative to a consumer repository, and compose the devenv
+  resolver into the existing generated CI runtime library so source-linked
+  consumers do not need a new Genie entrypoint for every shared helper.
 
 - **@overeng/react-inspector**: Omit absent schema tooltip and lineage metadata
   instead of materializing optional fields as `undefined`, so downstream

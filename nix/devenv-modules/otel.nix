@@ -67,6 +67,51 @@ let
   # link (a thin, endpoint-resolving wrapper over `otel-span run`).
   otelRun = import ./otel/otel-run.nix { inherit pkgs; };
 
+  effectUtilsRoot = ../..;
+  effectUtilsSource = lib.cleanSourceWith {
+    src = effectUtilsRoot;
+    filter =
+      path: type:
+      let
+        segments = lib.splitString "/" (lib.removePrefix "${toString effectUtilsRoot}/" (toString path));
+        excluded = [
+          ".devenv"
+          ".direnv"
+          ".git"
+          ".pnpm-store"
+          "node_modules"
+          "result"
+          "target"
+          "tmp"
+        ];
+      in
+      lib.cleanSourceFilter path type && !lib.any (segment: builtins.elem segment excluded) segments;
+  };
+
+  # Package the E2E entrypoint and its data dependencies with the module. An
+  # imported devenv task executes from the consumer root, so repo-relative
+  # paths would incorrectly resolve against the consumer.
+  tsOteliteE2eTest = pkgs.writeShellScript "ts-otelite-e2e" ''
+    export PATH=${
+      lib.makeBinPath [
+        pkgs.bash
+        pkgs.coreutils
+        pkgs.gnugrep
+        pkgs.gnused
+        pkgs.jq
+        pkgs.nix
+      ]
+    }
+    export EFFECT_UTILS_SOURCE_ROOT=${effectUtilsSource}
+    export EFFECT_UTILS_NIXPKGS_PATH=${pkgs.path}
+    export EFFECT_UTILS_TS_MODULE=${effectUtilsSource}/nix/devenv-modules/tasks/shared/ts.nix
+    export EFFECT_UTILS_OTELITE_FIXTURE=${effectUtilsSource}/nix/devenv-modules/tasks/shared/tests/fixtures/tsgo-extended-diagnostics.txt
+    export OTELITE_BIN="$(${pkgs.nix}/bin/nix build --accept-flake-config --no-link --print-out-paths ${effectUtilsSource}#otelite)/bin/otelite"
+    export OTEL_SPAN_BIN=${otelSpan}/bin/otel-span
+    export OTEL_SCRAPE_BIN="$(${pkgs.nix}/bin/nix build --accept-flake-config --no-link --print-out-paths ${effectUtilsSource}#otel-scrape)/bin/otel-scrape"
+    exec ${pkgs.bash}/bin/bash ${effectUtilsSource}/nix/devenv-modules/tasks/shared/tests/ts-otelite-e2e.test.sh
+  '';
+
   # =========================================================================
   # Grafonnet: build dashboards from Jsonnet source at Nix eval time
   # =========================================================================
@@ -1377,9 +1422,6 @@ in
 
   tasks."otel:test:devenv-e2e" = {
     description = "Validate clean devenv OTEL task semantics through real otelite capture";
-    exec = ''
-      set -euo pipefail
-      bash nix/devenv-modules/tasks/shared/tests/ts-otelite-e2e.test.sh
-    '';
+    exec = "${tsOteliteE2eTest}";
   };
 }
