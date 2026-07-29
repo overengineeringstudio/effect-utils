@@ -58,3 +58,34 @@ effect/FastCheck -> effect/testing/FastCheck
 ```
 
 Keep runner imports from `@effect/vitest`; do not rewrite them to `effect/testing`.
+
+## Scoped test methods: one axis disappeared
+
+V3 test methods varied on two independent axes:
+
+```text
+environment: TestEnv / test clock  <->  live services / real clock
+scope:       unscoped              <->  scoped
+```
+
+Beta.102 always provides a runner-owned `Scope`, so only the environment/clock axis remains:
+
+| v3              | v4          | Clock      | Scope    |
+| --------------- | ----------- | ---------- | -------- |
+| `it.scoped`     | `it.effect` | test clock | provided |
+| `it.scopedLive` | `it.live`   | real clock | provided |
+
+This is **VERIFIED** against the installed beta.102 declarations and implementation:
+
+- `MethodsNonLive.effect` is `Tester<R | Scope.Scope>` and runs `Effect.scoped` before providing
+  `TestEnv`;
+- `Methods.live` is `Tester<Scope.Scope>` and is built with `Effect.scoped`;
+- concrete `otelite` tests call effects requiring `Scope` under `it.live`.
+
+The migration is not “remove `scoped` wherever it appears.” Preserve the clock half:
+`scoped -> live` silently swaps the test clock for real time, while `scopedLive -> effect` silently
+does the reverse. Either can compile and then change timeout, sleep, retry, or scheduling behavior.
+
+For scoped test migrations, replay resource finalizer count/order and the timing behavior exercised
+by the test. A test that merely starts successfully proves neither clock selection nor scope
+teardown.
