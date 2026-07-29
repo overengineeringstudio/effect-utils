@@ -155,6 +155,7 @@ type ContractionMarker = {
   readonly file: string
   readonly kind: 'BRIDGE' | 'END' | 'TARGET' | 'TODO'
   readonly line: number
+  readonly migrationSlug: string
 }
 
 type ExpiredNoSignature = {
@@ -175,7 +176,7 @@ const liveMigrationName = ['LIVE', 'MIGRATION'].join('-')
 const todoMigrationName = ['TODO(', 'live-migration:'].join('')
 const todoMigrationPattern = ['TODO\\(', 'live-migration:'].join('')
 const blockMarkerPattern = new RegExp(
-  `${liveMigrationName}\\s+(BRIDGE|TARGET|END)(?:\\s+([a-z0-9][a-z0-9._-]*))?`,
+  `${liveMigrationName}\\s+(BRIDGE|TARGET|END)\\s+([a-z0-9][a-z0-9._-]*)(?:\\s+([a-z0-9][a-z0-9._-]*))?`,
   'gi',
 )
 const todoMarkerPattern = new RegExp(`${todoMigrationPattern}([a-z0-9][a-z0-9._-]*)?\\)`, 'gi')
@@ -279,7 +280,8 @@ const writeContractionFixture = async ({
     await Bun.write(
       resolve(fixtureRoot, 'src/survivors.ts'),
       [
-        `// ${liveMigrationName} BRIDGE fixture-bridge`,
+        `// ${liveMigrationName} BRIDGE effect-3-4 B8`,
+        `// ${liveMigrationName} BRIDGE effect-3-4`,
         `// ${todoMigrationName}fixture-todo): resolve the retained assertion`,
         '',
       ].join('\n'),
@@ -331,9 +333,10 @@ const runContractionFixtureCheck = async () => {
     const expectedDefinitionOnly =
       'PASS: contraction sweep found no live migration markers (3 permanent grammar definitions excluded).\n'
     const expectedSurvivors = [
-      'src/survivors.ts:1 DELETE BLOCK (BRIDGE) fixture-bridge',
-      'src/survivors.ts:2 RESOLVE TODO fixture-todo',
-      'FAIL: contraction blocked by 2 markers across 1 files: 1 BRIDGE blocks (1 block marker lines) to delete, 1 TODO markers to resolve; 3 permanent grammar definitions excluded.',
+      'src/survivors.ts:1 DELETE BLOCK (BRIDGE) B8',
+      'src/survivors.ts:2 DELETE BLOCK (BRIDGE) <missing-id>',
+      'src/survivors.ts:3 RESOLVE TODO fixture-todo',
+      'FAIL: contraction blocked by 3 markers across 1 files: 2 BRIDGE blocks (2 block marker lines) to delete, 1 TODO markers to resolve; 3 permanent grammar definitions excluded.',
       '',
     ].join('\n')
 
@@ -398,10 +401,11 @@ const runContractionCheck = async () => {
 
       for (const match of blockMatches) {
         markers.push({
-          bridgeId: match[2] ?? '<missing-id>',
+          bridgeId: match[3] ?? '<missing-id>',
           file,
           kind: match[1]!.toUpperCase() as 'BRIDGE' | 'END' | 'TARGET',
           line: lineIndex + 1,
+          migrationSlug: match[2]!,
         })
       }
       for (const match of todoMatches) {
@@ -410,6 +414,7 @@ const runContractionCheck = async () => {
           file,
           kind: 'TODO',
           line: lineIndex + 1,
+          migrationSlug: match[1] ?? '<missing-slug>',
         })
       }
     }

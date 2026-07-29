@@ -8,6 +8,7 @@ export default pnpmWorkspaceYaml.root({
   repoName: 'effect-utils',
   catalogVersions: catalog,
   catalogDuplicateExceptions: [
+    // LIVE-MIGRATION BRIDGE effect-3-4 B2 — DELETE at contraction — https://github.com/overengineeringstudio/effect-utils/issues/925
     {
       package: 'effect',
       versions: ['3.21.4', '4.0.0-beta.99'],
@@ -19,6 +20,7 @@ export default pnpmWorkspaceYaml.root({
         '@overeng/react-inspector tests against Effect 4 while the repository catalog remains on Effect 3; published consumers provide Effect through its peer contract',
       issue: '#937',
     },
+    // LIVE-MIGRATION END effect-3-4
     {
       package: 'string-width',
       // @opentui/core@0.4.1 (latest) pins string-width@7.2.0 exactly, so pnpm
