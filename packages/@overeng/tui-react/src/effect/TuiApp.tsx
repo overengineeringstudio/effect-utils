@@ -163,13 +163,13 @@ export interface TuiAppConfig<S, A> {
   /**
    * Effect Schema for state serialization (used in JSON modes).
    */
-  readonly stateSchema: Schema.Schema<S>
+  readonly stateSchema: Schema.ConstraintCodec<S>
 
   /**
    * Effect Schema for action serialization (for debugging/logging).
    * If includes Schema.TaggedStruct('Interrupted', {}), system auto-dispatches on Ctrl+C.
    */
-  readonly actionSchema: Schema.Schema<A>
+  readonly actionSchema: Schema.ConstraintCodec<A>
 
   /**
    * Initial state value.
@@ -214,7 +214,7 @@ export interface TuiAppConfig<S, A> {
  */
 export interface NdjsonConfig<in S, in A, E> {
   /** Schema for encoding output events */
-  readonly eventSchema: Schema.Schema<E>
+  readonly eventSchema: Schema.ConstraintCodec<E>
   /** Map an action + previous state to zero or more output events */
   readonly fromAction: (args: { action: A; prevState: S }) => ReadonlyArray<E>
 }
@@ -297,7 +297,7 @@ export interface TuiApp<S, A> {
 /**
  * Check if an Effect Schema has an 'Interrupted' variant (TaggedStruct with _tag: 'Interrupted').
  */
-const hasInterruptedVariant = <A,>(schema: Schema.Schema<A>): boolean => {
+const hasInterruptedVariant = <A,>(schema: Schema.ConstraintCodec<A>): boolean => {
   const ast = schema.ast
 
   // Check if it's a Union
@@ -331,7 +331,7 @@ const hasInterruptedVariant = <A,>(schema: Schema.Schema<A>): boolean => {
 /**
  * Create an Interrupted action value if the schema supports it.
  */
-const createInterruptedAction = <A,>(schema: Schema.Schema<A>): A | null => {
+const createInterruptedAction = <A,>(schema: Schema.ConstraintCodec<A>): A | null => {
   if (hasInterruptedVariant(schema) === false) {
     return null
   }
@@ -543,7 +543,7 @@ const setupMode = <S,>({
 }: {
   mode: OutputMode
   stateAtom: Atom.Writable<S>
-  stateSchema: Schema.Schema<S>
+  stateSchema: Schema.ConstraintCodec<S>
   registry: AtomRegistry.AtomRegistry
   view?: ReactElement | undefined
   ndjsonConfig?: NdjsonConfig<S, any, any> | undefined
@@ -704,7 +704,7 @@ const setupFinalJsonWithAtom = <S,>({
   registry,
 }: {
   stateAtom: Atom.Writable<S>
-  stateSchema: Schema.Schema<S>
+  stateSchema: Schema.ConstraintCodec<S>
   registry: AtomRegistry.AtomRegistry
 }): Effect.Effect<void, never, Scope.Scope> =>
   Effect.addFinalizer(() =>
@@ -728,7 +728,7 @@ const setupProgressiveJsonWithAtom = <S,>({
   registry,
 }: {
   stateAtom: Atom.Writable<S>
-  stateSchema: Schema.Schema<S>
+  stateSchema: Schema.ConstraintCodec<S>
   registry: AtomRegistry.AtomRegistry
 }): Effect.Effect<void, never, Scope.Scope> =>
   Effect.gen(function* () {
@@ -769,7 +769,7 @@ const setupProgressiveJsonWithEvents = <S, E>({
   ndjsonConfig,
 }: {
   stateAtom: Atom.Writable<S>
-  stateSchema: Schema.Schema<S>
+  stateSchema: Schema.ConstraintCodec<S>
   registry: AtomRegistry.AtomRegistry
   ndjsonConfig: NdjsonConfig<S, any, E>
 }): Effect.Effect<(args: { action: any; prevState: S }) => void, never, Scope.Scope> =>
@@ -875,13 +875,13 @@ export const run: {
  */
 export interface RunResultOptions<O> {
   /** Schema for the command's result type (the handler's return value). */
-  readonly result: Schema.Schema<O>
+  readonly result: Schema.ConstraintCodec<O>
   /** Optional React element to render in visual modes. */
   readonly view?: ReactElement
 }
 
 /** Check if schema resolves to a plain string type */
-const isStringSchema = (schema: Schema.Schema<unknown>): boolean =>
+const isStringSchema = (schema: Schema.ConstraintCodec<unknown>): boolean =>
   schema.ast._tag === 'StringKeyword'
 
 /**
@@ -947,9 +947,9 @@ const writeResult = <O,>({
   schema,
 }: {
   value: O
-  schema: Schema.Schema<O>
+  schema: Schema.ConstraintCodec<O>
 }): Effect.Effect<void> =>
-  isStringSchema(schema as Schema.Schema<unknown>) === true
+  isStringSchema(schema as Schema.ConstraintCodec<unknown>) === true
     ? Effect.sync(() => {
         const str = String(value)
         process.stdout.write(str)

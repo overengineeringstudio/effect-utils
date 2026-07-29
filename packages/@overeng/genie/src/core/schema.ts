@@ -66,7 +66,7 @@ export type GenieSummary = Schema.Schema.Type<typeof GenieSummary>
 // =============================================================================
 
 /** Schema for genie operation phases */
-export const GeniePhase = Schema.Literal('discovering', 'generating', 'complete', 'error')
+export const GeniePhase = Schema.Literals(['discovering', 'generating', 'complete', 'error'])
 /** Genie operation phase */
 export type GeniePhase = Schema.Schema.Type<typeof GeniePhase>
 
@@ -75,7 +75,7 @@ export type GeniePhase = Schema.Schema.Type<typeof GeniePhase>
 // =============================================================================
 
 /** Schema for genie operation modes */
-export const GenieMode = Schema.Literal('generate', 'check', 'dry-run')
+export const GenieMode = Schema.Literals(['generate', 'check', 'dry-run'])
 /** Genie operation mode */
 export type GenieMode = Schema.Schema.Type<typeof GenieMode>
 
