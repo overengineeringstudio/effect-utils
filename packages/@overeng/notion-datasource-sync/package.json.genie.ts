@@ -37,7 +37,7 @@ const workspaceDeps = catalog.compose({
   },
   devDependencies: {
     external: {
-      ...catalog.pick(...peerDepNames, '@effect-atom/atom', '@effect-atom/atom-react', '@effect/vitest', '@opentui/core', '@opentui/react', '@storybook/react', '@types/node', '@types/react', '@types/react-reconciler', 'react-dom', 'react-reconciler', 'typescript', 'vitest'),
+      ...catalog.pick(...peerDepNames, '@effect/atom-react', '@effect/vitest', '@opentui/core', '@opentui/react', '@storybook/react', '@types/node', '@types/react', '@types/react-reconciler', 'react-dom', 'react-reconciler', 'typescript', 'vitest'),
     },
   },
   peerDependencies: {

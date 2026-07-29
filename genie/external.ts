@@ -366,8 +366,7 @@ export const catalog = defineCatalog({
   'is-dom': '1.1.0',
 
   // OpenTUI / Effect Atom (experimental)
-  '@effect-atom/atom': '0.5.3',
-  '@effect-atom/atom-react': '0.5.0',
+  '@effect/atom-react': '4.0.0-beta.102',
   '@opentui/core': '0.4.1',
   '@opentui/react': '0.4.1',
 

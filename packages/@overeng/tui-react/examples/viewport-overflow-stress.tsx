@@ -15,7 +15,7 @@
  *   bun examples/viewport-overflow-stress.tsx footer 200 10    # 200 files, 10ms delay
  */
 
-import type { Atom } from '@effect-atom/atom'
+import type { Atom } from 'effect/unstable/reactivity'
 import { NodeServices, NodeRuntime } from '@effect/platform-node'
 import { Effect, Schema } from 'effect'
 import React, { useMemo } from 'react'

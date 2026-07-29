@@ -7,7 +7,7 @@
  * - ndjson: Timeline events as newline-delimited JSON
  */
 
-import { Atom, Registry } from '@effect-atom/atom'
+import { Atom, AtomRegistry } from 'effect/unstable/reactivity'
 import { Effect, Schema } from 'effect'
 import React from 'react'
 
@@ -159,7 +159,7 @@ const renderReact = ({
 }): Effect.Effect<string> =>
   Effect.gen(function* () {
     const targetState = computeState({ captured, timelineMode })
-    const registry = Registry.make()
+    const registry = AtomRegistry.make()
     const stateAtom = Atom.make(targetState)
 
     const viewElement = React.createElement(captured.View, { stateAtom })

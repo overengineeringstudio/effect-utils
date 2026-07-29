@@ -37,7 +37,7 @@
 // oxlint-disable-next-line typescript-eslint(triple-slash-reference) -- intentional: an ambient-only .d.ts cannot be an ES import
 /// <reference path="./asset-modules.d.ts" />
 
-import { Atom, Registry } from '@effect-atom/atom'
+import { Atom, AtomRegistry } from 'effect/unstable/reactivity'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { Terminal } from '@xterm/xterm'
@@ -140,9 +140,9 @@ export const TuiStoryPreview = <S, A>({
 
   // Atom-based state management — atom is derived from initialState so it
   // resets when props change (e.g. Storybook controls toggling verbose/force)
-  const registryRef = useRef<Registry.Registry | null>(null)
+  const registryRef = useRef<AtomRegistry.AtomRegistry | null>(null)
   if (registryRef.current === null) {
-    registryRef.current = Registry.make()
+    registryRef.current = AtomRegistry.make()
   }
   const registry = registryRef.current
   const stateAtom = useMemo(() => Atom.make(initialState), [initialState])
@@ -1027,7 +1027,7 @@ const NdjsonPreviewPane: React.FC<{ lines: NdjsonLine[] }> = ({ lines }) => (
 const CIPreviewPane: React.FC<{
   View: React.ComponentType<{ stateAtom: Atom.Atom<unknown> }>
   stateAtom: Atom.Atom<unknown>
-  registry: Registry.Registry
+  registry: AtomRegistry.AtomRegistry
   height: number
 }> = ({ View, stateAtom, registry, height }) => {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -1141,7 +1141,7 @@ const useContainerColumns = (containerRef: React.RefObject<HTMLElement | null>):
 const LogPreviewPane: React.FC<{
   View: React.ComponentType<{ stateAtom: Atom.Atom<unknown> }>
   stateAtom: Atom.Atom<unknown>
-  registry: Registry.Registry
+  registry: AtomRegistry.AtomRegistry
   height: number
 }> = ({ View, stateAtom, registry, height }) => {
   const [output, setOutput] = useState<string>('')
@@ -1193,7 +1193,7 @@ const LogPreviewPane: React.FC<{
 const CIPlainPreviewPane: React.FC<{
   View: React.ComponentType<{ stateAtom: Atom.Atom<unknown> }>
   stateAtom: Atom.Atom<unknown>
-  registry: Registry.Registry
+  registry: AtomRegistry.AtomRegistry
   height: number
 }> = ({ View, stateAtom, registry, height }) => {
   const [output, setOutput] = useState<string>('')
@@ -1245,7 +1245,7 @@ const CIPlainPreviewPane: React.FC<{
 const FullscreenPreviewPane: React.FC<{
   View: React.ComponentType<{ stateAtom: Atom.Atom<unknown> }>
   stateAtom: Atom.Atom<unknown>
-  registry: Registry.Registry
+  registry: AtomRegistry.AtomRegistry
   height: number
 }> = ({ View, stateAtom, registry, height }) => {
   const containerRef = useRef<HTMLDivElement>(null)

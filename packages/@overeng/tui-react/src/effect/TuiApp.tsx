@@ -41,7 +41,7 @@
 
 import { Console as NodeConsole } from 'node:console'
 
-import { Atom, Registry } from '@effect-atom/atom'
+import { Atom, AtomRegistry } from 'effect/unstable/reactivity'
 import type { Scope } from 'effect'
 import {
   Cause,
@@ -90,18 +90,18 @@ export const isTuiApp = (u: unknown): u is TuiApp<unknown, unknown> =>
 const SkipModeOutputTag = Context.GenericTag<boolean>('@overeng/tui-react/SkipModeOutput')
 
 // =============================================================================
-// TUI Registry Context (avoids multiple React instance issues with @effect-atom/atom-react)
+// TUI AtomRegistry Context (avoids multiple React instance issues with @effect/atom-react)
 // =============================================================================
 
 /**
  * Context for providing the TUI registry to components.
- * Uses our own React instance to avoid context sharing issues with @effect-atom/atom-react.
+ * Uses our own React instance to avoid context sharing issues with @effect/atom-react.
  */
-export const TuiRegistryContext = createContext<Registry.Registry | null>(null)
+export const TuiRegistryContext = createContext<AtomRegistry.AtomRegistry | null>(null)
 
 /**
  * Hook to get an atom's value from the TUI registry.
- * This is a workaround for multiple React instance issues with @effect-atom/atom-react.
+ * This is a workaround for multiple React instance issues with @effect/atom-react.
  *
  * Uses useSyncExternalStore for proper React 18+ integration.
  *
@@ -122,7 +122,7 @@ export const useTuiAtomValue = <T,>(atom: Atom.Atom<T>): T => {
   // Use useSyncExternalStore for proper React integration
   const subscribe = useCallback(
     (callback: () => void) => {
-      // Registry.subscribe returns an unsubscribe function
+      // AtomRegistry.subscribe returns an unsubscribe function
       const unsubscribe = registry.subscribe(atom, callback)
       return unsubscribe
     },
@@ -394,7 +394,7 @@ export const createTuiApp = <S, A>(config: TuiAppConfig<S, A>): TuiApp<S, A> => 
   })
 
   // Create a registry for this app
-  const registry = Registry.make()
+  const registry = AtomRegistry.make()
 
   // Check once if schema has Interrupted variant
   const interruptedAction = createInterruptedAction(config.actionSchema)
@@ -547,7 +547,7 @@ const setupMode = <S,>({
   mode: OutputMode
   stateAtom: Atom.Writable<S>
   stateSchema: Schema.Schema<S>
-  registry: Registry.Registry
+  registry: AtomRegistry.AtomRegistry
   view?: ReactElement | undefined
   ndjsonConfig?: NdjsonConfig<S, any, any> | undefined
 }): Effect.Effect<SetupModeResult, never, Scope.Scope> => {
@@ -602,7 +602,7 @@ const setupProgressiveVisualWithView = ({
   renderConfig,
   capturedLogs,
 }: {
-  registry: Registry.Registry
+  registry: AtomRegistry.AtomRegistry
   view: ReactElement
   renderConfig: RenderConfig
   capturedLogs?: LogCaptureHandle
@@ -617,7 +617,7 @@ const setupProgressiveVisualWithView = ({
     )
     const root = createRoot({ terminalOrStream: viewStream })
 
-    // Wrapper that provides Registry via our own context (avoids multiple React instance issues)
+    // Wrapper that provides AtomRegistry via our own context (avoids multiple React instance issues)
     const TuiAppWrapper = (): ReactNode => {
       let content: ReactNode = (
         <RenderConfigProvider config={renderConfig}>{view}</RenderConfigProvider>
@@ -652,7 +652,7 @@ const setupFinalVisualWithAtom = ({
   renderConfig,
 }: {
   view: ReactElement | undefined
-  registry: Registry.Registry
+  registry: AtomRegistry.AtomRegistry
   renderConfig: RenderConfig
 }): Effect.Effect<void, never, Scope.Scope> => {
   if (view === undefined) return Effect.void
@@ -708,7 +708,7 @@ const setupFinalJsonWithAtom = <S,>({
 }: {
   stateAtom: Atom.Writable<S>
   stateSchema: Schema.Schema<S>
-  registry: Registry.Registry
+  registry: AtomRegistry.AtomRegistry
 }): Effect.Effect<void, never, Scope.Scope> =>
   Effect.addFinalizer(() =>
     Effect.gen(function* () {
@@ -732,7 +732,7 @@ const setupProgressiveJsonWithAtom = <S,>({
 }: {
   stateAtom: Atom.Writable<S>
   stateSchema: Schema.Schema<S>
-  registry: Registry.Registry
+  registry: AtomRegistry.AtomRegistry
 }): Effect.Effect<void, never, Scope.Scope> =>
   Effect.gen(function* () {
     const runtime = yield* Effect.runtime<never>()
@@ -775,7 +775,7 @@ const setupProgressiveJsonWithEvents = <S, E>({
 }: {
   stateAtom: Atom.Writable<S>
   stateSchema: Schema.Schema<S>
-  registry: Registry.Registry
+  registry: AtomRegistry.AtomRegistry
   ndjsonConfig: NdjsonConfig<S, any, E>
 }): Effect.Effect<(args: { action: any; prevState: S }) => void, never, Scope.Scope> =>
   Effect.gen(function* () {

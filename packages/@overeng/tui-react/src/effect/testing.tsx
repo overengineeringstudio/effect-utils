@@ -19,7 +19,7 @@
  * ```
  */
 
-import { Atom, Registry } from '@effect-atom/atom'
+import { Atom, AtomRegistry } from 'effect/unstable/reactivity'
 import type { Scope } from 'effect'
 import { Effect, type Exit, Layer, PubSub, Runtime, Schema, Stream } from 'effect'
 
@@ -214,7 +214,7 @@ export const createTestTuiState = <S, A>(
       const newState = reducer({ state: currentState, action })
       get.set(stateAtom, newState)
     })
-    const registry = Registry.make()
+    const registry = AtomRegistry.make()
 
     const actionPubSub = yield* PubSub.unbounded<A>()
     const runtime = yield* Effect.runtime<never>()

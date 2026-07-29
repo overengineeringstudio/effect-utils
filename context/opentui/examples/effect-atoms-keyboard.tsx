@@ -9,8 +9,8 @@
  *
  * Run: bun examples/effect-atoms-keyboard.tsx
  */
-import { Atom, Registry } from '@effect-atom/atom'
-import { RegistryContext, useAtomValue } from '@effect-atom/atom-react'
+import { Atom, AtomRegistry } from 'effect/unstable/reactivity'
+import { RegistryContext, useAtomValue } from '@effect/atom-react'
 import { createCliRenderer } from '@opentui/core'
 import { createRoot } from '@opentui/react'
 import { Cause, Effect, Fiber, Layer, ManagedRuntime, Runtime } from 'effect'
@@ -122,7 +122,7 @@ const App = () => {
 const main = async () => {
   const renderer = await createCliRenderer({ exitOnCtrlC: false })
   const root = createRoot(renderer)
-  const registry = Registry.make()
+  const registry = AtomRegistry.make()
 
   // Initialize Effect runtime from Layer
   const managedRuntime = ManagedRuntime.make(AppLayer)

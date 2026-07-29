@@ -35,7 +35,7 @@ const workspaceDeps = catalog.compose({
   devDependencies: {
     workspace: [tuiReactPkg, utilsDevPkg],
     external: {
-      ...catalog.pick(...peerDepNames, '@effect-atom/atom', '@effect/vitest', '@storybook/react', '@storybook/react-vite', '@types/node', '@types/react', '@types/react-reconciler', '@vitejs/plugin-react', 'react', 'react-dom', 'react-reconciler', 'storybook', 'typescript', 'vite', 'vitest'),
+      ...catalog.pick(...peerDepNames, '@effect/vitest', '@storybook/react', '@storybook/react-vite', '@types/node', '@types/react', '@types/react-reconciler', '@vitejs/plugin-react', 'react', 'react-dom', 'react-reconciler', 'storybook', 'typescript', 'vite', 'vitest'),
     },
   },
   peerDependencies: {
