@@ -177,7 +177,7 @@ export const genieCommand = Cli.Command.make(
                   yield* checkAll({ cwd: resolvedCwd, oxfmtConfigPath, phase: selectedPhase }).pipe(
                     Effect.provideService(GenieEventBus, bus),
                     Effect.catchTag('GenieGenerationFailedError', (error) =>
-                      syncStateFromGenerationError(error).pipe(Effect.zipRight(Effect.fail(error))),
+                      syncStateFromGenerationError(error).pipe(Effect.andThen(Effect.fail(error))),
                     ),
                   )
                 } else {
@@ -191,7 +191,7 @@ export const genieCommand = Cli.Command.make(
                   }).pipe(
                     Effect.provideService(GenieEventBus, bus),
                     Effect.catchTag('GenieGenerationFailedError', (error) =>
-                      syncStateFromGenerationError(error).pipe(Effect.zipRight(Effect.fail(error))),
+                      syncStateFromGenerationError(error).pipe(Effect.andThen(Effect.fail(error))),
                     ),
                   )
                 }
