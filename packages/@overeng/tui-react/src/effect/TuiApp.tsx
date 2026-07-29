@@ -710,7 +710,7 @@ const setupFinalJsonWithAtom = <S,>({
   Effect.addFinalizer(() =>
     Effect.gen(function* () {
       const finalState = registry.get(stateAtom)
-      const jsonString = yield* Schema.encode(Schema.fromJsonString(stateSchema))(finalState)
+      const jsonString = yield* Schema.encodeEffect(Schema.fromJsonString(stateSchema))(finalState)
       yield* Console.log(jsonString)
     }).pipe(Effect.orDie),
   )
@@ -734,15 +734,15 @@ const setupProgressiveJsonWithAtom = <S,>({
   Effect.gen(function* () {
     // Initial snapshot for bootstrapping.
     const initialState = registry.get(stateAtom)
-    const initialJson = yield* Schema.encode(Schema.fromJsonString(stateSchema))(initialState).pipe(
-      Effect.orDie,
-    )
+    const initialJson = yield* Schema.encodeEffect(Schema.fromJsonString(stateSchema))(
+      initialState,
+    ).pipe(Effect.orDie)
     yield* Console.log(initialJson)
 
     // Subscribe to subsequent state changes.
     const unsubscribe = registry.subscribe(stateAtom, (state) => {
       Effect.runSync(
-        Schema.encode(Schema.fromJsonString(stateSchema))(state).pipe(
+        Schema.encodeEffect(Schema.fromJsonString(stateSchema))(state).pipe(
           Effect.flatMap((jsonString) => Console.log(jsonString)),
           Effect.orDie,
         ),
@@ -777,16 +777,16 @@ const setupProgressiveJsonWithEvents = <S, E>({
     const { eventSchema, fromAction } = ndjsonConfig
 
     const initialState = registry.get(stateAtom)
-    const initialJson = yield* Schema.encode(Schema.fromJsonString(stateSchema))(initialState).pipe(
-      Effect.orDie,
-    )
+    const initialJson = yield* Schema.encodeEffect(Schema.fromJsonString(stateSchema))(
+      initialState,
+    ).pipe(Effect.orDie)
     yield* Console.log(initialJson)
 
     const emitter = ({ action, prevState }: { action: any; prevState: S }): void => {
       const events = fromAction({ action, prevState })
       for (const event of events) {
         Effect.runSync(
-          Schema.encode(Schema.fromJsonString(eventSchema))(event).pipe(
+          Schema.encodeEffect(Schema.fromJsonString(eventSchema))(event).pipe(
             Effect.flatMap((jsonString) => Console.log(jsonString)),
             Effect.orDie,
           ),
@@ -955,7 +955,7 @@ const writeResult = <O,>({
         process.stdout.write(str)
         if (str.length > 0 && str.endsWith('\n') === false) process.stdout.write('\n')
       })
-    : Schema.encode(Schema.fromJsonString(schema))(value).pipe(
+    : Schema.encodeEffect(Schema.fromJsonString(schema))(value).pipe(
         Effect.flatMap((json) =>
           Effect.sync(() => {
             process.stdout.write(json)
