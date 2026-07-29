@@ -692,9 +692,12 @@ const encodeUnknown = ({
   )
 
 const astIdentifier = (ast: AST.AST): string | undefined =>
-  'resolveIdentifier' in AST
-    ? AST.resolveIdentifier(ast)
-    : Option.getOrUndefined(AST.getIdentifierAnnotation(ast))
+  AST.resolveIdentifier(ast) ??
+  Option.getOrUndefined(
+    (AST as typeof AST & {
+      readonly getIdentifierAnnotation?: (ast: AST.AST) => Option.Option<string>
+    }).getIdentifierAnnotation?.(ast) ?? Option.none(),
+  )
 
 const typeConstructorTag = (ast: AST.AST): string | undefined => {
   const representationId = AST.resolve(ast)?.representation?.id
@@ -707,8 +710,16 @@ const typeConstructorTag = (ast: AST.AST): string | undefined => {
       return 'effect/Duration'
     case 'effect/schema/DateTimeUtc':
       return 'effect/DateTime.Utc'
-    default:
-      return Option.getOrUndefined(AST.getTypeConstructorAnnotation?.(ast))?._tag
+    default: {
+      const legacyAnnotation = (
+        AST as typeof AST & {
+          readonly getTypeConstructorAnnotation?: (
+            ast: AST.AST,
+          ) => Option.Option<{ readonly _tag: string }>
+        }
+      ).getTypeConstructorAnnotation?.(ast)
+      return legacyAnnotation === undefined ? undefined : Option.getOrUndefined(legacyAnnotation)?._tag
+    }
   }
 }
 
