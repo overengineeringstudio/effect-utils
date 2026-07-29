@@ -98,7 +98,7 @@ const trustOtelContract = <A, E, R>(
   effect.pipe(Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)))
 
 const trustedWith =
-  <S extends Schema.Schema.AnyNoContext>({
+  <S extends Schema.Codec<unknown, unknown, never, never>>({
     operation,
     attributes,
   }: {
@@ -302,7 +302,7 @@ export interface LogBridgeOptions {
 export const makeLogBridgeLive = (
   options?: LogBridgeOptions,
 ): Layer.Layer<never, never, Scope.Scope> =>
-  Layer.scopedDiscard(
+  Layer.effectDiscard(
     logStream.pipe(
       Stream.filter((entry) => {
         if (options?.sources !== undefined && options.sources.length > 0) {
@@ -315,16 +315,16 @@ export const makeLogBridgeLive = (
 
         return Effect.logWithLevel(
           entry.level === 'FATAL'
-            ? LogLevel.Fatal
+            ? 'Fatal'
             : entry.level === 'ERROR'
-              ? LogLevel.Error
+              ? 'Error'
               : entry.level === 'WARNING'
-                ? LogLevel.Warning
+                ? 'Warn'
                 : entry.level === 'DEBUG'
-                  ? LogLevel.Debug
+                  ? 'Debug'
                   : entry.level === 'TRACE'
                     ? LogLevel.Trace
-                    : LogLevel.Info,
+                    : 'Info',
           msg,
         ).pipe(
           Effect.annotateLogs({

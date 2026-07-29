@@ -93,7 +93,7 @@ describe('OtelAttrs', () => {
         Effect.either(
           OtelAttrs.define(
             Schema.Struct({
-              secret: Schema.Redacted(Schema.String).pipe(OtelAttr.key({ key: 'secret' })),
+              secret: Schema.RedactedFromValue(Schema.String).pipe(OtelAttr.key({ key: 'secret' })),
             }),
           ),
         ),
@@ -121,7 +121,7 @@ describe('OtelAttrs', () => {
 
   it('allows explicit redacted and json policies', async () => {
     const Attrs = Schema.Struct({
-      secret: Schema.Redacted(Schema.String).pipe(
+      secret: Schema.RedactedFromValue(Schema.String).pipe(
         OtelAttr.key({ key: 'secret', encode: 'redacted' }),
       ),
       nested: Schema.Struct({ id: Schema.String }).pipe(
@@ -149,7 +149,7 @@ describe('OtelAttrs', () => {
         Effect.either(
           OtelAttrs.define(
             Schema.Struct({
-              secret: Schema.Redacted(Schema.String).pipe(
+              secret: Schema.RedactedFromValue(Schema.String).pipe(
                 OtelAttr.key({ key: 'secret', encode: 'json' }),
               ),
             }),
@@ -164,7 +164,7 @@ describe('OtelAttrs', () => {
     const attrs = await Effect.runPromise(
       OtelAttrs.define(
         Schema.Struct({
-          secret: Schema.Redacted(Schema.String).pipe(
+          secret: Schema.RedactedFromValue(Schema.String).pipe(
             OtelAttr.key({ key: 'secret', encode: 'drop' }),
           ),
         }),
@@ -198,7 +198,7 @@ describe('OtelAttrs', () => {
       asString: Schema.Natural.pipe(OtelAttr.key({ key: 'string', encode: 'string' })),
       asNumber: Schema.Natural.pipe(OtelAttr.key({ key: 'number', encode: 'number' })),
       asBoolean: Schema.Boolean.pipe(OtelAttr.key({ key: 'boolean', encode: 'boolean' })),
-      secret: Schema.Redacted(Schema.String).pipe(
+      secret: Schema.RedactedFromValue(Schema.String).pipe(
         OtelAttr.key({ key: 'secret', encode: 'redacted' }),
       ),
     })

@@ -161,9 +161,9 @@ const unwrapAst = (ast: SchemaAST.AST): SchemaAST.AST => {
  * than throwing — the inspector must never crash on bad annotations.
  */
 const readAnnotation = <A>(args: {
-  schema: Schema.Schema.AnyNoContext
+  schema: Schema.Codec<unknown, unknown, never, never>
   id: symbol
-  decoder: Schema.Schema<A>
+  decoder: Schema.Codec<A>
 }): A | undefined => {
   const { schema, id, decoder } = args
   const decode = Schema.decodeUnknownOption(decoder)
@@ -184,19 +184,26 @@ const readAnnotation = <A>(args: {
 }
 
 /** Read the `Lineage` annotation from a schema, if present. */
-export const getLineage = (schema: Schema.Schema.AnyNoContext): Lineage | undefined =>
-  readAnnotation({ schema, id: LineageAnnotationId, decoder: Lineage })
+export const getLineage = (
+  schema: Schema.Codec<unknown, unknown, never, never>,
+): Lineage | undefined => readAnnotation({ schema, id: LineageAnnotationId, decoder: Lineage })
 
 /** Read the `Authority` annotation from a schema, if present. */
-export const getAuthority = (schema: Schema.Schema.AnyNoContext): Authority | undefined =>
+export const getAuthority = (
+  schema: Schema.Codec<unknown, unknown, never, never>,
+): Authority | undefined =>
   readAnnotation({ schema, id: AuthorityAnnotationId, decoder: Authority })
 
 /** Read the `Freshness` annotation from a schema, if present. */
-export const getFreshness = (schema: Schema.Schema.AnyNoContext): Freshness | undefined =>
+export const getFreshness = (
+  schema: Schema.Codec<unknown, unknown, never, never>,
+): Freshness | undefined =>
   readAnnotation({ schema, id: FreshnessAnnotationId, decoder: Freshness })
 
 /** Read the `Reference` annotation from a schema, if present. */
-export const getReference = (schema: Schema.Schema.AnyNoContext): Reference | undefined =>
+export const getReference = (
+  schema: Schema.Codec<unknown, unknown, never, never>,
+): Reference | undefined =>
   readAnnotation({ schema, id: ReferenceAnnotationId, decoder: Reference })
 
 /* --------------------------------------------------------------------------
@@ -234,12 +241,12 @@ const coerceDerivationKind = (
 
 const annotate =
   <V>(args: { id: symbol; value: V }) =>
-  <S extends Schema.Schema.AnyNoContext>(schema: S): S =>
+  <S extends Schema.Codec<unknown, unknown, never, never>>(schema: S): S =>
     schema.annotate({ [args.id]: args.value }) as S
 
 const lineageAnnotation =
   (value: Lineage) =>
-  <S extends Schema.Schema.AnyNoContext>(schema: S): S =>
+  <S extends Schema.Codec<unknown, unknown, never, never>>(schema: S): S =>
     annotate({ id: LineageAnnotationId, value })(schema)
 
 /** Mark a field as the authoritative source of truth. */

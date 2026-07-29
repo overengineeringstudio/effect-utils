@@ -47,7 +47,7 @@ export const currentParentSpanContextJson: Effect.Effect<string | undefined, nev
     if (span._tag === 'None') return undefined
 
     const ctx = span.value.spanContext()
-    return yield* Schema.encode(Schema.fromJsonString(ParentSpanContextSchema))({
+    return yield* Schema.encodeEffect(Schema.fromJsonString(ParentSpanContextSchema))({
       traceId: ctx.traceId,
       spanId: ctx.spanId,
     }).pipe(Effect.orDie)
@@ -70,9 +70,9 @@ export const parentSpanFromEnv: (
     const raw = process.env[envVar]
     if (raw === undefined) return undefined
 
-    const ctx = yield* Schema.decode(Schema.fromJsonString(ParentSpanContextSchema))(raw).pipe(
-      Effect.orDie,
-    )
+    const ctx = yield* Schema.decodeEffect(Schema.fromJsonString(ParentSpanContextSchema))(
+      raw,
+    ).pipe(Effect.orDie)
     return Tracer.makeExternalSpan({
       traceId: ctx.traceId,
       spanId: ctx.spanId,
@@ -140,7 +140,7 @@ export const makeOtelPlaywrightLayer = (
     shutdownTimeout = 2000,
   } = config
 
-  return Layer.unwrapEffect(
+  return Layer.unwrap(
     Effect.gen(function* () {
       const endpoint = process.env[endpointEnvVar]
       yield* Effect.logDebug('[pw.otel] Building OTEL layer', {

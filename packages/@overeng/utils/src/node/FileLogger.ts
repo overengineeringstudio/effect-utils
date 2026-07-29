@@ -46,7 +46,7 @@ export interface MakeFileLoggerOptions {
 
 /** Creates a Layer that replaces the default logger with a pretty-printed file logger */
 export const makeFileLogger = ({ logFilePath, threadName, colors }: MakeFileLoggerOptions) =>
-  Layer.unwrapScoped(
+  Layer.unwrap(
     Effect.gen(function* () {
       yield* Effect.sync(() => fs.mkdirSync(path.dirname(logFilePath), { recursive: true }))
 

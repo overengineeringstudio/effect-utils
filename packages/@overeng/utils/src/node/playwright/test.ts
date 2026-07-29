@@ -10,7 +10,7 @@
 import { NodeServices } from '@effect/platform-node'
 import type { BrowserContext, Page } from '@playwright/test'
 import { test } from '@playwright/test'
-import { ConfigProvider, Effect, Layer, Logger, LogLevel, type Config } from 'effect'
+import { ConfigProvider, Effect, Layer, Logger, type Config } from 'effect'
 import { FetchHttpClient } from 'effect/unstable/http'
 
 import { OtelPlaywrightLive } from './otel.ts'
@@ -23,7 +23,7 @@ const testEnvConfigProvider = ConfigProvider.fromEnv({
 })
 
 /** Layer that installs the Playwright test config provider. */
-export const TestEnvConfigLive = testEnvConfigProvider.pipe(Layer.setConfigProvider)
+export const TestEnvConfigLive = ConfigProvider.layer(testEnvConfigProvider)
 
 /**
  * Load a config schema from process.env in Playwright tests.
@@ -118,7 +118,7 @@ export const makeWithTestCtx =
  * - `OtelPlaywrightLive` (tracing, when OTEL endpoint is configured)
  * - `NodeServices.layer` (filesystem, path, etc.)
  * - `FetchHttpClient.layer`
- * - `Logger.minimumLogLevel(LogLevel.Debug)` (debug logs enabled by default)
+ * - `Logger.minimumLogLevel('Debug')` (debug logs enabled by default)
  *
  * @example
  * ```typescript
@@ -188,11 +188,8 @@ const runWithTestCtx = <ROut, E1, A, E, R>(
   const loggerLayer =
     debugLogs === true
       ? usePrettyLogger === true
-        ? Layer.mergeAll(
-            Logger.minimumLogLevel(LogLevel.Debug),
-            Logger.layer([Logger.consolePretty()]),
-          )
-        : Logger.minimumLogLevel(LogLevel.Debug)
+        ? Layer.mergeAll(Logger.minimumLogLevel('Debug'), Logger.layer([Logger.consolePretty()]))
+        : Logger.minimumLogLevel('Debug')
       : Layer.empty
 
   const combinedLayer = Layer.mergeAll(

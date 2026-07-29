@@ -28,7 +28,7 @@ export interface FinalizerExecutionInfo extends FinalizerInfo {
  * FiberRef to track whether scope debugging is enabled for the current fiber.
  * When enabled, `addTracedFinalizer` will log registration and execution.
  */
-export const ScopeDebugEnabled = Context.Reference<boolean>()('ScopeDebugEnabled', {
+export const ScopeDebugEnabled = Context.Reference('ScopeDebugEnabled', {
   defaultValue: () => false,
 })
 
@@ -44,7 +44,7 @@ export const ScopeDebugEnabled = Context.Reference<boolean>()('ScopeDebugEnabled
  * ```
  */
 export const withScopeDebug = <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
-  Effect.locally(effect, ScopeDebugEnabled, true)
+  Effect.provideService(effect, ScopeDebugEnabled, true)
 
 /**
  * Adds a finalizer with debug tracing.

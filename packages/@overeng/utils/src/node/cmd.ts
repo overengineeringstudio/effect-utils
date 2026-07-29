@@ -46,7 +46,7 @@ const trustOtelContract = <A, E, R>(
   effect.pipe(Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)))
 
 const trustedWith =
-  <S extends Schema.Schema.AnyNoContext>({
+  <S extends Schema.Codec<unknown, unknown, never, never>>({
     operation,
     attributes,
   }: {
@@ -93,7 +93,7 @@ export const cmd: (
         /** Optional number of archived logs to retain; defaults to 50 */
         logRetention?: number
         /** Grace period before escalating from SIGTERM to SIGKILL on cleanup. Defaults to 5 seconds. */
-        killTimeout?: Duration.DurationInput
+        killTimeout?: Duration.Input
       }
     | undefined,
 ) => Effect.Effect<
@@ -443,7 +443,7 @@ type TRunBaseArgs = {
   readonly stdoutMode: 'inherit' | 'pipe'
   readonly stderrMode: 'inherit' | 'pipe'
   readonly useShell: boolean
-  readonly killTimeout: Duration.DurationInput | undefined
+  readonly killTimeout: Duration.Input | undefined
 }
 
 const runWithoutLogging = ({
@@ -505,7 +505,7 @@ const runWithLogging = ({
         Effect.sync(() => {
           const formatted = prettyLogger.log({
             fiberId: undefined,
-            logLevel: channel === 'stdout' ? LogLevel.Info : LogLevel.Warning,
+            logLevel: channel === 'stdout' ? 'Info' : 'Warn',
             message: [`[${channel}]${content.length > 0 ? ` ${content}` : ''}`],
             cause: Cause.empty,
             spans: [],
@@ -594,7 +594,7 @@ const runWithLogging = ({
   )
 
 /** Default grace period before escalating from SIGTERM to SIGKILL */
-const DEFAULT_KILL_TIMEOUT: Duration.DurationInput = '5 seconds'
+const DEFAULT_KILL_TIMEOUT: Duration.Input = '5 seconds'
 
 /**
  * Send a signal to a process group (or individual process as fallback).
@@ -638,7 +638,7 @@ const sendSignalToProcessGroup = (opts: {
  */
 const killProcessGroup = Effect.fn('cmd/killProcessGroup')(function* (opts: {
   proc: Process
-  timeout?: Duration.DurationInput
+  timeout?: Duration.Input
 }) {
   const { proc } = opts
   const timeout = opts.timeout ?? DEFAULT_KILL_TIMEOUT

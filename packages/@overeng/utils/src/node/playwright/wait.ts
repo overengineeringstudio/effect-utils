@@ -37,7 +37,7 @@ const trustOtelContract = <A, E, R>(
   effect.pipe(Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)))
 
 const trustedWith =
-  <S extends Schema.Schema.AnyNoContext>({
+  <S extends Schema.Codec<unknown, unknown, never, never>>({
     operation,
     attributes,
   }: {
@@ -76,9 +76,9 @@ export const until = <TResult, TError, TContext>(args: {
   /** Effect to evaluate; should succeed when ready and fail with a retryable error when not ready. */
   check: Effect.Effect<TResult, TError, TContext>
   /** Delay between retry attempts. */
-  pollInterval: Duration.DurationInput
+  pollInterval: Duration.Input
   /** Maximum time to wait before failing with `PwWaitTimeoutError`. */
-  timeout: Duration.DurationInput
+  timeout: Duration.Input
   /** Predicate that decides whether to retry for a given error value. */
   while: (error: TError) => boolean
 }): Effect.Effect<TResult, TError | PwWaitTimeoutError, TContext> => {

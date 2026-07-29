@@ -4,7 +4,7 @@
  * Node.js processes stay alive while there are active handles (timers, sockets, etc.)
  * or pending requests. This module provides Effect-native APIs to inspect these.
  */
-import { type Duration, Effect, Runtime, Schedule, Schema, Stream } from 'effect'
+import { type Duration, Effect, Schedule, Schema, Stream } from 'effect'
 
 import {
   OtelAttr,
@@ -41,7 +41,7 @@ const trustOtelContract = <A, E, R>(
   effect.pipe(Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)))
 
 const trustedWith =
-  <S extends Schema.Schema.AnyNoContext>({
+  <S extends Schema.Codec<unknown, unknown, never, never>>({
     operation,
     attributes,
   }: {
@@ -152,7 +152,7 @@ export const logActiveHandles = Effect.gen(function* () {
  * ```
  */
 export const monitorActiveHandles = Effect.fn('ActiveHandlesDebugger.monitorActiveHandles')(
-  function* (interval: Duration.DurationInput) {
+  function* (interval: Duration.Input) {
     let lastTotal = -1
 
     const _ = yield* Stream.fromSchedule(Schedule.spaced(interval)).pipe(
@@ -189,11 +189,11 @@ export const monitorActiveHandles = Effect.fn('ActiveHandlesDebugger.monitorActi
 export const withActiveHandlesDumpOnSigint = Effect.fn(
   'ActiveHandlesDebugger.withActiveHandlesDumpOnSigint',
 )(function* <A, E, R>(effect: Effect.Effect<A, E, R>) {
-  const runtime = yield* Effect.runtime<R>()
+  const context = yield* Effect.context<R>()
 
   const handler = () => {
     try {
-      Runtime.runSync(runtime)(logActiveHandles.pipe(Effect.ignore))
+      Effect.runSyncWith(context)(logActiveHandles.pipe(Effect.ignore))
     } finally {
       process.off('SIGINT', handler)
       process.kill(process.pid, 'SIGINT')

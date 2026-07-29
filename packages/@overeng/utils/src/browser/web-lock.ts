@@ -7,7 +7,7 @@
  */
 
 import type { Exit } from 'effect'
-import { Deferred, Effect, Runtime, Schema } from 'effect'
+import { Deferred, Effect, Schema } from 'effect'
 
 /**
  * Error thrown when Web Locks API is not supported.
@@ -49,7 +49,7 @@ export const withLock =
         >
       }
 
-      const runtime = yield* Effect.runtime<Ctx>()
+      const context = yield* Effect.context<Ctx>()
 
       const exit = yield* Effect.tryPromise<Exit.Exit<A, E> | undefined, E | E2>({
         try: async (signal) => {
@@ -64,7 +64,7 @@ export const withLock =
             async (lock: Lock | null) => {
               if (lock === null) {
                 if (onTaken !== undefined) {
-                  const onTakenExit = await Runtime.runPromiseExit(runtime)(onTaken)
+                  const onTakenExit = await Effect.runPromiseExitWith(context)(onTaken)
                   if (onTakenExit._tag === 'Failure') {
                     return onTakenExit as unknown as Exit.Exit<A, E>
                   }
@@ -72,7 +72,7 @@ export const withLock =
                 return undefined
               }
 
-              return await Runtime.runPromiseExit(runtime)(eff)
+              return await Effect.runPromiseExitWith(context)(eff)
             },
           )
 
@@ -104,7 +104,7 @@ export const waitForDeferredLock = (opts: {
       return Effect.fail(WebLockNotSupportedError.notAvailable)
     }
 
-    return Effect.async<void>((cb, signal) => {
+    return Effect.callback<void>((cb, signal) => {
       if (signal.aborted === true) return
 
       navigator.locks
@@ -141,7 +141,7 @@ export const tryGetDeferredLock = (opts: {
       return Effect.fail(WebLockNotSupportedError.notAvailable)
     }
 
-    return Effect.async<boolean>((cb, signal) => {
+    return Effect.callback<boolean>((cb, signal) => {
       navigator.locks.request(
         lockName,
         { mode: 'exclusive', ifAvailable: true },
@@ -171,7 +171,7 @@ export const stealDeferredLock = (opts: {
       return Effect.fail(WebLockNotSupportedError.notAvailable)
     }
 
-    return Effect.async<boolean>((cb, signal) => {
+    return Effect.callback<boolean>((cb, signal) => {
       navigator.locks.request(lockName, { mode: 'exclusive', steal: true }, (lock: Lock | null) => {
         cb(Effect.succeed(lock !== null))
 
@@ -198,7 +198,7 @@ export const waitForLock = (lockName: string): Effect.Effect<void, WebLockNotSup
       return Effect.fail(WebLockNotSupportedError.notAvailable)
     }
 
-    return Effect.async<void>((cb, signal) => {
+    return Effect.callback<void>((cb, signal) => {
       if (signal.aborted === true) return
 
       navigator.locks.request(
@@ -226,7 +226,7 @@ export const getLockAndWaitForSteal = (
       return Effect.fail(WebLockNotSupportedError.notAvailable)
     }
 
-    return Effect.async<void>((cb, signal) => {
+    return Effect.callback<void>((cb, signal) => {
       if (signal.aborted === true) return
 
       navigator.locks
