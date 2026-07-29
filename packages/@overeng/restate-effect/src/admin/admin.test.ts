@@ -6,7 +6,7 @@
  * `AdminFailed` on a decode mismatch), and a non-OK status surfaces a
  * `RestateError`. We stub `globalThis.fetch` to capture the requests.
  */
-import type { ConfigError } from 'effect'
+import type { Config } from 'effect'
 import { Cause, ConfigProvider, Effect, Exit, Layer, Redacted, Schema } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -45,7 +45,7 @@ const installFetch = () => {
 
 const run = <A, E>(
   use: (admin: RestateAdminService) => Effect.Effect<A, E>,
-  layer: Layer.Layer<RestateAdmin, ConfigError.ConfigError> = RestateAdmin.layer({
+  layer: Layer.Layer<RestateAdmin, Config.ConfigError> = RestateAdmin.layer({
     adminUrl: 'http://localhost:9070',
   }),
 ): Promise<A> =>

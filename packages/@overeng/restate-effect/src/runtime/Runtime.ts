@@ -109,11 +109,11 @@ export const determinismLayer = ({
  * filters it), so it falls through to `info` defensively.
  */
 const consoleMethodFor = (level: LogLevel.LogLevel): 'debug' | 'info' | 'warn' | 'error' => {
-  switch (level._tag) {
+  switch (level) {
     case 'Trace':
     case 'Debug':
       return 'debug'
-    case 'Warning':
+    case 'Warn':
       return 'warn'
     case 'Error':
     case 'Fatal':
@@ -123,11 +123,11 @@ const consoleMethodFor = (level: LogLevel.LogLevel): 'debug' | 'info' | 'warn' |
   }
 }
 
-/* Format a log line via Effect's own `logfmtLogger` (a `Logger<unknown, string>`),
+/* Format a log line via Effect's own `formatLogFmt` (a `Logger<unknown, string>`),
  * so the message, fiber id, annotations, spans, and cause all ride along in the
  * one logfmt string the way Effect's default console output does — we only change
  * the SINK (`ctx.console` instead of `globalThis.console`), not the FORMAT. */
-const formatLog = Logger.logfmtLogger.log
+const formatLog = Logger.formatLogFmt.log
 
 /**
  * Build the per-invocation `Logger` that routes every in-handler `Effect.log*`

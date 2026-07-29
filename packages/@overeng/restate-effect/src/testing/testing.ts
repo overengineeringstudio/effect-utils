@@ -1010,7 +1010,7 @@ export const withRestateServer = <AppR>(opts: {
   readonly alwaysReplay?: boolean
   readonly disableRetries?: boolean
 }): HeldRestateServer => {
-  let scope: Scope.CloseableScope | undefined
+  let scope: Scope.Closeable | undefined
   let service: RestateTestHarnessService | undefined
   const built = RestateTestHarness.layer(opts)
 

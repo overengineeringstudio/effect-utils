@@ -20,7 +20,7 @@ import { toTerminal } from './Boundary.ts'
 class NotFound extends Schema.TaggedErrorClass<NotFound>('test/NotFound')('NotFound', {
   id: Schema.String,
 }) {}
-const NotFoundSchema = Restate.terminal({ self: Schema.asSchema(NotFound), errorCode: 404 })
+const NotFoundSchema = Restate.terminal({ self: NotFound, errorCode: 404 })
 
 const LookupInput = Schema.Struct({ id: Schema.String })
 const LookupSuccess = Schema.Struct({ value: Schema.String })
@@ -112,7 +112,7 @@ describe('error transport (contract layer, server-free)', () => {
 
   it('a retryable-annotated error throws RetryableError instead of terminalizing', () => {
     class Throttled extends Schema.TaggedErrorClass<Throttled>('test/Throttled')('Throttled', {}) {}
-    const ThrottledSchema = Restate.retryable({ self: Schema.asSchema(Throttled) })
+    const ThrottledSchema = Restate.retryable({ self: Throttled })
     const out = toTerminal({ cause: Cause.fail(new Throttled()), errorSchema: ThrottledSchema })
     expect(out).toBeInstanceOf(restate.RetryableError)
     expect(out).not.toBeInstanceOf(restate.TerminalError)
@@ -128,7 +128,7 @@ describe('error transport (contract layer, server-free)', () => {
       },
     ) {}
     const RateLimitedSchema = Restate.retryable({
-      self: Schema.asSchema(RateLimited),
+      self: RateLimited,
       retryAfter: (e) => e.retryAfterMillis,
     })
     const out = toTerminal({
@@ -141,7 +141,7 @@ describe('error transport (contract layer, server-free)', () => {
 
   it('retryAfter accepts a static Duration shorthand', () => {
     class Slow extends Schema.TaggedErrorClass<Slow>('test/Slow')('Slow', {}) {}
-    const SlowSchema = Restate.retryable({ self: Schema.asSchema(Slow), retryAfter: '2 seconds' })
+    const SlowSchema = Restate.retryable({ self: Slow, retryAfter: '2 seconds' })
     const out = toTerminal({ cause: Cause.fail(new Slow()), errorSchema: SlowSchema })
     expect((out as restate.RetryableError).retryAfter).toBe(2_000)
   })
@@ -151,7 +151,7 @@ describe('error transport (contract layer, server-free)', () => {
       after: Schema.optional(Schema.Number),
     }) {}
     const MaybeSchema = Restate.retryable({
-      self: Schema.asSchema(Maybe),
+      self: Maybe,
       retryAfter: (e) => e.after,
     })
     const out = toTerminal({ cause: Cause.fail(new Maybe({})), errorSchema: MaybeSchema })
@@ -174,10 +174,10 @@ describe('error transport (contract layer, server-free)', () => {
     class Gone extends Schema.TaggedErrorClass<Gone>('test/Gone')('Gone', { id: Schema.String }) {}
     const UnionSchema = Schema.Union([
       Restate.retryable({
-        self: Schema.asSchema(RateLimited),
+        self: RateLimited,
         retryAfter: (e) => e.retryAfterMillis,
       }),
-      Restate.terminal({ self: Schema.asSchema(Gone), errorCode: 404 }),
+      Restate.terminal({ self: Gone, errorCode: 404 }),
     ])
 
     /* The RETRYABLE member → a RetryableError honoring its projected retryAfter. */

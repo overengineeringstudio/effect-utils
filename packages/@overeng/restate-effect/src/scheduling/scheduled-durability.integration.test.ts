@@ -171,7 +171,7 @@ describe.skipIf(!serverAvailable)(
     let baseDir: string
     let ports: Ports
     let child: ChildProcess
-    let endpointScope: Scope.CloseableScope
+    let endpointScope: Scope.Closeable
     let ingressUrl: string
     let adminUrl: string
     let sdkUrl: string

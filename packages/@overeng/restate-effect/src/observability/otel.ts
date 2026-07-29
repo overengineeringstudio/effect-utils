@@ -48,7 +48,7 @@ import {
   openTelemetryHook,
   type OpenTelemetryHookOptions,
 } from '@restatedev/restate-sdk-opentelemetry'
-import { Config, type ConfigError, Effect, Layer, Option, Schema, type Scope } from 'effect'
+import { Config, Effect, Layer, Option, Schema, type Scope } from 'effect'
 
 import { OtelServiceName, OtelServiceVersion } from '@overeng/otel-contract'
 
@@ -255,7 +255,7 @@ const layerConfig = (opts: {
     readonly endpoint: string | undefined
     readonly serviceName: string
   }) => Omit<OtelLayerConfig, 'resource'>
-}): Layer.Layer<never, ConfigError.ConfigError> =>
+}): Layer.Layer<never, Config.ConfigError> =>
   Layer.unwrap(
     Effect.gen(function* () {
       const values = yield* otelConfig

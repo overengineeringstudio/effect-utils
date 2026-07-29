@@ -52,6 +52,16 @@ SchemaAST.resolveTitle(ast)
 SchemaAST.resolveDescription(ast)
 ```
 
+Repository-owned symbol annotations remain present in the resolved annotation object, but the
+public type exposes only string keys. Read a unique-symbol key through a narrow helper:
+
+```ts
+const resolveAnnotation = <T>(ast: SchemaAST.AST, key: symbol): T | undefined =>
+  (SchemaAST.resolve(ast) as unknown as Record<PropertyKey, unknown> | undefined)?.[key] as
+    | T
+    | undefined
+```
+
 Key/property annotations live at `property.type.context?.annotations` and take precedence over
 value annotations when both exist.
 
@@ -88,6 +98,8 @@ resolved metadata, and any exposed raw AST representation.
 - Checks do not introduce a wrapper node, so a checked number still has `_tag: "Number"`.
 - `SchemaAST.isOptional` detects key optionality, not every union that accepts `undefined`.
 - `SchemaAST.resolveTitle` and `resolveDescription` read value/check annotations, not key context.
+- Indexing the public result of `SchemaAST.resolve` with a unique symbol requires the narrow
+  `Record<PropertyKey, unknown>` cast above; do not widen the rest of the AST consumer.
 - Raw `_tag` values and implicit primitive metadata differ even when field classification is
   preserved.
 

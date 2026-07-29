@@ -3,7 +3,7 @@ import * as http2 from 'node:http2'
 import * as restate from '@restatedev/restate-sdk'
 import { createEndpointHandler } from '@restatedev/restate-sdk/node'
 import type { Config, Schema, Scope } from 'effect'
-import { type ConfigError, Context, Duration, Effect, Exit, Layer, Option, Runtime } from 'effect'
+import { Context, Duration, Effect, Exit, Layer, Option, Runtime } from 'effect'
 
 import { RestateContext, type StateSchemas } from '../authoring/RestateContext.ts'
 import type {
@@ -776,7 +776,7 @@ export class BoundEndpoint extends Context.Service<BoundEndpoint, EndpointServer
  */
 export const make = <const S extends ReadonlyArray<AnyImplementation<any>>>(
   opts: Omit<EndpointOptions<AppROf<S>>, 'services'> & { readonly services: S },
-): Effect.Effect<EndpointServer, RestateError | ConfigError.ConfigError, AppROf<S> | Scope.Scope> =>
+): Effect.Effect<EndpointServer, RestateError | Config.ConfigError, AppROf<S> | Scope.Scope> =>
   Effect.gen(function* () {
     type AppR = AppROf<S>
     /* Resolve a `Config<number>` port (e.g. `Config.integer('PORT')`) on
@@ -844,7 +844,7 @@ export const make = <const S extends ReadonlyArray<AnyImplementation<any>>>(
 /** A scoped `Layer` wrapper around {@link make} that exposes the bound address. */
 export const layerWithBoundEndpoint = <const S extends ReadonlyArray<AnyImplementation<any>>>(
   opts: Omit<EndpointOptions<AppROf<S>>, 'services'> & { readonly services: S },
-): Layer.Layer<BoundEndpoint, RestateError | ConfigError.ConfigError, AppROf<S>> =>
+): Layer.Layer<BoundEndpoint, RestateError | Config.ConfigError, AppROf<S>> =>
   Layer.effect(BoundEndpoint, make(opts))
 
 /**
@@ -854,7 +854,7 @@ export const layerWithBoundEndpoint = <const S extends ReadonlyArray<AnyImplemen
  */
 export const layer = <const S extends ReadonlyArray<AnyImplementation<any>>>(
   opts: Omit<EndpointOptions<AppROf<S>>, 'services'> & { readonly services: S },
-): Layer.Layer<never, RestateError | ConfigError.ConfigError, AppROf<S>> =>
+): Layer.Layer<never, RestateError | Config.ConfigError, AppROf<S>> =>
   Layer.effectDiscard(make(opts))
 
 /**
@@ -871,6 +871,6 @@ export const layer = <const S extends ReadonlyArray<AnyImplementation<any>>>(
  */
 export const serve = <const S extends ReadonlyArray<AnyImplementation<any>>>(
   opts: Omit<EndpointOptions<AppROf<S>>, 'services'> & { readonly services: S },
-): Effect.Effect<never, RestateError | ConfigError.ConfigError, AppROf<S>> =>
+): Effect.Effect<never, RestateError | Config.ConfigError, AppROf<S>> =>
   Layer.launch(layer(opts))
 /* eslint-enable @typescript-eslint/no-explicit-any */

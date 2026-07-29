@@ -108,7 +108,10 @@ export const findSensitiveFields = (ast: SchemaAST.AST): ReadonlyArray<string> =
   const fields: string[] = []
   for (const prop of ast.propertySignatures) {
     if (typeof prop.name !== 'string') continue
-    if ((SchemaAST.resolve(prop.type)?.[SensitiveId] as true | undefined) === true) {
+    const annotations = SchemaAST.resolve(prop.type) as unknown as
+      | Record<PropertyKey, unknown>
+      | undefined
+    if (annotations?.[SensitiveId] === true) {
       fields.push(prop.name)
     }
   }

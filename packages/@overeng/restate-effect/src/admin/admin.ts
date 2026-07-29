@@ -38,7 +38,7 @@
  * ```
  */
 import type { Redacted } from 'effect'
-import { Config, type ConfigError, Context, Effect, Layer, Option, Schema } from 'effect'
+import { Config, Context, Effect, Layer, Option, Schema } from 'effect'
 
 import { RestateError } from '../schema/RestateError.ts'
 import {
@@ -281,7 +281,7 @@ export class RestateAdmin extends Context.Service<RestateAdmin, RestateAdminServ
    * `Config`-then-literal wrapper over {@link RestateAdmin.layer}. Fails the layer
    * with a `ConfigError` if `RESTATE_ADMIN_URL` is unset.
    */
-  static layerConfig = (): Layer.Layer<RestateAdmin, ConfigError.ConfigError> =>
+  static layerConfig = (): Layer.Layer<RestateAdmin, Config.ConfigError> =>
     Layer.effect(
       RestateAdmin,
       Effect.gen(function* () {

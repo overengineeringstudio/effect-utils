@@ -1,5 +1,5 @@
 import * as clients from '@restatedev/restate-sdk-clients'
-import { Config, type ConfigError, Context, Effect, Layer, Option, Redacted, Schema } from 'effect'
+import { Config, Context, Effect, Layer, Option, Redacted, Schema } from 'effect'
 
 import {
   type AwakeableId,
@@ -101,7 +101,7 @@ export class RestateIngress extends Context.Service<RestateIngress, RestateIngre
    * secret handling. Fails the layer with a `ConfigError` if `RESTATE_INGRESS_URL`
    * is unset.
    */
-  static layerConfig = (): Layer.Layer<RestateIngress, ConfigError.ConfigError> =>
+  static layerConfig = (): Layer.Layer<RestateIngress, Config.ConfigError> =>
     Layer.effect(
       RestateIngress,
       Effect.gen(function* () {
