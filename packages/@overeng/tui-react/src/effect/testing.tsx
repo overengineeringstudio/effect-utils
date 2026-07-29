@@ -20,7 +20,7 @@
  */
 
 import type { Scope } from 'effect'
-import { Effect, type Exit, Layer, PubSub, Runtime, Schema, Stream } from 'effect'
+import { Console, Effect, Exit, Layer, PubSub, Schema, Stream } from 'effect'
 import { Atom, AtomRegistry } from 'effect/unstable/reactivity'
 
 import {
@@ -53,7 +53,7 @@ export interface RunTestCommandOptions<S, Args> {
   /** Output mode preset to use */
   mode: TestModePreset
   /** Schema for parsing and validating JSON output */
-  schema: Schema.Schema<S>
+  schema: Schema.ConstraintCodec<S>
 }
 
 /**
@@ -108,7 +108,10 @@ export const modeFromTag = (preset: TestModePreset): OutputMode => {
  * Create a layer for a specific output mode.
  */
 export const testModeLayer = (preset: TestModePreset): Layer.Layer<OutputModeTag> =>
-  Layer.succeed(OutputModeTag, modeFromTag(preset))
+  Layer.mergeAll(
+    Layer.succeed(OutputModeTag, modeFromTag(preset)),
+    Layer.succeed(Console.Console, globalThis.console),
+  )
 
 /**
  * Run a command function with test utilities.
@@ -155,8 +158,8 @@ export const runTestCommand = async <S, Args, E>({
   const jsonSchema = Schema.fromJsonString(options.schema)
   const parsedStates = jsonOutput
     .map((line) => {
-      const result = Schema.decodeUnknownEither(jsonSchema)(line)
-      return result._tag === 'Right' ? result.right : null
+      const result = Schema.decodeUnknownExit(jsonSchema)(line)
+      return Exit.isSuccess(result) === true ? result.value : null
     })
     .filter((s): s is S => s !== null)
 
@@ -217,7 +220,7 @@ export const createTestTuiState = <S, A>(
     const registry = AtomRegistry.make()
 
     const actionPubSub = yield* PubSub.unbounded<A>()
-    const runtime = yield* Effect.runtime<never>()
+    const context = yield* Effect.context<never>()
 
     // Create sync dispatch function that captures states and actions directly
     const dispatch = (action: A): void => {
@@ -229,7 +232,7 @@ export const createTestTuiState = <S, A>(
       // Capture the action
       actions.push(action)
       // Also publish to PubSub for the actions stream
-      void Runtime.runFork(runtime)(PubSub.publish(actionPubSub, action))
+      void Effect.runForkWith(context)(PubSub.publish(actionPubSub, action))
     }
 
     const api: TuiAppApi<S, A> = {
@@ -312,7 +315,7 @@ export const assertJsonMatchesSchema = <S, I>({
   schema,
 }: {
   jsonString: string
-  schema: Schema.Schema<S, I>
+  schema: Schema.ConstraintCodec<S, I>
 }): S => {
   return Schema.decodeSync(Schema.fromJsonString(schema))(jsonString)
 }

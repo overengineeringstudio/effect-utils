@@ -307,8 +307,8 @@ const hasInterruptedVariant = <A,>(schema: Schema.ConstraintCodec<A>): boolean =
 
   // Check each variant in the union
   return ast.types.some((type) => {
-    // We're looking for a TypeLiteral with a _tag property set to 'Interrupted'
-    if (type._tag !== 'TypeLiteral') {
+    // We're looking for an Objects node with a _tag property set to 'Interrupted'
+    if (type._tag !== 'Objects') {
       return false
     }
 
@@ -389,15 +389,13 @@ export const createTuiApp = <S, A>(config: TuiAppConfig<S, A>): TuiApp<S, A> => 
     get.set(stateAtom, newState)
   })
 
-  // Create a registry for this app
-  const registry = AtomRegistry.make()
-
   // Check once if schema has Interrupted variant
   const interruptedAction = createInterruptedAction(config.actionSchema)
   const run_ = (
     view?: ReactElement,
   ): Effect.Effect<TuiAppApi<S, A>, never, Scope.Scope | OutputModeTag> =>
     Effect.gen(function* () {
+      const registry = AtomRegistry.make()
       const mode = yield* OutputModeTag
       const { stateSchema } = config
 
@@ -879,57 +877,18 @@ export interface RunResultOptions<O> {
 
 /** Check if schema resolves to a plain string type */
 const isStringSchema = (schema: Schema.ConstraintCodec<unknown>): boolean =>
-  schema.ast._tag === 'StringKeyword'
+  schema.ast._tag === 'String'
 
 /**
  * Build an Effect `Console` service bound to a single Node `WriteStream`.
  *
  * Used by `runResult` to route handler-emitted `Effect.Console.log`/`.info`/
  * `.warn`/… to stderr so they don't contaminate the stdout result channel.
- * Wraps Node's built-in `console.Console` (which already understands the full
- * Console surface) and promotes each method into an `Effect`.
+ * Wraps Node's built-in `console.Console`, which implements the full Effect 4
+ * Console service surface.
  */
-const consoleOnStream = (stream: NodeJS.WriteStream): Console.Console => {
-  const raw = new NodeConsole({ stdout: stream, stderr: stream })
-  // Brand the object with the Console `TypeId` so `Console.setConsole`
-  // accepts it. The symbol is keyed as `effect/Console` via `Symbol.for`.
-  const TypeId = Symbol.for('effect/Console')
-  const service = {
-    [TypeId]: TypeId,
-    assert: (condition: boolean, ...args: ReadonlyArray<any>) =>
-      Effect.sync(() => raw.assert(condition, ...args)),
-    clear: Effect.sync(() => raw.clear()),
-    count: (label?: string) => Effect.sync(() => raw.count(label)),
-    countReset: (label?: string) => Effect.sync(() => raw.countReset(label)),
-    debug: (...args: ReadonlyArray<any>) => Effect.sync(() => raw.debug(...args)),
-    // oxlint-disable-next-line overeng/named-args -- matches effect Console.Console interface
-    dir: (item: any, options?: any) => Effect.sync(() => raw.dir(item, options)),
-    dirxml: (...args: ReadonlyArray<any>) => Effect.sync(() => raw.dirxml(...args)),
-    error: (...args: ReadonlyArray<any>) => Effect.sync(() => raw.error(...args)),
-    group: (options?: { label?: string; collapsed?: boolean }) =>
-      Effect.sync(() =>
-        options?.collapsed === true
-          ? raw.groupCollapsed(options?.label)
-          : raw.group(options?.label),
-      ),
-    groupEnd: Effect.sync(() => raw.groupEnd()),
-    info: (...args: ReadonlyArray<any>) => Effect.sync(() => raw.info(...args)),
-    log: (...args: ReadonlyArray<any>) => Effect.sync(() => raw.log(...args)),
-    // oxlint-disable-next-line overeng/named-args -- matches effect Console.Console interface
-    table: (tabularData: any, properties?: ReadonlyArray<string>) =>
-      Effect.sync(() =>
-        raw.table(tabularData, properties === undefined ? undefined : [...properties]),
-      ),
-    time: (label?: string) => Effect.sync(() => raw.time(label)),
-    timeEnd: (label?: string) => Effect.sync(() => raw.timeEnd(label)),
-    timeLog: (label?: string, ...args: ReadonlyArray<any>) =>
-      Effect.sync(() => raw.timeLog(label, ...args)),
-    trace: (...args: ReadonlyArray<any>) => Effect.sync(() => raw.trace(...args)),
-    warn: (...args: ReadonlyArray<any>) => Effect.sync(() => raw.warn(...args)),
-    unsafe: raw,
-  }
-  return service as unknown as Console.Console
-}
+const consoleOnStream = (stream: NodeJS.WriteStream): Console.Console =>
+  new NodeConsole({ stdout: stream, stderr: stream }) as unknown as Console.Console
 
 /** Write a value to stdout using the appropriate format for its schema type.
  *  Strings are written raw (no JSON encoding). Structured types are JSON-encoded.
@@ -997,7 +956,7 @@ const runResultImpl = <S, A, O, E, R>(
     const stderrSideChannelLayer = Layer.mergeAll(
       Layer.succeed(ViewOutputStreamTag, process.stderr),
       Logger.layer([Logger.consolePretty().pipe(Logger.withConsoleError)]),
-      Console.setConsole(consoleOnStream(process.stderr)),
+      Layer.succeed(Console.Console, consoleOnStream(process.stderr)),
     )
 
     const innerEffect =

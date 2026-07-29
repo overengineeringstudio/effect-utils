@@ -59,7 +59,7 @@ export const useOState = <S,>(ref: SubscriptionRef.SubscriptionRef<S>): S => {
   useEffect(() => {
     // Subscribe to changes
     const fiber = Effect.runFork(
-      ref.changes.pipe(Stream.runForEach((s) => Effect.sync(() => setState(s)))),
+      SubscriptionRef.changes(ref).pipe(Stream.runForEach((s) => Effect.sync(() => setState(s)))),
     )
 
     return () => {
