@@ -1,7 +1,7 @@
 import path from 'node:path'
 
+import { Effect, Fiber, FileSystem, Option, pipe, PubSub, Queue, Result, Stream } from 'effect'
 import * as Cli from 'effect/unstable/cli'
-import { Effect, Either, Fiber, FileSystem, Option, pipe, PubSub, Queue, Stream } from 'effect'
 import React from 'react'
 
 import { run } from '@overeng/tui-react'
@@ -233,13 +233,15 @@ export const genieCommand = Cli.Command.make(
                           oxfmtConfigPath,
                         }).pipe(Effect.either)
 
-                        if (Either.isRight(result)) {
+                        if (Result.isSuccess(result)) {
                           const message =
-                            result.right._tag === 'updated' ? result.right.diffSummary : undefined
+                            result.success._tag === 'updated'
+                              ? result.success.diffSummary
+                              : undefined
                           tui.dispatch({
                             _tag: 'FileCompleted',
                             path: genieFilePath,
-                            status: mapResultToStatus(result.right),
+                            status: mapResultToStatus(result.success),
                             message,
                           })
                         } else {
@@ -247,7 +249,7 @@ export const genieCommand = Cli.Command.make(
                             _tag: 'FileCompleted',
                             path: genieFilePath,
                             status: 'error',
-                            message: result.left.message,
+                            message: result.failure.message,
                           })
                         }
 
@@ -262,15 +264,15 @@ export const genieCommand = Cli.Command.make(
                           }
                         }
 
-                        const watchSummary: GenieSummary = Either.isRight(result)
+                        const watchSummary: GenieSummary = Result.isSuccess(result)
                           ? {
-                              created: result.right._tag === 'created' ? 1 : 0,
-                              updated: result.right._tag === 'updated' ? 1 : 0,
+                              created: result.success._tag === 'created' ? 1 : 0,
+                              updated: result.success._tag === 'updated' ? 1 : 0,
                               unchanged:
                                 newGenieFiles.length -
                                 1 +
-                                (result.right._tag === 'unchanged' ? 1 : 0),
-                              skipped: result.right._tag === 'skipped' ? 1 : 0,
+                                (result.success._tag === 'unchanged' ? 1 : 0),
+                              skipped: result.success._tag === 'skipped' ? 1 : 0,
                               failed: 0,
                             }
                           : {

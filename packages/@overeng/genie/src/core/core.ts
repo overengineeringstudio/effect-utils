@@ -2,9 +2,9 @@ import os from 'node:os'
 import path from 'node:path'
 
 import { type Error as PlatformError, FileSystem } from 'effect'
-import type * as CommandExecutor from 'effect/unstable/process/CommandExecutor'
+import { Effect, Result, Option, Ref } from 'effect'
 import type { Path } from 'effect/Path'
-import { Effect, Either, Option, Ref } from 'effect'
+import type * as CommandExecutor from 'effect/unstable/process/CommandExecutor'
 
 import { assertNever } from '@overeng/utils'
 
@@ -175,8 +175,8 @@ const runValidationOrFail = Effect.fn('genie/runValidationOrFail')(function* ({
     ...(genieFiles !== undefined ? { genieFiles } : {}),
     ...(preloadedFiles !== undefined ? { preloadedFiles } : {}),
   }).pipe(Effect.either)
-  if (Either.isLeft(validationResult) === true) {
-    const error = validationResult.left
+  if (Result.isFailure(validationResult) === true) {
+    const error = validationResult.failure
     const message = error instanceof Error ? error.message : String(error)
     yield* emit({ _tag: 'Error', message })
     return yield* new GenieGenerationFailedError({
@@ -186,7 +186,7 @@ const runValidationOrFail = Effect.fn('genie/runValidationOrFail')(function* ({
     })
   }
 
-  const warnings = validationResult.right
+  const warnings = validationResult.success
   if (warnings.length > 0) {
     const formatted = formatValidationIssues(warnings)
     yield* emit({ _tag: 'ValidationWarnings', message: formatted })
@@ -237,14 +237,14 @@ export const generateAll = ({
             oxfmtConfigPath,
           }).pipe(Effect.either)
 
-          if (Either.isRight(result) === true) {
-            const status = mapResultToStatus(result.right)
+          if (Result.isSuccess(result) === true) {
+            const status = mapResultToStatus(result.success)
             yield* emit({
               _tag: 'FileCompleted',
               path: genieFilePath,
               status,
-              ...(result.right._tag === 'updated' && result.right.diffSummary !== undefined
-                ? { message: result.right.diffSummary }
+              ...(result.success._tag === 'updated' && result.success.diffSummary !== undefined
+                ? { message: result.success.diffSummary }
                 : {}),
             })
           } else {
@@ -252,7 +252,7 @@ export const generateAll = ({
               _tag: 'FileCompleted',
               path: genieFilePath,
               status: 'error',
-              message: result.left.message,
+              message: result.failure.message,
             })
           }
 
@@ -262,8 +262,8 @@ export const generateAll = ({
       { concurrency: 'unbounded' },
     )
 
-    const successes = results.filter(Either.isRight).map((r) => r.right)
-    const failures = results.filter(Either.isLeft).map((r) => r.left)
+    const successes = results.filter(Result.isSuccess).map((r) => r.success)
+    const failures = results.filter(Result.isFailure).map((r) => r.failure)
 
     // Surface CatalogConflictError from initial failures before TDZ re-validation
     const catalogConflict = failures
@@ -283,11 +283,11 @@ export const generateAll = ({
       for (const genieFilePath of genieFiles) {
         const result = yield* checkFile({ genieFilePath, cwd, oxfmtConfigPath }).pipe(Effect.either)
 
-        if (Either.isLeft(result) === true) {
+        if (Result.isFailure(result) === true) {
           revalidateErrors.push({
             genieFilePath,
-            error: result.left,
-            isRootCause: errorOriginatesInFile({ error: result.left, filePath: genieFilePath }),
+            error: result.failure,
+            isRootCause: errorOriginatesInFile({ error: result.failure, filePath: genieFilePath }),
           })
         }
       }
@@ -341,18 +341,18 @@ export const generateAll = ({
         message: `${summary.failed} file(s) failed to generate`,
         files: genieFiles.map((p, i) => {
           const resultEither = results[i]!
-          if (Either.isRight(resultEither) === true) {
+          if (Result.isSuccess(resultEither) === true) {
             return {
               path: p,
               relativePath: path.relative(cwd, p.replace('.genie.ts', '')),
-              status: mapResultToStatus(resultEither.right),
+              status: mapResultToStatus(resultEither.success),
             }
           }
           return {
             path: p,
             relativePath: path.relative(cwd, p.replace('.genie.ts', '')),
             status: 'error' as GenieFileStatus,
-            message: resultEither.left.message,
+            message: resultEither.failure.message,
           }
         }),
       })
@@ -477,13 +477,13 @@ export const checkAll = ({
             Effect.either,
           )
 
-          if (Either.isRight(result) === true) {
+          if (Result.isSuccess(result) === true) {
             yield* completeFile({
               path: genieFilePath,
               result: {
                 _tag: 'success',
                 path: genieFilePath,
-                loadedGenieFile: result.right.loadedGenieFile,
+                loadedGenieFile: result.success.loadedGenieFile,
               },
             })
             return
@@ -492,24 +492,24 @@ export const checkAll = ({
           const errorResult: FileCheckResult = {
             _tag: 'error',
             path: genieFilePath,
-            message: result.left.message,
+            message: result.failure.message,
           }
           yield* completeFile({ path: genieFilePath, result: errorResult })
 
-          if (result.left._tag === 'GenieCheckError') {
+          if (result.failure._tag === 'GenieCheckError') {
             return
           }
 
           return yield* Effect.fail<FatalCheckFailure>({
             _tag: 'FatalCheckFailure',
             path: genieFilePath,
-            message: result.left.message,
+            message: result.failure.message,
           })
         }),
       { concurrency: checkConcurrency },
     ).pipe(Effect.either)
 
-    if (Either.isLeft(checkResult) === true) {
+    if (Result.isFailure(checkResult) === true) {
       const completedPaths = yield* Ref.get(completedPathsRef)
       const interruptedPaths = genieFiles.filter((p) => !completedPaths.has(p))
 
@@ -541,8 +541,8 @@ export const checkAll = ({
         failedCount: failed,
         message:
           interruptedPaths.length > 0
-            ? `Fatal check error in ${path.relative(cwd, checkResult.left.path)}; interrupted ${interruptedPaths.length} sibling file(s)`
-            : `Fatal check error in ${path.relative(cwd, checkResult.left.path)}`,
+            ? `Fatal check error in ${path.relative(cwd, checkResult.failure.path)}; interrupted ${interruptedPaths.length} sibling file(s)`
+            : `Fatal check error in ${path.relative(cwd, checkResult.failure.path)}`,
         files: genieFiles.map((p) => {
           const r = allResults.get(p)
           return {

@@ -6,13 +6,10 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 import type { Path } from 'effect'
-import {
-  Command,
-  type CommandExecutor,
-  type Error as PlatformError,
-  FileSystem,
-} from 'effect'
-import { Duration, Effect, Either, Option, Schema } from 'effect'
+import { FileSystem, type PlatformError } from 'effect'
+import { Duration, Effect, Option, Result, Schema } from 'effect'
+import { ChildProcess as Command } from 'effect/unstable/process'
+import type * as CommandExecutor from 'effect/unstable/process/CommandExecutor'
 
 import { DistributedSemaphore } from '@overeng/utils/lock'
 import { FileSystemBacking } from '@overeng/utils/node'
@@ -457,7 +454,7 @@ const formatWithOxfmt = Effect.fn('formatWithOxfmt')(function* ({
   }
 
   const optionsResult = yield* loadOxfmtConfig({ configPath }).pipe(Effect.either)
-  if (Either.isLeft(optionsResult) === true) {
+  if (Result.isFailure(optionsResult) === true) {
     return content
   }
 
