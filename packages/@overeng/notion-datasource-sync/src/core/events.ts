@@ -377,7 +377,7 @@ export const GuardBlocked = Schema.TaggedStruct('GuardBlocked', {
 export type GuardBlocked = typeof GuardBlocked.Type
 
 /** Discriminated union of all events persisted to the sync event log; the `_tag` field is the event type discriminator. */
-export const SyncEvent = Schema.Union(
+export const SyncEvent = Schema.Union([
   SyncBindingRecorded,
   ApiContractObserved,
   DataSourceObserved,
@@ -400,5 +400,5 @@ export const SyncEvent = Schema.Union(
   RowForgotten,
   DecodeDriftBlocked,
   GuardBlocked,
-).annotate({ identifier: 'NotionDatasourceSync.SyncEvent' })
+]).annotate({ identifier: 'NotionDatasourceSync.SyncEvent' })
 export type SyncEvent = typeof SyncEvent.Type

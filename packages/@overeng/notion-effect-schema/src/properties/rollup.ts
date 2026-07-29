@@ -10,7 +10,7 @@ import { DateValue } from './date.ts'
 /**
  * Rollup result value.
  */
-export const RollupValue = Schema.Union(
+export const RollupValue = Schema.Union([
   Schema.Struct({
     type: Schema.Literal('string'),
     string: Schema.NullOr(Schema.String),
@@ -35,7 +35,7 @@ export const RollupValue = Schema.Union(
     type: Schema.Literal('unsupported'),
     unsupported: Schema.NullOr(Schema.Unknown),
   }),
-).annotate({
+]).annotate({
   identifier: 'Notion.RollupValue',
   title: 'Rollup Value',
   description: 'The computed result of a rollup.',

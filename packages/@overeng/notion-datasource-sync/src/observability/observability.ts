@@ -71,7 +71,7 @@ type SpanAttributesWithLabel = SpanAttributesInput & {
 /** Identifies the kind of process emitting a span, recorded on `spanAttr.processRole`. */
 export type ProcessRole = 'cli' | 'daemon' | 'fake-gateway' | 'library'
 
-const SpanAttributeValueSchema = Schema.Union(Schema.String, Schema.Number, Schema.Boolean)
+const SpanAttributeValueSchema = Schema.Union([Schema.String, Schema.Number, Schema.Boolean])
 
 const optionalAttr = (key: SpanAttributeKey) =>
   Schema.optional(SpanAttributeValueSchema.pipe(OtelAttr.key({ key })))

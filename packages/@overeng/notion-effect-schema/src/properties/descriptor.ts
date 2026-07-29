@@ -61,11 +61,11 @@ export type SchemaHash = typeof SchemaHash.Type
  * Shared foundation with no Phase 1 consumer: the Phase 3 PropertyWriteCore /
  * proof providers tag stable-identity evidence with this source.
  */
-export const PropertyIdentityEvidenceSource = Schema.Union(
+export const PropertyIdentityEvidenceSource = Schema.Union([
   Schema.TaggedStruct('descriptor', {}),
   Schema.TaggedStruct('workspace_state', {}),
   Schema.TaggedStruct('live_schema', {}),
-).annotate({ identifier: 'Notion.PropertyIdentityEvidenceSource' })
+]).annotate({ identifier: 'Notion.PropertyIdentityEvidenceSource' })
 export type PropertyIdentityEvidenceSource = typeof PropertyIdentityEvidenceSource.Type
 
 /**

@@ -83,7 +83,7 @@ export const CanonicalFileValue = Schema.TaggedStruct('CanonicalFileValue', {
 export type CanonicalFileValue = typeof CanonicalFileValue.Type
 
 /** Normalized representation of any Notion property value; the `_tag` discriminates the variant. Computed properties carry only their hash. */
-export const CanonicalPropertyValue = Schema.Union(
+export const CanonicalPropertyValue = Schema.Union([
   Schema.TaggedStruct('empty', {}),
   Schema.TaggedStruct('title', {
     plainText: Schema.String,
@@ -131,7 +131,7 @@ export const CanonicalPropertyValue = Schema.Union(
   Schema.TaggedStruct('computed', {
     valueHash: CanonicalHash,
   }),
-).annotate({ identifier: 'Notion.Canonical.PropertyValue' })
+]).annotate({ identifier: 'Notion.Canonical.PropertyValue' })
 export type CanonicalPropertyValue = typeof CanonicalPropertyValue.Type
 
 /** Every Notion property *type* tag the API can return. */

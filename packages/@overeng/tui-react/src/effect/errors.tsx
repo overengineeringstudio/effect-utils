@@ -56,7 +56,7 @@ export type CancelledError = Schema.Schema.Type<typeof CancelledError>
 /**
  * Union of all command error types.
  */
-export const CommandError = Schema.Union(ValidationError, RuntimeError, CancelledError)
+export const CommandError = Schema.Union([ValidationError, RuntimeError, CancelledError])
 /** Inferred union type of all command error variants. */
 export type CommandError = Schema.Schema.Type<typeof CommandError>
 

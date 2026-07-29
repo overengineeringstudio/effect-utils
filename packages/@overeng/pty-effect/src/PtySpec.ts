@@ -49,7 +49,7 @@ export const PtyServerSpec = Schema.Struct({
 export type PtyServerSpec = typeof PtyServerSpec.Type
 
 /** Tagged union of all spec variants. */
-export const PtySpec = Schema.Union(PtySpawnSpec, PtyServerSpec)
+export const PtySpec = Schema.Union([PtySpawnSpec, PtyServerSpec])
 export type PtySpec = typeof PtySpec.Type
 
 /** Convenience constructors. */

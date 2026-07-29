@@ -204,7 +204,7 @@ export const createLogCapture = (options?: {
       },
     )
 
-    const loggerLayer = Logger.replace(Logger.defaultLogger, capturingLogger)
+    const loggerLayer = Logger.layer([capturingLogger])
 
     // Override console methods
     const originalLog = console.log

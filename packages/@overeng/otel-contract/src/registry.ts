@@ -264,7 +264,7 @@ type WeaverAttrMetaInput = {
 
 /** deep annotation read (mirrors otel-contract's own walk through Refinement/Transformation/Union). */
 const getDeep = <T>({ id, ast }: { id: symbol; ast: AST.AST }): T | undefined => {
-  const here = Option.getOrUndefined(AST.getAnnotation<T>(ast, id))
+  const here = AST.resolveAt<T>(id)(ast)
   if (here !== undefined) return here
   switch (ast._tag) {
     case 'Refinement':

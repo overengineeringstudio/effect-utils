@@ -84,7 +84,7 @@ const ClaudeGenericContentBlock = Schema.Struct({
 })
 
 /** Content block types in Claude assistant message responses. */
-export const ClaudeAssistantContentBlock = Schema.Union(
+export const ClaudeAssistantContentBlock = Schema.Union([
   ClaudeTextBlock,
   ClaudeThinkingBlock,
   ClaudeToolUseBlock,
@@ -92,11 +92,11 @@ export const ClaudeAssistantContentBlock = Schema.Union(
   ClaudeServerToolUseBlock,
   ClaudeServerToolResultBlock,
   ClaudeGenericContentBlock,
-).annotate({ identifier: 'AgentSessionIngest.ClaudeAssistantContentBlock' })
+]).annotate({ identifier: 'AgentSessionIngest.ClaudeAssistantContentBlock' })
 export type ClaudeAssistantContentBlock = typeof ClaudeAssistantContentBlock.Type
 
 /** Content block types in Claude user messages (tool results and text). */
-export const ClaudeUserContentBlock = Schema.Union(
+export const ClaudeUserContentBlock = Schema.Union([
   Schema.Struct({
     type: Schema.Literal('tool_result'),
     tool_use_id: Schema.String,
@@ -108,7 +108,7 @@ export const ClaudeUserContentBlock = Schema.Union(
     text: Schema.String,
   }),
   ClaudeGenericContentBlock,
-).annotate({ identifier: 'AgentSessionIngest.ClaudeUserContentBlock' })
+]).annotate({ identifier: 'AgentSessionIngest.ClaudeUserContentBlock' })
 
 const MessageEnvelope = Schema.Struct({
   role: Schema.String,
@@ -188,14 +188,14 @@ const GenericClaudeRecord = Schema.Struct({
  * - Native transcript store: `~/.claude/projects/(nested path).jsonl`
  * - Common shared-store target: `~/.claude-shared/projects/(nested path).jsonl`
  */
-export const ClaudeSessionRecord = Schema.Union(
+export const ClaudeSessionRecord = Schema.Union([
   QueueOperationRecord,
   ProgressRecord,
   UserRecord,
   AssistantRecord,
   SystemRecord,
   GenericClaudeRecord,
-).annotate({ identifier: 'AgentSessionIngest.ClaudeSessionRecord' })
+]).annotate({ identifier: 'AgentSessionIngest.ClaudeSessionRecord' })
 export type ClaudeSessionRecord = typeof ClaudeSessionRecord.Type
 
 const listClaudeJsonlFiles = Effect.fn('AgentSessionIngest.Claude.listClaudeJsonlFiles')(

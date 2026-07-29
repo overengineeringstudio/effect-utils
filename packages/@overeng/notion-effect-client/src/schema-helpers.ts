@@ -193,7 +193,7 @@ export const getRequiredPropertiesFromSchema = Effect.fn(
       continue
     }
 
-    const annotation = SchemaAST.getAnnotation<NotionPropertyMeta>(prop.type, notionPropertyMeta)
+    const annotation = SchemaAST.resolveAt<NotionPropertyMeta>(notionPropertyMeta)(prop.type)
     if (Option.isSome(annotation) === true) {
       required.push({ name: prop.name, tag: annotation.value._tag })
     } else {

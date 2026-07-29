@@ -13,7 +13,7 @@ import { createTuiApp } from '../../src/effect/TuiApp.tsx'
 // Test State and Action Schemas
 // =============================================================================
 
-const TestState = Schema.Union(
+const TestState = Schema.Union([
   Schema.TaggedStruct('Idle', {}),
   Schema.TaggedStruct('Running', {
     count: Schema.Number,
@@ -21,15 +21,15 @@ const TestState = Schema.Union(
   Schema.TaggedStruct('Complete', {
     total: Schema.Number,
   }),
-)
+])
 
 type TestState = Schema.Schema.Type<typeof TestState>
 
-const TestAction = Schema.Union(
+const TestAction = Schema.Union([
   Schema.TaggedStruct('Start', {}),
   Schema.TaggedStruct('Increment', {}),
   Schema.TaggedStruct('Finish', { total: Schema.Number }),
-)
+])
 
 type TestAction = Schema.Schema.Type<typeof TestAction>
 

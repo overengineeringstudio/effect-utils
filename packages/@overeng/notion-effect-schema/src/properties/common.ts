@@ -38,10 +38,10 @@ export type SelectOption = typeof SelectOption.Type
  *
  * @see https://developers.notion.com/reference/page#page-property-value
  */
-export const SelectOptionWrite = Schema.Union(
+export const SelectOptionWrite = Schema.Union([
   Schema.Struct({ id: NotionUUID }),
   Schema.Struct({ name: Schema.String }),
-).annotate({
+]).annotate({
   identifier: 'Notion.SelectOptionWrite',
   title: 'Select Option (Write)',
   description: 'A select option reference for write requests.',

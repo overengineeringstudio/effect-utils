@@ -123,7 +123,7 @@ export type GenieState = Schema.Schema.Type<typeof GenieState>
 // =============================================================================
 
 /** Schema for genie state actions */
-export const GenieAction = Schema.Union(
+export const GenieAction = Schema.Union([
   /** Replace entire state */
   Schema.TaggedStruct('SetState', { state: GenieState }),
 
@@ -160,7 +160,7 @@ export const GenieAction = Schema.Union(
 
   /** Watch mode - reset for new cycle */
   Schema.TaggedStruct('WatchReset', {}),
-)
+])
 /** Genie state action type */
 export type GenieAction = Schema.Schema.Type<typeof GenieAction>
 

@@ -169,13 +169,13 @@ const decodeWidget = (
  * ════════════════════════════════════════════════════════════════════════ */
 
 const FetchInput = Schema.Struct({ baseUrl: Schema.String, widgetId: Schema.String })
-const FetchErrorUnion = Schema.Union(
+const FetchErrorUnion = Schema.Union([
   BadRequestTerminal,
   ForbiddenTerminal,
   NotFoundTerminal,
   MalformedUpstreamTerminal,
   UpstreamUnavailableRetryable,
-)
+])
 
 export const WidgetApi = RestateService.contract({
   name: 'widget-api',

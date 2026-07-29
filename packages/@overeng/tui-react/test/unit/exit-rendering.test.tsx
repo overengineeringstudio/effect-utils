@@ -30,10 +30,10 @@ const TestState = Schema.Struct({
 type TestState = Schema.Schema.Type<typeof TestState>
 
 // Action schema WITH Interrupted variant
-const TestActionWithInterrupt = Schema.Union(
+const TestActionWithInterrupt = Schema.Union([
   Schema.TaggedStruct('SetValue', { value: Schema.String }),
   Schema.TaggedStruct('Interrupted', {}),
-)
+])
 
 type TestActionWithInterrupt = Schema.Schema.Type<typeof TestActionWithInterrupt>
 

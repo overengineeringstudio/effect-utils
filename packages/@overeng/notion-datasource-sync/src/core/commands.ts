@@ -63,7 +63,7 @@ export const CanonicalPropertyValue = SchemaCanonicalPropertyValue
 export type CanonicalPropertyValue = typeof CanonicalPropertyValue.Type
 
 /** Stable data-source icon identity; transient Notion-hosted signed URLs are intentionally excluded from the canonical surface. */
-export const CanonicalDataSourceIcon = Schema.Union(
+export const CanonicalDataSourceIcon = Schema.Union([
   Schema.TaggedStruct('none', {}),
   Schema.TaggedStruct('emoji', { emoji: Schema.String }),
   Schema.TaggedStruct('custom_emoji', { id: Schema.Trimmed.check(Schema.isNonEmpty()) }),
@@ -73,7 +73,7 @@ export const CanonicalDataSourceIcon = Schema.Union(
   }),
   Schema.TaggedStruct('external', { urlHash: Hash }),
   Schema.TaggedStruct('transient_file', {}),
-).annotate({ identifier: 'NotionDatasourceSync.CanonicalDataSourceIcon' })
+]).annotate({ identifier: 'NotionDatasourceSync.CanonicalDataSourceIcon' })
 export type CanonicalDataSourceIcon = typeof CanonicalDataSourceIcon.Type
 
 /** Canonical data-source metadata kept separate from schema, rows, and body materialization. */
@@ -115,7 +115,7 @@ export const CanonicalDataSourceProperty = Schema.TaggedStruct('CanonicalDataSou
 export type CanonicalDataSourceProperty = typeof CanonicalDataSourceProperty.Type
 
 /** Canonical filter expression for a Notion query; complex filters are represented as a hash to keep the contract stable. */
-export const CanonicalNotionFilter = Schema.Union(
+export const CanonicalNotionFilter = Schema.Union([
   Schema.TaggedStruct('none', {}),
   Schema.TaggedStruct('property_value', {
     propertyId: PropertyId,
@@ -139,7 +139,7 @@ export const CanonicalNotionFilter = Schema.Union(
     kind: Schema.Literal('and', 'or'),
     expressionHash: Hash,
   }),
-).annotate({ identifier: 'NotionDatasourceSync.CanonicalNotionFilter' })
+]).annotate({ identifier: 'NotionDatasourceSync.CanonicalNotionFilter' })
 export type CanonicalNotionFilter = typeof CanonicalNotionFilter.Type
 
 /** Immutable contract describing how rows are queried; any change invalidates prior absence proofs and query checkpoints. */
@@ -241,7 +241,7 @@ export type CreatePageResult = typeof CreatePageResult.Type
  * the properties that cannot be updated via the API; advertising it here
  * would suggest behavior the adapter cannot actually deliver.
  */
-export const AddPropertyDefinition = Schema.Union(
+export const AddPropertyDefinition = Schema.Union([
   Schema.TaggedStruct('rich_text', {}),
   Schema.TaggedStruct('number', {}),
   Schema.TaggedStruct('checkbox', {}),
@@ -252,7 +252,7 @@ export const AddPropertyDefinition = Schema.Union(
   Schema.TaggedStruct('people', {}),
   Schema.TaggedStruct('select', { options: Schema.Array(CanonicalOptionValue) }),
   Schema.TaggedStruct('multi_select', { options: Schema.Array(CanonicalOptionValue) }),
-).annotate({ identifier: 'NotionDatasourceSync.AddPropertyDefinition' })
+]).annotate({ identifier: 'NotionDatasourceSync.AddPropertyDefinition' })
 export type AddPropertyDefinition = typeof AddPropertyDefinition.Type
 
 /**
@@ -272,7 +272,7 @@ export type AddPropertyDefinition = typeof AddPropertyDefinition.Type
  * options) are deliberately absent so unsupported intents fail closed at the
  * planner/adapter boundary.
  */
-export const SchemaPatchOperation = Schema.Union(
+export const SchemaPatchOperation = Schema.Union([
   Schema.TaggedStruct('AddProperty', {
     name: PropertyName,
     definition: AddPropertyDefinition,
@@ -287,7 +287,7 @@ export const SchemaPatchOperation = Schema.Union(
     existingOptions: Schema.Array(CanonicalOptionValue),
     newOptions: Schema.Array(CanonicalOptionValue),
   }),
-).annotate({ identifier: 'NotionDatasourceSync.SchemaPatchOperation' })
+]).annotate({ identifier: 'NotionDatasourceSync.SchemaPatchOperation' })
 export type SchemaPatchOperation = typeof SchemaPatchOperation.Type
 
 /**
@@ -432,7 +432,7 @@ export const BodyRepairInput = Schema.TaggedStruct('BodyRepairInput', {
 export type BodyRepairInput = typeof BodyRepairInput.Type
 
 /** Discriminated union of all commands that cause a remote write to Notion; the `_tag` selects the operation kind. */
-export const RemoteWriteCommand = Schema.Union(
+export const RemoteWriteCommand = Schema.Union([
   CreatePageCommand,
   PatchPagePropertiesCommand,
   PatchDataSourceSchemaCommand,
@@ -441,7 +441,7 @@ export const RemoteWriteCommand = Schema.Union(
   TrashPageCommand,
   RestorePageCommand,
   BodyPushCommand,
-).annotate({ identifier: 'NotionDatasourceSync.RemoteWriteCommand' })
+]).annotate({ identifier: 'NotionDatasourceSync.RemoteWriteCommand' })
 export type RemoteWriteCommand = typeof RemoteWriteCommand.Type
 
 /** Payload stored in the outbox for a planned remote write; wraps the command so the outbox projection can decode it without knowing the concrete type. */

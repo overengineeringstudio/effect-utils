@@ -128,7 +128,7 @@ describe('effect-schema-form-aria baselines (cross-major invariant)', () => {
             description: undefined,
             literals: undefined,
             isOptional: false,
-            innerSchema: Schema.Tuple(Schema.String),
+            innerSchema: Schema.Tuple([Schema.String]),
           }}
         />
         <FieldGroupEmpty label="Empty Group" />
@@ -147,7 +147,7 @@ describe('effect-schema-form-aria baselines (cross-major invariant)', () => {
       count: Schema.optional(Schema.Number).annotate({ title: 'Count' }),
       enabled: Schema.Boolean,
       mode: Schema.Literal('email', 'push-notification'),
-      items: Schema.Tuple(Schema.String),
+      items: Schema.Tuple([Schema.String]),
     })
 
     const html = renderToStaticMarkup(

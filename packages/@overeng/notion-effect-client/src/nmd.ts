@@ -133,7 +133,7 @@ export const NmdSource = Schema.Literal('local', 'remote', 'shared').annotate({
 export type NmdSource = typeof NmdSource.Type
 
 /** Parent location of a synced Notion page. */
-export const NmdParentRef = Schema.Union(
+export const NmdParentRef = Schema.Union([
   Schema.TaggedStruct('page', {
     id: NotionUUID,
   }),
@@ -154,7 +154,7 @@ export const NmdParentRef = Schema.Union(
   Schema.TaggedStruct('unknown', {
     raw: Schema.Unknown,
   }),
-).annotate({
+]).annotate({
   identifier: 'NotionMd.ParentRef',
 })
 
@@ -208,7 +208,7 @@ export const NmdNotionFile = Schema.Struct({
 export type NmdNotionFile = typeof NmdNotionFile.Type
 
 /** Page cover state preserved outside the Markdown body. */
-export const NmdPageCover = Schema.NullOr(Schema.Union(NmdExternalFile, NmdNotionFile)).annotate({
+export const NmdPageCover = Schema.NullOr(Schema.Union([NmdExternalFile, NmdNotionFile])).annotate({
   identifier: 'NotionMd.PageCover',
 })
 
@@ -239,7 +239,7 @@ export const NmdDateValue = Schema.Struct({
 export type NmdDateValue = typeof NmdDateValue.Type
 
 /** File reference used by typed file properties. */
-export const NmdPropertyFileRef = Schema.Union(
+export const NmdPropertyFileRef = Schema.Union([
   Schema.TaggedStruct('local_file', {
     path: RelativePath,
     content_hash: Schema.optional(Sha256Digest),
@@ -254,7 +254,7 @@ export const NmdPropertyFileRef = Schema.Union(
   Schema.TaggedStruct('external_url', {
     url: Schema.String,
   }),
-).annotate({
+]).annotate({
   identifier: 'NotionMd.PropertyFileRef',
 })
 
@@ -275,7 +275,7 @@ export const NmdPlaceValue = Schema.Struct({
 export type NmdPlaceValue = typeof NmdPlaceValue.Type
 
 /** Verification value used by typed page-property frontmatter. */
-export const NmdVerificationValue = Schema.Union(
+export const NmdVerificationValue = Schema.Union([
   Schema.Struct({
     state: Schema.Literal('verified'),
     date: Schema.optional(NmdDateValue),
@@ -283,14 +283,14 @@ export const NmdVerificationValue = Schema.Union(
   Schema.Struct({
     state: Schema.Literal('unverified'),
   }),
-).annotate({
+]).annotate({
   identifier: 'NotionMd.VerificationValue',
 })
 
 export type NmdVerificationValue = typeof NmdVerificationValue.Type
 
 /** Typed, human-editable page-property value stored in frontmatter. */
-export const NmdPropertyValue = Schema.Union(
+export const NmdPropertyValue = Schema.Union([
   Schema.TaggedStruct('title', { value: Schema.String }),
   Schema.TaggedStruct('rich_text', { value: Schema.NullOr(Schema.String) }),
   Schema.TaggedStruct('number', { value: Schema.NullOr(Schema.Number) }),
@@ -311,7 +311,7 @@ export const NmdPropertyValue = Schema.Union(
     property_type: Schema.String,
     value: Schema.Unknown,
   }),
-).annotate({
+]).annotate({
   identifier: 'NotionMd.PropertyValue',
 })
 
@@ -385,7 +385,7 @@ export const NmdCommentUnit = Schema.TaggedStruct('comment_unit', {
 export type NmdCommentUnit = typeof NmdCommentUnit.Type
 
 /** Storage strategy declared by a local `.nmd` file. */
-export const NmdStorage = Schema.Union(
+export const NmdStorage = Schema.Union([
   Schema.TaggedStruct('self_contained', {
     unsupported_blocks: Schema.Array(NmdUnsupportedBlockUnit),
     files: Schema.Array(NmdFileUnit),
@@ -397,7 +397,7 @@ export const NmdStorage = Schema.Union(
     file_ids: Schema.Array(Schema.String),
     comment_ids: Schema.Array(Schema.String),
   }),
-).annotate({
+]).annotate({
   identifier: 'NotionMd.Storage',
 })
 
@@ -429,7 +429,7 @@ export type NmdFrontmatterV1 = typeof NmdFrontmatterV1.Type
  * echoes move to the sidecar sync state, so the frontmatter only carries
  * the property tags a user can actually edit.
  */
-export const NmdWritablePropertyValue = Schema.Union(
+export const NmdWritablePropertyValue = Schema.Union([
   Schema.TaggedStruct('title', { value: Schema.String }),
   Schema.TaggedStruct('rich_text', { value: Schema.NullOr(Schema.String) }),
   Schema.TaggedStruct('number', { value: Schema.NullOr(Schema.Number) }),
@@ -446,7 +446,7 @@ export const NmdWritablePropertyValue = Schema.Union(
   Schema.TaggedStruct('relation', { value: Schema.Array(NotionUUID) }),
   Schema.TaggedStruct('place', { value: Schema.NullOr(NmdPlaceValue) }),
   Schema.TaggedStruct('verification', { value: NmdVerificationValue }),
-).annotate({ identifier: 'NotionMd.WritablePropertyValue' })
+]).annotate({ identifier: 'NotionMd.WritablePropertyValue' })
 
 export type NmdWritablePropertyValue = typeof NmdWritablePropertyValue.Type
 

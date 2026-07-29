@@ -3,7 +3,7 @@ import { Context, Effect, PubSub, Schema } from 'effect'
 import { GenieFileStatus, GenieSummary } from './schema.ts'
 
 /** Schema for events emitted during genie generation/check. */
-export const GenieEvent = Schema.Union(
+export const GenieEvent = Schema.Union([
   Schema.TaggedStruct('FilesDiscovered', {
     files: Schema.Array(
       Schema.Struct({
@@ -26,7 +26,7 @@ export const GenieEvent = Schema.Union(
   Schema.TaggedStruct('Error', { message: Schema.String }),
 
   Schema.TaggedStruct('ValidationWarnings', { message: Schema.String }),
-)
+])
 /** Inferred union of all progress events emitted during generation/check. */
 export type GenieEvent = typeof GenieEvent.Type
 

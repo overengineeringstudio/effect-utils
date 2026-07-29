@@ -55,15 +55,14 @@ export const makeFileLogger = ({ logFilePath, threadName, colors }: MakeFileLogg
         (fd) => Effect.sync(() => fs.closeSync(fd)),
       )
 
-      return Logger.replace(
-        Logger.defaultLogger,
+      return Logger.layer([
         prettyLoggerTty({
           colors: colors ?? false,
           stderr: false,
           formatDate: (date) => `${defaultDateFormat(date)} ${threadName ?? ''}`,
           onLog: (str) => fs.writeSync(logFile, str),
         }),
-      )
+      ])
     }),
   )
 

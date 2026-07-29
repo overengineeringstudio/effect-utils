@@ -106,7 +106,7 @@ export const SupervisorStopEvent = Schema.Struct({
 export type SupervisorStopEvent = typeof SupervisorStopEvent.Type
 
 /** Union of every structured PTY event exposed by the client wrapper. */
-export const PtyEvent = Schema.Union(
+export const PtyEvent = Schema.Union([
   BellEvent,
   TitleChangeEvent,
   NotificationEvent,
@@ -119,7 +119,7 @@ export const PtyEvent = Schema.Union(
   SessionFailedEvent,
   SupervisorStartEvent,
   SupervisorStopEvent,
-)
+])
 export type PtyEvent = typeof PtyEvent.Type
 
 /** Decode a raw upstream event payload into the typed PTY event union. */

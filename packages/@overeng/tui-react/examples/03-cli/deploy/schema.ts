@@ -65,7 +65,7 @@ export type LogEntry = Schema.Schema.Type<typeof LogEntry>
 // =============================================================================
 
 /** Union schema of all deploy states (Idle, Validating, Progress, Complete, Failed, RollingBack, Interrupted). */
-export const DeployState = Schema.Union(
+export const DeployState = Schema.Union([
   Schema.TaggedStruct('Idle', {}),
 
   Schema.TaggedStruct('Validating', {
@@ -114,7 +114,7 @@ export const DeployState = Schema.Union(
     startedAt: Schema.Number,
     interruptedAt: Schema.Number,
   }),
-)
+])
 
 /** Inferred type for the deploy state union. */
 export type DeployState = Schema.Schema.Type<typeof DeployState>
@@ -153,7 +153,7 @@ export type DeployResult = Schema.Schema.Type<typeof DeployResult>
 // =============================================================================
 
 /** Events emitted in NDJSON mode instead of full state snapshots */
-export const DeployNdjsonEvent = Schema.Union(
+export const DeployNdjsonEvent = Schema.Union([
   Schema.TaggedStruct('PhaseChanged', {
     phase: Schema.Literal(
       'Validating',
@@ -170,7 +170,7 @@ export const DeployNdjsonEvent = Schema.Union(
     message: Schema.optional(Schema.String),
   }),
   Schema.TaggedStruct('LogAdded', { log: LogEntry }),
-)
+])
 export type DeployNdjsonEvent = typeof DeployNdjsonEvent.Type
 
 type Phase = DeployNdjsonEvent extends { _tag: 'PhaseChanged'; phase: infer P } ? P : never
@@ -244,7 +244,7 @@ export const deployFromAction = ({
 // =============================================================================
 
 /** Union schema of deploy actions (SetState, UpdateServiceStatus, AddLog, Interrupted). */
-export const DeployAction = Schema.Union(
+export const DeployAction = Schema.Union([
   // Direct state transitions
   Schema.TaggedStruct('SetState', { state: DeployState }),
 
@@ -260,7 +260,7 @@ export const DeployAction = Schema.Union(
 
   // Interrupt handling (auto-dispatched on Ctrl+C)
   Schema.TaggedStruct('Interrupted', {}),
-)
+])
 
 /** Inferred type for the deploy action union. */
 export type DeployAction = Schema.Schema.Type<typeof DeployAction>

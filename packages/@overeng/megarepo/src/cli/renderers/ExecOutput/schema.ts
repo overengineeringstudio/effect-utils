@@ -76,7 +76,7 @@ export const ExecErrorState = Schema.TaggedStruct('Error', {
 /**
  * State for exec command - discriminated by _tag property.
  */
-export const ExecState = Schema.Union(ExecRunningState, ExecCompleteState, ExecErrorState)
+export const ExecState = Schema.Union([ExecRunningState, ExecCompleteState, ExecErrorState])
 
 export type ExecState = typeof ExecState.Type
 
@@ -101,7 +101,7 @@ export const isExecRunning = (state: ExecState): state is typeof ExecRunningStat
 // =============================================================================
 
 /** Tagged union of actions that can be dispatched to update exec state. */
-export const ExecAction = Schema.Union(
+export const ExecAction = Schema.Union([
   /** Initialize exec with members */
   Schema.TaggedStruct('Start', {
     command: Schema.String,
@@ -127,7 +127,7 @@ export const ExecAction = Schema.Union(
     error: Schema.String,
     message: Schema.String,
   }),
-)
+])
 
 /** Inferred type for exec actions. */
 export type ExecAction = Schema.Schema.Type<typeof ExecAction>

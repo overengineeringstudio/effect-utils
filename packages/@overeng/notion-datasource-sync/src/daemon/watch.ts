@@ -192,14 +192,14 @@ const WatchDaemonStateSchema = Schema.Struct({
   lastCompleteCycle: Schema.Number,
   lastStartedAt: Schema.optional(Schema.String),
   lastCompletedAt: Schema.optional(Schema.String),
-  repair: Schema.Union(
+  repair: Schema.Union([
     Schema.TaggedStruct('none', {}),
     Schema.TaggedStruct('retry', {
       reason: Schema.String,
       retryAfterMillis: Schema.Number,
       failedCycle: Schema.Number,
     }),
-  ),
+  ]),
   lastStatus: Schema.optional(Schema.Unknown),
 }).annotate({ identifier: 'NotionDatasourceSync.WatchDaemonState' })
 

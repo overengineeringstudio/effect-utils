@@ -77,7 +77,7 @@ export type Person = typeof Person.Type
 /**
  * Bot owner information.
  */
-export const BotOwner = Schema.Union(
+export const BotOwner = Schema.Union([
   Schema.Struct({
     type: Schema.Literal('workspace'),
     workspace: Schema.Literal(true),
@@ -89,7 +89,7 @@ export const BotOwner = Schema.Union(
       id: NotionUUID,
     }),
   }),
-).annotate({
+]).annotate({
   identifier: 'Notion.BotOwner',
   title: 'Bot Owner',
   description: 'The owner of a bot, either a workspace or a user.',
@@ -190,7 +190,7 @@ export type PartialUser = typeof PartialUser.Type
  *
  * @see https://developers.notion.com/reference/user
  */
-export const User = Schema.Union(Person, Bot).annotate({
+export const User = Schema.Union([Person, Bot]).annotate({
   identifier: 'Notion.User',
   title: 'User',
   description: 'A Notion user, which can be either a person or a bot.',

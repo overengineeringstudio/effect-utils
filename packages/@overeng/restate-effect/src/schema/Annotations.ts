@@ -188,7 +188,7 @@ export const Restate = {
 
 /** Read the error classification from a schema's AST (`None` if unannotated). */
 export const readErrorClass = (ast: SchemaAST.AST): Option.Option<ErrorClass> =>
-  SchemaAST.getAnnotation<ErrorClass>(ErrorClassId)(ast)
+  SchemaAST.resolveAt<ErrorClass>(ErrorClassId)(ast)
 
 /**
  * Resolve a `retryable` classification's `retryAfter` floor against the ACTUAL
@@ -233,11 +233,11 @@ const safeProject = ({
 
 /** Read the serde options from a schema's AST (`None` if unannotated). */
 export const readSerdeOptions = (ast: SchemaAST.AST): Option.Option<SerdeOptions> =>
-  SchemaAST.getAnnotation<SerdeOptions>(SerdeId)(ast)
+  SchemaAST.resolveAt<SerdeOptions>(SerdeId)(ast)
 
 /** Read the retention options from a schema's AST (`None` if unannotated). */
 export const readRetention = (ast: SchemaAST.AST): Option.Option<RetentionOptions> =>
-  SchemaAST.getAnnotation<RetentionOptions>(RetentionId)(ast)
+  SchemaAST.resolveAt<RetentionOptions>(RetentionId)(ast)
 
 /**
  * Find the name of the input-struct field carrying the `idempotencyKey`
@@ -250,7 +250,7 @@ export const findIdempotencyKeyField = (ast: SchemaAST.AST): Option.Option<strin
   if (ast._tag !== 'TypeLiteral') return Option.none()
   for (const prop of ast.propertySignatures) {
     if (typeof prop.name !== 'string') continue
-    if (Option.isSome(SchemaAST.getAnnotation<true>(IdempotencyKeyId)(prop.type)) === true) {
+    if (Option.isSome(SchemaAST.resolveAt<true>(IdempotencyKeyId)(prop.type)) === true) {
       return Option.some(prop.name)
     }
   }
@@ -291,7 +291,7 @@ const allIdempotencyKeyFields = (ast: SchemaAST.AST): ReadonlyArray<string> => {
   const fields: string[] = []
   for (const prop of ast.propertySignatures) {
     if (typeof prop.name !== 'string') continue
-    if (Option.isSome(SchemaAST.getAnnotation<true>(IdempotencyKeyId)(prop.type)) === true) {
+    if (Option.isSome(SchemaAST.resolveAt<true>(IdempotencyKeyId)(prop.type)) === true) {
       fields.push(prop.name)
     }
   }
@@ -310,8 +310,8 @@ const structLevelFieldAnnotation = (
 ): { readonly idempotencyKey: boolean; readonly sensitive: boolean } => {
   if (ast._tag !== 'TypeLiteral') return { idempotencyKey: false, sensitive: false }
   return {
-    idempotencyKey: Option.isSome(SchemaAST.getAnnotation<true>(IdempotencyKeyId)(ast)),
-    sensitive: Option.isSome(SchemaAST.getAnnotation<true>(SensitiveId)(ast)),
+    idempotencyKey: Option.isSome(SchemaAST.resolveAt<true>(IdempotencyKeyId)(ast)),
+    sensitive: Option.isSome(SchemaAST.resolveAt<true>(SensitiveId)(ast)),
   }
 }
 

@@ -172,7 +172,7 @@ export const InterruptedState = Schema.TaggedStruct('Interrupted', {
 })
 
 /** Union schema of all bouncing windows app states. */
-export const AppState = Schema.Union(RunningState, FinishedState, InterruptedState)
+export const AppState = Schema.Union([RunningState, FinishedState, InterruptedState])
 
 /** Inferred type for the bouncing windows app state union. */
 export type AppState = Schema.Schema.Type<typeof AppState>
@@ -182,12 +182,12 @@ export type AppState = Schema.Schema.Type<typeof AppState>
 // =============================================================================
 
 /** Union schema of bouncing windows actions (Tick, Resize, Finish, Interrupted). */
-export const AppAction = Schema.Union(
+export const AppAction = Schema.Union([
   Schema.TaggedStruct('Tick', {}),
   Schema.TaggedStruct('Resize', { width: Schema.Number, height: Schema.Number }),
   Schema.TaggedStruct('Finish', {}),
   Schema.TaggedStruct('Interrupted', {}),
-)
+])
 
 /** Inferred type for the bouncing windows app action union. */
 export type AppAction = Schema.Schema.Type<typeof AppAction>

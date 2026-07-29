@@ -92,7 +92,7 @@ export const GenericEvent = Schema.TaggedStruct('GenericEvent', {
 }).annotate({ identifier: 'AgentSessionIngest.Normalized.GenericEvent' })
 
 /** Provider-agnostic union of all normalized record types. */
-export const NormalizedRecord = Schema.Union(
+export const NormalizedRecord = Schema.Union([
   SessionMeta,
   UserMessage,
   AssistantText,
@@ -102,5 +102,5 @@ export const NormalizedRecord = Schema.Union(
   StepBoundary,
   SystemMessage,
   GenericEvent,
-).annotate({ identifier: 'AgentSessionIngest.NormalizedRecord' })
+]).annotate({ identifier: 'AgentSessionIngest.NormalizedRecord' })
 export type NormalizedRecord = typeof NormalizedRecord.Type

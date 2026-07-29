@@ -81,7 +81,7 @@ export const PinErrorState = Schema.TaggedStruct('Error', {
 /**
  * State for pin/unpin commands.
  */
-export const PinState = Schema.Union(
+export const PinState = Schema.Union([
   PinIdleState,
   PinCheckingState,
   PinSuccessState,
@@ -89,7 +89,7 @@ export const PinState = Schema.Union(
   PinDryRunState,
   PinWarningState,
   PinErrorState,
-)
+])
 
 /** Inferred type for the pin/unpin command state. */
 export type PinState = Schema.Schema.Type<typeof PinState>
@@ -123,7 +123,7 @@ export const isPinWarning = (state: PinState): state is typeof PinWarningState.T
 // =============================================================================
 
 /** Tagged union of actions for the pin/unpin commands. */
-export const PinAction = Schema.Union(
+export const PinAction = Schema.Union([
   Schema.TaggedStruct('SetChecking', { member: Schema.String }),
   Schema.TaggedStruct('SetSuccess', {
     member: Schema.String,
@@ -156,7 +156,7 @@ export const PinAction = Schema.Union(
     message: Schema.optional(Schema.String),
   }),
   Schema.TaggedStruct('SetError', { error: Schema.String, message: Schema.String }),
-)
+])
 
 /** Inferred type for pin/unpin actions. */
 export type PinAction = Schema.Schema.Type<typeof PinAction>

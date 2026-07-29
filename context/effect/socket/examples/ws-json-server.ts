@@ -25,19 +25,19 @@ class InvalidClientMessageError extends Schema.TaggedErrorClass<InvalidClientMes
 ) {}
 
 /** Tagged union for client -> server messages. */
-const ClientMessageSchema = Schema.Union(
+const ClientMessageSchema = Schema.Union([
   Schema.TaggedStruct('ping', {
     id: Schema.String,
   }),
   Schema.TaggedStruct('echo', {
     text: Schema.String,
   }),
-)
+])
 
 type ClientMessage = typeof ClientMessageSchema.Type
 
 /** Tagged union for server -> client responses. */
-const ServerMessageSchema = Schema.Union(
+const ServerMessageSchema = Schema.Union([
   Schema.TaggedStruct('pong', {
     id: Schema.String,
     receivedAt: Schema.Number,
@@ -45,7 +45,7 @@ const ServerMessageSchema = Schema.Union(
   Schema.TaggedStruct('echoed', {
     text: Schema.String,
   }),
-)
+])
 
 type ServerMessage = typeof ServerMessageSchema.Type
 

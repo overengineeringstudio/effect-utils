@@ -198,9 +198,8 @@ export const shouldNeverHappen = (msg?: string, ...args: unknown[]): never => {
 const getOptionValueSchema = <TValue, TInput, TContext>(
   schema: Schema.Schema<Option.Option<TValue>, TInput, TContext>,
 ): Schema.Schema<TValue, TValue, never> => {
-  const annotated = SchemaAST.getAnnotation<Schema.Schema<TValue, TValue, never>>(
+  const annotated = SchemaAST.resolveAt<Schema.Schema<TValue, TValue, never>>(optionValueSchema)(
     schema.ast,
-    optionValueSchema,
   )
 
   if (Option.isSome(annotated) === true) {
@@ -215,9 +214,8 @@ const getOptionValueSchema = <TValue, TInput, TContext>(
 const getOptionNameSchema = <TName extends string, TValue, TInput, TContext>(
   schema: Schema.Schema<TValue, TInput, TContext>,
 ): Schema.Schema<TName, TName, never> => {
-  const annotated = SchemaAST.getAnnotation<Schema.Schema<TName, TName, never>>(
+  const annotated = SchemaAST.resolveAt<Schema.Schema<TName, TName, never>>(optionNameSchema)(
     schema.ast,
-    optionNameSchema,
   )
 
   if (Option.isSome(annotated) === true) {

@@ -190,7 +190,7 @@ const runWithTestCtx = <ROut, E1, A, E, R>(
       ? usePrettyLogger === true
         ? Layer.mergeAll(
             Logger.minimumLogLevel(LogLevel.Debug),
-            Logger.replace(Logger.defaultLogger, Logger.prettyLogger()),
+            Logger.layer([Logger.consolePretty()]),
           )
         : Logger.minimumLogLevel(LogLevel.Debug)
       : Layer.empty

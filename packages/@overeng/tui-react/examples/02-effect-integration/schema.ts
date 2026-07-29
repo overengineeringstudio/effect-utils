@@ -28,7 +28,7 @@ export const InterruptedState = Schema.TaggedStruct('Interrupted', {
 })
 
 /** Union schema of all counter states (Running, Complete, Interrupted). */
-export const CounterState = Schema.Union(RunningState, CompleteState, InterruptedState)
+export const CounterState = Schema.Union([RunningState, CompleteState, InterruptedState])
 
 export type CounterState = typeof CounterState.Type
 
@@ -37,13 +37,13 @@ export type CounterState = typeof CounterState.Type
 // =============================================================================
 
 /** Union schema of counter actions (Increment, Decrement, SetLoading, SetComplete, Interrupted). */
-export const CounterAction = Schema.Union(
+export const CounterAction = Schema.Union([
   Schema.TaggedStruct('Increment', {}),
   Schema.TaggedStruct('Decrement', {}),
   Schema.TaggedStruct('SetLoading', {}),
   Schema.TaggedStruct('SetComplete', { message: Schema.String }),
   Schema.TaggedStruct('Interrupted', {}),
-)
+])
 
 export type CounterAction = typeof CounterAction.Type
 

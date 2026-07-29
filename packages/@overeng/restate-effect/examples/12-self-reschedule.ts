@@ -247,7 +247,7 @@ const SourceFailedTerminal = Restate.terminal({ self: SourceFailed })
 
 /** The cycle's declared error UNION (a retryable + a terminal member), classified
  * per-member at the loop boundary. */
-export const ComposedError = Schema.Union(RateLimitedRetryable, SourceFailedTerminal)
+export const ComposedError = Schema.Union([RateLimitedRetryable, SourceFailedTerminal])
 /** The DECODED cycle-error type — the `CycleE` the typed cycle's `E` channel carries. */
 export type ComposedError = Schema.Schema.Type<typeof ComposedError>
 

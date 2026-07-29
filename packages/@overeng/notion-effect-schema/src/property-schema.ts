@@ -425,7 +425,7 @@ export type ButtonPropertySchema = typeof ButtonPropertySchema.Type
  * Union of all database property schema configurations.
  * Discriminated by the `_tag` field (property type).
  */
-export const PropertySchema = Schema.Union(
+export const PropertySchema = Schema.Union([
   TitlePropertySchema,
   RichTextPropertySchema,
   NumberPropertySchema,
@@ -449,7 +449,7 @@ export const PropertySchema = Schema.Union(
   UniqueIdPropertySchema,
   VerificationPropertySchema,
   ButtonPropertySchema,
-).annotate({
+]).annotate({
   identifier: 'Notion.PropertySchema',
   description: 'Database property schema configuration (discriminated union)',
 })

@@ -502,7 +502,7 @@ export interface OtelEffectGauge<S extends Schema.Schema.AnyNoContext> {
 }
 
 const getAttrMetadata = (annotated: AST.Annotated): OtelAttrMetadata | undefined =>
-  Option.getOrUndefined(AST.getAnnotation<OtelAttrMetadata>(annotated, OtelAttrAnnotationId))
+  AST.resolveAt<OtelAttrMetadata>(OtelAttrAnnotationId)(annotated)
 
 const getAttrMetadataDeep = (ast: AST.AST): OtelAttrMetadata | undefined => {
   const metadata = getAttrMetadata(ast)

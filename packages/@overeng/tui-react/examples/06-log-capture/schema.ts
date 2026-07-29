@@ -39,7 +39,7 @@ export const InterruptedState = Schema.TaggedStruct('Interrupted', {
 })
 
 /** Union schema of all task runner states (Running, Complete, Interrupted). */
-export const TaskRunnerState = Schema.Union(RunningState, CompleteState, InterruptedState)
+export const TaskRunnerState = Schema.Union([RunningState, CompleteState, InterruptedState])
 
 export type TaskRunnerState = typeof TaskRunnerState.Type
 
@@ -48,13 +48,13 @@ export type TaskRunnerState = typeof TaskRunnerState.Type
 // =============================================================================
 
 /** Union schema of task runner actions (StartTask, CompleteTask, FailTask, Finish, Interrupted). */
-export const TaskRunnerAction = Schema.Union(
+export const TaskRunnerAction = Schema.Union([
   Schema.TaggedStruct('StartTask', { name: Schema.String }),
   Schema.TaggedStruct('CompleteTask', { name: Schema.String }),
   Schema.TaggedStruct('FailTask', { name: Schema.String }),
   Schema.TaggedStruct('Finish', {}),
   Schema.TaggedStruct('Interrupted', {}),
-)
+])
 
 export type TaskRunnerAction = typeof TaskRunnerAction.Type
 

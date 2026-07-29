@@ -226,7 +226,7 @@ export const StoreInterruptedState = Schema.TaggedStruct('Interrupted', {})
 /**
  * State for all store commands - discriminated by _tag property.
  */
-export const StoreState = Schema.Union(
+export const StoreState = Schema.Union([
   StoreLsState,
   StoreStatusState,
   StoreFetchState,
@@ -236,7 +236,7 @@ export const StoreState = Schema.Union(
   StoreFixState,
   StoreErrorState,
   StoreInterruptedState,
-)
+])
 
 export type StoreState = typeof StoreState.Type
 
@@ -283,7 +283,7 @@ export const isStoreFix = (state: StoreState): state is typeof StoreFixState.Typ
 /**
  * Actions for store output.
  */
-export const StoreAction = Schema.Union(
+export const StoreAction = Schema.Union([
   Schema.TaggedStruct('SetLs', {
     basePath: Schema.String,
     repos: Schema.Array(StoreRepo),
@@ -342,7 +342,7 @@ export const StoreAction = Schema.Union(
     source: Schema.optional(Schema.String),
   }),
   Schema.TaggedStruct('Interrupted', {}),
-)
+])
 
 /** Inferred type for store actions. */
 export type StoreAction = Schema.Schema.Type<typeof StoreAction>

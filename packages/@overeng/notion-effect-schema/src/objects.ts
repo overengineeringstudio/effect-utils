@@ -9,7 +9,7 @@ import { PartialUser } from './users.ts'
 // -----------------------------------------------------------------------------
 
 /** Parent reference for a database */
-export const DatabaseParent = Schema.Union(
+export const DatabaseParent = Schema.Union([
   Schema.Struct({
     type: Schema.Literal('page_id'),
     page_id: NotionUUID,
@@ -22,7 +22,7 @@ export const DatabaseParent = Schema.Union(
     type: Schema.Literal('workspace'),
     workspace: Schema.Literal(true),
   }),
-).annotate({
+]).annotate({
   identifier: 'Notion.DatabaseParent',
   [docsPath]: 'database#database-parent',
 })
@@ -30,7 +30,7 @@ export const DatabaseParent = Schema.Union(
 export type DatabaseParent = typeof DatabaseParent.Type
 
 /** Parent reference for a page */
-export const PageParent = Schema.Union(
+export const PageParent = Schema.Union([
   Schema.Struct({
     type: Schema.Literal('database_id'),
     database_id: NotionUUID,
@@ -60,7 +60,7 @@ export const PageParent = Schema.Union(
     type: Schema.Literal('agent_id'),
     agent_id: NotionUUID,
   }),
-).annotate({
+]).annotate({
   identifier: 'Notion.PageParent',
   [docsPath]: 'page#page-parent',
 })
@@ -68,7 +68,7 @@ export const PageParent = Schema.Union(
 export type PageParent = typeof PageParent.Type
 
 /** Parent reference for a block */
-export const BlockParent = Schema.Union(
+export const BlockParent = Schema.Union([
   Schema.Struct({
     type: Schema.Literal('database_id'),
     database_id: NotionUUID,
@@ -89,7 +89,7 @@ export const BlockParent = Schema.Union(
     type: Schema.Literal('workspace'),
     workspace: Schema.Literal(true),
   }),
-).annotate({
+]).annotate({
   identifier: 'Notion.BlockParent',
   [docsPath]: 'block#block-parent',
 })
@@ -128,7 +128,7 @@ export const NotionFile = Schema.Struct({
 export type NotionFile = typeof NotionFile.Type
 
 /** File object (external or Notion-hosted) */
-export const FileObject = Schema.Union(ExternalFile, NotionFile).annotate({
+export const FileObject = Schema.Union([ExternalFile, NotionFile]).annotate({
   identifier: 'Notion.FileObject',
   [docsPath]: 'file-object',
 })
@@ -175,13 +175,13 @@ export const NamedIcon = Schema.Struct({
 export type NamedIcon = typeof NamedIcon.Type
 
 /** Icon (emoji, custom emoji, named icon, external file, or Notion file) */
-export const Icon = Schema.Union(
+export const Icon = Schema.Union([
   EmojiIcon,
   CustomEmojiIcon,
   NamedIcon,
   ExternalFile,
   NotionFile,
-).annotate({
+]).annotate({
   identifier: 'Notion.Icon',
 })
 
@@ -340,10 +340,10 @@ export const PagePropertyItemList = Schema.Struct({
 export type PagePropertyItemList = typeof PagePropertyItemList.Type
 
 /** Tagged union covering both shapes the page-property endpoint can return — a single `PagePropertyItem` or a paginated `PagePropertyItemList`. */
-export const PagePropertyItemResponse = Schema.Union(
+export const PagePropertyItemResponse = Schema.Union([
   PagePropertyItem,
   PagePropertyItemList,
-).annotate({
+]).annotate({
   identifier: 'Notion.PagePropertyItemResponse',
   [docsPath]: 'retrieve-a-page-property',
 })
@@ -600,7 +600,7 @@ type NotionBlockCreateType =
  * payloads omit ids, timestamps, parents, and other server-populated fields.
  */
 export const NotionBlockCreate: Schema.Schema<NotionBlockCreateType> = Schema.suspend(() =>
-  Schema.Union(
+  Schema.Union([
     ParagraphBlockCreate,
     Heading1BlockCreate,
     Heading2BlockCreate,
@@ -612,7 +612,7 @@ export const NotionBlockCreate: Schema.Schema<NotionBlockCreateType> = Schema.su
     CodeBlockCreate,
     DividerBlockCreate,
     TableBlockCreate,
-  ).annotate({
+  ]).annotate({
     identifier: 'Notion.BlockCreate',
     [docsPath]: 'block',
   }),
@@ -645,7 +645,7 @@ export type PageMarkdown = typeof PageMarkdown.Type
 // -----------------------------------------------------------------------------
 
 /** Parent reference for a comment */
-export const CommentParent = Schema.Union(
+export const CommentParent = Schema.Union([
   Schema.Struct({
     type: Schema.Literal('page_id'),
     page_id: NotionUUID,
@@ -654,7 +654,7 @@ export const CommentParent = Schema.Union(
     type: Schema.Literal('block_id'),
     block_id: NotionUUID,
   }),
-).annotate({
+]).annotate({
   identifier: 'Notion.CommentParent',
 })
 

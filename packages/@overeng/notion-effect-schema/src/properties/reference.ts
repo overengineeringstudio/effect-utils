@@ -317,7 +317,7 @@ export type NotionFile = typeof NotionFile.Type
 /**
  * File object (either external or Notion-hosted).
  */
-export const FileObject = Schema.Union(ExternalFile, NotionFile).annotate({
+export const FileObject = Schema.Union([ExternalFile, NotionFile]).annotate({
   identifier: 'Notion.FileObject',
   title: 'File Object',
   description: 'A file, either external or Notion-hosted.',

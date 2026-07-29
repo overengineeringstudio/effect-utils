@@ -1005,7 +1005,7 @@ const runResultImpl = <S, A, O, E, R>(
     // plumbing at the main site — `runResult`'s contract is self-contained.
     const stderrSideChannelLayer = Layer.mergeAll(
       Layer.succeed(ViewOutputStreamTag, process.stderr),
-      Logger.replace(Logger.defaultLogger, Logger.prettyLogger().pipe(Logger.withConsoleError)),
+      Logger.layer([Logger.consolePretty().pipe(Logger.withConsoleError)]),
       Console.setConsole(consoleOnStream(process.stderr)),
     )
 

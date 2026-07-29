@@ -76,12 +76,12 @@ export class IndirectLockedInput extends Schema.Class<IndirectLockedInput>('Indi
  * Union of all locked input types we support
  * Note: Nix supports more types (tarball, file, etc.) but these are the common ones
  */
-export const LockedInput = Schema.Union(
+export const LockedInput = Schema.Union([
   GitHubLockedInput,
   GitLockedInput,
   PathLockedInput,
   IndirectLockedInput,
-)
+])
 export type LockedInput = typeof LockedInput.Type
 
 /**

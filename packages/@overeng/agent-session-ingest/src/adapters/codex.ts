@@ -24,7 +24,7 @@ const InputImagePart = Schema.Struct({
 const MessageResponsePayload = Schema.Struct({
   type: Schema.Literal('message'),
   role: Schema.Literal('assistant', 'developer', 'system', 'user'),
-  content: Schema.Array(Schema.Union(TextPart, InputImagePart)),
+  content: Schema.Array(Schema.Union([TextPart, InputImagePart])),
 })
 
 const ReasoningSummaryPart = Schema.Struct({
@@ -116,7 +116,7 @@ const TokenCountInfo = Schema.Struct({
  * - Native transcript store: `~/.codex-<profile>/sessions/(nested path).jsonl`
  * - Discovery index: `state_5.sqlite` / `threads.rollout_path`
  */
-export const CodexSessionRecord = Schema.Union(
+export const CodexSessionRecord = Schema.Union([
   Schema.Struct({
     timestamp: Schema.DateTimeUtc,
     type: Schema.Literal('session_meta'),
@@ -160,7 +160,7 @@ export const CodexSessionRecord = Schema.Union(
   LegacySessionMetaRecord,
   LegacyStateRecord,
   LegacyTopLevelRecord,
-).annotate({ identifier: 'AgentSessionIngest.CodexSessionRecord' })
+]).annotate({ identifier: 'AgentSessionIngest.CodexSessionRecord' })
 export type CodexSessionRecord = typeof CodexSessionRecord.Type
 
 /**

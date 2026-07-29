@@ -94,13 +94,13 @@ export const GuardName = Schema.Literal(...propertyWriteGuardNames, ...syncOnlyG
 export type GuardName = typeof GuardName.Type
 
 /** Tagged-union outcome of a guard evaluation: `allowed` means the operation may proceed; `blocked` carries the guard name and reason. */
-export const GuardDecision = Schema.Union(
+export const GuardDecision = Schema.Union([
   Schema.TaggedStruct('allowed', {}),
   Schema.TaggedStruct('blocked', {
     guard: GuardName,
     message: Schema.String,
   }),
-).annotate({ identifier: 'NotionDatasourceSync.GuardDecision' })
+]).annotate({ identifier: 'NotionDatasourceSync.GuardDecision' })
 export type GuardDecision = typeof GuardDecision.Type
 
 /** Structured diagnostic payload attached to a guard block; provides a human-readable summary and key/value evidence for debugging. */

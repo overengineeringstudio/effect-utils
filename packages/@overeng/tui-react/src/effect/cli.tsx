@@ -121,10 +121,9 @@ const modeMap: Record<Exclude<OutputModeValue, 'auto'>, OutputMode> = {
  * This is used in JSON modes to ensure all log output goes to stderr,
  * keeping stdout clean for JSON data only.
  */
-const stderrLoggerLayer: Layer.Layer<never> = Logger.replace(
-  Logger.defaultLogger,
-  Logger.prettyLogger().pipe(Logger.withConsoleError),
-)
+const stderrLoggerLayer: Layer.Layer<never> = Logger.layer([
+  Logger.consolePretty().pipe(Logger.withConsoleError),
+])
 
 /**
  * Create an OutputMode layer from the `--output` flag value.

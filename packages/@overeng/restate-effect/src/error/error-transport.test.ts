@@ -172,13 +172,13 @@ describe('error transport (contract layer, server-free)', () => {
       },
     ) {}
     class Gone extends Schema.TaggedErrorClass<Gone>('test/Gone')('Gone', { id: Schema.String }) {}
-    const UnionSchema = Schema.Union(
+    const UnionSchema = Schema.Union([
       Restate.retryable({
         self: Schema.asSchema(RateLimited),
         retryAfter: (e) => e.retryAfterMillis,
       }),
       Restate.terminal({ self: Schema.asSchema(Gone), errorCode: 404 }),
-    )
+    ])
 
     /* The RETRYABLE member → a RetryableError honoring its projected retryAfter. */
     const retry = toTerminal({

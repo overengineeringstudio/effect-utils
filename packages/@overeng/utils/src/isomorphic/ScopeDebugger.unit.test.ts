@@ -17,10 +17,7 @@ const makeTestLogger = Effect.fnUntraced(function* () {
 
   const getLogs = Ref.get(logs).pipe(Effect.map(Chunk.toArray))
 
-  const loggerLayer = Layer.merge(
-    Logger.replace(Logger.defaultLogger, logger),
-    Logger.minimumLogLevel(LogLevel.All),
-  )
+  const loggerLayer = Layer.merge(Logger.layer([logger]), Logger.minimumLogLevel(LogLevel.All))
 
   return { logger, getLogs, loggerLayer } as const
 })

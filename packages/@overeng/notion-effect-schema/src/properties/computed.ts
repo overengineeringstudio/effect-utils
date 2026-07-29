@@ -10,7 +10,7 @@ import { DateValue } from './date.ts'
 /**
  * Formula result value.
  */
-export const FormulaValue = Schema.Union(
+export const FormulaValue = Schema.Union([
   Schema.Struct({
     type: Schema.Literal('string'),
     string: Schema.NullOr(Schema.String),
@@ -27,7 +27,7 @@ export const FormulaValue = Schema.Union(
     type: Schema.Literal('date'),
     date: Schema.NullOr(DateValue),
   }),
-).annotate({
+]).annotate({
   identifier: 'Notion.FormulaValue',
   title: 'Formula Value',
   description: 'The computed result of a formula.',

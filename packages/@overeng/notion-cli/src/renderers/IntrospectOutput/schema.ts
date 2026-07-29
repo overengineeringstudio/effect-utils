@@ -9,7 +9,7 @@ const PropertyInfo = Schema.Struct({
 })
 
 /** Schema for the introspect command's UI state (Loading → Success/Error). */
-export const IntrospectState = Schema.Union(
+export const IntrospectState = Schema.Union([
   Schema.TaggedStruct('Loading', {}),
   Schema.TaggedStruct('Success', {
     dbName: Schema.String,
@@ -20,12 +20,12 @@ export const IntrospectState = Schema.Union(
   Schema.TaggedStruct('Error', {
     message: Schema.String,
   }),
-)
+])
 
 export type IntrospectState = typeof IntrospectState.Type
 
 /** Actions dispatched by the introspect command to report results or errors. */
-export const IntrospectAction = Schema.Union(
+export const IntrospectAction = Schema.Union([
   Schema.TaggedStruct('SetResult', {
     dbName: Schema.String,
     dbId: Schema.String,
@@ -33,7 +33,7 @@ export const IntrospectAction = Schema.Union(
     properties: Schema.Array(PropertyInfo),
   }),
   Schema.TaggedStruct('SetError', { message: Schema.String }),
-)
+])
 
 export type IntrospectAction = typeof IntrospectAction.Type
 

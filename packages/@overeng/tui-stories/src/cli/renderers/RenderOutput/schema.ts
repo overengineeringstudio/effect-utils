@@ -8,7 +8,7 @@ import { Schema } from 'effect'
  * Note: the command's own output mode (--output) is handled by outputModeLayer,
  * not tracked in this state. This state models the *content* being rendered.
  */
-export const RenderState = Schema.Union(
+export const RenderState = Schema.Union([
   Schema.TaggedStruct('Rendering', {
     storyId: Schema.String,
     width: Schema.Number,
@@ -24,7 +24,7 @@ export const RenderState = Schema.Union(
     storyId: Schema.String,
     message: Schema.String,
   }),
-)
+])
 
 export type RenderStateType = typeof RenderState.Type
 

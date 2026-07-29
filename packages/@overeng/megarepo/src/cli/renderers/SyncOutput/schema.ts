@@ -70,12 +70,12 @@ export const LockSharedSourceUpdate = Schema.TaggedStruct('SharedSourceUpdate', 
 export type LockSharedSourceUpdate = Schema.Schema.Type<typeof LockSharedSourceUpdate>
 
 /** Union of rev, ref, and scheme update types (used in lock file sync results) */
-export const LockFileUpdate = Schema.Union(LockRevUpdate, LockRefUpdate, LockSchemeUpdate)
+export const LockFileUpdate = Schema.Union([LockRevUpdate, LockRefUpdate, LockSchemeUpdate])
 /** Inferred type for a lock file update (rev or ref) */
 export type LockFileUpdate = Schema.Schema.Type<typeof LockFileUpdate>
 
 /** Union of all lock sync update types */
-export const LockSyncUpdate = Schema.Union(LockRevUpdate, LockRefUpdate, LockSharedSourceUpdate)
+export const LockSyncUpdate = Schema.Union([LockRevUpdate, LockRefUpdate, LockSharedSourceUpdate])
 /** Inferred type for any lock sync update (rev, ref, or shared source) */
 export type LockSyncUpdate = Schema.Schema.Type<typeof LockSyncUpdate>
 
@@ -211,7 +211,7 @@ export type SyncState = Schema.Schema.Type<typeof SyncState>
 let logIdCounter = 0
 
 /** Tagged union of actions for progressing through a sync operation. */
-export const SyncAction = Schema.Union(
+export const SyncAction = Schema.Union([
   /** Replace entire state */
   Schema.TaggedStruct('SetState', { state: SyncState }),
 
@@ -257,7 +257,7 @@ export const SyncAction = Schema.Union(
   Schema.TaggedStruct('PreflightFailed', {
     issues: Schema.Array(PreflightIssue),
   }),
-)
+])
 
 /** Inferred type for sync actions. */
 export type SyncAction = Schema.Schema.Type<typeof SyncAction>

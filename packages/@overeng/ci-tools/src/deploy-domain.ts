@@ -108,10 +108,10 @@ export const VercelProviderConfig = Schema.TaggedStruct('VercelProviderConfig', 
 }).annotate({ identifier: 'CiTools.Deploy.VercelProviderConfig' })
 export type VercelProviderConfig = typeof VercelProviderConfig.Type
 
-export const DeployProviderConfig = Schema.Union(
+export const DeployProviderConfig = Schema.Union([
   NetlifyProviderConfig,
   VercelProviderConfig,
-).annotate({ identifier: 'CiTools.Deploy.ProviderConfig' })
+]).annotate({ identifier: 'CiTools.Deploy.ProviderConfig' })
 export type DeployProviderConfig = typeof DeployProviderConfig.Type
 
 export const DeployE2EConfig = Schema.TaggedStruct('DeployE2EConfig', {
@@ -303,7 +303,7 @@ export class VerificationFailed extends Schema.TaggedErrorClass<VerificationFail
   }
 }
 
-export const DeployFailure = Schema.Union(
+export const DeployFailure = Schema.Union([
   MissingAuth,
   Unauthorized,
   MissingBuildOutput,
@@ -312,7 +312,7 @@ export const DeployFailure = Schema.Union(
   ProviderOperationFailed,
   UnsafeE2EAlias,
   VerificationFailed,
-).annotate({ identifier: 'CiTools.Deploy.Failure' })
+]).annotate({ identifier: 'CiTools.Deploy.Failure' })
 export type DeployFailure = typeof DeployFailure.Type
 
 export const deployFailureRetryability = (failure: DeployFailure): boolean => {

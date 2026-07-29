@@ -23,11 +23,11 @@ const CounterState = Schema.Struct({
 
 type CounterState = Schema.Schema.Type<typeof CounterState>
 
-const CounterAction = Schema.Union(
+const CounterAction = Schema.Union([
   Schema.TaggedStruct('Increment', {}),
   Schema.TaggedStruct('Decrement', {}),
   Schema.TaggedStruct('Set', { value: Schema.Number }),
-)
+])
 
 type CounterAction = Schema.Schema.Type<typeof CounterAction>
 
@@ -184,11 +184,11 @@ describe('createTuiApp', () => {
   })
 
   describe('ndjson mode with event mapping', () => {
-    const CounterEvent = Schema.Union(
+    const CounterEvent = Schema.Union([
       Schema.TaggedStruct('Incremented', { newCount: Schema.Number }),
       Schema.TaggedStruct('Decremented', { newCount: Schema.Number }),
       Schema.TaggedStruct('Reset', { from: Schema.Number, to: Schema.Number }),
-    )
+    ])
 
     const EventCounterApp = createTuiApp({
       stateSchema: CounterState,
@@ -369,10 +369,10 @@ describe('createTuiApp', () => {
       })
       type InterruptState = typeof InterruptState.Type
 
-      const InterruptAction = Schema.Union(
+      const InterruptAction = Schema.Union([
         Schema.TaggedStruct('Start', {}),
         Schema.TaggedStruct('Interrupted', {}),
-      )
+      ])
       type InterruptAction = typeof InterruptAction.Type
 
       const previousExitCode = process.exitCode

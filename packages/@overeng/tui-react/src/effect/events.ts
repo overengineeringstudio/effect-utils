@@ -281,7 +281,7 @@ export type MouseEventEncoded = Schema.Schema.Encoded<typeof MouseEvent>
  *   )
  * ```
  */
-export const InputEvent = Schema.Union(KeyEvent, ResizeEvent, FocusEvent, MouseEvent)
+export const InputEvent = Schema.Union([KeyEvent, ResizeEvent, FocusEvent, MouseEvent])
 
 /**
  * Type for InputEvent

@@ -73,11 +73,11 @@ export const UpdatedAtCursor = Schema.TaggedStruct('UpdatedAtCursor', {
 export type UpdatedAtCursor = typeof UpdatedAtCursor.Type
 
 /** Unified cursor union used by checkpoint persistence. */
-export const ArtifactCursor = Schema.Union(
+export const ArtifactCursor = Schema.Union([
   AppendOnlyCursor,
   ContentVersionCursor,
   UpdatedAtCursor,
-).annotate({ identifier: 'AgentSessionIngest.ArtifactCursor' })
+]).annotate({ identifier: 'AgentSessionIngest.ArtifactCursor' })
 export type ArtifactCursor = typeof ArtifactCursor.Type
 
 /** Persisted checkpoint entry for one source artifact. */

@@ -21,25 +21,25 @@ import { Option, Schema, type SchemaAST } from 'effect'
  * -------------------------------------------------------------------------- */
 
 /** A reference to another field, schema, or external system. */
-export const LineageRef = Schema.Union(
+export const LineageRef = Schema.Union([
   /** Path relative to the root schema, e.g. `$.foo.bar` (same syntax as `SchemaContext`). */
   Schema.TaggedStruct('Field', { path: Schema.String }),
   /** Reference by schema identifier (the `identifier` annotation). */
   Schema.TaggedStruct('Schema', { identifier: Schema.String }),
   /** Foreign-system reference (e.g. `{ system: 'stripe', ref: 'cus_123' }`). */
   Schema.TaggedStruct('External', { system: Schema.String, ref: Schema.String }),
-)
+])
 export type LineageRef = typeof LineageRef.Type
 
 /** How a `Derived` field is computed from its inputs. */
-export const DerivationKind = Schema.Union(
+export const DerivationKind = Schema.Union([
   Schema.TaggedStruct('Pure', {}),
   Schema.TaggedStruct('Aggregation', {
     op: Schema.Literal('sum', 'count', 'min', 'max', 'avg', 'custom'),
   }),
   Schema.TaggedStruct('Reduction', { description: Schema.String }),
   Schema.TaggedStruct('External', { service: Schema.String }),
-)
+])
 export type DerivationKind = typeof DerivationKind.Type
 
 /**
@@ -47,7 +47,7 @@ export type DerivationKind = typeof DerivationKind.Type
  *
  * @see https://github.com/overengineeringstudio/effect-utils/issues/687
  */
-export const Lineage = Schema.Union(
+export const Lineage = Schema.Union([
   Schema.TaggedStruct('SourceOfTruth', {
     owner: Schema.optional(Schema.String),
     system: Schema.optional(Schema.String),
@@ -77,7 +77,7 @@ export const Lineage = Schema.Union(
     fn: Schema.optional(Schema.String),
     description: Schema.optional(Schema.String),
   }),
-)
+])
 export type Lineage = typeof Lineage.Type
 
 /** Who can read/write this field. Composable with any `Lineage`. */

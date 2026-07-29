@@ -189,13 +189,10 @@ export const createTuiLogger = (
     const layer =
       logToConsole === true
         ? Layer.merge(
-            Logger.replace(Logger.defaultLogger, Logger.zip(Logger.defaultLogger, tuiLogger)),
+            Logger.layer([Logger.defaultLogger, tuiLogger]),
             Logger.minimumLogLevel(minLevel),
           )
-        : Layer.merge(
-            Logger.replace(Logger.defaultLogger, tuiLogger),
-            Logger.minimumLogLevel(minLevel),
-          )
+        : Layer.merge(Logger.layer([tuiLogger]), Logger.minimumLogLevel(minLevel))
 
     // Clear function
     const clear = SubscriptionRef.set(logsRef, [])

@@ -26,7 +26,7 @@ const parseJson = (json: string) =>
 // Test State Schema (simulating a deploy command)
 // =============================================================================
 
-const DeployState = Schema.Union(
+const DeployState = Schema.Union([
   Schema.TaggedStruct('Idle', {}),
   Schema.TaggedStruct('Validating', {
     logs: Schema.Array(Schema.String),
@@ -50,7 +50,7 @@ const DeployState = Schema.Union(
     ),
     totalDuration: Schema.Number,
   }),
-)
+])
 
 type DeployState = Schema.Schema.Type<typeof DeployState>
 
@@ -58,7 +58,7 @@ type DeployState = Schema.Schema.Type<typeof DeployState>
 // Action Schema
 // =============================================================================
 
-const DeployAction = Schema.Union(
+const DeployAction = Schema.Union([
   Schema.TaggedStruct('StartValidation', { logs: Schema.Array(Schema.String) }),
   Schema.TaggedStruct('StartProgress', {
     services: Schema.Array(
@@ -83,7 +83,7 @@ const DeployAction = Schema.Union(
     ),
     totalDuration: Schema.Number,
   }),
-)
+])
 
 type DeployAction = Schema.Schema.Type<typeof DeployAction>
 

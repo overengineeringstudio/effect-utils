@@ -131,7 +131,7 @@ const OpenCodePartGenericData = Schema.Struct({
   type: Schema.String,
 }).annotate({ identifier: 'AgentSessionIngest.OpenCodePartGenericData' })
 
-const OpenCodePartData = Schema.Union(
+const OpenCodePartData = Schema.Union([
   OpenCodePartToolData,
   OpenCodePartTextData,
   OpenCodePartReasoningData,
@@ -142,7 +142,7 @@ const OpenCodePartData = Schema.Union(
   OpenCodePartSubtaskData,
   OpenCodePartCompactionData,
   OpenCodePartGenericData,
-).annotate({ identifier: 'AgentSessionIngest.OpenCodePartData' })
+]).annotate({ identifier: 'AgentSessionIngest.OpenCodePartData' })
 
 const OpenCodePartRecord = Schema.TaggedStruct('OpenCodePart', {
   id: Schema.String,
@@ -163,11 +163,11 @@ const OpenCodeSessionRecord = Schema.TaggedStruct('OpenCodeSession', {
  * - Database: `~/.local/share/opencode/opencode.db`
  * - Tables: `session`, `message`, `part`
  */
-export const OpenCodeRecord = Schema.Union(
+export const OpenCodeRecord = Schema.Union([
   OpenCodeSessionRecord,
   OpenCodeMessageRecord,
   OpenCodePartRecord,
-).annotate({ identifier: 'AgentSessionIngest.OpenCodeRecord' })
+]).annotate({ identifier: 'AgentSessionIngest.OpenCodeRecord' })
 export type OpenCodeRecord = typeof OpenCodeRecord.Type
 
 type SqliteValue = string | number | bigint | Uint8Array | null

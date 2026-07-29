@@ -275,7 +275,7 @@ export type TemplateMentionUser = typeof TemplateMentionUser.Type
  */
 export const TemplateMention = Schema.Struct({
   type: Schema.Literal('template_mention'),
-  template_mention: Schema.Union(TemplateMentionDate, TemplateMentionUser),
+  template_mention: Schema.Union([TemplateMentionDate, TemplateMentionUser]),
 }).annotate({
   identifier: 'Notion.TemplateMention',
   title: 'Template Mention',
@@ -288,14 +288,14 @@ export type TemplateMention = typeof TemplateMention.Type
 /**
  * Union of all mention types.
  */
-export const MentionContent = Schema.Union(
+export const MentionContent = Schema.Union([
   DatabaseMention,
   PageMention,
   UserMention,
   DateMention,
   LinkPreviewMention,
   TemplateMention,
-).annotate({
+]).annotate({
   identifier: 'Notion.MentionContent',
   title: 'Mention Content',
   description: 'The content of a mention, varying by mention type.',
@@ -374,7 +374,7 @@ export type EquationRichText = typeof EquationRichText.Type
  *
  * @see https://developers.notion.com/reference/rich-text
  */
-export const RichText = Schema.Union(TextRichText, MentionRichText, EquationRichText).annotate({
+export const RichText = Schema.Union([TextRichText, MentionRichText, EquationRichText]).annotate({
   identifier: 'Notion.RichText',
   title: 'Rich Text',
   description: 'Rich text content supporting text, mentions, and equations.',

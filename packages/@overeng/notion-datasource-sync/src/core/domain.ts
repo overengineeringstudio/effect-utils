@@ -309,11 +309,12 @@ export const EvidenceBackedBodyIdentity = Schema.TaggedStruct('EvidenceBackedBod
 export type EvidenceBackedBodyIdentity = typeof EvidenceBackedBodyIdentity.Type
 
 /** Typed page-body identity used for body stale-base guards, settlement, replay, and telemetry. */
-export const BodyIdentity = Schema.Union(RenderedBodyIdentity, EvidenceBackedBodyIdentity).annotate(
-  {
-    identifier: 'NotionDatasourceSync.BodyIdentity',
-  },
-)
+export const BodyIdentity = Schema.Union([
+  RenderedBodyIdentity,
+  EvidenceBackedBodyIdentity,
+]).annotate({
+  identifier: 'NotionDatasourceSync.BodyIdentity',
+})
 export type BodyIdentity = typeof BodyIdentity.Type
 
 /** Stable reference to a body observation: page ID + typed identity + observation time + safety assessment. */
@@ -445,7 +446,7 @@ export const PathClaimPlan = Schema.TaggedStruct('PathClaimPlan', {
 export type PathClaimPlan = typeof PathClaimPlan.Type
 
 /** Outcome of a path-claim attempt — either `'claimed'` (path is now owned by this page) or `'conflict'` (path already held by another page). */
-export const PathClaimResult = Schema.Union(
+export const PathClaimResult = Schema.Union([
   Schema.TaggedStruct('claimed', {
     pageId: PageId,
     path: WorkspaceRelativePath,
@@ -455,7 +456,7 @@ export const PathClaimResult = Schema.Union(
     requestedPath: WorkspaceRelativePath,
     existingPageId: PageId,
   }),
-).annotate({ identifier: 'NotionDatasourceSync.PathClaimResult' })
+]).annotate({ identifier: 'NotionDatasourceSync.PathClaimResult' })
 export type PathClaimResult = typeof PathClaimResult.Type
 
 /** Plan for materializing a Notion page body as a local file at the specified path. */

@@ -37,14 +37,14 @@ const SyncProgressState = Schema.Struct({
 
 export type SyncProgressState = typeof SyncProgressState.Type
 
-const SyncProgressAction = Schema.Union(
+const SyncProgressAction = Schema.Union([
   Schema.TaggedStruct('SetState', {
     state: SyncProgressState,
   }),
   Schema.TaggedStruct('ApplyEvent', {
     event: Schema.Any,
   }),
-)
+])
 
 export type SyncProgressAction = typeof SyncProgressAction.Type
 

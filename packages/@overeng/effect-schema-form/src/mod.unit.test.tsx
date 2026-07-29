@@ -43,7 +43,7 @@ describe('effect-schema-form baselines (cross-major invariant)', () => {
     age: Schema.optional(Schema.Int.annotate({ title: 'Age' })),
     role: Schema.Literal('admin', 'guest'),
     active: Schema.Boolean,
-    unsupported: Schema.Tuple(Schema.String),
+    unsupported: Schema.Tuple([Schema.String]),
   })
 
   const value: typeof Contact.Type = {
@@ -62,7 +62,7 @@ describe('effect-schema-form baselines (cross-major invariant)', () => {
       optionalInt: analyzeSchema(Schema.UndefinedOr(Schema.Int)),
       literalUnion: analyzeSchema(Schema.Literal('', 'kebab-case', '東京')),
       struct: analyzeSchema(Schema.Struct({ value: Schema.String })),
-      tuple: analyzeSchema(Schema.Tuple(Schema.String)),
+      tuple: analyzeSchema(Schema.Tuple([Schema.String])),
       unknown: analyzeSchema(Schema.Unknown),
     }
 

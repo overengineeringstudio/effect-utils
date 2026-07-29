@@ -194,7 +194,7 @@ const makeConsoleLogger = (ctx: restate.Context): Logger.Logger<unknown, void> =
  * handler, so it is unaffected (it keeps the process default logger).
  */
 export const loggerLayer = (ctx: restate.Context): Layer.Layer<never> =>
-  Logger.replace(Logger.defaultLogger, makeConsoleLogger(ctx))
+  Logger.layer([makeConsoleLogger(ctx)])
 
 /* ── cancellation ↔ interruption bridge (R31, docs/vrs/04-error-boundary/spec.md §2) ──────────────── */
 

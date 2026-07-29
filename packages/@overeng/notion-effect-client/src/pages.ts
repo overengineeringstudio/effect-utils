@@ -146,7 +146,7 @@ const MarkdownContentUpdateSchema = Schema.Struct({
   replace_all_matches: Schema.optional(Schema.Boolean),
 }).annotate({ identifier: 'NotionPages.MarkdownContentUpdate' })
 
-const UpdateMarkdownRequestSchema = Schema.Union(
+const UpdateMarkdownRequestSchema = Schema.Union([
   Schema.Struct({
     type: Schema.Literal('update_content'),
     update_content: Schema.Struct({
@@ -161,7 +161,7 @@ const UpdateMarkdownRequestSchema = Schema.Union(
       allow_deleting_content: Schema.optional(Schema.Boolean),
     }),
   }),
-).annotate({ identifier: 'NotionPages.UpdateMarkdownRequest' })
+]).annotate({ identifier: 'NotionPages.UpdateMarkdownRequest' })
 
 const decodeUpdateMarkdownRequest = Schema.decodeUnknown(UpdateMarkdownRequestSchema)
 
