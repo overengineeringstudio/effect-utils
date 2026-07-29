@@ -8,10 +8,11 @@
 
 import { Prompt } from 'effect/unstable/cli'
 import type { ChildProcessSpawner as CommandExecutor } from 'effect/unstable/process'
-import type { Terminal } from 'effect/Terminal'
-import type { Error as PlatformError } from 'effect'
+import * as Terminal from 'effect/Terminal'
+import * as PlatformError from 'effect/PlatformError'
 import * as FileSystem from 'effect/FileSystem'
-import { Clock, Effect, Option, type ParseResult } from 'effect'
+import { Clock, Effect, Option } from 'effect'
+import * as SchemaError from 'effect/SchemaError'
 import React from 'react'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
@@ -126,9 +127,9 @@ export const syncMegarepo = <R = never>({
   | StoreHygieneError
   | ConfigNotFoundError
   | PlatformError.PlatformError
-  | ParseResult.ParseError
+  | SchemaError.SchemaError
   | Error,
-  FileSystem.FileSystem | CommandExecutor.CommandExecutor | Store | StoreLock | R
+  FileSystem.FileSystem | CommandExecutor.ChildProcessSpawner | Store | StoreLock | R
 > =>
   Effect.gen(function* () {
     const { mode, dryRun, force, all, only, skip, gitProtocol, createBranches } = options
@@ -594,7 +595,7 @@ const createMissingRefPrompt = (
     })
 
     return yield* prompt.pipe(
-      Effect.catchTag('QuitException', () => Effect.succeed('abort' as const)),
+      Effect.catchTag('QuitError', () => Effect.succeed('abort' as const)),
     )
   })
 

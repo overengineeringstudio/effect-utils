@@ -119,7 +119,7 @@ const withoutPushAcquire = (
 export const makeStoreLockLayerFromBacking = (
   backingLayer: Layer.Layer<DistributedSemaphoreBacking>,
 ) =>
-  Layer.scoped(
+  Layer.effect(
     StoreLock,
     Effect.gen(function* () {
       const backingContext = withoutPushAcquire(yield* Layer.build(backingLayer))
@@ -136,7 +136,7 @@ export const makeStoreLockLayerFromBacking = (
  * Lock files stored in {basePath}.locks/ directory.
  */
 export const makeStoreLockLayer = (basePath: AbsoluteDirPath) =>
-  Layer.scoped(
+  Layer.effect(
     StoreLock,
     Effect.gen(function* () {
       const lockDir = `${basePath}.locks`

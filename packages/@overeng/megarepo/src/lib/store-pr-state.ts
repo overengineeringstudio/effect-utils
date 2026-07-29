@@ -188,14 +188,14 @@ export const makePrStateResolverLayer = ({
 }: {
   limit?: number
   timeout?: Duration.DurationInput
-} = {}): Layer.Layer<PrStateResolver, never, CommandExecutor.CommandExecutor> =>
+} = {}): Layer.Layer<PrStateResolver, never, CommandExecutor.ChildProcessSpawner> =>
   Layer.effect(
     PrStateResolver,
     Effect.gen(function* () {
       // Capture the executor once at layer build so the service's `resolve`
       // effects discharge their `CommandExecutor` requirement here (the live
       // shelling is an implementation detail, not part of the service R-channel).
-      const executor = yield* CommandExecutor.CommandExecutor
+      const executor = yield* CommandExecutor.ChildProcessSpawner
 
       /** repo `owner/repo` -> decoded PR rows (Option.none ⇒ resolved to no evidence). */
       const repoCache = new Map<string, Option.Option<ReadonlyArray<GhPr>>>()
@@ -208,8 +208,7 @@ export const makePrStateResolverLayer = ({
         repo: string
       }): Effect.Effect<Option.Option<ReadonlyArray<GhPr>>> =>
         Effect.gen(function* () {
-          const command = Command.make(
-            'gh',
+          const command = Command.make('gh', [
             'pr',
             'list',
             '--repo',
@@ -220,15 +219,15 @@ export const makePrStateResolverLayer = ({
             String(limit),
             '--json',
             'number,state,headRefName,mergedAt,closedAt',
-          )
-          const raw = yield* Command.string(command).pipe(
+          ])
+          const raw = yield* executor.string(command).pipe(
             Effect.timeoutFail({
               duration: timeout,
               onTimeout: () => new Error('gh pr list timed out'),
             }),
             // Any spawn/exec/timeout failure ⇒ no evidence (keep).
             Effect.option,
-            Effect.provideService(CommandExecutor.CommandExecutor, executor),
+            Effect.provideService(CommandExecutor.ChildProcessSpawner, executor),
           )
           return Option.flatMap(raw, decodePrListJson)
         })

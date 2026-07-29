@@ -24,7 +24,7 @@ import { fileURLToPath } from 'node:url'
 
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { ChildProcess as Command } from 'effect/unstable/process'
+import { ChildProcess as Command, ChildProcessSpawner } from 'effect/unstable/process'
 import { Effect, Schema } from 'effect'
 import { expect } from 'vitest'
 
@@ -82,14 +82,14 @@ describe('git memory regression', () => {
         // only — it must stay generous because bun/JSC reserves a large virtual
         // address space regardless of resident set; the assertion below (on
         // resident growth) is the real bound, not this limit.
-        const probe = Command.make(
-          'bash',
+        const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
+        const probe = Command.make('bash', [
           '-c',
           'ulimit -v 16777216; exec bun "$0" "$1"',
           probeScript,
           worktreePath,
-        )
-        const stdout = yield* Command.string(probe)
+        ])
+        const stdout = yield* spawner.string(probe)
         const result = decodeProbe(stdout.trim())
 
         const growthKb = result.vmHwmKb - result.rssStartKb

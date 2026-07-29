@@ -260,10 +260,10 @@ export type StatusState = Schema.Schema.Type<typeof StatusState>
  *
  * Status is static output, so we only need SetState to populate the final result.
  */
-export const StatusAction = Schema.Union(
+export const StatusAction = Schema.Union([
   /** Replace entire state */
   Schema.TaggedStruct('SetState', { state: StatusState }),
-)
+])
 
 /** Inferred type for status actions. */
 export type StatusAction = Schema.Schema.Type<typeof StatusAction>

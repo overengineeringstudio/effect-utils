@@ -79,7 +79,7 @@ const runMrCommand = ({
     )
 
     const argv = ['node', 'mr', ...command]
-    const exit = yield* Cli.Command.run(mrCommand, { name: 'mr', version: 'test' })(argv).pipe(
+    const exit = yield* Cli.Command.runWith(mrCommand, { version: 'test' })(argv.slice(2)).pipe(
       Effect.provideService(Cwd, cwd),
       Effect.provide(consoleLayer),
       Effect.exit,

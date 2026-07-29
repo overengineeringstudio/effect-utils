@@ -3,10 +3,11 @@ import { describe, expect, it } from 'vitest'
 
 import { StoreState } from '../cli/renderers/StoreOutput/schema.ts'
 import { MegarepoConfig } from './config.ts'
+import { encodePrettyJsonSync } from './json.ts'
 import { LockFile } from './lock.ts'
 
 const encodeJson = <A, I>(schema: Schema.Schema<A, I, never>, value: A): string =>
-  Schema.encodeSync(Schema.fromJsonString(schema, { space: 2 }))(value)
+  encodePrettyJsonSync(schema, value)
 
 const decodeJson = <A, I>(schema: Schema.Schema<A, I, never>, encoded: string): A =>
   Schema.decodeUnknownSync(Schema.fromJsonString(schema))(encoded)

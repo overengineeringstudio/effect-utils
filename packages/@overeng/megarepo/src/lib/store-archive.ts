@@ -32,7 +32,7 @@
  */
 
 import type { ChildProcessSpawner as CommandExecutor } from 'effect/unstable/process'
-import type { Error as PlatformError } from 'effect'
+import * as PlatformError from 'effect/PlatformError'
 import * as FileSystem from 'effect/FileSystem'
 import { Effect, Option } from 'effect'
 
@@ -164,7 +164,7 @@ export const archiveWorktree = (args: {
 }): Effect.Effect<
   ArchiveOutcome,
   Git.GitCommandError | PlatformError.PlatformError,
-  FileSystem.FileSystem | CommandExecutor.CommandExecutor
+  FileSystem.FileSystem | CommandExecutor.ChildProcessSpawner
 > =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
@@ -260,7 +260,7 @@ export const archiveRefMismatchWorktree = (args: {
 }): Effect.Effect<
   ArchiveOutcome,
   Git.GitCommandError | PlatformError.PlatformError,
-  FileSystem.FileSystem | CommandExecutor.CommandExecutor
+  FileSystem.FileSystem | CommandExecutor.ChildProcessSpawner
 > =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
@@ -332,7 +332,7 @@ export const scanArchives = (args: {
 }): Effect.Effect<
   ReadonlyArray<ArchiveEntry>,
   Git.GitCommandError | PlatformError.PlatformError,
-  CommandExecutor.CommandExecutor
+  CommandExecutor.ChildProcessSpawner
 > =>
   Effect.gen(function* () {
     const archiveDir = archiveDirPath(args.repoRoot)
@@ -383,7 +383,7 @@ export const reapArchive = (args: {
 }): Effect.Effect<
   void,
   Git.GitCommandError | PlatformError.PlatformError,
-  FileSystem.FileSystem | CommandExecutor.CommandExecutor
+  FileSystem.FileSystem | CommandExecutor.ChildProcessSpawner
 > =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
