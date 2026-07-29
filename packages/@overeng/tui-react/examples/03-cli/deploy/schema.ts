@@ -5,7 +5,7 @@
  * Used for both visual rendering and JSON serialization.
  */
 
-import { Schema } from 'effect'
+import { Effect, Schema } from 'effect'
 
 // =============================================================================
 // Service Status
@@ -127,9 +127,18 @@ export type DeployState = Schema.Schema.Type<typeof DeployState>
 export const DeployOptions = Schema.Struct({
   services: Schema.Array(Schema.String),
   environment: Schema.String,
-  dryRun: Schema.optionalWith(Schema.Boolean, { default: () => false }),
-  force: Schema.optionalWith(Schema.Boolean, { default: () => false }),
-  timeout: Schema.optionalWith(Schema.Number, { default: () => 30000 }),
+  dryRun: Schema.Boolean.pipe(
+    Schema.withDecodingDefaultType(Effect.sync(() => false)),
+    Schema.withConstructorDefault(Effect.sync(() => false)),
+  ),
+  force: Schema.Boolean.pipe(
+    Schema.withDecodingDefaultType(Effect.sync(() => false)),
+    Schema.withConstructorDefault(Effect.sync(() => false)),
+  ),
+  timeout: Schema.Number.pipe(
+    Schema.withDecodingDefaultType(Effect.sync(() => 30000)),
+    Schema.withConstructorDefault(Effect.sync(() => 30000)),
+  ),
 })
 /** Inferred type for deploy command options. */
 export type DeployOptions = Schema.Schema.Type<typeof DeployOptions>

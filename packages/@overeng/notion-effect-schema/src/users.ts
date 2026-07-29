@@ -12,11 +12,10 @@ import { docsPath, NotionUUID } from './common.ts'
  * @see https://developers.notion.com/reference/user#people
  */
 export const PersonData = Schema.Struct({
-  email: Schema.optionalWith(
+  email: Schema.OptionFromOptional(
     Schema.String.annotate({
       examples: ['user@example.com'],
     }),
-    { as: 'Option' },
   ).annotate({
     description: 'Email address of the person. Only present with proper capabilities.',
   }),
@@ -44,19 +43,17 @@ export const Person = Schema.Struct({
   type: Schema.Literal('person').annotate({
     description: 'Type identifier for person users.',
   }),
-  name: Schema.optionalWith(
+  name: Schema.OptionFromOptional(
     Schema.String.annotate({
       examples: ['Jane Doe'],
     }),
-    { as: 'Option' },
   ).annotate({
     description: "User's name as displayed in Notion.",
   }),
-  avatar_url: Schema.optionalWith(
+  avatar_url: Schema.OptionFromOptional(
     Schema.String.annotate({
       examples: ['https://s3.us-west-2.amazonaws.com/...'],
     }),
-    { as: 'Option' },
   ).annotate({
     description: "URL of the user's avatar image.",
   }),
@@ -107,9 +104,7 @@ export const BotData = Schema.Struct({
   owner: BotOwner.annotate({
     description: 'Owner of the bot (workspace or user).',
   }),
-  workspace_name: Schema.optionalWith(Schema.String, {
-    as: 'Option',
-  }).annotate({
+  workspace_name: Schema.OptionFromOptional(Schema.String).annotate({
     description: 'Name of the workspace owning the bot.',
   }),
 }).annotate({
@@ -136,15 +131,14 @@ export const Bot = Schema.Struct({
   type: Schema.Literal('bot').annotate({
     description: 'Type identifier for bot users.',
   }),
-  name: Schema.optionalWith(
+  name: Schema.OptionFromOptional(
     Schema.String.annotate({
       examples: ['My Integration'],
     }),
-    { as: 'Option' },
   ).annotate({
     description: "Bot's name as displayed in Notion.",
   }),
-  avatar_url: Schema.optionalWith(Schema.String, { as: 'Option' }).annotate({
+  avatar_url: Schema.OptionFromOptional(Schema.String).annotate({
     description: "URL of the bot's avatar image.",
   }),
   bot: BotData,

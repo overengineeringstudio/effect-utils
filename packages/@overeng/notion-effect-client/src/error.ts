@@ -42,11 +42,11 @@ export class NotionApiError extends Schema.TaggedErrorClass<NotionApiError>()('N
   /** Retry delay in seconds (from retry-after header, typically for rate limits) */
   retryAfterSeconds: Schema.OptionFromSelf(Schema.Number),
   /** Request ID for Notion support (from x-request-id header) */
-  requestId: Schema.optionalWith(Schema.String, { as: 'Option' }),
+  requestId: Schema.OptionFromOptional(Schema.String),
   /** Original request URL for debugging */
-  url: Schema.optionalWith(Schema.String, { as: 'Option' }),
+  url: Schema.OptionFromOptional(Schema.String),
   /** Original request method for debugging */
-  method: Schema.optionalWith(Schema.String, { as: 'Option' }),
+  method: Schema.OptionFromOptional(Schema.String),
 }) {
   /** Check if error is retryable (rate limit or server error) */
   get isRetryable(): boolean {

@@ -21,7 +21,7 @@
  * ```
  */
 
-import { Schema } from 'effect'
+import { Effect, Schema } from 'effect'
 
 // =============================================================================
 // Key Event
@@ -73,25 +73,37 @@ export const KeyEvent = Schema.TaggedStruct('Event.Key', {
    * Whether the Ctrl key was held.
    * @default false
    */
-  ctrl: Schema.optionalWith(Schema.Boolean, { default: () => false }),
+  ctrl: Schema.Boolean.pipe(
+    Schema.withDecodingDefaultType(Effect.sync(() => false)),
+    Schema.withConstructorDefault(Effect.sync(() => false)),
+  ),
 
   /**
    * Whether the Alt/Option key was held.
    * @default false
    */
-  alt: Schema.optionalWith(Schema.Boolean, { default: () => false }),
+  alt: Schema.Boolean.pipe(
+    Schema.withDecodingDefaultType(Effect.sync(() => false)),
+    Schema.withConstructorDefault(Effect.sync(() => false)),
+  ),
 
   /**
    * Whether the Shift key was held.
    * @default false
    */
-  shift: Schema.optionalWith(Schema.Boolean, { default: () => false }),
+  shift: Schema.Boolean.pipe(
+    Schema.withDecodingDefaultType(Effect.sync(() => false)),
+    Schema.withConstructorDefault(Effect.sync(() => false)),
+  ),
 
   /**
    * Whether the Meta/Command key was held (macOS).
    * @default false
    */
-  meta: Schema.optionalWith(Schema.Boolean, { default: () => false }),
+  meta: Schema.Boolean.pipe(
+    Schema.withDecodingDefaultType(Effect.sync(() => false)),
+    Schema.withConstructorDefault(Effect.sync(() => false)),
+  ),
 })
 
 /**
@@ -232,17 +244,26 @@ export const MouseEvent = Schema.TaggedStruct('Event.Mouse', {
   /**
    * Whether Ctrl was held
    */
-  ctrl: Schema.optionalWith(Schema.Boolean, { default: () => false }),
+  ctrl: Schema.Boolean.pipe(
+    Schema.withDecodingDefaultType(Effect.sync(() => false)),
+    Schema.withConstructorDefault(Effect.sync(() => false)),
+  ),
 
   /**
    * Whether Alt was held
    */
-  alt: Schema.optionalWith(Schema.Boolean, { default: () => false }),
+  alt: Schema.Boolean.pipe(
+    Schema.withDecodingDefaultType(Effect.sync(() => false)),
+    Schema.withConstructorDefault(Effect.sync(() => false)),
+  ),
 
   /**
    * Whether Shift was held
    */
-  shift: Schema.optionalWith(Schema.Boolean, { default: () => false }),
+  shift: Schema.Boolean.pipe(
+    Schema.withDecodingDefaultType(Effect.sync(() => false)),
+    Schema.withConstructorDefault(Effect.sync(() => false)),
+  ),
 })
 
 /**

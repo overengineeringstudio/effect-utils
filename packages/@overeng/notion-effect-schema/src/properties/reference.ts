@@ -126,7 +126,7 @@ export const RelationProperty = Schema.Struct({
   ).annotate({
     description: 'Array of related page references.',
   }),
-  has_more: Schema.optionalWith(Schema.Boolean, { as: 'Option' }).annotate({
+  has_more: Schema.OptionFromOptional(Schema.Boolean).annotate({
     description: 'Whether there are more relations than returned.',
   }),
 }).annotate({

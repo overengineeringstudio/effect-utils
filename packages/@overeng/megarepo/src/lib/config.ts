@@ -222,9 +222,14 @@ export class ConfigNotFoundError extends Schema.TaggedErrorClass<ConfigNotFoundE
   'ConfigNotFoundError',
   {
     megarepoRoot: Schema.String,
-    message: Schema.optionalWith(Schema.String, {
-      default: () => 'No megarepo config found (checked megarepo.kdl and megarepo.json)',
-    }),
+    message: Schema.String.pipe(
+      Schema.withDecodingDefaultType(
+        Effect.sync(() => 'No megarepo config found (checked megarepo.kdl and megarepo.json)'),
+      ),
+      Schema.withConstructorDefault(
+        Effect.sync(() => 'No megarepo config found (checked megarepo.kdl and megarepo.json)'),
+      ),
+    ),
   },
 ) {}
 

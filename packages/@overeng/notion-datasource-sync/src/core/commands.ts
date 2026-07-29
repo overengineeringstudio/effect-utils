@@ -1,4 +1,4 @@
-import { Schema } from 'effect'
+import { Effect, Schema } from 'effect'
 
 import {
   CanonicalFileValue as SchemaCanonicalFileValue,
@@ -305,9 +305,12 @@ export const PatchDataSourceSchemaCommand = Schema.TaggedStruct('PatchDataSource
   dataSourceId: DataSourceId,
   baseSchemaHash: Hash,
   schemaPatch: Schema.Record({ key: PropertyId, value: CanonicalDataSourceProperty }),
-  operations: Schema.optionalWith(Schema.Array(SchemaPatchOperation), {
-    default: () => [] as ReadonlyArray<SchemaPatchOperation>,
-  }),
+  operations: Schema.Array(SchemaPatchOperation).pipe(
+    Schema.withDecodingDefaultType(
+      Effect.sync(() => [] as ReadonlyArray<SchemaPatchOperation>),
+    ),
+    Schema.withConstructorDefault(Effect.sync(() => [] as ReadonlyArray<SchemaPatchOperation>)),
+  ),
 }).annotate({ identifier: 'NotionDatasourceSync.PatchDataSourceSchemaCommand' })
 export type PatchDataSourceSchemaCommand = typeof PatchDataSourceSchemaCommand.Type
 
