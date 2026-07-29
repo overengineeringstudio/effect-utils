@@ -583,10 +583,10 @@ describe('tui-react JSON/NDJSON wire baselines (cross-major invariant)', () => {
             : null,
       })
 
-      // TODO(live-migration:effect-3-4): Effect 4 may print help on stdout here (effect#6313); apply #980 rather than accepting bytes on the machine stream.
+      // TODO(live-migration:effect-3-4): Effect 4's formatter-derived SchemaError prose differs from the v3 ParseError tree; tracked by #978. Both majors produce a defect here because the encode failure passes through Effect.orDie.
       expect(capturedOutput).toMatchInlineSnapshot(`[]`)
       expect(failureBytes).toMatchInlineSnapshot(
-        `"{"_tag":"Failure","cause":"ParseError: (parseJson <-> { readonly _tag: \\"WireState\\"; readonly phase: \\"idle\\" | \\"done\\"; readonly text: string; readonly nullable: string | null; readonly note?: string | undefined; readonly items: ReadonlyArray<{ readonly id: string; readonly value: string }> })\\n└─ Type side transformation failure\\n   └─ { readonly _tag: \\"WireState\\"; readonly phase: \\"idle\\" | \\"done\\"; readonly text: string; readonly nullable: string | null; readonly note?: string | undefined; readonly items: ReadonlyArray<{ readonly id: string; readonly value: string }> }\\n      └─ [\\"text\\"]\\n         └─ Expected string, actual null"}"`,
+        `"{"_tag":"Failure","cause":"Cause([Die(SchemaError(Expected string, got null\\n  at [\\"text\\"]))])"}"`,
       )
     }),
   )
