@@ -38,6 +38,8 @@ import {
   type OtelMetricDefinition,
 } from './mod.ts'
 
+type AnyNoContext = Schema.Codec<unknown, unknown, never, never>
+
 // ---------------------------------------------------------------------------
 // Weaver vocabulary — MIRRORS @overeng/genie src/runtime/weaver Layer 1 (see file docstring).
 // ---------------------------------------------------------------------------
@@ -264,13 +266,9 @@ type WeaverAttrMetaInput = {
 
 /** deep annotation read (mirrors otel-contract's own walk through Refinement/Transformation/Union). */
 const getDeep = <T>({ id, ast }: { id: symbol; ast: AST.AST }): T | undefined => {
-  const here = AST.resolveAt<T>(id)(ast)
+  const here = (AST.resolve(ast) as Record<PropertyKey, unknown> | undefined)?.[id] as T | undefined
   if (here !== undefined) return here
   switch (ast._tag) {
-    case 'Refinement':
-      return getDeep<T>({ id, ast: ast.from })
-    case 'Transformation':
-      return getDeep<T>({ id, ast: ast.to }) ?? getDeep<T>({ id, ast: ast.from })
     case 'Union':
       return ast.types.map((t) => getDeep<T>({ id, ast: t })).find((x) => x !== undefined)
     default:
@@ -278,7 +276,7 @@ const getDeep = <T>({ id, ast }: { id: symbol; ast: AST.AST }): T | undefined =>
   }
 }
 
-const annotateWeaver = <S extends Schema.Annotable.All>({
+const annotateWeaver = <S extends Schema.Top>({
   schema,
   meta,
 }: {
@@ -287,7 +285,7 @@ const annotateWeaver = <S extends Schema.Annotable.All>({
 }): S => schema.annotate({ [WeaverAttrAnnotationId]: meta }) as S
 
 /** An attribute is an annotated Effect Schema (otel + weaver metadata carried on its AST). */
-export type Attribute = Schema.Schema.AnyNoContext
+export type Attribute = AnyNoContext
 
 const keyOf = (schema: Attribute): string => {
   const otel = getDeep<{ key?: string }>({ id: OtelAttrAnnotationId, ast: schema.ast })
@@ -401,7 +399,7 @@ export const attr = {
     } & EntryMetaInput,
   ) =>
     annotateWeaver({
-      schema: OtelAttr.literal(o.key, ...o.values) as unknown as Schema.Schema<V[number]>,
+      schema: OtelAttr.literal(o.key, ...o.values) as unknown as Schema.Codec<V[number]>,
       meta: {
         brief: o.brief,
         stability: o.stability,
@@ -519,8 +517,8 @@ type Ref = { schema: Attribute; requirement: RequirementLevel; external: boolean
 
 const buildFields = (
   entries: Record<string, FieldSpec>,
-): { fields: Record<string, Schema.Struct.Field>; refList: AttrRef[]; refs: Ref[] } => {
-  const fields: Record<string, Schema.Struct.Field> = {}
+): { fields: Record<string, Schema.Constraint>; refList: AttrRef[]; refs: Ref[] } => {
+  const fields: Record<string, Schema.Constraint> = {}
   const refList: AttrRef[] = []
   const refs: Ref[] = []
   for (const [field, spec] of Object.entries(entries)) {
@@ -538,12 +536,12 @@ const buildFields = (
 
 /**
  * Build a `Schema.Struct` from a dynamically-assembled field record. The record is typed with
- * `Schema.Struct.Field` (so it accepts `Schema.optional(...)` PropertySignatures), which widens
+ * `Schema.Constraint` (so it accepts `Schema.optional(...)` PropertySignatures), which widens
  * the result's `Context` to `unknown`; every field here is a no-context otel attribute, so the
  * cast back to `AnyNoContext` is sound.
  */
-const structOf = (fields: Record<string, Schema.Struct.Field>): Schema.Schema.AnyNoContext =>
-  Schema.Struct(fields) as unknown as Schema.Schema.AnyNoContext
+const structOf = (fields: Record<string, Schema.Constraint>): AnyNoContext =>
+  Schema.Struct(fields) as unknown as AnyNoContext
 
 // ---------------------------------------------------------------------------
 // span / metric / operation — compose refs, derive the runtime encoder + weaver signal.
@@ -560,7 +558,7 @@ const signalMetaSpread = (o: EntryMetaInput): SignalMeta => ({
 export type SpanContract = {
   readonly kind: 'span'
   readonly id: string
-  readonly encoder: OtelAttrs<Schema.Schema.AnyNoContext>
+  readonly encoder: OtelAttrs<AnyNoContext>
   readonly refs: ReadonlyArray<Ref>
   readonly signal: () => SignalDef
 }
@@ -605,8 +603,8 @@ export const span = (
 export type MetricContract = {
   readonly kind: 'metric'
   readonly id: string
-  readonly metric: OtelMetricDefinition<Schema.Schema.AnyNoContext>
-  readonly encoder: OtelAttrs<Schema.Schema.AnyNoContext>
+  readonly metric: OtelMetricDefinition<AnyNoContext>
+  readonly encoder: OtelAttrs<AnyNoContext>
   readonly refs: ReadonlyArray<Ref>
   readonly signal: () => SignalDef
 }
@@ -636,7 +634,7 @@ export const metric = (
   if (o.instrument === 'updowncounter') {
     throw new WeaverUnsupportedInstrumentError({ metricName: o.name, instrument: o.instrument })
   }
-  const def: OtelMetricDefinition<Schema.Schema.AnyNoContext> =
+  const def: OtelMetricDefinition<AnyNoContext> =
     o.instrument === 'counter'
       ? OtelMetric.counter({
           name: o.name,
@@ -695,7 +693,7 @@ export type OperationContract = {
  */
 export const operation = <
   F extends Record<string, FieldSpec>,
-  L extends Record<string, Schema.Schema.AnyNoContext>,
+  L extends Record<string, AnyNoContext>,
 >(
   o: {
     id: string
@@ -711,7 +709,7 @@ export const operation = <
   const { fields, refList, refs } = buildFields(o.attributes)
   // runtime-only label-source fields — NOT catalog refs, absent from the registry.
   for (const [field, schema] of Object.entries(o.labelFields ?? {})) {
-    fields[field] = schema as Schema.Struct.Field
+    fields[field] = schema as Schema.Constraint
   }
   const op = OtelOperation.define({
     name: o.name,
