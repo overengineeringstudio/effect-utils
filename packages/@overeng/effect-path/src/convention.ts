@@ -8,8 +8,7 @@
  * This module provides parsing functions that use the @effect/platform Path service.
  */
 
-import { Path as PlatformPath } from 'effect/Path'
-import { Effect } from 'effect'
+import { Effect, Path as PlatformPath } from 'effect'
 
 import type {
   Abs,

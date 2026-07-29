@@ -7,9 +7,7 @@
  * 3. Canonical - Full resolution including symlinks (requires FileSystem)
  */
 
-import { FileSystem } from 'effect/FileSystem'
-import { Path as PlatformPath } from 'effect/Path'
-import { Effect } from 'effect'
+import { Effect, FileSystem, Path as PlatformPath } from 'effect'
 
 import type { AbsolutePath, Path, RelativePath } from './brands.ts'
 import { PathNotFoundError, SymlinkLoopError } from './errors.ts'
@@ -158,7 +156,7 @@ export const canonical = Effect.fnUntraced(function* (path: Path) {
   const realPath = yield* fs.realPath(absolutePath).pipe(
     Effect.mapError((error) => {
       // Map platform errors to our error types
-      if (error._tag === 'SystemError' && error.reason === 'NotFound') {
+      if (error.reason._tag === 'NotFound') {
         return new PathNotFoundError({
           path: absolutePath,
           message: `Path not found: ${absolutePath}`,
@@ -199,7 +197,7 @@ export const canonicalOrLexical = Effect.fnUntraced(function* (path: Path) {
 
   // Try canonical first
   const result = yield* canonical(path).pipe(
-    Effect.orElse(() =>
+    Effect.catch(() =>
       // Fall back to lexical normalization
       lexical(absolutePath),
     ),

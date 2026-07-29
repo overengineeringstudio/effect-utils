@@ -1,7 +1,5 @@
 import { NodeServices } from '@effect/platform-node'
-import type { Error as PlatformError } from 'effect'
-import { Effect, Either, Schema } from 'effect'
-import { FileSystem } from 'effect/FileSystem'
+import { Effect, FileSystem, type PlatformError, Result, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -84,18 +82,18 @@ const summarizeTraversalError = (error: TraversalError) => ({
   sandboxRoot: error.sandboxRoot,
 })
 
-const left = <A, E>(either: Either.Either<A, E>, message = 'expected failure'): E => {
-  if (Either.isRight(either) === true) {
+const left = <A, E>(either: Result.Result<A, E>, message = 'expected failure'): E => {
+  if (Result.isSuccess(either) === true) {
     throw new Error(message)
   }
-  return either.left
+  return either.failure
 }
 
 const summarizePlatformError = (error: PlatformError.PlatformError) => ({
   _tag: error._tag,
-  reason: error._tag === 'SystemError' ? error.reason : undefined,
-  module: error.module,
-  method: error.method,
+  reason: error.reason._tag,
+  module: error.reason.module,
+  method: error.reason.method,
 })
 
 type VerifiedFileBaselineError =
@@ -130,12 +128,14 @@ describe('effect-path baselines (cross-major invariant)', () => {
       Effect.gen(function* () {
         const normalizedSchema = EffectPath.schema.AbsoluteFileInfo()
         const originalSchema = EffectPath.schema.AbsoluteFileInfo({ encodeAs: 'original' })
-        const decoded = yield* Schema.decodeUnknown(normalizedSchema)('/repo//pkg/archive.tar.gz')
+        const decoded = yield* Schema.decodeUnknownEffect(normalizedSchema)(
+          '/repo//pkg/archive.tar.gz',
+        )
 
         return {
           decoded: summarizeFileInfo(decoded),
-          encodedDefault: yield* Schema.encode(normalizedSchema)(decoded),
-          encodedOriginal: yield* Schema.encode(originalSchema)(decoded),
+          encodedDefault: yield* Schema.encodeEffect(normalizedSchema)(decoded),
+          encodedOriginal: yield* Schema.encodeEffect(originalSchema)(decoded),
         }
       }),
     )
@@ -173,16 +173,16 @@ describe('effect-path baselines (cross-major invariant)', () => {
       Effect.gen(function* () {
         const absoluteFileFromRelative = yield* EffectPath.convention
           .absoluteFile('relative/file.txt')
-          .pipe(Effect.either)
+          .pipe(Effect.result)
         const relativeFileFromAbsolute = yield* EffectPath.convention
           .relativeFile('/absolute/file.txt')
-          .pipe(Effect.either)
+          .pipe(Effect.result)
         const fileFromDirectoryConvention = yield* EffectPath.convention
           .absoluteFile('/absolute/dir/')
-          .pipe(Effect.either)
+          .pipe(Effect.result)
         const invalidPath = yield* EffectPath.convention
           .relativeFile('bad\0path.txt')
-          .pipe(Effect.either)
+          .pipe(Effect.result)
 
         return [
           left(absoluteFileFromRelative),
@@ -236,9 +236,11 @@ describe('effect-path baselines (cross-major invariant)', () => {
     expect({
       joined,
       normalized,
-      allowed: Either.isRight(allowed) === true ? allowed.right : allowed.left,
+      allowed: Result.isSuccess(allowed) === true ? allowed.success : allowed.failure,
       escaped:
-        Either.isLeft(escaped) === true ? summarizeTraversalError(escaped.left) : escaped.right,
+        Result.isFailure(escaped) === true
+          ? summarizeTraversalError(escaped.failure)
+          : escaped.success,
     }).toMatchInlineSnapshot(`
       {
         "allowed": "/repo/root/index.ts",
@@ -265,13 +267,13 @@ describe('effect-path baselines (cross-major invariant)', () => {
         const root = yield* fs.makeTempDirectoryScoped()
         const missing = `${root}/missing.txt`
 
-        const enoent = left(yield* fs.stat(missing).pipe(Effect.either))
+        const enoent = left(yield* fs.stat(missing).pipe(Effect.result))
         const missingPath = left(
-          yield* EffectPath.verified.absoluteFile(missing).pipe(Effect.either),
+          yield* EffectPath.verified.absoluteFile(missing).pipe(Effect.result),
         )
         // effect-path has no public create/write API or EEXIST branch. This real failure pins the
         // platform wrapper fields only; it does not claim a package-owned EEXIST partition.
-        const eexist = left(yield* fs.makeDirectory(root).pipe(Effect.either))
+        const eexist = left(yield* fs.makeDirectory(root).pipe(Effect.result))
 
         return {
           enoent: {
@@ -285,14 +287,11 @@ describe('effect-path baselines (cross-major invariant)', () => {
       }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
     )
 
-    // TODO(live-migration:effect-3-4): v4 replaces SystemError with PlatformError (register entry
-    // platform-error-wrapper). Resolve by updating the tag while keeping this partition and these
-    // inner fields identical — a change in WHICH branch fires is a real regression, not a rename.
     expect(result).toMatchInlineSnapshot(`
       {
         "eexist": {
           "platform": {
-            "_tag": "SystemError",
+            "_tag": "PlatformError",
             "method": "makeDirectory",
             "module": "FileSystem",
             "reason": "AlreadyExists",
@@ -300,7 +299,7 @@ describe('effect-path baselines (cross-major invariant)', () => {
         },
         "enoent": {
           "platform": {
-            "_tag": "SystemError",
+            "_tag": "PlatformError",
             "method": "stat",
             "module": "FileSystem",
             "reason": "NotFound",
@@ -330,9 +329,9 @@ describe('effect-path baselines (cross-major invariant)', () => {
           yield* fs.chmod(blocked, 0o000)
 
           return yield* Effect.gen(function* () {
-            const eacces = left(yield* fs.stat(blockedFile).pipe(Effect.either))
+            const eacces = left(yield* fs.stat(blockedFile).pipe(Effect.result))
             const permission = left(
-              yield* EffectPath.verified.absoluteFile(blockedFile).pipe(Effect.either),
+              yield* EffectPath.verified.absoluteFile(blockedFile).pipe(Effect.result),
             )
 
             return {
@@ -343,13 +342,10 @@ describe('effect-path baselines (cross-major invariant)', () => {
         }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
       )
 
-      // TODO(live-migration:effect-3-4): v4 replaces SystemError with PlatformError (register entry
-      // platform-error-wrapper). Resolve by updating the tag while keeping this partition and these
-      // inner fields identical — a change in WHICH branch fires is a real regression, not a rename.
       expect(result).toMatchInlineSnapshot(`
         {
           "platform": {
-            "_tag": "SystemError",
+            "_tag": "PlatformError",
             "method": "stat",
             "module": "FileSystem",
             "reason": "PermissionDenied",
