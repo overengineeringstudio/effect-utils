@@ -1,4 +1,4 @@
-import { Option, Schema } from 'effect'
+import { Option, Schema, SchemaTransformation } from 'effect'
 
 import { docsPath, shouldNeverHappen, withOptionValueSchema } from '../common.ts'
 import { RichText, RichTextArray } from '../rich-text.ts'
@@ -49,13 +49,17 @@ export const TitleWrite = Schema.Struct({
 export type TitleWrite = typeof TitleWrite.Type
 
 /** Transforms plain string into a title write payload */
-export const TitleWriteFromString = Schema.transform(Schema.String, TitleWrite, {
-  strict: false,
-  decode: (str) => ({
-    title: [{ type: 'text', text: { content: str } }],
-  }),
-  encode: (write) => write.title.map((rt) => rt.text.content).join(''),
-}).annotate({
+export const TitleWriteFromString = Schema.String.pipe(
+  Schema.decodeTo(
+    TitleWrite,
+    SchemaTransformation.transform({
+      decode: (str) => ({
+        title: [{ type: 'text', text: { content: str } }],
+      }),
+      encode: (write) => write.title.map((rt) => rt.text.content).join(''),
+    }),
+  ),
+).annotate({
   identifier: 'Notion.TitleWriteFromString',
   title: 'Title (Write) From String',
   description: 'Transform a plain string into a title write payload.',
@@ -68,24 +72,32 @@ export const Title = {
   Property: TitleProperty,
 
   /** Transform to raw rich text array. */
-  raw: Schema.transform(TitleProperty, RichTextArray, {
-    strict: false,
-    decode: (prop) => prop.title,
-    encode: () =>
-      shouldNeverHappen(
-        'Title.raw encode is not supported. Use TitleWrite / TitleWriteFromString.',
-      ),
-  }),
+  raw: TitleProperty.pipe(
+    Schema.decodeTo(
+      RichTextArray,
+      SchemaTransformation.transform({
+        decode: (prop) => prop.title,
+        encode: () =>
+          shouldNeverHappen(
+            'Title.raw encode is not supported. Use TitleWrite / TitleWriteFromString.',
+          ),
+      }),
+    ),
+  ),
 
   /** Transform to plain string. */
-  asString: Schema.transform(TitleProperty, Schema.String, {
-    strict: false,
-    decode: (prop) => prop.title.map((rt) => rt.plain_text).join(''),
-    encode: () =>
-      shouldNeverHappen(
-        'Title.asString encode is not supported. Use TitleWrite / TitleWriteFromString.',
-      ),
-  }),
+  asString: TitleProperty.pipe(
+    Schema.decodeTo(
+      Schema.String,
+      SchemaTransformation.transform({
+        decode: (prop) => prop.title.map((rt) => rt.plain_text).join(''),
+        encode: () =>
+          shouldNeverHappen(
+            'Title.asString encode is not supported. Use TitleWrite / TitleWriteFromString.',
+          ),
+      }),
+    ),
+  ),
 
   Write: {
     Schema: TitleWrite,
@@ -138,13 +150,17 @@ export const RichTextWrite = Schema.Struct({
 export type RichTextWrite = typeof RichTextWrite.Type
 
 /** Transforms plain string into a rich text write payload */
-export const RichTextWriteFromString = Schema.transform(Schema.String, RichTextWrite, {
-  strict: false,
-  decode: (str) => ({
-    rich_text: [{ type: 'text', text: { content: str } }],
-  }),
-  encode: (write) => write.rich_text.map((rt) => rt.text.content).join(''),
-}).annotate({
+export const RichTextWriteFromString = Schema.String.pipe(
+  Schema.decodeTo(
+    RichTextWrite,
+    SchemaTransformation.transform({
+      decode: (str) => ({
+        rich_text: [{ type: 'text', text: { content: str } }],
+      }),
+      encode: (write) => write.rich_text.map((rt) => rt.text.content).join(''),
+    }),
+  ),
+).annotate({
   identifier: 'Notion.RichTextWriteFromString',
   title: 'Rich Text (Write) From String',
   description: 'Transform a plain string into a rich text write payload.',
@@ -157,29 +173,37 @@ export const RichTextProp = {
   Property: RichTextProperty,
 
   /** Transform to raw rich text array. */
-  raw: Schema.transform(RichTextProperty, RichTextArray, {
-    strict: false,
-    decode: (prop) => prop.rich_text,
-    encode: () =>
-      shouldNeverHappen(
-        'RichTextProp.raw encode is not supported. Use RichTextWrite / RichTextWriteFromString.',
-      ),
-  }),
+  raw: RichTextProperty.pipe(
+    Schema.decodeTo(
+      RichTextArray,
+      SchemaTransformation.transform({
+        decode: (prop) => prop.rich_text,
+        encode: () =>
+          shouldNeverHappen(
+            'RichTextProp.raw encode is not supported. Use RichTextWrite / RichTextWriteFromString.',
+          ),
+      }),
+    ),
+  ),
 
   /** Transform to plain string. */
-  asString: Schema.transform(RichTextProperty, Schema.String, {
-    strict: false,
-    decode: (prop) => prop.rich_text.map((rt) => rt.plain_text).join(''),
-    encode: () =>
-      shouldNeverHappen(
-        'RichTextProp.asString encode is not supported. Use RichTextWrite / RichTextWriteFromString.',
-      ),
-  }),
+  asString: RichTextProperty.pipe(
+    Schema.decodeTo(
+      Schema.String,
+      SchemaTransformation.transform({
+        decode: (prop) => prop.rich_text.map((rt) => rt.plain_text).join(''),
+        encode: () =>
+          shouldNeverHappen(
+            'RichTextProp.asString encode is not supported. Use RichTextWrite / RichTextWriteFromString.',
+          ),
+      }),
+    ),
+  ),
 
   /** Transform to required string (fails if empty after trim). */
-  asNonEmptyString: Schema.transform(
-    RichTextProperty.pipe(
-      Schema.filter(
+  asNonEmptyString: RichTextProperty.pipe(
+    Schema.check(
+      Schema.makeFilter(
         (p) =>
           p.rich_text
             .map((rt) => rt.plain_text)
@@ -188,30 +212,36 @@ export const RichTextProp = {
         { message: () => 'Rich text must not be empty' },
       ),
     ),
-    Schema.String,
-    {
-      strict: false,
-      decode: (prop) => prop.rich_text.map((rt) => rt.plain_text).join(''),
-      encode: () =>
-        shouldNeverHappen(
-          'RichTextProp.asNonEmptyString encode is not supported. Use RichTextWrite / RichTextWriteFromString.',
-        ),
-    },
+  ).pipe(
+    Schema.decodeTo(
+      Schema.String,
+      SchemaTransformation.transform({
+        decode: (prop) => prop.rich_text.map((rt) => rt.plain_text).join(''),
+        encode: () =>
+          shouldNeverHappen(
+            'RichTextProp.asNonEmptyString encode is not supported. Use RichTextWrite / RichTextWriteFromString.',
+          ),
+      }),
+    ),
   ),
 
   /** Transform to Option<string> (empty becomes None). */
   asOption: withOptionValueSchema({
-    schema: Schema.transform(RichTextProperty, Schema.OptionFromSelf(Schema.String), {
-      strict: false,
-      decode: (prop) => {
-        const text = prop.rich_text.map((rt) => rt.plain_text).join('')
-        return text.trim() === '' ? Option.none() : Option.some(text)
-      },
-      encode: () =>
-        shouldNeverHappen(
-          'RichTextProp.asOption encode is not supported. Use RichTextWrite / RichTextWriteFromString.',
-        ),
-    }),
+    schema: RichTextProperty.pipe(
+      Schema.decodeTo(
+        Schema.Option(Schema.String),
+        SchemaTransformation.transform({
+          decode: (prop) => {
+            const text = prop.rich_text.map((rt) => rt.plain_text).join('')
+            return text.trim() === '' ? Option.none() : Option.some(text)
+          },
+          encode: () =>
+            shouldNeverHappen(
+              'RichTextProp.asOption encode is not supported. Use RichTextWrite / RichTextWriteFromString.',
+            ),
+        }),
+      ),
+    ),
     valueSchema: Schema.String,
   }),
 

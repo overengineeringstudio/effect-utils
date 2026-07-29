@@ -1,7 +1,8 @@
 # Pattern: schema-date
 
-**Area:** Schema wire format **Kind:** semantic (conditional rewrite) **Our usage:** `Schema.DateTimeUtc`,
-`Schema.DateFromSelf`, and date transforms appear in agent-session, Notion codecs, and path schemas.
+**Area:** Schema wire format **Kind:** semantic (conditional rewrite) **Our usage:**
+`Schema.DateTimeUtc`, `Schema.DateFromSelf`, and date transforms appear in agent-session, Notion
+codecs, and path schemas.
 
 ## v3
 
@@ -81,3 +82,34 @@ process, persistence, API, file, config, test fixture, or `Schema.encode*` /
 `Schema.decodeUnknown*` boundary. Do not apply this rule when callers already
 pass Date instances directly and the encoded side is not part of the observable
 contract.
+
+## DateTime follows the same surviving-name trap
+
+Effect 3 `Schema.DateTimeUtc` was a bidirectional ISO-string wire codec whose Type was
+`DateTime.Utc`. In Effect 4 the bare surviving name validates values that are already
+`DateTime.Utc`; the wire codec is:
+
+```ts
+Schema.DateTimeUtcFromString
+```
+
+At string-to-value boundaries, migrate:
+
+```ts
+Schema.DateTimeUtc
+```
+
+to:
+
+```ts
+Schema.DateTimeUtcFromString
+```
+
+The Effect 4 encoder formats the UTC value through `DateTime.formatIso`, which bottoms out in
+`Date.prototype.toISOString()`. For the repository baseline this preserves exact bytes including
+milliseconds and the `Z` suffix. Invalid strings still fail, but parse-message text may differ and
+must not be silently rebaselined at observable boundaries.
+
+The broader pattern is: when a v3 schema performed string-to-value decoding, a surviving bare v4
+identifier may have become an instance validator while a `...FromString` schema now owns the wire
+contract. Verify Type, Encoded, and exact encoded bytes rather than trusting the surviving name.

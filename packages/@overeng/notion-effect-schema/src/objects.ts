@@ -449,7 +449,7 @@ const RichTextBlockCreateContent = Schema.Struct({
   rich_text: RichTextCreateArray,
 })
 
-const RichTextBlockCreateContentWithChildren: Schema.Schema<RichTextBlockCreateContentWithChildrenType> =
+const RichTextBlockCreateContentWithChildren: Schema.Codec<RichTextBlockCreateContentWithChildrenType> =
   Schema.suspend(() =>
     Schema.Struct({
       rich_text: RichTextCreateArray,
@@ -493,7 +493,7 @@ const NumberedListItemBlockCreate = Schema.Struct({
   numbered_list_item: RichTextBlockCreateContentWithChildren,
 })
 
-const ToDoBlockCreate: Schema.Schema<
+const ToDoBlockCreate: Schema.Codec<
   BlockCreatePayload<'to_do', 'to_do', ToDoBlockCreateContentType>
 > = Schema.suspend(() =>
   Schema.Struct({
@@ -593,7 +593,7 @@ type NotionBlockCreateType =
  * This is intentionally narrower than the read-side `Block` schema: create
  * payloads omit ids, timestamps, parents, and other server-populated fields.
  */
-export const NotionBlockCreate: Schema.Schema<NotionBlockCreateType> = Schema.suspend(() =>
+export const NotionBlockCreate: Schema.Codec<NotionBlockCreateType> = Schema.suspend(() =>
   Schema.Union([
     ParagraphBlockCreate,
     Heading1BlockCreate,

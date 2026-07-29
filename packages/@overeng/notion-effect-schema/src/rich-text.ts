@@ -1,4 +1,4 @@
-import { Schema } from 'effect'
+import { Schema, SchemaTransformation } from 'effect'
 
 import { docsPath, NotionColor, NotionUUID } from './common.ts'
 
@@ -402,25 +402,30 @@ export type RichTextArray = typeof RichTextArray.Type
 /**
  * Transform rich text array to plain string.
  */
-export const RichTextArrayAsString = Schema.transform(RichTextArray, Schema.String, {
-  decode: (richText) => richText.map((rt) => rt.plain_text).join(''),
-  encode: (str) => [
-    {
-      type: 'text' as const,
-      text: { content: str, link: null },
-      annotations: {
-        bold: false,
-        italic: false,
-        strikethrough: false,
-        underline: false,
-        code: false,
-        color: 'default' as const,
-      },
-      plain_text: str,
-      href: null,
-    },
-  ],
-}).annotate({
+export const RichTextArrayAsString = RichTextArray.pipe(
+  Schema.decodeTo(
+    Schema.String,
+    SchemaTransformation.transform({
+      decode: (richText) => richText.map((rt) => rt.plain_text).join(''),
+      encode: (str) => [
+        {
+          type: 'text' as const,
+          text: { content: str, link: null },
+          annotations: {
+            bold: false,
+            italic: false,
+            strikethrough: false,
+            underline: false,
+            code: false,
+            color: 'default' as const,
+          },
+          plain_text: str,
+          href: null,
+        },
+      ],
+    }),
+  ),
+).annotate({
   identifier: 'Notion.RichTextArrayAsString',
   title: 'Rich Text as String',
   description: 'Transform rich text array to/from plain string.',

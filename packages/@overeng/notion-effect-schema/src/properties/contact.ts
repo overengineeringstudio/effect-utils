@@ -1,4 +1,4 @@
-import { Option, Schema } from 'effect'
+import { Option, Schema, SchemaTransformation } from 'effect'
 
 import { docsPath, shouldNeverHappen, withOptionValueSchema } from '../common.ts'
 
@@ -48,16 +48,19 @@ export const UrlWrite = Schema.Struct({
 export type UrlWrite = typeof UrlWrite.Type
 
 /** Transforms URL string (or null) into a URL write payload */
-export const UrlWriteFromString = Schema.transform(Schema.NullOr(Schema.String), UrlWrite, {
-  strict: false,
-  decode: (url) => ({ url }),
-  encode: (write) => write.url,
-}).annotate({
-  identifier: 'Notion.UrlWriteFromString',
-  title: 'URL (Write) From String',
-  description: 'Transform a URL string (or null) into a URL write payload.',
-  [docsPath]: 'page#page-property-value',
-})
+export const UrlWriteFromString = Schema.NullOr(Schema.String)
+  .pipe(
+    Schema.decodeTo(
+      UrlWrite,
+      SchemaTransformation.transform({ decode: (url) => ({ url }), encode: (write) => write.url }),
+    ),
+  )
+  .annotate({
+    identifier: 'Notion.UrlWriteFromString',
+    title: 'URL (Write) From String',
+    description: 'Transform a URL string (or null) into a URL write payload.',
+    [docsPath]: 'page#page-property-value',
+  })
 
 /** Transforms for URL property. */
 export const Url = {
@@ -65,41 +68,49 @@ export const Url = {
   Property: UrlProperty,
 
   /** Transform to raw nullable string. */
-  raw: Schema.transform(UrlProperty, Schema.NullOr(Schema.String), {
-    strict: false,
-    decode: (prop) => prop.url,
-    encode: () =>
-      shouldNeverHappen('Url.raw encode is not supported. Use UrlWrite / UrlWriteFromString.'),
-  }),
-
-  /** Transform to required string (fails if null). */
-  asString: Schema.transform(
-    UrlProperty.pipe(
-      Schema.filter((prop): prop is typeof prop & { url: string } => prop.url !== null, {
-        message: () => 'URL is required',
+  raw: UrlProperty.pipe(
+    Schema.decodeTo(
+      Schema.NullOr(Schema.String),
+      SchemaTransformation.transform({
+        decode: (prop) => prop.url,
+        encode: () =>
+          shouldNeverHappen('Url.raw encode is not supported. Use UrlWrite / UrlWriteFromString.'),
       }),
     ),
-    Schema.String,
-    {
-      strict: false,
-      decode: (prop) => prop.url,
-      encode: () =>
-        shouldNeverHappen(
-          'Url.asString encode is not supported. Use UrlWrite / UrlWriteFromString.',
-        ),
-    },
+  ),
+
+  /** Transform to required string (fails if null). */
+  asString: UrlProperty.pipe(
+    Schema.refine((prop): prop is typeof prop & { url: string } => prop.url !== null, {
+      message: () => 'URL is required',
+    }),
+  ).pipe(
+    Schema.decodeTo(
+      Schema.String,
+      SchemaTransformation.transform({
+        decode: (prop) => prop.url,
+        encode: () =>
+          shouldNeverHappen(
+            'Url.asString encode is not supported. Use UrlWrite / UrlWriteFromString.',
+          ),
+      }),
+    ),
   ),
 
   /** Transform to Option<string>. */
   asOption: withOptionValueSchema({
-    schema: Schema.transform(UrlProperty, Schema.OptionFromSelf(Schema.String), {
-      strict: false,
-      decode: (prop) => (prop.url === null ? Option.none() : Option.some(prop.url)),
-      encode: () =>
-        shouldNeverHappen(
-          'Url.asOption encode is not supported. Use UrlWrite / UrlWriteFromString.',
-        ),
-    }),
+    schema: UrlProperty.pipe(
+      Schema.decodeTo(
+        Schema.Option(Schema.String),
+        SchemaTransformation.transform({
+          decode: (prop) => (prop.url === null ? Option.none() : Option.some(prop.url)),
+          encode: () =>
+            shouldNeverHappen(
+              'Url.asOption encode is not supported. Use UrlWrite / UrlWriteFromString.',
+            ),
+        }),
+      ),
+    ),
     valueSchema: Schema.String,
   }),
 
@@ -155,16 +166,22 @@ export const EmailWrite = Schema.Struct({
 export type EmailWrite = typeof EmailWrite.Type
 
 /** Transforms email string (or null) into an email write payload */
-export const EmailWriteFromString = Schema.transform(Schema.NullOr(Schema.String), EmailWrite, {
-  strict: false,
-  decode: (email) => ({ email }),
-  encode: (write) => write.email,
-}).annotate({
-  identifier: 'Notion.EmailWriteFromString',
-  title: 'Email (Write) From String',
-  description: 'Transform an email string (or null) into an email write payload.',
-  [docsPath]: 'page#page-property-value',
-})
+export const EmailWriteFromString = Schema.NullOr(Schema.String)
+  .pipe(
+    Schema.decodeTo(
+      EmailWrite,
+      SchemaTransformation.transform({
+        decode: (email) => ({ email }),
+        encode: (write) => write.email,
+      }),
+    ),
+  )
+  .annotate({
+    identifier: 'Notion.EmailWriteFromString',
+    title: 'Email (Write) From String',
+    description: 'Transform an email string (or null) into an email write payload.',
+    [docsPath]: 'page#page-property-value',
+  })
 
 /** Transforms for Email property. */
 export const Email = {
@@ -172,43 +189,51 @@ export const Email = {
   Property: EmailProperty,
 
   /** Transform to raw nullable string. */
-  raw: Schema.transform(EmailProperty, Schema.NullOr(Schema.String), {
-    strict: false,
-    decode: (prop) => prop.email,
-    encode: () =>
-      shouldNeverHappen(
-        'Email.raw encode is not supported. Use EmailWrite / EmailWriteFromString.',
-      ),
-  }),
-
-  /** Transform to required string (fails if null). */
-  asString: Schema.transform(
-    EmailProperty.pipe(
-      Schema.filter((prop): prop is typeof prop & { email: string } => prop.email !== null, {
-        message: () => 'Email is required',
+  raw: EmailProperty.pipe(
+    Schema.decodeTo(
+      Schema.NullOr(Schema.String),
+      SchemaTransformation.transform({
+        decode: (prop) => prop.email,
+        encode: () =>
+          shouldNeverHappen(
+            'Email.raw encode is not supported. Use EmailWrite / EmailWriteFromString.',
+          ),
       }),
     ),
-    Schema.String,
-    {
-      strict: false,
-      decode: (prop) => prop.email,
-      encode: () =>
-        shouldNeverHappen(
-          'Email.asString encode is not supported. Use EmailWrite / EmailWriteFromString.',
-        ),
-    },
+  ),
+
+  /** Transform to required string (fails if null). */
+  asString: EmailProperty.pipe(
+    Schema.refine((prop): prop is typeof prop & { email: string } => prop.email !== null, {
+      message: () => 'Email is required',
+    }),
+  ).pipe(
+    Schema.decodeTo(
+      Schema.String,
+      SchemaTransformation.transform({
+        decode: (prop) => prop.email,
+        encode: () =>
+          shouldNeverHappen(
+            'Email.asString encode is not supported. Use EmailWrite / EmailWriteFromString.',
+          ),
+      }),
+    ),
   ),
 
   /** Transform to Option<string>. */
   asOption: withOptionValueSchema({
-    schema: Schema.transform(EmailProperty, Schema.OptionFromSelf(Schema.String), {
-      strict: false,
-      decode: (prop) => (prop.email === null ? Option.none() : Option.some(prop.email)),
-      encode: () =>
-        shouldNeverHappen(
-          'Email.asOption encode is not supported. Use EmailWrite / EmailWriteFromString.',
-        ),
-    }),
+    schema: EmailProperty.pipe(
+      Schema.decodeTo(
+        Schema.Option(Schema.String),
+        SchemaTransformation.transform({
+          decode: (prop) => (prop.email === null ? Option.none() : Option.some(prop.email)),
+          encode: () =>
+            shouldNeverHappen(
+              'Email.asOption encode is not supported. Use EmailWrite / EmailWriteFromString.',
+            ),
+        }),
+      ),
+    ),
     valueSchema: Schema.String,
   }),
 
@@ -264,20 +289,22 @@ export const PhoneNumberWrite = Schema.Struct({
 export type PhoneNumberWrite = typeof PhoneNumberWrite.Type
 
 /** Transforms phone number string (or null) into a phone number write payload */
-export const PhoneNumberWriteFromString = Schema.transform(
-  Schema.NullOr(Schema.String),
-  PhoneNumberWrite,
-  {
-    strict: false,
-    decode: (phone_number) => ({ phone_number }),
-    encode: (write) => write.phone_number,
-  },
-).annotate({
-  identifier: 'Notion.PhoneNumberWriteFromString',
-  title: 'Phone Number (Write) From String',
-  description: 'Transform a phone number string (or null) into a phone number write payload.',
-  [docsPath]: 'page#page-property-value',
-})
+export const PhoneNumberWriteFromString = Schema.NullOr(Schema.String)
+  .pipe(
+    Schema.decodeTo(
+      PhoneNumberWrite,
+      SchemaTransformation.transform({
+        decode: (phone_number) => ({ phone_number }),
+        encode: (write) => write.phone_number,
+      }),
+    ),
+  )
+  .annotate({
+    identifier: 'Notion.PhoneNumberWriteFromString',
+    title: 'Phone Number (Write) From String',
+    description: 'Transform a phone number string (or null) into a phone number write payload.',
+    [docsPath]: 'page#page-property-value',
+  })
 
 /** Transforms for PhoneNumber property. */
 export const PhoneNumber = {
@@ -285,47 +312,55 @@ export const PhoneNumber = {
   Property: PhoneNumberProperty,
 
   /** Transform to raw nullable string. */
-  raw: Schema.transform(PhoneNumberProperty, Schema.NullOr(Schema.String), {
-    strict: false,
-    decode: (prop) => prop.phone_number,
-    encode: () =>
-      shouldNeverHappen(
-        'PhoneNumber.raw encode is not supported. Use PhoneNumberWrite / PhoneNumberWriteFromString.',
-      ),
-  }),
+  raw: PhoneNumberProperty.pipe(
+    Schema.decodeTo(
+      Schema.NullOr(Schema.String),
+      SchemaTransformation.transform({
+        decode: (prop) => prop.phone_number,
+        encode: () =>
+          shouldNeverHappen(
+            'PhoneNumber.raw encode is not supported. Use PhoneNumberWrite / PhoneNumberWriteFromString.',
+          ),
+      }),
+    ),
+  ),
 
   /** Transform to required string (fails if null). */
-  asString: Schema.transform(
-    PhoneNumberProperty.pipe(
-      Schema.filter(
-        (prop): prop is typeof prop & { phone_number: string } => prop.phone_number !== null,
-        {
-          message: () => 'Phone number is required',
-        },
-      ),
+  asString: PhoneNumberProperty.pipe(
+    Schema.refine(
+      (prop): prop is typeof prop & { phone_number: string } => prop.phone_number !== null,
+      {
+        message: () => 'Phone number is required',
+      },
     ),
-    Schema.String,
-    {
-      strict: false,
-      decode: (prop) => prop.phone_number,
-      encode: () =>
-        shouldNeverHappen(
-          'PhoneNumber.asString encode is not supported. Use PhoneNumberWrite / PhoneNumberWriteFromString.',
-        ),
-    },
+  ).pipe(
+    Schema.decodeTo(
+      Schema.String,
+      SchemaTransformation.transform({
+        decode: (prop) => prop.phone_number,
+        encode: () =>
+          shouldNeverHappen(
+            'PhoneNumber.asString encode is not supported. Use PhoneNumberWrite / PhoneNumberWriteFromString.',
+          ),
+      }),
+    ),
   ),
 
   /** Transform to Option<string>. */
   asOption: withOptionValueSchema({
-    schema: Schema.transform(PhoneNumberProperty, Schema.OptionFromSelf(Schema.String), {
-      strict: false,
-      decode: (prop) =>
-        prop.phone_number === null ? Option.none() : Option.some(prop.phone_number),
-      encode: () =>
-        shouldNeverHappen(
-          'PhoneNumber.asOption encode is not supported. Use PhoneNumberWrite / PhoneNumberWriteFromString.',
-        ),
-    }),
+    schema: PhoneNumberProperty.pipe(
+      Schema.decodeTo(
+        Schema.Option(Schema.String),
+        SchemaTransformation.transform({
+          decode: (prop) =>
+            prop.phone_number === null ? Option.none() : Option.some(prop.phone_number),
+          encode: () =>
+            shouldNeverHappen(
+              'PhoneNumber.asOption encode is not supported. Use PhoneNumberWrite / PhoneNumberWriteFromString.',
+            ),
+        }),
+      ),
+    ),
     valueSchema: Schema.String,
   }),
 

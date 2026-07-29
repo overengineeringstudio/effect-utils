@@ -1,4 +1,4 @@
-import { Schema } from 'effect'
+import { Schema, SchemaTransformation } from 'effect'
 
 import { docsPath, shouldNeverHappen } from '../common.ts'
 import { PartialUser } from '../users.ts'
@@ -38,20 +38,30 @@ export const CreatedTime = {
   Property: CreatedTimeProperty,
 
   /** Transform to raw ISO string. */
-  raw: Schema.transform(CreatedTimeProperty, Schema.String, {
-    strict: false,
-    decode: (prop) => prop.created_time,
-    encode: () =>
-      shouldNeverHappen('CreatedTime.raw encode is not supported (created_time is read-only).'),
-  }),
+  raw: CreatedTimeProperty.pipe(
+    Schema.decodeTo(
+      Schema.String,
+      SchemaTransformation.transform({
+        decode: (prop) => prop.created_time,
+        encode: () =>
+          shouldNeverHappen('CreatedTime.raw encode is not supported (created_time is read-only).'),
+      }),
+    ),
+  ),
 
   /** Transform to Date object. */
-  asDate: Schema.transform(CreatedTimeProperty, Schema.DateFromSelf, {
-    strict: false,
-    decode: (prop) => new Date(prop.created_time),
-    encode: () =>
-      shouldNeverHappen('CreatedTime.asDate encode is not supported (created_time is read-only).'),
-  }),
+  asDate: CreatedTimeProperty.pipe(
+    Schema.decodeTo(
+      Schema.Date,
+      SchemaTransformation.transform({
+        decode: (prop) => new Date(prop.created_time),
+        encode: () =>
+          shouldNeverHappen(
+            'CreatedTime.asDate encode is not supported (created_time is read-only).',
+          ),
+      }),
+    ),
+  ),
 } as const
 
 // -----------------------------------------------------------------------------
@@ -88,20 +98,28 @@ export const CreatedBy = {
   Property: CreatedByProperty,
 
   /** Transform to raw PartialUser. */
-  raw: Schema.transform(CreatedByProperty, PartialUser, {
-    strict: false,
-    decode: (prop) => prop.created_by,
-    encode: () =>
-      shouldNeverHappen('CreatedBy.raw encode is not supported (created_by is read-only).'),
-  }),
+  raw: CreatedByProperty.pipe(
+    Schema.decodeTo(
+      PartialUser,
+      SchemaTransformation.transform({
+        decode: (prop) => prop.created_by,
+        encode: () =>
+          shouldNeverHappen('CreatedBy.raw encode is not supported (created_by is read-only).'),
+      }),
+    ),
+  ),
 
   /** Transform to user ID. */
-  asId: Schema.transform(CreatedByProperty, Schema.String, {
-    strict: false,
-    decode: (prop) => prop.created_by.id,
-    encode: () =>
-      shouldNeverHappen('CreatedBy.asId encode is not supported (created_by is read-only).'),
-  }),
+  asId: CreatedByProperty.pipe(
+    Schema.decodeTo(
+      Schema.String,
+      SchemaTransformation.transform({
+        decode: (prop) => prop.created_by.id,
+        encode: () =>
+          shouldNeverHappen('CreatedBy.asId encode is not supported (created_by is read-only).'),
+      }),
+    ),
+  ),
 } as const
 
 // -----------------------------------------------------------------------------
@@ -139,24 +157,32 @@ export const LastEditedTime = {
   Property: LastEditedTimeProperty,
 
   /** Transform to raw ISO string. */
-  raw: Schema.transform(LastEditedTimeProperty, Schema.String, {
-    strict: false,
-    decode: (prop) => prop.last_edited_time,
-    encode: () =>
-      shouldNeverHappen(
-        'LastEditedTime.raw encode is not supported (last_edited_time is read-only).',
-      ),
-  }),
+  raw: LastEditedTimeProperty.pipe(
+    Schema.decodeTo(
+      Schema.String,
+      SchemaTransformation.transform({
+        decode: (prop) => prop.last_edited_time,
+        encode: () =>
+          shouldNeverHappen(
+            'LastEditedTime.raw encode is not supported (last_edited_time is read-only).',
+          ),
+      }),
+    ),
+  ),
 
   /** Transform to Date object. */
-  asDate: Schema.transform(LastEditedTimeProperty, Schema.DateFromSelf, {
-    strict: false,
-    decode: (prop) => new Date(prop.last_edited_time),
-    encode: () =>
-      shouldNeverHappen(
-        'LastEditedTime.asDate encode is not supported (last_edited_time is read-only).',
-      ),
-  }),
+  asDate: LastEditedTimeProperty.pipe(
+    Schema.decodeTo(
+      Schema.Date,
+      SchemaTransformation.transform({
+        decode: (prop) => new Date(prop.last_edited_time),
+        encode: () =>
+          shouldNeverHappen(
+            'LastEditedTime.asDate encode is not supported (last_edited_time is read-only).',
+          ),
+      }),
+    ),
+  ),
 } as const
 
 // -----------------------------------------------------------------------------
@@ -193,18 +219,30 @@ export const LastEditedBy = {
   Property: LastEditedByProperty,
 
   /** Transform to raw PartialUser. */
-  raw: Schema.transform(LastEditedByProperty, PartialUser, {
-    strict: false,
-    decode: (prop) => prop.last_edited_by,
-    encode: () =>
-      shouldNeverHappen('LastEditedBy.raw encode is not supported (last_edited_by is read-only).'),
-  }),
+  raw: LastEditedByProperty.pipe(
+    Schema.decodeTo(
+      PartialUser,
+      SchemaTransformation.transform({
+        decode: (prop) => prop.last_edited_by,
+        encode: () =>
+          shouldNeverHappen(
+            'LastEditedBy.raw encode is not supported (last_edited_by is read-only).',
+          ),
+      }),
+    ),
+  ),
 
   /** Transform to user ID. */
-  asId: Schema.transform(LastEditedByProperty, Schema.String, {
-    strict: false,
-    decode: (prop) => prop.last_edited_by.id,
-    encode: () =>
-      shouldNeverHappen('LastEditedBy.asId encode is not supported (last_edited_by is read-only).'),
-  }),
+  asId: LastEditedByProperty.pipe(
+    Schema.decodeTo(
+      Schema.String,
+      SchemaTransformation.transform({
+        decode: (prop) => prop.last_edited_by.id,
+        encode: () =>
+          shouldNeverHappen(
+            'LastEditedBy.asId encode is not supported (last_edited_by is read-only).',
+          ),
+      }),
+    ),
+  ),
 } as const

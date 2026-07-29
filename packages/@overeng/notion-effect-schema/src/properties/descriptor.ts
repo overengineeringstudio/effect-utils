@@ -21,7 +21,7 @@ import { DataSourceId, NotionPropertyType, PropertyId, PropertyName } from './ca
 
 /** Validated `sha256:<hex64>` content-hash form shared by the descriptor identity hashes. */
 const Sha256Hash = Schema.Trimmed.check(Schema.isNonEmpty()).check(
-  Schema.check(Schema.isPattern(/^sha256:[0-9a-f]{64}$/)),
+  Schema.isPattern(/^sha256:[0-9a-f]{64}$/),
 )
 
 /**
@@ -106,12 +106,12 @@ export type PropertyDescriptors = typeof PropertyDescriptors.Type
  * fields. Use this entry point rather than a bare `Schema.decode` so callers
  * cannot accidentally accept excess (proof-shaped) keys.
  */
-export const decodePropertyDescriptor = Schema.decodeUnknown(PropertyDescriptor, {
+export const decodePropertyDescriptor = Schema.decodeUnknownEffect(PropertyDescriptor, {
   onExcessProperty: 'error',
 })
 
 /** Decode an unknown value as a {@link PropertyDescriptors} map, rejecting unknown descriptor fields. */
-export const decodePropertyDescriptors = Schema.decodeUnknown(PropertyDescriptors, {
+export const decodePropertyDescriptors = Schema.decodeUnknownEffect(PropertyDescriptors, {
   onExcessProperty: 'error',
 })
 

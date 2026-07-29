@@ -1,4 +1,4 @@
-import { Schema } from 'effect'
+import { Schema, SchemaTransformation } from 'effect'
 
 import { docsPath, shouldNeverHappen } from '../common.ts'
 
@@ -47,11 +47,15 @@ export const CheckboxWrite = Schema.Struct({
 export type CheckboxWrite = typeof CheckboxWrite.Type
 
 /** Transform schema for converting boolean to CheckboxWrite payload */
-export const CheckboxWriteFromBoolean = Schema.transform(Schema.Boolean, CheckboxWrite, {
-  strict: false,
-  decode: (checkbox) => ({ checkbox }),
-  encode: (write) => write.checkbox,
-}).annotate({
+export const CheckboxWriteFromBoolean = Schema.Boolean.pipe(
+  Schema.decodeTo(
+    CheckboxWrite,
+    SchemaTransformation.transform({
+      decode: (checkbox) => ({ checkbox }),
+      encode: (write) => write.checkbox,
+    }),
+  ),
+).annotate({
   identifier: 'Notion.CheckboxWriteFromBoolean',
   title: 'Checkbox (Write) From Boolean',
   description: 'Transform a boolean into a checkbox write payload.',
@@ -64,24 +68,32 @@ export const Checkbox = {
   Property: CheckboxProperty,
 
   /** Transform to raw boolean. */
-  raw: Schema.transform(CheckboxProperty, Schema.Boolean, {
-    strict: false,
-    decode: (prop) => prop.checkbox,
-    encode: () =>
-      shouldNeverHappen(
-        'Checkbox.raw encode is not supported. Use CheckboxWrite / CheckboxWriteFromBoolean.',
-      ),
-  }),
+  raw: CheckboxProperty.pipe(
+    Schema.decodeTo(
+      Schema.Boolean,
+      SchemaTransformation.transform({
+        decode: (prop) => prop.checkbox,
+        encode: () =>
+          shouldNeverHappen(
+            'Checkbox.raw encode is not supported. Use CheckboxWrite / CheckboxWriteFromBoolean.',
+          ),
+      }),
+    ),
+  ),
 
   /** Alias for raw (checkbox is always boolean). */
-  asBoolean: Schema.transform(CheckboxProperty, Schema.Boolean, {
-    strict: false,
-    decode: (prop) => prop.checkbox,
-    encode: () =>
-      shouldNeverHappen(
-        'Checkbox.asBoolean encode is not supported. Use CheckboxWrite / CheckboxWriteFromBoolean.',
-      ),
-  }),
+  asBoolean: CheckboxProperty.pipe(
+    Schema.decodeTo(
+      Schema.Boolean,
+      SchemaTransformation.transform({
+        decode: (prop) => prop.checkbox,
+        encode: () =>
+          shouldNeverHappen(
+            'Checkbox.asBoolean encode is not supported. Use CheckboxWrite / CheckboxWriteFromBoolean.',
+          ),
+      }),
+    ),
+  ),
 
   Write: {
     Schema: CheckboxWrite,
