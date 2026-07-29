@@ -4,6 +4,8 @@ import { useCallback, useMemo } from 'react'
 import { analyzeSchema, analyzeTaggedStruct, getStructProperties } from './introspection.ts'
 import type { FieldMeta, PropertyInfo, TaggedStructInfo } from './types.ts'
 
+type AnyNoContext = Schema.Codec<unknown, unknown, never, never>
+
 /** Return type for useSchemaForm hook */
 export interface UseSchemaFormResult<T extends Record<string, unknown>> {
   /** All properties of the schema */
@@ -52,9 +54,9 @@ export const useSchemaForm = <T extends Record<string, unknown>>({
   value,
   onChange,
 }: UseSchemaFormOptions<T>): UseSchemaFormResult<T> => {
-  const fields = useMemo(() => getStructProperties(schema as Schema.Schema.AnyNoContext), [schema])
+  const fields = useMemo(() => getStructProperties(schema as AnyNoContext), [schema])
 
-  const tagInfo = useMemo(() => analyzeTaggedStruct(schema as Schema.Schema.AnyNoContext), [schema])
+  const tagInfo = useMemo(() => analyzeTaggedStruct(schema as AnyNoContext), [schema])
 
   const getValue = useCallback(<K extends keyof T>(key: K): T[K] => value[key], [value])
 
@@ -103,7 +105,7 @@ export interface UseFieldMetaResult {
  * )
  * ```
  */
-export const useFieldMeta = (schema: Schema.Schema.AnyNoContext): UseFieldMetaResult => {
+export const useFieldMeta = (schema: AnyNoContext): UseFieldMetaResult => {
   const meta = useMemo(() => analyzeSchema(schema), [schema])
   return { meta }
 }

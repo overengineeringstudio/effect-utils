@@ -1,5 +1,20 @@
 # Alignment Register
 
+## schema-implicit-primitive-metadata
+
+- **Difference:** Effect 4 drops implicit primitive metadata exposed by Effect 3, including titles
+  such as `int`, `number`, `boolean`, and `unknown` and descriptions such as `an integer`,
+  `a number`, and `a boolean`. Explicit schema and property annotations remain intact.
+- **Decision:** Accept the reduced metadata instead of restoring it in the form introspection
+  layer. Untitled Aria fields now use their field-key fallback, producing more useful labels such
+  as `enabled` or `includeConnections` instead of the generic `boolean`.
+- **Blast radius:** One executable Aria test fixture and one documented Aria form example lacked an
+  explicit primitive title. Storybook schemas explicitly title their primitive fields. The
+  headless `useFieldMeta` API also exposes the reduced metadata, so downstream consumers can
+  observe the difference even when rendered markup does not change.
+- **Status:** ACCEPTED as a bounded, deliberate Effect 4 behavior improvement; no compatibility
+  bridge.
+
 ## schema-date
 
 - **Difference:** v4 `Schema.Date` validates Date instances, while v3 `Schema.Date`

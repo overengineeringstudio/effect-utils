@@ -50,7 +50,7 @@ Tagged structs (discriminated unions) are automatically rendered with a labeled 
 
 ```tsx
 const LinkedInSchema = Schema.TaggedStruct('linkedin-contacts', {
-  includeConnections: Schema.optional(Schema.Boolean),
+  includeConnections: Schema.optional(Schema.Boolean).annotate({ title: 'Include connections' }),
   syncFrequency: Schema.Literal('hourly', 'daily', 'weekly'),
 })
 

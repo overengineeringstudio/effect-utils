@@ -1,6 +1,8 @@
 import type { Schema } from 'effect'
 import type { ReactNode } from 'react'
 
+type AnyNoContext = Schema.Codec<unknown, unknown, never, never>
+
 /** Supported field types for UI rendering */
 export type FieldType = 'string' | 'number' | 'boolean' | 'literal' | 'struct' | 'unknown'
 
@@ -17,13 +19,13 @@ export interface FieldMeta {
   /** Whether the field is optional */
   isOptional: boolean
   /** The underlying schema for the field (unwrapped from optional if needed) */
-  innerSchema: Schema.Schema.AnyNoContext
+  innerSchema: AnyNoContext
 }
 
 /** Property signature with key and schema */
 export interface PropertyInfo {
   key: string
-  schema: Schema.Schema.AnyNoContext
+  schema: AnyNoContext
   meta: FieldMeta
 }
 
