@@ -83,10 +83,9 @@ const helloWorldCommand = Command.make(
   ({ duration, output }) => runHelloWorld(duration).pipe(Effect.provide(outputModeLayer(output))),
 )
 
-const cli = Command.run(helloWorldCommand, {
-  name: 'Hello World',
+const cli = Command.runWith(helloWorldCommand, {
   version: '1.0.0',
 })
 
 // Run with Effect CLI (handles SIGINT/SIGTERM properly)
-cli(process.argv).pipe(Effect.provide(NodeServices.layer), NodeRuntime.runMain)
+cli(process.argv.slice(2)).pipe(Effect.provide(NodeServices.layer), NodeRuntime.runMain)

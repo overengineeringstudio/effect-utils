@@ -134,7 +134,7 @@ describe('createTuiApp', () => {
       }).pipe(
         Effect.scoped,
         Effect.provide(testModeLayer('json')),
-        Effect.andThen(() => {
+        Effect.map(() => {
           expect(capturedOutput).toHaveLength(1)
           const parsed = JSON.parse(capturedOutput[0]!)
           expect(parsed).toEqual({ _tag: 'Complete', total: 10 })
@@ -146,7 +146,7 @@ describe('createTuiApp', () => {
       TestApp.run().pipe(
         Effect.scoped,
         Effect.provide(testModeLayer('json')),
-        Effect.andThen(() => {
+        Effect.map(() => {
           expect(capturedOutput).toHaveLength(1)
           const parsed = JSON.parse(capturedOutput[0]!)
           expect(parsed).toEqual({ _tag: 'Idle' })
@@ -167,7 +167,7 @@ describe('createTuiApp', () => {
       }).pipe(
         Effect.scoped,
         Effect.provide(testModeLayer('ndjson')),
-        Effect.andThen(() => {
+        Effect.map(() => {
           // Initial snapshot + one line per state change. No trailing envelope.
           expect(capturedOutput.length).toBeGreaterThanOrEqual(2)
 
@@ -194,7 +194,7 @@ describe('createTuiApp', () => {
       }).pipe(
         Effect.scoped,
         Effect.provide(testModeLayer('log')),
-        Effect.andThen(() => {
+        Effect.map(() => {
           expect(capturedOutput).toHaveLength(0)
         }),
       ),
@@ -218,7 +218,7 @@ describe('createTuiApp', () => {
       }).pipe(
         Effect.scoped,
         Effect.provide(testModeLayer('log')),
-        Effect.andThen(() => {
+        Effect.map(() => {
           expect(states).toEqual([{ _tag: 'Idle' }, { _tag: 'Running', count: 0 }])
         }),
       )
