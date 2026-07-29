@@ -1,6 +1,8 @@
 import { Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
+import { InvalidKdlError } from '@overeng/kdl'
+
 import { parseKdl } from './parse.ts'
 
 describe('parseKdl', () => {
@@ -8,6 +10,7 @@ describe('parseKdl', () => {
     it('decodes simple struct', () => {
       const MySchema = Schema.Struct({
         name: Schema.String,
+        // @effect-diagnostics-next-line schemaNumber:off -- preserve the v3 parseKdl test's unrestricted numeric schema domain during the behavior-neutral port.
         age: Schema.Number,
       })
 
@@ -44,17 +47,18 @@ describe('parseKdl', () => {
       expect(result).toEqual({ items: ['a', 'b', 'c'] })
     })
 
-    it('converts KDL parse errors to ParseError (not thrown)', () => {
+    it('converts KDL parse errors to SchemaError (not thrown raw)', () => {
       const MySchema = Schema.Struct({ name: Schema.String })
 
       expect(() => Schema.decodeUnknownSync(parseKdl(MySchema))('{')).toThrow()
 
-      /* Verify it's a ParseError, not an InvalidKdlError */
+      /* Verify the raw KDL parser error is converted into Effect's schema error channel. */
       try {
         Schema.decodeUnknownSync(parseKdl(MySchema))('{')
       } catch (e) {
         expect(e).toBeInstanceOf(Error)
-        expect((e as Error).name).toBe('ParseError')
+        expect((e as Error).name).toBe('SchemaError')
+        expect(e).not.toBeInstanceOf(InvalidKdlError)
       }
     })
 
@@ -71,6 +75,7 @@ describe('parseKdl', () => {
     it('decodes optional fields', () => {
       const MySchema = Schema.Struct({
         name: Schema.String,
+        // @effect-diagnostics-next-line schemaNumber:off -- preserve the v3 parseKdl test's unrestricted numeric schema domain during the behavior-neutral port.
         age: Schema.optional(Schema.Number),
       })
 
@@ -83,6 +88,7 @@ describe('parseKdl', () => {
     it('encodes simple struct to KDL', () => {
       const MySchema = Schema.Struct({
         name: Schema.String,
+        // @effect-diagnostics-next-line schemaNumber:off -- preserve the v3 parseKdl test's unrestricted numeric schema domain during the behavior-neutral port.
         age: Schema.Number,
       })
 
