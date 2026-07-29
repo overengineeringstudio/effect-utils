@@ -214,15 +214,13 @@ export const make = (
             )
           }
           return yield* backing.onPermitsReleased(key).pipe(
-            Stream.runFoldWhileEffect(
-              Option.none<Fiber.Fiber<never, LockLostError | SemaphoreBackingError>>(),
-              Option.isNone,
-              () =>
-                tryTake(permits, resolvedOptions).pipe(
-                  acquireSemaphore.withPermitsIfAvailable(1),
-                  Effect.map(Option.flatten),
-                ),
+            Stream.filterMapEffect(() =>
+              tryTake(permits, resolvedOptions).pipe(
+                acquireSemaphore.withPermitsIfAvailable(1),
+                Effect.map(Option.flatten),
+              ),
             ),
+            Stream.runHead,
             Effect.flatMap(
               Option.match({
                 onSome: Effect.succeed,
