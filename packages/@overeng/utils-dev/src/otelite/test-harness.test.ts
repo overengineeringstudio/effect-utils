@@ -1,6 +1,6 @@
 import { NodeServices } from '@effect/platform-node'
 import { describe, expect, it } from '@effect/vitest'
-import { Effect, Layer, Metric, MetricLabel, Schema } from 'effect'
+import { Effect, Layer, Metric, Schema } from 'effect'
 import { FileSystem } from 'effect/FileSystem'
 
 import { TraceJson, writeCaptureDiagnostics } from './diagnostics.ts'
@@ -162,11 +162,8 @@ describe('OteliteTestHarness', () => {
       const gauge = Metric.gauge('otelite_all_signals_queue_depth', { bigint: false })
 
       const workload = Effect.gen(function* () {
-        yield* Metric.increment(counter)
-        yield* Metric.set(
-          gauge.pipe(Metric.taggedWithLabels([MetricLabel.make('queue', 'primary')])),
-          7,
-        )
+        yield* Metric.update(counter, 1)
+        yield* Metric.update(gauge.pipe(Metric.withAttributes({ queue: 'primary' })), 7)
         yield* Effect.log('all-signals demo log line')
       }).pipe(Effect.withSpan(`${service}.child`, { attributes: { 'span.label': 'child' } }))
 
