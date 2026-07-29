@@ -190,7 +190,7 @@ describe('OtelAttrs', () => {
   it('derives primitive, literal, uuid, option, date, duration, and explicit array attributes', async () => {
     const Attrs = Schema.Struct({
       label: Schema.Trimmed.check(Schema.isNonEmpty()).pipe(OtelAttr.spanLabel()),
-      requestId: Schema.UUID.pipe(OtelAttr.key({ key: 'request.id' })),
+      requestId: Schema.String.check(Schema.isGUID()).pipe(OtelAttr.key({ key: 'request.id' })),
       outcome: Schema.Literals(['approved', 'denied', 'timeout']).pipe(
         OtelAttr.key({ key: 'op.outcome' }),
       ),
