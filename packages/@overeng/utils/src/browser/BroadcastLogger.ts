@@ -98,7 +98,7 @@ const trustOtelContract = <A, E, R>(
   effect.pipe(Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)))
 
 const trustedWith =
-  <S extends Schema.Codec<unknown, unknown, never, never>>({
+  <S extends Schema.Codec<any, any, never, never>>({
     operation,
     attributes,
   }: {

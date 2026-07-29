@@ -128,7 +128,7 @@ Vitest.describe('FileSystemBacking', () => {
           release: (releaseKey: string, releaseHolderId: string, permits: number) =>
             Effect.sync(() => {
               events.push('release')
-            }).pipe(Effect.zipRight(baseBacking.release(releaseKey, releaseHolderId, permits))),
+            }).pipe(Effect.andThen(baseBacking.release(releaseKey, releaseHolderId, permits))),
           refresh: (
             refreshKey: string,
             refreshHolderId: string,
@@ -680,11 +680,11 @@ Vitest.describe('FileSystemBacking', () => {
           options,
           key: 'test-key',
           targetHolderId: 'nonexistent',
-        }).pipe(Effect.either)
+        }).pipe(Effect.result)
 
-        expect(result._tag).toBe('Left')
-        if (result._tag === 'Left') {
-          expect(result.left._tag).toBe('HolderNotFoundError')
+        expect(result._tag).toBe('Failure')
+        if (result._tag === 'Failure') {
+          expect(result.failure._tag).toBe('HolderNotFoundError')
         }
       }).pipe(Effect.provide(TestLayer), Effect.scoped),
     )

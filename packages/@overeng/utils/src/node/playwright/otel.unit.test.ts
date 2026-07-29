@@ -48,8 +48,8 @@ Vitest.describe('playwright/otel', () => {
 
         const result = yield* Schema.decodeUnknownEffect(ParentSpanContextSchema)(
           invalidContext,
-        ).pipe(Effect.either)
-        expect(result._tag).toBe('Left')
+        ).pipe(Effect.result)
+        expect(result._tag).toBe('Failure')
       }),
     )
 
@@ -62,8 +62,8 @@ Vitest.describe('playwright/otel', () => {
 
         const result = yield* Schema.decodeUnknownEffect(ParentSpanContextSchema)(
           invalidContext,
-        ).pipe(Effect.either)
-        expect(result._tag).toBe('Left')
+        ).pipe(Effect.result)
+        expect(result._tag).toBe('Failure')
       }),
     )
   })

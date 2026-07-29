@@ -12,7 +12,6 @@
  * @module
  */
 
-import type { MetricLabel } from 'effect'
 import {
   Clock,
   Config,
@@ -250,7 +249,7 @@ export const makeOtelCliLayer = (config: OtelCliLayerConfig): Layer.Layer<OtelCo
     const resolved =
       explicitEndpoint !== undefined
         ? explicitEndpoint
-        : Option.fromNullable(process.env[endpointEnvVar])
+        : Option.fromNullishOr(process.env[endpointEnvVar])
 
     // Always provide the resolved config so command code can gate optional
     // telemetry work on the same signal the exporter is built from.
@@ -507,7 +506,7 @@ export interface SampleGaugeOptions {
    * Optional labels applied to the gauge so a sweep yields one comparable series
    * per operating point (via `taggedWithLabels`, not the banned `Metric.tagged`).
    */
-  readonly labels?: ReadonlyArray<MetricLabel.MetricLabel>
+  readonly labels?: Metric.Metric.Attributes
   /** @default 250ms */
   readonly interval?: Duration.Duration
 }
@@ -521,9 +520,9 @@ export const sampleGauge = (
   options: SampleGaugeOptions,
 ): Effect.Effect<void, never, OtelConfig | Scope.Scope> => {
   const { gauge, read, labels, interval } = options
-  const target = labels === undefined ? gauge : gauge.pipe(Metric.taggedWithLabels(labels))
+  const target = labels === undefined ? gauge : gauge.pipe(Metric.withAttributes(labels))
   return sampleResource({
-    sample: Effect.sync(read).pipe(Effect.flatMap((value) => Metric.set(target, value))),
+    sample: Effect.sync(read).pipe(Effect.flatMap((value) => Metric.update(target, value))),
     ...(interval === undefined ? {} : { interval }),
   })
 }

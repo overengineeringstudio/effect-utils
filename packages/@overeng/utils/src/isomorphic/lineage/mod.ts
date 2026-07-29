@@ -161,7 +161,7 @@ const unwrapAst = (ast: SchemaAST.AST): SchemaAST.AST => {
  * than throwing — the inspector must never crash on bad annotations.
  */
 const readAnnotation = <A>(args: {
-  schema: Schema.Codec<unknown, unknown, never, never>
+  schema: Schema.Codec<any, any, never, never>
   id: symbol
   decoder: Schema.Codec<A>
 }): A | undefined => {
@@ -185,24 +185,24 @@ const readAnnotation = <A>(args: {
 
 /** Read the `Lineage` annotation from a schema, if present. */
 export const getLineage = (
-  schema: Schema.Codec<unknown, unknown, never, never>,
+  schema: Schema.Codec<any, any, never, never>,
 ): Lineage | undefined => readAnnotation({ schema, id: LineageAnnotationId, decoder: Lineage })
 
 /** Read the `Authority` annotation from a schema, if present. */
 export const getAuthority = (
-  schema: Schema.Codec<unknown, unknown, never, never>,
+  schema: Schema.Codec<any, any, never, never>,
 ): Authority | undefined =>
   readAnnotation({ schema, id: AuthorityAnnotationId, decoder: Authority })
 
 /** Read the `Freshness` annotation from a schema, if present. */
 export const getFreshness = (
-  schema: Schema.Codec<unknown, unknown, never, never>,
+  schema: Schema.Codec<any, any, never, never>,
 ): Freshness | undefined =>
   readAnnotation({ schema, id: FreshnessAnnotationId, decoder: Freshness })
 
 /** Read the `Reference` annotation from a schema, if present. */
 export const getReference = (
-  schema: Schema.Codec<unknown, unknown, never, never>,
+  schema: Schema.Codec<any, any, never, never>,
 ): Reference | undefined =>
   readAnnotation({ schema, id: ReferenceAnnotationId, decoder: Reference })
 
@@ -241,12 +241,12 @@ const coerceDerivationKind = (
 
 const annotate =
   <V>(args: { id: symbol; value: V }) =>
-  <S extends Schema.Codec<unknown, unknown, never, never>>(schema: S): S =>
+  <S extends Schema.Codec<any, any, never, never>>(schema: S): S =>
     schema.annotate({ [args.id]: args.value }) as S
 
 const lineageAnnotation =
   (value: Lineage) =>
-  <S extends Schema.Codec<unknown, unknown, never, never>>(schema: S): S =>
+  <S extends Schema.Codec<any, any, never, never>>(schema: S): S =>
     annotate({ id: LineageAnnotationId, value })(schema)
 
 /** Mark a field as the authoritative source of truth. */

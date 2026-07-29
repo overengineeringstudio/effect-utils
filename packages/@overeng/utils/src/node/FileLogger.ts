@@ -2,7 +2,16 @@ import * as fs from 'node:fs'
 import path from 'node:path'
 import util from 'node:util'
 
-import { Cause, Effect, HashMap, Inspectable, Layer, Logger, type LogLevel } from 'effect'
+import {
+  Cause,
+  Effect,
+  HashMap,
+  Inspectable,
+  Layer,
+  Logger,
+  type LogLevel,
+  Redactable,
+} from 'effect'
 import * as EffectArray from 'effect/Array'
 
 const formatFiberId = (fiberId: unknown): string =>
@@ -115,7 +124,7 @@ export const structuredMessage = (input: unknown): unknown => {
       return String(input)
     }
     default: {
-      return Inspectable.toJSON(input)
+      return Inspectable.toJson(input)
     }
   }
 }
@@ -214,7 +223,7 @@ export const prettyLoggerTty = (options: {
               }),
             )
           } else {
-            logIndented(Inspectable.redact(msg))
+            logIndented(Redactable.redact(msg))
           }
         }
       }
@@ -229,7 +238,7 @@ export const prettyLoggerTty = (options: {
                   compact: false,
                   breakLength: 120,
                 })
-              : Inspectable.redact(value)
+              : Redactable.redact(value)
           logIndented(color(`${key}:`, colors.bold, colors.white), formattedValue)
         }
       }

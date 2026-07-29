@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import { NodeServices } from '@effect/platform-node'
-import * as CommandExecutor from 'effect/unstable/process/CommandExecutor'
+import { ChildProcessSpawner } from 'effect/unstable/process'
 import { Effect, Layer } from 'effect'
 import { expect } from 'vitest'
 
@@ -22,7 +22,7 @@ Vitest.describe('cmd helper', () => {
     Effect.fnUntraced(
       function* () {
         const exit = yield* cmd('printf ok')
-        expect(exit).toBe(CommandExecutor.ExitCode(0))
+        expect(exit).toBe(ChildProcessSpawner.ExitCode(0))
       },
       Effect.provide(TestLayer),
       Effect.scoped,
@@ -34,7 +34,7 @@ Vitest.describe('cmd helper', () => {
     Effect.fnUntraced(
       function* () {
         const exit = yield* cmd(['printf', 'ok'])
-        expect(exit).toBe(CommandExecutor.ExitCode(0))
+        expect(exit).toBe(ChildProcessSpawner.ExitCode(0))
       },
       Effect.provide(TestLayer),
       Effect.scoped,
@@ -51,7 +51,7 @@ Vitest.describe('cmd helper', () => {
 
         // first run
         const exit1 = yield* cmd('printf first', { logDir: logsDir })
-        expect(exit1).toBe(CommandExecutor.ExitCode(0))
+        expect(exit1).toBe(ChildProcessSpawner.ExitCode(0))
         const current = path.join(logsDir, 'dev.log')
         expect(fs.existsSync(current)).toBe(true)
         const firstLog = fs.readFileSync(current, 'utf8')
@@ -65,7 +65,7 @@ Vitest.describe('cmd helper', () => {
 
         // second run — archives previous
         const exit2 = yield* cmd('printf second', { logDir: logsDir })
-        expect(exit2).toBe(CommandExecutor.ExitCode(0))
+        expect(exit2).toBe(ChildProcessSpawner.ExitCode(0))
         const archiveDir = path.join(logsDir, 'archive')
         const archives = fs.readdirSync(archiveDir).filter((file) => file.endsWith('.log'))
         expect(archives.length).toBe(1)
@@ -114,7 +114,7 @@ Vitest.describe('cmd helper', () => {
         const exit = yield* cmd(['bun', '-e', "console.log('out'); console.error('err')"], {
           logDir: logsDir,
         })
-        expect(exit).toBe(CommandExecutor.ExitCode(0))
+        expect(exit).toBe(ChildProcessSpawner.ExitCode(0))
 
         const current = path.join(logsDir, 'dev.log')
         const logContent = fs.readFileSync(current, 'utf8')

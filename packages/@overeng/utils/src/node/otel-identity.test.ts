@@ -29,7 +29,7 @@ const identity = Schema.decodeSync(ServiceIdentity)({
 /** A workload that emits all three signals (span + counter + log) with no sleeps. */
 const workload = Effect.gen(function* () {
   yield* Effect.annotateCurrentSpan('span.label', 'identity-root')
-  yield* Metric.increment(Metric.counter('identity_requests_total'))
+  yield* Metric.update(Metric.counter('identity_requests_total'), 1)
   yield* Effect.log('identity demo log line')
 }).pipe(Effect.withSpan('identity-root', { root: true }))
 
@@ -125,7 +125,7 @@ Vitest.describe('makeOtelCliLayer — typed ServiceIdentity', () => {
         // explicit identity.
         yield* Effect.scoped(
           scopedEnv({ OTEL_RESOURCE_ATTRIBUTES: undefined, OTEL_SERVICE_NAME: undefined }).pipe(
-            Effect.zipRight(runWorkload(cap.endpoints.http)),
+            Effect.andThen(runWorkload(cap.endpoints.http)),
           ),
         )
 
@@ -160,7 +160,7 @@ Vitest.describe('makeOtelCliLayer — typed ServiceIdentity', () => {
             OTEL_RESOURCE_ATTRIBUTES:
               'deployment.environment=ci-test,service.namespace=env-namespace',
             OTEL_SERVICE_NAME: undefined,
-          }).pipe(Effect.zipRight(runWorkload(cap.endpoints.http))),
+          }).pipe(Effect.andThen(runWorkload(cap.endpoints.http))),
         )
 
         const spans = yield* cap.inspect({ signal: 'traces', service: identity.name })
