@@ -312,13 +312,13 @@ export const Page = Schema.Struct({
 export type Page = typeof Page.Type
 
 /** Single property item returned by `GET /v1/pages/{page_id}/properties/{property_id}` — schema mirrors the Notion API page-property item object. */
-export const PagePropertyItem = Schema.extend(
+export const PagePropertyItem = Schema.StructWithRest(
   Schema.Struct({
     object: Schema.Literal('property_item'),
     id: Schema.String,
     type: Schema.String,
   }),
-  Schema.Record(Schema.String, Schema.Unknown),
+  [Schema.Record(Schema.String, Schema.Unknown)],
 ).annotate({
   identifier: 'Notion.PagePropertyItem',
   [docsPath]: 'page-property-item',
@@ -424,10 +424,9 @@ const BlockBase = Schema.Struct({
  *
  * @see https://developers.notion.com/reference/block
  */
-export const Block = Schema.extend(
-  BlockBase,
+export const Block = Schema.StructWithRest(BlockBase, [
   Schema.Record(Schema.String, Schema.Unknown),
-).annotate({
+]).annotate({
   identifier: 'Notion.Block',
   [docsPath]: 'block',
 })

@@ -279,14 +279,14 @@ export const Relation = {
 /**
  * External file object.
  */
-export const ExternalFile = Schema.extend(
-  ExternalFileReference,
-  Schema.Struct({
+export const ExternalFile = Schema.Struct({
+  ...ExternalFileReference.fields,
+  ...Schema.Struct({
     name: Schema.String.annotate({
       description: 'Name of the file.',
     }),
-  }),
-).annotate({
+  }).fields,
+}).annotate({
   identifier: 'Notion.ExternalFile',
   title: 'External File',
   description: 'A file hosted externally.',
@@ -298,14 +298,14 @@ export type ExternalFile = typeof ExternalFile.Type
 /**
  * Notion-hosted file object.
  */
-export const NotionFile = Schema.extend(
-  NotionFileReference,
-  Schema.Struct({
+export const NotionFile = Schema.Struct({
+  ...NotionFileReference.fields,
+  ...Schema.Struct({
     name: Schema.String.annotate({
       description: 'Name of the file.',
     }),
-  }),
-).annotate({
+  }).fields,
+}).annotate({
   identifier: 'Notion.NotionFile',
   title: 'Notion File',
   description: 'A file hosted on Notion (URL expires).',
