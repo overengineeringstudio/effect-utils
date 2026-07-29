@@ -9,7 +9,7 @@ import type { Path } from 'effect/Path'
 import type { PlatformError } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import { Duration, Effect, Option, Result, Schema, Stream } from 'effect'
-import { ChildProcess as Command } from 'effect/unstable/process'
+import { ChildProcess as Command, ChildProcessSpawner } from 'effect/unstable/process'
 import type { ChildProcessSpawner } from 'effect/unstable/process'
 
 import { DistributedSemaphore } from '@overeng/utils/lock'
@@ -464,12 +464,14 @@ const formatWithOxfmt = Effect.fn('formatWithOxfmt')(function* ({
     onSome: (cfg) => ['-c', cfg, '--stdin-filepath', targetFilePath],
   })
 
-  const result = yield* Command.make('oxfmt', args, {
-    stdin: Stream.make(new TextEncoder().encode(content)),
-  }).pipe(
-    Command.string,
-    Effect.orElseSucceed(() => content),
-  )
+  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
+  const result = yield* spawner
+    .string(
+      Command.make('oxfmt', args, {
+        stdin: Stream.make(new TextEncoder().encode(content)),
+      }),
+    )
+    .pipe(Effect.orElseSucceed(() => content))
 
   // If oxfmt returned empty output (e.g., failed to parse), return original content.
   // This handles YAML with GitHub Actions ${{ }} expressions in flow sequences (inline arrays)
