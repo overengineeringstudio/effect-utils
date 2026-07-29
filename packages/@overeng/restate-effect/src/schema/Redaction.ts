@@ -104,11 +104,11 @@ export const aesGcmRedactionLayer = (key: Uint8Array): Layer.Layer<RestateRedact
  * transform consumes them.
  */
 export const findSensitiveFields = (ast: SchemaAST.AST): ReadonlyArray<string> => {
-  if (ast._tag !== 'TypeLiteral') return []
+  if (ast._tag !== 'Objects') return []
   const fields: string[] = []
   for (const prop of ast.propertySignatures) {
     if (typeof prop.name !== 'string') continue
-    if (Option.isSome(SchemaAST.resolveAt<true>(SensitiveId)(prop.type)) === true) {
+    if ((SchemaAST.resolve(prop.type)?.[SensitiveId] as true | undefined) === true) {
       fields.push(prop.name)
     }
   }

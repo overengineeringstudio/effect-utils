@@ -71,48 +71,33 @@ export type DurableCaps = RestateContext | StateRead | StateWrite | DurablePromi
 /* eslint-disable @typescript-eslint/no-explicit-any -- Schema map value variance */
 /**
  * A map of State key → value schema (the contract's typed `state` block). A value
- * may be a plain `Schema` OR a `Schema.optional`-style field (a
- * `PropertySignature`), so an OPTIONAL state key (`Schema.optional(Schema.Number)`)
- * is supported — its value type is `T | undefined`, which matches State's
- * "unset → undefined" semantics. The `Record<string, Schema>` impl detail does not
- * leak: `State.for` accepts the same field shapes `Schema.Struct` does.
+ * may be a plain `Schema` or a `Schema.optional` field, so an OPTIONAL state key
+ * (`Schema.optional(Schema.Number)`) is supported — its value type is
+ * `T | undefined`, which matches State's "unset → undefined" semantics.
  */
-export type StateSchemas = Record<string, Schema.Schema<any, any> | Schema.PropertySignature.All>
+export type StateSchemas = Record<string, Schema.Codec<any, any>>
 
 /** The decoded value type of a State field (`T | undefined` for an optional field). */
 export type StateValueType<F> =
-  F extends Schema.Schema<infer A, any>
-    ? A
-    : F extends Schema.PropertySignature<any, infer A, any, any, any, any, any>
-      ? A
-      : never
+  F extends Schema.Codec<infer A, any> ? A : never
 
 /**
- * Normalize a State field to a plain value `Schema` for serde: a `Schema` passes
- * through; an OPTIONAL field's value schema is recovered from its
- * `PropertySignature` AST (`.type` is the `value | undefined` union) with the
- * `undefined` member STRIPPED — a SET value is always the present `T` (the
- * "unset → undefined" case never reaches the serde, the State combinator returns
- * `undefined` directly), and keeping `undefined` would break `JsonSchema.make`.
+ * Normalize a State field to a plain value `Schema` for serde. Effect 4 optional
+ * fields are schemas whose AST carries optional-key context. For such a field,
+ * strip the `undefined` member: a SET value is always the present `T` (the
+ * "unset → undefined" case never reaches the serde), and keeping `undefined`
+ * would break `JsonSchema.make`. A plain `UndefinedOr` schema has no optional-key
+ * context and passes through unchanged.
  */
-export const normalizeStateSchema = (
-  field: Schema.Schema<any, any> | Schema.PropertySignature.All,
-): Schema.Schema<any, any> => {
-  if (Schema.isSchema(field) === true) return field as Schema.Schema<any, any>
-  /* A `Schema.optional(s)` PropertySignature's `ast` is a `PropertySignatureDeclaration`
-   * (extends `OptionalType`) whose `.type` is the `value | undefined` AST. */
-  const ast = (field as unknown as { readonly ast?: { readonly type?: SchemaAST.AST } }).ast
-  const valueAst = ast?.type
-  if (valueAst === undefined) {
-    throw new Error('State field is neither a Schema nor a recoverable optional field')
-  }
-  return Schema.make(stripUndefined(valueAst))
-}
+export const normalizeStateSchema = (field: Schema.Codec<any, any>): Schema.Codec<any, any> =>
+  SchemaAST.isOptional(field.ast)
+    ? Schema.make<Schema.Codec<any, any>>(stripUndefined(field.ast))
+    : field
 
-/** Drop an `UndefinedKeyword` member from a recovered optional union (`T | undefined → T`). */
+/** Drop an `Undefined` member from a recovered optional union (`T | undefined → T`). */
 const stripUndefined = (ast: SchemaAST.AST): SchemaAST.AST => {
   if (ast._tag !== 'Union') return ast
-  const members = ast.types.filter((t) => t._tag !== 'UndefinedKeyword')
+  const members = ast.types.filter((t) => t._tag !== 'Undefined')
   if (members.length === ast.types.length) return ast
   return members.length === 1 ? members[0]! : SchemaAST.Union.make(members)
 }
@@ -233,7 +218,7 @@ const awaitDurable = <A>({
   onError: (cause: unknown) => RestateError
   mode?: DurableRejectMode
 }): Effect.Effect<A, never, never> =>
-  Effect.async<A, never>((resume) => {
+  Effect.callback<A, never>((resume) => {
     thunk().then(
       (value) => resume(Effect.succeed(value)),
       (cause: unknown) => {
@@ -545,7 +530,7 @@ const readState = <S extends StateSchemas, K extends keyof S & string>({
         new RestateError({ reason: 'RunFailed', method: `State.get(${key})`, cause }),
     }).pipe(Effect.orDie)
     if (raw === null || raw === undefined) return undefined
-    return yield* Schema.decodeUnknown(normalizeStateSchema(schemas[key]!))(raw).pipe(
+    return yield* Schema.decodeUnknownEffect(normalizeStateSchema(schemas[key]!))(raw).pipe(
       Effect.mapError(
         (cause) => new RestateError({ reason: 'SerdeFailed', method: `State.get(${key})`, cause }),
       ),
@@ -575,7 +560,7 @@ const writeState = <S extends StateSchemas, K extends keyof S & string>({
       objectCtx.clear(key)
       return
     }
-    const encoded = yield* Schema.encode(normalizeStateSchema(schemas[key]!))(value).pipe(
+    const encoded = yield* Schema.encodeEffect(normalizeStateSchema(schemas[key]!))(value).pipe(
       Effect.mapError(
         (cause) => new RestateError({ reason: 'SerdeFailed', method: `State.set(${key})`, cause }),
       ),
@@ -644,7 +629,7 @@ export const objectKey: Effect.Effect<string, never, ObjectKey | RestateContext>
  * `Restate.race`/`all`/`any`.
  */
 
-const promiseSerde = <T, I>(schema: Schema.Schema<T, I>): restate.Serde<T> =>
+const promiseSerde = <T, I>(schema: Schema.Codec<T, I>): restate.Serde<T> =>
   internalSerde({ schema })
 
 /* A blocking durable-promise `get`, awaited through {@link awaitDurable} (the same
@@ -658,7 +643,7 @@ const promiseGet = <T, I>({
   schema,
 }: {
   name: string
-  schema: Schema.Schema<T, I>
+  schema: Schema.Codec<T, I>
 }): Effect.Effect<T, never, DurablePromise | RestateContext> =>
   Effect.gen(function* () {
     const ctx = yield* RestateContext
@@ -679,7 +664,7 @@ const promisePeek = <T, I>({
   schema,
 }: {
   name: string
-  schema: Schema.Schema<T, I>
+  schema: Schema.Codec<T, I>
 }): Effect.Effect<T | undefined, never, DurablePromise | RestateContext> =>
   Effect.gen(function* () {
     const ctx = yield* RestateContext
@@ -698,7 +683,7 @@ const promiseResolve = <T, I>({
   value,
 }: {
   name: string
-  schema: Schema.Schema<T, I>
+  schema: Schema.Codec<T, I>
   value: T
 }): Effect.Effect<void, never, DurablePromise | RestateContext> =>
   Effect.gen(function* () {
@@ -719,7 +704,7 @@ const promiseReject = <T, I>({
   reason,
 }: {
   name: string
-  schema: Schema.Schema<T, I>
+  schema: Schema.Codec<T, I>
   reason: string
 }): Effect.Effect<void, never, DurablePromise | RestateContext> =>
   Effect.gen(function* () {
@@ -739,7 +724,7 @@ const promiseReject = <T, I>({
  * combinator is capability-gated on `DurablePromise` (Workflow handlers only) and
  * payload-typed. `getDescriptor` issues the promise for deterministic concurrency.
  */
-export const durablePromiseFor = <T, I>(schema: Schema.Schema<T, I>) =>
+export const durablePromiseFor = <T, I>(schema: Schema.Codec<T, I>) =>
   ({
     get: (name: string) => promiseGet({ name, schema }),
     peek: (name: string) => promisePeek({ name, schema }),
@@ -783,7 +768,7 @@ export type AwakeableId<T> = string & AwakeableIdBrand & { readonly _payload?: T
  * typed `RestateError`.
  */
 export const makeAwakeable = <T, I>(
-  schema: Schema.Schema<T, I>,
+  schema: Schema.Codec<T, I>,
 ): Effect.Effect<
   {
     readonly id: AwakeableId<T>
@@ -830,7 +815,7 @@ export const resolveAwakeable = <T, I>({
   id,
   payload,
 }: {
-  schema: Schema.Schema<T, I>
+  schema: Schema.Codec<T, I>
   id: AwakeableId<T>
   payload: T
 }): Effect.Effect<void, never, RestateContext> =>
@@ -875,11 +860,11 @@ const clientCallSerde = <T, I>({
   schema,
   redaction,
 }: {
-  schema: Schema.Schema<T, I>
+  schema: Schema.Codec<T, I>
   redaction: RedactionCipher | undefined
 }): restate.Serde<T> =>
   contractSerdeFactory(redaction).forSchema({
-    schema: schema as Schema.Schema<unknown, unknown>,
+    schema: schema as Schema.Codec<unknown, unknown>,
     slot: 'internal',
   }) as restate.Serde<T>
 
@@ -896,8 +881,8 @@ export interface SendOptions {
 const callRpc = <In, InI, Out, OutI>(opts: {
   readonly service: string
   readonly handler: string
-  readonly inputSchema: Schema.Schema<In, InI>
-  readonly outputSchema: Schema.Schema<Out, OutI>
+  readonly inputSchema: Schema.Codec<In, InI>
+  readonly outputSchema: Schema.Codec<Out, OutI>
   readonly input: In
   readonly key?: string
 }): Effect.Effect<Out, never, RestateContext> =>
@@ -905,7 +890,7 @@ const callRpc = <In, InI, Out, OutI>(opts: {
     const ctx = yield* RestateContext
     const redaction = yield* resolveCallRedaction
     const idempotencyKey = invocationIdempotencyKey({
-      inputSchema: opts.inputSchema as Schema.Schema<unknown, unknown>,
+      inputSchema: opts.inputSchema as Schema.Codec<unknown, unknown>,
       input: opts.input,
     })
     /* Await the peer-call `InvocationPromise` through the SHARED `awaitDurable`
@@ -945,7 +930,7 @@ const callRpc = <In, InI, Out, OutI>(opts: {
 const sendRpc = <In, InI>(opts: {
   readonly service: string
   readonly handler: string
-  readonly inputSchema: Schema.Schema<In, InI>
+  readonly inputSchema: Schema.Codec<In, InI>
   readonly input: In
   readonly key?: string
   readonly delayMillis?: number
@@ -954,7 +939,7 @@ const sendRpc = <In, InI>(opts: {
     const ctx = yield* RestateContext
     const redaction = yield* resolveCallRedaction
     const idempotencyKey = invocationIdempotencyKey({
-      inputSchema: opts.inputSchema as Schema.Schema<unknown, unknown>,
+      inputSchema: opts.inputSchema as Schema.Codec<unknown, unknown>,
       input: opts.input,
     })
     yield* Effect.try({
@@ -999,13 +984,13 @@ const sendRpc = <In, InI>(opts: {
 const callDescriptor = <In, InI, Out, OutI>(opts: {
   readonly service: string
   readonly handler: string
-  readonly inputSchema: Schema.Schema<In, InI>
-  readonly outputSchema: Schema.Schema<Out, OutI>
+  readonly inputSchema: Schema.Codec<In, InI>
+  readonly outputSchema: Schema.Codec<Out, OutI>
   readonly input: In
   readonly key?: string
 }): Descriptor<Out> => {
   const idempotencyKey = invocationIdempotencyKey({
-    inputSchema: opts.inputSchema as Schema.Schema<unknown, unknown>,
+    inputSchema: opts.inputSchema as Schema.Codec<unknown, unknown>,
     input: opts.input,
   })
   return descriptor<Out>({

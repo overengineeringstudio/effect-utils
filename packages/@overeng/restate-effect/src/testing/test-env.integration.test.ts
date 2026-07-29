@@ -315,7 +315,7 @@ describe('RestateTestEnv (mock) awakeable resolve from outside', () => {
         Effect.gen(function* () {
           const env = yield* RestateTestEnv
           /* Fork the suspending `start` (it parks on the awakeable promise). */
-          const fiber = yield* Effect.fork(
+          const fiber = yield* Effect.forkChild(
             env.invokeObject({
               contract: WaiterObj,
               key: 'job-1',

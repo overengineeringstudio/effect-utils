@@ -151,7 +151,7 @@ export interface RestateTestEnvService {
    * ingress `resolveAwakeable`.
    */
   readonly resolveAwakeable: <T, I>(args: {
-    schema: Schema.Schema<T, I>
+    schema: Schema.Codec<T, I>
     id: string
     payload: T
   }) => Effect.Effect<void, RestateError>
@@ -175,7 +175,7 @@ export class RestateTestEnv extends Context.Service<RestateTestEnv, RestateTestE
   static mock = <AppR, RIn = never>(opts: {
     readonly services: ReadonlyArray<AnyImplementation<AppR>>
     readonly appLayer: Layer.Layer<AppR, never, RIn>
-  }): Layer.Layer<RestateTestEnv, never, RIn> => Layer.scoped(RestateTestEnv, makeMockEnv(opts))
+  }): Layer.Layer<RestateTestEnv, never, RIn> => Layer.effect(RestateTestEnv, makeMockEnv(opts))
 
   /**
    * The native-server REAL backend: a thin wrapper over the existing
@@ -249,7 +249,7 @@ const classifyMockExit = ({
   errorSchema,
 }: {
   exit: Exit.Exit<unknown, unknown>
-  errorSchema: Schema.Schema<unknown, unknown> | undefined
+  errorSchema: Schema.Codec<unknown, unknown> | undefined
 }): Effect.Effect<unknown, unknown> => {
   if (Exit.isSuccess(exit) === true) return Effect.succeed(exit.value)
   const outcome = classifyOutcome({
@@ -267,10 +267,10 @@ const classifyMockExit = ({
   ) {
     const failure = Cause.findErrorOption(exit.cause)
     if (Option.isSome(failure) === true) {
-      return Schema.encodeUnknown(errorSchema)(failure.value).pipe(
-        Effect.flatMap((encoded) => Schema.decodeUnknown(errorSchema)(encoded)),
+      return Schema.encodeUnknownEffect(errorSchema)(failure.value).pipe(
+        Effect.flatMap((encoded) => Schema.decodeUnknownEffect(errorSchema)(encoded)),
         Effect.orElseSucceed(() => failure.value),
-        // @effect-diagnostics-next-line anyUnknownInErrorContext:off -- re-fails with a value decoded from the user-supplied `errorSchema: Schema.Schema<unknown, unknown>`; there is no nameable error type at this dynamic-decode boundary.
+        // @effect-diagnostics-next-line anyUnknownInErrorContext:off -- re-fails with a value decoded from the user-supplied `errorSchema: Schema.Codec<unknown, unknown>`; there is no nameable error type at this dynamic-decode boundary.
         Effect.flatMap((decoded) => Effect.fail(decoded)),
       )
     }
@@ -308,14 +308,14 @@ const mockStateProxy = <S extends StateSchemas>({
   return {
     get: (key) =>
       state.has(key) === true
-        ? Schema.decodeUnknown(schemaFor(key))(state.get(key)).pipe(
+        ? Schema.decodeUnknownEffect(schemaFor(key))(state.get(key)).pipe(
             Effect.mapError(stateErr(`stateOf(${contract.name}).get(${key})`)),
           )
         : // @effect-diagnostics-next-line effectSucceedWithVoid:off -- `get` returns a meaningful `StateValueType | undefined` union (undefined = key absent), not void; `Effect.void` would break the `StateProxy.get` signature.
           Effect.succeed(undefined),
     getAll: () =>
       Effect.forEach([...state.entries()], ([k, v]) =>
-        Schema.decodeUnknown(schemaFor(k))(v).pipe(Effect.map((decoded) => [k, decoded] as const)),
+        Schema.decodeUnknownEffect(schemaFor(k))(v).pipe(Effect.map((decoded) => [k, decoded] as const)),
       ).pipe(
         Effect.map(
           (pairs) =>
@@ -331,7 +331,7 @@ const mockStateProxy = <S extends StateSchemas>({
         ? Effect.sync(() => {
             state.delete(key)
           })
-        : Schema.encode(schemaFor(key))(value).pipe(
+        : Schema.encodeEffect(schemaFor(key))(value).pipe(
             Effect.map((encoded) => {
               state.set(key, encoded)
             }),
@@ -345,7 +345,7 @@ const mockStateProxy = <S extends StateSchemas>({
       Effect.forEach(
         Object.entries(values).filter(([, v]) => v !== undefined),
         ([k, v]) =>
-          Schema.encode(schemaFor(k))(v).pipe(Effect.map((encoded) => [k, encoded] as const)),
+          Schema.encodeEffect(schemaFor(k))(v).pipe(Effect.map((encoded) => [k, encoded] as const)),
       ).pipe(
         Effect.map((pairs) => {
           state.clear()
@@ -364,7 +364,7 @@ const makeMockEnv = <AppR, RIn>(opts: {
   Effect.gen(function* () {
     /* 1. Capture the application `Runtime<AppR>` ONCE from `appLayer`, into the env
      * scope (so its scoped resources are torn down with the env — the ambient
-     * `Scope.Scope` is provided by the `Layer.scoped` this runs under). */
+     * `Scope.Scope` is provided by the `Layer.effect` this runs under). */
     const runtime = yield* Layer.toRuntime(opts.appLayer)
 
     /* 2. Per-key State: `${service}/${key}` → the inner State `Map` (so object /
@@ -452,7 +452,7 @@ const makeMockEnv = <AppR, RIn>(opts: {
          * `classifyOutcome` the real boundary uses. */
         /* The handler `run` is dispatched by runtime string from a type-erased
          * `Record<string, (input: unknown) => Effect.Effect<unknown, unknown, unknown>>`
-         * and `params.spec.error` is `Schema.Schema<any, any>`, so the error/requirements
+         * and `params.spec.error` is `Schema.Codec<any, any>`, so the error/requirements
          * channels are STRUCTURALLY un-nameable here — `provideHandlerCaps` is already
          * generic `<A, E, R>`, so the `unknown` originates at this dynamic-dispatch source,
          * not in the helper. This mirrors the real boundary in `endpoint/Endpoint.ts`, which
@@ -557,7 +557,7 @@ const makeMockEnv = <AppR, RIn>(opts: {
           state: stateMapFor({ service: args.contract.name, key: args.key }),
         })) as RestateTestEnvService['stateOf'],
       resolveAwakeable: ((args: {
-        schema: Schema.Schema<unknown, unknown>
+        schema: Schema.Codec<unknown, unknown>
         id: string
         payload: unknown
       }) =>

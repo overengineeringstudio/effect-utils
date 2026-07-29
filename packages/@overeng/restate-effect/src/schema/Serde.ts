@@ -48,7 +48,7 @@ export const effectSerde = <A, I>({
   slot = 'internal',
   redaction,
 }: {
-  schema: Schema.Schema<A, I>
+  schema: Schema.Codec<A, I>
   slot?: SerdeSlot
   redaction?: RedactionCipher
 }): RestateSerde<A> => {
@@ -69,12 +69,12 @@ export const effectSerde = <A, I>({
   /* A void/undefined payload has NO body. Restate's `serde.empty` leaves the
    * content type UNSET so the server allows an empty body (`application/json` +
    * an empty body is rejected as "Empty body not allowed"). Mirror that: a
-   * `VoidKeyword`/`UndefinedKeyword` schema defaults to no content type. */
-  const isVoid = schema.ast._tag === 'VoidKeyword' || schema.ast._tag === 'UndefinedKeyword'
-  const contentType = Option.flatMap(overrides, (o) => Option.fromNullable(o.contentType)).pipe(
+   * `Void`/`Undefined` schema defaults to no content type. */
+  const isVoid = schema.ast._tag === 'Void' || schema.ast._tag === 'Undefined'
+  const contentType = Option.flatMap(overrides, (o) => Option.fromNullishOr(o.contentType)).pipe(
     Option.getOrElse(() => (isVoid === true ? undefined : 'application/json')),
   )
-  const jsonSchema = Option.flatMap(overrides, (o) => Option.fromNullable(o.jsonSchema)).pipe(
+  const jsonSchema = Option.flatMap(overrides, (o) => Option.fromNullishOr(o.jsonSchema)).pipe(
     Option.getOrElse(() => JsonSchema.make(schema) as object),
   )
   return {
@@ -108,7 +108,7 @@ export const ingressSerde = <A, I>({
   schema,
   redaction,
 }: {
-  schema: Schema.Schema<A, I>
+  schema: Schema.Codec<A, I>
   redaction?: RedactionCipher
 }): RestateSerde<A> =>
   effectSerde({ schema, slot: 'ingress', ...(redaction !== undefined ? { redaction } : {}) })
@@ -118,7 +118,7 @@ export const internalSerde = <A, I>({
   schema,
   redaction,
 }: {
-  schema: Schema.Schema<A, I>
+  schema: Schema.Codec<A, I>
   redaction?: RedactionCipher
 }): RestateSerde<A> =>
   effectSerde({ schema, slot: 'internal', ...(redaction !== undefined ? { redaction } : {}) })

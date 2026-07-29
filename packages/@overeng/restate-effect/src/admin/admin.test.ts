@@ -195,7 +195,7 @@ describe('RestateAdmin auth + config', () => {
     )
     await run(
       (a) => a.cancel('inv_1'),
-      RestateAdmin.layerConfig().pipe(Layer.provide(Layer.setConfigProvider(provider))),
+      RestateAdmin.layerConfig().pipe(Layer.provide(ConfigProvider.layer(provider))),
     )
     expect(captured[0]!.url).toBe('http://admin.local:9070/invocations/inv_1/cancel')
     expect(captured[0]!.headers['authorization']).toBe('Bearer k3y')

@@ -95,7 +95,7 @@ const runEffectHandler =
     readonly service: string
     readonly handler: string
     readonly run: EffectHandler
-    readonly errorSchema: Schema.Schema<any, any> | undefined
+    readonly errorSchema: Schema.Codec<any, any> | undefined
     readonly runtime: Runtime.Runtime<AppR>
     readonly markers: HandlerMarkers
     /* The inbound-bridge transform (`./otel` supplies it; undefined in the
@@ -254,8 +254,8 @@ const handlerOpts = ({
   redaction,
 }: {
   spec: {
-    readonly input: Schema.Schema<any, any>
-    readonly success: Schema.Schema<any, any>
+    readonly input: Schema.Codec<any, any>
+    readonly success: Schema.Codec<any, any>
     readonly options?: HandlerOptions
   }
   redaction: RedactionCipher | undefined
@@ -290,7 +290,7 @@ const validateContractAnnotations = ({
   handlerInputs,
 }: {
   contractName: string
-  handlerInputs: ReadonlyArray<readonly [string, Schema.Schema<any, any>]>
+  handlerInputs: ReadonlyArray<readonly [string, Schema.Codec<any, any>]>
 }): void => {
   const violations = handlerInputs.flatMap(([handler, input]) =>
     validateInputAnnotations({ ast: input.ast, label: `${contractName}.${handler}` }),
@@ -803,7 +803,7 @@ export const make = <const S extends ReadonlyArray<AnyImplementation<any>>>(
     const server = http2.createServer(fn as Parameters<typeof http2.createServer>[0])
 
     const bound = yield* Effect.acquireRelease(
-      Effect.async<EndpointServer, RestateError>((resume) => {
+      Effect.callback<EndpointServer, RestateError>((resume) => {
         const onError = (cause: Error) => {
           server.off('error', onError)
           resume(
@@ -832,7 +832,7 @@ export const make = <const S extends ReadonlyArray<AnyImplementation<any>>>(
         })
       }),
       () =>
-        Effect.async<void>((resume) => {
+        Effect.callback<void>((resume) => {
           server.close(() => resume(Effect.void))
         }),
     )
@@ -845,7 +845,7 @@ export const make = <const S extends ReadonlyArray<AnyImplementation<any>>>(
 export const layerWithBoundEndpoint = <const S extends ReadonlyArray<AnyImplementation<any>>>(
   opts: Omit<EndpointOptions<AppROf<S>>, 'services'> & { readonly services: S },
 ): Layer.Layer<BoundEndpoint, RestateError | ConfigError.ConfigError, AppROf<S>> =>
-  Layer.scoped(BoundEndpoint, make(opts))
+  Layer.effect(BoundEndpoint, make(opts))
 
 /**
  * A scoped `Layer` that starts the endpoint server and discards the bound
@@ -855,7 +855,7 @@ export const layerWithBoundEndpoint = <const S extends ReadonlyArray<AnyImplemen
 export const layer = <const S extends ReadonlyArray<AnyImplementation<any>>>(
   opts: Omit<EndpointOptions<AppROf<S>>, 'services'> & { readonly services: S },
 ): Layer.Layer<never, RestateError | ConfigError.ConfigError, AppROf<S>> =>
-  Layer.scopedDiscard(make(opts))
+  Layer.effectDiscard(make(opts))
 
 /**
  * Long-lived production entrypoint: launch the endpoint `layer` and block until

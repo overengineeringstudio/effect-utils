@@ -6,7 +6,7 @@
  * These exercise the layer directly against a deterministic fake `ctx` (no
  * server needed): the end-to-end replay-stability guarantee is covered by the
  * native-server integration tests; here we assert the layer's CONTRACT — async
- * reads track `ctx.date`, the sync `unsafeCurrentTime*` reads are FROZEN at the
+ * reads track `ctx.date`, the sync `currentTime*Unsafe` reads are FROZEN at the
  * entry-seeded base (do not advance mid-attempt), and `Random` reads `ctx.rand`.
  */
 import type * as restate from '@restatedev/restate-sdk'
@@ -14,9 +14,6 @@ import { Clock, Effect, Random } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { determinismLayer, loggerLayer } from '../mod.ts'
-
-/* The fully-derived default Random whose method set the journaled Random must match. */
-const defaultRandom = Random.make('parity-probe')
 
 /**
  * A minimal deterministic fake `ctx` for the determinism layer: `date.now()`
@@ -80,7 +77,7 @@ describe('determinism layer', () => {
     expect(completed).toBe('done')
   })
 
-  it('Clock.unsafeCurrentTime* is FROZEN at the entry base (does not advance mid-attempt)', async () => {
+  it('Clock.currentTime*Unsafe is FROZEN at the entry base (does not advance mid-attempt)', async () => {
     const ctx = fakeCtx({ dateBase: 1_700_000_000_000, randValues: [0.5] })
     const frozenBase = await ctx.date.now()
     const result = await Effect.runPromise(
@@ -88,9 +85,9 @@ describe('determinism layer', () => {
         Effect.sync(() => {
           /* Repeated sync reads must return the SAME frozen value — a replayed
            * attempt must observe the same wall-clock it first observed (R17). */
-          const m1 = clock.unsafeCurrentTimeMillis()
-          const m2 = clock.unsafeCurrentTimeMillis()
-          const n1 = clock.unsafeCurrentTimeNanos()
+          const m1 = clock.currentTimeMillisUnsafe()
+          const m2 = clock.currentTimeMillisUnsafe()
+          const n1 = clock.currentTimeNanosUnsafe()
           return { m1, m2, n1 }
         }),
       ).pipe(Effect.provide(determinismLayer({ ctx, frozenBaseMillis: frozenBase }))),
@@ -117,73 +114,42 @@ describe('determinism layer', () => {
     expect(result.bool).toBe(false)
   })
 
-  it('journaled Random overrides EVERY generator method of the default Random (parity guard)', async () => {
-    /* `makeJournaledRandom` spreads `Random.make(...)` then overrides each
-     * generator from the journaled `ctx.rand`. A FUTURE generator method on the
-     * `Random` interface that the journaled Random does NOT override would be a
-     * SILENT determinism hole — it would read the spread's non-journaled source on
-     * replay. This guard enumerates every CALLABLE member the default Random
-     * exposes (own + prototype), drops the known PRNG IMPL details (`seed`/`PRNG`
-     * are not part of the `Random` service interface and do not feed a journaled
-     * read), and asserts the journaled Random carries its OWN override for each
-     * remaining generator method. It fails loudly the day Effect adds a generator
-     * we have not journaled. */
+  it('journaled Random supplies both Effect 4 primitive generator methods', async () => {
+    /* Effect 4's effectful Random operations derive exclusively from these two
+     * Reference methods. A future service-shape change must fail this guard so
+     * the journaled source cannot silently fall back to an untracked generator. */
     const ctx = fakeCtx({ dateBase: 0, randValues: [0.5] })
     const journaled = await Effect.runPromise(
-      Random.randomWith((r) => Effect.succeed(r)).pipe(
+      Effect.gen(function* () {
+        return yield* Random.Random
+      }).pipe(
         Effect.provide(determinismLayer({ ctx, frozenBaseMillis: 0 })),
       ),
     )
-    /* PRNG impl details (NOT on the `Random` service interface; carried by the
-     * concrete `Random.make` instance but never read by the journaled overrides).
-     * The `Random` brand symbol is also dropped — it is not a generator. */
-    const implOnly = new Set(['seed', 'PRNG'])
-    const generators = (r: object): ReadonlyArray<string> => {
-      const names = new Set<string>()
-      /* Walk own + prototype members but STOP at `Object.prototype` (so the
-       * universal `toString`/`hasOwnProperty`/… are not counted). Both Effect-VALUED
-       * generators (`next`/`nextBoolean`/`nextInt`) and function-shaped generators
-       * (`nextRange`/`nextIntBetween`/`shuffle`) count — classifying by `typeof` would
-       * miss the Effect-valued ones. */
-      for (
-        let cur: object | null = r;
-        cur !== null && cur !== Object.prototype;
-        cur = Object.getPrototypeOf(cur)
-      ) {
-        for (const key of Object.getOwnPropertyNames(cur)) {
-          if (key === 'constructor' || implOnly.has(key) === true) continue
-          names.add(key)
-        }
-      }
-      return [...names].sort()
-    }
-    const expected = generators(defaultRandom)
-    /* The six documented `Random` generators (sanity floor — catches accidental
-     * over-filtering of the impl allowlist). */
-    expect(expected).toStrictEqual([
-      'next',
-      'nextBoolean',
-      'nextInt',
-      'nextIntBetween',
-      'nextRange',
-      'shuffle',
-    ])
-    /* Every generator method is an OWN property on the journaled Random (i.e. it
-     * was re-journaled, not inherited from the spread). */
+    const expected = ['nextDoubleUnsafe', 'nextIntUnsafe']
+    expect(Object.keys(journaled).sort()).toStrictEqual(expected)
     for (const method of expected) {
       expect(Object.hasOwn(journaled, method)).toBe(true)
     }
   })
 
-  it('Random.nextIntBetween derives a bounded int from the journaled float', async () => {
-    /* 0.42 over [0,10) → floor(0.42 * 10) = 4. */
-    const ctx = fakeCtx({ dateBase: 0, randValues: [0.42] })
+  it('Random.nextIntBetween preserves the v3 half-open upper bound', async () => {
+    /* 0.999 over [0,10) → 9. The v4 inclusive default can return 10. */
+    const ctx = fakeCtx({ dateBase: 0, randValues: [0.999] })
     const value = await Effect.runPromise(
-      Random.nextIntBetween(0, 10).pipe(
+      Random.nextIntBetween(0, 10, { halfOpen: true }).pipe(
         Effect.provide(determinismLayer({ ctx, frozenBaseMillis: 0 })),
       ),
     )
-    expect(value).toBe(4)
+    expect(value).toBe(9)
+  })
+
+  it('Random.nextInt preserves the journaled v3 integer derivation', async () => {
+    const ctx = fakeCtx({ dateBase: 0, randValues: [0.5] })
+    const value = await Effect.runPromise(
+      Random.nextInt.pipe(Effect.provide(determinismLayer({ ctx, frozenBaseMillis: 0 }))),
+    )
+    expect(value).toBe(Math.floor(0.5 * Number.MAX_SAFE_INTEGER))
   })
 
   it('two runs over the same journaled source produce identical output (replay-stable)', async () => {

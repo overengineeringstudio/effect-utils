@@ -142,7 +142,7 @@ export interface RestateAdminService {
    */
   readonly query: <A, I>(args: {
     readonly sql: string
-    readonly rowSchema: Schema.Schema<A, I>
+    readonly rowSchema: Schema.Codec<A, I>
   }) => Effect.Effect<ReadonlyArray<A>, RestateError>
   /** As {@link query} but returns the RAW untyped rows (no Schema decode). */
   readonly queryRaw: (
@@ -229,7 +229,7 @@ const makeAdmin = (config: AdminClientConfig): RestateAdminService => {
       adminCall({ method: 'admin.query', run: () => bareQuery({ config, sql }) }).pipe(
         Effect.flatMap((rows) =>
           Effect.forEach(rows, (row) =>
-            Schema.decodeUnknown(rowSchema)(row).pipe(
+            Schema.decodeUnknownEffect(rowSchema)(row).pipe(
               Effect.mapError(
                 (cause) =>
                   new RestateError({ reason: 'AdminFailed', method: 'admin.query.decode', cause }),

@@ -183,7 +183,7 @@ describe('RestateOtel.layerConfig (Config-driven, decision 0016/0014)', () => {
         /* The exporter is the caller's choice — use the in-memory one here. */
         return { exporter: inMemory }
       },
-    }).pipe(Layer.provide(Layer.setConfigProvider(provider)))
+    }).pipe(Layer.provide(ConfigProvider.layer(provider)))
     /* Build into a scope and release immediately (registers + shuts down the
      * provider); the captured `resolved` is the assertion. */
     await Effect.runPromise(Effect.scoped(Layer.build(layer)).pipe(Effect.asVoid))
@@ -203,7 +203,7 @@ describe('RestateOtel.layerConfig (Config-driven, decision 0016/0014)', () => {
         resolved = r
         return { exporter: inMemory }
       },
-    }).pipe(Layer.provide(Layer.setConfigProvider(provider)))
+    }).pipe(Layer.provide(ConfigProvider.layer(provider)))
     await Effect.runPromise(Effect.scoped(Layer.build(layer)).pipe(Effect.asVoid))
     expect(resolved).toStrictEqual({ endpoint: undefined, serviceName: 'fallback-name' })
   })

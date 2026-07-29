@@ -119,7 +119,7 @@ describe.skipIf(!serverAvailable)('sensitive-field redaction on the wire (real s
         const body = yield* Effect.promise(() =>
           rawIngressBody(harness.ingressUrl, 'redact-vault', 'reveal'),
         )
-        const wire = yield* Schema.decode(
+        const wire = yield* Schema.decodeEffect(
           Schema.fromJsonString(Schema.Struct({ label: Schema.String, token: Schema.String })),
         )(body)
 
@@ -134,7 +134,7 @@ describe.skipIf(!serverAvailable)('sensitive-field redaction on the wire (real s
         const decrypted = new TextDecoder().decode(
           cipher.decrypt(Buffer.from(wire.token, 'base64')),
         )
-        expect(yield* Schema.decode(Schema.fromJsonString(Schema.String))(decrypted)).toBe(
+        expect(yield* Schema.decodeEffect(Schema.fromJsonString(Schema.String))(decrypted)).toBe(
           PLAINTEXT,
         )
       }),

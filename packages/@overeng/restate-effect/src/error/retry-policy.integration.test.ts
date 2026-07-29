@@ -104,7 +104,7 @@ describe.skipIf(!serverAvailable)('disableRetries + retryable surface (real serv
         /* Forked so the test never blocks on the killed invocation. */
         yield* harness.ingress
           .call({ contract: Flaky, method: 'defect', input: undefined })
-          .pipe(Effect.ignore, Effect.fork)
+          .pipe(Effect.ignore, Effect.forkChild)
         const total = yield* settled(() => attempts.defect)
         expect(total).toBe(1)
       }),
@@ -118,7 +118,7 @@ describe.skipIf(!serverAvailable)('disableRetries + retryable surface (real serv
         const harness = yield* RestateTestHarness
         yield* harness.ingress
           .call({ contract: Flaky, method: 'defect', input: undefined })
-          .pipe(Effect.ignore, Effect.fork)
+          .pipe(Effect.ignore, Effect.forkChild)
         expect(yield* climbsPastOne(() => attempts.defect)).toBe(true)
       }),
     )
@@ -129,7 +129,7 @@ describe.skipIf(!serverAvailable)('disableRetries + retryable surface (real serv
         const harness = yield* RestateTestHarness
         yield* harness.ingress
           .call({ contract: Flaky, method: 'retryable', input: undefined })
-          .pipe(Effect.ignore, Effect.fork)
+          .pipe(Effect.ignore, Effect.forkChild)
         expect(yield* climbsPastOne(() => attempts.retryable)).toBe(true)
       }),
     )

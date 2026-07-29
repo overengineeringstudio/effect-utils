@@ -72,7 +72,7 @@ describe('RestateIngress auth (decision 0016)', () => {
         ['RESTATE_INGRESS_KEY', 'sk_from_env'],
       ]),
     )
-    await build(RestateIngress.layerConfig().pipe(Layer.provide(Layer.setConfigProvider(provider))))
+    await build(RestateIngress.layerConfig().pipe(Layer.provide(ConfigProvider.layer(provider))))
     expect(captured[0]!.url).toBe('https://cloud.example/ingress')
     expect(captured[0]!.headers).toStrictEqual({ Authorization: 'Bearer sk_from_env' })
   })
@@ -81,7 +81,7 @@ describe('RestateIngress auth (decision 0016)', () => {
     const provider = ConfigProvider.fromMap(
       new Map([['RESTATE_INGRESS_URL', 'http://localhost:8080']]),
     )
-    await build(RestateIngress.layerConfig().pipe(Layer.provide(Layer.setConfigProvider(provider))))
+    await build(RestateIngress.layerConfig().pipe(Layer.provide(ConfigProvider.layer(provider))))
     expect(captured[0]!.url).toBe('http://localhost:8080/')
     expect(captured[0]!.headers).toBeUndefined()
   })

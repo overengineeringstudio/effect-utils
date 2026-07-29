@@ -4,7 +4,7 @@ import * as SchemaAST from 'effect/SchemaAST'
 /**
  * The `Restate` Schema-annotation namespace: Restate-specific facts carried on
  * Effect Schemas and read once at the site that owns the fact, via
- * `SchemaAST.getAnnotation`.
+ * `SchemaAST.resolve`.
  *
  * Mirrors `@overeng/notion-effect-client`'s `schema-helpers.ts` field-walk
  * pattern: field annotations live on `prop.type` (NOT the `PropertySignature`),
@@ -188,7 +188,7 @@ export const Restate = {
 
 /** Read the error classification from a schema's AST (`None` if unannotated). */
 export const readErrorClass = (ast: SchemaAST.AST): Option.Option<ErrorClass> =>
-  SchemaAST.resolveAt<ErrorClass>(ErrorClassId)(ast)
+  Option.fromNullishOr(SchemaAST.resolve(ast)?.[ErrorClassId] as ErrorClass | undefined)
 
 /**
  * Resolve a `retryable` classification's `retryAfter` floor against the ACTUAL
@@ -233,11 +233,11 @@ const safeProject = ({
 
 /** Read the serde options from a schema's AST (`None` if unannotated). */
 export const readSerdeOptions = (ast: SchemaAST.AST): Option.Option<SerdeOptions> =>
-  SchemaAST.resolveAt<SerdeOptions>(SerdeId)(ast)
+  Option.fromNullishOr(SchemaAST.resolve(ast)?.[SerdeId] as SerdeOptions | undefined)
 
 /** Read the retention options from a schema's AST (`None` if unannotated). */
 export const readRetention = (ast: SchemaAST.AST): Option.Option<RetentionOptions> =>
-  SchemaAST.resolveAt<RetentionOptions>(RetentionId)(ast)
+  Option.fromNullishOr(SchemaAST.resolve(ast)?.[RetentionId] as RetentionOptions | undefined)
 
 /**
  * Find the name of the input-struct field carrying the `idempotencyKey`
@@ -247,10 +247,10 @@ export const readRetention = (ast: SchemaAST.AST): Option.Option<RetentionOption
  * field is annotated. Cached at contract time, not re-walked per call.
  */
 export const findIdempotencyKeyField = (ast: SchemaAST.AST): Option.Option<string> => {
-  if (ast._tag !== 'TypeLiteral') return Option.none()
+  if (ast._tag !== 'Objects') return Option.none()
   for (const prop of ast.propertySignatures) {
     if (typeof prop.name !== 'string') continue
-    if (Option.isSome(SchemaAST.resolveAt<true>(IdempotencyKeyId)(prop.type)) === true) {
+    if ((SchemaAST.resolve(prop.type)?.[IdempotencyKeyId] as true | undefined) === true) {
       return Option.some(prop.name)
     }
   }
@@ -272,7 +272,7 @@ export const readIdempotencyKey = ({
   findIdempotencyKeyField(ast).pipe(
     Option.flatMap((field) =>
       typeof input === 'object' && input !== null && field in input
-        ? Option.fromNullable((input as Record<string, unknown>)[field])
+        ? Option.fromNullishOr((input as Record<string, unknown>)[field])
         : Option.none(),
     ),
     Option.filter((value): value is string => typeof value === 'string'),
@@ -287,11 +287,11 @@ export const readIdempotencyKey = ({
  * resolved to the first.
  */
 const allIdempotencyKeyFields = (ast: SchemaAST.AST): ReadonlyArray<string> => {
-  if (ast._tag !== 'TypeLiteral') return []
+  if (ast._tag !== 'Objects') return []
   const fields: string[] = []
   for (const prop of ast.propertySignatures) {
     if (typeof prop.name !== 'string') continue
-    if (Option.isSome(SchemaAST.resolveAt<true>(IdempotencyKeyId)(prop.type)) === true) {
+    if ((SchemaAST.resolve(prop.type)?.[IdempotencyKeyId] as true | undefined) === true) {
       fields.push(prop.name)
     }
   }
@@ -302,16 +302,16 @@ const allIdempotencyKeyFields = (ast: SchemaAST.AST): ReadonlyArray<string> => {
  * Whether a STRUCT-LEVEL (wrong-node) `idempotencyKey`/`sensitive` annotation is
  * present — i.e. the annotation was applied to `Schema.Struct({...})` itself
  * instead of a FIELD's value schema (decision 0011 requires the field). On a
- * `TypeLiteral` such an annotation lands on the struct AST and is silently
+ * `Objects` such an annotation lands on the struct AST and is silently
  * ignored by the field-walking readers — a foot-gun this surfaces.
  */
 const structLevelFieldAnnotation = (
   ast: SchemaAST.AST,
 ): { readonly idempotencyKey: boolean; readonly sensitive: boolean } => {
-  if (ast._tag !== 'TypeLiteral') return { idempotencyKey: false, sensitive: false }
+  if (ast._tag !== 'Objects') return { idempotencyKey: false, sensitive: false }
   return {
-    idempotencyKey: Option.isSome(SchemaAST.resolveAt<true>(IdempotencyKeyId)(ast)),
-    sensitive: Option.isSome(SchemaAST.resolveAt<true>(SensitiveId)(ast)),
+    idempotencyKey: (SchemaAST.resolve(ast)?.[IdempotencyKeyId] as true | undefined) === true,
+    sensitive: (SchemaAST.resolve(ast)?.[SensitiveId] as true | undefined) === true,
   }
 }
 

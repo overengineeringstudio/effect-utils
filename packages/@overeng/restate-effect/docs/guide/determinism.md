@@ -16,7 +16,7 @@ reads are replay-safe — no special API:
 import { Clock, Effect, Random } from 'effect'
 
 const at = yield * Clock.currentTimeMillis // journaled (ctx.date) — a replay reads the same instant
-const roll = yield * Random.nextIntBetween(1, 7) // journaled (ctx.rand) — seeded, replay-stable
+const roll = yield * Random.nextIntBetween(1, 7, { halfOpen: true }) // journaled (ctx.rand) — seeded, replay-stable
 ```
 
 | Effect read                       | Backed by               | Behavior                                                       |

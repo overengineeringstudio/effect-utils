@@ -53,9 +53,9 @@ const resolveErrorMember = ({
   errorSchema,
   error,
 }: {
-  errorSchema: Schema.Schema<any, any>
+  errorSchema: Schema.Codec<any, any>
   error: unknown
-}): Schema.Schema<any, any> => {
+}): Schema.Codec<any, any> => {
   const ast = errorSchema.ast
   if (ast._tag !== 'Union') return errorSchema
   for (const member of ast.types) {
@@ -90,7 +90,7 @@ export const classifyOutcome = ({
   errorSchema,
 }: {
   cause: Cause.Cause<unknown>
-  errorSchema?: Schema.Schema<any, any>
+  errorSchema?: Schema.Codec<any, any>
 }): BoundaryOutcome => {
   /* A Restate suspension (a durable op suspending the attempt) may arrive as a
    * DEFECT (a durable combinator re-throws it verbatim via `Effect.die`, see
@@ -182,7 +182,7 @@ export const toTerminal = ({
   errorSchema,
 }: {
   cause: Cause.Cause<unknown>
-  errorSchema?: Schema.Schema<any, any>
+  errorSchema?: Schema.Codec<any, any>
 }): unknown => {
   const outcome = classifyOutcome({ cause, ...(errorSchema !== undefined ? { errorSchema } : {}) })
   return outcome._tag === 'success' ? undefined : outcome.thrown

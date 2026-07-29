@@ -154,8 +154,8 @@ const decodeWidget = (
   response: HttpClientResponse.HttpClientResponse,
 ): Effect.Effect<Widget, MalformedUpstream> =>
   response.json.pipe(
-    Effect.flatMap(Schema.decodeUnknown(Widget)),
-    Effect.catchAll(
+    Effect.flatMap(Schema.decodeUnknownEffect(Widget)),
+    Effect.catch(
       (e) =>
         new MalformedUpstream({
           detail:
@@ -233,7 +233,7 @@ export const WidgetApiLive = RestateService.implement<typeof WidgetApi, HttpClie
                  * final (the same bytes fail identically on a retry). */
                 return decodeWidget(response).pipe(
                   Effect.map((widget): Definitive => ({ _tag: 'ok', widget })),
-                  Effect.catchAll((e) =>
+                  Effect.catch((e) =>
                     Effect.succeed<Definitive>({ _tag: 'malformed', detail: e.detail }),
                   ),
                 )

@@ -183,7 +183,7 @@ const acquireProvider = (
  * scope (`Layer` memoizes the acquire), so there is no double `register()`.
  */
 const sharedLayer = (config: OtelLayerConfig): Layer.Layer<never, never, never> =>
-  Layer.unwrapScoped(
+  Layer.unwrap(
     acquireProvider(config).pipe(
       Effect.map((provider) => {
         const identity = brandIdentity(config.resource)
@@ -256,7 +256,7 @@ const layerConfig = (opts: {
     readonly serviceName: string
   }) => Omit<OtelLayerConfig, 'resource'>
 }): Layer.Layer<never, ConfigError.ConfigError> =>
-  Layer.unwrapEffect(
+  Layer.unwrap(
     Effect.gen(function* () {
       const values = yield* otelConfig
       const serviceName = Option.getOrElse(values.serviceName, () => opts.base.resource.serviceName)

@@ -25,7 +25,7 @@ describe('effectSerde', () => {
   it('handles a transformed schema where encoded ≠ decoded', () => {
     /* Date <-> ISO string: encode produces the wire (`I`) shape, decode
      * reconstructs the rich (`A`) value. */
-    const schema = Schema.Struct({ at: Schema.Date })
+    const schema = Schema.Struct({ at: Schema.DateFromString })
     const serde = effectSerde({ schema })
     const value = { at: new Date('2026-06-08T12:00:00.000Z') }
 
@@ -81,7 +81,7 @@ describe('effectSerde', () => {
 
 describe('effectSerde wire baselines (cross-major invariant)', () => {
   const WireBaseline = Schema.Struct({
-    at: Schema.Date,
+    at: Schema.DateFromString,
     note: Schema.optional(Schema.String),
     nullable: Schema.NullOr(Schema.String),
     empty: Schema.String,
@@ -219,7 +219,7 @@ describe('effectSerde property round-trips (docs/vrs/09-testing/spec.md §3)', (
   const UserId = Schema.String.pipe(Schema.brand('UserId'))
   const Transformed = Schema.Struct({
     id: UserId,
-    createdAt: Schema.Date,
+    createdAt: Schema.DateFromString,
     score: Schema.BigInt,
   })
   fcIt.prop('round-trips a transformed schema (encoded ≠ decoded)', [Transformed], ([value]) => {

@@ -210,7 +210,7 @@ describe.skipIf(!serverAvailable)('14-http-error-classification (verified end-to
             method: 'fetchRetryable',
             input: { baseUrl, widgetId: 'throttled-1' },
           })
-          .pipe(Effect.ignore, Effect.fork)
+          .pipe(Effect.ignore, Effect.forkChild)
         expect(yield* climbsPastOne(() => hits['throttled-1'] ?? 0)).toBe(true)
       }),
     )

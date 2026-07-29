@@ -210,7 +210,7 @@ describe.skipIf(!serverAvailable)('contract-invocation policy at the public entr
         )
         /* Raw wire: the sensitive field is ciphertext, never the plaintext. */
         expect(body).not.toContain(SECRET)
-        const wire = yield* Schema.decode(
+        const wire = yield* Schema.decodeEffect(
           Schema.fromJsonString(Schema.Struct({ token: Schema.String })),
         )(body)
         expect(wire.token).not.toBe(SECRET)

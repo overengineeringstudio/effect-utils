@@ -513,7 +513,7 @@ const makeStateProxy = <S extends StateSchemas>({
   const serdes = contractSerdeFactory(redaction)
   const serdeFor = <K extends keyof S & string>(key: K) =>
     serdes.forSchema({
-      schema: normalizeStateSchema(schemas[key]!) as Schema.Schema<unknown, unknown>,
+      schema: normalizeStateSchema(schemas[key]!) as Schema.Codec<unknown, unknown>,
       slot: 'internal',
     })
 
@@ -736,10 +736,10 @@ export interface BoundIngress {
   }) => Effect.Effect<WorkflowSignalSuccessOf<C, M>, RestateError, never>
   readonly result: <T, I>(args: {
     send: clients.Send<unknown> | clients.WorkflowSubmission<unknown>
-    outputSchema: Schema.Schema<T, I>
+    outputSchema: Schema.Codec<T, I>
   }) => Effect.Effect<T, RestateError, never>
   readonly resolveAwakeable: <T, I>(args: {
-    schema: Schema.Schema<T, I>
+    schema: Schema.Codec<T, I>
     id: AwakeableId<T>
     payload: T
   }) => Effect.Effect<void, RestateError, never>
@@ -785,7 +785,7 @@ export class RestateTestHarness extends Context.Service<
     readonly inboundBridge?: HandlerWrap
     readonly boundaryObserver?: BoundaryObserver
   }): Layer.Layer<RestateTestHarness, RestateError, RIn> =>
-    Layer.scoped(
+    Layer.effect(
       RestateTestHarness,
       Effect.gen(function* () {
         const sdkLogRecords: Array<RestateSdkLogRecord> = []
@@ -847,7 +847,7 @@ export class RestateTestHarness extends Context.Service<
                * the port is literal `0`, so it is structurally impossible.
                * Re-fail a real `RestateError` (a bind/listen failure) and die on the
                * unreachable `ConfigError`, keeping the harness channel clean. */
-              Effect.catchAll((cause) =>
+              Effect.catch((cause) =>
                 cause instanceof RestateError ? Effect.fail(cause) : Effect.die(cause),
               ),
             )

@@ -51,7 +51,7 @@ export const DemoLive = RestateService.implement<typeof Demo>({
         /* Journaled time: backed by `ctx.date`, so a replay reads the SAME instant. */
         const at = yield* Clock.currentTimeMillis
         /* Journaled randomness: backed by `ctx.rand`, seeded + replay-stable. */
-        const roll = yield* Random.nextIntBetween(1, 7)
+        const roll = yield* Random.nextIntBetween(1, 7, { halfOpen: true })
 
         /* A durable step: the closure runs once on real execution; its result is
          * journaled and replayed verbatim. Put raw nondeterminism / external I/O

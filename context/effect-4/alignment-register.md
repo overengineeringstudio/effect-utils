@@ -37,6 +37,19 @@
   `patterns/schema-date/scenario.json`; migration acceptance requires auditing
   the user-facing boundaries above.
 
+## random-bounds-semantics
+
+- **Bucket:** C — REAL BREAKAGE WE MUST PRESERVE OR SHIM.
+- **Difference:** v3 `Random.nextIntBetween(min, max)` excludes `max`; v4 beta.102 includes `max`
+  by default.
+- **Decision:** Preserve v3 behavior at every migrated call site with
+  `{ halfOpen: true }`. Custom Random services must also preserve any source-derived v3 primitive
+  arithmetic rather than adopting the v4 default generator's range.
+- **Blast radius:** bounded random indices, dice/range examples, deterministic test fixtures, and
+  custom Random providers.
+- **Status:** REQUIRED COMPATIBILITY WORK; the Restate runtime test uses a `0.999` source over
+  `(0, 10)` to distinguish the preserved result `9` from the v4 default result `10`.
+
 ## cli-A-nested-terminator-loss
 
 - **Bucket:** A — SUSPECTED V4 BUG.

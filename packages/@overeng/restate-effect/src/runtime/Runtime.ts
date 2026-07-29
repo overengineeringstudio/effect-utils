@@ -14,7 +14,7 @@
  */
 import * as restate from '@restatedev/restate-sdk'
 import type { LogLevel } from 'effect'
-import { Chunk, Clock, Effect, Layer, Logger, Random } from 'effect'
+import { Clock, Effect, Layer, Logger, Random } from 'effect'
 
 import { RestateContext } from '../authoring/RestateContext.ts'
 import { withRestateOperation } from '../observability/effect.ts'
@@ -24,7 +24,7 @@ import { withRestateOperation } from '../observability/effect.ts'
  *
  * - `currentTimeMillis` / `currentTimeNanos` read `ctx.date.now()` (async,
  *   journaled — replay-stable).
- * - `unsafeCurrentTimeMillis()` / `unsafeCurrentTimeNanos()` are SYNC and cannot
+ * - `currentTimeMillisUnsafe()` / `currentTimeNanosUnsafe()` are SYNC and cannot
  *   call the async `ctx.date`, so they are served from a per-attempt FROZEN
  *   monotonic base seeded ONCE from `ctx.date.now()` at handler entry (passed in
  *   as `frozenBaseMillis`). Wall-clock time therefore does not advance
@@ -44,20 +44,20 @@ const makeJournaledClock = ({
   ctx: restate.Context
   frozenBaseMillis: number
 }): Clock.Clock => {
-  const base = Clock.make()
-  /* PROTOTYPE-PRESERVING clone: `Clock.make()` puts `sleep` and the sync
-   * `unsafeCurrentTime*` on the Clock PROTOTYPE (only the async `currentTime*`
+  const base = Clock.Clock.defaultValue()
+  /* PROTOTYPE-PRESERVING clone: the default Clock puts `sleep` and the sync
+   * `currentTime*Unsafe` on the Clock PROTOTYPE (only the async `currentTime*`
    * Effects are own-enumerable). A plain `{ ...Clock.make(), … }` object spread
    * therefore DROPS `sleep` — an in-handler `Effect.sleep` would then throw
    * `clock.sleep is not a function` (it surfaces as a retry loop under load).
    * We clone onto an object whose prototype IS the base Clock's prototype, so
    * `sleep` (the non-durable in-process timer — NOT remapped to `ctx.sleep`,
-   * R18) and the `[ClockTypeId]` brand survive, then override only the time
-   * reads: the sync `unsafeCurrentTime*` from the per-attempt frozen base, the
+   * R18) survive, then override only the time reads: the sync
+   * `currentTime*Unsafe` from the per-attempt frozen base, the
    * async `currentTime*` from the journaled `ctx.date`. */
   return Object.assign(Object.create(Object.getPrototypeOf(base)) as Clock.Clock, base, {
-    unsafeCurrentTimeMillis: () => frozenBaseMillis,
-    unsafeCurrentTimeNanos: () => millisToNanos(frozenBaseMillis),
+    currentTimeMillisUnsafe: () => frozenBaseMillis,
+    currentTimeNanosUnsafe: () => millisToNanos(frozenBaseMillis),
     currentTimeMillis: Effect.promise(() => ctx.date.now()),
     currentTimeNanos: Effect.map(
       Effect.promise(() => ctx.date.now()),
@@ -69,54 +69,16 @@ const makeJournaledClock = ({
 /**
  * Build an Effect `Random` backed by the invocation's journaled `ctx.rand`
  * (seeded on the invocation id; `ctx.rand.random()` is replay-stable). The base
- * generator is `ctx.rand.random()` (uniform `[0, 1)`); the derived methods mirror
- * Effect's own `Random.make` derivations (so semantics match the default), but
- * integers are derived from the float (`ctx.rand` exposes only `random()` /
- * `uuidv4()`). Determinism holds because `ctx.rand.random()` is journaled-seeded
- * (R17, decision 0004).
+ * generator is `ctx.rand.random()` (uniform `[0, 1)`). Effect 4 derives its
+ * effectful operations from the service's two unsafe primitives. The integer
+ * primitive preserves this service's v3 arithmetic:
+ * `floor(random * Number.MAX_SAFE_INTEGER)`. Determinism holds because
+ * `ctx.rand.random()` is journaled-seeded (R17, decision 0004).
  */
-const makeJournaledRandom = (ctx: restate.Context): Random.Random => {
-  const next = Effect.sync(() => ctx.rand.random())
-  /* Floor a uniform float into `[0, bound)` — the integer analogue of Effect's
-   * `PRNG.integer(bound)`, but over the journaled float source. */
-  const nextIntBounded = (bound: number): Effect.Effect<number> =>
-    Effect.map(next, (n) => Math.floor(n * bound))
-  // oxlint-disable-next-line overeng/named-args -- assigned to `Random.nextIntBetween`, whose Effect interface signature is positional (min, max)
-  const nextIntBetween = (min: number, max: number): Effect.Effect<number> =>
-    Effect.map(nextIntBounded(max - min), (n) => n + min)
-  /* Fisher-Yates over the journaled int source — mirrors Effect's `shuffleWith`. */
-  const shuffle = <A>(elements: Iterable<A>): Effect.Effect<Chunk.Chunk<A>> =>
-    Effect.suspend(() => {
-      const buffer = Array.from(elements)
-      const swaps: number[] = []
-      for (let i = buffer.length; i >= 2; i = i - 1) swaps.push(i)
-      return Effect.as(
-        Effect.forEach(
-          swaps,
-          (n) =>
-            Effect.map(nextIntBetween(0, n), (k) => {
-              const tmp = buffer[n - 1]!
-              buffer[n - 1] = buffer[k]!
-              buffer[k] = tmp
-            }),
-          { discard: true },
-        ),
-        Chunk.fromIterable(buffer),
-      )
-    })
-  /* Spread the canonical default Random so the nominal `[RandomTypeId]` brand is
-   * preserved; override every generator method to read the journaled `ctx.rand`. */
-  return {
-    ...Random.make('restate'),
-    next,
-    nextBoolean: Effect.map(next, (n) => n > 0.5),
-    nextInt: nextIntBounded(Number.MAX_SAFE_INTEGER),
-    // oxlint-disable-next-line overeng/named-args -- implements `Random.nextRange`, whose Effect interface signature is positional (min, max)
-    nextRange: (min, max) => Effect.map(next, (n) => (max - min) * n + min),
-    nextIntBetween,
-    shuffle,
-  }
-}
+const makeJournaledRandom = (ctx: restate.Context): (typeof Random.Random)['Service'] => ({
+  nextDoubleUnsafe: () => ctx.rand.random(),
+  nextIntUnsafe: () => Math.floor(ctx.rand.random() * Number.MAX_SAFE_INTEGER),
+})
 
 /**
  * The per-invocation determinism `Layer` (R17): journaled `Clock` (via
@@ -133,8 +95,8 @@ export const determinismLayer = ({
   frozenBaseMillis: number
 }): Layer.Layer<never> =>
   Layer.merge(
-    Layer.setClock(makeJournaledClock({ ctx, frozenBaseMillis })),
-    Layer.setRandom(makeJournaledRandom(ctx)),
+    Layer.succeed(Clock.Clock, makeJournaledClock({ ctx, frozenBaseMillis })),
+    Layer.succeed(Random.Random, makeJournaledRandom(ctx)),
   )
 
 /* ── logger bridge (decision 0015, docs/vrs/03-effect-runtime/spec.md §2) ───────────────────────────── */
@@ -223,9 +185,9 @@ export const withAttemptInterruption = <A, E, R>({
    * AbortSignal fires. Racing it against the user effect via `raceFirst` means
    * the abort interrupts the user fiber at its next await point — so its
    * `acquireRelease`/`onInterrupt` finalizers and compensations run (R31). The
-   * `Effect.async` registration's returned effect removes the listener on
+   * `Effect.callback` registration's returned effect removes the listener on
    * teardown (no leak across attempts). */
-  const onAttemptComplete: Effect.Effect<never> = Effect.async<never>((resume) => {
+  const onAttemptComplete: Effect.Effect<never> = Effect.callback<never>((resume) => {
     if (signal.aborted === true) {
       resume(Effect.interrupt)
       return
