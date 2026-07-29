@@ -37,7 +37,11 @@ import { Effect, Schema } from 'effect'
  * upstream returning controlled statuses, and asserts each union member lands in the
  * right channel. Skips when no native server is available.
  */
-import { HttpClient, HttpClientRequest, type HttpClientResponse } from 'effect/unstable/http'
+import {
+  HttpClient,
+  HttpClientRequest,
+  type HttpClientResponse,
+} from 'effect/unstable/http'
 
 import { Restate, RestateService } from '../src/mod.ts'
 
@@ -247,10 +251,7 @@ export const WidgetApiLive = RestateService.implement<typeof WidgetApi, HttpClie
               return Effect.die(new Error(`transient upstream: HTTP ${status}`))
             }),
             /* A transport-level failure (refused / timeout) → also FAIL the step. */
-            Effect.catchTags({
-              RequestError: (e) => Effect.die(e),
-              ResponseError: (e) => Effect.die(e),
-            }),
+            Effect.catchTag('HttpClientError', (e) => Effect.die(e)),
           ),
         })
         switch (outcome._tag) {
@@ -284,11 +285,11 @@ export const WidgetApiLive = RestateService.implement<typeof WidgetApi, HttpClie
           .execute(HttpClientRequest.get(`${baseUrl}/widgets/${widgetId}`))
           .pipe(
             /* No usable response (refused / timeout / broken stream) → transient with
-             * default backoff; `HttpClientError` is `RequestError | ResponseError`. */
-            Effect.catchTags({
-              RequestError: () => new UpstreamUnavailable({ status: 0, retryAfterMillis: 0 }),
-              ResponseError: () => new UpstreamUnavailable({ status: 0, retryAfterMillis: 0 }),
-            }),
+             * default backoff. */
+            Effect.catchTag(
+              'HttpClientError',
+              () => new UpstreamUnavailable({ status: 0, retryAfterMillis: 0 }),
+            ),
           )
         const status = response.status
         if (status === 200) return yield* decodeWidget(response)
