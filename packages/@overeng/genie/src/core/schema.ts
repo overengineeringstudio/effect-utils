@@ -12,7 +12,7 @@ import { Schema } from 'effect'
 // =============================================================================
 
 /** Schema for file processing status values */
-export const GenieFileStatus = Schema.Literal(
+export const GenieFileStatus = Schema.Literals([
   'pending',
   'active',
   'created',
@@ -20,7 +20,7 @@ export const GenieFileStatus = Schema.Literal(
   'unchanged',
   'skipped',
   'error',
-)
+])
 /** File processing status */
 export type GenieFileStatus = Schema.Schema.Type<typeof GenieFileStatus>
 
