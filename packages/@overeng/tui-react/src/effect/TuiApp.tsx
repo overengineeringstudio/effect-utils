@@ -501,7 +501,7 @@ export const createTuiApp = <S, A>(config: TuiAppConfig<S, A>): TuiApp<S, A> => 
           if (
             interruptedAction != null &&
             exit._tag === 'Failure' &&
-            Cause.isInterruptedOnly(exit.cause) === true
+            Cause.hasInterruptsOnly(exit.cause) === true
           ) {
             dispatch(interruptedAction)
           }

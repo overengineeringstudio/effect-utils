@@ -270,7 +270,7 @@ export interface TuiRuntime {
  */
 // oxlint-disable-next-line overeng/named-args -- implements Effect's `Teardown` interface (fixed `(exit, onExit)` signature) passed to `NodeRuntime.runMain`
 const tuiTeardown = <E, A>(exit: Exit.Exit<E, A>, onExit: (code: number) => void): void => {
-  if (Exit.isFailure(exit) === true && Cause.isInterruptedOnly(exit.cause) === false) {
+  if (Exit.isFailure(exit) === true && Cause.hasInterruptsOnly(exit.cause) === false) {
     onExit(1)
     return
   }
@@ -362,7 +362,7 @@ const runTuiMainImpl = <E, A>({
   effect.pipe(
     Effect.catchCause((cause) =>
       Effect.sync(() => {
-        if (Cause.isInterruptedOnly(cause) === true) {
+        if (Cause.hasInterruptsOnly(cause) === true) {
           process.exitCode = 130
           return undefined
         }
