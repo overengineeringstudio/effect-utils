@@ -16,7 +16,7 @@
  * `RestateTestEnv`.
  */
 import { it } from '@effect/vitest'
-import { Context, Effect, Layer, Schema } from 'effect'
+import { Context, Effect, Fiber, Layer, Schema } from 'effect'
 import { describe, expect } from 'vitest'
 
 import { Awakeable, type AwakeableId, RestateObject, RestateService, State } from '../mod.ts'
@@ -334,7 +334,7 @@ describe('RestateTestEnv (mock) awakeable resolve from outside', () => {
                 input: undefined,
               })
               if (read !== '') return read
-              yield* Effect.yieldNow()
+              yield* Effect.yieldNow
             }
             return ''
           })
@@ -346,7 +346,7 @@ describe('RestateTestEnv (mock) awakeable resolve from outside', () => {
             id: id as AwakeableId<Schema.Schema.Type<typeof Payload>>,
             payload: { token: 'resumed-ok' },
           })
-          const resumed = yield* fiber.await
+          const resumed = yield* Fiber.await(fiber)
           expect(resumed._tag).toBe('Success')
         }),
       )
