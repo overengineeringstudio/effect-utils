@@ -148,13 +148,12 @@ const makeInProcessLayer = (
     resource: { serviceName: options.serviceName },
     exportInterval: options.exportInterval,
   }).pipe(
-    // LIVE-MIGRATION BRIDGE effect-3-4 B9 — DELETE at contraction
+    // LIVE-MIGRATION BRIDGE effect-3-4 B9 — DELETE at contraction — https://github.com/Effect-TS/effect/issues/6742
     // Effect 4 reversed OTLP resource precedence: ambient OTEL_SERVICE_NAME
     // overrides explicitly configured service name (v3: explicit serviceName >
     // service.name attr > OTEL_RESOURCE_ATTRIBUTES > OTEL_SERVICE_NAME).
     // Retire when upstream restores explicit-wins precedence and we adopt that
-    // beta. Upstream issue NOT YET FILED — see context/effect-4/ findings;
-    // filing is owed.
+    // beta.
     Layer.provide(
       ConfigProvider.layerAdd(
         ConfigProvider.fromUnknown({ OTEL_SERVICE_NAME: options.serviceName }),
@@ -209,13 +208,12 @@ const makeInProcessAllSignalsLayer = (
       // scope-close alone).
       shutdownTimeout: 2000,
     }).pipe(
-      // LIVE-MIGRATION BRIDGE effect-3-4 B9 — DELETE at contraction
+      // LIVE-MIGRATION BRIDGE effect-3-4 B9 — DELETE at contraction — https://github.com/Effect-TS/effect/issues/6742
       // Effect 4 reversed OTLP resource precedence: ambient OTEL_SERVICE_NAME
       // overrides explicitly configured service name (v3: explicit serviceName >
       // service.name attr > OTEL_RESOURCE_ATTRIBUTES > OTEL_SERVICE_NAME).
       // Retire when upstream restores explicit-wins precedence and we adopt that
-      // beta. Upstream issue NOT YET FILED — see context/effect-4/ findings;
-      // filing is owed.
+      // beta.
       Layer.provide(
         ConfigProvider.layerAdd(
           ConfigProvider.fromUnknown({ OTEL_SERVICE_NAME: options.serviceName }),
