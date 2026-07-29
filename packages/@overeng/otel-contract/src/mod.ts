@@ -692,10 +692,25 @@ const encodeUnknown = ({
   )
 
 const astIdentifier = (ast: AST.AST): string | undefined =>
-  Option.getOrUndefined(AST.getIdentifierAnnotation(ast))
+  'resolveIdentifier' in AST
+    ? AST.resolveIdentifier(ast)
+    : Option.getOrUndefined(AST.getIdentifierAnnotation(ast))
 
-const typeConstructorTag = (ast: AST.AST): string | undefined =>
-  Option.getOrUndefined(AST.getTypeConstructorAnnotation(ast))?._tag
+const typeConstructorTag = (ast: AST.AST): string | undefined => {
+  const representationId = AST.resolve(ast)?.representation?.id
+  switch (representationId) {
+    case 'effect/schema/Redacted':
+      return 'effect/Redacted'
+    case 'effect/schema/Option':
+      return 'effect/Option'
+    case 'effect/schema/Duration':
+      return 'effect/Duration'
+    case 'effect/schema/DateTimeUtc':
+      return 'effect/DateTime.Utc'
+    default:
+      return Option.getOrUndefined(AST.getTypeConstructorAnnotation?.(ast))?._tag
+  }
+}
 
 const typeConstructorTagDeep = (ast: AST.AST): string | undefined =>
   typeConstructorTag(ast) ??
@@ -806,7 +821,8 @@ const compileAutoEncoder = ({
     )
   }
   if (tag === 'effect/Duration') {
-    if (astIdentifier(ast) !== 'DurationFromMillis') {
+    const identifier = astIdentifier(ast)
+    if (identifier !== undefined && identifier !== 'DurationFromMillis') {
       return Effect.fail(
         unsupported({
           path,
