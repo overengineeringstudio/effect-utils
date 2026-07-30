@@ -69,17 +69,31 @@ building or testing the workspace fails.
 | `test-megarepo-cold-gc` | `megarepo` unported (largest slice, 1,388 → 550 errors on its branch) |
 | `test-integration-notion` | Notion chain unported (228 Effect files) — confirmed green on `main`, so flip-induced |
 | `test-integration-restate` | **designed to fail at the flip.** Baseline #985 pins the v3 parser text inside Restate's HTTP 400 body; v4's `SchemaError(...)` changes it. Mitigation tracked in #978. Do **not** rebaseline. |
-| `weaver` | **`TypeError: Schema.decodeUnknown is not a function`** — a removed v4 API. See finding below. |
+| `weaver` | runs an `otel-contract` e2e that imports `@overeng/utils-dev/otelite`; **`utils-dev` is unported** and `src/otelite/Otelite.ts:127` calls `Schema.decodeUnknown`, removed in v4. Clears when `utils-dev` (#1039) lands. See below. |
 
-### Finding: `weaver` is an unscoped port gap
+### `weaver` — traced, and it needs NO new scope item
 
-`weaver` fails on `Schema.decodeUnknown`, removed in Effect 4. This lane is **not in any wave list**
-in #925 — the wave plan enumerates `packages/@overeng/*`, and this is repo tooling. The failure is
-real, not infrastructure: CI reports *"failed after 103 s without a detected transient Nix failure"*,
-which is the repo's own real-vs-flake discriminator.
+An earlier version of this file called `weaver` an *unscoped port gap* requiring a new Phase 4 entry.
+**That was wrong.** Traced properly:
 
-**Action: add the weaver lane to the Phase 4 scope.** It is small, but it is currently invisible to
-the plan, and an invisible item does not get done.
+- `weaver:live-check` (`nix/devenv-modules/tasks/shared/weaver-live-check.nix:29,31`) runs a vitest e2e
+  in **`packages/@overeng/otel-contract`** — `src/registry-live-check.integration.test.ts`
+- that test imports **`@overeng/utils-dev/otelite`**
+- **`utils-dev` is unported** on this tip, and `src/otelite/Otelite.ts:127` calls `Schema.decodeUnknown`
+- hence `TypeError: Schema.decodeUnknown is not a function`
+
+So it is an ordinary flip-attributable failure caused by an **unported dependency**, not by `weaver`
+and not by `otel-contract`. `Otelite.ts:127` is a blocker #925 already names. It clears when `utils-dev`
+(#1039) lands. **Do not add a weaver item to Phase 4.**
+
+**Checked while here — the enumeration is not structurally incomplete.** Outside
+`packages/@overeng/`, the only Effect-importing files on this tip are under `context/` (recipes, docs,
+examples); no build lane is missed by the wave lists.
+
+**Why this correction is itself the useful part:** `otel-contract` is one of the seven packages that
+landed by cherry-pick with no CI, and this red says **nothing** about whether `otel-contract` is sound
+— it fails on a dependency before reaching it. That is a live instance of the caveat in the last
+section, and the reason per-package runs with a non-zero collected count are still owed.
 
 ## UNEXAMINED — must be triaged before they count as expected
 
