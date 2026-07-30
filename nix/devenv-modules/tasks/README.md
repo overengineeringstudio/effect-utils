@@ -32,6 +32,8 @@ imports = [
     backend = "auto";
     # Optional: gate an existing aggregate task on the hermetic shape check.
     wireInto = [ "check:all" ];
+    # Optional: provide otel-scrape to trace.instr command wrappers.
+    commandInstrumentation = true;
   })
 ];
 ```
@@ -43,7 +45,10 @@ do not depend on ambient `PATH`; capture tasks also prefer otelite's
 invocation-scoped HTTP endpoint over a repository's ambient collector endpoint.
 The module intentionally avoids the full local observability stack. Override
 `profile` to capture a different task graph, or set `profile = null` when only
-the packages and project attribution are needed.
+the packages and project attribution are needed. Command instrumentation is
+also opt-in: `commandInstrumentation = true` adds `otel-scrape` and pins
+`OTEL_SCRAPE_BIN` for nested task shells. Leaving it disabled avoids adding the
+command observer to consumers that only need task spans and hermetic capture.
 
 ### Characteristics:
 
