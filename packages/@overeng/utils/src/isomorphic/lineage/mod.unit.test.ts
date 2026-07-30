@@ -100,7 +100,7 @@ describe('Lineage annotations: round-trip', () => {
   it('reads annotations through Refinement wrappers', () => {
     const inner = Schema.Number.pipe(sourceOfTruth())
     /* Refinement wrapper around an inner-annotated schema. */
-    const wrapped = inner.pipe(Schema.positive())
+    const wrapped = inner.pipe(Schema.check(Schema.isGreaterThan(0)))
     expect(getLineage(wrapped)).toEqual({ _tag: 'SourceOfTruth' })
   })
 })

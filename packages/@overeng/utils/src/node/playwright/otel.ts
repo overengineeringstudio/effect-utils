@@ -12,9 +12,10 @@
  * @module
  */
 
-import { OtlpSerialization, OtlpTracer, Tracer } from '@effect/opentelemetry'
-import { Effect, Layer, Schema } from 'effect'
+import { OtelTracer } from '@effect/opentelemetry'
+import { Effect, Layer, Schema, Tracer } from 'effect'
 import { FetchHttpClient } from 'effect/unstable/http'
+import { OtlpSerialization, OtlpTracer } from 'effect/unstable/observability'
 
 /**
  * Minimal parent span context needed to join an existing trace across process boundaries.
@@ -43,11 +44,11 @@ export const PW_SPAN_CONTEXT_ENV_VAR = 'PW_SPAN_CONTEXT_JSON'
  */
 export const currentParentSpanContextJson: Effect.Effect<string | undefined, never, never> =
   Effect.gen(function* () {
-    const span = yield* Tracer.currentOtelSpan.pipe(Effect.option)
+    const span = yield* OtelTracer.currentOtelSpan.pipe(Effect.option)
     if (span._tag === 'None') return undefined
 
     const ctx = span.value.spanContext()
-    return yield* Schema.encode(Schema.fromJsonString(ParentSpanContextSchema))({
+    return yield* Schema.encodeEffect(Schema.fromJsonString(ParentSpanContextSchema))({
       traceId: ctx.traceId,
       spanId: ctx.spanId,
     }).pipe(Effect.orDie)
@@ -63,17 +64,17 @@ export const currentParentSpanContextJson: Effect.Effect<string | undefined, nev
  */
 export const parentSpanFromEnv: (
   envVar?: string,
-) => Effect.Effect<ReturnType<typeof Tracer.makeExternalSpan> | undefined> = Effect.fn(
+) => Effect.Effect<ReturnType<typeof Tracer.externalSpan> | undefined> = Effect.fn(
   'pw.otel.parentSpanFromEnv',
 )((envVar = PW_SPAN_CONTEXT_ENV_VAR) =>
   Effect.gen(function* () {
     const raw = process.env[envVar]
     if (raw === undefined) return undefined
 
-    const ctx = yield* Schema.decode(Schema.fromJsonString(ParentSpanContextSchema))(raw).pipe(
-      Effect.orDie,
-    )
-    return Tracer.makeExternalSpan({
+    const ctx = yield* Schema.decodeEffect(Schema.fromJsonString(ParentSpanContextSchema))(
+      raw,
+    ).pipe(Effect.orDie)
+    return Tracer.externalSpan({
       traceId: ctx.traceId,
       spanId: ctx.spanId,
     })
@@ -129,9 +130,7 @@ export interface OtelPlaywrightLayerConfig {
  * })
  * ```
  */
-export const makeOtelPlaywrightLayer = (
-  config: OtelPlaywrightLayerConfig = {},
-): Layer.Layer<never> => {
+export const makeOtelPlaywrightLayer = (config: OtelPlaywrightLayerConfig = {}) => {
   const {
     serviceName = 'playwright',
     endpointEnvVar = 'OTEL_EXPORTER_OTLP_ENDPOINT',
@@ -140,7 +139,7 @@ export const makeOtelPlaywrightLayer = (
     shutdownTimeout = 2000,
   } = config
 
-  return Layer.unwrapEffect(
+  return Layer.unwrap(
     Effect.gen(function* () {
       const endpoint = process.env[endpointEnvVar]
       yield* Effect.logDebug('[pw.otel] Building OTEL layer', {

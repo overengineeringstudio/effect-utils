@@ -1,4 +1,4 @@
-import { Chunk, Duration, Effect, Layer, Logger, LogLevel, Ref, Runtime } from 'effect'
+import { Chunk, Duration, Effect, Layer, Logger, Ref, References } from 'effect'
 import { expect } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'
@@ -13,16 +13,19 @@ import {
 /** Test logger that captures log messages at all levels */
 const makeTestLogger = Effect.fnUntraced(function* () {
   const logs = yield* Ref.make<Chunk.Chunk<string>>(Chunk.empty())
-  const runtime = yield* Effect.runtime<never>()
+  const context = yield* Effect.context<never>()
 
   const logger = Logger.make<unknown, void>(({ message }) => {
     const msg = Array.isArray(message) === true ? message.join(' ') : String(message)
-    Runtime.runSync(runtime)(Ref.update(logs, Chunk.append(msg)))
+    Effect.runSyncWith(context)(Ref.update(logs, Chunk.append(msg)))
   })
 
   const getLogs = Ref.get(logs).pipe(Effect.map(Chunk.toArray))
 
-  const loggerLayer = Layer.merge(Logger.layer([logger]), Logger.minimumLogLevel(LogLevel.All))
+  const loggerLayer = Layer.merge(
+    Logger.layer([logger]),
+    Layer.succeed(References.MinimumLogLevel, 'All'),
+  )
 
   return { getLogs, loggerLayer } as const
 })

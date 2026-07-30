@@ -1,8 +1,61 @@
+diff --git a/dist/FileSystem.d.ts b/dist/FileSystem.d.ts
+index 3d4e8aa70ef1691fdf2694101a55273e4ecbbd09..373bfd538305292a2108b8ae0a7e9db0ab36792b 100644
+--- a/dist/FileSystem.d.ts
++++ b/dist/FileSystem.d.ts
+@@ -254,9 +254,16 @@ export interface FileSystem {
+     */
+    readonly utimes: (path: string, atime: Date | number, mtime: Date | number) => Effect.Effect<void, PlatformError>;
++    // LIVE-MIGRATION BRIDGE effect-3-4 - DELETE at contraction - https://github.com/Effect-TS/effect/pull/6705
+    /**
+-     * Watch a directory or file for changes
++     * Watch a directory or file for changes.
++     *
++     * **Details**
++     *
++     * By default, only changes to the direct children of the directory are
++     * reported. Set the `recursive` option to `true` to watch for changes in
++     * subdirectories as well.
+      */
+-    readonly watch: (path: string) => Stream.Stream<WatchEvent, PlatformError>;
++    readonly watch: (path: string, options?: WatchOptions) => Stream.Stream<WatchEvent, PlatformError>;
+     /**
+      * Write data to a file at `path`.
+      */
+@@ -969,6 +976,18 @@ export declare const FileDescriptor: Brand.Constructor<File.Descriptor>;
+  * @since 4.0.0
+  */
+ export type SeekMode = "start" | "current";
++/**
++ * Options for watching files or directories.
++ *
++ * @category models
++ * @since 4.0.0
++ */
++export interface WatchOptions {
++    /**
++     * When `true`, changes in subdirectories are also reported.
++     */
++    readonly recursive?: boolean | undefined;
++}
+ /**
+  * Represents file system events emitted when watching files or directories.
+  *
+@@ -1041,7 +1060,8 @@ export declare namespace WatchEvent {
+     }
+ }
+ declare const WatchBackend_base: Context.ServiceClass<WatchBackend, "effect/platform/FileSystem/WatchBackend", {
+-    readonly register: (path: string, stat: File.Info) => Option.Option<Stream.Stream<WatchEvent, PlatformError>>;
++    readonly register: (path: string, stat: File.Info, options?: WatchOptions) => Option.Option<Stream.Stream<WatchEvent, PlatformError>>;
+ }>;
++// LIVE-MIGRATION END effect-3-4
+ /**
+  * Service key for file system watch backend implementations.
 diff --git a/dist/unstable/http/HttpClient.js b/dist/unstable/http/HttpClient.js
-index 6dc8ad5..28aa227 100644
+index 6dc8ad5206294330605e191c1a803fb04a9bf13a..54f763605668c277354e8e4bf453e875b9d974ca 100644
 --- a/dist/unstable/http/HttpClient.js
 +++ b/dist/unstable/http/HttpClient.js
-@@ -25,4 +25,8 @@ import * as HttpMethod from "./HttpMethod.js";
+@@ -24,6 +24,10 @@ import * as HttpIncomingMessage from "./HttpIncomingMessage.js";
+ import * as HttpMethod from "./HttpMethod.js";
  import * as TraceContext from "./HttpTraceContext.js";
  import * as Url from "./Url.js";
 +// LIVE-MIGRATION BRIDGE effect-3-4 B3 - DELETE at contraction - https://github.com/Effect-TS/effect/pull/6697
@@ -11,6 +64,7 @@ index 6dc8ad5..28aa227 100644
 +// LIVE-MIGRATION END effect-3-4
  const TypeId = "~effect/http/HttpClient";
  /**
+  * Returns `true` if the provided value is an `HttpClient`.
 @@ -262,6 +266,9 @@ export const make = f => makeWith(effect => Effect.flatMap(effect, request => Ef
      const redactedHeaderNames = fiber.getRef(Headers.CurrentRedactedNames);
      const redactedHeaders = Headers.redact(request.headers, redactedHeaderNames);
@@ -31,8 +85,63 @@ index 6dc8ad5..28aa227 100644
            span.attribute(`http.response.header.${name}`, String(redactedHeaders[name]));
          }
          if (scopedController) return Effect.succeed(response);
+diff --git a/src/FileSystem.ts b/src/FileSystem.ts
+index beadaa7a2f7a1179c23d39e79924a31ac7db62d0..517499c22dccd9fec83f91ae085f53af5aaeb0d5 100644
+--- a/src/FileSystem.ts
++++ b/src/FileSystem.ts
+@@ -341,9 +341,16 @@ export interface FileSystem {
+     mtime: Date | number
+   ) => Effect.Effect<void, PlatformError>
++  // LIVE-MIGRATION BRIDGE effect-3-4 - DELETE at contraction - https://github.com/Effect-TS/effect/pull/6705
+   /**
+-   * Watch a directory or file for changes
++   * Watch a directory or file for changes.
++   *
++   * **Details**
++   *
++   * By default, only changes to the direct children of the directory are
++   * reported. Set the `recursive` option to `true` to watch for changes in
++   * subdirectories as well.
+    */
+-  readonly watch: (path: string) => Stream.Stream<WatchEvent, PlatformError>
++  readonly watch: (path: string, options?: WatchOptions) => Stream.Stream<WatchEvent, PlatformError>
+   /**
+    * Write data to a file at `path`.
+    */
+@@ -1287,6 +1294,19 @@ export const FileDescriptor = Brand.nominal<File.Descriptor>()
+  */
+ export type SeekMode = "start" | "current"
+
++/**
++ * Options for watching files or directories.
++ *
++ * @category models
++ * @since 4.0.0
++ */
++export interface WatchOptions {
++  /**
++   * When `true`, changes in subdirectories are also reported.
++   */
++  readonly recursive?: boolean | undefined
++}
++
+ /**
+  * Represents file system events emitted when watching files or directories.
+  *
+@@ -1403,5 +1423,10 @@ export declare namespace WatchEvent {
+  * @since 4.0.0
+  */
+ export class WatchBackend extends Context.Service<WatchBackend, {
+-  readonly register: (path: string, stat: File.Info) => Option.Option<Stream.Stream<WatchEvent, PlatformError>>
++  readonly register: (
++    path: string,
++    stat: File.Info,
++    options?: WatchOptions
++  ) => Option.Option<Stream.Stream<WatchEvent, PlatformError>>
+ }>()("effect/platform/FileSystem/WatchBackend") {}
++// LIVE-MIGRATION END effect-3-4
 diff --git a/src/unstable/http/HttpClient.ts b/src/unstable/http/HttpClient.ts
-index 3f45ece..e016152 100644
+index 3f45ece547db0ace00bd43b2e402651dd26a55fe..e016152314ad6e07c51f0f75d1ca3879eeca9a1a 100644
 --- a/src/unstable/http/HttpClient.ts
 +++ b/src/unstable/http/HttpClient.ts
 @@ -42,6 +42,19 @@ import * as HttpMethod from "./HttpMethod.ts"

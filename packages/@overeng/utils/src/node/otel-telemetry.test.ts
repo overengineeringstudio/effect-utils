@@ -36,8 +36,8 @@ const workload = Effect.gen(function* () {
   yield* Effect.annotateCurrentSpan('span.label', 'parent')
   yield* Effect.gen(function* () {
     yield* Effect.annotateCurrentSpan('span.label', 'child')
-    yield* Metric.increment(Metric.counter('telemetry_requests_total'))
-    yield* Metric.set(Metric.gauge('telemetry_queue_depth', { bigint: false }), 7)
+    yield* Metric.update(Metric.counter('telemetry_requests_total'), 1)
+    yield* Metric.update(Metric.gauge('telemetry_queue_depth', { bigint: false }), 7)
     yield* Effect.log('telemetry demo log line')
   }).pipe(Effect.withSpan('telemetry-child'))
 }).pipe(Effect.withSpan('telemetry-parent', { root: true }))

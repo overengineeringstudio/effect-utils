@@ -15,19 +15,19 @@ describe('OtelAttrs', () => {
   it('derives primitive, literal, uuid, option, date, duration, and explicit array attributes', async () => {
     const Attrs = Schema.Struct({
       label: Schema.Trimmed.check(Schema.isNonEmpty()).pipe(OtelAttr.spanLabel()),
-      requestId: Schema.UUID.pipe(OtelAttr.key({ key: 'request.id' })),
+      requestId: Schema.String.check(Schema.isUUID()).pipe(OtelAttr.key({ key: 'request.id' })),
       outcome: Schema.Literals(['approved', 'denied', 'timeout']).pipe(
         OtelAttr.key({ key: 'op.outcome' }),
       ),
       count: Schema.Natural.pipe(OtelAttr.key({ key: 'op.count' })),
       cacheHit: Schema.Boolean.pipe(OtelAttr.key({ key: 'op.cache_hit' })),
       maybeShard: Schema.OptionFromNullOr(Schema.String).pipe(OtelAttr.key({ key: 'op.shard' })),
-      at: Schema.DateTimeUtc.pipe(OtelAttr.key({ key: 'op.at' })),
+      at: Schema.DateTimeUtcFromString.pipe(OtelAttr.key({ key: 'op.at' })),
       latency: Schema.DurationFromMillis.pipe(OtelAttr.key({ key: 'op.latency_ms' })),
       tags: Schema.Array(Schema.String).pipe(OtelAttr.key({ key: 'op.tags', encode: 'json' })),
     })
     const attrs = await Effect.runPromise(OtelAttrs.define(Attrs))
-    const at = DateTime.unsafeMake('2026-06-11T10:00:00.000Z')
+    const at = DateTime.makeUnsafe('2026-06-11T10:00:00.000Z')
 
     await expect(
       Effect.runPromise(
@@ -75,7 +75,7 @@ describe('OtelAttrs', () => {
   it('rejects unsafe schemas unless policy is explicit', async () => {
     await expect(
       Effect.runPromise(
-        Effect.either(
+        Effect.result(
           OtelAttrs.define(
             Schema.Struct({
               nested: Schema.Struct({ id: Schema.String }).pipe(OtelAttr.key({ key: 'nested' })),
@@ -84,28 +84,28 @@ describe('OtelAttrs', () => {
         ),
       ),
     ).resolves.toMatchObject({
-      _tag: 'Left',
-      left: expect.any(OtelAttrPlanError),
+      _tag: 'Failure',
+      failure: expect.any(OtelAttrPlanError),
     })
 
     await expect(
       Effect.runPromise(
-        Effect.either(
+        Effect.result(
           OtelAttrs.define(
             Schema.Struct({
-              secret: Schema.Redacted(Schema.String).pipe(OtelAttr.key({ key: 'secret' })),
+              secret: Schema.RedactedFromValue(Schema.String).pipe(OtelAttr.key({ key: 'secret' })),
             }),
           ),
         ),
       ),
     ).resolves.toMatchObject({
-      _tag: 'Left',
-      left: expect.any(OtelAttrPlanError),
+      _tag: 'Failure',
+      failure: expect.any(OtelAttrPlanError),
     })
 
     await expect(
       Effect.runPromise(
-        Effect.either(
+        Effect.result(
           OtelAttrs.define(
             Schema.Struct({
               tags: Schema.Array(Schema.String).pipe(OtelAttr.key({ key: 'tags' })),
@@ -114,14 +114,14 @@ describe('OtelAttrs', () => {
         ),
       ),
     ).resolves.toMatchObject({
-      _tag: 'Left',
-      left: expect.any(OtelAttrPlanError),
+      _tag: 'Failure',
+      failure: expect.any(OtelAttrPlanError),
     })
   })
 
   it('allows explicit redacted and json policies', async () => {
     const Attrs = Schema.Struct({
-      secret: Schema.Redacted(Schema.String).pipe(
+      secret: Schema.RedactedFromValue(Schema.String).pipe(
         OtelAttr.key({ key: 'secret', encode: 'redacted' }),
       ),
       nested: Schema.Struct({ id: Schema.String }).pipe(
@@ -146,10 +146,10 @@ describe('OtelAttrs', () => {
   it('only allows redacted-safe policies for redacted values', async () => {
     await expect(
       Effect.runPromise(
-        Effect.either(
+        Effect.result(
           OtelAttrs.define(
             Schema.Struct({
-              secret: Schema.Redacted(Schema.String).pipe(
+              secret: Schema.RedactedFromValue(Schema.String).pipe(
                 OtelAttr.key({ key: 'secret', encode: 'json' }),
               ),
             }),
@@ -157,14 +157,14 @@ describe('OtelAttrs', () => {
         ),
       ),
     ).resolves.toMatchObject({
-      _tag: 'Left',
-      left: expect.any(OtelAttrPlanError),
+      _tag: 'Failure',
+      failure: expect.any(OtelAttrPlanError),
     })
 
     const attrs = await Effect.runPromise(
       OtelAttrs.define(
         Schema.Struct({
-          secret: Schema.Redacted(Schema.String).pipe(
+          secret: Schema.RedactedFromValue(Schema.String).pipe(
             OtelAttr.key({ key: 'secret', encode: 'drop' }),
           ),
         }),
@@ -183,10 +183,10 @@ describe('OtelAttrs', () => {
     const attrs = await Effect.runPromise(OtelAttrs.define(Attrs))
 
     await expect(
-      Effect.runPromise(Effect.either(attrs.encode({ count: Number.NaN }))),
+      Effect.runPromise(Effect.result(attrs.encode({ count: Number.NaN }))),
     ).resolves.toMatchObject({
-      _tag: 'Left',
-      left: expect.any(OtelAttrEncodeError),
+      _tag: 'Failure',
+      failure: expect.any(OtelAttrEncodeError),
     })
   })
 
@@ -198,7 +198,7 @@ describe('OtelAttrs', () => {
       asString: Schema.Natural.pipe(OtelAttr.key({ key: 'string', encode: 'string' })),
       asNumber: Schema.Natural.pipe(OtelAttr.key({ key: 'number', encode: 'number' })),
       asBoolean: Schema.Boolean.pipe(OtelAttr.key({ key: 'boolean', encode: 'boolean' })),
-      secret: Schema.Redacted(Schema.String).pipe(
+      secret: Schema.RedactedFromValue(Schema.String).pipe(
         OtelAttr.key({ key: 'secret', encode: 'redacted' }),
       ),
     })
@@ -243,14 +243,14 @@ describe('OtelAttrs', () => {
     ]
     const results = await Promise.all(
       invalidInputs.map((invalid) =>
-        Effect.runPromise(Effect.either(attrs.encode(invalid as never))),
+        Effect.runPromise(Effect.result(attrs.encode(invalid as never))),
       ),
     )
 
     for (const result of results) {
       expect(result).toMatchObject({
-        _tag: 'Left',
-        left: expect.any(OtelAttrEncodeError),
+        _tag: 'Failure',
+        failure: expect.any(OtelAttrEncodeError),
       })
     }
   })
@@ -361,7 +361,7 @@ describe('OtelSpan', () => {
 
     await expect(
       Effect.runPromise(
-        Effect.either(
+        Effect.result(
           OtelSpan.with({
             span,
             attributes: {},
@@ -370,8 +370,8 @@ describe('OtelSpan', () => {
         ),
       ),
     ).resolves.toMatchObject({
-      _tag: 'Left',
-      left: expect.any(OtelAttrEncodeError),
+      _tag: 'Failure',
+      failure: expect.any(OtelAttrEncodeError),
     })
   })
 })

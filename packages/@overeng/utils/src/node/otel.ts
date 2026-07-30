@@ -12,7 +12,6 @@
  * @module
  */
 
-import type { MetricLabel } from 'effect'
 import {
   Clock,
   Config,
@@ -250,7 +249,7 @@ export const makeOtelCliLayer = (config: OtelCliLayerConfig): Layer.Layer<OtelCo
     const resolved =
       explicitEndpoint !== undefined
         ? explicitEndpoint
-        : Option.fromNullable(process.env[endpointEnvVar])
+        : Option.fromNullishOr(process.env[endpointEnvVar])
 
     // Always provide the resolved config so command code can gate optional
     // telemetry work on the same signal the exporter is built from.
@@ -437,7 +436,7 @@ export const telemetryEnabled: Effect.Effect<boolean> = Effect.serviceOption(Ote
  */
 export const whenTelemetryEnabled = <A, E, R>(
   effect: Effect.Effect<A, E, R>,
-): Effect.Effect<void, E, R> => Effect.whenEffect(effect, telemetryEnabled).pipe(Effect.asVoid)
+): Effect.Effect<void, E, R> => effect.pipe(Effect.when(telemetryEnabled), Effect.asVoid)
 
 /** Inputs to {@link sampleResource}: the per-tick `sample` effect and its real-wall-time `interval`. */
 export interface SampleResourceOptions {
@@ -462,12 +461,11 @@ export interface SampleResourceOptions {
  *    {@link OtelConfig} marker), so when no endpoint is configured the fiber is
  *    never forked — "zero overhead when unset" means not paying the periodic cost,
  *    not merely a metric going nowhere.
- * 2. **Ticks on real wall time.** `Effect.withClock(Clock.make())` overrides the
- *    contextual (possibly test/fixed) decision clock that `Schedule.spaced`
+ * 2. **Ticks on real wall time.** The live `Clock.Clock.defaultValue()` overrides
+ *    the contextual (possibly test/fixed) decision clock that `Schedule.spaced`
  *    resolves through — placed BEFORE `forkScoped` so it wraps the forked fiber,
- *    not the fork action. `provideService` does NOT work for `Clock` (it is a
- *    default service read via `clockWith`, not from `R`). Without this, a
- *    zero-sleep decision clock turns the sampler into a hot loop.
+ *    not the fork action. Without this, a zero-sleep decision clock turns the
+ *    sampler into a hot loop.
  *
  * @example
  * ```typescript
@@ -484,9 +482,9 @@ export const sampleResource = (
     sample.pipe(
       Effect.repeat(Schedule.spaced(interval)),
       // Decouple from any ambient (test/fixed) decision clock — this sampler is
-      // infrastructure and must tick on real wall time. `withClock` is placed
+      // infrastructure and must tick on real wall time. Provisioning is placed
       // BEFORE `forkScoped` so it wraps the forked fiber, not the fork action.
-      Effect.withClock(Clock.make()),
+      Effect.provideService(Clock.Clock, Clock.Clock.defaultValue()),
       Effect.forkScoped,
       Effect.asVoid,
     ),
@@ -500,14 +498,14 @@ export interface SampleGaugeOptions {
    * constructor and `Metric.set` are NOT in the raw-OTEL banned set, unlike
    * `Metric.counter`/`histogram`/`update`/`increment*`).
    */
-  readonly gauge: Metric.Metric.Gauge<number>
+  readonly gauge: Metric.Gauge<number>
   /** Reads the current value on each tick (e.g. `() => process.memoryUsage().rss`). */
   readonly read: () => number
   /**
    * Optional labels applied to the gauge so a sweep yields one comparable series
    * per operating point (via `taggedWithLabels`, not the banned `Metric.tagged`).
    */
-  readonly labels?: ReadonlyArray<MetricLabel.MetricLabel>
+  readonly labels?: Metric.Metric.Attributes
   /** @default 250ms */
   readonly interval?: Duration.Duration
 }
@@ -521,9 +519,10 @@ export const sampleGauge = (
   options: SampleGaugeOptions,
 ): Effect.Effect<void, never, OtelConfig | Scope.Scope> => {
   const { gauge, read, labels, interval } = options
-  const target = labels === undefined ? gauge : gauge.pipe(Metric.taggedWithLabels(labels))
+  const target = labels === undefined ? gauge : gauge.pipe(Metric.withAttributes(labels))
   return sampleResource({
-    sample: Effect.sync(read).pipe(Effect.flatMap((value) => Metric.set(target, value))),
+    // oxlint-disable-next-line overeng/no-raw-otel-primitives -- this schema-first utility is the package's deliberate boundary that encapsulates the raw gauge update for consumers.
+    sample: Effect.sync(read).pipe(Effect.flatMap((value) => Metric.update(target, value))),
     ...(interval === undefined ? {} : { interval }),
   })
 }

@@ -3,9 +3,9 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 
 import { NodeServices } from '@effect/platform-node'
+import { Context, Data, Deferred, Duration, Effect, Fiber, Layer, Schema, Stream } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import * as Path from 'effect/Path'
-import { Context, Data, Deferred, Duration, Effect, Fiber, Layer, Schema, Stream } from 'effect'
 import { expect } from 'vitest'
 
 import { DistributedSemaphoreBacking } from '@overeng/effect-distributed-lock'
@@ -64,7 +64,7 @@ const makeNodeFsLayer = (): Layer.Layer<FileSystem.FileSystem | Path.Path> => {
     writeFile: () => Effect.void,
     writeFileString: (filePath: string, content: string) =>
       Effect.sync(() => fs.writeFileSync(filePath, content)),
-  } as FileSystem.FileSystem
+  } as unknown as FileSystem.FileSystem
 
   const nodePath = {
     [Path.TypeId]: Path.TypeId,
@@ -128,7 +128,7 @@ Vitest.describe('FileSystemBacking', () => {
           release: (releaseKey: string, releaseHolderId: string, permits: number) =>
             Effect.sync(() => {
               events.push('release')
-            }).pipe(Effect.zipRight(baseBacking.release(releaseKey, releaseHolderId, permits))),
+            }).pipe(Effect.andThen(baseBacking.release(releaseKey, releaseHolderId, permits))),
           refresh: (
             refreshKey: string,
             refreshHolderId: string,
@@ -595,13 +595,13 @@ Vitest.describe('FileSystemBacking', () => {
           expect(entries).toEqual(['holder-a.lock', 'holder-b.lock'])
 
           // Verify lock file content
-          const holderAContent = yield* Schema.decodeUnknown(
+          const holderAContent = yield* Schema.decodeUnknownEffect(
             Schema.fromJsonString(LockFileContent),
           )(fs.readFileSync(`${keyDir}/holder-a.lock`, 'utf-8'))
           expect(holderAContent.permits).toBe(2)
           expect(typeof holderAContent.expiresAt).toBe('number')
 
-          const holderBContent = yield* Schema.decodeUnknown(
+          const holderBContent = yield* Schema.decodeUnknownEffect(
             Schema.fromJsonString(LockFileContent),
           )(fs.readFileSync(`${keyDir}/holder-b.lock`, 'utf-8'))
           expect(holderBContent.permits).toBe(1)
@@ -680,11 +680,11 @@ Vitest.describe('FileSystemBacking', () => {
           options,
           key: 'test-key',
           targetHolderId: 'nonexistent',
-        }).pipe(Effect.either)
+        }).pipe(Effect.result)
 
-        expect(result._tag).toBe('Left')
-        if (result._tag === 'Left') {
-          expect(result.left._tag).toBe('HolderNotFoundError')
+        expect(result._tag).toBe('Failure')
+        if (result._tag === 'Failure') {
+          expect(result.failure._tag).toBe('HolderNotFoundError')
         }
       }).pipe(Effect.provide(TestLayer), Effect.scoped),
     )
@@ -830,7 +830,9 @@ Vitest.describe('FileSystemBacking', () => {
         const now = Date.now()
 
         yield* fsService.makeDirectory(keyDir, { recursive: true })
-        const expiredLockContent = yield* Schema.encode(Schema.fromJsonString(LockFileContent))({
+        const expiredLockContent = yield* Schema.encodeEffect(
+          Schema.fromJsonString(LockFileContent),
+        )({
           permits: 2,
           expiresAt: now - 60_000,
         })
@@ -838,7 +840,9 @@ Vitest.describe('FileSystemBacking', () => {
           `${keyDir}/${encodeURIComponent('holder-expired')}.lock`,
           expiredLockContent,
         )
-        const activeLockContent = yield* Schema.encode(Schema.fromJsonString(LockFileContent))({
+        const activeLockContent = yield* Schema.encodeEffect(
+          Schema.fromJsonString(LockFileContent),
+        )({
           permits: 3,
           expiresAt: now + 60_000,
         })
@@ -926,7 +930,7 @@ Vitest.describe('FileSystemBacking', () => {
         const awaitObservedPath = (
           fileName: string,
         ): Effect.Effect<FileSystem.WatchEvent, WatchEventTimeout> =>
-          Effect.async<FileSystem.WatchEvent, WatchEventTimeout>((resume) => {
+          Effect.callback<FileSystem.WatchEvent, WatchEventTimeout>((resume) => {
             const waiter: WatchWaiter = {
               fileName,
               resume,
@@ -971,19 +975,19 @@ Vitest.describe('FileSystemBacking', () => {
 
         const watchFiber = yield* fsService
           .watch(watchDir)
-          .pipe(Stream.runForEach(recordEvent), Effect.fork)
-        yield* Effect.yieldNow()
+          .pipe(Stream.runForEach(recordEvent), Effect.forkChild)
+        yield* Effect.yieldNow
 
         const writeDirectFileUntilObserved = (fileName: string, content: string) =>
           Effect.gen(function* () {
-            const eventFiber = yield* awaitObservedPath(fileName).pipe(Effect.fork)
+            const eventFiber = yield* awaitObservedPath(fileName).pipe(Effect.forkChild)
 
             for (const attempt of [1, 2, 3, 4, 5]) {
               yield* fsService.writeFileString(
                 path.join(watchDir, fileName),
                 `${content}-${attempt}`,
               )
-              yield* Effect.yieldNow()
+              yield* Effect.yieldNow
             }
 
             return yield* Fiber.join(eventFiber)

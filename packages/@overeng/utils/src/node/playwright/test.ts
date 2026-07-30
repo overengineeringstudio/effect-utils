@@ -10,26 +10,23 @@
 import { NodeServices } from '@effect/platform-node'
 import type { BrowserContext, Page } from '@playwright/test'
 import { test } from '@playwright/test'
-import { ConfigProvider, Effect, Layer, Logger, LogLevel, type Config } from 'effect'
+import { ConfigProvider, Effect, Layer, Logger, References, type Config } from 'effect'
 import { FetchHttpClient } from 'effect/unstable/http'
 
 import { OtelPlaywrightLive } from './otel.ts'
 import { PwBrowserContext, PwPage } from './tags.ts'
 
 /** Config provider for Playwright tests (constant-case environment variables). */
-const testEnvConfigProvider = ConfigProvider.fromEnv({
-  pathDelim: '_',
-  seqDelim: ',',
-})
+const testEnvConfigProvider = ConfigProvider.fromEnv().pipe(ConfigProvider.constantCase)
 
 /** Layer that installs the Playwright test config provider. */
-export const TestEnvConfigLive = testEnvConfigProvider.pipe(Layer.setConfigProvider)
+export const TestEnvConfigLive = ConfigProvider.layer(testEnvConfigProvider)
 
 /**
  * Load a config schema from process.env in Playwright tests.
  */
 export const loadEnvConfig = Effect.fn('pw.loadEnvConfig')(<TA>(config: Config.Config<TA>) =>
-  testEnvConfigProvider.load(config),
+  config.parse(testEnvConfigProvider),
 )
 
 /** Playwright test fixtures passed to each test function. */
@@ -118,7 +115,7 @@ export const makeWithTestCtx =
  * - `OtelPlaywrightLive` (tracing, when OTEL endpoint is configured)
  * - `NodeServices.layer` (filesystem, path, etc.)
  * - `FetchHttpClient.layer`
- * - `Logger.minimumLogLevel(LogLevel.Debug)` (debug logs enabled by default)
+ * - `Logger.minimumLogLevel('Debug')` (debug logs enabled by default)
  *
  * @example
  * ```typescript
@@ -189,10 +186,10 @@ const runWithTestCtx = <ROut, E1, A, E, R>(
     debugLogs === true
       ? usePrettyLogger === true
         ? Layer.mergeAll(
-            Logger.minimumLogLevel(LogLevel.Debug),
+            Layer.succeed(References.MinimumLogLevel, 'Debug'),
             Logger.layer([Logger.consolePretty()]),
           )
-        : Logger.minimumLogLevel(LogLevel.Debug)
+        : Layer.succeed(References.MinimumLogLevel, 'Debug')
       : Layer.empty
 
   const combinedLayer = Layer.mergeAll(

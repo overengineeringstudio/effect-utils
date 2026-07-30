@@ -29,7 +29,7 @@ const identity = Schema.decodeSync(ServiceIdentity)({
 /** A workload that emits all three signals (span + counter + log) with no sleeps. */
 const workload = Effect.gen(function* () {
   yield* Effect.annotateCurrentSpan('span.label', 'identity-root')
-  yield* Metric.increment(Metric.counter('identity_requests_total'))
+  yield* Metric.update(Metric.counter('identity_requests_total'), 1)
   yield* Effect.log('identity demo log line')
 }).pipe(Effect.withSpan('identity-root', { root: true }))
 
@@ -74,7 +74,7 @@ const resourceAttrsBySignal = (
     const out: Record<string, Record<string, string>> = {}
     // @effect-diagnostics-next-line schemaSyncInEffect:off -- reads the tool's own capture ndjson in a controlled test env; a malformed line is a scaffolding bug, so a thrown defect is correct (this helper is annotated `Effect<..., never, FileSystem>`).
     const parseLine = Schema.decodeSync(
-      Schema.fromJsonString(Schema.Record(Schema.String, Schema.Array(Schema.Object))),
+      Schema.fromJsonString(Schema.Record(Schema.String, Schema.Array(Schema.Unknown))),
     )
     for (const [signal, resourceKey] of files) {
       const raw = yield* fs
@@ -125,7 +125,7 @@ Vitest.describe('makeOtelCliLayer — typed ServiceIdentity', () => {
         // explicit identity.
         yield* Effect.scoped(
           scopedEnv({ OTEL_RESOURCE_ATTRIBUTES: undefined, OTEL_SERVICE_NAME: undefined }).pipe(
-            Effect.zipRight(runWorkload(cap.endpoints.http)),
+            Effect.andThen(runWorkload(cap.endpoints.http)),
           ),
         )
 
@@ -160,7 +160,7 @@ Vitest.describe('makeOtelCliLayer — typed ServiceIdentity', () => {
             OTEL_RESOURCE_ATTRIBUTES:
               'deployment.environment=ci-test,service.namespace=env-namespace',
             OTEL_SERVICE_NAME: undefined,
-          }).pipe(Effect.zipRight(runWorkload(cap.endpoints.http))),
+          }).pipe(Effect.andThen(runWorkload(cap.endpoints.http))),
         )
 
         const spans = yield* cap.inspect({ signal: 'traces', service: identity.name })
