@@ -37,7 +37,7 @@ type Equals<A, B> =
 
 const GreetInput = Schema.Struct({ name: Schema.String })
 const GreetSuccess = Schema.Struct({ message: Schema.String, id: Schema.String })
-class EmptyName extends Schema.TaggedError<EmptyName>('test/EmptyName')('EmptyName', {}) {}
+class EmptyName extends Schema.TaggedErrorClass<EmptyName>('test/EmptyName')('EmptyName', {}) {}
 
 const Greeter = RestateService.contract({
   name: 'greeter',
@@ -230,14 +230,14 @@ const Approval = DurablePromise.for(Decision)
 const Approve = RestateWorkflow.contract({
   name: 'approve',
   def: {
-    state: { status: Schema.Literal('pending', 'approved', 'rejected') },
+    state: { status: Schema.Literals(['pending', 'approved', 'rejected']) },
     payload: { input: Schema.String, success: Schema.Boolean },
     signals: { approve: { input: Decision, success: Schema.Void } },
     queries: { status: { input: Schema.Void, success: Schema.String } },
   },
 })
 const ApproveState = State.for({
-  status: Schema.Literal('pending', 'approved', 'rejected'),
+  status: Schema.Literals(['pending', 'approved', 'rejected']),
 })
 
 /* POSITIVE: `run` writes State + awaits a durable promise; the signal resolves it

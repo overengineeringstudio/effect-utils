@@ -6,9 +6,9 @@ import { existsSync, mkdirSync } from 'node:fs'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 
-import { FetchHttpClient } from '@effect/platform'
-import { NodeContext, NodeRuntime } from '@effect/platform-node'
+import { NodeServices, NodeRuntime } from '@effect/platform-node'
 import { Effect, Either, Layer, Option, Redacted, Schema, Stream } from 'effect'
+import { FetchHttpClient } from 'effect/unstable/http'
 
 import {
   NOTION_API_VERSION,
@@ -782,9 +782,12 @@ export type CliErrorEnvelope = {
 }
 
 /** Thrown during argument parsing when a required flag is missing, invalid, or unsupported. */
-export class CliArgumentError extends Schema.TaggedError<CliArgumentError>()('CliArgumentError', {
-  message: Schema.String,
-}) {}
+export class CliArgumentError extends Schema.TaggedErrorClass<CliArgumentError>()(
+  'CliArgumentError',
+  {
+    message: Schema.String,
+  },
+) {}
 
 /**
  * Narrow a thrown value from the synchronous CLI parsers into the typed
@@ -826,12 +829,12 @@ export const serviceNameForCliCommand = (command: CliCommand): string =>
 
 const SchemaPropertyObservationJson = Schema.Struct({
   propertyId: PropertyId,
-  name: Schema.optional(Schema.NonEmptyTrimmedString),
-  type: Schema.optional(Schema.NonEmptyTrimmedString),
+  name: Schema.optional(Schema.Trimmed.check(Schema.isNonEmpty())),
+  type: Schema.optional(Schema.Trimmed.check(Schema.isNonEmpty())),
   configHash: Hash,
-  writeClass: Schema.Literal('writable', 'computed', 'unsupported'),
+  writeClass: Schema.Literals(['writable', 'computed', 'unsupported']),
   configJson: Schema.optional(Schema.String),
-}).annotations({ identifier: 'NotionDatasourceSync.Cli.SchemaPropertyObservationJson' })
+}).annotate({ identifier: 'NotionDatasourceSync.Cli.SchemaPropertyObservationJson' })
 
 const capabilityNames = new Set<CapabilityName>(allGatewayCapabilities)
 
@@ -851,7 +854,7 @@ const decodeJson = <TSchema extends Schema.Schema.AnyNoContext>({
   readonly value: string
 }): typeof schema.Type =>
   Schema.decodeUnknownSync(schema)(
-    Schema.decodeUnknownSync(Schema.parseJson(Schema.Unknown))(value),
+    Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown))(value),
   )
 
 const withOptionalRuntimeOptions = (context: CliContext) => ({
@@ -2990,7 +2993,7 @@ export const makeCliRuntimeLayer = ({
       ? undefined
       : Layer.mergeAll(
           NotionMdGatewayLive.pipe(Layer.provide(liveBaseLayer)),
-          NmdStateStoreLive.pipe(Layer.provide(NodeContext.layer)),
+          NmdStateStoreLive.pipe(Layer.provide(NodeServices.layer)),
         )
   const gatewayLayer =
     options.gateway !== undefined

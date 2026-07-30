@@ -1,7 +1,7 @@
 /** Vendored from effect-distributed-lock 0.0.11 (MIT, Copyright (c) 2025 Ethan Niser). See NOTICE. */
 /* oxlint-disable overeng/named-args -- Preserve the upstream positional semaphore API. */
 import type { Scope } from 'effect'
-import { Duration, Effect, Fiber, Function, Option, Schedule, Stream } from 'effect'
+import { Duration, Effect, Fiber, Option, Result, Schedule, Semaphore, Stream } from 'effect'
 
 import type { SemaphoreBackingError } from './Backing.ts'
 import { DistributedSemaphoreBacking } from './Backing.ts'
@@ -10,8 +10,8 @@ import { LockLostError, LockNotAcquiredError } from './Errors.ts'
 /** Runtime tuning for distributed semaphore acquisition and refresh. */
 export interface DistributedSemaphoreConfig {
   readonly limit?: number
-  readonly ttl?: Duration.DurationInput
-  readonly refreshInterval?: Duration.DurationInput
+  readonly ttl?: Duration.Input
+  readonly refreshInterval?: Duration.Input
   readonly acquireRetryPolicy?: Schedule.Schedule<unknown>
   readonly backingFailureRetryPolicy?: Schedule.Schedule<unknown>
 }
@@ -72,10 +72,10 @@ type FullyResolvedConfig = {
 
 const fullyResolveConfig = (config: DistributedSemaphoreConfig): FullyResolvedConfig => {
   const limit = config.limit ?? DEFAULT_LIMIT
-  const ttl = config.ttl !== undefined ? Duration.decode(config.ttl) : DEFAULT_TTL
+  const ttl = config.ttl !== undefined ? Duration.fromInputUnsafe(config.ttl) : DEFAULT_TTL
   const refreshInterval =
     config.refreshInterval !== undefined
-      ? Duration.decode(config.refreshInterval)
+      ? Duration.fromInputUnsafe(config.refreshInterval)
       : Duration.millis(Duration.toMillis(ttl) / 3)
   const acquireRetryPolicy = config.acquireRetryPolicy ?? DEFAULT_ACQUIRE_RETRY_POLICY
   const backingFailureRetryPolicy = config.backingFailureRetryPolicy ?? DEFAULT_FAILURE_RETRY_POLICY
@@ -127,7 +127,7 @@ export const make = (
         Schedule.spaced(refreshInterval),
       ).pipe(
         Effect.andThen(
-          Effect.dieMessage('Invariant violated: `keepAlive` should never return a value'),
+          Effect.die(new Error('Invariant violated: `keepAlive` should never return a value')),
         ),
       )
 
@@ -179,18 +179,18 @@ export const make = (
             ? { identifier }
             : { identifier, acquiredExternally: options.acquiredExternally }
 
-        const acquireSemaphore = yield* Effect.makeSemaphore(1)
+        const acquireSemaphore = yield* Semaphore.make(1)
         const pushBasedAcquireEnabled = backing.onPermitsReleased !== undefined
 
         const pollBasedAcquire = Effect.gen(function* () {
-          const maybeAcquired = yield* tryTake(permits, resolvedOptions).pipe(
+          const acquire = tryTake(permits, resolvedOptions)
+          const maybeAcquired =
             pushBasedAcquireEnabled === true
-              ? Function.compose(
+              ? yield* acquire.pipe(
                   acquireSemaphore.withPermitsIfAvailable(1),
                   Effect.map(Option.flatten),
                 )
-              : Function.identity,
-          )
+              : yield* acquire
           if (Option.isNone(maybeAcquired) === true) {
             return yield* new LockNotAcquiredError({ key })
           }
@@ -209,25 +209,25 @@ export const make = (
 
         const pushBasedAcquire = Effect.gen(function* () {
           if (backing.onPermitsReleased === undefined) {
-            return yield* Effect.dieMessage(
-              'Invariant violated: `onPermitsReleased` is not provided when it was expected',
+            return yield* Effect.die(
+              new Error(
+                'Invariant violated: `onPermitsReleased` is not provided when it was expected',
+              ),
             )
           }
           return yield* backing.onPermitsReleased(key).pipe(
-            Stream.runFoldWhileEffect(
-              Option.none<Fiber.Fiber<never, LockLostError | SemaphoreBackingError>>(),
-              Option.isNone,
-              () =>
-                tryTake(permits, resolvedOptions).pipe(
-                  acquireSemaphore.withPermitsIfAvailable(1),
-                  Effect.map(Option.flatten),
-                ),
+            Stream.filterMapEffect(() =>
+              tryTake(permits, resolvedOptions).pipe(
+                acquireSemaphore.withPermitsIfAvailable(1),
+                Effect.map(Option.flatten),
+                Effect.map(Result.fromOption(() => undefined)),
+              ),
             ),
+            Stream.runHead,
             Effect.flatMap(
               Option.match({
-                onSome: Effect.succeed,
-                onNone: () =>
-                  Effect.dieMessage('Invariant violated: the stream should never return `None`'),
+                onSome: (fiber) => Effect.succeed(fiber),
+                onNone: () => Effect.never,
               }),
             ),
           )

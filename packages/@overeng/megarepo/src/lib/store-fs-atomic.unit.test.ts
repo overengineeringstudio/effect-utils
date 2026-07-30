@@ -7,8 +7,8 @@
  *   no `.tmp-*` sibling lingering as garbage (the `tapError` cleanup branch).
  */
 
-import { FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import { FileSystem } from 'effect/FileSystem'
+import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Effect } from 'effect'
 import { expect } from 'vitest'
@@ -33,7 +33,7 @@ describe('store-fs-atomic: writeFileAtomic', () => {
         const remaining = yield* fs.readDirectory(dir)
         expect(remaining.filter((name) => name.includes('.tmp-'))).toEqual([])
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -65,7 +65,7 @@ describe('store-fs-atomic: writeFileAtomic', () => {
         const remaining = yield* fs.readDirectory(dir)
         expect(remaining.filter((name) => name.includes('.tmp-'))).toEqual([])
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -95,7 +95,7 @@ describe('store-fs-atomic: writeFileAtomic', () => {
         const remaining = yield* fs.readDirectory(dir)
         expect(remaining.filter((name) => name.includes('.tmp-'))).toEqual([])
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )

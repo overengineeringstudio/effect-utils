@@ -1,4 +1,6 @@
-import { type Error as PlatformError, FileSystem, Path } from '@effect/platform'
+import type { Error as PlatformError } from 'effect'
+import * as FileSystem from 'effect/FileSystem'
+import * as Path from 'effect/Path'
 import { Effect } from 'effect'
 import ts from 'typescript'
 
@@ -71,7 +73,7 @@ export const runGenieValidation = ({
         }
         return loadGenieFile({ genieFilePath, cwd })
       })().pipe(
-        Effect.catchAll((error) => {
+        Effect.catch((error) => {
           issues.push({
             severity: 'error',
             packageName: 'genie',

@@ -2,8 +2,8 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
-import { FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import { FileSystem } from 'effect/FileSystem'
+import { NodeServices } from '@effect/platform-node'
 import { Effect, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
@@ -22,14 +22,14 @@ import { normalizeMarkdownLineEndings } from './hash.ts'
 import { NotionMdGateway, type NotionMdGatewayShape } from './model.ts'
 import { NmdStateStoreLive, type NmdStateStore } from './state-store.ts'
 
-const stateStoreLayer = NmdStateStoreLive.pipe(Layer.provide(NodeContext.layer))
+const stateStoreLayer = NmdStateStoreLive.pipe(Layer.provide(NodeServices.layer))
 
 const runEdit = <A, E>(
   effect: Effect.Effect<A, E, NotionMdGateway | NmdStateStore | NodeContext.NodeContext>,
   gateway: FakeGateway,
 ) =>
   Effect.either(effect).pipe(
-    Effect.provide(Layer.mergeAll(gateway.layer, stateStoreLayer, NodeContext.layer)),
+    Effect.provide(Layer.mergeAll(gateway.layer, stateStoreLayer, NodeServices.layer)),
     Effect.runPromise,
   )
 
@@ -232,7 +232,7 @@ const runReadOnly = <A, E>(
 ) =>
   Effect.either(effect).pipe(
     // Deliberately NO stateStoreLayer: read-only's narrow R never needs it.
-    Effect.provide(Layer.mergeAll(gateway.layer, NodeContext.layer)),
+    Effect.provide(Layer.mergeAll(gateway.layer, NodeServices.layer)),
     Effect.runPromise,
   )
 

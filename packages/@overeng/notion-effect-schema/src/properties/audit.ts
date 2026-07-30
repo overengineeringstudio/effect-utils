@@ -13,17 +13,17 @@ import { PartialUser } from '../users.ts'
  * @see https://developers.notion.com/reference/property-value-object#created-time
  */
 export const CreatedTimeProperty = Schema.Struct({
-  id: Schema.String.annotations({
+  id: Schema.String.annotate({
     description: 'Property identifier.',
   }),
-  type: Schema.Literal('created_time').annotations({
+  type: Schema.Literal('created_time').annotate({
     description: 'Property type identifier.',
   }),
-  created_time: Schema.String.annotations({
+  created_time: Schema.String.annotate({
     description: 'When the page was created (ISO 8601).',
     examples: ['2024-01-15T10:30:00.000Z'],
   }),
-}).annotations({
+}).annotate({
   identifier: 'Notion.CreatedTimeProperty',
   title: 'Created Time Property',
   description: 'The creation timestamp (read-only).',
@@ -64,16 +64,16 @@ export const CreatedTime = {
  * @see https://developers.notion.com/reference/property-value-object#created-by
  */
 export const CreatedByProperty = Schema.Struct({
-  id: Schema.String.annotations({
+  id: Schema.String.annotate({
     description: 'Property identifier.',
   }),
-  type: Schema.Literal('created_by').annotations({
+  type: Schema.Literal('created_by').annotate({
     description: 'Property type identifier.',
   }),
-  created_by: PartialUser.annotations({
+  created_by: PartialUser.annotate({
     description: 'The user who created the page.',
   }),
-}).annotations({
+}).annotate({
   identifier: 'Notion.CreatedByProperty',
   title: 'Created By Property',
   description: 'The user who created the page (read-only).',
@@ -114,17 +114,17 @@ export const CreatedBy = {
  * @see https://developers.notion.com/reference/property-value-object#last-edited-time
  */
 export const LastEditedTimeProperty = Schema.Struct({
-  id: Schema.String.annotations({
+  id: Schema.String.annotate({
     description: 'Property identifier.',
   }),
-  type: Schema.Literal('last_edited_time').annotations({
+  type: Schema.Literal('last_edited_time').annotate({
     description: 'Property type identifier.',
   }),
-  last_edited_time: Schema.String.annotations({
+  last_edited_time: Schema.String.annotate({
     description: 'When the page was last edited (ISO 8601).',
     examples: ['2024-01-15T10:30:00.000Z'],
   }),
-}).annotations({
+}).annotate({
   identifier: 'Notion.LastEditedTimeProperty',
   title: 'Last Edited Time Property',
   description: 'The last edit timestamp (read-only).',
@@ -169,16 +169,16 @@ export const LastEditedTime = {
  * @see https://developers.notion.com/reference/property-value-object#last-edited-by
  */
 export const LastEditedByProperty = Schema.Struct({
-  id: Schema.String.annotations({
+  id: Schema.String.annotate({
     description: 'Property identifier.',
   }),
-  type: Schema.Literal('last_edited_by').annotations({
+  type: Schema.Literal('last_edited_by').annotate({
     description: 'Property type identifier.',
   }),
-  last_edited_by: PartialUser.annotations({
+  last_edited_by: PartialUser.annotate({
     description: 'The user who last edited the page.',
   }),
-}).annotations({
+}).annotate({
   identifier: 'Notion.LastEditedByProperty',
   title: 'Last Edited By Property',
   description: 'The user who last edited the page (read-only).',

@@ -2,7 +2,7 @@
  * GenerateOutput View
  */
 
-import type { Atom } from '@effect-atom/atom'
+import type { Atom } from 'effect/unstable/reactivity'
 import React from 'react'
 
 import { Box, Text, useTuiAtomValue, useSymbols, type Symbols } from '@overeng/tui-react'

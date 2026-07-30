@@ -8,19 +8,6 @@ export default pnpmWorkspaceYaml.root({
   repoName: 'effect-utils',
   catalogVersions: catalog,
   catalogDuplicateExceptions: [
-    // LIVE-MIGRATION BRIDGE effect-3-4 B2 — DELETE at contraction — https://github.com/overengineeringstudio/effect-utils/issues/925
-    {
-      package: 'effect',
-      versions: ['3.21.4', '4.0.0-beta.99'],
-      isolatedVersions: ['4.0.0-beta.99'],
-      // The inspector directly consumes Effect 4 schemas from LiveStore. Keep
-      // an exact Effect 4 development install for its tests while the published
-      // package uses the consumer's peer instance; never cast across majors.
-      reason:
-        '@overeng/react-inspector tests against Effect 4 while the repository catalog remains on Effect 3; published consumers provide Effect through its peer contract',
-      issue: '#937',
-    },
-    // LIVE-MIGRATION END effect-3-4
     {
       package: 'string-width',
       // @opentui/core@0.4.1 (latest) pins string-width@7.2.0 exactly, so pnpm
@@ -33,6 +20,12 @@ export default pnpmWorkspaceYaml.root({
       reason:
         '@opentui/core@0.4.1 exact-pins string-width@7.2.0; not force-overridden because string-width 8 changes emoji/wide-char width logic that the TUI renderer relies on',
       issue: '#821',
+    },
+    {
+      package: '@opentelemetry/semantic-conventions',
+      versions: ['1.43.0', '1.41.1'],
+      reason:
+        '@effect/opentelemetry@4.0.0-beta.102 resolves semconv 1.43.0 in some injected workspace peer snapshots while the OTEL SDK cohort stays pinned to 1.41.1',
     },
   ],
   ...commonPnpmWorkspaceData,

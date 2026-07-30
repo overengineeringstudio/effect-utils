@@ -158,10 +158,9 @@ export interface RestateTestEnvService {
 }
 
 /** The env service tag. The `mock` / `real` statics below are the only constructors. */
-export class RestateTestEnv extends Context.Tag('@overeng/restate-effect/RestateTestEnv')<
-  RestateTestEnv,
-  RestateTestEnvService
->() {
+export class RestateTestEnv extends Context.Service<RestateTestEnv, RestateTestEnvService>()(
+  '@overeng/restate-effect/RestateTestEnv',
+) {
   /**
    * The in-process MOCK backend: no journal, no server. Captures the
    * `Runtime<AppR>` from `appLayer` once, then dispatches each contract-addressed
@@ -266,7 +265,7 @@ const classifyMockExit = ({
     outcome.errorTag !== undefined &&
     errorSchema !== undefined
   ) {
-    const failure = Cause.failureOption(exit.cause)
+    const failure = Cause.findErrorOption(exit.cause)
     if (Option.isSome(failure) === true) {
       return Schema.encodeUnknown(errorSchema)(failure.value).pipe(
         Effect.flatMap((encoded) => Schema.decodeUnknown(errorSchema)(encoded)),

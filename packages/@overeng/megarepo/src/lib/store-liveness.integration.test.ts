@@ -1,5 +1,6 @@
-import { Command, FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import { ChildProcess as Command } from 'effect/unstable/process'
+import { FileSystem } from 'effect/FileSystem'
+import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Effect, Option } from 'effect'
 import { expect } from 'vitest'
@@ -70,7 +71,7 @@ describe('store-liveness', () => {
 
         expect(livePaths).toEqual(new Set([normalizePath(mainWorktreePath)]))
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -140,7 +141,7 @@ describe('store-liveness', () => {
           livePaths: [normalizePath(commitWorktreePath), normalizePath(mainWorktreePath)].sort(),
         })
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -206,7 +207,7 @@ describe('store-liveness', () => {
 
         expect(liveSet.paths).toContain(normalizePath(commitWorktreePath))
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -285,7 +286,7 @@ describe('store-liveness', () => {
         expect(record.updatedAt).toBe(new Date(1_700_000_001_000).toISOString())
         expect(record.livePaths).toEqual([normalizePath(featureWorktreePath)])
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -361,7 +362,7 @@ describe('store-liveness', () => {
         const record = decodeJson(content) as { updatedAt: string }
         expect(record.updatedAt).toBe(new Date(1_700_000_000_000).toISOString())
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -415,7 +416,7 @@ describe('store-liveness', () => {
         const entries = yield* fs.readDirectory(registryDir)
         expect(entries.filter((e) => e.endsWith('.json'))).toHaveLength(0)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )

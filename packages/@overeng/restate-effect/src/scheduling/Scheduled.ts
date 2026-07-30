@@ -148,7 +148,7 @@ export type WakePayload = Schema.Schema.Type<typeof WakePayload>
  * `cycle` body reads/writes via the typed `state` it is handed.
  * ════════════════════════════════════════════════════════════════════════ */
 
-const StatusSchema = Schema.Literal('idle', 'running', 'stopped', 'failed', 'completed')
+const StatusSchema = Schema.Literals(['idle', 'running', 'stopped', 'failed', 'completed'])
 
 /** The loop control-plane state, persisted in the Object's typed K/V State. */
 const ControlState = {
@@ -266,7 +266,7 @@ export interface ScheduledConfig<DomainState extends StateSchemas, AppR, CycleE 
   /** Cap the number of cycles (sugar over `stopWhen`). */
   readonly maxIterations?: number
   /**
-   * The cycle's declared error union (a `Schema.TaggedError` / `Schema.Union` of
+   * The cycle's declared error union (a `Schema.TaggedErrorClass` / `Schema.Union` of
    * such, annotated with `Restate.retryable(...)` / `Restate.terminal(...)`).
    * Routed through the boundary's `classifyOutcome`, so a `retryable` failure
    * re-arms the NEXT cycle after its projected `retryAfter` floor (cursor +

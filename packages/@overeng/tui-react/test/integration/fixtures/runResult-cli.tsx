@@ -22,13 +22,13 @@ import {
 } from '../../../src/mod.tsx'
 import { runTuiMain, tuiRuntimeLayer } from '../../../src/node/mod.ts'
 
-const State = Schema.Union(
+const State = Schema.Union([
   Schema.TaggedStruct('Idle', {}),
   Schema.TaggedStruct('Approved', { output: Schema.String }),
-)
+])
 type State = typeof State.Type
 
-const Action = Schema.Union(Schema.TaggedStruct('Approve', { output: Schema.String }))
+const Action = Schema.Union([Schema.TaggedStruct('Approve', { output: Schema.String })])
 type Action = typeof Action.Type
 
 const App: TuiApp<State, Action> = createTuiApp({

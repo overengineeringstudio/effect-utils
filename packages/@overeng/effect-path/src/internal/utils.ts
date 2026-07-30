@@ -4,8 +4,7 @@
  * Uses @effect/platform's Path service for cross-platform compatibility.
  */
 
-import { Path as PlatformPath } from '@effect/platform'
-import { Effect } from 'effect'
+import { Effect, Path as PlatformPath } from 'effect'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Platform Path Access

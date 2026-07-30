@@ -120,7 +120,7 @@ export const tsconfigReferencesFromPackages = ({
 // `tsconfigReferencesFromPackages` above: read structured `meta` off member outputs, dedupe,
 // deterministically sort. It NEVER touches emitted files. Whole-registry integrity
 // (namespace uniqueness + global ref resolution) is surfaced as genie validation issues
-// (this layer is dep-free — Effect/`Schema.TaggedError` are not available here; per-member
+// (this layer is dep-free — Effect/`Schema.TaggedErrorClass` are not available here; per-member
 // author-time errors are raised as tagged errors in `@overeng/otel-contract` `./registry`).
 // ---------------------------------------------------------------------------
 

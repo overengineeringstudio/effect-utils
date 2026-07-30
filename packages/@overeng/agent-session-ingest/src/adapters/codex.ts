@@ -1,8 +1,8 @@
 import { lstatSync } from 'node:fs'
 import * as nodePath from 'node:path'
 
-import { FileSystem } from '@effect/platform'
 import { Effect, Option, Schema } from 'effect'
+import { FileSystem } from 'effect/FileSystem'
 
 import { SessionSourceDiscoveryError } from '../errors.ts'
 import type { SessionSourceAdapter } from '../schema/core.ts'
@@ -10,7 +10,7 @@ import { ArtifactDescriptor, SourceId } from '../schema/core.ts'
 import { makeAppendOnlyJsonlAdapter } from './jsonl.ts'
 
 const TextPart = Schema.Struct({
-  type: Schema.Literal('input_text', 'output_text'),
+  type: Schema.Literals(['input_text', 'output_text']),
   text: Schema.String,
 })
 
@@ -23,8 +23,8 @@ const InputImagePart = Schema.Struct({
 
 const MessageResponsePayload = Schema.Struct({
   type: Schema.Literal('message'),
-  role: Schema.Literal('assistant', 'developer', 'system', 'user'),
-  content: Schema.Array(Schema.Union(TextPart, InputImagePart)),
+  role: Schema.Literals(['assistant', 'developer', 'system', 'user']),
+  content: Schema.Array(Schema.Union([TextPart, InputImagePart])),
 })
 
 const ReasoningSummaryPart = Schema.Struct({
@@ -116,7 +116,7 @@ const TokenCountInfo = Schema.Struct({
  * - Native transcript store: `~/.codex-<profile>/sessions/(nested path).jsonl`
  * - Discovery index: `state_5.sqlite` / `threads.rollout_path`
  */
-export const CodexSessionRecord = Schema.Union(
+export const CodexSessionRecord = Schema.Union([
   Schema.Struct({
     timestamp: Schema.DateTimeUtc,
     type: Schema.Literal('session_meta'),
@@ -160,7 +160,7 @@ export const CodexSessionRecord = Schema.Union(
   LegacySessionMetaRecord,
   LegacyStateRecord,
   LegacyTopLevelRecord,
-).annotations({ identifier: 'AgentSessionIngest.CodexSessionRecord' })
+]).annotate({ identifier: 'AgentSessionIngest.CodexSessionRecord' })
 export type CodexSessionRecord = typeof CodexSessionRecord.Type
 
 /**
@@ -174,7 +174,7 @@ export const CodexSessionIndexEntry = Schema.Struct({
   id: Schema.String,
   thread_name: Schema.String,
   updated_at: Schema.String,
-}).annotations({ identifier: 'AgentSessionIngest.CodexSessionIndexEntry' })
+}).annotate({ identifier: 'AgentSessionIngest.CodexSessionIndexEntry' })
 export type CodexSessionIndexEntry = typeof CodexSessionIndexEntry.Type
 
 const listJsonlFiles = Effect.fn('AgentSessionIngest.Codex.listJsonlFiles')(

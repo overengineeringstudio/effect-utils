@@ -1,8 +1,8 @@
 import { basename, dirname, resolve } from 'node:path'
 
-import { Args, Command, Options } from '@effect/cli'
 import { FetchHttpClient, FileSystem, Path } from '@effect/platform'
 import { Cause, Console, Duration, Effect, Layer, Option, Queue, Schema, Stream } from 'effect'
+import { Argument as Args, Command, Flag as Options } from 'effect/unstable/cli'
 
 import {
   NMD_SYNC_DIRECTORY,
@@ -55,11 +55,11 @@ import {
 import type { SyncOptions } from './sync.ts'
 import { NOTION_MD_VERSION } from './version.ts'
 
-const NonEmptyCliText = Schema.NonEmptyTrimmedString.annotations({
+const NonEmptyCliText = Schema.Trimmed.check(Schema.isNonEmpty()).annotate({
   identifier: 'NotionMd.Cli.NonEmptyText',
 })
 
-const PositiveInteger = Schema.Number.pipe(Schema.int(), Schema.positive()).annotations({
+const PositiveInteger = Schema.Number.pipe(Schema.int(), Schema.positive()).annotate({
   identifier: 'NotionMd.Cli.PositiveInteger',
 })
 
@@ -71,29 +71,29 @@ const PositiveInteger = Schema.Number.pipe(Schema.int(), Schema.positive()).anno
  */
 
 /** Local `.nmd` paths (file or directory). `status`/`sync` take only local paths. */
-const localTargetsArg = Args.text({ name: 'path' }).pipe(
+const localTargetsArg = Args.string('path').pipe(
   Args.withDescription('Local .nmd file or directory (a directory means everything under it)'),
   Args.withSchema(NonEmptyCliText),
   Args.atLeast(1),
 )
 
 /** `track` is the only command that takes a Notion page id/url. */
-const trackPageRefArg = Args.text({ name: 'page-id-or-url' }).pipe(
+const trackPageRefArg = Args.string('page-id-or-url').pipe(
   Args.withDescription('Notion page id or URL to track'),
   Args.withSchema(NonEmptyCliText),
 )
 
-const trackOutPathArg = Args.text({ name: 'path' }).pipe(
+const trackOutPathArg = Args.string('path').pipe(
   Args.withDescription('Local .nmd file to write (default: <page-id>.nmd)'),
   Args.withSchema(NonEmptyCliText),
   Args.optional,
 )
 
-const SourceLiteral = Schema.Literal('local', 'remote', 'shared').annotations({
+const SourceLiteral = Schema.Literals(['local', 'remote', 'shared']).annotate({
   identifier: 'NotionMd.Cli.Source',
 })
 
-const trackAsOption = Options.text('as').pipe(
+const trackAsOption = Options.string('as').pipe(
   Options.withDescription(
     'Sync direction to record (local|remote|shared); default remote — this tracks existing Notion state',
   ),
@@ -683,7 +683,7 @@ export const readAllSyncStates = (
     )
     const strictOptions = { errors: 'all', onExcessProperty: 'error' } as const
     const decodeSyncState = Schema.decodeUnknown(
-      Schema.parseJson(NmdSyncStateV1Schema),
+      Schema.fromJsonString(NmdSyncStateV1Schema),
       strictOptions,
     )
     const syncStates: NmdSyncStateV1[] = []
@@ -875,7 +875,7 @@ const gcCommand = Command.make(
 // Editor surfaces: cat / put / edit (VRS "Editor Surfaces")
 // ---------------------------------------------------------------------------
 
-const pageArg = Args.text({ name: 'page' }).pipe(
+const pageArg = Args.string('page').pipe(
   Args.withDescription('Notion page id, dashed id, or URL'),
   Args.withSchema(NonEmptyCliText),
 )
@@ -887,7 +887,7 @@ const frontmatterOption = Options.boolean('frontmatter').pipe(
   Options.withDefault(false),
 )
 
-const baseHashOption = Options.text('base-hash').pipe(
+const baseHashOption = Options.string('base-hash').pipe(
   Options.withDescription('Optimistic-concurrency token from a prior `cat` (guards the write)'),
   Options.optional,
 )
@@ -1071,7 +1071,7 @@ export const cli = Command.run(notionMdCommand, {
 export const renderCliError = (cause: Cause.Cause<unknown>) =>
   Cause.isInterruptedOnly(cause) === true
     ? Effect.void
-    : Option.match(Cause.failureOption(cause), {
+    : Option.match(Cause.findErrorOption(cause), {
         onNone: () => Effect.logError(cause),
         onSome: (error) => Effect.logError(error),
       })

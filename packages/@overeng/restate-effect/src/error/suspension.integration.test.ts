@@ -137,7 +137,7 @@ const PromiseWfLive = RestateWorkflow.implement<typeof PromiseWf>({
 
 /* A declared error with NO `retryable`/`terminal` annotation classifies as TERMINAL
  * (the boundary default), so the callee's `boom` fails the invocation terminally. */
-class CalleeRejected extends Schema.TaggedError<CalleeRejected>()('CalleeRejected', {}) {}
+class CalleeRejected extends Schema.TaggedErrorClass<CalleeRejected>()('CalleeRejected', {}) {}
 
 const FailingCallee = RestateService.contract({
   name: 'suspend-call-callee',

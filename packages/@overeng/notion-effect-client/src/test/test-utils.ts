@@ -1,10 +1,10 @@
-import { HttpClient, type HttpClientRequest, HttpClientResponse } from '@effect/platform'
 import { Chunk, Effect, Layer, Redacted, Schema, Stream } from 'effect'
+import { HttpClient, type HttpClientRequest, HttpClientResponse } from 'effect/unstable/http'
 
 import { type NotionClientConfig, NotionConfig } from '../config.ts'
 
 /** Encodes an arbitrary mock body to a JSON string (mirrors `JSON.stringify`). */
-const encodeJson = Schema.encodeSync(Schema.parseJson(Schema.Unknown))
+const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
 
 /** Mock response configuration */
 export interface MockResponse {

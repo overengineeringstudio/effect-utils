@@ -21,7 +21,7 @@ export const MemberOwnerNested = Schema.TaggedStruct('Nested', {
 })
 
 /** Discriminated union for member ownership */
-export const MemberOwner = Schema.Union(MemberOwnerRoot, MemberOwnerNested)
+export const MemberOwner = Schema.Union([MemberOwnerRoot, MemberOwnerNested])
 
 /** Inferred type representing whether a member belongs to the root or a nested megarepo. */
 export type MemberOwner = Schema.Schema.Type<typeof MemberOwner>
@@ -78,7 +78,7 @@ export const LsErrorState = Schema.TaggedStruct('Error', {
  * Success JSON: { "_tag": "Success", "members": [...] }
  * Error JSON: { "_tag": "Error", "error": "...", "message": "..." }
  */
-export const LsState = Schema.Union(LsSuccessState, LsErrorState)
+export const LsState = Schema.Union([LsSuccessState, LsErrorState])
 
 export type LsState = typeof LsState.Type
 
@@ -101,7 +101,7 @@ export const isLsSuccess = (state: LsState): state is typeof LsSuccessState.Type
 /**
  * Actions for ls output.
  */
-export const LsAction = Schema.Union(
+export const LsAction = Schema.Union([
   Schema.TaggedStruct('SetMembers', {
     members: Schema.Array(MemberInfo),
     all: Schema.Boolean,
@@ -110,7 +110,7 @@ export const LsAction = Schema.Union(
     currentMemberPath: Schema.optional(Schema.Array(Schema.String)),
   }),
   Schema.TaggedStruct('SetError', { error: Schema.String, message: Schema.String }),
-)
+])
 
 /** Inferred type for ls actions. */
 export type LsAction = Schema.Schema.Type<typeof LsAction>

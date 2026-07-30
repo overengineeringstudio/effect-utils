@@ -20,8 +20,11 @@
  * directly with fake gh output so no real `gh`/network is needed.
  */
 
-import { Command, CommandExecutor } from '@effect/platform'
 import { Context, Duration, Effect, Layer, Option, Schema } from 'effect'
+import {
+  ChildProcess as Command,
+  ChildProcessSpawner as CommandExecutor,
+} from 'effect/unstable/process'
 
 import type { RelativeDirPath } from '@overeng/effect-path'
 
@@ -67,10 +70,9 @@ export interface PrStateResolverService {
 }
 
 /** PR-state resolver service tag. */
-export class PrStateResolver extends Context.Tag('megarepo/PrStateResolver')<
-  PrStateResolver,
-  PrStateResolverService
->() {}
+export class PrStateResolver extends Context.Service<PrStateResolver, PrStateResolverService>()(
+  'megarepo/PrStateResolver',
+) {}
 
 // =============================================================================
 // Pure seams (unit-tested directly with fake gh output)
@@ -98,7 +100,7 @@ export const parseRepoCoordinates = (
 const GhPr = Schema.Struct({
   number: Schema.Number,
   /** gh emits uppercase `MERGED`/`CLOSED`/`OPEN`. */
-  state: Schema.Literal('MERGED', 'CLOSED', 'OPEN'),
+  state: Schema.Literals(['MERGED', 'CLOSED', 'OPEN']),
   headRefName: Schema.String,
   /** ISO 8601, or `null` when not merged. */
   mergedAt: Schema.NullOr(Schema.String),
@@ -118,7 +120,7 @@ const GhPrList = Schema.Array(GhPr)
  * non-zero leaving empty stdout) ⇒ `none`, which the caller maps to keep.
  */
 export const decodePrListJson = (raw: string): Option.Option<ReadonlyArray<GhPr>> =>
-  Schema.decodeUnknownOption(Schema.parseJson(GhPrList))(raw)
+  Schema.decodeUnknownOption(Schema.fromJsonString(GhPrList))(raw)
 
 /** ISO 8601 ⇒ epoch ms; `null`/unparseable ⇒ `undefined`. */
 const isoToMs = (iso: string | null): number | undefined => {

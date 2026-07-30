@@ -17,16 +17,16 @@ import { User } from '../users.ts'
  * @see https://developers.notion.com/reference/property-value-object#people
  */
 export const PeopleProperty = Schema.Struct({
-  id: Schema.String.annotations({
+  id: Schema.String.annotate({
     description: 'Property identifier.',
   }),
-  type: Schema.Literal('people').annotations({
+  type: Schema.Literal('people').annotate({
     description: 'Property type identifier.',
   }),
-  people: Schema.Array(User).annotations({
+  people: Schema.Array(User).annotate({
     description: 'Array of assigned users.',
   }),
-}).annotations({
+}).annotate({
   identifier: 'Notion.PeopleProperty',
   title: 'People Property',
   description: 'A people property value.',
@@ -47,7 +47,7 @@ export const PeopleWrite = Schema.Struct({
       id: NotionUUID,
     }),
   ),
-}).annotations({
+}).annotate({
   identifier: 'Notion.PeopleWrite',
   title: 'People (Write)',
   description: 'Write payload for a people property (used in page create/update).',
@@ -63,7 +63,7 @@ export const PeopleWriteFromIds = Schema.transform(Schema.Array(NotionUUID), Peo
     people: ids.map((id) => ({ id })),
   }),
   encode: (write) => write.people.map((p) => p.id),
-}).annotations({
+}).annotate({
   identifier: 'Notion.PeopleWriteFromIds',
   title: 'People (Write) From IDs',
   description: 'Transform user IDs into a people write payload.',
@@ -111,25 +111,25 @@ export const People = {
  * @see https://developers.notion.com/reference/property-value-object#relation
  */
 export const RelationProperty = Schema.Struct({
-  id: Schema.String.annotations({
+  id: Schema.String.annotate({
     description: 'Property identifier.',
   }),
-  type: Schema.Literal('relation').annotations({
+  type: Schema.Literal('relation').annotate({
     description: 'Property type identifier.',
   }),
   relation: Schema.Array(
     Schema.Struct({
-      id: NotionUUID.annotations({
+      id: NotionUUID.annotate({
         description: 'ID of the related page.',
       }),
     }),
-  ).annotations({
+  ).annotate({
     description: 'Array of related page references.',
   }),
-  has_more: Schema.optionalWith(Schema.Boolean, { as: 'Option' }).annotations({
+  has_more: Schema.OptionFromOptional(Schema.Boolean).annotate({
     description: 'Whether there are more relations than returned.',
   }),
-}).annotations({
+}).annotate({
   identifier: 'Notion.RelationProperty',
   title: 'Relation Property',
   description: 'A relation property value linking to other pages.',
@@ -150,7 +150,7 @@ export const RelationWrite = Schema.Struct({
       id: NotionUUID,
     }),
   ),
-}).annotations({
+}).annotate({
   identifier: 'Notion.RelationWrite',
   title: 'Relation (Write)',
   description: 'Write payload for a relation property (used in page create/update).',
@@ -166,7 +166,7 @@ export const RelationWriteFromIds = Schema.transform(Schema.Array(NotionUUID), R
     relation: ids.map((id) => ({ id })),
   }),
   encode: (write) => write.relation.map((r) => r.id),
-}).annotations({
+}).annotate({
   identifier: 'Notion.RelationWriteFromIds',
   title: 'Relation (Write) From IDs',
   description: 'Transform page IDs into a relation write payload.',
@@ -282,11 +282,11 @@ export const Relation = {
 export const ExternalFile = Schema.extend(
   ExternalFileReference,
   Schema.Struct({
-    name: Schema.String.annotations({
+    name: Schema.String.annotate({
       description: 'Name of the file.',
     }),
   }),
-).annotations({
+).annotate({
   identifier: 'Notion.ExternalFile',
   title: 'External File',
   description: 'A file hosted externally.',
@@ -301,11 +301,11 @@ export type ExternalFile = typeof ExternalFile.Type
 export const NotionFile = Schema.extend(
   NotionFileReference,
   Schema.Struct({
-    name: Schema.String.annotations({
+    name: Schema.String.annotate({
       description: 'Name of the file.',
     }),
   }),
-).annotations({
+).annotate({
   identifier: 'Notion.NotionFile',
   title: 'Notion File',
   description: 'A file hosted on Notion (URL expires).',
@@ -317,7 +317,7 @@ export type NotionFile = typeof NotionFile.Type
 /**
  * File object (either external or Notion-hosted).
  */
-export const FileObject = Schema.Union(ExternalFile, NotionFile).annotations({
+export const FileObject = Schema.Union([ExternalFile, NotionFile]).annotate({
   identifier: 'Notion.FileObject',
   title: 'File Object',
   description: 'A file, either external or Notion-hosted.',
@@ -332,16 +332,16 @@ export type FileObject = typeof FileObject.Type
  * @see https://developers.notion.com/reference/property-value-object#files
  */
 export const FilesProperty = Schema.Struct({
-  id: Schema.String.annotations({
+  id: Schema.String.annotate({
     description: 'Property identifier.',
   }),
-  type: Schema.Literal('files').annotations({
+  type: Schema.Literal('files').annotate({
     description: 'Property type identifier.',
   }),
-  files: Schema.Array(FileObject).annotations({
+  files: Schema.Array(FileObject).annotate({
     description: 'Array of file objects.',
   }),
-}).annotations({
+}).annotate({
   identifier: 'Notion.FilesProperty',
   title: 'Files Property',
   description: 'A files property value.',
@@ -366,7 +366,7 @@ export const FilesWrite = Schema.Struct({
       }),
     }),
   ),
-}).annotations({
+}).annotate({
   identifier: 'Notion.FilesWrite',
   title: 'Files (Write)',
   description: 'Write payload for a files property (used in page create/update).',
@@ -385,7 +385,7 @@ export const FilesWriteFromUrls = Schema.transform(Schema.Array(Schema.String), 
     })),
   }),
   encode: (write) => write.files.map((f) => f.external.url),
-}).annotations({
+}).annotate({
   identifier: 'Notion.FilesWriteFromUrls',
   title: 'Files (Write) From URLs',
   description: 'Transform external URLs into a files write payload.',

@@ -1,6 +1,7 @@
 import { join } from 'node:path'
 
-import { Command as PlatformCommand, type CommandExecutor, FileSystem } from '@effect/platform'
+import { ChildProcess as PlatformCommand, type ChildProcessSpawner as CommandExecutor } from 'effect/unstable/process'
+import { FileSystem } from 'effect/FileSystem'
 import { Console, Effect } from 'effect'
 
 import { describeBodyLossyRefusal } from '@overeng/notion-core'

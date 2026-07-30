@@ -683,7 +683,7 @@ function MyView({ state }) {
 Commands use `createTuiApp` with Elm architecture (State + Action + Reducer) and atom-based views:
 
 ```typescript
-import { Atom } from '@effect-atom/atom'
+import { Atom } from 'effect/unstable/reactivity'
 import * as Cli from '@effect/cli'
 import { createTuiApp, useTuiAtomValue, outputOption, outputModeLayer, Box, Text, Spinner } from '@overeng/tui-react'
 
@@ -908,12 +908,12 @@ test('deploy dispatches correct actions', async () => {
 ### Testing React Components
 
 ```typescript
-import { Atom, Registry } from '@effect-atom/atom'
+import { Atom, AtomRegistry } from 'effect/unstable/reactivity'
 import { TestRenderer, TuiRegistryContext } from '@overeng/tui-react/test'
 
 test('deploy view renders progress', () => {
   const renderer = TestRenderer.create()
-  const registry = Registry.make()
+  const registry = AtomRegistry.make()
   const stateAtom = Atom.make<DeployState>({
     _tag: 'Progress',
     services: [{ name: 'api-server', status: 'healthy' }],
@@ -1010,7 +1010,7 @@ const MyView = ({ stateAtom }: { stateAtom: Atom.Atom<MyState> }) => {
 Views receive a `stateAtom` prop and subscribe internally using `useTuiAtomValue`:
 
 ```typescript
-import { Atom } from '@effect-atom/atom'
+import { Atom } from 'effect/unstable/reactivity'
 import { useTuiAtomValue } from '@overeng/tui-react'
 
 interface MyViewProps {
@@ -1031,7 +1031,7 @@ const tui = yield* MyApp.run(<MyView stateAtom={MyApp.stateAtom} />)
 <TuiStoryPreview View={MyView} initialState={mockState} ... />
 
 // Usage in tests:
-const registry = Registry.make()
+const registry = AtomRegistry.make()
 const stateAtom = Atom.make(testState)
 <TuiRegistryContext.Provider value={registry}>
   <MyView stateAtom={stateAtom} />
@@ -1161,7 +1161,7 @@ interface MyViewProps<S> {
 A full deploy command using Effect CLI with tui-react and atom-based views:
 
 ```typescript
-import { Atom } from '@effect-atom/atom'
+import { Atom } from 'effect/unstable/reactivity'
 import * as Cli from '@effect/cli'
 import { NodeContext, NodeRuntime } from '@effect/platform-node'
 import { Effect, Schema, Duration } from 'effect'
@@ -1331,7 +1331,7 @@ Cli.Command.run(deployCommand, { name: 'deploy', version: '1.0.0' })(process.arg
 | Decision           | Choice                      | Rationale                              |
 | ------------------ | --------------------------- | -------------------------------------- |
 | CLI integration    | `@effect/cli`               | Leverage existing framework            |
-| State primitive    | `@effect-atom/atom`         | Better React integration, sync updates |
+| State primitive    | `effect/unstable/reactivity`         | Better React integration, sync updates |
 | State updates      | Reducer-only (Elm)          | Predictable, testable                  |
 | Mode selection     | `OutputMode` service        | Layer-based, composable                |
 | Inline reconciler  | Custom (`react-reconciler`) | Full control, no ink dependency        |

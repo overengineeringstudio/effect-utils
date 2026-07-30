@@ -22,9 +22,9 @@ import { platform } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { Command } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
+import { ChildProcess as Command } from 'effect/unstable/process'
 import { Effect, Schema } from 'effect'
 import { expect } from 'vitest'
 
@@ -40,7 +40,7 @@ const ProbeOutput = Schema.Struct({
   vmHwmKb: Schema.Number,
   changesCount: Schema.Number,
 })
-const decodeProbe = Schema.decodeUnknownSync(Schema.parseJson(ProbeOutput))
+const decodeProbe = Schema.decodeUnknownSync(Schema.fromJsonString(ProbeOutput))
 
 const probeScript = fileURLToPath(new URL('../test-utils/memory-probe.ts', import.meta.url))
 
@@ -95,7 +95,7 @@ describe('git memory regression', () => {
         const growthKb = result.vmHwmKb - result.rssStartKb
         expect(result.changesCount).toBe(UNTRACKED_FILE_COUNT)
         expect(growthKb).toBeLessThan(MAX_GROWTH_KB)
-      }).pipe(Effect.provide(NodeContext.layer)),
+      }).pipe(Effect.provide(NodeServices.layer)),
     { timeout: 120_000 },
   )
 })

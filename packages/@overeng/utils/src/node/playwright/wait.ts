@@ -20,7 +20,7 @@ import {
 import { PwWaitAttemptAttrs, PwWaitOperation as PwWaitContract } from './pw.contract.ts'
 
 /** Error thrown when a polling wait operation times out */
-export class PwWaitTimeoutError extends Schema.TaggedError<PwWaitTimeoutError>()(
+export class PwWaitTimeoutError extends Schema.TaggedErrorClass<PwWaitTimeoutError>()(
   'PwWaitTimeoutError',
   {
     label: Schema.String,

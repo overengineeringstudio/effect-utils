@@ -26,7 +26,7 @@ const appendGithubOutput = (opts: {
 }
 
 export const encodeWorkflowReportRecord = Effect.fn('ci-tools.deploy.io.encode-record')(
-  (record: WorkflowReportRecord) => Schema.encode(Schema.parseJson(Schema.Unknown))(record),
+  (record: WorkflowReportRecord) => Schema.encode(Schema.fromJsonString(Schema.Unknown))(record),
 )
 
 export const emitWorkflowReportRecord = Effect.fn('ci-tools.deploy.io.emit-record')(

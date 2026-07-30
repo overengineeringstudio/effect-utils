@@ -1,5 +1,5 @@
-import { make as makeRpc } from '@effect/rpc/Rpc'
-import { make as makeRpcGroup } from '@effect/rpc/RpcGroup'
+import { make as makeRpc } from 'effect/unstable/rpc/Rpc'
+import { make as makeRpcGroup } from 'effect/unstable/rpc/RpcGroup'
 import { Schema } from 'effect'
 
 /**

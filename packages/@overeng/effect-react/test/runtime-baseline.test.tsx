@@ -30,10 +30,9 @@ afterEach(() => {
   }
 })
 
-class ProbeService extends Context.Tag('ProbeService')<
-  ProbeService,
-  { readonly label: string }
->() {}
+class ProbeService extends Context.Service<ProbeService, { readonly label: string }>()(
+  'ProbeService',
+) {}
 
 const flushReactEffects = async (): Promise<void> => {
   await act(async () => {

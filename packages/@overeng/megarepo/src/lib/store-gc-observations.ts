@@ -23,8 +23,9 @@
  * conservatively re-arms all grace windows.
  */
 
-import { FileSystem, type Error as PlatformError } from '@effect/platform'
+import type { Error as PlatformError } from 'effect'
 import { Effect, Schema, type ParseResult } from 'effect'
+import { FileSystem } from 'effect/FileSystem'
 
 import { EffectPath, type AbsoluteDirPath, type AbsoluteFilePath } from '@overeng/effect-path'
 
@@ -32,7 +33,7 @@ import * as Observability from './observability.ts'
 import { writeFileAtomic } from './store-fs-atomic.ts'
 
 /** Ledger schema: path -> epoch-ms it was first observed continuously cold. */
-const GcObservationLedger = Schema.Record({ key: Schema.String, value: Schema.Number })
+const GcObservationLedger = Schema.Record(Schema.String, Schema.Number)
 
 /** In-memory ledger: `normalizePath(worktreePath) -> firstSeenColdAtMs`. */
 export type GcObservationLedger = Schema.Schema.Type<typeof GcObservationLedger>
@@ -86,7 +87,7 @@ export const readObservationLedger = ({
     const path = ledgerPath(storeBasePath)
     return yield* fs.readFileString(path).pipe(
       Effect.flatMap((content) =>
-        Schema.decodeUnknown(Schema.parseJson(GcObservationLedger))(content),
+        Schema.decodeUnknown(Schema.fromJsonString(GcObservationLedger))(content),
       ),
       Effect.orElseSucceed(() => ({}) as GcObservationLedger),
     )
@@ -114,7 +115,7 @@ const writeObservationLedger = ({
     const path = ledgerPath(storeBasePath)
     const stateDir = EffectPath.ops.join(storeBasePath, EffectPath.unsafe.relativeDir('.state/'))
     yield* fs.makeDirectory(stateDir, { recursive: true })
-    const content = yield* Schema.encode(Schema.parseJson(GcObservationLedger, { space: 2 }))(
+    const content = yield* Schema.encode(Schema.fromJsonString(GcObservationLedger, { space: 2 }))(
       ledger,
     )
     yield* writeFileAtomic({ path, content: content + '\n' })

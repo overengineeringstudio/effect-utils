@@ -1,10 +1,4 @@
 import {
-  HttpClient,
-  type HttpClientError,
-  HttpClientRequest,
-  type HttpClientResponse,
-} from '@effect/platform'
-import {
   Context,
   Effect,
   Option,
@@ -14,6 +8,12 @@ import {
   ScheduleInterval,
   Schema,
 } from 'effect'
+import {
+  HttpClient,
+  type HttpClientError,
+  HttpClientRequest,
+  type HttpClientResponse,
+} from 'effect/unstable/http'
 
 import { NOTION_API_BASE_URL, NOTION_API_VERSION, NotionConfig } from '../config.ts'
 import { NotionApiError, NotionErrorResponse } from '../error.ts'
@@ -66,9 +66,10 @@ export type NotionHttpTelemetryReporter = {
 }
 
 /** Optional Effect service used by callers that want realtime HTTP/rate-limit visibility. */
-export class NotionHttpTelemetry extends Context.Tag(
-  '@overeng/notion-effect-client/NotionHttpTelemetry',
-)<NotionHttpTelemetry, NotionHttpTelemetryReporter>() {}
+export class NotionHttpTelemetry extends Context.Service<
+  NotionHttpTelemetry,
+  NotionHttpTelemetryReporter
+>()('@overeng/notion-effect-client/NotionHttpTelemetry') {}
 
 /** Options for building a Notion API request */
 export interface BuildRequestOptions {

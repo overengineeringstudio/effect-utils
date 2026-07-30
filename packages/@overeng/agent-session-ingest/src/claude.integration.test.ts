@@ -1,4 +1,4 @@
-import { FileSystem } from '@effect/platform'
+import { FileSystem } from 'effect/FileSystem'
 import { Effect } from 'effect'
 import { expect } from 'vitest'
 

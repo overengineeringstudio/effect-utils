@@ -12,7 +12,6 @@
 import * as inspector from 'node:inspector'
 
 import { OtlpSerialization, OtlpTracer } from '@effect/opentelemetry'
-import { FetchHttpClient } from '@effect/platform'
 import type * as Vitest from '@effect/vitest'
 import type { Duration } from 'effect'
 import {
@@ -25,6 +24,7 @@ import {
   type Schema,
   type Scope,
 } from 'effect'
+import { FetchHttpClient } from 'effect/unstable/http'
 
 import { otlpTracesUrl } from '../otelite/otlp-url.ts'
 
@@ -132,7 +132,7 @@ export type WithTestCtxParams<ROut, E1, RIn> = {
  * const withTestCtx = makeWithTestCtx({
  *   timeout: Duration.minutes(2),
  *   makeLayer: (testContext) => Layer.mergeAll(
- *     NodeContext.layer,
+ *     NodeServices.layer,
  *     MyService.layer,
  *   ),
  * })
@@ -290,7 +290,7 @@ const normalizePropOptions = <Arbs extends Vitest.Vitest.Arbitraries>(
  *
  * @example
  * ```typescript
- * const StorageType = Schema.Literal('memory', 'fs')
+ * const StorageType = Schema.Literals(['memory', 'fs'])
  * const Count = Schema.Int.pipe(Schema.between(1, 100))
  *
  * Vitest.asProp(

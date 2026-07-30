@@ -1,9 +1,5 @@
 import fs from 'node:fs'
 
-import * as Command from '@effect/platform/Command'
-import type * as CommandExecutor from '@effect/platform/CommandExecutor'
-import type { Process } from '@effect/platform/CommandExecutor'
-import type { PlatformError } from '@effect/platform/Error'
 import type { Scope } from 'effect'
 import {
   Cause,
@@ -11,16 +7,17 @@ import {
   type Duration,
   Effect,
   Fiber,
-  FiberId,
-  FiberRefs,
   HashMap,
   identity,
-  List,
   LogLevel,
   Option,
   Schema,
   Stream,
 } from 'effect'
+import type { PlatformError } from 'effect/Error'
+import { ChildProcess as Command } from 'effect/unstable/process'
+import type * as CommandExecutor from 'effect/unstable/process/CommandExecutor'
+import type { Process } from 'effect/unstable/process/CommandExecutor'
 
 import { type OtelAttrEncodeError, type OtelOperationDefinition } from '@overeng/otel-contract'
 
@@ -422,21 +419,21 @@ export const cmdCollect = <R = never>(opts: {
   )
 
 /** Internal error for process signal operations */
-class ProcessSignalError extends Schema.TaggedError<ProcessSignalError>()('ProcessSignalError', {
-  cause: Schema.Defect,
-  code: Schema.optionalWith(Schema.String, { as: 'Option' }),
-}) {}
+class ProcessSignalError extends Schema.TaggedErrorClass<ProcessSignalError>()(
+  'ProcessSignalError',
+  {
+    cause: Schema.Defect(),
+    code: Schema.OptionFromOptional(Schema.String),
+  },
+) {}
 
 /** Error thrown when a shell command exits with non-zero status */
-export class CmdError extends Schema.TaggedError<CmdError>()('CmdError', {
+export class CmdError extends Schema.TaggedErrorClass<CmdError>()('CmdError', {
   command: Schema.String,
   args: Schema.Array(Schema.String),
   cwd: Schema.String,
-  env: Schema.Record({
-    key: Schema.String,
-    value: Schema.String.pipe(Schema.UndefinedOr),
-  }),
-  stderr: Schema.Literal('inherit', 'pipe'),
+  env: Schema.Record(Schema.String, Schema.UndefinedOr(Schema.String)),
+  stderr: Schema.Literals(['inherit', 'pipe']),
 }) {}
 
 type TRunBaseArgs = {
@@ -507,12 +504,11 @@ const runWithLogging = ({
       const appendLog = ({ channel, content }: { channel: 'stdout' | 'stderr'; content: string }) =>
         Effect.sync(() => {
           const formatted = prettyLogger.log({
-            fiberId: FiberId.none,
+            fiberId: undefined,
             logLevel: channel === 'stdout' ? LogLevel.Info : LogLevel.Warning,
             message: [`[${channel}]${content.length > 0 ? ` ${content}` : ''}`],
             cause: Cause.empty,
-            context: FiberRefs.empty(),
-            spans: List.empty(),
+            spans: [],
             annotations: HashMap.empty(),
             date: new Date(),
           })
@@ -623,7 +619,7 @@ const sendSignalToProcessGroup = (opts: {
         })
       },
     }).pipe(
-      Effect.catchAll((e) => {
+      Effect.catch((e) => {
         // ESRCH = no such process (already dead) - that's fine
         if (Option.getOrUndefined(e.code) === 'ESRCH') return Effect.void
         // Other errors: fall back to individual kill (ignore errors)

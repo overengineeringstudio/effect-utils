@@ -2,7 +2,7 @@
  * Error types for path operations with rich metadata.
  *
  * Each error captures contextual information useful for debugging and error handling.
- * All errors extend Schema.TaggedError for Effect integration.
+ * All errors extend Schema.TaggedErrorClass for Effect integration.
  */
 
 import { Schema } from 'effect'
@@ -12,57 +12,66 @@ import { Schema } from 'effect'
 // ═══════════════════════════════════════════════════════════════════════════
 
 /** Reason why a path string is invalid */
-export const InvalidPathReason = Schema.Literal(
+export const InvalidPathReason = Schema.Literals([
   'empty',
   'null_byte',
   'invalid_characters',
   'reserved_name',
   'too_long',
-)
+])
 export type InvalidPathReason = typeof InvalidPathReason.Type
 
 /** Path string is malformed or contains invalid characters */
-export class InvalidPathError extends Schema.TaggedError<InvalidPathError>()('InvalidPathError', {
-  /** The path that caused the error */
-  path: Schema.String,
-  /** Human-readable error message */
-  message: Schema.String,
-  /** Specific reason for invalidity */
-  reason: InvalidPathReason,
-  /** Position in path where error was detected (if applicable) */
-  position: Schema.UndefinedOr(Schema.Number),
-}) {}
+export class InvalidPathError extends Schema.TaggedErrorClass<InvalidPathError>()(
+  'InvalidPathError',
+  {
+    /** The path that caused the error */
+    path: Schema.String,
+    /** Human-readable error message */
+    message: Schema.String,
+    /** Specific reason for invalidity */
+    reason: InvalidPathReason,
+    /** Position in path where error was detected (if applicable) */
+    position: Schema.UndefinedOr(Schema.Number),
+  },
+) {}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Absolute/Relative Errors
 // ═══════════════════════════════════════════════════════════════════════════
 
 /** Expected absolute path but got relative */
-export class NotAbsoluteError extends Schema.TaggedError<NotAbsoluteError>()('NotAbsoluteError', {
-  /** The path that caused the error */
-  path: Schema.String,
-  /** Human-readable error message */
-  message: Schema.String,
-  /** Suggestion: resolved absolute path if we can compute it */
-  suggestedAbsolute: Schema.UndefinedOr(Schema.String),
-}) {}
+export class NotAbsoluteError extends Schema.TaggedErrorClass<NotAbsoluteError>()(
+  'NotAbsoluteError',
+  {
+    /** The path that caused the error */
+    path: Schema.String,
+    /** Human-readable error message */
+    message: Schema.String,
+    /** Suggestion: resolved absolute path if we can compute it */
+    suggestedAbsolute: Schema.UndefinedOr(Schema.String),
+  },
+) {}
 
 /** Expected relative path but got absolute */
-export class NotRelativeError extends Schema.TaggedError<NotRelativeError>()('NotRelativeError', {
-  /** The path that caused the error */
-  path: Schema.String,
-  /** Human-readable error message */
-  message: Schema.String,
-  /** The absolute prefix that was found (e.g., "/" or "C:\") */
-  absolutePrefix: Schema.String,
-}) {}
+export class NotRelativeError extends Schema.TaggedErrorClass<NotRelativeError>()(
+  'NotRelativeError',
+  {
+    /** The path that caused the error */
+    path: Schema.String,
+    /** Human-readable error message */
+    message: Schema.String,
+    /** The absolute prefix that was found (e.g., "/" or "C:\") */
+    absolutePrefix: Schema.String,
+  },
+) {}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // File/Directory Errors
 // ═══════════════════════════════════════════════════════════════════════════
 
 /** Expected a file but found a directory */
-export class NotAFileError extends Schema.TaggedError<NotAFileError>()('NotAFileError', {
+export class NotAFileError extends Schema.TaggedErrorClass<NotAFileError>()('NotAFileError', {
   /** The path that caused the error */
   path: Schema.String,
   /** Human-readable error message */
@@ -72,7 +81,7 @@ export class NotAFileError extends Schema.TaggedError<NotAFileError>()('NotAFile
 }) {}
 
 /** Expected a directory but found a file */
-export class NotADirectoryError extends Schema.TaggedError<NotADirectoryError>()(
+export class NotADirectoryError extends Schema.TaggedErrorClass<NotADirectoryError>()(
   'NotADirectoryError',
   {
     /** The path that caused the error */
@@ -85,15 +94,15 @@ export class NotADirectoryError extends Schema.TaggedError<NotADirectoryError>()
 ) {}
 
 /** Path does not follow expected convention (trailing slash for dirs, no trailing for files) */
-export class ConventionError extends Schema.TaggedError<ConventionError>()('ConventionError', {
+export class ConventionError extends Schema.TaggedErrorClass<ConventionError>()('ConventionError', {
   /** The path that caused the error */
   path: Schema.String,
   /** Human-readable error message */
   message: Schema.String,
   /** What was expected */
-  expected: Schema.Literal('file', 'directory'),
+  expected: Schema.Literals(['file', 'directory']),
   /** What convention violation was found */
-  violation: Schema.Literal('trailing_slash_on_file', 'no_trailing_slash_on_directory'),
+  violation: Schema.Literals(['trailing_slash_on_file', 'no_trailing_slash_on_directory']),
 }) {}
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -101,7 +110,7 @@ export class ConventionError extends Schema.TaggedError<ConventionError>()('Conv
 // ═══════════════════════════════════════════════════════════════════════════
 
 /** Path does not exist on filesystem */
-export class PathNotFoundError extends Schema.TaggedError<PathNotFoundError>()(
+export class PathNotFoundError extends Schema.TaggedErrorClass<PathNotFoundError>()(
   'PathNotFoundError',
   {
     /** The path that was not found */
@@ -111,38 +120,44 @@ export class PathNotFoundError extends Schema.TaggedError<PathNotFoundError>()(
     /** The deepest existing ancestor path */
     nearestExisting: Schema.UndefinedOr(Schema.String),
     /** What was expected to exist */
-    expectedType: Schema.UndefinedOr(Schema.Literal('file', 'directory', 'any')),
+    expectedType: Schema.UndefinedOr(Schema.Literals(['file', 'directory', 'any'])),
   },
 ) {}
 
 /** Expected a symlink but path is not a symlink */
-export class NotASymlinkError extends Schema.TaggedError<NotASymlinkError>()('NotASymlinkError', {
-  /** The path that was expected to be a symlink */
-  path: Schema.String,
-  /** Human-readable error message */
-  message: Schema.String,
-  /** Actual type found */
-  actualType: Schema.Literal('file', 'directory'),
-}) {}
+export class NotASymlinkError extends Schema.TaggedErrorClass<NotASymlinkError>()(
+  'NotASymlinkError',
+  {
+    /** The path that was expected to be a symlink */
+    path: Schema.String,
+    /** Human-readable error message */
+    message: Schema.String,
+    /** Actual type found */
+    actualType: Schema.Literals(['file', 'directory']),
+  },
+) {}
 
 /** Circular symlink detected during resolution */
-export class SymlinkLoopError extends Schema.TaggedError<SymlinkLoopError>()('SymlinkLoopError', {
-  /** The path where the loop was detected */
-  path: Schema.String,
-  /** Human-readable error message */
-  message: Schema.String,
-  /** The symlink chain that was followed before loop detected */
-  chain: Schema.Array(Schema.String),
-  /** The symlink that points back to earlier in chain */
-  loopingLink: Schema.String,
-}) {}
+export class SymlinkLoopError extends Schema.TaggedErrorClass<SymlinkLoopError>()(
+  'SymlinkLoopError',
+  {
+    /** The path where the loop was detected */
+    path: Schema.String,
+    /** Human-readable error message */
+    message: Schema.String,
+    /** The symlink chain that was followed before loop detected */
+    chain: Schema.Array(Schema.String),
+    /** The symlink that points back to earlier in chain */
+    loopingLink: Schema.String,
+  },
+) {}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Security Errors
 // ═══════════════════════════════════════════════════════════════════════════
 
 /** Path escapes sandbox/jail directory */
-export class TraversalError extends Schema.TaggedError<TraversalError>()('TraversalError', {
+export class TraversalError extends Schema.TaggedErrorClass<TraversalError>()('TraversalError', {
   /** The path that attempted to escape */
   path: Schema.String,
   /** Human-readable error message */
@@ -156,13 +171,13 @@ export class TraversalError extends Schema.TaggedError<TraversalError>()('Traver
 }) {}
 
 /** Permission denied accessing path */
-export class PermissionError extends Schema.TaggedError<PermissionError>()('PermissionError', {
+export class PermissionError extends Schema.TaggedErrorClass<PermissionError>()('PermissionError', {
   /** The path that could not be accessed */
   path: Schema.String,
   /** Human-readable error message */
   message: Schema.String,
   /** Operation that was attempted */
-  operation: Schema.Literal('read', 'write', 'execute', 'stat'),
+  operation: Schema.Literals(['read', 'write', 'execute', 'stat']),
 }) {}
 
 // ═══════════════════════════════════════════════════════════════════════════

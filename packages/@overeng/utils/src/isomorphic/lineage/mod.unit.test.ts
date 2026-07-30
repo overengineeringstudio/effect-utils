@@ -107,7 +107,7 @@ describe('Lineage annotations: round-trip', () => {
 
 describe('Lineage annotations: fail-soft', () => {
   it('returns undefined for malformed annotation payloads', () => {
-    const bogus = Schema.Number.annotations({ [LineageAnnotationId]: { _tag: 'Bogus' } })
+    const bogus = Schema.Number.annotate({ [LineageAnnotationId]: { _tag: 'Bogus' } })
     expect(getLineage(bogus)).toBeUndefined()
   })
 

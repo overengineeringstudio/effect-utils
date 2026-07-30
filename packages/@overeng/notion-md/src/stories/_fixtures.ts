@@ -1,15 +1,15 @@
 import { Schema } from 'effect'
 
-export const Severity = Schema.Literal('critical', 'warning')
+export const Severity = Schema.Literals(['critical', 'warning'])
 export type Severity = 'critical' | 'warning'
 
-export const CommandFixtureId = Schema.Literal(
+export const CommandFixtureId = Schema.Literals([
   'clean-status',
   'body-conflict',
   'unknown-blocks',
   'watch-sync',
   'missing-token',
-)
+])
 export type CommandFixtureId =
   | 'clean-status'
   | 'body-conflict'
@@ -38,7 +38,7 @@ export type DetailSectionFixture = typeof DetailSectionFixture.Type
 export const MainItemFixture = Schema.Struct({
   name: Schema.String,
   ref: Schema.String,
-  status: Schema.optional(Schema.Literal('error', 'modified', 'ok', 'synced')),
+  status: Schema.optional(Schema.Literals(['error', 'modified', 'ok', 'synced'])),
   relationship: Schema.optional(Schema.String),
   sections: Schema.Array(DetailSectionFixture),
 })

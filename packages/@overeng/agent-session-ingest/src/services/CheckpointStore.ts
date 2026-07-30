@@ -1,6 +1,6 @@
 import * as nodePath from 'node:path'
 
-import { FileSystem } from '@effect/platform'
+import { FileSystem } from 'effect/FileSystem'
 import { Context, Effect, Layer, Schema } from 'effect'
 
 import { SessionCheckpointDecodeError, SessionCheckpointWriteError } from '../errors.ts'
@@ -13,7 +13,7 @@ export const buildCheckpointKey = (
 ) => JSON.stringify([descriptor.sourceId, descriptor.artifactId] as const)
 
 /** Service for loading and saving deduped ingestion checkpoints. */
-export class CheckpointStore extends Context.Tag('AgentSessionIngest/CheckpointStore')<
+export class CheckpointStore extends Context.Service<
   CheckpointStore,
   {
     readonly list: () => Effect.Effect<
@@ -24,7 +24,7 @@ export class CheckpointStore extends Context.Tag('AgentSessionIngest/CheckpointS
       checkpoints: ReadonlyArray<IngestionCheckpoint>,
     ) => Effect.Effect<void, SessionCheckpointWriteError>
   }
->() {}
+>()('AgentSessionIngest/CheckpointStore') {}
 
 /** File-backed checkpoint store for incremental source ingestion. */
 export const makeFileCheckpointStore = (options: { path: string }) =>

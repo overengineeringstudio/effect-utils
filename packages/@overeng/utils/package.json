@@ -45,26 +45,20 @@
     }
   },
   "dependencies": {
-    "@effect/opentelemetry": "0.63.0",
-    "@effect/platform": "0.96.2",
-    "@effect/platform-node": "0.107.0",
-    "@effect/vitest": "0.29.0",
+    "@effect/opentelemetry": "4.0.0-beta.102",
+    "@effect/platform-node": "4.0.0-beta.102",
+    "@effect/vitest": "4.0.0-beta.102",
     "@noble/hashes": "2.2.0",
     "@opentelemetry/api": "1.9.1",
     "@overeng/effect-distributed-lock": "workspace:^",
     "@overeng/otel-contract": "workspace:^",
-    "effect": "3.21.4",
+    "effect": "4.0.0-beta.102",
     "vitest": "4.1.9"
   },
   "devDependencies": {
-    "@effect/cluster": "0.59.0",
-    "@effect/experimental": "0.60.0",
-    "@effect/opentelemetry": "0.63.0",
-    "@effect/platform": "0.96.2",
-    "@effect/platform-node": "0.107.0",
-    "@effect/rpc": "0.75.1",
-    "@effect/vitest": "0.29.0",
-    "@effect/workflow": "0.18.2",
+    "@effect/opentelemetry": "4.0.0-beta.102",
+    "@effect/platform-node": "4.0.0-beta.102",
+    "@effect/vitest": "4.0.0-beta.102",
     "@opentelemetry/resources": "2.8.0",
     "@opentelemetry/sdk-logs": "0.219.0",
     "@opentelemetry/sdk-metrics": "2.8.0",
@@ -76,26 +70,21 @@
     "@playwright/test": "1.61.0",
     "@storybook/react-vite": "10.4.6",
     "@types/node": "26.0.0",
-    "effect": "3.21.4",
+    "effect": "4.0.0-beta.102",
     "storybook": "10.4.6",
     "typescript": "6.0.3",
     "vite": "8.0.16",
     "vitest": "4.1.9"
   },
   "peerDependencies": {
-    "@effect/cluster": "^0.59.0",
-    "@effect/experimental": "^0.60.0",
-    "@effect/opentelemetry": "^0.63.0",
-    "@effect/platform": "^0.96.2",
-    "@effect/platform-node": "^0.107.0",
-    "@effect/rpc": "^0.75.1",
-    "@effect/workflow": "^0.18.2",
+    "@effect/opentelemetry": "^4.0.0-beta.102",
+    "@effect/platform-node": "^4.0.0-beta.102",
     "@playwright/test": "^1.61.0",
-    "effect": "^3.21.4"
+    "effect": "^4.0.0-beta.102"
   },
   "pnpm": {
     "patchedDependencies": {
-      "@effect/platform@0.96.2": "patches/@effect__platform@0.96.0.patch"
+      "effect@4.0.0-beta.102": "patches/effect@4.0.0-beta.102.patch"
     }
   },
   "$genie": {

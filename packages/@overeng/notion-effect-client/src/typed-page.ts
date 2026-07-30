@@ -30,11 +30,11 @@ export interface TypedPage<TProperties> {
 /**
  * Error when decoding page properties fails.
  */
-export class PageDecodeError extends Schema.TaggedError<PageDecodeError>()('PageDecodeError', {
+export class PageDecodeError extends Schema.TaggedErrorClass<PageDecodeError>()('PageDecodeError', {
   /** Page ID that failed to decode */
   pageId: Schema.String,
   /** The underlying parse error */
-  cause: Schema.Defect,
+  cause: Schema.Defect(),
   /** Human-readable message */
   message: Schema.String,
 }) {}

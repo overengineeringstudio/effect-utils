@@ -2,10 +2,10 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import type { FileSystem } from '@effect/platform'
-import { FetchHttpClient, type HttpClient } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import { NodeServices } from '@effect/platform-node'
+import type { FileSystem } from 'effect/FileSystem'
 import { Chunk, Effect, Layer, Redacted, Schema, Stream } from 'effect'
+import { FetchHttpClient, type HttpClient } from 'effect/unstable/http'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import {
@@ -71,11 +71,11 @@ const ConfigLayer = NotionConfigLive({
 })
 
 const BaseLayer = Layer.mergeAll(ConfigLayer, FetchHttpClient.layer)
-const StateStoreLayer = NmdStateStoreLive.pipe(Layer.provide(NodeContext.layer))
+const StateStoreLayer = NmdStateStoreLive.pipe(Layer.provide(NodeServices.layer))
 const TestLayer = Layer.mergeAll(
   BaseLayer,
   StateStoreLayer,
-  NodeContext.layer,
+  NodeServices.layer,
   NotionMdGatewayLive.pipe(Layer.provide(BaseLayer)),
 )
 
@@ -98,7 +98,7 @@ const scratchTitlePrefix = 'notion-md e2e: '
 const ledgerTitle = 'notion-md e2e run ledger'
 
 /** Raised when live cleanup targets a parent page outside the test allowlist. */
-class DisallowedTestParentPageError extends Schema.TaggedError<DisallowedTestParentPageError>()(
+class DisallowedTestParentPageError extends Schema.TaggedErrorClass<DisallowedTestParentPageError>()(
   'DisallowedTestParentPageError',
   {
     message: Schema.String,

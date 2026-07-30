@@ -25,7 +25,7 @@ import { RestateTestHarness, serverAvailable } from '../testing/testing.ts'
 const Concurrent = RestateService.contract({
   name: 'concurrency-demo',
   handlers: {
-    all: { input: Schema.Void, success: Schema.Tuple(Schema.String, Schema.String) },
+    all: { input: Schema.Void, success: Schema.Tuple([Schema.String, Schema.String]) },
     race: { input: Schema.Void, success: Schema.String },
   },
 })

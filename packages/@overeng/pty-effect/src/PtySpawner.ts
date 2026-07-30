@@ -12,12 +12,12 @@ import type { PtySpec } from './PtySpec.ts'
  * class with a `spawn` method that returns a `Scope`-bound resource. The
  * caller's scope owns the lifecycle.
  */
-export class PtySpawner extends Context.Tag('@overeng/pty-effect/PtySpawner')<
+export class PtySpawner extends Context.Service<
   PtySpawner,
   {
     readonly spawn: (spec: PtySpec) => Effect.Effect<PtySession.PtySession, PtyError, Scope.Scope>
   }
->() {}
+>()('@overeng/pty-effect/PtySpawner') {}
 
 /**
  * Default in-process layer.

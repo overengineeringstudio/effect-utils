@@ -1,6 +1,6 @@
-import { FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import { NodeServices } from '@effect/platform-node'
 import { describe, expect, it } from '@effect/vitest'
+import { FileSystem } from 'effect/FileSystem'
 import { Effect, Layer, Metric, MetricLabel, Schema } from 'effect'
 
 import { TraceJson, writeCaptureDiagnostics } from './diagnostics.ts'
@@ -99,13 +99,13 @@ describe('OteliteTestHarness', () => {
           service: 'otelite-diagnostics',
         })
 
-        const traceJson = yield* Schema.decodeUnknown(Schema.parseJson(TraceJson))(
+        const traceJson = yield* Schema.decodeUnknown(Schema.fromJsonString(TraceJson))(
           yield* fs.readFileString(files.traceJson),
         )
         expect(traceJson.schema).toBe('otelite.trace-json/v1')
         expect(traceJson.summary.span_count).toBeGreaterThanOrEqual(2)
         expect(traceJson.spans.some((span) => span.name === 'otelite-diagnostics.child')).toBe(true)
-      }).pipe(Effect.provide(Layer.mergeAll(OteliteTestHarness.Default, NodeContext.layer))),
+      }).pipe(Effect.provide(Layer.mergeAll(OteliteTestHarness.Default, NodeServices.layer))),
     30_000,
   )
 

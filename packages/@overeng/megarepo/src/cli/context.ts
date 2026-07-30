@@ -6,9 +6,9 @@
 
 import { resolve } from 'node:path'
 
-import * as Cli from '@effect/cli'
-import { FileSystem } from '@effect/platform'
+import { FileSystem } from 'effect/FileSystem'
 import { Context, Effect, Layer, Option } from 'effect'
+import * as Cli from 'effect/unstable/cli'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
@@ -30,7 +30,7 @@ import { InvalidCwdError } from './errors.ts'
  * - $PWD: logical path (preserves symlinks) - set by the shell
  * - process.cwd(): physical path (resolves symlinks)
  */
-export class Cwd extends Context.Tag('megarepo/Cwd')<Cwd, AbsoluteDirPath>() {
+export class Cwd extends Context.Service<Cwd, AbsoluteDirPath>()('megarepo/Cwd') {
   static live = Layer.effect(
     Cwd,
     Effect.sync(() => {
@@ -86,28 +86,28 @@ export class Cwd extends Context.Tag('megarepo/Cwd')<Cwd, AbsoluteDirPath>() {
 // =============================================================================
 
 /** Override the working directory */
-export const cwdOption = Cli.Options.text('cwd').pipe(
-  Cli.Options.withDescription('Override the working directory'),
-  Cli.Options.optional,
+export const cwdOption = Cli.Flag.string('cwd').pipe(
+  Cli.Flag.withDescription('Override the working directory'),
+  Cli.Flag.optional,
 )
 
 /** JSON output format option */
-export const jsonOption = Cli.Options.boolean('json').pipe(
-  Cli.Options.withDescription('Output in JSON format'),
-  Cli.Options.withDefault(false),
+export const jsonOption = Cli.Flag.boolean('json').pipe(
+  Cli.Flag.withDescription('Output in JSON format'),
+  Cli.Flag.withDefault(false),
 )
 
 /** Stream JSON output as NDJSON (newline-delimited JSON) */
-export const streamOption = Cli.Options.boolean('stream').pipe(
-  Cli.Options.withDescription('Stream JSON output as NDJSON (requires --json)'),
-  Cli.Options.withDefault(false),
+export const streamOption = Cli.Flag.boolean('stream').pipe(
+  Cli.Flag.withDescription('Stream JSON output as NDJSON (requires --json)'),
+  Cli.Flag.withDefault(false),
 )
 
 /** Verbose output option */
-export const verboseOption = Cli.Options.boolean('verbose').pipe(
-  Cli.Options.withAlias('v'),
-  Cli.Options.withDescription('Show detailed output'),
-  Cli.Options.withDefault(false),
+export const verboseOption = Cli.Flag.boolean('verbose').pipe(
+  Cli.Flag.withAlias('v'),
+  Cli.Flag.withDescription('Show detailed output'),
+  Cli.Flag.withDefault(false),
 )
 
 // =============================================================================

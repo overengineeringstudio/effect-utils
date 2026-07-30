@@ -9,9 +9,9 @@
  * assertions read the raw per-signal `*.ndjson` and walk the resource block.
  */
 
-import { FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import { NodeServices } from '@effect/platform-node'
 import { Effect, Layer, Metric, Option, Schema, type Scope } from 'effect'
+import * as FileSystem from 'effect/FileSystem'
 import { expect } from 'vitest'
 
 import { ServiceIdentity } from '@overeng/otel-contract'
@@ -74,7 +74,7 @@ const resourceAttrsBySignal = (
     const out: Record<string, Record<string, string>> = {}
     // @effect-diagnostics-next-line schemaSyncInEffect:off -- reads the tool's own capture ndjson in a controlled test env; a malformed line is a scaffolding bug, so a thrown defect is correct (this helper is annotated `Effect<..., never, FileSystem>`).
     const parseLine = Schema.decodeSync(
-      Schema.parseJson(Schema.Record({ key: Schema.String, value: Schema.Array(Schema.Object) })),
+      Schema.fromJsonString(Schema.Record(Schema.String, Schema.Array(Schema.Object))),
     )
     for (const [signal, resourceKey] of files) {
       const raw = yield* fs
@@ -143,7 +143,7 @@ Vitest.describe('makeOtelCliLayer — typed ServiceIdentity', () => {
           expect(attrs[signal]?.['service.namespace']).toBe('overeng.test')
           expect(attrs[signal]?.['service.version']).toBe('9.9.9')
         }
-      }).pipe(Effect.provide(Layer.provideMerge(Otelite.Default, NodeContext.layer))),
+      }).pipe(Effect.provide(Layer.provideMerge(Otelite.Default, NodeServices.layer))),
   )
 
   Vitest.it.scoped(
@@ -171,7 +171,7 @@ Vitest.describe('makeOtelCliLayer — typed ServiceIdentity', () => {
         expect(attrs['traces']?.['deployment.environment']).toBe('ci-test')
         // Explicit identity wins over the colliding env value.
         expect(attrs['traces']?.['service.namespace']).toBe('overeng.test')
-      }).pipe(Effect.provide(Layer.provideMerge(Otelite.Default, NodeContext.layer))),
+      }).pipe(Effect.provide(Layer.provideMerge(Otelite.Default, NodeServices.layer))),
   )
 
   Vitest.it.effect('rejects a raw-string name on the typed identity path', () =>

@@ -2,7 +2,7 @@
  * Deploy CLI View Component
  */
 
-import { Atom } from '@effect-atom/atom'
+import { Atom } from 'effect/unstable/reactivity'
 import React, { useMemo } from 'react'
 
 import { Box, Text, Spinner, Static, useTuiAtomValue } from '../../../src/mod.tsx'

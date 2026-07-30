@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { NodeContext } from '@effect/platform-node'
+import { NodeServices } from '@effect/platform-node'
 import { Effect, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
@@ -12,7 +12,7 @@ import type { NotionMdGateway } from './model.ts'
 import { ProgressReporter, type ProgressReporterShape, type ProgressStage } from './progress.ts'
 import { NmdStateStoreLive, type NmdStateStore } from './state-store.ts'
 
-const stateStoreLayer = NmdStateStoreLive.pipe(Layer.provide(NodeContext.layer))
+const stateStoreLayer = NmdStateStoreLive.pipe(Layer.provide(NodeServices.layer))
 
 /** A captured progress event: the method that fired and the stage/note payload. */
 type ProgressEvent =
@@ -43,7 +43,7 @@ const runEdit = <A, E>(
   gateway: FakeGateway,
   progressLayer?: Layer.Layer<ProgressReporter>,
 ) => {
-  const base = Layer.mergeAll(gateway.layer, stateStoreLayer, NodeContext.layer)
+  const base = Layer.mergeAll(gateway.layer, stateStoreLayer, NodeServices.layer)
   const layer = progressLayer === undefined ? base : Layer.merge(base, progressLayer)
   return Effect.either(effect).pipe(
     Effect.provide(layer as Layer.Layer<NotionMdGateway | NmdStateStore | NodeContext.NodeContext>),

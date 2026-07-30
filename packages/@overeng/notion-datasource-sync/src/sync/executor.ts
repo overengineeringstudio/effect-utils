@@ -74,10 +74,10 @@ type RemoteWriteResult = {
 /** Canonical payload hashed to verify a relation property patch — the sorted target page ids under a stable tag. */
 const RelationVerificationPayload = Schema.TaggedStruct('relation', {
   pageIds: Schema.Array(Schema.String),
-}).annotations({ identifier: 'NotionDatasourceSync.RelationVerificationPayload' })
+}).annotate({ identifier: 'NotionDatasourceSync.RelationVerificationPayload' })
 
 const encodeRelationVerificationJson = Schema.encodeSync(
-  Schema.parseJson(RelationVerificationPayload),
+  Schema.fromJsonString(RelationVerificationPayload),
 )
 
 const relationPatchVerificationHash = (

@@ -10,7 +10,7 @@ import { DateValue } from './date.ts'
 /**
  * Formula result value.
  */
-export const FormulaValue = Schema.Union(
+export const FormulaValue = Schema.Union([
   Schema.Struct({
     type: Schema.Literal('string'),
     string: Schema.NullOr(Schema.String),
@@ -27,7 +27,7 @@ export const FormulaValue = Schema.Union(
     type: Schema.Literal('date'),
     date: Schema.NullOr(DateValue),
   }),
-).annotations({
+]).annotate({
   identifier: 'Notion.FormulaValue',
   title: 'Formula Value',
   description: 'The computed result of a formula.',
@@ -42,16 +42,16 @@ export type FormulaValue = typeof FormulaValue.Type
  * @see https://developers.notion.com/reference/property-value-object#formula
  */
 export const FormulaProperty = Schema.Struct({
-  id: Schema.String.annotations({
+  id: Schema.String.annotate({
     description: 'Property identifier.',
   }),
-  type: Schema.Literal('formula').annotations({
+  type: Schema.Literal('formula').annotate({
     description: 'Property type identifier.',
   }),
-  formula: FormulaValue.annotations({
+  formula: FormulaValue.annotate({
     description: 'The computed formula result.',
   }),
-}).annotations({
+}).annotate({
   identifier: 'Notion.FormulaProperty',
   title: 'Formula Property',
   description: 'A formula property value (read-only, computed).',
@@ -155,25 +155,25 @@ export const Formula = {
  * @see https://developers.notion.com/reference/property-value-object#unique-id
  */
 export const UniqueIdProperty = Schema.Struct({
-  id: Schema.String.annotations({
+  id: Schema.String.annotate({
     description: 'Property identifier.',
   }),
-  type: Schema.Literal('unique_id').annotations({
+  type: Schema.Literal('unique_id').annotate({
     description: 'Property type identifier.',
   }),
   unique_id: Schema.Struct({
-    prefix: Schema.NullOr(Schema.String).annotations({
+    prefix: Schema.NullOr(Schema.String).annotate({
       description: 'Optional text prefix for the ID.',
       examples: ['TASK', 'BUG'],
     }),
-    number: Schema.Number.annotations({
+    number: Schema.Number.annotate({
       description: 'Auto-incrementing number.',
       examples: [1, 42, 100],
     }),
-  }).annotations({
+  }).annotate({
     description: 'The unique ID value.',
   }),
-}).annotations({
+}).annotate({
   identifier: 'Notion.UniqueIdProperty',
   title: 'Unique ID Property',
   description: 'An auto-incrementing unique ID (read-only).',

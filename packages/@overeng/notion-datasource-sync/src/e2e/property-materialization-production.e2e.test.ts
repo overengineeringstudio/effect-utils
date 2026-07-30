@@ -22,7 +22,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { NodeContext } from '@effect/platform-node'
+import { NodeServices } from '@effect/platform-node'
 import { Chunk, Effect, Layer, Stream } from 'effect'
 import { afterEach, describe, expect, it } from 'vitest'
 
@@ -298,7 +298,7 @@ const observeAndMaterialize = async ({
         Effect.provideService(PageBodySyncPort, bodyPort()),
         Effect.provideService(LocalWorkspacePort, workspace),
       )
-    }).pipe(Effect.provide(NmdStateStoreLive.pipe(Layer.provide(NodeContext.layer)))),
+    }).pipe(Effect.provide(NmdStateStoreLive.pipe(Layer.provide(NodeServices.layer)))),
   )
 
   return { nmdPath: join(root, bodyPathForPageInSource()), events: result.events }
@@ -473,7 +473,7 @@ describe('SM5d property materialization (real pull → materialized .nmd frontma
         return yield* workspace
           .scan(root)
           .pipe(Stream.runCollect, Effect.map(Chunk.toReadonlyArray))
-      }).pipe(Effect.provide(NmdStateStoreLive.pipe(Layer.provide(NodeContext.layer)))),
+      }).pipe(Effect.provide(NmdStateStoreLive.pipe(Layer.provide(NodeServices.layer)))),
     )
 
     const observation = observations.find((o) => o.pageId === pageUuid)

@@ -12,21 +12,24 @@ import { GenieFile } from './schema.ts'
  *
  * @see {@link ./generation.ts#isTdzError} for TDZ detection logic
  */
-export class GenieImportError extends Schema.TaggedError<GenieImportError>()('GenieImportError', {
-  genieFilePath: Schema.String,
-  message: Schema.String,
-  /** The original error - preserved for TDZ detection and root cause analysis */
-  cause: Schema.Defect,
-}) {}
+export class GenieImportError extends Schema.TaggedErrorClass<GenieImportError>()(
+  'GenieImportError',
+  {
+    genieFilePath: Schema.String,
+    message: Schema.String,
+    /** The original error - preserved for TDZ detection and root cause analysis */
+    cause: Schema.Defect(),
+  },
+) {}
 
 /** Error when generated file content doesn't match (in check mode) */
-export class GenieCheckError extends Schema.TaggedError<GenieCheckError>()('GenieCheckError', {
+export class GenieCheckError extends Schema.TaggedErrorClass<GenieCheckError>()('GenieCheckError', {
   targetFilePath: Schema.String,
   message: Schema.String,
 }) {}
 
 /** Error when one or more files failed to generate */
-export class GenieGenerationFailedError extends Schema.TaggedError<GenieGenerationFailedError>()(
+export class GenieGenerationFailedError extends Schema.TaggedErrorClass<GenieGenerationFailedError>()(
   'GenieGenerationFailedError',
   {
     failedCount: Schema.Number,
@@ -47,15 +50,15 @@ export class GenieGenerationFailedError extends Schema.TaggedError<GenieGenerati
  *
  * @see {@link ./generation.ts#errorOriginatesInFile} for root cause attribution
  */
-export class GenieFileError extends Schema.TaggedError<GenieFileError>()('GenieFileError', {
+export class GenieFileError extends Schema.TaggedErrorClass<GenieFileError>()('GenieFileError', {
   targetFilePath: Schema.String,
   message: Schema.String,
   /** The original error - preserved for TDZ detection and root cause analysis */
-  cause: Schema.Defect,
+  cause: Schema.Defect(),
 }) {}
 
 /** Error when genie validation fails */
-export class GenieValidationError extends Schema.TaggedError<GenieValidationError>()(
+export class GenieValidationError extends Schema.TaggedErrorClass<GenieValidationError>()(
   'GenieValidationError',
   {
     message: Schema.String,
@@ -63,7 +66,7 @@ export class GenieValidationError extends Schema.TaggedError<GenieValidationErro
 ) {}
 
 /** Error when a feature is not yet implemented */
-export class GenieNotImplementedError extends Schema.TaggedError<GenieNotImplementedError>()(
+export class GenieNotImplementedError extends Schema.TaggedErrorClass<GenieNotImplementedError>()(
   'GenieNotImplementedError',
   {
     message: Schema.String,
@@ -71,7 +74,7 @@ export class GenieNotImplementedError extends Schema.TaggedError<GenieNotImpleme
 ) {}
 
 /** Error when oxfmt config JSON cannot be parsed */
-export class InvalidOxfmtConfigError extends Schema.TaggedError<InvalidOxfmtConfigError>()(
+export class InvalidOxfmtConfigError extends Schema.TaggedErrorClass<InvalidOxfmtConfigError>()(
   'InvalidOxfmtConfigError',
   {
     message: Schema.String,

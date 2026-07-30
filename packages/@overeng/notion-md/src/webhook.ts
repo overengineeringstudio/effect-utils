@@ -17,16 +17,16 @@ export const NotionWebhookPayload = NotionWebhookPayloadSchema
 export type NotionWebhookPayload = CanonicalNotionWebhookPayload
 
 const decodeWebhookJson = Schema.decodeUnknown(
-  Schema.parseJson(NotionWebhookPayload),
+  Schema.fromJsonString(NotionWebhookPayload),
   notionWebhookDecodeOptions,
 )
 
 /** Expected failure while decoding or normalizing a Notion webhook payload. */
-export class NmdWebhookPayloadError extends Schema.TaggedError<NmdWebhookPayloadError>()(
+export class NmdWebhookPayloadError extends Schema.TaggedErrorClass<NmdWebhookPayloadError>()(
   'NmdWebhookPayloadError',
   {
     message: Schema.String,
-    cause: Schema.optional(Schema.Defect),
+    cause: Schema.optional(Schema.Defect()),
   },
 ) {}
 

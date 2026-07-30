@@ -6,10 +6,10 @@ import { MegarepoConfig } from './config.ts'
 import { LockFile } from './lock.ts'
 
 const encodeJson = <A, I>(schema: Schema.Schema<A, I, never>, value: A): string =>
-  Schema.encodeSync(Schema.parseJson(schema, { space: 2 }))(value)
+  Schema.encodeSync(Schema.fromJsonString(schema, { space: 2 }))(value)
 
 const decodeJson = <A, I>(schema: Schema.Schema<A, I, never>, encoded: string): A =>
-  Schema.decodeUnknownSync(Schema.parseJson(schema))(encoded)
+  Schema.decodeUnknownSync(Schema.fromJsonString(schema))(encoded)
 
 const roundTrip = <A, I>(schema: Schema.Schema<A, I, never>, value: A) => {
   const encoded = encodeJson(schema, value)

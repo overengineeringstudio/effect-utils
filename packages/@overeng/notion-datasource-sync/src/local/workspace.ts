@@ -293,10 +293,10 @@ const observedAtNow = () => decode({ schema: Schema.DateTimeUtc, value: new Date
 const FilesystemPathClaim = Schema.Struct({
   pageId: PageId,
   path: WorkspaceRelativePath,
-}).annotations({ identifier: 'NotionDatasourceSync.FilesystemPathClaim' })
+}).annotate({ identifier: 'NotionDatasourceSync.FilesystemPathClaim' })
 type FilesystemPathClaim = typeof FilesystemPathClaim.Type
 
-const FilesystemPathClaims = Schema.Array(FilesystemPathClaim).annotations({
+const FilesystemPathClaims = Schema.Array(FilesystemPathClaim).annotate({
   identifier: 'NotionDatasourceSync.FilesystemPathClaims',
 })
 

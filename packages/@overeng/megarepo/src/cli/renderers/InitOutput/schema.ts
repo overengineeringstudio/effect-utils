@@ -38,7 +38,7 @@ export const InitErrorState = Schema.TaggedStruct('Error', {
 /**
  * State for init command.
  */
-export const InitState = Schema.Union(InitSuccessState, InitAlreadyState, InitErrorState)
+export const InitState = Schema.Union([InitSuccessState, InitAlreadyState, InitErrorState])
 
 /** Inferred type for the init command state (success, already initialized, or error). */
 export type InitState = Schema.Schema.Type<typeof InitState>
@@ -64,11 +64,11 @@ export const isInitAlready = (state: InitState): state is typeof InitAlreadyStat
 // =============================================================================
 
 /** Tagged union of actions for the init command. */
-export const InitAction = Schema.Union(
+export const InitAction = Schema.Union([
   Schema.TaggedStruct('SetInitialized', { path: Schema.String }),
   Schema.TaggedStruct('SetAlreadyInitialized', { path: Schema.String }),
   Schema.TaggedStruct('SetError', { error: Schema.String, message: Schema.String }),
-)
+])
 
 /** Inferred type for init actions. */
 export type InitAction = Schema.Schema.Type<typeof InitAction>

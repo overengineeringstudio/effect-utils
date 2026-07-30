@@ -231,7 +231,7 @@ const defaultComposedSource: ComposedSourceBehavior = (cursor) => ({
  * instance (`e.retryAfterMillis`) — exactly the Notion 429 shape (decision 0011).
  * The loop reads this projection (via `classifyOutcome`) to set the re-arm delay.
  */
-export class RateLimited extends Schema.TaggedError<RateLimited>()('RateLimited', {
+export class RateLimited extends Schema.TaggedErrorClass<RateLimited>()('RateLimited', {
   retryAfterMillis: Schema.Number,
 }) {}
 const RateLimitedRetryable = Restate.retryable({
@@ -240,14 +240,14 @@ const RateLimitedRetryable = Restate.retryable({
 })
 
 /** A terminal source failure: NON-retryable, governed by the `onCycleError` policy. */
-export class SourceFailed extends Schema.TaggedError<SourceFailed>()('SourceFailed', {
+export class SourceFailed extends Schema.TaggedErrorClass<SourceFailed>()('SourceFailed', {
   message: Schema.String,
 }) {}
 const SourceFailedTerminal = Restate.terminal({ self: SourceFailed })
 
 /** The cycle's declared error UNION (a retryable + a terminal member), classified
  * per-member at the loop boundary. */
-export const ComposedError = Schema.Union(RateLimitedRetryable, SourceFailedTerminal)
+export const ComposedError = Schema.Union([RateLimitedRetryable, SourceFailedTerminal])
 /** The DECODED cycle-error type — the `CycleE` the typed cycle's `E` channel carries. */
 export type ComposedError = Schema.Schema.Type<typeof ComposedError>
 

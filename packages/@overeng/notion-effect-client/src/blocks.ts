@@ -1,5 +1,5 @@
-import type { HttpClient } from '@effect/platform'
 import { Chunk, Effect, Option, Schema, Stream } from 'effect'
+import type { HttpClient } from 'effect/unstable/http'
 
 import { type Block, BlockSchema, type BlockType } from '@overeng/notion-effect-schema'
 

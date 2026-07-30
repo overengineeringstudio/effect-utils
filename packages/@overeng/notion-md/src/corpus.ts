@@ -18,13 +18,13 @@ import { fidelityCorpusData } from './corpus/fidelity-corpus.ts'
  */
 
 /** R33 relation an entry asserts against its own round-trip or a sibling. */
-export const CorpusRelation = Schema.Literal('equal', 'distinct_from').annotations({
+export const CorpusRelation = Schema.Literals(['equal', 'distinct_from']).annotate({
   identifier: 'NotionMd.Corpus.Relation',
 })
 
 /** One historically-broken Notion body shape and the relation it must hold. */
 export const CorpusEntry = Schema.Struct({
-  id: Schema.NonEmptyTrimmedString,
+  id: Schema.Trimmed.check(Schema.isNonEmpty()),
   issue: Schema.String,
   description: Schema.String,
   /** What a user authors locally. */
@@ -34,7 +34,7 @@ export const CorpusEntry = Schema.Struct({
   relation: CorpusRelation,
   /** For `distinct_from`, the sibling entry id whose canonical form must differ. */
   distinct_from: Schema.optional(Schema.String),
-}).annotations({ identifier: 'NotionMd.Corpus.Entry' })
+}).annotate({ identifier: 'NotionMd.Corpus.Entry' })
 
 export type CorpusEntry = typeof CorpusEntry.Type
 
@@ -42,7 +42,7 @@ export type CorpusEntry = typeof CorpusEntry.Type
 export const Corpus = Schema.Struct({
   captured: Schema.String,
   entries: Schema.Array(CorpusEntry),
-}).annotations({ identifier: 'NotionMd.Corpus' })
+}).annotate({ identifier: 'NotionMd.Corpus' })
 
 export type Corpus = typeof Corpus.Type
 

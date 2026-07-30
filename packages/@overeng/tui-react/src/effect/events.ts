@@ -21,7 +21,7 @@
  * ```
  */
 
-import { Schema } from 'effect'
+import { Effect, Schema } from 'effect'
 
 // =============================================================================
 // Key Event
@@ -73,25 +73,37 @@ export const KeyEvent = Schema.TaggedStruct('Event.Key', {
    * Whether the Ctrl key was held.
    * @default false
    */
-  ctrl: Schema.optionalWith(Schema.Boolean, { default: () => false }),
+  ctrl: Schema.Boolean.pipe(
+    Schema.withDecodingDefaultType(Effect.sync(() => false)),
+    Schema.withConstructorDefault(Effect.sync(() => false)),
+  ),
 
   /**
    * Whether the Alt/Option key was held.
    * @default false
    */
-  alt: Schema.optionalWith(Schema.Boolean, { default: () => false }),
+  alt: Schema.Boolean.pipe(
+    Schema.withDecodingDefaultType(Effect.sync(() => false)),
+    Schema.withConstructorDefault(Effect.sync(() => false)),
+  ),
 
   /**
    * Whether the Shift key was held.
    * @default false
    */
-  shift: Schema.optionalWith(Schema.Boolean, { default: () => false }),
+  shift: Schema.Boolean.pipe(
+    Schema.withDecodingDefaultType(Effect.sync(() => false)),
+    Schema.withConstructorDefault(Effect.sync(() => false)),
+  ),
 
   /**
    * Whether the Meta/Command key was held (macOS).
    * @default false
    */
-  meta: Schema.optionalWith(Schema.Boolean, { default: () => false }),
+  meta: Schema.Boolean.pipe(
+    Schema.withDecodingDefaultType(Effect.sync(() => false)),
+    Schema.withConstructorDefault(Effect.sync(() => false)),
+  ),
 })
 
 /**
@@ -102,7 +114,7 @@ export type KeyEvent = Schema.Schema.Type<typeof KeyEvent>
 /**
  * Encoded type for KeyEvent (for JSON)
  */
-export type KeyEventEncoded = Schema.Schema.Encoded<typeof KeyEvent>
+export type KeyEventEncoded = Schema.Codec.Encoded<typeof KeyEvent>
 
 // =============================================================================
 // Resize Event
@@ -142,7 +154,7 @@ export type ResizeEvent = Schema.Schema.Type<typeof ResizeEvent>
 /**
  * Encoded type for ResizeEvent (for JSON)
  */
-export type ResizeEventEncoded = Schema.Schema.Encoded<typeof ResizeEvent>
+export type ResizeEventEncoded = Schema.Codec.Encoded<typeof ResizeEvent>
 
 // =============================================================================
 // Focus Event
@@ -175,7 +187,7 @@ export type FocusEvent = Schema.Schema.Type<typeof FocusEvent>
 /**
  * Encoded type for FocusEvent (for JSON)
  */
-export type FocusEventEncoded = Schema.Schema.Encoded<typeof FocusEvent>
+export type FocusEventEncoded = Schema.Codec.Encoded<typeof FocusEvent>
 
 // =============================================================================
 // Mouse Event (for future use)
@@ -184,7 +196,7 @@ export type FocusEventEncoded = Schema.Schema.Encoded<typeof FocusEvent>
 /**
  * Mouse button identifier
  */
-export const MouseButton = Schema.Literal('left', 'middle', 'right', 'wheelUp', 'wheelDown')
+export const MouseButton = Schema.Literals(['left', 'middle', 'right', 'wheelUp', 'wheelDown'])
 
 /**
  * Type for MouseButton
@@ -212,7 +224,7 @@ export const MouseEvent = Schema.TaggedStruct('Event.Mouse', {
   /**
    * The type of mouse action
    */
-  action: Schema.Literal('press', 'release', 'move'),
+  action: Schema.Literals(['press', 'release', 'move']),
 
   /**
    * The button involved (if any)
@@ -232,17 +244,26 @@ export const MouseEvent = Schema.TaggedStruct('Event.Mouse', {
   /**
    * Whether Ctrl was held
    */
-  ctrl: Schema.optionalWith(Schema.Boolean, { default: () => false }),
+  ctrl: Schema.Boolean.pipe(
+    Schema.withDecodingDefaultType(Effect.sync(() => false)),
+    Schema.withConstructorDefault(Effect.sync(() => false)),
+  ),
 
   /**
    * Whether Alt was held
    */
-  alt: Schema.optionalWith(Schema.Boolean, { default: () => false }),
+  alt: Schema.Boolean.pipe(
+    Schema.withDecodingDefaultType(Effect.sync(() => false)),
+    Schema.withConstructorDefault(Effect.sync(() => false)),
+  ),
 
   /**
    * Whether Shift was held
    */
-  shift: Schema.optionalWith(Schema.Boolean, { default: () => false }),
+  shift: Schema.Boolean.pipe(
+    Schema.withDecodingDefaultType(Effect.sync(() => false)),
+    Schema.withConstructorDefault(Effect.sync(() => false)),
+  ),
 })
 
 /**
@@ -253,7 +274,7 @@ export type MouseEvent = Schema.Schema.Type<typeof MouseEvent>
 /**
  * Encoded type for MouseEvent (for JSON)
  */
-export type MouseEventEncoded = Schema.Schema.Encoded<typeof MouseEvent>
+export type MouseEventEncoded = Schema.Codec.Encoded<typeof MouseEvent>
 
 // =============================================================================
 // Input Event Union
@@ -281,7 +302,7 @@ export type MouseEventEncoded = Schema.Schema.Encoded<typeof MouseEvent>
  *   )
  * ```
  */
-export const InputEvent = Schema.Union(KeyEvent, ResizeEvent, FocusEvent, MouseEvent)
+export const InputEvent = Schema.Union([KeyEvent, ResizeEvent, FocusEvent, MouseEvent])
 
 /**
  * Type for InputEvent
@@ -291,7 +312,7 @@ export type InputEvent = Schema.Schema.Type<typeof InputEvent>
 /**
  * Encoded type for InputEvent (for JSON)
  */
-export type InputEventEncoded = Schema.Schema.Encoded<typeof InputEvent>
+export type InputEventEncoded = Schema.Codec.Encoded<typeof InputEvent>
 
 // =============================================================================
 // Helper Functions

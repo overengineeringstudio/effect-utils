@@ -748,10 +748,10 @@ export interface BoundIngress {
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 /** The harness service tag. The `layer` factory below is the only constructor. */
-export class RestateTestHarness extends Context.Tag('@overeng/restate-effect/RestateTestHarness')<
+export class RestateTestHarness extends Context.Service<
   RestateTestHarness,
   RestateTestHarnessService
->() {
+>()('@overeng/restate-effect/RestateTestHarness') {
   /**
    * A scoped `Layer` that, on ACQUIRE: allocates an isolated temp base dir +
    * EPHEMERAL ports for every listener (server ingress / admin / node-to-node AND

@@ -28,7 +28,7 @@ const FileUploadResponseSchema = Schema.Struct({
 })
 
 /** Request body for creating a single-part file upload. */
-const CreateFileUploadRequestJson = Schema.parseJson(
+const CreateFileUploadRequestJson = Schema.fromJsonString(
   Schema.Struct({
     mode: Schema.Literal('single_part'),
     filename: Schema.String,

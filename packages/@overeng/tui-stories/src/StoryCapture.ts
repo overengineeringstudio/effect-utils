@@ -8,7 +8,7 @@
  * TuiStoryPreview element props before it mounts.
  */
 
-import type { Atom } from '@effect-atom/atom'
+import type { Atom } from 'effect/unstable/reactivity'
 import type { Schema } from 'effect'
 import React, { type ReactElement, type ComponentType } from 'react'
 

@@ -22,7 +22,7 @@ import {
  *
  * @example
  * ```ts
- * Schema.Struct({ ... }).annotations({
+ * Schema.Struct({ ... }).annotate({
  *   [docsPath]: 'property-value-object#title',
  * })
  * ```
@@ -54,7 +54,7 @@ export const resolveDocsUrl = (path: string): string => `${NOTION_DOCS_BASE}/${p
  *
  * @see https://developers.notion.com/reference/intro#conventions
  */
-export const NotionUUID = Schema.String.annotations({
+export const NotionUUID = Schema.String.annotate({
   identifier: 'Notion.UUID',
   title: 'Notion UUID',
   description: 'A unique identifier in UUID format used throughout the Notion API.',
@@ -87,7 +87,7 @@ export const notionObjectUrl = (id: string): string => notionObjectUrlCore(id)
  *
  * @see https://developers.notion.com/reference/intro#conventions
  */
-export const ISO8601DateTime = Schema.String.annotations({
+export const ISO8601DateTime = Schema.String.annotate({
   identifier: 'Notion.ISO8601DateTime',
   title: 'ISO 8601 DateTime',
   description: 'A timestamp in ISO 8601 format.',
@@ -102,7 +102,7 @@ export type ISO8601DateTime = typeof ISO8601DateTime.Type
  *
  * @see https://developers.notion.com/reference/rich-text#the-annotation-object
  */
-export const NotionColor = Schema.Literal(...NOTION_COLORS).annotations({
+export const NotionColor = Schema.Literal(...NOTION_COLORS).annotate({
   identifier: 'Notion.Color',
   title: 'Notion Color',
   description: 'Color values used for text annotations and backgrounds.',
@@ -116,7 +116,7 @@ export type NotionColor = typeof NotionColor.Type
  *
  * @see https://developers.notion.com/reference/property-value-object#select
  */
-export const SelectColor = Schema.Literal(...SELECT_COLORS).annotations({
+export const SelectColor = Schema.Literal(...SELECT_COLORS).annotate({
   identifier: 'Notion.SelectColor',
   title: 'Select Color',
   description: 'Color values used for select and multi-select options.',
@@ -132,7 +132,7 @@ export type SelectColor = typeof SelectColor.Type
  *
  * @see https://developers.notion.com/reference/icon-object
  */
-export const NoticonColor = Schema.Literal(...NOTICON_COLORS).annotations({
+export const NoticonColor = Schema.Literal(...NOTICON_COLORS).annotate({
   identifier: 'Notion.NoticonColor',
   title: 'Noticon Color',
   description: 'Color values used for native Notion icons (noticons).',
@@ -147,7 +147,7 @@ export type NoticonColor = typeof NoticonColor.Type
  * Can be used in date filters where absolute dates are accepted,
  * e.g. `{ property: "Due Date", date: { on_or_after: "today" } }`.
  */
-export const RelativeDate = Schema.Literal(
+export const RelativeDate = Schema.Literals([
   'today',
   'tomorrow',
   'yesterday',
@@ -155,7 +155,7 @@ export const RelativeDate = Schema.Literal(
   'one_week_from_now',
   'one_month_ago',
   'one_month_from_now',
-).annotations({
+]).annotate({
   identifier: 'Notion.RelativeDate',
   title: 'Relative Date',
   description: 'Relative date values for database query filters.',
@@ -198,9 +198,8 @@ export const shouldNeverHappen = (msg?: string, ...args: unknown[]): never => {
 const getOptionValueSchema = <TValue, TInput, TContext>(
   schema: Schema.Schema<Option.Option<TValue>, TInput, TContext>,
 ): Schema.Schema<TValue, TValue, never> => {
-  const annotated = SchemaAST.getAnnotation<Schema.Schema<TValue, TValue, never>>(
+  const annotated = SchemaAST.resolveAt<Schema.Schema<TValue, TValue, never>>(optionValueSchema)(
     schema.ast,
-    optionValueSchema,
   )
 
   if (Option.isSome(annotated) === true) {
@@ -215,9 +214,8 @@ const getOptionValueSchema = <TValue, TInput, TContext>(
 const getOptionNameSchema = <TName extends string, TValue, TInput, TContext>(
   schema: Schema.Schema<TValue, TInput, TContext>,
 ): Schema.Schema<TName, TName, never> => {
-  const annotated = SchemaAST.getAnnotation<Schema.Schema<TName, TName, never>>(
+  const annotated = SchemaAST.resolveAt<Schema.Schema<TName, TName, never>>(optionNameSchema)(
     schema.ast,
-    optionNameSchema,
   )
 
   if (Option.isSome(annotated) === true) {
@@ -234,14 +232,14 @@ export const withOptionValueSchema = <TValue, TInput, TContext>(options: {
   schema: Schema.Schema<Option.Option<TValue>, TInput, TContext>
   valueSchema: Schema.Schema<TValue, TValue, never>
 }): Schema.Schema<Option.Option<TValue>, TInput, TContext> =>
-  options.schema.annotations({ [optionValueSchema]: options.valueSchema })
+  options.schema.annotate({ [optionValueSchema]: options.valueSchema })
 
 /** Annotates a schema with the name schema for select/status option extraction */
 export const withOptionNameSchema = <TValue, TInput, TContext, TName extends string>(options: {
   schema: Schema.Schema<TValue, TInput, TContext>
   nameSchema: Schema.Schema<TName, TName, never>
 }): Schema.Schema<TValue, TInput, TContext> =>
-  options.schema.annotations({ [optionNameSchema]: options.nameSchema })
+  options.schema.annotate({ [optionNameSchema]: options.nameSchema })
 
 /**
  * Convert select/status `Option<SelectOption>` values to `Option<name>`.

@@ -165,7 +165,7 @@ export type WatchDaemonOptions = {
 }
 
 /** Tagged error raised when an `AbortSignal` fires mid-cycle, allowing the daemon loop to exit cleanly. */
-export class WatchDaemonCancelled extends Schema.TaggedError<WatchDaemonCancelled>()(
+export class WatchDaemonCancelled extends Schema.TaggedErrorClass<WatchDaemonCancelled>()(
   'WatchDaemonCancelled',
   {
     rootId: Schema.String,
@@ -175,7 +175,7 @@ export class WatchDaemonCancelled extends Schema.TaggedError<WatchDaemonCancelle
 ) {}
 
 /** Tagged error raised when a daemon cycle exceeds its configured wall-clock budget. */
-export class WatchDaemonCycleTimedOut extends Schema.TaggedError<WatchDaemonCycleTimedOut>()(
+export class WatchDaemonCycleTimedOut extends Schema.TaggedErrorClass<WatchDaemonCycleTimedOut>()(
   'WatchDaemonCycleTimedOut',
   {
     rootId: Schema.String,
@@ -192,20 +192,22 @@ const WatchDaemonStateSchema = Schema.Struct({
   lastCompleteCycle: Schema.Number,
   lastStartedAt: Schema.optional(Schema.String),
   lastCompletedAt: Schema.optional(Schema.String),
-  repair: Schema.Union(
+  repair: Schema.Union([
     Schema.TaggedStruct('none', {}),
     Schema.TaggedStruct('retry', {
       reason: Schema.String,
       retryAfterMillis: Schema.Number,
       failedCycle: Schema.Number,
     }),
-  ),
+  ]),
   lastStatus: Schema.optional(Schema.Unknown),
-}).annotations({ identifier: 'NotionDatasourceSync.WatchDaemonState' })
+}).annotate({ identifier: 'NotionDatasourceSync.WatchDaemonState' })
 
 const decodeState = Schema.decodeUnknownSync(WatchDaemonStateSchema)
-const decodeStateJson = Schema.decodeUnknownSync(Schema.parseJson(WatchDaemonStateSchema))
-const encodeStateJson = Schema.encodeSync(Schema.parseJson(WatchDaemonStateSchema, { space: 2 }))
+const decodeStateJson = Schema.decodeUnknownSync(Schema.fromJsonString(WatchDaemonStateSchema))
+const encodeStateJson = Schema.encodeSync(
+  Schema.fromJsonString(WatchDaemonStateSchema, { space: 2 }),
+)
 
 const modeBackoffMillis = (mode: WatchDaemonMode): number => {
   switch (mode) {

@@ -9,8 +9,9 @@
  * not.
  */
 
-import { Command, FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import { ChildProcess as Command } from 'effect/unstable/process'
+import { FileSystem } from 'effect/FileSystem'
+import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Effect } from 'effect'
 import { expect } from 'vitest'
@@ -109,7 +110,7 @@ describe('store-lossless', () => {
         })
         expect(count).toBe(0)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -151,7 +152,7 @@ describe('store-lossless', () => {
         })
         expect(assessment.unpushed).toBe(1)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -179,7 +180,7 @@ describe('store-lossless', () => {
         // Still reachable via refs/remotes/origin/main ⇒ recoverable ⇒ 0.
         expect(count).toBe(0)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -212,7 +213,7 @@ describe('store-lossless', () => {
         // No remote-tracking refs ⇒ everything reads as unpushed ⇒ keep.
         expect(count).toBeGreaterThan(0)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -236,7 +237,7 @@ describe('store-lossless', () => {
 
         expect(yield* hasStash({ bareRepoPath: bare })).toBe(true)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -270,7 +271,7 @@ describe('store-lossless', () => {
 
         expect(assessment).toEqual({ unpushed: 0, dirty: true, hasStash: true })
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )

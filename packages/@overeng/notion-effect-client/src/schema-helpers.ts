@@ -22,7 +22,7 @@ import {
 type SchemaSource = DatabaseSchema | DataSourceSchema
 
 /** Error thrown when database schema doesn't match expected property types */
-export class SchemaMismatchError extends Schema.TaggedError<SchemaMismatchError>()(
+export class SchemaMismatchError extends Schema.TaggedErrorClass<SchemaMismatchError>()(
   'SchemaMismatchError',
   {
     databaseId: Schema.String,
@@ -38,7 +38,7 @@ export class SchemaMismatchError extends Schema.TaggedError<SchemaMismatchError>
 ) {}
 
 /** Error thrown when schema fields lack required Notion property metadata annotations */
-export class SchemaMetaMissingError extends Schema.TaggedError<SchemaMetaMissingError>()(
+export class SchemaMetaMissingError extends Schema.TaggedErrorClass<SchemaMetaMissingError>()(
   'SchemaMetaMissingError',
   {
     message: Schema.String,
@@ -193,7 +193,7 @@ export const getRequiredPropertiesFromSchema = Effect.fn(
       continue
     }
 
-    const annotation = SchemaAST.getAnnotation<NotionPropertyMeta>(prop.type, notionPropertyMeta)
+    const annotation = SchemaAST.resolveAt<NotionPropertyMeta>(notionPropertyMeta)(prop.type)
     if (Option.isSome(annotation) === true) {
       required.push({ name: prop.name, tag: annotation.value._tag })
     } else {

@@ -1,9 +1,10 @@
 import path from 'node:path'
 
-import { type Error as PlatformError, FileSystem } from '@effect/platform'
-import type * as CommandExecutor from '@effect/platform/CommandExecutor'
-import type { Path } from '@effect/platform/Path'
+import type { Error as PlatformError } from 'effect'
+import * as FileSystem from 'effect/FileSystem'
 import { Effect, Option, PubSub } from 'effect'
+import type { Path } from 'effect/Path'
+import type { ChildProcessSpawner } from 'effect/unstable/process'
 
 import {
   type GenieGenerateResult,
@@ -99,7 +100,7 @@ export const generate = ({
 }: GenieGenerateOptions): Effect.Effect<
   GenieGenerateResult,
   GenieGenerationFailedError | PlatformError.PlatformError,
-  FileSystem.FileSystem | Path | CommandExecutor.CommandExecutor
+  FileSystem.FileSystem | Path | ChildProcessSpawner.ChildProcessSpawner
 > => {
   const core = Effect.gen(function* () {
     const cwd = yield* resolveCwd(inputCwd)
@@ -127,7 +128,7 @@ export const check = ({
 }: GenieCheckOptions): Effect.Effect<
   void,
   GenieGenerationFailedError | PlatformError.PlatformError,
-  FileSystem.FileSystem | Path | CommandExecutor.CommandExecutor
+  FileSystem.FileSystem | Path | ChildProcessSpawner.ChildProcessSpawner
 > => {
   const core = Effect.gen(function* () {
     const cwd = yield* resolveCwd(inputCwd)

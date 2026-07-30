@@ -14,30 +14,13 @@ const workspaceDeps = catalog.compose({
   }),
   dependencies: {
     external: {
-      ...catalog.pick(
-        '@effect/platform',
-        '@effect/rpc',
-        '@tanstack/react-router',
-        '@tanstack/react-start',
-        'effect',
-        'react',
-        'react-dom',
-      ),
+      ...catalog.pick('effect', '@tanstack/react-router', '@tanstack/react-start', 'react', 'react-dom'),
     },
   },
   devDependencies: {
     workspace: [utilsPkg],
     external: {
-      ...catalog.pick(
-        '@playwright/test',
-        '@tanstack/router-plugin',
-        '@types/node',
-        '@types/react',
-        '@types/react-dom',
-        '@vitejs/plugin-react',
-        'typescript',
-        'vite',
-      ),
+      ...catalog.pick('@playwright/test', '@tanstack/router-plugin', '@types/node', '@types/react', '@types/react-dom', '@vitejs/plugin-react', 'typescript', 'vite'),
     },
   },
 })

@@ -459,7 +459,7 @@ Vitest.describe('Select Property', () => {
   })
 
   Vitest.describe('NotionSchema.select(...).pipe(NotionSchema.asName)', () => {
-    const Allowed = Schema.Literal('High', 'Low')
+    const Allowed = Schema.Literals(['High', 'Low'])
 
     Vitest.it.effect('returns Some with allowed name', () =>
       Effect.gen(function* () {
@@ -571,7 +571,7 @@ Vitest.describe('MultiSelect Property', () => {
   })
 
   Vitest.describe('NotionSchema.multiSelect(...).pipe(NotionSchema.asNames)', () => {
-    const Allowed = Schema.Literal('Tag1', 'Tag2')
+    const Allowed = Schema.Literals(['Tag1', 'Tag2'])
 
     Vitest.it.effect('decodes to array of allowed names', () =>
       Effect.gen(function* () {
@@ -669,7 +669,7 @@ Vitest.describe('Status Property', () => {
   })
 
   Vitest.describe('NotionSchema.status(...).pipe(NotionSchema.asName)', () => {
-    const Allowed = Schema.Literal('In Progress', 'Blocked')
+    const Allowed = Schema.Literals(['In Progress', 'Blocked'])
 
     Vitest.it.effect('returns Some with allowed status name', () =>
       Effect.gen(function* () {

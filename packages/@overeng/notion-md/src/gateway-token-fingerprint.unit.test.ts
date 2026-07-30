@@ -1,5 +1,5 @@
-import { HttpClient, HttpClientResponse } from '@effect/platform'
 import { Effect, Exit, Layer, Redacted } from 'effect'
+import { HttpClient, HttpClientResponse } from 'effect/unstable/http'
 import { describe, expect, it } from 'vitest'
 
 import { NotionConfig, notionTokenFingerprint } from '@overeng/notion-effect-client'

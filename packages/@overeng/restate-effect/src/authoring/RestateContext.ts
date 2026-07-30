@@ -18,10 +18,9 @@ import { internalSerde } from '../schema/Serde.ts'
  * long-lived application `Layer`. Durable combinators carry `RestateContext`
  * in their `R` and reach the raw SDK context via `yield* RestateContext`.
  */
-export class RestateContext extends Context.Tag('@overeng/restate-effect/RestateContext')<
-  RestateContext,
-  restate.Context
->() {}
+export class RestateContext extends Context.Service<RestateContext, restate.Context>()(
+  '@overeng/restate-effect/RestateContext',
+) {}
 
 /* ── capability markers (flat, independent — see decision 0002) ──────────── */
 /*
@@ -40,28 +39,27 @@ export class RestateContext extends Context.Tag('@overeng/restate-effect/Restate
 type CapabilityMarker<Brand_ extends string> = { readonly [K in Brand_]: never }
 
 /** Permits `State.get` / `State.stateKeys`. Provided to object/workflow handlers. */
-export class StateRead extends Context.Tag('@overeng/restate-effect/StateRead')<
+export class StateRead extends Context.Service<
   StateRead,
   CapabilityMarker<'requires a State-readable (object/workflow) handler'>
->() {}
+>()('@overeng/restate-effect/StateRead') {}
 
 /** Permits `State.set` / `State.clear` / `State.clearAll`. Exclusive object / workflow `run` only. */
-export class StateWrite extends Context.Tag('@overeng/restate-effect/StateWrite')<
+export class StateWrite extends Context.Service<
   StateWrite,
   CapabilityMarker<'requires a write-enabled (exclusive object / workflow run) handler'>
->() {}
+>()('@overeng/restate-effect/StateWrite') {}
 
 /** Permits `DurablePromise.*`. Workflow handlers only. */
-export class DurablePromise extends Context.Tag('@overeng/restate-effect/DurablePromise')<
+export class DurablePromise extends Context.Service<
   DurablePromise,
   CapabilityMarker<'requires a Workflow handler (durable promises)'>
->() {}
+>()('@overeng/restate-effect/DurablePromise') {}
 
 /** Permits the `ctx.key` accessor. Object / workflow handlers (all keyed). */
-export class ObjectKey extends Context.Tag('@overeng/restate-effect/ObjectKey')<
-  ObjectKey,
-  { readonly key: string }
->() {}
+export class ObjectKey extends Context.Service<ObjectKey, { readonly key: string }>()(
+  '@overeng/restate-effect/ObjectKey',
+) {}
 
 /**
  * The full set of durable capabilities `Restate.run` scrubs from its inner
@@ -95,7 +93,7 @@ export type StateValueType<F> =
  * `PropertySignature` AST (`.type` is the `value | undefined` union) with the
  * `undefined` member STRIPPED — a SET value is always the present `T` (the
  * "unset → undefined" case never reaches the serde, the State combinator returns
- * `undefined` directly), and keeping `undefined` would break `JSONSchema.make`.
+ * `undefined` directly), and keeping `undefined` would break `JsonSchema.make`.
  */
 export const normalizeStateSchema = (
   field: Schema.Schema<any, any> | Schema.PropertySignature.All,

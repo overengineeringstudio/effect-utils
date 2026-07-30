@@ -14,8 +14,8 @@
 import * as path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-import { FileSystem } from '@effect/platform'
-import { Effect, Option } from 'effect'
+import * as FileSystem from 'effect/FileSystem'
+import { Effect, Option, Result } from 'effect'
 
 import * as Observability from '../observability.ts'
 import {
@@ -84,12 +84,9 @@ export const findPackageJsonWithImports = Effect.fn('findPackageJsonWithImports'
       .exists(packageJsonPath)
       .pipe(Effect.orElseSucceed(() => false))
     if (pkgExists === true) {
-      const contentResult = yield* effectFs.readFileString(packageJsonPath).pipe(
-        Effect.either,
-        Effect.orElseSucceed(() => ({ _tag: 'Left' as const, left: null })),
-      )
-      if (contentResult._tag === 'Right') {
-        const importMap = parseImportMapFromPackageJsonContent(contentResult.right)
+      const contentResult = yield* effectFs.readFileString(packageJsonPath).pipe(Effect.result)
+      if (Result.isSuccess(contentResult) === true) {
+        const importMap = parseImportMapFromPackageJsonContent(contentResult.success)
         if (Object.keys(importMap).length > 0) {
           return Option.some(packageJsonPath)
         }
@@ -102,12 +99,9 @@ export const findPackageJsonWithImports = Effect.fn('findPackageJsonWithImports'
       .exists(genieSourcePath)
       .pipe(Effect.orElseSucceed(() => false))
     if (genieExists === true) {
-      const sourceResult = yield* effectFs.readFileString(genieSourcePath).pipe(
-        Effect.either,
-        Effect.orElseSucceed(() => ({ _tag: 'Left' as const, left: null })),
-      )
-      if (sourceResult._tag === 'Right') {
-        const importMap = parseImportMapFromGenieSource(sourceResult.right)
+      const sourceResult = yield* effectFs.readFileString(genieSourcePath).pipe(Effect.result)
+      if (Result.isSuccess(sourceResult) === true) {
+        const importMap = parseImportMapFromGenieSource(sourceResult.success)
         if (Object.keys(importMap).length > 0) {
           return Option.some(packageJsonPath)
         }
@@ -135,12 +129,9 @@ export const extractImportMap = Effect.fn('extractImportMap')(function* (package
   // First try the generated package.json
   const pkgExists = yield* effectFs.exists(packageJsonPath).pipe(Effect.orElseSucceed(() => false))
   if (pkgExists === true) {
-    const contentResult = yield* effectFs.readFileString(packageJsonPath).pipe(
-      Effect.either,
-      Effect.orElseSucceed(() => ({ _tag: 'Left' as const, left: null })),
-    )
-    if (contentResult._tag === 'Right') {
-      const importMap = parseImportMapFromPackageJsonContent(contentResult.right)
+    const contentResult = yield* effectFs.readFileString(packageJsonPath).pipe(Effect.result)
+    if (Result.isSuccess(contentResult) === true) {
+      const importMap = parseImportMapFromPackageJsonContent(contentResult.success)
       if (Object.keys(importMap).length > 0) {
         return importMap
       }
@@ -154,12 +145,9 @@ export const extractImportMap = Effect.fn('extractImportMap')(function* (package
     .exists(genieSourcePath)
     .pipe(Effect.orElseSucceed(() => false))
   if (genieExists === true) {
-    const sourceResult = yield* effectFs.readFileString(genieSourcePath).pipe(
-      Effect.either,
-      Effect.orElseSucceed(() => ({ _tag: 'Left' as const, left: null })),
-    )
-    if (sourceResult._tag === 'Right') {
-      const importMap = parseImportMapFromGenieSource(sourceResult.right)
+    const sourceResult = yield* effectFs.readFileString(genieSourcePath).pipe(Effect.result)
+    if (Result.isSuccess(sourceResult) === true) {
+      const importMap = parseImportMapFromGenieSource(sourceResult.success)
       if (Object.keys(importMap).length > 0) {
         return importMap
       }

@@ -6,12 +6,12 @@
  *
  * @example
  * ```typescript
- * import { Command, Options } from "@effect/cli"
+ * import { Command, Flag as Options } from "effect/unstable/cli"
  * import { Effect } from "effect"
  * import { outputOption, outputModeLayer } from "@overeng/tui-react"
  *
  * const myCommand = Command.make("my-cmd", {
- *   name: Options.text("name"),
+ *   name: Options.string("name"),
  *   output: outputOption,
  * }, ({ name, output }) =>
  *   myProgram(name).pipe(
@@ -23,8 +23,8 @@
  * @module
  */
 
-import { Options } from '@effect/cli'
 import { Cause, Effect, Exit, Layer, Logger, Option } from 'effect'
+import { Flag as Options } from 'effect/unstable/cli'
 
 import { createLogCapture } from './LogCapture.ts'
 import { detectOutputMode, viewOutputStreamStdoutLayer } from './OutputMode.node.ts'
@@ -121,10 +121,9 @@ const modeMap: Record<Exclude<OutputModeValue, 'auto'>, OutputMode> = {
  * This is used in JSON modes to ensure all log output goes to stderr,
  * keeping stdout clean for JSON data only.
  */
-const stderrLoggerLayer: Layer.Layer<never> = Logger.replace(
-  Logger.defaultLogger,
-  Logger.prettyLogger().pipe(Logger.withConsoleError),
-)
+const stderrLoggerLayer: Layer.Layer<never> = Logger.layer([
+  Logger.consolePretty().pipe(Logger.withConsoleError),
+])
 
 /**
  * Create an OutputMode layer from the `--output` flag value.
@@ -154,7 +153,7 @@ export const outputModeLayer = (value: OutputModeValue): Layer.Layer<OutputModeT
 
   // For progressive React modes, capture logs to prevent TUI corruption
   if (isReact(mode) === true && mode.timing === 'progressive') {
-    return Layer.unwrapScoped(
+    return Layer.unwrap(
       Effect.gen(function* () {
         const { handle, loggerLayer } = yield* createLogCapture()
 
@@ -225,8 +224,8 @@ export interface RunTuiMainOptions {
    * @example Suppress errors already represented in JSON output:
    * ```typescript
    * formatError: (cause) =>
-   *   Cause.failures(cause).pipe(chunk =>
-   *     [...chunk].some(e => e._tag === 'SyncFailedError')
+   *   cause.reasons.some(
+   *     reason => Cause.isFailReason(reason) && reason.error._tag === 'SyncFailedError'
    *   ) ? Option.none()
    *     : defaultFormatError(cause)
    * ```
@@ -236,16 +235,16 @@ export interface RunTuiMainOptions {
 
 /** Verbose error formatter — full stack traces via `Cause.pretty`. This is the default. */
 export const defaultFormatError = (cause: Cause.Cause<unknown>): Option.Option<string> =>
-  Option.some(Cause.pretty(cause, { renderErrorCause: true }))
+  Option.some(Cause.pretty(cause))
 
 /** Compact error formatter — just error messages, no stack traces. For machine/agent output. */
 export const compactFormatError = (cause: Cause.Cause<unknown>): Option.Option<string> => {
   const messages: string[] = []
-  for (const failure of Cause.failures(cause)) {
-    messages.push(failure instanceof Error ? failure.message : String(failure))
+  for (const reason of cause.reasons.filter(Cause.isFailReason)) {
+    messages.push(reason.error instanceof Error ? reason.error.message : String(reason.error))
   }
-  for (const defect of Cause.defects(cause)) {
-    messages.push(defect instanceof Error ? defect.message : String(defect))
+  for (const reason of cause.reasons.filter(Cause.isDieReason)) {
+    messages.push(reason.defect instanceof Error ? reason.defect.message : String(reason.defect))
   }
   return messages.length > 0 ? Option.some(messages.join('\n')) : Option.none()
 }
@@ -263,7 +262,7 @@ export interface TuiRuntime {
 
 /**
  * Custom finalization so a signal-interrupted CLI (Ctrl-C) exits 130 — the shell
- * convention — instead of the default teardown's hardcoded 0. The `catchAllCause`
+ * convention — instead of the default teardown's hardcoded 0. The `catchCause`
  * in {@link runTuiMainImpl} catches the interrupt, suppresses the stack, sets
  * `process.exitCode = 130`, and completes the fiber as a Success, so the
  * interrupt surfaces here only via `process.exitCode` — which we honor instead
@@ -271,7 +270,7 @@ export interface TuiRuntime {
  */
 // oxlint-disable-next-line overeng/named-args -- implements Effect's `Teardown` interface (fixed `(exit, onExit)` signature) passed to `NodeRuntime.runMain`
 const tuiTeardown = <E, A>(exit: Exit.Exit<E, A>, onExit: (code: number) => void): void => {
-  if (Exit.isFailure(exit) === true && Cause.isInterruptedOnly(exit.cause) === false) {
+  if (Exit.isFailure(exit) === true && Cause.hasInterruptsOnly(exit.cause) === false) {
     onExit(1)
     return
   }
@@ -292,7 +291,7 @@ const tuiTeardown = <E, A>(exit: Exit.Exit<E, A>, onExit: (code: number) => void
  * @example
  * ```typescript
  * // Pipeable usage (recommended):
- * Cli.Command.run(myCommand, { name: 'my-cli', version })(process.argv).pipe(
+ * Cli.Command.runWith(myCommand, { version })(process.argv.slice(2)).pipe(
  *   Effect.scoped,
  *   Effect.provide(baseLayer),
  *   runTuiMain(NodeRuntime)
@@ -308,7 +307,7 @@ const tuiTeardown = <E, A>(exit: Exit.Exit<E, A>, onExit: (code: number) => void
  * @example
  * ```typescript
  * // With compact errors (for agent-friendly CLIs):
- * Cli.Command.run(myCommand, { name: 'my-cli', version })(process.argv).pipe(
+ * Cli.Command.runWith(myCommand, { version })(process.argv.slice(2)).pipe(
  *   Effect.scoped,
  *   Effect.provide(baseLayer),
  *   runTuiMain(NodeRuntime, { formatError: compactFormatError })
@@ -361,9 +360,9 @@ const runTuiMainImpl = <E, A>({
   const formatError = options?.formatError ?? defaultFormatError
 
   effect.pipe(
-    Effect.catchAllCause((cause) =>
+    Effect.catchCause((cause) =>
       Effect.sync(() => {
-        if (Cause.isInterruptedOnly(cause) === true) {
+        if (Cause.hasInterruptsOnly(cause) === true) {
           process.exitCode = 130
           return undefined
         }

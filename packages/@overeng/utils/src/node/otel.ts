@@ -12,8 +12,6 @@
  * @module
  */
 
-import * as Otlp from '@effect/opentelemetry/Otlp'
-import { FetchHttpClient } from '@effect/platform'
 import type { MetricLabel } from 'effect'
 import {
   Clock,
@@ -28,6 +26,8 @@ import {
   type Scope,
   Tracer,
 } from 'effect'
+import { FetchHttpClient } from 'effect/unstable/http'
+import * as Otlp from 'effect/unstable/observability/Otlp'
 
 import { ServiceIdentity } from '@overeng/otel-contract'
 
@@ -51,10 +51,10 @@ export * from './otel-attrs.ts'
  * it with {@link Effect.serviceOption} so commands stay runnable without the
  * layer (absent tag ≡ telemetry disabled), keeping the tag out of their `R`.
  */
-export class OtelConfig extends Context.Tag('@overeng/utils/OtelConfig')<
+export class OtelConfig extends Context.Service<
   OtelConfig,
   { readonly endpoint: Option.Option<string> }
->() {}
+>()('@overeng/utils/OtelConfig') {}
 
 /**
  * Resolve the OTLP endpoint at a binary's composition root via Effect `Config`,
@@ -209,7 +209,7 @@ const defaultShutdownTimeoutMs = (): number => (process.stdout.isTTY === true ? 
  *   name: 'my-cli', namespace: 'overeng', version,
  * })
  * const baseLayer = Layer.mergeAll(
- *   NodeContext.layer,
+ *   NodeServices.layer,
  *   makeOtelCliLayer({ identity }),
  * )
  *

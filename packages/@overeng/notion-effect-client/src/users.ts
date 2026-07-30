@@ -1,5 +1,5 @@
-import type { HttpClient } from '@effect/platform'
 import { Chunk, Effect, Option, Schema, Stream } from 'effect'
+import type { HttpClient } from 'effect/unstable/http'
 
 import type { NotionConfig } from './config.ts'
 import type { NotionApiError } from './error.ts'
@@ -19,7 +19,7 @@ import {
 const UserSchema = Schema.Struct({
   object: Schema.Literal('user'),
   id: Schema.String,
-}).annotations({ identifier: 'User' })
+}).annotate({ identifier: 'User' })
 
 type User = typeof UserSchema.Type
 

@@ -24,11 +24,13 @@ import { RestateTestEnv, serverAvailable } from './testing.ts'
 
 /* ── demo app: a greeter Service (typed error) + a counter Object (typed State) ── */
 
-class Greeting extends Context.Tag('test-env/Greeting')<Greeting, { readonly prefix: string }>() {
+class Greeting extends Context.Service<Greeting, { readonly prefix: string }>()(
+  'test-env/Greeting',
+) {
   static readonly Default = Layer.succeed(Greeting, { prefix: 'Hello' })
 }
 
-class EmptyName extends Schema.TaggedError<EmptyName>('test-env/EmptyName')('EmptyName', {}) {}
+class EmptyName extends Schema.TaggedErrorClass<EmptyName>('test-env/EmptyName')('EmptyName', {}) {}
 
 const Greeter = RestateService.contract({
   name: 'test-env-greeter',
@@ -94,7 +96,7 @@ const Cursor = State.for(CursorState)
 
 /* `peek` returns the watermark inside a STRUCT with an optional property (a valid
  * JSON schema), since a top-level `Schema.UndefinedOr` handler return breaks
- * `JSONSchema.make` at endpoint registration — State, not handler I/O, is the
+ * `JsonSchema.make` at endpoint registration — State, not handler I/O, is the
  * nullable surface (#1). */
 const PeekOutput = Schema.Struct({ highWatermark: Schema.optional(Schema.Number) })
 

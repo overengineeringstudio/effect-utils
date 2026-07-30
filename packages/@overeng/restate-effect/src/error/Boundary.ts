@@ -104,7 +104,7 @@ export const classifyOutcome = ({
     return { _tag: 'suspended', thrown: suspensionDefect.value }
   }
 
-  const failure = Cause.failureOption(cause)
+  const failure = Cause.findErrorOption(cause)
   if (failure._tag === 'Some') {
     const error = failure.value
     /* A Restate suspension is never a real failure — never terminalize it. */

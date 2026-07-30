@@ -64,6 +64,14 @@ A dev-dependency addition invalidates every lockfile-derived fixed-output deriva
 them (`flake.nix:199-214`). `evergreen fod chase-fod-closure` cannot help: it requires
 `passthru.evergreen.fodGraph.v1` metadata the consumers lack. Refresh per attr instead.
 
+Patched dependencies are part of the same authority boundary. Treat `.patch` files as opaque generated
+artifacts: put live-migration markers on the wiring that references a patch, never inside its
+whitespace-sensitive body. Adding, removing, or regenerating a patch changes the bytes included by the
+`oxc-config-plugin` FOD and changes the patch hashes throughout `pnpm-lock.yaml`. Regenerate the
+lockfile first, prove every patch still applies, and then refresh all eight attrs. A branch merge that
+combines patch changes needs another refresh against the merged graph; updating only the first hash
+reported by Nix leaves the remaining boundaries stale.
+
 Package attrs:
 
 ```sh

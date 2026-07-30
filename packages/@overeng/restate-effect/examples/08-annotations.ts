@@ -22,13 +22,13 @@ import { aesGcmRedactionLayer, Restate, RestateService } from '../src/mod.ts'
 /* ── Error classification: per-error status code, retryable vs terminal ────── */
 
 /** Terminal with a 404: the caller sees status 404; Restate does not retry. */
-export class NotFound extends Schema.TaggedError<NotFound>('example/NotFound')('NotFound', {
+export class NotFound extends Schema.TaggedErrorClass<NotFound>('example/NotFound')('NotFound', {
   id: Schema.String,
 }) {}
 export const NotFoundTerminal = Restate.terminal({ self: NotFound, errorCode: 404 })
 
 /** Retryable: Restate re-runs the handler rather than propagating to the caller. */
-export class Throttled extends Schema.TaggedError<Throttled>('example/Throttled')(
+export class Throttled extends Schema.TaggedErrorClass<Throttled>('example/Throttled')(
   'Throttled',
   {},
 ) {}

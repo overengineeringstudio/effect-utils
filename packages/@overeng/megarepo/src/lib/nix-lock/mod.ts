@@ -8,13 +8,13 @@
  * source of truth for dependency versions.
  */
 
-import {
-  Command,
-  type CommandExecutor,
-  FileSystem,
-  type Error as PlatformError,
-} from '@effect/platform'
+import type { Error as PlatformError } from 'effect'
 import { Effect, Option, Schema, type ParseResult } from 'effect'
+import { FileSystem } from 'effect/FileSystem'
+import {
+  ChildProcess as Command,
+  type ChildProcessSpawner as CommandExecutor,
+} from 'effect/unstable/process'
 
 import { EffectPath, type AbsoluteDirPath, type AbsoluteFilePath } from '@overeng/effect-path'
 
@@ -127,14 +127,11 @@ const DEVENV_LOCK = 'devenv.lock'
 const MEGAREPO_LOCK = LOCK_FILE_NAME
 
 /** Schema for raw flake lock JSON (used to preserve key order during manipulation) */
-const RawFlakeLockJson = Schema.parseJson(
+const RawFlakeLockJson = Schema.fromJsonString(
   Schema.mutable(
     Schema.Struct({
       nodes: Schema.mutable(
-        Schema.Record({
-          key: Schema.String,
-          value: Schema.mutable(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
-        }),
+        Schema.Record(Schema.String, Schema.mutable(Schema.Record(Schema.String, Schema.Unknown))),
       ),
       root: Schema.String,
       version: Schema.Number,
@@ -149,8 +146,8 @@ const RawFlakeLockJson = Schema.parseJson(
  * with 2-space indentation, matching the prior `JSON.stringify(value, null, 2)`
  * output byte-for-byte.
  */
-const RawLockJson = Schema.parseJson(
-  Schema.mutable(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+const RawLockJson = Schema.fromJsonString(
+  Schema.mutable(Schema.Record(Schema.String, Schema.Unknown)),
   { space: 2 },
 )
 
@@ -163,7 +160,7 @@ const encodeRawLockJson = (value: Record<string, unknown>): string =>
 // =============================================================================
 
 /** Schema for nix flake prefetch JSON output (parses JSON string directly) */
-const NixFlakePrefetchOutput = Schema.parseJson(
+const NixFlakePrefetchOutput = Schema.fromJsonString(
   Schema.Struct({
     hash: Schema.String,
     locked: Schema.Struct({
@@ -177,7 +174,7 @@ const NixFlakePrefetchOutput = Schema.parseJson(
 )
 
 /** Error for Nix flake metadata fetch failures */
-export class NixFlakeMetadataError extends Schema.TaggedError<NixFlakeMetadataError>()(
+export class NixFlakeMetadataError extends Schema.TaggedErrorClass<NixFlakeMetadataError>()(
   'NixFlakeMetadataError',
   {
     message: Schema.String,
@@ -726,7 +723,7 @@ const deepEqual = ({ a, b }: { a: unknown; b: unknown }): boolean => {
 }
 
 /** Error for shared input source configuration issues */
-export class SharedInputSourceError extends Schema.TaggedError<SharedInputSourceError>()(
+export class SharedInputSourceError extends Schema.TaggedErrorClass<SharedInputSourceError>()(
   'SharedInputSourceError',
   {
     message: Schema.String,

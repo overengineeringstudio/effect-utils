@@ -1,4 +1,5 @@
-import { FileSystem, Path } from '@effect/platform'
+import * as FileSystem from 'effect/FileSystem'
+import * as Path from 'effect/Path'
 import { Effect, Schema } from 'effect'
 
 import type { PackageInfo } from '../common/types.ts'
@@ -18,7 +19,7 @@ export type WorkspaceProvider = {
 const normalizePath = (input: string): string => input.replace(/\\/g, '/')
 
 /** Permissive JSON decode for package.json files (shape is cast, not validated). */
-const decodePackageJson = Schema.decodeUnknownSync(Schema.parseJson(Schema.Unknown))
+const decodePackageJson = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown))
 
 /** Build validation context by reading all workspace package.json files into a lookup map */
 export const buildPackageJsonValidationContext = Effect.fn(
@@ -33,7 +34,7 @@ export const buildPackageJsonValidationContext = Effect.fn(
   for (const packageJsonPath of packageJsonPaths) {
     const content = yield* fs
       .readFileString(packageJsonPath)
-      .pipe(Effect.catchAll(() => Effect.void))
+      .pipe(Effect.catch(() => Effect.void))
     if (content === undefined) continue
     const parsed = Effect.try({
       try: () => decodePackageJson(content) as Omit<PackageInfo, 'path'>,

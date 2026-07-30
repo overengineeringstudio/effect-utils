@@ -16,11 +16,11 @@ import { serverAvailable, withRestateServer } from '../testing/testing.ts'
 
 /* ── demo app: an injected Effect service + a greeter Restate service ── */
 
-class Greeting extends Context.Tag('test/Greeting')<Greeting, { readonly prefix: string }>() {
+class Greeting extends Context.Service<Greeting, { readonly prefix: string }>()('test/Greeting') {
   static readonly Default = Layer.succeed(Greeting, { prefix: 'Hello' })
 }
 
-class EmptyName extends Schema.TaggedError<EmptyName>('test/EmptyName')('EmptyName', {}) {}
+class EmptyName extends Schema.TaggedErrorClass<EmptyName>('test/EmptyName')('EmptyName', {}) {}
 
 const GreetInput = Schema.Struct({ name: Schema.String })
 const GreetSuccess = Schema.Struct({ message: Schema.String, id: Schema.String })

@@ -1,6 +1,6 @@
 /**
  * Server-free contract-layer test of the error-transport round-trip (docs/vrs/04-error-boundary/spec.md §1,
- * docs/vrs/09-testing/spec.md §3): a domain `Schema.TaggedError` → `toTerminal` (per-error errorCode,
+ * docs/vrs/09-testing/spec.md §3): a domain `Schema.TaggedErrorClass` → `toTerminal` (per-error errorCode,
  * `_tag` in the message body) → a simulated ingress `HttpCallError` → the
  * `decodeTerminalError` helper → back to the typed tagged error, so a caller
  * `catchTag`s it. No native server involved.
@@ -17,7 +17,7 @@ import { RestateError } from '../schema/RestateError.ts'
 import { toTerminal } from './Boundary.ts'
 
 /* A domain error annotated terminal with a custom errorCode (404). */
-class NotFound extends Schema.TaggedError<NotFound>('test/NotFound')('NotFound', {
+class NotFound extends Schema.TaggedErrorClass<NotFound>('test/NotFound')('NotFound', {
   id: Schema.String,
 }) {}
 const NotFoundSchema = Restate.terminal({ self: Schema.asSchema(NotFound), errorCode: 404 })
@@ -104,14 +104,14 @@ describe('error transport (contract layer, server-free)', () => {
     )
     expect(Exit.isFailure(exit)).toBe(true)
     if (Exit.isFailure(exit) === true) {
-      const failure = Cause.failureOption(exit.cause)
+      const failure = Cause.findErrorOption(exit.cause)
       expect(failure._tag).toBe('Some')
       if (failure._tag === 'Some') expect(failure.value).toBeInstanceOf(RestateError)
     }
   })
 
   it('a retryable-annotated error throws RetryableError instead of terminalizing', () => {
-    class Throttled extends Schema.TaggedError<Throttled>('test/Throttled')('Throttled', {}) {}
+    class Throttled extends Schema.TaggedErrorClass<Throttled>('test/Throttled')('Throttled', {}) {}
     const ThrottledSchema = Restate.retryable({ self: Schema.asSchema(Throttled) })
     const out = toTerminal({ cause: Cause.fail(new Throttled()), errorSchema: ThrottledSchema })
     expect(out).toBeInstanceOf(restate.RetryableError)
@@ -121,9 +121,12 @@ describe('error transport (contract layer, server-free)', () => {
   it('retryAfter is projected from the ACTUAL error instance (#3)', () => {
     /* A 429-style error carrying its own retry floor; the projection reads it off
      * the very instance that failed, not a static literal. */
-    class RateLimited extends Schema.TaggedError<RateLimited>('test/RateLimited')('RateLimited', {
-      retryAfterMillis: Schema.Number,
-    }) {}
+    class RateLimited extends Schema.TaggedErrorClass<RateLimited>('test/RateLimited')(
+      'RateLimited',
+      {
+        retryAfterMillis: Schema.Number,
+      },
+    ) {}
     const RateLimitedSchema = Restate.retryable({
       self: Schema.asSchema(RateLimited),
       retryAfter: (e) => e.retryAfterMillis,
@@ -137,14 +140,14 @@ describe('error transport (contract layer, server-free)', () => {
   })
 
   it('retryAfter accepts a static Duration shorthand', () => {
-    class Slow extends Schema.TaggedError<Slow>('test/Slow')('Slow', {}) {}
+    class Slow extends Schema.TaggedErrorClass<Slow>('test/Slow')('Slow', {}) {}
     const SlowSchema = Restate.retryable({ self: Schema.asSchema(Slow), retryAfter: '2 seconds' })
     const out = toTerminal({ cause: Cause.fail(new Slow()), errorSchema: SlowSchema })
     expect((out as restate.RetryableError).retryAfter).toBe(2_000)
   })
 
   it('a projection returning undefined falls back to default backoff (no floor)', () => {
-    class Maybe extends Schema.TaggedError<Maybe>('test/Maybe')('Maybe', {
+    class Maybe extends Schema.TaggedErrorClass<Maybe>('test/Maybe')('Maybe', {
       after: Schema.optional(Schema.Number),
     }) {}
     const MaybeSchema = Restate.retryable({
@@ -162,17 +165,20 @@ describe('error transport (contract layer, server-free)', () => {
      * union node, so the boundary must resolve the matching member for the actual
      * failing error before reading the class — else the retryable member is silently
      * mis-classified as terminal (the pollLoop compose blocker). */
-    class RateLimited extends Schema.TaggedError<RateLimited>('test/RateLimited2')('RateLimited', {
-      retryAfterMillis: Schema.Number,
-    }) {}
-    class Gone extends Schema.TaggedError<Gone>('test/Gone')('Gone', { id: Schema.String }) {}
-    const UnionSchema = Schema.Union(
+    class RateLimited extends Schema.TaggedErrorClass<RateLimited>('test/RateLimited2')(
+      'RateLimited',
+      {
+        retryAfterMillis: Schema.Number,
+      },
+    ) {}
+    class Gone extends Schema.TaggedErrorClass<Gone>('test/Gone')('Gone', { id: Schema.String }) {}
+    const UnionSchema = Schema.Union([
       Restate.retryable({
         self: Schema.asSchema(RateLimited),
         retryAfter: (e) => e.retryAfterMillis,
       }),
       Restate.terminal({ self: Schema.asSchema(Gone), errorCode: 404 }),
-    )
+    ])
 
     /* The RETRYABLE member → a RetryableError honoring its projected retryAfter. */
     const retry = toTerminal({
@@ -198,7 +204,7 @@ describe('error transport (contract layer, server-free)', () => {
     /* `Registry.lookup` declares `NotFound`; a foreign tagged error must not be
      * silently encoded into a terminal body — it is error-classification drift and
      * surfaces as a defect (the squashed cause) so the SDK retries / the bug shows. */
-    class Foreign extends Schema.TaggedError<Foreign>('test/Foreign')('Foreign', {
+    class Foreign extends Schema.TaggedErrorClass<Foreign>('test/Foreign')('Foreign', {
       whatever: Schema.String,
     }) {}
     const out = toTerminal({
@@ -259,7 +265,7 @@ describe('error transport wire baselines (cross-major invariant)', () => {
 
     expect(Exit.isFailure(exit)).toBe(true)
     if (Exit.isFailure(exit) === true) {
-      const failure = Cause.failureOption(exit.cause)
+      const failure = Cause.findErrorOption(exit.cause)
       expect(failure._tag).toBe('Some')
       if (failure._tag === 'Some') {
         expect(failure.value).toBeInstanceOf(RestateError)

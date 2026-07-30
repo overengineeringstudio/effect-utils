@@ -15,11 +15,10 @@ export const timestamp = (value: number | string | Date): Timestamp => {
 }
 
 /** Schema that transforms between Timestamp and plain number */
-export const timestampSchema = Schema.transform(
-  Schema.fromBrand(Brand.nominal<Timestamp>())(Schema.Number),
-  Schema.Number,
-  { decode: (_) => _, encode: timestamp },
-)
+export const timestampSchema = Schema.fromBrand(
+  'Timestamp',
+  Brand.nominal<Timestamp>(),
+)(Schema.Number).pipe(Schema.decodeTo(Schema.Number, { decode: (_) => _, encode: timestamp }))
 
 /** Returns the current time as a Timestamp */
 export const timestampNow = (): Timestamp => Math.round(Date.now()) as Timestamp

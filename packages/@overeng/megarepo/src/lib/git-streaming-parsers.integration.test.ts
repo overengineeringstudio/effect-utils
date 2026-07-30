@@ -11,8 +11,9 @@
  * helper is proven separately by `git-memory.integration.test.ts`.
  */
 
-import { Command, FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import { ChildProcess as Command } from 'effect/unstable/process'
+import { FileSystem } from 'effect/FileSystem'
+import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Effect, Option } from 'effect'
 import { expect } from 'vitest'
@@ -74,7 +75,7 @@ describe('streaming git parsers', () => {
         expect(w.path.length).toBeGreaterThan(0)
         expect(w.head).toMatch(/^[0-9a-f]{40}$/)
       }
-    }).pipe(Effect.provide(NodeContext.layer), Effect.scoped),
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   )
 
   it.effect('revListUnpushed returns exactly the commits absent from remotes', () =>
@@ -129,6 +130,6 @@ describe('streaming git parsers', () => {
       expect([...unpushed].sort()).toEqual([...expected].sort())
       // No empty entries leaked through the line fold.
       for (const sha of unpushed) expect(sha).toMatch(/^[0-9a-f]{40}$/)
-    }).pipe(Effect.provide(NodeContext.layer), Effect.scoped),
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   )
 })

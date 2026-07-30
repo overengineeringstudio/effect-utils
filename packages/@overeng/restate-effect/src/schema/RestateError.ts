@@ -7,13 +7,13 @@ import { formatReasonMessage } from '@overeng/utils'
  *
  * This is the error channel for the *wrapper's* own bridge operations
  * (durable `ctx.run`/`ctx.sleep`, serde, endpoint lifecycle, registration,
- * ingress) — NOT the user's domain errors. Domain `Schema.TaggedError`s flow
+ * ingress) — NOT the user's domain errors. Domain `Schema.TaggedErrorClass`s flow
  * through the handler's own `E` channel and are mapped to a Restate
  * `TerminalError` at the endpoint boundary (see `Endpoint.toTerminal`).
  *
  * Mirrors `@overeng/pty-effect`'s `PtyError`:
  * - `reason` discriminator for programmatic matching
- * - `cause: Schema.Defect` for the upstream error (preserves name + message)
+ * - `cause: Schema.Defect()` for the upstream error (preserves name + message)
  * - custom `get message()` for clean human-readable output in logs/traces
  *
  * Reasons:
@@ -25,10 +25,10 @@ import { formatReasonMessage } from '@overeng/utils'
  * - `IngressFailed`      — an external ingress client call failed
  * - `AdminFailed`        — an admin / management API call failed (`./admin`)
  */
-export class RestateError extends Schema.TaggedError<RestateError>(
+export class RestateError extends Schema.TaggedErrorClass<RestateError>(
   '@overeng/restate-effect/RestateError',
 )('RestateError', {
-  reason: Schema.Literal(
+  reason: Schema.Literals([
     'RunFailed',
     'SleepFailed',
     'SerdeFailed',
@@ -36,9 +36,9 @@ export class RestateError extends Schema.TaggedError<RestateError>(
     'RegistrationFailed',
     'IngressFailed',
     'AdminFailed',
-  ),
+  ]),
   method: Schema.String,
-  cause: Schema.optional(Schema.Defect),
+  cause: Schema.optional(Schema.Defect()),
 }) {
   override get message(): string {
     return formatReasonMessage({ reason: this.reason, method: this.method, cause: this.cause })

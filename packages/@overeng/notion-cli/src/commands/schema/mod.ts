@@ -5,9 +5,10 @@
 import { basename } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { Args, Command, Options } from '@effect/cli'
-import { FetchHttpClient, FileSystem } from '@effect/platform'
+import { FileSystem } from 'effect/FileSystem'
 import { Effect, Layer, Option, Schema } from 'effect'
+import { Argument as Args, Command, Flag as Options } from 'effect/unstable/cli'
+import { FetchHttpClient } from 'effect/unstable/http'
 import React from 'react'
 
 import { EffectPath } from '@overeng/effect-path'
@@ -30,7 +31,7 @@ import { IntrospectView } from '../../renderers/IntrospectOutput/view.tsx'
 import { resolveNotionToken, tokenOption } from '../shared.ts'
 
 /** Re-export internal types for TypeScript declaration emit */
-export type { PlatformError } from '@effect/platform/Error'
+export type { PlatformError } from 'effect/Error'
 
 import { type GenerateOptions, generateApiCode, generateSchemaCode } from '../../codegen.ts'
 import { loadConfig } from '../../config.ts'
@@ -45,7 +46,7 @@ export { resolveNotionToken, tokenOption } from '../shared.ts'
 // -----------------------------------------------------------------------------
 
 /** Error thrown when a generated schema file cannot be parsed for drift detection */
-export class GeneratedSchemaFileParseError extends Schema.TaggedError<GeneratedSchemaFileParseError>()(
+export class GeneratedSchemaFileParseError extends Schema.TaggedErrorClass<GeneratedSchemaFileParseError>()(
   'GeneratedSchemaFileParseError',
   {
     file: Schema.String,
@@ -54,7 +55,7 @@ export class GeneratedSchemaFileParseError extends Schema.TaggedError<GeneratedS
 ) {}
 
 /** Error thrown when generated schema differs from existing file during check mode */
-export class SchemaDriftDetectedError extends Schema.TaggedError<SchemaDriftDetectedError>()(
+export class SchemaDriftDetectedError extends Schema.TaggedErrorClass<SchemaDriftDetectedError>()(
   'SchemaDriftDetectedError',
   {
     databaseId: Schema.String,
@@ -73,7 +74,9 @@ const getGeneratorVersion = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem
   const pkgJsonPath = fileURLToPath(new URL('../../../package.json', import.meta.url))
   const content = yield* fs.readFileString(pkgJsonPath)
-  const pkg = yield* Schema.decodeUnknown(Schema.parseJson(GeneratorPackageJsonSchema))(content)
+  const pkg = yield* Schema.decodeUnknown(Schema.fromJsonString(GeneratorPackageJsonSchema))(
+    content,
+  )
   return pkg.version
 }).pipe(Effect.orElseSucceed(() => 'unknown'))
 
@@ -81,7 +84,7 @@ const getGeneratorVersion = Effect.gen(function* () {
 // Generate Command
 // -----------------------------------------------------------------------------
 
-const generateDatabaseIdArg = Args.text({ name: 'database-id' }).pipe(
+const generateDatabaseIdArg = Args.string('database-id').pipe(
   Args.withDescription('The Notion database ID to generate schema from'),
 )
 
@@ -103,7 +106,7 @@ const tuiOutputModeOption = Options.choice('output-mode', OUTPUT_MODE_VALUES).pi
   Options.withDefault('auto' as (typeof OUTPUT_MODE_VALUES)[number]),
 )
 
-const nameOption = Options.text('name').pipe(
+const nameOption = Options.string('name').pipe(
   Options.withAlias('n'),
   Options.withDescription('Name for the generated schema (defaults to database title)'),
   Options.optional,
@@ -317,7 +320,7 @@ export const generateCommand = Command.make(
 // Introspect Command
 // -----------------------------------------------------------------------------
 
-const introspectDatabaseIdArg = Args.text({ name: 'database-id' }).pipe(
+const introspectDatabaseIdArg = Args.string('database-id').pipe(
   Args.withDescription('The Notion database ID to introspect'),
 )
 
@@ -546,7 +549,7 @@ const generateFromConfigCommand = Command.make(
 // Diff Command
 // -----------------------------------------------------------------------------
 
-const diffDatabaseIdArg = Args.text({ name: 'database-id' }).pipe(
+const diffDatabaseIdArg = Args.string('database-id').pipe(
   Args.withDescription('The Notion database ID to compare against'),
 )
 

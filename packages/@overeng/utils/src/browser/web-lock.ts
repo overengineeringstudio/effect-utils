@@ -12,7 +12,7 @@ import { Deferred, Effect, Runtime, Schema } from 'effect'
 /**
  * Error thrown when Web Locks API is not supported.
  */
-export class WebLockNotSupportedError extends Schema.TaggedError<WebLockNotSupportedError>()(
+export class WebLockNotSupportedError extends Schema.TaggedErrorClass<WebLockNotSupportedError>()(
   'WebLockNotSupportedError',
   {
     message: Schema.String,
