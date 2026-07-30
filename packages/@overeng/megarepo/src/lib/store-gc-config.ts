@@ -7,8 +7,8 @@
  * unknown/invalid files fall back to the defaults (never fail the gc path).
  */
 
-import type { Error as PlatformError } from 'effect'
-import { FileSystem } from 'effect/FileSystem'
+import * as PlatformError from 'effect/PlatformError'
+import * as FileSystem from 'effect/FileSystem'
 import { Effect, Schema } from 'effect'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
@@ -84,7 +84,7 @@ export const loadStoreGcConfig = ({
     const path = gcConfigPath(storeBasePath)
     const override = yield* fs.readFileString(path).pipe(
       Effect.flatMap((content) =>
-        Schema.decodeUnknown(Schema.fromJsonString(StoreGcConfigOverride))(content),
+        Schema.decodeUnknownEffect(Schema.fromJsonString(StoreGcConfigOverride))(content),
       ),
       Effect.orElseSucceed(() => ({}) as StoreGcConfigOverride),
     )

@@ -9,9 +9,10 @@
 
 import { createHash } from 'node:crypto'
 
-import type { Error as PlatformError } from 'effect'
-import { FileSystem } from 'effect/FileSystem'
-import { Effect, Option, Schema, type ParseResult } from 'effect'
+import * as PlatformError from 'effect/PlatformError'
+import * as FileSystem from 'effect/FileSystem'
+import { Effect, Option, Schema } from 'effect'
+import * as SchemaError from 'effect/SchemaError'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
@@ -22,6 +23,7 @@ import {
   parseSourceString,
   readMegarepoConfig,
 } from './config.ts'
+import { encodePrettyJson } from './json.ts'
 import { LOCK_FILE_NAME, readLockFile } from './lock.ts'
 import * as Observability from './observability.ts'
 import { writeFileAtomic } from './store-fs-atomic.ts'
@@ -139,7 +141,7 @@ export const collectWorkspaceLivePaths = ({
   strict?: boolean
 }): Effect.Effect<
   Set<string>,
-  ConfigNotFoundError | PlatformError.PlatformError | ParseResult.ParseError,
+  ConfigNotFoundError | PlatformError.PlatformError | SchemaError.SchemaError,
   FileSystem.FileSystem
 > =>
   Effect.gen(function* () {
@@ -205,7 +207,7 @@ export const collectWorkspaceLivePathsStrict = ({
   store: MegarepoStore
 }): Effect.Effect<
   Set<string>,
-  ConfigNotFoundError | PlatformError.PlatformError | ParseResult.ParseError,
+  ConfigNotFoundError | PlatformError.PlatformError | SchemaError.SchemaError,
   FileSystem.FileSystem
 > => collectWorkspaceLivePaths({ workspaceRoot, store, strict: true })
 
@@ -225,7 +227,7 @@ export const refreshWorkspaceRegistry = ({
   now: number
 }): Effect.Effect<
   StoreWorkspaceRecord,
-  ConfigNotFoundError | PlatformError.PlatformError | ParseResult.ParseError,
+  ConfigNotFoundError | PlatformError.PlatformError | SchemaError.SchemaError,
   FileSystem.FileSystem
 > =>
   Effect.gen(function* () {
@@ -240,7 +242,7 @@ export const refreshWorkspaceRegistry = ({
 
     const registryDir = workspaceRegistryDir(store)
     yield* fs.makeDirectory(registryDir, { recursive: true })
-    const content = yield* Schema.encode(Schema.fromJsonString(StoreWorkspaceRecord, { space: 2 }))(
+    const content = yield* encodePrettyJson(StoreWorkspaceRecord)(
       record,
     )
     // Atomic (write-temp-then-rename): a concurrent reader (e.g. an under-lock
@@ -286,7 +288,7 @@ const readRegistryRecords = ({
   reconcile?: { now: number } | undefined
 }): Effect.Effect<
   RegistryReadResult,
-  ConfigNotFoundError | PlatformError.PlatformError | ParseResult.ParseError,
+  ConfigNotFoundError | PlatformError.PlatformError | SchemaError.SchemaError,
   FileSystem.FileSystem
 > =>
   Effect.gen(function* () {
@@ -306,7 +308,7 @@ const readRegistryRecords = ({
       const recordPath = EffectPath.ops.join(registryDir, EffectPath.unsafe.relativeFile(entry))
       const parsed = yield* fs.readFileString(recordPath).pipe(
         Effect.flatMap((content) =>
-          Schema.decodeUnknown(Schema.fromJsonString(StoreWorkspaceRecord))(content),
+          Schema.decodeUnknownEffect(Schema.fromJsonString(StoreWorkspaceRecord))(content),
         ),
         Effect.orElseSucceed(() => null),
       )
@@ -321,7 +323,7 @@ const readRegistryRecords = ({
       // present-but-unreadable workspace must never be pruned.
       if (workspaceExists === false) {
         if (pruneStale === true) {
-          yield* fs.remove(recordPath).pipe(Effect.catchAll(() => Effect.void))
+          yield* fs.remove(recordPath).pipe(Effect.catch(() => Effect.void))
         }
         continue
       }
@@ -345,9 +347,7 @@ const readRegistryRecords = ({
           updatedAt: new Date(reconcile.now).toISOString(),
           livePaths: [...reconciled.paths].toSorted(),
         }
-        const content = yield* Schema.encode(
-          Schema.fromJsonString(StoreWorkspaceRecord, { space: 2 }),
-        )(record)
+        const content = yield* encodePrettyJson(StoreWorkspaceRecord)(record)
         // Atomic rewrite so a concurrent reader never sees a torn record and
         // drops a live workspace's veto right before deletion (decision 0010).
         yield* writeFileAtomic({ path: recordPath, content: content + '\n' })
@@ -396,7 +396,7 @@ export const collectStoreLiveSet = ({
   now?: number | undefined
 }): Effect.Effect<
   StoreLiveSet,
-  ConfigNotFoundError | PlatformError.PlatformError | ParseResult.ParseError,
+  ConfigNotFoundError | PlatformError.PlatformError | SchemaError.SchemaError,
   FileSystem.FileSystem
 > =>
   Effect.gen(function* () {

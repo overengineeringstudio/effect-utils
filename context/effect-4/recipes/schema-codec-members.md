@@ -76,6 +76,21 @@ The Date pair is another surviving-name trap: v3 `DateFromSelf` becomes v4 `Date
 wire schemas become v4 `DateFromString`. Keep those rewrites separate and follow the
 `schema-date` recipe for the wire contract.
 
+## Pretty-printed JSON
+
+V4 has no pretty-print JSON codec. `Schema.fromJsonString(S)` accepts no formatting options and
+serializes with plain `JSON.stringify`. When formatted JSON is a persisted wire format, encode the
+value with the schema and stringify the encoded JSON value separately:
+
+```ts
+const encoded = Schema.encodeSync(Config)(value)
+const content = JSON.stringify(encoded, null, 2)
+```
+
+Use `Schema.encodeEffect` instead when the surrounding path handles schema failures as an Effect.
+Preserve any existing trailing newline separately. Compare the resulting bytes against the v3
+baseline; accepting file churn is not a mechanical migration.
+
 ## Affected inventory
 
 The measured codec/member heatmap is:

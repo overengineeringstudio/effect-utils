@@ -4,9 +4,10 @@
  * List all members in the megarepo.
  */
 
-import type { Error as PlatformError } from 'effect'
-import { FileSystem } from 'effect/FileSystem'
-import { Effect, Option, type ParseResult } from 'effect'
+import * as PlatformError from 'effect/PlatformError'
+import * as FileSystem from 'effect/FileSystem'
+import { Effect, Option } from 'effect'
+import * as SchemaError from 'effect/SchemaError'
 import * as Cli from 'effect/unstable/cli'
 import React from 'react'
 
@@ -50,7 +51,7 @@ const scanMembersRecursive = ({
   depth?: number
 }): Effect.Effect<
   MemberInfo[],
-  PlatformError.PlatformError | ParseResult.ParseError | Error,
+  PlatformError.PlatformError | SchemaError.SchemaError | Error,
   FileSystem.FileSystem
 > =>
   Effect.gen(function* () {

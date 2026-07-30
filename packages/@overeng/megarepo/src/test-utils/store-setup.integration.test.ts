@@ -1,5 +1,5 @@
-import { ChildProcess as Command } from 'effect/unstable/process'
-import { FileSystem } from 'effect/FileSystem'
+import { ChildProcess as Command, ChildProcessSpawner } from 'effect/unstable/process'
+import * as FileSystem from 'effect/FileSystem'
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Effect } from 'effect'
@@ -17,8 +17,9 @@ import {
 
 const git = (cwd: AbsoluteDirPath, ...args: ReadonlyArray<string>) =>
   Effect.gen(function* () {
-    const command = Command.make('git', ...args).pipe(Command.workingDirectory(cwd))
-    return (yield* Command.string(command)).trim()
+    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
+    const command = Command.make('git', args, { cwd })
+    return (yield* spawner.string(command)).trim()
   })
 
 describe('store-setup fixtures', () => {

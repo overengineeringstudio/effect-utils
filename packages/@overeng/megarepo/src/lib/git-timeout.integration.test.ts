@@ -14,8 +14,8 @@
  * used to break for large members.
  */
 
-import { ChildProcess as Command } from 'effect/unstable/process'
-import { FileSystem } from 'effect/FileSystem'
+import { ChildProcess as Command, ChildProcessSpawner } from 'effect/unstable/process'
+import * as FileSystem from 'effect/FileSystem'
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Effect } from 'effect'
@@ -31,8 +31,9 @@ const GIT_USER = ['-c', 'user.email=test@example.com', '-c', 'user.name=Test Use
 /** Run git in `cwd`, returning trimmed stdout (fixture setup only). */
 const git = (cwd: string, ...args: ReadonlyArray<string>) =>
   Effect.gen(function* () {
-    const command = Command.make('git', ...GIT_USER, ...args).pipe(Command.workingDirectory(cwd))
-    return (yield* Command.string(command)).trim()
+    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
+    const command = Command.make('git', [...GIT_USER, ...args], { cwd })
+    return (yield* spawner.string(command)).trim()
   })
 
 /**

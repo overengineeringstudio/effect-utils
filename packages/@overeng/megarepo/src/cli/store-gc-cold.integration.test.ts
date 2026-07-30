@@ -28,8 +28,8 @@
 
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { ChildProcess as Command } from 'effect/unstable/process'
-import { FileSystem } from 'effect/FileSystem'
+import { ChildProcess as Command, ChildProcessSpawner } from 'effect/unstable/process'
+import * as FileSystem from 'effect/FileSystem'
 import { Clock, Effect, Exit, Layer, Schema } from 'effect'
 import * as Cli from 'effect/unstable/cli'
 import { expect, vi } from 'vitest'
@@ -64,11 +64,12 @@ vi.setConfig({
 
 const git = (cwd: string, ...args: ReadonlyArray<string>) =>
   Effect.gen(function* () {
-    const command = Command.make('git', ...args).pipe(Command.workingDirectory(cwd))
-    return (yield* Command.string(command)).trim()
+    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
+    const command = Command.make('git', args, { cwd })
+    return (yield* spawner.string(command)).trim()
   })
 
-const liveClock = Clock.make()
+const liveClock = Clock.Clock.defaultValue()
 
 /**
  * Deterministic decision clock so grace/retention decisions are reproducible.
@@ -76,13 +77,12 @@ const liveClock = Clock.make()
  * deadlines instead of firing immediately under the fixed decision time.
  */
 const fixedClockLayer = (nowMs: number) =>
-  Layer.setClock({
-    [Clock.ClockTypeId]: Clock.ClockTypeId,
+  Layer.succeed(Clock.Clock, {
     currentTimeMillis: Effect.succeed(nowMs),
     currentTimeNanos: Effect.succeed(BigInt(nowMs) * 1_000_000n),
     sleep: (duration) => liveClock.sleep(duration),
-    unsafeCurrentTimeMillis: () => nowMs,
-    unsafeCurrentTimeNanos: () => BigInt(nowMs) * 1_000_000n,
+    currentTimeMillisUnsafe: () => nowMs,
+    currentTimeNanosUnsafe: () => BigInt(nowMs) * 1_000_000n,
   })
 
 const StoreGcJsonOutput = Schema.Struct({
@@ -129,7 +129,7 @@ const runGc = ({
     process.env['MEGAREPO_STORE'] = storePath
 
     const argv = ['node', 'mr', 'store', 'gc', ...args, '--output', 'json']
-    const exit = yield* Cli.Command.run(mrCommand, { name: 'mr', version: 'test' })(argv).pipe(
+    const exit = yield* Cli.Command.runWith(mrCommand, { version: 'test' })(argv.slice(2)).pipe(
       Effect.provideService(Cwd, cwd),
       Effect.provide(
         Layer.mergeAll(consoleLayer, makeStubPrStateResolverLayer(prRepos), fixedClockLayer(now)),

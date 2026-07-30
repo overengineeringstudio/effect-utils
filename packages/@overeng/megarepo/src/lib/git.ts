@@ -4,7 +4,7 @@
  * Provides Effect-wrapped git operations for cloning, fetching, and managing worktrees.
  */
 
-import { ChildProcess as Command } from 'effect/unstable/process'
+import { ChildProcess as Command, ChildProcessSpawner } from 'effect/unstable/process'
 import { Cause, Chunk, Duration, Effect, Option, Schedule, Sink, Stream } from 'effect'
 
 import * as Observability from './observability.ts'
@@ -215,23 +215,24 @@ const decodeChunks = (chunks: Chunk.Chunk<Uint8Array>): string => {
  */
 const startGitProcess = ({ args, cwd }: { args: ReadonlyArray<string>; cwd?: string }) =>
   Effect.gen(function* () {
-    const cmd = Command.make('git', ...args).pipe(
-      cwd !== undefined ? Command.workingDirectory(cwd) : (x) => x,
-      Command.stderr('pipe'),
-      Command.stdout('pipe'),
-    )
+    const cmd = Command.make('git', args, {
+      ...(cwd !== undefined ? { cwd } : {}),
+      stderr: 'pipe',
+      stdout: 'pipe',
+    })
 
-    const process = yield* Command.start(cmd)
+    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
+    const process = yield* spawner.spawn(cmd)
     yield* Effect.addFinalizer((exit) =>
       Effect.gen(function* () {
-        if (exit._tag !== 'Failure' || Cause.isInterruptedOnly(exit.cause) === false) {
+        if (exit._tag !== 'Failure' || Cause.hasInterruptsOnly(exit.cause) === false) {
           return
         }
 
         const isRunning = yield* process.isRunning.pipe(Effect.orElseSucceed(() => false))
         if (isRunning === false) return
 
-        yield* process.kill('SIGKILL').pipe(Effect.catchAll(() => Effect.void))
+        yield* process.kill('SIGKILL').pipe(Effect.catch(() => Effect.void))
       }),
     )
     return process

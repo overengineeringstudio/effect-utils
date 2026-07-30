@@ -4,6 +4,7 @@ import * as Cli from 'effect/unstable/cli'
 import { EffectPath } from '@overeng/effect-path'
 
 import { readMegarepoConfig } from '../../lib/config.ts'
+import { encodePrettyJson } from '../../lib/json.ts'
 import { LOCK_FILE_NAME, readLockFile } from '../../lib/lock.ts'
 import { checkSourcePolicy, formatSourcePolicyViolation } from '../../lib/source-policy.ts'
 import { Cwd, findMegarepoRoot, jsonOption } from '../context.ts'
@@ -11,7 +12,7 @@ import { CheckCommandError, LockFileRequiredError, NotInMegarepoError } from '..
 import * as Observability from '../observability.ts'
 
 /** Encodes the structured check result as pretty-printed JSON for `--json` output. */
-const CheckReportJson = Schema.fromJsonString(Schema.Unknown, { space: 2 })
+const CheckReportJson = Schema.Unknown
 
 const allOption = Cli.Flag.boolean('all').pipe(
   Cli.Flag.withDescription('Check member source and lock files in repos/ as well as the root'),
@@ -63,7 +64,7 @@ export const checkCommand = Cli.Command.make(
       }
 
       if (json === true) {
-        yield* Console.log(yield* Schema.encode(CheckReportJson)(result))
+        yield* Console.log(yield* encodePrettyJson(CheckReportJson)(result))
       } else if (result.violations.length === 0) {
         yield* Console.log('Megarepo checks OK')
       } else {

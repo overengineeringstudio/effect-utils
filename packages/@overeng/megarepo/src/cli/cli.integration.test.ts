@@ -7,7 +7,7 @@
 
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { FileSystem } from 'effect/FileSystem'
+import * as FileSystem from 'effect/FileSystem'
 import { Effect, Exit, Option, Schema } from 'effect'
 import * as Cli from 'effect/unstable/cli'
 import { expect } from 'vitest'
@@ -15,6 +15,7 @@ import { expect } from 'vitest'
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
 import { CONFIG_FILE_NAME_JSON, MegarepoConfig, validateMemberName } from '../lib/config.ts'
+import { encodePrettyJson } from '../lib/json.ts'
 import { makeConsoleCapture } from '../test-utils/consoleCapture.ts'
 import { initGitRepo, readConfig } from '../test-utils/setup.ts'
 import { mrCommand } from './mod.ts'
@@ -81,9 +82,7 @@ describe('mr init', () => {
             'https://raw.githubusercontent.com/overengineeringstudio/megarepo/main/schema/megarepo.schema.json',
           members: {},
         }
-        const configContent = yield* Schema.encode(
-          Schema.fromJsonString(MegarepoConfig, { space: 2 }),
-        )(initialConfig)
+        const configContent = yield* encodePrettyJson(MegarepoConfig)(initialConfig)
         yield* fs.writeFileString(configPath, configContent + '\n')
 
         // Verify config was created
@@ -119,9 +118,7 @@ describe('mr init', () => {
           workDir,
           EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
         )
-        const configContent = yield* Schema.encode(
-          Schema.fromJsonString(MegarepoConfig, { space: 2 }),
-        )(existingConfig)
+        const configContent = yield* encodePrettyJson(MegarepoConfig)(existingConfig)
         yield* fs.writeFileString(configPath, configContent + '\n')
 
         // Verify existing config
@@ -283,9 +280,7 @@ describe('mr add', () => {
           EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
         )
         const initialConfig: MegarepoConfig = { members: {} }
-        const initialContent = yield* Schema.encode(
-          Schema.fromJsonString(MegarepoConfig, { space: 2 }),
-        )(initialConfig)
+        const initialContent = yield* encodePrettyJson(MegarepoConfig)(initialConfig)
         yield* fs.writeFileString(configPath, initialContent + '\n')
 
         // Add a member
@@ -298,9 +293,7 @@ describe('mr add', () => {
           ...config,
           members: { ...config.members, [memberName]: memberSource },
         }
-        const updatedContent = yield* Schema.encode(
-          Schema.fromJsonString(MegarepoConfig, { space: 2 }),
-        )(updatedConfig)
+        const updatedContent = yield* encodePrettyJson(MegarepoConfig)(updatedConfig)
         yield* fs.writeFileString(configPath, updatedContent + '\n')
 
         // Verify member was added
@@ -339,9 +332,7 @@ describe('mr add', () => {
           ...config,
           members: { ...config.members, [customName]: memberSource },
         }
-        const updatedContent = yield* Schema.encode(
-          Schema.fromJsonString(MegarepoConfig, { space: 2 }),
-        )(updatedConfig)
+        const updatedContent = yield* encodePrettyJson(MegarepoConfig)(updatedConfig)
         yield* fs.writeFileString(configPath, updatedContent + '\n')
 
         const finalConfig = yield* readConfig(workDir)
@@ -379,9 +370,7 @@ describe('mr add', () => {
         const initialConfig: MegarepoConfig = {
           members: { effect: 'effect-ts/effect' },
         }
-        const initialContent = yield* Schema.encode(
-          Schema.fromJsonString(MegarepoConfig, { space: 2 }),
-        )(initialConfig)
+        const initialContent = yield* encodePrettyJson(MegarepoConfig)(initialConfig)
         yield* fs.writeFileString(configPath, initialContent + '\n')
 
         // Check that member already exists
@@ -428,7 +417,7 @@ describe('megarepo.json parsing', () => {
             local: './packages/local',
           },
         }
-        const content = yield* Schema.encode(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
+        const content = yield* encodePrettyJson(MegarepoConfig)(
           config,
         )
         yield* fs.writeFileString(configPath, content + '\n')
@@ -465,7 +454,7 @@ describe('megarepo.json parsing', () => {
             vscode: { enabled: true, exclude: ['large-repo'] },
           },
         }
-        const content = yield* Schema.encode(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
+        const content = yield* encodePrettyJson(MegarepoConfig)(
           config,
         )
         yield* fs.writeFileString(configPath, content + '\n')
@@ -496,7 +485,7 @@ const runRootWithCwd = ({ cwdPath }: { cwdPath: string }) =>
     const { consoleLayer, getStdoutLines } = yield* makeConsoleCapture
 
     const argv = ['node', 'mr', '--cwd', cwdPath, 'root', '--output', 'json']
-    const effect = Cli.Command.run(mrCommand, { name: 'mr', version: 'test' })(argv).pipe(
+    const effect = Cli.Command.runWith(mrCommand, { version: 'test' })(argv.slice(2)).pipe(
       Effect.provide(consoleLayer),
     )
     const exit = yield* Effect.exit(effect)
@@ -505,7 +494,7 @@ const runRootWithCwd = ({ cwdPath }: { cwdPath: string }) =>
 
     let state: RootState | undefined
     if (stdout.trim() !== '') {
-      state = yield* Schema.decodeUnknown(Schema.fromJsonString(RootState))(stdout)
+      state = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(RootState))(stdout)
     }
 
     return {
@@ -575,7 +564,7 @@ describe('--cwd option', () => {
 
         const cwdPath = '/nonexistent/path/that/does/not/exist/'
         const argv = ['node', 'mr', '--cwd', cwdPath, 'root', '--output', 'json']
-        const effect = Cli.Command.run(mrCommand, { name: 'mr', version: 'test' })(argv).pipe(
+        const effect = Cli.Command.runWith(mrCommand, { version: 'test' })(argv.slice(2)).pipe(
           Effect.provide(consoleLayer),
         )
         const exit = yield* Effect.exit(effect)

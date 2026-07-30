@@ -5,9 +5,10 @@
  */
 
 import type { ChildProcessSpawner as CommandExecutor } from 'effect/unstable/process'
-import type { Error as PlatformError } from 'effect'
-import { FileSystem } from 'effect/FileSystem'
-import { Clock, Effect, Option, type ParseResult } from 'effect'
+import * as PlatformError from 'effect/PlatformError'
+import * as FileSystem from 'effect/FileSystem'
+import { Clock, Effect, Option } from 'effect'
+import * as SchemaError from 'effect/SchemaError'
 import * as Cli from 'effect/unstable/cli'
 import React from 'react'
 
@@ -65,8 +66,8 @@ const scanMembersRecursive = ({
   depth?: number
 }): Effect.Effect<
   MemberStatus[],
-  PlatformError.PlatformError | ParseResult.ParseError | Error,
-  FileSystem.FileSystem | CommandExecutor.CommandExecutor | Store
+  PlatformError.PlatformError | SchemaError.SchemaError | Error,
+  FileSystem.FileSystem | CommandExecutor.ChildProcessSpawner | Store
 > =>
   Effect.gen(function* () {
     const enterResult = yield* traversal.enterRoot({ root: megarepoRoot, depth })
@@ -404,7 +405,7 @@ export const statusCommand = Cli.Command.make(
               })
               const memberRealPath = yield* fs
                 .realPath(memberSymlinkPath.replace(/\/$/, ''))
-                .pipe(Effect.catchAll(() => Effect.void))
+                .pipe(Effect.catch(() => Effect.void))
 
               if (memberRealPath !== undefined) {
                 const memberRealPathNorm = memberRealPath.replace(/\/$/, '')

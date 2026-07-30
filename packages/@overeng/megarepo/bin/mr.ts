@@ -68,10 +68,9 @@ const program = Effect.gen(function* () {
     metricsExportInterval: 1000,
   })
 
-  yield* Cli.Command.run(mrCommand, {
-    name: 'mr',
+  yield* Cli.Command.runWith(mrCommand, {
     version,
-  })(rewriteHelpSubcommand(process.argv)).pipe(
+  })(rewriteHelpSubcommand(process.argv).slice(2)).pipe(
     Effect.scoped,
     CliVersion.enrichErrors,
     Effect.provideService(CliVersion, { name: 'mr', version }),

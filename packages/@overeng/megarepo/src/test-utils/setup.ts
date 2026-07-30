@@ -6,13 +6,14 @@
 
 import os from 'node:os'
 
-import { ChildProcess as Command } from 'effect/unstable/process'
-import { FileSystem } from 'effect/FileSystem'
+import { ChildProcess as Command, ChildProcessSpawner } from 'effect/unstable/process'
+import * as FileSystem from 'effect/FileSystem'
 import { Effect, Schema } from 'effect'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
 import { MegarepoConfig } from '../lib/config.ts'
+import { encodePrettyJson } from '../lib/json.ts'
 
 // =============================================================================
 // Types
@@ -55,8 +56,9 @@ export interface WorkspaceResult {
 /** Run a git command in a specific directory */
 export const runGitCommand = (cwd: AbsoluteDirPath, ...args: ReadonlyArray<string>) =>
   Effect.gen(function* () {
-    const command = Command.make('git', ...args).pipe(Command.workingDirectory(cwd))
-    const result = yield* Command.string(command)
+    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
+    const command = Command.make('git', args, { cwd })
+    const result = yield* spawner.string(command)
     return result.trim()
   })
 
@@ -195,7 +197,7 @@ export const createWorkspace = (fixture?: WorkspaceFixture) =>
     const config: MegarepoConfig = {
       members: fixture?.members ?? {},
     }
-    const configContent = yield* Schema.encode(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
+    const configContent = yield* encodePrettyJson(MegarepoConfig)(
       config,
     )
     yield* fs.writeFileString(
@@ -332,7 +334,7 @@ export const readConfig = (workspacePath: AbsoluteDirPath) =>
       EffectPath.unsafe.relativeFile('megarepo.json'),
     )
     const content = yield* fs.readFileString(configPath)
-    return yield* Schema.decodeUnknown(Schema.fromJsonString(MegarepoConfig))(content)
+    return yield* Schema.decodeUnknownEffect(Schema.fromJsonString(MegarepoConfig))(content)
   })
 
 /** Generate a megarepo.json config object */
