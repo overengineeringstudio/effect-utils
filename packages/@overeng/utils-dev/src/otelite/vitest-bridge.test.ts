@@ -47,8 +47,8 @@ layer(CaptureLayer, { excludeTestServices: true })('OteliteCapture bridge', (it)
       yield* flushCaptureSpans({ exportInterval })
 
       const rows = yield* cap.inspect({ signal: 'traces', name: spanName })
-      expect(rows.length).toBeGreaterThanOrEqual(1)
-      const span = rows.find((r) => r.name === spanName)!
+      expect(rows).toHaveLength(1)
+      const span = rows[0]!
       expect(span.schema).toBe('otelite.span/v1')
       expect(span.service).toBe('otelite-capture-bridge')
 
@@ -71,7 +71,7 @@ layer(CaptureLayer, { excludeTestServices: true })('OteliteCapture bridge', (it)
 
       const rows = yield* cap.inspect({ signal: 'traces', name: spanName })
       expect(rows.every((r) => r.name === spanName)).toBe(true)
-      expect(rows.length).toBeGreaterThanOrEqual(1)
+      expect(rows).toHaveLength(1)
     }),
   )
 })

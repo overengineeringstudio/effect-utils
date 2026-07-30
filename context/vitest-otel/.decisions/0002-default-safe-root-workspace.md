@@ -16,6 +16,21 @@ The observability lifecycle is already owned by
 defines how a test task opts into the native Vitest runner lane when such a
 collector context exists.
 
+## Options
+
+| Option                             | Tradeoffs                                                                                 |
+| ---------------------------------- | ----------------------------------------------------------------------------------------- |
+| Mandatory root workspace           | Centralizes config but breaks consumers without effect-utils' workspace shape.            |
+| Explicit root-workspace capability | Preserves package-local defaults and centralizes telemetry for consumers that opt in.     |
+| Per-package telemetry config       | Avoids root assumptions but duplicates SDK and runner configuration across every package. |
+
+## Evidence and Argument
+
+Package-local execution is an existing downstream contract, while root
+workspace project selection is repository-specific. An explicit capability
+preserves that contract, avoids duplicated package configuration, and composes
+with the observability module that already owns collector lifecycle.
+
 ## Decision
 
 - `devenvModules.tasks.test` keeps package-local execution as its default.

@@ -13,6 +13,22 @@ the export failure after the timeout. Its 3-second default can therefore drop a
 product batch silently when a collector is slow even though the independently
 flushed runner spans survive.
 
+## Options
+
+| Option                            | Tradeoffs                                                                                 |
+| --------------------------------- | ----------------------------------------------------------------------------------------- |
+| Shared provider and budget        | Simplifies teardown but couples product attribution and capture to Vitest globals.        |
+| Independent with 3-second budget  | Preserves ownership but can silently drop short-lived product batches on slow collectors. |
+| Independent with 15-second budget | Preserves ownership and improves delivery while retaining a finite upper bound.           |
+
+## Evidence and Argument
+
+Sharing the provider would couple service attribution and assertion capture to
+Vitest's experimental integration. The independent product exporter preserves
+those contracts, but its per-test finalizer is the last opportunity to deliver
+short-lived spans. A 15-second upper bound improves delivery tolerance without
+adding steady-state delay when the collector acknowledges promptly.
+
 ## Decision
 
 - Keep the Effect product exporter per-test and independent from Vitest's

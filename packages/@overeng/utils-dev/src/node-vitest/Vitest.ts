@@ -232,13 +232,17 @@ export const withTestCtx =
 
       const combinedLayer = layer.pipe(Layer.provideMerge(otelLayer))
 
+      // Keep the bridge inside the provided context: capture layers contribute
+      // SuppressVitestParentBridge, so the decision must run after that marker
+      // is available. The outer scope still owns every provided-layer finalizer.
       return bridgeVitestParent(
         self.pipe(
           DEBUGGER_ACTIVE === true ? identity : Effect.timeout(timeout),
-          Effect.provide(combinedLayer),
-          Effect.scoped, // We need to scope the effect manually here because otherwise the span is not closed
           Effect.annotateLogs({ suffix }),
         ),
+      ).pipe(
+        Effect.provide(combinedLayer),
+        Effect.scoped, // We need to scope the effect manually here because otherwise the span is not closed
       ) as any
     }
 

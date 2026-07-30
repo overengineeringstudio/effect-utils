@@ -5,7 +5,18 @@ Non-normative evidence for [../spec.md](../spec.md) and
 Validated end-to-end in an isolated worktree against the real harness (not a
 throwaway), Vitest pinned `4.1.9`.
 
-## Hypotheses and results
+## Question
+
+Can Vitest's native OpenTelemetry runner tree and Effect product spans compose
+without global-provider coupling or loss of deterministic otelite assertions?
+
+## Method
+
+Run the real utils-dev harness with Vitest `4.1.9`, a minimal native SDK, and
+otelite capture; compare the emitted runner/product trace relationships with
+the bridge enabled, suppressed, and absent.
+
+## Result
 
 | Hypothesis                                         | Method                                                                              | Result                                                                            |
 | -------------------------------------------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
@@ -21,7 +32,13 @@ throwaway), Vitest pinned `4.1.9`.
 - oxlint on the 6 changed files: **0 warnings / 0 errors**; oxfmt clean.
 - `@overeng/utils-dev` full suite (harness lives here): **31/31 pass**.
 
-## Known costs and open items
+## Conclusion
+
+The explicit bridge connects independent runner and product providers, while
+the suppression marker keeps assertion capture deterministic. Native runner
+telemetry remains inert when collector context is absent.
+
+## VRS Impact
 
 - Adding `@opentelemetry/exporter-trace-otlp-http` changed `pnpm-lock.yaml`,
   invalidating the nix pnpm-deps FOD hashes for workspace CLIs (oxc-config,
