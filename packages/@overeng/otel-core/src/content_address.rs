@@ -266,7 +266,9 @@ mod tests {
             .join(object_path_for_digest(&descriptor.digest).unwrap());
 
         assert_eq!(
-            write_object(root.path(), &descriptor, b"different").unwrap_err().kind(),
+            write_object(root.path(), &descriptor, b"different")
+                .unwrap_err()
+                .kind(),
             io::ErrorKind::InvalidInput
         );
         assert_eq!(fs::read(&object_path).unwrap(), original);
