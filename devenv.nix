@@ -35,6 +35,12 @@ let
       name = "otelite";
       path = "packages/@overeng/otelite";
     }
+    # otel-core must precede otel-scrape: the latter has a `path = "../otel-core"`
+    # dependency, so building/linting core first keeps the loop honest.
+    {
+      name = "otel-core";
+      path = "packages/@overeng/otel-core";
+    }
     {
       name = "otel-scrape";
       path = "packages/@overeng/otel-scrape";
@@ -423,7 +429,7 @@ in
         "scripts/*.genie.ts"
         "context/effect/socket/*.genie.ts"
         "context/opentui/*.genie.ts"
-        "context/otel-scrape/telemetry-registry.json"
+        "context/otel-utils/otel-scrape/telemetry-registry.json"
         ".oxfmtrc.json.genie.ts"
         ".oxlintrc.json.genie.ts"
       ];
@@ -477,7 +483,7 @@ in
   # analogous entries in `geniePatterns` below (which cover the
   # `lint:check:genie` gate's `execIfModified`).
   effectUtils.genie.extraInputGlobs = [
-    "context/otel-scrape/telemetry-registry.json"
+    "context/otel-utils/otel-scrape/telemetry-registry.json"
   ];
 
   packages = [

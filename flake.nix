@@ -58,6 +58,12 @@
         otelite = import (rootPath + "/packages/@overeng/otelite/nix/build.nix") {
           inherit pkgs;
         };
+        # Registry-agnostic library crate (CAS, W3C trace-context, hex). Plain
+        # `{ pkgs }` build (no build-id stamp); consumed by otel-scrape via a
+        # cargo `path` dep. Library only — no `apps.otel-core`.
+        otel-core = import (rootPath + "/packages/@overeng/otel-core/nix/build.nix") {
+          inherit pkgs;
+        };
         otel-scrape = import (rootPath + "/packages/@overeng/otel-scrape/nix/build.nix") {
           inherit
             pkgs
@@ -187,7 +193,7 @@
           cliPackages
           // providerCliPackages
           // {
-            inherit otelite otel-scrape;
+            inherit otelite otel-core otel-scrape;
             cli-build-stamp = cliBuildStamp.package;
             effect-tsgo = tsgo.packages.${system}.effect-tsgo;
             genie-dirty = cliPackagesDirty.genie;

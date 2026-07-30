@@ -65,7 +65,7 @@ type OtelScrapeTelemetryRegistry = {
   readonly schemas: readonly SchemaRegistryItem[]
 }
 
-const sourcePath = 'context/otel-scrape/telemetry-registry.json'
+const sourcePath = 'context/otel-utils/otel-scrape/telemetry-registry.json'
 const repo = defineRepoContext({ name: 'effect-utils', importMetaUrl: import.meta.url })
 
 const registry = (): {

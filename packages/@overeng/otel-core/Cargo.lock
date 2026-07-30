@@ -133,17 +133,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
-]
-
-[[package]]
-name = "otel-scrape"
-version = "0.0.0"
-dependencies = [
- "libc",
- "otel-core",
- "serde",
- "serde_json",
- "sha2",
  "tempfile",
 ]
 

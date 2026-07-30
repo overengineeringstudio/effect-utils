@@ -77,6 +77,13 @@ export const nixOnlyPackages = [
     cratePath: 'packages/@overeng/otelite',
   },
   {
+    name: 'otel-core',
+    /** Rust library crate: registry-agnostic CAS, W3C trace-context, hex primitives. */
+    kind: 'rust-crate',
+    flakeRef: 'otel-core',
+    cratePath: 'packages/@overeng/otel-core',
+  },
+  {
     name: 'otel-scrape',
     /** Rust crate: process-wrapper telemetry substrate for build/dev tools. */
     kind: 'rust-crate',
