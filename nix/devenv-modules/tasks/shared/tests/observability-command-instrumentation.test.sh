@@ -19,9 +19,9 @@ module_attr() {
   local attr="$2"
   nix eval --impure --raw --expr "
     let
-      flake = builtins.getFlake (toString $ROOT);
+      flake = builtins.getFlake (\"git+file://\" + toString $ROOT);
       pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
-      module = (import $ROOT/nix/devenv-modules/observability.nix {
+      module = (flake.devenvModules.observability {
         project = \"module-smoke\";
         profile = null;
         commandInstrumentation = $enabled;
@@ -41,9 +41,9 @@ mkdir -p "$tmpdir/bin"
 
 disabled_has_scrape="$(nix eval --impure --json --expr "
   let
-    flake = builtins.getFlake (toString $ROOT);
+    flake = builtins.getFlake (\"git+file://\" + toString $ROOT);
     pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
-    module = (import $ROOT/nix/devenv-modules/observability.nix {
+    module = (flake.devenvModules.observability {
       project = \"module-smoke\";
       profile = null;
       commandInstrumentation = false;
@@ -58,7 +58,7 @@ disabled_has_scrape="$(nix eval --impure --json --expr "
 
 disabled_supplies_scrape="$(nix eval --impure --json --expr "
   let
-    flake = builtins.getFlake (toString $ROOT);
+    flake = builtins.getFlake (\"git+file://\" + toString $ROOT);
     pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
     module = (import $ROOT/nix/devenv-modules/observability.nix {
       project = \"module-smoke\";
@@ -81,9 +81,23 @@ otelite_bin="$(nix build --no-link --print-out-paths "$ROOT#otelite")/bin/otelit
 [ -x "$otel_scrape_bin" ] || fail "enabled module should provide executable otel-scrape"
 [ -x "$otelite_bin" ] || fail "otelite should be executable"
 
+otel_scrape_version="$("$otel_scrape_bin" --version 2>/dev/null)"
+case "$otel_scrape_version" in
+  "otel-scrape 0.0.0+"*)
+    ;;
+  *)
+    fail "module-provided otel-scrape should carry a build-correlated machine version"
+    ;;
+esac
+case "$otel_scrape_version" in
+  *"+unknown"* | *"+dev"*)
+    fail "module-provided otel-scrape should preserve the flake source stamp"
+    ;;
+esac
+
 nix eval --impure --raw --expr "
   let
-    flake = builtins.getFlake (toString $ROOT);
+    flake = builtins.getFlake (\"git+file://\" + toString $ROOT);
     pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
     trace = import $ROOT/nix/devenv-modules/tasks/lib/trace.nix { lib = pkgs.lib; };
   in trace.exec \"test:command-instrumentation\" ''

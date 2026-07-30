@@ -10,6 +10,7 @@
   project,
   backend ? "ambient",
   commandInstrumentation ? false,
+  otelScrapePackage ? null,
   profile ? {
     name = "setup";
     task = "setup:strict";
@@ -43,10 +44,12 @@ let
   otelSpan = import ./otel/otel-span.nix { inherit pkgs; };
   otelite = import (../../packages + "/@overeng/otelite/nix/build.nix") { inherit pkgs; };
   otelScrape =
-    if commandInstrumentation then
-      import (../../packages + "/@overeng/otel-scrape/nix/build.nix") { inherit pkgs; }
+    if !commandInstrumentation then
+      null
+    else if otelScrapePackage != null then
+      otelScrapePackage
     else
-      null;
+      throw "effect-utils observability: commandInstrumentation requires the flake-stamped otelScrapePackage";
 
   capture =
     if profile == null then

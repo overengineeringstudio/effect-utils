@@ -328,6 +328,7 @@ in
     (import ./nix/devenv-modules/observability.nix {
       project = "effect-utils";
       commandInstrumentation = true;
+      otelScrapePackage = repoFlake.packages.${currentSystem}.otel-scrape;
       wireInto = [ "check:all" ];
     })
     # gh:apply-labels / gh:check-labels — reconcile .github/labels.json with live labels
