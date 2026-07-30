@@ -14,6 +14,14 @@ The question is how to adopt native Vitest OTEL across the megarepo in a way
 that closes the visibility gap without breaking the assertion lane or forcing
 per-package config. Three sub-decisions were load-bearing.
 
+## Options
+
+| Option                         | Tradeoffs                                                                                |
+| ------------------------------ | ---------------------------------------------------------------------------------------- |
+| Global provider                | Automatic parenting, but couples product export and assertion capture to Vitest globals. |
+| Independent explicit bridge    | Preserves provider ownership while connecting traces at the test boundary.               |
+| Independent disconnected trees | Preserves ownership but loses causal navigation between runner and product work.         |
+
 ## Evidence and Argument
 
 ### Explicit bridge, not global-context parenting
@@ -61,6 +69,13 @@ test on every CI run is a large trace volume for little routine value, so they
 remain opt-in (harness `forceOtel` / targeted investigation). Measured runner
 overhead was a small bounded per-file cost with a minimal (no-auto-instrument)
 SDK.
+
+## Decision
+
+Keep the runner and product providers independent and explicitly seed the
+active Vitest span as the Effect parent. Enable runner coverage by default when
+the devenv task supplies collector context, keep product export opt-in, and
+suppress the bridge in otelite assertion capture.
 
 ## Consequences
 

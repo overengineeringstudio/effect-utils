@@ -2,7 +2,11 @@ import { existsSync, readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { defineConfig } from 'vitest/config'
+import type { ViteUserConfig } from 'vitest/config'
+
+// Package-local Vitest binaries load this root workspace config, so avoid a
+// runtime import that would be resolved from the dependency-less repo root.
+const defineConfig = (config: ViteUserConfig): ViteUserConfig => config
 
 const rootDir = fileURLToPath(new URL('.', import.meta.url))
 const packagesRoot = resolve(rootDir, 'packages', '@overeng')
@@ -26,11 +30,23 @@ const projects = projectRoots.map((root) =>
     : { root, test: { exclude, server: { deps: { inline: inlineDeps } } } },
 )
 
+const otelRunnerEnabled = process.env.VITEST_OTEL_RUNNER === '1'
+
 // We mostly have this file for VSC test explorer support
 export default defineConfig({
   test: {
     exclude,
     server: { deps: { inline: inlineDeps } },
+    ...(otelRunnerEnabled === true
+      ? {
+          experimental: {
+            openTelemetry: {
+              enabled: true,
+              sdkPath: './packages/@overeng/utils-dev/src/node-vitest/otel-sdk.mjs',
+            },
+          },
+        }
+      : {}),
     projects,
   },
 })

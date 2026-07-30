@@ -6,6 +6,13 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **@overeng/utils-dev / Vitest OTEL**: connect native Vitest runner spans to
+  Effect product spans through an explicit parent bridge while keeping otelite
+  assertions deterministic. The shared test module can opt into a root Vitest
+  workspace and enables runner telemetry only in an existing OTLP collector
+  context; package-local downstream behavior remains the default. Real otelite
+  end-to-end coverage locks runner parenting, Effect span bridging,
+  assertion-lane suppression, failure status, and bounded drain.
 - **@overeng/effect-path**: add Effect 3 cross-major baselines for PathInfo schema
   encoding, convention parser failure partitions, and path operation byte output.
 - **@overeng/tui-stories**: add Effect 3 cross-major baselines for schema-encoded

@@ -94,7 +94,7 @@
 
 - **R10 Capture-lane suppression:** When the otelite in-process capture is
   active for a test, the runner-parent seed is suppressed, so captured product
-  spans stay root and their shape (including root-ness) is independent of
+  spans stay inside the capture-owned trace and their shape is independent of
   whether native Vitest OTEL is enabled for the run.
 - **R11 Suppression is structural, not per-test:** Suppression is provided by
   the capture layer itself, requiring no change to individual assertion tests.
@@ -109,3 +109,16 @@
 - **R14 Ungoverned names are declared:** `vitest.*` runner span names are
   explicitly recorded as external/ungoverned, so their absence from the
   telemetry registry is intentional, not an oversight (T03).
+
+### Run outcomes and export completion stay trustworthy
+
+- **R15 Failure status:** A failed test preserves the Vitest process failure and
+  marks the corresponding native callback span as an OpenTelemetry error.
+- **R16 Bounded drain:** Success and failure runs drain pending runner and
+  product telemetry within their configured teardown bounds; an unavailable
+  receiver cannot turn telemetry teardown into an unbounded test run.
+- **R17 OTLP interoperability:** A standards-conforming OTLP receiver accepts
+  both native runner and Effect product telemetry without rejected records, and
+  the decoded records preserve the collector gate, ambient task parenting,
+  Vitest-to-Effect parent bridge, assertion-lane suppression, successful drain,
+  and failed-callback status.
