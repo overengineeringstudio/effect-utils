@@ -74,10 +74,13 @@ disabled_supplies_scrape="$(nix eval --impure --json --expr "
   || fail "disabled module should not add otel-scrape to packages"
 
 otel_span_bin="$(module_attr true OTEL_SPAN_BIN)"
-otel_scrape_bin="$(module_attr true OTEL_SCRAPE_BIN)"
+module_otel_scrape_bin="$(module_attr true OTEL_SCRAPE_BIN)"
+otel_scrape_bin="$(nix build --no-link --print-out-paths "git+file://$ROOT#otel-scrape")/bin/otel-scrape"
 otelite_bin="$(nix build --no-link --print-out-paths "$ROOT#otelite")/bin/otelite"
 
 [ -x "$otel_span_bin" ] || fail "enabled module should provide executable otel-span"
+[ "$module_otel_scrape_bin" = "$otel_scrape_bin" ] \
+  || fail "enabled module should select the flake-built otel-scrape package"
 [ -x "$otel_scrape_bin" ] || fail "enabled module should provide executable otel-scrape"
 [ -x "$otelite_bin" ] || fail "otelite should be executable"
 
