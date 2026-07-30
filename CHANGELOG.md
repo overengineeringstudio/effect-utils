@@ -8,9 +8,11 @@ All notable changes to this project will be documented in this file.
 
 - **otel-utils / otel-core**: group otel-scrape and otelite under one family VRS
   and extract registry-agnostic CAS, W3C trace-context, and stable-hash
-  primitives into the reusable Rust `otel-core` library. Devenv capture remains
-  owned by the existing shared observability module; the family records its
-  temporary status/exec bridge as blocked on cachix/devenv#3037.
+  primitives into the reusable Rust `otel-core` library. The shared CAS rejects
+  malformed digests and verifies descriptor digests and byte lengths before
+  publishing objects. Devenv capture remains owned by the existing shared
+  observability module; the family records its temporary status/exec bridge as
+  blocked on cachix/devenv#3037.
 - **@overeng/effect-path**: add Effect 3 cross-major baselines for PathInfo schema
   encoding, convention parser failure partitions, and path operation byte output.
 - **@overeng/tui-stories**: add Effect 3 cross-major baselines for schema-encoded

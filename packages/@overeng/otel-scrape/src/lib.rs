@@ -3348,7 +3348,7 @@ fn artifact_summary(
         let link = ProfileLink {
             profile_type: artifact.profile_type.clone(),
             digest: descriptor.digest.clone(),
-            uri: cas_uri_for_digest(&descriptor.digest),
+            uri: cas_uri_for_digest(&descriptor.digest)?,
             byte_length: descriptor.byte_length,
             media_type: descriptor.media_type,
         };
@@ -3408,7 +3408,7 @@ fn artifact_summary(
         profiles,
         manifest: Some(ManifestLink {
             digest: manifest_descriptor.digest.clone(),
-            uri: cas_uri_for_digest(&manifest_descriptor.digest),
+            uri: cas_uri_for_digest(&manifest_descriptor.digest)?,
             byte_length: manifest_descriptor.byte_length,
             media_type: manifest_descriptor.media_type,
             codec: manifest_descriptor

@@ -48,22 +48,50 @@ pub fn descriptor_for_bytes(
     }
 }
 
-pub fn cas_uri_for_digest(digest: &str) -> String {
-    format!("cas:{}", object_path_for_digest(digest))
+pub fn cas_uri_for_digest(digest: &str) -> io::Result<String> {
+    Ok(format!("cas:{}", object_path_for_digest(digest)?))
 }
 
-pub fn object_path_for_digest(digest: &str) -> String {
-    let hex = digest
-        .strip_prefix("sha256:")
-        .expect("content-address digests use sha256:<hex>");
-    format!("sha256/{}/{}", &hex[..2], &hex[2..])
+pub fn object_path_for_digest(digest: &str) -> io::Result<String> {
+    let hex = validate_digest(digest)?;
+    Ok(format!("sha256/{}/{}", &hex[..2], &hex[2..]))
+}
+
+pub fn validate_digest(digest: &str) -> io::Result<&str> {
+    let Some(hex) = digest.strip_prefix("sha256:") else {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "content-address digests must use sha256:<64 lowercase hex>",
+        ));
+    };
+    if hex.len() != 64
+        || !hex
+            .bytes()
+            .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "content-address digests must use sha256:<64 lowercase hex>",
+        ));
+    }
+    Ok(hex)
 }
 
 pub fn write_object(root: &Path, descriptor: &ContentDescriptor, bytes: &[u8]) -> io::Result<()> {
-    write_bytes_atomic(
-        &root.join(object_path_for_digest(&descriptor.digest)),
-        bytes,
-    )
+    let object_path = object_path_for_digest(&descriptor.digest)?;
+    if descriptor.byte_length != bytes.len() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "content-address descriptor byte length does not match object bytes",
+        ));
+    }
+    if descriptor.digest != stable_hash(bytes) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "content-address descriptor digest does not match object bytes",
+        ));
+    }
+    write_bytes_atomic(&root.join(object_path), bytes)
 }
 
 pub fn write_pin(root: &Path, name: &str, manifest: &ContentDescriptor) -> io::Result<()> {
@@ -203,13 +231,55 @@ mod tests {
         );
         assert_eq!(descriptor.byte_length, 13);
         assert_eq!(
-            object_path_for_digest(&descriptor.digest),
+            object_path_for_digest(&descriptor.digest).unwrap(),
             "sha256/f8/0b93b62cc81c2ae66b7f00f572f1cf1cf7566032501f3e61fe57ee7a0fdd0f"
         );
         assert_eq!(
-            cas_uri_for_digest(&descriptor.digest),
+            cas_uri_for_digest(&descriptor.digest).unwrap(),
             "cas:sha256/f8/0b93b62cc81c2ae66b7f00f572f1cf1cf7566032501f3e61fe57ee7a0fdd0f"
         );
+    }
+
+    #[test]
+    fn object_paths_reject_malformed_or_unsafe_digests() {
+        for digest in [
+            "sha256:aa/../../escape",
+            "sha256:abc",
+            "sha256:F80B93B62CC81C2AE66B7F00F572F1CF1CF7566032501F3E61FE57EE7A0FDD0F",
+            "sha512:f80b93b62cc81c2ae66b7f00f572f1cf1cf7566032501f3e61fe57ee7a0fdd0f",
+        ] {
+            assert_eq!(
+                object_path_for_digest(digest).unwrap_err().kind(),
+                io::ErrorKind::InvalidInput
+            );
+        }
+    }
+
+    #[test]
+    fn object_writes_reject_descriptor_mismatches_without_replacing_bytes() {
+        let root = tempfile::tempdir().unwrap();
+        let original = b"profile-bytes";
+        let descriptor = descriptor_for_bytes(original, PROFILE_MEDIA_TYPE, None, None);
+        write_object(root.path(), &descriptor, original).unwrap();
+        let object_path = root
+            .path()
+            .join(object_path_for_digest(&descriptor.digest).unwrap());
+
+        assert_eq!(
+            write_object(root.path(), &descriptor, b"different").unwrap_err().kind(),
+            io::ErrorKind::InvalidInput
+        );
+        assert_eq!(fs::read(&object_path).unwrap(), original);
+
+        let mut wrong_length = descriptor.clone();
+        wrong_length.byte_length += 1;
+        assert_eq!(
+            write_object(root.path(), &wrong_length, original)
+                .unwrap_err()
+                .kind(),
+            io::ErrorKind::InvalidInput
+        );
+        assert_eq!(fs::read(object_path).unwrap(), original);
     }
 
     #[test]
