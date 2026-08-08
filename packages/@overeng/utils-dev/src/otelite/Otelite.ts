@@ -1,6 +1,17 @@
-import { ChildProcess as Command, ChildProcessSpawner as CommandExecutor } from 'effect/unstable/process'
+import {
+  Context,
+  Deferred,
+  Effect,
+  Fiber,
+  Layer,
+  Ref,
+  Schedule,
+  Schema,
+  type Scope,
+  Stream,
+} from 'effect'
 import { FileSystem } from 'effect/FileSystem'
-import { Deferred, Effect, Fiber, Ref, Schedule, Schema, type Scope, Stream } from 'effect'
+import { ChildProcess as Command, ChildProcessSpawner } from 'effect/unstable/process'
 
 import {
   cliReasonForExitCode,
@@ -124,8 +135,8 @@ type InspectRow<S extends Signal> = S extends 'traces'
     ? MetricRow
     : LogRow
 
-const decodeSummary = Schema.decodeUnknown(Schema.fromJsonString(Summary))
-const decodeEndpointsEvent = Schema.decodeUnknown(Schema.fromJsonString(EndpointsEvent))
+const decodeSummary = Schema.decodeUnknownEffect(Schema.fromJsonString(Summary))
+const decodeEndpointsEvent = Schema.decodeUnknownEffect(Schema.fromJsonString(EndpointsEvent))
 
 const rowSchema = { traces: SpanRow, metrics: MetricRow, logs: LogRow } as const
 const rowKind = { traces: 'span', metrics: 'metric', logs: 'log' } as const
@@ -147,11 +158,10 @@ const summaryKind = {
  * Tests normally get the nix-built binary from the devenv `PATH`; raw-shell
  * runs can set `OTELITE_BIN="$(nix build --no-link --print-out-paths .#otelite)/bin/otelite"`.
  */
-export class Otelite extends Effect.Service<Otelite>()('@overeng/utils-dev/otelite/Otelite', {
-  accessors: true,
-  effect: Effect.gen(function* () {
-    const executor = yield* CommandExecutor.CommandExecutor
-    const fs = yield* FileSystem.FileSystem
+export class Otelite extends Context.Service<Otelite>()('@overeng/utils-dev/otelite/Otelite', {
+  make: Effect.gen(function* () {
+    const executor = yield* ChildProcessSpawner.ChildProcessSpawner
+    const fs = yield* FileSystem
 
     const binary = process.env.OTELITE_BIN ?? 'otelite'
 
@@ -162,13 +172,13 @@ export class Otelite extends Effect.Service<Otelite>()('@overeng/utils-dev/oteli
     const exec = (args: ReadonlyArray<string>) =>
       Effect.scoped(
         Effect.gen(function* () {
-          const process = yield* executor.start(Command.make(binary, ...args))
-          const collect = (stream: typeof process.stdout) =>
+          const process = yield* executor.spawn(Command.make(binary, args))
+          const collect = (stream: NonNullable<typeof process.stdout>) =>
             Stream.runCollect(Stream.decodeText(stream)).pipe(
               Effect.map((chunks) => Array.from(chunks).join('')),
             )
           const [exitCode, stdout, stderr] = yield* Effect.all(
-            [process.exitCode, collect(process.stdout), collect(process.stderr)],
+            [process.exitCode, collect(process.stdout!), collect(process.stderr!)],
             { concurrency: 'unbounded' },
           )
           return { exitCode, stdout, stderr }
@@ -288,14 +298,14 @@ export class Otelite extends Effect.Service<Otelite>()('@overeng/utils-dev/oteli
         const schema = summarySchema[signal]
         const kind = summaryKind[signal]
         return runCli(args, (stdout) =>
-          Schema.decodeUnknown(Schema.fromJsonString(schema))(stdout).pipe(
+          Schema.decodeUnknownEffect(Schema.fromJsonString(schema))(stdout).pipe(
             Effect.mapError((cause) => new OteliteDecodeError({ kind, raw: stdout, cause })),
           ),
         ).pipe(withOteliteInspectSummarySpan(signal))
       }
       const schema = rowSchema[signal]
       const kind = rowKind[signal]
-      const decodeRow = Schema.decodeUnknown(Schema.fromJsonString(schema))
+      const decodeRow = Schema.decodeUnknownEffect(Schema.fromJsonString(schema))
       return runCli(args, (stdout) =>
         Effect.forEach(
           stdout.split('\n').filter((line) => line.trim() !== ''),
@@ -321,7 +331,9 @@ export class Otelite extends Effect.Service<Otelite>()('@overeng/utils-dev/oteli
      * sleep. A non-empty capture returns on its first visible row; a genuinely
      * empty live capture pays the bounded budget exactly once.
      */
-    const liveRowRetry = Schedule.recurs(20).pipe(Schedule.addDelay(() => '25 millis'))
+    const liveRowRetry = Schedule.recurs(20).pipe(
+      Schedule.addDelay(() => Effect.succeed('25 millis')),
+    )
 
     /**
      * A scoped, receiver-only capture (`otelite capture`). Yields a
@@ -357,13 +369,13 @@ export class Otelite extends Effect.Service<Otelite>()('@overeng/utils-dev/oteli
         const stop = yield* Deferred.make<void>()
         const stdinStream = Stream.fromEffect(Deferred.await(stop)).pipe(Stream.drain)
 
-        const command = Command.make(binary, ...flags).pipe(
-          Command.stdin(stdinStream),
-          Command.stdout('pipe'),
-        )
-
         const process = yield* executor
-          .start(command)
+          .spawn(
+            Command.make(binary, flags, {
+              stdin: stdinStream,
+              stdout: 'pipe',
+            }),
+          )
           .pipe(
             Effect.mapError((cause) => new OteliteSpawnError({ argv: [binary, ...flags], cause })),
           )
@@ -374,7 +386,7 @@ export class Otelite extends Effect.Service<Otelite>()('@overeng/utils-dev/oteli
 
         // Drain the entire tagged event stream; resolve `ready` on the first line
         // (decoded as `otelite.endpoints/v1`), keep the latest line for the summary.
-        const drain = yield* process.stdout.pipe(
+        const drain = yield* process.stdout!.pipe(
           Stream.decodeText(),
           Stream.splitLines,
           Stream.filter((line) => line.trim() !== ''),
@@ -420,15 +432,17 @@ export class Otelite extends Effect.Service<Otelite>()('@overeng/utils-dev/oteli
               ),
             ),
           ),
-          Effect.timeoutFail({
+          Effect.timeoutOrElse({
             duration: '10 seconds',
-            onTimeout: () =>
-              new OteliteCliError({
-                exitCode: 74,
-                reason: 'io-err',
-                argv: [binary, ...flags],
-                stderr: 'otelite capture did not emit endpoints within the readiness bound',
-              }),
+            orElse: () =>
+              Effect.fail(
+                new OteliteCliError({
+                  exitCode: 74,
+                  reason: 'io-err',
+                  argv: [binary, ...flags],
+                  stderr: 'otelite capture did not emit endpoints within the readiness bound',
+                }),
+              ),
           }),
         )
 
@@ -443,9 +457,9 @@ export class Otelite extends Effect.Service<Otelite>()('@overeng/utils-dev/oteli
             // Await the drained stdout, but never hang teardown: if the child is
             // wedged, fall back to a kill so the scope always closes.
             yield* Fiber.join(drain).pipe(
-              Effect.zipRight(process.exitCode),
+              Effect.andThen(process.exitCode),
               Effect.timeout('10 seconds'),
-              Effect.catchAll(() => process.kill().pipe(Effect.ignore)),
+              Effect.catch(() => process.kill().pipe(Effect.ignore)),
             )
             const line = yield* Ref.get(lastLine)
             yield* decodeSummary(line ?? '').pipe(
@@ -507,4 +521,6 @@ export class Otelite extends Effect.Service<Otelite>()('@overeng/utils-dev/oteli
 
     return { run, capture, inspect, version } as const
   }),
-}) {}
+}) {
+  static readonly layer = Layer.effect(this, this.make)
+}

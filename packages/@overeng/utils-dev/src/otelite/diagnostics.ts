@@ -1,7 +1,7 @@
 import * as NodePath from 'node:path'
 
-import { FileSystem } from 'effect/FileSystem'
 import { Effect, Schema } from 'effect'
+import { FileSystem } from 'effect/FileSystem'
 
 import type { CaptureHandle } from './Otelite.ts'
 import { LogRow, LogSummary, MetricRow, MetricSummary, SpanRow, TraceSummary } from './schema.ts'
@@ -64,7 +64,7 @@ export const writeCaptureDiagnostics = Effect.fn('otelite.diagnostics.write', {
   includeMetrics = false,
   includeLogs = false,
 }: WriteCaptureDiagnosticsOptions) {
-  const fs = yield* FileSystem.FileSystem
+  const fs = yield* FileSystem
   yield* fs.makeDirectory(outDir, { recursive: true })
 
   const traceSummary = yield* capture.inspect({
@@ -159,9 +159,9 @@ export const writeCaptureDiagnostics = Effect.fn('otelite.diagnostics.write', {
 })
 
 const encodeJson =
-  <A, I>(schema: Schema.Schema<A, I, never>) =>
+  <A, I>(schema: Schema.Codec<A, I>) =>
   (value: A): string =>
-    Schema.encodeSync(Schema.fromJsonString(schema, { space: 2 }))(value)
+    JSON.stringify(Schema.encodeSync(schema)(value), null, 2) as string
 
 const writeJson = ({ path, content }: { readonly path: string; readonly content: string }) =>
-  FileSystem.FileSystem.pipe(Effect.flatMap((fs) => fs.writeFileString(path, `${content}\n`)))
+  FileSystem.pipe(Effect.flatMap((fs) => fs.writeFileString(path, `${content}\n`)))

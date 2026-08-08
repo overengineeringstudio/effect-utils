@@ -70,7 +70,7 @@ export interface OteliteCaptureLayerOptions extends CaptureOptions {
  *
  * Requires `Otelite` + a `CommandExecutor`/`FileSystem` (e.g.
  * {@link NodeServices.layer}) in context, both of which it provides internally
- * via {@link Otelite.Default} so the returned layer is self-contained.
+ * via {@link Otelite.layer} so the returned layer is self-contained.
  */
 export const makeOteliteCaptureLayer = (
   options: OteliteCaptureLayerOptions = {},
@@ -81,20 +81,20 @@ export const makeOteliteCaptureLayer = (
   const handleLayer: Layer.Layer<
     OteliteCapture,
     OteliteSpawnError | OteliteCliError | OteliteDecodeError
-  > = Layer.scoped(
+  > = Layer.effect(
     OteliteCapture,
     Effect.gen(function* () {
       const otelite = yield* Otelite
       return yield* otelite.capture(captureOptions)
     }),
-  ).pipe(Layer.provide(Otelite.Default), Layer.provide(NodeServices.layer))
+  ).pipe(Layer.provide(Otelite.layer), Layer.provide(NodeServices.layer))
 
   // Point the OTLP trace exporter at the captured receiver. Built from the
   // handle so the URL is the captured endpoint + the locked `/v1/traces` suffix.
   // Depends on `OteliteCapture`; `provideMerge(handleLayer)` below both
   // satisfies that dependency (booting the receiver ONCE — same layer reference,
   // so it is memoized within the build) and re-exports the tag to the test.
-  const exporterLayer: Layer.Layer<never, never, OteliteCapture> = Layer.unwrapEffect(
+  const exporterLayer: Layer.Layer<never, never, OteliteCapture> = Layer.unwrap(
     OteliteCapture.pipe(
       Effect.map((handle) =>
         makeOtelVitestLayer({

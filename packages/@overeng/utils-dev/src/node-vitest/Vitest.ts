@@ -11,20 +11,20 @@
 
 import * as inspector from 'node:inspector'
 
-import { OtlpSerialization, OtlpTracer } from '@effect/opentelemetry'
 import type * as Vitest from '@effect/vitest'
 import type { Duration } from 'effect'
 import {
   type Cause,
+  ConfigProvider,
   Effect,
-  type FastCheck as FC,
   identity,
   Layer,
-  Predicate,
   type Schema,
   type Scope,
 } from 'effect'
+import type * as FC from 'effect/testing/FastCheck'
 import { FetchHttpClient } from 'effect/unstable/http'
+import { OtlpSerialization, OtlpTracer } from 'effect/unstable/observability'
 
 import { otlpTracesUrl } from '../otelite/otlp-url.ts'
 
@@ -97,6 +97,18 @@ export const makeOtelVitestLayer = (
       resource: { serviceName },
       exportInterval,
     }).pipe(
+      // LIVE-MIGRATION BRIDGE effect-3-4 B9 — DELETE at contraction — https://github.com/Effect-TS/effect/issues/6746
+      // Effect 4 reversed OTLP resource precedence: ambient OTEL_SERVICE_NAME
+      // overrides explicitly configured service name (v3: explicit serviceName >
+      // service.name attr > OTEL_RESOURCE_ATTRIBUTES > OTEL_SERVICE_NAME).
+      // Retire when upstream restores explicit-wins precedence and we adopt that
+      // beta.
+      Layer.provide(
+        ConfigProvider.layerAdd(ConfigProvider.fromUnknown({ OTEL_SERVICE_NAME: serviceName }), {
+          asPrimary: true,
+        }),
+      ),
+      // LIVE-MIGRATION END effect-3-4 B9
       Layer.provideMerge(FetchHttpClient.layer),
       Layer.provideMerge(OtlpSerialization.layerJson),
     )
@@ -119,7 +131,7 @@ export type WithTestCtxParams<ROut, E1, RIn> = {
   /** Factory to create a layer for the test. */
   makeLayer?: (testContext: Vitest.TestContext) => Layer.Layer<ROut, E1, RIn | Scope.Scope>
   /** Test timeout. @default 60_000ms in CI, 10_000ms locally */
-  timeout?: Duration.DurationInput
+  timeout?: Duration.Input
   /** Force OTEL tracing even when not in debugger. @default false */
   forceOtel?: boolean
 }
@@ -137,7 +149,7 @@ export type WithTestCtxParams<ROut, E1, RIn> = {
  *   ),
  * })
  *
- * Vitest.scopedLive('test name', (test) =>
+ * Vitest.live('test name', (test) =>
  *   Effect.gen(function* () {
  *     // test body
  *   }).pipe(withTestCtx()(test))
@@ -150,7 +162,7 @@ export const makeWithTestCtx: <ROut = never, E1 = never, RIn = never>(
   self: Effect.Effect<A, E, R>,
 ) => Effect.Effect<
   A,
-  E | E1 | Cause.TimeoutException,
+  E | E1 | Cause.TimeoutError,
   // Exclude dependencies provided by `withTestCtx` from the layer dependencies
   | Exclude<RIn, Scope.Scope>
   // Exclude dependencies provided by `withTestCtx` **and** dependencies produced
@@ -176,7 +188,7 @@ export const withTestCtx =
       self: Effect.Effect<A, E, R>,
     ): Effect.Effect<
       A,
-      E | E1 | Cause.TimeoutException,
+      E | E1 | Cause.TimeoutError,
       // Exclude dependencies provided internally from the provided layer's dependencies
       | Exclude<RIn, Scope.Scope>
       // Exclude dependencies provided internally **and** dependencies produced by the
@@ -242,16 +254,24 @@ const normalizePropOptions = <Arbs extends Vitest.Vitest.Arbitraries>(
     | number
     | (Vitest.TestOptions & {
         fastCheck?: FC.Parameters<{
-          [K in keyof Arbs]: Arbs[K] extends FC.Arbitrary<infer T> ? T : Schema.Schema.Type<Arbs[K]>
+          [K in keyof Arbs]: Arbs[K] extends FC.Arbitrary<infer T>
+            ? T
+            : Arbs[K] extends Schema.Schema<infer T>
+              ? T
+              : never
         }>
       }),
 ): Vitest.TestOptions & {
   fastCheck?: FC.Parameters<{
-    [K in keyof Arbs]: Arbs[K] extends FC.Arbitrary<infer T> ? T : Schema.Schema.Type<Arbs[K]>
+    [K in keyof Arbs]: Arbs[K] extends FC.Arbitrary<infer T>
+      ? T
+      : Arbs[K] extends Schema.Schema<infer T>
+        ? T
+        : never
   }>
 } => {
   // If it's a number, treat as timeout and add our default fastCheck
-  if (Predicate.isObject(propOptions) === false) {
+  if (typeof propOptions === 'number') {
     return {
       timeout: propOptions,
       fastCheck: { numRuns: 100 },
@@ -259,7 +279,7 @@ const normalizePropOptions = <Arbs extends Vitest.Vitest.Arbitraries>(
   }
 
   // If no fastCheck property, add it with our default numRuns
-  if (propOptions.fastCheck === undefined) {
+  if (propOptions.fastCheck == null) {
     return {
       ...propOptions,
       fastCheck: { numRuns: 100 },
@@ -267,7 +287,7 @@ const normalizePropOptions = <Arbs extends Vitest.Vitest.Arbitraries>(
   }
 
   // If fastCheck exists but no numRuns, add our default
-  if (propOptions.fastCheck !== undefined && propOptions.fastCheck.numRuns == null) {
+  if (propOptions.fastCheck.numRuns == null) {
     return {
       ...propOptions,
       fastCheck: {
@@ -294,7 +314,7 @@ const normalizePropOptions = <Arbs extends Vitest.Vitest.Arbitraries>(
  * const Count = Schema.Int.pipe(Schema.between(1, 100))
  *
  * Vitest.asProp(
- *   Vitest.scopedLive,
+ *   Vitest.live,
  *   'syncs data between clients',
  *   { storageType: StorageType, count: Count },
  *   ({ storageType, count }, test, enhanced) =>
@@ -321,7 +341,11 @@ export const asProp = <Arbs extends Vitest.Vitest.Arbitraries, A, E, R>(
     R,
     [
       {
-        [K in keyof Arbs]: Arbs[K] extends FC.Arbitrary<infer T> ? T : Schema.Schema.Type<Arbs[K]>
+        [K in keyof Arbs]: Arbs[K] extends FC.Arbitrary<infer T>
+          ? T
+          : Arbs[K] extends Schema.Schema<infer T>
+            ? T
+            : never
       },
       Vitest.TestContext,
       EnhancedTestContext,
@@ -331,7 +355,11 @@ export const asProp = <Arbs extends Vitest.Vitest.Arbitraries, A, E, R>(
     | number
     | (Vitest.TestOptions & {
         fastCheck?: FC.Parameters<{
-          [K in keyof Arbs]: Arbs[K] extends FC.Arbitrary<infer T> ? T : Schema.Schema.Type<Arbs[K]>
+          [K in keyof Arbs]: Arbs[K] extends FC.Arbitrary<infer T>
+            ? T
+            : Arbs[K] extends Schema.Schema<infer T>
+              ? T
+              : never
         }>
       }),
 ) => {

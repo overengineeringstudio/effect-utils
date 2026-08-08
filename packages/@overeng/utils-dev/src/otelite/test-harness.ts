@@ -1,7 +1,7 @@
-import { OtlpSerialization, OtlpTracer } from '@effect/opentelemetry'
 import { NodeServices } from '@effect/platform-node'
-import { Effect, Layer, type Scope } from 'effect'
+import { ConfigProvider, Context, Effect, Layer, Semaphore, type Scope } from 'effect'
 import { FetchHttpClient } from 'effect/unstable/http'
+import { OtlpSerialization, OtlpTracer } from 'effect/unstable/observability'
 import * as Otlp from 'effect/unstable/observability/Otlp'
 
 import type { OteliteCliError, OteliteDecodeError, OteliteSpawnError } from './errors.ts'
@@ -107,7 +107,7 @@ export interface OteliteTestHandle {
   ) => Effect.Effect<TraceExpect, E | OteliteSpawnError | OteliteCliError | OteliteDecodeError, R>
 }
 
-const envSemaphore = Effect.unsafeMakeSemaphore(1)
+const envSemaphore = Semaphore.makeUnsafe(1)
 
 const scopedEnv = (
   values: Readonly<Record<string, string | undefined>>,
@@ -148,19 +148,62 @@ const makeInProcessLayer = (
     resource: { serviceName: options.serviceName },
     exportInterval: options.exportInterval,
   }).pipe(
+    // LIVE-MIGRATION BRIDGE effect-3-4 B9 — DELETE at contraction — https://github.com/Effect-TS/effect/issues/6746
+    // Effect 4 reversed OTLP resource precedence: ambient OTEL_SERVICE_NAME
+    // overrides explicitly configured service name (v3: explicit serviceName >
+    // service.name attr > OTEL_RESOURCE_ATTRIBUTES > OTEL_SERVICE_NAME).
+    // Retire when upstream restores explicit-wins precedence and we adopt that
+    // beta.
+    Layer.provide(
+      ConfigProvider.layerAdd(
+        ConfigProvider.fromUnknown({ OTEL_SERVICE_NAME: options.serviceName }),
+        { asPrimary: true },
+      ),
+    ),
+    // LIVE-MIGRATION END effect-3-4 B9
     Layer.provideMerge(FetchHttpClient.layer),
     Layer.provideMerge(OtlpSerialization.layerJson),
   )
 }
 
+// LIVE-MIGRATION BRIDGE effect-3-4 — DELETE at contraction — https://github.com/Effect-TS/effect/issues/6749
+const otlpSerializationV3SeverityText = Layer.effect(
+  OtlpSerialization.OtlpSerialization,
+  Effect.gen(function* () {
+    const serialization = yield* OtlpSerialization.OtlpSerialization
+    return {
+      ...serialization,
+      logs: (data: Parameters<typeof serialization.logs>[0]) =>
+        serialization.logs({
+          resourceLogs: data.resourceLogs.map((resourceLog) => ({
+            ...resourceLog,
+            scopeLogs: resourceLog.scopeLogs.map((scopeLog) =>
+              scopeLog.logRecords === undefined
+                ? scopeLog
+                : {
+                    ...scopeLog,
+                    logRecords: scopeLog.logRecords.map((record) =>
+                      record.severityText === undefined
+                        ? record
+                        : { ...record, severityText: record.severityText.toUpperCase() },
+                    ),
+                  },
+            ),
+          })),
+        }),
+    }
+  }),
+).pipe(Layer.provide(OtlpSerialization.layerJson))
+// LIVE-MIGRATION END effect-3-4
+
 /**
- * All-signals in-process exporter: traces + metrics + logs through ONE
- * `Otlp.layerJson`. Unlike the traces-only {@link makeInProcessLayer} (which
+ * All-signals in-process exporter: traces + metrics + logs through one combined
+ * OTLP layer with JSON serialization. Unlike the traces-only {@link makeInProcessLayer} (which
  * uses the per-signal `OtlpTracer.layer` and so must hand-append `/v1/traces`),
- * the combined `Otlp.layerJson` takes the BARE receiver base URL and appends
+ * the combined layer takes the BARE receiver base URL and appends
  * `/v1/{traces,metrics,logs}` itself — so all three signal URLs are correct and
  * the verbatim-URL footgun is gone. `Effect.log` bridges to OTLP logs because
- * `Otlp.layerJson` adds the OTLP logger by default.
+ * the combined layer adds the OTLP logger by default.
  *
  * `Layer.suspend` keeps the exporter's scope-close finalizers (the final flush
  * of every signal) tied to the layer scope — matching prod `otel.ts` and the
@@ -183,7 +226,8 @@ const makeInProcessAllSignalsLayer = (
   options: Required<Pick<OteliteTestHarnessOptions, 'serviceName' | 'exportInterval'>>,
 ): Layer.Layer<never> =>
   Layer.suspend(() =>
-    Otlp.layerJson({
+    // LIVE-MIGRATION BRIDGE effect-3-4 — DELETE at contraction — https://github.com/Effect-TS/effect/issues/6749
+    Otlp.layer({
       baseUrl: handle.endpoints.http.replace(/\/$/, ''),
       resource: { serviceName: options.serviceName },
       tracerExportInterval: options.exportInterval,
@@ -194,15 +238,31 @@ const makeInProcessAllSignalsLayer = (
       // a hung receiver fails fast in a test (was omitted before, relying on
       // scope-close alone).
       shutdownTimeout: 2000,
-    }).pipe(Layer.provide(FetchHttpClient.layer)),
+    }).pipe(
+      Layer.provide(otlpSerializationV3SeverityText),
+      // LIVE-MIGRATION END effect-3-4
+      // LIVE-MIGRATION BRIDGE effect-3-4 B9 — DELETE at contraction — https://github.com/Effect-TS/effect/issues/6746
+      // Effect 4 reversed OTLP resource precedence: ambient OTEL_SERVICE_NAME
+      // overrides explicitly configured service name (v3: explicit serviceName >
+      // service.name attr > OTEL_RESOURCE_ATTRIBUTES > OTEL_SERVICE_NAME).
+      // Retire when upstream restores explicit-wins precedence and we adopt that
+      // beta.
+      Layer.provide(
+        ConfigProvider.layerAdd(
+          ConfigProvider.fromUnknown({ OTEL_SERVICE_NAME: options.serviceName }),
+          { asPrimary: true },
+        ),
+      ),
+      // LIVE-MIGRATION END effect-3-4 B9
+      Layer.provide(FetchHttpClient.layer),
+    ),
   )
 
-/** Effect service whose `capture` boots a scoped otelite receiver and yields an {@link OteliteTestHandle}; provides its own `Otelite.Default`. */
-export class OteliteTestHarness extends Effect.Service<OteliteTestHarness>()(
+/** Effect service whose `capture` boots a scoped otelite receiver and yields an {@link OteliteTestHandle}; provides its own `Otelite.layer`. */
+export class OteliteTestHarness extends Context.Service<OteliteTestHarness>()(
   '@overeng/utils-dev/otelite/OteliteTestHarness',
   {
-    accessors: true,
-    effect: Effect.gen(function* () {
+    make: Effect.gen(function* () {
       const otelite = yield* Otelite
 
       const capture = (
@@ -259,7 +319,7 @@ export class OteliteTestHarness extends Effect.Service<OteliteTestHarness>()(
                     captureHandle.endpoints.http,
                   [envOptions.serviceNameVar ?? 'OTEL_SERVICE_NAME']: options.serviceName,
                   ...envOptions.extra,
-                }).pipe(Effect.zipRight(effect)),
+                }).pipe(Effect.andThen(effect)),
               ),
             )
 
@@ -278,8 +338,8 @@ export class OteliteTestHarness extends Effect.Service<OteliteTestHarness>()(
             R
           > =>
             runInProcess(effect).pipe(
-              Effect.zipRight(flushCaptureSpans({ exportInterval })),
-              Effect.zipRight(trace(traceOptions)),
+              Effect.andThen(flushCaptureSpans({ exportInterval })),
+              Effect.andThen(trace(traceOptions)),
             )
 
           const runInProcessAllSignals = <A, E, R>(
@@ -332,8 +392,8 @@ export class OteliteTestHarness extends Effect.Service<OteliteTestHarness>()(
             R
           > =>
             withEnv(effect, envOptions).pipe(
-              Effect.zipRight(flushCaptureSpans({ exportInterval })),
-              Effect.zipRight(trace(traceOptions)),
+              Effect.andThen(flushCaptureSpans({ exportInterval })),
+              Effect.andThen(trace(traceOptions)),
             )
 
           return {
@@ -355,18 +415,24 @@ export class OteliteTestHarness extends Effect.Service<OteliteTestHarness>()(
 
       return { capture } as const
     }),
-    dependencies: [Otelite.Default.pipe(Layer.provide(NodeServices.layer))],
   },
-) {}
+) {
+  static readonly layer = Layer.effect(this, this.make).pipe(
+    Layer.provide(Otelite.layer.pipe(Layer.provide(NodeServices.layer))),
+  )
+}
 
-/** Scoped one-shot {@link OteliteTestHandle}: provides `OteliteTestHarness.Default` so callers needn't wire the layer. */
+/** Scoped one-shot {@link OteliteTestHandle}: provides `OteliteTestHarness.layer` so callers needn't wire the layer. */
 export const captureTest = (
   options: OteliteTestHarnessOptions,
 ): Effect.Effect<
   OteliteTestHandle,
   OteliteSpawnError | OteliteCliError | OteliteDecodeError,
   Scope.Scope
-> => OteliteTestHarness.capture(options).pipe(Effect.provide(OteliteTestHarness.Default))
+> =>
+  OteliteTestHarness.use((service) => service.capture(options)).pipe(
+    Effect.provide(OteliteTestHarness.layer),
+  )
 
 /** All-in-one: boot a capture, run `effect` through the in-process traces exporter, flush, and return a {@link TraceExpect}. */
 export const captureInProcessTrace = <A, E, R>(
