@@ -25,6 +25,13 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **devenv pnpm installs**: refresh nixpkgs so pnpm runs on Node 24.18.1,
+  avoiding the Darwin Node 24.15 teardown hang after a completed workspace
+  materialization.
+- **devenv observability verification**: validate the task trace independently
+  of unrelated setup traces captured from devenv, and keep `otel-scrape`
+  warning-clean across platform-specific backends and ambient trace links.
+
 - **@overeng/genie/package-json**: allow consumers to materialize selected
   cross-repository workspace dependencies with the `file:` protocol. This lets
   pnpm resolve singleton peers such as Effect from the consuming install graph
