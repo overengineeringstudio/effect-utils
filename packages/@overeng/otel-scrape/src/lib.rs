@@ -16,7 +16,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 #[cfg(unix)]
 use std::os::unix::net::UnixStream;
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 use std::os::unix::process::ExitStatusExt;
 
 use serde::{Deserialize, Serialize};
@@ -481,6 +481,7 @@ struct ProcessObservation {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ProcessObservationBackend {
     DirectChild,
+    #[cfg(target_os = "linux")]
     PtraceExperimental,
     HelperStream,
 }
@@ -489,6 +490,7 @@ impl ProcessObservationBackend {
     fn as_str(self) -> &'static str {
         match self {
             Self::DirectChild => DIRECT_CHILD_BACKEND,
+            #[cfg(target_os = "linux")]
             Self::PtraceExperimental => PTRACE_EXPERIMENTAL_BACKEND,
             Self::HelperStream => HELPER_STREAM_BACKEND,
         }
@@ -3846,7 +3848,9 @@ mod tests {
                 profile_artifacts: Vec::new(),
                 trusted_otlp: false,
                 trusted_summary: false,
-                trace_url_template: None,
+                trace_url_template: std::env::var(TRACE_URL_TEMPLATE_ENV)
+                    .ok()
+                    .filter(|value| !value.is_empty()),
                 trace_link_enabled: true,
                 argv: vec!["echo".to_owned(), "hi".to_owned()],
             }))
@@ -3905,7 +3909,9 @@ mod tests {
                 }],
                 trusted_otlp: false,
                 trusted_summary: false,
-                trace_url_template: None,
+                trace_url_template: std::env::var(TRACE_URL_TEMPLATE_ENV)
+                    .ok()
+                    .filter(|value| !value.is_empty()),
                 trace_link_enabled: true,
                 argv: vec!["true".to_owned()],
             }))

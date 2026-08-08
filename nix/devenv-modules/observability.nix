@@ -95,15 +95,16 @@ let
           ' "$summary_file" >/dev/null
 
           jq -s -e --arg task "$target_task" '
-            ([.[].trace_id] | unique | length) == 1
-            and any(.[];
+            ([.[] | select(
               .service == "devenv"
               and .name == "devenv"
               and .parent_span_id == null
-            )
+            )][0].trace_id) as $root_trace
+            | $root_trace != null
             and any(.[];
               .service == "devenv"
               and .name == $task
+              and .trace_id == $root_trace
               and .attrs["devenv.activity.kind"] == "task"
             )
           ' "$spans_file" >/dev/null
