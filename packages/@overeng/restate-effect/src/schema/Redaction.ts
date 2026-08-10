@@ -44,10 +44,9 @@ export interface RedactionCipher {
  * `RestateRedaction` is provided, encode/decode FAILS with a clear error rather
  * than silently passing plaintext (see {@link withRedaction}).
  */
-export class RestateRedaction extends Context.Tag('@overeng/restate-effect/RestateRedaction')<
-  RestateRedaction,
-  RedactionCipher
->() {}
+export class RestateRedaction extends Context.Service<RestateRedaction, RedactionCipher>()(
+  '@overeng/restate-effect/RestateRedaction',
+) {}
 
 /* ── reference AES-256-GCM cipher (node:crypto) ──────────────────────────── */
 
@@ -109,7 +108,7 @@ export const findSensitiveFields = (ast: SchemaAST.AST): ReadonlyArray<string> =
   const fields: string[] = []
   for (const prop of ast.propertySignatures) {
     if (typeof prop.name !== 'string') continue
-    if (Option.isSome(SchemaAST.getAnnotation<true>(SensitiveId)(prop.type)) === true) {
+    if (Option.isSome(SchemaAST.resolveAt<true>(SensitiveId)(prop.type)) === true) {
       fields.push(prop.name)
     }
   }

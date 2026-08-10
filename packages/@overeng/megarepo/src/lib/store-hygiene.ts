@@ -5,9 +5,10 @@
  * Used by pre-flight checks (sync/lock/pin) and `mr store fix`.
  */
 
-import { FileSystem, type Error as PlatformError } from '@effect/platform'
-import type { CommandExecutor } from '@effect/platform'
+import type { Error as PlatformError } from 'effect'
 import { Effect, Option, Schema } from 'effect'
+import { FileSystem } from 'effect/FileSystem'
+import type { ChildProcessSpawner as CommandExecutor } from 'effect/unstable/process'
 
 import {
   type MegarepoConfig,
@@ -68,13 +69,13 @@ export type StoreIssueMeta =
 // =============================================================================
 
 /** Tagged error raised when store pre-flight checks detect blocking issues */
-export class StoreHygieneError extends Schema.TaggedError<StoreHygieneError>()(
+export class StoreHygieneError extends Schema.TaggedErrorClass<StoreHygieneError>()(
   'StoreHygieneError',
   {
     message: Schema.String,
     issues: Schema.Array(
       Schema.Struct({
-        severity: Schema.Literal('error', 'warning', 'info'),
+        severity: Schema.Literals(['error', 'warning', 'info']),
         type: Schema.String,
         memberName: Schema.String,
         message: Schema.String,

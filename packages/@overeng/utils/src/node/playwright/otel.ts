@@ -13,8 +13,8 @@
  */
 
 import { OtlpSerialization, OtlpTracer, Tracer } from '@effect/opentelemetry'
-import { FetchHttpClient } from '@effect/platform'
 import { Effect, Layer, Schema } from 'effect'
+import { FetchHttpClient } from 'effect/unstable/http'
 
 /**
  * Minimal parent span context needed to join an existing trace across process boundaries.
@@ -28,7 +28,7 @@ import { Effect, Layer, Schema } from 'effect'
 export const ParentSpanContextSchema = Schema.Struct({
   traceId: Schema.String,
   spanId: Schema.String,
-}).annotations({ identifier: 'ParentSpanContext' })
+}).annotate({ identifier: 'ParentSpanContext' })
 
 export type ParentSpanContext = typeof ParentSpanContextSchema.Type
 
@@ -47,7 +47,7 @@ export const currentParentSpanContextJson: Effect.Effect<string | undefined, nev
     if (span._tag === 'None') return undefined
 
     const ctx = span.value.spanContext()
-    return yield* Schema.encode(Schema.parseJson(ParentSpanContextSchema))({
+    return yield* Schema.encode(Schema.fromJsonString(ParentSpanContextSchema))({
       traceId: ctx.traceId,
       spanId: ctx.spanId,
     }).pipe(Effect.orDie)
@@ -70,7 +70,7 @@ export const parentSpanFromEnv: (
     const raw = process.env[envVar]
     if (raw === undefined) return undefined
 
-    const ctx = yield* Schema.decode(Schema.parseJson(ParentSpanContextSchema))(raw).pipe(
+    const ctx = yield* Schema.decode(Schema.fromJsonString(ParentSpanContextSchema))(raw).pipe(
       Effect.orDie,
     )
     return Tracer.makeExternalSpan({

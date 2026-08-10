@@ -17,9 +17,9 @@
  *   bun examples/06-advanced/bouncing-windows.tsx --help
  */
 
-import { Command, Options } from '@effect/cli'
-import { NodeContext, NodeRuntime } from '@effect/platform-node'
+import { NodeServices, NodeRuntime } from '@effect/platform-node'
 import { Effect, Fiber } from 'effect'
+import { Command, Flag as Options } from 'effect/unstable/cli'
 import React from 'react'
 
 import { createTuiApp, run } from '../../src/mod.tsx'
@@ -96,7 +96,7 @@ const runBouncingWindows = ({
         process.stdout.on('resize', resizeHandler)
 
         // Animation loop
-        const animationFiber = yield* Effect.fork(
+        const animationFiber = yield* Effect.forkChild(
           Effect.gen(function* () {
             while (tui.getState()._tag === 'Running') {
               tui.dispatch({ _tag: 'Tick' })
@@ -138,10 +138,9 @@ const bouncingWindowsCommand = Command.make(
     ),
 )
 
-const cli = Command.run(bouncingWindowsCommand, {
-  name: 'Bouncing Windows Demo',
+const cli = Command.runWith(bouncingWindowsCommand, {
   version: '1.0.0',
 })
 
 // Run with Effect CLI (handles SIGINT/SIGTERM properly)
-cli(process.argv).pipe(Effect.provide(NodeContext.layer), NodeRuntime.runMain)
+cli(process.argv.slice(2)).pipe(Effect.provide(NodeServices.layer), NodeRuntime.runMain)

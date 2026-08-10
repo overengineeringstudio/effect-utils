@@ -230,7 +230,7 @@ const mapRetention = ({
   retention: RetentionOptions
   includeWorkflow: boolean
 }): Record<string, unknown> => {
-  const toMillis = (d: Duration.DurationInput): number => Duration.toMillis(Duration.decode(d))
+  const toMillis = (d: Duration.Input): number => Duration.toMillis(Duration.fromInputUnsafe(d))
   return {
     ...(retention.idempotency !== undefined
       ? { idempotencyRetention: toMillis(retention.idempotency) }
@@ -745,10 +745,9 @@ export interface EndpointServer {
 }
 
 /** Context service carrying the actual address of a scoped endpoint server. */
-export class BoundEndpoint extends Context.Tag('@overeng/restate-effect/BoundEndpoint')<
-  BoundEndpoint,
-  EndpointServer
->() {}
+export class BoundEndpoint extends Context.Service<BoundEndpoint, EndpointServer>()(
+  '@overeng/restate-effect/BoundEndpoint',
+) {}
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- the services-tuple AppR extractor */
 /**

@@ -10,7 +10,7 @@ import { DateValue } from './date.ts'
 /**
  * Rollup result value.
  */
-export const RollupValue = Schema.Union(
+export const RollupValue = Schema.Union([
   Schema.Struct({
     type: Schema.Literal('string'),
     string: Schema.NullOr(Schema.String),
@@ -35,7 +35,7 @@ export const RollupValue = Schema.Union(
     type: Schema.Literal('unsupported'),
     unsupported: Schema.NullOr(Schema.Unknown),
   }),
-).annotations({
+]).annotate({
   identifier: 'Notion.RollupValue',
   title: 'Rollup Value',
   description: 'The computed result of a rollup.',
@@ -50,16 +50,16 @@ export type RollupValue = typeof RollupValue.Type
  * @see https://developers.notion.com/reference/property-value-object#rollup
  */
 export const RollupProperty = Schema.Struct({
-  id: Schema.String.annotations({
+  id: Schema.String.annotate({
     description: 'Property identifier.',
   }),
-  type: Schema.Literal('rollup').annotations({
+  type: Schema.Literal('rollup').annotate({
     description: 'Property type identifier.',
   }),
-  rollup: RollupValue.annotations({
+  rollup: RollupValue.annotate({
     description: 'The computed rollup result.',
   }),
-}).annotations({
+}).annotate({
   identifier: 'Notion.RollupProperty',
   title: 'Rollup Property',
   description: 'A rollup property value (read-only, computed).',

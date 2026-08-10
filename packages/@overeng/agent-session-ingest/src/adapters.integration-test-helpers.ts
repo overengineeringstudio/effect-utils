@@ -1,31 +1,31 @@
 import { appendFile } from 'node:fs/promises'
 import * as nodePath from 'node:path'
 
-import { FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import { NodeServices } from '@effect/platform-node'
+import { FileSystem } from 'effect/FileSystem'
 import { Effect, Schema } from 'effect'
 import { expect } from 'vitest'
 
 import type { SessionSourceAdapter } from './schema/core.ts'
 
 /** Raised when a test helper fails to append records to a JSONL artifact. */
-export class JsonlArtifactAppendError extends Schema.TaggedError<JsonlArtifactAppendError>()(
+export class JsonlArtifactAppendError extends Schema.TaggedErrorClass<JsonlArtifactAppendError>()(
   'JsonlArtifactAppendError',
   {
     message: Schema.String,
     path: Schema.String,
-    cause: Schema.Defect,
+    cause: Schema.Defect(),
   },
 ) {}
 
 /** Schema-based JSON encoder for test fixtures (mirrors `JSON.stringify`). */
-const encodeJson = Schema.encodeSync(Schema.parseJson())
+const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
 
 /** Encodes a value to its JSON string for test fixtures via Effect Schema. */
 export const stringifyJson = (value: unknown): string => encodeJson(value)
 
 /** Shared Node runtime layer for adapter integration tests. */
-export const TestLayer = NodeContext.layer
+export const TestLayer = NodeServices.layer
 
 /** Ensures the adapter discovers exactly one artifact and returns it. */
 export const expectSingleArtifact = <TRecord>(adapter: SessionSourceAdapter<TRecord>) =>

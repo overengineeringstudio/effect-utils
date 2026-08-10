@@ -26,11 +26,12 @@
  * (`status`/`reason` in the JSON document and the on-disk effect).
  */
 
-import * as Cli from '@effect/cli'
-import { Command, FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
+import { ChildProcess as Command } from 'effect/unstable/process'
+import { FileSystem } from 'effect/FileSystem'
 import { Clock, Effect, Exit, Layer, Schema } from 'effect'
+import * as Cli from 'effect/unstable/cli'
 import { expect, vi } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath, type RelativeDirPath } from '@overeng/effect-path'
@@ -99,7 +100,7 @@ const StoreGcJsonOutput = Schema.Struct({
     }),
   ),
 })
-const decodeGc = Schema.decodeUnknownSync(Schema.parseJson(StoreGcJsonOutput))
+const decodeGc = Schema.decodeUnknownSync(Schema.fromJsonString(StoreGcJsonOutput))
 type GcResult = Schema.Schema.Type<typeof StoreGcJsonOutput>['results'][number]
 
 const findByRef = (results: ReadonlyArray<GcResult>, ref: string) =>
@@ -255,7 +256,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
         yield* git(bareRepoPath, 'worktree', 'add', reAddPath, 'feature/merged')
         expect(yield* fs.exists(reAddPath)).toBe(true)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -292,7 +293,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
         expect(yield* fs.exists(worktreePath)).toBe(true)
         expect(yield* Git.refExists({ repoPath: bareRepoPath, ref: 'refs/heads/trunk' })).toBe(true)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -335,7 +336,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
           ),
         ).toBe('uncommitted changes\n')
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -375,7 +376,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
         expect(result?.reason).toBe('unrecoverable-local-work')
         expect(yield* fs.exists(worktreePath)).toBe(true)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -414,7 +415,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
         expect(result?.reason).toBe('unrecoverable-local-work')
         expect(yield* fs.exists(worktreePath)).toBe(true)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -442,7 +443,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
         expect(result?.status).toBe('kept')
         expect(result?.reason).toBe('not-stale')
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -471,7 +472,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
         expect(result?.status).toBe('kept')
         expect(result?.reason).toBe('not-stale')
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -510,7 +511,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
         expect(result?.status).toBe('kept')
         expect(result?.reason).toBe('post-merge-grace')
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -541,7 +542,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
         expect(result?.status).toBe('kept')
         expect(result?.reason).toBe('absence-grace')
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -601,7 +602,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
         expect(yield* fs.exists(livePath)).toBe(true)
         expect(yield* fs.exists(deadPath)).toBe(false)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -659,7 +660,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
         expect(findByRef(results, 'feature/new')?.reason).toBe('live')
         expect(yield* fs.exists(newPath)).toBe(true)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -713,7 +714,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
         // live (last-known path retained) — NOT archived.
         expect(yield* fs.exists(protectedPath)).toBe(true)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -752,7 +753,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
         expect(result?.actualHeadBranch).toBe('feature/other')
         expect(yield* fs.exists(worktreePath)).toBe(true)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -811,7 +812,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
         expect(readme).toContain('ref_mismatch_clean')
         expect(readme).toContain('actualHeadBranch=feature/other')
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -849,7 +850,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
         expect(result?.recoverPath).toBeUndefined()
         expect(yield* fs.exists(worktreePath)).toBe(true)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -885,7 +886,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
         expect(result?.reason).toBe('fetch-failed')
         expect(yield* fs.exists(worktreePath)).toBe(true)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -946,7 +947,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
           }),
         ).toBe(false)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -998,7 +999,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
           results.some((r) => r.status === 'reaped' && r.ref === 'feature/fresh-archive'),
         ).toBe(false)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -1054,7 +1055,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
         expect(result?.reason).toBe('live')
         expect(yield* fs.exists(archivePath)).toBe(true)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -1121,7 +1122,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
           }),
         ).toBe(true)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -1159,7 +1160,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
           yield* Git.refExists({ repoPath: bareRepoPath, ref: 'refs/heads/feature/closed' }),
         ).toBe(false)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -1201,7 +1202,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
           yield* Git.refExists({ repoPath: bareRepoPath, ref: 'refs/heads/feature/merged' }),
         ).toBe(true)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -1244,7 +1245,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
         )
         expect(yield* fs.exists(archivePath)).toBe(true)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -1313,7 +1314,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
         expect(result?.reason).toBe('absence-grace')
         expect(yield* fs.exists(worktreePath)).toBe(true)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -1346,7 +1347,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
         expect(result?.reason).toBeUndefined()
         expect(yield* fs.exists(worktreePath)).toBe(false)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -1381,7 +1382,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
         // archive based on a clock the dry-run started.
         expect(yield* fs.exists(ledgerPath)).toBe(false)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -1423,7 +1424,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
         expect(reaped?.status).toBe('reaped')
         expect(yield* fs.exists(archivePath)).toBe(false)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )

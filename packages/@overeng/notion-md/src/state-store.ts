@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto'
 
-import { FileSystem, Path } from '@effect/platform'
 import { Context, Effect, Layer, type ParseResult, Schema } from 'effect'
+import { FileSystem } from 'effect/FileSystem'
+import { Path } from 'effect/Path'
 
 import {
   makeNmdObjectRef,
@@ -33,9 +34,9 @@ const objectRefs = (syncState: NmdSyncStateV1): readonly NmdObjectRef[] => [
 export const NmdStorageObjectV2 = Schema.Struct({
   version: Schema.Literal(2),
   page_id: Schema.String,
-  reason: Schema.Literal('too_large', 'volatile_url'),
+  reason: Schema.Literals(['too_large', 'volatile_url']),
   storage: NmdStorageSchema,
-}).annotations({ identifier: 'NotionMd.StorageObjectV2' })
+}).annotate({ identifier: 'NotionMd.StorageObjectV2' })
 
 export type NmdStorageObjectV2 = typeof NmdStorageObjectV2.Type
 
@@ -45,7 +46,7 @@ export const NmdBaseSnapshotV2 = Schema.Struct({
   page_id: Schema.String,
   body_hash: Sha256DigestSchema,
   body: Schema.String,
-}).annotations({ identifier: 'NotionMd.BaseSnapshotV2' })
+}).annotate({ identifier: 'NotionMd.BaseSnapshotV2' })
 
 export type NmdBaseSnapshotV2 = typeof NmdBaseSnapshotV2.Type
 
@@ -63,20 +64,24 @@ const strictOptions = {
 } as const
 
 const encodeStorageObjectJson = Schema.encodeSync(
-  Schema.parseJson(NmdStorageObjectV2, { space: 2 }),
+  Schema.fromJsonString(NmdStorageObjectV2, { space: 2 }),
 )
-const encodeBaseSnapshotJson = Schema.encodeSync(Schema.parseJson(NmdBaseSnapshotV2, { space: 2 }))
-const encodeSyncStateJson = Schema.encodeSync(Schema.parseJson(NmdSyncStateV1Schema, { space: 2 }))
+const encodeBaseSnapshotJson = Schema.encodeSync(
+  Schema.fromJsonString(NmdBaseSnapshotV2, { space: 2 }),
+)
+const encodeSyncStateJson = Schema.encodeSync(
+  Schema.fromJsonString(NmdSyncStateV1Schema, { space: 2 }),
+)
 const decodeStorageObjectJson = Schema.decodeUnknown(
-  Schema.parseJson(NmdStorageObjectV2),
+  Schema.fromJsonString(NmdStorageObjectV2),
   strictOptions,
 )
 const decodeBaseSnapshotJson = Schema.decodeUnknown(
-  Schema.parseJson(NmdBaseSnapshotV2),
+  Schema.fromJsonString(NmdBaseSnapshotV2),
   strictOptions,
 )
 const decodeSyncStateJson = Schema.decodeUnknown(
-  Schema.parseJson(NmdSyncStateV1Schema),
+  Schema.fromJsonString(NmdSyncStateV1Schema),
   strictOptions,
 )
 
@@ -240,10 +245,9 @@ export interface NmdStateStoreShape {
 }
 
 /** Service tag for the local notion-md state store. */
-export class NmdStateStore extends Context.Tag('NmdStateStore')<
-  NmdStateStore,
-  NmdStateStoreShape
->() {}
+export class NmdStateStore extends Context.Service<NmdStateStore, NmdStateStoreShape>()(
+  'NmdStateStore',
+) {}
 
 /** Live state-store implementation backed by `@effect/platform` filesystem services. */
 export const NmdStateStoreLive = Layer.effect(

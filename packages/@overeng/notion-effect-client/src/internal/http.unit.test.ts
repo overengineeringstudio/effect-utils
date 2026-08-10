@@ -1,5 +1,5 @@
-import type { HttpClientRequest } from '@effect/platform'
 import { Effect, Fiber, Option, Redacted, Schema, TestClock, Tracer } from 'effect'
+import type { HttpClientRequest } from 'effect/unstable/http'
 import { expect } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'

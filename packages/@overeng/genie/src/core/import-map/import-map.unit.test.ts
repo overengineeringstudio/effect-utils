@@ -2,8 +2,8 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-import { FileSystem } from '@effect/platform'
 import { NodeFileSystem } from '@effect/platform-node'
+import * as FileSystem from 'effect/FileSystem'
 import { Effect, Option, Schema } from 'effect'
 import { afterEach, beforeEach, expect, it } from 'vitest'
 
@@ -26,7 +26,7 @@ const GENIE_MEMBER_SOURCE_MAP_ENV = 'GENIE_MEMBER_SOURCE_MAP'
 const MEGAREPO_STORE_ENV = 'MEGAREPO_STORE'
 
 /** Type-safe JSON stringify using Schema */
-const toJson = Schema.encodeSync(Schema.parseJson(Schema.Unknown))
+const toJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
 
 /** Create a temp directory for each test */
 const makeTempDir = Effect.gen(function* () {
@@ -46,7 +46,7 @@ const removeTempDir = Effect.fnUntraced(
     const fs = yield* FileSystem.FileSystem
     yield* fs.remove(tempDir, { recursive: true })
   },
-  Effect.catchAll(() => Effect.void),
+  Effect.catch(() => Effect.void),
 )
 
 /** Write a file with content */

@@ -3,24 +3,15 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@effect-atom/atom": "0.5.3",
-    "@effect-atom/atom-react": "0.5.0",
+    "@effect/atom-react": "4.0.0-beta.102",
     "@opentui/core": "0.4.1",
     "@opentui/react": "0.4.1",
-    "effect": "3.21.4",
+    "effect": "4.0.0-beta.102",
     "react": "19.2.7"
   },
   "devDependencies": {
     "@types/node": "26.0.0",
     "@types/react": "19.2.17"
-  },
-  "pnpm": {
-    "overrides": {
-      "effect": "3.21.4",
-      "@effect/platform": "0.96.2",
-      "@effect/experimental": "0.60.0",
-      "@effect/rpc": "0.75.1"
-    }
   },
   "$genie": {
     "source": "package.json.genie.ts",

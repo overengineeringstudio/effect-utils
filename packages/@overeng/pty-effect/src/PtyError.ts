@@ -5,7 +5,7 @@ import { Schema } from 'effect'
  *
  * Follows `@effect/platform` conventions (`SystemError`, `HttpClientError`):
  * - `reason` discriminator for programmatic matching
- * - `cause: Schema.Defect` for the upstream error (preserves name + message
+ * - `cause: Schema.Defect()` for the upstream error (preserves name + message
  *   through serialization)
  * - Custom `get message()` for clean human-readable output in logs/traces
  *
@@ -19,10 +19,10 @@ import { Schema } from 'effect'
  * - `BadName`         — session name failed validation
  * - `Closed`          — operation attempted after connection closed
  */
-export class PtyError extends Schema.TaggedError<PtyError>('@overeng/pty-effect/PtyError')(
+export class PtyError extends Schema.TaggedErrorClass<PtyError>('@overeng/pty-effect/PtyError')(
   'PtyError',
   {
-    reason: Schema.Literal(
+    reason: Schema.Literals([
       'SpawnFailed',
       'ConnectFailed',
       'WriteFailed',
@@ -31,10 +31,10 @@ export class PtyError extends Schema.TaggedError<PtyError>('@overeng/pty-effect/
       'UnexpectedExit',
       'BadName',
       'Closed',
-    ),
+    ]),
     method: Schema.String,
     name: Schema.optional(Schema.String),
-    cause: Schema.optional(Schema.Defect),
+    cause: Schema.optional(Schema.Defect()),
   },
 ) {
   override get message(): string {

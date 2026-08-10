@@ -1,4 +1,4 @@
-import { ParseResult, Schema } from 'effect'
+import { Effect, Option, Schema, SchemaIssue, SchemaTransformation } from 'effect'
 
 import { format, parse } from '@overeng/kdl'
 
@@ -8,53 +8,65 @@ import { objectToKdlDocument } from './encode.ts'
 /**
  * Base KDL transformation: `string ↔ unknown`
  *
- * Analogous to how `Schema.parseJson()` wraps `JSON.parse`/`JSON.stringify`,
+ * Analogous to how `Schema.fromJsonString(Schema.Unknown)` wraps `JSON.parse`/`JSON.stringify`,
  * this wraps `parse`/`format` from `@overeng/kdl`.
  *
- * Parse errors are mapped to `ParseResult.Type` issues (not thrown),
+ * Parse errors are mapped to `SchemaIssue.InvalidValue` issues (not thrown),
  * following the same pattern as Effect's `Schema.parseJson`.
  */
-const ParseKdl = Schema.transformOrFail(
-  Schema.String.annotations({ description: 'a KDL string to be decoded' }),
-  Schema.Unknown,
-  {
-    strict: true,
-    decode: (text, _, ast) =>
-      ParseResult.try({
-        try: () => {
-          const doc = parse(text)
-          return kdlToObject(doc)
-        },
-        catch: (e) => new ParseResult.Type(ast, text, e instanceof Error ? e.message : String(e)),
+const ParseKdl = Schema.String.annotate({
+  description: 'a KDL string to be decoded',
+})
+  .pipe(
+    Schema.decodeTo(
+      Schema.Unknown,
+      SchemaTransformation.transformOrFail<unknown, string>({
+        decode: (text) =>
+          Effect.try({
+            try: () => {
+              const doc = parse(text)
+              return kdlToObject(doc)
+            },
+            catch: (e) =>
+              new SchemaIssue.InvalidValue(Option.some(text), {
+                message: e instanceof Error ? e.message : String(e),
+              }),
+          }),
+        encode: (value) =>
+          Effect.try({
+            try: () => {
+              const doc = objectToKdlDocument(value as Record<string, unknown>)
+              return format(doc)
+            },
+            catch: (e) =>
+              new SchemaIssue.InvalidValue(Option.some(value), {
+                message: e instanceof Error ? e.message : String(e),
+              }),
+          }),
       }),
-    encode: (value, _, ast) =>
-      ParseResult.try({
-        try: () => {
-          const doc = objectToKdlDocument(value as Record<string, unknown>)
-          return format(doc)
-        },
-        catch: (e) => new ParseResult.Type(ast, value, e instanceof Error ? e.message : String(e)),
-      }),
-  },
-).annotations({ title: 'parseKdl' })
+    ),
+  )
+  .annotate({ title: 'parseKdl' })
 
 /**
  * Create a Schema that decodes KDL text into the target type.
- * Analogous to `Schema.parseJson(schema)`.
+ * Analogous to `Schema.fromJsonString(schema)`.
  *
- * Uses `Schema.compose` to chain: `string → unknown` (via KDL parse) then `unknown → A` (via schema).
- * Array normalization is applied between the two steps using the target schema's AST.
+ * Chains `string → unknown` (via KDL parse), normalized `unknown → unknown`,
+ * then `unknown → A` (via the target schema).
  */
-export const parseKdl = <A, I, R>(schema: Schema.Schema<A, I, R>): Schema.Schema<A, string, R> => {
-  const normalizedKdl = Schema.transformOrFail(Schema.Unknown, Schema.Unknown, {
-    strict: true,
-    decode: (raw) => ParseResult.succeed(normalizeForSchema(raw, schema.ast)),
-    encode: (value) => ParseResult.succeed(value),
-  })
+export const parseKdl = <A, I, R>(
+  schema: Schema.Codec<A, I, R, R>,
+): Schema.Codec<A, string, R, R> => {
+  const normalizedKdl = Schema.Unknown.pipe(
+    Schema.decodeTo(
+      Schema.Unknown,
+      SchemaTransformation.transform({
+        decode: (raw) => normalizeForSchema(raw, schema.ast),
+        encode: (value) => value,
+      }),
+    ),
+  )
 
-  return Schema.compose(Schema.compose(ParseKdl, normalizedKdl), schema) as Schema.Schema<
-    A,
-    string,
-    R
-  >
+  return ParseKdl.pipe(Schema.decodeTo(normalizedKdl), Schema.decodeTo(schema))
 }

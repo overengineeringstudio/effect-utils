@@ -1,5 +1,5 @@
-import type { HttpClient } from '@effect/platform'
 import { Effect, Option, Schema } from 'effect'
+import type { HttpClient } from 'effect/unstable/http'
 
 import {
   type Page,
@@ -144,9 +144,9 @@ const MarkdownContentUpdateSchema = Schema.Struct({
   old_str: Schema.String,
   new_str: Schema.String,
   replace_all_matches: Schema.optional(Schema.Boolean),
-}).annotations({ identifier: 'NotionPages.MarkdownContentUpdate' })
+}).annotate({ identifier: 'NotionPages.MarkdownContentUpdate' })
 
-const UpdateMarkdownRequestSchema = Schema.Union(
+const UpdateMarkdownRequestSchema = Schema.Union([
   Schema.Struct({
     type: Schema.Literal('update_content'),
     update_content: Schema.Struct({
@@ -161,7 +161,7 @@ const UpdateMarkdownRequestSchema = Schema.Union(
       allow_deleting_content: Schema.optional(Schema.Boolean),
     }),
   }),
-).annotations({ identifier: 'NotionPages.UpdateMarkdownRequest' })
+]).annotate({ identifier: 'NotionPages.UpdateMarkdownRequest' })
 
 const decodeUpdateMarkdownRequest = Schema.decodeUnknown(UpdateMarkdownRequestSchema)
 

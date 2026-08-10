@@ -6,15 +6,16 @@
  * Raw traversal paths can grow forever in symlink cycles.
  */
 
-import { FileSystem, type Error as PlatformError } from '@effect/platform'
+import type { Error as PlatformError } from 'effect'
 import { Effect, Ref, Schema, type ParseResult } from 'effect'
+import { FileSystem } from 'effect/FileSystem'
 
 import type { AbsoluteDirPath } from '@overeng/effect-path'
 
 import * as Observability from './observability.ts'
 
 /** Known command/operation families that perform nested megarepo traversal. */
-export const MegarepoTraversalPurpose = Schema.Literal('status', 'ls', 'sync').annotations({
+export const MegarepoTraversalPurpose = Schema.Literals(['status', 'ls', 'sync']).annotate({
   identifier: 'Megarepo.Traversal.Purpose',
 })
 export type MegarepoTraversalPurpose = typeof MegarepoTraversalPurpose.Type
@@ -22,7 +23,7 @@ export type MegarepoTraversalPurpose = typeof MegarepoTraversalPurpose.Type
 /** Branded canonical identity for a traversed megarepo root. */
 export const MegarepoTraversalNodeKey = Schema.NonEmptyString.pipe(
   Schema.brand('Megarepo.Traversal.NodeKey'),
-  Schema.annotations({ identifier: 'Megarepo.Traversal.NodeKey' }),
+  Schema.annotate({ identifier: 'Megarepo.Traversal.NodeKey' }),
 )
 export type MegarepoTraversalNodeKey = typeof MegarepoTraversalNodeKey.Type
 

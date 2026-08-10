@@ -61,7 +61,7 @@ import type { Screenshot } from './Screenshot.ts'
 
 /* ───────────────────────────── specs ────────────────────────────── */
 
-const PtyTags = Schema.Record({ key: Schema.String, value: Schema.String })
+const PtyTags = Schema.Record(Schema.String, Schema.String)
 
 // DYNAMIC-NAME BRIDGE (SC-DQ5): a `spanName`-parameterized operation family; kept inline (the name
 // is not fixed per contract entry) but rebuilt from the imported catalog schemas.
@@ -273,7 +273,7 @@ export interface PtyClientSession {
 /* ───────────────────────────── service ──────────────────────────── */
 
 /** Effect service wrapping the detached `@myobie/pty/client` API. */
-export class PtyClient extends Context.Tag('@overeng/pty-effect/PtyClient')<
+export class PtyClient extends Context.Service<
   PtyClient,
   {
     readonly spawnDaemon: (spec: PtyDaemonSpec) => Effect.Effect<void, PtyError>
@@ -296,7 +296,7 @@ export class PtyClient extends Context.Tag('@overeng/pty-effect/PtyClient')<
     readonly followEvents: (spec: PtyFollowEventsSpec) => Stream.Stream<PtyEvent, PtyError>
     readonly kill: (input: { readonly name: PtyName }) => Effect.Effect<void, PtyError>
   }
->() {}
+>()('@overeng/pty-effect/PtyClient') {}
 
 /* ─────────────────────────── implementation ─────────────────────── */
 

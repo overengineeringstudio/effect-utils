@@ -13,12 +13,15 @@ export interface ParsedNmdFile {
 }
 
 const frontmatterEndMarker = '\n---\n'
-const decodeNmdFrontmatterJson = Schema.decodeUnknown(Schema.parseJson(NmdFrontmatterV2Schema), {
-  errors: 'all',
-  onExcessProperty: 'error',
-})
+const decodeNmdFrontmatterJson = Schema.decodeUnknown(
+  Schema.fromJsonString(NmdFrontmatterV2Schema),
+  {
+    errors: 'all',
+    onExcessProperty: 'error',
+  },
+)
 const encodeNmdFrontmatterJsonSync = Schema.encodeSync(
-  Schema.parseJson(NmdFrontmatterV2Schema, { space: 2 }),
+  Schema.fromJsonString(NmdFrontmatterV2Schema, { space: 2 }),
 )
 
 /** Render strict frontmatter as JSON-compatible YAML to keep parsing dependency-free. */

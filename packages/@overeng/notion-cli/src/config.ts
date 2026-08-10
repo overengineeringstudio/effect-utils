@@ -1,4 +1,4 @@
-import { FileSystem } from '@effect/platform'
+import { FileSystem } from 'effect/FileSystem'
 import { Effect, Schema } from 'effect'
 
 import { EffectPath, type AbsoluteDirPath, type AbsoluteFilePath } from '@overeng/effect-path'
@@ -53,7 +53,7 @@ export interface ResolvedConfig {
 // -----------------------------------------------------------------------------
 
 /** Error thrown when no config file is found in the search path */
-export class ConfigNotFoundError extends Schema.TaggedError<ConfigNotFoundError>()(
+export class ConfigNotFoundError extends Schema.TaggedErrorClass<ConfigNotFoundError>()(
   'ConfigNotFoundError',
   {
     message: Schema.String,
@@ -63,7 +63,7 @@ export class ConfigNotFoundError extends Schema.TaggedError<ConfigNotFoundError>
 ) {}
 
 /** Error thrown when specified config file path doesn't exist */
-export class ConfigFileNotFoundError extends Schema.TaggedError<ConfigFileNotFoundError>()(
+export class ConfigFileNotFoundError extends Schema.TaggedErrorClass<ConfigFileNotFoundError>()(
   'ConfigFileNotFoundError',
   {
     message: Schema.String,
@@ -72,18 +72,21 @@ export class ConfigFileNotFoundError extends Schema.TaggedError<ConfigFileNotFou
 ) {}
 
 /** Error thrown when config file cannot be imported */
-export class ConfigReadError extends Schema.TaggedError<ConfigReadError>()('ConfigReadError', {
+export class ConfigReadError extends Schema.TaggedErrorClass<ConfigReadError>()('ConfigReadError', {
   message: Schema.String,
   path: Schema.String,
-  cause: Schema.Defect,
+  cause: Schema.Defect(),
 }) {}
 
 /** Error thrown when config file has invalid structure */
-export class ConfigParseError extends Schema.TaggedError<ConfigParseError>()('ConfigParseError', {
-  message: Schema.String,
-  path: Schema.String,
-  cause: Schema.Defect,
-}) {}
+export class ConfigParseError extends Schema.TaggedErrorClass<ConfigParseError>()(
+  'ConfigParseError',
+  {
+    message: Schema.String,
+    path: Schema.String,
+    cause: Schema.Defect(),
+  },
+) {}
 
 /** Union of all configuration-related errors. */
 export type ConfigError =

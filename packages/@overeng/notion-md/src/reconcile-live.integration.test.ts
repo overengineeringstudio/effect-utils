@@ -2,10 +2,11 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import type { FileSystem, HttpClient } from '@effect/platform'
-import { FetchHttpClient } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import { NodeServices } from '@effect/platform-node'
+import type { FileSystem } from 'effect/FileSystem'
 import { Deferred, Effect, Fiber, Layer, Redacted } from 'effect'
+import type { HttpClient } from 'effect/unstable/http'
+import { FetchHttpClient } from 'effect/unstable/http'
 import { afterAll, describe, expect, it } from 'vitest'
 
 import { NotionConfigLive, NotionPages, type NotionConfig } from '@overeng/notion-effect-client'
@@ -48,8 +49,8 @@ const ConfigLayer = NotionConfigLive({
 const BaseLayer = Layer.mergeAll(ConfigLayer, FetchHttpClient.layer)
 const TestLayer = Layer.mergeAll(
   BaseLayer,
-  NmdStateStoreLive.pipe(Layer.provide(NodeContext.layer)),
-  NodeContext.layer,
+  NmdStateStoreLive.pipe(Layer.provide(NodeServices.layer)),
+  NodeServices.layer,
   NotionMdGatewayLive.pipe(Layer.provide(BaseLayer)),
 )
 

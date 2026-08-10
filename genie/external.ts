@@ -272,21 +272,10 @@ export const catalog = defineCatalog({
   '@standard-schema/spec': '1.1.0',
 
   // Effect ecosystem
-  '@effect/ai': '0.36.0',
-  effect: '3.21.4',
-  '@effect/platform': '0.96.2',
-  '@effect/platform-node': '0.107.0',
-  '@effect/cli': '0.75.2',
-  '@effect/vitest': '0.29.0',
-  '@effect/printer': '0.49.0',
-  '@effect/printer-ansi': '0.49.0',
-  '@effect/typeclass': '0.40.0',
-  '@effect/cluster': '0.59.0',
-  '@effect/sql': '0.51.1',
-  '@effect/experimental': '0.60.0',
-  '@effect/workflow': '0.18.2',
-  '@effect/rpc': '0.75.1',
-  '@effect/opentelemetry': '0.63.0',
+  effect: '4.0.0-beta.102',
+  '@effect/platform-node': '4.0.0-beta.102',
+  '@effect/vitest': '4.0.0-beta.102',
+  '@effect/opentelemetry': '4.0.0-beta.102',
 
   // React ecosystem
   react: '19.2.7',
@@ -377,8 +366,7 @@ export const catalog = defineCatalog({
   'is-dom': '1.1.0',
 
   // OpenTUI / Effect Atom (experimental)
-  '@effect-atom/atom': '0.5.3',
-  '@effect-atom/atom-react': '0.5.0',
+  '@effect/atom-react': '4.0.0-beta.102',
   '@opentui/core': '0.4.1',
   '@opentui/react': '0.4.1',
 
@@ -428,11 +416,7 @@ export const commonPnpmPolicySettings = {
   dedupePeerDependents: true as const,
   strictPeerDependencies: true as const,
   peerDependencyRules: {
-    /** @effect-atom/atom@0.5.3 pins pre-1.0 Effect peer ranges that don't cover our versions */
     allowedVersions: {
-      '@effect/experimental': '>=0.58.0',
-      '@effect/platform': '>=0.94.2',
-      '@effect/rpc': '>=0.73.0',
       eslint: '>=10.0.0',
       typescript: '>=6.0.0',
       vitest: '>=4.0.0',
@@ -443,10 +427,10 @@ export const commonPnpmPolicySettings = {
   verifyStoreIntegrity: true as const,
   strictStorePkgContentCheck: true as const,
   ignoreScripts: true as const,
-  // This dependency refresh intentionally tracks the newest Effect 3 line and
+  // This dependency refresh intentionally tracks the Effect 4 beta line and
   // Node 26 types. Keep minimum-release-age strict globally, but allow these
   // reviewed packages to advance immediately as part of the coordinated upgrade.
-  minimumReleaseAgeExclude: ['@effect/platform', '@types/node', 'effect'],
+  minimumReleaseAgeExclude: ['@effect/platform-node', '@types/node', 'effect'],
   pmOnFail: 'ignore' as const,
   /** Disable until pnpm#10393 is resolved (install no-ops for workspace changes) */
   optimisticRepeatInstall: false as const,
@@ -552,13 +536,12 @@ export const createEffectUtilsRefs = (basePath: string) =>
 export const utilsPatches = definePatchedDependencies({
   location: 'packages/@overeng/utils',
   patches: {
-    /* Restrict `http.client` tracer span attribute emission to a small
-       allowlist of response headers. Upstream hardcodes emission of every
-       header, which for chatty APIs (Notion: ~31 headers per response)
-       dumps low-signal attrs like cf-ray / alt-svc / cookie flags into
-       every span. Keeps the observability-critical ones
-       (content-type, x-notion-request-id, retry-after, ...). */
-    '@effect/platform@0.96.2': './patches/@effect__platform@0.96.0.patch',
+    /* LIVE-MIGRATION BRIDGE effect-3-4 B3 — DELETE at contraction — https://github.com/Effect-TS/effect/pull/6697
+       Effect 4 beta.102 emits every redacted request/response header name as an
+       HTTP client span attribute. Preserve the v3 telemetry allowlist until
+       upstream exposes HttpClient.TracerHeaderFilter and we adopt that beta. */
+    'effect@4.0.0-beta.102': './patches/effect@4.0.0-beta.102.patch',
+    /* LIVE-MIGRATION END effect-3-4 */
   },
 })
 

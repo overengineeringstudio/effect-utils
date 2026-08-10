@@ -1,4 +1,5 @@
-import { FileSystem, Path } from '@effect/platform'
+import * as FileSystem from 'effect/FileSystem'
+import * as Path from 'effect/Path'
 import { Effect } from 'effect'
 
 import { matchesAnyPattern } from '../runtime/package-json/validation.ts'
@@ -34,7 +35,7 @@ const findWorkspaceRoot = Effect.fn('workspace/findWorkspaceRoot')(function* ({
   let currentDir = cwd
   while (true) {
     const workspaceFile = pathService.join(currentDir, 'pnpm-workspace.yaml')
-    const stat = yield* fs.stat(workspaceFile).pipe(Effect.catchAll(() => Effect.void))
+    const stat = yield* fs.stat(workspaceFile).pipe(Effect.catch(() => Effect.void))
     if (stat?.type === 'File') {
       return currentDir
     }
@@ -64,7 +65,7 @@ const findPackageJsonDirs = Effect.fn('workspace/findPackageJsonDirs')(function*
       for (const entry of entries) {
         if (shouldSkipDir(entry) === true) continue
         const fullPath = pathService.join(dir, entry)
-        const stat = yield* fs.stat(fullPath).pipe(Effect.catchAll(() => Effect.void))
+        const stat = yield* fs.stat(fullPath).pipe(Effect.catch(() => Effect.void))
         if (stat === undefined) continue
         if (stat.type === 'Directory') {
           yield* walk(fullPath)

@@ -16,31 +16,31 @@ const OpenCodeSessionRow = Schema.Struct({
   directory: Schema.String,
   title: Schema.String,
   version: Schema.String,
-  time_created: Schema.NonNegativeInt,
-  time_updated: Schema.NonNegativeInt,
-  time_archived: Schema.optional(Schema.NullOr(Schema.NonNegativeInt)),
-}).annotations({ identifier: 'AgentSessionIngest.OpenCodeSessionRow' })
+  time_created: Schema.Natural,
+  time_updated: Schema.Natural,
+  time_archived: Schema.optional(Schema.NullOr(Schema.Natural)),
+}).annotate({ identifier: 'AgentSessionIngest.OpenCodeSessionRow' })
 
 const OpenCodeSessionDiscoveryRow = Schema.Struct({
   id: Schema.String,
-  time_archived: Schema.NullOr(Schema.NonNegativeInt),
-}).annotations({ identifier: 'AgentSessionIngest.OpenCodeSessionDiscoveryRow' })
+  time_archived: Schema.NullOr(Schema.Natural),
+}).annotate({ identifier: 'AgentSessionIngest.OpenCodeSessionDiscoveryRow' })
 
 const OpenCodeMessageRow = Schema.Struct({
   id: Schema.String,
   session_id: Schema.String,
-  time_created: Schema.NonNegativeInt,
-  time_updated: Schema.NonNegativeInt,
+  time_created: Schema.Natural,
+  time_updated: Schema.Natural,
   data: Schema.Unknown,
-}).annotations({ identifier: 'AgentSessionIngest.OpenCodeMessageRow' })
+}).annotate({ identifier: 'AgentSessionIngest.OpenCodeMessageRow' })
 
 const OpenCodePartRow = Schema.Struct({
   id: Schema.String,
   session_id: Schema.String,
-  time_created: Schema.NonNegativeInt,
-  time_updated: Schema.NonNegativeInt,
+  time_created: Schema.Natural,
+  time_updated: Schema.Natural,
   data: Schema.Unknown,
-}).annotations({ identifier: 'AgentSessionIngest.OpenCodePartRow' })
+}).annotate({ identifier: 'AgentSessionIngest.OpenCodePartRow' })
 
 const OpenCodeMessageData = Schema.Struct({
   role: Schema.String,
@@ -57,15 +57,15 @@ const OpenCodeMessageData = Schema.Struct({
     }),
   ),
   summary: Schema.optional(Schema.Unknown),
-}).annotations({ identifier: 'AgentSessionIngest.OpenCodeMessageData' })
+}).annotate({ identifier: 'AgentSessionIngest.OpenCodeMessageData' })
 
 const OpenCodeMessageRecord = Schema.TaggedStruct('OpenCodeMessage', {
   id: Schema.String,
   sessionId: Schema.String,
-  timeCreated: Schema.NonNegativeInt,
-  timeUpdated: Schema.NonNegativeInt,
+  timeCreated: Schema.Natural,
+  timeUpdated: Schema.Natural,
   data: OpenCodeMessageData,
-}).annotations({ identifier: 'AgentSessionIngest.OpenCodeMessageRecord' })
+}).annotate({ identifier: 'AgentSessionIngest.OpenCodeMessageRecord' })
 
 const OpenCodePartToolData = Schema.Struct({
   type: Schema.Literal('tool'),
@@ -79,23 +79,23 @@ const OpenCodePartToolData = Schema.Struct({
     metadata: Schema.optional(Schema.Unknown),
     time: Schema.optional(Schema.Unknown),
   }),
-}).annotations({ identifier: 'AgentSessionIngest.OpenCodePartToolData' })
+}).annotate({ identifier: 'AgentSessionIngest.OpenCodePartToolData' })
 
 const OpenCodePartTextData = Schema.Struct({
   type: Schema.Literal('text'),
   text: Schema.String,
-}).annotations({ identifier: 'AgentSessionIngest.OpenCodePartTextData' })
+}).annotate({ identifier: 'AgentSessionIngest.OpenCodePartTextData' })
 
 const OpenCodePartReasoningData = Schema.Struct({
   type: Schema.Literal('reasoning'),
   text: Schema.String,
   metadata: Schema.optional(Schema.Unknown),
-}).annotations({ identifier: 'AgentSessionIngest.OpenCodePartReasoningData' })
+}).annotate({ identifier: 'AgentSessionIngest.OpenCodePartReasoningData' })
 
 const OpenCodePartStepStartData = Schema.Struct({
   type: Schema.Literal('step-start'),
   text: Schema.optional(Schema.String),
-}).annotations({ identifier: 'AgentSessionIngest.OpenCodePartStepStartData' })
+}).annotate({ identifier: 'AgentSessionIngest.OpenCodePartStepStartData' })
 
 const OpenCodePartStepFinishData = Schema.Struct({
   type: Schema.Literal('step-finish'),
@@ -103,35 +103,35 @@ const OpenCodePartStepFinishData = Schema.Struct({
   snapshot: Schema.optional(Schema.String),
   cost: Schema.optional(Schema.Number),
   tokens: Schema.optional(Schema.Unknown),
-}).annotations({ identifier: 'AgentSessionIngest.OpenCodePartStepFinishData' })
+}).annotate({ identifier: 'AgentSessionIngest.OpenCodePartStepFinishData' })
 
 const OpenCodePartPatchData = Schema.Struct({
   type: Schema.Literal('patch'),
   patch: Schema.optional(Schema.String),
   metadata: Schema.optional(Schema.Unknown),
-}).annotations({ identifier: 'AgentSessionIngest.OpenCodePartPatchData' })
+}).annotate({ identifier: 'AgentSessionIngest.OpenCodePartPatchData' })
 
 const OpenCodePartFileData = Schema.Struct({
   type: Schema.Literal('file'),
   path: Schema.optional(Schema.String),
   metadata: Schema.optional(Schema.Unknown),
-}).annotations({ identifier: 'AgentSessionIngest.OpenCodePartFileData' })
+}).annotate({ identifier: 'AgentSessionIngest.OpenCodePartFileData' })
 
 const OpenCodePartSubtaskData = Schema.Struct({
   type: Schema.Literal('subtask'),
   metadata: Schema.optional(Schema.Unknown),
-}).annotations({ identifier: 'AgentSessionIngest.OpenCodePartSubtaskData' })
+}).annotate({ identifier: 'AgentSessionIngest.OpenCodePartSubtaskData' })
 
 const OpenCodePartCompactionData = Schema.Struct({
   type: Schema.Literal('compaction'),
   metadata: Schema.optional(Schema.Unknown),
-}).annotations({ identifier: 'AgentSessionIngest.OpenCodePartCompactionData' })
+}).annotate({ identifier: 'AgentSessionIngest.OpenCodePartCompactionData' })
 
 const OpenCodePartGenericData = Schema.Struct({
   type: Schema.String,
-}).annotations({ identifier: 'AgentSessionIngest.OpenCodePartGenericData' })
+}).annotate({ identifier: 'AgentSessionIngest.OpenCodePartGenericData' })
 
-const OpenCodePartData = Schema.Union(
+const OpenCodePartData = Schema.Union([
   OpenCodePartToolData,
   OpenCodePartTextData,
   OpenCodePartReasoningData,
@@ -142,19 +142,19 @@ const OpenCodePartData = Schema.Union(
   OpenCodePartSubtaskData,
   OpenCodePartCompactionData,
   OpenCodePartGenericData,
-).annotations({ identifier: 'AgentSessionIngest.OpenCodePartData' })
+]).annotate({ identifier: 'AgentSessionIngest.OpenCodePartData' })
 
 const OpenCodePartRecord = Schema.TaggedStruct('OpenCodePart', {
   id: Schema.String,
   sessionId: Schema.String,
-  timeCreated: Schema.NonNegativeInt,
-  timeUpdated: Schema.NonNegativeInt,
+  timeCreated: Schema.Natural,
+  timeUpdated: Schema.Natural,
   data: OpenCodePartData,
-}).annotations({ identifier: 'AgentSessionIngest.OpenCodePartRecord' })
+}).annotate({ identifier: 'AgentSessionIngest.OpenCodePartRecord' })
 
 const OpenCodeSessionRecord = Schema.TaggedStruct('OpenCodeSession', {
   session: OpenCodeSessionRow,
-}).annotations({ identifier: 'AgentSessionIngest.OpenCodeSessionRecord' })
+}).annotate({ identifier: 'AgentSessionIngest.OpenCodeSessionRecord' })
 
 /**
  * Source-of-truth record union for OpenCode native SQLite session storage.
@@ -163,11 +163,11 @@ const OpenCodeSessionRecord = Schema.TaggedStruct('OpenCodeSession', {
  * - Database: `~/.local/share/opencode/opencode.db`
  * - Tables: `session`, `message`, `part`
  */
-export const OpenCodeRecord = Schema.Union(
+export const OpenCodeRecord = Schema.Union([
   OpenCodeSessionRecord,
   OpenCodeMessageRecord,
   OpenCodePartRecord,
-).annotations({ identifier: 'AgentSessionIngest.OpenCodeRecord' })
+]).annotate({ identifier: 'AgentSessionIngest.OpenCodeRecord' })
 export type OpenCodeRecord = typeof OpenCodeRecord.Type
 
 type SqliteValue = string | number | bigint | Uint8Array | null
@@ -335,7 +335,7 @@ const parseOpenCodeRowData = Effect.fn('AgentSessionIngest.OpenCode.parseOpenCod
     readonly rawData: unknown
     readonly message: string
   }) =>
-    Schema.decodeUnknown(Schema.parseJson(Schema.Unknown))(String(options.rawData)).pipe(
+    Schema.decodeUnknown(Schema.fromJsonString(Schema.Unknown))(String(options.rawData)).pipe(
       Effect.mapError(
         (cause) =>
           new SessionArtifactDecodeError({

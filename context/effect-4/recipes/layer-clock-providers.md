@@ -87,7 +87,9 @@ const deterministicRandom = Layer.succeed(Random.Random, {
 ```
 
 Callers continue to use effectful operations such as `Random.next`, `Random.nextInt`, and
-`Random.shuffle`; those operations derive from the two Reference methods.
+`Random.shuffle`; those operations derive from the two Reference methods. Effect 3 call sites of
+`Random.nextIntBetween(min, max)` must pass `{ halfOpen: true }` in v4 to preserve the exclusive
+upper bound; see `random-bounds-semantics.md`.
 
 ## Custom Clock
 
@@ -186,6 +188,8 @@ documents the constructor replacements covered here.
 - A v3 custom Random object cannot be installed unchanged. Implement the v4 Reference's
   `nextIntUnsafe` and `nextDoubleUnsafe` primitives and prove the derived sequence used by the
   slice.
+- The v4 default for `Random.nextIntBetween` includes the upper bound. Preserve v3 semantics with
+  `{ halfOpen: true }`; a mid-range-only test does not detect this breakage.
 - `ConfigProvider.fromUnknown` treats empty strings as missing unless
   `{ preserveEmptyStrings: true }` is passed.
 

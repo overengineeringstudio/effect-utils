@@ -12,18 +12,18 @@ import { docsPath, shouldNeverHappen, withOptionValueSchema } from '../common.ts
  * @see https://developers.notion.com/reference/property-value-object#date
  */
 export const DateValue = Schema.Struct({
-  start: Schema.String.annotations({
+  start: Schema.String.annotate({
     description: 'Start date in ISO 8601 format.',
     examples: ['2024-01-15', '2024-01-15T10:30:00.000Z'],
   }),
-  end: Schema.NullOr(Schema.String).annotations({
+  end: Schema.NullOr(Schema.String).annotate({
     description: 'End date for date ranges, or null for single dates.',
   }),
-  time_zone: Schema.NullOr(Schema.String).annotations({
+  time_zone: Schema.NullOr(Schema.String).annotate({
     description: 'IANA time zone, or null for dates without time.',
     examples: ['America/New_York', 'Europe/London'],
   }),
-}).annotations({
+}).annotate({
   identifier: 'Notion.DateValue',
   title: 'Date Value',
   description: 'A date or date range value.',
@@ -38,16 +38,16 @@ export type DateValue = typeof DateValue.Type
  * @see https://developers.notion.com/reference/property-value-object#date
  */
 export const DateProperty = Schema.Struct({
-  id: Schema.String.annotations({
+  id: Schema.String.annotate({
     description: 'Property identifier.',
   }),
-  type: Schema.Literal('date').annotations({
+  type: Schema.Literal('date').annotate({
     description: 'Property type identifier.',
   }),
-  date: Schema.NullOr(DateValue).annotations({
+  date: Schema.NullOr(DateValue).annotate({
     description: 'The date value, or null if empty.',
   }),
-}).annotations({
+}).annotate({
   identifier: 'Notion.DateProperty',
   title: 'Date Property',
   description: 'A date property value.',
@@ -66,7 +66,7 @@ export const DateValueWrite = Schema.Struct({
   start: Schema.String,
   end: Schema.optional(Schema.NullOr(Schema.String)),
   time_zone: Schema.optional(Schema.NullOr(Schema.String)),
-}).annotations({
+}).annotate({
   identifier: 'Notion.DateValueWrite',
   title: 'Date Value (Write)',
   description: 'Date value object accepted in Notion write requests.',
@@ -82,7 +82,7 @@ export type DateValueWrite = typeof DateValueWrite.Type
  */
 export const DateWrite = Schema.Struct({
   date: Schema.NullOr(DateValueWrite),
-}).annotations({
+}).annotate({
   identifier: 'Notion.DateWrite',
   title: 'Date (Write)',
   description: 'Write payload for a date property (used in page create/update).',
@@ -102,7 +102,7 @@ export const DateWriteFromStart = Schema.transform(Schema.String, DateWrite, {
 
     return write.date.start
   },
-}).annotations({
+}).annotate({
   identifier: 'Notion.DateWriteFromStart',
   title: 'Date (Write) From Start',
   description: 'Transform a start date/time string into a date write payload.',

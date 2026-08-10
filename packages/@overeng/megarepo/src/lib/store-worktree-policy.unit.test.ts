@@ -1,5 +1,5 @@
 import { describe, it } from '@effect/vitest'
-import * as fc from 'effect/FastCheck'
+import * as fc from 'effect/testing/FastCheck'
 import { expect } from 'vitest'
 
 import type { StoreGcConfig } from './store-gc-config.ts'

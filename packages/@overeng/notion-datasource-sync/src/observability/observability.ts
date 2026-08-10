@@ -71,7 +71,7 @@ type SpanAttributesWithLabel = SpanAttributesInput & {
 /** Identifies the kind of process emitting a span, recorded on `spanAttr.processRole`. */
 export type ProcessRole = 'cli' | 'daemon' | 'fake-gateway' | 'library'
 
-const SpanAttributeValueSchema = Schema.Union(Schema.String, Schema.Number, Schema.Boolean)
+const SpanAttributeValueSchema = Schema.Union([Schema.String, Schema.Number, Schema.Boolean])
 
 const optionalAttr = (key: SpanAttributeKey) =>
   Schema.optional(SpanAttributeValueSchema.pipe(OtelAttr.key({ key })))
@@ -152,24 +152,16 @@ export const spanContracts = Object.fromEntries(
 }
 
 const StatusSpanAttributesSchema = Schema.Struct({
-  state: Schema.Literal('clean', 'pending', 'conflict', 'blocked').pipe(
+  state: Schema.Literals(['clean', 'pending', 'conflict', 'blocked']).pipe(
     OtelAttr.key({ key: spanAttr.statusState }),
   ),
-  blockedCount: Schema.NonNegativeInt.pipe(OtelAttr.key({ key: spanAttr.blockedCount })),
-  conflictCount: Schema.NonNegativeInt.pipe(OtelAttr.key({ key: spanAttr.conflictCount })),
-  outboxAmbiguousCount: Schema.NonNegativeInt.pipe(
-    OtelAttr.key({ key: spanAttr.outboxAmbiguousCount }),
-  ),
-  outboxBlockedCount: Schema.NonNegativeInt.pipe(
-    OtelAttr.key({ key: spanAttr.outboxBlockedCount }),
-  ),
-  outboxQueuedCount: Schema.NonNegativeInt.pipe(OtelAttr.key({ key: spanAttr.outboxQueuedCount })),
-  outboxRetryableCount: Schema.NonNegativeInt.pipe(
-    OtelAttr.key({ key: spanAttr.outboxRetryableCount }),
-  ),
-  outboxRunningCount: Schema.NonNegativeInt.pipe(
-    OtelAttr.key({ key: spanAttr.outboxRunningCount }),
-  ),
+  blockedCount: Schema.Natural.pipe(OtelAttr.key({ key: spanAttr.blockedCount })),
+  conflictCount: Schema.Natural.pipe(OtelAttr.key({ key: spanAttr.conflictCount })),
+  outboxAmbiguousCount: Schema.Natural.pipe(OtelAttr.key({ key: spanAttr.outboxAmbiguousCount })),
+  outboxBlockedCount: Schema.Natural.pipe(OtelAttr.key({ key: spanAttr.outboxBlockedCount })),
+  outboxQueuedCount: Schema.Natural.pipe(OtelAttr.key({ key: spanAttr.outboxQueuedCount })),
+  outboxRetryableCount: Schema.Natural.pipe(OtelAttr.key({ key: spanAttr.outboxRetryableCount })),
+  outboxRunningCount: Schema.Natural.pipe(OtelAttr.key({ key: spanAttr.outboxRunningCount })),
 })
 
 /** Schema-backed contract for status summary attributes emitted on sync result spans. */

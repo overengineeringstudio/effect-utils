@@ -6,9 +6,9 @@
  * Matching is done by canonical URL (org/repo), not by member name.
  */
 
-import * as Cli from '@effect/cli'
-import { FileSystem } from '@effect/platform'
+import { FileSystem } from 'effect/FileSystem'
 import { Effect, Option } from 'effect'
+import * as Cli from 'effect/unstable/cli'
 import React from 'react'
 
 import type { AbsoluteDirPath } from '@overeng/effect-path'
@@ -153,17 +153,17 @@ export const pushRefsCommand = Cli.Command.make(
   'push-refs',
   {
     output: outputOption,
-    dryRun: Cli.Options.boolean('dry-run').pipe(
-      Cli.Options.withDescription('Show what would change without writing files'),
-      Cli.Options.withDefault(false),
+    dryRun: Cli.Flag.boolean('dry-run').pipe(
+      Cli.Flag.withDescription('Show what would change without writing files'),
+      Cli.Flag.withDefault(false),
     ),
-    all: Cli.Options.boolean('all').pipe(
-      Cli.Options.withDescription('Recursively push refs to nested-of-nested megarepos'),
-      Cli.Options.withDefault(false),
+    all: Cli.Flag.boolean('all').pipe(
+      Cli.Flag.withDescription('Recursively push refs to nested-of-nested megarepos'),
+      Cli.Flag.withDefault(false),
     ),
-    only: Cli.Options.text('only').pipe(
-      Cli.Options.withDescription('Only push refs for these shared members (comma-separated)'),
-      Cli.Options.optional,
+    only: Cli.Flag.string('only').pipe(
+      Cli.Flag.withDescription('Only push refs for these shared members (comma-separated)'),
+      Cli.Flag.optional,
     ),
   },
   ({ output, dryRun, all, only }) =>

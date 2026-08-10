@@ -136,6 +136,23 @@
 - **Status:** allowlisted as a negative-control diff in
   `patterns/fork-defaults/scenario.json`.
 
+## effect-path-public-result-shape
+
+- **Difference:** Public in-memory `Sandbox.validate`, `Sandbox.resolve`, and `validatePath` results
+  follow Effect's major-version data type: v3 `Either` used `_tag: "Right" | "Left"` with
+  `right` / `left` fields, while v4 `Result` uses `_tag: "Success" | "Failure"` with
+  `success` / `failure` fields.
+- **Proposed decision:** Accept the v4 `Result` shape. These APIs deliberately expose an
+  Effect-owned type, and preserving the removed v3 `Either` shape would require a local
+  compatibility dialect.
+- **Blast radius:** `@overeng/effect-path` sandbox validation APIs and consumers that inspect the
+  returned in-memory Effect data type.
+- **Audit evidence:** Repository-wide consumer searches found no downstream call site for these
+  three APIs and no serialization, snapshot-write, cache, or persistence boundary for their result
+  objects. Package baselines normalize the branch to its success or failure value.
+- **Status:** ACCEPTED for in-memory public API only. Any future serialization site requires a
+  separate wire-format decision.
+
 ## equality-structural-default
 
 - **Difference:** v4 structurally compares plain objects, arrays, maps, sets,

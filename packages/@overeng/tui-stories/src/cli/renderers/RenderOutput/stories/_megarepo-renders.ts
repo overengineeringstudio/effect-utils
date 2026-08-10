@@ -10,7 +10,7 @@
  * Vite resolves to the megarepo source tree at build time.
  */
 
-import { Atom } from '@effect-atom/atom'
+import { Atom } from 'effect/unstable/reactivity'
 import { ExecView } from '@megarepo-internal/cli/renderers/ExecOutput/mod.ts'
 import * as execFixtures from '@megarepo-internal/cli/renderers/ExecOutput/stories/_fixtures.ts'
 import { StatusView } from '@megarepo-internal/cli/renderers/StatusOutput/mod.ts'

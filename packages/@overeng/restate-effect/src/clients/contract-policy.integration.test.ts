@@ -71,7 +71,7 @@ const EchoLive = RestateService.implement<typeof Echo>({
 
 /* ── (3) an Object: sensitive field + idempotency-key field + typed terminal error ── */
 
-class Denied extends Schema.TaggedError<Denied>()('Denied', { reason: Schema.String }) {}
+class Denied extends Schema.TaggedErrorClass<Denied>()('Denied', { reason: Schema.String }) {}
 
 const VaultState = { token: Schema.String } as const
 const VaultS = State.for(VaultState)
@@ -211,7 +211,7 @@ describe.skipIf(!serverAvailable)('contract-invocation policy at the public entr
         /* Raw wire: the sensitive field is ciphertext, never the plaintext. */
         expect(body).not.toContain(SECRET)
         const wire = yield* Schema.decode(
-          Schema.parseJson(Schema.Struct({ token: Schema.String })),
+          Schema.fromJsonString(Schema.Struct({ token: Schema.String })),
         )(body)
         expect(wire.token).not.toBe(SECRET)
         /* The typed `call` over the SAME handler decrypts the response to plaintext. */

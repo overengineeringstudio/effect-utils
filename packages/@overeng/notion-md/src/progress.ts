@@ -31,10 +31,9 @@ export interface ProgressReporterShape {
 }
 
 /** Render seam for staged write-path sync progress (decision 0018, R43–R45). */
-export class ProgressReporter extends Context.Tag('ProgressReporter')<
-  ProgressReporter,
-  ProgressReporterShape
->() {}
+export class ProgressReporter extends Context.Service<ProgressReporter, ProgressReporterShape>()(
+  'ProgressReporter',
+) {}
 
 /**
  * Emit a reporter call without adding to the engine's `R`, and swallowing ALL

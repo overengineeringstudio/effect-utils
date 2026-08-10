@@ -12,16 +12,16 @@ import { docsPath, shouldNeverHappen } from '../common.ts'
  * @see https://developers.notion.com/reference/property-value-object#checkbox
  */
 export const CheckboxProperty = Schema.Struct({
-  id: Schema.String.annotations({
+  id: Schema.String.annotate({
     description: 'Property identifier.',
   }),
-  type: Schema.Literal('checkbox').annotations({
+  type: Schema.Literal('checkbox').annotate({
     description: 'Property type identifier.',
   }),
-  checkbox: Schema.Boolean.annotations({
+  checkbox: Schema.Boolean.annotate({
     description: 'The checkbox value (checked or unchecked).',
   }),
-}).annotations({
+}).annotate({
   identifier: 'Notion.CheckboxProperty',
   title: 'Checkbox Property',
   description: 'A checkbox property value.',
@@ -37,7 +37,7 @@ export type CheckboxProperty = typeof CheckboxProperty.Type
  */
 export const CheckboxWrite = Schema.Struct({
   checkbox: Schema.Boolean,
-}).annotations({
+}).annotate({
   identifier: 'Notion.CheckboxWrite',
   title: 'Checkbox (Write)',
   description: 'Write payload for a checkbox property (used in page create/update).',
@@ -51,7 +51,7 @@ export const CheckboxWriteFromBoolean = Schema.transform(Schema.Boolean, Checkbo
   strict: false,
   decode: (checkbox) => ({ checkbox }),
   encode: (write) => write.checkbox,
-}).annotations({
+}).annotate({
   identifier: 'Notion.CheckboxWriteFromBoolean',
   title: 'Checkbox (Write) From Boolean',
   description: 'Transform a boolean into a checkbox write payload.',

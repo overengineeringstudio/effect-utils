@@ -9,7 +9,7 @@
  * layer-scoped program never silently drops its last span batch.
  */
 
-import { NodeContext } from '@effect/platform-node'
+import { NodeServices } from '@effect/platform-node'
 import { Effect, Layer, Scope } from 'effect'
 import { describe, expect, it } from 'vitest'
 
@@ -54,7 +54,7 @@ describe('makeOtelVitestLayer — flush on shutdown', () => {
       const post = yield* cap.inspect({ signal: 'traces', service: SERVICE, name: SPAN })
 
       return { pre: pre.length, post: post.length }
-    }).pipe(Effect.scoped, Effect.provide(Layer.provideMerge(Otelite.Default, NodeContext.layer)))
+    }).pipe(Effect.scoped, Effect.provide(Layer.provideMerge(Otelite.Default, NodeServices.layer)))
 
     const { pre, post } = await Effect.runPromise(program)
     expect(pre).toBe(0)

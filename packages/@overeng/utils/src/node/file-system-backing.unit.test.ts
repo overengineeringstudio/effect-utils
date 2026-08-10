@@ -2,8 +2,9 @@ import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
 
-import { FileSystem, Path } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import { NodeServices } from '@effect/platform-node'
+import * as FileSystem from 'effect/FileSystem'
+import * as Path from 'effect/Path'
 import { Context, Data, Deferred, Duration, Effect, Fiber, Layer, Schema, Stream } from 'effect'
 import { expect } from 'vitest'
 
@@ -594,15 +595,15 @@ Vitest.describe('FileSystemBacking', () => {
           expect(entries).toEqual(['holder-a.lock', 'holder-b.lock'])
 
           // Verify lock file content
-          const holderAContent = yield* Schema.decodeUnknown(Schema.parseJson(LockFileContent))(
-            fs.readFileSync(`${keyDir}/holder-a.lock`, 'utf-8'),
-          )
+          const holderAContent = yield* Schema.decodeUnknown(
+            Schema.fromJsonString(LockFileContent),
+          )(fs.readFileSync(`${keyDir}/holder-a.lock`, 'utf-8'))
           expect(holderAContent.permits).toBe(2)
           expect(typeof holderAContent.expiresAt).toBe('number')
 
-          const holderBContent = yield* Schema.decodeUnknown(Schema.parseJson(LockFileContent))(
-            fs.readFileSync(`${keyDir}/holder-b.lock`, 'utf-8'),
-          )
+          const holderBContent = yield* Schema.decodeUnknown(
+            Schema.fromJsonString(LockFileContent),
+          )(fs.readFileSync(`${keyDir}/holder-b.lock`, 'utf-8'))
           expect(holderBContent.permits).toBe(1)
         }).pipe(Effect.provide(backingLayer))
       }).pipe(Effect.provide(TestLayer), Effect.scoped),
@@ -829,7 +830,7 @@ Vitest.describe('FileSystemBacking', () => {
         const now = Date.now()
 
         yield* fsService.makeDirectory(keyDir, { recursive: true })
-        const expiredLockContent = yield* Schema.encode(Schema.parseJson(LockFileContent))({
+        const expiredLockContent = yield* Schema.encode(Schema.fromJsonString(LockFileContent))({
           permits: 2,
           expiresAt: now - 60_000,
         })
@@ -837,7 +838,7 @@ Vitest.describe('FileSystemBacking', () => {
           `${keyDir}/${encodeURIComponent('holder-expired')}.lock`,
           expiredLockContent,
         )
-        const activeLockContent = yield* Schema.encode(Schema.parseJson(LockFileContent))({
+        const activeLockContent = yield* Schema.encode(Schema.fromJsonString(LockFileContent))({
           permits: 3,
           expiresAt: now + 60_000,
         })
@@ -1007,7 +1008,7 @@ Vitest.describe('FileSystemBacking', () => {
         // it is the signal that the compatibility shim (register entry
         // filesystem-watch-recursive-option-removed) is still owed.
         expect(observedPathNames).not.toContain(nestedChild)
-      }).pipe(Effect.provide(NodeContext.layer), Effect.scoped),
+      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
     )
   })
 
@@ -1035,7 +1036,7 @@ Vitest.describe('FileSystemBacking', () => {
           // Stream should complete (not hang) — the 5s timeout is a safety net
           yield* stream.pipe(Stream.runDrain, Effect.timeout(Duration.seconds(5)))
         }).pipe(Effect.provide(backingLayer))
-      }).pipe(Effect.provide(NodeContext.layer), Effect.scoped),
+      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
     )
   })
 })

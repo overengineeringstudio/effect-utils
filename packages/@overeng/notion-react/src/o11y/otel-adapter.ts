@@ -46,7 +46,7 @@ const shortId = (id: string): string => id.replaceAll('-', '').slice(0, 8)
 const STATUS_OK = 1 as SpanStatusCode
 const STATUS_ERROR = 2 as SpanStatusCode
 
-const OpKind = Schema.Literal('append', 'update', 'delete', 'retrieve')
+const OpKind = Schema.Literals(['append', 'update', 'delete', 'retrieve'])
 
 // Bundles are REBUILT from the registered `notion-react.*` catalog schemas (SC-R13/R14 — the
 // contract is the single SSOT for the projection AND these runtime encoders). `service.name`

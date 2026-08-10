@@ -5,8 +5,7 @@
  * the actual filesystem to ensure they exist and are of the correct type.
  */
 
-import { FileSystem, Path as PlatformPath, type Error as PlatformError } from '@effect/platform'
-import { Effect } from 'effect'
+import { Effect, FileSystem, Path as PlatformPath, type PlatformError } from 'effect'
 
 import type {
   Abs,
@@ -104,22 +103,20 @@ const mapFsError = (args: {
   readonly error: PlatformError.PlatformError
 }): PathNotFoundError | PermissionError => {
   const { path, error } = args
-  if (error._tag === 'SystemError') {
-    if (error.reason === 'NotFound') {
-      return new PathNotFoundError({
-        path,
-        message: `Path not found: ${path}`,
-        nearestExisting: undefined,
-        expectedType: 'any',
-      })
-    }
-    if (error.reason === 'PermissionDenied') {
-      return new PermissionError({
-        path,
-        message: `Permission denied: ${path}`,
-        operation: 'stat',
-      })
-    }
+  if (error.reason._tag === 'NotFound') {
+    return new PathNotFoundError({
+      path,
+      message: `Path not found: ${path}`,
+      nearestExisting: undefined,
+      expectedType: 'any',
+    })
+  }
+  if (error.reason._tag === 'PermissionDenied') {
+    return new PermissionError({
+      path,
+      message: `Permission denied: ${path}`,
+      operation: 'stat',
+    })
   }
   // Default to not found
   return new PathNotFoundError({

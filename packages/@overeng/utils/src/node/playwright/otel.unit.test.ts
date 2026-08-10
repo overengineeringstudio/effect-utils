@@ -103,7 +103,7 @@ Vitest.describe('playwright/otel', () => {
     Vitest.it.effect(
       'returns ExternalSpan for valid JSON',
       Effect.fnUntraced(function* () {
-        const validContext = yield* Schema.encode(Schema.parseJson(ParentSpanContextSchema))({
+        const validContext = yield* Schema.encode(Schema.fromJsonString(ParentSpanContextSchema))({
           traceId: '0af7651916cd43dd8448eb211c80319c',
           spanId: 'b7ad6b7169203331',
         })
@@ -121,7 +121,7 @@ Vitest.describe('playwright/otel', () => {
     Vitest.it.effect(
       'returns ExternalSpan for valid JSON from custom env var',
       Effect.fnUntraced(function* () {
-        const validContext = yield* Schema.encode(Schema.parseJson(ParentSpanContextSchema))({
+        const validContext = yield* Schema.encode(Schema.fromJsonString(ParentSpanContextSchema))({
           traceId: 'custom-trace-id',
           spanId: 'custom-span-id',
         })
@@ -152,7 +152,7 @@ Vitest.describe('playwright/otel', () => {
       'dies on malformed context (missing traceId)',
       Effect.fnUntraced(function* () {
         const malformedContext = yield* Schema.encode(
-          Schema.parseJson(Schema.Struct({ spanId: Schema.String })),
+          Schema.fromJsonString(Schema.Struct({ spanId: Schema.String })),
         )({ spanId: 'b7ad6b7169203331' })
         process.env[PW_SPAN_CONTEXT_ENV_VAR] = malformedContext
 
@@ -167,7 +167,7 @@ Vitest.describe('playwright/otel', () => {
       'dies on malformed context (missing spanId)',
       Effect.fnUntraced(function* () {
         const malformedContext = yield* Schema.encode(
-          Schema.parseJson(Schema.Struct({ traceId: Schema.String })),
+          Schema.fromJsonString(Schema.Struct({ traceId: Schema.String })),
         )({ traceId: '0af7651916cd43dd8448eb211c80319c' })
         process.env[PW_SPAN_CONTEXT_ENV_VAR] = malformedContext
 
@@ -211,7 +211,9 @@ Vitest.describe('playwright/otel', () => {
       'uses custom parent span env var',
       Effect.fnUntraced(function* () {
         delete process.env.OTEL_EXPORTER_OTLP_ENDPOINT
-        const customParentSpan = yield* Schema.encode(Schema.parseJson(ParentSpanContextSchema))({
+        const customParentSpan = yield* Schema.encode(
+          Schema.fromJsonString(ParentSpanContextSchema),
+        )({
           traceId: '0af7651916cd43dd8448eb211c80319c',
           spanId: 'b7ad6b7169203331',
         })

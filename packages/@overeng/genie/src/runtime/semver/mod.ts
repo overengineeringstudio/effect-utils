@@ -10,7 +10,7 @@ export type SemVer = readonly [major: number, minor: number, patch: number]
 
 /** Parse a version string like `1.2.3` into a `[major, minor, patch]` tuple. */
 export const parseVersion = (version: string): SemVer => {
-  const cleaned = version.replace(/\.x/g, '.0')
+  const cleaned = version.replace(/\.x/g, '.0').split('-')[0] ?? version
   const parts = cleaned.split('.').map(Number)
   return [parts[0] ?? 0, parts[1] ?? 0, parts[2] ?? 0] as const
 }

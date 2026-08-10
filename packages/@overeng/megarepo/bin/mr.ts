@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
-import * as Cli from '@effect/cli'
-import { NodeContext, NodeRuntime } from '@effect/platform-node'
+import * as Cli from 'effect/unstable/cli'
+import { NodeServices, NodeRuntime } from '@effect/platform-node'
 import { Effect, Layer, Schema } from 'effect'
 
 import { ServiceIdentity } from '@overeng/otel-contract'
@@ -75,7 +75,7 @@ const program = Effect.gen(function* () {
     Effect.scoped,
     CliVersion.enrichErrors,
     Effect.provideService(CliVersion, { name: 'mr', version }),
-    Effect.provide(Layer.mergeAll(NodeContext.layer, otelLayer)),
+    Effect.provide(Layer.mergeAll(NodeServices.layer, otelLayer)),
   )
 })
 

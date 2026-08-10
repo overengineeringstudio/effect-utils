@@ -1,7 +1,7 @@
 import { utimesSync } from 'node:fs'
 import * as nodePath from 'node:path'
 
-import { FileSystem } from '@effect/platform'
+import { FileSystem } from 'effect/FileSystem'
 import { Effect } from 'effect'
 import { expect } from 'vitest'
 

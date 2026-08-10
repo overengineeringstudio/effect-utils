@@ -1,5 +1,5 @@
-import type { HttpClient } from '@effect/platform'
 import { Chunk, Effect, Stream } from 'effect'
+import type { HttpClient } from 'effect/unstable/http'
 import type { ReactNode } from 'react'
 
 import {

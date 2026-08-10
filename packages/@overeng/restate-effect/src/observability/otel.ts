@@ -33,9 +33,9 @@
  * reads a version-fragile internal SDK flag — prefer `Restate.run`.
  */
 
-import * as EffectMetrics from '@effect/opentelemetry/Metrics'
+import * as EffectMetrics from '@effect/opentelemetry/OtelMetrics'
 import * as Resource from '@effect/opentelemetry/Resource'
-import * as EffectTracer from '@effect/opentelemetry/Tracer'
+import * as EffectTracer from '@effect/opentelemetry/OtelTracer'
 import { type Span, trace } from '@opentelemetry/api'
 import { resourceFromAttributes } from '@opentelemetry/resources'
 import type { MetricReader, PushMetricExporter } from '@opentelemetry/sdk-metrics'

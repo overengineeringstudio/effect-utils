@@ -28,7 +28,7 @@
  * const joined = EffectPath.ops.join(dir, EffectPath.unsafe.relativeFile('index.ts'))
  *
  * // Schema integration
- * const parsed = Schema.decodeUnknown(EffectPath.schema.AbsoluteFilePath)(input)
+ * const parsed = Schema.decodeUnknownEffect(EffectPath.schema.AbsoluteFilePath)(input)
  *
  * // Sandbox for secure file access
  * const sb = EffectPath.sandbox(EffectPath.unsafe.absoluteDir('/app/data/'))

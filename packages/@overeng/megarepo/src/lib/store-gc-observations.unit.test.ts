@@ -1,5 +1,5 @@
-import { FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import { FileSystem } from 'effect/FileSystem'
+import { NodeServices } from '@effect/platform-node'
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 
@@ -14,7 +14,7 @@ import {
 } from './store-gc-observations.ts'
 
 const run = <A, E>(effect: Effect.Effect<A, E, FileSystem.FileSystem>) =>
-  Effect.runPromise(effect.pipe(Effect.provide(NodeContext.layer)))
+  Effect.runPromise(effect.pipe(Effect.provide(NodeServices.layer)))
 
 const withTempStore = <A, E>(
   body: (storeBasePath: AbsoluteDirPath) => Effect.Effect<A, E, FileSystem.FileSystem>,

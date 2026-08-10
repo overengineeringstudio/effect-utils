@@ -25,6 +25,13 @@ All notable changes to this project will be documented in this file.
   provider layer construction/provision, scope teardown, retry behavior, and
   external-store subscriber observations.
 
+### Changed
+
+- Port **@overeng/effect-path**, **@overeng/tui-react**,
+  **@overeng/content-address**, **@overeng/kdl**, **@overeng/kdl-effect**,
+  **@overeng/effect-distributed-lock**, and **@overeng/otel-contract** to the
+  Effect 4 beta.102 APIs while preserving their established runtime contracts.
+
 ### Fixed
 
 - **devenv pnpm installs**: refresh nixpkgs so pnpm runs on Node 24.18.1,

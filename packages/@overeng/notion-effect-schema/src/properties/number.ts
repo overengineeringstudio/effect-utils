@@ -12,17 +12,17 @@ import { docsPath, shouldNeverHappen, withOptionValueSchema } from '../common.ts
  * @see https://developers.notion.com/reference/property-value-object#number
  */
 export const NumberProperty = Schema.Struct({
-  id: Schema.String.annotations({
+  id: Schema.String.annotate({
     description: 'Property identifier.',
   }),
-  type: Schema.Literal('number').annotations({
+  type: Schema.Literal('number').annotate({
     description: 'Property type identifier.',
   }),
-  number: Schema.NullOr(Schema.Number).annotations({
+  number: Schema.NullOr(Schema.Number).annotate({
     description: 'The numeric value, or null if empty.',
     examples: [42, 3.14, null],
   }),
-}).annotations({
+}).annotate({
   identifier: 'Notion.NumberProperty',
   title: 'Number Property',
   description: 'A number property value.',
@@ -38,7 +38,7 @@ export type NumberProperty = typeof NumberProperty.Type
  */
 export const NumberWrite = Schema.Struct({
   number: Schema.NullOr(Schema.Number),
-}).annotations({
+}).annotate({
   identifier: 'Notion.NumberWrite',
   title: 'Number (Write)',
   description: 'Write payload for a number property (used in page create/update).',
@@ -52,7 +52,7 @@ export const NumberWriteFromNumber = Schema.transform(Schema.NullOr(Schema.Numbe
   strict: false,
   decode: (number) => ({ number }),
   encode: (write) => write.number,
-}).annotations({
+}).annotate({
   identifier: 'Notion.NumberWriteFromNumber',
   title: 'Number (Write) From Number',
   description: 'Transform a number (or null) into a number write payload.',

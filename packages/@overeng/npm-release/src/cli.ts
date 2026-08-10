@@ -9,9 +9,9 @@
  * and `megarepo`.
  */
 
-import { Command as Cli, Options } from '@effect/cli'
-import { NodeContext, NodeRuntime } from '@effect/platform-node'
+import { NodeServices, NodeRuntime } from '@effect/platform-node'
 import { Cause, Duration, Effect, Option, Schedule } from 'effect'
+import { Command as Cli, Flag as Options } from 'effect/unstable/cli'
 
 import { readPlan, verifyPlan, type VerifyFailure } from './verify.ts'
 
@@ -21,7 +21,7 @@ const planOption = Options.file('plan').pipe(
   ),
 )
 
-const registryOption = Options.text('registry').pipe(
+const registryOption = Options.string('registry').pipe(
   Options.withDefault('https://registry.npmjs.org'),
   Options.withDescription('Registry to query'),
 )
@@ -91,7 +91,7 @@ const cli = Cli.run(Cli.make('npm-release').pipe(Cli.withSubcommands([verifyComm
 const reportUnexpected = (cause: Cause.Cause<unknown>) =>
   Cause.isInterruptedOnly(cause) === true
     ? Effect.void
-    : Option.match(Cause.failureOption(cause), {
+    : Option.match(Cause.findErrorOption(cause), {
         onNone: () => Effect.logError(Cause.pretty(cause)),
         onSome: (error) =>
           isRendered(error) === true ? Effect.void : Effect.logError(String(error)),
@@ -107,7 +107,7 @@ const isRendered = (error: unknown) =>
 if (import.meta.main) {
   cli(process.argv).pipe(
     Effect.tapErrorCause(reportUnexpected),
-    Effect.provide(NodeContext.layer),
+    Effect.provide(NodeServices.layer),
     NodeRuntime.runMain({ disableErrorReporting: true }),
   )
 }

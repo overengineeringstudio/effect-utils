@@ -1,7 +1,7 @@
 import { basename } from 'node:path'
 
-import type { Path } from '@effect/platform'
-import { FileSystem } from '@effect/platform'
+import type { Path } from 'effect/Path'
+import { FileSystem } from 'effect/FileSystem'
 import { Effect } from 'effect'
 
 import {

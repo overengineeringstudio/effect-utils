@@ -34,7 +34,7 @@ import { DurablePromise, Restate, RestateObject, RestateWorkflow, State } from '
 
 export const IncidentState = {
   /** The incident lifecycle the operator inspects via `QUERY object state`. */
-  status: Schema.Literal('open', 'acknowledged', 'resolved'),
+  status: Schema.Literals(['open', 'acknowledged', 'resolved']),
   /** A free-form human note recorded on the last transition. */
   note: Schema.String,
 } as const
@@ -79,7 +79,7 @@ export const IncidentLive = RestateObject.implement<typeof IncidentObj>({
 
 export const DeliveryState = {
   /** Where the delivery is in its lifecycle — inspected via `INSPECT workflow state`. */
-  phase: Schema.Literal('delivering', 'delivered', 'gave-up'),
+  phase: Schema.Literals(['delivering', 'delivered', 'gave-up']),
 } as const
 
 const Delivery = State.for(DeliveryState)
@@ -97,7 +97,7 @@ const Release = DurablePromise.for(Schema.Struct({ go: Schema.Boolean }))
  * failing error (a 429's `retryAfterMillis`). Exported as the annotated schema the
  * contract's `error` references (the binding reads the annotation at the boundary).
  */
-export class DiscordUnavailable extends Schema.TaggedError<DiscordUnavailable>(
+export class DiscordUnavailable extends Schema.TaggedErrorClass<DiscordUnavailable>(
   'example/DiscordUnavailable',
 )('DiscordUnavailable', { retryAfterMillis: Schema.Number }) {}
 

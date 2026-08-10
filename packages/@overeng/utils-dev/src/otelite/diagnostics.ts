@@ -1,6 +1,6 @@
 import * as NodePath from 'node:path'
 
-import { FileSystem } from '@effect/platform'
+import { FileSystem } from 'effect/FileSystem'
 import { Effect, Schema } from 'effect'
 
 import type { CaptureHandle } from './Otelite.ts'
@@ -11,7 +11,7 @@ export const TraceJson = Schema.Struct({
   schema: Schema.Literal('otelite.trace-json/v1'),
   summary: TraceSummary,
   spans: Schema.Array(SpanRow),
-}).annotations({ identifier: 'Otelite.TraceJson' })
+}).annotate({ identifier: 'Otelite.TraceJson' })
 export type TraceJson = typeof TraceJson.Type
 
 /** Versioned metrics diagnostic bundle written to `metrics.json`. */
@@ -19,7 +19,7 @@ export const MetricsJson = Schema.Struct({
   schema: Schema.Literal('otelite.metrics-json/v1'),
   summary: MetricSummary,
   metrics: Schema.Array(MetricRow),
-}).annotations({ identifier: 'Otelite.MetricsJson' })
+}).annotate({ identifier: 'Otelite.MetricsJson' })
 export type MetricsJson = typeof MetricsJson.Type
 
 /** Versioned log diagnostic bundle written to `logs.json`. */
@@ -27,7 +27,7 @@ export const LogsJson = Schema.Struct({
   schema: Schema.Literal('otelite.logs-json/v1'),
   summary: LogSummary,
   logs: Schema.Array(LogRow),
-}).annotations({ identifier: 'Otelite.LogsJson' })
+}).annotate({ identifier: 'Otelite.LogsJson' })
 export type LogsJson = typeof LogsJson.Type
 
 /** Paths written by `writeCaptureDiagnostics`. */
@@ -38,7 +38,7 @@ export const DiagnosticFiles = Schema.Struct({
   metricsSummaryJson: Schema.optional(Schema.String),
   logsJson: Schema.optional(Schema.String),
   logsSummaryJson: Schema.optional(Schema.String),
-}).annotations({ identifier: 'Otelite.DiagnosticFiles' })
+}).annotate({ identifier: 'Otelite.DiagnosticFiles' })
 export type DiagnosticFiles = typeof DiagnosticFiles.Type
 
 /** Inputs for writing a diagnostic bundle from an existing otelite capture. */
@@ -161,7 +161,7 @@ export const writeCaptureDiagnostics = Effect.fn('otelite.diagnostics.write', {
 const encodeJson =
   <A, I>(schema: Schema.Schema<A, I, never>) =>
   (value: A): string =>
-    Schema.encodeSync(Schema.parseJson(schema, { space: 2 }))(value)
+    Schema.encodeSync(Schema.fromJsonString(schema, { space: 2 }))(value)
 
 const writeJson = ({ path, content }: { readonly path: string; readonly content: string }) =>
   FileSystem.FileSystem.pipe(Effect.flatMap((fs) => fs.writeFileString(path, `${content}\n`)))

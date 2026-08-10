@@ -41,7 +41,6 @@
 
 import { Console as NodeConsole } from 'node:console'
 
-import { Atom, Registry } from '@effect-atom/atom'
 import type { Scope } from 'effect'
 import {
   Cause,
@@ -53,10 +52,10 @@ import {
   Logger,
   Option,
   PubSub,
-  Runtime,
   Schema,
   Stream,
 } from 'effect'
+import { Atom, AtomRegistry } from 'effect/unstable/reactivity'
 import React, { type ReactElement, type ReactNode, createContext } from 'react'
 
 import { renderToString } from '../renderToString.ts'
@@ -87,21 +86,21 @@ export const isTuiApp = (u: unknown): u is TuiApp<unknown, unknown> =>
   typeof u === 'object' && u !== null && TuiAppTypeId in u
 
 /** Internal tag to skip mode-specific output when standalone run() handles output */
-const SkipModeOutputTag = Context.GenericTag<boolean>('@overeng/tui-react/SkipModeOutput')
+const SkipModeOutputTag = Context.Service<boolean>('@overeng/tui-react/SkipModeOutput')
 
 // =============================================================================
-// TUI Registry Context (avoids multiple React instance issues with @effect-atom/atom-react)
+// TUI AtomRegistry Context (avoids multiple React instance issues with @effect/atom-react)
 // =============================================================================
 
 /**
  * Context for providing the TUI registry to components.
- * Uses our own React instance to avoid context sharing issues with @effect-atom/atom-react.
+ * Uses our own React instance to avoid context sharing issues with @effect/atom-react.
  */
-export const TuiRegistryContext = createContext<Registry.Registry | null>(null)
+export const TuiRegistryContext = createContext<AtomRegistry.AtomRegistry | null>(null)
 
 /**
  * Hook to get an atom's value from the TUI registry.
- * This is a workaround for multiple React instance issues with @effect-atom/atom-react.
+ * This is a workaround for multiple React instance issues with @effect/atom-react.
  *
  * Uses useSyncExternalStore for proper React 18+ integration.
  *
@@ -122,7 +121,7 @@ export const useTuiAtomValue = <T,>(atom: Atom.Atom<T>): T => {
   // Use useSyncExternalStore for proper React integration
   const subscribe = useCallback(
     (callback: () => void) => {
-      // Registry.subscribe returns an unsubscribe function
+      // AtomRegistry.subscribe returns an unsubscribe function
       const unsubscribe = registry.subscribe(atom, callback)
       return unsubscribe
     },
@@ -164,13 +163,13 @@ export interface TuiAppConfig<S, A> {
   /**
    * Effect Schema for state serialization (used in JSON modes).
    */
-  readonly stateSchema: Schema.Schema<S>
+  readonly stateSchema: Schema.ConstraintCodec<S>
 
   /**
    * Effect Schema for action serialization (for debugging/logging).
    * If includes Schema.TaggedStruct('Interrupted', {}), system auto-dispatches on Ctrl+C.
    */
-  readonly actionSchema: Schema.Schema<A>
+  readonly actionSchema: Schema.ConstraintCodec<A>
 
   /**
    * Initial state value.
@@ -215,7 +214,7 @@ export interface TuiAppConfig<S, A> {
  */
 export interface NdjsonConfig<in S, in A, E> {
   /** Schema for encoding output events */
-  readonly eventSchema: Schema.Schema<E>
+  readonly eventSchema: Schema.ConstraintCodec<E>
   /** Map an action + previous state to zero or more output events */
   readonly fromAction: (args: { action: A; prevState: S }) => ReadonlyArray<E>
 }
@@ -298,7 +297,7 @@ export interface TuiApp<S, A> {
 /**
  * Check if an Effect Schema has an 'Interrupted' variant (TaggedStruct with _tag: 'Interrupted').
  */
-const hasInterruptedVariant = <A,>(schema: Schema.Schema<A>): boolean => {
+const hasInterruptedVariant = <A,>(schema: Schema.ConstraintCodec<A>): boolean => {
   const ast = schema.ast
 
   // Check if it's a Union
@@ -308,8 +307,8 @@ const hasInterruptedVariant = <A,>(schema: Schema.Schema<A>): boolean => {
 
   // Check each variant in the union
   return ast.types.some((type) => {
-    // We're looking for a TypeLiteral with a _tag property set to 'Interrupted'
-    if (type._tag !== 'TypeLiteral') {
+    // We're looking for an Objects node with a _tag property set to 'Interrupted'
+    if (type._tag !== 'Objects') {
       return false
     }
 
@@ -332,7 +331,7 @@ const hasInterruptedVariant = <A,>(schema: Schema.Schema<A>): boolean => {
 /**
  * Create an Interrupted action value if the schema supports it.
  */
-const createInterruptedAction = <A,>(schema: Schema.Schema<A>): A | null => {
+const createInterruptedAction = <A,>(schema: Schema.ConstraintCodec<A>): A | null => {
   if (hasInterruptedVariant(schema) === false) {
     return null
   }
@@ -354,10 +353,7 @@ const createInterruptedAction = <A,>(schema: Schema.Schema<A>): A | null => {
  * ```typescript
  * const CounterApp = createTuiApp({
  *   stateSchema: Schema.Struct({ count: Schema.Number }),
- *   actionSchema: Schema.Union(
- *     Schema.TaggedStruct('Inc', {}),
- *     Schema.TaggedStruct('Dec', {}),
- *   ),
+ *   actionSchema: Schema.Union([*     Schema.TaggedStruct('Inc', {}), *     Schema.TaggedStruct('Dec', {}), *]),
  *   initial: { count: 0 },
  *   reducer: ({ state, action }) => {
  *     switch (action._tag) {
@@ -393,15 +389,13 @@ export const createTuiApp = <S, A>(config: TuiAppConfig<S, A>): TuiApp<S, A> => 
     get.set(stateAtom, newState)
   })
 
-  // Create a registry for this app
-  const registry = Registry.make()
-
   // Check once if schema has Interrupted variant
   const interruptedAction = createInterruptedAction(config.actionSchema)
   const run_ = (
     view?: ReactElement,
   ): Effect.Effect<TuiAppApi<S, A>, never, Scope.Scope | OutputModeTag> =>
     Effect.gen(function* () {
+      const registry = AtomRegistry.make()
       const mode = yield* OutputModeTag
       const { stateSchema } = config
 
@@ -413,8 +407,6 @@ export const createTuiApp = <S, A>(config: TuiAppConfig<S, A>): TuiApp<S, A> => 
 
       // Create action PubSub for streaming
       const actionPubSub = yield* PubSub.unbounded<A>()
-      const runtime = yield* Effect.runtime<never>()
-
       // Mutable ref for NDJSON event emitter (set after setupMode when ndjson config is active)
       let eventEmitterRef: ((args: { action: A; prevState: S }) => void) | undefined
 
@@ -426,7 +418,7 @@ export const createTuiApp = <S, A>(config: TuiAppConfig<S, A>): TuiApp<S, A> => 
         // Emit NDJSON events if configured
         if (eventEmitterRef !== undefined) eventEmitterRef({ action, prevState: prevState! })
         // Also publish to PubSub for action stream
-        void Runtime.runFork(runtime)(PubSub.publish(actionPubSub, action))
+        void Effect.runFork(PubSub.publish(actionPubSub, action))
       }
 
       // Track root for manual unmount
@@ -501,7 +493,7 @@ export const createTuiApp = <S, A>(config: TuiAppConfig<S, A>): TuiApp<S, A> => 
           if (
             interruptedAction != null &&
             exit._tag === 'Failure' &&
-            Cause.isInterruptedOnly(exit.cause) === true
+            Cause.hasInterruptsOnly(exit.cause) === true
           ) {
             dispatch(interruptedAction)
           }
@@ -546,8 +538,8 @@ const setupMode = <S,>({
 }: {
   mode: OutputMode
   stateAtom: Atom.Writable<S>
-  stateSchema: Schema.Schema<S>
-  registry: Registry.Registry
+  stateSchema: Schema.ConstraintCodec<S>
+  registry: AtomRegistry.AtomRegistry
   view?: ReactElement | undefined
   ndjsonConfig?: NdjsonConfig<S, any, any> | undefined
 }): Effect.Effect<SetupModeResult, never, Scope.Scope> => {
@@ -602,7 +594,7 @@ const setupProgressiveVisualWithView = ({
   renderConfig,
   capturedLogs,
 }: {
-  registry: Registry.Registry
+  registry: AtomRegistry.AtomRegistry
   view: ReactElement
   renderConfig: RenderConfig
   capturedLogs?: LogCaptureHandle
@@ -617,7 +609,7 @@ const setupProgressiveVisualWithView = ({
     )
     const root = createRoot({ terminalOrStream: viewStream })
 
-    // Wrapper that provides Registry via our own context (avoids multiple React instance issues)
+    // Wrapper that provides AtomRegistry via our own context (avoids multiple React instance issues)
     const TuiAppWrapper = (): ReactNode => {
       let content: ReactNode = (
         <RenderConfigProvider config={renderConfig}>{view}</RenderConfigProvider>
@@ -652,7 +644,7 @@ const setupFinalVisualWithAtom = ({
   renderConfig,
 }: {
   view: ReactElement | undefined
-  registry: Registry.Registry
+  registry: AtomRegistry.AtomRegistry
   renderConfig: RenderConfig
 }): Effect.Effect<void, never, Scope.Scope> => {
   if (view === undefined) return Effect.void
@@ -707,13 +699,13 @@ const setupFinalJsonWithAtom = <S,>({
   registry,
 }: {
   stateAtom: Atom.Writable<S>
-  stateSchema: Schema.Schema<S>
-  registry: Registry.Registry
+  stateSchema: Schema.ConstraintCodec<S>
+  registry: AtomRegistry.AtomRegistry
 }): Effect.Effect<void, never, Scope.Scope> =>
   Effect.addFinalizer(() =>
     Effect.gen(function* () {
       const finalState = registry.get(stateAtom)
-      const jsonString = yield* Schema.encode(Schema.parseJson(stateSchema))(finalState)
+      const jsonString = yield* Schema.encodeEffect(Schema.fromJsonString(stateSchema))(finalState)
       yield* Console.log(jsonString)
     }).pipe(Effect.orDie),
   )
@@ -731,23 +723,21 @@ const setupProgressiveJsonWithAtom = <S,>({
   registry,
 }: {
   stateAtom: Atom.Writable<S>
-  stateSchema: Schema.Schema<S>
-  registry: Registry.Registry
+  stateSchema: Schema.ConstraintCodec<S>
+  registry: AtomRegistry.AtomRegistry
 }): Effect.Effect<void, never, Scope.Scope> =>
   Effect.gen(function* () {
-    const runtime = yield* Effect.runtime<never>()
-
     // Initial snapshot for bootstrapping.
     const initialState = registry.get(stateAtom)
-    const initialJson = yield* Schema.encode(Schema.parseJson(stateSchema))(initialState).pipe(
-      Effect.orDie,
-    )
+    const initialJson = yield* Schema.encodeEffect(Schema.fromJsonString(stateSchema))(
+      initialState,
+    ).pipe(Effect.orDie)
     yield* Console.log(initialJson)
 
     // Subscribe to subsequent state changes.
     const unsubscribe = registry.subscribe(stateAtom, (state) => {
-      Runtime.runSync(runtime)(
-        Schema.encode(Schema.parseJson(stateSchema))(state).pipe(
+      Effect.runSync(
+        Schema.encodeEffect(Schema.fromJsonString(stateSchema))(state).pipe(
           Effect.flatMap((jsonString) => Console.log(jsonString)),
           Effect.orDie,
         ),
@@ -774,25 +764,24 @@ const setupProgressiveJsonWithEvents = <S, E>({
   ndjsonConfig,
 }: {
   stateAtom: Atom.Writable<S>
-  stateSchema: Schema.Schema<S>
-  registry: Registry.Registry
+  stateSchema: Schema.ConstraintCodec<S>
+  registry: AtomRegistry.AtomRegistry
   ndjsonConfig: NdjsonConfig<S, any, E>
 }): Effect.Effect<(args: { action: any; prevState: S }) => void, never, Scope.Scope> =>
   Effect.gen(function* () {
-    const runtime = yield* Effect.runtime<never>()
     const { eventSchema, fromAction } = ndjsonConfig
 
     const initialState = registry.get(stateAtom)
-    const initialJson = yield* Schema.encode(Schema.parseJson(stateSchema))(initialState).pipe(
-      Effect.orDie,
-    )
+    const initialJson = yield* Schema.encodeEffect(Schema.fromJsonString(stateSchema))(
+      initialState,
+    ).pipe(Effect.orDie)
     yield* Console.log(initialJson)
 
     const emitter = ({ action, prevState }: { action: any; prevState: S }): void => {
       const events = fromAction({ action, prevState })
       for (const event of events) {
-        Runtime.runSync(runtime)(
-          Schema.encode(Schema.parseJson(eventSchema))(event).pipe(
+        Effect.runSync(
+          Schema.encodeEffect(Schema.fromJsonString(eventSchema))(event).pipe(
             Effect.flatMap((jsonString) => Console.log(jsonString)),
             Effect.orDie,
           ),
@@ -881,64 +870,25 @@ export const run: {
  */
 export interface RunResultOptions<O> {
   /** Schema for the command's result type (the handler's return value). */
-  readonly result: Schema.Schema<O>
+  readonly result: Schema.ConstraintCodec<O>
   /** Optional React element to render in visual modes. */
   readonly view?: ReactElement
 }
 
 /** Check if schema resolves to a plain string type */
-const isStringSchema = (schema: Schema.Schema<unknown>): boolean =>
-  schema.ast._tag === 'StringKeyword'
+const isStringSchema = (schema: Schema.ConstraintCodec<unknown>): boolean =>
+  schema.ast._tag === 'String'
 
 /**
  * Build an Effect `Console` service bound to a single Node `WriteStream`.
  *
  * Used by `runResult` to route handler-emitted `Effect.Console.log`/`.info`/
  * `.warn`/… to stderr so they don't contaminate the stdout result channel.
- * Wraps Node's built-in `console.Console` (which already understands the full
- * Console surface) and promotes each method into an `Effect`.
+ * Wraps Node's built-in `console.Console`, which implements the full Effect 4
+ * Console service surface.
  */
-const consoleOnStream = (stream: NodeJS.WriteStream): Console.Console => {
-  const raw = new NodeConsole({ stdout: stream, stderr: stream })
-  // Brand the object with the Console `TypeId` so `Console.setConsole`
-  // accepts it. The symbol is keyed as `effect/Console` via `Symbol.for`.
-  const TypeId = Symbol.for('effect/Console')
-  const service = {
-    [TypeId]: TypeId,
-    assert: (condition: boolean, ...args: ReadonlyArray<any>) =>
-      Effect.sync(() => raw.assert(condition, ...args)),
-    clear: Effect.sync(() => raw.clear()),
-    count: (label?: string) => Effect.sync(() => raw.count(label)),
-    countReset: (label?: string) => Effect.sync(() => raw.countReset(label)),
-    debug: (...args: ReadonlyArray<any>) => Effect.sync(() => raw.debug(...args)),
-    // oxlint-disable-next-line overeng/named-args -- matches effect Console.Console interface
-    dir: (item: any, options?: any) => Effect.sync(() => raw.dir(item, options)),
-    dirxml: (...args: ReadonlyArray<any>) => Effect.sync(() => raw.dirxml(...args)),
-    error: (...args: ReadonlyArray<any>) => Effect.sync(() => raw.error(...args)),
-    group: (options?: { label?: string; collapsed?: boolean }) =>
-      Effect.sync(() =>
-        options?.collapsed === true
-          ? raw.groupCollapsed(options?.label)
-          : raw.group(options?.label),
-      ),
-    groupEnd: Effect.sync(() => raw.groupEnd()),
-    info: (...args: ReadonlyArray<any>) => Effect.sync(() => raw.info(...args)),
-    log: (...args: ReadonlyArray<any>) => Effect.sync(() => raw.log(...args)),
-    // oxlint-disable-next-line overeng/named-args -- matches effect Console.Console interface
-    table: (tabularData: any, properties?: ReadonlyArray<string>) =>
-      Effect.sync(() =>
-        raw.table(tabularData, properties === undefined ? undefined : [...properties]),
-      ),
-    time: (label?: string) => Effect.sync(() => raw.time(label)),
-    timeEnd: (label?: string) => Effect.sync(() => raw.timeEnd(label)),
-    timeLog: (label?: string, ...args: ReadonlyArray<any>) =>
-      Effect.sync(() => raw.timeLog(label, ...args)),
-    trace: (...args: ReadonlyArray<any>) => Effect.sync(() => raw.trace(...args)),
-    warn: (...args: ReadonlyArray<any>) => Effect.sync(() => raw.warn(...args)),
-    unsafe: raw,
-  }
-  return service as unknown as Console.Console
-}
+const consoleOnStream = (stream: NodeJS.WriteStream): Console.Console =>
+  new NodeConsole({ stdout: stream, stderr: stream }) as unknown as Console.Console
 
 /** Write a value to stdout using the appropriate format for its schema type.
  *  Strings are written raw (no JSON encoding). Structured types are JSON-encoded.
@@ -953,15 +903,15 @@ const writeResult = <O,>({
   schema,
 }: {
   value: O
-  schema: Schema.Schema<O>
+  schema: Schema.ConstraintCodec<O>
 }): Effect.Effect<void> =>
-  isStringSchema(schema as Schema.Schema<unknown>) === true
+  isStringSchema(schema as Schema.ConstraintCodec<unknown>) === true
     ? Effect.sync(() => {
         const str = String(value)
         process.stdout.write(str)
         if (str.length > 0 && str.endsWith('\n') === false) process.stdout.write('\n')
       })
-    : Schema.encode(Schema.parseJson(schema))(value).pipe(
+    : Schema.encodeEffect(Schema.fromJsonString(schema))(value).pipe(
         Effect.flatMap((json) =>
           Effect.sync(() => {
             process.stdout.write(json)
@@ -1005,8 +955,8 @@ const runResultImpl = <S, A, O, E, R>(
     // plumbing at the main site — `runResult`'s contract is self-contained.
     const stderrSideChannelLayer = Layer.mergeAll(
       Layer.succeed(ViewOutputStreamTag, process.stderr),
-      Logger.replace(Logger.defaultLogger, Logger.prettyLogger().pipe(Logger.withConsoleError)),
-      Console.setConsole(consoleOnStream(process.stderr)),
+      Logger.layer([Logger.consolePretty().pipe(Logger.withConsoleError)]),
+      Layer.succeed(Console.Console, consoleOnStream(process.stderr)),
     )
 
     const innerEffect =

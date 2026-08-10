@@ -1,5 +1,5 @@
-import type { HttpClient } from '@effect/platform'
 import { Chunk, Effect, Option, Schema, Stream } from 'effect'
+import type { HttpClient } from 'effect/unstable/http'
 
 import type { NotionConfig } from './config.ts'
 import type { NotionApiError } from './error.ts'
@@ -17,9 +17,9 @@ import {
 
 /** Search result can be a page or data source */
 const SearchResultSchema = Schema.Struct({
-  object: Schema.Literal('page', 'data_source'),
+  object: Schema.Literals(['page', 'data_source']),
   id: Schema.String,
-}).annotations({ identifier: 'SearchResult' })
+}).annotate({ identifier: 'SearchResult' })
 
 type SearchResult = typeof SearchResultSchema.Type
 

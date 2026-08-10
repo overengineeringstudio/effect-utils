@@ -10,7 +10,7 @@ export const SessionMeta = Schema.TaggedStruct('SessionMeta', {
   gitBranch: Schema.optional(Schema.String),
   tool: Schema.optional(Schema.String),
   timestamp: Schema.optional(Schema.DateTimeUtc),
-}).annotations({ identifier: 'AgentSessionIngest.Normalized.SessionMeta' })
+}).annotate({ identifier: 'AgentSessionIngest.Normalized.SessionMeta' })
 
 /** User-authored message content. */
 export const UserMessage = Schema.TaggedStruct('UserMessage', {
@@ -19,7 +19,7 @@ export const UserMessage = Schema.TaggedStruct('UserMessage', {
   sessionId: Schema.optional(Schema.String),
   content: Schema.String,
   timestamp: Schema.DateTimeUtc,
-}).annotations({ identifier: 'AgentSessionIngest.Normalized.UserMessage' })
+}).annotate({ identifier: 'AgentSessionIngest.Normalized.UserMessage' })
 
 /** Text content from an assistant response. */
 export const AssistantText = Schema.TaggedStruct('AssistantText', {
@@ -29,7 +29,7 @@ export const AssistantText = Schema.TaggedStruct('AssistantText', {
   content: Schema.String,
   model: Schema.optional(Schema.String),
   timestamp: Schema.DateTimeUtc,
-}).annotations({ identifier: 'AgentSessionIngest.Normalized.AssistantText' })
+}).annotate({ identifier: 'AgentSessionIngest.Normalized.AssistantText' })
 
 /** Internal reasoning/thinking content from an assistant. */
 export const Thinking = Schema.TaggedStruct('Thinking', {
@@ -38,7 +38,7 @@ export const Thinking = Schema.TaggedStruct('Thinking', {
   sessionId: Schema.optional(Schema.String),
   content: Schema.String,
   timestamp: Schema.DateTimeUtc,
-}).annotations({ identifier: 'AgentSessionIngest.Normalized.Thinking' })
+}).annotate({ identifier: 'AgentSessionIngest.Normalized.Thinking' })
 
 /** Tool invocation with input parameters. */
 export const ToolCallStart = Schema.TaggedStruct('ToolCallStart', {
@@ -50,7 +50,7 @@ export const ToolCallStart = Schema.TaggedStruct('ToolCallStart', {
   serverName: Schema.optional(Schema.String),
   input: Schema.Unknown,
   timestamp: Schema.DateTimeUtc,
-}).annotations({ identifier: 'AgentSessionIngest.Normalized.ToolCallStart' })
+}).annotate({ identifier: 'AgentSessionIngest.Normalized.ToolCallStart' })
 
 /** Tool completion with output and error status. */
 export const ToolCallEnd = Schema.TaggedStruct('ToolCallEnd', {
@@ -61,18 +61,18 @@ export const ToolCallEnd = Schema.TaggedStruct('ToolCallEnd', {
   output: Schema.Unknown,
   isError: Schema.optional(Schema.Boolean),
   timestamp: Schema.DateTimeUtc,
-}).annotations({ identifier: 'AgentSessionIngest.Normalized.ToolCallEnd' })
+}).annotate({ identifier: 'AgentSessionIngest.Normalized.ToolCallEnd' })
 
 /** Step start/finish marker (OpenCode-specific). */
 export const StepBoundary = Schema.TaggedStruct('StepBoundary', {
   sourceId: Schema.String,
   sessionId: Schema.optional(Schema.String),
-  kind: Schema.Literal('start', 'finish'),
+  kind: Schema.Literals(['start', 'finish']),
   cost: Schema.optional(Schema.Number),
   tokens: Schema.optional(Schema.Unknown),
   reason: Schema.optional(Schema.String),
   timestamp: Schema.DateTimeUtc,
-}).annotations({ identifier: 'AgentSessionIngest.Normalized.StepBoundary' })
+}).annotate({ identifier: 'AgentSessionIngest.Normalized.StepBoundary' })
 
 /** System-level message content. */
 export const SystemMessage = Schema.TaggedStruct('SystemMessage', {
@@ -80,7 +80,7 @@ export const SystemMessage = Schema.TaggedStruct('SystemMessage', {
   sessionId: Schema.optional(Schema.String),
   content: Schema.Unknown,
   timestamp: Schema.DateTimeUtc,
-}).annotations({ identifier: 'AgentSessionIngest.Normalized.SystemMessage' })
+}).annotate({ identifier: 'AgentSessionIngest.Normalized.SystemMessage' })
 
 /** Catch-all for provider-specific events with no semantic equivalent. */
 export const GenericEvent = Schema.TaggedStruct('GenericEvent', {
@@ -89,10 +89,10 @@ export const GenericEvent = Schema.TaggedStruct('GenericEvent', {
   eventType: Schema.String,
   data: Schema.Unknown,
   timestamp: Schema.optional(Schema.DateTimeUtc),
-}).annotations({ identifier: 'AgentSessionIngest.Normalized.GenericEvent' })
+}).annotate({ identifier: 'AgentSessionIngest.Normalized.GenericEvent' })
 
 /** Provider-agnostic union of all normalized record types. */
-export const NormalizedRecord = Schema.Union(
+export const NormalizedRecord = Schema.Union([
   SessionMeta,
   UserMessage,
   AssistantText,
@@ -102,5 +102,5 @@ export const NormalizedRecord = Schema.Union(
   StepBoundary,
   SystemMessage,
   GenericEvent,
-).annotations({ identifier: 'AgentSessionIngest.NormalizedRecord' })
+]).annotate({ identifier: 'AgentSessionIngest.NormalizedRecord' })
 export type NormalizedRecord = typeof NormalizedRecord.Type

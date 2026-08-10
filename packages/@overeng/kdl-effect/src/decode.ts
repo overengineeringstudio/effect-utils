@@ -1,4 +1,4 @@
-import type { SchemaAST } from 'effect'
+import { SchemaAST } from 'effect'
 
 import type { Document, Node } from '@overeng/kdl'
 
@@ -82,51 +82,49 @@ const nodeToValue = (node: Node): unknown => {
  * into single-element arrays where the Schema expects an array.
  */
 export const normalizeForSchema = (obj: unknown, ast: SchemaAST.AST): unknown => {
-  switch (ast._tag) {
-    case 'TupleType': {
+  const encodedAst = SchemaAST.toEncoded(ast)
+
+  switch (encodedAst._tag) {
+    case 'Arrays': {
       const arr = Array.isArray(obj) ? obj : [obj]
       // Recurse into elements to normalize nested schemas
-      const elementType = ast.rest[0]?.type
+      const elementType = encodedAst.rest[0]
       if (elementType !== undefined) {
         return arr.map((item) => normalizeForSchema(item, elementType))
       }
       return arr
     }
 
-    case 'TypeLiteral': {
+    case 'Objects': {
       if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) return obj
       const record = obj as Record<string, unknown>
       const result: Record<string, unknown> = { ...record }
       // Normalize known property signatures
-      for (const prop of ast.propertySignatures) {
+      for (const prop of encodedAst.propertySignatures) {
         const key = prop.name
         if (typeof key === 'string' && key in result) {
           result[key] = normalizeForSchema(result[key], prop.type)
         }
       }
       // Normalize index signature (Record) values
-      for (const idx of ast.indexSignatures) {
+      for (const idx of encodedAst.indexSignatures) {
         for (const key of Object.keys(result)) {
-          if (ast.propertySignatures.some((p) => p.name === key)) continue
+          if (encodedAst.propertySignatures.some((p) => p.name === key)) continue
           result[key] = normalizeForSchema(result[key], idx.type)
         }
       }
       return result
     }
 
-    case 'Transformation': {
-      return normalizeForSchema(obj, ast.from)
-    }
-
     case 'Union': {
       // Try to find a matching member. For normalization purposes,
-      // we pick the first member that is a TypeLiteral or TupleType
+      // we pick the first member that is an Objects or Arrays node
       // and apply normalization based on it.
-      for (const member of ast.types) {
+      for (const member of encodedAst.types) {
         if (
-          member._tag === 'TupleType' ||
-          member._tag === 'TypeLiteral' ||
-          member._tag === 'Transformation'
+          member._tag === 'Arrays' ||
+          member._tag === 'Objects' ||
+          member.encoding !== undefined
         ) {
           return normalizeForSchema(obj, member)
         }
@@ -135,16 +133,12 @@ export const normalizeForSchema = (obj: unknown, ast: SchemaAST.AST): unknown =>
     }
 
     case 'Suspend': {
-      return normalizeForSchema(obj, ast.f())
-    }
-
-    case 'Refinement': {
-      return normalizeForSchema(obj, ast.from)
+      return normalizeForSchema(obj, encodedAst.thunk())
     }
 
     case 'Declaration': {
       // Declarations like Schema.Array use typeParameters
-      if (ast.typeParameters.length > 0) {
+      if (encodedAst.typeParameters.length > 0) {
         // Check if this is array-like by seeing if the input should be an array
         if (!Array.isArray(obj)) {
           return [obj]

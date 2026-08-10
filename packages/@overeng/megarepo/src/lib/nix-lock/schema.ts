@@ -76,12 +76,12 @@ export class IndirectLockedInput extends Schema.Class<IndirectLockedInput>('Indi
  * Union of all locked input types we support
  * Note: Nix supports more types (tarball, file, etc.) but these are the common ones
  */
-export const LockedInput = Schema.Union(
+export const LockedInput = Schema.Union([
   GitHubLockedInput,
   GitLockedInput,
   PathLockedInput,
   IndirectLockedInput,
-)
+])
 export type LockedInput = typeof LockedInput.Type
 
 /**
@@ -93,7 +93,7 @@ export const GenericLockedInput = Schema.Struct({
   rev: Schema.optional(Schema.String),
   narHash: Schema.optional(Schema.String),
   lastModified: Schema.optional(Schema.Number),
-}).pipe(Schema.annotations({ identifier: 'GenericLockedInput' }))
+}).pipe(Schema.annotate({ identifier: 'GenericLockedInput' }))
 export type GenericLockedInput = typeof GenericLockedInput.Type
 
 // =============================================================================
@@ -112,19 +112,19 @@ export class FlakeLockNode extends Schema.Class<FlakeLockNode>('FlakeLockNode')(
    * Resolved/locked input data
    * Contains the exact revision and optional integrity info (narHash, lastModified)
    */
-  locked: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+  locked: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
 
   /**
    * Original input specification (as written in flake.nix)
    * Preserved for reference but not used during evaluation
    */
-  original: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+  original: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
 
   /**
    * Map of input names to node names in this lock file
    * Used to resolve transitive dependencies
    */
-  inputs: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+  inputs: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
 
   /**
    * Whether this input is a flake (default: true)
@@ -145,7 +145,7 @@ export class FlakeLock extends Schema.Class<FlakeLock>('FlakeLock')({
    * Map of node names to node data
    * The "root" node is special and represents the flake itself
    */
-  nodes: Schema.Record({ key: Schema.String, value: FlakeLockNode }),
+  nodes: Schema.Record(Schema.String, FlakeLockNode),
 
   /**
    * Name of the root node (always "root" in practice)

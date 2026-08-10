@@ -1,8 +1,8 @@
 import { OtlpSerialization, OtlpTracer } from '@effect/opentelemetry'
-import * as Otlp from '@effect/opentelemetry/Otlp'
-import { FetchHttpClient } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import { NodeServices } from '@effect/platform-node'
 import { Effect, Layer, type Scope } from 'effect'
+import { FetchHttpClient } from 'effect/unstable/http'
+import * as Otlp from 'effect/unstable/observability/Otlp'
 
 import type { OteliteCliError, OteliteDecodeError, OteliteSpawnError } from './errors.ts'
 import { withOteliteLabelSpan, withOteliteRootSpan } from './otel.ts'
@@ -355,7 +355,7 @@ export class OteliteTestHarness extends Effect.Service<OteliteTestHarness>()(
 
       return { capture } as const
     }),
-    dependencies: [Otelite.Default.pipe(Layer.provide(NodeContext.layer))],
+    dependencies: [Otelite.Default.pipe(Layer.provide(NodeServices.layer))],
   },
 ) {}
 

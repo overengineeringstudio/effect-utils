@@ -20,7 +20,8 @@
  * ```
  */
 
-import { FileSystem, type Error as PlatformError } from '@effect/platform'
+import type { Error as PlatformError } from 'effect'
+import { FileSystem } from 'effect/FileSystem'
 import { Context, Effect, Layer, Option } from 'effect'
 
 import { EffectPath, type AbsoluteDirPath, type RelativeDirPath } from '@overeng/effect-path'
@@ -104,7 +105,7 @@ export interface MegarepoStore {
 }
 
 /** Store service tag */
-export class Store extends Context.Tag('megarepo/Store')<Store, MegarepoStore>() {}
+export class Store extends Context.Service<Store, MegarepoStore>()('megarepo/Store') {}
 
 // =============================================================================
 // Store Implementation

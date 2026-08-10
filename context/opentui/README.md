@@ -181,12 +181,12 @@ renderer.keyInput.on('keypress', (key: { name: string; ctrl: boolean }) => {
 
 ## Effect Atoms Integration
 
-For complex state, use `@effect-atom/atom` with OpenTUI:
+For complex state, use `effect/unstable/reactivity` with OpenTUI:
 
 ```tsx
-import { Registry } from '@effect-atom/atom'
-import { RegistryContext, useAtomValue } from '@effect-atom/atom-react'
-import { Atom } from '@effect-atom/atom'
+import { AtomRegistry } from 'effect/unstable/reactivity'
+import { RegistryContext, useAtomValue } from '@effect/atom-react'
+import { Atom } from 'effect/unstable/reactivity'
 
 const countAtom = Atom.make(0)
 
@@ -198,7 +198,7 @@ const App = () => {
 const main = async () => {
   const renderer = await createCliRenderer()
   const root = createRoot(renderer)
-  const registry = Registry.make()
+  const registry = AtomRegistry.make()
 
   // CRITICAL: Subscribe to atoms to keep them alive
   registry.subscribe(countAtom, () => {})

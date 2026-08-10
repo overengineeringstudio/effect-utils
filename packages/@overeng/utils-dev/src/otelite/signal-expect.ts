@@ -118,7 +118,7 @@ export const telemetryAttr = {
     _tag: 'Schema',
     description,
     matches: (actual) =>
-      Either.isRight(Schema.decodeUnknownEither(Schema.parseJson(schema))(actual)),
+      Either.isRight(Schema.decodeUnknownEither(Schema.fromJsonString(schema))(actual)),
   }),
 } as const
 

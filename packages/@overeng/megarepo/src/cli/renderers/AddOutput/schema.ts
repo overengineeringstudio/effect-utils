@@ -34,7 +34,7 @@ export const AddSuccessState = Schema.TaggedStruct('Success', {
   member: Schema.String,
   source: Schema.String,
   synced: Schema.Boolean,
-  syncStatus: Schema.optional(Schema.Literal('cloned', 'synced', 'error')),
+  syncStatus: Schema.optional(Schema.Literals(['cloned', 'synced', 'error'])),
 })
 
 /**
@@ -48,7 +48,7 @@ export const AddErrorState = Schema.TaggedStruct('Error', {
 /**
  * State for add command.
  */
-export const AddState = Schema.Union(AddIdleState, AddAddingState, AddSuccessState, AddErrorState)
+export const AddState = Schema.Union([AddIdleState, AddAddingState, AddSuccessState, AddErrorState])
 
 /** Inferred type for the add command state (idle, adding, success, or error). */
 export type AddState = Schema.Schema.Type<typeof AddState>
@@ -78,16 +78,16 @@ export const isAddAdding = (state: AddState): state is typeof AddAddingState.Typ
 // =============================================================================
 
 /** Tagged union of actions for the add command (set adding, success, or error). */
-export const AddAction = Schema.Union(
+export const AddAction = Schema.Union([
   Schema.TaggedStruct('SetAdding', { member: Schema.String, source: Schema.String }),
   Schema.TaggedStruct('SetSuccess', {
     member: Schema.String,
     source: Schema.String,
     synced: Schema.Boolean,
-    syncStatus: Schema.optional(Schema.Literal('cloned', 'synced', 'error')),
+    syncStatus: Schema.optional(Schema.Literals(['cloned', 'synced', 'error'])),
   }),
   Schema.TaggedStruct('SetError', { error: Schema.String, message: Schema.String }),
-)
+])
 
 /** Inferred type for add actions. */
 export type AddAction = Schema.Schema.Type<typeof AddAction>

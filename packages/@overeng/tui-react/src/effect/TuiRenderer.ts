@@ -80,7 +80,7 @@ export interface TuiRendererService {
  * })
  * ```
  */
-export class TuiRenderer extends Context.Tag('TuiRenderer')<TuiRenderer, TuiRendererService>() {
+export class TuiRenderer extends Context.Service<TuiRenderer, TuiRendererService>()('TuiRenderer') {
   /**
    * Render a React element to the terminal.
    */
@@ -110,7 +110,7 @@ export class TuiRenderer extends Context.Tag('TuiRenderer')<TuiRenderer, TuiRend
   static scoped = (
     terminal?: Terminal | TerminalLike,
   ): Layer.Layer<TuiRenderer, never, Scope.Scope> =>
-    Layer.scoped(
+    Layer.effect(
       TuiRenderer,
       Effect.gen(function* () {
         const target = terminal ?? process.stdout

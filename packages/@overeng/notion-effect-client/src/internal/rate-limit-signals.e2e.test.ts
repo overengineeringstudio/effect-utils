@@ -1,3 +1,4 @@
+import { Effect, Fiber, Metric, Redacted, Schema, TestClock, Tracer } from 'effect'
 /**
  * Deterministic e2e coverage for the rate-limit PRESSURE signals (decision 0017
  * Half 2, #775). The fake gateway in `@overeng/notion-datasource-sync` never
@@ -23,8 +24,7 @@
  * This file is `*.e2e.test.ts`, exempt from `overeng/no-raw-otel-primitives`, so it
  * may read raw `Metric` values to assert the OtelMetric-emitted counters moved.
  */
-import { HttpClient } from '@effect/platform'
-import { Effect, Fiber, Metric, Redacted, Schema, TestClock, Tracer } from 'effect'
+import { HttpClient } from 'effect/unstable/http'
 import { expect } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'

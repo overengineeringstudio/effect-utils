@@ -25,7 +25,7 @@ import { RestateTestHarness, serverAvailable } from './testing.ts'
 
 /* A trivial application service the handler depends on, to prove `appLayer` is
  * threaded into the served runtime (handler `R` is satisfied). */
-class Step extends Context.Tag('test/Step')<Step, { readonly by: number }>() {
+class Step extends Context.Service<Step, { readonly by: number }>()('test/Step') {
   static readonly Default = Layer.succeed(Step, { by: 1 })
 }
 

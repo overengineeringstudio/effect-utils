@@ -4,11 +4,11 @@
  * Tests the store GC, ls, and fetch commands with realistic store fixtures.
  */
 
-import * as Cli from '@effect/cli'
-import { FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
+import { FileSystem } from 'effect/FileSystem'
 import { Effect, Exit, Option, Schema } from 'effect'
+import * as Cli from 'effect/unstable/cli'
 import { expect } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
@@ -39,7 +39,7 @@ const StoreGcJsonOutput = Schema.Struct({
   ),
 })
 
-const decodeStoreGcJsonOutput = Schema.decodeUnknownSync(Schema.parseJson(StoreGcJsonOutput))
+const decodeStoreGcJsonOutput = Schema.decodeUnknownSync(Schema.fromJsonString(StoreGcJsonOutput))
 
 type StoreGcJsonResult = Schema.Schema.Type<typeof StoreGcJsonOutput>['results'][number]
 
@@ -129,7 +129,7 @@ describe('mr store gc', () => {
           expect(repos).toHaveLength(1)
           expect(repos[0]?.relativePath).toBe('github.com/test-owner/test-repo/')
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -167,7 +167,7 @@ describe('mr store gc', () => {
           const repos = yield* store.listRepos()
           expect(repos).toHaveLength(1)
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -217,7 +217,7 @@ describe('mr store gc', () => {
           expect(lockFile.members['my-lib']).toBeDefined()
           expect(lockFile.members['my-lib']!.ref).toBe('main')
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -311,7 +311,7 @@ describe('mr store gc', () => {
           expect(repoBResult?.status).toBe('kept')
           expect(yield* fs.exists(repoBPath)).toBe(true)
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -373,7 +373,7 @@ describe('mr store gc', () => {
           expect(commitResult?.status).toBe('skipped_in_use')
           expect(yield* fs.exists(commitWorktreePath)).toBe(true)
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -435,7 +435,7 @@ describe('mr store gc', () => {
             ),
           ).toBe(false)
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -506,7 +506,7 @@ describe('store discovery is bounded to the layout', () => {
         expect(repos.some((p) => p.startsWith('stray/'))).toBe(false)
         expect(repos).toHaveLength(2)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -550,7 +550,7 @@ describe('store discovery is bounded to the layout', () => {
         expect(featureResults[0]?.ref).toBe('feature')
         expect(results.some((r) => r.ref.includes('node_modules'))).toBe(false)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -593,7 +593,7 @@ describe('store discovery is bounded to the layout', () => {
         expect(worktrees.every((w) => w.ref.split('/').length <= 8)).toBe(true)
         expect(worktrees.some((w) => w.ref.includes('d29'))).toBe(false)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -630,7 +630,7 @@ describe('mr store ls', () => {
         expect(paths).toContain('github.com/owner1/repo-a/')
         expect(paths).toContain('github.com/owner2/repo-b/')
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -652,7 +652,7 @@ describe('mr store ls', () => {
         const repos = yield* store.listRepos()
         expect(repos).toHaveLength(0)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -689,7 +689,7 @@ describe('mr store ls', () => {
         const repos = yield* store.listRepos()
         expect(repos.map((repo) => repo.relativePath)).toStrictEqual(['localhost/owner/repo/'])
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -717,7 +717,7 @@ describe('mr store ls', () => {
         const repos = yield* store.listRepos()
         expect(repos.map((repo) => repo.relativePath)).toContain('example.com/refs/project/')
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -763,7 +763,7 @@ describe('store worktree paths', () => {
         })
         expect(commitPath).toContain('refs/commits/')
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -789,7 +789,7 @@ describe('store worktree paths', () => {
         })
         expect(pathWithSlash).toContain('refs/heads/feature/my-branch/')
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -834,7 +834,7 @@ describe('lock file pin/unpin operations', () => {
           'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
         )
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -880,7 +880,7 @@ describe('lock file pin/unpin operations', () => {
           'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
         )
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -929,7 +929,7 @@ describe('lock file pin/unpin operations', () => {
           '2222222222222222222222222222222222222222',
         )
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -968,7 +968,7 @@ describe('lock file operations', () => {
           'abc1234567890abcdef1234567890abcdef1234',
         )
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -1017,7 +1017,7 @@ describe('lock file operations', () => {
         expect(lockFile.members['lib2']!.pinned).toBe(false)
         expect(lockFile.members['lib3']!.pinned).toBe(false)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )

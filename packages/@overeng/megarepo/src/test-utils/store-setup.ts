@@ -4,7 +4,7 @@
  * Provides helpers for creating test stores with bare repos and worktrees.
  */
 
-import { FileSystem } from '@effect/platform'
+import { FileSystem } from 'effect/FileSystem'
 import { Effect, Option, Schema } from 'effect'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
@@ -389,7 +389,7 @@ export const createWorkspaceWithLock = (args: {
     const config: MegarepoConfig = {
       members: args.members,
     }
-    const configContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
+    const configContent = yield* Schema.encode(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
       config,
     )
     yield* fs.writeFileString(

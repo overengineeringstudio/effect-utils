@@ -12,7 +12,7 @@ import { Schema } from 'effect'
 // =============================================================================
 
 /** Schema for file processing status values */
-export const GenieFileStatus = Schema.Literal(
+export const GenieFileStatus = Schema.Literals([
   'pending',
   'active',
   'created',
@@ -20,7 +20,7 @@ export const GenieFileStatus = Schema.Literal(
   'unchanged',
   'skipped',
   'error',
-)
+])
 /** File processing status */
 export type GenieFileStatus = Schema.Schema.Type<typeof GenieFileStatus>
 
@@ -66,7 +66,7 @@ export type GenieSummary = Schema.Schema.Type<typeof GenieSummary>
 // =============================================================================
 
 /** Schema for genie operation phases */
-export const GeniePhase = Schema.Literal('discovering', 'generating', 'complete', 'error')
+export const GeniePhase = Schema.Literals(['discovering', 'generating', 'complete', 'error'])
 /** Genie operation phase */
 export type GeniePhase = Schema.Schema.Type<typeof GeniePhase>
 
@@ -75,7 +75,7 @@ export type GeniePhase = Schema.Schema.Type<typeof GeniePhase>
 // =============================================================================
 
 /** Schema for genie operation modes */
-export const GenieMode = Schema.Literal('generate', 'check', 'dry-run')
+export const GenieMode = Schema.Literals(['generate', 'check', 'dry-run'])
 /** Genie operation mode */
 export type GenieMode = Schema.Schema.Type<typeof GenieMode>
 
@@ -123,7 +123,7 @@ export type GenieState = Schema.Schema.Type<typeof GenieState>
 // =============================================================================
 
 /** Schema for genie state actions */
-export const GenieAction = Schema.Union(
+export const GenieAction = Schema.Union([
   /** Replace entire state */
   Schema.TaggedStruct('SetState', { state: GenieState }),
 
@@ -160,7 +160,7 @@ export const GenieAction = Schema.Union(
 
   /** Watch mode - reset for new cycle */
   Schema.TaggedStruct('WatchReset', {}),
-)
+])
 /** Genie state action type */
 export type GenieAction = Schema.Schema.Type<typeof GenieAction>
 

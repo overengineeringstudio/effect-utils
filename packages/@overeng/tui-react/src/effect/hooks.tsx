@@ -51,7 +51,7 @@ export {
   useAtomInitialValues,
   RegistryProvider,
   RegistryContext,
-} from '@effect-atom/atom-react'
+} from '@effect/atom-react'
 
 // =============================================================================
 // React hook re-exports (to ensure single React instance)
@@ -89,7 +89,7 @@ export {
 // TUI-specific utilities
 // =============================================================================
 
-import { Atom } from '@effect-atom/atom'
+import { Atom } from 'effect/unstable/reactivity'
 
 /**
  * Create a pair of atoms for reducer-style state management.

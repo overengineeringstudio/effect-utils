@@ -5,7 +5,7 @@
  * Supports configurable encoding (original vs normalized).
  */
 
-import { Schema } from 'effect'
+import { Schema, SchemaGetter } from 'effect'
 
 import type {
   AbsoluteDirPath as AbsoluteDirPathType,
@@ -44,19 +44,20 @@ import type {
 
 /** Validate basic path string (no null bytes, not empty, not too long) */
 const PathStringSchema = Schema.String.pipe(
-  Schema.filter((s) => !isEmpty(s), { message: () => 'Path cannot be empty' }),
-  Schema.filter((s) => !hasNullByte(s), {
-    message: () => 'Path cannot contain null bytes',
-  }),
-  Schema.filter((s) => s.length <= MAX_PATH_LENGTH, {
-    message: () => `Path exceeds maximum length of ${MAX_PATH_LENGTH} characters`,
-  }),
-  Schema.filter(
-    (s) => {
+  Schema.check(Schema.makeFilter((s) => !isEmpty(s) || 'Path cannot be empty')),
+  Schema.check(Schema.makeFilter((s) => !hasNullByte(s) || 'Path cannot contain null bytes')),
+  Schema.check(
+    Schema.makeFilter(
+      (s) =>
+        s.length <= MAX_PATH_LENGTH ||
+        `Path exceeds maximum length of ${MAX_PATH_LENGTH} characters`,
+    ),
+  ),
+  Schema.check(
+    Schema.makeFilter((s) => {
       const segments = toSegments(s)
-      return !segments.some(isWindowsReservedName)
-    },
-    { message: () => 'Path contains Windows reserved name' },
+      return !segments.some(isWindowsReservedName) || 'Path contains Windows reserved name'
+    }),
   ),
 )
 
@@ -80,51 +81,56 @@ const isAbsoluteHeuristic = (s: string): boolean => {
 
 /** Schema for AbsolutePath (absolute, could be file or dir) */
 export const AbsolutePath = PathStringSchema.pipe(
-  Schema.filter(isAbsoluteHeuristic, {
-    message: () => 'Expected absolute path (starting with / or drive letter)',
-  }),
+  Schema.check(
+    Schema.makeFilter(
+      (s) => isAbsoluteHeuristic(s) || 'Expected absolute path (starting with / or drive letter)',
+    ),
+  ),
   Schema.brand('Abs'),
-) as unknown as Schema.Schema<AbsolutePathType, string>
+) as unknown as Schema.Codec<AbsolutePathType, string>
 
 /** Schema for RelativePath (relative, could be file or dir) */
 export const RelativePath = PathStringSchema.pipe(
-  Schema.filter((s) => !isAbsoluteHeuristic(s), {
-    message: () => 'Expected relative path (not starting with / or drive letter)',
-  }),
+  Schema.check(
+    Schema.makeFilter(
+      (s) =>
+        !isAbsoluteHeuristic(s) || 'Expected relative path (not starting with / or drive letter)',
+    ),
+  ),
   Schema.brand('Rel'),
-) as unknown as Schema.Schema<RelativePathType, string>
+) as unknown as Schema.Codec<RelativePathType, string>
 
 /** Schema for AbsoluteFilePath (absolute file, no trailing slash) */
 export const AbsoluteFilePath = AbsolutePath.pipe(
-  Schema.filter((s) => !hasTrailingSlash(s), {
-    message: () => 'File path must not end with a separator',
-  }),
+  Schema.check(
+    Schema.makeFilter((s) => !hasTrailingSlash(s) || 'File path must not end with a separator'),
+  ),
   Schema.brand('File'),
-) as unknown as Schema.Schema<AbsoluteFilePathType, string>
+) as unknown as Schema.Codec<AbsoluteFilePathType, string>
 
 /** Schema for AbsoluteDirPath (absolute directory, has trailing slash) */
 export const AbsoluteDirPath = AbsolutePath.pipe(
-  Schema.filter(hasTrailingSlash, {
-    message: () => 'Directory path must end with a separator',
-  }),
+  Schema.check(
+    Schema.makeFilter((s) => hasTrailingSlash(s) || 'Directory path must end with a separator'),
+  ),
   Schema.brand('Dir'),
-) as unknown as Schema.Schema<AbsoluteDirPathType, string>
+) as unknown as Schema.Codec<AbsoluteDirPathType, string>
 
 /** Schema for RelativeFilePath (relative file, no trailing slash) */
 export const RelativeFilePath = RelativePath.pipe(
-  Schema.filter((s) => !hasTrailingSlash(s), {
-    message: () => 'File path must not end with a separator',
-  }),
+  Schema.check(
+    Schema.makeFilter((s) => !hasTrailingSlash(s) || 'File path must not end with a separator'),
+  ),
   Schema.brand('File'),
-) as unknown as Schema.Schema<RelativeFilePathType, string>
+) as unknown as Schema.Codec<RelativeFilePathType, string>
 
 /** Schema for RelativeDirPath (relative directory, has trailing slash) */
 export const RelativeDirPath = RelativePath.pipe(
-  Schema.filter(hasTrailingSlash, {
-    message: () => 'Directory path must end with a separator',
-  }),
+  Schema.check(
+    Schema.makeFilter((s) => hasTrailingSlash(s) || 'Directory path must end with a separator'),
+  ),
   Schema.brand('Dir'),
-) as unknown as Schema.Schema<RelativeDirPathType, string>
+) as unknown as Schema.Codec<RelativeDirPathType, string>
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PathInfo Schemas
@@ -141,15 +147,15 @@ export interface PathInfoSchemaOptions {
  */
 export const AbsoluteFileInfo = (
   options?: PathInfoSchemaOptions,
-): Schema.Schema<AbsoluteFileInfoType, string> =>
+): Schema.Codec<AbsoluteFileInfoType, string> =>
   createPathInfoSchema<Abs, File>(
     options === undefined
       ? {
-          baseSchema: AbsoluteFilePath as Schema.Schema<AbsoluteFilePathType, string>,
+          baseSchema: AbsoluteFilePath as Schema.Codec<AbsoluteFilePathType, string>,
           isFile: true,
         }
       : {
-          baseSchema: AbsoluteFilePath as Schema.Schema<AbsoluteFilePathType, string>,
+          baseSchema: AbsoluteFilePath as Schema.Codec<AbsoluteFilePathType, string>,
           isFile: true,
           options,
         },
@@ -160,15 +166,15 @@ export const AbsoluteFileInfo = (
  */
 export const AbsoluteDirInfo = (
   options?: PathInfoSchemaOptions,
-): Schema.Schema<AbsoluteDirInfoType, string> =>
+): Schema.Codec<AbsoluteDirInfoType, string> =>
   createPathInfoSchema<Abs, Dir>(
     options === undefined
       ? {
-          baseSchema: AbsoluteDirPath as Schema.Schema<AbsoluteDirPathType, string>,
+          baseSchema: AbsoluteDirPath as Schema.Codec<AbsoluteDirPathType, string>,
           isFile: false,
         }
       : {
-          baseSchema: AbsoluteDirPath as Schema.Schema<AbsoluteDirPathType, string>,
+          baseSchema: AbsoluteDirPath as Schema.Codec<AbsoluteDirPathType, string>,
           isFile: false,
           options,
         },
@@ -179,15 +185,15 @@ export const AbsoluteDirInfo = (
  */
 export const RelativeFileInfo = (
   options?: PathInfoSchemaOptions,
-): Schema.Schema<RelativeFileInfoType, string> =>
+): Schema.Codec<RelativeFileInfoType, string> =>
   createPathInfoSchema<Rel, File>(
     options === undefined
       ? {
-          baseSchema: RelativeFilePath as Schema.Schema<RelativeFilePathType, string>,
+          baseSchema: RelativeFilePath as Schema.Codec<RelativeFilePathType, string>,
           isFile: true,
         }
       : {
-          baseSchema: RelativeFilePath as Schema.Schema<RelativeFilePathType, string>,
+          baseSchema: RelativeFilePath as Schema.Codec<RelativeFilePathType, string>,
           isFile: true,
           options,
         },
@@ -198,15 +204,15 @@ export const RelativeFileInfo = (
  */
 export const RelativeDirInfo = (
   options?: PathInfoSchemaOptions,
-): Schema.Schema<RelativeDirInfoType, string> =>
+): Schema.Codec<RelativeDirInfoType, string> =>
   createPathInfoSchema<Rel, Dir>(
     options === undefined
       ? {
-          baseSchema: RelativeDirPath as Schema.Schema<RelativeDirPathType, string>,
+          baseSchema: RelativeDirPath as Schema.Codec<RelativeDirPathType, string>,
           isFile: false,
         }
       : {
-          baseSchema: RelativeDirPath as Schema.Schema<RelativeDirPathType, string>,
+          baseSchema: RelativeDirPath as Schema.Codec<RelativeDirPathType, string>,
           isFile: false,
           options,
         },
@@ -280,15 +286,20 @@ const buildPathInfoPure = <B extends Abs | Rel, T extends File | Dir>(args: {
  * Create a schema that transforms a string into PathInfo.
  */
 const createPathInfoSchema = <B extends Abs | Rel, T extends File | Dir>(args: {
-  readonly baseSchema: Schema.Schema<string & B & T, string>
+  readonly baseSchema: Schema.Codec<string & B & T, string>
   readonly isFile: boolean
   readonly options?: PathInfoSchemaOptions
-}): Schema.Schema<PathInfo<B, T>, string> => {
+}): Schema.Codec<PathInfo<B, T>, string> => {
   const encodeAs = args.options?.encodeAs ?? 'normalized'
 
-  return Schema.transform(args.baseSchema, Schema.Unknown as Schema.Schema<PathInfo<B, T>>, {
-    strict: true,
-    decode: (s) => buildPathInfoPure<B, T>({ original: s, isFile: args.isFile }),
-    encode: (info) => (encodeAs === 'original' ? info.original : info.normalized) as string & B & T,
-  })
+  return args.baseSchema.pipe(
+    Schema.decodeTo(Schema.Unknown as Schema.Codec<PathInfo<B, T>>, {
+      decode: SchemaGetter.transform<PathInfo<B, T>, string & B & T>((s) =>
+        buildPathInfoPure<B, T>({ original: s, isFile: args.isFile }),
+      ),
+      encode: SchemaGetter.transform<string & B & T, PathInfo<B, T>>(
+        (info) => (encodeAs === 'original' ? info.original : info.normalized) as string & B & T,
+      ),
+    }),
+  )
 }

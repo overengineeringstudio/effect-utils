@@ -1,6 +1,6 @@
 import { join } from 'node:path'
 
-import { FileSystem } from '@effect/platform'
+import { FileSystem } from 'effect/FileSystem'
 import { NodeFileSystem } from '@effect/platform-node'
 import { Effect, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'

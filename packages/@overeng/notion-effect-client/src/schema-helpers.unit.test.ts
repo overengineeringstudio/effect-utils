@@ -162,7 +162,7 @@ Vitest.describe('SchemaHelpers', () => {
 
         yield* SchemaHelpers.validatePropertiesFromSchema({
           schema: Schema.Struct({
-            Name: NotionSchema.title.annotations({
+            Name: NotionSchema.title.annotate({
               [notionPropertyMeta]: {
                 _tag: 'title',
                 id: 'prop-name',
@@ -170,7 +170,7 @@ Vitest.describe('SchemaHelpers', () => {
                 description: null,
               },
             }),
-            Amount: NotionSchema.numberOption.annotations({
+            Amount: NotionSchema.numberOption.annotate({
               [notionPropertyMeta]: {
                 _tag: 'number',
                 id: 'prop-amount',

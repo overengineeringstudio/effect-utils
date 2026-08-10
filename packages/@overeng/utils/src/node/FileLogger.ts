@@ -2,19 +2,11 @@ import * as fs from 'node:fs'
 import path from 'node:path'
 import util from 'node:util'
 
-import {
-  Cause,
-  Effect,
-  FiberId,
-  HashMap,
-  Inspectable,
-  Layer,
-  List,
-  Logger,
-  type LogLevel,
-  LogSpan,
-} from 'effect'
+import { Cause, Effect, HashMap, Inspectable, Layer, Logger, type LogLevel } from 'effect'
 import * as EffectArray from 'effect/Array'
+
+const formatFiberId = (fiberId: unknown): string =>
+  typeof fiberId === 'number' ? `#${fiberId}` : String(fiberId ?? 'unknown')
 
 /**
  * Creates a Layer that replaces the default logger with a pretty-printed file logger.
@@ -63,15 +55,14 @@ export const makeFileLogger = ({ logFilePath, threadName, colors }: MakeFileLogg
         (fd) => Effect.sync(() => fs.closeSync(fd)),
       )
 
-      return Logger.replace(
-        Logger.defaultLogger,
+      return Logger.layer([
         prettyLoggerTty({
           colors: colors ?? false,
           stderr: false,
           formatDate: (date) => `${defaultDateFormat(date)} ${threadName ?? ''}`,
           onLog: (str) => fs.writeSync(logFile, str),
         }),
-      )
+      ])
     }),
   )
 
@@ -185,13 +176,12 @@ export const prettyLoggerTty = (options: {
       let firstLine =
         color(`[${options.formatDate(date)}]`, colors.white) +
         ` ${color(logLevel.label, ...logLevelColors[logLevel._tag])}` +
-        ` (${FiberId.threadName(fiberId)})`
+        ` (${formatFiberId(fiberId)})`
 
-      if (List.isCons(spans) === true) {
+      if (spans.length > 0) {
         const now = date.getTime()
-        const render = LogSpan.render(now)
-        for (const span of spans) {
-          firstLine += ` ${render(span)}`
+        for (const [label, timestamp] of spans) {
+          firstLine += ` ${label} (${now - timestamp}ms)`
         }
       }
 

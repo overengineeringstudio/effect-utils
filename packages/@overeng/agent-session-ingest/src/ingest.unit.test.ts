@@ -1,7 +1,7 @@
 import * as nodePath from 'node:path'
 
-import { FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import { FileSystem } from 'effect/FileSystem'
+import { NodeServices } from '@effect/platform-node'
 import { Effect } from 'effect'
 import { expect } from 'vitest'
 
@@ -10,7 +10,7 @@ import { Vitest } from '@overeng/utils-dev/node-vitest'
 import { readAppendOnlyTextFileSince } from './files/append-only.ts'
 import { readMutableTextFileIfChanged } from './files/mutable.ts'
 
-const TestLayer = NodeContext.layer
+const TestLayer = NodeServices.layer
 
 Vitest.describe('agent-session-ingest file readers', () => {
   Vitest.it.effect('resets append-only offsets after truncation', () =>

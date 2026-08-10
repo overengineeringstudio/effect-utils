@@ -1,4 +1,4 @@
-import type { FileSystem } from '@effect/platform'
+import type { FileSystem } from 'effect/FileSystem'
 import { Effect, Schema } from 'effect'
 
 import type { SessionSourceDiscoveryError } from '../errors.ts'
@@ -68,7 +68,7 @@ export const makeAppendOnlyJsonlAdapter = <A, I>(
         })
 
         const records = yield* Effect.forEach(splitCompleteJsonlRecords(read.text), (line) =>
-          Schema.decodeUnknown(Schema.parseJson(options.recordSchema))(line).pipe(
+          Schema.decodeUnknown(Schema.fromJsonString(options.recordSchema))(line).pipe(
             Effect.mapError(
               (cause) =>
                 new SessionArtifactDecodeError({
