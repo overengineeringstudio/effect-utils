@@ -228,11 +228,15 @@ export const nixBinaryCachesExtraConf = (caches: readonly NixBinaryCache[]) => {
 
 export const devenvBinRef = '"${DEVENV_BIN:?DEVENV_BIN not set}"'
 
-export const resolveDevenvRevScript = `DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
+export const resolveDevenvRevScriptFor = (
+  lockFile = 'devenv.lock',
+) => `DEVENV_REV=$(jq -r .nodes.devenv.locked.rev ${lockFile})
 if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-  echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+  echo '::error::${lockFile} missing .nodes.devenv.locked.rev'
   exit 1
 fi`
+
+export const resolveDevenvRevScript = resolveDevenvRevScriptFor()
 
 export const resolveDevenvFnScript = `DEVENV_GC_ROOT_DIR="${'${RUNNER_TEMP:-/tmp}'}/genie-nix-gc-roots"
 DEVENV_GC_ROOT_ID=$(printf '%s' "${'${GITHUB_RUN_ID:-local-$$}'}-${'${GITHUB_RUN_ATTEMPT:-0}'}-${'${GITHUB_JOB:-job}'}" | tr -c 'A-Za-z0-9._-' '_')
@@ -263,7 +267,7 @@ resolve_devenv() {
     rc=$?
   fi
   cat "$log" >&2
-  invalid_path=$(grep -o "error:[[:space:]]*path '/nix/store/[^']*'[[:space:]]*is not valid" "$log" |
+  invalid_path=$(grep -E -o "error:[[:space:]]*path '/nix/store/[^']*'[[:space:]]*is not( a)? valid( store path)?" "$log" |
     head -1 | grep -o "/nix/store/[^']*" || true)
   rm -f "$log"
   [ -n "$invalid_path" ] || return "$rc"
