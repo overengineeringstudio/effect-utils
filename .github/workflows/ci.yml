@@ -475,9 +475,9 @@ jobs:
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - name: Use pinned devenv from lock
         run: |
-          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
+          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
           fi
           echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
@@ -499,9 +499,9 @@ jobs:
           key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: |
-          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
+          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
           fi
 
@@ -752,9 +752,9 @@ jobs:
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - name: Use pinned devenv from lock
         run: |
-          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
+          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
           fi
           echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
@@ -776,9 +776,9 @@ jobs:
           key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: |
-          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
+          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
           fi
 
@@ -1016,9 +1016,9 @@ jobs:
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - name: Use pinned devenv from lock
         run: |
-          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
+          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
           fi
           echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
@@ -1040,9 +1040,9 @@ jobs:
           key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: |
-          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
+          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
           fi
 
@@ -1277,9 +1277,9 @@ jobs:
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - name: Use pinned devenv from lock
         run: |
-          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
+          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
           fi
           echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
@@ -1301,9 +1301,9 @@ jobs:
           key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: |
-          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
+          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
           fi
 
@@ -1541,9 +1541,9 @@ jobs:
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - name: Use pinned devenv from lock
         run: |
-          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
+          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
           fi
           echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
@@ -1565,9 +1565,9 @@ jobs:
           key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: |
-          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
+          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
           fi
 
@@ -1805,9 +1805,9 @@ jobs:
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - name: Resolve devenv
         run: |
-          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
+          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
           fi
 
@@ -1984,9 +1984,9 @@ jobs:
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - name: Use pinned devenv from lock
         run: |
-          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
+          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
           fi
           echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
@@ -2008,9 +2008,9 @@ jobs:
           key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: |
-          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
+          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
           fi
 
@@ -2296,9 +2296,9 @@ jobs:
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - name: Use pinned devenv from lock
         run: |
-          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
+          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
           fi
           echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
@@ -2320,9 +2320,9 @@ jobs:
           key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: |
-          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
+          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
           fi
 
@@ -2559,9 +2559,9 @@ jobs:
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - name: Use pinned devenv from lock
         run: |
-          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
+          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
           fi
           echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
@@ -2583,9 +2583,9 @@ jobs:
           key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: |
-          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
+          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
           fi
 
@@ -2820,9 +2820,9 @@ jobs:
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - name: Use pinned devenv from lock
         run: |
-          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
+          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
           fi
           echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
@@ -2844,9 +2844,9 @@ jobs:
           key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: |
-          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
+          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
           fi
 
@@ -3081,9 +3081,9 @@ jobs:
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - name: Use pinned devenv from lock
         run: |
-          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
+          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
           fi
           echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
@@ -3105,9 +3105,9 @@ jobs:
           key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: |
-          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
+          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
           fi
 
@@ -3349,9 +3349,9 @@ jobs:
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - name: Use pinned devenv from lock
         run: |
-          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
+          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
           fi
           echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
@@ -3373,9 +3373,9 @@ jobs:
           key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: |
-          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
+          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
           fi
 
@@ -3620,9 +3620,9 @@ jobs:
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - name: Use pinned devenv from lock
         run: |
-          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
+          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
           fi
           echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
@@ -3644,9 +3644,9 @@ jobs:
           key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: |
-          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
+          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
           fi
 
@@ -4473,9 +4473,9 @@ jobs:
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - name: Use pinned devenv from lock
         run: |
-          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
+          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
           fi
           echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
@@ -4497,9 +4497,9 @@ jobs:
           key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: |
-          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
+          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
           fi
 
@@ -7983,9 +7983,9 @@ jobs:
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - name: Use pinned devenv from lock
         run: |
-          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
+          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
           fi
           echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
@@ -8007,9 +8007,9 @@ jobs:
           key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: |
-          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
+          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
           fi
 
@@ -8247,9 +8247,9 @@ jobs:
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - name: Use pinned devenv from lock
         run: |
-          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
+          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
           fi
           echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
@@ -8271,9 +8271,9 @@ jobs:
           key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: |
-          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
+          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
           fi
 
@@ -8541,9 +8541,9 @@ jobs:
         if: steps.live-netlify-preflight.outputs.run == 'true' || steps.live-vercel-preflight.outputs.run == 'true'
       - name: Use pinned devenv from lock
         run: |
-          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
+          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
           fi
           echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
@@ -8568,9 +8568,9 @@ jobs:
         if: steps.live-netlify-preflight.outputs.run == 'true' || steps.live-vercel-preflight.outputs.run == 'true'
       - name: Resolve devenv
         run: |
-          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
+          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
           fi
 
@@ -8832,9 +8832,9 @@ jobs:
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - name: Use pinned devenv from lock
         run: |
-          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
+          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
           fi
           echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
@@ -8856,9 +8856,9 @@ jobs:
           key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: |
-          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
+          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
             exit 1
           fi
 

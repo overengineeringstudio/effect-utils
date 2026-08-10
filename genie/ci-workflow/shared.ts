@@ -234,7 +234,7 @@ export const resolveDevenvRevScriptFor = (
   lockFile = 'devenv.lock',
 ) => `DEVENV_REV=$(jq -r .nodes.devenv.locked.rev ${shellSingleQuote(lockFile)})
 if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-  printf '::error::%s missing .nodes.devenv.locked.rev\n' ${shellSingleQuote(lockFile)}
+  printf '::error::%s missing .nodes.devenv.locked.rev\\n' ${shellSingleQuote(lockFile)}
   exit 1
 fi`
 

@@ -385,7 +385,7 @@ describe('ci workflow pnpm cache defaults', () => {
       'jq -r .nodes.devenv.locked.rev ${shellSingleQuote(lockFile)}',
     )
     expect(ciWorkflowSource).toContain(
-      "printf '::error::%s missing .nodes.devenv.locked.rev\\n' ${shellSingleQuote(lockFile)}",
+      "printf '::error::%s missing .nodes.devenv.locked.rev\\\\n' ${shellSingleQuote(lockFile)}",
     )
   })
 
