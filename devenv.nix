@@ -387,6 +387,10 @@ in
       extraTests = [ "devenv-modules:test" ];
       packageConcurrency = 4;
       retainVitestJson = true;
+      # This repository has a root Vitest workspace, so package tasks can opt
+      # into native runner telemetry without imposing that structure on users
+      # of the reusable test module.
+      vitestWorkspaceRoot = ".";
     })
     (taskModules.storybook {
       packages = packagesWithStorybook;

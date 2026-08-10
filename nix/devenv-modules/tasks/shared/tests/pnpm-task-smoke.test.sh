@@ -142,6 +142,7 @@ extract_shared_task_script() {
   local package_path="$3"
   local package_name="$4"
   local output_path="$5"
+  local module_extra="${6:-}"
 
   nix-instantiate --eval --strict --json --expr "
     let
@@ -166,6 +167,7 @@ extract_shared_task_script() {
                 port = 6006;
               }
             ];
+            $module_extra
           }) {
             pkgs = pkgsForTest;
             lib = lib;
@@ -365,6 +367,9 @@ EOF
 chmod +x "$workspace/packages/demo/node_modules/vitest/bin/vitest.js"
 cat > "$workspace/packages/demo/node_modules/.bin/vitest" <<'EOF'
 #!/usr/bin/env bash
+if [ -n "${TEST_VITEST_CONTEXT_LOG:-}" ]; then
+  printf 'pwd=%s\nrunner=%s\n' "$PWD" "${VITEST_OTEL_RUNNER:-}" > "$TEST_VITEST_CONTEXT_LOG"
+fi
 printf 'vitest-shim:%s\n' "$*"
 EOF
 chmod +x "$workspace/packages/demo/node_modules/.bin/vitest"
@@ -410,6 +415,13 @@ extract_shared_task_script \
   "demo" \
   "$tmpdir/test-demo.exec.sh"
 extract_shared_task_script \
+  "nix/devenv-modules/tasks/shared/test.nix" \
+  "test:demo" \
+  "packages/demo" \
+  "demo" \
+  "$tmpdir/test-demo-workspace.exec.sh" \
+  'vitestWorkspaceRoot = ".";'
+extract_shared_task_script \
   "nix/devenv-modules/tasks/shared/storybook.nix" \
   "storybook:build:demo" \
   "packages/demo" \
@@ -436,6 +448,7 @@ rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-impure-ignore-scripts.exec.s
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-impure-ignore-dep-scripts.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-impure-gvs.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/test-demo.exec.sh"
+rewrite_unrealized_tool_paths "$tmpdir/test-demo-workspace.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/storybook-demo.exec.sh"
 
 export PATH="$tmpdir/bin:$PATH"
@@ -1015,7 +1028,23 @@ echo "Test 29: generated storybook task runs storybook without pnpm exec"
   [ "$output" = "storybook-shim:build" ]
 )
 
-echo "Test 30: clean removes only root-owned topology and leaves shared content intact"
+echo "Test 30: root-workspace test mode is opt-in and enables runner OTEL only with a collector"
+(
+  cd "$workspace/packages/demo"
+  export DEVENV_ROOT="$workspace"
+  export TEST_VITEST_CONTEXT_LOG="$tmpdir/vitest-context.log"
+  output="$(OTEL_SCRAPE_ENABLED=0 OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318 bash "$tmpdir/test-demo-workspace.exec.sh")"
+  [ "$output" = "vitest-shim:run --testTimeout 30000 --hookTimeout 30000 --project demo" ]
+  grep -qF "pwd=$workspace" "$TEST_VITEST_CONTEXT_LOG"
+  grep -qF "runner=1" "$TEST_VITEST_CONTEXT_LOG"
+
+  output="$(OTEL_SCRAPE_ENABLED=0 OTEL_EXPORTER_OTLP_ENDPOINT= bash "$tmpdir/test-demo-workspace.exec.sh")"
+  [ "$output" = "vitest-shim:run --testTimeout 30000 --hookTimeout 30000 --project demo" ]
+  grep -qF "runner=" "$TEST_VITEST_CONTEXT_LOG"
+  ! grep -qF "runner=1" "$TEST_VITEST_CONTEXT_LOG"
+)
+
+echo "Test 31: clean removes only root-owned topology and leaves shared content intact"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"

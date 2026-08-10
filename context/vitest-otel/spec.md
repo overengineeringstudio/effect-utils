@@ -3,9 +3,10 @@ Effect product spans under it. It builds on [requirements.md](./requirements.md)
 
 ## Status
 
-Draft. Validated end-to-end in an isolated prototype (see
-[.experiments/prototype-validation.md](./.experiments/prototype-validation.md));
-not yet landed on the mainline harness.
+Implemented by the shared test module, root Vitest config, and
+`@overeng/utils-dev` bridge. The original behavior was validated end-to-end in
+an isolated prototype (see
+[.experiments/prototype-validation.md](./.experiments/prototype-validation.md)).
 
 ## Scope
 
@@ -14,14 +15,17 @@ Defines:
 - The shared Vitest `sdkPath` module and how native OTEL is enabled (R01–R05).
 - The Vitest→Effect parent bridge and its placement in `withTestCtx` (R06–R09).
 - Capture-lane suppression (R10–R12).
+- Independent runner/product teardown budgets (decision
+  [0003](./.decisions/0003-product-span-flush-budget.md)).
+- Outcome and end-to-end conformance for both lanes (R15–R17).
 
 Does not define:
 
 - The Effect-native `OtlpTracer` / `makeOtelVitestLayer` export path — see
   `@overeng/utils-dev` `node-vitest`.
 - The otelite receiver / assertion API — see `@overeng/utils-dev` `otelite`.
-- The devenv OTEL collector, endpoint, or `TRACEPARENT` injection — see
-  `nix/devenv-modules/otel.nix`.
+- The observability backend lifecycle, endpoint, or `TRACEPARENT` injection —
+  see `devenvModules.observability` and its otelite profiles.
 
 ## Two lanes
 
@@ -45,12 +49,16 @@ root vitest.config.ts
     : (absent)
 ```
 
-- `VITEST_OTEL_RUNNER` is the collector-context switch (R01, R03); the devenv
-  test task sets it when `OTEL_EXPORTER_OTLP_ENDPOINT` is configured. Bare local
-  and watch runs leave it unset → native OTEL absent (A03). It is also the
+- `VITEST_OTEL_RUNNER` is the collector-context switch (R01, R03). A consumer
+  opts its shared test module into root-workspace execution with
+  `vitestWorkspaceRoot`; those tasks set the switch when
+  `OTEL_EXPORTER_OTLP_ENDPOINT` is configured. Package-local tasks, bare local
+  runs, and watch runs leave it unset → native OTEL absent (A03). It is also the
   single disable switch (R05).
-- Enablement is global config, applied to every project run with no per-package
-  edit (R02).
+- Enablement is global config, applied to every opted-in project run with no
+  per-package config edit (R02). Package-local execution remains the reusable
+  module's default (decision
+  [0002](./.decisions/0002-default-safe-root-workspace.md)).
 
 ### sdkPath module (R04)
 
@@ -71,7 +79,11 @@ export default provider // Vitest calls .shutdown() to flush
 - No `getNodeAutoInstrumentations()` — the process is not instrumented (R04).
 - `.mjs`, loaded by Vitest outside the TS transform pipeline.
 - The exporter honors standard `OTEL_EXPORTER_OTLP_ENDPOINT` env; runner spans
-  root under the ambient `TRACEPARENT` (R03).
+  root under the ambient `TRACEPARENT` (R03). Vitest itself extracts
+  `TRACEPARENT`/`TRACESTATE` with the registered W3C propagator when it creates
+  `vitest.start`, then propagates that context to workers. The sdkPath module
+  must not perform a second extraction or manufacture an ambient process-wide
+  context.
 
 Emitted tree (observed): `vitest.worker → vitest.runtime.run →
 vitest.test.runner.run.{module,spec,test} → vitest.test.runner.test.callback`,
@@ -129,7 +141,32 @@ makeOteliteCaptureLayer()
   (lower layer) and provided by the otelite capture layer (upper layer) — no
   circular dependency, no per-test change (R11).
 - `bridgeVitestParent` checks it via `Effect.serviceOption`; when present the
-  seed is skipped and captured product spans stay root (R10).
+  seed is skipped and captured product spans stay under the capture-owned
+  `otelite-capture-file` root instead of joining the ambient runner trace (R10).
+
+The bridge executes inside the context supplied by `combinedLayer`, so the
+capture layer's marker is visible before the parent decision. Exporter
+finalizers remain owned by the outer `Effect.scoped` boundary.
+
+## End-to-end conformance (R15–R17)
+
+`vitest-otelite-e2e.test.sh` runs focused fixtures through the real Vitest
+runner and an ephemeral real otelite OTLP receiver. otelite owns receiver
+readiness and post-child drain; assertions consume its decoded summary and span
+rows rather than sleeping or implementing another receiver.
+
+| Scenario                                | Structural assertion                                                                                       |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Endpoint, runner switch absent          | Zero native spans; child succeeds                                                                          |
+| Runner switch + inherited `TRACEPARENT` | Every span uses the inherited trace ID; `vitest.start` points to the inherited span                        |
+| Effect product export                   | Product span's parent is the active `vitest.test.runner.test.callback`                                     |
+| otelite assertion capture               | Exactly one product under the capture-owned root; outer receiver contains runner spans but not the product |
+| Failing test                            | Child exits non-zero; callback has OTEL error status; receiver reports zero rejects after drain            |
+
+The shared-task smoke test separately proves the genuinely distinct config
+discovery behavior: package-local execution is the default, while a configured
+`vitestWorkspaceRoot` selects the package by manifest name and enables native
+OTEL only when the endpoint is present.
 
 ## Design questions
 

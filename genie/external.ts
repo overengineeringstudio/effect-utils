@@ -260,6 +260,7 @@ export const catalog = defineCatalog({
   // which @restatedev/restate-sdk-opentelemetry@1.14.5 requires as a peer.
   // @effect/opentelemetry@0.63 accepts ^2.0.0, so utils + restate-effect both stay compatible.
   '@opentelemetry/api': '1.9.1',
+  '@opentelemetry/exporter-trace-otlp-http': '0.219.0',
   '@opentelemetry/resources': '2.8.0',
   '@opentelemetry/sdk-logs': '0.219.0',
   '@opentelemetry/sdk-metrics': '2.8.0',
