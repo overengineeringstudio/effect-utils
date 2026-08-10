@@ -21,18 +21,26 @@ use std::os::unix::process::ExitStatusExt;
 
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use sha2::{Digest, Sha256};
 
 mod adapters;
-mod content_address;
 #[path = "telemetry_registry.gen.rs"]
 pub mod telemetry_registry;
 
-use content_address::{
+use otel_core::content_address::{
     canonical_manifest_json, cas_uri_for_digest, descriptor_for_bytes, write_bytes_atomic,
     write_object, write_pin, ManifestEntry, CANONICAL_JSON_CODEC, MANIFEST_MEDIA_TYPE,
     PROFILE_MEDIA_TYPE,
 };
+#[cfg(target_os = "linux")]
+use otel_core::hex::stable_process_span_id;
+use otel_core::hex::{stable_hash, stable_hash_lines};
+// `random_hex` is re-exported at crate root so the adapters (`crate::random_hex`)
+// keep a stable path after the extraction.
+use otel_core::context::trace_context_from_env;
+pub(crate) use otel_core::hex::random_hex;
+// Re-exported to preserve `otel_scrape::TraceContext` as public API; the OTLP
+// exporter and tests reference it through this crate.
+pub use otel_core::context::TraceContext;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 // OTel semantic-conventions schema this instrumentation targets (decision 0019).
@@ -45,7 +53,6 @@ const SEMCONV_SCHEMA_URL: &str = "https://opentelemetry.io/schemas/1.37.0";
 // deliberately NOT honored as the binary's own identity (see resolve_machine_version).
 pub const BUILD_STAMP: Option<&str> = option_env!("CLI_BUILD_STAMP");
 const EX_USAGE: u8 = 64;
-const TRACE_FLAGS_SAMPLED: &str = "01";
 const SUMMARY_ENV: &str = "OTEL_SCRAPE_SUMMARY_OUT";
 const CAS_ROOT_ENV: &str = "OTEL_SCRAPE_CAS_ROOT";
 const OTLP_ENDPOINT_ENV: &str = "OTEL_EXPORTER_OTLP_ENDPOINT";
@@ -229,14 +236,6 @@ impl ProcessBackendSelection {
     fn supported_values() -> &'static str {
         "direct-child, ptrace-experimental, or helper-stream"
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TraceContext {
-    pub trace_id: String,
-    pub parent_span_id: Option<String>,
-    pub span_id: String,
-    pub flags: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -3351,7 +3350,7 @@ fn artifact_summary(
         let link = ProfileLink {
             profile_type: artifact.profile_type.clone(),
             digest: descriptor.digest.clone(),
-            uri: cas_uri_for_digest(&descriptor.digest),
+            uri: cas_uri_for_digest(&descriptor.digest)?,
             byte_length: descriptor.byte_length,
             media_type: descriptor.media_type,
         };
@@ -3411,7 +3410,7 @@ fn artifact_summary(
         profiles,
         manifest: Some(ManifestLink {
             digest: manifest_descriptor.digest.clone(),
-            uri: cas_uri_for_digest(&manifest_descriptor.digest),
+            uri: cas_uri_for_digest(&manifest_descriptor.digest)?,
             byte_length: manifest_descriptor.byte_length,
             media_type: manifest_descriptor.media_type,
             codec: manifest_descriptor
@@ -3464,7 +3463,7 @@ pub(crate) fn hash_path_identity(path: &str) -> String {
 }
 
 fn validate_pin_name(name: &str) -> Result<(), UsageError> {
-    content_address::validate_pin_name(name).map_err(|message| UsageError {
+    otel_core::content_address::validate_pin_name(name).map_err(|message| UsageError {
         message: message.to_owned(),
     })
 }
@@ -3473,123 +3472,6 @@ fn write_summary(path: &Path, summary: &Summary) -> io::Result<()> {
     let mut bytes = serde_json::to_vec(summary)?;
     bytes.push(b'\n');
     write_bytes_atomic(path, &bytes)
-}
-
-fn trace_context_from_env() -> io::Result<TraceContext> {
-    let parent = std::env::var(TRACEPARENT_ENV)
-        .ok()
-        .or_else(|| std::env::var("TRACEPARENT").ok())
-        .and_then(|value| parse_traceparent(&value));
-
-    let span_id = random_hex(8)?;
-    match parent {
-        Some(parent) => Ok(TraceContext {
-            trace_id: parent.trace_id,
-            parent_span_id: Some(parent.span_id),
-            span_id,
-            flags: parent.flags,
-        }),
-        None => Ok(TraceContext {
-            trace_id: random_hex(16)?,
-            parent_span_id: None,
-            span_id,
-            flags: String::from(TRACE_FLAGS_SAMPLED),
-        }),
-    }
-}
-
-#[derive(Debug, Clone)]
-struct ParsedTraceparent {
-    trace_id: String,
-    span_id: String,
-    flags: String,
-}
-
-fn parse_traceparent(value: &str) -> Option<ParsedTraceparent> {
-    let mut parts = value.split('-');
-    let version = parts.next()?;
-    let trace_id = parts.next()?;
-    let span_id = parts.next()?;
-    let flags = parts.next()?;
-    if parts.next().is_some() {
-        return None;
-    }
-    if version != "00" || !is_lower_hex(trace_id, 32) || !is_lower_hex(span_id, 16) {
-        return None;
-    }
-    if !is_lower_hex(flags, 2)
-        || trace_id.chars().all(|c| c == '0')
-        || span_id.chars().all(|c| c == '0')
-    {
-        return None;
-    }
-    Some(ParsedTraceparent {
-        trace_id: trace_id.to_owned(),
-        span_id: span_id.to_owned(),
-        flags: flags.to_owned(),
-    })
-}
-
-impl TraceContext {
-    fn child_traceparent(&self) -> String {
-        format!("00-{}-{}-{}", self.trace_id, self.span_id, self.flags)
-    }
-}
-
-pub(crate) fn random_hex(byte_len: usize) -> io::Result<String> {
-    let mut bytes = vec![0_u8; byte_len];
-    getrandom::fill(&mut bytes).map_err(|cause| io::Error::other(cause.to_string()))?;
-    if bytes.iter().all(|byte| *byte == 0) {
-        bytes[0] = 1;
-    }
-    Ok(hex(&bytes))
-}
-
-fn is_lower_hex(value: &str, len: usize) -> bool {
-    value.len() == len
-        && value
-            .bytes()
-            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
-}
-
-fn stable_hash_lines(values: &[String]) -> String {
-    let mut hasher = Sha256::new();
-    for value in values {
-        hasher.update(value.len().to_string().as_bytes());
-        hasher.update(b"\0");
-        hasher.update(value.as_bytes());
-        hasher.update(b"\0");
-    }
-    format!("sha256:{}", hex(&hasher.finalize()))
-}
-
-fn stable_hash(bytes: &[u8]) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(bytes);
-    format!("sha256:{}", hex(&hasher.finalize()))
-}
-
-#[cfg(target_os = "linux")]
-fn stable_process_span_id(pid: libc::pid_t, observed_wall: SystemTime) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(pid.to_string().as_bytes());
-    hasher.update(b"\0");
-    hasher.update(unix_nanos(observed_wall).to_string().as_bytes());
-    let digest = hex(&hasher.finalize());
-    let span_id = &digest[..16];
-    if span_id.chars().all(|char| char == '0') {
-        "0000000000000001".to_owned()
-    } else {
-        span_id.to_owned()
-    }
-}
-
-fn hex(bytes: &[u8]) -> String {
-    let mut out = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        write!(&mut out, "{byte:02x}").expect("write to string");
-    }
-    out
 }
 
 fn exit_code(status: ExitStatus) -> i32 {
