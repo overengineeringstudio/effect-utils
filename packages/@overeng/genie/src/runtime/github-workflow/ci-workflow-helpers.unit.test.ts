@@ -380,6 +380,15 @@ describe('ci workflow pnpm cache defaults', () => {
     )
   })
 
+  it('quotes caller-selected devenv lock paths', () => {
+    expect(ciWorkflowSource).toContain(
+      'jq -r .nodes.devenv.locked.rev ${shellSingleQuote(lockFile)}',
+    )
+    expect(ciWorkflowSource).toContain(
+      "printf '::error::%s missing .nodes.devenv.locked.rev\\n' ${shellSingleQuote(lockFile)}",
+    )
+  })
+
   it('retries initial devenv resolution once only for an extracted invalid store path', () => {
     expect(resolveDevenvFnScript).toContain('[ -n "$invalid_path" ] || return "$rc"')
     expect(resolveDevenvFnScript.match(/resolve_devenv_once/g)).toHaveLength(3)

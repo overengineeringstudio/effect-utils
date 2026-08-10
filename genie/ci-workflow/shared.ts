@@ -228,11 +228,13 @@ export const nixBinaryCachesExtraConf = (caches: readonly NixBinaryCache[]) => {
 
 export const devenvBinRef = '"${DEVENV_BIN:?DEVENV_BIN not set}"'
 
+export const shellSingleQuote = (value: string) => `'${value.replaceAll("'", `'"'"'`)}'`
+
 export const resolveDevenvRevScriptFor = (
   lockFile = 'devenv.lock',
-) => `DEVENV_REV=$(jq -r .nodes.devenv.locked.rev ${lockFile})
+) => `DEVENV_REV=$(jq -r .nodes.devenv.locked.rev ${shellSingleQuote(lockFile)})
 if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-  echo '::error::${lockFile} missing .nodes.devenv.locked.rev'
+  printf '::error::%s missing .nodes.devenv.locked.rev\n' ${shellSingleQuote(lockFile)}
   exit 1
 fi`
 
@@ -287,8 +289,6 @@ resolve_devenv() {
     return $?
   fi
 }`
-
-export const shellSingleQuote = (value: string) => `'${value.replaceAll("'", `'"'"'`)}'`
 
 /** Build extra-conf / NIX_CONFIG content for common Nix feature flags. */
 export const nixExtraConf = (opts: NixConfigOptions = {}) =>

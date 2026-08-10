@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **genie/ci-workflow**: allow CI consumers to select the devenv lock file used
+  by the pinned-devenv preparation and Nix-store validation steps.
 - **@overeng/effect-path**: add Effect 3 cross-major baselines for PathInfo schema
   encoding, convention parser failure partitions, and path operation byte output.
 - **@overeng/tui-stories**: add Effect 3 cross-major baselines for schema-encoded
