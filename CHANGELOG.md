@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **devenv observability**: add opt-in `commandInstrumentation` composition.
+  Enabling it supplies the flake-stamped `otel-scrape` build and pins
+  `OTEL_SCRAPE_BIN` for nested task shells; the default remains task-span-only
+  and avoids the larger command observer closure.
 - **@overeng/effect-path**: add Effect 3 cross-major baselines for PathInfo schema
   encoding, convention parser failure partitions, and path operation byte output.
 - **@overeng/tui-stories**: add Effect 3 cross-major baselines for schema-encoded

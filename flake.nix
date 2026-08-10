@@ -250,7 +250,20 @@
       devenvModules = {
         # Lightweight native-devenv + effect-utils capture, optionally composed
         # with the full Collector/Tempo/Grafana stack.
-        observability = import ./nix/devenv-modules/observability.nix;
+        observability =
+          args:
+          { pkgs, ... }@moduleArgs:
+          (import ./nix/devenv-modules/observability.nix (
+            args
+            // {
+              # Preserve the source-revision stamp carried by the flake package.
+              # A direct build.nix import would compile `0.0.0+unknown`, and that
+              # compile-time identity intentionally wins over runtime stamps.
+              otelScrapePackage =
+                args.otelScrapePackage or self.packages.${pkgs.stdenv.hostPlatform.system}.otel-scrape;
+            }
+          ))
+            moduleArgs;
         # OpenTelemetry observability stack (Collector + Tempo + Grafana)
         otel = import ./nix/devenv-modules/otel.nix;
         # Shared task modules (parameterized) - meant for reuse in other repos

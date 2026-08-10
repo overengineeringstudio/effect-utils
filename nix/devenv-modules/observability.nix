@@ -9,6 +9,8 @@
 {
   project,
   backend ? "ambient",
+  commandInstrumentation ? false,
+  otelScrapePackage ? null,
   profile ? {
     name = "setup";
     task = "setup:strict";
@@ -41,6 +43,13 @@ let
   # the profile/verify surface after this producer can be retired.
   otelSpan = import ./otel/otel-span.nix { inherit pkgs; };
   otelite = import (../../packages + "/@overeng/otelite/nix/build.nix") { inherit pkgs; };
+  otelScrape =
+    if !commandInstrumentation then
+      null
+    else if otelScrapePackage != null then
+      otelScrapePackage
+    else
+      throw "effect-utils observability: commandInstrumentation requires the flake-stamped otelScrapePackage";
 
   capture =
     if profile == null then
@@ -192,10 +201,17 @@ in
     # Devenv task execution may reconstruct PATH independently of the capture
     # process, so task wrappers resolve the module-owned bridge explicitly.
     OTEL_SPAN_BIN = "${otelSpan}/bin/otel-span";
+  }
+  // lib.optionalAttrs commandInstrumentation {
+    # Command instrumentation is explicit because otel-scrape is materially
+    # larger than the task-span bridge. Pin its path for nested task shells,
+    # which must not depend on the parent shell's reconstructed PATH.
+    OTEL_SCRAPE_BIN = "${otelScrape}/bin/otel-scrape";
   };
   packages = [
     otelSpan
     otelite
-  ];
+  ]
+  ++ lib.optional commandInstrumentation otelScrape;
   tasks = profileTasks // wiredTasks;
 }
