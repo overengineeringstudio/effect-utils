@@ -8,6 +8,7 @@ import {
   jobLocalCiDiagnosticsDir,
   nixBinaryCachesExtraConf,
   resolveDevenvRevScript,
+  resolveDevenvRevScriptFor,
   linuxX64Runner,
   runDevenvTasksBefore,
   shellSingleQuote,
@@ -340,13 +341,16 @@ export const cachixStep = (opts: { name: string; authToken?: string }) => ({
 /**
  * Prepare lock-pinned devenv metadata from devenv.lock.
  */
-export const preparePinnedDevenvStep = {
-  name: 'Use pinned devenv from lock',
-  run: `${resolveDevenvRevScript}
+export const preparePinnedDevenvStepFor = (lockFile = 'devenv.lock') =>
+  ({
+    name: 'Use pinned devenv from lock',
+    run: `${resolveDevenvRevScriptFor(lockFile)}
 echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
 echo "Pinned devenv rev: $DEVENV_REV"`,
-  shell: 'bash',
-} as const
+    shell: 'bash',
+  }) as const
+
+export const preparePinnedDevenvStep = preparePinnedDevenvStepFor()
 
 /**
  * Export the canonical CI pnpm paths once so every later shell step shares the
@@ -985,9 +989,10 @@ export const pnpmBuilderContractStep = ({
  * @see https://github.com/namespacelabs/nscloud-setup/issues/8
  * @see https://github.com/overengineeringstudio/effect-utils/issues/272
  */
-export const validateNixStoreStep = {
-  name: 'Resolve devenv',
-  run: `${resolveDevenvRevScript}
+export const validateNixStoreStepFor = (lockFile = 'devenv.lock') =>
+  ({
+    name: 'Resolve devenv',
+    run: `${resolveDevenvRevScriptFor(lockFile)}
 
 . ${shellSingleQuote(`${preparedCiRuntimeScriptsDir}/resolve-devenv.sh`)}
 
@@ -1038,8 +1043,10 @@ echo "DEVENV_GC_ROOT=$DEVENV_GC_ROOT" >> "$GITHUB_ENV"
 
 echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
 "$DEVENV_BIN" version | tee "$DIAG_ROOT/devenv-version.txt"`,
-  shell: 'bash',
-} as const
+    shell: 'bash',
+  }) as const
+
+export const validateNixStoreStep = validateNixStoreStepFor()
 
 /**
  * Upload diagnostics captured by `validateNixStoreStep` as a CI artifact.

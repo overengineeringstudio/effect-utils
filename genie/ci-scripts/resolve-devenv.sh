@@ -32,7 +32,7 @@ resolve_devenv() {
     rc=$?
   fi
   cat "$log" >&2
-  invalid_path=$(grep -o "error:[[:space:]]*path '/nix/store/[^']*'[[:space:]]*is not valid" "$log" |
+  invalid_path=$(grep -E -o "error:[[:space:]]*path '/nix/store/[^']*'[[:space:]]*is not( a)? valid( store path)?" "$log" |
     head -1 | grep -o "/nix/store/[^']*" || true)
   rm -f "$log"
   [ -n "$invalid_path" ] || return "$rc"
