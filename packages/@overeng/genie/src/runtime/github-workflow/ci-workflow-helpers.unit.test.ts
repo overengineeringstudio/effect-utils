@@ -151,7 +151,7 @@ const restorePnpmStateStepSource = extractSourceBlock(
 
 const validateNixStoreStepSource = extractSourceBlock(
   ciWorkflowSource,
-  'export const validateNixStoreStep = {',
+  "export const validateNixStoreStepFor = (lockFile = 'devenv.lock') =>",
   '/**\n * Upload diagnostics captured by `validateNixStoreStep` as a CI artifact.',
 )
 
